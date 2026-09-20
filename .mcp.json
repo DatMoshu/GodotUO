@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "guoasset": {
+      "type": "stdio",
+      "command": "${EXTERNAL_ROOT:-D:/external/an external project}/tools/mcp/guoasset-mcp/bin/Debug/net10.0/guoasset-mcp.exe",
+      "args": [],
+      "env": {
+        "UOASSET_CLI": "${EXTERNAL_ROOT:-D:/external/an external project}/tools/ExternalAssetStudio/src/ExternalAssetStudio.Cli/bin/Debug/net10.0/guoasset.exe"
+      }
+    }
+  }
+}

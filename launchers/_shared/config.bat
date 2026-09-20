@@ -48,3 +48,9 @@ if not defined UO_PYTHON            set "UO_PYTHON=python"
 REM --- Logging ------------------------------------------------------------
 REM  DEBUG | INFO | WARN | ERROR
 if not defined UO_LOG_LEVEL         set "UO_LOG_LEVEL=INFO"
+
+REM --- the external project reference tools (optional) ------------------------------------
+REM  an external project is a separate project used here ONLY as a source
+REM  of UO knowledge and read-only asset tooling. See docs\external-reference.md.
+REM  Leave unset if you do not have it; only the guoasset MCP needs it.
+if not defined EXTERNAL_ROOT            set "EXTERNAL_ROOT=D:\external\an external project"
