@@ -73,6 +73,8 @@ Key settings: `UO_CLIENT_DATA` (your UO install), `UO_CLIENT_VERSION`,
 launchers\pipeline\00_bootstrap.bat        fresh clone: fetch engine + upstream
 launchers\pipeline\01_verify_client_data.bat   check the UO install
 launchers\pipeline\03_port_audit.bat       re-measure port progress
+python tools\port_bulk\run.py --area X    port a mechanical-tier area
+dotnet build godot\GUO\GUO.csproj         fast build loop (~1s, use this)
 launchers\dev\build.bat                    build C# only
 launchers\dev\smoke.bat                    full health check — run before commit
 launchers\dev\screenshot.bat               capture a frame
@@ -110,6 +112,9 @@ or a device, it is misclassified, not a reason to expand Compat.
 4. **Build in small batches.** One file's error is cheap to find; fifty
    files' errors are not.
 5. **Measure, do not estimate.** Progress claims come from the audit.
+   Its tiers are derived from imports and have been wrong before — the
+   first pass missed SDL3 entirely. When a file resists its tier, fix the
+   classifier rather than working around it.
 6. **"Ported" ≠ "working".** The audit matches filenames. Claims of working
    behaviour need a smoke test or a screenshot. Say which you actually have.
 7. **Never filter pixel art.** `default_texture_filter=0` is deliberate; any
@@ -132,7 +137,9 @@ specialists were removed. Port-specific additions:
 | `uo-network-engineer` | Packets, handshake, encryption, compression |
 | `uo-render-engineer` | The rewrite tier: renderer, hues, input, audio |
 
-Skills: `/port-status`, `/port-file`, plus the inherited studio set.
+Skills: `/port-status`, `/port-file`, `/parity-check`, plus the inherited
+studio set. MCP: `guoasset` (see `tools/guoasset/README.md`) renders UO art
+from the client data as a parity reference.
 
 ---
 

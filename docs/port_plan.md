@@ -88,23 +88,43 @@ begins.
 Repo, pinned Godot 4.7.2 .NET, upstream reference, launchers, tooling,
 `Compat` skeleton, audit baseline. `launchers\dev\smoke.bat` passes.
 
-### Phase 1 — foundations
+### Phase 1 — foundations ✅ complete
 `Utility` → `IO`
 
 Almost entirely verbatim. Ports the `.mul` / `.uop` readers, the memory-mapped
 file access and the core collections. Keep the pointer arithmetic and the
 memory mapping: they exist for throughput over hundreds of megabytes.
 
-**Done when:** the client reads `tiledata.mul` and `hues.mul` and reports
-correct counts.
+**Done:** all 56 files compile and run. A real 7.0.107.76 install opens and
+every archive loads in ~1.1s.
 
-### Phase 2 — asset loaders
+### Phase 2 — asset loaders ✅ complete
 `Assets`
 
 Zero XNA imports upstream. The one real boundary is where a loader returns a
 texture — that becomes Godot, and nothing above it changes.
 
-**Done when:** art, gump and hue data decode, verified against known tile ids.
+**Done:** all 23 loaders compile and run; 175 art tiles decode correctly from
+the real install, checked against a screenshot rather than a log line.
+
+Two decompression bugs had to be fixed to get here, both marked
+`PORT DEVIATION` in the source: upstream assumes a native `zlib.dll` that
+Godot never puts on the search path, and its managed `ZLIBStream` validates
+the Adler-32 trailer against the end of the whole stream, which is wrong for
+the slices UOP hands it. Both now route through .NET's own `ZLibStream`.
+
+### The staged build
+
+The port is a single assembly, so one unresolved type stops everything. The
+mechanical tiers all landed at once (341 files), and several areas still
+reference rewrite-tier types that do not exist yet.
+
+`godot/GUO/GUO.csproj` therefore carries a `<Compile Remove>` list: `Game`,
+`Game/UI`, `Network`, `Configuration`, `Client`, `Input`, `Resources`,
+`Audio`. Those files are committed and audited; they are simply not wired up.
+Delete a line to switch an area on, and fix what the compiler reports. **The
+goal is for that ItemGroup to disappear** — it is the honest running total of
+what is left.
 
 ### Phase 3 — first pixels
 `Render` (rewrite) + `Compat` hardening
