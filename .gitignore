@@ -1,9 +1,9 @@
 # ============================================================================
-#  UO_Port
+#  GUO
 #
 #  Adapted from the Claude Code Game Studios template. The Unity and Unreal
 #  sections were removed: this is a Godot .NET project, and the inherited
-#  `*.csproj` / `*.sln` rules would have excluded godot/UOPort/UOPort.csproj,
+#  `*.csproj` / `*.sln` rules would have excluded godot/GUO/GUO.csproj,
 #  which must be tracked.
 # ============================================================================
 
@@ -37,7 +37,7 @@ obj/
 *.opendb
 *.VC.db
 # Godot generates the solution; the .csproj is authored and IS tracked.
-godot/UOPort/UOPort.sln
+godot/GUO/GUO.sln
 
 # === Build output =========================================================
 builds/

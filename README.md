@@ -1,4 +1,4 @@
-# UO_Port
+# GUO
 
 Porting **Classic Ultima Online** to **Godot 4 .NET** — getting the client off
 FNA while keeping the game behaviour intact.
@@ -59,7 +59,7 @@ launchers/        .bat entry points grouped by job — start here
   game/play.bat   THE launcher
   pipeline/       numbered data steps, run in order
   dev/            build, smoke, screenshot, upstream sync
-godot/UOPort/     the Godot project (C#)
+godot/GUO/        the Godot project (C#)
   src/Compat/     XNA compatibility shim
 sources/ClassicUO/  upstream reference — read only, not committed
 tools/            one folder per job, plus the pinned engine
@@ -80,11 +80,11 @@ launchers\pipeline\03_port_audit.bat     REM writes docs/port_status.md
 | Tier | Files | Lines | Treatment |
 |---|---:|---:|---|
 | `verbatim` | 243 | 74,522 | Renamespace and compile |
-| `shim` | 102 | 50,513 | Swap `using` to `UOPort.Compat` |
+| `shim` | 102 | 50,513 | Swap `using` to `GUO.Compat` |
 | `rewrite` | 88 | 31,170 | Reimplement on Godot |
 
 About **80% of the port is mechanical** — most of ClassicUO's FNA usage turns
-out to be maths and colour structs, not rendering. `UOPort.Compat` supplies
+out to be maths and colour structs, not rendering. `GUO.Compat` supplies
 API-compatible versions of those, so a third of the codebase needs one line
 changed per file.
 

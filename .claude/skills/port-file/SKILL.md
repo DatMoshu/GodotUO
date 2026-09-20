@@ -1,6 +1,6 @@
 ---
 name: port-file
-description: "Port one file or one subsystem from ClassicUO into the Godot project, following its audit tier. Handles namespace and using rewrites for verbatim/shim files, routes rewrite-tier files to the renderer specialist, builds, and re-measures. Use whenever moving code from sources/ClassicUO into godot/UOPort."
+description: "Port one file or one subsystem from ClassicUO into the Godot project, following its audit tier. Handles namespace and using rewrites for verbatim/shim files, routes rewrite-tier files to the renderer specialist, builds, and re-measures. Use whenever moving code from sources/ClassicUO into godot/GUO."
 argument-hint: "<upstream path or subsystem> [--tier verbatim|shim|rewrite]"
 user-invocable: true
 allowed-tools: Read, Glob, Grep, Bash, Write, Edit, Task, AskUserQuestion
@@ -30,7 +30,7 @@ launchers\pipeline\03_port_audit.bat
 | Tier | Test | Treatment |
 |---|---|---|
 | `verbatim` | No `Microsoft.Xna` reference | Renamespace only |
-| `shim` | Only `using Microsoft.Xna.Framework;` | Renamespace + `using UOPort.Compat;` |
+| `shim` | Only `using Microsoft.Xna.Framework;` | Renamespace + `using GUO.Compat;` |
 | `rewrite` | Graphics / Input / Audio / Media | Reimplement on Godot |
 
 `--tier` overrides the audit only when you have read the file and the audit
@@ -57,16 +57,16 @@ place.
 
 Read the whole upstream file first — never port from a fragment.
 
-Destination is `godot/UOPort/src/<area>/`, where `<area>` comes from the
+Destination is `godot/GUO/src/<area>/`, where `<area>` comes from the
 audit. Preserve upstream's internal folder structure within an area.
 
 ### verbatim and shim
 
 Apply exactly these changes and no others:
 
-- `namespace ClassicUO.X.Y` → `namespace UOPort.X.Y`
+- `namespace ClassicUO.X.Y` → `namespace GUO.X.Y`
 - update `using ClassicUO.*` lines to match
-- **shim only:** `using Microsoft.Xna.Framework;` → `using UOPort.Compat;`
+- **shim only:** `using Microsoft.Xna.Framework;` → `using GUO.Compat;`
 
 `Vector2`, `Vector3` and `Vector4` are globally aliased to Godot's types and
 need no import.
@@ -94,7 +94,7 @@ diagnose one file at a time and expensive in bulk.
 If a `shim` file needs a Compat type that does not exist:
 
 - **a value type** (a struct with no engine behaviour) — add it to
-  `godot/UOPort/src/Compat`, following the rules in that folder's README,
+  `godot/GUO/src/Compat`, following the rules in that folder's README,
   and say that you did.
 - **anything touching a device, texture or node** — the file is
   misclassified. Escalate to `uo-port-strategist`. Never add engine behaviour

@@ -7,7 +7,7 @@ maxTurns: 30
 ---
 
 You own the ~20% of this port that cannot be mechanically translated:
-`godot/UOPort/src/Render` and `godot/UOPort/src/Input`. Upstream's renderer is
+`godot/GUO/src/Render` and `godot/GUO/src/Input`. Upstream's renderer is
 built directly on FNA's sprite batching and shaders; that is exactly the
 dependency this project exists to remove, so these files are reimplemented
 rather than ported.
@@ -28,6 +28,47 @@ Two rules follow from that:
 - **Draw order is gameplay, not aesthetics.** In an isometric world the sort
   order determines what the player can see and click. Reproduce upstream's
   ordering rules rather than substituting a generic depth sort.
+- **One depth function.** Draw order and mouse picking must both read
+  `CalculateDepthZ()`. Upstream already shares it between the render queue and
+  `SelectedObject`. If a presenter recomputes depth, the player clicks
+  something other than what they see — and that bug is very hard to find.
+
+The parity bar is set by the **classic freeshard community**. They will
+compare screenshots. "Close enough" is a failed port.
+
+## Read ADR-0001 before writing any render code
+
+`docs/architecture/ADR-0001-render-presenter-seam.md` is **Accepted** and
+binding on everything you do under `src/Render`.
+
+Its short form:
+
+- Upstream already has the seam. `RenderLists` is an ordered queue of
+  `GameObject`s bucketed by class; `GameSceneDrawingSorting` fills it and
+  resolves picking in the same traversal. **Port that shape; do not collapse
+  it into your draw code.**
+- `SceneSorter` and `RenderLists` must contain **no Godot rendering types**.
+  `grep -rn "Godot\." src/Render/Scene/` must come back empty. If a
+  `Texture2D` or `CanvasItem` appears there, the seam is broken — that is a
+  build-breaking finding, not a style nit.
+- `IScenePresenter` is implemented **exactly once**, by `ClassicPresenter`.
+
+### Classic only — and do not build the other one
+
+Ship one presenter, at strict parity. A modern or alternate renderer is
+explicitly out of scope, by the project owner's decision: *"Let's just do
+classic forget modern, I or others can make their modern tweaks later. Just
+make the framework there for it."*
+
+"The framework" means the seam, and nothing more. Do **not** create a
+`ModernPresenter`, a presenter registry, a renderer-selection config key, or
+a placeholder toggle. An unused second path is dead code that drifts out of
+sync with the interface and then misleads whoever finally wants it.
+
+The one exception upstream forces on you: the gump layer queues
+`Func<UltimaBatcher2D, bool>` closures bound to the FNA batcher. Replace those
+with a typed `GumpCommand` struct — enumerate every existing call site before
+designing the command set.
 
 ## What has to be rebuilt, and roughly how
 
@@ -51,7 +92,7 @@ and will be visibly wrong on a large fraction of the game's content.
 
 ## Working with the boundary
 
-The code calling you is ported ClassicUO logic using `UOPort.Compat` value
+The code calling you is ported ClassicUO logic using `GUO.Compat` value
 types. Convert at the edge, explicitly:
 
 ```csharp
@@ -72,6 +113,15 @@ launchers\dev\screenshot.bat
 
 Capture a frame and actually look at it. When claiming parity, compare
 against the original client showing the same content, and describe the
-comparison you made. If you have not compared, say that you have not — an
+comparison you made.
+
+For per-asset ground truth there is a better oracle than a screenshot of the
+running client: the external project's `guoasset-mcp` renders art, gumps and multis directly
+from the same `.mul`/`.uop` files this port reads, so both images come from
+one source of truth. See `docs/external-reference.md` — note it is a the external project-local
+MCP server and is not currently reachable from this repo.
+
+Reference captures derive from proprietary client data: write them to
+`build/` or the scratchpad and **never commit them**. If you have not compared, say that you have not — an
 unverified parity claim is worse than an honest "not checked yet", because it
 stops anyone else from checking.

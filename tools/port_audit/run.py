@@ -13,7 +13,7 @@ Classification (see docs/port_plan.md for the reasoning):
 
     shim      Imports only `Microsoft.Xna.Framework` -- the math and colour
               structs (Point, Color, Rectangle, Vector2/3, Matrix). Once
-              UOPort.Compat provides XNA-compatible versions of those backed
+              GUO.Compat provides XNA-compatible versions of those backed
               by Godot types, these files compile essentially unchanged.
 
     rewrite   Touches Graphics, Input, Audio or Media, or lives in the
@@ -39,7 +39,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from uoport import load_config  # noqa: E402
+from guo import load_config  # noqa: E402
 
 # --- classification ---------------------------------------------------------
 
@@ -204,7 +204,7 @@ def build_report(files: list[dict], ported: dict[str, list[str]]) -> dict:
     active = [f for f in files if f["area"] not in REPLACED_BY_ENGINE]
 
     return {
-        "schema": "uoport/port_status@1",
+        "schema": "guo/port_status@1",
         "generated": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "overall": summarise(active),
         "by_tier": by_tier,
@@ -232,7 +232,7 @@ def render_markdown(report: dict, cfg) -> str:
     add("")
     add(f"- **Generated:** {report['generated']}")
     add(f"- **Upstream:** `sources/ClassicUO`")
-    add(f"- **Port:** `godot/UOPort/src`")
+    add(f"- **Port:** `godot/GUO/src`")
     add("")
     add("## Overall")
     add("")
@@ -256,7 +256,7 @@ def render_markdown(report: dict, cfg) -> str:
     add("|---|---|---:|---:|---:|---:|")
     meaning = {
         TIER_VERBATIM: "No FNA reference — copy and renamespace",
-        TIER_SHIM: "Only XNA math/colour — needs `UOPort.Compat`",
+        TIER_SHIM: "Only XNA math/colour — needs `GUO.Compat`",
         TIER_REWRITE: "Real FNA binding — reimplement on Godot",
     }
     for tier in TIER_ORDER:
@@ -321,7 +321,7 @@ def main(argv: list[str] | None = None) -> int:
         prog="port_audit", description="Score ClassicUO -> Godot port progress."
     )
     parser.add_argument("--upstream", help="path to sources/ClassicUO")
-    parser.add_argument("--port", help="path to godot/UOPort")
+    parser.add_argument("--port", help="path to godot/GUO")
     parser.add_argument("--out", help="write the markdown report here")
     parser.add_argument("--json", dest="json_out", help="also write raw JSON here")
     parser.add_argument("--quiet", action="store_true")

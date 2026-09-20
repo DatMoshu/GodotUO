@@ -6,7 +6,7 @@ step: if you add an entry here, document what the runtime does with it there.
 Nothing in this module reads or decodes game content. It records which files
 must exist, which are optional, and which legacy .mul files a modern client
 replaces with a .uop archive. The decoding itself lives in the C# runtime
-(godot/UOPort/src/IO), ported from ClassicUO.
+(godot/GUO/src/IO), ported from ClassicUO.
 """
 
 from __future__ import annotations

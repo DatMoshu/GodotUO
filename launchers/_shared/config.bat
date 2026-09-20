@@ -1,6 +1,6 @@
 @echo off
 REM ============================================================================
-REM  UO_Port - project configuration
+REM  GUO - project configuration
 REM
 REM  THIS IS THE ONLY FILE YOU SHOULD EDIT to point the project at your machine.
 REM  Every launcher and tool reads its paths from here.
@@ -36,7 +36,7 @@ if not defined UO_CLIENT_VERSION    set "UO_CLIENT_VERSION=7.0.107.76"
 REM --- Runtime cache ------------------------------------------------------
 REM  Where decoded textures/atlases are cached. Safe to delete at any time;
 REM  it is rebuilt on demand. Keep it OFF the repo tree.
-if not defined UO_CACHE_DIR         set "UO_CACHE_DIR=%LOCALAPPDATA%\UO_Port\cache"
+if not defined UO_CACHE_DIR         set "UO_CACHE_DIR=%LOCALAPPDATA%\GUO\cache"
 
 REM --- Shard to connect to ------------------------------------------------
 if not defined UO_SHARD_HOST        set "UO_SHARD_HOST=127.0.0.1"

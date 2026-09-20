@@ -1,4 +1,4 @@
-"""Configuration resolution for UO_Port tools.
+"""Configuration resolution for GUO tools.
 
 Single source of truth is launchers/_shared/config.bat -- the one file a user
 is meant to edit. Tools never define their own defaults for these values.
@@ -34,14 +34,14 @@ def find_repo_root(start: Path | None = None) -> Path:
     """Walk upward until the repo root is found.
 
     The root is identified by launchers/_shared/config.bat, which exists in
-    every UO_Port checkout and nowhere else.
+    every GUO checkout and nowhere else.
     """
     here = (start or Path(__file__)).resolve()
     for candidate in [here, *here.parents]:
         if (candidate / "launchers" / "_shared" / "config.bat").is_file():
             return candidate
     raise RuntimeError(
-        "Could not locate the UO_Port repo root "
+        "Could not locate the GUO repo root "
         "(no launchers/_shared/config.bat found above "
         f"{here}). Run this tool from inside the repo."
     )
@@ -82,7 +82,7 @@ class Config:
     # --- derived paths (never configured directly) ---
     @property
     def godot_project(self) -> Path:
-        return self.root / "godot" / "UOPort"
+        return self.root / "godot" / "GUO"
 
     @property
     def sources(self) -> Path:
@@ -129,7 +129,7 @@ def load_config(root: Path | None = None) -> Config:
     except ValueError:
         shard_port = 2593
 
-    cache = get("UO_CACHE_DIR") or str(Path.home() / ".cache" / "UO_Port")
+    cache = get("UO_CACHE_DIR") or str(Path.home() / ".cache" / "GUO")
 
     return Config(
         root=root,

@@ -1,4 +1,4 @@
-namespace UOPort.Compat;
+namespace GUO.Compat;
 
 using System;
 

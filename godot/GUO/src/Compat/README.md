@@ -1,4 +1,4 @@
-# `UOPort.Compat` — the XNA compatibility shim
+# `GUO.Compat` — the XNA compatibility shim
 
 This folder is the single highest-leverage piece of the port, so it is worth
 understanding before touching anything else.
@@ -21,11 +21,11 @@ behind them.
 
 So instead of rewriting 50,000 lines to speak Godot's types, this folder
 provides types with the **same names and the same public API**, living in the
-`UOPort.Compat` namespace. A ported file then needs one edit at the top:
+`GUO.Compat` namespace. A ported file then needs one edit at the top:
 
 ```diff
 - using Microsoft.Xna.Framework;
-+ using UOPort.Compat;
++ using GUO.Compat;
 ```
 
 and the remaining thousand lines compile untouched.

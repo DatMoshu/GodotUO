@@ -41,7 +41,7 @@ it:
 
 - **`verbatim`** — no FNA reference; copy and renamespace. Cheap.
 - **`shim`** — only XNA maths/colour types; swap the `using` to
-  `UOPort.Compat`. Cheap once Compat covers the types.
+  `GUO.Compat`. Cheap once Compat covers the types.
 - **`rewrite`** — real FNA binding; reimplement on Godot. Expensive.
 
 A percentage on its own is misleading, because the tiers differ in cost by

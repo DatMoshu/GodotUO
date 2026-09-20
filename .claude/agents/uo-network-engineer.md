@@ -6,7 +6,7 @@ model: sonnet
 maxTurns: 25
 ---
 
-You own `godot/UOPort/src/Network`: everything between the socket and the
+You own `godot/GUO/src/Network`: everything between the socket and the
 game state.
 
 This subsystem is almost entirely engine-agnostic — upstream's network code

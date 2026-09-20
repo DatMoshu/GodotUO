@@ -35,7 +35,7 @@ And of those 133 client files, **97 import only
 `Color`, `Rectangle`, `Vector2/3`). Only 36 touch Graphics, Input or Audio.
 
 Those structs have no engine behaviour behind them. Providing
-API-compatible versions in a `UOPort.Compat` namespace turns a third of the
+API-compatible versions in a `GUO.Compat` namespace turns a third of the
 codebase from "rewrite" into "change one `using` line".
 
 ---
@@ -44,14 +44,14 @@ codebase from "rewrite" into "change one `using` line".
 
 | Tier | Files | Lines | Share | Treatment |
 |---|---:|---:|---:|---|
-| `verbatim` | 243 | 74,522 | 48% | Renamespace `ClassicUO.*` → `UOPort.*` |
-| `shim` | 102 | 50,513 | 33% | Renamespace + `using UOPort.Compat;` |
+| `verbatim` | 243 | 74,522 | 48% | Renamespace `ClassicUO.*` → `GUO.*` |
+| `shim` | 102 | 50,513 | 33% | Renamespace + `using GUO.Compat;` |
 | `rewrite` | 88 | 31,170 | 20% | Reimplement on Godot |
 
 **Four fifths of this port is mechanical.** That ratio is the reason the
 project is tractable, and protecting it is the single most important
 architectural constraint. The main way to lose it is by letting
-`UOPort.Compat` grow engine behaviour: the moment it holds a texture or a
+`GUO.Compat` grow engine behaviour: the moment it holds a texture or a
 device, the boundary stops being reviewable and the rewrite tier starts
 expanding.
 
@@ -60,9 +60,9 @@ recomputes them from the actual source.
 
 ---
 
-## 3. `UOPort.Compat`
+## 3. `GUO.Compat`
 
-`godot/UOPort/src/Compat` provides XNA-compatible value types:
+`godot/GUO/src/Compat` provides XNA-compatible value types:
 
 | Type | Approach |
 |---|---|
@@ -109,19 +109,38 @@ texture — that becomes Godot, and nothing above it changes.
 ### Phase 3 — first pixels
 `Render` (rewrite) + `Compat` hardening
 
-The first genuinely hard phase. Rebuild sprite batching on `RenderingServer`
-or `MultiMesh`, atlases as `ImageTexture`, and the hue system as a shader
-sampling a LUT built from `hues.mul`.
+The first genuinely hard phase, and the one with a binding architecture
+decision: **`docs/architecture/ADR-0001-render-presenter-seam.md` (Accepted).
+Read it before writing any code under `src/Render`.**
 
-Two constraints that are easy to get wrong and expensive to fix later:
-- **Never filter pixel art.** The project pins
-  `default_texture_filter=0`; any new viewport or material must preserve it.
-- **Draw order is gameplay.** In an isometric world sort order decides what
-  the player can see and click. Reproduce upstream's rules rather than
+Rebuild sprite batching on `RenderingServer` or `MultiMesh`, atlases as
+`ImageTexture`, and the hue system as a shader sampling a LUT built from
+`hues.mul`.
+
+**Classic only.** We ship exactly one presenter, `ClassicPresenter`, at strict
+pixel parity with the original client. A modern or alternate renderer is
+explicitly **not** in scope — not now, not as a stub. What Phase 3 owes the
+future is the *seam*, not a second implementation:
+
+- `RenderLists` + `SceneSorter` stay presenter-agnostic (no Godot rendering
+  types) so an alternate presenter is an additive change later.
+- `IScenePresenter` is defined and implemented once.
+- No presenter-selection config, no registry, no `ModernPresenter` placeholder.
+
+Three constraints that are easy to get wrong and expensive to fix later:
+
+- **Never filter pixel art.** The project pins `default_texture_filter=0`;
+  any new viewport or material must preserve it.
+- **Draw order is gameplay.** In an isometric world, sort order decides what
+  the player can see and click. Port upstream's rules verbatim rather than
   substituting a generic depth sort.
+- **One depth function.** Draw order and mouse picking must both read
+  `CalculateDepthZ()`. Upstream already shares it; if a presenter recomputes
+  depth, the player clicks something other than what they see.
 
-**Done when:** a static scene of terrain and statics renders correctly,
-evidenced by a screenshot.
+**Done when:** a static scene of terrain and statics renders correctly at
+pixel parity with a reference capture, evidenced by a screenshot, and
+`grep -rn "Godot\." src/Render/Scene/` is empty.
 
 ### Phase 4 — the world
 `Game/Data`, `Game/GameObjects`, `Game/Map`

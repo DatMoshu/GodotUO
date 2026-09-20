@@ -1,6 +1,6 @@
 @echo off
 REM ============================================================================
-REM  THE LAUNCHER. Runs the UO_Port client.
+REM  THE LAUNCHER. Runs the GUO client.
 REM
 REM      launchers\game\play.bat                 connect to the configured shard
 REM      launchers\game\play.bat --offline       no shard; data/render smoke only

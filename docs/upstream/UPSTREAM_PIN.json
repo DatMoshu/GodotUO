@@ -1,5 +1,5 @@
 {
-  "schema": "uoport/upstream_pin@1",
+  "schema": "guo/upstream_pin@1",
   "repo": "https://github.com/ClassicUO/ClassicUO.git",
   "commit": "007ef8c3e13dec13fcc02387fe4817ef6f371c85",
   "subject": "Read item art and ground of our own from a folder",

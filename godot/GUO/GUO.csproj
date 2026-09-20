@@ -2,8 +2,8 @@
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <EnableDynamicLoading>true</EnableDynamicLoading>
-    <RootNamespace>UOPort</RootNamespace>
-    <AssemblyName>UOPort</AssemblyName>
+    <RootNamespace>GUO</RootNamespace>
+    <AssemblyName>GUO</AssemblyName>
     <Nullable>disable</Nullable>
     <LangVersion>latest</LangVersion>
     <!--

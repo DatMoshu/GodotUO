@@ -32,8 +32,8 @@ from pathlib import Path
 # Make the shared package importable when run as a plain script.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from uoport import FILE_REGISTRY, DataFile, load_config  # noqa: E402
-from uoport.formats import by_subsystem, index_dir  # noqa: E402
+from guo import FILE_REGISTRY, DataFile, load_config  # noqa: E402
+from guo.formats import by_subsystem, index_dir  # noqa: E402
 
 
 def _probe(entry: DataFile, data_dir: Path) -> dict:
@@ -141,7 +141,7 @@ def cmd_verify(args: argparse.Namespace) -> int:
             print()
 
     manifest = {
-        "schema": "uoport/client_manifest@1",
+        "schema": "guo/client_manifest@1",
         "generated": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "data_dir": str(data_dir),
         "client_version": client_version,
@@ -234,7 +234,7 @@ def cmd_where(args: argparse.Namespace) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="uodata",
-        description="Verify and inspect the UO client data used by UO_Port.",
+        description="Verify and inspect the UO client data used by GUO.",
     )
     sub = parser.add_subparsers(dest="command", required=True)
 

@@ -1,4 +1,4 @@
-namespace UOPort.Bootstrap;
+namespace GUO.Bootstrap;
 
 using System;
 using System.Collections.Generic;
@@ -37,9 +37,9 @@ public partial class Main : Node
     {
         _options = Options.Parse(OS.GetCmdlineUserArgs());
 
-        GD.Print($"[UOPort] mode          : {_options.Mode}");
-        GD.Print($"[UOPort] client data   : {_options.ClientData}");
-        GD.Print($"[UOPort] cache         : {_options.CacheDir}");
+        GD.Print($"[GUO] mode          : {_options.Mode}");
+        GD.Print($"[GUO] client data   : {_options.ClientData}");
+        GD.Print($"[GUO] cache         : {_options.CacheDir}");
 
         if (string.IsNullOrWhiteSpace(_options.ClientData))
         {
@@ -71,28 +71,28 @@ public partial class Main : Node
             return;
         }
 
-        GD.Print("[UOPort] client data looks valid.");
+        GD.Print("[GUO] client data looks valid.");
 
         switch (_options.Mode)
         {
             case RunMode.WarmCache:
-                GD.Print("[UOPort] TODO: cache warm pass not implemented yet.");
+                GD.Print("[GUO] TODO: cache warm pass not implemented yet.");
                 Quit(0);
                 break;
 
             case RunMode.Screenshot:
-                GD.Print("[UOPort] TODO: screenshot pass not implemented yet.");
+                GD.Print("[GUO] TODO: screenshot pass not implemented yet.");
                 Quit(0);
                 break;
 
             case RunMode.Offline:
-                GD.Print("[UOPort] TODO: offline data load not implemented yet.");
+                GD.Print("[GUO] TODO: offline data load not implemented yet.");
                 Quit(0);
                 break;
 
             case RunMode.Play:
                 GD.Print(
-                    $"[UOPort] TODO: shard connection to "
+                    $"[GUO] TODO: shard connection to "
                     + $"{_options.ShardHost}:{_options.ShardPort} not implemented yet."
                 );
                 break;
@@ -101,7 +101,7 @@ public partial class Main : Node
 
     private void Fail(string message)
     {
-        GD.PrintErr($"[UOPort] FATAL: {message}");
+        GD.PrintErr($"[GUO] FATAL: {message}");
         Quit(1);
     }
 
@@ -185,7 +185,7 @@ public partial class Main : Node
 
                         break;
                     default:
-                        GD.Print($"[UOPort] ignoring unknown argument: {arg}");
+                        GD.Print($"[GUO] ignoring unknown argument: {arg}");
                         break;
                 }
             }

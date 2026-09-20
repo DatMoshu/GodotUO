@@ -1,4 +1,4 @@
-"""uoport - shared logic for every UO_Port tool.
+"""guo - shared logic for every GUO tool.
 
 Every script under tools/ imports from here rather than re-deriving paths,
 re-parsing config, or hardcoding knowledge about UO file formats. One place

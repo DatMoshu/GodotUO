@@ -28,7 +28,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from uoport import load_config  # noqa: E402
+from guo import load_config  # noqa: E402
 
 UPSTREAM_URL = "https://github.com/ClassicUO/ClassicUO.git"
 PIN_RELATIVE = Path("docs/upstream/UPSTREAM_PIN.json")
@@ -92,7 +92,7 @@ def write_pin(root: Path, commit: str, subject: str, when: str) -> Path:
     path = root / PIN_RELATIVE
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
-        "schema": "uoport/upstream_pin@1",
+        "schema": "guo/upstream_pin@1",
         "repo": UPSTREAM_URL,
         "commit": commit,
         "subject": subject,

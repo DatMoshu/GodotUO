@@ -1,10 +1,10 @@
 # Data formats — the contract between tools and runtime
 
 This document sits between the Python tooling under `tools/` and the C#
-runtime under `godot/UOPort/`. Both sides must agree on it. **Extend this
+runtime under `godot/GUO/`. Both sides must agree on it. **Extend this
 document before emitting a new field.**
 
-Its machine-readable counterpart is `tools/uoport/formats.py`. If you add an
+Its machine-readable counterpart is `tools/guo/formats.py`. If you add an
 entry there, describe it here; if you describe one here, register it there.
 Neither half is authoritative alone.
 
@@ -25,7 +25,7 @@ must always be safe; the runtime rebuilds it on demand.
 
 **3. Configuration has one source.**
 `launchers/_shared/config.bat` is the only file a user edits. The launchers
-export its values as environment variables; `tools/uoport/config.py` reads
+export its values as environment variables; `tools/guo/config.py` reads
 those and falls back to parsing the same file when a tool runs outside a
 launcher. There is no second config file.
 
@@ -53,7 +53,7 @@ but are not.
 
 ## 3. Client data registry
 
-`tools/uoport/formats.py` defines a `DataFile` per logical piece of client
+`tools/guo/formats.py` defines a `DataFile` per logical piece of client
 data:
 
 | Field | Meaning |
@@ -103,11 +103,11 @@ Written by `launchers\pipeline\01_verify_client_data.bat` to
 `build/client_manifest.json`. Consumed by the runtime at startup and by the
 port audit.
 
-Schema id: **`uoport/client_manifest@1`**
+Schema id: **`guo/client_manifest@1`**
 
 ```jsonc
 {
-  "schema": "uoport/client_manifest@1",
+  "schema": "guo/client_manifest@1",
   "generated": "<ISO-8601 UTC>",
   "data_dir": "<absolute path to the UO install>",
   "client_version": "7.0.107.76",
@@ -159,14 +159,14 @@ Schema id: **`uoport/client_manifest@1`**
 Written by `launchers\pipeline\03_port_audit.bat` alongside the human-readable
 `docs/port_status.md`.
 
-Schema id: **`uoport/port_status@1`**
+Schema id: **`guo/port_status@1`**
 
 Each upstream file carries:
 
 | Field | Meaning |
 |---|---|
 | `upstream` | Path relative to `sources/ClassicUO/src` |
-| `area` | Destination area under `godot/UOPort/src` |
+| `area` | Destination area under `godot/GUO/src` |
 | `tier` | `verbatim` \| `shim` \| `rewrite` |
 | `lines` | Line count, used to weight progress |
 | `ported` | Whether a file of that name exists in the port |
@@ -179,7 +179,7 @@ it is correct or complete. Never report it as "working".
 
 ## 6. `UPSTREAM_PIN.json`
 
-`docs/upstream/UPSTREAM_PIN.json`, schema **`uoport/upstream_pin@1`**, records
+`docs/upstream/UPSTREAM_PIN.json`, schema **`guo/upstream_pin@1`**, records
 the ClassicUO commit whose changes have been reviewed for porting. It is
 committed, so the whole team shares one answer to "reviewed up to where?".
 
@@ -191,12 +191,12 @@ those touching already-ported files — the ones that rot silently. Re-pin with
 
 ## 7. Adding support for a new data file
 
-1. Add a `DataFile` entry to `tools/uoport/formats.py`.
+1. Add a `DataFile` entry to `tools/guo/formats.py`.
 2. Document it here — what it is, which subsystem consumes it, and any
    resolution quirk.
 3. Re-run `launchers\pipeline\01_verify_client_data.bat` and confirm it drops
    out of `stray_files`.
-4. Only then write the reader, under `godot/UOPort/src/IO` or `src/Assets`.
+4. Only then write the reader, under `godot/GUO/src/IO` or `src/Assets`.
 
 ---
 

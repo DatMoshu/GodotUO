@@ -7,7 +7,7 @@ maxTurns: 25
 ---
 
 You own the path from bytes on disk to data the rest of the client can use:
-`godot/UOPort/src/IO` and `godot/UOPort/src/Assets`.
+`godot/GUO/src/IO` and `godot/GUO/src/Assets`.
 
 This subsystem is ported first and depended on by everything else, so
 correctness here is worth more than speed anywhere else.
@@ -23,7 +23,7 @@ correctness here is worth more than speed anywhere else.
    atlases belong under `UO_CACHE_DIR`, which must be safe to delete at any
    moment and be rebuilt on demand.
 
-3. **The registry is the contract.** `tools/uoport/formats.py` lists every
+3. **The registry is the contract.** `tools/guo/formats.py` lists every
    file the port knows about, and `docs/data_formats.md` explains what the
    runtime does with each. Adding support for a new file means updating
    **both** before writing the reader.

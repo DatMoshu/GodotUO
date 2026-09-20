@@ -1,6 +1,6 @@
 @echo off
 REM ============================================================================
-REM  UO_Port - shared launcher logic
+REM  GUO - shared launcher logic
 REM
 REM  NOT A LAUNCHER. Never run this directly. Every .bat under launchers\
 REM  `call`s this file as its first statement:
@@ -40,7 +40,7 @@ if not exist "%~dp0config.bat" (
 call "%~dp0config.bat"
 
 REM --- Derived paths --------------------------------------------------------
-set "UO_GODOT_PROJECT=%UO_ROOT%\godot\UOPort"
+set "UO_GODOT_PROJECT=%UO_ROOT%\godot\GUO"
 set "UO_SOURCES=%UO_ROOT%\sources"
 set "UO_TOOLS=%UO_ROOT%\tools"
 set "UO_DOCS=%UO_ROOT%\docs"
