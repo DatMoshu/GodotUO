@@ -34,3 +34,6 @@
 *.jpg binary
 *.ico binary
 *.zip binary
+
+# Godot script UIDs: generated, committed, and LF like everything else.
+*.uid text eol=lf
