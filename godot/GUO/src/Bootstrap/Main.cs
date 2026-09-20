@@ -81,22 +81,95 @@ public partial class Main : Node
                 break;
 
             case RunMode.Screenshot:
-                GD.Print("[GUO] TODO: screenshot pass not implemented yet.");
-                Quit(0);
+                if (LoadAndShow(draw: true))
+                {
+                    // The frame has to actually be rendered before it can be
+                    // read back, so capture after the next draw rather than
+                    // here.
+                    CallDeferred(nameof(CaptureAndQuit));
+                }
+                else
+                {
+                    Quit(1);
+                }
+
                 break;
 
             case RunMode.Offline:
-                GD.Print("[GUO] TODO: offline data load not implemented yet.");
-                Quit(0);
+                Quit(LoadAndShow(draw: false) ? 0 : 1);
                 break;
 
             case RunMode.Play:
-                GD.Print(
-                    $"[GUO] TODO: shard connection to "
-                    + $"{_options.ShardHost}:{_options.ShardPort} not implemented yet."
-                );
+                // Not a shard connection yet: the network stack is ported but
+                // not wired up. What this does prove is that the ported
+                // readers can open a real install and produce real pixels.
+                if (!LoadAndShow(draw: true))
+                {
+                    Quit(1);
+                }
+
                 break;
         }
+    }
+
+    /// <summary>
+    /// Loads the client data through the ported reader stack, and optionally
+    /// puts a sample of decoded art on screen.
+    /// </summary>
+    private bool LoadAndShow(bool draw)
+    {
+        var probe = new UoDataProbe();
+        AddChild(probe);
+
+        if (!probe.LoadClientData(_options.ClientData, _options.ClientVersion, _options.Language))
+        {
+            return false;
+        }
+
+        if (draw)
+        {
+            int shown = probe.ShowSample();
+            if (shown == 0)
+            {
+                // Archives opened but decoded nothing: a reader bug, not a
+                // configuration problem, and worth failing loudly over.
+                GD.PrintErr("[GUO] FATAL: client data loaded but no art decoded.");
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Reads the rendered frame back and writes it to disk, then quits. Used
+    /// by <c>launchers\dev\screenshot.bat</c> so visual claims can be backed
+    /// by an artefact instead of an assertion.
+    /// </summary>
+    private async void CaptureAndQuit()
+    {
+        // One full frame must complete before the viewport holds anything.
+        await ToSignal(RenderingServer.Singleton, RenderingServerInstance.SignalName.FramePostDraw);
+
+        Image frame = GetViewport().GetTexture().GetImage();
+
+        string dir = string.IsNullOrWhiteSpace(_options.ScreenshotDir)
+            ? "user://screenshots"
+            : _options.ScreenshotDir;
+
+        DirAccess.MakeDirRecursiveAbsolute(dir);
+        string path = dir.PathJoin($"guo_{Time.GetUnixTimeFromSystem():F0}.png");
+
+        Error err = frame.SavePng(path);
+        if (err != Error.Ok)
+        {
+            GD.PrintErr($"[GUO] FATAL: could not write screenshot to {path}: {err}");
+            Quit(1);
+            return;
+        }
+
+        GD.Print($"[GUO] screenshot -> {ProjectSettings.GlobalizePath(path)}");
+        Quit(0);
     }
 
     private void Fail(string message)
@@ -134,6 +207,12 @@ public partial class Main : Node
 
         public string ScreenshotDir { get; private set; } = "";
 
+        /// <summary>Dotted client version, e.g. "7.0.107.76".</summary>
+        public string ClientVersion { get; private set; } = "7.0.107.76";
+
+        /// <summary>Cliloc language suffix; "enu" for English.</summary>
+        public string Language { get; private set; } = "enu";
+
         public static Options Parse(IEnumerable<string> args)
         {
             var o = new Options
@@ -141,6 +220,8 @@ public partial class Main : Node
                 ClientData = Env("UO_CLIENT_DATA", ""),
                 CacheDir = Env("UO_CACHE_DIR", ""),
                 ShardHost = Env("UO_SHARD_HOST", "127.0.0.1"),
+                ClientVersion = Env("UO_CLIENT_VERSION", "7.0.107.76"),
+                Language = Env("UO_LANGUAGE", "enu"),
             };
 
             if (int.TryParse(Env("UO_SHARD_PORT", "2593"), out int envPort))
@@ -170,6 +251,12 @@ public partial class Main : Node
                         break;
                     case "--cache-dir":
                         o.CacheDir = Next();
+                        break;
+                    case "--client-version":
+                        o.ClientVersion = Next();
+                        break;
+                    case "--language":
+                        o.Language = Next();
                         break;
                     case "--screenshot-dir":
                         o.ScreenshotDir = Next();

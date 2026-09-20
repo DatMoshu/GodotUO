@@ -47,6 +47,12 @@ AREA_MAP = _audit.AREA_MAP
 area_for = _audit.area_for
 classify = _audit.classify
 
+# Areas Godot replaces outright. Upstream's Bootstrap is FNA's game-loop and
+# native plugin host; Godot is the host now, and `src/Bootstrap/Main.cs` is our
+# own entry point. Porting these produced a nested src/Bootstrap/src/ that only
+# dragged in the cuoapi plugin surface, so they are skipped at the source.
+REPLACED_BY_ENGINE = set(_audit.REPLACED_BY_ENGINE)
+
 TIER_VERBATIM = "verbatim"
 TIER_SHIM = "shim"
 MECHANICAL = (TIER_VERBATIM, TIER_SHIM)
@@ -277,6 +283,8 @@ def main(argv: list[str] | None = None) -> int:
             continue
         rel = path.relative_to(upstream_src)
         area = area_for(rel)
+        if area in REPLACED_BY_ENGINE:
+            continue
         if areas and area not in areas:
             continue
 
