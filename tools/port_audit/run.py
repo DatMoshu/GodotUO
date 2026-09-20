@@ -129,20 +129,36 @@ def scan_upstream(upstream_src: Path) -> list[dict]:
     return files
 
 
+# Folders in the port holding our OWN code rather than ported upstream files.
+# They are excluded from match detection: `src/Bootstrap/Main.cs` is a Godot
+# entry point written from scratch, and would otherwise be matched against
+# upstream's unrelated `Main.cs` purely on filename, inflating the score.
+NOT_PORTED_DIRS = {"Bootstrap", "Compat"}
+
+
 def scan_port(port_src: Path) -> dict[str, list[str]]:
     """Index the ported project by filename.
 
     Matching is by filename rather than full path: the port is free to
     reorganise folders, and holding it to the upstream layout would be a
     worse outcome than a slightly looser match.
+
+    The trade-off is that a common filename can match the wrong upstream
+    file. Excluding our own hand-written folders removes the cases that
+    actually occur; anything left is reported honestly as a filename match,
+    which the report is explicit about never meaning "works".
     """
     index: dict[str, list[str]] = defaultdict(list)
     if not port_src.is_dir():
         return index
     for path in sorted(port_src.rglob("*.cs")):
-        if {"obj", "bin", ".godot"} & set(path.parts):
+        parts = set(path.parts)
+        if {"obj", "bin", ".godot"} & parts:
             continue
-        index[path.name].append(path.relative_to(port_src).as_posix())
+        rel = path.relative_to(port_src)
+        if rel.parts and rel.parts[0] in NOT_PORTED_DIRS:
+            continue
+        index[path.name].append(rel.as_posix())
     return index
 
 
