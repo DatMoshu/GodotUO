@@ -346,14 +346,14 @@ def main(argv: list[str] | None = None) -> int:
     if args.out:
         out = Path(args.out)
         out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(markdown, encoding="utf-8")
+        out.write_text(markdown, encoding="utf-8", newline="\n")
         if not args.quiet:
             print(f"[audit] Report -> {out}")
 
     if args.json_out:
         jp = Path(args.json_out)
         jp.parent.mkdir(parents=True, exist_ok=True)
-        jp.write_text(json.dumps(report, indent=2), encoding="utf-8")
+        jp.write_text(json.dumps(report, indent=2), encoding="utf-8", newline="\n")
         if not args.quiet:
             print(f"[audit] JSON   -> {jp}")
 

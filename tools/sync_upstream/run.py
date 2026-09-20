@@ -104,7 +104,7 @@ def write_pin(root: Path, commit: str, subject: str, when: str) -> Path:
             "launchers\\dev\\sync_upstream.bat --pin"
         ),
     }
-    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    path.write_text(json.dumps(payload, indent=2), encoding="utf-8", newline="\n")
     return path
 
 

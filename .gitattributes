@@ -23,6 +23,12 @@
 *.import  text eol=lf
 *.csproj  text eol=lf
 
+# Extensionless dotfiles: without this they fall through to `text=auto`
+# and core.autocrlf checks them out CRLF, which churns on every commit.
+.gitignore     text eol=lf
+.gitattributes text eol=lf
+.editorconfig  text eol=lf
+
 # Binary.
 *.png binary
 *.jpg binary

@@ -160,7 +160,7 @@ def cmd_verify(args: argparse.Namespace) -> int:
     if args.out:
         out = Path(args.out)
         out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+        out.write_text(json.dumps(manifest, indent=2), encoding="utf-8", newline="\n")
         if not quiet:
             print(f"[uodata] Manifest -> {out}")
 
