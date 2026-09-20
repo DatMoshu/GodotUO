@@ -1,0 +1,18 @@
+<Project Sdk="Godot.NET.Sdk/4.7.2">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <RootNamespace>UOPort</RootNamespace>
+    <AssemblyName>UOPort</AssemblyName>
+    <Nullable>disable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <!--
+      Ported ClassicUO code is performance-critical and uses pointer arithmetic
+      in the .mul/.uop readers, exactly as upstream does.
+    -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- Upstream has many intentional unused-parameter and naming patterns.
+         Keep the build readable while the port is in progress. -->
+    <NoWarn>CS0169;CS0649;CA1050</NoWarn>
+  </PropertyGroup>
+</Project>

@@ -1,0 +1,30 @@
+# Default: let git normalise text in the repo, check out native on Windows.
+* text=auto
+
+# Windows launchers MUST be CRLF: cmd.exe mis-parses LF-only .bat files
+# (a `call` on the last line can silently do nothing).
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Everything else stays LF in the working tree so the C# and Python
+# toolchains, and any non-Windows contributor, see consistent files.
+*.cs   text eol=lf
+*.py   text eol=lf
+*.md   text eol=lf
+*.json text eol=lf
+*.sh   text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+
+# Godot project files.
+*.godot   text eol=lf
+*.tscn    text eol=lf
+*.tres    text eol=lf
+*.import  text eol=lf
+*.csproj  text eol=lf
+
+# Binary.
+*.png binary
+*.jpg binary
+*.ico binary
+*.zip binary

@@ -1,0 +1,4 @@
+Port target: Input
+Populated by porting files from sources/ClassicUO. Run
+  launchers\pipeline\03_port_audit.bat
+to see which files belong here and what remains.

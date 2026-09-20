@@ -1,0 +1,24 @@
+@echo off
+REM ============================================================================
+REM  Fast health check: engine present, project imports, C# builds,
+REM  client data readable. Run before every commit and in CI.
+REM ============================================================================
+call "%~dp0..\_shared\common.bat" || exit /b 1
+set "FAIL=0"
+
+echo [smoke] 1/4 engine
+"%GODOT_CONSOLE%" --version || set "FAIL=1"
+
+echo [smoke] 2/4 project imports
+"%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" --quit || set "FAIL=1"
+
+echo [smoke] 3/4 C# builds
+"%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" --build-solutions --quit || set "FAIL=1"
+
+echo [smoke] 4/4 client data
+"%UO_PYTHON%" "%UO_TOOLS%\uodata\run.py" verify --data-dir "%UO_CLIENT_DATA%" --client-version "%UO_CLIENT_VERSION%" --quiet || set "FAIL=1"
+
+echo.
+if "%FAIL%"=="1" ( echo [smoke] FAILED & exit /b 1 )
+echo [smoke] OK
+exit /b 0

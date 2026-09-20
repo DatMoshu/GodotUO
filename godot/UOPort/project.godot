@@ -1,0 +1,35 @@
+; UO_Port - Godot project
+;
+; Generated as part of the ClassicUO -> Godot port scaffold.
+; Engine: Godot 4.7.2 .NET (mono). The .NET build is required; the port is C#.
+
+config_version=5
+
+[application]
+
+config/name="UO Port"
+config/description="Ultima Online Classic client, ported from ClassicUO onto Godot."
+run/main_scene="res://scenes/Main.tscn"
+config/features=PackedStringArray("4.7", "C#", "Forward Plus")
+config/icon="res://icon.svg"
+
+[dotnet]
+
+project/assembly_name="UOPort"
+
+[rendering]
+
+renderer/rendering_method="forward_plus"
+; UO art is authored as pixel art: never filter it.
+textures/canvas_textures/default_texture_filter=0
+
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=720
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+
+[debug]
+
+gdscript/warnings/enable=true

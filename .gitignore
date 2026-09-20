@@ -1,0 +1,108 @@
+# ============================================================================
+#  UO_Port
+#
+#  Adapted from the Claude Code Game Studios template. The Unity and Unreal
+#  sections were removed: this is a Godot .NET project, and the inherited
+#  `*.csproj` / `*.sln` rules would have excluded godot/UOPort/UOPort.csproj,
+#  which must be tracked.
+# ============================================================================
+
+# === Large external checkouts (restored by launchers, not committed) ======
+# Upstream ClassicUO reference (~170 MB, its own git repo).
+# Restore with: launchers\dev\sync_upstream.bat
+# The exact reviewed commit is recorded in docs/upstream/UPSTREAM_PIN.json.
+sources/
+
+# Pinned Godot engine build (~350 MB).
+# Restore with: launchers\dev\fetch_godot.bat
+tools/godot/Godot_v*/
+
+# === Generated artifacts ==================================================
+build/
+docs/consistency-failures.md
+
+# === Godot ================================================================
+.godot/
+.mono/
+*.translation
+export_presets.cfg
+
+# === .NET =================================================================
+bin/
+obj/
+*.user
+*.suo
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+# Godot generates the solution; the .csproj is authored and IS tracked.
+godot/UOPort/UOPort.sln
+
+# === Build output =========================================================
+builds/
+out/
+dist/
+*.exe
+*.dll
+*.so
+*.dylib
+*.app
+
+# === Compiled shaders =====================================================
+*.spv
+*.cso
+*.dxbc
+
+# === IDE and editor =======================================================
+.vs/
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+Desktop.ini
+ehthumbs.db
+$RECYCLE.BIN/
+
+# === Claude Code local ====================================================
+.claude/settings.local.json
+CLAUDE.local.md
+production/session-logs/
+
+# === Temporary and cache ==================================================
+*.tmp
+*.temp
+*.cache
+*.log
+__pycache__/
+*.pyc
+.pytest_cache/
+node_modules/
+
+# === Archives =============================================================
+*.zip
+*.tar.gz
+*.rar
+*.7z
+
+# === Secrets ==============================================================
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+credentials.json
+secrets.json
+
+# === UO game data: proprietary, never committed ===========================
+# The client install is read in place from UO_CLIENT_DATA. Nothing below
+# should ever appear in this repository; these rules are a backstop against
+# an accidental copy.
+*.mul
+*.uop
+*.idx
+*.enu
+*.def
