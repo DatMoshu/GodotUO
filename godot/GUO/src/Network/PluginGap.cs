@@ -58,6 +58,24 @@ namespace GUO.Network
             Utility.Logging.Log.Warn($"ignoring plugin: {path}");
         }
 
+        /// <summary>
+        /// True means "no plugin took this key, the client should handle it".
+        /// With no plugins there is nothing to take one.
+        /// </summary>
+        internal static bool ProcessHotkeys(int key, int mod, bool pressed) => true;
+
+        internal static void ProcessMouse(int button, int wheel)
+        {
+        }
+
+        internal static void OnFocusGained()
+        {
+        }
+
+        internal static void OnFocusLost()
+        {
+        }
+
         internal static bool RequestMove(int dir, bool run) => false;
 
         internal static bool GetPlayerPosition(out int x, out int y, out int z)

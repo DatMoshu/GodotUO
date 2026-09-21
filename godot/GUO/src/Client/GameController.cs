@@ -436,6 +436,23 @@ namespace GUO
             SetWindowPosition(x, y);
         }
 
+        /// <summary>
+        /// Every input event Godot delivers, handed to the layer that
+        /// replaces upstream's SDL event filter.
+        /// </summary>
+        /// <remarks>
+        /// PORT DEVIATION (GUO): _Input rather than _UnhandledInput, because
+        /// the client draws its own UI into the canvas and has no Godot
+        /// Controls to consume anything first. Everything the client sees is
+        /// marked handled so a Godot node cannot act on it a second time.
+        /// </remarks>
+        public override void _Input(InputEvent @event)
+        {
+            GodotInput.Handle(@event);
+
+            GetViewport().SetInputAsHandled();
+        }
+
         public override void _Process(double delta)
         {
             double elapsedMilliseconds = delta * 1000.0;
@@ -652,11 +669,26 @@ namespace GUO
 
                 case NotificationApplicationFocusIn:
                     Activated?.Invoke(this, EventArgs.Empty);
+                    Plugin.OnFocusGained();
 
                     break;
 
                 case NotificationApplicationFocusOut:
                     Deactivated?.Invoke(this, EventArgs.Empty);
+                    Plugin.OnFocusLost();
+
+                    break;
+
+                // Upstream's SDL_EVENT_WINDOW_MOUSE_ENTER / _LEAVE. Godot
+                // reports these as window notifications rather than events,
+                // so they are here and not in the input layer.
+                case NotificationWMMouseEnter:
+                    Mouse.MouseInWindow = true;
+
+                    break;
+
+                case NotificationWMMouseExit:
+                    Mouse.MouseInWindow = false;
 
                     break;
             }
@@ -680,7 +712,12 @@ namespace GUO
             }
         }
 
-        private void TakeScreenshot()
+        /// <summary>
+        /// PORT DEVIATION (GUO): internal rather than private, because the
+        /// PrintScreen key reaches it from the input layer now instead of
+        /// from an event filter that lived in this class.
+        /// </summary>
+        internal void TakeScreenshot()
         {
             string screenshotsFolder = FileSystemHelper.CreateFolderIfNotExists(
                 CUOEnviroment.ExecutablePath,

@@ -121,6 +121,14 @@ public partial class Main : Node
             case RunMode.Play:
                 StartClient();
 
+                if (_options.InputProbe)
+                {
+                    // Two thirds of the budget to load and settle, the rest
+                    // to click and type, so the shot at the end catches the
+                    // result rather than the middle.
+                    InputProbe.Run(this, System.Math.Max(1, _options.ShotAfter * 2 / 3));
+                }
+
                 if (_options.ShotAfter > 0)
                 {
                     CaptureAfterFrames(_options.ShotAfter);
@@ -320,6 +328,9 @@ public partial class Main : Node
         /// </summary>
         public int ShotAfter { get; private set; }
 
+        /// <summary>Drive the running client with synthesised input.</summary>
+        public bool InputProbe { get; private set; }
+
         /// <summary>Dotted client version, e.g. "7.0.107.76".</summary>
         public string ClientVersion { get; private set; } = "7.0.107.76";
 
@@ -367,6 +378,9 @@ public partial class Main : Node
                         break;
                     case "--play":
                         o.Mode = RunMode.Play;
+                        break;
+                    case "--input-probe":
+                        o.InputProbe = true;
                         break;
                     case "--shot-after":
                         if (int.TryParse(Next(), out int frames))
