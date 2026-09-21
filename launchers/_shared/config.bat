@@ -58,6 +58,15 @@ REM  in game, not at the console. Local dev shard only; not a credential.
 if not defined UO_SHARD_OWNER       set "UO_SHARD_OWNER=guoprobe"
 if not defined UO_SHARD_OWNER_PASSWORD set "UO_SHARD_OWNER_PASSWORD=guoprobe"
 
+REM  How far from a player the shard bothers to send items and mobiles. UO's
+REM  own answer is 18 tiles, which was a little more than a 640x480 screen and
+REM  is a fraction of a modern one: the client draws map art some 70 tiles out,
+REM  so doors, signs, decoration and NPCs stop dead in a circle while the
+REM  terrain carries on, and things at its edge appear and vanish as you walk.
+REM  72 covers a 4K window. Lower it if the shard struggles; 18 is what a
+REM  production shard sends, and is what you want if you are checking parity.
+if not defined UO_SHARD_UPDATE_RANGE set "UO_SHARD_UPDATE_RANGE=72"
+
 REM --- Python -------------------------------------------------------------
 if not defined UO_PYTHON            set "UO_PYTHON=python"
 

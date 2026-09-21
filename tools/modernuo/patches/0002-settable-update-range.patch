@@ -1,0 +1,111 @@
+diff --git a/Projects/Server/Items/BaseMulti.cs b/Projects/Server/Items/BaseMulti.cs
+index 0ebcac7c5..d5f408766 100644
+--- a/Projects/Server/Items/BaseMulti.cs
++++ b/Projects/Server/Items/BaseMulti.cs
+@@ -1,4 +1,4 @@
+-/*************************************************************************
++﻿/*************************************************************************
+  * ModernUO                                                              *
+  * Copyright 2019-2026 - ModernUO Development Team                       *
+  * Email: hi@modernuo.com                                                *
+@@ -108,9 +108,11 @@ public override void OnMapChange()
+         PathInteriorCacheState = MultiInteriorCacheState.Unknown;
+     }
+ 
+-    public override int GetMaxUpdateRange() => 22;
++    // GUO patch: was a literal 22 -- a house has to arrive before its edge
++    // does, so a multi reaches four tiles further than everything else.
++    public override int GetMaxUpdateRange() => Core.GlobalUpdateRange + 4;
+ 
+-    public override int GetUpdateRange(Mobile m) => 22;
++    public override int GetUpdateRange(Mobile m) => Core.GlobalUpdateRange + 4;
+ 
+     public virtual bool Contains(Point2D p) => Contains(p.m_X, p.m_Y);
+ 
+diff --git a/Projects/Server/Items/Item.cs b/Projects/Server/Items/Item.cs
+index 03ff9d000..97cc77d74 100644
+--- a/Projects/Server/Items/Item.cs
++++ b/Projects/Server/Items/Item.cs
+@@ -1,4 +1,4 @@
+-/*************************************************************************
++﻿/*************************************************************************
+  * ModernUO                                                              *
+  * Copyright 2019-2026 - ModernUO Development Team                       *
+  * Email: hi@modernuo.com                                                *
+@@ -3301,9 +3301,12 @@ private void FixHolding_Sandbox()
+         }
+     }
+ 
+-    public virtual int GetMaxUpdateRange() => 18;
++    // GUO patch: was a literal 18. Core.GlobalUpdateRange is the same
++    // number and can be raised for a client whose window is wider than the
++    // range -- see the note on it.
++    public virtual int GetMaxUpdateRange() => Core.GlobalUpdateRange;
+ 
+-    public virtual int GetUpdateRange(Mobile m) => 18;
++    public virtual int GetUpdateRange(Mobile m) => Core.GlobalUpdateRange;
+ 
+     public virtual void SendInfoTo(NetState ns, ReadOnlySpan<byte> world = default)
+     {
+diff --git a/Projects/Server/Main.cs b/Projects/Server/Main.cs
+index 608256651..3d74add91 100644
+--- a/Projects/Server/Main.cs
++++ b/Projects/Server/Main.cs
+@@ -313,9 +313,33 @@ public static string BaseDirectory
+ 
+     public static bool Headless { get; private set; }
+ 
+-    public static int GlobalUpdateRange { get; set; } = 18;
++    // GUO patch: the update range is how far from a player the server
++    // bothers to tell them about items and mobiles. UO's 18 tiles was chosen
++    // for a 640x480 client, where it is a little more than the screen. A
++    // modern client filling a 4K monitor draws map art some 70 tiles out, so
++    // everything the server owns -- doors, signs, decoration, NPCs -- stops
++    // dead in a circle around the player while the terrain carries on. Set
++    // UO_SHARD_UPDATE_RANGE to cover the window and the circle goes away, at
++    // the cost of sending far more to each client.
++    //
++    // Unset, this is 18/24 and the shard behaves exactly as a production one.
++    private static int ReadRangeFromEnvironment(int fallback)
++    {
++        var raw = Environment.GetEnvironmentVariable("UO_SHARD_UPDATE_RANGE");
++
++        if (!int.TryParse(raw, out var range) || range < 5 || range > 200)
++        {
++            return fallback;
++        }
++
++        // 18 and 24 upstream: the outer one is the sweep radius and has to
++        // reach past the inner one, so the six tiles between them are kept.
++        return fallback == 18 ? range : range + 6;
++    }
++
++    public static int GlobalUpdateRange { get; set; } = ReadRangeFromEnvironment(18);
+ 
+-    public static int GlobalMaxUpdateRange { get; set; } = 24;
++    public static int GlobalMaxUpdateRange { get; set; } = ReadRangeFromEnvironment(24);
+ 
+     public static int ScriptItems => _itemCount;
+     public static int ScriptMobiles => _mobileCount;
+diff --git a/Projects/UOContent/Network/Packets/IncomingPlayerPackets.cs b/Projects/UOContent/Network/Packets/IncomingPlayerPackets.cs
+index 384e468b9..af68eb087 100644
+--- a/Projects/UOContent/Network/Packets/IncomingPlayerPackets.cs
++++ b/Projects/UOContent/Network/Packets/IncomingPlayerPackets.cs
+@@ -1,4 +1,4 @@
+-/*************************************************************************
++﻿/*************************************************************************
+  * ModernUO                                                              *
+  * Copyright 2019-2026 - ModernUO Development Team                       *
+  * Email: hi@modernuo.com                                                *
+@@ -383,7 +383,10 @@ public static void PingReq(NetState state, SpanReader reader)
+ 
+     public static void SetUpdateRange(NetState state, SpanReader reader)
+     {
+-        state.SendChangeUpdateRange(18);
++        // GUO patch: was a literal 18. The client asks for a range and is
++        // told the server's, which it then uses to decide when to forget an
++        // object -- so the two numbers have to be the same one.
++        state.SendChangeUpdateRange((byte)Core.GlobalUpdateRange);
+     }
+ 
+     public static void MobileQuery(NetState state, SpanReader reader)
