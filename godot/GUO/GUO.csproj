@@ -31,8 +31,12 @@
 
     To enable an area, delete its line and fix what the compiler reports.
     The goal is for this whole ItemGroup to disappear.
+    To MEASURE the work left, build with -p:GuoAllAreas=true, which turns this
+    whole group off in one switch. launchers\dev\port_errors.bat does that.
+    Use the launcher rather than editing this file: it forces a full rebuild,
+    and an incremental build silently under-reports.
   -->
-  <ItemGroup>
+  <ItemGroup Condition="'$(GuoAllAreas)' != 'true'">
     <Compile Remove="src/Game/**/*.cs" />
     <Compile Remove="src/Network/**/*.cs" />
     <Compile Remove="src/Configuration/**/*.cs" />
