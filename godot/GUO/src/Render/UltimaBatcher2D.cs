@@ -153,6 +153,12 @@ namespace GUO.Renderer
             TextureSwitches = 0;
             FlushesDone = 0;
 
+            // Once a frame, before anything draws. Godot cannot upload part of
+            // a texture, so TextureAtlas blits sprites into a CPU-side page as
+            // they decode and defers the upload to here; see its remarks for
+            // what the alternative costs.
+            TextureAtlas.FlushAll();
+
             // Everything in the pool, not just what this frame ends up using:
             // an item left over from a busier frame would otherwise keep
             // painting last frame's sprites.
