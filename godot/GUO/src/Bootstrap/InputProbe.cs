@@ -162,6 +162,10 @@ internal static class InputProbe
         await ClickGumpButton<Game.UI.Gumps.PaperDollGump>(host, 5, "Skills");
         await ClickGumpButton<Game.UI.Gumps.PaperDollGump>(host, 8, "Status");
 
+        GD.Print("[GUO] input probe: moving an item in the backpack");
+
+        await MoveItemInBackpack(host);
+
         GD.Print("[GUO] input probe: the maps");
 
         // TopBarGump.Buttons: Map is 0 and WorldMap is 6. Both are worth
@@ -345,6 +349,205 @@ internal static class InputProbe
         );
 
         await Frames(host, 90);
+    }
+
+    /// <summary>
+    /// Pick an item up out of the backpack and put it down somewhere else in
+    /// the same container.
+    /// </summary>
+    /// <remarks>
+    /// The first interaction the probe does that is not a click. Dragging is
+    /// its own path through the client: the press arms the control, motion
+    /// while the button is down is what turns it into a drag, the item comes
+    /// off the server's copy of the container and onto the cursor, and the
+    /// release sends a drop request that the server can refuse. Nothing in
+    /// the click tests reaches any of it.
+    ///
+    /// The move is within the backpack on purpose. Dropping on the ground or
+    /// on another container brings in reachability and weight rules, and a
+    /// refusal there would say nothing about the client.
+    /// </remarks>
+    private static async System.Threading.Tasks.Task MoveItemInBackpack(Node host)
+    {
+        Game.UI.Gumps.ContainerGump pack =
+            Game.Managers.UIManager.GetGump<Game.UI.Gumps.ContainerGump>();
+
+        Game.UI.Controls.ItemGump item = pack == null ? null : FindItem(pack);
+
+        if (item == null)
+        {
+            GD.Print("[GUO] input probe: nothing in the backpack to move");
+
+            return;
+        }
+
+        uint serial = item.LocalSerial;
+        Vector2 from = GrabPoint(item);
+
+        // Down and to the right, staying well inside the container art: the
+        // drop point has to be over the container for the server to read it
+        // as a move rather than a throw.
+        Vector2 to = from + new Vector2(40, 30);
+
+        GD.Print($"[GUO] input probe: dragging 0x{serial:X} from {from.X},{from.Y} to {to.X},{to.Y}");
+
+        await Drag(host, from, to);
+
+        await Frames(host, 120);
+
+        pack = Game.Managers.UIManager.GetGump<Game.UI.Gumps.ContainerGump>();
+
+        Game.UI.Controls.ItemGump moved = pack == null ? null : FindItem(pack, serial);
+
+        GD.Print(
+            moved == null
+                ? $"[GUO] input probe: 0x{serial:X} is no longer in the backpack"
+                : $"[GUO] input probe: 0x{serial:X} is at "
+                  + $"{moved.ScreenCoordinateX},{moved.ScreenCoordinateY}"
+        );
+
+        GD.Print(
+            "[GUO] input probe: the cursor is holding something: "
+            + Client.Game.UO.GameCursor.ItemHold.Enabled
+        );
+    }
+
+    /// <summary>
+    /// A point on an item that the client will agree is on the item.
+    /// </summary>
+    /// <remarks>
+    /// An item gump hit-tests against the art's own pixels, not its bounds,
+    /// and a lot of item art is mostly transparent -- a dagger is a diagonal
+    /// line through an empty square. Pressing the middle of the rectangle
+    /// therefore misses more often than it hits, and the press lands on the
+    /// container behind it instead, which is a drag of the container. Asking
+    /// the control itself which pixels are solid is the only honest way to
+    /// aim; the press that follows still goes through Godot like any other.
+    /// </remarks>
+    private static Vector2 GrabPoint(Game.UI.Controls.ItemGump item)
+    {
+        var centre = new Vector2(item.Width / 2f, item.Height / 2f);
+        Vector2 best = centre;
+        float bestDistance = float.MaxValue;
+
+        for (int y = 0; y < item.Height; y++)
+        {
+            for (int x = 0; x < item.Width; x++)
+            {
+                if (!item.Contains(x, y))
+                {
+                    continue;
+                }
+
+                // Nearest solid pixel to the middle, not the first one found:
+                // the first is on the edge of the art, where being a pixel out
+                // is the difference between the item and the container.
+                float distance = centre.DistanceSquaredTo(new Vector2(x, y));
+
+                if (distance < bestDistance)
+                {
+                    bestDistance = distance;
+                    best = new Vector2(x, y);
+                }
+            }
+        }
+
+        return new Vector2(item.ScreenCoordinateX, item.ScreenCoordinateY) + best;
+    }
+
+    /// <summary>
+    /// The first item in a container gump, or the one with this serial.
+    /// </summary>
+    private static Game.UI.Controls.ItemGump FindItem(
+        Game.UI.Controls.Control parent,
+        uint serial = 0
+    )
+    {
+        foreach (Game.UI.Controls.Control child in parent.Children)
+        {
+            if (child is Game.UI.Controls.ItemGump item
+                && (serial == 0 || item.LocalSerial == serial))
+            {
+                return item;
+            }
+
+            Game.UI.Controls.ItemGump found = FindItem(child, serial);
+
+            if (found != null)
+            {
+                return found;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Press, move while held, release. The motion in the middle is the part
+    /// that matters: the client turns a press into a drag only when the mouse
+    /// moves with the button down, and it reads the position off each event.
+    /// </summary>
+    private static async System.Threading.Tasks.Task Drag(Node host, Vector2 from, Vector2 to)
+    {
+        Send(new InputEventMouseMotion { Position = from });
+        await Frames(host, 2);
+
+        Send(new InputEventMouseButton
+        {
+            ButtonIndex = MouseButton.Left,
+            Position = from,
+            Pressed = true,
+        });
+
+        await Frames(host, 6);
+
+        GD.Print(
+            "[GUO] input probe: pressed on "
+            + (Game.Managers.UIManager.LastControlMouseDown(
+                   Input.MouseButtonType.Left)?.GetType().Name ?? "nothing")
+            + ", over "
+            + (Game.Managers.UIManager.MouseOverControl?.GetType().Name ?? "nothing")
+        );
+
+        const int steps = 8;
+        Vector2 previous = from;
+
+        for (int i = 1; i <= steps; i++)
+        {
+            Vector2 at = from.Lerp(to, i / (float)steps);
+
+            Send(new InputEventMouseMotion
+            {
+                Position = at,
+                Relative = at - previous,
+                ButtonMask = MouseButtonMask.Left,
+            });
+
+            previous = at;
+
+            await Frames(host, 4);
+        }
+
+        // Said before the release, because after it the answer is always no:
+        // whether the client picked anything up is the half of a drag that a
+        // failed drop hides.
+        Game.UI.Controls.Control down =
+            Game.Managers.UIManager.LastControlMouseDown(Input.MouseButtonType.Left);
+
+        GD.Print(
+            "[GUO] input probe: mid-drag, the cursor is holding something: "
+            + Client.Game.UO.GameCursor.ItemHold.Enabled
+            + $", dragging {down?.GetType().Name ?? "nothing"} 0x{down?.LocalSerial ?? 0:X}"
+        );
+
+        Send(new InputEventMouseButton
+        {
+            ButtonIndex = MouseButton.Left,
+            Position = to,
+            Pressed = false,
+        });
+
+        await Frames(host, 40);
     }
 
     /// <summary>
