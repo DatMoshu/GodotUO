@@ -243,26 +243,20 @@ namespace GUO.Game.Scenes
             return result;
         }
 
+        /// <remarks>
+        ///     PORT DEVIATION (GUO): ADR-0004 moved this whole body into the
+        ///     batcher. Upstream flushes the layer's alpha changes, asks the
+        ///     batcher for a dynamic index buffer, uploads the visible indices
+        ///     into it, binds both buffers on the device and issues one indexed
+        ///     draw per texture run. None of those five steps exists on Godot --
+        ///     a canvas item has no buffers a caller binds -- so the layer builds
+        ///     one ArrayMesh per run and the batcher draws them with
+        ///     canvas_item_add_mesh. The call site, and the count it returns, are
+        ///     unchanged.
+        /// </remarks>
         private static int DrawMeshLayer(UltimaBatcher2D batcher, MeshLayer layer)
         {
-            if (layer.VisibleSpriteCount == 0 || layer.VertexBuffer == null || layer.VertexBuffer.IsDisposed)
-                return 0;
-
-            layer.FlushAlphaChanges();
-
-            var indexBuffer = batcher.GetDynamicIndexBuffer(layer.VisibleSpriteCount * 6);
-            layer.UploadVisibleIndices(indexBuffer);
-
-            batcher.GraphicsDevice.SetVertexBuffer(layer.VertexBuffer);
-            batcher.GraphicsDevice.Indices = indexBuffer;
-
-            for (int i = 0; i < layer.VisibleRunCount; i++)
-            {
-                ref var run = ref layer.VisibleRuns[i];
-                batcher.DrawDirectIndexed(run.Texture, run.Start * 6, run.Count * 2, layer.Count * 4);
-            }
-
-            return layer.VisibleSpriteCount;
+            return batcher.DrawMeshLayer(layer);
         }
 
         private static int DrawRenderList(UltimaBatcher2D batcher, List<GameObject> renderList, sbyte maxGroundZ)

@@ -142,6 +142,7 @@ public partial class BatcherProbe : Node
         UltimaBatcher2D batcher, SubViewport viewport, Texture2D ramp, int gray, int hue,
         bool mirrored = false)
     {
+        batcher.BeginFrame();
         batcher.Begin();
 
         if (mirrored)
@@ -256,6 +257,7 @@ public partial class BatcherProbe : Node
 
         foreach ((string name, BlendState state) in cases)
         {
+            batcher.BeginFrame();
             batcher.Begin();
 
             batcher.Draw(underTexture, new Compat.Rectangle(0, 0, Scale * 2, Scale * 2), plain, 0f);
@@ -401,6 +403,7 @@ public partial class BatcherProbe : Node
             layer.SetVisible(0, 0xFF);
             layer.BuildVisibleIndices();
 
+            batcher.BeginFrame();
             batcher.Begin();
             batcher.SetBrightlight(brightlight);
             batcher.DrawMeshLayer(layer);
@@ -578,6 +581,7 @@ public partial class BatcherProbe : Node
 
         // An empty draw first. If the reader below counts ink on a blank
         // frame, every later count means nothing.
+        batcher.BeginFrame();
         batcher.Begin();
         batcher.End();
 
@@ -591,6 +595,7 @@ public partial class BatcherProbe : Node
             InkExtent(viewport.GetTexture().GetImage(), background, out _) == 0,
             $"background {background.R8},{background.G8},{background.B8}");
 
+        batcher.BeginFrame();
         batcher.Begin();
         batcher.DrawString(
             regular, text, originX, 4, ShaderHueTranslator.GetHueVector(0), 0f);

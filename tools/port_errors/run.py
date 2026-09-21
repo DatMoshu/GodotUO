@@ -19,6 +19,17 @@ Two things this gets right that doing it by hand does not.
   * It de-duplicates. MSBuild prints each error once per target pass, so the
     raw line count is roughly double the real one.
 
+One thing it still cannot get right, so read the number with this in mind.
+Roslyn binds declarations before method bodies, and it does not bind bodies at
+all if a declaration failed. So a single unported TYPE used in a field or a
+parameter hides every error inside every method in the build. Measured: with
+two gumps referring to an unported WorldMapGump, the whole tree reported
+9 errors; with those two files moved aside, the same tree reported 577. A
+small number here therefore means either "nearly done" or "one missing type is
+masking everything", and the only way to tell them apart is to clear the
+handful it reports and measure again. The count is a ratchet to drive down,
+not a distance to the finish.
+
 Usage:
     python tools/port_errors/run.py [--top 25] [--raw]
 

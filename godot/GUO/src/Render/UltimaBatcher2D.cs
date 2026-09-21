@@ -202,6 +202,44 @@ namespace GUO.Renderer
         // === Frame ================
         // ==========================
 
+        /// <summary>
+        /// Opens a frame. Everything drawn until the next <c>BeginFrame</c>
+        /// paints in submission order, across as many Begin/End batches as the
+        /// caller wants.
+        /// </summary>
+        /// <remarks>
+        /// PORT DEVIATION (GUO): upstream has no frame call -- FNA's device
+        /// clears the back buffer and a SpriteBatch owns nothing between
+        /// batches, so Begin is the only boundary it needs. Here the batch is
+        /// a pool of canvas items that persist until something clears them,
+        /// and a single upstream frame opens the batcher several times over
+        /// (the world, the UI, the cursor, the composite in RenderTargets).
+        /// Resetting the pool in Begin would erase the previous pass, so the
+        /// reset lives here and Begin only sets up its own batch.
+        /// </remarks>
+        public void BeginFrame()
+        {
+            EnsureNotStarted();
+
+            _itemCount = 0;
+            TextureSwitches = 0;
+            FlushesDone = 0;
+
+            // Once a frame, before anything draws. Godot cannot upload part of
+            // a texture, so TextureAtlas blits sprites into a CPU-side page as
+            // they decode and defers the upload to here; see its remarks for
+            // what the alternative costs.
+            TextureAtlas.FlushAll();
+
+            // Everything in the pool, not just what this frame ends up using:
+            // an item left over from a busier frame would otherwise keep
+            // painting last frame's sprites.
+            for (int i = 0; i < _items.Count; i++)
+            {
+                RenderingServer.CanvasItemClear(_items[i]);
+            }
+        }
+
         public void Begin()
         {
             Begin(Transform2D.Identity);
@@ -232,26 +270,8 @@ namespace GUO.Renderer
             _started = true;
             _worldOffset = Vector2.Zero;
             _clipStack.Clear();
-            _itemCount = 0;
             _currentMaterial = _nextMaterial = _material;
             _sampler = SamplerState.PointClamp;
-
-            TextureSwitches = 0;
-            FlushesDone = 0;
-
-            // Once a frame, before anything draws. Godot cannot upload part of
-            // a texture, so TextureAtlas blits sprites into a CPU-side page as
-            // they decode and defers the upload to here; see its remarks for
-            // what the alternative costs.
-            TextureAtlas.FlushAll();
-
-            // Everything in the pool, not just what this frame ends up using:
-            // an item left over from a busier frame would otherwise keep
-            // painting last frame's sprites.
-            for (int i = 0; i < _items.Count; i++)
-            {
-                RenderingServer.CanvasItemClear(_items[i]);
-            }
 
             Cut();
         }
