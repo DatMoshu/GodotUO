@@ -135,6 +135,51 @@ internal static class InputProbe
         await Walk(host);
 
         await Frames(host, 60);
+
+        GD.Print("[GUO] input probe: speaking");
+
+        await Speak(host, "hail from godot");
+
+        await Frames(host, 90);
+    }
+
+    /// <summary>
+    /// Say something out loud, and let the server say it back.
+    /// </summary>
+    /// <remarks>
+    /// In the world, typing goes to the chat control without anything being
+    /// clicked first, and Return sends it. The round trip is the point: the
+    /// client sends a speech request, the server decides what everyone hears
+    /// and sends it back, and only then does the text appear over the
+    /// character and in the journal. Text on screen is therefore the server's
+    /// copy, not an echo of the keypresses.
+    /// </remarks>
+    private static async System.Threading.Tasks.Task Speak(Node host, string what)
+    {
+        await Type(host, what);
+
+        Send(new InputEventKey { Keycode = Key.Enter, Pressed = true });
+        await Frames(host, 2);
+        Send(new InputEventKey { Keycode = Key.Enter, Pressed = false });
+
+        await Frames(host, 60);
+
+        // Take the shot here rather than leaving it to --shot-after: speech
+        // over a character has a time to live of a few seconds, so a frame
+        // number chosen in advance catches it only by luck.
+        Client.Game.TakeScreenshot();
+
+        await Frames(host, 60);
+
+        // The journal is where the server's copy lands, so it is the evidence
+        // that the round trip happened rather than that the text was typed.
+        var entries = Game.Managers.JournalManager.Entries;
+        int from = System.Math.Max(0, entries.Count - 4);
+
+        for (int i = from; i < entries.Count; i++)
+        {
+            GD.Print($"[GUO] journal: {entries[i].Name}: {entries[i].Text}");
+        }
     }
 
     /// <summary>
