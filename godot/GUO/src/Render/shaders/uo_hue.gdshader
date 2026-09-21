@@ -53,6 +53,10 @@ uniform sampler2D hue_texture : filter_nearest, repeat_disable;
 // The coloured-light table, used only by the LIGHTS mode.
 uniform sampler2D light_texture : filter_nearest, repeat_disable;
 
+// Only the LAND path reads this (upstream get_light); kept so SetBrightlight
+// has somewhere to put its value once the world mesh lands.
+uniform float brightlight = 0.0;
+
 uniform float circle_of_transparency_radius = 0.0;
 uniform vec2 circle_of_transparency_center = vec2(0.0, 0.0);
 
