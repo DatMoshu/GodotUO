@@ -318,6 +318,10 @@ internal static class InputProbe
 
         await Speak(host, "hail from godot");
 
+        GD.Print("[GUO] input probe: resizing the window");
+
+        await ResizeTheWindow(host);
+
         await Endure(host, EndureSeconds);
 
         await Frames(host, 90);
@@ -1226,6 +1230,7 @@ internal static class InputProbe
 
         bool walked = false;
         Game.UI.Gumps.ShopGump shop = null;
+        Game.GameObjects.Mobile shopkeeper = null;
 
         for (int i = 0; i < townspeople.Count && i < 3 && shop == null; i++)
         {
@@ -1266,8 +1271,6 @@ internal static class InputProbe
                 continue;
             }
 
-            await AskForAMenu(host, person);
-
             await Say(host, "vendor buy");
 
             for (int wait = 0; wait < 30 && shop == null; wait++)
@@ -1275,6 +1278,11 @@ internal static class InputProbe
                 await Frames(host, 10);
 
                 shop = Game.Managers.UIManager.GetGump<Game.UI.Gumps.ShopGump>();
+            }
+
+            if (shop != null)
+            {
+                shopkeeper = person;
             }
         }
 
@@ -1288,6 +1296,8 @@ internal static class InputProbe
         }
 
         Check("a shopkeeper opens a shop", true, $"{shop.Width}x{shop.Height}");
+
+        await AskForAMenu(host, shopkeeper);
 
         // Clear of the paperdoll and the backpack, both of which the shop
         // opens on top of and which would otherwise take the clicks.
@@ -1596,24 +1606,42 @@ internal static class InputProbe
             // other to shuffle: the item was dropped on the ground, or on the
             // character offering it, while the hit test had been right when
             // it was asked.
-            if (!await Lift(host, offer.At))
-            {
-                Check("the shard opens a trade", false, "the offer would not come off the shelf");
-
-                return;
-            }
-
-            Vector2? aim = await FindOnScreen(host, partner, self.Value, holding: true);
-
-            await Release(host, aim ?? on.Value);
-
+            // Three goes at it. Which of two overlapping characters owns
+            // the pixel under the cursor is settled every frame, so an aim
+            // that was right when it was taken can be wrong when the button
+            // comes up -- and a refused drop is silent: the item stays on the
+            // cursor and nothing else happens. Aiming again is what a player
+            // does, and it costs a second.
             Game.UI.Gumps.TradingGump trade = null;
 
-            for (int wait = 0; wait < 40 && trade == null; wait++)
+            for (int go = 0; go < 3 && trade == null; go++)
             {
-                await Frames(host, 10);
+                if (!Client.Game.UO.GameCursor.ItemHold.Enabled && !await Lift(host, offer.At))
+                {
+                    Check(
+                        "the shard opens a trade",
+                        false,
+                        "the offer would not come off the shelf"
+                    );
 
-                trade = Game.Managers.UIManager.GetGump<Game.UI.Gumps.TradingGump>();
+                    return;
+                }
+
+                Vector2? aim = await FindOnScreen(host, partner, self.Value, holding: true);
+
+                await Release(host, aim ?? on.Value);
+
+                for (int wait = 0; wait < 40 && trade == null; wait++)
+                {
+                    await Frames(host, 10);
+
+                    trade = Game.Managers.UIManager.GetGump<Game.UI.Gumps.TradingGump>();
+                }
+
+                if (trade == null)
+                {
+                    GD.Print("[GUO] input probe: the offer was not taken; aiming again");
+                }
             }
 
             Check(
@@ -1741,32 +1769,39 @@ internal static class InputProbe
     }
 
     /// <summary>
-    /// Single-click somebody and wait for the menu the server composes.
+    /// Ask for somebody's context menu, and wait for the one the server
+    /// composes.
     /// </summary>
     /// <remarks>
-    /// A shopkeeper, not a passer-by. The client asks for a context menu on
+    /// A shopkeeper, not a passer-by: the client asks for a context menu on
     /// every single click, but the server only answers when the thing clicked
-    /// has something to offer -- and a townsperson standing in the road often
-    /// has nothing, which is how this check came to fail on a client that had
-    /// asked properly and been told, correctly, that there was no menu. A
-    /// shopkeeper always has one.
+    /// has something to offer, and a townsperson standing in the road often
+    /// has nothing. That failed the check on a client that had asked properly
+    /// and been told, correctly, that there was no menu.
+    ///
+    /// Through the same call the click path makes, rather than with the mouse,
+    /// and that is a deliberate step back. By the time the probe knows who the
+    /// shopkeeper is it is standing next to them, and two characters a tile
+    /// apart overlap: the hit test hands back whichever of them owns the pixel
+    /// this frame, which is how "Ambar is not on screen" came to fail a run in
+    /// which Ambar had just sold something. What is being checked here is that
+    /// the shard composes a menu and the client puts it on the screen; that a
+    /// single click asks for one is already covered, by the name that comes
+    /// back from the same click in ClickSomeoneElse.
     /// </remarks>
     private static async System.Threading.Tasks.Task AskForAMenu(
         Node host,
         Game.GameObjects.Mobile person
     )
     {
-        Vector2? self = await FindCharacter(host);
-        Vector2? on = self == null ? null : await FindOnScreen(host, person, self.Value);
-
-        if (on == null)
+        if (person == null)
         {
-            Check("the shard offers a context menu", false, $"{person.Name} is not on screen");
+            Check("the shard offers a context menu", false, "nobody to ask");
 
             return;
         }
 
-        await Click(host, on.Value);
+        Game.GameActions.OpenPopupMenu(person.Serial, true);
 
         Game.UI.Gumps.PopupMenuGump menu = null;
 
@@ -1780,7 +1815,7 @@ internal static class InputProbe
         Check(
             "the shard offers a context menu",
             menu != null,
-            menu == null ? "no popup arrived" : $"{menu.Width}x{menu.Height}"
+            menu == null ? "no popup arrived" : $"{menu.Width}x{menu.Height} from {person.Name}"
         );
 
         // Off the screen again before anything else is clicked: a popup over
@@ -2679,6 +2714,94 @@ internal static class InputProbe
         }
 
         return moved;
+    }
+
+    /// <summary>
+    /// Drag the window smaller and back, and see the world follow it.
+    /// </summary>
+    /// <remarks>
+    /// The first thing a player does with a window is change its size, and
+    /// with "always use fullsize game window" on -- which is how this client
+    /// is played -- the world is supposed to follow. Upstream does that from
+    /// an SDL resize event; here it comes from Godot's viewport, through a
+    /// different notification, and the only way to know the wire between them
+    /// is connected is to pull it.
+    ///
+    /// Late in the run, because everything the probe clicks is aimed in
+    /// window coordinates and this moves all of them. The size is put back
+    /// before anything else is asked.
+    /// </remarks>
+    private static async System.Threading.Tasks.Task ResizeTheWindow(Node host)
+    {
+        Game.UI.Gumps.WorldViewportGump viewport =
+            Game.Managers.UIManager.GetGump<Game.UI.Gumps.WorldViewportGump>();
+
+        Game.Scenes.GameScene scene = Client.Game.GetScene<Game.Scenes.GameScene>();
+
+        if (viewport == null || scene == null
+            || Configuration.ProfileManager.CurrentProfile?.GameWindowFullSize != true)
+        {
+            Check("the world follows the window", false, "no full-size world viewport");
+
+            return;
+        }
+
+        Vector2I was = Godot.DisplayServer.WindowGetSize();
+        Godot.DisplayServer.WindowMode mode = Godot.DisplayServer.WindowGetMode();
+
+        // Windowed first. A maximised window is the window manager's size and
+        // not the client's: asking it to be smaller does nothing at all, and
+        // the check then reads a viewport that never had anything to follow
+        // as a viewport that refused to. The mode goes back afterwards.
+        if (mode != Godot.DisplayServer.WindowMode.Windowed)
+        {
+            Godot.DisplayServer.WindowSetMode(Godot.DisplayServer.WindowMode.Windowed);
+
+            await Frames(host, 30);
+        }
+
+        // Smaller, and not by a little: a world that did not move would still
+        // look about right after twenty pixels.
+        var smaller = new Vector2I(1280, 720);
+
+        Godot.DisplayServer.WindowSetSize(smaller);
+
+        await Frames(host, 60);
+
+        Vector2I now = Godot.DisplayServer.WindowGetSize();
+        int wide = scene.Camera.Bounds.Width;
+        int high = scene.Camera.Bounds.Height;
+
+        GD.Print(
+            $"[GUO] input probe: window {was.X}x{was.Y} ({mode}) -> {now.X}x{now.Y}, "
+            + $"camera {wide}x{high}"
+        );
+
+        Godot.DisplayServer.WindowSetSize(was);
+
+        if (mode != Godot.DisplayServer.WindowMode.Windowed)
+        {
+            Godot.DisplayServer.WindowSetMode(mode);
+        }
+
+        await Frames(host, 60);
+
+        // Each size divided by the dpi scale, which is what the viewport
+        // itself works in: on a scaled display the camera is deliberately
+        // smaller than the window in pixels.
+        int small = (int)(now.X / Client.Game.DpiScale);
+        int big = (int)(Godot.DisplayServer.WindowGetSize().X / Client.Game.DpiScale);
+
+        // Both ways round. A viewport that shrinks and never grows back is a
+        // client a player can only make smaller, which is worse than one that
+        // ignores the window entirely.
+        Check(
+            "the world follows the window",
+            System.Math.Abs(wide - small) <= 8
+                && System.Math.Abs(scene.Camera.Bounds.Width - big) <= 8,
+            $"camera {wide} wide in a {now.X} window, {scene.Camera.Bounds.Width} back in a "
+            + $"{Godot.DisplayServer.WindowGetSize().X} one"
+        );
     }
 
     /// <summary>

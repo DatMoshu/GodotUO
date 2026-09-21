@@ -234,6 +234,11 @@ only the server can produce the evidence:
   drops an item on it, and both sides tick their box. The item leaves the
   backpack because the server moved it.
 
+- **The window.** Dragged smaller and back, with "always use fullsize game
+  window" on, to see the world follow it. Upstream resizes from an SDL event
+  and this port from Godot's viewport notification, so the wire between them
+  is worth pulling.
+
 Every path the client has is now exercised except the ones behind
 `Network/Plugin.cs`, which is not ported.
 
@@ -258,6 +263,9 @@ in mind for anything else that points at the world:
   and aimed afterwards -- a drag that decides where to let go before it picks
   anything up lets go a second later, and by then the answer has moved.
 
+Twenty minutes of it -- 72,000 frames -- said the same thing, and finished
+with less memory in hand than it started with.
+
 A check has to be made of something that always answers, too. Three of these
 failed on a client that had done nothing wrong: a book dropped a fixed forty
 pixels from where it was picked up landed in a bag and the server correctly
@@ -266,6 +274,15 @@ was clicked on a person; and a context menu was asked of a townsperson, whom
 the server has nothing to offer about. They now drop on bare container,
 prefer a skill that asks about people, and ask a shopkeeper -- who always has
 a menu -- for the menu.
+
+And a check has to make the thing happen before it reads it. The resize check
+found a client that would not follow its window, and what it had actually
+found was a maximised window quietly ignoring a request to be smaller: the
+window manager owns that size, not the client. It goes windowed first now.
+Two overlapping characters are the same kind of problem from the other end --
+an offer aimed correctly can be released a frame later at a pixel that has
+changed hands, and a refused drop is silent -- so the offer gets three goes,
+which the run that proved the fix needed.
 
 ### Phase 6 — interface
 `Game/UI` (117 files, ~51k lines), `Input`
