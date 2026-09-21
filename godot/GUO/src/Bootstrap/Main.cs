@@ -334,7 +334,16 @@ public partial class Main : Node
             : _options.ScreenshotDir;
 
         DirAccess.MakeDirRecursiveAbsolute(dir);
-        string path = dir.PathJoin($"guo_{Time.GetUnixTimeFromSystem():F0}.png");
+
+        // A name when one is asked for, a timestamp otherwise. The sweep asks:
+        // two sweeps are only comparable if the same place lands on the same
+        // filename both times, and a timestamp makes every run a new set of
+        // pictures with nothing to hold them against.
+        string path = dir.PathJoin(
+            string.IsNullOrWhiteSpace(_options.ScreenshotName)
+                ? $"guo_{Time.GetUnixTimeFromSystem():F0}.png"
+                : $"{_options.ScreenshotName}.png"
+        );
 
         Error err = frame.SavePng(path);
         if (err != Error.Ok)
@@ -383,6 +392,7 @@ public partial class Main : Node
         public int ShardPort { get; private set; } = 2593;
 
         public string ScreenshotDir { get; private set; } = "";
+        public string ScreenshotName { get; private set; } = "";
 
         /// <summary>
         /// Frames to let run before capturing, then quit. Zero means never.
@@ -498,6 +508,9 @@ public partial class Main : Node
                         break;
                     case "--screenshot-dir":
                         o.ScreenshotDir = Next();
+                        break;
+                    case "--screenshot-name":
+                        o.ScreenshotName = Next();
                         break;
                     case "--host":
                         o.ShardHost = Next();
