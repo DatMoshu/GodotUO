@@ -33,6 +33,7 @@ import argparse
 import json
 import re
 import sys
+import tomllib
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -241,11 +242,40 @@ def scan_port(port_src: Path) -> dict[str, list[str]]:
 # --- reporting --------------------------------------------------------------
 
 
-def build_report(files: list[dict], ported: dict[str, list[str]]) -> dict:
+WAIVERS_FILE = "docs/port_waivers.toml"
+
+
+def load_waivers(repo_root: Path) -> dict[str, dict]:
+    """Upstream files that were decided against, keyed by upstream path.
+
+    A waived file is still not ported and is still reported as such. What the
+    waiver changes is which list it appears in: out of "work remaining", into
+    a table that prints the decision. Without this the audit cannot tell a
+    file nobody has started from one that was deliberately deleted, and the
+    remaining-work list sends people after decisions already made.
+    """
+    path = repo_root / WAIVERS_FILE
+    if not path.is_file():
+        return {}
+    with path.open("rb") as fh:
+        data = tomllib.load(fh)
+    return {
+        w["upstream"]: {
+            "replaced_by": w.get("replaced_by", ""),
+            "reason": " ".join(w.get("reason", "").split()),
+        }
+        for w in data.get("waiver", [])
+    }
+
+
+def build_report(
+    files: list[dict], ported: dict[str, list[str]], waivers: dict[str, dict]
+) -> dict:
     for f in files:
         matches = ported.get(f["name"], [])
         f["ported"] = bool(matches)
         f["port_paths"] = matches
+        f["waiver"] = waivers.get(f["upstream"])
 
     def summarise(rows: list[dict]) -> dict:
         total = len(rows)
@@ -261,9 +291,13 @@ def build_report(files: list[dict], ported: dict[str, list[str]]) -> dict:
             "pct_lines": round(100 * done_lines / total_lines, 1) if total_lines else 0.0,
         }
 
+    # Every breakdown scores the same set the headline does, so a tier's
+    # numbers and the overall ones cannot disagree.
+    scored = [f for f in files if not f["waiver"]]
+
     by_area: dict[str, dict] = {}
-    for area in sorted({f["area"] for f in files}):
-        rows = [f for f in files if f["area"] == area]
+    for area in sorted({f["area"] for f in scored}):
+        rows = [f for f in scored if f["area"] == area]
         entry = summarise(rows)
         entry["tiers"] = {
             tier: summarise([r for r in rows if r["tier"] == tier])
@@ -274,10 +308,12 @@ def build_report(files: list[dict], ported: dict[str, list[str]]) -> dict:
         by_area[area] = entry
 
     by_tier = {
-        tier: summarise([f for f in files if f["tier"] == tier]) for tier in TIER_ORDER
+        tier: summarise([f for f in scored if f["tier"] == tier]) for tier in TIER_ORDER
     }
 
-    active = [f for f in files if f["area"] not in REPLACED_BY_ENGINE]
+    # Waived files leave the denominator: they are neither done nor to do,
+    # and counting them either way makes the percentage mean something else.
+    active = [f for f in scored if f["area"] not in REPLACED_BY_ENGINE]
 
     return {
         "schema": "guo/port_status@1",
@@ -285,6 +321,7 @@ def build_report(files: list[dict], ported: dict[str, list[str]]) -> dict:
         "overall": summarise(active),
         "by_tier": by_tier,
         "by_area": by_area,
+        "waived": [f for f in files if f["waiver"]],
         "files": files,
     }
 
@@ -377,6 +414,7 @@ def render_markdown(report: dict, cfg) -> str:
             if f["tier"] == tier
             and not f["ported"]
             and f["area"] not in REPLACED_BY_ENGINE
+            and not f["waiver"]
         ]
         if not pending:
             continue
@@ -387,6 +425,25 @@ def render_markdown(report: dict, cfg) -> str:
             add(f"- `{f['upstream']}` → `{f['area']}` ({f['lines']:,} lines)")
         if len(pending) > 12:
             add(f"- _…and {len(pending) - 12} more_")
+        add("")
+
+    waived = report["waived"]
+    if waived:
+        add("## Resolved without porting")
+        add("")
+        add(
+            "Decided against, not outstanding. These are counted as unported "
+            "and are left out of the percentages above; the reasons live in "
+            f"`{WAIVERS_FILE}`."
+        )
+        add("")
+        add("| upstream | lines | replaced by | why |")
+        add("| --- | ---: | --- | --- |")
+        for f in sorted(waived, key=lambda r: -r["lines"]):
+            w = f["waiver"]
+            replaced = w["replaced_by"]
+            cell = "_deleted_" if replaced == "deleted" else f"`{replaced}`"
+            add(f"| `{f['upstream']}` | {f['lines']:,} | {cell} | {w['reason']} |")
         add("")
 
     return "\n".join(lines) + "\n"
@@ -415,7 +472,7 @@ def main(argv: list[str] | None = None) -> int:
 
     files = scan_upstream(upstream_src)
     ported = scan_port(port / "src")
-    report = build_report(files, ported)
+    report = build_report(files, ported, load_waivers(cfg.root))
 
     markdown = render_markdown(report, cfg)
 

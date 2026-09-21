@@ -1,0 +1,74 @@
+# Upstream files that will never be ported, and why.
+#
+# The audit matches filenames, so a file that was deliberately deleted or
+# deliberately superseded looks exactly like a file nobody has started. That
+# makes the remaining-work list wrong in the direction that wastes time:
+# somebody reads "33 rewrite files remaining" and goes looking for work that
+# was decided months earlier.
+#
+# A waiver is not a way to make the number look better. The audit still counts
+# the file as unported; it moves it out of the pending list and into a table of
+# its own, with this reason printed next to it. Percentages are computed over
+# the files that are actually still work.
+#
+# Rules for adding one:
+#   * The decision must already exist somewhere durable -- an ADR, a PORT GAP
+#     comment in the code, or a rule in CLAUDE.md. Link it.
+#   * `replaced_by` names what does the job now, or "deleted" when nothing
+#     does because nothing needs to.
+#   * A file that is merely hard, or merely not started, does not get one.
+
+[[waiver]]
+upstream = "ClassicUO.Client/DllMap.cs"
+replaced_by = "deleted"
+reason = """
+Read FNA.dll.config to remap native library names per platform. There is no
+FNA and no such config; Godot loads its own natives. See the PORT DEVIATION in
+src/Client/Main.cs, which is where the call used to be.
+"""
+
+[[waiver]]
+upstream = "ClassicUO.Renderer/Batcher2D.cs"
+replaced_by = "src/Render/UltimaBatcher2D.cs"
+reason = """
+XNA's SpriteBatch rewritten onto Godot canvas items, with the hue packed into
+the per-quad modulate. ADR-0002. The file is a rewrite in the strict sense --
+none of the upstream body survives -- so the filename does not carry over.
+"""
+
+[[waiver]]
+upstream = "ClassicUO.Renderer/Primitives2D.cs"
+replaced_by = "src/Render/UltimaBatcher2D.cs"
+reason = """
+Line, rectangle and circle drawing built out of a 1x1 white texture, because
+SpriteBatch has no primitives. The batcher draws these directly; the helpers
+they existed to work around are gone with the thing they worked around.
+"""
+
+[[waiver]]
+upstream = "ClassicUO.Renderer/ScissorStack.cs"
+replaced_by = "src/Render/UltimaBatcher2D.cs"
+reason = """
+A manual stack of intersected scissor rectangles, because a GraphicsDevice has
+one scissor register. Godot clips per canvas item, so the batcher keeps the
+stack itself and applies it as it opens each item.
+"""
+
+[[waiver]]
+upstream = "ClassicUO.Renderer/Effects/BasicUOEffect.cs"
+replaced_by = "src/Render/shaders/"
+reason = """
+The FNA Effect wrapper around the compiled .fxb. Godot shaders are source and
+are set on the material, so there is no Effect object to wrap. ADR-0002.
+"""
+
+[[waiver]]
+upstream = "ClassicUO.Client/Game/Scenes/MainScene.cs"
+replaced_by = "deleted"
+reason = """
+A scratch scene at the head of upstream: it draws a red rectangle, and waits
+for the A key before loading the assets and handing over to LoginScene. It is
+a harness for upstream's own work on deferred loading, not client behaviour.
+GUO loads in GameController.Initialize and goes straight to LoginScene, which
+is what the released client does.
+"""
