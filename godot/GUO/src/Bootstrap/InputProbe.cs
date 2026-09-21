@@ -1563,33 +1563,12 @@ internal static class InputProbe
             // anything -- so the probe tries the other sides before giving up.
             (int X, int Y)[] sides = { (2, 0), (0, 2), (-2, 0), (0, -2), (1, 1) };
 
-            Vector2? self = await FindCharacter(host);
-            Vector2? on = self == null ? null : await FindOnScreen(host, partner, self.Value);
-
-            for (int side = 1; side < sides.Length && on == null; side++)
-            {
-                await Say(host, $"[go {wx + sides[side].X} {wy + sides[side].Y} {where[2]}");
-
-                await Frames(host, 90);
-
-                self = await FindCharacter(host);
-                on = self == null ? null : await FindOnScreen(host, partner, self.Value);
-            }
-
             (Game.GameObjects.Item Item, Vector2 At) offer =
                 pack == null ? default : await Grabbable(host, pack, bag);
 
-            if (on == null || offer.Item == null)
+            if (offer.Item == null)
             {
-                Check(
-                    "the shard opens a trade",
-                    false,
-                    self == null
-                        ? "this character is not on screen"
-                        : on == null
-                            ? $"{partner.Name} is not on screen"
-                            : "nothing in the backpack can be picked up"
-                );
+                Check("the shard opens a trade", false, "nothing in the backpack can be picked up");
 
                 return;
             }
@@ -1606,48 +1585,90 @@ internal static class InputProbe
             // other to shuffle: the item was dropped on the ground, or on the
             // character offering it, while the hit test had been right when
             // it was asked.
-            // Three goes at it. Which of two overlapping characters owns
-            // the pixel under the cursor is settled every frame, so an aim
-            // that was right when it was taken can be wrong when the button
-            // comes up -- and a refused drop is silent: the item stays on the
-            // cursor and nothing else happens. Aiming again is what a player
-            // does, and it costs a second.
+            //
+            // Twice from each side, and then the other side. Aiming again
+            // covers the frame the sprites swap on; it does not cover a spot
+            // where the partner can only just be seen at all, and one run
+            // found exactly that -- a pixel that answered with the partner
+            // before the item was lifted and with the ground afterwards,
+            // three times running. A player who cannot hand something over
+            // walks round; so does this.
             Game.UI.Gumps.TradingGump trade = null;
+            Vector2? self = null;
 
-            for (int go = 0; go < 3 && trade == null; go++)
+            for (int side = 0; side < sides.Length && trade == null; side++)
             {
-                if (!Client.Game.UO.GameCursor.ItemHold.Enabled && !await Lift(host, offer.At))
+                if (side > 0)
                 {
-                    Check(
-                        "the shard opens a trade",
-                        false,
-                        "the offer would not come off the shelf"
+                    GD.Print($"[GUO] input probe: trying the next side of {partner.Name}");
+
+                    await Say(host, $"[go {wx + sides[side].X} {wy + sides[side].Y} {where[2]}");
+
+                    await Frames(host, 90);
+                }
+
+                self = await FindCharacter(host);
+
+                Vector2? on = self == null
+                    ? null
+                    : await FindOnScreen(host, partner, self.Value);
+
+                if (on == null)
+                {
+                    continue;
+                }
+
+                for (int go = 0; go < 2 && trade == null; go++)
+                {
+                    if (!Client.Game.UO.GameCursor.ItemHold.Enabled
+                        && !await Lift(host, offer.At))
+                    {
+                        Check(
+                            "the shard opens a trade",
+                            false,
+                            "the offer would not come off the shelf"
+                        );
+
+                        return;
+                    }
+
+                    Vector2? aim = await FindOnScreen(host, partner, self.Value, holding: true);
+
+                    // What the client thinks the cursor is over at the moment
+                    // the button comes up, which is the thing that decides
+                    // where the item goes. Printed because a refused drop says
+                    // nothing at all, and a run that fails silently three
+                    // times leaves nothing to work from.
+                    GD.Print(
+                        $"[GUO] input probe: letting go at {(aim?.ToString() ?? "the old aim")}, "
+                        + $"over {Game.SelectedObject.Object?.GetType().Name ?? "nothing"} "
+                        + $"0x{(Game.SelectedObject.Object as Game.GameObjects.Entity)?.Serial ?? 0:X}, "
+                        + $"holding {Client.Game.UO.GameCursor.ItemHold.Enabled}, "
+                        + $"{Distance(partner)} tiles away"
                     );
 
-                    return;
-                }
+                    await Release(host, aim ?? on.Value);
 
-                Vector2? aim = await FindOnScreen(host, partner, self.Value, holding: true);
+                    for (int wait = 0; wait < 40 && trade == null; wait++)
+                    {
+                        await Frames(host, 10);
 
-                await Release(host, aim ?? on.Value);
+                        trade = Game.Managers.UIManager.GetGump<Game.UI.Gumps.TradingGump>();
+                    }
 
-                for (int wait = 0; wait < 40 && trade == null; wait++)
-                {
-                    await Frames(host, 10);
-
-                    trade = Game.Managers.UIManager.GetGump<Game.UI.Gumps.TradingGump>();
-                }
-
-                if (trade == null)
-                {
-                    GD.Print("[GUO] input probe: the offer was not taken; aiming again");
+                    if (trade == null)
+                    {
+                        GD.Print("[GUO] input probe: the offer was not taken; aiming again");
+                    }
                 }
             }
 
             Check(
                 "the shard opens a trade",
                 trade != null,
-                trade == null ? "no trade window arrived" : $"with {partner.Name}"
+                trade == null
+                    ? $"{partner.Name} would not take it from any side"
+                    : $"with {partner.Name}"
             );
 
             if (trade == null)
