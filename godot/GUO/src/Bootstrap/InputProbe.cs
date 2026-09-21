@@ -129,6 +129,82 @@ internal static class InputProbe
         FullSizeGameWindow();
 
         await Frames(host, 120);
+
+        GD.Print("[GUO] input probe: walking");
+
+        await Walk(host);
+
+        await Frames(host, 60);
+    }
+
+    /// <summary>
+    /// Hold the right button away from the character, which is how UO walks.
+    /// </summary>
+    /// <remarks>
+    /// This is the first thing that asks the shard for something and waits to
+    /// be told whether it happened: the client sends a move request, the
+    /// server accepts or rejects it, and the player only moves on the reply.
+    /// A screenshot cannot show that on its own, so the position is printed
+    /// either side of it.
+    /// </remarks>
+    private static readonly Vector2[] Offsets =
+    {
+        new(1, 1),
+        new(-1, 1),
+        new(-1, -1),
+        new(1, -1),
+    };
+
+    private static async System.Threading.Tasks.Task Walk(Node host)
+    {
+        Game.GameObjects.PlayerMobile player = Client.Game.UO.World?.Player;
+
+        if (player == null)
+        {
+            GD.Print("[GUO] input probe: no player; not in the world");
+
+            return;
+        }
+
+        GD.Print($"[GUO] input probe: player at {player.X},{player.Y}");
+
+        // Each of the four screen diagonals in turn. One direction can be a
+        // wall -- the starting spot is indoors -- and four cannot all be.
+        Compat.Rectangle bounds = Client.Game.Window.ClientBounds;
+        var centre = new Vector2(bounds.Width / 2f, bounds.Height / 2f);
+
+        foreach (Vector2 offset in Offsets)
+        {
+            Vector2 at = centre + offset * 250f;
+
+            Send(new InputEventMouseMotion { Position = at });
+
+            Send(new InputEventMouseButton
+            {
+                ButtonIndex = MouseButton.Right,
+                Position = at,
+                Pressed = true,
+            });
+
+            // Held. The scene walks a step at a time for as long as the
+            // button is down, so this is how far the character goes.
+            await Frames(host, 90);
+
+            Send(new InputEventMouseButton
+            {
+                ButtonIndex = MouseButton.Right,
+                Position = at,
+                Pressed = false,
+            });
+
+            await Frames(host, 20);
+
+            GD.Print(
+                $"[GUO] input probe: pulled {offset.X},{offset.Y} -> player at "
+                + $"{player.X},{player.Y}, facing {player.Direction}, steps "
+                + $"{player.Walker.StepsCount}, failed {player.Walker.WalkingFailed}"
+            );
+        }
     }
 
     /// <summary>
