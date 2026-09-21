@@ -27,6 +27,43 @@ namespace GUO.Game.Managers
         public int LoginMusicIndex { get; private set; }
         public int DeathMusicIndex { get; } = 42;
 
+        /// <summary>
+        /// What is playing right now, named, for the input probe.
+        /// </summary>
+        /// <remarks>
+        /// GUO-only, and diagnostics only -- nothing in the client reads it.
+        /// Whether sound reaches a speaker is not something a screenshot or a
+        /// log line can show, and the alternative was reflection into private
+        /// fields from the probe, which breaks silently when this file
+        /// changes. This is a rewrite-tier file; there is no upstream text
+        /// here to keep faithful to.
+        /// </remarks>
+        internal string NowPlaying
+        {
+            get
+            {
+                var playing = new List<string>();
+
+                foreach (UOMusic music in _currentMusic)
+                {
+                    if (music != null && music.IsPlaying(Time.Ticks))
+                    {
+                        playing.Add($"music:{music.Name}");
+                    }
+                }
+
+                foreach (UOSound sound in _currentSounds)
+                {
+                    if (sound != null && sound.IsPlaying(Time.Ticks))
+                    {
+                        playing.Add($"sound:{sound.Name}");
+                    }
+                }
+
+                return playing.Count == 0 ? "nothing" : string.Join(", ", playing);
+            }
+        }
+
         public void Initialize()
         {
             // PORT DEVIATION (GUO): upstream constructs and immediately disposes a

@@ -165,6 +165,7 @@ internal static class InputProbe
         }
 
         GD.Print($"[GUO] input probe: gumps open: {string.Join(", ", open)}");
+        GD.Print($"[GUO] input probe: audio: {Client.Game.Audio.NowPlaying}");
     }
 
     /// <summary>
