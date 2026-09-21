@@ -248,7 +248,11 @@ namespace GUO
                 );
             }
 
-            tree.Root.AddChild(Game);
+            // The scene tree is still building its children when the host's
+            // _Ready runs, and Godot refuses an AddChild from inside that.
+            // Deferring puts the controller in at the end of the frame, which
+            // is soon enough: nothing here touches the node again.
+            tree.Root.CallDeferred(Node.MethodName.AddChild, Game);
         }
 
         /// <summary>

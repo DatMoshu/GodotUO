@@ -32,6 +32,9 @@ public partial class Main : Node
 
         /// <summary>Draw through the batcher, check the pixels, then quit.</summary>
         BatcherProbe,
+
+        /// <summary>Decode a sample of art and show it. No client startup.</summary>
+        ArtSample,
     }
 
     private Options _options;
@@ -116,9 +119,19 @@ public partial class Main : Node
                 break;
 
             case RunMode.Play:
-                // Not a shard connection yet: the network stack is ported but
-                // not wired up. What this does prove is that the ported
-                // readers can open a real install and produce real pixels.
+                StartClient();
+
+                if (_options.ShotAfter > 0)
+                {
+                    CaptureAfterFrames(_options.ShotAfter);
+                }
+
+                break;
+
+            case RunMode.ArtSample:
+                // What Play used to do, kept because it is a cheap check that
+                // the reader stack can open a real install and produce real
+                // pixels, with none of the client's startup in the way.
                 if (!LoadAndShow(draw: true))
                 {
                     Quit(1);
@@ -126,6 +139,67 @@ public partial class Main : Node
 
                 break;
         }
+    }
+
+    /// <summary>
+    /// Starts the ported client proper: upstream's <c>Main.Boot</c>, which
+    /// reads settings, applies the command line, and ends by handing a
+    /// GameController to the scene tree.
+    /// </summary>
+    /// <remarks>
+    /// The arguments are rebuilt rather than passed through, because the two
+    /// command lines are different shapes: the launchers speak
+    /// <c>--client-data</c> and resolve it from config.bat, and upstream's
+    /// parser speaks <c>-uopath</c> and expects a settings.json to have
+    /// written it. Only the settings that have to agree are forwarded.
+    ///
+    /// The working directory moves first, and before anything in the client
+    /// namespace is touched: CUOEnviroment.ExecutablePath is a static readonly
+    /// initialised from Environment.CurrentDirectory, and it is where
+    /// settings.json, the logs and the screenshots go. Left alone that is
+    /// whatever directory the launcher happened to start Godot from.
+    /// </remarks>
+    private void StartClient()
+    {
+        string dataDir = GuoDataDirectory();
+
+        System.IO.Directory.CreateDirectory(dataDir);
+        System.Environment.CurrentDirectory = dataDir;
+
+        GD.Print($"[GUO] client home   : {dataDir}");
+
+        var args = new List<string>
+        {
+            "-uopath", _options.ClientData,
+            "-clientversion", _options.ClientVersion,
+            "-language", _options.Language,
+            "-ip", _options.ShardHost,
+            "-port", _options.ShardPort.ToString(),
+        };
+
+        Bootstrap.Boot(null, args.ToArray());
+    }
+
+    /// <summary>
+    /// Where the client keeps settings.json, its logs and its profiles. Not a
+    /// new setting: it is the parent of the configured cache directory, which
+    /// every launcher already resolves the same way.
+    /// </summary>
+    private string GuoDataDirectory()
+    {
+        if (!string.IsNullOrWhiteSpace(_options.CacheDir))
+        {
+            string parent = System.IO.Path.GetDirectoryName(
+                _options.CacheDir.TrimEnd('/', '\\')
+            );
+
+            if (!string.IsNullOrWhiteSpace(parent))
+            {
+                return parent;
+            }
+        }
+
+        return ProjectSettings.GlobalizePath("user://");
     }
 
     /// <summary>
@@ -162,6 +236,21 @@ public partial class Main : Node
     /// by <c>launchers\dev\screenshot.bat</c> so visual claims can be backed
     /// by an artefact instead of an assertion.
     /// </summary>
+    /// <summary>
+    /// Runs the client for <paramref name="frames"/> frames, then captures and
+    /// quits -- how a claim about what the real client puts on screen gets an
+    /// artefact behind it, with nobody watching the window.
+    /// </summary>
+    private async void CaptureAfterFrames(int frames)
+    {
+        for (int i = 0; i < frames; i++)
+        {
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        }
+
+        CaptureAndQuit();
+    }
+
     private async void CaptureAndQuit()
     {
         // One full frame must complete before the viewport holds anything.
@@ -223,6 +312,14 @@ public partial class Main : Node
 
         public string ScreenshotDir { get; private set; } = "";
 
+        /// <summary>
+        /// Frames to let run before capturing, then quit. Zero means never.
+        /// Screenshot mode draws one fixed frame and can capture immediately;
+        /// the client cannot, because its first frames are spent loading and
+        /// building the login scene, and a shot taken then is a black window.
+        /// </summary>
+        public int ShotAfter { get; private set; }
+
         /// <summary>Dotted client version, e.g. "7.0.107.76".</summary>
         public string ClientVersion { get; private set; } = "7.0.107.76";
 
@@ -264,6 +361,19 @@ public partial class Main : Node
                         break;
                     case "--batcher-probe":
                         o.Mode = RunMode.BatcherProbe;
+                        break;
+                    case "--art-sample":
+                        o.Mode = RunMode.ArtSample;
+                        break;
+                    case "--play":
+                        o.Mode = RunMode.Play;
+                        break;
+                    case "--shot-after":
+                        if (int.TryParse(Next(), out int frames))
+                        {
+                            o.ShotAfter = frames;
+                        }
+
                         break;
                     case "--client-data":
                         o.ClientData = Next();
