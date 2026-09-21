@@ -203,8 +203,10 @@ loads from a live shard.
 ModernUO (`tools/modernuo/README.md`); the client logs in, gets the shard list,
 creates a character, enters the world and walks — which is a move request, an
 accept and a position update, so the wire works in both directions and under
-the server's own throttling. What has *not* been exercised is everything past
-movement: combat, trade, containers, speech.
+the server's own throttling. Speech goes out and comes back through the
+server, and so does a container: the probe picks an item up out of the
+backpack and drops it somewhere else in it, and the server's answer is what
+moves it. What has *not* been exercised is combat and trade.
 
 ### Phase 6 — interface
 `Game/UI` (117 files, ~51k lines), `Input`
@@ -220,12 +222,23 @@ right button all reach the scene. The input probe opens the core gumps by
 finding their buttons and clicking them, and they are all up at the end of a
 run:
 
-    gumps open: TopBarGump, StatusGumpModern, PaperDollGump, ContainerGump,
-                StandardSkillsGump, WorldViewportGump
+    gumps open: TopBarGump, MiniMapGump, StatusGumpModern, PaperDollGump,
+                ContainerGump, StandardSkillsGump, WorldMapGump,
+                WorldViewportGump
 
 The backpack comes from the server with its contents and draws each item from
 its own art; the paperdoll shows what the character is wearing; the skills
-gump draws its scroll, its groups and its caps.
+gump draws its scroll, its groups and its caps. The two maps are in the list
+because they are the only gumps that draw a map rather than the world: the
+minimap builds a texture out of `MultiMap.mul`, the world map decodes a PNG
+and draws it itself.
+
+Past clicking: the probe drags an item from one place in the backpack to
+another, which is a press, motion with the button held, a pick-up onto the
+cursor and a drop the server has to accept. And it double-clicks the
+character in the world — not a gump — which means the renderer's hit test
+against the drawn sprites answered correctly, since the paperdoll it opens is
+one the probe closed first.
 
 ### Phase 7 — parity and polish
 `Audio`, lighting, effects, and the long tail.
@@ -242,7 +255,9 @@ cuoapi sources, not decided against, and `src/Network/PluginGap.cs` says what
 lifting it would take.
 
 Plugins are not needed to play, so from here parity is measured by playing
-rather than by the audit — see rule 6.
+rather than by the audit — see rule 6. What the probe measures today, in the
+world with eight gumps open at 3840x2054: 60.0 fps, 19.66 ms worst frame,
+footstep audio playing (`feet12a.wav`), and no leaked RIDs at exit.
 
 ---
 
