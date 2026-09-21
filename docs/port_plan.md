@@ -206,7 +206,14 @@ accept and a position update, so the wire works in both directions and under
 the server's own throttling. Speech goes out and comes back through the
 server, and so does a container: the probe picks an item up out of the
 backpack and drops it somewhere else in it, and the server's answer is what
-moves it. What has *not* been exercised is combat and trade.
+moves it. Using a skill raises the target cursor, and the target the probe
+picks is answered by the server in the journal.
+
+The dev shard's world is generated now (`launchers\shard\populate.bat`, 5,612
+spawners), so the client is finally talking to a shard with people on it: the
+probe hovers a townsperson, hits them with the renderer's own hit test, and
+the journal fills with the names the server sends back for the mobiles on
+screen. What has *not* been exercised is combat and trade.
 
 ### Phase 6 — interface
 `Game/UI` (117 files, ~51k lines), `Input`
@@ -238,7 +245,15 @@ another, which is a press, motion with the button held, a pick-up onto the
 cursor and a drop the server has to accept. And it double-clicks the
 character in the world — not a gump — which means the renderer's hit test
 against the drawn sprites answered correctly, since the paperdoll it opens is
-one the probe closed first.
+one the probe closed first. The same hit test finds other people: a
+townsperson walking past is picked out by asking the client what is under the
+cursor.
+
+The skills gump is worth its own line, because it is the one that needed all
+three: it opens under the paperdoll that opened it, its groups start
+collapsed, and its rows are laid out whether or not they are drawn. Moving it
+clear, expanding a group and pressing a skill's own use button is what a
+player does, and it ends with a target cursor.
 
 ### Phase 7 — parity and polish
 `Audio`, lighting, effects, and the long tail.
@@ -256,8 +271,9 @@ lifting it would take.
 
 Plugins are not needed to play, so from here parity is measured by playing
 rather than by the audit — see rule 6. What the probe measures today, in the
-world with eight gumps open at 3840x2054: 60.0 fps, 19.66 ms worst frame,
-footstep audio playing (`feet12a.wav`), and no leaked RIDs at exit.
+world with eight gumps open at 3840x2054, in a generated New Haven with
+townspeople and animals moving in it: 59.7 fps, 21.78 ms worst frame,
+footstep audio playing (`feet12b.wav`), and no leaked RIDs at exit.
 
 ---
 

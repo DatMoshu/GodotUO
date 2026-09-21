@@ -11,7 +11,10 @@ if not exist "%UO_SHARD_SRC%\publish.cmd" (
 )
 
 pushd "%UO_SHARD_SRC%"
-call publish.cmd release win x64
+REM  By full path: cmd only looks in the current directory for a script
+REM  when NoDefaultCurrentDirectoryInExePath is not set, and it is set in
+REM  some shells.
+call "%UO_SHARD_SRC%\publish.cmd" release win x64
 set "RC=%ERRORLEVEL%"
 popd
 

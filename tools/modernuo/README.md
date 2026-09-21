@@ -22,14 +22,25 @@ It is a development dependency, not part of the port. Nothing in
 launchers\shard\fetch.bat     clone + apply the patches   (once)
 launchers\shard\build.bat     publish release win x64     (once, ~2 min)
 launchers\shard\run.bat       run it                      (Ctrl-C to stop)
+launchers\shard\populate.bat  generate the world          (once, ~10 min)
 ```
 
 Then, in another terminal, `launchers\game\play.bat`.
 
 Auto account creation is on, so the first login with any name and password
-makes that account. The input probe
-(`launchers\dev\screenshot.bat --play --input-probe --shot-after N`) uses
-`guoprobe` / `guoprobe`.
+makes that account. The input probe (`launchers\dev\playtest.bat`) uses
+`guoprobe` / `guoprobe`, which is also `UO_SHARD_OWNER`.
+
+## Populating the world
+
+A new ModernUO save is the real map with nobody on it: no creatures, no
+vendors, no signs, no doors. What fills it in are in-game commands, so
+`populate.bat` logs the owner account in with the client itself and types
+them -- `[GenerateSpawners`, `[Decorate`, `[Save`. There is no console path to
+this; ModernUO's commands live in the game.
+
+Run it once against a new world. The shard saves the result, so it survives a
+restart; delete `Saves/` and it has to be run again.
 
 ## What is tracked here, and why
 
@@ -42,14 +53,19 @@ config/     the server configuration, as templates
 configure.py  fills the templates in from config.bat
 ```
 
-### `patches/0001-headless-skip-owner-account-prompt.patch`
+### `patches/0001-headless-owner-account.patch`
 
 `AccountPrompt.Initialize()` insists on an owner account at first boot and
 asks for it at the console. `Core.Headless` is true whenever stdin is
 redirected, which is every scripted run, and the prompt throws there instead
-of asking. The patch skips the prompt when headless: auto account creation is
-on, so the first client login makes the account and no owner is needed to
-boot.
+of asking.
+
+The patch replaces the prompt, when headless, with the account named by
+`UO_SHARD_OWNER` / `UO_SHARD_OWNER_PASSWORD`: created if it does not exist,
+raised to owner if it does — which it usually does, because auto account
+creation made it a player at the first login. ModernUO takes its
+administration commands in game and not at the console, so without an owner
+account the world cannot be generated at all.
 
 Keep this list append-only and numbered. A patch that upstream adopts should
 be deleted, not silently dropped from the set.

@@ -83,6 +83,7 @@ launchers\dev\screenshot.bat               capture a frame
 launchers\dev\playtest.bat                 play a session and check it (needs a shard)
 launchers\dev\sync_upstream.bat            check upstream drift
 launchers\shard\run.bat                    run the local dev shard
+launchers\shard\populate.bat               generate its world (once)
 launchers\game\play.bat                    run the client
 ```
 

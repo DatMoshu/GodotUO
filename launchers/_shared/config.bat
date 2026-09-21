@@ -51,6 +51,13 @@ if not defined UO_SHARD_REPO        set "UO_SHARD_REPO=https://github.com/modern
 if not defined UO_SHARD_SRC         set "UO_SHARD_SRC=%UO_ROOT%\tools\modernuo\src"
 if not defined UO_SHARD_DIST        set "UO_SHARD_DIST=%UO_SHARD_SRC%\Distribution"
 
+REM  The dev shard's owner account. On a headless boot the shard makes sure
+REM  this account exists and has owner access, which is what lets the world be
+REM  generated and administered from the client -- ModernUO takes its commands
+REM  in game, not at the console. Local dev shard only; not a credential.
+if not defined UO_SHARD_OWNER       set "UO_SHARD_OWNER=guoprobe"
+if not defined UO_SHARD_OWNER_PASSWORD set "UO_SHARD_OWNER_PASSWORD=guoprobe"
+
 REM --- Python -------------------------------------------------------------
 if not defined UO_PYTHON            set "UO_PYTHON=python"
 

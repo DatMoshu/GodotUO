@@ -1,0 +1,84 @@
+diff --git a/Projects/UOContent/Misc/AccountPrompt.cs b/Projects/UOContent/Misc/AccountPrompt.cs
+index 032c55526..6ff8de422 100644
+--- a/Projects/UOContent/Misc/AccountPrompt.cs
++++ b/Projects/UOContent/Misc/AccountPrompt.cs
+@@ -1,3 +1,4 @@
++using System;
+ using Server.Accounting;
+ using Server.Logging;
+ 
+@@ -9,9 +10,21 @@ public static class AccountPrompt
+ 
+     public static void Initialize()
+     {
++        // GUO patch: headless startup used to throw at the prompt below --
++        // Core.Headless is true whenever stdin is redirected, which is every
++        // scripted run. The owner account is made from the environment
++        // instead, so a dev shard can be generated and administered from the
++        // client without anyone typing at the console.
++        if (Core.Headless)
++        {
++            EnsureOwnerAccountFromEnvironment();
++            return;
++        }
++
+         if (Accounts.Count == 0)
+         {
+             logger.Warning("This server has no accounts.");
++
+             logger.Information("Do you want to create the owner account now? (y/n):");
+ 
+             var answer = ConsoleInputHandler.ReadLine();
+@@ -37,4 +50,52 @@ public static void Initialize()
+             }
+         }
+     }
++
++    // GUO patch.
++    private static void EnsureOwnerAccountFromEnvironment()
++    {
++        var username = Environment.GetEnvironmentVariable("UO_SHARD_OWNER");
++        var password = Environment.GetEnvironmentVariable("UO_SHARD_OWNER_PASSWORD");
++
++        if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
++        {
++            logger.Warning("Headless: UO_SHARD_OWNER is not set, so there is no owner account.");
++            return;
++        }
++
++        // Auto account creation means the account usually exists already,
++        // made by the first login and therefore only a player.
++        if (Accounts.GetAccount(username) is Account existing)
++        {
++            if (existing.AccessLevel < AccessLevel.Owner)
++            {
++                existing.AccessLevel = AccessLevel.Owner;
++                logger.Information("Headless: raised account '{Username}' to owner.", username);
++            }
++
++            // A character's access level is copied from the account when the
++            // character is made, and never again -- so a character created
++            // before the account was raised stays a player, and commands typed
++            // by it are silently treated as speech.
++            for (var i = 0; i < existing.Length; i++)
++            {
++                if (existing[i] is { } character && character.AccessLevel < AccessLevel.Owner)
++                {
++                    character.AccessLevel = AccessLevel.Owner;
++                    logger.Information("Headless: raised character '{Name}' to owner.", character.Name);
++                }
++            }
++
++            ServerAccess.AddProtectedAccount(existing, true);
++            return;
++        }
++
++        var account = new Account(username, password)
++        {
++            AccessLevel = AccessLevel.Owner
++        };
++
++        logger.Information("Headless: owner account created: {Username}", username);
++        ServerAccess.AddProtectedAccount(account, true);
++    }
+ }

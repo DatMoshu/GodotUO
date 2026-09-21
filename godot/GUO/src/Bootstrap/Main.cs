@@ -121,7 +121,11 @@ public partial class Main : Node
             case RunMode.Play:
                 StartClient();
 
-                if (_options.InputProbe)
+                if (_options.ShardCommands.Count > 0)
+                {
+                    ShardCommandsThenQuit();
+                }
+                else if (_options.InputProbe)
                 {
                     // A fixed settle, not a fraction of the budget: the login
                     // screen is up well inside 200 frames, and scaling this
@@ -260,6 +264,16 @@ public partial class Main : Node
     /// is a test now, and --shot-after is not needed with it: the run ends
     /// when the probe does.
     /// </remarks>
+    /// <summary>
+    /// Log in and type the commands the launcher passed, then quit. The dev
+    /// shard takes its administration in game; see ShardCommands.
+    /// </summary>
+    private async void ShardCommandsThenQuit()
+    {
+        await ShardCommands.Run(this, _options.ShardCommands);
+        Quit(ShardCommands.Passed ? 0 : 1);
+    }
+
     private async void ProbeThenQuit()
     {
         await InputProbe.Run(this, 200);
@@ -358,6 +372,13 @@ public partial class Main : Node
         /// <summary>Drive the running client with synthesised input.</summary>
         public bool InputProbe { get; private set; }
 
+        /// <summary>
+        /// Lines to type into the game window once the character is in the
+        /// world, in order. Used to administer the local dev shard, which
+        /// takes its commands in game.
+        /// </summary>
+        public List<string> ShardCommands { get; } = new();
+
         /// <summary>Dotted client version, e.g. "7.0.107.76".</summary>
         public string ClientVersion { get; private set; } = "7.0.107.76";
 
@@ -408,6 +429,9 @@ public partial class Main : Node
                         break;
                     case "--input-probe":
                         o.InputProbe = true;
+                        break;
+                    case "--shard-command":
+                        o.ShardCommands.Add(Next());
                         break;
                     case "--shot-after":
                         if (int.TryParse(Next(), out int frames))

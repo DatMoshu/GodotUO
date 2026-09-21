@@ -103,6 +103,44 @@ internal static class InputProbe
 
     public static async System.Threading.Tasks.Task Run(Node host, int settleFrames)
     {
+        await EnterTheWorld(host, settleFrames);
+
+        Check(
+            "the character is in the world",
+            Client.Game.UO.World.InGame,
+            Client.Game.UO.World.Player == null
+                ? "no player"
+                : $"{Client.Game.UO.World.Player.Name} at "
+                  + $"{Client.Game.UO.World.Player.X},{Client.Game.UO.World.Player.Y}"
+        );
+
+        GD.Print("[GUO] input probe: full-size game window");
+
+        FullSizeGameWindow();
+
+        await Frames(host, 120);
+
+        GD.Print("[GUO] input probe: walking");
+
+        // A step plays a footstep, so this is where a sound effect can be
+        // listened for. It has to be caught while it is playing: an effect is
+        // about a second long, and by the end of the run there is nothing
+        // left to hear but the music, which says nothing about UOSound.
+        Check("the character walks", await ListenForSound(host, Walk(host)));
+
+        await RunTheRest(host);
+    }
+
+    /// <summary>
+    /// Log the probe's account in and get its character into the world.
+    /// </summary>
+    /// <remarks>
+    /// Separate from the run because it is not only the probe that needs it:
+    /// a dev shard is administered from inside the game, so the tool that
+    /// generates the world has to get into the world first.
+    /// </remarks>
+    public static async System.Threading.Tasks.Task EnterTheWorld(Node host, int settleFrames)
+    {
         await Frames(host, settleFrames);
 
         GD.Print("[GUO] input probe: typing the account");
@@ -163,30 +201,11 @@ internal static class InputProbe
         }
 
         await Frames(host, 240);
+    }
 
-        Check(
-            "the character is in the world",
-            Client.Game.UO.World.InGame,
-            Client.Game.UO.World.Player == null
-                ? "no player"
-                : $"{Client.Game.UO.World.Player.Name} at "
-                  + $"{Client.Game.UO.World.Player.X},{Client.Game.UO.World.Player.Y}"
-        );
-
-        GD.Print("[GUO] input probe: full-size game window");
-
-        FullSizeGameWindow();
-
-        await Frames(host, 120);
-
-        GD.Print("[GUO] input probe: walking");
-
-        // A step plays a footstep, so this is where a sound effect can be
-        // listened for. It has to be caught while it is playing: an effect is
-        // about a second long, and by the end of the run there is nothing
-        // left to hear but the music, which says nothing about UOSound.
-        Check("the character walks", await ListenForSound(host, Walk(host)));
-
+    /// <summary>Everything the run does once the character is walking.</summary>
+    private static async System.Threading.Tasks.Task RunTheRest(Node host)
+    {
         await Frames(host, 60);
 
         GD.Print("[GUO] input probe: opening the backpack");
@@ -215,6 +234,10 @@ internal static class InputProbe
         await UseFirstSkill(host);
 
         await ClickGumpButton<Game.UI.Gumps.PaperDollGump>(host, 8, "Status");
+
+        GD.Print("[GUO] input probe: clicking someone else");
+
+        await ClickSomeoneElse(host);
 
         GD.Print("[GUO] input probe: the journal, the options and war mode");
 
@@ -732,6 +755,143 @@ internal static class InputProbe
         );
     }
 
+    /// <summary>
+    /// Click the nearest person who is not the player, and let the server say
+    /// who they are.
+    /// </summary>
+    /// <remarks>
+    /// Everything the probe has clicked in the world so far has been the
+    /// player's own body. This is the other half: a mobile the shard sent,
+    /// drawn from its own position, hit-tested where the client thinks it is,
+    /// and named by the server in reply to the click.
+    /// </remarks>
+    private static async System.Threading.Tasks.Task ClickSomeoneElse(Node host)
+    {
+        Game.GameObjects.PlayerMobile player = Client.Game.UO.World.Player;
+
+        Vector2? self = await FindCharacter(host);
+
+        if (self == null)
+        {
+            Check("someone else is on screen", false, "the player is not on screen");
+
+            return;
+        }
+
+        // Nearest first: the further away a mobile is, the more likely
+        // something is drawn in front of it.
+        var others = new System.Collections.Generic.List<Game.GameObjects.Mobile>();
+
+        foreach (Game.GameObjects.Mobile mobile in Client.Game.UO.World.Mobiles.Values)
+        {
+            if (mobile.Serial != player.Serial)
+            {
+                others.Add(mobile);
+            }
+        }
+
+        others.Sort(
+            (a, b) =>
+                (System.Math.Abs(a.X - player.X) + System.Math.Abs(a.Y - player.Y)).CompareTo(
+                    System.Math.Abs(b.X - player.X) + System.Math.Abs(b.Y - player.Y)
+                )
+        );
+
+        GD.Print($"[GUO] input probe: {others.Count} other mobiles are known");
+
+        bool seen = false;
+        int tried = 0;
+
+        foreach (Game.GameObjects.Mobile mobile in others)
+        {
+            if (tried >= 4)
+            {
+                break;
+            }
+
+            // The player is drawn at `self`, so everyone else is drawn at
+            // `self` plus the difference between the two isometric positions.
+            // Recomputed right before the click, and confirmed by hovering:
+            // townspeople walk, and a position worked out a second ago puts
+            // the click on the floor they were standing on -- which the server
+            // answers, politely, with "marble floor".
+            Vector2 At() =>
+                new(
+                    self.Value.X + (mobile.RealScreenPosition.X - player.RealScreenPosition.X),
+                    self.Value.Y + (mobile.RealScreenPosition.Y - player.RealScreenPosition.Y)
+                );
+
+            Send(new InputEventMouseMotion { Position = At() });
+
+            await Frames(host, 4);
+
+            if (!ReferenceEquals(Game.SelectedObject.Object, mobile))
+            {
+                continue;
+            }
+
+            if (!seen)
+            {
+                Check(
+                    "someone else is on screen",
+                    true,
+                    $"{(string.IsNullOrEmpty(mobile.Name) ? "unnamed" : mobile.Name)} 0x{mobile.Serial:X}"
+                );
+
+                seen = true;
+            }
+
+            tried++;
+
+            await Click(host, At());
+
+            await Frames(host, 40);
+
+            // Not "did this one answer": the client asks for a name only when
+            // it does not already have one, so a click on somebody it has
+            // heard of is answered by silence. What is worth checking is that
+            // the names came from the server at all -- every line here is a
+            // mobile the client drew, asked about, and was told the name of.
+            int named = 0;
+
+            var entries = Game.Managers.JournalManager.Entries;
+
+            for (int e = 0; e < entries.Count; e++)
+            {
+                foreach (Game.GameObjects.Mobile known in others)
+                {
+                    if (entries[e].Name == known.Name)
+                    {
+                        named++;
+
+                        break;
+                    }
+                }
+            }
+
+            Check(
+                "the shard's people name themselves",
+                named > 0,
+                $"{named} of {entries.Count} journal lines are townspeople"
+            );
+
+            return;
+        }
+
+        if (seen)
+        {
+            Check("the shard's people name themselves", false, "nobody could be clicked");
+
+            return;
+        }
+
+        Check(
+            "someone else is on screen",
+            false,
+            $"none of the {others.Count} mobiles the shard sent could be hit"
+        );
+    }
+
     /// <summary>Every visible button with this id, in the order they are laid out.</summary>
     private static void Collect(
         Game.UI.Controls.Control parent,
@@ -785,6 +945,24 @@ internal static class InputProbe
 
         return "?";
     }
+
+    /// <summary>
+    /// Type a line into the game window and press enter, which is how the
+    /// client says anything to the server -- speech, and on a dev shard the
+    /// administration commands too.
+    /// </summary>
+    public static async System.Threading.Tasks.Task Say(Node host, string what)
+    {
+        await Type(host, what);
+
+        Send(new InputEventKey { Keycode = Key.Enter, Pressed = true });
+        await Frames(host, 2);
+        Send(new InputEventKey { Keycode = Key.Enter, Pressed = false });
+    }
+
+    /// <summary>Let the client run for a number of drawn frames.</summary>
+    public static async System.Threading.Tasks.Task Wait(Node host, int frames) =>
+        await Frames(host, frames);
 
     /// <summary>The middle of a control, in screen pixels.</summary>
     private static Vector2 Centre(Game.UI.Controls.Control control) =>
@@ -1090,11 +1268,7 @@ internal static class InputProbe
     /// </remarks>
     private static async System.Threading.Tasks.Task Speak(Node host, string what)
     {
-        await Type(host, what);
-
-        Send(new InputEventKey { Keycode = Key.Enter, Pressed = true });
-        await Frames(host, 2);
-        Send(new InputEventKey { Keycode = Key.Enter, Pressed = false });
+        await Say(host, what);
 
         await Frames(host, 60);
 
