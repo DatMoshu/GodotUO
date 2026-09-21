@@ -228,9 +228,25 @@ only the server can produce the evidence:
 - **Shopping.** Walking to a shopkeeper with the client's own pathfinder,
   "vendor buy", and a purchase off the shop gump. The thing bought arrives in
   the backpack as a new item the client did not have.
+- **Trade.** An item handed to another player. The probe starts a second copy
+  of the client on its own account (`--trade-partner`), which logs in, writes
+  down where it ended up and accepts what it is offered; the probe goes to it,
+  drops an item on it, and both sides tick their box. The item leaves the
+  backpack because the server moved it.
 
-Trade between two players is the last unexercised path, and it needs a second
-client.
+Every path the client has is now exercised except the ones behind
+`Network/Plugin.cs`, which is not ported.
+
+Two things the trade step had to learn, both about aim and both worth keeping
+in mind for anything else that points at the world:
+
+- What is under the cursor is worked out while the world is drawn, so asking
+  less than about four frames after moving the mouse reads the answer to the
+  previous question.
+- Two characters standing next to each other overlap, and which of them owns
+  a given pixel changes as they breathe. An offer is therefore lifted first
+  and aimed afterwards -- a drag that decides where to let go before it picks
+  anything up lets go a second later, and by then the answer has moved.
 
 ### Phase 6 — interface
 `Game/UI` (117 files, ~51k lines), `Input`

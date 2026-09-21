@@ -139,17 +139,23 @@ internal static class InputProbe
     /// a dev shard is administered from inside the game, so the tool that
     /// generates the world has to get into the world first.
     /// </remarks>
-    public static async System.Threading.Tasks.Task EnterTheWorld(Node host, int settleFrames)
+    public static async System.Threading.Tasks.Task EnterTheWorld(
+        Node host,
+        int settleFrames,
+        string account = ProbeAccount,
+        string password = ProbePassword,
+        string character = ProbeCharacter
+    )
     {
         await Frames(host, settleFrames);
 
         GD.Print("[GUO] input probe: typing the account");
 
         await Click(host, AccountField);
-        await Type(host, ProbeAccount);
+        await Type(host, account);
 
         await Click(host, PasswordField);
-        await Type(host, ProbePassword);
+        await Type(host, password);
 
         GD.Print("[GUO] input probe: clicking Login");
 
@@ -184,7 +190,7 @@ internal static class InputProbe
             GD.Print("[GUO] input probe: naming the character");
 
             await Click(host, CharacterName);
-            await Type(host, ProbeCharacter);
+            await Type(host, character);
             await Click(host, NextArrow);
 
             await Frames(host, 120);
@@ -246,6 +252,10 @@ internal static class InputProbe
         GD.Print("[GUO] input probe: going shopping");
 
         await VisitAVendor(host);
+
+        GD.Print("[GUO] input probe: trading with a second player");
+
+        await TradeWithAPartner(host);
 
         GD.Print("[GUO] input probe: the journal, the options and war mode");
 
@@ -505,16 +515,22 @@ internal static class InputProbe
         Game.UI.Gumps.ContainerGump pack =
             Game.Managers.UIManager.GetGump<Game.UI.Gumps.ContainerGump>();
 
-        Game.UI.Controls.ItemGump item = pack == null ? null : FindItem(pack);
+        (Game.GameObjects.Item Item, Vector2 At) item = pack == null
+            ? default
+            : await Grabbable(
+                host,
+                pack,
+                Client.Game.UO.World.Player.FindItemByLayer(Game.Data.Layer.Backpack)
+            );
 
-        if (item == null)
+        if (item.Item == null)
         {
-            GD.Print("[GUO] input probe: nothing in the backpack to move");
+            GD.Print("[GUO] input probe: nothing in the backpack can be picked up");
 
             return;
         }
 
-        Vector2 from = GrabPoint(item);
+        Vector2 from = item.At;
 
         // Down and to the right, staying well inside the container art: the
         // drop point has to be over the container for the server to read it
@@ -522,7 +538,7 @@ internal static class InputProbe
         Vector2 to = from + new Vector2(40, 30);
 
         GD.Print(
-            $"[GUO] input probe: dragging 0x{item.LocalSerial:X} from "
+            $"[GUO] input probe: dragging {item.Item.Name} 0x{item.Item.Serial:X} from "
             + $"{from.X},{from.Y} to {to.X},{to.Y}"
         );
 
@@ -531,7 +547,7 @@ internal static class InputProbe
         // item drawn over the one it was picked from, and then the drag is
         // still a real drag -- of a different item.
         Game.UI.Controls.Control pressed = await Drag(host, from, to);
-        uint serial = pressed?.LocalSerial ?? item.LocalSerial;
+        uint serial = pressed?.LocalSerial ?? item.Item.Serial;
 
         await Frames(host, 120);
 
@@ -609,17 +625,27 @@ internal static class InputProbe
         Compat.Rectangle bounds = Client.Game.Window.ClientBounds;
         var centre = new Vector2(bounds.Width / 2f, bounds.Height / 2f);
 
+        // A column and a little either side of it. The character is drawn
+        // at the middle of the window, but not to the pixel -- the camera
+        // lags a step, and standing among other people its own sprite can be
+        // overdrawn -- so a bare column reported "not on screen" for a
+        // character that was plainly there.
+        int[] across = { 0, -12, 12, -24, 24 };
+
         for (int dy = 0; dy >= -120; dy -= 10)
         {
-            var at = new Vector2(centre.X, centre.Y + dy);
-
-            Send(new InputEventMouseMotion { Position = at });
-
-            await Frames(host, 4);
-
-            if (ReferenceEquals(Game.SelectedObject.Object, Client.Game.UO.World.Player))
+            foreach (int dx in across)
             {
-                return at;
+                var at = new Vector2(centre.X + dx, centre.Y + dy);
+
+                Send(new InputEventMouseMotion { Position = at });
+
+                await Frames(host, 4);
+
+                if (ReferenceEquals(Game.SelectedObject.Object, Client.Game.UO.World.Player))
+                {
+                    return at;
+                }
             }
         }
 
@@ -899,8 +925,15 @@ internal static class InputProbe
                 menu == null ? "no popup arrived" : $"{menu.Width}x{menu.Height}"
             );
 
-            // Left where it is: the next click of the run lands outside it,
-            // which is how a player closes one.
+            // Closed again, and this is not tidiness. A popup sits over the
+            // world where the mouse was, and while it is there the hit test
+            // answers with the gump and not with what is drawn underneath --
+            // so the next step that goes looking for a mobile on screen finds
+            // nothing, which is a confusing way to fail a trade.
+            Game.Managers.UIManager.ShowGamePopup(null);
+
+            await Frames(host, 10);
+
             return;
         }
 
@@ -943,7 +976,7 @@ internal static class InputProbe
 
         if (pack == null || doll == null)
         {
-            Check("the hand can be emptied", false, "the backpack or the paperdoll is not open");
+            Check("the hands can be emptied", false, "the backpack or the paperdoll is not open");
 
             return;
         }
@@ -958,19 +991,27 @@ internal static class InputProbe
 
         Vector2 intoPack = await EmptySpot(host, pack);
 
-        Game.GameObjects.Item worn =
-            Client.Game.UO.World.Player.FindItemByLayer(Game.Data.Layer.OneHanded)
-            ?? Client.Game.UO.World.Player.FindItemByLayer(Game.Data.Layer.TwoHanded);
+        // Both hands, not just the one with a weapon in it. A shield lives on
+        // the two-handed layer and stays there while a sword comes off the
+        // other; the drop that follows then lands on the shield's picture and
+        // is ignored, because the paperdoll only wears onto a layer that is
+        // empty.
+        Game.Data.Layer[] hands = { Game.Data.Layer.OneHanded, Game.Data.Layer.TwoHanded };
 
-        if (worn != null)
+        foreach (Game.Data.Layer hand in hands)
         {
+            Game.GameObjects.Item worn = Client.Game.UO.World.Player.FindItemByLayer(hand);
+
+            if (worn == null)
+            {
+                continue;
+            }
+
             Game.UI.Controls.Control picture = FindControl(doll, worn.Serial);
 
             if (picture == null)
             {
-                Check("the hand can be emptied", false, $"0x{worn.Serial:X} is not on the paperdoll");
-
-                return;
+                continue;
             }
 
             GD.Print($"[GUO] input probe: taking off {worn.Name} 0x{worn.Serial:X}");
@@ -981,19 +1022,17 @@ internal static class InputProbe
             await Drag(host, GrabPoint(picture), intoPack);
 
             await Frames(host, 120);
-
-            Game.GameObjects.Item stillWorn =
-                Client.Game.UO.World.Player.FindItemByLayer(Game.Data.Layer.OneHanded)
-                ?? Client.Game.UO.World.Player.FindItemByLayer(Game.Data.Layer.TwoHanded);
-
-            Check(
-                "the hand can be emptied",
-                stillWorn == null || stillWorn.Serial != worn.Serial,
-                stillWorn == null
-                    ? $"{worn.Name} is off"
-                    : $"still holding {stillWorn.Name} 0x{stillWorn.Serial:X}"
-            );
         }
+
+        Game.GameObjects.Item left =
+            Client.Game.UO.World.Player.FindItemByLayer(Game.Data.Layer.OneHanded)
+            ?? Client.Game.UO.World.Player.FindItemByLayer(Game.Data.Layer.TwoHanded);
+
+        Check(
+            "the hands can be emptied",
+            left == null,
+            left == null ? "both hands are free" : $"still holding {left.Name} 0x{left.Serial:X}"
+        );
 
         Game.GameObjects.Item weapon = FindWeapon();
 
@@ -1006,9 +1045,17 @@ internal static class InputProbe
 
         Game.UI.Controls.ItemGump icon = FindItem(pack, weapon.Serial);
 
-        if (icon == null)
+        Vector2? grab = icon == null ? null : await PressPoint(host, icon);
+
+        if (grab == null)
         {
-            Check("a weapon can be equipped", false, $"0x{weapon.Serial:X} is not drawn");
+            Check(
+                "a weapon can be equipped",
+                false,
+                icon == null
+                    ? $"0x{weapon.Serial:X} is not drawn"
+                    : $"{weapon.Name} is drawn under something else"
+            );
 
             return;
         }
@@ -1017,7 +1064,7 @@ internal static class InputProbe
 
         await Drag(
             host,
-            GrabPoint(icon),
+            grab.Value,
             new Vector2(
                 doll.ScreenCoordinateX + doll.Width / 2f,
                 doll.ScreenCoordinateY + doll.Height / 2f
@@ -1132,6 +1179,12 @@ internal static class InputProbe
                 townspeople.Add(mobile);
             }
         }
+
+        // Far enough away that walking there means something: a run that
+        // began standing on top of a shopkeeper -- which happens, the
+        // character logs back in where it left off -- "walked" nought tiles
+        // and failed a check about the pathfinder for no good reason.
+        townspeople.RemoveAll(m => Distance(m) < 3);
 
         townspeople.Sort((a, b) => Distance(a).CompareTo(Distance(b)));
 
@@ -1281,6 +1334,495 @@ internal static class InputProbe
         );
     }
 
+    /// <summary>
+    /// Trade an item with another player, who is a second client the probe
+    /// starts for the purpose.
+    /// </summary>
+    /// <remarks>
+    /// The last thing in the protocol a lone client cannot reach. A secure
+    /// trade is opened by the server for two players at once: dropping an
+    /// item on somebody is a request, the shard answers both clients with a
+    /// trade window, and the goods only change hands when both have ticked
+    /// their side. A shopkeeper will not do it and neither will a horse, so
+    /// there has to be a second player -- hence a second copy of the client,
+    /// started here and killed when this is done with it. TradePartner is the
+    /// other half.
+    ///
+    /// What is checked is both ends of that: a window that only the server
+    /// can open, and an item that leaves this character's backpack because
+    /// the other one accepted.
+    /// </remarks>
+    private static async System.Threading.Tasks.Task TradeWithAPartner(Node host)
+    {
+        Game.GameObjects.PlayerMobile player = Client.Game.UO.World.Player;
+
+        // Where to come back to. The trade happens wherever the other client
+        // logged in, which is somebody's front room, and the steps after this
+        // one need a character that can be seen: standing indoors under a
+        // roof, the hit test finds floor where the character is.
+        int homeX = player.X;
+        int homeY = player.Y;
+        int homeZ = player.Z;
+
+        // Stale coordinates would send the probe to where the last run's
+        // partner stood, so the note is torn up before the new one starts.
+        if (FileAccess.FileExists(TradePartner.WhereIAm))
+        {
+            DirAccess.RemoveAbsolute(ProjectSettings.GlobalizePath(TradePartner.WhereIAm));
+        }
+
+        string[] arguments =
+        {
+            "--path",
+            ProjectSettings.GlobalizePath("res://"),
+            "--",
+            "--play",
+            "--trade-partner"
+        };
+
+        int partnerProcess = OS.CreateProcess(OS.GetExecutablePath(), arguments);
+
+        if (partnerProcess <= 0)
+        {
+            Check("a second player arrives", false, "the second client would not start");
+
+            return;
+        }
+
+        GD.Print($"[GUO] input probe: started a second client, pid {partnerProcess}");
+
+        try
+        {
+            // Where it ended up, which is not where this character is: the
+            // two were made on the same shard and came up forty tiles apart.
+            string note = null;
+
+            for (int wait = 0; wait < 240 && note == null; wait++)
+            {
+                await Frames(host, 30);
+
+                if (!FileAccess.FileExists(TradePartner.WhereIAm))
+                {
+                    continue;
+                }
+
+                using FileAccess read = FileAccess.Open(
+                    TradePartner.WhereIAm,
+                    FileAccess.ModeFlags.Read
+                );
+
+                note = read?.GetLine();
+            }
+
+            if (string.IsNullOrWhiteSpace(note))
+            {
+                Check("a second player arrives", false, "the second client never logged in");
+
+                return;
+            }
+
+            GD.Print($"[GUO] input probe: the second player is at {note}");
+
+            string[] where = note.Trim().Split(' ');
+
+            if (where.Length != 3 || !int.TryParse(where[0], out int wx))
+            {
+                Check("a second player arrives", false, $"cannot read \"{note}\"");
+
+                return;
+            }
+
+            // The probe owns this shard, so it can simply be there. Walking
+            // forty tiles of town is a pathfinder test, and one bad step in it
+            // would fail the trade check for the wrong reason.
+            //
+            if (!int.TryParse(where[1], out int wy))
+            {
+                Check("a second player arrives", false, $"cannot read \"{note}\"");
+
+                return;
+            }
+
+            // Two tiles off, not one and not none. Two mobiles on the same
+            // tile are drawn in the same place and the hit test answers with
+            // this character every time; one tile apart their sprites still
+            // overlap and which of them a pixel belongs to changes as they
+            // breathe. Two is clear of that and still inside the three tiles
+            // an item can be handed across.
+            await Say(host, $"[go {wx + 2} {wy} {where[2]}");
+
+            Game.GameObjects.Mobile partner = null;
+
+            // Long: the second client loads the whole install again before it
+            // can log in, and it is doing that while this one is playing.
+            for (int wait = 0; wait < 240 && partner == null; wait++)
+            {
+                await Frames(host, 30);
+
+                foreach (Game.GameObjects.Mobile mobile in Client.Game.UO.World.Mobiles.Values)
+                {
+                    // Blue and not this character, which is nearly the other
+                    // player: most townspeople are invulnerable, but not all
+                    // of them are -- the first innocent mobile in New Haven
+                    // turned out to be a wandering healer. So the name
+                    // decides, and the name has to be asked for: the client
+                    // only knows the ones it has clicked, and a mobile that
+                    // has just walked into view has none.
+                    if (mobile.Serial == player.Serial
+                        || mobile.NotorietyFlag != Game.Data.NotorietyFlag.Innocent)
+                    {
+                        continue;
+                    }
+
+                    if (string.IsNullOrEmpty(mobile.Name))
+                    {
+                        Game.GameActions.SingleClick(Client.Game.UO.World, mobile.Serial);
+
+                        continue;
+                    }
+
+                    if (mobile.Name == TradePartner.PartnerCharacter)
+                    {
+                        partner = mobile;
+
+                        break;
+                    }
+                }
+            }
+
+            if (partner == null)
+            {
+                Check("a second player arrives", false, "nobody else logged in");
+
+                return;
+            }
+
+            Check(
+                "a second player arrives",
+                true,
+                $"{(string.IsNullOrEmpty(partner.Name) ? "unnamed" : partner.Name)} "
+                    + $"0x{partner.Serial:X}, {Distance(partner)} tiles away"
+            );
+
+            Game.UI.Gumps.ContainerGump pack =
+                Game.Managers.UIManager.GetGump<Game.UI.Gumps.ContainerGump>();
+
+            Game.GameObjects.Item bag = player.FindItemByLayer(Game.Data.Layer.Backpack);
+
+            // Round them, if need be. Two tiles east is usually a clear view
+            // of somebody, but not when there is a wall or a cupboard in
+            // between, and a partner that cannot be seen cannot be handed
+            // anything -- so the probe tries the other sides before giving up.
+            (int X, int Y)[] sides = { (2, 0), (0, 2), (-2, 0), (0, -2), (1, 1) };
+
+            Vector2? self = await FindCharacter(host);
+            Vector2? on = self == null ? null : await FindOnScreen(host, partner, self.Value);
+
+            for (int side = 1; side < sides.Length && on == null; side++)
+            {
+                await Say(host, $"[go {wx + sides[side].X} {wy + sides[side].Y} {where[2]}");
+
+                await Frames(host, 90);
+
+                self = await FindCharacter(host);
+                on = self == null ? null : await FindOnScreen(host, partner, self.Value);
+            }
+
+            (Game.GameObjects.Item Item, Vector2 At) offer =
+                pack == null ? default : await Grabbable(host, pack, bag);
+
+            if (on == null || offer.Item == null)
+            {
+                Check(
+                    "the shard opens a trade",
+                    false,
+                    self == null
+                        ? "this character is not on screen"
+                        : on == null
+                            ? $"{partner.Name} is not on screen"
+                            : "nothing in the backpack can be picked up"
+                );
+
+                return;
+            }
+
+            GD.Print(
+                $"[GUO] input probe: offering {offer.Item.Name} 0x{offer.Item.Serial:X} "
+                    + $"to {partner.Name}"
+            );
+
+            // Lifted first and aimed afterwards, which is the opposite of
+            // every other drag here. A drag that works out where to let go
+            // before it picks anything up lets go a second later, and a
+            // second is long enough for two people standing next to each
+            // other to shuffle: the item was dropped on the ground, or on the
+            // character offering it, while the hit test had been right when
+            // it was asked.
+            if (!await Lift(host, offer.At))
+            {
+                Check("the shard opens a trade", false, "the offer would not come off the shelf");
+
+                return;
+            }
+
+            Vector2? aim = await FindOnScreen(host, partner, self.Value, holding: true);
+
+            await Release(host, aim ?? on.Value);
+
+            Game.UI.Gumps.TradingGump trade = null;
+
+            for (int wait = 0; wait < 40 && trade == null; wait++)
+            {
+                await Frames(host, 10);
+
+                trade = Game.Managers.UIManager.GetGump<Game.UI.Gumps.TradingGump>();
+            }
+
+            Check(
+                "the shard opens a trade",
+                trade != null,
+                trade == null ? "no trade window arrived" : $"with {partner.Name}"
+            );
+
+            if (trade == null)
+            {
+                return;
+            }
+
+            // Clear of everything else, then tick this side's box. The other
+            // side ticks its own, and the server moves the goods.
+            trade.X = 1200;
+            trade.Y = 700;
+
+            await Frames(host, 20);
+
+            Game.UI.Controls.Control box = FirstOfType(trade, "Checkbox");
+
+            if (box == null)
+            {
+                Check("the goods change hands", false, "the trade window has no checkbox");
+
+                return;
+            }
+
+            await Click(host, Centre(box));
+
+            bool gone = false;
+
+            for (int wait = 0; wait < 60 && !gone; wait++)
+            {
+                await Frames(host, 10);
+
+                gone = !Client.Game.UO.World.Items.TryGetValue(
+                        offer.Item.Serial,
+                        out Game.GameObjects.Item still
+                    )
+                    || still.Container != bag.Serial;
+            }
+
+            Check(
+                "the goods change hands",
+                gone,
+                gone
+                    ? $"{offer.Item.Name} is no longer in the pack"
+                    : $"{offer.Item.Name} came back"
+            );
+        }
+        finally
+        {
+            // Whatever happened, do not walk away holding it: an item on the
+            // cursor swallows every click for the rest of the run, which is
+            // how one failed offer turned into four failed checks.
+            if (Client.Game.UO.GameCursor.ItemHold.Enabled)
+            {
+                Game.UI.Gumps.ContainerGump back =
+                    Game.Managers.UIManager.GetGump<Game.UI.Gumps.ContainerGump>();
+
+                if (back != null)
+                {
+                    await Click(host, await EmptySpot(host, back));
+
+                    await Frames(host, 60);
+                }
+
+                GD.Print("[GUO] input probe: put the offered item back");
+            }
+
+            OS.Kill(partnerProcess);
+
+            GD.Print("[GUO] input probe: the second client is closed");
+
+            if (player.X != homeX || player.Y != homeY)
+            {
+                await Say(host, $"[go {homeX} {homeY} {homeZ}");
+
+                await Frames(host, 60);
+            }
+        }
+    }
+
+    /// <summary>
+    /// A point on this control that the client agrees is this control.
+    /// </summary>
+    /// <remarks>
+    /// Icons in a container overlap, and a pixel that is solid in one item's
+    /// art can belong to the item drawn over it. Aiming at the middle of the
+    /// art and hoping is how a katana's icon was pressed and a shield came
+    /// off the pile instead -- and the shield, dropped on the paperdoll, is
+    /// what the character ended up wearing. So the point is hovered and the
+    /// client asked, and the search widens over the icon until it agrees.
+    /// </remarks>
+    private static async System.Threading.Tasks.Task<Vector2?> PressPoint(
+        Node host,
+        Game.UI.Controls.Control icon
+    )
+    {
+        var candidates = new System.Collections.Generic.List<Vector2> { GrabPoint(icon) };
+
+        for (int y = 3; y < icon.Height; y += 5)
+        {
+            for (int x = 3; x < icon.Width; x += 5)
+            {
+                candidates.Add(new Vector2(icon.ScreenCoordinateX + x, icon.ScreenCoordinateY + y));
+            }
+        }
+
+        foreach (Vector2 at in candidates)
+        {
+            Send(new InputEventMouseMotion { Position = at });
+
+            await Frames(host, 4);
+
+            if (ReferenceEquals(Game.Managers.UIManager.MouseOverControl, icon))
+            {
+                return at;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>Press on something and start moving, so the cursor takes it.</summary>
+    private static async System.Threading.Tasks.Task<bool> Lift(Node host, Vector2 at)
+    {
+        Send(new InputEventMouseMotion { Position = at });
+
+        await Frames(host, 2);
+
+        Send(new InputEventMouseButton
+        {
+            ButtonIndex = MouseButton.Left,
+            Position = at,
+            Pressed = true,
+        });
+
+        await Frames(host, 6);
+
+        Vector2 previous = at;
+
+        for (int i = 1; i <= 4; i++)
+        {
+            Vector2 step = at + new Vector2(i * 6, i * 4);
+
+            Send(new InputEventMouseMotion
+            {
+                Position = step,
+                Relative = step - previous,
+                ButtonMask = MouseButtonMask.Left,
+            });
+
+            previous = step;
+
+            await Frames(host, 4);
+        }
+
+        return Client.Game.UO.GameCursor.ItemHold.Enabled;
+    }
+
+    /// <summary>Let go of what the cursor is holding, here.</summary>
+    private static async System.Threading.Tasks.Task Release(Node host, Vector2 at)
+    {
+        Send(new InputEventMouseButton
+        {
+            ButtonIndex = MouseButton.Left,
+            Position = at,
+            Pressed = false,
+        });
+
+        await Frames(host, 40);
+    }
+
+    /// <summary>
+    /// An item in the backpack whose icon the cursor can actually take hold
+    /// of, and the point to press.
+    /// </summary>
+    /// <remarks>
+    /// Items in a container overlap, and an icon's own solid pixel can belong
+    /// to the icon drawn on top of it: aiming at the first thing in the pack
+    /// pressed on a pile of gold instead and dragged nothing. So each
+    /// candidate is hovered first and only taken if the client agrees that is
+    /// what is under the cursor.
+    /// </remarks>
+    private static async System.Threading.Tasks.Task<(Game.GameObjects.Item, Vector2)> Grabbable(
+        Node host,
+        Game.UI.Gumps.ContainerGump pack,
+        Game.GameObjects.Item bag
+    )
+    {
+        for (Game.LinkedObject i = bag?.Items; i != null; i = i.Next)
+        {
+            var item = (Game.GameObjects.Item)i;
+
+            // Not a stack. Pressing on a pile of a thousand gold coins does
+            // not pick it up: it asks how many, in a gump of its own, and the
+            // cursor stays empty while that is up.
+            if (item.Amount > 1)
+            {
+                continue;
+            }
+
+            Game.UI.Controls.ItemGump icon = FindItem(pack, item.Serial);
+
+            if (icon == null)
+            {
+                continue;
+            }
+
+            Vector2? at = await PressPoint(host, icon);
+
+            if (at != null)
+            {
+                return (item, at.Value);
+            }
+        }
+
+        return (null, Vector2.Zero);
+    }
+
+    /// <summary>The first visible control of this type name under a parent.</summary>
+    private static Game.UI.Controls.Control FirstOfType(
+        Game.UI.Controls.Control parent,
+        string typeName
+    )
+    {
+        foreach (Game.UI.Controls.Control child in parent.Children)
+        {
+            if (child.GetType().Name == typeName && child.IsVisible)
+            {
+                return child;
+            }
+
+            Game.UI.Controls.Control found = FirstOfType(child, typeName);
+
+            if (found != null)
+            {
+                return found;
+            }
+        }
+
+        return null;
+    }
+
     /// <summary>How far a mobile is from the player, in tiles walked.</summary>
     private static int Distance(Game.GameObjects.Mobile mobile)
     {
@@ -1292,17 +1834,37 @@ internal static class InputProbe
         );
     }
 
-    /// <summary>The first thing on a shop's shelf.</summary>
-    private static Game.UI.Controls.Control FirstShopItem(Game.UI.Controls.Control parent)
+    /// <summary>
+    /// The first thing on a shop's shelf that is inside the shop's window.
+    /// </summary>
+    /// <remarks>
+    /// The shelf is a scroll area and it is taller than the frame around it,
+    /// so the lines below the fold are laid out, visible and not on screen.
+    /// Double-clicking one of those is a double-click on whatever the shop is
+    /// drawn over, and the purchase that follows is of nothing at all.
+    /// </remarks>
+    private static Game.UI.Controls.Control FirstShopItem(Game.UI.Gumps.Gump shop)
+    {
+        return FirstShopItem(shop, shop);
+    }
+
+    private static Game.UI.Controls.Control FirstShopItem(
+        Game.UI.Controls.Control parent,
+        Game.UI.Gumps.Gump shop
+    )
     {
         foreach (Game.UI.Controls.Control child in parent.Children)
         {
-            if (child.GetType().Name == "ShopItem" && child.IsVisible)
+            if (child.GetType().Name == "ShopItem"
+                && child.IsVisible
+                && child.ScreenCoordinateY >= shop.ScreenCoordinateY
+                && child.ScreenCoordinateY + child.Height
+                    <= shop.ScreenCoordinateY + shop.Height)
             {
                 return child;
             }
 
-            Game.UI.Controls.Control found = FirstShopItem(child);
+            Game.UI.Controls.Control found = FirstShopItem(child, shop);
 
             if (found != null)
             {
@@ -1360,9 +1922,10 @@ internal static class InputProbe
             // Both: the weapon flag is set on things that are not weapons --
             // a leather jingasa is a hat -- and the hand layers are worn by
             // things that are not weapons either, like a candle.
-            if (data.IsWeapon
-                && (data.Layer == (byte)Game.Data.Layer.OneHanded
-                    || data.Layer == (byte)Game.Data.Layer.TwoHanded))
+            // One-handed only. A shield is a two-handed thing with the
+            // weapon flag set, and equipping one proves the same round trip
+            // while reading, in the log, like a mistake.
+            if (data.IsWeapon && data.Layer == (byte)Game.Data.Layer.OneHanded)
             {
                 return item;
             }
@@ -1501,25 +2064,65 @@ internal static class InputProbe
     private static async System.Threading.Tasks.Task<Vector2?> FindOnScreen(
         Node host,
         Game.GameObjects.Mobile mobile,
-        Vector2 self
+        Vector2 self,
+        bool holding = false
     )
     {
         Game.GameObjects.PlayerMobile player = Client.Game.UO.World.Player;
 
+        // Sideways as well as up. A mobile standing next to this one is
+        // drawn a tile's width away and overlapping it, and the pixel directly
+        // above its feet can belong to whoever is drawn in front -- so the
+        // column alone found people across the square and missed the one
+        // standing shoulder to shoulder.
+        int[] across = { 0, -12, 12, -24, 24 };
+
         for (int dy = 0; dy >= -160; dy -= 8)
         {
-            var at = new Vector2(
-                self.X + (mobile.RealScreenPosition.X - player.RealScreenPosition.X),
-                self.Y + (mobile.RealScreenPosition.Y - player.RealScreenPosition.Y) + dy
-            );
-
-            Send(new InputEventMouseMotion { Position = at });
-
-            await Frames(host, 3);
-
-            if (ReferenceEquals(Game.SelectedObject.Object, mobile))
+            foreach (int dx in across)
             {
-                return at;
+                var at = new Vector2(
+                    self.X + (mobile.RealScreenPosition.X - player.RealScreenPosition.X) + dx,
+                    self.Y + (mobile.RealScreenPosition.Y - player.RealScreenPosition.Y) + dy
+                );
+
+                Send(new InputEventMouseMotion
+                {
+                    Position = at,
+                    ButtonMask = holding ? MouseButtonMask.Left : 0
+                });
+
+                // Four, and this is not padding: what is under the cursor is
+                // worked out while the world is drawn, so a shorter wait reads
+                // the answer to the previous question. At two frames this
+                // missed a mobile standing one tile away and reported it as
+                // not on screen.
+                await Frames(host, 4);
+
+                if (!ReferenceEquals(Game.SelectedObject.Object, mobile))
+                {
+                    continue;
+                }
+
+                // Asked twice. Sprites that overlap swap places from frame to
+                // frame as they animate, so a pixel that answers with the
+                // right mobile once can answer with somebody else by the time
+                // the button comes up -- which is how an item offered to
+                // another player was dropped on the character offering it.
+                await Frames(host, 8);
+
+                Send(new InputEventMouseMotion
+                {
+                    Position = at,
+                    ButtonMask = holding ? MouseButtonMask.Left : 0
+                });
+
+                await Frames(host, 4);
+
+                if (ReferenceEquals(Game.SelectedObject.Object, mobile))
+                {
+                    return at;
+                }
             }
         }
 

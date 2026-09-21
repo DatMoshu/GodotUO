@@ -29,7 +29,14 @@ Then, in another terminal, `launchers\game\play.bat`.
 
 Auto account creation is on, so the first login with any name and password
 makes that account. The input probe (`launchers\dev\playtest.bat`) uses
-`guoprobe` / `guoprobe`, which is also `UO_SHARD_OWNER`.
+`guoprobe` / `guoprobe`, which is also `UO_SHARD_OWNER`, and `guomate` for the
+second client it starts to trade with.
+
+That second account is why `accountHandler.maxAccountsPerIP` is **4** in the
+template rather than ModernUO's default of 1: two clients on one machine are
+two accounts from one address, and the shard refuses the second with
+`Account 'guomate' not created, ip already has 1 account`. On a shard anyone
+else can reach, put it back to 1.
 
 ## Populating the world
 

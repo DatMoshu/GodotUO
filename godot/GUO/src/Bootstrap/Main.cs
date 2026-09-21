@@ -125,6 +125,10 @@ public partial class Main : Node
                 {
                     ShardCommandsThenQuit();
                 }
+                else if (_options.TradePartner)
+                {
+                    TradePartnerThenQuit();
+                }
                 else if (_options.InputProbe)
                 {
                     // A fixed settle, not a fraction of the budget: the login
@@ -274,6 +278,16 @@ public partial class Main : Node
         Quit(ShardCommands.Passed ? 0 : 1);
     }
 
+    /// <summary>
+    /// Log in as somebody else and wait to be traded with, then quit. Started
+    /// by the probe, which is the only thing that wants it; see TradePartner.
+    /// </summary>
+    private async void TradePartnerThenQuit()
+    {
+        await TradePartner.Run(this);
+        Quit(0);
+    }
+
     private async void ProbeThenQuit()
     {
         await InputProbe.Run(this, 200);
@@ -373,6 +387,11 @@ public partial class Main : Node
         public bool InputProbe { get; private set; }
 
         /// <summary>
+        /// Log in as a second player and accept trades, rather than play.
+        /// </summary>
+        public bool TradePartner { get; private set; }
+
+        /// <summary>
         /// Lines to type into the game window once the character is in the
         /// world, in order. Used to administer the local dev shard, which
         /// takes its commands in game.
@@ -429,6 +448,9 @@ public partial class Main : Node
                         break;
                     case "--input-probe":
                         o.InputProbe = true;
+                        break;
+                    case "--trade-partner":
+                        o.TradePartner = true;
                         break;
                     case "--shard-command":
                         o.ShardCommands.Add(Next());
