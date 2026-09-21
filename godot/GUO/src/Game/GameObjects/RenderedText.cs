@@ -5,6 +5,7 @@ using GUO.Renderer;
 using GUO.Utility;
 using GUO.Compat;
 using Godot;
+using Color = GUO.Compat.Color;
 using StbTextEditSharp;
 using System;
 using System.Collections.Generic;
