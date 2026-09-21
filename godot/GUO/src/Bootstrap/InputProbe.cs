@@ -238,7 +238,7 @@ internal static class InputProbe
         {
             if (g.IsVisible && !g.IsDisposed)
             {
-                open.Add(g.GetType().Name);
+                open.Add($"{g.GetType().Name}@{g.X},{g.Y} {g.Width}x{g.Height}");
             }
         }
 
