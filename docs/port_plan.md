@@ -172,11 +172,11 @@ Three constraints that are easy to get wrong and expensive to fix later:
 pixel parity with a reference capture, evidenced by a screenshot, and
 `grep -rn "Godot\." src/Render/Scene/` is empty.
 
-**Status:** the batcher, atlases, hues, blend states and fonts are in and
-measured (`launchers\dev\batcher_probe.bat`, 130 checks). The login screen
-draws correctly at 640x480, one client pixel per screen pixel — but a login
-screen is gumps and fonts, not terrain, so the "done when" above is not met.
-Decisions: ADR-0001 through ADR-0004.
+**Status:** met, by screenshot. The batcher, atlases, hues, blend states and
+fonts are in and measured (`launchers\dev\batcher_probe.bat`, 130 checks), and
+New Haven draws at 3840x2054 — terrain, statics, multis, mobiles, and the
+lighting that comes with nightfall — one client pixel per screen pixel, with
+the camera following the player. Decisions: ADR-0001 through ADR-0004.
 
 ### Phase 4 — the world
 `Game/Data`, `Game/GameObjects`, `Game/Map`
@@ -184,6 +184,9 @@ Decisions: ADR-0001 through ADR-0004.
 Largely verbatim and shim. Terrain, statics, multis, mobiles.
 
 **Done when:** a facet loads and displays, and the camera moves over it.
+
+**Status:** met. Trammel loads around New Haven and the camera follows the
+player walking through it.
 
 ### Phase 5 — the shard
 `Network`, `Configuration`
@@ -196,10 +199,12 @@ compression, encryption variants.
 **Done when:** login completes, the character list arrives, and the world
 loads from a live shard.
 
-**Status:** the stack is ported and reached. Clicking Login runs `LoginScene`
-through `NetClient` to a real socket connect; with nothing listening the client
-draws its own "Connection lost" gump. Nothing past the handshake has been
-exercised, because that needs a shard to point at (`UO_SHARD_HOST`).
+**Status:** met, against a live shard. `launchers\shard\run.bat` runs a local
+ModernUO (`tools/modernuo/README.md`); the client logs in, gets the shard list,
+creates a character, enters the world and walks — which is a move request, an
+accept and a position update, so the wire works in both directions and under
+the server's own throttling. What has *not* been exercised is everything past
+movement: combat, trade, containers, speech.
 
 ### Phase 6 — interface
 `Game/UI` (117 files, ~51k lines), `Input`
@@ -210,15 +215,23 @@ Phase 3.
 **Done when:** core gumps — paperdoll, backpack, status, skills — work.
 
 **Status:** `Input` is done — `src/Input/GodotInput.cs` replaces upstream's SDL
-event filter, and a click and a keypress reach the login gump's text field
-(ADR-0006). `Game/UI` compiles in full; none of it past the login gumps has
-been on screen.
+event filter (ADR-0006), and clicks, typed text and a held right button all
+reach the scene. The login gumps, the shard list, character creation and, in
+the world, the top menu bar, the paperdoll and the journal all draw and
+respond. The "done when" gumps — backpack, status, skills — have not been
+opened yet.
 
 ### Phase 7 — parity and polish
 `Audio`, lighting, effects, and the long tail.
 
 **Done when:** a full play session is indistinguishable from the original
 client.
+
+**Status:** where the work now is. The audit has 28 active files left and they
+are one subsystem: `Network/Plugin.cs`, the 26 `Renderer/Batching` commands a
+plugin draws through, and `XBREffect`. Nothing else upstream is unported.
+Plugins are not needed to play, so from here parity is measured by playing
+rather than by the audit — see rule 6.
 
 ---
 
