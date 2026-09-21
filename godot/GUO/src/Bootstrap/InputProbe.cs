@@ -174,6 +174,38 @@ internal static class InputProbe
         await ClickGumpButton<Game.UI.Gumps.PaperDollGump>(host, 5, "Skills");
         await ClickGumpButton<Game.UI.Gumps.PaperDollGump>(host, 8, "Status");
 
+        GD.Print("[GUO] input probe: the journal, the options and war mode");
+
+        // The paperdoll's own buttons first. Anything opened before them may
+        // land on top of the paperdoll, and then the click goes to whatever
+        // is covering it -- which is how the journal, opened first, quietly
+        // ate both of these.
+        //
+        // PaperDollGump.Buttons: Options is 1 and PeaceWarToggle is 7.
+        await ClickGumpButton<Game.UI.Gumps.PaperDollGump>(host, 1, "Options");
+        Report<Game.UI.Gumps.OptionsGump>("options");
+
+        // Closed again rather than left up: it is the largest gump in the
+        // client and it would cover everything the probe clicks after this.
+        Game.Managers.UIManager.GetGump<Game.UI.Gumps.OptionsGump>()?.Dispose();
+
+        await Frames(host, 30);
+
+        await ClickGumpButton<Game.UI.Gumps.PaperDollGump>(host, 7, "war mode");
+
+        GD.Print(
+            "[GUO] input probe: war mode is "
+            + Client.Game.UO.World.Player.InWarMode
+        );
+
+        await ClickGumpButton<Game.UI.Gumps.PaperDollGump>(host, 7, "war mode");
+
+        // The journal comes off the top bar (Buttons.Journal is 3 there too):
+        // the paperdoll only grows a journal button on clients older than
+        // 5.0.0a, and this one is 7.0.107.
+        await ClickGumpButton<Game.UI.Gumps.TopBarGump>(host, 3, "Journal");
+        Report<Game.UI.Gumps.JournalGump>("journal");
+
         GD.Print("[GUO] input probe: the maps");
 
         // TopBarGump.Buttons: Map is 0 and WorldMap is 6. Both are worth
