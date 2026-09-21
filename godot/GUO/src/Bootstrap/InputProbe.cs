@@ -186,6 +186,10 @@ internal static class InputProbe
         await ClickGumpButton<Game.UI.Gumps.TopBarGump>(host, 6, "World Map");
         Report<Game.UI.Gumps.WorldMapGump>("world map");
 
+        GD.Print("[GUO] input probe: double-clicking the character");
+
+        await DoubleClickSelf(host);
+
         await MeasureFrames(host, 300);
 
         GD.Print("[GUO] input probe: speaking");
@@ -427,6 +431,101 @@ internal static class InputProbe
             "[GUO] input probe: the cursor is holding something: "
             + Client.Game.UO.GameCursor.ItemHold.Enabled
         );
+    }
+
+    /// <summary>
+    /// Double-click the character in the world, which opens the paperdoll.
+    /// </summary>
+    /// <remarks>
+    /// The only thing the probe does that picks an object out of the world
+    /// rather than out of a gump. The click goes to the middle of the window,
+    /// where the camera keeps the player, and what it lands on is decided by
+    /// the renderer's own hit test against the drawn sprites -- so a paperdoll
+    /// coming back is evidence that picking works, not just that the click
+    /// arrived.
+    /// </remarks>
+    private static async System.Threading.Tasks.Task DoubleClickSelf(Node host)
+    {
+        Game.UI.Gumps.PaperDollGump paperdoll =
+            Game.Managers.UIManager.GetGump<Game.UI.Gumps.PaperDollGump>();
+
+        // Closed first, so that a paperdoll at the end means this opened it.
+        paperdoll?.Dispose();
+
+        await Frames(host, 30);
+
+        Compat.Rectangle bounds = Client.Game.Window.ClientBounds;
+        var centre = new Vector2(bounds.Width / 2f, bounds.Height / 2f);
+
+        // The camera keeps the player in the middle of the window, but the
+        // middle of the window is a floor tile: a mobile is drawn standing on
+        // its tile, so its body is above that point, and how far above depends
+        // on the body. Rather than guess the offset, the probe moves the mouse
+        // up the column and asks the client what is under it -- the same hit
+        // test a player's own aiming relies on.
+        Vector2? found = null;
+
+        for (int dy = 0; dy >= -120 && found == null; dy -= 10)
+        {
+            var at = new Vector2(centre.X, centre.Y + dy);
+
+            Send(new InputEventMouseMotion { Position = at });
+
+            await Frames(host, 4);
+
+            if (ReferenceEquals(Game.SelectedObject.Object, Client.Game.UO.World.Player))
+            {
+                found = at;
+            }
+        }
+
+        if (found == null)
+        {
+            GD.Print("[GUO] input probe: could not find the character under the cursor");
+
+            return;
+        }
+
+        GD.Print($"[GUO] input probe: the character is under {found.Value.X},{found.Value.Y}");
+
+        await DoubleClick(host, found.Value);
+
+        await Frames(host, 90);
+
+        Report<Game.UI.Gumps.PaperDollGump>("paperdoll");
+    }
+
+    /// <summary>
+    /// Two clicks inside <see cref="Input.Mouse.MOUSE_DELAY_DOUBLE_CLICK" />,
+    /// which is what makes them one double click rather than two clicks.
+    /// </summary>
+    private static async System.Threading.Tasks.Task DoubleClick(Node host, Vector2 at)
+    {
+        Send(new InputEventMouseMotion { Position = at });
+        await Frames(host, 2);
+
+        for (int i = 0; i < 2; i++)
+        {
+            Send(new InputEventMouseButton
+            {
+                ButtonIndex = MouseButton.Left,
+                Position = at,
+                Pressed = true,
+            });
+
+            await Frames(host, 4);
+
+            Send(new InputEventMouseButton
+            {
+                ButtonIndex = MouseButton.Left,
+                Position = at,
+                Pressed = false,
+            });
+
+            await Frames(host, 4);
+        }
+
+        await Frames(host, 40);
     }
 
     /// <summary>
