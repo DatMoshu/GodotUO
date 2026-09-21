@@ -100,6 +100,23 @@ HeadlessConsoleInputException: Interactive console input required but the
 server is headless (stdin is not a TTY)
 ```
 
+## Update range
+
+UO servers tell a client about items and mobiles within 18 tiles, a number
+chosen when the client was 640x480. This one draws map art some 70 tiles out,
+so everything the shard owns -- doors, signs, decoration, NPCs -- used to stop
+dead in a circle while the terrain carried on, and objects at its edge
+appeared as you walked up and were dropped again a tile later.
+
+`UO_SHARD_UPDATE_RANGE` in `launchers\_shared\config.bat` sets it; 72 covers
+a 4K window. Patch `0002` routes ModernUO's three hard-coded copies of 18
+through `Core.GlobalUpdateRange` so the one setting reaches all of them,
+including the reply to the client's own 0xC8 request -- the client uses that
+reply to decide when to forget an object, so the two numbers have to agree.
+
+Unset, it is 18 and the shard behaves as a production one, which is what you
+want when checking parity.
+
 ## Gotchas
 
 **Clone it fully.** ModernUO versions itself with Nerdbank.GitVersioning,
