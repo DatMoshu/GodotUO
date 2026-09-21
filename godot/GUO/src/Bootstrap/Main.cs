@@ -127,10 +127,9 @@ public partial class Main : Node
                     // screen is up well inside 200 frames, and scaling this
                     // with --shot-after meant asking for a later shot pushed
                     // the whole sequence back and captured less of it.
-                    InputProbe.Run(this, 200);
+                    ProbeThenQuit();
                 }
-
-                if (_options.ShotAfter > 0)
+                else if (_options.ShotAfter > 0)
                 {
                     CaptureAfterFrames(_options.ShotAfter);
                 }
@@ -250,6 +249,26 @@ public partial class Main : Node
     /// quits -- how a claim about what the real client puts on screen gets an
     /// artefact behind it, with nobody watching the window.
     /// </summary>
+    /// <summary>
+    /// Runs the input probe to the end, captures the last frame, and exits
+    /// with the probe's verdict.
+    /// </summary>
+    /// <remarks>
+    /// The exit code is the point. Before this, the probe printed what it saw
+    /// and a person decided whether that was good; a run that quietly stopped
+    /// at a loading screen looked the same as a run that played the game. It
+    /// is a test now, and --shot-after is not needed with it: the run ends
+    /// when the probe does.
+    /// </remarks>
+    private async void ProbeThenQuit()
+    {
+        await InputProbe.Run(this, 200);
+
+        await CaptureFrame();
+
+        Quit(InputProbe.Passed ? 0 : 1);
+    }
+
     private async void CaptureAfterFrames(int frames)
     {
         for (int i = 0; i < frames; i++)
@@ -261,6 +280,12 @@ public partial class Main : Node
     }
 
     private async void CaptureAndQuit()
+    {
+        Quit(await CaptureFrame() ? 0 : 1);
+    }
+
+    /// <returns>Whether the frame reached the disk.</returns>
+    private async System.Threading.Tasks.Task<bool> CaptureFrame()
     {
         // One full frame must complete before the viewport holds anything.
         await ToSignal(RenderingServer.Singleton, RenderingServerInstance.SignalName.FramePostDraw);
@@ -278,12 +303,13 @@ public partial class Main : Node
         if (err != Error.Ok)
         {
             GD.PrintErr($"[GUO] FATAL: could not write screenshot to {path}: {err}");
-            Quit(1);
-            return;
+
+            return false;
         }
 
         GD.Print($"[GUO] screenshot -> {ProjectSettings.GlobalizePath(path)}");
-        Quit(0);
+
+        return true;
     }
 
     private void Fail(string message)

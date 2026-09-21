@@ -80,8 +80,9 @@ dotnet build godot\GUO\GUO.csproj         fast build loop (~1s, use this)
 launchers\dev\build.bat                    build C# only
 launchers\dev\smoke.bat                    full health check — run before commit
 launchers\dev\screenshot.bat               capture a frame
+launchers\dev\playtest.bat                 play a session and check it (needs a shard)
 launchers\dev\sync_upstream.bat            check upstream drift
-launchers\shardun.bat                   run the local dev shard
+launchers\shard\run.bat                    run the local dev shard
 launchers\game\play.bat                    run the client
 ```
 

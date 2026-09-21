@@ -75,7 +75,33 @@ internal static class InputProbe
 
     private const string ProbeCharacter = "Guoprobe";
 
-    public static async void Run(Node host, int settleFrames)
+    /// <summary>
+    /// Every expectation the run has checked, in order.
+    /// </summary>
+    private static readonly System.Collections.Generic.List<(string What, bool Ok)> Checks =
+        new();
+
+    /// <summary>
+    /// True when every check passed. Read by the host to decide the exit
+    /// code, which is what turns this from a thing somebody reads into a
+    /// thing that can fail a build.
+    /// </summary>
+    public static bool Passed { get; private set; }
+
+    /// <summary>
+    /// Record an expectation and say whether it held.
+    /// </summary>
+    private static void Check(string what, bool ok, string detail = null)
+    {
+        Checks.Add((what, ok));
+
+        GD.Print(
+            $"[GUO] probe check: {(ok ? "ok  " : "FAIL")} {what}"
+            + (detail == null ? "" : $" -- {detail}")
+        );
+    }
+
+    public static async System.Threading.Tasks.Task Run(Node host, int settleFrames)
     {
         await Frames(host, settleFrames);
 
@@ -138,6 +164,15 @@ internal static class InputProbe
 
         await Frames(host, 240);
 
+        Check(
+            "the character is in the world",
+            Client.Game.UO.World.InGame,
+            Client.Game.UO.World.Player == null
+                ? "no player"
+                : $"{Client.Game.UO.World.Player.Name} at "
+                  + $"{Client.Game.UO.World.Player.X},{Client.Game.UO.World.Player.Y}"
+        );
+
         GD.Print("[GUO] input probe: full-size game window");
 
         FullSizeGameWindow();
@@ -150,7 +185,7 @@ internal static class InputProbe
         // listened for. It has to be caught while it is playing: an effect is
         // about a second long, and by the end of the run there is nothing
         // left to hear but the music, which says nothing about UOSound.
-        await ListenForSound(host, Walk(host));
+        Check("the character walks", await ListenForSound(host, Walk(host)));
 
         await Frames(host, 60);
 
@@ -193,10 +228,7 @@ internal static class InputProbe
 
         await ClickGumpButton<Game.UI.Gumps.PaperDollGump>(host, 7, "war mode");
 
-        GD.Print(
-            "[GUO] input probe: war mode is "
-            + Client.Game.UO.World.Player.InWarMode
-        );
+        Check("war mode goes on", Client.Game.UO.World.Player.InWarMode);
 
         await ClickGumpButton<Game.UI.Gumps.PaperDollGump>(host, 7, "war mode");
 
@@ -244,6 +276,24 @@ internal static class InputProbe
 
         GD.Print($"[GUO] input probe: gumps open: {string.Join(", ", open)}");
         GD.Print($"[GUO] input probe: audio: {Client.Game.Audio.NowPlaying}");
+
+        int passed = 0;
+
+        foreach ((string what, bool ok) in Checks)
+        {
+            if (ok)
+            {
+                passed++;
+            }
+            else
+            {
+                GD.PrintErr($"[GUO] probe FAILED: {what}");
+            }
+        }
+
+        Passed = passed == Checks.Count;
+
+        GD.Print($"[GUO] input probe: {passed}/{Checks.Count} checks passed");
     }
 
     /// <summary>
@@ -353,12 +403,7 @@ internal static class InputProbe
         Game.UI.Gumps.ContainerGump pack =
             Game.Managers.UIManager.GetGump<Game.UI.Gumps.ContainerGump>();
 
-        GD.Print(
-            pack == null
-                ? "[GUO] input probe: no container gump"
-                : $"[GUO] input probe: container gump {pack.Width}x{pack.Height} "
-                  + $"with {pack.Children.Count} children"
-        );
+        Report<Game.UI.Gumps.ContainerGump>("backpack");
     }
 
     /// <summary>
@@ -452,16 +497,17 @@ internal static class InputProbe
 
         Game.UI.Controls.ItemGump moved = pack == null ? null : FindItem(pack, serial);
 
-        GD.Print(
+        Check(
+            "the item is in the backpack after the drop",
+            moved != null,
             moved == null
-                ? $"[GUO] input probe: 0x{serial:X} is no longer in the backpack"
-                : $"[GUO] input probe: 0x{serial:X} is now at "
-                  + $"{moved.ScreenCoordinateX},{moved.ScreenCoordinateY}"
+                ? $"0x{serial:X} is gone"
+                : $"0x{serial:X} at {moved.ScreenCoordinateX},{moved.ScreenCoordinateY}"
         );
 
-        GD.Print(
-            "[GUO] input probe: the cursor is holding something: "
-            + Client.Game.UO.GameCursor.ItemHold.Enabled
+        Check(
+            "the cursor is empty after the drop",
+            !Client.Game.UO.GameCursor.ItemHold.Enabled
         );
     }
 
@@ -511,14 +557,16 @@ internal static class InputProbe
             }
         }
 
+        Check(
+            "the character can be picked out of the world",
+            found != null,
+            found == null ? "nothing found in the column" : $"at {found.Value.X},{found.Value.Y}"
+        );
+
         if (found == null)
         {
-            GD.Print("[GUO] input probe: could not find the character under the cursor");
-
             return;
         }
-
-        GD.Print($"[GUO] input probe: the character is under {found.Value.X},{found.Value.Y}");
 
         await DoubleClick(host, found.Value);
 
@@ -564,9 +612,9 @@ internal static class InputProbe
     /// Run something to the end, watching the mixer while it runs, and say
     /// the first sound effect it hears.
     /// </summary>
-    private static async System.Threading.Tasks.Task ListenForSound(
+    private static async System.Threading.Tasks.Task<T> ListenForSound<T>(
         Node host,
-        System.Threading.Tasks.Task work
+        System.Threading.Tasks.Task<T> work
     )
     {
         string heard = null;
@@ -583,14 +631,13 @@ internal static class InputProbe
             await Frames(host, 1);
         }
 
-        await work;
-
-        GD.Print(
-            heard == null
-                ? "[GUO] input probe: no sound effect while walking; audio is "
-                  + Client.Game.Audio.NowPlaying
-                : $"[GUO] input probe: audio: {heard}"
+        Check(
+            "a sound effect plays",
+            heard != null,
+            heard ?? $"only {Client.Game.Audio.NowPlaying}"
         );
+
+        return await work;
     }
 
     /// <summary>
@@ -722,10 +769,10 @@ internal static class InputProbe
         Game.UI.Controls.Control down =
             Game.Managers.UIManager.LastControlMouseDown(Input.MouseButtonType.Left);
 
-        GD.Print(
-            "[GUO] input probe: mid-drag, the cursor is holding something: "
-            + Client.Game.UO.GameCursor.ItemHold.Enabled
-            + $", dragging {down?.GetType().Name ?? "nothing"} 0x{down?.LocalSerial ?? 0:X}"
+        Check(
+            "the drag picks something up",
+            Client.Game.UO.GameCursor.ItemHold.Enabled,
+            $"{down?.GetType().Name ?? "nothing"} 0x{down?.LocalSerial ?? 0:X}"
         );
 
         Send(new InputEventMouseButton
@@ -748,11 +795,12 @@ internal static class InputProbe
     {
         T gump = Game.Managers.UIManager.GetGump<T>();
 
-        GD.Print(
+        Check(
+            $"the {what} opens",
+            gump != null,
             gump == null
-                ? $"[GUO] input probe: no {what} gump"
-                : $"[GUO] input probe: {what} gump {gump.Width}x{gump.Height} "
-                  + $"with {gump.Children.Count} children"
+                ? "not there"
+                : $"{gump.Width}x{gump.Height} with {gump.Children.Count} children"
         );
     }
 
@@ -824,11 +872,16 @@ internal static class InputProbe
         // that the round trip happened rather than that the text was typed.
         var entries = Game.Managers.JournalManager.Entries;
         int from = System.Math.Max(0, entries.Count - 4);
+        bool echoed = false;
 
         for (int i = from; i < entries.Count; i++)
         {
             GD.Print($"[GUO] journal: {entries[i].Name}: {entries[i].Text}");
+
+            echoed |= entries[i].Text == what;
         }
+
+        Check("the server sends the speech back", echoed, $"\"{what}\"");
     }
 
     /// <summary>
@@ -849,7 +902,7 @@ internal static class InputProbe
         new(1, -1),
     };
 
-    private static async System.Threading.Tasks.Task Walk(Node host)
+    private static async System.Threading.Tasks.Task<bool> Walk(Node host)
     {
         Game.GameObjects.PlayerMobile player = Client.Game.UO.World?.Player;
 
@@ -857,10 +910,18 @@ internal static class InputProbe
         {
             GD.Print("[GUO] input probe: no player; not in the world");
 
-            return;
+            return false;
         }
 
         GD.Print($"[GUO] input probe: player at {player.X},{player.Y}");
+
+        // Where it started, so that "it walked" is a comparison and not an
+        // impression. Checked after every pull rather than at the end: the
+        // four directions are opposite pairs, so a character that walks all
+        // four of them finishes where it began.
+        int startX = player.X;
+        int startY = player.Y;
+        bool moved = false;
 
         // Each of the four screen diagonals in turn. One direction can be a
         // wall -- the starting spot is indoors -- and four cannot all be.
@@ -898,7 +959,11 @@ internal static class InputProbe
                 + $"{player.X},{player.Y}, facing {player.Direction}, steps "
                 + $"{player.Walker.StepsCount}, failed {player.Walker.WalkingFailed}"
             );
+
+            moved |= player.X != startX || player.Y != startY;
         }
+
+        return moved;
     }
 
     /// <summary>
@@ -1045,10 +1110,16 @@ internal static class InputProbe
 
         double total = (previous - start) / 1000.0;
 
-        GD.Print(
-            $"[GUO] input probe: {count} frames in {total:F0} ms "
-            + $"({total / count:F2} ms average, {worst / 1000.0:F2} ms worst, "
-            + $"{count * 1000.0 / total:F1} fps)"
+        double fps = count * 1000.0 / total;
+
+        // Fifty, not sixty: the window is vsynced to sixty and the machine
+        // running this is not always idle. What this is here to catch is a
+        // change that halves the frame rate, not the odd busy second.
+        Check(
+            "the world holds its frame rate",
+            fps >= 50,
+            $"{count} frames in {total:F0} ms ({total / count:F2} ms average, "
+            + $"{worst / 1000.0:F2} ms worst, {fps:F1} fps)"
         );
     }
 
