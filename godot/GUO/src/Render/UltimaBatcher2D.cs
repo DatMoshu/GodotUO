@@ -81,6 +81,7 @@ namespace GUO.Renderer
 
         private bool _started;
         private Vector2 _worldOffset;
+        private SamplerState _sampler = SamplerState.PointClamp;
 
         // Reused by the quad path so a rotated or mirrored sprite does not
         // allocate four arrays per draw.
@@ -183,6 +184,7 @@ namespace GUO.Renderer
             _clipStack.Clear();
             _itemCount = 0;
             _currentMaterial = _material;
+            _sampler = SamplerState.PointClamp;
 
             TextureSwitches = 0;
             FlushesDone = 0;
@@ -311,6 +313,18 @@ namespace GUO.Renderer
                     $"Blend.{factor} is not implemented; no ClassicUO blend state uses it. "
                     + "See ADR-0003.");
             }
+        }
+
+        /// <summary>
+        /// Changes how subsequent sprites are sampled. Passing null restores
+        /// nearest neighbour, which is the default and what project rule 7
+        /// requires of anything drawing pixel art.
+        /// </summary>
+        public void SetSampler(SamplerState sampler)
+        {
+            _sampler = sampler ?? SamplerState.PointClamp;
+
+            Cut();
         }
 
         public bool ClipBegin(int x, int y, int width, int height)
@@ -1101,15 +1115,6 @@ namespace GUO.Renderer
                 item = RenderingServer.CanvasItemCreate();
                 RenderingServer.CanvasItemSetMaterial(item, _currentMaterial.GetRid());
 
-                // Project rule 7, and it is not automatic: a canvas item made
-                // through RenderingServer does NOT pick up the project's
-                // default_texture_filter, it starts on linear. Measured by
-                // launchers\devatcher_probe.bat, which read brightness 8
-                // back as 7 -- a 0.875/0.125 blend with the dark texel next
-                // door. Every sprite in the client was being smeared, and the
-                // only visible symptom would have been slightly soft art.
-                RenderingServer.CanvasItemSetDefaultTextureFilter(
-                    item, RenderingServer.CanvasItemTextureFilter.Nearest);
                 _items.Add(item);
             }
 
@@ -1123,6 +1128,15 @@ namespace GUO.Renderer
             // copier, and either would carry over into this frame.
             RenderingServer.CanvasItemSetMaterial(item, _currentMaterial.GetRid());
             RenderingServer.CanvasItemSetCopyToBackbuffer(item, false, new Rect2());
+
+            // Set every time, and never left to the project setting: a canvas
+            // item made through RenderingServer does NOT pick up
+            // default_texture_filter, it starts on linear. Measured by
+            // launchers\devatcher_probe.bat, which read brightness 8 back
+            // as 7 -- a 0.875/0.125 blend with the dark texel next door. Every
+            // sprite in the client was being smeared, and the only visible
+            // symptom would have been slightly soft art. Project rule 7.
+            RenderingServer.CanvasItemSetDefaultTextureFilter(item, _sampler.Filter);
 
             // Siblings paint in draw-index order, and the pool index only ever
             // goes up within a frame, so a later item paints over an earlier one.

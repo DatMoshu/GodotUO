@@ -24,6 +24,7 @@
 *.csproj  text eol=lf
 *.gd      text eol=lf
 *.gdshader text eol=lf
+*.gdshaderinc text eol=lf
 *.resx    text eol=lf
 
 # Extensionless dotfiles: without this they fall through to `text=auto`
