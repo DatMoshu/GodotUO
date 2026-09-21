@@ -140,8 +140,25 @@ namespace GUO
 
         public override void _Ready()
         {
+            // PORT DEVIATION (GUO): upstream learns about a resize from
+            // SDL_EVENT_WINDOW_RESIZED. NotificationWMSizeChanged is Godot's
+            // nearest equivalent, but it reaches the Window node, not an
+            // arbitrary node in the tree, so on its own the client never heard
+            // about a resize it had asked for itself -- it maximised the
+            // window on entering the world and went on laying the UI out for
+            // the 640x480 it started at. The viewport's size_changed signal is
+            // the one that actually arrives.
+            GetViewport().SizeChanged += OnViewportSizeChanged;
+
             Initialize();
             LoadContent();
+        }
+
+        private void OnViewportSizeChanged()
+        {
+            Vector2I size = DisplayServer.WindowGetSize();
+
+            WindowOnClientSizeChanged(size.X, size.Y);
         }
 
         private void Initialize()
@@ -230,6 +247,8 @@ namespace GUO
 
         public override void _ExitTree()
         {
+            GetViewport().SizeChanged -= OnViewportSizeChanged;
+
             UnloadContent();
 
             Scene?.Dispose();

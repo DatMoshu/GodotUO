@@ -122,7 +122,48 @@ internal static class InputProbe
 
         await Click(host, NextArrow);
 
-        await Frames(host, 300);
+        await Frames(host, 180);
+
+        GD.Print("[GUO] input probe: full-size game window");
+
+        FullSizeGameWindow();
+
+        await Frames(host, 120);
+    }
+
+    /// <summary>
+    /// Tick "always use fullsize game window", the way the options gump does.
+    /// </summary>
+    /// <remarks>
+    /// The client starts a new profile with the setting off, so the world
+    /// renders into a 600x480 viewport gump in the corner of whatever window
+    /// it has. This is the same sequence OptionsGump.Apply runs when the
+    /// checkbox is ticked -- resize the viewport to the window, move it to
+    /// -5,-5, record both on the profile -- so the profile is saved with the
+    /// option on and a later play.bat run comes up full size.
+    /// </remarks>
+    private static void FullSizeGameWindow()
+    {
+        Configuration.Profile profile = Configuration.ProfileManager.CurrentProfile;
+        Game.UI.Gumps.WorldViewportGump viewport =
+            Game.Managers.UIManager.GetGump<Game.UI.Gumps.WorldViewportGump>();
+
+        if (profile == null || viewport == null)
+        {
+            GD.Print("[GUO] input probe: no world viewport; not in the world yet");
+
+            return;
+        }
+
+        Compat.Rectangle bounds = Client.Game.Window.ClientBounds;
+
+        viewport.ResizeGameWindow(new Compat.Point(bounds.Width, bounds.Height));
+        viewport.SetGameWindowPosition(new Compat.Point(-5, -5));
+
+        profile.GameWindowPosition = viewport.Location;
+        profile.GameWindowFullSize = true;
+
+        GD.Print($"[GUO] input probe: game window now {bounds.Width}x{bounds.Height}");
     }
 
     private static async System.Threading.Tasks.Task Type(Node host, string text)
