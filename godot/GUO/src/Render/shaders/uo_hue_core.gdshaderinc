@@ -27,11 +27,16 @@
 //   R  hue index >> 8        B  mode, circle-of-transparency in bit 7
 //   G  hue index & 0xFF      A  alpha, 0..1
 //
-// NOT HANDLED HERE: LAND and LAND_COLOR. Both need a per-vertex normal for
-// get_light(), which modulate has no room for and a canvas quad has no notion
-// of. They belong to the world mesh (MeshLayer), which ADR-0002 leaves as its
-// own decision. They are not silently ignored below -- they render magenta, so
-// a mistake shows up in a screenshot instead of looking plausible.
+// LAND AND LAND_COLOR
+//
+// Both multiply by get_light(normal), and a canvas quad has no normal. ADR-0004
+// settles it: get_light is a pure function of the normal and the brightlight
+// uniform, so the per-vertex half is computed on the CPU at mesh build time,
+// where the normal already lives, and arrives as `land_light` -- CUSTOM0.r on
+// the world mesh, and 1.0 everywhere else. Measured by
+// launchers\dev\mesh_probe.bat: a canvas_item shader does read CUSTOM0 from a
+// mesh drawn with canvas_item_add_mesh, which is not documented for the 2D
+// renderer.
 
 const int NONE = 0;
 const int HUED = 1;
@@ -57,14 +62,20 @@ uniform sampler2D hue_texture : filter_nearest, repeat_disable;
 // The coloured-light table, used only by the LIGHTS mode.
 uniform sampler2D light_texture : filter_nearest, repeat_disable;
 
-// Only the LAND path reads this (upstream get_light); kept so SetBrightlight
-// has somewhere to put its value once the world mesh lands.
+// Only the LAND paths read this; SetBrightlight drives it from the profile's
+// TerrainShadowsLevel.
 uniform float brightlight = 0.0;
 
 uniform float circle_of_transparency_radius = 0.0;
 uniform vec2 circle_of_transparency_center = vec2(0.0, 0.0);
 
 varying vec4 packed_hue;
+
+// Upstream's get_light(IN.Normal) BEFORE the brightlight blend, i.e.
+// (max(dot(normal, normalize(0,1,1)), 0) / 2) + 0.5, so it is bounded in
+// [0.5, 1]. A flat tile is 0.85355339, which is the value the blend below
+// pulls towards. Only the world mesh sets it; every other shader writes 1.0.
+varying float land_light;
 
 vec3 get_rgb(float gray, float hue) {
 	float half_pixel_x = (1.0 / (HUE_COLUMNS * HUE_WIDTH)) * 0.5;
@@ -78,6 +89,16 @@ vec3 get_rgb(float gray, float hue) {
 	float y_pos = mod(hue, HUES_PER_TEXTURE) / (HUES_PER_TEXTURE - 1.0);
 
 	return texture(hue_texture, vec2(x_pos, y_pos)).rgb;
+}
+
+// Upstream's get_light, with the per-vertex half already done. Written in
+// upstream's order rather than the tidier `mix(base, 0.85355339, 1 - bright)`:
+// the two are equal in real arithmetic and not in floats, and this is the one
+// the .fx evaluates.
+float get_light() {
+	float base = land_light;
+
+	return base + ((brightlight * (base - 0.85355339)) - (base - 0.85355339));
 }
 
 vec3 get_colored_light(float shader_index, float gray) {
@@ -133,9 +154,10 @@ vec4 uo_shade(vec4 color, vec2 screen_uv, vec2 screen_pixel_size) {
 	} else if (mode == HUE_TEXT) {
 		// 31 is max red, so this selects the darkest pixel's colour in the hue.
 		color.rgb = get_rgb(1.0, hue);
-	} else if (mode == LAND || mode == LAND_COLOR) {
-		// Mesh-only; see the header. Loud on purpose.
-		color.rgb = vec3(1.0, 0.0, 1.0);
+	} else if (mode == LAND) {
+		color.rgb *= get_light();
+	} else if (mode == LAND_COLOR) {
+		color.rgb = get_rgb(color.r, hue) * get_light();
 	} else if (mode == SPECTRAL) {
 		alpha = 1.0 - (color.r * 1.5);
 		color.rgb = vec3(0.0);

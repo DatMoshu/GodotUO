@@ -50,6 +50,7 @@ namespace GUO.Renderer
     {
         private const string SHADER_PATH = "res://src/Render/shaders/uo_hue.gdshader";
         private const string BLEND_SHADER_PATH = "res://src/Render/shaders/uo_hue_blend.gdshader";
+        private const string MESH_SHADER_PATH = "res://src/Render/shaders/uo_hue_mesh.gdshader";
 
         private static readonly float[] _cornerOffsetX = new float[] { 0.0f, 1.0f, 0.0f, 1.0f };
         private static readonly float[] _cornerOffsetY = new float[] { 0.0f, 0.0f, 1.0f, 1.0f };
@@ -71,7 +72,23 @@ namespace GUO.Renderer
             new Dictionary<string, ShaderMaterial>();
 
         private Shader _blendShader;
+
+        // The world mesh reads its land light from CUSTOM0, which only exists
+        // on a mesh, so it needs a shader of its own. See ADR-0004. Built with
+        // the others rather than on first use: every uniform below is global
+        // state pushed through SetOnAllMaterials, and a material that appears
+        // later has already missed the pushes.
+        private readonly ShaderMaterial _meshMaterial;
+
+        // _currentMaterial is what SPRITES draw under, which SetBlendState
+        // chooses. _nextMaterial is what the next item created will carry, and
+        // _itemMaterial what the current one does: the mesh path swaps to its
+        // own shader and back, and an item can only have one material, so the
+        // swap has to cut. Tracking what the item already has is what keeps a
+        // run of chunk meshes in a single item instead of two per chunk.
         private ShaderMaterial _currentMaterial;
+        private ShaderMaterial _nextMaterial;
+        private ShaderMaterial _itemMaterial;
 
         // Every draw goes into a canvas item. A new one is started whenever a
         // clip opens or closes, because a Godot canvas item paints its own
@@ -103,7 +120,8 @@ namespace GUO.Renderer
             var shader = GD.Load<Shader>(SHADER_PATH);
 
             _material = new ShaderMaterial { Shader = shader };
-            _currentMaterial = _material;
+            _meshMaterial = new ShaderMaterial { Shader = GD.Load<Shader>(MESH_SHADER_PATH) };
+            _currentMaterial = _nextMaterial = _material;
         }
 
         /// <summary>
@@ -148,6 +166,7 @@ namespace GUO.Renderer
             }
 
             _blendMaterials.Clear();
+            _meshMaterial?.Dispose();
             _material?.Dispose();
         }
 
@@ -170,6 +189,7 @@ namespace GUO.Renderer
         private void SetOnAllMaterials(string name, Variant value)
         {
             _material.SetShaderParameter(name, value);
+            _meshMaterial.SetShaderParameter(name, value);
 
             foreach (ShaderMaterial material in _blendMaterials.Values)
             {
@@ -213,7 +233,7 @@ namespace GUO.Renderer
             _worldOffset = Vector2.Zero;
             _clipStack.Clear();
             _itemCount = 0;
-            _currentMaterial = _material;
+            _currentMaterial = _nextMaterial = _material;
             _sampler = SamplerState.PointClamp;
 
             TextureSwitches = 0;
@@ -296,6 +316,50 @@ namespace GUO.Renderer
         {
         }
 
+        /// <summary>
+        /// Draws one chunk mesh layer: its visible sprites, already grouped
+        /// into one mesh per texture. Returns how many sprites were drawn, as
+        /// upstream's caller counts.
+        /// </summary>
+        /// <remarks>
+        /// PORT DEVIATION (GUO): upstream binds the layer's vertex buffer and a
+        /// shared index buffer on the device and issues DrawIndexedPrimitives
+        /// per run. There is no buffer to bind; MeshLayer has already built one
+        /// ArrayMesh per run, because canvas_item_add_mesh takes a single
+        /// texture per call. See ADR-0004.
+        /// </remarks>
+        public int DrawMeshLayer(MeshLayer layer)
+        {
+            EnsureStarted();
+
+            if (layer == null || layer.VisibleSpriteCount == 0)
+            {
+                return 0;
+            }
+
+            EnsureMaterial(_meshMaterial);
+
+            for (int i = 0; i < layer.VisibleRunCount; i++)
+            {
+                ref TextureRun run = ref layer.VisibleRuns[i];
+                ArrayMesh mesh = layer.GetRunMesh(i);
+
+                if (mesh == null || run.Texture == null)
+                {
+                    continue;
+                }
+
+                RenderingServer.CanvasItemAddMesh(
+                    _current,
+                    mesh.GetRid(),
+                    Transform2D.Identity,
+                    Colors.White,
+                    run.Texture.GetRid());
+            }
+
+            return layer.VisibleSpriteCount;
+        }
+
         public void SetWorldOffset(int offsetX, int offsetY)
         {
             _worldOffset = new Vector2(-offsetX, -offsetY);
@@ -329,13 +393,13 @@ namespace GUO.Renderer
 
             if (blend.IsPremultipliedAlpha)
             {
-                _currentMaterial = _material;
+                _currentMaterial = _nextMaterial = _material;
                 Cut();
 
                 return;
             }
 
-            _currentMaterial = GetBlendMaterial(blend);
+            _currentMaterial = _nextMaterial = GetBlendMaterial(blend);
 
             // The copy has to be its own item, submitted between what is
             // already drawn and what is about to read it. An empty rect means
@@ -1013,6 +1077,8 @@ namespace GUO.Renderer
                 return;
             }
 
+            EnsureMaterial(_currentMaterial);
+
             int textureWidth = texture.GetWidth();
             int textureHeight = texture.GetHeight();
 
@@ -1115,6 +1181,8 @@ namespace GUO.Renderer
                 return;
             }
 
+            EnsureMaterial(_currentMaterial);
+
             Color modulate = Encode(color);
 
             _quadColors[0] = modulate;
@@ -1141,7 +1209,7 @@ namespace GUO.Renderer
         /// two channels and why the circle-of-transparency flag moved into the
         /// mode byte.
         /// </summary>
-        private static Color Encode(Vector3 color)
+        internal static Color Encode(Vector3 color)
         {
             int index = (int)color.X;
             int mode = (int)color.Y;
@@ -1167,6 +1235,25 @@ namespace GUO.Renderer
         // ==========================
         // === Canvas item pool =====
         // ==========================
+
+        /// <summary>
+        /// Starts a new item if the current one is under a different material.
+        /// No-ops when it already is, which is what lets consecutive chunk
+        /// meshes share one item.
+        /// </summary>
+        private void EnsureMaterial(ShaderMaterial material)
+        {
+            if (ReferenceEquals(_itemMaterial, material))
+            {
+                return;
+            }
+
+            _nextMaterial = material;
+
+            Cut();
+
+            _nextMaterial = _currentMaterial;
+        }
 
         private Rid CurrentParent => _clipStack.Count > 0 ? _clipStack[_clipStack.Count - 1] : _target;
 
@@ -1196,7 +1283,7 @@ namespace GUO.Renderer
             else
             {
                 item = RenderingServer.CanvasItemCreate();
-                RenderingServer.CanvasItemSetMaterial(item, _currentMaterial.GetRid());
+                RenderingServer.CanvasItemSetMaterial(item, _nextMaterial.GetRid());
 
                 _items.Add(item);
             }
@@ -1209,8 +1296,10 @@ namespace GUO.Renderer
             // Reset every time, not only on creation: a pooled item was very
             // likely last used under a different blend, or as a back-buffer
             // copier, and either would carry over into this frame.
-            RenderingServer.CanvasItemSetMaterial(item, _currentMaterial.GetRid());
+            RenderingServer.CanvasItemSetMaterial(item, _nextMaterial.GetRid());
             RenderingServer.CanvasItemSetCopyToBackbuffer(item, false, new Rect2());
+
+            _itemMaterial = _nextMaterial;
 
             // Set every time, and never left to the project setting: a canvas
             // item made through RenderingServer does NOT pick up

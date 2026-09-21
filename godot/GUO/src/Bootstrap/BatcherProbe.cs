@@ -44,6 +44,10 @@ public partial class BatcherProbe : Node
 
     private int _failures;
 
+    private int _checks;
+
+    private int _stageStart;
+
     public static void Run(Node parent)
     {
         var probe = new BatcherProbe();
@@ -112,7 +116,13 @@ public partial class BatcherProbe : Node
             }
         }
 
+        Stage("hue");
+
         await VerifyBlends(batcher, viewport);
+        Stage("blend states");
+
+        await VerifyLandLight(batcher, viewport);
+        Stage("land light");
 
         batcher.Dispose();
 
@@ -184,6 +194,18 @@ public partial class BatcherProbe : Node
     /// what DestinationColor means, the numbers say so.
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// Prints how many comparisons a stage made. A stage that silently drew
+    /// nothing, or looped zero times, otherwise reports the same PASS as one
+    /// that checked everything.
+    /// </summary>
+    private void Stage(string name)
+    {
+        GD.Print($"[batcher-probe] {name,-22} {_checks - _stageStart,3} checks");
+
+        _stageStart = _checks;
+    }
+
     private async System.Threading.Tasks.Task VerifyBlends(
         UltimaBatcher2D batcher, SubViewport viewport)
     {
@@ -307,18 +329,147 @@ public partial class BatcherProbe : Node
             Image.CreateFromData(1, 1, false, Image.Format.Rgba8, rgba));
     }
 
+
+    /// <summary>
+    /// Draws a stretched-land quad through a <see cref="MeshLayer"/> and checks
+    /// that each corner comes back lit by its own normal.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is the one thing ADR-0004 bought. Stretched land is the only place
+    /// in the client where a per-vertex value beyond position, UV and colour
+    /// has to reach the shader, and the packed colour had no channel left for
+    /// it, so the light travels as CUSTOM0 on a mesh -- a path nothing else in
+    /// the batcher uses.
+    /// </para>
+    /// <para>
+    /// The four corners get four different normals, so a shader that dropped
+    /// CUSTOM0, or read a constant, is wrong at three of them rather than
+    /// looking plausible everywhere. The expected value is upstream's get_light
+    /// recomputed here, at both ends of the brightlight range, because that
+    /// uniform is the half of the formula the CPU does not do.
+    /// </para>
+    /// </remarks>
+    private async System.Threading.Tasks.Task VerifyLandLight(
+        UltimaBatcher2D batcher, SubViewport viewport)
+    {
+        // A flat grey, so the only thing modulating it is the light.
+        var texel = new byte[] { 160, 160, 160 };
+        Texture2D grey = BuildSolid(texel);
+
+        // Straight up, and three tilted away from the light. The first is the
+        // flat-tile case whose value the brightlight blend pulls towards.
+        var normals = new[]
+        {
+            new Vector3(0f, 0f, 1f),
+            new Vector3(0f, 1f, 1f),
+            new Vector3(0f, -1f, 1f),
+            new Vector3(1f, 0f, 0.2f),
+        };
+
+        var layer = new MeshLayer();
+        layer.EnsureCapacity(1);
+        layer.Count = 1;
+
+        Vector3 hue = ShaderHueTranslator.GetHueVector(0);
+        hue.Y = ShaderHueTranslator.SHADER_LAND;
+
+        layer.WriteQuadAt(0, grey, new Compat.Rectangle(0, 0, 1, 1), 0, 0, hue, 0f);
+
+        // WriteQuadAt writes the flat normal to all four; a stretched tile is
+        // exactly the case where they differ, so overwrite them here the way
+        // ChunkMesh.WriteStretchedLand does.
+        // Taken by value, not by ref: a ref local cannot survive the awaits
+        // below. The writes go back through layer.Vertices[0].
+        MeshQuad quad = layer.Vertices[0];
+        quad.Position1.X = Scale * 2;
+        quad.Position3.X = Scale * 2;
+        quad.Position2.Y = Scale * 2;
+        quad.Position3.Y = Scale * 2;
+        quad.Light0 = MeshLayer.LightFromNormal(normals[0]);
+        quad.Light1 = MeshLayer.LightFromNormal(normals[1]);
+        quad.Light2 = MeshLayer.LightFromNormal(normals[2]);
+        quad.Light3 = MeshLayer.LightFromNormal(normals[3]);
+        layer.Vertices[0] = quad;
+
+        foreach (float brightlight in new[] { 0f, 1f })
+        {
+            layer.ResetVisibility();
+            layer.SetVisible(0, 0xFF);
+            layer.BuildVisibleIndices();
+
+            batcher.Begin();
+            batcher.SetBrightlight(brightlight);
+            batcher.DrawMeshLayer(layer);
+            batcher.End();
+
+            await ToSignal(
+                RenderingServer.Singleton,
+                RenderingServerInstance.SignalName.FramePostDraw);
+
+            Image image = viewport.GetTexture().GetImage();
+
+            // The corner texels, where the interpolant is closest to that
+            // corner's own value. Position0 is top-left, 1 top-right,
+            // 2 bottom-left, 3 bottom-right -- upstream's quad order.
+            var corners = new[]
+            {
+                (0, 0, quad.Light0),
+                (Scale * 2 - 1, 0, quad.Light1),
+                (0, Scale * 2 - 1, quad.Light2),
+                (Scale * 2 - 1, Scale * 2 - 1, quad.Light3),
+            };
+
+            for (int i = 0; i < corners.Length; i++)
+            {
+                (int x, int y, float baseLight) = corners[i];
+
+                // The corner texel's centre is half a pixel in, so the
+                // interpolated light there is not quite the corner's own.
+                float u = (x + 0.5f) / (Scale * 2);
+                float v = (y + 0.5f) / (Scale * 2);
+                float interpolated = Bilinear(
+                    quad.Light0, quad.Light1, quad.Light2, quad.Light3, u, v);
+
+                float light = ExpectedLight(interpolated, brightlight);
+                byte want = (byte)Math.Round(Math.Clamp(texel[0] / 255f * light, 0f, 1f) * 255f);
+
+                Color got = image.GetPixel(x, y);
+
+                Check($"land light corner {i} brightlight {brightlight}",
+                    new byte[] { want, want, want }, got);
+
+                _ = baseLight;
+            }
+        }
+
+        batcher.SetBrightlight(0f);
+        layer.Dispose();
+    }
+
+    /// <summary>Upstream's get_light, with the per-vertex half already done.</summary>
+    private static float ExpectedLight(float baseLight, float brightlight)
+    {
+        return baseLight
+            + ((brightlight * (baseLight - 0.85355339f)) - (baseLight - 0.85355339f));
+    }
+
+    private static float Bilinear(float v0, float v1, float v2, float v3, float u, float v)
+    {
+        return (v0 * (1f - u) + v1 * u) * (1f - v) + (v2 * (1f - u) + v3 * u) * v;
+    }
+
     private void Check(string what, byte[] want, Color got)
     {
-        // Exact. Nearest sampling, no filtering and an 8-bit target mean there
-        // is nothing in this path that should round, and a tolerance here
-        // would hide precisely the kind of off-by-one that costs a day.
         // One 8-bit step. The hue path is exact and would pass at zero, but
-        // the blend arithmetic runs through floats on the GPU and again here,
-        // and demanding bit equality of that would be testing the rounding
-        // rather than the equation.
+        // the blend and land-light arithmetic runs through floats on the GPU
+        // and again here, and demanding bit equality of that would be testing
+        // the rounding rather than the equation.
         bool ok = Math.Abs(want[0] - got.R8) <= 1
                && Math.Abs(want[1] - got.G8) <= 1
                && Math.Abs(want[2] - got.B8) <= 1;
+
+        _checks++;
 
         if (!ok)
         {
