@@ -83,10 +83,16 @@ public struct Color : IEquatable<Color>
         set => PackedValue = (PackedValue & 0x00FFFFFFu) | ((uint)value << 24);
     }
 
-    // The handful of named colours the ported code actually reaches for.
-    // Deliberately not the full XNA palette: an unused constant is a
-    // maintenance cost, and the audit will flag any that turn out to be
-    // needed when a file is ported.
+    // The named colours the ported code actually reaches for, and only those:
+    // an unused constant is a maintenance cost, and the bulk porter flags any
+    // that turn out to be missing when a file lands.
+    //
+    // Every value below is taken from FNA's Color.cs, which documents each one
+    // as R:_,G:_,B:_,A:_. They are NOT guessed from the name, because two of
+    // them would have been guessed wrong: XNA's Green is (0,128,0) -- the CSS
+    // "green" -- and (0,255,0) is Lime. This shim had Green as (0,255,0) until
+    // the values were checked against the source, which would have rendered
+    // three call sites in the wrong colour with nothing to point at why.
     public static Color Transparent => new Color((byte)0, (byte)0, (byte)0, (byte)0);
 
     public static Color Black => new Color((byte)0, (byte)0, (byte)0);
@@ -95,13 +101,45 @@ public struct Color : IEquatable<Color>
 
     public static Color Red => new Color((byte)255, (byte)0, (byte)0);
 
-    public static Color Green => new Color((byte)0, (byte)255, (byte)0);
+    public static Color Green => new Color((byte)0, (byte)128, (byte)0);
 
     public static Color Blue => new Color((byte)0, (byte)0, (byte)255);
 
     public static Color Yellow => new Color((byte)255, (byte)255, (byte)0);
 
     public static Color Gray => new Color((byte)128, (byte)128, (byte)128);
+
+    public static Color Silver => new Color((byte)192, (byte)192, (byte)192);
+
+    public static Color DarkGray => new Color((byte)169, (byte)169, (byte)169);
+
+    public static Color DimGray => new Color((byte)105, (byte)105, (byte)105);
+
+    public static Color Lime => new Color((byte)0, (byte)255, (byte)0);
+
+    public static Color LimeGreen => new Color((byte)50, (byte)205, (byte)50);
+
+    public static Color YellowGreen => new Color((byte)154, (byte)205, (byte)50);
+
+    public static Color Cyan => new Color((byte)0, (byte)255, (byte)255);
+
+    public static Color DodgerBlue => new Color((byte)30, (byte)144, (byte)255);
+
+    public static Color DeepSkyBlue => new Color((byte)0, (byte)191, (byte)255);
+
+    public static Color CornflowerBlue => new Color((byte)100, (byte)149, (byte)237);
+
+    public static Color Purple => new Color((byte)128, (byte)0, (byte)128);
+
+    public static Color Orange => new Color((byte)255, (byte)165, (byte)0);
+
+    public static Color Wheat => new Color((byte)245, (byte)222, (byte)179);
+
+    public static Color Bisque => new Color((byte)255, (byte)228, (byte)196);
+
+    public static Color Beige => new Color((byte)245, (byte)245, (byte)220);
+
+    public static Color Aquamarine => new Color((byte)127, (byte)255, (byte)212);
 
     /// <summary>Scales every channel, alpha included.</summary>
     public static Color operator *(Color value, float scale) =>

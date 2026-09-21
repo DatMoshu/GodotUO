@@ -105,6 +105,45 @@ RENDER_NOT_FNA = (
 )
 
 
+# Files that import a HEAVY XNA namespace but name nothing from it that GUO
+# does not already provide under the same name -- a Compat value type, or a
+# global alias such as Texture2D. Upstream carries a number of dead `using` lines,
+# and tiering on imports alone puts those files in the rewrite tier, where
+# nobody starts them because the tier says they need a renderer.
+#
+# `tools/port_triage` finds the candidates by reading the bodies. It does NOT
+# get to change a tier on its own: it is textual, it cannot tell a type from an
+# identically named member, and a wrong answer here silently drags FNA into the
+# shim tier. So a file lands below only after someone has read it, and the
+# comment says what the file actually needed.
+SHIM_DESPITE_HEAVY_IMPORT = {
+    # Both name ButtonState and nothing else; see src/Compat/ButtonState.cs.
+    # These two are the UI's foundation -- the base class of every gump, and
+    # the mouse event type the whole interface is written against.
+    "ClassicUO.Client/Game/UI/Controls/Control.cs",
+    "ClassicUO.Client/Input/InputEventArgs.cs",
+
+    # These name Texture2D and nothing else, always as an opaque handle: a
+    # field, a local, a return type. src/Render/GlobalUsings.cs aliases that
+    # name to Godot's Texture2D, so the type they already write is the type
+    # they get. Between them they are most of the UI.
+    "ClassicUO.Client/Game/GameObjects/RenderedText.cs",
+    "ClassicUO.Client/Game/UI/Controls/Button.cs",
+    "ClassicUO.Client/Game/UI/Controls/ColorPickerBox.cs",
+    "ClassicUO.Client/Game/UI/Controls/HitBox.cs",
+    "ClassicUO.Client/Game/UI/Controls/Line.cs",
+    "ClassicUO.Client/Game/UI/Controls/ResizePic.cs",
+    "ClassicUO.Client/Game/UI/Gumps/AnchorableGump.cs",
+    "ClassicUO.Client/Game/UI/Gumps/CounterBarGump.CounterItem.cs",
+    "ClassicUO.Client/Game/UI/Gumps/HealthBarGump.cs",
+    "ClassicUO.Client/Game/UI/Gumps/MacroButtonGump.cs",
+    "ClassicUO.Client/Game/UI/Gumps/MapGump.cs",
+    "ClassicUO.Client/Game/UI/Gumps/MarkersManagerGump.cs",
+    "ClassicUO.Client/Game/UI/Gumps/MiniMapGump.cs",
+    "ClassicUO.Client/Game/UI/Gumps/NameOverheadGump.cs",
+}
+
+
 def classify(text: str, area: str, rel: Path | None = None) -> str:
     """Decide the porting tier for one source file.
 
@@ -119,6 +158,8 @@ def classify(text: str, area: str, rel: Path | None = None) -> str:
         if rel is None or rel.as_posix() not in RENDER_NOT_FNA:
             return TIER_REWRITE
     if HEAVY_NS.search(text):
+        if rel is not None and rel.as_posix() in SHIM_DESPITE_HEAVY_IMPORT:
+            return TIER_SHIM
         return TIER_REWRITE
     if ANY_XNA.search(text):
         return TIER_SHIM

@@ -207,6 +207,22 @@ def rewrite_source(text: str, tier: str) -> tuple[str, list[str]]:
         )
         if n:
             notes.append(f"compat:{n}")
+
+        # A file reaches the shim tier with a HEAVY import still on it only by
+        # way of the audit's SHIM_DESPITE_HEAVY_IMPORT allowlist, which means
+        # someone has read it and confirmed the import is dead. Dropping the
+        # line is then the whole edit: whatever it did name is a Compat value
+        # type, and Compat arrives on the line above.
+        out, n = re.subn(
+            r"^\s*﻿?\s*using\s+Microsoft\.Xna\.Framework\."
+            r"(?:Graphics|Input|Audio|Media|Content)\s*;\s*\r?\n",
+            "",
+            out,
+            flags=re.MULTILINE,
+        )
+        if n:
+            notes.append(f"dropped-dead-xna:{n}")
+
         left = re.findall(r"using\s+Microsoft\.Xna\.[\w.]+\s*;", out)
         if left:
             notes.append("XNA-LEFT:" + ",".join(sorted(set(left))))
@@ -221,6 +237,17 @@ def rewrite_source(text: str, tier: str) -> tuple[str, list[str]]:
     )
     if n:
         notes.append(f"sdl:{n}")
+
+    # `using static SDL3.SDL;` brings the enum members into scope unqualified.
+    # A few files use that form instead, and it needs the same redirect.
+    out, n = re.subn(
+        r"^(\s*﻿?\s*)using\s+static\s+SDL3\.SDL\s*;\s*$",
+        r"\1using static GUO.Platform.Sdl.SDL;",
+        out,
+        flags=re.MULTILINE,
+    )
+    if n:
+        notes.append(f"sdl-static:{n}")
 
     return out, notes
 
