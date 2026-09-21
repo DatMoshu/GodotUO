@@ -38,7 +38,29 @@
     <Compile Remove="src/Configuration/**/*.cs" />
     <Compile Remove="src/Client/**/*.cs" />
     <Compile Remove="src/Input/**/*.cs" />
-    <Compile Remove="src/Resources/**/*.cs" />
     <Compile Remove="src/Audio/**/*.cs" />
+    <!-- Depends on GUO.IO.Audio, which is still FNA-shaped. -->
+    <Compile Remove="src/Render/Sounds/**/*.cs" />
+  </ItemGroup>
+  <!--
+    Compiled-in resources.
+
+    The .resx files keep their UPSTREAM logical names. The ported
+    Res*.Designer.cs files ask for "ClassicUO.Resources.ResGumps" and friends,
+    and that string is inside a literal, which the bulk porter deliberately
+    never rewrites. Renaming the resource to match the port would mean editing
+    three generated files by hand on every upstream merge; naming the resource
+    what the code already asks for costs one attribute and nothing else. The
+    logical name is an internal lookup key, not anything a user sees.
+
+    The two PNGs replace upstream's FileEmbed source generator; see
+    src/Resources/Loader.cs.
+  -->
+  <ItemGroup>
+    <EmbeddedResource Update="src/Resources/embedded/ResErrorMessages.resx" LogicalName="ClassicUO.Resources.ResErrorMessages.resources" />
+    <EmbeddedResource Update="src/Resources/embedded/ResGeneral.resx" LogicalName="ClassicUO.Resources.ResGeneral.resources" />
+    <EmbeddedResource Update="src/Resources/embedded/ResGumps.resx" LogicalName="ClassicUO.Resources.ResGumps.resources" />
+    <EmbeddedResource Include="src/Resources/embedded/cuologo.png" LogicalName="cuologo.png" />
+    <EmbeddedResource Include="src/Resources/embedded/game-background.png" LogicalName="game-background.png" />
   </ItemGroup>
 </Project>

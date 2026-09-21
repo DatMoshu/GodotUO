@@ -77,12 +77,47 @@ AREA_MAP: dict[str, str] = {
 REPLACED_BY_ENGINE = {"Bootstrap"}
 
 
-def classify(text: str, area: str) -> str:
-    """Decide the porting tier for one source file."""
+# Files under ClassicUO.Renderer that are NOT part of the FNA architecture:
+# plain data types and algorithms that happen to live in the renderer project.
+# They classify by their imports like anything else.
+#
+# This is an allowlist rather than a blocklist on purpose. Most of the renderer
+# really is FNA -- device state, vertex buffers, effects, a command buffer --
+# and a new upstream file there should default to "needs judgement", not to
+# "copy it across". Adding a path here claims the file carries no FNA
+# BEHAVIOUR -- no device, no buffer, no draw call. It may still name renderer
+# types, as long as those are ones the port itself provides.
+#
+# Read the file, and what it references, before adding it. The two animation
+# types below were added on the strength of their imports alone and turned out
+# to hold a `SpriteInfo[]`, which meant porting `SpriteInfo` first. Cheap that
+# time because the compiler said so immediately; it will not always be.
+#
+# `Batching/` is deliberately absent even though most of its files import no
+# XNA at all: they are the command structs of an FNA command buffer, and their
+# imports are clean only because the types they describe live elsewhere.
+RENDER_NOT_FNA = (
+    "ClassicUO.Renderer/Animations/AnimationDirection.cs",
+    "ClassicUO.Renderer/Animations/AnimationGroup.cs",
+    "ClassicUO.Renderer/PixelPicker.cs",
+    "ClassicUO.Renderer/ShaderHueTranslator.cs",
+    "ClassicUO.Renderer/Sounds/Sound.cs",
+)
+
+
+def classify(text: str, area: str, rel: Path | None = None) -> str:
+    """Decide the porting tier for one source file.
+
+    `rel` is the path under `src/`, used only for the renderer carve-out. It
+    is optional so existing callers keep working; without it the whole
+    renderer is treated as rewrite, which is the conservative answer.
+    """
     if area == "Render":
-        # The whole renderer is being reimplemented on Godot regardless of
-        # what any individual file happens to import.
-        return TIER_REWRITE
+        # The renderer is being reimplemented on Godot, so the area decides
+        # the tier rather than the imports -- except for the handful of files
+        # that are only filed under it by accident. See RENDER_NOT_FNA.
+        if rel is None or rel.as_posix() not in RENDER_NOT_FNA:
+            return TIER_REWRITE
     if HEAVY_NS.search(text):
         return TIER_REWRITE
     if ANY_XNA.search(text):
@@ -121,7 +156,7 @@ def scan_upstream(upstream_src: Path) -> list[dict]:
             {
                 "upstream": rel.as_posix(),
                 "area": area,
-                "tier": classify(text, area),
+                "tier": classify(text, area, rel),
                 "lines": text.count("\n") + 1,
                 "name": path.name,
             }

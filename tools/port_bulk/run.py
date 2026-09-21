@@ -289,7 +289,7 @@ def main(argv: list[str] | None = None) -> int:
             continue
 
         text = path.read_text(encoding="utf-8", errors="replace")
-        tier = classify(text, area)
+        tier = classify(text, area, rel)
         if tier not in tiers:
             continue
 

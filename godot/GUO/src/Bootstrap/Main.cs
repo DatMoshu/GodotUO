@@ -96,7 +96,11 @@ public partial class Main : Node
                 break;
 
             case RunMode.Offline:
-                Quit(LoadAndShow(draw: false) ? 0 : 1);
+                // Both checks run even if the first fails, so one pass reports
+                // everything that is wrong rather than only the first thing.
+                bool dataOk = LoadAndShow(draw: false);
+                bool resourcesOk = ResourceProbe.Verify();
+                Quit(dataOk && resourcesOk ? 0 : 1);
                 break;
 
             case RunMode.Play:
