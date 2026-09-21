@@ -214,12 +214,18 @@ Phase 3.
 
 **Done when:** core gumps — paperdoll, backpack, status, skills — work.
 
-**Status:** `Input` is done — `src/Input/GodotInput.cs` replaces upstream's SDL
-event filter (ADR-0006), and clicks, typed text and a held right button all
-reach the scene. The login gumps, the shard list, character creation and, in
-the world, the top menu bar, the paperdoll and the journal all draw and
-respond. The "done when" gumps — backpack, status, skills — have not been
-opened yet.
+**Status:** met. `Input` is done — `src/Input/GodotInput.cs` replaces
+upstream's SDL event filter (ADR-0006), and clicks, typed text and a held
+right button all reach the scene. The input probe opens the core gumps by
+finding their buttons and clicking them, and they are all up at the end of a
+run:
+
+    gumps open: TopBarGump, StatusGumpModern, PaperDollGump, ContainerGump,
+                StandardSkillsGump, WorldViewportGump
+
+The backpack comes from the server with its contents and draws each item from
+its own art; the paperdoll shows what the character is wearing; the skills
+gump draws its scroll, its groups and its caps.
 
 ### Phase 7 — parity and polish
 `Audio`, lighting, effects, and the long tail.

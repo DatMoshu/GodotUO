@@ -136,11 +136,142 @@ internal static class InputProbe
 
         await Frames(host, 60);
 
+        GD.Print("[GUO] input probe: opening the backpack");
+
+        await OpenInventory(host);
+
+        GD.Print("[GUO] input probe: skills and status");
+
+        // PaperDollGump.Buttons: Skills is 5, Status is 8.
+        await ClickGumpButton<Game.UI.Gumps.PaperDollGump>(host, 5, "Skills");
+        await ClickGumpButton<Game.UI.Gumps.PaperDollGump>(host, 8, "Status");
+
         GD.Print("[GUO] input probe: speaking");
 
         await Speak(host, "hail from godot");
 
         await Frames(host, 90);
+
+        // What is on screen at the end, named. A gump that opened behind
+        // another is still a gump that opened, and a screenshot cannot say so.
+        var open = new System.Collections.Generic.List<string>();
+
+        foreach (Game.UI.Gumps.Gump g in Game.Managers.UIManager.Gumps)
+        {
+            if (g.IsVisible && !g.IsDisposed)
+            {
+                open.Add(g.GetType().Name);
+            }
+        }
+
+        GD.Print($"[GUO] input probe: gumps open: {string.Join(", ", open)}");
+    }
+
+    /// <summary>
+    /// Press Inventory on the top bar, which asks the server for the backpack.
+    /// </summary>
+    /// <remarks>
+    /// The button is found rather than guessed at: `TopBarGump` lays its
+    /// buttons out from the widths of the gump art it loads, so their
+    /// positions are not in the source to read off. The click itself still
+    /// goes through Godot and the input layer like any other.
+    ///
+    /// A container is a round trip and then some -- the client asks, the
+    /// server sends the container and every item in it, and the gump is built
+    /// from art looked up per item.
+    /// </remarks>
+    private static async System.Threading.Tasks.Task OpenInventory(Node host)
+    {
+        Game.UI.Gumps.TopBarGump bar =
+            Game.Managers.UIManager.GetGump<Game.UI.Gumps.TopBarGump>();
+
+        Game.UI.Controls.Button button = bar == null ? null : FindButton(bar, 2);
+
+        if (button == null)
+        {
+            GD.Print("[GUO] input probe: no Inventory button on the top bar");
+
+            return;
+        }
+
+        await Click(
+            host,
+            new Vector2(
+                button.ScreenCoordinateX + button.Width / 2f,
+                button.ScreenCoordinateY + button.Height / 2f
+            )
+        );
+
+        await Frames(host, 120);
+
+        Game.UI.Gumps.ContainerGump pack =
+            Game.Managers.UIManager.GetGump<Game.UI.Gumps.ContainerGump>();
+
+        GD.Print(
+            pack == null
+                ? "[GUO] input probe: no container gump"
+                : $"[GUO] input probe: container gump {pack.Width}x{pack.Height} "
+                  + $"with {pack.Children.Count} children"
+        );
+    }
+
+    /// <summary>
+    /// Find a button by its id inside a gump and click where it actually is.
+    /// </summary>
+    /// <remarks>
+    /// Gumps lay themselves out from the size of the art they load, so a
+    /// coordinate written here would be a guess. The click still goes through
+    /// Godot and the input layer; only the target is looked up.
+    /// </remarks>
+    private static async System.Threading.Tasks.Task ClickGumpButton<T>(
+        Node host,
+        int buttonId,
+        string what
+    )
+        where T : Game.UI.Gumps.Gump
+    {
+        T gump = Game.Managers.UIManager.GetGump<T>();
+        Game.UI.Controls.Button button = gump == null ? null : FindButton(gump, buttonId);
+
+        if (button == null)
+        {
+            GD.Print($"[GUO] input probe: no {what} button on {typeof(T).Name}");
+
+            return;
+        }
+
+        await Click(
+            host,
+            new Vector2(
+                button.ScreenCoordinateX + button.Width / 2f,
+                button.ScreenCoordinateY + button.Height / 2f
+            )
+        );
+
+        await Frames(host, 90);
+    }
+
+    private static Game.UI.Controls.Button FindButton(
+        Game.UI.Controls.Control parent,
+        int buttonId
+    )
+    {
+        foreach (Game.UI.Controls.Control child in parent.Children)
+        {
+            if (child is Game.UI.Controls.Button b && b.ButtonID == buttonId)
+            {
+                return b;
+            }
+
+            Game.UI.Controls.Button found = FindButton(child, buttonId);
+
+            if (found != null)
+            {
+                return found;
+            }
+        }
+
+        return null;
     }
 
     /// <summary>
