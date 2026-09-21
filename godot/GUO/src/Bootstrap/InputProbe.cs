@@ -207,6 +207,13 @@ internal static class InputProbe
 
         // PaperDollGump.Buttons: Skills is 5, Status is 8.
         await ClickGumpButton<Game.UI.Gumps.PaperDollGump>(host, 5, "Skills");
+
+        // While the skills list is still the newest thing on screen: the
+        // status gump overlaps it, and a covered button is not clickable.
+        GD.Print("[GUO] input probe: using a skill");
+
+        await UseFirstSkill(host);
+
         await ClickGumpButton<Game.UI.Gumps.PaperDollGump>(host, 8, "Status");
 
         GD.Print("[GUO] input probe: the journal, the options and war mode");
@@ -532,30 +539,7 @@ internal static class InputProbe
 
         await Frames(host, 30);
 
-        Compat.Rectangle bounds = Client.Game.Window.ClientBounds;
-        var centre = new Vector2(bounds.Width / 2f, bounds.Height / 2f);
-
-        // The camera keeps the player in the middle of the window, but the
-        // middle of the window is a floor tile: a mobile is drawn standing on
-        // its tile, so its body is above that point, and how far above depends
-        // on the body. Rather than guess the offset, the probe moves the mouse
-        // up the column and asks the client what is under it -- the same hit
-        // test a player's own aiming relies on.
-        Vector2? found = null;
-
-        for (int dy = 0; dy >= -120 && found == null; dy -= 10)
-        {
-            var at = new Vector2(centre.X, centre.Y + dy);
-
-            Send(new InputEventMouseMotion { Position = at });
-
-            await Frames(host, 4);
-
-            if (ReferenceEquals(Game.SelectedObject.Object, Client.Game.UO.World.Player))
-            {
-                found = at;
-            }
-        }
+        Vector2? found = await FindCharacter(host);
 
         Check(
             "the character can be picked out of the world",
@@ -573,6 +557,250 @@ internal static class InputProbe
         await Frames(host, 90);
 
         Report<Game.UI.Gumps.PaperDollGump>("paperdoll");
+    }
+
+    /// <summary>
+    /// Where on screen the character is, asked rather than worked out.
+    /// </summary>
+    /// <remarks>
+    /// The camera keeps the player in the middle of the window, but the middle
+    /// of the window is a floor tile: a mobile is drawn standing on its tile,
+    /// so its body is above that point, and how far above depends on the body.
+    /// The probe moves the mouse up the column and asks the client what is
+    /// under it -- the same hit test a player's own aiming relies on.
+    /// </remarks>
+    private static async System.Threading.Tasks.Task<Vector2?> FindCharacter(Node host)
+    {
+        Compat.Rectangle bounds = Client.Game.Window.ClientBounds;
+        var centre = new Vector2(bounds.Width / 2f, bounds.Height / 2f);
+
+        for (int dy = 0; dy >= -120; dy -= 10)
+        {
+            var at = new Vector2(centre.X, centre.Y + dy);
+
+            Send(new InputEventMouseMotion { Position = at });
+
+            await Frames(host, 4);
+
+            if (ReferenceEquals(Game.SelectedObject.Object, Client.Game.UO.World.Player))
+            {
+                return at;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Press the use button on the first skill that has one, and target the
+    /// character with it.
+    /// </summary>
+    /// <remarks>
+    /// The only thing here that goes through the target cursor, which is how
+    /// half of what a player does in UO is done -- casting, healing, tracking,
+    /// anything that asks "on what?". The skill is whichever one the gump
+    /// lists first with a use button, because which skills are usable depends
+    /// on the character and the shard, and the path being checked is the same
+    /// for all of them.
+    /// </remarks>
+    private static async System.Threading.Tasks.Task UseFirstSkill(Node host)
+    {
+        Game.UI.Gumps.StandardSkillsGump skills =
+            Game.Managers.UIManager.GetGump<Game.UI.Gumps.StandardSkillsGump>();
+
+        if (skills == null)
+        {
+            Check("a skill can be used", false, "the skills gump is not open");
+
+            return;
+        }
+
+        // Out from under the paperdoll it was opened from. Gumps open on top
+        // of each other at the client's default positions, and a click goes to
+        // whichever gump is in front -- the skills list was underneath, so
+        // every press on it landed on the paperdoll's backdrop instead. A
+        // player drags the window clear; the probe puts it clear.
+        skills.X = 900;
+        skills.Y = 400;
+
+        await Frames(host, 10);
+
+        // Every group starts collapsed, so the skills themselves are laid out
+        // but not drawn. 1000 is a group's own expand button, and the groups
+        // have to be opened one at a time because opening one moves the ones
+        // below it.
+        for (int i = 0; i < 16; i++)
+        {
+            var collapsed = new System.Collections.Generic.List<Game.UI.Controls.Button>();
+
+            Collect(skills, 1000, collapsed);
+
+            Game.UI.Controls.Button next = collapsed.Count > i ? collapsed[i] : null;
+
+            if (next == null)
+            {
+                break;
+            }
+
+            await Click(host, Centre(next));
+            await Frames(host, 10);
+        }
+
+        var buttons = new System.Collections.Generic.List<Game.UI.Controls.Button>();
+
+        Collect(skills, 0, buttons);
+
+        // Id 0 is also the gump's own "new group" button, which is not a skill
+        // and which leaves a group behind on the character when pressed. A
+        // skill's row is the one that carries the skill's name.
+        var uses = new System.Collections.Generic.List<Game.UI.Controls.Button>();
+
+        foreach (Game.UI.Controls.Button candidate in buttons)
+        {
+            if (SkillNameOf(candidate) != "?")
+            {
+                uses.Add(candidate);
+            }
+        }
+
+        GD.Print($"[GUO] input probe: {uses.Count} skills can be used");
+
+        // Anatomy by preference: it is the plainest targeted skill in the
+        // list, every character has it, and using it on someone always asks
+        // who. Any other usable skill would still exercise the gump; not all
+        // of them raise a target cursor.
+        Game.UI.Controls.Button use = null;
+
+        foreach (Game.UI.Controls.Button candidate in uses)
+        {
+            if (SkillNameOf(candidate) == "Anatomy")
+            {
+                use = candidate;
+
+                break;
+            }
+        }
+
+        if (use == null && uses.Count > 0)
+        {
+            use = uses[0];
+        }
+
+        if (use == null)
+        {
+            Check(
+                "a skill can be used",
+                false,
+                $"none of the {buttons.Count} buttons found is a skill's"
+            );
+
+            return;
+        }
+
+        GD.Print($"[GUO] input probe: using {SkillNameOf(use)}");
+
+        await Click(host, Centre(use));
+
+        await Frames(host, 60);
+
+        bool targeting = Client.Game.UO.World.TargetManager.IsTargeting;
+
+        Check("a skill asks for a target", targeting);
+
+        if (!targeting)
+        {
+            return;
+        }
+
+        Vector2? character = await FindCharacter(host);
+
+        if (character == null)
+        {
+            Check("the target lands on the character", false, "the character is not on screen");
+
+            return;
+        }
+
+        await Click(host, character.Value);
+
+        await Frames(host, 90);
+
+        Check(
+            "the target is taken",
+            !Client.Game.UO.World.TargetManager.IsTargeting,
+            LastJournalLine()
+        );
+    }
+
+    /// <summary>Every visible button with this id, in the order they are laid out.</summary>
+    private static void Collect(
+        Game.UI.Controls.Control parent,
+        int buttonId,
+        System.Collections.Generic.List<Game.UI.Controls.Button> into
+    )
+    {
+        foreach (Game.UI.Controls.Control child in parent.Children)
+        {
+            if (!child.IsVisible || (child.Page != 0 && child.Page != parent.ActivePage))
+            {
+                continue;
+            }
+
+            if (child is Game.UI.Controls.Button b && b.ButtonID == buttonId && b.ToPage == 0)
+            {
+                into.Add(b);
+            }
+
+            Collect(child, buttonId, into);
+        }
+    }
+
+    /// <summary>
+    /// The skill a use button belongs to, read off the label beside it.
+    /// </summary>
+    /// <remarks>
+    /// The row is a private class inside the gump, so the name is not
+    /// reachable from here -- but the row draws it, and that label is the
+    /// button's own sibling.
+    /// </remarks>
+    private static string SkillNameOf(Game.UI.Controls.Button use)
+    {
+        if (use.Parent == null)
+        {
+            return "?";
+        }
+
+        foreach (Game.UI.Controls.Control sibling in use.Parent.Children)
+        {
+            // The row carries two labels, the name and the current value, and
+            // which comes first is the gump's business -- the name is the one
+            // that is not a number.
+            if (sibling is Game.UI.Controls.Label label
+                && !string.IsNullOrEmpty(label.Text)
+                && !double.TryParse(label.Text, out _))
+            {
+                return label.Text;
+            }
+        }
+
+        return "?";
+    }
+
+    /// <summary>The middle of a control, in screen pixels.</summary>
+    private static Vector2 Centre(Game.UI.Controls.Control control) =>
+        new(
+            control.ScreenCoordinateX + control.Width / 2f,
+            control.ScreenCoordinateY + control.Height / 2f
+        );
+
+    /// <summary>The most recent line in the journal, for a check's detail.</summary>
+    private static string LastJournalLine()
+    {
+        var entries = Game.Managers.JournalManager.Entries;
+
+        return entries.Count == 0
+            ? "the journal is empty"
+            : $"{entries[entries.Count - 1].Name}: {entries[entries.Count - 1].Text}";
     }
 
     /// <summary>
@@ -819,6 +1047,15 @@ internal static class InputProbe
     {
         foreach (Game.UI.Controls.Control child in parent.Children)
         {
+            // A control that is not drawn cannot be clicked, and the skills
+            // gump keeps a whole collapsed group's buttons laid out but
+            // invisible, so this is the difference between a button and a
+            // button-shaped hole.
+            if (!child.IsVisible)
+            {
+                continue;
+            }
+
             if (child.Page != 0 && child.Page != parent.ActivePage)
             {
                 continue;
