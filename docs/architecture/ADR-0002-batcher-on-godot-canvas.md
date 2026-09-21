@@ -123,6 +123,46 @@ depth argument becomes a sort key rather than a Z write.
 This is why ADR-0001 mattered: having kept the sorting seam, we do not need a
 depth buffer in 2D at all.
 
+#### Amendment, 2026-09-21: the seam had to be made to sort
+
+The paragraph above was wrong about upstream when it was written, and the
+mistake cost a visibly broken world. `RenderLists` did not sort. Upstream
+keeps four lists -- land, statics, animations, effects -- and walks them one
+after another, which resolves nothing: what paints over what is settled per
+pixel by the depth buffer `GameScene.DrawWorld` turns on, over the very
+`CalculateDepthZ()` value the lists carry. Submission order upstream is not
+depth order and never was. The UI is the same shape: `UIManager.Draw` also
+turns the depth buffer on, hands every control an ever-increasing
+`layerDepth`, and flushes two gump queues one after the other.
+
+On a canvas with no depth test both splits showed. Furniture inside a house
+painted over its roof; a chair queued as a baked chunk static painted over
+everything dynamic; journal text painted across a world map opened on top of
+it; a status gump landed between a map's picture and its own frame.
+
+The seam now does what this ADR claimed it did:
+
+- `RenderLists` merges statics, multis, items, mobiles, corpses and effects
+  into one list and sorts it by `CalculateDepthZ()`, with the queue sequence
+  breaking ties so a pile on one tile cannot shimmer (`List.Sort` is not
+  stable). This is the depth buffer done on the CPU, and it is exact rather
+  than approximate because UO sprites are cut out: a pixel is opaque or it is
+  absent, so ordering whole sprites answers as ordering pixels would.
+- The two gump queues become one. That needs no sort -- `layerDepth` only
+  goes up as the control tree is walked, so arrival order already is depth
+  order -- but `ScissorControl`, which queued its clip into both, now queues
+  it once.
+- `ChunkMesh.IsStaticExcludedFromMesh` excludes everything. A baked chunk is
+  one draw for a whole 8x8 of statics and cannot take part in a sort, so
+  baking and correct order are exclusive. Land is still baked; it is under
+  everything by construction. Measured cost of giving up the statics mesh:
+  none at the resolution and object counts the playtest runs at -- 16.66 ms a
+  frame before and after, and 3,600 frames of continuous walking held it.
+
+The way to have both is the depth buffer itself: a 3D pass that writes Z, with
+the sprites as camera-facing quads. That is a larger decision than this
+amendment and is not taken here.
+
 ### 4. The two FNA escape hatches stay unimplemented, loudly
 
 `GetDynamicIndexBuffer` and `DrawDirectIndexed` exist for the world mesh, which

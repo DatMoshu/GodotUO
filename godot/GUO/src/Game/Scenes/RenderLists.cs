@@ -59,25 +59,89 @@ namespace GUO.Game.Scenes
     /// </summary>
     internal class RenderLists
     {
+        /// <summary>
+        /// One thing to draw, with the depth upstream would have written into
+        /// the depth buffer and the order it was queued in.
+        /// </summary>
+        /// <remarks>
+        /// The depth is taken when the object is queued rather than when it is
+        /// drawn, because it is the sort key: taking it twice is waste, and
+        /// taking it later would sort on one number and draw on another.
+        ///
+        /// <see cref="Seq"/> breaks ties. Two things at the same depth have to
+        /// keep the order the render list put them in -- upstream's depth test
+        /// is a less-than, so the first one queued wins -- and List.Sort is not
+        /// stable, so without this a pile of objects on one tile would shuffle
+        /// from frame to frame and shimmer.
+        /// </remarks>
+        private readonly struct Drawable(GameObject obj, float depth, int seq)
+        {
+            public readonly GameObject Object = obj;
+            public readonly float Depth = depth;
+            public readonly int Seq = seq;
+        }
+
         private readonly List<GameObject> _tiles = [];
         private readonly List<GameObject> _stretchedTiles = [];
-        private readonly List<GameObject> _statics = [];
-        private readonly List<GameObject> _animations = [];
-        private readonly List<GameObject> _effects = [];
+
+        /// <summary>
+        /// Statics, multis, items, mobiles, corpses and effects, together.
+        /// </summary>
+        /// <remarks>
+        /// PORT DEVIATION (GUO): upstream keeps these in four lists and draws
+        /// them one after another, which it can do because it draws the world
+        /// with a depth buffer -- see the Hargreaves note it links in
+        /// GameScene.DrawWorld -- so what paints over what is settled per
+        /// pixel by CalculateDepthZ(), not by the order the lists are walked.
+        ///
+        /// Godot's 2D canvas has no depth buffer. Kept as four lists, the
+        /// order became: every static, then every mobile, then every effect,
+        /// and that is visibly wrong -- a chair inside a house painted over
+        /// the roof of it, and a mobile behind a wall painted over the wall.
+        /// One list sorted by the same depth upstream writes gives the same
+        /// answer for the sprites UO has, whose alpha is all or nothing.
+        /// </remarks>
+        private readonly List<Drawable> _world = [];
+
         private readonly List<GameObject> _transparentObjects = [];
-        private readonly List<Func<UltimaBatcher2D, bool>> _gumpSprites = [];
-        private readonly List<NoAtlasGumpCommand> _gumpTexts = [];
+
+        private int _queued;
+
+        private static readonly Comparison<Drawable> ByDepth = static (a, b) =>
+        {
+            int order = a.Depth.CompareTo(b.Depth);
+
+            return order != 0 ? order : a.Seq.CompareTo(b.Seq);
+        };
+        /// <summary>
+        /// Every gump draw, in the order the control tree asked for it.
+        /// </summary>
+        /// <remarks>
+        /// PORT DEVIATION (GUO): upstream keeps two queues -- one for the
+        /// draws that come out of the gump atlas and one for the draws that do
+        /// not -- and flushes the atlas one first, so the whole UI is drawn
+        /// twice over. It can do that because UIManager.Draw runs with the
+        /// depth buffer on and hands every control an ever-increasing
+        /// layerDepth, so which queue a draw landed in makes no difference to
+        /// what ends up on top.
+        ///
+        /// There is no depth buffer here, and the split is then plainly
+        /// visible: journal text painted across a world map opened over it,
+        /// and a status gump sandwiched between a map's picture and its own
+        /// frame. The two queues become one, which needs no sort -- that
+        /// layerDepth only ever goes up as the tree is walked, so the order the
+        /// draws arrive in already is the order upstream resolves them to.
+        /// </remarks>
+        private readonly List<NoAtlasGumpCommand> _gumps = [];
 
         public void Clear()
         {
             _tiles.Clear();
             _stretchedTiles.Clear();
-            _statics.Clear();
-            _animations.Clear();
-            _effects.Clear();
+            _world.Clear();
+            _queued = 0;
             _transparentObjects.Clear();
-            _gumpSprites.Clear();
-            _gumpTexts.Clear();
+            _gumps.Clear();
         }
 
         public void Add(GameObject toRender, bool isTransparent = false)
@@ -103,26 +167,10 @@ namespace GUO.Game.Scenes
 
                 case Static:
                 case Multi:
-                    _statics.Add(toRender);
-                    break;
-
                 case Mobile:
-                    _animations.Add(toRender);
-                    break;
-
-                case Item item:
-                    if (item.IsCorpse)
-                    {
-                        _animations.Add(toRender);
-                    }
-                    else
-                    {
-                        _statics.Add(toRender);
-                    }
-                    break;
-
+                case Item:
                 case GameEffect:
-                    _effects.Add(toRender);
+                    _world.Add(new Drawable(toRender, toRender.CalculateDepthZ(), _queued++));
                     break;
 
                 default:
@@ -137,7 +185,7 @@ namespace GUO.Game.Scenes
         /// <param name="toRender"></param>
         public void AddGumpWithAtlas(Func<UltimaBatcher2D, bool> toRender)
         {
-            _gumpSprites.Add(toRender);
+            AddGumpNoAtlas(toRender);
         }
 
         /// <summary>
@@ -154,7 +202,7 @@ namespace GUO.Game.Scenes
                 return;
             }
 
-            _gumpTexts.Add(new NoAtlasGumpCommand(text, x, y, layerDepth, alpha, hue));
+            _gumps.Add(new NoAtlasGumpCommand(text, x, y, layerDepth, alpha, hue));
         }
 
         /// <summary>
@@ -170,27 +218,24 @@ namespace GUO.Game.Scenes
                 return;
             }
 
-            _gumpTexts.Add(new NoAtlasGumpCommand(toRender));
+            _gumps.Add(new NoAtlasGumpCommand(toRender));
         }
 
         // Test accessors. Kept internal; allow unit tests to inspect what was queued
         // without requiring a live graphics device to invoke the flush path.
-        internal int GumpTextsCount => _gumpTexts.Count;
-        internal NoAtlasGumpCommand PeekGumpText(int index) => _gumpTexts[index];
+        internal int GumpTextsCount => _gumps.Count;
+        internal NoAtlasGumpCommand PeekGumpText(int index) => _gumps[index];
 
         public int DrawRenderLists(UltimaBatcher2D batcher, sbyte maxGroundZ)
         {
             int result = DrawRenderList(batcher, _tiles, maxGroundZ) +
                    DrawRenderList(batcher, _stretchedTiles, maxGroundZ) +
-                   DrawRenderList(batcher, _statics, maxGroundZ) +
-                   DrawRenderList(batcher, _animations, maxGroundZ) +
-                   DrawRenderList(batcher, _effects, maxGroundZ);
+                   DrawWorld(batcher, maxGroundZ);
 
-            if (_transparentObjects.Count > 0 || _gumpSprites.Count > 0 || _gumpTexts.Count > 0)
+            if (_transparentObjects.Count > 0 || _gumps.Count > 0)
             {
                 result += DrawRenderList(batcher, _transparentObjects, maxGroundZ);
-                result += DrawRenderListWithAtlas(batcher, _gumpSprites);
-                result += DrawRenderListNoAtlas(batcher, _gumpTexts);
+                result += DrawGumps(batcher, _gumps);
             }
 
             return result;
@@ -226,17 +271,14 @@ namespace GUO.Game.Scenes
                 result += DrawMeshLayer(batcher, chunk.Mesh.Statics);
             batcher.ResetWorldOffset();
 
-            // Draw excluded statics + animations + effects
-            result += DrawRenderList(batcher, _statics, maxGroundZ) +
-                   DrawRenderList(batcher, _animations, maxGroundZ) +
-                   DrawRenderList(batcher, _effects, maxGroundZ);
+            // Everything that is not land, in one pass and in depth order
+            result += DrawWorld(batcher, maxGroundZ);
 
-            if (_transparentObjects.Count > 0 || _gumpSprites.Count > 0 || _gumpTexts.Count > 0)
+            if (_transparentObjects.Count > 0 || _gumps.Count > 0)
             {
                 //batcher.SetStencil(DepthStencilState.DepthRead);
                 result += DrawRenderList(batcher, _transparentObjects, maxGroundZ);
-                result += DrawRenderListWithAtlas(batcher, _gumpSprites);
-                result += DrawRenderListNoAtlas(batcher, _gumpTexts);
+                result += DrawGumps(batcher, _gumps);
                 //batcher.SetStencil(null);
             }
 
@@ -259,6 +301,44 @@ namespace GUO.Game.Scenes
             return batcher.DrawMeshLayer(layer);
         }
 
+        /// <summary>
+        /// Everything that is not land, drawn back to front.
+        /// </summary>
+        /// <remarks>
+        /// This is the depth buffer upstream has, done on the CPU: the sort
+        /// key is the very number upstream writes into it. It works because UO
+        /// art is cut out rather than blended -- a pixel is opaque or it is not
+        /// -- so ordering whole sprites gives the same picture as ordering
+        /// pixels. Sprites that genuinely blend are queued as transparent and
+        /// still come last, exactly as they did before.
+        /// </remarks>
+        private int DrawWorld(UltimaBatcher2D batcher, sbyte maxGroundZ)
+        {
+            _world.Sort(ByDepth);
+
+            int done = 0;
+
+            var span = CollectionsMarshal.AsSpan(_world);
+
+            for (int i = 0; i < span.Length; i++)
+            {
+                ref readonly Drawable next = ref span[i];
+
+                if (next.Object.Z <= maxGroundZ
+                    && next.Object.Draw(
+                        batcher,
+                        next.Object.RealScreenPosition.X,
+                        next.Object.RealScreenPosition.Y,
+                        next.Depth
+                    ))
+                {
+                    done++;
+                }
+            }
+
+            return done;
+        }
+
         private static int DrawRenderList(UltimaBatcher2D batcher, List<GameObject> renderList, sbyte maxGroundZ)
         {
             int done = 0;
@@ -279,22 +359,7 @@ namespace GUO.Game.Scenes
             return done;
         }
 
-        private static int DrawRenderListWithAtlas(UltimaBatcher2D batcher, List<Func<UltimaBatcher2D, bool>> renderList)
-        {
-            int done = 0;
-
-            foreach (var obj in renderList)
-            {
-                if (obj.Invoke(batcher))
-                {
-                    done++;
-                }
-            }
-
-            return done;
-        }
-
-        private static int DrawRenderListNoAtlas(UltimaBatcher2D batcher, List<NoAtlasGumpCommand> renderList)
+        private static int DrawGumps(UltimaBatcher2D batcher, List<NoAtlasGumpCommand> renderList)
         {
             int done = 0;
 

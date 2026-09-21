@@ -664,6 +664,22 @@ internal static class InputProbe
             }
         }
 
+        // Sixty-five points said no. A run that only says "not on screen"
+        // leaves nothing to work from, so it says what did answer at the
+        // middle of the window instead, and whether a gump had the mouse at
+        // all -- a gump over the centre stops the world being asked.
+        Send(new InputEventMouseMotion { Position = centre });
+
+        await Frames(host, 4);
+
+        GD.Print(
+            $"[GUO] input probe: no character at {centre}; "
+                + $"over {Game.SelectedObject.Object?.GetType().Name ?? "nothing"} "
+                + $"0x{(Game.SelectedObject.Object as Game.GameObjects.Entity)?.Serial ?? 0:X}, "
+                + $"gump {Game.Managers.UIManager.MouseOverControl?.GetType().Name ?? "none"}, "
+                + $"player {(Client.Game.UO.World.Player == null ? "gone" : "here")}"
+        );
+
         return null;
     }
 

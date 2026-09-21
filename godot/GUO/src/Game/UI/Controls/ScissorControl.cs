@@ -41,7 +41,11 @@ namespace GUO.Game.UI.Controls
                 return true;
             }
 
-            renderLists.AddGumpWithAtlas(clipIt);
+            // PORT DEVIATION (GUO): upstream queues the clip twice, once into
+            // each of its two gump queues, because each is flushed as its own
+            // pass and both have to be clipped. RenderLists keeps one queue
+            // here -- see the note on it -- and queueing twice would begin the
+            // clip, then begin it again, or end an ended one.
             renderLists.AddGumpNoAtlas(clipIt);
 
             return true;

@@ -383,6 +383,31 @@ namespace GUO.Game.Map
         /// </summary>
         private static bool IsStaticExcludedFromMesh(ushort graphic, ref StaticTiles itemData)
         {
+            // PORT DEVIATION (GUO): everything, for now.
+            //
+            // A baked chunk cannot take part in a sort. Upstream can bake one
+            // because it draws with a depth buffer, so a chunk's statics may be
+            // handed to the GPU whenever it suits and still end up behind the
+            // chair that stands in front of them. Without that buffer the only
+            // thing deciding what covers what is the order sprites are
+            // submitted in, and a baked chunk submits all of its statics before
+            // any item, mobile or effect in the world -- which put furniture on
+            // top of the roof it was under, and trees on top of the houses
+            // behind them.
+            //
+            // Land is still baked, in Build: it is drawn before everything and
+            // it is most of the tiles, so it keeps most of the benefit. Giving
+            // statics back to the sorted pass costs a sort of a few thousand
+            // objects a frame, which is measured by the frame-rate check in the
+            // playtest.
+            //
+            // The way to have both is a depth buffer, which on Godot means
+            // drawing the world through a 3D pass rather than the 2D canvas.
+            // That is a bigger change than a correctness fix should be, and it
+            // is written up in ADR-0001 rather than attempted here.
+            return true;
+
+#pragma warning disable CS0162 // unreachable while the above stands
             if (itemData.IsInternal)
                 return true;
 
@@ -399,6 +424,7 @@ namespace GUO.Game.Map
                 return true;
 
             return false;
+#pragma warning restore CS0162
         }
 
         private void TryAddStatic(Static staticObj)

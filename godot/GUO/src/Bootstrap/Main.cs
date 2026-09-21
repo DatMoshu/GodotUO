@@ -275,6 +275,13 @@ public partial class Main : Node
     private async void ShardCommandsThenQuit()
     {
         await ShardCommands.Run(this, _options.ShardCommands);
+
+        // A frame of wherever the commands left the character. "[go" somewhere
+        // and photograph it is the only way to look at one particular piece of
+        // the world twice -- before a renderer change and after it -- and be
+        // sure the two pictures are of the same thing.
+        await CaptureFrame();
+
         Quit(ShardCommands.Passed ? 0 : 1);
     }
 
