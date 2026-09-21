@@ -146,7 +146,11 @@ internal static class InputProbe
 
         GD.Print("[GUO] input probe: walking");
 
-        await Walk(host);
+        // A step plays a footstep, so this is where a sound effect can be
+        // listened for. It has to be caught while it is playing: an effect is
+        // about a second long, and by the end of the run there is nothing
+        // left to hear but the music, which says nothing about UOSound.
+        await ListenForSound(host, Walk(host));
 
         await Frames(host, 60);
 
@@ -156,15 +160,19 @@ internal static class InputProbe
 
         await OpenInventory(host);
 
+        // Before anything else is opened. A gump that opens later sits on top
+        // of the backpack, and a press lands on whatever is topmost -- the
+        // drag then moves that gump instead of the item, which is what
+        // happened when this ran after the skills list and the maps.
+        GD.Print("[GUO] input probe: moving an item in the backpack");
+
+        await MoveItemInBackpack(host);
+
         GD.Print("[GUO] input probe: skills and status");
 
         // PaperDollGump.Buttons: Skills is 5, Status is 8.
         await ClickGumpButton<Game.UI.Gumps.PaperDollGump>(host, 5, "Skills");
         await ClickGumpButton<Game.UI.Gumps.PaperDollGump>(host, 8, "Status");
-
-        GD.Print("[GUO] input probe: moving an item in the backpack");
-
-        await MoveItemInBackpack(host);
 
         GD.Print("[GUO] input probe: the maps");
 
@@ -383,7 +391,6 @@ internal static class InputProbe
             return;
         }
 
-        uint serial = item.LocalSerial;
         Vector2 from = GrabPoint(item);
 
         // Down and to the right, staying well inside the container art: the
@@ -391,9 +398,17 @@ internal static class InputProbe
         // as a move rather than a throw.
         Vector2 to = from + new Vector2(40, 30);
 
-        GD.Print($"[GUO] input probe: dragging 0x{serial:X} from {from.X},{from.Y} to {to.X},{to.Y}");
+        GD.Print(
+            $"[GUO] input probe: dragging 0x{item.LocalSerial:X} from "
+            + $"{from.X},{from.Y} to {to.X},{to.Y}"
+        );
 
-        await Drag(host, from, to);
+        // Which item moved is read back from the press, not assumed. Items in
+        // a container overlap, so the solid pixel aimed at can belong to the
+        // item drawn over the one it was picked from, and then the drag is
+        // still a real drag -- of a different item.
+        Game.UI.Controls.Control pressed = await Drag(host, from, to);
+        uint serial = pressed?.LocalSerial ?? item.LocalSerial;
 
         await Frames(host, 120);
 
@@ -404,13 +419,46 @@ internal static class InputProbe
         GD.Print(
             moved == null
                 ? $"[GUO] input probe: 0x{serial:X} is no longer in the backpack"
-                : $"[GUO] input probe: 0x{serial:X} is at "
+                : $"[GUO] input probe: 0x{serial:X} is now at "
                   + $"{moved.ScreenCoordinateX},{moved.ScreenCoordinateY}"
         );
 
         GD.Print(
             "[GUO] input probe: the cursor is holding something: "
             + Client.Game.UO.GameCursor.ItemHold.Enabled
+        );
+    }
+
+    /// <summary>
+    /// Run something to the end, watching the mixer while it runs, and say
+    /// the first sound effect it hears.
+    /// </summary>
+    private static async System.Threading.Tasks.Task ListenForSound(
+        Node host,
+        System.Threading.Tasks.Task work
+    )
+    {
+        string heard = null;
+
+        while (!work.IsCompleted)
+        {
+            string playing = Client.Game.Audio.NowPlaying;
+
+            if (heard == null && playing.Contains("sound:"))
+            {
+                heard = playing;
+            }
+
+            await Frames(host, 1);
+        }
+
+        await work;
+
+        GD.Print(
+            heard == null
+                ? "[GUO] input probe: no sound effect while walking; audio is "
+                  + Client.Game.Audio.NowPlaying
+                : $"[GUO] input probe: audio: {heard}"
         );
     }
 
@@ -489,7 +537,14 @@ internal static class InputProbe
     /// that matters: the client turns a press into a drag only when the mouse
     /// moves with the button down, and it reads the position off each event.
     /// </summary>
-    private static async System.Threading.Tasks.Task Drag(Node host, Vector2 from, Vector2 to)
+    /// <returns>The control the press landed on, which is not always the one
+    /// aimed at: items in a container overlap, and the topmost one wins.
+    /// </returns>
+    private static async System.Threading.Tasks.Task<Game.UI.Controls.Control> Drag(
+        Node host,
+        Vector2 from,
+        Vector2 to
+    )
     {
         Send(new InputEventMouseMotion { Position = from });
         await Frames(host, 2);
@@ -503,12 +558,12 @@ internal static class InputProbe
 
         await Frames(host, 6);
 
+        Game.UI.Controls.Control pressed =
+            Game.Managers.UIManager.LastControlMouseDown(Input.MouseButtonType.Left);
+
         GD.Print(
-            "[GUO] input probe: pressed on "
-            + (Game.Managers.UIManager.LastControlMouseDown(
-                   Input.MouseButtonType.Left)?.GetType().Name ?? "nothing")
-            + ", over "
-            + (Game.Managers.UIManager.MouseOverControl?.GetType().Name ?? "nothing")
+            $"[GUO] input probe: pressed on {pressed?.GetType().Name ?? "nothing"} "
+            + $"0x{pressed?.LocalSerial ?? 0:X}"
         );
 
         const int steps = 8;
@@ -550,6 +605,8 @@ internal static class InputProbe
         });
 
         await Frames(host, 40);
+
+        return pressed;
     }
 
     /// <summary>
