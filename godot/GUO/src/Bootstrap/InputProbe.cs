@@ -243,6 +243,10 @@ internal static class InputProbe
 
         await ClickSomeoneElse(host);
 
+        GD.Print("[GUO] input probe: going shopping");
+
+        await VisitAVendor(host);
+
         GD.Print("[GUO] input probe: the journal, the options and war mode");
 
         // The paperdoll's own buttons first. Anything opened before them may
@@ -1068,6 +1072,221 @@ internal static class InputProbe
             pack.ScreenCoordinateX + pack.Width / 2f,
             pack.ScreenCoordinateY + pack.Height / 2f
         );
+    }
+
+    /// <summary>
+    /// Walk to a shopkeeper with the client's own pathfinder and buy something.
+    /// </summary>
+    /// <remarks>
+    /// The longest round trip in the client that is not combat, and the first
+    /// one here that needs the character to be somewhere in particular: this
+    /// ruleset only lets a vendor hear a customer who is standing next to
+    /// them, so the probe asks Pathfinder to take it there -- a walk it does
+    /// not steer, a step at a time, the way a click on the ground does.
+    ///
+    /// "vendor buy" rather than "buy" because the short form has to be
+    /// addressed by name, and the probe would then have to know which of the
+    /// townspeople standing around is a shopkeeper. It does not: it walks up
+    /// to the nearest few and asks, and the one that sells something answers
+    /// with a shop.
+    ///
+    /// Buying is two gestures on that shop -- double-click an item to put it
+    /// in the basket, then Accept -- and the evidence is the gold, which only
+    /// the server can change.
+    /// </remarks>
+    private static async System.Threading.Tasks.Task VisitAVendor(Node host)
+    {
+        Game.GameObjects.PlayerMobile player = Client.Game.UO.World.Player;
+
+        var townspeople = new System.Collections.Generic.List<Game.GameObjects.Mobile>();
+
+        foreach (Game.GameObjects.Mobile mobile in Client.Game.UO.World.Mobiles.Values)
+        {
+            if (mobile.Serial != player.Serial
+                && mobile.NotorietyFlag == Game.Data.NotorietyFlag.Invulnerable)
+            {
+                townspeople.Add(mobile);
+            }
+        }
+
+        townspeople.Sort((a, b) => Distance(a).CompareTo(Distance(b)));
+
+        bool walked = false;
+        Game.UI.Gumps.ShopGump shop = null;
+
+        for (int i = 0; i < townspeople.Count && i < 3 && shop == null; i++)
+        {
+            Game.GameObjects.Mobile person = townspeople[i];
+
+            int before = Distance(person);
+
+            if (!player.Pathfinder.WalkTo(person.X, person.Y, person.Z, 1))
+            {
+                GD.Print($"[GUO] input probe: no path to {person.Name}");
+
+                continue;
+            }
+
+            // Autowalk is stepped by the game scene, so this only waits.
+            for (int wait = 0; wait < 120 && Distance(person) > 1; wait++)
+            {
+                await Frames(host, 10);
+
+                if (!player.Pathfinder.AutoWalking)
+                {
+                    break;
+                }
+            }
+
+            player.Pathfinder.StopAutoWalk();
+
+            int after = Distance(person);
+
+            GD.Print(
+                $"[GUO] input probe: walked to {person.Name}, {before} tiles away and now {after}"
+            );
+
+            walked |= after < before && after <= 2;
+
+            if (after > 1)
+            {
+                continue;
+            }
+
+            await Say(host, "vendor buy");
+
+            for (int wait = 0; wait < 30 && shop == null; wait++)
+            {
+                await Frames(host, 10);
+
+                shop = Game.Managers.UIManager.GetGump<Game.UI.Gumps.ShopGump>();
+            }
+        }
+
+        Check("the pathfinder walks the character to someone", walked);
+
+        if (shop == null)
+        {
+            Check("a shopkeeper opens a shop", false, "nobody nearby is selling anything");
+
+            return;
+        }
+
+        Check("a shopkeeper opens a shop", true, $"{shop.Width}x{shop.Height}");
+
+        // Clear of the paperdoll and the backpack, both of which the shop
+        // opens on top of and which would otherwise take the clicks.
+        shop.X = 200;
+        shop.Y = 400;
+
+        await Frames(host, 20);
+
+        Game.UI.Controls.Control item = FirstShopItem(shop);
+        Game.UI.Controls.Control accept = null;
+
+        foreach (Game.UI.Controls.Control child in shop.Children)
+        {
+            if (child is Game.UI.Controls.HitBox && (child.Tooltip as string) == "Accept")
+            {
+                accept = child;
+
+                break;
+            }
+        }
+
+        if (item == null || accept == null)
+        {
+            Check(
+                "the shard sells something",
+                false,
+                item == null ? "the shop is empty" : "the shop has no Accept button"
+            );
+
+            return;
+        }
+
+        uint purse = player.Gold;
+
+        var had = new System.Collections.Generic.HashSet<uint>();
+
+        Game.GameObjects.Item bag = player.FindItemByLayer(Game.Data.Layer.Backpack);
+
+        for (Game.LinkedObject i = bag?.Items; i != null; i = i.Next)
+        {
+            had.Add(((Game.GameObjects.Item)i).Serial);
+        }
+
+        await DoubleClick(host, Centre(item));
+
+        await Frames(host, 30);
+
+        await Click(host, Centre(accept));
+
+        Game.GameObjects.Item bought = null;
+
+        for (int wait = 0; wait < 30 && bought == null && player.Gold == purse; wait++)
+        {
+            await Frames(host, 10);
+
+            bag = player.FindItemByLayer(Game.Data.Layer.Backpack);
+
+            for (Game.LinkedObject i = bag?.Items; i != null; i = i.Next)
+            {
+                var it = (Game.GameObjects.Item)i;
+
+                if (!had.Contains(it.Serial))
+                {
+                    bought = it;
+
+                    break;
+                }
+            }
+        }
+
+        // The gold is the obvious evidence and it is the wrong one here: the
+        // probe's account owns the shard, and a shopkeeper will not charge a
+        // Game Master -- "I would not presume to charge thee anything". What
+        // the purchase actually produces either way is a thing in the pack
+        // that was not there before.
+        Check(
+            "the shard sells something",
+            bought != null || player.Gold < purse,
+            bought == null
+                ? $"{purse} gold before, {player.Gold} after, and nothing new in the pack"
+                : $"{bought.Name} arrived, gold {purse} -> {player.Gold}"
+        );
+    }
+
+    /// <summary>How far a mobile is from the player, in tiles walked.</summary>
+    private static int Distance(Game.GameObjects.Mobile mobile)
+    {
+        Game.GameObjects.PlayerMobile player = Client.Game.UO.World.Player;
+
+        return System.Math.Max(
+            System.Math.Abs(mobile.X - player.X),
+            System.Math.Abs(mobile.Y - player.Y)
+        );
+    }
+
+    /// <summary>The first thing on a shop's shelf.</summary>
+    private static Game.UI.Controls.Control FirstShopItem(Game.UI.Controls.Control parent)
+    {
+        foreach (Game.UI.Controls.Control child in parent.Children)
+        {
+            if (child.GetType().Name == "ShopItem" && child.IsVisible)
+            {
+                return child;
+            }
+
+            Game.UI.Controls.Control found = FirstShopItem(child);
+
+            if (found != null)
+            {
+                return found;
+            }
+        }
+
+        return null;
     }
 
     /// <summary>The first control under <paramref name="parent" /> for this serial.</summary>

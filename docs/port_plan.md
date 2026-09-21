@@ -213,7 +213,24 @@ The dev shard's world is generated now (`launchers\shard\populate.bat`, 5,612
 spawners), so the client is finally talking to a shard with people on it: the
 probe hovers a townsperson, hits them with the renderer's own hit test, and
 the journal fills with the names the server sends back for the mobiles on
-screen. What has *not* been exercised is combat and trade.
+screen.
+
+Three more round trips are exercised on top of that, each one chosen because
+only the server can produce the evidence:
+
+- **Wearing.** Taking what is in the hand off into the backpack and putting a
+  weapon on, both as drags. What comes back is the layer the character is
+  drawn wearing.
+- **Combat.** War mode and a double-click on a lawful target. The shard
+  answers 0xAA with the target it accepted and the client then asks for that
+  mobile's status, so a target that comes back with hit points is the round
+  trip and not an echo of the click.
+- **Shopping.** Walking to a shopkeeper with the client's own pathfinder,
+  "vendor buy", and a purchase off the shop gump. The thing bought arrives in
+  the backpack as a new item the client did not have.
+
+Trade between two players is the last unexercised path, and it needs a second
+client.
 
 ### Phase 6 — interface
 `Game/UI` (117 files, ~51k lines), `Input`
@@ -254,6 +271,18 @@ three: it opens under the paperdoll that opened it, its groups start
 collapsed, and its rows are laid out whether or not they are drawn. Moving it
 clear, expanding a group and pressing a skill's own use button is what a
 player does, and it ends with a target cursor.
+
+Two things learned from dropping items, both about aim rather than protocol.
+A drop onto another item is a different gesture from a drop onto the
+container it sits in -- the client asks the server to put the one into the
+other, and a refusal is silent, so the probe finds bare container first. And
+the paperdoll only wears onto a layer that is empty, which makes equipping
+two drags and not one.
+
+The shop gump is the newest of these, and the longest chain in the client
+outside combat: pathfinder walk, speech the server has to parse as a keyword,
+a gump built from the server's list, a double-click to pick a line off the
+shelf and an Accept that sends the purchase.
 
 ### Phase 7 — parity and polish
 `Audio`, lighting, effects, and the long tail.
