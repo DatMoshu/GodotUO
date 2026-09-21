@@ -269,6 +269,13 @@ namespace GUO
             TextureAtlas.DisposeAll();
             SolidColorTextureCache.Clear();
             _renderTargets.Dispose();
+
+            // PORT DEVIATION (GUO): upstream frees its SDL_Cursors in
+            // GameCursor's own teardown. Godot's custom cursor is set on the
+            // Input singleton, which keeps its own texture for it and still
+            // holds it when the rendering server shuts down -- the client's
+            // last leaked RID at exit. Putting the arrow back releases it.
+            Godot.Input.SetCustomMouseCursor(null);
         }
 
         private void UnloadContent()
