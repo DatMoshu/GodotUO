@@ -9,7 +9,7 @@ using GUO.Game.UI;
 using GUO.Input;
 using GUO.Renderer;
 using GUO.Compat;
-using GUO.Platform.Sdl;
+using Godot;
 using System;
 using System.Collections.Generic;
 
@@ -78,7 +78,11 @@ namespace GUO.Game
         private readonly Aura _aura;
         private readonly List<CustomBuildObject> _componentsList = new ();
         private readonly int[,] _cursorOffset = new int[2, 16];
-        private readonly IntPtr[,] _cursors_ptr = new IntPtr[3, 16];
+        // PORT DEVIATION (GUO): upstream keeps an SDL_Cursor* per graphic,
+        // built once by SDL_CreateColorCursor. Godot takes the texture and the
+        // hotspot at the point of setting the cursor, so both are kept here.
+        private readonly Texture2D[,] _cursors = new Texture2D[3, 16];
+        private readonly Vector2[,] _cursorHotspots = new Vector2[3, 16];
         private ushort _graphic = 0x2073;
         private bool _needGraphicUpdate = true;
         private readonly List<Multi> _temp = new List<Multi>();
@@ -101,7 +105,7 @@ namespace GUO.Game
                 {
                     ushort id = _cursorData[i, j];
 
-                    var surface = Client.Game.UO.Arts.CreateCursorSurfacePtr(
+                    var texture = Client.Game.UO.Arts.CreateCursorTexture(
                         id,
                         (ushort)(i == 2 ? 0x0033 : 0),
                         out int hotX,
@@ -109,7 +113,7 @@ namespace GUO.Game
                         dpiScale
                     );
 
-                    if (surface != IntPtr.Zero)
+                    if (texture != null)
                     {
                         if (hotX != 0 || hotY != 0)
                         {
@@ -117,7 +121,8 @@ namespace GUO.Game
                             _cursorOffset[1, j] = hotY;
                         }
 
-                        _cursors_ptr[i, j] = SDL.SDL_CreateColorCursor(surface, hotX, hotY);
+                        _cursors[i, j] = texture;
+                        _cursorHotspots[i, j] = new Vector2(hotX, hotY);
                     }
                 }
             }
@@ -213,11 +218,15 @@ namespace GUO.Game
                                 ? 2
                                 : 0;
 
-                    ref IntPtr ptrCursor = ref _cursors_ptr[war, id];
+                    Texture2D cursor = _cursors[war, id];
 
-                    if (ptrCursor != IntPtr.Zero)
+                    if (cursor != null)
                     {
-                        SDL.SDL_SetCursor(ptrCursor);
+                        Godot.Input.SetCustomMouseCursor(
+                            cursor,
+                            Godot.Input.CursorShape.Arrow,
+                            _cursorHotspots[war, id]
+                        );
                     }
                 }
             }

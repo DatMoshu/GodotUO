@@ -51,7 +51,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from guo import load_config  # noqa: E402
 
 ERROR_LINE = re.compile(
-    r"^(?P<file>.+?)\((?P<line>\d+),\d+\): error (?P<code>CS\d+): (?P<text>.*?)(?: \[.*\])?$"
+    # Not just CS: the Godot source generators report their own errors (GD0001
+    # and friends), and one of those stops the build exactly as a CS error
+    # does. Counting only CS codes would report a clean board on a build that
+    # produced no assembly.
+    r"^(?P<file>.+?)\((?P<line>\d+),\d+\): error (?P<code>[A-Z]+\d+): (?P<text>.*?)(?: \[.*\])?$"
 )
 
 # The symbol an error is really about. Whatever the message shape, what the

@@ -231,7 +231,11 @@ namespace GUO
 
         static void setWindowTitle(IntPtr ptr)
         {
-            var title = SDL2.SDL.UTF8_ToManaged(ptr);
+            // PORT DEVIATION (GUO): SDL's UTF8_ToManaged is
+            // Marshal.PtrToStringUTF8 with SDL's allocator attached; the
+            // pointer here belongs to the plugin, so nothing is freed either
+            // way.
+            var title = System.Runtime.InteropServices.Marshal.PtrToStringUTF8(ptr);
             Client.Game.SetWindowTitle(title);
         }
 

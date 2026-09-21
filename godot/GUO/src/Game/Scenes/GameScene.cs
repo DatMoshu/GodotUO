@@ -129,7 +129,10 @@ namespace GUO.Game.Scenes
             UIManager.ContainerScale = ProfileManager.CurrentProfile.ContainersScale / 100f;
             Data.MovementSpeed.FastRotation = ProfileManager.CurrentProfile.FastRotation;
 
-            SDL.SDL_SetWindowMinimumSize(Client.Game.Window.Handle, Client.Game.ScaleWithDpi(640), Client.Game.ScaleWithDpi(480));
+            // PORT DEVIATION (GUO): SDL_SetWindowMinimumSize takes the window
+            // handle; Godot's DisplayServer already knows which window.
+            Godot.DisplayServer.WindowSetMinSize(new Godot.Vector2I(
+                Client.Game.ScaleWithDpi(640), Client.Game.ScaleWithDpi(480)));
 
             if (ProfileManager.CurrentProfile.WindowBorderless)
             {

@@ -224,6 +224,7 @@ namespace GUO.Renderer.Arts
             } 
         }
 
+
         public Rectangle GetRealArtBounds(uint idx) =>
             idx < 0 || idx >= _realArtBounds.Length
                 ? Rectangle.Empty

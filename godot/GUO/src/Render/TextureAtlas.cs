@@ -110,6 +110,102 @@ namespace GUO.Renderer
             }
         }
 
+
+        /// <summary>
+        /// Copies a region of whichever atlas page <paramref name="texture"/>
+        /// is, into <paramref name="dest"/>.
+        /// </summary>
+        /// <remarks>
+        /// PORT DEVIATION (GUO): upstream reads and writes the texture itself,
+        /// through XNA's Texture2D.GetData and SetDataPointerEXT. A Godot
+        /// texture is write-only from the CPU side and reading one back means
+        /// a GPU round trip -- but the atlas already keeps every page as an
+        /// Image, so the data never has to leave the CPU. The one caller is
+        /// MiniMapGump, which paints the map into its own gump's atlas region
+        /// and needs the untouched gump back to start from.
+        ///
+        /// Returns false when the texture is not an atlas page, so a caller
+        /// that is handed a standalone texture finds out rather than silently
+        /// reading zeroes.
+        /// </remarks>
+        public static bool TryReadRegion(Texture2D texture, Rectangle region, Span<uint> dest)
+        {
+            if (!TryFindPage(texture, out TextureAtlas atlas, out int index))
+            {
+                return false;
+            }
+
+            Image part = atlas._pages[index].GetRegion(
+                new Rect2I(region.X, region.Y, region.Width, region.Height)
+            );
+
+            ReadOnlySpan<uint> pixels = System.Runtime.InteropServices.MemoryMarshal
+                .Cast<byte, uint>(part.GetData());
+
+            int count = Math.Min(dest.Length, pixels.Length);
+
+            pixels.Slice(0, count).CopyTo(dest);
+
+            return true;
+        }
+
+        /// <summary>
+        /// Paints <paramref name="src"/> back into a region of whichever atlas
+        /// page <paramref name="texture"/> is. The upload happens in the next
+        /// <see cref="FlushAll"/>, as it does for a decoded sprite.
+        /// </summary>
+        /// <inheritdoc cref="TryReadRegion" path="/remarks"/>
+        public static bool TryWriteRegion(
+            Texture2D texture, Rectangle region, ReadOnlySpan<uint> src
+        )
+        {
+            if (!TryFindPage(texture, out TextureAtlas atlas, out int index))
+            {
+                return false;
+            }
+
+            var rgba = new byte[region.Width * region.Height * 4];
+
+            System.Runtime.InteropServices.MemoryMarshal
+                .AsBytes(src.Slice(0, region.Width * region.Height))
+                .CopyTo(rgba);
+
+            Image part = Image.CreateFromData(
+                region.Width, region.Height, false, Image.Format.Rgba8, rgba
+            );
+
+            atlas._pages[index].BlitRect(
+                part,
+                new Rect2I(0, 0, region.Width, region.Height),
+                new Vector2I(region.X, region.Y)
+            );
+
+            atlas._dirty[index] = true;
+
+            return true;
+        }
+
+        private static bool TryFindPage(Texture2D texture, out TextureAtlas atlas, out int index)
+        {
+            for (int i = 0; i < _live.Count; i++)
+            {
+                int page = _live[i]._textures.IndexOf(texture as ImageTexture);
+
+                if (page >= 0)
+                {
+                    atlas = _live[i];
+                    index = page;
+
+                    return true;
+                }
+            }
+
+            atlas = null;
+            index = -1;
+
+            return false;
+        }
+
         public Texture2D AddSprite(
             ReadOnlySpan<uint> pixels,
             int width,

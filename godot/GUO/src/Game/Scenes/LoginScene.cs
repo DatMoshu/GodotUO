@@ -93,7 +93,9 @@ namespace GUO.Game.Scenes
 
             int width = Client.Game.ScaleWithDpi(640);
             int height = Client.Game.ScaleWithDpi(480);
-            SDL.SDL_SetWindowMinimumSize(Client.Game.Window.Handle, width, height);
+            // PORT DEVIATION (GUO): SDL_SetWindowMinimumSize takes the window
+            // handle; Godot's DisplayServer already knows which window.
+            Godot.DisplayServer.WindowSetMinSize(new Godot.Vector2I(width, height));
             Client.Game.SetWindowSize(width, height);
         }
 

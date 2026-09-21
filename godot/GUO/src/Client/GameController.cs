@@ -46,7 +46,7 @@ namespace GUO
     /// Node2D rather than Node because <see cref="UltimaBatcher2D"/> draws
     /// into a canvas item, and only a CanvasItem has one.
     /// </remarks>
-    internal sealed class GameController : Node2D
+    internal sealed partial class GameController : Node2D
     {
         private bool _ignoreNextTextInput;
         private readonly float[] _intervalFixedUpdate = new float[2];
@@ -446,7 +446,7 @@ namespace GUO
 
             if (!_suppressedDraw)
             {
-                Draw();
+                DrawFrame();
             }
         }
 
@@ -531,7 +531,12 @@ namespace GUO
             }
         }
 
-        private void Draw()
+        /// <remarks>
+        /// PORT DEVIATION (GUO): upstream calls this Draw. A CanvasItem
+        /// already has a Draw -- the C# event for Godot's draw signal -- and
+        /// a method of that name would hide it.
+        /// </remarks>
+        private void DrawFrame()
         {
             Rectangle windowBounds = Window.ClientBounds;
 

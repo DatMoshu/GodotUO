@@ -45,7 +45,10 @@ namespace GUO
 
             Log.Start(LogTypes.All);
 
-            DllMap.Init();
+            // PORT DEVIATION (GUO): DllMap read FNA.dll.config to map FNA's
+            // native library names onto what the running Unix actually has
+            // installed. There is no FNA and no FNA.dll.config; Godot loads
+            // its own natives. Removed rather than ported.
 
             CUOEnviroment.GameThread = Thread.CurrentThread;
             CUOEnviroment.GameThread.Name = "CUO_MAIN_THREAD";
@@ -98,11 +101,12 @@ namespace GUO
                 Environment.SetEnvironmentVariable("FNA_GRAPHICS_ENABLE_HIGHDPI", "1");
             }
 
-            // NOTE: this is a workaroud to fix d3d11 on windows 11 + scale windows
-            Environment.SetEnvironmentVariable("FNA3D_D3D11_FORCE_BITBLT", "1");
-            Environment.SetEnvironmentVariable("FNA3D_BACKBUFFER_SCALE_NEAREST", "1");
-            Environment.SetEnvironmentVariable("FNA3D_OPENGL_FORCE_COMPATIBILITY_PROFILE", "1");
-            Environment.SetEnvironmentVariable(SDL.SDL_HINT_MOUSE_FOCUS_CLICKTHROUGH, "1");
+            // PORT DEVIATION (GUO): the three FNA3D_* variables configured
+            // FNA's D3D11 and OpenGL backends and mean nothing to Godot, which
+            // picks and configures its own renderer. SDL's
+            // MOUSE_FOCUS_CLICKTHROUGH -- deliver the click that focuses the
+            // window rather than swallowing it -- goes with them: Godot does
+            // not read SDL hints, and passes that first click through anyway.
             Environment.SetEnvironmentVariable("PATH", Environment.GetEnvironmentVariable("PATH") + ";" + Path.Combine(CUOEnviroment.ExecutablePath, "Data", "Plugins"));
 
             string globalSettingsPath = Settings.GetSettingsFilepath();

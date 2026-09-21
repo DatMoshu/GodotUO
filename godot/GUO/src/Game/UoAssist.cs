@@ -92,10 +92,10 @@ namespace GUO.Utility.Platforms
                 IntPtr hwnd = IntPtr.Zero;
                 if (CUOEnviroment.IsWindows)
                 {
-                    hwnd = SDL.SDL_GetPointerProperty(
-                        SDL.SDL_GetWindowProperties(Client.Game.Window.Handle),
-                        SDL.SDL_PROP_WINDOW_WIN32_HWND_POINTER, IntPtr.Zero
-                    );
+                    // PORT DEVIATION (GUO): upstream asks SDL for the window's
+                    // property bag and pulls the Win32 HWND out of it.
+                    // Window.Handle is already that handle.
+                    hwnd = Client.Game.Window.Handle;
                 }
 
                 if (class_name == null)
@@ -371,10 +371,10 @@ namespace GUO.Utility.Platforms
                         IntPtr hwnd = IntPtr.Zero;
                         if (CUOEnviroment.IsWindows)
                         {
-                            hwnd = SDL.SDL_GetPointerProperty(
-                                SDL.SDL_GetWindowProperties(Client.Game.Window.Handle),
-                                SDL.SDL_PROP_WINDOW_WIN32_HWND_POINTER, IntPtr.Zero
-                            );
+                            // PORT DEVIATION (GUO): upstream asks SDL for the
+                            // window's property bag and pulls the Win32 HWND
+                            // out of it. Window.Handle is already that handle.
+                            hwnd = Client.Game.Window.Handle;
                         }
 
                         return (int) hwnd;

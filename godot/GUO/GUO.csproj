@@ -17,33 +17,6 @@
   </PropertyGroup>
 
   <!--
-    STAGED BUILD - temporary, and tracked in docs/port_plan.md.
-
-    The port is one assembly, so a single unresolved type anywhere stops the
-    whole build. The mechanical tiers landed all at once (341 files), and the
-    areas below still reference rewrite-tier types that do not exist yet:
-    the renderer, the UI Control base, and the input event types.
-
-    Rather than leave the tree unbuildable until the entire rewrite tier is
-    finished, each area is switched on as its dependencies land. The files are
-    committed and audited either way; excluding them only means "not wired up
-    yet", which is the honest state.
-
-    To enable an area, delete its line and fix what the compiler reports.
-    The goal is for this whole ItemGroup to disappear.
-    To MEASURE the work left, build with -p:GuoAllAreas=true, which turns this
-    whole group off in one switch. launchers\dev\port_errors.bat does that.
-    Use the launcher rather than editing this file: it forces a full rebuild,
-    and an incremental build silently under-reports.
-  -->
-  <ItemGroup Condition="'$(GuoAllAreas)' != 'true'">
-    <Compile Remove="src/Game/**/*.cs" />
-    <Compile Remove="src/Network/**/*.cs" />
-    <Compile Remove="src/Configuration/**/*.cs" />
-    <Compile Remove="src/Client/**/*.cs" />
-    <Compile Remove="src/Input/**/*.cs" />
-  </ItemGroup>
-  <!--
     Compiled-in resources.
 
     The .resx files keep their UPSTREAM logical names. The ported
