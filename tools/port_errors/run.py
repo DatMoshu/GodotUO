@@ -154,6 +154,11 @@ def main(argv: list[str] | None = None) -> int:
 
     print(f"\n[port-errors] {total} errors, {len(clusters)} distinct missing symbols\n")
 
+    if total < 50:
+        print("  NOTE: a low count can mean one unported type is masking the")
+        print("  rest -- Roslyn skips every method body once a declaration")
+        print("  fails. Clear these and measure again before believing it.\n")
+
     print(f"  {'missing symbol':<44} errors")
     print(f"  {'-' * 44} ------")
     for symbol, count in clusters.most_common(args.top):
