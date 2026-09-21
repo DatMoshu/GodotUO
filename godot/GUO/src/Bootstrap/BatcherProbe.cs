@@ -90,10 +90,25 @@ public partial class BatcherProbe : Node
         {
             foreach (int gray in _testGrays)
             {
-                Color got = await DrawAndRead(batcher, viewport, ramp, gray, hue + 1);
                 byte[] want = PaletteEntry(hue, gray);
 
+                Color got = await DrawAndRead(batcher, viewport, ramp, gray, hue + 1, false);
+
                 Check($"hue {hue} gray {gray}", want, got);
+
+                // Again through the triangle-array path. The call above takes
+                // the batcher's fast path -- an axis-aligned, unflipped sprite
+                // becomes CanvasItemAddTextureRectRegion, whose modulate is a
+                // per-item colour. Mirroring it forces the quad path instead,
+                // where the same three packed bytes travel as a PER-VERTEX
+                // colour through CanvasItemAddTriangleArray. That is a
+                // different vertex format with its own precision, and the hue
+                // index spends 12 bits across two channels, so a quantisation
+                // step lands on a visibly wrong colour rather than a slightly
+                // wrong one. Both paths draw every sprite in the client.
+                Color flipped = await DrawAndRead(batcher, viewport, ramp, gray, hue + 1, true);
+
+                Check($"hue {hue} gray {gray} mirrored", want, flipped);
             }
         }
 
@@ -111,16 +126,33 @@ public partial class BatcherProbe : Node
     /// hues nothing and so reports the raw sample.
     /// </summary>
     private async System.Threading.Tasks.Task<Color> DrawAndRead(
-        UltimaBatcher2D batcher, SubViewport viewport, Texture2D ramp, int gray, int hue)
+        UltimaBatcher2D batcher, SubViewport viewport, Texture2D ramp, int gray, int hue,
+        bool mirrored = false)
     {
         batcher.Begin();
 
-        batcher.Draw(
-            ramp,
-            new Compat.Rectangle(0, 0, Scale, Scale),
-            new Compat.Rectangle(gray, 0, 1, 1),
-            ShaderHueTranslator.GetHueVector(hue),
-            0f);
+        if (mirrored)
+        {
+            batcher.Draw(
+                ramp,
+                new Vector2(0, 0),
+                new Compat.Rectangle(gray, 0, 1, 1),
+                ShaderHueTranslator.GetHueVector(hue),
+                0f,
+                Vector2.Zero,
+                Scale,
+                SpriteEffects.FlipHorizontally,
+                0f);
+        }
+        else
+        {
+            batcher.Draw(
+                ramp,
+                new Compat.Rectangle(0, 0, Scale, Scale),
+                new Compat.Rectangle(gray, 0, 1, 1),
+                ShaderHueTranslator.GetHueVector(hue),
+                0f);
+        }
 
         batcher.End();
 
