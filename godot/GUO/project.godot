@@ -27,7 +27,13 @@ textures/canvas_textures/default_texture_filter=0
 
 window/size/viewport_width=1280
 window/size/viewport_height=720
-window/stretch/mode="canvas_items"
+; No stretch. The client sizes its own window -- the login screen asks for
+; 640x480, the game for whatever the profile saved -- and draws one client
+; pixel per screen pixel, as the original does. Any stretch mode would keep
+; the root viewport at the size above and scale the result, which both
+; filters pixel art and leaves the client drawing into a corner of a buffer
+; it does not know the size of.
+window/stretch/mode="disabled"
 window/stretch/aspect="expand"
 
 [debug]
