@@ -436,6 +436,28 @@ public enum SDL_EventType
 	SDL_EVENT_ENUM_PADDING = 2147483647,
 }
 
+/// <summary>
+/// SDL3's event union.
+/// </summary>
+/// <remarks>
+/// PORT DEVIATION (GUO): upstream's SDL3-CS spells out all forty member
+/// structs at offset 0. Nothing in the port reads one -- the only path that
+/// touches an SDL_Event is IPluginHost.SdlEvent, which takes its address and
+/// hands the pointer to a native plugin -- so this is the union's actual
+/// shape, which is 128 bytes with the type tag at the front. A member is
+/// added here when something needs to read it, not before; the alternative
+/// was porting forty structs to pass an address.
+/// </remarks>
+[StructLayout(LayoutKind.Explicit)]
+public unsafe struct SDL_Event
+{
+	[FieldOffset(0)]
+	public uint type;
+
+	[FieldOffset(0)]
+	public fixed byte padding[128];
+}
+
 public struct SDL_KeyboardEvent
 {
 	public SDL_EventType type;

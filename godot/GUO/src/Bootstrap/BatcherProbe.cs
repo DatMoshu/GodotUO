@@ -1,4 +1,4 @@
-namespace GUO.Bootstrap;
+namespace GUO.Host;
 
 using System;
 using Godot;
