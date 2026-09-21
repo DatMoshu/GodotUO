@@ -29,6 +29,9 @@ public partial class Main : Node
 
         /// <summary>Boot, capture one frame to disk, then quit.</summary>
         Screenshot,
+
+        /// <summary>Draw through the batcher, check the pixels, then quit.</summary>
+        BatcherProbe,
     }
 
     private Options _options;
@@ -36,6 +39,15 @@ public partial class Main : Node
     public override void _Ready()
     {
         _options = Options.Parse(OS.GetCmdlineUserArgs());
+
+        // Before the client-data checks on purpose: the batcher probe draws
+        // synthetic art and has nothing to do with a UO install, so it must
+        // still run on a machine that has none.
+        if (_options.Mode == RunMode.BatcherProbe)
+        {
+            BatcherProbe.Run(this);
+            return;
+        }
 
         GD.Print($"[GUO] mode          : {_options.Mode}");
         GD.Print($"[GUO] client data   : {_options.ClientData}");
@@ -249,6 +261,9 @@ public partial class Main : Node
                         break;
                     case "--screenshot":
                         o.Mode = RunMode.Screenshot;
+                        break;
+                    case "--batcher-probe":
+                        o.Mode = RunMode.BatcherProbe;
                         break;
                     case "--client-data":
                         o.ClientData = Next();

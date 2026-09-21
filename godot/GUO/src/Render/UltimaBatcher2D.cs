@@ -972,6 +972,16 @@ namespace GUO.Renderer
             {
                 item = RenderingServer.CanvasItemCreate();
                 RenderingServer.CanvasItemSetMaterial(item, _material.GetRid());
+
+                // Project rule 7, and it is not automatic: a canvas item made
+                // through RenderingServer does NOT pick up the project's
+                // default_texture_filter, it starts on linear. Measured by
+                // launchers\devatcher_probe.bat, which read brightness 8
+                // back as 7 -- a 0.875/0.125 blend with the dark texel next
+                // door. Every sprite in the client was being smeared, and the
+                // only visible symptom would have been slightly soft art.
+                RenderingServer.CanvasItemSetDefaultTextureFilter(
+                    item, RenderingServer.CanvasItemTextureFilter.Nearest);
                 _items.Add(item);
             }
 
