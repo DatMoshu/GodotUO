@@ -25,7 +25,10 @@ internal static class InputProbe
     /// The account-name field of the login gump, in client pixels. Read off
     /// the login screen; it is fixed art, so it does not move.
     /// </summary>
-    private static readonly Vector2 AccountField = new(180, 148);
+    private static readonly Vector2 AccountField = new(320, 297);
+
+    /// <summary>The Login button of the same gump, in client pixels.</summary>
+    private static readonly Vector2 LoginButton = new(325, 378);
 
     private const string TypeThis = "GUO";
 
@@ -35,27 +38,7 @@ internal static class InputProbe
 
         GD.Print("[GUO] input probe: clicking the account field");
 
-        Godot.Input.WarpMouse(AccountField);
-        await Frames(host, 2);
-
-        Send(new InputEventMouseMotion { Position = AccountField });
-        await Frames(host, 2);
-
-        Send(new InputEventMouseButton
-        {
-            ButtonIndex = MouseButton.Left,
-            Position = AccountField,
-            Pressed = true,
-        });
-        await Frames(host, 2);
-
-        Send(new InputEventMouseButton
-        {
-            ButtonIndex = MouseButton.Left,
-            Position = AccountField,
-            Pressed = false,
-        });
-        await Frames(host, 4);
+        await Click(host, AccountField);
 
         GD.Print($"[GUO] input probe: typing \"{TypeThis}\"");
 
@@ -81,7 +64,39 @@ internal static class InputProbe
             await Frames(host, 2);
         }
 
-        await Frames(host, 10);
+        GD.Print("[GUO] input probe: clicking Login");
+
+        await Click(host, LoginButton);
+
+        // Long enough for the connection to be attempted and to fail, since
+        // what this step proves is that the click reached the network stack,
+        // not that a shard answered.
+        await Frames(host, 60);
+    }
+
+    private static async System.Threading.Tasks.Task Click(Node host, Vector2 at)
+    {
+        Godot.Input.WarpMouse(at);
+        await Frames(host, 2);
+
+        Send(new InputEventMouseMotion { Position = at });
+        await Frames(host, 2);
+
+        Send(new InputEventMouseButton
+        {
+            ButtonIndex = MouseButton.Left,
+            Position = at,
+            Pressed = true,
+        });
+        await Frames(host, 2);
+
+        Send(new InputEventMouseButton
+        {
+            ButtonIndex = MouseButton.Left,
+            Position = at,
+            Pressed = false,
+        });
+        await Frames(host, 4);
     }
 
     private static void Send(InputEvent e)
