@@ -96,33 +96,47 @@ internal static class InputProbe
 
         GD.Print("[GUO] input probe: selecting the shard");
 
-        // One click. A fresh account has no characters, so the client walks
-        // straight past the character list into creation -- there is no second
-        // screen to accept here, and clicking as though there were pressed the
-        // creation page's forward arrow with the name still empty.
         await Click(host, ShardEntry);
 
         await Frames(host, 180);
 
-        GD.Print("[GUO] input probe: naming the character");
+        // What comes next depends on the account, not on the probe. The first
+        // run makes the character and the client goes straight into creation;
+        // every run after that stops at the character list with that same
+        // character on it. Reading which gump is up is the only way to know:
+        // walking the creation pages blind on a returning account pressed the
+        // list's forward arrow with nothing chosen, and the probe sat at a
+        // loading screen for the rest of the run.
+        if (Game.Managers.UIManager.GetGump<Game.UI.Gumps.Login.CharacterSelectionGump>() != null)
+        {
+            GD.Print("[GUO] input probe: the account has a character; logging it in");
 
-        await Click(host, CharacterName);
-        await Type(host, ProbeCharacter);
-        await Click(host, NextArrow);
+            // CharacterSelectionGump.Buttons: Next is 2, and it logs in
+            // whichever character is selected, which is the first by default.
+            await ClickGumpButton<Game.UI.Gumps.Login.CharacterSelectionGump>(host, 2, "Next");
+        }
+        else
+        {
+            GD.Print("[GUO] input probe: naming the character");
 
-        await Frames(host, 120);
+            await Click(host, CharacterName);
+            await Type(host, ProbeCharacter);
+            await Click(host, NextArrow);
 
-        GD.Print("[GUO] input probe: choosing a profession");
+            await Frames(host, 120);
 
-        await Click(host, FirstProfession);
+            GD.Print("[GUO] input probe: choosing a profession");
 
-        await Frames(host, 120);
+            await Click(host, FirstProfession);
 
-        GD.Print("[GUO] input probe: accepting the starting city");
+            await Frames(host, 120);
 
-        await Click(host, NextArrow);
+            GD.Print("[GUO] input probe: accepting the starting city");
 
-        await Frames(host, 180);
+            await Click(host, NextArrow);
+        }
+
+        await Frames(host, 240);
 
         GD.Print("[GUO] input probe: full-size game window");
 
@@ -138,6 +152,8 @@ internal static class InputProbe
 
         GD.Print("[GUO] input probe: opening the backpack");
 
+        await ExpandTopBar(host);
+
         await OpenInventory(host);
 
         GD.Print("[GUO] input probe: skills and status");
@@ -145,6 +161,18 @@ internal static class InputProbe
         // PaperDollGump.Buttons: Skills is 5, Status is 8.
         await ClickGumpButton<Game.UI.Gumps.PaperDollGump>(host, 5, "Skills");
         await ClickGumpButton<Game.UI.Gumps.PaperDollGump>(host, 8, "Status");
+
+        GD.Print("[GUO] input probe: the maps");
+
+        // TopBarGump.Buttons: Map is 0 and WorldMap is 6. Both are worth
+        // opening because they are the only two things that draw a map rather
+        // than the world: the minimap builds one texture out of MultiMap.mul,
+        // and the world map decodes a PNG and draws it itself.
+        await ClickGumpButton<Game.UI.Gumps.TopBarGump>(host, 0, "Map");
+        Report<Game.UI.Gumps.MiniMapGump>("minimap");
+
+        await ClickGumpButton<Game.UI.Gumps.TopBarGump>(host, 6, "World Map");
+        Report<Game.UI.Gumps.WorldMapGump>("world map");
 
         GD.Print("[GUO] input probe: speaking");
 
@@ -166,6 +194,73 @@ internal static class InputProbe
 
         GD.Print($"[GUO] input probe: gumps open: {string.Join(", ", open)}");
         GD.Print($"[GUO] input probe: audio: {Client.Game.Audio.NowPlaying}");
+    }
+
+    /// <summary>
+    /// Put the top bar on its expanded page, where its buttons are.
+    /// </summary>
+    /// <remarks>
+    /// The bar remembers which page it was on in the profile, so a run that
+    /// collapsed it leaves every later run starting with nothing to click.
+    /// </remarks>
+    private static async System.Threading.Tasks.Task ExpandTopBar(Node host)
+    {
+        Game.UI.Gumps.TopBarGump bar =
+            Game.Managers.UIManager.GetGump<Game.UI.Gumps.TopBarGump>();
+
+        if (bar == null || bar.ActivePage == 1)
+        {
+            return;
+        }
+
+        Game.UI.Controls.Button arrow = FindPageButton(bar, 1);
+
+        if (arrow == null)
+        {
+            GD.Print($"[GUO] input probe: top bar is on page {bar.ActivePage} and will not open");
+
+            return;
+        }
+
+        GD.Print("[GUO] input probe: the top bar was collapsed; opening it");
+
+        await Click(
+            host,
+            new Vector2(
+                arrow.ScreenCoordinateX + arrow.Width / 2f,
+                arrow.ScreenCoordinateY + arrow.Height / 2f
+            )
+        );
+
+        await Frames(host, 60);
+    }
+
+    private static Game.UI.Controls.Button FindPageButton(
+        Game.UI.Controls.Control parent,
+        int toPage
+    )
+    {
+        foreach (Game.UI.Controls.Control child in parent.Children)
+        {
+            if (child.Page != 0 && child.Page != parent.ActivePage)
+            {
+                continue;
+            }
+
+            if (child is Game.UI.Controls.Button b && b.ToPage == toPage)
+            {
+                return b;
+            }
+
+            Game.UI.Controls.Button found = FindPageButton(child, toPage);
+
+            if (found != null)
+            {
+                return found;
+            }
+        }
+
+        return null;
     }
 
     /// <summary>
@@ -252,6 +347,30 @@ internal static class InputProbe
         await Frames(host, 90);
     }
 
+    /// <summary>
+    /// Say whether a gump is up, and how big it came out.
+    /// </summary>
+    private static void Report<T>(string what)
+        where T : Game.UI.Gumps.Gump
+    {
+        T gump = Game.Managers.UIManager.GetGump<T>();
+
+        GD.Print(
+            gump == null
+                ? $"[GUO] input probe: no {what} gump"
+                : $"[GUO] input probe: {what} gump {gump.Width}x{gump.Height} "
+                  + $"with {gump.Children.Count} children"
+        );
+    }
+
+    /// <remarks>
+    /// A button id is not unique inside a gump. The top bar has three buttons
+    /// with id 0: the Map button, and the two arrows that switch the bar
+    /// between its collapsed and expanded pages -- clicking one of those by
+    /// mistake folds the bar away and every later click lands on the world
+    /// behind it. So the search skips the page switchers, which are the
+    /// buttons with a ToPage, and anything on a page that is not showing.
+    /// </remarks>
     private static Game.UI.Controls.Button FindButton(
         Game.UI.Controls.Control parent,
         int buttonId
@@ -259,7 +378,12 @@ internal static class InputProbe
     {
         foreach (Game.UI.Controls.Control child in parent.Children)
         {
-            if (child is Game.UI.Controls.Button b && b.ButtonID == buttonId)
+            if (child.Page != 0 && child.Page != parent.ActivePage)
+            {
+                continue;
+            }
+
+            if (child is Game.UI.Controls.Button b && b.ButtonID == buttonId && b.ToPage == 0)
             {
                 return b;
             }
