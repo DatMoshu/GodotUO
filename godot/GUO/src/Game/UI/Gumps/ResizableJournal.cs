@@ -10,7 +10,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Xml;
-using Point = Microsoft.Xna.Framework.Point;
+using Point = GUO.Compat.Point;
 
 namespace GUO.Game.UI.Gumps
 {
@@ -192,7 +192,7 @@ namespace GUO.Game.UI.Gumps
         {
             base.Restore(xml);
 
-            Point savedSize = new Microsoft.Xna.Framework.Point(Width, Height);
+            Point savedSize = new GUO.Compat.Point(Width, Height);
 
             if (int.TryParse(xml.GetAttribute("rw"), out int width) && width > 0)
             {

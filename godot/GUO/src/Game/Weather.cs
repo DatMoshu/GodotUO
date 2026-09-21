@@ -6,7 +6,7 @@ using GUO.Resources;
 using GUO.Utility;
 using GUO.Compat;
 using System;
-using MathHelper = Microsoft.Xna.Framework.MathHelper;
+using MathHelper = GUO.Utility.MathHelper;
 
 namespace GUO.Game
 {
