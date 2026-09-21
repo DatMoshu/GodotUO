@@ -877,6 +877,30 @@ internal static class InputProbe
                 $"{named} of {entries.Count} journal lines are townspeople"
             );
 
+            // The same click asks for a context menu, a little later: a
+            // single click on an entity is held back by the double-click
+            // delay, and when it finally goes it sends both the name request
+            // and the popup request. What comes back is a menu the server
+            // composed -- "Add Friend", "Open Paperdoll" -- so this is the
+            // shard describing what can be done to somebody, not the client
+            // guessing.
+            Game.UI.Gumps.PopupMenuGump menu = null;
+
+            for (int wait = 0; wait < 20 && menu == null; wait++)
+            {
+                await Frames(host, 10);
+
+                menu = Game.Managers.UIManager.PopupMenu;
+            }
+
+            Check(
+                "the shard offers a context menu",
+                menu != null,
+                menu == null ? "no popup arrived" : $"{menu.Width}x{menu.Height}"
+            );
+
+            // Left where it is: the next click of the run lands outside it,
+            // which is how a player closes one.
             return;
         }
 
