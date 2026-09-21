@@ -58,6 +58,7 @@ namespace GUO
         private bool _suppressedDraw;
         private bool _pluginsInitialized = false;
         private float _displayScale;
+        private Texture2D _hueTexture, _lightTexture;
 
         // PORT DEVIATION (GUO): FNA's GameTime. Godot hands _Process a delta
         // and keeps no running total that starts when the client does.
@@ -148,15 +149,13 @@ namespace GUO
             SetRefreshRate(Settings.GlobalSettings.FPS);
             _uoSpriteBatch = new UltimaBatcher2D(GetCanvasItem());
 
-            // PORT GAP (GUO): upstream installs an SDL event filter here
-            // (SDL_SetEventFilter(HandleSdlEvent)) and does all of its input
-            // in it -- mouse, keyboard, text input, window events, drag and
-            // drop. Godot delivers input through _Input/_UnhandledInput and
-            // window changes through notifications, so that filter is not
-            // ported: the Godot input layer under src/Input replaces it
-            // wholesale, and until it lands the client takes no input. The
-            // same goes for TextInputEXT.StartTextInput, whose Godot
-            // equivalent is per-control.
+            // PORT DEVIATION (GUO): upstream installs an SDL event filter
+            // here (SDL_SetEventFilter(HandleSdlEvent)) and does all of its
+            // input in it. There is nothing to install: Godot delivers input
+            // to _Input and window changes to _Notification, and
+            // src/Input/GodotInput.cs replaces the filter wholesale. ADR-0006.
+            // TextInputEXT.StartTextInput goes the same way -- Godot has no
+            // global text-input mode to turn on.
 
             _displayScale = DpiScale;
         }
@@ -218,6 +217,13 @@ namespace GUO
         /// </remarks>
         public void SetHueTextures(Texture2D hues, Texture2D lights)
         {
+            // Kept so they can be freed at exit. They are set on the shader
+            // materials and nothing else holds them, so without a reference
+            // here they outlive the rendering server and Godot reports them
+            // as leaked.
+            _hueTexture = hues;
+            _lightTexture = lights;
+
             _uoSpriteBatch.HueTexture = hues;
             _uoSpriteBatch.LightTexture = lights;
         }
@@ -227,6 +233,23 @@ namespace GUO
             UnloadContent();
 
             Scene?.Dispose();
+
+            // PORT DEVIATION (GUO): upstream has nothing here. FNA's device
+            // owns every resource the batcher uses and tears them down with
+            // itself; here the batcher holds RenderingServer RIDs, and Godot
+            // reports each one still alive at exit as a leak. Freeing them is
+            // the equivalent of the device going away.
+            _uoSpriteBatch?.Dispose();
+            _uoSpriteBatch = null;
+
+            _hueTexture?.Dispose();
+            _hueTexture = null;
+            _lightTexture?.Dispose();
+            _lightTexture = null;
+
+            TextureAtlas.DisposeAll();
+            SolidColorTextureCache.Clear();
+            _renderTargets.Dispose();
         }
 
         private void UnloadContent()

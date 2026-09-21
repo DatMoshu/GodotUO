@@ -92,6 +92,29 @@ namespace GUO.Renderer
             }
         }
 
+        /// <summary>
+        /// Frees the targets and the background art.
+        /// </summary>
+        /// <remarks>
+        /// PORT DEVIATION (GUO): upstream's render targets die with the
+        /// graphics device. These are Godot objects with RIDs behind them, and
+        /// anything still holding one when the rendering server shuts down is
+        /// reported as a leak, which puts noise in the log where real errors
+        /// go. Called from the controller's teardown.
+        /// </remarks>
+        public void Dispose()
+        {
+            _uiRenderTarget?.Dispose();
+            _uiRenderTarget = null;
+            _lightRenderTarget?.Dispose();
+            _lightRenderTarget = null;
+            _worldRenderTarget?.Dispose();
+            _worldRenderTarget = null;
+
+            _background?.Dispose();
+            _background = null;
+        }
+
         public void InitializeBackground(Texture2D background)
         {
             _background = background ?? throw new ArgumentNullException(nameof(background));

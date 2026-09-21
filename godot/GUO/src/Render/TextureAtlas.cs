@@ -272,6 +272,28 @@ namespace GUO.Renderer
             }
         }
 
+        /// <summary>
+        /// Drops every live atlas.
+        /// </summary>
+        /// <remarks>
+        /// PORT DEVIATION (GUO): upstream has no equivalent, because in FNA
+        /// the graphics device owns every texture and takes them all down with
+        /// itself. Here each loader builds an atlas and most of them never let
+        /// go of it, so at exit Godot reports the pages as leaked RIDs -- and
+        /// those errors sit in the log next to real ones. Called from the
+        /// controller's teardown, which is where the device going away used to
+        /// be.
+        /// </remarks>
+        public static void DisposeAll()
+        {
+            for (int i = _live.Count - 1; i >= 0; i--)
+            {
+                _live[i].Dispose();
+            }
+
+            _live.Clear();
+        }
+
         public void Dispose()
         {
             _live.Remove(this);
