@@ -509,6 +509,114 @@ namespace GUO.Renderer
         }
 
 
+        public void DrawString(SpriteFont spriteFont, ReadOnlySpan<char> text, int x, int y, Vector3 color, float layerDepth)
+            => DrawString(spriteFont, text, new Vector2(x, y), color, layerDepth);
+
+        /// <remarks>
+        ///     PORT DEVIATION (GUO): upstream opens with EnsureSize(), which grows
+        ///     its CPU vertex array before writing into it. This batcher records
+        ///     into a Godot canvas item and owns no such array, so there is nothing
+        ///     to size. Everything below is the layout arithmetic, unchanged --
+        ///     including the character-map lookups by IndexOf and the commented-out
+        ///     throw for an unresolvable character.
+        /// </remarks>
+        public void DrawString(SpriteFont spriteFont, ReadOnlySpan<char> text, Vector2 position, Vector3 color, float layerDepth)
+        {
+            if (text.IsEmpty)
+            {
+                return;
+            }
+
+            Texture2D textureValue = spriteFont.Texture;
+            List<Rectangle> glyphData = spriteFont.GlyphData;
+            List<Rectangle> croppingData = spriteFont.CroppingData;
+            List<Vector3> kerning = spriteFont.Kerning;
+            List<char> characterMap = spriteFont.CharacterMap;
+
+            Vector2 curOffset = Vector2.Zero;
+            bool firstInLine = true;
+
+            Vector2 baseOffset = Vector2.Zero;
+            float axisDirX = 1;
+            float axisDirY = 1;
+
+            foreach (char c in text)
+            {
+                // Special characters
+                if (c == '\r')
+                {
+                    continue;
+                }
+
+                if (c == '\n')
+                {
+                    curOffset.X = 0.0f;
+                    curOffset.Y += spriteFont.LineSpacing;
+                    firstInLine = true;
+
+                    continue;
+                }
+
+                /* Get the List index from the character map, defaulting to the
+				 * DefaultCharacter if it's set.
+				 */
+                int index = characterMap.IndexOf(c);
+
+                if (index == -1)
+                {
+                    if (!spriteFont.DefaultCharacter.HasValue)
+                    {
+                        index = characterMap.IndexOf('?');
+                        //throw new ArgumentException(
+                        //                            "Text contains characters that cannot be" +
+                        //                            " resolved by this SpriteFont.",
+                        //                            "text"
+                        //                           );
+                    }
+                    else
+                    {
+                        index = characterMap.IndexOf(spriteFont.DefaultCharacter.Value);
+                    }
+                }
+
+                /* For the first character in a line, always push the width
+				 * rightward, even if the kerning pushes the character to the
+				 * left.
+				 */
+                Vector3 cKern = kerning[index];
+
+                if (firstInLine)
+                {
+                    curOffset.X += Math.Abs(cKern.X);
+                    firstInLine = false;
+                }
+                else
+                {
+                    curOffset.X += spriteFont.Spacing + cKern.X;
+                }
+
+                // Calculate the character origin
+                Rectangle cCrop = croppingData[index];
+                Rectangle cGlyph = glyphData[index];
+
+                float offsetX = baseOffset.X + (curOffset.X + cCrop.X) * axisDirX;
+                float offsetY = baseOffset.Y + (curOffset.Y + cCrop.Y) * axisDirY;
+
+                var pos = new Vector2(offsetX, offsetY);
+                Draw
+                (
+                    textureValue,
+                    position + pos,
+                    cGlyph,
+                    color,
+                    layerDepth
+                );
+
+                curOffset.X += cKern.Y + cKern.Z;
+            }
+        }
+
+
         // ==========================
         // === UO drawing methods ===
         // ==========================

@@ -59,5 +59,17 @@
     <EmbeddedResource Update="src/Resources/embedded/ResGumps.resx" LogicalName="ClassicUO.Resources.ResGumps.resources" />
     <EmbeddedResource Include="src/Resources/embedded/cuologo.png" LogicalName="cuologo.png" />
     <EmbeddedResource Include="src/Resources/embedded/game-background.png" LogicalName="game-background.png" />
+    <!--
+      The eight UI fonts, upstream's own .xnb files. They replace the FileEmbed
+      source generator the same way the two PNGs above do; see src/Render/Fonts.cs.
+    -->
+    <EmbeddedResource Include="src/Resources/embedded/fonts/regular_font.xnb" LogicalName="regular_font.xnb" />
+    <EmbeddedResource Include="src/Resources/embedded/fonts/bold_font.xnb" LogicalName="bold_font.xnb" />
+    <EmbeddedResource Include="src/Resources/embedded/fonts/map1_font.xnb" LogicalName="map1_font.xnb" />
+    <EmbeddedResource Include="src/Resources/embedded/fonts/map2_font.xnb" LogicalName="map2_font.xnb" />
+    <EmbeddedResource Include="src/Resources/embedded/fonts/map3_font.xnb" LogicalName="map3_font.xnb" />
+    <EmbeddedResource Include="src/Resources/embedded/fonts/map4_font.xnb" LogicalName="map4_font.xnb" />
+    <EmbeddedResource Include="src/Resources/embedded/fonts/map5_font.xnb" LogicalName="map5_font.xnb" />
+    <EmbeddedResource Include="src/Resources/embedded/fonts/map6_font.xnb" LogicalName="map6_font.xnb" />
   </ItemGroup>
 </Project>

@@ -9,5 +9,8 @@ REM  Deliberately NOT --headless: the dummy renderer never produces a frame,
 REM  so a headless run would hang instead of answering.
 REM ============================================================================
 call "%~dp0..\_shared\common.bat" || exit /b 1
+REM  Build first. This probe is C#, and running a stale assembly reports the
+REM  PREVIOUS run's result -- which looks exactly like a real failure.
+call "%~dp0build.bat" || exit /b 1
 "%GODOT_CONSOLE%" --path "%UO_GODOT_PROJECT%" -- --batcher-probe %*
 exit /b %ERRORLEVEL%
