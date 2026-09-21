@@ -599,6 +599,18 @@ namespace GUO
         {
             Rectangle windowBounds = Window.ClientBounds;
 
+            if (windowBounds.Width <= 0 || windowBounds.Height <= 0)
+            {
+                // PORT DEVIATION (GUO): upstream has no such case -- FNA does
+                // not run without a device. Godot does: --headless reports a
+                // zero-size window, no render target can be made for it, and
+                // the first Clear then has nothing to clear and throws, once
+                // per frame. The client still boots, loads and updates this
+                // way, which is what the smoke test uses it for. It just does
+                // not draw.
+                return;
+            }
+
             _renderTargets.EnsureSizes(
                 this,
                 new Rectangle(0, 0, windowBounds.Width, windowBounds.Height),
