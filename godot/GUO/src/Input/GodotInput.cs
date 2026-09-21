@@ -37,9 +37,8 @@ namespace GUO.Input
     ///     from the key-down path rather than from an event of its own. The
     ///     guards are upstream's: nothing while a modifier that makes the key
     ///     a command is down, and nothing when a plugin took the key.
-    ///   * Mouse position. Upstream reads it out of the event; Mouse.Update
-    ///     asks the window where the pointer is, which is the same answer and
-    ///     is already ported.
+    ///   * Mouse position. Upstream polls SDL for it; here it comes off the
+    ///     event, which is where Godot puts it. See Mouse.Update.
     ///   * Window enter/leave and focus are notifications, not events, so
     ///     they stay in GameController._Notification where Godot puts them.
     /// </remarks>
@@ -60,8 +59,8 @@ namespace GUO.Input
                     HandleKey(key);
                     break;
 
-                case InputEventMouseMotion:
-                    HandleMotion();
+                case InputEventMouseMotion motion:
+                    HandleMotion(motion);
                     break;
 
                 case InputEventMouseButton button:
@@ -148,7 +147,7 @@ namespace GUO.Input
             Client.Game.Scene.OnTextInput(s);
         }
 
-        private static void HandleMotion()
+        private static void HandleMotion(InputEventMouseMotion e)
         {
             GameCursor cursor = Client.Game.UO.GameCursor;
 
@@ -158,7 +157,7 @@ namespace GUO.Input
                 cursor.Graphic = 0xFFFF;
             }
 
-            Mouse.Update();
+            Mouse.Update(e.Position);
 
             if (Mouse.IsDragging)
             {
@@ -181,7 +180,7 @@ namespace GUO.Input
                     return;
                 }
 
-                Mouse.Update();
+                Mouse.Update(e.Position);
 
                 bool isScrolledUp = e.ButtonIndex == MouseButton.WheelUp;
 
@@ -206,20 +205,23 @@ namespace GUO.Input
 
             if (e.Pressed)
             {
-                ButtonDown(buttonType);
+                ButtonDown(buttonType, e.Position);
             }
             else
             {
-                ButtonUp(buttonType);
+                ButtonUp(buttonType, e.Position);
             }
         }
 
-        private static void ButtonDown(MouseButtonType buttonType)
+        private static void ButtonDown(MouseButtonType buttonType, Vector2 at)
         {
             uint lastClickTime = LastClickTime(buttonType);
 
+            // The position first: ButtonPress records the click position from
+            // Mouse.Position, so the event's position has to be in before it
+            // rather than after, as the polled version could get away with.
+            Mouse.Update(at);
             Mouse.ButtonPress(buttonType);
-            Mouse.Update();
 
             uint ticks = Time.Ticks;
 
@@ -261,8 +263,10 @@ namespace GUO.Input
             SetLastClickTime(buttonType, lastClickTime);
         }
 
-        private static void ButtonUp(MouseButtonType buttonType)
+        private static void ButtonUp(MouseButtonType buttonType, Vector2 at)
         {
+            Mouse.Update(at);
+
             if (LastClickTime(buttonType) != 0xFFFF_FFFF)
             {
                 if (
@@ -275,7 +279,7 @@ namespace GUO.Input
             }
 
             Mouse.ButtonRelease(buttonType);
-            Mouse.Update();
+            Mouse.Refresh();
         }
 
         private static uint LastClickTime(MouseButtonType type)

@@ -123,10 +123,11 @@ public partial class Main : Node
 
                 if (_options.InputProbe)
                 {
-                    // Two thirds of the budget to load and settle, the rest
-                    // to click and type, so the shot at the end catches the
-                    // result rather than the middle.
-                    InputProbe.Run(this, System.Math.Max(1, _options.ShotAfter * 2 / 3));
+                    // A fixed settle, not a fraction of the budget: the login
+                    // screen is up well inside 200 frames, and scaling this
+                    // with --shot-after meant asking for a later shot pushed
+                    // the whole sequence back and captured less of it.
+                    InputProbe.Run(this, 200);
                 }
 
                 if (_options.ShotAfter > 0)

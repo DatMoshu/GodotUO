@@ -500,7 +500,7 @@ namespace GUO
             Time.Ticks = (uint)(_totalGameTime * 1000.0);
             Time.Delta = (float)(elapsedMilliseconds / 1000.0);
 
-            Mouse.Update();
+            Mouse.Refresh();
 
             var data = NetClient.Socket.CollectAvailableData();
             var packetsCount = PacketHandlers.Handler.ParsePackets(NetClient.Socket, UO.World, data);
