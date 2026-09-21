@@ -16,6 +16,7 @@ using GUO.Utility;
 using GUO.Utility.Logging;
 using GUO.Compat;
 using Godot;
+using Color = GUO.Compat.Color;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -88,6 +89,16 @@ namespace GUO
         /// the audio manager both hang off it.
         /// </summary>
         public bool IsActive => DisplayServer.WindowIsFocused();
+
+        /// <summary>
+        /// Raised when the window takes and loses focus. Upstream gets these
+        /// from FNA's <c>Game</c>; the audio manager is the only subscriber,
+        /// and it uses them to duck the music.
+        /// </summary>
+        public event EventHandler Activated;
+
+        /// <inheritdoc cref="Activated"/>
+        public event EventHandler Deactivated;
 
         /// <summary>
         /// PORT DEVIATION (GUO): FNA's <c>Game.IsMouseVisible</c> hides the OS
@@ -556,7 +567,7 @@ namespace GUO
             }
 
             _uoSpriteBatch.SetRenderTarget(_renderTargets.UiRenderTarget);
-            _uoSpriteBatch.Clear(Color.Transparent);
+            _uoSpriteBatch.Clear(Godot.Colors.Transparent);
 
             if ((UO.World?.InGame ?? false) && SelectedObject.Object is TextObject t)
             {
@@ -624,11 +635,25 @@ namespace GUO
 
         public override void _Notification(int what)
         {
-            if (what == NotificationWMSizeChanged)
+            // Godot's notification constants are long; the override takes int.
+            switch ((long)what)
             {
-                Vector2I size = DisplayServer.WindowGetSize();
+                case NotificationWMSizeChanged:
+                    Vector2I size = DisplayServer.WindowGetSize();
 
-                WindowOnClientSizeChanged(size.X, size.Y);
+                    WindowOnClientSizeChanged(size.X, size.Y);
+
+                    break;
+
+                case NotificationApplicationFocusIn:
+                    Activated?.Invoke(this, EventArgs.Empty);
+
+                    break;
+
+                case NotificationApplicationFocusOut:
+                    Deactivated?.Invoke(this, EventArgs.Empty);
+
+                    break;
             }
         }
 

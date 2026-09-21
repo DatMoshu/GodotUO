@@ -72,8 +72,8 @@ namespace GUO.Game.UI.Gumps
             _mapTexture?.Dispose();
             _mapTexture = texture;
 
-            Width = texture.Width;
-            Height = texture.Height;
+            Width = texture.GetWidth();
+            Height = texture.GetHeight();
 
             WantUpdateSize = true;
         }

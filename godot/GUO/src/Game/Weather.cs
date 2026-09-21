@@ -6,6 +6,8 @@ using GUO.Resources;
 using GUO.Utility;
 using GUO.Compat;
 using System;
+using Godot;
+using Color = GUO.Compat.Color;
 using MathHelper = GUO.Utility.MathHelper;
 
 namespace GUO.Game
@@ -50,7 +52,7 @@ namespace GUO.Game
         {
             float anglef = (int) (current_tick / 2.7777f * freq) % 360;
 
-            return Math.Sign(MathHelper.ToRadians(anglef)) * range;
+            return Math.Sign(Mathf.DegToRad(anglef)) * range;
         }
 
 
@@ -374,7 +376,7 @@ namespace GUO.Game
 
                         if (windChanged)
                         {
-                            effect.SpeedAngle = MathHelper.ToDegrees((float) Math.Atan2(effect.SpeedX, effect.SpeedY));
+                            effect.SpeedAngle = Mathf.RadToDeg((float) Math.Atan2(effect.SpeedX, effect.SpeedY));
 
                             effect.SpeedMagnitude = (float) Math.Sqrt(Math.Pow(effect.SpeedX, 2) + Math.Pow(effect.SpeedY, 2));
 
@@ -395,7 +397,7 @@ namespace GUO.Game
 
                         speedAngle += SinOscillate(0.4f, 20, Time.Ticks + effect.ID);
 
-                        float rad = MathHelper.ToRadians(speedAngle);
+                        float rad = Mathf.DegToRad(speedAngle);
                         effect.SpeedX = speedMagnitude * (float) Math.Sin(rad);
                         effect.SpeedY = speedMagnitude * (float) Math.Cos(rad);
 
@@ -446,7 +448,7 @@ namespace GUO.Game
                            SolidColorTextureCache.GetTexture(Color.Blue),
                            start,
                            end,
-                           Vector3.UnitZ,
+                           Vector3.Back,
                            2,
                            layerDepth
                         );
@@ -465,7 +467,7 @@ namespace GUO.Game
                         (
                             SolidColorTextureCache.GetTexture(Color.White),
                             snowRect,
-                            Vector3.UnitZ,
+                            Vector3.Back,
                             layerDepth
                         );
 

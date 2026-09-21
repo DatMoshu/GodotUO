@@ -185,7 +185,7 @@ namespace GUO.Game.GameObjects
             v.Y = 22;
             v.Z = (bottom - tile) * 4;
 
-            Vector3.Cross(ref v, ref u, out ret);
+            ret = v.Cross(u);
             // ==========================
 
 
@@ -198,8 +198,8 @@ namespace GUO.Game.GameObjects
             v.Y = 22;
             v.Z = (right - tile) * 4;
 
-            Vector3.Cross(ref v, ref u, out normal);
-            Vector3.Add(ref ret, ref normal, out ret);
+            normal = v.Cross(u);
+            ret += normal;
             // ==========================
 
 
@@ -212,8 +212,8 @@ namespace GUO.Game.GameObjects
             v.Y = -22;
             v.Z = (top - tile) * 4;
 
-            Vector3.Cross(ref v, ref u, out normal);
-            Vector3.Add(ref ret, ref normal, out ret);
+            normal = v.Cross(u);
+            ret += normal;
             // ==========================
 
 
@@ -226,12 +226,12 @@ namespace GUO.Game.GameObjects
             v.Y = -22;
             v.Z = (left - tile) * 4;
 
-            Vector3.Cross(ref v, ref u, out normal);
-            Vector3.Add(ref ret, ref normal, out ret);
+            normal = v.Cross(u);
+            ret += normal;
             // ==========================
 
 
-            Vector3.Normalize(ref ret, out normal);
+            normal = ret.Normalized();
 
             return true;
         }

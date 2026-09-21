@@ -13,6 +13,7 @@ using GUO.Resources;
 using GUO.Utility;
 using GUO.Utility.Logging;
 using GUO.Compat;
+using Color = GUO.Compat.Color;
 using Godot;
 using GUO.Platform.Sdl;
 using System;

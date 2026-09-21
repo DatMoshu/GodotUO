@@ -1,7 +1,8 @@
 ﻿// SPDX-License-Identifier: BSD-2-Clause
 
 using GUO.Compat;
-using GUO.Platform.Sdl;
+using Godot;
+
 namespace GUO.Input
 {
     internal static class Mouse
@@ -40,7 +41,6 @@ namespace GUO.Input
                     break;
             }
 
-            SDL.SDL_CaptureMouse(true);
         }
 
         /* Log a button release event at the given time */
@@ -70,10 +70,6 @@ namespace GUO.Input
                     break;
             }
 
-            if (!(LButtonPressed || RButtonPressed || MButtonPressed))
-            {
-                SDL.SDL_CaptureMouse(false);
-            }
         }
 
         public static Point Position;
@@ -112,24 +108,27 @@ namespace GUO.Input
 
         public static void Update()
         {
-            if (!MouseInWindow)
-            {
-                SDL.SDL_GetGlobalMouseState(out float x, out float y);
-                SDL.SDL_GetWindowPosition(Client.Game.Window.Handle, out int winX, out int winY);
-                Position.X = (int)x - winX;
-                Position.Y = (int)y - winY;
-            }
-            else
-            {
-                SDL.SDL_GetMouseState(out float x, out float y);
-                Position.X = (int)x;
-                Position.Y = (int)y;
-            }
+            // PORT DEVIATION (GUO): upstream asks SDL for the pointer twice
+            // over -- SDL_GetMouseState is window-relative and only right
+            // while the window has the pointer, so when it does not it asks
+            // for the desktop position and subtracts the window's. Godot
+            // reports the desktop position either way, so one subtraction
+            // answers both cases and the branch goes.
+            Vector2I mouse = DisplayServer.MouseGetPosition() - DisplayServer.WindowGetPosition();
 
-            // Scale the mouse coordinates for the faux-backbuffer and DPI settings
-            Position.X = (int) ((double) Position.X * (Client.Game.GraphicManager.PreferredBackBufferWidth / Client.Game.Window.ClientBounds.Width) / Client.Game.DpiScale);
+            Position.X = mouse.X;
+            Position.Y = mouse.Y;
 
-            Position.Y = (int) ((double) Position.Y * (Client.Game.GraphicManager.PreferredBackBufferHeight / Client.Game.Window.ClientBounds.Height) / Client.Game.DpiScale);
+            // Scale the mouse coordinates for the DPI setting.
+            //
+            // PORT DEVIATION (GUO): upstream also scales by
+            // PreferredBackBufferWidth / ClientBounds.Width, FNA's "faux
+            // backbuffer" -- a render surface that can differ in size from the
+            // window. Godot's window and its default surface are the same
+            // size, so that ratio is 1 and the term is gone.
+            Position.X = (int) ((double) Position.X / Client.Game.DpiScale);
+
+            Position.Y = (int) ((double) Position.Y / Client.Game.DpiScale);
 
             IsDragging = LButtonPressed || RButtonPressed || MButtonPressed;
         }

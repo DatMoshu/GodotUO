@@ -20,8 +20,8 @@ namespace GUO.Game.GameObjects
             {
                 BlendState state = new BlendState
                 {
-                    ColorSourceBlend = Blend.Zero,
-                    ColorDestinationBlend = Blend.SourceColor
+                    ColorSourceBlend = GUO.Renderer.Blend.Zero,
+                    ColorDestinationBlend = GUO.Renderer.Blend.SourceColor
                 };
 
                 return state;
@@ -34,8 +34,8 @@ namespace GUO.Game.GameObjects
             {
                 BlendState state = new BlendState
                 {
-                    ColorSourceBlend = Blend.One,
-                    ColorDestinationBlend = Blend.One
+                    ColorSourceBlend = GUO.Renderer.Blend.One,
+                    ColorDestinationBlend = GUO.Renderer.Blend.One
                 };
 
                 return state;
@@ -48,8 +48,8 @@ namespace GUO.Game.GameObjects
             {
                 BlendState state = new BlendState
                 {
-                    ColorSourceBlend = Blend.DestinationColor,
-                    ColorDestinationBlend = Blend.InverseSourceAlpha
+                    ColorSourceBlend = GUO.Renderer.Blend.DestinationColor,
+                    ColorDestinationBlend = GUO.Renderer.Blend.InverseSourceAlpha
                 };
 
                 return state;
@@ -62,8 +62,8 @@ namespace GUO.Game.GameObjects
             {
                 BlendState state = new BlendState
                 {
-                    ColorSourceBlend = Blend.DestinationColor,
-                    ColorDestinationBlend = Blend.SourceColor
+                    ColorSourceBlend = GUO.Renderer.Blend.DestinationColor,
+                    ColorDestinationBlend = GUO.Renderer.Blend.SourceColor
                 };
 
                 return state;
@@ -76,8 +76,8 @@ namespace GUO.Game.GameObjects
             {
                 BlendState state = new BlendState
                 {
-                    ColorSourceBlend = Blend.SourceColor,
-                    ColorDestinationBlend = Blend.InverseSourceColor,
+                    ColorSourceBlend = GUO.Renderer.Blend.SourceColor,
+                    ColorDestinationBlend = GUO.Renderer.Blend.InverseSourceColor,
                     ColorBlendFunction = BlendFunction.ReverseSubtract
                 };
 

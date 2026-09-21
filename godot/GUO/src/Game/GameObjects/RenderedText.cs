@@ -4,6 +4,7 @@ using GUO.Assets;
 using GUO.Renderer;
 using GUO.Utility;
 using GUO.Compat;
+using Godot;
 using StbTextEditSharp;
 using System;
 using System.Collections.Generic;
@@ -775,7 +776,7 @@ namespace GUO.Game
         {
             // Atlas path: generate FontInfo for Width/Height/LinesCount/Links,
             // but don't create a per-string Texture2D — glyphs are drawn from the shared atlas.
-            if (Texture != null && !Texture.IsDisposed)
+            if (GodotObject.IsInstanceValid(Texture))
             {
                 Texture.Dispose();
                 Texture = null;
@@ -848,7 +849,7 @@ namespace GUO.Game
 
             IsDestroyed = true;
 
-            if (Texture != null && !Texture.IsDisposed)
+            if (GodotObject.IsInstanceValid(Texture))
             {
                 Texture.Dispose();
             }

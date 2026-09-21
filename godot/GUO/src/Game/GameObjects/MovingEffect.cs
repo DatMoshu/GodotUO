@@ -107,7 +107,7 @@ namespace GUO.Game.GameObjects
 
             if (distance > frameIndependentSpeed)
             {
-                offset.Normalize();
+                offset = offset.Normalized();
                 s0 = offset * frameIndependentSpeed;
             }
             else
