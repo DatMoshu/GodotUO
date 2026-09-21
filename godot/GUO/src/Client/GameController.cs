@@ -204,6 +204,7 @@ namespace GUO
             SetScene(new LoginScene(UO.World));
 
             SetWindowPositionBySettings();
+            PullWindowOntoAScreen();
         }
 
         /// <summary>
@@ -483,6 +484,70 @@ namespace GUO
             }
 
             SetWindowPosition(x, y);
+        }
+
+        /// <summary>
+        /// If the window has come up somewhere no monitor covers, move it back
+        /// onto the primary one.
+        /// </summary>
+        /// <remarks>
+        /// PORT DEVIATION (GUO): upstream has no such check, and
+        /// <see cref="SetWindowPositionBySettings"/> -- which it does have --
+        /// only guards the saved position, only its top-left corner, and only
+        /// when one was saved at all. That leaves the case this exists for: a
+        /// window placed off every screen by something else, by a monitor that
+        /// is no longer plugged in, or by a resize that left it hanging past
+        /// the edge. There is nothing to click and no title bar to drag, and
+        /// the taskbar icon does not help, because the window is not hidden --
+        /// it is somewhere real that no monitor shows. It happened here, and
+        /// it took a Win32 SetWindowPos from outside the client to undo.
+        ///
+        /// A quarter of the window has to be on a screen, not merely a pixel:
+        /// a window whose only visible sliver is its right edge cannot be
+        /// moved by hand either.
+        /// </remarks>
+        public void PullWindowOntoAScreen()
+        {
+            // A maximised or fullscreen window is placed by the window
+            // manager and cannot be off screen.
+            if (DisplayServer.WindowGetMode() != DisplayServer.WindowMode.Windowed)
+            {
+                return;
+            }
+
+            Vector2I at = DisplayServer.WindowGetPosition();
+            Vector2I size = DisplayServer.WindowGetSize();
+
+            if (size.X <= 0 || size.Y <= 0)
+            {
+                return;
+            }
+
+            var window = new Rect2I(at, size);
+
+            long area = (long) size.X * size.Y;
+            long seen = 0;
+
+            for (int screen = 0; screen < DisplayServer.GetScreenCount(); screen++)
+            {
+                Rect2I shown = window.Intersection(DisplayServer.ScreenGetUsableRect(screen));
+
+                seen += (long) Math.Max(0, shown.Size.X) * Math.Max(0, shown.Size.Y);
+            }
+
+            if (seen * 4 >= area)
+            {
+                return;
+            }
+
+            Rect2I home = DisplayServer.ScreenGetUsableRect(DisplayServer.GetPrimaryScreen());
+
+            Log.Warn(
+                $"window at {at} sized {size} is off every screen ({seen} of {area} pixels "
+                    + $"visible); moving it to {home.Position}"
+            );
+
+            SetWindowPosition(home.Position.X, home.Position.Y);
         }
 
         /// <summary>

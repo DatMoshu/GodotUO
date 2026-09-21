@@ -321,6 +321,7 @@ internal static class InputProbe
         GD.Print("[GUO] input probe: resizing the window");
 
         await ResizeTheWindow(host);
+        await LoseTheWindow(host);
 
         await Endure(host, EndureSeconds);
 
@@ -2768,6 +2769,73 @@ internal static class InputProbe
     /// window coordinates and this moves all of them. The size is put back
     /// before anything else is asked.
     /// </remarks>
+    /// <summary>
+    /// Push the window off every monitor and see the client fetch it back.
+    /// </summary>
+    /// <remarks>
+    /// This one is here because it happened: the client came up somewhere no
+    /// screen covered, and there was no way to reach it from inside Windows --
+    /// no title bar to drag, and a taskbar icon that does nothing, because the
+    /// window is not hidden, it is simply where nobody can see it. Getting it
+    /// back took SetWindowPos from another process.
+    /// </remarks>
+    private static async System.Threading.Tasks.Task LoseTheWindow(Node host)
+    {
+        Godot.DisplayServer.WindowMode mode = Godot.DisplayServer.WindowGetMode();
+
+        if (mode != Godot.DisplayServer.WindowMode.Windowed)
+        {
+            Godot.DisplayServer.WindowSetMode(Godot.DisplayServer.WindowMode.Windowed);
+
+            await Frames(host, 30);
+        }
+
+        Vector2I was = Godot.DisplayServer.WindowGetPosition();
+
+        // Far enough out that no arrangement of monitors could reach it.
+        var nowhere = new Vector2I(-30000, -30000);
+
+        Godot.DisplayServer.WindowSetPosition(nowhere);
+
+        await Frames(host, 30);
+
+        Vector2I lost = Godot.DisplayServer.WindowGetPosition();
+
+        Client.Game.PullWindowOntoAScreen();
+
+        await Frames(host, 30);
+
+        Vector2I back = Godot.DisplayServer.WindowGetPosition();
+        Vector2I size = Godot.DisplayServer.WindowGetSize();
+
+        long area = (long)size.X * size.Y;
+        long seen = 0;
+
+        for (int screen = 0; screen < Godot.DisplayServer.GetScreenCount(); screen++)
+        {
+            Rect2I shown = new Rect2I(back, size)
+                .Intersection(Godot.DisplayServer.ScreenGetUsableRect(screen));
+
+            seen += (long)System.Math.Max(0, shown.Size.X)
+                * System.Math.Max(0, shown.Size.Y);
+        }
+
+        Godot.DisplayServer.WindowSetPosition(was);
+
+        if (mode != Godot.DisplayServer.WindowMode.Windowed)
+        {
+            Godot.DisplayServer.WindowSetMode(mode);
+        }
+
+        await Frames(host, 30);
+
+        Check(
+            "a window lost off screen comes back",
+            seen * 4 >= area,
+            $"pushed to {lost}, came back to {back} with {seen} of {area} pixels on a screen"
+        );
+    }
+
     private static async System.Threading.Tasks.Task ResizeTheWindow(Node host)
     {
         Game.UI.Gumps.WorldViewportGump viewport =
