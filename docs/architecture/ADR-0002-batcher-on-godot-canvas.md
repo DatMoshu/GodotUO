@@ -163,6 +163,16 @@ The way to have both is the depth buffer itself: a 3D pass that writes Z, with
 the sprites as camera-facing quads. That is a larger decision than this
 amendment and is not taken here.
 
+**The class is closed.** `grep -rn SetStencil` over upstream finds eleven
+sites, and only two of them are live: `GameScene.DrawWorld` and
+`UIManager.Draw`, the world and the UI. Both are now reproduced by sorting.
+The rest are commented out upstream -- `RenderLists`' transparent pass,
+`CheckerTrans`' checker -- and are commented out identically here, so they
+carry no behaviour to lose. Plugin.cs's is a command-buffer id and is not
+ported. There is no third place where this port draws in list order while
+upstream leans on a depth test, and a check for one belongs in a future
+upstream merge rather than in a search of the code as it stands.
+
 ### 4. The two FNA escape hatches stay unimplemented, loudly
 
 `GetDynamicIndexBuffer` and `DrawDirectIndexed` exist for the world mesh, which
