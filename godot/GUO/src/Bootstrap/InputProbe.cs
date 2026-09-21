@@ -178,6 +178,8 @@ internal static class InputProbe
         await ClickGumpButton<Game.UI.Gumps.TopBarGump>(host, 6, "World Map");
         Report<Game.UI.Gumps.WorldMapGump>("world map");
 
+        await MeasureFrames(host, 300);
+
         GD.Print("[GUO] input probe: speaking");
 
         await Speak(host, "hail from godot");
@@ -820,6 +822,46 @@ internal static class InputProbe
         // Straight into the same queue a real device feeds, so nothing on the
         // path from the window to the client is bypassed.
         Godot.Input.ParseInputEvent(e);
+    }
+
+    /// <summary>
+    /// Time a stretch of frames in the world, with everything the probe has
+    /// opened still on screen.
+    /// </summary>
+    /// <remarks>
+    /// The average says little on its own -- the window is vsynced, so a
+    /// client with room to spare and a client with none both report about
+    /// sixteen milliseconds. The worst frame is the number that matters: a
+    /// hitch is what a player feels, and it is the first thing a change to
+    /// the batcher or the world mesh breaks.
+    /// </remarks>
+    private static async System.Threading.Tasks.Task MeasureFrames(Node host, int count)
+    {
+        ulong start = Godot.Time.GetTicksUsec();
+        ulong previous = start;
+        ulong worst = 0;
+
+        for (int i = 0; i < count; i++)
+        {
+            await host.ToSignal(host.GetTree(), SceneTree.SignalName.ProcessFrame);
+
+            ulong now = Godot.Time.GetTicksUsec();
+            ulong frame = now - previous;
+            previous = now;
+
+            if (frame > worst)
+            {
+                worst = frame;
+            }
+        }
+
+        double total = (previous - start) / 1000.0;
+
+        GD.Print(
+            $"[GUO] input probe: {count} frames in {total:F0} ms "
+            + $"({total / count:F2} ms average, {worst / 1000.0:F2} ms worst, "
+            + $"{count * 1000.0 / total:F1} fps)"
+        );
     }
 
     private static async System.Threading.Tasks.Task Frames(Node host, int count)
