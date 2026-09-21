@@ -81,6 +81,7 @@ launchers\dev\build.bat                    build C# only
 launchers\dev\smoke.bat                    full health check — run before commit
 launchers\dev\screenshot.bat               capture a frame
 launchers\dev\playtest.bat                 play a session and check it (needs a shard)
+launchers\dev\endurance.bat                play on for a while and watch for drift
 launchers\dev\sync_upstream.bat            check upstream drift
 launchers\shard\run.bat                    run the local dev shard
 launchers\shard\populate.bat               generate its world (once)

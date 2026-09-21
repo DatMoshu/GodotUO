@@ -237,6 +237,16 @@ only the server can produce the evidence:
 Every path the client has is now exercised except the ones behind
 `Network/Plugin.cs`, which is not ported.
 
+`launchers\dev\endurance.bat` runs that same session and then keeps playing,
+walking a square so that land, statics and mobiles are loaded and dropped the
+whole time. It compares the last stretch with the first, because what goes
+wrong over a session goes wrong slowly: a cache that only grows, a texture
+freed on one path and not another, a draw list that is rebuilt but never
+emptied. Five minutes of it -- 18,000 frames -- held 16.69 ms a frame at the
+start and 16.70 ms at the end, with 106 fewer objects and 3.3 MB more memory in
+hand. That is the first measurement the port has of a client that has been
+played rather than one that has just started.
+
 Two things the trade step had to learn, both about aim and both worth keeping
 in mind for anything else that points at the world:
 
@@ -247,6 +257,15 @@ in mind for anything else that points at the world:
   a given pixel changes as they breathe. An offer is therefore lifted first
   and aimed afterwards -- a drag that decides where to let go before it picks
   anything up lets go a second later, and by then the answer has moved.
+
+A check has to be made of something that always answers, too. Three of these
+failed on a client that had done nothing wrong: a book dropped a fixed forty
+pixels from where it was picked up landed in a bag and the server correctly
+put it in the bag; a target cursor raised by Arms Lore, which wants an item,
+was clicked on a person; and a context menu was asked of a townsperson, whom
+the server has nothing to offer about. They now drop on bare container,
+prefer a skill that asks about people, and ask a shopkeeper -- who always has
+a menu -- for the menu.
 
 ### Phase 6 — interface
 `Game/UI` (117 files, ~51k lines), `Input`

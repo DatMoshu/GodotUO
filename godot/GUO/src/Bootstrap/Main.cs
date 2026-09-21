@@ -290,6 +290,8 @@ public partial class Main : Node
 
     private async void ProbeThenQuit()
     {
+        InputProbe.EndureSeconds = _options.EndureSeconds;
+
         await InputProbe.Run(this, 200);
 
         await CaptureFrame();
@@ -387,6 +389,12 @@ public partial class Main : Node
         public bool InputProbe { get; private set; }
 
         /// <summary>
+        /// Seconds the probe keeps playing at the end of its run, to see
+        /// whether a long session drifts. Zero means it does not.
+        /// </summary>
+        public int EndureSeconds { get; private set; }
+
+        /// <summary>
         /// Log in as a second player and accept trades, rather than play.
         /// </summary>
         public bool TradePartner { get; private set; }
@@ -451,6 +459,13 @@ public partial class Main : Node
                         break;
                     case "--trade-partner":
                         o.TradePartner = true;
+                        break;
+                    case "--endure":
+                        if (int.TryParse(Next(), out int endure))
+                        {
+                            o.EndureSeconds = endure;
+                        }
+
                         break;
                     case "--shard-command":
                         o.ShardCommands.Add(Next());

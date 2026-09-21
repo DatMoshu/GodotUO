@@ -209,6 +209,12 @@ internal static class InputProbe
         await Frames(host, 240);
     }
 
+    /// <summary>
+    /// Seconds to keep playing at the end of the run, watching for drift.
+    /// Zero -- the default -- skips it, so an ordinary playtest stays short.
+    /// </summary>
+    public static int EndureSeconds { get; set; }
+
     /// <summary>Everything the run does once the character is walking.</summary>
     private static async System.Threading.Tasks.Task RunTheRest(Node host)
     {
@@ -311,6 +317,8 @@ internal static class InputProbe
         GD.Print("[GUO] input probe: speaking");
 
         await Speak(host, "hail from godot");
+
+        await Endure(host, EndureSeconds);
 
         await Frames(host, 90);
 
@@ -532,10 +540,13 @@ internal static class InputProbe
 
         Vector2 from = item.At;
 
-        // Down and to the right, staying well inside the container art: the
-        // drop point has to be over the container for the server to read it
-        // as a move rather than a throw.
-        Vector2 to = from + new Vector2(40, 30);
+        // Bare container, not a fixed offset from where the item was. Down
+        // and to the right is empty backpack until the day it is not: this
+        // run dropped a book forty pixels onto a bag, the server put the book
+        // in the bag -- which is a correct move, and a real player's mistake
+        // -- and the check that the book is still in the backpack failed on a
+        // client that had done nothing wrong.
+        Vector2 to = await EmptySpot(host, pack);
 
         GD.Print(
             $"[GUO] input probe: dragging {item.Item.Name} 0x{item.Item.Serial:X} from "
@@ -726,18 +737,30 @@ internal static class InputProbe
 
         GD.Print($"[GUO] input probe: {uses.Count} skills can be used");
 
-        // Anatomy by preference: it is the plainest targeted skill in the
-        // list, every character has it, and using it on someone always asks
-        // who. Any other usable skill would still exercise the gump; not all
-        // of them raise a target cursor.
+        // Anatomy by preference, then the other two that ask about a
+        // person: what a skill will accept as a target is the skill's own
+        // business, and clicking a character at an Arms Lore cursor -- which
+        // wants an item -- leaves the cursor up and reads as a client that
+        // cannot target. Any other usable skill would still exercise the
+        // gump; not all of them raise a cursor at all.
+        string[] aboutPeople = { "Anatomy", "Evaluating Intelligence", "Forensic Evaluation" };
+
         Game.UI.Controls.Button use = null;
 
-        foreach (Game.UI.Controls.Button candidate in uses)
+        foreach (string wanted in aboutPeople)
         {
-            if (SkillNameOf(candidate) == "Anatomy")
+            foreach (Game.UI.Controls.Button candidate in uses)
             {
-                use = candidate;
+                if (SkillNameOf(candidate) == wanted)
+                {
+                    use = candidate;
 
+                    break;
+                }
+            }
+
+            if (use != null)
+            {
                 break;
             }
         }
@@ -785,6 +808,34 @@ internal static class InputProbe
         await Click(host, character.Value);
 
         await Frames(host, 90);
+
+        // The backpack, if the cursor is still up. A skill the probe did not
+        // choose may want an item rather than a person -- "what item do you
+        // wish to get information about?" -- and the path being checked is
+        // that a target cursor sends what it was pointed at and the server
+        // takes it, which either answer proves.
+        if (Client.Game.UO.World.TargetManager.IsTargeting)
+        {
+            Game.UI.Gumps.ContainerGump pack =
+                Game.Managers.UIManager.GetGump<Game.UI.Gumps.ContainerGump>();
+
+            (Game.GameObjects.Item Item, Vector2 At) thing = pack == null
+                ? default
+                : await Grabbable(
+                    host,
+                    pack,
+                    Client.Game.UO.World.Player.FindItemByLayer(Game.Data.Layer.Backpack)
+                );
+
+            if (thing.Item != null)
+            {
+                GD.Print($"[GUO] input probe: targeting {thing.Item.Name} instead");
+
+                await Click(host, thing.At);
+
+                await Frames(host, 90);
+            }
+        }
 
         Check(
             "the target is taken",
@@ -903,33 +954,18 @@ internal static class InputProbe
                 $"{named} of {entries.Count} journal lines are townspeople"
             );
 
-            // The same click asks for a context menu, a little later: a
-            // single click on an entity is held back by the double-click
-            // delay, and when it finally goes it sends both the name request
-            // and the popup request. What comes back is a menu the server
-            // composed -- "Add Friend", "Open Paperdoll" -- so this is the
-            // shard describing what can be done to somebody, not the client
-            // guessing.
-            Game.UI.Gumps.PopupMenuGump menu = null;
+            // The same click also asks for a context menu, and one may well
+            // arrive -- but whether it does is the server's decision, so the
+            // check for it is made of a shopkeeper instead, in VisitAVendor.
+            //
+            // Anything that did arrive is closed again, and this is not
+            // tidiness. A popup sits over the world where the mouse was, and
+            // while it is there the hit test answers with the gump and not
+            // with what is drawn underneath -- so the next step that goes
+            // looking for a mobile on screen finds nothing, which is a
+            // confusing way to fail a trade.
+            await Frames(host, 30);
 
-            for (int wait = 0; wait < 20 && menu == null; wait++)
-            {
-                await Frames(host, 10);
-
-                menu = Game.Managers.UIManager.PopupMenu;
-            }
-
-            Check(
-                "the shard offers a context menu",
-                menu != null,
-                menu == null ? "no popup arrived" : $"{menu.Width}x{menu.Height}"
-            );
-
-            // Closed again, and this is not tidiness. A popup sits over the
-            // world where the mouse was, and while it is there the hit test
-            // answers with the gump and not with what is drawn underneath --
-            // so the next step that goes looking for a mobile on screen finds
-            // nothing, which is a confusing way to fail a trade.
             Game.Managers.UIManager.ShowGamePopup(null);
 
             await Frames(host, 10);
@@ -1229,6 +1265,8 @@ internal static class InputProbe
             {
                 continue;
             }
+
+            await AskForAMenu(host, person);
 
             await Say(host, "vendor buy");
 
@@ -1700,6 +1738,56 @@ internal static class InputProbe
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Single-click somebody and wait for the menu the server composes.
+    /// </summary>
+    /// <remarks>
+    /// A shopkeeper, not a passer-by. The client asks for a context menu on
+    /// every single click, but the server only answers when the thing clicked
+    /// has something to offer -- and a townsperson standing in the road often
+    /// has nothing, which is how this check came to fail on a client that had
+    /// asked properly and been told, correctly, that there was no menu. A
+    /// shopkeeper always has one.
+    /// </remarks>
+    private static async System.Threading.Tasks.Task AskForAMenu(
+        Node host,
+        Game.GameObjects.Mobile person
+    )
+    {
+        Vector2? self = await FindCharacter(host);
+        Vector2? on = self == null ? null : await FindOnScreen(host, person, self.Value);
+
+        if (on == null)
+        {
+            Check("the shard offers a context menu", false, $"{person.Name} is not on screen");
+
+            return;
+        }
+
+        await Click(host, on.Value);
+
+        Game.UI.Gumps.PopupMenuGump menu = null;
+
+        for (int wait = 0; wait < 20 && menu == null; wait++)
+        {
+            await Frames(host, 10);
+
+            menu = Game.Managers.UIManager.PopupMenu;
+        }
+
+        Check(
+            "the shard offers a context menu",
+            menu != null,
+            menu == null ? "no popup arrived" : $"{menu.Width}x{menu.Height}"
+        );
+
+        // Off the screen again before anything else is clicked: a popup over
+        // the world takes the hit test with it.
+        Game.Managers.UIManager.ShowGamePopup(null);
+
+        await Frames(host, 10);
     }
 
     /// <summary>Press on something and start moving, so the cursor takes it.</summary>
@@ -2573,32 +2661,11 @@ internal static class InputProbe
 
         // Each of the four screen diagonals in turn. One direction can be a
         // wall -- the starting spot is indoors -- and four cannot all be.
-        Compat.Rectangle bounds = Client.Game.Window.ClientBounds;
-        var centre = new Vector2(bounds.Width / 2f, bounds.Height / 2f);
-
         foreach (Vector2 offset in Offsets)
         {
-            Vector2 at = centre + offset * 250f;
-
-            Send(new InputEventMouseMotion { Position = at });
-
-            Send(new InputEventMouseButton
-            {
-                ButtonIndex = MouseButton.Right,
-                Position = at,
-                Pressed = true,
-            });
-
             // Held. The scene walks a step at a time for as long as the
             // button is down, so this is how far the character goes.
-            await Frames(host, 90);
-
-            Send(new InputEventMouseButton
-            {
-                ButtonIndex = MouseButton.Right,
-                Position = at,
-                Pressed = false,
-            });
+            await Pull(host, offset, 90);
 
             await Frames(host, 20);
 
@@ -2612,6 +2679,205 @@ internal static class InputProbe
         }
 
         return moved;
+    }
+
+    /// <summary>
+    /// Hold the right button out from the middle of the window, which is how
+    /// this client walks: a step at a time for as long as the button is down.
+    /// </summary>
+    private static async System.Threading.Tasks.Task Pull(Node host, Vector2 offset, int frames)
+    {
+        Compat.Rectangle bounds = Client.Game.Window.ClientBounds;
+        Vector2 at = new Vector2(bounds.Width / 2f, bounds.Height / 2f) + (offset * 250f);
+
+        Send(new InputEventMouseMotion { Position = at });
+
+        Send(new InputEventMouseButton
+        {
+            ButtonIndex = MouseButton.Right,
+            Position = at,
+            Pressed = true,
+        });
+
+        await Frames(host, frames);
+
+        Send(new InputEventMouseButton
+        {
+            ButtonIndex = MouseButton.Right,
+            Position = at,
+            Pressed = false,
+        });
+    }
+
+    /// <summary>
+    /// Keep playing for a while, and see whether the client is still the same
+    /// client at the end of it.
+    /// </summary>
+    /// <remarks>
+    /// Three hundred frames standing still says the renderer can draw what is
+    /// in front of it; it says nothing about a session. What goes wrong over a
+    /// session goes wrong slowly: a cache that only grows, a texture freed on
+    /// one path and not another, a list of things to draw that is rebuilt but
+    /// never emptied. All three look like a client that is a little worse
+    /// every minute, so this walks the character in a square -- which loads
+    /// and drops land, statics and mobiles the whole time -- and compares the
+    /// last stretch with the first.
+    ///
+    /// The numbers are deliberately loose. The machine running this is not
+    /// idle, the shard is on it, and a collection lands where it lands; what
+    /// this is here to catch is a client at half the speed it was, or one
+    /// whose memory has no ceiling, not a noisy percent.
+    /// </remarks>
+    private static async System.Threading.Tasks.Task Endure(Node host, int seconds)
+    {
+        if (seconds <= 0)
+        {
+            return;
+        }
+
+        Game.GameObjects.PlayerMobile player = Client.Game.UO.World?.Player;
+
+        if (player == null)
+        {
+            Check("the client endures a session", false, "not in the world");
+
+            return;
+        }
+
+        GD.Print($"[GUO] input probe: playing on for {seconds} seconds");
+
+        // After everything else, on purpose: every gump the run opened is
+        // still on screen and the character has already been about, so this
+        // measures a client that has been played rather than a fresh one.
+        await Frames(host, 60);
+
+        long objectsAtStart =
+            (long)Godot.Performance.GetMonitor(Godot.Performance.Monitor.ObjectCount);
+        long staticAtStart =
+            (long)Godot.Performance.GetMonitor(Godot.Performance.Monitor.MemoryStatic);
+        long texturesAtStart =
+            (long)Godot.Performance.GetMonitor(Godot.Performance.Monitor.RenderTextureMemUsed);
+
+        int startX = player.X;
+        int startY = player.Y;
+        int far = 0;
+
+        // One leg of the square, in frames. Long enough to cross tiles and
+        // pull new ground in, short enough that a leg is a sample rather than
+        // the whole run.
+        const int Leg = 120;
+
+        var legs = new System.Collections.Generic.List<double>();
+        ulong deadline = Godot.Time.GetTicksUsec() + ((ulong)seconds * 1000000UL);
+        double worstOfAll = 0;
+        long frames = 0;
+
+        for (int leg = 0; Godot.Time.GetTicksUsec() < deadline; leg++)
+        {
+            ulong begun = Godot.Time.GetTicksUsec();
+            ulong previous = begun;
+            double worst = 0;
+            int counted = 0;
+
+            System.Threading.Tasks.Task pull = Pull(host, Offsets[leg % Offsets.Length], Leg);
+
+            while (!pull.IsCompleted)
+            {
+                await host.ToSignal(host.GetTree(), SceneTree.SignalName.ProcessFrame);
+
+                ulong now = Godot.Time.GetTicksUsec();
+                double frame = (now - previous) / 1000.0;
+                previous = now;
+                counted++;
+
+                if (frame > worst)
+                {
+                    worst = frame;
+                }
+            }
+
+            await pull;
+
+            if (counted > 0)
+            {
+                legs.Add((previous - begun) / 1000.0 / counted);
+                frames += counted;
+            }
+
+            if (worst > worstOfAll)
+            {
+                worstOfAll = worst;
+            }
+
+            int away = System.Math.Abs(player.X - startX) + System.Math.Abs(player.Y - startY);
+
+            if (away > far)
+            {
+                far = away;
+            }
+        }
+
+        long objectsAtEnd =
+            (long)Godot.Performance.GetMonitor(Godot.Performance.Monitor.ObjectCount);
+        long staticAtEnd =
+            (long)Godot.Performance.GetMonitor(Godot.Performance.Monitor.MemoryStatic);
+        long texturesAtEnd =
+            (long)Godot.Performance.GetMonitor(Godot.Performance.Monitor.RenderTextureMemUsed);
+
+        GD.Print(
+            $"[GUO] input probe: endured {frames} frames over {legs.Count} legs, "
+            + $"objects {objectsAtStart} -> {objectsAtEnd}, "
+            + $"static {staticAtStart / 1048576.0:F1} -> {staticAtEnd / 1048576.0:F1} MB, "
+            + $"textures {texturesAtStart / 1048576.0:F1} -> {texturesAtEnd / 1048576.0:F1} MB, "
+            + $"worst frame {worstOfAll:F2} ms, {far} tiles from the start"
+        );
+
+        if (legs.Count < 4)
+        {
+            Check("the client endures a session", false, $"only {legs.Count} legs walked");
+
+            return;
+        }
+
+        // A quarter at each end, so one slow leg is not the verdict.
+        int span = System.Math.Max(1, legs.Count / 4);
+        double first = 0;
+        double last = 0;
+
+        for (int i = 0; i < span; i++)
+        {
+            first += legs[i];
+            last += legs[legs.Count - 1 - i];
+        }
+
+        first /= span;
+        last /= span;
+
+        Check(
+            "the client does not slow down as it plays",
+            last <= first * 1.25,
+            $"{first:F2} ms a frame at the start, {last:F2} ms at the end"
+        );
+
+        // Not "no growth": a client walking into a part of the map it has not
+        // seen decodes art it did not have, and that art is meant to stay.
+        // What is not meant to happen is the count climbing with the clock
+        // rather than with the ground covered.
+        Check(
+            "the client does not run away with memory",
+            objectsAtEnd <= objectsAtStart + 4000
+                && staticAtEnd <= staticAtStart + (256L * 1048576L),
+            $"{objectsAtEnd - objectsAtStart} more objects, "
+            + $"{(staticAtEnd - staticAtStart) / 1048576.0:F1} MB more"
+        );
+
+        // Still listening. A client that has locked up draws its last frame
+        // over and over at a perfectly steady sixty.
+        Check(
+            "the client still walks at the end",
+            far > 0,
+            far > 0 ? $"{far} tiles from where it started" : "it never left the spot"
+        );
     }
 
     /// <summary>
