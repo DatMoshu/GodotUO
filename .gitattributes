@@ -26,6 +26,7 @@
 *.gdshader text eol=lf
 *.gdshaderinc text eol=lf
 *.resx    text eol=lf
+*.toml    text eol=lf
 
 # Extensionless dotfiles: without this they fall through to `text=auto`
 # and core.autocrlf checks them out CRLF, which churns on every commit.

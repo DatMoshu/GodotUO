@@ -233,9 +233,14 @@ gump draws its scroll, its groups and its caps.
 **Done when:** a full play session is indistinguishable from the original
 client.
 
-**Status:** where the work now is. The audit has 28 active files left and they
-are one subsystem: `Network/Plugin.cs`, the 26 `Renderer/Batching` commands a
-plugin draws through, and `XBREffect`. Nothing else upstream is unported.
+**Status:** where the work now is. The audit has **one** active file left:
+`Network/Plugin.cs`. The 26 `Renderer/Batching` commands a plugin draws
+through are waived — they are a command buffer for an FNA `GraphicsDevice`
+that this client does not have — and so is `XBREffect`, which nothing
+upstream constructs. Plugin.cs itself is not waived: it is blocked on the
+cuoapi sources, not decided against, and `src/Network/PluginGap.cs` says what
+lifting it would take.
+
 Plugins are not needed to play, so from here parity is measured by playing
 rather than by the audit — see rule 6.
 

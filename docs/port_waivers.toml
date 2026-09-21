@@ -72,3 +72,273 @@ a harness for upstream's own work on deferred loading, not client behaviour.
 GUO loads in GameController.Initialize and goes straight to LoginScene, which
 is what the released client does.
 """
+[[waiver]]
+upstream = "ClassicUO.Renderer/Effects/XBREffect.cs"
+replaced_by = "deleted"
+reason = """
+The FNA Effect wrapper around the compiled xBR upscaler, the same shape as
+BasicUOEffect above and waived for the same reason: Godot shaders are source
+set on a material, so there is no Effect object to wrap.
+
+It is also dead upstream. Nothing constructs an XBREffect -- the only other
+mentions of xBR in the tree are the embedded .fxc in Batcher2D.cs, itself
+waived, and a Profile.UseXBR flag that nothing reads. Porting it would add a
+class no code path can reach.
+"""
+
+
+# ---------------------------------------------------------------------------
+# ClassicUO.Renderer/Batching -- the plugin draw-command buffer.
+#
+# A plugin that wants to draw hands the client a command list, and upstream
+# replays it onto the FNA GraphicsDevice: create a vertex buffer, set a blend
+# state, bind a BasicEffect, DrawIndexedPrimitives. Every file below is one
+# [StructLayout] command in that buffer, laid out to match the C ABI a native
+# plugin writes.
+#
+# There is no device to replay them onto. ADR-0001 puts the renderer behind a
+# presenter seam and ADR-0002 builds the batcher on Godot canvas items; a
+# command stream describing XNA device state has no meaning on either side of
+# that seam. Porting the structs faithfully would produce an ABI that compiles
+# and cannot be honoured.
+#
+# Nothing but Plugin.cs references the namespace, and Plugin.cs is not ported
+# either -- see the PORT GAP in src/Network/PluginGap.cs, which is where the
+# decision to go without plugins is written down. If plugins are ever taken
+# up, the command list is a rewrite against the Godot batcher, not a port of
+# these files, and these waivers come out with the rest of the gap.
+# ---------------------------------------------------------------------------
+
+[[waiver]]
+upstream = "ClassicUO.Renderer/Batching/BatchCommand.cs"
+replaced_by = "deleted"
+reason = """
+One command in the plugin draw-command buffer, laid out for the FNA
+GraphicsDevice. No device, no plugin, nothing to replay it onto; see the
+section header above and src/Network/PluginGap.cs.
+"""
+
+[[waiver]]
+upstream = "ClassicUO.Renderer/Batching/BlendFactorCommand.cs"
+replaced_by = "deleted"
+reason = """
+One command in the plugin draw-command buffer, laid out for the FNA
+GraphicsDevice. No device, no plugin, nothing to replay it onto; see the
+section header above and src/Network/PluginGap.cs.
+"""
+
+[[waiver]]
+upstream = "ClassicUO.Renderer/Batching/CreateBasicEffectCommand.cs"
+replaced_by = "deleted"
+reason = """
+One command in the plugin draw-command buffer, laid out for the FNA
+GraphicsDevice. No device, no plugin, nothing to replay it onto; see the
+section header above and src/Network/PluginGap.cs.
+"""
+
+[[waiver]]
+upstream = "ClassicUO.Renderer/Batching/CreateBlendStateCommand.cs"
+replaced_by = "deleted"
+reason = """
+One command in the plugin draw-command buffer, laid out for the FNA
+GraphicsDevice. No device, no plugin, nothing to replay it onto; see the
+section header above and src/Network/PluginGap.cs.
+"""
+
+[[waiver]]
+upstream = "ClassicUO.Renderer/Batching/CreateEffectCommand.cs"
+replaced_by = "deleted"
+reason = """
+One command in the plugin draw-command buffer, laid out for the FNA
+GraphicsDevice. No device, no plugin, nothing to replay it onto; see the
+section header above and src/Network/PluginGap.cs.
+"""
+
+[[waiver]]
+upstream = "ClassicUO.Renderer/Batching/CreateIndexBufferCommand.cs"
+replaced_by = "deleted"
+reason = """
+One command in the plugin draw-command buffer, laid out for the FNA
+GraphicsDevice. No device, no plugin, nothing to replay it onto; see the
+section header above and src/Network/PluginGap.cs.
+"""
+
+[[waiver]]
+upstream = "ClassicUO.Renderer/Batching/CreateRasterizerStateCommand.cs"
+replaced_by = "deleted"
+reason = """
+One command in the plugin draw-command buffer, laid out for the FNA
+GraphicsDevice. No device, no plugin, nothing to replay it onto; see the
+section header above and src/Network/PluginGap.cs.
+"""
+
+[[waiver]]
+upstream = "ClassicUO.Renderer/Batching/CreateSamplerStateCommand.cs"
+replaced_by = "deleted"
+reason = """
+One command in the plugin draw-command buffer, laid out for the FNA
+GraphicsDevice. No device, no plugin, nothing to replay it onto; see the
+section header above and src/Network/PluginGap.cs.
+"""
+
+[[waiver]]
+upstream = "ClassicUO.Renderer/Batching/CreateStencilStateCommand.cs"
+replaced_by = "deleted"
+reason = """
+One command in the plugin draw-command buffer, laid out for the FNA
+GraphicsDevice. No device, no plugin, nothing to replay it onto; see the
+section header above and src/Network/PluginGap.cs.
+"""
+
+[[waiver]]
+upstream = "ClassicUO.Renderer/Batching/CreateTexture2DCommand.cs"
+replaced_by = "deleted"
+reason = """
+One command in the plugin draw-command buffer, laid out for the FNA
+GraphicsDevice. No device, no plugin, nothing to replay it onto; see the
+section header above and src/Network/PluginGap.cs.
+"""
+
+[[waiver]]
+upstream = "ClassicUO.Renderer/Batching/CreateVertexBufferCommand.cs"
+replaced_by = "deleted"
+reason = """
+One command in the plugin draw-command buffer, laid out for the FNA
+GraphicsDevice. No device, no plugin, nothing to replay it onto; see the
+section header above and src/Network/PluginGap.cs.
+"""
+
+[[waiver]]
+upstream = "ClassicUO.Renderer/Batching/DestroyResourceCommand.cs"
+replaced_by = "deleted"
+reason = """
+One command in the plugin draw-command buffer, laid out for the FNA
+GraphicsDevice. No device, no plugin, nothing to replay it onto; see the
+section header above and src/Network/PluginGap.cs.
+"""
+
+[[waiver]]
+upstream = "ClassicUO.Renderer/Batching/IndexedPrimitiveDataCommand.cs"
+replaced_by = "deleted"
+reason = """
+One command in the plugin draw-command buffer, laid out for the FNA
+GraphicsDevice. No device, no plugin, nothing to replay it onto; see the
+section header above and src/Network/PluginGap.cs.
+"""
+
+[[waiver]]
+upstream = "ClassicUO.Renderer/Batching/ScissorCommand.cs"
+replaced_by = "deleted"
+reason = """
+One command in the plugin draw-command buffer, laid out for the FNA
+GraphicsDevice. No device, no plugin, nothing to replay it onto; see the
+section header above and src/Network/PluginGap.cs.
+"""
+
+[[waiver]]
+upstream = "ClassicUO.Renderer/Batching/SetBasicEffectCommand.cs"
+replaced_by = "deleted"
+reason = """
+One command in the plugin draw-command buffer, laid out for the FNA
+GraphicsDevice. No device, no plugin, nothing to replay it onto; see the
+section header above and src/Network/PluginGap.cs.
+"""
+
+[[waiver]]
+upstream = "ClassicUO.Renderer/Batching/SetBlendStateCommand.cs"
+replaced_by = "deleted"
+reason = """
+One command in the plugin draw-command buffer, laid out for the FNA
+GraphicsDevice. No device, no plugin, nothing to replay it onto; see the
+section header above and src/Network/PluginGap.cs.
+"""
+
+[[waiver]]
+upstream = "ClassicUO.Renderer/Batching/SetIndexBufferCommand.cs"
+replaced_by = "deleted"
+reason = """
+One command in the plugin draw-command buffer, laid out for the FNA
+GraphicsDevice. No device, no plugin, nothing to replay it onto; see the
+section header above and src/Network/PluginGap.cs.
+"""
+
+[[waiver]]
+upstream = "ClassicUO.Renderer/Batching/SetIndexDataCommand.cs"
+replaced_by = "deleted"
+reason = """
+One command in the plugin draw-command buffer, laid out for the FNA
+GraphicsDevice. No device, no plugin, nothing to replay it onto; see the
+section header above and src/Network/PluginGap.cs.
+"""
+
+[[waiver]]
+upstream = "ClassicUO.Renderer/Batching/SetRasterizerStateCommand.cs"
+replaced_by = "deleted"
+reason = """
+One command in the plugin draw-command buffer, laid out for the FNA
+GraphicsDevice. No device, no plugin, nothing to replay it onto; see the
+section header above and src/Network/PluginGap.cs.
+"""
+
+[[waiver]]
+upstream = "ClassicUO.Renderer/Batching/SetSamplerStateCommand.cs"
+replaced_by = "deleted"
+reason = """
+One command in the plugin draw-command buffer, laid out for the FNA
+GraphicsDevice. No device, no plugin, nothing to replay it onto; see the
+section header above and src/Network/PluginGap.cs.
+"""
+
+[[waiver]]
+upstream = "ClassicUO.Renderer/Batching/SetStencilStateCommand.cs"
+replaced_by = "deleted"
+reason = """
+One command in the plugin draw-command buffer, laid out for the FNA
+GraphicsDevice. No device, no plugin, nothing to replay it onto; see the
+section header above and src/Network/PluginGap.cs.
+"""
+
+[[waiver]]
+upstream = "ClassicUO.Renderer/Batching/SetTexture2DDataCommand.cs"
+replaced_by = "deleted"
+reason = """
+One command in the plugin draw-command buffer, laid out for the FNA
+GraphicsDevice. No device, no plugin, nothing to replay it onto; see the
+section header above and src/Network/PluginGap.cs.
+"""
+
+[[waiver]]
+upstream = "ClassicUO.Renderer/Batching/SetVertexBufferCommand.cs"
+replaced_by = "deleted"
+reason = """
+One command in the plugin draw-command buffer, laid out for the FNA
+GraphicsDevice. No device, no plugin, nothing to replay it onto; see the
+section header above and src/Network/PluginGap.cs.
+"""
+
+[[waiver]]
+upstream = "ClassicUO.Renderer/Batching/SetVertexDataCommand.cs"
+replaced_by = "deleted"
+reason = """
+One command in the plugin draw-command buffer, laid out for the FNA
+GraphicsDevice. No device, no plugin, nothing to replay it onto; see the
+section header above and src/Network/PluginGap.cs.
+"""
+
+[[waiver]]
+upstream = "ClassicUO.Renderer/Batching/VertexDeclarationCommand.cs"
+replaced_by = "deleted"
+reason = """
+One command in the plugin draw-command buffer, laid out for the FNA
+GraphicsDevice. No device, no plugin, nothing to replay it onto; see the
+section header above and src/Network/PluginGap.cs.
+"""
+
+[[waiver]]
+upstream = "ClassicUO.Renderer/Batching/ViewportCommand.cs"
+replaced_by = "deleted"
+reason = """
+One command in the plugin draw-command buffer, laid out for the FNA
+GraphicsDevice. No device, no plugin, nothing to replay it onto; see the
+section header above and src/Network/PluginGap.cs.
+"""
