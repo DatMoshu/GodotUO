@@ -113,18 +113,28 @@ Godot never puts on the search path, and its managed `ZLIBStream` validates
 the Adler-32 trailer against the end of the whole stream, which is wrong for
 the slices UOP hands it. Both now route through .NET's own `ZLibStream`.
 
-### The staged build
+### The staged build — retired
 
 The port is a single assembly, so one unresolved type stops everything. The
-mechanical tiers all landed at once (341 files), and several areas still
-reference rewrite-tier types that do not exist yet.
+mechanical tiers all landed at once (341 files), and for a while several areas
+referenced rewrite-tier types that did not exist yet, so `GUO.csproj` carried a
+`<Compile Remove>` list and the length of that list was the running total of
+what was left.
 
-`godot/GUO/GUO.csproj` therefore carries a `<Compile Remove>` list: `Game`,
-`Game/UI`, `Network`, `Configuration`, `Client`, `Input`, `Resources`,
-`Audio`. Those files are committed and audited; they are simply not wired up.
-Delete a line to switch an area on, and fix what the compiler reports. **The
-goal is for that ItemGroup to disappear** — it is the honest running total of
-what is left.
+**That ItemGroup is gone. Nothing is excluded; the whole client compiles.**
+
+Two things the staged build taught, both now built into
+`tools/port_errors/run.py` rather than remembered:
+
+* Measure with `-t:Rebuild`. An incremental build can skip the compile and
+  report a handful of errors from a partial pass, which reads like progress and
+  is not: 9 errors incrementally against 1,600 on a rebuild, same tree, same
+  day.
+* A small error count can mean one missing type is hiding the rest. Roslyn does
+  not bind method bodies once a declaration fails, so a single unported type
+  used in a field or a parameter silences every method in the build — measured
+  at 9 errors against 577 once two files referring to an unported gump were
+  moved aside. The tool says so when the count drops below 50.
 
 ### Phase 3 — first pixels
 `Render` (rewrite) + `Compat` hardening
@@ -162,6 +172,12 @@ Three constraints that are easy to get wrong and expensive to fix later:
 pixel parity with a reference capture, evidenced by a screenshot, and
 `grep -rn "Godot\." src/Render/Scene/` is empty.
 
+**Status:** the batcher, atlases, hues, blend states and fonts are in and
+measured (`launchers\dev\batcher_probe.bat`, 130 checks). The login screen
+draws correctly at 640x480, one client pixel per screen pixel — but a login
+screen is gumps and fonts, not terrain, so the "done when" above is not met.
+Decisions: ADR-0001 through ADR-0004.
+
 ### Phase 4 — the world
 `Game/Data`, `Game/GameObjects`, `Game/Map`
 
@@ -180,6 +196,11 @@ compression, encryption variants.
 **Done when:** login completes, the character list arrives, and the world
 loads from a live shard.
 
+**Status:** the stack is ported and reached. Clicking Login runs `LoginScene`
+through `NetClient` to a real socket connect; with nothing listening the client
+draws its own "Connection lost" gump. Nothing past the handshake has been
+exercised, because that needs a shard to point at (`UO_SHARD_HOST`).
+
 ### Phase 6 — interface
 `Game/UI` (117 files, ~51k lines), `Input`
 
@@ -187,6 +208,11 @@ The largest single area. Mostly shim tier, but gump rendering depends on
 Phase 3.
 
 **Done when:** core gumps — paperdoll, backpack, status, skills — work.
+
+**Status:** `Input` is done — `src/Input/GodotInput.cs` replaces upstream's SDL
+event filter, and a click and a keypress reach the login gump's text field
+(ADR-0006). `Game/UI` compiles in full; none of it past the login gumps has
+been on screen.
 
 ### Phase 7 — parity and polish
 `Audio`, lighting, effects, and the long tail.
