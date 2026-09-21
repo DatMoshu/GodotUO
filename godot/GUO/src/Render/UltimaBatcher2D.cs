@@ -28,14 +28,15 @@ namespace GUO.Renderer
     /// sprite hangs under instead, which is the equivalent handle.
     /// </para>
     /// <para>
-    /// PORT DEVIATION (GUO) — <c>SetBlendState</c>, <c>SetSampler</c> and
-    /// <c>EnableScissorTest</c> are absent. All three take FNA pipeline-state
-    /// objects, and nothing in the port calls any of them: the only
-    /// <c>SetStencil</c> references in the tree are commented out upstream. A
-    /// method that exists and does nothing is worse than one that is missing,
-    /// because the missing one is a compile error at the call site that needs
-    /// it. ADR-0002 originally said these would become GUO enums; nothing
-    /// asked for them, so they are not here yet.
+    /// PORT DEVIATION (GUO) — the pipeline-state setters. <c>SetBlendState</c>
+    /// and <c>SetSampler</c> are real, on GUO's own <see cref="BlendState"/>
+    /// and <see cref="SamplerState"/> rather than FNA's; see ADR-0003 for the
+    /// first. <c>SetStencil</c> is accepted and ignored, because Godot's 2D
+    /// canvas has no depth buffer and ADR-0001 keeps the sorting upstream of
+    /// here — <see cref="DepthStencilState"/> has the argument.
+    /// <c>EnableScissorTest</c> is still absent: nothing in the port calls it,
+    /// and a missing method is a compile error at the call site that needs it,
+    /// which is better than one that silently does nothing.
     /// </para>
     /// <para>
     /// The <c>depth</c> argument every draw takes is a sort key, not a Z write
@@ -57,6 +58,11 @@ namespace GUO.Renderer
         private static readonly int[] _quadIndices = { 0, 1, 2, 1, 3, 2 };
 
         private readonly Rid _parent;
+
+        // Where draws currently land: the screen host, or a render target's
+        // canvas item while one is set.
+        private Rid _target;
+        private RenderTarget2D _currentTarget;
         private readonly ShaderMaterial _material;
 
         // One material per distinct non-default blend state. There are five in
@@ -92,6 +98,7 @@ namespace GUO.Renderer
         public UltimaBatcher2D(Rid parentCanvasItem)
         {
             _parent = parentCanvasItem;
+            _target = parentCanvasItem;
 
             var shader = GD.Load<Shader>(SHADER_PATH);
 
@@ -177,7 +184,30 @@ namespace GUO.Renderer
 
         public void Begin()
         {
+            Begin(Transform2D.Identity);
+        }
+
+        /// <summary>
+        /// Starts a batch whose sprites are all placed through
+        /// <paramref name="viewTransform"/> -- the camera's zoom and peek.
+        /// </summary>
+        /// <remarks>
+        /// PORT DEVIATION (GUO): upstream's overload is
+        /// <c>Begin(Effect, Matrix)</c>, and every call site passes null for
+        /// the effect, FNA's custom-shader slot, which has no analogue and no
+        /// caller. The matrix is a <see cref="Transform2D"/> for the reason
+        /// <see cref="Camera"/> gives: it is the six components of the sixteen
+        /// that upstream ever writes.
+        ///
+        /// The transform goes on the target's own canvas item rather than on
+        /// each sprite, so a clip rect nested under it is transformed with the
+        /// content -- which is what upstream's ScissorStack works out by hand.
+        /// </remarks>
+        public void Begin(Transform2D viewTransform)
+        {
             EnsureNotStarted();
+
+            RenderingServer.CanvasItemSetTransform(_target, viewTransform);
 
             _started = true;
             _worldOffset = Vector2.Zero;
@@ -211,6 +241,59 @@ namespace GUO.Renderer
             EnsureStarted();
 
             _started = false;
+        }
+
+        /// <summary>
+        /// Points subsequent draws at a render target, or back at the screen
+        /// when passed null.
+        /// </summary>
+        /// <remarks>
+        /// PORT DEVIATION (GUO): upstream says
+        /// <c>batcher.GraphicsDevice.SetRenderTarget(target)</c>. There is no
+        /// device, and a Godot render target is a SubViewport that renders its
+        /// own subtree, so switching target means switching which canvas item
+        /// new work is parented to. Upstream only ever switches between
+        /// batches, and this has to be called outside Begin/End for the same
+        /// reason it already is: items already submitted stay where they were
+        /// submitted.
+        /// </remarks>
+        public void SetRenderTarget(RenderTarget2D target)
+        {
+            EnsureNotStarted();
+
+            _target = target == null ? _parent : target.CanvasItem;
+            _currentTarget = target;
+        }
+
+        /// <summary>
+        /// Fills the current render target with a colour.
+        /// </summary>
+        /// <remarks>
+        /// PORT DEVIATION (GUO): upstream clears through the device, which can
+        /// also clear the back buffer. Here the colour is stored on the target
+        /// and painted behind everything the batcher draws -- see
+        /// <see cref="RenderTarget2D.ClearColor"/>. There is no back buffer to
+        /// clear and no caller that wants one: the single upstream site that
+        /// cleared it, RenderTargets.Draw, covers the whole window with the
+        /// tiled background on the next line.
+        /// </remarks>
+        public void Clear(Color color)
+        {
+            if (_currentTarget == null)
+            {
+                throw new NotSupportedException(
+                    "Clear with no render target set: there is no back buffer to clear.");
+            }
+
+            _currentTarget.ClearColor = color;
+        }
+
+        /// <summary>
+        /// Accepted and ignored; see <see cref="DepthStencilState"/> for why
+        /// there is nothing to set.
+        /// </summary>
+        public void SetStencil(DepthStencilState stencil)
+        {
         }
 
         public void SetWorldOffset(int offsetX, int offsetY)
@@ -1085,7 +1168,7 @@ namespace GUO.Renderer
         // === Canvas item pool =====
         // ==========================
 
-        private Rid CurrentParent => _clipStack.Count > 0 ? _clipStack[_clipStack.Count - 1] : _parent;
+        private Rid CurrentParent => _clipStack.Count > 0 ? _clipStack[_clipStack.Count - 1] : _target;
 
         /// <summary>
         /// Ends the current run of commands and starts a fresh item under the
@@ -1132,7 +1215,7 @@ namespace GUO.Renderer
             // Set every time, and never left to the project setting: a canvas
             // item made through RenderingServer does NOT pick up
             // default_texture_filter, it starts on linear. Measured by
-            // launchers\devatcher_probe.bat, which read brightness 8 back
+            // launchers/dev/batcher_probe.bat, which read brightness 8 back
             // as 7 -- a 0.875/0.125 blend with the dark texel next door. Every
             // sprite in the client was being smeared, and the only visible
             // symptom would have been slightly soft art. Project rule 7.

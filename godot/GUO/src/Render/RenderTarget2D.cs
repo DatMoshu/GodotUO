@@ -35,6 +35,14 @@ namespace GUO.Renderer
         private readonly SubViewport _viewport;
         private readonly Node2D _host;
 
+        // Upstream clears a render target through the device, immediately and
+        // once per frame. A SubViewport has no clear colour to set, so the
+        // clear is a solid rect on a canvas item that sits behind everything
+        // the batcher draws and is repainted with the viewport. Same result:
+        // the target is fully redrawn every frame either way.
+        private readonly Node2D _clearHost;
+        private Color _clearColor = new Color(0, 0, 0, 0);
+
         public RenderTarget2D(Node parent, int width, int height)
         {
             Width = width;
@@ -57,8 +65,11 @@ namespace GUO.Renderer
                     Viewport.DefaultCanvasItemTextureFilter.Nearest,
             };
 
+            _clearHost = new Node2D();
             _host = new Node2D();
 
+            // Added first, so it paints first.
+            _viewport.AddChild(_clearHost);
             _viewport.AddChild(_host);
             parent.AddChild(_viewport);
         }
@@ -73,6 +84,35 @@ namespace GUO.Renderer
         public Rid CanvasItem => _host.GetCanvasItem();
 
         public Texture2D Texture => _viewport.GetTexture();
+
+        /// <summary>
+        /// What the target shows where nothing has been drawn. A fully
+        /// transparent colour means the viewport's own transparent background,
+        /// which is what upstream's <c>Clear(Color.Transparent)</c> leaves.
+        /// </summary>
+        public Color ClearColor
+        {
+            get => _clearColor;
+            set
+            {
+                if (_clearColor == value)
+                {
+                    return;
+                }
+
+                _clearColor = value;
+
+                Rid item = _clearHost.GetCanvasItem();
+
+                RenderingServer.CanvasItemClear(item);
+
+                if (value.A > 0f)
+                {
+                    RenderingServer.CanvasItemAddRect(
+                        item, new Rect2(0, 0, Width, Height), value);
+                }
+            }
+        }
 
         public static implicit operator Texture2D(RenderTarget2D target)
             => target?.Texture;
