@@ -282,7 +282,33 @@ window manager owns that size, not the client. It goes windowed first now.
 Two overlapping characters are the same kind of problem from the other end --
 an offer aimed correctly can be released a frame later at a pixel that has
 changed hands, and a refused drop is silent -- so the offer gets three goes,
-which the run that proved the fix needed.
+which the run that proved the fix needed. A window is worth losing on
+purpose, too: the client once came up where no monitor covered it, with no
+title bar to drag and a taskbar icon that does nothing, and getting it back
+took SetWindowPos from another process. The probe now pushes it to
+-30000,-30000 and watches it come back.
+
+And what no check caught at all was reported by eye, from a screenshot: house
+furniture painted over the roof it stands under, and trees over the houses
+behind them. The cause was a piece of upstream read too quickly. ClassicUO
+keeps four render lists and walks them one after another, and it is tempting
+to read that walk as the draw order. It is not: `GameScene.DrawWorld` turns a
+depth buffer on first, and what paints over what is then settled per pixel by
+`CalculateDepthZ()`, the very number the lists carry but never sort on.
+Submission order upstream means nothing. The same is true of the UI, which
+has two gump queues flushed one after the other and an ever-climbing
+`layerDepth` to make the split harmless -- harmless there, and on a canvas
+with no depth test it put journal text across a world map and a status gump
+inside a map's own frame.
+
+Godot's 2D canvas has no depth buffer, so the sort has to happen before the
+batcher sees anything. It is exact rather than approximate because UO art is
+cut out -- a pixel is opaque or it is absent -- so ordering whole sprites
+answers as ordering pixels would. The cost was measured, not guessed: 16.66
+ms a frame before and after. The lesson is the general one, and it is rule 6
+pointed at the renderer -- an FNA call that configures the device is part of
+the behaviour being ported, as much as the code around it. A device state
+this port cannot reproduce is a rewrite, not a detail.
 
 ### Phase 6 — interface
 `Game/UI` (117 files, ~51k lines), `Input`
