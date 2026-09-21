@@ -48,6 +48,7 @@ namespace GUO.Renderer
     public sealed class UltimaBatcher2D : IDisposable
     {
         private const string SHADER_PATH = "res://src/Render/shaders/uo_hue.gdshader";
+        private const string BLEND_SHADER_PATH = "res://src/Render/shaders/uo_hue_blend.gdshader";
 
         private static readonly float[] _cornerOffsetX = new float[] { 0.0f, 1.0f, 0.0f, 1.0f };
         private static readonly float[] _cornerOffsetY = new float[] { 0.0f, 0.0f, 1.0f, 1.0f };
@@ -57,6 +58,14 @@ namespace GUO.Renderer
 
         private readonly Rid _parent;
         private readonly ShaderMaterial _material;
+
+        // One material per distinct non-default blend state. There are five in
+        // the whole client, so this never grows.
+        private readonly Dictionary<string, ShaderMaterial> _blendMaterials =
+            new Dictionary<string, ShaderMaterial>();
+
+        private Shader _blendShader;
+        private ShaderMaterial _currentMaterial;
 
         // Every draw goes into a canvas item. A new one is started whenever a
         // clip opens or closes, because a Godot canvas item paints its own
@@ -86,6 +95,7 @@ namespace GUO.Renderer
             var shader = GD.Load<Shader>(SHADER_PATH);
 
             _material = new ShaderMaterial { Shader = shader };
+            _currentMaterial = _material;
         }
 
         /// <summary>
@@ -94,13 +104,13 @@ namespace GUO.Renderer
         /// </summary>
         public Texture2D HueTexture
         {
-            set => _material.SetShaderParameter("hue_texture", value);
+            set => SetOnAllMaterials("hue_texture", value);
         }
 
         /// <summary>The coloured-light table, sampled by SHADER_LIGHTS.</summary>
         public Texture2D LightTexture
         {
-            set => _material.SetShaderParameter("light_texture", value);
+            set => SetOnAllMaterials("light_texture", value);
         }
 
         /// <summary>
@@ -110,7 +120,7 @@ namespace GUO.Renderer
         /// </summary>
         public Vector2 CircleOfTransparencyCenter
         {
-            set => _material.SetShaderParameter("circle_of_transparency_center", value);
+            set => SetOnAllMaterials("circle_of_transparency_center", value);
         }
 
         public int TextureSwitches, FlushesDone;
@@ -123,17 +133,40 @@ namespace GUO.Renderer
             }
 
             _items.Clear();
+
+            foreach (ShaderMaterial material in _blendMaterials.Values)
+            {
+                material.Dispose();
+            }
+
+            _blendMaterials.Clear();
             _material?.Dispose();
         }
 
         public void SetBrightlight(float f)
         {
-            _material.SetShaderParameter("brightlight", f);
+            SetOnAllMaterials("brightlight", f);
         }
 
         public void SetCircleOfTransparencyRadius(float radius)
         {
-            _material.SetShaderParameter("circle_of_transparency_radius", radius);
+            SetOnAllMaterials("circle_of_transparency_radius", radius);
+        }
+
+        /// <summary>
+        /// Every uniform above is global state, and the blend variants draw the
+        /// same sprites as the plain material, so all of them have to see it.
+        /// Setting only the plain one is how one effect sprite ends up unhued
+        /// while everything beside it looks right.
+        /// </summary>
+        private void SetOnAllMaterials(string name, Variant value)
+        {
+            _material.SetShaderParameter(name, value);
+
+            foreach (ShaderMaterial material in _blendMaterials.Values)
+            {
+                material.SetShaderParameter(name, value);
+            }
         }
 
 
@@ -149,6 +182,7 @@ namespace GUO.Renderer
             _worldOffset = Vector2.Zero;
             _clipStack.Clear();
             _itemCount = 0;
+            _currentMaterial = _material;
 
             TextureSwitches = 0;
             FlushesDone = 0;
@@ -189,6 +223,94 @@ namespace GUO.Renderer
             _worldOffset = Vector2.Zero;
 
             Cut();
+        }
+
+        /// <summary>
+        /// Changes how subsequent sprites combine with what is underneath.
+        /// Passing null restores premultiplied alpha, which is upstream's
+        /// default and what <c>BlendState.AlphaBlend</c> means.
+        /// </summary>
+        /// <remarks>
+        /// Godot's canvas has five fixed blend modes and ClassicUO's effects
+        /// need equations outside them, so anything but the default switches
+        /// to a shader that reads the destination back and evaluates XNA's
+        /// blend equation itself. See ADR-0003. That read needs whatever is
+        /// underneath copied to the back buffer first, which is why this cuts
+        /// two items rather than one: a copier, then the drawing item.
+        /// </remarks>
+        public void SetBlendState(BlendState blend)
+        {
+            blend = blend ?? BlendState.AlphaBlend;
+
+            if (blend.IsPremultipliedAlpha)
+            {
+                _currentMaterial = _material;
+                Cut();
+
+                return;
+            }
+
+            _currentMaterial = GetBlendMaterial(blend);
+
+            // The copy has to be its own item, submitted between what is
+            // already drawn and what is about to read it. An empty rect means
+            // the whole visible area.
+            Rid copier = NewItem(CurrentParent);
+            RenderingServer.CanvasItemSetCopyToBackbuffer(copier, true, new Rect2());
+
+            Cut();
+        }
+
+        private ShaderMaterial GetBlendMaterial(BlendState blend)
+        {
+            string key = $"{(int)blend.ColorSourceBlend}.{(int)blend.ColorDestinationBlend}"
+                + $".{(int)blend.ColorBlendFunction}.{(int)blend.AlphaSourceBlend}"
+                + $".{(int)blend.AlphaDestinationBlend}.{(int)blend.AlphaBlendFunction}";
+
+            if (_blendMaterials.TryGetValue(key, out ShaderMaterial cached))
+            {
+                return cached;
+            }
+
+            Reject(blend.ColorSourceBlend);
+            Reject(blend.ColorDestinationBlend);
+            Reject(blend.AlphaSourceBlend);
+            Reject(blend.AlphaDestinationBlend);
+
+            _blendShader ??= GD.Load<Shader>(BLEND_SHADER_PATH);
+
+            var material = new ShaderMaterial { Shader = _blendShader };
+
+            material.SetShaderParameter("color_source_blend", (int)blend.ColorSourceBlend);
+            material.SetShaderParameter("color_destination_blend", (int)blend.ColorDestinationBlend);
+            material.SetShaderParameter("color_blend_function", (int)blend.ColorBlendFunction);
+            material.SetShaderParameter("alpha_source_blend", (int)blend.AlphaSourceBlend);
+            material.SetShaderParameter("alpha_destination_blend", (int)blend.AlphaDestinationBlend);
+            material.SetShaderParameter("alpha_blend_function", (int)blend.AlphaBlendFunction);
+
+            // The hue tables are global state living on the plain material, and
+            // a blend material draws the same sprites, so it needs them too.
+            material.SetShaderParameter("hue_texture", _material.GetShaderParameter("hue_texture"));
+            material.SetShaderParameter("light_texture", _material.GetShaderParameter("light_texture"));
+
+            _blendMaterials[key] = material;
+
+            return material;
+        }
+
+        private static void Reject(Blend factor)
+        {
+            // A constant blend colour, and saturation, would need plumbing that
+            // has no caller. Throwing names the gap; mapping them to something
+            // nearby would not.
+            if (factor == Blend.BlendFactor
+                || factor == Blend.InverseBlendFactor
+                || factor == Blend.SourceAlphaSaturation)
+            {
+                throw new NotSupportedException(
+                    $"Blend.{factor} is not implemented; no ClassicUO blend state uses it. "
+                    + "See ADR-0003.");
+            }
         }
 
         public bool ClipBegin(int x, int y, int width, int height)
@@ -977,7 +1099,7 @@ namespace GUO.Renderer
             else
             {
                 item = RenderingServer.CanvasItemCreate();
-                RenderingServer.CanvasItemSetMaterial(item, _material.GetRid());
+                RenderingServer.CanvasItemSetMaterial(item, _currentMaterial.GetRid());
 
                 // Project rule 7, and it is not automatic: a canvas item made
                 // through RenderingServer does NOT pick up the project's
@@ -995,6 +1117,12 @@ namespace GUO.Renderer
             RenderingServer.CanvasItemSetTransform(item, Transform2D.Identity);
             RenderingServer.CanvasItemSetClip(item, false);
             RenderingServer.CanvasItemSetCustomRect(item, false);
+
+            // Reset every time, not only on creation: a pooled item was very
+            // likely last used under a different blend, or as a back-buffer
+            // copier, and either would carry over into this frame.
+            RenderingServer.CanvasItemSetMaterial(item, _currentMaterial.GetRid());
+            RenderingServer.CanvasItemSetCopyToBackbuffer(item, false, new Rect2());
 
             // Siblings paint in draw-index order, and the pool index only ever
             // goes up within a frame, so a later item paints over an earlier one.

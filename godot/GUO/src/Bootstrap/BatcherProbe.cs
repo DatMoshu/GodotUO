@@ -97,6 +97,8 @@ public partial class BatcherProbe : Node
             }
         }
 
+        await VerifyBlends(batcher, viewport);
+
         batcher.Dispose();
 
         GD.Print($"[batcher-probe] {(_failures == 0 ? "PASS" : "FAIL")}");
@@ -129,12 +131,162 @@ public partial class BatcherProbe : Node
         return viewport.GetTexture().GetImage().GetPixel(1, 1);
     }
 
+
+    /// <summary>
+    /// Draws one colour over another under each blend state ClassicUO's
+    /// effects use, and checks the result against the equation worked out in
+    /// C#.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Three of these five have no equivalent among Godot's fixed canvas blend
+    /// modes, so the batcher turns hardware blending off and evaluates XNA's
+    /// blend equation in the shader against a back-buffer copy — see ADR-0003.
+    /// That is a reimplementation of a fixed-function unit, and the way it
+    /// fails is by looking merely plausible: an effect slightly too bright is
+    /// not something anyone spots in a screenshot.
+    /// </para>
+    /// <para>
+    /// So the expected value is computed here from the same factors, rather
+    /// than read off a reference image. If the shader and this disagree about
+    /// what DestinationColor means, the numbers say so.
+    /// </para>
+    /// </remarks>
+    private async System.Threading.Tasks.Task VerifyBlends(
+        UltimaBatcher2D batcher, SubViewport viewport)
+    {
+        // Upstream's five, from GameEffectView, plus the default for a control.
+        var cases = new (string Name, BlendState State)[]
+        {
+            ("default (premul alpha)", null),
+            ("multiply", new BlendState
+            {
+                ColorSourceBlend = Blend.Zero,
+                ColorDestinationBlend = Blend.SourceColor,
+            }),
+            ("screen", new BlendState
+            {
+                ColorSourceBlend = Blend.One,
+                ColorDestinationBlend = Blend.One,
+            }),
+            ("screenLess", new BlendState
+            {
+                ColorSourceBlend = Blend.DestinationColor,
+                ColorDestinationBlend = Blend.InverseSourceAlpha,
+            }),
+            ("normalHalf", new BlendState
+            {
+                ColorSourceBlend = Blend.DestinationColor,
+                ColorDestinationBlend = Blend.SourceColor,
+            }),
+            ("shadowBlue", new BlendState
+            {
+                ColorSourceBlend = Blend.SourceColor,
+                ColorDestinationBlend = Blend.InverseSourceColor,
+                ColorBlendFunction = BlendFunction.ReverseSubtract,
+            }),
+        };
+
+        // Deliberately not round numbers: a blend that ignores one of its two
+        // factors still lands on the right answer when the operands are 0 or 1.
+        var under = new[] { (byte)204, (byte)153, (byte)102 };
+        var over = new[] { (byte)64, (byte)128, (byte)32 };
+
+        Texture2D underTexture = BuildSolid(under);
+        Texture2D overTexture = BuildSolid(over);
+
+        Vector3 plain = ShaderHueTranslator.GetHueVector(0);
+
+        foreach ((string name, BlendState state) in cases)
+        {
+            batcher.Begin();
+
+            batcher.Draw(underTexture, new Compat.Rectangle(0, 0, Scale * 2, Scale * 2), plain, 0f);
+
+            batcher.SetBlendState(state);
+            batcher.Draw(overTexture, new Compat.Rectangle(0, 0, Scale * 2, Scale * 2), plain, 0f);
+            batcher.SetBlendState(null);
+
+            batcher.End();
+
+            await ToSignal(
+                RenderingServer.Singleton,
+                RenderingServerInstance.SignalName.FramePostDraw);
+
+            Color got = viewport.GetTexture().GetImage().GetPixel(Scale, Scale);
+            byte[] want = Expected(state ?? BlendState.AlphaBlend, over, under);
+
+            Check($"blend {name}", want, got);
+        }
+    }
+
+    /// <summary>
+    /// XNA's blend equation, on the CPU, for one opaque source over one opaque
+    /// destination.
+    /// </summary>
+    private static byte[] Expected(BlendState state, byte[] src, byte[] dst)
+    {
+        var result = new byte[3];
+
+        for (int i = 0; i < 3; i++)
+        {
+            float s = src[i] / 255f;
+            float d = dst[i] / 255f;
+
+            // Both quads are drawn fully opaque, so every alpha term is 1.
+            float sf = Factor(state.ColorSourceBlend, s, d);
+            float df = Factor(state.ColorDestinationBlend, s, d);
+
+            float value = state.ColorBlendFunction switch
+            {
+                BlendFunction.Subtract => s * sf - d * df,
+                BlendFunction.ReverseSubtract => d * df - s * sf,
+                BlendFunction.Min => Math.Min(s * sf, d * df),
+                BlendFunction.Max => Math.Max(s * sf, d * df),
+                _ => s * sf + d * df,
+            };
+
+            result[i] = (byte)Math.Round(Math.Clamp(value, 0f, 1f) * 255f);
+        }
+
+        return result;
+    }
+
+    private static float Factor(Blend blend, float s, float d) => blend switch
+    {
+        Blend.One => 1f,
+        Blend.Zero => 0f,
+        Blend.SourceColor => s,
+        Blend.InverseSourceColor => 1f - s,
+        Blend.SourceAlpha => 1f,
+        Blend.InverseSourceAlpha => 0f,
+        Blend.DestinationColor => d,
+        Blend.InverseDestinationColor => 1f - d,
+        Blend.DestinationAlpha => 1f,
+        Blend.InverseDestinationAlpha => 0f,
+        _ => 1f,
+    };
+
+    private static Texture2D BuildSolid(byte[] rgb)
+    {
+        var rgba = new byte[] { rgb[0], rgb[1], rgb[2], 255 };
+
+        return ImageTexture.CreateFromImage(
+            Image.CreateFromData(1, 1, false, Image.Format.Rgba8, rgba));
+    }
+
     private void Check(string what, byte[] want, Color got)
     {
         // Exact. Nearest sampling, no filtering and an 8-bit target mean there
         // is nothing in this path that should round, and a tolerance here
         // would hide precisely the kind of off-by-one that costs a day.
-        bool ok = want[0] == got.R8 && want[1] == got.G8 && want[2] == got.B8;
+        // One 8-bit step. The hue path is exact and would pass at zero, but
+        // the blend arithmetic runs through floats on the GPU and again here,
+        // and demanding bit equality of that would be testing the rounding
+        // rather than the equation.
+        bool ok = Math.Abs(want[0] - got.R8) <= 1
+               && Math.Abs(want[1] - got.G8) <= 1
+               && Math.Abs(want[2] - got.B8) <= 1;
 
         if (!ok)
         {
