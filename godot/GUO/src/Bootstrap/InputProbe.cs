@@ -235,6 +235,10 @@ internal static class InputProbe
 
         await ClickGumpButton<Game.UI.Gumps.PaperDollGump>(host, 8, "Status");
 
+        GD.Print("[GUO] input probe: equipping a weapon");
+
+        await EquipAWeapon(host);
+
         GD.Print("[GUO] input probe: clicking someone else");
 
         await ClickSomeoneElse(host);
@@ -259,6 +263,10 @@ internal static class InputProbe
         await ClickGumpButton<Game.UI.Gumps.PaperDollGump>(host, 7, "war mode");
 
         Check("war mode goes on", Client.Game.UO.World.Player.InWarMode);
+
+        GD.Print("[GUO] input probe: attacking");
+
+        await AttackSomething(host);
 
         await ClickGumpButton<Game.UI.Gumps.PaperDollGump>(host, 7, "war mode");
 
@@ -809,23 +817,13 @@ internal static class InputProbe
                 break;
             }
 
-            // The player is drawn at `self`, so everyone else is drawn at
-            // `self` plus the difference between the two isometric positions.
-            // Recomputed right before the click, and confirmed by hovering:
-            // townspeople walk, and a position worked out a second ago puts
-            // the click on the floor they were standing on -- which the server
-            // answers, politely, with "marble floor".
-            Vector2 At() =>
-                new(
-                    self.Value.X + (mobile.RealScreenPosition.X - player.RealScreenPosition.X),
-                    self.Value.Y + (mobile.RealScreenPosition.Y - player.RealScreenPosition.Y)
-                );
+            // Found again right before the click: townspeople walk, and a
+            // position worked out a second ago puts the click on the floor
+            // they were standing on -- which the server answers, politely,
+            // with "marble floor".
+            Vector2? on = await FindOnScreen(host, mobile, self.Value);
 
-            Send(new InputEventMouseMotion { Position = At() });
-
-            await Frames(host, 4);
-
-            if (!ReferenceEquals(Game.SelectedObject.Object, mobile))
+            if (on == null)
             {
                 continue;
             }
@@ -843,7 +841,7 @@ internal static class InputProbe
 
             tried++;
 
-            await Click(host, At());
+            await Click(host, on.Value);
 
             await Frames(host, 40);
 
@@ -890,6 +888,399 @@ internal static class InputProbe
             false,
             $"none of the {others.Count} mobiles the shard sent could be hit"
         );
+    }
+
+    /// <summary>
+    /// Take what is in the character's hand off, and put a weapon on.
+    /// </summary>
+    /// <remarks>
+    /// Both halves of wearing things, and the order matters: the paperdoll
+    /// only equips onto a layer that is empty -- upstream checks exactly that
+    /// -- so the book the character starts holding has to be dragged into the
+    /// backpack before a sword can go in the same hand. That is what a player
+    /// does too.
+    ///
+    /// Double-clicking a weapon does not wield it, which is worth writing
+    /// down because it looks like it should: in this ruleset double-clicking
+    /// a blade asks what to carve with it, which is why an early version of
+    /// this left a target cursor up and broke every check after it.
+    /// </remarks>
+    private static async System.Threading.Tasks.Task EquipAWeapon(Node host)
+    {
+        Game.UI.Gumps.ContainerGump pack =
+            Game.Managers.UIManager.GetGump<Game.UI.Gumps.ContainerGump>();
+
+        Game.UI.Gumps.PaperDollGump doll =
+            Game.Managers.UIManager.GetGump<Game.UI.Gumps.PaperDollGump>();
+
+        if (pack == null || doll == null)
+        {
+            Check("the hand can be emptied", false, "the backpack or the paperdoll is not open");
+
+            return;
+        }
+
+        // Clear of the paperdoll it is about to trade items with. The
+        // container opens at the client's default spot, which is underneath
+        // the paperdoll, and a press there lands on an equipment slot.
+        pack.X = 1400;
+        pack.Y = 200;
+
+        await Frames(host, 20);
+
+        Vector2 intoPack = await EmptySpot(host, pack);
+
+        Game.GameObjects.Item worn =
+            Client.Game.UO.World.Player.FindItemByLayer(Game.Data.Layer.OneHanded)
+            ?? Client.Game.UO.World.Player.FindItemByLayer(Game.Data.Layer.TwoHanded);
+
+        if (worn != null)
+        {
+            Game.UI.Controls.Control picture = FindControl(doll, worn.Serial);
+
+            if (picture == null)
+            {
+                Check("the hand can be emptied", false, $"0x{worn.Serial:X} is not on the paperdoll");
+
+                return;
+            }
+
+            GD.Print($"[GUO] input probe: taking off {worn.Name} 0x{worn.Serial:X}");
+
+            // The solid part of the art, not the middle of its box: a
+            // katana is a thin diagonal and the middle of its rectangle is
+            // the paperdoll behind it.
+            await Drag(host, GrabPoint(picture), intoPack);
+
+            await Frames(host, 120);
+
+            Game.GameObjects.Item stillWorn =
+                Client.Game.UO.World.Player.FindItemByLayer(Game.Data.Layer.OneHanded)
+                ?? Client.Game.UO.World.Player.FindItemByLayer(Game.Data.Layer.TwoHanded);
+
+            Check(
+                "the hand can be emptied",
+                stillWorn == null || stillWorn.Serial != worn.Serial,
+                stillWorn == null
+                    ? $"{worn.Name} is off"
+                    : $"still holding {stillWorn.Name} 0x{stillWorn.Serial:X}"
+            );
+        }
+
+        Game.GameObjects.Item weapon = FindWeapon();
+
+        if (weapon == null)
+        {
+            Check("a weapon can be equipped", false, "there is no weapon in the backpack");
+
+            return;
+        }
+
+        Game.UI.Controls.ItemGump icon = FindItem(pack, weapon.Serial);
+
+        if (icon == null)
+        {
+            Check("a weapon can be equipped", false, $"0x{weapon.Serial:X} is not drawn");
+
+            return;
+        }
+
+        GD.Print($"[GUO] input probe: equipping {weapon.Name} 0x{weapon.Serial:X}");
+
+        await Drag(
+            host,
+            GrabPoint(icon),
+            new Vector2(
+                doll.ScreenCoordinateX + doll.Width / 2f,
+                doll.ScreenCoordinateY + doll.Height / 2f
+            )
+        );
+
+        await Frames(host, 120);
+
+        Game.GameObjects.Item held =
+            Client.Game.UO.World.Player.FindItemByLayer(Game.Data.Layer.OneHanded)
+            ?? Client.Game.UO.World.Player.FindItemByLayer(Game.Data.Layer.TwoHanded);
+
+        Check(
+            "a weapon can be equipped",
+            held != null && held.Serial == weapon.Serial,
+            held == null ? "nothing is in hand" : $"holding {held.Name} 0x{held.Serial:X}"
+        );
+
+        // Never leave the run holding something: an item on the cursor
+        // swallows every click after it.
+        if (Client.Game.UO.GameCursor.ItemHold.Enabled)
+        {
+            await Click(host, intoPack);
+
+            await Frames(host, 60);
+
+            GD.Print("[GUO] input probe: put the held item back in the backpack");
+        }
+    }
+
+    /// <summary>
+    /// A point inside an open container where no item is drawn.
+    /// </summary>
+    /// <remarks>
+    /// Dropping onto another item is a different gesture: the client asks the
+    /// server to put the held item into or onto that one, and a shard that
+    /// will not put a katana inside a spellbook simply refuses. The refusal is
+    /// quiet -- the cursor empties, the journal says nothing, and the item is
+    /// still worn -- which is a convincing impression of a broken drag until
+    /// you notice what the drop landed on.
+    /// </remarks>
+    private static async System.Threading.Tasks.Task<Vector2> EmptySpot(
+        Node host,
+        Game.UI.Gumps.ContainerGump pack
+    )
+    {
+        for (float y = 0.25f; y <= 0.8f; y += 0.15f)
+        {
+            for (float x = 0.15f; x <= 0.9f; x += 0.15f)
+            {
+                var at = new Vector2(
+                    pack.ScreenCoordinateX + pack.Width * x,
+                    pack.ScreenCoordinateY + pack.Height * y
+                );
+
+                Send(new InputEventMouseMotion { Position = at });
+
+                await Frames(host, 2);
+
+                Game.UI.Controls.Control under = Game.Managers.UIManager.MouseOverControl;
+
+                if (under is Game.UI.Controls.ItemGump)
+                {
+                    continue;
+                }
+
+                if (ReferenceEquals(under, pack) || ReferenceEquals(under?.RootParent, pack))
+                {
+                    return at;
+                }
+            }
+        }
+
+        // Nowhere bare: the middle of it, and the drop will say why.
+        return new Vector2(
+            pack.ScreenCoordinateX + pack.Width / 2f,
+            pack.ScreenCoordinateY + pack.Height / 2f
+        );
+    }
+
+    /// <summary>The first control under <paramref name="parent" /> for this serial.</summary>
+    private static Game.UI.Controls.Control FindControl(
+        Game.UI.Controls.Control parent,
+        uint serial
+    )
+    {
+        foreach (Game.UI.Controls.Control child in parent.Children)
+        {
+            if (child.LocalSerial == serial && child.IsVisible)
+            {
+                return child;
+            }
+
+            Game.UI.Controls.Control found = FindControl(child, serial);
+
+            if (found != null)
+            {
+                return found;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// A weapon in the backpack.
+    /// </summary>
+    /// <remarks>
+    /// By the tile data's own weapon flag, not by its layer: a candle is worn
+    /// in a hand too, and wielding one proves rather less.
+    /// </remarks>
+    private static Game.GameObjects.Item FindWeapon()
+    {
+        Game.GameObjects.Item pack =
+            Client.Game.UO.World.Player.FindItemByLayer(Game.Data.Layer.Backpack);
+
+        for (Game.LinkedObject i = pack?.Items; i != null; i = i.Next)
+        {
+            var item = (Game.GameObjects.Item)i;
+
+            ref Assets.StaticTiles data = ref Client.Game.UO.FileManager.TileData.StaticData[
+                item.Graphic
+            ];
+
+            // Both: the weapon flag is set on things that are not weapons --
+            // a leather jingasa is a hat -- and the hand layers are worn by
+            // things that are not weapons either, like a candle.
+            if (data.IsWeapon
+                && (data.Layer == (byte)Game.Data.Layer.OneHanded
+                    || data.Layer == (byte)Game.Data.Layer.TwoHanded))
+            {
+                return item;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Attack the nearest thing it is lawful to attack.
+    /// </summary>
+    /// <remarks>
+    /// Townspeople are invulnerable and attacking an innocent would put a
+    /// criminal flag on the character and bring the guards, so the target is
+    /// a grey one -- an animal or a monster, which the generated world has
+    /// wandering around New Haven.
+    ///
+    /// What is checked is the server's half. The client sets its own
+    /// last-attack the moment it sends the request; the shard answers 0xAA
+    /// with the target it accepted, and the client then asks for that
+    /// mobile's status -- so a target that comes back with hit points is the
+    /// round trip and not an echo of the click.
+    /// </remarks>
+    private static async System.Threading.Tasks.Task AttackSomething(Node host)
+    {
+        Game.GameObjects.PlayerMobile player = Client.Game.UO.World.Player;
+
+        Vector2? self = await FindCharacter(host);
+
+        if (self == null)
+        {
+            Check("the shard accepts an attack", false, "the player is not on screen");
+
+            return;
+        }
+
+        var quarry = new System.Collections.Generic.List<Game.GameObjects.Mobile>();
+
+        foreach (Game.GameObjects.Mobile mobile in Client.Game.UO.World.Mobiles.Values)
+        {
+            if (mobile.Serial == player.Serial)
+            {
+                continue;
+            }
+
+            if (mobile.NotorietyFlag == Game.Data.NotorietyFlag.Gray
+                || mobile.NotorietyFlag == Game.Data.NotorietyFlag.Criminal
+                || mobile.NotorietyFlag == Game.Data.NotorietyFlag.Enemy
+                || mobile.NotorietyFlag == Game.Data.NotorietyFlag.Murderer)
+            {
+                quarry.Add(mobile);
+            }
+        }
+
+        quarry.Sort(
+            (a, b) =>
+                (System.Math.Abs(a.X - player.X) + System.Math.Abs(a.Y - player.Y)).CompareTo(
+                    System.Math.Abs(b.X - player.X) + System.Math.Abs(b.Y - player.Y)
+                )
+        );
+
+        int tried = 0;
+
+        foreach (Game.GameObjects.Mobile mobile in quarry)
+        {
+            if (tried >= 4)
+            {
+                break;
+            }
+
+            Vector2? on = await FindOnScreen(host, mobile, self.Value);
+
+            if (on == null)
+            {
+                continue;
+            }
+
+            tried++;
+
+            GD.Print($"[GUO] input probe: attacking {mobile.Name} 0x{mobile.Serial:X}");
+
+            await DoubleClick(host, on.Value);
+
+            bool accepted = false;
+
+            for (int wait = 0; wait < 8 && !accepted; wait++)
+            {
+                await Frames(host, 20);
+
+                accepted =
+                    Client.Game.UO.World.TargetManager.LastAttack == mobile.Serial
+                    && mobile.HitsMax > 0;
+            }
+
+            if (!accepted)
+            {
+                // Refused, and the refusal is a 0xAA naming someone else --
+                // usually nobody. Out of range is the common reason, and the
+                // next one along is a different distance, so try it.
+                GD.Print(
+                    $"[GUO] input probe: {mobile.Name} was refused: the shard's last attack is "
+                    + $"0x{Client.Game.UO.World.TargetManager.LastAttack:X}, "
+                    + $"{mobile.Hits}/{mobile.HitsMax} hit points known"
+                );
+
+                continue;
+            }
+
+            Check(
+                "the shard accepts an attack",
+                true,
+                $"{mobile.Name} at {mobile.Hits}/{mobile.HitsMax}"
+            );
+
+            return;
+        }
+
+        Check(
+            "the shard accepts an attack",
+            false,
+            $"{tried} of {quarry.Count} lawful targets were clicked and none was accepted"
+        );
+    }
+
+    /// <summary>
+    /// Where a mobile is drawn, found by asking rather than by working it out.
+    /// </summary>
+    /// <remarks>
+    /// The isometric position of the tile a mobile stands on is easy to work
+    /// out from the player's own; where its body is drawn is not. It sits
+    /// above that tile by however tall its graphic is, and higher again when
+    /// the ground is raised. Both are in the renderer, so the probe sweeps up
+    /// the column and asks the client what is under the cursor -- the same hit
+    /// test the player's own aim uses.
+    /// </remarks>
+    private static async System.Threading.Tasks.Task<Vector2?> FindOnScreen(
+        Node host,
+        Game.GameObjects.Mobile mobile,
+        Vector2 self
+    )
+    {
+        Game.GameObjects.PlayerMobile player = Client.Game.UO.World.Player;
+
+        for (int dy = 0; dy >= -160; dy -= 8)
+        {
+            var at = new Vector2(
+                self.X + (mobile.RealScreenPosition.X - player.RealScreenPosition.X),
+                self.Y + (mobile.RealScreenPosition.Y - player.RealScreenPosition.Y) + dy
+            );
+
+            Send(new InputEventMouseMotion { Position = at });
+
+            await Frames(host, 3);
+
+            if (ReferenceEquals(Game.SelectedObject.Object, mobile))
+            {
+                return at;
+            }
+        }
+
+        return null;
     }
 
     /// <summary>Every visible button with this id, in the order they are laid out.</summary>
@@ -1058,7 +1449,7 @@ internal static class InputProbe
     /// the control itself which pixels are solid is the only honest way to
     /// aim; the press that follows still goes through Godot like any other.
     /// </remarks>
-    private static Vector2 GrabPoint(Game.UI.Controls.ItemGump item)
+    private static Vector2 GrabPoint(Game.UI.Controls.Control item)
     {
         var centre = new Vector2(item.Width / 2f, item.Height / 2f);
         Vector2 best = centre;
