@@ -17,6 +17,12 @@ sources/
 # Restore with: launchers\dev\fetch_godot.bat
 tools/godot/Godot_v*/
 
+# ModernUO checkout and build (~1 GB, its own git repo).
+# Restore with: launchers\shard\fetch.bat then launchers\shard\build.bat
+# The patches, the config templates and the reviewed commit are tracked in
+# tools/modernuo; the source and the built server are not.
+tools/modernuo/src/
+
 # === Generated artifacts ==================================================
 build/
 docs/consistency-failures.md

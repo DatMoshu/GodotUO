@@ -42,6 +42,15 @@ REM --- Shard to connect to ------------------------------------------------
 if not defined UO_SHARD_HOST        set "UO_SHARD_HOST=127.0.0.1"
 if not defined UO_SHARD_PORT        set "UO_SHARD_PORT=2593"
 
+REM --- Local dev shard (ModernUO) -----------------------------------------
+REM  The server the client is developed against. See tools\modernuo\README.md.
+REM  Set UO_SHARD_HOST above to something else to play on a remote shard; none
+REM  of this is needed then.
+if not defined UO_SHARD_NAME        set "UO_SHARD_NAME=GUO Dev"
+if not defined UO_SHARD_REPO        set "UO_SHARD_REPO=https://github.com/modernuo/ModernUO.git"
+if not defined UO_SHARD_SRC         set "UO_SHARD_SRC=%UO_ROOT%\tools\modernuo\src"
+if not defined UO_SHARD_DIST        set "UO_SHARD_DIST=%UO_SHARD_SRC%\Distribution"
+
 REM --- Python -------------------------------------------------------------
 if not defined UO_PYTHON            set "UO_PYTHON=python"
 

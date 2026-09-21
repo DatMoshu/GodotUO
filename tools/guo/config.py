@@ -77,6 +77,7 @@ class Config:
     cache_dir: Path
     shard_host: str
     shard_port: int
+    shard_name: str
     log_level: str
 
     # --- derived paths (never configured directly) ---
@@ -103,6 +104,16 @@ class Config:
     @property
     def build(self) -> Path:
         return self.root / "build"
+
+    @property
+    def shard_src(self) -> Path:
+        r"""The ModernUO checkout. Untracked; launchers\shard\fetch.bat makes it."""
+        return self.tools / "modernuo" / "src"
+
+    @property
+    def shard_dist(self) -> Path:
+        r"""The built server. launchers\shard\build.bat makes it."""
+        return self.shard_src / "Distribution"
 
     @property
     def godot_exe(self) -> Path:
@@ -138,6 +149,7 @@ def load_config(root: Path | None = None) -> Config:
         client_data=Path(os.path.expandvars(get("UO_CLIENT_DATA"))),
         client_version=get("UO_CLIENT_VERSION", "7.0.15.1"),
         cache_dir=Path(os.path.expandvars(cache)),
+        shard_name=get("UO_SHARD_NAME", "GUO Dev"),
         shard_host=get("UO_SHARD_HOST", "127.0.0.1"),
         shard_port=shard_port,
         log_level=get("UO_LOG_LEVEL", "INFO"),

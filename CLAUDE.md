@@ -36,6 +36,7 @@ launchers/        .bat entry points, grouped by job. Start here.
   game/play.bat   THE launcher
   editor/         open the Godot project or the upstream reference
   pipeline/       numbered data steps, run in order
+  shard/          the local ModernUO dev server: fetch, build, run
   dev/            build, smoke, screenshot, sync, cache
 godot/GUO/        the Godot project
   src/Compat/     XNA compatibility shim — read its README first
@@ -43,6 +44,7 @@ godot/GUO/        the Godot project
 sources/ClassicUO/  upstream reference — READ ONLY, never edit
 tools/            one folder per job + one per third-party program
   guo/            shared Python package; all tools import from here
+  modernuo/       the dev shard: patches, config templates (src/ gitignored)
 docs/             port_plan.md, data_formats.md, port_status.md (generated)
   architecture/   ADRs — binding decisions. ADR-0001 governs the renderer.
 build/            generated artifacts — gitignored
@@ -79,6 +81,7 @@ launchers\dev\build.bat                    build C# only
 launchers\dev\smoke.bat                    full health check — run before commit
 launchers\dev\screenshot.bat               capture a frame
 launchers\dev\sync_upstream.bat            check upstream drift
+launchers\shardun.bat                   run the local dev shard
 launchers\game\play.bat                    run the client
 ```
 
