@@ -7,7 +7,7 @@ REM  shard -- log in, make or pick a character, walk, open the backpack, move
 REM  an item, open the gumps, speak -- and checks each step. Exits 0 when every
 REM  check passed and 1 when any did not, so it can fail a build.
 REM
-REM  Needs a shard: start launchers\shardun.bat in another terminal first.
+REM  Needs a shard: start launchers\shard\run.bat in another terminal first.
 REM  The last frame lands in build\screenshots.
 REM ============================================================================
 call "%~dp0..\_shared\common.bat" || exit /b 1
