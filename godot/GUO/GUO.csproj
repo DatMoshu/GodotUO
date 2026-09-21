@@ -38,9 +38,6 @@
     <Compile Remove="src/Configuration/**/*.cs" />
     <Compile Remove="src/Client/**/*.cs" />
     <Compile Remove="src/Input/**/*.cs" />
-    <Compile Remove="src/Audio/**/*.cs" />
-    <!-- Depends on GUO.IO.Audio, which is still FNA-shaped. -->
-    <Compile Remove="src/Render/Sounds/**/*.cs" />
   </ItemGroup>
   <!--
     Compiled-in resources.
