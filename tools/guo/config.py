@@ -78,6 +78,8 @@ class Config:
     shard_host: str
     shard_port: int
     shard_name: str
+    shard_owner: str
+    shard_owner_password: str
     log_level: str
 
     # --- derived paths (never configured directly) ---
@@ -116,6 +118,15 @@ class Config:
         return self.shard_src / "Distribution"
 
     @property
+    def upstream_build(self) -> Path:
+        r"""Where ClassicUO is built. Out of tree: sources\ stays pristine."""
+        return self.build / "cuo"
+
+    @property
+    def upstream_exe(self) -> Path:
+        return self.upstream_build / "cuo.exe"
+
+    @property
     def godot_exe(self) -> Path:
         stem = f"Godot_v{self.godot_version}_{self.godot_flavor}"
         return self.tools / "godot" / stem / f"{stem}.exe"
@@ -152,5 +163,7 @@ def load_config(root: Path | None = None) -> Config:
         shard_name=get("UO_SHARD_NAME", "GUO Dev"),
         shard_host=get("UO_SHARD_HOST", "127.0.0.1"),
         shard_port=shard_port,
+        shard_owner=get("UO_SHARD_OWNER", "guoprobe"),
+        shard_owner_password=get("UO_SHARD_OWNER_PASSWORD", "guoprobe"),
         log_level=get("UO_LOG_LEVEL", "INFO"),
     )

@@ -1,0 +1,20 @@
+@echo off
+REM ============================================================================
+REM  Stand ClassicUO and GUO in the same places and photograph both.
+REM
+REM  The only way to settle what the port draws wrongly is to have the
+REM  original next to it. This logs each client into the dev shard with the
+REM  same account, the same character and the same profile, sends both to
+REM  the same five spots, and writes a sheet per spot with one above the
+REM  other.
+REM
+REM  Needs launchers\shard\run.bat going in another terminal. The
+REM  ClassicUO half drives its window by hand -- it brings it to the front
+REM  and types into it -- so leave the desktop alone while it runs.
+REM
+REM  Pass --only guo, --only cuo or --place <name> to redo part of it.
+REM ============================================================================
+call "%~dp0..\_shared\common.bat" || exit /b 1
+
+"%UO_PYTHON%" "%UO_ROOT%\tools\ab_compare\run.py" %*
+exit /b %ERRORLEVEL%
