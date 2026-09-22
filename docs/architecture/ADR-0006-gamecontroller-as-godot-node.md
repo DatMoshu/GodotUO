@@ -199,9 +199,11 @@ client has seen it.
 * `Client.Run` returns immediately instead of blocking until exit. Its remark
   says so; a caller that treats it as "the client has finished" is wrong.
 * `GameController` is a rewrite-tier file, and the audit should say so.
-* `Network/Plugin.cs` is still unported, so `Plugin.ProcessWndProc` — the
-  first thing upstream's filter calls, letting a plugin see the raw event — has
-  no equivalent. Razor and friends will not see input until that lands.
+* `Network/Plugin.cs` is ported, but `Plugin.ProcessWndProc` — the first thing
+  upstream's filter calls, handing a plugin the raw SDL event — has no call
+  site: there is no SDL event to hand it. Plugins still get hotkeys and the
+  mouse through `ProcessHotkeys` and `ProcessMouse` from the input layer; one
+  that relies on OnWndProc sees nothing.
 * `TakeScreenshot` is `internal` rather than `private`: PrintScreen reaches it
   from the input layer now, not from a filter inside the class.
 * `CUOEnviroment.ExecutablePath` is a `static readonly` off

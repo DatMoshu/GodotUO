@@ -239,8 +239,10 @@ only the server can produce the evidence:
   and this port from Godot's viewport notification, so the wire between them
   is worth pulling.
 
-Every path the client has is now exercised except the ones behind
-`Network/Plugin.cs`, which is not ported.
+Every path the client has is now exercised. Plugins have their own check:
+`launchers\dev\plugin_probe.bat` builds a native test plugin and a managed,
+Razor-shaped one, plays the same session with both listed, and reads back
+what each saw — lifecycle, packets both ways, and the player's position.
 
 `launchers\dev\endurance.bat` runs that same session and then keeps playing,
 walking a square so that land, statics and mobiles are loaded and dropped the
@@ -368,13 +370,16 @@ shelf and an Accept that sends the purchase.
 **Done when:** a full play session is indistinguishable from the original
 client.
 
-**Status:** where the work now is. The audit has **one** active file left:
-`Network/Plugin.cs`. The 26 `Renderer/Batching` commands a plugin draws
-through are waived — they are a command buffer for an FNA `GraphicsDevice`
-that this client does not have — and so is `XBREffect`, which nothing
-upstream constructs. Plugin.cs itself is not waived: it is blocked on the
-cuoapi sources, not decided against, and `src/Network/PluginGap.cs` says what
-lifting it would take.
+**Status:** where the work now is. `Network/Plugin.cs` is ported, so native
+plugins load through their `Install` export and managed .NET Framework ones
+(Razor, Razor Enhanced, ClassicAssist) through the ported bootstrap in
+`tools/plugin_host`, which `src/Network/PluginClrHost.cs` starts inside the
+client's own process. cuoapi is not empty: upstream ships it as a binary in
+`external/cuoapi`, and both projects reference it there. The 26
+`Renderer/Batching` commands a plugin draws through are waived — they are a
+command buffer for an FNA `GraphicsDevice` that this client does not have —
+and `Plugin.HandleCmdList` drops such a list with one warning. So is
+`XBREffect`, which nothing upstream constructs.
 
 Plugins are not needed to play, so from here parity is measured by playing
 rather than by the audit — see rule 6. What the probe measures today, in the
