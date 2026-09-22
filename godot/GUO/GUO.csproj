@@ -34,6 +34,26 @@
   </ItemGroup>
 
   <!--
+    The managed-plugin host, tools/plugin_host: upstream's ClassicUO.Bootstrap
+    ported to a .NET Framework library that src/Network/PluginClrHost.cs
+    starts inside this process. Built with the client and copied into a
+    plugin_host folder next to GUO.dll, where that class looks for it.
+    Windows only, as .NET Framework is.
+  -->
+  <ItemGroup Condition="'$(OS)' == 'Windows_NT'">
+    <ProjectReference Include="..\..\tools\plugin_host\GUO.PluginHost.csproj"
+                      ReferenceOutputAssembly="false"
+                      SkipGetTargetFrameworkProperties="true"
+                      GlobalPropertiesToRemove="TargetFramework" />
+  </ItemGroup>
+  <Target Name="CopyPluginHost" AfterTargets="Build" Condition="'$(OS)' == 'Windows_NT'">
+    <ItemGroup>
+      <PluginHostFiles Include="..\..\tools\plugin_host\bin\$(Configuration)\*.dll" />
+    </ItemGroup>
+    <Copy SourceFiles="@(PluginHostFiles)" DestinationFolder="$(OutDir)plugin_host" SkipUnchangedFiles="true" />
+  </Target>
+
+  <!--
     Compiled-in resources.
 
     The .resx files keep their UPSTREAM logical names. The ported

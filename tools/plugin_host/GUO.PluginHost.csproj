@@ -1,0 +1,51 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The managed-plugin host: upstream's ClassicUO.Bootstrap, ported from an
+    exe into a library that GUO loads into the .NET Framework runtime inside
+    its own process. See README.md.
+
+    Kept as close to src/ClassicUO.Bootstrap/src/ClassicUO.Bootstrap.csproj as
+    the change from exe to library allows. The assembly keeps upstream's name,
+    ClassicUO, because assistants look types up in it by reflection; see
+    src/CuoInternal.cs.
+  -->
+  <PropertyGroup>
+    <!-- PORT DEVIATION (GUO): upstream is an Exe. -->
+    <OutputType>Library</OutputType>
+    <TargetFramework>net472</TargetFramework>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <LangVersion>Preview</LangVersion>
+    <AssemblyName>ClassicUO</AssemblyName>
+    <RootNamespace>ClassicUO</RootNamespace>
+    <PlatformTarget>x64</PlatformTarget>
+
+    <Company>ClassicUO</Company>
+    <Authors>KaRaShO'</Authors>
+    <AssemblyVersion>1.1.0.0</AssemblyVersion>
+    <FileVersion>1.1.0.0</FileVersion>
+    <Copyright>ClassicUO</Copyright>
+    <Description>ClassicUO's plugin bootstrap, hosted in-process by GUO.</Description>
+
+    <!-- Everything the host needs sits next to it: GUO loads it by path. -->
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.Buffers" Version="4.5.1" />
+    <PackageReference Include="System.Memory" Version="4.5.5" />
+    <PackageReference Include="System.Runtime.CompilerServices.Unsafe" Version="6.0.0" />
+  </ItemGroup>
+
+  <!-- Same override as GUO.csproj, for a checkout that keeps sources/ elsewhere. -->
+  <PropertyGroup>
+    <UpstreamDir Condition="'$(UpstreamDir)' == ''">$(MSBuildThisFileDirectory)..\..\sources\ClassicUO</UpstreamDir>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="cuoapi">
+      <HintPath>$(UpstreamDir)\external\cuoapi\cuoapi.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+</Project>

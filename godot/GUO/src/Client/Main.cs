@@ -220,6 +220,18 @@ namespace GUO
                         break;
                 }
 
+                // PORT DEVIATION (GUO): upstream reaches Boot through
+                // Initialize, called by ClassicUO.Bootstrap with the managed
+                // plugin host it has already set up. In a Godot process
+                // nothing calls Initialize, so the host is started here, in
+                // this process -- and only when a plugin is listed, since
+                // starting .NET Framework for nothing costs memory and time.
+                // See src/Network/PluginClrHost.cs.
+                if (pluginHost == null && Settings.GlobalSettings.Plugins != null && Settings.GlobalSettings.Plugins.Length > 0)
+                {
+                    pluginHost = PluginClrHost.TryCreate();
+                }
+
                 Client.Run(pluginHost);
             }
 
