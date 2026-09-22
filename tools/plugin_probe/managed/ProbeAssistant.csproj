@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- A Razor-shaped test plugin. See Engine.cs. -->
+  <PropertyGroup>
+    <TargetFramework>net472</TargetFramework>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>ProbeAssistant</AssemblyName>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <UpstreamDir Condition="'$(UpstreamDir)' == ''">$(MSBuildThisFileDirectory)..\..\..\sources\ClassicUO</UpstreamDir>
+  </PropertyGroup>
+  <ItemGroup>
+    <!--
+      Not copied, so it can only be found through the host's AssemblyResolve
+      handler, which this checks.
+    -->
+    <Reference Include="cuoapi">
+      <HintPath>$(UpstreamDir)\external\cuoapi\cuoapi.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+</Project>
