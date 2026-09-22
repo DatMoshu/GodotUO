@@ -224,12 +224,21 @@ namespace GUO
                 // Initialize, called by ClassicUO.Bootstrap with the managed
                 // plugin host it has already set up. In a Godot process
                 // nothing calls Initialize, so the host is started here, in
-                // this process -- and only when a plugin is listed, since
-                // starting .NET Framework for nothing costs memory and time.
-                // See src/Network/PluginClrHost.cs.
-                if (pluginHost == null && Settings.GlobalSettings.Plugins != null && Settings.GlobalSettings.Plugins.Length > 0)
+                // this process -- and only when a listed plugin is actually
+                // there, since starting .NET Framework for nothing costs
+                // memory and time. The path is resolved as Plugin.Create
+                // resolves it. See src/Network/PluginClrHost.cs.
+                if (pluginHost == null && Settings.GlobalSettings.Plugins != null)
                 {
-                    pluginHost = PluginClrHost.TryCreate();
+                    foreach (string p in Settings.GlobalSettings.Plugins)
+                    {
+                        if (File.Exists(Path.GetFullPath(Path.Combine(CUOEnviroment.ExecutablePath, "Data", "Plugins", p))))
+                        {
+                            pluginHost = PluginClrHost.TryCreate();
+
+                            break;
+                        }
+                    }
                 }
 
                 Client.Run(pluginHost);
