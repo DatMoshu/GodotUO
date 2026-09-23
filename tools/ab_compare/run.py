@@ -44,25 +44,52 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from guo.config import Config, load_config  # noqa: E402
 
 
+# LightCycle.DayLevel on the shard: no darkening at all.
+DAYLIGHT = 0
+# LightCycle.NightLevel on ModernUO: what an outdoor night looks like.
+NIGHT = 12
+
+
 @dataclass(frozen=True)
 class Place:
     name: str
     x: int
     y: int
+    # None lets the shard put the character on the ground; a floor inside a
+    # building needs it said.
+    z: int | None = None
+    light: int = DAYLIGHT
+    # Typed into the game after arriving, as a player would: speech, not
+    # shard commands.
+    say: tuple[str, ...] = ()
+
+    @property
+    def go(self) -> str:
+        return f"[go {self.x} {self.y}" + ("" if self.z is None else f" {self.z}")
 
 
-# The same five the sweep uses, chosen to be unlike each other: a town in
-# daylight, a forest with buildings in it, a coastline, a dungeon mouth, and a
-# street among houses with roofs.
-# LightCycle.DayLevel on the shard: no darkening at all.
-DAYLIGHT = 0
-
+# Chosen to be unlike each other: towns by day and by night, a forest with
+# buildings in it, a coastline, a dungeon mouth, a street among houses with
+# roofs, the ground floor of a two-storey house, and a shop. The paperdoll,
+# backpack and status gumps are open in every one: the profile both clients
+# share keeps them open.
 PLACES: list[Place] = [
     Place("minoc-town", 2500, 560),
     Place("yew-forest", 633, 858),
     Place("britain-coast", 1497, 1790),
     Place("despise-mouth", 5401, 629),
     Place("britain-street", 1602, 1591),
+    Place("britain-street-night", 1602, 1591, light=NIGHT),
+    # A floor at z=20 over a 5x5 room at z=0 (statics0.mul): the storey above
+    # and the roof must both come off while the character stands inside.
+    Place("britain-interior", 1434, 1686, z=0),
+    # A provisioner stands frozen one tile east of this spot. The shard keeps
+    # him; if he is ever gone, put him back once from either client with
+    #   [go 1605 1543
+    #   [TileRXYZ 1 0 1 1 0 Provisioner set CantWalk true
+    # Last, because ClassicUO plays every place in one session and the shop
+    # gump would otherwise stay open over the rest.
+    Place("britain-shop", 1605, 1543, say=("vendor buy",)),
 ]
 
 
@@ -116,9 +143,10 @@ def shoot_guo(cfg: Config, place: Place, out_dir: Path) -> Path:
             # one. LightCycle.LevelOverride outranks the clock and stays put
             # until the shard restarts, so setting it on every run is free.
             "--shard-command",
-            f"[globallight {DAYLIGHT}",
+            f"[globallight {place.light}",
             "--shard-command",
-            f"[go {place.x} {place.y}",
+            place.go,
+            *[arg for line in place.say for arg in ("--shard-command", line)],
         ],
         capture_output=True,
         text=True,
@@ -356,10 +384,29 @@ def find_window(pid: int):
 
 
 def focus(hwnd) -> None:
+    """Bring ClassicUO to the front, or stop.
+
+    Windows refuses SetForegroundWindow to a process that is not already in
+    the foreground, silently, and SendKeys then types into whatever window
+    does have focus -- a terminal, an editor. A tapped Alt key lifts that
+    lock. Whether it worked is checked, because typing "[go ..." into the
+    wrong window is worse than no picture.
+    """
     _ctypes, _wintypes, user32 = _win32()
     user32.ShowWindow(hwnd, 9)  # SW_RESTORE
-    user32.SetForegroundWindow(hwnd)
-    time.sleep(0.4)
+
+    for _ in range(5):
+        user32.keybd_event(0x12, 0, 0, 0)  # VK_MENU down
+        user32.keybd_event(0x12, 0, 2, 0)  # VK_MENU up (KEYEVENTF_KEYUP)
+        user32.SetForegroundWindow(hwnd)
+        time.sleep(0.4)
+        if user32.GetForegroundWindow() == hwnd:
+            return
+
+    raise RuntimeError(
+        "ClassicUO could not be brought to the front; stopping rather than "
+        "typing into another window"
+    )
 
 
 def window_rect(hwnd) -> tuple[int, int, int, int]:
@@ -548,10 +595,14 @@ def shoot_cuo(
             focus(hwnd)
             # [ and ] have to be braced for SendKeys even though they are not
             # otherwise special.
-            send_keys(f"{{[}}globallight {DAYLIGHT}{{ENTER}}")
+            send_keys(f"{{[}}globallight {place.light}{{ENTER}}")
             time.sleep(1.0)
             focus(hwnd)
-            send_keys(f"{{[}}go {place.x} {place.y}{{ENTER}}")
+            send_keys(f"{{[}}{place.go[1:]}{{ENTER}}")
+            for line in place.say:
+                time.sleep(1.5)
+                focus(hwnd)
+                send_keys(f"{line}{{ENTER}}")
             time.sleep(settle)
             focus(hwnd)
             grab(cfg, hwnd, root / place.name / "cuo.png")
@@ -593,7 +644,7 @@ def compose(place_dir: Path, width: int = 1600) -> Path | None:
 
     y = 0
     for label, im in panels:
-        draw.text((8, 7), f"{label} -- {place_dir.name}", fill=(235, 235, 235))
+        draw.text((8, y + 7), f"{label} -- {place_dir.name}", fill=(235, 235, 235))
         y += bar
         sheet.paste(im, (0, y))
         y += im.height
