@@ -125,6 +125,10 @@ public partial class Main : Node
                 {
                     ShardCommandsThenQuit();
                 }
+                else if (_options.EffectsProbe > 0)
+                {
+                    EffectsProbeThenQuit();
+                }
                 else if (_options.TradePartner)
                 {
                     TradePartnerThenQuit();
@@ -286,6 +290,19 @@ public partial class Main : Node
     }
 
     /// <summary>
+    /// Time the world with and without a crowd of blended effects, then quit;
+    /// see EffectsProbe.
+    /// </summary>
+    private async void EffectsProbeThenQuit()
+    {
+        EffectsProbe.Count = _options.EffectsProbe;
+        EffectsProbe.Plain = _options.EffectsPlain;
+        await EffectsProbe.Run(this);
+        await CaptureFrame();
+        Quit(EffectsProbe.Passed ? 0 : 1);
+    }
+
+    /// <summary>
     /// Log in as somebody else and wait to be traded with, then quit. Started
     /// by the probe, which is the only thing that wants it; see TradePartner.
     /// </summary>
@@ -416,6 +433,12 @@ public partial class Main : Node
         /// </summary>
         public bool TradePartner { get; private set; }
 
+        /// <summary>How many effects the effects probe spawns; zero means no probe.</summary>
+        public int EffectsProbe { get; private set; }
+
+        /// <summary>The effects probe draws its effects with no blend.</summary>
+        public bool EffectsPlain { get; private set; }
+
         /// <summary>
         /// Lines to type into the game window once the character is in the
         /// world, in order. Used to administer the local dev shard, which
@@ -476,6 +499,16 @@ public partial class Main : Node
                         break;
                     case "--trade-partner":
                         o.TradePartner = true;
+                        break;
+                    case "--effects-plain":
+                        o.EffectsPlain = true;
+                        break;
+                    case "--effects-probe":
+                        if (int.TryParse(Next(), out int effects))
+                        {
+                            o.EffectsProbe = effects;
+                        }
+
                         break;
                     case "--endure":
                         if (int.TryParse(Next(), out int endure))
