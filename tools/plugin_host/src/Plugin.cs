@@ -380,7 +380,11 @@ sealed class Plugin
             var tmp = data;
             result = _onRecv(ref data, ref length);
 
-            if (!ReferenceEquals(tmp, data))
+            // PORT DEVIATION (GUO): upstream copies the plugin's replacement
+            // array back into the rented one unconditionally, which throws
+            // when the packet grew past it. A grown replacement is handed
+            // back as is; Program's Packet*Plugin refuses it by length.
+            if (!ReferenceEquals(tmp, data) && length >= 0 && length <= tmp.Length)
             {
                 Array.Copy(data, tmp, length);
                 data = tmp;
@@ -404,7 +408,11 @@ sealed class Plugin
             var tmp = data;
             result = _onSend(ref data, ref length);
 
-            if (!ReferenceEquals(tmp, data))
+            // PORT DEVIATION (GUO): upstream copies the plugin's replacement
+            // array back into the rented one unconditionally, which throws
+            // when the packet grew past it. A grown replacement is handed
+            // back as is; Program's Packet*Plugin refuses it by length.
+            if (!ReferenceEquals(tmp, data) && length >= 0 && length <= tmp.Length)
             {
                 Array.Copy(data, tmp, length);
                 data = tmp;

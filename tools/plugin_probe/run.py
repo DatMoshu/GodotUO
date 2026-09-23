@@ -12,7 +12,10 @@ against the configured shard with both listed, and reads their logs back.
 Each plugin must have been installed, initialised and told of the connection.
 It must have seen packets arrive and leave, and been told the player's
 position. When it asked the client for that position, the answer must match
-what it was told. Exits 0 when both pass.
+what it was told. The managed probe also grows one ping each way once in the
+world, as Razor's filters can; the host must drop those with a warning and
+the session must carry on (the player keeps moving afterwards). Exits 0 when
+both pass.
 
 WHAT IT TOUCHES
 
@@ -160,6 +163,32 @@ def check(name: str, log: Path) -> list[str]:
     return faults
 
 
+def check_grow(log: Path, output: str) -> list[str]:
+    """The managed probe grows one ping each way; the host must refuse both."""
+    if not log.exists():
+        return []
+
+    lines = log.read_text(encoding="utf-8", errors="replace").splitlines()
+    faults = []
+
+    for way in ("recv", "send"):
+        grew = [i for i, line in enumerate(lines) if line.startswith(f"grow {way} ")]
+
+        if not grew:
+            faults.append(f"managed: never grew a packet on {way} (no ping seen in the world)")
+            continue
+
+        # The session must carry on after the grown packet and close cleanly.
+        if not any(line.startswith("closing") for line in lines[grew[0] + 1:]):
+            faults.append(f"managed: the session never closed cleanly after the grown {way} packet")
+
+    warnings = output.count("[plugin_host] WARN a plugin grew packet")
+    if warnings < 2:
+        faults.append(f"host: warned about {warnings} grown packets, expected 2")
+
+    return faults
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--no-run", action="store_true", help="build the probes and stop")
@@ -209,6 +238,7 @@ def main() -> int:
 
     faults += check("native", logs / "native.log")
     faults += check("managed", logs / "managed.log")
+    faults += check_grow(logs / "managed.log", session.stdout + session.stderr)
 
     for name in ("native", "managed"):
         log = logs / f"{name}.log"
