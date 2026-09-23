@@ -44,9 +44,35 @@ codebase from "rewrite" into "change one `using` line".
 
 | Tier | Files | Lines | Share | Treatment |
 |---|---:|---:|---:|---|
-| `verbatim` | 243 | 74,522 | 48% | Renamespace `ClassicUO.*` → `GUO.*` |
-| `shim` | 102 | 50,513 | 33% | Renamespace + `using GUO.Compat;` |
-| `rewrite` | 88 | 31,170 | 20% | Reimplement on Godot |
+| `verbatim` | 247 | 74,760 | 49% | Renamespace `ClassicUO.*` → `GUO.*` |
+| `shim` | 116 | 56,510 | 37% | Renamespace + `using GUO.Compat;`, and `using SDL3;` → `using GUO.Platform.Sdl;` |
+| `rewrite` | 37 | 21,959 | 14% | Reimplement on Godot |
+
+Figures from `docs/port_status.md`, 2026-09-23. The rewrite count fell from
+the first measurement as files found to carry no real FNA binding moved down
+(see `SHIM_DESPITE_HEAVY_IMPORT` in `tools/port_audit/run.py`); the port
+itself is read too, and a file whose port calls Godot's API directly is
+`rewrite` whatever upstream imported (`GODOT_CALL`, same file).
+
+The shim tier has two mechanical transforms, and only these two:
+
+1. **XNA math.** Add `using GUO.Compat;`; the XNA value types resolve to the
+   ones in §3.
+2. **SDL values.** Replace `using SDL3;` with `using GUO.Platform.Sdl;`.
+   Upstream reaches SDL in about thirty files, overwhelmingly for key and
+   modifier enums (`SDL.SDL_Keycode.SDLK_a`). `src/Platform/Sdl` keeps the
+   class name `SDL` so those call sites read unchanged, and provides:
+   - `SdlKeys.cs` — `SDL_Keycode` and `SDL_Keymod`, verbatim from SDL3-CS;
+   - `SdlEvents.cs` — `SDL_Event`, `SDL_KeyboardEvent`, `SDL_Scancode`,
+     `SDL_EventType` and `SDLBool`, as value types the Godot input layer
+     fills in (no event is ever read from native SDL);
+   - `SdlPlatform.cs` — the clipboard trio (`SDL_HasClipboardText`,
+     `SDL_GetClipboardText`, `SDL_SetClipboardText`) on Godot's
+     `DisplayServer`, the only SDL behaviour bridged by signature.
+
+   Everything else SDL does upstream — surfaces, windows, cursors — is real
+   platform behaviour and is rewrite work in the area that owns it. A file
+   that needs one of those is not a shim file.
 
 **Four fifths of this port is mechanical.** That ratio is the reason the
 project is tractable, and protecting it is the single most important
@@ -75,6 +101,10 @@ recomputes them from the actual source.
 Conversions to engine types are explicit (`ToGodot()`), never implicit, so
 the port/engine boundary stays visible in a diff. Full rules in that folder's
 README.
+
+`GUO.Platform.Sdl` (`src/Platform/Sdl`) is Compat's sibling for SDL, under the
+same rule: values, plus the three clipboard calls, and nothing that needs
+state or a lifecycle. §2 lists what it holds.
 
 ---
 

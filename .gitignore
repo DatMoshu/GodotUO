@@ -112,3 +112,7 @@ secrets.json
 *.idx
 *.enu
 *.def
+
+# Agent worktrees and the Godot export templates fetched beside the engine.
+.claude/worktrees/
+tools/godot/templates/

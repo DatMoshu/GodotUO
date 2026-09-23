@@ -220,6 +220,9 @@ namespace GUO.Game
 
                     Texture2D cursor = _cursors[war, id];
 
+                    // PORT DEVIATION (GUO): upstream calls SDL_SetCursor with
+                    // the SDL_Cursor* built in the constructor; Godot takes the
+                    // texture and hotspot directly (see the note at _cursors).
                     if (cursor != null)
                     {
                         Godot.Input.SetCustomMouseCursor(

@@ -72,6 +72,8 @@ namespace GUO.Game.UI.Gumps
             _mapTexture?.Dispose();
             _mapTexture = texture;
 
+            // PORT DEVIATION (GUO): upstream reads XNA's Texture2D.Width and
+            // .Height properties; Godot's Texture2D exposes them as methods.
             Width = texture.GetWidth();
             Height = texture.GetHeight();
 

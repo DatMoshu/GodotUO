@@ -18,7 +18,9 @@ Classification (see docs/port_plan.md for the reasoning):
 
     rewrite   Touches Graphics, Input, Audio or Media, or lives in the
               renderer. These are the files that genuinely bind to FNA and
-              must be reimplemented against Godot.
+              must be reimplemented against Godot. Also any file whose PORT
+              calls a Godot API directly, whatever upstream imported: see
+              GODOT_CALL below.
 
 Usage:
     python tools/port_audit/run.py [--out docs/port_status.md] [--json FILE]
@@ -167,6 +169,26 @@ def classify(text: str, area: str, rel: Path | None = None) -> str:
     return TIER_VERBATIM
 
 
+# A call into Godot's own API from a ported file: `Godot.X.Y(...)` or
+# `new Godot.X(...)`. Upstream's imports cannot see this -- LoginScene and
+# GameCursor import only XNA math upstream, yet their ports drive the window
+# and the OS cursor -- so the port itself is read. Conversions through the
+# Compat `ToGodot()` / `FromGodot()` helpers do not match (no `Godot.` token
+# starts them), and naming a Godot type without calling it (a field typed
+# `Godot.Resource`) is not a call.
+GODOT_CALL = re.compile(r"(?:\bnew\s+Godot\.[\w.]+\s*\(|\bGodot\.(?:\w+\.)*\w+\s*\()")
+COMMENT = re.compile(r"//[^\n]*|/\*.*?\*/", re.S)
+
+
+def calls_godot(port_file: Path) -> bool:
+    """True when a ported file calls a Godot API outside a Compat conversion."""
+    try:
+        text = port_file.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    return bool(GODOT_CALL.search(COMMENT.sub("", text)))
+
+
 def area_for(rel: Path) -> str:
     """Map an upstream path to a destination area in the Godot project."""
     key = rel.as_posix()
@@ -269,13 +291,24 @@ def load_waivers(repo_root: Path) -> dict[str, dict]:
 
 
 def build_report(
-    files: list[dict], ported: dict[str, list[str]], waivers: dict[str, dict]
+    files: list[dict],
+    ported: dict[str, list[str]],
+    waivers: dict[str, dict],
+    port_src: Path | None = None,
 ) -> dict:
     for f in files:
         matches = ported.get(f["name"], [])
         f["ported"] = bool(matches)
         f["port_paths"] = matches
         f["waiver"] = waivers.get(f["upstream"])
+        # A port that calls Godot is rewrite work whatever upstream imported.
+        if (
+            port_src is not None
+            and f["tier"] != TIER_REWRITE
+            and any(calls_godot(port_src / m) for m in matches)
+        ):
+            f["tier_from_imports"] = f["tier"]
+            f["tier"] = TIER_REWRITE
 
     def summarise(rows: list[dict]) -> dict:
         total = len(rows)
@@ -472,7 +505,7 @@ def main(argv: list[str] | None = None) -> int:
 
     files = scan_upstream(upstream_src)
     ported = scan_port(port / "src")
-    report = build_report(files, ported, load_waivers(cfg.root))
+    report = build_report(files, ported, load_waivers(cfg.root), port / "src")
 
     markdown = render_markdown(report, cfg)
 
