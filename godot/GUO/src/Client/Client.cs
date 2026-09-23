@@ -218,7 +218,14 @@ namespace GUO
 
         public static void Run(IPluginHost pluginHost)
         {
-            Debug.Assert(Game == null);
+            // PORT DEVIATION (GUO): upstream asserts, which is compiled out
+            // of Release. Its Run() never returns while the game lives, so a
+            // second call cannot happen there; here Run() returns at once
+            // (below), and a second call would silently replace Game.
+            if (Game != null)
+            {
+                throw new InvalidOperationException("Client.Run called while a game is already running");
+            }
 
             Log.Trace("Running game...");
 
