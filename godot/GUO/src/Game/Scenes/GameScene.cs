@@ -963,17 +963,31 @@ namespace GUO.Game.Scenes
             Profiler.EnterContext(Profiler.ProfilerContext.RENDER_FRAME_WORLD_PREPARE);
             FillGameObjectList();
 
+            // PORT DEVIATION (GUO): upstream highlights the selected object by
+            // drawing it again on top with the highlight hue. A meshed object
+            // (ADR-0004) is not drawn one by one, so its hue is written into
+            // the chunk mesh's vertices instead and restored the next frame.
+            //
             // Restore previous highlight's original hue before applying new one
             if (_prevMeshHighlight != null
-                && !_prevMeshHighlight.IsDestroyed
                 && _prevMeshHighlight.InChunkMesh
                 && _prevMeshHighlight.MeshSpriteIndex >= 0)
             {
                 var prevChunk = _world.Map.GetChunk(_prevMeshHighlight.X, _prevMeshHighlight.Y);
                 if (prevChunk?.Mesh != null)
                 {
-                    var prevLayer = _prevMeshHighlight is Land ? prevChunk.Mesh.Land : prevChunk.Mesh.Statics;
-                    ApplyMeshHue(_prevMeshHighlight, prevLayer);
+                    if (_prevMeshHighlight.IsDestroyed)
+                    {
+                        // Its sprite index may already belong to something
+                        // else, so do not write through it: rebuild the mesh,
+                        // which writes every sprite's own hue.
+                        prevChunk.Mesh.IsDirty = true;
+                    }
+                    else
+                    {
+                        var prevLayer = _prevMeshHighlight is Land ? prevChunk.Mesh.Land : prevChunk.Mesh.Statics;
+                        ApplyMeshHue(_prevMeshHighlight, prevLayer);
+                    }
                 }
             }
             _prevMeshHighlight = null;

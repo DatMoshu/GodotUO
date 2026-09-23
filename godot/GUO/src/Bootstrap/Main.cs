@@ -125,6 +125,10 @@ public partial class Main : Node
                 {
                     ShardCommandsThenQuit();
                 }
+                else if (_options.HighlightProbe)
+                {
+                    HighlightProbeThenQuit();
+                }
                 else if (_options.TradePartner)
                 {
                     TradePartnerThenQuit();
@@ -289,6 +293,17 @@ public partial class Main : Node
     /// Log in as somebody else and wait to be traded with, then quit. Started
     /// by the probe, which is the only thing that wants it; see TradePartner.
     /// </summary>
+    /// <summary>
+    /// Hover a meshed static, leave and come back, photograph it, then quit;
+    /// see HighlightProbe.
+    /// </summary>
+    private async void HighlightProbeThenQuit()
+    {
+        await HighlightProbe.Run(this);
+        await CaptureFrame();
+        Quit(HighlightProbe.Passed ? 0 : 1);
+    }
+
     private async void TradePartnerThenQuit()
     {
         await TradePartner.Run(this);
@@ -416,6 +431,9 @@ public partial class Main : Node
         /// </summary>
         public bool TradePartner { get; private set; }
 
+        /// <summary>Run the mesh highlight check rather than play.</summary>
+        public bool HighlightProbe { get; private set; }
+
         /// <summary>
         /// Lines to type into the game window once the character is in the
         /// world, in order. Used to administer the local dev shard, which
@@ -476,6 +494,9 @@ public partial class Main : Node
                         break;
                     case "--trade-partner":
                         o.TradePartner = true;
+                        break;
+                    case "--highlight-probe":
+                        o.HighlightProbe = true;
                         break;
                     case "--endure":
                         if (int.TryParse(Next(), out int endure))
