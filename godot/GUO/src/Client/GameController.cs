@@ -48,7 +48,6 @@ namespace GUO
     /// </remarks>
     internal sealed partial class GameController : Node2D
     {
-        private bool _ignoreNextTextInput;
         private readonly float[] _intervalFixedUpdate = new float[2];
         private double _totalElapsed, _currentFpsTime;
         private uint _totalFrames;

@@ -62,7 +62,13 @@ namespace GUO.Game.GameObjects
                     Client.Game.UO.FileManager.TileData.LandData[Graphic].TexID
                 );
 
-                if (texmapInfo.Texture != null)
+                // PORT DEVIATION (GUO): stretched land is drawn by the chunk
+                // mesh (ADR-0004), and UltimaBatcher2D.DrawStretchedLand
+                // throws: a canvas quad cannot carry per-vertex normals. A
+                // stretched tile that reaches here outside a mesh -- changed
+                // without its chunk being rebuilt -- is drawn flat instead of
+                // crashing the frame.
+                if (texmapInfo.Texture != null && InChunkMesh)
                 {
                     batcher.DrawStretchedLand(
                         texmapInfo.Texture,

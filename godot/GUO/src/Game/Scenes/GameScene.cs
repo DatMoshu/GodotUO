@@ -1033,6 +1033,8 @@ namespace GUO.Game.Scenes
                 batcher.SetCircleOfTransparencyRadius(0f);
             }
 
+            // GUO: SetStencil is a no-op on the canvas batcher; draw order does
+            // the depth work (ADR-0002). The call is kept to match upstream.
             // https://shawnhargreaves.com/blog/depth-sorting-alpha-blended-objects.html
             batcher.SetStencil(DepthStencilState.Default);
 

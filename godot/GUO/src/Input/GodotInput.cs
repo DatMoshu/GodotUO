@@ -194,6 +194,13 @@ namespace GUO.Input
                 return;
             }
 
+            if (e.ButtonIndex is MouseButton.WheelLeft or MouseButton.WheelRight)
+            {
+                // Upstream reads only the wheel's y; a horizontal notch did
+                // nothing there, so it does nothing here.
+                return;
+            }
+
             MouseButtonType buttonType = ToButtonType(e.ButtonIndex);
 
             if (buttonType == MouseButtonType.None)
