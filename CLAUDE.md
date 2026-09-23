@@ -97,9 +97,9 @@ Every upstream file is classified into a tier, measured by the audit:
 
 | Tier | Files | Lines | Treatment |
 |---|---:|---:|---|
-| `verbatim` | 243 | 74,522 | Renamespace `ClassicUO.*` → `GUO.*` |
-| `shim` | 102 | 50,513 | Renamespace + `using GUO.Compat;` |
-| `rewrite` | 88 | 31,170 | Reimplement on Godot |
+| `verbatim` | 247 | 74,760 | Renamespace `ClassicUO.*` → `GUO.*` |
+| `shim` | 116 | 56,510 | Renamespace + `using GUO.Compat;` / `using GUO.Platform.Sdl;` |
+| `rewrite` | 37 | 21,959 | Reimplement on Godot |
 
 **Four fifths of this port is mechanical.** That ratio is what makes the
 project feasible. The main way to lose it is letting `GUO.Compat` grow
