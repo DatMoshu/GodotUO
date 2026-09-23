@@ -384,10 +384,29 @@ def find_window(pid: int):
 
 
 def focus(hwnd) -> None:
+    """Bring ClassicUO to the front, or stop.
+
+    Windows refuses SetForegroundWindow to a process that is not already in
+    the foreground, silently, and SendKeys then types into whatever window
+    does have focus -- a terminal, an editor. A tapped Alt key lifts that
+    lock. Whether it worked is checked, because typing "[go ..." into the
+    wrong window is worse than no picture.
+    """
     _ctypes, _wintypes, user32 = _win32()
     user32.ShowWindow(hwnd, 9)  # SW_RESTORE
-    user32.SetForegroundWindow(hwnd)
-    time.sleep(0.4)
+
+    for _ in range(5):
+        user32.keybd_event(0x12, 0, 0, 0)  # VK_MENU down
+        user32.keybd_event(0x12, 0, 2, 0)  # VK_MENU up (KEYEVENTF_KEYUP)
+        user32.SetForegroundWindow(hwnd)
+        time.sleep(0.4)
+        if user32.GetForegroundWindow() == hwnd:
+            return
+
+    raise RuntimeError(
+        "ClassicUO could not be brought to the front; stopping rather than "
+        "typing into another window"
+    )
 
 
 def window_rect(hwnd) -> tuple[int, int, int, int]:
