@@ -307,11 +307,7 @@ public partial class Main : Node
     }
 
     /// <summary>
-    /// Log in as somebody else and wait to be traded with, then quit. Started
-    /// by the probe, which is the only thing that wants it; see TradePartner.
-    /// </summary>
-    /// <summary>
-    /// Hover a meshed static, leave and come back, photograph it, then quit;
+    /// Hover a meshed tile or static, leave and come back, photograph it, then quit;
     /// see HighlightProbe.
     /// </summary>
     private async void HighlightProbeThenQuit()
@@ -321,6 +317,10 @@ public partial class Main : Node
         Quit(HighlightProbe.Passed ? 0 : 1);
     }
 
+    /// <summary>
+    /// Log in as somebody else and wait to be traded with, then quit. Started
+    /// by the probe, which is the only thing that wants it; see TradePartner.
+    /// </summary>
     private async void TradePartnerThenQuit()
     {
         await TradePartner.Run(this);
