@@ -6,7 +6,10 @@
 //
 // It registers for packets both ways, position changes and the lifecycle
 // callbacks, asks the client where the player is, and logs what it sees for
-// tools/plugin_probe/run.py. Every packet is passed on untouched.
+// tools/plugin_probe/run.py. Every packet is passed on untouched, except one
+// ping each way once the player is in the world: that one is grown the way
+// Razor's filters can grow a packet, by handing back a longer array, and the
+// host must drop it rather than write past the client's buffer.
 
 using System;
 using System.IO;
@@ -31,6 +34,12 @@ namespace Assistant
 
         private static StreamWriter _log;
         private static long _recv, _send, _positions, _ticks;
+        private static bool _grewRecv, _grewSend;
+
+        // The ping (0x73) is sent every second in the world and echoed back,
+        // so losing one of each is harmless to the session.
+        private const byte GrowId = 0x73;
+        private const int GrowBy = 64;
 
         public static unsafe void Install(PluginHeader* plugin)
         {
@@ -75,6 +84,12 @@ namespace Assistant
             if (++_recv <= 10)
                 Log($"recv id=0x{data[0]:X2} len={length} table_len={_getPacketLength(data[0])}");
 
+            if (!_grewRecv && _positions > 0 && data[0] == GrowId)
+            {
+                _grewRecv = true;
+                Grow("recv", ref data, ref length);
+            }
+
             return true;
         }
 
@@ -82,6 +97,12 @@ namespace Assistant
         {
             if (++_send <= 10)
                 Log($"send id=0x{data[0]:X2} len={length}");
+
+            if (!_grewSend && _positions > 0 && data[0] == GrowId)
+            {
+                _grewSend = true;
+                Grow("send", ref data, ref length);
+            }
 
             return true;
         }
@@ -93,6 +114,15 @@ namespace Assistant
                 var ok = _getPlayerPosition(out var px, out var py, out var pz);
                 Log($"position x={x} y={y} z={z} get_player_position ok={(ok ? 1 : 0)} x={px} y={py} z={pz} recv={_recv} send={_send}");
             }
+        }
+
+        private static void Grow(string way, ref byte[] data, ref int length)
+        {
+            var grown = new byte[length + GrowBy];
+            Array.Copy(data, grown, length);
+            Log($"grow {way} id=0x{data[0]:X2} len={length} to={length + GrowBy}");
+            data = grown;
+            length += GrowBy;
         }
 
         private static void Log(string line)

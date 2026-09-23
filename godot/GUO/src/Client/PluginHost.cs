@@ -2,6 +2,7 @@ using GUO.Configuration;
 using GUO.Game;
 using GUO.Network;
 using GUO.Platform.Sdl;
+using GUO.Utility.Logging;
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
@@ -326,8 +327,22 @@ namespace GUO
                 return true;
 
             var len = buffer.Count;
+            bool ok;
             fixed (byte* ptr = buffer.Array)
-                return _packetIn((IntPtr)ptr, ref len);
+                ok = _packetIn((IntPtr)ptr, ref len);
+
+            // PORT DEVIATION (GUO): upstream ignores the length the host hands
+            // back. The host now refuses to grow a packet past the buffer it was
+            // given; this is the same check on this side of the boundary, so a
+            // host that did grow one fails the packet instead of passing it on.
+            if (len < 0 || len > buffer.Count)
+            {
+                Log.Warn($"plugin host returned packet 0x{buffer.Array[buffer.Offset]:X2} as {len} bytes, past its {buffer.Count}; dropped");
+
+                return false;
+            }
+
+            return ok;
         }
 
         public bool PacketOut(Span<byte> buffer)
@@ -336,8 +351,19 @@ namespace GUO
                 return true;
 
             var len = buffer.Length;
+            bool ok;
             fixed (byte* ptr = buffer)
-                return _packetOut((IntPtr)ptr, ref len);
+                ok = _packetOut((IntPtr)ptr, ref len);
+
+            // PORT DEVIATION (GUO): see PacketIn.
+            if (len < 0 || len > buffer.Length)
+            {
+                Log.Warn($"plugin host returned packet 0x{buffer[0]:X2} as {len} bytes, past its {buffer.Length}; dropped");
+
+                return false;
+            }
+
+            return ok;
         }
 
         public unsafe int SdlEvent(SDL.SDL_Event* ev)

@@ -326,23 +326,42 @@ sealed class ClassicUOHost : IPluginHandler
         return res;
     }
 
+    // PORT DEVIATION (GUO): upstream rents a buffer of the packet's own length,
+    // lets the plugin change `length`, then copies `length` bytes back into
+    // `data`. A plugin that grows the packet (Razor's filters can) copied past
+    // the rented array and past the client's buffer, which only holds the
+    // original length. Here a packet that comes back longer than it went in is
+    // failed with a warning and `data` is left untouched; shrinking is fine.
     unsafe bool PacketInPlugin(IntPtr data, ref int length)
     {
         var ok = true;
+        var capacity = length;
 
         foreach (var plugin in _plugins)
         {
             var rentBuf = ArrayPool<byte>.Shared.Rent(length);
+            var buf = rentBuf;
 
             try
             {
-                fixed (byte* ptr = rentBuf)
+                fixed (byte* ptr = buf)
                     Buffer.MemoryCopy(data.ToPointer(), ptr, sizeof(byte) * length, sizeof(byte) * length);
 
-                ok &= plugin.ProcessRecvPacket(ref rentBuf, ref length);
+                var before = length;
+                ok &= plugin.ProcessRecvPacket(ref buf, ref length);
 
-                fixed (byte* ptr = rentBuf)
-                    Buffer.MemoryCopy(ptr, data.ToPointer(), sizeof(byte) * length, sizeof(byte) * length);
+                if (length < 0 || length > capacity || length > buf.Length)
+                {
+                    Console.WriteLine(
+                        "[plugin_host] WARN a plugin grew packet 0x{0:X2} from {1} to {2} bytes, past the {3} the client holds; packet dropped",
+                        before > 0 ? buf[0] : 0, before, length, capacity);
+                    length = before;
+
+                    return false;
+                }
+
+                fixed (byte* ptr = buf)
+                    Buffer.MemoryCopy(ptr, data.ToPointer(), sizeof(byte) * capacity, sizeof(byte) * length);
             }
             finally
             {
@@ -353,23 +372,42 @@ sealed class ClassicUOHost : IPluginHandler
         return ok;
     }
 
+    // PORT DEVIATION (GUO): upstream rents a buffer of the packet's own length,
+    // lets the plugin change `length`, then copies `length` bytes back into
+    // `data`. A plugin that grows the packet (Razor's filters can) copied past
+    // the rented array and past the client's buffer, which only holds the
+    // original length. Here a packet that comes back longer than it went in is
+    // failed with a warning and `data` is left untouched; shrinking is fine.
     unsafe bool PacketOutPlugin(IntPtr data, ref int length)
     {
         var ok = true;
+        var capacity = length;
 
         foreach (var plugin in _plugins)
         {
             var rentBuf = ArrayPool<byte>.Shared.Rent(length);
+            var buf = rentBuf;
 
             try
             {
-                fixed (byte* ptr = rentBuf)
+                fixed (byte* ptr = buf)
                     Buffer.MemoryCopy(data.ToPointer(), ptr, sizeof(byte) * length, sizeof(byte) * length);
 
-                ok &= plugin.ProcessSendPacket(ref rentBuf, ref length);
+                var before = length;
+                ok &= plugin.ProcessSendPacket(ref buf, ref length);
 
-                fixed (byte* ptr = rentBuf)
-                    Buffer.MemoryCopy(ptr, data.ToPointer(), sizeof(byte) * length, sizeof(byte) * length);
+                if (length < 0 || length > capacity || length > buf.Length)
+                {
+                    Console.WriteLine(
+                        "[plugin_host] WARN a plugin grew packet 0x{0:X2} from {1} to {2} bytes, past the {3} the client holds; packet dropped",
+                        before > 0 ? buf[0] : 0, before, length, capacity);
+                    length = before;
+
+                    return false;
+                }
+
+                fixed (byte* ptr = buf)
+                    Buffer.MemoryCopy(ptr, data.ToPointer(), sizeof(byte) * capacity, sizeof(byte) * length);
             }
             finally
             {
