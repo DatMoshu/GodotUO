@@ -644,7 +644,7 @@ def compose(place_dir: Path, width: int = 1600) -> Path | None:
 
     y = 0
     for label, im in panels:
-        draw.text((8, 7), f"{label} -- {place_dir.name}", fill=(235, 235, 235))
+        draw.text((8, y + 7), f"{label} -- {place_dir.name}", fill=(235, 235, 235))
         y += bar
         sheet.paste(im, (0, y))
         y += im.height
