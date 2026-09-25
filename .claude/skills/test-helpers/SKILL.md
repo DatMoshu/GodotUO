@@ -392,4 +392,3 @@ After writing: Verdict: **COMPLETE** — helper files created.
 
 - Run `/test-setup` if the test framework has not been scaffolded yet.
 - Use `/dev-story` to implement stories — helpers reduce boilerplate in new test files.
-- Run `/skill-test` to validate other skills that may need helper coverage.

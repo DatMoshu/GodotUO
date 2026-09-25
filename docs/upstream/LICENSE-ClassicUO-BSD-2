@@ -1,7 +1,6 @@
 BSD 2-Clause License
 
-Copyright (c) 2025, andreakarasho (ClassicUO)
-Copyright (c) 2026, Moshu and the GUO contributors
+Copyright (c) 2025, andreakarasho
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -24,15 +23,3 @@ SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
 CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
--------------------------------------------------------------------------------
-Parts of this repository are under other licences:
-
-  tools/modernuo/patches/   GPL-3.0-only. They modify ModernUO, which is
-                            GPL-3.0; see tools/modernuo/patches/LICENSE.
-  .claude/                  The agent and skill system adapted from Claude
-                            Code Game Studios, MIT; see
-                            docs/upstream/LICENSE-Claude-Code-Game-Studios-MIT.
-
-Ported ClassicUO files keep their upstream SPDX headers. ClassicUO's own
-licence text and the reviewed upstream commit are in docs/upstream/.

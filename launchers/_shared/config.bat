@@ -12,7 +12,15 @@ REM      3. the central shared config (%UO_COMMON_CONFIG%), if you use one
 REM
 REM  Because of (1), nothing here overwrites a value you exported yourself, so
 REM  CI and one-off overrides work without editing this file.
+REM
+REM  YOUR OWN PATHS go in config.local.bat, next to this file. It is gitignored,
+REM  so your install location never ends up in a commit or a diff. Copy
+REM  config.local.bat.example to start one. It is read before the defaults
+REM  below, so anything it sets wins over them (and loses to the environment,
+REM  as long as it keeps the `if not defined` guard).
 REM ============================================================================
+
+if exist "%~dp0config.local.bat" call "%~dp0config.local.bat"
 
 REM --- Pinned engine ------------------------------------------------------
 REM  Version string must match the folder under tools\godot.
@@ -27,7 +35,8 @@ REM --- UO client data -----------------------------------------------------
 REM  Folder holding the .mul / .uop / .idx files the client reads at runtime.
 REM  This is YOUR legally-obtained Ultima Online install. Nothing is copied
 REM  into this repo and nothing here is ever committed.
-if not defined UO_CLIENT_DATA       set "UO_CLIENT_DATA=C:\Path\To\Ultima Online Classic"
+REM  There is no default: set it in config.local.bat, or in the environment.
+REM  if not defined UO_CLIENT_DATA   set "UO_CLIENT_DATA=C:\Path\To\Ultima Online Classic"
 
 REM  Client version the data above corresponds to. Drives which file formats
 REM  and packet layouts the readers expect. See docs\data_formats.md.
@@ -73,9 +82,3 @@ if not defined UO_PYTHON            set "UO_PYTHON=python"
 REM --- Logging ------------------------------------------------------------
 REM  DEBUG | INFO | WARN | ERROR
 if not defined UO_LOG_LEVEL         set "UO_LOG_LEVEL=INFO"
-
-REM --- the external project reference tools (optional) ------------------------------------
-REM  an external project is a separate project used here ONLY as a source
-REM  of UO knowledge and read-only asset tooling. See docs\external-reference.md.
-REM  Leave unset if you do not have it; only the guoasset MCP needs it.
-if not defined EXTERNAL_ROOT            set "EXTERNAL_ROOT=D:\external\an external project"

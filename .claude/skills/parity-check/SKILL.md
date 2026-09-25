@@ -12,9 +12,8 @@ model: sonnet
 Settles the question "does GUO look like the real client?" with evidence
 instead of an opinion.
 
-Adapted for GUO from the external project's `snapshot-gump`. That skill rendered gumps out of
-a ClassicUO fork; this one compares GUO against ground truth read from the
-same client data, which is what `ADR-0001` actually requires.
+It compares GUO against ground truth read from the same client data, which is
+what `ADR-0001` actually requires.
 
 ---
 
@@ -33,7 +32,8 @@ a different install, or a rescaled screenshot.
 
 ## 1. Capture ground truth
 
-Via the `guoasset` MCP (see `tools/guoasset/README.md`; needs `EXTERNAL_ROOT`):
+Via the `guoasset` MCP (see `tools/guoasset/README.md`; build it once with
+`launchers\dev\build_guoasset.bat`):
 
 | Target | Tool |
 |---|---|
@@ -99,8 +99,8 @@ say that instead of downgrading the claim quietly.
 
 ## Rules
 
-- The client install is **read-only**. Never call a write-side `guoasset`
-  tool (`import_multi`, injection) against `UO_CLIENT_DATA`.
+- The client install is **read-only**. `guoasset` has no write-side tools;
+  do not add one.
 - Captures are artefacts: `build/` or scratchpad, never committed.
 - Parity before improvement. If GUO differs and GUO looks *better*, it is
   still a bug — record it, propose the change separately.

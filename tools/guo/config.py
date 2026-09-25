@@ -6,7 +6,9 @@ is meant to edit. Tools never define their own defaults for these values.
 Resolution order matches the launchers exactly:
 
     1. environment variable  (set by common.bat, or exported by CI/the user)
-    2. launchers/_shared/config.bat  (parsed directly when a tool is run
+    2. launchers/_shared/config.local.bat  (the user's own paths; gitignored,
+       and read by config.bat before its defaults)
+    3. launchers/_shared/config.bat  (parsed directly when a tool is run
        outside a launcher, e.g. straight from an IDE or an agent)
 
 Parsing the .bat is deliberately narrow: it only understands the
@@ -140,7 +142,13 @@ class Config:
 def load_config(root: Path | None = None) -> Config:
     """Resolve configuration from the environment, falling back to config.bat."""
     root = (root or find_repo_root()).resolve()
-    from_bat = parse_config_bat(root / "launchers" / "_shared" / "config.bat")
+    shared = root / "launchers" / "_shared"
+    from_bat = parse_config_bat(shared / "config.bat")
+    local = shared / "config.local.bat"
+    if local.is_file():
+        # config.bat calls it first, and its own lines are all guarded, so
+        # whatever the local file sets wins over the defaults.
+        from_bat.update(parse_config_bat(local))
 
     def get(key: str, default: str = "") -> str:
         # Environment wins, exactly as in common.bat.

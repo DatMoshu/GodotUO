@@ -3,9 +3,9 @@
 Porting **Classic Ultima Online** to **Godot 4 .NET** — getting the client off
 FNA while keeping the game behaviour intact.
 
-The strategy is a transplant rather than a rewrite: ClassicUO's C# network
-stack, file readers and game logic are carried across; only the parts that
-genuinely bind to FNA are reimplemented on Godot.
+The strategy is a transplant rather than a rewrite: [ClassicUO](https://github.com/ClassicUO/ClassicUO)'s
+C# network stack, file readers and game logic are carried across; only the
+parts that genuinely bind to FNA are reimplemented on Godot.
 
 > **You supply your own Ultima Online installation.** No game data is
 > distributed with this project. The client reads your install in place and
@@ -13,14 +13,33 @@ genuinely bind to FNA are reimplemented on Godot.
 
 ---
 
+## Status
+
+**Pre-release. Playable on a local shard; not yet at parity.**
+
+- Every upstream file is ported, by the audit's count (`docs/port_status.md`).
+  "Ported" means present and compiling, not proven working.
+- Against a ModernUO dev shard it logs in, walks the world and opens gumps,
+  and it hosts assistant plugins through upstream's plugin interface.
+- The last side-by-side sweep against ClassicUO (`docs/parity_2026-09-23.md`)
+  matched in five of eight places. The other three show known rendering
+  differences, listed there with their causes.
+- Windows only for now.
+
+Bug reports that compare GUO against ClassicUO in the same place are the most
+useful thing you can send. See `CONTRIBUTING.md`.
+
+---
+
 ## Requirements
 
 | | |
 |---|---|
+| **Windows** | 10 or 11, x64 |
 | **Godot** | 4.7.2 stable, **mono/.NET** build — fetched by the bootstrap step |
-| **.NET SDK** | 8.0 or newer |
+| **.NET SDK** | 8.0 for the client; 10.0 for the dev shard and the parity tools |
 | **Python** | 3.12+ (tooling) |
-| **A UO client install** | Any modern Classic client; 7.0.107 is what this was scaffolded against |
+| **A UO client install** | Any modern Classic client; developed against 7.0.107 |
 
 ---
 
@@ -30,8 +49,9 @@ genuinely bind to FNA are reimplemented on Godot.
 REM 1. Fetch the pinned engine and the upstream reference
 launchers\pipeline\00_bootstrap.bat
 
-REM 2. Point the project at your UO install
-notepad launchers\_shared\config.bat      REM set UO_CLIENT_DATA
+REM 2. Point the project at your UO install (this file is yours; it is gitignored)
+copy launchers\_shared\config.local.bat.example launchers\_shared\config.local.bat
+notepad launchers\_shared\config.local.bat
 
 REM 3. Confirm everything resolves
 launchers\dev\smoke.bat
@@ -39,6 +59,11 @@ launchers\dev\smoke.bat
 REM 4. Run it
 launchers\game\play.bat
 ```
+
+It connects to `127.0.0.1:2593` by default. To run a local
+[ModernUO](https://github.com/modernuo/ModernUO) shard to play against, see
+`tools/modernuo/README.md`; to play elsewhere, set `UO_SHARD_HOST` and
+`UO_SHARD_PORT` in your `config.local.bat`.
 
 Optionally add the engine folder to `PATH` so `godot` resolves everywhere:
 
@@ -55,15 +80,16 @@ CI** — the console build blocks and writes to stdout.
 
 ```
 launchers/        .bat entry points grouped by job — start here
-  _shared/        config.bat (the only file you edit) + common.bat
+  _shared/        config.local.bat (yours) + config.bat (defaults) + common.bat
   game/play.bat   THE launcher
   pipeline/       numbered data steps, run in order
-  dev/            build, smoke, screenshot, upstream sync
+  shard/          the local ModernUO dev shard
+  dev/            build, smoke, screenshot, parity, upstream sync
 godot/GUO/        the Godot project (C#)
   src/Compat/     XNA compatibility shim
 sources/ClassicUO/  upstream reference — read only, not committed
 tools/            one folder per job, plus the pinned engine
-docs/             the plan, the data contract, generated status
+docs/             the plan, the data contract, generated status, ADRs
 ```
 
 ---
@@ -79,9 +105,9 @@ launchers\pipeline\03_port_audit.bat     REM writes docs/port_status.md
 
 | Tier | Files | Lines | Treatment |
 |---|---:|---:|---|
-| `verbatim` | 243 | 74,522 | Renamespace and compile |
-| `shim` | 102 | 50,513 | Swap `using` to `GUO.Compat` |
-| `rewrite` | 88 | 31,170 | Reimplement on Godot |
+| `verbatim` | 247 | 74,760 | Renamespace and compile |
+| `shim` | 116 | 56,510 | Swap `using` to `GUO.Compat` |
+| `rewrite` | 37 | 21,959 | Reimplement on Godot |
 
 About **80% of the port is mechanical** — most of ClassicUO's FNA usage turns
 out to be maths and colour structs, not rendering. `GUO.Compat` supplies
@@ -105,15 +131,23 @@ launchers\dev\sync_upstream.bat
 
 ## Licensing
 
+GUO is licensed under the **BSD 2-Clause** licence (`LICENSE`), the same as
+ClassicUO, from which most of its code is ported.
+
 | Component | Licence |
 |---|---|
-| [ClassicUO](https://github.com/ClassicUO/ClassicUO) | BSD 2-Clause — ported files keep their upstream copyright headers |
-| [Claude Code Game Studios](https://github.com/Donchitos/Claude-Code-Game-Studios) | MIT — the agent and skill system in `.claude/` |
-| [Godot](https://godotengine.org) | MIT |
+| This repository | BSD 2-Clause |
+| [ClassicUO](https://github.com/ClassicUO/ClassicUO) | BSD 2-Clause — ported files keep their upstream headers; licence text in `docs/upstream/` |
+| `tools/modernuo/patches/` | GPL-3.0 — they modify [ModernUO](https://github.com/modernuo/ModernUO), which is not redistributed |
+| `.claude/` agents and skills | MIT — adapted from [Claude Code Game Studios](https://github.com/Donchitos/Claude-Code-Game-Studios) |
+| [Godot](https://godotengine.org) | MIT — fetched, not redistributed |
 | **UO client data** | Proprietary. Never redistributed; supply your own. |
 
-Provenance for the vendored upstreams — licence text and originating commits
-— is recorded in `docs/upstream/`.
+---
 
-This project is not affiliated with, endorsed by, or associated with
-Electronic Arts or Broadsword Online Games.
+## Disclaimer
+
+Ultima Online is a registered trademark of Electronic Arts Inc. GUO is an
+unofficial, fan-made project. It is not affiliated with, endorsed by, or
+associated with Electronic Arts or Broadsword Online Games, and it contains
+none of their game data.

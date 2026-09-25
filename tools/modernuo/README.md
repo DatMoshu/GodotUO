@@ -11,7 +11,7 @@ It is a development dependency, not part of the port. Nothing in
 | | |
 |---|---|
 | **Upstream** | <https://github.com/modernuo/ModernUO.git> |
-| **Licence** | GPL-2.0 (RunUO lineage). Not vendored, not redistributed. |
+| **Licence** | GPL-3.0. Not vendored, not redistributed. The patches in `patches/` modify it and are GPL-3.0 too (see `patches/LICENSE`). |
 | **Pinned at** | `24bcfee55` — `0.15.6.178-12-g24bcfee55`, fetched 2026-09-21 |
 | **Runtime** | .NET 10 SDK (ModernUO's own requirement, not the client's) |
 | **Checkout** | `tools/modernuo/src/` — **gitignored**, ~1 GB with the build |

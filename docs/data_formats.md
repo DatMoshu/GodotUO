@@ -198,6 +198,14 @@ those touching already-ported files — the ones that rot silently. Re-pin with
    out of `stray_files`.
 4. Only then write the reader, under `godot/GUO/src/IO` or `src/Assets`.
 
+When a format detail is in doubt, there are two independent readers to check
+against. Upstream ClassicUO's own loaders, which `tools/guoasset` compiles
+from `sources/` and renders with. And [UOFiddler](https://github.com/polserver/UOFiddler),
+the long-standing community tool (GPL-3.0; read it, do not copy from it),
+whose `Ultima/` library most freeshard tooling agrees with. If GUO disagrees
+with both, GUO is almost certainly wrong. Write whatever settles the question
+into this document.
+
 ---
 
 ## 8. Licensing and provenance

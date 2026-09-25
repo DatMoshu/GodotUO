@@ -1,0 +1,18 @@
+@echo off
+REM ============================================================================
+REM  GUO - your machine's settings
+REM
+REM  Copy this file to config.local.bat (same folder) and edit that copy.
+REM  config.local.bat is gitignored: it is yours and is never committed.
+REM
+REM  Keep the `if not defined` guard on every line, so an environment variable
+REM  still overrides what you put here. Any setting in config.bat can be set
+REM  here; these are the ones every machine needs.
+REM ============================================================================
+
+REM  Your Ultima Online Classic install (the folder holding the .uop / .mul files).
+if not defined UO_CLIENT_DATA       set "UO_CLIENT_DATA=C:\Program Files (x86)\Electronic Arts\Ultima Online Classic"
+
+REM  The client version of that install. Check it with:
+REM      launchers\pipeline\01_verify_client_data.bat
+REM if not defined UO_CLIENT_VERSION  set "UO_CLIENT_VERSION=7.0.107.76"

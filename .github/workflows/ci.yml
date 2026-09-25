@@ -1,0 +1,111 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Cheap checks that need no toolchain: nothing proprietary and nothing
+  # machine-specific may ever be committed.
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: No UO client data
+        run: |
+          hits=$(git ls-files | grep -iE '\.(mul|uop|idx|def|enu|cliloc)$|(^|/)cliloc\.' || true)
+          if [ -n "$hits" ]; then
+            echo "::error::Client data is proprietary and must never be committed:"
+            echo "$hits"
+            exit 1
+          fi
+
+      - name: No personal paths outside docs
+        run: |
+          hits=$(git grep -nE '[A-Za-z]:[\\/](Users|_uo|Games)[\\/]' -- . ':!docs' || true)
+          if [ -n "$hits" ]; then
+            echo "::error::Machine paths belong in launchers/_shared/config.local.bat (gitignored):"
+            echo "$hits"
+            exit 1
+          fi
+
+      - name: No local config committed
+        run: |
+          if git ls-files --error-unmatch launchers/_shared/config.local.bat 2>/dev/null; then
+            echo "::error::config.local.bat is per-machine and must stay untracked"
+            exit 1
+          fi
+
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The client compiles against upstream's cuoapi.dll, and the audit and
+      # guoasset read upstream sources, so fetch ClassicUO at the reviewed pin.
+      - name: Read upstream pin
+        id: pin
+        shell: pwsh
+        run: |
+          $pin = Get-Content docs/upstream/UPSTREAM_PIN.json | ConvertFrom-Json
+          "repo=$($pin.repo)" >> $env:GITHUB_OUTPUT
+          "commit=$($pin.commit)" >> $env:GITHUB_OUTPUT
+
+      - name: Cache upstream
+        id: upstream-cache
+        uses: actions/cache@v4
+        with:
+          path: sources/ClassicUO
+          key: classicuo-${{ steps.pin.outputs.commit }}
+
+      - name: Fetch upstream
+        if: steps.upstream-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          git init -q sources/ClassicUO
+          cd sources/ClassicUO
+          git remote add origin "${{ steps.pin.outputs.repo }}"
+          git fetch -q --depth 1 origin "${{ steps.pin.outputs.commit }}"
+          git checkout -q FETCH_HEAD
+          git submodule update -q --init --depth 1
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Build the client
+        run: dotnet build godot/GUO/GUO.csproj -c Release --nologo
+
+      - name: Build guoasset
+        run: dotnet build tools/guoasset/GUO.AssetMcp.csproj -c Release --artifacts-path build/guoasset --nologo
+
+      - name: Python tools compile
+        run: python -m compileall -q tools
+
+      # docs/port_status.md is generated. If it differs from a fresh audit
+      # (ignoring its timestamp), someone ported without re-measuring.
+      - name: Port audit is current
+        shell: bash
+        run: |
+          python tools/port_audit/run.py --out build/port_status.md
+          if ! diff <(grep -v '^- \*\*Generated:' docs/port_status.md) \
+                    <(grep -v '^- \*\*Generated:' build/port_status.md); then
+            echo "::error::docs/port_status.md is stale. Run launchers\\pipeline\\03_port_audit.bat and commit it."
+            exit 1
+          fi

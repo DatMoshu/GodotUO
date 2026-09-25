@@ -1,80 +1,43 @@
 # Security Policy
 
-## Supported Versions
+## Supported versions
 
-Only the `main` branch receives security fixes. Forks and older releases are
-not supported.
+Only the `main` branch receives fixes.
 
-## Reporting a Vulnerability
+## Reporting a vulnerability
 
-**Do not report security vulnerabilities through public GitHub issues.**
+**Do not report security issues in a public issue.**
 
-Use GitHub's private vulnerability reporting instead:
+Use GitHub's private vulnerability reporting: the repository's **Security**
+tab → **Report a vulnerability**. Include what is affected, how to reproduce
+it, and the impact you expect.
 
-**[Report a vulnerability →](https://github.com/Donchitos/Claude-Code-Game-Studios/security/advisories/new)**
+You should get an acknowledgement within a week. This is a volunteer project;
+fixes land as soon as they reasonably can, and you will be told before
+anything is disclosed.
 
-Include as much detail as possible:
-- Description of the vulnerability and what it affects
-- Steps to reproduce
-- Potential impact and attack scenarios
-- Any suggested mitigations
+## In scope
 
-**What to expect:**
-- Acknowledgment within **48 hours**
-- Status update within **7 days**
-- Resolution within **90 days** for confirmed vulnerabilities
+GUO is a game client that connects to servers other people run, and loads
+assistant plugins. The things that matter most:
 
-## What Is In Scope
+- **Network input.** A malicious or compromised shard sending packets that
+  crash the client, corrupt memory, or write outside the client's own folder.
+  The packet readers use unsafe code, as upstream does.
+- **Plugins.** The plugin host loads native and .NET assistants (Razor,
+  ClassicAssist and the like) into the client process. A plugin is trusted
+  code by design; bugs where the host lets a plugin write past a buffer, or
+  loads something the user did not list, are in scope.
+- **Client data.** Anything that makes the client write to the UO install,
+  which it must only ever read.
+- **The tooling.** Launchers, Python tools or `.claude/` hooks that run
+  something undisclosed, or send data anywhere.
 
-CCGS is a **local development tool** — it installs shell hooks and coordinates
-AI agents that run directly on your machine. Security issues are primarily about
-contributed code that executes in users' environments without their awareness.
+## Out of scope
 
-### High Severity
-- Hooks (`.claude/hooks/*.sh`) that execute malicious or undisclosed shell
-  commands on user machines
-- Skills or agents that exfiltrate environment variables, API keys, or secrets
-- Prompt injection via skill or agent definitions that causes Claude to bypass
-  safety measures or take unauthorized destructive actions
-- Contributions that silently alter behavior in ways users cannot audit
-
-### Medium Severity
-- Skills that make undisclosed outbound network requests
-- Agent definitions that escalate permissions or bypass user confirmation prompts
-- Hook patterns that behave differently across platforms to conceal behavior
-- Skills that write outside their documented scope without an explicit user
-  approval step
-
-### Out of Scope
-- The behavior of Claude or the Claude Code CLI itself
-  (report to [Anthropic](https://www.anthropic.com/security))
-- Bugs in the user's Claude Code installation or editor extension
-- Theoretical vulnerabilities with no realistic attack path
-- Issues requiring physical access to the user's machine
-
-## Security Guidelines for Contributors
-
-When contributing hooks, skills, or agents:
-
-- **Hooks must be POSIX-compatible** — use `grep -E`, not `grep -P`; avoid
-  platform-specific syntax that behaves differently across operating systems
-- **No silent network calls** from hooks or skills unless explicitly documented
-  and opt-in by the user
-- **No reading secrets or environment variables** beyond what is minimally
-  required and clearly documented in the skill's header
-- **Skills must not write outside their documented scope** without an explicit
-  user confirmation step
-
-## Disclosure Policy
-
-We follow a **90-day coordinated disclosure** timeline:
-
-1. You submit the vulnerability privately
-2. We acknowledge within 48 hours
-3. We confirm and assess severity within 7 days
-4. We develop and test a fix
-5. We notify you before any public disclosure
-6. Public disclosure happens after the fix ships, or at 90 days — whichever
-   comes first
-
-We credit reporters in release notes unless you prefer to remain anonymous.
+- Bugs that are also in upstream ClassicUO: report them to
+  [ClassicUO](https://github.com/ClassicUO/ClassicUO) as well, and we will
+  follow its fix.
+- Server-side issues in ModernUO or any shard.
+- Cheating or automation through assistant plugins. Loading them is a
+  supported feature, as it is in ClassicUO.

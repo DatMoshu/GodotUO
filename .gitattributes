@@ -5,6 +5,7 @@
 # (a `call` on the last line can silently do nothing).
 *.bat text eol=crlf
 *.cmd text eol=crlf
+*.bat.example text eol=crlf
 
 # Everything else stays LF in the working tree so the C# and Python
 # toolchains, and any non-Windows contributor, see consistent files.

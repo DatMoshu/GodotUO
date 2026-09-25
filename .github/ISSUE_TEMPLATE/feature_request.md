@@ -1,40 +1,21 @@
 ---
-name: Feature Request
-about: Suggest a new agent, skill, hook, or improvement
-title: "[Feature] "
-labels: enhancement
+name: Proposal
+about: Suggest a change beyond parity with ClassicUO
+title: ""
+labels: proposal
 assignees: ''
 ---
 
-## Summary
+<!--
+GUO aims for parity with ClassicUO first. Improvements are welcome as
+proposals, kept separate from porting work. If this is about GUO behaving
+differently from ClassicUO, use the bug report instead.
+-->
 
-A brief description of what you'd like added or changed.
+## What you would like
 
-## Type
+## Why
 
-- [ ] New agent
-- [ ] New skill (slash command)
-- [ ] New hook
-- [ ] New rule
-- [ ] New template
-- [ ] Improvement to existing component
-- [ ] Other:
+## Does ClassicUO do this?
 
-## Problem / Motivation
-
-What problem does this solve? What workflow does it improve?
-
-## Proposed Solution
-
-How do you think this should work? Include details like:
-- For agents: what domain, what tier, what tools
-- For skills: what the workflow looks like, what it outputs
-- For hooks: what event triggers it, what it validates
-
-## Alternatives Considered
-
-Any other approaches you've thought about.
-
-## Additional Context
-
-Examples, references, or screenshots that help explain the request.
+<!-- Yes / no / partly — and if upstream has an issue or PR for it, link it. -->

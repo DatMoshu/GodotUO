@@ -1,0 +1,11 @@
+The patches in this folder modify ModernUO (https://github.com/modernuo/ModernUO),
+which is licensed under the GNU General Public License, version 3.
+
+As derivative works of ModernUO, these patches are licensed under the
+GNU General Public License, version 3 (GPL-3.0-only), not under the BSD
+2-Clause licence that covers the rest of this repository. The full licence
+text is at https://www.gnu.org/licenses/gpl-3.0.txt and in every ModernUO
+checkout (tools/modernuo/src/LICENSE after launchers\shard\fetch.bat).
+
+ModernUO is copyright the ModernUO Development Team. Neither ModernUO's
+source nor a built server is committed to this repository.

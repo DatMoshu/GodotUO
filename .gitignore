@@ -75,7 +75,12 @@ $RECYCLE.BIN/
 
 # === Claude Code local ====================================================
 .claude/settings.local.json
+.claude/worktrees/
 CLAUDE.local.md
+
+# === Your machine =========================================================
+# Your own paths: copy launchers/_shared/config.local.bat.example.
+launchers/_shared/config.local.bat
 production/session-logs/
 
 # === Temporary and cache ==================================================

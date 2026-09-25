@@ -1,0 +1,51 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    guoasset: a read-only MCP server that renders UO art straight from the
+    client data, as the parity reference for /parity-check.
+
+    It decodes with UPSTREAM ClassicUO's loaders, compiled from the pinned
+    checkout in sources/, not with GUO's port of them. That is the point: a
+    reference decoded by the code under test could not catch its bugs.
+
+    Build it with launchers\dev\build_guoasset.bat. That sets an artifacts
+    path of build\guoasset, which keeps every obj\ and bin\ of the
+    upstream projects out of sources\ as well as out of this folder.
+
+    net10.0 because upstream is; this is a dev tool, like the shard, and the
+    client itself stays on net8.0.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>GUO.AssetMcp</RootNamespace>
+    <AssemblyName>guoasset</AssemblyName>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <UpstreamDir Condition="'$(UpstreamDir)' == ''">$(MSBuildThisFileDirectory)..\..\sources\ClassicUO</UpstreamDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="$(UpstreamDir)\src\ClassicUO.Assets\ClassicUO.Assets.csproj" />
+  </ItemGroup>
+
+  <!--
+    Upstream decompresses with a native zlib it ships for Windows; Linux and
+    macOS use the system's. Nothing else native is needed: no window, no
+    device, no audio.
+  -->
+  <Target Name="CopyUpstreamZlib" AfterTargets="Build" Condition="'$(OS)' == 'Windows_NT'">
+    <Copy SourceFiles="$(UpstreamDir)\external\x64\zlib.dll" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+  </Target>
+
+  <ItemGroup>
+    <PackageReference Include="ModelContextProtocol" Version="2.2.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.0" />
+  </ItemGroup>
+
+</Project>

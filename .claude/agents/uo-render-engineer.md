@@ -116,10 +116,10 @@ against the original client showing the same content, and describe the
 comparison you made.
 
 For per-asset ground truth there is a better oracle than a screenshot of the
-running client: the external project's `guoasset-mcp` renders art, gumps and multis directly
-from the same `.mul`/`.uop` files this port reads, so both images come from
-one source of truth. See `docs/external-reference.md` — note it is a the external project-local
-MCP server and is not currently reachable from this repo.
+running client: the `guoasset` MCP (`tools/guoasset`) renders art, gumps and
+multis directly from the same `.mul`/`.uop` files this port reads, decoded by
+upstream ClassicUO's own loaders, so both images come from one source of
+truth. Build it with `launchers\dev\build_guoasset.bat`.
 
 Reference captures derive from proprietary client data: write them to
 `build/` or the scratchpad and **never commit them**. If you have not compared, say that you have not — an

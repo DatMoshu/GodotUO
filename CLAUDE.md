@@ -32,7 +32,7 @@ writes to stdout; plain `godot` returns immediately and prints nothing.
 
 ```
 launchers/        .bat entry points, grouped by job. Start here.
-  _shared/        config.bat (the ONLY file you edit) + common.bat
+  _shared/        config.local.bat (yours, gitignored) + config.bat + common.bat
   game/play.bat   THE launcher
   editor/         open the Godot project or the upstream reference
   pipeline/       numbered data steps, run in order
@@ -44,6 +44,7 @@ godot/GUO/        the Godot project
 sources/ClassicUO/  upstream reference — READ ONLY, never edit
 tools/            one folder per job + one per third-party program
   guo/            shared Python package; all tools import from here
+  guoasset/       parity reference renderer (MCP), on upstream's loaders
   modernuo/       the dev shard: patches, config templates (src/ gitignored)
 docs/             port_plan.md, data_formats.md, port_status.md (generated)
   architecture/   ADRs — binding decisions. ADR-0001 governs the renderer.
@@ -55,14 +56,17 @@ build/            generated artifacts — gitignored
 
 ## Configuration
 
-`launchers/_shared/config.bat` is **the only file a user edits.** Everything
-resolves in one order, everywhere:
+A user's own paths go in `launchers/_shared/config.local.bat`, which is
+gitignored (start from `config.local.bat.example`). `config.bat` holds the
+shared defaults and has no machine paths in it. Everything resolves in one
+order, everywhere:
 
-**environment variable → `config.bat` → central shared config (optional)**
+**environment variable → `config.local.bat` → `config.bat` → central shared config (optional)**
 
-No launcher, tool or runtime hardcodes a path. `tools/guo/config.py` reads
-the same values, parsing `config.bat` directly when run outside a launcher, so
-behaviour is identical from a launcher, the editor, an agent or CI.
+No launcher, tool or runtime hardcodes a path, and no machine path is ever
+committed. `tools/guo/config.py` and `tools/guoasset` read the same values,
+parsing the .bat files directly when run outside a launcher, so behaviour is
+identical from a launcher, the editor, an agent or CI.
 
 Key settings: `UO_CLIENT_DATA` (your UO install), `UO_CLIENT_VERSION`,
 `UO_CACHE_DIR`, `UO_SHARD_HOST` / `UO_SHARD_PORT`.
@@ -84,6 +88,7 @@ launchers\dev\playtest.bat                 play a session and check it (needs a 
 launchers\dev\endurance.bat                play on for a while and watch for drift
 launchers\dev\plugin_probe.bat             load test plugins and check what they see (needs a shard)
 launchers\dev\sync_upstream.bat            check upstream drift
+launchers\dev\build_guoasset.bat           build the parity reference MCP
 launchers\shard\run.bat                    run the local dev shard
 launchers\shard\populate.bat               generate its world (once)
 launchers\game\play.bat                    run the client
@@ -146,7 +151,7 @@ specialists were removed. Port-specific additions:
 
 Skills: `/port-status`, `/port-file`, `/parity-check`, plus the inherited
 studio set. MCP: `guoasset` (see `tools/guoasset/README.md`) renders UO art
-from the client data as a parity reference.
+from the client data with upstream's loaders, as a parity reference.
 
 ---
 

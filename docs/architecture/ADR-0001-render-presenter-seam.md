@@ -376,9 +376,9 @@ Alternative 1, reachable at any point as a merge rather than a rewrite.
       one implementation, many call sites.
 - [ ] Seam overhead < 0.5ms at 8,000 visible items.
 
-Reference captures come from the classic client and from the external project's `guoasset-mcp`
-(`guoasset.get_image`), which renders art, gumps and multis directly from the
-same client data — see `docs/external-reference.md`.
+Reference captures come from the classic client and from the `guoasset` MCP
+(`get_image`), which renders art, gumps and multis directly from the same
+client data with upstream ClassicUO's loaders — see `tools/guoasset/README.md`.
 
 ## GDD Requirements Addressed
 
@@ -391,7 +391,7 @@ and any future alternate presentation mode.
 ## Related
 
 - `docs/port_plan.md` — Phase 3 (Render) implements this ADR
-- `docs/external-reference.md` — reference captures and asset tooling
+- `tools/guoasset/README.md` — reference captures
 - `docs/engine-reference/godot/VERSION.md` — knowledge risk for Godot 4.7.2
 - Upstream (read-only reference, pin `007ef8c3`):
   - `src/ClassicUO.Client/Game/Scenes/GameSceneDrawingSorting.cs`

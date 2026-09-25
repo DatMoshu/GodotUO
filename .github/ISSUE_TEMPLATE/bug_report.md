@@ -1,49 +1,36 @@
 ---
-name: Bug Report
-about: Something isn't working as expected
-title: "[Bug] "
+name: Bug report
+about: GUO does something wrong, or differently from ClassicUO
+title: ""
 labels: bug
 assignees: ''
 ---
 
-## Description
+## What happens
 
-A clear description of what the bug is.
+<!-- What you saw. Attach a screenshot for anything visual. -->
 
-## Steps to Reproduce
+## What should happen
 
-1. Open Claude Code in a project using this template
-2. Run `/<skill>` or trigger `<agent>`
-3. ...
-4. See error
+<!-- What ClassicUO (or the original client) does in the same place. Say which you compared against. -->
 
-## Expected Behavior
+## Steps to reproduce
 
-What you expected to happen.
-
-## Actual Behavior
-
-What actually happened. Include any error messages or unexpected output.
+1.
+2.
+3.
 
 ## Environment
 
-- **OS**: (e.g., Windows 10, macOS 14, Ubuntu 24.04)
-- **Shell**: (e.g., Git Bash, zsh, bash)
-- **Claude Code version**: (run `claude --version`)
-- **Node.js version**: (run `node --version`)
-- **jq installed?**: Yes / No
-- **Python installed?**: Yes / No
+- **GUO commit:**
+- **OS:**
+- **UO client version** (`UO_CLIENT_VERSION`):
+- **Shard:** <!-- local ModernUO dev shard, or which server -->
+- **Plugins loaded:** <!-- none / Razor / ClassicAssist / ... -->
 
-## Affected Component
+## Logs
 
-- [ ] Agent (which one?):
-- [ ] Skill (which one?):
-- [ ] Hook (which one?):
-- [ ] Rule (which one?):
-- [ ] Template
-- [ ] Documentation
-- [ ] Other:
+<!-- The console output around the problem. Remove account names and anything private. -->
 
-## Additional Context
-
-Any other context — screenshots, terminal output, or the session log if relevant.
+```
+```
