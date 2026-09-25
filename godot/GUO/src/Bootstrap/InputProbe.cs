@@ -69,11 +69,29 @@ internal static class InputProbe
     /// and are not read from anywhere: they identify the probe's own account
     /// and nothing else.
     /// </summary>
-    private const string ProbeAccount = "guoprobe";
+    private const string DefaultAccount = "guoprobe";
 
-    private const string ProbePassword = "guoprobe";
+    private const string DefaultPassword = "guoprobe";
 
-    private const string ProbeCharacter = "Guoprobe";
+    private const string DefaultCharacter = "Guoprobe";
+
+    /// <summary>
+    /// The account this process logs in with. --account overrides it so that
+    /// several clients can share one shard without sharing a session.
+    /// </summary>
+    public static string ProbeAccount { get; set; } = DefaultAccount;
+
+    public static string ProbePassword { get; set; } = DefaultPassword;
+
+    /// <summary>
+    /// The character to play, by name, or null for whichever the character
+    /// list has selected -- the last one played, which is what a person's
+    /// own playtest expects. --character sets it: the shard does not refuse
+    /// an account that is already online, so four clients on the owner
+    /// account, each on its own character, all have the owner's commands.
+    /// A named character that does not exist is made.
+    /// </summary>
+    public static string ProbeCharacter { get; set; }
 
     /// <summary>
     /// Every expectation the run has checked, in order.
@@ -142,11 +160,17 @@ internal static class InputProbe
     public static async System.Threading.Tasks.Task EnterTheWorld(
         Node host,
         int settleFrames,
-        string account = ProbeAccount,
-        string password = ProbePassword,
-        string character = ProbeCharacter
+        string account = null,
+        string password = null,
+        string character = null
     )
     {
+        account ??= ProbeAccount;
+        password ??= ProbePassword;
+        character ??= ProbeCharacter;
+        bool byName = character != null;
+        character ??= DefaultCharacter;
+
         await Frames(host, settleFrames);
 
         GD.Print("[GUO] input probe: typing the account");
@@ -177,15 +201,46 @@ internal static class InputProbe
         // walking the creation pages blind on a returning account pressed the
         // list's forward arrow with nothing chosen, and the probe sat at a
         // loading screen for the rest of the run.
-        if (Game.Managers.UIManager.GetGump<Game.UI.Gumps.Login.CharacterSelectionGump>() != null)
-        {
-            GD.Print("[GUO] input probe: the account has a character; logging it in");
+        bool creating = Game.Managers.UIManager.GetGump<Game.UI.Gumps.Login.CharacterSelectionGump>() == null;
 
-            // CharacterSelectionGump.Buttons: Next is 2, and it logs in
-            // whichever character is selected, which is the first by default.
-            await ClickGumpButton<Game.UI.Gumps.Login.CharacterSelectionGump>(host, 2, "Next");
+        if (!creating)
+        {
+            Game.Scenes.LoginScene loginScene = Client.Game.GetScene<Game.Scenes.LoginScene>();
+            int slot = System.Array.IndexOf(loginScene?.Characters ?? System.Array.Empty<string>(), character);
+
+            if (!byName)
+            {
+                GD.Print("[GUO] input probe: the account has a character; logging it in");
+
+                // CharacterSelectionGump.Buttons: Next is 2, and it logs in
+                // whichever character is selected, which is the last played.
+                await ClickGumpButton<Game.UI.Gumps.Login.CharacterSelectionGump>(host, 2, "Next");
+            }
+            else if (slot >= 0)
+            {
+                GD.Print($"[GUO] input probe: the account has {character}; logging it in");
+
+                // Which character is picked is set-up, not what is under test,
+                // so the scene is told directly rather than the list clicked:
+                // the entries lay themselves out and the list remembers the
+                // last character per account, which another client on the
+                // same account may have changed a moment ago.
+                loginScene.SelectCharacter((uint) slot);
+            }
+            else
+            {
+                GD.Print($"[GUO] input probe: the account has no {character}; making one");
+
+                // CharacterSelectionGump.Buttons: New is 0.
+                await ClickGumpButton<Game.UI.Gumps.Login.CharacterSelectionGump>(host, 0, "New");
+
+                await Frames(host, 120);
+
+                creating = true;
+            }
         }
-        else
+
+        if (creating)
         {
             GD.Print("[GUO] input probe: naming the character");
 

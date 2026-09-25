@@ -67,6 +67,12 @@ REM  in game, not at the console. Local dev shard only; not a credential.
 if not defined UO_SHARD_OWNER       set "UO_SHARD_OWNER=guoprobe"
 if not defined UO_SHARD_OWNER_PASSWORD set "UO_SHARD_OWNER_PASSWORD=guoprobe"
 
+REM  Accounts for scripted clients that run beside the owner (multi_client.bat):
+REM  the shard refuses a second character from one account, and "[go" takes
+REM  staff access. Made on a headless boot with game master access; each one's
+REM  password is its name. Comma-separated. Local dev shard only.
+if not defined UO_SHARD_GM_ACCOUNTS  set "UO_SHARD_GM_ACCOUNTS=guoeffects,guohighlight,guosweep"
+
 REM  How far from a player the shard bothers to send items and mobiles. UO's
 REM  own answer is 18 tiles, which was a little more than a 640x480 screen and
 REM  is a fraction of a modern one: the client draws map art some 70 tiles out,

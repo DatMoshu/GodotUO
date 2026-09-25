@@ -74,6 +74,11 @@ creation made it a player at the first login. ModernUO takes its
 administration commands in game and not at the console, so without an owner
 account the world cannot be generated at all.
 
+The same boot makes every account in `UO_SHARD_GM_ACCOUNTS` (comma-separated,
+password = name) with game master access, for `launchers\dev\multi_client.bat`:
+the shard refuses a second character from one account, so four clients at once
+need four accounts, and three of those clients type `[go`.
+
 Keep this list append-only and numbered. A patch that upstream adopts should
 be deleted, not silently dropped from the set.
 

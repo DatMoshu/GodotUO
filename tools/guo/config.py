@@ -82,6 +82,9 @@ class Config:
     shard_name: str
     shard_owner: str
     shard_owner_password: str
+    # Game master accounts the shard makes on a headless boot, for scripted
+    # clients that run beside the owner. Each one's password is its name.
+    shard_gm_accounts: tuple[str, ...]
     log_level: str
 
     # --- derived paths (never configured directly) ---
@@ -173,5 +176,8 @@ def load_config(root: Path | None = None) -> Config:
         shard_port=shard_port,
         shard_owner=get("UO_SHARD_OWNER", "guoprobe"),
         shard_owner_password=get("UO_SHARD_OWNER_PASSWORD", "guoprobe"),
+        shard_gm_accounts=tuple(
+            a.strip() for a in get("UO_SHARD_GM_ACCOUNTS", "guoeffects,guohighlight,guosweep").split(",") if a.strip()
+        ),
         log_level=get("UO_LOG_LEVEL", "INFO"),
     )

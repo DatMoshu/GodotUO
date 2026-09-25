@@ -43,6 +43,22 @@ public partial class Main : Node
     {
         _options = Options.Parse(OS.GetCmdlineUserArgs());
 
+        if (!string.IsNullOrWhiteSpace(_options.Account))
+        {
+            InputProbe.ProbeAccount = _options.Account;
+            InputProbe.ProbePassword = string.IsNullOrEmpty(_options.Password)
+                ? _options.Account
+                : _options.Password;
+        }
+
+        if (!string.IsNullOrWhiteSpace(_options.Character))
+        {
+            InputProbe.ProbeCharacter = _options.Character;
+        }
+
+        GameController.PinnedWindowPosition = _options.WindowPosition;
+        GameController.PinnedWindowSize = _options.WindowSize;
+
         // Before the client-data checks on purpose: the batcher probe draws
         // synthetic art and has nothing to do with a UO install, so it must
         // still run on a machine that has none.
@@ -121,17 +137,30 @@ public partial class Main : Node
             case RunMode.Play:
                 StartClient();
 
-                if (_options.ShardCommands.Count > 0)
+                if (Scripted && !_options.Sound)
                 {
-                    ShardCommandsThenQuit();
+                    // Scripted runs are silent unless asked: four clients at
+                    // once would otherwise play four Britain themes over a
+                    // person's own audio. Muting the bus, not the client's
+                    // sound settings, so the probe still hears a footstep
+                    // start -- it reads what is playing, not the speaker.
+                    AudioServer.SetBusMute(AudioServer.GetBusIndex("Master"), true);
+                    GD.Print("[GUO] audio muted for a scripted run (--sound to hear it)");
                 }
-                else if (_options.HighlightProbe)
+
+                // Commands and a probe together: the commands run first
+                // (typically "[go" somewhere populated) and the probe follows.
+                if (_options.HighlightProbe)
                 {
                     HighlightProbeThenQuit();
                 }
                 else if (_options.EffectsProbe > 0)
                 {
                     EffectsProbeThenQuit();
+                }
+                else if (_options.ShardCommands.Count > 0)
+                {
+                    ShardCommandsThenQuit();
                 }
                 else if (_options.TradePartner)
                 {
@@ -280,6 +309,24 @@ public partial class Main : Node
     /// Log in and type the commands the launcher passed, then quit. The dev
     /// shard takes its administration in game; see ShardCommands.
     /// </summary>
+    /// <summary>Play mode with something driving it, rather than a person.</summary>
+    private bool Scripted =>
+        _options.ShardCommands.Count > 0
+        || _options.HighlightProbe
+        || _options.EffectsProbe > 0
+        || _options.TradePartner
+        || _options.InputProbe
+        || _options.ShotAfter > 0;
+
+    /// <summary>Type any --shard-command lines before a probe starts.</summary>
+    private async System.Threading.Tasks.Task Preamble()
+    {
+        if (_options.ShardCommands.Count > 0)
+        {
+            await ShardCommands.Run(this, _options.ShardCommands);
+        }
+    }
+
     private async void ShardCommandsThenQuit()
     {
         await ShardCommands.Run(this, _options.ShardCommands);
@@ -299,6 +346,7 @@ public partial class Main : Node
     /// </summary>
     private async void EffectsProbeThenQuit()
     {
+        await Preamble();
         EffectsProbe.Count = _options.EffectsProbe;
         EffectsProbe.Plain = _options.EffectsPlain;
         await EffectsProbe.Run(this);
@@ -312,6 +360,7 @@ public partial class Main : Node
     /// </summary>
     private async void HighlightProbeThenQuit()
     {
+        await Preamble();
         await HighlightProbe.Run(this);
         await CaptureFrame();
         Quit(HighlightProbe.Passed ? 0 : 1);
@@ -437,6 +486,34 @@ public partial class Main : Node
         /// <summary>Drive the running client with synthesised input.</summary>
         public bool InputProbe { get; private set; }
 
+        /// <summary>Let a scripted run be heard. Off by default; a person playing is never muted.</summary>
+        public bool Sound { get; private set; }
+
+        /// <summary>
+        /// Account, password and character for every scripted mode; empty
+        /// means the probe's own. The password defaults to the account name,
+        /// which is what auto account creation on the dev shard makes of it.
+        /// </summary>
+        public string Account { get; private set; } = "";
+        public string Password { get; private set; } = "";
+        public string Character { get; private set; } = "";
+
+        /// <summary>
+        /// Where to put the window, overriding the saved position and never
+        /// saved back. Null leaves the client to place itself. This is what
+        /// lets several scripted clients tile a screen instead of stacking.
+        /// </summary>
+        public Vector2I? WindowPosition { get; private set; }
+
+        /// <summary>
+        /// The window's size, overriding the saved size and the saved
+        /// maximised state, and never saved back. Four clients share one
+        /// settings file, and each one writes its window state on exit, so
+        /// without this a lane comes up at whatever size the last lane to
+        /// quit had.
+        /// </summary>
+        public Vector2I? WindowSize { get; private set; }
+
         /// <summary>
         /// Seconds the probe keeps playing at the end of its run, to see
         /// whether a long session drifts. Zero means it does not.
@@ -528,6 +605,40 @@ public partial class Main : Node
                         if (int.TryParse(Next(), out int effects))
                         {
                             o.EffectsProbe = effects;
+                        }
+
+                        break;
+                    case "--sound":
+                        o.Sound = true;
+                        break;
+                    case "--account":
+                        o.Account = Next();
+                        break;
+                    case "--password":
+                        o.Password = Next();
+                        break;
+                    case "--character":
+                        o.Character = Next();
+                        break;
+                    case "--window-position":
+                        {
+                            string[] xy = Next().Split(',');
+
+                            if (xy.Length == 2 && int.TryParse(xy[0], out int wx) && int.TryParse(xy[1], out int wy))
+                            {
+                                o.WindowPosition = new Vector2I(wx, wy);
+                            }
+                        }
+
+                        break;
+                    case "--window-size":
+                        {
+                            string[] wh = Next().Split(',');
+
+                            if (wh.Length == 2 && int.TryParse(wh[0], out int ww) && int.TryParse(wh[1], out int wh2))
+                            {
+                                o.WindowSize = new Vector2I(ww, wh2);
+                            }
                         }
 
                         break;

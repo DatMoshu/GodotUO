@@ -56,6 +56,39 @@ namespace GUO
         private readonly RenderLists _renderLists = new();
         private bool _suppressedDraw;
         private bool _pluginsInitialized = false;
+
+        /// <summary>
+        /// PORT DEVIATION (GUO): a window position given on the command line.
+        /// It wins over the saved one and is never saved, so a scripted run
+        /// that tiles four clients across a screen leaves the next ordinary
+        /// launch where the user last put it.
+        /// </summary>
+        public static Vector2I? PinnedWindowPosition { get; set; }
+
+        /// <summary>
+        /// PORT DEVIATION (GUO): a window size given on the command line. It
+        /// wins over the saved size and the saved maximised state when the
+        /// game scene sizes the window, and neither is saved back.
+        /// </summary>
+        public static Vector2I? PinnedWindowSize { get; set; }
+
+        /// <summary>
+        /// Applies PinnedWindowSize; false when there is none, so the caller
+        /// sizes the window from the settings as upstream does.
+        /// </summary>
+        public bool SetPinnedWindowSize()
+        {
+            if (!PinnedWindowSize.HasValue)
+            {
+                return false;
+            }
+
+            RestoreWindow();
+            SetWindowSize(PinnedWindowSize.Value.X, PinnedWindowSize.Value.Y);
+            SetWindowPositionBySettings();
+
+            return true;
+        }
         private float _displayScale;
         private Texture2D _hueTexture, _lightTexture;
 
@@ -285,10 +318,13 @@ namespace GUO
             // the client area's position and expects the frame's back.
             // DisplayServer.WindowGetPosition is already the position that
             // WindowSetPosition takes, so there is nothing to correct for.
-            Settings.GlobalSettings.WindowPosition = new Point(
-                Math.Max(0, Window.ClientBounds.X),
-                Math.Max(0, Window.ClientBounds.Y)
-            );
+            if (!PinnedWindowPosition.HasValue)
+            {
+                Settings.GlobalSettings.WindowPosition = new Point(
+                    Math.Max(0, Window.ClientBounds.X),
+                    Math.Max(0, Window.ClientBounds.Y)
+                );
+            }
 
             Audio?.StopMusic();
             Settings.GlobalSettings.Save();
@@ -452,6 +488,13 @@ namespace GUO
 
         public void SetWindowPositionBySettings()
         {
+            if (PinnedWindowPosition.HasValue)
+            {
+                DisplayServer.WindowSetPosition(PinnedWindowPosition.Value);
+
+                return;
+            }
+
             if (!Settings.GlobalSettings.WindowPosition.HasValue)
             {
                 return;

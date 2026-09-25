@@ -26,7 +26,13 @@ internal static class HighlightProbe
 
     public static async System.Threading.Tasks.Task Run(Node host)
     {
-        await InputProbe.EnterTheWorld(host, 200);
+        // Already in when --shard-command ran first: a probe can be sent
+        // somewhere before it starts, which a character made a moment ago
+        // in an empty corner of the map needs.
+        if (!Client.Game.UO.World.InGame)
+        {
+            await InputProbe.EnterTheWorld(host, 200);
+        }
 
         World world = Client.Game.UO.World;
 
@@ -86,8 +92,13 @@ internal static class HighlightProbe
 
     private static async System.Threading.Tasks.Task<(GameObject, Vector2)> FindMeshed(Node host)
     {
-        Vector2 size = host.GetViewport().GetVisibleRect().Size;
-        var centre = size / 2;
+        // The character sits in the middle of the world view, which on a fresh
+        // profile is 640x480 in the corner of the window, not the window.
+        Game.UI.Gumps.WorldViewportGump view =
+            Game.Managers.UIManager.GetGump<Game.UI.Gumps.WorldViewportGump>();
+        Vector2 centre = view != null
+            ? new Vector2(view.X + view.Width / 2f, view.Y + view.Height / 2f)
+            : host.GetViewport().GetVisibleRect().Size / 2;
 
         // Outwards from the character, which the camera keeps in the middle.
         for (int r = 40; r <= 400; r += 20)

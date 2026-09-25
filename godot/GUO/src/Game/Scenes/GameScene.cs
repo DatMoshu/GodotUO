@@ -134,7 +134,12 @@ namespace GUO.Game.Scenes
             Godot.DisplayServer.WindowSetMinSize(new Godot.Vector2I(
                 Client.Game.ScaleWithDpi(640), Client.Game.ScaleWithDpi(480)));
 
-            if (ProfileManager.CurrentProfile.WindowBorderless)
+            // PORT DEVIATION (GUO): a size from the command line wins; see
+            // GameController.PinnedWindowSize.
+            if (Client.Game.SetPinnedWindowSize())
+            {
+            }
+            else if (ProfileManager.CurrentProfile.WindowBorderless)
             {
                 Client.Game.SetWindowBorderless(true);
             }
@@ -332,12 +337,17 @@ namespace GUO.Game.Scenes
             _useItemQueue?.Clear();
             _world.MessageManager.MessageReceived -= ChatOnMessageReceived;
 
-            Settings.GlobalSettings.WindowSize = new Point(
-                Client.Game.ClientBounds.Width,
-                Client.Game.ClientBounds.Height
-            );
+            // PORT DEVIATION (GUO): a pinned size is not saved back.
+            if (!GameController.PinnedWindowSize.HasValue)
+            {
+                Settings.GlobalSettings.WindowSize = new Point(
+                    Client.Game.ClientBounds.Width,
+                    Client.Game.ClientBounds.Height
+                );
 
-            Settings.GlobalSettings.IsWindowMaximized = Client.Game.IsWindowMaximized();
+                Settings.GlobalSettings.IsWindowMaximized = Client.Game.IsWindowMaximized();
+            }
+
             Client.Game.SetWindowBorderless(false);
 
             base.Unload();

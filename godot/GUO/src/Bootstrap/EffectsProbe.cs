@@ -53,7 +53,13 @@ internal static class EffectsProbe
 
     public static async System.Threading.Tasks.Task Run(Node host)
     {
-        await InputProbe.EnterTheWorld(host, 200);
+        // Already in when --shard-command ran first: a probe can be sent
+        // somewhere before it starts, which a character made a moment ago
+        // in an empty corner of the map needs.
+        if (!Client.Game.UO.World.InGame)
+        {
+            await InputProbe.EnterTheWorld(host, 200);
+        }
 
         World world = Client.Game.UO.World;
 
