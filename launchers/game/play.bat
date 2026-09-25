@@ -21,7 +21,7 @@ echo.
 if not exist "%UO_CLIENT_DATA%\tiledata.mul" (
     echo [play] FATAL: no UO client data at "%UO_CLIENT_DATA%"
     echo [play] Point UO_CLIENT_DATA at your Ultima Online install in
-    echo [play]   launchers\_shared\config.bat
+    echo [play]   launchers\_shared\config.local.bat  (copy it from config.local.bat.example)
     exit /b 1
 )
 

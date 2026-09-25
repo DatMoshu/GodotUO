@@ -54,7 +54,7 @@ if not defined GODOT_CONSOLE set "GODOT_CONSOLE=%UO_GODOT_DIR%\Godot_v%GODOT_VER
 if not exist "%GODOT_EXE%" (
     echo [common] FATAL: Godot not found at "%GODOT_EXE%"
     echo [common] Fetch the pinned build with: launchers\dev\fetch_godot.bat
-    echo [common] Or set GODOT_EXE in launchers\_shared\config.bat
+    echo [common] Or set GODOT_EXE in launchers\_shared\config.local.bat
     exit /b 1
 )
 if not exist "%GODOT_CONSOLE%" set "GODOT_CONSOLE=%GODOT_EXE%"

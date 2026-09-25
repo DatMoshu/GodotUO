@@ -91,7 +91,8 @@ Journey** (Id 11), which is what a 7.0.x client expects.
 
 `configure.py` writes both into `src/Distribution/Configuration/` on first run,
 resolving the placeholders through `tools/guo/config.py` — the same
-environment → `config.bat` → shared-config order everything else here uses.
+environment → `config.local.bat` → `config.bat` → shared-config order
+everything else here uses.
 
 It writes only files that do not exist. Edit the generated file to change a
 setting on this machine; edit the template to change it for everyone, and say
@@ -113,7 +114,7 @@ so everything the shard owns -- doors, signs, decoration, NPCs -- used to stop
 dead in a circle while the terrain carried on, and objects at its edge
 appeared as you walked up and were dropped again a tile later.
 
-`UO_SHARD_UPDATE_RANGE` in `launchers\_shared\config.bat` sets it; 72 covers
+`UO_SHARD_UPDATE_RANGE` in `launchers\_shared\config.local.bat` sets it; 72 covers
 a 4K window. Patch `0002` routes ModernUO's three hard-coded copies of 18
 through `Core.GlobalUpdateRange` so the one setting reaches all of them,
 including the reply to the client's own 0xC8 request -- the client uses that

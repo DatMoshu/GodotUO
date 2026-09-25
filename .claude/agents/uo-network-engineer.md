@@ -37,7 +37,7 @@ server's real behaviour.
 ## Configuration
 
 Host and port come from `UO_SHARD_HOST` / `UO_SHARD_PORT` via
-`launchers\_shared\config.bat`. The client version reported in the handshake
+`launchers\_shared\config.local.bat` over `config.bat`. The client version reported in the handshake
 comes from `UO_CLIENT_VERSION` and must match the data in `UO_CLIENT_DATA` —
 a mismatch produces failures that look like protocol bugs but are not.
 

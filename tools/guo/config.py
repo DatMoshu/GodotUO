@@ -1,7 +1,8 @@
 """Configuration resolution for GUO tools.
 
-Single source of truth is launchers/_shared/config.bat -- the one file a user
-is meant to edit. Tools never define their own defaults for these values.
+Defaults live in launchers/_shared/config.bat; a user's own values go in
+launchers/_shared/config.local.bat. Tools never define their own defaults for
+these values.
 
 Resolution order matches the launchers exactly:
 

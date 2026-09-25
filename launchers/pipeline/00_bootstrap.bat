@@ -3,9 +3,10 @@ REM ============================================================================
 REM  PIPELINE STEP 00 - one-time setup on a fresh clone.
 REM  Fetches the pinned engine and upstream reference, then verifies the config.
 REM ============================================================================
-call "%~dp0..\_shared\common.bat" 2>nul
+REM  Godot first: common.bat refuses to load until the engine is present.
 echo [00] Fetching pinned Godot (skipped if already present)...
 call "%~dp0..\dev\fetch_godot.bat" || exit /b 1
+call "%~dp0..\_shared\common.bat" || exit /b 1
 echo [00] Syncing upstream ClassicUO reference...
 call "%~dp0..\dev\sync_upstream.bat" || exit /b 1
 echo [00] Verifying client data...

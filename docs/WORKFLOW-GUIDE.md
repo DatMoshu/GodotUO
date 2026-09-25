@@ -1246,7 +1246,6 @@ The system has 12 hooks that run automatically:
 | Hook | Trigger | What It Does |
 |------|---------|-------------|
 | `session-start.sh` | Session start | Shows branch, recent commits, detects active.md for recovery |
-| `detect-gaps.sh` | Session start | Detects fresh projects (no engine, no concept) and suggests `/start` |
 | `pre-compact.sh` | Before compaction | Dumps session state into conversation for auto-recovery |
 | `post-compact.sh` | After compaction | Reminds Claude to restore session state from `active.md` |
 | `notify.sh` | Notification event | Shows Windows toast notification via PowerShell |

@@ -24,17 +24,18 @@ LUTs — lives under `UO_CACHE_DIR`, outside the repo. Deleting that directory
 must always be safe; the runtime rebuilds it on demand.
 
 **3. Configuration has one source.**
-`launchers/_shared/config.bat` is the only file a user edits. The launchers
-export its values as environment variables; `tools/guo/config.py` reads
-those and falls back to parsing the same file when a tool runs outside a
-launcher. There is no second config file.
+`launchers/_shared/config.bat` holds the shared defaults; a user's own
+values go in `launchers/_shared/config.local.bat` (gitignored), which
+`config.bat` reads first. The launchers export the result as environment
+variables; `tools/guo/config.py` reads those and falls back to parsing the
+same two files when a tool runs outside a launcher.
 
 ---
 
 ## 2. Configuration keys
 
-Every key resolves as: **environment variable → `config.bat` → central shared
-config (`UO_COMMON_CONFIG`, optional)**.
+Every key resolves as: **environment variable → `config.local.bat` →
+`config.bat` → central shared config (`UO_COMMON_CONFIG`, optional)**.
 
 | Key | Meaning |
 |---|---|
