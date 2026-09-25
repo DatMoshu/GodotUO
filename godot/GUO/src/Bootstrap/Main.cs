@@ -76,7 +76,7 @@ public partial class Main : Node
         {
             Fail(
                 "No UO client data directory configured.\n"
-                + "Set UO_CLIENT_DATA in launchers\\_shared\\config.bat, or pass\n"
+                + "Set UO_CLIENT_DATA in launchers\\_shared\\config.local.bat, or pass\n"
                 + "  --client-data \"<path to your UO install>\""
             );
             return;

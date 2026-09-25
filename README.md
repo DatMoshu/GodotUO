@@ -3,6 +3,8 @@
 **GodotUO** (GUO in the code) ports **Classic Ultima Online** to **Godot 4
 .NET** — getting the client off FNA while keeping the game behaviour intact.
 
+![Britain in GodotUO, on a local ModernUO shard](docs/images/britain.png)
+
 The strategy is a transplant rather than a rewrite: [ClassicUO](https://github.com/ClassicUO/ClassicUO)'s
 C# network stack, file readers and game logic are carried across; only the
 parts that genuinely bind to FNA are reimplemented on Godot.
