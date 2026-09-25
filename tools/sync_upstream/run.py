@@ -9,6 +9,7 @@ and — crucially — reports which upstream commits touched files the port has
     python tools/sync_upstream/run.py            update and report drift
     python tools/sync_upstream/run.py --pin      mark current upstream as reviewed
     python tools/sync_upstream/run.py --no-fetch report without touching network
+    python tools/sync_upstream/run.py --at-pin   check out the reviewed pin (bootstrap)
 
 The pin lives in docs/upstream/UPSTREAM_PIN.json and is committed, so the
 whole team shares one answer to "what have we reviewed up to?".
@@ -50,18 +51,36 @@ def git(repo: Path, *args: str, check: bool = True) -> str:
     return result.stdout.strip()
 
 
+# FNA's submodules nest deep enough to pass Windows' 260-character path limit
+# from an ordinary clone location. Git handles long paths only when asked.
+LONGPATHS = ["-c", "core.longpaths=true"]
+
+
 def clone(dest: Path) -> None:
     dest.parent.mkdir(parents=True, exist_ok=True)
     print(f"[sync] Cloning {UPSTREAM_URL} -> {dest}")
     subprocess.run(
         [
             "git",
+            *LONGPATHS,
             "clone",
+            "--config",
+            "core.longpaths=true",
             "--recurse-submodules",
             "--shallow-submodules",
             UPSTREAM_URL,
             str(dest),
         ],
+        check=True,
+    )
+
+
+def checkout_pin(repo: Path, commit: str) -> None:
+    """Put the reference at the reviewed commit, submodules included."""
+    print(f"[sync] Checking out the reviewed pin {commit[:12]}")
+    subprocess.run(["git", "-C", str(repo), "checkout", "-q", commit], check=True)
+    subprocess.run(
+        ["git", *LONGPATHS, "-C", str(repo), "submodule", "update", "--init", "--recursive"],
         check=True,
     )
 
@@ -136,6 +155,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--limit", type=int, default=25, help="max commits to list (default 25)"
     )
+    parser.add_argument(
+        "--at-pin",
+        action="store_true",
+        help="check out the reviewed pin instead of upstream HEAD (a fresh clone)",
+    )
     args = parser.parse_args(argv)
 
     cfg = load_config(Path(args.root) if args.root else None)
@@ -143,10 +167,22 @@ def main(argv: list[str] | None = None) -> int:
 
     if not upstream.is_dir():
         clone(upstream)
+    elif args.at_pin:
+        pass
     elif not args.no_fetch:
         deepen_if_shallow(upstream)
         print(f"[sync] Fetching {upstream}")
         git(upstream, "fetch", "--all", "--tags", check=False)
+
+    if args.at_pin:
+        # A new contributor builds against what the port was reviewed
+        # against, not whatever upstream merged this morning.
+        pin = load_pin(cfg.root)
+        if pin is None:
+            print("[sync] No review pin recorded; leaving upstream at HEAD.")
+            return 0
+        checkout_pin(upstream, pin["commit"])
+        return 0
 
     branch = git(upstream, "rev-parse", "--abbrev-ref", "HEAD", check=False) or "main"
     if not args.no_fetch:
