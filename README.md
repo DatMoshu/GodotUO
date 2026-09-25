@@ -1,7 +1,7 @@
-# GUO
+# GodotUO
 
-Porting **Classic Ultima Online** to **Godot 4 .NET** — getting the client off
-FNA while keeping the game behaviour intact.
+**GodotUO** (GUO in the code) ports **Classic Ultima Online** to **Godot 4
+.NET** — getting the client off FNA while keeping the game behaviour intact.
 
 The strategy is a transplant rather than a rewrite: [ClassicUO](https://github.com/ClassicUO/ClassicUO)'s
 C# network stack, file readers and game logic are carried across; only the
