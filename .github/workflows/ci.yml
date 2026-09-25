@@ -79,7 +79,7 @@ jobs:
           git checkout -q FETCH_HEAD
           git submodule update -q --init --recursive --depth 1
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: |
             8.0.x
