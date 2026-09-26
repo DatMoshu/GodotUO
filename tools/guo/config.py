@@ -88,6 +88,16 @@ class Config:
     shard_gm_accounts: tuple[str, ...]
     log_level: str
 
+    # --- Android (optional; see tools/android and ADR-0007) ---
+    android_sdk: Path
+    android_jdk: Path | None
+    android_keystore: Path
+    android_keystore_user: str
+    android_keystore_password: str
+    android_package: str
+    android_device: str
+    android_client_data: str
+
     # --- derived paths (never configured directly) ---
     @property
     def godot_project(self) -> Path:
@@ -165,7 +175,26 @@ def load_config(root: Path | None = None) -> Config:
 
     cache = get("UO_CACHE_DIR") or str(Path.home() / ".cache" / "GUO")
 
+    def path_or_none(key: str) -> Path | None:
+        # A value that still holds an unexpanded %VAR% is one whose variable
+        # was not set anywhere -- JAVA_HOME on a machine without one -- and
+        # means "not configured", not a folder called %JAVA_HOME%.
+        raw = os.path.expandvars(get(key))
+        return Path(raw) if raw and "%" not in raw else None
+
+    package = get("UO_ANDROID_PACKAGE", "org.guo.client")
+
     return Config(
+        android_sdk=path_or_none("UO_ANDROID_SDK")
+        or Path(os.path.expandvars("%LOCALAPPDATA%")) / "Android" / "Sdk",
+        android_jdk=path_or_none("UO_ANDROID_JDK"),
+        android_keystore=path_or_none("UO_ANDROID_KEYSTORE")
+        or Path(os.path.expandvars("%APPDATA%")) / "Godot" / "keystores" / "debug.keystore",
+        android_keystore_user=get("UO_ANDROID_KEYSTORE_USER", "androiddebugkey"),
+        android_keystore_password=get("UO_ANDROID_KEYSTORE_PASSWORD", "android"),
+        android_package=package,
+        android_device=get("UO_ANDROID_DEVICE", ""),
+        android_client_data=get("UO_ANDROID_CLIENT_DATA", f"/sdcard/Android/data/{package}/files/uo"),
         root=root,
         godot_version=get("GODOT_VERSION", "4.7.2-stable"),
         godot_flavor=get("GODOT_FLAVOR", "mono_win64"),

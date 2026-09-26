@@ -36,6 +36,9 @@ window/size/viewport_height=720
 ; it does not know the size of.
 window/stretch/mode="disabled"
 window/stretch/aspect="expand"
+; Phones and tablets only (ignored on the desktop): UO is a landscape game,
+; and the touch layer sizes its gump bar for a wide screen. ADR-0007.
+window/handheld/orientation=4
 
 [debug]
 

@@ -40,7 +40,21 @@
     plugin_host folder next to GUO.dll, where that class looks for it.
     Windows only, as .NET Framework is.
   -->
-  <ItemGroup Condition="'$(OS)' == 'Windows_NT'">
+  <!--
+    Whether this build carries the plugin host. Two facts have to hold: the
+    build machine is Windows, because the host is .NET Framework, and the
+    build is FOR Windows, because so is the host. Godot's export sets
+    GodotTargetPlatform from the RuntimeIdentifier (android-arm64 gives
+    "android"); a desktop build on Windows gets "windows" from the SDK, and
+    a plain `dotnet build` with no RID gets the same. Without the second
+    test an Android export from a Windows machine built the host for
+    android-arm64, which its x64 PlatformTarget refuses (NETSDK1032).
+    ADR-0007.
+  -->
+  <PropertyGroup>
+    <GuoPluginHost Condition="'$(OS)' == 'Windows_NT' and ('$(GodotTargetPlatform)' == '' or '$(GodotTargetPlatform)' == 'windows')">true</GuoPluginHost>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(GuoPluginHost)' == 'true'">
     <ProjectReference Include="..\..\tools\plugin_host\GUO.PluginHost.csproj"
                       ReferenceOutputAssembly="false"
                       SkipGetTargetFrameworkProperties="true"
@@ -51,14 +65,14 @@
     one folder deeper, and publishes to a directory of its own; both are
     covered so an exported build carries plugin_host as a dev build does.
   -->
-  <Target Name="CopyPluginHost" AfterTargets="Build" Condition="'$(OS)' == 'Windows_NT'">
+  <Target Name="CopyPluginHost" AfterTargets="Build" Condition="'$(GuoPluginHost)' == 'true'">
     <ItemGroup>
       <PluginHostFiles Include="..\..\tools\plugin_host\bin\$(Configuration)\*.dll" />
       <PluginHostFiles Include="..\..\tools\plugin_host\bin\$(Configuration)\$(RuntimeIdentifier)\*.dll" Condition="'$(RuntimeIdentifier)' != ''" />
     </ItemGroup>
     <Copy SourceFiles="@(PluginHostFiles)" DestinationFolder="$(OutDir)plugin_host" SkipUnchangedFiles="true" />
   </Target>
-  <Target Name="PublishPluginHost" AfterTargets="Publish" DependsOnTargets="CopyPluginHost" Condition="'$(OS)' == 'Windows_NT'">
+  <Target Name="PublishPluginHost" AfterTargets="Publish" DependsOnTargets="CopyPluginHost" Condition="'$(GuoPluginHost)' == 'true'">
     <Error Condition="'@(PluginHostFiles)' == ''" Text="plugin_host was not built; an exported GUO would load no managed plugin." />
     <Copy SourceFiles="@(PluginHostFiles)" DestinationFolder="$(PublishDir)plugin_host" SkipUnchangedFiles="true" />
   </Target>
