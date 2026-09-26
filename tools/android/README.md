@@ -125,7 +125,7 @@ Run, with the result:
 | `dotnet build godot\GUO\GUO.csproj` (desktop) | 0 errors, unchanged behaviour |
 | `dotnet publish -c ExportDebug -r android-arm64 --self-contained true -p:GodotTargetPlatform=android` (the .NET half of an export, what `doctor --publish` runs) | succeeds only with the `GuoPluginHost` guard in `GUO.csproj`; without it `NETSDK1032` from `tools\plugin_host`. Output has no `plugin_host` folder. |
 | `launchers\dev\touch_probe.bat` equivalent (desktop, dev shard) | 18/18 checks: tap, focus, long-press right-click on the login screen; hold-to-walk (character moved), double-tap paperdoll, pinch -> Ctrl+wheel with the camera zoom changing, gump bar -> backpack, long-press closed the paperdoll |
-| `python tools\android\run.py doctor` | ran; listed 13 missing things with fixes (no SDK, no templates unpacked, no keystore, editor settings unset, device unauthorized). Its output is in the ADR. |
+| `python tools\android\run.py doctor` | ran; listed 11 missing things with fixes (no SDK, no templates unpacked, no keystore, editor settings unset, device unauthorized). Its output is in the ADR. |
 
 Written but **not** run, because the machine cannot: `templates` (the tpz
 unpack), `keystore`, `settings`, `export` (the Godot half), `install`, `run`,
