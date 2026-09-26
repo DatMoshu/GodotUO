@@ -431,6 +431,46 @@ namespace GUO.Renderer
             }
         }
 
+        /// <summary>
+        /// Puts one sprite of this layer, alone, into <paramref name="mesh"/>.
+        /// </summary>
+        /// <remarks>
+        /// For land that has to be drawn again inside the sorted pass (see
+        /// RenderLists.CoverFromBelow). The sprite batcher cannot draw
+        /// stretched land -- the per-vertex light only reaches the shader
+        /// through a mesh, ADR-0004 -- so the tile is drawn from the very quad
+        /// the bake holds, and comes out pixel for pixel as the bake drew it.
+        /// </remarks>
+        public void FillSpriteMesh(int index, ArrayMesh mesh)
+        {
+            if (_points.Length < 6)
+            {
+                Array.Resize(ref _points, 6);
+                Array.Resize(ref _uvs, 6);
+                Array.Resize(ref _colors, 6);
+                Array.Resize(ref _custom, 24);
+            }
+
+            WriteTriangles(index, 0);
+
+            mesh.ClearSurfaces();
+
+            var arrays = new Godot.Collections.Array();
+            arrays.Resize((int)Mesh.ArrayType.Max);
+            arrays[(int)Mesh.ArrayType.Vertex] = _points.AsSpan(0, 6).ToArray();
+            arrays[(int)Mesh.ArrayType.TexUV] = _uvs.AsSpan(0, 6).ToArray();
+            arrays[(int)Mesh.ArrayType.Color] = _colors.AsSpan(0, 6).ToArray();
+            arrays[(int)Mesh.ArrayType.Custom0] = _custom.AsSpan(0, 24).ToArray();
+
+            mesh.AddSurfaceFromArrays(
+                Mesh.PrimitiveType.Triangles,
+                arrays,
+                null,
+                null,
+                (Mesh.ArrayFormat)((ulong)Mesh.ArrayCustomFormat.Rgba8Unorm
+                    << (int)Mesh.ArrayFormat.FormatCustom0Shift));
+        }
+
         private void WriteTriangles(int index, int at)
         {
             ref MeshQuad q = ref Vertices[index];

@@ -222,6 +222,7 @@ namespace GUO.Renderer
             EnsureNotStarted();
 
             _itemCount = 0;
+            _spriteMeshUsed = 0;
             TextureSwitches = 0;
             FlushesDone = 0;
 
@@ -379,6 +380,62 @@ namespace GUO.Renderer
 
             return layer.VisibleSpriteCount;
         }
+
+        /// <summary>
+        /// Draws one sprite of a chunk mesh layer, at the world offset given,
+        /// in the middle of ordinary sprites.
+        /// </summary>
+        /// <remarks>
+        /// GUO addition, for land drawn again inside the sorted pass
+        /// (RenderLists.CoverFromBelow; ADR-0004, amended 2026-09-25). The
+        /// meshes come from a pool reset each frame, so a frame's worth stay
+        /// alive until the canvas has drawn them.
+        /// </remarks>
+        public int DrawMeshSprite(MeshLayer layer, int index, int offsetX, int offsetY)
+        {
+            EnsureStarted();
+
+            if (layer == null || index < 0 || index >= layer.Count || layer.Textures[index] == null)
+            {
+                return 0;
+            }
+
+            if (_spriteMeshUsed == _spriteMeshes.Count)
+            {
+                _spriteMeshes.Add(new ArrayMesh());
+            }
+
+            ArrayMesh mesh = _spriteMeshes[_spriteMeshUsed++];
+            layer.FillSpriteMesh(index, mesh);
+
+            // The same route DrawMeshLayer takes: the offset on the item, the
+            // mesh drawn untransformed. A run of covering tiles shares one item.
+            var offset = new Vector2(-offsetX, -offsetY);
+
+            if (!ReferenceEquals(_itemMaterial, _meshMaterial) || _itemOffset != offset)
+            {
+                Vector2 keep = _worldOffset;
+
+                _worldOffset = offset;
+                _nextMaterial = _meshMaterial;
+                Cut();
+                _nextMaterial = _currentMaterial;
+                _worldOffset = keep;
+            }
+
+            RenderingServer.CanvasItemAddMesh(
+                _current,
+                mesh.GetRid(),
+                Transform2D.Identity,
+                Colors.White,
+                layer.Textures[index].GetRid());
+
+            return 1;
+        }
+
+        private readonly List<ArrayMesh> _spriteMeshes = [];
+        private int _spriteMeshUsed;
+        private Vector2 _itemOffset;
 
         public void SetWorldOffset(int offsetX, int offsetY)
         {
@@ -1392,6 +1449,7 @@ namespace GUO.Renderer
         private void Cut()
         {
             _current = NewItem(CurrentParent);
+            _itemOffset = _worldOffset;
 
             if (_worldOffset != Vector2.Zero)
             {

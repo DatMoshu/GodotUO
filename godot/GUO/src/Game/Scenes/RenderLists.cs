@@ -107,6 +107,96 @@ namespace GUO.Game.Scenes
 
         private int _queued;
 
+        /// <summary>Land queued into <see cref="_world"/> this frame by CoverFromBelow.</summary>
+        private readonly HashSet<Land> _covering = new(ReferenceEqualityComparer.Instance);
+
+        /// <summary>
+        /// Land that has to be drawn over something below it, queued into the
+        /// sorted pass as well as the chunk mesh.
+        /// </summary>
+        /// <remarks>
+        /// PORT DEVIATION (GUO): ADR-0004, amended 2026-09-25. Upstream never
+        /// needs this: land, statics and items all write CalculateDepthZ() + 0.5
+        /// into its depth buffer, so a cellar under the street loses to the
+        /// street wherever the two overlap. Here the baked land is drawn before
+        /// everything, and anything below it paints over it.
+        ///
+        /// Drawing the same land tile again, in the sorted pass at its own
+        /// depth, gives the depth buffer's answer: it covers what has less
+        /// depth than it and overlaps it, and is covered by everything with
+        /// more. Upstream compares land against these objects by that same
+        /// number, so the result is the depth buffer's, not a heuristic's; the
+        /// only choice is which tiles to spend it on. Those are the land tiles
+        /// in front of an object that sits below the land of its own tile -- in
+        /// front, because only they can have more depth, and as far forward as
+        /// its drop below the ground carries its sprite down the screen.
+        /// Everything else keeps the bake.
+        /// </remarks>
+        private void CoverFromBelow(GameObject obj, float depth)
+        {
+            // Only what upstream draws at depth + 0.5, the same as land.
+            // Mobiles and effects draw at + 1 there, a half nearer than this
+            // sort puts them, so land in front of one by less than that half
+            // does not cover it upstream; they are left out rather than hidden
+            // wrongly. See ADR-0004's amendment.
+            if (obj is Mobile or GameEffect)
+            {
+                return;
+            }
+
+            Map.Map map = obj.World?.Map;
+
+            if (map == null)
+            {
+                return;
+            }
+
+            Land ground = LandAt(map, obj.X, obj.Y);
+
+            if (ground == null || obj.Z >= ground.Z)
+            {
+                return;
+            }
+
+            // A sprite drops 4 pixels per z and a tile row is 22 pixels down
+            // the screen; one more row for the height of the diamond itself.
+            int reach = Math.Min(8, ((ground.Z - obj.Z) * 4 + 43) / 22 + 1);
+
+            for (int dy = 0; dy <= reach; dy++)
+            {
+                for (int dx = 0; dx <= reach; dx++)
+                {
+                    Land land = dx == 0 && dy == 0 ? ground : LandAt(map, obj.X + dx, obj.Y + dy);
+
+                    if (land == null || land.AlphaHue == 0 || _covering.Contains(land))
+                    {
+                        continue;
+                    }
+
+                    float landDepth = land.CalculateDepthZ();
+
+                    if (landDepth > depth)
+                    {
+                        _covering.Add(land);
+                        _world.Add(new Drawable(land, landDepth, _queued++));
+                    }
+                }
+            }
+        }
+
+        private static Land LandAt(Map.Map map, int x, int y)
+        {
+            for (GameObject o = map.GetTile(x, y, false); o != null; o = o.TNext)
+            {
+                if (o is Land land)
+                {
+                    return land;
+                }
+            }
+
+            return null;
+        }
+
         private static readonly Comparison<Drawable> ByDepth = static (a, b) =>
         {
             int order = a.Depth.CompareTo(b.Depth);
@@ -139,6 +229,7 @@ namespace GUO.Game.Scenes
             _tiles.Clear();
             _stretchedTiles.Clear();
             _world.Clear();
+            _covering.Clear();
             _queued = 0;
             _transparentObjects.Clear();
             _gumps.Clear();
@@ -170,7 +261,9 @@ namespace GUO.Game.Scenes
                 case Mobile:
                 case Item:
                 case GameEffect:
-                    _world.Add(new Drawable(toRender, toRender.CalculateDepthZ(), _queued++));
+                    float depth = toRender.CalculateDepthZ();
+                    _world.Add(new Drawable(toRender, depth, _queued++));
+                    CoverFromBelow(toRender, depth);
                     break;
 
                 default:
@@ -272,6 +365,8 @@ namespace GUO.Game.Scenes
             batcher.ResetWorldOffset();
 
             // Everything that is not land, in one pass and in depth order
+            _meshOffsetX = offsetX;
+            _meshOffsetY = offsetY;
             result += DrawWorld(batcher, maxGroundZ);
 
             if (_transparentObjects.Count > 0 || _gumps.Count > 0)
@@ -324,6 +419,12 @@ namespace GUO.Game.Scenes
             {
                 ref readonly Drawable next = ref span[i];
 
+                if (next.Object is Land land && _covering.Contains(land))
+                {
+                    done += DrawCovering(batcher, land, next.Depth);
+                    continue;
+                }
+
                 if (next.Object.Z <= maxGroundZ
                     && next.Object.Draw(
                         batcher,
@@ -338,6 +439,40 @@ namespace GUO.Game.Scenes
 
             return done;
         }
+
+        /// <summary>
+        /// Land queued by <see cref="CoverFromBelow"/>, drawn again over what
+        /// sits under it.
+        /// </summary>
+        /// <remarks>
+        /// PORT DEVIATION (GUO), ADR-0004 amended 2026-09-25. A tile the chunk
+        /// mesh holds is drawn from its own baked quad, so it matches the bake
+        /// pixel for pixel, stretched or flat. One the mesh does not hold is
+        /// drawn the ordinary way when flat; a stretched one outside the mesh
+        /// cannot be drawn by the batcher at all and is left as the bake drew
+        /// it.
+        /// </remarks>
+        private int DrawCovering(UltimaBatcher2D batcher, Land land, float depth)
+        {
+            if (land.InChunkMesh && land.MeshSpriteIndex >= 0)
+            {
+                Chunk chunk = land.World?.Map?.GetChunk(land.X, land.Y, false);
+
+                if (chunk != null)
+                {
+                    return batcher.DrawMeshSprite(chunk.Mesh.Land, land.MeshSpriteIndex, _meshOffsetX, _meshOffsetY);
+                }
+            }
+
+            if (land.IsStretched)
+            {
+                return 0;
+            }
+
+            return land.Draw(batcher, land.RealScreenPosition.X, land.RealScreenPosition.Y, depth) ? 1 : 0;
+        }
+
+        private int _meshOffsetX, _meshOffsetY;
 
         private static int DrawRenderList(UltimaBatcher2D batcher, List<GameObject> renderList, sbyte maxGroundZ)
         {

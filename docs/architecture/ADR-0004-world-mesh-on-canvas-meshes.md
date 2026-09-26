@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted (amended 2026-09-25)
 
 ## Date
 
@@ -159,3 +159,67 @@ what keeps that ordering correct.
 * `launchers\dev\batcher_probe.bat` — the hue packing is exact through the
   triangle-array path as well as the fast path, which is what the mesh path's
   per-vertex colour relies on.
+
+## Amendment 2026-09-25: land drawn again over what is sunk under it
+
+### Problem
+
+`docs/parity_2026-09-23.md` F1. ClassicUO draws the world into a depth buffer
+(ortho near `short.MinValue`, far `short.MaxValue`, `LessEqual`; a larger depth
+is nearer). Land, statics and items write `CalculateDepthZ() + 0.5`, mobiles
+and effects `+ 1`, multis `- 0.01`. GUO has no depth test: it paints the land
+bake first and then one CPU-sorted list of everything else. That sort reproduces
+the depth buffer everywhere except where an object sits *below* the land in
+front of it -- a cellar floor, a sunk foundation (britain-street: 0x001B/0x001C
+and floor 0x04B5-0x04B8 at z -20 under a z 0 street). Upstream's land wins those
+pixels by depth; GUO painted the land first and the foundation over it.
+
+### Decision
+
+Option (b) of the parity doc. The bake stays as it is. When a static, multi or
+item is queued below its own tile's land (`obj.Z < land.Z`),
+`RenderLists.CoverFromBelow` also queues the land tiles in front of it -- the
+tiles its sprite can reach on screen, at most 8 -- into the sorted list, at the
+land's own depth, once per frame each. Sorted, the land lands after the sunk
+object and paints over it, which is the result the depth buffer gives.
+
+A covering tile the chunk mesh holds is drawn from its own baked quad
+(`MeshLayer.FillSpriteMesh`, `UltimaBatcher2D.DrawMeshSprite`), so it matches
+the bake pixel for pixel, stretched or flat, lit or not. The world offset goes
+on the canvas item, as `DrawMeshLayer` does; passed as the mesh command's own
+transform instead, the draw painted nothing. A flat tile outside the mesh is
+drawn the ordinary way; a stretched one outside the mesh cannot be drawn by the
+batcher and is left as it was.
+
+Mobiles and effects never trigger it: upstream draws them at `+ 1`, in front of
+the land of their own tile, so a mobile below the ground would still be hidden
+by land further in front but not by its own tile. GUO's sort also ignores that
+`+ 1` today; that is a separate, smaller parity gap, recorded here and not fixed
+by this amendment.
+
+### Rejected
+
+* (a) all land through the sort: correct, but gives up the mesh for every tile
+  to fix the few near a cellar.
+* (c) drop statics whose top is below the ground in front: cheaper, but a
+  heuristic that would hide things the depth buffer only partly hides.
+* A real depth buffer: a canvas item has none. It needs the world drawn as 3D
+  geometry in its own viewport -- see the note below.
+
+### Validation
+
+* `launchers\dev\side_by_side.bat --place britain-street` with
+  `launchers\dev\render_diff.bat`: same objects, same order of sunk pieces and
+  covering land (land 3201.25 after foundation 3200.07); the plinth is gone and
+  the building meets the street as in ClassicUO.
+* `launchers\dev\ab_compare.bat` over the eight places of the parity sweep.
+* `launchers\dev\smoke.bat`.
+
+### Note: a depth buffer instead of the sort
+
+The general fix is to stop emulating the depth buffer and have one: draw the
+world as quads in a 3D `SubViewport` under an orthographic camera, each at
+`z = depth`, alpha-scissored because UO art is cut out. That is what upstream
+does, it removes every sort special case (this one and the mobile `+ 1`), and it
+lets land stay baked. It replaces the canvas batcher for the world pass, so it is
+an ADR of its own, not an amendment.

@@ -88,6 +88,8 @@ launchers\dev\playtest.bat                 play a session and check it (needs a 
 launchers\dev\endurance.bat                play on for a while and watch for drift
 launchers\dev\plugin_probe.bat             load test plugins and check what they see (needs a shard)
 launchers\dev\multi_client.bat             four scripted clients at once, tiled 2x2 (needs a shard)
+launchers\dev\side_by_side.bat             ClassicUO and GUO live on one monitor, same spot (needs a shard)
+launchers\dev\render_diff.bat NAME         compare the two clients' "renderdump NAME" dumps
 launchers\dev\sync_upstream.bat            check upstream drift
 launchers\dev\build_guoasset.bat           build the parity reference MCP
 launchers\shard\run.bat                    run the local dev shard
