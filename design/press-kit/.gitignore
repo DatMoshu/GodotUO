@@ -1,0 +1,5 @@
+# The largest upscales: node tools/build.cjs regenerates them; the release zip carries them.
+v1/hd/*-4096-upscaled.png
+v1/hd/*-4k-3840x2160-upscaled.png
+# Built for a GitHub release, not committed.
+*.zip

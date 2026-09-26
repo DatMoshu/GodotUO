@@ -1,0 +1,2 @@
+# manifest.json hashes every file byte for byte; no line-ending conversion.
+* -text
