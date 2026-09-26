@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
 
 using System;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using GUO.Assets;
 using GUO.Configuration;
@@ -108,7 +109,25 @@ namespace GUO.Game.Map
         public bool IsDirty = true;
 
         private bool _animatedWaterEffect;
-        private TextureBucketTracker _landBuckets = new(16);
+        /// <summary>
+        /// This chunk's meshed land, in the order it is drawn.
+        /// </summary>
+        /// <remarks>
+        /// PORT DEVIATION (GUO): upstream buckets land by texture, like statics,
+        /// for fewer draw calls, and can because every land quad carries
+        /// CalculateDepthZ() + 0.5 into its depth buffer: whichever bucket is
+        /// drawn last, a tile still loses to the higher tile in front of it.
+        /// Without the buffer the bucket order was the answer, and flat land
+        /// (art) and stretched land (texmaps) are different textures -- so a
+        /// flat water or swamp tile behind a stretched bank painted over the
+        /// bank in tile-shaped steps (parity night 2026-09-26, W1). Land is
+        /// ordered by that same depth instead, which is the depth test's answer
+        /// between two tiles; equal depths do not overlap, and are grouped by
+        /// texture so runs stay as long as they can. Chunks are already drawn
+        /// back to front (x outer, y inner in GameScene.FillGameObjectList), so
+        /// neighbours across a chunk edge come out right as well.
+        /// </remarks>
+        private readonly List<(GameObjects.Land Land, float Depth, int Texture, int Seq)> _landOrder = new(64);
         private TextureBucketTracker _staticsBuckets = new(32);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -138,7 +157,7 @@ namespace GUO.Game.Map
             _animatedWaterEffect = profile.AnimatedWaterEffect;
 
             // Pass 1: count sprites per texture
-            _landBuckets.Clear();
+            _landOrder.Clear();
             _staticsBuckets.Clear();
 
             for (int x = 0; x < 8; x++)
@@ -168,7 +187,20 @@ namespace GUO.Game.Map
                 }
             }
 
-            int landTotal = _landBuckets.ComputeOffsets();
+            _landOrder.Sort(static (a, b) =>
+            {
+                int order = a.Depth.CompareTo(b.Depth);
+
+                if (order == 0)
+                    order = a.Texture.CompareTo(b.Texture);
+
+                return order != 0 ? order : a.Seq.CompareTo(b.Seq);
+            });
+
+            for (int i = 0; i < _landOrder.Count; i++)
+                _landOrder[i].Land.MeshSpriteIndex = i;
+
+            int landTotal = _landOrder.Count;
             int staticsTotal = _staticsBuckets.ComputeOffsets();
 
             Land.EnsureCapacity(landTotal);
@@ -218,7 +250,7 @@ namespace GUO.Game.Map
         {
             Land.SoftReset();
             Statics.SoftReset();
-            _landBuckets.Clear();
+            _landOrder.Clear();
             _staticsBuckets.Clear();
             IsDirty = true;
         }
@@ -258,7 +290,7 @@ namespace GUO.Game.Map
                 texture = artInfo.Texture;
             }
 
-            _landBuckets.Count(texture);
+            _landOrder.Add((land, land.CalculateDepthZ(), RuntimeHelpers.GetHashCode(texture), _landOrder.Count));
         }
 
         private void CountStatic(Static staticObj)
@@ -334,7 +366,7 @@ namespace GUO.Game.Map
 
                 if (texmapInfo.Texture != null)
                 {
-                    int idx = _landBuckets.GetNextIndex(texmapInfo.Texture);
+                    int idx = land.MeshSpriteIndex;
                     land.MeshSpriteIndex = idx;
                     WriteStretchedLand(
                         idx,
@@ -357,7 +389,7 @@ namespace GUO.Game.Map
                     ref readonly var artInfo = ref Client.Game.UO.Arts.GetLand(land.Graphic);
                     if (artInfo.Texture != null)
                     {
-                        int idx = _landBuckets.GetNextIndex(artInfo.Texture);
+                        int idx = land.MeshSpriteIndex;
                         land.MeshSpriteIndex = idx;
                         Land.WriteQuadAt(idx, artInfo.Texture, artInfo.UV,
                             baseX, baseY + (land.Z << 2), hueVec, depth);
@@ -370,7 +402,7 @@ namespace GUO.Game.Map
                 ref readonly var artInfo = ref Client.Game.UO.Arts.GetLand(land.Graphic);
                 if (artInfo.Texture != null)
                 {
-                    int idx = _landBuckets.GetNextIndex(artInfo.Texture);
+                    int idx = land.MeshSpriteIndex;
                     land.MeshSpriteIndex = idx;
                     Land.WriteQuadAt(idx, artInfo.Texture, artInfo.UV, baseX, baseY, hueVec, depth);
                     land.InChunkMesh = true;
@@ -425,6 +457,43 @@ namespace GUO.Game.Map
 
             return false;
 #pragma warning restore CS0162
+        }
+
+        /// <summary>
+        /// Whether upstream would have baked this static or multi into its
+        /// chunk mesh: the rules above, as they read before the deviation.
+        /// </summary>
+        /// <remarks>
+        /// PORT DEVIATION (GUO): upstream adds a meshed static's light while
+        /// sorting, and every other light while drawing. The light list holds
+        /// LightsLoader.MAX_LIGHTS_DATA_INDEX_COUNT and drops the rest, so that
+        /// order decides which lights are seen. With nothing baked here, the
+        /// sort uses this to keep upstream's order (parity night 2026-09-26, L1:
+        /// Nujel'm's lamp posts were lit because the town's static lights had
+        /// not yet filled the list).
+        /// </remarks>
+        internal static bool UpstreamWouldMesh(GameObject obj, ref StaticTiles itemData)
+        {
+            if (!obj.AllowedToDraw || obj.IsDestroyed)
+                return false;
+
+            if (obj is Multi multi)
+            {
+                if (multi.State != 0)
+                    return false;
+            }
+            else if (obj is not Static)
+            {
+                return false;
+            }
+
+            if (itemData.IsInternal || itemData.IsAnimated || itemData.IsFoliage)
+                return false;
+
+            if (StaticFilters.IsTree(obj.Graphic, out _) || StaticFilters.IsRock(obj.Graphic))
+                return false;
+
+            return Client.Game.UO.Arts.GetArt(obj.Graphic).Texture != null;
         }
 
         private void TryAddStatic(Static staticObj)

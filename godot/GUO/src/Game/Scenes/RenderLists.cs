@@ -74,11 +74,12 @@ namespace GUO.Game.Scenes
         /// stable, so without this a pile of objects on one tile would shuffle
         /// from frame to frame and shimmer.
         /// </remarks>
-        private readonly struct Drawable(GameObject obj, float depth, int seq)
+        private readonly struct Drawable(GameObject obj, float depth, int seq, MeshLayer mesh = null)
         {
             public readonly GameObject Object = obj;
             public readonly float Depth = depth;
             public readonly int Seq = seq;
+            public readonly MeshLayer Mesh = mesh;
         }
 
         private readonly List<GameObject> _tiles = [];
@@ -235,9 +236,19 @@ namespace GUO.Game.Scenes
             _gumps.Clear();
         }
 
+        /// <remarks>
+        /// PORT DEVIATION (GUO): upstream draws what is fading last, but still
+        /// inside GameScene.DrawWorld's SetStencil(DepthStencilState.Default),
+        /// so the depth test goes on hiding a see-through tree behind the
+        /// mobile in front of it and behind the roof in front of it. Drawn last
+        /// with no depth buffer it painted over both. Everything but land now
+        /// joins the sorted pass at its own depth, which is the depth test's
+        /// answer; a sprite that blends is still blended over whatever the
+        /// sort already drew beneath it.
+        /// </remarks>
         public void Add(GameObject toRender, bool isTransparent = false)
         {
-            if (isTransparent)
+            if (isTransparent && toRender is Land)
             {
                 _transparentObjects.Add(toRender);
                 return;
@@ -269,6 +280,15 @@ namespace GUO.Game.Scenes
                 default:
                     break;
             }
+        }
+
+        // Cached statics must share the painter's order with trees and mobiles:
+        // a canvas has no depth buffer to reconcile separate mesh/sprite passes.
+        public void AddMeshStatic(GameObject obj, MeshLayer layer)
+        {
+            float depth = obj.CalculateDepthZ();
+            _world.Add(new Drawable(obj, depth, _queued++, layer));
+            CoverFromBelow(obj, depth);
         }
 
         /// <summary>
@@ -344,8 +364,6 @@ namespace GUO.Game.Scenes
                 var mesh = chunk.Mesh;
                 if (mesh.Land.Count > 0)
                     mesh.Land.BuildVisibleIndices();
-                if (mesh.Statics.Count > 0)
-                    mesh.Statics.BuildVisibleIndices();
             }
 
             // Draw chunk mesh land tiles from GPU buffers with per-frame visibility
@@ -358,13 +376,7 @@ namespace GUO.Game.Scenes
             result += DrawRenderList(batcher, _tiles, maxGroundZ);
             result += DrawRenderList(batcher, _stretchedTiles, maxGroundZ);
 
-            // Draw chunk mesh statics from GPU buffers with per-frame visibility
-            batcher.SetWorldOffset(offsetX, offsetY);
-            foreach (var chunk in visibleChunks)
-                result += DrawMeshLayer(batcher, chunk.Mesh.Statics);
-            batcher.ResetWorldOffset();
-
-            // Everything that is not land, in one pass and in depth order
+            // Cached statics and ordinary sprites share one depth-sorted pass.
             _meshOffsetX = offsetX;
             _meshOffsetY = offsetY;
             result += DrawWorld(batcher, maxGroundZ);
@@ -418,6 +430,13 @@ namespace GUO.Game.Scenes
             for (int i = 0; i < span.Length; i++)
             {
                 ref readonly Drawable next = ref span[i];
+
+                if (next.Mesh != null)
+                {
+                    if (next.Object.Z <= maxGroundZ)
+                        done += batcher.DrawStaticMeshSprite(next.Mesh, next.Object.MeshSpriteIndex, _meshOffsetX, _meshOffsetY);
+                    continue;
+                }
 
                 if (next.Object is Land land && _covering.Contains(land))
                 {

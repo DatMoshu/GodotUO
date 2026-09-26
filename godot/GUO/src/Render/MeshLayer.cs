@@ -6,6 +6,7 @@
 
 using System;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Godot;
 using GUO.Compat;
 
@@ -471,6 +472,49 @@ namespace GUO.Renderer
                     << (int)Mesh.ArrayFormat.FormatCustom0Shift));
         }
 
+        // One mesh per sprite drawn alone, and the quad it was built from.
+        private ArrayMesh[] _spriteMeshes = Array.Empty<ArrayMesh>();
+        private MeshQuad[] _spriteMeshQuads = Array.Empty<MeshQuad>();
+
+        /// <summary>
+        /// The mesh <see cref="FillSpriteMesh"/> makes for one sprite, kept
+        /// from frame to frame.
+        /// </summary>
+        /// <remarks>
+        /// Checked against the quad it was built from rather than marked dirty
+        /// by the writers, because the quads are written from outside this
+        /// class too (ChunkMesh's stretched land, the probes). A quad that did
+        /// not change costs a compare; one that did is rebuilt as before.
+        /// </remarks>
+        public ArrayMesh GetSpriteMesh(int index)
+        {
+            if (_spriteMeshes.Length <= index)
+            {
+                int size = Math.Max(Vertices.Length, index + 1);
+                Array.Resize(ref _spriteMeshes, size);
+                Array.Resize(ref _spriteMeshQuads, size);
+            }
+
+            ArrayMesh mesh = _spriteMeshes[index];
+
+            if (mesh != null && SameQuad(ref _spriteMeshQuads[index], ref Vertices[index]))
+            {
+                return mesh;
+            }
+
+            mesh ??= _spriteMeshes[index] = new ArrayMesh();
+            FillSpriteMesh(index, mesh);
+            _spriteMeshQuads[index] = Vertices[index];
+
+            return mesh;
+        }
+
+        private static bool SameQuad(ref MeshQuad a, ref MeshQuad b)
+        {
+            return MemoryMarshal.AsBytes(new ReadOnlySpan<MeshQuad>(ref a))
+                .SequenceEqual(MemoryMarshal.AsBytes(new ReadOnlySpan<MeshQuad>(ref b)));
+        }
+
         private void WriteTriangles(int index, int at)
         {
             ref MeshQuad q = ref Vertices[index];
@@ -541,6 +585,8 @@ namespace GUO.Renderer
             {
                 _runMeshes[i] = null;
             }
+
+            Array.Clear(_spriteMeshes);
         }
     }
 }

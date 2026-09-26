@@ -108,6 +108,18 @@ namespace GUO.Renderer
         public static readonly BlendState Opaque = new BlendState();
 
         /// <summary>
+        /// True when this is XNA's <see cref="Additive"/>, which is Godot's own
+        /// blend_add, so the batcher can let the hardware do it.
+        /// </summary>
+        internal bool IsAdditive =>
+            ColorSourceBlend == Blend.SourceAlpha
+            && ColorDestinationBlend == Blend.One
+            && ColorBlendFunction == BlendFunction.Add
+            && AlphaSourceBlend == Blend.SourceAlpha
+            && AlphaDestinationBlend == Blend.One
+            && AlphaBlendFunction == BlendFunction.Add;
+
+        /// <summary>
         /// True when this is the blend the plain sprite shader already does in
         /// hardware, so the batcher can skip the back-buffer read entirely.
         /// </summary>

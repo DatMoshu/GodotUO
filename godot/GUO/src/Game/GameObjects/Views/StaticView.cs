@@ -83,7 +83,8 @@ namespace GUO.Game.GameObjects
                 ProfileManager.CurrentProfile.AnimatedWaterEffect && ItemData.IsWet
             );
 
-            if (ItemData.IsLight && !InChunkMesh)
+            // PORT DEVIATION (GUO): not when the sort already added it.
+            if (ItemData.IsLight && !InChunkMesh && !GUO.Game.Map.ChunkMesh.UpstreamWouldMesh(this, ref ItemData))
             {
                 Client.Game.GetScene<GameScene>().AddLight(this, this, posX + 22, posY + 22);
             }

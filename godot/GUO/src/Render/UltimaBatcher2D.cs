@@ -6,6 +6,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using Godot;
 using GUO.Compat;
 
@@ -50,6 +51,7 @@ namespace GUO.Renderer
     {
         private const string SHADER_PATH = "res://src/Render/shaders/uo_hue.gdshader";
         private const string BLEND_SHADER_PATH = "res://src/Render/shaders/uo_hue_blend.gdshader";
+        private const string ADD_SHADER_PATH = "res://src/Render/shaders/uo_hue_add.gdshader";
         private const string MESH_SHADER_PATH = "res://src/Render/shaders/uo_hue_mesh.gdshader";
 
         private static readonly float[] _cornerOffsetX = new float[] { 0.0f, 1.0f, 0.0f, 1.0f };
@@ -72,6 +74,7 @@ namespace GUO.Renderer
             new Dictionary<string, ShaderMaterial>();
 
         private Shader _blendShader;
+        private Shader _addShader;
 
         // The world mesh reads its land light from CUSTOM0, which only exists
         // on a mesh, so it needs a shader of its own. See ADR-0004. Built with
@@ -222,7 +225,7 @@ namespace GUO.Renderer
             EnsureNotStarted();
 
             _itemCount = 0;
-            _spriteMeshUsed = 0;
+            _sizedTexture = null;
             TextureSwitches = 0;
             FlushesDone = 0;
 
@@ -268,6 +271,7 @@ namespace GUO.Renderer
 
             RenderingServer.CanvasItemSetTransform(_target, viewTransform);
 
+            _sizedTexture = null;
             _started = true;
             _worldOffset = Vector2.Zero;
             _clipStack.Clear();
@@ -304,6 +308,20 @@ namespace GUO.Renderer
 
             _target = target == null ? _parent : target.CanvasItem;
             _currentTarget = target;
+
+            // Upstream's targets are RenderTargetUsage.DiscardContents
+            // (GameController.PreparingDeviceSettings), and FNA clears such a
+            // target to opaque black whenever it is bound (release-build
+            // DiscardColor, GraphicsDevice.SetRenderTargets). The light and UI
+            // targets are cleared again straight after; the world target is
+            // not, so black is what shows wherever nothing is drawn -- past the
+            // edge of the map, say. Left transparent, the tiled window
+            // background showed through there instead (parity night
+            // 2026-09-26, hythloth).
+            if (target != null)
+            {
+                target.ClearColor = Colors.Black;
+            }
         }
 
         /// <summary>
@@ -387,9 +405,11 @@ namespace GUO.Renderer
         /// </summary>
         /// <remarks>
         /// GUO addition, for land drawn again inside the sorted pass
-        /// (RenderLists.CoverFromBelow; ADR-0004, amended 2026-09-25). The
-        /// meshes come from a pool reset each frame, so a frame's worth stay
-        /// alive until the canvas has drawn them.
+        /// (RenderLists.CoverFromBelow; ADR-0004, amended 2026-09-25). Each
+        /// sprite's mesh is kept by its layer and rebuilt only when its quad
+        /// changes (MeshLayer.GetSpriteMesh): rebuilt every frame, a sunk mine
+        /// floor's two thousand covering tiles cost more than the rest of the
+        /// world together (parity night 2026-09-26, P1).
         /// </remarks>
         public int DrawMeshSprite(MeshLayer layer, int index, int offsetX, int offsetY)
         {
@@ -400,13 +420,7 @@ namespace GUO.Renderer
                 return 0;
             }
 
-            if (_spriteMeshUsed == _spriteMeshes.Count)
-            {
-                _spriteMeshes.Add(new ArrayMesh());
-            }
-
-            ArrayMesh mesh = _spriteMeshes[_spriteMeshUsed++];
-            layer.FillSpriteMesh(index, mesh);
+            ArrayMesh mesh = layer.GetSpriteMesh(index);
 
             // The same route DrawMeshLayer takes: the offset on the item, the
             // mesh drawn untransformed. A run of covering tiles shares one item.
@@ -433,8 +447,26 @@ namespace GUO.Renderer
             return 1;
         }
 
-        private readonly List<ArrayMesh> _spriteMeshes = [];
-        private int _spriteMeshUsed;
+        /// <summary>
+        /// Submits a cached static quad in painter's order. Static quads are
+        /// axis-aligned with uniform hue/alpha, so they need neither rebuilt
+        /// ArrayMeshes nor the per-vertex lighting used by stretched land.
+        /// </summary>
+        public int DrawStaticMeshSprite(MeshLayer layer, int index, int offsetX, int offsetY)
+        {
+            if (index < 0 || index >= layer.Count || !layer.Visible[index] || layer.Textures[index] == null)
+                return 0;
+
+            ref var quad = ref layer.Vertices[index];
+            var uvSize = quad.TextureCoordinate3 - quad.TextureCoordinate0;
+            var size = quad.Position3 - quad.Position0;
+            AddSprite(layer.Textures[index],
+                quad.TextureCoordinate0.X, quad.TextureCoordinate0.Y, uvSize.X, uvSize.Y,
+                quad.Position0.X - offsetX, quad.Position0.Y - offsetY, size.X, size.Y,
+                quad.Hue0, 0f, 0f, 0f, 1f, 0f, 0);
+            return 1;
+        }
+
         private Vector2 _itemOffset;
 
         public void SetWorldOffset(int offsetX, int offsetY)
@@ -478,6 +510,16 @@ namespace GUO.Renderer
 
             _currentMaterial = _nextMaterial = GetBlendMaterial(blend);
 
+            // Additive is one of Godot's own blend modes, so the hardware does
+            // it and nothing is read back. See uo_hue_add.gdshader for why the
+            // read-back is not just slower here but wrong.
+            if (blend.IsAdditive)
+            {
+                Cut();
+
+                return;
+            }
+
             // The copy has to be its own item, submitted between what is
             // already drawn and what is about to read it. An empty rect means
             // the whole visible area.
@@ -503,16 +545,25 @@ namespace GUO.Renderer
             Reject(blend.AlphaSourceBlend);
             Reject(blend.AlphaDestinationBlend);
 
-            _blendShader ??= GD.Load<Shader>(BLEND_SHADER_PATH);
+            ShaderMaterial material;
 
-            var material = new ShaderMaterial { Shader = _blendShader };
+            if (blend.IsAdditive)
+            {
+                _addShader ??= GD.Load<Shader>(ADD_SHADER_PATH);
+                material = new ShaderMaterial { Shader = _addShader };
+            }
+            else
+            {
+                _blendShader ??= GD.Load<Shader>(BLEND_SHADER_PATH);
+                material = new ShaderMaterial { Shader = _blendShader };
 
-            material.SetShaderParameter("color_source_blend", (int)blend.ColorSourceBlend);
-            material.SetShaderParameter("color_destination_blend", (int)blend.ColorDestinationBlend);
-            material.SetShaderParameter("color_blend_function", (int)blend.ColorBlendFunction);
-            material.SetShaderParameter("alpha_source_blend", (int)blend.AlphaSourceBlend);
-            material.SetShaderParameter("alpha_destination_blend", (int)blend.AlphaDestinationBlend);
-            material.SetShaderParameter("alpha_blend_function", (int)blend.AlphaBlendFunction);
+                material.SetShaderParameter("color_source_blend", (int)blend.ColorSourceBlend);
+                material.SetShaderParameter("color_destination_blend", (int)blend.ColorDestinationBlend);
+                material.SetShaderParameter("color_blend_function", (int)blend.ColorBlendFunction);
+                material.SetShaderParameter("alpha_source_blend", (int)blend.AlphaSourceBlend);
+                material.SetShaderParameter("alpha_destination_blend", (int)blend.AlphaDestinationBlend);
+                material.SetShaderParameter("alpha_blend_function", (int)blend.AlphaBlendFunction);
+            }
 
             // The hue tables are global state living on the plain material, and
             // a blend material draws the same sprites, so it needs them too.
@@ -742,7 +793,7 @@ namespace GUO.Renderer
             _quadPoints[2] = new Vector2(position.X, translatedY + height);
             _quadPoints[3] = new Vector2(position.X + width, translatedY + height);
 
-            CalculateHalfPixelUVs(sourceRect, texture.GetWidth(), texture.GetHeight(),
+            CalculateHalfPixelUVs(sourceRect, WidthOf(texture), HeightOf(texture),
                 out float sourceX, out float sourceY, out float sourceW, out float sourceH);
 
             byte effects = (byte)((flip ? SpriteEffects.FlipHorizontally : SpriteEffects.None) & (SpriteEffects)0x03);
@@ -830,10 +881,10 @@ namespace GUO.Renderer
             _quadPoints[2] = new Vector2(x2, y2);
             _quadPoints[3] = new Vector2(x3, y3);
 
-            CalculateHalfPixelUVs(sourceRect, texture.GetWidth(), texture.GetHeight(),
+            CalculateHalfPixelUVs(sourceRect, WidthOf(texture), HeightOf(texture),
                 out float sourceX, out float sourceY, out float sourceW, out float sourceH);
 
-            float invH = 1f / texture.GetHeight();
+            float invH = 1f / HeightOf(texture);
             sourceY += uvYOffset * invH;
             sourceH -= uvYOffset * invH;
 
@@ -943,7 +994,7 @@ namespace GUO.Renderer
             (
                 texture,
                 start,
-                new Rectangle(0, 0, texture.GetWidth(), texture.GetHeight()),
+                new Rectangle(0, 0, WidthOf(texture), HeightOf(texture)),
                 color,
                 radians,
                 Vector2.Zero,
@@ -966,7 +1017,7 @@ namespace GUO.Renderer
             float depth
         )
         {
-            AddSprite(texture, 0f, 0f, 1f, 1f, position.X, position.Y, texture.GetWidth(), texture.GetHeight(), color, 0f, 0f, 0f, 1f, depth, 0);
+            AddSprite(texture, 0f, 0f, 1f, 1f, position.X, position.Y, WidthOf(texture), HeightOf(texture), color, 0f, 0f, 0f, 1f, depth, 0);
         }
 
         public void Draw
@@ -983,7 +1034,7 @@ namespace GUO.Renderer
 
             if (sourceRectangle.HasValue)
             {
-                CalculateUVs(sourceRectangle.Value, texture.GetWidth(), texture.GetHeight(),
+                CalculateUVs(sourceRectangle.Value, WidthOf(texture), HeightOf(texture),
                     out sourceX, out sourceY, out sourceW, out sourceH);
                 destW = sourceRectangle.Value.Width;
                 destH = sourceRectangle.Value.Height;
@@ -994,8 +1045,8 @@ namespace GUO.Renderer
                 sourceY = 0.0f;
                 sourceW = 1.0f;
                 sourceH = 1.0f;
-                destW = texture.GetWidth();
-                destH = texture.GetHeight();
+                destW = WidthOf(texture);
+                destH = HeightOf(texture);
             }
 
             AddSprite(texture, sourceX, sourceY, sourceW, sourceH, position.X, position.Y, destW, destH, color, 0.0f, 0.0f, 0.0f, 1.0f, depth, 0);
@@ -1020,7 +1071,7 @@ namespace GUO.Renderer
 
             if (sourceRectangle.HasValue)
             {
-                CalculateUVsSafe(sourceRectangle.Value, texture.GetWidth(), texture.GetHeight(),
+                CalculateUVsSafe(sourceRectangle.Value, WidthOf(texture), HeightOf(texture),
                     out sourceX, out sourceY, out sourceW, out sourceH);
                 destW *= sourceRectangle.Value.Width;
                 destH *= sourceRectangle.Value.Height;
@@ -1031,8 +1082,8 @@ namespace GUO.Renderer
                 sourceY = 0.0f;
                 sourceW = 1.0f;
                 sourceH = 1.0f;
-                destW *= texture.GetWidth();
-                destH *= texture.GetHeight();
+                destW *= WidthOf(texture);
+                destH *= HeightOf(texture);
             }
 
             AddSprite
@@ -1047,8 +1098,8 @@ namespace GUO.Renderer
                 destW,
                 destH,
                 color,
-                origin.X / sourceW / (float)texture.GetWidth(),
-                origin.Y / sourceH / (float)texture.GetHeight(),
+                origin.X / sourceW / (float)WidthOf(texture),
+                origin.Y / sourceH / (float)HeightOf(texture),
                 (float)Math.Sin(rotation),
                 (float)Math.Cos(rotation),
                 layerDepth,
@@ -1073,7 +1124,7 @@ namespace GUO.Renderer
 
             if (sourceRectangle.HasValue)
             {
-                CalculateUVsSafe(sourceRectangle.Value, texture.GetWidth(), texture.GetHeight(),
+                CalculateUVsSafe(sourceRectangle.Value, WidthOf(texture), HeightOf(texture),
                     out sourceX, out sourceY, out sourceW, out sourceH);
                 scale.X *= sourceRectangle.Value.Width;
                 scale.Y *= sourceRectangle.Value.Height;
@@ -1084,8 +1135,8 @@ namespace GUO.Renderer
                 sourceY = 0.0f;
                 sourceW = 1.0f;
                 sourceH = 1.0f;
-                scale.X *= texture.GetWidth();
-                scale.Y *= texture.GetHeight();
+                scale.X *= WidthOf(texture);
+                scale.Y *= HeightOf(texture);
             }
 
             AddSprite
@@ -1100,8 +1151,8 @@ namespace GUO.Renderer
                 scale.X,
                 scale.Y,
                 color,
-                origin.X / sourceW / (float)texture.GetWidth(),
-                origin.Y / sourceH / (float)texture.GetHeight(),
+                origin.X / sourceW / (float)WidthOf(texture),
+                origin.Y / sourceH / (float)HeightOf(texture),
                 (float)Math.Sin(rotation),
                 (float)Math.Cos(rotation),
                 layerDepth,
@@ -1150,7 +1201,7 @@ namespace GUO.Renderer
 
             if (sourceRectangle.HasValue)
             {
-                CalculateUVs(sourceRectangle.Value, texture.GetWidth(), texture.GetHeight(),
+                CalculateUVs(sourceRectangle.Value, WidthOf(texture), HeightOf(texture),
                     out sourceX, out sourceY, out sourceW, out sourceH);
             }
             else
@@ -1198,7 +1249,7 @@ namespace GUO.Renderer
 
             if (sourceRectangle.HasValue)
             {
-                CalculateUVsSafe(sourceRectangle.Value, texture.GetWidth(), texture.GetHeight(),
+                CalculateUVsSafe(sourceRectangle.Value, WidthOf(texture), HeightOf(texture),
                     out sourceX, out sourceY, out sourceW, out sourceH);
             }
             else
@@ -1221,8 +1272,8 @@ namespace GUO.Renderer
                 destinationRectangle.Width,
                 destinationRectangle.Height,
                 color,
-                origin.X / sourceW / (float)texture.GetWidth(),
-                origin.Y / sourceH / (float)texture.GetHeight(),
+                origin.X / sourceW / (float)WidthOf(texture),
+                origin.Y / sourceH / (float)HeightOf(texture),
                 (float)Math.Sin(rotation),
                 (float)Math.Cos(rotation),
                 layerDepth,
@@ -1230,6 +1281,62 @@ namespace GUO.Renderer
             );
         }
 
+
+        // The last texture measured, and what it measured.
+        private Texture2D _sizedTexture;
+        private int _sizedWidth, _sizedHeight;
+        private Rid _sizedRid;
+
+        /// <summary>
+        /// A texture's width, height and RID, asked of the engine once per run
+        /// of sprites that share the texture.
+        /// </summary>
+        /// <remarks>
+        /// PORT DEVIATION (GUO): upstream reads Width and Height off an FNA
+        /// texture, a C# field. On Godot each is a call into the engine, as is
+        /// the RID, and a sprite asked for them five to seven times between the
+        /// Draw overload and AddSprite -- some hundred thousand calls a frame
+        /// zoomed out (parity night 2026-09-26, P1). World sprites come from a
+        /// few atlas pages, so consecutive sprites nearly always share one.
+        /// Forgotten at every Begin and BeginFrame; within a batch a texture's
+        /// size does not change (ImageTexture.Update keeps it, and render
+        /// targets resize between frames).
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void Measure(Texture2D texture)
+        {
+            if (!ReferenceEquals(texture, _sizedTexture))
+            {
+                _sizedTexture = texture;
+                _sizedWidth = texture.GetWidth();
+                _sizedHeight = texture.GetHeight();
+                _sizedRid = texture.GetRid();
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private int WidthOf(Texture2D texture)
+        {
+            Measure(texture);
+
+            return _sizedWidth;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private int HeightOf(Texture2D texture)
+        {
+            Measure(texture);
+
+            return _sizedHeight;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private Rid RidOf(Texture2D texture)
+        {
+            Measure(texture);
+
+            return _sizedRid;
+        }
 
         // ==========================
         // === The one choke point ==
@@ -1264,8 +1371,8 @@ namespace GUO.Renderer
 
             EnsureMaterial(_currentMaterial);
 
-            int textureWidth = texture.GetWidth();
-            int textureHeight = texture.GetHeight();
+            int textureWidth = WidthOf(texture);
+            int textureHeight = HeightOf(texture);
 
             if (rotationSin == 0f && rotationCos == 1f && effects == 0)
             {
@@ -1279,7 +1386,7 @@ namespace GUO.Renderer
                         destinationY - originY * destinationH,
                         destinationW,
                         destinationH),
-                    texture.GetRid(),
+                    RidOf(texture),
                     new Rect2(
                         sourceX * textureWidth,
                         sourceY * textureHeight,
@@ -1370,6 +1477,11 @@ namespace GUO.Renderer
 
             Color modulate = Encode(color);
 
+            if (TryAddAffineQuad(texture, modulate))
+            {
+                return;
+            }
+
             _quadColors[0] = modulate;
             _quadColors[1] = modulate;
             _quadColors[2] = modulate;
@@ -1384,8 +1496,87 @@ namespace GUO.Renderer
                 _quadUVs,
                 null,
                 null,
-                texture.GetRid()
+                RidOf(texture)
             );
+        }
+
+        /// <summary>
+        /// Draws the quad as one texture rect under a transform, when it is
+        /// the image of its texture region under an affine map -- which a
+        /// shadow's parallelogram, a mirror, a rotation and a sitted section
+        /// all are.
+        /// </summary>
+        /// <remarks>
+        /// PORT DEVIATION (GUO), for speed alone: the picture is the same two
+        /// triangles with the same UVs. A triangle array hands the engine four
+        /// managed arrays, each copied into a packed array and freed again, per
+        /// quad; with the static shadows of a wide view that was a sixth of the
+        /// frame (parity night 2026-09-26, P1). The map is solved from three
+        /// corners in texel space, so the rect's own coordinates are the
+        /// region's; the fourth corner has to land where the quad puts it and
+        /// the UVs have to span an axis-aligned region, or the quad goes the
+        /// old way.
+        /// </remarks>
+        private bool TryAddAffineQuad(Texture2D texture, Color modulate)
+        {
+            var size = new Vector2(WidthOf(texture), HeightOf(texture));
+
+            Vector2 t0 = _quadUVs[0] * size;
+            Vector2 t1 = _quadUVs[1] * size;
+            Vector2 t2 = _quadUVs[2] * size;
+            Vector2 t3 = _quadUVs[3] * size;
+
+            Vector2 m0 = t1 - t0;
+            Vector2 m1 = t2 - t0;
+            float det = m0.X * m1.Y - m1.X * m0.Y;
+
+            if (Math.Abs(det) < 1e-4f)
+            {
+                return false;
+            }
+
+            Vector2 p0 = _quadPoints[0];
+            Vector2 q0 = _quadPoints[1] - p0;
+            Vector2 q1 = _quadPoints[2] - p0;
+
+            // Columns of Q * inverse(M), M's columns being m0 and m1.
+            Vector2 axisX = (q0 * m1.Y - q1 * m0.Y) / det;
+            Vector2 axisY = (q1 * m0.X - q0 * m1.X) / det;
+            Vector2 origin = p0 - axisX * t0.X - axisY * t0.Y;
+
+            Vector2 fourth = origin + axisX * t3.X + axisY * t3.Y;
+
+            if ((fourth - _quadPoints[3]).LengthSquared() > 1e-4f)
+            {
+                return false;
+            }
+
+            float left = Math.Min(Math.Min(t0.X, t1.X), Math.Min(t2.X, t3.X));
+            float right = Math.Max(Math.Max(t0.X, t1.X), Math.Max(t2.X, t3.X));
+            float top = Math.Min(Math.Min(t0.Y, t1.Y), Math.Min(t2.Y, t3.Y));
+            float bottom = Math.Max(Math.Max(t0.Y, t1.Y), Math.Max(t2.Y, t3.Y));
+
+            if (!OnCorner(t0, left, right, top, bottom) || !OnCorner(t1, left, right, top, bottom)
+                || !OnCorner(t2, left, right, top, bottom) || !OnCorner(t3, left, right, top, bottom))
+            {
+                return false;
+            }
+
+            var region = new Rect2(left, top, right - left, bottom - top);
+
+            RenderingServer.CanvasItemAddSetTransform(_current, new Transform2D(axisX, axisY, origin));
+            RenderingServer.CanvasItemAddTextureRectRegion(_current, region, RidOf(texture), region, modulate, false, false);
+            RenderingServer.CanvasItemAddSetTransform(_current, Transform2D.Identity);
+
+            return true;
+        }
+
+        private static bool OnCorner(Vector2 t, float left, float right, float top, float bottom)
+        {
+            const float Near = 1e-3f;
+
+            return (Math.Abs(t.X - left) < Near || Math.Abs(t.X - right) < Near)
+                && (Math.Abs(t.Y - top) < Near || Math.Abs(t.Y - bottom) < Near);
         }
 
         /// <summary>

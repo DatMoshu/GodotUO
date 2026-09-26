@@ -144,3 +144,24 @@ there would be two mechanisms instead of one.
 * Every shader uniform that is global state reaches *every* material, not just
   the default one. Setting only the default is how one effect sprite ends up
   unhued while everything beside it looks right.
+
+## Amendment 2026-09-26 -- Additive goes to the hardware
+
+The by-hand path reads the destination once per `SetBlendState`, not once per
+sprite. That is right for a handful of effects that rarely overlap, and wrong
+for many overlapping sprites under one state: each reads the same copy, so the
+last one drawn replaces the others instead of blending onto them. The light
+pass (`GameScene.PrepareLightsRendering`) is exactly that -- every light on
+screen under `BlendState.Additive` -- and a dense field of lights (the Volcano,
+parity night 2026-09-26, V1) came out dull and ringed where ClassicUO's lights
+add up.
+
+`BlendState.Additive` is (SourceAlpha, One, Add) on colour and alpha, which is
+Godot's `blend_add` exactly; measured with two overlapping half-alpha quads on
+a transparent target, within one 8-bit step. So the batcher now draws it with
+a hardware material (`uo_hue_add.gdshader`) and no read-back
+(`BlendState.IsAdditive`). Everything else keeps the by-hand path, and the
+limit above still applies to it: a state other than the default or Additive
+that draws overlapping sprites will not see them. Today nothing does --
+`GameEffectView` sets and clears its state around every single sprite, so
+each effect gets a copy of its own.

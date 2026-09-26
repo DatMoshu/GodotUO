@@ -592,6 +592,7 @@ namespace GUO.Game.Scenes
 
                 mesh.Statics.SetVisible(obj.MeshSpriteIndex, obj.AlphaHue, cot);
                 ApplyMeshHue(obj, mesh.Statics);
+                _renderLists.AddMeshStatic(obj, mesh.Statics);
 
                 if (itemData.IsLight)
                 {
@@ -609,6 +610,22 @@ namespace GUO.Game.Scenes
                         SelectedObject.Object = obj;
                 }
                 return 0;
+            }
+
+            // PORT DEVIATION (GUO): the light upstream's mesh fast path (the
+            // InChunkMesh loop further down) adds while sorting, for a static it
+            // would have baked (ChunkMesh.UpstreamWouldMesh): none when fading
+            // out or under gradient CoT, as there.
+            if (itemData.IsLight && ChunkMesh.UpstreamWouldMesh(obj, ref itemData))
+            {
+                bool cot = ProfileManager.CurrentProfile.UseCircleOfTransparency
+                    && obj.TransparentTest(_world.Player.Z + 5);
+                bool fadingOut = obj.Z >= _maxZ || (_noDrawRoofs && itemData.IsRoof);
+
+                if (!fadingOut && !(cot && _cotGradientMode))
+                {
+                    AddLight(obj, obj, obj.RealScreenPosition.X + 22, obj.RealScreenPosition.Y + 22);
+                }
             }
 
             CheckIfBehindATree(obj, ref itemData);
@@ -896,6 +913,7 @@ namespace GUO.Game.Scenes
 
                     mesh.Statics.SetVisible(obj.MeshSpriteIndex, obj.AlphaHue, meshCot);
                     ApplyMeshHue(obj, mesh.Statics);
+                    _renderLists.AddMeshStatic(obj, mesh.Statics);
 
                     if (meshItemData.IsLight)
                     {

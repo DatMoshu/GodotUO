@@ -223,3 +223,26 @@ world as quads in a 3D `SubViewport` under an orthographic camera, each at
 does, it removes every sort special case (this one and the mobile `+ 1`), and it
 lets land stay baked. It replaces the canvas batcher for the world pass, so it is
 an ADR of its own, not an amendment.
+
+## Amendment 2026-09-26: cached statics join the world sort
+
+The separate static mesh pass painted every roof before every excluded tree,
+regardless of their depths. It also grouped buildings by chunk and texture,
+which cannot define painter's order on a canvas without a depth buffer.
+
+Visible cached statics now join `RenderLists` alongside trees, mobiles and
+items, using the same `CalculateDepthZ()` key. The scene still updates cached
+quad visibility, alpha and hue, and the renderer submits those exact cached
+positions and UVs as axis-aligned canvas rectangles at the sorted position.
+Static quads have uniform color and do not need stretched land's per-vertex
+lighting. This avoids allocating or rebuilding an ArrayMesh per static sprite.
+Terrain keeps its bulk mesh path; covering terrain remains in the sorted pass.
+
+The tradeoff is one canvas command per visible static, replacing the old
+texture-grouped mesh commands. A real world depth buffer remains the larger
+architectural alternative. The existing separate transparent pass is unchanged.
+
+Validation: `dev/regression_probe.tscn -- rendering` reproduces the original
+tree-over-roof result, then checks actual GPU pixels for trees behind/in front
+of a cached roof, transparent roof pixels, and world offsets. See
+`godot/GUO/dev/README.md` for the command.
