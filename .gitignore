@@ -121,3 +121,6 @@ secrets.json
 # Agent worktrees and the Godot export templates fetched beside the engine.
 .claude/worktrees/
 tools/godot/templates/
+
+# Press kit: kept locally, out of the repo for now
+design/press-kit/
