@@ -158,6 +158,10 @@ public partial class Main : Node
                 {
                     EffectsProbeThenQuit();
                 }
+                else if (_options.ShardCommands.Count > 0 && _options.Stay)
+                {
+                    ShardCommandsThenStay();
+                }
                 else if (_options.ShardCommands.Count > 0)
                 {
                     ShardCommandsThenQuit();
@@ -338,6 +342,16 @@ public partial class Main : Node
         await CaptureFrame();
 
         Quit(ShardCommands.Passed ? 0 : 1);
+    }
+
+    /// <summary>
+    /// The commands, then nothing: a person takes over. How
+    /// tools\side_by_side puts GUO next to ClassicUO in the same place.
+    /// </summary>
+    private async void ShardCommandsThenStay()
+    {
+        await ShardCommands.Run(this, _options.ShardCommands);
+        GD.Print($"[GUO] shard commands {(ShardCommands.Passed ? "done" : "FAILED")}; staying (--stay)");
     }
 
     /// <summary>
@@ -525,6 +539,12 @@ public partial class Main : Node
         /// </summary>
         public bool TradePartner { get; private set; }
 
+        /// <summary>
+        /// Type the --shard-command lines and then hand the client to a person,
+        /// rather than photograph the result and quit.
+        /// </summary>
+        public bool Stay { get; private set; }
+
         /// <summary>Run the mesh highlight check rather than play.</summary>
         public bool HighlightProbe { get; private set; }
 
@@ -594,6 +614,9 @@ public partial class Main : Node
                         break;
                     case "--trade-partner":
                         o.TradePartner = true;
+                        break;
+                    case "--stay":
+                        o.Stay = true;
                         break;
                     case "--highlight-probe":
                         o.HighlightProbe = true;

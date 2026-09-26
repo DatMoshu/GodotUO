@@ -189,6 +189,10 @@ def build_cuo(cfg: Config) -> None:
             "--artifacts-path",
             str(artifacts),
             f"-p:OutputPath={cfg.upstream_build}{os.sep}",
+            # GUO's render dump, compiled into ClassicUO too, so the two can
+            # be dumped in one place and compared; see tools\render_dump.
+            "-p:CustomAfterMicrosoftCommonTargets="
+            + str(cfg.tools / "render_dump" / "inject.targets"),
             "-v",
             "q",
             "--nologo",

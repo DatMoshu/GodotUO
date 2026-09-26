@@ -1,0 +1,14 @@
+<Project>
+  <!--
+    Imported into the out-of-tree ClassicUO build by tools\ab_compare
+    (-p:CustomAfterMicrosoftCommonTargets=this file), so ClassicUO carries the
+    same render dump GUO does without a line of sources\ changing. Every project
+    in the build imports it; only the client takes the file.
+  -->
+  <PropertyGroup Condition="'$(MSBuildProjectName)' == 'ClassicUO.Client'">
+    <DefineConstants>$(DefineConstants);RENDER_DUMP_CUO</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(MSBuildProjectName)' == 'ClassicUO.Client'">
+    <Compile Include="$(MSBuildThisFileDirectory)..\..\godot\GUO\src\Bootstrap\RenderDump.cs" Link="RenderDumpInjected\RenderDump.cs" />
+  </ItemGroup>
+</Project>
