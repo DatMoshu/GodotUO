@@ -1,5 +1,9 @@
 # GodotUO
 
+<p align="center">
+  <img src="docs/images/guo-emblem.png" alt="GodotUO — engraved silver and gold emblem with emerald eyes" width="320" />
+</p>
+
 **GodotUO** (GUO in the code) ports **Classic Ultima Online** to **Godot 4
 .NET** — getting the client off FNA while keeping the game behaviour intact.
 

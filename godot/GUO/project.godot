@@ -11,7 +11,8 @@ config/name="GUO"
 config/description="Godot Ultima Online - the Classic client, ported from ClassicUO onto Godot."
 run/main_scene="res://scenes/Main.tscn"
 config/features=PackedStringArray("4.7", "C#", "Forward Plus")
-config/icon="res://icon.svg"
+config/icon="res://icon.png"
+config/windows_native_icon="res://icon.ico"
 
 [dotnet]
 
