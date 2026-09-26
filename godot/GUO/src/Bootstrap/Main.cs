@@ -154,6 +154,14 @@ public partial class Main : Node
                 {
                     HighlightProbeThenQuit();
                 }
+                else if (_options.ZoomProbe)
+                {
+                    ZoomProbeThenQuit();
+                }
+                else if (_options.DoorProbe)
+                {
+                    DoorProbeThenQuit();
+                }
                 else if (_options.EffectsProbe > 0)
                 {
                     EffectsProbeThenQuit();
@@ -317,6 +325,8 @@ public partial class Main : Node
     private bool Scripted =>
         _options.ShardCommands.Count > 0
         || _options.HighlightProbe
+        || _options.ZoomProbe
+        || _options.DoorProbe
         || _options.EffectsProbe > 0
         || _options.TradePartner
         || _options.InputProbe
@@ -372,6 +382,22 @@ public partial class Main : Node
     /// Hover a meshed tile or static, leave and come back, photograph it, then quit;
     /// see HighlightProbe.
     /// </summary>
+    /// <summary>Time the world at every other zoom step, then quit; see ZoomProbe.</summary>
+    private async void ZoomProbeThenQuit()
+    {
+        await Preamble();
+        await ZoomProbe.Run(this);
+        Quit(ZoomProbe.Passed ? 0 : 1);
+    }
+
+    /// <summary>Shut and open the doors on screen, keeping every frame after; see DoorProbe.</summary>
+    private async void DoorProbeThenQuit()
+    {
+        await Preamble();
+        await DoorProbe.Run(this, _options.ScreenshotDir);
+        Quit(DoorProbe.Passed ? 0 : 1);
+    }
+
     private async void HighlightProbeThenQuit()
     {
         await Preamble();
@@ -548,6 +574,11 @@ public partial class Main : Node
         /// <summary>Run the mesh highlight check rather than play.</summary>
         public bool HighlightProbe { get; private set; }
 
+        /// <summary>Time the world at each zoom level rather than play.</summary>
+        public bool ZoomProbe { get; private set; }
+
+        public bool DoorProbe { get; private set; }
+
         /// <summary>How many effects the effects probe spawns; zero means no probe.</summary>
         public int EffectsProbe { get; private set; }
 
@@ -620,6 +651,12 @@ public partial class Main : Node
                         break;
                     case "--highlight-probe":
                         o.HighlightProbe = true;
+                        break;
+                    case "--zoom-probe":
+                        o.ZoomProbe = true;
+                        break;
+                    case "--door-probe":
+                        o.DoorProbe = true;
                         break;
                     case "--effects-plain":
                         o.EffectsPlain = true;
