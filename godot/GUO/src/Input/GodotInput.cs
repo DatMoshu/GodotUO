@@ -358,6 +358,24 @@ namespace GUO.Input
                 mod |= SDL.SDL_Keymod.SDL_KMOD_LGUI;
             }
 
+            // SDL counts a modifier key's own press in that event's mod and
+            // drops it from its own release; Keyboard.Ctrl and the rest are
+            // set from nothing else, so ClassicUO sees Ctrl held the moment it
+            // goes down. Godot does not promise either for the key itself --
+            // on Windows the press arrived without CtrlPressed, Keyboard.Ctrl
+            // stayed false until key repeat began, and Ctrl+wheel zoom only
+            // worked when Ctrl had been held for a while first.
+            SDL.SDL_Keymod own = (e.Keycode != Key.None ? e.Keycode : e.PhysicalKeycode) switch
+            {
+                Key.Shift => SDL.SDL_Keymod.SDL_KMOD_LSHIFT,
+                Key.Ctrl => SDL.SDL_Keymod.SDL_KMOD_LCTRL,
+                Key.Alt => SDL.SDL_Keymod.SDL_KMOD_LALT,
+                Key.Meta => SDL.SDL_Keymod.SDL_KMOD_LGUI,
+                _ => SDL.SDL_Keymod.SDL_KMOD_NONE,
+            };
+
+            mod = e.Pressed ? mod | own : mod & ~own;
+
             return mod;
         }
 
