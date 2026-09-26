@@ -79,6 +79,16 @@ password = name) with game master access, for `launchers\dev\multi_client.bat`:
 the shard refuses a second character from one account, so four clients at once
 need four accounts, and three of those clients type `[go`.
 
+### `patches/0003-felucca-spring.patch`
+
+Felucca ships in season 4, Desolation: every tree bare, the look OSI gave
+Felucca when Trammel split off. The dev shard's characters live on Felucca, so
+every screenshot of the client showed a dead world. The patch sets Felucca to
+season 0, spring, as Trammel already is. Both clients get the season from the
+shard (packet 0xBC), so A/B comparisons are unaffected; only the art changes.
+Set it back to 4 in `src/Distribution/Data/map-definitions.json` to test the
+Desolation art.
+
 Keep this list append-only and numbered. A patch that upstream adopts should
 be deleted, not silently dropped from the set.
 

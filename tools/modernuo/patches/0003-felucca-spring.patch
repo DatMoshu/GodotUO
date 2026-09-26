@@ -1,0 +1,13 @@
+diff --git a/Distribution/Data/map-definitions.json b/Distribution/Data/map-definitions.json
+index fa7a39e52..245e65bb7 100644
+--- a/Distribution/Data/map-definitions.json
++++ b/Distribution/Data/map-definitions.json
+@@ -6,7 +6,7 @@
+     "name": "Felucca",
+     "width": 7168,
+     "height": 4096,
+-    "season": 4,
++    "season": 0,
+     "rules": "FeluccaRules"
+   },
+   {
