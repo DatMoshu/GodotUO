@@ -1,7 +1,7 @@
 # GodotUO
 
 <p align="center">
-  <img src="docs/images/guo-emblem.png" alt="GodotUO — engraved silver and gold emblem with emerald eyes" width="320" />
+  <img src="docs/images/guo-emblem.png" alt="GodotUO — engraved silver and gold emblem with Gems of Immortality eyes" width="320" />
 </p>
 
 **GodotUO** (GUO in the code) ports **Classic Ultima Online** to **Godot 4
