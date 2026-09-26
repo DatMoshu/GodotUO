@@ -604,7 +604,13 @@ namespace GUO
         /// </remarks>
         public override void _Input(InputEvent @event)
         {
-            GodotInput.Handle(@event);
+            // PORT DEVIATION (GUO): on a touch screen, or under --touch, the
+            // touch layer stands in front and hands GodotInput the mouse
+            // events a finger amounts to. Off, it is one false test.
+            if (!(GUO.Input.Touch.TouchInput.Enabled && GUO.Input.Touch.TouchInput.Handle(@event)))
+            {
+                GodotInput.Handle(@event);
+            }
 
             GetViewport().SetInputAsHandled();
         }
@@ -614,6 +620,13 @@ namespace GUO
             double elapsedMilliseconds = delta * 1000.0;
 
             _totalGameTime += delta;
+
+            if (GUO.Input.Touch.TouchInput.Enabled)
+            {
+                // A finger that does not move raises no event; the hold timer
+                // has to be looked at once a frame.
+                GUO.Input.Touch.TouchInput.Update();
+            }
 
             Update(elapsedMilliseconds);
 
