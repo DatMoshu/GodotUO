@@ -148,9 +148,32 @@ public partial class Main : Node
                     GD.Print("[GUO] audio muted for a scripted run (--sound to hear it)");
                 }
 
+                // A phone has no mouse; a desktop asks for the layer by flag.
+                // The mouse only stands in for a finger on the desktop: on a
+                // device the fingers are real, and emulating more of them
+                // from a pointer that is not there would be noise.
+                if (_options.Touch || OS.HasFeature("mobile"))
+                {
+                    bool mobile = OS.HasFeature("mobile");
+
+                    GUO.Input.Touch.TouchInput.Enable(this, emulateTouchFromMouse: !mobile);
+
+                    // After the controller is in the tree: Client.Run adds it
+                    // deferred, and the scale is a property of it.
+                    CallDeferred(nameof(ApplyTouchScreenScale));
+                }
+
                 // Commands and a probe together: the commands run first
                 // (typically "[go" somewhere populated) and the probe follows.
-                if (_options.HighlightProbe)
+                if (_options.LoginProbe)
+                {
+                    LoginProbeThenMaybeQuit();
+                }
+                else if (_options.TouchProbe)
+                {
+                    TouchProbeThenQuit();
+                }
+                else if (_options.HighlightProbe)
                 {
                     HighlightProbeThenQuit();
                 }
@@ -416,6 +439,39 @@ public partial class Main : Node
         Quit(0);
     }
 
+    /// <summary>
+    /// The touch layer's integer scale, once the controller exists.
+    /// </summary>
+    private void ApplyTouchScreenScale()
+    {
+        GUO.Input.Touch.TouchInput.ApplyScreenScale(_options.ScreenScale);
+    }
+
+    /// <summary>
+    /// Say on the log when the login gump has been drawn; see LoginProbe.
+    /// </summary>
+    private async void LoginProbeThenMaybeQuit()
+    {
+        await LoginProbe.Run(this);
+
+        if (_options.LoginProbeQuits)
+        {
+            await CaptureFrame();
+            Quit(LoginProbe.Passed ? 0 : 1);
+        }
+    }
+
+    /// <summary>
+    /// Drive the touch layer with synthetic fingers, photograph the result,
+    /// and exit with the verdict; see TouchProbe.
+    /// </summary>
+    private async void TouchProbeThenQuit()
+    {
+        await TouchProbe.Run(this);
+        await CaptureFrame();
+        Quit(TouchProbe.Passed ? 0 : 1);
+    }
+
     private async void ProbeThenQuit()
     {
         InputProbe.EndureSeconds = _options.EndureSeconds;
@@ -586,6 +642,31 @@ public partial class Main : Node
         public bool EffectsPlain { get; private set; }
 
         /// <summary>
+        /// Put the touch layer in front of the mouse path. On a phone it is
+        /// on regardless; on a desktop this is how it is tried out and tested.
+        /// </summary>
+        public bool Touch { get; private set; }
+
+        /// <summary>Drive the touch layer with synthetic fingers and check the client reacted.</summary>
+        public bool TouchProbe { get; private set; }
+
+        /// <summary>
+        /// Wait for the login gump to be drawn, say so on the log, and either
+        /// quit (desktop) or keep running (a device, where the line is what
+        /// the smoke reads back through logcat).
+        /// </summary>
+        public bool LoginProbe { get; private set; }
+
+        /// <summary>Whether the login probe quits once it has reported. Default true.</summary>
+        public bool LoginProbeQuits { get; private set; } = true;
+
+        /// <summary>
+        /// Integer screen scale for the touch layer; zero picks one from the
+        /// window height so the 640x480 login screen fits.
+        /// </summary>
+        public int ScreenScale { get; private set; }
+
+        /// <summary>
         /// Lines to type into the game window once the character is in the
         /// world, in order. Used to administer the local dev shard, which
         /// takes its commands in game.
@@ -660,6 +741,27 @@ public partial class Main : Node
                         break;
                     case "--effects-plain":
                         o.EffectsPlain = true;
+                        break;
+                    case "--touch":
+                        o.Touch = true;
+                        break;
+                    case "--touch-probe":
+                        o.Touch = true;
+                        o.TouchProbe = true;
+                        break;
+                    case "--login-probe":
+                        o.LoginProbe = true;
+                        break;
+                    case "--login-probe-stay":
+                        o.LoginProbe = true;
+                        o.LoginProbeQuits = false;
+                        break;
+                    case "--screen-scale":
+                        if (int.TryParse(Next(), out int screenScale))
+                        {
+                            o.ScreenScale = screenScale;
+                        }
+
                         break;
                     case "--effects-probe":
                         if (int.TryParse(Next(), out int effects))
