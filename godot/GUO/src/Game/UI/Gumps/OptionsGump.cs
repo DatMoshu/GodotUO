@@ -3671,19 +3671,23 @@ namespace GUO.Game.UI.Gumps
                     break;
 
                 case 3: // video
+                    var videoDefaults = new Profile();
+                    _sliderFPS.Value = 60;
+                    _reduceFPSWhenInactive.IsChecked = videoDefaults.ReduceFPSWhenInactive;
                     _windowBorderless.IsChecked = false;
-                    _zoomCheckbox.IsChecked = false;
+                    _zoomCheckbox.IsChecked = videoDefaults.EnableMousewheelScaleZoom;
                     _restorezoomCheckbox.IsChecked = false;
-                    _gameWindowWidth.SetText("600");
-                    _gameWindowHeight.SetText("480");
-                    _gameWindowPositionX.SetText("20");
-                    _gameWindowPositionY.SetText("20");
+                    _gameWindowWidth.SetText(Client.Game.ClientBounds.Width.ToString());
+                    _gameWindowHeight.SetText(Client.Game.ClientBounds.Height.ToString());
+                    _gameWindowPositionX.SetText("0");
+                    _gameWindowPositionY.SetText("0");
                     _gameWindowLock.IsChecked = false;
-                    _gameWindowFullsize.IsChecked = false;
+                    _gameWindowFullsize.IsChecked = videoDefaults.GameWindowFullSize;
                     _enableDeathScreen.IsChecked = true;
                     _enableBlackWhiteEffect.IsChecked = true;
-                    Client.Game.Scene.Camera.Zoom = 1f;
-                    _currentProfile.DefaultScale = 1f;
+                    Client.Game.Scene.Camera.Zoom = videoDefaults.DefaultScale;
+                    _currentProfile.DefaultScale = videoDefaults.DefaultScale;
+                    _sliderZoom.Value = (int)Math.Round((videoDefaults.DefaultScale - Client.Game.Scene.Camera.ZoomMin) / Client.Game.Scene.Camera.ZoomStep);
                     _sliderScreenZoom.Value = 0;
                     _lightBar.Value = 0;
                     _enableLight.IsChecked = false;

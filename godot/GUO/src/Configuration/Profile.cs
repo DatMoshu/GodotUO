@@ -126,8 +126,8 @@ namespace GUO.Configuration
         public int CircleOfTransparencyRadius { get; set; } = Constants.MAX_CIRCLE_OF_TRANSPARENCY_RADIUS / 2;
         public int CircleOfTransparencyType { get; set; } // 0 = normal, 1 = like original client
         public int VendorGumpHeight { get; set; } = 60;   //original vendor gump size
-        public float DefaultScale { get; set; } = 1.0f;
-        public bool EnableMousewheelScaleZoom { get; set; }
+        public float DefaultScale { get; set; } = 0.7f; // Video slider step 2 (0.5 + 2 * 0.1).
+        public bool EnableMousewheelScaleZoom { get; set; } = true;
         public bool SaveScaleAfterClose { get; set; }
         public bool RestoreScaleAfterUnpressCtrl { get; set; }
         public bool BandageSelfOld { get; set; } = true;
@@ -156,9 +156,9 @@ namespace GUO.Configuration
         // general
         [JsonConverter(typeof(Point2Converter))] public Point WindowClientBounds { get; set; } = new Point(600, 480);
         [JsonConverter(typeof(Point2Converter))] public Point ContainerDefaultPosition { get; set; } = new Point(24, 24);
-        [JsonConverter(typeof(Point2Converter))] public Point GameWindowPosition { get; set; } = new Point(10, 10);
+        [JsonConverter(typeof(Point2Converter))] public Point GameWindowPosition { get; set; } = Point.Zero;
         public bool GameWindowLock { get; set; }
-        public bool GameWindowFullSize { get; set; }
+        public bool GameWindowFullSize { get; set; } = true;
         public bool WindowBorderless { get; set; } = false;
         [JsonConverter(typeof(Point2Converter))] public Point GameWindowSize { get; set; } = new Point(600, 480);
         [JsonConverter(typeof(Point2Converter))] public Point TopbarGumpPosition { get; set; } = new Point(0, 0);

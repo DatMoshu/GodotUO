@@ -158,6 +158,14 @@ namespace GUO.Game.Scenes
                 Client.Game.SetWindowSize(w, h);
             }
 
+            // Full-size also applies when login did not change the OS window
+            // dimensions, so there was no resize notification to fill it.
+            if (ProfileManager.CurrentProfile.GameWindowFullSize)
+            {
+                viewport.ResizeGameWindow(new Point(Client.Game.Window.ClientBounds.Width, Client.Game.Window.ClientBounds.Height));
+                viewport.SetGameWindowPosition(new Point(-WorldViewportGump.BORDER_WIDTH, -WorldViewportGump.BORDER_WIDTH));
+            }
+
             Plugin.OnConnected();
         }
 
