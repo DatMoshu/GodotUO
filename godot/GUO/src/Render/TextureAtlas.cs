@@ -74,9 +74,13 @@ namespace GUO.Renderer
         private readonly List<bool> _dirty = new List<bool>();
 
         private Packer _packer;
+        private int _packingPageIndex = -1;
 
         public TextureAtlas(int width, int height)
         {
+            if (width <= 0 || height <= 0)
+                throw new ArgumentOutOfRangeException(nameof(width), "Atlas dimensions must be positive.");
+
             _width = Math.Min(width, MaxPageSize);
             _height = Math.Min(height, MaxPageSize);
 
@@ -213,28 +217,50 @@ namespace GUO.Renderer
             out Rectangle pr
         )
         {
-            int index = _textures.Count - 1;
+            if (width <= 0 || height <= 0)
+                throw new ArgumentOutOfRangeException(nameof(width), "Sprite dimensions must be positive.");
+
+            int pixelCount = checked(width * height);
+            int byteCount = checked(pixelCount * 4);
+            if (pixels.Length < pixelCount)
+                throw new ArgumentException("Not enough pixels for the sprite dimensions.", nameof(pixels));
+
+            // PackRect adds two pixels of padding. An oversized sprite cannot
+            // fit even on a fresh page; retain it as a dedicated texture instead.
+            if (width > _width - 2 || height > _height - 2)
+            {
+                var data = System.Runtime.InteropServices.MemoryMarshal.AsBytes(pixels.Slice(0, pixelCount)).ToArray();
+                Image page = Image.CreateFromData(width, height, false, Image.Format.Rgba8, data);
+                var texture = ImageTexture.CreateFromImage(page);
+                _pages.Add(page);
+                _textures.Add(texture);
+                _dirty.Add(false);
+                pr = new Rectangle(0, 0, width, height);
+                return texture;
+            }
+
+            int index = _packingPageIndex;
 
             if (index < 0)
             {
-                index = 0;
                 CreateNewPage();
+                index = _packingPageIndex;
             }
 
             while (!_packer.PackRect(width, height, out pr))
             {
                 CreateNewPage();
-                index = _textures.Count - 1;
+                index = _packingPageIndex;
             }
 
             // A uint here is 0xAABBGGRR, so its bytes in memory are already
             // R,G,B,A -- the order Rgba8 wants. Same reasoning as the art
             // decoder in UoDataProbe and SolidColorTextureCache.
-            var rgba = new byte[width * height * 4];
-            System.Runtime.InteropServices.MemoryMarshal.AsBytes(pixels.Slice(0, width * height))
+            var rgba = new byte[byteCount];
+            System.Runtime.InteropServices.MemoryMarshal.AsBytes(pixels.Slice(0, pixelCount))
                 .CopyTo(rgba);
 
-            Image sprite = Image.CreateFromData(width, height, false, Image.Format.Rgba8, rgba);
+            using Image sprite = Image.CreateFromData(width, height, false, Image.Format.Rgba8, rgba);
 
             _pages[index].BlitRect(
                 sprite,
@@ -257,6 +283,7 @@ namespace GUO.Renderer
             _pages.Add(page);
             _textures.Add(ImageTexture.CreateFromImage(page));
             _dirty.Add(false);
+            _packingPageIndex = _textures.Count - 1;
 
             _packer?.Dispose();
             _packer = new Packer(_width, _height);
@@ -306,6 +333,7 @@ namespace GUO.Renderer
 
             _packer?.Dispose();
             _packer = null;
+            _packingPageIndex = -1;
         }
     }
 }

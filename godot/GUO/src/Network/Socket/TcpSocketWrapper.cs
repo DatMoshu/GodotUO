@@ -59,6 +59,15 @@ sealed class TcpSocketWrapper : SocketWrapper
         if (!IsConnected)
             return 0;
 
+        // Connected records the last socket operation. A FIN has no payload,
+        // so Available alone cannot distinguish it from an idle connection.
+        if (_socket.Client.Poll(0, SelectMode.SelectRead) && _socket.Available == 0)
+        {
+            Disconnect();
+            InvokeOnDisconnected();
+            return 0;
+        }
+
         var available = Math.Min(buffer.Length, _socket.Available);
         var done = 0;
 
@@ -71,10 +80,10 @@ sealed class TcpSocketWrapper : SocketWrapper
 
             if (read <= 0)
             {
-                InvokeOnDisconnected();
                 Disconnect();
+                InvokeOnDisconnected();
 
-                return 0;
+                return done;
             }
 
             done += read;
@@ -92,5 +101,6 @@ sealed class TcpSocketWrapper : SocketWrapper
     public override void Dispose()
     {
         _socket?.Dispose();
+        _socket = null;
     }
 }

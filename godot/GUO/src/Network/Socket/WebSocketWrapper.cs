@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Net.Sockets;
@@ -97,7 +98,7 @@ sealed class WebSocketWrapper : SocketWrapper
 
     private async Task ConnectWebSocketAsyncCore(Uri uri)
     {
-        // Take control of creating the raw socket, turn off Nagle, also lets us peek at `Available` bytes.
+        // Take control of creating the raw socket and turn off Nagle.
         _rawSocket = new TcpSocket(SocketType.Stream, ProtocolType.Tcp)
         {
             NoDelay = true
@@ -143,32 +144,37 @@ sealed class WebSocketWrapper : SocketWrapper
     private async Task StartReceiveAsync()
     {
         var buffer = Shared.Rent(4096);
-        var memory = buffer.AsMemory();
-        var position = 0;
+        // MemoryStream preserves the prefix when growing. TCP Available is
+        // unrelated to a WebSocket message's size (especially over TLS).
+        using var message = new MemoryStream();
 
         try
         {
             while (IsConnected)
             {
-                GrowReceiveBufferIfNeeded(ref buffer, ref memory);
+                var receiveResult = await _webSocket.ReceiveAsync(buffer.AsMemory(0, 4096), _tokenSource.Token);
 
-                var receiveResult = await _webSocket.ReceiveAsync(memory.Slice(position), _tokenSource.Token);
+                // A close can interrupt a fragmented message; never publish
+                // its incomplete prefix. Text messages are not UO packet data.
+                if (receiveResult.MessageType == WebSocketMessageType.Close)
+                    break;
+                if (receiveResult.MessageType != WebSocketMessageType.Binary)
+                    continue;
 
-                // Ignoring message types:
-                // 1. WebSocketMessageType.Text: shouldn't be sent by the server, though might be useful for multiplexing commands
-                // 2. WebSocketMessageType.Close: will be handled by IsConnected
-                if (receiveResult.MessageType == WebSocketMessageType.Binary)
-                    position += receiveResult.Count;
+                if (message.Length + receiveResult.Count > MAX_RECEIVE_BUFFER_SIZE)
+                    throw new SocketException((int)SocketError.MessageSize);
+
+                message.Write(buffer, 0, receiveResult.Count);
 
                 if (!receiveResult.EndOfMessage)
                     continue;
 
                 lock (_receiveStream)
                 {
-                    _receiveStream.Enqueue(buffer, 0, position);
+                    _receiveStream.Enqueue(message.GetBuffer(), 0, (int)message.Length);
                 }
 
-                position = 0;
+                message.SetLength(0);
             }
         }
         catch (OperationCanceledException)
@@ -187,23 +193,6 @@ sealed class WebSocketWrapper : SocketWrapper
 
         if (!IsCanceled)
             InvokeOnError(SocketError.ConnectionReset);
-    }
-
-    // This is probably unnecessary, but WebSocket frames can be up to 2^63 bytes so we put some cap on it, yet to see packets larger than 4KB come through.
-    // We peek the raw tcp socket available bytes, grow if the frame is bigger, we're naively assuming no compression.
-    private void GrowReceiveBufferIfNeeded(ref byte[] buffer, ref Memory<byte> memory)
-    {
-        if (_rawSocket.Available <= buffer.Length)
-            return;
-
-        if (_rawSocket.Available > MAX_RECEIVE_BUFFER_SIZE)
-            throw new SocketException((int)SocketError.MessageSize, $"WebSocket message frame too large: {_rawSocket.Available} > {MAX_RECEIVE_BUFFER_SIZE}");
-
-        Log.Trace($"WebSocket growing receive buffer {buffer.Length} bytes to {_rawSocket.Available} bytes");
-
-        Shared.Return(buffer);
-        buffer = Shared.Rent(_rawSocket.Available);
-        memory = buffer.AsMemory();
     }
 
     public override void Disconnect()

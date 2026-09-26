@@ -4,7 +4,6 @@ using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
-using System.Text.RegularExpressions;
 using GUO.Utility.Logging;
 
 namespace GUO.Configuration
@@ -22,16 +21,8 @@ namespace GUO.Configuration
 
             var text = File.ReadAllText(file);
 
-            text = Regex.Replace
-            (
-                text,
-                @"(?<!\\)  # lookbehind: Check that previous character isn't a \
-                                                \\         # match a \
-                                                (?!\\)     # lookahead: Check that the following character isn't a \",
-                @"\\",
-                RegexOptions.IgnorePatternWhitespace
-            );
-
+            // Save already produces valid JSON, including escaped paths and Unicode.
+            // Rewriting backslashes here would turn those escapes into literal text.
             return JsonSerializer.Deserialize(text, ctx);
         }
 
