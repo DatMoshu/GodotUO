@@ -134,6 +134,13 @@ jobs:
           python tools/asset_store/test_corpus.py
           python tools/asset_store/smoke.py
 
+      # Bulk unpack/pack of art, gumps and animations (Epic H, H2), on a
+      # synthetic install: codecs, unpack -> pack byte identity, edits, new art.
+      - name: uopack tests
+        run: |
+          python -m pip install --quiet pillow
+          python tools/uopack/test_uopack.py
+
       # docs/port_status.md is generated. If it differs from a fresh audit
       # (ignoring its timestamp), someone ported without re-measuring.
       - name: Port audit is current
