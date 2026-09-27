@@ -54,3 +54,43 @@ about a second.
 ## blocks
 
 Lists what a project replaces, with each block's cell range.
+
+## pack: sending your edits to a shard owner
+
+```
+python tools\world\run.py pack [--project DIR] [--out FILE.zip]
+```
+
+Zips the project's **edits and nothing else**: `project.json`, the changed
+blocks (`blocks\`) and the replaced art, gumps and hues (`assets\`, ADR-0020),
+plus a `README.txt` telling the receiver how to apply it. The default output
+is `build\world_pack\<project>.zip`.
+
+A pack holds no client data, so it can be sent to anyone. An **export**
+folder can't: it holds copies of the sender's map files and `hues.mul`, which
+are the install's. So what travels is the pack, and each receiver (the shard
+owner, or each player) runs `export` against their own install:
+
+```
+python tools\world\run.py export --project <unzipped folder> --out <export folder>
+python tools\world\run.py verify --project <unzipped folder> --out <export folder>
+```
+
+The shard lists `<export folder>` first in its data directories. Players
+point `files_override` at its `files_override.txt`. If the receiver's install
+differs from the sender's (map file sizes, `project.json`'s fingerprint),
+`export` refuses until they check the client version and pass `--force`.
+
+`pack` checks every file before writing anything:
+
+- block files must parse;
+- land art must be 44x44, statics at most 1024x1024 and gumps at most
+  2048x2048;
+- hues must have 32 colours.
+
+A pack that leaves your machine therefore exports. An `--out` inside
+`UO_CLIENT_DATA` is refused.
+
+Checked 2026-09-27: a pack of one block and four assets (4 KB) was unzipped
+into another folder, then exported and verified from there. A 40x40 land tile
+was refused, and so was an `--out` in the install.

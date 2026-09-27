@@ -141,6 +141,44 @@ redistributed**: `build\` and `*.mul` are gitignored.
   is in `tools\editor_shard\README.md` and is the owner's to run, because it
   restarts the shard everyone plays on.
 
+### Sending your edits to someone else's shard
+
+You can't send the export folder: it holds copies of your install's map files
+and `hues.mul`, which are not yours to hand out. Send a **pack** instead: one
+zip of your edits and nothing derived from the install.
+
+```bat
+python tools\world\run.py pack
+```
+
+It writes `build\world_pack\<project>.zip`, holding:
+
+- `project.json` (which client version and install it was made on);
+- your changed map blocks, as JSON;
+- your replaced art, gumps and hues, as PNG and JSON;
+- a `README.txt` for whoever receives it.
+
+Before writing anything it checks every file: block files parse, land tiles
+are 44x44, statics and gumps are within size, hues have 32 colours. So a pack
+that leaves your machine exports cleanly.
+
+Whoever receives it (the shard owner, and each player) unzips it and runs
+section 4 against **their own** install:
+
+```bat
+python tools\world\run.py export --project <unzipped folder> --out <export folder>
+python tools\world\run.py verify --project <unzipped folder> --out <export folder>
+```
+
+The shard owner lists the export folder first in the shard's data
+directories and restarts. Each player points `files_override` at their own
+export's `files_override.txt`. If `export` refuses because the pack was made
+on another install, check that both use the same client version, then add
+`--force`.
+
+Checked on 2026-09-27: a pack of one map block and four assets was unzipped
+into another folder, then exported and verified from there.
+
 ## 5. The live tier, on a private instance
 
 Live editing sends each edit to a running shard, which applies it in memory

@@ -8,6 +8,7 @@ it into files a server and a client can read, and checks them:
     python tools/world/run.py blocks [--project DIR]
     python tools/world/run.py export [--project DIR] [--out DIR] [--force]
     python tools/world/run.py verify [--project DIR] [--out DIR]
+    python tools/world/run.py pack   [--project DIR] [--out FILE.zip]
 
 Or through the launcher:
 
@@ -372,9 +373,96 @@ def cmd_verify(cfg, project: Path, out: Path) -> int:
     return 0 if failures == 0 else 1
 
 
+PACK_README = """This is a GUO world pack: map and art edits made in the GUO editor.
+
+It holds only the edits: changed 8x8 map blocks as JSON (blocks/), and
+replaced art, gumps and hues as PNG and JSON (assets/). It holds NO Ultima
+Online client data, so it can be sent to anyone. To use it you need your own
+UO install and a GUO checkout.
+
+Made from project "{name}" on {created}.
+Base install: client {version}, fingerprint {fingerprint}.
+Contents: {summary}.
+
+To apply it (shard owner, or each player):
+
+  1. Unzip this folder anywhere outside your UO install.
+  2. python tools\\world\\run.py export --project <this folder> --out <export folder>
+     python tools\\world\\run.py verify --project <this folder> --out <export folder>
+     If export refuses because the pack was made on another install, the
+     map files differ in size. Check you have the same client version, then
+     add --force.
+  3. Shard: list <export folder> FIRST in the shard's data directories
+     (ModernUO: dataDirectories in modernuo.json) and restart it.
+  4. Client: point settings.json "files_override" at
+     <export folder>\\files_override.txt.
+
+The export folder is made from your install. Do not send it on; send this
+pack instead. See docs/wiki/Manage-Your-Shard-From-The-Editor.md.
+"""
+
+
+def cmd_pack(cfg, project: Path, out: Path) -> int:
+    """Zip a project's edits (and nothing derived from the install) for sending to a shard owner."""
+    import zipfile
+
+    if inside(out, cfg.client_data):
+        print(f"[world] REFUSED: {out} is inside UO_CLIENT_DATA ({cfg.client_data}). The install is never written.")
+        return 1
+
+    meta = json.loads((project / "project.json").read_text(encoding="utf-8"))
+    blocks = sorted((project / "blocks").glob("*/*.json"))
+    assets = uoart.project_assets(project)
+
+    # Check every file parses and fits before anything is written, so a pack
+    # that leaves this machine always exports.
+    for f in blocks:
+        try:
+            read_block(f)
+        except (ValueError, KeyError, IndexError, json.JSONDecodeError) as ex:
+            print(f"[world] REFUSED: {f} is not a valid block file: {ex}")
+            return 1
+    for kind in ("land", "statics", "gumps"):
+        for id_, png in assets[kind]:
+            w, h, _ = uoart.png_pixels(png, land=kind == "land")
+            limit = (44, 44) if kind == "land" else (1024, 1024) if kind == "statics" else (2048, 2048)
+            if (kind == "land" and (w, h) != limit) or w > limit[0] or h > limit[1]:
+                print(f"[world] REFUSED: {png} is {w}x{h}; {kind} must be {'exactly 44x44' if kind == 'land' else f'at most {limit[0]}x{limit[1]}'}")
+                return 1
+    for _, path in assets["hues"]:
+        try:
+            if len(uoart.read_hue(path).colors) != 32:
+                raise ValueError("not 32 colours")
+        except (ValueError, KeyError, json.JSONDecodeError) as ex:
+            print(f"[world] REFUSED: {path} is not a valid hue file: {ex}")
+            return 1
+
+    files = [project / "project.json", *blocks]
+    for kind in ("land", "statics", "gumps", "hues"):
+        files += [p for _, p in assets[kind]]
+    if len(files) == 1:
+        print(f"[world] {project}: nothing to pack")
+        return 1
+
+    counts = [f"{len(blocks)} map block(s)"] + [f"{len(assets[k])} {k}" for k in ("land", "statics", "gumps", "hues") if assets[k]]
+    note = PACK_README.format(
+        name=meta.get("name"), created=datetime.now(timezone.utc).date().isoformat(),
+        version=meta.get("base", {}).get("client_version"), fingerprint=meta.get("base", {}).get("fingerprint"),
+        summary=", ".join(counts),
+    )
+    out.parent.mkdir(parents=True, exist_ok=True)
+    root = project.name
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
+        for f in files:
+            z.write(f, f"{root}/{f.relative_to(project).as_posix()}")
+        z.writestr(f"{root}/README.txt", note.replace("\n", "\r\n"))
+    print(f"[world] pack: {', '.join(counts)} -> {out} ({out.stat().st_size} bytes)")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("command", choices=["blocks", "export", "verify"])
+    ap.add_argument("command", choices=["blocks", "export", "verify", "pack"])
     ap.add_argument("--project", type=Path, help="world project folder (default UO_WORLD_PROJECT)")
     ap.add_argument("--out", type=Path, help="export folder (default <project>/export)")
     ap.add_argument("--force", action="store_true", help="export a project made on another install")
@@ -385,6 +473,8 @@ def main() -> int:
     if not (project / "project.json").exists():
         print(f"[world] not a world project: {project}")
         return 2
+    if args.command == "pack":
+        return cmd_pack(cfg, project, (args.out or cfg.build / "world_pack" / f"{project.name}.zip").resolve())
     out = (args.out or project / "export").resolve()
 
     if args.command == "blocks":

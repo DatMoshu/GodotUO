@@ -43,7 +43,26 @@ launchers\dev\editor_smoke.bat [same flags]
      exactly those, closing must restore the install's block, and the
      install's `map*`/`statics*`/`staidx*` files must keep their modification
      times.
-3. With `--reload`: after the first pass the addon writes `reload.request`;
+   - then the **asset overlay** (ADR-0020), before the World tab boots, in
+     its own project under the output folder, with fixtures drawn at test
+     time (never read from the install): a land tile (0x0244), a static
+     (0x0E75), a gump (0x0064) and a hue (33) are imported. The loaders must
+     return exactly the saved images, a wrong-sized land tile and an
+     oversized static must be refused, Revert must bring the install's static
+     back, the UO Inspector must say "replaced", the World tab's own loaders
+     must return the imported static, and the install's `art*`, `gump*`,
+     `hues*` and `verdata*` files must keep their modification times.
+3. After the editor exits, with that asset project (`tools\world` and
+   `tools\editor_asset_roundtrip`):
+   - `export` and `verify` pass, and `verify` fails on a copy with one colour
+     changed;
+   - an export with `--out` under `UO_CLIENT_DATA` is refused and nothing is
+     created there;
+   - `pack` writes a zip without a single install-derived file, and it
+     exports and verifies from wherever it is unzipped;
+   - a headless client with `files_override` on the export decodes every
+     asset unchanged, and a control run without it does not.
+4. With `--reload`: after the first pass the addon writes `reload.request`;
    the tool touches a source file, rebuilds, and answers `reload.go`; the
    addon sends the editor the focus-in notification GodotTools reloads on.
    The reload recreates the plugin, which builds its docks again, and the
@@ -51,7 +70,7 @@ launchers\dev\editor_smoke.bat [same flags]
    `Assembly load context unloaded successfully` and no
    `Failed to unload assemblies`. This is open question 1 of the plan, kept
    as a regression check.
-4. Restores `project.godot` if the editor rewrote it. The windowed editor
+5. Restores `project.godot` if the editor rewrote it. The windowed editor
    rewrites that file on exit (dropping its comments) with or without the
    addon; a smoke run must not leave the tree dirty.
 
