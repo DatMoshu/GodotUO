@@ -39,7 +39,7 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
   Ten CC0 background packs to start. Installed backgrounds appear in the
   background picker. ADR-0019.
 - **Editor phase 5**: import art and gumps as PNG, edit hues, export a
-  patch set and read it back in the client; `tools\worldun.py pack`
+  patch set and read it back in the client; `tools\world\run.py pack`
   sends your edits to a shard owner. ADR-0020.
 - **Godot editor addon** (phases 0-4): browse the UO data, a world view,
   export to a shard, and a live tier against a private ModernUO instance.
