@@ -1,0 +1,203 @@
+#!/usr/bin/env python3
+"""A private ModernUO instance for the editor's live and export work.
+
+The dev shard (launchers\\shard) is shared: other agents and devices play on
+it. The editor's phase 4 work (live patching, GM commands, a shard reading a
+world export) runs on an instance of its own instead:
+
+    python tools/editor_shard/run.py setup   [--from DIR] [--port 2594]
+    python tools/editor_shard/run.py start   [--data-first DIR]
+    python tools/editor_shard/run.py status
+    python tools/editor_shard/run.py stop
+
+setup copies the built ModernUO Distribution (the same tools/modernuo build,
+read only; Archives, Backups, Logs left out) to build\\shard_private, with its
+own Saves snapshot, and rewrites the copy's Configuration\\modernuo.json:
+listener 127.0.0.1:<port> (default 2594) and nothing wider, data directories
+the install. The shared shard's files are only ever read.
+
+start runs the copy's ModernUO.exe in the background, logging to
+build\\shard_private\\shard.log, and waits until it listens. --data-first puts
+a folder (a tools/world export) ahead of the install in dataDirectories for
+this start; a start without it puts the install back alone.
+
+stop ends only the process start recorded, and only if its executable is the
+copy's: it cannot stop the shared shard.
+
+Clients reach it through environment variables for that run only
+(UO_SHARD_HOST=127.0.0.1, UO_SHARD_PORT=<port>); config.bat is not changed.
+The copied Saves include the dev shard's accounts, so the GM lane accounts
+log in here as they do there.
+
+Exit codes: 0 ok, 1 failed, 2 bad state (not set up, already running, ...).
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import shutil
+import socket
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from guo import load_config  # noqa: E402
+
+LEAVE_OUT = {"Archives", "Backups", "Logs", "temp"}
+
+
+def home(cfg) -> Path:
+    return cfg.build / "shard_private"
+
+
+def default_source(cfg) -> Path:
+    """The built Distribution: this checkout's, or the main worktree's (worktrees share the build)."""
+    if (cfg.shard_dist / "ModernUO.exe").exists():
+        return cfg.shard_dist
+    common = subprocess.run(["git", "-C", str(cfg.root), "rev-parse", "--git-common-dir"],
+                            capture_output=True, text=True).stdout.strip()
+    main_root = Path(common).resolve().parent if common else cfg.root
+    return main_root / "tools" / "modernuo" / "src" / "Distribution"
+
+
+def listening(port: int) -> bool:
+    with socket.socket() as s:
+        s.settimeout(0.5)
+        return s.connect_ex(("127.0.0.1", port)) == 0
+
+
+def read_state(h: Path) -> dict:
+    f = h / "state.json"
+    return json.loads(f.read_text(encoding="utf-8")) if f.exists() else {}
+
+
+def write_state(h: Path, state: dict) -> None:
+    (h / "state.json").write_text(json.dumps(state, indent=2), encoding="utf-8")
+
+
+def pid_alive(pid: int, exe: Path) -> bool:
+    """True if pid is running and is the copy's ModernUO.exe."""
+    out = subprocess.run(["powershell", "-NoProfile", "-Command",
+                          f"(Get-Process -Id {pid} -ErrorAction SilentlyContinue).Path"],
+                         capture_output=True, text=True).stdout.strip()
+    return bool(out) and Path(out).resolve() == exe.resolve()
+
+
+def configure(h: Path, cfg, port: int, data_first: Path | None) -> None:
+    conf = h / "Configuration" / "modernuo.json"
+    j = json.loads(conf.read_text(encoding="utf-8"))
+    j["listeners"] = [f"127.0.0.1:{port}"]
+    dirs = [str(cfg.client_data)]
+    if data_first is not None:
+        dirs.insert(0, str(data_first))
+    j["dataDirectories"] = dirs
+    conf.write_text(json.dumps(j, indent=2), encoding="utf-8")
+
+
+def cmd_setup(cfg, source: Path, port: int) -> int:
+    h = home(cfg)
+    if (h / "ModernUO.exe").exists():
+        print(f"[editor_shard] already set up: {h} (delete it to start over)")
+        return 2
+    if not (source / "ModernUO.exe").exists():
+        print(f"[editor_shard] no built ModernUO at {source}; build the dev shard first (launchers\\shard\\build.bat)")
+        return 1
+    print(f"[editor_shard] copying {source} -> {h} (without {', '.join(sorted(LEAVE_OUT))})")
+    shutil.copytree(source, h, ignore=lambda d, names: [n for n in names if Path(d) == source and n in LEAVE_OUT])
+    configure(h, cfg, port, None)
+    write_state(h, {"port": port, "source": str(source)})
+    print(f"[editor_shard] ready: 127.0.0.1:{port}")
+    return 0
+
+
+def cmd_start(cfg, data_first: Path | None) -> int:
+    h = home(cfg)
+    state = read_state(h)
+    if not state:
+        print("[editor_shard] not set up; run: python tools/editor_shard/run.py setup")
+        return 2
+    exe = h / "ModernUO.exe"
+    if state.get("pid") and pid_alive(state["pid"], exe):
+        print(f"[editor_shard] already running (pid {state['pid']})")
+        return 2
+    port = state["port"]
+    if listening(port):
+        print(f"[editor_shard] something else already listens on 127.0.0.1:{port}")
+        return 2
+
+    configure(h, cfg, port, data_first.resolve() if data_first else None)
+    log = (h / "shard.log").open("w", encoding="utf-8", errors="replace")
+    proc = subprocess.Popen([str(exe)], cwd=str(h), stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
+                            creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0))
+    state.update({"pid": proc.pid, "data_first": str(data_first.resolve()) if data_first else None,
+                  "started": time.strftime("%Y-%m-%d %H:%M:%S")})
+    write_state(h, state)
+    for _ in range(180):
+        if listening(port):
+            print(f"[editor_shard] up: pid {proc.pid}, 127.0.0.1:{port}, data {'export first' if data_first else 'install'}")
+            return 0
+        if proc.poll() is not None:
+            print(f"[editor_shard] exited {proc.returncode} while starting; see {h / 'shard.log'}")
+            return 1
+        time.sleep(1)
+    print(f"[editor_shard] not listening after 180 s; see {h / 'shard.log'}")
+    return 1
+
+
+def cmd_status(cfg) -> int:
+    h = home(cfg)
+    state = read_state(h)
+    if not state:
+        print("[editor_shard] not set up")
+        return 2
+    alive = bool(state.get("pid")) and pid_alive(state["pid"], h / "ModernUO.exe")
+    conf = json.loads((h / "Configuration" / "modernuo.json").read_text(encoding="utf-8"))
+    print(f"[editor_shard] {h}")
+    print(f"[editor_shard] {'running, pid ' + str(state['pid']) if alive else 'stopped'}; "
+          f"listens {conf['listeners']}; data {conf['dataDirectories']}")
+    return 0
+
+
+def cmd_stop(cfg) -> int:
+    h = home(cfg)
+    state = read_state(h)
+    pid = state.get("pid")
+    exe = h / "ModernUO.exe"
+    if not pid or not pid_alive(pid, exe):
+        print("[editor_shard] not running")
+        return 0
+    # Only this copy's process, by the pid it was started with.
+    subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True)
+    for _ in range(30):
+        if not pid_alive(pid, exe):
+            break
+        time.sleep(0.5)
+    state["pid"] = None
+    write_state(h, state)
+    print(f"[editor_shard] stopped pid {pid}")
+    return 0
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("command", choices=["setup", "start", "status", "stop"])
+    ap.add_argument("--from", dest="source", type=Path, help="built ModernUO Distribution to copy (setup)")
+    ap.add_argument("--port", type=int, default=2594, help="port for the private instance (setup)")
+    ap.add_argument("--data-first", type=Path, help="folder ahead of the install in dataDirectories (start)")
+    args = ap.parse_args()
+    cfg = load_config()
+    if args.command == "setup":
+        return cmd_setup(cfg, (args.source or default_source(cfg)).resolve(), args.port)
+    if args.command == "start":
+        return cmd_start(cfg, args.data_first)
+    if args.command == "status":
+        return cmd_status(cfg)
+    return cmd_stop(cfg)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
