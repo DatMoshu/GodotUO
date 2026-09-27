@@ -21,10 +21,15 @@ internal sealed partial class StoreWindow : CanvasLayer
     private OptionButton _kind;
     private StoreEntry[] _entries = Array.Empty<StoreEntry>();
     private bool _busy;
+    private float _ui = 1f;
+    private ScrollContainer _scroll;
     private readonly Dictionary<string, Task<byte[]>> _previews = new();
     private static readonly Color Gold = new("dfbb77"), Muted = new("abb5ac");
     private readonly CancellationTokenSource _cancel = new();
     private readonly string[] _kinds = { "", "background", "theme", "sound", "profile-preset" };
+
+    /// <summary>Whether the window is up; GameController then leaves input to its controls.</summary>
+    public static bool IsOpen => GodotObject.IsInstanceValid(_open);
 
     public static void Open()
     {
@@ -37,38 +42,68 @@ internal sealed partial class StoreWindow : CanvasLayer
     {
         Layer = 100;
         _client = StoreOptions.CreateClient(StoreAddress.Default);
+        // On a touch screen the window is drawn at the client's screen scale
+        // and laid out in its logical pixels, so its text and buttons are the
+        // size the game's own gumps are there, and big enough for a finger.
+        _ui = GUO.Input.Touch.TouchInput.Enabled ? Math.Max(1f, Client.Game?.DpiScale ?? 1f) : 1f;
+        Scale = new Vector2(_ui, _ui);
+        Vector2 logical = GetViewport().GetVisibleRect().Size / _ui;
         var backdrop = new ColorRect { Color = new Color("141917"), MouseFilter = Control.MouseFilterEnum.Stop };
-        AddChild(backdrop); backdrop.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+        AddChild(backdrop);
+        if (_ui > 1f) { backdrop.Position = Vector2.Zero; backdrop.Size = logical; }
+        else backdrop.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
         var margin = new MarginContainer(); backdrop.AddChild(margin); margin.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
         foreach (string side in new[] { "left", "right", "top", "bottom" }) margin.AddThemeConstantOverride("margin_" + side, 28);
         margin.Theme = BuildTheme();
         var column = new VBoxContainer(); column.AddThemeConstantOverride("separation", 14); margin.AddChild(column);
         var bar = new HBoxContainer(); column.AddChild(bar);
         var brand = Text("GODOTUO  /  COMMUNITY COLLECTION", 13, Gold); brand.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill; bar.AddChild(brand);
-        var refresh = new Button { Text = "Refresh" }; bar.AddChild(refresh); refresh.Pressed += () => _ = Refresh();
-        var close = new Button { Text = "Close" }; bar.AddChild(close); close.Pressed += QueueFree;
-        column.AddChild(Text("Make the world your own.", 32, new Color("eeeade")));
-        column.AddChild(Text("Backgrounds, sounds, themes and presets for your next adventure.", 15, Muted));
+        var refresh = Touchable(new Button { Text = "Refresh" }); bar.AddChild(refresh); refresh.Pressed += () => _ = Refresh();
+        var close = Touchable(new Button { Text = "Close" }); bar.AddChild(close); close.Pressed += QueueFree;
+        // On a touch screen the header gives its height to the list: at 2x
+        // the full header left room for one row of cards.
+        column.AddChild(Text("Make the world your own.", _ui > 1f ? 22 : 32, new Color("eeeade")));
+        if (_ui <= 1f) column.AddChild(Text("Backgrounds, sounds, themes and presets for your next adventure.", 15, Muted));
         var addressRow = new HBoxContainer(); column.AddChild(addressRow);
         var addressLabel = Text("Store address", 14, Gold);
         addressLabel.AutowrapMode = TextServer.AutowrapMode.Off;
         addressLabel.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
         addressRow.AddChild(addressLabel);
         _address = new LineEdit { PlaceholderText = "https://store.example.com/", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, CustomMinimumSize = new Vector2(0, 48) };
-        addressRow.AddChild(_address);
-        var connect = new Button { Text = "Save & connect", CustomMinimumSize = new Vector2(0, 48) }; addressRow.AddChild(connect);
+        Touchable(_address); addressRow.AddChild(_address);
+        var connect = Touchable(new Button { Text = "Save & connect", CustomMinimumSize = new Vector2(0, 48) }); addressRow.AddChild(connect);
         connect.Pressed += () => _ = Refresh(true); _address.TextSubmitted += text => { _ = Refresh(true); };
         var filters = new HBoxContainer(); column.AddChild(filters);
-        _search = new LineEdit { PlaceholderText = "Search packs or creators…", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, CustomMinimumSize = new Vector2(0, 42) }; filters.AddChild(_search);
-        _kind = new OptionButton(); foreach (string title in new[] { "All kinds", "Backgrounds", "Themes", "Sounds", "Profile presets" }) _kind.AddItem(title);
+        _search = new LineEdit { PlaceholderText = "Search packs or creators…", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, CustomMinimumSize = new Vector2(0, 42) }; Touchable(_search); filters.AddChild(_search);
+        _kind = Touchable(new OptionButton()); foreach (string title in new[] { "All kinds", "Backgrounds", "Themes", "Sounds", "Profile presets" }) _kind.AddItem(title);
         filters.AddChild(_kind); _search.TextChanged += _ => Render(); _kind.ItemSelected += _ => Render();
-        var scroll = new ScrollContainer { SizeFlagsVertical = Control.SizeFlags.ExpandFill, SizeFlagsHorizontal = Control.SizeFlags.ExpandFill }; column.AddChild(scroll);
-        _list = new GridContainer { Columns = GetViewport().GetVisibleRect().Size.X >= 950 ? 2 : 1, SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        var scroll = _scroll = new ScrollContainer { SizeFlagsVertical = Control.SizeFlags.ExpandFill, SizeFlagsHorizontal = Control.SizeFlags.ExpandFill }; column.AddChild(scroll);
+        _list = new GridContainer { Columns = logical.X >= 950 ? 2 : 1, SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
         _list.AddThemeConstantOverride("h_separation", 14); _list.AddThemeConstantOverride("v_separation", 14); scroll.AddChild(_list);
         _status = Text("Loading collection…", 13, Muted); column.AddChild(_status);
         column.AddChild(Text("After installing: reopen Options, choose your background, then Apply.", 12, Muted));
         try { _address.Text = StoreOptions.Url; _ = Refresh(); }
         catch (Exception) { _status.Text = "Could not read this profile's store address. Enter an address and Save & connect."; }
+    }
+
+    /// <summary>A control at least a finger's size on a touch screen (48 logical px tall, 7 mm on the Thor); unchanged elsewhere.</summary>
+    private T Touchable<T>(T control) where T : Control
+    {
+        if (_ui > 1f) control.CustomMinimumSize = new Vector2(Math.Max(control.CustomMinimumSize.X, 96), Math.Max(control.CustomMinimumSize.Y, 48));
+        return control;
+    }
+
+    /// <summary>
+    /// A finger dragged anywhere over the list scrolls it. Godot's own
+    /// ScrollContainer drag did not scroll on the Thor, so the screen drag
+    /// is applied here; the event still goes on to the controls.
+    /// </summary>
+    public override void _Input(InputEvent @event)
+    {
+        if (@event is InputEventScreenDrag drag && _scroll != null && _scroll.GetGlobalRect().HasPoint(drag.Position / _ui))
+        {
+            _scroll.ScrollVertical -= (int)Math.Round(drag.Relative.Y / _ui);
+        }
     }
 
     private static Label Text(string value, int size, Color color)
@@ -151,10 +186,12 @@ internal sealed partial class StoreWindow : CanvasLayer
             .ThenBy(p => p.Manifest.Title).ThenByDescending(p => StorePack.Version(p.Manifest.Version)))
         {
             var m = entry.Manifest;
-            var card = new PanelContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill }; card.AddThemeStyleboxOverride("panel", Box("202922", "354039", 16)); _list.AddChild(card);
+            // Pass, not Stop: a finger dragged over a card has to reach the
+            // ScrollContainer, which is what scrolls the list on a touch screen.
+            var card = new PanelContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, MouseFilter = Control.MouseFilterEnum.Pass }; card.AddThemeStyleboxOverride("panel", Box("202922", "354039", 16)); _list.AddChild(card);
             var row = new HBoxContainer(); row.AddThemeConstantOverride("separation", 18); card.AddChild(row);
             var preview = new TextureRect { CustomMinimumSize = new Vector2(144, 140), ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
-                StretchMode = TextureRect.StretchModeEnum.KeepAspectCovered, TextureFilter = CanvasItem.TextureFilterEnum.Nearest };
+                StretchMode = TextureRect.StretchModeEnum.KeepAspectCovered, TextureFilter = CanvasItem.TextureFilterEnum.Nearest, MouseFilter = Control.MouseFilterEnum.Pass };
             row.AddChild(preview); _ = Preview(entry, preview);
             var info = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill }; row.AddChild(info);
             info.AddChild(Text(m.Kind.ToUpperInvariant().Replace('-', ' ') + "  ·  " + m.Licence, 11, Gold));
@@ -164,14 +201,14 @@ internal sealed partial class StoreWindow : CanvasLayer
             bool compatible = m.MinProfileVersion <= PlatformDefaults.CurrentVersion;
             bool update = installed.Any(p => p.Id == m.Id && StorePack.Version(p.Version) < StorePack.Version(m.Version));
             info.AddChild(Text("v" + m.Version + (present ? "  ·  Installed ✓" : update ? "  ·  Update available" : $"  ·  {entry.Size / 1048576.0:0.0} MB"), 12, present ? new Color("b5d69b") : Muted));
-            var action = new Button { Text = present ? "Uninstall" : !compatible ? "Needs newer GUO" : update ? "Update" : "Install", Disabled = _busy || (!present && !compatible) };
+            var action = Touchable(new Button { Text = present ? "Uninstall" : !compatible ? "Needs newer GUO" : update ? "Update" : "Install", Disabled = _busy || (!present && !compatible) });
             action.SizeFlagsHorizontal = Control.SizeFlags.ShrinkBegin;
             info.AddChild(action); action.Pressed += () => _ = Change(entry, present);
         }
         // Installed packs remain removable even if a publisher delists them.
         foreach (var m in installed.Where(m => !_entries.Any(p => p.Manifest.Id == m.Id && p.Manifest.Version == m.Version)))
         {
-            var button = new Button { Text = $"Uninstall {m.Title} {m.Version} (not in collection)", Disabled = _busy };
+            var button = Touchable(new Button { Text = $"Uninstall {m.Title} {m.Version} (not in collection)", Disabled = _busy });
             _list.AddChild(button); button.Pressed += () => _ = Change(new StoreEntry { Manifest = m }, true);
         }
         if (_list.GetChildCount() == 0) _list.AddChild(Text("No matching packs. Try another search or kind.", 18, Muted));
