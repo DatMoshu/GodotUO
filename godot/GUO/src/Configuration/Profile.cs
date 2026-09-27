@@ -171,6 +171,18 @@ namespace GUO.Configuration
         // PORT DEVIATION (GUO): a device with a second screen puts the
         // paperdoll, backpack, status and journal on it. Read only there.
         public bool DualScreenEnabled { get; set; } = true;
+        // PORT DEVIATION (GUO): which gumps the shelf takes when they open
+        // (DualScreen.Shelve), and the second screen's own pixel scale
+        // (0 = the main screen's). Upstream-neutral here; PlatformDefaults
+        // v7 turns the four on. Set from the welcome panel before a profile
+        // exists (DualScreenSettings carries that into the profile) and from
+        // Options after.
+        public bool DualScreenShelvePaperdoll { get; set; }
+        public bool DualScreenShelveBackpack { get; set; }
+        public bool DualScreenShelveStatus { get; set; }
+        public bool DualScreenShelveJournal { get; set; }
+        public bool DualScreenShelveOthers { get; set; }
+        public int DualScreenScale { get; set; }
         public bool UseAlternativeLights { get; set; }
         public bool UseCustomLightLevel { get; set; }
         public byte LightLevel { get; set; }

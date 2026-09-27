@@ -112,7 +112,8 @@ namespace GUO.Game.UI.Gumps
                          _chatShiftEnterCheckbox,
                          _enableCaveBorder;
         // PORT DEVIATION (GUO): only built when a second display exists.
-        private Checkbox _dualScreen;
+        private Checkbox _dualScreen, _dualShelvePaperdoll, _dualShelveBackpack, _dualShelveStatus, _dualShelveJournal, _dualShelveOthers;
+        private HSliderBar _dualScale;
         private Checkbox _holdShiftForContext, _holdShiftToSplitStack, _reduceFPSWhenInactive, _sallosEasyGrab, _partyInviteGump, _objectsFading, _textFading, _holdAltToMoveGumps;
         private Combobox _hpComboBox, _healtbarType, _fieldsType, _hpComboBoxShowWhen;
 
@@ -939,6 +940,8 @@ namespace GUO.Game.UI.Gumps
             );
 
             // PORT DEVIATION (GUO): the second screen, where there is one.
+            // The same settings the welcome panel on that screen offers
+            // (DualWelcomeGump); DualScreen applies them live.
             if (GUO.Platform.Android.DualScreen.HasSecondaryDisplay)
             {
                 section3.Add
@@ -946,12 +949,22 @@ namespace GUO.Game.UI.Gumps
                     _dualScreen = AddCheckBox
                     (
                         null,
-                        "Use the second screen for paperdoll, backpack, status and journal",
+                        "Use the second screen as a shelf for gumps",
                         _currentProfile.DualScreenEnabled,
                         0,
                         0
                     )
                 );
+
+                section3.PushIndent();
+                section3.Add(_dualShelvePaperdoll = AddCheckBox(null, "Shelve the paperdoll when opened", _currentProfile.DualScreenShelvePaperdoll, 0, 0));
+                section3.Add(_dualShelveBackpack = AddCheckBox(null, "Shelve the backpack when opened", _currentProfile.DualScreenShelveBackpack, 0, 0));
+                section3.Add(_dualShelveStatus = AddCheckBox(null, "Shelve the status bar when opened", _currentProfile.DualScreenShelveStatus, 0, 0));
+                section3.Add(_dualShelveJournal = AddCheckBox(null, "Shelve the journal when opened", _currentProfile.DualScreenShelveJournal, 0, 0));
+                section3.Add(_dualShelveOthers = AddCheckBox(null, "Shelve other gumps (skills, spellbook, containers)", _currentProfile.DualScreenShelveOthers, 0, 0));
+                section3.Add(AddLabel(null, "Second screen scale (0 = as the main screen)", 0, 0));
+                section3.AddRight(_dualScale = AddHSlider(null, 0, GUO.Platform.Android.DualScreenSettings.MaxScale, _currentProfile.DualScreenScale, 0, 0, 120));
+                section3.PopIndent();
             }
 
             section3.Add
@@ -4040,6 +4053,12 @@ namespace GUO.Game.UI.Gumps
             if (_dualScreen != null)
             {
                 _currentProfile.DualScreenEnabled = _dualScreen.IsChecked;
+                _currentProfile.DualScreenShelvePaperdoll = _dualShelvePaperdoll.IsChecked;
+                _currentProfile.DualScreenShelveBackpack = _dualShelveBackpack.IsChecked;
+                _currentProfile.DualScreenShelveStatus = _dualShelveStatus.IsChecked;
+                _currentProfile.DualScreenShelveJournal = _dualShelveJournal.IsChecked;
+                _currentProfile.DualScreenShelveOthers = _dualShelveOthers.IsChecked;
+                _currentProfile.DualScreenScale = _dualScale.Value;
             }
 
             if (_currentProfile.EnableCaveBorder != _enableCaveBorder.IsChecked)

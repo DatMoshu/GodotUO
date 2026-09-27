@@ -526,6 +526,26 @@ public partial class Main : Node
     {
         await DualProbe.Run(this);
 
+        SaveSecondFrame();
+        await CaptureFrame();
+
+        if (!OS.HasFeature("mobile"))
+        {
+            Quit(DualProbe.Passed ? 0 : 1);
+        }
+    }
+
+    /// <summary>
+    /// What the second screen last showed, beside the main screenshot as
+    /// <c>&lt;name&gt;_second.png</c>; nothing without a second screen.
+    /// </summary>
+    private void SaveSecondFrame()
+    {
+        if (!GUO.Platform.Android.DualScreen.HasSecondaryDisplay)
+        {
+            return;
+        }
+
         string dir = string.IsNullOrWhiteSpace(_options.ScreenshotDir)
             ? "user://screenshots"
             : _options.ScreenshotDir;
@@ -542,13 +562,6 @@ public partial class Main : Node
         {
             GD.Print($"[GUO] screenshot -> {ProjectSettings.GlobalizePath(second)}");
         }
-
-        await CaptureFrame();
-
-        if (!OS.HasFeature("mobile"))
-        {
-            Quit(DualProbe.Passed ? 0 : 1);
-        }
     }
 
     /// Say on the log when the login gump has been drawn; see LoginProbe.
@@ -559,6 +572,15 @@ public partial class Main : Node
 
         if (_options.LoginProbeQuits)
         {
+            // The second screen (dual from launch, ADR-0009) shows the
+            // welcome panel at the login screen; a few frames so it has
+            // been pushed at least once.
+            if (GUO.Platform.Android.DualScreen.HasSecondaryDisplay)
+            {
+                await InputProbe.Wait(this, 12);
+            }
+
+            SaveSecondFrame();
             await CaptureFrame();
             Quit(LoginProbe.Passed ? 0 : 1);
         }
