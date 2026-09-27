@@ -383,17 +383,39 @@ namespace GUO.Game.Managers
             batcher.End();
         }
 
+        // PORT DEVIATION (GUO): a second set of lists for the second screen;
+        // see DrawGumpsWhere.
+        private static readonly RenderLists _secondRenderLists = new();
+
         /// <summary>
-        /// PORT DEVIATION (GUO): draw the lists <see cref="Draw"/> just built
-        /// a second time, into whatever target the batcher points at now.
-        /// The second screen (GUO.Platform.Android.DualScreen) shows the
-        /// same gumps through a shifted transform; the lists are not cleared
-        /// by drawing, so nothing is rebuilt and nothing is sorted twice.
+        /// PORT DEVIATION (GUO): draw the gumps <paramref name="where"/>
+        /// picks, in the order <see cref="Draw"/> just sorted them, into
+        /// whatever target the batcher points at now. The second screen
+        /// (GUO.Platform.Android.DualScreen) shows only the gumps that sit on
+        /// it through a shifted transform; a gump left on the main screen
+        /// that is wider than it (the top bar) must not spill over. The
+        /// lists are built again from the same gumps, nothing is sorted
+        /// twice and the main screen's lists are untouched.
         /// </summary>
-        public static void RedrawLists(UltimaBatcher2D batcher)
+        public static void DrawGumpsWhere(UltimaBatcher2D batcher, System.Func<Gump, bool> where)
         {
+            _secondRenderLists.Clear();
+
+            float layerDepth = -10000;
+
+            for (LinkedListNode<Gump> last = Gumps.Last; last != null; last = last.Previous)
+            {
+                Gump g = last.Value;
+                layerDepth += 10;
+
+                if (!g.IsDisposed && where(g))
+                {
+                    g.AddToRenderLists(_secondRenderLists, g.X, g.Y, ref layerDepth);
+                }
+            }
+
             batcher.SetStencil(DepthStencilState.Default);
-            _renderLists.DrawRenderLists(batcher, sbyte.MaxValue);
+            _secondRenderLists.DrawRenderLists(batcher, sbyte.MaxValue);
             batcher.SetStencil(null);
         }
 

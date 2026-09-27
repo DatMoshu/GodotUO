@@ -41,6 +41,16 @@ namespace GUO.Platform.Android
     /// one on the desktop with <c>--dual-screen WxH</c>, where a plain Godot
     /// window stands in for the panel so the feature can be looked at and
     /// tested without a device.
+    ///
+    /// Dual from launch (ADR-0009, amendment): with a display the
+    /// presentation is shown as soon as the client is up and stays until
+    /// exit. While the shelf is not in use -- before the player is in the
+    /// world, or in the world with the shelf turned off -- the second screen
+    /// shows the welcome panel (<see cref="DualWelcomeGump"/>): the sigil, a
+    /// welcome line, and the second screen's own settings, which can be
+    /// changed from there or from Options and apply live. The settings are
+    /// <see cref="DualScreenSettings"/>, which reach the profile when there
+    /// is one and stand in for it before.
     /// </remarks>
     internal sealed partial class DualScreen : Node
     {
@@ -62,6 +72,10 @@ namespace GUO.Platform.Android
         private RenderTarget2D _target;
         private int _frame;
         private bool _rescued;
+        private bool _wasInGame;
+        private int _appliedScale = -1;
+        private DualScreenSettings.Values _applied;
+        private DualWelcomeGump _welcome;
         private Vector2I _mainSize;
         private readonly HashSet<Gump> _seen = new();
         private readonly HashSet<int> _fingersDown = new();
@@ -81,8 +95,11 @@ namespace GUO.Platform.Android
 
         public static int SecondHeight => _instance?._physicalHeight ?? 0;
 
-        /// <summary>The feature is on: a display, the profile allows it, the player is in the world.</summary>
+        /// <summary>The second screen is up: a display (or the simulator), the client running.</summary>
         public static bool Active { get; private set; }
+
+        /// <summary>The shelf is in use: active, the player in the world, and the setting on.</summary>
+        public static bool ShelfOn { get; private set; }
 
         /// <summary>
         /// Set by the probe to measure the main screen without the second one:
@@ -94,10 +111,10 @@ namespace GUO.Platform.Android
         public static int MainWidth => Client.Game?.ClientBounds.Width ?? 0;
 
         /// <summary>
-        /// Logical width the client window is extended by while the feature
-        /// is active; zero otherwise. What the gump clamps add.
+        /// Logical width the client window is extended by while the shelf is
+        /// in use; zero otherwise. What the gump clamps add.
         /// </summary>
-        public static int ExtraWidth => Active ? _instance._logicalWidth : 0;
+        public static int ExtraWidth => ShelfOn ? _instance._logicalWidth : 0;
 
         public static int LogicalWidth => _instance?._logicalWidth ?? 0;
 
@@ -120,7 +137,7 @@ namespace GUO.Platform.Android
         {
             get
             {
-                if (!Active)
+                if (!ShelfOn)
                 {
                     return 0;
                 }
@@ -140,9 +157,9 @@ namespace GUO.Platform.Android
         }
 
         /// <summary>
-        /// Look for a second display and, if there is one, get ready to use
-        /// it once the player is in the world. Safe to call anywhere: with
-        /// no display and no simulation it adds nothing to the tree.
+        /// Look for a second display and, if there is one, bring it up as
+        /// soon as the client is running. Safe to call anywhere: with no
+        /// display and no simulation it adds nothing to the tree.
         /// </summary>
         /// <param name="simulate">"WxH" to stand a desktop window in for the display, or null.</param>
         /// <param name="off">Leave the second screen alone this run.</param>
@@ -231,7 +248,12 @@ namespace GUO.Platform.Android
 
             bool clipped = batcher.ClipBegin(MainWidth + strip, 0, _instance._logicalWidth - strip, _instance._logicalHeight);
 
-            UIManager.RedrawLists(batcher);
+            // Only what sits on the second screen: a gump whose middle is
+            // past the main window's edge. A gump left on the main screen
+            // and wider than it (the top bar, 1114 on a 1011 window) would
+            // otherwise show its overflow here.
+            int mainWidth = MainWidth;
+            UIManager.DrawGumpsWhere(batcher, g => g.X + (g.Width >> 1) >= mainWidth);
 
             if (clipped)
             {
@@ -282,17 +304,69 @@ namespace GUO.Platform.Android
                 return;
             }
 
-            // The client resizes its window once the profile is read (the
-            // saved bounds, a maximise); the world follows the window.
-            Rectangle main = Client.Game.Window.ClientBounds;
+            DualScreenSettings.Values settings = DualScreenSettings.Current;
 
-            if (main.Width != _mainSize.X || main.Height != _mainSize.Y)
+            if (settings.Scale != _appliedScale)
             {
-                _mainSize = new Vector2I(main.Width, main.Height);
-                FillMainWithWorld();
+                // A new pixel scale is a new target and a new bitmap: the
+                // display is reopened at the size, nothing else changes.
+                Deactivate();
+                Activate();
             }
 
-            Shelve();
+            bool inGame = Client.Game.UO?.World?.InGame ?? false;
+            bool shelfOn = inGame && settings.Enabled;
+
+            if (shelfOn != ShelfOn)
+            {
+                ShelfOn = shelfOn;
+
+                if (shelfOn)
+                {
+                    _seen.Clear();
+                    GD.Print("[GUO] dual screen: shelf on");
+                }
+                else
+                {
+                    BringBack();
+                    GD.Print("[GUO] dual screen: shelf off");
+                }
+            }
+            else if (inGame && !_wasInGame && !shelfOn)
+            {
+                // Into the world with the shelf off: a gump saved beyond the
+                // window by a dual-screen session would be out of reach.
+                BringBack();
+            }
+
+            _wasInGame = inGame;
+
+            if (inGame)
+            {
+                // The client resizes its window once the profile is read (the
+                // saved bounds, a maximise); the world follows the window.
+                Rectangle main = Client.Game.Window.ClientBounds;
+
+                if (main.Width != _mainSize.X || main.Height != _mainSize.Y)
+                {
+                    _mainSize = new Vector2I(main.Width, main.Height);
+                    FillMainWithWorld();
+                }
+            }
+
+            if (shelfOn)
+            {
+                DisposeWelcome();
+                ApplyLive(settings);
+                Shelve(settings);
+                ClampShelf();
+            }
+            else
+            {
+                EnsureWelcome();
+            }
+
+            _applied = settings;
             TakeTouches();
 
             if (Suspended)
@@ -308,27 +382,23 @@ namespace GUO.Platform.Android
             }
         }
 
+        /// <summary>The second screen is wanted whenever the client is up and the run did not say no.</summary>
         private static bool WantedNow()
         {
-            if (ForcedOff || Client.Game == null || ProfileManager.CurrentProfile == null)
-            {
-                return false;
-            }
-
-            if (!(Client.Game.UO?.World?.InGame ?? false))
-            {
-                return false;
-            }
-
-            return ProfileManager.CurrentProfile.DualScreenEnabled;
+            return !ForcedOff && Client.Game != null && Client.Game.UO?.World != null;
         }
 
         private void Activate()
         {
             float dpi = Client.Game.DpiScale;
+            int scale = DualScreenSettings.Current.Scale;
 
-            _logicalWidth = Math.Max(1, (int)Math.Round(_physicalWidth / dpi));
-            _logicalHeight = Math.Max(1, (int)Math.Round(_physicalHeight / dpi));
+            // The shelf's own pixel scale, or the main screen's.
+            float divisor = scale > 0 ? scale : dpi;
+
+            _appliedScale = scale;
+            _logicalWidth = Math.Max(1, (int)Math.Round(_physicalWidth / divisor));
+            _logicalHeight = Math.Max(1, (int)Math.Round(_physicalHeight / divisor));
 
             _target = new RenderTarget2D(this, _logicalWidth, _logicalHeight)
             {
@@ -354,13 +424,14 @@ namespace GUO.Platform.Android
 
             GD.Print(
                 $"[GUO] dual screen: active; second screen {_physicalWidth}x{_physicalHeight} "
-                + $"is {_logicalWidth}x{_logicalHeight} at dpi scale {dpi:F2}, main window {MainWidth} wide"
+                + $"is {_logicalWidth}x{_logicalHeight} at scale {divisor:F2} ({(scale > 0 ? "shelf setting" : "main screen")}), main window {MainWidth} wide"
             );
         }
 
         private void Deactivate()
         {
             Active = false;
+            ShelfOn = false;
 
             _display?.Close();
             CloseSimulator();
@@ -369,17 +440,100 @@ namespace GUO.Platform.Android
             _target = null;
             _lastFrame = null;
 
-            // Whatever is on the shelf comes back on screen, by the same
-            // rule upstream uses for a gump that ended up off the window.
+            DisposeWelcome();
+            BringBack();
+
+            GD.Print("[GUO] dual screen: inactive");
+        }
+
+        /// <summary>
+        /// Whatever is on the shelf comes back on screen, by the same rule
+        /// upstream uses for a gump that ended up off the window.
+        /// </summary>
+        private static void BringBack()
+        {
             foreach (Gump g in UIManager.Gumps)
             {
-                if (!g.IsDisposed)
+                if (!g.IsDisposed && g is not DualWelcomeGump)
                 {
                     g.SetInScreen();
                 }
             }
+        }
 
-            GD.Print("[GUO] dual screen: inactive");
+        // ==========================
+        // === The welcome panel ====
+        // ==========================
+
+        /// <summary>
+        /// The welcome panel on the second screen whenever the shelf is not
+        /// in use. Made again when a scene change disposed it, kept at the
+        /// second screen's origin when the main window changes width.
+        /// </summary>
+        private void EnsureWelcome()
+        {
+            if (_welcome == null || _welcome.IsDisposed)
+            {
+                _welcome = new DualWelcomeGump(Client.Game.UO.World, _logicalWidth, _logicalHeight)
+                {
+                    X = MainWidth,
+                    Y = 0,
+                };
+
+                UIManager.Add(_welcome);
+                GD.Print($"[GUO] dual screen: welcome panel {_logicalWidth}x{_logicalHeight} at x={MainWidth}");
+            }
+            else if (_welcome.X != MainWidth)
+            {
+                _welcome.X = MainWidth;
+            }
+        }
+
+        private void DisposeWelcome()
+        {
+            if (_welcome != null && !_welcome.IsDisposed)
+            {
+                _welcome.Dispose();
+            }
+
+            _welcome = null;
+        }
+
+        /// <summary>
+        /// A shelf setting changed while the shelf is in use: a kind turned
+        /// off comes back to the main screen, a kind turned on is placed
+        /// again the next frame.
+        /// </summary>
+        private void ApplyLive(DualScreenSettings.Values now)
+        {
+            if (_applied == null)
+            {
+                return;
+            }
+
+            uint player = Client.Game.UO.World.Player?.Serial ?? 0;
+            uint backpack = Client.Game.UO.World.Player?.FindItemByLayer(Game.Data.Layer.Backpack)?.Serial ?? 0;
+
+            foreach (Gump g in UIManager.Gumps)
+            {
+                if (g.IsDisposed)
+                {
+                    continue;
+                }
+
+                Slot slot = SlotFor(g, player, backpack);
+                bool was = Wants(_applied, slot);
+                bool wants = Wants(now, slot);
+
+                if (was && !wants && g.X >= MainWidth)
+                {
+                    g.SetInScreen();
+                }
+                else if (!was && wants)
+                {
+                    _seen.Remove(g);
+                }
+            }
         }
 
         /// <summary>
@@ -435,7 +589,7 @@ namespace GUO.Platform.Android
         /// if it is on the main screen. After that it is the player's: they
         /// drag it where they like, including back.
         /// </summary>
-        private void Shelve()
+        private void Shelve(DualScreenSettings.Values settings)
         {
             _seen.RemoveWhere(g => g.IsDisposed);
 
@@ -451,7 +605,7 @@ namespace GUO.Platform.Android
 
                 Slot slot = SlotFor(g, player, backpack);
 
-                if (slot == Slot.None || g.Width <= 0 || g.Height <= 0)
+                if (slot == Slot.None || !Wants(settings, slot) || g.Width <= 0 || g.Height <= 0)
                 {
                     // Not a shelf gump, or one that has not been laid out
                     // yet; a size of zero would put it in the wrong corner.
@@ -475,13 +629,15 @@ namespace GUO.Platform.Android
             }
         }
 
+        /// <summary>The kinds of gump the shelf takes, each with a fixed slot.</summary>
         private enum Slot
         {
             None,
-            TopLeft,
-            TopRight,
-            BottomLeft,
-            BottomRight,
+            Paperdoll,
+            Backpack,
+            Status,
+            Journal,
+            Other,
         }
 
         private static Slot SlotFor(Gump g, uint player, uint backpack)
@@ -489,52 +645,149 @@ namespace GUO.Platform.Android
             switch (g)
             {
                 case PaperDollGump p when p.LocalSerial == player:
-                    return Slot.TopLeft;
+                    return Slot.Paperdoll;
 
                 case ContainerGump c when backpack != 0 && c.LocalSerial == backpack:
-                    return Slot.TopRight;
+                    return Slot.Backpack;
 
                 // The mobile profile (PlatformDefaults v3, GridContainers) opens
                 // the backpack as a grid; it is the same shelf gump.
                 case GridContainerGump gc when backpack != 0 && gc.LocalSerial == backpack:
-                    return Slot.TopRight;
+                    return Slot.Backpack;
 
                 case StatusGumpBase:
-                    return Slot.BottomLeft;
+                    return Slot.Status;
 
                 case JournalGump:
                 case ResizableJournal:
-                    return Slot.BottomRight;
+                    return Slot.Journal;
+
+                // "Others": the gumps a player opens and keeps for a while,
+                // never the world, the top bar, chat, or anything the server
+                // laid out for the main screen.
+                case ContainerGump:
+                case GridContainerGump:
+                case SkillGumpAdvanced:
+                case StandardSkillsGump:
+                case SpellbookGump:
+                    return Slot.Other;
             }
 
             return Slot.None;
         }
 
+        private static bool Wants(DualScreenSettings.Values s, Slot slot)
+        {
+            switch (slot)
+            {
+                case Slot.Paperdoll: return s.Paperdoll;
+                case Slot.Backpack: return s.Backpack;
+                case Slot.Status: return s.Status;
+                case Slot.Journal: return s.Journal;
+                case Slot.Other: return s.Others;
+            }
+
+            return false;
+        }
+
+        /// <summary>The gump in a slot right now, if one is on the shelf; for packing around it.</summary>
+        private Gump OnShelf(Slot slot)
+        {
+            uint player = Client.Game.UO.World.Player?.Serial ?? 0;
+            uint backpack = Client.Game.UO.World.Player?.FindItemByLayer(Game.Data.Layer.Backpack)?.Serial ?? 0;
+
+            foreach (Gump g in UIManager.Gumps)
+            {
+                if (!g.IsDisposed && g.X >= MainWidth && SlotFor(g, player, backpack) == slot)
+                {
+                    return g;
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// The packing rule, for a 620x540 shelf (the Thor at 2x) and any
+        /// other size: the paperdoll top left, the status bar along the
+        /// bottom (it is nearly the shelf's width), the backpack top right,
+        /// the journal under the backpack in the column right of the
+        /// paperdoll and above the status bar, other gumps in the middle.
+        /// Every slot is then clamped to the shelf, so nothing runs off an
+        /// edge. Upstream's paperdoll (262x324), modern status (577x216),
+        /// journal (345x298) and backpack (230x204) do not all fit 620x540
+        /// without overlap; the journal takes the overlap, over the lower
+        /// part of the backpack, and a tap brings either to the front.
+        /// </summary>
         private void Place(Gump g, Slot slot)
         {
             int x = 0, y = 0;
 
             switch (slot)
             {
-                case Slot.TopRight:
+                case Slot.Backpack:
                     x = _logicalWidth - g.Width;
 
                     break;
 
-                case Slot.BottomLeft:
+                case Slot.Status:
                     y = _logicalHeight - g.Height;
 
                     break;
 
-                case Slot.BottomRight:
+                case Slot.Journal:
+                {
+                    Gump backpack = OnShelf(Slot.Backpack);
+                    Gump status = OnShelf(Slot.Status);
+                    int below = backpack?.Height ?? 0;
+                    int above = _logicalHeight - (status?.Height ?? 0) - g.Height;
+
                     x = _logicalWidth - g.Width;
-                    y = _logicalHeight - g.Height;
+                    y = Math.Min(below, Math.Max(0, above));
+
+                    break;
+                }
+
+                case Slot.Other:
+                    x = (_logicalWidth - g.Width) / 2;
+                    y = (_logicalHeight - g.Height) / 2;
 
                     break;
             }
 
-            g.X = MainWidth + Math.Max(0, x);
-            g.Y = Math.Max(0, y);
+            g.X = MainWidth + Math.Clamp(x, 0, Math.Max(0, _logicalWidth - g.Width));
+            g.Y = Math.Clamp(y, 0, Math.Max(0, _logicalHeight - g.Height));
+        }
+
+        /// <summary>
+        /// A gump on the shelf stays on the shelf: whatever put it past an
+        /// edge (a saved position from a wider shelf, a placement made
+        /// before its size was final), it is clamped back each frame, except
+        /// while the player is dragging it.
+        /// </summary>
+        private void ClampShelf()
+        {
+            foreach (Gump g in UIManager.Gumps)
+            {
+                if (g.IsDisposed || g.X < MainWidth || g.Width <= 0 || g.Height <= 0)
+                {
+                    continue;
+                }
+
+                if (UIManager.IsDragging && UIManager.DraggingControl?.RootParent == g)
+                {
+                    continue;
+                }
+
+                int x = Math.Clamp(g.X - MainWidth, 0, Math.Max(0, _logicalWidth - g.Width));
+                int y = Math.Clamp(g.Y, 0, Math.Max(0, _logicalHeight - g.Height));
+
+                if (g.X != MainWidth + x || g.Y != y)
+                {
+                    g.X = MainWidth + x;
+                    g.Y = y;
+                }
+            }
         }
 
         // ==========================
@@ -801,6 +1054,7 @@ namespace GUO.Platform.Android
             if (Active)
             {
                 Active = false;
+                ShelfOn = false;
                 _display?.Close();
                 CloseSimulator();
                 _target?.Dispose();
