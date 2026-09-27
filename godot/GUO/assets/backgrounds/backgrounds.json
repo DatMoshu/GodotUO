@@ -1,0 +1,62 @@
+[
+  {
+    "name": "moongate-shimmer",
+    "title": "Moongate shimmer",
+    "video": "moongate-shimmer.ogv",
+    "still": "moongate-shimmer.png"
+  },
+  {
+    "name": "candle-parchment",
+    "title": "Candlelit parchment",
+    "video": "candle-parchment.ogv",
+    "still": "candle-parchment.png"
+  },
+  {
+    "name": "starlit-sea",
+    "title": "Starlit sea",
+    "video": "starlit-sea.ogv",
+    "still": "starlit-sea.png"
+  },
+  {
+    "name": "drifting-fog",
+    "title": "Drifting fog",
+    "video": "drifting-fog.ogv",
+    "still": "drifting-fog.png"
+  },
+  {
+    "name": "ember-drift",
+    "title": "Ember drift",
+    "video": "ember-drift.ogv",
+    "still": "ember-drift.png"
+  },
+  {
+    "name": "rain-on-stone",
+    "title": "Rain on stone",
+    "video": "rain-on-stone.ogv",
+    "still": "rain-on-stone.png"
+  },
+  {
+    "name": "aurora-night",
+    "title": "Aurora night",
+    "video": "aurora-night.ogv",
+    "still": "aurora-night.png"
+  },
+  {
+    "name": "snowfall-pines",
+    "title": "Snowfall in the pines",
+    "video": "snowfall-pines.ogv",
+    "still": "snowfall-pines.png"
+  },
+  {
+    "name": "sunken-caustics",
+    "title": "Sunken caustics",
+    "video": "sunken-caustics.ogv",
+    "still": "sunken-caustics.png"
+  },
+  {
+    "name": "twin-moons",
+    "title": "Twin moons",
+    "video": "twin-moons.ogv",
+    "still": "twin-moons.png"
+  }
+]

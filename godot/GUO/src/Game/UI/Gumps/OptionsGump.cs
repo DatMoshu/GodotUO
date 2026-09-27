@@ -48,6 +48,14 @@ namespace GUO.Game.UI.Gumps
         // its slot size, placement clear of the character); mobile defaults.
         private Checkbox _gridContainers, _fitContainerPlacement;
         private HSliderBar _gridSlotSize;
+
+        // PORT DEVIATION (GUO): the canvas background behind the world and
+        // the gumps (CanvasBackground, ADR-0016), under Display.
+        private Combobox _canvasBackgroundMode;
+        private List<CanvasBackgroundSettings> _canvasBackgroundChoices;
+        private InputField _canvasBackgroundPath;
+        private HSliderBar _canvasBackgroundFps;
+        private Checkbox _canvasBackgroundLowPower;
         private Combobox _cotType;
         private DataBox _databox;
         private HSliderBar _delay_before_display_tooltip, _tooltip_zoom, _tooltip_background_opacity;
@@ -1996,6 +2004,98 @@ namespace GUO.Game.UI.Gumps
             section5.Add(AddLabel(null, ResGumps.TerrainShadowsLevel, startX, startY));
             section5.AddRight(_terrainShadowLevel = AddHSlider(null, Constants.MIN_TERRAIN_SHADOWS_LEVEL, Constants.MAX_TERRAIN_SHADOWS_LEVEL, _currentProfile.TerrainShadowsLevel, startX, startY, 200));
 
+            // PORT DEVIATION (GUO): the canvas background (ADR-0016). Mode,
+            // the file or folder it shows, the frame rate of a frames
+            // folder, and low power (video and frames freeze on frame one).
+            SettingsSection section6 = AddSettingsSection(box, "Background");
+            section6.Y = section5.Bounds.Bottom + 40;
+
+            // The dropdown: the two code-defined tiles, the shipped
+            // backgrounds from assets/backgrounds/backgrounds.json, then the
+            // player's own image, video and frames.
+            _canvasBackgroundChoices = new List<CanvasBackgroundSettings>();
+            List<string> choiceTitles = new List<string>();
+
+            void Choice(CanvasBackgroundMode mode, string builtinName, string title)
+            {
+                _canvasBackgroundChoices.Add(new CanvasBackgroundSettings(mode, builtinName ?? "", 12, false));
+                choiceTitles.Add(title);
+            }
+
+            Choice(CanvasBackgroundMode.BuiltinGrey, null, "Grey tile (original)");
+            Choice(CanvasBackgroundMode.BuiltinWood, null, "Dark wood");
+
+            foreach (BuiltinBackground b in BuiltinBackground.All)
+            {
+                Choice(CanvasBackgroundMode.BuiltinMedia, b.Name, b.Title);
+            }
+
+            Choice(CanvasBackgroundMode.Image, null, "Image");
+            Choice(CanvasBackgroundMode.Video, null, "Video (.ogv)");
+            Choice(CanvasBackgroundMode.Frames, null, "Frames (folder or sheet)");
+
+            CanvasBackgroundSettings current = CanvasBackgroundSettings.FromProfile(_currentProfile);
+            int selected = 0;
+
+            for (int i = 0; i < _canvasBackgroundChoices.Count; i++)
+            {
+                CanvasBackgroundSettings c = _canvasBackgroundChoices[i];
+
+                if (c.Mode == current.Mode && (c.Mode != CanvasBackgroundMode.BuiltinMedia || c.Path == current.Path))
+                {
+                    selected = i;
+
+                    break;
+                }
+            }
+
+            section6.Add(AddLabel(null, "Behind the world and gumps", startX, startY));
+            section6.AddRight
+            (
+                _canvasBackgroundMode = AddCombobox
+                (
+                    null,
+                    choiceTitles.ToArray(),
+                    selected,
+                    startX,
+                    startY,
+                    170
+                )
+            );
+
+            section6.Add(AddLabel(null, "File or folder", startX, startY));
+            section6.AddRight(_canvasBackgroundPath = AddInputField(null, startX, startY, 220, TEXTBOX_HEIGHT, null, 0, false, false));
+            _canvasBackgroundPath.SetText(_currentProfile.CanvasBackgroundPath ?? "");
+
+            // On a phone the picked file is copied under user://; in a
+            // browser there is no picker to open (ADR-0008), so the button
+            // stays off and the path can still be typed.
+            bool web = PlatformDefaults.Platform == ProfilePlatform.Web;
+
+            NiceButton browse = new NiceButton(startX, startY, 70, TEXTBOX_HEIGHT + 4, ButtonAction.Activate, web ? "No browse on web" : "Browse...")
+            {
+                ButtonParameter = (int) Buttons.BrowseBackground,
+                IsSelectable = false,
+                IsEnabled = !web
+            };
+
+            section6.AddRight(browse, 4);
+
+            section6.Add(AddLabel(null, "Frames per second", startX, startY));
+            section6.AddRight(_canvasBackgroundFps = AddHSlider(null, 1, 60, _currentProfile.CanvasBackgroundFps, startX, startY, 150));
+
+            section6.Add
+            (
+                _canvasBackgroundLowPower = AddCheckBox
+                (
+                    null,
+                    "Low power: video and frames show their first frame only",
+                    _currentProfile.CanvasBackgroundLowPower,
+                    startX,
+                    startY
+                )
+            );
+
             Add(rightArea, PAGE);
         }
 
@@ -3608,6 +3708,20 @@ namespace GUO.Game.UI.Gumps
                 case Buttons.NewMacro: break;
 
                 case Buttons.DeleteMacro: break;
+
+                case Buttons.BrowseBackground:
+                    // PORT DEVIATION (GUO): a native file picker for the
+                    // canvas background; the path lands in the field and is
+                    // saved by Apply like everything else.
+                    CanvasBackground.Browse
+                    (
+                        Client.Game,
+                        _canvasBackgroundChoices[Math.Clamp(_canvasBackgroundMode.SelectedIndex, 0, _canvasBackgroundChoices.Count - 1)].Mode,
+                        PlatformDefaults.Platform == ProfilePlatform.Mobile,
+                        path => _canvasBackgroundPath?.SetText(path)
+                    );
+
+                    break;
                 case Buttons.OpenIgnoreList:
                     // If other IgnoreManagerGump exist - Dispose it
                     UIManager.GetGump<IgnoreManagerGump>()?.Dispose();
@@ -3728,6 +3842,10 @@ namespace GUO.Game.UI.Gumps
                     Client.Game.Scene.Camera.Zoom = videoDefaults.DefaultScale;
                     _currentProfile.DefaultScale = videoDefaults.DefaultScale;
                     _sliderZoom.Value = (int)Math.Round((videoDefaults.DefaultScale - Client.Game.Scene.Camera.ZoomMin) / Client.Game.Scene.Camera.ZoomStep);
+                    _canvasBackgroundMode.SelectedIndex = 0; // PORT DEVIATION (GUO)
+                    _canvasBackgroundPath.SetText(""); // PORT DEVIATION (GUO)
+                    _canvasBackgroundFps.Value = 12; // PORT DEVIATION (GUO)
+                    _canvasBackgroundLowPower.IsChecked = false; // PORT DEVIATION (GUO)
                     _sliderScreenZoom.Value = 0;
                     _lightBar.Value = 0;
                     _enableLight.IsChecked = false;
@@ -4172,6 +4290,13 @@ namespace GUO.Game.UI.Gumps
             _currentProfile.UseCustomLightLevel = _enableLight.IsChecked;
             _currentProfile.LightLevel = (byte) (_lightBar.MaxValue - _lightBar.Value);
             _currentProfile.LightLevelType = _lightLevelType.SelectedIndex;
+
+            // PORT DEVIATION (GUO): the canvas background picks the change up
+            // from the profile on its next frame.
+            _currentProfile.CanvasBackgroundMode = _canvasBackgroundChoices[Math.Clamp(_canvasBackgroundMode.SelectedIndex, 0, _canvasBackgroundChoices.Count - 1)].ModeString;
+            _currentProfile.CanvasBackgroundPath = _canvasBackgroundPath.Text ?? "";
+            _currentProfile.CanvasBackgroundFps = _canvasBackgroundFps.Value;
+            _currentProfile.CanvasBackgroundLowPower = _canvasBackgroundLowPower.IsChecked;
 
             if (_enableLight.IsChecked)
             {
@@ -4711,8 +4836,9 @@ namespace GUO.Game.UI.Gumps
             OpenIgnoreList,
             NewMacro,
             DeleteMacro,
+            BrowseBackground, // PORT DEVIATION (GUO)
 
-            Last = DeleteMacro
+            Last = BrowseBackground
         }
 
 

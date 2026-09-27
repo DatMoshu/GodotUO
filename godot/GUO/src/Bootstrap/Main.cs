@@ -321,6 +321,14 @@ public partial class Main : Node
     {
         string dataDir = GuoDataDirectory();
 
+        // --background mode[:path]: what the window shows behind the world
+        // for this run only; the profile is neither read for it nor written.
+        if (!string.IsNullOrWhiteSpace(_options.Background))
+        {
+            GUO.Renderer.CanvasBackground.Override = GUO.Renderer.CanvasBackgroundSettings.Parse(_options.Background);
+            GD.Print($"[GUO] background     : {_options.Background}");
+        }
+
         System.IO.Directory.CreateDirectory(dataDir);
         System.Environment.CurrentDirectory = dataDir;
 
@@ -831,6 +839,13 @@ public partial class Main : Node
         /// </summary>
         public List<string> ShardCommands { get; } = new();
 
+        /// <summary>
+        /// The canvas background for this run, <c>mode[:path]</c>, applied
+        /// over whatever the profile says and never saved. Null when the
+        /// profile decides.
+        /// </summary>
+        public string Background { get; private set; }
+
         /// <summary>Dotted client version, e.g. "7.0.107.76".</summary>
         public string ClientVersion { get; private set; } = "7.0.107.76";
 
@@ -1023,6 +1038,9 @@ public partial class Main : Node
                         break;
                     case "--host":
                         o.ShardHost = Next();
+                        break;
+                    case "--background":
+                        o.Background = Next();
                         break;
                     case "--port":
                         if (int.TryParse(Next(), out int p))
