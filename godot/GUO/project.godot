@@ -12,7 +12,13 @@ config/description="Godot Ultima Online - the Classic client, ported from Classi
 run/main_scene="res://scenes/Main.tscn"
 config/features=PackedStringArray("4.7", "C#", "Forward Plus")
 config/icon="res://icon.png"
+; The brand sigil, built by tools\brand\run.py from design\brand\guo-sigil.png:
+; icon.png is the window and taskbar icon at runtime, icon.ico is what the
+; Windows executable carries, splash.png replaces the engine's boot logo.
 config/windows_native_icon="res://icon.ico"
+boot_splash/bg_color=Color(0.0784314, 0.0627451, 0.0470588, 1)
+boot_splash/image="res://splash.png"
+boot_splash/stretch_mode=1
 
 [dotnet]
 

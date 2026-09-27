@@ -39,6 +39,7 @@ launchers/        .bat entry points, grouped by job. Start here.
   shard/          the local ModernUO dev server: fetch, build, run
   dev/            build, smoke, screenshot, sync, cache
   android/        doctor, export, install, run, smoke on a device (ADR-0017)
+  windows/        doctor, export -- the .exe, with the sigil as its icon
   web/            doctor, export, serve, smoke -- blocked upstream (ADR-0008)
 godot/GUO/        the Godot project
   src/Compat/     XNA compatibility shim — read its README first
@@ -49,7 +50,10 @@ tools/            one folder per job + one per third-party program
   guoasset/       parity reference renderer (MCP), on upstream's loaders
   modernuo/       the dev shard: patches, config templates (src/ gitignored)
   android/        the Android export tool + preset template
+  windows/        the Windows export tool + preset template + icon check
   web/            the web export tool + preset template
+  brand/          builds every app icon and the splash from design/brand/
+design/brand/     the GUO sigil, master of every icon (never the engine's logo)
 docs/             port_plan.md, data_formats.md, port_status.md (generated)
   architecture/   ADRs — binding decisions. ADR-0001 governs the renderer.
 build/            generated artifacts — gitignored
@@ -102,6 +106,8 @@ launchers\game\play.bat                    run the client
 launchers\android\doctor.bat               what an Android export needs on this machine
 launchers\android\smoke.bat                export, install, run on the device, wait for the login gump
 launchers\web\doctor.bat                   why there is no web export yet (ADR-0008)
+launchers\windows\export.bat               export the Windows build and check its icon
+launchers\dev\brand_icons.bat              rebuild every icon from the sigil
 ```
 
 ---
