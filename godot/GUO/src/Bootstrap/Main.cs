@@ -467,6 +467,11 @@ public partial class Main : Node
     {
         await ShardCommands.Run(this, _options.ShardCommands);
 
+        if (_options.ObjectsDump.Length > 0)
+        {
+            ObjectsDump.Write(_options.ObjectsDump);
+        }
+
         // A frame of wherever the commands left the character. "[go" somewhere
         // and photograph it is the only way to look at one particular piece of
         // the world twice -- before a renderer change and after it -- and be
@@ -860,6 +865,9 @@ public partial class Main : Node
 
         public bool DoorProbe { get; private set; }
 
+        /// <summary>File the world objects near the player are written to after the shard commands; see ObjectsDump.</summary>
+        public string ObjectsDump { get; private set; } = "";
+
         /// <summary>Folder the asset probe writes to; empty means no probe (see AssetProbe).</summary>
         public string AssetProbe { get; private set; } = "";
 
@@ -995,6 +1003,9 @@ public partial class Main : Node
                         break;
                     case "--door-probe":
                         o.DoorProbe = true;
+                        break;
+                    case "--objects-dump":
+                        o.ObjectsDump = Next();
                         break;
                     case "--asset-probe":
                         o.AssetProbe = Next();

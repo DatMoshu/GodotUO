@@ -23,6 +23,11 @@
       <HintPath>$(ModernUODir)\Server.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <!-- ModernUO's content (spawners, decoration): the world-objects sync, ADR-0014. -->
+    <Reference Include="UOContent">
+      <HintPath>$(ModernUODir)\Assemblies\UOContent.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
     <Reference Include="Logger">
       <HintPath>$(ModernUODir)\Logger.dll</HintPath>
       <Private>false</Private>

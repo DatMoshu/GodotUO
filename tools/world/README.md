@@ -94,3 +94,24 @@ A pack that leaves your machine therefore exports. An `--out` inside
 Checked 2026-09-27: a pack of one block and four assets (4 KB) was unzipped
 into another folder, then exported and verified from there. A 40x40 land tile
 was refused, and so was an `--out` in the install.
+
+## World objects (ADR-0014)
+
+A project's `shard\objects.json` (spawners and placed items,
+`docs\data_formats.md` §13) exports through a backend adapter
+(`tools\world\backends\`, `UO_SHARD_BACKEND`, default `modernuo`) as the
+server's own files, under `<export>\shard\`:
+
+- the ModernUO spawner JSON and decoration cfg;
+- `guo_objects.json`, the manifest;
+- `APPLY.txt`.
+
+`verify` reads the files back the way ModernUO parses them and compares them
+with the model. `pack` includes `objects.json`.
+
+The files alone change nothing on a running shard, because ModernUO keeps
+placed objects in its save. They take effect through a **sync**:
+
+- on the private instance, `tools\editor_shard start --objects <export>`;
+- on any other ModernUO shard, the GM commands in `APPLY.txt`, which add and
+  update but cannot delete.

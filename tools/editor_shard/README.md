@@ -6,7 +6,7 @@ which other agents and devices play on.
 
 ```
 python tools\editor_shard\run.py setup   [--from DIR] [--port 2594]
-python tools\editor_shard\run.py start   [--data-first DIR]
+python tools\editor_shard\run.py start   [--data-first DIR] [--objects EXPORT]
 python tools\editor_shard\run.py status
 python tools\editor_shard\run.py stop
 ```
@@ -22,6 +22,15 @@ python tools\editor_shard\run.py stop
   and waits until it listens. `--data-first DIR` puts a `tools\world` export
   ahead of the install in `dataDirectories` for this start; a start without
   it puts the install back alone.
+- **start --objects EXPORT** applies a `tools\world` export's world objects
+  (ADR-0014). It copies the export's `shard\Data\` into the copy's `Data\`
+  and the manifest to `Data\GUO\guo_objects.json`. After the world loads,
+  the bridge syncs it: spawners by GUID through ModernUO's own `SpawnerDto`
+  path, items by the serial it recorded. It adds, changes, moves and
+  deletes; only what it created is deleted. It then saves the world.
+  - GUO's record lives in the save (`GUOWorldObjects`).
+  - A later start without `--objects` syncs the last manifest again, which
+    changes nothing.
 - **bridge** builds `bridge\GUO.EditorBridge.dll` (a ModernUO assembly, ADR-0012)
   against the copy's own `Server.dll` and lists it in the copy's
   `Data\assemblies.json`. It is never installed in the shared shard. Once

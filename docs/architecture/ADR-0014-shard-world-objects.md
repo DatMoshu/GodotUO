@@ -10,8 +10,26 @@ Proposed
 
 ## Last Verified
 
-Not yet: this ADR is written before phase 6's first slice (sprint story S5).
-The slice's evidence will be recorded here when it lands.
+2026-09-27 (slice 1, sprint S5), on the private instance (127.0.0.1:2594):
+
+- **Editor:** `editor_smoke`'s Objects stage passes. It places an anvil
+  (0x0FAF) and a Horse spawner in the World tab through the object layer,
+  moves the anvil, and places and deletes a third item. `shard/objects.json`
+  then holds exactly the two, one per line, and reopening the project draws
+  both again.
+- **Export:** `tools\world export` writes the ModernUO files, and `verify`
+  reads them back as ModernUO parses them and finds them equal to the model.
+- **Sync and client,** with `tools\editor_objects_proof`:
+  1. First export: the shard logs `spawners +1, items +1`. A client logged
+     in there has the anvil at 1168,1667,0 and the spawner item at
+     1165,1668, with a horse beside it, in its own world (`--objects-dump`).
+     Its frame (a window that never takes focus) shows all three.
+  2. The project edited (anvil moved, spawner deleted, a hued item added):
+     the shard logs `spawners -1, items +1 ~1`. The client then has one anvil
+     at the new cell, the new item with its hue, and no spawner and no horse.
+  3. The same export again: `+0 ~0 -0 =2`, nothing written.
+
+Still Proposed: live apply and the other backends are not built.
 
 ## Decision Makers
 
@@ -72,8 +90,9 @@ exists largely to correct it.
     `count`, `minDelay`, `maxDelay`, `team`, `homeRange`, `walkingRange`,
     `entries[{name, maxCount, probability}]`).
   - Before placing one, it deletes existing spawners of the same type **at
-    that location**. So a changed spawner is replaced, but a moved one leaves
-    the old one standing, and a removed one is never removed.
+    that location**, and afterwards any older spawner with the **same GUID**.
+    So a changed or moved spawner is replaced, but a removed one is never
+    removed.
 - A restart re-reads **neither**: the world comes back from the save.
 
 ### What the editor needs
@@ -136,7 +155,7 @@ what makes deletions possible.
 ### 3. Sync: applying an export to a shard
 
 **The private instance (the bridge, at boot).** `tools\editor_shard start
---objects <export>`:
+--objects <export>` (built in slice 1):
 
 - copies `shard\Data\...` into the instance's `Data\`;
 - places the manifest where the bridge finds it.
@@ -146,15 +165,25 @@ After the world loads, the bridge syncs:
 - **Spawners**, keyed by GUID:
   - create through `SpawnerDto.ToSpawner()`, ModernUO's own import path;
   - update in place, or move, by deleting the old one and creating the new;
-  - delete GUO spawners (recorded by GUID in the instance's
-    `Saves\GUO\applied.json`) that the manifest no longer has.
-- **Items**, keyed by what the bridge recorded when it created them: map,
-  location and item id (servers carry no GUO id). Create, delete, and move
-  as delete then create.
+  - delete GUO spawners (recorded by GUID) that the manifest no longer has;
+  - skip a spawner whose record is unchanged (a hash of its record) and
+    which stands where it should.
+- **Items**, keyed by the serial the bridge recorded when it created each
+  one, since servers carry no GUO id. Create as `Static` (only `Static` is
+  synced in slice 1), change art, hue or place in place, and delete.
 
-The world save then persists the result like any GM edit. The record of what
-GUO applied is kept beside the save, so a later sync knows what is its own to
-delete. Nothing that GUO did not create is ever deleted.
+The record of what GUO applied is kept **inside the world save**, as a
+ModernUO `GenericPersistence` named `GUOWorldObjects`:
+
+- It is saved and loaded with the world it describes, so a restart without a
+  save rolls both back together.
+- A file beside the save does not work: ModernUO's save replaces the whole
+  `Saves` folder. The first slice tried that and lost the record, leaving
+  orphans.
+- The bridge saves the world right after a sync that changed anything,
+  because `tools\editor_shard stop` ends the process hard.
+
+Nothing that GUO did not create is ever deleted.
 
 **Any other ModernUO shard (no GUO code).** Copy `shard\Data\` into the
 shard's `Distribution\Data\`, then as a GM:
@@ -162,9 +191,10 @@ shard's `Distribution\Data\`, then as a GM:
 - `[ImportSpawners Data/Spawns/guo/*.json`
 - `[Decorate`
 
-This adds new objects and updates spawners in place. It **cannot delete or
-move**. `APPLY.txt` says so, and lists moved and deleted objects so a GM can
-`[remove` them by hand.
+This adds new objects and replaces spawners by GUID, so a moved spawner moves
+too: ModernUO's import deletes the old spawner with the same GUID. It
+**cannot delete anything, or move an item**. `APPLY.txt` says so; the GM
+`[remove`s those by hand.
 
 **Live apply (after the export slice).** The bridge gains `object.put` and
 `object.delete` ops (`docs/data_formats.md` §10), applying one object on the
@@ -219,16 +249,16 @@ human-run step.
 ### Negative
 
 - A third moving part (the sync) beside files and commands, and a record of
-  what GUO applied (`Saves\GUO\applied.json`) that must stay with the save.
-- Items are recognised by map, location and item id. A GM who moves a
-  GUO-placed item by hand makes it look foreign to the next sync: the sync
-  leaves it and places a new one.
+  what GUO applied, which lives in the world save.
+- The project wins. A GM who moves or re-hues a GUO-placed object in game
+  sees the next sync put it back as the project has it, and one who deletes
+  it sees it created again.
 
 ## Risks
 
 | Risk | Mitigation |
 |---|---|
-| The sync deletes something a GM placed | It deletes only what `applied.json` records as its own, and only on the private instance |
+| The sync deletes something a GM placed | It deletes only what its record (in the save) says it created, and only on the private instance |
 | ModernUO's DTO or decoration API changes | The bridge is compiled against the instance's own `Server.dll` / `UOContent.dll`; a build break is loud |
 | A vendor class name does not exist on the shard | Export checks entry names against the shard's type list when it can read it (`Data/categorization.json` and the assemblies), and warns |
 

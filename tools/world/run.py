@@ -65,7 +65,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from guo import load_config  # noqa: E402
-from guo import uoart  # noqa: E402
+from guo import uoart, worldobjects  # noqa: E402
+from backends import modernuo  # noqa: E402
+
+BACKENDS = {modernuo.NAME: modernuo}
 from guo.uomap import IDX_SIZE, MAP_BLOCK, STATIC_SIZE, Block, facet_files, install_fingerprint, open_facet  # noqa: E402
 
 
@@ -137,7 +140,12 @@ def cmd_export(cfg, project: Path, out: Path, force: bool) -> int:
 
     blocks = project_blocks(project)
     assets = uoart.project_assets(project)
-    if not blocks and not any(assets.values()):
+    try:
+        objects = worldobjects.load(project)
+    except (ValueError, KeyError) as ex:
+        print(f"[world] REFUSED: shard/objects.json is not valid: {ex}")
+        return 1
+    if not blocks and not any(assets.values()) and not objects:
         print(f"[world] {project}: nothing to export")
         return 1
 
@@ -203,6 +211,13 @@ def cmd_export(cfg, project: Path, out: Path, force: bool) -> int:
         rc = export_assets(data, assets, out, override_lines, manifest)
         if rc:
             return rc
+
+    if objects:
+        backend = BACKENDS[cfg_backend()]
+        written = backend.export(objects, project.name, out)
+        manifest["objects"] = {"backend": backend.NAME, "spawners": len(objects.spawners), "items": len(objects.items),
+                               "files": {p.relative_to(out).as_posix(): sha1(p) for p in written}}
+        print(f"[world] objects: {len(objects.spawners)} spawner(s), {len(objects.items)} item(s) -> {backend.NAME} files in {out / 'shard'}")
 
     (out / "files_override.txt").write_text("\n".join(override_lines) + "\n", encoding="utf-8")
     (out / "export.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
@@ -335,9 +350,50 @@ def verify_assets(cfg, project: Path, out: Path) -> int:
     return failures
 
 
+def cfg_backend() -> str:
+    import os
+    name = (os.environ.get("UO_SHARD_BACKEND") or "modernuo").lower()
+    if name not in BACKENDS:
+        raise SystemExit(f"[world] UO_SHARD_BACKEND={name}: no such backend (have {', '.join(BACKENDS)})")
+    return name
+
+
+def verify_objects(project: Path, out: Path) -> int:
+    """Reads the backend's files back the way the server parses them and compares them with the model."""
+    objects = worldobjects.load(project)
+    if not objects:
+        return 0
+    spawners, items = modernuo.read_back(out, project.name)
+    failures = 0
+    got = {r["guid"]: r for r in spawners}
+    for s in objects.spawners:
+        r = got.pop(s.id, None)
+        want = modernuo.spawner_record(s)
+        if r != want:
+            failures += 1
+            print(f"[world] FAIL spawner {s.id}: {'missing' if r is None else 'differs from the model'}")
+    for guid in got:
+        failures += 1
+        print(f"[world] FAIL spawner {guid} is exported but not in the model")
+    want_items = sorted((i.map, i.type, i.item_id, {**i.props, **({"Hue": f"0x{i.hue:X}"} if i.hue else {})}, i.x, i.y, i.z)
+                        for i in objects.items)
+    have_items = sorted(items)
+    if [(*w[:3], sorted(w[3].items()), *w[4:]) for w in want_items] != [(*h[:3], sorted(h[3].items()), *h[4:]) for h in have_items]:
+        failures += 1
+        print(f"[world] FAIL decoration: {len(have_items)} item(s) read back, model has {len(want_items)}, or they differ")
+    manifest = json.loads((out / "shard" / "guo_objects.json").read_text(encoding="utf-8"))
+    if {m["id"] for m in manifest["spawners"] + manifest["items"]} != {o.id for o in objects.spawners + objects.items}:
+        failures += 1
+        print("[world] FAIL guo_objects.json does not list exactly the model's objects")
+    if failures == 0:
+        print(f"[world] objects: {len(objects.spawners)} spawner(s) and {len(objects.items)} item(s) read back from the "
+              f"ModernUO files equal the model; the manifest lists all of them")
+    return failures
+
+
 def cmd_verify(cfg, project: Path, out: Path) -> int:
     blocks = project_blocks(project)
-    failures = verify_assets(cfg, project, out)
+    failures = verify_assets(cfg, project, out) + verify_objects(project, out)
     for facet, bs in sorted(blocks.items()):
         with open_facet(out, facet) as exp, open_facet(cfg.client_data, facet) as inst:
             # Replaced blocks equal the project's.
@@ -438,13 +494,20 @@ def cmd_pack(cfg, project: Path, out: Path) -> int:
             return 1
 
     files = [project / "project.json", *blocks]
+    try:
+        objects = worldobjects.load(project)
+    except (ValueError, KeyError) as ex:
+        print(f"[world] REFUSED: shard/objects.json is not valid: {ex}")
+        return 1
+    if objects:
+        files.append(worldobjects.objects_path(project))
     for kind in ("land", "statics", "gumps", "hues"):
         files += [p for _, p in assets[kind]]
     if len(files) == 1:
         print(f"[world] {project}: nothing to pack")
         return 1
 
-    counts = [f"{len(blocks)} map block(s)"] + [f"{len(assets[k])} {k}" for k in ("land", "statics", "gumps", "hues") if assets[k]]
+    counts = [f"{len(blocks)} map block(s)"] + ([f"{len(objects)} world object(s)"] if objects else []) + [f"{len(assets[k])} {k}" for k in ("land", "statics", "gumps", "hues") if assets[k]]
     note = PACK_README.format(
         name=meta.get("name"), created=datetime.now(timezone.utc).date().isoformat(),
         version=meta.get("base", {}).get("client_version"), fingerprint=meta.get("base", {}).get("fingerprint"),
