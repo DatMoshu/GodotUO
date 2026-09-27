@@ -47,7 +47,7 @@ hidden and upstream's draw runs unchanged, so desktop parity is untouched.
 | **Depends On** | ADR-0002 (the batcher owns the controller's canvas; this node stays off it), ADR-0017 (mobile profile defaults, `PlatformDefaults`) |
 | **Enables** | None |
 | **Blocks** | None |
-| **Ordering Note** | `PlatformDefaults.CurrentVersion` goes 3 -> 4 here; any later per-platform default must take 5 |
+| **Ordering Note** | `PlatformDefaults.CurrentVersion` is 6 with this entry (it was 3 -> 4 in UO_Port, before the desktop v5 table landed ahead of it on transplant); any later per-platform default must take 7 |
 
 ## Context
 
@@ -91,8 +91,8 @@ items each frame directly under the `GameController` node's canvas item
 - Four profile keys, upstream-style initialisers as the desktop values;
   Mobile and Web get `CanvasBackgroundLowPower = true` through one
   `PlatformDefaults` entry at version 6 (was 4 in UO_Port).
-- Options -> Display: mode dropdown, path field with Browse, fps slider,
-  low-power checkbox.
+- Options -> Video: mode dropdown, path field with Browse, fps slider,
+  low-power checkbox (commit 0d4a9e1 put the section on the Video page).
 - `--background <mode>[:<path>]` for scripted runs, never saved.
 - Frame cost of the default mode: zero change (the node is hidden and does
   no work beyond one struct comparison per frame).
@@ -144,7 +144,7 @@ Window (viewport, no stretch)
              [world RT] [light RT] [UI RT]
 
 Profile.CanvasBackground{Mode,Path,Fps,LowPower}
-   ^ Options gump (Display / Background)      ^ PlatformDefaults v6 (LowPower on Mobile, Web)
+   ^ Options gump (Video / Background)        ^ PlatformDefaults v6 (LowPower on Mobile, Web)
    ^ --background mode[:path]  -> CanvasBackground.Override (not saved)
 ```
 
@@ -252,7 +252,7 @@ public bool CanvasBackgroundLowPower { get; set; }
 
 - A second reader of `profile.json` (the pre-profile lookup) that has to
   agree with `ProfileManager`'s root rule.
-- `PlatformDefaults.CurrentVersion` bumps to 4: every mobile and web
+- `PlatformDefaults.CurrentVersion` bumps to 6: every mobile and web
   profile saved before gets `CanvasBackgroundLowPower = true` once.
 
 ### Neutral
@@ -280,7 +280,7 @@ public bool CanvasBackgroundLowPower { get; set; }
 ## Migration Plan
 
 1. Profiles gain four keys with defaults; old profiles read as
-   `builtin-grey`. Mobile/Web profiles at version < 4 get low power on.
+   `builtin-grey`. Mobile/Web profiles at version < 6 get low power on.
 2. Nothing else changes for a desktop profile.
 
 **Rollback plan**: remove the node creation in `GameController.LoadContent`;
@@ -308,7 +308,7 @@ public bool CanvasBackgroundLowPower { get; set; }
       the gump then stays top-left on the desktop (upstream places it once).
       The Android export packages every `.ogv`, the imported stills and the
       manifest (`GUO-bg-media.apk`, 122 MB, +22 MB over the bare client).
-- [x] Desktop, the Options gump's Display page shows the Background section
+- [x] Desktop, the Options gump's Video page shows the Background section
       (`bg_options.png`, captured by `--ui-probe`).
 - [x] `launchers\dev\smoke.bat` OK on the branch (2026-09-26).
 - [x] `tools/port_drift --strict`: 16 unmarked files, all inherited from

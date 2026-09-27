@@ -30,7 +30,10 @@ parts that genuinely bind to FNA are reimplemented on Godot.
 - The last side-by-side sweep against ClassicUO (`docs/parity_2026-09-23.md`)
   matched in five of eight places. The other three show known rendering
   differences, listed there with their causes.
-- Windows only for now.
+- Windows, and an Android ARM64 debug build that has run on one device
+  (`docs/architecture/ADR-0017-android-target.md`). A web build is blocked
+  upstream: Godot 4.7 .NET cannot export C# to the web
+  (`docs/architecture/ADR-0008-web-target.md`).
 
 Bug reports that compare GUO against ClassicUO in the same place are the most
 useful thing you can send. See `CONTRIBUTING.md`.
@@ -43,7 +46,7 @@ useful thing you can send. See `CONTRIBUTING.md`.
 |---|---|
 | **Windows** | 10 or 11, x64 |
 | **Godot** | 4.7.2 stable, **mono/.NET** build — fetched by the bootstrap step |
-| **.NET SDK** | 8.0 for the client; 10.0 for the dev shard and the parity tools |
+| **.NET SDK** | 8.0 for the desktop client (`net8.0`); 9.0 for the Android export, where `GUO.csproj` switches to `net9.0`; 10.0 for the dev shard and the parity tools |
 | **Python** | 3.12+ (tooling) |
 | **A UO client install** | Any modern Classic client; developed against 7.0.107 |
 
@@ -79,6 +82,19 @@ Optionally add the engine folder to `PATH` so `godot` resolves everywhere:
 
 Use `godot` for the interactive editor and **`godot-console` for scripts and
 CI** — the console build blocks and writes to stdout.
+
+---
+
+## Documentation
+
+The wiki lives in the repository, under [`docs/wiki/`](docs/wiki/Home.md), so
+it is versioned and reviewed with the code: getting started, every
+configuration key, the launchers and tools, the Windows and Android builds,
+the dev shard, the editor, the scripted runs and probes, parity and drift,
+the ADR index and a FAQ. `docs/wiki/README.md` says how it is published to
+the GitHub Wiki. The plan (`docs/port_plan.md`), the data contract
+(`docs/data_formats.md`) and the ADRs (`docs/architecture/`) remain the
+sources it is written from.
 
 ---
 

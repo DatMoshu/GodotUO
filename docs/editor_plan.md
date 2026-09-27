@@ -26,7 +26,7 @@ renderer, so what you see in the editor is what the client shows.
 **GUO never writes to the client install** (`CLAUDE.md` rule 8,
 `docs/uoww-reference.md`). An editor that edits maps looks like it violates
 this. It does not, if edits live in a **world project**: a folder of ours
-(`UO_WORLD_PROJECT`, default `build/world/<name>/`) holding an overlay over
+(`UO_WORLD_PROJECT`, default `build\world\default` in `config.bat`) holding an overlay over
 the read-only install, exactly the way the client's own `mapdifN`/`stadifN`
 and `verdata.mul` overlay the base files. The chain is:
 
@@ -127,8 +127,10 @@ must not grow by the editor.
   block ring buffer.
 - The loaders get an overlay hook: `MapLoader` already has the patch layer
   logic for `mapdifN`/`stadifN`; the overlay plugs in at the same seam,
-  consulted first. One `PORT DEVIATION` in `MapLoader.cs`, no other ported
-  file touched for terrain.
+  consulted first. *As planned:* one `PORT DEVIATION` in `MapLoader.cs`.
+  *As built (ADR-0011 supersedes this bullet):* the editor repoints the
+  loader's `IndexMap` entries for replaced blocks at the project's data, so
+  no ported file is changed for terrain at all.
 - Export produces, per facet, either `mapdifN.mul`+`mapdifNl.mul` and
   `stadifN.mul`+`stadifNl.mul`+`stadifNi.mul` (the format the client and the
   shard already read) or full patched copies of `mapN.mul`/`staticsN.mul`

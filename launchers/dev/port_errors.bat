@@ -1,18 +1,18 @@
 @echo off
 REM ============================================================================
-REM  How much of the port is actually left.
+REM  Every C# error in the whole client, grouped by the symbol that is
+REM  missing rather than by call site.
 REM
-REM  GUO.csproj excludes the areas that do not compile yet, so the ordinary
-REM  build says nothing about the remaining work. This turns every exclusion
-REM  off at once (-p:GuoAllAreas=true), forces a FULL rebuild, and groups the
-REM  errors by the symbol that is missing rather than by call site.
+REM  Forces a FULL rebuild (-t:Rebuild) of godot\GUO\GUO.csproj and clusters
+REM  what the compiler says (tools\port_errors\run.py). Use it rather than a
+REM  plain `dotnet build` when counting errors: an incremental build skips
+REM  the compile and reports a handful of errors from a partial pass, which
+REM  reads like progress. The same tree measured 9 errors that way and 1,600
+REM  on a rebuild.
 REM
-REM  Use this rather than stripping the exclusions by hand and running
-REM  `dotnet build`: an incremental build skips the compile and reports a
-REM  handful of errors from a partial pass, which reads like progress. The
-REM  same tree measured 9 errors that way and 1,600 on a rebuild.
-REM
-REM  This never changes what gets committed -- the switch is a build property.
+REM  The staged build (per-area exclusions in GUO.csproj) is retired; the
+REM  -p:GuoAllAreas=true property the tool still passes is inert and harmless.
+REM  Nothing here changes what gets committed.
 REM ============================================================================
 call "%~dp0..\_shared\common.bat" || exit /b 1
 "%UO_PYTHON%" "%UO_TOOLS%\port_errors\run.py" %*
