@@ -137,17 +137,6 @@ jobs:
           path: build/steamdeck/
           if-no-files-found: error
 
-      - name: Zip for the release
-        if: startsWith(github.ref, 'refs/tags/v')
-        shell: pwsh
-        run: |
-          Compress-Archive build/windows/* GUO-windows-x86_64.zip
-          Compress-Archive build/steamdeck/* GUO-steamdeck-linux-x86_64.zip
-      - name: Draft release
-        if: startsWith(github.ref, 'refs/tags/v')
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release create "${{ github.ref_name }}" --draft --generate-notes GUO-windows-x86_64.zip GUO-steamdeck-linux-x86_64.zip
 
   android:
     runs-on: windows-latest
@@ -254,3 +243,28 @@ jobs:
           name: GUO-android-arm64-debug
           path: build/android/GUO-debug.apk
           if-no-files-found: error
+
+  # On a v* tag: one draft release with all three platforms, after both
+  # build jobs. Notes come from docs/release/<tag>.md when that file exists.
+  draft:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [export, android]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Zip each platform
+        run: |
+          cd artifacts
+          for d in */; do (cd "$d" && zip -qr "../../${d%/}.zip" .); done
+          ls -la ..
+      - name: Create the draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          notes="docs/release/${TAG}.md"
+          if [ -f "$notes" ]; then set -- --notes-file "$notes"; else set -- --generate-notes; fi
+          gh release create "$TAG" --draft "$@" GUO-*.zip
