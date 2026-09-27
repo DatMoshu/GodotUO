@@ -664,10 +664,13 @@ namespace GUO.Input.Touch
         /// </summary>
         private Texture2D LabelTexture(string action)
         {
-            // Cached by caption: War/Peace changes with the stance.
+            // Cached by caption: War/Peace changes with the stance. A chip sits
+            // on a dark fill, so its text is drawn light (cached apart).
             string caption = Label(action);
+            bool light = action.StartsWith("chip");
+            string key = light ? "light|" + caption : caption;
 
-            if (_labels.TryGetValue(caption, out Texture2D cached))
+            if (_labels.TryGetValue(key, out Texture2D cached))
             {
                 return cached;
             }
@@ -695,9 +698,21 @@ namespace GUO.Input.Touch
                 .AsBytes(new System.ReadOnlySpan<uint>(fi.Data, 0, fi.Width * fi.Height))
                 .CopyTo(rgba);
 
+            if (light)
+            {
+                // The font's ink is near black; recolour it to the Store's cream.
+                for (int i = 0; i < rgba.Length; i += 4)
+                {
+                    if (rgba[i + 3] != 0)
+                    {
+                        rgba[i] = 0xEE; rgba[i + 1] = 0xEA; rgba[i + 2] = 0xDE;
+                    }
+                }
+            }
+
             Image image = Image.CreateFromData(fi.Width, fi.Height, false, Image.Format.Rgba8, rgba);
             Texture2D texture = ImageTexture.CreateFromImage(image);
-            _labels[caption] = texture;
+            _labels[key] = texture;
 
             return texture;
         }
