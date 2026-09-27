@@ -8,6 +8,8 @@ assignees: ''
 
 ## What happens
 
+<!-- Security issue? Stop here and follow SECURITY.md. Do not include exploit details publicly. -->
+
 <!-- What you saw. Attach a screenshot for anything visual. -->
 
 ## What should happen
@@ -25,12 +27,21 @@ assignees: ''
 - **GUO commit:**
 - **OS:**
 - **UO client version** (`UO_CLIENT_VERSION`):
-- **Shard:** <!-- local ModernUO dev shard, or which server -->
+- **Shard type:** <!-- local development / public shard; omit private addresses -->
 - **Plugins loaded:** <!-- none / Razor / ClassicAssist / ... -->
+- **Display size / UI scale / additional display:** <!-- for visual or input problems -->
+- **Pack ID and version:** <!-- for Store problems; no private store URLs -->
+
+## Reproduction scope
+
+<!-- Always / sometimes; did it begin after a particular commit or update?
+     Does it happen with plugins disabled or a fresh test profile? Preserve your real profile. -->
 
 ## Logs
 
-<!-- The console output around the problem. Remove account names and anything private. -->
+<!-- Include only relevant output. Remove credentials, account names, private
+     addresses, device IDs and personal paths. Never attach config.local.bat
+     or UO client data. Review screenshots for the same information. -->
 
 ```
 ```
