@@ -246,19 +246,22 @@ internal static class InputProbe
 
             await Click(host, CharacterName);
             await Type(host, character);
-            await Click(host, NextArrow);
 
-            await Frames(host, 120);
+            // The creation steps are child gumps of CharCreationGump, and the
+            // fixed 640x480 points above them missed this client's layout
+            // (the Next arrow landed on background art). Click the controls
+            // themselves: CreateCharAppearanceGump.Buttons.Next is 6.
+            await ClickChildButton<Game.UI.Gumps.CharCreation.CreateCharAppearanceGump>(host, 6, "Next", true);
 
             GD.Print("[GUO] input probe: choosing a profession");
 
-            await Click(host, FirstProfession);
-
-            await Frames(host, 120);
+            await ClickPlainProfession(host);
 
             GD.Print("[GUO] input probe: accepting the starting city");
 
-            await Click(host, NextArrow);
+            // CreateCharSelectionCityGump: a city's button is 2 + its index; Finish is 1.
+            await ClickChildButton<Game.UI.Gumps.CharCreation.CreateCharSelectionCityGump>(host, 2, "first city", false);
+            await ClickChildButton<Game.UI.Gumps.CharCreation.CreateCharSelectionCityGump>(host, 1, "Finish", true);
         }
 
         await Frames(host, 240);
@@ -2671,6 +2674,184 @@ internal static class InputProbe
     /// behind it. So the search skips the page switchers, which are the
     /// buttons with a ToPage, and anything on a page that is not showing.
     /// </remarks>
+    /// <summary>The first control of type T anywhere under the open gumps, children included.</summary>
+    private static T FindControl<T>() where T : Game.UI.Controls.Control
+    {
+        foreach (Game.UI.Gumps.Gump gump in Game.Managers.UIManager.Gumps)
+        {
+            T found = FindControl<T>(gump);
+
+            if (found != null)
+            {
+                return found;
+            }
+        }
+
+        return null;
+    }
+
+    private static T FindControl<T>(Game.UI.Controls.Control parent) where T : Game.UI.Controls.Control
+    {
+        if (parent.IsDisposed || !parent.IsVisible)
+        {
+            return null;
+        }
+
+        if (parent is T hit)
+        {
+            return hit;
+        }
+
+        foreach (Game.UI.Controls.Control child in parent.Children)
+        {
+            T found = FindControl<T>(child);
+
+            if (found != null)
+            {
+                return found;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// ClickGumpButton for a gump that lives inside another one, as the
+    /// creation steps do. The button is found by id wherever it is nested and
+    /// clicked with the mouse. When <paramref name="leaves"/> is set, the step
+    /// should go away; if it does not, the mouse click did not act (seen on
+    /// the creation screen's Next arrow and Finish), so the gump's own handler
+    /// is called with the same id and that is logged. For a button that only
+    /// selects (a city), the handler is always called, since nothing visible
+    /// tells whether the click took.
+    /// </summary>
+    private static async System.Threading.Tasks.Task ClickChildButton<T>(Node host, int buttonId, string what, bool leaves)
+        where T : Game.UI.Controls.Control
+    {
+        T gump = null;
+
+        for (int i = 0; i < 120 && gump == null; i++)
+        {
+            gump = FindControl<T>();
+
+            if (gump == null)
+            {
+                await Frames(host, 1);
+            }
+        }
+
+        if (gump == null)
+        {
+            GD.Print($"[GUO] input probe: no {typeof(T).Name} for {what}");
+
+            return;
+        }
+
+        Game.UI.Controls.Button button = FindButtonDeep(gump, buttonId);
+
+        if (button != null)
+        {
+            await Click(host, new Vector2(button.ScreenCoordinateX + button.Width / 2f, button.ScreenCoordinateY + button.Height / 2f));
+            await Frames(host, 60);
+        }
+
+        if (!leaves || (!gump.IsDisposed && gump.IsVisible && FindControl<T>() == gump))
+        {
+            if (leaves)
+            {
+                GD.Print($"[GUO] input probe: the mouse click on {what} did not act; calling {typeof(T).Name}.OnButtonClick({buttonId})");
+            }
+
+            gump.OnButtonClick(buttonId);
+            await Frames(host, 90);
+        }
+    }
+
+    /// <summary>FindButton, searching nested controls too.</summary>
+    private static Game.UI.Controls.Button FindButtonDeep(Game.UI.Controls.Control parent, int buttonId)
+    {
+        Game.UI.Controls.Button direct = FindButton(parent, buttonId);
+
+        if (direct != null)
+        {
+            return direct;
+        }
+
+        foreach (Game.UI.Controls.Control child in parent.Children)
+        {
+            if (child.IsVisible && !(child is Game.UI.Controls.Button))
+            {
+                Game.UI.Controls.Button found = FindButtonDeep(child, buttonId);
+
+                if (found != null)
+                {
+                    return found;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Pick a profession with a fixed skill set, not Advanced (which asks for
+    /// skills) and not a category (which opens a sub-list).
+    /// </summary>
+    private static async System.Threading.Tasks.Task ClickPlainProfession(Node host)
+    {
+        var field = typeof(Game.UI.Gumps.CharCreation.ProfessionInfoGump).GetField(
+            "_info", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic
+        );
+        Game.UI.Gumps.CharCreation.ProfessionInfoGump pick = null;
+
+        for (int i = 0; i < 120 && pick == null; i++)
+        {
+            var profession = FindControl<Game.UI.Gumps.CharCreation.CreateCharProfessionGump>();
+
+            if (profession != null)
+            {
+                foreach (Game.UI.Controls.Control child in profession.Children)
+                {
+                    if (child is Game.UI.Gumps.CharCreation.ProfessionInfoGump info
+                        && field?.GetValue(info) is Assets.ProfessionInfo p
+                        && p.Type == Assets.ProfessionLoader.PROF_TYPE.PROFESSION
+                        && !string.Equals(p.TrueName, "advanced", System.StringComparison.OrdinalIgnoreCase))
+                    {
+                        pick = info;
+                        GD.Print($"[GUO] input probe: profession {p.TrueName}");
+
+                        break;
+                    }
+                }
+            }
+
+            if (pick == null)
+            {
+                await Frames(host, 1);
+            }
+        }
+
+        if (pick == null)
+        {
+            GD.Print("[GUO] input probe: no plain profession to pick");
+
+            return;
+        }
+
+        await Click(host, new Vector2(pick.ScreenCoordinateX + pick.Width / 2f, pick.ScreenCoordinateY + 17));
+        await Frames(host, 90);
+
+        // As for the Next arrow (ClickChildButton): if the click did not act,
+        // call the entry's own selection handler.
+        if (!pick.IsDisposed && FindControl<Game.UI.Gumps.CharCreation.CreateCharProfessionGump>() != null
+            && field?.GetValue(pick) is Assets.ProfessionInfo chosen)
+        {
+            GD.Print("[GUO] input probe: the mouse click on the profession did not act; calling its Selected handler");
+            pick.Selected?.Invoke(chosen);
+            await Frames(host, 90);
+        }
+    }
+
     private static Game.UI.Controls.Button FindButton(
         Game.UI.Controls.Control parent,
         int buttonId
@@ -3264,6 +3445,7 @@ internal static class InputProbe
             $"[GUO] probe click at {at.X},{at.Y}: focus is "
             + (Game.Managers.UIManager.KeyboardFocusControl?.GetType().Name ?? "none")
             + $", mouse over {Game.Managers.UIManager.MouseOverControl?.GetType().Name ?? "none"}"
+            + $" in {Game.Managers.UIManager.MouseOverControl?.RootParent?.GetType().Name ?? "none"}"
         );
     }
 
