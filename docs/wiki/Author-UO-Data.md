@@ -51,6 +51,16 @@ The shard needs the same files: list the stage folder first in its data
 directories. Both have to read the same tiledata, or the server will not agree
 with the client about what the item is.
 
+## On a phone or handheld
+
+`python tools\android\run.py push-stage build\uodata\moshu --reverse 2594`
+copies the staged files next to the device's client data, under their own
+names, and writes an override file there. It prints the export command that
+bakes `--files-override` into the build. `--reverse` lets the device reach
+the private shard on this PC. Then run
+`python tools\uodata_write\play.py --stage build\uodata\moshu --device 900`
+to serve the shard and equip the item when the device's character logs in.
+
 ## For shard maintainers: your own ranges
 
 If your shard already uses ids that are not in players' installs, bar them,

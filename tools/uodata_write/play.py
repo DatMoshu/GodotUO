@@ -15,6 +15,12 @@
 5. With --clip: the character walks the four screen diagonals while the client
    records, and ffmpeg writes a captioned MP4.
 
+--device SECONDS: no desktop client. The shard is served with the stage and
+the bridge; a device client (tools/android/run.py push-stage STAGE --reverse
+2594, then a build with --files-override) logs in as the probe character, and
+the item is equipped as soon as it is online, then the shard stays up for
+SECONDS (Ctrl+C ends it early).
+
 Never the shared shard. Exit 0 when the item is worn and (with --clip) the walk was recorded.
 """
 from __future__ import annotations
@@ -65,6 +71,32 @@ def bridge_equip(item: int) -> dict:
     return {"ok": False, "error": "no answer"}
 
 
+def serve_device(args, item: int, stage: Path, out: Path, tools: Path) -> int:
+    """The shard with the stage, for a device: equip once the character is online, then hold."""
+    report = {"item": item, "stage": str(stage), "mode": "device"}
+    try:
+        print(f"[play] shard up with the stage; waiting for {CHARACTER} to log in from the device", flush=True)
+        t0 = time.time()
+        while time.time() - t0 < args.device:
+            eq = bridge_equip(item)
+            if eq.get("ok") or "not online" not in str(eq.get("error", "")):
+                report["equip"] = eq
+                print(f"[play] equip: {eq}", flush=True)
+                break
+            time.sleep(5)
+        else:
+            print("[play] the character never came online", flush=True)
+        print(f"[play] holding the shard until {args.device} s have passed (Ctrl+C ends it)", flush=True)
+        while time.time() - t0 < args.device:
+            time.sleep(2)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        sh(str(tools / "editor_shard" / "run.py"), "stop")
+    (out / "report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
+    return 0 if report.get("equip", {}).get("ok") else 1
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--stage", type=Path, required=True)
@@ -72,6 +104,8 @@ def main() -> int:
     ap.add_argument("--clip", type=Path)
     ap.add_argument("--caption", default="GUO: the Dreadcrest shield, authored into a staged data set, worn in game")
     ap.add_argument("--out", type=Path)
+    ap.add_argument("--device", type=int, metavar="SECONDS",
+                    help="serve for a device client instead of starting one; hold the shard up this long")
     args = ap.parse_args()
     cfg = load_config()
     stage = args.stage.resolve()
@@ -88,6 +122,9 @@ def main() -> int:
         return 2
     if sh(str(tools / "editor_shard" / "run.py"), "start", "--data-first", str(stage)) != 0:
         return 2
+
+    if args.device:
+        return serve_device(args, item, stage, out, tools)
 
     home = out / "client_home"
     (home / "cache").mkdir(parents=True)

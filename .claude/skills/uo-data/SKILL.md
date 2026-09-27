@@ -132,6 +132,22 @@ Worn on the server and seen by the client are two different claims. Report
 both. Look at `build\uodata_play\watch\equipped.png` yourself before calling
 the item visible.
 
+**On a device (the Thor):** the device reads the stage through
+`--files-override` and reaches the loopback-only shard through `adb reverse`:
+
+```
+python tools\android\run.py push-stage build\uodata\<pack> --reverse 2594
+python tools\android\run.py export --args "--files-override <printed path> --host 127.0.0.1 --port 2594"
+python tools\android\run.py install
+python tools\uodata_write\play.py --stage build\uodata\<pack> --item <id> --device 900
+```
+
+Then start the app. `play.py --device` serves the shard, equips the item as
+soon as the probe character is online, and holds the shard for that many
+seconds. `push-stage` never changes the device's copy of the install: the
+staged files go beside it as `stage-<pack>-<name>`. Photograph the device with
+the android tool, not the desktop.
+
 An item with no layer in its tiledata cannot be worn: `equip` refuses it.
 `play.py` does not place items yet. Report it as staged and verified, not seen
 in game.
