@@ -22,6 +22,13 @@ python tools\editor_shard\run.py stop
   and waits until it listens. `--data-first DIR` puts a `tools\world` export
   ahead of the install in `dataDirectories` for this start; a start without
   it puts the install back alone.
+- **bridge** builds `bridge\GUO.EditorBridge.dll` (a ModernUO assembly, ADR-0012)
+  against the copy's own `Server.dll` and lists it in the copy's
+  `Data\assemblies.json`. It is never installed in the shared shard. Once
+  running it offers the editor bridge on `127.0.0.1:2595` (JSON lines,
+  `docs\data_formats.md` section 10), and makes game clients UltimaLive
+  clients of shard `GUO-Editor-Private` for map 0. Stop the instance first;
+  its `Assemblies` are locked while it runs.
 - **stop** ends only the process `start` recorded, and only if its executable
   is the copy's. It cannot stop the shared shard.
 

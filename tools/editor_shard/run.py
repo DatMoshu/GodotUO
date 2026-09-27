@@ -9,6 +9,7 @@ world export) runs on an instance of its own instead:
     python tools/editor_shard/run.py start   [--data-first DIR]
     python tools/editor_shard/run.py status
     python tools/editor_shard/run.py stop
+    python tools/editor_shard/run.py bridge  [--bridge-port 2595]
 
 setup copies the built ModernUO Distribution (the same tools/modernuo build,
 read only; Archives, Backups, Logs left out) to build\\shard_private, with its
@@ -20,6 +21,11 @@ start runs the copy's ModernUO.exe in the background, logging to
 build\\shard_private\\shard.log, and waits until it listens. --data-first puts
 a folder (a tools/world export) ahead of the install in dataDirectories for
 this start; a start without it puts the install back alone.
+
+bridge builds tools/editor_shard/bridge (GUO.EditorBridge.dll, a ModernUO
+assembly: UltimaLive for game clients, a JSON line protocol for editors on
+127.0.0.1:<bridge-port>) against the copy's own Server.dll and lists it in the
+copy's Data/assemblies.json. It takes effect at the next start.
 
 stop ends only the process start recorded, and only if its executable is the
 copy's: it cannot stop the shared shard.
@@ -131,7 +137,11 @@ def cmd_start(cfg, data_first: Path | None) -> int:
 
     configure(h, cfg, port, data_first.resolve() if data_first else None)
     log = (h / "shard.log").open("w", encoding="utf-8", errors="replace")
-    proc = subprocess.Popen([str(exe)], cwd=str(h), stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
+    env = {**__import__("os").environ,
+           "GUO_BRIDGE_PORT": str(state.get("bridge_port", 2595)),
+           "GUO_BRIDGE_SHARD": state.get("bridge_shard", "GUO-Editor-Private"),
+           "GUO_BRIDGE_MAPS": state.get("bridge_maps", "0")}
+    proc = subprocess.Popen([str(exe)], cwd=str(h), env=env, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
                             creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0))
     state.update({"pid": proc.pid, "data_first": str(data_first.resolve()) if data_first else None,
                   "started": time.strftime("%Y-%m-%d %H:%M:%S")})
@@ -162,6 +172,34 @@ def cmd_status(cfg) -> int:
     return 0
 
 
+def cmd_bridge(cfg, bridge_port: int) -> int:
+    h = home(cfg)
+    state = read_state(h)
+    if not state:
+        print("[editor_shard] not set up; run: python tools/editor_shard/run.py setup")
+        return 2
+    if state.get("pid") and pid_alive(state["pid"], h / "ModernUO.exe"):
+        print("[editor_shard] stop the private shard first; its Assemblies are in use")
+        return 2
+    proj = Path(__file__).resolve().parent / "bridge" / "GUO.EditorBridge.csproj"
+    r = subprocess.run(["dotnet", "build", str(proj), "-nologo", "-v", "q", f"-p:ModernUODir={h}"],
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        print(r.stdout[-3000:])
+        return 1
+    dll = cfg.build / "editor_bridge" / "GUO.EditorBridge.dll"
+    shutil.copy2(dll, h / "Assemblies" / dll.name)
+    listed = h / "Data" / "assemblies.json"
+    names = json.loads(listed.read_text(encoding="utf-8"))
+    if dll.name not in names:
+        names.append(dll.name)
+        listed.write_text(json.dumps(names, indent=2), encoding="utf-8")
+    state["bridge_port"] = bridge_port
+    write_state(h, state)
+    print(f"[editor_shard] bridge installed in the private copy (editors on 127.0.0.1:{bridge_port}); restart to load it")
+    return 0
+
+
 def cmd_stop(cfg) -> int:
     h = home(cfg)
     state = read_state(h)
@@ -184,10 +222,11 @@ def cmd_stop(cfg) -> int:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("command", choices=["setup", "start", "status", "stop"])
+    ap.add_argument("command", choices=["setup", "start", "status", "stop", "bridge"])
     ap.add_argument("--from", dest="source", type=Path, help="built ModernUO Distribution to copy (setup)")
     ap.add_argument("--port", type=int, default=2594, help="port for the private instance (setup)")
     ap.add_argument("--data-first", type=Path, help="folder ahead of the install in dataDirectories (start)")
+    ap.add_argument("--bridge-port", type=int, default=2595, help="editor port of the bridge (bridge)")
     args = ap.parse_args()
     cfg = load_config()
     if args.command == "setup":
@@ -196,6 +235,8 @@ def main() -> int:
         return cmd_start(cfg, args.data_first)
     if args.command == "status":
         return cmd_status(cfg)
+    if args.command == "bridge":
+        return cmd_bridge(cfg, args.bridge_port)
     return cmd_stop(cfg)
 
 

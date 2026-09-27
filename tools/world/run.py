@@ -166,6 +166,19 @@ def cmd_export(cfg, project: Path, out: Path, force: bool) -> int:
 
         for src, dst in zip(sources, targets):
             override_lines.append(f"{src.name.lower()}={dst}")
+
+        # UltimaLive (src/Game/UltimaLive.cs) copies map<N>.mul, never the UOP:
+        # its UOP conversion is commented out upstream, so a UOP-only install
+        # gives it nothing. Write the patched land as a MUL too (the same
+        # 196-byte blocks, in block order) and point map<N>.mul at it.
+        if land.suffix.lower() == ".uop":
+            mul = out / f"map{facet}.mul"
+            with open_facet(out, facet) as exp, mul.open("wb") as mf:
+                for n in range(exp.width_blocks * exp.height_blocks):
+                    at = exp.map_offset(n)
+                    mf.write(exp.map[at:at + MAP_BLOCK])
+            override_lines.append(f"map{facet}.mul={mul}")
+            targets.append(mul)
         manifest["facets"][str(facet)] = {
             "blocks": [[bx, by] for (bx, by) in sorted(bs)],
             "files": {dst.name: {"sha1": sha1(dst), "bytes": dst.stat().st_size} for dst in targets},
