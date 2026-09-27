@@ -2271,6 +2271,10 @@ namespace GUO.Network
                     {
                         UIManager.Add(gump);
                     }
+
+                    // PORT DEVIATION (GUO): on a phone a gump restored from
+                    // gumps.xml must not cover the character either.
+                    ContainerPlacement.ClearRestored(gumps);
                 }
             }
         }

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
 
 using System;
+using System.Collections.Generic;
 using GUO.Compat;
 using GUO.Configuration;
 using GUO.Game.Scenes;
@@ -112,6 +113,76 @@ namespace GUO.Game.Managers
         }
 
         /// <summary>
+        /// Moves gumps restored from gumps.xml (a paperdoll, a status bar)
+        /// off the character, by the same scan as a container, when the
+        /// profile keeps containers clear. A gump that does not cover the
+        /// character stays where the player left it.
+        /// </summary>
+        public static void ClearRestored(IEnumerable<Gump> gumps)
+        {
+            if (!Active(ProfileManager.CurrentProfile))
+            {
+                return;
+            }
+
+            Rectangle keepOut = KeepOut();
+
+            if (keepOut.IsEmpty)
+            {
+                return;
+            }
+
+            foreach (Gump gump in gumps)
+            {
+                if (
+                    gump.IsDisposed
+                    || !gump.IsVisible
+                    || gump is WorldViewportGump
+                    || gump is TopBarGump
+                    || gump is AnchorableGump anchored && UIManager.AnchorManager[anchored] != null
+                )
+                {
+                    continue;
+                }
+
+                Point size = Measure(gump);
+
+                if (!new Rectangle(gump.X, gump.Y, size.X, size.Y).Intersects(keepOut))
+                {
+                    continue;
+                }
+
+                Point from = gump.Location;
+                gump.Location = Place(gump.LocalSerial, size, from, false);
+
+                Godot.GD.Print($"[GUO] restored {gump.GetType().Name} moved off the character: {from.X},{from.Y} -> {gump.X},{gump.Y}");
+            }
+        }
+
+        /// <summary>
+        /// A gump's size before its first Update: Control.Update sizes a gump
+        /// from its children a frame after it is added, and a restored gump
+        /// is checked before that, so take the children's extent the same way,
+        /// on the page Gump.Update will open (page 1 when none is set yet).
+        /// </summary>
+        private static Point Measure(Gump gump)
+        {
+            int w = gump.Width, h = gump.Height;
+            int page = gump.ActivePage == 0 ? 1 : gump.ActivePage;
+
+            foreach (UI.Controls.Control c in gump.Children)
+            {
+                if ((c.Page == 0 || c.Page == page) && c.IsVisible)
+                {
+                    w = Math.Max(w, c.Bounds.Right);
+                    h = Math.Max(h, c.Bounds.Bottom);
+                }
+            }
+
+            return new Point(w, h);
+        }
+
+        /// <summary>
         /// The client area less a margin, the top bar and the touch gump bar,
         /// in client px.
         /// </summary>
@@ -124,7 +195,7 @@ namespace GUO.Game.Managers
 
             if (topBar != null && topBar.IsVisible)
             {
-                top = Math.Max(top, topBar.Y + topBar.Height + Margin);
+                top = Math.Max(top, topBar.Y + Measure(topBar).Y + Margin);
             }
 
             int bottom = bounds.Height - Margin;
