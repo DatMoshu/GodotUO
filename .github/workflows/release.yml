@@ -4,10 +4,14 @@
 #
 #   windows     build/windows    GUO.exe + GUO.pck + the .NET data folder
 #   steamdeck   build/steamdeck  GUO.x86_64 + data (Linux x86_64, SteamOS)
+#   android     build/android    GUO-debug.apk (arm64, debug-signed)
 #
 # No UO client data is involved: an export packs the project, never the
-# install, and every player brings their own (UO_CLIENT_DATA). Android is not
-# built here: an APK needs a keystore, which stays on the owner's machine.
+# install, and every player brings their own (UO_CLIENT_DATA). The APK is a
+# DEBUG build, signed with the standard Android debug key that the job makes
+# with keytool on the runner and throws away; no keystore is ever committed
+# and no release key exists here. A release-signed APK stays on the owner's
+# machine.
 
 name: release
 
@@ -20,6 +24,7 @@ on:
       - "godot/GUO/**"
       - "tools/windows/**"
       - "tools/steamdeck/**"
+      - "tools/android/**"
       - ".github/workflows/release.yml"
 
 permissions:
@@ -135,3 +140,109 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release create "${{ github.ref_name }}" --draft --generate-notes GUO-windows-x86_64.zip GUO-steamdeck-linux-x86_64.zip
+
+  android:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read pins
+        id: pin
+        shell: pwsh
+        run: |
+          $up = Get-Content docs/upstream/UPSTREAM_PIN.json | ConvertFrom-Json
+          if ($up.commit -notmatch '^[0-9a-f]{40}$') { throw "UPSTREAM_PIN commit is not a sha" }
+          if ($up.repo -notmatch '^https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(\.git)?$') { throw "UPSTREAM_PIN repo is not a GitHub URL" }
+          "repo=$($up.repo)" >> $env:GITHUB_OUTPUT
+          "commit=$($up.commit)" >> $env:GITHUB_OUTPUT
+          $v = (Select-String -Path launchers/_shared/config.bat -Pattern 'GODOT_VERSION=([^"]+)"').Matches[0].Groups[1].Value
+          if ($v -notmatch '^[0-9]+\.[0-9]+(\.[0-9]+)?-[a-z0-9]+$') { throw "GODOT_VERSION is not a version" }
+          "godot=$v" >> $env:GITHUB_OUTPUT
+          "templates=$($v -replace '-', '.').mono" >> $env:GITHUB_OUTPUT
+
+      # Same upstream and engine caches as the export job (same keys).
+      - name: Cache upstream
+        id: upstream-cache
+        uses: actions/cache@v4
+        with:
+          path: sources/ClassicUO
+          key: classicuo-${{ steps.pin.outputs.commit }}-recursive
+      - name: Fetch upstream
+        if: steps.upstream-cache.outputs.cache-hit != 'true'
+        shell: bash
+        env:
+          UPSTREAM_REPO: ${{ steps.pin.outputs.repo }}
+          UPSTREAM_COMMIT: ${{ steps.pin.outputs.commit }}
+        run: |
+          git init -q sources/ClassicUO
+          cd sources/ClassicUO
+          git remote add origin "$UPSTREAM_REPO"
+          git fetch -q --depth 1 origin "$UPSTREAM_COMMIT"
+          git checkout -q FETCH_HEAD
+          git submodule update -q --init --recursive --depth 1
+
+      - name: Cache Godot
+        id: godot-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            tools/godot/Godot_v${{ steps.pin.outputs.godot }}_mono_win64
+            ~/AppData/Roaming/Godot/export_templates/${{ steps.pin.outputs.templates }}
+          key: godot-${{ steps.pin.outputs.godot }}-mono-win64-templates
+      - name: Fetch Godot
+        if: steps.godot-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        env:
+          GODOT_PIN: ${{ steps.pin.outputs.godot }}
+          TEMPLATES_PIN: ${{ steps.pin.outputs.templates }}
+        run: |
+          $v = $env:GODOT_PIN
+          $base = "https://github.com/godotengine/godot/releases/download/$v"
+          Invoke-WebRequest "$base/Godot_v${v}_mono_win64.zip" -OutFile godot.zip
+          Expand-Archive godot.zip -DestinationPath tools/godot -Force
+          Invoke-WebRequest "$base/Godot_v${v}_mono_export_templates.tpz" -OutFile templates.zip
+          Expand-Archive templates.zip -DestinationPath tpz -Force
+          $dest = "$env:APPDATA/Godot/export_templates/$env:TEMPLATES_PIN"
+          New-Item -ItemType Directory -Force $dest | Out-Null
+          Move-Item tpz/templates/* $dest -Force
+          Remove-Item godot.zip, templates.zip -Force
+
+      # Godot 4.7's Android export builds with a JDK 17 and signs with the
+      # SDK's build-tools; its prebuilt template is net9.0 (tools/android).
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools build-tools;35.0.1 platforms;android-35'
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            9.0.x
+            10.0.x
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # A fresh standard debug key (androiddebugkey/android) made on the
+      # runner, outside the checkout; it lives and dies with this job.
+      - name: Debug keystore
+        env:
+          UO_ANDROID_SDK: ${{ env.ANDROID_HOME }}
+          UO_ANDROID_JDK: ${{ env.JAVA_HOME }}
+          UO_ANDROID_KEYSTORE: ${{ runner.temp }}\debug.keystore
+        run: python tools/android/run.py keystore
+      - name: Export Android (arm64, debug)
+        env:
+          UO_ANDROID_SDK: ${{ env.ANDROID_HOME }}
+          UO_ANDROID_JDK: ${{ env.JAVA_HOME }}
+          UO_ANDROID_KEYSTORE: ${{ runner.temp }}\debug.keystore
+        run: python tools/android/run.py export
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GUO-android-arm64-debug
+          path: build/android/GUO-debug.apk
+          if-no-files-found: error
