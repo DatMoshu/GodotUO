@@ -79,6 +79,13 @@ password = name) with game master access, for `launchers\dev\multi_client.bat`:
 the shard refuses a second character from one account, so four clients at once
 need four accounts, and three of those clients type `[go`.
 
+### `patches/0002-settable-update-range.patch`
+
+ModernUO hard-codes the 18-tile update range in three places. The patch
+routes all three through `Core.GlobalUpdateRange`, read from
+`UO_SHARD_UPDATE_RANGE` at boot, including the reply to the client's own
+0xC8 request. Why, and what to set: the "Update range" section below.
+
 ### `patches/0003-felucca-spring.patch`
 
 Felucca ships in season 4, Desolation: every tree bare, the look OSI gave
