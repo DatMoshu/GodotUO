@@ -15,7 +15,7 @@ it is taken even if its file has not landed yet.
 | 0004 | World mesh on canvas meshes | main |
 | 0005 | Audio on Godot streams | main |
 | 0006 | GameController as a Godot node | main |
-| 0007 | Android | work/android |
+| 0007 | Sorted world in batched meshes | main (proposed) |
 | 0008 | Web | work/android |
 | 0009 | Second display | work/dual-screen |
 | 0010 | Editor addon shape | work/editor |
@@ -24,6 +24,7 @@ it is taken even if its file has not landed yet.
 | 0013 | Asset overlay | reserved, editor phase 5 |
 | 0014 | Shard world objects and backends | reserved, editor phase 6 |
 | 0015 | Editor world view | work/editor |
-| 0016 | Canvas background | Codex |
+| 0016 | Canvas background | work/background |
+| 0017 | Android (was 0007 in UO_Port) | work/ui |
 
-Next free: 0017.
+Next free: 0018.
