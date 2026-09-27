@@ -362,3 +362,81 @@ Layouts, as `ArtLoader` and `GumpsLoader` read them (and as
   whole width; colour 0 is transparent.
 
 None of these files are committed: they derive from the install.
+---
+
+## 12. GUO Asset Store packs (ADR-0019)
+
+A pack is a ZIP with one UTF-8 `manifest.json` at its root. Schema id:
+**`guo/store-pack@1`**. It contains only user media/settings, never UO client
+data or executable code. `art-override` is reserved and rejected.
+
+```json
+{
+  "schema": "guo/store-pack@1",
+  "id": "moongate-shimmer",
+  "version": "1.0.0",
+  "kind": "background",
+  "title": "Moongate shimmer",
+  "author": "GUO contributors",
+  "licence": "CC0-1.0",
+  "min_profile_version": 6,
+  "preview": "still.png",
+  "files": { "still.png": "<64 lowercase hex SHA-256 digits>",
+             "loop.ogv": "<64 lowercase hex SHA-256 digits>" }
+}
+```
+
+- IDs match `[a-z0-9][a-z0-9-]{0,63}` (Windows device names excluded).
+  Versions are three decimal components, each 0..2147483647, without
+  leading zeros. Compare numerically, not lexicographically.
+- Kinds: `background`, `theme`, `sound`, `profile-preset`. Licence allowlist:
+  `CC0-1.0`, `CC-BY-4.0`, `CC-BY-SA-4.0`, `MIT`, `BSD-2-Clause`,
+  `BSD-3-Clause`, `Apache-2.0`. Publishers are responsible for provenance;
+  the identifier does not establish ownership. Non-CC0 packs must include
+  `LICENSE.txt` with the licence and attribution.
+- `title` and `author` are nonempty strings, at most 200 characters.
+  `min_profile_version` is an integer 0..2147483647; newer requirements
+  block installation. `preview` names a declared PNG/JPG/JPEG/WebP file.
+- `files` maps every payload path to its SHA-256 (manifest excluded).
+  Payload types: `.png`, `.jpg`, `.jpeg`, `.webp`, `.ogv`, `.ogg`, `.wav`,
+  `.json`, `.txt`. A background includes at least one image or `.ogv`.
+  `.mul`, `.uop`, `.idx`, `.def`, and any basename beginning `cliloc`
+  are forbidden case-insensitively, even when renamed with another suffix.
+- Paths use `/`, are relative, have no empty, `.` or `..` components,
+  backslashes, colons, control characters, Windows reserved device names,
+  trailing dots/spaces or Windows special characters. Each component is
+  at most 100 characters, each path at most 240. Duplicate paths (including
+  case aliases), symlinks, encrypted entries, directory entries, undeclared
+  files, and ancestor/file collisions are rejected. No automatic extraction
+  API is trusted to perform path validation.
+- Limits: 512 MiB ZIP, 1 GiB total uncompressed payload, 256 MiB per
+  payload, 1 MiB manifest, 1024 payload files. Checks run before extraction;
+  actual bytes and hashes are verified while reading.
+
+### Store index and publication
+
+`UO_STORE_DIR` defaults to `build/store_cdn` relative to the checkout;
+`UO_STORE_URL` defaults to `http://127.0.0.1:18865`. The root has `index.json`
+with schema `guo/store-index@1` and a `packs` array. Each entry is the pack
+manifest plus `url` (`packs/<id>/<version>.zip`), `sha256` (whole ZIP), and
+`size` (ZIP bytes). Paths are relative to the index's directory. Previews
+are published at `previews/<id>/<version>/<preview>` and named by
+`preview_url`. The web page renders metadata as text, never HTML.
+
+Publication validates before writing; an existing id/version is immutable
+(identical bytes are a no-op). Rebuilding an index verifies all published
+ZIPs; replacement of the index is atomic. HTTP serves GET/HEAD and single
+byte ranges (`206`, `Content-Range`); unsatisfiable ranges return `416`.
+
+### Installation and removal
+
+The client verifies the downloaded ZIP hash from the index, then validates
+the manifest and every file hash. It installs through a temporary sibling
+directory and an atomic rename to `user://store/<id>/<version>`, storing
+the manifest alongside the payload. It never writes into the UO install.
+An installed version is immutable. Failed installs remove only their own
+temporary directory. Uninstall removes only the selected id/version under
+the store root. Updates select a numerically newer compatible version;
+older installations remain until explicitly removed. Hashes detect corrupt
+downloads; trust in the publisher comes from the configured store URL
+(use HTTPS for a remote store).

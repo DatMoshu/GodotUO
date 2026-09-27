@@ -2109,6 +2109,10 @@ namespace GUO.Game.UI.Gumps
                 )
             );
 
+            // PORT DEVIATION (GUO): Store button and installed ADR-0016 backgrounds.
+            _canvasBackgroundMode = GUO.Store.StoreOptions.Attach(section6, _canvasBackgroundMode,
+                _canvasBackgroundChoices, choiceTitles, value => _canvasBackgroundPath.SetText(value), _currentProfile);
+
             Add(rightArea, PAGE);
         }
 

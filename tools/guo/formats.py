@@ -541,3 +541,7 @@ def by_subsystem() -> dict[str, list[DataFile]]:
     for entry in FILE_REGISTRY:
         grouped.setdefault(entry.subsystem or "unassigned", []).append(entry)
     return grouped
+
+# User-content contracts, separate from the proprietary client data registry.
+STORE_PACK_SCHEMA = "guo/store-pack@1"
+STORE_INDEX_SCHEMA = "guo/store-index@1"
