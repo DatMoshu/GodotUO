@@ -14,7 +14,7 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
   the lower screen opens with the client, shows a welcome panel before
   login, and holds shelved gumps in fixed slots during play. ADR-0009.
 - **Steam Deck**: reaches the login screen. Export, push over ssh, run, screenshot and smoke from
-  `launchers\steamdeck\`; a Steam shortcut too. ADR-0018 (proposed).
+  `launchers\steamdeck\`; a Steam shortcut too. ADR-0018.
 - **Windows**: `tools/windows` exports a stand-alone build with the GUO
   sigil as its icon.
 - **Web**: still blocked upstream; `launchers\web\doctor.bat` reports why.
