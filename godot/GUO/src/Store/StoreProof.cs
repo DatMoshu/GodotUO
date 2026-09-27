@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: BSD-2-Clause
 using System;
+using System.Linq;
 using Godot;
 using GUO.Configuration;
 using GUO.Game.Managers;
@@ -20,6 +21,15 @@ public sealed partial class StoreProof : Node
             // installed background outside the login gump can actually be seen.
             GetWindow().Size = new Vector2I(1200, 800);
             ProfileManager.Load("store-proof", "store-proof", "store-proof");
+            using var store = StoreOptions.CreateClient();
+            var installed = store.Installed().FirstOrDefault(p => p.Kind == "background");
+            if (installed != null)
+            {
+                string video = installed.Files.Keys.FirstOrDefault(p => p.EndsWith(".ogv", StringComparison.OrdinalIgnoreCase));
+                GUO.Renderer.CanvasBackground.Override = new GUO.Renderer.CanvasBackgroundSettings(
+                    video == null ? GUO.Renderer.CanvasBackgroundMode.Image : GUO.Renderer.CanvasBackgroundMode.Video,
+                    $"user://store/{installed.Id}/{installed.Version}/{video ?? installed.Preview}", 12, false);
+            }
             var options = new OptionsGump(Client.Game.UO.World);
             options.ChangePage(3);
             UIManager.Add(options);

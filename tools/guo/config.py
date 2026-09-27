@@ -220,7 +220,7 @@ def load_config(root: Path | None = None) -> Config:
         # A key file the user named with ~ or %USERPROFILE%; empty = unset.
         raw = os.path.expandvars(get(key))
         return Path(os.path.expanduser(raw)) if raw and "%" not in raw else None
-    store = Path(os.path.expandvars(get("UO_STORE_DIR", "build/store_cdn")))
+    store = Path(os.path.expandvars(get("UO_STORE_DIR", "build/store_cdn").replace("%UO_ROOT%", str(root))))
     if not store.is_absolute():
         store = root / store
 

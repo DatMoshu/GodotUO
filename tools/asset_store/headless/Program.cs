@@ -13,6 +13,9 @@ try
         return 0;
     }
     var entry = entries.First();
+    byte[] preview = await client.FetchPreview(entry);
+    StorePack.Require(Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(preview)).ToLowerInvariant()
+        == entry.Manifest.Files[entry.Manifest.Preview], "Preview hash mismatch");
     string path = await client.Install(entry);
     foreach (var file in entry.Manifest.Files)
         StorePack.Require(StorePack.HashFile(Path.Combine(path, file.Key)) == file.Value, "Installed hash mismatch");
@@ -32,7 +35,7 @@ try
     try { await oldClient.Install(entry); } catch (InvalidDataException) { rejected = true; }
     StorePack.Require(rejected, "Profile compatibility gate failed");
     StorePack.Require(!Directory.EnumerateFileSystemEntries(args[1], ".install-*").Any(), "Staging leaked");
-    Console.WriteLine("PASS: index, install, payload hashes, discovery, repeat install, updates, uninstall, corruption, compatibility, cleanup");
+    Console.WriteLine("PASS: index, verified preview, install, payload hashes, discovery, repeat install, updates, uninstall, corruption, compatibility, cleanup");
     return 0;
 }
 catch (Exception e)

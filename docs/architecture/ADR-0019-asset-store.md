@@ -8,7 +8,7 @@ installer verified; see Validation for the exact evidence.
 ## Decision
 
 GUO distributes independently licensed user content as ZIP packs. The pack
-and index contract is defined in [data_formats.md](../data_formats.md#11-guo-asset-store-packs-adr-0019),
+and index contract is defined in [data_formats.md](../data_formats.md#12-guo-asset-store-packs-adr-0019),
 written before either producer or consumer. Supported kinds are background,
 theme, sound and profile-preset. Art overrides remain disabled. Installation
 of theme, sound and preset packs stores their files; it does not execute
@@ -87,9 +87,4 @@ Use `serve --port <port>` if the OS reserves the default port; point clients
 at that port. A worktree needs the usual shared engine/upstream paths and
 an ignored classic `.sln` file for Godot's build callback.
 
-The agent environment may put third-party `zlib.dll` files on `PATH`. GUO's
-existing native version-string marshalling can then corrupt the heap before
-any store code runs. Verification removes those unrelated directories from
-the test process PATH so the intended managed fallback is used. The full
-dev smoke passes with that environment; no loader/renderer change is part
-of this ADR.
+The full dev smoke passes on the rebased main native-loader fix, including the headless editor checks. The client build has no errors and seven inherited warnings.

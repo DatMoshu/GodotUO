@@ -1,0 +1,54 @@
+# GodotUO Asset Store
+
+Standard-library Python publisher/CDN plus a Godot Store window. The pack
+contract lives in [data_formats.md](../../docs/data_formats.md#12-guo-asset-store-packs-adr-0019)
+and the design in [ADR-0019](../../docs/architecture/ADR-0019-asset-store.md).
+
+```text
+python tools/asset_store/seed.py
+python tools/asset_store/run.py serve
+python tools/asset_store/run.py publish example.zip
+python tools/asset_store/run.py verify example.zip
+python tools/asset_store/run.py index
+```
+
+The default catalogue is `build/store_cdn`, served on loopback port 18865.
+`UO_STORE_DIR` and `UO_STORE_URL` follow the shared configuration convention.
+An occupied/reserved port falls back to an ephemeral port and prints the
+URL to use. Windows launchers live in `launchers/store`.
+
+In GodotUO, open **Options → Video → Store**. Install a pack, reopen Options,
+select its Store background and Apply. Installed packs sort first. Updates
+compare numeric versions; older versions remain removable. The catalogue
+and client use unfiltered previews; the client verifies preview hashes too.
+Other supported pack kinds are installed as files and are not automatically
+applied to game settings.
+
+## Verification
+
+```text
+python tools/asset_store/test_store.py
+python tools/asset_store/smoke.py
+dotnet build godot/GUO/GUO.csproj
+launchers\dev\smoke.bat
+```
+
+`smoke.py` accepts `--dotnet <executable>` when the SDK is not on PATH. It
+publishes a temporary fixture, starts HTTP, and runs the same C# installer
+sources as the client. All temporary installs are removed.
+
+## Screenshots
+
+The opt-in `res://src/Store/StoreProof.tscn` loads the normal game scene and
+constructs the real Options picker. With an installed background, it displays
+that installed media outside the login gump. Set `GUO_STORE_PROOF_VIEW=store`
+to show the Store window instead. Start this scene through a local engine
+wrapper passed as `GODOT_CONSOLE` to `launchers/dev/screenshot.bat`, with
+`--play --shot-after 300 --no-focus --cache-dir <isolated-absolute-cache>`.
+Use `--screenshot-name store-client` or `store-installed-background`.
+
+After both captures exist, `python tools/asset_store/editor_proof.py` opens
+the real editor without activation, displays those runtime captures on an
+explicitly labelled evidence board, and captures the editor viewport. This
+is a proof scene, not a Store editor dock. Existing editor sources are not
+modified. Generated screenshots and logs stay under `build/screenshots`.

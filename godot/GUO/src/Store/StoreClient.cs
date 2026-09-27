@@ -75,6 +75,17 @@ internal sealed class StoreClient : IDisposable
         return result;
     }
 
+    public async Task<byte[]> FetchPreview(StoreEntry entry, CancellationToken ct = default)
+    {
+        var manifest = entry.Manifest;
+        using var data = new MemoryStream();
+        await Download($"previews/{manifest.Id}/{manifest.Version}/{manifest.Preview}", data, 8 * 1024 * 1024, ct).ConfigureAwait(false);
+        byte[] bytes = data.ToArray();
+        StorePack.Require(Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)).ToLowerInvariant()
+            == manifest.Files[manifest.Preview], "Preview hash mismatch");
+        return bytes;
+    }
+
     // Refuse reparse points at every boundary, including parents of the root.
     private static void NoLinks(string path)
     {
