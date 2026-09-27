@@ -73,7 +73,8 @@ varying vec4 packed_hue;
 // Upstream's IN.Normal: the vertex normal, interpolated, not yet normalised.
 varying vec3 land_normal;
 
-const vec3 LIGHT_DIRECTION = vec3(0.0, 1.0, 1.0);
+// Upstream's LIGHT_DIRECTION; renamed, as that is a built-in of canvas_item.
+const vec3 UO_LIGHT_DIRECTION = vec3(0.0, 1.0, 1.0);
 
 vec3 get_rgb(float gray, float hue) {
 	float half_pixel_x = (1.0 / (HUE_COLUMNS * HUE_WIDTH)) * 0.5;
@@ -93,7 +94,7 @@ vec3 get_rgb(float gray, float hue) {
 // `mix(base, 0.85355339, 1 - bright)`: the two are equal in real arithmetic and
 // not in floats, and this is the one the .fx evaluates.
 float get_light() {
-	vec3 light = normalize(LIGHT_DIRECTION);
+	vec3 light = normalize(UO_LIGHT_DIRECTION);
 	vec3 normal = normalize(land_normal);
 	float base = (max(dot(normal, light), 0.0) / 2.0) + 0.5;
 
