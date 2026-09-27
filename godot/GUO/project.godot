@@ -18,6 +18,15 @@ config/windows_native_icon="res://icon.ico"
 
 project/assembly_name="GUO"
 
+[input_devices]
+
+; Android reports a pinch as InputEventMagnifyGesture and a two-finger
+; scroll as InputEventPanGesture. Off, Godot's GestureDetector only
+; forwards two-finger moves when their centre moves, so a symmetric
+; pinch never reaches the game at all (seen on the AYN Thor). The
+; touch layer (src/Input/Touch) turns the magnify events into zoom notches.
+pointing/android/enable_pan_and_scale_gestures=true
+
 [rendering]
 
 renderer/rendering_method="forward_plus"

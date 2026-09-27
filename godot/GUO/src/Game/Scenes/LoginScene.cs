@@ -71,8 +71,14 @@ namespace GUO.Game.Scenes
 
             _autoLogin = Settings.GlobalSettings.AutoLogin;
 
-            UIManager.Add(new LoginBackground(_world));
+            // PORT DEVIATION (GUO): on a touch device the window cannot be
+            // shrunk to 640x480 (below), so the login gumps are centred in it
+            // instead. CentreLoginGump does nothing off the touch layer.
+            LoginBackground background = new LoginBackground(_world);
+            UIManager.Add(background);
+            GUO.Input.Touch.MobileProfile.CentreLoginGump(background);
             UIManager.Add(_currentGump = new LoginGump(_world, this));
+            GUO.Input.Touch.MobileProfile.CentreLoginGump(_currentGump);
 
             Client.Game.Audio.PlayMusic(Client.Game.Audio.LoginMusicIndex, false, true);
 
@@ -133,6 +139,7 @@ namespace GUO.Game.Scenes
                 // this trick avoid the flickering
                 Gump g = _currentGump;
                 UIManager.Add(_currentGump = GetGumpForStep());
+                GUO.Input.Touch.MobileProfile.CentreLoginGump(_currentGump); // PORT DEVIATION (GUO): see Load
                 g.Dispose();
 
                 _lastLoginStep = CurrentLoginStep;
@@ -588,11 +595,13 @@ namespace GUO.Game.Scenes
             _currentGump?.Dispose();
 
             UIManager.Add(_currentGump = new CharacterSelectionGump(_world));
+            GUO.Input.Touch.MobileProfile.CentreLoginGump(_currentGump); // PORT DEVIATION (GUO): see Load
             if (!string.IsNullOrWhiteSpace(PopupMessage))
             {
                 Gump g = null;
                 g = new LoadingGump(_world,PopupMessage, LoginButtons.OK, (but) => g.Dispose()) { IsModal = true };
                 UIManager.Add(g);
+                GUO.Input.Touch.MobileProfile.CentreLoginGump(g); // PORT DEVIATION (GUO): see Load
                 PopupMessage = null;
             }
         }

@@ -161,6 +161,13 @@ namespace GUO.Input.Touch
         public static TouchGumpBar Bar => _bar;
 
         /// <summary>
+        /// The scale the command line asked for (<c>--screen-scale N</c>);
+        /// zero picks one from the display. Read by GameController before it
+        /// loads the first scene, which is the only moment early enough.
+        /// </summary>
+        public static int RequestedScale { get; set; }
+
+        /// <summary>
         /// Pick an integer screen scale for the display so the client's
         /// fixed-size art -- the 640x480 login screen above all -- is drawn
         /// at a size a finger can hit, through the client's own DPI path,
@@ -213,11 +220,18 @@ namespace GUO.Input.Touch
                     return true;
 
                 case InputEventMagnifyGesture magnify:
-                    // A trackpad or a platform that reports pinches itself.
-                    // Android does not (its fingers arrive one by one, above),
-                    // but a platform that does gets the same notch.
-                    ZoomBy(magnify.Factor >= 1f ? 1 : -1, magnify.Position);
+                    // A trackpad, or Android with pan-and-scale gestures on
+                    // (project.godot: it has to be, or a symmetric pinch is
+                    // never forwarded). Each event carries the change since
+                    // the last; the factors are multiplied up and every
+                    // MagnifyStep of growth or shrink is one notch.
+                    Magnify(magnify.Factor, magnify.Position);
 
+                    return true;
+
+                case InputEventPanGesture:
+                    // A two-finger scroll on Android. The client has no
+                    // gesture for it; consumed so it cannot become a click.
                     return true;
 
                 case InputEventMouseButton button:
@@ -241,6 +255,8 @@ namespace GUO.Input.Touch
         /// </summary>
         public static void Update()
         {
+            PanForKeyboard();
+
             if (_phase != Phase.Pending)
             {
                 return;
@@ -315,6 +331,11 @@ namespace GUO.Input.Touch
 
         private static void HandleDrag(InputEventScreenDrag e)
         {
+            if (TraceToLog && _phase == Phase.Pinch)
+            {
+                Note($"drag {e.Index} at {e.Position} (primary {_primary}, secondary {_secondary})");
+            }
+
             if (e.Index == _primary)
             {
                 FingerMove(e.Position);
@@ -448,6 +469,7 @@ namespace GUO.Input.Touch
                     _lastTapTime = Godot.Time.GetTicksMsec();
                     _lastTapAt = at;
                     Note("tap -> left click");
+                    SyncKeyboard();
 
                     break;
 
@@ -465,12 +487,160 @@ namespace GUO.Input.Touch
 
                 case Phase.Pinch:
                     _secondary = -1;
+                    Note("both fingers up -> pinch over");
 
                     break;
             }
 
             _phase = Phase.Idle;
             _primary = -1;
+        }
+
+        /// <summary>Whether the platform's on-screen keyboard is up.</summary>
+        public static bool KeyboardShown =>
+            DisplayServer.HasFeature(DisplayServer.Feature.VirtualKeyboard)
+            && DisplayServer.VirtualKeyboardGetHeight() > 0;
+
+        /// <summary>
+        /// Raise the platform's on-screen keyboard. Its keys arrive as the
+        /// InputEventKeys a real keyboard would send, which GodotInput already
+        /// turns into the client's text input; nothing else is needed.
+        /// </summary>
+        public static void ShowKeyboard(string existingText, bool password)
+        {
+            if (!DisplayServer.HasFeature(DisplayServer.Feature.VirtualKeyboard))
+            {
+                GD.Print("[GUO] touch input: no virtual keyboard on this platform");
+
+                return;
+            }
+
+            DisplayServer.VirtualKeyboardShow(
+                existingText ?? string.Empty,
+                type: password ? DisplayServer.VirtualKeyboardType.Password : DisplayServer.VirtualKeyboardType.Default
+            );
+            Note("keyboard shown");
+        }
+
+        public static void HideKeyboard()
+        {
+            if (DisplayServer.HasFeature(DisplayServer.Feature.VirtualKeyboard))
+            {
+                DisplayServer.VirtualKeyboardHide();
+                Note("keyboard hidden");
+            }
+        }
+
+        /// <summary>
+        /// After a tap: the keyboard follows the text field. A tap that
+        /// landed on an editable text box -- the client gave it the keyboard
+        /// focus on the mouse-down -- raises the keyboard; a tap anywhere
+        /// else lowers it. The chat line has the focus by default in the
+        /// world, so focus alone is not the test; the tap has to land on it.
+        /// </summary>
+        private static void SyncKeyboard()
+        {
+            if (!DisplayServer.HasFeature(DisplayServer.Feature.VirtualKeyboard))
+            {
+                return;
+            }
+
+            Game.UI.Controls.Control focus = UIManager.KeyboardFocusControl;
+            Game.UI.Controls.Control over = UIManager.MouseOverControl;
+
+            if (focus is Game.UI.Controls.StbTextBox box && box.IsEditable && over != null
+                && (over == box || box.Children.Contains(over) || over.Children.Contains(box)))
+            {
+                // The login gump hides the real password in a fake field;
+                // its type says so, and the platform's password keyboard
+                // neither suggests nor remembers.
+                bool password = box.GetType().Name.Contains("Password");
+                ShowKeyboard(password ? string.Empty : box.Text, password);
+                Note("tap on text box -> keyboard");
+            }
+            else if (KeyboardShown)
+            {
+                HideKeyboard();
+            }
+        }
+
+        private static Game.UI.Controls.Control _pannedGump;
+        private static int _pannedBy;
+
+        /// <summary>
+        /// Once a frame: keep the focused text field above the keyboard. The
+        /// window is not resized for the keyboard on an immersive Android
+        /// run (Godot keeps its full-screen surface and the keyboard lies
+        /// over it), so the login screen's fields, in the lower half of a
+        /// centred 640x480, would be typed into blind. The field's gump is
+        /// slid up by just enough and put back when the keyboard goes. The
+        /// world viewport is never moved: its position is a profile value.
+        /// </summary>
+        private static void PanForKeyboard()
+        {
+            if (!DisplayServer.HasFeature(DisplayServer.Feature.VirtualKeyboard))
+            {
+                return;
+            }
+
+            int keyboard = DisplayServer.VirtualKeyboardGetHeight();
+
+            if (keyboard <= 0)
+            {
+                if (_pannedGump != null)
+                {
+                    if (!_pannedGump.IsDisposed)
+                    {
+                        _pannedGump.Y += _pannedBy;
+                    }
+
+                    Note($"keyboard gone -> gump back down {_pannedBy}");
+                    _pannedGump = null;
+                    _pannedBy = 0;
+                }
+
+                return;
+            }
+
+            if (UIManager.KeyboardFocusControl is not Game.UI.Controls.StbTextBox box
+                || box.IsDisposed || !box.IsEditable || Client.Game == null)
+            {
+                return;
+            }
+
+            Game.UI.Controls.Control root = box.RootParent;
+
+            if (root == null || root is Game.UI.Gumps.WorldViewportGump)
+            {
+                return;
+            }
+
+            if (_pannedGump != null && _pannedGump != root)
+            {
+                if (!_pannedGump.IsDisposed)
+                {
+                    _pannedGump.Y += _pannedBy;
+                }
+
+                _pannedGump = null;
+                _pannedBy = 0;
+            }
+
+            float scale = Client.Game.DpiScale;
+            int visible = (int)((DisplayServer.WindowGetSize().Y - keyboard) / scale);
+            // Two fields of room below the focused one, so the next field of a
+            // form (the password under the account name) is in reach as well.
+            int need = box.ScreenCoordinateY + box.Height * 3 + 8 - visible;
+
+            if (need <= 0)
+            {
+                return;
+            }
+
+            root.Y -= need;
+            _pannedBy += need;
+            _pannedGump = root;
+            Note($"keyboard {keyboard}px -> gump up {need}");
         }
 
         private static void StartWalk()
@@ -493,6 +663,33 @@ namespace GUO.Input.Touch
                     Release(MouseButton.Right, at);
 
                     break;
+            }
+        }
+
+        /// <summary>Relative change in finger distance that is one zoom notch.</summary>
+        public const float MagnifyStep = 1.12f;
+
+        private static float _magnifyAccumulated = 1f;
+
+        private static void Magnify(float factor, Vector2 at)
+        {
+            if (factor <= 0f)
+            {
+                return;
+            }
+
+            _magnifyAccumulated *= factor;
+
+            while (_magnifyAccumulated >= MagnifyStep)
+            {
+                _magnifyAccumulated /= MagnifyStep;
+                ZoomBy(1, at);
+            }
+
+            while (_magnifyAccumulated <= 1f / MagnifyStep)
+            {
+                _magnifyAccumulated *= MagnifyStep;
+                ZoomBy(-1, at);
             }
         }
 
@@ -604,8 +801,16 @@ namespace GUO.Input.Touch
             });
         }
 
+        /// <summary>Echo the trace to the log as well (<c>--touch-trace</c>).</summary>
+        public static bool TraceToLog { get; set; }
+
         private static void Note(string what)
         {
+            if (TraceToLog)
+            {
+                GD.Print($"[GUO] touch: {what}");
+            }
+
             if (Trace.Count >= TraceLimit)
             {
                 Trace.RemoveAt(0);

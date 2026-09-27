@@ -2,15 +2,17 @@
 
 using System.Collections.Generic;
 using Godot;
+using GUO.Assets;
 using GUO.Game;
 using GUO.Game.Managers;
+using GUO.Resources;
 
 namespace GUO.Input.Touch
 {
     /// <summary>
-    /// A row of buttons along the bottom of the screen that open the gumps a
-    /// player reaches for most, mirroring the top bar, plus the on-screen
-    /// keyboard.
+    /// A row of the client's own menu buttons along the bottom of the
+    /// screen, sized for a finger, that open the gumps a player reaches for
+    /// most: the top bar's row, moved to where a thumb can reach it.
     /// </summary>
     /// <remarks>
     /// PORT DEVIATION (GUO): there is no such bar upstream; the top bar gump
@@ -25,30 +27,38 @@ namespace GUO.Input.Touch
     /// touch layer hit-tests the bar itself and calls <see cref="Invoke"/>,
     /// which calls the same <c>GameActions</c> the top bar's buttons call.
     ///
-    /// It is drawn with flat rectangles and the engine's fallback font -- no
-    /// texture, so nothing to filter -- and only while the character is in
-    /// the world, which is the only time the actions it offers exist.
+    /// It is drawn from the same pieces as the top bar -- the wide button
+    /// gump (0x098D) and the client's unicode font 1, rendered by the same
+    /// FontsLoader call RenderedText makes -- at a whole-number scale chosen
+    /// so six buttons fill the width, sampled nearest-neighbour. The labels
+    /// are the top bar's own clilocs, so the words are the ones the client
+    /// already uses. Without the gump (an old client) it falls back to flat
+    /// rectangles and the engine's font. It is only shown while the character
+    /// is in the world, which is the only time the actions it offers exist.
     /// </remarks>
     internal sealed partial class TouchGumpBar : CanvasLayer
     {
         /// <summary>The buttons, left to right.</summary>
         public static readonly string[] Actions =
         {
-            "paperdoll", "backpack", "journal", "map", "chat", "options", "keyboard",
+            "paperdoll", "backpack", "journal", "map", "chat", "options",
         };
 
-        private static readonly Dictionary<string, string> Labels = new()
-        {
-            { "paperdoll", "Paper" },
-            { "backpack", "Pack" },
-            { "journal", "Journal" },
-            { "map", "Map" },
-            { "chat", "Chat" },
-            { "options", "Options" },
-            { "keyboard", "Keys" },
-        };
+        /// <summary>The top bar's wide button, and its size in the 7.0 client.</summary>
+        private const ushort ButtonGump = 0x098D;
+        private const int FallbackWidth = 100;
+        private const int FallbackHeight = 25;
+
+        /// <summary>The top bar's font for its captions.</summary>
+        private const byte LabelFont = 1;
+
+        /// <summary>Milliseconds a tapped button stays lit.</summary>
+        private const ulong PressedMs = 140;
 
         private readonly Surface _surface = new();
+        private readonly Dictionary<string, Texture2D> _labels = new();
+        private string _pressed;
+        private ulong _pressedAt;
 
         /// <summary>Whether the bar is drawn and takes taps.</summary>
         public bool Shown { get; private set; }
@@ -75,7 +85,81 @@ namespace GUO.Input.Touch
             }
         }
 
-        /// <summary>The rectangle of one button, in viewport pixels.</summary>
+        /// <summary>
+        /// The bar's geometry for the current window: the band, the art
+        /// scale, and the size of one button's art.
+        /// </summary>
+        private void Layout(out Rect2 band, out int artScale, out Vector2 art, out float spacing)
+        {
+            Vector2 view = _surface.GetViewportRect().Size;
+            float scale = System.Math.Max(1f, Client.Game?.ScreenScale ?? 1f);
+            int n = Actions.Length;
+
+            ArtSize(out int artW, out int artH);
+
+            // A whole-number scale for the art (rule 7: nearest-neighbour,
+            // whole pixels), the largest at which six buttons and a gap
+            // between each still fit; capped so a tablet does not get a
+            // cartoon. A phone's 1920 wide at screen scale 2 lands on 3.
+            float gap = 8f * scale;
+            int cap = (int)System.Math.Ceiling(scale) * 2;
+            int fits = (int)((view.X - (n + 1) * gap) / (n * artW));
+            artScale = System.Math.Clamp(fits, 1, System.Math.Max(1, cap));
+
+            art = new Vector2(artW * artScale, artH * artScale);
+
+            // Padding above and below the art makes the band finger-tall:
+            // 25 px of art at 3x plus 16 px of padding at 2x is 107 px, or
+            // 7 mm at 369 dpi.
+            float pad = 8f * scale;
+            float height = art.Y + 2 * pad;
+            band = new Rect2(0, view.Y - height, view.X, height);
+
+            spacing = (view.X - n * art.X) / (n + 1);
+        }
+
+        private static void ArtSize(out int width, out int height)
+        {
+            width = FallbackWidth;
+            height = FallbackHeight;
+
+            if (Client.Game?.UO?.Gumps == null)
+            {
+                return;
+            }
+
+            ref readonly var info = ref Client.Game.UO.Gumps.GetGump(ButtonGump);
+
+            if (info.Texture != null)
+            {
+                width = info.UV.Width;
+                height = info.UV.Height;
+            }
+        }
+
+        /// <summary>The rectangle of one button's art, in viewport pixels.</summary>
+        private Rect2 ArtRect(string action)
+        {
+            int index = System.Array.IndexOf(Actions, action);
+
+            if (index < 0)
+            {
+                return default;
+            }
+
+            Layout(out Rect2 band, out _, out Vector2 art, out float spacing);
+
+            float x = spacing + index * (art.X + spacing);
+            float y = band.Position.Y + (band.Size.Y - art.Y) / 2;
+
+            return new Rect2(x, y, art.X, art.Y);
+        }
+
+        /// <summary>
+        /// The rectangle a finger has to land in for one button: the whole
+        /// height of the band and half of each gap beside the art, so the
+        /// target is wider than what is drawn.
+        /// </summary>
         public Rect2 ButtonRect(string action)
         {
             int index = System.Array.IndexOf(Actions, action);
@@ -85,16 +169,11 @@ namespace GUO.Input.Touch
                 return default;
             }
 
-            Vector2 view = _surface.GetViewportRect().Size;
-            float scale = Client.Game?.ScreenScale ?? 1f;
-            float width = 64 * scale;
-            float height = 40 * scale;
-            float gap = 4 * scale;
-            float total = Actions.Length * width + (Actions.Length - 1) * gap;
-            float x = view.X - total - gap;
-            float y = view.Y - height - gap;
+            Layout(out Rect2 band, out _, out Vector2 art, out float spacing);
 
-            return new Rect2(x + index * (width + gap), y, width, height);
+            float x = spacing / 2 + index * (art.X + spacing);
+
+            return new Rect2(x, band.Position.Y, art.X + spacing, band.Size.Y);
         }
 
         /// <summary>Which button, if any, a point lands on.</summary>
@@ -132,6 +211,9 @@ namespace GUO.Input.Touch
                 return;
             }
 
+            _pressed = action;
+            _pressedAt = Godot.Time.GetTicksMsec();
+
             switch (action)
             {
                 case "paperdoll":
@@ -155,7 +237,17 @@ namespace GUO.Input.Touch
                     break;
 
                 case "chat":
-                    GameActions.OpenChat(world);
+                    // The say line. It already has the keyboard focus when
+                    // nothing else does; what a phone lacks is the keyboard.
+                    if (TouchInput.KeyboardShown)
+                    {
+                        TouchInput.HideKeyboard();
+                    }
+                    else
+                    {
+                        UIManager.SystemChat?.TextBoxControl?.SetKeyboardFocus();
+                        TouchInput.ShowKeyboard(UIManager.SystemChat?.TextBoxControl?.Text ?? string.Empty, false);
+                    }
 
                     break;
 
@@ -163,19 +255,77 @@ namespace GUO.Input.Touch
                     GameActions.OpenSettings(world);
 
                     break;
-
-                case "keyboard":
-                    if (DisplayServer.HasFeature(DisplayServer.Feature.VirtualKeyboard))
-                    {
-                        DisplayServer.VirtualKeyboardShow("");
-                    }
-                    else
-                    {
-                        GD.Print("[GUO] touch input: no virtual keyboard on this platform");
-                    }
-
-                    break;
             }
+        }
+
+        /// <summary>The caption of a button: the top bar's cliloc, or its resource string.</summary>
+        private static string Label(string action)
+        {
+            ClilocLoader cliloc = Client.Game?.UO?.FileManager?.Clilocs;
+
+            switch (action)
+            {
+                case "paperdoll": return cliloc?.GetString(3000133, ResGumps.Paperdoll) ?? "Paperdoll";
+                case "backpack": return cliloc?.GetString(3000431, ResGumps.Inventory) ?? "Inventory";
+                case "journal": return cliloc?.GetString(3000129, ResGumps.Journal) ?? "Journal";
+                case "map": return cliloc?.GetString(3000430, ResGumps.Map) ?? "Map";
+                case "chat": return cliloc?.GetString(3000131, ResGumps.Chat) ?? "Chat";
+                case "options": return "Options";
+            }
+
+            return action;
+        }
+
+        /// <summary>
+        /// The caption drawn with the client's unicode font, as a texture:
+        /// the same FontsLoader call RenderedText makes, kept as an image
+        /// because this layer draws with Godot and not with the batcher.
+        /// </summary>
+        private Texture2D LabelTexture(string action)
+        {
+            if (_labels.TryGetValue(action, out Texture2D cached))
+            {
+                return cached;
+            }
+
+            FontsLoader fonts = Client.Game?.UO?.FileManager?.Fonts;
+
+            if (fonts == null)
+            {
+                return null;
+            }
+
+            FontsLoader.FontInfo fi = fonts.GenerateUnicode(
+                LabelFont, Label(action), 0, 30, 0, TEXT_ALIGN_TYPE.TS_LEFT, 0, false, 0
+            );
+
+            if (fi.Data == null || fi.Width <= 0 || fi.Height <= 0)
+            {
+                return null;
+            }
+
+            // A uint here is 0xAABBGGRR, so its bytes in memory are already
+            // R,G,B,A; the same reasoning as TextureAtlas.AddSprite.
+            var rgba = new byte[fi.Width * fi.Height * 4];
+            System.Runtime.InteropServices.MemoryMarshal
+                .AsBytes(new System.ReadOnlySpan<uint>(fi.Data, 0, fi.Width * fi.Height))
+                .CopyTo(rgba);
+
+            Image image = Image.CreateFromData(fi.Width, fi.Height, false, Image.Format.Rgba8, rgba);
+            Texture2D texture = ImageTexture.CreateFromImage(image);
+            _labels[action] = texture;
+
+            return texture;
+        }
+
+        public override void _ExitTree()
+        {
+            foreach (Texture2D t in _labels.Values)
+            {
+                t.Dispose();
+            }
+
+            _labels.Clear();
         }
 
         /// <summary>The control that paints the buttons.</summary>
@@ -188,6 +338,9 @@ namespace GUO.Input.Touch
                 // Control anyway.
                 MouseFilter = MouseFilterEnum.Ignore;
                 SetAnchorsPreset(LayoutPreset.FullRect);
+
+                // Pixel art, scaled by a whole number: never filtered (rule 7).
+                TextureFilter = TextureFilterEnum.Nearest;
             }
 
             public override void _Draw()
@@ -197,25 +350,71 @@ namespace GUO.Input.Touch
                     return;
                 }
 
-                Font font = ThemeDB.FallbackFont;
-                float scale = Client.Game?.ScreenScale ?? 1f;
-                int fontSize = (int)(11 * scale);
+                bar.Layout(out Rect2 band, out int artScale, out _, out _);
+
+                // The band: one quiet strip so the buttons read as a bar.
+                DrawRect(band, new Color(0f, 0f, 0f, 0.55f));
+
+                Texture2D face = null;
+                Rect2 faceUv = default;
+
+                if (Client.Game?.UO?.Gumps != null)
+                {
+                    ref readonly var info = ref Client.Game.UO.Gumps.GetGump(ButtonGump);
+
+                    if (info.Texture != null)
+                    {
+                        face = info.Texture;
+                        faceUv = new Rect2(info.UV.X, info.UV.Y, info.UV.Width, info.UV.Height);
+                    }
+                }
+
+                bool lit = bar._pressed != null && Godot.Time.GetTicksMsec() - bar._pressedAt < PressedMs;
 
                 foreach (string action in Actions)
                 {
-                    Rect2 r = bar.ButtonRect(action);
+                    Rect2 r = bar.ArtRect(action);
 
-                    DrawRect(r, new Color(0.10f, 0.08f, 0.06f, 0.85f));
-                    DrawRect(r, new Color(0.78f, 0.64f, 0.36f), false, System.Math.Max(1f, scale));
+                    if (face != null)
+                    {
+                        DrawTextureRectRegion(face, r, faceUv);
+                    }
+                    else
+                    {
+                        DrawRect(r, new Color(0.10f, 0.08f, 0.06f, 0.85f));
+                        DrawRect(r, new Color(0.78f, 0.64f, 0.36f), false, System.Math.Max(1f, artScale));
+                    }
 
-                    string label = Labels[action];
-                    Vector2 size = font.GetStringSize(label, HorizontalAlignment.Left, -1, fontSize);
-                    var at = new Vector2(
-                        r.Position.X + (r.Size.X - size.X) / 2,
-                        r.Position.Y + (r.Size.Y + size.Y) / 2 - font.GetDescent(fontSize)
-                    );
+                    Texture2D label = bar.LabelTexture(action);
 
-                    DrawString(font, at, label, HorizontalAlignment.Left, -1, fontSize, new Color(0.95f, 0.90f, 0.75f));
+                    if (label != null)
+                    {
+                        var size = new Vector2(label.GetWidth() * artScale, label.GetHeight() * artScale);
+                        var at = new Vector2(
+                            r.Position.X + (int)((r.Size.X - size.X) / 2),
+                            r.Position.Y + (int)((r.Size.Y - size.Y) / 2)
+                        );
+
+                        DrawTextureRect(label, new Rect2(at, size), false);
+                    }
+                    else
+                    {
+                        Font font = ThemeDB.FallbackFont;
+                        int fontSize = 11 * artScale;
+                        string text = Label(action);
+                        Vector2 size = font.GetStringSize(text, HorizontalAlignment.Left, -1, fontSize);
+                        var at = new Vector2(
+                            r.Position.X + (r.Size.X - size.X) / 2,
+                            r.Position.Y + (r.Size.Y + size.Y) / 2 - font.GetDescent(fontSize)
+                        );
+
+                        DrawString(font, at, text, HorizontalAlignment.Left, -1, fontSize, new Color(0.95f, 0.90f, 0.75f));
+                    }
+
+                    if (lit && action == bar._pressed)
+                    {
+                        DrawRect(r, new Color(1f, 1f, 1f, 0.25f));
+                    }
                 }
             }
         }

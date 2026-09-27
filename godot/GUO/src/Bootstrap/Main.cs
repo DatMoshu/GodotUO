@@ -158,9 +158,10 @@ public partial class Main : Node
 
                     GUO.Input.Touch.TouchInput.Enable(this, emulateTouchFromMouse: !mobile);
 
-                    // After the controller is in the tree: Client.Run adds it
-                    // deferred, and the scale is a property of it.
-                    CallDeferred(nameof(ApplyTouchScreenScale));
+                    // The controller applies it just before it loads the
+                    // login scene, so the first layout already sees it.
+                    GUO.Input.Touch.TouchInput.RequestedScale = _options.ScreenScale;
+                    GUO.Input.Touch.TouchInput.TraceToLog = _options.TouchTrace;
                 }
 
                 // Commands and a probe together: the commands run first
@@ -440,14 +441,6 @@ public partial class Main : Node
     }
 
     /// <summary>
-    /// The touch layer's integer scale, once the controller exists.
-    /// </summary>
-    private void ApplyTouchScreenScale()
-    {
-        GUO.Input.Touch.TouchInput.ApplyScreenScale(_options.ScreenScale);
-    }
-
-    /// <summary>
     /// Say on the log when the login gump has been drawn; see LoginProbe.
     /// </summary>
     private async void LoginProbeThenMaybeQuit()
@@ -650,6 +643,9 @@ public partial class Main : Node
         /// <summary>Drive the touch layer with synthetic fingers and check the client reacted.</summary>
         public bool TouchProbe { get; private set; }
 
+        /// <summary>Echo every gesture the touch layer resolves to the log, for a device run read over logcat.</summary>
+        public bool TouchTrace { get; private set; }
+
         /// <summary>
         /// Wait for the login gump to be drawn, say so on the log, and either
         /// quit (desktop) or keep running (a device, where the line is what
@@ -748,6 +744,9 @@ public partial class Main : Node
                     case "--touch-probe":
                         o.Touch = true;
                         o.TouchProbe = true;
+                        break;
+                    case "--touch-trace":
+                        o.TouchTrace = true;
                         break;
                     case "--login-probe":
                         o.LoginProbe = true;
