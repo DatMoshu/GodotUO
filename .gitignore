@@ -147,3 +147,9 @@ docs/handoff_*.md
 
 # privacy_scan: your own values, never committed.
 tools/privacy_scan/deny.local.txt
+
+# tools/godot_web: a community Godot 4.7.2 mono build that can export C# to
+# the web (ADR-0008 amendment). The binaries are third-party and large; only
+# the README (version, origin, SHA-256) is tracked.
+tools/godot_web/*
+!tools/godot_web/README.md

@@ -106,6 +106,7 @@ class Config:
 
     # --- Web (optional; see tools/web and ADR-0008) ---
     web_port: int
+    ws_bridge_port: int
 
     # --- Steam Deck (optional; see tools/steamdeck and ADR-0018) ---
     # The host, key and known-hosts file are the user's own network and live
@@ -209,6 +210,10 @@ def load_config(root: Path | None = None) -> Config:
         web_port = int(get("UO_WEB_PORT", "8060"))
     except ValueError:
         web_port = 8060
+    try:
+        ws_bridge_port = int(get("UO_WS_BRIDGE_PORT", "2594"))
+    except ValueError:
+        ws_bridge_port = 2594
     # config.bat builds this on UO_ROOT, which common.bat sets before calling
     # it; outside a launcher it is this repo's root.
     world = get("UO_WORLD_PROJECT") or str(root / "build" / "world" / "default")
@@ -228,6 +233,7 @@ def load_config(root: Path | None = None) -> Config:
         deck_client_data=get("UO_DECK_CLIENT_DATA", "~/UO"),
         deck_account=get("UO_DECK_ACCOUNT", ""),
         web_port=web_port,
+        ws_bridge_port=ws_bridge_port,
         android_sdk=path_or_none("UO_ANDROID_SDK")
         or Path(os.path.expandvars("%LOCALAPPDATA%")) / "Android" / "Sdk",
         android_jdk=path_or_none("UO_ANDROID_JDK"),

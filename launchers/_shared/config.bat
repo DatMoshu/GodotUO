@@ -140,6 +140,10 @@ REM  Only launchers\web\*.bat and tools\web read this. The port the local
 REM  web server (tools\web\run.py serve) listens on; it serves build\web with
 REM  the cross-origin isolation headers a Godot web export needs.
 if not defined UO_WEB_PORT          set "UO_WEB_PORT=8060"
+REM  The WebSocket bridge the web client reaches the shard through
+REM  (tools\ws_bridge, launchers\web\ws_bridge.bat): ws://127.0.0.1:<this>
+REM  relays to UO_SHARD_HOST:UO_SHARD_PORT. Upstream's test proxy uses 2594.
+if not defined UO_WS_BRIDGE_PORT    set "UO_WS_BRIDGE_PORT=2594"
 
 REM --- Steam Deck (optional) ----------------------------------------------
 REM  Only launchers\steamdeck\*.bat and tools\steamdeck read these. See
