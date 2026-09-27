@@ -220,7 +220,7 @@ def gm_client(cfg, out: Path, name: str, commands: list[str], dump: Path | None 
     with log.open("w", encoding="utf-8", errors="replace") as f:
         proc = subprocess.Popen(cmd, stdout=f, stderr=subprocess.STDOUT, env=env, **no_activate())
         wait_for(lambda: (dump is not None and dump.is_file())
-                 or (dump is None and log.read_text(encoding="utf-8", errors="replace").count("[GUO] shard command:") >= len(commands))
+                 or (dump is None and log.read_text(encoding="utf-8", errors="replace").count("[GUO] shard command: [") >= len(commands))
                  or proc.poll() is not None, 300)
         time.sleep(3)
         if proc.poll() is None:
@@ -394,7 +394,10 @@ def commands_mode(cfg, args) -> int:
         "apply1_spawner": any(o["graphic"] == SPAWNER_GRAPHIC and (o["x"], o["y"]) == (sp1.x, sp1.y) for o in seen1["items"]),
         "apply2_ok": code2 == 0,
         "apply2_anvil_moved": any(o["name"].lower().startswith("guo-") for o in anvils(seen2, (moved.x, moved.y))),
-        "apply2_old_cell_only_decoy": [o["name"].lower() for o in anvils(seen2, (anvil1.x, anvil1.y))] in ([""], ["anvil"]),
+        # The fallback's anvil left the cell; everything still there is shard content (untagged),
+        # the decoy included: nothing it did not place was removed.
+        "apply2_old_cell_only_decoy": bool(anvils(seen2, (anvil1.x, anvil1.y)))
+                                      and not any(o["name"].lower().startswith("guo-") for o in anvils(seen2, (anvil1.x, anvil1.y))),
         "apply1_hued_item_absent": not any(int(o["graphic"], 16) == h.item_id and (o["x"], o["y"]) == (h.x, h.y)
                                            for h in hued for o in seen1["items"]),
         "apply2_spawner_gone": not any(o["graphic"] == SPAWNER_GRAPHIC and (o["x"], o["y"]) == (sp1.x, sp1.y)

@@ -55,10 +55,10 @@ It is our code, written from the file formats.
 un.py --servuo --project DIR`:
   export, restart, `[XmlLoad` + `[Decorate`, and the client sees the objects.
 - Deletions and item moves on ServUO go through `tools\world apply-commands
-  --host 127.0.0.1 --port 2596`, which is shard-agnostic. **Not yet run on
-  ServUO:** its proof (`editor_objects_proof --commands --servuo`) was stopped
-  on 2026-09-27 when the machine ran low on memory, before its first apply
-  finished.
+  --host 127.0.0.1 --port 2596`, which is shard-agnostic. Proved on ServUO 2026-09-27
+  (`editor_objects_proof --commands --servuo`, 11/11, fresh world): tagged
+  placement, a move and a delete of its own objects, an untagged decoy on
+  the same cell left standing, and a second apply that types nothing.
 
 To move the pin: change `PIN` in `run.py` and the table above, delete `src/`,
 and fetch and build again.
