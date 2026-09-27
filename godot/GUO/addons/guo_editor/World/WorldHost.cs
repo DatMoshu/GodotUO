@@ -462,11 +462,102 @@ internal sealed class WorldHost : IDisposable
         }
     }
 
+    private AssetOverlay.Applied _assets;
+
+    /// <summary>
+    /// Lays the asset overlay (ADR-0020) over the world's own loaders, and
+    /// makes the renderer decode the changed art and gumps again. Null
+    /// takes it off. Returns how many art and gump entries changed.
+    /// </summary>
+    /// <remarks>
+    /// The renderer's sprite caches (<c>Renderer.Arts.Art</c>,
+    /// <c>Renderer.Gumps.Gump</c>) have no public way to forget a sprite, so
+    /// the editor clears the entries through reflection rather than adding a
+    /// hook to ported code. Hues are not re-uploaded to the hue shader: a hue
+    /// edit shows in the Assets dock at once and in the World tab after it
+    /// restarts.
+    /// </remarks>
+    public int ApplyAssets(AssetOverlay overlay)
+    {
+        if (_game == null)
+        {
+            return 0;
+        }
+
+        var art = new HashSet<int>();
+        var gumps = new HashSet<int>();
+        if (_assets != null)
+        {
+            art.UnionWith(_assets.ArtIndices);
+            gumps.UnionWith(_assets.GumpIds);
+            _assets.Dispose();
+            _assets = null;
+        }
+
+        if (overlay != null)
+        {
+            _assets = overlay.Apply(_game.UO.FileManager, "world");
+            art.UnionWith(_assets.ArtIndices);
+            gumps.UnionWith(_assets.GumpIds);
+        }
+
+        Forget(_game.UO.Arts, art);
+        Forget(_game.UO.Gumps, gumps);
+
+        // Chunk meshes hold land and statics already sorted by texture;
+        // reload the chunks in view so they pick the new sprites up.
+        if (art.Count > 0 && World?.Map != null && World.Player != null)
+        {
+            int facet = World.MapIndex;
+            int height = _game.UO.FileManager.Maps.MapBlocksSize[facet, 1];
+            int width = _game.UO.FileManager.Maps.MapBlocksSize[facet, 0];
+            int px = World.Player.X >> 3, py = World.Player.Y >> 3;
+            var blocks = new List<int>();
+            for (int bx = Math.Max(0, px - 12); bx <= Math.Min(width - 1, px + 12); bx++)
+            {
+                for (int by = Math.Max(0, py - 12); by <= Math.Min(height - 1, py + 12); by++)
+                {
+                    blocks.Add(bx * height + by);
+                }
+            }
+
+            ReloadBlocks(facet, blocks);
+        }
+
+        return art.Count + gumps.Count;
+    }
+
+    private static void Forget(object cache, HashSet<int> indices)
+    {
+        if (cache == null || indices.Count == 0)
+        {
+            return;
+        }
+
+        var field = cache.GetType().GetField("_spriteInfos",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        if (field?.GetValue(cache) is not GUO.Renderer.SpriteInfo[] sprites)
+        {
+            GD.PrintErr($"[GUO editor] {cache.GetType().Name} has no _spriteInfos; the World tab keeps the old art until it restarts");
+            return;
+        }
+
+        foreach (int i in indices)
+        {
+            if (i >= 0 && i < sprites.Length)
+            {
+                sprites[i] = default;
+            }
+        }
+    }
+
     /// <summary>What the game's picking found under the pointer on the last draw.</summary>
     public BaseGameObject Picked => SelectedObject.Object;
 
     public void Dispose()
     {
+        _assets?.Dispose();
+        _assets = null;
         try
         {
             CloseProject();

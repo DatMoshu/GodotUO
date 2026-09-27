@@ -266,8 +266,25 @@ public partial class WorldView : VBoxContainer
             GD.PrintErr($"[GUO editor] world project: {ex.GetType().Name}: {ex.Message}");
         }
 
+        // The project's replaced art, gumps and hues (ADR-0020), on the
+        // world's own loaders; again whenever the Assets dock changes them.
+        if (_data?.Assets != null)
+        {
+            _host.ApplyAssets(_data.Assets);
+            _data.AssetChanged -= OnAssetChanged;
+            _data.AssetChanged += OnAssetChanged;
+        }
+
         UpdateStatus();
         return true;
+    }
+
+    private void OnAssetChanged(AssetKind kind, int id)
+    {
+        if (IsInstanceValid(this) && _data?.Assets != null)
+        {
+            _host.ApplyAssets(_data.Assets);
+        }
     }
 
     /// <summary>Opens a world project (creating it if needed) and forgets the old one's undo history.</summary>
@@ -593,6 +610,11 @@ public partial class WorldView : VBoxContainer
         if (_container != null)
         {
             _container.GuiInput -= OnInput;
+        }
+
+        if (_data != null)
+        {
+            _data.AssetChanged -= OnAssetChanged;
         }
 
         _host.Dispose();

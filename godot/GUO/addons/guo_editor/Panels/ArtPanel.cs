@@ -30,6 +30,12 @@ public partial class ArtPanel : GridPanel
         bar.AddChild(_kind);
     }
 
+    protected override void ForgetIds()
+    {
+        _ids[0] = null;
+        _ids[1] = null;
+    }
+
     private uint Index(int id) => Land ? (uint)id : EditorData.LandCount + (uint)id;
 
     protected override IEnumerable<int> Ids()
@@ -98,7 +104,9 @@ public partial class ArtPanel : GridPanel
             }
         }
 
-        return Inspection.Still("Art", $"0x{id:X4}", img, sb.ToString());
+        Inspection ins = Inspection.Still("Art", $"0x{id:X4}", img, sb.ToString());
+        AssetActions.Add(ins, Data, Land ? AssetKind.Land : AssetKind.Static, id, img);
+        return ins;
     }
 
     public static string Flags(ulong flags)

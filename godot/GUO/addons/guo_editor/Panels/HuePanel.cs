@@ -122,7 +122,9 @@ public partial class HuePanel : GridPanel
         sb.Append($"preview: {(isLand ? "land" : "static")} 0x{artId:X4} plain | hued | partial hue\n");
         sb.Append("(CPU hue path of HuesLoader; pick art in the Art tab to change it)\n");
 
-        return Inspection.Still("Hues", $"0x{id:X4}", sheet, sb.ToString());
+        Inspection ins = Inspection.Still("Hues", $"0x{id:X4}", sheet, sb.ToString());
+        AssetActions.AddHue(ins, Data, id, Swatch(id, 1, 1), Name(id), b.TableStart, b.TableEnd);
+        return ins;
     }
 
     private Image Hued(Image src, ushort hue, bool partial)

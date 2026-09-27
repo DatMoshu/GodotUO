@@ -153,6 +153,9 @@ public partial class EditorSmoke : Node
                 // Bring the next tab to the front and let it lay out.
                 if (_panel >= _assets.Panels.Count)
                 {
+                    // Phase 5: the asset overlay, before the World tab boots
+                    // so the world's own loaders get it too.
+                    RunAssets();
                     _stage = 6;
                     _frames = 0;
                     break;
@@ -196,6 +199,7 @@ public partial class EditorSmoke : Node
                 if (_frames >= (Headless ? 5 : SettleFrames))
                 {
                     CheckWorld();
+                    CheckWorldAssets();
                     _world.ForcedMouse = new Vector2I((int)_world.Size.X / 2, (int)(_world.Size.Y / 2));
                     _stage = 8;
                     _frames = 0;
