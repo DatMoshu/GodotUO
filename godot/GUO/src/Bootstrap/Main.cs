@@ -170,6 +170,10 @@ public partial class Main : Node
                 {
                     LoginProbeThenMaybeQuit();
                 }
+                else if (_options.UiProbe)
+                {
+                    UiProbeThenQuit();
+                }
                 else if (_options.TouchProbe)
                 {
                     TouchProbeThenQuit();
@@ -455,6 +459,24 @@ public partial class Main : Node
     }
 
     /// <summary>
+    /// Get into the world, open the backpack, log the profile's platform
+    /// defaults, photograph it and quit; see UiProbe. On a device something
+    /// else logs in, and the frame is taken with adb, so it stays up.
+    /// </summary>
+    private async void UiProbeThenQuit()
+    {
+        bool device = OS.HasFeature("mobile");
+
+        await UiProbe.Run(this, logInHere: !device);
+
+        if (!device)
+        {
+            await CaptureFrame();
+            Quit(UiProbe.Passed ? 0 : 1);
+        }
+    }
+
+    /// <summary>
     /// Drive the touch layer with synthetic fingers, photograph the result,
     /// and exit with the verdict; see TouchProbe.
     /// </summary>
@@ -652,6 +674,7 @@ public partial class Main : Node
         /// the smoke reads back through logcat).
         /// </summary>
         public bool LoginProbe { get; private set; }
+        public bool UiProbe { get; private set; }
 
         /// <summary>Whether the login probe quits once it has reported. Default true.</summary>
         public bool LoginProbeQuits { get; private set; } = true;
@@ -750,6 +773,9 @@ public partial class Main : Node
                         break;
                     case "--login-probe":
                         o.LoginProbe = true;
+                        break;
+                    case "--ui-probe":
+                        o.UiProbe = true;
                         break;
                     case "--login-probe-stay":
                         o.LoginProbe = true;

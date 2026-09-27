@@ -57,6 +57,10 @@ namespace GUO.Configuration
         [JsonIgnore] public string ServerName { get; set; }
         [JsonIgnore] public string CharacterName { get; set; }
 
+        // PORT DEVIATION (GUO): which PlatformDefaults table this profile has
+        // been through; absent (0) in every profile saved before it existed.
+        public int ProfileVersion { get; set; }
+
         // sounds
         public bool EnableSound { get; set; } = true;
         public int SoundVolume { get; set; } = 100;
