@@ -112,6 +112,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      # tools/windows checks the exported icon with Pillow.
+      - name: Python packages
+        run: python -m pip install --quiet pillow
 
       - name: Export Windows
         run: python tools/windows/run.py export
