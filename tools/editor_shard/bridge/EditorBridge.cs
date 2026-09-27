@@ -65,7 +65,12 @@ public static class EditorBridge
         }
 
         EventSink.Connected += OnConnected;
-        EventSink.Disconnected += m => _ulClients.Remove(m?.NetState);
+        EventSink.Disconnected += m =>
+        {
+            _ulClients.Remove(m?.NetState);
+            _setUpOn.Remove(m?.NetState);
+            _queried.Remove(m?.NetState);
+        };
 
         unsafe
         {
@@ -73,6 +78,73 @@ public static class EditorBridge
             // ModernUO has no handler for 0x3F; without one the answer is an
             // unknown packet.
             IncomingPackets.Register(0x3F, 0, true, &OnHashResponse);
+        }
+    }
+
+    // Per UltimaLive client: the map it was last set up on, and the maps it
+    // has been asked for hashes on. Game thread only.
+    private static readonly Dictionary<NetState, int> _setUpOn = new();
+    private static readonly Dictionary<NetState, HashSet<int>> _queried = new();
+
+    /// <summary>
+    /// Readies a client for the map its mobile is on, and returns how many
+    /// changed blocks it was sent. The client builds its per-map CRC table
+    /// only when the server asks for hashes on that map (0x3F/0xFF); an update
+    /// (0x40, 0x3F/0x00) on a map never queried dereferences that table and
+    /// throws (UltimaLive.cs). So the first time a client is on a map it is
+    /// asked once, for the block the player stands in. Then it is sent every
+    /// block changed on that map since boot, which it missed while elsewhere.
+    /// </summary>
+    private static int SetUpMap(NetState ns, Mobile m)
+    {
+        if (m?.Map == null || !_ulMaps.Contains(m.Map.MapID))
+        {
+            return 0;
+        }
+
+        int mapId = m.Map.MapID;
+        if (!_queried.TryGetValue(ns, out HashSet<int> asked))
+        {
+            _queried[ns] = asked = new HashSet<int>();
+        }
+
+        if (asked.Add(mapId))
+        {
+            int here = (m.X >> 3) * (m.Map.Height >> 3) + (m.Y >> 3);
+            ns.Send(Header(15, (uint)here, 0, 0xFF, (byte)mapId));
+        }
+
+        _setUpOn[ns] = mapId;
+        int sent = 0;
+        foreach (var ((map, block), data) in _changed)
+        {
+            if (map == mapId)
+            {
+                SendBlock(ns, map, block, data.Land, data.Statics);
+                sent++;
+            }
+        }
+
+        return sent;
+    }
+
+    /// <summary>
+    /// ModernUO has no map-change event: once a second, a client whose mobile
+    /// has moved to another map is set up there.
+    /// </summary>
+    private static void CheckMaps()
+    {
+        foreach (NetState ns in _ulClients.ToArray())
+        {
+            Mobile m = ns.Mobile;
+            if (m?.Map != null && (!_setUpOn.TryGetValue(ns, out int on) || on != m.Map.MapID))
+            {
+                int sent = SetUpMap(ns, m);
+                if (_setUpOn.TryGetValue(ns, out on) && on == m.Map.MapID)
+                {
+                    Log.Information("GUO editor bridge: {0} now on map{1} ({2} changed block(s) sent)", m.RawName, on, sent);
+                }
+            }
         }
     }
 
@@ -84,6 +156,7 @@ public static class EditorBridge
 
     public static void Initialize()
     {
+        Server.Timer.StartTimer(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1), CheckMaps);
         var thread = new Thread(Listen) { IsBackground = true, Name = "GUO editor bridge" };
         thread.Start();
         Log.Information("GUO editor bridge: editors on 127.0.0.1:{0}, UltimaLive shard '{1}', maps {2}", _port, _shardName, string.Join(",", _ulMaps));
@@ -105,27 +178,8 @@ public static class EditorBridge
             ns.Send(LoginPacket());
             ns.Send(MapDefinitionsPacket());
 
-            // The client builds its per-map CRC table only when the server asks
-            // for hashes (0x3F/0xFF); an update (0x40, 0x3F/0x00) before any
-            // query dereferences that table and throws (UltimaLive.cs). Ask
-            // once, for the block the player stands in.
-            if (m.Map != null && _ulMaps.Contains(m.Map.MapID))
-            {
-                int here = (m.X >> 3) * (m.Map.Height >> 3) + (m.Y >> 3);
-                ns.Send(Header(15, (uint)here, 0, 0xFF, (byte)m.Map.MapID));
-            }
-
             _ulClients.Add(ns);
-
-            int sent = 0;
-            foreach (var ((map, block), data) in _changed)
-            {
-                if (m.Map?.MapID == map)
-                {
-                    SendBlock(ns, map, block, data.Land, data.Statics);
-                    sent++;
-                }
-            }
+            int sent = SetUpMap(ns, m);
 
             Log.Information("GUO editor bridge: UltimaLive on for {0} ({1} changed block(s) sent)", m.RawName, sent);
         });
@@ -389,7 +443,17 @@ public static class EditorBridge
         {
             if (_ulClients.Contains(ns) && ns.Mobile?.Map == map)
             {
-                SendBlock(ns, map.MapID, block, land, statics);
+                if (!_setUpOn.TryGetValue(ns, out int on) || on != map.MapID)
+                {
+                    // Newly on this map: setting up sends every changed block
+                    // of it, this one included.
+                    SetUpMap(ns, ns.Mobile);
+                }
+                else
+                {
+                    SendBlock(ns, map.MapID, block, land, statics);
+                }
+
                 clients++;
             }
         }

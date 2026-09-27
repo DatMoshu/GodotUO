@@ -5,7 +5,7 @@ game client**, on the private shard (`tools/editor_shard`, 127.0.0.1:2594),
 never the shared dev shard.
 
 ```
-python tools\editor_live\run.py [--export DIR | --no-export] [--windowed]
+python tools\editor_live\run.py [--export DIR | --no-export] [--facet 0|1] [--windowed]
 ```
 
 Headless by default: no window takes the desktop's focus, and the client's
@@ -32,6 +32,12 @@ its frame (`client.png`).
    - the bridge's log lines;
    - the client's UltimaLive lines;
    - `client.png`.
+
+`--facet 1` runs the whole check on Trammel instead of Felucca: both editors
+work on map1, and the client is moved there (`[self set map trammel`). The
+client is always moved to the facet under test first, because the private
+shard saves where the character was left. The stamp waits until the client
+reports standing at the cell on that facet.
 
 With `--no-export` the shard and the client use the install alone, with no
 `files_override`. The client must build its UltimaLive map copies itself, which

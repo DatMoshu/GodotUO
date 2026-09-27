@@ -19,8 +19,11 @@ install alone. No export and no `files_override` are involved.
   blocks each, map2 57,600, map3 and map5 81,920, map4 32,761).
 - The live stamp reaches the client and editor B (30 ms).
 - With `--export <folder>`, the client still takes the export's `map0.mul`
-  (path 1 below). A live edit on a facet other than map0 has not been run:
-  the check stamps on map0 only.
+  (path 1 below).
+- `--no-export --facet 1`: the same on Trammel. The character is moved there
+  with `[self set map trammel`, the stamp reaches it (pushed to 1 client,
+  70 ms editor to editor), and the client logs no exception. The first run of
+  this found the per-map hash query gap described under Context, and fixed it.
 
 2026-09-27: `python tools\editor_live\run.py` passes on the private shard.
 Editor A stamps a tree through the World tab. The shard applies the block to
@@ -73,8 +76,14 @@ background thread, handed to the main thread each frame.
 - **The client's UltimaLive** (a survey of `UltimaLive.cs`, then running it):
   - The server must send `0x3F/0x02` (shard name), then `0x3F/0x01` (maps).
   - The client builds its per-map CRC table only when the server sends a hash
-    query (`0x3F/0xFF`). An update before any query throws (line 473). The
-    bridge therefore sends one query at login.
+    query (`0x3F/0xFF`) **for that map**. An update on a map never queried
+    throws (`OnUpdateTerrainPacket`, `OnUltimaLivePacket`). The bridge
+    therefore queries each client once per map. It does so at login, and
+    whenever the client is found on a new map: before a push, and on a
+    one-second check, since ModernUO has no map-change event. It then sends
+    that client every block changed on that map since boot, which it missed
+    while elsewhere. (Until 2026-09-27 it queried only the login map, and the
+    first push on another map threw in the client.)
   - The client keeps map copies in `%ProgramData%\<shard name>\`. It makes
     them from the loaded map file, and for a UOP map that path is commented
     out upstream, so on this UOP-only install it wrote **blank** maps. That was
