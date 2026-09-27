@@ -5,6 +5,7 @@
 - [Configuration](Configuration.md)
 - [Launchers and Tools](Launchers-and-Tools.md)
 - [FAQ](FAQ.md)
+- [Known Issues](Known-Issues.md)
 
 **Builds**
 - [Windows Build](Windows-Build.md)
