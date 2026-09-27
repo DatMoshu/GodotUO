@@ -41,6 +41,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from guo import load_config  # noqa: E402
+from guo.process import no_activate  # noqa: E402
 
 SHARD_NAME = "GUO-Editor-Private"
 PORT, BRIDGE = 2594, 2595
@@ -108,7 +109,7 @@ def main() -> int:
                "UO_CLIENT_VERSION": cfg.client_version, "UO_SHARD_HOST": "127.0.0.1", "UO_SHARD_PORT": str(PORT)}
         start_log = shard_log.read_text(encoding="utf-8", errors="replace")
         procs["client"] = subprocess.Popen(cmd, stdout=(out / "client.log").open("w", encoding="utf-8", errors="replace"),
-                                           stderr=subprocess.STDOUT, env=env)
+                                           stderr=subprocess.STDOUT, env=env, **no_activate())
 
         # 4. The two editors.
         def editor(role: str, headless: bool) -> subprocess.Popen:
@@ -118,7 +119,7 @@ def main() -> int:
             (out / role).mkdir(exist_ok=True)
             e = {**os.environ, "UO_WORLD_PROJECT": str(out / role / "boot_project")}
             return subprocess.Popen(c, stdout=(out / f"editor_{role}.log").open("w", encoding="utf-8", errors="replace"),
-                                    stderr=subprocess.STDOUT, env=e)
+                                    stderr=subprocess.STDOUT, env=e, **no_activate())
 
         procs["follow"] = editor("follow", headless=True)
         if not wait_for(lambda: (out / "follow" / "follow.ready").exists(), 180, "editor B (follow)"):

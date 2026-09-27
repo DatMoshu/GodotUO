@@ -51,6 +51,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from guo import load_config  # noqa: E402
 from guo.config import parse_config_bat  # noqa: E402
+from guo.process import no_activate  # noqa: E402
 
 # Profile.GameWindowPosition / GameWindowSize defaults: a fresh client home
 # draws the world here, inside the window.
@@ -91,7 +92,7 @@ def editor_shot(cfg, x: int, y: int, facet: int, out: Path, season: str, world_p
     print(f"[parity] editor: {' '.join(cmd[:6])} ...")
     try:
         with (out / "editor.log").open("w", encoding="utf-8", errors="replace") as log:
-            subprocess.run(cmd, stdout=log, stderr=subprocess.STDOUT, env=env, timeout=600)
+            subprocess.run(cmd, stdout=log, stderr=subprocess.STDOUT, env=env, timeout=600, **no_activate())
     finally:
         if project_godot.read_bytes() != before:
             project_godot.write_bytes(before)
@@ -134,7 +135,7 @@ def client_shot(cfg, client_root: Path, x: int, y: int, out: Path, override: Pat
     print(f"[parity] client ({client_root.name}, {account}): [go {x} {y}" + (f", files_override {override}" if override else ""))
     (out / "client").mkdir(parents=True, exist_ok=True)
     with (out / "client.log").open("w", encoding="utf-8", errors="replace") as log:
-        code = subprocess.run(cmd, stdout=log, stderr=subprocess.STDOUT, env=env, timeout=600).returncode
+        code = subprocess.run(cmd, stdout=log, stderr=subprocess.STDOUT, env=env, timeout=600, **no_activate()).returncode
     shots = sorted((out / "client").glob("client*.png"))
     if code != 0:
         print(f"[parity] client exited {code}; see {out / 'client.log'}")

@@ -45,6 +45,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from guo import load_config  # noqa: E402
+from guo.process import no_activate  # noqa: E402
 
 TIMEOUT_S = 600
 
@@ -108,7 +109,7 @@ def main() -> int:
     rebuilt = None
     try:
         with log_path.open("w", encoding="utf-8", errors="replace") as log:
-            proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT)
+            proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, **no_activate())
             while proc.poll() is None:
                 if time.monotonic() - started > TIMEOUT_S:
                     proc.kill()

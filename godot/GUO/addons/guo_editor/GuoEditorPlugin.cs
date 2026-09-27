@@ -112,6 +112,17 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         }
 
         string smokeOut = EditorSmoke.OutDirFromArgs();
+
+        // A tool started this editor (the smoke flag): its window must not
+        // take the keyboard or the foreground from whoever is working, as a
+        // scripted game run's does not (Bootstrap/Main.cs NoFocus).
+        if (smokeOut != null && DisplayServer.GetName() != "headless")
+        {
+            DisplayServer.WindowSetFlag(DisplayServer.WindowFlags.NoFocus, true);
+            DisplayServer.WindowSetFlag(DisplayServer.WindowFlags.AlwaysOnTop, false);
+            GD.Print("[GUO editor] window: no focus (started by a tool)");
+        }
+
         if (smokeOut != null)
         {
             _smoke = new EditorSmoke(smokeOut, _data, _assets, _inspector, _world, _shard);
