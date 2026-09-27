@@ -1,0 +1,66 @@
+# GUO -- the project site on GitHub Pages: site/index.html as the landing
+# page, docs/wiki rendered beneath it at /wiki, and docs/images beside both.
+# GitHub's own Jekyll build turns the wiki's relative .md links into .html
+# (jekyll-relative-links) and titles each page from its first heading.
+
+name: pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "site/**"
+      - "docs/wiki/**"
+      - "docs/images/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assemble the site
+        run: |
+          mkdir -p _src/wiki _src/images
+          cp -r site/. _src/
+          cp docs/wiki/*.md _src/wiki/
+          rm -f _src/wiki/README.md
+          cp docs/images/* _src/images/
+          cat > _src/_config.yml <<'EOF'
+          title: GodotUO
+          description: Classic Ultima Online on Godot 4 .NET
+          theme: jekyll-theme-midnight
+          plugins:
+            - jekyll-relative-links
+            - jekyll-optional-front-matter
+            - jekyll-titles-from-headings
+            - jekyll-default-layout
+          relative_links:
+            enabled: true
+          EOF
+      - uses: actions/configure-pages@v5
+      - uses: actions/jekyll-build-pages@v1
+        with:
+          source: ./_src
+          destination: ./_site
+      - uses: actions/upload-pages-artifact@v3
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

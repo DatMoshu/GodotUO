@@ -1,0 +1,107 @@
+---
+layout: null
+---
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GodotUO</title>
+<meta name="description" content="Classic Ultima Online on Godot 4 .NET: one repository to build, play and manage your client on Windows, Android and Steam Deck.">
+<link rel="icon" href="images/guo-emblem.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Source+Sans+3:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #14110d; --panel: #1f1a14; --line: #3a3024; --ink: #ece3d2;
+    --muted: #b3a48a; --gold: #d4a94f; --silver: #c9ced6; --ok: #8fbf73; --warn: #d9a14a; --no: #c9736a;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --bg: #f6f0e4; --panel: #fffaf0; --line: #dccfb6; --ink: #2a2218;
+      --muted: #6d5f49; --gold: #9a6f1c; --silver: #56606e; --ok: #3f7a2a; --warn: #93620f; --no: #9b3d33;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink); }
+  body { font: 17px/1.6 "Source Sans 3", system-ui, sans-serif; }
+  a { color: var(--gold); }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 0 16px; }
+  header { text-align: center; padding: 48px 0 24px; }
+  header img { width: 168px; height: 168px; }
+  h1 { font: 700 clamp(2.2rem, 6vw, 3.4rem)/1.1 Cinzel, serif; margin: 12px 0 8px; letter-spacing: .04em; }
+  h2 { font: 500 1.5rem/1.2 Cinzel, serif; color: var(--gold); margin: 48px 0 16px; }
+  .lede { font-size: 1.2rem; color: var(--muted); max-width: 680px; margin: 0 auto; }
+  .cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin: 28px 0 8px; }
+  .cta a { padding: 10px 20px; border: 1px solid var(--gold); border-radius: 4px; text-decoration: none; font-weight: 600; }
+  .cta a.primary { background: var(--gold); color: var(--bg); }
+  figure { margin: 32px 0 0; }
+  figure img { width: 100%; height: auto; border: 1px solid var(--line); border-radius: 4px; image-rendering: pixelated; display: block; }
+  figcaption { color: var(--muted); font-size: .9rem; margin-top: 8px; text-align: center; }
+  .note { border-left: 3px solid var(--gold); background: var(--panel); padding: 12px 16px; border-radius: 0 4px 4px 0; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 16px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 16px 18px; }
+  .card h3 { margin: 0 0 4px; font: 600 1.1rem/1.3 "Source Sans 3", sans-serif; color: var(--silver); }
+  .card p { margin: 6px 0 0; color: var(--muted); font-size: .95rem; }
+  .card code { font-size: .85rem; }
+  .tag { display: inline-block; font-size: .78rem; font-weight: 600; padding: 1px 8px; border-radius: 10px; border: 1px solid currentColor; }
+  .ok { color: var(--ok); } .warn { color: var(--warn); } .no { color: var(--no); }
+  code { background: var(--panel); border: 1px solid var(--line); padding: 1px 5px; border-radius: 3px; overflow-wrap: anywhere; }
+  pre { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 14px; overflow-x: auto; font-size: .9rem; }
+  pre code { border: 0; padding: 0; background: none; }
+  footer { color: var(--muted); font-size: .9rem; border-top: 1px solid var(--line); margin-top: 56px; padding: 24px 0 40px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <img src="images/guo-emblem.png" alt="The GodotUO emblem: a silver and gold sigil">
+    <h1>GodotUO</h1>
+    <p class="lede">Classic Ultima Online on Godot 4 .NET. One repository to build, play and manage your client on the desktop, on your phone and on your Steam Deck.</p>
+    <div class="cta">
+      <a class="primary" href="wiki/Getting-Started.html">Get started</a>
+      <a href="https://github.com/DatMoshu/GodotUO">Source on GitHub</a>
+      <a href="wiki/Home.html">Wiki</a>
+    </div>
+  </header>
+
+  <figure>
+    <img src="images/castle-british.png" alt="The gardens of Castle British, drawn by GodotUO on a local ModernUO shard" width="1600" height="1110">
+    <figcaption>Castle British in GodotUO, on a local ModernUO shard.</figcaption>
+  </figure>
+
+  <h2>What it is</h2>
+  <p>GodotUO carries <a href="https://github.com/ClassicUO/ClassicUO">ClassicUO</a>'s C# across to Godot: the network stack, the file readers and the game logic as they are, with only the renderer, input and audio rebuilt on the engine. The aim is identical behaviour first and improvements second.</p>
+  <p class="note"><strong>You bring your own Ultima Online install.</strong> No game data is in the repository or in any build. The client reads your install in place and never writes to it.</p>
+
+  <h2>Platforms</h2>
+  <div class="grid">
+    <div class="card"><h3>Windows</h3><span class="tag ok">plays</span><p><code>launchers\game\play.bat</code>, or a build from the release workflow.</p></div>
+    <div class="card"><h3>Android</h3><span class="tag warn">debug build</span><p>Touch controls, centred screens, soft keyboard and dual-screen devices. <a href="wiki/Android-Build.html">Android build</a></p></div>
+    <div class="card"><h3>Steam Deck</h3><span class="tag warn">in progress</span><p>Export, install over ssh and a Steam shortcut, from one launcher folder.</p></div>
+    <div class="card"><h3>Godot editor</h3><span class="tag ok">tooling</span><p>Browse the UO data, edit the world and export it to your shard. <a href="wiki/Editor.html">Editor</a></p></div>
+    <div class="card"><h3>Web</h3><span class="tag no">blocked upstream</span><p>Godot 4.7 cannot export C# to the web yet; the pipeline is ready for when it can.</p></div>
+  </div>
+
+  <h2>Start in four steps</h2>
+<pre><code>launchers\pipeline\00_bootstrap.bat          fetch the pinned engine and upstream
+copy launchers\_shared\config.local.bat.example launchers\_shared\config.local.bat
+launchers\dev\smoke.bat                      check that everything resolves
+launchers\game\play.bat                      play</code></pre>
+  <p>Set <code>UO_CLIENT_DATA</code> to your install in <code>config.local.bat</code>. The client connects to <code>127.0.0.1:2593</code> unless you set <code>UO_SHARD_HOST</code>. See <a href="wiki/Dev-Shard.html">the dev shard</a> for a local server to play on.</p>
+
+  <h2>Learn more</h2>
+  <div class="grid">
+    <div class="card"><h3><a href="wiki/Architecture.html">Architecture</a></h3><p>How the port is split into verbatim, shim and rewrite tiers.</p></div>
+    <div class="card"><h3><a href="wiki/Configuration.html">Configuration</a></h3><p>Every setting, and the order they resolve in.</p></div>
+    <div class="card"><h3><a href="wiki/Launchers-and-Tools.html">Launchers and tools</a></h3><p>One folder per job, one obvious launcher.</p></div>
+    <div class="card"><h3><a href="wiki/FAQ.html">FAQ</a></h3><p>Data, shards, licences and what "ported" means.</p></div>
+  </div>
+
+  <footer>
+    Ultima Online is a registered trademark of Electronic Arts Inc. GodotUO is an unofficial, fan-made project, not affiliated with, endorsed by, or associated with Electronic Arts or Broadsword Online Games, and it contains none of their game data.
+    ClassicUO code is used under the BSD 2-Clause licence. <a href="https://github.com/DatMoshu/GodotUO">github.com/DatMoshu/GodotUO</a>
+  </footer>
+</div>
+</body>
+</html>
