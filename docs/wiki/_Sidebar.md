@@ -4,6 +4,7 @@
 - [Getting Started](Getting-Started.md)
 - [Configuration](Configuration.md)
 - [Launchers and Tools](Launchers-and-Tools.md)
+- [What is GUO?](What-Is-GUO.md)
 - [FAQ](FAQ.md)
 - [Known Issues](Known-Issues.md)
 

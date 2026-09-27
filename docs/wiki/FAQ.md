@@ -1,5 +1,9 @@
 # FAQ
 
+**What is GUO? Is it a client or an emulator like RunUO/ServUO?**
+A client: a port of ClassicUO to the Godot engine that connects to RunUO, ServUO or ModernUO
+shards. See [What is GUO?](What-Is-GUO.md) for how it differs from ClassicUO.
+
 **Is there a web build?**
 Yes, locally. The official Godot 4.7.2 mono still refuses to export a C#
 project to the web (godotengine/godot#70796), so GUO is exported with a
