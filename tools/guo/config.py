@@ -106,6 +106,16 @@ class Config:
     # --- Web (optional; see tools/web and ADR-0008) ---
     web_port: int
 
+    # --- Steam Deck (optional; see tools/steamdeck and ADR-0018) ---
+    # The host, key and known-hosts file are the user's own network and live
+    # in config.local.bat; the committed defaults are empty.
+    deck_host: str
+    deck_user: str
+    deck_ssh_key: Path | None
+    deck_known_hosts: Path | None
+    deck_install_dir: str
+    deck_client_data: str
+
     # --- derived paths (never configured directly) ---
     @property
     def godot_project(self) -> Path:
@@ -202,7 +212,18 @@ def load_config(root: Path | None = None) -> Config:
     world = get("UO_WORLD_PROJECT") or str(root / "build" / "world" / "default")
     world = world.replace("%UO_ROOT%", str(root))
 
+    def home_path_or_none(key: str) -> Path | None:
+        # A key file the user named with ~ or %USERPROFILE%; empty = unset.
+        raw = os.path.expandvars(get(key))
+        return Path(os.path.expanduser(raw)) if raw and "%" not in raw else None
+
     return Config(
+        deck_host=get("UO_DECK_HOST", ""),
+        deck_user=get("UO_DECK_USER", "deck"),
+        deck_ssh_key=home_path_or_none("UO_DECK_SSH_KEY"),
+        deck_known_hosts=home_path_or_none("UO_DECK_KNOWN_HOSTS"),
+        deck_install_dir=get("UO_DECK_INSTALL_DIR", "~/GUO"),
+        deck_client_data=get("UO_DECK_CLIENT_DATA", "~/UO"),
         web_port=web_port,
         android_sdk=path_or_none("UO_ANDROID_SDK")
         or Path(os.path.expandvars("%LOCALAPPDATA%")) / "Android" / "Sdk",

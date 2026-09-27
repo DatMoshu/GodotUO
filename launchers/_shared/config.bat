@@ -136,6 +136,31 @@ REM  web server (tools\web\run.py serve) listens on; it serves build\web with
 REM  the cross-origin isolation headers a Godot web export needs.
 if not defined UO_WEB_PORT          set "UO_WEB_PORT=8060"
 
+REM --- Steam Deck (optional) ----------------------------------------------
+REM  Only launchers\steamdeck\*.bat and tools\steamdeck read these. See
+REM  docs\steamdeck.md for the one-time setup and ADR-0018 for why. The
+REM  Deck is reached over ssh; nothing here is a credential, but the host,
+REM  the key path and the known-hosts file are YOUR network, so set them in
+REM  config.local.bat and leave these empty.
+REM  The Deck's address on your LAN (an IP or a name ssh resolves).
+if not defined UO_DECK_HOST         set "UO_DECK_HOST="
+REM  The ssh user. SteamOS has exactly one: deck.
+if not defined UO_DECK_USER         set "UO_DECK_USER=deck"
+REM  The private key whose .pub is in the Deck's ~/.ssh/authorized_keys.
+REM  Empty = ssh's own default keys (~/.ssh/id_ed25519 and friends).
+if not defined UO_DECK_SSH_KEY      set "UO_DECK_SSH_KEY="
+REM  A known_hosts file to pin the Deck's host key in. Empty = ssh's default
+REM  (~/.ssh/known_hosts), with a new key accepted on first contact.
+if not defined UO_DECK_KNOWN_HOSTS  set "UO_DECK_KNOWN_HOSTS="
+REM  Where the exported build is installed ON THE DECK. `push` writes the
+REM  executable, the .pck, the .NET data folder and guo.sh there.
+if not defined UO_DECK_INSTALL_DIR  set "UO_DECK_INSTALL_DIR=~/GUO"
+REM  Where the UO client data lives ON THE DECK (the folder holding the
+REM  .uop / .mul files). Copy your install there yourself, from Desktop
+REM  mode or with scp; the tools never push it. An SD card path looks like
+REM  /run/media/deck/<card>/UO.
+if not defined UO_DECK_CLIENT_DATA  set "UO_DECK_CLIENT_DATA=~/UO"
+
 REM --- Python -------------------------------------------------------------
 if not defined UO_PYTHON            set "UO_PYTHON=python"
 

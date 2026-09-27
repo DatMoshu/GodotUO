@@ -26,5 +26,6 @@ it is taken even if its file has not landed yet.
 | 0015 | Editor world view | work/editor |
 | 0016 | Canvas background | work/background |
 | 0017 | Android (was 0007 in UO_Port) | work/ui |
+| 0018 | Steam Deck target | work/steamdeck (proposed) |
 
-Next free: 0018.
+Next free: 0019.

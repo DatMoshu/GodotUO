@@ -41,6 +41,7 @@ launchers/        .bat entry points, grouped by job. Start here.
   android/        doctor, export, install, run, smoke on a device (ADR-0017)
   windows/        doctor, export -- the .exe, with the sigil as its icon
   web/            doctor, export, serve, smoke -- blocked upstream (ADR-0008)
+  steamdeck/      doctor, export, push, run, screenshot, smoke over ssh (ADR-0018)
 godot/GUO/        the Godot project
   src/Compat/     XNA compatibility shim — read its README first
   src/{IO,Assets,Render,Network,Game,Input,Configuration,Utility}/
@@ -52,6 +53,7 @@ tools/            one folder per job + one per third-party program
   android/        the Android export tool + preset template
   windows/        the Windows export tool + preset template + icon check
   web/            the web export tool + preset template
+  steamdeck/      the Linux export tool + preset template; talks to a Deck over ssh
   brand/          builds every app icon and the splash from design/brand/
 design/brand/     the GUO sigil, master of every icon (never the engine's logo)
 docs/             port_plan.md, data_formats.md, port_status.md (generated)
@@ -107,6 +109,8 @@ launchers\android\doctor.bat               what an Android export needs on this 
 launchers\android\smoke.bat                export, install, run on the device, wait for the login gump
 launchers\web\doctor.bat                   why there is no web export yet (ADR-0008)
 launchers\windows\export.bat               export the Windows build and check its icon
+launchers\steamdeck\doctor.bat             what a Steam Deck build needs, here and on the Deck (ssh)
+launchers\steamdeck\smoke.bat              export, push, run on the Deck, wait for the login gump, screenshot
 launchers\dev\brand_icons.bat              rebuild every icon from the sigil
 ```
 
