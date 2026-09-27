@@ -24,6 +24,7 @@ internal enum FlickAction
     SizeMenu = 5,
     ToggleLock = 6,
     ShelfAutoSlot = 7,
+    Minimise = 8,
 }
 
 /// <summary>
@@ -68,6 +69,7 @@ internal static class GumpFlick
     {
         "Do nothing", "Send to top screen", "Send to bottom screen", "Close (with Reopen)",
         "Reset size", "Size menu", "Lock / unlock size", "Shelf's own slot",
+        "Minimise to the touch bar",
     };
 
     /// <summary>
@@ -239,6 +241,10 @@ internal static class GumpFlick
             case FlickAction.ShelfAutoSlot:
                 DualScreen.Reshelve(g);
                 break;
+
+            case FlickAction.Minimise:
+                GumpMinimise.Minimise(g);
+                break;
         }
     }
 
@@ -355,6 +361,7 @@ internal static class GumpFlick
             FlickAction.SizeMenu => "Size menu",
             FlickAction.ToggleLock => g.PresentationLocked ? "Unlock size" : "Lock size",
             FlickAction.ShelfAutoSlot => "To its shelf slot",
+            FlickAction.Minimise => "Minimise",
             _ => "Nothing",
         };
     }

@@ -372,6 +372,84 @@ namespace GUO.Input.Touch
             return new Rect2(x, band.Position.Y, art.X + spacing, band.Size.Y);
         }
 
+        // --- minimised gumps (GumpMinimise) -----------------------------------
+
+        private int _chipFirst;
+
+        /// <summary>
+        /// The chips of minimised gumps: one row on top of the upper row, left
+        /// of the chevron. When they do not all fit, the row shows as many as
+        /// fit from <see cref="_chipFirst"/> and "‹" / "›" chips page it.
+        /// Actions are "chip:N" (N into GumpMinimise.Gumps), "chips:prev", "chips:next".
+        /// </summary>
+        private List<(string action, Rect2 rect)> ChipRects()
+        {
+            var result = new List<(string, Rect2)>();
+            IReadOnlyList<Game.UI.Gumps.Gump> gumps = GumpMinimise.Gumps;
+
+            if (!Shown || gumps.Count == 0)
+            {
+                _chipFirst = 0;
+                return result;
+            }
+
+            Layout(out Rect2 band, out int artScale, out Vector2 art, out float spacing);
+            Rect2 top = RowShown ? RowBand(band) : band;
+            float h = art.Y, gap = spacing / 3f;
+            float y = top.Position.Y - h - gap / 2f;
+            float left = spacing / 2f;
+            float right = (ChevronShown ? ChevronRect().Position.X : top.End.X) - gap;
+            float arrowW = h * 1.2f;
+
+            float Width(int i) => System.Math.Max(h * 2.4f, (LabelTexture("chip:" + i)?.GetWidth() ?? 60) * artScale + h);
+
+            _chipFirst = System.Math.Clamp(_chipFirst, 0, gumps.Count - 1);
+            bool before = _chipFirst > 0;
+            float x = left + (before ? arrowW + gap : 0);
+
+            if (before)
+            {
+                result.Add(("chips:prev", new Rect2(left, y, arrowW, h)));
+            }
+
+            for (int i = _chipFirst; i < gumps.Count; i++)
+            {
+                float w = Width(i);
+                bool last = i == gumps.Count - 1;
+                float limit = last ? right : right - arrowW - gap;
+
+                if (x + w > limit && i > _chipFirst)
+                {
+                    result.Add(("chips:next", new Rect2(right - arrowW, y, arrowW, h)));
+                    break;
+                }
+
+                result.Add(("chip:" + i, new Rect2(x, y, w, h)));
+                x += w + gap;
+            }
+
+            return result;
+        }
+
+        /// <summary>For the probe: the rectangle of the chip for this gump, if shown.</summary>
+        public Rect2? ChipRect(Game.UI.Gumps.Gump g)
+        {
+            int index = -1;
+            IReadOnlyList<Game.UI.Gumps.Gump> gumps = GumpMinimise.Gumps;
+
+            for (int i = 0; i < gumps.Count; i++)
+            {
+                if (gumps[i] == g) index = i;
+            }
+
+            foreach ((string action, Rect2 rect) in ChipRects())
+            {
+                if (action == "chip:" + index) return rect;
+            }
+
+            return null;
+        }
+
         /// <summary>Which button, if any, a point lands on.</summary>
         public bool HitTest(Vector2 at, out string action)
         {
@@ -380,6 +458,16 @@ namespace GUO.Input.Touch
             if (!Shown)
             {
                 return false;
+            }
+
+            foreach ((string a, Rect2 r) in ChipRects())
+            {
+                if (r.HasPoint(at))
+                {
+                    action = a;
+
+                    return true;
+                }
             }
 
             if (ChevronShown && ChevronRect().HasPoint(at))
@@ -429,6 +517,21 @@ namespace GUO.Input.Touch
 
             _pressed = action;
             _pressedAt = Godot.Time.GetTicksMsec();
+
+            if (action.StartsWith("chip"))
+            {
+                IReadOnlyList<Game.UI.Gumps.Gump> gumps = GumpMinimise.Gumps;
+
+                if (action == "chips:prev") _chipFirst = System.Math.Max(0, _chipFirst - 1);
+                else if (action == "chips:next") _chipFirst = System.Math.Min(gumps.Count - 1, _chipFirst + 1);
+                else if (int.TryParse(action.Substring(5), out int i) && i >= 0 && i < gumps.Count)
+                {
+                    TouchInput.Note($"chip -> restore {gumps[i].GetType().Name}");
+                    GumpMinimise.Restore(gumps[i]);
+                }
+
+                return;
+            }
 
             if (action == Chevron)
             {
@@ -521,6 +624,12 @@ namespace GUO.Input.Touch
 
         private static string Label(string action)
         {
+            if (action.StartsWith("chip:") && int.TryParse(action.Substring(5), out int ci))
+            {
+                IReadOnlyList<Game.UI.Gumps.Gump> gumps = GumpMinimise.Gumps;
+                return ci >= 0 && ci < gumps.Count ? GumpMinimise.Title(gumps[ci]) : "";
+            }
+
             ClilocLoader cliloc = Client.Game?.UO?.FileManager?.Clilocs;
 
             switch (action)
@@ -533,6 +642,8 @@ namespace GUO.Input.Touch
                 case "options": return "Options";
                 case "self": return "Self";
                 case "cancel": return "Cancel";
+                case "chips:prev": return "‹";
+                case "chips:next": return "›";
                 case "m:nearest": return "Nearest Hostile";
                 case "m:next": return "Next Target";
                 case "m:attack": return "Attack Last";
@@ -553,10 +664,13 @@ namespace GUO.Input.Touch
         /// </summary>
         private Texture2D LabelTexture(string action)
         {
-            // Cached by caption: War/Peace changes with the stance.
+            // Cached by caption: War/Peace changes with the stance. A chip sits
+            // on a dark fill, so its text is drawn light (cached apart).
             string caption = Label(action);
+            bool light = action.StartsWith("chip");
+            string key = light ? "light|" + caption : caption;
 
-            if (_labels.TryGetValue(caption, out Texture2D cached))
+            if (_labels.TryGetValue(key, out Texture2D cached))
             {
                 return cached;
             }
@@ -584,9 +698,21 @@ namespace GUO.Input.Touch
                 .AsBytes(new System.ReadOnlySpan<uint>(fi.Data, 0, fi.Width * fi.Height))
                 .CopyTo(rgba);
 
+            if (light)
+            {
+                // The font's ink is near black; recolour it to the Store's cream.
+                for (int i = 0; i < rgba.Length; i += 4)
+                {
+                    if (rgba[i + 3] != 0)
+                    {
+                        rgba[i] = 0xEE; rgba[i + 1] = 0xEA; rgba[i + 2] = 0xDE;
+                    }
+                }
+            }
+
             Image image = Image.CreateFromData(fi.Width, fi.Height, false, Image.Format.Rgba8, rgba);
             Texture2D texture = ImageTexture.CreateFromImage(image);
-            _labels[caption] = texture;
+            _labels[key] = texture;
 
             return texture;
         }
@@ -616,6 +742,9 @@ namespace GUO.Input.Touch
                 TextureFilter = TextureFilterEnum.Nearest;
             }
 
+            private static bool lit0(TouchGumpBar bar, string action) =>
+                bar._pressed == action && Godot.Time.GetTicksMsec() - bar._pressedAt < PressedMs;
+
             public override void _Draw()
             {
                 if (GetParent() is not TouchGumpBar bar || !bar.Shown)
@@ -636,6 +765,28 @@ namespace GUO.Input.Touch
                 if (bar.ChevronShown)
                 {
                     DrawChevron(bar.ChevronRect(), bar.RowShown, artScale);
+                }
+
+                // Minimised gumps (GumpMinimise): a chip each, tap to restore.
+                foreach ((string chip, Rect2 r) in bar.ChipRects())
+                {
+                    bool chipLit = lit0(bar, chip);
+                    DrawRect(r, new Color(0.08f, 0.10f, 0.09f, 0.92f));
+                    DrawRect(r, new Color(0.87f, 0.73f, 0.47f, chipLit ? 1f : 0.7f), false, System.Math.Max(1f, artScale * 0.67f));
+
+                    Texture2D chipLabel = bar.LabelTexture(chip);
+
+                    if (chipLabel != null)
+                    {
+                        var size = new Vector2(chipLabel.GetWidth() * artScale, chipLabel.GetHeight() * artScale);
+                        var at = new Vector2(r.Position.X + (int)((r.Size.X - size.X) / 2), r.Position.Y + (int)((r.Size.Y - size.Y) / 2));
+                        DrawTextureRect(chipLabel, new Rect2(at, size), false);
+                    }
+
+                    if (chipLit)
+                    {
+                        DrawRect(r, new Color(1f, 1f, 1f, 0.25f));
+                    }
                 }
 
                 Texture2D face = null;

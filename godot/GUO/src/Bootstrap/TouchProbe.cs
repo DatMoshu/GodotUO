@@ -466,6 +466,30 @@ internal static class TouchProbe
             toast?.OnButtonClick(1);
             await Frames(host, 60);
             Check("Reopen brings it back", UIManager.GetGump<PaperDollGump>(world.Player.Serial) != null);
+
+            // Minimise to the touch bar: hidden, a chip on the bar, and a tap
+            // on the chip shows it again where it was, at the size it was.
+            g = UIManager.GetGump<PaperDollGump>(world.Player.Serial);
+            p.FlickLeft = (int)FlickAction.Minimise;
+            GumpPresentation.SetScale(g, 1.25f, new Compat.Point(g.X, g.Y));
+            (int mx, int my, float ms) = (g.X, g.Y, g.PresentationScale);
+            at = await FlickPoint(host, g);
+            await Flick(host, at.Value, new Vector2(-160, 0));
+            Rect2? chip = TouchInput.Bar.ChipRect(g);
+            Check("flick left set to Minimise hides the gump and puts a chip on the touch bar",
+                GumpFlick.LastResult == "flick left -> Minimise" && !g.IsVisible && !g.IsDisposed && chip != null,
+                $"{GumpFlick.LastResult}, visible {g.IsVisible}, chip {chip}");
+
+            if (chip != null)
+            {
+                await Tap(host, chip.Value.GetCenter());
+                await Frames(host, 5);
+            }
+
+            Check("a tap on the chip restores it at the same place and size, and the chip goes",
+                g.IsVisible && g.X == mx && g.Y == my && g.PresentationScale == ms && TouchInput.Bar.ChipRect(g) == null,
+                $"visible {g.IsVisible}, at {g.X},{g.Y} (was {mx},{my}), scale {g.PresentationScale} (was {ms}) | {string.Join(" | ", TouchInput.Trace)}");
+            GumpPresentation.Reset(g);
         }
         finally
         {
