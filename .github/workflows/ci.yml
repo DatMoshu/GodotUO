@@ -42,6 +42,14 @@ jobs:
       - name: No LAN address, personal email or home folder
         run: python3 tools/privacy_scan/run.py
 
+      - name: Documentation links and anchors
+        run: |
+          python3 tools/docs_lint/test_docs_lint.py
+          python3 tools/docs_lint/run.py
+
+      - name: Configuration resolution
+        run: python3 tools/guo/test_config.py
+
       - name: No local config committed
         run: |
           if git ls-files --error-unmatch launchers/_shared/config.local.bat 2>/dev/null; then
