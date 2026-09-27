@@ -158,6 +158,21 @@ namespace GUO.Platform.Android
 
                 GD.Print($"[GUO] dual screen: {displays.Count} presentation display(s)");
 
+                // A second screen is one you can touch. Some handhelds list a
+                // presentation display with no panel behind it: the Odin 2
+                // Mini's firmware reports a 1920x1080 "Built-in Screen" on a
+                // second port with no touch input (dumpsys: touch NONE), and
+                // presenting there sent the shelf gumps nowhere. The Thor's
+                // lower screen has its own touchscreen, so there are two.
+                int touchscreens = CountTouchscreens();
+
+                if (displays.Count > 0 && touchscreens < 2)
+                {
+                    GD.Print($"[GUO] dual screen: {touchscreens} touchscreen(s), so the presentation display has none; staying single-screen");
+
+                    return null;
+                }
+
                 foreach (Variant v in displays)
                 {
                     GodotObject display = v.AsGodotObject();
@@ -183,6 +198,41 @@ namespace GUO.Platform.Android
             }
 
             return null;
+        }
+
+        /// <summary>
+        /// Touchscreen input devices (InputDevice.SOURCE_TOUCHSCREEN), virtual
+        /// ones excluded. Errs high: if the count cannot be read it answers 2,
+        /// the old behaviour.
+        /// </summary>
+        private static int CountTouchscreens()
+        {
+            const int SourceTouchscreen = 0x00001002;
+
+            try
+            {
+                JavaClass inputDevice = JavaClassWrapper.Wrap("android.view.InputDevice");
+                int[] ids = inputDevice.Call("getDeviceIds").AsInt32Array();
+                int count = 0;
+
+                foreach (int id in ids)
+                {
+                    GodotObject device = inputDevice.Call("getDevice", id).AsGodotObject();
+
+                    if (device != null && !device.Call("isVirtual").AsBool() && device.Call("supportsSource", SourceTouchscreen).AsBool())
+                    {
+                        count++;
+                    }
+                }
+
+                return count;
+            }
+            catch (Exception e)
+            {
+                GD.PrintErr($"[GUO] dual screen: could not count touchscreens ({e.Message}); assuming a touchable second screen");
+
+                return 2;
+            }
         }
 
         /// <summary>
