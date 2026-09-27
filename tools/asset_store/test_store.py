@@ -2,6 +2,8 @@
 import hashlib
 import json
 from pathlib import Path
+import shutil
+import subprocess
 import tempfile
 import threading
 import unittest
@@ -84,6 +86,25 @@ class StoreTests(unittest.TestCase):
         with self.assertRaises(urllib.error.HTTPError) as error:
             urllib.request.urlopen(urllib.request.Request(base, headers={"Range": "bytes=999999-"}))
         self.assertEqual(error.exception.code, 416)
+
+    def test_web_catalogue_headless(self):
+        node = shutil.which("node")
+        self.assertIsNotNone(node, "Web contract test requires Node 18+ (built-ins only; no browser/npm packages)")
+        root = self.root / "cdn"
+        for kind in ("background", "theme", "sound", "profile-preset"):
+            self.manifest.update(kind=kind, id="moongate-shimmer" if kind == "background" else "sample-" + kind,
+                                 title='<img src=x onerror="throw 1"> ' + kind, author="<b>Fixture creator</b>")
+            publish(self.pack(), root)
+        httpd = server(root, port=0)
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        self.addCleanup(httpd.server_close)
+        self.addCleanup(httpd.shutdown)
+        result = subprocess.run([node, str(Path(__file__).with_name("web_check.mjs")),
+                                 f"http://127.0.0.1:{httpd.server_port}/"], capture_output=True, text=True,
+                                encoding="utf-8", errors="replace", timeout=30)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        print(result.stdout.strip())
 
 
 if __name__ == "__main__":
