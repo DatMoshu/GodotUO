@@ -31,6 +31,11 @@ and client use unfiltered previews; the client verifies preview hashes too.
 Other supported pack kinds are installed as files and are not automatically
 applied to game settings.
 
+Removing the currently applied Store background resets the character's
+background to built-in grey and saves the profile. Reopen Options after
+removal to refresh its background choices. Other packs and built-in choices
+are unaffected.
+
 ## Verification
 
 ```text
@@ -38,6 +43,7 @@ python tools/asset_store/test_store.py
 python tools/asset_store/smoke.py
 dotnet build godot/GUO/GUO.csproj
 launchers\dev\smoke.bat
+godot-console --headless --path godot/GUO res://src/Store/StoreBackgroundProbe.tscn
 ```
 
 `smoke.py` accepts `--dotnet <executable>` when the SDK is not on PATH. It

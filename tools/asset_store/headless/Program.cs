@@ -37,7 +37,21 @@ try
     var newer = new StoreEntry { Manifest = new StoreManifest { Id = entry.Manifest.Id, Version = "1.0.10", MinProfileVersion = 6 } };
     StorePack.Require(client.HasUpdate(newer), "Newer version not detected");
     StorePack.Require(StorePack.Version("1.0.10") > StorePack.Version("1.0.9"), "Versions compared lexically");
+    string activePath = $"user://store/{entry.Manifest.Id}/{entry.Manifest.Version}/still.png";
+    StorePack.Require(!StoreBackground.BelongsTo(activePath, entry.Manifest.Id + "-other", entry.Manifest.Version), "Different pack matched");
+    StorePack.Require(!StoreBackground.BelongsTo(activePath, entry.Manifest.Id, "1.0.10"), "Different version matched");
+    StorePack.Require(!StoreBackground.BelongsTo("user://store/test/1.0.10/still.png", "test", "1.0.1"), "Version prefix matched");
+    StorePack.Require(!StoreBackground.BelongsTo(null, "test", "1.0.0"), "Missing path matched");
+    client.BackgroundRemoved = (id, version) =>
+    {
+        bool reset = StoreBackground.BelongsTo(activePath, id, version);
+        if (reset) activePath = "";
+        return reset;
+    };
     client.Uninstall(entry.Manifest.Id, entry.Manifest.Version);
+    StorePack.Require(activePath == "" && client.LastUninstallMessage.Contains("reset"), "Active background not reset/reported");
+    client.Uninstall(entry.Manifest.Id, entry.Manifest.Version);
+    StorePack.Require(!client.LastUninstallMessage.Contains("reset"), "Unrelated uninstall reported reset");
     StorePack.Require(!Directory.Exists(path) && client.Installed().Count == 0, "Uninstall failed");
     var bad = new StoreEntry { Manifest = entry.Manifest, Url = entry.Url, Size = entry.Size, Sha256 = new string('0', 64) };
     bool rejected = false;
