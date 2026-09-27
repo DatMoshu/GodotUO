@@ -359,6 +359,12 @@ public partial class Main : Node
             "-port", _options.ShardPort.ToString(),
         };
 
+        if (!string.IsNullOrWhiteSpace(_options.FilesOverride))
+        {
+            args.AddRange(new[] { "-filesoverride", _options.FilesOverride });
+            GD.Print($"[GUO] files override : {_options.FilesOverride}");
+        }
+
         if (_options.AutoLogin && !string.IsNullOrWhiteSpace(_options.Account))
         {
             args.AddRange(new[]
@@ -1037,6 +1043,14 @@ public partial class Main : Node
         /// </summary>
         public string StoreInstall { get; private set; }
 
+        /// <summary>
+        /// Upstream's files_override for this run: a file of name=path lines
+        /// that replace single client files, e.g. a staged data set
+        /// (ADR-0022) on a device, where settings.json cannot be reached:
+        /// --files-override PATH.
+        /// </summary>
+        public string FilesOverride { get; private set; }
+
         /// <summary>Dotted client version, e.g. "7.0.107.76".</summary>
         public string ClientVersion { get; private set; } = "7.0.107.76";
 
@@ -1270,6 +1284,9 @@ public partial class Main : Node
                         break;
                     case "--store-install":
                         o.StoreInstall = Next();
+                        break;
+                    case "--files-override":
+                        o.FilesOverride = Next();
                         break;
                     case "--background":
                         o.Background = Next();
