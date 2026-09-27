@@ -10,6 +10,8 @@ and CRLF, ignored comments/commands, paths with spaces, cross-file variable
 expansion, guarded assignments, case-insensitive batch variable names,
 unresolved references, root discovery, derived paths, numeric fallbacks,
 account-list normalization and absence of environment side effects.
+Store coverage includes checkout-relative defaults, `%UO_ROOT%` expansion,
+paths containing spaces, URL precedence and absolute-path preservation.
 
 Regression cases exposed three differences from the shared batch pattern:
 local values were unavailable while defaults expanded references; guarded

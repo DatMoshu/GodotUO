@@ -85,6 +85,27 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config.upstream_build, self.root / "build/cuo")
         self.assertTrue(config.godot_console_exe.name.endswith("_console.exe"))
 
+    def test_store_defaults_are_checkout_relative(self):
+        config = load_config(self.root)
+        self.assertEqual(config.store_dir, self.root / "build/store_cdn")
+        self.assertEqual(config.store_url, "http://127.0.0.1:18865")
+
+    def test_store_local_root_expansion_and_environment_override(self):
+        self.local.write_text('set "UO_STORE_DIR=%UO_ROOT%/custom packs"\nset "UO_STORE_URL=http://127.0.0.1:18866"', encoding="utf-8")
+        config = load_config(self.root)
+        self.assertEqual(config.store_dir, self.root / "custom packs")
+        self.assertEqual(config.store_url, "http://127.0.0.1:18866")
+        os.environ["UO_STORE_DIR"] = "relative packs"
+        os.environ["UO_STORE_URL"] = "http://127.0.0.1:18867"
+        config = load_config(self.root)
+        self.assertEqual(config.store_dir, self.root / "relative packs")
+        self.assertEqual(config.store_url, "http://127.0.0.1:18867")
+
+    def test_store_absolute_path_is_not_rebased(self):
+        absolute = self.root / "outside checkout"
+        os.environ["UO_STORE_DIR"] = str(absolute)
+        self.assertEqual(load_config(self.root).store_dir, absolute)
+
     def test_invalid_numeric_fallback_and_account_list(self):
         self.local.write_text('set "UO_SHARD_PORT=bad"\nset "UO_WEB_PORT=bad"\nset "UO_SHARD_GM_ACCOUNTS= alpha, ,beta "', encoding="utf-8")
         config = load_config(self.root)
