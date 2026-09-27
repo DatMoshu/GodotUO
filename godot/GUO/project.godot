@@ -18,6 +18,12 @@ config/windows_native_icon="res://icon.ico"
 
 project/assembly_name="GUO"
 
+[editor_plugins]
+
+; The UO workbench (docs/editor_plan.md). Editor only: its code is behind
+; #if TOOLS, so an exported client carries none of it (ADR-0010).
+enabled=PackedStringArray("res://addons/guo_editor/plugin.cfg")
+
 [input_devices]
 
 ; Android reports a pinch as InputEventMagnifyGesture and a two-finger

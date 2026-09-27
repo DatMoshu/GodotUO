@@ -1,0 +1,271 @@
+#if TOOLS
+namespace GUO.Editor;
+
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
+using System.Text.RegularExpressions;
+using System.Threading.Tasks;
+using Godot;
+using GUO.Assets;
+using GUO.Host;
+using GUO.IO;
+
+/// <summary>
+/// The editor's one handle on the UO client install: resolves where it is
+/// the same way the launchers do, opens it through the ported loaders, and
+/// hands decoded art to the docks.
+/// </summary>
+/// <remarks>
+/// <para>
+/// Read only, always. Nothing here writes to <c>UO_CLIENT_DATA</c>; edits
+/// live in a world project overlay (docs/editor_plan.md §2), which does not
+/// exist yet.
+/// </para>
+/// <para>
+/// The loaders are not thread safe. <see cref="LoadAsync"/> runs
+/// <see cref="UOFileManager.Load"/> on a worker so the editor does not
+/// freeze while the archives open, and nothing touches the loaders until it
+/// has finished; after that every call is on the main thread.
+/// </para>
+/// </remarks>
+public sealed class EditorData : IDisposable
+{
+    public const uint LandCount = ArtLoader.MAX_LAND_DATA_INDEX_COUNT;
+
+    private UOFileManager _files;
+    private Task _loading;
+
+    public bool IsLoaded { get; private set; }
+    public string Error { get; private set; }
+    public string ClientData { get; private set; }
+    public string ClientVersion { get; private set; }
+    public long LoadMilliseconds { get; private set; }
+
+    public UOFileManager Files => IsLoaded ? _files : null;
+
+    /// <summary>Raised on the main thread once loading has finished, well or badly.</summary>
+    public event Action Loaded;
+
+    /// <summary>
+    /// Starts loading the install unless that is already under way. Safe to
+    /// call more than once.
+    /// </summary>
+    public void LoadAsync()
+    {
+        if (_loading != null)
+        {
+            return;
+        }
+
+        ClientData = Setting("UO_CLIENT_DATA", "");
+        ClientVersion = Setting("UO_CLIENT_VERSION", "7.0.107.76");
+        string lang = Setting("UO_LANGUAGE", "enu");
+
+        if (string.IsNullOrWhiteSpace(ClientData) || !Directory.Exists(ClientData))
+        {
+            Error = $"UO_CLIENT_DATA is not a folder: '{ClientData}'. Set it in launchers\\_shared\\config.bat.";
+            GD.PrintErr($"[GUO editor] {Error}");
+            _loading = Task.CompletedTask;
+            Callable.From(() => Loaded?.Invoke()).CallDeferred();
+            return;
+        }
+
+        var files = new UOFileManager(UoDataProbe.ParseVersion(ClientVersion), ClientData);
+        _loading = Task.Run(() =>
+        {
+            var sw = Stopwatch.StartNew();
+            try
+            {
+                files.Load(useVerdata: false, lang: lang);
+                _files = files;
+            }
+            catch (Exception ex)
+            {
+                Error = $"loading client data failed: {ex.GetType().Name}: {ex.Message}";
+                files.Dispose();
+            }
+
+            LoadMilliseconds = sw.ElapsedMilliseconds;
+            Callable.From(Finish).CallDeferred();
+        });
+    }
+
+    private void Finish()
+    {
+        IsLoaded = _files != null;
+        if (IsLoaded)
+        {
+            GD.Print($"[GUO editor] client data {ClientData} ({ClientVersion}) loaded in {LoadMilliseconds} ms");
+        }
+        else
+        {
+            GD.PrintErr($"[GUO editor] {Error}");
+        }
+
+        Loaded?.Invoke();
+    }
+
+    /// <summary>True if the install has art at this index. Land is 0..0x3FFF, statics follow.</summary>
+    public bool HasArt(uint index)
+    {
+        if (!IsLoaded)
+        {
+            return false;
+        }
+
+        ref UOFileIndex entry = ref _files.Arts.File.GetValidRefEntry((int)index);
+        return entry.Length > 0;
+    }
+
+    /// <summary>Tiledata name for an art index, or "".</summary>
+    public string NameOf(uint index)
+    {
+        if (!IsLoaded)
+        {
+            return "";
+        }
+
+        if (index < LandCount)
+        {
+            LandTiles[] land = _files.TileData.LandData;
+            return index < land.Length ? land[index].Name ?? "" : "";
+        }
+
+        StaticTiles[] statics = _files.TileData.StaticData;
+        uint s = index - LandCount;
+        return s < statics.Length ? statics[s].Name ?? "" : "";
+    }
+
+    /// <summary>
+    /// Decodes one piece of art through <see cref="ArtLoader.GetArt"/>, the
+    /// call the game's own art atlas makes. Null when the id is empty, which
+    /// is normal: UO's id space is sparse.
+    /// </summary>
+    public Image ArtImage(uint index)
+    {
+        if (!IsLoaded || !HasArt(index))
+        {
+            return null;
+        }
+
+        byte[] rgba;
+        int w, h;
+        try
+        {
+            // ArtInfo holds a span over the loader's scratch buffer: copy the
+            // pixels out before anything else touches the loader.
+            ArtInfo art = _files.Arts.GetArt(index);
+            w = art.Width;
+            h = art.Height;
+            if (w <= 0 || h <= 0 || art.Pixels.Length < w * h)
+            {
+                return null;
+            }
+
+            // Color16To32 packs R | G<<8 | B<<16, which is Rgba8 byte order on
+            // little endian. Zero is UO's transparent pixel.
+            rgba = new byte[w * h * 4];
+            for (int i = 0; i < w * h; i++)
+            {
+                uint px = art.Pixels[i];
+                int o = i * 4;
+                rgba[o + 0] = (byte)(px & 0xFF);
+                rgba[o + 1] = (byte)((px >> 8) & 0xFF);
+                rgba[o + 2] = (byte)((px >> 16) & 0xFF);
+                rgba[o + 3] = (byte)(px == 0 ? 0 : 0xFF);
+            }
+        }
+        catch (Exception ex)
+        {
+            GD.PrintErr($"[GUO editor] art 0x{index:X4} failed to decode: {ex.GetType().Name}: {ex.Message}");
+            return null;
+        }
+
+        return Image.CreateFromData(w, h, false, Image.Format.Rgba8, rgba);
+    }
+
+    public void Dispose()
+    {
+        // A load still running owns the files; let it finish so the handles
+        // close, or the next assembly reload finds them mapped.
+        try
+        {
+            _loading?.Wait(TimeSpan.FromSeconds(30));
+        }
+        catch (AggregateException)
+        {
+        }
+
+        _files?.Dispose();
+        _files = null;
+        IsLoaded = false;
+        Loaded = null;
+    }
+
+    // --- configuration ----------------------------------------------------
+
+    private static readonly Regex SetLine = new(
+        @"^\s*(?:if\s+not\s+defined\s+\w+\s+)?set\s+""(?<key>[A-Za-z_][A-Za-z0-9_]*)=(?<val>[^""]*)""",
+        RegexOptions.IgnoreCase
+    );
+
+    private static readonly Regex VarRef = new(@"%([A-Za-z_][A-Za-z0-9_]*)%");
+
+    private static Dictionary<string, string> _configBat;
+
+    /// <summary>
+    /// One setting, resolved as every launcher and tools/guo/config.py
+    /// resolve it: the environment first (common.bat has set it when the
+    /// editor came from a launcher), then launchers\_shared\config.bat parsed
+    /// directly (when Godot was opened some other way).
+    /// </summary>
+    public static string Setting(string key, string fallback)
+    {
+        string env = System.Environment.GetEnvironmentVariable(key);
+        if (!string.IsNullOrEmpty(env))
+        {
+            return env;
+        }
+
+        _configBat ??= ParseConfigBat();
+        return _configBat.TryGetValue(key, out string v) && v.Length > 0 ? v : fallback;
+    }
+
+    private static Dictionary<string, string> ParseConfigBat()
+    {
+        var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        string root = ProjectSettings.GlobalizePath("res://");
+        string path = Path.GetFullPath(Path.Combine(root, "..", "..", "launchers", "_shared", "config.bat"));
+        if (!File.Exists(path))
+        {
+            return values;
+        }
+
+        foreach (string line in File.ReadAllLines(path))
+        {
+            Match m = SetLine.Match(line);
+            if (!m.Success)
+            {
+                continue;
+            }
+
+            string val = VarRef.Replace(m.Groups["val"].Value, r =>
+            {
+                string name = r.Groups[1].Value;
+                string e = System.Environment.GetEnvironmentVariable(name);
+                if (!string.IsNullOrEmpty(e))
+                {
+                    return e;
+                }
+
+                return values.TryGetValue(name, out string earlier) ? earlier : r.Value;
+            });
+            values[m.Groups["key"].Value] = val;
+        }
+
+        return values;
+    }
+}
+#endif
