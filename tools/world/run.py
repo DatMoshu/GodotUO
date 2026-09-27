@@ -620,12 +620,12 @@ def cmd_apply_commands(cfg, project: Path, host: str, port: int, dry_run: bool) 
             if "shard commands done" in text or "shard commands FAILED" in text or proc.poll() is not None:
                 done = "shard commands done" in text
                 break
-            if text.count("[GUO] shard command:") >= len(commands):
+            if text.count("[GUO] shard command: [") >= len(commands):
                 # The last command is printed before it is typed: wait for the
                 # shard's answer to it (or 30 s) before ending the client.
                 import time as _t
                 for _ in range(60):
-                    tail = log.read_text(encoding="utf-8", errors="replace").rsplit("[GUO] shard command:", 1)[-1]
+                    tail = log.read_text(encoding="utf-8", errors="replace").rsplit("[GUO] shard command: [", 1)[-1]
                     if "[GUO] shard says:" in tail:
                         break
                     _t.sleep(0.5)

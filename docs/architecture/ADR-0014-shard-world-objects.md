@@ -80,6 +80,16 @@ passes:
 3. The client's world holds the anvil at its cell and the XmlSpawner, with a
    horse spawned beside it. The frame shows them.
 
+The GM-command fallback on ServUO: `editor_objects_proof --commands
+--servuo` passes 11/11 on a fresh ServUO world, the same checks as on the
+plain ModernUO, decoy included.
+
+Found on the way: ServUO's `[go` answers nothing, and the scripted client
+waited about 15 minutes for a reply to it. A command with no reply at all
+is now given up after 30 polls (GUO's `ShardCommands`). Also, `apply-commands`
+counted its "no reply" lines as commands, ended the client early and wrote a
+record for a placement that never happened; it now counts only command lines.
+
 Still to build: the RunUO backend.
 
 ## Decision Makers
