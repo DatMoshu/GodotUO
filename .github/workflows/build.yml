@@ -44,6 +44,31 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      # The client compiles against upstream's cuoapi.dll (sources/ is
+      # gitignored), so fetch ClassicUO at the reviewed pin, as ci.yml does.
+      - name: Read upstream pin
+        id: pin
+        shell: pwsh
+        run: |
+          $pin = Get-Content docs/upstream/UPSTREAM_PIN.json | ConvertFrom-Json
+          "repo=$($pin.repo)" >> $env:GITHUB_OUTPUT
+          "commit=$($pin.commit)" >> $env:GITHUB_OUTPUT
+      - name: Cache upstream
+        id: upstream-cache
+        uses: actions/cache@v4
+        with:
+          path: sources/ClassicUO
+          key: classicuo-${{ steps.pin.outputs.commit }}-recursive
+      - name: Fetch upstream
+        if: steps.upstream-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          git init -q sources/ClassicUO
+          cd sources/ClassicUO
+          git remote add origin "${{ steps.pin.outputs.repo }}"
+          git fetch -q --depth 1 origin "${{ steps.pin.outputs.commit }}"
+          git checkout -q FETCH_HEAD
+          git submodule update -q --init --recursive --depth 1
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: |
@@ -57,6 +82,31 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      # The client compiles against upstream's cuoapi.dll (sources/ is
+      # gitignored), so fetch ClassicUO at the reviewed pin, as ci.yml does.
+      - name: Read upstream pin
+        id: pin
+        shell: pwsh
+        run: |
+          $pin = Get-Content docs/upstream/UPSTREAM_PIN.json | ConvertFrom-Json
+          "repo=$($pin.repo)" >> $env:GITHUB_OUTPUT
+          "commit=$($pin.commit)" >> $env:GITHUB_OUTPUT
+      - name: Cache upstream
+        id: upstream-cache
+        uses: actions/cache@v4
+        with:
+          path: sources/ClassicUO
+          key: classicuo-${{ steps.pin.outputs.commit }}-recursive
+      - name: Fetch upstream
+        if: steps.upstream-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          git init -q sources/ClassicUO
+          cd sources/ClassicUO
+          git remote add origin "${{ steps.pin.outputs.repo }}"
+          git fetch -q --depth 1 origin "${{ steps.pin.outputs.commit }}"
+          git checkout -q FETCH_HEAD
+          git submodule update -q --init --recursive --depth 1
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: |
