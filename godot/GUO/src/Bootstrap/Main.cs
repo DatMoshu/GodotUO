@@ -239,6 +239,10 @@ public partial class Main : Node
                 {
                     TouchProbeThenQuit();
                 }
+                else if (_options.MacroProbe)
+                {
+                    MacroProbeThenQuit();
+                }
                 else if (_options.DualProbe)
                 {
                     DualProbeThenMaybeQuit();
@@ -652,6 +656,14 @@ public partial class Main : Node
         Quit(TouchProbe.Passed ? 0 : 1);
     }
 
+    /// <summary>Tap the six macros against fixtures and exit with the verdict; see MacroProbe.</summary>
+    private async void MacroProbeThenQuit()
+    {
+        await MacroProbe.Run(this);
+        await CaptureFrame();
+        Quit(MacroProbe.Passed ? 0 : 1);
+    }
+
     private async void ProbeThenQuit()
     {
         InputProbe.EndureSeconds = _options.EndureSeconds;
@@ -783,6 +795,7 @@ public partial class Main : Node
                 || EffectsProbe > 0
                 || EndureSeconds > 0
                 || TouchProbe
+                || MacroProbe
                 || LoginProbe
                 || UiProbe
                 || DualProbe
@@ -880,6 +893,9 @@ public partial class Main : Node
 
         /// <summary>Drive the touch layer with synthetic fingers and check the client reacted.</summary>
         public bool TouchProbe { get; private set; }
+
+        /// <summary>Tap each of the touch bar's six macros against spawned fixtures; see MacroProbe.</summary>
+        public bool MacroProbe { get; private set; }
 
         /// <summary>Echo every gesture the touch layer resolves to the log, for a device run read over logcat.</summary>
         public bool TouchTrace { get; private set; }
@@ -1011,6 +1027,10 @@ public partial class Main : Node
                     case "--touch-probe":
                         o.Touch = true;
                         o.TouchProbe = true;
+                        break;
+                    case "--macro-probe":
+                        o.Touch = true;
+                        o.MacroProbe = true;
                         break;
                     case "--touch-trace":
                         o.TouchTrace = true;
