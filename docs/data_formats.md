@@ -450,3 +450,53 @@ the store root. Updates select a numerically newer compatible version;
 older installations remain until explicitly removed. Hashes detect corrupt
 downloads; trust in the publisher comes from the configured store URL
 (use HTTPS for a remote store).
+
+---
+
+## 13. World objects (the editor's spawners and decoration)
+
+Spawners and placed items live in the world project beside its blocks (§9)
+and assets (§11), in one server-neutral file. ADR-0014 has the reasoning.
+
+```
+<UO_WORLD_PROJECT>/shard/objects.json
+```
+
+`format` is `1`. `spawners` and `items` each hold one object per line, sorted
+by map, y, x, id.
+
+**Spawner**
+
+| Field | Meaning |
+|---|---|
+| `id` | GUID, made by the editor; becomes the server's spawner GUID where it has one |
+| `map` | `Felucca`, `Trammel`, `Ilshenar`, `Malas`, `Tokuno` or `TerMur` |
+| `x`, `y`, `z` | Where the spawner stands |
+| `count` | How many it keeps alive |
+| `min_delay`, `max_delay` | `hh:mm:ss` |
+| `home_range`, `walking_range`, `team` | As the server means them; `walking_range` `-1` is unlimited |
+| `entries` | `[{name, max, probability}]`; `name` is a creature or vendor class on the shard |
+| `extra` | Backend-only fields, kept through a round trip |
+
+**Item**
+
+| Field | Meaning |
+|---|---|
+| `id` | GUID, made by the editor; GUO's own key |
+| `map`, `x`, `y`, `z` | Where it stands |
+| `item_id`, `hue` | Hex strings |
+| `type` | The server's item class; `Static` (the only one synced so far) |
+| `props`, `extra` | Server properties (`Name=`, `Facing=`, ...), and backend-only fields |
+
+**ModernUO export** (`tools/world export`, under `<export>/shard/`):
+
+| File | Contents |
+|---|---|
+| `Data/Spawns/guo/<project>.json` | ModernUO `SpawnerDto` records: `$type`, `guid` (= `id`), `name`, `location [x,y,z]`, `map`, `count`, `minDelay`, `maxDelay`, `team`, `homeRange`, `walkingRange`, `entries [{name, maxCount, probability}]` |
+| `Data/Decoration/<Map>/guo-<project>.cfg` | ModernUO decoration: a `Type 0xNNNN (Prop=value; ...)` header, one `x y z` line per item, a blank line after each group |
+| `guo_objects.json` | The manifest the bridge syncs from: `spawners [{id, map, location}]`, `items [{id, map, location, item_id, hue, type, props}]`, `files` |
+| `APPLY.txt` | GM steps for a shard without the bridge, and what they cannot do |
+
+The shard's record of what GUO applied is not a file: it lives in the world
+save as the `GUOWorldObjects` persistence (spawner GUID to a record hash, item
+id to serial).

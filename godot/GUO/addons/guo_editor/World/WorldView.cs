@@ -55,6 +55,15 @@ public partial class WorldView : VBoxContainer
     public string Error => _host.Error;
     internal WorldHost Host => _host;
     internal WorldEditor Editor => _editor;
+
+    /// <summary>The world-objects layer (ADR-0014): spawners and placed items.</summary>
+    internal ObjectLayer Objects => _objects;
+
+    private readonly ObjectLayer _objects;
+    private LineEdit _spawnEntry;
+
+    /// <summary>The object MoveObject picked up and will put down on the next click.</summary>
+    private Guid? _moving;
     public WorldGuides Guides => _guides;
 
     /// <summary>The tool a left click uses.</summary>
@@ -98,6 +107,12 @@ public partial class WorldView : VBoxContainer
             _data.AssetsApplied += OnAssetsApplied;
         }
 
+        _objects = new ObjectLayer(_host);
+        _objects.Changed += what =>
+        {
+            UpdateStatus();
+            _status.Text = what;
+        };
         _editor = new WorldEditor(_host);
         _editor.Changed += what =>
         {
@@ -180,6 +195,15 @@ public partial class WorldView : VBoxContainer
         Toggle(tools, "Statics", true, v => _host.ShowStatics = v);
         Toggle(tools, "Multis", true, v => _host.ShowMultis = v);
         Toggle(tools, "Roofs", true, v => _host.ShowRoofs = v);
+        Toggle(tools, "Objects", true, v => _objects.Visible = v);
+        tools.AddChild(new Label { Text = "spawns" });
+        _spawnEntry = new LineEdit
+        {
+            Text = "Horse",
+            CustomMinimumSize = new Vector2(110, 0),
+            TooltipText = "What PlaceSpawner spawns: a creature or vendor class name on the shard (Horse, Tanner, ...)",
+        };
+        tools.AddChild(_spawnEntry);
         _season = new OptionButton { TooltipText = "Season: a shard sends one per map; pick the one it uses" };
         foreach (string s in Enum.GetNames<GUO.Game.Managers.Season>())
         {
@@ -296,7 +320,9 @@ public partial class WorldView : VBoxContainer
     public WorldProject OpenProject(string root)
     {
         _editor.Clear();
+        _moving = null;
         WorldProject project = _host.OpenProject(root);
+        _objects.Open(project?.Root);
         UpdateStatus();
         return project;
     }
@@ -318,7 +344,13 @@ public partial class WorldView : VBoxContainer
             return false;
         }
 
+        int before = _host.Facet;
         bool ok = _host.GoTo(facet, x, y);
+        if (_host.Facet != before)
+        {
+            _objects.Redraw();
+        }
+
         UpdateStatus();
         return ok;
     }
@@ -533,6 +565,12 @@ public partial class WorldView : VBoxContainer
                 done = _editor.SetHue(facet, hs.X, hs.Y, hs.Z, hs.Graphic, BrushHue);
                 break;
 
+            case WorldTool.PlaceItem:
+            case WorldTool.PlaceSpawner:
+            case WorldTool.MoveObject:
+            case WorldTool.DeleteObject:
+                return ApplyObjectTool(o);
+
             default:
                 InspectPicked();
                 return "inspected";
@@ -546,6 +584,69 @@ public partial class WorldView : VBoxContainer
         }
 
         return _editor.LastWhat;
+    }
+
+    /// <summary>The world-object tools (ADR-0014) on the picked object or cell.</summary>
+    private string ApplyObjectTool(GameObject o)
+    {
+        if (_objects.Objects == null)
+        {
+            return _status.Text = "no world project is open";
+        }
+
+        int facet = _host.Facet;
+        Guid? picked = _objects.IdOf(o);
+
+        // On top of what was clicked, as Stamp does.
+        sbyte z = o is Static st ? (sbyte)Math.Min(127, st.Z + st.ItemData.Height) : o.Z;
+        switch (Tool)
+        {
+            case WorldTool.PlaceItem:
+            {
+                uint art = _data?.CurrentArt ?? 0;
+                if (art < EditorData.LandCount)
+                {
+                    return _status.Text = "PlaceItem needs a static: pick one in UO Assets > Art (Statics)";
+                }
+
+                _objects.PlaceItem(facet, o.X, o.Y, z, (ushort)(art - EditorData.LandCount), BrushHue);
+                break;
+            }
+
+            case WorldTool.PlaceSpawner:
+                if (_objects.PlaceSpawner(facet, o.X, o.Y, z, _spawnEntry?.Text) == null)
+                {
+                    return _status.Text = "PlaceSpawner needs a name in the spawns box";
+                }
+
+                break;
+
+            case WorldTool.MoveObject:
+                if (_moving == null)
+                {
+                    if (picked == null)
+                    {
+                        return _status.Text = "MoveObject: click one of the project's objects first";
+                    }
+
+                    _moving = picked;
+                    return _status.Text = "MoveObject: now click where it goes";
+                }
+
+                _objects.Move(_moving.Value, facet, o.X, o.Y, o is Item ? o.Z : z);
+                _moving = null;
+                break;
+
+            case WorldTool.DeleteObject:
+                if (picked == null || !_objects.Delete(picked.Value))
+                {
+                    return _status.Text = "DeleteObject takes one of the project's objects";
+                }
+
+                break;
+        }
+
+        return _status.Text;
     }
 
     /// <summary>Inspects what the game's picking found under the pointer on the last frame.</summary>

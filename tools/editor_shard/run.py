@@ -125,11 +125,31 @@ def cmd_setup(cfg, source: Path, port: int) -> int:
     return 0
 
 
-def cmd_start(cfg, data_first: Path | None) -> int:
+def install_objects(h: Path, export: Path) -> bool:
+    """Puts a tools/world export's world objects (ADR-0014) where the bridge syncs them from at boot."""
+    src = export / "shard"
+    manifest = src / "guo_objects.json"
+    if not manifest.is_file():
+        print(f"[editor_shard] {export} has no world objects (shard/guo_objects.json)")
+        return False
+    for f in (src / "Data").rglob("*"):
+        if f.is_file():
+            dst = h / "Data" / f.relative_to(src / "Data")
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(f, dst)
+    (h / "Data" / "GUO").mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(manifest, h / "Data" / "GUO" / "guo_objects.json")
+    print(f"[editor_shard] world objects from {export} installed; the bridge syncs them at boot")
+    return True
+
+
+def cmd_start(cfg, data_first: Path | None, objects: Path | None = None) -> int:
     h = home(cfg)
     state = read_state(h)
     if not state:
         print("[editor_shard] not set up; run: python tools/editor_shard/run.py setup")
+        return 2
+    if objects is not None and not install_objects(h, objects.resolve()):
         return 2
     exe = h / "ModernUO.exe"
     if state.get("pid") and pid_alive(state["pid"], exe):
@@ -231,13 +251,15 @@ def main() -> int:
     ap.add_argument("--from", dest="source", type=Path, help="built ModernUO Distribution to copy (setup)")
     ap.add_argument("--port", type=int, default=2594, help="port for the private instance (setup)")
     ap.add_argument("--data-first", type=Path, help="folder ahead of the install in dataDirectories (start)")
+    ap.add_argument("--objects", type=Path,
+                    help="a tools/world export whose world objects the bridge syncs at boot (start; needs the bridge)")
     ap.add_argument("--bridge-port", type=int, default=2595, help="editor port of the bridge (bridge)")
     args = ap.parse_args()
     cfg = load_config()
     if args.command == "setup":
         return cmd_setup(cfg, (args.source or default_source(cfg)).resolve(), args.port)
     if args.command == "start":
-        return cmd_start(cfg, args.data_first)
+        return cmd_start(cfg, args.data_first, args.objects)
     if args.command == "status":
         return cmd_status(cfg)
     if args.command == "bridge":

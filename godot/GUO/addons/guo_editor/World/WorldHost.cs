@@ -330,6 +330,36 @@ internal sealed class WorldHost : IDisposable
     }
 
     /// <summary>
+    /// Puts a plain item on the ground the way a server does: what
+    /// <c>PacketHandlers.UpdateGameObject</c> does for a world item that is not
+    /// a multi. The World tab's object layer (ADR-0014) draws decoration and
+    /// spawners through it, so they look as the client will show them.
+    /// </summary>
+    public Item PlaceServerItem(uint serial, ushort graphic, ushort x, ushort y, sbyte z, ushort hue = 0)
+    {
+        World world = World;
+        Item item = world?.GetOrCreateItem(serial);
+        if (item == null)
+        {
+            return null;
+        }
+
+        item.Graphic = graphic;
+        item.X = x;
+        item.Y = y;
+        item.Z = z;
+        item.FixHue(hue);
+        item.Amount = 1;
+        item.CheckGraphicChange(item.AnimIndex);
+        if (item.OnGround)
+        {
+            item.SetInWorldTile(item.X, item.Y, item.Z);
+        }
+
+        return item;
+    }
+
+    /// <summary>
     /// Takes an item out of the world the way a server's delete-object packet
     /// (0x1D) does in <c>PacketHandlers.DeleteObject</c>: a multi's house
     /// first, then the item.

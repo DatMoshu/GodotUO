@@ -212,6 +212,9 @@ public partial class EditorSmoke : Node
                 {
                     CheckPick();
                     _world.ForcedMouse = null;
+
+                    // Phase 6: the world-objects layer (ADR-0014).
+                    RunObjects();
                     _before = _world.IsBooted ? _world.Host.Scene.RenderedObjectsCount : 0;
                     PlaceMulti();
                     _stage = 11;
