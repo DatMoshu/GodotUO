@@ -43,6 +43,10 @@ namespace GUO.Game.UI.Gumps
 
         // containers
         private HSliderBar _containersScale;
+
+        // PORT DEVIATION (GUO): the two GUO container options (grid view,
+        // placement clear of the character); mobile defaults.
+        private Checkbox _gridContainers, _fitContainerPlacement;
         private Combobox _cotType;
         private DataBox _databox;
         private HSliderBar _delay_before_display_tooltip, _tooltip_zoom, _tooltip_background_opacity;
@@ -3438,6 +3442,12 @@ namespace GUO.Game.UI.Gumps
                 startY += _useLargeContianersGumps.Height + 2;
             }
 
+            // PORT DEVIATION (GUO): see the field declaration.
+            _gridContainers = AddCheckBox(rightArea, "Open containers as a grid of slots", _currentProfile.GridContainers, startX, startY);
+            startY += _gridContainers.Height + 2;
+            _fitContainerPlacement = AddCheckBox(rightArea, "Open containers clear of the character and each other", _currentProfile.FitContainerPlacement, startX, startY);
+            startY += _fitContainerPlacement.Height + 2;
+
             _containerDoubleClickToLoot = AddCheckBox
             (
                 rightArea,
@@ -3793,6 +3803,8 @@ namespace GUO.Game.UI.Gumps
                     _containersScale.Value = 100;
                     _containerScaleItems.IsChecked = false;
                     _useLargeContianersGumps.IsChecked = false;
+                    _gridContainers.IsChecked = false; // PORT DEVIATION (GUO)
+                    _fitContainerPlacement.IsChecked = false; // PORT DEVIATION (GUO)
                     _containerDoubleClickToLoot.IsChecked = false;
                     _relativeDragAnDropItems.IsChecked = false;
                     _highlightContainersWhenMouseIsOver.IsChecked = false;
@@ -4371,6 +4383,8 @@ namespace GUO.Game.UI.Gumps
             }
 
             _currentProfile.UseLargeContainerGumps = _useLargeContianersGumps.IsChecked;
+            _currentProfile.GridContainers = _gridContainers.IsChecked; // PORT DEVIATION (GUO)
+            _currentProfile.FitContainerPlacement = _fitContainerPlacement.IsChecked; // PORT DEVIATION (GUO)
             _currentProfile.DoubleClickToLootInsideContainers = _containerDoubleClickToLoot.IsChecked;
             _currentProfile.RelativeDragAndDropItems = _relativeDragAnDropItems.IsChecked;
             _currentProfile.HighlightContainerWhenSelected = _highlightContainersWhenMouseIsOver.IsChecked;

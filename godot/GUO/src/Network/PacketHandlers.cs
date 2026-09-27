@@ -1533,6 +1533,10 @@ namespace GUO.Network
                         }
                     );
 
+                    // PORT DEVIATION (GUO): the grid view takes the classic
+                    // gump's place when the profile asks for it.
+                    GridContainerGump.ReplaceClassic(world, serial);
+
                     UIManager.RemovePosition(serial);
                 }
                 else

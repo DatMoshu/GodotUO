@@ -1,7 +1,8 @@
 # Grid container gump — assessment (GUO addition)
 
-Status: **proposed, not built.** Owner: GUO-UI (branch `work/ui`). Written
-2026-09-26 for the coordinator (GUO-Fable) before any code.
+Status: **built** (2026-09-26, branch `work/ui`), verified on the desktop and
+on the AYN Thor; see "As built" at the end. Owner: GUO-UI. The assessment
+below was written before any code and is kept as the record of the choice.
 
 ## What is asked
 
@@ -101,3 +102,57 @@ to open the grid, then the Thor.
 Requested from Codex in `codex_message.md` msg-005: wireframes only, no UO
 art, at 960x540 client px. Frames: open over the world, long-press menu,
 drag to the paperdoll. The paths go here when they land.
+
+## As built (2026-09-26)
+
+What changed from the plan, and why:
+
+- **One upstream hunk, not ~10.** `PacketHandlers.OpenContainer` adds the
+  classic `ContainerGump` exactly as upstream does, then calls
+  `GridContainerGump.ReplaceClassic(world, serial)`, which swaps it for a grid
+  when the profile's `GridContainers` is on. Upstream's position, open sound
+  and gumps.xml handling all still run. The grid watches its container's
+  contents itself (a signature over serial, graphic, hue and amount, compared
+  every frame), so none of the five `RequestUpdateContents` sites, nor
+  `Item.cs`, `GameActions.OpenBackpack` or `MacroManager`, was touched. The
+  grid reports `GumpType.Container`, so gumps.xml saves it and restores it
+  through `ContainerGump.Restore`, which reopens the container and lands on
+  the grid again.
+- **Pages, not a scroll area.** The row count is capped at what fits between
+  the top bar and the touch bar (`MaxRows`), and `<` / `>` page through the
+  rest. A page never needs a scroll gesture the touch layer would have to
+  tell apart from a drag.
+- **Slot control written anew** (`GridSlot`, private). The whole square is the
+  hit area; ItemGump's pixel test against the art suits a mouse, not a finger.
+  It calls the same GameActions that ItemGump and ContainerGump do: pick-up
+  on a moved or held press, double-tap to use, tap for the name, a drop on a
+  bag's slot goes into the bag, a drop on a stack of the same graphic goes
+  onto the stack, any other drop goes into the container at 0xFFFF,0xFFFF
+  (the server places it). Picking up a stack opens upstream's split menu
+  first, as with the classic gump.
+- **Header:** title, a filter field (tapping it raises the soft keyboard
+  through the touch layer's text-box hook), a sort toggle (unsorted / by
+  name / by type), and **Classic**, which reopens that container with the art
+  for the rest of the session.
+- **Options:** two checkboxes next to "use large container gumps": grid
+  containers, and placement clear of the character (`FitContainerPlacement`,
+  previous commit). There is no slot-size slider yet; `GridContainerSlotSize`
+  (44 client px) is in the profile.
+- **Defaults:** mobile table entry `GridContainers = true` at `since: 3`
+  (`PlatformDefaults.CurrentVersion` 3). Desktop and web: off.
+
+Not included: TazUO's locked slots, a per-container remembered view across
+sessions, grid view for corpses (they keep `GridLootGump`), chessboards and
+backgammon.
+
+**Verified (Thor, 960x540 client at total scale 2):** v2->v3 migration sets
+only `GridContainers`. The backpack and bank box open as 282x142 grids, apart
+and clear of the character. Slots are 44 client px, 88 physical px. A touch
+drag of the 1000-gold stack opened the split menu; OKAY then a tap on the
+bank grid dropped it (the shard banks gold as account gold). Double-tap on
+the book opened it. Classic swapped the backpack back to the art. A
+long-press on the candle showed its tooltip and sent the context-menu
+request; a candle has no server menu, so the menu itself is unverified.
+Screenshots: `build/ui/2026-09-26/thor_grid_*.png`.
+
+**Mockup:** msg-005 to Codex had no reply when this was built.

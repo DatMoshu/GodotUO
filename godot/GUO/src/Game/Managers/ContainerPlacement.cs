@@ -56,8 +56,15 @@ namespace GUO.Game.Managers
             }
 
             float scale = UIManager.ContainerScale;
-            int width = (int)(gumpInfo.UV.Width * scale);
-            int height = (int)(gumpInfo.UV.Height * scale);
+
+            return Place(serial, new Point((int)(gumpInfo.UV.Width * scale), (int)(gumpInfo.UV.Height * scale)), proposed, remembered);
+        }
+
+        /// <summary>As above, for a gump whose size is known (GridContainerGump).</summary>
+        public static Point Place(uint serial, Point size, Point proposed, bool remembered)
+        {
+            int width = size.X;
+            int height = size.Y;
 
             Rectangle area = UsableArea();
             Rectangle keepOut = KeepOut();
@@ -166,9 +173,9 @@ namespace GUO.Game.Managers
 
             foreach (Gump gump in UIManager.Gumps)
             {
-                if (gump is ContainerGump c && !c.IsDisposed && c.IsVisible && c.LocalSerial != serial)
+                if ((gump is ContainerGump || gump is GridContainerGump) && !gump.IsDisposed && gump.IsVisible && gump.LocalSerial != serial)
                 {
-                    covered += Overlap(candidate, new Rectangle(c.X, c.Y, c.Width, c.Height));
+                    covered += Overlap(candidate, new Rectangle(gump.X, gump.Y, gump.Width, gump.Height));
                 }
             }
 

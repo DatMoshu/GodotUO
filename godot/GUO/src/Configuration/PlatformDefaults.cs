@@ -49,7 +49,7 @@ namespace GUO.Configuration
         /// The table version this build writes. 0 means the profile predates
         /// platform defaults (every profile saved before GUO had them).
         /// </summary>
-        public const int CurrentVersion = 2;
+        public const int CurrentVersion = 3;
 
         /// <summary>The login screen's size, which every login gump is laid out for.</summary>
         private const int LoginWidth = 640;
@@ -109,7 +109,11 @@ namespace GUO.Configuration
 
                 // v2: containers open clear of the character, the touch bar
                 // and each other (ContainerPlacement).
-                BoolEntry(nameof(Profile.FitContainerPlacement), p => p.FitContainerPlacement, (p, v) => p.FitContainerPlacement = v, true, since: 2)
+                BoolEntry(nameof(Profile.FitContainerPlacement), p => p.FitContainerPlacement, (p, v) => p.FitContainerPlacement = v, true, since: 2),
+
+                // v3: containers open as a grid of finger-sized slots
+                // (GridContainerGump).
+                BoolEntry(nameof(Profile.GridContainers), p => p.GridContainers, (p, v) => p.GridContainers = v, true, since: 3)
             },
 
             [ProfilePlatform.Web] = new[]

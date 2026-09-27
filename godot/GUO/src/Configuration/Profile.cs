@@ -207,6 +207,11 @@ namespace GUO.Configuration
         // PORT DEVIATION (GUO): keep new containers clear of the character,
         // the touch bar and each other (ContainerPlacement); a mobile default.
         public bool FitContainerPlacement { get; set; }
+
+        // PORT DEVIATION (GUO): open containers as a grid of slots
+        // (GridContainerGump); a mobile default. Slot size in client px.
+        public bool GridContainers { get; set; }
+        public int GridContainerSlotSize { get; set; } = 44;
         public int OverrideContainerLocationSetting { get; set; } // 0 = container position, 1 = top right of screen, 2 = last dragged position, 3 = remember every container
 
         [JsonConverter(typeof(Point2Converter))] public Point OverrideContainerLocationPosition { get; set; } = new Point(200, 200);

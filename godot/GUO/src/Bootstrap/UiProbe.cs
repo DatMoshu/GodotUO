@@ -61,15 +61,15 @@ internal static class UiProbe
             + $"full size {p.GameWindowFullSize}, borderless {p.WindowBorderless}, world {p.GameWindowSize.X}x{p.GameWindowSize.Y} at {p.GameWindowPosition.X},{p.GameWindowPosition.Y}; "
             + $"wheel zoom {p.EnableMousewheelScaleZoom}, keep zoom {p.SaveScaleAfterClose}; "
             + $"large containers {p.UseLargeContainerGumps}, container scale {p.ContainersScale}, scale items {p.ScaleItemsInsideContainers}; "
-            + $"grid loot {p.GridLootType}"
+            + $"grid loot {p.GridLootType}; grid containers {p.GridContainers}, slot {p.GridContainerSlotSize}"
         );
 
         GameActions.OpenBackpack(world);
 
         await InputProbe.Wait(host, 120);
 
-        ContainerGump backpack = world.Player?.FindItemByLayer(Game.Data.Layer.Backpack) is { } bag
-            ? UIManager.GetGump<ContainerGump>(bag.Serial)
+        Gump backpack = world.Player?.FindItemByLayer(Game.Data.Layer.Backpack) is { } bag
+            ? ContainerFor(bag.Serial)
             : null;
 
         WorldViewportGump viewport = UIManager.GetGump<WorldViewportGump>();
@@ -78,14 +78,14 @@ internal static class UiProbe
         GD.Print(
             $"[GUO] ui probe: window {bounds.Width}x{bounds.Height}, screen scale {Client.Game.ScreenScale}; "
             + $"viewport {viewport?.Width}x{viewport?.Height} at {viewport?.X},{viewport?.Y}; "
-            + (backpack == null ? "backpack not open" : $"backpack gump 0x{backpack.Graphic:X4} {backpack.Width}x{backpack.Height} at {backpack.X},{backpack.Y}")
+            + (backpack == null ? "backpack not open" : $"backpack {Kind(backpack)} {backpack.Width}x{backpack.Height} at {backpack.X},{backpack.Y}")
         );
 
         Passed = backpack != null && viewport != null;
 
         // A second container, from inside the backpack: where it lands
         // against the first, the character and the screen's edges.
-        ContainerGump inner = null;
+        Gump inner = null;
         Game.GameObjects.Item bagItem = null;
 
         if (backpack != null && world.Items.TryGetValue(backpack.LocalSerial, out var pack))
@@ -107,7 +107,7 @@ internal static class UiProbe
 
             await InputProbe.Wait(host, 120);
 
-            inner = UIManager.GetGump<ContainerGump>(bagItem.Serial);
+            inner = ContainerFor(bagItem.Serial);
         }
 
         string innerName = "inner bag";
@@ -134,9 +134,9 @@ internal static class UiProbe
 
             foreach (Gump g in UIManager.Gumps)
             {
-                if (g is ContainerGump c && !c.IsDisposed && c.LocalSerial != backpack.LocalSerial)
+                if ((g is ContainerGump || g is GridContainerGump) && !g.IsDisposed && g.LocalSerial != backpack.LocalSerial)
                 {
-                    inner = c;
+                    inner = g;
                     innerName = "bank box";
 
                     break;
@@ -193,8 +193,50 @@ internal static class UiProbe
             }
         }
 
+        // The grid view: the gump the profile asked for, a slot per item.
+        if (p.GridContainers && backpack != null)
+        {
+            bool isGrid = backpack is GridContainerGump;
+            int shown = 0, slots = 0, slotSize = 0;
+
+            foreach (Game.UI.Controls.Control c in backpack.Children)
+            {
+                if (c.GetType().Name == "GridSlot")
+                {
+                    slots++;
+                    slotSize = c.Width;
+                    shown += c.LocalSerial != 0 ? 1 : 0;
+                }
+            }
+
+            int items = 0;
+
+            if (world.Items.TryGetValue(backpack.LocalSerial, out var packItem))
+            {
+                for (LinkedObject i = packItem.Items; i != null; i = i.Next)
+                {
+                    items++;
+                }
+            }
+
+            float physical = slotSize * Client.Game.ScreenScale * (float)DisplayServer.ScreenGetScale();
+
+            GD.Print(
+                $"[GUO] ui probe: grid: backpack is {(isGrid ? "a grid" : "NOT A GRID")}; {slots} slots of {slotSize} client px (~{physical:0} physical px), "
+                + $"{shown} filled for {items} items in the pack"
+            );
+
+            Passed &= isGrid && slots > 0 && shown <= items;
+        }
+
         GD.Print($"[GUO] ui probe: {(Passed ? "ok" : "FAIL")}");
     }
+
+    private static Gump ContainerFor(uint serial) =>
+        (Gump)UIManager.GetGump<ContainerGump>(serial) ?? UIManager.GetGump<GridContainerGump>(serial);
+
+    private static string Kind(Gump g) =>
+        g is ContainerGump c ? $"classic gump 0x{c.Graphic:X4}" : g is GridContainerGump ? "grid" : g.GetType().Name;
 
     private static Compat.Rectangle Rect(Gump g) => new Compat.Rectangle(g.X, g.Y, g.Width, g.Height);
 
