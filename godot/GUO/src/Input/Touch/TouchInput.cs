@@ -686,7 +686,7 @@ namespace GUO.Input.Touch
         {
             Press(MouseButton.Right, _lastAt);
             _phase = Phase.RightHeld;
-            Note("hold on world -> right press (walk)");
+            Note($"hold on world -> right press (walk), under the finger: {SelectedObject.Object?.GetType().Name ?? "nothing"}");
         }
 
         private static void EndHeld(Vector2 at)
