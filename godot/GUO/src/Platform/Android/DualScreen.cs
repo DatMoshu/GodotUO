@@ -225,6 +225,14 @@ namespace GUO.Platform.Android
 
             RenderTarget2D target = _instance._target;
 
+            // SetRenderTarget clears whatever it binds to opaque black, as
+            // FNA does a DiscardContents target. Binding the UI target back
+            // at the end would do that to it after GameController has
+            // cleared it transparent, and the UI layer would then cover the
+            // world in black (the black world on the Thor, 2026-09-27). Its
+            // clear colour is put back as it was.
+            Godot.Color restoreClear = restore?.ClearColor ?? Colors.Transparent;
+
             // The clear rect has to be put back every frame: a canvas item is
             // emptied by its own redraw, which the tree schedules at least
             // once after the item is added, and the batcher only touches the
@@ -277,6 +285,11 @@ namespace GUO.Platform.Android
 
             batcher.End();
             batcher.SetRenderTarget(restore);
+
+            if (restore != null)
+            {
+                restore.ClearColor = restoreClear;
+            }
         }
 
         /// <summary>Pixels between the held-item badge and the screen's edge.</summary>

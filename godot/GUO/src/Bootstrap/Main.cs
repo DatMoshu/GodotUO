@@ -343,6 +343,22 @@ public partial class Main : Node
             "-port", _options.ShardPort.ToString(),
         };
 
+        if (_options.AutoLogin && !string.IsNullOrWhiteSpace(_options.Account))
+        {
+            args.AddRange(new[]
+            {
+                "-username", _options.Account,
+                "-password", string.IsNullOrEmpty(_options.Password) ? _options.Account : _options.Password,
+                "-autologin", "true",
+                "-skiploginscreen",
+            });
+            GD.Print($"[GUO] autologin      : {_options.Account}");
+        }
+        else if (_options.AutoLogin)
+        {
+            GD.Print("[GUO] autologin      : ignored, no --account");
+        }
+
         Bootstrap.Boot(null, args.ToArray());
     }
 
@@ -781,6 +797,17 @@ public partial class Main : Node
         public string Character { get; private set; } = "";
 
         /// <summary>
+        /// Log straight in as <see cref="Account"/>: login, first server and
+        /// last (or first) character with no input, through upstream's own
+        /// -username/-password/-autologin/-skiploginscreen
+        /// switches. For device and scripted
+        /// runs, where typing through a soft keyboard is the slow part. Like
+        /// upstream, the login scene saves settings.json, so autologin stays
+        /// on in that profile until it is unticked.
+        /// </summary>
+        public bool AutoLogin { get; private set; }
+
+        /// <summary>
         /// Where to put the window, overriding the saved position and never
         /// saved back. Null leaves the client to place itself. This is what
         /// lets several scripted clients tile a screen instead of stacking.
@@ -1018,6 +1045,9 @@ public partial class Main : Node
                         break;
                     case "--password":
                         o.Password = Next();
+                        break;
+                    case "--autologin":
+                        o.AutoLogin = true;
                         break;
                     case "--character":
                         o.Character = Next();
