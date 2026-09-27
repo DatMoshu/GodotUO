@@ -103,6 +103,11 @@ namespace GUO.Network
             _socket = wrapperType switch
             {
                 SocketWrapperType.TcpSocket => new TcpSocketWrapper(),
+                // PORT DEVIATION (GUO): in a browser the WebSocket is Godot's
+                // (the page's own), polled; upstream's wrapper needs a raw TCP
+                // socket and a blocking connect. See GodotWebSocketWrapper.
+                SocketWrapperType.WebSocket when OperatingSystem.IsBrowser() => new GodotWebSocketWrapper(),
+                // END PORT DEVIATION (GUO)
                 SocketWrapperType.WebSocket => new WebSocketWrapper(),
                 _ => throw new ArgumentOutOfRangeException(nameof(wrapperType), wrapperType, null)
             };

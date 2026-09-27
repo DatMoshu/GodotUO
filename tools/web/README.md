@@ -1,89 +1,90 @@
 # tools/web -- GUO as a web page
 
-Exports the client for the web, serves it with the headers a threaded Godot
-web build needs, and smoke-tests it in a headless browser. The finding that
-governs all of it is in
-[ADR-0008](../../docs/architecture/ADR-0008-web-target.md):
+Exports the client for the web, serves it (with the player's own UO install)
+from this PC, and smoke-tests it in headless Chrome and Firefox. The decision
+record is [ADR-0008](../../docs/architecture/ADR-0008-web-target.md) and its
+amendment 1; the research behind it is
+[docs/web/unblock-report.md](../../docs/web/unblock-report.md).
 
-> **Godot 4.7.2 mono cannot export a C# project to the web.** The engine
-> refuses (`Exporting to Web is currently not supported in Godot 4 when using
-> C#/.NET`) and its mono export templates ship no web template. Upstream
-> tracking issue: godotengine/godot#70796.
-
-This folder exists so that `doctor` says precisely that, and so the pipeline
-is ready the day it changes.
+The pinned Godot 4.7.2 mono **refuses** a C# web export. This tool exports
+with a community 4.7.2 build that can do it (godotengine/godot#106125, set
+up in [tools/godot_web](../godot_web/README.md)), kept apart from the pinned
+engine with its own .NET SDK and NuGet cache.
 
 ```
-launchers\web\doctor.bat     what a web export needs, and what is here (exit 1 today)
-launchers\web\export.bat     godot-console --headless --export-debug Web build\web\GUO.html
-launchers\web\serve.bat      serve build\web on UO_WEB_PORT with COOP/COEP headers
-launchers\web\smoke.bat      export + serve + headless Chrome + wait for "[GUO]" in the console
+launchers\web\doctor.bat      what a web export needs, and what is here
+launchers\web\export.bat      export build\web\GUO.html with the fork (~10 min)
+launchers\web\serve.bat       serve build\web + the install at /uo/, COOP/COEP, 127.0.0.1 only
+launchers\web\ws_bridge.bat   the shard over WebSocket (tools\ws_bridge), for logging in
+launchers\web\smoke.bat       export + serve + Chrome and Firefox + wait for the login gump
 ```
 
 Everything is `python tools\web\run.py <command>` underneath; `preset` only
 renders the export preset.
 
+## Playing it locally
+
+```
+launchers\shard\run.bat           the dev shard (or any shard: UO_SHARD_HOST/PORT)
+launchers\web\ws_bridge.bat       ws://127.0.0.1:2594 -> the shard
+launchers\web\serve.bat           http://127.0.0.1:8060/GUO.html
+```
+
+Open `http://127.0.0.1:8060/GUO.html`. Page parameters, all optional:
+`?data=uo/` (where the install is served; `none` mounts nothing),
+`&host=ws://h&port=2594` (the bridge; defaults come from `serve`),
+`&arg=--foo` (any client argument, repeatable).
+
 ## Settings
 
 ```
-UO_WEB_PORT      default 8060      the local server's port (config.bat / guo.config)
-UO_WEB_BROWSER   optional          a Chromium binary for the smoke; Chrome/Edge are found by default
+UO_WEB_PORT          default 8060      the page server's port
+UO_WS_BRIDGE_PORT    default 2594      the WebSocket bridge's port
+UO_WEB_GODOT         tools\godot_web\...\*_console.exe   the fork that can export C# to the web
+UO_CLIENT_DATA                         the install serve hands to the page (this PC only)
+UO_CLIENT_VERSION                      told to the page through /uo/_index.json
 ```
 
-## The preset
+## How the pieces fit
 
-`export_presets.template.cfg` is rendered into `godot\GUO\export_presets.cfg`
-(gitignored; the Android tool renders the same file from its own template,
-and each tool re-renders before it exports). What it sets and why:
+- **Export** runs the fork's console with its private .NET SDK and NuGet
+  cache (`Paths.web_env`), fails on any `ERROR:` line (a failed C# build
+  still writes a page), then makes two edits to the engine's JS, each anchored
+  on text that must occur exactly once (`PAGE_PATCHES`): it exposes
+  Emscripten's `FS` as `Module.guoFS`, and calls
+  `window.guoBeforeMain(Module, args)` right before `main()`. It copies
+  `guo_data.js` next to the page; the preset loads it from `<head>`.
+- **guo_data.js** mounts the install at `/uo` as lazy read-only files: sizes
+  from `/uo/_index.json`, bytes fetched on first read in 1 MiB chunks through
+  a *byte source*, with a 384 MiB LRU. Today's source is HTTP Range from
+  `serve`. A folder the player picks, or a shard that hosts its own client
+  files, plug in behind the same `read()`. It also builds the client's
+  arguments: user args after `--`, the main pack by absolute path (the client
+  changes directory at startup), `--client-data /uo`, the bridge host and port.
+- **The client** is unchanged above its readers. In a browser: `MMFileReader`
+  reads through the stream, not a mapping; zlib is `ManagedInflate` (the
+  template links no `System.IO.Compression.Native`); the socket is
+  `GodotWebSocketWrapper` over Godot's `WebSocketPeer`; `ignore_relay_ip` is
+  on. Each is a marked `PORT DEVIATION (GUO)`, off on the desktop.
+- **serve** answers `/uo/_index.json` and ranged `GET /uo/<file>`, from
+  `UO_CLIENT_DATA` by default, on 127.0.0.1 only; the page's own files get
+  COOP/COEP (the threaded template needs `SharedArrayBuffer`).
+- **smoke** uses Python Playwright (system Chrome, and Firefox from
+  `tools\godot_web\browsers`), passes `?arg=--login-probe-stay`, and waits
+  for `[GUO] login probe: ok`; FATAL lines and C# exceptions fail it fast.
+  `--query` and `--wait-for` drive other probes (the shard login below).
+  Output: `build\web\smoke_<browser>.png` and `.txt`.
 
-| Key | Value | Why |
-|---|---|---|
-| `variant/thread_support` | `true` | the client blocks on file reads and a socket; the no-threads template cannot |
-| `progressive_web_app/ensure_cross_origin_isolation_headers` | `true` | a service worker that re-serves the page with COOP/COEP on hosts that cannot send them |
-| `html/canvas_resize_policy` | `2` (adaptive) | the client owns its window size; the canvas follows the browser window |
-| `exclude_filter` | `addons/guo_editor/*` | the editor add-on's `.cs`/`plugin.cfg` are not game resources |
-| `vram_texture_compression/for_desktop` | `true` | required by the web export plugin; the client's art never goes through Godot's importer anyway |
+## What has actually been run
 
-## Cross-origin isolation
-
-The threaded template needs `SharedArrayBuffer`, which a browser only
-enables when the page is served with
-
-```
-Cross-Origin-Opener-Policy: same-origin
-Cross-Origin-Embedder-Policy: require-corp
-```
-
-`serve` sends both (plus `Cross-Origin-Resource-Policy: same-origin` and
-`Cache-Control: no-store`) and serves `.wasm` as `application/wasm`. Any
-other host needs the same two headers, or the preset's service worker.
-
-## The smoke
-
-`smoke` exports, serves `build\web`, and runs Chrome or Edge with
-`--headless=new --enable-logging=stderr --v=1 --screenshot=build\web\smoke.png`
-at `http://127.0.0.1:<port>/GUO.html`. Every `console.log` line lands in
-`build\web\smoke_console.txt`; the page passes once one carries `[GUO]` (the
-client's own log prefix, the same one the Android smoke waits for) or the
-`Godot Engine v` banner, and fails on a `SharedArrayBuffer`/`Uncaught` line or
-the timeout (default 120 s). `--no-export` reuses `build\web`.
-
-## Client data on the web
-
-The UO install can never be part of the page (CLAUDE.md rule 8). ADR-0008
-weighs the File System Access API, a local range-request server and OPFS,
-and records the design: an `IUOFile` backend behind the existing `IO/`
-readers, chunked over HTTP `Range` or OPFS, with the loaders unchanged. It is
-not implemented: with no export there is no page to verify a byte read in.
-
-## What has actually been run, and what has only been written
-
-Recorded 2026-09-26, Windows 11, Godot 4.7.2 stable mono, .NET SDK 10.0.301.
+2026-09-27, Windows 11, the fork in tools/godot_web (Godot 4.7.2 mono +
+#106125, Emscripten 6.0.5, threaded), private .NET SDK 10.0.301 with
+wasm-tools-net9 (runtime 9.0.19).
 
 | What | Result |
 |---|---|
-| `python tools\web\run.py doctor` | exit 1: no `web_*` template among the 27 mono template files; `dotnet workload list` itself exits 1 on this PC (COM error 0x8007007E; `dotnet workload search wasm` works); Chrome found |
-| `python tools\web\run.py export` | exit 1: `Exporting to Web is currently not supported in Godot 4 when using C#/.NET.` in `build\web\export.log` |
-| `python tools\web\run.py serve --root <test folder>` + `curl -I` | `200 OK` with all four headers |
-| `python tools\web\run.py smoke` | exit 1 at the export step, as designed; the browser half is **written, not verified** |
-| `dotnet build godot\GUO\GUO.csproj` | 0 errors; nothing in the client changed for this folder |
+| `run.py export` | exit 0 in about 10 min, most of it the SDK's `emcc` relink, which cannot be turned off while globalization is invariant; 67 MB wasm, 68 MB pck |
+| `run.py smoke` | **login gump rendered in Chrome (57 s) and Firefox (235 s)**, pixel-identical; 250 range requests, 227 MiB of the 2.6 GB install read |
+| `serve` + `curl` | `/uo/_index.json` lists 520 files (2,588 MiB); `Range: bytes=10-19` gives `206` with `Content-Range`; `..%2F..` gives `404` |
+| `dotnet build` / `launchers\dev\smoke.bat` | 0 errors / OK: nothing changes on the desktop |
+| `--offline` with `GUO_NO_MMAP=1 GUO_ZLIB=managed` | loads every archive, same log as without |
