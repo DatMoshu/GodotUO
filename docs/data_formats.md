@@ -423,6 +423,10 @@ manifest plus `url` (`packs/<id>/<version>.zip`), `sha256` (whole ZIP), and
 are published at `previews/<id>/<version>/<preview>` and named by
 `preview_url`. The web page renders metadata as text, never HTML.
 
+Ids beginning `sample-` are reserved for generated sample packs
+(`tools/asset_store/samples.py`); catalogues label them as samples, and a
+real pack must not use the prefix.
+
 Publication validates before writing; an existing id/version is immutable
 (identical bytes are a no-op). Rebuilding an index verifies all published
 ZIPs; replacement of the index is atomic. HTTP serves GET/HEAD and single

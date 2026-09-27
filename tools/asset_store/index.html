@@ -1,20 +1,389 @@
 <!doctype html>
-<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>GodotUO · Asset Store</title>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GodotUO Asset Store</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Cellipse cx=%2216%22 cy=%2216%22 rx=%228%22 ry=%2213%22 fill=%22none%22 stroke=%22%239fb4ff%22 stroke-width=%223%22/%3E%3C/svg%3E">
+<meta name="description" content="Backgrounds, themes, sounds and layout presets for the GodotUO client.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Alegreya:ital,wght@0,500;0,700;1,500&family=Alegreya+Sans:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
-:root{color-scheme:dark;--ink:#eeeade;--muted:#abb5ac;--gold:#dfbb77;--line:#354039;--panel:#202922;font:15px/1.5 system-ui,sans-serif;background:#141917;color:var(--ink)}*{box-sizing:border-box}body{margin:0}button,input,select{font:inherit}button,a,input,select{outline-offset:5px}a{color:inherit}button{cursor:pointer}img{image-rendering:pixelated}.wrap{max-width:1260px;padding:0 36px;margin:auto}nav{height:84px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line)}.brand{display:flex;gap:12px;align-items:center;font-weight:750;letter-spacing:.03em;text-decoration:none}.sigil{color:var(--gold);font:36px Georgia}.nav-note{font-size:11px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase}.hero{display:grid;grid-template-columns:1fr 1fr;gap:60px;align-items:center;padding:48px 0}.eyebrow{color:var(--gold);font-size:11px;font-weight:700;letter-spacing:.18em;text-transform:uppercase}h1{font:clamp(40px,5vw,64px)/1.05 Georgia,serif;letter-spacing:-.025em;margin:18px 0 22px}h1 em{color:var(--gold);font-weight:400}.intro{color:var(--muted);max-width:470px;font-size:16px;line-height:1.75}.hero-link{display:inline-flex;gap:24px;border-bottom:1px solid var(--gold);padding:8px 0;text-decoration:none;color:var(--gold);margin-top:10px}.feature{position:relative;aspect-ratio:1.5;overflow:hidden;border:1px solid #52634e;border-radius:3px;background:#1c2925}.feature img{width:100%;height:100%;object-fit:cover}.feature:after{content:"";position:absolute;inset:40% 0 0;background:linear-gradient(transparent,#0d1619)}.feature-caption{position:absolute;z-index:1;bottom:22px;left:26px;right:26px}.feature-caption h2{font:30px Georgia;margin:6px 0}.feature-caption p{color:#c2cdc5;font-size:12px;margin:6px 0}.feature-tag{position:absolute;z-index:1;top:18px;left:18px;background:#19221de8;padding:5px 10px;color:#e7d7b5;font-size:10px;letter-spacing:.12em}.collection-top{display:flex;align-items:baseline;justify-content:space-between;border-top:1px solid var(--line);padding-top:28px}.collection-top h2{font:30px Georgia;margin:0}.count{color:var(--muted);font-size:13px}.toolbar{display:flex;gap:12px;margin:24px 0}.search{position:relative;flex:1}.search span{position:absolute;left:16px;top:11px;color:var(--gold);font-size:20px}input,select{width:100%;padding:13px 16px;border:1px solid #4a584d;border-radius:3px;background:#1b231e;color:var(--ink)}input{padding-left:46px}input::placeholder{color:#a2ada4}select{width:210px}#cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px}article{background:var(--panel);border:1px solid var(--line);border-radius:4px;overflow:hidden;transition:border-color .15s,transform .15s}article:hover{border-color:#89916b;transform:translateY(-3px)}.preview{display:block;width:100%;padding:0;border:0;background:#14221e;position:relative;color:var(--ink);text-align:left}.preview img{display:block;width:100%;aspect-ratio:16/10;object-fit:cover}.preview-label{position:absolute;bottom:12px;right:12px;padding:5px 10px;font-size:11px;background:#121b16e8;border:1px solid #66745e;border-radius:3px}.body{padding:20px}.card-top{display:flex;justify-content:space-between;gap:10px;align-items:center}.kind{color:var(--gold);text-transform:uppercase;letter-spacing:.12em;font-size:10px;font-weight:700}.licence{font-size:10px;color:#c6d4c0;border:1px solid #53654f;padding:2px 7px;border-radius:3px}article h3{font:25px Georgia;margin:12px 0 6px}.author{font-size:12px;color:var(--muted)}.card-bottom{border-top:1px solid #3b473d;margin-top:19px;padding-top:15px;display:flex;justify-content:space-between;align-items:center;gap:8px}.version{color:var(--muted);font-size:11px}.download{color:var(--gold);text-decoration:none;font-size:12px;font-weight:650}.download:hover{text-decoration:underline}.empty{padding:55px;text-align:center;border:1px dashed var(--line);grid-column:1/-1;color:var(--muted)}.empty h3{color:var(--ink);font:26px Georgia}footer{margin-top:48px;padding:26px 0 36px;border-top:1px solid var(--line);display:flex;justify-content:space-between;gap:24px;color:var(--muted);font-size:12px}dialog{padding:0;background:#202922;color:var(--ink);border:1px solid #778160;border-radius:6px;max-width:min(850px,92vw);width:850px;max-height:90vh}dialog::backdrop{background:#07100dd9}dialog img{display:block;width:100%;max-height:52vh;object-fit:contain;background:#101815}dialog .body{padding:24px}dialog h2{font:32px Georgia;margin:0 0 10px}.dialog-top{display:flex;justify-content:space-between;align-items:start;gap:16px}.close{background:#303d31;color:var(--ink);border:1px solid #66745e;padding:8px 14px;border-radius:3px}.help{color:var(--muted);font-size:13px}.skip{position:absolute;left:16px;top:-100px;background:var(--gold);color:#141917;padding:10px}.skip:focus{top:10px;z-index:2}@media(max-width:900px){.hero{gap:28px}#cards{grid-template-columns:repeat(2,minmax(0,1fr))}.wrap{padding:0 24px}}@media(max-width:580px){.wrap{padding:0 18px}.nav-note{display:none}nav{height:65px}.hero{grid-template-columns:1fr;padding:32px 0;gap:22px}h1{font-size:44px}.feature{aspect-ratio:1.7}.toolbar{flex-direction:column}select{width:100%}#cards{grid-template-columns:1fr}.collection-top h2{font-size:26px}footer{flex-direction:column}.intro{font-size:15px}}@media(prefers-reduced-motion:reduce){article{transition:none}article:hover{transform:none}}
+/* The store renders pack metadata as text only (data_formats.md section 12). */
+:root {
+  color-scheme: dark;
+  --ground: #1a2233;
+  --panel: #222c42;
+  --raised: #2b3753;
+  --line: #34405c;
+  --ink: #e6eaf2;
+  --muted: #9aa5bd;
+  --moon: #9fb4ff;
+  --lantern: #e6a94f;
+  --display: "Alegreya", Georgia, "Times New Roman", serif;
+  --ui: "Alegreya Sans", "Segoe UI", system-ui, sans-serif;
+  --gutter: clamp(16px, 4vw, 48px);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--ground); color: var(--ink); }
+body { font: 17px/1.55 var(--ui); }
+a { color: var(--moon); }
+button, input { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--moon); outline-offset: 3px; }
+img { display: block; max-width: 100%; }
+.skip { position: absolute; left: -999px; }
+.skip:focus { left: 16px; top: 16px; background: var(--panel); padding: 8px 12px; z-index: 5; }
+
+/* Top bar */
+.bar { display: flex; align-items: baseline; justify-content: space-between; gap: 16px;
+  padding: 18px var(--gutter); }
+.brand { font: 700 1.25rem/1 var(--display); color: var(--ink); text-decoration: none; }
+.brand span { font-weight: 500; color: var(--muted); }
+
+/* The featured pane: the product itself, as big as the screen allows */
+.feature { position: relative; margin: 0 var(--gutter); border-radius: 14px; overflow: hidden;
+  background: #0e1422; aspect-ratio: 16 / 7; min-height: 320px; }
+.feature img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
+  transition: opacity .6s ease; }
+.feature img.fading { opacity: 0; }
+.feature::after { content: ""; position: absolute; inset: 0;
+  background: linear-gradient(180deg, transparent 45%, rgba(10, 14, 24, .88)); }
+.feature-text { position: absolute; left: clamp(20px, 4vw, 48px); right: 20px; bottom: clamp(18px, 3.5vw, 40px); z-index: 1; }
+.feature h1 { font: 700 clamp(2.4rem, 6.5vw, 5.2rem)/0.95 var(--display); margin: 0 0 12px;
+  letter-spacing: -0.01em; max-width: 14ch; }
+.feature p { margin: 0 0 16px; color: #cfd6e6; max-width: 52ch; }
+.feature .actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.btn { display: inline-flex; align-items: center; gap: 8px; border-radius: 999px; padding: 9px 18px;
+  border: 1px solid var(--line); background: var(--panel); text-decoration: none; color: var(--ink);
+  font-weight: 500; cursor: pointer; }
+.btn:hover { background: var(--raised); }
+.btn.primary { background: var(--lantern); border-color: var(--lantern); color: #1d160c; }
+.btn.primary:hover { background: #f0b862; }
+
+.strip { display: flex; gap: 8px; margin: 12px var(--gutter) 0; overflow-x: auto; padding-bottom: 6px;
+  scrollbar-width: thin; }
+.strip button { flex: 0 0 auto; width: 104px; aspect-ratio: 16 / 9; padding: 0; border-radius: 8px;
+  border: 2px solid transparent; overflow: hidden; background: #0e1422; cursor: pointer; }
+.strip button img { width: 100%; height: 100%; object-fit: cover; }
+.strip button[aria-pressed="true"] { border-color: var(--lantern); }
+
+/* Finding things */
+.find { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between;
+  margin: 48px var(--gutter) 8px; }
+.search { flex: 1 1 280px; max-width: 460px; }
+.search input { width: 100%; border-radius: 999px; border: 1px solid var(--line); background: var(--panel);
+  padding: 10px 18px; }
+.search input::placeholder { color: var(--muted); }
+.tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.tabs button { border: 1px solid var(--line); background: transparent; border-radius: 999px;
+  padding: 6px 14px; cursor: pointer; color: var(--muted); }
+.tabs button[aria-pressed="true"] { background: var(--ink); color: var(--ground); border-color: var(--ink); }
+.tabs .n { opacity: .7; margin-left: 4px; font-variant-numeric: tabular-nums; }
+
+/* A shelf per kind */
+.shelf { margin: 40px var(--gutter) 0; }
+.shelf > header { display: flex; align-items: baseline; justify-content: space-between; gap: 16px;
+  border-bottom: 1px solid var(--line); padding-bottom: 10px; margin-bottom: 18px; }
+.shelf h2 { font: 700 1.9rem/1.1 var(--display); margin: 0; }
+.shelf header p { margin: 0; color: var(--muted); max-width: 48ch; text-align: right; }
+
+.panes { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 22px 18px; }
+.rows { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 14px; }
+
+.pack { position: relative; }
+.pack .open { all: unset; box-sizing: border-box; cursor: pointer; display: block; width: 100%; }
+.pack .open:focus-visible { outline: 2px solid var(--moon); outline-offset: 4px; border-radius: 10px; }
+.pane .thumb { aspect-ratio: 16 / 9; border-radius: 10px; overflow: hidden; background: #0e1422; }
+.pane .thumb img { width: 100%; height: 100%; object-fit: cover; transition: transform .4s ease; }
+.pane .open:hover img { transform: scale(1.03); }
+.pack h3 { font: 700 1.2rem/1.2 var(--display); margin: 10px 0 2px; }
+.by { color: var(--muted); font-size: .95rem; margin: 0; }
+
+.row .open { display: grid; grid-template-columns: 168px 1fr; gap: 16px; align-items: center;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px; }
+.row .open:hover { background: var(--raised); }
+.row .thumb { aspect-ratio: 16 / 9; border-radius: 7px; overflow: hidden; }
+.row .thumb img { width: 100%; height: 100%; object-fit: cover; }
+.row h3 { margin-top: 0; }
+
+.badge { display: inline-block; font-size: .8rem; font-weight: 500; border: 1px solid var(--muted);
+  color: var(--muted); border-radius: 999px; padding: 0 8px; margin-left: 8px; vertical-align: 3px;
+  font-family: var(--ui); }
+
+.empty { margin: 48px var(--gutter); color: var(--muted); }
+.empty strong { color: var(--ink); }
+
+/* How to install: a real sequence, so it is numbered */
+.install { margin: 72px var(--gutter) 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 24px;
+  border-top: 1px solid var(--line); padding-top: 28px; }
+.install h2 { font: 700 1.9rem/1.1 var(--display); margin: 0; }
+.install ol { margin: 0; padding-left: 1.3em; display: grid; gap: 10px; max-width: 62ch; }
+.install li::marker { font-family: var(--display); font-weight: 700; color: var(--lantern); }
+.install kbd { font: inherit; background: var(--panel); border: 1px solid var(--line); border-radius: 5px; padding: 0 6px; }
+
+footer { margin: 64px var(--gutter) 0; padding: 20px 0 40px; border-top: 1px solid var(--line);
+  color: var(--muted); font-size: .92rem; display: grid; gap: 6px; }
+
+/* Detail */
+dialog { border: 1px solid var(--line); border-radius: 14px; padding: 0; background: var(--panel); color: var(--ink);
+  width: min(880px, calc(100vw - 32px)); max-height: calc(100vh - 32px); }
+dialog::backdrop { background: rgba(8, 11, 20, .72); }
+dialog img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; background: #0e1422; }
+.detail-body { padding: 20px 24px 24px; }
+.detail-top { display: flex; justify-content: space-between; align-items: start; gap: 16px; }
+.detail-top h2 { font: 700 2rem/1.1 var(--display); margin: 0; }
+dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 18px; margin: 16px 0; }
+dt { color: var(--muted); }
+dd { margin: 0; overflow-wrap: anywhere; }
+.note { color: var(--muted); margin: 0 0 16px; }
+
+@media (max-width: 720px) {
+  .feature { aspect-ratio: 4 / 5; }
+  .shelf > header { display: block; }
+  .shelf header p { text-align: left; margin-top: 4px; }
+  .rows { grid-template-columns: 1fr; }
+  .row .open { grid-template-columns: 112px 1fr; }
+  .install { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .feature img, .pane .thumb img { transition: none; }
+  .pane .open:hover img { transform: none; }
+}
 </style>
-<a class="skip" href="#collection">Skip to collection</a><div class="wrap">
-<nav aria-label="Store"><a class="brand" href="./"><span class="sigil" aria-hidden="true">◈</span> GodotUO <span style="font-weight:400;color:var(--muted)">/ Asset Store</span></a><span class="nav-note">Made for your corner of Britannia</span></nav>
-<header class="hero"><div><div class="eyebrow">Community collection</div><h1>A familiar world.<br><em>Your atmosphere.</em></h1><p class="intro">Give your adventures a different backdrop. Discover backgrounds, sounds, themes and presets made for GodotUO.</p><a class="hero-link" href="#collection">Explore the collection <span aria-hidden="true">↗</span></a></div><div class="feature" id="feature" hidden><div class="feature-tag">FROM THE COLLECTION</div><img id="feature-image" alt=""><div class="feature-caption"><div class="eyebrow">Background</div><h2 id="feature-title"></h2><p id="feature-meta"></p></div></div></header>
-<main id="collection"><div class="collection-top"><h2>Find your atmosphere</h2><span id="status" class="count" role="status">Loading the collection…</span></div><div class="toolbar"><div class="search"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="Search packs or creators…" aria-label="Search packs"></div><select id="kind" aria-label="Filter by kind"><option value="">All kinds</option><option value="background">Backgrounds</option><option value="theme">Themes</option><option value="sound">Sounds</option><option value="profile-preset">Profile presets</option></select></div><div id="cards"></div></main>
-<footer><span>GodotUO · A world worth making your own.</span><span>Install in game: Options → Store. Every pack shows its creator and licence.</span></footer></div>
-<dialog id="detail" aria-labelledby="detail-title"><img id="detail-image" alt=""><div class="body"><div class="dialog-top"><h2 id="detail-title"></h2><button class="close" id="close">Close ×</button></div><p class="help" id="detail-meta"></p><p class="help">To install directly, open Store in GodotUO Options. Choose an installed background in Options, then Apply.</p><a class="download" id="detail-download" download>Download pack ↓</a></div></dialog>
+</head>
+<body>
+<a class="skip" href="#shelves">Skip to the packs</a>
+
+<div class="bar">
+  <a class="brand" href="./">GodotUO <span>Asset Store</span></a>
+  <a href="#install">How to install</a>
+</div>
+
+<section class="feature" aria-labelledby="feature-title">
+  <img id="feature-img" alt="">
+  <div class="feature-text">
+    <h1 id="feature-title">Loading the store</h1>
+    <p id="feature-by">Reading the catalogue from this store.</p>
+    <div class="actions">
+      <a class="btn primary" id="feature-download" href="#" download>Download pack</a>
+      <button class="btn" id="feature-open" type="button">Details</button>
+    </div>
+  </div>
+</section>
+<div class="strip" id="strip" role="group" aria-label="Choose the featured background"></div>
+
+<div class="find">
+  <label class="search"><span class="skip">Search packs</span>
+    <input id="search" type="search" placeholder="Search by name or creator" autocomplete="off"></label>
+  <div class="tabs" id="tabs" role="group" aria-label="Show a kind of pack"></div>
+</div>
+
+<main id="shelves"></main>
+<p class="empty" id="empty" hidden></p>
+
+<section class="install" id="install" aria-labelledby="install-title">
+  <h2 id="install-title">How to install</h2>
+  <ol>
+    <li>In GodotUO, open <kbd>Options</kbd> and choose <kbd>Store</kbd>. It lists the same packs as this page.</li>
+    <li>Choose <kbd>Install</kbd> on a pack. The client downloads it and checks every file before anything is kept.</li>
+    <li>For a background, go back to <kbd>Options</kbd>, pick it in the background list, and choose <kbd>Apply</kbd>.</li>
+  </ol>
+</section>
+
+<footer>
+  <span>Packs hold backgrounds, themes, sounds and layout presets. None of them contain Ultima Online game data; GodotUO always reads your own install.</span>
+  <span id="sample-note" hidden>Packs marked Sample show what each shelf can hold. They were generated for this preview and do nothing yet beyond installing their files.</span>
+</footer>
+
+<dialog id="detail" aria-labelledby="detail-title">
+  <img id="detail-img" alt="">
+  <div class="detail-body">
+    <div class="detail-top">
+      <h2 id="detail-title"></h2>
+      <button class="btn" id="detail-close" type="button">Close</button>
+    </div>
+    <dl id="detail-meta"></dl>
+    <p class="note" id="detail-note"></p>
+    <a class="btn primary" id="detail-download" href="#" download>Download pack</a>
+  </div>
+</dialog>
+
 <script>
-const $=s=>document.querySelector(s),cards=$('#cards'),status=$('#status'),search=$('#search'),kind=$('#kind'),detail=$('#detail');let packs=[];
-function localUrl(path){const u=new URL(path,location.href);if(u.origin!==location.origin||!['http:','https:'].includes(u.protocol))throw Error('Invalid asset URL');return u.href}
-const labels={'background':'Background','theme':'Theme','sound':'Sound','profile-preset':'Profile preset'};
-function element(tag,className,text){const e=document.createElement(tag);if(className)e.className=className;if(text)e.textContent=text;return e}
-function show(p){$('#detail-title').textContent=p.title;$('#detail-image').src=localUrl(p.preview_url);$('#detail-image').alt=p.title;$('#detail-meta').textContent=`${labels[p.kind]||p.kind} · By ${p.author} · ${p.licence} · Version ${p.version}`;$('#detail-download').href=localUrl(p.url);detail.showModal()}
-function render(){cards.replaceChildren();const q=search.value.trim().toLowerCase(),selected=packs.filter(p=>(!kind.value||p.kind===kind.value)&&[p.title,p.author,p.id].some(v=>String(v).toLowerCase().includes(q)));status.textContent=`${selected.length} ${selected.length===1?'pack':'packs'} in view`;for(const p of selected){const article=element('article'),preview=element('button','preview'),img=element('img'),body=element('div','body'),top=element('div','card-top'),bottom=element('div','card-bottom'),link=element('a','download','Download ↓');preview.type='button';preview.setAttribute('aria-label',`Preview ${p.title}`);preview.onclick=()=>show(p);img.src=localUrl(p.preview_url);img.alt=p.title;img.loading='lazy';preview.append(img,element('span','preview-label','View preview ↗'));top.append(element('span','kind',labels[p.kind]||p.kind),element('span','licence',p.licence));link.href=localUrl(p.url);link.download='';link.setAttribute('aria-label',`Download ${p.title}`);bottom.append(element('span','version',`v${p.version} · ${(p.size/1048576).toFixed(1)} MB`),link);body.append(top,element('h3','',p.title),element('div','author',`By ${p.author}`),bottom);article.append(preview,body);cards.append(article)}if(!selected.length){const empty=element('div','empty');empty.append(element('h3','','Nothing here just yet.'),element('p','','Try another search or explore a different kind of pack.'));cards.append(empty)}}
-$('#close').onclick=()=>detail.close();search.addEventListener('input',render);kind.addEventListener('change',render);fetch('index.json').then(r=>{if(!r.ok)throw Error(r.status);return r.json()}).then(index=>{if(index.schema!=='guo/store-index@1'||!Array.isArray(index.packs))throw Error('Unsupported index');packs=index.packs;const p=packs.find(p=>p.id==='moongate-shimmer')||packs[0];if(p){$('#feature-image').src=localUrl(p.preview_url);$('#feature-image').alt=p.title;$('#feature-title').textContent=p.title;$('#feature-meta').textContent=`${p.licence} · By ${p.author}`;$('#feature').hidden=false}render()}).catch(()=>{status.textContent='Collection unavailable';cards.append(element('p','empty','The collection could not be loaded. Refresh the page to try again.'))});
-</script></html>
+"use strict";
+const $ = (s) => document.querySelector(s);
+const SHELVES = [
+  { kind: "background", title: "Backgrounds", blurb: "What shows around and behind the game: still art or a slow loop.", layout: "panes" },
+  { kind: "theme", title: "Themes", blurb: "Colours for the client's own panels and buttons.", layout: "rows" },
+  { kind: "sound", title: "Sounds", blurb: "Ambient loops and effects to play under the world.", layout: "rows" },
+  { kind: "profile-preset", title: "Layout presets", blurb: "Where each window sits, tuned for a phone, a dual screen or a Deck.", layout: "rows" },
+];
+const KIND_NAME = { background: "Background", theme: "Theme", sound: "Sound", "profile-preset": "Layout preset" };
+const NOTES = {
+  background: "After installing, pick it in Options under the background list, then Apply.",
+  theme: "Installs the theme's files. Applying themes in the client is still to come.",
+  sound: "Installs the sound's files. Playing them in the client is still to come.",
+  "profile-preset": "Installs the preset's files. Applying presets in the client is still to come.",
+};
+let packs = [], filter = "", query = "", featured = null;
+
+function localUrl(path) {
+  const u = new URL(path, location.href);
+  if (u.origin !== location.origin || !["http:", "https:"].includes(u.protocol)) throw Error("Invalid asset URL");
+  return u.href;
+}
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = text;
+  return e;
+}
+const isSample = (p) => String(p.id).startsWith("sample-");
+function size(bytes) {
+  return bytes >= 1048576 ? (bytes / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(bytes / 1024)) + " KB";
+}
+function matches(p) {
+  if (filter && p.kind !== filter) return false;
+  if (!query) return true;
+  return [p.title, p.author, p.id].some((v) => String(v).toLowerCase().includes(query));
+}
+
+function card(p, layout) {
+  const art = el("article", "pack " + (layout === "panes" ? "pane" : "row"));
+  const open = el("button", "open");
+  open.type = "button";
+  open.setAttribute("aria-label", `${p.title}, ${KIND_NAME[p.kind] || p.kind}, details`);
+  const thumb = el("div", "thumb");
+  const img = el("img");
+  img.alt = "";
+  img.src = localUrl(p.preview_url);
+  thumb.append(img);
+  const text = el("div");
+  const h = el("h3", null, p.title);
+  if (isSample(p)) h.append(el("span", "badge", "Sample"));
+  text.append(h, el("p", "by", `By ${p.author}`));
+  open.append(thumb, text);
+  open.addEventListener("click", () => show(p));
+  art.append(open);
+  return art;
+}
+
+function renderTabs() {
+  const tabs = $("#tabs");
+  tabs.replaceChildren();
+  const add = (kind, label) => {
+    const count = packs.filter((p) => !kind || p.kind === kind).length;
+    if (kind && !count) return;
+    const b = el("button", null, label);
+    b.type = "button";
+    b.append(el("span", "n", String(count)));
+    b.setAttribute("aria-pressed", String(filter === kind));
+    b.addEventListener("click", () => { filter = kind; renderTabs(); renderShelves(); });
+    tabs.append(b);
+  };
+  add("", "All");
+  for (const s of SHELVES) add(s.kind, s.title);
+}
+
+function renderShelves() {
+  const main = $("#shelves");
+  main.replaceChildren();
+  let shown = 0;
+  for (const s of SHELVES) {
+    const list = packs.filter((p) => p.kind === s.kind && matches(p));
+    if (!list.length) continue;
+    shown += list.length;
+    const sec = el("section", "shelf");
+    sec.setAttribute("aria-labelledby", "shelf-" + s.kind);
+    const head = el("header");
+    const h = el("h2", null, s.title);
+    h.id = "shelf-" + s.kind;
+    head.append(h, el("p", null, s.blurb));
+    const grid = el("div", s.layout);
+    for (const p of list) grid.append(card(p, s.layout));
+    sec.append(head, grid);
+    main.append(sec);
+  }
+  const empty = $("#empty");
+  empty.hidden = shown > 0;
+  if (!shown) {
+    empty.replaceChildren(el("strong", null, `Nothing matches “${query}”.`),
+      document.createTextNode(" Try a shorter word, or choose All."));
+  }
+}
+
+function feature(p, fromUser) {
+  featured = p;
+  const img = $("#feature-img");
+  const apply = () => {
+    img.src = localUrl(p.preview_url);
+    img.alt = p.title;
+    $("#feature-title").textContent = p.title;
+    $("#feature-by").textContent = `A ${KIND_NAME[p.kind].toLowerCase()} by ${p.author}, free to use under ${p.licence}.`;
+    $("#feature-download").href = localUrl(p.url);
+    img.classList.remove("fading");
+  };
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (fromUser && !reduce) { img.classList.add("fading"); setTimeout(apply, 300); } else apply();
+  for (const b of document.querySelectorAll("#strip button")) b.setAttribute("aria-pressed", String(b.dataset.id === p.id));
+}
+
+function renderStrip() {
+  const strip = $("#strip");
+  strip.replaceChildren();
+  for (const p of packs.filter((p) => p.kind === "background")) {
+    const b = el("button");
+    b.type = "button";
+    b.dataset.id = p.id;
+    b.setAttribute("aria-label", "Feature " + p.title);
+    const img = el("img");
+    img.alt = "";
+    img.loading = "lazy";
+    img.src = localUrl(p.preview_url);
+    b.append(img);
+    b.addEventListener("click", () => feature(p, true));
+    strip.append(b);
+  }
+}
+
+function show(p) {
+  $("#detail-img").src = localUrl(p.preview_url);
+  $("#detail-img").alt = p.title;
+  const title = $("#detail-title");
+  title.textContent = p.title;
+  if (isSample(p)) title.append(el("span", "badge", "Sample"));
+  const meta = $("#detail-meta");
+  meta.replaceChildren();
+  for (const [k, v] of [["Kind", KIND_NAME[p.kind] || p.kind], ["Creator", p.author], ["Licence", p.licence],
+                        ["Version", p.version], ["Download", size(p.size)], ["Files", String(Object.keys(p.files || {}).length)]]) {
+    meta.append(el("dt", null, k), el("dd", null, v));
+  }
+  $("#detail-note").textContent = NOTES[p.kind] || "";
+  $("#detail-download").href = localUrl(p.url);
+  $("#detail").showModal();
+}
+
+$("#detail-close").addEventListener("click", () => $("#detail").close());
+$("#detail").addEventListener("click", (e) => { if (e.target === e.currentTarget) e.currentTarget.close(); });
+$("#feature-open").addEventListener("click", () => featured && show(featured));
+$("#search").addEventListener("input", (e) => { query = e.target.value.trim().toLowerCase(); renderShelves(); });
+
+fetch("index.json").then((r) => { if (!r.ok) throw Error(`the store answered ${r.status}`); return r.json(); })
+  .then((index) => {
+    if (index.schema !== "guo/store-index@1" || !Array.isArray(index.packs)) throw Error("this store's index is a format this page does not read");
+    packs = index.packs.slice().sort((a, b) => isSample(a) - isSample(b) || a.title.localeCompare(b.title));
+    $("#sample-note").hidden = !packs.some(isSample);
+    renderStrip();
+    renderTabs();
+    renderShelves();
+    const first = packs.find((p) => p.id === "moongate-shimmer") || packs.find((p) => p.kind === "background") || packs[0];
+    if (first) feature(first, false);
+    else { $("#feature-title").textContent = "No packs yet"; $("#feature-by").textContent = "Publish one with launchers\\store\\publish.bat, then reload."; }
+  })
+  .catch((err) => {
+    $("#feature-title").textContent = "The store could not be read";
+    $("#feature-by").textContent = `Loading index.json failed: ${err.message}. Start the store with launchers\\store\\serve.bat and reload.`;
+  });
+</script>
+</body>
+</html>

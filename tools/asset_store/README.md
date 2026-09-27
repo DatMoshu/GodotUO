@@ -6,6 +6,7 @@ and the design in [ADR-0019](../../docs/architecture/ADR-0019-asset-store.md).
 
 ```text
 python tools/asset_store/seed.py
+python tools/asset_store/samples.py      (optional: sample themes, sounds, presets)
 python tools/asset_store/run.py serve
 python tools/asset_store/run.py publish example.zip
 python tools/asset_store/run.py verify example.zip
@@ -16,6 +17,12 @@ The default catalogue is `build/store_cdn`, served on loopback port 18865.
 `UO_STORE_DIR` and `UO_STORE_URL` follow the shared configuration convention.
 An occupied/reserved port falls back to an ephemeral port and prints the
 URL to use. Windows launchers live in `launchers/store`.
+
+`samples.py` publishes nine sample packs (three each of theme, sound and
+profile preset) so every shelf of the catalogue has something on it before
+real packs exist. They are generated in code (drawn previews, synthesised
+sound, CC0), carry ids starting `sample-` and the author "GodotUO sample",
+and the web page marks them Sample. `seed.py` never publishes them.
 
 In GodotUO, open **Options → Video → Store**. Install a pack, reopen Options,
 select its Store background and Apply. Installed packs sort first. Updates
