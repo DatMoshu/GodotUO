@@ -30,13 +30,12 @@
 // LAND AND LAND_COLOR
 //
 // Both multiply by get_light(normal), and a canvas quad has no normal. ADR-0004
-// settles it: get_light is a pure function of the normal and the brightlight
-// uniform, so the per-vertex half is computed on the CPU at mesh build time,
-// where the normal already lives, and arrives as `land_light` -- CUSTOM0.r on
-// the world mesh, and 1.0 everywhere else. Measured by
-// launchers\dev\mesh_probe.bat: a canvas_item shader does read CUSTOM0 from a
-// mesh drawn with canvas_item_add_mesh, which is not documented for the 2D
-// renderer.
+// settles it: the world mesh carries upstream's vertex normal in CUSTOM0, and
+// it arrives interpolated as `land_normal`, which get_light normalises and
+// lights per pixel exactly as the .fx does. Every other shader writes the
+// batcher's flat normal (0, 0, 1). Measured by launchers\dev\mesh_probe.bat: a
+// canvas_item shader does read CUSTOM0 from a mesh drawn with
+// canvas_item_add_mesh, which is not documented for the 2D renderer.
 
 const int NONE = 0;
 const int HUED = 1;
@@ -71,11 +70,10 @@ uniform vec2 circle_of_transparency_center = vec2(0.0, 0.0);
 
 varying vec4 packed_hue;
 
-// Upstream's get_light(IN.Normal) BEFORE the brightlight blend, i.e.
-// (max(dot(normal, normalize(0,1,1)), 0) / 2) + 0.5, so it is bounded in
-// [0.5, 1]. A flat tile is 0.85355339, which is the value the blend below
-// pulls towards. Only the world mesh sets it; every other shader writes 1.0.
-varying float land_light;
+// Upstream's IN.Normal: the vertex normal, interpolated, not yet normalised.
+varying vec3 land_normal;
+
+const vec3 LIGHT_DIRECTION = vec3(0.0, 1.0, 1.0);
 
 vec3 get_rgb(float gray, float hue) {
 	float half_pixel_x = (1.0 / (HUE_COLUMNS * HUE_WIDTH)) * 0.5;
@@ -91,12 +89,13 @@ vec3 get_rgb(float gray, float hue) {
 	return texture(hue_texture, vec2(x_pos, y_pos)).rgb;
 }
 
-// Upstream's get_light, with the per-vertex half already done. Written in
-// upstream's order rather than the tidier `mix(base, 0.85355339, 1 - bright)`:
-// the two are equal in real arithmetic and not in floats, and this is the one
-// the .fx evaluates.
+// Upstream's get_light. Written in upstream's order rather than the tidier
+// `mix(base, 0.85355339, 1 - bright)`: the two are equal in real arithmetic and
+// not in floats, and this is the one the .fx evaluates.
 float get_light() {
-	float base = land_light;
+	vec3 light = normalize(LIGHT_DIRECTION);
+	vec3 normal = normalize(land_normal);
+	float base = (max(dot(normal, light), 0.0) / 2.0) + 0.5;
 
 	return base + ((brightlight * (base - 0.85355339)) - (base - 0.85355339));
 }

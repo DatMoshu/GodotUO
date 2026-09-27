@@ -13,9 +13,8 @@ void vertex() {
 	// texture has already been multiplied in. See the include's header.
 	packed_hue = COLOR;
 
-	// Written on the CPU by MeshLayer, from the vertex normal upstream would
-	// have sent as NORMAL0.
-	land_light = CUSTOM0.r;
+	// The vertex normal upstream sends as NORMAL0, written by MeshLayer.
+	land_normal = CUSTOM0.xyz;
 }
 
 void fragment() {

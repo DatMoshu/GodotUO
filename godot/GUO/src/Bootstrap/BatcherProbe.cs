@@ -337,22 +337,24 @@ public partial class BatcherProbe : Node
 
     /// <summary>
     /// Draws a stretched-land quad through a <see cref="MeshLayer"/> and checks
-    /// that each corner comes back lit by its own normal.
+    /// that every pixel comes back lit by its own interpolated normal.
     /// </summary>
     /// <remarks>
     /// <para>
     /// This is the one thing ADR-0004 bought. Stretched land is the only place
     /// in the client where a per-vertex value beyond position, UV and colour
     /// has to reach the shader, and the packed colour had no channel left for
-    /// it, so the light travels as CUSTOM0 on a mesh -- a path nothing else in
-    /// the batcher uses.
+    /// it, so the normal travels as CUSTOM0 on a mesh -- a path nothing else
+    /// in the batcher uses.
     /// </para>
     /// <para>
     /// The four corners get four different normals, so a shader that dropped
     /// CUSTOM0, or read a constant, is wrong at three of them rather than
     /// looking plausible everywhere. The expected value is upstream's get_light
-    /// recomputed here, at both ends of the brightlight range, because that
-    /// uniform is the half of the formula the CPU does not do.
+    /// of the normal interpolated across the quad's two triangles, taken at
+    /// every pixel centre, at both ends of the brightlight range. Lighting the
+    /// corners and interpolating the light instead -- what this layer did
+    /// before -- differs inside the quad, not at its corners.
     /// </para>
     /// </remarks>
     private async System.Threading.Tasks.Task VerifyLandLight(
@@ -391,10 +393,10 @@ public partial class BatcherProbe : Node
         quad.Position3.X = Scale * 2;
         quad.Position2.Y = Scale * 2;
         quad.Position3.Y = Scale * 2;
-        quad.Light0 = MeshLayer.LightFromNormal(normals[0]);
-        quad.Light1 = MeshLayer.LightFromNormal(normals[1]);
-        quad.Light2 = MeshLayer.LightFromNormal(normals[2]);
-        quad.Light3 = MeshLayer.LightFromNormal(normals[3]);
+        quad.Normal0 = normals[0];
+        quad.Normal1 = normals[1];
+        quad.Normal2 = normals[2];
+        quad.Normal3 = normals[3];
         layer.Vertices[0] = quad;
 
         foreach (float brightlight in new[] { 0f, 1f })
@@ -415,37 +417,27 @@ public partial class BatcherProbe : Node
 
             Image image = viewport.GetTexture().GetImage();
 
-            // The corner texels, where the interpolant is closest to that
-            // corner's own value. Position0 is top-left, 1 top-right,
-            // 2 bottom-left, 3 bottom-right -- upstream's quad order.
-            var corners = new[]
+            int size = Scale * 2;
+
+            for (int y = 0; y < size; y++)
             {
-                (0, 0, quad.Light0),
-                (Scale * 2 - 1, 0, quad.Light1),
-                (0, Scale * 2 - 1, quad.Light2),
-                (Scale * 2 - 1, Scale * 2 - 1, quad.Light3),
-            };
+                for (int x = 0; x < size; x++)
+                {
+                    // The pixel centre, as a fraction of the quad. Position0
+                    // is top-left, 1 top-right, 2 bottom-left, 3 bottom-right
+                    // -- upstream's quad order.
+                    float u = (x + 0.5f) / size;
+                    float v = (y + 0.5f) / size;
 
-            for (int i = 0; i < corners.Length; i++)
-            {
-                (int x, int y, float baseLight) = corners[i];
+                    float light = ExpectedLight(
+                        MeshLayer.LightFromNormal(Interpolate(normals, u, v)), brightlight);
+                    byte want = (byte)Math.Round(Math.Clamp(texel[0] / 255f * light, 0f, 1f) * 255f);
 
-                // The corner texel's centre is half a pixel in, so the
-                // interpolated light there is not quite the corner's own.
-                float u = (x + 0.5f) / (Scale * 2);
-                float v = (y + 0.5f) / (Scale * 2);
-                float interpolated = Bilinear(
-                    quad.Light0, quad.Light1, quad.Light2, quad.Light3, u, v);
+                    Color got = image.GetPixel(x, y);
 
-                float light = ExpectedLight(interpolated, brightlight);
-                byte want = (byte)Math.Round(Math.Clamp(texel[0] / 255f * light, 0f, 1f) * 255f);
-
-                Color got = image.GetPixel(x, y);
-
-                Check($"land light corner {i} brightlight {brightlight}",
-                    new byte[] { want, want, want }, got);
-
-                _ = baseLight;
+                    Check($"land light ({x},{y}) brightlight {brightlight}",
+                        new byte[] { want, want, want }, got);
+                }
             }
         }
 
@@ -453,16 +445,25 @@ public partial class BatcherProbe : Node
         layer.Dispose();
     }
 
-    /// <summary>Upstream's get_light, with the per-vertex half already done.</summary>
+    /// <summary>Upstream's brightlight blend, applied to get_light's base.</summary>
     private static float ExpectedLight(float baseLight, float brightlight)
     {
         return baseLight
             + ((brightlight * (baseLight - 0.85355339f)) - (baseLight - 0.85355339f));
     }
 
-    private static float Bilinear(float v0, float v1, float v2, float v3, float u, float v)
+    /// <summary>
+    /// The normal at (u, v) across the quad's two triangles, 0 1 2 and 1 3 2,
+    /// which is what the rasteriser interpolates.
+    /// </summary>
+    private static Vector3 Interpolate(Vector3[] n, float u, float v)
     {
-        return (v0 * (1f - u) + v1 * u) * (1f - v) + (v2 * (1f - u) + v3 * u) * v;
+        if (u + v <= 1f)
+        {
+            return n[0] * (1f - u - v) + n[1] * u + n[2] * v;
+        }
+
+        return n[3] * (u + v - 1f) + n[1] * (1f - v) + n[2] * (1f - u);
     }
 
 

@@ -569,14 +569,10 @@ namespace GUO.Game.Map
             vertex.TextureCoordinate3.X = sourceW + sourceX;
             vertex.TextureCoordinate3.Y = sourceH + sourceY;
 
-            // PORT DEVIATION (GUO): this is where the normal stops travelling.
-            // A canvas vertex has one spare slot, not three, so the scalar the
-            // normal only ever fed -- upstream's get_light before the
-            // brightlight blend -- is computed here instead. See ADR-0004.
-            vertex.Light0 = MeshLayer.LightFromNormal(normalTop);
-            vertex.Light1 = MeshLayer.LightFromNormal(normalRight);
-            vertex.Light2 = MeshLayer.LightFromNormal(normalLeft);
-            vertex.Light3 = MeshLayer.LightFromNormal(normalBottom);
+            vertex.Normal0 = normalTop;
+            vertex.Normal1 = normalRight;
+            vertex.Normal2 = normalLeft;
+            vertex.Normal3 = normalBottom;
 
             vertex.Position0.X = posX + 22;
             vertex.Position0.Y = posY - yOffsets.Top;

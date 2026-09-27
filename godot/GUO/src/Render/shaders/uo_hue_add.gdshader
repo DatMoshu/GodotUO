@@ -21,8 +21,8 @@ void vertex() {
 	// COLOR is still the untouched modulate here; by fragment() the
 	// texture has already been multiplied in. See the include's header.
 	packed_hue = COLOR;
-	// Not a mesh, so no per-vertex normal and no land here.
-	land_light = 1.0;
+	// Upstream's batcher gives every sprite the flat normal (0, 0, 1).
+	land_normal = vec3(0.0, 0.0, 1.0);
 }
 
 void fragment() {
