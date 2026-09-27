@@ -1,0 +1,696 @@
+{
+ "about": "The shared pack validation corpus (S6, ADR-0019). build.py turns each case into a manifest (.json) or a pack (.zip) in one folder; tools/asset_store/test_corpus.py runs the Python publisher (pack.py) and the C# installer (StorePack, through headless/StoreSmoke) on that same folder, and both must match 'expect'. Base manifest: a CC0 background with still.png; 'manifest' patches it (null removes a key); 'payload' is name -> text (or {\"b64\": ...}); 'files' is filled with the payload's SHA-256 unless given. Payload bytes are GUO's own: no UO data.",
+ "cases": [
+  {
+   "name": "ok-background",
+   "expect": "accept",
+   "why": "the baseline"
+  },
+  {
+   "name": "ok-screensaver",
+   "expect": "accept",
+   "why": "one .ogv, profile 11",
+   "manifest": {
+    "kind": "screensaver",
+    "min_profile_version": 11
+   },
+   "payload": {
+    "still.png": "png",
+    "loop.ogv": "ogv"
+   }
+  },
+  {
+   "name": "ok-screensaver-upper-ogv",
+   "expect": "accept",
+   "why": "the .ogv rule ignores case",
+   "manifest": {
+    "kind": "screensaver",
+    "min_profile_version": 11
+   },
+   "payload": {
+    "still.png": "png",
+    "Loop.OGV": "ogv"
+   }
+  },
+  {
+   "name": "screensaver-two-ogv",
+   "expect": "reject",
+   "why": "exactly one loop",
+   "manifest": {
+    "kind": "screensaver",
+    "min_profile_version": 11
+   },
+   "payload": {
+    "still.png": "png",
+    "a.ogv": "a",
+    "b.ogv": "b"
+   }
+  },
+  {
+   "name": "screensaver-no-ogv",
+   "expect": "reject",
+   "why": "exactly one loop",
+   "manifest": {
+    "kind": "screensaver",
+    "min_profile_version": 11
+   }
+  },
+  {
+   "name": "screensaver-profile-10",
+   "expect": "reject",
+   "why": "min_profile_version 11",
+   "manifest": {
+    "kind": "screensaver",
+    "min_profile_version": 10
+   },
+   "payload": {
+    "still.png": "png",
+    "loop.ogv": "ogv"
+   }
+  },
+  {
+   "name": "hidden-mul-png",
+   "expect": "reject",
+   "why": "a .mul hidden before an allowed suffix",
+   "payload": {
+    "still.png": "png",
+    "x.mul.png": "x"
+   }
+  },
+  {
+   "name": "hidden-uop-txt",
+   "expect": "reject",
+   "why": "hidden .uop",
+   "payload": {
+    "still.png": "png",
+    "artLegacyMUL.uop.txt": "x"
+   }
+  },
+  {
+   "name": "hidden-idx-json-upper",
+   "expect": "reject",
+   "why": "hidden .IDX in upper case",
+   "payload": {
+    "still.png": "png",
+    "gump.IDX.json": "x"
+   }
+  },
+  {
+   "name": "hidden-def-wav",
+   "expect": "reject",
+   "why": "hidden .def",
+   "payload": {
+    "still.png": "png",
+    "art.def.wav": "x"
+   }
+  },
+  {
+   "name": "cliloc-prefix",
+   "expect": "reject",
+   "why": "cliloc files are UO data",
+   "payload": {
+    "still.png": "png",
+    "Cliloc.enu.txt": "x"
+   }
+  },
+  {
+   "name": "mulch-is-fine",
+   "expect": "accept",
+   "why": "'.mulch' is not '.mul'",
+   "payload": {
+    "still.png": "png",
+    "garden.mulch.png": "x"
+   }
+  },
+  {
+   "name": "dotfile-png",
+   "expect": "reject",
+   "why": "a name that is only an extension has no stem",
+   "payload": {
+    "still.png": "png",
+    ".png": "x"
+   }
+  },
+  {
+   "name": "dotfile-in-folder",
+   "expect": "reject",
+   "why": "a name that is only an extension has no stem",
+   "payload": {
+    "still.png": "png",
+    "art/.png": "x"
+   }
+  },
+  {
+   "name": "traversal",
+   "expect": "reject",
+   "why": "..",
+   "payload": {
+    "still.png": "png",
+    "../escape.png": "x"
+   }
+  },
+  {
+   "name": "traversal-inner",
+   "expect": "reject",
+   "why": "..",
+   "payload": {
+    "still.png": "png",
+    "a/../b.png": "x"
+   }
+  },
+  {
+   "name": "absolute",
+   "expect": "reject",
+   "why": "leading /",
+   "payload": {
+    "still.png": "png",
+    "/abs.png": "x"
+   }
+  },
+  {
+   "name": "backslash",
+   "expect": "reject",
+   "why": "backslash",
+   "payload": {
+    "still.png": "png",
+    "a\\b.png": "x"
+   }
+  },
+  {
+   "name": "drive",
+   "expect": "reject",
+   "why": "drive colon",
+   "payload": {
+    "still.png": "png",
+    "C:x.png": "x"
+   }
+  },
+  {
+   "name": "device-con",
+   "expect": "reject",
+   "why": "Windows device name",
+   "payload": {
+    "still.png": "png",
+    "CON.png": "x"
+   }
+  },
+  {
+   "name": "device-con-double-ext",
+   "expect": "reject",
+   "why": "Windows device name",
+   "payload": {
+    "still.png": "png",
+    "con.tar.png": "x"
+   }
+  },
+  {
+   "name": "device-com-superscript",
+   "expect": "reject",
+   "why": "Windows treats COM\u00b9 as a device",
+   "payload": {
+    "still.png": "png",
+    "COM\u00b9.png": "x"
+   }
+  },
+  {
+   "name": "trailing-dot-folder",
+   "expect": "reject",
+   "why": "Windows drops a trailing dot",
+   "payload": {
+    "still.png": "png",
+    "art./a.png": "x"
+   }
+  },
+  {
+   "name": "case-alias",
+   "expect": "reject",
+   "why": "two names one file on a case-insensitive disk",
+   "payload": {
+    "still.png": "png",
+    "A.png": "a",
+    "a.png": "b"
+   }
+  },
+  {
+   "name": "case-alias-kelvin",
+   "expect": "reject",
+   "why": "KELVIN SIGN lower-cases to k: refuse what either folding merges",
+   "payload": {
+    "still.png": "png",
+    "\u212a.png": "a",
+    "k.png": "b"
+   }
+  },
+  {
+   "name": "case-alias-dotless-i",
+   "expect": "reject",
+   "why": "dotless \u0131 upper-cases to I: refuse what either folding merges",
+   "payload": {
+    "still.png": "png",
+    "\u0131.png": "a",
+    "i.png": "b"
+   }
+  },
+  {
+   "name": "zip-case-duplicate-kelvin",
+   "expect": "reject",
+   "why": "two entries that one folding merges",
+   "payload": {
+    "still.png": "png",
+    "k.png": "b"
+   },
+   "zip": {
+    "extra_raw": [
+     {
+      "name": "\u212a.png",
+      "data": "a"
+     }
+    ]
+   }
+  },
+  {
+   "name": "case-alias-sharp-s",
+   "expect": "accept",
+   "why": "\u00df and ss are different names in both foldings",
+   "payload": {
+    "still.png": "png",
+    "\u00df.png": "a",
+    "ss.png": "b"
+   }
+  },
+  {
+   "name": "file-dir-collision",
+   "expect": "reject",
+   "why": "a.png is a file and a folder",
+   "payload": {
+    "still.png": "png",
+    "a.png": "a",
+    "a.png/b.png": "b"
+   }
+  },
+  {
+   "name": "path-240-ascii",
+   "expect": "accept",
+   "why": "the limit",
+   "payload": {
+    "still.png": "png"
+   },
+   "long_path": {
+    "units": 240,
+    "char": "a"
+   }
+  },
+  {
+   "name": "path-241-ascii",
+   "expect": "reject",
+   "why": "over the limit",
+   "payload": {
+    "still.png": "png"
+   },
+   "long_path": {
+    "units": 241,
+    "char": "a"
+   }
+  },
+  {
+   "name": "component-astral-over",
+   "expect": "reject",
+   "why": "52 astral characters and .png are 108 UTF-16 units: over the 100-unit component limit (limits count UTF-16 units, as the file system does)",
+   "long_component": {
+    "units": 104,
+    "char": "\ud83c\udfb5"
+   }
+  },
+  {
+   "name": "title-200-units",
+   "expect": "accept",
+   "why": "the limit",
+   "long_title": {
+    "units": 200,
+    "char": "t"
+   }
+  },
+  {
+   "name": "title-astral-over",
+   "expect": "reject",
+   "why": "120 astral characters are 240 UTF-16 units: over 200",
+   "long_title": {
+    "units": 240,
+    "char": "\ud83c\udfb5"
+   }
+  },
+  {
+   "name": "title-control-only",
+   "expect": "reject",
+   "why": "no visible title (U+001C is a control, not a letter)",
+   "manifest": {
+    "title": "\u001c"
+   }
+  },
+  {
+   "name": "title-control-inside",
+   "expect": "reject",
+   "why": "control characters in a title",
+   "manifest": {
+    "title": "Nice\u0007Title"
+   }
+  },
+  {
+   "name": "title-lone-surrogate",
+   "expect": "reject",
+   "why": "not valid Unicode",
+   "manifest_raw_patch": {
+    "title": "\"\\ud800x\""
+   }
+  },
+  {
+   "name": "bom",
+   "expect": "reject",
+   "why": "a manifest is UTF-8 without a byte order mark",
+   "bom": true
+  },
+  {
+   "name": "duplicate-key",
+   "expect": "reject",
+   "why": "duplicate JSON key",
+   "manifest_raw_patch": {
+    "title": "\"One\", \"title\": \"Two\""
+   }
+  },
+  {
+   "name": "nan",
+   "expect": "reject",
+   "why": "NaN is not JSON",
+   "manifest_raw_patch": {
+    "extra": "NaN"
+   }
+  },
+  {
+   "name": "profile-bool",
+   "expect": "reject",
+   "why": "min_profile_version must be an integer",
+   "manifest": {
+    "min_profile_version": true
+   }
+  },
+  {
+   "name": "profile-float",
+   "expect": "reject",
+   "why": "min_profile_version must be an integer",
+   "manifest_raw_patch": {
+    "min_profile_version": "11.0"
+   }
+  },
+  {
+   "name": "profile-string",
+   "expect": "reject",
+   "why": "min_profile_version must be an integer",
+   "manifest": {
+    "min_profile_version": "11"
+   }
+  },
+  {
+   "name": "profile-missing",
+   "expect": "reject",
+   "why": "required",
+   "manifest": {
+    "min_profile_version": null
+   }
+  },
+  {
+   "name": "kind-art-override",
+   "expect": "reject",
+   "why": "disabled kind",
+   "manifest": {
+    "kind": "art-override"
+   }
+  },
+  {
+   "name": "licence-case",
+   "expect": "reject",
+   "why": "licences are exact SPDX ids",
+   "manifest": {
+    "licence": "cc0-1.0"
+   }
+  },
+  {
+   "name": "licence-by-without-license",
+   "expect": "reject",
+   "why": "attribution needs LICENSE.txt",
+   "manifest": {
+    "licence": "CC-BY-4.0"
+   }
+  },
+  {
+   "name": "licence-by-with-license",
+   "expect": "accept",
+   "why": "attribution present",
+   "manifest": {
+    "licence": "CC-BY-4.0"
+   },
+   "payload": {
+    "still.png": "png",
+    "LICENSE.txt": "CC-BY-4.0, by GUO"
+   }
+  },
+  {
+   "name": "id-device",
+   "expect": "reject",
+   "why": "id is a device name",
+   "manifest": {
+    "id": "con"
+   }
+  },
+  {
+   "name": "id-upper",
+   "expect": "reject",
+   "why": "ids are lower case",
+   "manifest": {
+    "id": "Corpus"
+   }
+  },
+  {
+   "name": "version-leading-zero",
+   "expect": "reject",
+   "why": "semver without leading zeros",
+   "manifest": {
+    "version": "01.0.0"
+   }
+  },
+  {
+   "name": "version-four-parts",
+   "expect": "reject",
+   "why": "three parts",
+   "manifest": {
+    "version": "1.0.0.0"
+   }
+  },
+  {
+   "name": "version-too-big",
+   "expect": "reject",
+   "why": "component over int32",
+   "manifest": {
+    "version": "2147483648.0.0"
+   }
+  },
+  {
+   "name": "preview-not-image",
+   "expect": "reject",
+   "why": "preview must be an image",
+   "manifest": {
+    "kind": "screensaver",
+    "min_profile_version": 11,
+    "preview": "loop.ogv"
+   },
+   "payload": {
+    "still.png": "png",
+    "loop.ogv": "ogv"
+   }
+  },
+  {
+   "name": "hash-upper",
+   "expect": "reject",
+   "why": "SHA-256 in lower-case hex",
+   "upper_hash": "still.png"
+  },
+  {
+   "name": "zip-ok",
+   "expect": "accept",
+   "why": "a good pack",
+   "zip": {}
+  },
+  {
+   "name": "zip-ok-screensaver",
+   "expect": "accept",
+   "why": "a good screensaver pack",
+   "manifest": {
+    "kind": "screensaver",
+    "min_profile_version": 11
+   },
+   "payload": {
+    "still.png": "png",
+    "loop.ogv": "ogv"
+   },
+   "zip": {}
+  },
+  {
+   "name": "zip-undeclared",
+   "expect": "reject",
+   "why": "an entry the manifest does not declare",
+   "zip": {
+    "extra": {
+     "sneak.png": "x"
+    }
+   }
+  },
+  {
+   "name": "zip-missing",
+   "expect": "reject",
+   "why": "a declared file missing",
+   "payload": {
+    "still.png": "png",
+    "gone.png": "x"
+   },
+   "zip": {
+    "drop": [
+     "gone.png"
+    ]
+   }
+  },
+  {
+   "name": "zip-hash-mismatch",
+   "expect": "reject",
+   "why": "bytes differ from the manifest",
+   "zip": {
+    "replace": {
+     "still.png": "tampered"
+    }
+   }
+  },
+  {
+   "name": "zip-hidden-mul",
+   "expect": "reject",
+   "why": "hidden .mul inside a pack",
+   "payload": {
+    "still.png": "png",
+    "x.mul.png": "x"
+   },
+   "zip": {}
+  },
+  {
+   "name": "zip-symlink",
+   "expect": "reject",
+   "why": "a symbolic link entry",
+   "zip": {
+    "entry": {
+     "still.png": {
+      "mode": 41471
+     }
+    }
+   }
+  },
+  {
+   "name": "zip-directory",
+   "expect": "reject",
+   "why": "a directory entry",
+   "zip": {
+    "extra_raw": [
+     {
+      "name": "art/",
+      "data": ""
+     }
+    ]
+   }
+  },
+  {
+   "name": "zip-encrypted",
+   "expect": "reject",
+   "why": "the encrypted flag",
+   "zip": {
+    "entry": {
+     "still.png": {
+      "flags": 1
+     }
+    }
+   }
+  },
+  {
+   "name": "zip-bzip2",
+   "expect": "reject",
+   "why": "only stored and deflated",
+   "zip": {
+    "entry": {
+     "still.png": {
+      "method": 12
+     }
+    }
+   }
+  },
+  {
+   "name": "zip-case-duplicate",
+   "expect": "reject",
+   "why": "two entries, one name on a case-insensitive disk",
+   "zip": {
+    "extra_raw": [
+     {
+      "name": "STILL.png",
+      "data": "png"
+     }
+    ]
+   }
+  },
+  {
+   "name": "zip-manifest-nested",
+   "expect": "reject",
+   "why": "the manifest must be at the root",
+   "zip": {
+    "manifest_name": "pack/manifest.json"
+   }
+  },
+  {
+   "name": "zip-utf8-name-no-flag",
+   "expect": "reject",
+   "why": "a non-ASCII entry name must carry the ZIP's UTF-8 flag (without it the name is ambiguous: CP437 by the spec, UTF-8 to many tools)",
+   "payload": {
+    "still.png": "png",
+    "\u00e9t\u00e9.png": "x"
+   },
+   "zip": {
+    "entry": {
+     "\u00e9t\u00e9.png": {
+      "utf8_flag": false
+     }
+    }
+   }
+  },
+  {
+   "name": "zip-no-flag-cp437-declared",
+   "expect": "reject",
+   "why": "declaring the CP437 reading of an unflagged name does not make it acceptable",
+   "payload": {
+    "still.png": "png",
+    "\u251c\u2310t\u251c\u2310.png": "x"
+   },
+   "zip": {
+    "rename": {
+     "\u251c\u2310t\u251c\u2310.png": "\u00e9t\u00e9.png"
+    },
+    "entry": {
+     "\u00e9t\u00e9.png": {
+      "utf8_flag": false
+     }
+    }
+   }
+  },
+  {
+   "name": "zip-utf8-name-flag",
+   "expect": "accept",
+   "why": "the same name with the UTF-8 flag",
+   "payload": {
+    "still.png": "png",
+    "\u00e9t\u00e9.png": "x"
+   },
+   "zip": {}
+  }
+ ]
+}

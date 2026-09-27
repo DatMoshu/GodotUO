@@ -389,6 +389,9 @@ data or executable code. `art-override` is reserved and rejected.
 }
 ```
 
+- The manifest is UTF-8 **without** a byte order mark, strict JSON (no
+  `NaN` or `Infinity`), no duplicate keys, and every string valid Unicode
+  (no lone surrogates).
 - IDs match `[a-z0-9][a-z0-9-]{0,63}` (Windows device names excluded).
   Versions are three decimal components, each 0..2147483647, without
   leading zeros. Compare numerically, not lexicographically.
@@ -397,8 +400,10 @@ data or executable code. `art-override` is reserved and rejected.
   `BSD-3-Clause`, `Apache-2.0`. Publishers are responsible for provenance;
   the identifier does not establish ownership. Non-CC0 packs must include
   `LICENSE.txt` with the licence and attribution.
-- `title` and `author` are nonempty strings, at most 200 characters.
-  `min_profile_version` is an integer 0..2147483647; newer requirements
+- `title` and `author` are strings of at most 200 characters, not only
+  whitespace, with no control characters (U+0000-U+001F, U+007F).
+  `min_profile_version` is a JSON integer 0..2147483647 (not `true`,
+  `11.0` or `"11"`); newer requirements
   block installation. `preview` names a declared PNG/JPG/JPEG/WebP file.
 - `files` maps every payload path to its SHA-256 (manifest excluded).
   Payload types: `.png`, `.jpg`, `.jpeg`, `.webp`, `.ogv`, `.ogg`, `.wav`,
@@ -412,10 +417,22 @@ data or executable code. `art-override` is reserved and rejected.
   are forbidden case-insensitively, even when renamed with another suffix.
 - Paths use `/`, are relative, have no empty, `.` or `..` components,
   backslashes, colons, control characters, Windows reserved device names,
-  trailing dots/spaces or Windows special characters. Each component is
-  at most 100 characters, each path at most 240. Duplicate paths (including
-  case aliases), symlinks, encrypted entries, directory entries, undeclared
-  files, and ancestor/file collisions are rejected. No automatic extraction
+  trailing dots/spaces or Windows special characters. Windows device
+  names include the superscript forms (`COM¹`). A component must have a
+  stem: `.png` alone is refused. Each component is at most 100 and each
+  path at most 240 **UTF-16 code units** (what the file system counts; an
+  emoji is two). Duplicate paths, symlinks, encrypted entries, directory
+  entries, undeclared files, and ancestor/file collisions are rejected.
+- Case aliases: two names are one name when they share a folding key.
+  Turkish dotted and dotless i count as i. Then each character folds by its
+  simple one-to-one lower and upper mapping, as NTFS and .NET do: `K` (Kelvin
+  sign) and `k` alias, `ß` and `ss` do not.
+- A non-ASCII ZIP entry name must carry the ZIP's UTF-8 flag (bit 11).
+  Without it the name is ambiguous (CP437 by the spec, UTF-8 to many tools).
+- `tools/asset_store/corpus/cases.json` holds a case for each of these
+  rules. `tools/asset_store/test_corpus.py` runs the Python publisher and
+  the C# installer over the same built folder, and CI requires both to
+  agree with every case. No automatic extraction
   API is trusted to perform path validation.
 - Limits: 512 MiB ZIP, 1 GiB total uncompressed payload, 256 MiB per
   payload, 1 MiB manifest, 1024 payload files. Checks run before extraction;
