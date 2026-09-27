@@ -214,6 +214,12 @@ by this amendment.
   the building meets the street as in ClassicUO.
 * `launchers\dev\ab_compare.bat` over the eight places of the parity sweep.
 * `launchers\dev\smoke.bat`.
+* Re-checked 2026-09-26 on work/render (b59c888, after the statics joined the
+  sort, below): the britain-street A/B still matches ClassicUO, and GUO shows
+  no plinth or land-over-foundation fault at britain-street-1609, the
+  Britain bank district, the Trinsic walls, a Moonglow house, the Vesper
+  bridges or the Britain bank home spot. The ClassicUO half of that retake did
+  not come up, so those five places are checked by eye in GUO only.
 
 ### Note: a depth buffer instead of the sort
 
