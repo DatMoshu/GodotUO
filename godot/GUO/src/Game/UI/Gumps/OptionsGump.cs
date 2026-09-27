@@ -123,6 +123,7 @@ namespace GUO.Game.UI.Gumps
         private Combobox _dualScaleFine; // PORT DEVIATION (GUO)
         private HSliderBar _chevronInset; // PORT DEVIATION (GUO)
         private Combobox[] _flick; // PORT DEVIATION (GUO): hold-and-flick, up/down/left/right
+        private Checkbox _showTouches; // PORT DEVIATION (GUO): debug touch overlay
         private static readonly int[] DualScaleFinePercents = { 0, 100, 125, 150 };
         private Checkbox _holdShiftForContext, _holdShiftToSplitStack, _reduceFPSWhenInactive, _sallosEasyGrab, _partyInviteGump, _objectsFading, _textFading, _holdAltToMoveGumps;
         private Combobox _hpComboBox, _healtbarType, _fieldsType, _hpComboBoxShowWhen;
@@ -985,6 +986,8 @@ namespace GUO.Game.UI.Gumps
             {
                 section3.Add(AddLabel(null, "Touch bar chevron inset from the corner", 0, 0));
                 section3.AddRight(_chevronInset = AddHSlider(null, 0, 200, _currentProfile.TouchChevronInset, 0, 0, 120));
+
+                section3.Add(_showTouches = AddCheckBox(null, "Debug: show touches on screen", _currentProfile.DebugShowTouches, 0, 0));
 
                 // Hold a gump still, then flick: what each direction does (GumpFlick).
                 int[] current = { _currentProfile.FlickUp, _currentProfile.FlickDown, _currentProfile.FlickLeft, _currentProfile.FlickRight };
@@ -4141,6 +4144,11 @@ namespace GUO.Game.UI.Gumps
                 _currentProfile.DualScreenShelveOthers = _dualShelveOthers.IsChecked;
                 _currentProfile.DualScreenScale = _dualScale.Value;
                 _currentProfile.DualScreenScalePercent = DualScaleFinePercents[System.Math.Clamp(_dualScaleFine.SelectedIndex, 0, DualScaleFinePercents.Length - 1)];
+            }
+
+            if (_showTouches != null)
+            {
+                _currentProfile.DebugShowTouches = _showTouches.IsChecked;
             }
 
             if (_flick != null)

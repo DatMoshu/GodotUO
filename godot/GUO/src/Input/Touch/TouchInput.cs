@@ -253,6 +253,8 @@ namespace GUO.Input.Touch
         /// <returns>True when the event was consumed here.</returns>
         public static bool Handle(InputEvent e)
         {
+            TouchOverlay.Note(e);
+
             switch (e)
             {
                 case InputEventScreenTouch touch:

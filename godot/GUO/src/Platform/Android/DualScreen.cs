@@ -315,6 +315,9 @@ namespace GUO.Platform.Android
                 DrawHeldBadge(batcher, mainWidth + BadgeMargin, _instance._logicalHeight - BadgeMargin);
             }
 
+            // Debug: the fingers on this screen (TouchOverlay), over everything.
+            TouchOverlay.DrawShelf(batcher);
+
             if (clipped)
             {
                 batcher.ClipEnd();

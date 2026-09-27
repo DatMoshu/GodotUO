@@ -246,6 +246,11 @@ namespace GUO.Configuration
         // (GumpFlick, FlickAction values). The owner is still choosing, so each
         // direction is an option; these are the proposed defaults.
         public int FlickUp { get; set; } = 1;
+
+        // PORT DEVIATION (GUO): debug, draw every finger the touch layer sees
+        // (TouchOverlay). Off by default.
+        public bool DebugShowTouches { get; set; }
+
         public int FlickDown { get; set; } = 2;
         public int FlickLeft { get; set; } = 3;
         public int FlickRight { get; set; } = 4;
