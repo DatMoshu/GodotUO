@@ -1,0 +1,7 @@
+# One regex per line. A line of a tracked file that matches any of these is
+# not reported. Keep each one as narrow as the example it excuses.
+
+# ModernUO's own contact address, in the copyright headers of its files.
+hi@modernuo\.com
+# A home folder already elided to "...".
+Users[\\/]+\.\.\.

@@ -144,3 +144,6 @@ design/press-kit/
 codex_message.md
 codex_reply.md
 docs/handoff_*.md
+
+# privacy_scan: your own values, never committed.
+tools/privacy_scan/deny.local.txt
