@@ -242,6 +242,14 @@ namespace GUO.Configuration
         // corner. An option for the owner to try, not a platform default.
         public int TouchChevronInset { get; set; }
 
+        // PORT DEVIATION (GUO): what a hold-and-flick on a gump does each way
+        // (GumpFlick, FlickAction values). The owner is still choosing, so each
+        // direction is an option; these are the proposed defaults.
+        public int FlickUp { get; set; } = 1;
+        public int FlickDown { get; set; } = 2;
+        public int FlickLeft { get; set; } = 3;
+        public int FlickRight { get; set; } = 4;
+
         // PORT DEVIATION (GUO): the canvas background behind the world and
         // the gumps (Renderer.CanvasBackground, ADR-0016). builtin-grey is
         // upstream's tiled art; builtin-wood, image, video and frames are

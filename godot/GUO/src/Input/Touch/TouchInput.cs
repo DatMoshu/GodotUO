@@ -107,6 +107,9 @@ namespace GUO.Input.Touch
             /// <summary>Two fingers down; only zoom until both lift.</summary>
             Pinch,
 
+            /// <summary>A gump is lifted for a flick (GumpFlick); the finger picks a direction.</summary>
+            Flick,
+
             /// <summary>The gesture is spent; wait for the finger to lift.</summary>
             Done,
         }
@@ -340,6 +343,14 @@ namespace GUO.Input.Touch
                 _phase = Phase.LeftHeld;
                 Note("hold on item slot -> left press (drag)");
             }
+            else if (held >= GumpFlick.HoldMs && held < LongPressMs && GumpFlick.CanStart(out Game.UI.Gumps.Gump lift))
+            {
+                // Held still on a gump's frame or background: lift it for a
+                // flick. No button is pressed, so nothing is dragged.
+                GumpFlick.Begin(lift, Logical(_lastAt), _lastAt);
+                _phase = Phase.Flick;
+                Note($"hold on gump -> lifted {lift.GetType().Name} for a flick");
+            }
             else if (held >= LongPressMs)
             {
                 // Over a gump, or nowhere: the right click.
@@ -442,6 +453,7 @@ namespace GUO.Input.Touch
         {
             if (_phase == Phase.RightHeld) Release(MouseButton.Right, ParkedAt);
             if (_phase == Phase.LeftHeld) Release(MouseButton.Left, ParkedAt);
+            GumpFlick.Cancel();
             _phase = Phase.Idle;
             _primary = _secondary = -1;
             _pinchGump = _magnifyGump = null;
@@ -516,6 +528,16 @@ namespace GUO.Input.Touch
             {
                 _secondary = index;
                 _secondaryAt = at;
+
+                // A second finger while a gump is lifted puts it down: no flick.
+                if (_phase == Phase.Flick)
+                {
+                    GumpFlick.Cancel();
+                    _phase = Phase.Done;
+                    Note("second finger -> flick cancelled");
+                    return;
+                }
+
                 // A committed drag/use or walk remains owned by the first finger.
                 // Releasing it here would drop a held item or activate a button.
                 if (_phase != Phase.Pending) return;
@@ -587,6 +609,11 @@ namespace GUO.Input.Touch
 
                 case Phase.Pinch:
                     UpdatePinch();
+
+                    break;
+
+                case Phase.Flick:
+                    GumpFlick.Move(at);
 
                     break;
             }
@@ -668,6 +695,11 @@ namespace GUO.Input.Touch
                 case Phase.Pinch:
                     _pinchGump = null;
                     Note("finger up -> pinch over");
+
+                    break;
+
+                case Phase.Flick:
+                    Note(GumpFlick.End(at));
 
                     break;
             }
