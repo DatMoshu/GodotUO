@@ -261,6 +261,11 @@ def main() -> int:
               f"{overlay.get('trees_in_chunk')} trees (install {overlay.get('base_trees')}), "
               f"{overlay.get('water_in_chunk')} water cells, after close {overlay.get('trees_after_close')} trees, "
               f"install untouched: {overlay.get('install_untouched')}")
+    objects = world.get("objects") or {}
+    if objects:
+        print(f"[editor_smoke]   {'ok  ' if objects.get('ok') else 'FAIL'} Objects anvil + Horse spawner: placed "
+              f"{objects.get('placed_drawn')} drawn, moved {objects.get('moved')}, deleted {objects.get('deleted')}, "
+              f"file {objects.get('file_lines_with_ids')} objects, reopened {objects.get('reopened_drawn')} drawn")
     edit = world.get("edit") or {}
     if edit:
         checks = [k for k, v in edit.items() if v is True or v is False]

@@ -15,6 +15,12 @@ public enum WorldTool
     Raise,
     Lower,
     Hue,
+
+    // World objects (ADR-0014): the project's shard/objects.json.
+    PlaceItem,
+    PlaceSpawner,
+    MoveObject,
+    DeleteObject,
 }
 
 /// <summary>
