@@ -20,6 +20,11 @@ build has no dependency outside the repository. From it this tool writes:
                                     the executable's icon.
     godot\GUO\splash.png            1280 x 720, the sigil centred on the same
                                     dark: application/boot_splash/image.
+    godot\GUO\assets\brand\splash_sigil.png
+                                    the master itself, for the intro that
+                                    plays on start (src/Bootstrap/SplashIntro.cs),
+                                    which scales it at runtime, so it stays
+                                    sharp at any resolution.
     godot\GUO\android_icons\
         main_192.png                legacy launcher icon: the slab again
         foreground_432.png          adaptive foreground: the sigil inside the
@@ -147,6 +152,8 @@ def build(root: Path) -> list[Path]:
     write_ico(master, project / "icon.ico")
     written.append(project / "icon.ico")
     save(splash(master), project / "splash.png")
+    (project / "assets" / "brand").mkdir(parents=True, exist_ok=True)
+    save(master, project / "assets" / "brand" / "splash_sigil.png")
 
     save(on_slab(master, LEGACY), android / "main_192.png")
     fg = fitted(master, ADAPTIVE, SAFE_ZONE)

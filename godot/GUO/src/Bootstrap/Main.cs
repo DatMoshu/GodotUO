@@ -380,7 +380,18 @@ public partial class Main : Node
             StoreInstallNow(_options.StoreInstall);
         }
 
-        Bootstrap.Boot(null, args.ToArray());
+        string[] bootArgs = args.ToArray();
+
+        // The boot splash covers the first frames, then crossfades into the
+        // login screen; the client boots underneath it when its hold ends.
+        if (_options.Splash ?? (!_options.Scripted && SplashIntro.Enabled))
+        {
+            SplashIntro.Play(this, () => Bootstrap.Boot(null, bootArgs), SplashIntro.ReducedMotion);
+        }
+        else
+        {
+            Bootstrap.Boot(null, bootArgs);
+        }
     }
 
     private static void StoreInstallNow(string id)
@@ -970,6 +981,13 @@ public partial class Main : Node
         public bool Silent { get; private set; }
 
         /// <summary>
+        /// Whether to play the boot splash (SplashIntro): <c>--splash</c> and
+        /// <c>--no-splash</c> decide it outright; with neither, an interactive
+        /// run follows the player's Options choice and a scripted run skips it.
+        /// </summary>
+        public bool? Splash { get; private set; }
+
+        /// <summary>
         /// Wait for the login gump to be drawn, say so on the log, and either
         /// quit (desktop) or keep running (a device, where the line is what
         /// the smoke reads back through logcat).
@@ -1125,6 +1143,12 @@ public partial class Main : Node
                         break;
                     case "--silent":
                         o.Silent = true;
+                        break;
+                    case "--splash":
+                        o.Splash = true;
+                        break;
+                    case "--no-splash":
+                        o.Splash = false;
                         break;
                     case "--no-focus":
                         o._noFocus = true;
