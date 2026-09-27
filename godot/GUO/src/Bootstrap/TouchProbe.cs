@@ -665,7 +665,10 @@ internal static class TouchProbe
         Touch(0, at, true);
         await Frames(host, 3);
         Touch(0, at, false);
-        await Frames(host, 2);
+
+        // A tap's button comes up two frames after the finger (TouchInput.Tap);
+        // give the client a frame beyond that to act on the release.
+        await Frames(host, 5);
     }
 
     private static async System.Threading.Tasks.Task Hold(Node host, Vector2 at, int milliseconds)
