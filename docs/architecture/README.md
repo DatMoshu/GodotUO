@@ -27,7 +27,7 @@ it is taken even if its file has not landed yet.
 | 0016 | Canvas background | work/background |
 | 0017 | Android (was 0007 in UO_Port) | work/ui |
 | 0018 | Steam Deck target | work/steamdeck (accepted 2026-09-27) |
-| 0019 | reserved (Codex) | not yet written |
+| 0019 | Asset Store | work/codex-store |
 | 0020 | Asset overlay (editor phase 5) | work/editor-p5 |
 
 Next free: 0021.

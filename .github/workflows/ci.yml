@@ -106,6 +106,13 @@ jobs:
       - name: Python tools compile
         run: python -m compileall -q tools
 
+      # The Asset Store end to end: publish, serve, install with the C#
+      # installer, verify hashes, update and uninstall (ADR-0019).
+      - name: Asset Store tests and smoke
+        run: |
+          python tools/asset_store/test_store.py
+          python tools/asset_store/smoke.py
+
       # docs/port_status.md is generated. If it differs from a fresh audit
       # (ignoring its timestamp), someone ported without re-measuring.
       - name: Port audit is current
