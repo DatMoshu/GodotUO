@@ -4,6 +4,11 @@ From a fresh clone to a running client, on Windows. Every step is a launcher
 under `launchers\`; each one calls `launchers\_shared\common.bat` first, which
 resolves the [Configuration](Configuration.md) and locates the engine.
 
+Other platforms start from the same clone: [Windows Build](Windows-Build.md)
+(a standalone `GUO.exe`), [Android Build](Android-Build.md) (a debug APK) and
+[Steam Deck](Steam-Deck.md) (a Linux build pushed over ssh). To play without
+building anything, see [Download a build](#download-a-build).
+
 ## Requirements
 
 | | |
@@ -93,6 +98,48 @@ launchers\game\play.bat --frames 400    REM run 400 frames and quit
 
 Anything else on the command line is passed to the client; see
 [Scripted Runs and Probes](Scripted-Runs-and-Probes.md).
+
+## Download a build
+
+The `release` workflow (`.github/workflows/release.yml`) exports the client
+with the pinned Godot on GitHub's runners and uploads one artifact per
+platform:
+
+| Artifact | What is in it |
+|---|---|
+| `GUO-windows-x86_64` | `GUO.exe`, `GUO.console.exe`, `GUO.pck` and the .NET data folder |
+| `GUO-steamdeck-linux-x86_64` | `GUO.x86_64`, `GUO.pck` and the .NET data folder (SteamOS / Linux x86_64) |
+| `GUO-android-arm64-debug` | `GUO-debug.apk`, signed with a throwaway debug key made on the runner |
+
+Where to find them:
+
+- **Actions > release**, pick a run, **Artifacts** at the bottom of its
+  summary page (you need to be signed in to GitHub). The workflow runs on
+  pushes to `main` that touch the client or the export tools, and on demand
+  (**Run workflow**). Artifacts expire after GitHub's retention period.
+- **Releases**: a `v*` tag makes a draft release with the Windows and Steam
+  Deck builds zipped and attached; the owner publishes it.
+
+**Every build needs your own UO install.** None of them contains any game
+data, and none ever will: point the client at your install. The exported
+executables read the same environment variables as the launchers
+(`UO_CLIENT_DATA`, `UO_SHARD_HOST`, `UO_SHARD_PORT`), or take them on the
+command line after `--`:
+
+```bat
+GUO.exe -- --play --client-data "<your UO folder>" --host <shard> --port 2593
+```
+
+```sh
+./GUO.x86_64 -- --play --client-data "$HOME/UO" --host <shard> --port 2593
+```
+
+The APK is a debug build with the committed defaults baked in: it reads the
+data from `/sdcard/Android/data/org.guo.client/files/uo` and connects to
+`127.0.0.1:2593`. Copy your install there and forward the shard port
+(`adb reverse tcp:2593 tcp:2593`), or export your own APK with
+`UO_SHARD_HOST` set: see [Android Build](Android-Build.md). The Steam Deck
+steps, including getting the data onto the Deck, are in [Steam Deck](Steam-Deck.md).
 
 ## Optional: the engine on PATH
 
