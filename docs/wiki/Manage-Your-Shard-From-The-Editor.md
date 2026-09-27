@@ -234,9 +234,10 @@ The private shard offers all six facets. Checked on 2026-09-27: with no
 export at all, a client's copies of all six equalled the install block for
 block, and a live stamp reached it.
 
-A client keeps its copies once made. After you export a new version, delete
-`%ProgramData%\GUO-Editor-Private\` on that machine so the next login makes
-fresh ones.
+A client keeps its copies once made. After a re-export, `tools\world
+export` checks the copies on that machine and warns if they lack your
+changes. Run the export again with `--clear-ultimalive` to remove the stale
+copy; the next login makes a fresh one.
 
 ## Checks, in one place
 
