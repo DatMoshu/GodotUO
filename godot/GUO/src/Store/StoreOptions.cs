@@ -16,7 +16,20 @@ internal static class StoreOptions
 {
     public static string Url => StoreAddress.Load(ProfileManager.CurrentProfile == null ? null : ProfileManager.ProfilePath,
         System.Environment.GetEnvironmentVariable("UO_STORE_URL") ?? StoreAddress.Default);
-    public static StoreClient CreateClient(string url = null) => new(url ?? Url, ProjectSettings.GlobalizePath("user://store"), PlatformDefaults.CurrentVersion);
+    public static StoreClient CreateClient(string url = null) => new(url ?? Url, ProjectSettings.GlobalizePath("user://store"), PlatformDefaults.CurrentVersion)
+    { BackgroundRemoved = ResetRemovedBackground };
+
+    private static bool ResetRemovedBackground(string id, string version)
+    {
+        var profile = ProfileManager.CurrentProfile;
+        if (profile == null || !StoreBackground.BelongsTo(profile.CanvasBackgroundPath, id, version)) return false;
+        var mode = CanvasBackgroundSettings.FromProfile(profile).Mode;
+        if (mode is not (CanvasBackgroundMode.Image or CanvasBackgroundMode.Video or CanvasBackgroundMode.Frames)) return false;
+        profile.CanvasBackgroundMode = "builtin-grey";
+        profile.CanvasBackgroundPath = "";
+        ProfileManager.Save(profile, ProfileManager.ProfilePath);
+        return true;
+    }
 
     // Called from one marked block in Options. The existing Apply path remains
     // authoritative: a store choice fills the existing mode and path controls.

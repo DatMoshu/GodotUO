@@ -19,6 +19,8 @@ internal sealed class StoreClient : IDisposable
     private readonly int _profileVersion;
     private readonly Uri _base;
     public string Root => _root;
+    public Func<string, string, bool> BackgroundRemoved { get; set; }
+    public string LastUninstallMessage { get; private set; } = "Pack removed. Reopen Options to refresh backgrounds.";
 
     public StoreClient(string storeUrl, string installRoot, int profileVersion)
     {
@@ -191,6 +193,9 @@ internal sealed class StoreClient : IDisposable
         string destination = Destination(id, version);
         using var guard = Lock();
         if (Directory.Exists(destination)) DeleteTree(destination);
+        LastUninstallMessage = BackgroundRemoved?.Invoke(id, version) == true
+            ? "Pack removed. Active background reset to built-in grey. Reopen Options to refresh backgrounds."
+            : "Pack removed. Reopen Options to refresh backgrounds.";
     }
 
     public bool HasUpdate(StoreEntry entry) => entry.Manifest.MinProfileVersion <= _profileVersion &&
