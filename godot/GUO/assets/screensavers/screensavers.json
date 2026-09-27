@@ -1,0 +1,27 @@
+[
+  {
+    "name": "moongate-embers",
+    "title": "Moongate embers",
+    "video": "moongate-embers.ogv",
+    "still": "moongate-embers.png"
+  },
+  {
+    "name": "drifting-reagents",
+    "title": "Drifting reagents",
+    "video": "drifting-reagents.ogv",
+    "still": "drifting-reagents.png",
+    "store_only": true
+  },
+  {
+    "name": "spine-starfield",
+    "title": "Stars over the Spine",
+    "video": "spine-starfield.ogv",
+    "still": "spine-starfield.png"
+  },
+  {
+    "name": "sigil-trace",
+    "title": "Gold sigil trace",
+    "video": "sigil-trace.ogv",
+    "still": "sigil-trace.png"
+  }
+]

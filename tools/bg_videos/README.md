@@ -9,6 +9,7 @@ CC0. See `godot/GUO/assets/backgrounds/LICENSE.md`.
 python tools\bg_videos\run.py                        all ten, 1280x720, into godot\GUO\assets\backgrounds
 python tools\bg_videos\run.py --only twin-moons      one theme
 python tools\bg_videos\run.py --size 1920x1080 --out D:\bg_masters   masters, kept outside the repo
+python tools\bg_videos\run.py --set screensavers   the OLED screensavers, into godot\GUO\assets\screensavers
 ```
 
 ## What it writes
@@ -64,3 +65,33 @@ These rules were agreed with the background player:
 
 To add a theme, subclass `Theme`, add it to `THEMES`, and keep everything a
 function of `p`.
+
+## Screensavers (`--set screensavers`)
+
+`screensavers.py` holds four loops for OLED screens. They follow the rules
+above, with these differences:
+
+- **Output:** they go to `godot/GUO/assets/screensavers/`, listed in
+  `screensavers.json`. It has the same fields as `backgrounds.json` (see
+  data_formats.md, "Screensavers in the client").
+- **Store-only loops:** a theme with `store_only = True` gets
+  `"store_only": true`. The client does not offer it; instead
+  `tools/asset_store/seed.py` publishes it as a `screensaver` pack.
+- **Loop length:** 32 to 40 s.
+- **Black and moving:** the screen is mostly true black, and nothing stays
+  lit in one place. A theme either drifts its whole frame on a slow
+  Lissajous path, or keeps every lit element moving; a fixed glow breathes
+  once per loop instead of holding steady.
+- **Burn-in check:** the report measures this. `static_max` is the
+  brightest level (0 to 255) any pixel keeps through the whole loop, and
+  `mean_level` is the average level. All four keep `static_max` at 2 or
+  lower.
+
+The report and contact sheet go to `build/bg_videos/screensavers/`.
+
+| name | seconds | what it is |
+|---|---:|---|
+| moongate-embers | 36 | a small blue gate wandering the dark, shedding embers from its rim |
+| drifting-reagents | 32 | rose petals, pearls and ash tumbling slowly down (store only) |
+| spine-starfield | 40 | a starfield and the odd meteor over a black mountain range with a moonlit crest |
+| sigil-trace | 36 | a gold pen tracing an original seven-pointed rune, which then fades to embers |

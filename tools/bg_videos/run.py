@@ -8,6 +8,7 @@ frame 0 exactly and the player can loop the file with no seam and no fade.
     python tools/bg_videos/run.py                    all ten -> godot/GUO/assets/backgrounds
     python tools/bg_videos/run.py --only ember-drift
     python tools/bg_videos/run.py --size 1920x1080 --out D:/masters   (masters stay outside the repo)
+    python tools/bg_videos/run.py --set screensavers   the OLED loops -> godot/GUO/assets/screensavers
 
 Output per theme: <name>.ogv (Ogg Theora, no audio) and <name>.png (the
 exact first frame, the low-power still), plus backgrounds.json listing them.
@@ -674,13 +675,23 @@ THEMES = [MoongateShimmer, CandleParchment, StarlitSea, DriftingFog, EmberDrift,
           RainOnStone, AuroraNight, SnowfallPines, SunkenCaustics, TwinMoons]
 
 
+def theme_set(name):
+    """(themes, default output folder, manifest file, report folder) for one --set."""
+    if name == "builtin":
+        return THEMES, DEFAULT_OUT, "backgrounds.json", REPORT_DIR
+    if name == "screensavers":
+        from screensavers import SCREENSAVERS
+        return SCREENSAVERS, ROOT / "godot" / "GUO" / "assets" / "screensavers", "screensavers.json", REPORT_DIR / "screensavers"
+    raise SystemExit(f"unknown set {name}")
+
+
 # ---------------------------------------------------------------- render
 
 def to8(img, dither):
     return np.clip(np.rint(img * 255 + dither), 0, 255).astype(np.uint8)
 
 
-def render(cls, W, H, out, q, seed):
+def render(cls, W, H, out, q, seed, report_dir=REPORT_DIR):
     t0 = time.time()
     th = cls(W, H, seed)
     N = th.seconds * FPS
@@ -693,8 +704,12 @@ def render(cls, W, H, out, q, seed):
     ff = subprocess.Popen(cmd, stdin=subprocess.PIPE)
     thumbs = []
     first = None
+    lit = None          # per pixel, the dimmest it gets over the loop: what an OLED would burn in
+    luma = 0.0
     for i in range(N):
         fr = to8(th.frame(i / N), dither)
+        lit = fr.max(2) if lit is None else np.minimum(lit, fr.max(2))
+        luma += float(fr.mean()) / N
         if i == 0:
             first = fr
             Image.fromarray(fr).save(out / f"{th.name}.png", optimize=True)
@@ -709,18 +724,20 @@ def render(cls, W, H, out, q, seed):
     sheet = Image.new("RGB", (320 * 4, 180))
     for j, t in enumerate(thumbs[:4]):
         sheet.paste(t, (320 * j, 0))
-    REPORT_DIR.mkdir(parents=True, exist_ok=True)
-    sheet.save(REPORT_DIR / f"sheet_{th.name}.png")
+    report_dir.mkdir(parents=True, exist_ok=True)
+    sheet.save(report_dir / f"sheet_{th.name}.png")
     return dict(name=th.name, title=th.title, seconds=th.seconds, frames=N,
                 bytes=ogv.stat().st_size, mbit=ogv.stat().st_size * 8 / th.seconds / 1e6,
-                seam_max=seam, step_mean=round(step, 3), secs=round(time.time() - t0, 1))
+                seam_max=seam, step_mean=round(step, 3), mean_level=round(luma, 2),
+                static_max=int(lit.max()), secs=round(time.time() - t0, 1))
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--only", nargs="*", help="theme names to render (default: all)")
     ap.add_argument("--size", default="1280x720")
-    ap.add_argument("--out", type=Path, default=DEFAULT_OUT)
+    ap.add_argument("--set", default="builtin", choices=["builtin", "screensavers"])
+    ap.add_argument("--out", type=Path, help="output folder (default: the set's own)")
     ap.add_argument("--q", type=int, default=8, help="Theora quality 0-10")
     ap.add_argument("--jobs", type=int, default=5)
     ap.add_argument("--seed", type=int, default=2026)
@@ -728,27 +745,30 @@ def main():
     if not shutil.which("ffmpeg"):
         sys.exit("ffmpeg (with libtheora) is not on PATH")
     W, H = map(int, args.size.lower().split("x"))
+    themes, default_out, manifest_name, report_dir = theme_set(args.set)
+    args.out = args.out or default_out
     args.out.mkdir(parents=True, exist_ok=True)
-    todo = [c for c in THEMES if not args.only or c.name in args.only]
+    todo = [c for c in themes if not args.only or c.name in args.only]
     with ProcessPoolExecutor(args.jobs) as ex:
-        futs = [ex.submit(render, c, W, H, args.out, args.q, args.seed + 1000 * i)
-                for i, c in enumerate(THEMES) if c in todo]
+        futs = [ex.submit(render, c, W, H, args.out, args.q, args.seed + 1000 * i, report_dir)
+                for i, c in enumerate(themes) if c in todo]
         stats = [f.result() for f in futs]
-    manifest = [dict(name=c.name, title=c.title, video=f"{c.name}.ogv", still=f"{c.name}.png")
-                for c in THEMES if (args.out / f"{c.name}.ogv").exists()]
-    (args.out / "backgrounds.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    manifest = [dict(name=c.name, title=c.title, video=f"{c.name}.ogv", still=f"{c.name}.png",
+                     **({"store_only": True} if getattr(c, "store_only", False) else {}))
+                for c in themes if (args.out / f"{c.name}.ogv").exists()]
+    (args.out / manifest_name).write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     total = sum((args.out / f"{m['name']}.ogv").stat().st_size for m in manifest)
     for s in stats:
         print(f"{s['name']:18} {s['seconds']:3}s {s['bytes'] / 1e6:5.2f} MB {s['mbit']:4.2f} Mbit/s "
-              f"seam {s['seam_max']} step {s['step_mean']} ({s['secs']} s)")
+              f"seam {s['seam_max']} step {s['step_mean']} mean {s['mean_level']} static {s['static_max']} ({s['secs']} s)")
     print(f"total {total / 1e6:.2f} MB over {len(manifest)} videos -> {args.out}")
-    (REPORT_DIR / "report.json").write_text(json.dumps(stats, indent=2), encoding="utf-8")
-    sheets = sorted(REPORT_DIR.glob("sheet_*.png"))
+    (report_dir / "report.json").write_text(json.dumps(stats, indent=2), encoding="utf-8")
+    sheets = [report_dir / f"sheet_{c.name}.png" for c in themes if (report_dir / f"sheet_{c.name}.png").exists()]
     if sheets:
         big = Image.new("RGB", (1280, 180 * len(sheets)))
         for i, sp in enumerate(sheets):
             big.paste(Image.open(sp), (0, 180 * i))
-        big.save(REPORT_DIR / "contact_sheet.png")
+        big.save(report_dir / "contact_sheet.png")
 
 
 if __name__ == "__main__":
