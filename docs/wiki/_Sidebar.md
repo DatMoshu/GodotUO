@@ -9,6 +9,7 @@
 **Builds**
 - [Windows Build](Windows-Build.md)
 - [Android Build](Android-Build.md)
+- [Steam Deck](Steam-Deck.md)
 - [Dual Screen](Dual-Screen.md)
 
 **Playing**
