@@ -219,6 +219,10 @@ public partial class Main : Node
                     // login scene, so the first layout already sees it.
                     GUO.Input.Touch.TouchInput.RequestedScale = _options.ScreenScale;
                     GUO.Input.Touch.TouchInput.TraceToLog = _options.TouchTrace;
+
+                    // Debug: draw the fingers (--show-touches, or the Options toggle).
+                    GUO.Input.Touch.TouchOverlay.Forced = _options.ShowTouches;
+                    GUO.Input.Touch.TouchOverlay.Setup(this);
                 }
 
                 // A second display, where the device has one (or the desktop
@@ -944,6 +948,9 @@ public partial class Main : Node
         /// <summary>Echo every gesture the touch layer resolves to the log, for a device run read over logcat.</summary>
         public bool TouchTrace { get; private set; }
 
+        /// <summary>Draw every finger the touch layer sees; see TouchOverlay.</summary>
+        public bool ShowTouches { get; private set; }
+
         /// <summary>Mute the Master bus for the whole run; the Android tool bakes this in unless told --sound.</summary>
         public bool Silent { get; private set; }
 
@@ -1091,6 +1098,9 @@ public partial class Main : Node
                         break;
                     case "--touch-trace":
                         o.TouchTrace = true;
+                        break;
+                    case "--show-touches":
+                        o.ShowTouches = true;
                         break;
                     case "--gamepad-trace":
                         GUO.Input.Gamepad.GamepadInput.Trace = true;
