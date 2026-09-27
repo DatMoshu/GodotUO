@@ -82,6 +82,19 @@ CI** — the console build blocks and writes to stdout.
 
 ---
 
+## Documentation
+
+The wiki lives in the repository, under [`docs/wiki/`](docs/wiki/Home.md), so
+it is versioned and reviewed with the code: getting started, every
+configuration key, the launchers and tools, the Windows and Android builds,
+the dev shard, the editor, the scripted runs and probes, parity and drift,
+the ADR index and a FAQ. `docs/wiki/README.md` says how it is published to
+the GitHub Wiki. The plan (`docs/port_plan.md`), the data contract
+(`docs/data_formats.md`) and the ADRs (`docs/architecture/`) remain the
+sources it is written from.
+
+---
+
 ## Layout
 
 ```
