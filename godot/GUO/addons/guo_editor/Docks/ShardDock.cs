@@ -2,6 +2,7 @@
 namespace GUO.Editor;
 
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Text.Json.Nodes;
 using Godot;
@@ -35,6 +36,9 @@ public partial class ShardDock : EditorDock
     /// <summary>The last command reply.</summary>
     public JsonNode LastCommand { get; private set; }
 
+    /// <summary>Every world-object acknowledgement, in order (ADR-0014).</summary>
+    public List<JsonNode> ObjectAcks { get; } = new();
+
     private long _lastSentMs;
 
     public bool Live => _link.Connected;
@@ -53,6 +57,8 @@ public partial class ShardDock : EditorDock
     {
         _world = world;
         _world.Editor.BlockWritten += OnBlockWritten;
+        _world.Objects.Put += OnObjectPut;
+        _world.Objects.Deleted += OnObjectDeleted;
     }
 
     public override void _Ready()
@@ -168,6 +174,24 @@ public partial class ShardDock : EditorDock
         Log($"sent block map{b.Facet} {b.Bx},{b.By} ({b.Statics.Count} statics)");
     }
 
+    private void OnObjectPut(string kind, JsonObject obj)
+    {
+        if (_link.Connected)
+        {
+            _link.SendObject("put", kind, obj);
+            Log($"sent {kind} {(string)obj["id"]}");
+        }
+    }
+
+    private void OnObjectDeleted(string kind, Guid id)
+    {
+        if (_link.Connected)
+        {
+            _link.SendObject("delete", kind, null, id);
+            Log($"sent delete of {kind} {id}");
+        }
+    }
+
     public override void _Process(double delta)
     {
         for (JsonNode msg = _link.Poll(); msg != null; msg = _link.Poll())
@@ -205,6 +229,15 @@ public partial class ShardDock : EditorDock
                     break;
                 }
 
+                case "object":
+                    _world?.Objects.ApplyRemote(msg);
+                    Log($"{(string)msg["from"] ?? "?"}: {(string)msg["action"]} {(string)msg["kind"]}");
+                    break;
+                case "object_ack":
+                    ObjectAcks.Add(msg);
+                    Log($"shard: {(string)msg["action"]} {(string)msg["kind"]} {(string)msg["outcome"]} in {(long)msg["ms"]} ms, "
+                        + $"relayed to {(int)msg["editors"]} editor(s)");
+                    break;
                 case "command":
                     LastCommand = msg;
                     Log((bool)msg["ok"]
@@ -234,6 +267,8 @@ public partial class ShardDock : EditorDock
         if (_world != null)
         {
             _world.Editor.BlockWritten -= OnBlockWritten;
+            _world.Objects.Put -= OnObjectPut;
+            _world.Objects.Deleted -= OnObjectDeleted;
         }
 
         _link.Dispose();

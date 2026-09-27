@@ -278,6 +278,7 @@ line, UTF-8, `\n`-terminated. ADR-0012 has the reasoning.
 | `hello` | `editor` (name) | Answered with `hello` |
 | `block` | `facet`, `bx`, `by`, `land`: 64 `[id, z]` pairs, row-major (index `y*8+x`), `statics`: `[id, x, y, z, hue]` per static (`x`, `y` 0..7 in the block), `sent_ms` (sender's clock, unix ms, optional) | Replaces the whole block in the server's own map (walking, line of sight and placement see it), pushes it to UltimaLive clients on that map, relays it to the other editors; answered with `ack` |
 | `command` | `as` (an online character's name), `text` (e.g. `[where`) | Runs the GM command as that character (`CommandSystem.Handle`); answered with `command` |
+| `object` | `action` `put` with `kind` (`spawner` or `item`) and `object` (as in `shard/objects.json`, section 13); or `action` `delete` with `kind` and `id` | Applies it to the world with the boot sync's code (ADR-0014), relays it to the other editors; answered with `object_ack` |
 
 **Bridge to editor**
 
@@ -287,6 +288,8 @@ line, UTF-8, `\n`-terminated. ADR-0012 has the reasoning.
 | `ack` | `facet`, `bx`, `by`, `clients` (UltimaLive clients pushed to), `editors` (other editors relayed to), `ms` (time on the game thread) |
 | `block` | as sent, plus `from` (the sending editor's name): another editor's block. Last write per block wins |
 | `command` | `ok`, `as`, `text`, or `error` |
+| `object` | as sent, plus `from`: another editor's world-object change. Last write per object wins |
+| `object_ack` | `action`, `kind`, `id`, `outcome` (`Added`, `Changed`, `Kept`, `Deleted`, `Missing`, `Skipped`), `editors`, `ms` |
 | `error` | `error` |
 
 **Bridge to game client** (UltimaLive, as `src/Game/UltimaLive.cs` reads it)

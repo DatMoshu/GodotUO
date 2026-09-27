@@ -119,6 +119,23 @@ internal sealed class ShardLink : IDisposable
     }
 
     /// <summary>A GM command, run on the shard as an online character.</summary>
+    /// <summary>A world object put or delete (ADR-0014; docs/data_formats.md section 10).</summary>
+    public void SendObject(string action, string kind, JsonObject obj, Guid? id = null)
+    {
+        var msg = new JsonObject { ["op"] = "object", ["action"] = action, ["kind"] = kind };
+        if (obj != null)
+        {
+            msg["object"] = obj;
+        }
+
+        if (id != null)
+        {
+            msg["id"] = id.Value.ToString();
+        }
+
+        Send(msg);
+    }
+
     public void SendCommand(string asCharacter, string text) =>
         Send(new JsonObject { ["op"] = "command", ["as"] = asCharacter, ["text"] = text });
 

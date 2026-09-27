@@ -6,7 +6,7 @@ which other agents and devices play on.
 
 ```
 python tools\editor_shard\run.py setup   [--from DIR] [--port 2594]
-python tools\editor_shard\run.py start   [--data-first DIR] [--objects EXPORT]
+python tools\editor_shard\run.py start   [--data-first DIR] [--objects EXPORT | --clear-objects]
 python tools\editor_shard\run.py status
 python tools\editor_shard\run.py stop
 ```
@@ -31,6 +31,8 @@ python tools\editor_shard\run.py stop
   - GUO's record lives in the save (`GUOWorldObjects`).
   - A later start without `--objects` syncs the last manifest again, which
     changes nothing.
+- **start --clear-objects** installs an empty world-objects manifest. The
+  boot sync then removes every object GUO placed, and nothing else.
 - **bridge** builds `bridge\GUO.EditorBridge.dll` (a ModernUO assembly, ADR-0012)
   against the copy's own `Server.dll` and lists it in the copy's
   `Data\assemblies.json`. It is never installed in the shared shard. Once

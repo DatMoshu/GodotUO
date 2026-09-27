@@ -90,23 +90,25 @@ public static class WorldObjectsSync
         public int ItemsAdded, ItemsChanged, ItemsDeleted, ItemsKept;
     }
 
+    /// <summary>What one put or delete did.</summary>
+    public enum Outcome
+    {
+        Kept,
+        Added,
+        Changed,
+        Deleted,
+        Missing,
+        Skipped,
+    }
+
+    private static JsonObject AppliedSpawners => Applied["spawners"].AsObject();
+    private static JsonObject AppliedItems => Applied["items"].AsObject();
+
     private static Result Sync(JsonNode manifest)
     {
         var result = new Result();
-        JsonObject applied = Applied;
-        var appliedSpawners = applied["spawners"].AsObject();
-        var appliedItems = applied["items"].AsObject();
 
         // --- spawners, from the ModernUO files the manifest lists ---
-        var byGuid = new Dictionary<Guid, BaseSpawner>();
-        foreach (var item in World.Items.Values)
-        {
-            if (item is BaseSpawner s && !s.Deleted)
-            {
-                byGuid[s.Guid] = s;
-            }
-        }
-
         var wanted = new HashSet<string>();
         foreach (JsonNode f in manifest["files"].AsArray())
         {
@@ -116,53 +118,23 @@ public static class WorldObjectsSync
                 continue;
             }
 
-            string path = Path.Combine(Core.BaseDirectory, rel);
-            string text = File.ReadAllText(path);
-            var records = JsonNode.Parse(text).AsArray();
-            var dtos = JsonSerializer.Deserialize<List<SpawnerDto>>(text, SpawnerJsonSerializer.Options);
-            for (int i = 0; i < dtos.Count; i++)
+            foreach (JsonNode record in JsonNode.Parse(File.ReadAllText(Path.Combine(Core.BaseDirectory, rel))).AsArray())
             {
-                SpawnerDto dto = dtos[i];
-                string id = dto.Guid.ToString();
-                wanted.Add(id);
-                string hash = Hash(records[i].ToJsonString());
-
-                if (byGuid.TryGetValue(dto.Guid, out BaseSpawner existing)
-                    && (string)appliedSpawners[id] == hash
-                    && existing.Map == dto.Map && existing.Location == dto.Location)
+                wanted.Add((string)record["guid"]);
+                switch (PutSpawner(record.AsObject()))
                 {
-                    result.SpawnersKept++;
-                    continue;
-                }
-
-                bool had = existing != null;
-                existing?.Delete();
-                BaseSpawner spawner = dto.ToSpawner();
-                spawner.MoveToWorld(dto.Location, dto.Map);
-                spawner.Respawn();
-                appliedSpawners[id] = hash;
-                if (had)
-                {
-                    result.SpawnersChanged++;
-                }
-                else
-                {
-                    result.SpawnersAdded++;
+                    case Outcome.Kept: result.SpawnersKept++; break;
+                    case Outcome.Added: result.SpawnersAdded++; break;
+                    case Outcome.Changed: result.SpawnersChanged++; break;
                 }
             }
         }
 
-        foreach (var (id, _) in appliedSpawners.ToList())
+        foreach (var (id, _) in AppliedSpawners.ToList())
         {
-            if (!wanted.Contains(id))
+            if (!wanted.Contains(id) && DeleteSpawner(id) == Outcome.Deleted)
             {
-                if (byGuid.TryGetValue(Guid.Parse(id), out BaseSpawner gone))
-                {
-                    gone.Delete();
-                    result.SpawnersDeleted++;
-                }
-
-                appliedSpawners.Remove(id);
+                result.SpawnersDeleted++;
             }
         }
 
@@ -170,61 +142,194 @@ public static class WorldObjectsSync
         var wantedItems = new HashSet<string>();
         foreach (JsonNode m in manifest["items"].AsArray())
         {
-            string id = (string)m["id"];
-            wantedItems.Add(id);
-            Map map = Map.Parse((string)m["map"]);
-            var loc = m["location"].AsArray();
-            var at = new Point3D((int)loc[0], (int)loc[1], (int)loc[2]);
-            int itemId = Convert.ToInt32((string)m["item_id"], 16);
-            int hue = Convert.ToInt32((string)m["hue"] ?? "0x0", 16);
-            string type = (string)m["type"] ?? "Static";
-            if (type != "Static")
+            wantedItems.Add((string)m["id"]);
+            switch (PutItem(m))
             {
-                logger.Warning("GUO editor bridge: item {0} is a {1}; only Static is synced yet", id, type);
-                continue;
+                case Outcome.Kept: result.ItemsKept++; break;
+                case Outcome.Added: result.ItemsAdded++; break;
+                case Outcome.Changed: result.ItemsChanged++; break;
             }
-
-            Item existing = appliedItems[id]?["serial"] is JsonNode sn ? World.FindItem((Serial)(uint)sn) : null;
-            if (existing is { Deleted: false })
-            {
-                if (existing.Map == map && existing.Location == at && existing.ItemID == itemId && existing.Hue == hue)
-                {
-                    result.ItemsKept++;
-                    continue;
-                }
-
-                existing.ItemID = itemId;
-                existing.Hue = hue;
-                existing.MoveToWorld(at, map);
-                result.ItemsChanged++;
-            }
-            else
-            {
-                existing = new Static(itemId) { Hue = hue };
-                existing.MoveToWorld(at, map);
-                result.ItemsAdded++;
-            }
-
-            appliedItems[id] = new JsonObject { ["serial"] = (uint)existing.Serial };
         }
 
-        foreach (var (id, node) in appliedItems.ToList())
+        foreach (var (id, _) in AppliedItems.ToList())
         {
-            if (!wantedItems.Contains(id))
+            if (!wantedItems.Contains(id) && DeleteItem(id) == Outcome.Deleted)
             {
-                if (World.FindItem((Serial)(uint)node["serial"]) is { Deleted: false } gone)
-                {
-                    gone.Delete();
-                    result.ItemsDeleted++;
-                }
-
-                appliedItems.Remove(id);
+                result.ItemsDeleted++;
             }
         }
 
-        // Saved with the world at the next world save.
         return result;
     }
+
+    private static BaseSpawner FindSpawner(Guid guid)
+    {
+        foreach (var item in World.Items.Values)
+        {
+            if (item is BaseSpawner s && !s.Deleted && s.Guid == guid)
+            {
+                return s;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// One spawner, given as a ModernUO SpawnerDto record: made (or remade)
+    /// through ModernUO's own DTO path, the one [ImportSpawners uses. Kept as
+    /// it is when GUO applied the same record and it stands where it should.
+    /// Game thread only.
+    /// </summary>
+    public static Outcome PutSpawner(JsonObject record)
+    {
+        string text = record.ToJsonString();
+        var dto = JsonSerializer.Deserialize<SpawnerDto>(text, SpawnerJsonSerializer.Options);
+        string id = dto.Guid.ToString();
+        string hash = Hash(text);
+        BaseSpawner existing = FindSpawner(dto.Guid);
+        if (existing != null && (string)AppliedSpawners[id] == hash
+            && existing.Map == dto.Map && existing.Location == dto.Location)
+        {
+            return Outcome.Kept;
+        }
+
+        bool had = existing != null;
+        existing?.Delete();
+        BaseSpawner spawner = dto.ToSpawner();
+        spawner.MoveToWorld(dto.Location, dto.Map);
+        spawner.Respawn();
+        AppliedSpawners[id] = hash;
+        return had ? Outcome.Changed : Outcome.Added;
+    }
+
+    /// <summary>Deletes a spawner GUO applied (and what it spawned, as a spawner's delete does).</summary>
+    public static Outcome DeleteSpawner(string id)
+    {
+        if (!AppliedSpawners.ContainsKey(id))
+        {
+            return Outcome.Missing;
+        }
+
+        AppliedSpawners.Remove(id);
+        BaseSpawner gone = FindSpawner(Guid.Parse(id));
+        gone?.Delete();
+        return gone != null ? Outcome.Deleted : Outcome.Missing;
+    }
+
+    /// <summary>One placed item, in the manifest's form (id, map, location, item_id, hue, type).</summary>
+    public static Outcome PutItem(JsonNode m)
+    {
+        string id = (string)m["id"];
+        Map map = Map.Parse((string)m["map"]);
+        var loc = m["location"].AsArray();
+        var at = new Point3D((int)loc[0], (int)loc[1], (int)loc[2]);
+        int itemId = Convert.ToInt32((string)m["item_id"], 16);
+        int hue = Convert.ToInt32((string)m["hue"] ?? "0x0", 16);
+        string type = (string)m["type"] ?? "Static";
+        if (type != "Static")
+        {
+            logger.Warning("GUO editor bridge: item {0} is a {1}; only Static is synced yet", id, type);
+            return Outcome.Skipped;
+        }
+
+        Item existing = AppliedItems[id]?["serial"] is JsonNode sn ? World.FindItem((Serial)(uint)sn) : null;
+        Outcome outcome;
+        if (existing is { Deleted: false })
+        {
+            if (existing.Map == map && existing.Location == at && existing.ItemID == itemId && existing.Hue == hue)
+            {
+                return Outcome.Kept;
+            }
+
+            existing.ItemID = itemId;
+            existing.Hue = hue;
+            existing.MoveToWorld(at, map);
+            outcome = Outcome.Changed;
+        }
+        else
+        {
+            existing = new Static(itemId) { Hue = hue };
+            existing.MoveToWorld(at, map);
+            outcome = Outcome.Added;
+        }
+
+        AppliedItems[id] = new JsonObject { ["serial"] = (uint)existing.Serial };
+        return outcome;
+    }
+
+    public static Outcome DeleteItem(string id)
+    {
+        if (AppliedItems[id]?["serial"] is not JsonNode sn)
+        {
+            return Outcome.Missing;
+        }
+
+        AppliedItems.Remove(id);
+        if (World.FindItem((Serial)(uint)sn) is { Deleted: false } gone)
+        {
+            gone.Delete();
+            return Outcome.Deleted;
+        }
+
+        return Outcome.Missing;
+    }
+
+    // --- the editor's neutral objects (docs/data_formats.md section 13) to ModernUO's form ---
+    // Mirrors tools/world/backends/modernuo.py, key for key, so a spawner put
+    // live and the same spawner exported later hash the same.
+
+    public static JsonObject SpawnerRecord(JsonNode s)
+    {
+        var entries = new JsonArray();
+        foreach (JsonNode e in s["entries"].AsArray())
+        {
+            entries.Add(new JsonObject
+            {
+                ["name"] = (string)e["name"],
+                ["maxCount"] = (int?)e["max"] ?? 1,
+                ["probability"] = (int?)e["probability"] ?? 100,
+            });
+        }
+
+        var rec = new JsonObject
+        {
+            ["$type"] = "Spawner",
+            ["guid"] = (string)s["id"],
+            ["name"] = "GUO " + (string)s["entries"][0]["name"],
+            ["location"] = new JsonArray((int)s["x"], (int)s["y"], (int)s["z"]),
+            ["map"] = (string)s["map"],
+            ["count"] = (int?)s["count"] ?? 1,
+            ["minDelay"] = (string)s["min_delay"] ?? "00:05:00",
+            ["maxDelay"] = (string)s["max_delay"] ?? "00:10:00",
+            ["team"] = (int?)s["team"] ?? 0,
+            ["homeRange"] = (int?)s["home_range"] ?? 2,
+            ["walkingRange"] = (int?)s["walking_range"] ?? -1,
+            ["entries"] = entries,
+        };
+        if (s["extra"] is JsonObject extra)
+        {
+            foreach (var (k, v) in extra)
+            {
+                if (!rec.ContainsKey(k))
+                {
+                    rec[k] = v?.DeepClone();
+                }
+            }
+        }
+
+        return rec;
+    }
+
+    public static JsonObject ItemManifest(JsonNode i) => new()
+    {
+        ["id"] = (string)i["id"],
+        ["map"] = (string)i["map"],
+        ["location"] = new JsonArray((int)i["x"], (int)i["y"], (int)i["z"]),
+        ["item_id"] = (string)i["item_id"],
+        ["hue"] = (string)i["hue"] ?? "0x0000",
+        ["type"] = (string)i["type"] ?? "Static",
+    };
 
     private static string Hash(string s) => Convert.ToHexString(SHA1.HashData(Encoding.UTF8.GetBytes(s)));
 }

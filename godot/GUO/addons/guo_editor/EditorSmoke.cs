@@ -638,6 +638,12 @@ public partial class EditorSmoke : Node
             return;
         }
 
+        if (_liveRole == "objects")
+        {
+            StepLiveObjects();
+            return;
+        }
+
         if (_liveRole == "follow")
         {
             if (_shard.LastRemote is { } r && r.Facet == _liveFacet && r.Bx == EditBx && r.By == EditBy)

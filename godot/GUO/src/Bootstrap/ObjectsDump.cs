@@ -21,6 +21,43 @@ internal static class ObjectsDump
 {
     public const int Range = 12;
 
+    /// <summary>
+    /// Stays online and writes a dump each time a tool asks: a file
+    /// <c>&lt;dir&gt;/&lt;name&gt;.request</c> is answered with
+    /// <c>&lt;dir&gt;/&lt;name&gt;.json</c> (the request is removed first), and
+    /// <c>&lt;dir&gt;/&lt;name&gt;.shot</c> with <c>&lt;name&gt;.png</c>, and
+    /// <c>&lt;dir&gt;/quit</c> ends the watch. How tools/editor_objects_proof
+    /// --live looks at the client's world before and after a live edit
+    /// without restarting it.
+    /// </summary>
+    public static async System.Threading.Tasks.Task Watch(Godot.Node host, string dir, double maxSeconds = 900)
+    {
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, "watching"), "");
+        var started = System.Diagnostics.Stopwatch.StartNew();
+        while (started.Elapsed.TotalSeconds < maxSeconds && !File.Exists(Path.Combine(dir, "quit")))
+        {
+            foreach (string request in Directory.GetFiles(dir, "*.request"))
+            {
+                string name = Path.GetFileNameWithoutExtension(request);
+                File.Delete(request);
+                Write(Path.Combine(dir, name + ".json"));
+            }
+
+            // <name>.shot: the frame, as CaptureFrame takes it (a windowed
+            // client only: a headless one never draws, and this would wait).
+            foreach (string request in Directory.GetFiles(dir, "*.shot"))
+            {
+                string name = Path.GetFileNameWithoutExtension(request);
+                File.Delete(request);
+                await host.ToSignal(Godot.RenderingServer.Singleton, Godot.RenderingServerInstance.SignalName.FramePostDraw);
+                host.GetViewport().GetTexture().GetImage().SavePng(Path.Combine(dir, name + ".png"));
+            }
+
+            await host.ToSignal(host.GetTree().CreateTimer(0.25), Godot.SceneTreeTimer.SignalName.Timeout);
+        }
+    }
+
     public static void Write(string path)
     {
         World world = Client.Game?.UO?.World;
