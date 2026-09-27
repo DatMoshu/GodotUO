@@ -10,7 +10,11 @@ Accepted
 
 ## Last Verified
 
-2026-09-26: `python tools\editor_smoke\run.py --reload` and `--headless --reload`
+2026-09-26 (phase 1): `python tools\editor_smoke\run.py --reload` and
+`--headless --reload` pass with nine panels (Art, Gumps, Anims, Hues, Multis,
+Cliloc, Sounds, Maps, Parity), a sound played before the reload included.
+
+2026-09-26 (phase 0): `python tools\editor_smoke\run.py --reload` and `--headless --reload`
 pass on the pinned Godot 4.7.2 mono. The docks load, the install opens through
 `UOFileManager` in about 1.2-1.5 s, static 0x0E75 (backpack, 44x32) decodes, and
 the addon survives a rebuild-and-reload with the editor open. Export builds
@@ -108,8 +112,11 @@ godot/GUO/addons/guo_editor/        all files #if TOOLS, namespace GUO.Editor
   GuoEditorPlugin.cs                [Tool] EditorPlugin, ISerializationListener
   EditorData.cs                     config + UOFileManager + art decode
   EditorSmoke.cs                    self-check, present only with --guo-editor-smoke
-  Docks/AssetsDock.cs               EditorDock: search + paged art grid
-  Docks/ArtInspectorDock.cs         EditorDock: preview + tiledata
+  Docks/AssetsDock.cs               EditorDock: one tab per AssetPanel
+  Docks/InspectorDock.cs            EditorDock: stills, animation playback, text, buttons
+  Panels/AssetPanel.cs, GridPanel.cs   the panel contract; paged, searchable id lists
+  Panels/Inspection.cs              what a panel hands the inspector
+  Panels/{Art,Gump,Animation,Hue,Multi,Cliloc,Sound,Map,Parity}Panel.cs
 godot/GUO/src/Editor/               runtime-side hooks, when a phase needs one
 tools/editor_smoke/run.py           drives the editor and reads the report
 launchers/editor/open_project.bat   builds C#, then opens the editor
@@ -121,9 +128,11 @@ launchers/dev/editor_smoke.bat
 - `EditorData`: `LoadAsync()`, `Loaded` event (main thread), `Files`
   (the `UOFileManager`), `HasArt`, `NameOf`, `ArtImage` (an `Image` decoded by
   `ArtLoader.GetArt`), `Setting(key, fallback)`.
-- `AssetsDock.ArtSelected(uint index)`: art index as the game numbers it
-  (land 0..0x3FFF, statics from 0x4000). `Search(text)` for scripted use.
-- `ArtInspectorDock.ShowArt(uint index)`.
+- `AssetPanel`: `OnDataLoaded()`, `Search(text)` (scripted use, returns the
+  id selected), `Inspect` event carrying an `Inspection`, `SmokeQuery`.
+- `AssetsDock.Inspect` forwards every panel's `Inspect`;
+  `InspectorDock.ShowInspection(Inspection)` shows it. (Phase 0 had
+  `ArtSelected(uint)` / `ShowArt(uint)`; phase 1 generalised them.)
 - Command line after `--`: `--guo-editor-smoke <dir>`,
   `--guo-editor-smoke-art <id>`, `--guo-editor-smoke-reload`.
 
@@ -181,6 +190,18 @@ anyway. Rejected.
   presets are per machine (`export_presets.cfg` is gitignored), so this is a
   recommendation to whoever owns each preset, not enforced here.
 - Every rebuild with the editor open reopens the install (about 1.5 s).
+- **Opening the editor loses `project.godot`'s comments.** The windowed
+  editor re-serializes `godot/GUO/project.godot` on exit: it drops every
+  comment (the rationale for `default_texture_filter=0`, the stretch-mode
+  explanation, the editor-plugin note this ADR added) and the keys whose value
+  is the default (`window/stretch/mode="disabled"`,
+  `renderer/rendering_method`). Measured with and without the addon: it is
+  the editor, not the plugin. Values are unchanged, so behaviour is not
+  affected, but the documentation in that file is lost the first time anyone
+  opens the editor and saves. Pending the owner's decision on where that
+  rationale should live, the file is left as authored, `tools/editor_smoke`
+  restores it after every run, and a hand-run editor's rewrite must not be
+  committed.
 - Editor code shares the game's namespace root and warnings settings.
 
 ### Neutral

@@ -23,9 +23,14 @@ launchers\dev\editor_smoke.bat [same flags]
    - the client data loaded through the ported `UOFileManager`, configured
      the same way the launchers configure it (environment, then
      `launchers\_shared\config.bat`);
-   - searching the Assets dock for the art id selects it, and the inspector
-     received it and decoded non-transparent pixels;
-   - windowed only: the editor window is captured.
+   - then, for every tab of the Assets dock (Art, Gumps, Anims, Hues,
+     Multis, Cliloc, Sounds, Maps, Parity): the tab is brought to the front,
+     searched for its `SmokeQuery` (Art uses `--art`), and the UO Inspector
+     must receive that panel's result: an image with non-transparent pixels
+     (text only for Cliloc and Sounds), and text. Sounds also plays the
+     selection through the game's audio. Parity is skipped, not failed, when
+     UOWW's `uoasset` CLI is not installed;
+   - windowed only: the editor window is captured once per panel.
 3. With `--reload`: after the first pass the addon writes `reload.request`;
    the tool touches a source file, rebuilds, and answers `reload.go`; the
    addon sends the editor the focus-in notification GodotTools reloads on.
@@ -46,9 +51,9 @@ launchers\dev\editor_smoke.bat [same flags]
 | File | What |
 |---|---|
 | `report.json` | every check, `ok`, `failures`; with `--reload`, the first pass under `before_reload` |
-| `art.png` | the art the inspector decoded, as decoded |
-| `editor.png` | the editor window, first pass (windowed only) |
-| `editor_after_reload.png` | the editor window after the reload (windowed `--reload`) |
+| `<panel>.png` | what the inspector was given for that panel, as decoded (`art.png`, `anims.png` is frame 0, `parity.png` is reference / GUO / diff) |
+| `editor_<panel>.png` | the editor window with that panel showing (windowed only) |
+| `*_after_reload.png` | the same, from the second pass (`--reload`) |
 | `editor.log` | the editor's stdout/stderr |
 
 These are renders of client art: they stay under `build\` and are never
@@ -57,9 +62,9 @@ committed (CLAUDE.md rule 8).
 ## Headless vs windowed
 
 `--headless` runs Godot's own headless mode: no display, and nothing is
-rendered, so there is no frame to capture; every check except the screenshot
-still runs. The windowed mode opens an editor window for about twenty
-seconds. It needs a desktop session but no input.
+rendered, so there is no frame to capture; every check except the screenshots
+still runs. The windowed mode opens an editor window for about a minute
+(two with `--reload`). It needs a desktop session but no input.
 
 Exit codes: 0 every check passed, 1 a check failed, 2 the editor could not
 be started or timed out (600 s).
