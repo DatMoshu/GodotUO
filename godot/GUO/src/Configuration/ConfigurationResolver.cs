@@ -21,6 +21,9 @@ namespace GUO.Configuration
 
             var text = File.ReadAllText(file);
 
+            // PORT DEVIATION (GUO): upstream rewrites every lone backslash to
+            // a double one before parsing, which corrupts JSON that Save wrote
+            // correctly (107c23b). An upstream bug candidate.
             // Save already produces valid JSON, including escaped paths and Unicode.
             // Rewriting backslashes here would turn those escapes into literal text.
             return JsonSerializer.Deserialize(text, ctx);

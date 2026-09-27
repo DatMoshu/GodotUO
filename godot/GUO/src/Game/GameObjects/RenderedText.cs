@@ -3,6 +3,8 @@
 using GUO.Assets;
 using GUO.Renderer;
 using GUO.Utility;
+// PORT DEVIATION (GUO): shim tier. The texture is a Godot object, which has
+// no IsDisposed; the two liveness checks below use IsInstanceValid instead.
 using GUO.Compat;
 using Godot;
 using Color = GUO.Compat.Color;

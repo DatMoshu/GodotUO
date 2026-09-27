@@ -144,6 +144,12 @@ sealed class WebSocketWrapper : SocketWrapper
     private async Task StartReceiveAsync()
     {
         var buffer = Shared.Rent(4096);
+        // PORT DEVIATION (GUO): upstream sizes its buffer from the raw TCP
+        // socket's Available, which says nothing about a WebSocket message
+        // (and does not exist in a browser); messages are assembled whole
+        // here, a close mid-message publishes nothing, and the 1 MB cap is
+        // kept (107c23b). An upstream bug candidate. The web client
+        // (ADR-0008) depends on it.
         // MemoryStream preserves the prefix when growing. TCP Available is
         // unrelated to a WebSocket message's size (especially over TLS).
         using var message = new MemoryStream();
