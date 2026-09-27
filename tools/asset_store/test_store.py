@@ -72,6 +72,25 @@ class StoreTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             verify(self.pack({"extra.txt": b"extra"}))
 
+    def screensaver(self, min_profile=11, loops=("loop.ogv",)):
+        self.manifest.update(kind="screensaver", id="test-saver", min_profile_version=min_profile)
+        extra = {}
+        for name in loops:
+            data = b"ogv " + name.encode()
+            self.manifest["files"][name] = hashlib.sha256(data).hexdigest()
+            extra[name] = data
+        return self.pack(extra)
+
+    def test_screensaver_kind(self):
+        self.assertEqual(verify(self.screensaver())["kind"], "screensaver")
+
+    def test_reject_screensaver_contract(self):
+        for label, kwargs in (("no loop", dict(loops=())), ("two loops", dict(loops=("a.ogv", "b.ogv"))),
+                              ("old profile", dict(min_profile=10))):
+            self.setUp()
+            with self.subTest(label), self.assertRaises(ValueError):
+                verify(self.screensaver(**kwargs))
+
     def test_http_ranges_and_head(self):
         root = self.root / "cdn"
         publish(self.pack(), root)
@@ -97,10 +116,15 @@ class StoreTests(unittest.TestCase):
         node = shutil.which("node")
         self.assertIsNotNone(node, "Web contract test requires Node 18+ (built-ins only; no browser/npm packages)")
         root = self.root / "cdn"
-        for kind in ("background", "theme", "sound", "profile-preset"):
+        for kind in ("background", "theme", "sound", "profile-preset", "screensaver"):
             self.manifest.update(kind=kind, id="moongate-shimmer" if kind == "background" else "sample-" + kind,
                                  title='<img src=x onerror="throw 1"> ' + kind, author="<b>Fixture creator</b>")
-            publish(self.pack(), root)
+            if kind == "screensaver":
+                self.manifest.update(min_profile_version=11)
+                self.manifest["files"]["loop.ogv"] = hashlib.sha256(b"loop").hexdigest()
+                publish(self.pack({"loop.ogv": b"loop"}), root)
+            else:
+                publish(self.pack(), root)
         httpd = server(root, port=0)
         thread = threading.Thread(target=httpd.serve_forever, daemon=True)
         thread.start()

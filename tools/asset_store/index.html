@@ -217,13 +217,15 @@ const SHELVES = [
   { kind: "theme", title: "Themes", blurb: "Colours for the client's own panels and buttons.", layout: "rows" },
   { kind: "sound", title: "Sounds", blurb: "Ambient loops and effects to play under the world.", layout: "rows" },
   { kind: "profile-preset", title: "Layout presets", blurb: "Where each window sits, tuned for a phone, a dual screen or a Deck.", layout: "rows" },
+  { kind: "screensaver", title: "Screensavers", blurb: "Loops that play when the client sits idle, drifting so nothing burns into an OLED screen.", layout: "panes" },
 ];
-const KIND_NAME = { background: "Background", theme: "Theme", sound: "Sound", "profile-preset": "Layout preset" };
+const KIND_NAME = { background: "Background", theme: "Theme", sound: "Sound", "profile-preset": "Layout preset", screensaver: "Screensaver" };
 const NOTES = {
   background: "After installing, pick it in Options under the background list, then Apply.",
   theme: "Installs the theme's files. Applying themes in the client is still to come.",
   sound: "Installs the sound's files. Playing them in the client is still to come.",
   "profile-preset": "Installs the preset's files. Applying presets in the client is still to come.",
+  screensaver: "After installing, pick it in Options under Video, Screen saver, then Apply.",
 };
 let packs = [], filter = "", query = "", featured = null;
 

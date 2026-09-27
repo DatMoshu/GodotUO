@@ -15,7 +15,7 @@ for (const source of scripts) {
 const indexResponse = await fetch(new URL('index.json', base));
 assert.equal(indexResponse.status, 200);
 const index = await indexResponse.json();
-assert.ok(index.packs.length >= 4, 'Fixture must exercise every pack kind');
+assert.ok(index.packs.length >= 5, 'Fixture must exercise every pack kind');
 
 class Element {
   constructor(tag) {
@@ -87,7 +87,7 @@ const page = await boot();
 const allCards = () => descendants(page.get('shelves'), 'article');
 assert.equal(allCards().length, index.packs.length, 'Every fixture pack must render');
 assert.equal(page.get('sample-note').hidden, false, 'Samples must be labelled');
-assert.equal(descendants(page.get('tabs'), 'button').length, 5, 'All plus four kind filters');
+assert.equal(descendants(page.get('tabs'), 'button').length, 6, 'All plus five kind filters');
 const featured = index.packs.find(p => p.id === 'moongate-shimmer');
 assert.equal(page.get('feature-title').textContent, featured.title, 'Metadata must remain literal text');
 assert.equal(page.get('feature-img').src, new URL(featured.preview_url, base).href);

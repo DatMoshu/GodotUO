@@ -21,6 +21,13 @@ namespace GUO.Game.Managers
     /// Profile.ScreenSaver and Profile.ScreenSaverMinutes, under Options >
     /// Video; on by default on phones (PlatformDefaults v10). Needs a
     /// profile, so it never runs on the login screens.
+    ///
+    /// Profile.ScreenSaverChoice (v11) picks what shows: "effects" (the
+    /// drifting UO effects), "builtin:NAME" (a loop listed in
+    /// assets/screensavers/screensavers.json) or the user:// path of an
+    /// installed store screensaver's .ogv. A loop is scaled to overfill the
+    /// screen and the whole frame drifts, so no pixel of it stays put; a loop
+    /// that cannot play falls back to the effects.
     /// </remarks>
     internal static class ScreenSaver
     {
@@ -48,6 +55,13 @@ namespace GUO.Game.Managers
         private static RenderedText _label;
         private static float _labelX, _labelY, _labelDx = 0.02f, _labelDy = 0.015f;
 
+        public const string EffectsChoice = "effects";
+        public const string BuiltinPrefix = "builtin:";
+
+        private static Godot.VideoStreamPlayer _player;
+        private static string _playing;
+        private static string _failed;
+
         /// <summary>True while the screen saver is showing.</summary>
         public static bool Active { get; private set; }
 
@@ -72,6 +86,7 @@ namespace GUO.Game.Managers
             if (Active)
             {
                 Active = false;
+                StopLoop();
 
                 return true;
             }
@@ -89,7 +104,11 @@ namespace GUO.Game.Managers
         {
             if (!Enabled)
             {
-                Active = false;
+                if (Active)
+                {
+                    Active = false;
+                    StopLoop();
+                }
 
                 return;
             }
@@ -105,6 +124,7 @@ namespace GUO.Game.Managers
 
                 Active = true;
                 Array.Clear(_sprites);
+                Godot.GD.Print($"[GUO] screen saver: on after {ProfileManager.CurrentProfile.ScreenSaverMinutes} min idle, showing \"{ProfileManager.CurrentProfile.ScreenSaverChoice}\"; {System.Linq.Enumerable.Count(Choices())} choice(s) offered");
                 _lastDraw = Time.Ticks;
             }
 
@@ -123,6 +143,16 @@ namespace GUO.Game.Managers
 
             Vector3 black = ShaderHueTranslator.GetHueVector(0, false, 1f);
             batcher.Draw(SolidColorTextureCache.GetTexture(Color.Black), area, black, 0f);
+
+            Godot.Texture2D loop = LoopTexture(ProfileManager.CurrentProfile.ScreenSaverChoice);
+
+            if (loop != null)
+            {
+                DrawLoop(batcher, area, loop, now);
+                DrawLabel(batcher, area, elapsed);
+
+                return;
+            }
 
             for (int i = 0; i < _sprites.Length; i++)
             {
@@ -145,6 +175,137 @@ namespace GUO.Game.Managers
             }
 
             DrawLabel(batcher, area, elapsed);
+        }
+
+        /// <summary>
+        /// The loop's current frame, starting it if needed; null for the
+        /// effects, or for a loop that is missing or will not play.
+        /// </summary>
+        private static Godot.Texture2D LoopTexture(string choice)
+        {
+            string path = LoopPath(choice);
+
+            if (path == null || path == _failed)
+            {
+                StopLoop();
+
+                return null;
+            }
+
+            if (_playing != path)
+            {
+                StopLoop();
+
+                try
+                {
+                    Godot.VideoStream stream = Godot.ResourceLoader.Exists(path)
+                        ? Godot.GD.Load<Godot.VideoStream>(path)
+                        : new Godot.VideoStreamTheora { File = path };
+
+                    // Decodes off screen: the frames are drawn through the
+                    // batcher, on both screens, never by the node itself.
+                    _player = new Godot.VideoStreamPlayer
+                    {
+                        Stream = stream,
+                        Loop = true,
+                        Size = new Godot.Vector2(1, 1),
+                        Modulate = new Godot.Color(1, 1, 1, 0),
+                        MouseFilter = Godot.Control.MouseFilterEnum.Ignore
+                    };
+                    Client.Game.AddChild(_player);
+                    _player.Play();
+                }
+                catch (Exception ex)
+                {
+                    Godot.GD.Print($"[GUO] screen saver: {path} will not play ({ex.Message})");
+                }
+
+                if (_player == null || !_player.IsPlaying())
+                {
+                    Godot.GD.Print($"[GUO] screen saver: {path} will not play; showing the effects");
+                    StopLoop();
+                    _failed = path;
+
+                    return null;
+                }
+
+                _playing = path;
+                Godot.GD.Print($"[GUO] screen saver: playing {path}");
+            }
+
+            return _player.GetVideoTexture();
+        }
+
+        /// <summary>
+        /// Every choice Options offers, as (profile value, title): the
+        /// effects, the built-in loops, then installed store screensavers.
+        /// </summary>
+        public static System.Collections.Generic.IEnumerable<(string, string)> Choices()
+        {
+            yield return (EffectsChoice, "UO effects, drifting");
+
+            foreach (BuiltinScreensaver b in BuiltinScreensaver.All)
+            {
+                yield return (BuiltinPrefix + b.Name, b.Title);
+            }
+
+            foreach ((string path, string title) in GUO.Store.StoreOptions.InstalledScreensavers())
+            {
+                yield return (path, title);
+            }
+        }
+
+        /// <summary>The loop a choice plays, or null for the effects.</summary>
+        public static string LoopPath(string choice)
+        {
+            if (string.IsNullOrEmpty(choice) || choice == EffectsChoice)
+            {
+                return null;
+            }
+
+            if (choice.StartsWith(BuiltinPrefix, StringComparison.Ordinal))
+            {
+                return BuiltinScreensaver.Find(choice.Substring(BuiltinPrefix.Length))?.Video;
+            }
+
+            return choice.StartsWith("user://store/", StringComparison.Ordinal) ? choice : null;
+        }
+
+        private static void StopLoop()
+        {
+            if (_player != null)
+            {
+                _player.Stop();
+                _player.QueueFree();
+                _player = null;
+            }
+
+            _playing = null;
+        }
+
+        /// <summary>
+        /// The loop, scaled to cover the area with a margin, on a slow
+        /// Lissajous path through that margin: the whole frame drifts.
+        /// </summary>
+        private static void DrawLoop(UltimaBatcher2D batcher, Rectangle area, Godot.Texture2D texture, uint now)
+        {
+            int tw = texture.GetWidth(), th = texture.GetHeight();
+
+            if (tw <= 0 || th <= 0)
+            {
+                return;
+            }
+
+            const float Margin = 0.06f;
+            float scale = Math.Max(area.Width * (1 + 2 * Margin) / tw, area.Height * (1 + 2 * Margin) / th);
+            int w = (int) (tw * scale), h = (int) (th * scale);
+            double t = now / 1000.0;
+            float dx = (float) Math.Sin(t * 2 * Math.PI / 97) * (w - area.Width) / 2f;
+            float dy = (float) Math.Sin(t * 2 * Math.PI / 71) * (h - area.Height) / 2f;
+            int x = area.X + (area.Width - w) / 2 + (int) dx;
+            int y = area.Y + (area.Height - h) / 2 + (int) dy;
+
+            batcher.Draw(texture, new Rectangle(x, y, w, h), ShaderHueTranslator.GetHueVector(0, false, 1f), 0f);
         }
 
         private static unsafe void DrawEffect(UltimaBatcher2D batcher, ushort graphic, int x, int y, uint now)
@@ -205,6 +366,80 @@ namespace GUO.Game.Managers
             }
 
             _label.Draw(batcher, area.X + (int) _labelX, area.Y + (int) _labelY, 0f, 1f, 0, Scale);
+        }
+    }
+
+    /// <summary>
+    /// The screensaver loops GUO ships: assets/screensavers/screensavers.json
+    /// lists them as {"name","title","video","still"}, paths relative to the
+    /// folder. An entry with "store_only": true is published to the store
+    /// instead (tools/asset_store/seed.py) and is not offered here.
+    /// </summary>
+    internal sealed class BuiltinScreensaver
+    {
+        public const string Folder = "res://assets/screensavers";
+        public const string Manifest = Folder + "/screensavers.json";
+
+        public string Name;
+        public string Title;
+        public string Video;
+        public string Still;
+
+        private static BuiltinScreensaver[] _all;
+
+        public static System.Collections.Generic.IReadOnlyList<BuiltinScreensaver> All => _all ??= Read();
+
+        public static BuiltinScreensaver Find(string name)
+        {
+            foreach (BuiltinScreensaver b in All)
+            {
+                if (string.Equals(b.Name, name, StringComparison.OrdinalIgnoreCase))
+                {
+                    return b;
+                }
+            }
+
+            return null;
+        }
+
+        private static BuiltinScreensaver[] Read()
+        {
+            var list = new System.Collections.Generic.List<BuiltinScreensaver>();
+
+            if (!Godot.FileAccess.FileExists(Manifest))
+            {
+                return list.ToArray();
+            }
+
+            try
+            {
+                using Godot.FileAccess file = Godot.FileAccess.Open(Manifest, Godot.FileAccess.ModeFlags.Read);
+
+                foreach (Godot.Variant item in Godot.Json.ParseString(file.GetAsText()).AsGodotArray())
+                {
+                    Godot.Collections.Dictionary d = item.AsGodotDictionary();
+                    string name = d.ContainsKey("name") ? d["name"].AsString().Trim().ToLowerInvariant() : "";
+
+                    if (name.Length == 0 || !d.ContainsKey("video") || (d.ContainsKey("store_only") && d["store_only"].AsBool()))
+                    {
+                        continue;
+                    }
+
+                    list.Add(new BuiltinScreensaver
+                    {
+                        Name = name,
+                        Title = d.ContainsKey("title") ? d["title"].AsString() : name,
+                        Video = Folder + "/" + d["video"].AsString(),
+                        Still = d.ContainsKey("still") ? Folder + "/" + d["still"].AsString() : null
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                Godot.GD.Print($"[GUO] screen saver: {Manifest} unreadable ({ex.Message})");
+            }
+
+            return list.ToArray();
         }
     }
 }

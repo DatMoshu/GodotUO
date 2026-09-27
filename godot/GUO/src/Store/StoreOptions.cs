@@ -19,9 +19,23 @@ internal static class StoreOptions
     public static StoreClient CreateClient(string url = null) => new(url ?? Url, ProjectSettings.GlobalizePath("user://store"), PlatformDefaults.CurrentVersion)
     { BackgroundRemoved = ResetRemovedBackground };
 
+    /// <summary>Installed screensaver packs, as (loop path, title) for Options.</summary>
+    public static IEnumerable<(string, string)> InstalledScreensavers()
+    {
+        using var client = CreateClient(StoreAddress.Default);
+        foreach (var m in client.Installed().Where(m => m.Kind == "screensaver").OrderBy(m => m.Title).ThenBy(m => StorePack.Version(m.Version)))
+            yield return ($"user://store/{m.Id}/{m.Version}/{StorePack.ScreensaverLoop(m)}", $"Store: {m.Title} ({m.Version})");
+    }
+
     private static bool ResetRemovedBackground(string id, string version)
     {
         var profile = ProfileManager.CurrentProfile;
+        // The chosen screensaver goes back to the effects when its pack goes.
+        if (profile != null && StoreBackground.BelongsTo(profile.ScreenSaverChoice, id, version))
+        {
+            profile.ScreenSaverChoice = "effects";
+            ProfileManager.Save(profile, ProfileManager.ProfilePath);
+        }
         if (profile == null || !StoreBackground.BelongsTo(profile.CanvasBackgroundPath, id, version)) return false;
         var mode = CanvasBackgroundSettings.FromProfile(profile).Mode;
         if (mode is not (CanvasBackgroundMode.Image or CanvasBackgroundMode.Video or CanvasBackgroundMode.Frames)) return false;
