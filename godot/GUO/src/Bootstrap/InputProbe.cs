@@ -3278,6 +3278,15 @@ internal static class InputProbe
 
     private static void Send(InputEvent e)
     {
+        if (e is InputEventMouse aimed)
+        {
+            // The probe aims at upstream's 640x480 login layout, at 0,0. A
+            // touch build centres that layout (MobileProfile), so aim where
+            // the topmost login gump actually is; on a desktop it is 0,0.
+            Compat.Point login = LoginOrigin();
+            aimed.Position += new Vector2(login.X, login.Y);
+        }
+
         if (PointerScale != 1f && e is InputEventMouse mouse)
         {
             mouse.Position *= PointerScale;
@@ -3286,6 +3295,25 @@ internal static class InputProbe
         // Straight into the same queue a real device feeds, so nothing on the
         // path from the window to the client is bypassed.
         Godot.Input.ParseInputEvent(e);
+    }
+
+    /// <summary>Where the topmost login-screen gump sits; 0,0 outside the login scene.</summary>
+    internal static Compat.Point LoginOrigin()
+    {
+        if (Client.Game?.Scene is not Game.Scenes.LoginScene)
+        {
+            return Compat.Point.Zero;
+        }
+
+        foreach (Game.UI.Gumps.Gump g in Game.Managers.UIManager.Gumps)
+        {
+            if (!g.IsDisposed && g.IsVisible && g.GetType().Namespace == "GUO.Game.UI.Gumps.Login")
+            {
+                return new Compat.Point(g.X, g.Y);
+            }
+        }
+
+        return Compat.Point.Zero;
     }
 
     /// <summary>
