@@ -712,6 +712,10 @@ namespace GUO.Platform.Android
                 Title = "GUO second screen",
                 Size = new Vector2I(_physicalWidth, _physicalHeight),
                 Unresizable = true,
+                // A second OS window would activate itself as the first one
+                // did; a scripted run keeps this one out of the keyboard's
+                // way too (see Main._EnterTree).
+                Unfocusable = GUO.Host.Main.NoFocus,
             };
 
             var texture = ImageTexture.CreateFromImage(Image.CreateEmpty(_logicalWidth, _logicalHeight, false, Image.Format.Rgba8));

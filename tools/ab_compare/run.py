@@ -387,6 +387,66 @@ def find_window(pid: int):
     return found[0] if found else None
 
 
+# The ClassicUO pass steals the desktop: it brings a window to the front and
+# types into it with the same keyboard the owner is using. Nothing below
+# touches the foreground or the keyboard unless main() has been told
+# --allow-foreground; every entry point checks, so a new caller cannot
+# reach SendKeys by accident.
+FOREGROUND_ALLOWED = False
+
+FOREGROUND_REFUSED = (
+    "[ab] the ClassicUO pass brings a window to the front and types into it "
+    "with the desktop's keyboard; it is off unless you pass --allow-foreground "
+    "and leave the desktop alone while it runs. --only guo needs neither."
+)
+
+
+class ForegroundNotAllowed(RuntimeError):
+    """Raised by anything that would take the foreground or press a key."""
+
+
+def _require_foreground(what: str) -> None:
+    if not FOREGROUND_ALLOWED:
+        raise ForegroundNotAllowed(f"{what} refused: {FOREGROUND_REFUSED}")
+
+
+def capslock_on() -> bool:
+    """Whether Caps Lock is toggled on right now (low bit of GetKeyState)."""
+    _ctypes, _wintypes, user32 = _win32()
+    return bool(user32.GetKeyState(0x14) & 1)  # VK_CAPITAL
+
+
+def _tap(vk: int) -> None:
+    """Press and release one key; the release is sent whatever the press did.
+
+    A key left down is a stuck modifier on the owner's keyboard, and a
+    stuck Caps Lock press is a toggle they did not ask for.
+    """
+    _ctypes, _wintypes, user32 = _win32()
+    user32.keybd_event(vk, 0, 0, 0)
+    try:
+        time.sleep(0.02)
+    finally:
+        user32.keybd_event(vk, 0, 2, 0)  # KEYEVENTF_KEYUP
+
+
+def restore_capslock(was_on: bool) -> None:
+    """Put Caps Lock back the way it was before a SendKeys call.
+
+    SendKeys types an upper-case letter by toggling Caps Lock off, pressing
+    Shift, and toggling it back at the end -- and a send that is cut short (a
+    timeout, an exception, a window that went away) leaves it toggled. The
+    owner sees the light change on its own. One press of the key puts it
+    back.
+    """
+    if capslock_on() == was_on:
+        return
+    _tap(0x14)  # VK_CAPITAL
+    time.sleep(0.05)
+    if capslock_on() != was_on:
+        print("[ab] WARNING: Caps Lock is not where it was; press it once")
+
+
 def focus(hwnd) -> None:
     """Bring ClassicUO to the front, or stop.
 
@@ -395,13 +455,16 @@ def focus(hwnd) -> None:
     does have focus -- a terminal, an editor. A tapped Alt key lifts that
     lock. Whether it worked is checked, because typing "[go ..." into the
     wrong window is worse than no picture.
+
+    Only with --allow-foreground: this is the call that takes the desktop
+    away from whoever is at it.
     """
+    _require_foreground("focus")
     _ctypes, _wintypes, user32 = _win32()
     user32.ShowWindow(hwnd, 9)  # SW_RESTORE
 
     for _ in range(5):
-        user32.keybd_event(0x12, 0, 0, 0)  # VK_MENU down
-        user32.keybd_event(0x12, 0, 2, 0)  # VK_MENU up (KEYEVENTF_KEYUP)
+        _tap(0x12)  # VK_MENU
         user32.SetForegroundWindow(hwnd)
         time.sleep(0.4)
         if user32.GetForegroundWindow() == hwnd:
@@ -441,19 +504,45 @@ def window_rect(hwnd) -> tuple[int, int, int, int]:
     )
 
 
+def sendkeys_escape(text: str) -> str:
+    """Brace the characters SendKeys reads as modifiers or groups.
+
+    + ^ % ~ ( ) { } [ ] each mean something to SendKeys -- Shift, Ctrl, Alt,
+    Enter, grouping -- and a chat line with one of them in it would press
+    keys it never said. Braced, they are typed as themselves.
+    """
+    return "".join(f"{{{c}}}" if c in "+^%~(){}[]" else c for c in text)
+
+
 def send_keys(text: str) -> None:
-    """Type into whatever has focus. WScript.Shell, so no assembly to load."""
-    subprocess.run(
-        [
-            "powershell",
-            "-NoProfile",
-            "-Command",
-            "$s = New-Object -ComObject WScript.Shell; "
-            f"$s.SendKeys('{text}')",
-        ],
-        check=True,
-        capture_output=True,
-    )
+    """Type into whatever has focus. WScript.Shell, so no assembly to load.
+
+    Only with --allow-foreground. Caps Lock is read before and put back
+    after: SendKeys toggles it to type upper case and a send that is cut
+    short leaves it toggled, which is how a run of this tool can change the
+    owner's Caps Lock without anybody pressing it. The text is sent as
+    lower case where it can be, so there is nothing to toggle for.
+    """
+    _require_foreground("send_keys")
+    if "'" in text:
+        raise ValueError("send_keys: a single quote would end the SendKeys literal")
+
+    caps_before = capslock_on()
+    try:
+        subprocess.run(
+            [
+                "powershell",
+                "-NoProfile",
+                "-Command",
+                "$s = New-Object -ComObject WScript.Shell; "
+                f"$s.SendKeys('{text}')",
+            ],
+            check=True,
+            capture_output=True,
+            timeout=30,
+        )
+    finally:
+        restore_capslock(caps_before)
 
 
 def nudge(hwnd) -> None:
@@ -606,7 +695,7 @@ def shoot_cuo(
             for line in place.say:
                 time.sleep(1.5)
                 focus(hwnd)
-                send_keys(f"{line}{{ENTER}}")
+                send_keys(f"{sendkeys_escape(line)}{{ENTER}}")
             time.sleep(settle)
             focus(hwnd)
             grab(cfg, hwnd, root / place.name / "cuo.png")
@@ -683,7 +772,23 @@ def main() -> int:
     parser.add_argument("--login-wait", type=float, default=35.0)
     parser.add_argument("--settle", type=float, default=7.0)
     parser.add_argument("--no-open", action="store_true")
+    parser.add_argument(
+        "--allow-foreground",
+        action="store_true",
+        help="let the ClassicUO pass bring its window to the front and type "
+        "into it with the desktop's keyboard (off by default: a run from an "
+        "agent must not take the keyboard from whoever is working)",
+    )
     args = parser.parse_args()
+
+    global FOREGROUND_ALLOWED
+    FOREGROUND_ALLOWED = args.allow_foreground
+
+    # Refused before anything starts, not at the first keystroke: a GUO pass
+    # that ran for minutes and then stopped would look like a broken tool.
+    if args.only in ("cuo", "both") and not FOREGROUND_ALLOWED:
+        print(FOREGROUND_REFUSED)
+        return 2
 
     cfg = load_config()
     root = cfg.build / "screenshots" / "ab"
@@ -717,7 +822,8 @@ def main() -> int:
 
     print(f"[ab] Output: {root}")
 
-    if not args.no_open:
+    # An Explorer window takes the foreground too; only when that was allowed.
+    if not args.no_open and FOREGROUND_ALLOWED:
         os.startfile(root)  # noqa: S606 -- opening a folder for the user
 
     return 0

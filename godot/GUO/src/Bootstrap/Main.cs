@@ -39,9 +39,54 @@ public partial class Main : Node
 
     private Options _options;
 
-    public override void _Ready()
+    /// <summary>
+    /// Whether this run's window may never take keyboard focus. True for
+    /// every scripted run unless <c>--focus</c> says otherwise; read by the
+    /// client, which would otherwise treat a window that is never focused as
+    /// inactive and throttle itself.
+    /// </summary>
+    public static bool NoFocus { get; private set; }
+
+    /// <summary>
+    /// The earliest point a script gets: the OS window already exists, and
+    /// project.godot created it unfocusable (display/window/size/no_focus).
+    /// An interactive run takes the flag off here and comes forward; a
+    /// scripted run keeps it, and never activates itself later.
+    /// </summary>
+    /// <remarks>
+    /// The flag is on at creation and not set here because the creation is
+    /// what steals focus: Windows activates a new window when it is shown,
+    /// which happens before any script runs. A flag set from here would be
+    /// one frame late, and the owner's keystrokes would already be going to
+    /// the wrong window. Deciding in the other direction costs an interactive
+    /// run one frame before it has focus, which nobody can see.
+    /// </remarks>
+    public override void _EnterTree()
     {
         _options = Options.Parse(OS.GetCmdlineUserArgs());
+        NoFocus = _options.NoFocus;
+
+        if (NoFocus)
+        {
+            // Belt and braces: the project setting did this at creation, and
+            // an export preset or a stray override.cfg could have lost it.
+            DisplayServer.WindowSetFlag(DisplayServer.WindowFlags.NoFocus, true);
+            DisplayServer.WindowSetFlag(DisplayServer.WindowFlags.AlwaysOnTop, false);
+            GD.Print("[GUO] window        : no focus (scripted run; --focus to opt out)");
+        }
+        else
+        {
+            DisplayServer.WindowSetFlag(DisplayServer.WindowFlags.NoFocus, false);
+            DisplayServer.WindowMoveToForeground();
+            GD.Print("[GUO] window        : focusable (interactive run; --no-focus to opt out)");
+        }
+    }
+
+    public override void _Ready()
+    {
+        // Parsed in _EnterTree; Godot calls that first, and the window flags
+        // wanted deciding before anything else ran.
+        _options ??= Options.Parse(OS.GetCmdlineUserArgs());
 
         if (!string.IsNullOrWhiteSpace(_options.Account))
         {
@@ -725,6 +770,35 @@ public partial class Main : Node
         public bool Silent { get; private set; }
 
         /// <summary>
+        /// Whether something other than a person is driving this run: any
+        /// probe, a shard-command run, a timed screenshot, or a mode that is
+        /// not Play at all. Such a run shares the desktop with whoever
+        /// started it and must not take their keyboard.
+        /// </summary>
+        public bool Scripted =>
+            Mode != RunMode.Play
+            || InputProbe
+            || TradePartner
+            || HighlightProbe
+            || EffectsProbe > 0
+            || TouchProbe
+            || LoginProbe
+            || UiProbe
+            || DualProbe
+            || ShardCommands.Count > 0
+            || ShotAfter > 0;
+
+        /// <summary>
+        /// Whether the window is kept from ever taking focus. <c>--no-focus</c>
+        /// and <c>--focus</c> decide it outright; with neither, a scripted run
+        /// is unfocusable and an interactive one is not. Mirrors how --silent
+        /// and --sound settle the audio.
+        /// </summary>
+        public bool NoFocus => _noFocus ?? Scripted;
+
+        private bool? _noFocus;
+
+        /// <summary>
         /// Wait for the login gump to be drawn, say so on the log, and either
         /// quit (desktop) or keep running (a device, where the line is what
         /// the smoke reads back through logcat).
@@ -838,6 +912,12 @@ public partial class Main : Node
                         break;
                     case "--silent":
                         o.Silent = true;
+                        break;
+                    case "--no-focus":
+                        o._noFocus = true;
+                        break;
+                    case "--focus":
+                        o._noFocus = false;
                         break;
                     case "--login-probe":
                         o.LoginProbe = true;

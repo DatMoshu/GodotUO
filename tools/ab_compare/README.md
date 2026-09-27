@@ -41,7 +41,19 @@ ClassicUO has none of that, so it is driven the way a person would: `-autologin`
 with the owner account from `config.bat`, `-skiploginscreen`, then the place
 typed into the chat line as `[go X Y` and the window photographed off the
 screen. **That pass needs the desktop to itself** — it brings the window to the
-front and types into it.
+front and types into it, with the same keyboard whoever is at the desktop is
+using. It is therefore **off unless `--allow-foreground` is passed**: the
+default `--only both`, and `--only cuo`, stop with a message before anything
+starts (exit 2), and `focus()` / `send_keys()` refuse when called any other way.
+`--only guo` and `--only compose` never touch a window and need no flag.
+
+Around each `SendKeys` call Caps Lock is read and put back: SendKeys toggles
+it to type upper case and a send that is cut short leaves it toggled, which
+looked like Caps Lock changing on its own. The Alt tap that lifts Windows'
+foreground lock is sent as a down/up pair that cannot be split, and chat lines
+are escaped so `+ ^ % ~` in them are typed rather than read as Shift, Ctrl,
+Alt and Enter. The output folder is only opened in Explorer when the
+foreground was allowed, since an Explorer window takes it too.
 
 ## Building ClassicUO
 
@@ -66,6 +78,7 @@ no plugins here.
 | `--build` | rebuild ClassicUO first |
 | `--login-wait`, `--settle` | seconds to wait for autologin, and after each `[go` |
 | `--no-open` | do not open the output folder at the end |
+| `--allow-foreground` | let the ClassicUO pass take the foreground and type; off by default |
 
 The places are five in `run.py`, the same five `launchers\dev\sweep.bat` uses:
 a town in daylight, a forest with buildings in it, a coastline, a dungeon mouth
