@@ -153,6 +153,11 @@ namespace GUO.Input.Touch
 
         public override void _Process(double delta)
         {
+            // The idle screen saver draws in the client's canvas, under this
+            // layer; a bar left lit on an OLED panel is what it is there to
+            // prevent, so the bar goes with it.
+            Visible = !GUO.Game.Managers.ScreenSaver.Active;
+
             bool inGame = Client.Game?.UO?.World?.InGame ?? false;
 
             if (inGame != Shown)
