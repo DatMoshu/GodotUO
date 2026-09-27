@@ -299,7 +299,6 @@ namespace GUO.Game.UI.Gumps
                 h = h * 31 + it.DisplayedGraphic;
                 h = h * 31 + it.Hue;
                 h = h * 31 + it.Amount;
-                h = h * 31 + it.Container;
             }
 
             return h;
@@ -462,14 +461,6 @@ namespace GUO.Game.UI.Gumps
         private static bool Shows(Item container, Item item)
         {
             if (item.Amount <= 0)
-            {
-                return false;
-            }
-
-            // An item dropped elsewhere can stay linked in this container's
-            // list after it has moved (seen: a pick-up dropped on the ground
-            // still listed, Container 0xFFFFFFFF). It is not in here any more.
-            if (item.Container != container.Serial)
             {
                 return false;
             }
