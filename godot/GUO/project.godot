@@ -19,6 +19,9 @@ config/windows_native_icon="res://icon.ico"
 boot_splash/bg_color=Color(0.0784314, 0.0627451, 0.0470588, 1)
 boot_splash/image="res://splash.png"
 boot_splash/stretch_mode=1
+; Android Back must not end the session on one press: GameController
+; routes the request to Input/Touch/BackButton.cs instead.
+config/quit_on_go_back=false
 
 [dotnet]
 
