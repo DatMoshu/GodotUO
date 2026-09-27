@@ -67,7 +67,20 @@ matches more than one object, and a scripted client cannot. So tags are
 unique per placement (a nonce), and `apply-commands` fails if the shard asks
 to confirm.
 
-Still to build: the ServUO and RunUO backends.
+2026-09-27 (the ServUO backend): a private ServUO (`tools\servuo`, pub57 at
+`d76bf44`, 127.0.0.1:2596) was used. `tools\world export` with
+`UO_SHARD_BACKEND=servuo` wrote XmlSpawner XML (`XmlSpawner/guo-<project>.xml`:
+`UniqueId` = the object id, the home range as the spawn rectangle, delays in
+minutes, the entries as `Objects2`) and the shared decoration cfg; `verify`
+read them back equal to the model. `tools\editor_objects_proof --servuo`
+passes:
+
+1. The files were placed beside ServUO, which was then restarted.
+2. A GM client typed `[XmlLoad guo-<project>.xml` and `[Decorate`.
+3. The client's world holds the anvil at its cell and the XmlSpawner, with a
+   horse spawned beside it. The frame shows them.
+
+Still to build: the RunUO backend.
 
 ## Decision Makers
 
@@ -263,7 +276,7 @@ Its limit: one entry per spawner (`[TileXYZ` makes one).
 | Backend | Reads and writes | Sync |
 |---|---|---|
 | ModernUO | JSON spawners, cfg decoration | bridge (private) or GM import commands |
-| ServUO | XmlSpawner `.xml` + cfg decoration | `[xmlload` / `[xmlspawner` commands via the GM client; an optional bridge script later |
+| ServUO | XmlSpawner `.xml` + cfg decoration (built: `tools/world/backends/servuo.py`) | `[XmlLoad` (replaces by `UniqueId`) and `[Decorate` via the GM client; deletions through `apply-commands`; an optional bridge script later |
 | RunUO 2.x | commands only (spawners live in the binary save) | the GM client; the commands sent are logged to `shard/commands.log` as the replayable record |
 | Sphere, UOX3, POL | not designed for | the adapter interface is what they would implement |
 

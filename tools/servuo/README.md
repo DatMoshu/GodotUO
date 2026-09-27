@@ -49,5 +49,16 @@ The ServUO **adapter** (XmlSpawner XML and decoration cfg from the neutral
 model) lives with the other backends in `tools/world/backends/servuo.py`.
 It is our code, written from the file formats.
 
+- Select it with `UO_SHARD_BACKEND=servuo` for `tools\world export` and
+  `verify`.
+- Prove it with `tools\editor_objects_proof
+un.py --servuo --project DIR`:
+  export, restart, `[XmlLoad` + `[Decorate`, and the client sees the objects.
+- Deletions and item moves on ServUO go through `tools\world apply-commands
+  --host 127.0.0.1 --port 2596`, which is shard-agnostic. **Not yet run on
+  ServUO:** its proof (`editor_objects_proof --commands --servuo`) was stopped
+  on 2026-09-27 when the machine ran low on memory, before its first apply
+  finished.
+
 To move the pin: change `PIN` in `run.py` and the table above, delete `src/`,
 and fetch and build again.

@@ -51,7 +51,8 @@ move, and everything go.
 ## Commands mode (a shard without GUO's bridge)
 
 ```
-python tools\editor_objects_proofun.py --commands --project DIR --project2 DIR2
+python tools\editor_objects_proof
+un.py --commands --project DIR --project2 DIR2
 ```
 
 1. One boot with the bridge and an empty manifest clears what earlier bridge
@@ -68,6 +69,21 @@ python tools\editor_objects_proofun.py --commands --project DIR --project2 DIR2
    - the hued item stands;
    - the decoy is the only thing left on the old cell;
    - applying `--project2` again types nothing.
+
+## ServUO
+
+```
+python tools\editor_objects_proofun.py --servuo --project DIR
+python tools\editor_objects_proofun.py --commands --servuo --project DIR --project2 DIR2
+```
+
+`--servuo` exports with the ServUO backend (XmlSpawner XML + decoration cfg),
+verifies, puts the files beside the private ServUO (`tools\servuo`,
+127.0.0.1:2596), restarts it, and has a GM client type `[XmlLoad` and
+`[Decorate`. The client must then see each item at its cell, and each
+spawner with its creature nearby. `--commands --servuo` runs the GM-command
+fallback's checks, decoy included, against ServUO instead of the private
+ModernUO.
 
 ## Clip
 

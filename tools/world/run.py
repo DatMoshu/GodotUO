@@ -68,9 +68,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from guo import load_config  # noqa: E402
 from guo import uoart, worldobjects  # noqa: E402
-from backends import modernuo  # noqa: E402
+from backends import modernuo, servuo  # noqa: E402
 
-BACKENDS = {modernuo.NAME: modernuo}
+BACKENDS = {modernuo.NAME: modernuo, servuo.NAME: servuo}
 from guo.uomap import IDX_SIZE, MAP_BLOCK, STATIC_SIZE, Block, facet_files, install_fingerprint, open_facet  # noqa: E402
 
 
@@ -410,12 +410,13 @@ def verify_objects(project: Path, out: Path) -> int:
     objects = worldobjects.load(project)
     if not objects:
         return 0
-    spawners, items = modernuo.read_back(out, project.name)
+    backend = BACKENDS[cfg_backend()]
+    spawners, items = backend.read_back(out, project.name)
     failures = 0
-    got = {r["guid"]: r for r in spawners}
+    got = {r.get("guid") or r.get("UniqueId"): r for r in spawners}
     for s in objects.spawners:
         r = got.pop(s.id, None)
-        want = modernuo.spawner_record(s)
+        want = backend.spawner_record(s)
         if r != want:
             failures += 1
             print(f"[world] FAIL spawner {s.id}: {'missing' if r is None else 'differs from the model'}")
@@ -434,7 +435,7 @@ def verify_objects(project: Path, out: Path) -> int:
         print("[world] FAIL guo_objects.json does not list exactly the model's objects")
     if failures == 0:
         print(f"[world] objects: {len(objects.spawners)} spawner(s) and {len(objects.items)} item(s) read back from the "
-              f"ModernUO files equal the model; the manifest lists all of them")
+              f"{backend.NAME} files equal the model; the manifest lists all of them")
     return failures
 
 

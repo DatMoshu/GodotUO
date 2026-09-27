@@ -81,6 +81,8 @@ def main() -> int:
     ap.add_argument("--live", action="store_true", help="live mode: the editor edits a running shard")
     ap.add_argument("--clip", type=Path,
                     help="with --live: record the client through the steps and write an MP4 here (ffmpeg)")
+    ap.add_argument("--servuo", action="store_true",
+                    help="the ServUO backend on the private ServUO shard (tools/servuo, 127.0.0.1:2596)")
     ap.add_argument("--commands", action="store_true", help="GM-command fallback, on the shard without the bridge")
     ap.add_argument("--project2", type=Path, help="the edited project for --commands")
     ap.add_argument("--out", type=Path)
@@ -93,6 +95,8 @@ def main() -> int:
         return live(cfg, args)
     if args.commands:
         return commands_mode(cfg, args)
+    if args.servuo:
+        return servuo_mode(cfg, args)
     if args.project is None:
         print("[objects_proof] --project is needed (or --live)")
         return 2
@@ -195,7 +199,8 @@ def main() -> int:
     return 0 if ok else 1
 
 
-def gm_client(cfg, out: Path, name: str, commands: list[str], dump: Path | None = None) -> int:
+def gm_client(cfg, out: Path, name: str, commands: list[str], dump: Path | None = None,
+              port: int = PORT, character: str | None = None) -> int:
     """A headless GM client on the private shard types commands (and optionally dumps its world), then ends."""
     home = out / f"{name}_home"
     home.mkdir(parents=True)
@@ -203,12 +208,14 @@ def gm_client(cfg, out: Path, name: str, commands: list[str], dump: Path | None 
     (home / "profiles").mkdir()
     (home / "settings.json").write_text(json.dumps({"profilespath": str(home / "profiles")}), encoding="utf-8")
     cmd = [str(cfg.godot_console_exe), "--headless", "--path", str(cfg.godot_project), "--", "--play"]
+    if character:
+        cmd += ["--character", character]
     for c in commands:
         cmd += ["--shard-command", c]
     if dump is not None:
         cmd += ["--objects-dump", str(dump)]
     env = {**os.environ, "UO_CLIENT_DATA": str(cfg.client_data), "UO_CACHE_DIR": str(home / "cache"),
-           "UO_CLIENT_VERSION": cfg.client_version, "UO_SHARD_HOST": "127.0.0.1", "UO_SHARD_PORT": str(PORT)}
+           "UO_CLIENT_VERSION": cfg.client_version, "UO_SHARD_HOST": "127.0.0.1", "UO_SHARD_PORT": str(port)}
     log = out / f"{name}.log"
     with log.open("w", encoding="utf-8", errors="replace") as f:
         proc = subprocess.Popen(cmd, stdout=f, stderr=subprocess.STDOUT, env=env, **no_activate())
@@ -221,12 +228,105 @@ def gm_client(cfg, out: Path, name: str, commands: list[str], dump: Path | None 
     return 0 if (dump is None or dump.is_file()) else 1
 
 
+SERVUO_PORT = 2596
+
+
+def servuo_mode(cfg, args) -> int:
+    """Export with the ServUO backend, restart ServUO with the files, have a GM load them,
+    and check a client there sees the items and the spawner's creature."""
+    tools = cfg.tools
+    if args.project is None:
+        print("[objects_proof] --servuo needs --project")
+        return 2
+    project = args.project.resolve()
+    objects = worldobjects.load(project)
+    out = (args.out or cfg.build / "editor_objects_proof_servuo").resolve()
+    if out.exists():
+        shutil.rmtree(out)
+    out.mkdir(parents=True)
+    export = out / "export"
+    env_backend = {**os.environ, "UO_SHARD_BACKEND": "servuo"}
+    for step in (["export", "--project", str(project), "--out", str(export)],
+                 ["verify", "--project", str(project), "--out", str(export)]):
+        r = subprocess.run([sys.executable, str(tools / "world" / "run.py"), *step], env=env_backend)
+        if r.returncode != 0:
+            return 1
+
+    # Restart ServUO with the files beside it (it reads neither at boot; the GM loads them).
+    src = tools / "servuo" / "src"
+    sh(str(tools / "servuo" / "run.py"), "stop")
+    for f in (export / "shard").rglob("*"):
+        if f.is_file() and f.parts[len((export / "shard").parts)] in ("XmlSpawner", "Data"):
+            dst = src / f.relative_to(export / "shard")
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(f, dst)
+    if sh(str(tools / "servuo" / "run.py"), "start") != 0:
+        return 2
+
+    first = (objects.items or objects.spawners)[0]
+    home = out / "client_home"
+    (home / "cache").mkdir(parents=True)
+    (home / "profiles").mkdir()
+    (home / "settings.json").write_text(json.dumps({"profilespath": str(home / "profiles")}), encoding="utf-8")
+    (home / "profiles" / "default.json").write_text(json.dumps({"topbar_gump_is_disabled": True}), encoding="utf-8")
+    dump = out / "client_objects.json"
+    load = [f"[XmlLoad guo-{project.name}.xml"] if objects.spawners else []
+    cmd = [str(cfg.godot_console_exe), *(["--headless"] if args.headless else []), "--path", str(cfg.godot_project), "--",
+           "--play", "--character", "Guoprobe", "--window-size", "1024,768",
+           "--screenshot-dir", str(out), "--screenshot-name", "client", "--objects-dump", str(dump)]
+    for c in load + ["[Decorate", f"[self set map {first.map.lower()}", f"[go {first.x - 1} {first.y + 1}",
+                     "[where", "[where", "[where"]:
+        cmd += ["--shard-command", c]
+    env = {**os.environ, "UO_CLIENT_DATA": str(cfg.client_data), "UO_CACHE_DIR": str(home / "cache"),
+           "UO_CLIENT_VERSION": cfg.client_version, "UO_SHARD_HOST": "127.0.0.1", "UO_SHARD_PORT": str(SERVUO_PORT)}
+    with (out / "client.log").open("w", encoding="utf-8", errors="replace") as log:
+        proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, env=env, **no_activate())
+        if args.headless:
+            wait_for(lambda: dump.is_file() or proc.poll() is not None, 900)
+            time.sleep(1)
+            if proc.poll() is None:
+                proc.kill()
+        try:
+            proc.wait(timeout=900)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+    if not dump.is_file():
+        print(f"[objects_proof] the client wrote no objects dump; see {out / 'client.log'}")
+        return 1
+    seen = json.loads(dump.read_text(encoding="utf-8"))
+    results = []
+    for i in objects.items:
+        hit = any(int(o["graphic"], 16) == i.item_id and (o["x"], o["y"], o["z"]) == (i.x, i.y, i.z)
+                  and int(o["hue"], 16) == i.hue for o in seen["items"])
+        results.append({"kind": "item", "what": f"0x{i.item_id:04X} at {i.x},{i.y},{i.z}", "found": hit})
+    for sp in objects.spawners:
+        marker = any(o["name"].lower() == f"guo {sp.entries[0]['name']}".lower() for o in seen["items"])
+        near = [m["name"] for m in seen["mobiles"] if abs(m["x"] - sp.x) <= sp.home_range + 2 and abs(m["y"] - sp.y) <= sp.home_range + 2]
+        want = sp.entries[0]["name"].lower()
+        results.append({"kind": "spawner", "what": f"{sp.entries[0]['name']} at {sp.x},{sp.y}", "found": marker,
+                        "creature_near": any(want in n.lower() for n in near), "near": near})
+    shots = sorted(out.glob("client*.png"))
+    report = {"mode": "servuo", "results": results, "frame": str(shots[-1]) if shots else None,
+              "commands": load + ["[Decorate"]}
+    (out / "report.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    for r in results:
+        extra = f", creature near: {r['creature_near']} ({', '.join(r['near']) or 'none'})" if r["kind"] == "spawner" else ""
+        print(f"[objects_proof]   {'ok  ' if r['found'] else 'FAIL'} {r['kind']:<7} {r['what']}{extra}")
+    print(f"[objects_proof] frame: {report['frame'] or 'none'}")
+    ok = all(r["found"] for r in results) and all(r.get("creature_near", True) for r in results)
+    print("[objects_proof] OK" if ok else "[objects_proof] FAILED")
+    return 0 if ok else 1
+
+
 def commands_mode(cfg, args) -> int:
     tools = cfg.tools
     if args.project is None or args.project2 is None:
         print("[objects_proof] --commands needs --project and --project2")
         return 2
-    out = (args.out or cfg.build / "editor_objects_proof_commands").resolve()
+    servuo = args.servuo
+    port = 2596 if servuo else PORT
+    character = "Guoprobe" if servuo else None
+    out = (args.out or cfg.build / ("editor_objects_proof_commands_servuo" if servuo else "editor_objects_proof_commands")).resolve()
     if out.exists():
         shutil.rmtree(out)
     out.mkdir(parents=True)
@@ -238,29 +338,34 @@ def commands_mode(cfg, args) -> int:
     anvil1 = next(i for i in o1.items if i.item_id == 0x0FAF)
 
     shard_log = cfg.build / "shard_private" / "shard.log"
-    # A clean baseline: one boot WITH the bridge and an empty manifest removes
-    # what earlier bridge runs placed; then the shard runs as a plain ModernUO.
-    sh(str(tools / "editor_shard" / "run.py"), "stop")
-    if sh(str(tools / "editor_shard" / "run.py"), "bridge") != 0:
-        return 2
-    if sh(str(tools / "editor_shard" / "run.py"), "start", "--clear-objects") != 0:
-        return 2
-    wait_for(lambda: "world objects sync" in shard_log.read_text(encoding="utf-8", errors="replace"), 120)
-    time.sleep(3)
-    sh(str(tools / "editor_shard" / "run.py"), "stop")
-    if sh(str(tools / "editor_shard" / "run.py"), "start", "--no-bridge") != 0:
-        return 2
-    bridge_loaded = "GUO editor bridge" in shard_log.read_text(encoding="utf-8", errors="replace")
+    bridge_loaded = False
+    if servuo:
+        # ServUO runs no GUO code at all; start it if it is not up.
+        sh(str(tools / "servuo" / "run.py"), "start")
+    if not servuo:
+        # A clean baseline: one boot WITH the bridge and an empty manifest removes
+        # what earlier bridge runs placed; then the shard runs as a plain ModernUO.
+        sh(str(tools / "editor_shard" / "run.py"), "stop")
+        if sh(str(tools / "editor_shard" / "run.py"), "bridge") != 0:
+            return 2
+        if sh(str(tools / "editor_shard" / "run.py"), "start", "--clear-objects") != 0:
+            return 2
+        wait_for(lambda: "world objects sync" in shard_log.read_text(encoding="utf-8", errors="replace"), 120)
+        time.sleep(3)
+        sh(str(tools / "editor_shard" / "run.py"), "stop")
+        if sh(str(tools / "editor_shard" / "run.py"), "start", "--no-bridge") != 0:
+            return 2
+        bridge_loaded = "GUO editor bridge" in shard_log.read_text(encoding="utf-8", errors="replace")
 
     def apply(project: Path, name: str) -> tuple[int, str]:
         r = subprocess.run([sys.executable, str(tools / "world" / "run.py"), "apply-commands", "--project", str(project),
-                            "--host", "127.0.0.1", "--port", str(PORT)], capture_output=True, text=True)
+                            "--host", "127.0.0.1", "--port", str(port)], capture_output=True, text=True)
         (out / f"{name}.txt").write_text(r.stdout + r.stderr, encoding="utf-8")
         return r.returncode, r.stdout
 
     def look(name: str, at) -> dict:
         dump = out / f"{name}.json"
-        gm_client(cfg, out, name, ["[self set map felucca", f"[go {at[0]} {at[1]}", "[where"], dump)
+        gm_client(cfg, out, name, ["[self set map felucca", f"[go {at[0]} {at[1]}", "[where"], dump, port, character)
         return json.loads(dump.read_text(encoding="utf-8"))
 
     def anvils(d, cell):
@@ -274,7 +379,7 @@ def commands_mode(cfg, args) -> int:
     shutil.copytree(p1 / "shard" / "applied", p2 / "shard" / "applied", dirs_exist_ok=True)
     # Shard content on the project anvil's cell: an untagged anvil, placed by a GM.
     gm_client(cfg, out, "decoy", ["[self set map felucca", f"[go {anvil1.x} {anvil1.y} {anvil1.z}",
-                                  f"[TileXYZ {anvil1.x} {anvil1.y} 1 1 {anvil1.z} Static 4015"])
+                                  f"[TileXYZ {anvil1.x} {anvil1.y} 1 1 {anvil1.z} Static 4015"], None, port, character)
     code2, _ = apply(p2, "apply2")
     seen2 = look("after_apply2", spot)
     code3, again = apply(p2, "apply3")
