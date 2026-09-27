@@ -112,6 +112,10 @@ internal sealed partial class StoreWindow : CanvasLayer
         }
     }
 
+    /// <summary>A pack's size as the web page shows it: KB under 1 MB, else MB to one place.</summary>
+    private static string SizeText(long bytes) =>
+        bytes < 1048576 ? $"{Math.Max(1, (long)Math.Round(bytes / 1024.0))} KB" : $"{bytes / 1048576.0:0.0} MB";
+
     private static Label Text(string value, int size, Color color)
     {
         var label = new Label { Text = value, AutowrapMode = TextServer.AutowrapMode.WordSmart };
@@ -206,7 +210,7 @@ internal sealed partial class StoreWindow : CanvasLayer
             bool present = installed.Any(p => p.Id == m.Id && p.Version == m.Version);
             bool compatible = m.MinProfileVersion <= PlatformDefaults.CurrentVersion;
             bool update = installed.Any(p => p.Id == m.Id && StorePack.Version(p.Version) < StorePack.Version(m.Version));
-            info.AddChild(Text("v" + m.Version + (present ? "  ·  Installed ✓" : update ? "  ·  Update available" : $"  ·  {entry.Size / 1048576.0:0.0} MB"), 12, present ? new Color("b5d69b") : Muted));
+            info.AddChild(Text("v" + m.Version + (present ? "  ·  Installed ✓" : update ? "  ·  Update available" : $"  ·  {SizeText(entry.Size)}"), 12, present ? new Color("b5d69b") : Muted));
             var action = Touchable(new Button { Text = present ? "Uninstall" : !compatible ? "Needs newer GUO" : update ? "Update" : "Install", Disabled = _busy || (!present && !compatible) });
             action.SizeFlagsHorizontal = Control.SizeFlags.ShrinkBegin;
             info.AddChild(action); action.Pressed += () => _ = Change(entry, present);
@@ -229,7 +233,7 @@ internal sealed partial class StoreWindow : CanvasLayer
             _status.Text = (remove ? "Removing " : "Installing ") + entry.Manifest.Title + "…";
             if (remove) _client.Uninstall(entry.Manifest.Id, entry.Manifest.Version);
             else await _client.Install(entry, _cancel.Token);
-            if (IsInsideTree()) _status.Text = remove ? "Pack removed. Reopen Options to refresh backgrounds." : "Installed and verified. Reopen Options and select the background, then Apply.";
+            if (IsInsideTree()) _status.Text = remove ? _client.LastUninstallMessage : "Installed and verified. Reopen Options and select the background, then Apply.";
         }
         catch (Exception e) { if (IsInsideTree()) _status.Text = e.Message; }
         finally { _busy = false; if (IsInsideTree()) Render(); }
