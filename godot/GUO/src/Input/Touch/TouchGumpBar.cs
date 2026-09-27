@@ -63,6 +63,27 @@ namespace GUO.Input.Touch
         /// <summary>Whether the bar is drawn and takes taps.</summary>
         public bool Shown { get; private set; }
 
+        /// <summary>
+        /// The share of the window's height the bar covers while shown, so a
+        /// gump can be kept above it whatever units it is laid out in.
+        /// </summary>
+        public float ReservedFraction
+        {
+            get
+            {
+                float viewHeight = _surface.GetViewportRect().Size.Y;
+
+                if (!Shown || viewHeight <= 0f)
+                {
+                    return 0f;
+                }
+
+                Layout(out Rect2 band, out _, out _, out _);
+
+                return band.Size.Y / viewHeight;
+            }
+        }
+
         public override void _Ready()
         {
             Layer = 10;

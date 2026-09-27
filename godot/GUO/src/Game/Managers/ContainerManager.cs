@@ -46,6 +46,22 @@ namespace GUO.Game.Managers
 
         public void CalculateContainerPosition(uint serial, ushort g)
         {
+            // PORT DEVIATION (GUO): upstream's answer, then ContainerPlacement's
+            // check of it when the profile asks for it (see that class).
+            bool remembered = UIManager.GetGumpCachePosition(serial, out _);
+
+            CalculateContainerPositionUpstream(serial, g);
+
+            if (ContainerPlacement.Active(ProfileManager.CurrentProfile))
+            {
+                Point placed = ContainerPlacement.Place(serial, g, new Point(X, Y), remembered);
+                X = placed.X;
+                Y = placed.Y;
+            }
+        }
+
+        private void CalculateContainerPositionUpstream(uint serial, ushort g)
+        {
             if (UIManager.GetGumpCachePosition(serial, out Point location))
             {
                 X = location.X;

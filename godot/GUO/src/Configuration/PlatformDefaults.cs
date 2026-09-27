@@ -38,8 +38,10 @@ namespace GUO.Configuration
     /// the desktop value gets the platform value once, on the first load
     /// after an upgrade, and can set it again under Options.
     ///
-    /// To add a default: add an entry, and bump CurrentVersion if existing
-    /// profiles should pick it up.
+    /// To add a default: bump CurrentVersion and give the entry that version
+    /// as `since`. A profile only goes through the entries added after the
+    /// version it was saved with, so a player who turned an older default
+    /// back off keeps it off.
     /// </remarks>
     internal static class PlatformDefaults
     {
@@ -47,7 +49,7 @@ namespace GUO.Configuration
         /// The table version this build writes. 0 means the profile predates
         /// platform defaults (every profile saved before GUO had them).
         /// </summary>
-        public const int CurrentVersion = 1;
+        public const int CurrentVersion = 2;
 
         /// <summary>The login screen's size, which every login gump is laid out for.</summary>
         private const int LoginWidth = 640;
@@ -56,12 +58,14 @@ namespace GUO.Configuration
         private sealed class Entry
         {
             public readonly string Name;
+            public readonly int Since;
             public readonly Func<Profile, bool> IsDesktopDefault;
             public readonly Action<Profile> Apply;
 
-            public Entry(string name, Func<Profile, bool> isDesktopDefault, Action<Profile> apply)
+            public Entry(string name, int since, Func<Profile, bool> isDesktopDefault, Action<Profile> apply)
             {
                 Name = name;
+                Since = since;
                 IsDesktopDefault = isDesktopDefault;
                 Apply = apply;
             }
@@ -101,7 +105,11 @@ namespace GUO.Configuration
                 BoolEntry(nameof(Profile.ScaleItemsInsideContainers), p => p.ScaleItemsInsideContainers, (p, v) => p.ScaleItemsInsideContainers = v, true),
 
                 // The grid loot gump alongside the corpse (2 = both).
-                IntEntry(nameof(Profile.GridLootType), p => p.GridLootType, (p, v) => p.GridLootType = v, 2)
+                IntEntry(nameof(Profile.GridLootType), p => p.GridLootType, (p, v) => p.GridLootType = v, 2),
+
+                // v2: containers open clear of the character, the touch bar
+                // and each other (ContainerPlacement).
+                BoolEntry(nameof(Profile.FitContainerPlacement), p => p.FitContainerPlacement, (p, v) => p.FitContainerPlacement = v, true, since: 2)
             },
 
             [ProfilePlatform.Web] = new[]
@@ -174,7 +182,10 @@ namespace GUO.Configuration
 
             foreach (Entry entry in Table[Platform])
             {
-                if (entry.IsDesktopDefault(profile))
+                // Only entries added since this profile's version: one it
+                // has already been through may since have been changed back
+                // by the player.
+                if (entry.Since > from && entry.IsDesktopDefault(profile))
                 {
                     entry.Apply(profile);
                     applied.Add(entry.Name);
@@ -202,32 +213,32 @@ namespace GUO.Configuration
             return new Point(Math.Max(LoginWidth, bounds.Width), Math.Max(LoginHeight, bounds.Height));
         }
 
-        private static Entry BoolEntry(string name, Func<Profile, bool> get, Action<Profile, bool> set, bool value)
+        private static Entry BoolEntry(string name, Func<Profile, bool> get, Action<Profile, bool> set, bool value, int since = 1)
         {
             bool upstream = get(Upstream);
 
-            return new Entry(name, p => get(p) == upstream, p => set(p, value));
+            return new Entry(name, since, p => get(p) == upstream, p => set(p, value));
         }
 
-        private static Entry ByteEntry(string name, Func<Profile, byte> get, Action<Profile, byte> set, byte value)
+        private static Entry ByteEntry(string name, Func<Profile, byte> get, Action<Profile, byte> set, byte value, int since = 1)
         {
             byte upstream = get(Upstream);
 
-            return new Entry(name, p => get(p) == upstream, p => set(p, value));
+            return new Entry(name, since, p => get(p) == upstream, p => set(p, value));
         }
 
-        private static Entry IntEntry(string name, Func<Profile, int> get, Action<Profile, int> set, int value)
+        private static Entry IntEntry(string name, Func<Profile, int> get, Action<Profile, int> set, int value, int since = 1)
         {
             int upstream = get(Upstream);
 
-            return new Entry(name, p => get(p) == upstream, p => set(p, value));
+            return new Entry(name, since, p => get(p) == upstream, p => set(p, value));
         }
 
-        private static Entry PointEntry(string name, Func<Profile, Point> get, Action<Profile, Point> set, Func<Profile, Point> value)
+        private static Entry PointEntry(string name, Func<Profile, Point> get, Action<Profile, Point> set, Func<Profile, Point> value, int since = 1)
         {
             Point upstream = get(Upstream);
 
-            return new Entry(name, p => get(p) == upstream, p => set(p, value(p)));
+            return new Entry(name, since, p => get(p) == upstream, p => set(p, value(p)));
         }
     }
 }

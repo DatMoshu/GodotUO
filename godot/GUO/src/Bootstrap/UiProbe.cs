@@ -73,7 +73,7 @@ internal static class UiProbe
             : null;
 
         WorldViewportGump viewport = UIManager.GetGump<WorldViewportGump>();
-        Compat.Rectangle bounds = Client.Game.Window.ClientBounds;
+        Compat.Rectangle bounds = Client.Game.ClientBounds;
 
         GD.Print(
             $"[GUO] ui probe: window {bounds.Width}x{bounds.Height}, screen scale {Client.Game.ScreenScale}; "
@@ -83,6 +83,140 @@ internal static class UiProbe
 
         Passed = backpack != null && viewport != null;
 
+        // A second container, from inside the backpack: where it lands
+        // against the first, the character and the screen's edges.
+        ContainerGump inner = null;
+        Game.GameObjects.Item bagItem = null;
+
+        if (backpack != null && world.Items.TryGetValue(backpack.LocalSerial, out var pack))
+        {
+            for (LinkedObject i = pack.Items; i != null; i = i.Next)
+            {
+                if (i is Game.GameObjects.Item it && it.ItemData.IsContainer)
+                {
+                    bagItem = it;
+
+                    break;
+                }
+            }
+        }
+
+        if (bagItem != null)
+        {
+            GameActions.DoubleClick(world, bagItem.Serial);
+
+            await InputProbe.Wait(host, 120);
+
+            inner = UIManager.GetGump<ContainerGump>(bagItem.Serial);
+        }
+
+        string innerName = "inner bag";
+
+        if (inner == null && backpack != null)
+        {
+            // No bag in the pack: the bank box is a container every
+            // character has, and the probe accounts are GMs, so ask for it.
+            GD.Print("[GUO] ui probe: no container inside the backpack; saying [bank for a second one");
+            GameActions.Say("[bank");
+
+            // The command asks whose bank box; answer with the player.
+            for (int f = 0; f < 120 && !world.TargetManager.IsTargeting; f++)
+            {
+                await InputProbe.Wait(host, 1);
+            }
+
+            if (world.TargetManager.IsTargeting)
+            {
+                world.TargetManager.Target(world.Player.Serial);
+            }
+
+            await InputProbe.Wait(host, 180);
+
+            foreach (Gump g in UIManager.Gumps)
+            {
+                if (g is ContainerGump c && !c.IsDisposed && c.LocalSerial != backpack.LocalSerial)
+                {
+                    inner = c;
+                    innerName = "bank box";
+
+                    break;
+                }
+            }
+        }
+
+        if (inner == null)
+        {
+            GD.Print("[GUO] ui probe: no second container opened");
+        }
+
+        if (backpack != null && ContainerPlacement.Active(p))
+        {
+            Passed &= CheckPlacement("backpack", backpack, viewport, bounds);
+
+            if (inner != null)
+            {
+                Compat.Rectangle a = Rect(backpack), b = Rect(inner);
+                int bottom = bounds.Height - (int)System.Math.Ceiling((GUO.Input.Touch.TouchInput.Bar?.ReservedFraction ?? 0f) * bounds.Height);
+
+                // Two containers whose widths and heights both add up past
+                // the screen cannot be apart; then the backpack must stay
+                // mostly visible and the new one above the touch bar.
+                bool canBeApart = a.Width + b.Width <= bounds.Width || a.Height + b.Height <= bottom;
+
+                if (canBeApart)
+                {
+                    Passed &= CheckPlacement(innerName, inner, viewport, bounds);
+
+                    bool apart = !a.Intersects(b);
+
+                    GD.Print($"[GUO] ui probe: placement: backpack and {innerName} {(apart ? "apart" : "OVERLAP")}");
+
+                    Passed &= apart;
+                }
+                else
+                {
+                    CheckPlacement(innerName, inner, viewport, bounds);
+
+                    Compat.Rectangle o = Compat.Rectangle.Intersect(a, b);
+                    long covered = (long)o.Width * o.Height;
+                    bool visible = covered * 2 <= (long)a.Width * a.Height;
+                    bool aboveBar = b.X >= 0 && b.Right <= bounds.Width && b.Bottom <= bottom;
+
+                    GD.Print(
+                        $"[GUO] ui probe: placement: NOTE {innerName} {b.Width}x{b.Height} and backpack cannot both fit a {bounds.Width}x{bottom} client apart; "
+                        + $"it covers {covered * 100 / ((long)a.Width * a.Height)}% of the backpack ({(visible ? "backpack mostly visible" : "BACKPACK HIDDEN")}), "
+                        + $"{(aboveBar ? "above the bar" : "INTO THE BAR")}"
+                    );
+
+                    Passed &= visible && aboveBar;
+                }
+            }
+        }
+
         GD.Print($"[GUO] ui probe: {(Passed ? "ok" : "FAIL")}");
+    }
+
+    private static Compat.Rectangle Rect(Gump g) => new Compat.Rectangle(g.X, g.Y, g.Width, g.Height);
+
+    /// <summary>
+    /// Inside the client area, above the touch bar, and clear of the middle
+    /// of the world view where the character stands.
+    /// </summary>
+    private static bool CheckPlacement(string name, Gump g, WorldViewportGump viewport, Compat.Rectangle bounds)
+    {
+        Compat.Rectangle r = Rect(g);
+        float bar = GUO.Input.Touch.TouchInput.Bar?.ReservedFraction ?? 0f;
+        int bottom = bounds.Height - (int)System.Math.Ceiling(bar * bounds.Height);
+        bool inside = r.X >= 0 && r.Y >= 0 && r.Right <= bounds.Width && r.Bottom <= bottom;
+        int cx = viewport.X + viewport.Width / 2, cy = viewport.Y + viewport.Height / 2;
+        bool clear = !r.Contains(cx, cy);
+
+        GD.Print(
+            $"[GUO] ui probe: placement: {name} {r.Width}x{r.Height} at {r.X},{r.Y}; "
+            + $"client {bounds.Width}x{bottom} above the bar; character at {cx},{cy}; "
+            + $"{(inside ? "inside" : "OUTSIDE")}, {(clear ? "clear of the character" : "OVER THE CHARACTER")}"
+        );
+
+        return inside && clear;
     }
 }

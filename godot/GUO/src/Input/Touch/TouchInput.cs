@@ -729,8 +729,11 @@ namespace GUO.Input.Touch
         /// <remarks>
         /// PORT DEVIATION (GUO): the client only zooms on the wheel when the
         /// profile's "enable mousewheel scale zoom" is on, an option a desktop
-        /// player finds under Options. A phone has no other way to zoom, so
-        /// the first pinch turns it on.
+        /// player finds under Options. On a phone or in a browser the
+        /// platform defaults turn it on (PlatformDefaults), and a player who
+        /// turns it off is obeyed. On a desktop run with --touch (and the
+        /// touch probe) the profile is a desktop one that never asked for it,
+        /// so the first pinch turns it on.
         /// </remarks>
         private static void ZoomBy(int direction, Vector2 at)
         {
@@ -738,6 +741,13 @@ namespace GUO.Input.Touch
 
             if (profile != null && !profile.EnableMousewheelScaleZoom)
             {
+                if (PlatformDefaults.Platform != ProfilePlatform.Desktop)
+                {
+                    Note("pinch ignored: wheel zoom is off in this profile");
+
+                    return;
+                }
+
                 profile.EnableMousewheelScaleZoom = true;
                 Note("pinch -> profile.EnableMousewheelScaleZoom = true");
             }
