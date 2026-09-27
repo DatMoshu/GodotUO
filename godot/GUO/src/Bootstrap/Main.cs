@@ -723,6 +723,10 @@ public partial class Main : Node
                 || DoorProbe
                 || EffectsProbe > 0
                 || EndureSeconds > 0
+                || TouchProbe
+                || LoginProbe
+                || UiProbe
+                || DualProbe
                 || ShardCommands.Count > 0
                 || ShotAfter > 0);
 
@@ -806,35 +810,6 @@ public partial class Main : Node
 
         /// <summary>Mute the Master bus for the whole run; the Android tool bakes this in unless told --sound.</summary>
         public bool Silent { get; private set; }
-
-        /// <summary>
-        /// Whether something other than a person is driving this run: any
-        /// probe, a shard-command run, a timed screenshot, or a mode that is
-        /// not Play at all. Such a run shares the desktop with whoever
-        /// started it and must not take their keyboard.
-        /// </summary>
-        public bool Scripted =>
-            Mode != RunMode.Play
-            || InputProbe
-            || TradePartner
-            || HighlightProbe
-            || EffectsProbe > 0
-            || TouchProbe
-            || LoginProbe
-            || UiProbe
-            || DualProbe
-            || ShardCommands.Count > 0
-            || ShotAfter > 0;
-
-        /// <summary>
-        /// Whether the window is kept from ever taking focus. <c>--no-focus</c>
-        /// and <c>--focus</c> decide it outright; with neither, a scripted run
-        /// is unfocusable and an interactive one is not. Mirrors how --silent
-        /// and --sound settle the audio.
-        /// </summary>
-        public bool NoFocus => _noFocus ?? Scripted;
-
-        private bool? _noFocus;
 
         /// <summary>
         /// Wait for the login gump to be drawn, say so on the log, and either
@@ -999,12 +974,6 @@ public partial class Main : Node
                         break;
                     case "--sound":
                         o.Sound = true;
-                        break;
-                    case "--no-focus":
-                        o._noFocus = true;
-                        break;
-                    case "--focus":
-                        o._noFocus = false;
                         break;
                     case "--account":
                         o.Account = Next();
