@@ -116,6 +116,11 @@ jobs:
 
       # The Asset Store end to end: publish, serve, install with the C#
       # installer, verify hashes, update and uninstall (ADR-0019).
+      # test_store.py runs the web page's JavaScript under Node's built-ins.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
       - name: Asset Store tests and smoke
         run: |
           python tools/asset_store/test_store.py
