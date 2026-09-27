@@ -105,7 +105,6 @@ internal static class TouchProbe
         await TargetTapCheck(host, world);
         await MacroRowCheck(host, world);
         await FlickCheck(host, world);
-        await HandleHoverCheck(host, world);
         // The long press is checked with hold-and-flick off, the way a player
         // who set every direction to "Do nothing" has it.
         {
@@ -472,41 +471,6 @@ internal static class TouchProbe
         {
             GumpFlick.Cancel();
             (p.FlickUp, p.FlickDown, p.FlickLeft, p.FlickRight) = saved;
-        }
-    }
-
-    /// <summary>
-    /// With a mouse (touch layer off), a gump's handle fades in while the
-    /// pointer is near its top edge and out when it leaves.
-    /// </summary>
-    private static async System.Threading.Tasks.Task HandleHoverCheck(Node host, Game.World world)
-    {
-        PaperDollGump g = await FreshPaperdoll(host, world);
-
-        if (g == null)
-        {
-            Check("a paperdoll for the hover check", false);
-            return;
-        }
-
-        TouchInput.Enabled = false;
-
-        try
-        {
-            GodotInput.Handle(new InputEventMouseMotion { Position = Client(new Vector2(g.X + g.Width / 2f, g.Y + 6)) });
-            await Frames(host, 30);
-            float near = GumpPresentation.GemAlpha(g);
-
-            GodotInput.Handle(new InputEventMouseMotion { Position = Client(new Vector2(g.X + g.Width / 2f, g.Y + g.Height - 10)) });
-            await Frames(host, 45);
-            float away = GumpPresentation.GemAlpha(g);
-
-            Check("with a mouse the handle fades in near the top edge and out away from it",
-                near > 0.9f && away == 0f, $"near {near:0.00}, away {away:0.00}");
-        }
-        finally
-        {
-            TouchInput.Enabled = true;
         }
     }
 

@@ -20,58 +20,29 @@ internal static class GumpPresentation
     private static RenderedText _gemText;
     private static bool _gemMouseDown;
 
+    /// <summary>
+    /// Whether gump presentation (per-gump size, the window menu, hold and
+    /// flick, screen transfer) is on at all. It is a mobile feature: on for
+    /// the touch layer (a device, or --touch / the probes), for a second
+    /// screen (a device, or the --dual-screen simulator), and for the desktop
+    /// dev toggle "Mobile window controls". Otherwise the client is exactly
+    /// ClassicUO: no handles, and a scale saved on mobile is drawn at 100%.
+    /// </summary>
+    public static bool Active => TouchInput.Enabled || DualScreen.ShelfOn
+        || (Configuration.ProfileManager.CurrentProfile?.MobileWindowControls ?? false);
+
     // Keep arbitrary shard dialogs and content-zoom maps on their existing paths.
-    public static bool Supports(Gump g) => g != null && !g.IsDisposed && !g.IsFromServer && !g.IsModal
+    public static bool Supports(Gump g) => Active && g != null && !g.IsDisposed && !g.IsFromServer && !g.IsModal
         && g is PaperDollGump or ContainerGump or GridContainerGump or StatusGumpBase
             or JournalGump or ResizableJournal;
-    // The handle is drawn only when asked for (Options, "Show window handles"),
-    // or, with a mouse, while the pointer is near the gump's top edge (it
-    // fades). On touch the menu opens from a hold-and-release on the gump.
-    private static bool GemVisible(Gump g) => Supports(g) && GemAlpha(g) > 0.05f;
-
-    private const int HoverBand = 24;
-    private const float FadePerSecond = 6f;
-    private static readonly System.Collections.Generic.Dictionary<Gump, float> _fade = new();
-    private static ulong _fadeTicks;
+    // The handle is drawn only when asked for (Options, "Show window handles");
+    // on touch the menu opens from a hold-and-release on the gump.
+    private static bool GemVisible(Gump g) => Supports(g) && GemAlpha(g) > 0f;
 
     private static bool AlwaysShown => Configuration.ProfileManager.CurrentProfile?.ShowWindowHandles ?? false;
 
-    /// <summary>The handle's opacity now: 1 when always shown, else the hover fade.</summary>
-    public static float GemAlpha(Gump g)
-    {
-        if (AlwaysShown) return 1f;
-        return _fade.TryGetValue(g, out float a) ? a : 0f;
-    }
-
-    /// <summary>With a mouse: whether the pointer is in the band along the gump's top edge, or on its handle.</summary>
-    private static bool Hovered(Gump g)
-    {
-        if (TouchInput.Enabled || !Supports(g) || !g.IsVisible) return false;
-        Point m = Mouse.Position;
-        Rectangle b = Bounds(g);
-        bool band = m.X >= b.X - HoverBand && m.X <= b.Right + HoverBand
-            && m.Y >= b.Y - GemSize - HoverBand && m.Y <= b.Y + HoverBand;
-        return band || GemRect(g).Contains(m);
-    }
-
-    /// <summary>Advance the hover fades; once a frame, from the draw queue.</summary>
-    private static void UpdateFades()
-    {
-        ulong now = (ulong)Godot.Time.GetTicksMsec();
-        if (now == _fadeTicks) return;
-        float step = Math.Min(1f, (now - _fadeTicks) / 1000f * FadePerSecond);
-        _fadeTicks = now;
-        var keys = new System.Collections.Generic.List<Gump>(_fade.Keys);
-        foreach (Gump g in UIManager.Gumps)
-            if (!_fade.ContainsKey(g) && Hovered(g)) keys.Add(g);
-        foreach (Gump g in keys)
-        {
-            if (g.IsDisposed) { _fade.Remove(g); continue; }
-            _fade.TryGetValue(g, out float a);
-            a += Hovered(g) ? step : -step;
-            if (a <= 0f) _fade.Remove(g); else _fade[g] = Math.Min(1f, a);
-        }
-    }
+    /// <summary>The handle's opacity: 1 when "Show window handles" is on, else hidden.</summary>
+    public static float GemAlpha(Gump g) => Active && AlwaysShown ? 1f : 0f;
 
     /// <summary>
     /// Open the size and screen menu for a gump, beside it. The one entry
@@ -291,7 +262,6 @@ internal static class GumpPresentation
         g.AddToRenderLists(lists, g.X, g.Y, ref depth);
         if (s != 1f || lifted) lists.AddGumpNoAtlas(b => { b.ClipEnd(); return true; });
         if (lifted) lists.AddGumpNoAtlas(b => { GumpFlick.DrawOverlay(b, g); return true; });
-        UpdateFades();
         if (GemVisible(g) && g.IsVisible && g.Width > 0)
         {
             Rectangle r = GemRect(g);

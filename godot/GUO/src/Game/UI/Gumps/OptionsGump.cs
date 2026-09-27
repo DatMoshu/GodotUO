@@ -125,6 +125,7 @@ namespace GUO.Game.UI.Gumps
         private Combobox[] _flick; // PORT DEVIATION (GUO): hold-and-flick, up/down/left/right
         private Checkbox _showTouches; // PORT DEVIATION (GUO): debug touch overlay
         private Checkbox _showHandles; // PORT DEVIATION (GUO): the "UI" window handles always drawn
+        private Checkbox _mobileControls; // PORT DEVIATION (GUO): desktop dev toggle, Android emulation
         private static readonly int[] DualScaleFinePercents = { 0, 100, 125, 150 };
         private Checkbox _holdShiftForContext, _holdShiftToSplitStack, _reduceFPSWhenInactive, _sallosEasyGrab, _partyInviteGump, _objectsFading, _textFading, _holdAltToMoveGumps;
         private Combobox _hpComboBox, _healtbarType, _fieldsType, _hpComboBoxShowWhen;
@@ -984,6 +985,13 @@ namespace GUO.Game.UI.Gumps
             // PORT DEVIATION (GUO): the size and screen handle (GumpPresentation)
             // drawn on every supported window. Off: on touch a hold-and-release
             // opens its menu; with a mouse it fades in near the window's top edge.
+            // A desktop without touch is ClassicUO; this dev toggle turns the
+            // mobile window controls on there, for Android emulation.
+            if (!Godot.OS.HasFeature("mobile"))
+            {
+                section3.Add(_mobileControls = AddCheckBox(null, "Mobile window controls (for Android emulation)", _currentProfile.MobileWindowControls, 0, 0));
+            }
+
             section3.Add(_showHandles = AddCheckBox(null, "Show window handles", _currentProfile.ShowWindowHandles, 0, 0));
 
             // PORT DEVIATION (GUO): the touch bar's chevron, moved in from the
@@ -4153,6 +4161,11 @@ namespace GUO.Game.UI.Gumps
             }
 
             _currentProfile.ShowWindowHandles = _showHandles.IsChecked; // PORT DEVIATION (GUO)
+
+            if (_mobileControls != null)
+            {
+                _currentProfile.MobileWindowControls = _mobileControls.IsChecked; // PORT DEVIATION (GUO)
+            }
 
             if (_showTouches != null)
             {

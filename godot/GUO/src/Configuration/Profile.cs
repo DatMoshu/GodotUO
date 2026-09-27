@@ -252,10 +252,15 @@ namespace GUO.Configuration
         public bool DebugShowTouches { get; set; }
 
         // PORT DEVIATION (GUO): the "UI" window handles (GumpPresentation)
-        // always drawn. Off by default: on touch the menu opens from a
-        // hold-and-release on the gump; with a mouse the handle fades in near
-        // the gump's top edge. A new key, false for every existing profile.
+        // always drawn, where the mobile window controls are on. Off by
+        // default: on touch the menu opens from a hold-and-release on the gump.
+        // A new key, false for every existing profile.
         public bool ShowWindowHandles { get; set; }
+
+        // PORT DEVIATION (GUO): turn the mobile window controls (gump size,
+        // window menu, screen transfer) on for a desktop run without touch,
+        // for Android emulation. Off by default: the desktop is ClassicUO.
+        public bool MobileWindowControls { get; set; }
 
         public int FlickDown { get; set; } = 2;
         public int FlickLeft { get; set; } = 3;
