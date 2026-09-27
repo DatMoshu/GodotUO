@@ -35,6 +35,8 @@ namespace GUO.Input.Touch
     /// already uses. Without the gump (an old client) it falls back to flat
     /// rectangles and the engine's font. It is only shown while the character
     /// is in the world, which is the only time the actions it offers exist.
+    /// While a target cursor is up, Chat and Options give way to Self and
+    /// Cancel (tinted blue and red): a phone has no Esc to cancel a target.
     /// </remarks>
     internal sealed partial class TouchGumpBar : CanvasLayer
     {
@@ -43,6 +45,20 @@ namespace GUO.Input.Touch
         {
             "paperdoll", "backpack", "journal", "map", "chat", "options",
         };
+
+        /// <summary>
+        /// While a target cursor is up, the last two buttons answer it: Self
+        /// targets the player (who may be under a gump), Cancel is the Esc a
+        /// phone does not have. They go back to Chat and Options after.
+        /// </summary>
+        private static readonly string[] TargetingActions =
+        {
+            "paperdoll", "backpack", "journal", "map", "self", "cancel",
+        };
+
+        /// <summary>The buttons as they are now.</summary>
+        public static string[] Current =>
+            Client.Game?.UO?.World?.TargetManager?.IsTargeting == true ? TargetingActions : Actions;
 
         /// <summary>The top bar's wide button, and its size in the 7.0 client.</summary>
         private const ushort ButtonGump = 0x098D;
@@ -161,7 +177,7 @@ namespace GUO.Input.Touch
         /// <summary>The rectangle of one button's art, in viewport pixels.</summary>
         private Rect2 ArtRect(string action)
         {
-            int index = System.Array.IndexOf(Actions, action);
+            int index = System.Array.IndexOf(Current, action);
 
             if (index < 0)
             {
@@ -183,7 +199,7 @@ namespace GUO.Input.Touch
         /// </summary>
         public Rect2 ButtonRect(string action)
         {
-            int index = System.Array.IndexOf(Actions, action);
+            int index = System.Array.IndexOf(Current, action);
 
             if (index < 0)
             {
@@ -207,7 +223,7 @@ namespace GUO.Input.Touch
                 return false;
             }
 
-            foreach (string a in Actions)
+            foreach (string a in Current)
             {
                 if (ButtonRect(a).HasPoint(at))
                 {
@@ -272,6 +288,22 @@ namespace GUO.Input.Touch
 
                     break;
 
+                case "self":
+                    if (world.TargetManager.IsTargeting && world.Player != null)
+                    {
+                        world.TargetManager.Target(world.Player.Serial);
+                    }
+
+                    break;
+
+                case "cancel":
+                    if (world.TargetManager.IsTargeting)
+                    {
+                        world.TargetManager.CancelTarget();
+                    }
+
+                    break;
+
                 case "options":
                     GameActions.OpenSettings(world);
 
@@ -292,6 +324,8 @@ namespace GUO.Input.Touch
                 case "map": return cliloc?.GetString(3000430, ResGumps.Map) ?? "Map";
                 case "chat": return cliloc?.GetString(3000131, ResGumps.Chat) ?? "Chat";
                 case "options": return "Options";
+                case "self": return "Self";
+                case "cancel": return "Cancel";
             }
 
             return action;
@@ -392,7 +426,7 @@ namespace GUO.Input.Touch
 
                 bool lit = bar._pressed != null && Godot.Time.GetTicksMsec() - bar._pressedAt < PressedMs;
 
-                foreach (string action in Actions)
+                foreach (string action in Current)
                 {
                     Rect2 r = bar.ArtRect(action);
 
@@ -430,6 +464,16 @@ namespace GUO.Input.Touch
                         );
 
                         DrawString(font, at, text, HorizontalAlignment.Left, -1, fontSize, new Color(0.95f, 0.90f, 0.75f));
+                    }
+
+                    // The two target buttons are tinted, so the swap is seen.
+                    if (action == "self")
+                    {
+                        DrawRect(r, new Color(0.25f, 0.45f, 1f, 0.30f));
+                    }
+                    else if (action == "cancel")
+                    {
+                        DrawRect(r, new Color(1f, 0.20f, 0.15f, 0.35f));
                     }
 
                     if (lit && action == bar._pressed)
