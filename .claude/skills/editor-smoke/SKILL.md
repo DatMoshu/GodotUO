@@ -15,7 +15,10 @@ your name to. See `tools/editor_smoke/README.md` for what the tool does and
 
 ## 1. Run it
 
-Pick the mode from the arguments; with none, run both of the first two.
+Pick the mode from the arguments. With none, run the full verification the
+`uo-editor-engineer` agent requires after any addon change: `--headless
+--reload`, then windowed (no reload). `reload` adds `--reload` to whichever
+mode is chosen.
 
 | Argument | Command | Proves |
 |---|---|---|
@@ -37,13 +40,32 @@ Exit 0 is a pass, 1 a failed check, 2 the editor did not start or timed out.
 the saved `png`, the editor `screenshot`, and `failures`. A `skipped` Parity
 panel means UOWW's `uoasset` CLI is not installed; that is allowed.
 
+Keys per panel: `query`, `selected`, `id`, `frames`, `text_chars`,
+`image_size`, `opaque_pixels`, `png`, `screenshot` (null when headless),
+`played` (Sounds), `skipped` (Parity), `ms`, `ok`, `failures`. Top level:
+`client_data`, `load_ms`, `panels`, `ok`, `failures`, and with `--reload`
+`reloaded` plus the first pass under `before_reload`.
+
 ## 3. Look at the images
 
 A pass means the checks ran, not that the pictures are right. Open at least
-the panel images you changed (`<panel>.png`) and one editor screenshot
-(`editor_<panel>.png`), and say what you saw: the backpack for Art 0x0E75, a
-walking human for Anims 0x0190, a house for Multis 0x0064, Britain on the
-Maps radar at 1496,1628. Downscale 4K screenshots before viewing.
+the panel images you changed (`<panel>.png`) and, in windowed mode, one
+editor screenshot (`editor_<panel>.png`; headless writes none). Say what you
+saw against what each default query should show:
+
+| Panel | Query | Expect |
+|---|---|---|
+| Art | 0x0E75 | a brown backpack, 44x32 |
+| Gumps | 0x0064 | a gold plaque in a wooden frame, 143x101 |
+| Anims | 0x0190 | a grey (unhued, as stored) human mid-stride; frame 0 of 10 |
+| Hues | 0x0021 | a dark-to-bright red swatch; below it the last Art pick plain, hued red, and partial hue (unchanged unless the art is grey) |
+| Multis | 0x0064 | a small plaster house, tiled roof, stone base and steps |
+| Maps | 1496,1628 | east Britain streets, the sea and a bridge on the right; magenta marks the cell |
+| Parity | 0x0E75 | reference, GUO and diff side by side; the diff all dimmed, no magenta |
+
+Editor screenshots are 4K; downscale before viewing, e.g.
+`python -c "from PIL import Image; im=Image.open('in.png'); im.resize((im.width//2, im.height//2), Image.NEAREST).save('out.png')"`
+into the scratchpad, not `build\` or the repo.
 
 ## 4. Check the tree
 

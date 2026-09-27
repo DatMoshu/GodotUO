@@ -87,6 +87,9 @@ works. `/editor-smoke` runs this for you.
 
 ## Hand-offs
 
+Use the Task tool to delegate to these agents rather than doing their work;
+give them the question and the files, and bring their answer back.
+
 - The World tab's drawing, picking and anything under `src/Render`:
   `uo-render-engineer` (ADR-0001 governs it).
 - UltimaLive packets, the shard's editor endpoint, anything under
