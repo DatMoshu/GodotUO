@@ -147,3 +147,25 @@ Limits:
 - Items and spawners show their tag as their name when clicked.
 - A run is slow: the client waits for each command's answer to fall quiet,
   about a minute per command.
+
+## Stale UltimaLive copies
+
+A client that has played on an UltimaLive shard keeps its own copy of each map,
+under `%ProgramData%\<shard name>\`. Once that copy exists, the client never
+refreshes it from the install or an export. After a re-export it would go on
+showing the old map.
+
+`export` checks for this. For each facet it exports, it compares the client's
+copy with the export on every block the project replaces, land and statics.
+If a copy lacks any of them, `export` prints a WARNING with the number of
+stale blocks and the exact fix. With `--clear-ultimalive` it removes that
+facet's copy itself, and the client makes a fresh one at its next login.
+`ultimalive` runs the same check against an existing export, without
+exporting again.
+
+- The shard name is `--ultimalive-shard`, else `GUO_BRIDGE_SHARD`, else
+  `GUO-Editor-Private`.
+- The root is `--ultimalive-root`, else `%ProgramData%`.
+
+Nothing is removed without `--clear-ultimalive`. `editor_smoke` covers
+both paths, in a scratch root.

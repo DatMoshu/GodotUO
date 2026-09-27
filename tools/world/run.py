@@ -10,6 +10,7 @@ it into files a server and a client can read, and checks them:
     python tools/world/run.py verify [--project DIR] [--out DIR]
     python tools/world/run.py pack   [--project DIR] [--out FILE.zip]
     python tools/world/run.py apply-commands [--project DIR] --host H --port P [--dry-run]
+    python tools/world/run.py ultimalive [--project DIR] [--out DIR] [--clear-ultimalive]
 
 Or through the launcher:
 
@@ -126,7 +127,49 @@ def cmd_blocks(cfg, project: Path) -> int:
     return 0
 
 
-def cmd_export(cfg, project: Path, out: Path, force: bool) -> int:
+def ultimalive_root(given: Path | None) -> Path:
+    import os
+    return given or Path(os.environ.get("ProgramData", r"C:\\ProgramData"))
+
+
+def check_ultimalive(out: Path, facets: dict, shard: str, root: Path, clear: bool) -> int:
+    """A client that has played on an UltimaLive shard keeps its own copy of each map
+    (<ProgramData>/<shard name>/map<N>.mul) and, once made, never refreshes it from the
+    install or an export: it would go on showing the old map. Compare that copy with the
+    exported map on the blocks the project replaces; report a stale one with the exact fix, or remove it
+    when asked (--clear-ultimalive). Returns how many stale copies remain."""
+    folder = root / shard
+    stale = 0
+    for facet, bs in sorted(facets.items()):
+        if not (folder / f"map{facet}.mul").is_file():
+            continue
+        # The project's replaced blocks, land and statics, in the copy against the export.
+        with open_facet(folder, facet) as copy, open_facet(out, facet) as exp:
+            differ = 0
+            for (bx, by) in bs:
+                a, b = copy.read(bx, by), exp.read(bx, by)
+                if a.land_id != b.land_id or a.land_z != b.land_z or Counter(a.statics) != Counter(b.statics):
+                    differ += 1
+        copy_path = folder / f"map{facet}.mul"
+        if differ == 0:
+            print(f"[world] UltimaLive copy {copy_path} already has this export's {len(bs)} block(s)")
+            continue
+        if clear:
+            for name in (f"map{facet}.mul", f"staidx{facet}.mul", f"statics{facet}.mul"):
+                (folder / name).unlink(missing_ok=True)
+            print(f"[world] UltimaLive copy of map{facet} was stale ({differ} of {len(bs)} block(s)); removed. "
+                  f"The client makes a fresh one at its next login to {shard}.")
+            continue
+        stale += 1
+        print(f"[world] WARNING: the client's UltimaLive copy {copy_path} lacks {differ} of this export's {len(bs)} block(s).")
+        print(f"[world]   A client that already played on '{shard}' keeps showing the OLD map until it is removed.")
+        print(f"[world]   Fix: close the client, then run this export again with --clear-ultimalive")
+        print(f"[world]        (or delete {folder}); the client copies the new map at its next login.")
+    return stale
+
+
+def cmd_export(cfg, project: Path, out: Path, force: bool, ul_shard: str = "GUO-Editor-Private",
+               ul_root: Path | None = None, ul_clear: bool = False) -> int:
     data = cfg.client_data
     if inside(out, data):
         print(f"[world] REFUSED: {out} is inside UO_CLIENT_DATA ({data}). The install is never written.")
@@ -219,6 +262,9 @@ def cmd_export(cfg, project: Path, out: Path, force: bool) -> int:
         manifest["objects"] = {"backend": backend.NAME, "spawners": len(objects.spawners), "items": len(objects.items),
                                "files": {p.relative_to(out).as_posix(): sha1(p) for p in written}}
         print(f"[world] objects: {len(objects.spawners)} spawner(s), {len(objects.items)} item(s) -> {backend.NAME} files in {out / 'shard'}")
+
+    if blocks:
+        check_ultimalive(out, blocks, ul_shard, ultimalive_root(ul_root), ul_clear)
 
     (out / "files_override.txt").write_text("\n".join(override_lines) + "\n", encoding="utf-8")
     (out / "export.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
@@ -606,13 +652,18 @@ def cmd_apply_commands(cfg, project: Path, host: str, port: int, dry_run: bool) 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("command", choices=["blocks", "export", "verify", "pack", "apply-commands"])
+    ap.add_argument("command", choices=["blocks", "export", "verify", "pack", "apply-commands", "ultimalive"])
     ap.add_argument("--host", help="shard host (apply-commands)")
     ap.add_argument("--port", type=int, help="shard port (apply-commands)")
     ap.add_argument("--dry-run", action="store_true", help="print the commands only (apply-commands)")
     ap.add_argument("--project", type=Path, help="world project folder (default UO_WORLD_PROJECT)")
     ap.add_argument("--out", type=Path, help="export folder (default <project>/export)")
     ap.add_argument("--force", action="store_true", help="export a project made on another install")
+    ap.add_argument("--ultimalive-shard", default=None,
+                    help="UltimaLive shard name whose client map copies to check (export; default GUO_BRIDGE_SHARD or GUO-Editor-Private)")
+    ap.add_argument("--ultimalive-root", type=Path, help="folder holding the copies (export; default %%ProgramData%%)")
+    ap.add_argument("--clear-ultimalive", action="store_true",
+                    help="remove a stale client UltimaLive map copy instead of only reporting it (export)")
     args = ap.parse_args()
 
     cfg = load_config()
@@ -620,6 +671,13 @@ def main() -> int:
     if not (project / "project.json").exists():
         print(f"[world] not a world project: {project}")
         return 2
+    if args.command == "ultimalive":
+        # Only the check: is a client's UltimaLive map copy older than this export?
+        import os
+        shard = args.ultimalive_shard or os.environ.get("GUO_BRIDGE_SHARD") or "GUO-Editor-Private"
+        stale = check_ultimalive((args.out or project / "export").resolve(), project_blocks(project), shard,
+                                 ultimalive_root(args.ultimalive_root), args.clear_ultimalive)
+        return 1 if stale else 0
     if args.command == "apply-commands":
         if not args.host or not args.port:
             print("[world] apply-commands needs --host and --port")
@@ -632,7 +690,9 @@ def main() -> int:
     if args.command == "blocks":
         return cmd_blocks(cfg, project)
     if args.command == "export":
-        return cmd_export(cfg, project, out, args.force)
+        import os
+        shard = args.ultimalive_shard or os.environ.get("GUO_BRIDGE_SHARD") or "GUO-Editor-Private"
+        return cmd_export(cfg, project, out, args.force, shard, args.ultimalive_root, args.clear_ultimalive)
     return cmd_verify(cfg, project, out)
 
 
