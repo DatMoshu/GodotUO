@@ -545,3 +545,62 @@ by map, y, x, id.
 The shard's record of what GUO applied is not a file: it lives in the world
 save as the `GUOWorldObjects` persistence (spawner GUID to a record hash, item
 id to serial).
+
+---
+
+## 14. Authored data sets (ADR-0022)
+
+New content goes into a **stage**, never the install:
+`tools/uodata_write` writes it, `tools/uopack` feeds it from PNGs, and the
+`/uo-data` skill runs the whole flow.
+
+**The stage folder** (`build/uodata/<pack>/`, gitignored: it holds copies of
+proprietary files):
+
+| File | Contents |
+|---|---|
+| `<install file>` | A copy of each file written to, made on first write. Only these. |
+| `stage.json` | `format`, `install` (path read from), `files {lowercase name: {sha1, size}}` of each original at copy time |
+| `files_override.txt` | `name=<absolute staged path>` per staged file, for the client's `settings.json` `files_override` |
+| `slots.json` | `format`, `packs {pack: {ranges {ns: [[first, last]...]}, used {ns: {what: id}}}}`; `ns` is `static`, `anim` or `gump` |
+| `dreadcrest.json` | (the Dreadcrest run only) `item`, `body`, `gumps` |
+
+**The range policy** (`tools/uodata_write/ranges.json`, or a maintainer's
+file of the same shape in `--ranges` / `UO_DATA_RANGES`):
+
+| Field | Meaning |
+|---|---|
+| `never {ns: [[first, last]...]}` | Ids never handed out. A maintainer's lists are added to the default's. |
+| `packs {pack: {ns: [first, last]}}` | A pack's fixed range. A maintainer's entry replaces the default's for that namespace. Refused, not trimmed, if any id in it is not free. |
+
+**Asset records** (`tools/guo/uorecord.py`, between uopack and the writers):
+`AssetRecord(kind, id, data, meta)`.
+
+| `kind` | `data` | `meta` |
+|---|---|---|
+| `static`, `land` | The art entry as stored. A static keeps its 4-byte header as read, which is not always 0. A UOP land entry is 2048 bytes: 1,012 pixels plus 24 bytes of padding, kept. | |
+| `gump` | `uint32 width, uint32 height`, then the rows (the UOP layout; flag 0 uncompressed) | `width`, `height` |
+| `anim` | One direction's frame group as `anim.mul` stores it | `action`, `direction` |
+| `tiledata-item` | empty | Any of `flags weight layer count anim hue light height name`; the rest keep their value |
+| `hue` | One 88-byte hue entry | |
+
+**Writes** (all append-only except the in-place records):
+
+- **LegacyMUL UOP.** The data is appended, then one new block
+  (`int32 count, int64 next = 0`, then `count` × 34-byte entries:
+  `int64 offset, int32 header_len 0, int32 size, int32 decompressed size,
+  uint64 hash, uint32 adler 0, int16 flag 0`). The previous last block's
+  `next` field (at +4) is set to it, and the header's file count at offset 24
+  is increased. Names: art `build/artlegacymul/{id:08d}.tga` (a static's index
+  is 0x4000 + id), gumps `build/gumpartlegacymul/{id:08d}.tga`.
+- **MUL + IDX.** The data is appended to the `.mul`; the 12-byte `.idx` entry
+  `int32 offset, int32 length, int32 extra` is written at `index × 12`.
+- **anim.idx index.** For a body below 200: `body × 110`. Below 400:
+  `22000 + (body − 200) × 65`. Otherwise `35000 + (body − 400) × 175`. Add
+  `action × 5 + direction`.
+- **tiledata.mul (new format).** 512 land groups of `4 + 32 × 30` bytes, then
+  static groups of `4 + 32 × 41`. An item's 41 bytes are
+  `uint64 flags, u8 weight, u8 layer, int32 count, u16 anim, u16 hue,
+  u16 light, u8 height, char[20] name`, written in place.
+- **Paperdoll gumps** of a wearable with animation body `b`: male
+  `50000 + b`, female `60000 + b`.
