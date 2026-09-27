@@ -6,6 +6,9 @@
     python tools/uodata_write/run.py dreadcrest --stage DIR --source DIR [--pack moshu]
     python tools/uodata_write/run.py verify    --stage DIR
 
+All take --ranges FILE (or UO_DATA_RANGES): a shard maintainer's range policy merged over
+ranges.json (ADR-0022).
+
 scan       free slots per namespace in the stage (or, where not staged yet, the install)
 reserve    a pack's contiguous ranges: item ids, animation bodies, and those bodies'
            paperdoll gumps (50000/60000 + body); recorded in <stage>/slots.json
@@ -58,8 +61,8 @@ def reserve(stage: U.Stage, reg: U.Registry, pack: str, statics: int, bodies: in
     reg.save()
 
 
-def dreadcrest(stage: U.Stage, source: Path, pack: str) -> int:
-    reg = U.Registry(stage)
+def dreadcrest(stage: U.Stage, source: Path, pack: str, policy: dict) -> int:
+    reg = U.Registry(stage, policy)
     reserve(stage, reg, pack, 16, 4)
     item = reg.take(pack, "static", "dreadcrest")
     body = reg.take(pack, "anim", "dreadcrest")
@@ -109,17 +112,19 @@ def main() -> int:
     ap.add_argument("--pack", default="moshu")
     ap.add_argument("--statics", type=int, default=16)
     ap.add_argument("--bodies", type=int, default=4)
+    ap.add_argument("--ranges", type=Path, help="a range policy merged over ranges.json (ADR-0022)")
     args = ap.parse_args()
     cfg = load_config()
     stage = U.Stage(args.stage, cfg.client_data)
+    policy = U.load_policy(args.ranges)
     if args.command == "scan":
         return cmd_scan(stage)
     if args.command == "reserve":
-        reserve(stage, U.Registry(stage), args.pack, args.statics, args.bodies)
-        print(json.dumps(U.Registry(stage).data["packs"][args.pack], indent=1))
+        reserve(stage, U.Registry(stage, policy), args.pack, args.statics, args.bodies)
+        print(json.dumps(U.Registry(stage, policy).data["packs"][args.pack], indent=1))
         return 0
     if args.command == "dreadcrest":
-        return dreadcrest(stage, args.source, args.pack)
+        return dreadcrest(stage, args.source, args.pack, policy)
     changed = stage.check_install_unchanged()
     print(f"[uodata] install unchanged: {not changed}" + (f" (changed: {changed})" if changed else ""))
     return 0 if not changed else 1
