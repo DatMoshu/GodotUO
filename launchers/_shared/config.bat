@@ -108,6 +108,12 @@ REM  no permission prompt. Push your install there with
 REM  `python tools\android\run.py push`. It is deleted with the app.
 if not defined UO_ANDROID_CLIENT_DATA set "UO_ANDROID_CLIENT_DATA=/sdcard/Android/data/%UO_ANDROID_PACKAGE%/files/uo"
 
+REM --- Web (optional) -----------------------------------------------------
+REM  Only launchers\web\*.bat and tools\web read this. The port the local
+REM  web server (tools\webun.py serve) listens on; it serves build\web with
+REM  the cross-origin isolation headers a Godot web export needs.
+if not defined UO_WEB_PORT          set "UO_WEB_PORT=8060"
+
 REM --- Python -------------------------------------------------------------
 if not defined UO_PYTHON            set "UO_PYTHON=python"
 

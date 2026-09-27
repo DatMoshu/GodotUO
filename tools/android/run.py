@@ -130,8 +130,16 @@ def adb_cmd(p: Paths) -> list[str]:
     if not p.adb:
         sys.exit("[android] adb not found: install Android SDK platform-tools (see doctor)")
     cmd = [str(p.adb)]
-    if p.cfg.android_device:
-        cmd += ["-s", p.cfg.android_device]
+    serial = p.cfg.android_device
+    if not serial:
+        # No serial configured: adb refuses to guess when more than one
+        # device is attached, but an "unauthorized" one is no candidate,
+        # so if exactly one is ready that is the device.
+        ready = [s for s, state in adb_devices(p) if state == "device"]
+        if len(ready) == 1:
+            serial = ready[0]
+    if serial:
+        cmd += ["-s", serial]
     return cmd
 
 
@@ -499,7 +507,20 @@ def install(p: Paths, apk: Path) -> int:
     return run(adb_cmd(p) + ["install", "-r", "-d", str(apk)]).returncode
 
 
+def wake_device(p: Paths) -> None:
+    """Screen on, lock screen away, notification shade closed.
+
+    An app started on a sleeping device renders nothing and logs nothing
+    (Godot pauses), and the smoke would wait its whole timeout on a black
+    screencap. `dismiss-keyguard` only works without a PIN; with one, unlock
+    the device by hand first.
+    """
+    subprocess.run(adb_cmd(p) + ["shell", "input keyevent KEYCODE_WAKEUP; wm dismiss-keyguard; cmd statusbar collapse"],
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
 def start_app(p: Paths) -> int:
+    wake_device(p)
     return run(adb_cmd(p) + ["shell", "am", "start", "-n", f"{p.cfg.android_package}/{ACTIVITY}"]).returncode
 
 
@@ -527,13 +548,37 @@ def run_app(p: Paths) -> int:
 
 
 def push_data(p: Paths) -> int:
+    """Copy the top-level files of the UO install to the device.
+
+    Only the files: the client reads its archives from the install's root,
+    and the launcher's subfolders (Data, Music, GDF, Overrides, logs, notes,
+    patcher) are not needed -- and adb cannot create them anyway, because
+    scoped storage refuses `mkdir` below the app's files folder from outside
+    the app (`secure_mkdirs failed`). `--sync` skips what is already there
+    and unchanged, so reruns are cheap. Non-zero on the first adb failure.
+    """
     src = p.cfg.client_data
     if not (src / "tiledata.mul").exists():
         sys.exit(f"[android] {src} does not look like a UO install (no tiledata.mul)")
     dst = p.cfg.android_client_data
-    say(f"pushing {src} -> {dst} (several GB; this takes a while)")
-    subprocess.run(adb_cmd(p) + ["shell", "mkdir", "-p", dst])
-    return run(adb_cmd(p) + ["push", "--sync", str(src) + "/.", dst]).returncode
+    files = sorted(f for f in src.iterdir() if f.is_file())
+    total = sum(f.stat().st_size for f in files)
+    say(f"pushing {len(files)} files, {total / 2**30:.1f} GB: {src} -> {dst} (subfolders skipped)")
+    if subprocess.run(adb_cmd(p) + ["shell", "mkdir", "-p", dst]).returncode != 0:
+        say("FAILED: could not create the folder on the device")
+        return 1
+    # In batches: one adb push takes many files, but a Windows command line
+    # has a length limit that 340 long paths would exceed.
+    batch = 40
+    for i in range(0, len(files), batch):
+        chunk = files[i:i + batch]
+        say(f"  {i + 1}-{i + len(chunk)} of {len(files)}")
+        result = subprocess.run(adb_cmd(p) + ["push", "--sync"] + [str(f) for f in chunk] + [dst + "/"])
+        if result.returncode != 0:
+            say(f"FAILED: adb push exited {result.returncode} on batch starting at {chunk[0].name}")
+            return result.returncode or 1
+    say(f"pushed; {len(files)} files on the device under {dst}")
+    return 0
 
 
 def smoke(p: Paths, timeout: int, skip_export: bool) -> int:

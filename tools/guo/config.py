@@ -98,6 +98,9 @@ class Config:
     android_device: str
     android_client_data: str
 
+    # --- Web (optional; see tools/web and ADR-0008) ---
+    web_port: int
+
     # --- derived paths (never configured directly) ---
     @property
     def godot_project(self) -> Path:
@@ -184,7 +187,13 @@ def load_config(root: Path | None = None) -> Config:
 
     package = get("UO_ANDROID_PACKAGE", "org.guo.client")
 
+    try:
+        web_port = int(get("UO_WEB_PORT", "8060"))
+    except ValueError:
+        web_port = 8060
+
     return Config(
+        web_port=web_port,
         android_sdk=path_or_none("UO_ANDROID_SDK")
         or Path(os.path.expandvars("%LOCALAPPDATA%")) / "Android" / "Sdk",
         android_jdk=path_or_none("UO_ANDROID_JDK"),

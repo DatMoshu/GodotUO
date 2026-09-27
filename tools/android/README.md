@@ -160,26 +160,30 @@ each marked `PORT DEVIATION` where it touches ported code:
    Thor) and the login screen overflowed the display; the picker now chooses
    the total and divides the OS factor out.
 
-Logged in from the device the same evening, driven by adb because the soft
-keyboard does not appear (a tap focuses a text field but nothing asks Android
-for the keyboard; `DisplayServer.VirtualKeyboardShow` on focus is the fix to
-raise next). At screen scale 2 on a 1920x1080 window the login gump's fields
-sit at these physical points:
+The same evening the device was played, not just launched. Everything below
+was run on the Thor over the LAN against the dev shard (`--host
+<shard-lan-ip>`), account `guoprobe`; the screenshots are in `build\android\`.
 
-```
-adb -s <thor-serial> shell input tap 645 597 ; input text guoprobe    account
-adb -s <thor-serial> shell input tap 645 693 ; input text guoprobe    password
-adb -s <thor-serial> shell input tap 640 757                          Login
-adb -s <thor-serial> shell input tap 525 243 ; input tap 1235 910     shard row, next
-```
+| What | Result |
+|---|---|
+| `run.py smoke` (`UO_ANDROID_DEVICE=<thor-serial>`, since a second, unauthorized device was attached) | **exit 0**: `[GUO] login probe: ok login gump rendered after 1 frames; window 1920x1080, screen scale 1.1111112, dpi scale 2.00, gump 640x480 at 160,30`; `smoke.png`, `smoke_logcat.txt` |
+| Landscape, no system bars | login and world both fullscreen: `u1_login.png`, `u1_world.png`. Before `KeepFullscreen` the status bar came back on every scene change |
+| Login by touch alone | tap on the account field raised the soft keyboard (`t8_keyboard.png`); the login gump slid up so the field and the password field are above it (`t11_kb_pan.png`); typed through the IME (`t12_typed.png`); tap elsewhere hid it (`t13_kb_down.png`); password field masked (`t14_pw.png`) |
+| Pre-game screens centred | login (`t7_login.png`, gump at 160,30 logical = 320,60 physical), shard list (`u4_shards.png`), character selection (`u4_chars.png`). The loading screen shares the same `GetGumpForStep` path; 16 burst screenshots at 0.3 s never caught it on the LAN |
+| World fills the display | 960x540 logical at 2x, gump bar of six UO-art buttons along the bottom (`u3_world.png`) |
+| Hold-to-walk | a swipe became held right button, the character walked (trace `hold -> right press`, `right release`) |
+| Pinch | no effect at first: Godot forwarded no drags for a symmetric pinch. With `enable_pan_and_scale_gestures=true` and magnify accumulation: `t22_pinch_in.png` / `t23_pinch_out.png`, trace `pinch in/out -> ctrl+wheel`. Driven by a `sendevent` script on `/dev/input/event6` (`adb shell input` cannot do two fingers) |
+| Zoom survives relaunch | force-stop, relaunch: world back at zoom 1.5; `profile.json` on the device holds `default_scale: 1.5000002`, `save_scale_after_close: true` |
+| Raw-touch mapping | raw (30,1720) on the portrait panel landed on the Options bar button in landscape: landscape X = raw Y, landscape Y = 1080 - raw X |
+| `run.py push` | rewritten: top-level files only, non-zero exit on any adb error |
 
-That reached the shard list over the LAN, then the world: the probe character
-stood in town with its paperdoll open and the touch gump bar along the bottom
-(`build\android\thor_world_2026-09-26.png`).
+Not verified on the device (the desktop touch probe covers them, 18/18):
+drag-to-pick-up, targeting, double-tap on a world object. Known gap: the
+in-game chat line is under the soft keyboard while typing; the world gump is
+deliberately never slid up, so the typed text is only visible once the
+keyboard hides.
 
-Not yet run: `smoke.bat` as a whole (its pieces all ran), and any play beyond
-arriving in the world. Known: the login gump sits at the top
-left of the 1920x1080 window with grey to its right, as the desktop draws it
-into a 640x480 window that a phone cannot shrink to; centring it is a
-mobile-only change to raise separately.
-
+Debugging aids that came out of this: `--touch-trace` (bake it in with
+`export.bat --args "--touch-trace"`) prints one `[GUO] touch:` line per
+gesture decision on logcat; `UO_ANDROID_DEVICE` picks the device when adb
+sees more than one (an `unauthorized` one no longer counts).
