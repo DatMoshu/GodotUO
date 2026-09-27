@@ -2,9 +2,10 @@
 
 ## Status
 
-Proposed — 2026-09-26. Runs on Windows (every mode photographed in the
-world, see Validation). Accepted once the same is seen on the AYN Thor.
-
+Accepted — 2026-09-26. Runs on Windows (every mode photographed in the
+world) and on the AYN Thor (image and video behind the login and shard
+gumps, the wood backdrop behind the centred login gump, the mobile profile
+migrated to v4 with `CanvasBackgroundLowPower` set); see Validation.
 ## Date
 
 2026-09-26
@@ -300,9 +301,17 @@ public bool CanvasBackgroundLowPower { get; set; }
 - [x] `launchers\dev\smoke.bat` OK on the branch (2026-09-26).
 - [x] `tools/port_drift --strict`: 16 unmarked files, all inherited from
       `work/ui` and untouched here; none of this branch's edits is unmarked.
-- [ ] Thor: login screen on the wood backdrop filling behind the centred
-      gump; world over an image picked/pushed on the device; video or frames
-      once; a fresh mobile profile logs `set ... CanvasBackgroundLowPower`.
+- [x] Thor (2026-09-26, debug APKs with `--background` baked in, logged in
+      as guoprobe): login screen on the wood backdrop filling behind the
+      centred gump (`build/android/thor_login_wood.png`); a pushed PNG behind
+      the login and shard-list gumps (`thor_login_image.png`,
+      `thor_shards_image.png`); a pushed `.ogv` playing (two captures 1.5 s
+      apart differ, `thor_login_video_a/b.png`); the existing mobile profile
+      logged `migrated mobile profile v3->v4, set CanvasBackgroundLowPower`.
+      In the world the mobile profile's full-size game window covers the
+      backdrop entirely (`thor_world_image.png`), so on a phone the setting
+      shows on the login, shard and character screens and behind any
+      windowed world; that is by design, not a defect.
 
 ## GDD Requirements Addressed
 
