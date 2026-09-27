@@ -46,8 +46,8 @@ along the bottom: Character, Inventory, Journal, Map, Chat, Options.
 | **Fight:** attack | **written** | in war mode a double-tap on a mobile attacks (double click); the double-tap on a world object is unverified on the device (android README) |
 | **Fight:** attack last, last target, target next, bandage self | **missing** | all are keyboard macros (`AttackLast`, `LastTarget`, `TargetNext`, `BandageSelf`) |
 | **Target:** answer a target cursor | **written** | a tap on the object is the left click that targets it. The probe's `[bank` target was sent from code, not by a tap |
-| **Target:** target self | **written** | a tap on your own character, when the character is not under a gump |
-| **Target:** cancel a target cursor | **missing** | only Esc cancels (`GameSceneInputHandler`); a long-press on the world is walking |
+| **Target:** target self | **verified** | the bar's **Self** button while targeting (commit 92b93a2); a tap on your own character also works when it is not under a gump |
+| **Target:** cancel a target cursor | **verified** | while a target cursor is up the gump bar's last two buttons become **Self** and **Cancel** (commit 92b93a2, seen on the device); Esc still cancels on a keyboard |
 | **Cast:** from the spellbook | **written** | double-tap the spellbook (verified for a book) opens it; a double-tap on a spell's icon casts it, then target as above |
 | **Cast:** spell icons on screen | **written** | drag a spell's icon out of the book to make a `UseSpellButtonGump`; a tap casts. Untested |
 | **Macros:** run one | **written** | Options, Macros: a macro can be dragged out as a `MacroButtonGump`, and a tap runs it. Making the macro needs its name typed, which the IME does. Untested |
@@ -73,7 +73,7 @@ behind a profile flag with a mobile default (the `since` mechanism). None
 moves the world viewport. Profile version and Options are shared with the
 canvas-background work, so the version bump waits for it (see "Order").
 
-### 1. Cancel a target cursor
+### 1. Cancel a target cursor (done: commit 92b93a2)
 
 While `TargetManager.IsTargeting`, the gump bar's last two buttons change
 to **Self** and **Cancel**, and change back when targeting ends:
