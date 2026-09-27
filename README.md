@@ -83,6 +83,20 @@ Optionally add the engine folder to `PATH` so `godot` resolves everywhere:
 Use `godot` for the interactive editor and **`godot-console` for scripts and
 CI** — the console build blocks and writes to stdout.
 
+### Every platform, one repository
+
+| Platform | Start here | Where it stands |
+|---|---|---|
+| **Windows** | `launchers\game\play.bat`, or a build from the `release` workflow's artifacts | Plays on a local shard |
+| **Android** (ARM64) | `launchers\android\doctor.bat`, then `launchers\android\smoke.bat` — [docs/wiki/Android-Build.md](docs/wiki/Android-Build.md) | Debug build; runs on one device, including its second screen |
+| **Steam Deck** (SteamOS) | `launchers\steamdeck\doctor.bat`, then `launchers\steamdeck\smoke.bat` — [docs/steamdeck.md](docs/steamdeck.md) | Exports, installs over ssh and starts; not yet at the login screen |
+| **Godot editor** | `launchers\editor\open_project.bat` — [docs/wiki/Editor.md](docs/wiki/Editor.md) | Browse the UO data, edit the world, export it to a shard |
+| **Web** | `launchers\web\doctor.bat` | Blocked upstream: Godot 4.7 cannot export C# to the web ([ADR-0008](docs/architecture/ADR-0008-web-target.md)) |
+
+Each platform reads the same `config.local.bat` settings, and every device
+brings its own copy of your UO install; nothing in this repository or in a
+build contains game data.
+
 ---
 
 ## Documentation
