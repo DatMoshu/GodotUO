@@ -9,12 +9,19 @@ Only the `main` branch receives fixes.
 **Do not report security issues in a public issue.**
 
 Use GitHub's private vulnerability reporting: the repository's **Security**
-tab → **Report a vulnerability**. Include what is affected, how to reproduce
-it, and the impact you expect.
+tab → **Report a vulnerability**, when available. If that control is absent,
+ask a maintainer for a private reporting channel without including the
+vulnerability details in a public message.
 
-You should get an acknowledgement within a week. This is a volunteer project;
-fixes land as soon as they reasonably can, and you will be told before
-anything is disclosed.
+Include the affected commit, platform, entry point, expected impact and a
+minimal reproduction. Synthetic packets or packs are preferable to client
+data. Redact account credentials, private addresses and personal paths.
+Report only systems and data you are authorized to test.
+
+This is a volunteer project without a guaranteed response or fix deadline.
+Maintainers should coordinate a fix and disclosure with the reporter through
+the private channel. Do not publish exploit details while that coordination
+is in progress.
 
 ## In scope
 
@@ -32,12 +39,17 @@ assistant plugins. The things that matter most:
   which it must only ever read.
 - **The tooling.** Launchers, Python tools or `.claude/` hooks that run
   something undisclosed, or send data anywhere.
+- **Asset packs.** Path traversal, hash/manifest validation bypasses,
+  unintended executable content, or installation/uninstallation outside the
+  Store's user-data directory. A remote Store is trusted through its
+  configured URL; a hash alone does not authenticate a publisher.
 
 ## Out of scope
 
-- Bugs that are also in upstream ClassicUO: report them to
-  [ClassicUO](https://github.com/ClassicUO/ClassicUO) as well, and we will
-  follow its fix.
 - Server-side issues in ModernUO or any shard.
 - Cheating or automation through assistant plugins. Loading them is a
   supported feature, as it is in ClassicUO.
+
+If a GUO vulnerability also affects [ClassicUO](https://github.com/ClassicUO/ClassicUO),
+tell the maintainers privately so they can coordinate with upstream. Sharing
+code with upstream does not make a GUO exposure safe to disclose publicly.

@@ -4,20 +4,24 @@ GUO ports the ClassicUO client to Godot 4 .NET. Contributions are welcome:
 ported files, renderer and input work, parity fixes, tooling, and bug reports
 with a clear reproduction.
 
-Read `docs/port_plan.md` first. It is short, and it explains why the project
+Read [the port plan](docs/port_plan.md) first. It explains why the project
 is structured the way it is.
 
 ## Setting up
 
 ```bat
 launchers\pipeline\00_bootstrap.bat          REM engine + upstream reference
-copy launchers\_shared\config.local.bat.example launchers\_shared\config.local.bat
+if not exist launchers\_shared\config.local.bat copy launchers\_shared\config.local.bat.example launchers\_shared\config.local.bat
 notepad launchers\_shared\config.local.bat   REM point UO_CLIENT_DATA at your install
 launchers\dev\smoke.bat                      REM must pass before you open a PR
 ```
 
 You need your own Ultima Online Classic install. Your paths go in
 `config.local.bat`, which is gitignored; do not put them in `config.bat`.
+Use the pinned Godot .NET build and a .NET SDK compatible with
+`godot/GUO/GUO.csproj`. Keep an existing local configuration when updating.
+The [data formats contract](docs/data_formats.md) describes shared settings
+and file formats; architecture decisions live in [the ADR index](docs/architecture/README.md).
 
 ## The rules a PR is checked against
 
@@ -56,14 +60,36 @@ These come from `CLAUDE.md` and apply to every change.
 - If you touched porting progress, re-run the audit and commit the updated
   `docs/port_status.md`. CI checks that it is current.
 - Visual changes: attach a screenshot, ideally next to ClassicUO's.
+- Use `launchers\dev\screenshot.bat` for scripted captures without taking
+  desktop focus. Keep generated evidence under `build/`; attach reviewed
+  screenshots to the PR instead of committing them.
+- Run `python tools/privacy_scan/run.py --staged` before committing. Remove
+  private addresses, account names, tokens, personal paths and device IDs
+  from logs and images as well as code. Never attach `config.local.bat`.
+- Record the commands actually run and their outcomes. Mark unavailable
+  checks with a reason; distinguish inherited warnings from new failures.
 - Commit messages: a plain imperative summary of what changed, as in the
   existing history.
 
 ## Reporting bugs
 
 Use the issue templates. Include your client version (`UO_CLIENT_VERSION`),
-the shard you connected to, and what ClassicUO does in the same place. A
+whether you used a local or public shard, and what ClassicUO does in the same place. A
 difference from ClassicUO is a bug; a difference from the original client is
 worth an issue too, but say which one you compared against.
 
-Security issues: see `SECURITY.md`. Do not open a public issue.
+For Store problems, include the pack ID/version, action and error text.
+Prefer a minimal synthetic pack with clearly licensed content; do not attach
+client archives or private store URLs. For visual problems include display
+size, scale and whether another screen was active.
+
+Security issues: see [SECURITY.md](SECURITY.md). Do not open a public issue.
+
+## Asset contributions
+
+Include the creator, licence, attribution and provenance of contributed
+media. The Store licence allowlist and pack validation rules are in the
+[data formats contract](docs/data_formats.md). A licence label alone is not
+permission to redistribute someone else's work. Keep game-install data,
+executable code and credentials out of packs. Pixel art uses nearest-neighbour
+sampling throughout the web catalogue and client.
