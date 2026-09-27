@@ -19,7 +19,16 @@ public sealed partial class StoreProof : Node
             for (int i = 0; i < 100; i++) await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
             // The login scene forces 640x480. Enlarge after it settles so the
             // installed background outside the login gump can actually be seen.
-            GetWindow().Size = new Vector2I(1200, 800);
+            var proofSize = new Vector2I(1200, 800);
+            string requested = System.Environment.GetEnvironmentVariable("GUO_STORE_PROOF_SIZE");
+            if (!string.IsNullOrEmpty(requested))
+            {
+                string[] parts = requested.Split('x');
+                StorePack.Require(parts.Length == 2 && int.TryParse(parts[0], out int w) && int.TryParse(parts[1], out int h)
+                    && w is >= 640 and <= 3840 && h is >= 480 and <= 2160, "GUO_STORE_PROOF_SIZE must be WIDTHxHEIGHT (640x480 to 3840x2160).");
+                proofSize = new Vector2I(int.Parse(parts[0]), int.Parse(parts[1]));
+            }
+            GetWindow().Size = proofSize;
             ProfileManager.Load("store-proof", "store-proof", "store-proof");
             using var store = StoreOptions.CreateClient();
             var installed = store.Installed().FirstOrDefault(p => p.Kind == "background");
