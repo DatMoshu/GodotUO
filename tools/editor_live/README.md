@@ -5,7 +5,7 @@ game client**, on the private shard (`tools/editor_shard`, 127.0.0.1:2594),
 never the shared dev shard.
 
 ```
-python tools\editor_live\run.py [--export DIR] [--windowed]
+python tools\editor_live\run.py [--export DIR | --no-export] [--windowed]
 ```
 
 Headless by default: no window takes the desktop's focus, and the client's
@@ -32,6 +32,12 @@ its frame (`client.png`).
    - the bridge's log lines;
    - the client's UltimaLive lines;
    - `client.png`.
+
+With `--no-export` the shard and the client use the install alone, with no
+`files_override`. The client must build its UltimaLive map copies itself, which
+on a UOP-only install means converting each `map<N>LegacyMUL.uop` (ADR-0012).
+Every copy it made is then checked block for block against the install
+(`ultimalive_map_copy` in the summary).
 
 It passes only if the block reached both the client and editor B, B got it
 in under 1 s, the command ran, and the client logged no UltimaLive exception.

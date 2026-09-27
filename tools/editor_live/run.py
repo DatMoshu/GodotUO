@@ -62,9 +62,46 @@ def wait_for(pred, timeout: float, what: str) -> bool:
     return False
 
 
+def map_copy_checks(client_data: Path, folder: Path) -> dict:
+    """Every facet the client made a copy of, against the install."""
+    out = {}
+    for f in range(6):
+        if (folder / f"map{f}.mul").is_file():
+            out[f"map{f}"] = map_copy_check(client_data, folder / f"map{f}.mul", f)
+    out["ok"] = bool(out) and all(v["ok"] for v in out.values())
+    return out
+
+
+def map_copy_check(client_data: Path, copy: Path, facet: int = 0) -> dict:
+    """The client's UltimaLive map copy against the install's map, block by block.
+
+    Live pushes rewrite blocks with the shard's land, which for this test is
+    the install's (the stamp only adds a static), so every block must match.
+    A blank copy, or one shifted by a missing UOP entry, fails here.
+    """
+    from guo.uomap import MAP_BLOCK, open_facet
+
+    if not copy.is_file():
+        return {"ok": False, "why": f"no copy at {copy}"}
+    raw = copy.read_bytes()
+    with open_facet(client_data, facet) as inst:
+        n = inst.width_blocks * inst.height_blocks
+        if len(raw) != n * MAP_BLOCK:
+            return {"ok": False, "why": f"{len(raw)} bytes, the map has {n * MAP_BLOCK}"}
+        # The 4-byte block header is not the land; compare the 64 cells.
+        diff = sum(1 for b in range(n)
+                   if raw[b * MAP_BLOCK + 4:(b + 1) * MAP_BLOCK]
+                   != inst.map[inst.map_offset(b) + 4:inst.map_offset(b) + MAP_BLOCK])
+    return {"ok": diff == 0, "blocks": n, "blocks_differing": diff, "bytes": len(raw)}
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--export", type=Path)
+    ap.add_argument("--no-export", action="store_true",
+                    help="shard and client on the install alone: the client must build its UltimaLive map copy "
+                         "from the install itself (on a UOP-only install, by converting the UOP), and the copy "
+                         "is checked block for block against the install")
     ap.add_argument("--windowed", action="store_true",
                     help="editor A and the client in windows (for client.png); they take the desktop's focus. "
                          "Default: headless, and the client's UltimaLive log is the evidence")
@@ -82,7 +119,8 @@ def main() -> int:
     sh(str(tools / "editor_shard" / "run.py"), "stop")
     if sh(str(tools / "editor_shard" / "run.py"), "bridge") != 0:
         return 2
-    if sh(str(tools / "editor_shard" / "run.py"), "start", "--data-first", str(export)) != 0:
+    start = ["start"] if args.no_export else ["start", "--data-first", str(export)]
+    if sh(str(tools / "editor_shard" / "run.py"), *start) != 0:
         return 2
 
     # 2. The client's UltimaLive copies for this shard name start fresh.
@@ -99,8 +137,10 @@ def main() -> int:
         home = out / "client_home"
         (home / "cache").mkdir(parents=True)
         (home / "profiles").mkdir()
-        (home / "settings.json").write_text(json.dumps({
-            "profilespath": str(home / "profiles"), "files_override": str(export / "files_override.txt")}), encoding="utf-8")
+        settings = {"profilespath": str(home / "profiles")}
+        if not args.no_export:
+            settings["files_override"] = str(export / "files_override.txt")
+        (home / "settings.json").write_text(json.dumps(settings), encoding="utf-8")
         cmd = [console, *([] if args.windowed else ["--headless"]), "--path", str(project), "--", "--play",
                "--screenshot-dir", str(out), "--screenshot-name", "client"]
         for c in ["[go 1164 1668"] + ["[where"] * 8:
@@ -182,6 +222,7 @@ def main() -> int:
         "bridge_log": bridge,
         "client_ultimalive_log": client_ul,
         "editor_failures": {"send": a.get("failures"), "follow": b.get("failures")},
+        "ultimalive_map_copy": map_copy_checks(cfg.client_data, ul) if args.no_export else None,
     }
     (out / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
     for k, v in summary.items():
@@ -195,7 +236,8 @@ def main() -> int:
     ok = (la.get("stamped") and (la.get("pushed_to_clients") or 0) >= 1 and (la.get("relayed_to_editors") or 0) >= 1
           and lb.get("tree_in_this_world") and summary["editor_to_editor_ms"] is not None
           and summary["editor_to_editor_ms"] < 1000 and la.get("command_ok")
-          and not any("NullReference" in l for l in client_ul) and a.get("ok") and b.get("ok"))
+          and not any("NullReference" in l for l in client_ul) and a.get("ok") and b.get("ok")
+          and (not args.no_export or summary["ultimalive_map_copy"].get("ok")))
     print("[editor_live] OK" if ok else "[editor_live] FAILED")
     return 0 if ok else 1
 
