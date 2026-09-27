@@ -315,6 +315,9 @@ namespace GUO.Platform.Android
                 DrawHeldBadge(batcher, mainWidth + BadgeMargin, _instance._logicalHeight - BadgeMargin);
             }
 
+            // The window menu, when it is for a gump on this screen.
+            WindowMenu.DrawShelf(batcher);
+
             // Debug: the fingers on this screen (TouchOverlay), over everything.
             TouchOverlay.DrawShelf(batcher);
 
@@ -1137,6 +1140,10 @@ namespace GUO.Platform.Android
             if (TouchInput.Enabled)
             {
                 TouchInput.Handle(e);
+            }
+            else if (WindowMenu.HandleInput(e))
+            {
+                // The window menu has the pointer.
             }
             else
             {

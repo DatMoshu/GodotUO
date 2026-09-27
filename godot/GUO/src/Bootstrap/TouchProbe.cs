@@ -433,8 +433,8 @@ internal static class TouchProbe
             await Frames(host, 5);
             Check("letting go in place opens the window menu, and nothing else",
                 GumpFlick.LastResult.Contains("menu") && !g.IsDisposed && GumpFlick.Lifted == null
-                && UIManager.GetGump<GumpLayoutGump>() != null, GumpFlick.LastResult);
-            UIManager.GetGump<GumpLayoutGump>()?.Dispose();
+                && WindowMenu.IsOpen && WindowMenu.Target == g, GumpFlick.LastResult);
+            WindowMenu.Close();
             await Frames(host, 5);
 
             // Up and down on a single screen: fit to screen.
@@ -719,20 +719,31 @@ internal static class TouchProbe
             TouchInput.Trace.Clear();
             await Tap(host, Client(new Vector2(gem.X + 14, gem.Y + 14)));
             prof.ShowWindowHandles = shown;
-            var menu = UIManager.GetGump<GumpLayoutGump>();
-            Check("window gem opens size and screen controls", menu != null,
+            Check("window gem opens size and screen controls", WindowMenu.IsOpen && WindowMenu.Target == g,
                 $"gem {gem.X},{gem.Y}, disposed {g.IsDisposed}, modal {UIManager.IsModalOpen}, held {GUO.Client.Game.UO.GameCursor.ItemHold.Enabled}, "
                 + $"top {UIManager.Gumps.First?.Value.GetType().Name} | {string.Join(" | ", TouchInput.Trace)}");
-            if (menu != null)
+            if (WindowMenu.IsOpen)
             {
-                await Tap(host, Client(new Vector2(menu.X + 100, menu.Y + 90)));
-                Check("Reset size restores original scale", g.PresentationScale == 1f);
+                await Frames(host, 12); // the card's open animation
+                float before = g.PresentationScale;
+                Vector2? plus = WindowMenu.ButtonCentre("+");
+                if (plus != null) await Tap(host, Client(plus.Value));
+                await Frames(host, 5);
+                Check("the window menu's + steps the size by 25%", plus != null && System.Math.Abs(g.PresentationScale - (float)(System.Math.Round((before + 0.25f) * 4) / 4)) < 0.01f,
+                    $"{before} -> {g.PresentationScale}");
+                Vector2? reset = WindowMenu.ButtonCentre("Reset size");
+                if (reset != null) await Tap(host, Client(reset.Value));
+                await Frames(host, 5);
+                Check("Reset size restores original scale", g.PresentationScale == 1f, $"scale {g.PresentationScale}");
+                Rect2 card = WindowMenu.CardRect;
+                await Tap(host, Client(new Vector2(card.Position.X - 60 > 0 ? card.Position.X - 60 : card.End.X + 60, card.Position.Y + 20)));
+                Check("a tap outside the card closes the menu, and does nothing else", !WindowMenu.IsOpen && !g.IsDisposed);
             }
         }
         finally
         {
             hit.Dispose();
-            UIManager.GetGump<GumpLayoutGump>()?.Dispose();
+            WindowMenu.Close();
             g.X = oldX; g.Y = oldY; g.PresentationScale = oldScale; g.PresentationLocked = oldLock;
         }
     }
