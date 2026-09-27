@@ -1035,6 +1035,9 @@ public partial class Main : Node
                     case "--touch-trace":
                         o.TouchTrace = true;
                         break;
+                    case "--gamepad-trace":
+                        GUO.Input.Gamepad.GamepadInput.Trace = true;
+                        break;
                     case "--silent":
                         o.Silent = true;
                         break;

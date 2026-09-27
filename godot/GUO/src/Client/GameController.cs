@@ -714,6 +714,15 @@ namespace GUO
                 return;
             }
 
+            // PORT DEVIATION (GUO): gamepads (upstream has none), in front of
+            // the touch layer and GodotInput; see Input/Gamepad.
+            if (GUO.Input.Gamepad.GamepadInput.Handle(@event))
+            {
+                GetViewport().SetInputAsHandled();
+
+                return;
+            }
+
             // PORT DEVIATION (GUO): the Store window (ADR-0019) is made of
             // Godot Controls, which only see an event nobody marked handled.
             // While it is open the event goes to them and not to the client:
