@@ -107,6 +107,7 @@ class Config:
     # --- Web (optional; see tools/web and ADR-0008) ---
     web_port: int
     ws_bridge_port: int
+    web_godot: Path | None
 
     # --- Steam Deck (optional; see tools/steamdeck and ADR-0018) ---
     # The host, key and known-hosts file are the user's own network and live
@@ -234,6 +235,7 @@ def load_config(root: Path | None = None) -> Config:
         deck_account=get("UO_DECK_ACCOUNT", ""),
         web_port=web_port,
         ws_bridge_port=ws_bridge_port,
+        web_godot=path_or_none("UO_WEB_GODOT"),
         android_sdk=path_or_none("UO_ANDROID_SDK")
         or Path(os.path.expandvars("%LOCALAPPDATA%")) / "Android" / "Sdk",
         android_jdk=path_or_none("UO_ANDROID_JDK"),
