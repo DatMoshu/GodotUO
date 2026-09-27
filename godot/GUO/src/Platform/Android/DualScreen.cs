@@ -494,6 +494,11 @@ namespace GUO.Platform.Android
                 case ContainerGump c when backpack != 0 && c.LocalSerial == backpack:
                     return Slot.TopRight;
 
+                // The mobile profile (PlatformDefaults v3, GridContainers) opens
+                // the backpack as a grid; it is the same shelf gump.
+                case GridContainerGump gc when backpack != 0 && gc.LocalSerial == backpack:
+                    return Slot.TopRight;
+
                 case StatusGumpBase:
                     return Slot.BottomLeft;
 
