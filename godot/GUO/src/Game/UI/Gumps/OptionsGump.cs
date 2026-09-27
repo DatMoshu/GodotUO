@@ -62,6 +62,7 @@ namespace GUO.Game.UI.Gumps
         private HSliderBar _screenSaverMinutes;
         private Combobox _screenSaverChoice;
         private List<string> _screenSaverChoices;
+        private Checkbox _splashIntro; // PORT DEVIATION (GUO): the boot splash (SplashIntro), device-wide
         private Combobox _cotType;
         private DataBox _databox;
         private HSliderBar _delay_before_display_tooltip, _tooltip_zoom, _tooltip_background_opacity;
@@ -2204,6 +2205,24 @@ namespace GUO.Game.UI.Gumps
                 )
             );
 
+            // PORT DEVIATION (GUO): the boot splash (GUO.Host.SplashIntro). Not a
+            // profile setting: it plays before anyone logs in, so it is kept
+            // for the device in user://guo_splash.cfg.
+            SettingsSection section8 = AddSettingsSection(box, "Start");
+            section8.Y = section7.Bounds.Bottom + 40;
+
+            section8.Add
+            (
+                _splashIntro = AddCheckBox
+                (
+                    null,
+                    "Play the GUO intro on start",
+                    GUO.Host.SplashIntro.Enabled,
+                    startX,
+                    startY
+                )
+            );
+
             Add(rightArea, PAGE);
         }
 
@@ -3957,6 +3976,7 @@ namespace GUO.Game.UI.Gumps
                     _screenSaver.IsChecked = false; // PORT DEVIATION (GUO)
                     _screenSaverMinutes.Value = 10; // PORT DEVIATION (GUO)
                     _screenSaverChoice.SelectedIndex = 0; // PORT DEVIATION (GUO)
+                    _splashIntro.IsChecked = true; // PORT DEVIATION (GUO)
                     _sliderScreenZoom.Value = 0;
                     _lightBar.Value = 0;
                     _enableLight.IsChecked = false;
@@ -4443,6 +4463,11 @@ namespace GUO.Game.UI.Gumps
             _currentProfile.ScreenSaver = _screenSaver.IsChecked; // PORT DEVIATION (GUO)
             _currentProfile.ScreenSaverMinutes = _screenSaverMinutes.Value; // PORT DEVIATION (GUO)
             _currentProfile.ScreenSaverChoice = _screenSaverChoices[Math.Max(0, _screenSaverChoice.SelectedIndex)]; // PORT DEVIATION (GUO)
+
+            if (_splashIntro.IsChecked != GUO.Host.SplashIntro.Enabled)
+            {
+                GUO.Host.SplashIntro.Enabled = _splashIntro.IsChecked; // PORT DEVIATION (GUO)
+            }
 
             if (_enableLight.IsChecked)
             {
