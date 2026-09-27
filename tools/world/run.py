@@ -9,6 +9,7 @@ it into files a server and a client can read, and checks them:
     python tools/world/run.py export [--project DIR] [--out DIR] [--force]
     python tools/world/run.py verify [--project DIR] [--out DIR]
     python tools/world/run.py pack   [--project DIR] [--out FILE.zip]
+    python tools/world/run.py apply-commands [--project DIR] --host H --port P [--dry-run]
 
 Or through the launcher:
 
@@ -523,9 +524,92 @@ def cmd_pack(cfg, project: Path, out: Path) -> int:
     return 0
 
 
+def cmd_apply_commands(cfg, project: Path, host: str, port: int, dry_run: bool) -> int:
+    """World objects onto a shard WITHOUT GUO's bridge: a GM client types the server's own commands.
+
+    Only for ModernUO. The project keeps a record per shard of what this
+    placed (shard/applied/<host>_<port>.json); removals use only that
+    record's tags, so nothing the fallback did not place can be removed.
+    """
+    import os
+    import subprocess
+    from guo.process import no_activate
+
+    try:
+        objects = worldobjects.load(project)
+    except (ValueError, KeyError) as ex:
+        print(f"[world] REFUSED: shard/objects.json is not valid: {ex}")
+        return 1
+    rec_path = project / "shard" / "applied" / f"{host.replace(':', '_')}_{port}.json"
+    record = json.loads(rec_path.read_text(encoding="utf-8")) if rec_path.is_file() else {"spawners": {}, "items": {}}
+    commands, new_record, notes = modernuo.plan_commands(objects, record)
+    for n in notes:
+        print(f"[world] note: {n}")
+    if not commands:
+        print(f"[world] {host}:{port} already matches the project: nothing to type")
+        return 0
+    for c in commands:
+        print(f"[world]   {c}")
+    if dry_run:
+        return 0
+
+    home = cfg.build / "world_commands" / "client_home"
+    shutil.rmtree(home, ignore_errors=True)
+    (home / "cache").mkdir(parents=True)
+    (home / "profiles").mkdir()
+    (home / "settings.json").write_text(json.dumps({"profilespath": str(home / "profiles")}), encoding="utf-8")
+    cmd = [str(cfg.godot_console_exe), "--headless", "--path", str(cfg.godot_project), "--", "--play"]
+    for c in commands:
+        cmd += ["--shard-command", c]
+    env = {**os.environ, "UO_CLIENT_DATA": str(cfg.client_data), "UO_CACHE_DIR": str(home / "cache"),
+           "UO_CLIENT_VERSION": cfg.client_version, "UO_SHARD_HOST": host, "UO_SHARD_PORT": str(port)}
+    log = cfg.build / "world_commands" / "client.log"
+    # Headless, the client captures no frame; it ends once every command has been answered.
+    with log.open("w", encoding="utf-8", errors="replace") as f:
+        proc = subprocess.Popen(cmd, stdout=f, stderr=subprocess.STDOUT, env=env, **no_activate())
+        done = False
+        for _ in range(1200):
+            text = log.read_text(encoding="utf-8", errors="replace")
+            if "shard commands done" in text or "shard commands FAILED" in text or proc.poll() is not None:
+                done = "shard commands done" in text
+                break
+            if text.count("[GUO] shard command:") >= len(commands):
+                # The last command is printed before it is typed: wait for the
+                # shard's answer to it (or 30 s) before ending the client.
+                import time as _t
+                for _ in range(60):
+                    tail = log.read_text(encoding="utf-8", errors="replace").rsplit("[GUO] shard command:", 1)[-1]
+                    if "[GUO] shard says:" in tail:
+                        break
+                    _t.sleep(0.5)
+                _t.sleep(2)
+                done = True
+                break
+            import time as _t
+            _t.sleep(0.5)
+        if proc.poll() is None:
+            proc.kill()
+    if not done:
+        print(f"[world] FAILED: the GM client did not get through the commands; see {log}")
+        return 1
+    if "Awaiting confirmation" in log.read_text(encoding="utf-8", errors="replace"):
+        # A remove matched more than one object and the shard asked a GM to
+        # confirm; nothing was removed. Tags are unique per placement, so this
+        # means the shard holds objects this record does not describe.
+        print(f"[world] FAILED: the shard asked to confirm a removal (more than one match); nothing removed. See {log}")
+        return 1
+    rec_path.parent.mkdir(parents=True, exist_ok=True)
+    rec_path.write_text(json.dumps(new_record, indent=2) + "\n", encoding="utf-8")
+    print(f"[world] {len(commands)} command(s) typed on {host}:{port}; record: {rec_path}")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("command", choices=["blocks", "export", "verify", "pack"])
+    ap.add_argument("command", choices=["blocks", "export", "verify", "pack", "apply-commands"])
+    ap.add_argument("--host", help="shard host (apply-commands)")
+    ap.add_argument("--port", type=int, help="shard port (apply-commands)")
+    ap.add_argument("--dry-run", action="store_true", help="print the commands only (apply-commands)")
     ap.add_argument("--project", type=Path, help="world project folder (default UO_WORLD_PROJECT)")
     ap.add_argument("--out", type=Path, help="export folder (default <project>/export)")
     ap.add_argument("--force", action="store_true", help="export a project made on another install")
@@ -536,6 +620,11 @@ def main() -> int:
     if not (project / "project.json").exists():
         print(f"[world] not a world project: {project}")
         return 2
+    if args.command == "apply-commands":
+        if not args.host or not args.port:
+            print("[world] apply-commands needs --host and --port")
+            return 2
+        return cmd_apply_commands(cfg, project, args.host, args.port, args.dry_run)
     if args.command == "pack":
         return cmd_pack(cfg, project, (args.out or cfg.build / "world_pack" / f"{project.name}.zip").resolve())
     out = (args.out or project / "export").resolve()

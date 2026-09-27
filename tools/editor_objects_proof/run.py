@@ -6,6 +6,14 @@ Editor phase 6 (ADR-0014), on the private ModernUO instance only (127.0.0.1:2594
     python tools/editor_objects_proof/run.py --project DIR [--out DIR] [--headless]
     python tools/editor_objects_proof/run.py --live [--out DIR] [--headless]
 
+--commands (the fallback for a shard without GUO's bridge): the shard starts
+WITHOUT the bridge, and tools/world apply-commands has a GM client type the
+server's own commands. --project is placed; then a GM places an untagged
+decoy anvil on the same cell as the project's (shard content the fallback
+must never remove); then --project2 (the edited project) is applied: the
+project's anvil moves, its spawner goes, and the decoy must still stand.
+Applying --project2 again must type nothing.
+
 --live (the live tier): no export and no restart. The shard starts with the
 bridge and GUO's old objects cleared, a client logs in and stays, and an
 editor (headless, --guo-editor-live objects) on the bridge places an anvil
@@ -71,6 +79,10 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--project", type=Path, help="world project with shard/objects.json (export mode)")
     ap.add_argument("--live", action="store_true", help="live mode: the editor edits a running shard")
+    ap.add_argument("--clip", type=Path,
+                    help="with --live: record the client through the steps and write an MP4 here (ffmpeg)")
+    ap.add_argument("--commands", action="store_true", help="GM-command fallback, on the shard without the bridge")
+    ap.add_argument("--project2", type=Path, help="the edited project for --commands")
     ap.add_argument("--out", type=Path)
     ap.add_argument("--headless", action="store_true", help="no client window, so no frame; the dump still runs")
     args = ap.parse_args()
@@ -79,6 +91,8 @@ def main() -> int:
     tools = cfg.tools
     if args.live:
         return live(cfg, args)
+    if args.commands:
+        return commands_mode(cfg, args)
     if args.project is None:
         print("[objects_proof] --project is needed (or --live)")
         return 2
@@ -181,10 +195,135 @@ def main() -> int:
     return 0 if ok else 1
 
 
+def gm_client(cfg, out: Path, name: str, commands: list[str], dump: Path | None = None) -> int:
+    """A headless GM client on the private shard types commands (and optionally dumps its world), then ends."""
+    home = out / f"{name}_home"
+    home.mkdir(parents=True)
+    (home / "cache").mkdir()
+    (home / "profiles").mkdir()
+    (home / "settings.json").write_text(json.dumps({"profilespath": str(home / "profiles")}), encoding="utf-8")
+    cmd = [str(cfg.godot_console_exe), "--headless", "--path", str(cfg.godot_project), "--", "--play"]
+    for c in commands:
+        cmd += ["--shard-command", c]
+    if dump is not None:
+        cmd += ["--objects-dump", str(dump)]
+    env = {**os.environ, "UO_CLIENT_DATA": str(cfg.client_data), "UO_CACHE_DIR": str(home / "cache"),
+           "UO_CLIENT_VERSION": cfg.client_version, "UO_SHARD_HOST": "127.0.0.1", "UO_SHARD_PORT": str(PORT)}
+    log = out / f"{name}.log"
+    with log.open("w", encoding="utf-8", errors="replace") as f:
+        proc = subprocess.Popen(cmd, stdout=f, stderr=subprocess.STDOUT, env=env, **no_activate())
+        wait_for(lambda: (dump is not None and dump.is_file())
+                 or (dump is None and log.read_text(encoding="utf-8", errors="replace").count("[GUO] shard command:") >= len(commands))
+                 or proc.poll() is not None, 300)
+        time.sleep(3)
+        if proc.poll() is None:
+            proc.kill()
+    return 0 if (dump is None or dump.is_file()) else 1
+
+
+def commands_mode(cfg, args) -> int:
+    tools = cfg.tools
+    if args.project is None or args.project2 is None:
+        print("[objects_proof] --commands needs --project and --project2")
+        return 2
+    out = (args.out or cfg.build / "editor_objects_proof_commands").resolve()
+    if out.exists():
+        shutil.rmtree(out)
+    out.mkdir(parents=True)
+    # Fresh copies: the fallback's record lives in the project, so each run starts from none.
+    p1, p2 = out / "project1", out / "project2"
+    shutil.copytree(args.project, p1, ignore=shutil.ignore_patterns(".cache", "export", "applied"))
+    shutil.copytree(args.project2, p2, ignore=shutil.ignore_patterns(".cache", "export", "applied"))
+    o1, o2 = worldobjects.load(p1), worldobjects.load(p2)
+    anvil1 = next(i for i in o1.items if i.item_id == 0x0FAF)
+
+    shard_log = cfg.build / "shard_private" / "shard.log"
+    # A clean baseline: one boot WITH the bridge and an empty manifest removes
+    # what earlier bridge runs placed; then the shard runs as a plain ModernUO.
+    sh(str(tools / "editor_shard" / "run.py"), "stop")
+    if sh(str(tools / "editor_shard" / "run.py"), "bridge") != 0:
+        return 2
+    if sh(str(tools / "editor_shard" / "run.py"), "start", "--clear-objects") != 0:
+        return 2
+    wait_for(lambda: "world objects sync" in shard_log.read_text(encoding="utf-8", errors="replace"), 120)
+    time.sleep(3)
+    sh(str(tools / "editor_shard" / "run.py"), "stop")
+    if sh(str(tools / "editor_shard" / "run.py"), "start", "--no-bridge") != 0:
+        return 2
+    bridge_loaded = "GUO editor bridge" in shard_log.read_text(encoding="utf-8", errors="replace")
+
+    def apply(project: Path, name: str) -> tuple[int, str]:
+        r = subprocess.run([sys.executable, str(tools / "world" / "run.py"), "apply-commands", "--project", str(project),
+                            "--host", "127.0.0.1", "--port", str(PORT)], capture_output=True, text=True)
+        (out / f"{name}.txt").write_text(r.stdout + r.stderr, encoding="utf-8")
+        return r.returncode, r.stdout
+
+    def look(name: str, at) -> dict:
+        dump = out / f"{name}.json"
+        gm_client(cfg, out, name, ["[self set map felucca", f"[go {at[0]} {at[1]}", "[where"], dump)
+        return json.loads(dump.read_text(encoding="utf-8"))
+
+    def anvils(d, cell):
+        return [o for o in d["items"] if o["graphic"] == "0x0FAF" and (o["x"], o["y"]) == cell]
+
+    spot = (anvil1.x - 1, anvil1.y + 1)
+    code1, _ = apply(p1, "apply1")
+    seen1 = look("after_apply1", spot)
+    # project2 is the same project, edited: it carries the record of what the
+    # fallback placed (a user edits one project; the test keeps two copies).
+    shutil.copytree(p1 / "shard" / "applied", p2 / "shard" / "applied", dirs_exist_ok=True)
+    # Shard content on the project anvil's cell: an untagged anvil, placed by a GM.
+    gm_client(cfg, out, "decoy", ["[self set map felucca", f"[go {anvil1.x} {anvil1.y} {anvil1.z}",
+                                  f"[TileXYZ {anvil1.x} {anvil1.y} 1 1 {anvil1.z} Static 4015"])
+    code2, _ = apply(p2, "apply2")
+    seen2 = look("after_apply2", spot)
+    code3, again = apply(p2, "apply3")
+
+    moved = next(i for i in o2.items if i.item_id == 0x0FAF)
+    hued = [i for i in o2.items if i.item_id != 0x0FAF]
+    sp1 = o1.spawners[0]
+    checks = {
+        "bridge_not_loaded": not bridge_loaded,
+        "apply1_ok": code1 == 0,
+        "apply1_anvil_tagged": any(o["name"].lower().startswith("guo-") for o in anvils(seen1, (anvil1.x, anvil1.y))),
+        "apply1_spawner": any(o["graphic"] == SPAWNER_GRAPHIC and (o["x"], o["y"]) == (sp1.x, sp1.y) for o in seen1["items"]),
+        "apply2_ok": code2 == 0,
+        "apply2_anvil_moved": any(o["name"].lower().startswith("guo-") for o in anvils(seen2, (moved.x, moved.y))),
+        "apply2_old_cell_only_decoy": [o["name"].lower() for o in anvils(seen2, (anvil1.x, anvil1.y))] in ([""], ["anvil"]),
+        "apply1_hued_item_absent": not any(int(o["graphic"], 16) == h.item_id and (o["x"], o["y"]) == (h.x, h.y)
+                                           for h in hued for o in seen1["items"]),
+        "apply2_spawner_gone": not any(o["graphic"] == SPAWNER_GRAPHIC and (o["x"], o["y"]) == (sp1.x, sp1.y)
+                                       for o in seen2["items"]),
+        "apply2_hued_item": all(any(int(o["graphic"], 16) == h.item_id and (o["x"], o["y"]) == (h.x, h.y)
+                                    and int(o["hue"], 16) == h.hue for o in seen2["items"]) for h in hued),
+        "apply3_nothing_to_type": code3 == 0 and "nothing to type" in again,
+    }
+    old_cell = [{"name": o["name"], "serial": o["serial"]} for o in anvils(seen2, (anvil1.x, anvil1.y))]
+    report = {"mode": "commands", "checks": checks, "old_cell_after_apply2": old_cell,
+              "commands_apply1": (out / "apply1.txt").read_text(encoding="utf-8").splitlines(),
+              "commands_apply2": (out / "apply2.txt").read_text(encoding="utf-8").splitlines()}
+    (out / "report.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    for line in report["commands_apply2"]:
+        print(f"[objects_proof] apply2: {line}")
+    print(f"[objects_proof] old anvil cell after apply2: {old_cell}")
+    for k, v in checks.items():
+        print(f"[objects_proof]   {'ok  ' if v else 'FAIL'} {k}")
+    ok = all(checks.values())
+    print("[objects_proof] OK" if ok else "[objects_proof] FAILED")
+    return 0 if ok else 1
+
+
 LIVE_ITEM = (1167, 1666)
 LIVE_MOVED = (1166, 1670)
 LIVE_SPAWNER = (1162, 1669)
 ANVIL = "0x0FAF"
+
+
+def clear_ultimalive_copies() -> None:
+    """The client's UltimaLive map copies for the private shard keep earlier live
+    terrain edits; start from the install, as tools/editor_live does."""
+    ul = Path(os.environ.get("ProgramData", r"C:\ProgramData")) / "GUO-Editor-Private"
+    shutil.rmtree(ul, ignore_errors=True)
 
 
 def live(cfg, args) -> int:
@@ -201,6 +340,7 @@ def live(cfg, args) -> int:
         return 2
     if sh(str(tools / "editor_shard" / "run.py"), "start", "--clear-objects") != 0:
         return 2
+    clear_ultimalive_copies()
 
     procs = {}
     try:
@@ -254,10 +394,16 @@ def live(cfg, args) -> int:
             time.sleep(2)   # the server's packets reach the client
             return [acks, round(time.time() - t0, 2)]
 
-        def items_at(d, graphic, cell):
-            return [o for o in d["items"] if o["graphic"] == graphic and (o["x"], o["y"]) == cell]
+        # Only objects that were not there before count: a shard may already
+        # hold other anvils or spawners on these cells (other runs, shard content).
+        baseline = set()
+
+        def items_at(d, graphic, cell=None):
+            return [o for o in d["items"] if o["graphic"] == graphic and o["serial"] not in baseline
+                    and (cell is None or (o["x"], o["y"]) == cell)]
 
         before = look("before")
+        baseline = {o["serial"] for o in before["items"]}
         put, put_s = step("put")
         after_put = look("after_put")
         move, move_s = step("move")
@@ -266,15 +412,15 @@ def live(cfg, args) -> int:
         after_delete = look("after_delete")
 
         checks = {
-            "baseline_clear": not items_at(before, ANVIL, LIVE_ITEM) and not items_at(before, SPAWNER_GRAPHIC, LIVE_SPAWNER),
+            "baseline_taken": bool(before.get("player")),
             "put_anvil_seen": bool(items_at(after_put, ANVIL, LIVE_ITEM)),
             "put_spawner_seen": bool(items_at(after_put, SPAWNER_GRAPHIC, LIVE_SPAWNER)),
             "put_horse_near": any(m["name"].endswith("horse") and abs(m["x"] - LIVE_SPAWNER[0]) <= 4
                                   and abs(m["y"] - LIVE_SPAWNER[1]) <= 4 for m in after_put["mobiles"]),
             "move_anvil_at_new_cell": bool(items_at(after_move, ANVIL, LIVE_MOVED)),
             "move_anvil_gone_from_old": not items_at(after_move, ANVIL, LIVE_ITEM),
-            "delete_anvil_gone": not items_at(after_delete, ANVIL, LIVE_MOVED),
-            "delete_spawner_gone": not items_at(after_delete, SPAWNER_GRAPHIC, LIVE_SPAWNER),
+            "delete_anvil_gone": not items_at(after_delete, ANVIL),
+            "delete_spawner_gone": not items_at(after_delete, SPAWNER_GRAPHIC),
         }
         (watch / "quit").write_text("", encoding="utf-8")
     finally:
@@ -297,7 +443,87 @@ def live(cfg, args) -> int:
     print(f"[objects_proof] frames: {', '.join(p.name for p in sorted(watch.glob('*.png'))) or 'none (headless)'}")
     ok = all(checks.values())
     print("[objects_proof] OK" if ok else "[objects_proof] FAILED")
+    if ok and args.clip is not None and not args.headless:
+        return 0 if clip(cfg, args, out) else 1
     return 0 if ok else 1
+
+
+def clip(cfg, args, out: Path) -> bool:
+    """A second live pass, recorded: the client's frames through put, move and delete, as an MP4 with captions."""
+    tools = cfg.tools
+    rec = out / "clip"
+    watch = rec / "watch"
+    watch.mkdir(parents=True)
+    sh(str(tools / "editor_shard" / "run.py"), "stop")
+    if sh(str(tools / "editor_shard" / "run.py"), "start", "--clear-objects") != 0:
+        return False
+    clear_ultimalive_copies()
+    procs = {}
+    marks = []
+    try:
+        home = rec / "client_home"
+        (home / "cache").mkdir(parents=True)
+        (home / "profiles").mkdir()
+        (home / "settings.json").write_text(json.dumps({"profilespath": str(home / "profiles")}), encoding="utf-8")
+        (home / "profiles" / "default.json").write_text(json.dumps({"topbar_gump_is_disabled": True}), encoding="utf-8")
+        cmd = [str(cfg.godot_console_exe), "--path", str(cfg.godot_project), "--", "--play", "--window-size", "1024,768",
+               "--screenshot-dir", str(rec), "--screenshot-name", "end", "--objects-watch", str(watch),
+               "--shard-command", "[self set map felucca", "--shard-command", "[go 1164 1668", "--shard-command", "[where"]
+        env = {**os.environ, "UO_CLIENT_DATA": str(cfg.client_data), "UO_CACHE_DIR": str(home / "cache"),
+               "UO_CLIENT_VERSION": cfg.client_version, "UO_SHARD_HOST": "127.0.0.1", "UO_SHARD_PORT": str(PORT)}
+        procs["client"] = subprocess.Popen(cmd, stdout=(rec / "client.log").open("w", encoding="utf-8", errors="replace"),
+                                           stderr=subprocess.STDOUT, env=env, **no_activate())
+        ed = rec / "editor"
+        ed.mkdir()
+        ecmd = [str(cfg.godot_console_exe), "--headless", "--editor", "--path", str(cfg.godot_project), "--",
+                "--guo-editor-smoke", str(ed), "--guo-editor-live", "objects", "--guo-editor-live-port", "2595"]
+        procs["editor"] = subprocess.Popen(ecmd, stdout=(rec / "editor.log").open("w", encoding="utf-8", errors="replace"),
+                                           stderr=subprocess.STDOUT, env={**os.environ, "UO_WORLD_PROJECT": str(ed / "boot")},
+                                           **no_activate())
+        if not (wait_for(lambda: (watch / "watching").exists(), 240) and wait_for(lambda: (ed / "objects.ready").exists(), 240)):
+            print("[objects_proof] clip: client or editor never got ready")
+            return False
+        time.sleep(2)
+        seconds = 16
+        (watch / "clip.rec").write_text(f"{seconds} 10", encoding="utf-8")
+        t0 = time.time()
+        for name, pause in (("put", 3), ("move", 4), ("delete", 4)):
+            time.sleep(pause)
+            marks.append((name, round(time.time() - t0, 2)))
+            (ed / name).write_text("", encoding="utf-8")
+            wait_for(lambda: (ed / f"{name}.done").exists(), 60)
+        wait_for(lambda: (watch / "clip.recorded").exists(), seconds + 30)
+        (watch / "quit").write_text("", encoding="utf-8")
+    finally:
+        for p in procs.values():
+            if p.poll() is None:
+                time.sleep(2)
+                p.kill()
+
+    frames = watch / "clip"
+    n = len(list(frames.glob("*.png")))
+    if n == 0:
+        print("[objects_proof] clip: no frames recorded")
+        return False
+    captions = {"put": "editor places an anvil and a Horse spawner (live)",
+                "move": "editor moves the anvil (live)",
+                "delete": "editor deletes both (live)"}
+    font = "C\\:/Windows/Fonts/arial.ttf"
+    filters = ["drawtext=fontfile='%s':text='GUO editor to a running ModernUO shard, no restart':x=16:y=h-62:"
+               "fontsize=20:fontcolor=white:box=1:boxcolor=black@0.55:boxborderw=6" % font]
+    ends = [m[1] for m in marks[1:]] + [seconds]
+    for (name, start), end in zip(marks, ends):
+        filters.append("drawtext=fontfile='%s':text='%s':x=16:y=h-32:fontsize=20:fontcolor=yellow:box=1:"
+                       "boxcolor=black@0.55:boxborderw=6:enable='between(t,%.2f,%.2f)'" % (font, captions[name], start, end))
+    args.clip.parent.mkdir(parents=True, exist_ok=True)
+    r = subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-framerate", "10", "-i", str(frames / "%04d.png"),
+                        "-vf", ",".join(filters), "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "28",
+                        "-movflags", "+faststart", str(args.clip)], capture_output=True, text=True)
+    if r.returncode != 0:
+        print(f"[objects_proof] clip: ffmpeg failed: {r.stderr[-800:]}")
+        return False
+    print(f"[objects_proof] clip: {n} frames, marks {marks} -> {args.clip} ({args.clip.stat().st_size // 1024} KB)")
+    return True
 
 
 if __name__ == "__main__":

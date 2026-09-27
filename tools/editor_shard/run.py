@@ -152,12 +152,28 @@ def clear_objects(h: Path) -> None:
     print("[editor_shard] empty world-objects manifest installed; the bridge removes GUO's objects at boot")
 
 
-def cmd_start(cfg, data_first: Path | None, objects: Path | None = None, clear: bool = False) -> int:
+def set_bridge_listed(h: Path, listed: bool) -> None:
+    """Lists or unlists the bridge assembly in the copy's Data/assemblies.json (the DLL stays installed)."""
+    path = h / "Data" / "assemblies.json"
+    names = json.loads(path.read_text(encoding="utf-8"))
+    name = "GUO.EditorBridge.dll"
+    if listed and name not in names and (h / "Assemblies" / name).exists():
+        names.append(name)
+    elif not listed:
+        names = [n for n in names if n != name]
+    path.write_text(json.dumps(names, indent=2), encoding="utf-8")
+
+
+def cmd_start(cfg, data_first: Path | None, objects: Path | None = None, clear: bool = False,
+              no_bridge: bool = False) -> int:
     h = home(cfg)
     state = read_state(h)
     if not state:
         print("[editor_shard] not set up; run: python tools/editor_shard/run.py setup")
         return 2
+    set_bridge_listed(h, not no_bridge)
+    if no_bridge:
+        print("[editor_shard] starting WITHOUT the bridge: a plain ModernUO, no GUO code on the server")
     if clear:
         clear_objects(h)
     elif objects is not None and not install_objects(h, objects.resolve()):
@@ -264,6 +280,8 @@ def main() -> int:
     ap.add_argument("--data-first", type=Path, help="folder ahead of the install in dataDirectories (start)")
     ap.add_argument("--objects", type=Path,
                     help="a tools/world export whose world objects the bridge syncs at boot (start; needs the bridge)")
+    ap.add_argument("--no-bridge", action="store_true",
+                    help="start as a plain ModernUO, the bridge assembly unlisted for this run (start)")
     ap.add_argument("--clear-objects", action="store_true",
                     help="remove every world object GUO placed, at boot (start; needs the bridge)")
     ap.add_argument("--bridge-port", type=int, default=2595, help="editor port of the bridge (bridge)")
@@ -272,7 +290,7 @@ def main() -> int:
     if args.command == "setup":
         return cmd_setup(cfg, (args.source or default_source(cfg)).resolve(), args.port)
     if args.command == "start":
-        return cmd_start(cfg, args.data_first, args.objects, args.clear_objects)
+        return cmd_start(cfg, args.data_first, args.objects, args.clear_objects, args.no_bridge)
     if args.command == "status":
         return cmd_status(cfg)
     if args.command == "bridge":

@@ -120,6 +120,90 @@ def export(objects: WorldObjects, project_name: str, out: Path) -> list[Path]:
     return written
 
 
+# --- GM commands: the fallback for a shard without GUO's bridge (ADR-0014) ---
+#
+# Placed with [TileXYZ (no targeting), each object named with a tag made from
+# its id; removed only by that tag, on its recorded cell, with
+# [Range 0 Remove where <Type> Name == <tag>. So the fallback cannot remove
+# anything it did not place itself: shard content never carries a GUO tag.
+
+
+def tag(object_id: str) -> str:
+    """A fresh tag for one placement: the object's id plus a nonce, so two
+    placements (say, a leftover whose record was lost, and a new one) never
+    share a tag, and a remove matches exactly the one object it placed."""
+    import secrets
+    return "guo-" + object_id.split("-")[0].lower() + "-" + secrets.token_hex(2)
+
+
+def signature(o) -> str:
+    return json.dumps(o.__dict__, sort_keys=True)
+
+
+def place_commands(kind: str, o, name: str) -> list[str]:
+    at = f"{o.x} {o.y} 1 1 {o.z}"
+    if kind == "item":
+        props = f" Hue {o.hue}" if o.hue else ""
+        return [f"[TileXYZ {at} {o.type} {o.item_id} set Name {name}{props}"]
+    entry = o.entries[0]["name"]
+    return [f"[TileXYZ {at} Spawner {entry} set Name {name} Count {o.count} MinDelay {o.min_delay} "
+            f"MaxDelay {o.max_delay} Team {o.team} HomeRange {o.home_range} WalkingRange {o.walking_range}",
+            "[Range 0 Respawn where Spawner Name == " + name]
+
+
+def remove_commands(kind: str, rec: dict) -> list[str]:
+    typ = "Spawner" if kind == "spawner" else rec.get("type", "Static")
+    return [f"[Range 0 Remove where {typ} Name == {rec['tag']}"]
+
+
+def plan_commands(objects: WorldObjects, record: dict) -> tuple[list[str], dict, list[str]]:
+    """The GM commands that bring a shard from `record` (what the fallback placed there) to the model.
+
+    Returns (commands, the new record, notes). Moves and changes are a remove
+    then a place. Spawners with more than one entry cannot be made with
+    [TileXYZ; they are left out and named in the notes.
+    """
+    commands, notes = [], []
+    new = {"spawners": {}, "items": {}}
+    here = {"map": None, "x": None, "y": None}
+
+    def go(map_name: str, x: int, y: int, z: int) -> None:
+        if here["map"] != map_name:
+            commands.append(f"[self set map {map_name.lower()}")
+            here["map"] = map_name
+        if (here["x"], here["y"]) != (x, y):
+            commands.append(f"[go {x} {y} {z}")
+            here["x"], here["y"] = x, y
+
+    model = [("spawner", s) for s in objects.spawners] + [("item", i) for i in objects.items]
+    wanted = {o.id for _, o in model}
+    old = {**{k: ("spawner", v) for k, v in record.get("spawners", {}).items()},
+           **{k: ("item", v) for k, v in record.get("items", {}).items()}}
+
+    # Removals first: gone from the model, or changed (removed, then placed again).
+    for oid, (kind, rec) in sorted(old.items(), key=lambda kv: (kv[1][1]["map"], kv[1][1]["y"], kv[1][1]["x"])):
+        current = next((o for k, o in model if o.id == oid), None)
+        if oid not in wanted or signature(current) != rec["signature"]:
+            go(rec["map"], rec["x"], rec["y"], rec["z"])
+            commands += remove_commands(kind, rec)
+
+    for kind, o in sorted(model, key=lambda ko: (ko[1].map, ko[1].y, ko[1].x)):
+        rec = old.get(o.id, (None, None))[1]
+        entry = {"map": o.map, "x": o.x, "y": o.y, "z": o.z, "tag": tag(o.id), "signature": signature(o)}
+        if kind == "item":
+            entry["type"] = o.type
+        if rec is not None and rec["signature"] == entry["signature"]:
+            new["spawners" if kind == "spawner" else "items"][o.id] = rec
+            continue
+        if kind == "spawner" and len(o.entries) > 1:
+            notes.append(f"spawner {o.id} has {len(o.entries)} entries; [TileXYZ makes one. Not placed.")
+            continue
+        go(o.map, o.x, o.y, o.z)
+        commands += place_commands(kind, o, entry["tag"])
+        new["spawners" if kind == "spawner" else "items"][o.id] = entry
+    return commands, new, notes
+
+
 _HEAD = re.compile(r"^(\w+)\s+(0x[0-9A-Fa-f]+|\d+)\s*(?:\((.*)\))?\s*$")
 
 
