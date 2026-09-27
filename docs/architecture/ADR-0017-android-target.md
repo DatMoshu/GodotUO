@@ -424,10 +424,15 @@ phone attached as `unauthorized`.
    [android] 11 thing(s) missing; fix them in the order listed
    ```
 
-**Written, not run** (the machine cannot): `templates`, `keystore`,
-`settings`, the Godot half of `export`, `install`, `run`, `push`, `smoke`.
-The smoke's success criterion is the `[GUO] login probe: ok ...` line from
+### History: the first pass, before a device
+
+As recorded on 2026-09-26 on a machine without an SDK or an authorised
+device, and kept here because it is what "Accepted" was measured against.
+**Written, not run** at that point: `templates`, `keystore`, `settings`, the
+Godot half of `export`, `install`, `run`, `push`, `smoke`. The smoke's
+success criterion was the `[GUO] login probe: ok ...` line from
 `src/Bootstrap/LoginProbe.cs` on logcat, then a `screencap` — the same line
-the desktop `--login-probe` prints, which was exercised. This ADR moves to
-Accepted when `launchers\android\smoke.bat` exits 0 on a device and its
-screenshot is filed under `build\android\`.
+the desktop `--login-probe` prints, which was exercised. The condition for
+Accepted was `launchers\android\smoke.bat` exiting 0 on a device with its
+screenshot filed under `build\android\`; the Status section records that
+it was met, and `tools\android\README.md` has the run table.
