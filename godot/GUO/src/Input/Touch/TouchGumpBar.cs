@@ -125,6 +125,18 @@ namespace GUO.Input.Touch
         private bool _wasWar;
 
         /// <summary>
+        /// Start the row's session state over, as entering the world does:
+        /// down, not hidden, and the current stance taken as already seen. For
+        /// the touch probe, whose character may log in already at war.
+        /// </summary>
+        internal void ResetSession()
+        {
+            _rowOpen = false;
+            HiddenThisSession = false;
+            _wasWar = Client.Game?.UO?.World?.Player?.InWarMode ?? false;
+        }
+
+        /// <summary>
         /// The share of the window's height the bar covers while shown, so a
         /// gump can be kept above it whatever units it is laid out in.
         /// </summary>

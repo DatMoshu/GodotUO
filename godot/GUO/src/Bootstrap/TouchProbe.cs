@@ -345,6 +345,8 @@ internal static class TouchProbe
             await Frames(host, 60);
         }
 
+        // A character that logged in at war has already had its row come up.
+        bar.ResetSession();
         await Frames(host, 5);
         Check("the chevron is shown and the row is down", bar.ChevronShown && !bar.RowShown);
 
