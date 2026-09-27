@@ -54,5 +54,9 @@ this list, please report it (see [Contributing](Contributing.md)).
 
 - **Not yet pixel-identical to ClassicUO.** The world and gumps are close,
   but side-by-side comparisons still find differences.
-- **No web build.** The engine does not yet export C# projects to the web;
-  see the [FAQ](FAQ.md).
+- **The web client is local-only and runs on a community engine.** It plays
+  on a local shard in Chrome and reaches the login screen in Firefox, but
+  the page, your install and the WebSocket bridge all run on your PC, the
+  exporting engine is an unsigned community build of Godot 4.7.2, the first
+  start takes about a minute, and the server list shows no latency. See
+  [Web Client](Web-Client.md).

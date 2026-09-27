@@ -1,15 +1,12 @@
 # FAQ
 
 **Is there a web build?**
-No, and not for lack of trying. Godot 4.7.2 mono refuses to export a C#
-project to the web (`Exporting to Web is currently not supported in Godot 4
-when using C#/.NET`), and its mono templates ship no `web_*` template. The
-upstream issue is godotengine/godot#70796. `tools\web` (doctor, preset,
-export, serve, smoke) and ADR-0008 exist so that the day the templates
-arrive the pipeline is a configuration change; `launchers\web\doctor.bat`
-prints the exact refusal today. The serving half (a local server sending the
-cross-origin isolation headers) was verified with curl; the browser half of
-the smoke is written, not verified.
+Yes, locally. The official Godot 4.7.2 mono still refuses to export a C#
+project to the web (godotengine/godot#70796), so GUO is exported with a
+community build of 4.7.2 that includes the open pull request #106125. It
+plays on a local shard in Chrome, and reaches the login screen in Firefox.
+Your own UO install is served to the page from your own PC. There is no
+hosted page. See [Web Client](Web-Client.md) and ADR-0008 (Amendment 1).
 
 **The audit says 100% ported. Is it finished?**
 No. "Ported" means the file exists in `godot\GUO\src` and compiles. It says
