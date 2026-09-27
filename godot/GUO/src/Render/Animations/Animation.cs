@@ -16,6 +16,7 @@ namespace GUO.Renderer.Animations
 
         private AnimationDirection[][][] _cache;
 
+        // PORT DEVIATION (GUO): no GraphicsDevice; the atlas is created without one.
         public Animations(AnimationsLoader animationLoader)
         {
             _animationLoader = animationLoader;

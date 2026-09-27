@@ -10,6 +10,7 @@ namespace GUO.Renderer.Gumps
         private readonly PixelPicker _picker = new PixelPicker();
         private readonly GumpsLoader _gumpsLoader;
 
+        // PORT DEVIATION (GUO): no GraphicsDevice; the atlas is created without one.
         public Gump(GumpsLoader gumpsLoader)
         {
             _gumpsLoader = gumpsLoader;

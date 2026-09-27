@@ -10,6 +10,7 @@ namespace GUO.Renderer.Texmaps
         private readonly PixelPicker _picker = new PixelPicker();
         private readonly TexmapsLoader _texmapsLoader;
 
+        // PORT DEVIATION (GUO): no GraphicsDevice; the atlas is created without one.
         public Texmap(TexmapsLoader texmapsLoader)
         {
             _texmapsLoader = texmapsLoader;

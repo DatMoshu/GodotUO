@@ -13,6 +13,7 @@ namespace GUO.Renderer.MultiMaps
     {
         private readonly MultiMapLoader _multiMapLoader;
 
+        // PORT DEVIATION (GUO): no GraphicsDevice; see GetMap.
         public MultiMap(MultiMapLoader multiMapLodaer)
         {
             _multiMapLoader = multiMapLodaer;
@@ -27,6 +28,8 @@ namespace GUO.Renderer.MultiMaps
             if (multiMapInfo.Pixels.IsEmpty)
                 return default;
 
+            // PORT DEVIATION (GUO): upstream builds an XNA Texture2D from the
+            // pixels; this builds a Godot ImageTexture, nearest-sampled.
             // Not atlased, unlike every other loader here: a facet map is
             // one large image asked for once, so it gets a texture of its own.
             // A uint is 0xAABBGGRR, whose bytes are already R,G,B,A -- the

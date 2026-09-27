@@ -9,6 +9,7 @@ namespace GUO.Renderer.Lights
         private readonly SpriteInfo[] _spriteInfos;
         private readonly LightsLoader _lightsLoader;
 
+        // PORT DEVIATION (GUO): no GraphicsDevice; the atlas is created without one.
         public Light(LightsLoader lightsLoader)
         {
             _lightsLoader = lightsLoader;
