@@ -1092,7 +1092,13 @@ namespace GUO.Game.Scenes
 
             batcher.SetSampler(null);
             batcher.SetStencil(null);
-            batcher.SetCircleOfTransparencyRadius(0f);
+            // PORT DEVIATION (GUO): upstream clears the radius here, and an
+            // XNA effect parameter only reaches the draws after it. A Godot
+            // material parameter has one value per frame, read when the frame
+            // renders, so clearing it here cleared it for the world drawn
+            // above too, and the circle never showed. Nothing outside the
+            // world sets the circle bit, so leaving the radius set is safe;
+            // the branch above clears it when the circle is off.
             batcher.End();
 
             int flushes = batcher.FlushesDone;
