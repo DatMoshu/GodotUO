@@ -132,8 +132,7 @@ REM  guo-sigil.png, committed in this repository: python tools\brand\run.py.
 REM  Nothing to configure.
 REM --- Web (optional) -----------------------------------------------------
 REM  Only launchers\web\*.bat and tools\web read this. The port the local
-REM  web server (tools\web
-un.py serve) listens on; it serves build\web with
+REM  web server (tools\web\run.py serve) listens on; it serves build\web with
 REM  the cross-origin isolation headers a Godot web export needs.
 if not defined UO_WEB_PORT          set "UO_WEB_PORT=8060"
 
