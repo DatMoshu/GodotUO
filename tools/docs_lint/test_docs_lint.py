@@ -41,6 +41,16 @@ class DocsTests(unittest.TestCase):
     def test_fenced_heading_is_not_an_anchor(self):
         self.assertEqual(anchors('~~~\n# Fake\n~~~\n## Real\n'), {"real"})
 
+    def test_commented_heading_is_not_an_anchor(self):
+        issues = self.run_fixture('[a](other.md#hidden)', '<!--\n# Hidden\n-->\n# Visible\n')
+        self.assertEqual(len(issues), 1)
+        self.assertIn("missing anchor", issues[0].message)
+
+    def test_separator_after_heading_is_not_a_duplicate(self):
+        self.assertEqual(anchors('# Real\n---\n'), {"real"})
+        issues = self.run_fixture('[a](other.md#real-1)', '# Real\n---\n')
+        self.assertEqual(len(issues), 1)
+
 
 if __name__ == "__main__":
     unittest.main()
