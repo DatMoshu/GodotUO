@@ -71,6 +71,14 @@ namespace GUO.Input
 
         private static void HandleKey(InputEventKey e)
         {
+            if (Touch.TouchInput.TraceToLog)
+            {
+                // What the platform's soft keyboard actually delivers: an
+                // IME composes words and sends backspaces and re-typed
+                // characters, and its action key is whatever it decides.
+                GD.Print($"[GUO] key: {(e.Pressed ? "down" : "up  ")} keycode={e.Keycode} physical={e.PhysicalKeycode} unicode={e.Unicode} echo={e.Echo}");
+            }
+
             SDL.SDL_KeyboardEvent ev = default;
 
             ev.key = (uint)ToKeycode(e.Keycode != Key.None ? e.Keycode : e.PhysicalKeycode);

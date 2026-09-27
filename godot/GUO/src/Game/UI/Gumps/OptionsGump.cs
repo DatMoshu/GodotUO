@@ -43,6 +43,11 @@ namespace GUO.Game.UI.Gumps
 
         // containers
         private HSliderBar _containersScale;
+
+        // PORT DEVIATION (GUO): the GUO container options (grid view and
+        // its slot size, placement clear of the character); mobile defaults.
+        private Checkbox _gridContainers, _fitContainerPlacement;
+        private HSliderBar _gridSlotSize;
         private Combobox _cotType;
         private DataBox _databox;
         private HSliderBar _delay_before_display_tooltip, _tooltip_zoom, _tooltip_background_opacity;
@@ -98,6 +103,8 @@ namespace GUO.Game.UI.Gumps
                          _chatAdditionalButtonsCheckbox,
                          _chatShiftEnterCheckbox,
                          _enableCaveBorder;
+        // PORT DEVIATION (GUO): only built when a second display exists.
+        private Checkbox _dualScreen;
         private Checkbox _holdShiftForContext, _holdShiftToSplitStack, _reduceFPSWhenInactive, _sallosEasyGrab, _partyInviteGump, _objectsFading, _textFading, _holdAltToMoveGumps;
         private Combobox _hpComboBox, _healtbarType, _fieldsType, _hpComboBoxShowWhen;
 
@@ -132,6 +139,13 @@ namespace GUO.Game.UI.Gumps
         private HSliderBar _sliderFPS, _circleOfTranspRadius;
         private HSliderBar _sliderSpeechDelay;
         private HSliderBar _sliderScreenZoom;
+
+        // PORT DEVIATION (GUO): the screen zoom slider's value when the gump
+        // opened. The touch layer sets Client.Game.ScreenScale to fit the
+        // display (the Thor: 2 / 1.8 = 1.11) without the global setting, so
+        // Apply writing the slider back every time shrank a phone's UI and
+        // put touch out of step; it is applied only when the slider moved.
+        private int _screenZoomAtOpen;
         private HSliderBar _sliderZoom;
         private HSliderBar _soundsVolume, _musicVolume, _loginMusicVolume;
         private ClickableColorBox _speechColorPickerBox, _emoteColorPickerBox, _yellColorPickerBox, _whisperColorPickerBox, _partyMessageColorPickerBox, _guildMessageColorPickerBox, _allyMessageColorPickerBox, _chatMessageColorPickerBox, _partyAuraColorPickerBox;
@@ -915,6 +929,22 @@ namespace GUO.Game.UI.Gumps
                     0
                 )
             );
+
+            // PORT DEVIATION (GUO): the second screen, where there is one.
+            if (GUO.Platform.Android.DualScreen.HasSecondaryDisplay)
+            {
+                section3.Add
+                (
+                    _dualScreen = AddCheckBox
+                    (
+                        null,
+                        "Use the second screen for paperdoll, backpack, status and journal",
+                        _currentProfile.DualScreenEnabled,
+                        0,
+                        0
+                    )
+                );
+            }
 
             section3.Add
             (
@@ -1741,6 +1771,7 @@ namespace GUO.Game.UI.Gumps
             );
             section2.Add(AddLabel(null, ResGumps.ScreenZoom, startX, startY));
             section2.AddRight(_sliderScreenZoom);
+            _screenZoomAtOpen = _sliderScreenZoom.Value; // PORT DEVIATION (GUO)
 
             section2.Add(AddLabel(null, ResGumps.DefaultZoom, startX, startY));
 
@@ -3438,6 +3469,15 @@ namespace GUO.Game.UI.Gumps
                 startY += _useLargeContianersGumps.Height + 2;
             }
 
+            // PORT DEVIATION (GUO): see the field declaration.
+            _gridContainers = AddCheckBox(rightArea, "Open containers as a grid of slots", _currentProfile.GridContainers, startX, startY);
+            startY += _gridContainers.Height + 2;
+            text = AddLabel(rightArea, "Grid slot size", startX + 20, startY);
+            _gridSlotSize = AddHSlider(rightArea, GridContainerGump.MIN_SLOT, GridContainerGump.MAX_SLOT, _currentProfile.GridContainerSlotSize, startX + 20 + text.Width + 5, startY, 200);
+            startY += text.Height + 2;
+            _fitContainerPlacement = AddCheckBox(rightArea, "Open containers clear of the character and each other", _currentProfile.FitContainerPlacement, startX, startY);
+            startY += _fitContainerPlacement.Height + 2;
+
             _containerDoubleClickToLoot = AddCheckBox
             (
                 rightArea,
@@ -3793,6 +3833,9 @@ namespace GUO.Game.UI.Gumps
                     _containersScale.Value = 100;
                     _containerScaleItems.IsChecked = false;
                     _useLargeContianersGumps.IsChecked = false;
+                    _gridContainers.IsChecked = false; // PORT DEVIATION (GUO)
+                    _gridSlotSize.Value = 44; // PORT DEVIATION (GUO)
+                    _fitContainerPlacement.IsChecked = false; // PORT DEVIATION (GUO)
                     _containerDoubleClickToLoot.IsChecked = false;
                     _relativeDragAnDropItems.IsChecked = false;
                     _highlightContainersWhenMouseIsOver.IsChecked = false;
@@ -3873,6 +3916,12 @@ namespace GUO.Game.UI.Gumps
                 }
 
                 _currentProfile.TopbarGumpIsDisabled = _enableTopbar.IsChecked;
+            }
+
+            // PORT DEVIATION (GUO): the second screen, where there is one.
+            if (_dualScreen != null)
+            {
+                _currentProfile.DualScreenEnabled = _dualScreen.IsChecked;
             }
 
             if (_currentProfile.EnableCaveBorder != _enableCaveBorder.IsChecked)
@@ -4004,10 +4053,14 @@ namespace GUO.Game.UI.Gumps
             _currentProfile.EnableDeathScreen = _enableDeathScreen.IsChecked;
             _currentProfile.EnableBlackWhiteEffect = _enableBlackWhiteEffect.IsChecked;
 
+            // PORT DEVIATION (GUO): only when the slider moved; see _screenZoomAtOpen.
+            if (_sliderScreenZoom.Value != _screenZoomAtOpen) {
             Settings.GlobalSettings.ScreenScale = GetScreenScale(_sliderScreenZoom.Value);
             if (Client.Game.ScreenScale != Settings.GlobalSettings.ScreenScale) {
                 Client.Game.ScreenScale = Settings.GlobalSettings.ScreenScale;
                 RecenterGump();
+            }
+            _screenZoomAtOpen = _sliderScreenZoom.Value;
             }
 
             var camera = Client.Game.Scene.Camera;
@@ -4371,6 +4424,9 @@ namespace GUO.Game.UI.Gumps
             }
 
             _currentProfile.UseLargeContainerGumps = _useLargeContianersGumps.IsChecked;
+            _currentProfile.GridContainers = _gridContainers.IsChecked; // PORT DEVIATION (GUO)
+            _currentProfile.GridContainerSlotSize = _gridSlotSize.Value; // PORT DEVIATION (GUO)
+            _currentProfile.FitContainerPlacement = _fitContainerPlacement.IsChecked; // PORT DEVIATION (GUO)
             _currentProfile.DoubleClickToLootInsideContainers = _containerDoubleClickToLoot.IsChecked;
             _currentProfile.RelativeDragAndDropItems = _relativeDragAnDropItems.IsChecked;
             _currentProfile.HighlightContainerWhenSelected = _highlightContainersWhenMouseIsOver.IsChecked;

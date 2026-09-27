@@ -57,6 +57,10 @@ namespace GUO.Configuration
         [JsonIgnore] public string ServerName { get; set; }
         [JsonIgnore] public string CharacterName { get; set; }
 
+        // PORT DEVIATION (GUO): which PlatformDefaults table this profile has
+        // been through; absent (0) in every profile saved before it existed.
+        public int ProfileVersion { get; set; }
+
         // sounds
         public bool EnableSound { get; set; } = true;
         public int SoundVolume { get; set; } = 100;
@@ -164,6 +168,9 @@ namespace GUO.Configuration
         [JsonConverter(typeof(Point2Converter))] public Point TopbarGumpPosition { get; set; } = new Point(0, 0);
         public bool TopbarGumpIsMinimized { get; set; }
         public bool TopbarGumpIsDisabled { get; set; }
+        // PORT DEVIATION (GUO): a device with a second screen puts the
+        // paperdoll, backpack, status and journal on it. Read only there.
+        public bool DualScreenEnabled { get; set; } = true;
         public bool UseAlternativeLights { get; set; }
         public bool UseCustomLightLevel { get; set; }
         public byte LightLevel { get; set; }
@@ -200,6 +207,14 @@ namespace GUO.Configuration
         public int DragSelectModifierKey { get; set; } // 0 = none, 1 = control, 2 = shift
         public bool OverrideContainerLocation { get; set; }
 
+        // PORT DEVIATION (GUO): keep new containers clear of the character,
+        // the touch bar and each other (ContainerPlacement); a mobile default.
+        public bool FitContainerPlacement { get; set; }
+
+        // PORT DEVIATION (GUO): open containers as a grid of slots
+        // (GridContainerGump); a mobile default. Slot size in client px.
+        public bool GridContainers { get; set; }
+        public int GridContainerSlotSize { get; set; } = 44;
         public int OverrideContainerLocationSetting { get; set; } // 0 = container position, 1 = top right of screen, 2 = last dragged position, 3 = remember every container
 
         [JsonConverter(typeof(Point2Converter))] public Point OverrideContainerLocationPosition { get; set; } = new Point(200, 200);

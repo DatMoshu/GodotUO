@@ -39,9 +39,54 @@ public partial class Main : Node
 
     private Options _options;
 
-    public override void _Ready()
+    /// <summary>
+    /// Whether this run's window may never take keyboard focus. True for
+    /// every scripted run unless <c>--focus</c> says otherwise; read by the
+    /// client, which would otherwise treat a window that is never focused as
+    /// inactive and throttle itself.
+    /// </summary>
+    public static bool NoFocus { get; private set; }
+
+    /// <summary>
+    /// The earliest point a script gets: the OS window already exists, and
+    /// project.godot created it unfocusable (display/window/size/no_focus).
+    /// An interactive run takes the flag off here and comes forward; a
+    /// scripted run keeps it, and never activates itself later.
+    /// </summary>
+    /// <remarks>
+    /// The flag is on at creation and not set here because the creation is
+    /// what steals focus: Windows activates a new window when it is shown,
+    /// which happens before any script runs. A flag set from here would be
+    /// one frame late, and the owner's keystrokes would already be going to
+    /// the wrong window. Deciding in the other direction costs an interactive
+    /// run one frame before it has focus, which nobody can see.
+    /// </remarks>
+    public override void _EnterTree()
     {
         _options = Options.Parse(OS.GetCmdlineUserArgs());
+        NoFocus = _options.NoFocus;
+
+        if (NoFocus)
+        {
+            // Belt and braces: the project setting did this at creation, and
+            // an export preset or a stray override.cfg could have lost it.
+            DisplayServer.WindowSetFlag(DisplayServer.WindowFlags.NoFocus, true);
+            DisplayServer.WindowSetFlag(DisplayServer.WindowFlags.AlwaysOnTop, false);
+            GD.Print("[GUO] window        : no focus (scripted run; --focus to opt out)");
+        }
+        else
+        {
+            DisplayServer.WindowSetFlag(DisplayServer.WindowFlags.NoFocus, false);
+            DisplayServer.WindowMoveToForeground();
+            GD.Print("[GUO] window        : focusable (interactive run; --no-focus to opt out)");
+        }
+    }
+
+    public override void _Ready()
+    {
+        // Parsed in _EnterTree; Godot calls that first, and the window flags
+        // wanted deciding before anything else ran.
+        _options ??= Options.Parse(OS.GetCmdlineUserArgs());
 
         if (!string.IsNullOrWhiteSpace(_options.Account))
         {
@@ -137,7 +182,19 @@ public partial class Main : Node
             case RunMode.Play:
                 StartClient();
 
-                if (Scripted && !_options.Sound)
+                if (_options.Silent)
+                {
+                    // A device build is exported with --silent by default:
+                    // an APK a tool drives, or a person tries on a handheld,
+                    // should not play the Britain theme over whatever is
+                    // already on the speaker. Muting the Master bus, not the
+                    // client's sound settings, so the profile the player
+                    // saves still says "sound on" and an export with --sound
+                    // hears it unchanged.
+                    AudioServer.SetBusMute(AudioServer.GetBusIndex("Master"), true);
+                    GD.Print("[GUO] audio muted (--silent)");
+                }
+                else if (Scripted && !_options.Sound)
                 {
                     // Scripted runs are silent unless asked: four clients at
                     // once would otherwise play four Britain themes over a
@@ -148,9 +205,45 @@ public partial class Main : Node
                     GD.Print("[GUO] audio muted for a scripted run (--sound to hear it)");
                 }
 
+                // A phone has no mouse; a desktop asks for the layer by flag.
+                // The mouse only stands in for a finger on the desktop: on a
+                // device the fingers are real, and emulating more of them
+                // from a pointer that is not there would be noise.
+                if (_options.Touch || OS.HasFeature("mobile"))
+                {
+                    bool mobile = OS.HasFeature("mobile");
+
+                    GUO.Input.Touch.TouchInput.Enable(this, emulateTouchFromMouse: !mobile);
+
+                    // The controller applies it just before it loads the
+                    // login scene, so the first layout already sees it.
+                    GUO.Input.Touch.TouchInput.RequestedScale = _options.ScreenScale;
+                    GUO.Input.Touch.TouchInput.TraceToLog = _options.TouchTrace;
+                }
+
+                // A second display, where the device has one (or the desktop
+                // simulates one). Nothing is added to the tree otherwise.
+                GUO.Platform.Android.DualScreen.Setup(this, _options.DualSimulate, _options.DualOff);
+
                 // Commands and a probe together: the commands run first
                 // (typically "[go" somewhere populated) and the probe follows.
-                if (_options.HighlightProbe)
+                if (_options.LoginProbe)
+                {
+                    LoginProbeThenMaybeQuit();
+                }
+                else if (_options.UiProbe)
+                {
+                    UiProbeThenQuit();
+                }
+                else if (_options.TouchProbe)
+                {
+                    TouchProbeThenQuit();
+                }
+                else if (_options.DualProbe)
+                {
+                    DualProbeThenMaybeQuit();
+                }
+                else if (_options.HighlightProbe)
                 {
                     HighlightProbeThenQuit();
                 }
@@ -416,6 +509,82 @@ public partial class Main : Node
         Quit(0);
     }
 
+    /// <summary>
+    /// Log in, wait for the second screen to come up, report what it did
+    /// and what it cost, photograph both screens; see DualProbe. Quits on a
+    /// desktop, stays up on a device so the tooling can photograph the panels.
+    /// </summary>
+    private async void DualProbeThenMaybeQuit()
+    {
+        await DualProbe.Run(this);
+
+        string dir = string.IsNullOrWhiteSpace(_options.ScreenshotDir)
+            ? "user://screenshots"
+            : _options.ScreenshotDir;
+
+        DirAccess.MakeDirRecursiveAbsolute(dir);
+
+        string second = dir.PathJoin(
+            string.IsNullOrWhiteSpace(_options.ScreenshotName)
+                ? "guo_second.png"
+                : $"{_options.ScreenshotName}_second.png"
+        );
+
+        if (GUO.Platform.Android.DualScreen.SaveFrame(second))
+        {
+            GD.Print($"[GUO] screenshot -> {ProjectSettings.GlobalizePath(second)}");
+        }
+
+        await CaptureFrame();
+
+        if (!OS.HasFeature("mobile"))
+        {
+            Quit(DualProbe.Passed ? 0 : 1);
+        }
+    }
+
+    /// Say on the log when the login gump has been drawn; see LoginProbe.
+    /// </summary>
+    private async void LoginProbeThenMaybeQuit()
+    {
+        await LoginProbe.Run(this);
+
+        if (_options.LoginProbeQuits)
+        {
+            await CaptureFrame();
+            Quit(LoginProbe.Passed ? 0 : 1);
+        }
+    }
+
+    /// <summary>
+    /// Get into the world, open the backpack, log the profile's platform
+    /// defaults, photograph it and quit; see UiProbe. On a device something
+    /// else logs in, and the frame is taken with adb, so it stays up.
+    /// </summary>
+    private async void UiProbeThenQuit()
+    {
+        bool device = OS.HasFeature("mobile");
+
+        await UiProbe.Run(this, logInHere: !device);
+
+        if (!device)
+        {
+            await CaptureFrame();
+            Quit(UiProbe.Passed ? 0 : 1);
+        }
+    }
+
+    /// <summary>
+    /// Drive the touch layer with synthetic fingers, photograph the result,
+    /// and exit with the verdict; see TouchProbe.
+    /// </summary>
+    private async void TouchProbeThenQuit()
+    {
+        await TouchProbe.Run(this);
+        await CaptureFrame();
+        Quit(TouchProbe.Passed ? 0 : 1);
+    }
+
     private async void ProbeThenQuit()
     {
         InputProbe.EndureSeconds = _options.EndureSeconds;
@@ -586,6 +755,76 @@ public partial class Main : Node
         public bool EffectsPlain { get; private set; }
 
         /// <summary>
+        /// Put the touch layer in front of the mouse path. On a phone it is
+        /// on regardless; on a desktop this is how it is tried out and tested.
+        /// </summary>
+        public bool Touch { get; private set; }
+
+        /// <summary>Drive the touch layer with synthetic fingers and check the client reacted.</summary>
+        public bool TouchProbe { get; private set; }
+
+        /// <summary>Echo every gesture the touch layer resolves to the log, for a device run read over logcat.</summary>
+        public bool TouchTrace { get; private set; }
+
+        /// <summary>Mute the Master bus for the whole run; the Android tool bakes this in unless told --sound.</summary>
+        public bool Silent { get; private set; }
+
+        /// <summary>
+        /// Whether something other than a person is driving this run: any
+        /// probe, a shard-command run, a timed screenshot, or a mode that is
+        /// not Play at all. Such a run shares the desktop with whoever
+        /// started it and must not take their keyboard.
+        /// </summary>
+        public bool Scripted =>
+            Mode != RunMode.Play
+            || InputProbe
+            || TradePartner
+            || HighlightProbe
+            || EffectsProbe > 0
+            || TouchProbe
+            || LoginProbe
+            || UiProbe
+            || DualProbe
+            || ShardCommands.Count > 0
+            || ShotAfter > 0;
+
+        /// <summary>
+        /// Whether the window is kept from ever taking focus. <c>--no-focus</c>
+        /// and <c>--focus</c> decide it outright; with neither, a scripted run
+        /// is unfocusable and an interactive one is not. Mirrors how --silent
+        /// and --sound settle the audio.
+        /// </summary>
+        public bool NoFocus => _noFocus ?? Scripted;
+
+        private bool? _noFocus;
+
+        /// <summary>
+        /// Wait for the login gump to be drawn, say so on the log, and either
+        /// quit (desktop) or keep running (a device, where the line is what
+        /// the smoke reads back through logcat).
+        /// </summary>
+        public bool LoginProbe { get; private set; }
+        public bool UiProbe { get; private set; }
+
+        /// <summary>Whether the login probe quits once it has reported. Default true.</summary>
+        public bool LoginProbeQuits { get; private set; } = true;
+
+        /// <summary>Log in, use the second screen, report and photograph it; see DualProbe.</summary>
+        public bool DualProbe { get; private set; }
+
+        /// <summary>"WxH": stand a desktop window in for a second display of that size.</summary>
+        public string DualSimulate { get; private set; } = "";
+
+        /// <summary>Leave a second display alone this run.</summary>
+        public bool DualOff { get; private set; }
+
+        /// <summary>
+        /// Integer screen scale for the touch layer; zero picks one from the
+        /// window height so the 640x480 login screen fits.
+        /// </summary>
+        public int ScreenScale { get; private set; }
+
+        /// <summary>
         /// Lines to type into the game window once the character is in the
         /// world, in order. Used to administer the local dev shard, which
         /// takes its commands in game.
@@ -660,6 +899,51 @@ public partial class Main : Node
                         break;
                     case "--effects-plain":
                         o.EffectsPlain = true;
+                        break;
+                    case "--touch":
+                        o.Touch = true;
+                        break;
+                    case "--touch-probe":
+                        o.Touch = true;
+                        o.TouchProbe = true;
+                        break;
+                    case "--touch-trace":
+                        o.TouchTrace = true;
+                        break;
+                    case "--silent":
+                        o.Silent = true;
+                        break;
+                    case "--no-focus":
+                        o._noFocus = true;
+                        break;
+                    case "--focus":
+                        o._noFocus = false;
+                        break;
+                    case "--login-probe":
+                        o.LoginProbe = true;
+                        break;
+                    case "--ui-probe":
+                        o.UiProbe = true;
+                        break;
+                    case "--login-probe-stay":
+                        o.LoginProbe = true;
+                        o.LoginProbeQuits = false;
+                        break;
+                    case "--dual-probe":
+                        o.DualProbe = true;
+                        break;
+                    case "--dual-screen":
+                        o.DualSimulate = Next() ?? "";
+                        break;
+                    case "--dual-off":
+                        o.DualOff = true;
+                        break;
+                    case "--screen-scale":
+                        if (int.TryParse(Next(), out int screenScale))
+                        {
+                            o.ScreenScale = screenScale;
+                        }
+
                         break;
                     case "--effects-probe":
                         if (int.TryParse(Next(), out int effects))

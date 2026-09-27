@@ -41,7 +41,17 @@ namespace GUO.Configuration
             string fileToLoad = Path.Combine(path, "profile.json");
 
             ProfilePath = path;
-            CurrentProfile = ConfigurationResolver.Load<Profile>(fileToLoad, ProfileJsonContext.DefaultToUse.Profile) ?? NewFromDefault();
+            // PORT DEVIATION (GUO): a new profile starts from this platform's
+            // defaults, and a profile saved before them is migrated to them
+            // (PlatformDefaults; the desktop table is empty). Saved at once so
+            // the migration runs once even if the client never saves again.
+            Profile loaded = ConfigurationResolver.Load<Profile>(fileToLoad, ProfileJsonContext.DefaultToUse.Profile);
+            CurrentProfile = loaded ?? NewFromDefault();
+
+            if (PlatformDefaults.Apply(CurrentProfile, loaded == null) && loaded != null)
+            {
+                Save(CurrentProfile, path);
+            }
 
             CurrentProfile.Username = username;
             CurrentProfile.ServerName = servername;

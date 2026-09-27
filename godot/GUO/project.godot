@@ -18,11 +18,21 @@ config/windows_native_icon="res://icon.ico"
 
 project/assembly_name="GUO"
 
+[input_devices]
+
+; Android reports a pinch as InputEventMagnifyGesture and a two-finger
+; scroll as InputEventPanGesture. Off, Godot's GestureDetector only
+; forwards two-finger moves when their centre moves, so a symmetric
+; pinch never reaches the game at all (seen on the AYN Thor). The
+; touch layer (src/Input/Touch) turns the magnify events into zoom notches.
+pointing/android/enable_pan_and_scale_gestures=true
+
 [rendering]
 
 renderer/rendering_method="forward_plus"
 ; UO art is authored as pixel art: never filter it.
 textures/canvas_textures/default_texture_filter=0
+textures/vram_compression/import_etc2_astc=true
 
 [display]
 
@@ -36,6 +46,17 @@ window/size/viewport_height=720
 ; it does not know the size of.
 window/stretch/mode="disabled"
 window/stretch/aspect="expand"
+; The window is created without the right to take keyboard focus. Scripted
+; runs (probes, screenshots, playtests, the multi-client sweep) start on a
+; desktop somebody is working at, and a window that activates itself steals
+; the keys they are typing. Only the creation flag stops the first
+; activation, which happens before any script runs; Main.cs then clears the
+; flag and brings the window forward for an interactive run (plain --play,
+; or --focus), and leaves it set for everything else (or --no-focus).
+window/size/no_focus=true
+; Phones and tablets only (ignored on the desktop): UO is a landscape game,
+; and the touch layer sizes its gump bar for a wide screen. ADR-0017.
+window/handheld/orientation=4
 
 [debug]
 

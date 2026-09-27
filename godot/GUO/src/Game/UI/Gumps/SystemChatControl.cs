@@ -316,6 +316,13 @@ namespace GUO.Game.UI.Gumps
 
         public readonly StbTextBox TextBoxControl;
 
+        /// <summary>
+        /// PORT DEVIATION (GUO): client px the input line (and the history
+        /// drawn above it) is raised by, so a phone's soft keyboard does not
+        /// cover it; set by the touch layer, 0 otherwise. Resize applies it.
+        /// </summary>
+        public int KeyboardLift;
+
         public void SetFocus()
         {
             TextBoxControl.IsEditable = true;
@@ -440,12 +447,12 @@ namespace GUO.Game.UI.Gumps
 
                 // the chat mode is always on the left and on the bottom
                 _currentChatModeLabel.X = CHAT_X_OFFSET;
-                _currentChatModeLabel.Y = Height - CHAT_HEIGHT - CHAT_X_OFFSET;
+                _currentChatModeLabel.Y = Height - CHAT_HEIGHT - CHAT_X_OFFSET - KeyboardLift; // PORT DEVIATION (GUO): KeyboardLift
 
                 // if the chat mode is visible, it should push the text box further to the right
                 int chatModeOffset = _currentChatModeLabel.IsVisible ? _currentChatModeLabel.Width : 0;
                 TextBoxControl.X = CHAT_X_OFFSET + chatModeOffset;
-                TextBoxControl.Y = Height - lines * CHAT_HEIGHT - CHAT_X_OFFSET;
+                TextBoxControl.Y = Height - lines * CHAT_HEIGHT - CHAT_X_OFFSET - KeyboardLift; // PORT DEVIATION (GUO): KeyboardLift
                 // if the text box has been pushed to the right, it should not clip into the void
                 TextBoxControl.Width = Width - CHAT_X_OFFSET - chatModeOffset;
                 // if the text box has more than one line, it will grow upwards

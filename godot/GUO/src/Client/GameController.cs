@@ -121,7 +121,15 @@ namespace GUO
         /// <c>Game.IsActive</c>; the profile setting ReduceFPSWhenInactive and
         /// the audio manager both hang off it.
         /// </summary>
-        public bool IsActive => DisplayServer.WindowIsFocused();
+        /// <remarks>
+        /// PORT DEVIATION (GUO): a scripted run keeps its window unfocusable
+        /// (Main.NoFocus) so it cannot take the keyboard from whoever is
+        /// working at the desktop. Such a window is never focused, and read
+        /// literally that would put every probe on ReduceFPSWhenInactive's
+        /// 5 Hz tick. The thing driving it is in-process, so it counts as
+        /// active.
+        /// </remarks>
+        public bool IsActive => DisplayServer.WindowIsFocused() || GUO.Host.Main.NoFocus;
 
         /// <summary>
         /// Raised when the window takes and loses focus. Upstream gets these
@@ -232,6 +240,16 @@ namespace GUO
             _pluginsInitialized = true;
 
             Log.Trace("Done!");
+
+            // PORT DEVIATION (GUO): the touch layer's whole-number screen
+            // scale has to be in place before the first scene lays itself
+            // out against ClientBounds, or the login screen is centred for a
+            // client size that changes a frame later. Off the layer: one
+            // false test. ADR-0017.
+            if (GUO.Input.Touch.TouchInput.Enabled)
+            {
+                GUO.Input.Touch.TouchInput.ApplyScreenScale(GUO.Input.Touch.TouchInput.RequestedScale);
+            }
 
             SetScene(new LoginScene(UO.World));
 
@@ -471,9 +489,17 @@ namespace GUO
             }
         }
 
+        // PORT DEVIATION (GUO): a phone has one window mode that matters.
+        // Godot's Android display server turns immersive mode (no system
+        // bars) on for Fullscreen and off for every other mode, so the
+        // maximize the game scene asks for, and the restore the login scene
+        // asks for, would each bring the status bar back over the top of the
+        // client. On a mobile OS both keep the window fullscreen. ADR-0017.
+        private static bool KeepFullscreen => OS.HasFeature("mobile");
+
         public void MaximizeWindow()
         {
-            DisplayServer.WindowSetMode(DisplayServer.WindowMode.Maximized);
+            DisplayServer.WindowSetMode(KeepFullscreen ? DisplayServer.WindowMode.Fullscreen : DisplayServer.WindowMode.Maximized);
         }
 
         public bool IsWindowMaximized()
@@ -483,7 +509,7 @@ namespace GUO
 
         public void RestoreWindow()
         {
-            DisplayServer.WindowSetMode(DisplayServer.WindowMode.Windowed);
+            DisplayServer.WindowSetMode(KeepFullscreen ? DisplayServer.WindowMode.Fullscreen : DisplayServer.WindowMode.Windowed);
         }
 
         public void SetWindowPositionBySettings()
@@ -604,7 +630,13 @@ namespace GUO
         /// </remarks>
         public override void _Input(InputEvent @event)
         {
-            GodotInput.Handle(@event);
+            // PORT DEVIATION (GUO): on a touch screen, or under --touch, the
+            // touch layer stands in front and hands GodotInput the mouse
+            // events a finger amounts to. Off, it is one false test.
+            if (!(GUO.Input.Touch.TouchInput.Enabled && GUO.Input.Touch.TouchInput.Handle(@event)))
+            {
+                GodotInput.Handle(@event);
+            }
 
             GetViewport().SetInputAsHandled();
         }
@@ -614,6 +646,13 @@ namespace GUO
             double elapsedMilliseconds = delta * 1000.0;
 
             _totalGameTime += delta;
+
+            if (GUO.Input.Touch.TouchInput.Enabled)
+            {
+                // A finger that does not move raises no event; the hold timer
+                // has to be looked at once a frame.
+                GUO.Input.Touch.TouchInput.Update();
+            }
 
             Update(elapsedMilliseconds);
 
@@ -783,6 +822,10 @@ namespace GUO
 
             UIManager.Draw(_uoSpriteBatch);
 
+            // PORT DEVIATION (GUO): the same gumps again for the second
+            // screen of a dual-screen device; a no-op without one. ADR-0009.
+            GUO.Platform.Android.DualScreen.Draw(_uoSpriteBatch, _renderTargets.UiRenderTarget);
+
             _uoSpriteBatch.Begin();
             UO.GameCursor?.Draw(_uoSpriteBatch);
             _uoSpriteBatch.End();
@@ -847,6 +890,20 @@ namespace GUO
 
                     break;
 
+                // PORT DEVIATION (GUO): a phone does not close the client, it
+                // pauses it and later kills it without a word, so nothing
+                // upstream saves on exit would ever be saved there. On the
+                // pause the profile and the settings are written as GameScene
+                // .Unload and UnloadContent write them; the desktop never
+                // receives this notification.
+                case NotificationApplicationPaused:
+                    if (GUO.Input.Touch.TouchInput.Enabled)
+                    {
+                        SaveOnPause();
+                    }
+
+                    break;
+
                 // Upstream's SDL_EVENT_WINDOW_MOUSE_ENTER / _LEAVE. Godot
                 // reports these as window notifications rather than events,
                 // so they are here and not in the input layer.
@@ -859,6 +916,34 @@ namespace GUO
                     Mouse.MouseInWindow = false;
 
                     break;
+            }
+        }
+
+        /// <summary>
+        /// PORT DEVIATION (GUO): what the desktop saves when the client is
+        /// closed, saved when a touch device puts the client in the
+        /// background instead; see the notification above.
+        /// </summary>
+        private void SaveOnPause()
+        {
+            try
+            {
+                if (Scene is GameScene game && UO.World != null && UO.World.InGame && ProfileManager.CurrentProfile != null)
+                {
+                    if (ProfileManager.CurrentProfile.SaveScaleAfterClose)
+                    {
+                        ProfileManager.CurrentProfile.DefaultScale = game.Camera.Zoom;
+                    }
+
+                    ProfileManager.CurrentProfile.Save(UO.World, ProfileManager.ProfilePath);
+                }
+
+                Settings.GlobalSettings.Save();
+                Log.Trace("Saved on pause");
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"Save on pause failed: {ex.Message}");
             }
         }
 

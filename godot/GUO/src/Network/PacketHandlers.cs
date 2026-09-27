@@ -1533,6 +1533,10 @@ namespace GUO.Network
                         }
                     );
 
+                    // PORT DEVIATION (GUO): the grid view takes the classic
+                    // gump's place when the profile asks for it.
+                    GridContainerGump.ReplaceClassic(world, serial);
+
                     UIManager.RemovePosition(serial);
                 }
                 else
@@ -2267,6 +2271,10 @@ namespace GUO.Network
                     {
                         UIManager.Add(gump);
                     }
+
+                    // PORT DEVIATION (GUO): on a phone a gump restored from
+                    // gumps.xml must not cover the character either.
+                    ContainerPlacement.ClearRestored(gumps);
                 }
             }
         }

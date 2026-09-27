@@ -82,6 +82,51 @@ REM  72 covers a 4K window. Lower it if the shard struggles; 18 is what a
 REM  production shard sends, and is what you want if you are checking parity.
 if not defined UO_SHARD_UPDATE_RANGE set "UO_SHARD_UPDATE_RANGE=72"
 
+REM --- Android (optional) -------------------------------------------------
+REM  Only launchers\android\*.bat and tools\android read these. See
+REM  tools\android\README.md for the one-time setup and ADR-0017 for why.
+REM  The Android SDK root (the folder holding platform-tools\, build-tools\,
+REM  platforms\). Godot's own default on Windows is the value below.
+if not defined UO_ANDROID_SDK       set "UO_ANDROID_SDK=%LOCALAPPDATA%\Android\Sdk"
+REM  A JDK 17. Godot reads it from its editor settings, not from JAVA_HOME,
+REM  so the tool copies this value there. Leave it as JAVA_HOME if that is
+REM  already a JDK 17.
+if not defined UO_ANDROID_JDK       set "UO_ANDROID_JDK=%JAVA_HOME%"
+REM  The debug keystore a debug APK is signed with. Not a secret: the
+REM  standard Android debug key, generated on demand by
+REM  `python tools\android\run.py keystore` with the standard credentials.
+if not defined UO_ANDROID_KEYSTORE  set "UO_ANDROID_KEYSTORE=%APPDATA%\Godot\keystores\debug.keystore"
+if not defined UO_ANDROID_KEYSTORE_USER set "UO_ANDROID_KEYSTORE_USER=androiddebugkey"
+if not defined UO_ANDROID_KEYSTORE_PASSWORD set "UO_ANDROID_KEYSTORE_PASSWORD=android"
+REM  The application id, and the adb serial of the device to use when more
+REM  than one is attached (leave empty for the only one).
+if not defined UO_ANDROID_PACKAGE   set "UO_ANDROID_PACKAGE=org.guo.client"
+if not defined UO_ANDROID_DEVICE    set "UO_ANDROID_DEVICE="
+REM  Where the UO client data lives ON THE DEVICE: the app's own external
+REM  files folder, which adb, a file manager and the app can all reach with
+REM  no permission prompt. Push your install there with
+REM  `python tools\android\run.py push`. It is deleted with the app.
+if not defined UO_ANDROID_CLIENT_DATA set "UO_ANDROID_CLIENT_DATA=/sdcard/Android/data/%UO_ANDROID_PACKAGE%/files/uo"
+REM  A dual-screen device (AYN Thor): the SurfaceFlinger id of the second
+REM  display, for `screencap -d`. Leave empty and the tools read it from
+REM  `dumpsys display` (the FLAG_PRESENTATION display's uniqueId). Only the
+REM  dual_probe launcher and the doctor use it; the client finds the display
+REM  itself. See docs\architecture\ADR-0009-second-display.md.
+if not defined UO_ANDROID_SECOND_DISPLAY set "UO_ANDROID_SECOND_DISPLAY="
+
+REM  The GodotUO press kit the app icons are built from (a folder or the
+REM  release zip; see tools\android\icons.py). It lives in the separate
+REM  public repository next to this one; only what is built from it is
+REM  committed here.
+if not defined UO_ANDROID_BRAND_DIR set "UO_ANDROID_BRAND_DIR=%UO_ROOT%\..\UO_Port_public\design\press-kit"
+
+REM --- Web (optional) -----------------------------------------------------
+REM  Only launchers\web\*.bat and tools\web read this. The port the local
+REM  web server (tools\web
+un.py serve) listens on; it serves build\web with
+REM  the cross-origin isolation headers a Godot web export needs.
+if not defined UO_WEB_PORT          set "UO_WEB_PORT=8060"
+
 REM --- Python -------------------------------------------------------------
 if not defined UO_PYTHON            set "UO_PYTHON=python"
 
