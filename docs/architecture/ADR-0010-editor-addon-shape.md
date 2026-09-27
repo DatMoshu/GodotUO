@@ -117,6 +117,8 @@ godot/GUO/addons/guo_editor/        all files #if TOOLS, namespace GUO.Editor
   Panels/AssetPanel.cs, GridPanel.cs   the panel contract; paged, searchable id lists
   Panels/Inspection.cs              what a panel hands the inspector
   Panels/{Art,Gump,Animation,Hue,Multi,Cliloc,Sound,Map,Parity}Panel.cs
+  World/WorldView.cs, WorldHost.cs  the UO World main-screen tab (ADR-0015)
+  Overlay/WorldProject.cs           the world project overlay (ADR-0011)
 godot/GUO/src/Editor/               runtime-side hooks, when a phase needs one
 tools/editor_smoke/run.py           drives the editor and reads the report
 launchers/editor/open_project.bat   builds C#, then opens the editor
