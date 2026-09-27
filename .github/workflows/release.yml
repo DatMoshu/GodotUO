@@ -116,6 +116,11 @@ jobs:
       - name: Python packages
         run: python -m pip install --quiet pillow
 
+      # The profile migration ladder, headless on the pinned engine: every
+      # older profile version migrates to the current one on each platform.
+      - name: Profile migration tests
+        run: python tools/profile_migrations/run.py
+
       - name: Export Windows
         run: python tools/windows/run.py export
       - name: Export Steam Deck (Linux x86_64)
