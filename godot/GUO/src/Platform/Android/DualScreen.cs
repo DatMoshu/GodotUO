@@ -75,6 +75,7 @@ namespace GUO.Platform.Android
         private bool _rescued;
         private bool _wasInGame;
         private int _appliedScale = -1;
+        private int _appliedScalePercent = -1;
         private DualScreenSettings.Values _applied;
         private DualWelcomeGump _welcome;
         private Vector2I _mainSize;
@@ -485,7 +486,7 @@ namespace GUO.Platform.Android
 
             DualScreenSettings.Values settings = DualScreenSettings.Current;
 
-            if (settings.Scale != _appliedScale)
+            if (settings.Scale != _appliedScale || settings.ScalePercent != _appliedScalePercent)
             {
                 // A new pixel scale is a new target and a new bitmap: the
                 // display is reopened at the size, nothing else changes.
@@ -571,11 +572,16 @@ namespace GUO.Platform.Android
         {
             float dpi = Client.Game.DpiScale;
             int scale = DualScreenSettings.Current.Scale;
+            int percent = DualScreenSettings.Current.ScalePercent;
 
-            // The shelf's own pixel scale, or the main screen's.
-            float divisor = scale > 0 ? scale : dpi;
+            // The shelf's own pixel scale, or the main screen's. A fractional
+            // scale (1.25, 1.5) is an option for the owner to compare: its
+            // pixels are nearest-sampled, never filtered, so some art pixels
+            // come out one screen pixel wider than others.
+            float divisor = percent > 0 ? percent / 100f : scale > 0 ? scale : dpi;
 
             _appliedScale = scale;
+            _appliedScalePercent = percent;
             _logicalWidth = Math.Max(1, (int)Math.Round(_physicalWidth / divisor));
             _logicalHeight = Math.Max(1, (int)Math.Round(_physicalHeight / divisor));
 
@@ -603,7 +609,7 @@ namespace GUO.Platform.Android
 
             GD.Print(
                 $"[GUO] dual screen: active; second screen {_physicalWidth}x{_physicalHeight} "
-                + $"is {_logicalWidth}x{_logicalHeight} at scale {divisor:F2} ({(scale > 0 ? "shelf setting" : "main screen")}), main window {MainWidth} wide"
+                + $"is {_logicalWidth}x{_logicalHeight} at scale {divisor:F2} ({(percent > 0 ? "fine shelf setting" : scale > 0 ? "shelf setting" : "main screen")}), main window {MainWidth} wide"
             );
         }
 

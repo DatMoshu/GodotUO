@@ -183,6 +183,10 @@ namespace GUO.Configuration
         public bool DualScreenShelveJournal { get; set; }
         public bool DualScreenShelveOthers { get; set; }
         public int DualScreenScale { get; set; }
+
+        // PORT DEVIATION (GUO): a fractional second-screen scale, in percent
+        // (100/125/150); 0 leaves DualScreenScale in charge. Not a default.
+        public int DualScreenScalePercent { get; set; }
         public bool UseAlternativeLights { get; set; }
         public bool UseCustomLightLevel { get; set; }
         public byte LightLevel { get; set; }
@@ -232,6 +236,11 @@ namespace GUO.Configuration
         // macros, which comes up by itself on entering War mode unless the
         // player hid it this session (TouchGumpBar); a mobile default.
         public bool TouchMacroRow { get; set; }
+
+        // PORT DEVIATION (GUO): how far the chevron sits in from the right
+        // edge of the screen, in client px (TouchGumpBar); 0 keeps it at the
+        // corner. An option for the owner to try, not a platform default.
+        public int TouchChevronInset { get; set; }
 
         // PORT DEVIATION (GUO): the canvas background behind the world and
         // the gumps (Renderer.CanvasBackground, ADR-0016). builtin-grey is

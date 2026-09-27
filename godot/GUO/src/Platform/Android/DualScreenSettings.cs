@@ -42,6 +42,7 @@ namespace GUO.Platform.Android
             public bool Journal = true;
             public bool Others;
             public int Scale;
+            public int ScalePercent;
 
             public Values Clone() => (Values) MemberwiseClone();
 
@@ -54,6 +55,7 @@ namespace GUO.Platform.Android
                 Journal = p.DualScreenShelveJournal,
                 Others = p.DualScreenShelveOthers,
                 Scale = Math.Clamp(p.DualScreenScale, 0, MaxScale),
+                ScalePercent = Math.Clamp(p.DualScreenScalePercent, 0, MaxScale * 100),
             };
 
             public void Into(Profile p)
@@ -65,6 +67,7 @@ namespace GUO.Platform.Android
                 p.DualScreenShelveJournal = Journal;
                 p.DualScreenShelveOthers = Others;
                 p.DualScreenScale = Scale;
+                p.DualScreenScalePercent = ScalePercent;
             }
         }
 

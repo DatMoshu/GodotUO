@@ -280,7 +280,12 @@ namespace GUO.Input.Touch
             Rect2 top = RowShown ? RowBand(band) : band;
             var size = new Vector2(art.Y * 2, art.Y);
 
-            return new Rect2(top.End.X - spacing - size.X, top.Position.Y - size.Y, size.X, size.Y);
+            // The profile's inset, in client px, moves it in from the corner,
+            // where a hand holding a handheld rests.
+            float inset = (ProfileManager.CurrentProfile?.TouchChevronInset ?? 0) * (Client.Game?.DpiScale ?? 1f);
+            float x = System.Math.Max(0f, top.End.X - spacing - size.X - inset);
+
+            return new Rect2(x, top.Position.Y - size.Y, size.X, size.Y);
         }
 
         /// <summary>The rectangle of one button's art, in viewport pixels.</summary>
