@@ -32,6 +32,7 @@ namespace GUO.Game.UI.Gumps
         private readonly Label _corpseNameLabel;
         private readonly bool _hideIfEmpty;
         private int _pagesCount;
+        private bool _placed; // PORT DEVIATION (GUO): see UpdateContents
 
         public GridLootGump(World world, uint local) : base(world, local, 0)
         {
@@ -257,6 +258,18 @@ namespace GUO.Game.UI.Gumps
             }
 
             _background.Width = MAX_WIDTH;
+
+            // PORT DEVIATION (GUO): on a touch screen the grid opened at the
+            // remembered spot, which at a phone's 960x540 lies over the
+            // character. Once its size is known, the first layout places it
+            // as containers are placed; a remembered spot clear of the
+            // character and of other gumps is kept.
+            if (!_placed && ContainerPlacement.Active(ProfileManager.CurrentProfile))
+            {
+                _placed = true;
+                Location = ContainerPlacement.Place(LocalSerial, new Point(_background.Width, _background.Height), Location, true, this);
+            }
+
 
             if (ActivePage <= 1)
             {

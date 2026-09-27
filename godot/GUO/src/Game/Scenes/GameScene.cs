@@ -392,6 +392,13 @@ namespace GUO.Game.Scenes
 
         public void RequestQuitGame()
         {
+            // PORT DEVIATION (GUO): the Thor saw this question appear with no
+            // tap on LOG OUT (playability pass 2, bug 3); name the caller.
+            if (GUO.Input.Touch.TouchInput.Enabled)
+            {
+                Log.Warn($"quit prompt requested by:{System.Environment.NewLine}{System.Environment.StackTrace}");
+            }
+
             UIManager.Add(
                 new QuestionGump(
                     _world,

@@ -979,6 +979,15 @@ namespace GUO
 
                     break;
 
+                // PORT DEVIATION (GUO): Android's Back button. Upstream has no
+                // such key; Godot would quit on it, which project.godot turns off
+                // (quit_on_go_back) so BackButton can close a gump, lower the
+                // keyboard or ask the upstream quit question instead.
+                case NotificationWMGoBackRequest:
+                    GUO.Input.Touch.BackButton.Handle();
+
+                    break;
+
                 // Upstream's SDL_EVENT_WINDOW_MOUSE_ENTER / _LEAVE. Godot
                 // reports these as window notifications rather than events,
                 // so they are here and not in the input layer.

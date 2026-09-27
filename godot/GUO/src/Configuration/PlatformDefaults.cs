@@ -49,7 +49,7 @@ namespace GUO.Configuration
         /// The table version this build writes. 0 means the profile predates
         /// platform defaults (every profile saved before GUO had them).
         /// </summary>
-        public const int CurrentVersion = 7;
+        public const int CurrentVersion = 8;
 
         /// <summary>The login screen's size, which every login gump is laid out for.</summary>
         private const int LoginWidth = 640;
@@ -138,8 +138,10 @@ namespace GUO.Configuration
                 ByteEntry(nameof(Profile.ContainersScale), p => p.ContainersScale, (p, v) => p.ContainersScale = v, 130),
                 BoolEntry(nameof(Profile.ScaleItemsInsideContainers), p => p.ScaleItemsInsideContainers, (p, v) => p.ScaleItemsInsideContainers = v, true),
 
-                // The grid loot gump alongside the corpse (2 = both).
-                IntEntry(nameof(Profile.GridLootType), p => p.GridLootType, (p, v) => p.GridLootType = v, 2),
+                // The grid loot gump in place of the corpse gump (1 = grid
+                // only). Until v8 this was 2, both, which opened two windows
+                // on every corpse (Thor pass 2, bug 5).
+                IntEntry(nameof(Profile.GridLootType), p => p.GridLootType, (p, v) => p.GridLootType = v, 1),
 
                 // v2: containers open clear of the character, the touch bar
                 // and each other (ContainerPlacement).
@@ -151,7 +153,13 @@ namespace GUO.Configuration
 
                 // v6: a video or frames background shows its first frame only
                 // (CanvasBackground, ADR-0016): a battery, and a phone GPU.
-                BoolEntry(nameof(Profile.CanvasBackgroundLowPower), p => p.CanvasBackgroundLowPower, (p, v) => p.CanvasBackgroundLowPower = v, true, since: 6)
+                BoolEntry(nameof(Profile.CanvasBackgroundLowPower), p => p.CanvasBackgroundLowPower, (p, v) => p.CanvasBackgroundLowPower = v, true, since: 6),
+
+                // v8: a profile still on the old mobile value, 2, moves to
+                // grid only. It is not the upstream default, so the usual
+                // test cannot see it; a player who chose 2 under Options is
+                // indistinguishable and gets 1 once.
+                new Entry(nameof(Profile.GridLootType), 8, p => p.GridLootType == 2, p => p.GridLootType = 1)
             ),
 
             [ProfilePlatform.Web] = WithShelf
