@@ -3267,8 +3267,22 @@ internal static class InputProbe
         );
     }
 
+    /// <summary>
+    /// Client pixels to window pixels for the pointer events the probe sends.
+    /// One on the desktop; on a device the client draws at a whole-number
+    /// scale and divides every pointer position by it (Mouse.Update), so a
+    /// probe aiming in client pixels has to multiply first. The dual-screen
+    /// probe sets it to the client's DpiScale for the login and resets it.
+    /// </summary>
+    public static float PointerScale { get; set; } = 1f;
+
     private static void Send(InputEvent e)
     {
+        if (PointerScale != 1f && e is InputEventMouse mouse)
+        {
+            mouse.Position *= PointerScale;
+        }
+
         // Straight into the same queue a real device feeds, so nothing on the
         // path from the window to the client is bypassed.
         Godot.Input.ParseInputEvent(e);

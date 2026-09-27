@@ -635,6 +635,14 @@ namespace GUO.Platform.Android
             }
 
             TouchesTaken++;
+
+            if (TouchesTaken == 1)
+            {
+                // Once, so a device run can prove the path from the panel to
+                // the client without a debugger on it.
+                GD.Print($"[GUO] dual screen: first touch, finger {index} {(down ? "down" : "up")} at window {at.X:F0},{at.Y:F0} (client {at.X / Client.Game.DpiScale:F0},{at.Y / Client.Game.DpiScale:F0})");
+            }
+
             Deliver(new InputEventScreenTouch { Index = index, Position = at, Pressed = down });
         }
 

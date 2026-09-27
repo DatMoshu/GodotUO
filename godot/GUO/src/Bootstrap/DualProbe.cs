@@ -27,7 +27,20 @@ internal static class DualProbe
 
     public static async System.Threading.Tasks.Task Run(Node host)
     {
-        await InputProbe.EnterTheWorld(host, 120);
+        // The login goes through the mouse path in client pixels, which the
+        // input probe already proves; the touch layer steps aside for it, and
+        // on a device the client's scale is put back on the probe's aim.
+        // The controller is added deferred and picks its scale a frame later.
+        await InputProbe.Wait(host, 120);
+
+        bool touch = Input.Touch.TouchInput.Enabled;
+        Input.Touch.TouchInput.Enabled = false;
+        InputProbe.PointerScale = Client.Game.DpiScale;
+
+        await InputProbe.EnterTheWorld(host, 0);
+
+        InputProbe.PointerScale = 1f;
+        Input.Touch.TouchInput.Enabled = touch;
 
         Game.World world = Client.Game.UO.World;
 
