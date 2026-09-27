@@ -135,6 +135,7 @@ internal static class DualProbe
         bool pushing = presented > 0 || DualScreen.LastError.Length == 0;
 
         bool layout = await CheckGumpLayout(host, paperdoll);
+        layout &= await CheckFlickReset(host, paperdoll);
         Passed = shelved && pushing && layout;
 
         if (Passed)
@@ -309,6 +310,33 @@ internal static class DualProbe
             await InputProbe.Wait(host, 30);
             GD.Print($"[GUO] dual screen: held item dropped back, holding={Client.Game.UO.GameCursor.ItemHold.Enabled}");
         }
+    }
+
+    /// <summary>
+    /// Hold-and-flick's Reset (GumpFlick): a gump sent away and back stays on
+    /// its home screen; one left on the other screen goes home.
+    /// </summary>
+    private static async System.Threading.Tasks.Task<bool> CheckFlickReset(Node host, PaperDollGump g)
+    {
+        if (g == null || !DualScreen.ShelfOn) return false;
+
+        bool home = Input.Touch.GumpPresentation.OnSecond(g);
+        Input.Touch.GumpPresentation.Transfer(g);
+        Input.Touch.GumpPresentation.Transfer(g);
+        await InputProbe.Wait(host, 5);
+        Input.Touch.GumpFlick.Perform(g, Input.Touch.FlickAction.Reset);
+        await InputProbe.Wait(host, 5);
+        bool stays = Input.Touch.GumpPresentation.OnSecond(g) == home;
+
+        Input.Touch.GumpPresentation.Transfer(g);
+        await InputProbe.Wait(host, 5);
+        Input.Touch.GumpFlick.Perform(g, Input.Touch.FlickAction.Reset);
+        await InputProbe.Wait(host, 5);
+        bool back = Input.Touch.GumpPresentation.OnSecond(g) == home;
+
+        GD.Print($"[GUO] dual layout: flick Reset after up-and-back stays home, from away goes home: {stays}, {back} (home is the {(home ? "second" : "main")} screen)");
+
+        return stays && back;
     }
 
     /// <summary>Frames per second over a fixed number of frames, from the clock.</summary>

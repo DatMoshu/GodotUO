@@ -213,12 +213,11 @@ internal static class GumpFlick
             case FlickAction.Reset:
                 GumpPresentation.Reset(g);
 
-                // Moved to the other screen by the player: back where it was.
-                if (g.PresentationPlaced
-                    && (GumpPresentation.OnSecond(g) ? g.MainPresentationPosition : g.SecondPresentationPosition) != null)
+                // Away from its home screen (the shelf's, for a gump the shelf
+                // takes; else the main one): back home, to where it was there.
+                if (DualScreen.ShelfOn && GumpPresentation.OnSecond(g) != DualScreen.WantsShelf(g))
                 {
                     GumpPresentation.Transfer(g);
-                    g.PresentationPlaced = false;
                 }
                 break;
 

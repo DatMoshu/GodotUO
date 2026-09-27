@@ -123,6 +123,21 @@ namespace GUO.Platform.Android
         /// slot"): no longer placed by hand, not yet seen, and off the shelf,
         /// so the next Shelve pass puts it in its slot if the shelf wants it.
         /// </summary>
+        /// <summary>Whether the shelf takes this gump by itself: its home screen is the second one.</summary>
+        public static bool WantsShelf(Gump g)
+        {
+            if (!ShelfOn || g == null || Client.Game?.UO?.World?.Player == null)
+            {
+                return false;
+            }
+
+            uint player = Client.Game.UO.World.Player.Serial;
+            uint backpack = Client.Game.UO.World.Player.FindItemByLayer(Game.Data.Layer.Backpack)?.Serial ?? 0;
+            Slot slot = SlotFor(g, player, backpack);
+
+            return slot != Slot.None && Wants(DualScreenSettings.Current, slot);
+        }
+
         public static void Reshelve(Gump g)
         {
             if (_instance == null || g == null || g.IsDisposed)
