@@ -5,14 +5,10 @@
 
 name: pages
 
+# Manual until the repository goes public: enabling Pages publishes a public
+# site. After Settings > Pages > Source: GitHub Actions, add a push trigger
+# on main for site/**, docs/wiki/** and docs/images/**.
 on:
-  push:
-    branches: [main]
-    paths:
-      - "site/**"
-      - "docs/wiki/**"
-      - "docs/images/**"
-      - ".github/workflows/pages.yml"
   workflow_dispatch:
 
 permissions:
