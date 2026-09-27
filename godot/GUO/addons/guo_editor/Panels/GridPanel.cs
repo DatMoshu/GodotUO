@@ -222,6 +222,31 @@ public abstract partial class GridPanel : AssetPanel
         Raise(Describe(id));
     }
 
+    /// <summary>Drops any cached id list; the next <see cref="Ids"/> call builds it again.</summary>
+    protected virtual void ForgetIds()
+    {
+    }
+
+    /// <summary>
+    /// After the asset overlay changed (an import or a revert): rebuild the
+    /// id list, redraw the page on show and inspect the selection again.
+    /// </summary>
+    public void OnAssetsChanged()
+    {
+        if (Data == null || !Data.IsLoaded || _list == null)
+        {
+            return;
+        }
+
+        ForgetIds();
+        int page = _page;
+        int? selected = Selected;
+        Refresh();
+        ShowPage(page);
+        Selected = selected;
+        Reinspect();
+    }
+
     /// <summary>Inspects the selection again, after a toolbar setting changed.</summary>
     protected void Reinspect()
     {

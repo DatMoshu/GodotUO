@@ -302,3 +302,63 @@ The client keeps UltimaLive copies of the listed maps in
 `%ProgramData%\<shard name>\`, made from `map<N>.mul` found through its
 `files_override` (tools/world writes one beside every export).
 
+
+---
+
+## 11. World project assets (the editor's art, gump and hue edits)
+
+Replaced art, gumps and hues live beside a world project's blocks (§9), under
+`assets/`. ADR-0020 has the reasoning. As with blocks, the install is never
+written.
+
+```
+<UO_WORLD_PROJECT>/assets/
+  art/land/0xNNNN.png       land tile, by land id
+  art/statics/0xNNNN.png    static, by item id (not 0x4000 + id)
+  gumps/0xNNNN.png          gump, by gump id
+  hues/0xNNNN.json          hue, by hue number (1-based, as shards write it)
+```
+
+**Images.** RGBA PNG, already reduced to UO colour: each channel's low three
+bits are dropped (15-bit colour), so the file shows what the client will draw.
+
+| Kind | Size | Transparency | Black |
+|---|---|---|---|
+| Land | exactly 44x44; only the 1,012 pixels of the diamond are used | none | stored as 0 |
+| Static | up to 1024x1024 | alpha < 128 is transparent (0) | opaque black is stored as `0x0421` |
+| Gump | up to 2048x2048 | alpha < 128 is transparent (0) | opaque black is stored as `0x0421` |
+
+**`hues/0xNNNN.json`**
+
+| Field | Meaning |
+|---|---|
+| `format` | `1` |
+| `hue` | Hue number, 1-based: group `(hue-1)/8`, entry `(hue-1)%8` of `hues.mul` |
+| `name` | Up to 20 ASCII characters |
+| `table_start`, `table_end` | Hex strings, as `hues.mul` stores them |
+| `colors` | 32 hex strings, the 16-bit colours as stored (four rows of eight) |
+
+**Export** (`tools/world export`, into an export folder, never the install):
+
+| File | Contents |
+|---|---|
+| `verdata.mul` | `int32 count`, then `count` records of five `uint32` (file id, block, position, length, extra), then the data. Art is file id 4, block = land id or `0x4000` + item id, in the art layouts below. Gumps are file id 12, extra = `width << 16 \| height`. The install's own patches are kept unless the project replaces the same id. 16 zero bytes pad the end |
+| `hues.mul` | The install's, with each replaced hue's 88 bytes (32 colours, start, end, 20-byte name) written in place |
+| `files_override.txt` | Adds `verdata.mul=` and `hues.mul=` lines |
+| `export.json` | Gains `assets`: the ids per kind and the files' SHA-1 |
+
+Layouts, as `ArtLoader` and `GumpsLoader` read them (and as
+`tools/guo/uoart.py` and `AssetOverlay.cs` write them):
+
+- **Land**: 1,012 little-endian `ushort` colours, the diamond row by row
+  (row `y` < 22 starts at `x = 21 - y` and is `2(y+1)` wide; the lower half
+  mirrors it).
+- **Static**: `uint32 flags (0)`, `ushort width`, `ushort height`, a row
+  table of `height` `ushort` offsets (in words, from the table's end), then
+  per row `(gap, run, run colours...)` spans ended by `(0, 0)`. Transparent
+  pixels are gaps.
+- **Gump**: a row table of `height` `int32` offsets (in 4-byte units, from
+  the start), then per row `(ushort colour, ushort run)` pairs covering the
+  whole width; colour 0 is transparent.
+
+None of these files are committed: they derive from the install.

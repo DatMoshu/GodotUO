@@ -51,6 +51,8 @@ public partial class GumpPanel : GridPanel
         return _ids;
     }
 
+    protected override void ForgetIds() => _ids = null;
+
     protected override string Caption(int id) => $"{id:X4}";
 
     protected override bool Matches(int id, string query) => false;
@@ -71,7 +73,9 @@ public partial class GumpPanel : GridPanel
             ? $"named in src/Game/UI by: {string.Join(", ", users)}\n"
             : "not named in src/Game/UI (may still come from the server)\n");
 
-        return Inspection.Still("Gumps", $"0x{id:X4}", img, sb.ToString());
+        Inspection ins = Inspection.Still("Gumps", $"0x{id:X4}", img, sb.ToString());
+        AssetActions.Add(ins, Data, AssetKind.Gump, id, img);
+        return ins;
     }
 
     private static readonly Regex Literal = new(@"\b0x([0-9A-Fa-f]{2,4})\b|\b(\d{2,5})\b");

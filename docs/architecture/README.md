@@ -21,11 +21,13 @@ it is taken even if its file has not landed yet.
 | 0010 | Editor addon shape | work/editor |
 | 0011 | World project overlay | work/editor |
 | 0012 | Live editing transport | work/editor |
-| 0013 | Asset overlay | reserved, editor phase 5 |
+| 0013 | Asset overlay | retired: written as 0020 |
 | 0014 | Shard world objects and backends | reserved, editor phase 6 |
 | 0015 | Editor world view | work/editor |
 | 0016 | Canvas background | work/background |
 | 0017 | Android (was 0007 in UO_Port) | work/ui |
 | 0018 | Steam Deck target | work/steamdeck (proposed) |
+| 0019 | reserved (Codex) | not yet written |
+| 0020 | Asset overlay (editor phase 5) | work/editor-p5 |
 
-Next free: 0019.
+Next free: 0021.

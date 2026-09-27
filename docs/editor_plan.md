@@ -348,7 +348,7 @@ gains: the viewer will surface renderer bugs faster than play does.
   install, export formats, the invariant restated.
 - **ADR-0012 Live editing transport**: shard endpoint, UltimaLive on the
   client side, GUO-specific vs CentrED+ protocol, conflict rule.
-- **ADR-0013 Asset overlay**: how loaders consult overrides, what export
+- **ADR-0020 Asset overlay** (reserved as 0013): how loaders consult overrides, what export
   produces, what is out of scope (injection into the install).
 - **ADR-0014 Shard world objects and backends**: the neutral model and adapter
   interface, files vs commands as the source of truth per backend, live

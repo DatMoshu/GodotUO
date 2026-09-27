@@ -255,6 +255,10 @@ public partial class Main : Node
                 {
                     DoorProbeThenQuit();
                 }
+                else if (_options.AssetProbe.Length > 0)
+                {
+                    AssetProbeThenQuit();
+                }
                 else if (_options.EffectsProbe > 0)
                 {
                     EffectsProbeThenQuit();
@@ -444,6 +448,7 @@ public partial class Main : Node
         || _options.HighlightProbe
         || _options.ZoomProbe
         || _options.DoorProbe
+        || _options.AssetProbe.Length > 0
         || _options.EffectsProbe > 0
         || _options.TradePartner
         || _options.InputProbe
@@ -513,6 +518,13 @@ public partial class Main : Node
         await Preamble();
         await DoorProbe.Run(this, _options.ScreenshotDir);
         Quit(DoorProbe.Passed ? 0 : 1);
+    }
+
+    /// <summary>Decode chosen assets through the client's loaders and quit; see AssetProbe.</summary>
+    private async void AssetProbeThenQuit()
+    {
+        await AssetProbe.Run(this, _options.AssetProbe, _options.AssetProbeIds);
+        Quit(AssetProbe.Passed ? 0 : 1);
     }
 
     private async void HighlightProbeThenQuit()
@@ -848,6 +860,12 @@ public partial class Main : Node
 
         public bool DoorProbe { get; private set; }
 
+        /// <summary>Folder the asset probe writes to; empty means no probe (see AssetProbe).</summary>
+        public string AssetProbe { get; private set; } = "";
+
+        /// <summary>What the asset probe decodes, e.g. land:0x0244,static:0x0E75,gump:0x0064,hue:33.</summary>
+        public string AssetProbeIds { get; private set; } = "";
+
         /// <summary>How many effects the effects probe spawns; zero means no probe.</summary>
         public int EffectsProbe { get; private set; }
 
@@ -977,6 +995,12 @@ public partial class Main : Node
                         break;
                     case "--door-probe":
                         o.DoorProbe = true;
+                        break;
+                    case "--asset-probe":
+                        o.AssetProbe = Next();
+                        break;
+                    case "--asset-probe-ids":
+                        o.AssetProbeIds = Next();
                         break;
                     case "--effects-plain":
                         o.EffectsPlain = true;

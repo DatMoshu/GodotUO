@@ -91,6 +91,8 @@ public partial class AssetsDock : EditorDock
             return;
         }
 
+        _data.AssetsApplied -= OnAssetsApplied;
+        _data.AssetsApplied += OnAssetsApplied;
         foreach (AssetPanel panel in _panels)
         {
             try
@@ -100,6 +102,23 @@ public partial class AssetsDock : EditorDock
             catch (Exception ex)
             {
                 GD.PrintErr($"[GUO editor] {panel.Name} panel failed to load: {ex.GetType().Name}: {ex.Message}");
+            }
+        }
+    }
+
+    /// <summary>An import or revert changed the overlay: every grid redraws what it shows.</summary>
+    private void OnAssetsApplied()
+    {
+        if (!IsInstanceValid(this))
+        {
+            return;
+        }
+
+        foreach (AssetPanel panel in _panels)
+        {
+            if (panel is GridPanel grid && (panel is ArtPanel || panel is GumpPanel || panel is HuePanel))
+            {
+                grid.OnAssetsChanged();
             }
         }
     }
@@ -117,6 +136,7 @@ public partial class AssetsDock : EditorDock
         if (_data != null)
         {
             _data.Loaded -= OnDataLoaded;
+            _data.AssetsApplied -= OnAssetsApplied;
         }
 
         foreach (AssetPanel panel in _panels)

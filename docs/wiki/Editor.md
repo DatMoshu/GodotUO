@@ -31,7 +31,7 @@ right, Shard in the bottom panel.
 | 2 | The **World** tab: the client's own renderer embedded in the editor (ADR-0015), drawing any cell of the install at the client's size, with a season. `tools\world_parity` proves it draws what a logged-in client draws. | Done |
 | 3 | The **world project** overlay (ADR-0011): edits are whole replaced 8x8 blocks stored as JSON under `UO_WORLD_PROJECT`, drawn over the install in the World tab. Tools, undo, and export to patched map files (`tools\world`). | Done |
 | 4 | The **live tier** (ADR-0012): a UO Shard dock that talks to a private ModernUO instance through a bridge assembly, so a block edit is pushed to the shard and to connected clients (UltimaLive) while they play. | Done |
-| 5 | Asset overlay (ADR-0013, reserved). | Not started |
+| 5 | **Asset edits** (ADR-0020, reserved as 0013): land art, static art, gumps and hues replaced from PNG in the world project's `assets\`, shown at once in the Assets dock and the World tab, exported as a `verdata.mul` and a patched `hues.mul` that any ClassicUO-lineage client loads through `files_override`. | Done |
 | 6 | Shard world objects and backends (ADR-0014, reserved). | Not started |
 
 "Done" here means the phase's check has been run and its README or ADR
@@ -95,5 +95,10 @@ puts an export ahead of the install in its data directories.
 | `tools\editor_live\run.py` | Two editors and a client, end to end: an edit in editor A appears in editor B and in the client's UltimaLive log. Headless by default; `--windowed` for a client picture. |
 | `tools\world_parity\run.py --at X,Y --windowed` | The World tab's frame of a cell against a logged-in client's frame of the same cell, pixel by pixel, masking the player, the paperdoll and the chat line. Measured 2026-09-27: 99.98% identical in the wilderness, 99.29% in Britain with the residual being shard decoration, 99.84% for a project drawn over the install against the client on its export. Plays on the private instance by default; the shared dev shard's port is refused without `--allow-shared`. |
 
-Output of all three goes under `build\` and contains renders of client art,
+| `tools\editor_asset_roundtrip\run.py` | A project's asset edits are exported, verified, and read back unchanged by a headless GUO client pointed at the export; a control run without the export must not match. `editor_smoke` runs it on its own fixtures. |
+
+Output of all of them goes under `build\` and contains renders of client art,
 so it is never committed.
+
+For a task-by-task walk-through (setup, world view, export, live tier) see
+[Manage Your Shard From the Editor](Manage-Your-Shard-From-The-Editor.md).

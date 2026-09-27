@@ -63,6 +63,69 @@ def build(project: Path) -> bool:
     return result.returncode == 0
 
 
+def world_tool(*args: str) -> tuple[int, str]:
+    tool = Path(__file__).resolve().parents[1] / "world" / "run.py"
+    r = subprocess.run([sys.executable, str(tool), *args], capture_output=True, text=True)
+    return r.returncode, r.stdout + r.stderr
+
+
+def asset_export_checks(cfg, project_dir: Path, out: Path) -> list[str]:
+    """Phase 5 after the editor: export the smoke's asset project, verify it,
+    prove verify catches a damaged patch, and prove an export into the install
+    is refused without anything being written there."""
+    failures = []
+    export = out / "asset_export"
+    code, text = world_tool("export", "--project", str(project_dir), "--out", str(export))
+    ok_export = code == 0 and (export / "verdata.mul").is_file() and (export / "hues.mul").is_file()
+    code, text = world_tool("verify", "--project", str(project_dir), "--out", str(export))
+    ok_verify = code == 0
+    if not ok_export or not ok_verify:
+        failures.append(f"asset export/verify failed:\n{text}")
+
+    # A damaged copy must fail verify: flip the last colour of the first patch.
+    tampered = out / "asset_export_tampered"
+    if tampered.exists():
+        shutil.rmtree(tampered)
+    shutil.copytree(export, tampered)
+    raw = bytearray((tampered / "verdata.mul").read_bytes())
+    count = int.from_bytes(raw[0:4], "little")
+    pos = int.from_bytes(raw[12:16], "little")
+    length = int.from_bytes(raw[16:20], "little")
+    if count > 0:
+        raw[pos + length - 2] ^= 0x1F
+    (tampered / "verdata.mul").write_bytes(bytes(raw))
+    code, _ = world_tool("verify", "--project", str(project_dir), "--out", str(tampered))
+    caught = code != 0
+    if not caught:
+        failures.append("verify passed a damaged verdata.mul")
+
+    # An export into UO_CLIENT_DATA is refused, and nothing is created there.
+    inside = cfg.client_data / "guo_export_refusal_probe"
+    before = sorted(p.name for p in cfg.client_data.iterdir())
+    code, text = world_tool("export", "--project", str(project_dir), "--out", str(inside))
+    after = sorted(p.name for p in cfg.client_data.iterdir())
+    refused = code == 1 and "REFUSED" in text and not inside.exists() and before == after
+    if not refused:
+        failures.append(f"an export into UO_CLIENT_DATA was not refused cleanly (exit {code}):\n{text}")
+
+    # The client half: a headless client reads the export through
+    # files_override and decodes the same pixels (tools/editor_asset_roundtrip).
+    roundtrip = Path(__file__).resolve().parents[1] / "editor_asset_roundtrip" / "run.py"
+    r = subprocess.run([sys.executable, str(roundtrip), "--project", str(project_dir),
+                        "--out", str(out / "asset_roundtrip"), "--no-build"], capture_output=True, text=True)
+    lines = [ln for ln in r.stdout.splitlines() if ln.startswith("[roundtrip]")]
+    client_ok = r.returncode == 0
+    if not client_ok:
+        failures.append("the client did not read the export back unchanged:\n" + "\n".join(lines[-8:]))
+
+    mark = "ok  " if not failures else "FAIL"
+    print(f"[editor_smoke]   {'ok  ' if client_ok else 'FAIL'} Client  {lines[-1][len('[roundtrip] '):] if lines else 'no output'}")
+    print(f"[editor_smoke]   {mark} Export  verdata.mul + hues.mul: export {'ok' if ok_export else 'FAILED'}, "
+          f"verify {'ok' if ok_verify else 'FAILED'}, damaged copy caught: {caught}, "
+          f"export into the install refused: {refused}")
+    return failures
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--headless", action="store_true", help="no window (the default; kept for old command lines)")
@@ -187,6 +250,17 @@ def main() -> int:
         for k in checks:
             if edit[k] is False:
                 print(f"[editor_smoke]        failed: {k}")
+    assets = report.get("assets") or {}
+    if assets:
+        print(f"[editor_smoke]   {'ok  ' if assets.get('ok') else 'FAIL'} Assets  land 0x0244, static 0x0E75, gump 0x0064, "
+              f"hue 33: {assets.get('applied')} applied, pixels differing "
+              f"{assets.get('land_pixels_differing')}/{assets.get('static_pixels_differing')}/{assets.get('gump_pixels_differing')}, "
+              f"hue {assets.get('hue_colours_matching')}/32, revert {assets.get('static_reverted_pixels_differing')} differing, "
+              f"World tab sees it: {assets.get('world_loader_sees_import')}")
+        project_dir = Path(assets["project"])
+        if assets.get("ok") and project_dir.is_dir():
+            failures += asset_export_checks(cfg, project_dir, out)
+
     shots = sorted(out.glob("editor_*.png"))
     if shots:
         print(f"[editor_smoke] screenshots : {len(shots)} in {out}")

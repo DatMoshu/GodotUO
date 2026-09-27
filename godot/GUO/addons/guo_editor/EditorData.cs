@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Godot;
@@ -66,6 +67,27 @@ public sealed class EditorData : IDisposable
     public event Action Loaded;
 
     /// <summary>
+    /// The asset half of the world project (ADR-0020): replaced art, gumps
+    /// and hues, laid over <see cref="Files"/> once loaded. Null until then.
+    /// </summary>
+    public AssetOverlay Assets { get; private set; }
+
+    private AssetOverlay.Applied _assetsApplied;
+
+    /// <summary>
+    /// Raised on the main thread after every application of the asset
+    /// overlay: when a project is opened, and after each import or revert.
+    /// </summary>
+    public event Action AssetsApplied;
+
+    /// <summary>The world project folder: UO_WORLD_PROJECT, or build\world\default.</summary>
+    public static string ProjectRoot()
+    {
+        string root = Setting("UO_WORLD_PROJECT", "");
+        return root.Length > 0 ? root : Path.Combine(RepoRoot, "build", "world", "default");
+    }
+
+    /// <summary>
     /// Starts loading the install unless that is already under way. Safe to
     /// call more than once.
     /// </summary>
@@ -115,6 +137,14 @@ public sealed class EditorData : IDisposable
         if (IsLoaded)
         {
             GD.Print($"[GUO editor] client data {ClientData} ({ClientVersion}) loaded in {LoadMilliseconds} ms");
+            try
+            {
+                OpenAssets(ProjectRoot());
+            }
+            catch (Exception ex)
+            {
+                GD.PrintErr($"[GUO editor] asset overlay: {ex.GetType().Name}: {ex.Message}");
+            }
         }
         else
         {
@@ -227,8 +257,46 @@ public sealed class EditorData : IDisposable
         return Image.CreateFromData(w, h, false, Image.Format.Rgba8, rgba);
     }
 
+    /// <summary>Opens the asset overlay of a world project and lays it over the loaders.</summary>
+    public AssetOverlay OpenAssets(string projectRoot)
+    {
+        _assetsApplied?.Dispose();
+        _assetsApplied = null;
+        Assets = new AssetOverlay(projectRoot);
+        ReapplyAssets();
+        return Assets;
+    }
+
+    /// <summary>
+    /// Re-reads the asset overlay from disk and lays it over the loaders
+    /// again; call after an import or a revert. Returns how many replacements
+    /// are applied.
+    /// </summary>
+    public int ReapplyAssets(AssetKind? kind = null, int id = -1)
+    {
+        if (!IsLoaded || Assets == null)
+        {
+            return 0;
+        }
+
+        _assetsApplied?.Dispose();
+        _assetsApplied = Assets.Apply(_files, "editor");
+        int n = _assetsApplied.ArtIndices.Count() + _assetsApplied.GumpIds.Count() + _assetsApplied.HueIds.Count();
+        if (n > 0)
+        {
+            GD.Print($"[GUO editor] asset overlay: {n} replacement(s) from {Assets.Root}");
+        }
+
+        AssetsApplied?.Invoke();
+        return n;
+    }
+
     public void Dispose()
     {
+        _assetsApplied?.Dispose();
+        _assetsApplied = null;
+        Assets = null;
+        AssetsApplied = null;
         // A load still running owns the files; let it finish so the handles
         // close, or the next assembly reload finds them mapped.
         try
@@ -283,11 +351,33 @@ public sealed class EditorData : IDisposable
     private static Dictionary<string, string> ParseConfigBat()
     {
         var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        string path = Path.Combine(RepoRoot, "launchers", "_shared", "config.bat");
+        string shared = Path.Combine(RepoRoot, "launchers", "_shared");
 
         // common.bat sets UO_ROOT before it calls config.bat, and config.bat
         // builds paths on it; outside a launcher it has to come from here.
         values["UO_ROOT"] = RepoRoot;
+
+        // config.bat calls config.local.bat (gitignored, the user's own
+        // paths) before its defaults, and every default is "if not defined",
+        // so a key the local file sets wins. tools/guo/config.py reads the
+        // two files the same way.
+        Dictionary<string, string> local = ParseBat(Path.Combine(shared, "config.local.bat"), values);
+        foreach (var (k, v) in ParseBat(Path.Combine(shared, "config.bat"), new Dictionary<string, string>(local, StringComparer.OrdinalIgnoreCase)))
+        {
+            values[k] = v;
+        }
+
+        foreach (var (k, v) in local)
+        {
+            values[k] = v;
+        }
+
+        return values;
+    }
+
+    private static Dictionary<string, string> ParseBat(string path, Dictionary<string, string> seed)
+    {
+        var values = new Dictionary<string, string>(seed, StringComparer.OrdinalIgnoreCase);
         if (!File.Exists(path))
         {
             return values;
