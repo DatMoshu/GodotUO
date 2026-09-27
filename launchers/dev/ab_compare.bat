@@ -10,7 +10,10 @@ REM  other.
 REM
 REM  Needs launchers\shard\run.bat going in another terminal. The
 REM  ClassicUO half drives its window by hand -- it brings it to the front
-REM  and types into it -- so leave the desktop alone while it runs.
+REM  and types into it with the desktop's keyboard -- so it only runs with
+REM  --allow-foreground, and you leave the desktop alone while it does.
+REM  Without the flag the default run stops with a message; --only guo
+REM  never touches a window and needs nothing.
 REM
 REM  Pass --only guo, --only cuo or --place <name> to redo part of it.
 REM ============================================================================

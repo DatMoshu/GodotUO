@@ -121,7 +121,15 @@ namespace GUO
         /// <c>Game.IsActive</c>; the profile setting ReduceFPSWhenInactive and
         /// the audio manager both hang off it.
         /// </summary>
-        public bool IsActive => DisplayServer.WindowIsFocused();
+        /// <remarks>
+        /// PORT DEVIATION (GUO): a scripted run keeps its window unfocusable
+        /// (Main.NoFocus) so it cannot take the keyboard from whoever is
+        /// working at the desktop. Such a window is never focused, and read
+        /// literally that would put every probe on ReduceFPSWhenInactive's
+        /// 5 Hz tick. The thing driving it is in-process, so it counts as
+        /// active.
+        /// </remarks>
+        public bool IsActive => DisplayServer.WindowIsFocused() || GUO.Host.Main.NoFocus;
 
         /// <summary>
         /// Raised when the window takes and loses focus. Upstream gets these
