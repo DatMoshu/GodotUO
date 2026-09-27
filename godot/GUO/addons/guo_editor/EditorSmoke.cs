@@ -597,15 +597,20 @@ public partial class EditorSmoke : Node
     // clear of its paperdoll (about 110 px right of centre).
     private const int LiveX = 1167, LiveY = 1666;
 
+    /// <summary>The facet the live check edits (--guo-editor-live-facet; map0 by default).</summary>
+    private int _liveFacet;
+
     private void StartLive()
     {
         _liveRole = ArgValue(LiveFlag);
+        _liveFacet = int.TryParse(ArgValue("--guo-editor-live-facet"), out int lf) ? lf : 0;
+        _live["facet"] = _liveFacet;
         _report["live"] = _live;
         _live["role"] = _liveRole;
         EditorInterface.Singleton.SetMainScreenEditor(GuoEditorPlugin.WorldTabName);
         _world.Visible = true;
         _world.OpenProject(Path.Combine(_out, $"world_project_{_liveRole}"));
-        _world.GoTo(0, EditX, EditY);
+        _world.GoTo(_liveFacet, EditX, EditY);
         _world.Guides.Blocks = false;
 
         int port = int.TryParse(ArgValue("--guo-editor-live-port"), out int p) ? p : 2595;
@@ -632,7 +637,7 @@ public partial class EditorSmoke : Node
 
         if (_liveRole == "follow")
         {
-            if (_shard.LastRemote is { } r && r.Bx == EditBx && r.By == EditBy)
+            if (_shard.LastRemote is { } r && r.Facet == _liveFacet && r.Bx == EditBx && r.By == EditBy)
             {
                 _live["received_from"] = r.From;
                 _live["received_ms"] = r.ReceivedMs;
@@ -664,7 +669,7 @@ public partial class EditorSmoke : Node
                     _data.CurrentArt = EditorData.LandCount + 0x0CE3;
                     _liveSent = now;
                     _live["sent_ms"] = now;
-                    bool ok = _world.Editor.Stamp(0, LiveX, LiveY, _world.Host.World.Map.GetTileZ(LiveX, LiveY), 0x0CE3, 0);
+                    bool ok = _world.Editor.Stamp(_liveFacet, LiveX, LiveY, _world.Host.World.Map.GetTileZ(LiveX, LiveY), 0x0CE3, 0);
                     _live["stamped"] = ok;
                     _livePhase = 1;
                 }

@@ -222,11 +222,21 @@ editor draws it.
 Conflicts: the last write to a block wins, and every relayed block names its
 author in the dock's log.
 
-**UOP-only installs:** the client's UltimaLive keeps its own copy of each
-map. Upstream makes that copy blank on an install without `map<N>.mul`. GUO's
-branch carries one marked change that copies the export's `map<N>.mul`
-instead (ADR-0012). Whether to keep that change is still the owner's
-decision.
+**UOP installs work on every facet.** UltimaLive keeps the client's own copy
+of each map. Upstream ClassicUO makes that copy blank on a UOP-only install
+(no `map<N>.mul`). GUO builds a real copy instead (ADR-0012):
+
+- from your export's `map<N>.mul` when the client uses the export's
+  `files_override`, so the copy carries your edits;
+- otherwise by converting the install's `map<N>LegacyMUL.uop` itself.
+
+The private shard offers all six facets. Checked on 2026-09-27: with no
+export at all, a client's copies of all six equalled the install block for
+block, and a live stamp reached it.
+
+A client keeps its copies once made. After you export a new version, delete
+`%ProgramData%\GUO-Editor-Private\` on that machine so the next login makes
+fresh ones.
 
 ## Checks, in one place
 

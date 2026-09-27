@@ -10,6 +10,21 @@ Accepted
 
 ## Last Verified
 
+2026-09-27 (UOP conversion, approved by the owner): `python
+tools\editor_live\run.py --no-export` passes on the private shard with the
+install alone. No export and no `files_override` are involved.
+- The bridge offers all six facets. The client converts each
+  `map<N>LegacyMUL.uop` to its UltimaLive copy, all six in under a second.
+- Every copy equals the install block for block (map0 and map1 458,752
+  blocks each, map2 57,600, map3 and map5 81,920, map4 32,761).
+- The live stamp reaches the client and editor B (30 ms).
+- With `--export <folder>`, the client still takes the export's `map0.mul`
+  (path 1 below).
+- `--no-export --facet 1`: the same on Trammel. The character is moved there
+  with `[self set map trammel`, the stamp reaches it (pushed to 1 client,
+  70 ms editor to editor), and the client logs no exception. The first run of
+  this found the per-map hash query gap described under Context, and fixed it.
+
 2026-09-27: `python tools\editor_live\run.py` passes on the private shard.
 Editor A stamps a tree through the World tab. The shard applies the block to
 its own map, pushes it to 1 UltimaLive client and relays it to 1 editor. The
@@ -61,8 +76,14 @@ background thread, handed to the main thread each frame.
 - **The client's UltimaLive** (a survey of `UltimaLive.cs`, then running it):
   - The server must send `0x3F/0x02` (shard name), then `0x3F/0x01` (maps).
   - The client builds its per-map CRC table only when the server sends a hash
-    query (`0x3F/0xFF`). An update before any query throws (line 473). The
-    bridge therefore sends one query at login.
+    query (`0x3F/0xFF`) **for that map**. An update on a map never queried
+    throws (`OnUpdateTerrainPacket`, `OnUltimaLivePacket`). The bridge
+    therefore queries each client once per map. It does so at login, and
+    whenever the client is found on a new map: before a push, and on a
+    one-second check, since ModernUO has no map-change event. It then sends
+    that client every block changed on that map since boot, which it missed
+    while elsewhere. (Until 2026-09-27 it queried only the login map, and the
+    first push on another map threw in the client.)
   - The client keeps map copies in `%ProgramData%\<shard name>\`. It makes
     them from the loaded map file, and for a UOP map that path is commented
     out upstream, so on this UOP-only install it wrote **blank** maps. That was
@@ -93,19 +114,40 @@ background thread, handed to the main thread each frame.
   list, which a client logging in later receives after its UltimaLive setup.
   It is not written to the shard's data files: the world project is the
   source of truth, and export plus a restart (ADR-0011) make edits permanent.
-- It offers only the facets it has MUL copies for (`GUO_BRIDGE_MAPS`, default
-  `0`). Listing a map makes the client build a copy for it, and a map without
-  a MUL would get a blank one.
+- It offers every facet (`GUO_BRIDGE_MAPS`, default `0,1,2,3,4,5` as
+  `tools/editor_shard` starts it). Listing a map makes the client build a copy
+  for it; since the UOP conversion below, a UOP-only client builds a real copy
+  of each. (Before it, only map0 was offered, because other facets would have
+  been blank.)
 - It passes each map's season to editors, which then draw the season the
   shard's clients see.
 
-### The client (one PORT DEVIATION)
+### The client (one PORT DEVIATION, approved by the owner 2026-09-27)
 
-`UltimaLive.CheckForShardMapFile` copies `GetUOFilePath("map<N>.mul")` when
-there is no shard copy yet. `GetUOFilePath` honours `files_override`, and
-`tools/world` writes a `map<N>.mul` beside every export. On a MUL install this
-is what upstream's own MUL branch does; on a UOP install it replaces the blank
-map. The client's other UltimaLive code is untouched.
+`UltimaLive.CheckForShardMapFile` must build the client's own copy of each map
+the shard lists. Upstream finds nothing to copy on a UOP-only install:
+
+- the UltimaLive loader's map readers are still empty at that point, so
+  `GetMapFile` is null;
+- its UOP conversion is commented out anyway.
+
+It then writes a **blank** map. GUO's block, before upstream's logic, does
+two things in order:
+
+1. **Copy a `map<N>.mul`** that `GetUOFilePath` finds. On a MUL install this
+   is the install's own map, as upstream's MUL branch copies. With
+   `files_override` on a `tools/world` export, it is the exported map, edits
+   included.
+2. **Otherwise, convert `map<N>LegacyMUL.uop`.** Each UOP entry holds 4096
+   consecutive 196-byte blocks, the MUL layout `MapLoader` itself reads.
+   `ConvertUopMap` writes the entries in order to a temporary file, checks the
+   size against the facet's block count, and renames it into place. A failure
+   is logged and leaves no partial file, and upstream's path then runs as
+   before.
+
+Statics are MUL on UOP installs too, so upstream's own statics copy is
+unchanged, as is the rest of the client's UltimaLive code. The owner chose to
+keep this in GUO and not to offer it to ClassicUO.
 
 ### The editor
 
@@ -151,10 +193,12 @@ covers both.
 
 - Live edits on the shard are lost at restart unless exported (by design; the
   project holds them).
-- UltimaLive copies of the whole map (about 110 MB per facet) live in
+- UltimaLive copies of the whole map (90 MB for each of map0 and map1, 6-16 MB for the others) live in
   `%ProgramData%\GUO-Editor-Private\` on each client machine;
   `tools/editor_live` clears them before its check.
-- Only facets with a MUL copy are live (`GUO_BRIDGE_MAPS`).
+- A client keeps its UltimaLive copies once made. A later export (or a newer
+  install) is not picked up until `%ProgramData%\<shard name>\` is cleared,
+  which is upstream behaviour. `tools/editor_live` clears it before each check.
 - The NPC pathing `StepCache` is not refreshed after a block changes.
   Monsters may path through a new wall until their cache chunk reloads.
 

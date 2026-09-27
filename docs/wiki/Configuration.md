@@ -89,7 +89,7 @@ not settings.
 | `UO_LOG_LEVEL` | `INFO` | Log level for the Python tools. |
 | `UO_COMMON_CONFIG` | unset | Path of a central config `.bat` read after `config.bat`, for a repo hosting several projects. |
 | `UO_PROFILE_PLATFORM` | unset | Runtime only: force the per-platform profile table (`desktop`, `mobile`, `web`) on the desktop, for checks. See [Mobile UI](Mobile-UI.md). |
-| `GUO_BRIDGE_MAPS` | `0` | Which maps the editor's ModernUO bridge assembly serves (ADR-0012). |
+| `GUO_BRIDGE_MAPS` | `0,1,2,3,4,5` | Which maps the editor's ModernUO bridge assembly serves (ADR-0012). |
 
 ## Where the client keeps its own settings
 

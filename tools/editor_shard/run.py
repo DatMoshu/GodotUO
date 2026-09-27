@@ -56,6 +56,11 @@ from guo import load_config  # noqa: E402
 LEAVE_OUT = {"Archives", "Backups", "Logs", "temp"}
 
 
+# Every facet is offered to UltimaLive clients: a UOP-only client converts
+# its own map copies from the install (ADR-0012), so no facet goes blank.
+ALL_FACETS = "0,1,2,3,4,5"
+
+
 def home(cfg) -> Path:
     return cfg.build / "shard_private"
 
@@ -140,7 +145,7 @@ def cmd_start(cfg, data_first: Path | None) -> int:
     env = {**__import__("os").environ,
            "GUO_BRIDGE_PORT": str(state.get("bridge_port", 2595)),
            "GUO_BRIDGE_SHARD": state.get("bridge_shard", "GUO-Editor-Private"),
-           "GUO_BRIDGE_MAPS": state.get("bridge_maps", "0")}
+           "GUO_BRIDGE_MAPS": state.get("bridge_maps", ALL_FACETS)}
     proc = subprocess.Popen([str(exe)], cwd=str(h), env=env, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
                             creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0))
     state.update({"pid": proc.pid, "data_first": str(data_first.resolve()) if data_first else None,

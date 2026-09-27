@@ -832,19 +832,32 @@ namespace GUO.Game
                 string staIdxPath = Path.Combine(_UL.ShardName, $"staidx{mapId}.mul");
                 string staticsPath = Path.Combine(_UL.ShardName, $"statics{mapId}.mul");
 
-                // PORT DEVIATION (GUO): on a UOP-only install GetMapFile below
-                // yields nothing copyable (the UOP conversion is commented out
-                // upstream), so the shard copy became a BLANK map and the
-                // client drew no world. A map{N}.mul that GetUOFilePath finds
-                // (files_override: tools/world writes one beside every export)
-                // is copied instead, which is what the MUL branch does anyway.
-                // See ADR-0012.
-                // OWNER DECISION PENDING: this goes beyond pure parity and has
-                // not been approved (director hand-off 2026-09-27, 4.5). If it
-                // is declined, delete this block up to END PORT DEVIATION.
+                // PORT DEVIATION (GUO): UltimaLive on UOP installs (ADR-0012,
+                // approved by the owner 2026-09-27). Upstream finds nothing to
+                // copy here on a UOP-only install: this loader's map readers
+                // are still empty, so GetMapFile below is null, and its UOP
+                // conversion is commented out anyway. The shard copy then
+                // became a BLANK map and the client drew no world. Instead:
+                //  1. a map{N}.mul that GetUOFilePath finds is copied. On a MUL
+                //     install that is the install's own map, as upstream's MUL
+                //     branch would copy; with files_override on a tools/world
+                //     export it is the exported map, edits included;
+                //  2. otherwise the install's map{N}LegacyMUL.uop is converted:
+                //     each UOP entry holds 4096 consecutive 196-byte blocks,
+                //     the MUL layout, exactly as MapLoader reads them.
                 if (!File.Exists(mapPath) && File.Exists(oldMap))
                 {
                     CopyFile(oldMap, mapPath);
+                }
+
+                if (!File.Exists(mapPath))
+                {
+                    string uopPath = FileManager.GetUOFilePath($"map{mapId}LegacyMUL.uop");
+
+                    if (File.Exists(uopPath))
+                    {
+                        ConvertUopMap(mapId, uopPath, mapPath);
+                    }
                 }
                 // END PORT DEVIATION (GUO)
 
@@ -989,6 +1002,88 @@ namespace GUO.Game
             }
 
             //TODO: pull out into a FileHelper
+            // PORT DEVIATION (GUO): the UOP to MUL map conversion used by
+            // CheckForShardMapFile (see there). Written to a temporary file and
+            // renamed, so a failed conversion never leaves a half map that the
+            // next run would take as the shard copy.
+            private void ConvertUopMap(int mapId, string uopPath, string mapPath)
+            {
+                long wanted = (long)MapBlocksSize[mapId, 0] * MapBlocksSize[mapId, 1] * 196;
+                string temp = mapPath + ".converting";
+
+                try
+                {
+                    using (var uop = new UOFileUop(uopPath, $"build/map{mapId}legacymul/{{0:D8}}.dat"))
+                    {
+                        uop.FillEntries();
+                        Log.Trace($"UltimaLive -> converting file:\t{mapPath} from {uopPath}");
+
+                        using (var source = new FileStream(uopPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                        using (var target = File.Create(temp))
+                        {
+                            var buffer = new byte[196 * 4096];
+                            long written = 0;
+
+                            for (int e = 0; e < uop.Entries.Length && (wanted <= 0 || written < wanted); e++)
+                            {
+                                ref var entry = ref uop.Entries[e];
+                                long length = entry.Length;
+
+                                if (wanted > 0)
+                                {
+                                    length = Math.Min(length, wanted - written);
+                                }
+
+                                if (length <= 0)
+                                {
+                                    // A missing entry would shift every block after it.
+                                    throw new InvalidDataException($"map{mapId} UOP entry {e} is empty");
+                                }
+
+                                source.Seek(entry.Offset, SeekOrigin.Begin);
+
+                                for (long left = length; left > 0;)
+                                {
+                                    int n = source.Read(buffer, 0, (int)Math.Min(buffer.Length, left));
+
+                                    if (n <= 0)
+                                    {
+                                        throw new EndOfStreamException($"map{mapId} UOP entry {e} is cut short");
+                                    }
+
+                                    target.Write(buffer, 0, n);
+                                    left -= n;
+                                }
+
+                                written += length;
+                            }
+
+                            if (wanted > 0 && written != wanted)
+                            {
+                                throw new InvalidDataException($"map{mapId}: converted {written} bytes, the map needs {wanted}");
+                            }
+
+                            Log.Trace($"UltimaLive -> converted {written / 196} blocks of map{mapId}");
+                        }
+                    }
+
+                    File.Move(temp, mapPath, true);
+                }
+                catch (Exception ex)
+                {
+                    Log.Error($"UltimaLive -> could not convert {uopPath}: {ex.Message}");
+
+                    try
+                    {
+                        File.Delete(temp);
+                    }
+                    catch (IOException)
+                    {
+                    }
+                }
+            }
+            // END PORT DEVIATION (GUO)
+
             private static void CopyFile(string fromFilePath, string toFilePath)
             {
                 if (!File.Exists(toFilePath) || new FileInfo(toFilePath).Length == 0)

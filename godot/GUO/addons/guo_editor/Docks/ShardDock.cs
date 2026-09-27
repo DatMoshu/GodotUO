@@ -27,7 +27,7 @@ public partial class ShardDock : EditorDock
     private RichTextLabel _log;
 
     /// <summary>The last block another editor sent: who, where, when received (unix ms), and latency if known.</summary>
-    public (string From, int Bx, int By, long ReceivedMs, long LatencyMs)? LastRemote { get; private set; }
+    public (string From, int Facet, int Bx, int By, long ReceivedMs, long LatencyMs)? LastRemote { get; private set; }
 
     /// <summary>The last acknowledgement: clients and editors the shard passed the block to.</summary>
     public (int Clients, int Editors, long SentMs, long AckMs)? LastAck { get; private set; }
@@ -200,7 +200,7 @@ public partial class ShardDock : EditorDock
                     WorldBlock b = ShardLink.ToBlock(msg);
                     long latency = msg["sent_ms"] is JsonNode sent ? now - (long)sent : -1;
                     _world?.Editor.ApplyRemote(b, from);
-                    LastRemote = (from, b.Bx, b.By, now, latency);
+                    LastRemote = (from, b.Facet, b.Bx, b.By, now, latency);
                     Log($"{from} changed block map{b.Facet} {b.Bx},{b.By}" + (latency >= 0 ? $" ({latency} ms after they sent it)" : ""));
                     break;
                 }
