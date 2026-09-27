@@ -89,7 +89,7 @@ CI** — the console build blocks and writes to stdout.
 |---|---|---|
 | **Windows** | `launchers\game\play.bat`, or a build from the `release` workflow's artifacts | Plays on a local shard |
 | **Android** (ARM64) | `launchers\android\doctor.bat`, then `launchers\android\smoke.bat` — [docs/wiki/Android-Build.md](docs/wiki/Android-Build.md) | Debug build; runs on one device, including its second screen |
-| **Steam Deck** (SteamOS) | `launchers\steamdeck\doctor.bat`, then `launchers\steamdeck\smoke.bat` — [docs/steamdeck.md](docs/steamdeck.md) | Exports, installs over ssh and starts; not yet at the login screen |
+| **Steam Deck** (SteamOS) | `launchers\steamdeck\doctor.bat`, then `launchers\steamdeck\smoke.bat` — [docs/steamdeck.md](docs/steamdeck.md) | Exports, installs over ssh and reaches the login screen (ADR-0018) |
 | **Godot editor** | `launchers\editor\open_project.bat` — [docs/wiki/Editor.md](docs/wiki/Editor.md) | Browse the UO data, edit the world, export it to a shard |
 | **Web** | `launchers\web\doctor.bat` | Blocked upstream: Godot 4.7 cannot export C# to the web ([ADR-0008](docs/architecture/ADR-0008-web-target.md)) |
 

@@ -2,9 +2,14 @@
 
 ## Status
 
-Proposed — 2026-09-26. Becomes Accepted when `launchers\steamdeck\smoke.bat`
-exits 0 on a Deck that holds the UO client data (`[GUO] login probe: ok` in
-its `guo.log`, the login gump in `build\steamdeck\smoke.png`).
+Accepted — 2026-09-27. `launchers\steamdeck\smoke.bat` exited 0 on a Deck
+(SteamOS 3, Desktop mode) holding the UO client data: the files loaded in
+2646 ms and the login gump rendered. It needed one fix first: native zlib
+is used on Windows only, because upstream's `zlibVersion()` declaration
+makes the marshaller free() zlib's static string on Linux (merge of
+work/deck-crash, b8f882d).
+
+It was Proposed on 2026-09-26, until a Deck held the data.
 
 What has run on a real Deck so far (SteamOS 3, Desktop mode, over ssh):
 `doctor`, `export`, `push`, `run`, `screenshot`, and `smoke` down to its

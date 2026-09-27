@@ -13,7 +13,7 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 - **Dual screen**: on a device with a second display (such as the AYN Thor)
   the lower screen opens with the client, shows a welcome panel before
   login, and holds shelved gumps in fixed slots during play. ADR-0009.
-- **Steam Deck**: export, push over ssh, run, screenshot and smoke from
+- **Steam Deck**: reaches the login screen. Export, push over ssh, run, screenshot and smoke from
   `launchers\steamdeck\`; a Steam shortcut too. ADR-0018 (proposed).
 - **Windows**: `tools/windows` exports a stand-alone build with the GUO
   sigil as its icon.
