@@ -12,7 +12,7 @@ namespace GUO.Game.Managers
     /// <summary>
     /// Where a container gump goes on a screen with no room to spare: clear
     /// of the character, inside the client area, above the touch gump bar,
-    /// and not on top of a container that is already open.
+    /// and not on top of a gump that is already open.
     /// </summary>
     /// <remarks>
     /// PORT DEVIATION (GUO): upstream cascades containers from the top left,
@@ -26,12 +26,13 @@ namespace GUO.Game.Managers
     /// A position the client remembered (a container reopened, or restored
     /// from gumps.xml at login) is kept, moved just enough to be inside the
     /// area, unless it covers the character: the old cascade put it there,
-    /// not the player, so it is placed afresh. A new container goes to the
+    /// not the player, so it is placed afresh. One that covers another open
+    /// gump gives way only to a spot covering less. A new container goes to the
     /// right-most, then top-most, free spot, scanning in 20 px steps; the
     /// right edge first because the character stands in the middle and the
     /// touch bar runs along the bottom. When nothing is free (a bank box at
     /// 130 % on a phone is wider and taller than half the screen) it takes
-    /// the spot covering the least of the character and the open containers,
+    /// the spot covering the least of the character and the open gumps,
     /// and a container taller than the area gives up the top bar's row
     /// rather than the touch bar's.
     /// </remarks>
@@ -61,8 +62,12 @@ namespace GUO.Game.Managers
             return Place(serial, new Point((int)(gumpInfo.UV.Width * scale), (int)(gumpInfo.UV.Height * scale)), proposed, remembered);
         }
 
-        /// <summary>As above, for a gump whose size is known (GridContainerGump).</summary>
-        public static Point Place(uint serial, Point size, Point proposed, bool remembered)
+        /// <summary>
+        /// As above, for a gump whose size is known (GridContainerGump, a
+        /// restored gump); <paramref name="self"/> is the gump being placed
+        /// when it is already open, so it does not count as covered.
+        /// </summary>
+        public static Point Place(uint serial, Point size, Point proposed, bool remembered, Gump self = null)
         {
             int width = size.X;
             int height = size.Y;
@@ -70,18 +75,24 @@ namespace GUO.Game.Managers
             Rectangle area = UsableArea();
             Rectangle keepOut = KeepOut();
 
-            if (remembered)
-            {
-                Point kept = Clamp(proposed, width, height, area);
+            // A remembered spot clear of the character is kept when it covers
+            // no other gump, and otherwise only beaten by a spot covering less
+            // (a restored paperdoll may have been moved onto it).
+            Point kept = Clamp(proposed, width, height, area);
+            long keptCover = long.MaxValue;
 
-                if (!new Rectangle(kept.X, kept.Y, width, height).Intersects(keepOut))
+            if (remembered && !new Rectangle(kept.X, kept.Y, width, height).Intersects(keepOut))
+            {
+                keptCover = CoveredGumps(new Rectangle(kept.X, kept.Y, width, height), serial, self);
+
+                if (keptCover == 0)
                 {
                     return kept;
                 }
             }
 
             // The right-most, then top-most, spot that covers the least of the
-            // character and of the open containers; a free spot covers none
+            // character and of the open gumps; a free spot covers none
             // and ends the scan. A container too big for a free spot (a bank
             // box at 130 % on a phone) still gets the least bad one rather
             // than a cascade on top of everything.
@@ -89,12 +100,41 @@ namespace GUO.Game.Managers
             long bestCover = long.MaxValue;
             int top = Math.Min(area.Y, Math.Max(Margin, area.Bottom - height));
 
+            List<int> xs = new List<int>();
+            List<int> ys = new List<int>();
+
             for (int x = Math.Max(area.X, area.Right - width); x >= area.X; x -= Step)
             {
-                for (int y = top; y == top || y + height <= area.Bottom; y += Step)
+                xs.Add(x);
+            }
+
+            for (int y = top; y == top || y + height <= area.Bottom; y += Step)
+            {
+                ys.Add(y);
+            }
+
+            // Flush against the edges of the character's area and of the open
+            // gumps too, which a 20 px step would miss by a sliver.
+            AddEdges(xs, ys, keepOut, width, height, area, top);
+
+            foreach (Gump gump in UIManager.Gumps)
+            {
+                if (gump != self && !gump.IsDisposed && gump.IsVisible && !(gump is WorldViewportGump))
+                {
+                    Point other = Measure(gump);
+                    AddEdges(xs, ys, new Rectangle(gump.X, gump.Y, other.X, other.Y), width, height, area, top);
+                }
+            }
+
+            xs.Sort((l, r) => r.CompareTo(l));
+            ys.Sort();
+
+            foreach (int x in xs)
+            {
+                foreach (int y in ys)
                 {
                     Rectangle candidate = new Rectangle(x, y, width, height);
-                    long cover = Overlap(candidate, keepOut) + CoveredContainers(candidate, serial);
+                    long cover = Overlap(candidate, keepOut) + CoveredGumps(candidate, serial, self);
 
                     if (cover < bestCover)
                     {
@@ -109,7 +149,7 @@ namespace GUO.Game.Managers
                 }
             }
 
-            return best;
+            return bestCover < keptCover ? best : kept;
         }
 
         /// <summary>
@@ -153,9 +193,29 @@ namespace GUO.Game.Managers
                 }
 
                 Point from = gump.Location;
-                gump.Location = Place(gump.LocalSerial, size, from, false);
+                gump.Location = Place(gump.LocalSerial, size, from, false, gump);
 
                 Godot.GD.Print($"[GUO] restored {gump.GetType().Name} moved off the character: {from.X},{from.Y} -> {gump.X},{gump.Y}");
+            }
+        }
+
+        /// <summary>Candidate spots just left of, right of, above and below a rectangle, when inside the area.</summary>
+        private static void AddEdges(List<int> xs, List<int> ys, Rectangle r, int width, int height, Rectangle area, int top)
+        {
+            foreach (int x in new[] { r.X - width, r.Right })
+            {
+                if (x >= area.X && x + width <= area.Right && !xs.Contains(x))
+                {
+                    xs.Add(x);
+                }
+            }
+
+            foreach (int y in new[] { r.Y - height, r.Bottom })
+            {
+                if (y >= top && y + height <= area.Bottom && !ys.Contains(y))
+                {
+                    ys.Add(y);
+                }
             }
         }
 
@@ -237,17 +297,32 @@ namespace GUO.Game.Managers
             return new Rectangle(cx - halfW, cy - halfH, halfW * 2, halfH * 2);
         }
 
-        /// <summary>Area, in client px, of the open containers other than this one that the candidate covers.</summary>
-        private static long CoveredContainers(Rectangle candidate, uint serial)
+        /// <summary>
+        /// Area, in client px, of the open gumps the candidate covers: every
+        /// visible gump but the world view, the top bar (already outside the
+        /// area), the gump being placed, and a container gump for the same
+        /// container (the classic view a grid is replacing).
+        /// </summary>
+        private static long CoveredGumps(Rectangle candidate, uint serial, Gump self)
         {
             long covered = 0;
 
             foreach (Gump gump in UIManager.Gumps)
             {
-                if ((gump is ContainerGump || gump is GridContainerGump) && !gump.IsDisposed && gump.IsVisible && gump.LocalSerial != serial)
+                if (
+                    gump == self
+                    || gump.IsDisposed
+                    || !gump.IsVisible
+                    || gump is WorldViewportGump
+                    || gump is TopBarGump
+                    || (gump is ContainerGump || gump is GridContainerGump) && gump.LocalSerial == serial
+                )
                 {
-                    covered += Overlap(candidate, new Rectangle(gump.X, gump.Y, gump.Width, gump.Height));
+                    continue;
                 }
+
+                Point size = Measure(gump);
+                covered += Overlap(candidate, new Rectangle(gump.X, gump.Y, size.X, size.Y));
             }
 
             return covered;

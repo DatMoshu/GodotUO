@@ -193,6 +193,47 @@ internal static class UiProbe
             }
         }
 
+        // Other open gumps (a restored paperdoll, the journal) the
+        // containers were placed over: logged, and a fail only when a
+        // container covers most of one.
+        if (backpack != null && ContainerPlacement.Active(p))
+        {
+            foreach (Gump placed in new[] { backpack, inner })
+            {
+                if (placed == null)
+                {
+                    continue;
+                }
+
+                Compat.Rectangle r = Rect(placed);
+
+                foreach (Gump other in UIManager.Gumps)
+                {
+                    if (
+                        other == placed || other == backpack || other == inner || other.IsDisposed || !other.IsVisible
+                        || other is WorldViewportGump || other is TopBarGump || other.Width == 0 || other.Height == 0
+                    )
+                    {
+                        continue;
+                    }
+
+                    Compat.Rectangle o = Compat.Rectangle.Intersect(r, Rect(other));
+                    long covered = (long)o.Width * o.Height;
+
+                    if (covered > 0)
+                    {
+                        long pct = covered * 100 / ((long)other.Width * other.Height);
+
+                        GD.Print($"[GUO] ui probe: placement: {Kind(placed)} covers {pct}% of {other.GetType().Name} at {other.X},{other.Y}");
+
+                        Passed &= pct <= 50;
+                    }
+                }
+            }
+
+            GD.Print("[GUO] ui probe: placement: other gumps checked");
+        }
+
         // The grid view: the gump the profile asked for, a slot per item.
         if (p.GridContainers && backpack != null)
         {
