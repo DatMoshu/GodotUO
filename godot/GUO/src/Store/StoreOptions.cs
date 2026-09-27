@@ -14,15 +14,17 @@ namespace GUO.Store;
 
 internal static class StoreOptions
 {
-    public static string Url => System.Environment.GetEnvironmentVariable("UO_STORE_URL") ?? "http://127.0.0.1:18865";
-    public static StoreClient CreateClient() => new(Url, ProjectSettings.GlobalizePath("user://store"), PlatformDefaults.CurrentVersion);
+    public static string Url => StoreAddress.Load(ProfileManager.CurrentProfile == null ? null : ProfileManager.ProfilePath,
+        System.Environment.GetEnvironmentVariable("UO_STORE_URL") ?? StoreAddress.Default);
+    public static StoreClient CreateClient(string url = null) => new(url ?? Url, ProjectSettings.GlobalizePath("user://store"), PlatformDefaults.CurrentVersion);
 
     // Called from one marked block in Options. The existing Apply path remains
     // authoritative: a store choice fills the existing mode and path controls.
     public static Combobox Attach(Control section, Combobox original, List<CanvasBackgroundSettings> choices,
         List<string> titles, Action<string> setPath, Profile profile)
     {
-        using var client = CreateClient();
+        // Installed content remains available when the saved endpoint is invalid/offline.
+        using var client = CreateClient(StoreAddress.Default);
         foreach (var m in client.Installed().Where(m => m.Kind == "background").OrderBy(m => m.Title).ThenBy(m => StorePack.Version(m.Version)))
         {
             string media = m.Files.Keys.FirstOrDefault(p => p.EndsWith(".ogv", StringComparison.OrdinalIgnoreCase));
@@ -56,4 +58,3 @@ internal static class StoreOptions
         }
     }
 }
-

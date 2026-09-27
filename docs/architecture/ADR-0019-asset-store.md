@@ -88,3 +88,5 @@ at that port. A worktree needs the usual shared engine/upstream paths and
 an ignored classic `.sln` file for Godot's build callback.
 
 The full dev smoke passes on the rebased main native-loader fix, including the headless editor checks. The client build has no errors and seven inherited warnings.
+
+Store addresses can be saved per character in a Store-owned profile sidecar (data formats section 12), without changing the profile version. The Store window validates HTTP(S) addresses and reports connection failures; pack verification remains unchanged.
