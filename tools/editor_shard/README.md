@@ -56,7 +56,7 @@ So the shard reads the export.
 ## Repeating it on the shared dev shard (for the owner)
 
 This restarts the shared shard, so run it only when nobody else is on it.
-From the main checkout (`D:\_uo\Godot\UO_Port`), with the export built as
+From your main checkout (not a worktree), with the export built as
 above:
 
 1. Back up `tools\modernuo\src\Distribution\Configuration\modernuo.json` and
