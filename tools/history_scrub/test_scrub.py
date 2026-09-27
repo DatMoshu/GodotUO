@@ -17,7 +17,7 @@ class ScrubTest(unittest.TestCase):
                 return subprocess.check_output(["git", "-C", str(root), *args], stderr=subprocess.DEVNULL).decode().strip()
             git("init", "-b", "main")
             git("config", "user.name", "Synthetic test")
-            git("config", "user.email", "test@example.invalid")
+            git("config", "user.email", "test@example.com")
             (root / "base.txt").write_text("safe baseline\n")
             git("add", "."); git("commit", "-m", "baseline")
             baseline = git("rev-parse", "HEAD")
