@@ -44,6 +44,7 @@ obj/
 *.VC.db
 # Godot generates the solution; the .csproj is authored and IS tracked.
 godot/GUO/GUO.sln
+godot/GUO/GUO.slnx
 
 # === Build output =========================================================
 builds/
@@ -117,9 +118,10 @@ secrets.json
 *.idx
 *.enu
 *.def
+cliloc.*
+Cliloc.*
 
-# Agent worktrees and the Godot export templates fetched beside the engine.
-.claude/worktrees/
+# The Godot export templates fetched beside the engine.
 tools/godot/templates/
 
 # Press kit: kept locally, out of the repo for now
@@ -127,3 +129,18 @@ design/press-kit/
 
 # Godot 4.4+ resource UIDs for C# scripts; the editor regenerates them.
 *.uid
+
+# === Device builds and signing ============================================
+# APKs, bundles and keystores are built per machine; a keystore is a secret.
+*.apk
+*.aab
+*.idsig
+*.keystore
+*.jks
+
+# === Agent coordination ===================================================
+# Director/Codex hand-over notes and session hand-offs name local machines,
+# devices and accounts; they stay on the machine that wrote them.
+codex_message.md
+codex_reply.md
+docs/handoff_*.md
