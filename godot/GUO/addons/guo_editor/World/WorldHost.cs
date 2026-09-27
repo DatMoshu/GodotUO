@@ -46,6 +46,31 @@ internal sealed class WorldHost : IDisposable
     /// <summary>The world project laid over the map, or null.</summary>
     public WorldProject Project => _project;
 
+    // Layer switches. Land, statics and multis go through the game's own
+    // AllowedToDraw (which the chunk mesh build honours), set to what the
+    // game would set when shown; roofs are the profile's own DrawRoofs.
+    private bool _showLand = true, _showStatics = true, _showMultis = true;
+    private bool _layersTouched;
+
+    public bool ShowLand { get => _showLand; set { _showLand = value; _layersTouched = true; } }
+    public bool ShowStatics { get => _showStatics; set { _showStatics = value; _layersTouched = true; } }
+    public bool ShowMultis { get => _showMultis; set { _showMultis = value; _layersTouched = true; } }
+
+    public bool ShowRoofs
+    {
+        get => ProfileManager.CurrentProfile?.DrawRoofs ?? true;
+        set
+        {
+            if (ProfileManager.CurrentProfile != null)
+            {
+                ProfileManager.CurrentProfile.DrawRoofs = value;
+            }
+        }
+    }
+
+    /// <summary>Raised after the overlay changed blocks: facet and block numbers.</summary>
+    public event Action<int, List<int>> OverlayChanged;
+
     public bool IsBooted => _scene != null;
     public string Error { get; private set; }
     public World World => _game?.UO.World;
@@ -186,7 +211,64 @@ internal sealed class WorldHost : IDisposable
         _scene.Camera.Update(true, 0.016f, m);
         SelectedObject.TranslatedMousePositionByViewport = _scene.Camera.MouseToWorldPosition();
 
+        EnforceLayers();
         _game.DrawEmbedded(host, new Rectangle(0, 0, size.X, size.Y));
+    }
+
+    /// <summary>
+    /// Brings every loaded object's AllowedToDraw in line with the layer
+    /// switches. The value when shown is what the game itself assigns:
+    /// Land.cs (graphic &gt; 2), Static.cs and Multi.cs (CanBeDrawn). Chunks
+    /// load as the view moves, so this runs every frame while a switch has
+    /// ever been touched; it only writes, and marks a mesh dirty, on change.
+    /// </summary>
+    private void EnforceLayers()
+    {
+        if (!_layersTouched || World?.Map == null)
+        {
+            return;
+        }
+
+        World world = World;
+        foreach (Chunk chunk in world.Map.GetUsedChunks())
+        {
+            bool dirty = false;
+            for (int x = 0; x < 8; x++)
+            {
+                for (int y = 0; y < 8; y++)
+                {
+                    for (GameObject o = chunk.GetHeadObject(x, y); o != null; o = o.TNext)
+                    {
+                        bool want;
+                        switch (o)
+                        {
+                            case Land:
+                                want = _showLand && o.Graphic > 2;
+                                break;
+                            case Static:
+                                want = _showStatics && GameObject.CanBeDrawn(world, o.Graphic);
+                                break;
+                            case Multi:
+                                want = _showMultis && GameObject.CanBeDrawn(world, o.Graphic);
+                                break;
+                            default:
+                                continue;
+                        }
+
+                        if (o.AllowedToDraw != want)
+                        {
+                            o.AllowedToDraw = want;
+                            dirty = true;
+                        }
+                    }
+                }
+            }
+
+            if (dirty)
+            {
+                chunk.Mesh.IsDirty = true;
+            }
+        }
     }
 
     /// <summary>
@@ -271,6 +353,7 @@ internal sealed class WorldHost : IDisposable
         int facet = World.MapIndex;
         List<int> changed = _project.Apply(maps, facet);
         ReloadBlocks(facet, changed);
+        OverlayChanged?.Invoke(facet, changed);
         return changed.Count;
     }
 
@@ -285,7 +368,9 @@ internal sealed class WorldHost : IDisposable
         if (World?.Map != null)
         {
             int facet = World.MapIndex;
-            ReloadBlocks(facet, _project.Restore(_game.UO.FileManager.Maps, facet));
+            List<int> restored = _project.Restore(_game.UO.FileManager.Maps, facet);
+            ReloadBlocks(facet, restored);
+            OverlayChanged?.Invoke(facet, restored);
         }
 
         _project.Dispose();

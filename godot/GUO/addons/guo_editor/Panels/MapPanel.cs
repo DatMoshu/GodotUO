@@ -47,6 +47,54 @@ public partial class MapPanel : AssetPanel
     /// <summary>Raised to show a cell in the UO World tab: facet, x, y.</summary>
     public event Action<int, int, int> JumpToWorld;
 
+    /// <summary>
+    /// Where the map is read from. Set by the plugin to the World tab's
+    /// loader while the world runs, so the radar and the cell inspector show
+    /// the world project's overlay (ADR-0011); otherwise the Assets dock's own.
+    /// </summary>
+    public Func<MapLoader> MapSource { get; set; }
+
+    private MapLoader Maps => MapSource?.Invoke() ?? Data.Files.Maps;
+
+    /// <summary>The radar image as drawn, for the smoke check.</summary>
+    public Image RadarImage => _radarImage;
+
+    /// <summary>
+    /// Repaints the given blocks of the radar from the current map, after an
+    /// overlay change. Blocks of another facet are ignored.
+    /// </summary>
+    public void RefreshBlocks(int facet, List<int> blocks)
+    {
+        if (_radarImage == null || facet != _radarFacet || blocks == null || blocks.Count == 0)
+        {
+            return;
+        }
+
+        MapLoader maps = Maps;
+        int height = maps.MapBlocksSize[facet, 1];
+        int per = 8 / Stride;
+        var colours = new ushort[64];
+        foreach (int number in blocks)
+        {
+            int bx = number / height, by = number % height;
+            if (!ReadBlock(facet, bx, by, colours, null))
+            {
+                continue;
+            }
+
+            for (int sx = 0; sx < per; sx++)
+            {
+                for (int sy = 0; sy < per; sy++)
+                {
+                    uint c = GUO.Utility.HuesHelper.Color16To32(colours[(sy * Stride) * 8 + sx * Stride]);
+                    _radarImage.SetPixel(bx * per + sx, by * per + sy, Color.Color8((byte)c, (byte)(c >> 8), (byte)(c >> 16)));
+                }
+            }
+        }
+
+        _radar.Texture = ImageTexture.CreateFromImage(_radarImage);
+    }
+
     /// <summary>What the "Show in UO World" button does, for scripted use.</summary>
     public void RequestJump(int facet, int x, int y) => JumpToWorld?.Invoke(facet, x, y);
 
@@ -116,7 +164,7 @@ public partial class MapPanel : AssetPanel
 
     private bool EnsureFacet(int facet)
     {
-        MapLoader maps = Data.Files.Maps;
+        MapLoader maps = Maps;
         if (maps.BlockData[facet] == null)
         {
             maps.LoadMap(facet);
@@ -142,7 +190,7 @@ public partial class MapPanel : AssetPanel
         }
 
         var sw = System.Diagnostics.Stopwatch.StartNew();
-        MapLoader maps = Data.Files.Maps;
+        MapLoader maps = Maps;
         int bw = maps.MapBlocksSize[facet, 0], bh = maps.MapBlocksSize[facet, 1];
         int per = 8 / Stride;
         var rgba = new byte[bw * per * bh * per * 4];
@@ -185,7 +233,7 @@ public partial class MapPanel : AssetPanel
     /// </summary>
     private bool ReadBlock(int facet, int bx, int by, ushort[] colours, List<string>[] detail)
     {
-        MapLoader maps = Data.Files.Maps;
+        MapLoader maps = Maps;
         if (bx < 0 || by < 0 || bx >= maps.MapBlocksSize[facet, 0] || by >= maps.MapBlocksSize[facet, 1])
         {
             return false;

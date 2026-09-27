@@ -171,6 +171,15 @@ def main() -> int:
               f"{overlay.get('trees_in_chunk')} trees (install {overlay.get('base_trees')}), "
               f"{overlay.get('water_in_chunk')} water cells, after close {overlay.get('trees_after_close')} trees, "
               f"install untouched: {overlay.get('install_untouched')}")
+    edit = world.get("edit") or {}
+    if edit:
+        checks = [k for k, v in edit.items() if v is True or v is False]
+        passed = [k for k in checks if edit[k] is True]
+        print(f"[editor_smoke]   {'ok  ' if edit.get('ok') else 'FAIL'} Edit    block 145,208: {len(passed)}/{len(checks)} checks "
+              f"(stamp, hue, raise, erase, undo x4, redo, radar, layers, guides {edit.get('guide_cells')} cells)")
+        for k in checks:
+            if edit[k] is False:
+                print(f"[editor_smoke]        failed: {k}")
     shots = sorted(out.glob("editor_*.png"))
     if shots:
         print(f"[editor_smoke] screenshots : {len(shots)} in {out}")

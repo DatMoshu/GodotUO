@@ -134,6 +134,38 @@ public sealed class WorldProject : IDisposable
 
     private string BlockDir(int facet) => Path.Combine(Root, "blocks", facet.ToString(CultureInfo.InvariantCulture));
 
+    /// <summary>Where a block's file lives, whether or not it exists.</summary>
+    public string BlockPath(int facet, int bx, int by) =>
+        Path.Combine(BlockDir(facet), $"{bx}_{by}.json");
+
+    /// <summary>A block file's text, or null when the project does not replace that block.</summary>
+    public string BlockText(int facet, int bx, int by)
+    {
+        string path = BlockPath(facet, bx, by);
+        return File.Exists(path) ? File.ReadAllText(path) : null;
+    }
+
+    /// <summary>
+    /// Puts a block file back to <paramref name="text"/>; null removes it, so
+    /// the block is the install's again. What undo and redo write.
+    /// </summary>
+    public void SetBlockText(int facet, int bx, int by, string text)
+    {
+        string path = BlockPath(facet, bx, by);
+        if (text == null)
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+
+            return;
+        }
+
+        Directory.CreateDirectory(BlockDir(facet));
+        File.WriteAllText(path, text);
+    }
+
     /// <summary>Every block the project replaces on a facet.</summary>
     public List<WorldBlock> Blocks(int facet)
     {

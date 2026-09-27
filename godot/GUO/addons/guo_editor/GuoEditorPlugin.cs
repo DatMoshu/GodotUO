@@ -98,6 +98,11 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         if (maps != null)
         {
             maps.JumpToWorld += ShowInWorld;
+
+            // While the world runs, the radar reads the world's map (with the
+            // world project over it) and repaints the blocks an edit touches.
+            maps.MapSource = () => _world != null && _world.IsBooted ? Client.Game?.UO.FileManager.Maps : null;
+            _world.Host.OverlayChanged += maps.RefreshBlocks;
         }
 
         string smokeOut = EditorSmoke.OutDirFromArgs();

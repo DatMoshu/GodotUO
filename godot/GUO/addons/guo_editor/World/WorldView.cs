@@ -19,6 +19,11 @@ public partial class WorldView : VBoxContainer
 {
     private readonly EditorData _data;
     private readonly WorldHost _host = new();
+    private readonly WorldEditor _editor;
+    private WorldGuides _guides;
+    private OptionButton _tool;
+    private SpinBox _hue;
+    private Label _brush;
 
     private OptionButton _facet;
     private LineEdit _coords;
@@ -37,6 +42,34 @@ public partial class WorldView : VBoxContainer
     public bool IsBooted => _host.IsBooted;
     public string Error => _host.Error;
     internal WorldHost Host => _host;
+    internal WorldEditor Editor => _editor;
+    public WorldGuides Guides => _guides;
+
+    /// <summary>The tool a left click uses.</summary>
+    public WorldTool Tool
+    {
+        get => _tool == null ? WorldTool.Select : (WorldTool)_tool.Selected;
+        set
+        {
+            if (_tool != null)
+            {
+                _tool.Selected = (int)value;
+            }
+        }
+    }
+
+    /// <summary>The hue the Stamp and Hue tools apply.</summary>
+    public ushort BrushHue
+    {
+        get => (ushort)(_hue?.Value ?? 0);
+        set
+        {
+            if (_hue != null)
+            {
+                _hue.Value = value;
+            }
+        }
+    }
 
     /// <summary>When set, the pointer position the game's picking uses, instead of the real one (smoke check).</summary>
     public Vector2I? ForcedMouse { get; set; }
@@ -48,6 +81,12 @@ public partial class WorldView : VBoxContainer
     public WorldView(EditorData data)
     {
         _data = data;
+        _editor = new WorldEditor(_host);
+        _editor.Changed += what =>
+        {
+            UpdateStatus();
+            _status.Text = $"{what}   (undo {_editor.UndoCount}, redo {_editor.RedoCount})";
+        };
         Name = "UOWorld";
         SizeFlagsVertical = SizeFlags.ExpandFill;
         SizeFlagsHorizontal = SizeFlags.ExpandFill;
@@ -98,6 +137,37 @@ public partial class WorldView : VBoxContainer
         };
         bar.AddChild(_status);
 
+        // Second row: tools, brush, history, layers.
+        var tools = new HBoxContainer();
+        AddChild(tools);
+        _tool = new OptionButton { TooltipText = "What a left click does" };
+        foreach (string t in Enum.GetNames<WorldTool>())
+        {
+            _tool.AddItem(t);
+        }
+
+        tools.AddChild(_tool);
+        _brush = new Label { Text = "static: pick art in UO Assets" };
+        tools.AddChild(_brush);
+        tools.AddChild(new Label { Text = "hue" });
+        _hue = new SpinBox { MinValue = 0, MaxValue = 0xFFFF, Step = 1, TooltipText = "Hue for Stamp and Hue (decimal)" };
+        tools.AddChild(_hue);
+        var undo = new Button { Text = "Undo", TooltipText = "Ctrl+Z" };
+        undo.Pressed += () => _editor.Undo();
+        tools.AddChild(undo);
+        var redo = new Button { Text = "Redo", TooltipText = "Ctrl+Y" };
+        redo.Pressed += () => _editor.Redo();
+        tools.AddChild(redo);
+        tools.AddChild(new VSeparator());
+        Toggle(tools, "Land", true, v => _host.ShowLand = v);
+        Toggle(tools, "Statics", true, v => _host.ShowStatics = v);
+        Toggle(tools, "Multis", true, v => _host.ShowMultis = v);
+        Toggle(tools, "Roofs", true, v => _host.ShowRoofs = v);
+        tools.AddChild(new VSeparator());
+        Toggle(tools, "Grid", false, v => _guides.Grid = v);
+        Toggle(tools, "Altitude", false, v => _guides.Altitude = v);
+        Toggle(tools, "Blocks", true, v => _guides.Blocks = v);
+
         _container = new SubViewportContainer
         {
             Stretch = true,
@@ -121,6 +191,11 @@ public partial class WorldView : VBoxContainer
 
         _canvas = new Node2D { Name = "WorldCanvas", TextureFilter = TextureFilterEnum.Nearest };
         _viewport.AddChild(_canvas);
+
+        // After the canvas, so the guides draw over the game's frame.
+        _guides = new WorldGuides { Name = "Guides" };
+        _guides.Attach(_host);
+        _viewport.AddChild(_guides);
 
         VisibilityChanged += OnVisibilityChanged;
     }
@@ -163,7 +238,7 @@ public partial class WorldView : VBoxContainer
                 root = System.IO.Path.Combine(EditorData.RepoRoot, "build", "world", "default");
             }
 
-            _host.OpenProject(root);
+            OpenProject(root);
         }
         catch (Exception ex)
         {
@@ -172,6 +247,15 @@ public partial class WorldView : VBoxContainer
 
         UpdateStatus();
         return true;
+    }
+
+    /// <summary>Opens a world project (creating it if needed) and forgets the old one's undo history.</summary>
+    public WorldProject OpenProject(string root)
+    {
+        _editor.Clear();
+        WorldProject project = _host.OpenProject(root);
+        UpdateStatus();
+        return project;
     }
 
     /// <summary>Re-reads the world project from disk and lays it over the map again.</summary>
@@ -229,6 +313,13 @@ public partial class WorldView : VBoxContainer
         }
 
         Vector2I size = _viewport.Size;
+        if (_data != null && _brush != null && _data.CurrentArt >= EditorData.LandCount)
+        {
+            uint id = _data.CurrentArt - EditorData.LandCount;
+            _brush.Text = $"static 0x{id:X4} {_data.NameOf(_data.CurrentArt)}";
+        }
+
+        _guides.Hover = Tool != WorldTool.Select && _host.Picked is GameObject hover ? (hover.X, hover.Y) : null;
         Vector2 local = _container.GetLocalMousePosition();
         Vector2I? mouse = ForcedMouse ?? (new Rect2(Vector2.Zero, _container.Size).HasPoint(local)
             ? new Vector2I((int)local.X, (int)local.Y)
@@ -270,9 +361,33 @@ public partial class WorldView : VBoxContainer
             case InputEventMouseMotion m when _dragging:
                 Pan(m.Relative);
                 break;
-            case InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left }:
+            case InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left } lb:
                 _container.GrabFocus();
-                InspectPicked();
+                if (Tool == WorldTool.Select)
+                {
+                    InspectPicked();
+                }
+                else
+                {
+                    ApplyTool(lb.ShiftPressed);
+                }
+
+                break;
+            case InputEventKey { Pressed: true, CtrlPressed: true, Keycode: Key.Z } z:
+                if (z.ShiftPressed)
+                {
+                    _editor.Redo();
+                }
+                else
+                {
+                    _editor.Undo();
+                }
+
+                _container.AcceptEvent();
+                break;
+            case InputEventKey { Pressed: true, CtrlPressed: true, Keycode: Key.Y }:
+                _editor.Redo();
+                _container.AcceptEvent();
                 break;
             case InputEventKey { Pressed: true } k:
                 int dx = 0, dy = 0;
@@ -313,6 +428,81 @@ public partial class WorldView : VBoxContainer
 
         _drag -= new Vector2((dx - dy) * 22f, (dx + dy) * 22f);
         GoTo(_host.Facet, _host.X + dx, _host.Y + dy);
+    }
+
+    private static void Toggle(HBoxContainer bar, string text, bool on, Action<bool> set)
+    {
+        var box = new CheckBox { Text = text, ButtonPressed = on };
+        box.Toggled += v => set(v);
+        bar.AddChild(box);
+    }
+
+    /// <summary>
+    /// The current tool on what the game's picking found under the pointer.
+    /// Returns a line saying what happened.
+    /// </summary>
+    public string ApplyTool(bool big = false)
+    {
+        if (_host.Picked is not GameObject o)
+        {
+            return _status.Text = "nothing under the pointer";
+        }
+
+        int facet = _host.Facet;
+        bool done;
+        switch (Tool)
+        {
+            case WorldTool.Stamp:
+            {
+                uint art = _data?.CurrentArt ?? 0;
+                if (art < EditorData.LandCount)
+                {
+                    return _status.Text = "Stamp needs a static: pick one in UO Assets > Art (Statics)";
+                }
+
+                // On top of what was clicked: a static's top, or the land.
+                sbyte z = o is Static st ? (sbyte)Math.Min(127, st.Z + st.ItemData.Height) : o.Z;
+                done = _editor.Stamp(facet, o.X, o.Y, z, (ushort)(art - EditorData.LandCount), BrushHue);
+                break;
+            }
+
+            case WorldTool.Erase:
+                if (o is not Static es)
+                {
+                    return _status.Text = $"Erase takes a static; that is a {o.GetType().Name}";
+                }
+
+                done = _editor.Erase(facet, es.X, es.Y, es.Z, es.Graphic);
+                break;
+
+            case WorldTool.Raise:
+            case WorldTool.Lower:
+                int step = (big ? 5 : 1) * (Tool == WorldTool.Raise ? 1 : -1);
+                done = _editor.Altitude(facet, o.X, o.Y, step);
+                break;
+
+            case WorldTool.Hue:
+                if (o is not Static hs)
+                {
+                    return _status.Text = $"Hue takes a static; that is a {o.GetType().Name}";
+                }
+
+                done = _editor.SetHue(facet, hs.X, hs.Y, hs.Z, hs.Graphic, BrushHue);
+                break;
+
+            default:
+                InspectPicked();
+                return "inspected";
+        }
+
+        if (!done)
+        {
+            string why = _host.Project == null ? "no world project is open" : "nothing changed";
+            _status.Text = $"{Tool}: {why}";
+            return why;
+        }
+
+        return _editor.LastWhat;
     }
 
     /// <summary>Inspects what the game's picking found under the pointer on the last frame.</summary>

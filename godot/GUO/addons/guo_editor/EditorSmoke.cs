@@ -224,7 +224,35 @@ public partial class EditorSmoke : Node
                 if (_frames >= 5)
                 {
                     CheckRestored();
+                    BuildEditScript();
+                    _stage = 14;
+                    _frames = 0;
+                }
+
+                break;
+
+            case 14:
+                // The edit script: each step waits its frames, then runs.
+                if (_step >= _steps.Count)
+                {
+                    _world.ForcedMouse = null;
+                    _world.Tool = WorldTool.Select;
+                    _editReport["ok"] = !_editReport.ContainsKey("failed");
                     _stage = 9;
+                }
+                else if (_frames >= _steps[_step].Wait)
+                {
+                    try
+                    {
+                        _steps[_step].Run();
+                    }
+                    catch (Exception ex)
+                    {
+                        EditFail($"step {_step} threw {ex.GetType().Name}: {ex.Message}");
+                    }
+
+                    _step++;
+                    _frames = 0;
                 }
 
                 break;
@@ -539,9 +567,36 @@ public partial class EditorSmoke : Node
         {
             WorldFail("the placed multi has no components in HouseManager");
         }
-        else if (after <= _before)
+        else
         {
-            WorldFail($"placing the multi did not add to what GameScene draws ({_before} -> {after})");
+            // The drawn total can fall as the house hides what is behind it,
+            // so check the house itself: its components are in the map's
+            // tiles and drawable.
+            int inTiles = 0, drawable = 0;
+            foreach (var m in h.Components)
+            {
+                var chunk = _world.Host.World.Map.GetChunk(m.X, m.Y, load: true);
+                for (var o = chunk?.GetHeadObject(m.X % 8, m.Y % 8); o != null; o = o.TNext)
+                {
+                    if (ReferenceEquals(o, m))
+                    {
+                        inTiles++;
+                        if (m.AllowedToDraw)
+                        {
+                            drawable++;
+                        }
+
+                        break;
+                    }
+                }
+            }
+
+            _worldReport["multi_components_in_tiles"] = inTiles;
+            _worldReport["multi_components_drawable"] = drawable;
+            if (inTiles != h.Components.Count || drawable == 0)
+            {
+                WorldFail($"the house's components are not in the map ({inTiles} of {h.Components.Count} in tiles, {drawable} drawable)");
+            }
         }
 
         Image frame = _world.Capture();
@@ -592,7 +647,7 @@ public partial class EditorSmoke : Node
 
         try
         {
-            WorldProject project = host.OpenProject(root);
+            WorldProject project = _world.OpenProject(root);
             WorldBlock b = WorldProject.Capture(Client.Game.UO.FileManager.Maps, 0, OverlayBx, OverlayBy);
             _overlayReport["base_statics"] = b.Statics.Count;
             _overlayReport["base_trees"] = CountInChunk(OverlayTree, statics: true);
@@ -611,7 +666,7 @@ public partial class EditorSmoke : Node
             _overlayReport["block_file"] = path;
 
             // Round trip through disk: a fresh project object reads the JSON.
-            host.OpenProject(root);
+            _world.OpenProject(root);
             int changed = host.ApplyOverlay();
             _overlayReport["blocks_applied"] = changed;
             _overlayReport["blocks_in_project"] = host.Project.Blocks(0).Count;
@@ -713,6 +768,235 @@ public partial class EditorSmoke : Node
     {
         _overlayReport["failed"] = true;
         WorldFail($"overlay: {why}");
+    }
+
+    // --- phase 3: tools, undo, layers, guides, radar ------------------------
+
+    // A wilderness block west of Britain (flat grass, no statics in the
+    // install; tools/world found it), away from where probe characters stand.
+    private const int EditX = 1164, EditY = 1668;
+    private const int EditBx = EditX >> 3, EditBy = EditY >> 3;
+    // A large crate: solid over the cell's centre, so a pick at the view's
+    // centre lands on it. (A bare tree does not: the pixel falls between its
+    // branches and the game's picking rightly returns the land.)
+    private const ushort Tree = 0x0E3D, RedHue = 0x0021;
+    private readonly Dictionary<string, object> _editReport = new();
+    private readonly List<(int Wait, Action Run)> _steps = new();
+    private int _step;
+    private Color _radarBefore;
+
+    private void EditFail(string why)
+    {
+        _editReport["failed"] = true;
+        _failures.Add($"World edit: {why}");
+    }
+
+    private WorldBlock ProjectBlock() =>
+        _world.Host.Project.BlockText(0, EditBx, EditBy) is null
+            ? null
+            : WorldProject.ReadBlock(_world.Host.Project.BlockPath(0, EditBx, EditBy));
+
+    private int ChunkStatics(bool visibleOnly)
+    {
+        var chunk = _world.Host.World.Map.GetChunk2(EditBx, EditBy, load: true);
+        int n = 0;
+        for (int x = 0; x < 8; x++)
+        {
+            for (int y = 0; y < 8; y++)
+            {
+                for (var o = chunk?.GetHeadObject(x, y); o != null; o = o.TNext)
+                {
+                    if (o is GUO.Game.GameObjects.Static && (!visibleOnly || o.AllowedToDraw))
+                    {
+                        n++;
+                    }
+                }
+            }
+        }
+
+        return n;
+    }
+
+    private void Expect(bool ok, string what)
+    {
+        _editReport[what] = ok;
+        if (!ok)
+        {
+            EditFail(what);
+        }
+    }
+
+    /// <summary>
+    /// Points the forced mouse at a static on the edit block, the way a user
+    /// would aim at it: its art's lower middle, projected with the game's own
+    /// camera. False when there is no such static.
+    /// </summary>
+    private bool AimAt(ushort id)
+    {
+        var chunk = _world.Host.World.Map.GetChunk2(EditBx, EditBy, load: true);
+        for (int x = 0; x < 8; x++)
+        {
+            for (int y = 0; y < 8; y++)
+            {
+                for (var o = chunk?.GetHeadObject(x, y); o != null; o = o.TNext)
+                {
+                    if (o is GUO.Game.GameObjects.Static && o.Graphic == id)
+                    {
+                        Image art = _data.ArtImage(EditorData.LandCount + id);
+                        int h = art?.GetHeight() ?? 44;
+                        var world = new GUO.Compat.Point(o.RealScreenPosition.X + 22, o.RealScreenPosition.Y + 44 - h / 3);
+                        var screen = _world.Host.Scene.Camera.WorldToScreen(world);
+                        _world.ForcedMouse = new Vector2I(screen.X, screen.Y);
+                        _editReport[$"aim_{id:X4}"] = new[] { screen.X, screen.Y };
+                        return true;
+                    }
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private Color RadarAt(int x, int y)
+    {
+        Image radar = _assets.Panel<MapPanel>()?.RadarImage;
+        return radar == null ? new Color(0, 0, 0, 0) : radar.GetPixel(x / 4, y / 4);
+    }
+
+    private void BuildEditScript()
+    {
+        if (!_world.IsBooted)
+        {
+            return;
+        }
+
+        _worldReport["edit"] = _editReport;
+        int wait = Headless ? 3 : 20;
+        string root = Path.Combine(_out, $"world_project_tools{Suffix}");
+        string picked = null;
+
+        _steps.Add((1, () =>
+        {
+            _world.OpenProject(root);
+            _world.GoTo(0, EditX, EditY);
+            _world.ForcedMouse = new Vector2I((int)_world.Size.X / 2, (int)(_world.Size.Y / 2));
+            _data.CurrentArt = EditorData.LandCount + Tree;
+            _radarBefore = RadarAt(EditX, EditY);
+            _editReport["install_statics"] = ChunkStatics(false);
+        }));
+
+        // Stamp through the click path, on what the game picked.
+        _steps.Add((wait, () =>
+        {
+            _world.Tool = WorldTool.Stamp;
+            picked = _world.ApplyTool();
+            _editReport["stamp"] = picked;
+            WorldBlock b = ProjectBlock();
+            Expect(b != null && b.Statics.Count(s => s.Id == Tree) == 1, "stamp_in_project");
+        }));
+        _steps.Add((wait, () => Expect(ChunkStatics(false) == (int)_editReport["install_statics"] + 1, "stamp_in_chunk")));
+
+        // Hue on the stamped crate: aim at it, let a frame pick, then apply.
+        _steps.Add((1, () => Expect(AimAt(Tree), "aim_at_stamp")));
+        _steps.Add((wait, () =>
+        {
+            _world.Tool = WorldTool.Hue;
+            _world.BrushHue = RedHue;
+            _editReport["hue"] = _world.ApplyTool();
+            Expect(ProjectBlock()?.Statics.Any(s => s.Id == Tree && s.Hue == RedHue) == true, "hue_in_project");
+        }));
+
+        // Raise the land under it.
+        _steps.Add((wait, () =>
+        {
+            WorldBlock before = ProjectBlock();
+            _world.Tool = WorldTool.Raise;
+            _editReport["raise"] = _world.ApplyTool();
+            WorldBlock after = ProjectBlock();
+            int changed = 0;
+            for (int i = 0; i < 64; i++)
+            {
+                if (after.LandZ[i] != before.LandZ[i])
+                {
+                    changed += after.LandZ[i] - before.LandZ[i];
+                }
+            }
+
+            Expect(changed == 1, "raise_one_cell_by_one");
+        }));
+
+        // Erase the crate (aim again: raising the land moved it).
+        _steps.Add((wait, () => AimAt(Tree)));
+        _steps.Add((wait, () =>
+        {
+            _world.Tool = WorldTool.Erase;
+            _editReport["erase"] = _world.ApplyTool();
+            Expect(ProjectBlock()?.Statics.Count(s => s.Id == Tree) == 0, "erase_in_project");
+        }));
+
+        // Undo all four: the block is the install's again (no file).
+        _steps.Add((wait, () =>
+        {
+            _editReport["undo_depth"] = _world.Editor.UndoCount;
+            for (int i = 0; i < 4; i++)
+            {
+                _world.Editor.Undo();
+            }
+
+            Expect(ProjectBlock() == null, "undo_back_to_install");
+        }));
+        _steps.Add((wait, () => Expect(ChunkStatics(false) == (int)_editReport["install_statics"], "undo_chunk_is_install")));
+
+        // Redo the stamp.
+        _steps.Add((1, () =>
+        {
+            _world.Editor.Redo();
+            Expect(ProjectBlock()?.Statics.Count(s => s.Id == Tree) == 1, "redo_stamp");
+        }));
+
+        // The radar: a direct stamp on the cell the 1:4 radar samples, then its pixel.
+        _steps.Add((wait, () =>
+        {
+            _world.Editor.Stamp(0, EditX, EditY, 0, 0x0CE3, 0);
+            Color after = RadarAt(EditX, EditY);
+            _editReport["radar_before"] = _radarBefore.ToHtml();
+            _editReport["radar_after"] = after.ToHtml();
+            Expect(after != _radarBefore, "radar_shows_overlay");
+        }));
+
+        // Layers: statics off, then on.
+        _steps.Add((1, () => _world.Host.ShowStatics = false));
+        _steps.Add((wait, () =>
+        {
+            _editReport["statics_visible_when_off"] = ChunkStatics(true);
+            Expect(ChunkStatics(true) == 0, "statics_layer_off");
+            _world.Host.ShowStatics = true;
+        }));
+        _steps.Add((wait, () => Expect(ChunkStatics(true) == ChunkStatics(false), "statics_layer_on")));
+
+        // Guides: grid, altitude and blocks on, then a frame.
+        _steps.Add((1, () =>
+        {
+            _world.Guides.Grid = true;
+            _world.Guides.Altitude = true;
+            _world.Guides.Blocks = true;
+        }));
+        _steps.Add((wait, () =>
+        {
+            _editReport["guide_cells"] = _world.Guides.CellsDrawn;
+            Expect(_world.Guides.CellsDrawn > 0, "guides_drawn");
+            Image frame = _world.Capture();
+            if (frame != null && !frame.IsEmpty())
+            {
+                string path = Path.Combine(_out, $"world_edit{Suffix}.png");
+                frame.SavePng(path);
+                _editReport["png"] = path;
+            }
+
+            _world.Guides.Grid = false;
+            _world.Guides.Altitude = false;
+            _editReport["block_file"] = _world.Host.Project.BlockPath(0, EditBx, EditBy);
+        }));
     }
 
     private void WorldFail(string why)
