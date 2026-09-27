@@ -92,9 +92,12 @@ internal static class GumpPresentation
         return true;
     }
 
-    public static void Clamp(Gump g)
+    public static void Clamp(Gump g) => Clamp(g, OnSecond(g));
+
+    /// <summary>Keep the gump inside the given screen, whichever side of the seam its origin is on now.</summary>
+    public static void Clamp(Gump g, bool second)
     {
-        Rectangle b = DisplayBounds(OnSecond(g));
+        Rectangle b = DisplayBounds(second);
         g.X = Math.Clamp(g.X, b.X, b.X + Math.Max(0, b.Width - Width(g)));
         g.Y = Math.Clamp(g.Y, 0, Math.Max(0, b.Height - Height(g)));
     }
@@ -103,7 +106,12 @@ internal static class GumpPresentation
     {
         if (!Supports(g) || g.PresentationLocked || !float.IsFinite(requested) || g.Width <= 0 || g.Height <= 0)
             return false;
-        Rectangle b = DisplayBounds(OnSecond(g));
+        // Which screen it is on is decided before the origin moves: scaling
+        // about a pinch centre can carry a shelf gump's origin left of the
+        // seam, and Clamp would then have put it on the main screen (seen on
+        // the Thor).
+        bool second = OnSecond(g);
+        Rectangle b = DisplayBounds(second);
         float fit = Math.Min(b.Width / (float)g.Width, b.Height / (float)g.Height);
         // If the original gump is too large even at minimum, retain a reachable origin/reset.
         float next = Math.Clamp(requested, MinScale, Math.Max(MinScale, Math.Min(MaxScale, fit)));
@@ -111,16 +119,17 @@ internal static class GumpPresentation
         g.X = (int)Math.Round(anchor.X - (anchor.X - g.X) * ratio);
         g.Y = (int)Math.Round(anchor.Y - (anchor.Y - g.Y) * ratio);
         g.PresentationScale = next;
-        Clamp(g);
+        Clamp(g, second);
         return true;
     }
 
     public static void Reset(Gump g)
     {
         if (!Supports(g)) return;
+        bool second = OnSecond(g);
         g.PresentationLocked = false;
         g.PresentationScale = 1f;
-        Clamp(g);
+        Clamp(g, second);
     }
 
     public static bool Transfer(Gump g)
