@@ -416,7 +416,7 @@ data or executable code. `art-override` is reserved and rejected.
 ### Store index and publication
 
 `UO_STORE_DIR` defaults to `build/store_cdn` relative to the checkout;
-`UO_STORE_URL` defaults to `http://127.0.0.1:8765`. The root has `index.json`
+`UO_STORE_URL` defaults to `http://127.0.0.1:18865`. The root has `index.json`
 with schema `guo/store-index@1` and a `packs` array. Each entry is the pack
 manifest plus `url` (`packs/<id>/<version>.zip`), `sha256` (whole ZIP), and
 `size` (ZIP bytes). Paths are relative to the index's directory. Previews

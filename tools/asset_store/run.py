@@ -13,6 +13,7 @@ import sys
 import tempfile
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 import zipfile
+from urllib.parse import urlsplit
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from guo.config import load_config
@@ -70,13 +71,7 @@ def publish(path, root):
             require(sha256(target) == sha256(staged), "id/version already published with different bytes")
         else:
             # Exclusive create keeps an existing release immutable across publishers.
-            with target.open("xb") as dst, staged.open("rb") as src:
-                try:
-                    shutil.copyfileobj(src, dst)
-                except BaseException:
-                    dst.close()
-                    target.unlink(missing_ok=True)
-                    raise
+            os.link(staged, target)  # Atomic publication, never expose a partial ZIP.
         make_index(root)
         return m
     finally:
@@ -142,7 +137,7 @@ class Handler(SimpleHTTPRequestHandler):
                 remaining -= len(block)
 
 
-def server(root, host="127.0.0.1", port=8765):
+def server(root, host="127.0.0.1", port=18865):
     return ThreadingHTTPServer((host, port), functools.partial(Handler, directory=str(Path(root).resolve())))
 
 
@@ -153,7 +148,7 @@ def main():
     sub = parser.add_subparsers(dest="command", required=True)
     s = sub.add_parser("serve")
     s.add_argument("--host", default="127.0.0.1")
-    s.add_argument("--port", type=int, default=8765)
+    s.add_argument("--port", type=int, default=urlsplit(config.store_url).port or 18865)
     sub.add_parser("index")
     for verb in ("verify", "publish"):
         sub.add_parser(verb).add_argument("pack", type=Path)
@@ -169,7 +164,14 @@ def main():
             print(f"Indexed {len(make_index(args.store_dir))} packs")
         else:
             make_index(args.store_dir)
-            with server(args.store_dir, args.host, args.port) as httpd:
+            try:
+                httpd = server(args.store_dir, args.host, args.port)
+            except OSError as exc:
+                if args.port == 0 or exc.errno not in {13, 48, 98, 10013, 10048} and getattr(exc, "winerror", None) not in {10013, 10048}:
+                    raise
+                print(f"Port {args.port} unavailable; using an ephemeral port. Set UO_STORE_URL to the listening URL below.", flush=True)
+                httpd = server(args.store_dir, args.host, 0)
+            with httpd:
                 print(f"Store listening on http://{args.host}:{httpd.server_port}", flush=True)
                 httpd.serve_forever()
         return 0

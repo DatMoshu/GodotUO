@@ -14,7 +14,7 @@ namespace GUO.Store;
 
 internal static class StoreOptions
 {
-    public static string Url => System.Environment.GetEnvironmentVariable("UO_STORE_URL") ?? "http://127.0.0.1:8765";
+    public static string Url => System.Environment.GetEnvironmentVariable("UO_STORE_URL") ?? "http://127.0.0.1:18865";
     public static StoreClient CreateClient() => new(Url, ProjectSettings.GlobalizePath("user://store"), PlatformDefaults.CurrentVersion);
 
     // Called from one marked block in Options. The existing Apply path remains

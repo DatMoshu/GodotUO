@@ -178,4 +178,4 @@ if not defined UO_LOG_LEVEL         set "UO_LOG_LEVEL=INFO"
 
 REM --- GUO Asset Store ----------------------------------------------------
 if not defined UO_STORE_DIR         set "UO_STORE_DIR=build/store_cdn"
-if not defined UO_STORE_URL         set "UO_STORE_URL=http://127.0.0.1:8765"
+if not defined UO_STORE_URL         set "UO_STORE_URL=http://127.0.0.1:18865"

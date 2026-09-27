@@ -5,6 +5,13 @@ try
     using var client = new StoreClient(args[0], args[1], 6);
     var entries = await client.FetchIndex();
     StorePack.Require(entries.Count >= 1, "Empty index");
+    if (args.Length == 4 && args[2] == "install")
+    {
+        var selected = entries.Single(p => p.Manifest.Id == args[3]);
+        await client.Install(selected);
+        Console.WriteLine($"Installed {selected.Manifest.Id} {selected.Manifest.Version}; all hashes verified.");
+        return 0;
+    }
     var entry = entries.First();
     string path = await client.Install(entry);
     foreach (var file in entry.Manifest.Files)
