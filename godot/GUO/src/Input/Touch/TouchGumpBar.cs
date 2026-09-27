@@ -65,16 +65,52 @@ namespace GUO.Input.Touch
             "paperdoll", "backpack", "journal", "map", "self", "cancel",
         };
 
-        /// <summary>The macro row's buttons, left to right; MacroFor names the macro each runs.</summary>
-        public static readonly string[] MacroActions =
+        /// <summary>Every macro a row slot can hold, in the order Options lists them.</summary>
+        public static readonly string[] MacroChoices =
         {
-            "m:next", "m:attack", "m:last", "m:object", "m:bandage", "m:war",
+            "m:nearest", "m:next", "m:attack", "m:last", "m:object", "m:bandage", "m:war",
         };
+
+        /// <summary>The row a profile starts with: Nearest Hostile first, as the owner asked.</summary>
+        public const string DefaultMacroSlots = "m:nearest,m:attack,m:next,m:last,m:bandage,m:war";
+
+        public const int MacroSlotCount = 6;
+
+        /// <summary>
+        /// The macro row's buttons, left to right, from the profile
+        /// (Options, "Macro row slot N"); MacroFor names the macro each runs.
+        /// An unknown or missing slot falls back to the default for that slot.
+        /// </summary>
+        public static string[] MacroActions
+        {
+            get
+            {
+                string[] defaults = DefaultMacroSlots.Split(',');
+                string[] saved = (ProfileManager.CurrentProfile?.TouchMacroSlots ?? DefaultMacroSlots).Split(',');
+                var slots = new string[MacroSlotCount];
+
+                for (int i = 0; i < MacroSlotCount; i++)
+                {
+                    string s = i < saved.Length ? saved[i].Trim() : null;
+                    slots[i] = System.Array.IndexOf(MacroChoices, s) >= 0 ? s : defaults[i];
+                }
+
+                return slots;
+            }
+        }
+
+        /// <summary>The upstream macro subtype a row action runs with.</summary>
+        private static MacroSubType SubFor(string action) =>
+            action == "m:nearest" ? MacroSubType.Hostile : MacroSubType.MSC_NONE;
 
         private static MacroType MacroFor(string action)
         {
             switch (action)
             {
+                // Upstream's "Select Nearest" macro with its Hostile scan: the
+                // nearest gray, criminal, enemy or murderer becomes the last
+                // target (World.FindNearest), as a ClassicUO player's macro does.
+                case "m:nearest": return MacroType.SelectNearest;
                 case "m:next": return MacroType.TargetNext;
                 case "m:attack": return MacroType.AttackLast;
                 case "m:last": return MacroType.LastTarget;
@@ -411,7 +447,7 @@ namespace GUO.Input.Touch
             if (macro != MacroType.None)
             {
                 // As MacroButtonGump.RunMacro runs a macro button.
-                Macro m = Macro.CreateFastMacro(action, macro, MacroSubType.MSC_NONE);
+                Macro m = Macro.CreateFastMacro(action, macro, SubFor(action));
                 world.Macros.SetMacroToExecute(m.Items as MacroObject);
                 world.Macros.WaitForTargetTimer = 0;
                 world.Macros.Update();
@@ -480,6 +516,9 @@ namespace GUO.Input.Touch
         }
 
         /// <summary>The caption of a button: the top bar's cliloc, or its resource string.</summary>
+        /// <summary>A macro action's caption, for Options' slot lists.</summary>
+        public static string MacroTitle(string action) => Label(action);
+
         private static string Label(string action)
         {
             ClilocLoader cliloc = Client.Game?.UO?.FileManager?.Clilocs;
@@ -494,6 +533,7 @@ namespace GUO.Input.Touch
                 case "options": return "Options";
                 case "self": return "Self";
                 case "cancel": return "Cancel";
+                case "m:nearest": return "Nearest Hostile";
                 case "m:next": return "Next Target";
                 case "m:attack": return "Attack Last";
                 case "m:last": return "Last Target";

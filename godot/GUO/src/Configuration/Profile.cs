@@ -237,6 +237,10 @@ namespace GUO.Configuration
         // player hid it this session (TouchGumpBar); a mobile default.
         public bool TouchMacroRow { get; set; }
 
+        // PORT DEVIATION (GUO): which macro each of the macro row's six slots
+        // runs (TouchGumpBar.MacroChoices ids, comma-separated).
+        public string TouchMacroSlots { get; set; } = GUO.Input.Touch.TouchGumpBar.DefaultMacroSlots;
+
         // PORT DEVIATION (GUO): how far the chevron sits in from the right
         // edge of the screen, in client px (TouchGumpBar); 0 keeps it at the
         // corner. An option for the owner to try, not a platform default.
