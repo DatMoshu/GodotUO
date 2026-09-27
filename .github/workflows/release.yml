@@ -44,9 +44,12 @@ jobs:
         shell: pwsh
         run: |
           $up = Get-Content docs/upstream/UPSTREAM_PIN.json | ConvertFrom-Json
+          if ($up.commit -notmatch '^[0-9a-f]{40}$') { throw "UPSTREAM_PIN commit is not a sha" }
+          if ($up.repo -notmatch '^https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(\.git)?$') { throw "UPSTREAM_PIN repo is not a GitHub URL" }
           "repo=$($up.repo)" >> $env:GITHUB_OUTPUT
           "commit=$($up.commit)" >> $env:GITHUB_OUTPUT
           $v = (Select-String -Path launchers/_shared/config.bat -Pattern 'GODOT_VERSION=([^"]+)"').Matches[0].Groups[1].Value
+          if ($v -notmatch '^[0-9]+\.[0-9]+(\.[0-9]+)?-[a-z0-9]+$') { throw "GODOT_VERSION is not a version" }
           "godot=$v" >> $env:GITHUB_OUTPUT
           "templates=$($v -replace '-', '.').mono" >> $env:GITHUB_OUTPUT
 
@@ -60,11 +63,14 @@ jobs:
       - name: Fetch upstream
         if: steps.upstream-cache.outputs.cache-hit != 'true'
         shell: bash
+        env:
+          UPSTREAM_REPO: ${{ steps.pin.outputs.repo }}
+          UPSTREAM_COMMIT: ${{ steps.pin.outputs.commit }}
         run: |
           git init -q sources/ClassicUO
           cd sources/ClassicUO
-          git remote add origin "${{ steps.pin.outputs.repo }}"
-          git fetch -q --depth 1 origin "${{ steps.pin.outputs.commit }}"
+          git remote add origin "$UPSTREAM_REPO"
+          git fetch -q --depth 1 origin "$UPSTREAM_COMMIT"
           git checkout -q FETCH_HEAD
           git submodule update -q --init --recursive --depth 1
 
