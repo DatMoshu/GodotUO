@@ -566,6 +566,9 @@ def device_args(p: Paths, extra: str, sound: bool = False) -> str:
     # Britain theme over the speaker. --sound exports an audible build.
     if not sound:
         base += " --silent"
+    # The configured account, unless the caller names one itself.
+    if p.cfg.android_account and "--account" not in extra:
+        base += f" --account {p.cfg.android_account}"
     return f"{base} {extra}".strip()
 
 

@@ -102,6 +102,7 @@ class Config:
     android_device: str
     android_client_data: str
     android_second_display: str
+    android_account: str
 
     # --- Web (optional; see tools/web and ADR-0008) ---
     web_port: int
@@ -115,6 +116,7 @@ class Config:
     deck_known_hosts: Path | None
     deck_install_dir: str
     deck_client_data: str
+    deck_account: str
 
     # --- derived paths (never configured directly) ---
     @property
@@ -224,6 +226,7 @@ def load_config(root: Path | None = None) -> Config:
         deck_known_hosts=home_path_or_none("UO_DECK_KNOWN_HOSTS"),
         deck_install_dir=get("UO_DECK_INSTALL_DIR", "~/GUO"),
         deck_client_data=get("UO_DECK_CLIENT_DATA", "~/UO"),
+        deck_account=get("UO_DECK_ACCOUNT", ""),
         web_port=web_port,
         android_sdk=path_or_none("UO_ANDROID_SDK")
         or Path(os.path.expandvars("%LOCALAPPDATA%")) / "Android" / "Sdk",
@@ -236,6 +239,7 @@ def load_config(root: Path | None = None) -> Config:
         android_device=get("UO_ANDROID_DEVICE", ""),
         android_client_data=get("UO_ANDROID_CLIENT_DATA", f"/sdcard/Android/data/{package}/files/uo"),
         android_second_display=get("UO_ANDROID_SECOND_DISPLAY", ""),
+        android_account=get("UO_ANDROID_ACCOUNT", ""),
         root=root,
         godot_version=get("GODOT_VERSION", "4.7.2-stable"),
         godot_flavor=get("GODOT_FLAVOR", "mono_win64"),

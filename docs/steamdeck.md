@@ -80,6 +80,8 @@ REM if not defined UO_DECK_INSTALL_DIR  set "UO_DECK_INSTALL_DIR=~/GUO"
 REM if not defined UO_DECK_CLIENT_DATA  set "UO_DECK_CLIENT_DATA=~/UO"
 REM the shard guo.sh connects to; 127.0.0.1 would be the Deck itself
 REM if not defined UO_SHARD_HOST        set "UO_SHARD_HOST=<this PC's LAN address>"
+REM optional: the shard account guo.sh passes as --account (empty = none)
+REM if not defined UO_DECK_ACCOUNT      set "UO_DECK_ACCOUNT=<your account>"
 ```
 
 `UO_DECK_USER` defaults to `deck` and needs no line. Every key is documented

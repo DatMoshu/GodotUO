@@ -39,6 +39,7 @@ UO_ANDROID_KEYSTORE   default %APPDATA%\Godot\keystores\debug.keystore
 UO_ANDROID_PACKAGE    default org.guo.client
 UO_ANDROID_DEVICE     default empty = the only attached device
 UO_ANDROID_CLIENT_DATA  default /sdcard/Android/data/<package>/files/uo
+UO_ANDROID_ACCOUNT    default empty; when set, baked in as --account (config.local.bat only)
 ```
 
 Then, in this order (`doctor.bat` tells you which are still missing):

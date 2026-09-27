@@ -171,6 +171,7 @@ class Deck:
         self.known_hosts = cfg.deck_known_hosts
         self.install_dir = cfg.deck_install_dir
         self.client_data = cfg.deck_client_data
+        self.account = cfg.deck_account
 
     @property
     def target(self) -> str:
@@ -472,6 +473,7 @@ def launcher_script(deck: Deck, shard_host: str, shard_port: int) -> str:
         data = '"$HOME"'
     else:
         data = "'" + data + "'"
+    account = f" --account '{deck.account}'" if deck.account else ""
     return (
         "#!/bin/bash\n"
         "# GUO on the Steam Deck. Written by tools/steamdeck/run.py push; edit\n"
@@ -479,7 +481,7 @@ def launcher_script(deck: Deck, shard_host: str, shard_port: int) -> str:
         "# Extra flags go through: ./guo.sh --login-probe-stay, ./guo.sh --sound.\n"
         "# After \"--\": the client reads only what follows it (OS.GetCmdlineUserArgs).\n"
         'cd "$(dirname "$(readlink -f "$0")")" || exit 1\n'
-        f'exec ./{EXE_NAME} -- --play --client-data {data} --host {shard_host} --port {shard_port} "$@"\n'
+        f'exec ./{EXE_NAME} -- --play --client-data {data} --host {shard_host} --port {shard_port}{account} "$@"\n'
     )
 
 

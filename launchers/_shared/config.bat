@@ -127,6 +127,10 @@ REM  `dumpsys display` (the FLAG_PRESENTATION display's uniqueId). Only the
 REM  dual_probe launcher and the doctor use it; the client finds the display
 REM  itself. See docs\architecture\ADR-0009-second-display.md.
 if not defined UO_ANDROID_SECOND_DISPLAY set "UO_ANDROID_SECOND_DISPLAY="
+REM  The shard account an exported APK logs in as (baked in as --account;
+REM  the password defaults to the account name). Empty = none baked in, the
+REM  login screen as always. Set it in config.local.bat, never here.
+if not defined UO_ANDROID_ACCOUNT   set "UO_ANDROID_ACCOUNT="
 
 REM  The app icons (Windows and Android) are built from design\brand\
 REM  guo-sigil.png, committed in this repository: python tools\brand\run.py.
@@ -161,6 +165,9 @@ REM  .uop / .mul files). Copy your install there yourself, from Desktop
 REM  mode or with scp; the tools never push it. An SD card path looks like
 REM  /run/media/deck/<card>/UO.
 if not defined UO_DECK_CLIENT_DATA  set "UO_DECK_CLIENT_DATA=~/UO"
+REM  The shard account guo.sh passes as --account (the password defaults to
+REM  the account name). Empty = none. Set it in config.local.bat, never here.
+if not defined UO_DECK_ACCOUNT      set "UO_DECK_ACCOUNT="
 
 REM --- Python -------------------------------------------------------------
 if not defined UO_PYTHON            set "UO_PYTHON=python"
