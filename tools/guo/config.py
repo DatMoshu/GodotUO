@@ -98,6 +98,7 @@ class Config:
     android_device: str
     android_client_data: str
     android_second_display: str
+    android_brand_dir: Path | None
 
     # --- Web (optional; see tools/web and ADR-0008) ---
     web_port: int
@@ -183,7 +184,8 @@ def load_config(root: Path | None = None) -> Config:
         # A value that still holds an unexpanded %VAR% is one whose variable
         # was not set anywhere -- JAVA_HOME on a machine without one -- and
         # means "not configured", not a folder called %JAVA_HOME%.
-        raw = os.path.expandvars(get(key))
+        # %UO_ROOT% is common.bat's, not the environment's: it is this root.
+        raw = os.path.expandvars(get(key).replace("%UO_ROOT%", str(root)))
         return Path(raw) if raw and "%" not in raw else None
 
     package = get("UO_ANDROID_PACKAGE", "org.guo.client")
@@ -206,6 +208,7 @@ def load_config(root: Path | None = None) -> Config:
         android_device=get("UO_ANDROID_DEVICE", ""),
         android_client_data=get("UO_ANDROID_CLIENT_DATA", f"/sdcard/Android/data/{package}/files/uo"),
         android_second_display=get("UO_ANDROID_SECOND_DISPLAY", ""),
+        android_brand_dir=path_or_none("UO_ANDROID_BRAND_DIR"),
         root=root,
         godot_version=get("GODOT_VERSION", "4.7.2-stable"),
         godot_flavor=get("GODOT_FLAVOR", "mono_win64"),

@@ -100,10 +100,21 @@ framework to net9.0 when `GodotTargetPlatform` is `android` (the desktop
 stays on net8.0), and the export refuses to run without
 `textures/vram_compression/import_etc2_astc=true` in `project.godot`.
 
-The launcher icon is GUO's (`godot\GUO\icon.svg`), rasterised once by
-`python tools\android\icons.py` into `godot\GUO\android_icons\` (legacy
-192, adaptive foreground/background/monochrome 432); the preset template
-points at those PNGs. Rerun it if the SVG changes.
+The launcher icon is the GUO emblem: the horned ankh frame around the
+Godot head, engraved silver and gold, blue-white "Gems of Immortality"
+eyes. The brand lives in the separate public repository (`UO_Port_public`,
+`design\press-kit\`, read-only from here); this repository holds only what
+is built from it. `godot\GUO\icon.png` and `icon.ico` (the project icon,
+`config/icon`, and the Windows executable icon) are copied from that
+repository's `godot\GUO\` at its commit `82b4fc2`. The four Android PNGs in
+`godot\GUO\android_icons\` (legacy 192 on near-black; adaptive
+foreground 432 with the emblem inside the 66% safe zone; flat near-black
+background 432; monochrome 432 from the emblem's alpha) are built by
+`python tools\android\icons.py` from the transparent master
+`design\press-kit\v2\guo-gems-of-immortality.png`, found through
+`UO_ANDROID_BRAND_DIR` in `config.bat` (or `--brand`). The preset template
+points at those PNGs. Rerun the tool if the master changes; the kit zip and
+masters are never committed here.
 
 ## The smoke
 
