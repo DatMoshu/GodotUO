@@ -595,6 +595,8 @@ namespace GUO.Input.Touch
 
             if (keyboard <= 0)
             {
+                LiftChat(0);
+
                 if (_pannedGump != null)
                 {
                     if (!_pannedGump.IsDisposed)
@@ -613,10 +615,26 @@ namespace GUO.Input.Touch
             if (UIManager.KeyboardFocusControl is not Game.UI.Controls.StbTextBox box
                 || box.IsDisposed || !box.IsEditable || Client.Game == null)
             {
+                LiftChat(0);
+
                 return;
             }
 
             Game.UI.Controls.Control root = box.RootParent;
+            float scale = Client.Game.DpiScale;
+            int visible = (int)((DisplayServer.WindowGetSize().Y - keyboard) / scale);
+
+            // The chat line lives in the world viewport, which never moves:
+            // the line itself (and the history drawn above it) goes up.
+            if (UIManager.SystemChat != null && box == UIManager.SystemChat.TextBoxControl)
+            {
+                int home = box.ScreenCoordinateY + box.Height + UIManager.SystemChat.KeyboardLift;
+                LiftChat(System.Math.Max(0, home + 4 - visible));
+
+                return;
+            }
+
+            LiftChat(0);
 
             if (root == null || root is Game.UI.Gumps.WorldViewportGump)
             {
@@ -634,8 +652,6 @@ namespace GUO.Input.Touch
                 _pannedBy = 0;
             }
 
-            float scale = Client.Game.DpiScale;
-            int visible = (int)((DisplayServer.WindowGetSize().Y - keyboard) / scale);
             // Two fields of room below the focused one, so the next field of a
             // form (the password under the account name) is in reach as well.
             int need = box.ScreenCoordinateY + box.Height * 3 + 8 - visible;
@@ -649,6 +665,21 @@ namespace GUO.Input.Touch
             _pannedBy += need;
             _pannedGump = root;
             Note($"keyboard {keyboard}px -> gump up {need}");
+        }
+
+        /// <summary>Raise the chat input line by this many client px (0 puts it back).</summary>
+        private static void LiftChat(int by)
+        {
+            Game.UI.Gumps.SystemChatControl chat = UIManager.SystemChat;
+
+            if (chat == null || chat.IsDisposed || chat.KeyboardLift == by)
+            {
+                return;
+            }
+
+            chat.KeyboardLift = by;
+            chat.Resize();
+            Note($"keyboard -> chat line up {by}");
         }
 
         private static void StartWalk()
