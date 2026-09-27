@@ -242,6 +242,11 @@ namespace GUO.Configuration
         public string CanvasBackgroundPath { get; set; } = "";
         public int CanvasBackgroundFps { get; set; } = 12;
         public bool CanvasBackgroundLowPower { get; set; }
+        // PORT DEVIATION (GUO): the idle screen saver (Game.Managers.
+        // ScreenSaver), for OLED panels on long runs. Off on the desktop, on
+        // on phones (PlatformDefaults v10).
+        public bool ScreenSaver { get; set; }
+        public int ScreenSaverMinutes { get; set; } = 10;
         public int OverrideContainerLocationSetting { get; set; } // 0 = container position, 1 = top right of screen, 2 = last dragged position, 3 = remember every container
 
         [JsonConverter(typeof(Point2Converter))] public Point OverrideContainerLocationPosition { get; set; } = new Point(200, 200);

@@ -49,7 +49,7 @@ namespace GUO.Configuration
         /// The table version this build writes. 0 means the profile predates
         /// platform defaults (every profile saved before GUO had them).
         /// </summary>
-        public const int CurrentVersion = 9;
+        public const int CurrentVersion = 10;
 
         /// <summary>The login screen's size, which every login gump is laid out for.</summary>
         private const int LoginWidth = 640;
@@ -165,7 +165,11 @@ namespace GUO.Configuration
                 // Target next, Attack last and the rest a mouse reaches by
                 // hotkey, for moving targets a finger cannot keep up with
                 // (Thor pass 2, bug 7).
-                BoolEntry(nameof(Profile.TouchMacroRow), p => p.TouchMacroRow, (p, v) => p.TouchMacroRow = v, true, since: 9)
+                BoolEntry(nameof(Profile.TouchMacroRow), p => p.TouchMacroRow, (p, v) => p.TouchMacroRow = v, true, since: 9),
+
+                // v10: the idle screen saver (ScreenSaver): a phone is the
+                // OLED panel most likely to be left on through a long run.
+                BoolEntry(nameof(Profile.ScreenSaver), p => p.ScreenSaver, (p, v) => p.ScreenSaver = v, true, since: 10)
             ),
 
             [ProfilePlatform.Web] = WithShelf
