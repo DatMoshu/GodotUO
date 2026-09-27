@@ -14,6 +14,7 @@ namespace GUO.Input.Touch
     /// one stray press, so project.godot turns quit_on_go_back off and
     /// GameController hands NOTIFICATION_WM_GO_BACK_REQUEST here instead:
     /// <list type="number">
+    /// <item>close the Store window, which covers everything when it is up;</item>
     /// <item>close the top gump, as a right click on it would;</item>
     /// <item>else lower the on-screen keyboard;</item>
     /// <item>else ask the upstream "Quit Ultima Online?" question in the
@@ -26,6 +27,11 @@ namespace GUO.Input.Touch
     {
         public static void Handle()
         {
+            if (CloseStore())
+            {
+                return;
+            }
+
             if (CloseTopGump())
             {
                 return;
@@ -49,6 +55,23 @@ namespace GUO.Input.Touch
 
             GD.Print("[GUO] back: exit before the world");
             Client.Game.Exit();
+        }
+
+        /// <summary>Close a Store window (ADR-0019), a child of the controller, if one is up.</summary>
+        private static bool CloseStore()
+        {
+            foreach (Godot.Node child in Client.Game.GetChildren())
+            {
+                if (child is GUO.Store.StoreWindow store && !store.IsQueuedForDeletion())
+                {
+                    store.QueueFree();
+                    GD.Print("[GUO] back: close StoreWindow");
+
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static bool CloseTopGump()

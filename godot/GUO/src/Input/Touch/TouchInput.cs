@@ -141,6 +141,13 @@ namespace GUO.Input.Touch
         private static Vector2 _deferredTap;
         private static ulong _deferredTapFrame;
 
+        /// <summary>Frames a tap holds the button down; see Tap.</summary>
+        private const ulong TapHoldFrames = 2;
+
+        private static bool _releasePending;
+        private static Vector2 _releaseAt;
+        private static ulong _releaseFrame;
+
         /// <summary>Where a parked pointer goes: off every screen, over nothing.</summary>
         private static readonly Vector2 ParkedAt = new(-4096, -4096);
         private static TouchGumpBar _bar;
@@ -278,6 +285,7 @@ namespace GUO.Input.Touch
         {
             PanForKeyboard();
             FlushTap(false);
+            FlushRelease(false);
             ParkWhenLifted();
 
             if (_phase != Phase.Pending)
@@ -376,15 +384,31 @@ namespace GUO.Input.Touch
         /// <summary>A tap waiting for the client to pick what is under it; see FingerUp.</summary>
         private static void Tap(Vector2 at)
         {
+            // The press now and the release a couple of frames later, as a
+            // mouse click spans frames. A control that acts while the button
+            // is held (a scroll bar's arrows, which step in Update) never saw
+            // a press and release sent in the same frame.
             Press(MouseButton.Left, at);
-            Release(MouseButton.Left, at);
+            _releaseAt = at;
+            _releaseFrame = Engine.GetProcessFrames() + TapHoldFrames;
+            _releasePending = true;
             _lastTapTime = Godot.Time.GetTicksMsec();
             _lastTapAt = at;
             Note(
                 $"tap -> left click at {at.X:0},{at.Y:0}"
                 + (TraceToLog ? $", under {SelectedObject.Object?.GetType().Name ?? "nothing"}, over world {UIManager.IsMouseOverWorld}, targeting {Client.Game?.UO?.World?.TargetManager.IsTargeting}" : "")
             );
-            SyncKeyboard();
+        }
+
+        /// <summary>Release a tap's button once its frames have passed, or at once when <paramref name="now"/>.</summary>
+        private static void FlushRelease(bool now)
+        {
+            if (_releasePending && (now || Engine.GetProcessFrames() >= _releaseFrame))
+            {
+                _releasePending = false;
+                Release(MouseButton.Left, _releaseAt);
+                SyncKeyboard();
+            }
         }
 
         /// <summary>Send a deferred tap once its frames have passed, or at once when <paramref name="now"/>.</summary>
@@ -401,6 +425,7 @@ namespace GUO.Input.Touch
         {
             _parkAt = 0;
             FlushTap(true);
+            FlushRelease(true);
 
             if (_phase == Phase.Idle)
             {
@@ -582,7 +607,7 @@ namespace GUO.Input.Touch
         /// </summary>
         private static void ParkWhenLifted()
         {
-            if (_parkAt == 0 || _tapDeferred || _phase != Phase.Idle || Godot.Time.GetTicksMsec() < _parkAt)
+            if (_parkAt == 0 || _tapDeferred || _releasePending || _phase != Phase.Idle || Godot.Time.GetTicksMsec() < _parkAt)
             {
                 return;
             }

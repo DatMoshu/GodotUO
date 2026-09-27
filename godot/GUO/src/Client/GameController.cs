@@ -714,6 +714,15 @@ namespace GUO
                 return;
             }
 
+            // PORT DEVIATION (GUO): the Store window (ADR-0019) is made of
+            // Godot Controls, which only see an event nobody marked handled.
+            // While it is open the event goes to them and not to the client:
+            // a mouse click, or on a phone Godot's own touch-to-mouse events.
+            if (StoreWindowOpen())
+            {
+                return;
+            }
+
             // PORT DEVIATION (GUO): on a touch screen, or under --touch, the
             // touch layer stands in front and hands GodotInput the mouse
             // events a finger amounts to. Off, it is one false test.
@@ -723,6 +732,20 @@ namespace GUO
             }
 
             GetViewport().SetInputAsHandled();
+        }
+
+        /// <summary>Whether a Store window is up: it is added as a child of this node.</summary>
+        private bool StoreWindowOpen()
+        {
+            foreach (Node child in GetChildren())
+            {
+                if (child is GUO.Store.StoreWindow && !child.IsQueuedForDeletion())
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         public override void _Process(double delta)
