@@ -56,6 +56,10 @@ namespace GUO.Game.UI.Gumps
         private InputField _canvasBackgroundPath;
         private HSliderBar _canvasBackgroundFps;
         private Checkbox _canvasBackgroundLowPower;
+
+        // PORT DEVIATION (GUO): the idle screen saver, under Video.
+        private Checkbox _screenSaver;
+        private HSliderBar _screenSaverMinutes;
         private Combobox _cotType;
         private DataBox _databox;
         private HSliderBar _delay_before_display_tooltip, _tooltip_zoom, _tooltip_background_opacity;
@@ -2113,6 +2117,25 @@ namespace GUO.Game.UI.Gumps
             _canvasBackgroundMode = GUO.Store.StoreOptions.Attach(section6, _canvasBackgroundMode,
                 _canvasBackgroundChoices, choiceTitles, value => _canvasBackgroundPath.SetText(value), _currentProfile);
 
+            // PORT DEVIATION (GUO): the idle screen saver (ScreenSaver).
+            SettingsSection section7 = AddSettingsSection(box, "Screen saver");
+            section7.Y = section6.Bounds.Bottom + 40;
+
+            section7.Add
+            (
+                _screenSaver = AddCheckBox
+                (
+                    null,
+                    "When idle, black out the screen with drifting effects (protects OLED screens)",
+                    _currentProfile.ScreenSaver,
+                    startX,
+                    startY
+                )
+            );
+
+            section7.Add(AddLabel(null, "Minutes idle", startX, startY));
+            section7.AddRight(_screenSaverMinutes = AddHSlider(null, 1, 60, Math.Max(1, _currentProfile.ScreenSaverMinutes), startX, startY, 150));
+
             Add(rightArea, PAGE);
         }
 
@@ -3863,6 +3886,8 @@ namespace GUO.Game.UI.Gumps
                     _canvasBackgroundPath.SetText(""); // PORT DEVIATION (GUO)
                     _canvasBackgroundFps.Value = 12; // PORT DEVIATION (GUO)
                     _canvasBackgroundLowPower.IsChecked = false; // PORT DEVIATION (GUO)
+                    _screenSaver.IsChecked = false; // PORT DEVIATION (GUO)
+                    _screenSaverMinutes.Value = 10; // PORT DEVIATION (GUO)
                     _sliderScreenZoom.Value = 0;
                     _lightBar.Value = 0;
                     _enableLight.IsChecked = false;
@@ -4320,6 +4345,8 @@ namespace GUO.Game.UI.Gumps
             _currentProfile.CanvasBackgroundPath = _canvasBackgroundPath.Text ?? "";
             _currentProfile.CanvasBackgroundFps = _canvasBackgroundFps.Value;
             _currentProfile.CanvasBackgroundLowPower = _canvasBackgroundLowPower.IsChecked;
+            _currentProfile.ScreenSaver = _screenSaver.IsChecked; // PORT DEVIATION (GUO)
+            _currentProfile.ScreenSaverMinutes = _screenSaverMinutes.Value; // PORT DEVIATION (GUO)
 
             if (_enableLight.IsChecked)
             {

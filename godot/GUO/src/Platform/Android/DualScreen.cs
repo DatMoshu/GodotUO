@@ -283,6 +283,9 @@ namespace GUO.Platform.Android
                 batcher.ClipEnd();
             }
 
+            // The idle screen saver covers the second screen too.
+            GUO.Game.Managers.ScreenSaver.Draw(batcher, new Rectangle(MainWidth, 0, _instance._logicalWidth, _instance._logicalHeight));
+
             batcher.End();
             batcher.SetRenderTarget(restore);
 

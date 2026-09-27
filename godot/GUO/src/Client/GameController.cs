@@ -705,6 +705,15 @@ namespace GUO
         /// </remarks>
         public override void _Input(InputEvent @event)
         {
+            // PORT DEVIATION (GUO): every input counts as activity for the
+            // screen saver, and the one that wakes it goes no further.
+            if (GUO.Game.Managers.ScreenSaver.NoteInput())
+            {
+                GetViewport().SetInputAsHandled();
+
+                return;
+            }
+
             // PORT DEVIATION (GUO): on a touch screen, or under --touch, the
             // touch layer stands in front and hands GodotInput the mouse
             // events a finger amounts to. Off, it is one false test.
@@ -900,6 +909,12 @@ namespace GUO
             // PORT DEVIATION (GUO): the same gumps again for the second
             // screen of a dual-screen device; a no-op without one. ADR-0009.
             GUO.Platform.Android.DualScreen.Draw(_uoSpriteBatch, _renderTargets.UiRenderTarget);
+
+            // PORT DEVIATION (GUO): the idle screen saver, over everything
+            // but the cursor. A no-op unless the profile turns it on.
+            _uoSpriteBatch.Begin();
+            GUO.Game.Managers.ScreenSaver.Draw(_uoSpriteBatch, new Rectangle(0, 0, ClientBounds.Width, ClientBounds.Height));
+            _uoSpriteBatch.End();
 
             _uoSpriteBatch.Begin();
             UO.GameCursor?.Draw(_uoSpriteBatch);
