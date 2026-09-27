@@ -24,7 +24,7 @@ namespace GUO.Configuration
     /// defaults, the property initialisers in Profile. GUO also runs on
     /// phones and in a browser, where some of those defaults are wrong. Every
     /// per-platform default lives in the table below and nowhere else. The
-    /// desktop has no entries, so a desktop profile is exactly upstream's.
+    /// desktop differs from upstream only in the entries its table lists.
     ///
     /// Each entry names a Profile field, the value it has in upstream's
     /// Profile (the desktop default), and the value on this platform.
@@ -49,7 +49,7 @@ namespace GUO.Configuration
         /// The table version this build writes. 0 means the profile predates
         /// platform defaults (every profile saved before GUO had them).
         /// </summary>
-        public const int CurrentVersion = 3;
+        public const int CurrentVersion = 5;
 
         /// <summary>The login screen's size, which every login gump is laid out for.</summary>
         private const int LoginWidth = 640;
@@ -77,7 +77,19 @@ namespace GUO.Configuration
 
         private static readonly Dictionary<ProfilePlatform, Entry[]> Table = new Dictionary<ProfilePlatform, Entry[]>
         {
-            [ProfilePlatform.Desktop] = Array.Empty<Entry>(),
+            [ProfilePlatform.Desktop] = new[]
+            {
+                // v5: the world fills the window and the wheel zooms, as on
+                // Mobile and Web, instead of upstream's 600x480 world in the
+                // corner of a large window. Unticking "Game window full size"
+                // under Options still gives the smaller, movable world.
+                // (v4 is work/background's canvas background entry.)
+                BoolEntry(nameof(Profile.GameWindowFullSize), p => p.GameWindowFullSize, (p, v) => p.GameWindowFullSize = v, true, since: 5),
+                PointEntry(nameof(Profile.GameWindowPosition), p => p.GameWindowPosition, (p, v) => p.GameWindowPosition = v, _ => new Point(-5, -5), since: 5),
+                PointEntry(nameof(Profile.GameWindowSize), p => p.GameWindowSize, (p, v) => p.GameWindowSize = v, FullWindowSize, since: 5),
+                BoolEntry(nameof(Profile.EnableMousewheelScaleZoom), p => p.EnableMousewheelScaleZoom, (p, v) => p.EnableMousewheelScaleZoom = v, true, since: 5),
+                BoolEntry(nameof(Profile.SaveScaleAfterClose), p => p.SaveScaleAfterClose, (p, v) => p.SaveScaleAfterClose = v, true, since: 5)
+            },
 
             [ProfilePlatform.Mobile] = new[]
             {
