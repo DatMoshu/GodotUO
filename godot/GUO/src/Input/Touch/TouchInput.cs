@@ -253,6 +253,12 @@ namespace GUO.Input.Touch
         /// <returns>True when the event was consumed here.</returns>
         public static bool Handle(InputEvent e)
         {
+            // The second screen's fingers come here directly (DualScreen.Deliver).
+            if (WindowMenu.HandleInput(e))
+            {
+                return true;
+            }
+
             TouchOverlay.Note(e);
 
             switch (e)

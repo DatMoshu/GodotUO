@@ -229,8 +229,7 @@ internal static class GumpFlick
                 break;
 
             case FlickAction.SizeMenu:
-                UIManager.GetGump<GumpLayoutGump>()?.Dispose();
-                UIManager.Add(new GumpLayoutGump(g));
+                GumpPresentation.OpenMenu(g);
                 break;
 
             case FlickAction.ToggleLock:

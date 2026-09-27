@@ -732,6 +732,15 @@ namespace GUO
                 return;
             }
 
+            // PORT DEVIATION (GUO): the window menu (a Godot card) takes the
+            // pointer while it is open; a press outside it closes it.
+            if (GUO.Input.Touch.WindowMenu.HandleInput(@event))
+            {
+                GetViewport().SetInputAsHandled();
+
+                return;
+            }
+
             // PORT DEVIATION (GUO): on a touch screen, or under --touch, the
             // touch layer stands in front and hands GodotInput the mouse
             // events a finger amounts to. Off, it is one false test.

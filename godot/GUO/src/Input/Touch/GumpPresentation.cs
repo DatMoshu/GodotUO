@@ -53,7 +53,7 @@ internal static class GumpPresentation
     {
         if (!Supports(g) || UIManager.IsModalOpen) return false;
         UIManager.GetGump<GumpLayoutGump>()?.Dispose();
-        UIManager.Add(new GumpLayoutGump(g));
+        WindowMenu.Open(g);
         return true;
     }
 
