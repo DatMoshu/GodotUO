@@ -344,7 +344,14 @@ layout for small screens.
   folder (`src/Input/Touch/`, two files). No upstream file changed shape; the
   hooks in `GameController.cs` and `Main.cs` are marked `PORT DEVIATION (GUO)`.
 - The desktop gets `--touch`, `--touch-probe`, `--login-probe`,
-  `--login-probe-stay` and `--screen-scale N` as side effects, all opt-in.
+  `--login-probe-stay`, `--screen-scale N` and `--silent` as side effects,
+  all opt-in.
+- Exported builds are silent by default: `tools/android/run.py` bakes
+  `--silent` into `command_line/extra_args` for `export` and `smoke`, and
+  `Main.cs` mutes the Master bus at start (`[GUO] audio muted (--silent)`).
+  A tool-driven device run or a first try on a handheld should not play
+  music over the speaker; `--sound` on the tool exports an audible build.
+  The mute is on the bus so the profile's sound settings stay as saved.
 - `Profile.EnableMousewheelScaleZoom` is forced on while pinching. It is a
   saved profile setting, so a pinch on a device leaves it on for the desktop
   profile of the same account if the two share a profile folder. Recorded as

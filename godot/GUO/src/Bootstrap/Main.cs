@@ -137,7 +137,19 @@ public partial class Main : Node
             case RunMode.Play:
                 StartClient();
 
-                if (Scripted && !_options.Sound)
+                if (_options.Silent)
+                {
+                    // A device build is exported with --silent by default:
+                    // an APK a tool drives, or a person tries on a handheld,
+                    // should not play the Britain theme over whatever is
+                    // already on the speaker. Muting the Master bus, not the
+                    // client's sound settings, so the profile the player
+                    // saves still says "sound on" and an export with --sound
+                    // hears it unchanged.
+                    AudioServer.SetBusMute(AudioServer.GetBusIndex("Master"), true);
+                    GD.Print("[GUO] audio muted (--silent)");
+                }
+                else if (Scripted && !_options.Sound)
                 {
                     // Scripted runs are silent unless asked: four clients at
                     // once would otherwise play four Britain themes over a
@@ -709,6 +721,9 @@ public partial class Main : Node
         /// <summary>Echo every gesture the touch layer resolves to the log, for a device run read over logcat.</summary>
         public bool TouchTrace { get; private set; }
 
+        /// <summary>Mute the Master bus for the whole run; the Android tool bakes this in unless told --sound.</summary>
+        public bool Silent { get; private set; }
+
         /// <summary>
         /// Wait for the login gump to be drawn, say so on the log, and either
         /// quit (desktop) or keep running (a device, where the line is what
@@ -820,6 +835,9 @@ public partial class Main : Node
                         break;
                     case "--touch-trace":
                         o.TouchTrace = true;
+                        break;
+                    case "--silent":
+                        o.Silent = true;
                         break;
                     case "--login-probe":
                         o.LoginProbe = true;

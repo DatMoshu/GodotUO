@@ -549,12 +549,17 @@ def ensure_solution(p: Paths) -> None:
         sys.exit("[android] could not produce GUO.sln; the .NET export needs one")
 
 
-def device_args(p: Paths, extra: str) -> str:
+def device_args(p: Paths, extra: str, sound: bool = False) -> str:
     """The client's command line on the device: where its data is, then whatever the caller adds."""
     # After "--": Main.cs reads OS.GetCmdlineUserArgs(), which is only what
     # follows the separator; without it the engine kept the flags and the
     # client saw none of them (it died with "No UO client data directory").
     base = f"-- --play --client-data {p.cfg.android_client_data}"
+    # Silent unless asked: every device run is either a tool driving the
+    # handheld over adb or a person trying a build, and neither wants the
+    # Britain theme over the speaker. --sound exports an audible build.
+    if not sound:
+        base += " --silent"
     return f"{base} {extra}".strip()
 
 
@@ -563,14 +568,14 @@ def device_args(p: Paths, extra: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def export(p: Paths, extra_args: str, apk: Path) -> int:
+def export(p: Paths, extra_args: str, apk: Path, sound: bool = False) -> int:
     console = p.godot_console()
     if not console.exists():
         sys.exit(f"[android] Godot console not found at {console}; run doctor")
     p.out_dir.mkdir(parents=True, exist_ok=True)
     write_editor_settings(p)
     ensure_solution(p)
-    render_preset(p, device_args(p, extra_args), apk)
+    render_preset(p, device_args(p, extra_args, sound), apk)
     if apk.exists():
         apk.unlink()
 
@@ -671,12 +676,12 @@ def push_data(p: Paths) -> int:
     return 0
 
 
-def smoke(p: Paths, timeout: int, skip_export: bool) -> int:
+def smoke(p: Paths, timeout: int, skip_export: bool, sound: bool = False) -> int:
     apk = p.out_dir / "GUO-smoke.apk"
     if not skip_export:
         # The smoke build says on the log when the login gump is drawn, and
         # stays up so a screenshot can be taken of it.
-        if export(p, "--login-probe-stay", apk) != 0:
+        if export(p, "--login-probe-stay", apk, sound) != 0:
             return 1
     if install(p, apk) != 0:
         say("install FAILED")
@@ -829,6 +834,7 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("settings", help="write the Android paths into Godot's editor settings")
     pr = sub.add_parser("preset", help="render export_presets.cfg from the template")
     pr.add_argument("--args", default="", help="extra client flags to bake in")
+    pr.add_argument("--sound", action="store_true", help="audible build (default bakes --silent)")
     ex = sub.add_parser("export", help="export a debug APK, headless")
     ex.add_argument("--args", default="", help="extra client flags to bake in (after --play --client-data ...)")
     ex.add_argument("--out", default=None, help="APK path (default build\\android\\GUO-debug.apk)")
@@ -860,10 +866,10 @@ def main(argv: list[str] | None = None) -> int:
         write_editor_settings(p)
         return 0
     if args.command == "preset":
-        render_preset(p, device_args(p, args.args), p.apk)
+        render_preset(p, device_args(p, args.args, args.sound), p.apk)
         return 0
     if args.command == "export":
-        return export(p, args.args, Path(args.out) if args.out else p.apk)
+        return export(p, args.args, Path(args.out) if args.out else p.apk, args.sound)
     if args.command == "install":
         return install(p, Path(args.apk) if args.apk else p.apk)
     if args.command == "run":
@@ -873,7 +879,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "push":
         return push_data(p)
     if args.command == "smoke":
-        return smoke(p, args.timeout, args.no_export)
+        return smoke(p, args.timeout, args.no_export, args.sound)
     if args.command == "dual_probe":
         return dual_probe(p, args.timeout, args.no_export, args.args, args.stay)
     if args.command == "displays":

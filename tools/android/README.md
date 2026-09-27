@@ -85,6 +85,15 @@ follows it. To reach the dev shard from the phone, bake in this PC's LAN
 address: `export.bat --args "--host <shard-lan-ip>"` (the shard must listen
 wide, `UO_SHARD_BIND=0.0.0.0`). The smoke build adds `--login-probe-stay`.
 
+Every build the tool exports is **silent**: `device_args` bakes `--silent`
+in, and `Main.cs` mutes the Master bus at start (log line `[GUO] audio
+muted (--silent)`). A device run is either a tool driving the handheld or a
+person trying a build, and neither wants the Britain theme over the
+speaker. `export.bat --sound` (also `smoke.bat --sound`, `preset --sound`)
+leaves it out and exports an audible build; that is the only way a player's
+install hears anything for now. The mute is on the bus, not in the profile,
+so the saved sound settings are untouched.
+
 Two project-side facts the export depends on: Godot 4.7's prebuilt Android
 template is built for **net9.0**, so `GUO.csproj` switches its target
 framework to net9.0 when `GodotTargetPlatform` is `android` (the desktop
