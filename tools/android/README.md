@@ -155,21 +155,53 @@ Play by hand with the layer on: `launchers\game\play.bat --touch`.
 
 A device with a second display Android will let an app present on (the AYN
 Thor's lower screen; `DisplayManager.getDisplays(DISPLAY_CATEGORY_PRESENTATION)`
-is the test) gets the paperdoll, backpack, status bar and journal on it, and
-the world alone on the main one. Why and how is
-[ADR-0009](../../docs/architecture/ADR-0009-second-display.md); in short the
-second screen is a virtual extension of the client window to the right, the
-gumps over there are ordinary upstream gumps, the UI render lists are drawn
-a second time into a target of the second screen's size, and that target is
-pushed to an `android.app.Presentation` through Godot's own Java bridge. No
-plugin, no Gradle: the export is the same one as always.
+is the test) uses it from the moment the client is up: the welcome panel
+before the player is in the world (the GUO sigil, the client version, the
+shard, and the second screen's own settings), then the paperdoll, backpack,
+status bar and journal as a shelf once in the world, with the world alone on
+the main screen. Why and how is
+[ADR-0009](../../docs/architecture/ADR-0009-second-display.md) and its
+amendment; in short the second screen is a virtual extension of the client
+window to the right, the gumps over there are ordinary upstream gumps, the
+gumps that sit over there are drawn a second time into a target of the
+second screen's size, and that target is pushed to an
+`android.app.Presentation` through Godot's own Java bridge. No plugin, no
+Gradle: the export is the same one as always.
 
 - **Nothing to build.** `export.bat` already carries it; a device without a
   second display logs `[GUO] dual screen: no second display; nothing changes`
   and that is the end of it.
-- **Turning it off:** Options > General > "Gumps & Context" > "Use the second
-  screen for paperdoll, backpack, status and journal" (the checkbox only
-  exists where a second display does), or `--args "--dual-off"` on an export.
+- **Dual from launch.** The presentation is shown as soon as the client
+  runs (`[GUO] dual screen: active; ...` then `welcome panel WxH at x=...`
+  on logcat) and dismissed at exit. Logging out brings the welcome panel
+  back; nothing is hidden in between.
+- **The settings**, on the welcome panel (touch) and under Options > General
+  > "Gumps & Context" (only where a second display exists), applied live:
+  use the second screen as a shelf (`DualScreenEnabled`); which kinds are
+  shelved when opened -- paperdoll, backpack, status bar, journal, other
+  gumps (skills, spellbook, containers) (`DualScreenShelve*`); the shelf's
+  own pixel scale, 0 = the main screen's, else 1x-3x (`DualScreenScale`).
+  They live in the profile (PlatformDefaults v7 turns the four on); before
+  a profile is loaded the panel reads the newest saved profile.json, as the
+  canvas background does, and an edit made on the login screen is carried
+  into the profile the player then logs into. With the shelf off, the
+  welcome panel stays up in the world too, so it can be turned back on from
+  the lower screen. Swapping the screens is not offered: the world is drawn
+  to the main window only, and going through the bitmap path would cost
+  the frame rate the ADR protects.
+- **The shelf's layout** is a fixed slot per kind, clamped to the shelf:
+  paperdoll top left, status bar along the bottom, backpack top right,
+  journal under the backpack and above the status bar, other gumps in the
+  middle. A gump on the shelf is clamped back every frame (not while it is
+  being dragged), so nothing runs off an edge whatever a saved position
+  says. Only gumps whose middle is past the main window's edge are drawn
+  there, so the top bar (wider than the Thor's main window) no longer
+  spills a fragment onto the lower screen. At 620x540 the four do not fit
+  without overlap (paperdoll 262x324, status 577x216, journal 345x298,
+  backpack 230x204); the journal overlaps the lower part of the backpack,
+  and a tap brings either to the front. Untick a kind to free the space.
+- **Turning it off:** the "Use it as a shelf" checkbox on either panel, or
+  `--args "--dual-off"` on an export (no presentation at all).
 - **Doctor:** `doctor.bat` prints every display `dumpsys display` reports,
   with its size, rotation, `presentation` flag and SurfaceFlinger id, and
   which one the client will use. `python tools\android\run.py displays`
@@ -190,7 +222,10 @@ plugin, no Gradle: the export is the same one as always.
 - **On the desktop** the same feature runs against a window standing in for
   the panel: `--play --dual-screen 1240x1080 --dual-probe` (or without the
   probe, to play with it); the mouse in that window is one finger on the
-  second screen.
+  second screen. `--login-probe` with `--dual-screen` photographs the
+  welcome panel at the login screen (`<name>_second.png` beside the main
+  frame): `launchers\dev\screenshot.bat --play --dual-screen 1240x1080
+  --login-probe --screenshot-name dual_login`.
 
 What the probe prints, from the Thor:
 

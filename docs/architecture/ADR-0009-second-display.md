@@ -363,6 +363,105 @@ saved beyond the window by a dual-screen session are rescued by
 
 None registered; `tr-registry.yaml` is empty for this project.
 
+## Amendment 1: dual from launch, the welcome panel, the shelf's settings and layout
+
+Date: 2026-09-26. Status of the record: still Accepted; this section
+extends the Decision, it does not replace it.
+
+### What changed
+
+The owner's ask: "all runs should be using the dual screen app ... At login
+it should have dual screen settings you can tweak and a welcome message and
+etc. So we are dual from launch." And, from a device pass on the shelf as
+first built: the status gump landing over the paperdoll and past the right
+edge, the journal off the bottom, and a fragment of the top bar pinned over
+the paperdoll.
+
+1. **Dual from launch.** `DualScreen` is wanted whenever the client is up
+   and the run did not say `--dual-off`; it no longer waits for the profile
+   or the world. The presentation (or the desktop simulator window) is
+   opened as soon as the client runs and dismissed at exit. `Active` now
+   means "the second screen is up"; the new `ShelfOn` means "active, in the
+   world, and the setting on", and `ExtraWidth` (what the gump clamps add)
+   follows `ShelfOn`, so nothing about gump clamping changes while the
+   shelf is not in use.
+2. **The welcome panel** (`DualWelcomeGump`, `src/Game/UI/Gumps/`). While
+   the shelf is not in use -- before the player is in the world, and in the
+   world with the shelf turned off -- the second screen shows a gump placed
+   at `X = MainWidth` and sized to the second screen: the GUO sigil
+   (`res://icon.png`, scaled once on the CPU to 128 px so it is drawn 1:1
+   and never filtered), "Welcome to GUO", the client version from the
+   assembly, the shard host and port from `settings.json`, and the settings
+   below. It is an ordinary gump: `UIManager` lays it out, hit-tests and
+   draws it; it is `GumpType.None` so it is never saved; a scene change
+   disposes it and `DualScreen` makes it again. With the shelf off in the
+   world it stays up, so the shelf can be turned on from the lower screen.
+3. **The settings**, in the profile (`Profile.DualScreenShelvePaperdoll`,
+   `...Backpack`, `...Status`, `...Journal`, `...Others`, `DualScreenScale`;
+   `DualScreenEnabled` was already there), with `PlatformDefaults`
+   **version 7** turning the four kinds on in every platform table (the
+   feature exists only where a display does, so there is nothing to vary
+   per platform). `DualScreenSettings` is how the running client reads and
+   writes them: with a profile loaded, the profile; before that, the newest
+   saved profile.json for its keys, the same pre-profile path the canvas
+   background takes (ADR-0016), and an edit made on the login screen is
+   kept for the session and written into the profile the player logs into.
+   The welcome panel and Options > "Gumps & Context" both show them;
+   `DualScreen` reads them every frame, so they apply live: a kind turned
+   off comes back to the main screen through upstream's `SetInScreen`, a
+   kind turned on is placed on its next frame, the shelf switch swaps the
+   shelf and the welcome panel, and a new scale reopens the presentation
+   with a bitmap of the new size (`physical / scale`, or `physical /
+   DpiScale` when the scale is 0, "as the main screen").
+   **Swap screens is not offered**: the world is drawn to the main window
+   and the second screen is fed by a readback every fourth frame; sending
+   the world that way would cost exactly the frame rate this record
+   protects, and Godot on Android has no second viewport to hand a surface
+   (Alternative 1). Left out, and said so on the panel.
+4. **Only shelf gumps are drawn on the second screen.** `UIManager.
+   RedrawLists` (drew every gump again) is replaced by `UIManager.
+   DrawGumpsWhere`, which builds a second set of render lists from the
+   gumps whose middle is past the main window's edge, in the order the
+   frame already sorted them. The top bar, wider than the Thor's main
+   window, stays on the main screen where it belongs.
+5. **A packing rule for the shelf** (`DualScreen.Place`), written for
+   620x540 and holding for any size: paperdoll top left; status bar along
+   the bottom (it is nearly the shelf's width); backpack top right; journal
+   in the column right of the paperdoll, under the backpack and above the
+   status bar; "other" gumps (containers other than the backpack, the skills
+   gumps, the spellbook) in the middle. Every slot is clamped to the shelf.
+   And every frame, a gump that sits on the shelf and is not being dragged
+   is clamped back into it (`ClampShelf`): whatever put it past an edge -- a
+   position saved by a wider shelf, a placement before its size was final --
+   it cannot run off. Upstream's four (262x324, 577x216, 345x298, 230x204)
+   exceed 620x540 in area, so one overlap is by design: the journal over the
+   lower part of the backpack, a tap bringing either to the front.
+6. **The probes.** `--login-probe` with a second screen waits a few frames
+   after the login gump and saves the second screen too
+   (`<name>_second.png`); `--dual-probe` is unchanged and still expects
+   three or more gumps on the shelf once in the world.
+
+### Ported code touched, each marked `PORT DEVIATION (GUO)`
+
+`Profile` (six keys), `PlatformDefaults` (v7 and the shelf entries),
+`UIManager.DrawGumpsWhere` (replacing `RedrawLists`), `OptionsGump` (five
+checkboxes and a slider beside the existing switch), `Main` (the login
+probe's second frame). New, GUO's own: `Platform/Android/DualScreenSettings.cs`,
+`Game/UI/Gumps/DualWelcomeGump.cs`. `DualScreen.cs` is reworked as above.
+
+### Validation
+
+1. `dotnet build` -- 0 errors. **Met.**
+2. Desktop, `screenshot.bat --play --dual-screen 1240x1080 --login-probe`:
+   the login gump on the main window, the welcome panel with its settings
+   on the simulator window, both saved. **Met** (`build\dual\dual_login.png`,
+   `dual_login_second.png` in the worktree, 2026-09-26).
+3. `port_drift --strict`: no new unmarked file from this change.
+   **Met** (the ten unmarked files it lists on `work/icon` predate it).
+4. Thor: the welcome panel on the lower screen at the login screen, a tap on
+   a checkbox reaching it, the shelf packed and clamped once in the world,
+   no top-bar fragment. **Pending the device**; written, not yet exercised.
+
 ## Related
 
 - `tools/android/README.md`, "Second display" and the run table.
