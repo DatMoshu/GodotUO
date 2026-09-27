@@ -319,6 +319,13 @@ LIVE_SPAWNER = (1162, 1669)
 ANVIL = "0x0FAF"
 
 
+def clear_ultimalive_copies() -> None:
+    """The client's UltimaLive map copies for the private shard keep earlier live
+    terrain edits; start from the install, as tools/editor_live does."""
+    ul = Path(os.environ.get("ProgramData", r"C:\ProgramData")) / "GUO-Editor-Private"
+    shutil.rmtree(ul, ignore_errors=True)
+
+
 def live(cfg, args) -> int:
     tools = cfg.tools
     out = (args.out or cfg.build / "editor_objects_proof_live").resolve()
@@ -333,6 +340,7 @@ def live(cfg, args) -> int:
         return 2
     if sh(str(tools / "editor_shard" / "run.py"), "start", "--clear-objects") != 0:
         return 2
+    clear_ultimalive_copies()
 
     procs = {}
     try:
@@ -386,10 +394,16 @@ def live(cfg, args) -> int:
             time.sleep(2)   # the server's packets reach the client
             return [acks, round(time.time() - t0, 2)]
 
-        def items_at(d, graphic, cell):
-            return [o for o in d["items"] if o["graphic"] == graphic and (o["x"], o["y"]) == cell]
+        # Only objects that were not there before count: a shard may already
+        # hold other anvils or spawners on these cells (other runs, shard content).
+        baseline = set()
+
+        def items_at(d, graphic, cell=None):
+            return [o for o in d["items"] if o["graphic"] == graphic and o["serial"] not in baseline
+                    and (cell is None or (o["x"], o["y"]) == cell)]
 
         before = look("before")
+        baseline = {o["serial"] for o in before["items"]}
         put, put_s = step("put")
         after_put = look("after_put")
         move, move_s = step("move")
@@ -398,15 +412,15 @@ def live(cfg, args) -> int:
         after_delete = look("after_delete")
 
         checks = {
-            "baseline_clear": not items_at(before, ANVIL, LIVE_ITEM) and not items_at(before, SPAWNER_GRAPHIC, LIVE_SPAWNER),
+            "baseline_taken": bool(before.get("player")),
             "put_anvil_seen": bool(items_at(after_put, ANVIL, LIVE_ITEM)),
             "put_spawner_seen": bool(items_at(after_put, SPAWNER_GRAPHIC, LIVE_SPAWNER)),
             "put_horse_near": any(m["name"].endswith("horse") and abs(m["x"] - LIVE_SPAWNER[0]) <= 4
                                   and abs(m["y"] - LIVE_SPAWNER[1]) <= 4 for m in after_put["mobiles"]),
             "move_anvil_at_new_cell": bool(items_at(after_move, ANVIL, LIVE_MOVED)),
             "move_anvil_gone_from_old": not items_at(after_move, ANVIL, LIVE_ITEM),
-            "delete_anvil_gone": not items_at(after_delete, ANVIL, LIVE_MOVED),
-            "delete_spawner_gone": not items_at(after_delete, SPAWNER_GRAPHIC, LIVE_SPAWNER),
+            "delete_anvil_gone": not items_at(after_delete, ANVIL),
+            "delete_spawner_gone": not items_at(after_delete, SPAWNER_GRAPHIC),
         }
         (watch / "quit").write_text("", encoding="utf-8")
     finally:
@@ -443,6 +457,7 @@ def clip(cfg, args, out: Path) -> bool:
     sh(str(tools / "editor_shard" / "run.py"), "stop")
     if sh(str(tools / "editor_shard" / "run.py"), "start", "--clear-objects") != 0:
         return False
+    clear_ultimalive_copies()
     procs = {}
     marks = []
     try:
