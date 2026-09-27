@@ -114,7 +114,7 @@ namespace GUO.Renderer
                     });
                 }
 
-                GD.Print($"[GUO] canvas background: {list.Count} built-in background(s) in {Manifest}");
+                GD.Print($"[GUO] canvas background: {list.Count} built-in background(s) in {Manifest}: {string.Join(", ", list.Select(b => $"{b.Name} \"{b.Title}\""))}");
             }
             catch (Exception ex)
             {
@@ -469,6 +469,8 @@ namespace GUO.Renderer
             private int _frame;
             private double _frameClock;
             private bool _videoFrozen;
+            private double _videoLastPosition;   // to notice the loop wrapping
+            private int _videoLoops;
 
             /// <summary>Pixel size of the content, for cover scaling; zero for a tile.</summary>
             public Vector2 ContentSize { get; private set; }
@@ -883,7 +885,19 @@ namespace GUO.Renderer
                         }
                     }
 
-                    if (_settings.LowPower && !_videoFrozen && _video.StreamPosition > 0)
+                    // Say when the stream wraps: a scripted run can then put
+                    // two frames either side of the seam on the record.
+                    double pos = _video.StreamPosition;
+
+                    if (pos + 1.0 < _videoLastPosition)
+                    {
+                        _videoLoops++;
+                        GD.Print($"[GUO] canvas background: video looped ({_videoLoops}) at process frame {Engine.GetProcessFrames()}, {_videoLastPosition:F2}s -> {pos:F2}s");
+                    }
+
+                    _videoLastPosition = pos;
+
+                    if (_settings.LowPower && !_videoFrozen && pos > 0)
                     {
                         // Low power: the first frame stays.
                         _video.Paused = true;

@@ -296,6 +296,18 @@ public bool CanvasBackgroundLowPower { get; set; }
       a manifest built-in (`builtin:test`, a temporary manifest that was
       not committed): `bg_builtin_manifest.png` (video),
       `bg_builtin_manifest_lowpower.png` (its still).
+- [x] Desktop, the ten shipped loops (merge 79e6336 of `work/backgrounds-media`):
+      the manifest parses to ten entries (logged by name and title);
+      `builtin:moongate-shimmer`, `builtin:rain-on-stone` and
+      `builtin:twin-moons` decode and wrap (`video looped (1) at process
+      frame 1442` / `1802`), frames 6 either side of the seam are continuous
+      (`bgm_moongate_before/after.png`, `bgm_twinmoons_before/after.png`,
+      `bgm_rain_cal.png`); `builtin:candle-parchment,lowpower` shows the
+      still (`bgm_candle_lowpower.png`). The login window is 640x480 by
+      upstream's choice, so those runs grew it to 1600x1000 from outside;
+      the gump then stays top-left on the desktop (upstream places it once).
+      The Android export packages every `.ogv`, the imported stills and the
+      manifest (`GUO-bg-media.apk`, 122 MB, +22 MB over the bare client).
 - [x] Desktop, the Options gump's Display page shows the Background section
       (`bg_options.png`, captured by `--ui-probe`).
 - [x] `launchers\dev\smoke.bat` OK on the branch (2026-09-26).
