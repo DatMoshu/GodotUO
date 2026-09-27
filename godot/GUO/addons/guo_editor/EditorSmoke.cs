@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Godot;
 
 /// <summary>
@@ -39,6 +40,16 @@ public partial class EditorSmoke : Node
     /// </summary>
     public const string WorldShotFlag = "--guo-editor-world-shot";
 
+    /// <summary>
+    /// <c>send</c> or <c>follow</c>: the live tier check (tools/editor_live).
+    /// Both open the World tab at the wilderness block and connect to the
+    /// shard's bridge (<c>--guo-editor-live-port</c>). <c>send</c> waits for a
+    /// <c>go</c> file, stamps a tree, and records the shard's acknowledgement
+    /// and a GM command's reply (<c>--guo-editor-live-as</c>); <c>follow</c>
+    /// waits for that block to arrive from the other editor.
+    /// </summary>
+    public const string LiveFlag = "--guo-editor-live";
+
     private const double TimeoutSeconds = 180;
     private const int SettleFrames = 45;
 
@@ -47,6 +58,7 @@ public partial class EditorSmoke : Node
     private readonly AssetsDock _assets;
     private readonly InspectorDock _inspector;
     private readonly WorldView _world;
+    private readonly ShardDock _shard;
     private readonly Dictionary<string, object> _worldReport = new();
     private readonly Dictionary<string, object> _report = new();
     private readonly Dictionary<string, object> _panels = new();
@@ -59,13 +71,14 @@ public partial class EditorSmoke : Node
     private bool _reloadTest;
     private bool _afterReload;
 
-    public EditorSmoke() : this(null, null, null, null, null)
+    public EditorSmoke() : this(null, null, null, null, null, null)
     {
     }
 
-    public EditorSmoke(string outDir, EditorData data, AssetsDock assets, InspectorDock inspector, WorldView world)
+    public EditorSmoke(string outDir, EditorData data, AssetsDock assets, InspectorDock inspector, WorldView world, ShardDock shard)
     {
         _world = world;
+        _shard = shard;
         _out = outDir;
         _data = data;
         _assets = assets;
@@ -123,7 +136,9 @@ public partial class EditorSmoke : Node
                 if (_data.IsLoaded || _data.Error != null)
                 {
                     CheckLoaded();
-                    _stage = _failures.Count > 0 ? 9 : ArgValue(WorldShotFlag) != null ? 30 : 1;
+                    _stage = _failures.Count > 0 ? 9
+                        : ArgValue(LiveFlag) != null ? 40
+                        : ArgValue(WorldShotFlag) != null ? 30 : 1;
                     _frames = 0;
                 }
                 else if (_elapsed > TimeoutSeconds)
@@ -278,6 +293,17 @@ public partial class EditorSmoke : Node
                     Finish();
                 }
 
+                break;
+
+            case 40:
+                StartLive();
+                _stage = 41;
+                _frames = 0;
+                _elapsed = 0;
+                break;
+
+            case 41:
+                StepLive();
                 break;
 
             case 30:
@@ -555,6 +581,142 @@ public partial class EditorSmoke : Node
     }
 
     private int _before;
+
+    // --- live tier -------------------------------------------------------
+
+    private readonly Dictionary<string, object> _live = new();
+    private string _liveRole;
+    private int _livePhase;
+    private long _liveSent;
+
+    // A cell on the wilderness block that a client standing at 1164,1668 sees
+    // clear of its paperdoll (about 110 px right of centre).
+    private const int LiveX = 1167, LiveY = 1666;
+
+    private void StartLive()
+    {
+        _liveRole = ArgValue(LiveFlag);
+        _report["live"] = _live;
+        _live["role"] = _liveRole;
+        EditorInterface.Singleton.SetMainScreenEditor(GuoEditorPlugin.WorldTabName);
+        _world.Visible = true;
+        _world.OpenProject(Path.Combine(_out, $"world_project_{_liveRole}"));
+        _world.GoTo(0, EditX, EditY);
+        _world.Guides.Blocks = false;
+
+        int port = int.TryParse(ArgValue("--guo-editor-live-port"), out int p) ? p : 2595;
+        if (!_shard.Connect("127.0.0.1", port, $"editor-{_liveRole}"))
+        {
+            _failures.Add($"live: could not connect to the bridge on {port}");
+            Finish();
+            return;
+        }
+
+        _live["port"] = port;
+        File.WriteAllText(Path.Combine(_out, $"{_liveRole}.ready"), "");
+    }
+
+    private void StepLive()
+    {
+        long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        if (_elapsed > 300)
+        {
+            _failures.Add($"live {_liveRole}: timed out in phase {_livePhase}");
+            Finish();
+            return;
+        }
+
+        if (_liveRole == "follow")
+        {
+            if (_shard.LastRemote is { } r && r.Bx == EditBx && r.By == EditBy)
+            {
+                _live["received_from"] = r.From;
+                _live["received_ms"] = r.ReceivedMs;
+                _live["latency_ms"] = r.LatencyMs;
+                bool there = false;
+                var chunk = _world.Host.World.Map.GetChunk2(EditBx, EditBy, load: true);
+                for (var o = chunk?.GetHeadObject(LiveX & 7, LiveY & 7); o != null; o = o.TNext)
+                {
+                    there |= o is GUO.Game.GameObjects.Static && o.Graphic == 0x0CE3;
+                }
+
+                _live["tree_in_this_world"] = there;
+                if (!there)
+                {
+                    _failures.Add("live follow: the other editor's tree is not in this world");
+                }
+
+                Finish();
+            }
+
+            return;
+        }
+
+        switch (_livePhase)
+        {
+            case 0:
+                if (File.Exists(Path.Combine(_out, "go")))
+                {
+                    _data.CurrentArt = EditorData.LandCount + 0x0CE3;
+                    _liveSent = now;
+                    _live["sent_ms"] = now;
+                    bool ok = _world.Editor.Stamp(0, LiveX, LiveY, _world.Host.World.Map.GetTileZ(LiveX, LiveY), 0x0CE3, 0);
+                    _live["stamped"] = ok;
+                    _livePhase = 1;
+                }
+
+                break;
+
+            case 1:
+                if (_shard.LastAck is { } a)
+                {
+                    _live["ack_ms"] = a.AckMs;
+                    _live["round_trip_ms"] = a.AckMs - _liveSent;
+                    _live["pushed_to_clients"] = a.Clients;
+                    _live["relayed_to_editors"] = a.Editors;
+                    string who = ArgValue("--guo-editor-live-as");
+                    if (!string.IsNullOrEmpty(who))
+                    {
+                        _shard.RunCommand(who, "[where");
+                        _livePhase = 2;
+                    }
+                    else
+                    {
+                        _livePhase = 3;
+                        _frames = 0;
+                    }
+                }
+
+                break;
+
+            case 2:
+                if (_shard.LastCommand is JsonNode c)
+                {
+                    _live["command_ok"] = (bool)c["ok"];
+                    _live["command"] = c.ToJsonString();
+                    _livePhase = 3;
+                    _frames = 0;
+                }
+
+                break;
+
+            case 3:
+                if (Headless || _frames >= SettleFrames)
+                {
+                    Image frame = _world.Capture();
+                    if (frame != null && !frame.IsEmpty())
+                    {
+                        string path = Path.Combine(_out, $"world_live_{_liveRole}.png");
+                        frame.SavePng(path);
+                        _live["png"] = path;
+                    }
+
+                    Finish();
+                }
+
+                break;
+        }
+    }
 
     private void StartWorldShot()
     {

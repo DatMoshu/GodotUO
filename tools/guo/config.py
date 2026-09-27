@@ -79,6 +79,9 @@ class Config:
     client_version: str
     cache_dir: Path
     world_project: Path
+    editor_live_host: str
+    editor_live_port: int
+    editor_name: str
     shard_host: str
     shard_port: int
     shard_name: str
@@ -221,6 +224,9 @@ def load_config(root: Path | None = None) -> Config:
         client_version=get("UO_CLIENT_VERSION", "7.0.15.1"),
         cache_dir=Path(os.path.expandvars(cache)),
         world_project=Path(os.path.expandvars(world)),
+        editor_live_host=get("UO_EDITOR_LIVE_HOST", "127.0.0.1"),
+        editor_live_port=int(get("UO_EDITOR_LIVE_PORT", "2595") or 2595),
+        editor_name=os.path.expandvars(get("UO_EDITOR_NAME", os.environ.get("USERNAME", "editor"))),
         shard_name=get("UO_SHARD_NAME", "GUO Dev"),
         shard_host=get("UO_SHARD_HOST", "127.0.0.1"),
         shard_port=shard_port,

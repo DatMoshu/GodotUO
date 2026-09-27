@@ -52,6 +52,47 @@ internal sealed class WorldEditor
     /// <summary>Raised after any edit, undo or redo, with a line describing it.</summary>
     public event Action<string> Changed;
 
+    /// <summary>
+    /// Raised after a local edit, undo or redo with the block as it now is
+    /// (the project's, or the install's when undo removed it): what the live
+    /// tier sends to the shard. Not raised for remote blocks.
+    /// </summary>
+    public event Action<WorldBlock> BlockWritten;
+
+    private void Written(int facet, int bx, int by)
+    {
+        if (BlockWritten == null || _host.Project == null)
+        {
+            return;
+        }
+
+        WorldBlock now = _host.Project.BlockText(facet, bx, by) != null
+            ? WorldProject.ReadBlock(_host.Project.BlockPath(facet, bx, by))
+            : WorldProject.Capture(Maps, facet, bx, by);
+        if (now != null)
+        {
+            BlockWritten(now);
+        }
+    }
+
+    /// <summary>
+    /// Another editor's block, from the shard: written to this project and
+    /// laid over the map, as the last write wins. Kept out of undo (it is not
+    /// this editor's to take back) and not sent on again.
+    /// </summary>
+    public bool ApplyRemote(WorldBlock block, string from)
+    {
+        if (_host.Project == null)
+        {
+            return false;
+        }
+
+        _host.Project.WriteBlock(block);
+        _host.ApplyOverlay();
+        Changed?.Invoke($"remote: {from} changed block {block.Bx},{block.By}");
+        return true;
+    }
+
     private MapLoader Maps => Client.Game.UO.FileManager.Maps;
 
     /// <summary>
@@ -92,6 +133,7 @@ internal sealed class WorldEditor
         _redo.Clear();
         _host.ApplyOverlay();
         Changed?.Invoke(what);
+        Written(facet, bx, by);
         return true;
     }
 
@@ -108,6 +150,7 @@ internal sealed class WorldEditor
         _redo.Push(c);
         _host.ApplyOverlay();
         Changed?.Invoke($"undo: {c.What}");
+        Written(c.Facet, c.Bx, c.By);
         return true;
     }
 
@@ -123,6 +166,7 @@ internal sealed class WorldEditor
         _undo.AddLast(c);
         _host.ApplyOverlay();
         Changed?.Invoke($"redo: {c.What}");
+        Written(c.Facet, c.Bx, c.By);
         return true;
     }
 

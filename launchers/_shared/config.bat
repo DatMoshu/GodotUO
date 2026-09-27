@@ -53,6 +53,13 @@ REM  install, never written into it. See docs\data_formats.md section 9 and
 REM  docs\architecture\ADR-0011-world-project-overlay.md.
 if not defined UO_WORLD_PROJECT     set "UO_WORLD_PROJECT=%UO_ROOT%\build\world\default"
 
+REM  The live tier: the editor bridge of the shard the UO Shard dock connects
+REM  to (tools\editor_shard\bridge; the private instance by default), and the
+REM  name this editor shows to other editors there. ADR-0012.
+if not defined UO_EDITOR_LIVE_HOST  set "UO_EDITOR_LIVE_HOST=127.0.0.1"
+if not defined UO_EDITOR_LIVE_PORT  set "UO_EDITOR_LIVE_PORT=2595"
+if not defined UO_EDITOR_NAME       set "UO_EDITOR_NAME=%USERNAME%"
+
 REM --- Shard to connect to ------------------------------------------------
 if not defined UO_SHARD_HOST        set "UO_SHARD_HOST=127.0.0.1"
 if not defined UO_SHARD_PORT        set "UO_SHARD_PORT=2593"

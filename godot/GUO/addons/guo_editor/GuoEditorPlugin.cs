@@ -32,6 +32,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
     private InspectorDock _inspector;
     private EditorSmoke _smoke;
     private WorldView _world;
+    private ShardDock _shard;
 
     // Whether the World tab was on screen when an assembly reload began.
     // A bool field survives the reload (Godot serializes it), and the editor
@@ -94,6 +95,11 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         _world.Visible = _worldWasVisible;
         _worldWasVisible = false;
         _world.Inspect += _inspector.ShowInspection;
+        // The live tier (ADR-0012): the UO Shard dock drives the World tab's edits to a shard.
+        _shard = new ShardDock();
+        AddDock(_shard);
+        _shard.Attach(_world);
+
         MapPanel maps = _assets.Panel<MapPanel>();
         if (maps != null)
         {
@@ -108,7 +114,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         string smokeOut = EditorSmoke.OutDirFromArgs();
         if (smokeOut != null)
         {
-            _smoke = new EditorSmoke(smokeOut, _data, _assets, _inspector, _world);
+            _smoke = new EditorSmoke(smokeOut, _data, _assets, _inspector, _world, _shard);
             AddChild(_smoke);
         }
 
@@ -138,6 +144,15 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
 
     private void TearDown()
     {
+        if (_shard != null)
+        {
+            // Closes the bridge connection and its reader thread before a reload.
+            _shard.Shutdown();
+            RemoveDock(_shard);
+            _shard.QueueFree();
+            _shard = null;
+        }
+
         if (_world != null)
         {
             // Frees the embedded controller's render resources and releases

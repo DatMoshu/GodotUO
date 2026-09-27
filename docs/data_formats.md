@@ -43,6 +43,8 @@ Every key resolves as: **environment variable → `config.local.bat` →
 | `UO_CLIENT_VERSION` | Client version the data corresponds to (e.g. `7.0.107.76`) |
 | `UO_CACHE_DIR` | Disposable decode cache |
 | `UO_WORLD_PROJECT` | The editor's world project folder (§9); default `build\world\default` |
+| `UO_EDITOR_LIVE_HOST` / `UO_EDITOR_LIVE_PORT` | The editor bridge the UO Shard dock connects to (§10); default `127.0.0.1:2595`, the private instance |
+| `UO_EDITOR_NAME` | The name this editor shows other editors on the bridge |
 | `UO_SHARD_HOST` / `UO_SHARD_PORT` | Shard to connect to |
 | `GODOT_VERSION` / `GODOT_FLAVOR` | Pinned engine build |
 | `UO_LOG_LEVEL` | `DEBUG` \| `INFO` \| `WARN` \| `ERROR` |
@@ -260,4 +262,43 @@ and 64 cells of id and z; `StaticsBlock`: id, x, y, z, hue), so a project
 converts to `mapdif`/`stadif` or patched `map`/`statics` files without loss.
 That export, into the **shard's** data folder and never the install, is
 `tools/world` (phase 3). Extend this section before emitting a new field.
+
+---
+
+## 10. Editor bridge protocol (the live tier)
+
+The editor's UO Shard dock talks to `tools/editor_shard/bridge`, a ModernUO
+assembly, over TCP on `127.0.0.1:<UO_EDITOR_LIVE_PORT>`: one JSON object per
+line, UTF-8, `\n`-terminated. ADR-0012 has the reasoning.
+
+**Editor to bridge**
+
+| `op` | Fields | What happens |
+|---|---|---|
+| `hello` | `editor` (name) | Answered with `hello` |
+| `block` | `facet`, `bx`, `by`, `land`: 64 `[id, z]` pairs, row-major (index `y*8+x`), `statics`: `[id, x, y, z, hue]` per static (`x`, `y` 0..7 in the block), `sent_ms` (sender's clock, unix ms, optional) | Replaces the whole block in the server's own map (walking, line of sight and placement see it), pushes it to UltimaLive clients on that map, relays it to the other editors; answered with `ack` |
+| `command` | `as` (an online character's name), `text` (e.g. `[where`) | Runs the GM command as that character (`CommandSystem.Handle`); answered with `command` |
+
+**Bridge to editor**
+
+| `op` | Fields |
+|---|---|
+| `hello` | `shard` (the UltimaLive shard name), `maps` (facets offered to UltimaLive clients), `seasons` (facet → ModernUO season number, which the editor adopts) |
+| `ack` | `facet`, `bx`, `by`, `clients` (UltimaLive clients pushed to), `editors` (other editors relayed to), `ms` (time on the game thread) |
+| `block` | as sent, plus `from` (the sending editor's name): another editor's block. Last write per block wins |
+| `command` | `ok`, `as`, `text`, or `error` |
+| `error` | `error` |
+
+**Bridge to game client** (UltimaLive, as `src/Game/UltimaLive.cs` reads it)
+
+- At login, after the login packets: `0x3F/0x02` (shard name), `0x3F/0x01`
+  (map definitions for the listed facets), `0x3F/0xFF` (a hash query for the
+  player's block, which the client needs before any update), then every block
+  changed since boot.
+- Per block: `0x40` (terrain, 201 bytes) then `0x3F/0x00` (statics).
+- The client's `0x3F` hash replies are accepted and ignored.
+
+The client keeps UltimaLive copies of the listed maps in
+`%ProgramData%\<shard name>\`, made from `map<N>.mul` found through its
+`files_override` (tools/world writes one beside every export).
 
