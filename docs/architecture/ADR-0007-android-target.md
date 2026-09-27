@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed — the desktop half is verified; nothing has yet run on a device.
+Proposed — the desktop half is verified; on 2026-09-26 a debug APK built from this tool rendered the login screen on an AYN Thor (see `tools/android/README.md`, the run table). Login and play on the device are not yet verified.
 
 ## Date
 

@@ -108,11 +108,22 @@ namespace GUO.Utility.Logging
                 {
                     Console.Write(DateTime.UtcNow);
                     Console.Write(" | ");
-                    ConsoleColor temp = Console.ForegroundColor;
+                    // PORT DEVIATION (GUO): Android's .NET has no console colour
+                    // (Console.ForegroundColor throws PlatformNotSupportedException),
+                    // and that first Log.Trace killed the client on the device. The
+                    // tag is still written; only the colour is skipped there. ADR-0007.
+                    if (OperatingSystem.IsAndroid())
+                    {
+                        Console.Write(_logTypesInfo[type].Item2);
+                    }
+                    else
+                    {
+                        ConsoleColor temp = Console.ForegroundColor;
 
-                    Console.ForegroundColor = _logTypesInfo[type].Item1;
-                    Console.Write(_logTypesInfo[type].Item2);
-                    Console.ForegroundColor = temp;
+                        Console.ForegroundColor = _logTypesInfo[type].Item1;
+                        Console.Write(_logTypesInfo[type].Item2);
+                        Console.ForegroundColor = temp;
+                    }
                     Console.Write(" | ");
 
                     if (_indent > 0)

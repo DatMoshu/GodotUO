@@ -1,6 +1,9 @@
 <Project Sdk="Godot.NET.Sdk/4.7.2">
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
+    <!-- Godot 4.7's prebuilt Android template is built for net9.0 and refuses
+         anything else; the desktop stays on net8.0. ADR-0007. -->
+    <TargetFramework Condition="'$(GodotTargetPlatform)' == 'android'">net9.0</TargetFramework>
     <EnableDynamicLoading>true</EnableDynamicLoading>
     <RootNamespace>GUO</RootNamespace>
     <AssemblyName>GUO</AssemblyName>

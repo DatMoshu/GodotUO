@@ -124,3 +124,6 @@ tools/godot/templates/
 
 # Press kit: kept locally, out of the repo for now
 design/press-kit/
+
+# Godot 4.4+ resource UIDs for C# scripts; the editor regenerates them.
+*.uid

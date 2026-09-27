@@ -51,7 +51,7 @@ from guo.config import Config, load_config  # noqa: E402
 HERE = Path(__file__).resolve().parent
 TEMPLATE = HERE / "export_presets.template.cfg"
 PRESET_NAME = "Android"
-ACTIVITY = "com.godot.game.GodotApp"
+ACTIVITY = "com.godot.game.GodotAppLauncher"  # 4.7: the exported launcher; GodotApp itself is not exported
 
 # What logcat says when the login probe has drawn the login gump, and when it
 # has not; see src/Bootstrap/LoginProbe.cs.
@@ -453,7 +453,10 @@ def ensure_solution(p: Paths) -> None:
 
 def device_args(p: Paths, extra: str) -> str:
     """The client's command line on the device: where its data is, then whatever the caller adds."""
-    base = f"--play --client-data {p.cfg.android_client_data}"
+    # After "--": Main.cs reads OS.GetCmdlineUserArgs(), which is only what
+    # follows the separator; without it the engine kept the flags and the
+    # client saw none of them (it died with "No UO client data directory").
+    base = f"-- --play --client-data {p.cfg.android_client_data}"
     return f"{base} {extra}".strip()
 
 

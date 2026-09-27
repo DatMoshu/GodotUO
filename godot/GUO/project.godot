@@ -23,6 +23,7 @@ project/assembly_name="GUO"
 renderer/rendering_method="forward_plus"
 ; UO art is authored as pixel art: never filter it.
 textures/canvas_textures/default_texture_filter=0
+textures/vram_compression/import_etc2_astc=true
 
 [display]
 
