@@ -63,6 +63,13 @@ internal static class MacroProbe
             await Frames(host, 60);
         }
 
+        // Every macro the probe taps must be on the row: the default row has
+        // no Last Object, so the probe lays the row out itself, and puts
+        // War/Peace back for its own check (a profile setting, as Options does).
+        string savedSlots = Configuration.ProfileManager.CurrentProfile.TouchMacroSlots;
+        Configuration.ProfileManager.CurrentProfile.TouchMacroSlots = "m:nearest,m:next,m:attack,m:last,m:object,m:bandage";
+        Check("the default row starts with Nearest Hostile", TouchGumpBar.DefaultMacroSlots.StartsWith("m:nearest"));
+
         bar.ResetSession();
         bar.Invoke(TouchGumpBar.Chevron);
         await Frames(host, 5);
@@ -94,6 +101,18 @@ internal static class MacroProbe
 
             return;
         }
+
+        // --- Nearest Hostile -----------------------------------------------
+
+        // Upstream's SelectNearest with the Hostile scan: exactly the mobile
+        // World.FindNearest(Hostile) names, and with the rats spawned beside
+        // the character that is one of them.
+        uint nearestExpected = world.FindNearest(ScanTypeObject.Hostile);
+        await TapMacro(host, bar, "m:nearest");
+        uint nearestGot = world.TargetManager.LastTargetInfo.Serial;
+        Check("Nearest Hostile selects World.FindNearest(Hostile), here a spawned rat",
+            nearestGot == nearestExpected && (nearestGot == ratA.Serial || nearestGot == ratB.Serial),
+            $"expected 0x{nearestExpected:X8}, got {Name(world, nearestGot)} 0x{nearestGot:X8} at distance {world.Mobiles.Get(nearestGot)?.Distance.ToString() ?? "?"}");
 
         // --- Next Target ---------------------------------------------------
 
@@ -240,6 +259,9 @@ internal static class MacroProbe
 
         // --- War/Peace -----------------------------------------------------
 
+        Configuration.ProfileManager.CurrentProfile.TouchMacroSlots = "m:nearest,m:next,m:attack,m:last,m:bandage,m:war";
+        await Frames(host, 3);
+
         bool before = me.InWarMode;
         await TapMacro(host, bar, "m:war");
         bool flipped = await WaitFor(host, () => me.InWarMode != before, 120);
@@ -248,6 +270,8 @@ internal static class MacroProbe
         Check("War/Peace toggles the stance once per tap", flipped && back, $"war {before} -> {!before} -> {me.InWarMode}");
 
         // --- clean up ------------------------------------------------------
+
+        Configuration.ProfileManager.CurrentProfile.TouchMacroSlots = savedSlots;
 
         foreach (Mobile rat in new[] { ratA, ratB })
         {

@@ -124,6 +124,7 @@ namespace GUO.Game.UI.Gumps
         private Combobox _dualScaleFine; // PORT DEVIATION (GUO)
         private HSliderBar _chevronInset; // PORT DEVIATION (GUO)
         private Combobox[] _flick; // PORT DEVIATION (GUO): hold-and-flick, up/down/left/right
+        private Combobox[] _macroSlots; // PORT DEVIATION (GUO): the touch macro row's six slots
         private Checkbox _showTouches; // PORT DEVIATION (GUO): debug touch overlay
         private Checkbox _showHandles; // PORT DEVIATION (GUO): the "UI" window handles always drawn
         private Checkbox _mobileControls; // PORT DEVIATION (GUO): desktop dev toggle, Android emulation
@@ -1006,6 +1007,18 @@ namespace GUO.Game.UI.Gumps
 
                 // Hold a gump still, then flick: what each direction does (GumpFlick).
                 int[] current = { _currentProfile.FlickUp, _currentProfile.FlickDown, _currentProfile.FlickLeft, _currentProfile.FlickRight };
+                // The macro row's six slots (TouchGumpBar), left to right.
+                string[] choices = GUO.Input.Touch.TouchGumpBar.MacroChoices;
+                string[] titles = System.Array.ConvertAll(choices, GUO.Input.Touch.TouchGumpBar.MacroTitle);
+                string[] slots = GUO.Input.Touch.TouchGumpBar.MacroActions;
+                _macroSlots = new Combobox[slots.Length];
+
+                for (int i = 0; i < slots.Length; i++)
+                {
+                    section3.Add(AddLabel(null, $"Macro row slot {i + 1}", 0, 0));
+                    section3.AddRight(_macroSlots[i] = AddCombobox(null, titles, System.Math.Max(0, System.Array.IndexOf(choices, slots[i])), 0, 0, 170));
+                }
+
                 _flick = new Combobox[4];
 
                 for (int i = 0; i < 4; i++)
@@ -4190,6 +4203,13 @@ namespace GUO.Game.UI.Gumps
             if (_showTouches != null)
             {
                 _currentProfile.DebugShowTouches = _showTouches.IsChecked;
+            }
+
+            if (_macroSlots != null)
+            {
+                string[] choices = GUO.Input.Touch.TouchGumpBar.MacroChoices;
+                _currentProfile.TouchMacroSlots = string.Join(",", System.Array.ConvertAll(_macroSlots,
+                    c => choices[System.Math.Clamp(c.SelectedIndex, 0, choices.Length - 1)]));
             }
 
             if (_flick != null)
