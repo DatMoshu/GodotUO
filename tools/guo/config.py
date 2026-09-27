@@ -91,6 +91,8 @@ class Config:
     # clients that run beside the owner. Each one's password is its name.
     shard_gm_accounts: tuple[str, ...]
     log_level: str
+    store_dir: Path
+    store_url: str
 
     # --- Android (optional; see tools/android and ADR-0017) ---
     android_sdk: Path
@@ -218,6 +220,9 @@ def load_config(root: Path | None = None) -> Config:
         # A key file the user named with ~ or %USERPROFILE%; empty = unset.
         raw = os.path.expandvars(get(key))
         return Path(os.path.expanduser(raw)) if raw and "%" not in raw else None
+    store = Path(os.path.expandvars(get("UO_STORE_DIR", "build/store_cdn")))
+    if not store.is_absolute():
+        store = root / store
 
     return Config(
         deck_host=get("UO_DECK_HOST", ""),
@@ -241,6 +246,8 @@ def load_config(root: Path | None = None) -> Config:
         android_second_display=get("UO_ANDROID_SECOND_DISPLAY", ""),
         android_account=get("UO_ANDROID_ACCOUNT", ""),
         root=root,
+        store_dir=store,
+        store_url=get("UO_STORE_URL", "http://127.0.0.1:8765"),
         godot_version=get("GODOT_VERSION", "4.7.2-stable"),
         godot_flavor=get("GODOT_FLAVOR", "mono_win64"),
         client_data=Path(os.path.expandvars(get("UO_CLIENT_DATA"))),
