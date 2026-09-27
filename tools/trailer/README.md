@@ -18,5 +18,6 @@ The splash frames come from the game itself (1920x1080, every frame, engine time
 godot-console --path godot/GUO --fixed-fps 60 res://src/Bootstrap/SplashProof.tscn -- --out build/trailer/work/splash --size 1920x1080 --plain --all
 ```
 
-Captions say only what the footage shows. There is no Windows or Steam Deck
-gameplay capture yet, and the browser shot is a still of an early build.
+Captions say only what the footage shows. The browser shot is GUOWeb's run
+in Chrome on the shard (from after its login screen). There is no Windows or
+Steam Deck gameplay capture yet, so the title card only names them.

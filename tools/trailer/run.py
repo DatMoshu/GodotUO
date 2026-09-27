@@ -12,7 +12,8 @@ build folders (--clips points elsewhere):
                             screens, recorded in step (pinch, window menu,
                             seam, the idle scene)
     editor/build/editor_clip/guo_editor_live_objects.mp4
-    web/build/web/smoke_chrome.png
+    web/build/web/guoweb_world.mp4  GUOWeb's run in Chrome on the shard
+                            (the login screen at its start is not used)
     build/trailer/work/splash/f_*.png  the splash at 1080p60, from
                             SplashProof --size 1920x1080 --plain --all
 
@@ -163,24 +164,29 @@ def seg_dual(day, name, start, dur, title, detail):
     return len(top), frames()
 
 
-def seg_browser(png, seconds):
-    shot = Image.open(png).convert("RGB").crop((100, 0, 640, 480))    # the client's area, without the emblem
-    sw, sh = shot.width * 3 // 2, shot.height * 3 // 2
-    shot = np.asarray(shot.resize((sw, sh), Image.NEAREST), np.float32) / 255
+def seg_browser(clip, parts):
+    """GUOWeb's run in Chrome (a 1280x800 page) in a drawn browser frame; parts are (start, seconds) cuts."""
+    sw, sh = 1216, 760
     base = backdrop()
     bw, bh = sw + 2, sh + 58
-    bx, by = (W - bw) // 2, 70
+    bx, by = (W - bw) // 2, 62
     im = Image.fromarray((base * 255).astype(np.uint8))
     d = ImageDraw.Draw(im)
     d.rounded_rectangle((bx - 1, by, bx + bw, by + bh), 10, fill=(0x2b, 0x2d, 0x31))
     d.rounded_rectangle((bx + 110, by + 12, bx + bw - 20, by + 44), 16, fill=(0x1e, 0x1f, 0x22))
-    d.text((bx + 130, by + 28), "localhost:8060/GUO.html", font=font(FONT, 20), fill=(200, 200, 205), anchor="lm")
+    d.text((bx + 130, by + 28), "127.0.0.1:8061/GUO.html", font=font(FONT, 20), fill=(200, 200, 205), anchor="lm")
     for i, c in enumerate(((0xff, 0x5f, 0x57), (0xfe, 0xbc, 0x2e), (0x28, 0xc8, 0x40))):
         d.ellipse((bx + 18 + 26 * i, by + 20, bx + 32 + 26 * i, by + 34), fill=c)
     base = np.asarray(im, np.float32) / 255
-    base[by + 56:by + 56 + sh, bx + 1:bx + 1 + sw] = shot
-    f = over(base, caption_layer("In the browser", "The same client, exported to WebAssembly (an early build)"))
-    return int(seconds * FPS), (f for _ in range(int(seconds * FPS)))
+    cap = caption_layer("In the browser", "The same client, playing on a live shard")
+    fr = np.concatenate([video(clip, t, dur, sw, sh, nearest=False) for t, dur in parts])
+
+    def frames():
+        for e in fr:
+            f = base.copy()
+            f[by + 56:by + 56 + sh, bx + 1:bx + 1 + sw] = e / 255
+            yield over(f, cap)
+    return len(fr), frames()
 
 
 def seg_store(seconds):
@@ -306,7 +312,8 @@ def build(clips):
         ("title", lambda: fade(seg_title(3.6, BritainLanterns), 12, 10)),
         ("handheld", lambda: fade(seg_dual(day, "guo", 2.0, 8.0, "Android handheld, two screens",
                                            "The world on the top screen, your windows on the bottom one"))),
-        ("browser", lambda: fade(seg_browser(clips / "web" / "build" / "web" / "smoke_chrome.png", 4.2))),
+        ("browser", lambda: fade(seg_browser(clips / "web" / "build" / "web" / "guoweb_world.mp4",
+                                              [(27.0, 5.0), (41.0, 3.8)]))),
         ("pinch", lambda: fade(seg_dual(day, "pd", 0.5, 8.5, "Pinch any window to scale it",
                                         "From 75% to 300%. A pinch on the world still zooms the world"))),
         ("menu", lambda: fade(seg_dual(day, "wm", 3.0, 10.0, "Hold a window for its menu",
