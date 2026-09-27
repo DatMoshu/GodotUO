@@ -5,7 +5,7 @@
 Accepted — 2026-09-26. Runs on Windows (every mode photographed in the
 world) and on the AYN Thor (image and video behind the login and shard
 gumps, the wood backdrop behind the centred login gump, the mobile profile
-migrated to v4 with `CanvasBackgroundLowPower` set); see Validation.
+migrated to v6 with `CanvasBackgroundLowPower` set; it was v4 in UO_Port, renumbered on transplant behind the desktop v5 table); see Validation.
 ## Date
 
 2026-09-26
@@ -36,7 +36,7 @@ hidden and upstream's draw runs unchanged, so desktop parity is untouched.
 | **Engine** | Godot 4.7.2 stable mono |
 | **Domain** | Rendering / UI / Configuration |
 | **Knowledge Risk** | MEDIUM — `FileDialog.use_native_dialog` on Android (system picker, 4.4+) and `VideoStreamPlayer.loop` are post-4.2 APIs; both exist in the pinned 4.7.2 `GodotSharp.xml` |
-| **References Consulted** | `tools/godot/.../GodotSharp/Api/Release/GodotSharp.xml` (VideoStreamPlayer, FileDialog, Image members); ADR-0001, ADR-0002, ADR-0007, ADR-0008 |
+| **References Consulted** | `tools/godot/.../GodotSharp/Api/Release/GodotSharp.xml` (VideoStreamPlayer, FileDialog, Image members); ADR-0001, ADR-0002, ADR-0017, ADR-0008 |
 | **Post-Cutoff APIs Used** | `FileDialog.UseNativeDialog` on Android; `VideoStreamPlayer.Loop` |
 | **Verification Required** | The Android system picker returns a path `FileAccess` can open (needed for the copy into `user://backgrounds`); `.ogv` decodes on the device; `Image.Load` of a `user://` path on Android |
 
@@ -44,7 +44,7 @@ hidden and upstream's draw runs unchanged, so desktop parity is untouched.
 
 | Field | Value |
 |-------|-------|
-| **Depends On** | ADR-0002 (the batcher owns the controller's canvas; this node stays off it), ADR-0007 (mobile profile defaults, `PlatformDefaults`) |
+| **Depends On** | ADR-0002 (the batcher owns the controller's canvas; this node stays off it), ADR-0017 (mobile profile defaults, `PlatformDefaults`) |
 | **Enables** | None |
 | **Blocks** | None |
 | **Ordering Note** | `PlatformDefaults.CurrentVersion` goes 3 -> 4 here; any later per-platform default must take 5 |
@@ -90,7 +90,7 @@ items each frame directly under the `GameController` node's canvas item
   CC0), which the dropdown reads at build time of the gump.
 - Four profile keys, upstream-style initialisers as the desktop values;
   Mobile and Web get `CanvasBackgroundLowPower = true` through one
-  `PlatformDefaults` entry at version 4.
+  `PlatformDefaults` entry at version 6 (was 4 in UO_Port).
 - Options -> Display: mode dropdown, path field with Browse, fps slider,
   low-power checkbox.
 - `--background <mode>[:<path>]` for scripted runs, never saved.
@@ -144,7 +144,7 @@ Window (viewport, no stretch)
              [world RT] [light RT] [UI RT]
 
 Profile.CanvasBackground{Mode,Path,Fps,LowPower}
-   ^ Options gump (Display / Background)      ^ PlatformDefaults v4 (LowPower on Mobile, Web)
+   ^ Options gump (Display / Background)      ^ PlatformDefaults v6 (LowPower on Mobile, Web)
    ^ --background mode[:path]  -> CanvasBackground.Override (not saved)
 ```
 
@@ -319,7 +319,8 @@ public bool CanvasBackgroundLowPower { get; set; }
       the login and shard-list gumps (`thor_login_image.png`,
       `thor_shards_image.png`); a pushed `.ogv` playing (two captures 1.5 s
       apart differ, `thor_login_video_a/b.png`); the existing mobile profile
-      logged `migrated mobile profile v3->v4, set CanvasBackgroundLowPower`.
+      logged `migrated mobile profile v3->v4, set CanvasBackgroundLowPower`
+      (in UO_Port, where this table was v4; here it is v6).
       In the world the mobile profile's full-size game window covers the
       backdrop entirely (`thor_world_image.png`), so on a phone the setting
       shows on the login, shard and character screens and behind any
@@ -333,7 +334,7 @@ owner's feature decision recorded in this ADR's Summary.
 ## Related
 
 - ADR-0001 (render presenter seam), ADR-0002 (batcher on canvas items),
-  ADR-0007 (Android, `PlatformDefaults`), ADR-0008 (web).
+  ADR-0017 (Android, `PlatformDefaults`), ADR-0008 (web).
 - `godot/GUO/src/Render/CanvasBackground.cs`,
   `godot/GUO/src/Render/RenderTargets.cs`,
   `godot/GUO/src/Client/GameController.cs`,
