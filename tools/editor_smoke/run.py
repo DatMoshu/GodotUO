@@ -147,11 +147,21 @@ def main() -> int:
         failures.append(f"editor exited with {code}")
 
     print(f"[editor_smoke] client data : {report.get('client_data')} (loaded in {report.get('load_ms')} ms)")
-    print(f"[editor_smoke] art         : {report.get('art_query')} -> {report.get('art_index')}, "
-          f"{report.get('art_size')}, {report.get('art_opaque_pixels')} opaque px")
-    for key in ("art_png", "screenshot"):
-        if report.get(key):
-            print(f"[editor_smoke] {key:<12}: {report[key]}")
+    panels = report.get("panels", {})
+    if args.reload and report.get("before_reload"):
+        panels_before = report["before_reload"].get("panels", {})
+    else:
+        panels_before = {}
+    for name, p in panels.items():
+        what = f"{p.get('frames', 0)} frame(s) {p.get('image_size') or ''}".strip() if p.get("image_size") else "text only"
+        extra = "  played" if p.get("played") else ""
+        mark = "ok  " if p.get("ok") else "FAIL"
+        print(f"[editor_smoke]   {mark} {name:<7} {p.get('query')!s:<12} -> {p.get('id')!s:<10} {what}, {p.get('ms')} ms{extra}")
+        if name in panels_before and not panels_before[name].get("ok"):
+            print(f"[editor_smoke]        (failed before the reload)")
+    shots = sorted(out.glob("editor_*.png"))
+    if shots:
+        print(f"[editor_smoke] screenshots : {len(shots)} in {out}")
     if args.reload and report.get("reloaded"):
         print("[editor_smoke] reload      : assembly rebuilt and reloaded; checks passed again")
     print(f"[editor_smoke] report      : {report_path}")

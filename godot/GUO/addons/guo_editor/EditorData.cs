@@ -36,6 +36,8 @@ public sealed class EditorData : IDisposable
 
     private UOFileManager _files;
     private Task _loading;
+    private GUO.Renderer.Animations.Animations _animations;
+    private GUO.Renderer.Sounds.Sound _sounds;
 
     public bool IsLoaded { get; private set; }
     public string Error { get; private set; }
@@ -44,6 +46,21 @@ public sealed class EditorData : IDisposable
     public long LoadMilliseconds { get; private set; }
 
     public UOFileManager Files => IsLoaded ? _files : null;
+
+    /// <summary>
+    /// The game's own animation reader (<c>Renderer.Animations</c>): body
+    /// conversion, UOP group replacement and frame decoding exactly as the
+    /// client does them. Made on first use.
+    /// </summary>
+    public GUO.Renderer.Animations.Animations Animations =>
+        IsLoaded ? _animations ??= new GUO.Renderer.Animations.Animations(_files.Animations) : null;
+
+    /// <summary>The game's own sound and music cache (<c>Renderer.Sounds.Sound</c>).</summary>
+    public GUO.Renderer.Sounds.Sound Sounds =>
+        IsLoaded ? _sounds ??= new GUO.Renderer.Sounds.Sound(_files.Sounds) : null;
+
+    /// <summary>The art index last picked in the Art panel; the Hues panel previews on it.</summary>
+    public uint CurrentArt { get; set; } = LandCount + 0x1F03;
 
     /// <summary>Raised on the main thread once loading has finished, well or badly.</summary>
     public event Action Loaded;
@@ -150,37 +167,61 @@ public sealed class EditorData : IDisposable
             return null;
         }
 
-        byte[] rgba;
-        int w, h;
         try
         {
             // ArtInfo holds a span over the loader's scratch buffer: copy the
             // pixels out before anything else touches the loader.
             ArtInfo art = _files.Arts.GetArt(index);
-            w = art.Width;
-            h = art.Height;
-            if (w <= 0 || h <= 0 || art.Pixels.Length < w * h)
-            {
-                return null;
-            }
-
-            // Color16To32 packs R | G<<8 | B<<16, which is Rgba8 byte order on
-            // little endian. Zero is UO's transparent pixel.
-            rgba = new byte[w * h * 4];
-            for (int i = 0; i < w * h; i++)
-            {
-                uint px = art.Pixels[i];
-                int o = i * 4;
-                rgba[o + 0] = (byte)(px & 0xFF);
-                rgba[o + 1] = (byte)((px >> 8) & 0xFF);
-                rgba[o + 2] = (byte)((px >> 16) & 0xFF);
-                rgba[o + 3] = (byte)(px == 0 ? 0 : 0xFF);
-            }
+            return FromPixels(art.Pixels, art.Width, art.Height);
         }
         catch (Exception ex)
         {
             GD.PrintErr($"[GUO editor] art 0x{index:X4} failed to decode: {ex.GetType().Name}: {ex.Message}");
             return null;
+        }
+    }
+
+    /// <summary>Decodes a gump through <see cref="GumpsLoader.GetGump"/>. Null when empty.</summary>
+    public Image GumpImage(int index)
+    {
+        if (!IsLoaded || index < 0 || index >= _files.Gumps.File.Entries.Length)
+        {
+            return null;
+        }
+
+        try
+        {
+            GumpInfo gump = _files.Gumps.GetGump((uint)index);
+            return FromPixels(gump.Pixels, gump.Width, gump.Height);
+        }
+        catch (Exception ex)
+        {
+            GD.PrintErr($"[GUO editor] gump 0x{index:X4} failed to decode: {ex.GetType().Name}: {ex.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Loader pixels to an image. The loaders pack Color16To32 as
+    /// R | G&lt;&lt;8 | B&lt;&lt;16, which is Rgba8 byte order on little endian;
+    /// zero is UO's transparent pixel. Null for an empty or short buffer.
+    /// </summary>
+    public static Image FromPixels(ReadOnlySpan<uint> pixels, int w, int h)
+    {
+        if (w <= 0 || h <= 0 || pixels.Length < w * h)
+        {
+            return null;
+        }
+
+        var rgba = new byte[w * h * 4];
+        for (int i = 0; i < w * h; i++)
+        {
+            uint px = pixels[i];
+            int o = i * 4;
+            rgba[o + 0] = (byte)(px & 0xFF);
+            rgba[o + 1] = (byte)((px >> 8) & 0xFF);
+            rgba[o + 2] = (byte)((px >> 16) & 0xFF);
+            rgba[o + 3] = (byte)(px == 0 ? 0 : 0xFF);
         }
 
         return Image.CreateFromData(w, h, false, Image.Format.Rgba8, rgba);
@@ -198,6 +239,8 @@ public sealed class EditorData : IDisposable
         {
         }
 
+        _animations = null;
+        _sounds = null;
         _files?.Dispose();
         _files = null;
         IsLoaded = false;

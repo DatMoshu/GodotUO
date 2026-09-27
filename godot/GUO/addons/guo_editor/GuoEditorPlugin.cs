@@ -29,7 +29,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
 {
     private EditorData _data;
     private AssetsDock _assets;
-    private ArtInspectorDock _inspector;
+    private InspectorDock _inspector;
     private EditorSmoke _smoke;
 
     public override void _EnterTree() => Build();
@@ -57,8 +57,8 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
 
         _data = new EditorData();
         _assets = new AssetsDock(_data);
-        _inspector = new ArtInspectorDock(_data);
-        _assets.ArtSelected += _inspector.ShowArt;
+        _inspector = new InspectorDock();
+        _assets.Inspect += _inspector.ShowInspection;
 
         AddDock(_assets);
         AddDock(_inspector);
@@ -85,7 +85,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
     {
         if (_assets != null)
         {
-            _assets.ArtSelected -= _inspector.ShowArt;
+            _assets.Inspect -= _inspector.ShowInspection;
             RemoveDock(_assets);
             _assets.QueueFree();
             _assets = null;

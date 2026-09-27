@@ -10,9 +10,10 @@ using Godot;
 /// <summary>
 /// The addon's own health check, driven by tools/editor_smoke. Present only
 /// when the editor was started with <c>-- --guo-editor-smoke &lt;dir&gt;</c>:
-/// it waits for the client data, searches the Assets dock for an art id,
-/// checks the inspector decoded real pixels, captures the editor window when
-/// there is one, writes <c>report.json</c> to the directory and quits.
+/// it waits for the client data, then walks every tab of the UO Assets dock,
+/// searches it for a known id, checks the UO Inspector received what that
+/// panel should produce, saves the image and (when there is a window) a
+/// capture of the editor, writes <c>report.json</c> and quits.
 /// </summary>
 /// <remarks>
 /// With <c>--guo-editor-smoke-reload</c> it also proves the addon survives an
@@ -21,7 +22,7 @@ using Godot;
 /// <c>reload.go</c>, then sends the editor the focus-in notification GodotTools
 /// checks for a changed assembly on. The reload recreates the plugin, the
 /// plugin builds a new smoke node, and that one finds <c>before_reload.json</c>
-/// and runs the checks a second time against the reloaded docks.
+/// and walks the panels a second time against the reloaded docks.
 /// </remarks>
 [Tool]
 public partial class EditorSmoke : Node
@@ -31,18 +32,20 @@ public partial class EditorSmoke : Node
     public const string ReloadFlag = "--guo-editor-smoke-reload";
 
     private const double TimeoutSeconds = 180;
-    private const int SettleFrames = 90;
+    private const int SettleFrames = 45;
 
     private readonly string _out;
     private readonly EditorData _data;
     private readonly AssetsDock _assets;
-    private readonly ArtInspectorDock _inspector;
+    private readonly InspectorDock _inspector;
     private readonly Dictionary<string, object> _report = new();
+    private readonly Dictionary<string, object> _panels = new();
     private readonly List<string> _failures = new();
 
     private double _elapsed;
     private int _frames;
     private int _stage;
+    private int _panel;
     private bool _reloadTest;
     private bool _afterReload;
 
@@ -50,7 +53,7 @@ public partial class EditorSmoke : Node
     {
     }
 
-    public EditorSmoke(string outDir, EditorData data, AssetsDock assets, ArtInspectorDock inspector)
+    public EditorSmoke(string outDir, EditorData data, AssetsDock assets, InspectorDock inspector)
     {
         _out = outDir;
         _data = data;
@@ -89,6 +92,10 @@ public partial class EditorSmoke : Node
         return null;
     }
 
+    private static bool Headless => DisplayServer.GetName() == "headless";
+
+    private string Suffix => _afterReload ? "_after_reload" : "";
+
     public override void _Process(double delta)
     {
         if (_out == null)
@@ -105,42 +112,62 @@ public partial class EditorSmoke : Node
                 if (_data.IsLoaded || _data.Error != null)
                 {
                     CheckLoaded();
-                    _stage = 1;
+                    _stage = _failures.Count == 0 ? 1 : 9;
                     _frames = 0;
                 }
                 else if (_elapsed > TimeoutSeconds)
                 {
                     _failures.Add($"client data did not load within {TimeoutSeconds} s");
-                    Finish();
+                    _stage = 9;
                 }
 
                 break;
 
             case 1:
-                // Let the docks lay out and draw the page once.
-                if (_frames >= 5)
+                // Bring the next tab to the front and let it lay out.
+                if (_panel >= _assets.Panels.Count)
                 {
-                    CheckArt();
-                    _stage = 2;
+                    _stage = 9;
+                    break;
+                }
+
+                _assets.ShowPanel(_assets.Panels[_panel]);
+                _stage = 2;
+                _frames = 0;
+                break;
+
+            case 2:
+                if (_frames >= 3)
+                {
+                    CheckPanel(_assets.Panels[_panel]);
+                    _stage = 3;
                     _frames = 0;
                 }
 
                 break;
 
-            case 2:
-                if (DisplayServer.GetName() == "headless" || _frames >= SettleFrames)
+            case 3:
+                // Let the inspector draw what it was given, then capture.
+                if (Headless || _frames >= SettleFrames)
                 {
-                    Capture();
-                    if (_reloadTest && !_afterReload && _failures.Count == 0)
-                    {
-                        RequestReload();
-                        _stage = 4;
-                        _elapsed = 0;
-                    }
-                    else
-                    {
-                        Finish();
-                    }
+                    Capture(_assets.Panels[_panel]);
+                    _panel++;
+                    _stage = 1;
+                }
+
+                break;
+
+            case 9:
+                _report["panels"] = _panels;
+                if (_reloadTest && !_afterReload && _failures.Count == 0)
+                {
+                    RequestReload();
+                    _stage = 4;
+                    _elapsed = 0;
+                }
+                else
+                {
+                    Finish();
                 }
 
                 break;
@@ -183,6 +210,7 @@ public partial class EditorSmoke : Node
         _report["data_loaded"] = _data.IsLoaded;
         _report["assets_dock_in_tree"] = _assets.IsInsideTree();
         _report["inspector_dock_in_tree"] = _inspector.IsInsideTree();
+        _report["panel_count"] = _assets.Panels.Count;
 
         if (!_data.IsLoaded)
         {
@@ -203,36 +231,112 @@ public partial class EditorSmoke : Node
         _inspector.MakeVisible();
     }
 
-    private void CheckArt()
+    private void CheckPanel(AssetPanel panel)
     {
-        if (!_data.IsLoaded)
+        string name = panel.Name;
+        var result = new Dictionary<string, object>();
+        _panels[name] = result;
+        var failures = new List<string>();
+
+        if (panel is ParityPanel { Unavailable: string why })
         {
+            // guoasset is optional (tools/guoasset/README.md): no UOWW, no parity.
+            result["skipped"] = why;
+            result["ok"] = true;
+            result["failures"] = failures;
             return;
         }
 
-        string art = ArgValue(ArtFlag) ?? "0x0E75";
-        _report["art_query"] = art;
-
-        uint? index = _assets.Search(art);
-        _report["art_index"] = index.HasValue ? $"0x{index.Value:X5}" : null;
-        if (index == null)
+        string query = name == "Art" ? ArgValue(ArtFlag) ?? panel.SmokeQuery : panel.SmokeQuery;
+        result["query"] = query;
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        int? selected;
+        try
         {
-            _failures.Add($"Assets dock search '{art}' selected nothing");
-            return;
+            selected = panel.Search(query);
+        }
+        catch (Exception ex)
+        {
+            selected = null;
+            failures.Add($"search threw {ex.GetType().Name}: {ex.Message}");
         }
 
-        if (_inspector.Current != index)
+        result["ms"] = sw.ElapsedMilliseconds;
+        result["selected"] = selected;
+        if (selected == null && failures.Count == 0)
         {
-            _failures.Add("selecting in the Assets dock did not reach the inspector");
+            failures.Add($"search '{query}' selected nothing");
         }
 
-        Image img = _inspector.CurrentImage;
-        if (img == null)
+        Inspection shown = _inspector.Current;
+        string source = name switch
         {
-            _failures.Add($"inspector has no image for {art}");
-            return;
+            "Anims" => "Animations",
+            _ => name,
+        };
+
+        if (selected != null && (shown == null || shown.Source != source))
+        {
+            failures.Add($"the inspector did not receive the {name} selection");
+        }
+        else if (shown != null && selected != null)
+        {
+            result["id"] = shown.Id;
+            result["frames"] = shown.Frames.Length;
+            result["text_chars"] = shown.Text.Length;
+
+            Image img = shown.Image;
+            if (img != null)
+            {
+                int opaque = Opaque(img);
+                result["image_size"] = new[] { img.GetWidth(), img.GetHeight() };
+                result["opaque_pixels"] = opaque;
+                if (opaque == 0)
+                {
+                    failures.Add("the image is fully transparent");
+                }
+
+                Directory.CreateDirectory(_out);
+                string path = Path.Combine(_out, $"{name.ToLowerInvariant()}{Suffix}.png");
+                img.SavePng(path);
+                result["png"] = path;
+
+                if (_inspector.Texture == null)
+                {
+                    failures.Add("the inspector preview has no texture");
+                }
+            }
+            else if (panel.SmokeNeedsImage)
+            {
+                failures.Add("the inspection has no image");
+            }
+
+            if (shown.Text.Length == 0)
+            {
+                failures.Add("the inspection has no text");
+            }
         }
 
+        if (panel is SoundPanel sounds && selected != null)
+        {
+            string played = sounds.SmokePlay();
+            result["played"] = played == null;
+            if (played != null)
+            {
+                failures.Add(played);
+            }
+        }
+
+        result["ok"] = failures.Count == 0;
+        result["failures"] = failures;
+        foreach (string f in failures)
+        {
+            _failures.Add($"{name}: {f}");
+        }
+    }
+
+    private static int Opaque(Image img)
+    {
         int opaque = 0;
         for (int y = 0; y < img.GetHeight(); y++)
         {
@@ -245,45 +349,29 @@ public partial class EditorSmoke : Node
             }
         }
 
-        _report["art_size"] = new[] { img.GetWidth(), img.GetHeight() };
-        _report["art_opaque_pixels"] = opaque;
-        if (opaque == 0)
-        {
-            _failures.Add($"art {art} decoded to a fully transparent image");
-        }
-
-        _report["inspector_has_texture"] = _inspector.Texture != null;
-        if (_inspector.Texture == null)
-        {
-            _failures.Add("inspector preview has no texture");
-        }
-
-        Directory.CreateDirectory(_out);
-        string path = Path.Combine(_out, "art.png");
-        img.SavePng(path);
-        _report["art_png"] = path;
+        return opaque;
     }
 
-    private void Capture()
+    private void Capture(AssetPanel panel)
     {
-        if (DisplayServer.GetName() == "headless")
+        var result = (Dictionary<string, object>)_panels[panel.Name.ToString()];
+        if (Headless)
         {
-            _report["screenshot"] = null;
-            _report["screenshot_note"] = "headless editor: nothing is rendered, so there is no frame to capture";
+            result["screenshot"] = null;
             return;
         }
 
         Image frame = EditorInterface.Singleton.GetBaseControl().GetViewport().GetTexture()?.GetImage();
         if (frame == null || frame.IsEmpty())
         {
-            _failures.Add("could not capture the editor window");
+            _failures.Add($"{panel.Name}: could not capture the editor window");
             return;
         }
 
         Directory.CreateDirectory(_out);
-        string path = Path.Combine(_out, _afterReload ? "editor_after_reload.png" : "editor.png");
+        string path = Path.Combine(_out, $"editor_{panel.Name.ToString().ToLowerInvariant()}{Suffix}.png");
         frame.SavePng(path);
-        _report["screenshot"] = path;
+        result["screenshot"] = path;
     }
 
     private void RequestReload()
@@ -312,13 +400,10 @@ public partial class EditorSmoke : Node
         }
 
         Directory.CreateDirectory(_out);
-        File.WriteAllText(
-            Path.Combine(_out, "report.json"),
-            JsonSerializer.Serialize(_report, JsonOptions)
-        );
+        File.WriteAllText(Path.Combine(_out, "report.json"), JsonSerializer.Serialize(_report, JsonOptions));
 
         GD.Print($"[GUO editor] smoke {(_failures.Count == 0 ? "OK" : "FAILED")}: {string.Join("; ", _failures)}");
-        _stage = 3;
+        _stage = 10;
         GetTree().Quit(_failures.Count == 0 ? 0 : 1);
     }
 }
