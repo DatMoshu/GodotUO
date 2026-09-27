@@ -359,6 +359,10 @@ public static class EditorBridge
                 {
                     Core.LoopContext.Post(() => RunCommand(conn, msg));
                 }
+                else if (op == "equip")
+                {
+                    Core.LoopContext.Post(() => Equip(conn, msg));
+                }
                 else if (op == "object")
                 {
                     long received = Environment.TickCount64;
@@ -554,6 +558,54 @@ public static class EditorBridge
             "GUO editor bridge: object {0} {1} {2} from '{3}': {4}; relayed to {5} editor(s) in {6} ms",
             action, kind, id, from.Name, outcome, editors, ms
         );
+    }
+
+    // {"op":"equip","as":"<online character>","item_id":65520,"hue":0}
+    // A new Item of that id, on the layer its tiledata names, equipped on the
+    // character; whatever held that layer goes to the backpack. How a new
+    // wearable (ADR-0022) is put on a character without a target cursor.
+    private static void Equip(EditorConnection from, JsonNode msg)
+    {
+        string who = (string)msg["as"];
+        int itemId = (int)msg["item_id"];
+        Mobile m = NetState.Instances.Select(ns => ns.Mobile)
+            .FirstOrDefault(x => x != null && string.Equals(x.RawName, who, StringComparison.OrdinalIgnoreCase));
+        if (m == null)
+        {
+            from.Send(new JsonObject { ["op"] = "equip", ["ok"] = false, ["error"] = $"'{who}' is not online" });
+            return;
+        }
+
+        var layer = (Layer)TileData.ItemTable[itemId & TileData.MaxItemValue].Quality;
+        // Both hands are cleared into the backpack: a shield (TwoHanded) conflicts
+        // with a two-handed weapon held in OneHanded, and CanEquip wants the layer empty.
+        if (m.Backpack == null)
+        {
+            m.AddItem(new Server.Items.Backpack());
+        }
+
+        var moved = new JsonArray();
+        foreach (var hand in new[] { layer, Layer.OneHanded, Layer.TwoHanded })
+        {
+            if (m.FindItemOnLayer(hand) is { } held)
+            {
+                m.Backpack.DropItem(held);
+                moved.Add($"{held.GetType().Name} 0x{held.ItemID:X4} from {hand}");
+            }
+        }
+
+        var item = new Item(itemId) { Layer = layer, Hue = (int?)msg["hue"] ?? 0, Movable = true };
+        bool canEquip = item.CanEquip(m), checkEquip = m.CheckEquip(item);
+        bool ok = m.EquipItem(item);
+        if (!ok)
+        {
+            item.Delete();
+        }
+
+        from.Send(new JsonObject { ["op"] = "equip", ["ok"] = ok, ["as"] = m.RawName, ["item_id"] = itemId,
+                                   ["layer"] = layer.ToString(), ["serial"] = ok ? (uint)item.Serial : 0,
+                                   ["can_equip"] = canEquip, ["check_equip"] = checkEquip, ["moved_to_pack"] = moved });
+        Log.Information("GUO editor bridge: '{0}' equipped {1:X4} on {2} ({3}): {4}", from.Name, itemId, m.RawName, layer, ok);
     }
 
     // {"op":"command","as":"Guosweep","text":"[add ..."}

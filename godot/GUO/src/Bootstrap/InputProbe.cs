@@ -2947,6 +2947,9 @@ internal static class InputProbe
         new(1, -1),
     };
 
+    /// <summary>The probe's walk (the four screen diagonals, held), for ObjectsDump's watch.</summary>
+    internal static System.Threading.Tasks.Task<bool> WalkAround(Node host) => Walk(host);
+
     private static async System.Threading.Tasks.Task<bool> Walk(Node host)
     {
         Game.GameObjects.PlayerMobile player = Client.Game.UO.World?.Player;
