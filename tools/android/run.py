@@ -143,6 +143,11 @@ def adb_cmd(p: Paths) -> list[str]:
         ready = [s for s, state in adb_devices(p) if state == "device"]
         if len(ready) == 1:
             serial = ready[0]
+        elif len(ready) > 1:
+            # Never pick one of several: a run meant for one handheld must
+            # not install onto, or tap, another agent's device.
+            sys.exit(f"[android] {len(ready)} devices are ready; choose one with UO_ANDROID_DEVICE "
+                     "(environment or config.local.bat). `adb devices -l` lists them by model.")
     if serial:
         cmd += ["-s", serial]
     return cmd

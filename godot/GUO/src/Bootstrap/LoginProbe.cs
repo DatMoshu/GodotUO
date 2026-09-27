@@ -88,8 +88,12 @@ internal static class LoginProbe
         // input flush, which is before the next frame's process.
         await host.ToSignal(host.GetTree(), SceneTree.SignalName.ProcessFrame);
 
-        bool mouseArrived = Mouse.Position.X == (int)(at.X / Client.Game.DpiScale)
-            && Mouse.Position.Y == (int)(at.Y / Client.Game.DpiScale);
+        // On a touch run the touch layer owns the pointer and consumes every
+        // mouse event (TouchInput.Handle), so an injected mouse move cannot
+        // arrive and is not what this checks there; the key still is.
+        bool touch = GUO.Input.Touch.TouchInput.Enabled;
+        bool mouseArrived = touch || (Mouse.Position.X == (int)(at.X / Client.Game.DpiScale)
+            && Mouse.Position.Y == (int)(at.Y / Client.Game.DpiScale));
         bool keyArrived = Keyboard.Shift;
 
         Godot.Input.ParseInputEvent(new InputEventKey { Keycode = Key.Shift, PhysicalKeycode = Key.Shift, ShiftPressed = false, Pressed = false });
@@ -97,7 +101,7 @@ internal static class LoginProbe
 
         GD.Print(
             $"[GUO] login probe: injected input {(mouseArrived && keyArrived ? "reached" : "did NOT reach")} the client "
-            + $"(mouse {(mouseArrived ? "ok" : "lost")}, key {(keyArrived ? "ok" : "lost")}, "
+            + $"(mouse {(touch ? "n/a, touch owns the pointer" : mouseArrived ? "ok" : "lost")}, key {(keyArrived ? "ok" : "lost")}, "
             + $"window focused {DisplayServer.WindowIsFocused()}, no-focus flag {DisplayServer.WindowGetFlag(DisplayServer.WindowFlags.NoFocus)})"
         );
 
