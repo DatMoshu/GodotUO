@@ -43,7 +43,7 @@ def safe_path(value):
     require(not any(ord(c) < 32 or c in '\\:<>"|?*' for c in value), "unsafe payload path")
     for part in value.split("/"):
         require(part not in {"", ".", ".."} and len(part) <= 100 and not part.endswith((".", " ")) and part.split(".")[0].lower() not in DEVICES, "unsafe payload component")
-        require(not part.lower().startswith("cliloc") and not any(suffix in {".mul", ".uop", ".idx", ".def"} for suffix in Path(part.lower()).suffixes), "UO client data is forbidden")
+        require(not part.lower().startswith("cliloc") and not re.search(r"\.(mul|uop|idx|def)(\.|$)", part, re.IGNORECASE), "UO client data is forbidden")
     return value
 
 
@@ -65,7 +65,7 @@ def parse_manifest(raw):
     require(m.get("kind") in KINDS, "unsupported pack kind (art-override is disabled)")
     require(m.get("licence") in LICENCES, "licence is not allowed")
     for key in ("title", "author"):
-        require(isinstance(m.get(key), str) and 0 < len(m[key].strip()) <= 200, f"invalid {key}")
+        require(isinstance(m.get(key), str) and m[key].strip() and len(m[key]) <= 200, f"invalid {key}")
     require(type(m.get("min_profile_version")) is int and 0 <= m["min_profile_version"] <= 2147483647, "invalid min_profile_version")
     files = m.get("files")
     require(isinstance(files, dict) and 0 < len(files) <= 1024, "invalid files map")
