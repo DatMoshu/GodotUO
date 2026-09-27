@@ -707,6 +707,36 @@ public partial class Main : Node
         public bool Sound { get; private set; }
 
         /// <summary>
+        /// Whether something other than a person is driving this run: any
+        /// probe, a shard-command run, a timed screenshot, an endurance run,
+        /// or a mode that is not Play at all. Such a run shares the desktop
+        /// with whoever started it and must not take their keyboard.
+        /// --stay hands the client to a person, so it is not scripted.
+        /// </summary>
+        public bool Scripted =>
+            !Stay
+            && (Mode != RunMode.Play
+                || InputProbe
+                || TradePartner
+                || HighlightProbe
+                || ZoomProbe
+                || DoorProbe
+                || EffectsProbe > 0
+                || EndureSeconds > 0
+                || ShardCommands.Count > 0
+                || ShotAfter > 0);
+
+        /// <summary>
+        /// Whether the window is kept from ever taking focus. <c>--no-focus</c>
+        /// and <c>--focus</c> decide it outright; with neither, a scripted run
+        /// is unfocusable and an interactive one is not. Mirrors how --sound
+        /// settles the audio.
+        /// </summary>
+        public bool NoFocus => _noFocus ?? Scripted;
+
+        private bool? _noFocus;
+
+        /// <summary>
         /// Account, password and character for every scripted mode; empty
         /// means the probe's own. The password defaults to the account name,
         /// which is what auto account creation on the dev shard makes of it.
@@ -969,6 +999,12 @@ public partial class Main : Node
                         break;
                     case "--sound":
                         o.Sound = true;
+                        break;
+                    case "--no-focus":
+                        o._noFocus = true;
+                        break;
+                    case "--focus":
+                        o._noFocus = false;
                         break;
                     case "--account":
                         o.Account = Next();

@@ -325,8 +325,14 @@ namespace GUO.Renderer
         {
             _live.Remove(this);
 
-            // Godot reference-counts both, so letting go of the last reference
-            // is what frees them.
+            // PORT DEVIATION (GUO): Godot reference-counts both, but the C#
+            // wrappers hold that reference until they are disposed or
+            // finalised; dispose them so the pages are freed now rather than at
+            // some later collection.
+            for (int i = 0; i < _textures.Count; i++)
+                _textures[i]?.Dispose();
+            for (int i = 0; i < _pages.Count; i++)
+                _pages[i]?.Dispose();
             _pages.Clear();
             _textures.Clear();
             _dirty.Clear();

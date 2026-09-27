@@ -36,6 +36,9 @@ namespace GUO.Renderer
         public RenderTarget2D LightRenderTarget { get => _lightRenderTarget; }
         public RenderTarget2D WorldRenderTarget { get => _worldRenderTarget; }
 
+        /// <summary>The world target's size in its own pixels; see GameScene.DrawWorld.</summary>
+        public Rectangle GameWorldSceneAfterDPI => _gameWorldSceneAfterDPI;
+
         public void SetLightsConfiguration(Func<BlendState> lightsBlendState, Func<Vector3> lightsHue)
         {
             _lightsBlendState = lightsBlendState;

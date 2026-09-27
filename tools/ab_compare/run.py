@@ -133,6 +133,13 @@ def shoot_guo(cfg: Config, place: Place, out_dir: Path) -> Path:
             str(cfg.godot_project),
             "--",
             "--play",
+            # The same account the CUO pass logs into. Left out, GUO falls
+            # back to its built-in probe account, and two sessions on one
+            # account kick each other off the shard.
+            "--account",
+            cfg.shard_owner,
+            "--password",
+            cfg.shard_owner_password,
             "--screenshot-dir",
             str(out_dir),
             "--screenshot-name",

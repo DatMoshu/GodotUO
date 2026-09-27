@@ -214,6 +214,12 @@ by this amendment.
   the building meets the street as in ClassicUO.
 * `launchers\dev\ab_compare.bat` over the eight places of the parity sweep.
 * `launchers\dev\smoke.bat`.
+* Re-checked 2026-09-26 on work/render (b59c888, after the statics joined the
+  sort, below): the britain-street A/B still matches ClassicUO, and GUO shows
+  no plinth or land-over-foundation fault at britain-street-1609, the
+  Britain bank district, the Trinsic walls, a Moonglow house, the Vesper
+  bridges or the Britain bank home spot. The ClassicUO half of that retake did
+  not come up, so those five places are checked by eye in GUO only.
 
 ### Note: a depth buffer instead of the sort
 
@@ -246,3 +252,46 @@ Validation: `dev/regression_probe.tscn -- rendering` reproduces the original
 tree-over-roof result, then checks actual GPU pixels for trees behind/in front
 of a cached roof, transparent roof pixels, and world offsets. See
 `godot/GUO/dev/README.md` for the command.
+
+## Amendment 2026-09-26: the normal travels, the light is per pixel
+
+Supersedes decisions 2 and 4 above. Review pass 2
+(`docs/review_2026-09-23_pass2.md`, findings 2, 4 and 5) confirmed three ways
+the per-vertex light differed from upstream:
+
+* Upstream interpolates the *normal* across the triangle and normalises and
+  lights it per pixel. Lighting the corners and interpolating the light agrees
+  at the corners and differs inside the tile, because `normalize` and `max`
+  are not linear (the review's ridge example).
+* `RGBA8_UNORM` stored the flat-tile value 0.85355339 as 218/255 =
+  0.85490196. That is the value `Brightlight` pivots on, so at the default
+  brightlight of 1.5 a flat-lit stretched tile came out at 0.85557 where
+  upstream's stays at 0.85355339, and every other value carried up to
+  ±0.002 of quantisation, multiplied by brightlight.
+* The sprite shaders sent a light of 1.0 where upstream's default sprite
+  normal gives 0.85355339 (rarely reached: LAND on a sprite).
+
+### Decision
+
+`MeshQuad` carries upstream's four vertex normals (`Normal0`..`Normal3`), and
+`CUSTOM0` becomes `RGBA_FLOAT` with the normal in XYZ. The shader include's
+varying is `vec3 land_normal`, and `get_light` is upstream's function: normalise
+the light direction and the normal, `max(dot, 0) / 2 + 0.5`, then the
+brightlight blend. The sprite shaders write the batcher's flat normal
+`(0, 0, 1)`, which is what upstream's `SetDefaultNormals` gives every sprite.
+`ChunkMesh` now writes the normals exactly as upstream
+does, so its deviation marker is gone.
+
+Cost: twelve more bytes per vertex in the rebuilt run meshes (16 against 4).
+That matters only when a run is rebuilt, and finding 3 of the same review is
+about how often that happens.
+
+`MeshLayer.Dispose` disposes its meshes' C# wrappers since 2026-09-26, so the
+consequence above that it "has nothing to free" no longer holds.
+
+### Validation
+
+`launchers\dev\batcher_probe.bat` draws one stretched quad with four
+different normals and checks every one of its 8×8 pixels, not just the
+corners, against get_light of the normal interpolated across triangles 0 1 2
+and 1 3 2, at brightlight 0 and 1.

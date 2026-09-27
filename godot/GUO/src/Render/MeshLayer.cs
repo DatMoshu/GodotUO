@@ -21,7 +21,7 @@ namespace GUO.Renderer
 
     /// <summary>
     /// One quad of a chunk mesh: four corners, each with a position, a texture
-    /// coordinate, the packed hue triple and the land light.
+    /// coordinate, the packed hue triple and the normal.
     /// </summary>
     /// <remarks>
     /// PORT DEVIATION (GUO): upstream's vertex is
@@ -29,9 +29,10 @@ namespace GUO.Renderer
     /// whose layout has to match the shader's input signature. Nothing here
     /// matches a declaration, so the fields are the ones that are read: the
     /// position drops its Z, because Godot's 2D canvas has no depth buffer and
-    /// ADR-0001 sorts before the batcher sees anything; the texture coordinate
-    /// drops its unused third component; and the normal becomes the scalar it
-    /// only ever fed, see <see cref="MeshLayer.LightFromNormal"/>.
+    /// ADR-0001 sorts before the batcher sees anything; and the texture
+    /// coordinate drops its unused third component. The normal travels whole,
+    /// in CUSTOM0, because upstream lights land per pixel from the
+    /// interpolated normal -- see ADR-0004.
     /// </remarks>
     public struct MeshQuad
     {
@@ -50,10 +51,10 @@ namespace GUO.Renderer
         public Vector3 Hue2;
         public Vector3 Hue3;
 
-        public float Light0;
-        public float Light1;
-        public float Light2;
-        public float Light3;
+        public Vector3 Normal0;
+        public Vector3 Normal1;
+        public Vector3 Normal2;
+        public Vector3 Normal3;
     }
 
     /// <summary>
@@ -109,18 +110,14 @@ namespace GUO.Renderer
         private Vector2[] _points = Array.Empty<Vector2>();
         private Vector2[] _uvs = Array.Empty<Vector2>();
         private Godot.Color[] _colors = Array.Empty<Godot.Color>();
-        private byte[] _custom = Array.Empty<byte>();
+        private float[] _custom = Array.Empty<float>();
 
         /// <summary>
-        /// Upstream's <c>get_light</c>, without the <c>Brightlight</c> blend,
-        /// which stays in the shader because the profile setting behind it can
-        /// change without the chunk becoming dirty.
+        /// Upstream's <c>get_light</c>, without the <c>Brightlight</c> blend.
         /// </summary>
         /// <remarks>
-        /// This is where the normal stops travelling. It is a pure function of
-        /// the normal and the light direction, both known at mesh build time,
-        /// and a canvas vertex has one spare slot rather than three — see
-        /// ADR-0004.
+        /// The shader evaluates this per pixel, as upstream does; this CPU
+        /// copy is the reference the batcher probe checks the screen against.
         /// </remarks>
         public static float LightFromNormal(Vector3 normal)
         {
@@ -266,10 +263,9 @@ namespace GUO.Renderer
             vertex.TextureCoordinate2 = new Vector2(sourceX, sourceH + sourceY);
             vertex.TextureCoordinate3 = new Vector2(sourceW + sourceX, sourceH + sourceY);
 
-            // Upstream writes the flat normal (0, 0, 1) here; this is what
-            // get_light returns for it, and it is the value the brightlight
-            // blend pulls towards.
-            vertex.Light0 = vertex.Light1 = vertex.Light2 = vertex.Light3 = 0.85355339f;
+            // Upstream's flat normal. get_light gives 0.85355339 for it, the
+            // value the brightlight blend pulls towards.
+            vertex.Normal0 = vertex.Normal1 = vertex.Normal2 = vertex.Normal3 = new Vector3(0f, 0f, 1f);
 
             vertex.Hue0 = vertex.Hue1 = vertex.Hue2 = vertex.Hue3 = hue;
 
@@ -427,7 +423,7 @@ namespace GUO.Renderer
                     arrays,
                     null,
                     null,
-                    (Mesh.ArrayFormat)((ulong)Mesh.ArrayCustomFormat.Rgba8Unorm
+                    (Mesh.ArrayFormat)((ulong)Mesh.ArrayCustomFormat.RgbaFloat
                         << (int)Mesh.ArrayFormat.FormatCustom0Shift));
             }
         }
@@ -468,7 +464,7 @@ namespace GUO.Renderer
                 arrays,
                 null,
                 null,
-                (Mesh.ArrayFormat)((ulong)Mesh.ArrayCustomFormat.Rgba8Unorm
+                (Mesh.ArrayFormat)((ulong)Mesh.ArrayCustomFormat.RgbaFloat
                     << (int)Mesh.ArrayFormat.FormatCustom0Shift));
         }
 
@@ -520,25 +516,25 @@ namespace GUO.Renderer
             ref MeshQuad q = ref Vertices[index];
 
             // Upstream's winding, from GenerateIndexArray: 0 1 2, 1 3 2.
-            Write(at + 0, q.Position0, q.TextureCoordinate0, q.Hue0, q.Light0);
-            Write(at + 1, q.Position1, q.TextureCoordinate1, q.Hue1, q.Light1);
-            Write(at + 2, q.Position2, q.TextureCoordinate2, q.Hue2, q.Light2);
-            Write(at + 3, q.Position1, q.TextureCoordinate1, q.Hue1, q.Light1);
-            Write(at + 4, q.Position3, q.TextureCoordinate3, q.Hue3, q.Light3);
-            Write(at + 5, q.Position2, q.TextureCoordinate2, q.Hue2, q.Light2);
+            Write(at + 0, q.Position0, q.TextureCoordinate0, q.Hue0, q.Normal0);
+            Write(at + 1, q.Position1, q.TextureCoordinate1, q.Hue1, q.Normal1);
+            Write(at + 2, q.Position2, q.TextureCoordinate2, q.Hue2, q.Normal2);
+            Write(at + 3, q.Position1, q.TextureCoordinate1, q.Hue1, q.Normal1);
+            Write(at + 4, q.Position3, q.TextureCoordinate3, q.Hue3, q.Normal3);
+            Write(at + 5, q.Position2, q.TextureCoordinate2, q.Hue2, q.Normal2);
         }
 
-        private void Write(int at, Vector2 position, Vector2 uv, Vector3 hue, float light)
+        private void Write(int at, Vector2 position, Vector2 uv, Vector3 hue, Vector3 normal)
         {
             _points[at] = position;
             _uvs[at] = uv;
             _colors[at] = UltimaBatcher2D.Encode(hue);
 
-            // RGBA8_UNORM: four bytes per vertex, of which the shader reads R.
-            _custom[at * 4 + 0] = (byte)Math.Clamp((int)(light * 255f + 0.5f), 0, 255);
-            _custom[at * 4 + 1] = 0;
-            _custom[at * 4 + 2] = 0;
-            _custom[at * 4 + 3] = 255;
+            // RGBA_FLOAT: four floats per vertex, the normal in XYZ.
+            _custom[at * 4 + 0] = normal.X;
+            _custom[at * 4 + 1] = normal.Y;
+            _custom[at * 4 + 2] = normal.Z;
+            _custom[at * 4 + 3] = 0f;
         }
 
         public void Reset()
@@ -574,16 +570,24 @@ namespace GUO.Renderer
         public ArrayMesh GetRunMesh(int run) => _runMeshes[run];
 
         /// <remarks>
-        /// PORT DEVIATION (GUO): upstream frees its vertex buffer here. There
-        /// is no GPU resource left to free — an ArrayMesh is an ordinary
-        /// refcounted resource. Kept because every caller calls it, and because
-        /// it will matter again if the meshes are ever pooled across chunks.
+        /// PORT DEVIATION (GUO): upstream frees its vertex buffer here. The
+        /// ArrayMesh is refcounted on the engine side, but its C# wrapper holds
+        /// that reference until it is disposed or finalised, so a dropped mesh
+        /// kept its vertex buffers until a garbage collection got round to it.
+        /// Disposing the wrapper releases them now. Nothing draws a chunk
+        /// between its unload and the next Begin, which rebuilds every item.
         /// </remarks>
         public void Dispose()
         {
             for (int i = 0; i < _runMeshes.Length; i++)
             {
+                _runMeshes[i]?.Dispose();
                 _runMeshes[i] = null;
+            }
+
+            for (int i = 0; i < _spriteMeshes.Length; i++)
+            {
+                _spriteMeshes[i]?.Dispose();
             }
 
             Array.Clear(_spriteMeshes);
