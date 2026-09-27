@@ -101,6 +101,7 @@ internal static class TouchProbe
         await DoubleTapCheck(host, world);
         await PinchCheck(host);
         await BarCheck(host);
+        await ParkCheck(host);
         await MacroRowCheck(host, world);
         await LongPressCheck(host);
 
@@ -251,6 +252,34 @@ internal static class TouchProbe
             string.Join(" | ", TouchInput.Trace)
         );
         Check("the backpack opened", UIManager.GetGump<ContainerGump>() != null);
+    }
+
+    /// <summary>
+    /// After a tap, once a second tap can no longer come, the pointer leaves
+    /// the screen, so nothing stays hovered: no tooltip, no lit slot.
+    /// </summary>
+    private static async System.Threading.Tasks.Task ParkCheck(Node host)
+    {
+        TouchInput.Trace.Clear();
+
+        await Tap(host, WorldPoint(new Vector2(-1, -1), 0.4f));
+        await Frames(host, 5);
+
+        bool stillThere = Input.Mouse.Position.X >= 0;
+
+        ulong until = Godot.Time.GetTicksMsec() + (ulong)Input.Mouse.MOUSE_DELAY_DOUBLE_CLICK + 250;
+
+        while (Godot.Time.GetTicksMsec() < until)
+        {
+            await Frames(host, 1);
+        }
+
+        Check(
+            "the pointer stays for a second tap, then leaves the screen",
+            stillThere && Input.Mouse.Position.X < 0 && TouchInput.Trace.Contains("finger gone -> pointer parked"),
+            $"at {Input.Mouse.Position.X},{Input.Mouse.Position.Y} | {string.Join(" | ", TouchInput.Trace)}"
+        );
+        Check("nothing is hovered after it leaves", UIManager.MouseOverControl == null && Game.SelectedObject.Object == null);
     }
 
     /// <summary>

@@ -50,6 +50,17 @@ namespace GUO.Game.UI.Gumps
         /// <summary>Containers switched to the classic view this session.</summary>
         private static readonly HashSet<uint> _classic = new HashSet<uint>();
 
+        /// <summary>
+        /// Each container's unsorted slot order this session: the serial in
+        /// each slot, 0 for a hole. An item that leaves leaves a hole, so the
+        /// rest stay where the player learned them (Thor pass 2, bug 9).
+        /// </summary>
+        private static readonly Dictionary<uint, List<uint>> _order = new Dictionary<uint, List<uint>>();
+
+        /// <summary>The item last dropped on an empty slot, and that slot: where it lands when it arrives.</summary>
+        private uint _dropSerial;
+        private int _dropSlot = -1;
+
         private readonly Label _title;
         private readonly StbTextBox _filter;
         private readonly NiceButton _sortButton, _classicButton, _prev, _next;
@@ -310,7 +321,11 @@ namespace GUO.Game.UI.Gumps
                 }
             }
 
-            if (_sort == 1)
+            if (_sort == 0 && string.IsNullOrWhiteSpace(_lastFilter))
+            {
+                items = Stable(items);
+            }
+            else if (_sort == 1)
             {
                 items.Sort((a, b) => string.Compare(NameOf(a), NameOf(b), StringComparison.OrdinalIgnoreCase));
             }
@@ -344,6 +359,7 @@ namespace GUO.Game.UI.Gumps
 
                 GridSlot slot = new GridSlot(this, it, size)
                 {
+                    Index = index,
                     X = PAD + n % Columns * (size + GAP),
                     Y = top + n / Columns * (size + GAP)
                 };
@@ -353,6 +369,92 @@ namespace GUO.Game.UI.Gumps
             }
 
             Layout(rows);
+        }
+
+        /// <summary>
+        /// The items in their remembered slots, null for a hole: a departed
+        /// item's slot empties, an item dropped on an empty slot takes it,
+        /// any other newcomer takes the first hole, else goes on the end.
+        /// </summary>
+        private List<Item> Stable(List<Item> items)
+        {
+            if (!_order.TryGetValue(LocalSerial, out List<uint> order))
+            {
+                _order[LocalSerial] = order = new List<uint>();
+            }
+
+            var present = new HashSet<uint>();
+
+            foreach (Item it in items)
+            {
+                present.Add(it.Serial);
+            }
+
+            var placed = new HashSet<uint>();
+
+            for (int i = 0; i < order.Count; i++)
+            {
+                if (order[i] != 0 && (!present.Contains(order[i]) || !placed.Add(order[i])))
+                {
+                    order[i] = 0;
+                }
+            }
+
+            foreach (Item it in items)
+            {
+                if (placed.Contains(it.Serial))
+                {
+                    continue;
+                }
+
+                int slot = -1;
+
+                if (it.Serial == _dropSerial && _dropSlot >= 0)
+                {
+                    while (order.Count <= _dropSlot)
+                    {
+                        order.Add(0);
+                    }
+
+                    if (order[_dropSlot] == 0)
+                    {
+                        slot = _dropSlot;
+                    }
+
+                    _dropSerial = 0;
+                    _dropSlot = -1;
+                }
+
+                if (slot < 0)
+                {
+                    slot = order.IndexOf(0);
+                }
+
+                if (slot < 0)
+                {
+                    order.Add(it.Serial);
+                }
+                else
+                {
+                    order[slot] = it.Serial;
+                }
+
+                placed.Add(it.Serial);
+            }
+
+            while (order.Count > 0 && order[order.Count - 1] == 0)
+            {
+                order.RemoveAt(order.Count - 1);
+            }
+
+            var laid = new List<Item>(order.Count);
+
+            foreach (uint serial in order)
+            {
+                laid.Add(serial == 0 ? null : World.Items.Get(serial));
+            }
+
+            return laid;
         }
 
         /// <summary>The same items ContainerGump.ItemsOnAdded draws.</summary>
@@ -547,6 +649,9 @@ namespace GUO.Game.UI.Gumps
             private readonly GridContainerGump _gump;
             private readonly Label _amount;
 
+            /// <summary>This slot's place in the container's whole order, across pages.</summary>
+            public int Index { get; set; }
+
             public GridSlot(GridContainerGump gump, Item item, int size)
             {
                 _gump = gump;
@@ -681,6 +786,14 @@ namespace GUO.Game.UI.Gumps
                     }
                     else
                     {
+                        // On an empty slot: remember it, so the item lands
+                        // there and not in the first hole.
+                        if (item == null)
+                        {
+                            _gump._dropSerial = hold.Serial;
+                            _gump._dropSlot = Index;
+                        }
+
                         _gump.DropHeld(_gump.LocalSerial, 0xFFFF, 0xFFFF);
                     }
 
