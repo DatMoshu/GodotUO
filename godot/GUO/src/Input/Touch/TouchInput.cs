@@ -355,6 +355,8 @@ namespace GUO.Input.Touch
             }
             else if (held >= LongPressMs)
             {
+                if (TraceToLog) Note($"no flick lift: {GumpFlick.LastRefusal}");
+
                 // Over a gump, or nowhere: the right click.
                 Press(MouseButton.Right, _lastAt);
                 Release(MouseButton.Right, _lastAt);

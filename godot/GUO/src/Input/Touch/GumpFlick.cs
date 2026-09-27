@@ -52,6 +52,9 @@ internal static class GumpFlick
     /// <summary>The direction currently picked: -1 none, else 0 up, 1 down, 2 left, 3 right.</summary>
     public static int Direction { get; private set; } = -1;
 
+    /// <summary>What was under the finger at the last CanStart, for the trace.</summary>
+    public static string LastRefusal { get; private set; } = "";
+
     /// <summary>What the last finished flick did, for the probe and the trace.</summary>
     public static string LastResult { get; private set; } = "";
 
@@ -84,6 +87,7 @@ internal static class GumpFlick
 
         Control over = UIManager.MouseOverControl;
         Gump root = GumpPresentation.Root(over);
+        LastRefusal = $"over {over?.GetType().Name ?? "nothing"} in {root?.GetType().Name ?? "nothing"}, supported {GumpPresentation.Supports(root)}";
 
         if (!GumpPresentation.Supports(root) || UIManager.IsModalOpen || UIManager.IsDragging
             || Client.Game.UO.GameCursor.ItemHold.Enabled || Client.Game.UO.World.TargetManager.IsTargeting)
