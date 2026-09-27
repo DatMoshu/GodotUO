@@ -133,6 +133,14 @@ namespace GUO.Input.Touch
         /// </summary>
         private static ulong _parkAt;
 
+        /// <summary>Frames a finger must have been down before its tap is sent; see FingerUp.</summary>
+        private const ulong TapSettleFrames = 2;
+
+        private static ulong _downFrame;
+        private static bool _tapDeferred;
+        private static Vector2 _deferredTap;
+        private static ulong _deferredTapFrame;
+
         /// <summary>Where a parked pointer goes: off every screen, over nothing.</summary>
         private static readonly Vector2 ParkedAt = new(-4096, -4096);
         private static TouchGumpBar _bar;
@@ -269,6 +277,7 @@ namespace GUO.Input.Touch
         public static void Update()
         {
             PanForKeyboard();
+            FlushTap(false);
             ParkWhenLifted();
 
             if (_phase != Phase.Pending)
@@ -364,15 +373,41 @@ namespace GUO.Input.Touch
             }
         }
 
+        /// <summary>A tap waiting for the client to pick what is under it; see FingerUp.</summary>
+        private static void Tap(Vector2 at)
+        {
+            Press(MouseButton.Left, at);
+            Release(MouseButton.Left, at);
+            _lastTapTime = Godot.Time.GetTicksMsec();
+            _lastTapAt = at;
+            Note(
+                $"tap -> left click at {at.X:0},{at.Y:0}"
+                + (TraceToLog ? $", under {SelectedObject.Object?.GetType().Name ?? "nothing"}, over world {UIManager.IsMouseOverWorld}, targeting {Client.Game?.UO?.World?.TargetManager.IsTargeting}" : "")
+            );
+            SyncKeyboard();
+        }
+
+        /// <summary>Send a deferred tap once its frames have passed, or at once when <paramref name="now"/>.</summary>
+        private static void FlushTap(bool now)
+        {
+            if (_tapDeferred && (now || Engine.GetProcessFrames() >= _deferredTapFrame))
+            {
+                _tapDeferred = false;
+                Tap(_deferredTap);
+            }
+        }
+
         private static void FingerDown(int index, Vector2 at)
         {
             _parkAt = 0;
+            FlushTap(true);
 
             if (_phase == Phase.Idle)
             {
                 _primary = index;
                 _downAt = _lastAt = at;
                 _downTime = Godot.Time.GetTicksMsec();
+                _downFrame = Engine.GetProcessFrames();
 
                 if (_bar != null && _bar.HitTest(at, out string action))
                 {
@@ -482,13 +517,22 @@ namespace GUO.Input.Touch
             switch (_phase)
             {
                 case Phase.Pending:
-                    // Down and up with nothing decided: a tap.
-                    Press(MouseButton.Left, at);
-                    Release(MouseButton.Left, at);
-                    _lastTapTime = Godot.Time.GetTicksMsec();
-                    _lastTapAt = at;
-                    Note($"tap -> left click at {at.X:0},{at.Y:0}");
-                    SyncKeyboard();
+                    // Down and up with nothing decided: a tap. The client
+                    // picks what is under the pointer once a frame; a tap
+                    // shorter than that would click on what was under the
+                    // pointer before the finger came (a parked pointer:
+                    // nothing), so a target cursor went unanswered. Such a
+                    // tap waits until the picking has caught up.
+                    if (Engine.GetProcessFrames() - _downFrame < TapSettleFrames)
+                    {
+                        _deferredTap = at;
+                        _deferredTapFrame = _downFrame + TapSettleFrames;
+                        _tapDeferred = true;
+                    }
+                    else
+                    {
+                        Tap(at);
+                    }
 
                     break;
 
@@ -538,7 +582,7 @@ namespace GUO.Input.Touch
         /// </summary>
         private static void ParkWhenLifted()
         {
-            if (_parkAt == 0 || _phase != Phase.Idle || Godot.Time.GetTicksMsec() < _parkAt)
+            if (_parkAt == 0 || _tapDeferred || _phase != Phase.Idle || Godot.Time.GetTicksMsec() < _parkAt)
             {
                 return;
             }
