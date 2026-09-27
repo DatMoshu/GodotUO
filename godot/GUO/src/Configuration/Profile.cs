@@ -267,6 +267,10 @@ namespace GUO.Configuration
         // PORT DEVIATION (GUO): what the screen saver shows (v11): "effects",
         // "builtin:NAME" or an installed store screensaver's user:// loop.
         public string ScreenSaverChoice { get; set; } = "effects";
+        // PORT DEVIATION (GUO): how a gamepad's A/B/X/Y map to their printed
+        // labels (Input.Gamepad): "auto" (from the pad and the device),
+        // "labels" or "swapped". Not a platform default, so no version.
+        public string GamepadLayout { get; set; } = "auto";
         public int OverrideContainerLocationSetting { get; set; } // 0 = container position, 1 = top right of screen, 2 = last dragged position, 3 = remember every container
 
         [JsonConverter(typeof(Point2Converter))] public Point OverrideContainerLocationPosition { get; set; } = new Point(200, 200);

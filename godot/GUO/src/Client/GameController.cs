@@ -770,6 +770,10 @@ namespace GUO
                 GUO.Input.Touch.TouchInput.Update();
             }
 
+            // PORT DEVIATION (GUO): a tilted right stick moves the pointer
+            // every frame, as a held finger is looked at every frame.
+            GUO.Input.Gamepad.GamepadInput.Update(delta);
+
             Update(elapsedMilliseconds);
 
             if (!_suppressedDraw)

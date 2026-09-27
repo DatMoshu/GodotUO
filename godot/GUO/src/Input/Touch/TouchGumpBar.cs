@@ -157,6 +157,24 @@ namespace GUO.Input.Touch
             }
         }
 
+        /// <summary>Open or close the macro row, as the chevron does (a gamepad's Y).</summary>
+        public void ToggleRow()
+        {
+            if (!ChevronShown)
+            {
+                return;
+            }
+
+            _rowOpen = !_rowOpen;
+
+            if (!_rowOpen)
+            {
+                HiddenThisSession = true;
+            }
+
+            _surface.QueueRedraw();
+        }
+
         public override void _Ready()
         {
             Layer = 10;

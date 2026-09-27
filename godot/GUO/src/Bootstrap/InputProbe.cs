@@ -694,7 +694,7 @@ internal static class InputProbe
     /// The probe moves the mouse up the column and asks the client what is
     /// under it -- the same hit test a player's own aiming relies on.
     /// </remarks>
-    private static async System.Threading.Tasks.Task<Vector2?> FindCharacter(Node host)
+    internal static async System.Threading.Tasks.Task<Vector2?> FindCharacter(Node host)
     {
         Compat.Rectangle bounds = Client.Game.Window.ClientBounds;
         var centre = new Vector2(bounds.Width / 2f, bounds.Height / 2f);
