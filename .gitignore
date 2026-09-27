@@ -158,3 +158,6 @@ tools/godot_web/*
 tools/web/hello/.godot/
 tools/web/hello/Hello.sln
 tools/web/hello/export_presets.cfg
+
+# ServUO checkout and build (GPL-3.0, never vendored): tools/servuo
+tools/servuo/src/
