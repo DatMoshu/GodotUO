@@ -104,7 +104,16 @@ internal static class TouchProbe
         await ParkCheck(host);
         await TargetTapCheck(host, world);
         await MacroRowCheck(host, world);
-        await LongPressCheck(host);
+        await FlickCheck(host, world);
+        // The long press is checked with hold-and-flick off, the way a player
+        // who set every direction to "Do nothing" has it.
+        {
+            var prof = Configuration.ProfileManager.CurrentProfile;
+            (int u, int d, int l, int r) kept = (prof.FlickUp, prof.FlickDown, prof.FlickLeft, prof.FlickRight);
+            prof.FlickUp = prof.FlickDown = prof.FlickLeft = prof.FlickRight = 0;
+            await LongPressCheck(host);
+            (prof.FlickUp, prof.FlickDown, prof.FlickLeft, prof.FlickRight) = kept;
+        }
         await GumpScaleCheck(host, world);
         await ScaledContainerCheck(host, world);
 
@@ -387,6 +396,146 @@ internal static class TouchProbe
         await Frames(host, 5);
 
         Check("the chevron brings the row back", bar.RowShown, string.Join(" | ", TouchInput.Trace));
+    }
+
+    /// <summary>
+    /// Hold and flick (S12): a still hold on a gump's frame lifts it without
+    /// pressing a button; a release inside the threshold does nothing; each
+    /// direction does its configured action. On a single screen up and down
+    /// fit the gump to the screen.
+    /// </summary>
+    private static async System.Threading.Tasks.Task FlickCheck(Node host, Game.World world)
+    {
+        var p = Configuration.ProfileManager.CurrentProfile;
+        (int u, int d, int l, int r) saved = (p.FlickUp, p.FlickDown, p.FlickLeft, p.FlickRight);
+        p.FlickUp = (int)FlickAction.ToTopScreen; p.FlickDown = (int)FlickAction.ToBottomScreen;
+        p.FlickLeft = (int)FlickAction.Close; p.FlickRight = (int)FlickAction.Reset;
+
+        try
+        {
+            PaperDollGump g = await FreshPaperdoll(host, world);
+            Vector2? at = g == null ? null : await FlickPoint(host, g);
+            Check("a still point on the paperdoll's frame accepts a flick hold", at != null);
+
+            if (at == null)
+            {
+                return;
+            }
+
+            // Lift, then let go inside the threshold: nothing happens.
+            TouchInput.Trace.Clear();
+            await Lift(host, at.Value);
+            bool liftedNoButton = GumpFlick.Lifted == g && !Mouse.LButtonPressed && !Mouse.RButtonPressed
+                && !GUO.Client.Game.UO.GameCursor.ItemHold.Enabled;
+            Check("a still hold lifts the gump without pressing a button", liftedNoButton,
+                string.Join(" | ", TouchInput.Trace));
+            Touch(0, at.Value + new Vector2(6, 0), false);
+            await Frames(host, 5);
+            Check("letting go inside the threshold does nothing",
+                GumpFlick.LastResult.Contains("nothing") && !g.IsDisposed && GumpFlick.Lifted == null, GumpFlick.LastResult);
+
+            // Up and down on a single screen: fit to screen.
+            float before = g.PresentationScale;
+            await Flick(host, at.Value, new Vector2(0, -160));
+            Check("flick up on a single screen fits the gump to the screen",
+                GumpFlick.LastResult == "flick up -> ToTopScreen" && g.PresentationScale > before,
+                $"{GumpFlick.LastResult}, scale {before} -> {g.PresentationScale}");
+
+            // Right: reset size.
+            at = await FlickPoint(host, g);
+            await Flick(host, at.Value, new Vector2(160, 0));
+            Check("flick right resets the size", GumpFlick.LastResult == "flick right -> Reset" && g.PresentationScale == 1f,
+                $"{GumpFlick.LastResult}, scale {g.PresentationScale}");
+
+            // Down: fit again (single screen).
+            at = await FlickPoint(host, g);
+            await Flick(host, at.Value, new Vector2(0, 160));
+            Check("flick down on a single screen fits the gump too",
+                GumpFlick.LastResult == "flick down -> ToBottomScreen" && g.PresentationScale > 1f, GumpFlick.LastResult);
+            GumpPresentation.Reset(g);
+
+            // Left: close, with a Reopen toast that brings it back.
+            at = await FlickPoint(host, g);
+            await Flick(host, at.Value, new Vector2(-160, 0));
+            UndoToast toast = UIManager.GetGump<UndoToast>();
+            Check("flick left closes the gump and offers Reopen",
+                GumpFlick.LastResult == "flick left -> Close" && g.IsDisposed && toast != null, GumpFlick.LastResult);
+            toast?.OnButtonClick(1);
+            await Frames(host, 60);
+            Check("Reopen brings it back", UIManager.GetGump<PaperDollGump>(world.Player.Serial) != null);
+        }
+        finally
+        {
+            GumpFlick.Cancel();
+            (p.FlickUp, p.FlickDown, p.FlickLeft, p.FlickRight) = saved;
+        }
+    }
+
+    private static async System.Threading.Tasks.Task<PaperDollGump> FreshPaperdoll(Node host, Game.World world)
+    {
+        UIManager.GetGump<PaperDollGump>(world.Player.Serial)?.Dispose();
+        await Frames(host, 5);
+        Game.GameActions.OpenPaperdoll(world, world.Player);
+        await Frames(host, 40);
+        PaperDollGump g = UIManager.GetGump<PaperDollGump>(world.Player.Serial);
+
+        if (g != null)
+        {
+            g.X = 120; g.Y = 120; g.PresentationScale = 1f; g.PresentationLocked = false;
+            g.BringOnTop();
+            await Frames(host, 5);
+        }
+
+        return g;
+    }
+
+    /// <summary>A point on the gump where GumpFlick would start, in window pixels, or null.</summary>
+    private static async System.Threading.Tasks.Task<Vector2?> FlickPoint(Node host, Game.UI.Gumps.Gump g)
+    {
+        for (int fy = 1; fy < 10; fy++)
+        {
+            for (int fx = 1; fx < 8; fx++)
+            {
+                var local = new Vector2(g.X + GumpPresentation.Width(g) * fx / 8f, g.Y + GumpPresentation.Height(g) * fy / 10f);
+                Vector2 at = Client(local);
+                GodotInput.Handle(new InputEventMouseMotion { Position = at });
+                await Frames(host, 2);
+
+                if (GumpFlick.CanStart(out Game.UI.Gumps.Gump lift) && lift == g)
+                {
+                    return at;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private static async System.Threading.Tasks.Task Lift(Node host, Vector2 at)
+    {
+        Touch(0, at, true);
+        ulong until = Godot.Time.GetTicksMsec() + (ulong)GumpFlick.HoldMs + 80;
+
+        while (Godot.Time.GetTicksMsec() < until)
+        {
+            await Frames(host, 1);
+        }
+    }
+
+    private static async System.Threading.Tasks.Task Flick(Node host, Vector2 at, Vector2 by)
+    {
+        TouchInput.Trace.Clear();
+        await Lift(host, at);
+
+        for (int i = 1; i <= 4; i++)
+        {
+            Drag(0, at + by * i / 4f, by / 4f);
+            await Frames(host, 1);
+        }
+
+        Touch(0, at + by, false);
+        await Frames(host, 20);
+        GD.Print($"[GUO] touch probe: {GumpFlick.LastResult} | {string.Join(" | ", TouchInput.Trace)}");
     }
 
     /// <summary>A long press on the paperdoll's frame closes it, as a right click does.</summary>

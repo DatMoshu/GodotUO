@@ -118,6 +118,27 @@ namespace GUO.Platform.Android
         /// </summary>
         public static int ExtraWidth => ShelfOn ? _instance._logicalWidth : 0;
 
+        /// <summary>
+        /// Hand a gump back to automatic shelving (GumpFlick's "shelf's own
+        /// slot"): no longer placed by hand, not yet seen, and off the shelf,
+        /// so the next Shelve pass puts it in its slot if the shelf wants it.
+        /// </summary>
+        public static void Reshelve(Gump g)
+        {
+            if (_instance == null || g == null || g.IsDisposed)
+            {
+                return;
+            }
+
+            g.PresentationPlaced = false;
+            _instance._seen.Remove(g);
+
+            if (g.X >= MainWidth)
+            {
+                g.X = Math.Max(0, MainWidth - g.Width);
+            }
+        }
+
         public static int LogicalWidth => _instance?._logicalWidth ?? 0;
 
         public static int LogicalHeight => _instance?._logicalHeight ?? 0;

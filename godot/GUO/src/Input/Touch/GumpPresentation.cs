@@ -211,14 +211,18 @@ internal static class GumpPresentation
     public static void Queue(Gump g, RenderLists lists, ref float depth)
     {
         float s = Scale(g);
-        if (s != 1f)
+        // A gump lifted for a flick (GumpFlick) is drawn a little larger
+        // about its centre, still nearest-sampled, with its outline and chips.
+        bool lifted = GumpFlick.Lifted == g;
+        if (s != 1f || lifted)
         {
-            var transform = new Godot.Transform2D(new Godot.Vector2(s, 0), new Godot.Vector2(0, s),
+            var transform = lifted ? GumpFlick.LiftTransform(g, s) : new Godot.Transform2D(new Godot.Vector2(s, 0), new Godot.Vector2(0, s),
                 new Godot.Vector2(g.X * (1 - s), g.Y * (1 - s)));
             lists.AddGumpNoAtlas(b => { b.PushUiTransform(transform); return true; });
         }
         g.AddToRenderLists(lists, g.X, g.Y, ref depth);
-        if (s != 1f) lists.AddGumpNoAtlas(b => { b.ClipEnd(); return true; });
+        if (s != 1f || lifted) lists.AddGumpNoAtlas(b => { b.ClipEnd(); return true; });
+        if (lifted) lists.AddGumpNoAtlas(b => { GumpFlick.DrawOverlay(b, g); return true; });
         if (GemVisible(g) && g.IsVisible && g.Width > 0)
         {
             Rectangle r = GemRect(g);

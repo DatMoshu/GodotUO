@@ -122,6 +122,7 @@ namespace GUO.Game.UI.Gumps
         private HSliderBar _dualScale;
         private Combobox _dualScaleFine; // PORT DEVIATION (GUO)
         private HSliderBar _chevronInset; // PORT DEVIATION (GUO)
+        private Combobox[] _flick; // PORT DEVIATION (GUO): hold-and-flick, up/down/left/right
         private static readonly int[] DualScaleFinePercents = { 0, 100, 125, 150 };
         private Checkbox _holdShiftForContext, _holdShiftToSplitStack, _reduceFPSWhenInactive, _sallosEasyGrab, _partyInviteGump, _objectsFading, _textFading, _holdAltToMoveGumps;
         private Combobox _hpComboBox, _healtbarType, _fieldsType, _hpComboBoxShowWhen;
@@ -984,6 +985,17 @@ namespace GUO.Game.UI.Gumps
             {
                 section3.Add(AddLabel(null, "Touch bar chevron inset from the corner", 0, 0));
                 section3.AddRight(_chevronInset = AddHSlider(null, 0, 200, _currentProfile.TouchChevronInset, 0, 0, 120));
+
+                // Hold a gump still, then flick: what each direction does (GumpFlick).
+                int[] current = { _currentProfile.FlickUp, _currentProfile.FlickDown, _currentProfile.FlickLeft, _currentProfile.FlickRight };
+                _flick = new Combobox[4];
+
+                for (int i = 0; i < 4; i++)
+                {
+                    section3.Add(AddLabel(null, $"Hold and flick {GUO.Input.Touch.GumpFlick.DirectionNames[i]}", 0, 0));
+                    section3.AddRight(_flick[i] = AddCombobox(null, GUO.Input.Touch.GumpFlick.ActionTitles,
+                        System.Math.Clamp(current[i], 0, GUO.Input.Touch.GumpFlick.ActionTitles.Length - 1), 0, 0, 170));
+                }
             }
 
             section3.Add
@@ -4129,6 +4141,14 @@ namespace GUO.Game.UI.Gumps
                 _currentProfile.DualScreenShelveOthers = _dualShelveOthers.IsChecked;
                 _currentProfile.DualScreenScale = _dualScale.Value;
                 _currentProfile.DualScreenScalePercent = DualScaleFinePercents[System.Math.Clamp(_dualScaleFine.SelectedIndex, 0, DualScaleFinePercents.Length - 1)];
+            }
+
+            if (_flick != null)
+            {
+                _currentProfile.FlickUp = _flick[0].SelectedIndex;
+                _currentProfile.FlickDown = _flick[1].SelectedIndex;
+                _currentProfile.FlickLeft = _flick[2].SelectedIndex;
+                _currentProfile.FlickRight = _flick[3].SelectedIndex;
             }
 
             if (_chevronInset != null)
