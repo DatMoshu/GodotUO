@@ -168,6 +168,9 @@ namespace GUO.Configuration
         [JsonConverter(typeof(Point2Converter))] public Point TopbarGumpPosition { get; set; } = new Point(0, 0);
         public bool TopbarGumpIsMinimized { get; set; }
         public bool TopbarGumpIsDisabled { get; set; }
+        // PORT DEVIATION (GUO): a device with a second screen puts the
+        // paperdoll, backpack, status and journal on it. Read only there.
+        public bool DualScreenEnabled { get; set; } = true;
         public bool UseAlternativeLights { get; set; }
         public bool UseCustomLightLevel { get; set; }
         public byte LightLevel { get; set; }

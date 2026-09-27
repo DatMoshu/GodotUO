@@ -814,6 +814,10 @@ namespace GUO
 
             UIManager.Draw(_uoSpriteBatch);
 
+            // PORT DEVIATION (GUO): the same gumps again for the second
+            // screen of a dual-screen device; a no-op without one. ADR-0009.
+            GUO.Platform.Android.DualScreen.Draw(_uoSpriteBatch, _renderTargets.UiRenderTarget);
+
             _uoSpriteBatch.Begin();
             UO.GameCursor?.Draw(_uoSpriteBatch);
             _uoSpriteBatch.End();

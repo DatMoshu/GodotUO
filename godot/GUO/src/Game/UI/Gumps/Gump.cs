@@ -73,6 +73,9 @@ namespace GUO.Game.UI.Gumps
         public void SetInScreen()
         {
             Rectangle windowBounds = Client.Game.ClientBounds;
+            // PORT DEVIATION (GUO): the second screen extends the window to
+            // the right while it is active (zero otherwise); see DualScreen.
+            windowBounds.Width += GUO.Platform.Android.DualScreen.ExtraWidth;
             Rectangle bounds = Bounds;
             bounds.X += windowBounds.X;
             bounds.Y += windowBounds.Y;
@@ -115,9 +118,11 @@ namespace GUO.Game.UI.Gumps
                 position.Y = -halfHeight;
             }
 
-            if (X > Client.Game.ClientBounds.Width - (Width - halfWidth))
+            // PORT DEVIATION (GUO): the second screen extends the window to
+            // the right while it is active (zero otherwise); see DualScreen.
+            if (X > Client.Game.ClientBounds.Width + GUO.Platform.Android.DualScreen.ExtraWidth - (Width - halfWidth))
             {
-                position.X = Client.Game.ClientBounds.Width - (Width - halfWidth);
+                position.X = Client.Game.ClientBounds.Width + GUO.Platform.Android.DualScreen.ExtraWidth - (Width - halfWidth);
             }
 
             if (Y > Client.Game.ClientBounds.Height - (Height - halfHeight))

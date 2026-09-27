@@ -164,6 +164,10 @@ public partial class Main : Node
                     GUO.Input.Touch.TouchInput.TraceToLog = _options.TouchTrace;
                 }
 
+                // A second display, where the device has one (or the desktop
+                // simulates one). Nothing is added to the tree otherwise.
+                GUO.Platform.Android.DualScreen.Setup(this, _options.DualSimulate, _options.DualOff);
+
                 // Commands and a probe together: the commands run first
                 // (typically "[go" somewhere populated) and the probe follows.
                 if (_options.LoginProbe)
@@ -177,6 +181,10 @@ public partial class Main : Node
                 else if (_options.TouchProbe)
                 {
                     TouchProbeThenQuit();
+                }
+                else if (_options.DualProbe)
+                {
+                    DualProbeThenMaybeQuit();
                 }
                 else if (_options.HighlightProbe)
                 {
@@ -445,6 +453,39 @@ public partial class Main : Node
     }
 
     /// <summary>
+    /// Log in, wait for the second screen to come up, report what it did
+    /// and what it cost, photograph both screens; see DualProbe. Quits on a
+    /// desktop, stays up on a device so the tooling can photograph the panels.
+    /// </summary>
+    private async void DualProbeThenMaybeQuit()
+    {
+        await DualProbe.Run(this);
+
+        string dir = string.IsNullOrWhiteSpace(_options.ScreenshotDir)
+            ? "user://screenshots"
+            : _options.ScreenshotDir;
+
+        DirAccess.MakeDirRecursiveAbsolute(dir);
+
+        string second = dir.PathJoin(
+            string.IsNullOrWhiteSpace(_options.ScreenshotName)
+                ? "guo_second.png"
+                : $"{_options.ScreenshotName}_second.png"
+        );
+
+        if (GUO.Platform.Android.DualScreen.SaveFrame(second))
+        {
+            GD.Print($"[GUO] screenshot -> {ProjectSettings.GlobalizePath(second)}");
+        }
+
+        await CaptureFrame();
+
+        if (!OS.HasFeature("mobile"))
+        {
+            Quit(DualProbe.Passed ? 0 : 1);
+        }
+    }
+
     /// Say on the log when the login gump has been drawn; see LoginProbe.
     /// </summary>
     private async void LoginProbeThenMaybeQuit()
@@ -679,6 +720,15 @@ public partial class Main : Node
         /// <summary>Whether the login probe quits once it has reported. Default true.</summary>
         public bool LoginProbeQuits { get; private set; } = true;
 
+        /// <summary>Log in, use the second screen, report and photograph it; see DualProbe.</summary>
+        public bool DualProbe { get; private set; }
+
+        /// <summary>"WxH": stand a desktop window in for a second display of that size.</summary>
+        public string DualSimulate { get; private set; } = "";
+
+        /// <summary>Leave a second display alone this run.</summary>
+        public bool DualOff { get; private set; }
+
         /// <summary>
         /// Integer screen scale for the touch layer; zero picks one from the
         /// window height so the 640x480 login screen fits.
@@ -780,6 +830,15 @@ public partial class Main : Node
                     case "--login-probe-stay":
                         o.LoginProbe = true;
                         o.LoginProbeQuits = false;
+                        break;
+                    case "--dual-probe":
+                        o.DualProbe = true;
+                        break;
+                    case "--dual-screen":
+                        o.DualSimulate = Next() ?? "";
+                        break;
+                    case "--dual-off":
+                        o.DualOff = true;
                         break;
                     case "--screen-scale":
                         if (int.TryParse(Next(), out int screenScale))

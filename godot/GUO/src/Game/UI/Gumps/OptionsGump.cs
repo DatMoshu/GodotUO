@@ -103,6 +103,8 @@ namespace GUO.Game.UI.Gumps
                          _chatAdditionalButtonsCheckbox,
                          _chatShiftEnterCheckbox,
                          _enableCaveBorder;
+        // PORT DEVIATION (GUO): only built when a second display exists.
+        private Checkbox _dualScreen;
         private Checkbox _holdShiftForContext, _holdShiftToSplitStack, _reduceFPSWhenInactive, _sallosEasyGrab, _partyInviteGump, _objectsFading, _textFading, _holdAltToMoveGumps;
         private Combobox _hpComboBox, _healtbarType, _fieldsType, _hpComboBoxShowWhen;
 
@@ -927,6 +929,22 @@ namespace GUO.Game.UI.Gumps
                     0
                 )
             );
+
+            // PORT DEVIATION (GUO): the second screen, where there is one.
+            if (GUO.Platform.Android.DualScreen.HasSecondaryDisplay)
+            {
+                section3.Add
+                (
+                    _dualScreen = AddCheckBox
+                    (
+                        null,
+                        "Use the second screen for paperdoll, backpack, status and journal",
+                        _currentProfile.DualScreenEnabled,
+                        0,
+                        0
+                    )
+                );
+            }
 
             section3.Add
             (
@@ -3898,6 +3916,12 @@ namespace GUO.Game.UI.Gumps
                 }
 
                 _currentProfile.TopbarGumpIsDisabled = _enableTopbar.IsChecked;
+            }
+
+            // PORT DEVIATION (GUO): the second screen, where there is one.
+            if (_dualScreen != null)
+            {
+                _currentProfile.DualScreenEnabled = _dualScreen.IsChecked;
             }
 
             if (_currentProfile.EnableCaveBorder != _enableCaveBorder.IsChecked)

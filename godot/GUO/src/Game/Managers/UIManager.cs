@@ -383,6 +383,20 @@ namespace GUO.Game.Managers
             batcher.End();
         }
 
+        /// <summary>
+        /// PORT DEVIATION (GUO): draw the lists <see cref="Draw"/> just built
+        /// a second time, into whatever target the batcher points at now.
+        /// The second screen (GUO.Platform.Android.DualScreen) shows the
+        /// same gumps through a shifted transform; the lists are not cleared
+        /// by drawing, so nothing is rebuilt and nothing is sorted twice.
+        /// </summary>
+        public static void RedrawLists(UltimaBatcher2D batcher)
+        {
+            batcher.SetStencil(DepthStencilState.Default);
+            _renderLists.DrawRenderLists(batcher, sbyte.MaxValue);
+            batcher.SetStencil(null);
+        }
+
         public static void Add(Gump gump, bool front = true)
         {
             if (!gump.IsDisposed)
