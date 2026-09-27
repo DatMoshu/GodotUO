@@ -25,6 +25,9 @@ with the project, and the client only ever reads your install.
 - New here: [Getting Started](Getting-Started.md), then [Configuration](Configuration.md).
 - Want a build: [Windows Build](Windows-Build.md), [Android Build](Android-Build.md), [Steam Deck](Steam-Deck.md), [Dual Screen](Dual-Screen.md), or [Download a build](Getting-Started.md#download-a-build).
 - Playing on a phone: [Mobile UI](Mobile-UI.md), [Canvas Background](Canvas-Background.md).
+- Planning player helpers: [Player command index and controller research](../player-command-and-controller-research.md).
+- Planning the second screen: [OpenMW-DS comparison, tabs, gump transfer, and pinch scaling](../second-screen-ui-research.md).
+- Resizing or moving windows: [Gump size and screen controls](Gump-Size-and-Screen.md).
 - Need a server: [Dev Shard](Dev-Shard.md).
 - Working on the port: [Launchers and Tools](Launchers-and-Tools.md), [Scripted Runs and Probes](Scripted-Runs-and-Probes.md), [Parity and Drift](Parity-and-Drift.md), [Architecture](Architecture.md), [Editor](Editor.md), [Manage Your Shard From the Editor](Manage-Your-Shard-From-The-Editor.md), [Contributing](Contributing.md).
 - Short answers: [FAQ](FAQ.md).

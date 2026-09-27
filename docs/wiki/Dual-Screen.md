@@ -28,6 +28,11 @@ display is unaffected, and the probe reports "one display" and passes.
 
 ## Flags and settings
 
+Supported floating gumps now have a UI handle for size/reset/lock and transfer
+between screens, plus pinch-to-scale in touch mode. See
+[Gump size and screen controls](Gump-Size-and-Screen.md) for the supported
+types and current validation limits.
+
 | | |
 |---|---|
 | `--dual-probe` | Logs in, moves the shelf gumps to the second screen, prints `[GUO] dual screen: ok` when it is up. `launchers\android\dual_probe.bat` bakes it into an export, runs it and photographs both displays into `build\android\dual_main.png` and `dual_second.png`. |

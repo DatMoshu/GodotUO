@@ -602,6 +602,15 @@ namespace GUO.Renderer
             Cut();
         }
 
+        /// <summary>Scoped UI transform; clip children inherit it. Pop with ClipEnd.</summary>
+        public void PushUiTransform(Transform2D transform)
+        {
+            Rid parent = NewItem(CurrentParent);
+            RenderingServer.CanvasItemSetTransform(parent, transform);
+            _clipStack.Add(parent);
+            Cut();
+        }
+
         public bool ClipBegin(int x, int y, int width, int height)
         {
             if (width <= 0 || height <= 0)

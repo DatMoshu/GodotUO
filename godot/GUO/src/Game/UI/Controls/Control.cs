@@ -398,6 +398,14 @@ namespace GUO.Game.UI.Controls
 
         public void HitTest(int x, int y, ref Control res)
         {
+            // Inverse the root transform once, before traversing legacy child bounds.
+            using var mouseSpace = new GUO.Input.Touch.GumpPresentation.MouseScope(this);
+            if (Parent == null)
+            {
+                Point local = GUO.Input.Touch.GumpPresentation.ToLocal(this, new Point(x, y));
+                x = local.X;
+                y = local.Y;
+            }
             if (!IsVisible || !IsEnabled || IsDisposed)
             {
                 return;
@@ -521,6 +529,8 @@ namespace GUO.Game.UI.Controls
 
         public void InvokeMouseDown(Point position, MouseButtonType button)
         {
+            position = GUO.Input.Touch.GumpPresentation.ToLocal(this, position);
+            using var mouseSpace = new GUO.Input.Touch.GumpPresentation.MouseScope(this);
             int x = position.X - X - ParentX;
             int y = position.Y - Y - ParentY;
             OnMouseDown(x, y, button);
@@ -529,6 +539,8 @@ namespace GUO.Game.UI.Controls
 
         public void InvokeMouseUp(Point position, MouseButtonType button)
         {
+            position = GUO.Input.Touch.GumpPresentation.ToLocal(this, position);
+            using var mouseSpace = new GUO.Input.Touch.GumpPresentation.MouseScope(this);
             int x = position.X - X - ParentX;
             int y = position.Y - Y - ParentY;
             OnMouseUp(x, y, button);
@@ -545,6 +557,8 @@ namespace GUO.Game.UI.Controls
 
         public void InvokeMouseOver(Point position)
         {
+            position = GUO.Input.Touch.GumpPresentation.ToLocal(this, position);
+            using var mouseSpace = new GUO.Input.Touch.GumpPresentation.MouseScope(this);
             int x = position.X - X - ParentX;
             int y = position.Y - Y - ParentY;
             OnMouseOver(x, y);
@@ -553,6 +567,8 @@ namespace GUO.Game.UI.Controls
 
         public void InvokeMouseEnter(Point position)
         {
+            position = GUO.Input.Touch.GumpPresentation.ToLocal(this, position);
+            using var mouseSpace = new GUO.Input.Touch.GumpPresentation.MouseScope(this);
             int x = position.X - X - ParentX;
             int y = position.Y - Y - ParentY;
             OnMouseEnter(x, y);
@@ -561,6 +577,8 @@ namespace GUO.Game.UI.Controls
 
         public void InvokeMouseExit(Point position)
         {
+            position = GUO.Input.Touch.GumpPresentation.ToLocal(this, position);
+            using var mouseSpace = new GUO.Input.Touch.GumpPresentation.MouseScope(this);
             int x = position.X - X - ParentX;
             int y = position.Y - Y - ParentY;
             OnMouseExit(x, y);
@@ -569,6 +587,8 @@ namespace GUO.Game.UI.Controls
 
         public bool InvokeMouseDoubleClick(Point position, MouseButtonType button)
         {
+            position = GUO.Input.Touch.GumpPresentation.ToLocal(this, position);
+            using var mouseSpace = new GUO.Input.Touch.GumpPresentation.MouseScope(this);
             int x = position.X - X - ParentX;
             int y = position.Y - Y - ParentY;
             bool result = OnMouseDoubleClick(x, y, button);
@@ -601,6 +621,7 @@ namespace GUO.Game.UI.Controls
 
         public void InvokeMouseWheel(MouseEventType delta)
         {
+            using var mouseSpace = new GUO.Input.Touch.GumpPresentation.MouseScope(this);
             OnMouseWheel(delta);
             MouseWheel.Raise(new MouseWheelEventArgs(delta), this);
         }

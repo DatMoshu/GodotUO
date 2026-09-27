@@ -24,6 +24,12 @@ namespace GUO.Game.UI.Gumps
 
         public World World { get; }
 
+        // PORT DEVIATION (GUO): optional display transform, independent of server layout.
+        public float PresentationScale { get; set; } = 1f;
+        public bool PresentationLocked { get; set; }
+        public bool PresentationPlaced { get; set; }
+        internal Point? MainPresentationPosition, SecondPresentationPosition;
+
         public bool CanBeSaved => GumpType != Gumps.GumpType.None;
 
         public virtual GumpType GumpType { get; }
@@ -68,6 +74,9 @@ namespace GUO.Game.UI.Gumps
             writer.WriteAttributeString("x", X.ToString());
             writer.WriteAttributeString("y", Y.ToString());
             writer.WriteAttributeString("serial", LocalSerial.ToString());
+            writer.WriteAttributeString("ui_scale", PresentationScale.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            writer.WriteAttributeString("ui_scale_locked", PresentationLocked.ToString());
+            writer.WriteAttributeString("ui_placed", PresentationPlaced.ToString());
         }
 
         public void SetInScreen()
@@ -91,6 +100,11 @@ namespace GUO.Game.UI.Gumps
 
         public virtual void Restore(XmlElement xml)
         {
+            if (float.TryParse(xml.GetAttribute("ui_scale"), System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out float scale) && float.IsFinite(scale))
+                PresentationScale = Math.Clamp(scale, GUO.Input.Touch.GumpPresentation.MinScale, GUO.Input.Touch.GumpPresentation.MaxScale);
+            PresentationLocked = bool.TryParse(xml.GetAttribute("ui_scale_locked"), out bool locked) && locked;
+            PresentationPlaced = bool.TryParse(xml.GetAttribute("ui_placed"), out bool placed) && placed;
         }
 
         public void RequestUpdateContents()
@@ -131,6 +145,8 @@ namespace GUO.Game.UI.Gumps
             }
 
             Location = position;
+            if (PresentationScale != 1f || GUO.Platform.Android.DualScreen.ShelfOn)
+                GUO.Input.Touch.GumpPresentation.Clamp(this);
         }
 
         public override bool AddToRenderLists(RenderLists renderLists, int x, int y, ref float layerDepthRef)

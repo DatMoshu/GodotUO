@@ -1001,6 +1001,7 @@ namespace GUO
                     break;
 
                 case NotificationApplicationFocusOut:
+                    if (GUO.Input.Touch.TouchInput.Enabled) GUO.Input.Touch.TouchInput.CancelGesture();
                     Deactivated?.Invoke(this, EventArgs.Empty);
                     Plugin.OnFocusLost();
 
@@ -1013,6 +1014,7 @@ namespace GUO
                 // .Unload and UnloadContent write them; the desktop never
                 // receives this notification.
                 case NotificationApplicationPaused:
+                    if (GUO.Input.Touch.TouchInput.Enabled) GUO.Input.Touch.TouchInput.CancelGesture();
                     if (GUO.Input.Touch.TouchInput.Enabled)
                     {
                         SaveOnPause();

@@ -343,7 +343,8 @@ namespace GUO.Game.Managers
 
                 Control g = first.Value;
 
-                g.Update();
+                using (new GUO.Input.Touch.GumpPresentation.MouseScope(g))
+                    g.Update();
 
                 if (g.IsDisposed)
                 {
@@ -370,9 +371,9 @@ namespace GUO.Game.Managers
 
             for (LinkedListNode<Gump> last = Gumps.Last; last != null; last = last.Previous)
             {
-                Control g = last.Value;
+                Gump g = last.Value;
                 layerDepth+=10;
-                g.AddToRenderLists(_renderLists, g.X, g.Y, ref layerDepth);
+                GUO.Input.Touch.GumpPresentation.Queue(g, _renderLists, ref layerDepth);
             }
 
             Profiler.EnterContext(Profiler.ProfilerContext.RENDER_FRAME_UI);
@@ -410,7 +411,7 @@ namespace GUO.Game.Managers
 
                 if (!g.IsDisposed && where(g))
                 {
-                    g.AddToRenderLists(_secondRenderLists, g.X, g.Y, ref layerDepth);
+                    GUO.Input.Touch.GumpPresentation.Queue(g, _secondRenderLists, ref layerDepth);
                 }
             }
 
@@ -729,8 +730,11 @@ namespace GUO.Game.Managers
 
             Point delta = Mouse.Position - _dragOrigin;
 
-            DraggingControl.X += delta.X;
-            DraggingControl.Y += delta.Y;
+            if (!GUO.Input.Touch.GumpPresentation.MoveDragged(DraggingControl as Gump, _dragOrigin, Mouse.Position))
+            {
+                DraggingControl.X += delta.X;
+                DraggingControl.Y += delta.Y;
+            }
             DraggingControl.InvokeMove(delta.X, delta.Y);
             _dragOrigin = Mouse.Position;
         }

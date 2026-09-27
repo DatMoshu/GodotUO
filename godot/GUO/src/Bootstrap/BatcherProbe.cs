@@ -124,6 +124,9 @@ public partial class BatcherProbe : Node
         await VerifyLandLight(batcher, viewport);
         Stage("land light");
 
+        await VerifyUiTransform(batcher, viewport, ramp);
+        Stage("gump transform and clipping");
+
         batcher.Dispose();
 
         await VerifyFonts();
@@ -131,6 +134,26 @@ public partial class BatcherProbe : Node
 
         GD.Print($"[batcher-probe] {(_failures == 0 ? "PASS" : "FAIL")}");
         GetTree().Quit(_failures == 0 ? 0 : 1);
+    }
+
+    private async System.Threading.Tasks.Task VerifyUiTransform(UltimaBatcher2D batcher, SubViewport viewport, Texture2D ramp)
+    {
+        batcher.BeginFrame();
+        batcher.Begin();
+        var hue = ShaderHueTranslator.GetHueVector(0);
+        batcher.Draw(ramp, new Compat.Rectangle(0, 0, 8, 8), new Compat.Rectangle(0, 0, 1, 1), hue, 0);
+        batcher.PushUiTransform(new Transform2D(new Vector2(2, 0), new Vector2(0, 2), new Vector2(2, 2)));
+        batcher.ClipBegin(0, 0, 1, 1);
+        batcher.Draw(ramp, new Compat.Rectangle(0, 0, 3, 3), new Compat.Rectangle(31, 0, 1, 1), hue, 0);
+        batcher.ClipEnd();
+        batcher.ClipEnd();
+        batcher.Draw(ramp, new Compat.Rectangle(6, 6, 1, 1), new Compat.Rectangle(31, 0, 1, 1), hue, 0);
+        batcher.End();
+        await ToSignal(RenderingServer.Singleton, RenderingServerInstance.SignalName.FramePostDraw);
+        using Image result = viewport.GetTexture().GetImage();
+        Check("scaled gump clip grows with its contents", new byte[] { 255, 255, 255 }, result.GetPixel(3, 3));
+        Check("scaled gump clip excludes outside pixels", new byte[] { 0, 0, 0 }, result.GetPixel(4, 3));
+        Check("gump transform does not leak into following draws", new byte[] { 255, 255, 255 }, result.GetPixel(6, 6));
     }
 
     /// <summary>

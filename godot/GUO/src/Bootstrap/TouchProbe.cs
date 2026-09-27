@@ -105,6 +105,8 @@ internal static class TouchProbe
         await TargetTapCheck(host, world);
         await MacroRowCheck(host, world);
         await LongPressCheck(host);
+        await GumpScaleCheck(host, world);
+        await ScaledContainerCheck(host, world);
 
         Finish();
     }
@@ -447,6 +449,209 @@ internal static class TouchProbe
         Check("the paperdoll closed", paperdoll.IsDisposed || UIManager.GetGump<PaperDollGump>() == null);
     }
 
+    private static async System.Threading.Tasks.Task GumpScaleCheck(Node host, Game.World world)
+    {
+        Game.GameActions.OpenPaperdoll(world, world.Player);
+        await Frames(host, 40);
+        PaperDollGump g = UIManager.GetGump<PaperDollGump>(world.Player.Serial);
+        Check("scalable paperdoll is available", g != null);
+        if (g == null) return;
+        int oldX = g.X, oldY = g.Y;
+        float oldScale = g.PresentationScale;
+        bool oldLock = g.PresentationLocked;
+        var hit = new Game.UI.Controls.HitBox(40, 70, 160, 60);
+        int clicks = 0, clickX = -1, clickY = -1;
+        Compat.Point observed = default;
+        hit.MouseUp += (_, e) => { clicks++; clickX = e.X; clickY = e.Y; observed = Mouse.Position; };
+        g.Add(hit);
+        g.BringOnTop();
+        g.X = 80; g.Y = 80; g.PresentationLocked = false; g.PresentationScale = 1f;
+        float zoom = GUO.Client.Game.Scene.Camera.Zoom;
+        try
+        {
+            await Frames(host, 35);
+            Vector2 a = Client(new Vector2(g.X + 60, g.Y + 90));
+            Vector2 b = Client(new Vector2(g.X + 140, g.Y + 90));
+            Touch(0, a, true); Touch(1, b, true);
+            await Frames(host, 2);
+            Drag(1, b + Client(new Vector2(40, 0)), Client(new Vector2(40, 0)));
+            await Frames(host, 3);
+            float scaled = g.PresentationScale;
+            Check("pinch scales the owning gump", scaled > 1.3f && scaled < 1.7f, $"scale {scaled}");
+            Check("gump pinch does not zoom the world", GUO.Client.Game.Scene.Camera.Zoom == zoom);
+            // Native magnify for this same gesture must not apply a second scale.
+            Godot.Input.ParseInputEvent(new InputEventMagnifyGesture { Factor = 1.5f, Position = (a + b) / 2 });
+            await Frames(host, 2);
+            Check("raw and native pinch do not apply twice", g.PresentationScale == scaled);
+            Touch(0, a, false); // primary lifts first
+            await Frames(host, 2);
+            Drag(1, b, -Client(new Vector2(40, 0)));
+            Touch(1, b, false);
+            await Frames(host, 3);
+            Check("pinch release does not click", clicks == 0 && !Mouse.LButtonPressed && !Mouse.RButtonPressed);
+
+            var local = new Compat.Point(g.X + hit.X + 30, g.Y + hit.Y + 20);
+            Compat.Point screen = GumpPresentation.ToScreen(g, local);
+            await Tap(host, Client(new Vector2(screen.X, screen.Y)));
+            Check("scaled hit test and event coordinates agree", clicks == 1 && System.Math.Abs(clickX - 30) <= 1
+                && System.Math.Abs(clickY - 20) <= 1, $"clicks {clicks}, local {clickX},{clickY}");
+            Check("legacy pointer reads use inverse scale", System.Math.Abs(observed.X - local.X) <= 1
+                && System.Math.Abs(observed.Y - local.Y) <= 1);
+
+            // Leave a real rendered frame for visual QA of the transform, fonts and chrome.
+            await host.ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+            string screenshotDir = System.IO.Path.GetFullPath(System.IO.Path.Combine(
+                ProjectSettings.GlobalizePath("res://"), "..", "..", "build", "screenshots"));
+            System.IO.Directory.CreateDirectory(screenshotDir);
+            using (Image frame = host.GetViewport().GetTexture().GetImage())
+            using (Image region = frame.GetRegion(new Rect2I(0, 0, System.Math.Min(800, frame.GetWidth()), System.Math.Min(650, frame.GetHeight()))))
+                region.SavePng(System.IO.Path.Combine(screenshotDir, "gump_scale_150.png"));
+
+            await Frames(host, 35);
+            g.PresentationLocked = true;
+            a = Client(new Vector2(screen.X - 10, screen.Y)); b = Client(new Vector2(screen.X + 20, screen.Y));
+            Touch(0, a, true); Touch(1, b, true);
+            Drag(1, b + new Vector2(80, 0), new Vector2(80, 0));
+            await Frames(host, 3);
+            Touch(1, b, false); Touch(0, a, false);
+            await Frames(host, 2);
+            Check("locked gump consumes pinch without world zoom", g.PresentationScale == scaled
+                && GUO.Client.Game.Scene.Camera.Zoom == zoom && clicks == 1);
+
+            // Invalid/mixed gesture cannot fall through to a world zoom or activate a control.
+            await Frames(host, 35);
+            g.PresentationLocked = false;
+            a = Client(new Vector2(screen.X, screen.Y)); b = Client(new Vector2(600, 420));
+            Touch(0, a, true); Touch(1, b, true);
+            Drag(1, b + new Vector2(80, 0), new Vector2(80, 0));
+            await Frames(host, 3);
+            Touch(1, b, false); Touch(0, a, false);
+            await Frames(host, 2);
+            Check("mixed gump/world pinch is ignored", g.PresentationScale == scaled
+                && GUO.Client.Game.Scene.Camera.Zoom == zoom && clicks == 1);
+
+            await Frames(host, 35);
+            Touch(0, a, true);
+            await Frames(host, 2);
+            Godot.Input.ParseInputEvent(new InputEventScreenTouch { Index = 0, Position = a, Canceled = true });
+            await Frames(host, 2);
+            Touch(0, a, false);
+            await Frames(host, 2);
+            Check("cancelled touch never clicks or leaves a button held", clicks == 1 && !Mouse.LButtonPressed && !Mouse.RButtonPressed);
+
+            var buffer = new System.IO.StringWriter(System.Globalization.CultureInfo.InvariantCulture);
+            using (var writer = new System.Xml.XmlTextWriter(buffer))
+            { writer.WriteStartElement("gump"); g.Save(writer); writer.WriteEndElement(); }
+            var xml = new System.Xml.XmlDocument(); xml.LoadXml(buffer.ToString());
+            Check("scale is included in saved gump layout", xml.DocumentElement.GetAttribute("ui_scale")
+                == scaled.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            var restored = new Gump(world, 0, 0);
+            restored.Restore(xml.DocumentElement);
+            Check("saved scale restores without changing server layout", restored.PresentationScale == scaled);
+            restored.Dispose();
+
+            await Frames(host, 35);
+            Compat.Rectangle gem = GumpPresentation.GemRect(g);
+            TouchInput.Trace.Clear();
+            await Tap(host, Client(new Vector2(gem.X + 14, gem.Y + 14)));
+            var menu = UIManager.GetGump<GumpLayoutGump>();
+            Check("window gem opens size and screen controls", menu != null,
+                $"gem {gem.X},{gem.Y}, disposed {g.IsDisposed}, modal {UIManager.IsModalOpen}, held {GUO.Client.Game.UO.GameCursor.ItemHold.Enabled}, "
+                + $"top {UIManager.Gumps.First?.Value.GetType().Name} | {string.Join(" | ", TouchInput.Trace)}");
+            if (menu != null)
+            {
+                await Tap(host, Client(new Vector2(menu.X + 100, menu.Y + 90)));
+                Check("Reset size restores original scale", g.PresentationScale == 1f);
+            }
+        }
+        finally
+        {
+            hit.Dispose();
+            UIManager.GetGump<GumpLayoutGump>()?.Dispose();
+            g.X = oldX; g.Y = oldY; g.PresentationScale = oldScale; g.PresentationLocked = oldLock;
+        }
+    }
+
+    private static async System.Threading.Tasks.Task ScaledContainerCheck(Node host, Game.World world)
+    {
+        var bag = world.Player.FindItemByLayer(Game.Data.Layer.Backpack);
+        Game.GameActions.OpenBackpack(world);
+        await Frames(host, 35);
+        ContainerGump pack = bag == null ? null : UIManager.GetGump<ContainerGump>(bag.Serial);
+        if (pack == null)
+        {
+            Check("classic container scaling fixture", false, "requires a classic backpack for drop-coordinate parity");
+            return;
+        }
+        Game.GameObjects.Item item = null;
+        for (Game.LinkedObject next = bag.Items; next != null; next = next.Next)
+            if (next is Game.GameObjects.Item candidate && candidate.Amount == 1) { item = candidate; break; }
+        Check("container has an item for drop-coordinate parity", item != null);
+        if (item == null) return;
+        int oldX = pack.X, oldY = pack.Y, itemX = item.X, itemY = item.Y;
+        float oldScale = pack.PresentationScale;
+        bool locked = pack.PresentationLocked;
+        uint serial = item.Serial;
+        pack.X = 500; pack.Y = 100; pack.PresentationScale = 1; pack.PresentationLocked = false;
+        pack.BringOnTop();
+        try
+        {
+            // Find actual bare background rather than accidentally dropping into another item.
+            Compat.Point? destination = null;
+            for (int y = pack.Height / 4; y < pack.Height * 3 / 4 && destination == null; y += 18)
+                for (int x = pack.Width / 4; x < pack.Width * 3 / 4; x += 18)
+                {
+                    var p = new Compat.Point(pack.X + x, pack.Y + y);
+                    Game.UI.Controls.Control hit = null;
+                    pack.HitTest(p, ref hit);
+                    if (hit?.GetType().Name == "GumpPicContainer") { destination = p; break; }
+                }
+            Check("bare container destination is available", destination != null);
+            if (destination == null) return;
+            Compat.Point relative = destination.Value - new Compat.Point(pack.X, pack.Y);
+            async System.Threading.Tasks.Task DropAt(float scale)
+            {
+                TouchInput.CancelGesture();
+                GumpPresentation.SetScale(pack, scale, new Compat.Point(pack.X, pack.Y));
+                Game.GameActions.PickUp(world, serial, 0, 0, 1);
+                await Frames(host, 30);
+                var p = GumpPresentation.ToScreen(pack, new Compat.Point(pack.X + relative.X, pack.Y + relative.Y));
+                GodotInput.Handle(new InputEventMouseMotion { Position = Client(new Vector2(p.X, p.Y)) });
+                await Frames(host, 5);
+                await Tap(host, Client(new Vector2(p.X, p.Y)));
+                await Frames(host, 35);
+            }
+            await DropAt(1);
+            world.Items.TryGetValue(serial, out var baseline);
+            bool firstDrop = baseline != null && baseline.Container == bag.Serial && !GUO.Client.Game.UO.GameCursor.ItemHold.Enabled;
+            int expectedX = baseline?.X ?? -1, expectedY = baseline?.Y ?? -1;
+            Check("unscaled reference item drop completes", firstDrop);
+            if (!firstDrop) return;
+            await DropAt(1.5f);
+            world.Items.TryGetValue(serial, out var scaled);
+            Check("scaled drop sends the same container coordinates", scaled != null && scaled.Container == bag.Serial
+                && System.Math.Abs(scaled.X - expectedX) <= 1 && System.Math.Abs(scaled.Y - expectedY) <= 1
+                && !GUO.Client.Game.UO.GameCursor.ItemHold.Enabled,
+                $"reference {expectedX},{expectedY}, scaled {scaled?.X},{scaled?.Y}");
+        }
+        finally
+        {
+            // Restore the dev character's item and window rather than leaving test state behind.
+            TouchInput.CancelGesture();
+            if (!GUO.Client.Game.UO.GameCursor.ItemHold.Enabled)
+            {
+                Game.GameActions.PickUp(world, serial, 0, 0, 1);
+                await Frames(host, 20);
+            }
+            if (GUO.Client.Game.UO.GameCursor.ItemHold.Enabled)
+            {
+                Game.GameActions.DropItem(serial, itemX, itemY, 0, bag.Serial);
+                await Frames(host, 25);
+            }
+            pack.X = oldX; pack.Y = oldY; pack.PresentationScale = oldScale; pack.PresentationLocked = locked;
+        }
+    }
+
     // --- fingers ---------------------------------------------------------
 
     private static void Touch(int index, Vector2 at, bool pressed) =>
@@ -460,7 +665,10 @@ internal static class TouchProbe
         Touch(0, at, true);
         await Frames(host, 3);
         Touch(0, at, false);
-        await Frames(host, 2);
+
+        // A tap's button comes up two frames after the finger (TouchInput.Tap);
+        // give the client a frame beyond that to act on the release.
+        await Frames(host, 5);
     }
 
     private static async System.Threading.Tasks.Task Hold(Node host, Vector2 at, int milliseconds)

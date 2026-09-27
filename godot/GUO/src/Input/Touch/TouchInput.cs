@@ -122,6 +122,21 @@ namespace GUO.Input.Touch
         private static Vector2 _lastTapAt;
         private static float _pinchDistance;
         private static float _pinchAccumulated;
+        private static Game.UI.Gumps.Gump _pinchGump;
+        private static bool _pinchWorld;
+        private static int _pinchStream; // 0 undecided, 1 raw contacts, 2 platform magnify
+        private static ulong _magnifyLast;
+        private static Game.UI.Gumps.Gump _magnifyGump;
+        private static bool _magnifyWorld;
+        private static ulong _ignoreMagnifyUntil;
+
+        private static GUO.Compat.Point Logical(Vector2 at) => new(
+            (int)(at.X / Client.Game.DpiScale), (int)(at.Y / Client.Game.DpiScale));
+        private static bool Second(Vector2 at) => GUO.Platform.Android.DualScreen.ShelfOn
+            && Logical(at).X >= GUO.Platform.Android.DualScreen.MainWidth;
+        private static bool WorldPoint(Vector2 at) => !Second(at)
+            && GumpPresentation.At(Logical(at)) == null
+            && Client.Game.Scene.Camera.Bounds.Contains(Logical(at));
 
         /// <summary>
         /// When to move the pointer off the screen after a finger lifts; 0 for
@@ -353,6 +368,7 @@ namespace GUO.Input.Touch
 
         private static void HandleTouch(InputEventScreenTouch e)
         {
+            if (e.Canceled) { CancelGesture(); return; }
             if (e.Pressed)
             {
                 FingerDown(e.Index, e.Position);
@@ -377,7 +393,7 @@ namespace GUO.Input.Touch
             else if (e.Index == _secondary)
             {
                 _secondaryAt = e.Position;
-                UpdatePinch();
+                if (_phase == Phase.Pinch) UpdatePinch();
             }
         }
 
@@ -421,6 +437,29 @@ namespace GUO.Input.Touch
             }
         }
 
+        /// <summary>Focus loss / touch cancellation must never turn a pending pinch into a click.</summary>
+        public static void CancelGesture()
+        {
+            if (_phase == Phase.RightHeld) Release(MouseButton.Right, ParkedAt);
+            if (_phase == Phase.LeftHeld) Release(MouseButton.Left, ParkedAt);
+            _phase = Phase.Idle;
+            _primary = _secondary = -1;
+            _pinchGump = _magnifyGump = null;
+            _pinchWorld = _magnifyWorld = false;
+            _pinchStream = 0;
+            _lastTapTime = 0;
+            _magnifyLast = Godot.Time.GetTicksMsec();
+            _parkAt = 0;
+            // A tap waiting on its frames is dropped, and a tap's button that
+            // is still down comes up over nothing.
+            _tapDeferred = false;
+            if (_releasePending)
+            {
+                _releasePending = false;
+                Release(MouseButton.Left, ParkedAt);
+            }
+        }
+
         private static void FingerDown(int index, Vector2 at)
         {
             _parkAt = 0;
@@ -433,6 +472,13 @@ namespace GUO.Input.Touch
                 _downAt = _lastAt = at;
                 _downTime = Godot.Time.GetTicksMsec();
                 _downFrame = Engine.GetProcessFrames();
+
+                if (GumpPresentation.OpenGem(Logical(at)))
+                {
+                    _phase = Phase.Done;
+                    _lastTapTime = 0;
+                    return;
+                }
 
                 if (_bar != null && _bar.HitTest(at, out string action))
                 {
@@ -468,11 +514,36 @@ namespace GUO.Input.Touch
 
             if (_secondary < 0 && index != _primary)
             {
-                // A second finger. Whatever the first was doing stops -- a
-                // walk in particular -- and only the distance matters now.
-                EndHeld(_lastAt);
                 _secondary = index;
                 _secondaryAt = at;
+                // A committed drag/use or walk remains owned by the first finger.
+                // Releasing it here would drop a held item or activate a button.
+                if (_phase != Phase.Pending) return;
+                _lastTapTime = 0;
+                _pinchGump = null;
+                _pinchWorld = false;
+                _pinchStream = 0;
+                _magnifyAccumulated = 1f;
+                bool sameDisplay = Second(_downAt) == Second(at);
+                Game.UI.Gumps.Gump first = GumpPresentation.At(Logical(_downAt));
+                Game.UI.Gumps.Gump second = GumpPresentation.At(Logical(at));
+                if (sameDisplay && first == second && GumpPresentation.Supports(first)
+                    && !first.PresentationLocked && !UIManager.IsModalOpen
+                    && !(Client.Game.UO.GameCursor.ItemHold.Enabled))
+                {
+                    _pinchGump = first;
+                }
+                else if (sameDisplay && first == second && first is Game.UI.Gumps.WorldMapGump
+                    && !UIManager.IsModalOpen)
+                {
+                    _pinchGump = first; // Map content zoom keeps its own wheel handler.
+                }
+                else if (sameDisplay && first == null && second == null
+                    && WorldPoint(_downAt) && WorldPoint(at) && !UIManager.IsModalOpen)
+                {
+                    _pinchWorld = true;
+                }
+                // Unsupported/map/mixed/locked gestures are consumed, never sent to the world.
                 _pinchDistance = _lastAt.DistanceTo(at);
                 _pinchAccumulated = 0;
                 _phase = Phase.Pinch;
@@ -523,13 +594,19 @@ namespace GUO.Input.Touch
 
         private static void FingerUp(int index, Vector2 at)
         {
+            if (_phase == Phase.Pinch || _phase == Phase.Done)
+                _ignoreMagnifyUntil = Godot.Time.GetTicksMsec() + 250;
             if (index == _secondary)
             {
                 _secondary = -1;
 
                 // The first finger is still down, but the gesture it began is
                 // over; it lifts into nothing.
-                _phase = Phase.Done;
+                if (_phase == Phase.Pinch)
+                {
+                    _phase = Phase.Done;
+                    _pinchGump = null;
+                }
 
                 return;
             }
@@ -589,14 +666,16 @@ namespace GUO.Input.Touch
                     break;
 
                 case Phase.Pinch:
-                    _secondary = -1;
-                    Note("both fingers up -> pinch over");
+                    _pinchGump = null;
+                    Note("finger up -> pinch over");
 
                     break;
             }
 
-            _phase = Phase.Idle;
-            _primary = -1;
+            // Whichever finger lifts first, suppress the remaining contact until it lifts.
+            _primary = _secondary;
+            _secondary = -1;
+            _phase = _primary < 0 ? Phase.Idle : Phase.Done;
             _parkAt = Godot.Time.GetTicksMsec() + Mouse.MOUSE_DELAY_DOUBLE_CLICK + 50;
         }
 
@@ -781,7 +860,8 @@ namespace GUO.Input.Touch
 
             // Two fields of room below the focused one, so the next field of a
             // form (the password under the account name) is in reach as well.
-            int need = box.ScreenCoordinateY + box.Height * 3 + 8 - visible;
+            int need = GumpPresentation.ToScreen(box,
+                new GUO.Compat.Point(box.ScreenCoordinateX, box.ScreenCoordinateY + box.Height * 3)).Y + 8 - visible;
 
             if (need <= 0)
             {
@@ -839,29 +919,73 @@ namespace GUO.Input.Touch
 
         private static void Magnify(float factor, Vector2 at)
         {
-            if (factor <= 0f)
+            if (factor <= 0f || !float.IsFinite(factor))
             {
                 return;
             }
+
+            Game.UI.Gumps.Gump gump;
+            bool world;
+            if (_primary >= 0)
+            {
+                if (_phase != Phase.Pinch || _pinchStream == 1) return;
+                _pinchStream = 2;
+                gump = _pinchGump;
+                world = _pinchWorld;
+            }
+            else
+            {
+                // Trackpads may supply magnify without contacts. Capture until a quiet gap.
+                ulong now = Godot.Time.GetTicksMsec();
+                if (now < _ignoreMagnifyUntil) return;
+                if (now - _magnifyLast > 250)
+                {
+                    _magnifyGump = GumpPresentation.At(Logical(at));
+                    _magnifyWorld = _magnifyGump == null && WorldPoint(at);
+                    _magnifyAccumulated = 1f;
+                }
+                _magnifyLast = now;
+                gump = _magnifyGump;
+                world = _magnifyWorld;
+            }
+            if (UIManager.IsModalOpen || Client.Game.UO.GameCursor.ItemHold.Enabled) return;
+            if (gump != null && gump is not Game.UI.Gumps.WorldMapGump)
+            {
+                GumpPresentation.SetScale(gump, gump.PresentationScale * factor, Logical(at));
+                return;
+            }
+            if (!world && gump is not Game.UI.Gumps.WorldMapGump) return;
 
             _magnifyAccumulated *= factor;
 
             while (_magnifyAccumulated >= MagnifyStep)
             {
                 _magnifyAccumulated /= MagnifyStep;
-                ZoomBy(1, at);
+                ZoomOwned(1, at, gump);
             }
 
             while (_magnifyAccumulated <= 1f / MagnifyStep)
             {
                 _magnifyAccumulated *= MagnifyStep;
-                ZoomBy(-1, at);
+                ZoomOwned(-1, at, gump);
             }
         }
 
         private static void UpdatePinch()
         {
+            if (_phase != Phase.Pinch || _pinchStream == 2) return;
             float distance = _lastAt.DistanceTo(_secondaryAt);
+            if (Mathf.IsEqualApprox(distance, _pinchDistance)) return;
+            _pinchStream = 1;
+            if (_pinchGump != null && _pinchGump is not Game.UI.Gumps.WorldMapGump)
+            {
+                if (_pinchDistance > 1f)
+                    GumpPresentation.SetScale(_pinchGump, _pinchGump.PresentationScale * distance / _pinchDistance,
+                        Logical((_lastAt + _secondaryAt) / 2));
+                _pinchDistance = distance;
+                return;
+            }
+            if (!_pinchWorld && _pinchGump is not Game.UI.Gumps.WorldMapGump) return;
             _pinchAccumulated += distance - _pinchDistance;
             _pinchDistance = distance;
 
@@ -870,14 +994,24 @@ namespace GUO.Input.Touch
             while (_pinchAccumulated >= PinchStepPixels)
             {
                 _pinchAccumulated -= PinchStepPixels;
-                ZoomBy(1, centre);
+                ZoomOwned(1, centre, _pinchGump);
             }
 
             while (_pinchAccumulated <= -PinchStepPixels)
             {
                 _pinchAccumulated += PinchStepPixels;
-                ZoomBy(-1, centre);
+                ZoomOwned(-1, centre, _pinchGump);
             }
+        }
+
+        private static void ZoomOwned(int direction, Vector2 at, Game.UI.Gumps.Gump owner)
+        {
+            if (owner is Game.UI.Gumps.WorldMapGump)
+            {
+                if (!owner.IsDisposed)
+                    owner.InvokeMouseWheel(direction > 0 ? MouseEventType.WheelScrollUp : MouseEventType.WheelScrollDown);
+            }
+            else ZoomBy(direction, at);
         }
 
         /// <summary>
