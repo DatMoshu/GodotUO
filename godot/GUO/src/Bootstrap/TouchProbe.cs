@@ -102,6 +102,7 @@ internal static class TouchProbe
         await PinchCheck(host);
         await BarCheck(host);
         await ParkCheck(host);
+        await TargetTapCheck(host, world);
         await MacroRowCheck(host, world);
         await LongPressCheck(host);
 
@@ -280,6 +281,40 @@ internal static class TouchProbe
             $"at {Input.Mouse.Position.X},{Input.Mouse.Position.Y} | {string.Join(" | ", TouchInput.Trace)}"
         );
         Check("nothing is hovered after it leaves", UIManager.MouseOverControl == null && Game.SelectedObject.Object == null);
+    }
+
+    /// <summary>
+    /// A tap on the world answers a target cursor, even one so short that the
+    /// finger is up before the client has picked the tile under it.
+    /// </summary>
+    private static async System.Threading.Tasks.Task TargetTapCheck(Node host, Game.World world)
+    {
+        TouchInput.Trace.Clear();
+
+        // A client-side cursor with no server behind it: what a tap does to
+        // it is all the check needs, and the server ignores the answer.
+        world.TargetManager.SetTargeting(CursorTarget.Position, 0, TargetType.Neutral);
+        await Frames(host, 5);
+
+        bool up = world.TargetManager.IsTargeting;
+
+        // Down and up in the same frame, as adb sends a tap and as a quick
+        // finger can: the client has not yet picked what is under it.
+        Vector2 at = WorldPoint(Vector2.Zero, 0f);
+        Touch(0, at, true);
+        Touch(0, at, false);
+        await Frames(host, 12);
+
+        Check(
+            "a tap on the world answers a target cursor",
+            up && !world.TargetManager.IsTargeting,
+            $"cursor up before {up}, after {world.TargetManager.IsTargeting} | {string.Join(" | ", TouchInput.Trace)}"
+        );
+
+        if (world.TargetManager.IsTargeting)
+        {
+            world.TargetManager.CancelTarget();
+        }
     }
 
     /// <summary>

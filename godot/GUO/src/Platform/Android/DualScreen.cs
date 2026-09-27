@@ -401,16 +401,35 @@ namespace GUO.Platform.Android
             }
             else
             {
+                // The art's visible pixels, not its frame, which for an
+                // item can be mostly transparent (as CounterBarGump does).
+                Rectangle source = artInfo.UV;
+
+                if (!hold.IsGumpTexture)
+                {
+                    Rectangle real = Client.Game.UO.Arts.GetRealArtBounds(graphic);
+
+                    if (real.Width > 0 && real.Height > 0)
+                    {
+                        source = new Rectangle(artInfo.UV.X + real.X, artInfo.UV.Y + real.Y, real.Width, real.Height);
+                    }
+                }
+
                 // Whole-number steps only, so the art keeps square pixels:
                 // large art shrinks to fit, small art (a book, a reagent)
                 // grows until it would not.
-                int longest = Math.Max(artInfo.UV.Width, artInfo.UV.Height);
+                int longest = Math.Max(source.Width, source.Height);
                 int room = BadgeSize - 4;
                 int divisor = Math.Max(1, (longest + room - 1) / room);
                 int factor = divisor == 1 ? Math.Max(1, room / longest) : 1;
-                int w = artInfo.UV.Width * factor / divisor;
-                int h = artInfo.UV.Height * factor / divisor;
+                int w = source.Width * factor / divisor;
+                int h = source.Height * factor / divisor;
                 rect = new Rectangle(x - (w >> 1), y - (h >> 1), w, h);
+
+                Vector3 badgeHue = ShaderHueTranslator.GetHueVector(hold.Hue, hold.IsPartialHue, hold.HasAlpha ? .5f * alpha : alpha);
+                batcher.Draw(artInfo.Texture, rect, source, badgeHue, 0f);
+
+                return;
             }
 
             Vector3 hue = ShaderHueTranslator.GetHueVector(hold.Hue, hold.IsPartialHue, hold.HasAlpha ? .5f * alpha : alpha);
