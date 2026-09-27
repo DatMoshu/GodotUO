@@ -62,6 +62,7 @@ namespace GUO.Platform.Android
         private RenderTarget2D _target;
         private int _frame;
         private bool _rescued;
+        private Vector2I _mainSize;
         private readonly HashSet<Gump> _seen = new();
         private readonly HashSet<int> _fingersDown = new();
 
@@ -204,9 +205,39 @@ namespace GUO.Platform.Android
                 return;
             }
 
-            batcher.SetRenderTarget(_instance._target);
+            RenderTarget2D target = _instance._target;
+
+            // The clear rect has to be put back every frame: a canvas item is
+            // emptied by its own redraw, which the tree schedules at least
+            // once after the item is added, and the batcher only touches the
+            // colour when it changes.
+            target.ClearColor = Colors.Transparent;
+            target.ClearColor = Colors.Black;
+
+            batcher.SetRenderTarget(target);
             batcher.Begin(new Transform2D(0f, new Vector2(-MainWidth, 0f)));
+
+            // The world viewport gump hangs its border five pixels past the
+            // window edge, as upstream does with the game window full size;
+            // on a desktop that is off screen, here it would be a strip down
+            // the left of the second screen. Clip it off.
+            int strip = 0;
+            WorldViewportGump viewport = UIManager.GetGump<WorldViewportGump>();
+
+            if (viewport != null)
+            {
+                strip = Math.Max(0, viewport.X + viewport.Width - MainWidth);
+            }
+
+            bool clipped = batcher.ClipBegin(MainWidth + strip, 0, _instance._logicalWidth - strip, _instance._logicalHeight);
+
             UIManager.RedrawLists(batcher);
+
+            if (clipped)
+            {
+                batcher.ClipEnd();
+            }
+
             batcher.End();
             batcher.SetRenderTarget(restore);
         }
@@ -249,6 +280,16 @@ namespace GUO.Platform.Android
                 RescueOnce();
 
                 return;
+            }
+
+            // The client resizes its window once the profile is read (the
+            // saved bounds, a maximise); the world follows the window.
+            Rectangle main = Client.Game.Window.ClientBounds;
+
+            if (main.Width != _mainSize.X || main.Height != _mainSize.Y)
+            {
+                _mainSize = new Vector2I(main.Width, main.Height);
+                FillMainWithWorld();
             }
 
             Shelve();
@@ -309,8 +350,7 @@ namespace GUO.Platform.Android
             FramesPresented = 0;
             TouchesTaken = 0;
             Active = true;
-
-            FillMainWithWorld();
+            _mainSize = Vector2I.Zero;
 
             GD.Print(
                 $"[GUO] dual screen: active; second screen {_physicalWidth}x{_physicalHeight} "
@@ -411,14 +451,21 @@ namespace GUO.Platform.Android
 
                 Slot slot = SlotFor(g, player, backpack);
 
-                if (slot == Slot.None)
+                if (slot == Slot.None || g.Width <= 0 || g.Height <= 0)
                 {
+                    // Not a shelf gump, or one that has not been laid out
+                    // yet; a size of zero would put it in the wrong corner.
                     continue;
                 }
 
                 _seen.Add(g);
 
-                if (g.X >= MainWidth)
+                bool onShelf = g.X >= MainWidth
+                    && g.X < MainWidth + _logicalWidth
+                    && g.Y > -g.Height
+                    && g.Y < _logicalHeight;
+
+                if (onShelf)
                 {
                     // Already over there, from a saved position.
                     continue;
@@ -642,6 +689,11 @@ namespace GUO.Platform.Android
 
         private void OpenSimulator()
         {
+            // A window of its own, not one drawn inside the main viewport:
+            // that is what the panel is, and it keeps the main screenshot
+            // honest.
+            GetWindow().GuiEmbedSubwindows = false;
+
             _simulator = new Window
             {
                 Title = "GUO second screen",

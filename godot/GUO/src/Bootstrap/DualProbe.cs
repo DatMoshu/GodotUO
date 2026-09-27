@@ -99,6 +99,18 @@ internal static class DualProbe
             + $"in a {Client.Game.ClientBounds.Width}x{Client.Game.ClientBounds.Height} window"
         );
 
+        var gumps = new System.Text.StringBuilder();
+
+        foreach (Gump g in Game.Managers.UIManager.Gumps)
+        {
+            if (!g.IsDisposed && g.Width > 0 && g.Height > 0)
+            {
+                gumps.Append($" {g.GetType().Name}@{g.X},{g.Y}:{g.Width}x{g.Height}");
+            }
+        }
+
+        GD.Print($"[GUO] dual screen: gumps{gumps}");
+
         GD.Print(
             $"[GUO] dual screen: presented {presented} frames during the on-measurement, "
             + $"last push {DualScreen.LastPresentMs:F2} ms, touches taken {DualScreen.TouchesTaken}"
