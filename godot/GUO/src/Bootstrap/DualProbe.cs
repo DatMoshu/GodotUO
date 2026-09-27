@@ -174,6 +174,16 @@ internal static class DualProbe
             ok &= returned;
             GD.Print($"[GUO] dual layout: return to saved second-screen position: {returned}");
 
+            // Scaling about a point right of the gump moves its origin left;
+            // on the shelf's left edge that must not carry it to the main screen.
+            g.X = DualScreen.MainWidth;
+            Input.Touch.GumpPresentation.SetScale(g, 1.5f, new Compat.Point(g.X + g.Width, g.Y + 40));
+            bool staysOnShelf = Input.Touch.GumpPresentation.OnSecond(g);
+            ok &= staysOnShelf;
+            GD.Print($"[GUO] dual layout: scaling at the shelf's left edge stays on the shelf: {staysOnShelf}");
+            Input.Touch.GumpPresentation.Reset(g);
+            g.X = x; g.Y = y;
+
             Input.Touch.GumpPresentation.SetScale(g, 1.25f, new Compat.Point(g.X, g.Y));
             var local = new Compat.Point(g.X + 60, g.Y + 90);
             var at = Input.Touch.GumpPresentation.ToScreen(g, local);
