@@ -89,6 +89,23 @@ The existing [TouchProbe](../godot/GUO/src/Bootstrap/TouchProbe.cs) checks navig
 | Pinch scale | Both screens, multiple scales, edge clamping, overlapping gumps; click/item drop after scaling lands correctly; world/map pinch stays separate. |
 | Controller after touch | Lower-display tap followed immediately by movement, tab navigation, confirmation, and cancel; no focus loss or duplicate event. |
 
+### Macro coverage, 2026-09-27
+
+`launchers\dev\macro_probe.bat` (`--macro-probe`, `MacroProbe.cs`) taps each macro-row button through the touch layer. It spawns its own fixtures with GM commands on the dev shard. Desktop run on a GM account: 11/11.
+
+| Macro | Asserted | Result |
+| --- | --- | --- |
+| Next target | Each tap selects exactly the mobile `World.FindNext` names next, never the player; repeated taps reach the spawned rat. | ok (sea horse -> rat B -> rat A) |
+| Last target | With no cursor, nothing happens (no target, no attack, no war). With a `[get Name` cursor up, the last target answers it. | ok (`Name = "a rat"`) |
+| Attack last | The attack request goes to the last target (`LastAttack` = last target). | ok, with a note |
+| Last object | After using bandages once, the tap uses them again: the bandage target cursor comes back. | ok |
+| Bandage self | With bandages and 30 hits, the server replies "You begin applying the bandages." | ok |
+| War/Peace | One stance change per tap, there and back. | ok |
+
+**Attack last note (matches upstream).** `GameActions.Attack` and the macro are identical to ClassicUO: the request goes out and the client does not change stance. On the dev shard, no blows landed when a GM account at war, next to a rat that could not walk, used Attack Last, and none landed from the ordinary double-click attack used as a control. So it is the shard or the account, not the macro. Next target walks the world's mobile list in dictionary order, not by distance, as upstream does.
+
+Not yet covered: an empty scene, stale serials, rapid repeated taps, an empty bandage supply or full health, and the pre-5.0.2 bandage path.
+
 Run macros first on desktop against test fixtures, then on-device on both display roles, and finally with a controller. Measure lower-screen input latency and frame time under several open gumps; past shelf FPS results do not establish the cost of per-gump render targets or modern panels.
 
 ## Validation during this research
