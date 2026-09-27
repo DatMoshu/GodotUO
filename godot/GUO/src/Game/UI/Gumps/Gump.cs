@@ -145,7 +145,8 @@ namespace GUO.Game.UI.Gumps
             }
 
             Location = position;
-            if (PresentationScale != 1f || GUO.Platform.Android.DualScreen.ShelfOn)
+            if (GUO.Input.Touch.GumpPresentation.Active
+                && (PresentationScale != 1f || GUO.Platform.Android.DualScreen.ShelfOn))
                 GUO.Input.Touch.GumpPresentation.Clamp(this);
         }
 

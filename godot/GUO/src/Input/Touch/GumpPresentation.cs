@@ -20,12 +20,53 @@ internal static class GumpPresentation
     private static RenderedText _gemText;
     private static bool _gemMouseDown;
 
+    /// <summary>
+    /// Whether gump presentation (per-gump size, the window menu, hold and
+    /// flick, screen transfer) is on at all. It is a mobile feature: on for
+    /// the touch layer (a device, or --touch / the probes), for a second
+    /// screen (a device, or the --dual-screen simulator), and for the desktop
+    /// dev toggle "Mobile window controls". Otherwise the client is exactly
+    /// ClassicUO: no handles, and a scale saved on mobile is drawn at 100%.
+    /// </summary>
+    public static bool Active => TouchInput.Enabled || DualScreen.ShelfOn
+        || (Configuration.ProfileManager.CurrentProfile?.MobileWindowControls ?? false);
+
     // Keep arbitrary shard dialogs and content-zoom maps on their existing paths.
-    public static bool Supports(Gump g) => g != null && !g.IsDisposed && !g.IsFromServer && !g.IsModal
+    public static bool Supports(Gump g) => Active && g != null && !g.IsDisposed && !g.IsFromServer && !g.IsModal
         && g is PaperDollGump or ContainerGump or GridContainerGump or StatusGumpBase
             or JournalGump or ResizableJournal;
-    private static bool GemVisible(Gump g) => Supports(g)
-        && (TouchInput.Enabled || DualScreen.ShelfOn || g.PresentationScale != 1f || g.PresentationLocked);
+    // The handle is drawn only when asked for (Options, "Show window handles");
+    // on touch the menu opens from a hold-and-release on the gump.
+    private static bool GemVisible(Gump g) => Supports(g) && GemAlpha(g) > 0f;
+
+    private static bool AlwaysShown => Configuration.ProfileManager.CurrentProfile?.ShowWindowHandles ?? false;
+
+    /// <summary>The handle's opacity: 1 when "Show window handles" is on, else hidden.</summary>
+    public static float GemAlpha(Gump g) => Active && AlwaysShown ? 1f : 0f;
+
+    /// <summary>
+    /// Open the size and screen menu for a gump, beside it. The one entry
+    /// point: the handle, a hold-and-release on touch (GumpFlick), and a
+    /// controller's "window menu" button (<see cref="OpenMenuForTop"/>).
+    /// </summary>
+    public static bool OpenMenu(Gump g)
+    {
+        if (!Supports(g) || UIManager.IsModalOpen) return false;
+        UIManager.GetGump<GumpLayoutGump>()?.Dispose();
+        UIManager.Add(new GumpLayoutGump(g));
+        return true;
+    }
+
+    /// <summary>Hook for a controller "window menu" button: the menu for the topmost supported gump.</summary>
+    public static bool OpenMenuForTop()
+    {
+        foreach (Gump g in UIManager.Gumps)
+        {
+            if (g.IsDisposed || !g.IsVisible || g is GumpLayoutGump) continue;
+            if (Supports(g)) return OpenMenu(g);
+        }
+        return false;
+    }
 
     public static Gump Root(Control c) => c as Gump ?? c?.RootParent as Gump;
     public static float Scale(Control c) => Supports(Root(c)) ? Root(c).PresentationScale : 1f;
@@ -185,9 +226,7 @@ internal static class GumpPresentation
             if (g.IsDisposed || !g.IsVisible || !g.IsEnabled) continue;
             if (GemVisible(g) && GemRect(g).Contains(p))
             {
-                UIManager.GetGump<GumpLayoutGump>()?.Dispose();
-                UIManager.Add(new GumpLayoutGump(g));
-                return true;
+                return OpenMenu(g);
             }
             Control hit = null;
             g.HitTest(p, ref hit);
@@ -226,12 +265,13 @@ internal static class GumpPresentation
         if (GemVisible(g) && g.IsVisible && g.Width > 0)
         {
             Rectangle r = GemRect(g);
+            float alpha = GemAlpha(g);
             lists.AddGumpNoAtlas(b =>
             {
                 b.Draw(SolidColorTextureCache.GetTexture(new Color(35, 65, 75)), r,
-                    ShaderHueTranslator.GetHueVector(0), 0);
+                    ShaderHueTranslator.GetHueVector(0, false, alpha), 0);
                 _gemText ??= RenderedText.Create("UI", 0x03b2, 1, true);
-                _gemText.Draw(b, r.X + 5, r.Y + 4, 0);
+                _gemText.Draw(b, r.X + 5, r.Y + 4, 0, alpha);
                 return true;
             });
         }

@@ -431,8 +431,11 @@ internal static class TouchProbe
                 string.Join(" | ", TouchInput.Trace));
             Touch(0, at.Value + new Vector2(6, 0), false);
             await Frames(host, 5);
-            Check("letting go inside the threshold does nothing",
-                GumpFlick.LastResult.Contains("nothing") && !g.IsDisposed && GumpFlick.Lifted == null, GumpFlick.LastResult);
+            Check("letting go in place opens the window menu, and nothing else",
+                GumpFlick.LastResult.Contains("menu") && !g.IsDisposed && GumpFlick.Lifted == null
+                && UIManager.GetGump<GumpLayoutGump>() != null, GumpFlick.LastResult);
+            UIManager.GetGump<GumpLayoutGump>()?.Dispose();
+            await Frames(host, 5);
 
             // Up and down on a single screen: fit to screen.
             float before = g.PresentationScale;
@@ -701,8 +704,21 @@ internal static class TouchProbe
 
             await Frames(host, 35);
             Compat.Rectangle gem = GumpPresentation.GemRect(g);
+
+            // Hidden by default on touch: a tap where the handle would be opens nothing.
+            var prof = Configuration.ProfileManager.CurrentProfile;
+            bool shown = prof.ShowWindowHandles;
+            prof.ShowWindowHandles = false;
+            await Frames(host, 5);
+            Check("window handles are hidden by default", GumpPresentation.GemAlpha(g) == 0f
+                && !GumpPresentation.OpenGem(new Compat.Point(gem.X + 14, gem.Y + 14)));
+
+            // With "Show window handles" on, the handle opens the menu as before.
+            prof.ShowWindowHandles = true;
+            await Frames(host, 5);
             TouchInput.Trace.Clear();
             await Tap(host, Client(new Vector2(gem.X + 14, gem.Y + 14)));
+            prof.ShowWindowHandles = shown;
             var menu = UIManager.GetGump<GumpLayoutGump>();
             Check("window gem opens size and screen controls", menu != null,
                 $"gem {gem.X},{gem.Y}, disposed {g.IsDisposed}, modal {UIManager.IsModalOpen}, held {GUO.Client.Game.UO.GameCursor.ItemHold.Enabled}, "
