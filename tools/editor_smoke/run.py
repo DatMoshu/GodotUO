@@ -108,7 +108,18 @@ def asset_export_checks(cfg, project_dir: Path, out: Path) -> list[str]:
     if not refused:
         failures.append(f"an export into UO_CLIENT_DATA was not refused cleanly (exit {code}):\n{text}")
 
+    # The client half: a headless client reads the export through
+    # files_override and decodes the same pixels (tools/editor_asset_roundtrip).
+    roundtrip = Path(__file__).resolve().parents[1] / "editor_asset_roundtrip" / "run.py"
+    r = subprocess.run([sys.executable, str(roundtrip), "--project", str(project_dir),
+                        "--out", str(out / "asset_roundtrip"), "--no-build"], capture_output=True, text=True)
+    lines = [ln for ln in r.stdout.splitlines() if ln.startswith("[roundtrip]")]
+    client_ok = r.returncode == 0
+    if not client_ok:
+        failures.append("the client did not read the export back unchanged:\n" + "\n".join(lines[-8:]))
+
     mark = "ok  " if not failures else "FAIL"
+    print(f"[editor_smoke]   {'ok  ' if client_ok else 'FAIL'} Client  {lines[-1][len('[roundtrip] '):] if lines else 'no output'}")
     print(f"[editor_smoke]   {mark} Export  verdata.mul + hues.mul: export {'ok' if ok_export else 'FAILED'}, "
           f"verify {'ok' if ok_verify else 'FAILED'}, damaged copy caught: {caught}, "
           f"export into the install refused: {refused}")

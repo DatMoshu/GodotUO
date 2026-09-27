@@ -93,6 +93,11 @@ public partial class WorldView : VBoxContainer
     public WorldView(EditorData data)
     {
         _data = data;
+        if (_data != null)
+        {
+            _data.AssetsApplied += OnAssetsApplied;
+        }
+
         _editor = new WorldEditor(_host);
         _editor.Changed += what =>
         {
@@ -267,21 +272,21 @@ public partial class WorldView : VBoxContainer
         }
 
         // The project's replaced art, gumps and hues (ADR-0020), on the
-        // world's own loaders; again whenever the Assets dock changes them.
+        // world's own loaders. The world can start before the client data
+        // has loaded (the editor reopens on the tab it closed on), so
+        // OnAssetsApplied also catches the first application.
         if (_data?.Assets != null)
         {
             _host.ApplyAssets(_data.Assets);
-            _data.AssetChanged -= OnAssetChanged;
-            _data.AssetChanged += OnAssetChanged;
         }
 
         UpdateStatus();
         return true;
     }
 
-    private void OnAssetChanged(AssetKind kind, int id)
+    private void OnAssetsApplied()
     {
-        if (IsInstanceValid(this) && _data?.Assets != null)
+        if (IsInstanceValid(this) && _host.World != null && _data?.Assets != null)
         {
             _host.ApplyAssets(_data.Assets);
         }
@@ -614,7 +619,7 @@ public partial class WorldView : VBoxContainer
 
         if (_data != null)
         {
-            _data.AssetChanged -= OnAssetChanged;
+            _data.AssetsApplied -= OnAssetsApplied;
         }
 
         _host.Dispose();

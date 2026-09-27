@@ -74,8 +74,11 @@ public sealed class EditorData : IDisposable
 
     private AssetOverlay.Applied _assetsApplied;
 
-    /// <summary>Raised after the asset overlay is re-applied: the ids that changed, by kind.</summary>
-    public event Action<AssetKind, int> AssetChanged;
+    /// <summary>
+    /// Raised on the main thread after every application of the asset
+    /// overlay: when a project is opened, and after each import or revert.
+    /// </summary>
+    public event Action AssetsApplied;
 
     /// <summary>The world project folder: UO_WORLD_PROJECT, or build\world\default.</summary>
     public static string ProjectRoot()
@@ -284,11 +287,7 @@ public sealed class EditorData : IDisposable
             GD.Print($"[GUO editor] asset overlay: {n} replacement(s) from {Assets.Root}");
         }
 
-        if (kind != null)
-        {
-            AssetChanged?.Invoke(kind.Value, id);
-        }
-
+        AssetsApplied?.Invoke();
         return n;
     }
 
@@ -297,7 +296,7 @@ public sealed class EditorData : IDisposable
         _assetsApplied?.Dispose();
         _assetsApplied = null;
         Assets = null;
-        AssetChanged = null;
+        AssetsApplied = null;
         // A load still running owns the files; let it finish so the handles
         // close, or the next assembly reload finds them mapped.
         try

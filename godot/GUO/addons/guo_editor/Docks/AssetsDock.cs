@@ -91,8 +91,8 @@ public partial class AssetsDock : EditorDock
             return;
         }
 
-        _data.AssetChanged -= OnAssetChanged;
-        _data.AssetChanged += OnAssetChanged;
+        _data.AssetsApplied -= OnAssetsApplied;
+        _data.AssetsApplied += OnAssetsApplied;
         foreach (AssetPanel panel in _panels)
         {
             try
@@ -107,7 +107,7 @@ public partial class AssetsDock : EditorDock
     }
 
     /// <summary>An import or revert changed the overlay: every grid redraws what it shows.</summary>
-    private void OnAssetChanged(AssetKind kind, int id)
+    private void OnAssetsApplied()
     {
         if (!IsInstanceValid(this))
         {
@@ -136,7 +136,7 @@ public partial class AssetsDock : EditorDock
         if (_data != null)
         {
             _data.Loaded -= OnDataLoaded;
-            _data.AssetChanged -= OnAssetChanged;
+            _data.AssetsApplied -= OnAssetsApplied;
         }
 
         foreach (AssetPanel panel in _panels)
