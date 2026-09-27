@@ -121,6 +121,8 @@ jobs:
 
       # The Asset Store end to end: publish, serve, install with the C#
       # installer, verify hashes, update and uninstall (ADR-0019).
+      # test_corpus.py runs the Python publisher and the C# installer over the
+      # same folder of malformed packs; they must agree (S6).
       # test_store.py runs the web page's JavaScript under Node's built-ins.
       - uses: actions/setup-node@v4
         with:
@@ -129,6 +131,7 @@ jobs:
       - name: Asset Store tests and smoke
         run: |
           python tools/asset_store/test_store.py
+          python tools/asset_store/test_corpus.py
           python tools/asset_store/smoke.py
 
       # docs/port_status.md is generated. If it differs from a fresh audit
