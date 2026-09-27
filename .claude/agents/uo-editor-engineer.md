@@ -76,13 +76,21 @@ first shown.
 "Written" is not "verified". After any addon change:
 
 ```
-python tools\editor_smoke\run.py --headless --reload
-python tools\editor_smoke\run.py
+python tools\editor_smoke\run.py --reload
+python tools\editor_smoke\run.py --windowed      only when the person at the machine agrees
 ```
 
-The first proves every panel against the real install and survives a
-hot reload; the second adds a screenshot per panel under
-`build\editor_smoke\windowed\`. Look at the images before claiming a panel
+The first (headless, the default) proves every panel against the real
+install and survives a hot reload. The second adds a screenshot per panel
+under `build\editor_smoke\windowed\`, but its window takes the desktop's
+focus, so ask first.
+
+## Shards
+
+Never log in to the shared dev shard. Every in-world run goes to the private
+instance (`tools\editor_shard`, 127.0.0.1:2594), where any account is fine.
+The live tier is checked there with `python tools\editor_live\run.py`
+(headless by default). Look at the images before claiming a panel
 works. `/editor-smoke` runs this for you.
 
 ## Hand-offs

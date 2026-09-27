@@ -7,7 +7,9 @@ what the client shows there. Takes two pictures of one cell:
   editor  the UO World tab (addons/guo_editor) drawn at exactly the client's
           world-view size, from a fresh, empty world project, so the install
           alone is drawn;
-  client  GUO played on the dev shard as a GM lane account (the last of
+  client  GUO played as a GM lane account on the PRIVATE shard by default
+          (tools/editor_shard, 127.0.0.1:2594; the shared port is refused
+          without --allow-shared), (the last of
           UO_SHARD_GM_ACCOUNTS, as tools/multi_client does it), with
           "[go X Y" typed in game, then photographed. Not "[globallight":
           that changes the light for every player on a shared shard.
@@ -106,7 +108,7 @@ def gm_lane(client_root: Path) -> str:
     return accounts[-1]
 
 
-def client_shot(cfg, client_root: Path, x: int, y: int, out: Path, override: Path | None, account: str) -> Path | None:
+def client_shot(cfg, client_root: Path, x: int, y: int, out: Path, override: Path | None, account: str, port: int) -> Path | None:
     home = out / "client_home"
     if home.exists():
         shutil.rmtree(home)
@@ -128,7 +130,7 @@ def client_shot(cfg, client_root: Path, x: int, y: int, out: Path, override: Pat
            "--shard-command", f"[go {x} {y}",
            "--screenshot-dir", str(out / "client"), "--screenshot-name", "client"]
     env = {**os.environ, "UO_CLIENT_DATA": str(cfg.client_data), "UO_CACHE_DIR": str(home / "cache"),
-           "UO_CLIENT_VERSION": cfg.client_version, "UO_SHARD_HOST": cfg.shard_host, "UO_SHARD_PORT": str(cfg.shard_port)}
+           "UO_CLIENT_VERSION": cfg.client_version, "UO_SHARD_HOST": "127.0.0.1", "UO_SHARD_PORT": str(port)}
     print(f"[parity] client ({client_root.name}, {account}): [go {x} {y}" + (f", files_override {override}" if override else ""))
     (out / "client").mkdir(parents=True, exist_ok=True)
     with (out / "client.log").open("w", encoding="utf-8", errors="replace") as log:
@@ -240,11 +242,26 @@ def main() -> int:
     ap.add_argument("--files-override", type=Path, help="client reads an export (tools/world files_override.txt)")
     ap.add_argument("--client-only", action="store_true", help="only the client shot (export proof)")
     ap.add_argument("--out", type=Path)
+    ap.add_argument("--windowed", action="store_true",
+                    help="required: both pictures need windows (an editor, then a client), which take the "
+                         "desktop's focus while they run. Only when the person at the machine agrees")
     ap.add_argument("--season", choices=SEASONS, help="editor season (default: the shard's for map0)")
+    ap.add_argument("--shard-port", type=int, default=2594,
+                    help="shard the client plays on: default the private instance (tools/editor_shard)")
+    ap.add_argument("--allow-shared", action="store_true",
+                    help="permit the shared dev shard's port; agree the account with its users first")
     ap.add_argument("--project", type=Path, help="editor draws this world project over the install (pair with --files-override)")
     args = ap.parse_args()
 
     cfg = load_config()
+    if not args.windowed:
+        print("[parity] needs --windowed: it photographs an editor window and a client window, and each takes "
+              "the desktop's focus while it runs. Run it only when the person at the machine agrees.")
+        return 2
+    if args.shard_port == cfg.shard_port and not args.allow_shared:
+        print(f"[parity] REFUSED: port {args.shard_port} is the shared dev shard. Use the private instance "
+              "(tools/editor_shard, 2594), or --allow-shared after agreeing an account with its users.")
+        return 2
     x, y = (int(v) for v in args.at.split(","))
     client_root = (args.client_root or cfg.root).resolve()
     tag = f"{x}_{y}" + ("_override" if args.files_override else "") + ("_project" if args.project else "")
@@ -270,7 +287,7 @@ def main() -> int:
             return 1
 
     override = args.files_override.resolve() if args.files_override else None
-    client = client_shot(cfg, client_root, x, y, out, override, account)
+    client = client_shot(cfg, client_root, x, y, out, override, account, args.shard_port)
     report["client_png"] = str(client) if client else None
     if client is None:
         print(f"[parity] FAILED: no client shot; see {out / 'client.log'}")

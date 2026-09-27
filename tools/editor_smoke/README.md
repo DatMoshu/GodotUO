@@ -5,8 +5,8 @@ editor, against the real client install. `docs/editor_plan.md` §5 makes this
 the verification for every editor phase; phase 0 is what it checks today.
 
 ```
-python tools\editor_smoke\run.py                 windowed: checks + screenshot
-python tools\editor_smoke\run.py --headless      no window: checks only
+python tools\editor_smoke\run.py                 headless: every check, no screenshots
+python tools\editor_smoke\run.py --windowed      an editor window, with screenshots
 python tools\editor_smoke\run.py --reload        also rebuild and hot-reload the C#
 python tools\editor_smoke\run.py --art 0x0E75    which static to search for
 launchers\dev\editor_smoke.bat [same flags]
@@ -75,6 +75,11 @@ These are renders of client art: they stay under `build\` and are never
 committed (CLAUDE.md rule 8).
 
 ## Headless vs windowed
+
+**Headless is the default.** A window takes the desktop's focus from whoever
+is working at the machine while it runs (the owner asked for this), so
+`--windowed` is for when they agree. `--headless` is still accepted and does
+nothing.
 
 `--headless` runs Godot's own headless mode: no display, and nothing is
 rendered, so there is no frame to capture; every check except the screenshots

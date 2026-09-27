@@ -20,7 +20,7 @@ it is taken even if its file has not landed yet.
 | 0009 | Second display | work/dual-screen |
 | 0010 | Editor addon shape | work/editor |
 | 0011 | World project overlay | work/editor |
-| 0012 | Live editing transport | reserved, editor phase 4 |
+| 0012 | Live editing transport | work/editor |
 | 0013 | Asset overlay | reserved, editor phase 5 |
 | 0014 | Shard world objects and backends | reserved, editor phase 6 |
 | 0015 | Editor world view | work/editor |

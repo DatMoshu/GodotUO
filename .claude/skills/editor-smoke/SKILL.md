@@ -15,15 +15,16 @@ your name to. See `tools/editor_smoke/README.md` for what the tool does and
 
 ## 1. Run it
 
-Pick the mode from the arguments. With none, run the full verification the
-`uo-editor-engineer` agent requires after any addon change: `--headless
---reload`, then windowed (no reload). `reload` adds `--reload` to whichever
-mode is chosen.
+Pick the mode from the arguments. With none, run `--reload` headless: that is
+the full verification the `uo-editor-engineer` agent requires after any addon
+change. **Never open a window unless the person at the machine has agreed**:
+a Godot window takes the desktop's focus while it runs. `windowed` adds
+`--windowed` (screenshots); `reload` adds `--reload`.
 
 | Argument | Command | Proves |
 |---|---|---|
-| `headless` | `python tools\editor_smoke\run.py --headless` | every panel works, no display needed |
-| (default) | `python tools\editor_smoke\run.py` | the same, plus a screenshot per panel |
+| (default) | `python tools\editor_smoke\run.py` | every panel works, headless, no window |
+| `windowed` | `python tools\editor_smoke\run.py --windowed` | the same, plus a screenshot per panel; takes focus |
 | `reload` | add `--reload` | the addon survives a rebuild with the editor open |
 | `art <id>` | add `--art <id>` | a different static for the Art panel |
 

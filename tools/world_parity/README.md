@@ -18,7 +18,10 @@ python tools\world_parity\run.py [--at X,Y] [--client-root DIR] [--season S]
    - By default `UO_WORLD_PROJECT` points at an empty project, so only the
      install is drawn.
    - With `--project`, that world project is drawn over the install.
-2. **Client shot.** It plays GUO from `--client-root` (default: this
+2. **Client shot.** On the **private** shard by default (`tools\editor_shard`,
+   `--shard-port 2594`; the shared dev shard's port is refused without
+   `--allow-shared`, which needs its users' agreement first). It plays GUO
+   from `--client-root` (default: this
    checkout) as the **last** account in that checkout's
    `UO_SHARD_GM_ACCOUNTS`, as `tools/multi_client` does (password = account,
    character = capitalised account).

@@ -64,7 +64,10 @@ def build(project: Path) -> bool:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--headless", action="store_true", help="no window: checks only, no screenshot")
+    ap.add_argument("--headless", action="store_true", help="no window (the default; kept for old command lines)")
+    ap.add_argument("--windowed", action="store_true",
+                    help="open an editor window for screenshots. It takes the desktop's focus while it runs: "
+                         "only when the person at the machine agrees")
     ap.add_argument("--reload", action="store_true", help="also rebuild and hot-reload the assembly")
     ap.add_argument("--art", default="0x0E75", help="art id (static) the dock searches for")
     ap.add_argument("--out", type=Path, help="output folder (default build/editor_smoke/<mode>)")
@@ -73,6 +76,9 @@ def main() -> int:
 
     cfg = load_config()
     project = cfg.godot_project
+    # Headless unless asked: a window takes the foreground from whoever is
+    # working at this machine (docs/editor_plan.md; the owner asked for this).
+    args.headless = not args.windowed
     mode = ("headless" if args.headless else "windowed") + ("_reload" if args.reload else "")
     out = (args.out or cfg.build / "editor_smoke" / mode).resolve()
 
