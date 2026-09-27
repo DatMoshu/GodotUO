@@ -9,6 +9,7 @@ frame 0 exactly and the player can loop the file with no seam and no fade.
     python tools/bg_videos/run.py --only ember-drift
     python tools/bg_videos/run.py --size 1920x1080 --out D:/masters   (masters stay outside the repo)
     python tools/bg_videos/run.py --set screensavers   the OLED loops -> godot/GUO/assets/screensavers
+    python tools/bg_videos/run.py --set store          the Store-only loops -> build/bg_videos/store
 
 Output per theme: <name>.ogv (Ogg Theora, no audio) and <name>.png (the
 exact first frame, the low-power still), plus backgrounds.json listing them.
