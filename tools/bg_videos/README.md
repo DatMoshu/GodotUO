@@ -95,3 +95,33 @@ The report and contact sheet go to `build/bg_videos/screensavers/`.
 | drifting-reagents | 32 | rose petals, pearls and ash tumbling slowly down (store only) |
 | spine-starfield | 40 | a starfield and the odd meteor over a black mountain range with a moonlit crest |
 | sigil-trace | 36 | a gold pen tracing an original seven-pointed rune, which then fades to embers |
+
+## Store loops (`--set store`)
+
+`store_loops.py` holds six more background loops. They are not built into
+the client: `tools/asset_store/seed.py` publishes each one as a
+`background` pack (id = the name, version 1.0.0, `min_profile_version` 6,
+CC0, with a LICENSE.txt), so a player installs them from the Store. They
+follow the spec above: 24 to 30 s, calm, dark-leaning, seamless. Two
+differences:
+
+- **Output:** they go to `build/bg_videos/store/`, listed in
+  `store_loops.json`, which has the same fields as `backgrounds.json`.
+  `seed.py` renders them there itself if they are missing.
+- **Report:** the report and contact sheet go to
+  `build/bg_videos/store_report/`. `static_max` is reported but does not
+  apply: these are backgrounds, not OLED screensavers.
+
+```
+python tools\bg_videos\run.py --set store
+python tools\asset_store\seed.py            (publishes them with the rest)
+```
+
+| name | seconds | what it is |
+|---|---:|---|
+| britain-lanterns | 28 | a town square at night: timbered houses, a keep beyond, four swaying lanterns pooling light on plaster and cobbles |
+| dungeon-torchlight | 24 | a sandstone wall with an arched doorway, two torches whose flicker plays over the bricks, sparks rising |
+| ship-at-dusk | 30 | a tall ship at anchor against the sunset, the sun's path glittering on the sea, gulls crossing |
+| forest-fireflies | 28 | three layers of trunks in mist under a moon glow, fireflies wandering and blinking |
+| compassion-sands | 30 | desert dunes at dusk, sand streaming off the crests and hopping over the near slope |
+| moonglow-rain | 24 | rain over a town of mages' towers, a glowing orb on the high spire, the town reflected in the flooded street |

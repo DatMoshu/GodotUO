@@ -682,6 +682,10 @@ def theme_set(name):
     if name == "screensavers":
         from screensavers import SCREENSAVERS
         return SCREENSAVERS, ROOT / "godot" / "GUO" / "assets" / "screensavers", "screensavers.json", REPORT_DIR / "screensavers"
+    if name == "store":
+        # Store-only loops: packed by tools/asset_store/seed.py, not shipped in the client.
+        from store_loops import STORE_LOOPS
+        return STORE_LOOPS, REPORT_DIR / "store", "store_loops.json", REPORT_DIR / "store_report"
     raise SystemExit(f"unknown set {name}")
 
 
@@ -736,7 +740,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--only", nargs="*", help="theme names to render (default: all)")
     ap.add_argument("--size", default="1280x720")
-    ap.add_argument("--set", default="builtin", choices=["builtin", "screensavers"])
+    ap.add_argument("--set", default="builtin", choices=["builtin", "screensavers", "store"])
     ap.add_argument("--out", type=Path, help="output folder (default: the set's own)")
     ap.add_argument("--q", type=int, default=8, help="Theora quality 0-10")
     ap.add_argument("--jobs", type=int, default=5)
