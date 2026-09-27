@@ -127,16 +127,12 @@ REM  dual_probe launcher and the doctor use it; the client finds the display
 REM  itself. See docs\architecture\ADR-0009-second-display.md.
 if not defined UO_ANDROID_SECOND_DISPLAY set "UO_ANDROID_SECOND_DISPLAY="
 
-REM  The GodotUO press kit the app icons are built from (a folder or the
-REM  release zip; see tools\android\icons.py). It lives in the separate
-REM  public repository next to this one; only what is built from it is
-REM  committed here.
-if not defined UO_ANDROID_BRAND_DIR set "UO_ANDROID_BRAND_DIR=%UO_ROOT%\..\UO_Port_public\design\press-kit"
-
+REM  The app icons (Windows and Android) are built from design\brand\
+REM  guo-sigil.png, committed in this repository: python tools\brand\run.py.
+REM  Nothing to configure.
 REM --- Web (optional) -----------------------------------------------------
 REM  Only launchers\web\*.bat and tools\web read this. The port the local
-REM  web server (tools\web
-un.py serve) listens on; it serves build\web with
+REM  web server (tools\web\run.py serve) listens on; it serves build\web with
 REM  the cross-origin isolation headers a Godot web export needs.
 if not defined UO_WEB_PORT          set "UO_WEB_PORT=8060"
 

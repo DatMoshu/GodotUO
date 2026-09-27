@@ -165,13 +165,13 @@ config before every export, so the editor never has to be opened to set
 them, and runs `godot-console --headless --export-debug`. A release preset
 is a later ADR: it needs a real key and a decision about distribution.
 
-The launcher icon is the approved GUO emblem, not the engine's. The brand
-assets are owned by the separate public repository (`UO_Port_public`,
-`design/press-kit/`); the project icon (`icon.png`, `icon.ico`) is copied
-from that repository and the Android icon set is built from its
-transparent master by `tools/android/icons.py`, with the master's location
-in `UO_ANDROID_BRAND_DIR`. Nothing from the kit beyond the built PNGs is
-committed here.
+The launcher icon is the GUO sigil, not the engine's. Its master is
+committed at `design/brand/guo-sigil.png`, and `tools/brand/run.py` builds
+the Android icon set from it together with the project icon, the Windows
+executable icon and the boot splash, so the build has no dependency
+outside the repository. (An earlier revision took the master from the
+public repository's press kit through `UO_ANDROID_BRAND_DIR`; that setting
+is gone.)
 
 The tool has one entry point per job — `doctor`, `templates`, `keystore`,
 `settings`, `preset`, `export`, `install`, `run`, `logcat`, `push`, `smoke`
