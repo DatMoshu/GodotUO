@@ -138,13 +138,15 @@ def main() -> int:
         args.clip = args.clip.resolve()
     if args.clip and (watch / "walk").is_dir():
         font = "C\\\\:/Windows/Fonts/arial.ttf"
-        caption = args.caption.replace(":", "\\:").replace("'", "")
-        vf = (f"drawtext=fontfile='{font}':text='{caption}':x=16:y=h-36:fontsize=20:fontcolor=white:"
+        # The caption goes through a file beside the frames: commas and colons in
+        # it would otherwise be read as filtergraph syntax.
+        (out / "caption.txt").write_text(args.caption, encoding="utf-8")
+        vf = (f"drawtext=fontfile='{font}':textfile=caption.txt:x=16:y=h-36:fontsize=20:fontcolor=white:"
               "box=1:boxcolor=black@0.55:boxborderw=6")
         args.clip.parent.mkdir(parents=True, exist_ok=True)
         r = subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-framerate", "10", "-i", str(watch / "walk" / "%04d.png"),
                             "-vf", vf, "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "28", "-movflags", "+faststart",
-                            str(args.clip)], capture_output=True, text=True)
+                            str(args.clip)], capture_output=True, text=True, cwd=out)
         report["clip"] = str(args.clip) if r.returncode == 0 else f"ffmpeg failed: {r.stderr[-300:]}"
     (out / "report.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(json.dumps({k: v for k, v in report.items() if k != "stage"}, indent=1))
