@@ -7,8 +7,9 @@ REM  Every launcher and tool reads its paths from here.
 REM
 REM  Resolution order for every setting (first hit wins):
 REM      1. an already-set environment variable
-REM      2. this file
-REM      3. the central shared config (%UO_COMMON_CONFIG%), if you use one
+REM      2. config.local.bat, next to this file (yours; gitignored)
+REM      3. this file
+REM      4. the central shared config (%UO_COMMON_CONFIG%), if you use one
 REM
 REM  Because of (1), nothing here overwrites a value you exported yourself, so
 REM  CI and one-off overrides work without editing this file.
