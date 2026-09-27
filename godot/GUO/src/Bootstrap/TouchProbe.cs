@@ -105,6 +105,7 @@ internal static class TouchProbe
         await TargetTapCheck(host, world);
         await MacroRowCheck(host, world);
         await FlickCheck(host, world);
+        await HandleHoverCheck(host, world);
         // The long press is checked with hold-and-flick off, the way a player
         // who set every direction to "Do nothing" has it.
         {
@@ -431,8 +432,11 @@ internal static class TouchProbe
                 string.Join(" | ", TouchInput.Trace));
             Touch(0, at.Value + new Vector2(6, 0), false);
             await Frames(host, 5);
-            Check("letting go inside the threshold does nothing",
-                GumpFlick.LastResult.Contains("nothing") && !g.IsDisposed && GumpFlick.Lifted == null, GumpFlick.LastResult);
+            Check("letting go in place opens the window menu, and nothing else",
+                GumpFlick.LastResult.Contains("menu") && !g.IsDisposed && GumpFlick.Lifted == null
+                && UIManager.GetGump<GumpLayoutGump>() != null, GumpFlick.LastResult);
+            UIManager.GetGump<GumpLayoutGump>()?.Dispose();
+            await Frames(host, 5);
 
             // Up and down on a single screen: fit to screen.
             float before = g.PresentationScale;
@@ -468,6 +472,41 @@ internal static class TouchProbe
         {
             GumpFlick.Cancel();
             (p.FlickUp, p.FlickDown, p.FlickLeft, p.FlickRight) = saved;
+        }
+    }
+
+    /// <summary>
+    /// With a mouse (touch layer off), a gump's handle fades in while the
+    /// pointer is near its top edge and out when it leaves.
+    /// </summary>
+    private static async System.Threading.Tasks.Task HandleHoverCheck(Node host, Game.World world)
+    {
+        PaperDollGump g = await FreshPaperdoll(host, world);
+
+        if (g == null)
+        {
+            Check("a paperdoll for the hover check", false);
+            return;
+        }
+
+        TouchInput.Enabled = false;
+
+        try
+        {
+            GodotInput.Handle(new InputEventMouseMotion { Position = Client(new Vector2(g.X + g.Width / 2f, g.Y + 6)) });
+            await Frames(host, 30);
+            float near = GumpPresentation.GemAlpha(g);
+
+            GodotInput.Handle(new InputEventMouseMotion { Position = Client(new Vector2(g.X + g.Width / 2f, g.Y + g.Height - 10)) });
+            await Frames(host, 45);
+            float away = GumpPresentation.GemAlpha(g);
+
+            Check("with a mouse the handle fades in near the top edge and out away from it",
+                near > 0.9f && away == 0f, $"near {near:0.00}, away {away:0.00}");
+        }
+        finally
+        {
+            TouchInput.Enabled = true;
         }
     }
 
@@ -701,8 +740,21 @@ internal static class TouchProbe
 
             await Frames(host, 35);
             Compat.Rectangle gem = GumpPresentation.GemRect(g);
+
+            // Hidden by default on touch: a tap where the handle would be opens nothing.
+            var prof = Configuration.ProfileManager.CurrentProfile;
+            bool shown = prof.ShowWindowHandles;
+            prof.ShowWindowHandles = false;
+            await Frames(host, 5);
+            Check("window handles are hidden by default", GumpPresentation.GemAlpha(g) == 0f
+                && !GumpPresentation.OpenGem(new Compat.Point(gem.X + 14, gem.Y + 14)));
+
+            // With "Show window handles" on, the handle opens the menu as before.
+            prof.ShowWindowHandles = true;
+            await Frames(host, 5);
             TouchInput.Trace.Clear();
             await Tap(host, Client(new Vector2(gem.X + 14, gem.Y + 14)));
+            prof.ShowWindowHandles = shown;
             var menu = UIManager.GetGump<GumpLayoutGump>();
             Check("window gem opens size and screen controls", menu != null,
                 $"gem {gem.X},{gem.Y}, disposed {g.IsDisposed}, modal {UIManager.IsModalOpen}, held {GUO.Client.Game.UO.GameCursor.ItemHold.Enabled}, "

@@ -24,8 +24,78 @@ internal static class GumpPresentation
     public static bool Supports(Gump g) => g != null && !g.IsDisposed && !g.IsFromServer && !g.IsModal
         && g is PaperDollGump or ContainerGump or GridContainerGump or StatusGumpBase
             or JournalGump or ResizableJournal;
-    private static bool GemVisible(Gump g) => Supports(g)
-        && (TouchInput.Enabled || DualScreen.ShelfOn || g.PresentationScale != 1f || g.PresentationLocked);
+    // The handle is drawn only when asked for (Options, "Show window handles"),
+    // or, with a mouse, while the pointer is near the gump's top edge (it
+    // fades). On touch the menu opens from a hold-and-release on the gump.
+    private static bool GemVisible(Gump g) => Supports(g) && GemAlpha(g) > 0.05f;
+
+    private const int HoverBand = 24;
+    private const float FadePerSecond = 6f;
+    private static readonly System.Collections.Generic.Dictionary<Gump, float> _fade = new();
+    private static ulong _fadeTicks;
+
+    private static bool AlwaysShown => Configuration.ProfileManager.CurrentProfile?.ShowWindowHandles ?? false;
+
+    /// <summary>The handle's opacity now: 1 when always shown, else the hover fade.</summary>
+    public static float GemAlpha(Gump g)
+    {
+        if (AlwaysShown) return 1f;
+        return _fade.TryGetValue(g, out float a) ? a : 0f;
+    }
+
+    /// <summary>With a mouse: whether the pointer is in the band along the gump's top edge, or on its handle.</summary>
+    private static bool Hovered(Gump g)
+    {
+        if (TouchInput.Enabled || !Supports(g) || !g.IsVisible) return false;
+        Point m = Mouse.Position;
+        Rectangle b = Bounds(g);
+        bool band = m.X >= b.X - HoverBand && m.X <= b.Right + HoverBand
+            && m.Y >= b.Y - GemSize - HoverBand && m.Y <= b.Y + HoverBand;
+        return band || GemRect(g).Contains(m);
+    }
+
+    /// <summary>Advance the hover fades; once a frame, from the draw queue.</summary>
+    private static void UpdateFades()
+    {
+        ulong now = (ulong)Godot.Time.GetTicksMsec();
+        if (now == _fadeTicks) return;
+        float step = Math.Min(1f, (now - _fadeTicks) / 1000f * FadePerSecond);
+        _fadeTicks = now;
+        var keys = new System.Collections.Generic.List<Gump>(_fade.Keys);
+        foreach (Gump g in UIManager.Gumps)
+            if (!_fade.ContainsKey(g) && Hovered(g)) keys.Add(g);
+        foreach (Gump g in keys)
+        {
+            if (g.IsDisposed) { _fade.Remove(g); continue; }
+            _fade.TryGetValue(g, out float a);
+            a += Hovered(g) ? step : -step;
+            if (a <= 0f) _fade.Remove(g); else _fade[g] = Math.Min(1f, a);
+        }
+    }
+
+    /// <summary>
+    /// Open the size and screen menu for a gump, beside it. The one entry
+    /// point: the handle, a hold-and-release on touch (GumpFlick), and a
+    /// controller's "window menu" button (<see cref="OpenMenuForTop"/>).
+    /// </summary>
+    public static bool OpenMenu(Gump g)
+    {
+        if (!Supports(g) || UIManager.IsModalOpen) return false;
+        UIManager.GetGump<GumpLayoutGump>()?.Dispose();
+        UIManager.Add(new GumpLayoutGump(g));
+        return true;
+    }
+
+    /// <summary>Hook for a controller "window menu" button: the menu for the topmost supported gump.</summary>
+    public static bool OpenMenuForTop()
+    {
+        foreach (Gump g in UIManager.Gumps)
+        {
+            if (g.IsDisposed || !g.IsVisible || g is GumpLayoutGump) continue;
+            if (Supports(g)) return OpenMenu(g);
+        }
+        return false;
+    }
 
     public static Gump Root(Control c) => c as Gump ?? c?.RootParent as Gump;
     public static float Scale(Control c) => Supports(Root(c)) ? Root(c).PresentationScale : 1f;
@@ -185,9 +255,7 @@ internal static class GumpPresentation
             if (g.IsDisposed || !g.IsVisible || !g.IsEnabled) continue;
             if (GemVisible(g) && GemRect(g).Contains(p))
             {
-                UIManager.GetGump<GumpLayoutGump>()?.Dispose();
-                UIManager.Add(new GumpLayoutGump(g));
-                return true;
+                return OpenMenu(g);
             }
             Control hit = null;
             g.HitTest(p, ref hit);
@@ -223,15 +291,17 @@ internal static class GumpPresentation
         g.AddToRenderLists(lists, g.X, g.Y, ref depth);
         if (s != 1f || lifted) lists.AddGumpNoAtlas(b => { b.ClipEnd(); return true; });
         if (lifted) lists.AddGumpNoAtlas(b => { GumpFlick.DrawOverlay(b, g); return true; });
+        UpdateFades();
         if (GemVisible(g) && g.IsVisible && g.Width > 0)
         {
             Rectangle r = GemRect(g);
+            float alpha = GemAlpha(g);
             lists.AddGumpNoAtlas(b =>
             {
                 b.Draw(SolidColorTextureCache.GetTexture(new Color(35, 65, 75)), r,
-                    ShaderHueTranslator.GetHueVector(0), 0);
+                    ShaderHueTranslator.GetHueVector(0, false, alpha), 0);
                 _gemText ??= RenderedText.Create("UI", 0x03b2, 1, true);
-                _gemText.Draw(b, r.X + 5, r.Y + 4, 0);
+                _gemText.Draw(b, r.X + 5, r.Y + 4, 0, alpha);
                 return true;
             });
         }

@@ -157,7 +157,10 @@ internal static class GumpFlick
 
         if (direction < 0)
         {
-            return LastResult = "flick: released inside the threshold -> nothing";
+            // Released where it was lifted: the window's size and screen menu,
+            // which on touch replaces the always-drawn "UI" handle.
+            GumpPresentation.OpenMenu(g);
+            return LastResult = "flick: released in place -> menu";
         }
 
         FlickAction action = ActionFor(direction);
@@ -312,6 +315,28 @@ internal static class GumpFlick
         {
             DrawChip(b, g, r, display, dir);
         }
+
+        DrawCentreHint(b, r);
+    }
+
+    /// <summary>"Release: menu" at the gump's centre while no direction is picked.</summary>
+    private static void DrawCentreHint(UltimaBatcher2D b, Rectangle r)
+    {
+        const string label = "Release: menu";
+
+        if (!_labels.TryGetValue(label, out RenderedText text) || text.IsDestroyed)
+        {
+            _labels[label] = text = RenderedText.Create(label, 0x0481, 1, true);
+        }
+
+        int w = text.Width + 16, h = Math.Max(22, text.Height + 8);
+        int x = r.X + (r.Width - w) / 2, y = r.Y + (r.Height - h) / 2;
+        float alpha = Direction < 0 ? 0.85f : 0.3f;
+        b.Draw(SolidColorTextureCache.GetTexture(new Color(20, 25, 23)), new Rectangle(x, y, w, h),
+            ShaderHueTranslator.GetHueVector(0, false, alpha), 0);
+        b.DrawRectangle(SolidColorTextureCache.GetTexture(new Color(223, 187, 119)), x, y, w - 1, h - 1,
+            ShaderHueTranslator.GetHueVector(0, false, alpha), 0);
+        text.Draw(b, x + 8, y + (h - text.Height) / 2, 0, Direction < 0 ? 1f : 0.35f);
     }
 
     private static string ChipLabel(Gump g, FlickAction action)
