@@ -543,7 +543,13 @@ def ensure_solution(p: Paths) -> None:
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     if not p.solution.exists():
         # The editor can be slow to write it; a plain one works just as well.
-        run(["dotnet", "new", "sln", "-n", "GUO", "-o", p.project], stdout=subprocess.DEVNULL)
+        # The .NET 10 SDK writes GUO.slnx unless told the classic format, and
+        # the export needs GUO.sln. SDKs before 9.0.200 have no --format and
+        # write .sln anyway, so they get the plain call.
+        new_sln = ["dotnet", "new", "sln", "-n", "GUO", "-o", p.project]
+        if subprocess.run([*new_sln, "--format", "sln"], stdout=subprocess.DEVNULL,
+                          stderr=subprocess.DEVNULL).returncode != 0:
+            run(new_sln, stdout=subprocess.DEVNULL)
         run(["dotnet", "sln", p.solution, "add", p.project / "GUO.csproj"], stdout=subprocess.DEVNULL)
     if not p.solution.exists():
         sys.exit("[android] could not produce GUO.sln; the .NET export needs one")
