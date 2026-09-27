@@ -42,6 +42,18 @@ namespace GUO.Utility
             // compressed UOP read, AnimationSequence.uop), and an abort on
             // Android's tagged pointers (ADR-0017). Off Windows the managed
             // zlib below is used.
+            //
+            // PORT DEVIATION (GUO): in a browser even the BCL's zlib has no
+            // native library under it (the web export's template does not link
+            // System.IO.Compression.Native; ADR-0008), so the dependency-free
+            // inflater in ZLib/ManagedInflate.cs is used there. GUO_ZLIB=managed
+            // selects it anywhere, to test it against the desktop.
+            if (OperatingSystem.IsBrowser() || Environment.GetEnvironmentVariable("GUO_ZLIB") == "managed")
+            {
+                return new PureManagedZLib();
+            }
+            // END PORT DEVIATION (GUO)
+
             if (Environment.Is64BitProcess
                 && PlatformHelper.IsWindows
                 && NativeLibrary.TryLoad("zlib", typeof(ZLib).Assembly, null, out IntPtr zlib)
@@ -63,6 +75,82 @@ namespace GUO.Utility
             // class is left in place untouched so the diff stays small.
             return new BclZLib();
         }
+
+        // PORT DEVIATION (GUO): see SelectCompressor. Nothing in the client
+        // compresses (only the interface asks for it), so Compress writes
+        // valid zlib with stored blocks rather than carry a deflater.
+        private sealed class PureManagedZLib : ICompressor
+        {
+            public string Version => "managed-inflate";
+
+            public ZLibError Compress(byte[] dest, ref int destLength, byte[] source, int sourceLength)
+            {
+                int blocks = Math.Max(1, (sourceLength + 65534) / 65535);
+                int need = 2 + sourceLength + blocks * 5 + 4;
+                if (dest.Length < need)
+                {
+                    return ZLibError.BufferError;
+                }
+
+                int o = 0;
+                dest[o++] = 0x78;
+                dest[o++] = 0x01;
+                int i = 0;
+                do
+                {
+                    int n = Math.Min(65535, sourceLength - i);
+                    dest[o++] = (byte)(i + n >= sourceLength ? 1 : 0);
+                    dest[o++] = (byte)n;
+                    dest[o++] = (byte)(n >> 8);
+                    dest[o++] = (byte)~n;
+                    dest[o++] = (byte)(~n >> 8);
+                    Buffer.BlockCopy(source, i, dest, o, n);
+                    o += n;
+                    i += n;
+                }
+                while (i < sourceLength);
+
+                uint adler = ManagedInflate.Adler32(source.AsSpan(0, sourceLength));
+                dest[o++] = (byte)(adler >> 24);
+                dest[o++] = (byte)(adler >> 16);
+                dest[o++] = (byte)(adler >> 8);
+                dest[o++] = (byte)adler;
+                destLength = o;
+                return ZLibError.Ok;
+            }
+
+            public ZLibError Compress(
+                byte[] dest, ref int destLength, byte[] source, int sourceLength, ZLibQuality quality)
+            {
+                return Compress(dest, ref destLength, source, sourceLength);
+            }
+
+            public ZLibError Decompress(byte[] dest, ref int destLength, byte[] source, int sourceLength)
+            {
+                return Inflate(source.AsSpan(0, sourceLength), dest.AsSpan(0, destLength));
+            }
+
+            public unsafe ZLibError Decompress(IntPtr dest, ref int destLength, IntPtr source, int sourceLength)
+            {
+                return Inflate(
+                    new ReadOnlySpan<byte>((byte*)source.ToPointer(), sourceLength),
+                    new Span<byte>((byte*)dest.ToPointer(), destLength));
+            }
+
+            private static ZLibError Inflate(ReadOnlySpan<byte> input, Span<byte> dest)
+            {
+                try
+                {
+                    ManagedInflate.InflateZlib(input, dest);
+                    return ZLibError.Ok;
+                }
+                catch (ManagedInflate.InflateException)
+                {
+                    return ZLibError.DataError;
+                }
+            }
+        }
+        // END PORT DEVIATION (GUO)
 
         /// <summary>
         /// zlib via the .NET base class library. No native dependency, and no

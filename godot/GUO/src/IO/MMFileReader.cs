@@ -10,10 +10,28 @@ namespace GUO.IO
         private readonly MemoryMappedFile _mmf;
         private readonly BinaryReader _file;
 
+        // PORT DEVIATION (GUO): a browser has no mmap over a multi-GB file
+        // (the web build reads the install through a lazy, HTTP-backed file
+        // in Emscripten's filesystem; ADR-0008), so the reader can go through
+        // the FileStream itself instead of a mapped view. Every read already
+        // goes through FileReader's BinaryReader, so nothing above changes.
+        // On for the web; GUO_NO_MMAP=1 turns it on anywhere, for testing.
+        public static readonly bool UseMemoryMap =
+            !OperatingSystem.IsBrowser() && Environment.GetEnvironmentVariable("GUO_NO_MMAP") != "1";
+        // END PORT DEVIATION (GUO)
+
         public MMFileReader(FileStream stream) : base(stream)
         {
             if (Length <= 0)
                 return;
+
+            // PORT DEVIATION (GUO): see UseMemoryMap.
+            if (!UseMemoryMap)
+            {
+                _file = new BinaryReader(stream);
+                return;
+            }
+            // END PORT DEVIATION (GUO)
 
             _mmf = MemoryMappedFile.CreateFromFile
             (

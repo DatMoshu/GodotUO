@@ -112,7 +112,8 @@ namespace GUO.Utility.Logging
                     // (Console.ForegroundColor throws PlatformNotSupportedException),
                     // and that first Log.Trace killed the client on the device. The
                     // tag is still written; only the colour is skipped there. ADR-0017.
-                    if (OperatingSystem.IsAndroid())
+                    // The browser's .NET throws the same way (ADR-0008).
+                    if (OperatingSystem.IsAndroid() || OperatingSystem.IsBrowser())
                     {
                         Console.Write(_logTypesInfo[type].Item2);
                     }
