@@ -27,7 +27,7 @@ public sealed partial class ProfileMigrationProbe : Node
             var platform = PlatformDefaults.Platform;
             bool desktop = platform == ProfilePlatform.Desktop;
             bool mobile = platform == ProfilePlatform.Mobile;
-            for (int from = 4; from <= 8; from++)
+            for (int from = 4; from <= 9; from++)
             {
                 // Sparse on-disk fixtures exercise the real generated JSON context,
                 // including absent fields and property initializers from Profile.cs.
@@ -44,7 +44,9 @@ public sealed partial class ProfileMigrationProbe : Node
                 Check(p.DualScreenShelvePaperdoll == (from < 7) && p.DualScreenShelveBackpack == (from < 7)
                     && p.DualScreenShelveStatus == (from < 7) && p.DualScreenShelveJournal == (from < 7), $"v{from}: v7 shelf gate");
                 Check(p.GridLootType == (mobile && from < 8 ? 1 : 2), $"v{from}: v8 old mobile grid value");
-                Check(p.TouchMacroRow == mobile, $"v{from}: v9 mobile macro row");
+                Check(p.TouchMacroRow == (mobile && from < 9), $"v{from}: v9 mobile macro-row gate");
+                Check(p.ScreenSaver == mobile, $"v{from}: v10 screen-saver platform default");
+                Check(p.ScreenSaverMinutes == 10, $"v{from}: screen-saver timeout default");
                 string saved = Save(p);
                 Profile reloaded = Load(saved);
                 Check(!PlatformDefaults.Apply(reloaded, false), $"v{from}: migration repeated after reload");
@@ -54,22 +56,32 @@ public sealed partial class ProfileMigrationProbe : Node
                     GameWindowPosition = new Point(13, 27), CanvasBackgroundMode = "image",
                     CanvasBackgroundPath = "user://custom-background.png", CanvasBackgroundFps = 24,
                     CanvasBackgroundLowPower = true, GridLootType = 0, ContainersScale = 155,
-                    GameWindowFullSize = false, EnableMousewheelScaleZoom = false };
+                    GameWindowFullSize = false, EnableMousewheelScaleZoom = false,
+                    TouchMacroRow = true, ScreenSaver = true, ScreenSaverMinutes = 23 };
                 PlatformDefaults.Apply(custom, false);
                 Check(custom.GameWindowSize == new Point(901, 701) && custom.GameWindowPosition == new Point(13, 27), $"v{from}: custom window overwritten");
                 Check(custom.CanvasBackgroundMode == "image" && custom.CanvasBackgroundPath == "user://custom-background.png"
                     && custom.CanvasBackgroundFps == 24 && custom.CanvasBackgroundLowPower, $"v{from}: custom background overwritten");
                 Check(custom.GridLootType == 0 && custom.ContainersScale == 155, $"v{from}: custom loot/container overwritten");
                 Check(!custom.GameWindowFullSize && !custom.EnableMousewheelScaleZoom, $"v{from}: saved fullscreen/wheel opt-out overwritten");
+                Check(custom.TouchMacroRow && custom.ScreenSaver && custom.ScreenSaverMinutes == 23,
+                    $"v{from}: custom macro/screen-saver settings overwritten");
+                string customJson = Save(custom);
+                Check(Save(Load(customJson)) == customJson, $"v{from}: custom settings lost in JSON round trip");
             }
             foreach (int version in new[] { PlatformDefaults.CurrentVersion, PlatformDefaults.CurrentVersion + 1 })
             {
-                Profile p = new Profile { ProfileVersion = version, TouchMacroRow = false, GridLootType = 2 };
+                Profile p = new Profile { ProfileVersion = version, TouchMacroRow = false, GridLootType = 2,
+                    ScreenSaver = false, ScreenSaverMinutes = 37 };
                 string before = Save(p);
                 Check(!PlatformDefaults.Apply(p, false) && Save(p) == before, $"v{version}: current/future profile changed");
             }
             Check(!PlatformDefaults.Apply(null, false), "Null profile changed");
-            GD.Print($"PROFILE MIGRATIONS PASS: {platform}, v4-v8 to v{PlatformDefaults.CurrentVersion}, {_checks} assertions");
+            Profile fresh = new Profile();
+            Check(PlatformDefaults.Apply(fresh, true), "New profile not initialized");
+            Check(fresh.TouchMacroRow == mobile && fresh.ScreenSaver == mobile && fresh.ScreenSaverMinutes == 10,
+                "New profile macro/screen-saver platform defaults");
+            GD.Print($"PROFILE MIGRATIONS PASS: {platform}, v4-v9 to v{PlatformDefaults.CurrentVersion}, {_checks} assertions");
             GetTree().Quit(0);
         }
         catch (Exception e)
