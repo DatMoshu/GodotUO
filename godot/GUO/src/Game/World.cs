@@ -233,6 +233,14 @@ namespace GUO.Game
                 }
             }
 
+            // PORT DEVIATION (GUO): the editor's embedded world (ADR-0015) has
+            // no AudioManager; its season changes the graphics and plays nothing.
+            if (Client.Game.Audio == null)
+            {
+                return;
+            }
+            // END PORT DEVIATION (GUO)
+
             //TODO(deccer): refactor this out into _audioPlayer.PlayMusic(...)
             UOMusic currentMusic = Client.Game.Audio.GetCurrentMusic();
             if (currentMusic == null || currentMusic.Index == Client.Game.Audio.LoginMusicIndex)

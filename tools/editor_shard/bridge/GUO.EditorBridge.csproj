@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    The GUO editor bridge, a ModernUO assembly (see EditorBridge.cs). Built
+    against the private instance's own Server.dll and Logger.dll, so it matches
+    what that instance runs. tools/editor_shard/run.py builds and installs it:
+
+      python tools\editor_shard\run.py bridge
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <AssemblyName>GUO.EditorBridge</AssemblyName>
+    <RootNamespace>GUO.EditorBridge</RootNamespace>
+    <!-- The ModernUO build to compile against: the private copy by default. -->
+    <ModernUODir Condition="'$(ModernUODir)' == ''">$(MSBuildThisFileDirectory)..\..\..\build\shard_private</ModernUODir>
+    <OutputPath>$(MSBuildThisFileDirectory)..\..\..\build\editor_bridge</OutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="Server">
+      <HintPath>$(ModernUODir)\Server.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Logger">
+      <HintPath>$(ModernUODir)\Logger.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+</Project>

@@ -78,6 +78,10 @@ class Config:
     client_data: Path
     client_version: str
     cache_dir: Path
+    world_project: Path
+    editor_live_host: str
+    editor_live_port: int
+    editor_name: str
     shard_host: str
     shard_port: int
     shard_name: str
@@ -194,6 +198,10 @@ def load_config(root: Path | None = None) -> Config:
         web_port = int(get("UO_WEB_PORT", "8060"))
     except ValueError:
         web_port = 8060
+    # config.bat builds this on UO_ROOT, which common.bat sets before calling
+    # it; outside a launcher it is this repo's root.
+    world = get("UO_WORLD_PROJECT") or str(root / "build" / "world" / "default")
+    world = world.replace("%UO_ROOT%", str(root))
 
     return Config(
         web_port=web_port,
@@ -215,6 +223,10 @@ def load_config(root: Path | None = None) -> Config:
         client_data=Path(os.path.expandvars(get("UO_CLIENT_DATA"))),
         client_version=get("UO_CLIENT_VERSION", "7.0.15.1"),
         cache_dir=Path(os.path.expandvars(cache)),
+        world_project=Path(os.path.expandvars(world)),
+        editor_live_host=get("UO_EDITOR_LIVE_HOST", "127.0.0.1"),
+        editor_live_port=int(get("UO_EDITOR_LIVE_PORT", "2595") or 2595),
+        editor_name=os.path.expandvars(get("UO_EDITOR_NAME", os.environ.get("USERNAME", "editor"))),
         shard_name=get("UO_SHARD_NAME", "GUO Dev"),
         shard_host=get("UO_SHARD_HOST", "127.0.0.1"),
         shard_port=shard_port,

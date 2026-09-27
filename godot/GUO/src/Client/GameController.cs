@@ -108,6 +108,68 @@ namespace GUO
             PluginHost = pluginHost;
         }
 
+        // PORT DEVIATION (GUO): an embedded controller for the editor's World
+        // tab (docs/architecture/ADR-0015-editor-world-view.md). Upstream has
+        // one controller that owns the OS window; the editor needs the same
+        // renderer drawing into a viewport of its own, with no window, audio,
+        // socket, plugins or login. This block is the whole difference: the
+        // constructor leaves the window alone, LoadEmbedded is LoadContent
+        // without those, and DrawEmbedded is DrawFrame for the world only,
+        // sized by the host rather than DisplayServer. The node is never
+        // added to a tree, so _Ready, _Process and _Input never run.
+        //
+        // Window stays null on purpose. The window is the editor's, and the
+        // one thing that would use it here is World's UoAssist, which then
+        // publishes a UOAssist message window for Razor on the editor's
+        // handle and registers a window class whose procedure is a delegate
+        // in this assembly -- never unregistered, so after an assembly reload
+        // the next World calls into freed code and the CLR dies. With no
+        // Window, UoAssist does what it does on a non-Windows OS: nothing.
+        internal GameController(bool embedded)
+        {
+        }
+
+        internal void LoadEmbedded(CanvasItem host)
+        {
+            _uoSpriteBatch = new UltimaBatcher2D(host.GetCanvasItem());
+            _displayScale = 1f;
+            Fonts.Initialize();
+            _renderTargets.InitializeBackground(TextureFromPng(Loader.GetBackgroundImage().ToArray()));
+            UO.Load(this);
+        }
+
+        internal void SetEmbeddedScene(Scene scene) => Scene = scene;
+
+        internal void DrawEmbedded(Node host, Rectangle bounds)
+        {
+            if (Scene == null || bounds.Width <= 0 || bounds.Height <= 0)
+            {
+                return;
+            }
+
+            _renderTargets.EnsureSizes(host, bounds, Scene.Camera.Bounds, 1f);
+            _uoSpriteBatch.BeginFrame();
+            Scene.Draw(_uoSpriteBatch, _renderTargets);
+            _uoSpriteBatch.SetRenderTarget(null);
+            _renderTargets.Draw(_uoSpriteBatch);
+        }
+
+        internal void UnloadEmbedded()
+        {
+            Scene = null;
+            UO.Unload();
+            _uoSpriteBatch?.Dispose();
+            _uoSpriteBatch = null;
+            _hueTexture?.Dispose();
+            _hueTexture = null;
+            _lightTexture?.Dispose();
+            _lightTexture = null;
+            TextureAtlas.DisposeAll();
+            SolidColorTextureCache.Clear();
+            _renderTargets.Dispose();
+        }
+        // END PORT DEVIATION (GUO)
+
         public Scene Scene { get; private set; }
         public AudioManager Audio { get; private set; }
         public UltimaOnline UO { get; } = new UltimaOnline();
