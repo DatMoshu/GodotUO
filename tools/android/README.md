@@ -13,12 +13,15 @@ launchers\android\install.bat    adb install it
 launchers\android\run.bat        start it, stream its logcat
 launchers\android\smoke.bat      export + install + run + wait for the login
                                  gump + pull screenshot and log; non-zero on failure
+launchers\android\dual_probe.bat export with --dual-probe + install + run + log in
+                                 + wait for the second screen + photograph BOTH
+                                 displays; non-zero on failure (ADR-0009)
 launchers\dev\touch_probe.bat    the touch layer, checked on the desktop (no device)
 ```
 
 Everything is `python tools\android\run.py <command>` underneath; the extra
-commands (`templates`, `keystore`, `settings`, `preset`, `push`, `logcat`) are
-one-time setup steps and have no launcher.
+commands (`templates`, `keystore`, `settings`, `preset`, `push`, `logcat`,
+`displays`) are one-time setup steps and have no launcher.
 
 ## One-time setup
 
@@ -127,6 +130,61 @@ game as the intended mouse event and had the intended effect:
 
 Play by hand with the layer on: `launchers\game\play.bat --touch`.
 
+## Second display
+
+A device with a second display Android will let an app present on (the AYN
+Thor's lower screen; `DisplayManager.getDisplays(DISPLAY_CATEGORY_PRESENTATION)`
+is the test) gets the paperdoll, backpack, status bar and journal on it, and
+the world alone on the main one. Why and how is
+[ADR-0009](../../docs/architecture/ADR-0009-second-display.md); in short the
+second screen is a virtual extension of the client window to the right, the
+gumps over there are ordinary upstream gumps, the UI render lists are drawn
+a second time into a target of the second screen's size, and that target is
+pushed to an `android.app.Presentation` through Godot's own Java bridge. No
+plugin, no Gradle: the export is the same one as always.
+
+- **Nothing to build.** `export.bat` already carries it; a device without a
+  second display logs `[GUO] dual screen: no second display; nothing changes`
+  and that is the end of it.
+- **Turning it off:** Options > General > "Gumps & Context" > "Use the second
+  screen for paperdoll, backpack, status and journal" (the checkbox only
+  exists where a second display does), or `--args "--dual-off"` on an export.
+- **Doctor:** `doctor.bat` prints every display `dumpsys display` reports,
+  with its size, rotation, `presentation` flag and SurfaceFlinger id, and
+  which one the client will use. `python tools\android\run.py displays`
+  prints just that list.
+- **Probe:** `dual_probe.bat --args "--host <this PC's LAN address>"` exports
+  a build with `--dual-probe` baked in, installs it, runs it, logs in as the
+  probe account, opens the four gumps, waits for
+  `[GUO] dual screen: ok` on logcat and photographs both panels
+  (`adb exec-out screencap -p -d <id>`) into `build\android\dual_main.png`
+  and `dual_second.png`, with the log in `dual_logcat.txt`. `--stay` leaves
+  the app up afterwards; `--no-export` reuses `GUO-dual.apk`. The client also
+  saves what it pushed (`guo_second.png` in its own screenshots folder); the
+  screencap is the panel itself, which is the only proof the pixels arrived.
+- **The id `screencap -d` wants** is the display's `uniqueId` in `dumpsys
+  display` (`local:<id>`), the same number `dumpsys SurfaceFlinger
+  --display-id` lists. The tools read it from there;
+  `UO_ANDROID_SECOND_DISPLAY` in config.bat overrides it.
+- **On the desktop** the same feature runs against a window standing in for
+  the panel: `--play --dual-screen 1240x1080 --dual-probe` (or without the
+  probe, to play with it); the mouse in that window is one finger on the
+  second screen.
+
+What the probe prints, from the Thor:
+
+```
+[GUO] dual screen: 1 presentation display(s)
+[GUO] dual screen: display 4 "Screen-2" 1240x1080 rotation 1
+[GUO] dual screen: active; second screen 1240x1080 is 620x540 at dpi scale 2.00, main window 960 wide
+[GUO] dual screen: presentation shown on display 4, bitmap 620x540
+[GUO] dual screen: shelf 4 gump(s) beyond x=1011; paperdoll at 1011,0 status at 1011,324; world 1011x539 in a 1011x539 window
+[GUO] dual screen: gumps TopBarGump@0,0:1114x27 ContainerGump@1401,0:230x204 JournalGump@1286,242:345x298 StatusGumpModern@1011,324:577x216 PaperDollGump@1011,0:262x324 WorldViewportGump@-5,-5:1027x555
+[GUO] dual screen: presented 53 frames during the on-measurement, last push 3.97 ms, touches taken 0
+[GUO] dual screen: fps on=60.0 off=60.0
+[GUO] dual screen: ok
+```
+
 ## What has actually been run, and what has only been written
 
 Recorded on 2026-09-26. The first pass was written on a machine with no
@@ -145,6 +203,12 @@ to end against an AYN Thor (Android 13, 1080x1920, 369 dpi, adb serial
 | `run.py push` | 341 top-level files, 2.3 GB, sizes match the install. The launcher's subfolders (`Data`, `Music`, ...) fail with `secure_mkdirs failed`: adb cannot create subfolders under scoped storage. The client needs none of them. |
 | `run.py install` | Success |
 | Launch on the Thor | **the login screen renders**, at a whole-number 2x, touch layer on; screenshot `build\android\thor_login_2026-09-26.png` |
+| `run.py doctor` / `displays` (second display) | display 0 "Built-in Screen" 1920x1080 rotation 1; display 4 "Screen-2" 1240x1080 rotation 1 **presentation**, SurfaceFlinger 4630946482288158084 |
+| `run.py dual_probe --args "--host <shard-lan-ip>"` (package `org.guo.dual`) | first run: `FAIL never got into the world` -- the input probe aimed in client pixels while the device draws at 2x, and the touch layer swallowed its clicks; fixed (`InputProbe.PointerScale`, the layer stepped aside for the login, as the touch probe does) |
+| same, second and third runs | **`[GUO] dual screen: ok`**: presentation shown on display 4, 620x540 bitmap at 2x, four gumps on the shelf, 53 frames pushed in 180, last push 4.0-4.7 ms, **fps on=60.0 off=60.0**; both panels photographed: `build\android\thor_dual_main_2026-09-26.png` (the world alone, top bar and gump bar) and `thor_dual_second_2026-09-26.png` (paperdoll, backpack, status, journal, pixel-perfect at 2x) |
+| a tap on the second panel (`adb shell input -d 4 tap 430 164`, the paperdoll's OPTIONS button) | logged `first touch, finger 32 down at window 2328,156 (client 1227,82)` and **opened the options gump on the main screen**: `thor_dual_main_after_tap_2026-09-26.png` |
+| desktop simulator (`--dual-screen 1240x1080 --dual-probe`, dev shard) | ok; 4 gumps on the simulated screen, world fills the 3840x2054 main window; `desktop_dual_main_2026-09-26.png`, `desktop_dual_second_2026-09-26.png` |
+| the options checkbox for the second screen | written; not exercised on a screen |
 
 Four things broke on the device before that and were fixed the same day,
 each marked `PORT DEVIATION` where it touches ported code:
