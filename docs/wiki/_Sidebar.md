@@ -20,5 +20,6 @@
 - [Scripted Runs and Probes](Scripted-Runs-and-Probes.md)
 - [Parity and Drift](Parity-and-Drift.md)
 - [Editor](Editor.md)
+- [Manage Your Shard From the Editor](Manage-Your-Shard-From-The-Editor.md)
 - [Architecture](Architecture.md)
 - [Contributing](Contributing.md)

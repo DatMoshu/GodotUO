@@ -839,6 +839,9 @@ namespace GUO.Game
                 // (files_override: tools/world writes one beside every export)
                 // is copied instead, which is what the MUL branch does anyway.
                 // See ADR-0012.
+                // OWNER DECISION PENDING: this goes beyond pure parity and has
+                // not been approved (director hand-off 2026-09-27, 4.5). If it
+                // is declined, delete this block up to END PORT DEVIATION.
                 if (!File.Exists(mapPath) && File.Exists(oldMap))
                 {
                     CopyFile(oldMap, mapPath);

@@ -26,7 +26,7 @@ with the project, and the client only ever reads your install.
 - Want a build: [Windows Build](Windows-Build.md), [Android Build](Android-Build.md), [Dual Screen](Dual-Screen.md).
 - Playing on a phone: [Mobile UI](Mobile-UI.md), [Canvas Background](Canvas-Background.md).
 - Need a server: [Dev Shard](Dev-Shard.md).
-- Working on the port: [Launchers and Tools](Launchers-and-Tools.md), [Scripted Runs and Probes](Scripted-Runs-and-Probes.md), [Parity and Drift](Parity-and-Drift.md), [Architecture](Architecture.md), [Editor](Editor.md), [Contributing](Contributing.md).
+- Working on the port: [Launchers and Tools](Launchers-and-Tools.md), [Scripted Runs and Probes](Scripted-Runs-and-Probes.md), [Parity and Drift](Parity-and-Drift.md), [Architecture](Architecture.md), [Editor](Editor.md), [Manage Your Shard From the Editor](Manage-Your-Shard-From-The-Editor.md), [Contributing](Contributing.md).
 - Short answers: [FAQ](FAQ.md).
 
 ## Licence
