@@ -137,6 +137,13 @@ namespace GUO.Game.UI.Gumps
         private HSliderBar _sliderFPS, _circleOfTranspRadius;
         private HSliderBar _sliderSpeechDelay;
         private HSliderBar _sliderScreenZoom;
+
+        // PORT DEVIATION (GUO): the screen zoom slider's value when the gump
+        // opened. The touch layer sets Client.Game.ScreenScale to fit the
+        // display (the Thor: 2 / 1.8 = 1.11) without the global setting, so
+        // Apply writing the slider back every time shrank a phone's UI and
+        // put touch out of step; it is applied only when the slider moved.
+        private int _screenZoomAtOpen;
         private HSliderBar _sliderZoom;
         private HSliderBar _soundsVolume, _musicVolume, _loginMusicVolume;
         private ClickableColorBox _speechColorPickerBox, _emoteColorPickerBox, _yellColorPickerBox, _whisperColorPickerBox, _partyMessageColorPickerBox, _guildMessageColorPickerBox, _allyMessageColorPickerBox, _chatMessageColorPickerBox, _partyAuraColorPickerBox;
@@ -1746,6 +1753,7 @@ namespace GUO.Game.UI.Gumps
             );
             section2.Add(AddLabel(null, ResGumps.ScreenZoom, startX, startY));
             section2.AddRight(_sliderScreenZoom);
+            _screenZoomAtOpen = _sliderScreenZoom.Value; // PORT DEVIATION (GUO)
 
             section2.Add(AddLabel(null, ResGumps.DefaultZoom, startX, startY));
 
@@ -4021,10 +4029,14 @@ namespace GUO.Game.UI.Gumps
             _currentProfile.EnableDeathScreen = _enableDeathScreen.IsChecked;
             _currentProfile.EnableBlackWhiteEffect = _enableBlackWhiteEffect.IsChecked;
 
+            // PORT DEVIATION (GUO): only when the slider moved; see _screenZoomAtOpen.
+            if (_sliderScreenZoom.Value != _screenZoomAtOpen) {
             Settings.GlobalSettings.ScreenScale = GetScreenScale(_sliderScreenZoom.Value);
             if (Client.Game.ScreenScale != Settings.GlobalSettings.ScreenScale) {
                 Client.Game.ScreenScale = Settings.GlobalSettings.ScreenScale;
                 RecenterGump();
+            }
+            _screenZoomAtOpen = _sliderScreenZoom.Value;
             }
 
             var camera = Client.Game.Scene.Camera;
