@@ -33,33 +33,21 @@ namespace GUO.Utility
 
         private static ICompressor SelectCompressor()
         {
-            // Android has a system libz, so the P/Invoke resolves, but
-            // zlibVersion() returning a .NET string makes the marshaller free
-            // zlib's static version pointer, which the device's tagged-pointer
-            // check aborts on. The managed zlib below is used there. ADR-0017.
-            if (Environment.Is64BitProcess && !OperatingSystem.IsAndroid())
+            // PORT DEVIATION (GUO): native zlib on Windows only, and found
+            // without calling zlibVersion(). Both upstream compressors declare
+            // it as returning a .NET string, so the marshaller frees zlib's
+            // static version pointer: CoTaskMemFree on Windows (heap
+            // corruption, 0xC0000374, now and then), free() on Linux (glibc's
+            // "free(): invalid pointer" on the Steam Deck at the first
+            // compressed UOP read, AnimationSequence.uop), and an abort on
+            // Android's tagged pointers (ADR-0017). Off Windows the managed
+            // zlib below is used.
+            if (Environment.Is64BitProcess
+                && PlatformHelper.IsWindows
+                && NativeLibrary.TryLoad("zlib", typeof(ZLib).Assembly, null, out IntPtr zlib)
+                && NativeLibrary.TryGetExport(zlib, "uncompress", out _))
             {
-                ICompressor native = PlatformHelper.IsWindows
-                    ? new Compressor64()
-                    : (ICompressor)new CompressorUnix64();
-
-                try
-                {
-                    // Touching Version resolves the P/Invoke. If the native
-                    // library is missing this throws here, once, at startup,
-                    // rather than deep inside a file read.
-                    _ = native.Version;
-                    return native;
-                }
-                catch (DllNotFoundException)
-                {
-                }
-                catch (EntryPointNotFoundException)
-                {
-                }
-                catch (BadImageFormatException)
-                {
-                }
+                return new Compressor64();
             }
 
             // Upstream's ManagedUniversal is deliberately NOT used here. Its
