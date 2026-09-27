@@ -36,12 +36,15 @@ def slug(title):
 
 def anchors(text):
     text = without_fences(text)
+    text = re.sub(r"<!--.*?-->", lambda m: "\n" * m[0].count("\n"), text, flags=re.S)
     result, counts = set(), {}
     lines = text.splitlines()
     for i, line in enumerate(lines):
         heading = re.match(r"^ {0,3}#{1,6}\s+(.+?)\s*#*\s*$", line)
         title = heading[1] if heading else None
-        if i and re.fullmatch(r" {0,3}(?:=+|-+)\s*", line) and lines[i - 1].strip():
+        if (i and re.fullmatch(r" {0,3}(?:=+|-+)\s*", line)
+                and lines[i - 1].strip()
+                and not re.match(r"^(?: {4}|\t| {0,3}(?:#{1,6}\s|>|[-+*]\s|\d+[.)]\s))", lines[i - 1])):
             title = lines[i - 1].strip()
         if title is not None:
             base = slug(title)
