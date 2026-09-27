@@ -54,13 +54,34 @@ internal static class ObjectsDump
                 host.GetViewport().GetTexture().GetImage().SavePng(Path.Combine(dir, name + ".png"));
             }
 
+            // <name>.walk: the character walks the four screen diagonals (InputProbe's
+            // walk), then <name>.walked. A recording started before it keeps going.
+            foreach (string request in Directory.GetFiles(dir, "*.walk"))
+            {
+                string name = Path.GetFileNameWithoutExtension(request);
+                File.Delete(request);
+                bool walked = await InputProbe.WalkAround(host);
+                File.WriteAllText(Path.Combine(dir, name + ".walked"), walked ? "moved" : "did not move");
+            }
+
             // <name>.rec holding "seconds fps": frames into <dir>/<name>/0001.png ...,
             // for a clip (tools/editor_objects_proof --live --clip). Windowed only.
+            // Runs beside the watch, so a walk can be recorded.
             foreach (string request in Directory.GetFiles(dir, "*.rec"))
             {
                 string name = Path.GetFileNameWithoutExtension(request);
                 string[] args = File.ReadAllText(request).Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
                 File.Delete(request);
+                _ = Record(host, dir, name, args);
+            }
+
+            await host.ToSignal(host.GetTree().CreateTimer(0.25), Godot.SceneTreeTimer.SignalName.Timeout);
+        }
+    }
+
+    private static async System.Threading.Tasks.Task Record(Godot.Node host, string dir, string name, string[] args)
+    {
+        {
                 double seconds = args.Length > 0 ? double.Parse(args[0], System.Globalization.CultureInfo.InvariantCulture) : 10;
                 double fps = args.Length > 1 ? double.Parse(args[1], System.Globalization.CultureInfo.InvariantCulture) : 10;
                 string frames = Path.Combine(dir, name);
@@ -77,9 +98,6 @@ internal static class ObjectsDump
                 }
 
                 File.WriteAllText(Path.Combine(dir, name + ".recorded"), n.ToString(System.Globalization.CultureInfo.InvariantCulture));
-            }
-
-            await host.ToSignal(host.GetTree().CreateTimer(0.25), Godot.SceneTreeTimer.SignalName.Timeout);
         }
     }
 
@@ -110,8 +128,23 @@ internal static class ObjectsDump
             }
         }
 
+        // What the player wears (items whose container is the player), with the layer.
+        var worn = new List<Dictionary<string, object>>();
+        if (world?.Player != null)
+        {
+            foreach (Item i in world.Items.Values)
+            {
+                if (i.Container == world.Player.Serial)
+                {
+                    worn.Add(new() { ["serial"] = i.Serial, ["graphic"] = $"0x{i.Graphic:X4}", ["layer"] = i.Layer.ToString(),
+                        ["hue"] = $"0x{i.Hue:X4}" });
+                }
+            }
+        }
+
         var report = new Dictionary<string, object>
         {
+            ["worn"] = worn,
             ["map"] = world?.MapIndex ?? -1,
             ["player"] = world?.Player != null ? new[] { (int)world.Player.X, world.Player.Y, world.Player.Z } : null,
             ["items"] = items,
