@@ -43,8 +43,8 @@ namespace GUO.Game.UI.Gumps
         private const int PAD = 4;
         private const int GAP = 2;
         private const int ROW_HEIGHT = 20;
-        private const int MIN_SLOT = 32;
-        private const int MAX_SLOT = 80;
+        public const int MIN_SLOT = 32;
+        public const int MAX_SLOT = 80;
 
         /// <summary>Containers switched to the classic view this session.</summary>
         private static readonly HashSet<uint> _classic = new HashSet<uint>();
@@ -272,11 +272,12 @@ namespace GUO.Game.UI.Gumps
 
         /// <summary>
         /// Changes whenever an item comes, goes, or changes what the grid
-        /// shows of it; cheap enough to take every frame.
+        /// shows of it, or the slot size changes under Options; cheap
+        /// enough to take every frame.
         /// </summary>
         private static long Signature(Item container)
         {
-            long h = 17;
+            long h = 17 + SlotSize;
 
             for (LinkedObject i = container.Items; i != null; i = i.Next)
             {

@@ -44,9 +44,10 @@ namespace GUO.Game.UI.Gumps
         // containers
         private HSliderBar _containersScale;
 
-        // PORT DEVIATION (GUO): the two GUO container options (grid view,
-        // placement clear of the character); mobile defaults.
+        // PORT DEVIATION (GUO): the GUO container options (grid view and
+        // its slot size, placement clear of the character); mobile defaults.
         private Checkbox _gridContainers, _fitContainerPlacement;
+        private HSliderBar _gridSlotSize;
         private Combobox _cotType;
         private DataBox _databox;
         private HSliderBar _delay_before_display_tooltip, _tooltip_zoom, _tooltip_background_opacity;
@@ -3445,6 +3446,9 @@ namespace GUO.Game.UI.Gumps
             // PORT DEVIATION (GUO): see the field declaration.
             _gridContainers = AddCheckBox(rightArea, "Open containers as a grid of slots", _currentProfile.GridContainers, startX, startY);
             startY += _gridContainers.Height + 2;
+            text = AddLabel(rightArea, "Grid slot size", startX + 20, startY);
+            _gridSlotSize = AddHSlider(rightArea, GridContainerGump.MIN_SLOT, GridContainerGump.MAX_SLOT, _currentProfile.GridContainerSlotSize, startX + 20 + text.Width + 5, startY, 200);
+            startY += text.Height + 2;
             _fitContainerPlacement = AddCheckBox(rightArea, "Open containers clear of the character and each other", _currentProfile.FitContainerPlacement, startX, startY);
             startY += _fitContainerPlacement.Height + 2;
 
@@ -3804,6 +3808,7 @@ namespace GUO.Game.UI.Gumps
                     _containerScaleItems.IsChecked = false;
                     _useLargeContianersGumps.IsChecked = false;
                     _gridContainers.IsChecked = false; // PORT DEVIATION (GUO)
+                    _gridSlotSize.Value = 44; // PORT DEVIATION (GUO)
                     _fitContainerPlacement.IsChecked = false; // PORT DEVIATION (GUO)
                     _containerDoubleClickToLoot.IsChecked = false;
                     _relativeDragAnDropItems.IsChecked = false;
@@ -4384,6 +4389,7 @@ namespace GUO.Game.UI.Gumps
 
             _currentProfile.UseLargeContainerGumps = _useLargeContianersGumps.IsChecked;
             _currentProfile.GridContainers = _gridContainers.IsChecked; // PORT DEVIATION (GUO)
+            _currentProfile.GridContainerSlotSize = _gridSlotSize.Value; // PORT DEVIATION (GUO)
             _currentProfile.FitContainerPlacement = _fitContainerPlacement.IsChecked; // PORT DEVIATION (GUO)
             _currentProfile.DoubleClickToLootInsideContainers = _containerDoubleClickToLoot.IsChecked;
             _currentProfile.RelativeDragAndDropItems = _relativeDragAnDropItems.IsChecked;
