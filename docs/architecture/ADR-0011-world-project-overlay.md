@@ -10,6 +10,23 @@ Accepted
 
 ## Last Verified
 
+2026-09-27 (phase 3): the tools (stamp, erase, raise/lower, hue) edit through
+this model, and every edit writes its block file. `editor_smoke` runs each
+tool, undoes all four back to the install's block (the file is removed),
+redoes one, and checks the radar repaints.
+
+`tools\world\run.py export` turned the resulting project into patched copies
+of `map0LegacyMUL.uop` / `staidx0.mul` / `statics0.mul`, and `verify` read them
+back: 1 replaced block matches the project, and the other 458,751 blocks match
+the install byte for byte.
+
+A client reading that export through upstream's `files_override` drew the
+exported tree exactly where the editor draws it (`tools\world_parity`: 99.84%
+identical outside masks). **Not yet verified:** the dev shard reading the
+export (the export folder first in its `dataDirectories`, then a restart). It
+is staged, but it needs the shared shard to restart, and that has not been
+permitted yet.
+
 2026-09-27: `editor_smoke`'s overlay stage passes windowed and headless,
 before and after an assembly reload. It creates a project, captures block
 187,203 of map0, turns all 64 land cells to water (0x00A8) and adds three
@@ -87,6 +104,30 @@ chunks among the changed blocks the UltimaLive way. Unloaded chunks read the
 new entry when first needed. `CloseProject` restores every original, reloads,
 and deletes the scratch files.
 
+### Editing and undo (phase 3)
+
+- Every edit reads the block (from the project, or captured from the map
+  when the project does not have it yet), changes it, writes the file, and
+  re-applies the overlay. The file is the save; there is no unsaved state.
+- Undo is the block ring buffer the plan proposed: each entry holds the
+  block file's text before and after, with null meaning "the install's
+  block". Undo writes the before text (or removes the file), redo writes the
+  after text. The last 200 edits are kept. Opening another project clears
+  the history.
+- It felt right with the altitude tool: one click is one entry, and undo
+  puts the cell back exactly, neighbouring corners included, because the
+  whole block is restored.
+
+### Export (phase 3)
+
+`tools/world` copies the touched facets' land, index and statics files and
+patches only the replaced blocks. Land cells are written in place at
+`MapLoader`'s offsets, keeping each block header. Statics are appended and
+their index entries repointed. It writes `files_override.txt` for the client
+and `export.json` as the record. An output inside `UO_CLIENT_DATA`, or a
+project from another install (fingerprint mismatch), is refused. `mapdif`/
+`stadif` output is not produced: nothing in the pipeline needs it yet.
+
 ### Key Interfaces
 
 `WorldProject.OpenOrCreate(root, clientData, version)`, `Blocks(facet)`,
@@ -140,8 +181,8 @@ all readers consistent. Rejected.
 - Applying rewrites the facet's scratch file each time: fine for tens or
   hundreds of blocks; a facet-wide edit (thousands of blocks) will want an
   append-only scratch file.
-- The Assets dock's Maps panel reads through `EditorData`'s own loaders, not
-  the world's, so its radar does not show the overlay yet.
+- ~~The Maps radar does not show the overlay.~~ Since phase 3 it reads the
+  world's loader while the world runs and repaints edited blocks.
 - `World.MapIndex` changes re-apply the overlay; a full `LoadMap` of a facet
   already overlaid would rebuild `BlockData` and drop the repointing (the
   editor never does that today).

@@ -10,6 +10,13 @@ Accepted
 
 ## Last Verified
 
+2026-09-27 (phase 3): `tools\world_parity\run.py` compared the World view with a
+client logged in to the dev shard (main checkout's client, GM lane
+`guosweep`). Outside the player, paperdoll and chat-line masks it was 99.98%
+identical at a wilderness cell (37 px residual on land-tile edges). At Britain
+1496,1628 it was 99.29% (a shard lamp post and sign, 1,293 px, plus 26 px).
+This needs the editor's season to match the shard's (Felucca: spring).
+
 2026-09-27: `python tools\editor_smoke\run.py` and `--headless --reload` pass.
 The UO World tab, reached from the Maps panel, boots the embedded world in
 1.2-1.7 s. It draws east Britain at map0 1496,1628 through `GameScene.Draw`:
@@ -32,7 +39,8 @@ starts no audio, socket, plugins or login. The editor sets it as
 `Client.Game`, builds a `World` and a `GameScene` around a stand-in player,
 and calls the scene's `Draw` into a `SubViewport` of the editor's main
 screen. `GameScene`, the sorter, the views and the batcher are untouched.
-Two ported files carry one `PORT DEVIATION (GUO)` block each.
+Three ported files carry one `PORT DEVIATION (GUO)` block each
+(`GameController.cs`, `Client.cs`, and from phase 3 `World.cs`).
 
 ## Engine Compatibility
 
@@ -176,6 +184,16 @@ a separate path is cheaper to keep.
   client by the mobiles, items, houses and decoration a shard sends, and by
   the light level.
 
+### Season
+
+A shard sends each map a season, and the client swaps seasonal art for it
+(spring turns grass tufts into flowers). The editor has no shard, so the
+World tab has a Season switch driving the game's own `World.ChangeSeason`.
+That method ends by playing the season's music through `Client.Game.Audio`,
+which the embedded controller does not have. The third PORT DEVIATION block
+(`World.cs`) returns before the music when there is no `AudioManager`. The
+graphics change is untouched.
+
 ### Neutral
 
 - The stand-in player has no body, so nothing is drawn for it. It still
@@ -207,10 +225,10 @@ None; new.
   a server-path multi adds to what is drawn.
 - `editor_smoke --reload` with the world booted: no `ERROR` or `Fatal` in the
   editor log.
-- **Not yet done:** the plan's pixel comparison against a logged-in client's
-  frame at the same spot. It needs a client on the dev shard (`--play`,
-  `[go 1496 1628`) and will differ by shard objects and light, so the
-  comparison must mask or place those.
+- `tools\world_parity\run.py`: the plan's pixel comparison against a logged-in
+  client (see Last Verified). The masks and the residual boxes are in its
+  report; the residual is shard objects plus a few land-edge pixels, never
+  hidden.
 
 ## GDD Requirements Addressed
 
