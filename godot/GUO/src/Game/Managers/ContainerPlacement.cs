@@ -32,7 +32,8 @@ namespace GUO.Game.Managers
     /// right edge first because the character stands in the middle and the
     /// touch bar runs along the bottom. When nothing is free (a bank box at
     /// 130 % on a phone is wider and taller than half the screen) it takes
-    /// the spot covering the least of the character and the open gumps,
+    /// the spot covering the least of the character's body, then of the area
+    /// around it and the open gumps,
     /// and a container taller than the area gives up the top bar's row
     /// rather than the touch bar's.
     /// </remarks>
@@ -44,6 +45,9 @@ namespace GUO.Game.Managers
         /// <summary>Half the size, in client px at zoom 1, of the area kept clear around the character.</summary>
         private const int KeepOutHalfWidth = 70;
         private const int KeepOutHalfHeight = 90;
+
+        /// <summary>More than any client's area in px, so covering the character's body costs more than covering every gump.</summary>
+        private const long CharacterWeight = 1L << 24;
 
         public static bool Active(Profile profile) =>
             profile != null && profile.FitContainerPlacement && !profile.OverrideContainerLocation;
@@ -74,6 +78,7 @@ namespace GUO.Game.Managers
 
             Rectangle area = UsableArea();
             Rectangle keepOut = KeepOut();
+            Rectangle core = new Rectangle(keepOut.X + keepOut.Width / 4, keepOut.Y + keepOut.Height / 4, keepOut.Width / 2, keepOut.Height / 2);
 
             // A remembered spot clear of the character is kept when it covers
             // no other gump, and otherwise only beaten by a spot covering less
@@ -134,7 +139,10 @@ namespace GUO.Game.Managers
                 foreach (int y in ys)
                 {
                     Rectangle candidate = new Rectangle(x, y, width, height);
-                    long cover = Overlap(candidate, keepOut) + CoveredGumps(candidate, serial, self);
+                    // The character's body outranks any gump: a spot on it
+                    // loses to every spot that is not, however crowded. The
+                    // rest of the area around it counts like a gump.
+                    long cover = Overlap(candidate, core) * CharacterWeight + Overlap(candidate, keepOut) + CoveredGumps(candidate, serial, self);
 
                     if (cover < bestCover)
                     {

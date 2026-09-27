@@ -39,7 +39,8 @@ namespace GUO.Game.UI.Gumps
     /// </remarks>
     internal class GridContainerGump : Gump
     {
-        private const int COLUMNS = 6;
+        private const int MAX_COLUMNS = 6;
+        private const int MIN_COLUMNS = 3;
         private const int PAD = 4;
         private const int GAP = 2;
         private const int ROW_HEIGHT = 20;
@@ -318,9 +319,9 @@ namespace GUO.Game.UI.Gumps
                 items.Sort((a, b) => a.DisplayedGraphic != b.DisplayedGraphic ? a.DisplayedGraphic.CompareTo(b.DisplayedGraphic) : a.Hue.CompareTo(b.Hue));
             }
 
-            int rows = Math.Max(2, (items.Count + COLUMNS - 1) / COLUMNS);
+            int rows = Math.Max(2, (items.Count + Columns - 1) / Columns);
             int maxRows = MaxRows();
-            int perPage = maxRows * COLUMNS;
+            int perPage = maxRows * Columns;
 
             _pageCount = Math.Max(1, (items.Count + perPage - 1) / perPage);
             _page = Math.Clamp(_page, 0, _pageCount - 1);
@@ -336,15 +337,15 @@ namespace GUO.Game.UI.Gumps
             int size = SlotSize;
             int top = PAD + 2 * (ROW_HEIGHT + GAP);
 
-            for (int n = 0; n < rows * COLUMNS; n++)
+            for (int n = 0; n < rows * Columns; n++)
             {
                 int index = _page * perPage + n;
                 Item it = index < items.Count ? items[index] : null;
 
                 GridSlot slot = new GridSlot(this, it, size)
                 {
-                    X = PAD + n % COLUMNS * (size + GAP),
-                    Y = top + n / COLUMNS * (size + GAP)
+                    X = PAD + n % Columns * (size + GAP),
+                    Y = top + n / Columns * (size + GAP)
                 };
 
                 _slots.Add(slot);
@@ -395,6 +396,13 @@ namespace GUO.Game.UI.Gumps
         /// As many rows as fit between the top bar and the touch bar, so a
         /// page never runs off a phone's screen.
         /// </summary>
+        /// <summary>
+        /// Six columns, or fewer when big slots would make the grid wider than
+        /// half the client, so two containers still fit side by side.
+        /// </summary>
+        private static int Columns =>
+            Math.Clamp((Client.Game.ClientBounds.Width / 2 - PAD * 2 + GAP) / (SlotSize + GAP), MIN_COLUMNS, MAX_COLUMNS);
+
         private static int MaxRows()
         {
             int height = Client.Game.ClientBounds.Height;
@@ -408,7 +416,8 @@ namespace GUO.Game.UI.Gumps
         private void Layout(int rows)
         {
             int size = SlotSize;
-            int width = PAD * 2 + COLUMNS * size + (COLUMNS - 1) * GAP;
+            int columns = Columns;
+            int width = PAD * 2 + columns * size + (columns - 1) * GAP;
             int top = PAD + 2 * (ROW_HEIGHT + GAP);
             int gridHeight = Math.Max(rows, 2) * (size + GAP) - GAP;
             bool paged = _pageCount > 1;
