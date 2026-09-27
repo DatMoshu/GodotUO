@@ -171,6 +171,12 @@ namespace GUO
 
         public readonly uint[] FrameDelay = new uint[2];
 
+        /// <summary>
+        /// PORT DEVIATION (GUO): the node that draws what is behind the world
+        /// and the gumps (ADR-0016); null until LoadContent.
+        /// </summary>
+        internal CanvasBackground CanvasBackground { get; private set; }
+
         private readonly List<(uint, Action)> _queuedActions = new ();
 
         public void EnqueueAction(uint time, Action action)
@@ -224,6 +230,13 @@ namespace GUO
 
             var bytes = Loader.GetBackgroundImage().ToArray();
             _renderTargets.InitializeBackground(TextureFromPng(bytes));
+
+            // PORT DEVIATION (GUO): the profile's canvas background, a layer
+            // under this node's canvas; it tells the render targets when it
+            // has replaced upstream's tile. ADR-0016.
+            CanvasBackground = new CanvasBackground();
+            AddChild(CanvasBackground);
+            _renderTargets.SetBackgroundReplaced(() => CanvasBackground.Active);
 
             UO.Load(this);
             Audio.Initialize();

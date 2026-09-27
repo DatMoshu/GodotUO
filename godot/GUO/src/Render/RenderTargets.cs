@@ -27,6 +27,11 @@ namespace GUO.Renderer
         private Texture2D _background;
         private SamplerState _defaultSamplerState;
 
+        // PORT DEVIATION (GUO): true while the profile's canvas background
+        // (CanvasBackground, ADR-0016) is drawing under this canvas, in
+        // which case upstream's tile must not be drawn over it.
+        private Func<bool> _backgroundReplaced;
+
         public RenderTarget2D UiRenderTarget { get => _uiRenderTarget; }
         public RenderTarget2D LightRenderTarget { get => _lightRenderTarget; }
         public RenderTarget2D WorldRenderTarget { get => _worldRenderTarget; }
@@ -120,6 +125,15 @@ namespace GUO.Renderer
             _background = background ?? throw new ArgumentNullException(nameof(background));
         }
 
+        /// <summary>
+        /// PORT DEVIATION (GUO): lets the canvas background node say when it
+        /// has taken over from the tile; see the field.
+        /// </summary>
+        public void SetBackgroundReplaced(Func<bool> backgroundReplaced)
+        {
+            _backgroundReplaced = backgroundReplaced;
+        }
+
         public void Draw(UltimaBatcher2D batcher)
         {
             // draw world
@@ -138,13 +152,19 @@ namespace GUO.Renderer
                 _gameWindowOnScreen.Width,
                 _gameWindowOnScreen.Height
             );
-            batcher.DrawTiled(
-                _background,
-                rect,
-                new Rectangle(0, 0, _background.GetWidth(), _background.GetHeight()),
-                new Vector3(0, 0, 0.1f),
-                0f
-            );
+            // PORT DEVIATION (GUO): skipped when the profile's canvas
+            // background is drawing on the layer below (ADR-0016). In the
+            // default builtin-grey mode this draw runs exactly as upstream.
+            if (!(_backgroundReplaced?.Invoke() ?? false))
+            {
+                batcher.DrawTiled(
+                    _background,
+                    rect,
+                    new Rectangle(0, 0, _background.GetWidth(), _background.GetHeight()),
+                    new Vector3(0, 0, 0.1f),
+                    0f
+                );
+            }
 
             batcher.SetSampler(_defaultSamplerState);
 

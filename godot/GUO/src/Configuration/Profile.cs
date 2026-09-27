@@ -215,6 +215,16 @@ namespace GUO.Configuration
         // (GridContainerGump); a mobile default. Slot size in client px.
         public bool GridContainers { get; set; }
         public int GridContainerSlotSize { get; set; } = 44;
+
+        // PORT DEVIATION (GUO): the canvas background behind the world and
+        // the gumps (Renderer.CanvasBackground, ADR-0016). builtin-grey is
+        // upstream's tiled art; builtin-wood, image, video and frames are
+        // GUO's. Low power freezes video and frames on their first frame; a
+        // mobile and web default.
+        public string CanvasBackgroundMode { get; set; } = "builtin-grey";
+        public string CanvasBackgroundPath { get; set; } = "";
+        public int CanvasBackgroundFps { get; set; } = 12;
+        public bool CanvasBackgroundLowPower { get; set; }
         public int OverrideContainerLocationSetting { get; set; } // 0 = container position, 1 = top right of screen, 2 = last dragged position, 3 = remember every container
 
         [JsonConverter(typeof(Point2Converter))] public Point OverrideContainerLocationPosition { get; set; } = new Point(200, 200);

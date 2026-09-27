@@ -49,7 +49,7 @@ namespace GUO.Configuration
         /// The table version this build writes. 0 means the profile predates
         /// platform defaults (every profile saved before GUO had them).
         /// </summary>
-        public const int CurrentVersion = 5;
+        public const int CurrentVersion = 6;
 
         /// <summary>The login screen's size, which every login gump is laid out for.</summary>
         private const int LoginWidth = 640;
@@ -125,7 +125,11 @@ namespace GUO.Configuration
 
                 // v3: containers open as a grid of finger-sized slots
                 // (GridContainerGump).
-                BoolEntry(nameof(Profile.GridContainers), p => p.GridContainers, (p, v) => p.GridContainers = v, true, since: 3)
+                BoolEntry(nameof(Profile.GridContainers), p => p.GridContainers, (p, v) => p.GridContainers = v, true, since: 3),
+
+                // v6: a video or frames background shows its first frame only
+                // (CanvasBackground, ADR-0016): a battery, and a phone GPU.
+                BoolEntry(nameof(Profile.CanvasBackgroundLowPower), p => p.CanvasBackgroundLowPower, (p, v) => p.CanvasBackgroundLowPower = v, true, since: 6)
             },
 
             [ProfilePlatform.Web] = new[]
@@ -137,7 +141,10 @@ namespace GUO.Configuration
                 PointEntry(nameof(Profile.GameWindowPosition), p => p.GameWindowPosition, (p, v) => p.GameWindowPosition = v, _ => new Point(-5, -5)),
                 PointEntry(nameof(Profile.GameWindowSize), p => p.GameWindowSize, (p, v) => p.GameWindowSize = v, FullWindowSize),
                 BoolEntry(nameof(Profile.EnableMousewheelScaleZoom), p => p.EnableMousewheelScaleZoom, (p, v) => p.EnableMousewheelScaleZoom = v, true),
-                BoolEntry(nameof(Profile.SaveScaleAfterClose), p => p.SaveScaleAfterClose, (p, v) => p.SaveScaleAfterClose = v, true)
+                BoolEntry(nameof(Profile.SaveScaleAfterClose), p => p.SaveScaleAfterClose, (p, v) => p.SaveScaleAfterClose = v, true),
+
+                // v6: as on Mobile; a browser tab decodes video on the CPU.
+                BoolEntry(nameof(Profile.CanvasBackgroundLowPower), p => p.CanvasBackgroundLowPower, (p, v) => p.CanvasBackgroundLowPower = v, true, since: 6)
             }
         };
 

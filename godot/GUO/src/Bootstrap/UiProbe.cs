@@ -4,6 +4,7 @@ using Godot;
 using GUO.Configuration;
 using GUO.Game;
 using GUO.Game.Managers;
+
 using GUO.Game.UI.Gumps;
 
 namespace GUO.Host;
@@ -61,7 +62,8 @@ internal static class UiProbe
             + $"full size {p.GameWindowFullSize}, borderless {p.WindowBorderless}, world {p.GameWindowSize.X}x{p.GameWindowSize.Y} at {p.GameWindowPosition.X},{p.GameWindowPosition.Y}; "
             + $"wheel zoom {p.EnableMousewheelScaleZoom}, keep zoom {p.SaveScaleAfterClose}; "
             + $"large containers {p.UseLargeContainerGumps}, container scale {p.ContainersScale}, scale items {p.ScaleItemsInsideContainers}; "
-            + $"grid loot {p.GridLootType}; grid containers {p.GridContainers}, slot {p.GridContainerSlotSize}"
+            + $"grid loot {p.GridLootType}; grid containers {p.GridContainers}, slot {p.GridContainerSlotSize}; "
+            + $"background {p.CanvasBackgroundMode} '{p.CanvasBackgroundPath}' fps {p.CanvasBackgroundFps} low power {p.CanvasBackgroundLowPower}"
         );
 
         GameActions.OpenBackpack(world);
@@ -271,6 +273,31 @@ internal static class UiProbe
         }
 
         GD.Print($"[GUO] ui probe: {(Passed ? "ok" : "FAIL")}");
+
+        // Last, the Options gump on its Display page, where the canvas
+        // background controls are (ADR-0016), so the frame shows them.
+        UIManager.GetGump<OptionsGump>()?.Dispose();
+        OptionsGump options = new OptionsGump(world) { X = 40, Y = 40 };
+        UIManager.Add(options);
+        options.ChangePage(3);
+
+        await InputProbe.Wait(host, 10);
+
+        // The Background section is the last one on the page: scroll it into view.
+        foreach (Game.UI.Controls.Control child in options.Children)
+        {
+            if (child is Game.UI.Controls.ScrollArea area && child.Page == 3)
+            {
+                for (int i = 0; i < 200 && area.ScrollValue < area.ScrollMaxValue; i++)
+                {
+                    area.Scroll(false);
+                }
+            }
+        }
+
+        await InputProbe.Wait(host, 20);
+
+        GD.Print($"[GUO] ui probe: options gump open on page {options.ActivePage} ({options.Width}x{options.Height} at {options.X},{options.Y})");
     }
 
     private static Gump ContainerFor(uint serial) =>
