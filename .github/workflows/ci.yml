@@ -134,6 +134,12 @@ jobs:
           python tools/asset_store/test_corpus.py
           python tools/asset_store/smoke.py
 
+      # Authoring UO data files (ADR-0022): the staged set, the free scanners,
+      # the range policy, the append-only writers and the read-back, on tiny
+      # synthetic files made at test time. No client data.
+      - name: UO data writer tests
+        run: python tools/uodata_write/test_uodata.py
+
       # docs/port_status.md is generated. If it differs from a fresh audit
       # (ignoring its timestamp), someone ported without re-measuring.
       - name: Port audit is current

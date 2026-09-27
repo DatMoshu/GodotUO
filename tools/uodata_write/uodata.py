@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
 import struct
 import sys
@@ -318,12 +319,36 @@ def free_people_bodies(stage: Stage) -> list[int]:
 
 # --- the registry ---------------------------------------------------------------------
 
+POLICY = Path(__file__).resolve().parent / "ranges.json"
+
+
+def load_policy(override: Path | str | None = None) -> dict:
+    """The range policy (ADR-0022): tools/uodata_write/ranges.json, then a maintainer's file
+    (--ranges, or UO_DATA_RANGES) merged over it. "never" lists add up; "packs" entries replace."""
+    policy = json.loads(POLICY.read_text(encoding="utf-8"))
+    override = override or os.environ.get("UO_DATA_RANGES")
+    if override:
+        extra = json.loads(Path(override).read_text(encoding="utf-8"))
+        for ns, ranges in extra.get("never", {}).items():
+            policy["never"].setdefault(ns, []).extend(ranges)
+        for pack, ranges in extra.get("packs", {}).items():
+            policy["packs"].setdefault(pack, {}).update(ranges)
+    return policy
+
+
 class Registry:
     """slots.json: pack -> reserved ranges per namespace -> ids used. Keeps a pack together."""
 
-    def __init__(self, stage: Stage):
+    def __init__(self, stage: Stage, policy: dict | None = None):
         self.path = stage.root / "slots.json"
         self.data = json.loads(self.path.read_text(encoding="utf-8")) if self.path.exists() else {"format": 1, "packs": {}}
+        self.policy = policy if policy is not None else load_policy()
+
+    def never(self, namespace: str) -> set[int]:
+        out = set()
+        for lo, hi in self.policy.get("never", {}).get(namespace, []):
+            out.update(range(lo, hi + 1))
+        return out
 
     def save(self) -> None:
         self.path.write_text(json.dumps(self.data, indent=2) + "\n", encoding="utf-8")
@@ -336,18 +361,29 @@ class Registry:
         return out
 
     def reserve(self, pack: str, namespace: str, free: list[int], size: int, prefer_high: bool = True) -> tuple[int, int]:
-        """The first contiguous run of `size` free ids nobody has reserved."""
-        taken = self.reserved(namespace)
+        """The pack's range from the policy if it names one (every id must be free), else the
+        first contiguous run of `size` free ids that no pack holds and the policy does not bar."""
+        taken = self.reserved(namespace) | self.never(namespace)
+        fixed = self.policy.get("packs", {}).get(pack, {}).get(namespace)
+        if fixed:
+            lo, hi = fixed
+            bad = [i for i in range(lo, hi + 1) if i in taken or i not in set(free)]
+            if bad:
+                raise ValueError(f"pack {pack}'s {namespace} range {lo:#x}-{hi:#x} is not free: {[hex(i) for i in bad[:8]]}")
+            return self._hold(pack, namespace, lo, hi)
         ids = sorted(set(free) - taken, reverse=prefer_high)
         pool = set(ids)
         for start in ids:
             lo = start - size + 1 if prefer_high else start
             if all(i in pool for i in range(lo, lo + size)):
-                p = self.data["packs"].setdefault(pack, {"ranges": {}, "used": {}})
-                p["ranges"].setdefault(namespace, []).append([lo, lo + size - 1])
-                self.save()
-                return lo, lo + size - 1
+                return self._hold(pack, namespace, lo, lo + size - 1)
         raise ValueError(f"no free run of {size} in {namespace}")
+
+    def _hold(self, pack: str, namespace: str, lo: int, hi: int) -> tuple[int, int]:
+        p = self.data["packs"].setdefault(pack, {"ranges": {}, "used": {}})
+        p["ranges"].setdefault(namespace, []).append([lo, hi])
+        self.save()
+        return lo, hi
 
     def take(self, pack: str, namespace: str, what: str) -> int:
         p = self.data["packs"][pack]
