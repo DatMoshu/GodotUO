@@ -398,11 +398,15 @@ namespace GUO.Platform.Android
             }
             else
             {
-                // Whole-number shrink only, so the art keeps square pixels.
+                // Whole-number steps only, so the art keeps square pixels:
+                // large art shrinks to fit, small art (a book, a reagent)
+                // grows until it would not.
                 int longest = Math.Max(artInfo.UV.Width, artInfo.UV.Height);
-                int divisor = Math.Max(1, (longest + BadgeSize - 5) / (BadgeSize - 4));
-                int w = artInfo.UV.Width / divisor;
-                int h = artInfo.UV.Height / divisor;
+                int room = BadgeSize - 4;
+                int divisor = Math.Max(1, (longest + room - 1) / room);
+                int factor = divisor == 1 ? Math.Max(1, room / longest) : 1;
+                int w = artInfo.UV.Width * factor / divisor;
+                int h = artInfo.UV.Height * factor / divisor;
                 rect = new Rectangle(x - (w >> 1), y - (h >> 1), w, h);
             }
 
