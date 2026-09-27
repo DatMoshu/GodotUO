@@ -46,12 +46,18 @@ class StoreTests(unittest.TestCase):
         self.assertEqual(json.loads((root / "index.json").read_text()), index)
 
     def test_reject_payload_paths(self):
-        for name in ("../escape.png", "/root.png", "a\\b.png", "a:b.png", "CON.png", "foo./x.png", "cliloc.enu.png", "ART.MUL.png", "a//b.png", "a/../b.png"):
+        for name in ("../escape.png", "/root.png", "a\\b.png", "a:b.png", "CON.png", "foo./x.png", "cliloc.enu.png", "ART.MUL.png", "a//b.png", "a/../b.png",
+                     ".mul.png", ".UOP.png", ".idx.txt", ".def.json", "nested/.mul.png", ".mul.png/still.png"):
+            # Declare the malicious entry so failure proves path validation,
+            # rather than the separate undeclared-payload check.
+            self.manifest["files"][name] = hashlib.sha256(b"bad").hexdigest()
             with self.subTest(name=name), self.assertRaises(ValueError):
                 verify(self.pack({name: b"bad"}))
+            del self.manifest["files"][name]
 
     def test_reject_metadata(self):
-        for key, value in (("licence", "Proprietary"), ("kind", "art-override"), ("version", "1.02.0"), ("id", "../a"), ("min_profile_version", True), ("preview", "missing.png")):
+        for key, value in (("licence", "Proprietary"), ("kind", "art-override"), ("version", "1.02.0"), ("id", "../a"), ("min_profile_version", True), ("preview", "missing.png"),
+                           ("title", " " * 200 + "x"), ("author", "x" + " " * 200)):
             old = self.manifest[key]
             self.manifest[key] = value
             with self.subTest(key=key), self.assertRaises(ValueError):
