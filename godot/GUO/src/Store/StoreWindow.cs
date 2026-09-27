@@ -52,18 +52,24 @@ internal sealed partial class StoreWindow : CanvasLayer
         AddChild(backdrop);
         if (_ui > 1f) { backdrop.Position = Vector2.Zero; backdrop.Size = logical; }
         else backdrop.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+        // A short window (a phone at 2x is 540 logical px tall) keeps only its
+        // controls above the list: the Close/Refresh row, the address row and
+        // the filters, three 48 px rows, with tighter margins. Brand, title,
+        // tagline and the closing hint go, so the collection gets the height.
+        bool compact = logical.Y < 720;
         var margin = new MarginContainer(); backdrop.AddChild(margin); margin.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
-        foreach (string side in new[] { "left", "right", "top", "bottom" }) margin.AddThemeConstantOverride("margin_" + side, 28);
+        foreach (string side in new[] { "left", "right", "top", "bottom" }) margin.AddThemeConstantOverride("margin_" + side, compact ? 12 : 28);
         margin.Theme = BuildTheme();
-        var column = new VBoxContainer(); column.AddThemeConstantOverride("separation", 14); margin.AddChild(column);
+        var column = new VBoxContainer(); column.AddThemeConstantOverride("separation", compact ? 8 : 14); margin.AddChild(column);
         var bar = new HBoxContainer(); column.AddChild(bar);
-        var brand = Text("GODOTUO  /  COMMUNITY COLLECTION", 13, Gold); brand.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill; bar.AddChild(brand);
+        var brand = Text(compact ? "" : "GODOTUO  /  COMMUNITY COLLECTION", 13, Gold); brand.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill; bar.AddChild(brand);
         var refresh = Touchable(new Button { Text = "Refresh" }); bar.AddChild(refresh); refresh.Pressed += () => _ = Refresh();
         var close = Touchable(new Button { Text = "Close" }); bar.AddChild(close); close.Pressed += QueueFree;
-        // On a touch screen the header gives its height to the list: at 2x
-        // the full header left room for one row of cards.
-        column.AddChild(Text("Make the world your own.", _ui > 1f ? 22 : 32, new Color("eeeade")));
-        if (_ui <= 1f) column.AddChild(Text("Backgrounds, sounds, themes and presets for your next adventure.", 15, Muted));
+        if (!compact)
+        {
+            column.AddChild(Text("Make the world your own.", 32, new Color("eeeade")));
+            column.AddChild(Text("Backgrounds, sounds, themes and presets for your next adventure.", 15, Muted));
+        }
         var addressRow = new HBoxContainer(); column.AddChild(addressRow);
         var addressLabel = Text("Store address", 14, Gold);
         addressLabel.AutowrapMode = TextServer.AutowrapMode.Off;
@@ -81,7 +87,7 @@ internal sealed partial class StoreWindow : CanvasLayer
         _list = new GridContainer { Columns = logical.X >= 950 ? 2 : 1, SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
         _list.AddThemeConstantOverride("h_separation", 14); _list.AddThemeConstantOverride("v_separation", 14); scroll.AddChild(_list);
         _status = Text("Loading collection…", 13, Muted); column.AddChild(_status);
-        column.AddChild(Text("After installing: reopen Options, choose your background, then Apply.", 12, Muted));
+        if (!compact) column.AddChild(Text("After installing: reopen Options, choose your background, then Apply.", 12, Muted));
         try { _address.Text = StoreOptions.Url; _ = Refresh(); }
         catch (Exception) { _status.Text = "Could not read this profile's store address. Enter an address and Save & connect."; }
     }
