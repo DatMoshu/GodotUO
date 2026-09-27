@@ -30,7 +30,19 @@ launchers\dev\editor_smoke.bat [same flags]
      (text only for Cliloc and Sounds), and text. Sounds also plays the
      selection through the game's audio. Parity is skipped, not failed, when
      UOWW's `uoasset` CLI is not installed;
-   - windowed only: the editor window is captured once per panel.
+   - windowed only: the editor window is captured once per panel;
+   - then the **UO World** tab (ADR-0015), reached the way a user reaches it,
+     through the Maps panel's "Show in UO World" for map0 1496,1628. The world
+     must boot, `GameScene` must draw objects (and windowed, a frame with more
+     than 64 colours), and a pick at the view's centre, through the game's own
+     picking, must reach the inspector. A multi is placed and removed through
+     the server's object and delete paths, and must add to what is drawn;
+   - then the **world project overlay** (ADR-0011), in a project under the
+     output folder: block 187,203 becomes water with three extra statics,
+     written to JSON, reopened from disk and applied. The chunk must hold
+     exactly those, closing must restore the install's block, and the
+     install's `map*`/`statics*`/`staidx*` files must keep their modification
+     times.
 3. With `--reload`: after the first pass the addon writes `reload.request`;
    the tool touches a source file, rebuilds, and answers `reload.go`; the
    addon sends the editor the focus-in notification GodotTools reloads on.
@@ -53,7 +65,10 @@ launchers\dev\editor_smoke.bat [same flags]
 | `report.json` | every check, `ok`, `failures`; with `--reload`, the first pass under `before_reload` |
 | `<panel>.png` | what the inspector was given for that panel, as decoded (`art.png`, `anims.png` is frame 0, `parity.png` is reference / GUO / diff) |
 | `editor_<panel>.png` | the editor window with that panel showing (windowed only) |
-| `*_after_reload.png` | the same, from the second pass (`--reload`) |
+| `world.png`, `world_multi.png`, `world_overlay.png` | the World tab's viewport: as the install has it, with the server-path multi, with the overlay (windowed only) |
+| `editor_world.png` | the editor with the World tab showing |
+| `world_project/` | the overlay check's world project: `project.json` and `blocks/0/187_203.json` |
+| `*_after_reload.*` | the same, from the second pass (`--reload`) |
 | `editor.log` | the editor's stdout/stderr |
 
 These are renders of client art: they stay under `build\` and are never

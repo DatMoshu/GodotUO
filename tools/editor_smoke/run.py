@@ -159,6 +159,18 @@ def main() -> int:
         print(f"[editor_smoke]   {mark} {name:<7} {p.get('query')!s:<12} -> {p.get('id')!s:<10} {what}, {p.get('ms')} ms{extra}")
         if name in panels_before and not panels_before[name].get("ok"):
             print(f"[editor_smoke]        (failed before the reload)")
+    world = report.get("world") or {}
+    if world:
+        print(f"[editor_smoke]   {'ok  ' if world.get('ok', True) else 'FAIL'} World   map{(world.get('position') or ['?'])[0]} "
+              f"{(world.get('position') or [0, '?', '?'])[1]},{(world.get('position') or [0, '?', '?'])[2]} "
+              f"boot {world.get('boot_ms')} ms, {world.get('rendered_objects')} objects drawn, "
+              f"{world.get('distinct_colours', 'no')} colours, picked: {world.get('picked')}")
+    overlay = world.get("overlay") or {}
+    if overlay:
+        print(f"[editor_smoke]   {'ok  ' if overlay.get('ok') else 'FAIL'} Overlay block 187,203: "
+              f"{overlay.get('trees_in_chunk')} trees (install {overlay.get('base_trees')}), "
+              f"{overlay.get('water_in_chunk')} water cells, after close {overlay.get('trees_after_close')} trees, "
+              f"install untouched: {overlay.get('install_untouched')}")
     shots = sorted(out.glob("editor_*.png"))
     if shots:
         print(f"[editor_smoke] screenshots : {len(shots)} in {out}")

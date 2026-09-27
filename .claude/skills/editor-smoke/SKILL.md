@@ -62,6 +62,9 @@ saw against what each default query should show:
 | Multis | 0x0064 | a small plaster house, tiled roof, stone base and steps |
 | Maps | 1496,1628 | east Britain streets, the sea and a bridge on the right; magenta marks the cell |
 | Parity | 0x0E75 | reference, GUO and diff side by side; the diff all dimmed, no magenta |
+| World (`world.png`) | map0 1496,1628 | east Britain drawn by the game: a large blue-roofed building at centre, town walls left, the bridge and river bottom right |
+| World (`world_multi.png`) | multi 0x0064 | the same, plus a small red-roofed house just below centre |
+| World (`world_overlay.png`) | block 187,203 | the house gone; an 8x8 diamond of water with three bare trees in front of the big building's stairs |
 
 Editor screenshots are 4K; downscale before viewing, e.g.
 `python -c "from PIL import Image; im=Image.open('in.png'); im.resize((im.width//2, im.height//2), Image.NEAREST).save('out.png')"`
