@@ -853,7 +853,7 @@ namespace GUO.Input.Touch
         /// <summary>Echo the trace to the log as well (<c>--touch-trace</c>).</summary>
         public static bool TraceToLog { get; set; }
 
-        private static void Note(string what)
+        internal static void Note(string what)
         {
             if (TraceToLog)
             {

@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using Godot;
 using GUO.Compat;
 using GUO.Configuration;
+using GUO.Game;
 using GUO.Game.Managers;
 using GUO.Game.UI.Gumps;
 using GUO.Input;
@@ -255,6 +256,20 @@ namespace GUO.Platform.Android
             int mainWidth = MainWidth;
             UIManager.DrawGumpsWhere(batcher, g => g.X + (g.Width >> 1) >= mainWidth);
 
+            // The held item. GameCursor draws it at the pointer into the main
+            // window's target, so a pick-up from a shelved gump put it past
+            // the main window's edge, where nothing shows it (bug 2 of the
+            // Thor pass). Draw it here instead, and a badge on the screen
+            // the pointer is not on, so the player always sees what they carry.
+            if (PointerOnShelf)
+            {
+                DrawHeldItem(batcher, Mouse.Position.X, Mouse.Position.Y, 1f, true);
+            }
+            else
+            {
+                DrawHeldBadge(batcher, mainWidth + BadgeMargin, _instance._logicalHeight - BadgeMargin);
+            }
+
             if (clipped)
             {
                 batcher.ClipEnd();
@@ -262,6 +277,131 @@ namespace GUO.Platform.Android
 
             batcher.End();
             batcher.SetRenderTarget(restore);
+        }
+
+        /// <summary>Pixels between the held-item badge and the screen's edge.</summary>
+        private const int BadgeMargin = 8;
+
+        /// <summary>The largest side of the held-item badge, in client pixels.</summary>
+        private const int BadgeSize = 44;
+
+        /// <summary>Whether the pointer (the last touch) is on the second screen.</summary>
+        private static bool PointerOnShelf => Active && !Suspended && Mouse.Position.X >= MainWidth;
+
+        /// <summary>
+        /// The main window's half of the held-item marker: while the pointer
+        /// is on the second screen, a badge of the held item in the main
+        /// window's bottom-right corner, above the touch bar. Called by
+        /// GameController.DrawFrame inside the cursor's batch.
+        /// </summary>
+        public static void DrawMainBadge(UltimaBatcher2D batcher)
+        {
+            if (!PointerOnShelf || Client.Game == null)
+            {
+                return;
+            }
+
+            Rectangle bounds = Client.Game.ClientBounds;
+            float bar = TouchInput.Bar?.ReservedFraction ?? 0f;
+            int bottom = bounds.Height - (int)Math.Ceiling(bar * bounds.Height);
+
+            DrawHeldBadge(batcher, bounds.Width - BadgeMargin - BadgeSize, bottom - BadgeMargin);
+        }
+
+        /// <summary>
+        /// A held-item badge: the item, at most <see cref="BadgeSize"/> on its
+        /// longer side, on a dark square, with its bottom-left corner at
+        /// (<paramref name="left"/>, <paramref name="bottom"/>).
+        /// </summary>
+        private static void DrawHeldBadge(UltimaBatcher2D batcher, int left, int bottom)
+        {
+            GameCursor cursor = Client.Game?.UO?.GameCursor;
+
+            if (cursor == null || !cursor.ItemHold.Enabled || cursor.ItemHold.Dropped)
+            {
+                return;
+            }
+
+            var box = new Rectangle(left, bottom - BadgeSize, BadgeSize, BadgeSize);
+            batcher.Draw(
+                SolidColorTextureCache.GetTexture(GUO.Compat.Color.Black),
+                box,
+                ShaderHueTranslator.GetHueVector(0, false, 0.55f),
+                0f
+            );
+
+            DrawHeldItem(batcher, box.X + (BadgeSize >> 1), box.Y + (BadgeSize >> 1), 0.9f, false);
+        }
+
+        /// <summary>
+        /// Draw the held item as GameCursor does, from its own helpers. At the
+        /// pointer (<paramref name="atPointer"/>) it keeps the grab offset and
+        /// the stack's second copy; as a badge it is centred on (x, y) and
+        /// shrunk to fit.
+        /// </summary>
+        private static void DrawHeldItem(UltimaBatcher2D batcher, int x, int y, float alpha, bool atPointer)
+        {
+            GameCursor cursor = Client.Game?.UO?.GameCursor;
+
+            if (cursor == null || !cursor.ItemHold.Enabled || cursor.ItemHold.Dropped)
+            {
+                return;
+            }
+
+            ItemHold hold = cursor.ItemHold;
+            ushort graphic = cursor.GetDraggingItemGraphic();
+
+            if (graphic == 0xFFFF)
+            {
+                return;
+            }
+
+            ref readonly var artInfo = ref (hold.IsGumpTexture ? ref Client.Game.UO.Gumps.GetGump(graphic) : ref Client.Game.UO.Arts.GetArt(graphic));
+
+            if (artInfo.Texture == null || artInfo.UV.Width <= 0 || artInfo.UV.Height <= 0)
+            {
+                return;
+            }
+
+            float scale = 1f;
+
+            if (ProfileManager.CurrentProfile != null && ProfileManager.CurrentProfile.ScaleItemsInsideContainers)
+            {
+                scale = UIManager.ContainerScale;
+            }
+
+            Rectangle rect;
+
+            if (atPointer)
+            {
+                if (hold.IsFixedPosition)
+                {
+                    x = hold.FixedX;
+                    y = hold.FixedY;
+                }
+
+                Point offset = cursor.GetDraggingItemOffset();
+                rect = new Rectangle(x - offset.X, y - offset.Y, (int)(artInfo.UV.Width * scale), (int)(artInfo.UV.Height * scale));
+            }
+            else
+            {
+                // Whole-number shrink only, so the art keeps square pixels.
+                int longest = Math.Max(artInfo.UV.Width, artInfo.UV.Height);
+                int divisor = Math.Max(1, (longest + BadgeSize - 5) / (BadgeSize - 4));
+                int w = artInfo.UV.Width / divisor;
+                int h = artInfo.UV.Height / divisor;
+                rect = new Rectangle(x - (w >> 1), y - (h >> 1), w, h);
+            }
+
+            Vector3 hue = ShaderHueTranslator.GetHueVector(hold.Hue, hold.IsPartialHue, hold.HasAlpha ? .5f * alpha : alpha);
+            batcher.Draw(artInfo.Texture, rect, artInfo.UV, hue, 0f);
+
+            if (atPointer && hold.Amount > 1 && hold.DisplayedGraphic == hold.Graphic && hold.IsStackable)
+            {
+                rect.X += 5;
+                rect.Y += 5;
+                batcher.Draw(artInfo.Texture, rect, artInfo.UV, hue, 0f);
+            }
         }
 
         /// <summary>Save what the second screen last showed. False when there is nothing yet.</summary>

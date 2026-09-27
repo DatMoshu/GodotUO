@@ -148,7 +148,9 @@ namespace GUO.Game
 
         public ItemHold ItemHold { get; } = new ItemHold();
 
-        private ushort GetDraggingItemGraphic()
+        // PORT DEVIATION (GUO): internal, not private, so the second screen of
+        // a dual-screen device can draw the held item the same way (DualScreen).
+        internal ushort GetDraggingItemGraphic()
         {
             if (ItemHold.Enabled)
             {
@@ -163,7 +165,7 @@ namespace GUO.Game
             return 0xFFFF;
         }
 
-        private Point GetDraggingItemOffset()
+        internal Point GetDraggingItemOffset()
         {
             ushort graphic = GetDraggingItemGraphic();
 

@@ -228,6 +228,11 @@ namespace GUO.Configuration
         public bool GridContainers { get; set; }
         public int GridContainerSlotSize { get; set; } = 44;
 
+        // PORT DEVIATION (GUO): the touch bar's chevron and its row of combat
+        // macros, which comes up by itself on entering War mode unless the
+        // player hid it this session (TouchGumpBar); a mobile default.
+        public bool TouchMacroRow { get; set; }
+
         // PORT DEVIATION (GUO): the canvas background behind the world and
         // the gumps (Renderer.CanvasBackground, ADR-0016). builtin-grey is
         // upstream's tiled art; builtin-wood, image, video and frames are

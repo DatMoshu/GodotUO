@@ -49,7 +49,7 @@ namespace GUO.Configuration
         /// The table version this build writes. 0 means the profile predates
         /// platform defaults (every profile saved before GUO had them).
         /// </summary>
-        public const int CurrentVersion = 8;
+        public const int CurrentVersion = 9;
 
         /// <summary>The login screen's size, which every login gump is laid out for.</summary>
         private const int LoginWidth = 640;
@@ -159,7 +159,13 @@ namespace GUO.Configuration
                 // grid only. It is not the upstream default, so the usual
                 // test cannot see it; a player who chose 2 under Options is
                 // indistinguishable and gets 1 once.
-                new Entry(nameof(Profile.GridLootType), 8, p => p.GridLootType == 2, p => p.GridLootType = 1)
+                new Entry(nameof(Profile.GridLootType), 8, p => p.GridLootType == 2, p => p.GridLootType = 1),
+
+                // v9: the touch bar's chevron and macro row (TouchGumpBar):
+                // Target next, Attack last and the rest a mouse reaches by
+                // hotkey, for moving targets a finger cannot keep up with
+                // (Thor pass 2, bug 7).
+                BoolEntry(nameof(Profile.TouchMacroRow), p => p.TouchMacroRow, (p, v) => p.TouchMacroRow = v, true, since: 9)
             ),
 
             [ProfilePlatform.Web] = WithShelf

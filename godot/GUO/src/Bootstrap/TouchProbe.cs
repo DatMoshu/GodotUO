@@ -48,12 +48,12 @@ internal static class TouchProbe
         // --- login screen --------------------------------------------------
 
         TouchInput.Trace.Clear();
-        await Tap(host, Client(AccountField));
+        await Tap(host, Client(AccountField + new Vector2(InputProbe.LoginOrigin().X, InputProbe.LoginOrigin().Y)));
         await Frames(host, 10);
 
         Check(
             "a tap became a left click",
-            TouchInput.Trace.Contains("tap -> left click"),
+            TouchInput.Trace.Exists(t => t.StartsWith("tap -> left click")),
             string.Join(" | ", TouchInput.Trace)
         );
         Check(
@@ -101,6 +101,7 @@ internal static class TouchProbe
         await DoubleTapCheck(host, world);
         await PinchCheck(host);
         await BarCheck(host);
+        await MacroRowCheck(host, world);
         await LongPressCheck(host);
 
         Finish();
@@ -250,6 +251,74 @@ internal static class TouchProbe
             string.Join(" | ", TouchInput.Trace)
         );
         Check("the backpack opened", UIManager.GetGump<ContainerGump>() != null);
+    }
+
+    /// <summary>
+    /// The chevron and the macro row: the row comes up on entering War mode,
+    /// a macro button runs its macro (War/Peace), the chevron hides the row,
+    /// a hidden row stays hidden through the next War mode, and the chevron
+    /// brings it back. Leaves the row up for the photograph.
+    /// </summary>
+    private static async System.Threading.Tasks.Task MacroRowCheck(Node host, Game.World world)
+    {
+        TouchGumpBar bar = TouchInput.Bar;
+        Configuration.Profile profile = Configuration.ProfileManager.CurrentProfile;
+
+        if (bar == null || profile == null)
+        {
+            Check("the macro row", false, "no bar or no profile");
+
+            return;
+        }
+
+        // A desktop profile does not have the mobile default; the probe
+        // turns it on for this run, as Options would.
+        profile.TouchMacroRow = true;
+
+        if (world.Player.InWarMode)
+        {
+            Game.GameActions.ToggleWarMode(world.Player);
+            await Frames(host, 60);
+        }
+
+        await Frames(host, 5);
+        Check("the chevron is shown and the row is down", bar.ChevronShown && !bar.RowShown);
+
+        TouchInput.Trace.Clear();
+        Game.GameActions.ToggleWarMode(world.Player);
+        await Frames(host, 60);
+
+        Check(
+            "the row comes up on entering War mode",
+            world.Player.InWarMode && bar.RowShown,
+            $"war {world.Player.InWarMode}, row {bar.RowShown} | {string.Join(" | ", TouchInput.Trace)}"
+        );
+
+        Rect2 war = bar.ButtonRect("m:war");
+        await Tap(host, war.Position + war.Size / 2);
+        await Frames(host, 60);
+
+        Check("the War/Peace button ran its macro", !world.Player.InWarMode, string.Join(" | ", TouchInput.Trace));
+
+        Rect2 chevron = bar.ChevronRect();
+        await Tap(host, chevron.Position + chevron.Size / 2);
+        await Frames(host, 5);
+
+        Check("the chevron hides the row", !bar.RowShown && bar.HiddenThisSession);
+
+        Game.GameActions.ToggleWarMode(world.Player);
+        await Frames(host, 60);
+
+        Check("a hidden row stays down on entering War mode", world.Player.InWarMode && !bar.RowShown);
+
+        Game.GameActions.ToggleWarMode(world.Player);
+        await Frames(host, 60);
+
+        chevron = bar.ChevronRect();
+        await Tap(host, chevron.Position + chevron.Size / 2);
+        await Frames(host, 5);
+
+        Check("the chevron brings the row back", bar.RowShown, string.Join(" | ", TouchInput.Trace));
     }
 
     /// <summary>A long press on the paperdoll's frame closes it, as a right click does.</summary>

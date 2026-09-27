@@ -526,8 +526,17 @@ public partial class Main : Node
     {
         await DualProbe.Run(this);
 
+        // --dual-probe-held: the photographs are taken with an item held from
+        // the shelved backpack and the pointer on the second screen.
+        bool held = _options.DualProbeHeld && DualProbe.Passed && await DualProbe.HoldOnShelf(this);
+
         SaveSecondFrame();
         await CaptureFrame();
+
+        if (held)
+        {
+            await DualProbe.DropBack(this);
+        }
 
         if (!OS.HasFeature("mobile"))
         {
@@ -847,6 +856,9 @@ public partial class Main : Node
         /// <summary>Log in, use the second screen, report and photograph it; see DualProbe.</summary>
         public bool DualProbe { get; private set; }
 
+        /// <summary>The dual probe's photographs with an item held; see DualProbe.HoldOnShelf.</summary>
+        public bool DualProbeHeld { get; private set; }
+
         /// <summary>"WxH": stand a desktop window in for a second display of that size.</summary>
         public string DualSimulate { get; private set; } = "";
 
@@ -973,6 +985,10 @@ public partial class Main : Node
                         break;
                     case "--dual-probe":
                         o.DualProbe = true;
+                        break;
+                    case "--dual-probe-held":
+                        o.DualProbe = true;
+                        o.DualProbeHeld = true;
                         break;
                     case "--dual-screen":
                         o.DualSimulate = Next() ?? "";

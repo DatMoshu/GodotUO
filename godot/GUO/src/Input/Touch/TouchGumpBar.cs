@@ -3,6 +3,7 @@
 using System.Collections.Generic;
 using Godot;
 using GUO.Assets;
+using GUO.Configuration;
 using GUO.Game;
 using GUO.Game.Managers;
 using GUO.Resources;
@@ -37,6 +38,14 @@ namespace GUO.Input.Touch
     /// is in the world, which is the only time the actions it offers exist.
     /// While a target cursor is up, Chat and Options give way to Self and
     /// Cancel (tinted blue and red): a phone has no Esc to cancel a target.
+    ///
+    /// With the profile's TouchMacroRow on (a mobile default, v9), a chevron
+    /// tab above the bar's right end shows and hides a second row: six of
+    /// upstream's own macros (Target next, Attack last, Last target, Last
+    /// object, Bandage self, War/Peace), run through the MacroManager as a
+    /// macro button gump runs them. The row comes up by itself when the
+    /// player enters War mode, unless the player hid it with the chevron
+    /// since entering the world.
     /// </remarks>
     internal sealed partial class TouchGumpBar : CanvasLayer
     {
@@ -55,6 +64,30 @@ namespace GUO.Input.Touch
         {
             "paperdoll", "backpack", "journal", "map", "self", "cancel",
         };
+
+        /// <summary>The macro row's buttons, left to right; MacroFor names the macro each runs.</summary>
+        public static readonly string[] MacroActions =
+        {
+            "m:next", "m:attack", "m:last", "m:object", "m:bandage", "m:war",
+        };
+
+        private static MacroType MacroFor(string action)
+        {
+            switch (action)
+            {
+                case "m:next": return MacroType.TargetNext;
+                case "m:attack": return MacroType.AttackLast;
+                case "m:last": return MacroType.LastTarget;
+                case "m:object": return MacroType.LastObject;
+                case "m:bandage": return MacroType.BandageSelf;
+                case "m:war": return MacroType.WarPeace;
+            }
+
+            return MacroType.None;
+        }
+
+        /// <summary>The chevron tab's name, as HitTest reports it.</summary>
+        public const string Chevron = "chevron";
 
         /// <summary>The buttons as they are now.</summary>
         public static string[] Current =>
@@ -79,6 +112,18 @@ namespace GUO.Input.Touch
         /// <summary>Whether the bar is drawn and takes taps.</summary>
         public bool Shown { get; private set; }
 
+        /// <summary>Whether the profile offers the chevron and the macro row.</summary>
+        public bool ChevronShown => Shown && (ProfileManager.CurrentProfile?.TouchMacroRow ?? false);
+
+        /// <summary>Whether the macro row is up.</summary>
+        public bool RowShown => ChevronShown && _rowOpen;
+
+        /// <summary>Whether the player hid the row with the chevron since entering the world.</summary>
+        public bool HiddenThisSession { get; private set; }
+
+        private bool _rowOpen;
+        private bool _wasWar;
+
         /// <summary>
         /// The share of the window's height the bar covers while shown, so a
         /// gump can be kept above it whatever units it is laid out in.
@@ -96,7 +141,7 @@ namespace GUO.Input.Touch
 
                 Layout(out Rect2 band, out _, out _, out _);
 
-                return band.Size.Y / viewHeight;
+                return band.Size.Y * (RowShown ? 2 : 1) / viewHeight;
             }
         }
 
@@ -114,9 +159,26 @@ namespace GUO.Input.Touch
             {
                 Shown = inGame;
                 _surface.QueueRedraw();
+
+                // A new session: the row starts down, and entering War mode
+                // may bring it up again.
+                _rowOpen = false;
+                HiddenThisSession = false;
+                _wasWar = false;
             }
-            else if (Shown)
+
+            if (Shown)
             {
+                bool war = Client.Game.UO.World.Player?.InWarMode ?? false;
+
+                if (war && !_wasWar && ChevronShown && !HiddenThisSession && !_rowOpen)
+                {
+                    _rowOpen = true;
+                    TouchInput.Note("macro row: up on War mode");
+                }
+
+                _wasWar = war;
+
                 // The window can change size under it, and so can the scale.
                 _surface.QueueRedraw();
             }
@@ -174,17 +236,55 @@ namespace GUO.Input.Touch
             }
         }
 
-        /// <summary>The rectangle of one button's art, in viewport pixels.</summary>
-        private Rect2 ArtRect(string action)
+        /// <summary>
+        /// Which band a button sits in and its place along it: the bar's own
+        /// row, or the macro row directly above it. False if it is in neither.
+        /// </summary>
+        private bool Place(string action, out Rect2 band, out int index, out Vector2 art, out float spacing)
         {
-            int index = System.Array.IndexOf(Current, action);
+            Layout(out band, out _, out art, out spacing);
+            index = System.Array.IndexOf(Current, action);
+
+            if (index >= 0)
+            {
+                return true;
+            }
+
+            index = System.Array.IndexOf(MacroActions, action);
 
             if (index < 0)
             {
-                return default;
+                return false;
             }
 
+            band = RowBand(band);
+
+            return true;
+        }
+
+        /// <summary>The macro row's band: the bar's band, moved up by its own height.</summary>
+        private static Rect2 RowBand(Rect2 band) => new(band.Position.X, band.Position.Y - band.Size.Y, band.Size.X, band.Size.Y);
+
+        /// <summary>
+        /// The chevron tab: two button heights wide and one tall, on top of
+        /// the upper row, its right edge flush with the last button's.
+        /// </summary>
+        public Rect2 ChevronRect()
+        {
             Layout(out Rect2 band, out _, out Vector2 art, out float spacing);
+            Rect2 top = RowShown ? RowBand(band) : band;
+            var size = new Vector2(art.Y * 2, art.Y);
+
+            return new Rect2(top.End.X - spacing - size.X, top.Position.Y - size.Y, size.X, size.Y);
+        }
+
+        /// <summary>The rectangle of one button's art, in viewport pixels.</summary>
+        private Rect2 ArtRect(string action)
+        {
+            if (!Place(action, out Rect2 band, out int index, out Vector2 art, out float spacing))
+            {
+                return default;
+            }
 
             float x = spacing + index * (art.X + spacing);
             float y = band.Position.Y + (band.Size.Y - art.Y) / 2;
@@ -199,14 +299,15 @@ namespace GUO.Input.Touch
         /// </summary>
         public Rect2 ButtonRect(string action)
         {
-            int index = System.Array.IndexOf(Current, action);
+            if (action == Chevron)
+            {
+                return ChevronRect();
+            }
 
-            if (index < 0)
+            if (!Place(action, out Rect2 band, out int index, out Vector2 art, out float spacing))
             {
                 return default;
             }
-
-            Layout(out Rect2 band, out _, out Vector2 art, out float spacing);
 
             float x = spacing / 2 + index * (art.X + spacing);
 
@@ -223,6 +324,13 @@ namespace GUO.Input.Touch
                 return false;
             }
 
+            if (ChevronShown && ChevronRect().HasPoint(at))
+            {
+                action = Chevron;
+
+                return true;
+            }
+
             foreach (string a in Current)
             {
                 if (ButtonRect(a).HasPoint(at))
@@ -230,6 +338,19 @@ namespace GUO.Input.Touch
                     action = a;
 
                     return true;
+                }
+            }
+
+            if (RowShown)
+            {
+                foreach (string a in MacroActions)
+                {
+                    if (ButtonRect(a).HasPoint(at))
+                    {
+                        action = a;
+
+                        return true;
+                    }
                 }
             }
 
@@ -250,6 +371,31 @@ namespace GUO.Input.Touch
 
             _pressed = action;
             _pressedAt = Godot.Time.GetTicksMsec();
+
+            if (action == Chevron)
+            {
+                _rowOpen = !_rowOpen;
+
+                if (!_rowOpen)
+                {
+                    HiddenThisSession = true;
+                }
+
+                return;
+            }
+
+            MacroType macro = MacroFor(action);
+
+            if (macro != MacroType.None)
+            {
+                // As MacroButtonGump.RunMacro runs a macro button.
+                Macro m = Macro.CreateFastMacro(action, macro, MacroSubType.MSC_NONE);
+                world.Macros.SetMacroToExecute(m.Items as MacroObject);
+                world.Macros.WaitForTargetTimer = 0;
+                world.Macros.Update();
+
+                return;
+            }
 
             switch (action)
             {
@@ -326,6 +472,13 @@ namespace GUO.Input.Touch
                 case "options": return "Options";
                 case "self": return "Self";
                 case "cancel": return "Cancel";
+                case "m:next": return "Next Target";
+                case "m:attack": return "Attack Last";
+                case "m:last": return "Last Target";
+                case "m:object": return "Last Object";
+                case "m:bandage": return "Bandage Self";
+                case "m:war":
+                    return Client.Game?.UO?.World?.Player?.InWarMode == true ? "Peace" : "War";
             }
 
             return action;
@@ -338,7 +491,10 @@ namespace GUO.Input.Touch
         /// </summary>
         private Texture2D LabelTexture(string action)
         {
-            if (_labels.TryGetValue(action, out Texture2D cached))
+            // Cached by caption: War/Peace changes with the stance.
+            string caption = Label(action);
+
+            if (_labels.TryGetValue(caption, out Texture2D cached))
             {
                 return cached;
             }
@@ -351,7 +507,7 @@ namespace GUO.Input.Touch
             }
 
             FontsLoader.FontInfo fi = fonts.GenerateUnicode(
-                LabelFont, Label(action), 0, 30, 0, TEXT_ALIGN_TYPE.TS_LEFT, 0, false, 0
+                LabelFont, caption, 0, 30, 0, TEXT_ALIGN_TYPE.TS_LEFT, 0, false, 0
             );
 
             if (fi.Data == null || fi.Width <= 0 || fi.Height <= 0)
@@ -368,7 +524,7 @@ namespace GUO.Input.Touch
 
             Image image = Image.CreateFromData(fi.Width, fi.Height, false, Image.Format.Rgba8, rgba);
             Texture2D texture = ImageTexture.CreateFromImage(image);
-            _labels[action] = texture;
+            _labels[caption] = texture;
 
             return texture;
         }
@@ -410,6 +566,16 @@ namespace GUO.Input.Touch
                 // The band: one quiet strip so the buttons read as a bar.
                 DrawRect(band, new Color(0f, 0f, 0f, 0.55f));
 
+                if (bar.RowShown)
+                {
+                    DrawRect(RowBand(band), new Color(0f, 0f, 0f, 0.55f));
+                }
+
+                if (bar.ChevronShown)
+                {
+                    DrawChevron(bar.ChevronRect(), bar.RowShown, artScale);
+                }
+
                 Texture2D face = null;
                 Rect2 faceUv = default;
 
@@ -426,7 +592,14 @@ namespace GUO.Input.Touch
 
                 bool lit = bar._pressed != null && Godot.Time.GetTicksMsec() - bar._pressedAt < PressedMs;
 
-                foreach (string action in Current)
+                var actions = new List<string>(Current);
+
+                if (bar.RowShown)
+                {
+                    actions.AddRange(MacroActions);
+                }
+
+                foreach (string action in actions)
                 {
                     Rect2 r = bar.ArtRect(action);
 
@@ -476,11 +649,43 @@ namespace GUO.Input.Touch
                         DrawRect(r, new Color(1f, 0.20f, 0.15f, 0.35f));
                     }
 
+                    // The macro row reads as a row of its own: a warm tint.
+                    if (action.StartsWith("m:"))
+                    {
+                        DrawRect(r, new Color(0.85f, 0.55f, 0.10f, 0.22f));
+                    }
+
                     if (lit && action == bar._pressed)
                     {
                         DrawRect(r, new Color(1f, 1f, 1f, 0.25f));
                     }
                 }
+            }
+
+            /// <summary>
+            /// The chevron tab: a dark tab on the band below it, with a gold
+            /// arrow that points up while the row is down (tap to raise it)
+            /// and down while it is up.
+            /// </summary>
+            private void DrawChevron(Rect2 r, bool rowUp, int artScale)
+            {
+                DrawRect(r, new Color(0f, 0f, 0f, 0.55f));
+                DrawRect(r, new Color(0.78f, 0.64f, 0.36f), false, System.Math.Max(1f, artScale));
+
+                Vector2 c = r.GetCenter();
+                float w = r.Size.Y * 0.45f;
+                float h = r.Size.Y * 0.22f;
+                float dir = rowUp ? 1f : -1f;
+
+                DrawColoredPolygon(
+                    new[]
+                    {
+                        new Vector2(c.X - w, c.Y - dir * h),
+                        new Vector2(c.X + w, c.Y - dir * h),
+                        new Vector2(c.X, c.Y + dir * h),
+                    },
+                    new Color(0.95f, 0.80f, 0.40f)
+                );
             }
         }
     }
