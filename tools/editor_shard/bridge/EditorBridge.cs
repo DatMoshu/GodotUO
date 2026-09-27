@@ -359,6 +359,11 @@ public static class EditorBridge
                 {
                     Core.LoopContext.Post(() => RunCommand(conn, msg));
                 }
+                else if (op == "object")
+                {
+                    long received = Environment.TickCount64;
+                    Core.LoopContext.Post(() => ApplyObject(conn, msg, received));
+                }
             }
         }
         catch (IOException)
@@ -492,6 +497,62 @@ public static class EditorBridge
         Log.Information(
             "GUO editor bridge: block map{0} {1},{2} from '{3}': {4} statics; sent to {5} client(s), relayed to {6} editor(s) in {7} ms",
             facet, bx, by, from.Name, statics.Length / 7, clients, editors, ms
+        );
+    }
+
+    // {"op":"object","action":"put","kind":"spawner"|"item","object":{...neutral, data_formats 13...}}
+    // {"op":"object","action":"delete","kind":"spawner"|"item","id":"<guid>"}
+    // Applied with the same code as the boot sync (WorldObjectsSync, ADR-0014),
+    // so the shard's clients see it through the server's own item packets, and
+    // relayed to the other editors. Saved with the world at the next save; the
+    // world project stays the source of truth.
+    private static void ApplyObject(EditorConnection from, JsonNode msg, long received)
+    {
+        string action = (string)msg["action"];
+        string kind = (string)msg["kind"];
+        string id = action == "delete" ? (string)msg["id"] : (string)msg["object"]?["id"];
+        WorldObjectsSync.Outcome outcome;
+        try
+        {
+            outcome = (action, kind) switch
+            {
+                ("put", "spawner") => WorldObjectsSync.PutSpawner(WorldObjectsSync.SpawnerRecord(msg["object"])),
+                ("put", "item") => WorldObjectsSync.PutItem(WorldObjectsSync.ItemManifest(msg["object"])),
+                ("delete", "spawner") => WorldObjectsSync.DeleteSpawner(id),
+                ("delete", "item") => WorldObjectsSync.DeleteItem(id),
+                _ => throw new ArgumentException($"unknown object op {action}/{kind}"),
+            };
+        }
+        catch (Exception ex)
+        {
+            from.Send(new JsonObject { ["op"] = "error", ["error"] = $"object {action} {kind} {id}: {ex.Message}" });
+            return;
+        }
+
+        var relay = JsonNode.Parse(msg.ToJsonString()).AsObject();
+        relay["from"] = from.Name;
+        int editors = 0;
+        lock (_editors)
+        {
+            foreach (EditorConnection e in _editors)
+            {
+                if (e != from)
+                {
+                    e.Send(relay);
+                    editors++;
+                }
+            }
+        }
+
+        long ms = Environment.TickCount64 - received;
+        from.Send(new JsonObject
+        {
+            ["op"] = "object_ack", ["action"] = action, ["kind"] = kind, ["id"] = id,
+            ["outcome"] = outcome.ToString(), ["editors"] = editors, ["ms"] = ms,
+        });
+        Log.Information(
+            "GUO editor bridge: object {0} {1} {2} from '{3}': {4}; relayed to {5} editor(s) in {6} ms",
+            action, kind, id, from.Name, outcome, editors, ms
         );
     }
 

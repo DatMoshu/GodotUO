@@ -143,13 +143,24 @@ def install_objects(h: Path, export: Path) -> bool:
     return True
 
 
-def cmd_start(cfg, data_first: Path | None, objects: Path | None = None) -> int:
+def clear_objects(h: Path) -> None:
+    """An empty manifest: the bridge's boot sync then deletes every object GUO placed (and nothing else)."""
+    (h / "Data" / "GUO").mkdir(parents=True, exist_ok=True)
+    (h / "Data" / "GUO" / "guo_objects.json").write_text(
+        json.dumps({"format": 1, "backend": "modernuo", "project": None, "spawners": [], "items": [], "files": []}) + "\n",
+        encoding="utf-8")
+    print("[editor_shard] empty world-objects manifest installed; the bridge removes GUO's objects at boot")
+
+
+def cmd_start(cfg, data_first: Path | None, objects: Path | None = None, clear: bool = False) -> int:
     h = home(cfg)
     state = read_state(h)
     if not state:
         print("[editor_shard] not set up; run: python tools/editor_shard/run.py setup")
         return 2
-    if objects is not None and not install_objects(h, objects.resolve()):
+    if clear:
+        clear_objects(h)
+    elif objects is not None and not install_objects(h, objects.resolve()):
         return 2
     exe = h / "ModernUO.exe"
     if state.get("pid") and pid_alive(state["pid"], exe):
@@ -253,13 +264,15 @@ def main() -> int:
     ap.add_argument("--data-first", type=Path, help="folder ahead of the install in dataDirectories (start)")
     ap.add_argument("--objects", type=Path,
                     help="a tools/world export whose world objects the bridge syncs at boot (start; needs the bridge)")
+    ap.add_argument("--clear-objects", action="store_true",
+                    help="remove every world object GUO placed, at boot (start; needs the bridge)")
     ap.add_argument("--bridge-port", type=int, default=2595, help="editor port of the bridge (bridge)")
     args = ap.parse_args()
     cfg = load_config()
     if args.command == "setup":
         return cmd_setup(cfg, (args.source or default_source(cfg)).resolve(), args.port)
     if args.command == "start":
-        return cmd_start(cfg, args.data_first, args.objects)
+        return cmd_start(cfg, args.data_first, args.objects, args.clear_objects)
     if args.command == "status":
         return cmd_status(cfg)
     if args.command == "bridge":

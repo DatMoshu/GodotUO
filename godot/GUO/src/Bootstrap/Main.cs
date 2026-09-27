@@ -499,6 +499,11 @@ public partial class Main : Node
     {
         await ShardCommands.Run(this, _options.ShardCommands);
 
+        if (_options.ObjectsWatch.Length > 0)
+        {
+            await ObjectsDump.Watch(this, _options.ObjectsWatch);
+        }
+
         if (_options.ObjectsDump.Length > 0)
         {
             ObjectsDump.Write(_options.ObjectsDump);
@@ -909,6 +914,9 @@ public partial class Main : Node
         /// <summary>File the world objects near the player are written to after the shard commands; see ObjectsDump.</summary>
         public string ObjectsDump { get; private set; } = "";
 
+        /// <summary>Folder the client watches for dump requests after the shard commands; see ObjectsDump.Watch.</summary>
+        public string ObjectsWatch { get; private set; } = "";
+
         /// <summary>Folder the asset probe writes to; empty means no probe (see AssetProbe).</summary>
         public string AssetProbe { get; private set; } = "";
 
@@ -1054,6 +1062,9 @@ public partial class Main : Node
                         break;
                     case "--door-probe":
                         o.DoorProbe = true;
+                        break;
+                    case "--objects-watch":
+                        o.ObjectsWatch = Next();
                         break;
                     case "--objects-dump":
                         o.ObjectsDump = Next();

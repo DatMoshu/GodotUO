@@ -3,6 +3,7 @@ namespace GUO.Editor;
 
 using System;
 using System.Collections.Generic;
+using System.Text.Json.Nodes;
 using GUO.Game.GameObjects;
 
 /// <summary>
@@ -33,6 +34,15 @@ internal sealed class ObjectLayer
 
     /// <summary>Raised after every change, with a line describing it.</summary>
     public event Action<string> Changed;
+
+    /// <summary>
+    /// A local put (kind "spawner" or "item", the object as JSON) or delete
+    /// (kind, id): what the live tier sends to the shard. Not raised for
+    /// another editor's changes.
+    /// </summary>
+    public event Action<string, JsonObject> Put;
+
+    public event Action<string, Guid> Deleted;
 
     public ObjectLayer(WorldHost host)
     {
@@ -140,6 +150,7 @@ internal sealed class ObjectLayer
         var item = new ShardItem { Map = ShardObjects.MapNames[facet], X = x, Y = y, Z = z, ItemId = itemId, Hue = hue };
         Objects.Items.Add(item);
         Save($"placed item 0x{itemId:X4} at {x},{y},{z}");
+        Put?.Invoke("item", ShardObjects.ToJson(item));
         return item;
     }
 
@@ -154,6 +165,7 @@ internal sealed class ObjectLayer
         spawner.Entries.Add((entry.Trim(), 1, 100));
         Objects.Spawners.Add(spawner);
         Save($"placed spawner of {entry.Trim()} at {x},{y},{z}");
+        Put?.Invoke("spawner", ShardObjects.ToJson(spawner));
         return spawner;
     }
 
@@ -163,10 +175,14 @@ internal sealed class ObjectLayer
         {
             case ShardSpawner s:
                 (s.Map, s.X, s.Y, s.Z) = (ShardObjects.MapNames[facet], x, y, z);
-                return Save($"moved spawner to {x},{y},{z}");
+                Save($"moved spawner to {x},{y},{z}");
+                Put?.Invoke("spawner", ShardObjects.ToJson(s));
+                return true;
             case ShardItem i:
                 (i.Map, i.X, i.Y, i.Z) = (ShardObjects.MapNames[facet], x, y, z);
-                return Save($"moved item 0x{i.ItemId:X4} to {x},{y},{z}");
+                Save($"moved item 0x{i.ItemId:X4} to {x},{y},{z}");
+                Put?.Invoke("item", ShardObjects.ToJson(i));
+                return true;
             default:
                 return false;
         }
@@ -174,12 +190,43 @@ internal sealed class ObjectLayer
 
     public bool Delete(Guid id)
     {
+        string kind = Objects?.Find(id) is ShardSpawner ? "spawner" : "item";
         if (Objects == null || !Objects.Remove(id))
         {
             return false;
         }
 
-        return Save("deleted an object");
+        Save("deleted an object");
+        Deleted?.Invoke(kind, id);
+        return true;
+    }
+
+    /// <summary>
+    /// Another editor's put or delete, from the shard: written to this
+    /// project and drawn, as the last write wins. Not sent on again.
+    /// </summary>
+    public bool ApplyRemote(JsonNode msg)
+    {
+        if (Objects == null)
+        {
+            return false;
+        }
+
+        string kind = (string)msg["kind"];
+        if ((string)msg["action"] == "delete")
+        {
+            Objects.Remove(Guid.Parse((string)msg["id"]));
+        }
+        else if (kind == "spawner")
+        {
+            Objects.Upsert(ShardObjects.ParseSpawner(msg["object"]));
+        }
+        else
+        {
+            Objects.Upsert(ShardObjects.ParseItem(msg["object"]));
+        }
+
+        return Save($"remote: {(string)msg["from"] ?? "?"} {(string)msg["action"]} {kind}");
     }
 
     public void Close()

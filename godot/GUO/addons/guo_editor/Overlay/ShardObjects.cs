@@ -194,6 +194,95 @@ public sealed class ShardObjects
         File.WriteAllText(Path, sb.ToString());
     }
 
+    /// <summary>A spawner as its line in objects.json, which is also its form on the wire (data_formats 10, 13).</summary>
+    public static JsonObject ToJson(ShardSpawner s) => new()
+    {
+        ["id"] = s.Id.ToString(),
+        ["map"] = s.Map,
+        ["x"] = s.X,
+        ["y"] = s.Y,
+        ["z"] = s.Z,
+        ["count"] = s.Count,
+        ["min_delay"] = s.MinDelay,
+        ["max_delay"] = s.MaxDelay,
+        ["home_range"] = s.HomeRange,
+        ["walking_range"] = s.WalkingRange,
+        ["team"] = s.Team,
+        ["entries"] = new JsonArray(s.Entries.Select(e => (JsonNode)new JsonObject
+        {
+            ["name"] = e.Name,
+            ["max"] = e.Max,
+            ["probability"] = e.Probability,
+        }).ToArray()),
+        ["extra"] = s.Extra.DeepClone(),
+    };
+
+    public static JsonObject ToJson(ShardItem i) => new()
+    {
+        ["id"] = i.Id.ToString(),
+        ["map"] = i.Map,
+        ["x"] = i.X,
+        ["y"] = i.Y,
+        ["z"] = i.Z,
+        ["item_id"] = $"0x{i.ItemId:X4}",
+        ["hue"] = $"0x{i.Hue:X4}",
+        ["type"] = i.Type,
+        ["props"] = i.Props.DeepClone(),
+        ["extra"] = i.Extra.DeepClone(),
+    };
+
+    public static ShardSpawner ParseSpawner(JsonNode s)
+    {
+        var sp = new ShardSpawner
+        {
+            Id = Guid.Parse((string)s["id"]),
+            Map = (string)s["map"],
+            X = (int)s["x"],
+            Y = (int)s["y"],
+            Z = (int)s["z"],
+            Count = (int?)s["count"] ?? 1,
+            MinDelay = (string)s["min_delay"] ?? "00:05:00",
+            MaxDelay = (string)s["max_delay"] ?? "00:10:00",
+            HomeRange = (int?)s["home_range"] ?? 2,
+            WalkingRange = (int?)s["walking_range"] ?? -1,
+            Team = (int?)s["team"] ?? 0,
+            Extra = s["extra"]?.DeepClone().AsObject() ?? new JsonObject(),
+        };
+        foreach (JsonNode e in s["entries"]?.AsArray() ?? new JsonArray())
+        {
+            sp.Entries.Add(((string)e["name"], (int?)e["max"] ?? 1, (int?)e["probability"] ?? 100));
+        }
+
+        return sp;
+    }
+
+    public static ShardItem ParseItem(JsonNode i) => new()
+    {
+        Id = Guid.Parse((string)i["id"]),
+        Map = (string)i["map"],
+        X = (int)i["x"],
+        Y = (int)i["y"],
+        Z = (int)i["z"],
+        ItemId = Hex((string)i["item_id"]),
+        Hue = Hex((string)i["hue"] ?? "0x0000"),
+        Type = (string)i["type"] ?? "Static",
+        Props = i["props"]?.DeepClone().AsObject() ?? new JsonObject(),
+        Extra = i["extra"]?.DeepClone().AsObject() ?? new JsonObject(),
+    };
+
+    /// <summary>Adds an object, or replaces the one with its id.</summary>
+    public void Upsert(ShardSpawner s)
+    {
+        Spawners.RemoveAll(o => o.Id == s.Id);
+        Spawners.Add(s);
+    }
+
+    public void Upsert(ShardItem i)
+    {
+        Items.RemoveAll(o => o.Id == i.Id);
+        Items.Add(i);
+    }
+
     /// <summary>The object at a cell on a facet (spawners first), or null.</summary>
     public object At(int facet, int x, int y)
     {

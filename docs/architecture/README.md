@@ -22,7 +22,7 @@ it is taken even if its file has not landed yet.
 | 0011 | World project overlay | work/editor |
 | 0012 | Live editing transport | work/editor |
 | 0013 | Asset overlay | retired: written as 0020 |
-| 0014 | Shard world objects and backends | work/editor-p6 (proposed) |
+| 0014 | Shard world objects and backends | work/editor-p6 (accepted) |
 | 0015 | Editor world view | work/editor |
 | 0016 | Canvas background | work/background |
 | 0017 | Android (was 0007 in UO_Port) | work/ui |

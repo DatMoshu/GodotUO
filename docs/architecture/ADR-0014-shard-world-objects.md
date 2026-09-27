@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted
 
 ## Date
 
@@ -29,7 +29,25 @@ Proposed
      at the new cell, the new item with its hue, and no spawner and no horse.
   3. The same export again: `+0 ~0 -0 =2`, nothing written.
 
-Still Proposed: live apply and the other backends are not built.
+2026-09-27 (slice 2, live apply): `python tools\editor_objects_proof\run.py
+--live` passes on the private instance. This involves no export and no
+restart.
+
+- The shard starts with GUO's earlier objects cleared (`--clear-objects`).
+- A client logs in and stays.
+- A headless editor, live on the bridge, drives the World tab's object layer:
+  it places an anvil and a Horse spawner, moves the anvil, then deletes both.
+  Each put or delete travels as one `object` op and is applied with the boot
+  sync's code; it is acknowledged `Added`, `Changed` or `Deleted` in 0-16 ms.
+- After each step the client's own world (a dump, and a frame from a window
+  that never takes focus) shows:
+  1. the anvil and the spawner, with a horse beside it;
+  2. the anvil at its new cell and not at the old one;
+  3. all of them gone, the horse included.
+
+Accepted on that evidence (the director's condition). Still to build: the
+GM-command fallback for shards without the bridge, and the ServUO and
+RunUO backends.
 
 ## Decision Makers
 
