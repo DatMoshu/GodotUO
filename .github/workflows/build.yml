@@ -1,0 +1,88 @@
+# GUO -- what a hosted runner can verify without the proprietary UO data,
+# without the pinned Godot engine and without a device.
+#
+#   desktop   dotnet build of godot/GUO/GUO.csproj on Windows: the ported C#
+#             compiles, and the Windows-only plugin host with it.
+#   android   dotnet publish -r android-arm64 -p:GodotTargetPlatform=android:
+#             the .NET half of a Godot Android export. This is exactly what
+#             Godot runs inside --export-debug Android before it packs the
+#             APK; it proves the net9.0 target and the plugin-host guard.
+#   web       reported, not built: Godot 4 mono cannot export C# to the web
+#             (docs/architecture/ADR-0008-web-target.md). The job is a
+#             reminder that prints the recorded reason.
+#
+# What CI cannot do: run the engine (tools/godot is gitignored, ~350 MB),
+# export an APK (needs the mono export templates, an SDK and a keystore),
+# push data to or run on a device, or any smoke. Those live in
+# launchers\android\smoke.bat and launchers\dev\smoke.bat on a machine that
+# has the client data. A green run here means "it compiles for both
+# targets", nothing more.
+
+name: build
+
+on:
+  push:
+    branches: [main, "work/**"]
+    paths:
+      - "godot/GUO/**"
+      - "tools/plugin_host/**"
+      - ".github/workflows/build.yml"
+  pull_request:
+    paths:
+      - "godot/GUO/**"
+      - "tools/plugin_host/**"
+      - ".github/workflows/build.yml"
+  workflow_dispatch:
+
+env:
+  DOTNET_NOLOGO: "1"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+
+jobs:
+  desktop:
+    name: desktop C# (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            9.0.x
+      - name: Build
+        run: dotnet build godot/GUO/GUO.csproj -c Debug -warnaserror:NU1605
+
+  android:
+    name: android-arm64 publish (no device)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            9.0.x
+      - name: Publish the .NET half of the Android export
+        run: >
+          dotnet publish godot/GUO/GUO.csproj -c ExportDebug -r android-arm64
+          --self-contained true -p:GodotTargetPlatform=android
+          -o build/android/publish_check
+      - name: The plugin host must not be in the Android output
+        shell: bash
+        run: |
+          if find build/android/publish_check -iname '*plugin_host*' | grep -q .; then
+            echo "plugin host leaked into the android publish"; exit 1
+          fi
+          ls build/android/publish_check | head -20
+          echo "$(ls build/android/publish_check | wc -l) files published"
+
+  web:
+    name: web export (unsupported upstream)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Report why there is no web build
+        run: |
+          echo "Godot 4.x mono cannot export C#/.NET to the web (godotengine/godot#70796)."
+          echo "The engine's refusal and the pipeline that waits for it: docs/architecture/ADR-0008-web-target.md"
+          test -f tools/web/run.py && test -f tools/web/export_presets.template.cfg

@@ -2,7 +2,11 @@
 
 ## Status
 
-Proposed — the desktop half is verified; on 2026-09-26 a debug APK built from this tool rendered the login screen on an AYN Thor (see `tools/android/README.md`, the run table). Login and play on the device are not yet verified.
+Accepted — 2026-09-26. `launchers\android\smoke.bat` exits 0 on an AYN Thor
+(`[GUO] login probe: ok ... gump 640x480 at 160,30`, `build\android\smoke.png`),
+and the device has been logged in by touch alone, walked, zoomed by pinch and
+relaunched with its zoom kept. The run table in `tools/android/README.md` is
+the record of what was verified on the device and what was not.
 
 ## Date
 
@@ -10,13 +14,12 @@ Proposed — the desktop half is verified; on 2026-09-26 a debug APK built from 
 
 ## Last Verified
 
-2026-09-26 — on the development machine, which has no Android SDK:
-the desktop build is unchanged at 0 errors; `dotnet publish -r android-arm64`
-(the .NET half of a Godot Android export) succeeds with no plugin host in the
-output; the touch layer passes 18/18 synthetic-finger checks on the desktop
-against the dev shard; `launchers\android\doctor.bat` runs and lists what is
-missing. No APK has been produced and no phone has run the client. The
-verification table in `tools/android/README.md` is the record.
+2026-09-26 — on the AYN Thor (Android 13, 1080x1920, adb `<thor-serial>`) with
+the SDK, JDK 17, the mono templates and a debug keystore installed the same
+day. The first pass, written on a machine without an SDK, had the desktop
+half only (0 errors, `dotnet publish -r android-arm64` clean, 18/18 touch
+probe checks); the second pass ran every command on the device. Sections 4
+and 5 below carry the corrections the device forced.
 
 ## Decision Makers
 
@@ -202,9 +205,12 @@ correct answer for Razor-shaped assemblies built against .NET Framework.
 
 ### 4. Window and scale: the client's own integer scale, not Godot's stretch
 
-On a mobile target (or `--touch`) the bootstrap sets
-`Client.Game.ScreenScale = max(1, shorterWindowSide / 480)` once the window
-exists (`--screen-scale N` overrides it). Everything downstream already
+On a mobile target (or `--touch`) the touch layer picks a whole-number
+total scale, `round(shorterWindowSide / 540)` clamped to at least 1, and
+divides Godot's own `ScreenGetScale` out of it so `DpiScale = ScreenGetScale
+* ScreenScale` lands on the integer (on the Thor 1.8 * 1.111 = 2, a 960x540
+logical client; `--screen-scale N` overrides). `GameController.LoadContent`
+applies it before the first scene lays itself out. Everything downstream already
 exists: `RenderTargets` presents at that integer factor with `PointClamp`,
 `Mouse.Update` divides by it, and the client sees a logical window of
 (physical / scale), so a 2400x1080 phone runs the client at 800x360 logical
@@ -212,10 +218,36 @@ at 3x — pixel art stays nearest-neighbour and integer (rule 7), and no Godot
 viewport is resized or scaled. `window/handheld/orientation` is set to
 sensor-landscape in `project.godot`; it is ignored on the desktop.
 
+Three more things the device forced, all `PORT DEVIATION (GUO)` and no-ops
+off a mobile OS:
+
+- **One window mode.** Godot's Android display server turns immersive mode
+  on for `Fullscreen` and off for every other mode, so the `Maximized` the
+  game scene asks for and the `Windowed` the login scene asks for each
+  brought the status bar back. `GameController` keeps `Fullscreen` on a
+  mobile OS (`KeepFullscreen`).
+- **The pre-game screens are centred.** The desktop shrinks its window to
+  640x480 for login; a phone cannot, so `MobileProfile.CentreLoginGump`
+  moves each 640x480 login-scene gump (background, login, shard list,
+  character select/create, the loading gump) to the display's centre at the
+  point `LoginScene` creates it. The gumps' own art and layout are untouched;
+  the world viewport is never moved. Verified by screenshot for login, shard
+  list and character selection; the loading screen shares the same code
+  path and was too brief to catch on the LAN.
+- **Save on pause.** A phone never closes the client; it pauses and later
+  kills it. `NotificationApplicationPaused` writes the profile (with the
+  camera zoom, when `SaveScaleAfterClose`) and the settings, which is what
+  the desktop writes on exit.
+
+What a new profile starts as on a phone (world full size, pinch zoom on,
+zoom kept) is a per-platform default table owned by the UI work
+(`Configuration/PlatformDefaults`), not this ADR; an earlier draft applied
+them from `MobileProfile` and was withdrawn so the two do not conflict.
+
 Not done, and deliberately: no stretch mode (it would scale a fixed-size root
 viewport and filter it), no separate mobile project, no DPI-aware layout in
 the gumps — they are the original client's gumps at the original client's
-pixel sizes, and on a 480-line logical screen that is the honest tradeoff.
+pixel sizes, and on a 540-line logical screen that is the honest tradeoff.
 
 ### 5. Touch controls: a translation layer, not a new input model
 
@@ -236,7 +268,8 @@ The game never learns a finger exists.
 | hold ≥ 220 ms on an item (`ItemGump`, or a paperdoll slot) | left button held → the game's drag past 5 px = pickup, release = drop | a held press over an item must be a pickup, as UltimatumUO found |
 | drag on a gump elsewhere | left held → the gump moves | gumps are dragged by the left button |
 | hold ≥ 550 ms without moving, not on the world | right click | close-gump / context, where nothing else claims a long press |
-| second finger | pinch: every 40 px of change → one Ctrl + wheel step | the game's own zoom path; the profile flag `EnableMousewheelScaleZoom` is forced on, marked `PORT DEVIATION (GUO)` |
+| second finger | pinch: Godot's `InputEventMagnifyGesture` factors, accumulated multiplicatively, every 1.12x → one Ctrl + wheel step | the game's own zoom path; the profile flag `EnableMousewheelScaleZoom` is forced on, marked `PORT DEVIATION (GUO)`. Needs `input_devices/pointing/android/enable_pan_and_scale_gestures=true`: without it Godot's gesture detector forwards a symmetric pinch as no events at all (traced on the Thor: "second finger -> pinch", "both fingers up", no drags between). The desktop probe still drives the two-drag path |
+| tap on a text field | the field's focus, then `DisplayServer.VirtualKeyboardShow`; the field's root gump slides up by what the keyboard covers and back down when it hides | Android does not resize an immersive Godot surface for the IME, so the fields would be under it; the world viewport gump is never moved |
 | tap on the gump bar | the corresponding `GameActions.Open*` | see below |
 
 Timings: `HoldMs = 220` (below the game's 350 ms double-click window, so a
@@ -244,15 +277,19 @@ second tap is never mistaken for a hold), `LongPressMs = 550`, `MovePixels =
 12` (a finger jitters more than a mouse; the game's 5 px pickup threshold
 still applies after the hold has decided the gesture).
 
-**The gump bar** (`TouchGumpBar.cs`) is a `CanvasLayer` with seven flat
-buttons along the bottom right — paperdoll, backpack, journal, map, chat,
-options, keyboard — that appear once the world is in and mirror
-`TopBarGump`'s actions; keyboard calls `DisplayServer.VirtualKeyboardShow`.
+**The gump bar** (`TouchGumpBar.cs`) is a `CanvasLayer` with six buttons
+along the bottom — character, inventory, journal, map, chat, options —
+drawn from the top bar's own wide button gump (0x098D) and the client's
+unicode font 1 at a whole-number scale, sampled nearest-neighbour, with the
+top bar's own clilocs as labels. They appear once the world is in and mirror
+`TopBarGump`'s actions. (The first draft had seven flat rectangles with the
+engine's font and a keyboard button; the keyboard now rises from a text
+field's focus instead.)
 It is an overlay, not a gump, because: it must exist before the profile and
 outside the world's render-target path (so it never enters the batcher or
 gets scaled/filtered with the frame); it must not be closable, movable or
 saved with the gump layout; and it needs no game state beyond "in game". It
-draws with `_Draw` rectangles and the fallback font, takes no Godot input
+falls back to flat rectangles and the engine's font without the gump art, takes no Godot input
 (nothing can — `GameController._Input` handles everything), and is
 hit-tested by the touch layer, which is why the layer, not the bar, sends
 `bar -> <action>` to the trace. Its size scales with `ScreenScale`.

@@ -38,6 +38,8 @@ launchers/        .bat entry points, grouped by job. Start here.
   pipeline/       numbered data steps, run in order
   shard/          the local ModernUO dev server: fetch, build, run
   dev/            build, smoke, screenshot, sync, cache
+  android/        doctor, export, install, run, smoke on a device (ADR-0007)
+  web/            doctor, export, serve, smoke -- blocked upstream (ADR-0008)
 godot/GUO/        the Godot project
   src/Compat/     XNA compatibility shim — read its README first
   src/{IO,Assets,Render,Network,Game,Input,Configuration,Utility}/
@@ -46,6 +48,8 @@ tools/            one folder per job + one per third-party program
   guo/            shared Python package; all tools import from here
   guoasset/       parity reference renderer (MCP), on upstream's loaders
   modernuo/       the dev shard: patches, config templates (src/ gitignored)
+  android/        the Android export tool + preset template
+  web/            the web export tool + preset template
 docs/             port_plan.md, data_formats.md, port_status.md (generated)
   architecture/   ADRs — binding decisions. ADR-0001 governs the renderer.
 build/            generated artifacts — gitignored
@@ -95,6 +99,9 @@ launchers\dev\build_guoasset.bat           build the parity reference MCP
 launchers\shard\run.bat                    run the local dev shard
 launchers\shard\populate.bat               generate its world (once)
 launchers\game\play.bat                    run the client
+launchers\android\doctor.bat               what an Android export needs on this machine
+launchers\android\smoke.bat                export, install, run on the device, wait for the login gump
+launchers\web\doctor.bat                   why there is no web export yet (ADR-0008)
 ```
 
 ---
@@ -151,8 +158,10 @@ specialists were removed. Port-specific additions:
 | `uo-fileformat-engineer` | `.mul`/`.uop` readers, loaders, the decode cache |
 | `uo-network-engineer` | Packets, handshake, encryption, compression |
 | `uo-render-engineer` | The rewrite tier: renderer, hues, input, audio |
+| `mobile-web-engineer` | Android and web exports, the touch layer, CI for both |
 
-Skills: `/port-status`, `/port-file`, `/parity-check`, plus the inherited
+Skills: `/port-status`, `/port-file`, `/parity-check`, `/android-build`,
+`/web-build`, plus the inherited
 studio set. MCP: `guoasset` (see `tools/guoasset/README.md`) renders UO art
 from the client data with upstream's loaders, as a parity reference.
 
