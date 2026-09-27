@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, "work/**", "release/**"]
   pull_request:
   workflow_dispatch:
 
@@ -38,6 +38,9 @@ jobs:
             echo "$hits"
             exit 1
           fi
+
+      - name: No LAN address, personal email or home folder
+        run: python3 tools/privacy_scan/run.py
 
       - name: No local config committed
         run: |

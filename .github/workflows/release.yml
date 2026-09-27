@@ -1,0 +1,131 @@
+# GUO -- downloadable builds. Exports the client with the pinned Godot on a
+# hosted runner and uploads each platform as an artifact; on a v* tag the same
+# files are attached to a draft GitHub release for the owner to publish.
+#
+#   windows     build/windows    GUO.exe + GUO.pck + the .NET data folder
+#   steamdeck   build/steamdeck  GUO.x86_64 + data (Linux x86_64, SteamOS)
+#
+# No UO client data is involved: an export packs the project, never the
+# install, and every player brings their own (UO_CLIENT_DATA). Android is not
+# built here: an APK needs a keystore, which stays on the owner's machine.
+
+name: release
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+    branches: [main]
+    paths:
+      - "godot/GUO/**"
+      - "tools/windows/**"
+      - "tools/steamdeck/**"
+      - ".github/workflows/release.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: "1"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+
+jobs:
+  export:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read pins
+        id: pin
+        shell: pwsh
+        run: |
+          $up = Get-Content docs/upstream/UPSTREAM_PIN.json | ConvertFrom-Json
+          "repo=$($up.repo)" >> $env:GITHUB_OUTPUT
+          "commit=$($up.commit)" >> $env:GITHUB_OUTPUT
+          $v = (Select-String -Path launchers/_shared/config.bat -Pattern 'GODOT_VERSION=([^"]+)"').Matches[0].Groups[1].Value
+          "godot=$v" >> $env:GITHUB_OUTPUT
+          "templates=$($v -replace '-', '.').mono" >> $env:GITHUB_OUTPUT
+
+      # The client compiles against upstream's cuoapi.dll, as in ci.yml.
+      - name: Cache upstream
+        id: upstream-cache
+        uses: actions/cache@v4
+        with:
+          path: sources/ClassicUO
+          key: classicuo-${{ steps.pin.outputs.commit }}-recursive
+      - name: Fetch upstream
+        if: steps.upstream-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          git init -q sources/ClassicUO
+          cd sources/ClassicUO
+          git remote add origin "${{ steps.pin.outputs.repo }}"
+          git fetch -q --depth 1 origin "${{ steps.pin.outputs.commit }}"
+          git checkout -q FETCH_HEAD
+          git submodule update -q --init --recursive --depth 1
+
+      # The pinned engine and its mono export templates (~1.3 GB together),
+      # from Godot's own GitHub releases, cached by version.
+      - name: Cache Godot
+        id: godot-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            tools/godot/Godot_v${{ steps.pin.outputs.godot }}_mono_win64
+            ~/AppData/Roaming/Godot/export_templates/${{ steps.pin.outputs.templates }}
+          key: godot-${{ steps.pin.outputs.godot }}-mono-win64-templates
+      - name: Fetch Godot
+        if: steps.godot-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          $v = "${{ steps.pin.outputs.godot }}"
+          $base = "https://github.com/godotengine/godot/releases/download/$v"
+          Invoke-WebRequest "$base/Godot_v${v}_mono_win64.zip" -OutFile godot.zip
+          Expand-Archive godot.zip -DestinationPath tools/godot -Force
+          Invoke-WebRequest "$base/Godot_v${v}_mono_export_templates.tpz" -OutFile templates.zip
+          Expand-Archive templates.zip -DestinationPath tpz -Force
+          $dest = "$env:APPDATA/Godot/export_templates/${{ steps.pin.outputs.templates }}"
+          New-Item -ItemType Directory -Force $dest | Out-Null
+          Move-Item tpz/templates/* $dest -Force
+          Remove-Item godot.zip, templates.zip -Force
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Export Windows
+        run: python tools/windows/run.py export
+      - name: Export Steam Deck (Linux x86_64)
+        run: python tools/steamdeck/run.py export
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GUO-windows-x86_64
+          path: build/windows/
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GUO-steamdeck-linux-x86_64
+          path: build/steamdeck/
+          if-no-files-found: error
+
+      - name: Zip for the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          Compress-Archive build/windows/* GUO-windows-x86_64.zip
+          Compress-Archive build/steamdeck/* GUO-steamdeck-linux-x86_64.zip
+      - name: Draft release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${{ github.ref_name }}" --draft --generate-notes GUO-windows-x86_64.zip GUO-steamdeck-linux-x86_64.zip
