@@ -328,7 +328,10 @@ namespace GUO.Input.Touch
             Game.UI.Controls.Control over = UIManager.MouseOverControl;
 
             return over is Game.UI.Controls.ItemGump
-                || (over is Game.UI.Controls.GumpPic && over.Parent is Game.UI.Controls.PaperDollInteractable);
+                || (over is Game.UI.Controls.GumpPic && over.Parent is Game.UI.Controls.PaperDollInteractable)
+                // A filled slot of a grid container: the slot carries its item's serial.
+                || (over != null && over.RootParent is Game.UI.Gumps.GridContainerGump && over != over.RootParent
+                    && Game.SerialHelper.IsItem(over.LocalSerial));
         }
 
         private static void HandleTouch(InputEventScreenTouch e)
@@ -490,8 +493,23 @@ namespace GUO.Input.Touch
                     break;
 
                 case Phase.LeftHeld:
-                    Release(MouseButton.Left, at);
-                    Note("finger up -> left release");
+                    if ((Client.Game?.UO?.GameCursor?.ItemHold.Enabled ?? false) && at.DistanceTo(_downAt) <= MovePixels)
+                    {
+                        // A hold picked an item up and the finger lifted
+                        // where it was: released there, the item would drop
+                        // straight back. Carry it instead. The button comes up
+                        // over nothing, the pointer goes back under the
+                        // finger, where the held item is drawn, and the next
+                        // tap drops it (Thor pass 2, bugs 2 and 6).
+                        Release(MouseButton.Left, ParkedAt);
+                        Motion(at);
+                        Note("finger up in place -> carrying (tap to drop)");
+                    }
+                    else
+                    {
+                        Release(MouseButton.Left, at);
+                        Note("finger up -> left release");
+                    }
 
                     break;
 
