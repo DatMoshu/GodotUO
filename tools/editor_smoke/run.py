@@ -108,6 +108,26 @@ def asset_export_checks(cfg, project_dir: Path, out: Path) -> list[str]:
     if not refused:
         failures.append(f"an export into UO_CLIENT_DATA was not refused cleanly (exit {code}):\n{text}")
 
+    # A pack (what a player sends a shard owner) holds no install data, and
+    # exports and verifies from wherever it is unzipped.
+    import zipfile
+    pack = out / "asset_pack" / "pack.zip"
+    code, text = world_tool("pack", "--project", str(project_dir), "--out", str(pack))
+    packed = code == 0 and pack.is_file()
+    if packed:
+        with zipfile.ZipFile(pack) as z:
+            names = z.namelist()
+            z.extractall(out / "asset_pack" / "unpacked")
+        derived = [n for n in names if n.lower().endswith((".mul", ".uop", ".idx", ".def", ".bin"))]
+        unpacked = out / "asset_pack" / "unpacked" / project_dir.name
+        c1, _ = world_tool("export", "--project", str(unpacked), "--out", str(out / "asset_pack" / "export"))
+        c2, text = world_tool("verify", "--project", str(unpacked), "--out", str(out / "asset_pack" / "export"))
+        packed = not derived and c1 == 0 and c2 == 0
+        if derived:
+            failures.append(f"the pack holds files derived from the install: {derived}")
+    if not packed:
+        failures.append(f"pack, unzip, export and verify failed:\n{text}")
+
     # The client half: a headless client reads the export through
     # files_override and decodes the same pixels (tools/editor_asset_roundtrip).
     roundtrip = Path(__file__).resolve().parents[1] / "editor_asset_roundtrip" / "run.py"
@@ -122,7 +142,7 @@ def asset_export_checks(cfg, project_dir: Path, out: Path) -> list[str]:
     print(f"[editor_smoke]   {'ok  ' if client_ok else 'FAIL'} Client  {lines[-1][len('[roundtrip] '):] if lines else 'no output'}")
     print(f"[editor_smoke]   {mark} Export  verdata.mul + hues.mul: export {'ok' if ok_export else 'FAILED'}, "
           f"verify {'ok' if ok_verify else 'FAILED'}, damaged copy caught: {caught}, "
-          f"export into the install refused: {refused}")
+          f"export into the install refused: {refused}, pack unzipped elsewhere exports: {packed}")
     return failures
 
 
