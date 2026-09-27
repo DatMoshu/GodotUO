@@ -30,10 +30,15 @@ parts that genuinely bind to FNA are reimplemented on Godot.
 - The last side-by-side sweep against ClassicUO (`docs/parity_2026-09-23.md`)
   matched in five of eight places. The other three show known rendering
   differences, listed there with their causes.
-- Windows, and an Android ARM64 debug build that has run on one device
-  (`docs/architecture/ADR-0017-android-target.md`). A web build is blocked
-  upstream: Godot 4.7 .NET cannot export C# to the web
-  (`docs/architecture/ADR-0008-web-target.md`).
+- Builds for Windows, Android (ARM64, tested on an AYN Thor dual-screen
+  handheld and a single-screen Odin 2 Mini) and the Steam Deck, all from one
+  repository; every push to main produces downloadable builds.
+- Touch play on phones and handhelds: a touch bar, a combat macro row, pinch
+  and flick to size or move windows between screens, and an OLED screen saver.
+- The GodotUO Asset Store and the GodotUO editor (world, art and live world
+  objects) are built in; see the wiki.
+- A web build is in progress. Godot 4.7 cannot export C# to the web, so it
+  runs on a community build of the engine (`docs/web/unblock-report.md`).
 
 Bug reports that compare GUO against ClassicUO in the same place are the most
 useful thing you can send. See `CONTRIBUTING.md`.
