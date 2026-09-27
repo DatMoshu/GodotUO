@@ -34,8 +34,12 @@ internal static class MacroProbe
         await Frames(host, 120);
 
         // The login goes through the mouse path; the touch layer steps aside.
+        // On a device the client draws at a whole-number scale and divides
+        // every pointer position by it; the probe aims in client pixels.
         TouchInput.Enabled = false;
+        InputProbe.PointerScale = Client.Game.DpiScale;
         await InputProbe.EnterTheWorld(host, 0);
+        InputProbe.PointerScale = 1f;
         TouchInput.Enabled = true;
 
         World world = Client.Game.UO.World;
@@ -70,8 +74,12 @@ internal static class MacroProbe
         ushort px = me.X, py = me.Y;
         sbyte pz = me.Z;
 
-        Mobile ratA = await SpawnRat(host, world, (ushort)(px + 1), py, pz);
-        Mobile ratB = await SpawnRat(host, world, (ushort)(px - 1), py, pz);
+        // One retry each: on a device the first command after login can miss
+        // its cursor.
+        Mobile ratA = await SpawnRat(host, world, (ushort)(px + 1), py, pz)
+            ?? await SpawnRat(host, world, (ushort)(px + 1), py, pz);
+        Mobile ratB = await SpawnRat(host, world, (ushort)(px - 1), py, pz)
+            ?? await SpawnRat(host, world, (ushort)(px - 1), py, pz);
 
         Check("two rats spawned beside the character", ratA != null && ratB != null,
             $"A {Describe(ratA)}, B {Describe(ratB)}");
