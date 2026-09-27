@@ -47,6 +47,12 @@ REM  Where decoded textures/atlases are cached. Safe to delete at any time;
 REM  it is rebuilt on demand. Keep it OFF the repo tree.
 if not defined UO_CACHE_DIR         set "UO_CACHE_DIR=%LOCALAPPDATA%\GUO\cache"
 
+REM --- World project (the editor) -----------------------------------------
+REM  Where the editor keeps map edits: whole replaced blocks laid over the
+REM  install, never written into it. See docs\data_formats.md section 9 and
+REM  docs\architecture\ADR-0011-world-project-overlay.md.
+if not defined UO_WORLD_PROJECT     set "UO_WORLD_PROJECT=%UO_ROOT%\build\world\default"
+
 REM --- Shard to connect to ------------------------------------------------
 if not defined UO_SHARD_HOST        set "UO_SHARD_HOST=127.0.0.1"
 if not defined UO_SHARD_PORT        set "UO_SHARD_PORT=2593"

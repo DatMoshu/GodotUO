@@ -42,6 +42,7 @@ Every key resolves as: **environment variable → `config.local.bat` →
 | `UO_CLIENT_DATA` | Folder holding the `.mul` / `.uop` / `.idx` files |
 | `UO_CLIENT_VERSION` | Client version the data corresponds to (e.g. `7.0.107.76`) |
 | `UO_CACHE_DIR` | Disposable decode cache |
+| `UO_WORLD_PROJECT` | The editor's world project folder (§9); default `build\world\default` |
 | `UO_SHARD_HOST` / `UO_SHARD_PORT` | Shard to connect to |
 | `GODOT_VERSION` / `GODOT_FLAVOR` | Pinned engine build |
 | `UO_LOG_LEVEL` | `DEBUG` \| `INFO` \| `WARN` \| `ERROR` |
@@ -217,3 +218,46 @@ pin.
 
 UO client data itself is proprietary and is **never** redistributed by this
 project. Users supply their own installation.
+
+---
+
+## 9. World project (the editor's map edits)
+
+The editor never writes to `UO_CLIENT_DATA`. Map edits live in a **world
+project**, a folder of ours at `UO_WORLD_PROJECT`, laid over the read-only
+install as whole replaced blocks. ADR-0011 has the reasoning.
+
+```
+<UO_WORLD_PROJECT>/
+  project.json                  name, format, the base install it was made on
+  blocks/<facet>/<bx>_<by>.json one file per replaced 8x8 block
+  .cache/                       scratch; safe to delete; never committed
+```
+
+**`project.json`**
+
+| Field | Meaning |
+|---|---|
+| `format` | `1` |
+| `name` | The folder's name at creation |
+| `created` | ISO 8601 UTC |
+| `base.client_version` | `UO_CLIENT_VERSION` at creation |
+| `base.fingerprint` | SHA-1 over the install's `map*`, `statics*`, `staidx*` file names and sizes, lower-cased and sorted. Tells one install from another; not a content hash |
+
+**`blocks/<facet>/<bx>_<by>.json`** replaces the whole block: every land cell
+and every static. A block not in the project is the install's.
+
+| Field | Meaning |
+|---|---|
+| `format` | `1` |
+| `facet` | Map index (`map0` is 0) |
+| `block` | `[bx, by]`: block x and y, each cell coordinate divided by 8 |
+| `land` | Eight strings, rows y = 0..7; each holds eight `ID:Z` cells for x = 0..7. `ID` is the land tile id in four hex digits, `Z` a signed decimal altitude |
+| `statics` | One object per static: `id` (hex string, `0x0CCA`), `x` and `y` (cell within the block, 0..7), `z` (signed decimal), `hue` (hex string). Written sorted by y, x, z, id so an edit diffs as the lines it changed |
+
+The block file mirrors the client's own block layout (`MapBlock`: a header
+and 64 cells of id and z; `StaticsBlock`: id, x, y, z, hue), so a project
+converts to `mapdif`/`stadif` or patched `map`/`statics` files without loss.
+That export, into the **shard's** data folder and never the install, is
+`tools/world` (phase 3). Extend this section before emitting a new field.
+

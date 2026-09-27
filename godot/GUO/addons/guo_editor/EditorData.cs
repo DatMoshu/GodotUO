@@ -258,6 +258,10 @@ public sealed class EditorData : IDisposable
 
     private static Dictionary<string, string> _configBat;
 
+    /// <summary>The repository root: the Godot project is godot/GUO under it.</summary>
+    public static string RepoRoot =>
+        Path.GetFullPath(Path.Combine(ProjectSettings.GlobalizePath("res://"), "..", ".."));
+
     /// <summary>
     /// One setting, resolved as every launcher and tools/guo/config.py
     /// resolve it: the environment first (common.bat has set it when the
@@ -279,8 +283,11 @@ public sealed class EditorData : IDisposable
     private static Dictionary<string, string> ParseConfigBat()
     {
         var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        string root = ProjectSettings.GlobalizePath("res://");
-        string path = Path.GetFullPath(Path.Combine(root, "..", "..", "launchers", "_shared", "config.bat"));
+        string path = Path.Combine(RepoRoot, "launchers", "_shared", "config.bat");
+
+        // common.bat sets UO_ROOT before it calls config.bat, and config.bat
+        // builds paths on it; outside a launcher it has to come from here.
+        values["UO_ROOT"] = RepoRoot;
         if (!File.Exists(path))
         {
             return values;

@@ -44,6 +44,15 @@ public partial class MapPanel : AssetPanel
 
     public override string SmokeQuery => "1496,1628";
 
+    /// <summary>Raised to show a cell in the UO World tab: facet, x, y.</summary>
+    public event Action<int, int, int> JumpToWorld;
+
+    /// <summary>What the "Show in UO World" button does, for scripted use.</summary>
+    public void RequestJump(int facet, int x, int y) => JumpToWorld?.Invoke(facet, x, y);
+
+    /// <summary>The facet the radar shows.</summary>
+    public int Facet => _radarFacet < 0 ? 0 : _radarFacet;
+
     public override void _Ready() => EnsureUi();
 
     private void EnsureUi()
@@ -276,6 +285,13 @@ public partial class MapPanel : AssetPanel
 
         int x = (int)p.X * Stride, y = (int)p.Y * Stride;
         _coords.Text = $"{x},{y}";
+        if (mb.CtrlPressed)
+        {
+            // Ctrl+click: straight to the World tab.
+            JumpToWorld?.Invoke(Facet, x, y);
+            return;
+        }
+
         InspectCell(x, y);
     }
 
@@ -345,8 +361,10 @@ public partial class MapPanel : AssetPanel
             sb.Append(line).Append('\n');
         }
 
-        sb.Append($"(radar of the {side}x{side} cells around it, {Zoom}x)\n");
-        Raise(Inspection.Still("Maps", $"{x},{y}", img, sb.ToString()));
+        sb.Append($"(radar of the {side}x{side} cells around it, {Zoom}x; Ctrl+click the radar to jump)\n");
+        var inspection = Inspection.Still("Maps", $"{x},{y}", img, sb.ToString());
+        inspection.Actions.Add(("Show in UO World", () => JumpToWorld?.Invoke(facet, x, y)));
+        Raise(inspection);
         return true;
     }
 }

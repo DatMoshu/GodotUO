@@ -31,6 +31,30 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
     private AssetsDock _assets;
     private InspectorDock _inspector;
     private EditorSmoke _smoke;
+    private WorldView _world;
+
+    // Whether the World tab was on screen when an assembly reload began.
+    // A bool field survives the reload (Godot serializes it), and the editor
+    // does not call _MakeVisible again for a tab that is already current, so
+    // without this the rebuilt view would stay hidden behind its own button.
+    private bool _worldWasVisible;
+
+    public const string WorldTabName = "UO World";
+
+    public override bool _HasMainScreen() => true;
+
+    public override string _GetPluginName() => WorldTabName;
+
+    public override Texture2D _GetPluginIcon() =>
+        EditorInterface.Singleton.GetEditorTheme().GetIcon("WorldEnvironment", "EditorIcons");
+
+    public override void _MakeVisible(bool visible)
+    {
+        if (_world != null)
+        {
+            _world.Visible = visible;
+        }
+    }
 
     public override void _EnterTree() => Build();
 
@@ -63,10 +87,23 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         AddDock(_assets);
         AddDock(_inspector);
 
+        // The World tab: the game's renderer, read only (ADR-0015). It starts
+        // the world the first time it is shown, not here.
+        _world = new WorldView(_data);
+        EditorInterface.Singleton.GetEditorMainScreen().AddChild(_world);
+        _world.Visible = _worldWasVisible;
+        _worldWasVisible = false;
+        _world.Inspect += _inspector.ShowInspection;
+        MapPanel maps = _assets.Panel<MapPanel>();
+        if (maps != null)
+        {
+            maps.JumpToWorld += ShowInWorld;
+        }
+
         string smokeOut = EditorSmoke.OutDirFromArgs();
         if (smokeOut != null)
         {
-            _smoke = new EditorSmoke(smokeOut, _data, _assets, _inspector);
+            _smoke = new EditorSmoke(smokeOut, _data, _assets, _inspector, _world);
             AddChild(_smoke);
         }
 
@@ -81,8 +118,32 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         GD.Print("[GUO editor] plugin entered");
     }
 
+    /// <summary>Brings the World tab forward at a cell.</summary>
+    public void ShowInWorld(int facet, int x, int y)
+    {
+        EditorInterface.Singleton.SetMainScreenEditor(WorldTabName);
+        if (_world != null)
+        {
+            // Already the current tab (after a reload, say): the editor does
+            // not call _MakeVisible for it, so show it here.
+            _world.Visible = true;
+            _world.GoTo(facet, x, y);
+        }
+    }
+
     private void TearDown()
     {
+        if (_world != null)
+        {
+            // Frees the embedded controller's render resources and releases
+            // Client.Game, so an assembly reload finds nothing held.
+            _worldWasVisible = _world.Visible;
+            _world.Shutdown();
+            _world.GetParent()?.RemoveChild(_world);
+            _world.QueueFree();
+            _world = null;
+        }
+
         if (_assets != null)
         {
             _assets.Inspect -= _inspector.ShowInspection;

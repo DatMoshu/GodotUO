@@ -4,6 +4,7 @@ namespace GUO.Editor;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using Godot;
 
@@ -38,6 +39,8 @@ public partial class EditorSmoke : Node
     private readonly EditorData _data;
     private readonly AssetsDock _assets;
     private readonly InspectorDock _inspector;
+    private readonly WorldView _world;
+    private readonly Dictionary<string, object> _worldReport = new();
     private readonly Dictionary<string, object> _report = new();
     private readonly Dictionary<string, object> _panels = new();
     private readonly List<string> _failures = new();
@@ -49,12 +52,13 @@ public partial class EditorSmoke : Node
     private bool _reloadTest;
     private bool _afterReload;
 
-    public EditorSmoke() : this(null, null, null, null)
+    public EditorSmoke() : this(null, null, null, null, null)
     {
     }
 
-    public EditorSmoke(string outDir, EditorData data, AssetsDock assets, InspectorDock inspector)
+    public EditorSmoke(string outDir, EditorData data, AssetsDock assets, InspectorDock inspector, WorldView world)
     {
+        _world = world;
         _out = outDir;
         _data = data;
         _assets = assets;
@@ -127,7 +131,8 @@ public partial class EditorSmoke : Node
                 // Bring the next tab to the front and let it lay out.
                 if (_panel >= _assets.Panels.Count)
                 {
-                    _stage = 9;
+                    _stage = 6;
+                    _frames = 0;
                     break;
                 }
 
@@ -157,8 +162,76 @@ public partial class EditorSmoke : Node
 
                 break;
 
+            case 6:
+                // The World tab, reached the way a user reaches it: from the
+                // Maps panel's "Show in UO World".
+                StartWorld();
+                _stage = 7;
+                _frames = 0;
+                break;
+
+            case 7:
+                if (_frames >= (Headless ? 5 : SettleFrames))
+                {
+                    CheckWorld();
+                    _world.ForcedMouse = new Vector2I((int)_world.Size.X / 2, (int)(_world.Size.Y / 2));
+                    _stage = 8;
+                    _frames = 0;
+                }
+
+                break;
+
+            case 8:
+                if (_frames >= 5)
+                {
+                    CheckPick();
+                    _world.ForcedMouse = null;
+                    _before = _world.IsBooted ? _world.Host.Scene.RenderedObjectsCount : 0;
+                    PlaceMulti();
+                    _stage = 11;
+                    _frames = 0;
+                }
+
+                break;
+
+            case 11:
+                if (_frames >= (Headless ? 5 : SettleFrames))
+                {
+                    CheckMulti();
+
+                    // The server's delete-object path (0x1D) removes it again,
+                    // so the overlay check below has the block to itself.
+                    _world.Host.RemoveServerObject(0x4000_0064);
+                    StartOverlay();
+                    _stage = 12;
+                    _frames = 0;
+                }
+
+                break;
+
+            case 12:
+                if (_frames >= (Headless ? 5 : SettleFrames))
+                {
+                    CheckOverlay();
+                    CloseOverlay();
+                    _stage = 13;
+                    _frames = 0;
+                }
+
+                break;
+
+            case 13:
+                if (_frames >= 5)
+                {
+                    CheckRestored();
+                    _stage = 9;
+                }
+
+                break;
+
             case 9:
                 _report["panels"] = _panels;
+                _report["world"] = _worldReport;
                 if (_reloadTest && !_afterReload && _failures.Count == 0)
                 {
                     RequestReload();
@@ -333,6 +406,337 @@ public partial class EditorSmoke : Node
         {
             _failures.Add($"{name}: {f}");
         }
+    }
+
+    private void StartWorld()
+    {
+        MapPanel maps = _assets.Panel<MapPanel>();
+        if (maps == null || _world == null)
+        {
+            WorldFail("no Maps panel or no World tab");
+            return;
+        }
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        maps.RequestJump(0, 1496, 1628);
+        _worldReport["jump_ms"] = sw.ElapsedMilliseconds;
+        _worldReport["tab_visible"] = _world.Visible;
+        if (!_world.Visible)
+        {
+            WorldFail("Show in UO World did not bring the World tab forward");
+        }
+    }
+
+    private void CheckWorld()
+    {
+        WorldHost host = _world.Host;
+        _worldReport["booted"] = host.IsBooted;
+        _worldReport["boot_ms"] = host.BootMilliseconds;
+        if (!host.IsBooted)
+        {
+            WorldFail($"the world did not start: {host.Error}");
+            return;
+        }
+
+        // The client writes default tables under CUOEnviroment.ExecutablePath;
+        // the world view must have pointed that away from the project.
+        bool litter = Directory.Exists(Path.Combine(ProjectSettings.GlobalizePath("res://"), "Data"));
+        _worldReport["project_folder_clean"] = !litter;
+        if (litter)
+        {
+            WorldFail("booting the world wrote a Data folder into the Godot project");
+        }
+
+        _worldReport["position"] = new[] { host.Facet, host.X, host.Y, host.Z };
+        _worldReport["in_game"] = host.World.InGame;
+        _worldReport["rendered_objects"] = host.Scene.RenderedObjectsCount;
+        if (host.Facet != 0 || host.X != 1496 || host.Y != 1628)
+        {
+            WorldFail($"the view is at map{host.Facet} {host.X},{host.Y}, not map0 1496,1628");
+        }
+
+        if (host.Scene.RenderedObjectsCount <= 0)
+        {
+            WorldFail("GameScene drew no objects");
+        }
+
+        Image frame = _world.Capture();
+        if (frame != null && !frame.IsEmpty())
+        {
+            Directory.CreateDirectory(_out);
+            string path = Path.Combine(_out, $"world{Suffix}.png");
+            frame.SavePng(path);
+            _worldReport["png"] = path;
+            _worldReport["image_size"] = new[] { frame.GetWidth(), frame.GetHeight() };
+            int colours = Colours(frame);
+            _worldReport["distinct_colours"] = colours;
+            if (colours < 64)
+            {
+                WorldFail($"the world frame has only {colours} colours; it is not the map");
+            }
+
+            Image editor = EditorInterface.Singleton.GetBaseControl().GetViewport().GetTexture()?.GetImage();
+            if (editor != null)
+            {
+                string shot = Path.Combine(_out, $"editor_world{Suffix}.png");
+                editor.SavePng(shot);
+                _worldReport["screenshot"] = shot;
+            }
+        }
+    }
+
+    private void CheckPick()
+    {
+        if (!_world.IsBooted)
+        {
+            return;
+        }
+
+        Inspection picked = _world.InspectPicked();
+        _worldReport["picked"] = picked?.Text.Split('\n')[0];
+        if (picked == null)
+        {
+            WorldFail("the game's picking found nothing at the centre of the view");
+        }
+        else if (_inspector.Current != picked)
+        {
+            WorldFail("the picked object did not reach the UO Inspector");
+        }
+    }
+
+    private int _before;
+
+    private void PlaceMulti()
+    {
+        if (!_world.IsBooted)
+        {
+            return;
+        }
+
+        // Multi 0x0064 (a small house) a few cells south of the view centre,
+        // through the same calls a server's world-object packet makes.
+        var item = _world.Host.PlaceServerMulti(0x4000_0064, 0x0064, 1500, 1634, 10);
+        _worldReport["multi_placed"] = item != null;
+        if (item == null)
+        {
+            WorldFail("could not place a multi through the server path");
+        }
+    }
+
+    private void CheckMulti()
+    {
+        if (!_world.IsBooted)
+        {
+            return;
+        }
+
+        int after = _world.Host.Scene.RenderedObjectsCount;
+        _worldReport["objects_before_multi"] = _before;
+        _worldReport["objects_with_multi"] = after;
+        bool house = _world.Host.World.HouseManager.TryGetHouse(0x4000_0064, out var h) && h.Components.Count > 0;
+        _worldReport["multi_components"] = house ? h.Components.Count : 0;
+        if (!house)
+        {
+            WorldFail("the placed multi has no components in HouseManager");
+        }
+        else if (after <= _before)
+        {
+            WorldFail($"placing the multi did not add to what GameScene draws ({_before} -> {after})");
+        }
+
+        Image frame = _world.Capture();
+        if (frame != null && !frame.IsEmpty())
+        {
+            string path = Path.Combine(_out, $"world_multi{Suffix}.png");
+            frame.SavePng(path);
+            _worldReport["multi_png"] = path;
+        }
+    }
+
+    // Block 187,203 holds the view centre, 1496,1628. The overlay puts three
+    // trees (static 0x0CCA) on it and turns all its land to water (0x00A8),
+    // which a screenshot shows at a glance and a chunk walk can count.
+    private const int OverlayBx = 187, OverlayBy = 203;
+    private const ushort OverlayTree = 0x0CCA, OverlayWater = 0x00A8;
+    private readonly Dictionary<string, object> _overlayReport = new();
+    private Dictionary<string, DateTime> _installStamp;
+
+    private Dictionary<string, DateTime> InstallStamp()
+    {
+        var d = new Dictionary<string, DateTime>();
+        foreach (string f in Directory.GetFiles(_data.ClientData))
+        {
+            string n = Path.GetFileName(f).ToLowerInvariant();
+            if (n.StartsWith("map") || n.StartsWith("statics") || n.StartsWith("staidx"))
+            {
+                d[n] = File.GetLastWriteTimeUtc(f);
+            }
+        }
+
+        return d;
+    }
+
+    private void StartOverlay()
+    {
+        if (!_world.IsBooted)
+        {
+            return;
+        }
+
+        _worldReport["overlay"] = _overlayReport;
+        _installStamp = InstallStamp();
+        WorldHost host = _world.Host;
+        // A project of its own per pass: the second pass after a reload must
+        // not open the first pass's blocks and count them as the install's.
+        string root = Path.Combine(_out, $"world_project{Suffix}");
+
+        try
+        {
+            WorldProject project = host.OpenProject(root);
+            WorldBlock b = WorldProject.Capture(Client.Game.UO.FileManager.Maps, 0, OverlayBx, OverlayBy);
+            _overlayReport["base_statics"] = b.Statics.Count;
+            _overlayReport["base_trees"] = CountInChunk(OverlayTree, statics: true);
+            for (int i = 0; i < 3; i++)
+            {
+                int c = 1 + i * 2;
+                b.Statics.Add(new WorldStatic { Id = OverlayTree, X = (byte)c, Y = (byte)c, Z = b.LandZ[c * 8 + c] });
+            }
+
+            for (int i = 0; i < 64; i++)
+            {
+                b.LandId[i] = OverlayWater;
+            }
+
+            string path = project.WriteBlock(b);
+            _overlayReport["block_file"] = path;
+
+            // Round trip through disk: a fresh project object reads the JSON.
+            host.OpenProject(root);
+            int changed = host.ApplyOverlay();
+            _overlayReport["blocks_applied"] = changed;
+            _overlayReport["blocks_in_project"] = host.Project.Blocks(0).Count;
+        }
+        catch (Exception ex)
+        {
+            OverlayFail($"{ex.GetType().Name}: {ex.Message}");
+        }
+    }
+
+    private int CountInChunk(ushort graphic, bool statics)
+    {
+        var chunk = _world.Host.World.Map.GetChunk2(OverlayBx, OverlayBy, load: true);
+        int n = 0;
+        for (int x = 0; x < 8; x++)
+        {
+            for (int y = 0; y < 8; y++)
+            {
+                for (var o = chunk?.GetHeadObject(x, y); o != null; o = o.TNext)
+                {
+                    if (o.Graphic == graphic && (statics ? o is GUO.Game.GameObjects.Static : o is GUO.Game.GameObjects.Land))
+                    {
+                        n++;
+                    }
+                }
+            }
+        }
+
+        return n;
+    }
+
+    private void CheckOverlay()
+    {
+        if (!_world.IsBooted)
+        {
+            return;
+        }
+
+        int trees = CountInChunk(OverlayTree, statics: true);
+        int water = CountInChunk(OverlayWater, statics: false);
+        _overlayReport["trees_in_chunk"] = trees;
+        _overlayReport["water_in_chunk"] = water;
+        int baseTrees = _overlayReport.TryGetValue("base_trees", out object bt) ? (int)bt : 0;
+        if (trees != baseTrees + 3)
+        {
+            OverlayFail($"the chunk has {trees} trees of 0x{OverlayTree:X4}, expected {baseTrees + 3}");
+        }
+
+        if (water != 64)
+        {
+            OverlayFail($"the chunk has {water} water cells, expected 64");
+        }
+
+        Image frame = _world.Capture();
+        if (frame != null && !frame.IsEmpty())
+        {
+            string path = Path.Combine(_out, $"world_overlay{Suffix}.png");
+            frame.SavePng(path);
+            _overlayReport["png"] = path;
+        }
+    }
+
+    private void CloseOverlay()
+    {
+        if (_world.IsBooted)
+        {
+            _world.Host.CloseProject();
+        }
+    }
+
+    private void CheckRestored()
+    {
+        if (!_world.IsBooted)
+        {
+            return;
+        }
+
+        int trees = CountInChunk(OverlayTree, statics: true);
+        _overlayReport["trees_after_close"] = trees;
+        int baseTrees = _overlayReport.TryGetValue("base_trees", out object bt) ? (int)bt : 0;
+        if (trees != baseTrees)
+        {
+            OverlayFail($"closing the project left {trees} trees, the install has {baseTrees}");
+        }
+
+        Dictionary<string, DateTime> after = InstallStamp();
+        bool untouched = _installStamp != null && after.Count == _installStamp.Count
+            && after.All(kv => _installStamp.TryGetValue(kv.Key, out DateTime t) && t == kv.Value);
+        _overlayReport["install_untouched"] = untouched;
+        if (!untouched)
+        {
+            OverlayFail("the install's map/statics files changed during the overlay check");
+        }
+
+        _overlayReport["ok"] = !_overlayReport.ContainsKey("failed");
+    }
+
+    private void OverlayFail(string why)
+    {
+        _overlayReport["failed"] = true;
+        WorldFail($"overlay: {why}");
+    }
+
+    private void WorldFail(string why)
+    {
+        _worldReport["ok"] = false;
+        _failures.Add($"World: {why}");
+    }
+
+    private static int Colours(Image img)
+    {
+        var seen = new HashSet<uint>();
+        for (int y = 0; y < img.GetHeight(); y += 2)
+        {
+            for (int x = 0; x < img.GetWidth(); x += 2)
+            {
+                seen.Add(img.GetPixel(x, y).ToRgba32());
+                if (seen.Count > 4096)
+                {
+                    return seen.Count;
+                }
+            }
+        }
+
+        return seen.Count;
     }
 
     private static int Opaque(Image img)
