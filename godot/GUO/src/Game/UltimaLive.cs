@@ -832,6 +832,19 @@ namespace GUO.Game
                 string staIdxPath = Path.Combine(_UL.ShardName, $"staidx{mapId}.mul");
                 string staticsPath = Path.Combine(_UL.ShardName, $"statics{mapId}.mul");
 
+                // PORT DEVIATION (GUO): on a UOP-only install GetMapFile below
+                // yields nothing copyable (the UOP conversion is commented out
+                // upstream), so the shard copy became a BLANK map and the
+                // client drew no world. A map{N}.mul that GetUOFilePath finds
+                // (files_override: tools/world writes one beside every export)
+                // is copied instead, which is what the MUL branch does anyway.
+                // See ADR-0012.
+                if (!File.Exists(mapPath) && File.Exists(oldMap))
+                {
+                    CopyFile(oldMap, mapPath);
+                }
+                // END PORT DEVIATION (GUO)
+
                 if (!File.Exists(mapPath))
                 {
                     var mapFile = GetMapFile(mapId);
