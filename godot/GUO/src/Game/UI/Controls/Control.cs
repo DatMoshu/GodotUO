@@ -398,6 +398,7 @@ namespace GUO.Game.UI.Controls
 
         public void HitTest(int x, int y, ref Control res)
         {
+            // PORT DEVIATION (GUO): per-gump presentation scale (GumpPresentation).
             // Inverse the root transform once, before traversing legacy child bounds.
             using var mouseSpace = new GUO.Input.Touch.GumpPresentation.MouseScope(this);
             if (Parent == null)
@@ -529,6 +530,7 @@ namespace GUO.Game.UI.Controls
 
         public void InvokeMouseDown(Point position, MouseButtonType button)
         {
+            // PORT DEVIATION (GUO): per-gump presentation scale; see HitTest.
             position = GUO.Input.Touch.GumpPresentation.ToLocal(this, position);
             using var mouseSpace = new GUO.Input.Touch.GumpPresentation.MouseScope(this);
             int x = position.X - X - ParentX;
@@ -539,6 +541,7 @@ namespace GUO.Game.UI.Controls
 
         public void InvokeMouseUp(Point position, MouseButtonType button)
         {
+            // PORT DEVIATION (GUO): per-gump presentation scale; see HitTest.
             position = GUO.Input.Touch.GumpPresentation.ToLocal(this, position);
             using var mouseSpace = new GUO.Input.Touch.GumpPresentation.MouseScope(this);
             int x = position.X - X - ParentX;
@@ -557,6 +560,7 @@ namespace GUO.Game.UI.Controls
 
         public void InvokeMouseOver(Point position)
         {
+            // PORT DEVIATION (GUO): per-gump presentation scale; see HitTest.
             position = GUO.Input.Touch.GumpPresentation.ToLocal(this, position);
             using var mouseSpace = new GUO.Input.Touch.GumpPresentation.MouseScope(this);
             int x = position.X - X - ParentX;
@@ -567,6 +571,7 @@ namespace GUO.Game.UI.Controls
 
         public void InvokeMouseEnter(Point position)
         {
+            // PORT DEVIATION (GUO): per-gump presentation scale; see HitTest.
             position = GUO.Input.Touch.GumpPresentation.ToLocal(this, position);
             using var mouseSpace = new GUO.Input.Touch.GumpPresentation.MouseScope(this);
             int x = position.X - X - ParentX;
@@ -577,6 +582,7 @@ namespace GUO.Game.UI.Controls
 
         public void InvokeMouseExit(Point position)
         {
+            // PORT DEVIATION (GUO): per-gump presentation scale; see HitTest.
             position = GUO.Input.Touch.GumpPresentation.ToLocal(this, position);
             using var mouseSpace = new GUO.Input.Touch.GumpPresentation.MouseScope(this);
             int x = position.X - X - ParentX;
@@ -587,6 +593,7 @@ namespace GUO.Game.UI.Controls
 
         public bool InvokeMouseDoubleClick(Point position, MouseButtonType button)
         {
+            // PORT DEVIATION (GUO): per-gump presentation scale; see HitTest.
             position = GUO.Input.Touch.GumpPresentation.ToLocal(this, position);
             using var mouseSpace = new GUO.Input.Touch.GumpPresentation.MouseScope(this);
             int x = position.X - X - ParentX;
