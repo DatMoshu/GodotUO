@@ -45,9 +45,29 @@ restart.
   2. the anvil at its new cell and not at the old one;
   3. all of them gone, the horse included.
 
-Accepted on that evidence (the director's condition). Still to build: the
-GM-command fallback for shards without the bridge, and the ServUO and
-RunUO backends.
+Accepted on that evidence (the director's condition).
+
+2026-09-27 (slice 3, the GM-command fallback): `python
+tools\editor_objects_proof\run.py --commands` passes 11/11, with the shard
+started **without** the bridge (a plain ModernUO; the check confirms no
+bridge line in its log).
+
+1. `tools\world apply-commands` placed the project's anvil and Horse spawner,
+   both tagged.
+2. A GM placed an untagged decoy anvil on the anvil's own cell.
+3. The edited project was applied:
+   - the tagged anvil was removed from that cell and placed at its new one;
+   - the spawner was removed;
+   - a hued item was placed;
+   - **the decoy was left standing**, the only thing on the old cell.
+4. Applying it again typed nothing.
+
+Found and fixed on the way: ModernUO asks a GM to confirm a delete that
+matches more than one object, and a scripted client cannot. So tags are
+unique per placement (a nonce), and `apply-commands` fails if the shard asks
+to confirm.
+
+Still to build: the ServUO and RunUO backends.
 
 ## Decision Makers
 
@@ -216,9 +236,27 @@ too: ModernUO's import deletes the old spawner with the same GUID. It
 
 **Live apply (after the export slice).** The bridge gains `object.put` and
 `object.delete` ops (`docs/data_formats.md` §10), applying one object on the
-game thread with the same code as the boot sync. §4.7's first cut, the GM
-client typing `[add` / `[props` / `[remove`, is kept as the universal
-fallback for shards without the bridge.
+game thread with the same code as the boot sync.
+
+**The GM-command fallback (shards without the bridge).** `tools\world
+apply-commands --host H --port P`: a GUO client, logged in as a GM, types the
+server's own commands. §4.7's first cut; it needs no targeting.
+
+| Change | Commands |
+|---|---|
+| Place | `[TileXYZ x y 1 1 z <Type> <args> set Name <tag> ...` |
+| Remove | on the recorded cell: `[Range 0 Remove where <Type> Name == <tag>` |
+| Move or change | remove, then place |
+
+**It can never remove what it did not place.**
+
+- Every placement carries a name tag of its own, `guo-<id8>-<nonce>`, and
+  it removes only by that tag, so a remove matches exactly one object. Shard content has no GUO tag, so even an item
+  with the same art on the same cell cannot match.
+- It keeps a record per shard in the project,
+  `shard/applied/<host>_<port>.json`, and targets only ids in it.
+
+Its limit: one entry per spawner (`[TileXYZ` makes one).
 
 ### 4. Other backends (§4.8), in this ADR's scope but not in the first slice
 

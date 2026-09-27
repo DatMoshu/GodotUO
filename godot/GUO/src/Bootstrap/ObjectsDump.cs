@@ -54,6 +54,31 @@ internal static class ObjectsDump
                 host.GetViewport().GetTexture().GetImage().SavePng(Path.Combine(dir, name + ".png"));
             }
 
+            // <name>.rec holding "seconds fps": frames into <dir>/<name>/0001.png ...,
+            // for a clip (tools/editor_objects_proof --live --clip). Windowed only.
+            foreach (string request in Directory.GetFiles(dir, "*.rec"))
+            {
+                string name = Path.GetFileNameWithoutExtension(request);
+                string[] args = File.ReadAllText(request).Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+                File.Delete(request);
+                double seconds = args.Length > 0 ? double.Parse(args[0], System.Globalization.CultureInfo.InvariantCulture) : 10;
+                double fps = args.Length > 1 ? double.Parse(args[1], System.Globalization.CultureInfo.InvariantCulture) : 10;
+                string frames = Path.Combine(dir, name);
+                Directory.CreateDirectory(frames);
+                var clock = System.Diagnostics.Stopwatch.StartNew();
+                int n = 0;
+                while (clock.Elapsed.TotalSeconds < seconds)
+                {
+                    await host.ToSignal(Godot.RenderingServer.Singleton, Godot.RenderingServerInstance.SignalName.FramePostDraw);
+                    if (clock.Elapsed.TotalSeconds * fps >= n)
+                    {
+                        host.GetViewport().GetTexture().GetImage().SavePng(Path.Combine(frames, $"{++n:D4}.png"));
+                    }
+                }
+
+                File.WriteAllText(Path.Combine(dir, name + ".recorded"), n.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            }
+
             await host.ToSignal(host.GetTree().CreateTimer(0.25), Godot.SceneTreeTimer.SignalName.Timeout);
         }
     }
