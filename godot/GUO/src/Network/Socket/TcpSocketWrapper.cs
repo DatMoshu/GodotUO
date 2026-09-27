@@ -59,6 +59,10 @@ sealed class TcpSocketWrapper : SocketWrapper
         if (!IsConnected)
             return 0;
 
+        // PORT DEVIATION (GUO): three fixes from 107c23b, each an upstream
+        // bug candidate: a FIN with no data is a disconnect (below), a read
+        // cut short returns what it got (`return done`), and Disconnect clears
+        // _socket.
         // Connected records the last socket operation. A FIN has no payload,
         // so Available alone cannot distinguish it from an idle connection.
         if (_socket.Client.Poll(0, SelectMode.SelectRead) && _socket.Available == 0)
