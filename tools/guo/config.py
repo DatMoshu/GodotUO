@@ -27,7 +27,7 @@ from pathlib import Path
 
 # `if not defined NAME set "NAME=VALUE"` / `set "NAME=VALUE"`
 _SET_RE = re.compile(
-    r'^\s*(?:if\s+not\s+defined\s+\w+\s+)?set\s+"(?P<key>[A-Za-z_][A-Za-z0-9_]*)=(?P<val>[^"]*)"',
+    r'^\s*(?:if\s+not\s+defined\s+(?P<guard>\w+)\s+)?set\s+"(?P<key>[A-Za-z_][A-Za-z0-9_]*)=(?P<val>[^"]*)"',
     re.IGNORECASE,
 )
 _VAR_RE = re.compile(r"%([A-Za-z_][A-Za-z0-9_]*)%")
@@ -50,19 +50,23 @@ def find_repo_root(start: Path | None = None) -> Path:
     )
 
 
-def parse_config_bat(path: Path) -> dict[str, str]:
+def parse_config_bat(path: Path, initial: dict[str, str] | None = None) -> dict[str, str]:
     """Extract the settings from config.bat without executing it."""
-    values: dict[str, str] = {}
+    values = {key.upper(): value for key, value in (initial or {}).items()}
+    environment = {key.upper(): value for key, value in os.environ.items()}
     for line in path.read_text(encoding="utf-8-sig", errors="replace").splitlines():
         match = _SET_RE.match(line)
         if not match:
             continue
-        key, raw = match.group("key"), match.group("val")
+        key, raw = match.group("key").upper(), match.group("val")
+        guard = match.group("guard")
+        if guard and (environment.get(guard.upper()) or values.get(guard.upper())):
+            continue
 
         def expand(m: re.Match[str]) -> str:
-            name = m.group(1)
+            name = m.group(1).upper()
             # Prefer a real environment value, then one defined earlier in the file.
-            return os.environ.get(name) or values.get(name) or m.group(0)
+            return environment.get(name) or values.get(name) or m.group(0)
 
         values[key] = _VAR_RE.sub(expand, raw)
     return values
@@ -179,16 +183,20 @@ def load_config(root: Path | None = None) -> Config:
     """Resolve configuration from the environment, falling back to config.bat."""
     root = (root or find_repo_root()).resolve()
     shared = root / "launchers" / "_shared"
-    from_bat = parse_config_bat(shared / "config.bat")
+    from_bat = {"UO_ROOT": str(root)}
     local = shared / "config.local.bat"
     if local.is_file():
         # config.bat calls it first, and its own lines are all guarded, so
         # whatever the local file sets wins over the defaults.
-        from_bat.update(parse_config_bat(local))
+        from_bat = parse_config_bat(local, from_bat)
+    # Resolve in batch execution order: local settings must be available to
+    # references in guarded defaults, including values based on UO_ROOT.
+    from_bat = parse_config_bat(shared / "config.bat", from_bat)
+    environment = {key.upper(): value for key, value in os.environ.items()}
 
     def get(key: str, default: str = "") -> str:
         # Environment wins, exactly as in common.bat.
-        return os.environ.get(key) or from_bat.get(key) or default
+        return environment.get(key.upper()) or from_bat.get(key.upper()) or default
 
     try:
         shard_port = int(get("UO_SHARD_PORT", "2593"))
