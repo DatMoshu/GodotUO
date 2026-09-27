@@ -1,0 +1,15 @@
+<Project Sdk="Godot.NET.Sdk/4.7.2">
+  <!-- Built only by the web-capable engine in tools/godot_web, whose
+       Godot.NET.Sdk comes from its own feed (nuget.config here) into its own
+       package cache (NUGET_PACKAGES, set by tools/web/run.py). The fork needs
+       net9.0 and a Program.cs. -->
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <RootNamespace>Hello</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <TrimmerRootAssembly Include="System.Private.CoreLib" />
+    <TrimmerRootAssembly Include="System.Runtime" />
+  </ItemGroup>
+</Project>

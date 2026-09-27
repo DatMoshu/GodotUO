@@ -1,0 +1,20 @@
+; A ten-line C# project that proves a Godot build can export C# to the web.
+; tools/web/run.py hello exports it with the web-capable engine in
+; tools/godot_web and serves it; see tools/web/README.md.
+config_version=5
+
+[application]
+
+config/name="GUO Web Hello"
+run/main_scene="res://main.tscn"
+config/features=PackedStringArray("4.7", "C#", "GL Compatibility")
+
+[dotnet]
+
+project/assembly_name="Hello"
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+textures/canvas_textures/default_texture_filter=0
