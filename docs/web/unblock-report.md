@@ -147,6 +147,45 @@ For #118976 (the one that can build no-threads and AOT), on this PC:
 5. Later: a source build of #118976 for a no-threads, AOT-compiled,
    smaller, reproducible build that CI can make; lazy whole-install FS.
 
+## Proposal: a web export in CI (for the owner to decide; nothing built)
+
+Added 2026-09-27, after the client played in Chrome on this PC. Today the
+web export runs only here, as the owner approved. Should GitHub Actions
+export it too, and how?
+
+**What CI could prove, and what it could not.** CI has no UO install
+(rule 8) and no shard. It could prove that **the web export still builds**,
+the most likely thing to rot: a C# change that trips the browser's missing
+APIs, or the page patch anchors no longer matching. It could also prove that
+the page boots in headless Chrome as far as the client's first log lines
+(`?data=none` stops at "No UO client data", after the engine, the .NET
+runtime and GUO's bootstrap have all run). It could not prove the login
+screen or play; those stay on this PC's `smoke`.
+
+**Three ways to do it:**
+
+| | A. No CI | B. The prebuilt, pinned | C. Build the fork from source |
+|---|---|---|---|
+| How | the web export stays a local check | a `windows-latest` job downloads the 4.7.2 release zip, **fails unless its SHA-256 matches** the one in `tools/godot_web/README.md`, caches it, installs .NET 10 + `wasm-tools-net9` (a hosted runner has admin rights, unlike this PC), exports, boots the page in Playwright Chrome | a job checks out ComplexRobot/godot at a pinned commit, builds the mono editor and the web template (emsdk, SCons), caches the result by commit |
+| Time per run | 0 | ~20–30 min (10 here, and hosted runners are slower; the forced `emcc` relink dominates) | 2–4 h on a cache miss; B's time on a hit |
+| Cost | none | free on a public repo; on a private one Windows minutes count double | as B, plus the cache misses; runner disk (~15–20 GB) is tight |
+| Trust | none needed | runs a **third-party, unsigned binary** in our CI | we build what we run, from source we can read |
+| Provenance | n/a | the zip's hash is pinned, but its origin is one person's GitHub release; the build logs show it was built in their GitHub Actions from the public branch | full: our commit pin, our build log |
+| Licence | n/a | Godot and the fork are MIT; running it is fine. **Shipping** its templates in a GUO web release is redistribution: keep Godot's licence notice with it | same |
+
+**Rules any CI option should follow:** a separate workflow, not the main CI.
+Manual or weekly triggers, so a fork outage never blocks a merge.
+`permissions: contents: read`, no secrets in the job, and no artifact
+publishing from it, so an untrusted binary has nothing to steal or sign.
+The job should fail, not warn, on a hash mismatch.
+
+**Recommendation.** B now, under those rules. It catches the likely
+breakage for a few tens of free minutes a week, and the pinned hash bounds
+the trust to a binary the owner has already chosen to run here. Move to C
+before GUO publishes web builds for others (going public, Pages), because a
+shipped build should come from a source build we can reproduce. Keep A if
+the owner would rather no third-party binary run under the repo's name.
+
 ## Sources
 
 - godotengine/godot#70796 (the issue), #106125, #118976
