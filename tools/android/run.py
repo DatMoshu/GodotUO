@@ -58,6 +58,11 @@ ACTIVITY = "com.godot.game.GodotAppLauncher"  # 4.7: the exported launcher; Godo
 LOGIN_OK = "[GUO] login probe: ok"
 LOGIN_FAIL = "[GUO] login probe: FAIL"
 
+# The same for the second screen; see src/Bootstrap/DualProbe.cs and ADR-0009.
+DUAL_OK = "[GUO] dual screen: ok"
+DUAL_FAIL = "[GUO] dual screen: FAIL"
+DUAL_NONE = "[GUO] dual screen: no second display"
+
 
 # ---------------------------------------------------------------------------
 # paths
@@ -256,6 +261,17 @@ class Doctor:
                 "(\"unauthorized\" means the prompt is waiting)",
             )
 
+        # --- a second display (ADR-0009) ------------------------------------
+        if p.adb and any(state == "device" for _, state in adb_devices(p)):
+            displays = android_displays(p)
+            second = next((d for d in displays if d.presentation), None)
+            print(f"  info displays                     {len(displays)} on the device: "
+                  + "; ".join(str(d) for d in displays))
+            print(f"  info second display               "
+                  + (str(second) if second else "none (the client leaves the second screen alone)"))
+            if p.cfg.android_second_display:
+                print(f"  info UO_ANDROID_SECOND_DISPLAY    {p.cfg.android_second_display} (overrides the id above for screencap)")
+
         # --- the C# half, for real ------------------------------------------
         if publish_check:
             print("\n[android] doctor: dotnet publish for android-arm64 (the .NET half of an export) ...")
@@ -271,6 +287,80 @@ class Doctor:
             return 1
         say("everything an export needs is here")
         return 0
+
+
+class AndroidDisplay:
+    """One entry of `dumpsys display`: what the client's DisplayManager check sees."""
+
+    def __init__(self, display_id: int, name: str, width: int, height: int, rotation: int,
+                 presentation: bool, surface_id: str, state: str):
+        self.display_id = display_id
+        self.name = name
+        self.width = width
+        self.height = height
+        self.rotation = rotation
+        self.presentation = presentation
+        self.surface_id = surface_id  # what `screencap -d` wants
+        self.state = state
+
+    def __str__(self) -> str:
+        flags = " presentation" if self.presentation else ""
+        return (f"display {self.display_id} \"{self.name}\" {self.width}x{self.height} rotation {self.rotation}"
+                f"{flags}, surfaceflinger {self.surface_id or '?'}, {self.state}")
+
+
+def android_displays(p: Paths) -> list[AndroidDisplay]:
+    """Parse `dumpsys display` into the logical displays and their SurfaceFlinger ids.
+
+    The client asks DisplayManager for DISPLAY_CATEGORY_PRESENTATION; here the
+    same fact is the FLAG_PRESENTATION on the display's info, and its uniqueId
+    "local:<id>" is the id `screencap -d` takes (the same one
+    `dumpsys SurfaceFlinger --display-id` lists)."""
+    if not p.adb:
+        return []
+    text = subprocess.run(adb_cmd(p) + ["shell", "dumpsys", "display"],
+                          capture_output=True, text=True, errors="replace").stdout
+    found: dict[int, AndroidDisplay] = {}
+    current: int | None = None
+    for line in text.splitlines():
+        m = re.match(r"\s*mDisplayId=(\d+)", line)
+        if m:
+            current = int(m.group(1))
+            continue
+        # The override info is the rotated one, and it comes second; the
+        # last DisplayInfo seen for an id wins, which is what the app gets.
+        m = re.match(r'\s*m(?:Base|Override)DisplayInfo=DisplayInfo\{"([^"]*)", displayId (\d+)', line)
+        if not m or current is None:
+            continue
+        size = re.search(r"real (\d+) x (\d+)", line)
+        rot = re.search(r"rotation (\d+)", line)
+        uid = re.search(r'uniqueId "local:(\d+)"', line)
+        state = re.search(r"state (\w+)", line)
+        found[current] = AndroidDisplay(
+            current, m.group(1),
+            int(size.group(1)) if size else 0, int(size.group(2)) if size else 0,
+            int(rot.group(1)) if rot else 0,
+            "FLAG_PRESENTATION" in line,
+            uid.group(1) if uid else "",
+            state.group(1) if state else "?",
+        )
+    return [found[k] for k in sorted(found)]
+
+
+def second_display(p: Paths) -> AndroidDisplay | None:
+    """The display the client will present on, or None."""
+    for d in android_displays(p):
+        if d.presentation:
+            return d
+    return None
+
+
+def second_display_surface_id(p: Paths) -> str:
+    """config.bat's override, else what dumpsys says."""
+    if p.cfg.android_second_display:
+        return p.cfg.android_second_display
+    d = second_display(p)
+    return d.surface_id if d else ""
 
 
 def adb_devices(p: Paths) -> list[tuple[str, str]]:
@@ -637,6 +727,92 @@ def smoke(p: Paths, timeout: int, skip_export: bool) -> int:
     return 1
 
 
+def screencap(p: Paths, path: Path, surface_id: str = "") -> bool:
+    """Photograph a display into a PNG; the main one unless a SurfaceFlinger id is given."""
+    cmd = adb_cmd(p) + ["exec-out", "screencap", "-p"]
+    if surface_id:
+        cmd += ["-d", surface_id]
+    with open(path, "wb") as f:
+        result = subprocess.run(cmd, stdout=f, stderr=subprocess.DEVNULL)
+    return result.returncode == 0 and path.stat().st_size > 0
+
+
+def wake_device(p: Paths) -> None:
+    """The Thor sleeps between runs; a sleeping panel photographs black."""
+    adb = adb_cmd(p)
+    subprocess.run(adb + ["shell", "input", "keyevent", "KEYCODE_WAKEUP"], stdout=subprocess.DEVNULL)
+    subprocess.run(adb + ["shell", "wm", "dismiss-keyguard"], stdout=subprocess.DEVNULL)
+
+
+def dual_probe(p: Paths, timeout: int, skip_export: bool, extra_args: str, stay: bool) -> int:
+    """Export with --dual-probe, run it, wait for the verdict, photograph both displays."""
+    apk = p.out_dir / "GUO-dual.apk"
+    if not skip_export:
+        if export(p, f"--dual-probe {extra_args}".strip(), apk) != 0:
+            return 1
+    if install(p, apk) != 0:
+        say("install FAILED")
+        return 1
+
+    second = second_display(p)
+    surface = second_display_surface_id(p)
+    say("second display: " + (str(second) if second else "none reported by dumpsys display"))
+
+    adb = adb_cmd(p)
+    wake_device(p)
+    subprocess.run(adb + ["logcat", "-c"])
+    stop_app(p)
+    if start_app(p) != 0:
+        return 1
+
+    say(f"waiting up to {timeout}s for '{DUAL_OK}' on logcat")
+    deadline = time.time() + timeout
+    verdict = None
+    log_text = ""
+    while time.time() < deadline:
+        time.sleep(3)
+        log_text = subprocess.run(adb + ["logcat", "-d", "-v", "time"] + LOGCAT_FILTER,
+                                  capture_output=True, text=True, errors="replace").stdout
+        if DUAL_OK in log_text or DUAL_NONE in log_text:
+            verdict = True
+            break
+        if DUAL_FAIL in log_text or "FATAL EXCEPTION" in log_text or "[GUO] FATAL" in log_text:
+            verdict = False
+            break
+        if f"Process {p.cfg.android_package}" in log_text and "has died" in log_text:
+            verdict = False
+            break
+
+    p.out_dir.mkdir(parents=True, exist_ok=True)
+    log_file = p.out_dir / "dual_logcat.txt"
+    log_file.write_text(log_text, encoding="utf-8")
+
+    # Both panels, while the app is still up. The client also saves what it
+    # pushed to the second screen (guo_second.png in its screenshots folder);
+    # this is the panel itself, which is the only proof the pixels arrived.
+    main_shot = p.out_dir / "dual_main.png"
+    second_shot = p.out_dir / "dual_second.png"
+    shots = [f"main {main_shot}" if screencap(p, main_shot) else "main: screencap failed"]
+    if surface:
+        shots.append(f"second {second_shot}" if screencap(p, second_shot, surface)
+                     else f"second: screencap -d {surface} failed")
+    else:
+        shots.append("second: no display id to photograph")
+    if not stay:
+        stop_app(p)
+
+    for line in log_text.splitlines():
+        if "[GUO] dual screen" in line or "[GUO] FATAL" in line or "FATAL EXCEPTION" in line:
+            print("  " + line.strip())
+
+    if verdict:
+        say(f"OK; {'; '.join(shots)}; log {log_file}")
+        return 0
+    say("FAILED: " + ("the client reported a failure or died" if verdict is False
+                      else f"no '{DUAL_OK}' within {timeout}s") + f"; {'; '.join(shots)}; log {log_file}")
+    return 1
+
+
 # ---------------------------------------------------------------------------
 # main
 # ---------------------------------------------------------------------------
@@ -664,6 +840,12 @@ def main(argv: list[str] | None = None) -> int:
     sm = sub.add_parser("smoke", help="export, install, run, wait for the login gump, pull a screenshot")
     sm.add_argument("--timeout", type=int, default=240, help="seconds to wait for the login gump")
     sm.add_argument("--no-export", action="store_true", help="reuse build\\android\\GUO-smoke.apk")
+    dp = sub.add_parser("dual_probe", help="export with --dual-probe, run, wait for the verdict, photograph both displays")
+    dp.add_argument("--timeout", type=int, default=300, help="seconds to wait for the verdict")
+    dp.add_argument("--no-export", action="store_true", help="reuse build\\android\\GUO-dual.apk")
+    dp.add_argument("--args", default="", help="extra client flags to bake in (e.g. --host <shard-lan-ip>)")
+    dp.add_argument("--stay", action="store_true", help="leave the app running afterwards")
+    sub.add_parser("displays", help="list the device's displays as dumpsys reports them")
 
     args = parser.parse_args(argv)
     p = Paths(load_config())
@@ -692,6 +874,12 @@ def main(argv: list[str] | None = None) -> int:
         return push_data(p)
     if args.command == "smoke":
         return smoke(p, args.timeout, args.no_export)
+    if args.command == "dual_probe":
+        return dual_probe(p, args.timeout, args.no_export, args.args, args.stay)
+    if args.command == "displays":
+        for d in android_displays(p):
+            print("  " + str(d))
+        return 0
     return 2
 
 

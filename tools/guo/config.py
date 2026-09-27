@@ -97,6 +97,7 @@ class Config:
     android_package: str
     android_device: str
     android_client_data: str
+    android_second_display: str
 
     # --- Web (optional; see tools/web and ADR-0008) ---
     web_port: int
@@ -204,6 +205,7 @@ def load_config(root: Path | None = None) -> Config:
         android_package=package,
         android_device=get("UO_ANDROID_DEVICE", ""),
         android_client_data=get("UO_ANDROID_CLIENT_DATA", f"/sdcard/Android/data/{package}/files/uo"),
+        android_second_display=get("UO_ANDROID_SECOND_DISPLAY", ""),
         root=root,
         godot_version=get("GODOT_VERSION", "4.7.2-stable"),
         godot_flavor=get("GODOT_FLAVOR", "mono_win64"),

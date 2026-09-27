@@ -107,6 +107,12 @@ REM  files folder, which adb, a file manager and the app can all reach with
 REM  no permission prompt. Push your install there with
 REM  `python tools\android\run.py push`. It is deleted with the app.
 if not defined UO_ANDROID_CLIENT_DATA set "UO_ANDROID_CLIENT_DATA=/sdcard/Android/data/%UO_ANDROID_PACKAGE%/files/uo"
+REM  A dual-screen device (AYN Thor): the SurfaceFlinger id of the second
+REM  display, for `screencap -d`. Leave empty and the tools read it from
+REM  `dumpsys display` (the FLAG_PRESENTATION display's uniqueId). Only the
+REM  dual_probe launcher and the doctor use it; the client finds the display
+REM  itself. See docs\architecture\ADR-0009-second-display.md.
+if not defined UO_ANDROID_SECOND_DISPLAY set "UO_ANDROID_SECOND_DISPLAY="
 
 REM --- Web (optional) -----------------------------------------------------
 REM  Only launchers\web\*.bat and tools\web read this. The port the local
