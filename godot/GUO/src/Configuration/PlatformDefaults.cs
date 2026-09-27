@@ -49,7 +49,7 @@ namespace GUO.Configuration
         /// The table version this build writes. 0 means the profile predates
         /// platform defaults (every profile saved before GUO had them).
         /// </summary>
-        public const int CurrentVersion = 6;
+        public const int CurrentVersion = 7;
 
         /// <summary>The login screen's size, which every login gump is laid out for.</summary>
         private const int LoginWidth = 640;
@@ -75,10 +75,32 @@ namespace GUO.Configuration
         // fresh Profile so it cannot drift from Profile.cs.
         private static readonly Profile Upstream = new Profile();
 
+        // v7: what the second screen's shelf takes when a gump opens
+        // (DualScreen, ADR-0009 amendment): the four session gumps, on every
+        // platform, since the feature only exists where a display does (or
+        // the desktop simulator asks for one). "Others" and the shelf's own
+        // scale (0 = the main screen's) stay at Profile's neutral values.
+        private static readonly Entry[] DualScreenShelf =
+        {
+            BoolEntry(nameof(Profile.DualScreenShelvePaperdoll), p => p.DualScreenShelvePaperdoll, (p, v) => p.DualScreenShelvePaperdoll = v, true, since: 7),
+            BoolEntry(nameof(Profile.DualScreenShelveBackpack), p => p.DualScreenShelveBackpack, (p, v) => p.DualScreenShelveBackpack = v, true, since: 7),
+            BoolEntry(nameof(Profile.DualScreenShelveStatus), p => p.DualScreenShelveStatus, (p, v) => p.DualScreenShelveStatus = v, true, since: 7),
+            BoolEntry(nameof(Profile.DualScreenShelveJournal), p => p.DualScreenShelveJournal, (p, v) => p.DualScreenShelveJournal = v, true, since: 7)
+        };
+
+        private static Entry[] WithShelf(params Entry[] entries)
+        {
+            var all = new Entry[entries.Length + DualScreenShelf.Length];
+            entries.CopyTo(all, 0);
+            DualScreenShelf.CopyTo(all, entries.Length);
+
+            return all;
+        }
+
         private static readonly Dictionary<ProfilePlatform, Entry[]> Table = new Dictionary<ProfilePlatform, Entry[]>
         {
-            [ProfilePlatform.Desktop] = new[]
-            {
+            [ProfilePlatform.Desktop] = WithShelf
+            (
                 // v5: the world fills the window and the wheel zooms, as on
                 // Mobile and Web, instead of upstream's 600x480 world in the
                 // corner of a large window. Unticking "Game window full size"
@@ -89,10 +111,10 @@ namespace GUO.Configuration
                 PointEntry(nameof(Profile.GameWindowSize), p => p.GameWindowSize, (p, v) => p.GameWindowSize = v, FullWindowSize, since: 5),
                 BoolEntry(nameof(Profile.EnableMousewheelScaleZoom), p => p.EnableMousewheelScaleZoom, (p, v) => p.EnableMousewheelScaleZoom = v, true, since: 5),
                 BoolEntry(nameof(Profile.SaveScaleAfterClose), p => p.SaveScaleAfterClose, (p, v) => p.SaveScaleAfterClose = v, true, since: 5)
-            },
+            ),
 
-            [ProfilePlatform.Mobile] = new[]
-            {
+            [ProfilePlatform.Mobile] = WithShelf
+            (
                 // Carried over from the touch layer's MobileProfile.Apply
                 // (branch work/android, ADR-0017 "Window and scale"), which
                 // set these on a new profile before this table existed:
@@ -130,10 +152,10 @@ namespace GUO.Configuration
                 // v6: a video or frames background shows its first frame only
                 // (CanvasBackground, ADR-0016): a battery, and a phone GPU.
                 BoolEntry(nameof(Profile.CanvasBackgroundLowPower), p => p.CanvasBackgroundLowPower, (p, v) => p.CanvasBackgroundLowPower = v, true, since: 6)
-            },
+            ),
 
-            [ProfilePlatform.Web] = new[]
-            {
+            [ProfilePlatform.Web] = WithShelf
+            (
                 // The canvas is the page, so the world fills it and the
                 // wheel zooms. Containers stay desktop-sized: a browser has
                 // a mouse. A browser on a phone is Mobile, not Web.
@@ -145,7 +167,7 @@ namespace GUO.Configuration
 
                 // v6: as on Mobile; a browser tab decodes video on the CPU.
                 BoolEntry(nameof(Profile.CanvasBackgroundLowPower), p => p.CanvasBackgroundLowPower, (p, v) => p.CanvasBackgroundLowPower = v, true, since: 6)
-            }
+            )
         };
 
         private static ProfilePlatform? _platform;
