@@ -178,6 +178,7 @@ namespace GUO.Input
 
         private static void HandleButton(InputEventMouseButton e)
         {
+            if (Touch.GumpPresentation.HandleMouse(e)) return;
             if (e.ButtonIndex is MouseButton.WheelUp or MouseButton.WheelDown)
             {
                 if (!e.Pressed)

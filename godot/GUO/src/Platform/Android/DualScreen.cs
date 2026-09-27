@@ -783,7 +783,7 @@ namespace GUO.Platform.Android
 
             foreach (Gump g in UIManager.Gumps)
             {
-                if (g.IsDisposed || _seen.Contains(g))
+                if (g.IsDisposed || g.PresentationPlaced || _seen.Contains(g))
                 {
                     continue;
                 }
@@ -964,8 +964,8 @@ namespace GUO.Platform.Android
                     continue;
                 }
 
-                int x = Math.Clamp(g.X - MainWidth, 0, Math.Max(0, _logicalWidth - g.Width));
-                int y = Math.Clamp(g.Y, 0, Math.Max(0, _logicalHeight - g.Height));
+                int x = Math.Clamp(g.X - MainWidth, 0, Math.Max(0, _logicalWidth - Input.Touch.GumpPresentation.Width(g)));
+                int y = Math.Clamp(g.Y, 0, Math.Max(0, _logicalHeight - Input.Touch.GumpPresentation.Height(g)));
 
                 if (g.X != MainWidth + x || g.Y != y)
                 {
@@ -1050,9 +1050,13 @@ namespace GUO.Platform.Android
 
                     case 1: // ACTION_UP
                     case 6: // ACTION_POINTER_UP
-                    case 3: // ACTION_CANCEL
                         Finger(index, at, down: false);
 
+                        break;
+
+                    case 3: // ACTION_CANCEL cancels the stream, not a successful tap/drop.
+                        Input.Touch.TouchInput.CancelGesture();
+                        _fingersDown.Clear();
                         break;
 
                     case 2: // ACTION_MOVE

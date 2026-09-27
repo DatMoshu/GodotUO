@@ -134,7 +134,8 @@ internal static class DualProbe
         bool shelved = DualScreen.ShelfCount >= 3;
         bool pushing = presented > 0 || DualScreen.LastError.Length == 0;
 
-        Passed = shelved && pushing;
+        bool layout = await CheckGumpLayout(host, paperdoll);
+        Passed = shelved && pushing && layout;
 
         if (Passed)
         {
@@ -146,6 +147,82 @@ internal static class DualProbe
                 $"[GUO] dual screen: FAIL shelved={shelved} pushing={pushing} last error \"{DualScreen.LastError}\""
             );
         }
+    }
+
+    private static async System.Threading.Tasks.Task<bool> CheckGumpLayout(Node host, PaperDollGump g)
+    {
+        if (g == null || !DualScreen.ShelfOn) return false;
+        int x = g.X, y = g.Y;
+        float scale = g.PresentationScale;
+        bool locked = g.PresentationLocked, placed = g.PresentationPlaced;
+        var main = g.MainPresentationPosition;
+        var second = g.SecondPresentationPosition;
+        bool enabled = Input.Touch.TouchInput.Enabled;
+        float zoom = Client.Game.Scene.Camera.Zoom;
+        bool ok = true;
+        try
+        {
+            g.PresentationLocked = false;
+            ok &= Input.Touch.GumpPresentation.Transfer(g);
+            await InputProbe.Wait(host, 15);
+            bool onMain = !Input.Touch.GumpPresentation.OnSecond(g);
+            ok &= onMain;
+            GD.Print($"[GUO] dual layout: transfer to main, no automatic bounce: {onMain}");
+            ok &= Input.Touch.GumpPresentation.Transfer(g);
+            await InputProbe.Wait(host, 15);
+            bool returned = Input.Touch.GumpPresentation.OnSecond(g) && g.X == x && g.Y == y;
+            ok &= returned;
+            GD.Print($"[GUO] dual layout: return to saved second-screen position: {returned}");
+
+            Input.Touch.GumpPresentation.SetScale(g, 1.25f, new Compat.Point(g.X, g.Y));
+            var local = new Compat.Point(g.X + 60, g.Y + 90);
+            var at = Input.Touch.GumpPresentation.ToScreen(g, local);
+            var back = Input.Touch.GumpPresentation.ToLocal(g, at);
+            bool inverse = System.Math.Abs(local.X - back.X) <= 1 && System.Math.Abs(local.Y - back.Y) <= 1;
+            ok &= inverse;
+            GD.Print($"[GUO] dual layout: shelf transform round trip: {inverse}");
+
+            int shelfX = DualScreen.MainWidth;
+            Input.Touch.GumpPresentation.MoveDragged(g,
+                new Compat.Point(shelfX + 30, 100), new Compat.Point(shelfX - 10, 100));
+            bool horizontal = Input.Touch.GumpPresentation.OnSecond(g);
+            Input.Touch.GumpPresentation.MoveDragged(g,
+                new Compat.Point(shelfX + 30, 20), new Compat.Point(shelfX + 30, 0));
+            bool up = !Input.Touch.GumpPresentation.OnSecond(g);
+            await InputProbe.Wait(host, 15);
+            up &= !Input.Touch.GumpPresentation.OnSecond(g);
+            int bottom = Input.Touch.GumpPresentation.DisplayBounds(false).Height;
+            Input.Touch.GumpPresentation.MoveDragged(g,
+                new Compat.Point(30, bottom - 20), new Compat.Point(30, bottom - 1));
+            bool down = Input.Touch.GumpPresentation.OnSecond(g);
+            ok &= horizontal && up && down;
+            GD.Print($"[GUO] dual layout: horizontal stays, drag up, drag down: {horizontal}, {up}, {down}");
+            at = Input.Touch.GumpPresentation.ToScreen(g, new Compat.Point(g.X + 60, g.Y + 90));
+
+            // Contacts on different panels may coexist, but must never form a pinch.
+            Input.Touch.TouchInput.Enabled = true;
+            Input.Touch.TouchInput.CancelGesture();
+            float before = g.PresentationScale;
+            Vector2 first = new Vector2(400, 400) * Client.Game.DpiScale;
+            Vector2 last = new Vector2(at.X, at.Y) * Client.Game.DpiScale;
+            Input.Touch.TouchInput.Handle(new InputEventScreenTouch { Index = 0, Position = first, Pressed = true });
+            Input.Touch.TouchInput.Handle(new InputEventScreenTouch { Index = 32, Position = last, Pressed = true });
+            Input.Touch.TouchInput.Handle(new InputEventScreenDrag { Index = 32, Position = last + new Vector2(100, 0) });
+            Input.Touch.TouchInput.Handle(new InputEventScreenTouch { Index = 32, Position = last, Pressed = false });
+            Input.Touch.TouchInput.Handle(new InputEventScreenTouch { Index = 0, Position = first, Pressed = false });
+            bool separate = before == g.PresentationScale && zoom == Client.Game.Scene.Camera.Zoom;
+            ok &= separate;
+            GD.Print($"[GUO] dual layout: cross-display contacts do not pinch: {separate}");
+        }
+        finally
+        {
+            Input.Touch.TouchInput.CancelGesture();
+            Input.Touch.TouchInput.Enabled = enabled;
+            g.X = x; g.Y = y; g.PresentationScale = scale;
+            g.PresentationLocked = locked; g.PresentationPlaced = placed;
+            g.MainPresentationPosition = main; g.SecondPresentationPosition = second;
+        }
+        return ok;
     }
 
     private static uint _heldSerial;
