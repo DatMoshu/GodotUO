@@ -88,7 +88,7 @@ class Config:
     shard_gm_accounts: tuple[str, ...]
     log_level: str
 
-    # --- Android (optional; see tools/android and ADR-0007) ---
+    # --- Android (optional; see tools/android and ADR-0017) ---
     android_sdk: Path
     android_jdk: Path | None
     android_keystore: Path

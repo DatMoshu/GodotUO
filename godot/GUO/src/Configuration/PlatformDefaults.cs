@@ -94,7 +94,7 @@ namespace GUO.Configuration
             [ProfilePlatform.Mobile] = new[]
             {
                 // Carried over from the touch layer's MobileProfile.Apply
-                // (branch work/android, ADR-0007 "Window and scale"), which
+                // (branch work/android, ADR-0017 "Window and scale"), which
                 // set these on a new profile before this table existed:
                 // the world fills the screen, a pinch (the touch layer's
                 // Ctrl+wheel) zooms, and the zoom is kept between sessions.

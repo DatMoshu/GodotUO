@@ -55,7 +55,7 @@ window/stretch/aspect="expand"
 ; or --focus), and leaves it set for everything else (or --no-focus).
 window/size/no_focus=true
 ; Phones and tablets only (ignored on the desktop): UO is a landscape game,
-; and the touch layer sizes its gump bar for a wide screen. ADR-0007.
+; and the touch layer sizes its gump bar for a wide screen. ADR-0017.
 window/handheld/orientation=4
 
 [debug]

@@ -11,7 +11,7 @@ r"""Build, install, run and smoke-test GUO on an Android device.
                                  export|install|run|logcat|push|smoke> [...]
 
 What Godot needs to export a .NET project for Android, and where each part
-comes from, is in ADR-0007 and README.md next to this file. In short: a
+comes from, is in ADR-0017 and README.md next to this file. In short: a
 JDK 17, an Android SDK with platform-tools and build-tools, the mono export
 templates for the pinned engine, and a debug keystore. Godot reads the SDK,
 the JDK and the keystore from ITS editor settings file and nowhere else --
@@ -277,7 +277,7 @@ class Doctor:
             print("\n[android] doctor: dotnet publish for android-arm64 (the .NET half of an export) ...")
             ok = dotnet_publish_check(p)
             self.check("dotnet publish android-arm64", ok, "see above",
-                       "read the errors above; the csproj guards are in GUO.csproj (ADR-0007)")
+                       "read the errors above; the csproj guards are in GUO.csproj (ADR-0017)")
         else:
             print("  info dotnet publish check         skipped; run with --publish to build the C# for android-arm64")
 

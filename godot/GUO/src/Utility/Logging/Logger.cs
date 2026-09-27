@@ -111,7 +111,7 @@ namespace GUO.Utility.Logging
                     // PORT DEVIATION (GUO): Android's .NET has no console colour
                     // (Console.ForegroundColor throws PlatformNotSupportedException),
                     // and that first Log.Trace killed the client on the device. The
-                    // tag is still written; only the colour is skipped there. ADR-0007.
+                    // tag is still written; only the colour is skipped there. ADR-0017.
                     if (OperatingSystem.IsAndroid())
                     {
                         Console.Write(_logTypesInfo[type].Item2);

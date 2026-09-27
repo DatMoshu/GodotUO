@@ -2,7 +2,7 @@
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <!-- Godot 4.7's prebuilt Android template is built for net9.0 and refuses
-         anything else; the desktop stays on net8.0. ADR-0007. -->
+         anything else; the desktop stays on net8.0. ADR-0017. -->
     <TargetFramework Condition="'$(GodotTargetPlatform)' == 'android'">net9.0</TargetFramework>
     <EnableDynamicLoading>true</EnableDynamicLoading>
     <RootNamespace>GUO</RootNamespace>
@@ -52,7 +52,7 @@
     a plain `dotnet build` with no RID gets the same. Without the second
     test an Android export from a Windows machine built the host for
     android-arm64, which its x64 PlatformTarget refuses (NETSDK1032).
-    ADR-0007.
+    ADR-0017.
   -->
   <PropertyGroup>
     <GuoPluginHost Condition="'$(OS)' == 'Windows_NT' and ('$(GodotTargetPlatform)' == '' or '$(GodotTargetPlatform)' == 'windows')">true</GuoPluginHost>

@@ -22,7 +22,7 @@ namespace GUO.Input.Touch
     /// produced, chosen by a small gesture state machine. Nothing below
     /// <see cref="GodotInput.Handle"/> is touched, and when the layer is off
     /// -- which it is on every desktop run without <c>--touch</c> -- not one
-    /// line of it runs. See ADR-0007, section "Touch controls".
+    /// line of it runs. See ADR-0017, section "Touch controls".
     ///
     /// The gestures, and what each becomes:
     ///

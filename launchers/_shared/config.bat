@@ -84,7 +84,7 @@ if not defined UO_SHARD_UPDATE_RANGE set "UO_SHARD_UPDATE_RANGE=72"
 
 REM --- Android (optional) -------------------------------------------------
 REM  Only launchers\android\*.bat and tools\android read these. See
-REM  tools\android\README.md for the one-time setup and ADR-0007 for why.
+REM  tools\android\README.md for the one-time setup and ADR-0017 for why.
 REM  The Android SDK root (the folder holding platform-tools\, build-tools\,
 REM  platforms\). Godot's own default on Windows is the value below.
 if not defined UO_ANDROID_SDK       set "UO_ANDROID_SDK=%LOCALAPPDATA%\Android\Sdk"

@@ -16,7 +16,7 @@ not make a different client.
 
 ## Read first
 
-- `docs/architecture/ADR-0007-android-target.md` — every decision about the
+- `docs/architecture/ADR-0017-android-target.md` — every decision about the
   Android build, the data location, the plugin host, the integer screen
   scale and the touch mapping. Binding.
 - `docs/architecture/ADR-0008-web-target.md` — why there is no web build

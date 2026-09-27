@@ -1,4 +1,6 @@
-# ADR-0007: Android Target
+# ADR-0017: Android Target
+
+> Was ADR-0007 in UO_Port; renumbered on transplant because ADR-0007 here is the batched-meshes proposal.
 
 ## Status
 

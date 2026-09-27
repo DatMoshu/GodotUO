@@ -46,7 +46,7 @@ second display exists, turns it off.
 | | |
 |---|---|
 | Godot | 4.7.2 stable mono; `JavaClassWrapper` and the `AndroidRuntime` singleton as shipped in the 4.7 Android template |
-| .NET | net8.0, Mono JIT on android-arm64 (ADR-0007) |
+| .NET | net8.0, Mono JIT on android-arm64 (ADR-0017) |
 | Android | API 24+ in principle; `Presentation` is API 17; verified on 13 |
 | Desktop | inert, except the opt-in simulator (`--dual-screen WxH`) |
 
@@ -55,7 +55,7 @@ second display exists, turns it off.
 - ADR-0001 (render/presenter seam), ADR-0002 (batcher on canvas items):
   the second screen is one more `RenderTarget2D` fed by the same batcher.
 - ADR-0006 (GameController as a node): the draw hook sits in `DrawFrame`.
-- ADR-0007 (Android target): the touch layer, the scale model, the tooling.
+- ADR-0017 (Android target): the touch layer, the scale model, the tooling.
 
 ## Context
 
@@ -68,7 +68,7 @@ every gump also covers the fingers' walking room. The lower screen is idle.
 ### Current State
 
 Before this ADR the client drew one window and knew of no other display.
-`TouchInput` (ADR-0007) turns fingers into mouse events for that window.
+`TouchInput` (ADR-0017) turns fingers into mouse events for that window.
 
 ### What Godot 4.7 on Android can do with a second display — measured
 
@@ -249,7 +249,7 @@ from `dumpsys display`).
 
 Rendering a second Godot viewport straight into a Java surface would avoid
 the readback. Rejected: it needs the Gradle build, the NDK and the Android
-source template (ADR-0007 rejected those for the same reasons), and Godot
+source template (ADR-0017 rejected those for the same reasons), and Godot
 4.7 has no API to render a viewport into a foreign surface anyway; the
 plugin would still end up copying pixels.
 
@@ -283,7 +283,7 @@ model check was needed.
 
 - The world fills the upper screen; the four gumps are always in reach on
   the lower one, at the same 2x pixel scale, unfiltered.
-- No plugin, no Gradle, no NDK: the export is the same one ADR-0007 makes.
+- No plugin, no Gradle, no NDK: the export is the same one ADR-0017 makes.
 - Desktop unchanged: no display, no node, `ExtraWidth` is zero, the two
   clamp deviations add nothing.
 - Cost measured: none on the main screen (60/60 on the device).
@@ -313,7 +313,7 @@ model check was needed.
   2022x1078, not the panel's 1920x1080 (the client applies its saved window
   bounds and Android does not refuse them). Everything here is derived from
   the same `ClientBounds`, so shelf, drawing and touch agree with each other;
-  the number itself belongs to ADR-0007's window model.
+  the number itself belongs to ADR-0017's window model.
 
 ## Risks
 
@@ -368,4 +368,4 @@ None registered; `tr-registry.yaml` is empty for this project.
 - `tools/android/README.md`, "Second display" and the run table.
 - `src/Platform/Android/SecondDisplay.cs`, `DualScreen.cs`;
   `src/Bootstrap/DualProbe.cs`.
-- ADR-0007 for the touch layer, scale and export this builds on.
+- ADR-0017 for the touch layer, scale and export this builds on.

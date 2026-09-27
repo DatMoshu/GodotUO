@@ -3,7 +3,7 @@
 Exports the client as a debug APK, installs it, runs it and smoke-tests it.
 The decisions behind it (why ARM64 only, why the data lives where it does,
 why the plugin host is compiled out, how touch maps onto the mouse) are in
-[ADR-0007](../../docs/architecture/ADR-0007-android-target.md). This file is
+[ADR-0017](../../docs/architecture/ADR-0017-android-target.md). This file is
 the how-to.
 
 ```

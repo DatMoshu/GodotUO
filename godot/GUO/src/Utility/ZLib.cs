@@ -36,7 +36,7 @@ namespace GUO.Utility
             // Android has a system libz, so the P/Invoke resolves, but
             // zlibVersion() returning a .NET string makes the marshaller free
             // zlib's static version pointer, which the device's tagged-pointer
-            // check aborts on. The managed zlib below is used there. ADR-0007.
+            // check aborts on. The managed zlib below is used there. ADR-0017.
             if (Environment.Is64BitProcess && !OperatingSystem.IsAndroid())
             {
                 ICompressor native = PlatformHelper.IsWindows

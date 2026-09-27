@@ -245,7 +245,7 @@ namespace GUO
             // scale has to be in place before the first scene lays itself
             // out against ClientBounds, or the login screen is centred for a
             // client size that changes a frame later. Off the layer: one
-            // false test. ADR-0007.
+            // false test. ADR-0017.
             if (GUO.Input.Touch.TouchInput.Enabled)
             {
                 GUO.Input.Touch.TouchInput.ApplyScreenScale(GUO.Input.Touch.TouchInput.RequestedScale);
@@ -494,7 +494,7 @@ namespace GUO
         // bars) on for Fullscreen and off for every other mode, so the
         // maximize the game scene asks for, and the restore the login scene
         // asks for, would each bring the status bar back over the top of the
-        // client. On a mobile OS both keep the window fullscreen. ADR-0007.
+        // client. On a mobile OS both keep the window fullscreen. ADR-0017.
         private static bool KeepFullscreen => OS.HasFeature("mobile");
 
         public void MaximizeWindow()

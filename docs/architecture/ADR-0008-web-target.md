@@ -228,7 +228,7 @@ Recorded 2026-09-26 on Windows 11, Godot 4.7.2 stable mono (pinned in
 
 ## Related
 
-- ADR-0007 (Android target): the tool this one mirrors, and the touch layer
+- ADR-0017 (Android target): the tool this one mirrors, and the touch layer
   a web build on a phone would reuse.
 - ADR-0001 (render presenter seam): why the client owns its window and scale.
 - `tools/web/README.md` — the how-to and the same run table.

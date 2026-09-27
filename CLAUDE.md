@@ -38,7 +38,7 @@ launchers/        .bat entry points, grouped by job. Start here.
   pipeline/       numbered data steps, run in order
   shard/          the local ModernUO dev server: fetch, build, run
   dev/            build, smoke, screenshot, sync, cache
-  android/        doctor, export, install, run, smoke on a device (ADR-0007)
+  android/        doctor, export, install, run, smoke on a device (ADR-0017)
   web/            doctor, export, serve, smoke -- blocked upstream (ADR-0008)
 godot/GUO/        the Godot project
   src/Compat/     XNA compatibility shim — read its README first

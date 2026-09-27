@@ -14,7 +14,7 @@ namespace GUO.Input.Touch
     /// world. A phone's window is the display, so the login gumps are moved
     /// to its centre instead. What a profile starts as on each platform
     /// (world size, zoom) is Configuration/PlatformDefaults, not this class.
-    /// Off the touch layer this class does nothing. See ADR-0007, section
+    /// Off the touch layer this class does nothing. See ADR-0017, section
     /// "Window and scale".
     /// </remarks>
     internal static class MobileProfile

@@ -18,7 +18,7 @@ is text only.
 | **written** | the touch path exists (a tap is a left click, a double-tap a double click, a drag a drag, a long-press over a gump a right click), and the desktop touch probe or code reading says it should work, but nobody has done it on the device |
 | **missing** | no way to do it on a phone without a keyboard or mouse |
 
-The touch layer's gestures are in ADR-0007 section 5 and the header of
+The touch layer's gestures are in ADR-0017 section 5 and the header of
 `src/Input/Touch/TouchInput.cs`. The mapping that matters here: a
 **tap** is a left click. **Two taps within 350 ms** are a double click.
 **Hold or swipe on the world** is the held right button, which walks
@@ -115,7 +115,7 @@ count the row too.
 ### 3. Macro hotkeys in general
 
 No gesture binding; the action row above replaces hotkeys on a phone.
-ADR-0007 listed "gesture-to-macro binding" as not done. I recommend
+ADR-0017 listed "gesture-to-macro binding" as not done. I recommend
 against it: gestures are hard to discover and they collide with walk,
 pick up and zoom.
 
