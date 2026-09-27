@@ -56,7 +56,7 @@ public partial class SplashIntro : CanvasLayer
     private Control _root;
     private TextureRect _sigil;
     private ShaderMaterial _material;
-    private ulong _startUsec;
+    private double _t;
     private bool _booted;
     private int _framesSinceBoot;
     private double _fadeStart = -1;
@@ -170,14 +170,13 @@ public partial class SplashIntro : CanvasLayer
         return true;
     }
 
-    public override void _Ready()
-    {
-        _startUsec = Time.GetTicksUsec();
-    }
-
     public override void _Process(double delta)
     {
-        double t = (Time.GetTicksUsec() - _startUsec) / 1e6;
+        // Engine time, not the wall clock: a hitch arrives as one long delta
+        // either way, and a movie-maker render (--write-movie, fixed fps)
+        // plays the timeline frame-exact however slowly it renders.
+        _t += delta;
+        double t = _t;
         Vector2 view = GetViewport().GetVisibleRect().Size;
 
         float alpha, scale, sweep;

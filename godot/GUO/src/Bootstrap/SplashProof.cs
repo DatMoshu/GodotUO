@@ -11,11 +11,17 @@ using Godot;
 /// <remarks>
 /// <code>
 /// godot-console --path godot/GUO res://src/Bootstrap/SplashProof.tscn -- --out &lt;dir&gt; [--reduced] [--skip-at 0.9]
+/// godot-console --path godot/GUO --fixed-fps 60 res://src/Bootstrap/SplashProof.tscn -- --out &lt;dir&gt; --size 1920x1080 --plain --all
 /// </code>
 /// The window has to render: run it without --headless. It stays
 /// unfocusable, as project.godot creates it. Frames are PNGs named by their
 /// time in milliseconds. --skip-at sends a synthetic key press at that time
-/// to show the skip path. Nothing is written outside --out.
+/// to show the skip path. --size sets the window (default 1280x720),
+/// --plain makes the stand-in login plain black, and --all saves every frame
+/// (f_00000.png, ...) instead: with --fixed-fps the timeline then advances
+/// exactly one frame per frame however slowly the PNGs save, which is a clean
+/// render for a video (the second line). Time here and in SplashIntro is
+/// engine time. Nothing is written outside --out.
 /// </remarks>
 public partial class SplashProof : Node
 {
@@ -26,7 +32,9 @@ public partial class SplashProof : Node
 
     private string _out = "user://splash_proof";
     private double _skipAt = -1;
-    private ulong _start;
+    private double _clock;
+    private bool _all;
+    private int _frame;
     private int _next;
     private bool _skipped, _done;
     private readonly List<string> _saved = new();
@@ -34,7 +42,8 @@ public partial class SplashProof : Node
     public override void _Ready()
     {
         string[] args = OS.GetCmdlineUserArgs();
-        bool reduced = false;
+        bool reduced = false, plain = false;
+        var size = new Vector2I(1280, 720);
         for (int i = 0; i < args.Length; i++)
         {
             switch (args[i])
@@ -45,6 +54,16 @@ public partial class SplashProof : Node
                 case "--reduced":
                     reduced = true;
                     break;
+                case "--all":
+                    _all = true;
+                    break;
+                case "--plain":
+                    plain = true;
+                    break;
+                case "--size" when i + 1 < args.Length:
+                    string[] wh = args[++i].Split('x');
+                    size = new Vector2I(int.Parse(wh[0]), int.Parse(wh[1]));
+                    break;
                 case "--skip-at" when i + 1 < args.Length:
                     _skipAt = double.Parse(args[++i], System.Globalization.CultureInfo.InvariantCulture);
                     break;
@@ -52,15 +71,20 @@ public partial class SplashProof : Node
         }
 
         DirAccess.MakeDirRecursiveAbsolute(_out);
-        DisplayServer.WindowSetSize(new Vector2I(1280, 720));
+        DisplayServer.WindowSetSize(size);
 
         // A stand-in for the login screen, so the crossfade has something to reveal.
-        var login = new ColorRect { Color = new Color(0.10f, 0.13f, 0.20f) };
+        var login = new ColorRect { Color = plain ? Colors.Black : new Color(0.10f, 0.13f, 0.20f) };
         login.SetAnchorsPreset(Control.LayoutPreset.FullRect);
         AddChild(login);
 
         SplashIntro splash = SplashIntro.Play(this, () =>
         {
+            if (plain)
+            {
+                return;
+            }
+
             var label = new Label { Text = "login screen (stand-in)", Position = new Vector2(40, 40) };
             label.AddThemeFontSizeOverride("font_size", 28);
             login.AddChild(label);
@@ -74,13 +98,13 @@ public partial class SplashProof : Node
         }
 
         splash.Finished += () => GetTree().CreateTimer(0.4).Timeout += Finish;
-        _start = Time.GetTicksUsec();
         RenderingServer.FramePostDraw += Capture;
     }
 
     public override void _Process(double delta)
     {
-        double t = (Time.GetTicksUsec() - _start) / 1e6;
+        _clock += delta;
+        double t = _clock;
         if (!_skipped && _skipAt >= 0 && t >= _skipAt)
         {
             _skipped = true;
@@ -91,7 +115,13 @@ public partial class SplashProof : Node
 
     private void Capture()
     {
-        double t = (Time.GetTicksUsec() - _start) / 1e6;
+        double t = _clock;
+        if (_all && !_done)
+        {
+            GetViewport().GetTexture().GetImage().SavePng(_out.PathJoin($"f_{_frame++:D5}.png"));
+            return;
+        }
+
         if (_done || _next >= Times.Length || t < Times[_next])
         {
             return;
@@ -112,7 +142,7 @@ public partial class SplashProof : Node
     {
         _done = true;
         RenderingServer.FramePostDraw -= Capture;
-        GD.Print($"[splash-proof] {_saved.Count} frames in {_out}");
+        GD.Print($"[splash-proof] {(_all ? _frame : _saved.Count)} frames in {_out}");
         GetTree().Quit(0);
     }
 }
