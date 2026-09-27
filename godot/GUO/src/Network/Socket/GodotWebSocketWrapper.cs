@@ -7,11 +7,13 @@
 // and it is polled, which is how the client already drives its socket:
 // NetClient.CollectAvailableData reads once a frame (GameController.Update).
 //
-// Like upstream's wrapper, IsConnected is true while the socket is still
-// connecting; the relay path (LoginScene.HandleRelayServerPacket) sends the
-// seed and second login right after Connect returns, so sends made before
-// the socket opens are queued and flushed when it does, and Connected is
-// raised from the read poll at that moment. The other end is tools/ws_bridge
+// Like upstream's wrappers, Connected is raised inside Connect and
+// IsConnected is true while the socket is still connecting: the login scene
+// depends on that timing (HandleRelayServerPacket unsubscribes its first-login
+// handler around Connect and re-subscribes it after, so a Connected raised a
+// few frames later re-sent the first login on the game connection and the
+// shard dropped it). Sends made before the socket opens are queued and
+// flushed when it does; a socket that closes before opening is an error. The other end is tools/ws_bridge
 // (or any websockify-style bridge in front of a shard). ADR-0008.
 
 using System;
@@ -61,6 +63,7 @@ sealed class GodotWebSocketWrapper : SocketWrapper
         }
 
         Log.Trace($"WebSocket connecting to {uri}");
+        InvokeOnConnected();
     }
 
     public override void Send(byte[] buffer, int offset, int count)
@@ -97,7 +100,6 @@ sealed class GodotWebSocketWrapper : SocketWrapper
             }
 
             Log.Trace("WebSocket open");
-            InvokeOnConnected();
         }
 
         int written = 0;

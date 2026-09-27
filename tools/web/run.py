@@ -518,7 +518,7 @@ FAILURE = re.compile(r"\[GUO\] FATAL|login probe: FAIL|SharedArrayBuffer|Uncaugh
 
 
 def smoke(p: Paths, timeout: int, skip_export: bool, browsers: list[str], data: Path | None,
-          wait_for: str, query: str) -> int:
+          wait_for: str, query: str, video: bool = False, linger: float = 2.0) -> int:
     """Export, serve (with the client data), load the page headless in each
     browser, and wait for the client to say it drew the login gump.
 
@@ -565,7 +565,11 @@ def smoke(p: Paths, timeout: int, skip_export: bool, browsers: list[str], data: 
                 say(f"{kind}: could not launch: {e}")
                 failed += 1
                 continue
-            page = browser.new_page(viewport={"width": 1280, "height": 800})
+            size = {"width": 1280, "height": 800}
+            video_dir = p.out_dir / f"smoke_{kind}_video"
+            context = browser.new_context(viewport=size, **(
+                {"record_video_dir": str(video_dir), "record_video_size": size} if video else {}))
+            page = context.new_page()
             page.on("console", lambda m: lines.append(f"[{m.type}] {m.text}"))
             page.on("pageerror", lambda e: lines.append(f"[pageerror] {e}"))
             started = time.time()
@@ -579,11 +583,17 @@ def smoke(p: Paths, timeout: int, skip_export: bool, browsers: list[str], data: 
                     outcome = "failed"
                     break
                 page.wait_for_timeout(500)
-            page.wait_for_timeout(2000)  # let the frame after the marker present
+            # Let the frame after the marker present; --linger keeps the page
+            # (and a --video recording) running longer after the marker.
+            page.wait_for_timeout(int(max(linger, 2.0) * 1000))
             page.screenshot(path=str(shot))
             mounted = page.evaluate("window.guoWeb && window.guoWeb.mounted ? "
                                     "window.guoWeb.mounted.cache.stats : null")
+            recording = page.video.path() if video and page.video else None
+            context.close()
             browser.close()
+            if recording:
+                say(f"{kind}: video {recording}")
             log.write_text("\n".join(lines) + "\n", encoding="utf-8")
             elapsed = time.time() - started
             for line in lines:
@@ -627,6 +637,8 @@ def main(argv: list[str] | None = None) -> int:
                     help="chrome and/or firefox (default: both)")
     sm.add_argument("--wait-for", default=LOGIN_OK, help="the console line that passes the smoke")
     sm.add_argument("--query", default="arg=--login-probe-stay", help="the page URL's query string")
+    sm.add_argument("--video", action="store_true", help="record each browser (webm, build/web/smoke_<browser>_video)")
+    sm.add_argument("--linger", type=float, default=2.0, help="seconds to keep the page after the marker")
 
     args = parser.parse_args(argv)
     p = Paths(load_config())
@@ -643,7 +655,7 @@ def main(argv: list[str] | None = None) -> int:
         return serve(p, Path(args.root) if args.root else p.out_dir, data)
     if args.command == "smoke":
         return smoke(p, args.timeout, args.no_export, args.browser or ["chrome", "firefox"],
-                     default_data(p), args.wait_for, args.query)
+                     default_data(p), args.wait_for, args.query, args.video, args.linger)
     return 2
 
 
