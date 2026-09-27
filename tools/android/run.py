@@ -857,7 +857,7 @@ def main(argv: list[str] | None = None) -> int:
     dp = sub.add_parser("dual_probe", help="export with --dual-probe, run, wait for the verdict, photograph both displays")
     dp.add_argument("--timeout", type=int, default=300, help="seconds to wait for the verdict")
     dp.add_argument("--no-export", action="store_true", help="reuse build\\android\\GUO-dual.apk")
-    dp.add_argument("--args", default="", help="extra client flags to bake in (e.g. --host <shard-lan-ip>)")
+    dp.add_argument("--args", default="", help="extra client flags to bake in (e.g. --host <pc-lan-ip>)")
     dp.add_argument("--stay", action="store_true", help="leave the app running afterwards")
     sub.add_parser("displays", help="list the device's displays as dumpsys reports them")
 

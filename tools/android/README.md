@@ -82,7 +82,7 @@ The client's command line is baked into the APK via `command_line/extra_args`
 <device path>`, plus whatever `export.bat --args "..."` adds. The leading
 `--` matters: `Main.cs` reads `OS.GetCmdlineUserArgs()`, which is only what
 follows it. To reach the dev shard from the phone, bake in this PC's LAN
-address: `export.bat --args "--host <shard-lan-ip>"` (the shard must listen
+address: `export.bat --args "--host <pc-lan-ip>"` (the shard must listen
 wide, `UO_SHARD_BIND=0.0.0.0`). The smoke build adds `--login-probe-stay`.
 
 Every build the tool exports is **silent**: `device_args` bakes `--silent`
@@ -247,7 +247,7 @@ Recorded on 2026-09-26. The first pass was written on a machine with no
 Android SDK; the same day the SDK was installed (cmdline-tools,
 build-tools 35.0.1, platform 35, JDK 17 from Adoptium) and the tool run end
 to end against an AYN Thor (Android 13, 1080x1920, 369 dpi, adb serial
-`<thor-serial>`).
+`<device-serial>`).
 
 | What | Result |
 |---|---|
@@ -255,12 +255,12 @@ to end against an AYN Thor (Android 13, 1080x1920, 369 dpi, adb serial
 | `launchers\dev\touch_probe.bat` equivalent (desktop, dev shard) | 18/18 checks: tap, focus, long-press right-click on the login screen; hold-to-walk, double-tap paperdoll, pinch -> Ctrl+wheel, gump bar -> backpack, long-press closed the paperdoll |
 | `run.py doctor` | clean once the SDK, templates, keystore and editor settings were in place |
 | `run.py templates`, `keystore`, `settings` | ran; 27 template files unpacked, debug keystore created |
-| `run.py export --args "--host <shard-lan-ip>"` | debug APK, 105 MB (self-contained .NET), signed |
+| `run.py export --args "--host <pc-lan-ip>"` | debug APK, 105 MB (self-contained .NET), signed |
 | `run.py push` | 341 top-level files, 2.3 GB, sizes match the install. The launcher's subfolders (`Data`, `Music`, ...) fail with `secure_mkdirs failed`: adb cannot create subfolders under scoped storage. The client needs none of them. |
 | `run.py install` | Success |
 | Launch on the Thor | **the login screen renders**, at a whole-number 2x, touch layer on; screenshot `build\android\thor_login_2026-09-26.png` |
-| `run.py doctor` / `displays` (second display) | display 0 "Built-in Screen" 1920x1080 rotation 1; display 4 "Screen-2" 1240x1080 rotation 1 **presentation**, SurfaceFlinger 4630946482288158084 |
-| `run.py dual_probe --args "--host <shard-lan-ip>"` (package `org.guo.dual`) | first run: `FAIL never got into the world` -- the input probe aimed in client pixels while the device draws at 2x, and the touch layer swallowed its clicks; fixed (`InputProbe.PointerScale`, the layer stepped aside for the login, as the touch probe does) |
+| `run.py doctor` / `displays` (second display) | display 0 "Built-in Screen" 1920x1080 rotation 1; display 4 "Screen-2" 1240x1080 rotation 1 **presentation**, SurfaceFlinger <display-id> |
+| `run.py dual_probe --args "--host <pc-lan-ip>"` (package `org.guo.dual`) | first run: `FAIL never got into the world` -- the input probe aimed in client pixels while the device draws at 2x, and the touch layer swallowed its clicks; fixed (`InputProbe.PointerScale`, the layer stepped aside for the login, as the touch probe does) |
 | same, second and third runs | **`[GUO] dual screen: ok`**: presentation shown on display 4, 620x540 bitmap at 2x, four gumps on the shelf, 53 frames pushed in 180, last push 4.0-4.7 ms, **fps on=60.0 off=60.0**; both panels photographed: `build\android\thor_dual_main_2026-09-26.png` (the world alone, top bar and gump bar) and `thor_dual_second_2026-09-26.png` (paperdoll, backpack, status, journal, pixel-perfect at 2x) |
 | a tap on the second panel (`adb shell input -d 4 tap 430 164`, the paperdoll's OPTIONS button) | logged `first touch, finger 32 down at window 2328,156 (client 1227,82)` and **opened the options gump on the main screen**: `thor_dual_main_after_tap_2026-09-26.png` |
 | desktop simulator (`--dual-screen 1240x1080 --dual-probe`, dev shard) | ok; 4 gumps on the simulated screen, world fills the 3840x2054 main window; `desktop_dual_main_2026-09-26.png`, `desktop_dual_second_2026-09-26.png` |
@@ -282,11 +282,11 @@ each marked `PORT DEVIATION` where it touches ported code:
 
 The same evening the device was played, not just launched. Everything below
 was run on the Thor over the LAN against the dev shard (`--host
-<shard-lan-ip>`), account `guoprobe`; the screenshots are in `build\android\`.
+<pc-lan-ip>`), account `guoprobe`; the screenshots are in `build\android\`.
 
 | What | Result |
 |---|---|
-| `run.py smoke` (`UO_ANDROID_DEVICE=<thor-serial>`, since a second, unauthorized device was attached) | **exit 0**: `[GUO] login probe: ok login gump rendered after 1 frames; window 1920x1080, screen scale 1.1111112, dpi scale 2.00, gump 640x480 at 160,30`; `smoke.png`, `smoke_logcat.txt` |
+| `run.py smoke` (`UO_ANDROID_DEVICE=<device-serial>`, since a second, unauthorized device was attached) | **exit 0**: `[GUO] login probe: ok login gump rendered after 1 frames; window 1920x1080, screen scale 1.1111112, dpi scale 2.00, gump 640x480 at 160,30`; `smoke.png`, `smoke_logcat.txt` |
 | Landscape, no system bars | login and world both fullscreen: `u1_login.png`, `u1_world.png`. Before `KeepFullscreen` the status bar came back on every scene change |
 | Login by touch alone | tap on the account field raised the soft keyboard (`t8_keyboard.png`); the login gump slid up so the field and the password field are above it (`t11_kb_pan.png`); typed through the IME (`t12_typed.png`); tap elsewhere hid it (`t13_kb_down.png`); password field masked (`t14_pw.png`) |
 | Pre-game screens centred | login (`t7_login.png`, gump at 160,30 logical = 320,60 physical), shard list (`u4_shards.png`), character selection (`u4_chars.png`). The loading screen shares the same `GetGumpForStep` path; 16 burst screenshots at 0.3 s never caught it on the LAN |

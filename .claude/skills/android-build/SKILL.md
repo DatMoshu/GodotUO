@@ -1,7 +1,7 @@
 ---
 name: android-build
 description: "Build GUO for Android and prove it on the attached device: doctor, headless export, adb install, then the smoke that waits for the login gump and files a screenshot. Reports one table of what ran and what it returned. Use for 'does it still build for the phone', after any change under src/Input/Touch, and before claiming anything works on a device."
-argument-hint: "[--no-export] [--args \"--host <shard-lan-ip>\"] [--device <serial>]"
+argument-hint: "[--no-export] [--args \"--host <pc-lan-ip>\"] [--device <serial>]"
 user-invocable: true
 allowed-tools: Read, Glob, Grep, Bash
 model: sonnet

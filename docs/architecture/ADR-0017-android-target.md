@@ -16,7 +16,7 @@ the record of what was verified on the device and what was not.
 
 ## Last Verified
 
-2026-09-26 — on the AYN Thor (Android 13, 1080x1920, adb `<thor-serial>`) with
+2026-09-26 — on the AYN Thor (Android 13, 1080x1920, adb `<device-serial>`) with
 the SDK, JDK 17, the mono templates and a debug keystore installed the same
 day. The first pass, written on a machine without an SDK, had the desktop
 half only (0 errors, `dotnet publish -r android-arm64` clean, 18/18 touch
@@ -419,7 +419,7 @@ phone attached as `unauthorized`.
    MISS debug keystore               fix: python tools\android\run.py keystore
    MISS editor setting android_sdk_path / debug_keystore / debug_keystore_user / java_sdk_path
         fix: python tools\android\run.py settings
-   MISS adb device                   <device-serial> (unauthorized)
+   MISS adb device                   <second-device-serial> (unauthorized)
         fix: plug a device in with USB debugging on and accept the prompt on its screen
    [android] 11 thing(s) missing; fix them in the order listed
    ```

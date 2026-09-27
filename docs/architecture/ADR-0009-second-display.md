@@ -14,7 +14,7 @@ main screen's frame rate (see Validation and `tools/android/README.md`).
 ## Last Verified
 
 2026-09-26 — AYN Thor (Android 13, main 1080x1920, second 1080x1240, both
-369 dpi, adb serial `<thor-serial>`), package `org.guo.dual`, against the dev shard
+369 dpi, adb serial `<device-serial>`), package `org.guo.dual`, against the dev shard
 over the LAN; and the desktop simulator (`--dual-screen 1240x1080`) against
 the dev shard on 127.0.0.1.
 
@@ -108,7 +108,7 @@ dex, then confirmed on the device:
   through a `View.OnTouchListener` SAM callback into a queue the Godot thread
   drains once a frame.
 - The SurfaceFlinger id for `screencap -d` is the display's `uniqueId`
-  (`local:4630946482288158084` for the Thor's lower screen), which
+  (`local:<display-id>` for the Thor's lower screen), which
   `dumpsys display` prints and `dumpsys SurfaceFlinger --display-id` lists;
   the tooling reads it from there.
 
@@ -347,7 +347,7 @@ saved beyond the window by a dual-screen session are rescued by
 2. Desktop, `--play --dual-probe --dual-screen 1240x1080`: shelf 4 gumps,
    world fills the main window, both frames saved. **Met** (`build\android\
    desktop_dual_main_2026-09-26.png`, `desktop_dual_second_2026-09-26.png`).
-3. Thor, `run.py dual_probe --args "--host <shard-lan-ip>"`: `[GUO] dual
+3. Thor, `run.py dual_probe --args "--host <pc-lan-ip>"`: `[GUO] dual
    screen: ok`, presentation shown, frames pushed, fps on = off, both panels
    photographed by `screencap`. **Met** (`thor_dual_main_2026-09-26.png`,
    `thor_dual_second_2026-09-26.png`).
