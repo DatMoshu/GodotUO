@@ -1045,6 +1045,12 @@ namespace GUO.Game.Scenes
                 batcher.SetCircleOfTransparencyRadius(
                     (float)ProfileManager.CurrentProfile.CircleOfTransparencyRadius / Camera.Zoom
                 );
+                // PORT DEVIATION (GUO): upstream's shader measures from the
+                // middle of the world render target through clip space; the
+                // Godot shader measures from a uniform, so the middle is
+                // handed over here, in the target's own pixels.
+                var worldSize = renderTargets.GameWorldSceneAfterDPI;
+                batcher.CircleOfTransparencyCenter = new Vector2(worldSize.Width * 0.5f, worldSize.Height * 0.5f);
             }
             else
             {

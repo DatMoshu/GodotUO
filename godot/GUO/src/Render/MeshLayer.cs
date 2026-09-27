@@ -574,16 +574,24 @@ namespace GUO.Renderer
         public ArrayMesh GetRunMesh(int run) => _runMeshes[run];
 
         /// <remarks>
-        /// PORT DEVIATION (GUO): upstream frees its vertex buffer here. There
-        /// is no GPU resource left to free — an ArrayMesh is an ordinary
-        /// refcounted resource. Kept because every caller calls it, and because
-        /// it will matter again if the meshes are ever pooled across chunks.
+        /// PORT DEVIATION (GUO): upstream frees its vertex buffer here. The
+        /// ArrayMesh is refcounted on the engine side, but its C# wrapper holds
+        /// that reference until it is disposed or finalised, so a dropped mesh
+        /// kept its vertex buffers until a garbage collection got round to it.
+        /// Disposing the wrapper releases them now. Nothing draws a chunk
+        /// between its unload and the next Begin, which rebuilds every item.
         /// </remarks>
         public void Dispose()
         {
             for (int i = 0; i < _runMeshes.Length; i++)
             {
+                _runMeshes[i]?.Dispose();
                 _runMeshes[i] = null;
+            }
+
+            for (int i = 0; i < _spriteMeshes.Length; i++)
+            {
+                _spriteMeshes[i]?.Dispose();
             }
 
             Array.Clear(_spriteMeshes);
