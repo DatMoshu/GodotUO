@@ -68,6 +68,10 @@ to show the Store window instead. Start this scene through a local engine
 wrapper passed as `GODOT_CONSOLE` to `launchers/dev/screenshot.bat`, with
 `--play --shot-after 300 --no-focus --cache-dir <isolated-absolute-cache>`.
 Use `--screenshot-name store-client` or `store-installed-background`.
+The proof defaults to 1200x800. Set `GUO_STORE_PROOF_SIZE=960x540` to
+capture the compact header at a short desktop viewport. Accepted dimensions
+are 640x480 through 3840x2160. This checks layout, not physical touch input
+or device DPI; those still need a device pass.
 
 After both captures exist, `python tools/asset_store/editor_proof.py` opens
 the real editor without activation, displays those runtime captures on an
