@@ -215,6 +215,30 @@ namespace GUO
     {
         public static GameController Game { get; private set; }
 
+        // PORT DEVIATION (GUO): the editor's World tab runs an embedded
+        // controller (GameController.LoadEmbedded, ADR-0015) that the ported
+        // code must find here exactly as it finds the game's, because it
+        // reaches the renderer through Client.Game.UO. Run() does that and
+        // also adds the controller to the root window, which the editor must
+        // not do. DetachEmbedded clears it when the World tab closes.
+        internal static void AttachEmbedded(GameController game)
+        {
+            if (Game != null && Game != game)
+            {
+                throw new InvalidOperationException("Client.AttachEmbedded called while a game is already running");
+            }
+
+            Game = game;
+        }
+
+        internal static void DetachEmbedded(GameController game)
+        {
+            if (Game == game)
+            {
+                Game = null;
+            }
+        }
+        // END PORT DEVIATION (GUO)
 
         public static void Run(IPluginHost pluginHost)
         {
