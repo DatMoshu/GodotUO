@@ -44,6 +44,15 @@ launchers\dev\smoke.bat
 publishes a temporary fixture, starts HTTP, and runs the same C# installer
 sources as the client. All temporary installs are removed.
 
+`test_store.py` also requires Node 18+ for `web_check.mjs`; only Node built-ins
+are used, with no browser, npm packages or network service. It serves four
+fixture pack kinds through the stdlib HTTP server, parses and executes the
+actual page script against a small DOM contract harness, and checks shelves,
+search/kind filters, sample labels, details, empty/error states and literal
+HTML-like metadata. HTML insertion sinks and console errors fail the test.
+This is a JavaScript/DOM contract check, not CSS/layout or browser rendering
+verification. Screenshots remain the visual proof.
+
 ## Screenshots
 
 The opt-in `res://src/Store/StoreProof.tscn` loads the normal game scene and
