@@ -1005,6 +1005,18 @@ namespace GUO.Game.Scenes
                     _resultIndex = 0;
                 }
 
+                // PORT DEVIATION (GUO): an Android app may not send ICMP, so
+                // every Ping failed and the list showed 100% loss and no
+                // latency. There the round trip is a TCP connect to the login
+                // server instead, reported through the same fields.
+                if (OperatingSystem.IsAndroid())
+                {
+                    _sending = true;
+                    _ = TcpPing(_resultIndex++);
+
+                    return;
+                }
+
                 try
                 {
                     _pinger.SendAsync
@@ -1024,6 +1036,47 @@ namespace GUO.Game.Scenes
                     Dispose();
                 }
             }
+        }
+
+        // PORT DEVIATION (GUO): the Android round trip; see DoPing.
+        private async System.Threading.Tasks.Task TcpPing(int index)
+        {
+            bool success = false;
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+
+            try
+            {
+                using var client = new TcpClient();
+                using var timeout = new System.Threading.CancellationTokenSource(1000);
+
+                await client.ConnectAsync(Settings.GlobalSettings.IP, Settings.GlobalSettings.Port, timeout.Token);
+                success = true;
+            }
+            catch
+            {
+            }
+
+            if (success)
+            {
+                Ping = (int) watch.ElapsedMilliseconds;
+            }
+
+            PingStatus = success ? IPStatus.Success : IPStatus.TimedOut;
+            _last10Results[index] = success;
+
+            PacketLoss = 0;
+
+            for (int i = 0; i < _resultIndex; i++)
+            {
+                if (!_last10Results[i])
+                {
+                    ++PacketLoss;
+                }
+            }
+
+            PacketLoss = (Math.Max(1, PacketLoss) / Math.Max(1, _resultIndex)) * 100;
+
+            _sending = false;
         }
 
         private void PingerOnPingCompleted(object sender, PingCompletedEventArgs e)
