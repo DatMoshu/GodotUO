@@ -9,6 +9,7 @@ frame 0 exactly and the player can loop the file with no seam and no fade.
     python tools/bg_videos/run.py --only ember-drift
     python tools/bg_videos/run.py --size 1920x1080 --out D:/masters   (masters stay outside the repo)
     python tools/bg_videos/run.py --set screensavers   the OLED loops -> godot/GUO/assets/screensavers
+    python tools/bg_videos/run.py --set store          the Store-only loops -> build/bg_videos/store
 
 Output per theme: <name>.ogv (Ogg Theora, no audio) and <name>.png (the
 exact first frame, the low-power still), plus backgrounds.json listing them.
@@ -682,6 +683,10 @@ def theme_set(name):
     if name == "screensavers":
         from screensavers import SCREENSAVERS
         return SCREENSAVERS, ROOT / "godot" / "GUO" / "assets" / "screensavers", "screensavers.json", REPORT_DIR / "screensavers"
+    if name == "store":
+        # Store-only loops: packed by tools/asset_store/seed.py, not shipped in the client.
+        from store_loops import STORE_LOOPS
+        return STORE_LOOPS, REPORT_DIR / "store", "store_loops.json", REPORT_DIR / "store_report"
     raise SystemExit(f"unknown set {name}")
 
 
@@ -736,7 +741,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--only", nargs="*", help="theme names to render (default: all)")
     ap.add_argument("--size", default="1280x720")
-    ap.add_argument("--set", default="builtin", choices=["builtin", "screensavers"])
+    ap.add_argument("--set", default="builtin", choices=["builtin", "screensavers", "store"])
     ap.add_argument("--out", type=Path, help="output folder (default: the set's own)")
     ap.add_argument("--q", type=int, default=8, help="Theora quality 0-10")
     ap.add_argument("--jobs", type=int, default=5)

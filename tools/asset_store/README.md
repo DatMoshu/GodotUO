@@ -24,6 +24,16 @@ real packs exist. They are generated in code (drawn previews, synthesised
 sound, CC0), carry ids starting `sample-` and the author "GodotUO sample",
 and the web page marks them Sample. `seed.py` never publishes them.
 
+`seed.py` publishes three groups:
+- the ten built-in backgrounds, as `background` packs;
+- the store-only screensaver, as a `screensaver` pack;
+- six Store-only background loops that the client does not ship
+  (`tools/bg_videos/store_loops.py`), as `background` packs.
+
+It renders those six into `build/bg_videos/store` first if they are
+missing, which takes a few minutes; `--skip-store-loops` leaves them out.
+Every pack is a reproducible ZIP, so reseeding the same store is a no-op.
+
 In GodotUO, open **Options → Video → Store**. Install a pack, reopen Options,
 select its Store background and Apply. Installed packs sort first. Updates
 compare numeric versions; older versions remain removable. The catalogue
