@@ -24,6 +24,18 @@ public partial class WorldView : VBoxContainer
     private OptionButton _tool;
     private SpinBox _hue;
     private Label _brush;
+    private OptionButton _season;
+
+    /// <summary>The world's season (the game's own seasonal graphics).</summary>
+    internal GUO.Game.Managers.Season Season
+    {
+        get => _host.Season;
+        set
+        {
+            _host.Season = value;
+            _season?.Select((int)value);
+        }
+    }
 
     private OptionButton _facet;
     private LineEdit _coords;
@@ -163,6 +175,15 @@ public partial class WorldView : VBoxContainer
         Toggle(tools, "Statics", true, v => _host.ShowStatics = v);
         Toggle(tools, "Multis", true, v => _host.ShowMultis = v);
         Toggle(tools, "Roofs", true, v => _host.ShowRoofs = v);
+        _season = new OptionButton { TooltipText = "Season: a shard sends one per map; pick the one it uses" };
+        foreach (string s in Enum.GetNames<GUO.Game.Managers.Season>())
+        {
+            _season.AddItem(s);
+        }
+
+        _season.Selected = (int)GUO.Game.Managers.Season.Summer;
+        _season.ItemSelected += i => _host.Season = (GUO.Game.Managers.Season)(int)i;
+        tools.AddChild(_season);
         tools.AddChild(new VSeparator());
         Toggle(tools, "Grid", false, v => _guides.Grid = v);
         Toggle(tools, "Altitude", false, v => _guides.Altitude = v);
@@ -533,6 +554,33 @@ public partial class WorldView : VBoxContainer
         var inspection = Inspection.Still("World", $"{o.X},{o.Y}", _data?.ArtImage(index), sb.ToString());
         Inspect?.Invoke(inspection);
         return inspection;
+    }
+
+    /// <summary>
+    /// Pins the world viewport to an exact size (a parity shot matching the
+    /// client's 600x480 world view), or back to filling the tab with null.
+    /// </summary>
+    public void SetFixedSize(Vector2I? size)
+    {
+        if (_container == null)
+        {
+            return;
+        }
+
+        _container.Stretch = size == null;
+        if (size is { } s)
+        {
+            _container.SizeFlagsHorizontal = SizeFlags.ShrinkBegin;
+            _container.SizeFlagsVertical = SizeFlags.ShrinkBegin;
+            _container.CustomMinimumSize = new Vector2(s.X, s.Y);
+            _viewport.Size = s;
+        }
+        else
+        {
+            _container.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+            _container.SizeFlagsVertical = SizeFlags.ExpandFill;
+            _container.CustomMinimumSize = Vector2.Zero;
+        }
     }
 
     /// <summary>The viewport's last frame, for the smoke check. Null headless.</summary>

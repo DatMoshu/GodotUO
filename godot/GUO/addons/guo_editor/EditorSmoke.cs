@@ -32,6 +32,13 @@ public partial class EditorSmoke : Node
     public const string ArtFlag = "--guo-editor-smoke-art";
     public const string ReloadFlag = "--guo-editor-smoke-reload";
 
+    /// <summary>
+    /// <c>facet,x,y,w,h</c>: skip the checks, show the World tab at that cell
+    /// in a viewport of exactly w x h, and save <c>world_shot.png</c>. What
+    /// tools/world_parity compares with a logged-in client's frame.
+    /// </summary>
+    public const string WorldShotFlag = "--guo-editor-world-shot";
+
     private const double TimeoutSeconds = 180;
     private const int SettleFrames = 45;
 
@@ -116,7 +123,7 @@ public partial class EditorSmoke : Node
                 if (_data.IsLoaded || _data.Error != null)
                 {
                     CheckLoaded();
-                    _stage = _failures.Count == 0 ? 1 : 9;
+                    _stage = _failures.Count > 0 ? 9 : ArgValue(WorldShotFlag) != null ? 30 : 1;
                     _frames = 0;
                 }
                 else if (_elapsed > TimeoutSeconds)
@@ -268,6 +275,21 @@ public partial class EditorSmoke : Node
                 }
                 else
                 {
+                    Finish();
+                }
+
+                break;
+
+            case 30:
+                StartWorldShot();
+                _stage = 31;
+                _frames = 0;
+                break;
+
+            case 31:
+                if (_frames >= 90)
+                {
+                    SaveWorldShot();
                     Finish();
                 }
 
@@ -533,6 +555,74 @@ public partial class EditorSmoke : Node
     }
 
     private int _before;
+
+    private void StartWorldShot()
+    {
+        string[] p = ArgValue(WorldShotFlag).Split(',');
+        int facet = int.Parse(p[0]), x = int.Parse(p[1]), y = int.Parse(p[2]);
+        var size = new Vector2I(int.Parse(p[3]), int.Parse(p[4]));
+        EditorInterface.Singleton.SetMainScreenEditor(GuoEditorPlugin.WorldTabName);
+        _world.Visible = true;
+        _world.SetFixedSize(size);
+
+        // The game's frame only: no editor guides in a parity shot.
+        _world.Guides.Grid = false;
+        _world.Guides.Altitude = false;
+        _world.Guides.Blocks = false;
+        if (!_world.GoTo(facet, x, y))
+        {
+            _failures.Add($"world shot: could not go to map{facet} {x},{y}: {_world.Error}");
+        }
+
+        // An optional sixth field: the season the shard gives this map.
+        if (p.Length > 5 && Enum.TryParse(p[5], ignoreCase: true, out GUO.Game.Managers.Season season))
+        {
+            _world.Season = season;
+        }
+
+        _report["world_shot"] = new Dictionary<string, object>
+        {
+            ["facet"] = facet, ["x"] = x, ["y"] = y, ["size"] = new[] { size.X, size.Y }, ["season"] = _world.Season.ToString(),
+        };
+    }
+
+    private void SaveWorldShot()
+    {
+        var shot = (Dictionary<string, object>)_report["world_shot"];
+        Image frame = _world.Capture();
+        if (frame == null || frame.IsEmpty())
+        {
+            _failures.Add("world shot: no frame (headless?)");
+            return;
+        }
+
+        Directory.CreateDirectory(_out);
+        string path = Path.Combine(_out, "world_shot.png");
+        frame.SavePng(path);
+        shot["png"] = path;
+        shot["frame_size"] = new[] { frame.GetWidth(), frame.GetHeight() };
+        shot["z"] = _world.Host.Z;
+        shot["objects"] = _world.Host.Scene.RenderedObjectsCount;
+        shot["project"] = _world.Host.Project?.Root;
+        shot["project_blocks"] = _world.Host.Project?.Blocks(_world.Host.Facet).Count ?? 0;
+        var chunk = _world.Host.World.Map.GetChunk(_world.Host.X, _world.Host.Y, load: true);
+        var statics = new List<string>();
+        for (int cx = 0; cx < 8; cx++)
+        {
+            for (int cy = 0; cy < 8; cy++)
+            {
+                for (var o = chunk?.GetHeadObject(cx, cy); o != null; o = o.TNext)
+                {
+                    if (o is GUO.Game.GameObjects.Static)
+                    {
+                        statics.Add($"0x{o.Graphic:X4}@{o.X},{o.Y},{o.Z}{(o.AllowedToDraw ? "" : " hidden")}");
+                    }
+                }
+            }
+        }
+
+        shot["centre_chunk_statics"] = statics;
+    }
 
     private void PlaceMulti()
     {
@@ -958,6 +1048,11 @@ public partial class EditorSmoke : Node
         _steps.Add((wait, () =>
         {
             _world.Editor.Stamp(0, EditX, EditY, 0, 0x0CE3, 0);
+
+            // And one clear of the view's centre (about 154 px right of it),
+            // so a logged-in client's frame shows it beside its paperdoll:
+            // tools/world_parity's export proof looks for it there.
+            _world.Editor.Stamp(0, EditX + 3, EditY - 4, 0, 0x0CE3, 0);
             Color after = RadarAt(EditX, EditY);
             _editReport["radar_before"] = _radarBefore.ToHtml();
             _editReport["radar_after"] = after.ToHtml();

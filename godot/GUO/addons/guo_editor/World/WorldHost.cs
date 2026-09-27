@@ -7,6 +7,7 @@ using Godot;
 using GUO.Configuration;
 using GUO.Game;
 using GUO.Game.GameObjects;
+using GUO.Game.Managers;
 using GUO.Game.Map;
 using GUO.Game.Scenes;
 using System.Collections.Generic;
@@ -64,6 +65,30 @@ internal sealed class WorldHost : IDisposable
             if (ProfileManager.CurrentProfile != null)
             {
                 ProfileManager.CurrentProfile.DrawRoofs = value;
+            }
+        }
+    }
+
+    /// <summary>
+    /// The world's season, through the game's own World.ChangeSeason (which
+    /// swaps seasonal graphics). A shard sends one per map; the editor has no
+    /// shard, so it is chosen here. Meshes of loaded chunks are rebuilt.
+    /// </summary>
+    public Season Season
+    {
+        get => World?.Season ?? Season.Summer;
+        set
+        {
+            World world = World;
+            if (world?.Map == null || world.Season == value)
+            {
+                return;
+            }
+
+            world.ChangeSeason(value, 0);
+            foreach (Chunk chunk in world.Map.GetUsedChunks())
+            {
+                chunk.Mesh.IsDirty = true;
             }
         }
     }
@@ -331,6 +356,15 @@ internal sealed class WorldHost : IDisposable
     /// </summary>
     public WorldProject OpenProject(string root)
     {
+        // A world project is data, not part of the Godot project: one made
+        // inside res:// would be imported by the editor and could be committed.
+        string full = System.IO.Path.GetFullPath(root).TrimEnd('/', '\\') + System.IO.Path.DirectorySeparatorChar;
+        string res = System.IO.Path.GetFullPath(ProjectSettings.GlobalizePath("res://")).TrimEnd('/', '\\') + System.IO.Path.DirectorySeparatorChar;
+        if (full.StartsWith(res, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException($"refusing a world project inside the Godot project: {root}");
+        }
+
         CloseProject();
         _project = WorldProject.OpenOrCreate(
             root,
