@@ -118,6 +118,9 @@ namespace GUO.Game.UI.Gumps
         // PORT DEVIATION (GUO): only built when a second display exists.
         private Checkbox _dualScreen, _dualShelvePaperdoll, _dualShelveBackpack, _dualShelveStatus, _dualShelveJournal, _dualShelveOthers;
         private HSliderBar _dualScale;
+        private Combobox _dualScaleFine; // PORT DEVIATION (GUO)
+        private HSliderBar _chevronInset; // PORT DEVIATION (GUO)
+        private static readonly int[] DualScaleFinePercents = { 0, 100, 125, 150 };
         private Checkbox _holdShiftForContext, _holdShiftToSplitStack, _reduceFPSWhenInactive, _sallosEasyGrab, _partyInviteGump, _objectsFading, _textFading, _holdAltToMoveGumps;
         private Combobox _hpComboBox, _healtbarType, _fieldsType, _hpComboBoxShowWhen;
 
@@ -968,7 +971,17 @@ namespace GUO.Game.UI.Gumps
                 section3.Add(_dualShelveOthers = AddCheckBox(null, "Shelve other gumps (skills, spellbook, containers)", _currentProfile.DualScreenShelveOthers, 0, 0));
                 section3.Add(AddLabel(null, "Second screen scale (0 = as the main screen)", 0, 0));
                 section3.AddRight(_dualScale = AddHSlider(null, 0, GUO.Platform.Android.DualScreenSettings.MaxScale, _currentProfile.DualScreenScale, 0, 0, 120));
+                section3.Add(AddLabel(null, "Fine second screen scale (overrides the slider)", 0, 0));
+                section3.AddRight(_dualScaleFine = AddCombobox(null, new[] { "Off", "1.0x", "1.25x", "1.5x" }, System.Math.Max(0, System.Array.IndexOf(DualScaleFinePercents, _currentProfile.DualScreenScalePercent)), 0, 0, 120));
                 section3.PopIndent();
+            }
+
+            // PORT DEVIATION (GUO): the touch bar's chevron, moved in from the
+            // corner (TouchGumpBar). An option to compare; 0 is the corner.
+            if (GUO.Input.Touch.TouchInput.Enabled)
+            {
+                section3.Add(AddLabel(null, "Touch bar chevron inset from the corner", 0, 0));
+                section3.AddRight(_chevronInset = AddHSlider(null, 0, 200, _currentProfile.TouchChevronInset, 0, 0, 120));
             }
 
             section3.Add
@@ -4088,6 +4101,12 @@ namespace GUO.Game.UI.Gumps
                 _currentProfile.DualScreenShelveJournal = _dualShelveJournal.IsChecked;
                 _currentProfile.DualScreenShelveOthers = _dualShelveOthers.IsChecked;
                 _currentProfile.DualScreenScale = _dualScale.Value;
+                _currentProfile.DualScreenScalePercent = DualScaleFinePercents[System.Math.Clamp(_dualScaleFine.SelectedIndex, 0, DualScaleFinePercents.Length - 1)];
+            }
+
+            if (_chevronInset != null)
+            {
+                _currentProfile.TouchChevronInset = _chevronInset.Value;
             }
 
             if (_currentProfile.EnableCaveBorder != _enableCaveBorder.IsChecked)
