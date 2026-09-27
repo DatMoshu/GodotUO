@@ -28,6 +28,16 @@ def main():
                 z.writestr("manifest.json", json.dumps(manifest))
                 z.writestr("still.png", image)
             publish(pack, root / "cdn")
+            # A screensaver: one .ogv loop, needs profile v11 (data_formats 12).
+            loop = b"not a real theora stream; the installer checks bytes, not codecs"
+            saver = dict(manifest, id="smoke-screensaver", kind="screensaver", title="Smoke screensaver", min_profile_version=11,
+                         files={"still.png": hashlib.sha256(image).hexdigest(), "loop.ogv": hashlib.sha256(loop).hexdigest()})
+            saver_pack = root / "saver.zip"
+            with zipfile.ZipFile(saver_pack, "w") as z:
+                z.writestr("manifest.json", json.dumps(saver))
+                z.writestr("still.png", image)
+                z.writestr("loop.ogv", loop)
+            publish(saver_pack, root / "cdn")
             with server(root / "cdn", port=0) as httpd:
                 thread = threading.Thread(target=httpd.serve_forever, daemon=True)
                 thread.start()

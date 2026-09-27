@@ -60,6 +60,8 @@ namespace GUO.Game.UI.Gumps
         // PORT DEVIATION (GUO): the idle screen saver, under Video.
         private Checkbox _screenSaver;
         private HSliderBar _screenSaverMinutes;
+        private Combobox _screenSaverChoice;
+        private List<string> _screenSaverChoices;
         private Combobox _cotType;
         private DataBox _databox;
         private HSliderBar _delay_before_display_tooltip, _tooltip_zoom, _tooltip_background_opacity;
@@ -2149,6 +2151,30 @@ namespace GUO.Game.UI.Gumps
             section7.Add(AddLabel(null, "Minutes idle", startX, startY));
             section7.AddRight(_screenSaverMinutes = AddHSlider(null, 1, 60, Math.Max(1, _currentProfile.ScreenSaverMinutes), startX, startY, 150));
 
+            // The effects, the built-in loops, then installed store packs.
+            _screenSaverChoices = new List<string>();
+            List<string> saverTitles = new List<string>();
+
+            foreach ((string value, string title) in GUO.Game.Managers.ScreenSaver.Choices())
+            {
+                _screenSaverChoices.Add(value);
+                saverTitles.Add(title);
+            }
+
+            section7.Add(AddLabel(null, "Show", startX, startY));
+            section7.AddRight
+            (
+                _screenSaverChoice = AddCombobox
+                (
+                    null,
+                    saverTitles.ToArray(),
+                    Math.Max(0, _screenSaverChoices.IndexOf(_currentProfile.ScreenSaverChoice)),
+                    startX,
+                    startY,
+                    200
+                )
+            );
+
             Add(rightArea, PAGE);
         }
 
@@ -3901,6 +3927,7 @@ namespace GUO.Game.UI.Gumps
                     _canvasBackgroundLowPower.IsChecked = false; // PORT DEVIATION (GUO)
                     _screenSaver.IsChecked = false; // PORT DEVIATION (GUO)
                     _screenSaverMinutes.Value = 10; // PORT DEVIATION (GUO)
+                    _screenSaverChoice.SelectedIndex = 0; // PORT DEVIATION (GUO)
                     _sliderScreenZoom.Value = 0;
                     _lightBar.Value = 0;
                     _enableLight.IsChecked = false;
@@ -4366,6 +4393,7 @@ namespace GUO.Game.UI.Gumps
             _currentProfile.CanvasBackgroundLowPower = _canvasBackgroundLowPower.IsChecked;
             _currentProfile.ScreenSaver = _screenSaver.IsChecked; // PORT DEVIATION (GUO)
             _currentProfile.ScreenSaverMinutes = _screenSaverMinutes.Value; // PORT DEVIATION (GUO)
+            _currentProfile.ScreenSaverChoice = _screenSaverChoices[Math.Max(0, _screenSaverChoice.SelectedIndex)]; // PORT DEVIATION (GUO)
 
             if (_enableLight.IsChecked)
             {

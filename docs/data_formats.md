@@ -389,7 +389,7 @@ data or executable code. `art-override` is reserved and rejected.
 - IDs match `[a-z0-9][a-z0-9-]{0,63}` (Windows device names excluded).
   Versions are three decimal components, each 0..2147483647, without
   leading zeros. Compare numerically, not lexicographically.
-- Kinds: `background`, `theme`, `sound`, `profile-preset`. Licence allowlist:
+- Kinds: `background`, `theme`, `sound`, `profile-preset`, `screensaver`. Licence allowlist:
   `CC0-1.0`, `CC-BY-4.0`, `CC-BY-SA-4.0`, `MIT`, `BSD-2-Clause`,
   `BSD-3-Clause`, `Apache-2.0`. Publishers are responsible for provenance;
   the identifier does not establish ownership. Non-CC0 packs must include
@@ -400,6 +400,11 @@ data or executable code. `art-override` is reserved and rejected.
 - `files` maps every payload path to its SHA-256 (manifest excluded).
   Payload types: `.png`, `.jpg`, `.jpeg`, `.webp`, `.ogv`, `.ogg`, `.wav`,
   `.json`, `.txt`. A background includes at least one image or `.ogv`.
+  A `screensaver` has **exactly one** `.ogv` loop (played by the client's
+  idle screen saver) and `min_profile_version` of at least **11**, the
+  first profile version that can pick one; both the publisher and the
+  installer reject anything else. Its `preview` is the still the Store
+  shows.
   `.mul`, `.uop`, `.idx`, `.def`, and any basename beginning `cliloc`
   are forbidden case-insensitively, even when renamed with another suffix.
 - Paths use `/`, are relative, have no empty, `.` or `..` components,
@@ -437,6 +442,26 @@ Publication validates before writing; an existing id/version is immutable
 (identical bytes are a no-op). Rebuilding an index verifies all published
 ZIPs; replacement of the index is atomic. HTTP serves GET/HEAD and single
 byte ranges (`206`, `Content-Range`); unsatisfiable ranges return `416`.
+
+### Screensavers in the client (profile v11)
+
+`Profile.ScreenSaverChoice` (JSON `screen_saver_choice`, default
+`"effects"`) names what the idle screen saver shows:
+
+| Value | Shows |
+|---|---|
+| `effects` | the drifting UO effects (the v10 saver) |
+| `builtin:<name>` | a loop listed in `godot/GUO/assets/screensavers/screensavers.json` |
+| `user://store/<id>/<version>/<loop>.ogv` | an installed `screensaver` pack's loop |
+
+`screensavers.json` is an array of `{"name", "title", "video", "still"}`,
+paths relative to the folder, like `backgrounds.json`. An entry with
+`"store_only": true` is not offered in the client: `seed.py` publishes it as
+a `screensaver` pack instead. Every choice keeps the whole frame moving: a
+loop is scaled to overfill the screen by 6% on each side and drifts along a
+slow path through that margin, with the drifting "Screen saver" label on
+top. A missing or unplayable loop falls back to the effects. Uninstalling
+the chosen pack resets the choice to `effects`.
 
 ### Installation and removal
 

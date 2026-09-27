@@ -256,6 +256,9 @@ namespace GUO.Configuration
         // on phones (PlatformDefaults v10).
         public bool ScreenSaver { get; set; }
         public int ScreenSaverMinutes { get; set; } = 10;
+        // PORT DEVIATION (GUO): what the screen saver shows (v11): "effects",
+        // "builtin:NAME" or an installed store screensaver's user:// loop.
+        public string ScreenSaverChoice { get; set; } = "effects";
         public int OverrideContainerLocationSetting { get; set; } // 0 = container position, 1 = top right of screen, 2 = last dragged position, 3 = remember every container
 
         [JsonConverter(typeof(Point2Converter))] public Point OverrideContainerLocationPosition { get; set; } = new Point(200, 200);

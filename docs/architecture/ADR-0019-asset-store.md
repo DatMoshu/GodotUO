@@ -50,6 +50,29 @@ Low-power profiles select the pack's preview still. Reopen Options after
 install/removal to refresh the choices. The renderer and its sampling state
 are unchanged; no store code filters UO pixel art.
 
+## Amendment 1 — the `screensaver` kind (2026-09-27, S11)
+
+A fifth kind, `screensaver`, carries exactly one `.ogv` loop plus its
+preview still, and requires `min_profile_version` 11. Profile v11 adds
+`ScreenSaverChoice` (data formats section 12) and no platform default; the
+version exists so that the installer's existing compatibility gate keeps a
+screensaver off a client that cannot pick it. The Python publisher and the
+C# installer enforce the same rule; `test_store.py` and the headless smoke
+cover acceptance, the missing/extra loop and the v10 refusal.
+
+Options > Video > Screen saver offers the drifting UO effects, the built-in
+loops from `assets/screensavers/screensavers.json`, then installed
+screensaver packs; the choice is a profile key, not a new renderer seam.
+Loops are decoded by a hidden `VideoStreamPlayer` and drawn through the
+batcher, so they cover the second screen of a dual-screen device too, and
+the whole frame drifts (burn-in safety holds for every choice). The waking
+input is still swallowed. Uninstalling the chosen pack resets it to the
+effects, beside the existing background reset.
+
+The client gains `--store-install ID`, which installs a pack at startup
+through the same in-client installer; scripted and device runs use it to
+prove install, pick and play without driving the Store window.
+
 ## Alternatives
 
 - A native service or database adds deployment dependencies without helping

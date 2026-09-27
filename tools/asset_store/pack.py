@@ -10,7 +10,9 @@ from pathlib import Path
 
 PACK_SCHEMA = "guo/store-pack@1"
 INDEX_SCHEMA = "guo/store-index@1"
-KINDS = {"background", "theme", "sound", "profile-preset"}
+KINDS = {"background", "theme", "sound", "profile-preset", "screensaver"}
+# A screensaver is played by the client from profile version 11 on.
+SCREENSAVER_MIN_PROFILE = 11
 LICENCES = {"CC0-1.0", "CC-BY-4.0", "CC-BY-SA-4.0", "MIT", "BSD-2-Clause", "BSD-3-Clause", "Apache-2.0"}
 EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".ogv", ".ogg", ".wav", ".json", ".txt"}
 IMAGES = {".png", ".jpg", ".jpeg", ".webp"}
@@ -80,6 +82,9 @@ def parse_manifest(raw):
         require(not any("/".join(name.split("/")[:i]) in seen for i in range(1, len(name.split("/")))), "file/directory collision")
     require(isinstance(m.get("preview"), str) and m["preview"] in files and Path(m["preview"]).suffix.lower() in IMAGES, "preview must name a declared image")
     require(m["licence"] == "CC0-1.0" or "LICENSE.txt" in files, "attribution requires LICENSE.txt")
+    if m["kind"] == "screensaver":
+        require(sum(Path(n).suffix.lower() == ".ogv" for n in files) == 1, "a screensaver has exactly one .ogv loop")
+        require(m["min_profile_version"] >= SCREENSAVER_MIN_PROFILE, f"a screensaver needs min_profile_version {SCREENSAVER_MIN_PROFILE} or later")
     return m
 
 

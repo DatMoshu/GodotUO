@@ -49,7 +49,7 @@ namespace GUO.Configuration
         /// The table version this build writes. 0 means the profile predates
         /// platform defaults (every profile saved before GUO had them).
         /// </summary>
-        public const int CurrentVersion = 10;
+        public const int CurrentVersion = 11;
 
         /// <summary>The login screen's size, which every login gump is laid out for.</summary>
         private const int LoginWidth = 640;
@@ -170,6 +170,11 @@ namespace GUO.Configuration
                 // v10: the idle screen saver (ScreenSaver): a phone is the
                 // OLED panel most likely to be left on through a long run.
                 BoolEntry(nameof(Profile.ScreenSaver), p => p.ScreenSaver, (p, v) => p.ScreenSaver = v, true, since: 10)
+
+                // v11: Profile.ScreenSaverChoice, "effects" on every platform,
+                // so no entry here. The version exists so that screensaver
+                // packs (min_profile_version 11) install only on a client
+                // that can play them.
             ),
 
             [ProfilePlatform.Web] = WithShelf

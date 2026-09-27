@@ -11,6 +11,11 @@ end. Every sample:
   previews. Nothing is read from a UO install or from anywhere else;
 - passes the same validation and publication as a real pack.
 
+The one screensaver sample is the exception to "generated here": it
+repackages a shipped CC0 background loop (godot/GUO/assets/backgrounds,
+licence notice included) so the screensaver kind can be installed and
+picked end to end before the real screensaver loops are published.
+
     python tools/asset_store/samples.py [--store-dir DIR]
 
 Samples are never published by seed.py; run this on purpose. Needs Pillow.
@@ -34,7 +39,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from guo.config import load_config  # noqa: E402
-from asset_store.pack import PACK_SCHEMA  # noqa: E402
+from asset_store.pack import PACK_SCHEMA, SCREENSAVER_MIN_PROFILE  # noqa: E402
 from asset_store.run import publish  # noqa: E402
 
 AUTHOR = "GodotUO sample"
@@ -192,9 +197,9 @@ def preset_preview(device: str, regions: list) -> bytes:
     return png(im)
 
 
-def build(pid: str, kind: str, title: str, payload: dict, folder: Path) -> Path:
+def build(pid: str, kind: str, title: str, payload: dict, folder: Path, min_profile: int = 6) -> Path:
     manifest = dict(schema=PACK_SCHEMA, id=pid, version="1.0.0", kind=kind, title=title,
-                    author=AUTHOR, licence="CC0-1.0", min_profile_version=6, preview="preview.png",
+                    author=AUTHOR, licence="CC0-1.0", min_profile_version=min_profile, preview="preview.png",
                     files={n: hashlib.sha256(b).hexdigest() for n, b in payload.items()})
     path = folder / f"{pid}.zip"
     with zipfile.ZipFile(path, "w") as archive:
@@ -226,6 +231,11 @@ def samples(root: Path) -> None:
                 "preview.png": preset_preview(device, regions),
                 "preset.json": (json.dumps(layout, indent=2) + "\n").encode(),
                 "README.txt": note}, folder))
+        media = Path(__file__).resolve().parents[2] / "godot/GUO/assets/backgrounds"
+        packs.append(build("sample-screensaver-starlit", "screensaver", "Starlit sea (sample screensaver)", {
+            "preview.png": (media / "starlit-sea.png").read_bytes(),
+            "loop.ogv": (media / "starlit-sea.ogv").read_bytes(),
+            "LICENSE.txt": (media / "LICENSE.md").read_bytes()}, folder, min_profile=SCREENSAVER_MIN_PROFILE))
         for path in packs:
             publish(path, root)
             print("Published sample", path.stem)

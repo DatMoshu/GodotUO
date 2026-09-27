@@ -18,14 +18,16 @@ try
     using var client = new StoreClient(savedAddress, args[1], 6);
     var entries = await client.FetchIndex();
     StorePack.Require(entries.Count >= 1, "Empty index");
-    if (args.Length == 4 && args[2] == "install")
+    if (args.Length >= 4 && args[2] == "install")
     {
+        // Optional fifth argument: the client's profile version (default 6).
         var selected = entries.Single(p => p.Manifest.Id == args[3]);
-        await client.Install(selected);
+        using var installer = new StoreClient(savedAddress, args[1], args.Length >= 5 ? int.Parse(args[4]) : 6);
+        await installer.Install(selected);
         Console.WriteLine($"Installed {selected.Manifest.Id} {selected.Manifest.Version}; all hashes verified.");
         return 0;
     }
-    var entry = entries.First();
+    var entry = entries.First(p => p.Manifest.Kind == "background");
     byte[] preview = await client.FetchPreview(entry);
     StorePack.Require(Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(preview)).ToLowerInvariant()
         == entry.Manifest.Files[entry.Manifest.Preview], "Preview hash mismatch");
@@ -62,6 +64,22 @@ try
     try { await oldClient.Install(entry); } catch (InvalidDataException) { rejected = true; }
     StorePack.Require(rejected, "Profile compatibility gate failed");
     StorePack.Require(!Directory.EnumerateFileSystemEntries(args[1], ".install-*").Any(), "Staging leaked");
+    var saver = entries.SingleOrDefault(p => p.Manifest.Kind == "screensaver");
+    if (saver != null)
+    {
+        using var v10 = new StoreClient(args[0], args[1], 10);
+        rejected = false;
+        try { await v10.Install(saver); } catch (InvalidDataException) { rejected = true; }
+        StorePack.Require(rejected, "Screensaver installed on a v10 client");
+        using var v11 = new StoreClient(args[0], args[1], 11);
+        string saverPath = await v11.Install(saver);
+        var installed = v11.Installed().Single(m => m.Kind == "screensaver");
+        StorePack.Require(File.Exists(Path.Combine(saverPath, StorePack.ScreensaverLoop(installed))), "Screensaver loop missing");
+        StorePack.Require(StoreBackground.BelongsTo($"user://store/{installed.Id}/{installed.Version}/{StorePack.ScreensaverLoop(installed)}", installed.Id, installed.Version), "Screensaver path not owned by its pack");
+        v11.Uninstall(installed.Id, installed.Version);
+        StorePack.Require(!Directory.Exists(saverPath), "Screensaver uninstall failed");
+        Console.WriteLine("PASS: screensaver kind: v10 refused, v11 install, loop found, uninstall");
+    }
     Console.WriteLine("PASS: profile address persistence/isolation/validation, index, verified preview, install, payload hashes, discovery, repeat install, updates, uninstall, corruption, compatibility, cleanup");
     return 0;
 }

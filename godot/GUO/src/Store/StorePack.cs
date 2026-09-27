@@ -40,6 +40,8 @@ internal static class StorePack
     public const long MaxFile = 256L * 1024 * 1024;
     public const long MaxTotal = 1024L * 1024 * 1024;
     public const int MaxManifest = 1024 * 1024;
+    // A screensaver is played by the client from profile version 11 on.
+    public const int ScreensaverMinProfile = 11;
     private static readonly HashSet<string> Devices = new(StringComparer.OrdinalIgnoreCase)
     { "con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8", "com9", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9" };
     private static readonly HashSet<string> Extensions = new(StringComparer.OrdinalIgnoreCase)
@@ -105,7 +107,7 @@ internal static class StorePack
     {
         Require(m != null && m.Schema == "guo/store-pack@1", "Unsupported pack schema");
         Id(m.Id); Version(m.Version);
-        Require(m.Kind is "background" or "theme" or "sound" or "profile-preset", "Unsupported pack kind; art overrides are disabled");
+        Require(m.Kind is "background" or "theme" or "sound" or "profile-preset" or "screensaver", "Unsupported pack kind; art overrides are disabled");
         Require(m.Licence != null && Licences.Contains(m.Licence), "Licence is not allowed");
         Require(!string.IsNullOrWhiteSpace(m.Title) && m.Title.Length <= 200 && !string.IsNullOrWhiteSpace(m.Author) && m.Author.Length <= 200, "Invalid title/author");
         Require(m.MinProfileVersion >= 0, "Invalid profile version");
@@ -123,7 +125,16 @@ internal static class StorePack
         }
         Require(m.Preview != null && m.Files.ContainsKey(m.Preview) && Images.Contains(Path.GetExtension(m.Preview)), "Preview must name a declared image");
         Require(m.Licence == "CC0-1.0" || m.Files.ContainsKey("LICENSE.txt"), "Attribution requires LICENSE.txt");
+        if (m.Kind == "screensaver")
+        {
+            Require(m.Files.Keys.Count(p => Path.GetExtension(p).Equals(".ogv", StringComparison.OrdinalIgnoreCase)) == 1, "A screensaver has exactly one .ogv loop");
+            Require(m.MinProfileVersion >= ScreensaverMinProfile, "A screensaver needs min_profile_version 11 or later");
+        }
     }
+
+    /// <summary>The loop a screensaver pack plays.</summary>
+    public static string ScreensaverLoop(StoreManifest m) =>
+        m.Files.Keys.First(p => Path.GetExtension(p).Equals(".ogv", StringComparison.OrdinalIgnoreCase));
 
     public static string Hash(Stream input) => Convert.ToHexString(SHA256.HashData(input)).ToLowerInvariant();
     public static string HashFile(string path) { using var input = File.OpenRead(path); return Hash(input); }

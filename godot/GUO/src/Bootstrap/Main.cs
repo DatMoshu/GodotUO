@@ -363,7 +363,35 @@ public partial class Main : Node
             GD.Print("[GUO] autologin      : ignored, no --account");
         }
 
+        if (!string.IsNullOrWhiteSpace(_options.StoreInstall))
+        {
+            StoreInstallNow(_options.StoreInstall);
+        }
+
         Bootstrap.Boot(null, args.ToArray());
+    }
+
+    private static void StoreInstallNow(string id)
+    {
+        try
+        {
+            using var client = GUO.Store.StoreOptions.CreateClient(System.Environment.GetEnvironmentVariable("UO_STORE_URL") ?? GUO.Store.StoreAddress.Default);
+            var entry = System.Linq.Enumerable.FirstOrDefault(System.Linq.Enumerable.OrderByDescending(System.Linq.Enumerable.Where(client.FetchIndex().GetAwaiter().GetResult(), e => e.Manifest.Id == id), e => GUO.Store.StorePack.Version(e.Manifest.Version)));
+
+            if (entry == null)
+            {
+                GD.Print($"[GUO] store install: {id} is not in the store's index");
+
+                return;
+            }
+
+            string path = client.Install(entry).GetAwaiter().GetResult();
+            GD.Print($"[GUO] store install: {id} {entry.Manifest.Version} ({entry.Manifest.Kind}) installed at {path}");
+        }
+        catch (Exception ex)
+        {
+            GD.Print($"[GUO] store install: {id} FAILED: {ex.Message}");
+        }
     }
 
     /// <summary>
@@ -930,6 +958,13 @@ public partial class Main : Node
         /// </summary>
         public string Background { get; private set; }
 
+        /// <summary>
+        /// A store pack id to install at startup through the in-client
+        /// installer (the configured UO_STORE_URL, this build's profile
+        /// version), for scripted and device runs: --store-install ID.
+        /// </summary>
+        public string StoreInstall { get; private set; }
+
         /// <summary>Dotted client version, e.g. "7.0.107.76".</summary>
         public string ClientVersion { get; private set; } = "7.0.107.76";
 
@@ -1135,6 +1170,9 @@ public partial class Main : Node
                         break;
                     case "--host":
                         o.ShardHost = Next();
+                        break;
+                    case "--store-install":
+                        o.StoreInstall = Next();
                         break;
                     case "--background":
                         o.Background = Next();
