@@ -468,7 +468,7 @@ namespace GUO.Input.Touch
                     Release(MouseButton.Left, at);
                     _lastTapTime = Godot.Time.GetTicksMsec();
                     _lastTapAt = at;
-                    Note("tap -> left click");
+                    Note($"tap -> left click at {at.X:0},{at.Y:0}");
                     SyncKeyboard();
 
                     break;
@@ -515,11 +515,19 @@ namespace GUO.Input.Touch
                 return;
             }
 
-            DisplayServer.VirtualKeyboardShow(
-                existingText ?? string.Empty,
-                type: password ? DisplayServer.VirtualKeyboardType.Password : DisplayServer.VirtualKeyboardType.Default
-            );
-            Note("keyboard shown");
+            // Never the Default type: with it the IME composes words and
+            // autocorrects them, and Godot replays each correction as a run
+            // of backspaces and re-typed characters into a field that has
+            // its own caret, which mangled the account name on the Thor
+            // ("guoprobeoprob"). The password and e-mail input types are
+            // the two every Android IME must not suggest or correct in,
+            // so what is typed is what the field gets; the e-mail keyboard
+            // is an ordinary one with an "@" key.
+            DisplayServer.VirtualKeyboardType type = password
+                ? DisplayServer.VirtualKeyboardType.Password
+                : DisplayServer.VirtualKeyboardType.EmailAddress;
+            DisplayServer.VirtualKeyboardShow(existingText ?? string.Empty, type: type);
+            Note($"keyboard shown ({type})");
         }
 
         public static void HideKeyboard()

@@ -176,6 +176,8 @@ was run on the Thor over the LAN against the dev shard (`--host
 | Zoom survives relaunch | force-stop, relaunch: world back at zoom 1.5; `profile.json` on the device holds `default_scale: 1.5000002`, `save_scale_after_close: true` |
 | Raw-touch mapping | raw (30,1720) on the portrait panel landed on the Options bar button in landscape: landscape X = raw Y, landscape Y = 1080 - raw X |
 | `run.py push` | rewritten: top-level files only, non-zero exit on any adb error |
+| Soft keyboard input types | with the Default type the IME's word suggestions mangled the account name (`guoprobeoprob`, GUO-UI's run). The account field now raises the e-mail keyboard and the password field the password keyboard, the two types an Android IME must not suggest or correct in. Verified twice: account and password typed by tapping Gboard's keys (`k3_account.png`, `k3_password.png`), and account by `adb shell input text` (`k4_*`); both arrived letter for letter in the trace and logged in |
+| Enter from the IME | the keyboard's check mark (IME action Done) is turned into an Enter key by Godot's own `GodotTextInputWrapper`, the keyboard hides, and the login gump's `OnKeyboardReturn` logs in (`k3_after_enter.png`: the shard list). `adb shell input keyevent KEYCODE_ENTER` never reaches the game: the single-line EditText Godot types through swallows a hardware Enter, so a script must tap the check mark (1775,917 on the Thor) instead |
 
 Not verified on the device (the desktop touch probe covers them, 18/18):
 drag-to-pick-up, targeting, double-tap on a world object. Known gap: the
