@@ -17,6 +17,7 @@ internal sealed partial class StoreWindow : CanvasLayer
     private GridContainer _list;
     private Label _status;
     private LineEdit _search;
+    private LineEdit _address;
     private OptionButton _kind;
     private StoreEntry[] _entries = Array.Empty<StoreEntry>();
     private bool _busy;
@@ -35,7 +36,7 @@ internal sealed partial class StoreWindow : CanvasLayer
     public override void _Ready()
     {
         Layer = 100;
-        _client = StoreOptions.CreateClient();
+        _client = StoreOptions.CreateClient(StoreAddress.Default);
         var backdrop = new ColorRect { Color = new Color("141917"), MouseFilter = Control.MouseFilterEnum.Stop };
         AddChild(backdrop); backdrop.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
         var margin = new MarginContainer(); backdrop.AddChild(margin); margin.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
@@ -48,6 +49,15 @@ internal sealed partial class StoreWindow : CanvasLayer
         var close = new Button { Text = "Close" }; bar.AddChild(close); close.Pressed += QueueFree;
         column.AddChild(Text("Make the world your own.", 32, new Color("eeeade")));
         column.AddChild(Text("Backgrounds, sounds, themes and presets for your next adventure.", 15, Muted));
+        var addressRow = new HBoxContainer(); column.AddChild(addressRow);
+        var addressLabel = Text("Store address", 14, Gold);
+        addressLabel.AutowrapMode = TextServer.AutowrapMode.Off;
+        addressLabel.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
+        addressRow.AddChild(addressLabel);
+        _address = new LineEdit { PlaceholderText = "https://store.example.com/", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, CustomMinimumSize = new Vector2(0, 48) };
+        addressRow.AddChild(_address);
+        var connect = new Button { Text = "Save & connect", CustomMinimumSize = new Vector2(0, 48) }; addressRow.AddChild(connect);
+        connect.Pressed += () => _ = Refresh(true); _address.TextSubmitted += text => { _ = Refresh(true); };
         var filters = new HBoxContainer(); column.AddChild(filters);
         _search = new LineEdit { PlaceholderText = "Search packs or creators…", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, CustomMinimumSize = new Vector2(0, 42) }; filters.AddChild(_search);
         _kind = new OptionButton(); foreach (string title in new[] { "All kinds", "Backgrounds", "Themes", "Sounds", "Profile presets" }) _kind.AddItem(title);
@@ -57,7 +67,8 @@ internal sealed partial class StoreWindow : CanvasLayer
         _list.AddThemeConstantOverride("h_separation", 14); _list.AddThemeConstantOverride("v_separation", 14); scroll.AddChild(_list);
         _status = Text("Loading collection…", 13, Muted); column.AddChild(_status);
         column.AddChild(Text("After installing: reopen Options, choose your background, then Apply.", 12, Muted));
-        _ = Refresh();
+        try { _address.Text = StoreOptions.Url; _ = Refresh(); }
+        catch (Exception) { _status.Text = "Could not read this profile's store address. Enter an address and Save & connect."; }
     }
 
     private static Label Text(string value, int size, Color color)
@@ -105,16 +116,26 @@ internal sealed partial class StoreWindow : CanvasLayer
         catch (Exception) { /* A missing preview must not prevent installation. */ }
     }
 
-    private async Task Refresh()
+    private async Task Refresh(bool saveAddress = false)
     {
         if (_busy) return;
         _busy = true;
         try
         {
-            _entries = (await _client.FetchIndex(_cancel.Token)).ToArray();
+            string url = StoreAddress.Normalize(_address.Text);
+            if (saveAddress) StoreAddress.Save(ProfileManager.CurrentProfile == null ? null : ProfileManager.ProfilePath, url);
+            _client.Dispose(); _client = StoreOptions.CreateClient(url);
+            _previews.Clear(); _entries = Array.Empty<StoreEntry>();
+            _address.Text = url; _status.Text = "Connecting to store…";
+            Render();
+            using var connection = CancellationTokenSource.CreateLinkedTokenSource(_cancel.Token);
+            connection.CancelAfter(TimeSpan.FromSeconds(15));
+            _entries = (await _client.FetchIndex(connection.Token)).ToArray();
             if (!IsInsideTree()) return;
             _status.Text = $"{_entries.Length} packs in the collection · {_client.Installed().Count} installed";
         }
+        catch (System.Net.Http.HttpRequestException) { if (IsInsideTree()) _status.Text = "Store unreachable. Check the address, server and network connection, then Refresh."; }
+        catch (TaskCanceledException) { if (IsInsideTree()) _status.Text = "Store connection timed out. Check the address and try Refresh."; }
         catch (Exception e) { if (IsInsideTree()) _status.Text = "Could not load collection: " + e.Message; }
         finally { _busy = false; if (IsInsideTree()) Render(); }
     }

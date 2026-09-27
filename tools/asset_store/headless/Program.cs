@@ -2,7 +2,20 @@ using GUO.Store;
 
 try
 {
-    using var client = new StoreClient(args[0], args[1], 6);
+    string profile = Path.Combine(args[1], "..", "profile-settings");
+    StorePack.Require(StoreAddress.Load(profile, args[0]) == args[0], "Default store address changed");
+    StoreAddress.Save(profile, args[0]);
+    string savedAddress = StoreAddress.Load(profile, "https://unused.example.com/");
+    StorePack.Require(savedAddress == StoreAddress.Normalize(args[0]), "Store address did not persist");
+    foreach (string invalid in new[] { "ftp://example.com", "http://user:pass@example.com", "http:///", "http://example.com:0", "http://example.com/?secret=x", "http://example.com/#x", "http://example.com\\other", "" })
+    {
+        bool refused = false;
+        try { StoreAddress.Save(profile, invalid); } catch (InvalidDataException) { refused = true; }
+        StorePack.Require(refused && StoreAddress.Load(profile, "") == savedAddress, "Invalid address changed saved setting");
+    }
+    StorePack.Require(StoreAddress.Load(profile + "-other", "https://example.com") == "https://example.com", "Profile address leaked");
+    StorePack.Require(StoreAddress.Normalize(" https://example.com:8443/catalogue ") == "https://example.com:8443/catalogue/", "Address path/port lost");
+    using var client = new StoreClient(savedAddress, args[1], 6);
     var entries = await client.FetchIndex();
     StorePack.Require(entries.Count >= 1, "Empty index");
     if (args.Length == 4 && args[2] == "install")
@@ -35,7 +48,7 @@ try
     try { await oldClient.Install(entry); } catch (InvalidDataException) { rejected = true; }
     StorePack.Require(rejected, "Profile compatibility gate failed");
     StorePack.Require(!Directory.EnumerateFileSystemEntries(args[1], ".install-*").Any(), "Staging leaked");
-    Console.WriteLine("PASS: index, verified preview, install, payload hashes, discovery, repeat install, updates, uninstall, corruption, compatibility, cleanup");
+    Console.WriteLine("PASS: profile address persistence/isolation/validation, index, verified preview, install, payload hashes, discovery, repeat install, updates, uninstall, corruption, compatibility, cleanup");
     return 0;
 }
 catch (Exception e)

@@ -22,8 +22,7 @@ internal sealed class StoreClient : IDisposable
 
     public StoreClient(string storeUrl, string installRoot, int profileVersion)
     {
-        _base = new Uri(storeUrl.TrimEnd('/') + "/", UriKind.Absolute);
-        StorePack.Require(_base.Scheme is "http" or "https" && string.IsNullOrEmpty(_base.UserInfo) && string.IsNullOrEmpty(_base.Query) && string.IsNullOrEmpty(_base.Fragment), "Invalid store URL");
+        _base = new Uri(StoreAddress.Normalize(storeUrl), UriKind.Absolute);
         _root = Path.GetFullPath(installRoot);
         _profileVersion = profileVersion;
         _http.Timeout = TimeSpan.FromMinutes(5);
