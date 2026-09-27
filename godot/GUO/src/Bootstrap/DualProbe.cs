@@ -148,6 +148,82 @@ internal static class DualProbe
         }
     }
 
+    private static uint _heldSerial;
+
+    /// <summary>
+    /// Pick up one item from the backpack, which the shelf keeps on the
+    /// second screen, and put the pointer there: the held-item marker should
+    /// then draw at the pointer on the second screen and as a badge on the
+    /// main one. False when there is nothing to pick up.
+    /// </summary>
+    public static async System.Threading.Tasks.Task<bool> HoldOnShelf(Node host)
+    {
+        Game.World world = Client.Game.UO.World;
+        Game.GameObjects.Item backpack = world.Player?.FindItemByLayer(Game.Data.Layer.Backpack);
+        Game.GameObjects.Item item = null;
+
+        for (var i = (Game.GameObjects.Item)backpack?.Items; i != null; i = (Game.GameObjects.Item)i.Next)
+        {
+            if (!i.IsDestroyed && !i.IsMulti && i.Amount >= 1)
+            {
+                item = i;
+
+                break;
+            }
+        }
+
+        if (item == null)
+        {
+            GD.PrintErr("[GUO] dual screen: held FAIL nothing in the backpack to pick up");
+
+            return false;
+        }
+
+        // An empty stretch of the second screen, so the photograph shows the
+        // marker and nothing else there.
+        var at = new Compat.Point(DualScreen.MainWidth + 600, 600);
+
+        Input.Mouse.Position = at;
+
+        if (!Game.GameActions.PickUp(world, item.Serial, 0, 0, item.Amount))
+        {
+            GD.PrintErr($"[GUO] dual screen: held FAIL could not pick up 0x{item.Graphic:X4}");
+
+            return false;
+        }
+
+        _heldSerial = item.Serial;
+
+        for (int i = 0; i < 20; i++)
+        {
+            Input.Mouse.Position = at;
+            await InputProbe.Wait(host, 1);
+        }
+
+        Game.ItemHold hold = Client.Game.UO.GameCursor.ItemHold;
+
+        GD.Print(
+            $"[GUO] dual screen: held 0x{hold.Graphic:X4} x{hold.Amount} enabled={hold.Enabled} "
+            + $"pointer {at.X},{at.Y} (main window {DualScreen.MainWidth} wide)"
+        );
+
+        return hold.Enabled;
+    }
+
+    /// <summary>Put the item <see cref="HoldOnShelf"/> took back into the backpack.</summary>
+    public static async System.Threading.Tasks.Task DropBack(Node host)
+    {
+        Game.World world = Client.Game.UO.World;
+        Game.GameObjects.Item backpack = world.Player?.FindItemByLayer(Game.Data.Layer.Backpack);
+
+        if (_heldSerial != 0 && backpack != null && Client.Game.UO.GameCursor.ItemHold.Enabled)
+        {
+            Game.GameActions.DropItem(_heldSerial, 0xFFFF, 0xFFFF, 0, backpack.Serial);
+            await InputProbe.Wait(host, 30);
+            GD.Print($"[GUO] dual screen: held item dropped back, holding={Client.Game.UO.GameCursor.ItemHold.Enabled}");
+        }
+    }
+
     /// <summary>Frames per second over a fixed number of frames, from the clock.</summary>
     private static async System.Threading.Tasks.Task<double> MeasureFps(Node host)
     {

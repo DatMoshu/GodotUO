@@ -903,6 +903,9 @@ namespace GUO
 
             _uoSpriteBatch.Begin();
             UO.GameCursor?.Draw(_uoSpriteBatch);
+            // PORT DEVIATION (GUO): with the pointer on a dual-screen device's
+            // second screen, a badge of the held item on this one. ADR-0009.
+            GUO.Platform.Android.DualScreen.DrawMainBadge(_uoSpriteBatch);
             _uoSpriteBatch.End();
 
             _uoSpriteBatch.SetRenderTarget(null);
