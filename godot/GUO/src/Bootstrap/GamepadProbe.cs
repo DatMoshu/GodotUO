@@ -240,6 +240,34 @@ internal static class GamepadProbe
                 plus != null && opened.PresentationScale > before + 0.01f, $"{before} -> {opened.PresentationScale}");
             opened.PresentationScale = before;
 
+            // The D-pad selects the card's controls, and A presses the selected
+            // one: what reaches a card on the Thor's second screen, which the
+            // pointer cannot.
+            (ushort, ushort) stood = Where();
+            await Button(host, JoyButton.DpadDown);
+            Control first = GUO.Input.Touch.WindowMenu.FocusOwner;
+            await Button(host, JoyButton.DpadDown);
+            Control second = GUO.Input.Touch.WindowMenu.FocusOwner;
+            Check("the D-pad selects the window menu's controls, not walking",
+                first != null && second != null && second != first && Where() == stood,
+                $"{Name(first)} -> {Name(second)}, at {stood} -> {Where()}");
+
+            for (int i = 0; i < 12 && Name(GUO.Input.Touch.WindowMenu.FocusOwner) != "+"; i++)
+            {
+                await Button(host, JoyButton.DpadRight);
+
+                if (Name(GUO.Input.Touch.WindowMenu.FocusOwner) != "+")
+                {
+                    await Button(host, JoyButton.DpadDown);
+                }
+            }
+
+            before = opened.PresentationScale;
+            await Button(host, JoyButton.A);
+            Check("A presses the selected control (+)", opened.PresentationScale > before + 0.01f,
+                $"selected {Name(GUO.Input.Touch.WindowMenu.FocusOwner)}, {before} -> {opened.PresentationScale}");
+            opened.PresentationScale = before;
+
             await Button(host, JoyButton.B);
             Check("B closes the window menu", !GUO.Input.Touch.WindowMenu.IsOpen && !opened.IsDisposed);
 
@@ -255,6 +283,8 @@ internal static class GamepadProbe
             profile.MobileWindowControls = mobile;
         }
     }
+
+    private static string Name(Control c) => c == null ? "none" : c is Button b ? b.Text : c.GetType().Name;
 
     private static (ushort, ushort) Where() => (Client.Game.UO.World.Player.X, Client.Game.UO.World.Player.Y);
 

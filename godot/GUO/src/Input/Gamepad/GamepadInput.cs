@@ -32,7 +32,9 @@ namespace GUO.Input.Gamepad
     /// <item>printed Y: the touch bar's macro row, open or closed;</item>
     /// <item>printed X: the window menu (size, lock, screen) for the topmost
     /// window, or closed again; mobile only, as the menu is. While it is up, A
-    /// presses the card's control under the pointer and B closes it;</item>
+    /// presses the card's control under the pointer and B closes it; the
+    /// D-pad selects the card's controls instead of walking, and then A
+    /// presses the selected one (on either screen);</item>
     /// <item>right stick: moves the pointer.</item>
     /// </list>
     /// </summary>
@@ -200,6 +202,23 @@ namespace GUO.Input.Gamepad
 
         private static void OnButton(InputEventJoypadButton e)
         {
+            // An open window menu takes the D-pad: select its controls, not walk.
+            if (Touch.WindowMenu.IsOpen && e.ButtonIndex is JoyButton.DpadUp or JoyButton.DpadDown or JoyButton.DpadLeft or JoyButton.DpadRight)
+            {
+                if (e.Pressed)
+                {
+                    Touch.WindowMenu.Navigate(e.ButtonIndex switch
+                    {
+                        JoyButton.DpadUp => "ui_up",
+                        JoyButton.DpadDown => "ui_down",
+                        JoyButton.DpadLeft => "ui_left",
+                        _ => "ui_right",
+                    });
+                }
+
+                return;
+            }
+
             switch (e.ButtonIndex)
             {
                 case JoyButton.DpadUp: _dpad[0] = e.Pressed; UpdateArrows(); return;
@@ -223,7 +242,10 @@ namespace GUO.Input.Gamepad
             switch (printed.Value)
             {
                 case JoyButton.A:
-                    Click(e.Pressed);
+                    if (!Touch.WindowMenu.Accept(e.Pressed))
+                    {
+                        Click(e.Pressed);
+                    }
 
                     break;
 

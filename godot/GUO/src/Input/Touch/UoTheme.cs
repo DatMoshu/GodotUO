@@ -488,6 +488,24 @@ internal static class UoTheme
         _textures.Clear();
     }
 
+    /// <summary>
+    /// Keyboard or controller focus: one art pixel of Heading, square, just
+    /// outside the control, as UO outlines a selection. Godot draws it only for
+    /// focus that came from keys or a pad, never for a tap or a click.
+    /// </summary>
+    private static StyleBox FocusRing()
+    {
+        var ring = new StyleBoxFlat
+        {
+            DrawCenter = false, BorderColor = Heading, AntiAliasing = false,
+            ExpandMarginLeft = 1, ExpandMarginRight = 1, ExpandMarginTop = 1, ExpandMarginBottom = 1,
+        };
+        ring.SetBorderWidthAll(1);
+        ring.SetCornerRadiusAll(0);
+
+        return ring;
+    }
+
     private static Theme Build()
     {
         var theme = new Theme { DefaultFont = Font, DefaultFontSize = FontSize };
@@ -502,12 +520,12 @@ internal static class UoTheme
             theme.SetStylebox("pressed", control, Plate(0.70f));
             theme.SetStylebox("hover_pressed", control, Plate(0.70f));
             theme.SetStylebox("disabled", control, Plate(0.55f));
-            theme.SetStylebox("focus", control, new StyleBoxEmpty());
+            theme.SetStylebox("focus", control, FocusRing());
             theme.SetColor("font_color", control, Ink);
             theme.SetColor("font_hover_color", control, Ink);
             theme.SetColor("font_pressed_color", control, Heading);
             theme.SetColor("font_hover_pressed_color", control, Heading);
-            theme.SetColor("font_focus_color", control, Ink);
+            theme.SetColor("font_focus_color", control, Heading);
             theme.SetColor("font_disabled_color", control, new Color(Ink, 0.5f));
             theme.SetConstant("h_separation", control, 4);
         }
@@ -517,10 +535,12 @@ internal static class UoTheme
 
         foreach (string control in new[] { "CheckBox", "CheckButton" })
         {
-            foreach (string state in new[] { "normal", "hover", "pressed", "hover_pressed", "focus", "disabled" })
+            foreach (string state in new[] { "normal", "hover", "pressed", "hover_pressed", "disabled" })
             {
                 theme.SetStylebox(state, control, new StyleBoxEmpty { ContentMarginLeft = 2, ContentMarginRight = 2, ContentMarginTop = 2, ContentMarginBottom = 2 });
             }
+
+            theme.SetStylebox("focus", control, FocusRing());
 
             if (off != null && on != null)
             {
@@ -554,6 +574,7 @@ internal static class UoTheme
         theme.SetStylebox("slider", "HSlider", SliderBar());
         theme.SetStylebox("grabber_area", "HSlider", new StyleBoxEmpty());
         theme.SetStylebox("grabber_area_highlight", "HSlider", new StyleBoxEmpty());
+        theme.SetStylebox("focus", "HSlider", FocusRing());
         Texture2D thumb = GumpTexture(SliderThumb);
 
         if (thumb != null)
