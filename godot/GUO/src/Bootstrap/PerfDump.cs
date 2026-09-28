@@ -130,7 +130,44 @@ internal static class PerfDump
 
         // On the game loop, between frames: the render lists hold the last
         // frame's objects then (prepare clears them at its start).
-        ClientRoot.Game.EnqueueAction((uint)(seconds * 1000), Write);
+        ClientRoot.Game.EnqueueAction((uint)(seconds * 1000), WaitForFade);
+    }
+
+    // After the [go everything in view fades in (AlphaHue below 255), and a
+    // fading object is sorted and drawn one by one instead of from the chunk
+    // mesh, so an average taken mid-fade measured the fade: ClassicUO read
+    // 2-4x slower with 2,231 of 2,244 listed objects still fading. So wait
+    // until the render lists' transparent list is down to a few, then let the
+    // profiler's 60-frame window fill with frames after it. Capped, and both
+    // what was left fading and how long it took are written down.
+    private const int FadeLeft = 20;
+    private const long FadeCapMs = 60_000;
+    private static long _fadeStart = -1, _fadeWaitMs;
+    private static int _fadingAtEnd = -1;
+
+    private static int Fading() =>
+        Field(ClientRoot.Game.Scene, "_renderLists") is object lists
+        && Field(lists, "_transparentObjects") is System.Collections.ICollection c ? c.Count : -1;
+
+    private static void WaitForFade()
+    {
+        long now = Environment.TickCount64;
+        if (_fadeStart < 0)
+        {
+            _fadeStart = now;
+        }
+
+        int fading = Fading();
+        if (fading <= FadeLeft || now - _fadeStart >= FadeCapMs)
+        {
+            _fadingAtEnd = fading;
+            _fadeWaitMs = now - _fadeStart;
+            Console.WriteLine($"[perf_dump] {ClientName}: {fading} fading after {_fadeWaitMs} ms more; averaging");
+            ClientRoot.Game.EnqueueAction(2000, Write);
+            return;
+        }
+
+        ClientRoot.Game.EnqueueAction(500, WaitForFade);
     }
 
     private static void Write()
@@ -171,6 +208,9 @@ internal static class PerfDump
             }
 
             r["render_list_objects"] = listed;
+            r["fading_when_averaging"] = _fadingAtEnd;
+            r["fade_wait_ms"] = _fadeWaitMs;
+            r["fade_timed_out"] = _fadeWaitMs >= FadeCapMs;
             string dir = Path.Combine(_args[0], _args[1]);
             Directory.CreateDirectory(dir);
             string path = Path.Combine(dir, ClientName + ".json");

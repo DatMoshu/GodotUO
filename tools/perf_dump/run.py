@@ -118,13 +118,13 @@ def report(out: Path) -> str:
     # Per object: prepare's cost against how much it sorted, which separates
     # port efficiency from GUO sorting statics upstream bakes (ADR-0004).
     lines = ["| Scene | client | optimised | zoom | " + " | ".join(KEYS)
-             + " | frames | render-list objects | rendered objects | prepare us/object |",
-             "|---|---|---|---:|" + "---:|" * len(KEYS) + "---:|---:|---:|---:|"]
+             + " | frames | render-list objects | rendered objects | prepare us/object | fading | fade wait s |",
+             "|---|---|---|---:|" + "---:|" * len(KEYS) + "---:|---:|---:|---:|---:|---:|"]
     for name, *_ in SCENES:
         for client in ("cuo", "guo"):
             f = out / name / f"{client}.json"
             if not f.exists():
-                lines.append(f"| {name} | {client} | (no result) |" + " |" * (len(KEYS) + 5))
+                lines.append(f"| {name} | {client} | (no result) |" + " |" * (len(KEYS) + 7))
                 continue
             r = json.loads(f.read_text(encoding="utf-8"))
             objects = r.get("render_list_objects")
@@ -132,7 +132,9 @@ def report(out: Path) -> str:
             lines.append(f"| {name} | {client} | {r.get('optimized', '?')} | {r['zoom']:.1f} | "
                          + " | ".join(str(r[k]) for k in KEYS)
                          + f" | {r['frames_averaged']} | {objects if objects is not None else ''}"
-                         + f" | {r.get('rendered_objects', '')} | {per} |")
+                         + f" | {r.get('rendered_objects', '')} | {per} | {r.get('fading_when_averaging', '')}"
+                         + (f" | {r['fade_wait_ms'] / 1000:.1f}{' (cap)' if r.get('fade_timed_out') else ''} |"
+                            if "fade_wait_ms" in r else " | |"))
     return "\n".join(lines)
 
 
@@ -142,7 +144,8 @@ def main() -> int:
     ap.add_argument("--size", default="2560,1440", help="window size of both clients")
     ap.add_argument("--zoom", type=float, default=2.5, help="camera zoom, clamped by each client")
     ap.add_argument("--seconds", type=int, default=20, help="settle time after [go before the averages are read")
-    ap.add_argument("--timeout", type=float, default=150, help="per client and scene")
+    ap.add_argument("--timeout", type=float, default=200,
+                    help="per client and scene; covers login, SECONDS, and PerfDump's fade wait (up to 60 s)")
     ap.add_argument("--build", action="store_true", help="build ClassicUO first (tools/ab_compare)")
     ap.add_argument("--only", choices=["cuo", "guo"], help="run one client")
     ap.add_argument("--scene", action="append", choices=[s[0] for s in SCENES], help="run these scenes only")
