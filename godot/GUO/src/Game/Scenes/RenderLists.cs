@@ -368,6 +368,16 @@ namespace GUO.Game.Scenes
 
             // Draw chunk mesh land tiles from GPU buffers with per-frame visibility
             batcher.SetWorldOffset(offsetX, offsetY);
+            // PORT DEVIATION (GUO): --merged-land (Epic B, B4) draws every
+            // visible chunk's land as one mesh per texture; see MergedLand.
+            if (MergedLand.Enabled)
+            {
+                _mergedLayers.Clear();
+                foreach (var chunk in visibleChunks)
+                    _mergedLayers.Add(chunk.Mesh.Land);
+                result += _mergedLand.Draw(batcher, _mergedLayers);
+            }
+            else
             foreach (var chunk in visibleChunks)
                 result += DrawMeshLayer(batcher, chunk.Mesh.Land);
             batcher.ResetWorldOffset();
@@ -492,6 +502,8 @@ namespace GUO.Game.Scenes
         }
 
         private int _meshOffsetX, _meshOffsetY;
+        private readonly MergedLand _mergedLand = new MergedLand(); // PORT DEVIATION (GUO): --merged-land
+        private readonly List<MeshLayer> _mergedLayers = new List<MeshLayer>(); // PORT DEVIATION (GUO): --merged-land
 
         private static int DrawRenderList(UltimaBatcher2D batcher, List<GameObject> renderList, sbyte maxGroundZ)
         {

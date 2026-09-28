@@ -46,6 +46,13 @@ internal static class PerfProbe
     private const int Settle = 180;
     private static string _outDir, _label;
     private static bool _parity;
+
+    /// <summary>
+    /// The switch --perf-parity flips: the experimental path under test,
+    /// --batched-world by default, --merged-land when that flag is on.
+    /// </summary>
+    public static System.Action<bool> ParityToggle = on => UltimaBatcher2D.BatchedWorld = on;
+    public static System.Func<bool> ParityState = () => UltimaBatcher2D.BatchedWorld;
     private const int Frames = 360;
 
     public static async System.Threading.Tasks.Task Run(Node host, string outDir, string label, float zoom = 0, bool parity = false)
@@ -223,17 +230,17 @@ internal static class PerfProbe
     /// </summary>
     private static async System.Threading.Tasks.Task<Dictionary<string, object>> Parity(Node host, string name)
     {
-        bool was = UltimaBatcher2D.BatchedWorld;
+        bool was = ParityState();
         async System.Threading.Tasks.Task<Image> Frame(bool batched)
         {
-            UltimaBatcher2D.BatchedWorld = batched;
+            ParityToggle(batched);
             await host.ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
             await host.ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
             return host.GetViewport().GetTexture().GetImage();
         }
 
         Image a = await Frame(false), b = await Frame(true), c = await Frame(false);
-        UltimaBatcher2D.BatchedWorld = was;
+        ParityToggle(was);
         byte[] da = a.GetData(), db = b.GetData(), dc = c.GetData();
         int bpp = da.Length / (a.GetWidth() * a.GetHeight());
         long stable = 0, violations = 0;
