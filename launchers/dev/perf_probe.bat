@@ -1,7 +1,8 @@
 @echo off
 REM ============================================================================
-REM  Frame time in five fixed scenes (Epic B): the login screen, an open field,
-REM  the Britain bank, a dense forest and a dungeon. Needs a shard where the
+REM  Frame time in fixed scenes (Epic B): the login screen, an open field,
+REM  the Britain bank, a dense forest, a dungeon, and a run through new ground
+REM  (land-array uploads, review R1-1). Needs a shard where the
 REM  probe account is a GM. Writes build\perf\perf_LABEL.md and .json.
 REM      launchers\dev\perf_probe.bat --label baseline
 REM      launchers\dev\perf_probe.bat --label batched --args "--batched-world"

@@ -35,8 +35,14 @@ namespace GUO.Renderer
         /// <summary>A page was added since the last <see cref="Sync"/>.</summary>
         public static bool Dirty => _rebuild;
 
-        /// <summary>Layer copies made, for the perf probe.</summary>
+        /// <summary>Layer copies made, for the perf probe and PerfDump.</summary>
         public static int Uploads;
+
+        /// <summary>Layers in the array (pages land has been drawn from).</summary>
+        public static int Layers => _layers.Count;
+
+        /// <summary>What one layer copy moves: a full RGBA8 page.</summary>
+        public const long LayerBytes = (long)Size * Size * 4;
 
         /// <summary>The layer of an atlas page, adding it if new; -1 when it is not an atlas page that fits.</summary>
         public static int LayerOf(Texture2D texture)

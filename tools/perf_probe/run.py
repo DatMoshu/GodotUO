@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""Frame time in five fixed scenes (Epic B, B1): the client's --perf-probe, run and reported.
+"""Frame time in fixed scenes (Epic B, B1): the client's --perf-probe, run and reported.
 
     python tools/perf_probe/run.py [--label NAME] [--port PORT] [--args "--batched-world"] [--size 1280,720]
 
 Runs the desktop client windowed, never taking the focus, against a shard
 (UO_SHARD_HOST:UO_SHARD_PORT, or --port) where the probe account is a GM. The
 probe measures the login screen, then [go's to an open field, the Britain
-bank, a dense forest and a dungeon (src/Bootstrap/PerfProbe.cs), and writes
+bank, a dense forest and a dungeon, then runs from the open field through
+ground that loads as it comes into view, counting the land-array uploads
+(--merged-land=array, --merged-cover) on the way (src/Bootstrap/PerfProbe.cs), and writes
 build/perf/perf_<label>.md and .json. --compare A B prints the two labels'
 tables side by side.
 
@@ -31,7 +33,8 @@ from guo import load_config  # noqa: E402
 from guo.build import build_client  # noqa: E402
 from guo.process import no_activate  # noqa: E402
 
-COLUMNS = ("mean_ms", "p95_ms", "p99_ms", "draw_calls", "batcher_items", "texture_switches", "world_draw_ms", "render_cpu_ms")
+COLUMNS = ("mean_ms", "p95_ms", "p99_ms", "draw_calls", "batcher_items", "texture_switches", "world_draw_ms", "render_cpu_ms",
+           "land_uploads_per_frame")
 
 
 def compare(out: Path, a: str, b: str) -> int:
@@ -44,7 +47,7 @@ def compare(out: Path, a: str, b: str) -> int:
             continue
         cells = []
         for c in COLUMNS:
-            x, y = ra[scene][c], rb[scene][c]
+            x, y = ra[scene].get(c, 0), rb[scene].get(c, 0)  # older runs lack the newer columns
             pct = f" ({(y - x) / x * 100:+.0f}%)" if x else ""
             cells.append(f"{x} -> {y}{pct}")
         lines.append(f"| {scene} | " + " | ".join(cells) + " |")
