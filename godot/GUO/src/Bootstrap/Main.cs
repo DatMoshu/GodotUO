@@ -577,7 +577,7 @@ public partial class Main : Node
     /// <summary>Frame time in the five fixed scenes, then quit; see PerfProbe.</summary>
     private async void PerfProbeThenQuit()
     {
-        await PerfProbe.Run(this, _options.PerfOut, _options.PerfLabel, _options.PerfZoom);
+        await PerfProbe.Run(this, _options.PerfOut, _options.PerfLabel, _options.PerfZoom, _options.PerfParity);
         Quit(PerfProbe.Passed ? 0 : 1);
     }
 
@@ -1073,6 +1073,9 @@ public partial class Main : Node
         /// <summary>Photograph and time every post-processing look into this folder (ADR-0023).</summary>
         public string PostFxSheet { get; private set; }
 
+        /// <summary>--perf-parity: per scene, compare --batched-world with the plain path pixel for pixel.</summary>
+        public bool PerfParity { get; private set; }
+
         public bool DoorProbe { get; private set; }
 
         /// <summary>File the world objects near the player are written to after the shard commands; see ObjectsDump.</summary>
@@ -1248,6 +1251,9 @@ public partial class Main : Node
                     case "--zoom-probe":
                         o.ZoomProbe = true;
                         break;
+                    case "--batched-world":
+                        GUO.Renderer.UltimaBatcher2D.BatchedWorld = true;
+                        break;
                     case "--perf-probe":
                         o.PerfProbe = true;
                         break;
@@ -1256,6 +1262,9 @@ public partial class Main : Node
                         break;
                     case "--perf-label":
                         o.PerfLabel = Next();
+                        break;
+                    case "--perf-parity":
+                        o.PerfParity = true;
                         break;
                     case "--perf-zoom":
                         o.PerfZoom = float.Parse(Next(), System.Globalization.CultureInfo.InvariantCulture);

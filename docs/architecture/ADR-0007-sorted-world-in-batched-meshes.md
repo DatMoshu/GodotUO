@@ -2,8 +2,90 @@
 
 ## Status
 
-Proposed -- not accepted, nothing built. Written up overnight 2026-09-26 so
-the owner can decide; see `docs/parity_2026-09-26_night.md`, P1.
+Proposed. **Recommendation: Reject**, measured 2026-09-27 (Epic B, B2; see
+"Measured" below). It stays Proposed until the owner signs off.
+
+Written up overnight 2026-09-26 so the owner could decide; see
+`docs/parity_2026-09-26_night.md`, P1.
+
+## Measured (2026-09-27, B2)
+
+**What was run:**
+
+- The prototype: `--batched-world` (`UltimaBatcher2D.BatchedWorld`, off by
+  default). It builds step 2 of the proposal without step 1: consecutive
+  quads on one texture in one canvas item go to Godot as one
+  `canvas_item_add_triangle_array` per run instead of one call per sprite.
+  Rotated, mirrored and shadow quads join the runs too.
+- The comparison: `launchers\dev\perf_probe.bat` (B1) in five scenes, plain
+  and batched, on the desktop.
+  - Machine: RTX 4090.
+  - Settings: vsync, the frame cap and upstream's draw pacing lifted, 360
+    frames per scene.
+
+Zoomed out, where this ADR's cost lives (2560x1440, zoom 3). Mean frame time
+and world draw are in ms:
+
+| Scene | mean, plain | mean, batched | world draw, plain | world draw, batched | draw calls | draw commands, plain | draw commands, batched | alloc KB/frame, batched |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| open field | 19.1 | 21.3 | 4.2 | 5.5 | 1,746 | 7,556 | 1,766 | 929 |
+| Britain bank | 53.8 | 72.6 | 19.6 | 30.0 | 8,026 | 27,602 | 8,099 | 3,116 |
+| dense forest | 33.4 | 39.0 | 10.9 | 15.3 | 3,422 | 16,852 | 3,418 | 2,162 |
+| dungeon | 28.4 | 34.0 | 7.4 | 11.0 | 6,264 | 9,708 | 6,305 | 686 |
+
+At 1280x720 and zoom 0.7 (the default), every scene costs 1.0-1.5 ms plain.
+The batched path is 0.3-0.7 ms slower there too.
+
+**What it shows:**
+
+1. **Draw calls did not move at all** (8,026 vs 8,023 at the bank). Godot's
+   canvas renderer already merges consecutive rect commands on one texture
+   into one draw call. So the 17,000 draw calls of 2026-09-26 are not one per
+   sprite; they come from whatever breaks Godot's own batches. Here there
+   are 1,613 batcher items for 8,026 draw calls. What breaks them is the
+   next question.
+2. **Texture changes are rare.** The batcher sees about 43 texture switches a
+   frame at the bank, and 436 in the forest. The proposal's premise, that
+   the sort interleaves atlas pages and every page change breaks a run, does
+   not hold at these scenes. Step 1 (atlas pages as a `Texture2DArray`)
+   would remove almost nothing.
+3. **Fewer engine calls did not make it faster.** Draw commands fell from
+   27,602 to 8,099, but world draw rose from 19.6 to 30.0 ms: building and
+   marshalling the arrays costs more than the per-sprite calls saved. The
+   prototype allocates 3 MB a frame. A pooled buffer would take the
+   allocation away, but not the copy into packed arrays that each call
+   makes.
+4. **Where the frame goes, zoomed out at the bank (53.8 ms):**
+   - world prepare (`FillGameObjectList`, cover, sort): 20.5 ms;
+   - world draw: 19.6 ms;
+   - the rest, about 14 ms, outside the client's counters (canvas processing
+     in the engine);
+   - GPU: 0.3 ms.
+
+**Parity:**
+
+- Method: `--perf-parity` takes three frames in a row (plain, batched,
+  plain). Every pixel the two plain frames agree on must match in the
+  batched frame.
+- Result: 0 differing pixels at the login screen and in most scenes, and
+  3-142 pixels elsewhere (out of 0.9-3.7 million stable pixels). All the
+  differences are isolated specks or a thin object at the screen edge that
+  appears in the batched frame alone, consistent with movement between the
+  frames. They were not proven to be motion, and did not need to be: the
+  path is slower either way.
+
+**Recommendation:**
+
+- Reject batching the sorted world into meshes or triangle arrays. The
+  measured costs are world prepare and per-sprite managed drawing, not draw
+  calls or texture changes.
+- The next targets, in order:
+  1. world prepare, against upstream's own prepare as the yardstick;
+  2. what breaks Godot's canvas batches (8,026 draw calls from 1,613 items);
+  3. the ~14 ms of engine canvas processing, which RenderDump and a Godot
+     profiler capture can attribute.
+- The prototype stays behind its flag, off by default, so the numbers can be
+  reproduced. Remove it if the owner rejects this ADR.
 
 ## Date
 

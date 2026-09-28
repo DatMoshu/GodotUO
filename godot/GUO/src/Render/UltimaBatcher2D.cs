@@ -168,6 +168,78 @@ namespace GUO.Renderer
         /// <summary>Frames begun since start: the perf probe checks every measured frame really drew.</summary>
         public static long FramesBegun;
 
+        /// <summary>
+        /// ADR-0007 prototype (Epic B, B2), --batched-world: consecutive quads on
+        /// one texture in one canvas item are sent as one triangle array per run
+        /// instead of one engine call per sprite. Off by default.
+        /// </summary>
+        /// <remarks>
+        /// PORT DEVIATION (GUO), for speed alone, and only when switched on: the
+        /// same quads, corners and UVs in the same order, so the picture is
+        /// meant to be identical (render_diff checks it). A run ends at a texture
+        /// change, a new canvas item, any other command on the item, and End.
+        /// Texture changes still break runs; ADR-0007's Texture2DArray step would
+        /// remove those too.
+        /// </remarks>
+        public static bool BatchedWorld;
+
+        private Texture2D _runTexture;
+        private Rid _runItem;
+        private readonly List<Vector2> _runPoints = new();
+        private readonly List<Vector2> _runUVs = new();
+        private readonly List<Color> _runColors = new();
+        private readonly List<int> _runIndices = new();
+
+        /// <summary>Appends one quad (corners TL, TR, BL, BR) to the current run, starting a new run when it must.</summary>
+        private void AppendToRun(Texture2D texture, Vector2 p0, Vector2 p1, Vector2 p2, Vector2 p3,
+                                 Vector2 t0, Vector2 t1, Vector2 t2, Vector2 t3, Color modulate)
+        {
+            if (!ReferenceEquals(texture, _runTexture) || _runItem != _current)
+            {
+                FlushRun();
+                _runTexture = texture;
+                _runItem = _current;
+            }
+
+            int b = _runPoints.Count;
+            _runPoints.Add(p0);
+            _runPoints.Add(p1);
+            _runPoints.Add(p2);
+            _runPoints.Add(p3);
+            _runUVs.Add(t0);
+            _runUVs.Add(t1);
+            _runUVs.Add(t2);
+            _runUVs.Add(t3);
+            _runColors.Add(modulate);
+            _runColors.Add(modulate);
+            _runColors.Add(modulate);
+            _runColors.Add(modulate);
+            for (int i = 0; i < _quadIndices.Length; i++)
+            {
+                _runIndices.Add(b + _quadIndices[i]);
+            }
+        }
+
+        /// <summary>Sends the pending run, if there is one, as one triangle array.</summary>
+        private void FlushRun()
+        {
+            if (_runPoints.Count == 0)
+            {
+                _runTexture = null;
+                return;
+            }
+
+            Commands++;
+            RenderingServer.CanvasItemAddTriangleArray(
+                _runItem, _runIndices.ToArray(), _runPoints.ToArray(), _runColors.ToArray(), _runUVs.ToArray(),
+                null, null, RidOf(_runTexture));
+            _runPoints.Clear();
+            _runUVs.Clear();
+            _runColors.Clear();
+            _runIndices.Clear();
+            _runTexture = null;
+        }
+
         public void Dispose()
         {
             for (int i = 0; i < _items.Count; i++)
@@ -301,6 +373,7 @@ namespace GUO.Renderer
         public void End()
         {
             EnsureStarted();
+            FlushRun();
 
             _started = false;
         }
@@ -404,6 +477,7 @@ namespace GUO.Renderer
                 {
                     continue;
                 }
+                FlushRun();
 
                 Commands++;
 
@@ -455,6 +529,7 @@ namespace GUO.Renderer
                 _nextMaterial = _currentMaterial;
                 _worldOffset = keep;
             }
+            FlushRun();
 
             Commands++;
 
@@ -1405,10 +1480,21 @@ namespace GUO.Renderer
             int textureWidth = WidthOf(texture);
             int textureHeight = HeightOf(texture);
 
+            if (rotationSin == 0f && rotationCos == 1f && effects == 0 && BatchedWorld)
+            {
+                float x0 = destinationX - originX * destinationW, y0 = destinationY - originY * destinationH;
+                float x1 = x0 + destinationW, y1 = y0 + destinationH;
+                AppendToRun(texture, new Vector2(x0, y0), new Vector2(x1, y0), new Vector2(x0, y1), new Vector2(x1, y1),
+                    new Vector2(sourceX, sourceY), new Vector2(sourceX + sourceW, sourceY),
+                    new Vector2(sourceX, sourceY + sourceH), new Vector2(sourceX + sourceW, sourceY + sourceH), Encode(color));
+                return;
+            }
+
             if (rotationSin == 0f && rotationCos == 1f && effects == 0)
             {
                 // The overwhelmingly common case: an upright, unmirrored rect.
                 // One canvas command, no per-draw arrays.
+                FlushRun();
                 Commands++;
                 RenderingServer.CanvasItemAddTextureRectRegion
                 (
@@ -1509,6 +1595,13 @@ namespace GUO.Renderer
 
             Color modulate = Encode(color);
 
+            if (BatchedWorld)
+            {
+                AppendToRun(texture, _quadPoints[0], _quadPoints[1], _quadPoints[2], _quadPoints[3],
+                    _quadUVs[0], _quadUVs[1], _quadUVs[2], _quadUVs[3], modulate);
+                return;
+            }
+
             if (TryAddAffineQuad(texture, modulate))
             {
                 return;
@@ -1518,6 +1611,7 @@ namespace GUO.Renderer
             _quadColors[1] = modulate;
             _quadColors[2] = modulate;
             _quadColors[3] = modulate;
+            FlushRun();
 
             Commands++;
 
@@ -1598,6 +1692,7 @@ namespace GUO.Renderer
 
             var region = new Rect2(left, top, right - left, bottom - top);
 
+            FlushRun();
             RenderingServer.CanvasItemAddSetTransform(_current, new Transform2D(axisX, axisY, origin));
             Commands++;
             RenderingServer.CanvasItemAddTextureRectRegion(_current, region, RidOf(texture), region, modulate, false, false);
@@ -1686,6 +1781,7 @@ namespace GUO.Renderer
 
         private Rid NewItem(Rid parent)
         {
+            FlushRun();
             Rid item;
 
             if (_itemCount < _items.Count)

@@ -44,10 +44,15 @@ internal static class PerfProbe
     };
 
     private const int Settle = 180;
+    private static string _outDir, _label;
+    private static bool _parity;
     private const int Frames = 360;
 
-    public static async System.Threading.Tasks.Task Run(Node host, string outDir, string label, float zoom = 0)
+    public static async System.Threading.Tasks.Task Run(Node host, string outDir, string label, float zoom = 0, bool parity = false)
     {
+        _outDir = string.IsNullOrWhiteSpace(outDir) ? ProjectSettings.GlobalizePath("user://perf") : outDir;
+        _label = label;
+        _parity = parity;
         var results = new List<Dictionary<string, object>>();
         Rid viewport = host.GetViewport().GetViewportRid();
         RenderingServer.ViewportSetMeasureRenderTime(viewport, true);
@@ -98,6 +103,8 @@ internal static class PerfProbe
 
     private static async System.Threading.Tasks.Task<Dictionary<string, object>> Measure(Node host, Rid viewport, string name, string what)
     {
+        Dictionary<string, object> parity = _parity ? await Parity(host, name) : null;
+
         // Uncapped: with vsync or a frame cap every frame below the cap reads as
         // the cap, and a renderer change that saves 4 ms would not show.
         DisplayServer.WindowSetVsyncMode(DisplayServer.VSyncMode.Disabled);
@@ -124,6 +131,8 @@ internal static class PerfProbe
 
         var ms = new double[Frames];
         double calls = 0, items = 0, switches = 0, commands = 0, prepare = 0, world = 0, cpu = 0, gpu = 0, objects = 0;
+        long allocatedBefore = System.GC.GetTotalAllocatedBytes();
+        System.TimeSpan pausedBefore = System.GC.GetTotalPauseDuration();
         await host.ToSignal(host.GetTree(), SceneTree.SignalName.ProcessFrame);
         long last = System.Diagnostics.Stopwatch.GetTimestamp();
         for (int i = 0; i < Frames; i++)
@@ -145,6 +154,8 @@ internal static class PerfProbe
         }
 
         long draws = UltimaBatcher2D.FramesBegun - drawsBefore;
+        double allocatedKb = (System.GC.GetTotalAllocatedBytes() - allocatedBefore) / 1024.0 / Frames;
+        double gcMs = (System.GC.GetTotalPauseDuration() - pausedBefore).TotalMilliseconds / Frames;
         if (interval != null)
         {
             System.Array.Copy(kept, interval, kept.Length);
@@ -174,11 +185,85 @@ internal static class PerfProbe
             ["world_draw_ms"] = System.Math.Round(world / Frames, 3),
             ["render_cpu_ms"] = System.Math.Round(cpu / Frames, 3),
             ["render_gpu_ms"] = System.Math.Round(gpu / Frames, 3),
+            ["alloc_kb_per_frame"] = System.Math.Round(allocatedKb, 1),
+            ["gc_ms_per_frame"] = System.Math.Round(gcMs, 3),
         };
+        if (parity != null)
+        {
+            foreach (var kv in parity)
+            {
+                r[kv.Key] = kv.Value;
+            }
+        }
         GD.Print($"[GUO] perf probe: {name}: mean {r["mean_ms"]} ms, p95 {r["p95_ms"]}, p99 {r["p99_ms"]}, "
                  + $"{r["draw_calls"]} draw calls, {r["batcher_items"]} batcher items, {r["texture_switches"]} texture switches, "
                  + $"{r["draw_commands"]} commands");
         return r;
+    }
+
+    /// <summary>
+    /// Pixel parity of --batched-world against the plain path in this scene:
+    /// three frames in a row, plain, batched, plain. A pixel the two plain
+    /// frames agree on is stable (nothing animated there); the batched frame
+    /// must match it. Violations are stable pixels it does not match.
+    /// </summary>
+    private static async System.Threading.Tasks.Task<Dictionary<string, object>> Parity(Node host, string name)
+    {
+        bool was = UltimaBatcher2D.BatchedWorld;
+        async System.Threading.Tasks.Task<Image> Frame(bool batched)
+        {
+            UltimaBatcher2D.BatchedWorld = batched;
+            await host.ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+            await host.ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+            return host.GetViewport().GetTexture().GetImage();
+        }
+
+        Image a = await Frame(false), b = await Frame(true), c = await Frame(false);
+        UltimaBatcher2D.BatchedWorld = was;
+        byte[] da = a.GetData(), db = b.GetData(), dc = c.GetData();
+        int bpp = da.Length / (a.GetWidth() * a.GetHeight());
+        long stable = 0, violations = 0;
+        var mask = Image.CreateEmpty(a.GetWidth(), a.GetHeight(), false, Image.Format.Rgba8);
+        for (int i = 0, px = 0; i + bpp <= da.Length; i += bpp, px++)
+        {
+            bool same = true;
+            for (int k = 0; k < bpp; k++)
+            {
+                if (da[i + k] != dc[i + k])
+                {
+                    same = false;
+                    break;
+                }
+            }
+
+            if (!same)
+            {
+                continue;
+            }
+
+            stable++;
+            for (int k = 0; k < bpp; k++)
+            {
+                if (da[i + k] != db[i + k])
+                {
+                    violations++;
+                    mask.SetPixel(px % a.GetWidth(), px / a.GetWidth(), Colors.Red);
+                    break;
+                }
+            }
+        }
+
+        Directory.CreateDirectory(_outDir);
+        string stem = Path.Combine(_outDir, $"parity_{_label}_{name}");
+        b.SavePng(stem + "_batched.png");
+        a.SavePng(stem + "_plain.png");
+        if (violations > 0)
+        {
+            mask.SavePng(stem + "_violations.png");
+        }
+
+        GD.Print($"[GUO] perf probe: parity {name}: {violations} of {stable} stable pixels differ batched");
+        return new Dictionary<string, object> { ["parity_stable_px"] = stable, ["parity_violations"] = violations };
     }
 
     private static void Write(string outDir, string label, List<Dictionary<string, object>> results)
@@ -194,13 +279,24 @@ internal static class PerfProbe
                       + $"window {size.X}x{size.Y}, zoom {Client.Game?.Scene?.Camera?.Zoom:F1}, vsync and frame cap off, "
                       + $"{Frames} frames per scene after {Settle} to settle.");
         md.AppendLine();
-        md.AppendLine("| Scene | mean ms | p95 ms | p99 ms | FPS | draws/frame | draw calls | batcher items | texture switches | draw commands | world prepare ms | world draw ms | render CPU ms | GPU ms |");
-        md.AppendLine("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|");
+        md.AppendLine("| Scene | mean ms | p95 ms | p99 ms | FPS | alloc KB/frame | draws/frame | draw calls | batcher items | texture switches | draw commands | world prepare ms | world draw ms | render CPU ms | GPU ms |");
+        md.AppendLine("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|");
         foreach (var r in results)
         {
-            md.AppendLine($"| {r["scene"]} | {r["mean_ms"]} | {r["p95_ms"]} | {r["p99_ms"]} | {r["fps"]} | {r["draws_per_frame"]} | {r["draw_calls"]} | "
+            md.AppendLine($"| {r["scene"]} | {r["mean_ms"]} | {r["p95_ms"]} | {r["p99_ms"]} | {r["fps"]} | {r["alloc_kb_per_frame"]} | {r["draws_per_frame"]} | {r["draw_calls"]} | "
                           + $"{r["batcher_items"]} | {r["texture_switches"]} | {r["draw_commands"]} | {r["world_prepare_ms"]} | "
                           + $"{r["world_draw_ms"]} | {r["render_cpu_ms"]} | {r["render_gpu_ms"]} |");
+        }
+
+        if (results.Any(r => r.ContainsKey("parity_violations")))
+        {
+            md.AppendLine();
+            md.AppendLine("| Scene | parity: stable pixels | batched differs |");
+            md.AppendLine("|---|---:|---:|");
+            foreach (var r in results.Where(r => r.ContainsKey("parity_violations")))
+            {
+                md.AppendLine($"| {r["scene"]} | {r["parity_stable_px"]} | {r["parity_violations"]} |");
+            }
         }
 
         md.AppendLine();
