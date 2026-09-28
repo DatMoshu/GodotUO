@@ -597,17 +597,22 @@ def export(p: Paths, extra_args: str, apk: Path, sound: bool = False) -> int:
         apk.unlink()
 
     log = p.out_dir / "export.log"
+    cmd = [console, "--headless", "--path", p.project, "--export-debug", PRESET_NAME, apk]
+    say("$ " + " ".join(f'"{c}"' if " " in str(c) else str(c) for c in cmd))
     with open(log, "w", encoding="utf-8") as f:
-        result = run(
-            [console, "--headless", "--path", p.project, "--export-debug", PRESET_NAME, apk],
-            stdout=f, stderr=subprocess.STDOUT, text=True,
-        )
+        proc = subprocess.Popen([str(c) for c in cmd], stdout=f, stderr=subprocess.STDOUT, text=True)
+        returncode, stopped = wait_for_export(proc, log)
     text = log.read_text(encoding="utf-8", errors="replace")
     for line in text.splitlines():
         if re.search(r"error|failed|not found|required", line, re.IGNORECASE):
             print("  " + line.strip())
-    if result.returncode != 0 or not apk.exists():
-        say(f"export FAILED: {export_failure(result.returncode, text, apk)}; full log: {log}")
+    if stopped:
+        say(stopped)
+        # Stopped after it logged DONE: the APK is judged below like any other.
+        if export_done(text):
+            returncode = 0
+    if returncode != 0 or not apk.exists():
+        say(f"export FAILED: {export_failure(returncode, text, apk)}; full log: {log}")
         return 1
     problem = export_problem(text, apk)
     if problem:
@@ -615,6 +620,52 @@ def export(p: Paths, extra_args: str, apk: Path, sound: bool = False) -> int:
         return 1
     say(f"exported {apk} ({apk.stat().st_size // 1024 // 1024} MB); log: {log}")
     return 0
+
+
+EXPORT_GRACE_S = 60      # after Godot logs the export DONE
+EXPORT_LIMIT_S = 30 * 60  # the whole export, a cold C# publish included
+
+
+def export_done(log_text: str) -> bool:
+    """Godot's own "[ DONE ] export" line, with its console colours taken out."""
+    plain = re.sub(r"\x1b\[[0-9;]*m", "", log_text)
+    return re.search(r"\[ DONE \]\s*export", plain) is not None
+
+
+def kill_tree(proc: subprocess.Popen) -> None:
+    if os.name == "nt":
+        subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    else:
+        proc.kill()
+    proc.wait()
+
+
+def wait_for_export(proc: subprocess.Popen, log: Path, grace: float = EXPORT_GRACE_S,
+                    limit: float = EXPORT_LIMIT_S, poll: float = 1.0) -> tuple[int | None, str | None]:
+    """Wait for Godot's export to exit: (exit code, None), or (None, why) when it was stopped.
+
+    Godot 4.7.2 can finish an Android export, log DONE, and then never exit
+    (after "EditorSettings not instantiated yet ... shutdown_adb_on_exit");
+    once cost eleven minutes of a device slot. So: a grace period after DONE,
+    and an overall limit.
+    """
+    start = time.monotonic()
+    done_at = None
+    while True:
+        code = proc.poll()
+        if code is not None:
+            return code, None
+        now = time.monotonic()
+        if done_at is None and export_done(log.read_text(encoding="utf-8", errors="replace")):
+            done_at = now
+        if done_at is not None and now - done_at > grace:
+            kill_tree(proc)
+            return None, f"Godot logged the export DONE but had not exited {grace:.0f} s later; stopped it"
+        if now - start > limit:
+            kill_tree(proc)
+            return None, f"Godot had not exited after {limit / 60:.0f} min; stopped it"
+        time.sleep(poll)
 
 
 def apk_path(apk: Path) -> Path:
