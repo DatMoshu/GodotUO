@@ -28,6 +28,11 @@ namespace GUO.Game.Managers
     /// installed store screensaver's .ogv. A loop is scaled to overfill the
     /// screen and the whole frame drifts, so no pixel of it stays put; a loop
     /// that cannot play falls back to the effects.
+    ///
+    /// Profile.ScreenSaverSleepMinutes (S14): after the saver has run that
+    /// long, GUO stops holding the screen on (the window's keep-on, and the
+    /// second screen's on a dual-screen device), so the device's own screen
+    /// timeout can sleep it. Waking the saver holds it on again. 0 never lets go.
     /// </remarks>
     internal static class ScreenSaver
     {
@@ -75,6 +80,29 @@ namespace GUO.Game.Managers
             }
         }
 
+        private static uint _activeSince;
+        private static bool _lettingSleep;
+
+        /// <summary>
+        /// Stop (true) or go back to (false) holding the screen on. Going back
+        /// restores the project's own keep_screen_on rather than forcing it.
+        /// </summary>
+        private static void LetSleep(bool sleep)
+        {
+            if (_lettingSleep == sleep)
+            {
+                return;
+            }
+
+            _lettingSleep = sleep;
+            bool keepOn = !sleep && Godot.ProjectSettings.GetSetting("display/window/energy_saving/keep_screen_on", true).AsBool();
+            Godot.DisplayServer.ScreenSetKeepOn(keepOn);
+            GUO.Platform.Android.DualScreen.KeepScreenOn(!sleep);
+            Godot.GD.Print(sleep
+                ? $"[GUO] screen saver: letting the device sleep after {ProfileManager.CurrentProfile?.ScreenSaverSleepMinutes} min"
+                : "[GUO] screen saver: holding the screen on again");
+        }
+
         /// <summary>
         /// Called for every input event. Returns true when the event woke the
         /// screen saver and must go no further.
@@ -87,6 +115,7 @@ namespace GUO.Game.Managers
             {
                 Active = false;
                 StopLoop();
+                LetSleep(false);
 
                 return true;
             }
@@ -110,6 +139,8 @@ namespace GUO.Game.Managers
                     StopLoop();
                 }
 
+                LetSleep(false);
+
                 return;
             }
 
@@ -123,6 +154,7 @@ namespace GUO.Game.Managers
                 }
 
                 Active = true;
+                _activeSince = Time.Ticks;
                 Array.Clear(_sprites);
                 Godot.GD.Print($"[GUO] screen saver: on after {ProfileManager.CurrentProfile.ScreenSaverMinutes} min idle, showing \"{ProfileManager.CurrentProfile.ScreenSaverChoice}\"; {System.Linq.Enumerable.Count(Choices())} choice(s) offered");
                 _lastDraw = Time.Ticks;
@@ -135,6 +167,12 @@ namespace GUO.Game.Managers
 
             uint now = Time.Ticks;
             float elapsed = Math.Min(100, now - _lastDraw);
+            int sleepMinutes = ProfileManager.CurrentProfile.ScreenSaverSleepMinutes;
+
+            if (sleepMinutes > 0 && now - _activeSince >= (uint) sleepMinutes * 60_000)
+            {
+                LetSleep(true);
+            }
 
             if (now != _lastDraw)
             {

@@ -110,9 +110,15 @@ Mode it is under Library > Non-Steam. The tool never edits Steam's
 
 Notes for Game mode:
 
-- The client is mouse-driven, as on the PC; there is no gamepad layer yet.
-  Right trackpad is the mouse, R2 left-click, L2 right-click; hold L2 and
-  steer with the trackpad to walk.
+- With the *Keyboard (WASD) and Mouse* layout the client is mouse-driven,
+  as on the PC: right trackpad is the mouse, R2 left-click, L2 right-click;
+  hold L2 and steer with the trackpad to walk.
+- GUO does have a gamepad layer (`src/Input/Gamepad`, checked by
+  `--gamepad-probe`): D-pad or left stick walks, A clicks at the pointer, B
+  cancels, the right stick moves the pointer. Steam's keyboard-and-mouse
+  layout hands the client keys and a mouse instead, so the layer stays idle.
+  A gamepad layout has **not been tried on the Deck** yet; the Thor is the
+  only device it has been run on.
 - A tap on the touch screen is a left-click. There is no touch right-click
   without the controller layout.
 - Steam + X opens the on-screen keyboard.

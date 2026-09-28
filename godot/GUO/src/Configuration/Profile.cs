@@ -320,6 +320,10 @@ namespace GUO.Configuration
         // on phones (PlatformDefaults v10).
         public bool ScreenSaver { get; set; }
         public int ScreenSaverMinutes { get; set; } = 10;
+        // PORT DEVIATION (GUO): minutes the screen saver runs before GUO stops
+        // holding the screen on and lets the device's own timeout sleep it
+        // (S14); 0 keeps it on for as long as the client runs.
+        public int ScreenSaverSleepMinutes { get; set; }
         // PORT DEVIATION (GUO): what the screen saver shows (v11): "effects",
         // "builtin:NAME" or an installed store screensaver's user:// loop.
         public string ScreenSaverChoice { get; set; } = "effects";
