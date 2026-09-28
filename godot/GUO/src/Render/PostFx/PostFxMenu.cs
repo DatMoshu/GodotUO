@@ -95,6 +95,20 @@ namespace GUO.Renderer.PostFx
             }
 
             var me = _instance;
+
+            // Our own copy of a finger, being pushed in below: the card's.
+            if (me._finger.Pushing)
+            {
+                return true;
+            }
+
+            // A finger on the card is the left button (FingerAsMouse): its
+            // controls take the mouse only, and a tap fell through to the game.
+            if (e is InputEventScreenTouch or InputEventScreenDrag)
+            {
+                return me._finger.Take(e, new Rect2(me._card.GlobalPosition, me._card.Size * me._card.Scale), me.GetViewport());
+            }
+
             if (e is InputEventMouse mouse)
             {
                 // The card is scaled: its rect on screen is its size times the scale.
@@ -109,6 +123,8 @@ namespace GUO.Renderer.PostFx
 
             return false;
         }
+
+        private readonly GUO.Input.Touch.FingerAsMouse _finger = new();
 
         public override void _Ready()
         {
@@ -195,6 +211,7 @@ namespace GUO.Renderer.PostFx
 
         private void Close()
         {
+            _finger.Reset();
             _layer.Visible = false;
             _saveName.ReleaseFocus();
         }

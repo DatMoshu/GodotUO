@@ -738,7 +738,9 @@ namespace GUO
 
             // PORT DEVIATION (GUO): the screen effects menu (ADR-0023) is a
             // Godot card too; events over it go to its controls, not the client.
-            if (GUO.Renderer.PostFx.PostFxMenu.OwnsInput(@event))
+            // So does the change-folder screen (FirstRunScreen), which covers
+            // the window. A finger reaches both as the mouse (FingerAsMouse).
+            if (GUO.Renderer.PostFx.PostFxMenu.OwnsInput(@event) || GUO.Host.FirstRunScreen.OwnsInput(@event))
             {
                 return;
             }
