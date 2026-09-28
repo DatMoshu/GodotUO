@@ -37,9 +37,25 @@ ran alone.
 
 ## Desktop (GUO3)
 
-As the director relayed GUO3's desktop run: an upload frame costs about
-+2.3 ms, about 2.5 times a second while running. GUO3's own table belongs
-here when it is written up.
+GUO3's runs, 2026-09-28 11:19-11:20 (labels m5c_walk_array and
+m5c_walk_off): RTX 4090, Windows, 1280x720, zoom 0.7, vsync and the frame
+cap off, an optimised build, 12 s of walking after 180 frames of settling.
+
+| Desktop, walk | array | off |
+|---|---:|---:|
+| tiles moved | 47 | 46 |
+| mean ms | 0.560 | 0.573 |
+| p95 ms | 0.794 | 0.773 |
+| p99 ms | 1.15 | 1.07 |
+| max ms of any frame | 22.70 | 16.12 |
+| draw calls | 49.1 | 133.6 |
+| land-array uploads | 30 (29 frames, 2 at most) | 0 |
+| MiB uploaded per frame | 0.02 | 0 |
+| upload frames and the next: mean ms | 2.91 (+2.35 over the mean) | – |
+| upload frames and the next: max ms | 7.81 | – |
+
+That is 30 uploads in 12 s, about 2.5 a second. Uncapped, an upload frame
+costs +2.35 ms against a 0.56 ms frame. The array cuts draw calls by 63%.
 
 ## Reading it
 
@@ -47,7 +63,8 @@ here when it is written up.
   of each other on the Thor. Upload frames are too few to shift a mean.
 - **The upload frames do.** On the Thor each one costs 3-8 ms over the mean.
   At 60 Hz that is a missed vsync, and at +8 ms sometimes two. p95 goes up
-  1.2-2.8 ms.
+  1.2-2.8 ms. The desktop's RTX 4090 pays +2.35 ms per upload frame, with
+  nothing waiting on vsync.
 - **The count varies from run to run** (16 and then 6 on the same route),
   probably with how much of the Art atlas is already filled when the walk
   starts. The cost per upload is the thing to fix, not the count.
