@@ -346,6 +346,10 @@ namespace GUO.Renderer
             }
 
             _live.Clear();
+
+            // PORT DEVIATION (GUO): the land-array layers (LandPages, B4) hold
+            // these pages; forget them with the atlases.
+            LandPages.Reset();
         }
 
         public void Dispose()

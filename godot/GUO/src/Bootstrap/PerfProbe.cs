@@ -12,8 +12,9 @@ using GUO.Renderer;
 namespace GUO.Host;
 
 /// <summary>
-/// Frame time in five fixed scenes (Epic B, B1): the login screen, an open
-/// field, the Britain bank, a dense forest and a dungeon. Per scene it reports
+/// Frame time in fixed scenes (Epic B, B1): the login screen, an open field,
+/// the Britain bank, a dense forest, a dungeon, and a run through ground that
+/// loads as it comes into view (review R1-1). Per scene it reports
 /// the mean, p95 and p99 wall-clock frame time with vsync and the frame cap
 /// off, draw calls, and the batcher's own counts -- canvas items opened (each
 /// is a batch break), texture switches and draw commands -- next to the
@@ -32,7 +33,7 @@ internal static class PerfProbe
 {
     public static bool Passed { get; private set; }
 
-    private sealed record Scene(string Name, string Go, string What);
+    private sealed record Scene(string Name, string Go, string What, bool Walks = false);
 
     // Places also used by tools\ab_compare where they overlap, so a scene can be
     // photographed there and timed here.
@@ -42,6 +43,12 @@ internal static class PerfProbe
         new("britain-bank", "[go 1434 1699 0", "the Britain bank: dense statics, roofs, vendors and passers-by"),
         new("dense-forest", "[go 633 858", "the forest east of Yew (ab_compare yew-forest)"),
         new("dungeon", "[go 5401 629", "the mouth of Despise (ab_compare despise-mouth): dungeon light level, torches"),
+        // Standing still, nothing new reaches the atlas; running, new land and
+        // statics are added to its pages almost every step, and with
+        // --merged-land=array or --merged-cover each changed page is copied
+        // again into the land array (LandPages, 16 MiB a layer). Last, since it
+        // leaves the player elsewhere.
+        new("walk", "[go 1164 1668", "running from the open field, turning where blocked: ground that loads as it comes into view", Walks: true),
     };
 
     /// <summary>--perf-scene NAME, repeatable: these world scenes only (all when empty).</summary>
@@ -59,6 +66,51 @@ internal static class PerfProbe
     public static System.Func<bool> ParityState = () => UltimaBatcher2D.BatchedWorld;
     private const int Frames = 360;
     private const double MinDrawsPerFrame = 0.95;
+
+    /// <summary>A run needs longer than a still scene to cross a few chunks.</summary>
+    private const int WalkFrames = 1200;
+
+    /// <summary>
+    /// Runs the player on, a step whenever the walker takes one, turning to the
+    /// next heading when blocked for a second or so; counts the tiles covered.
+    /// </summary>
+    private sealed class Runner
+    {
+        private static readonly Game.Data.Direction[] Headings =
+        {
+            Game.Data.Direction.West, Game.Data.Direction.Left, Game.Data.Direction.Up,
+            Game.Data.Direction.South, Game.Data.Direction.North, Game.Data.Direction.East,
+        };
+
+        private int _heading, _still;
+        private int _x = -1, _y = -1;
+
+        public int Tiles { get; private set; }
+
+        public void Step()
+        {
+            var player = Client.Game.UO.World?.Player;
+            if (player == null)
+            {
+                return;
+            }
+
+            if (_x >= 0 && (player.X != _x || player.Y != _y))
+            {
+                Tiles += System.Math.Max(System.Math.Abs(player.X - _x), System.Math.Abs(player.Y - _y));
+                _still = 0;
+            }
+            else if (_x >= 0 && ++_still > 90)
+            {
+                _heading = (_heading + 1) % Headings.Length;
+                _still = 0;
+            }
+
+            _x = player.X;
+            _y = player.Y;
+            player.Walk(Headings[_heading], true);
+        }
+    }
 
     public static async System.Threading.Tasks.Task Run(Node host, string outDir, string label, float zoom = 0, bool parity = false)
     {
@@ -120,7 +172,7 @@ internal static class PerfProbe
             // Chunks newly in view load and build their meshes first; that is a
             // one-off, not what a player standing still pays every frame.
             await InputProbe.Wait(host, Settle);
-            results.Add(await Measure(host, viewport, scene.Name, scene.What));
+            results.Add(await Measure(host, viewport, scene.Name, scene.What, scene.Walks));
 
             // With --perf-parity, the same spot again with the path under test
             // off: the frame-time comparison from one run (one export on a device).
@@ -129,8 +181,13 @@ internal static class PerfProbe
                 bool was = ParityState();
                 ParityToggle(false);
                 _parity = false;
+                if (scene.Walks)
+                {
+                    await InputProbe.Say(host, scene.Go);
+                }
+
                 await InputProbe.Wait(host, Settle);
-                results.Add(await Measure(host, viewport, scene.Name + "-off", scene.What + " (the path under test off)"));
+                results.Add(await Measure(host, viewport, scene.Name + "-off", scene.What + " (the path under test off)", scene.Walks));
                 _parity = true;
                 ParityToggle(was);
                 await InputProbe.Wait(host, 30);
@@ -150,9 +207,13 @@ internal static class PerfProbe
         Passed = unknown.Count == 0 && idle.Count == 0 && results.Count == (_parity ? 2 : 1) * scenes.Length + 1;
     }
 
-    private static async System.Threading.Tasks.Task<Dictionary<string, object>> Measure(Node host, Rid viewport, string name, string what)
+    private static async System.Threading.Tasks.Task<Dictionary<string, object>> Measure(Node host, Rid viewport, string name, string what,
+        bool walks = false)
     {
-        Dictionary<string, object> parity = _parity ? await Parity(host, name) : null;
+        // A pixel comparison needs a still frame; a run has none.
+        Dictionary<string, object> parity = _parity && !walks ? await Parity(host, name) : null;
+        int n = walks ? WalkFrames : Frames;
+        Runner runner = walks ? new Runner() : null;
 
         // Uncapped: with vsync or a frame cap every frame below the cap reads as
         // the cap, and a renderer change that saves 4 ms would not show.
@@ -162,9 +223,10 @@ internal static class PerfProbe
         // Upstream's own pacing (GameController._intervalFixedUpdate) skips the
         // draw when a frame comes early: one draw per 1000/FPS ms. (Its 217 ms
         // inactive tick does not apply: GameController.IsActive counts a
-        // NoFocus scripted window as active.) Left alone, an uncapped engine
-        // frame mostly comes early, and most measured frames draw nothing.
-        // Made tiny for the measurement, so every frame draws; put back after.
+        // scripted, unfocusable window as active.) Uncapped, the engine runs
+        // far faster than that interval, so left alone most measured frames
+        // would draw nothing. Made tiny for the measurement, so every frame
+        // draws; put back after.
         var field = typeof(GUO.GameController).GetField("_intervalFixedUpdate",
             System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
         float[] interval = field?.GetValue(Client.Game) as float[];
@@ -179,19 +241,25 @@ internal static class PerfProbe
         await InputProbe.Wait(host, 30);
         long drawsBefore = UltimaBatcher2D.FramesBegun;
 
-        var ms = new double[Frames];
+        var ms = new double[n];
         double kRect = 0, kAffine = 0, kMesh = 0, kTri = 0, kBatches = 0, kCover = 0, kCoverRuns = 0, coverQueued = 0, coverOverlapping = 0;
         double calls = 0, items = 0, switches = 0, commands = 0, prepare = 0, world = 0, cpu = 0, gpu = 0, objects = 0;
+        int uploadsBefore = LandPages.Uploads, uploadsMax = 0, uploadFrames = 0, uploadsLast = LandPages.Uploads;
         long allocatedBefore = System.GC.GetTotalAllocatedBytes();
         System.TimeSpan pausedBefore = System.GC.GetTotalPauseDuration();
         await host.ToSignal(host.GetTree(), SceneTree.SignalName.ProcessFrame);
         long last = System.Diagnostics.Stopwatch.GetTimestamp();
-        for (int i = 0; i < Frames; i++)
+        for (int i = 0; i < n; i++)
         {
+            runner?.Step();
             await host.ToSignal(host.GetTree(), SceneTree.SignalName.ProcessFrame);
             long now = System.Diagnostics.Stopwatch.GetTimestamp();
             ms[i] = (now - last) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
             last = now;
+            int up = LandPages.Uploads - uploadsLast;
+            uploadsLast = LandPages.Uploads;
+            uploadsMax = System.Math.Max(uploadsMax, up);
+            uploadFrames += up > 0 ? 1 : 0;
             calls += Performance.GetMonitor(Performance.Monitor.RenderTotalDrawCallsInFrame);
             objects += Performance.GetMonitor(Performance.Monitor.RenderTotalObjectsInFrame);
             (int sw, int it, int cm) = UltimaBatcher2D.LastFrame;
@@ -216,8 +284,9 @@ internal static class PerfProbe
         }
 
         long draws = UltimaBatcher2D.FramesBegun - drawsBefore;
-        double allocatedKb = (System.GC.GetTotalAllocatedBytes() - allocatedBefore) / 1024.0 / Frames;
-        double gcMs = (System.GC.GetTotalPauseDuration() - pausedBefore).TotalMilliseconds / Frames;
+        int uploads = LandPages.Uploads - uploadsBefore;
+        double allocatedKb = (System.GC.GetTotalAllocatedBytes() - allocatedBefore) / 1024.0 / n;
+        double gcMs = (System.GC.GetTotalPauseDuration() - pausedBefore).TotalMilliseconds / n;
         if (interval != null)
         {
             System.Array.Copy(kept, interval, kept.Length);
@@ -232,32 +301,39 @@ internal static class PerfProbe
             ["scene"] = name,
             ["what"] = what,
             ["at"] = player != null ? $"{player.X},{player.Y},{player.Z} map {Client.Game.UO.World.MapIndex}" : "",
-            ["frames"] = Frames,
-            ["draws_per_frame"] = System.Math.Round((double)draws / Frames, 2),
+            ["frames"] = n,
+            ["draws_per_frame"] = System.Math.Round((double)draws / n, 2),
             ["mean_ms"] = System.Math.Round(ms.Average(), 3),
             ["p95_ms"] = System.Math.Round(P(0.95), 3),
             ["p99_ms"] = System.Math.Round(P(0.99), 3),
             ["fps"] = System.Math.Round(1000.0 / ms.Average(), 1),
-            ["draw_calls"] = System.Math.Round(calls / Frames, 1),
-            ["canvas_objects"] = System.Math.Round(objects / Frames, 1),
-            ["batcher_items"] = System.Math.Round(items / Frames, 1),
-            ["texture_switches"] = System.Math.Round(switches / Frames, 1),
-            ["draw_commands"] = System.Math.Round(commands / Frames, 1),
-            ["world_prepare_ms"] = System.Math.Round(prepare / Frames, 3),
-            ["world_draw_ms"] = System.Math.Round(world / Frames, 3),
-            ["render_cpu_ms"] = System.Math.Round(cpu / Frames, 3),
-            ["render_gpu_ms"] = System.Math.Round(gpu / Frames, 3),
+            ["draw_calls"] = System.Math.Round(calls / n, 1),
+            ["canvas_objects"] = System.Math.Round(objects / n, 1),
+            ["batcher_items"] = System.Math.Round(items / n, 1),
+            ["texture_switches"] = System.Math.Round(switches / n, 1),
+            ["draw_commands"] = System.Math.Round(commands / n, 1),
+            ["world_prepare_ms"] = System.Math.Round(prepare / n, 3),
+            ["world_draw_ms"] = System.Math.Round(world / n, 3),
+            ["render_cpu_ms"] = System.Math.Round(cpu / n, 3),
+            ["render_gpu_ms"] = System.Math.Round(gpu / n, 3),
             ["alloc_kb_per_frame"] = System.Math.Round(allocatedKb, 1),
-            ["cmd_rects"] = System.Math.Round(kRect / Frames, 1),
-            ["cmd_affine_rects"] = System.Math.Round(kAffine / Frames, 1),
-            ["cmd_meshes"] = System.Math.Round(kMesh / Frames, 1),
-            ["cmd_cover_meshes"] = System.Math.Round(kCover / Frames, 1),
-            ["cover_runs"] = System.Math.Round(kCoverRuns / Frames, 1),
-            ["cover_queued"] = System.Math.Round(coverQueued / Frames, 1),
-            ["cover_overlapping"] = System.Math.Round(coverOverlapping / Frames, 1),
-            ["cmd_triangles"] = System.Math.Round(kTri / Frames, 1),
-            ["estimated_batches"] = System.Math.Round(kBatches / Frames, 1),
+            ["cmd_rects"] = System.Math.Round(kRect / n, 1),
+            ["cmd_affine_rects"] = System.Math.Round(kAffine / n, 1),
+            ["cmd_meshes"] = System.Math.Round(kMesh / n, 1),
+            ["cmd_cover_meshes"] = System.Math.Round(kCover / n, 1),
+            ["cover_runs"] = System.Math.Round(kCoverRuns / n, 1),
+            ["cover_queued"] = System.Math.Round(coverQueued / n, 1),
+            ["cover_overlapping"] = System.Math.Round(coverOverlapping / n, 1),
+            ["cmd_triangles"] = System.Math.Round(kTri / n, 1),
+            ["estimated_batches"] = System.Math.Round(kBatches / n, 1),
             ["gc_ms_per_frame"] = System.Math.Round(gcMs, 3),
+            ["tiles_moved"] = runner?.Tiles ?? 0,
+            ["land_layers"] = LandPages.Layers,
+            ["land_uploads"] = uploads,
+            ["land_uploads_per_frame"] = System.Math.Round((double)uploads / n, 3),
+            ["land_uploads_max_in_a_frame"] = uploadsMax,
+            ["frames_with_land_upload"] = uploadFrames,
+            ["land_upload_mib_per_frame"] = System.Math.Round((double)uploads * LandPages.LayerBytes / (1 << 20) / n, 2),
         };
         if (parity != null)
         {
@@ -268,7 +344,8 @@ internal static class PerfProbe
         }
         GD.Print($"[GUO] perf probe: {name}: mean {r["mean_ms"]} ms, p95 {r["p95_ms"]}, p99 {r["p99_ms"]}, "
                  + $"{r["draw_calls"]} draw calls, {r["batcher_items"]} batcher items, {r["texture_switches"]} texture switches, "
-                 + $"{r["draw_commands"]} commands");
+                 + $"{r["draw_commands"]} commands"
+                 + (walks || uploads > 0 ? $"; {r["tiles_moved"]} tiles moved, {uploads} land-array uploads ({r["land_upload_mib_per_frame"]} MiB/frame)" : ""));
         return r;
     }
 
@@ -374,7 +451,7 @@ internal static class PerfProbe
         md.AppendLine();
         md.AppendLine($"{System.DateTime.Now:yyyy-MM-dd HH:mm}, {OS.GetName()}, {RenderingServer.GetVideoAdapterName()}, "
                       + $"window {size.X}x{size.Y}, zoom {Client.Game?.Scene?.Camera?.Zoom:F1}, vsync and frame cap off, "
-                      + $"{Frames} frames per scene after {Settle} to settle, "
+                      + $"{Frames} frames per scene ({WalkFrames} for a run) after {Settle} to settle, "
                       + (optimized ? "optimised build." : "UNOPTIMISED build (Debug, Optimize=false)."));
         md.AppendLine();
         md.AppendLine("| Scene | mean ms | p95 ms | p99 ms | FPS | alloc KB/frame | draws/frame | draw calls | batcher items | texture switches | draw commands | world prepare ms | world draw ms | render CPU ms | GPU ms |");
@@ -392,6 +469,16 @@ internal static class PerfProbe
         foreach (var r in results)
         {
             md.AppendLine($"| {r["scene"]} | {r["draw_calls"]} | {r["estimated_batches"]} | {r["cmd_rects"]} | {r["cmd_affine_rects"]} | {r["cmd_meshes"]} | {r["cmd_cover_meshes"]} | {r["cover_runs"]} | {r["cover_queued"]} | {r["cover_overlapping"]} | {r["cmd_triangles"]} |");
+        }
+
+        md.AppendLine();
+        md.AppendLine("| Scene | tiles moved | land layers | land-array uploads | per frame | most in a frame | frames with one | MiB/frame |");
+        md.AppendLine("|---|---:|---:|---:|---:|---:|---:|---:|");
+        foreach (var r in results)
+        {
+            md.AppendLine($"| {r["scene"]} | {r.GetValueOrDefault("tiles_moved", 0)} | {r.GetValueOrDefault("land_layers", 0)} | {r.GetValueOrDefault("land_uploads", 0)} | "
+                          + $"{r.GetValueOrDefault("land_uploads_per_frame", 0)} | {r.GetValueOrDefault("land_uploads_max_in_a_frame", 0)} | "
+                          + $"{r.GetValueOrDefault("frames_with_land_upload", 0)} | {r.GetValueOrDefault("land_upload_mib_per_frame", 0)} |");
         }
 
         if (results.Any(r => r.ContainsKey("parity_violations")))

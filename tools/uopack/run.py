@@ -2,7 +2,7 @@ r"""Bulk unpack and pack of UO art, gumps and animations, with JSON sidecars (Ep
 
     python tools\uopack\run.py unpack --what art|land|gumps|anim|tiledata --ids 0x1B74,50581,400-410
                                       [--from <data dir>] --out <folder>
-    python tools\uopack\run.py pack <folder> [--source <data dir>] [--stage <staged set>]
+    python tools\uopack\run.py pack <folder> [--source <data dir>] [--stage <staged set> [--replace]]
                                       [--records <folder>]
     python tools\uopack\run.py from-dreadcrest <candidate folder> --out <folder>
                                       [--item 0xFFF0] [--body 849] [--gump-male 50849] [--gump-female 60849]
@@ -467,7 +467,7 @@ def pack(args) -> int:
         import uodata as U  # tools/uodata_write
 
         stage = U.Stage(Path(args.stage), _default_data())
-        for line in U.write_records(stage, records):
+        for line in U.write_records(stage, records, replace=args.replace):
             say("wrote " + line)
         bad = 0
         for r in records:
@@ -601,6 +601,8 @@ def main() -> int:
     p.add_argument("--source", help="the data folder the assets were unpacked from (reuse unchanged entries)")
     p.add_argument("--records", help="also write the records (bin + records.json) here")
     p.add_argument("--stage", help="write the records into this staged set (tools/uodata_write)")
+    p.add_argument("--replace", action="store_true",
+                   help="with --stage: overwrite MUL slots that already hold data (refused otherwise; a UOP name never is)")
     r = sub.add_parser("roundtrip", help="pack a freshly unpacked folder and compare with the source")
     r.add_argument("folder")
     r.add_argument("--from", dest="data_from")

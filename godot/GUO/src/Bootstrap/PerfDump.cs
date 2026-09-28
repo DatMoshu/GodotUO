@@ -48,7 +48,10 @@ namespace GUO.Host;
 /// JIT-optimised, and how many objects the last frame's render lists held
 /// (every list field of GameScene's RenderLists but the gump ones; the two
 /// clients split them differently, so each is also written by name), read on the game
-/// loop between frames, so prepare's cost can be compared per object.
+/// loop between frames, so prepare's cost can be compared per object. GUO also
+/// writes how many land-array layers (LandPages, --merged-land=array or
+/// --merged-cover) were copied between the fade ending and the write, and per
+/// drawn frame (review R1-1); ClassicUO has no land array.
 /// </remarks>
 internal static class PerfDump
 {
@@ -144,6 +147,10 @@ internal static class PerfDump
     private const long FadeCapMs = 60_000;
     private static long _fadeStart = -1, _fadeWaitMs;
     private static int _fadingAtEnd = -1;
+#if !PERF_DUMP_CUO
+    private static int _uploadsAtFade;
+    private static long _framesAtFade;
+#endif
 
     private static int Fading() =>
         Field(ClientRoot.Game.Scene, "_renderLists") is object lists
@@ -162,6 +169,10 @@ internal static class PerfDump
         {
             _fadingAtEnd = fading;
             _fadeWaitMs = now - _fadeStart;
+#if !PERF_DUMP_CUO
+            _uploadsAtFade = GUO.Renderer.LandPages.Uploads;
+            _framesAtFade = GUO.Renderer.UltimaBatcher2D.FramesBegun;
+#endif
             Console.WriteLine($"[perf_dump] {ClientName}: {fading} fading after {_fadeWaitMs} ms more; averaging");
             ClientRoot.Game.EnqueueAction(2000, Write);
             return;
@@ -215,6 +226,13 @@ internal static class PerfDump
             r["fading_when_averaging"] = _fadingAtEnd;
             r["fade_wait_ms"] = _fadeWaitMs;
             r["fade_timed_out"] = _fadeWaitMs >= FadeCapMs;
+#if !PERF_DUMP_CUO
+            int uploads = GUO.Renderer.LandPages.Uploads - _uploadsAtFade;
+            long frames = GUO.Renderer.UltimaBatcher2D.FramesBegun - _framesAtFade;
+            r["land_layers"] = GUO.Renderer.LandPages.Layers;
+            r["land_uploads"] = uploads;
+            r["land_uploads_per_frame"] = frames > 0 ? Math.Round((double)uploads / frames, 3) : 0.0;
+#endif
             string dir = Path.Combine(_args[0], _args[1]);
             Directory.CreateDirectory(dir);
             string path = Path.Combine(dir, ClientName + ".json");

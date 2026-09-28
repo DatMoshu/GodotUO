@@ -12,7 +12,12 @@ Containers written (append-only, so nothing existing moves):
   MUL + IDX      anim.mul / anim.idx (data appended, index entry pointed at it),
                  art.mul / artidx.mul and gumpart.mul / gumpidx.mul when an
                  install has them instead of UOPs
-  in place       tiledata.mul item records, hues.mul blocks
+  in place       tiledata.mul item records (the 7.0.9.0+ layout only), hues.mul blocks
+
+A MUL + IDX slot that already holds data is refused unless the caller asks to
+replace it, as a UOP name that already exists is always refused: an id the client
+or a shard already uses is never overwritten by accident (ADR-0022). Every record
+is checked before anything is written, so a refused call leaves the stage as it was.
   multis         MultiCollection.uop: a new entry per multi (UOP layout, zlib, flag 1),
                  or multi.mul / multi.idx on installs without it (the index grown if needed)
 """
@@ -37,7 +42,10 @@ TILE_LAND_BLOCK = 4 + 32 * 30          # new (7.0.9.0+) land group
 TILE_LAND_BYTES = 512 * TILE_LAND_BLOCK
 TILE_STATIC_RECORD = 41                # flags 8, weight 1, layer 1, count 4, anim 2, hue 2, light 2, height 1, name 20
 TILE_STATIC_BLOCK = 4 + 32 * TILE_STATIC_RECORD
-HUE_GROUP = 4 + 8 * 88
+TILE_OLD_LAND_BYTES = 512 * (4 + 32 * 26)   # before 7.0.9.0: 4-byte flags
+TILE_OLD_STATIC_BLOCK = 4 + 32 * 37
+HUE_RECORD = 88
+HUE_GROUP = 4 + 8 * HUE_RECORD
 MALE_GUMP, FEMALE_GUMP = 50000, 60000
 PEOPLE_FIRST = 400
 
@@ -217,10 +225,17 @@ def idx_entry(idx: Path, index: int) -> tuple[int, int, int]:
     return struct.unpack("<iii", raw) if len(raw) == 12 else (-1, -1, 0)
 
 
-def mul_append(mul: Path, idx: Path, index: int, data: bytes, extra: int = 0) -> None:
+def mul_occupied(idx: Path, index: int) -> bool:
+    """Whether an index entry already points at data."""
+    return idx_entry(idx, index)[1] > 0
+
+
+def mul_append(mul: Path, idx: Path, index: int, data: bytes, extra: int = 0, replace: bool = False) -> None:
     size = idx.stat().st_size // 12
     if index >= size:
         raise ValueError(f"index {index} is beyond {idx.name} ({size} entries)")
+    if not replace and mul_occupied(idx, index):
+        raise ValueError(f"{idx.name} entry {index} already holds data; the writer only adds (replace to overwrite)")
     with mul.open("r+b") as m:
         m.seek(0, 2)
         at = m.tell()
@@ -232,11 +247,31 @@ def mul_append(mul: Path, idx: Path, index: int, data: bytes, extra: int = 0) ->
 
 # --- tiledata --------------------------------------------------------------------
 
+def tile_layout(tiledata: Path) -> str:
+    """"new" (7.0.9.0+: 8-byte flags, 41-byte item records), "old" (4-byte flags,
+    37-byte records) or "unknown", from the file's size, which only one layout fits
+    for a whole number of groups (ClassicUO picks by client version instead)."""
+    size = tiledata.stat().st_size
+    new = size >= TILE_LAND_BYTES and (size - TILE_LAND_BYTES) % TILE_STATIC_BLOCK == 0
+    old = size >= TILE_OLD_LAND_BYTES and (size - TILE_OLD_LAND_BYTES) % TILE_OLD_STATIC_BLOCK == 0
+    return "new" if new and not old else "old" if old and not new else "unknown"
+
+
+def check_tiledata(tiledata: Path) -> None:
+    """Refuses a tiledata.mul that is not the 7.0.9.0+ layout, the only one written."""
+    layout = tile_layout(tiledata)
+    if layout != "new":
+        what = "the pre-7.0.9.0 layout" if layout == "old" else "neither known layout"
+        raise ValueError(f"{tiledata.name} ({tiledata.stat().st_size} bytes) is {what}; "
+                         "only the 7.0.9.0+ tiledata is read or written")
+
+
 def tile_offset(item: int) -> int:
     return TILE_LAND_BYTES + (item // 32) * TILE_STATIC_BLOCK + 4 + (item % 32) * TILE_STATIC_RECORD
 
 
 def read_tile(tiledata: Path, item: int) -> dict:
+    check_tiledata(tiledata)
     with tiledata.open("rb") as f:
         f.seek(tile_offset(item))
         raw = f.read(TILE_STATIC_RECORD)
@@ -255,6 +290,7 @@ def write_tile(tiledata: Path, item: int, fields: dict) -> None:
 
 
 def static_count(tiledata: Path) -> int:
+    check_tiledata(tiledata)
     return (tiledata.stat().st_size - TILE_LAND_BYTES) // TILE_STATIC_BLOCK * 32
 
 
@@ -450,8 +486,51 @@ class Registry:
 
 # --- writers ---------------------------------------------------------------------------
 
-def write_records(stage: Stage, records: list[AssetRecord]) -> list[str]:
-    """Writes the records into the staged set; returns one line per write."""
+def _exists(stage: Stage, name: str) -> bool:
+    try:
+        stage.read_path(name)
+        return True
+    except FileNotFoundError:
+        return False
+
+
+def check_records(stage: Stage, records: list[AssetRecord], replace: bool = False) -> None:
+    """Refuses, before anything is written, a record the writers would refuse or
+    get wrong: an existing UOP name, an occupied MUL slot (unless replace), the old
+    tiledata layout, a hue record that is not one 88-byte hue inside hues.mul."""
+    def slot(uop: str, pattern: str, mul_idx: str, index: int) -> None:
+        if _exists(stage, uop):
+            if uop_has(stage.read_path(uop), pattern.format(index)):
+                raise ValueError(f"{pattern.format(index)} is already in {uop}; the writer only adds")
+        elif not replace and mul_occupied(stage.read_path(mul_idx), index):
+            raise ValueError(f"{mul_idx} entry {index} already holds data; the writer only adds (replace to overwrite)")
+
+    for r in records:
+        if r.kind in ("static", "land"):
+            slot("artLegacyMUL.uop", ART_PATTERN, "artidx.mul", r.id if r.kind == "land" else LAND_COUNT + r.id)
+        elif r.kind == "gump":
+            slot("gumpartLegacyMUL.uop", GUMP_PATTERN, "gumpidx.mul", r.id)
+        elif r.kind == "anim":
+            index = anim_index(r.id, r.meta["action"], r.meta["direction"])
+            if not replace and mul_occupied(stage.read_path("anim.idx"), index):
+                raise ValueError(f"anim.idx entry {index} (body {r.id}, action {r.meta['action']}, direction "
+                                 f"{r.meta['direction']}) already holds data; the writer only adds (replace to overwrite)")
+        elif r.kind == "multi" and 0 <= r.id < MULTI_LIMIT:
+            slot("MultiCollection.uop", MULTI_PATTERN, "multi.idx", r.id)
+        elif r.kind == "tiledata-item":
+            check_tiledata(stage.read_path("tiledata.mul"))
+        elif r.kind == "hue":
+            size = stage.read_path("hues.mul").stat().st_size
+            h = r.id - 1
+            at = (h // 8) * HUE_GROUP + 4 + (h % 8) * HUE_RECORD if h >= 0 else -1
+            if len(r.data) != HUE_RECORD or r.id < 1 or at + HUE_RECORD > size:
+                raise ValueError(f"hue {r.id} ({len(r.data)} bytes) is not one {HUE_RECORD}-byte hue inside hues.mul")
+
+
+def write_records(stage: Stage, records: list[AssetRecord], replace: bool = False) -> list[str]:
+    """Writes the records into the staged set; returns one line per write. An
+    occupied MUL + IDX slot is refused unless replace (check_records), before any write."""
+    check_records(stage, records, replace)
     done = []
     art_items, gump_items = [], []
     for r in records:
@@ -467,7 +546,7 @@ def write_records(stage: Stage, records: list[AssetRecord]) -> list[str]:
         except FileNotFoundError:
             mul, idx = stage.path("art.mul"), stage.path("artidx.mul")
             for i, d in art_items:
-                mul_append(mul, idx, i, d)
+                mul_append(mul, idx, i, d, replace=replace)
         done += [f"art {i:#x} ({len(d)} bytes)" for i, d in art_items]
     if gump_items:
         try:
@@ -477,13 +556,13 @@ def write_records(stage: Stage, records: list[AssetRecord]) -> list[str]:
             mul, idx = stage.path("gumpart.mul"), stage.path("gumpidx.mul")
             for i, d in gump_items:
                 w, h = struct.unpack_from("<II", d, 0)
-                mul_append(mul, idx, i, d[8:], (w << 16) | h)
+                mul_append(mul, idx, i, d[8:], (w << 16) | h, replace=replace)
         done += [f"gump {i} ({len(d)} bytes)" for i, d in gump_items]
     anims = [r for r in records if r.kind == "anim"]
     if anims:
         mul, idx = stage.path("anim.mul"), stage.path("anim.idx")
         for r in anims:
-            mul_append(mul, idx, anim_index(r.id, r.meta["action"], r.meta["direction"]), r.data)
+            mul_append(mul, idx, anim_index(r.id, r.meta["action"], r.meta["direction"]), r.data, replace=replace)
         done.append(f"anim: {len(anims)} body/action/direction payload(s) for bodies {sorted({r.id for r in anims})}")
     multis = [r for r in records if r.kind == "multi"]
     if multis:
@@ -503,7 +582,7 @@ def write_records(stage: Stage, records: list[AssetRecord]) -> list[str]:
                 if r.id >= n:
                     with idx.open("ab") as f:
                         f.write(struct.pack("<iii", -1, -1, 0) * (r.id + 1 - n))
-                mul_append(mul, idx, r.id, multi_to_mul(r.data))
+                mul_append(mul, idx, r.id, multi_to_mul(r.data), replace=replace)
         done += [f"multi {r.id:#x} ({struct.unpack_from('<i', r.data, 4)[0]} components)" for r in multis]
     for r in records:
         if r.kind == "tiledata-item":
@@ -513,7 +592,7 @@ def write_records(stage: Stage, records: list[AssetRecord]) -> list[str]:
             h = r.id - 1
             path = stage.path("hues.mul")
             with path.open("r+b") as f:
-                f.seek((h // 8) * HUE_GROUP + 4 + (h % 8) * 88)
+                f.seek((h // 8) * HUE_GROUP + 4 + (h % 8) * HUE_RECORD)
                 f.write(r.data)
             done.append(f"hue {r.id}")
     stage.save()
