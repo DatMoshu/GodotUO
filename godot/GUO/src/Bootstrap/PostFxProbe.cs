@@ -13,7 +13,8 @@ namespace GUO.Host;
 /// <summary>
 /// <c>--postfx-sheet DIR</c>: in the world, prove Classic is untouched, prove
 /// the pass pipeline is lossless, then photograph and time every preset and
-/// every shader on its own.
+/// every shader on its own. With <c>--postfx-tour</c>, instead a live tour
+/// for recording (see <see cref="Tour"/>).
 /// </summary>
 /// <remarks>
 /// <para>
@@ -41,7 +42,7 @@ render_mode blend_disabled;
 uniform sampler2D source : hint_screen_texture, filter_nearest;
 void fragment() { COLOR = texture(source, SCREEN_UV); }";
 
-    public static async System.Threading.Tasks.Task Run(Node host, string dir)
+    public static async System.Threading.Tasks.Task Run(Node host, string dir, bool tour = false)
     {
         // A device run names a user:// folder (the app's own files, pulled with run-as).
         if (dir.StartsWith("user://"))
@@ -79,6 +80,12 @@ void fragment() { COLOR = texture(source, SCREEN_UV); }";
 
         // Let chunks load and the camera settle.
         await InputProbe.Wait(host, 150);
+
+        if (tour)
+        {
+            Passed = await Tour(host, dir);
+            return;
+        }
 
         // 1. Classic returns the world target's own texture.
         stack.Split = 0f;
@@ -273,6 +280,105 @@ void fragment() { COLOR = texture(source, SCREEN_UV); }";
         }
 
         return open;
+    }
+
+    /// <summary>
+    /// The live tour, for a recording (<c>tools/postfx/run.py tour</c> runs it
+    /// under Godot's --write-movie): walk the four diagonals while the look
+    /// switches every 75 frames, then open the menu on Noir with Compare on and
+    /// move the split slider, then the vignette radius slider. The sliders are
+    /// moved by setting their value, as a drag does, not by mouse events.
+    /// tour.json lists each beat's frame (Engine.GetFramesDrawn, which is the
+    /// movie's frame index), so a video can be cut and captioned from it.
+    /// </summary>
+    private static async System.Threading.Tasks.Task<bool> Tour(Node host, string dir)
+    {
+        var beats = new JsonArray();
+        void Beat(string what)
+        {
+            int frame = Engine.GetFramesDrawn();
+            beats.Add(new JsonObject { ["frame"] = frame, ["beat"] = what });
+            GD.Print($"[GUO] postfx tour: {what} at frame {frame}");
+        }
+
+        PostFxStack stack = PostFxStack.Instance;
+        stack.Split = 0f;
+        stack.Use(PostFxPreset.Classic(), remember: false);
+        await Frames(host, 30);
+        Beat("Classic");
+        System.Threading.Tasks.Task walk = InputProbe.WalkAround(host);
+        string[] looks = { "Sepia", "Ink Outline", "Glow", "Teal & Orange", "Cel" };
+        int k = 0;
+        while (!walk.IsCompleted)
+        {
+            await Frames(host, 75);
+            if (!walk.IsCompleted && k < looks.Length && PostFxLibrary.Find(looks[k]) is PostFxPreset p)
+            {
+                stack.Use(p, remember: false);
+                Beat(looks[k]);
+            }
+
+            k++;
+        }
+
+        await walk;
+        Beat("walk end");
+
+        stack.Use(PostFxLibrary.Find("Noir"), remember: false);
+        stack.Split = 0.5f;
+        stack.Rebuild();
+        PostFxMenu.Toggle();
+        await Frames(host, 20);
+        Beat("menu open, Noir, Compare with Classic");
+        var sliders = new List<HSlider>();
+        void Collect(Node n)
+        {
+            if (n is HSlider s && s.IsVisibleInTree())
+            {
+                sliders.Add(s);
+            }
+
+            foreach (Node c in n.GetChildren())
+            {
+                Collect(c);
+            }
+        }
+
+        Collect(host.GetTree().Root);
+        HSlider split = sliders.Find(s => Math.Abs(s.Value - 0.5) < 1e-6 && Math.Abs(s.MaxValue - 0.95) < 1e-6);
+        HSlider radius = sliders.Find(s => Math.Abs(s.Value - 0.75) < 1e-6);
+        GD.Print($"[GUO] postfx tour: {sliders.Count} sliders, split {split != null}, radius {radius != null}");
+        await Sweep(host, split, new[] { 0.5, 0.2, 0.8, 0.5 }, 45);
+        Beat("vignette radius slider");
+        await Sweep(host, radius, new[] { 0.75, 0.35, 1.0, 0.75 }, 40);
+        await Frames(host, 30);
+        Beat("end");
+        PostFxMenu.Toggle();
+        stack.Split = 0f;
+        stack.Use(PostFxPreset.Classic(), remember: false);
+        await Frames(host, 5);
+        File.WriteAllText(Path.Combine(dir, "tour.json"), new JsonObject { ["beats"] = beats }.ToJsonString(
+            new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+        return split != null && radius != null;
+    }
+
+    private static async System.Threading.Tasks.Task Sweep(Node host, HSlider s, double[] stops, int framesPerLeg)
+    {
+        if (s == null)
+        {
+            return;
+        }
+
+        for (int i = 1; i < stops.Length; i++)
+        {
+            for (int f = 1; f <= framesPerLeg; f++)
+            {
+                double t = (double)f / framesPerLeg;
+                t = t * t * (3 - 2 * t);
+                s.Value = stops[i - 1] + (stops[i] - stops[i - 1]) * t;
+                await Frames(host, 1);
+            }
+        }
     }
 
     private static async System.Threading.Tasks.Task Frames(Node host, int n)

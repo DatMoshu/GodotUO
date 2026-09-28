@@ -2,6 +2,7 @@
 r"""The post-processing proof run (ADR-0023): every look, photographed and timed.
 
     python tools\postfx\run.py sheet [--port 2596] [--at 1475,1645] [--size 1280,800] [--out DIR]
+    python tools\postfx\run.py tour  [--port 2596] [--at 1475,1645] [--size 1280,800] [--out DIR] [--fps 30]
     python tools\postfx\run.py luts          (the built-in LUTs; see luts.py)
 
 sheet:
@@ -19,6 +20,16 @@ sheet:
 
 Output: build\postfx_sheet\<time>\ (report.json, one PNG per look, sheet.png,
 client.log). Exit 0 when the probe passed.
+
+tour: the same shard and login, then the client runs --postfx-sheet DIR
+--postfx-tour under Godot's own movie writer (--write-movie tour.avi
+--fixed-fps FPS --max-fps FPS, so it records at real time and never needs the
+focus or a screen grab): a walk while the look switches, then the menu with
+Compare with Classic and two sliders moving (PostFxProbe.Tour). tour.json
+gives each beat's frame in tour.avi. The AVI carries the game's audio; drop it
+(ffmpeg -an) for anything posted. The menu's own GPU readout runs high while
+the movie writer is on, so take GPU numbers from a sheet run.
+Output: build\postfx_tour\<time>\ (tour.avi, tour.json, client.log).
 """
 
 from __future__ import annotations
@@ -44,9 +55,9 @@ def shard(tools: Path, *args: str) -> int:
     return subprocess.run([sys.executable, str(tools / "editor_shard" / "run.py"), *args]).returncode
 
 
-def sheet(args) -> int:
+def sheet(args, tour: bool = False) -> int:
     cfg = load_config()
-    out = (args.out or cfg.build / "postfx_sheet" / time.strftime("%Y%m%d-%H%M%S")).resolve()
+    out = (args.out or cfg.build / ("postfx_tour" if tour else "postfx_sheet") / time.strftime("%Y%m%d-%H%M%S")).resolve()
     out.mkdir(parents=True, exist_ok=True)
     say(f"output: {out}")
     tools = cfg.tools
@@ -70,8 +81,9 @@ def sheet(args) -> int:
     (home / "settings.json").write_text(json.dumps({"profilespath": str(home / "profiles")}), encoding="utf-8")
     (home / "profiles" / "default.json").write_text(json.dumps({"topbar_gump_is_disabled": True}), encoding="utf-8")
     x, y = args.at.split(",")
-    cmd = [str(cfg.godot_console_exe), "--path", str(cfg.godot_project), "--", "--play",
-           "--window-size", args.size, "--postfx-sheet", str(out),
+    movie = ["--write-movie", str(out / "tour.avi"), "--fixed-fps", str(args.fps), "--max-fps", str(args.fps)] if tour else []
+    cmd = [str(cfg.godot_console_exe), "--path", str(cfg.godot_project), *movie, "--", "--play",
+           "--window-size", args.size, "--postfx-sheet", str(out), *(["--postfx-tour"] if tour else []),
            "--shard-command", "[self set map felucca", "--shard-command", f"[go {x} {y}"]
     env = {**os.environ, "UO_CLIENT_DATA": str(cfg.client_data), "UO_CACHE_DIR": str(home / "cache"),
            "UO_CLIENT_VERSION": cfg.client_version, "UO_SHARD_HOST": "127.0.0.1", "UO_SHARD_PORT": str(args.port)}
@@ -87,7 +99,7 @@ def sheet(args) -> int:
         if "postfx probe" in line or "SHADER ERROR" in line or "shader error" in line.lower():
             print("  " + line.strip()[:200])
     report = out / "report.json"
-    if report.exists():
+    if not tour and report.exists():
         make_sheet(out, json.loads(report.read_text(encoding="utf-8")))
     say(f"client exit {rc}; {out}")
     return 0 if rc == 0 else 1
@@ -211,6 +223,12 @@ def main() -> int:
     s.add_argument("--at", default="1475,1645", help="x,y on Felucca to stand at (default: Britain)")
     s.add_argument("--size", default="1280,800")
     s.add_argument("--out", type=Path)
+    t = sub.add_parser("tour", help="a live walk and menu tour, recorded with Godot's --write-movie")
+    t.add_argument("--port", type=int, default=2596)
+    t.add_argument("--at", default="1475,1645", help="x,y on Felucca to stand at (default: Britain)")
+    t.add_argument("--size", default="1280,800")
+    t.add_argument("--out", type=Path)
+    t.add_argument("--fps", type=int, default=30)
     d = sub.add_parser("device", help="the same proof on the attached Android device (adb)")
     d.add_argument("--port", type=int, default=2596)
     d.add_argument("--at", default="1475,1645")
@@ -225,7 +243,7 @@ def main() -> int:
         return luts.main()
     if args.cmd == "device":
         return device(args)
-    return sheet(args)
+    return sheet(args, tour=args.cmd == "tour")
 
 
 if __name__ == "__main__":
