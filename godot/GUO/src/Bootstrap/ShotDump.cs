@@ -54,6 +54,7 @@ namespace GUO.Host;
 /// for the fade-in after the jump, then STEPS, separated by '|':
 /// <list type="bullet">
 /// <item>shot:NAME -- the client's own screenshot (TakeScreenshot), moved to DIR\LABEL\VARIANT_NAME.png</item>
+/// <item>anim:GROUP -- the player loops animation group GROUP (0x6E-style, client-side)</item>
 /// <item>wait:MS</item>
 /// <item>say:TEXT -- said as the player would (a shard command with '['); {x}, {y}, {z}, {x+2},
 /// {y-1}, ... become the player's position</item>
@@ -66,6 +67,8 @@ namespace GUO.Host;
 /// <item>hide -- hide every gump but the game window, for this run only (nothing is closed or saved)</item>
 /// <item>walk:DIRECTION[:run] -- one step (North, Right, East, Down, South, Left, West, Up); the
 /// next step follows 120 ms on, so a shot right after it lands mid-step</item>
+/// <item>goto:X,Y,Z -- the client's pathfinder walks the player to within a tile of X,Y,Z; the
+/// next step follows once it stops (60 s at most). A player without [go reaches a place this way</item>
 /// </list>
 /// VARIANT is "cuo" or "guo", or GUO_SHOT_VARIANT when set (guo-array, ...).
 /// DIR\LABEL\VARIANT.done is written last, with a line per step.
@@ -232,6 +235,33 @@ internal static class ShotDump
                 case "walk":
                     Walk(arg);
                     delay = 120;
+                    break;
+                case "goto":
+                    {
+                        string[] xyz = arg.Split(',');
+                        int gx = int.Parse(xyz[0], CultureInfo.InvariantCulture);
+                        int gy = int.Parse(xyz[1], CultureInfo.InvariantCulture);
+                        int gz = xyz.Length > 2 ? int.Parse(xyz[2], CultureInfo.InvariantCulture) : World.Player.Z;
+                        var p = World.Player;
+                        bool ok = p.Pathfinder.WalkTo(gx, gy, gz, 1);
+                        Note($"goto {gx},{gy},{gz} from {p.X},{p.Y},{p.Z}: {(ok ? "walking" : "no path")}");
+                        if (ok)
+                        {
+                            long until = Environment.TickCount64 + 60_000;
+                            ClientRoot.Game.EnqueueAction(500, () => Arrive(until));
+                            return;
+                        }
+                    }
+                    break;
+                case "anim":
+                    {
+                        // The player plays animation group GROUP on a loop, as a
+                        // server's 0x6E would ask: a look at a body's actions
+                        // (an attack) without a fight. Client-side only.
+                        byte group = byte.Parse(arg, CultureInfo.InvariantCulture);
+                        World.Player.SetAnimation(group, 2, 0, 20, true, true, true);
+                        Note($"anim {group}");
+                    }
                     break;
                 default:
                     Note($"unknown step {step}");
@@ -410,6 +440,20 @@ internal static class ShotDump
         }
 
         Note($"hid {hidden} gumps");
+    }
+
+    // goto: next step once the pathfinder has stopped, or the time is up.
+    private static void Arrive(long until)
+    {
+        var p = World.Player;
+        if (p.Pathfinder.AutoWalking && Environment.TickCount64 < until)
+        {
+            ClientRoot.Game.EnqueueAction(500, () => Arrive(until));
+            return;
+        }
+
+        Note($"goto ended at {p.X},{p.Y},{p.Z}{(p.Pathfinder.AutoWalking ? " (timed out)" : "")}");
+        ClientRoot.Game.EnqueueAction(500, Next);
     }
 
     private static void Walk(string arg)
