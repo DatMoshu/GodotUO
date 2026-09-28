@@ -137,6 +137,7 @@ def main() -> int:
     ap.add_argument("--timeout", type=float, default=150, help="per client and scene")
     ap.add_argument("--build", action="store_true", help="build ClassicUO first (tools/ab_compare)")
     ap.add_argument("--only", choices=["cuo", "guo"], help="run one client")
+    ap.add_argument("--scene", action="append", choices=[s[0] for s in SCENES], help="run these scenes only")
     ap.add_argument("--report", action="store_true", help="print the table of results already written")
     args = ap.parse_args()
 
@@ -153,7 +154,7 @@ def main() -> int:
         ab.build_cuo(cfg)
 
     failed = 0
-    for scene in SCENES:
+    for scene in [s for s in SCENES if not args.scene or s[0] in args.scene]:
         spec = dump_spec(out, scene, args.zoom, args.seconds)
         for client in ("cuo", "guo"):
             if args.only and client != args.only:

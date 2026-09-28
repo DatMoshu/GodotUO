@@ -32,6 +32,9 @@ namespace GUO.Renderer
 
         public static Texture2DArray Array { get; private set; }
 
+        /// <summary>A page was added since the last <see cref="Sync"/>.</summary>
+        public static bool Dirty => _rebuild;
+
         /// <summary>Layer copies made, for the perf probe.</summary>
         public static int Uploads;
 

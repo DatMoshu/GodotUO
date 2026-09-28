@@ -269,7 +269,7 @@ namespace GUO.Renderer
             return true;
         }
 
-        private static void Put(Vector2[] p, Vector2[] uv, Color[] c, float[] custom, int at, Vector2 position, Vector2 texture,
+        internal static void Put(Vector2[] p, Vector2[] uv, Color[] c, float[] custom, int at, Vector2 position, Vector2 texture,
                                 Vector3 hue, Vector3 normal, int layer = 0)
         {
             p[at] = position;

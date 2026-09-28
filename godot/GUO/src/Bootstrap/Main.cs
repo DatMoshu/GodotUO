@@ -1320,6 +1320,13 @@ public partial class Main : Node
                     case "--gamepad-probe":
                         o.GamepadProbe = true;
                         break;
+                    case "--merged-cover":
+                        // Epic B, B4 fix 2c: each run of covering land one mesh over the land array.
+                        // The parity toggle is this flag alone; give --merged-land=array before it.
+                        GUO.Renderer.UltimaBatcher2D.MergedCover = true;
+                        GUO.Host.PerfProbe.ParityToggle = on => GUO.Renderer.UltimaBatcher2D.MergedCover = on;
+                        GUO.Host.PerfProbe.ParityState = () => GUO.Renderer.UltimaBatcher2D.MergedCover;
+                        break;
                     case "--batched-world":
                         GUO.Renderer.UltimaBatcher2D.BatchedWorld = true;
                         break;
