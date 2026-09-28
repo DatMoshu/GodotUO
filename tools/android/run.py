@@ -607,8 +607,30 @@ def export(p: Paths, extra_args: str, apk: Path, sound: bool = False) -> int:
     if result.returncode != 0 or not apk.exists():
         say(f"export FAILED (exit {result.returncode}); full log: {log}")
         return 1
+    problem = export_problem(text, apk)
+    if problem:
+        say(f"export FAILED: {problem}; full log: {log}")
+        return 1
     say(f"exported {apk} ({apk.stat().st_size // 1024 // 1024} MB); log: {log}")
     return 0
+
+
+# Godot exits 0 and writes an APK even when the C# did not build: the APK
+# then holds no GUO.dll and the device boots to nothing (C9's first Odin run).
+BUILD_FAILED = "Failed to build project"
+
+
+def export_problem(log_text: str, apk: Path) -> str | None:
+    """Why an APK Godot says it exported is not a build, or None when it is."""
+    if BUILD_FAILED in log_text:
+        return f"Godot logged '{BUILD_FAILED}' (the C# did not compile; run dotnet build to see why)"
+    try:
+        with zipfile.ZipFile(apk) as z:
+            if not any(n.startswith("assets/.godot/mono/") and n.endswith("/GUO.dll") for n in z.namelist()):
+                return "the APK holds no GUO.dll (no C# assemblies were packed)"
+    except zipfile.BadZipFile:
+        return "the APK is not a valid zip"
+    return None
 
 
 def install(p: Paths, apk: Path) -> int:
