@@ -239,39 +239,51 @@ internal static class PerfProbe
             return host.GetViewport().GetTexture().GetImage();
         }
 
-        Image a = await Frame(false), b = await Frame(true), c = await Frame(false);
+        // Five frames: plain, test, plain, test, plain. A pixel the three plain
+        // frames agree on is stable. "violations" (the first check) counts stable
+        // pixels where the first test frame differs; "strict" counts those where
+        // both test frames agree with each other and differ from plain -- a
+        // repeatable rendering difference, which flicker or motion almost never is.
+        Image a = await Frame(false), b = await Frame(true), c = await Frame(false), b2 = await Frame(true), c2 = await Frame(false);
         ParityToggle(was);
-        byte[] da = a.GetData(), db = b.GetData(), dc = c.GetData();
+        byte[] da = a.GetData(), db = b.GetData(), dc = c.GetData(), db2 = b2.GetData(), dc2 = c2.GetData();
         int bpp = da.Length / (a.GetWidth() * a.GetHeight());
-        long stable = 0, violations = 0;
+        long stable = 0, violations = 0, strict = 0;
         var mask = Image.CreateEmpty(a.GetWidth(), a.GetHeight(), false, Image.Format.Rgba8);
-        for (int i = 0, px = 0; i + bpp <= da.Length; i += bpp, px++)
+        bool Eq(byte[] x, byte[] y, int at)
         {
-            bool same = true;
             for (int k = 0; k < bpp; k++)
             {
-                if (da[i + k] != dc[i + k])
+                if (x[at + k] != y[at + k])
                 {
-                    same = false;
-                    break;
+                    return false;
                 }
             }
 
-            if (!same)
+            return true;
+        }
+
+        for (int i = 0, px = 0; i + bpp <= da.Length; i += bpp, px++)
+        {
+            if (!Eq(da, dc, i) || !Eq(da, dc2, i))
             {
                 continue;
             }
 
             stable++;
-            for (int k = 0; k < bpp; k++)
+            if (Eq(da, db, i))
             {
-                if (da[i + k] != db[i + k])
-                {
-                    violations++;
-                    mask.SetPixel(px % a.GetWidth(), px / a.GetWidth(), Colors.Red);
-                    break;
-                }
+                continue;
             }
+
+            violations++;
+            bool repeatable = Eq(db, db2, i);
+            if (repeatable)
+            {
+                strict++;
+            }
+
+            mask.SetPixel(px % a.GetWidth(), px / a.GetWidth(), repeatable ? Colors.Red : Colors.Yellow);
         }
 
         Directory.CreateDirectory(_outDir);
@@ -283,8 +295,8 @@ internal static class PerfProbe
             mask.SavePng(stem + "_violations.png");
         }
 
-        GD.Print($"[GUO] perf probe: parity {name}: {violations} of {stable} stable pixels differ batched");
-        return new Dictionary<string, object> { ["parity_stable_px"] = stable, ["parity_violations"] = violations };
+        GD.Print($"[GUO] perf probe: parity {name}: {violations} of {stable} stable pixels differ, {strict} repeatably");
+        return new Dictionary<string, object> { ["parity_stable_px"] = stable, ["parity_violations"] = violations, ["parity_strict"] = strict };
     }
 
     private static void Write(string outDir, string label, List<Dictionary<string, object>> results)
@@ -320,11 +332,11 @@ internal static class PerfProbe
         if (results.Any(r => r.ContainsKey("parity_violations")))
         {
             md.AppendLine();
-            md.AppendLine("| Scene | parity: stable pixels | batched differs |");
-            md.AppendLine("|---|---:|---:|");
+            md.AppendLine("| Scene | parity: stable pixels | test differs | repeatably (strict) |");
+            md.AppendLine("|---|---:|---:|---:|");
             foreach (var r in results.Where(r => r.ContainsKey("parity_violations")))
             {
-                md.AppendLine($"| {r["scene"]} | {r["parity_stable_px"]} | {r["parity_violations"]} |");
+                md.AppendLine($"| {r["scene"]} | {r["parity_stable_px"]} | {r["parity_violations"]} | {r["parity_strict"]} |");
             }
         }
 

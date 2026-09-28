@@ -37,6 +37,15 @@ namespace GUO.Renderer
         public static bool Enabled;
         public static bool Ordered;
 
+        /// <summary>
+        /// --merged-land=array: all visible land in one mesh, in the original
+        /// order, over LandPages' Texture2DArray -- the fewest calls and the
+        /// same picture. Falls back to the ordered grouping for a rebuild that
+        /// meets a land texture that is not an atlas page.
+        /// </summary>
+        public static bool Array;
+        private bool _arrayBuilt;
+
         private readonly List<(MeshLayer Layer, int Stamp)> _key = new();
         private readonly List<(MeshLayer Layer, int Stamp)> _now = new();
         private readonly List<(Texture2D Texture, List<(MeshLayer Layer, int Index)> Sprites)> _segments = new();
@@ -61,12 +70,25 @@ namespace GUO.Renderer
                 }
             }
 
+            if (Array)
+            {
+                LandPages.Sync();
+            }
+
             if (!Same() || _keyOrdered != Ordered)
             {
                 Rebuild();
                 _key.Clear();
                 _key.AddRange(_now);
                 _keyOrdered = Ordered;
+            }
+
+            if (_arrayBuilt)
+            {
+                LandPages.Sync();
+                batcher.DrawLandArrayMesh(_meshes[0], LandPages.Array);
+                LastSegments = 1;
+                return _sprites;
             }
 
             for (int i = 0; i < _segments.Count; i++)
@@ -99,6 +121,12 @@ namespace GUO.Renderer
         private void Rebuild()
         {
             Rebuilds++;
+            _arrayBuilt = Array && RebuildArray();
+            if (_arrayBuilt)
+            {
+                return;
+            }
+
             _segments.Clear();
             _sprites = 0;
             var byTexture = new Dictionary<Texture2D, int>();
@@ -178,8 +206,71 @@ namespace GUO.Renderer
             }
         }
 
+        /// <summary>One mesh of every visible land sprite, in order, over the page array.</summary>
+        private bool RebuildArray()
+        {
+            _segments.Clear();
+            _sprites = 0;
+            var sprites = new List<(MeshLayer Layer, int Index, int Layer_, Vector2 Scale)>();
+            foreach ((MeshLayer layer, _) in _now)
+            {
+                for (int i = 0; i < layer.Count; i++)
+                {
+                    Texture2D t = layer.Textures[i];
+                    if (!layer.Visible[i] || t == null)
+                    {
+                        continue;
+                    }
+
+                    int page = LandPages.LayerOf(t);
+                    if (page < 0)
+                    {
+                        return false;
+                    }
+
+                    sprites.Add((layer, i, page, LandPages.ScaleOf(t)));
+                }
+            }
+
+            _sprites = sprites.Count;
+            int v = sprites.Count * 6;
+            var points = new Vector2[v];
+            var uvs = new Vector2[v];
+            var colors = new Color[v];
+            var custom = new float[v * 4];
+            int w = 0;
+            foreach ((MeshLayer layer, int i, int page, Vector2 scale) in sprites)
+            {
+                ref MeshQuad q = ref layer.Vertices[i];
+                Put(points, uvs, colors, custom, w + 0, q.Position0, q.TextureCoordinate0 * scale, q.Hue0, q.Normal0, page);
+                Put(points, uvs, colors, custom, w + 1, q.Position1, q.TextureCoordinate1 * scale, q.Hue1, q.Normal1, page);
+                Put(points, uvs, colors, custom, w + 2, q.Position2, q.TextureCoordinate2 * scale, q.Hue2, q.Normal2, page);
+                Put(points, uvs, colors, custom, w + 3, q.Position1, q.TextureCoordinate1 * scale, q.Hue1, q.Normal1, page);
+                Put(points, uvs, colors, custom, w + 4, q.Position3, q.TextureCoordinate3 * scale, q.Hue3, q.Normal3, page);
+                Put(points, uvs, colors, custom, w + 5, q.Position2, q.TextureCoordinate2 * scale, q.Hue2, q.Normal2, page);
+                w += 6;
+            }
+
+            if (_meshes.Count == 0)
+            {
+                _meshes.Add(new ArrayMesh());
+            }
+
+            ArrayMesh mesh = _meshes[0];
+            mesh.ClearSurfaces();
+            var arrays = new Godot.Collections.Array();
+            arrays.Resize((int)Mesh.ArrayType.Max);
+            arrays[(int)Mesh.ArrayType.Vertex] = points;
+            arrays[(int)Mesh.ArrayType.TexUV] = uvs;
+            arrays[(int)Mesh.ArrayType.Color] = colors;
+            arrays[(int)Mesh.ArrayType.Custom0] = custom;
+            mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays, null, null,
+                (Mesh.ArrayFormat)((ulong)Mesh.ArrayCustomFormat.RgbaFloat << (int)Mesh.ArrayFormat.FormatCustom0Shift));
+            return true;
+        }
+
         private static void Put(Vector2[] p, Vector2[] uv, Color[] c, float[] custom, int at, Vector2 position, Vector2 texture,
-                                Vector3 hue, Vector3 normal)
+                                Vector3 hue, Vector3 normal, int layer = 0)
         {
             p[at] = position;
             uv[at] = texture;
@@ -187,7 +278,7 @@ namespace GUO.Renderer
             custom[at * 4 + 0] = normal.X;
             custom[at * 4 + 1] = normal.Y;
             custom[at * 4 + 2] = normal.Z;
-            custom[at * 4 + 3] = 0f;
+            custom[at * 4 + 3] = layer;
         }
     }
 }
