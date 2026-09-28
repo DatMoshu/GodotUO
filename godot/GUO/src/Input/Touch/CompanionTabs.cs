@@ -69,6 +69,16 @@ internal sealed partial class CompanionTabs : Node
         }
     }
 
+    /// <summary>The height of the Classic-mode strip along the second screen's bottom.</summary>
+    private const int StripHeight = 36;
+
+    /// <summary>
+    /// Logical pixels the shelf keeps gumps out of: in Classic mode the "‹ Tabs"
+    /// pill sits in its own strip along the bottom, and DualScreen clamps gumps
+    /// above it, the way C2 keeps gumps above the touch bar.
+    /// </summary>
+    public static int ShelfReserve => _instance != null && _instance._classic && Active ? StripHeight : 0;
+
     /// <summary>For the probe and the trace: which tab shows, or "classic".</summary>
     public static string State => _instance == null ? "none" : _instance._classic ? "classic" : _instance._tab == 0 ? "journal" : "character";
 
@@ -191,7 +201,9 @@ internal sealed partial class CompanionTabs : Node
         // Classic mode: one pill in the corner to come back.
         _pill = new PanelContainer { Theme = BuildTheme(), Visible = false };
         _pill.AddThemeStyleboxOverride("panel", new StyleBoxEmpty());
-        _pill.AddChild(Tab("‹ Tabs", () => SetClassic(false)));
+        Button back = Tab("‹ Tabs", () => SetClassic(false));
+        back.CustomMinimumSize = new Vector2(84, 30);
+        _pill.AddChild(back);
         _root.AddChild(_pill);
     }
 
@@ -269,9 +281,11 @@ internal sealed partial class CompanionTabs : Node
 
         if (_classic)
         {
+            // The pill in its own strip along the bottom (ShelfReserve); the
+            // viewport covers only that strip.
             _pill.ResetSize();
-            _pill.Position = new Vector2(size.X - _pill.Size.X - 6, 6);
-            _viewport.Size = new Vector2I((int)Math.Ceiling(size.X * dpi), (int)Math.Ceiling((_pill.Size.Y + 12) * dpi));
+            _pill.Position = new Vector2(size.X - _pill.Size.X - 6, (StripHeight - _pill.Size.Y) / 2);
+            _viewport.Size = new Vector2I((int)Math.Ceiling(size.X * dpi), (int)Math.Ceiling(StripHeight * dpi));
             return;
         }
 
@@ -375,7 +389,8 @@ internal sealed partial class CompanionTabs : Node
         Vector2I px = m._viewport.Size;
         int w = (int)Math.Round(px.X / m._scale), h = (int)Math.Round(px.Y / m._scale);
         int x = DualScreen.MainWidth;
-        b.Draw(m._viewport.GetTexture(), new Compat.Rectangle(x, 0, w, h), ShaderHueTranslator.GetHueVector(0), 0);
+        int y = m._classic ? DualScreen.LogicalHeight - StripHeight : 0;
+        b.Draw(m._viewport.GetTexture(), new Compat.Rectangle(x, y, w, h), ShaderHueTranslator.GetHueVector(0), 0);
     }
 
     /// <summary>
@@ -401,7 +416,8 @@ internal sealed partial class CompanionTabs : Node
         Vector2 client = window.Value / dpi;
         if (client.X < DualScreen.MainWidth) return false;
 
-        Vector2 local = (client - new Vector2(DualScreen.MainWidth, 0)) * m._scale;
+        float top = m._classic ? DualScreen.LogicalHeight - StripHeight : 0;
+        Vector2 local = (client - new Vector2(DualScreen.MainWidth, top)) * m._scale;
 
         if (m._classic && !new Rect2(Vector2.Zero, m._viewport.Size).HasPoint(local)) return false;
 

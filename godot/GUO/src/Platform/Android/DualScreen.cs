@@ -154,6 +154,12 @@ namespace GUO.Platform.Android
             }
         }
 
+        /// <summary>
+        /// Logical pixels along the second screen's bottom that gumps are kept
+        /// out of: the companion tabs' "‹ Tabs" strip in Classic mode, 0 otherwise.
+        /// </summary>
+        public static int BottomReserve => Input.Touch.CompanionTabs.ShelfReserve;
+
         public static int LogicalWidth => _instance?._logicalWidth ?? 0;
 
         public static int LogicalHeight => _instance?._logicalHeight ?? 0;
@@ -1010,7 +1016,7 @@ namespace GUO.Platform.Android
                 }
 
                 int x = Math.Clamp(g.X - MainWidth, 0, Math.Max(0, _logicalWidth - Input.Touch.GumpPresentation.Width(g)));
-                int y = Math.Clamp(g.Y, 0, Math.Max(0, _logicalHeight - Input.Touch.GumpPresentation.Height(g)));
+                int y = Math.Clamp(g.Y, 0, Math.Max(0, _logicalHeight - BottomReserve - Input.Touch.GumpPresentation.Height(g)));
 
                 if (g.X != MainWidth + x || g.Y != y)
                 {
