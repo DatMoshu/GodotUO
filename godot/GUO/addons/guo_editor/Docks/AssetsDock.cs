@@ -58,6 +58,7 @@ public partial class AssetsDock : EditorDock
         Add("Sounds", new SoundPanel());
         Add("Maps", new MapPanel());
         Add("Parity", new ParityPanel());
+        Add("Bulk", new BulkPanel());
 
         if (_data.IsLoaded || _data.Error != null)
         {
