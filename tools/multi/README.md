@@ -105,8 +105,19 @@ into multis by square (see the limits above); each names the elements it
 holds.
 
 A long stair can pause on landings, and a causeway can carry buttresses. A
+house stair can put a rail round its opening upstairs, and a floor can mix
+materials (a list, the first dominant) so a large paved area is not one tile. A
 build never depends on what was built before it in the same process: the
 catalogue forgets its picks at the start of each house or scene.
+
+## The offline walk
+
+`scene-build` walks the tour offline (`walkcheck.py`) before any proof: a
+rough model of UO movement (16 z of headroom, 5 z up a step, drops allowed, no
+corner-cutting). A leg with no walk is a problem, and so is a leg that is a
+long detour for its distance: the client's pathfinder is an A* on the straight
+distance with 10,000 nodes, and it gave up on a walk sent the long way round a
+wall because a culvert was too low to pass. Put a stop on the way instead.
 
 ## Complete on every side
 

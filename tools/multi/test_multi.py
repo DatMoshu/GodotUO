@@ -165,6 +165,15 @@ def main() -> int:
         check("stair1_foot" in names and any(st["z"] == 27 for st in side4["stops"]),
               f"the walk climbs the stair to z 27 (stops {names})")
         check(validate.validate(comps4, side4, None) == [], "the two-storey L validates")
+        # the same with a rail round the stairwell: the sides and the foot end, not the arrival
+        railed = json.loads(json.dumps(two))
+        railed["storeys"][0]["stairs"][0]["rail"] = "stone"
+        comps4r, side4r = generate.build(railed, cat)
+        rails = {(c.x + cx, c.y + cy) for c in comps4r if c.z == 27 and 0x400 <= c.item < 0x500}
+        want = {(2, y) for y in range(1, 5)}   # x 0 and y 0 are the outer walls; (2, 5) is beside the arrival
+        check(rails == want, f"the stairwell rail runs beside the flight, the arrival end open (got {sorted(rails)})")
+        check(not rails & {(0, 6), (1, 6), (2, 6)}, "no rail beside the arrival")
+        check(validate.validate(comps4r, side4r, None) == [], "the railed L validates")
 
         # a fenced yard
         yd = cottage(yard={"box": [-2, -1, 6, 8], "fence": "stone", "height": 5, "gate": {"side": "S", "offset": 4},
@@ -204,15 +213,47 @@ def main() -> int:
               [[(c.item, c.x, c.y, c.z) for c in p["comps"]] for p in again["parts"]], "a scene builds to the same bytes")
         tour = [t["name"] for t in sc["tour"]]
         check(tour == ["foot", "walk_stair0_from", "walk_stair0_to", "walk"], f"the tour climbs by the stair (got {tour})")
+        check(sc["tour"][0].get("on_land") and not sc["tour"][-1].get("on_land"),
+              "a stop on bare land at the ground is marked on_land (the proof reads the land's z), one on the wall not")
         climb = sc["tour"][1:3]
         check(climb[0]["z"] == 0 and climb[1]["z"] == 20 and (climb[0]["x"], climb[0]["y"]) == (3, 3),
               f"the climb starts at the stair's foot and ends on its landing (got {climb})")
 
+        swapped = json.loads(json.dumps(scene))
+        swapped["elements"] = [swapped["elements"][1], swapped["elements"][0], swapped["elements"][2]]
+        ss = fort.build_scene(swapped, cat)
+        same = lambda sc_: sorted((c.item, c.x + p["centre"][0], c.y + p["centre"][1], c.z) for p in sc_["parts"] for c in p["comps"])
+        check(same(ss) == same(sc), "a tower listed before the wall still opens where its walkway meets it (the same pieces)")
         into = json.loads(json.dumps(scene))
         into["elements"].append({"type": "tower", "part": "t2", "disc": [8, 5, 4], "levels": [0, 20], "top": 40,
                                  "floor": "stone", "parapet": False})
         check(bool(fort.build_scene(into, cat)["problems"]), "a stair run into a tower is reported")
         check(not sc["problems"], f"a clear stair is not (got {sc['problems']})")
+
+        # a floor of mixed materials: the first on about half the cells, the same bytes every build
+        mixed = {"format": 1, "kind": "scene", "name": "m", "materials": {"wall": "stone"},
+                 "elements": [{"type": "platform", "part": "yard", "z": 0, "face": False,
+                               "floor": ["stone", "wooden"], "shapes": [{"box": [0, 0, 9, 9]}]}],
+                 "tour": [{"name": "a", "at": [1, 1], "z": 0}, {"name": "b", "at": [8, 8], "z": 0}]}
+        m1, m2 = fort.build_scene(mixed, cat), fort.build_scene(json.loads(json.dumps(mixed)), cat)
+        tiles = [c.item for p in m1["parts"] for c in p["comps"] if c.z == 0]
+        stone = sum(1 for i in tiles if i == 0x611)
+        check(0.35 < stone / len(tiles) < 0.65 and {0x601, 0x602} & set(tiles),
+              f"a mixed floor lays both materials, the first on about half ({stone} of {len(tiles)})")
+        grid = {(c.x + p["centre"][0], c.y + p["centre"][1]): c.item == 0x611 for p in m1["parts"] for c in p["comps"]}
+        alt = sum(grid[(x, y)] != grid[(x + 1, y)] for x in range(9) for y in range(10))
+        check(alt < 70, f"a mixed floor is scattered, not a checkerboard ({alt} of 90 neighbours differ)")
+        check([(c.item, c.x, c.y) for p in m1["parts"] for c in p["comps"]] ==
+              [(c.item, c.x, c.y) for p in m2["parts"] for c in p["comps"]], "a mixed floor builds the same bytes")
+
+        # props: kept on top of what they stand on, which keeps its floor; an unknown piece reported
+        withp = json.loads(json.dumps(mixed))
+        withp["elements"].append({"type": "props", "part": "yard", "items": [
+            {"item": "0x0750", "at": [3, 3], "z": 0}, {"item": "0x7fff", "at": [4, 4], "z": 0}]})
+        mp = fort.build_scene(withp, cat)
+        at33 = sorted(c.item for p in mp["parts"] for c in p["comps"] if (c.x + p["centre"][0], c.y + p["centre"][1]) == (3, 3))
+        check(0x0750 in at33 and len(at33) == 2, f"a prop stands on the floor, which stays (got {[hex(i) for i in at33]})")
+        check(any("0x7fff" in q for q in mp["problems"]), "an unknown prop is reported")
 
         # the offline walk: a terrace at z 20 on walls, reached by a stair; a parapet cuts it
         import walkcheck
@@ -234,6 +275,17 @@ def main() -> int:
         cleg = [{"name": "a", "x": 0, "y": 0, "z": 20}, {"name": "b", "x": 3, "y": 3, "z": 20}]
         check(len(walkcheck.check_tour([{"centre": [0, 0], "comps": corner}], cleg, kinds)) == 1,
               "floors that touch only at a corner do not join")
+        # a floor under a stair's block is buried: a walker stands on the block, not the floor
+        buried, _ = walkcheck.surfaces([{"centre": [0, 0], "comps": [C(2, 0, 0, 20), C(3, 0, 0, 20)]}], kinds, 0)
+        check(20 not in buried[(0, 0)] and 25 in buried[(0, 0)],
+              f"a floor with a block standing on it is not stood on, the block is (got {buried[(0, 0)]})")
+        # a long wall on the land with its only way round forty cells off: a detour, reported
+        long_wall = [{"centre": [0, 0], "comps": [C(1, 0, y, 0) for y in range(-40, 41)]}]
+        dleg = [{"name": "west", "x": -1, "y": 0, "z": 0}, {"name": "east", "x": 1, "y": 0, "z": 0}]
+        got = walkcheck.check_tour(long_wall, dleg, kinds)
+        check(len(got) == 1 and "detour" in got[0], f"a walk forty times its distance is reported as a detour (got {got})")
+        near = [{"name": "west", "x": -1, "y": 36, "z": 0}, {"name": "east", "x": 1, "y": 36, "z": 0}]
+        check(walkcheck.check_tour(long_wall, near, kinds) == [], "a short way round the wall's end is not")
 
         # a long wall is cut so the shard sends each piece before anyone stands on its far end
         long = {"format": 1, "kind": "scene", "name": "l", "materials": scene["materials"],

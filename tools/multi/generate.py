@@ -335,6 +335,7 @@ def build(desc: dict, cat: Catalogue, fresh: bool = True) -> tuple[list[Componen
     for p in porches:
         porch_cells |= cells_of(tuple(p["box"])) - house
     holes_next: set = set()
+    rails_next: list = []
     arrivals: set = set()
     for n, st in enumerate(storeys):
         z = z0 + n * step_h
@@ -363,6 +364,12 @@ def build(desc: dict, cat: Catalogue, fresh: bool = True) -> tuple[list[Componen
         ids = cat.floor(st.get("floor", mats["floor"]))
         for (x, y) in sorted(floor):
             b.add(ids[(x * 7 + y * 13) % len(ids)], x, y, z)
+        # a stair's "rail": a low rail round its opening in this floor, the arrival end left open
+        for mat, ring in rails_next:
+            cells = (ring & floor) - walls
+            for (x, y) in sorted(cells):
+                b.add(cat.wall(mat, 5, signature(cells, x, y)), x, y, z)
+            solid |= cells
         door_item = cat.door(mats["wall"])
         for (x, y), o in sorted(doors.items()):
             along_x = (x - 1, y) in walls or (x + 1, y) in walls
@@ -378,6 +385,7 @@ def build(desc: dict, cat: Catalogue, fresh: bool = True) -> tuple[list[Componen
                             "type": "MetalDoor" if o.get("door", mats.get("door", "wood")) == "metal"
                             else "DarkWoodDoor"})
         holes_next = set()
+        rails_next = []
         stair_arrivals: set = set()
         for s in st.get("stairs", []):
             if n + 1 >= len(storeys):
@@ -386,6 +394,9 @@ def build(desc: dict, cat: Catalogue, fresh: bool = True) -> tuple[list[Componen
                              floor, walls)
             holes_next |= h
             stair_arrivals |= a
+            if s.get("rail"):
+                near = lambda cs: {(x + i, y + j) for (x, y) in cs for i in (-1, 0, 1) for j in (-1, 0, 1)}
+                rails_next.append((s["rail"], near(h) - h - near(a)))
             dx, dy = SIDE_STEP[s["rise"]]
             b.stairs.append({"foot": [s["at"][0] - dx, s["at"][1] - dy], "z": z, "cells": sorted(h),
                              "arrive": sorted(a)[0], "to": n + 1})
