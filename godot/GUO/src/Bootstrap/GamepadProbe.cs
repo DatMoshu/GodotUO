@@ -224,21 +224,30 @@ internal static class GamepadProbe
                 return;
             }
 
-            // A on the card's + steps the size, as a tap does.
+            // A on the card's + steps the size, as a tap does. Only on the main
+            // screen: the pointer never reaches the second (the D-pad does, below).
             await InputProbe.Wait(host, 12);
             float before = opened.PresentationScale;
-            Vector2? plus = GUO.Input.Touch.WindowMenu.ButtonCentre("+");
 
-            if (plus != null)
+            if (GUO.Input.Touch.WindowMenu.OnSecondScreen)
             {
-                GUO.Input.GodotInput.Handle(new InputEventMouseMotion { Position = plus.Value * Client.Game.DpiScale });
-                await InputProbe.Wait(host, 2);
-                await Button(host, JoyButton.A);
+                GD.Print("[GUO] gamepad probe: skip  A under the pointer (the card is on the second screen)");
             }
+            else
+            {
+                Vector2? plus = GUO.Input.Touch.WindowMenu.ButtonCentre("+");
 
-            Check("A presses the window menu's + under the pointer",
-                plus != null && opened.PresentationScale > before + 0.01f, $"{before} -> {opened.PresentationScale}");
-            opened.PresentationScale = before;
+                if (plus != null)
+                {
+                    GUO.Input.GodotInput.Handle(new InputEventMouseMotion { Position = plus.Value * Client.Game.DpiScale });
+                    await InputProbe.Wait(host, 2);
+                    await Button(host, JoyButton.A);
+                }
+
+                Check("A presses the window menu's + under the pointer",
+                    plus != null && opened.PresentationScale > before + 0.01f, $"{before} -> {opened.PresentationScale}");
+                opened.PresentationScale = before;
+            }
 
             // The D-pad selects the card's controls, and A presses the selected
             // one: what reaches a card on the Thor's second screen, which the
@@ -252,14 +261,10 @@ internal static class GamepadProbe
                 first != null && second != null && second != first && Where() == stood,
                 $"{Name(first)} -> {Name(second)}, at {stood} -> {Where()}");
 
+            // + sits right of - on the stepper row, above the slider.
             for (int i = 0; i < 12 && Name(GUO.Input.Touch.WindowMenu.FocusOwner) != "+"; i++)
             {
-                await Button(host, JoyButton.DpadRight);
-
-                if (Name(GUO.Input.Touch.WindowMenu.FocusOwner) != "+")
-                {
-                    await Button(host, JoyButton.DpadDown);
-                }
+                await Button(host, Name(GUO.Input.Touch.WindowMenu.FocusOwner) == "-" ? JoyButton.DpadRight : JoyButton.DpadUp);
             }
 
             before = opened.PresentationScale;

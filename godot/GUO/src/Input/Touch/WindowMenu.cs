@@ -189,6 +189,10 @@ internal sealed partial class WindowMenu : Node
         var plus = Touch(new Button { Text = "+" }, 40);
         plus.Pressed += () => Step(0.25f);
         stepper.AddChild(plus);
+        // The D-pad steps across the size between them, which Godot's own
+        // neighbour search does not.
+        minus.FocusNeighborRight = minus.GetPathTo(plus);
+        plus.FocusNeighborLeft = plus.GetPathTo(minus);
 
         _slider = new HSlider
         {
@@ -536,6 +540,9 @@ internal sealed partial class WindowMenu : Node
         m._viewport.PushInput(new InputEventAction { Action = action, Pressed = false }, true);
         return true;
     }
+
+    /// <summary>True when the open card is on the second screen, out of the pointer's reach.</summary>
+    public static bool OnSecondScreen => IsOpen && _instance._onSecond;
 
     /// <summary>True when a control of the open card has controller focus.</summary>
     public static bool HasControllerFocus => IsOpen && _instance._viewport.GuiGetFocusOwner() != null;
