@@ -937,8 +937,9 @@ internal static class PregameProbe
                 return;
             }
 
-            // The timings land within the 3 s timeout (the shut port refuses at once).
-            for (int i = 0; i < 60 && (servers.RowStatus(answers).Dot != ServerPing.Kind.Up || servers.RowStatus(silent).Dot != ServerPing.Kind.Down); i++)
+            // The timings land within the 3 s timeout (the shut port refuses at once). By the clock:
+            // a run isn't frame-capped, and a fast device ran out a frame count before the timeout.
+            for (ulong until = Godot.Time.GetTicksMsec() + ServerPing.TimeoutMs + 7000; Godot.Time.GetTicksMsec() < until && (servers.RowStatus(answers).Dot != ServerPing.Kind.Up || servers.RowStatus(silent).Dot != ServerPing.Kind.Down);)
             {
                 await InputProbe.Wait(host, 6);
             }
@@ -1005,7 +1006,8 @@ internal static class PregameProbe
                 ServerPing.Want(e);
             }
 
-            for (int i = 0; i < 90 && many.Any(e => ServerPing.Get(e).Busy); i++)
+            // Two waves of eight at most, each within the timeout; by the clock, as above.
+            for (ulong until = Godot.Time.GetTicksMsec() + 2 * ServerPing.TimeoutMs + 9000; Godot.Time.GetTicksMsec() < until && many.Any(e => ServerPing.Get(e).Busy);)
             {
                 await InputProbe.Wait(host, 6);
             }

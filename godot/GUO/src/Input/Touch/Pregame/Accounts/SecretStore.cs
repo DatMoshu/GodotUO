@@ -68,6 +68,13 @@ internal static class SecretStore
             return android.Available ? android : new NoStore($"Passwords aren't saved here: {android.Unavailable}. You'll type it at login.");
         }
 
+        if (OperatingSystem.IsLinux() && !OperatingSystem.IsAndroid())
+        {
+            var linux = new LibsecretStore();
+
+            return linux.Available ? linux : new NoStore($"Passwords aren't saved here: {linux.Unavailable}. You'll type it at login.");
+        }
+
         return new NoStore(OperatingSystem.IsBrowser()
             ? "Passwords are never saved in the browser."
             : "Passwords aren't saved on this system. You'll type it at login.");

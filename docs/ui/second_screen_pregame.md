@@ -133,7 +133,7 @@ typed login is unchanged). The alternative is to leave it, and say so under Save
 |---|---|---|
 | `dpapi` | Windows | `blob`: `CryptProtectData` output, base64. CurrentUser scope, with GUO's entropy plus `host:port:name`, so a blob copied onto another entry doesn't decrypt |
 | `android-keystore` | Android | `iv` and `blob`: AES-256-GCM, with a non-exportable key (`guo.accounts.v1`) in AndroidKeyStore. `host:port:name` is the associated data |
-| `libsecret` | Linux, Steam Deck | Nothing. The password lives in the Secret Service keyring (schema `org.guo.Account`, attributes host, port, name); the file only says it's there |
+| `libsecret` | Linux, Steam Deck | Nothing. The password lives in the Secret Service keyring (schema `org.guo.Account`, one attribute `binding`, the entry's `host:port:name`); the file only says it's there |
 | `none` | Web, or a Linux without a keyring | Nothing. The password is never kept |
 
 No plaintext password is ever written to a file, a log, a probe screenshot or a Discord caption. The account name
@@ -150,9 +150,17 @@ is not secret (upstream saves it in the clear too), and it is kept in the clear.
   The key is made on the first save. A reinstall or cleared app data removes it, and each saved password then has to
   be typed once more. Measured on the Thor-bottom emulator (x86_64, 2026-09-28): the pregame probe's accounts checks
   pass on a first run (the key made) and a second (the key read back), 29/29 each. Not yet run on the Thor itself.
-- **Linux / Steam Deck:** P/Invoke of `libsecret-1.so.0` (`secret_password_store_sync`, `_lookup_sync`, `_clear_sync`).
-  If the library or the Secret Service is missing, the store is `none` and the UI says so. There's no plaintext
-  fallback. In the Deck's Game Mode, the keyring may be locked; a lookup that fails asks for the password once.
+- **Linux / Steam Deck:** P/Invoke of `libsecret-1.so.0` (`LibsecretStore`): `secret_schema_newv`,
+  `secret_password_storev_sync`, `_lookupv_sync` and `_clearv_sync`, with the attributes in a GLib `GHashTable`.
+  These are the non-variadic forms, because P/Invoke can't pass C varargs. At start, a lookup of nothing checks
+  that a keyring answers. If the library or the Secret Service is missing, the store is `none` and the UI says
+  which ("libsecret isn't installed", "no keyring is running"). There's no plaintext fallback. A failure reports
+  the GError's domain and code, never its message. In the Deck's Game Mode, the keyring may be locked; a lookup
+  that fails asks for the password once.
+  Measured in WSL Ubuntu 24.04 (libsecret 0.21.4, gnome-keyring 46.1, 2026-09-28), with the store's own file in a
+  console harness: a round trip, a copy moved onto another entry refused, a re-save replacing it, and Forget
+  clearing it from the keyring, 8/8. It falls back to `none` with the right reason when no keyring is running and
+  when libsecret is missing. Not yet run on the Deck itself.
 - **Web:** `none`, always. The Save password box isn't shown.
 
 ### What it protects against, and what it doesn't
