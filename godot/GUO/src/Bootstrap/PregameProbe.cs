@@ -79,6 +79,13 @@ internal static class PregameProbe
             return;
         }
 
+        if (RestartPhase != null)
+        {
+            await AccountsRestartCheck(host, card, RestartPhase);
+            Finish();
+            return;
+        }
+
         await InputProbe.Wait(host, 10);
 
         if (_second)
@@ -1028,6 +1035,122 @@ internal static class PregameProbe
     }
 
     private static string _clickDetail = "";
+
+    /// <summary>--accounts-restart save|check|auto: the saved-password check split across an app restart.</summary>
+    public static string RestartPhase { get; set; }
+
+    /// <summary>
+    /// A saved password across a restart of the app, on this platform's
+    /// store: "save" adds an account with a random password through the card
+    /// and keeps only the password's SHA-256 (in the probe's own file, never
+    /// the password); "check", in the next launch, reads the password back,
+    /// compares its hash, and forgets it with the card's Forget.
+    /// </summary>
+    private static async System.Threading.Tasks.Task AccountsRestartCheck(Node host, PregameCard card, string phase)
+    {
+        PregameServers servers = card.Servers;
+        var store = Input.Touch.Pregame.Accounts.SecretStore.Current;
+        string marker = ProjectSettings.GlobalizePath("user://probe_accounts_restart.txt");
+        const string Name = "guokeep";
+
+        // A servers file of the probe's own, one name for both launches: the
+        // player's list is never touched, even when check never runs.
+        string bookWas = ServerBook.PathOverride;
+        ServerBook.PathOverride = ProjectSettings.GlobalizePath("user://probe_servers_restart.json");
+        ServerBook.Load();
+        ServerEntry e = ServerBook.Find("restart.invalid", 2597) ?? ServerBook.Add("Probe Restart", "restart.invalid", "2597", out _);
+        servers.Rebuild();
+        await InputProbe.Wait(host, 3);
+
+        // auto: save on a launch without the marker, check on the next, so
+        // one build does both across a restart.
+        if (phase == "auto")
+        {
+            phase = System.IO.File.Exists(marker) ? "check" : "save";
+        }
+
+        GD.Print($"[GUO] pregame probe: accounts across a restart, {phase}");
+
+        // One screen without room: the card opens from the Servers button.
+        // A clock, not frames: a slow device draws fewer of them.
+        for (ulong until = Godot.Time.GetTicksMsec() + 5000; Godot.Time.GetTicksMsec() < until && !PregameCard.ShownOnSecond && !PregameCard.OnMain && PregameCard.ServersButtonCentre == null;)
+        {
+            await InputProbe.Wait(host, 1);
+        }
+
+        if (!PregameCard.ShownOnSecond && !PregameCard.OnMain && PregameCard.ServersButtonCentre is Vector2 at)
+        {
+            Click(at);
+            await InputProbe.Wait(host, 10);
+        }
+
+        servers.Rebuild();
+        await InputProbe.Wait(host, 3);
+
+        static string Hash(string s) => System.Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(s)));
+
+        if (phase == "save")
+        {
+            string password = System.Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(12));
+            await Reveal(host, card, servers.RowFor(e));
+            await InputProbe.Wait(host, 4);
+            await Reveal(host, card, servers.AddAccountButton);
+            await InputProbe.Wait(host, 4);
+
+            if (servers.AccountField != null && servers.PasswordField != null && servers.AccountSaveButton != null)
+            {
+                servers.AccountField.Text = Name;
+                servers.PasswordField.Text = password;
+
+                if (servers.KeepBox != null)
+                {
+                    servers.KeepBox.ButtonPressed = true;
+                }
+
+                card.Tap(servers.AccountSaveButton);
+                await InputProbe.Wait(host, 4);
+            }
+
+            var a = Input.Touch.Pregame.Accounts.AccountBook.For(e).FirstOrDefault(x => x.Name == Name);
+            System.IO.File.WriteAllText(marker, Hash(password));
+            Check($"restart, save: an account is saved with its password in the {store.Kind} store",
+                store.Available && a != null && a.HasPassword && a.Secret.Store == store.Kind,
+                $"saved {a != null}, store {a?.Secret?.Store ?? "none"} ({store.Kind})");
+            ServerBook.PathOverride = bookWas;
+            ServerBook.Load();
+            return;
+        }
+
+        try
+        {
+            string want = System.IO.File.Exists(marker) ? System.IO.File.ReadAllText(marker) : null;
+            var a = Input.Touch.Pregame.Accounts.AccountBook.For(e).FirstOrDefault(x => x.Name == Name);
+            string back = a == null ? null : Input.Touch.Pregame.Accounts.AccountBook.Password(e, a, out string why);
+            Check($"restart, check: after the app restarted, the {store.Kind} store gives the saved password back",
+                want != null && back != null && Hash(back) == want,
+                $"marker {want != null}, account {a != null}, read back {(back == null ? "no" : Hash(back) == want ? "same" : "different")}");
+
+            if (a != null)
+            {
+                await Reveal(host, card, servers.RowFor(e));
+                await InputProbe.Wait(host, 4);
+                await Reveal(host, card, servers.ForgetAccountButton);
+                await InputProbe.Wait(host, 4);
+                string file = System.IO.File.ReadAllText(ServerBook.FilePath);
+                Check("restart, check: Forget removes it, and its secret, from the servers file",
+                    Input.Touch.Pregame.Accounts.AccountBook.For(e).Count == 0 && !file.Contains(Name),
+                    $"left {Input.Touch.Pregame.Accounts.AccountBook.For(e).Count}, in the file {file.Contains(Name)}");
+            }
+        }
+        finally
+        {
+            System.IO.File.Delete(ServerBook.PathOverride);
+            ServerBook.PathOverride = bookWas;
+            ServerBook.Load();
+            servers.Rebuild();
+            System.IO.File.Delete(marker);
+        }
+    }
 
     /// <summary>
     /// Accounts, with a fake one made for the run (its password random and
