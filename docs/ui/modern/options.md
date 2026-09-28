@@ -78,6 +78,39 @@ tall, and all of it is the target.
   - circle of transparency;
   - shadows;
   - death screen.
+- **Macros** (ModernMacros), a page of its own kind, in three views:
+  - **the list:** a name field and Add, then a row per macro with Edit and
+    Place button;
+  - **one macro:** its key (shown, not edited, since a phone has no keys;
+    Classic view sets it), then its actions. Each action is a plate naming
+    its type, with its choice or its text under it, and Remove. Then come
+    Add action and Place button. Delete asks for a second tap;
+  - **a picker:** a finger-sized list of the action types, or of one
+    type's choices, the current one lit.
+
+  The classic page does the same with combo boxes. Edits are live on the
+  macros, as there, and Apply or Okay saves them (`World.Macros.Save()`, as
+  the classic Apply does). Place button makes the MacroButtonGump that the
+  classic list's drag makes.
+- **Tooltip:** use tooltips; the delay, the zoom and the background
+  opacity, as sliders over the classic's ranges.
+- **Fonts:** override the game font, as ASCII or Unicode; force Unicode in
+  the journal.
+- **Speech:**
+  - scale the speech delay, and the delay itself;
+  - save the journal to a file;
+  - chat opens on Enter (switching the system chat as the classic Apply
+    does);
+  - hide the chat gradient;
+  - ignore guild or alliance messages;
+  - party messages overhead.
+
+  The hues and the font pickers on these pages stay in Classic view: they
+  need a colour picker and a font preview of their own.
+- **Combat:** ask before a criminal act, or a criminal beneficial one; cast
+  spells by one click; buff bar timers; fast spell assign; colour spells by
+  kind; show DPS with damage. The notoriety and spell hues stay in Classic
+  view.
 - **Containers:** grid view, grid slot size.
 - **Touch:**
   - vibrate when the bar snaps;
@@ -85,7 +118,10 @@ tall, and all of it is the target.
   - hold-and-flick (four choices);
   - "Edit the command bar" (the slot editor).
 
-**The escape:** "Classic view", at the foot of the page column, opens the
+The pages follow the classic's order. The page column scrolls with a drag
+where ten pages outgrow a short screen.
+
+**The escape:** "Classic view", pinned at the foot of the page column, opens the
 ported Options, fitted, for everything Modern does not show. A page's
 Default puts that page's covered settings back to the profile's defaults.
 

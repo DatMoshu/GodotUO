@@ -155,6 +155,22 @@ internal static class GalleryProbe
         Game.GameActions.OpenSettings(world);
         await InputProbe.Wait(host, 60);
         await Save(host, "options");
+
+        // Its Macros page: the list, then the first macro's actions.
+        if (Input.Touch.Modern.ModernGump.Current is Input.Touch.Modern.ModernOptions options)
+        {
+            options.Page("Macros");
+            await InputProbe.Wait(host, 10);
+            await Save(host, "options_macros");
+
+            if (world.Macros.Items is Game.Managers.Macro first)
+            {
+                options.Macros.ShowMacro(first);
+                await InputProbe.Wait(host, 10);
+                await Save(host, "options_macro");
+            }
+        }
+
         Input.Touch.Modern.ModernGump.Current?.Close();
         profile.ModernGumpsOff = true;
         Game.GameActions.OpenSettings(world);
@@ -213,6 +229,15 @@ internal static class GalleryProbe
         UIManager.Add(new PartyGump(world, 100, 100, world.Party.CanLoot));
         await InputProbe.Wait(host, 30);
         await Save(host, "party");
+        Input.Touch.Modern.ModernGump.Current?.Close();
+        profile.ModernGumpsOff = true;
+        await InputProbe.Wait(host, 10);
+
+        // The abilities book, Modern (ADR-0024, gump 6).
+        profile.ModernGumpsOff = false;
+        Game.GameActions.OpenAbilitiesBook(world);
+        await InputProbe.Wait(host, 40);
+        await Save(host, "abilities");
         Input.Touch.Modern.ModernGump.Current?.Close();
         profile.ModernGumpsOff = true;
         await InputProbe.Wait(host, 10);

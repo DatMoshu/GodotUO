@@ -5,6 +5,7 @@ using Godot;
 using GUO.Configuration;
 using GUO.Game;
 using GUO.Game.Data;
+using GUO.Game.Managers;
 using GUO.Game.Scenes;
 using GUO.Game.UI.Gumps;
 
@@ -49,7 +50,7 @@ internal sealed partial class ModernOptions : ModernGump
         public Action<object> Show; // puts a value into the setting's control
     }
 
-    private static readonly string[] Pages = { "General", "Sound", "Video", "Containers", "Touch" };
+    private static readonly string[] Pages = { "General", "Sound", "Video", "Macros", "Tooltip", "Fonts", "Speech", "Combat", "Containers", "Touch" };
 
     private readonly List<Setting> _settings = new();
     private readonly Dictionary<Setting, object> _values = new();
@@ -59,6 +60,8 @@ internal sealed partial class ModernOptions : ModernGump
     private Label _title;
     private ScrollContainer _scroll;
     private bool _audioChanged;
+    private ModernMacros _macros;
+    private bool _macrosChanged;
 
     public ModernOptions(World world) : base(world)
     {
@@ -128,6 +131,43 @@ internal sealed partial class ModernOptions : ModernGump
         Bool("Video", "Shadows", p => p.ShadowsEnabled, (p, v) => p.ShadowsEnabled = v);
         Bool("Video", "Death screen", p => p.EnableDeathScreen, (p, v) => p.EnableDeathScreen = v);
 
+        // Tooltip, Fonts and Speech: the classic pages' boxes and sliders, with
+        // their ranges. Hues and font pickers stay in Classic view.
+        Bool("Tooltip", "Use tooltips", p => p.UseTooltip, (p, v) => p.UseTooltip = v);
+        Int("Tooltip", "Delay before display", 0, 1000, p => p.TooltipDelayBeforeDisplay, (p, v) => p.TooltipDelayBeforeDisplay = v);
+        Int("Tooltip", "Tooltip zoom", 100, 200, p => p.TooltipDisplayZoom, (p, v) => p.TooltipDisplayZoom = v);
+        Int("Tooltip", "Background opacity", 0, 100, p => p.TooltipBackgroundOpacity, (p, v) => p.TooltipBackgroundOpacity = v);
+
+        Bool("Fonts", "Override the game font", p => p.OverrideAllFonts, (p, v) => p.OverrideAllFonts = v);
+        Choice("Fonts", "Override with", new[] { "ASCII", "Unicode" }, p => p.OverrideAllFontsIsUnicode ? 1 : 0, (p, v) => p.OverrideAllFontsIsUnicode = v == 1);
+        Bool("Fonts", "Force Unicode in the journal", p => p.ForceUnicodeJournal, (p, v) => p.ForceUnicodeJournal = v);
+
+        Bool("Speech", "Scale speech delay by length", p => p.ScaleSpeechDelay, (p, v) => p.ScaleSpeechDelay = v);
+        Int("Speech", "Speech delay", 0, 1000, p => p.SpeechDelay, (p, v) => p.SpeechDelay = v);
+        Bool("Speech", "Save the journal to a file", p => p.SaveJournalToFile, (p, v) => p.SaveJournalToFile = v);
+        // As the classic Apply: a change also switches the system chat's state.
+        Bool("Speech", "Chat opens on Enter", p => p.ActivateChatAfterEnter, (p, v) =>
+        {
+            if (p.ActivateChatAfterEnter != v)
+            {
+                UIManager.SystemChat.IsActive = !v;
+                p.ActivateChatAfterEnter = v;
+            }
+        });
+        Bool("Speech", "Hide the chat gradient", p => p.HideChatGradient, (p, v) => p.HideChatGradient = v);
+        Bool("Speech", "Ignore guild messages", p => p.IgnoreGuildMessages, (p, v) => p.IgnoreGuildMessages = v);
+        Bool("Speech", "Ignore alliance messages", p => p.IgnoreAllianceMessages, (p, v) => p.IgnoreAllianceMessages = v);
+        Bool("Speech", "Party messages overhead", p => p.OverheadPartyMessages, (p, v) => p.OverheadPartyMessages = v);
+
+        // Combat: its boxes; the notoriety and spell hues stay in Classic view.
+        Bool("Combat", "Ask before a criminal act", p => p.EnabledCriminalActionQuery, (p, v) => p.EnabledCriminalActionQuery = v);
+        Bool("Combat", "Ask before a criminal beneficial act", p => p.EnabledBeneficialCriminalActionQuery, (p, v) => p.EnabledBeneficialCriminalActionQuery = v);
+        Bool("Combat", "Cast spells by one click", p => p.CastSpellsByOneClick, (p, v) => p.CastSpellsByOneClick = v);
+        Bool("Combat", "Buff bar timers", p => p.BuffBarTime, (p, v) => p.BuffBarTime = v);
+        Bool("Combat", "Fast spell assign", p => p.FastSpellsAssign, (p, v) => p.FastSpellsAssign = v);
+        Bool("Combat", "Colour spells by kind", p => p.EnabledSpellHue, (p, v) => p.EnabledSpellHue = v);
+        Bool("Combat", "Show DPS with damage", p => p.ShowDPSWithDamageNumbers, (p, v) => p.ShowDPSWithDamageNumbers = v);
+
         Bool("Containers", "Grid view", p => p.GridContainers, (p, v) => p.GridContainers = v);
         Int("Containers", "Grid slot size", GridContainerGump.MIN_SLOT, GridContainerGump.MAX_SLOT, p => p.GridContainerSlotSize, (p, v) => p.GridContainerSlotSize = v);
 
@@ -171,9 +211,20 @@ internal sealed partial class ModernOptions : ModernGump
         outer.AddChild(body);
 
         // The page column, as the classic's NiceButtons: text, the open one lit.
-        var column = new VBoxContainer { CustomMinimumSize = new Vector2(112, 0) };
+        // It scrolls with a drag where the pages outgrow a short screen, Classic
+        // view pinned under it.
+        var side = new VBoxContainer { CustomMinimumSize = new Vector2(112, 0) };
+        side.AddThemeConstantOverride("separation", 2);
+        body.AddChild(side);
+        var columnScroll = new ScrollContainer
+        {
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
+            HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
+        };
+        side.AddChild(columnScroll);
+        var column = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
         column.AddThemeConstantOverride("separation", 2);
-        body.AddChild(column);
+        columnScroll.AddChild(column);
 
         foreach (string page in Pages)
         {
@@ -191,12 +242,11 @@ internal sealed partial class ModernOptions : ModernGump
             _pageButtons[page] = b;
         }
 
-        column.AddChild(new Control { SizeFlagsVertical = Control.SizeFlags.ExpandFill });
-        column.AddChild(RuleLine(true));
+        side.AddChild(RuleLine(true));
         Button classic = Row(UoTheme.Button("Classic view"));
         classic.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
         classic.Pressed += OpenClassic;
-        column.AddChild(classic);
+        side.AddChild(classic);
 
         body.AddChild(RuleLine(false));
 
@@ -222,6 +272,14 @@ internal sealed partial class ModernOptions : ModernGump
             rows.AddThemeConstantOverride("separation", 2);
             pages.AddChild(rows);
             _pageRows[page] = rows;
+
+            // Macros is a page of its own kind: the macro list and editor (ModernMacros).
+            if (page == "Macros")
+            {
+                _macros = new ModernMacros(World, Text, () => _macrosChanged = true);
+                rows.AddChild(_macros);
+                continue;
+            }
 
             foreach (Setting s in _settings)
             {
@@ -427,6 +485,11 @@ internal sealed partial class ModernOptions : ModernGump
         }
 
         _scroll.ScrollVertical = 0;
+
+        if (page == "Macros")
+        {
+            _macros?.ShowList();
+        }
     }
 
     private void Apply()
@@ -450,6 +513,13 @@ internal sealed partial class ModernOptions : ModernGump
 
             if (!p.EnableMusic) Client.Game.Audio.StopMusic();
             if (!p.EnableSound) Client.Game.Audio.StopSounds();
+        }
+
+        // As the classic Apply does: the macros are edited live and saved here.
+        if (_macrosChanged)
+        {
+            World.Macros.Save();
+            _macrosChanged = false;
         }
 
         GD.Print($"[GUO] modern: Options applied");
@@ -479,13 +549,20 @@ internal sealed partial class ModernOptions : ModernGump
 
     // --- the probe ----------------------------------------------------------------------------
 
+    /// <summary>For the probe: the Macros page.</summary>
+    public ModernMacros Macros => _macros;
+
+    /// <summary>For the probe: open a page by name.</summary>
+    public void Page(string page) => ShowPage(page);
+
     /// <summary>For the probe: the control of a setting (by its words) or a footer button (by name), if on the open page.</summary>
     public Control Find(string what)
     {
         foreach (Node n in Card.FindChildren("*", "Control", true, false))
         {
             if (n is Control c && c.IsVisibleInTree()
-                && ((c.HasMeta("setting") && (string)c.GetMeta("setting") == what) || c.Name == what || c is Button b && b.Text == what))
+                && ((c.HasMeta("setting") && (string)c.GetMeta("setting") == what) || (c.HasMeta("macros") && (string)c.GetMeta("macros") == what)
+                    || c.Name == what || c is Button b && b.Text == what))
             {
                 return c;
             }

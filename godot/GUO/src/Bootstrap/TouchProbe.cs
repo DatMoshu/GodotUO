@@ -130,9 +130,12 @@ internal static class TouchProbe
         await MobileOptionsCheck(host, world);
         Configuration.ProfileManager.CurrentProfile.ModernGumpsOff = false;
         await ModernOptionsCheck(host, world);
+        await ModernMacrosCheck(host, world);
+        await ModernOptionsPagesCheck(host, world);
         await ModernPartyCheck(host, world);
         await ModernSkillsCheck(host, world);
         await ModernJournalCheck(host, world);
+        await ModernAbilitiesCheck(host, world);
         await ModernSpellbookCheck(host, world);
         Configuration.ProfileManager.CurrentProfile.ModernGumpsOff = true;
         await HelpGumpCheck(host, world);
@@ -1096,6 +1099,126 @@ internal static class TouchProbe
     }
 
     /// <summary>
+    /// Modern Options' Tooltip, Fonts and Speech pages: a tapped box on each
+    /// lands in the profile field the classic Apply writes, on Okay.
+    /// </summary>
+    private static async System.Threading.Tasks.Task ModernOptionsPagesCheck(Node host, Game.World world)
+    {
+        Configuration.Profile p = Configuration.ProfileManager.CurrentProfile;
+        bool tooltip = p.UseTooltip, unicode = p.ForceUnicodeJournal, party = p.OverheadPartyMessages;
+        Game.GameActions.OpenSettings(world);
+        await Frames(host, 10);
+
+        if (Input.Touch.Modern.ModernGump.Current is not Input.Touch.Modern.ModernOptions view)
+        {
+            Check("Modern Options opens for its Tooltip, Fonts and Speech pages", false);
+            return;
+        }
+
+        await TapClient(host, view.CentreOf(view.Find("Tooltip")));
+        await TapClient(host, view.CentreOf(view.Find("Use tooltips")));
+        await TapClient(host, view.CentreOf(view.Find("Fonts")));
+        await TapClient(host, view.CentreOf(view.Find("Force Unicode in the journal")));
+        await TapClient(host, view.CentreOf(view.Find("Speech")));
+        await TapClient(host, view.CentreOf(view.Find("Party messages overhead")));
+        await TapClient(host, view.CentreOf(view.Find("Okay")));
+        await Frames(host, 5);
+        Check("the Tooltip, Fonts and Speech pages' boxes land in the profile on Okay",
+            p.UseTooltip != tooltip && p.ForceUnicodeJournal != unicode && p.OverheadPartyMessages != party,
+            $"tooltips {tooltip} -> {p.UseTooltip}, unicode journal {unicode} -> {p.ForceUnicodeJournal}, party overhead {party} -> {p.OverheadPartyMessages}");
+        p.UseTooltip = tooltip;
+        p.ForceUnicodeJournal = unicode;
+        p.OverheadPartyMessages = party;
+        Input.Touch.Modern.ModernGump.Current?.Close();
+    }
+
+    /// <summary>
+    /// Modern Options' Macros page: a macro is added by name, an action picked
+    /// for it, a choice picked for that action, and its button placed, all by
+    /// taps, editing World.Macros as the classic page does; a second tap on
+    /// Delete removes it and its button.
+    /// </summary>
+    private static async System.Threading.Tasks.Task ModernMacrosCheck(Node host, Game.World world)
+    {
+        const string name = "GUO probe macro";
+
+        if (world.Macros.FindMacro(name) is Game.Managers.Macro stale)
+        {
+            world.Macros.Remove(stale);
+        }
+
+        Game.GameActions.OpenSettings(world);
+        await Frames(host, 10);
+        var view = Input.Touch.Modern.ModernGump.Current as Input.Touch.Modern.ModernOptions;
+
+        if (view == null)
+        {
+            Check("Modern Options opens for its Macros page", false);
+            return;
+        }
+
+        await TapClient(host, view.CentreOf(view.Find("Macros")));
+        Input.Touch.Modern.ModernMacros page = view.Macros;
+
+        if (view.Find("new name") is Godot.LineEdit field)
+        {
+            field.Text = name;
+        }
+
+        await TapClient(host, view.CentreOf(view.Find("add")));
+        Game.Managers.Macro macro = world.Macros.FindMacro(name);
+        Check("on the Macros page, Add makes a macro by the typed name and opens it",
+            macro != null && page?.View == "macro " + name, $"macro {macro != null}, view {page?.View}");
+
+        if (macro == null)
+        {
+            view.Close();
+            return;
+        }
+
+        // Add action -> Open, then its choice -> the second of Open's list.
+        await TapClient(host, view.CentreOf(view.Find("add action")));
+        await TapClient(host, view.CentreOf(view.Find("pick Open")));
+        await TapClient(host, view.CentreOf(view.Find("choice 1")));
+        await TapClient(host, view.CentreOf(page.Pick(1)));
+        var first = macro.Items as Game.Managers.MacroObject;
+        int count = 0, offset = 0;
+        Game.Managers.Macro.GetBoundByCode(Game.Managers.MacroType.Open, ref count, ref offset);
+        Check("an action and its choice are picked by taps (Open, the second of its list)",
+            first != null && first.Code == Game.Managers.MacroType.Open && (int)first.SubCode == offset + 1 && page.View == "macro " + name,
+            $"action {first?.Code}, choice {first?.SubCode} (expected {(Game.Managers.MacroSubType)(offset + 1)}), view {page.View}");
+
+        await TapClient(host, view.CentreOf(view.Find("place " + name)));
+        await Frames(host, 5);
+        bool placed = false;
+
+        foreach (Gump g in UIManager.Gumps)
+        {
+            if (g is MacroButtonGump b && b._macro == macro) placed = true;
+        }
+
+        Check("Place button makes the macro's MacroButtonGump, as the classic list's drag does", placed);
+
+        await TapClient(host, view.CentreOf(view.Find("delete")));
+        await TapClient(host, view.CentreOf(view.Find("delete")));
+        await Frames(host, 5);
+        bool left = false;
+
+        foreach (Gump g in UIManager.Gumps)
+        {
+            if (g is MacroButtonGump b && b._macro == macro) left = true;
+        }
+
+        Check("a second tap on Delete removes the macro and its button, back to the list",
+            world.Macros.FindMacro(name) == null && !left && page.View == "list",
+            $"macro {world.Macros.FindMacro(name) != null}, button {left}, view {page.View}");
+
+        await TapClient(host, view.CentreOf(view.Find("Okay")));
+        await Frames(host, 5);
+        Input.Touch.Modern.ModernGump.Current?.Close();
+    }
+
+    /// <summary>
     /// Modern Party (ADR-0024, gump 2): opening the party gump opens its
     /// Modern view; out of a party it says so; Add member sends the classic
     /// invite request (the shard answers with a target cursor); Cancel closes.
@@ -1110,7 +1233,8 @@ internal static class TouchProbe
     /// </summary>
     private static async System.Threading.Tasks.Task ModernJournalCheck(Node host, Game.World world)
     {
-        for (int i = 0; i < 3; i++)
+        // More lines than the reader holds, so it has to open scrolled to the newest.
+        for (int i = 0; i < 90; i++)
         {
             Game.GameActions.Print(world, $"touch probe journal line {i + 1}", 0x3B2, Game.Data.MessageType.System, 3, false);
         }
@@ -1144,6 +1268,9 @@ internal static class TouchProbe
         Check("the journal's window menu has Read, which opens the Modern reader with the journal's lines, the classic journal still open",
             read != null && view != null && lines > 0 && !classic.IsDisposed,
             $"read {read != null}, reader {view != null}, lines {lines}, classic open {!classic.IsDisposed}");
+        Check("the reader opens at the newest line, following (the Thor check found it opening at the oldest)",
+            view != null && view.Reader.AtEnd && view.Reader.Following && view.Reader.ScrollVertical > 0,
+            $"at end {view?.Reader.AtEnd}, following {view?.Reader.Following}, scroll {view?.Reader.ScrollVertical}");
 
         if (view == null)
         {
@@ -1185,6 +1312,53 @@ internal static class TouchProbe
             $"closed {closed}, from bar {fromBar}, journal alternates {Input.Touch.BarCatalogue.DefaultAlternates("journal")}");
 
         classic.Dispose();
+        await Frames(host, 5);
+    }
+
+    /// <summary>
+    /// The abilities book, Modern (ADR-0024, gump index 6): it opens instead of
+    /// CombatBookGump with every ability and the weapons from the book's own
+    /// table; a hold on the weapon's primary ability places its
+    /// UseAbilityButtonGump, as the book's drag does, and closes it.
+    /// </summary>
+    private static async System.Threading.Tasks.Task ModernAbilitiesCheck(Node host, Game.World world)
+    {
+        UIManager.GetGump<CombatBookGump>()?.Dispose();
+        await Frames(host, 5);
+        Game.GameActions.OpenAbilitiesBook(world);
+        await Frames(host, 20);
+        var view = Input.Touch.Modern.ModernGump.Current as Input.Touch.Modern.ModernAbilities;
+        Check("the abilities book opens as its Modern view with every ability and their weapons, the classic not added",
+            view != null && UIManager.GetGump<CombatBookGump>() == null && view.Rows > 10 && view.WithWeapons > 10,
+            $"modern {view != null}, rows {view?.Rows}, with weapons {view?.WithWeapons}");
+
+        if (view == null)
+        {
+            return;
+        }
+
+        foreach (Gump g in UIManager.Gumps)
+        {
+            if (g is UseAbilityButtonGump old) old.Dispose();
+        }
+
+        Vector2 at = Client(view.CentreOf(view.Find("primary")));
+        Touch(0, at, true);
+        ulong until = Godot.Time.GetTicksMsec() + 700;
+
+        while (Godot.Time.GetTicksMsec() < until)
+        {
+            await Frames(host, 1);
+        }
+
+        Touch(0, at, false);
+        await Frames(host, 10);
+        UseAbilityButtonGump button = UIManager.GetGump<UseAbilityButtonGump>();
+        Check("a hold on the weapon's primary ability places its ability button (UseAbilityButtonGump) and closes the book",
+            button != null && button.IsPrimary && !Input.Touch.Modern.ModernGump.IsOpen,
+            button == null ? "no button" : $"ability {button.Index}");
+        button?.Dispose();
+        Input.Touch.Modern.ModernGump.Current?.Close();
         await Frames(host, 5);
     }
 

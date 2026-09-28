@@ -28,6 +28,7 @@ internal static class ModernGumps
         [typeof(SkillGumpAdvanced)] = world => new ModernSkills(world),
         [typeof(SpellbookGump)] = world => new ModernSpellbook(world),
         [typeof(MarkersManagerGump)] = world => new ModernMarkers(world),
+        [typeof(CombatBookGump)] = world => new ModernAbilities(world),
     };
 
     private static readonly Dictionary<Type, ModernGump> _open = new();
