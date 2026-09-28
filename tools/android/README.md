@@ -332,6 +332,20 @@ headless (`-no-window`):
 - G2a on the emulator: the picker lists 341 files in 0.4 s. It copies 323
   files (2,438 MiB) in about 6.5 min, then logs in and holds 16.7 ms in the
   open field.
+- **Data pushed with adb** into `Android/data` on an emulator belongs to the
+  shell user, and the app reports it missing. On a `google_apis` image,
+  `adb root` and `chown -R <app uid>` on
+  `/data/media/0/Android/data/org.guo.client` fix it. `adb root` restarts
+  adbd, which drops `adb reverse`, so add the shard's reverse after it.
+- **Foldable and small-screen profiles.** `avdmanager create avd -d pixel_9_pro_fold`
+  gives a foldable: `adb emu fold` / `unfold` switch between the outer
+  1080x2424 screen and the inner 2076x2152 one, and GUO survives the switch
+  and lays itself out again. For the Thor's bottom screen, create a `pixel_8`
+  AVD and set `hw.lcd.width=1240`, `hw.lcd.height=1080`,
+  `hw.lcd.density=320` and `hw.initialOrientation=landscape` in its
+  `config.ini`. GUO then runs at 620x540 at scale 2, as on the Thor's lower
+  panel. `screencap -d <id>` picks a display on the foldable; list the
+  displays with `dumpsys SurfaceFlinger --display-id`.
 
 ## What has actually been run, and what has only been written
 
