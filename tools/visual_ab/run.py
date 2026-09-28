@@ -225,29 +225,11 @@ def run_guo(cfg: Config, out: Path, scene: tuple, variant: str, size: str, s: st
         end(proc)
 
 
-def fit_game_window(conf: Path, size: tuple[int, int]) -> None:
-    """The game window as large as the client window, at its corner, in ClassicUO's copy of the profile.
-
-    GUO fits the game window to its window; ClassicUO takes the profile's size as
-    it is. A profile saved at 4K (3840x2054) puts ClassicUO's player off a smaller
-    window's edge, and the two pictures show different ground (framing is B5's
-    check; here both should frame the player alike).
-    """
-    import json
-
-    for f in (conf / "Profiles").rglob("profile.json"):
-        p = json.loads(f.read_text(encoding="utf-8"))
-        p["game_window_size"] = {"X": size[0], "Y": size[1]}
-        p["game_window_position"] = {"X": 0, "Y": 0}
-        f.write_text(json.dumps(p, indent=2), encoding="utf-8")
-
-
 def run_cuo(cfg: Config, out: Path, scene: tuple, size: tuple[int, int], s: str, timeout: float) -> bool:
     folder = out / scene[0]
     folder.mkdir(parents=True, exist_ok=True)
     character = ab.last_played(cfg) or ""
     conf = ab.write_cuo_config(cfg, character, size)
-    fit_game_window(conf, size)
     proc = subprocess.Popen(
         [str(cfg.upstream_exe), "-settings", str(conf / "settings.json"),
          "-username", cfg.shard_owner, "-password", cfg.shard_owner_password,

@@ -69,9 +69,21 @@ public static class EditorBridge
         EventSink.Connected += OnConnected;
         EventSink.Disconnected += m =>
         {
-            _ulClients.Remove(m?.NetState);
-            _setUpOn.Remove(m?.NetState);
-            _queried.Remove(m?.NetState);
+            // On a dropped connection this fires from Mobile.set_NetState(null),
+            // so m.NetState is already null (a Dictionary key must not be:
+            // that crashed the shard when a client was ended). Find the
+            // entries by their mobile instead.
+            bool Gone(NetState ns) => ns == null || ns == m?.NetState || ns.Mobile == m;
+            _ulClients.RemoveWhere(Gone);
+            foreach (NetState ns in _setUpOn.Keys.Where(Gone).ToList())
+            {
+                _setUpOn.Remove(ns);
+            }
+
+            foreach (NetState ns in _queried.Keys.Where(Gone).ToList())
+            {
+                _queried.Remove(ns);
+            }
         };
 
         unsafe
