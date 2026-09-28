@@ -147,6 +147,9 @@ internal static class DualProbe
         {
             GD.PrintErr(
                 $"[GUO] dual screen: FAIL shelved={shelved} pushing={pushing} last error \"{DualScreen.LastError}\""
+                // A shelf that is off shelves nothing; the profile's own switch
+                // says whether a run before this one saved it off.
+                + $" (shelf on {DualScreen.ShelfOn}, profile dual_screen_enabled {Configuration.ProfileManager.CurrentProfile?.DualScreenEnabled})"
             );
         }
     }
