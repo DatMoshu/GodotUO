@@ -2,7 +2,7 @@
 """Author UO data files into a staged set, never the install (ADR-0022).
 
     python tools/uodata_write/run.py scan      --stage DIR
-    python tools/uodata_write/run.py reserve   --stage DIR --pack NAME [--statics N] [--bodies N]
+    python tools/uodata_write/run.py reserve   --stage DIR --pack NAME [--statics N] [--bodies N] [--multis N]
     python tools/uodata_write/run.py dreadcrest --stage DIR --source DIR [--pack moshu]
     python tools/uodata_write/run.py verify    --stage DIR
     python tools/uodata_write/run.py outfit    --stage DIR --source LAB [--pack astral]
@@ -12,7 +12,8 @@ ranges.json (ADR-0022).
 
 scan       free slots per namespace in the stage (or, where not staged yet, the install)
 reserve    a pack's contiguous ranges: item ids, animation bodies, and those bodies'
-           paperdoll gumps (50000/60000 + body); recorded in <stage>/slots.json
+           paperdoll gumps (50000/60000 + body), and multi ids; a count of 0 reserves
+           none of that kind; recorded in <stage>/slots.json
 dreadcrest Codex's Dreadcrest candidate (build/uo_original_expansion/dreadcrest_wearable)
            as records: item art, paperdoll gumps, the 175 equipment animation payloads,
            and a tiledata item (the kite shield's record with the new animation id);
@@ -49,19 +50,24 @@ def cmd_scan(stage: U.Stage) -> int:
     print(f"[uodata] item ids: {len(fs)} free of {U.static_count(stage.read_path('tiledata.mul'))} (highest {max(fs):#06x})")
     print(f"[uodata] people bodies (400+): {len(fb)} free; with both paperdoll gumps free: {len(both)} ({both[:12]})")
     print(f"[uodata] gumps: {len(fg)} free ids below 0x10000")
+    fm = U.free_multis(stage)
+    print(f"[uodata] multis: {len(fm)} free ids below {U.MULTI_LIMIT:#x}" + (f" (from {min(fm):#06x})" if fm else ""))
     return 0
 
 
-def reserve(stage: U.Stage, reg: U.Registry, pack: str, statics: int, bodies: int) -> None:
+def reserve(stage: U.Stage, reg: U.Registry, pack: str, statics: int, bodies: int, multis: int = 0) -> None:
     if pack in reg.data["packs"]:
         return
-    fs = U.free_statics(stage)
-    reg.reserve(pack, "static", fs, statics)
-    fg = U.free_gumps(stage)
-    fb = [b for b in U.free_people_bodies(stage) if U.MALE_GUMP + b in fg and U.FEMALE_GUMP + b in fg]
-    lo, hi = reg.reserve(pack, "anim", fb, bodies, prefer_high=False)
-    p = reg.data["packs"][pack]["ranges"]
-    p["gump"] = [[U.MALE_GUMP + lo, U.MALE_GUMP + hi], [U.FEMALE_GUMP + lo, U.FEMALE_GUMP + hi]]
+    if statics:
+        reg.reserve(pack, "static", U.free_statics(stage), statics)
+    if bodies:
+        fg = U.free_gumps(stage)
+        fb = [b for b in U.free_people_bodies(stage) if U.MALE_GUMP + b in fg and U.FEMALE_GUMP + b in fg]
+        lo, hi = reg.reserve(pack, "anim", fb, bodies, prefer_high=False)
+        p = reg.data["packs"][pack]["ranges"]
+        p["gump"] = [[U.MALE_GUMP + lo, U.MALE_GUMP + hi], [U.FEMALE_GUMP + lo, U.FEMALE_GUMP + hi]]
+    if multis:
+        reg.reserve(pack, "multi", U.free_multis(stage), multis)
     reg.save()
 
 
@@ -148,6 +154,7 @@ def main() -> int:
     ap.add_argument("--pack", default="moshu")
     ap.add_argument("--statics", type=int, default=16)
     ap.add_argument("--bodies", type=int, default=4)
+    ap.add_argument("--multis", type=int, default=0)
     ap.add_argument("--ranges", type=Path, help="a range policy merged over ranges.json (ADR-0022)")
     args = ap.parse_args()
     cfg = load_config()
@@ -156,7 +163,7 @@ def main() -> int:
     if args.command == "scan":
         return cmd_scan(stage)
     if args.command == "reserve":
-        reserve(stage, U.Registry(stage, policy), args.pack, args.statics, args.bodies)
+        reserve(stage, U.Registry(stage, policy), args.pack, args.statics, args.bodies, args.multis)
         print(json.dumps(U.Registry(stage, policy).data["packs"][args.pack], indent=1))
         return 0
     if args.command == "dreadcrest":

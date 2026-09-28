@@ -127,6 +127,33 @@ internal static class ObjectsDump
                 File.WriteAllText(Path.Combine(dir, name + ".walked"), walked ? "moved" : "did not move");
             }
 
+            // <name>.goto holding "x y z [distance]": the player's pathfinder walks
+            // there (doors on the way open as the profile's auto_open_doors and
+            // smooth_doors allow), then <name>.arrived holding "path|no path x y z",
+            // where it stopped. How tools/multi walks through an authored multi.
+            foreach (string request in Directory.GetFiles(dir, "*.goto"))
+            {
+                string name = Path.GetFileNameWithoutExtension(request);
+                string[] words = File.ReadAllText(request).Split((char[]) null, System.StringSplitOptions.RemoveEmptyEntries);
+                File.Delete(request);
+                PlayerMobile player = Client.Game?.UO?.World?.Player;
+                string result = "no player";
+                if (player != null && words.Length >= 3)
+                {
+                    bool path = player.Pathfinder.WalkTo(int.Parse(words[0]), int.Parse(words[1]), int.Parse(words[2]),
+                                                         words.Length > 3 ? int.Parse(words[3]) : 0);
+                    // Autowalk is stepped by the game scene; this only waits for it to stop.
+                    for (int wait = 0; path && wait < 1800 && player.Pathfinder.AutoWalking; wait++)
+                    {
+                        await host.ToSignal(host.GetTree(), Godot.SceneTree.SignalName.ProcessFrame);
+                    }
+
+                    result = $"{(path ? "path" : "no path")} {player.X} {player.Y} {player.Z}";
+                }
+
+                File.WriteAllText(Path.Combine(dir, name + ".arrived"), result);
+            }
+
             // <name>.rec holding "seconds fps": frames into <dir>/<name>/0001.png ...,
             // for a clip (tools/editor_objects_proof --live --clip). Windowed only.
             // Runs beside the watch, so a walk can be recorded.

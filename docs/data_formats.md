@@ -279,6 +279,7 @@ line, UTF-8, `\n`-terminated. ADR-0012 has the reasoning.
 | `block` | `facet`, `bx`, `by`, `land`: 64 `[id, z]` pairs, row-major (index `y*8+x`), `statics`: `[id, x, y, z, hue]` per static (`x`, `y` 0..7 in the block), `sent_ms` (sender's clock, unix ms, optional) | Replaces the whole block in the server's own map (walking, line of sight and placement see it), pushes it to UltimaLive clients on that map, relays it to the other editors; answered with `ack` |
 | `command` | `as` (an online character's name), `text` (e.g. `[where`) | Runs the GM command as that character (`CommandSystem.Handle`); answered with `command` |
 | `object` | `action` `put` with `kind` (`spawner` or `item`) and `object` (as in `shard/objects.json`, section 13); or `action` `delete` with `kind` and `id` | Applies it to the world with the boot sync's code (ADR-0014), relays it to the other editors; answered with `object_ack` |
+| `multi` | `action` `place` with `tag`, `id` (multi id), `map`, `x`, `y`, `z` (optional: the land's average z), `doors` (as in a built multi's `multi.json`, section 16); or `action` `remove` with `tag` | Places an authored multi (`GUOAuthoredMulti`) and a real door per entry, replacing a multi with the same tag; `remove` deletes it and its doors. Answered with `multi_ack` |
 
 **Bridge to editor**
 
@@ -290,6 +291,7 @@ line, UTF-8, `\n`-terminated. ADR-0012 has the reasoning.
 | `command` | `ok`, `as`, `text`, or `error` |
 | `object` | as sent, plus `from`: another editor's world-object change. Last write per object wins |
 | `object_ack` | `action`, `kind`, `id`, `outcome` (`Added`, `Changed`, `Kept`, `Deleted`, `Missing`, `Skipped`), `editors`, `ms` |
+| `multi_ack` | `action`, `tag`, `ok`; on a place `serial`, `at` `[x, y, z]`, `components`, `doors`, `replaced`; on a remove `removed`; or `error` |
 | `error` | `error` |
 
 **Bridge to game client** (UltimaLive, as `src/Game/UltimaLive.cs` reads it)
@@ -563,7 +565,8 @@ proprietary files):
 | `stage.json` | `format`, `install` (path read from), `files {lowercase name: {sha1, size}}` of each original at copy time |
 | `guo_data.json` | The custom-data manifest (§15): `mode` layered, `files` the staged copies, `contains_ea_data` true (local only). Set `UO_CUSTOM_DATA` to the stage to play with it |
 | `files_override.txt` | `name=<absolute staged path>` per staged file, for the client's `settings.json` `files_override` |
-| `slots.json` | `format`, `packs {pack: {ranges {ns: [[first, last]...]}, used {ns: {what: id}}}}`; `ns` is `static`, `anim` or `gump` |
+| `slots.json` | `format`, `packs {pack: {ranges {ns: [[first, last]...]}, used {ns: {what: id}}}}`; `ns` is `static`, `anim`, `gump` or `multi` |
+| `multis.json` | (written by `tools/multi write`) `{name: {id, doors, size, storeys}}` per authored multi, what `prove` places |
 | `dreadcrest.json` | (the Dreadcrest run only) `item`, `body`, `gumps` |
 
 **The range policy** (`tools/uodata_write/ranges.json`, or a maintainer's
@@ -584,6 +587,7 @@ file of the same shape in `--ranges` / `UO_DATA_RANGES`):
 | `anim` | One direction's frame group as `anim.mul` stores it | `action`, `direction` |
 | `tiledata-item` | empty | Any of `flags weight layer count anim hue light height name`; the rest keep their value |
 | `hue` | One 88-byte hue entry | |
+| `multi` | The `MultiCollection.uop` record: `uint32 id, int32 count`, then per component `uint16 item, int16 x, y, z, uint16 flags` (0 shown, 1 hidden), `uint32 0` (no cliloc list). Ids stay below 0x4000, which the shard masks to | |
 
 **Writes** (all append-only except the in-place records):
 
@@ -605,6 +609,11 @@ file of the same shape in `--ranges` / `UO_DATA_RANGES`):
   u16 light, u8 height, char[20] name`, written in place.
 - **Paperdoll gumps** of a wearable with animation body `b`: male
   `50000 + b`, female `60000 + b`.
+- **Multis.** A new `MultiCollection.uop` entry `build/multicollection/{id:06d}.bin`
+  (uncompressed). On an install without the UOP, `multi.mul` gets the
+  components as 16-byte records (`uint16 item, int16 x, y, z, uint32 flags`
+  1 shown / 0 hidden, `uint32 0`) and `multi.idx` is grown to hold the id. The
+  `multi` pack's range is 0x3F00-0x3FFF.
 
 ---
 
@@ -650,3 +659,76 @@ one `name=absolute path` line per file, lowercase names. Launchers write it
 to `build/datasources/files_override.txt`, so a pack itself never carries an
 absolute path. A staged set (§14) writes its own manifest with `mode:
 layered` and `contains_ea_data: true`.
+
+---
+
+## 16. Multi descriptions and the multi catalogue (tools/multi)
+
+A multi (a house, keep, castle or boat) is a list of components
+`(item, x, y, z, shown)` around a centre. `tools/multi` authors new ones:
+it mines the client's own buildings into a catalogue, expands a readable
+**description** into components, validates them, writes them into a stage
+(section 14) and proves them on the private shard. The `/uo-multi` skill
+runs the flow.
+
+**The catalogue** (`build/multi/catalogue/`, gitignored: derived from
+client data, so never committed), written by `run.py mine`:
+
+| File | Contents |
+|---|---|
+| `multis.json` | Per client multi: `id`, `kind` (`one-storey`, `two-storey`, `large-house`, `castle-or-keep`, `boat`, `open`, `marker`), `bounds`, `size`, `components`, `roles` (count per role), `storeys` (floor z levels), `storey_steps`, `wall_height`, `wall_materials`, `floor_materials`, `roof` (`z_from`, `z_to`, `step`, `above_top_storey`), `stairs` (runs, as in `stairs.json`), `doors` `[x, y, z, item, shown]`, `markers` (hidden components) |
+| `families.json` | What generators pick from, most used first: `material → wall/window/post → height → signature → [ids]`, `material → roof → side → [ids]`, `material → stair → "ascent/signature" → [ids]`, `material → floor → signature → [ids]`, `material → door → any → [ids]` |
+| `pieces.json` | Per item id: `name`, `flags`, `height`, `role`, `material`, `signature`, `roof_side`, `step`, `uses_multi`, `uses_statics`, `multis`, `in` (multi ids that use it), `z_above_floor` |
+| `stairs.json` | Every stair run: `items`, `tiles`, `z_from`, `z_to`, `rise` (z per step), `direction`, `from_storey`, `to_storey`, `cells`, `source` |
+| `buildings.json` | Clusters of wall statics on a facet (west of the dungeons), each analysed like a multi, plus `furnishing` (item → count) |
+| `furnishing.json` | Per furnishing item: `placed`, `against_wall` and `on_surface` (fractions), `with` (the items most often in the same building) |
+| `summary.json` | Counts: multis by kind, statics and buildings scanned, `storey_steps`, `stair_rise`, `ground_floor_z` |
+
+Terms:
+
+- A **role** is `wall`, `window`, `post`, `door`, `floor`, `stair`, `roof`,
+  `deco` or `marker` (a hidden component), read from tiledata flags.
+- A **material** is the tile name without its role word. Walls, windows,
+  posts and doors take the wall material of the level they stand in, because
+  some tile names are unreliable.
+- A **signature** is which of `N` (y − 1), `E` (x + 1), `S` (y + 1) and
+  `W` (x − 1) hold the same kind of piece at the same z (`-` for none).
+- A roof **side** is the side a slope faces (`N`, `E`, `S`, `W`, or a corner
+  such as `NW`), or `ridge_x`/`ridge_y` along the top, or `cap`.
+- A step's **ascent** is the side the next higher surface is on.
+
+**A description** (`format` 1; e.g. `tools/multi/examples/cottage.json`):
+
+| Field | Meaning |
+|---|---|
+| `name` | The multi's name in the stage |
+| `size` `[W, H]` | Outer walls on the lines x = 0, x = W, y = 0 and y = H. The floor fills x 1..W, y 1..H, as the client's houses do |
+| `materials` | Required: `wall`, `floor`. Optional: `foundation` (a 5-high ring at `floor_z − 7`), `steps` (outside each ground-floor door), `roof`, `door` (`wood` or `metal`) |
+| `floor_z` | The ground floor's z (default 7, the originals' usual value) |
+| `storey_height` | z between storeys (default 20); `wall_height` defaults to one less |
+| `storeys[]` | Per storey, bottom up: `openings[]` (`kind` `door` or `window`, placed by `side` `N`/`E`/`S`/`W` with an `offset` along it, or by `at` `[x, y]`), `partitions[]` (inner walls: `{"x": k, "from", "to"}` or `{"y": k, ...}`), `floor_holes[]` (`[x, y]` left open, for stairwells) |
+| `roof` | `style` `gable` with `ridge` `x` or `y`. It covers x 1..W+1 and y 1..H+1 and rises 3 z a course, with gable-end fill (the wall material, 3 high) on the south or east end. The span across the ridge must be odd: W even for a ridge along y, H even for a ridge along x |
+
+**A built multi** (`build/multi/built/<name>/`, from `run.py build`):
+
+- `components.json`: `[item, x, y, z]` per component, with a fifth element
+  `0` when hidden, centred on `(W // 2, H // 2)`.
+- `multi.json`: `name`, `size`, `centre`, `storeys` (z), `roof_z`, `doors`,
+  `components`, `valid`, `problems`, `multi_id` (once written), and `local`
+  (the grid per storey, for the validator).
+  - Each door has `x` and `y` from the centre, `z`, `storey`, `facing` and
+    `type`.
+  - `facing` is ModernUO's `DoorFacing`: `WestCW` in a wall along x,
+    `SouthCW` in a wall along y.
+  - `type` is `DarkWoodHouseDoor` or `MetalHouseDoor`.
+- `preview.png`, `preview_noroof.png` and `plan_<n>.png`.
+
+**The validator** refuses:
+
+- an item missing from tiledata, or one with no art;
+- a z outside −128..127;
+- more than 4,676 components (the shard reads an entry into 64 KB);
+- a ground floor the outside reaches with the doors shut (a gap in a wall);
+- a floor cell not reachable through a door (ground floor) or from a stair
+  (upper storeys);
+- a multi with no door.
