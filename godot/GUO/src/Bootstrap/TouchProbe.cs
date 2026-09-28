@@ -127,6 +127,7 @@ internal static class TouchProbe
         Configuration.ProfileManager.CurrentProfile.ModernGumpsOff = true;
         await HelpGumpCheck(host, world);
         await WorldMapCheck(host, world);
+        await PaperdollFitCheck(host, world);
         // The long press is checked with hold-and-flick off, the way a player
         // who set every direction to "Do nothing" has it.
         {
@@ -1333,6 +1334,61 @@ internal static class TouchProbe
             map.FreeView = false;
             map.Dispose();
             await Frames(host, 10);
+        }
+    }
+
+    /// <summary>
+    /// The paperdoll's touch fit: one opened during play on one screen starts
+    /// larger than 1x (up to 2x, within the room); a size the player gives one
+    /// is the size the next opens at.
+    /// </summary>
+    private static async System.Threading.Tasks.Task PaperdollFitCheck(Node host, Game.World world)
+    {
+        // Earlier checks resize paperdolls, which the fit remembers; this one
+        // starts as a fresh session does.
+        UIManager.GetGump<PaperDollGump>(world.Player.Serial)?.Dispose();
+        await Frames(host, 5);
+        GumpPresentation.PaperdollScale = 0f;
+        Game.GameActions.OpenPaperdoll(world, world.Player.Serial);
+        PaperDollGump doll = null;
+
+        for (int i = 0; i < 120 && doll == null; i++)
+        {
+            await Frames(host, 1);
+            doll = UIManager.GetGump<PaperDollGump>(world.Player.Serial);
+        }
+
+        await Frames(host, 10);
+        float first = doll?.PresentationScale ?? 0f;
+        bool fits = doll != null && GumpPresentation.Bounds(doll).Height <= GumpPresentation.DisplayBounds(false).Height;
+
+        if (doll != null)
+        {
+            GumpPresentation.SetScale(doll, 1.5f, new Compat.Point(doll.X, doll.Y));
+            await Frames(host, 5);
+            doll.Dispose();
+            await Frames(host, 5);
+        }
+
+        Game.GameActions.OpenPaperdoll(world, world.Player.Serial);
+        PaperDollGump again = null;
+
+        for (int i = 0; i < 120 && again == null; i++)
+        {
+            await Frames(host, 1);
+            again = UIManager.GetGump<PaperDollGump>(world.Player.Serial);
+        }
+
+        await Frames(host, 10);
+        Check("a paperdoll opened on one touch screen starts larger than 1x, within the room; the next opens at the size the player gave the last",
+            first > 1.3f && fits && again != null && Mathf.IsEqualApprox(again.PresentationScale, 1.5f),
+            $"first {first:0.00}, fits {fits}, next {again?.PresentationScale:0.00}");
+
+        // The long press after this looks for its point at 1x.
+        if (again != null)
+        {
+            GumpPresentation.Reset(again);
+            await Frames(host, 5);
         }
     }
 

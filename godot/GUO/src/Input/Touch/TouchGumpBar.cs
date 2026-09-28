@@ -318,6 +318,7 @@ namespace GUO.Input.Touch
             // screen and drawn over the bar: the bar steps aside, reserving
             // nothing and taking no taps, until it closes.
             GumpPresentation.FitFullHeight();
+            GumpPresentation.FitPaperdolls();
             Covered = GumpPresentation.FullHeightOpen() || Modern.ModernGump.IsOpen;
             Visible = !GUO.Game.Managers.ScreenSaver.Active && !Covered;
 

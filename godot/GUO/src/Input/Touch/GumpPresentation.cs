@@ -186,6 +186,66 @@ internal static class GumpPresentation
         }
     }
 
+    private static readonly System.Collections.Generic.HashSet<Gump> _sized = new();
+    private static float _paperdollScale;
+
+    /// <summary>The size the next paperdoll opens at, 0 for the fit; the probe clears it.</summary>
+    internal static float PaperdollScale { get => _paperdollScale; set => _paperdollScale = value; }
+
+    /// <summary>
+    /// A paperdoll opened during play on one touch screen starts at a size a
+    /// finger can use (gump index: "the paperdoll's touch fit"): up to 2x, and
+    /// no taller than 85% of the room above the command bar. Once the player
+    /// pinches one, later paperdolls this session open at that size instead.
+    /// Not on the Thor, whose lower screen shelves it, and not for one reopened
+    /// at login, which keeps its saved size.
+    /// </summary>
+    public static void FitPaperdolls()
+    {
+        if (!TouchInput.Enabled || DualScreen.ShelfOn)
+        {
+            return;
+        }
+
+        _sized.RemoveWhere(g => g.IsDisposed);
+
+        foreach (Gump g in UIManager.Gumps)
+        {
+            if (g is not PaperDollGump || g.IsDisposed || g.Height <= 0)
+            {
+                continue;
+            }
+
+            if (_sized.Contains(g))
+            {
+                // Remember what the player chose, for the next one.
+                if (GumpFlick.Lifted != g)
+                {
+                    _paperdollScale = g.PresentationScale;
+                }
+
+                continue;
+            }
+
+            _sized.Add(g);
+
+            if (_restored.Contains(g) || Godot.Time.GetTicksMsec() < _restoreUntil || g.PresentationScale != 1f)
+            {
+                continue;
+            }
+
+            Rectangle room = DisplayBounds(false);
+            float fit = Math.Min(2f, room.Height * 0.85f / g.Height);
+            float scale = _paperdollScale > 0f ? _paperdollScale : fit;
+
+            if (scale > 1.01f)
+            {
+                SetScale(g, scale, new Point(g.X, g.Y));
+                TouchInput.Note($"paperdoll: opened at {g.PresentationScale:0.00}x");
+            }
+        }
+    }
+
     private static readonly System.Collections.Generic.HashSet<Gump> _followers = new();
 
     /// <summary>
