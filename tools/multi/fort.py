@@ -34,7 +34,7 @@ import generate as G  # noqa: E402
 from generate import SIDE_STEP, Catalogue, DescriptionError, signature  # noqa: E402
 from multifile import MAX_COMPONENTS, Component  # noqa: E402
 
-RANK = {"platform": 0, "causeway": 1, "stair": 2, "wall": 2, "tower": 3, "house": 4}
+RANK = {"platform": 0, "causeway": 1, "stair": 2, "wall": 2, "tower": 3, "house": 4, "props": 5}
 HEIGHTS = (20, 10, 5, 3)
 
 
@@ -474,6 +474,16 @@ class Scene:
         for st in side["local"]["storeys"]:
             cells |= set(map(tuple, st["walls"])) | set(map(tuple, st["floor"]))
         self.claim({(x + ox, y + oy) for (x, y) in cells}, RANK["house"])
+
+    def props(self, el, part):
+        """Loose items (a wall torch, a banner, debris): each `item` (an id) at `at`, `z`. They claim
+        no cells, so what they stand on or hang against stays; they are kept wherever they are."""
+        for p in el.get("items", []):
+            item = int(p["item"], 16) if isinstance(p["item"], str) else p["item"]
+            if f"{item:#06x}" not in self.cat.pieces:
+                self.problems.append(f"prop {p['item']} at {p['at']} is not a known piece")
+                continue
+            self.add(item, p["at"][0], p["at"][1], p["z"], RANK["props"], part)
 
     def build(self) -> list[dict]:
         for n, el in enumerate(self.desc["elements"]):

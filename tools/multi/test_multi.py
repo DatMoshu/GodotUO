@@ -239,6 +239,15 @@ def main() -> int:
         check([(c.item, c.x, c.y) for p in m1["parts"] for c in p["comps"]] ==
               [(c.item, c.x, c.y) for p in m2["parts"] for c in p["comps"]], "a mixed floor builds the same bytes")
 
+        # props: kept on top of what they stand on, which keeps its floor; an unknown piece reported
+        withp = json.loads(json.dumps(mixed))
+        withp["elements"].append({"type": "props", "part": "yard", "items": [
+            {"item": "0x0750", "at": [3, 3], "z": 0}, {"item": "0x7fff", "at": [4, 4], "z": 0}]})
+        mp = fort.build_scene(withp, cat)
+        at33 = sorted(c.item for p in mp["parts"] for c in p["comps"] if (c.x + p["centre"][0], c.y + p["centre"][1]) == (3, 3))
+        check(0x0750 in at33 and len(at33) == 2, f"a prop stands on the floor, which stays (got {[hex(i) for i in at33]})")
+        check(any("0x7fff" in q for q in mp["problems"]), "an unknown prop is reported")
+
         # the offline walk: a terrace at z 20 on walls, reached by a stair; a parapet cuts it
         import walkcheck
         from multifile import Component as C

@@ -776,6 +776,7 @@ against overlapping multis. Elements:
 | `causeway` | `path`, `width`, `z`, `rail`, `floor`, `buttress` (every N cells along it, a pier two cells long stands out from each side, of the face material's run pieces) |
 | `stair` | `at`, `rise`, `z`, `to`, `width`, `landings` (z levels where it pauses on a landing `landing` cells long, default 2, then goes on the same way; everything stands on blocks from `z`) |
 | `house` | `desc` (a house description), `at`, `z` |
+| `props` | `items[]` (`item` id, `at`, `z`): loose pieces (a wall torch, a banner, debris) kept wherever they stand; they claim no cells, so the floor or wall under them stays |
 
 A scene's `ground` (default 0) is the height it stands on; `plinth` (default
 6) is how far below that its walls, towers, platforms, causeways, stairs and
