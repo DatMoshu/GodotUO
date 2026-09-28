@@ -23,14 +23,15 @@ namespace GUO.Input.Touch;
 /// second screen, and only when the profile's CompanionTabs is on (Options,
 /// "Companion tabs on the second screen"; off by default while it is a
 /// prototype) or --companion-tabs is given. The desktop never sees it. Drawn
-/// like the window menu: Godot controls in a SubViewport, in the window
-/// card's charcoal and gold, drawn into the second screen's bitmap by
+/// like the window menu: Godot controls in a SubViewport, in the client's
+/// own look (UoTheme: stone, parchment, font 1, the plate buttons, at a
+/// whole-number scale), drawn into the second screen's bitmap by
 /// DualScreen.Draw; the second screen's touches come here first
 /// (<see cref="HandleInput"/>).
 /// </remarks>
 internal sealed partial class CompanionTabs : Node
 {
-    private static readonly Color Gold = new("dfbb77"), Text = new("eeeade"), Muted = new("abb5ac"), Fill = new("141917");
+    private static readonly Color Text = UoTheme.Ink, Muted = UoTheme.Muted, Heading = UoTheme.Heading;
 
     /// <summary>Set by --companion-tabs, for a run that shows them without a profile change.</summary>
     public static bool Forced { get; set; }
@@ -69,8 +70,16 @@ internal sealed partial class CompanionTabs : Node
         }
     }
 
-    /// <summary>The height of the Classic-mode strip along the second screen's bottom.</summary>
-    private const int StripHeight = 36;
+    /// <summary>
+    /// Art pixels to the second screen's logical pixels: a whole number, one
+    /// step under the cards' (UoTheme.PixelScale), as the tabs hold running
+    /// text. The viewport is 1:1 with the screen's logical pixels, so one art
+    /// pixel is always a square of them.
+    /// </summary>
+    private static int ArtScale => Math.Max(1, UoTheme.PixelScale - 1);
+
+    /// <summary>The height of the Classic-mode strip along the second screen's bottom: a plate and a margin.</summary>
+    private static int StripHeight => (UoTheme.ButtonHeight + 6) * ArtScale;
 
     /// <summary>
     /// Logical pixels the shelf keeps gumps out of: in Classic mode the "‹ Tabs"
@@ -91,144 +100,129 @@ internal sealed partial class CompanionTabs : Node
             HandleInputLocally = true,
             GuiEmbedSubwindows = true,
             RenderTargetUpdateMode = SubViewport.UpdateMode.Always,
+            CanvasItemDefaultTextureFilter = Viewport.DefaultCanvasItemTextureFilter.Nearest,
             Size = new Vector2I(64, 64),
         };
         AddChild(_viewport);
         _root = new Control { MouseFilter = Control.MouseFilterEnum.Ignore };
         _viewport.AddChild(_root);
-        Build();
+
+        // Built on first use (_Process), once the client's art is loaded: the
+        // panel is the client's own gumps and font (UoTheme).
     }
+
+    private bool _built;
 
     // --- building ---------------------------------------------------------------
 
-    private static StyleBoxFlat Box(string bg, string border, int radius = 8, int pad = 12) => new()
+    /// <summary>A label in font 1 (2x for the name), wrapping at words.</summary>
+    private static Label Lbl(string text, bool big, Color color)
     {
-        BgColor = new Color(bg), BorderColor = new Color(border),
-        BorderWidthLeft = 1, BorderWidthRight = 1, BorderWidthTop = 1, BorderWidthBottom = 1,
-        CornerRadiusTopLeft = radius, CornerRadiusTopRight = radius, CornerRadiusBottomLeft = radius, CornerRadiusBottomRight = radius,
-        ContentMarginLeft = pad, ContentMarginRight = pad, ContentMarginTop = 6, ContentMarginBottom = 6,
-    };
-
-    private static Theme BuildTheme()
-    {
-        var theme = new Theme { DefaultFontSize = 15 };
-        theme.SetStylebox("normal", "Button", Box("202922", "455342"));
-        theme.SetStylebox("hover", "Button", Box("303d2e", "b4a16b"));
-        theme.SetStylebox("pressed", "Button", Box("3f4931", "dfbb77"));
-        theme.SetStylebox("focus", "Button", new StyleBoxEmpty());
-        theme.SetColor("font_color", "Button", Text);
-        theme.SetColor("font_hover_color", "Button", Text);
-        theme.SetColor("font_pressed_color", "Button", Text);
-        theme.SetColor("font_color", "Label", Text);
-        return theme;
-    }
-
-    private static Label Lbl(string text, int size, Color color)
-    {
-        var l = new Label { Text = text, AutowrapMode = TextServer.AutowrapMode.WordSmart };
-        l.AddThemeFontSizeOverride("font_size", size);
-        l.AddThemeColorOverride("font_color", color);
+        Label l = UoTheme.Label(text, color, big ? 2 : 1);
+        l.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         return l;
     }
 
+    /// <summary>A parchment card, as the client's text fields and scrolls.</summary>
+    private static StyleBox Parchment() => UoTheme.Frame(UoTheme.FieldFrame, 6);
+
     private void Build()
     {
-        _panel = new PanelContainer { Theme = BuildTheme() };
-        _panel.AddThemeStyleboxOverride("panel", new StyleBoxFlat { BgColor = Fill, ContentMarginLeft = 12, ContentMarginRight = 12, ContentMarginTop = 10, ContentMarginBottom = 10 });
+        _panel = new PanelContainer { Theme = UoTheme.Theme };
         _root.AddChild(_panel);
 
         var col = new VBoxContainer();
-        col.AddThemeConstantOverride("separation", 10);
+        col.AddThemeConstantOverride("separation", 5);
         _panel.AddChild(col);
 
         // Tab strip: the two destinations, and Classic to go back to the shelf.
         var tabs = new HBoxContainer();
-        tabs.AddThemeConstantOverride("separation", 8);
+        tabs.AddThemeConstantOverride("separation", 4);
         col.AddChild(tabs);
         _tabJournal = Tab("Journal", () => Show(0));
         _tabCharacter = Tab("Character", () => Show(1));
         tabs.AddChild(_tabJournal);
         tabs.AddChild(_tabCharacter);
         tabs.AddChild(new Control { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill });
-        tabs.AddChild(Tab("Classic ›", () => SetClassic(true)));
+        tabs.AddChild(Tab("Classic", () => SetClassic(true)));
 
         // Journal: the newest lines at the bottom; a finger drag scrolls back.
         _journalView = new Control { SizeFlagsVertical = Control.SizeFlags.ExpandFill, ClipContents = true, MouseFilter = Control.MouseFilterEnum.Ignore };
         col.AddChild(_journalView);
         var journalCard = new Panel { MouseFilter = Control.MouseFilterEnum.Ignore };
-        journalCard.AddThemeStyleboxOverride("panel", Box("1b221e", "354039", 10));
+        journalCard.AddThemeStyleboxOverride("panel", Parchment());
         journalCard.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
         _journalView.AddChild(journalCard);
         _journalLines = new VBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
-        _journalLines.AddThemeConstantOverride("separation", 4);
+        _journalLines.AddThemeConstantOverride("separation", 1);
         _journalView.AddChild(_journalLines);
 
         // Character: who, the three bars, then the numbers.
         _characterView = new VBoxContainer { SizeFlagsVertical = Control.SizeFlags.ExpandFill, Visible = false };
-        ((VBoxContainer)_characterView).AddThemeConstantOverride("separation", 8);
+        ((VBoxContainer)_characterView).AddThemeConstantOverride("separation", 5);
         col.AddChild(_characterView);
         var who = new PanelContainer();
-        who.AddThemeStyleboxOverride("panel", Box("1b221e", "354039", 10, 14));
+        who.AddThemeStyleboxOverride("panel", Parchment());
         _characterView.AddChild(who);
         var whoCol = new VBoxContainer();
         who.AddChild(whoCol);
-        whoCol.AddChild(_name = Lbl("", 24, Text));
-        whoCol.AddChild(_title = Lbl("", 14, Muted));
+        whoCol.AddThemeConstantOverride("separation", 3);
+        whoCol.AddChild(_name = Lbl("", true, Heading));
+        whoCol.AddChild(_title = Lbl("", false, Muted));
         whoCol.AddChild(_hits = Bar(new Color("b8483e"), "Hits"));
         whoCol.AddChild(_mana = Bar(new Color("3f6fc4"), "Mana"));
         whoCol.AddChild(_stam = Bar(new Color("c9a23b"), "Stamina"));
 
         var numbers = new PanelContainer();
-        numbers.AddThemeStyleboxOverride("panel", Box("1b221e", "354039", 10, 14));
+        numbers.AddThemeStyleboxOverride("panel", Parchment());
         _characterView.AddChild(numbers);
         var grid = new GridContainer { Columns = 4 };
-        grid.AddThemeConstantOverride("h_separation", 18);
-        grid.AddThemeConstantOverride("v_separation", 6);
+        grid.AddThemeConstantOverride("h_separation", 10);
+        grid.AddThemeConstantOverride("v_separation", 2);
         numbers.AddChild(grid);
 
         foreach (string key in new[] { "Strength", "Gold", "Dexterity", "Weight", "Intelligence", "Armour" })
         {
-            Label k = Lbl(key, 15, Muted);
+            Label k = Lbl(key, false, Muted);
             k.AutowrapMode = TextServer.AutowrapMode.Off;
-            Label v = Lbl("", 17, Text);
+            Label v = Lbl("", false, Text);
             v.AutowrapMode = TextServer.AutowrapMode.Off;
-            v.CustomMinimumSize = new Vector2(90, 0);
+            v.CustomMinimumSize = new Vector2(60, 0);
             grid.AddChild(k);
             grid.AddChild(v);
             _values[key] = v;
         }
 
         // Classic mode: one pill in the corner to come back.
-        _pill = new PanelContainer { Theme = BuildTheme(), Visible = false };
+        _pill = new PanelContainer { Theme = UoTheme.Theme, Visible = false };
         _pill.AddThemeStyleboxOverride("panel", new StyleBoxEmpty());
-        Button back = Tab("‹ Tabs", () => SetClassic(false));
-        back.CustomMinimumSize = new Vector2(84, 30);
+        Button back = Tab("Tabs", () => SetClassic(false));
         _pill.AddChild(back);
         _root.AddChild(_pill);
     }
 
     private static Button Tab(string text, Action pressed)
     {
-        var b = new Button { Text = text, CustomMinimumSize = new Vector2(96, 44) };
-        b.AddThemeFontSizeOverride("font_size", 16);
+        Button b = UoTheme.Button(text, 64);
         b.Pressed += pressed;
         return b;
     }
 
     private static ProgressBar Bar(Color color, string what)
     {
-        var bar = new ProgressBar { CustomMinimumSize = new Vector2(0, 22), ShowPercentage = false, TooltipText = what };
+        // Square, framed in ink, one flat colour: the client's own bars are.
+        var bar = new ProgressBar { CustomMinimumSize = new Vector2(0, 16), ShowPercentage = false, TooltipText = what };
         bar.AddThemeStyleboxOverride("background", new StyleBoxFlat
         {
-            BgColor = new Color("2c352f"),
-            CornerRadiusTopLeft = 5, CornerRadiusTopRight = 5, CornerRadiusBottomLeft = 5, CornerRadiusBottomRight = 5,
+            BgColor = new Color("3a342c"), BorderColor = UoTheme.Ink,
+            BorderWidthLeft = 1, BorderWidthTop = 1, BorderWidthRight = 1, BorderWidthBottom = 1,
         });
         bar.AddThemeStyleboxOverride("fill", new StyleBoxFlat
         {
-            BgColor = color,
-            CornerRadiusTopLeft = 5, CornerRadiusTopRight = 5, CornerRadiusBottomLeft = 5, CornerRadiusBottomRight = 5,
+            BgColor = color, BorderColor = UoTheme.Ink,
+            BorderWidthLeft = 1, BorderWidthTop = 1, BorderWidthRight = 1, BorderWidthBottom = 1,
         });
-        var label = Lbl(what, 13, Text);
+        Label label = Lbl(what, false, UoTheme.Cream);
         label.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
         label.HorizontalAlignment = HorizontalAlignment.Center;
         label.VerticalAlignment = VerticalAlignment.Center;
@@ -244,8 +238,13 @@ internal sealed partial class CompanionTabs : Node
         _tab = tab;
         _journalView.Visible = tab == 0;
         _characterView.Visible = tab == 1;
-        _tabJournal.AddThemeStyleboxOverride("normal", tab == 0 ? Box("3f4931", "dfbb77") : Box("202922", "455342"));
-        _tabCharacter.AddThemeStyleboxOverride("normal", tab == 1 ? Box("3f4931", "dfbb77") : Box("202922", "455342"));
+        // The open tab is the pressed plate, captioned in the heading colour.
+        foreach ((Button b, bool on) in new[] { (_tabJournal, tab == 0), (_tabCharacter, tab == 1) })
+        {
+            b.AddThemeStyleboxOverride("normal", UoTheme.Plate(on ? 0.70f : 1f));
+            b.AddThemeColorOverride("font_color", on ? Heading : Text);
+        }
+
         _refresh = 0;
         GD.Print($"[GUO] companion tabs: {State}");
     }
@@ -263,16 +262,27 @@ internal sealed partial class CompanionTabs : Node
             return;
         }
 
-        float dpi = Math.Max(1f, Client.Game.DpiScale);
+        if (!_built)
+        {
+            if (!UoTheme.Ready)
+            {
+                return;
+            }
+
+            Build();
+            _built = true;
+        }
+
+        float art = ArtScale;
         var size = new Vector2(DualScreen.LogicalWidth, DualScreen.LogicalHeight);
 
-        if (size != _size || dpi != _scale)
+        if (size != _size || art != _scale)
         {
             _size = size;
-            _scale = dpi;
-            _root.Scale = new Vector2(dpi, dpi);
+            _scale = art;
+            _root.Scale = new Vector2(art, art);
             _panel.Position = Vector2.Zero;
-            _panel.Size = size;
+            _panel.Size = (size / art).Floor();
             Show(_tab);
         }
 
@@ -284,12 +294,12 @@ internal sealed partial class CompanionTabs : Node
             // The pill in its own strip along the bottom (ShelfReserve); the
             // viewport covers only that strip.
             _pill.ResetSize();
-            _pill.Position = new Vector2(size.X - _pill.Size.X - 6, (StripHeight - _pill.Size.Y) / 2);
-            _viewport.Size = new Vector2I((int)Math.Ceiling(size.X * dpi), (int)Math.Ceiling(StripHeight * dpi));
+            _pill.Position = new Vector2((int)(size.X / art) - _pill.Size.X - 3, (int)((StripHeight / art - _pill.Size.Y) / 2));
+            _viewport.Size = new Vector2I((int)size.X, StripHeight);
             return;
         }
 
-        _viewport.Size = new Vector2I((int)Math.Ceiling(size.X * dpi), (int)Math.Ceiling(size.Y * dpi));
+        _viewport.Size = new Vector2I((int)size.X, (int)size.Y);
 
         _refresh -= delta;
 
@@ -324,13 +334,13 @@ internal sealed partial class CompanionTabs : Node
                 if (e == null) continue;
                 bool system = string.IsNullOrEmpty(e.Name) || e.Name == "System";
                 var row = new HBoxContainer();
-                row.AddThemeConstantOverride("separation", 10);
-                Label time = Lbl(e.Time.ToString("HH:mm"), 13, new Color(Muted, 0.8f));
+                row.AddThemeConstantOverride("separation", 6);
+                Label time = Lbl(e.Time.ToString("HH:mm"), false, Muted);
                 time.AutowrapMode = TextServer.AutowrapMode.Off;
-                time.CustomMinimumSize = new Vector2(40, 0);
+                time.CustomMinimumSize = new Vector2(32, 0);
                 time.VerticalAlignment = VerticalAlignment.Top;
                 row.AddChild(time);
-                var text = Lbl(system ? e.Text : $"{e.Name}: {e.Text}", 16, system ? Gold : Text);
+                var text = Lbl(system ? e.Text : $"{e.Name}: {e.Text}", false, system ? Heading : Text);
                 text.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
                 row.AddChild(text);
                 _journalLines.AddChild(row);
@@ -384,10 +394,11 @@ internal sealed partial class CompanionTabs : Node
     /// <summary>The panel (or the pill), drawn into the second screen's bitmap in client pixels.</summary>
     public static void DrawShelf(UltimaBatcher2D b)
     {
-        if (_instance == null || !Active) return;
+        if (_instance == null || !Active || !_instance._built) return;
         CompanionTabs m = _instance;
+        // The viewport is the screen's logical pixels, 1:1.
         Vector2I px = m._viewport.Size;
-        int w = (int)Math.Round(px.X / m._scale), h = (int)Math.Round(px.Y / m._scale);
+        int w = px.X, h = px.Y;
         int x = DualScreen.MainWidth;
         int y = m._classic ? DualScreen.LogicalHeight - StripHeight : 0;
         b.Draw(m._viewport.GetTexture(), new Compat.Rectangle(x, y, w, h), ShaderHueTranslator.GetHueVector(0), 0);
@@ -400,7 +411,7 @@ internal sealed partial class CompanionTabs : Node
     /// </summary>
     public static bool HandleInput(InputEvent e)
     {
-        if (_instance == null || !Active) return false;
+        if (_instance == null || !Active || !_instance._built) return false;
         CompanionTabs m = _instance;
 
         Vector2? window = e switch
@@ -417,7 +428,7 @@ internal sealed partial class CompanionTabs : Node
         if (client.X < DualScreen.MainWidth) return false;
 
         float top = m._classic ? DualScreen.LogicalHeight - StripHeight : 0;
-        Vector2 local = (client - new Vector2(DualScreen.MainWidth, top)) * m._scale;
+        Vector2 local = client - new Vector2(DualScreen.MainWidth, top);
 
         if (m._classic && !new Rect2(Vector2.Zero, m._viewport.Size).HasPoint(local)) return false;
 
@@ -439,7 +450,7 @@ internal sealed partial class CompanionTabs : Node
                     if (Math.Abs(client.Y - m._dragLast.Y) > 0 || m._dragMoved)
                     {
                         m._dragMoved |= Math.Abs(dy) > 0.5f;
-                        m._journalScroll += dy;
+                        m._journalScroll += dy / m._scale;
                         m.LayoutJournal();
                     }
                     m._dragLast = client;
