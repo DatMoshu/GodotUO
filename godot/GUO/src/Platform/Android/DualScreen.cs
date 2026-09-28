@@ -47,9 +47,9 @@ namespace GUO.Platform.Android
     /// presentation is shown as soon as the client is up and stays until
     /// exit. While the shelf is not in use -- before the player is in the
     /// world, or in the world with the shelf turned off -- the second screen
-    /// shows the welcome panel (<see cref="DualWelcomeGump"/>): the sigil, a
-    /// welcome line, and the second screen's own settings, which can be
-    /// changed from there or from Options and apply live. The settings are
+    /// shows the pre-game card (<see cref="Input.Touch.Pregame.PregameCard"/>):
+    /// Servers and Settings, the second screen's own settings among them,
+    /// which can be changed from there or from Options and apply live. The settings are
     /// <see cref="DualScreenSettings"/>, which reach the profile when there
     /// is one and stand in for it before.
     /// </remarks>
@@ -77,7 +77,6 @@ namespace GUO.Platform.Android
         private int _appliedScale = -1;
         private int _appliedScalePercent = -1;
         private DualScreenSettings.Values _applied;
-        private DualWelcomeGump _welcome;
         private Vector2I _mainSize;
         private readonly HashSet<Gump> _seen = new();
         private readonly HashSet<int> _fingersDown = new();
@@ -259,6 +258,7 @@ namespace GUO.Platform.Android
 
             _instance = instance;
             host.AddChild(instance);
+            Input.Touch.Pregame.PregameCard.Setup(host);
         }
 
         /// <summary>
@@ -318,6 +318,9 @@ namespace GUO.Platform.Android
 
             // Companion tabs, when on, cover the shelf (CompanionTabs).
             CompanionTabs.DrawShelf(batcher);
+
+            // With the shelf not in use, the pre-game card has the screen.
+            Input.Touch.Pregame.PregameCard.DrawSecond(batcher);
 
             // The held item. GameCursor draws it at the pointer into the main
             // window's target, so a pick-up from a shelved gump put it past
@@ -599,14 +602,14 @@ namespace GUO.Platform.Android
 
             if (shelfOn)
             {
-                DisposeWelcome();
+                HideCard();
                 ApplyLive(settings);
                 Shelve(settings);
                 ClampShelf();
             }
             else
             {
-                EnsureWelcome();
+                ShowCard();
             }
 
             _applied = settings;
@@ -688,7 +691,7 @@ namespace GUO.Platform.Android
             _target = null;
             _lastFrame = null;
 
-            DisposeWelcome();
+            HideCard();
             BringBack();
 
             GD.Print("[GUO] dual screen: inactive");
@@ -702,7 +705,7 @@ namespace GUO.Platform.Android
         {
             foreach (Gump g in UIManager.Gumps)
             {
-                if (!g.IsDisposed && g is not DualWelcomeGump)
+                if (!g.IsDisposed)
                 {
                     g.SetInScreen();
                 }
@@ -710,41 +713,26 @@ namespace GUO.Platform.Android
         }
 
         // ==========================
-        // === The welcome panel ====
+        // === The pre-game card ====
         // ==========================
 
         /// <summary>
-        /// The welcome panel on the second screen whenever the shelf is not
-        /// in use. Made again when a scene change disposed it, kept at the
-        /// second screen's origin when the main window changes width.
+        /// The pre-game card on the second screen whenever the shelf is not
+        /// in use (<see cref="Input.Touch.Pregame.PregameCard"/>); it follows
+        /// the second screen's size and the main window's width by itself.
         /// </summary>
-        private void EnsureWelcome()
+        private static void ShowCard()
         {
-            if (_welcome == null || _welcome.IsDisposed)
+            if (!Input.Touch.Pregame.PregameCard.OnSecond)
             {
-                _welcome = new DualWelcomeGump(Client.Game.UO.World, _logicalWidth, _logicalHeight)
-                {
-                    X = MainWidth,
-                    Y = 0,
-                };
-
-                UIManager.Add(_welcome);
-                GD.Print($"[GUO] dual screen: welcome panel {_logicalWidth}x{_logicalHeight} at x={MainWidth}");
-            }
-            else if (_welcome.X != MainWidth)
-            {
-                _welcome.X = MainWidth;
+                Input.Touch.Pregame.PregameCard.OnSecond = true;
+                GD.Print($"[GUO] dual screen: pre-game card on the second screen at x={MainWidth}");
             }
         }
 
-        private void DisposeWelcome()
+        private static void HideCard()
         {
-            if (_welcome != null && !_welcome.IsDisposed)
-            {
-                _welcome.Dispose();
-            }
-
-            _welcome = null;
+            Input.Touch.Pregame.PregameCard.OnSecond = false;
         }
 
         /// <summary>
@@ -1158,8 +1146,9 @@ namespace GUO.Platform.Android
 
         private static void Deliver(InputEvent e)
         {
-            // Companion tabs, when on, have this screen's fingers first.
-            if (CompanionTabs.HandleInput(e))
+            // Companion tabs, when on, have this screen's fingers first; with
+            // the shelf not in use, the pre-game card has them.
+            if (CompanionTabs.HandleInput(e) || Input.Touch.Pregame.PregameCard.HandleInput(e))
             {
                 return;
             }

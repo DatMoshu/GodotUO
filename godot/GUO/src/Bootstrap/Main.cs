@@ -250,6 +250,10 @@ public partial class Main : Node
                 {
                     DualProbeThenMaybeQuit();
                 }
+                else if (_options.PregameProbe)
+                {
+                    PregameProbeThenMaybeQuit();
+                }
                 else if (_options.HighlightProbe)
                 {
                     HighlightProbeThenQuit();
@@ -731,7 +735,7 @@ public partial class Main : Node
         if (_options.LoginProbeQuits)
         {
             // The second screen (dual from launch, ADR-0009) shows the
-            // welcome panel at the login screen; a few frames so it has
+            // pre-game card at the login screen; a few frames so it has
             // been pushed at least once.
             if (GUO.Platform.Android.DualScreen.HasSecondaryDisplay)
             {
@@ -781,6 +785,20 @@ public partial class Main : Node
     }
 
     /// <summary>Picture each of GUO's own mobile UIs and exit; see GalleryProbe.</summary>
+    /// <summary>
+    /// The pre-game card on the second screen, at the login screen; see
+    /// PregameProbe. Quits on a desktop, stays up on a device for its photographs.
+    /// </summary>
+    private async void PregameProbeThenMaybeQuit()
+    {
+        await PregameProbe.Run(this, _options.ScreenshotDir, _options.ScreenshotName);
+
+        if (!OS.HasFeature("mobile"))
+        {
+            Quit(PregameProbe.Passed ? 0 : 1);
+        }
+    }
+
     private async void UiGalleryThenQuit()
     {
         await GalleryProbe.Run(this, _options.ScreenshotDir, _options.ScreenshotName);
@@ -1036,6 +1054,7 @@ public partial class Main : Node
                 || LoginProbe
                 || UiProbe
                 || DualProbe
+                || PregameProbe
                 || ShardCommands.Count > 0
                 || ShotAfter > 0);
 
@@ -1196,6 +1215,9 @@ public partial class Main : Node
 
         /// <summary>Whether the login probe quits once it has reported. Default true.</summary>
         public bool LoginProbeQuits { get; private set; } = true;
+
+        /// <summary>The second screen's pre-game card at the login screen; see PregameProbe.</summary>
+        public bool PregameProbe { get; private set; }
 
         /// <summary>Log in, use the second screen, report and photograph it; see DualProbe.</summary>
         public bool DualProbe { get; private set; }
@@ -1453,6 +1475,9 @@ public partial class Main : Node
                         break;
                     case "--dual-probe":
                         o.DualProbe = true;
+                        break;
+                    case "--pregame-probe":
+                        o.PregameProbe = true;
                         break;
                     case "--dual-probe-held":
                         o.DualProbe = true;

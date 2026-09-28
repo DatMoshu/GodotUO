@@ -385,7 +385,9 @@ the paperdoll.
    world, and the setting on", and `ExtraWidth` (what the gump clamps add)
    follows `ShelfOn`, so nothing about gump clamping changes while the
    shelf is not in use.
-2. **The welcome panel** (`DualWelcomeGump`, `src/Game/UI/Gumps/`). While
+2. **The welcome panel** (`DualWelcomeGump`, `src/Game/UI/Gumps/`; since
+   2026-09-28 replaced by the pre-game card, `src/Input/Touch/Pregame/`, see
+   `docs/ui/second_screen_pregame.md`). While
    the shelf is not in use -- before the player is in the world, and in the
    world with the shelf turned off -- the second screen shows a gump placed
    at `X = MainWidth` and sized to the second screen: the GUO sigil

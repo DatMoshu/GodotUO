@@ -174,7 +174,7 @@ namespace GUO.Configuration
         // PORT DEVIATION (GUO): which gumps the shelf takes when they open
         // (DualScreen.Shelve), and the second screen's own pixel scale
         // (0 = the main screen's). Upstream-neutral here; PlatformDefaults
-        // v7 turns the four on. Set from the welcome panel before a profile
+        // v7 turns the four on. Set from the pre-game card before a profile
         // exists (DualScreenSettings carries that into the profile) and from
         // Options after.
         public bool DualScreenShelvePaperdoll { get; set; }
