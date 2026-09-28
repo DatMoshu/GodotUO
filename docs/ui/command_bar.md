@@ -113,10 +113,20 @@ the way UO itself says it.
 
 ### Handle affordance and the grab zone
 
-The arrow tab is the handle. The empty parts of the handle strip also start a
-drag: any part not covered by a chip or by the target header. The strip is
-above every row and holds no button, so a grab there cannot run a command.
-The rows never take the gesture.
+The arrow tab is the handle. Its grab zone is the tab, widened by one gap on
+each side and extended to the strip's full height. It covers no command, so
+a grab there cannot run one. The rows never take the gesture.
+
+The strip has no band, and gumps are not kept above it; only the open rows
+are reserved. The first build reserved the whole strip and made all of it a
+grab zone. On the Odin that put Options' Cancel/Apply row under the strip:
+it fit under the old bar, but not above the strip. The target header carries
+its own small backing, and the chips have their plates.
+
+With three rows open, a gump taller than the room left above them (Options
+on the Odin) is kept at the top of the screen, and its bottom sits under the
+rows until they close. This is open for the owner: the alternative is to fit
+such a gump to the room, which changes its size.
 
 ## Principles
 

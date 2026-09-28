@@ -369,11 +369,17 @@ namespace GUO.Input.Touch
         private int _sweptCount = -1;
         private int _sweepIn;
 
-        /// <summary>The bar's top edge, handle strip included, in viewport pixels.</summary>
+        /// <summary>
+        /// The top of the open rows, in viewport pixels: what gumps are kept
+        /// above. The handle strip is not reserved: it has no band, only the
+        /// arrow tab, the target and the chips, so a gump may sit under it
+        /// (seen on the Odin: Options' Cancel/Apply row fits under the strip
+        /// and not above it, as it did under the old bar).
+        /// </summary>
         private float TopEdge()
         {
             Layout(out Geometry geo);
-            return geo.StripTop;
+            return geo.StripBottom;
         }
 
         /// <summary>
@@ -606,11 +612,14 @@ namespace GUO.Input.Touch
             return new Rect2((int)x, y, size.X, size.Y);
         }
 
-        /// <summary>The handle strip, where a finger can grab the bar too.</summary>
-        private Rect2 StripRect()
+        /// <summary>Where a finger takes the handle: the arrow tab, a gap wider each side, the strip's full height.</summary>
+        private Rect2 GrabRect()
         {
             Layout(out Geometry geo);
-            return new Rect2(0, geo.StripTop, geo.View.X, geo.StripBottom - geo.StripTop);
+            Rect2 tab = HandleRect();
+            float margin = GapArt * geo.Scale;
+
+            return new Rect2(tab.Position.X - margin, geo.StripTop, tab.Size.X + 2 * margin, geo.StripBottom - geo.StripTop);
         }
 
         // --- the handle: tap, drag, settle ----------------------------------
@@ -1058,9 +1067,10 @@ namespace GUO.Input.Touch
                 }
             }
 
-            // The whole strip is the grab zone: it holds no command, so a grab
-            // there can run nothing. The chips were tested first.
-            if (HandleShown && (HandleRect().HasPoint(at) || StripRect().HasPoint(at)))
+            // The arrow tab is the grab zone, widened by a gap each side and
+            // to the strip's height: a thumb finds it without aiming, and it
+            // covers no command. The strip itself is left to the gumps under it.
+            if (HandleShown && GrabRect().HasPoint(at))
             {
                 action = Handle;
 
@@ -1515,8 +1525,6 @@ namespace GUO.Input.Touch
                 return;
             }
 
-            canvas.DrawRect(StripRect(), Band);
-
             // Minimised gumps (GumpMinimise): a chip each, tap to restore. On
             // the Thor they are on the lower screen (DrawShelfChips).
             foreach ((string chip, Rect2 r) in OnShelf ? _noChips : ChipRects())
@@ -1581,13 +1589,18 @@ namespace GUO.Input.Touch
             float stripH = geo.StripBottom - geo.StripTop;
             float top = geo.StripTop + (int)((stripH - nameH - gap - barsH) / 2);
             float cx = geo.View.X / 2;
+            float w = System.Math.Clamp(nameW, 40 * s, 80 * s);
+
+            // Its own backing, as the strip has no band: legible over the world
+            // or over a gump's edge.
+            float boxW = System.Math.Max(nameW, w) + 8 * s;
+            canvas.DrawRect(new Rect2((int)(cx - boxW / 2), top - s, boxW, nameH + gap + barsH + 3 * s), Band);
 
             if (label != null)
             {
                 canvas.DrawTextureRect(label, new Rect2((int)(cx - nameW / 2), top, nameW, nameH), false);
             }
 
-            float w = System.Math.Clamp(nameW, 40 * s, 80 * s);
             float x = (int)(cx - w / 2);
             float y = top + nameH + gap;
 
