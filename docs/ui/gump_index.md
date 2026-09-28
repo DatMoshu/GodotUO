@@ -72,7 +72,7 @@ The measurements behind the risk column are in `tall_gumps.md`.
 | Macro, spell, skill and ability buttons (MacroButtonGump, UseSpellButtonGump, SkillButtonGump, UseAbilityButtonGump, RacialAbilityButton) | single buttons | The command bar covers these on touch |
 | Popup and context menus (PopupMenuGump), split stack (SplitMenuGump), questions and messages (QuestionGump, MessageBoxGump, TextEntryDialogGump, PartyInviteGump) | small, modal | |
 | Chat (ChatGump, ChatGumpChooseName) | 220 × 200 | |
-| Colour picker (ColorPickerGump) | small | Opened from Options: Modern Options needs its own |
+| Colour picker (ColorPickerGump) | small | Opened from Options: **Modern Options has its own** (ModernHuePicker, the same palette). The dye tub's picker (a shard's 0x95) stays Classic |
 | Profile (ProfileGump), books (ModernBookGump), text container (TextContainerGump) | medium, scroll | |
 | Ignore list (IgnoreManagerGump), user markers (UserMarkersGump) | ≤ 320 × 220 | |
 | Location go (LocationGoGump), quest arrow, tip notice, name overhead, network stats, debug, credits, menu (MenuGump) | small | MenuGump's large constant is a scroll height, not its size |
@@ -103,8 +103,8 @@ Odin photos, and commit each gump in its own small batch:
   companion Journal tab passed drag back and following new lines; opening at
   the newest line is fixed and waits for its device recheck.
 - **Open:** the bulletin board and the shop wait on the owner's decision
-  (`modern/board_and_shop_note.md`). The Options hues and font pickers need
-  a Modern colour picker first.
+  (`modern/board_and_shop_note.md`). The Options colours now have a Modern
+  picker; the font pickers stay Classic.
 
 Help and Admin are shard gumps. By ADR-0024 they stay Classic, with the
 type-ID full-height fit as their treatment.

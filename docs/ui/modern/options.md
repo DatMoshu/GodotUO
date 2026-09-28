@@ -105,12 +105,19 @@ tall, and all of it is the target.
   - ignore guild or alliance messages;
   - party messages overhead.
 
-  The hues and the font pickers on these pages stay in Classic view: they
-  need a colour picker and a font preview of their own.
+  The speech colours (speech, emote, yell, whisper, party, guild, alliance,
+  chat) and the tooltip text colour are colour rows (below). The font
+  pickers stay in Classic view: they need a font preview of their own.
 - **Combat:** ask before a criminal act, or a criminal beneficial one; cast
   spells by one click; buff bar timers; fast spell assign; colour spells by
-  kind; show DPS with damage. The notoriety and spell hues stay in Classic
-  view.
+  kind; show DPS with damage. Then the notoriety colours (innocent, friend,
+  criminal, can be attacked, enemy, murderer) and the spell colours
+  (beneficial, harmful, neutral), as colour rows.
+- **A colour row:** its name, a swatch and the hue number, and Change. Change
+  shows the colour picker (ModernHuePicker) in place of the page. It is the
+  classic ColorPickerGump's palette (20 × 10 hues, the same hues) as
+  finger-sized cells, with its slider's five shades as plates, and then Use
+  this colour or Back. The hue is written on Apply, as the classic's is.
 - **Containers:** grid view, grid slot size.
 - **Touch:**
   - vibrate when the bar snaps;

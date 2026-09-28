@@ -1106,6 +1106,7 @@ internal static class TouchProbe
     {
         Configuration.Profile p = Configuration.ProfileManager.CurrentProfile;
         bool tooltip = p.UseTooltip, unicode = p.ForceUnicodeJournal, party = p.OverheadPartyMessages;
+        ushort speechHue = p.SpeechHue;
         Game.GameActions.OpenSettings(world);
         await Frames(host, 10);
 
@@ -1121,11 +1122,25 @@ internal static class TouchProbe
         await TapClient(host, view.CentreOf(view.Find("Force Unicode in the journal")));
         await TapClient(host, view.CentreOf(view.Find("Speech")));
         await TapClient(host, view.CentreOf(view.Find("Party messages overhead")));
+
+        // A colour: Change, shade 3, the first cell, Use this colour.
+        await TapClient(host, view.CentreOf(view.Find("Speech colour")));
+        bool picking = view.HuePicker.Visible;
+        await TapClient(host, view.CentreOf(view.Find("Shade 3")));
+        await TapClient(host, view.CentreOf(view.Find("hue cell 0")));
+        await TapClient(host, view.CentreOf(view.Find("Use this colour")));
+        ushort expected = Input.Touch.Modern.ModernHuePicker.HueAt(0, 2);
+        bool back = !view.HuePicker.Visible;
+
         await TapClient(host, view.CentreOf(view.Find("Okay")));
         await Frames(host, 5);
         Check("the Tooltip, Fonts and Speech pages' boxes land in the profile on Okay",
             p.UseTooltip != tooltip && p.ForceUnicodeJournal != unicode && p.OverheadPartyMessages != party,
             $"tooltips {tooltip} -> {p.UseTooltip}, unicode journal {unicode} -> {p.ForceUnicodeJournal}, party overhead {party} -> {p.OverheadPartyMessages}");
+        Check("a colour picked by taps (Change, a shade, a cell) lands in the profile on Okay, the classic palette's hue",
+            picking && back && p.SpeechHue == expected,
+            $"picker opened {picking}, closed after {back}, speech hue {speechHue} -> {p.SpeechHue} (expected {expected})");
+        p.SpeechHue = speechHue;
         p.UseTooltip = tooltip;
         p.ForceUnicodeJournal = unicode;
         p.OverheadPartyMessages = party;
