@@ -11,7 +11,8 @@ namespace GUO.Renderer.PostFx
     /// <summary>
     /// Screen effects: a preset picker, the passes with a toggle each, sliders
     /// made from each shader's own uniform hints, an A/B split against Classic,
-    /// and "save as preset". Opened from Options (Video) and with Ctrl+Shift+E.
+    /// and "save as preset". Opened from Options (Video) and with Ctrl+Shift+E
+    /// (unless a macro has that key).
     /// </summary>
     /// <remarks>
     /// A card of Godot Controls on its own CanvasLayer, above the game and never
@@ -127,7 +128,8 @@ namespace GUO.Renderer.PostFx
 
         public override void _Input(InputEvent e)
         {
-            if (e is InputEventKey { Pressed: true, Echo: false } k && k.Keycode == Key.E && k.CtrlPressed && k.ShiftPressed)
+            if (e is InputEventKey { Pressed: true, Echo: false } k && k.Keycode == Key.E && k.CtrlPressed && k.ShiftPressed
+                && (IsOpen || !MacroOwnsHotkey(k.AltPressed)))
             {
                 Toggle();
                 GetViewport().SetInputAsHandled();
@@ -138,6 +140,14 @@ namespace GUO.Renderer.PostFx
                 GetViewport().SetInputAsHandled();
             }
         }
+
+        /// <summary>
+        /// Whether the player has a macro on Ctrl+Shift+E: the key is then the
+        /// macro's, as it is in ClassicUO, and the menu opens from Options only
+        /// (review P3). The open menu still takes it, to close.
+        /// </summary>
+        internal static bool MacroOwnsHotkey(bool alt) =>
+            GUO.Client.Game?.UO?.World?.Macros?.FindMacro(GUO.Platform.Sdl.SDL.SDL_Keycode.SDLK_E, alt, true, true) != null;
 
         public override void _Process(double delta)
         {

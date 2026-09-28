@@ -229,6 +229,20 @@ void fragment() { COLOR = texture(source, SCREEN_UV); }";
             stack.Split = 0f;
         }
 
+        // 8. Ctrl+Shift+E opens the menu, unless a macro has the key: then it
+        // is the macro's, as in ClassicUO (review P3).
+        bool freeOpens = await HotkeyOpens(host);
+        var bound = Game.Managers.Macro.CreateEmptyMacro("GUO postfx probe macro");
+        bound.Key = GUO.Platform.Sdl.SDL.SDL_Keycode.SDLK_E;
+        bound.Ctrl = true;
+        bound.Shift = true;
+        Client.Game.UO.World.Macros.PushToBack(bound);
+        bool boundOpens = await HotkeyOpens(host);
+        Client.Game.UO.World.Macros.Remove(bound);
+        report["hotkey"] = new JsonObject { ["opens_when_free"] = freeOpens, ["opens_when_a_macro_has_it"] = boundOpens };
+        GD.Print($"[GUO] postfx probe: Ctrl+Shift+E opens the menu when free: {freeOpens}; when a macro has it: {boundOpens}");
+        ok &= freeOpens && !boundOpens;
+
         stack.Use(PostFxPreset.Classic(), remember: false);
         var vp = Client.Game.GetViewport().GetVisibleRect().Size;
         report["window"] = $"{vp.X}x{vp.Y}";
@@ -237,6 +251,28 @@ void fragment() { COLOR = texture(source, SCREEN_UV); }";
         File.WriteAllText(Path.Combine(dir, "report.json"), report.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
         GD.Print($"[GUO] postfx probe: {(ok ? "ok" : "FAIL")}; report {Path.Combine(dir, "report.json")}");
         Passed = ok;
+    }
+
+    /// <summary>Press Ctrl+Shift+E as a keyboard would; whether the menu opened (it is closed again after).</summary>
+    private static async System.Threading.Tasks.Task<bool> HotkeyOpens(Node host)
+    {
+        foreach (bool pressed in new[] { true, false })
+        {
+            Godot.Input.ParseInputEvent(new InputEventKey
+            {
+                Keycode = Key.E, PhysicalKeycode = Key.E, Pressed = pressed, CtrlPressed = true, ShiftPressed = true,
+            });
+        }
+
+        await Frames(host, 5);
+        bool open = PostFxMenu.IsOpen;
+        if (open)
+        {
+            PostFxMenu.Toggle();
+            await Frames(host, 3);
+        }
+
+        return open;
     }
 
     private static async System.Threading.Tasks.Task Frames(Node host, int n)
