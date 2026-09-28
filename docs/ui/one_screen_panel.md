@@ -69,6 +69,7 @@ Measured on 2026-09-28:
 | Where | Size | Result |
 |---|---|---|
 | Desktop, `--one-screen on --window-size 1920,1080` | 1920×1080 at 1× (login window 976×480) | 11/11; pregame probe 21/21 with the dock |
+| Desktop, the same with `--touch` (every tap and drag a finger through the touch layer) | 1920×1080 at 1× (login client 640×480: the Servers button) | 11/11 |
 | Emulator, the Thor-bottom AVD | 1240×1080 at 2× (620×540) | 10/10 (no dock: modal; split offered) |
 | Emulator, `wm size 1920x1080` | 1920×1080 at 2× (960×540) | 9/9, dock 304 px |
 | Emulator, `wm size 2076x1557` | 2076×1557 at 2× (1038×778) | 11/11, dock 382 px, split |
