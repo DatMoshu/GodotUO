@@ -59,16 +59,36 @@ internal sealed partial class ModernAbilities : ModernGump
             return false;
         }
 
-        // The book's own table of weapons per ability, read once.
+        // The book's own table of weapons per ability, read once: the private
+        // method CombatBookGump.GetItemsList(byte index) -> List<ushort>. Fail
+        // safe: if upstream renames or reshapes it, or it throws, the
+        // abilities are listed without their weapons.
         if (_weapons == null)
         {
-            System.Reflection.MethodInfo list = typeof(CombatBookGump).GetMethod("GetItemsList",
-                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
             _weapons = new List<ushort>[Count];
 
-            for (int i = 0; i < Count && list != null; i++)
+            try
             {
-                _weapons[i] = list.Invoke(classic, new object[] { (byte)i }) as List<ushort>;
+                System.Reflection.MethodInfo list = typeof(CombatBookGump).GetMethod("GetItemsList",
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance,
+                    null, new[] { typeof(byte) }, null);
+
+                if (list != null && list.ReturnType == typeof(List<ushort>))
+                {
+                    for (int i = 0; i < Count; i++)
+                    {
+                        _weapons[i] = list.Invoke(classic, new object[] { (byte)i }) as List<ushort>;
+                    }
+                }
+                else
+                {
+                    GD.Print("[GUO] modern: abilities book -- CombatBookGump.GetItemsList(byte) not found; weapons left out");
+                }
+            }
+            catch (Exception e)
+            {
+                _weapons = new List<ushort>[Count];
+                GD.Print($"[GUO] modern: abilities book -- reading the weapons failed ({e.GetType().Name}); weapons left out");
             }
         }
 
