@@ -514,6 +514,56 @@ internal sealed partial class WindowMenu : Node
         return true;
     }
 
+    /// <summary>
+    /// A controller's D-pad on the open card: <paramref name="action"/> is
+    /// ui_up, ui_down, ui_left or ui_right. The first press selects the card's
+    /// first control; after that Godot's own focus navigation moves between
+    /// them (left and right step a selected slider). Works on either screen,
+    /// as it needs no pointer. True when the menu took it.
+    /// </summary>
+    public static bool Navigate(string action)
+    {
+        if (!IsOpen) return false;
+        WindowMenu m = _instance;
+
+        if (m._viewport.GuiGetFocusOwner() == null)
+        {
+            m.FirstFocusable()?.GrabFocus();
+            return true;
+        }
+
+        m._viewport.PushInput(new InputEventAction { Action = action, Pressed = true }, true);
+        m._viewport.PushInput(new InputEventAction { Action = action, Pressed = false }, true);
+        return true;
+    }
+
+    /// <summary>True when a control of the open card has controller focus.</summary>
+    public static bool HasControllerFocus => IsOpen && _instance._viewport.GuiGetFocusOwner() != null;
+
+    /// <summary>A controller's A on the card: press or release the selected control.</summary>
+    public static bool Accept(bool pressed)
+    {
+        if (!HasControllerFocus) return false;
+        _instance._viewport.PushInput(new InputEventAction { Action = "ui_accept", Pressed = pressed }, true);
+        return true;
+    }
+
+    /// <summary>The control with focus, for the probe.</summary>
+    public static Control FocusOwner => IsOpen ? _instance._viewport.GuiGetFocusOwner() : null;
+
+    private Control FirstFocusable()
+    {
+        foreach (Node n in _card.FindChildren("*", "Control", true, false))
+        {
+            if (n is Control c && c.FocusMode != Control.FocusModeEnum.None && c.IsVisibleInTree())
+            {
+                return c;
+            }
+        }
+
+        return null;
+    }
+
     /// <summary>For the probe: press a control of the card by its text.</summary>
     public static bool PressForProbe(string text)
     {
