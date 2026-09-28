@@ -870,14 +870,14 @@ namespace GUO.Input.Touch
                 // pixel each); in window pixels, which is what a touch on
                 // that screen arrives in (DualScreen.ToWindow).
                 float dpi = Client.Game.DpiScale;
-                s = dpi;
+                s = ShelfChipScale * dpi;
                 h = PlateArt * s;
                 gap = GapArt * s;
-                y = (DualScreen.LogicalHeight - DualScreen.BottomReserve - GapArt - PlateArt) * dpi;
+                y = (DualScreen.LogicalHeight - DualScreen.BottomReserve - GapArt) * dpi - h;
                 left = (DualScreen.MainWidth + GapArt) * dpi;
                 right = (DualScreen.MainWidth + DualScreen.LogicalWidth - GapArt) * dpi;
                 arrowW = 16 * s;
-                captionScale = 1;
+                captionScale = s;
             }
             else
             {
@@ -934,6 +934,12 @@ namespace GUO.Input.Touch
         private static bool OnShelf => DualScreen.ShelfOn;
 
         /// <summary>
+        /// The lower screen's chips are drawn at 2x its client pixels, like
+        /// the main bar's captions: at 1x a chip is 2 mm tall on the Thor.
+        /// </summary>
+        private const int ShelfChipScale = 2;
+
+        /// <summary>
         /// The chips on the lower screen, drawn into its target with the
         /// client's batcher: the small plate and the caption in font 1, both
         /// at the shelf's scale, as its gumps are drawn. Called by
@@ -959,12 +965,15 @@ namespace GUO.Input.Touch
 
                 if (plate.Texture != null)
                 {
-                    // Cropped from the middle, as the main screen's plates are.
-                    int leftW = System.Math.Min(plate.UV.Width, (dest.Width + 1) / 2);
-                    int rightW = System.Math.Min(plate.UV.Width - leftW, dest.Width - leftW);
-                    batcher.Draw(plate.Texture, new Rectangle(dest.X, dest.Y, leftW, dest.Height),
+                    // Cropped from the middle, as the main screen's plates are,
+                    // at ShelfChipScale.
+                    const int k = ShelfChipScale;
+                    int artW = dest.Width / k;
+                    int leftW = System.Math.Min(plate.UV.Width, (artW + 1) / 2);
+                    int rightW = System.Math.Min(plate.UV.Width - leftW, artW - leftW);
+                    batcher.Draw(plate.Texture, new Rectangle(dest.X, dest.Y, leftW * k, dest.Height),
                         new Rectangle(plate.UV.X, plate.UV.Y, leftW, plate.UV.Height), hue, 0f);
-                    batcher.Draw(plate.Texture, new Rectangle(dest.X + leftW, dest.Y, rightW, dest.Height),
+                    batcher.Draw(plate.Texture, new Rectangle(dest.X + leftW * k, dest.Y, rightW * k, dest.Height),
                         new Rectangle(plate.UV.X + plate.UV.Width - rightW, plate.UV.Y, rightW, plate.UV.Height), hue, 0f);
                 }
                 else
@@ -973,7 +982,11 @@ namespace GUO.Input.Touch
                 }
 
                 RenderedText text = bar.ShelfCaption(Label(chip));
-                text?.Draw(batcher, dest.X + (dest.Width - text.Width) / 2, dest.Y + (dest.Height - text.Height) / 2, 0f);
+                if (text != null)
+                {
+                    int tw = text.Width * ShelfChipScale, th = text.Height * ShelfChipScale;
+                    text.Draw(batcher, dest.X + (dest.Width - tw) / 2, dest.Y + (dest.Height - th) / 2, 0f, 1f, 0, ShelfChipScale);
+                }
             }
         }
 
