@@ -185,6 +185,8 @@ internal static class PregameProbe
 
         Check("every settings group opens on a tap and fits the card's width", misfits.Length == 0, misfits.Length == 0 ? $"{PregameSettings.Groups.Length} groups, card {card.Geometry}" : misfits);
 
+        await LoginBackgroundChecks(host, card, settings);
+
         // Profile-only settings are named, not shown disabled.
         card.Tap(settings.GroupButton("Controls"));
         await InputProbe.Wait(host, 5);
@@ -350,11 +352,93 @@ internal static class PregameProbe
 
                 await InputProbe.Wait(host, 10);
                 await AccountLoginChecks(host, card);
+                await DevLoginChecks(host, card);
             }
         }
         finally
         {
             DualScreenSettings.Edit(v => v.Enabled = shelfWas);
+        }
+    }
+
+    /// <summary>
+    /// Screen: "Login background" steps through what exists, the login screen
+    /// shows each at once (the canvas background, ADR-0016), and the first
+    /// choice goes back to the last character's. A file of the probe's own.
+    /// </summary>
+    private static async System.Threading.Tasks.Task LoginBackgroundChecks(Node host, PregameCard card, PregameSettings settings)
+    {
+        Renderer.PregameBackground.PathOverride = ProjectSettings.GlobalizePath($"user://probe_pregame_{_tag}.json");
+        System.IO.File.Delete(Renderer.PregameBackground.PathOverride);
+        Renderer.PregameBackground.Reload();
+
+        try
+        {
+            card.Tap(settings.GroupButton("Screen"));
+            await InputProbe.Wait(host, 5);
+
+            if (!settings.CycleButtons.TryGetValue("Login background", out var cycle))
+            {
+                Check("Screen has a Login background line", false, "no line");
+                return;
+            }
+
+            Renderer.CanvasBackground bg = Client.Game.CanvasBackground;
+            string first = cycle.Value.Text;
+            var seen = new System.Collections.Generic.List<string>();
+            bool shown = true;
+            string shot = null;
+
+            // Every choice once, round to the start.
+            for (int i = 0; i < Renderer.PregameBackground.All.Count; i++)
+            {
+                card.Tap(cycle.Next);
+                await InputProbe.Wait(host, 4);
+                string key = Renderer.PregameBackground.Key;
+                seen.Add(cycle.Value.Text);
+
+                if (key == Renderer.PregameBackground.Follow)
+                {
+                    continue;
+                }
+
+                // What is on screen: that choice (a video may show its still), drawn by the canvas background.
+                Renderer.CanvasBackgroundSettings want = Renderer.PregameBackground.ForLogin().Value;
+                bool drawn = bg == null || (bg.Current.Mode == want.Mode && bg.Current.Path == want.Path && (bg.Active || want.Mode == Renderer.CanvasBackgroundMode.BuiltinGrey));
+                shown &= drawn;
+
+                if (!drawn)
+                {
+                    GD.Print($"[GUO] pregame probe: login background \"{cycle.Value.Text}\" not on screen: {bg.Current.Mode} {bg.Current.Path}, active {bg.Active}");
+                }
+
+                if (shot == null && want.Mode == Renderer.CanvasBackgroundMode.BuiltinMedia)
+                {
+                    shot = cycle.Value.Text;
+                    await InputProbe.Wait(host, 20);
+                    await SaveMain(host, "login_background");
+                }
+            }
+
+            string file = System.IO.File.Exists(Renderer.PregameBackground.PathOverride) ? System.IO.File.ReadAllText(Renderer.PregameBackground.PathOverride) : "";
+            Renderer.PregameBackground.Step(1);
+            string saved = Renderer.PregameBackground.Key;
+            Renderer.PregameBackground.Reload();
+            bool kept = Renderer.PregameBackground.Key == saved;
+            Renderer.PregameBackground.Set(Renderer.PregameBackground.Follow);
+            card.Tap(settings.GroupButton("Screen"));
+            await InputProbe.Wait(host, 4);
+
+            Check("Screen: Login background steps through every choice (the grey, wood, the shipped ones), each on the login screen at once, kept in pregame.json, round to \"Your last character's\"",
+                first == "Your last character's" && seen.Count == Renderer.PregameBackground.All.Count && seen.Distinct().Count() == seen.Count
+                && seen[^1] == first && seen.Contains("Classic grey") && seen.Contains("Wood") && shown && file.Contains("login_background") && kept,
+                $"{seen.Count} choices ({string.Join(", ", seen.Take(4))}...), all shown {shown}, photographed \"{shot}\", file {file.Length > 0}, read back {kept}");
+        }
+        finally
+        {
+            Renderer.PregameBackground.Set(Renderer.PregameBackground.Follow);
+            Renderer.PregameBackground.PathOverride = null;
+            Renderer.PregameBackground.Reload();
         }
     }
 
@@ -368,6 +452,197 @@ internal static class PregameProbe
         }
 
         return All(login).OfType<Game.UI.Controls.Checkbox>().FirstOrDefault(c => c.Text == text)?.IsChecked;
+    }
+
+    /// <summary>
+    /// A dev build's dev logins, with two of the probe's own test accounts
+    /// (never the owner's): saved as dev accounts, one click on the login
+    /// screen's row logs in as one and on into the world, Ctrl+Shift+D from
+    /// the world switches to the other, and the card's row switches back.
+    /// </summary>
+    private static async System.Threading.Tasks.Task DevLoginChecks(Node host, PregameCard card)
+    {
+        ServerEntry dev = ServerBook.DevEntry;
+
+        if (dev == null)
+        {
+            Check("a dev build has dev logins", false, "no dev shard in this run");
+            return;
+        }
+
+        const string other = "guodev2";
+        Game.World w = Client.Game.UO.World;
+        PregameServers servers = card.Servers;
+
+        async System.Threading.Tasks.Task<string> InWorld()
+        {
+            // By the clock: a run without a frame cap goes through frames fast.
+            ulong until = Godot.Time.GetTicksMsec() + 70000;
+
+            while (Godot.Time.GetTicksMsec() < until && (!w.InGame || w.Player == null || Input.Touch.Pregame.Accounts.DevLogin.Busy))
+            {
+                await InputProbe.Wait(host, 1);
+            }
+
+            await InputProbe.Wait(host, 30);
+            return w.InGame ? w.Player?.Name : null;
+        }
+
+        async System.Threading.Tasks.Task AtLogin()
+        {
+            for (int i = 0; i < 300 && (Client.Game.Scene is not Game.Scenes.LoginScene || UIManager.GetGump<LoginGump>() == null); i++)
+            {
+                await InputProbe.Wait(host, 1);
+            }
+
+            await InputProbe.Wait(host, 10);
+        }
+
+        // A servers file of the probe's own: the owner's dev accounts are never listed, switched to or forgotten here.
+        string bookWas = ServerBook.PathOverride;
+        ServerBook.PathOverride = ProjectSettings.GlobalizePath($"user://probe_servers_dev_{_tag}.json");
+        System.IO.File.Delete(ServerBook.PathOverride);
+        ServerBook.Load();
+
+        try
+        {
+            // The second test account needs a character: made on its first run, as every probe account's is.
+            // The login gump's fields may hold the last login's; the helper types into them.
+            foreach (Game.UI.Controls.StbTextBox box in All(UIManager.GetGump<LoginGump>()).OfType<Game.UI.Controls.StbTextBox>())
+            {
+                box.SetText("");
+            }
+
+            bool touch = Input.Touch.TouchInput.Enabled;
+            Input.Touch.TouchInput.Enabled = false;
+            InputProbe.PointerScale = Client.Game.DpiScale;
+            await InputProbe.EnterTheWorld(host, 0, other, other, "Guodev");
+            InputProbe.PointerScale = 1f;
+            Input.Touch.TouchInput.Enabled = touch;
+            string made = w.InGame && Game.Scenes.LoginScene.Account == other ? w.Player?.Name : null;
+            Network.NetClient.Socket.Disconnect();
+            Client.Game.SetScene(new Game.Scenes.LoginScene(w));
+            await AtLogin();
+
+            // The page's Add account offers the dev tick on the dev shard only.
+            card.Tap(card.TabButtonFor(PregameCard.Tab.Servers));
+            servers.Rebuild();
+            await InputProbe.Wait(host, 3);
+            await Reveal(host, card, servers.RowFor(servers.Listed.First(x => x.Dev)));
+            await InputProbe.Wait(host, 3);
+            await Reveal(host, card, servers.AddAccountButton);
+            await InputProbe.Wait(host, 3);
+            bool tick = servers.DevBox != null;
+            await SaveShot(host, "servers_dev_add");
+
+            Input.Touch.Pregame.Accounts.AccountBook.Add(dev, InputProbe.ProbeAccount, InputProbe.ProbePassword, true, out _, dev: true);
+            Input.Touch.Pregame.Accounts.AccountBook.Add(dev, other, other, true, out _, dev: true);
+            servers.Rebuild();
+
+            for (int i = 0; i < 60 && !PregameCard.DevRowShown; i++)
+            {
+                await InputProbe.Wait(host, 1);
+            }
+
+            await InputProbe.Wait(host, 10);
+            var at = PregameCard.DevButtonCentres;
+            bool row = PregameCard.DevRowShown && at.ContainsKey(InputProbe.ProbeAccount) && at.ContainsKey(other);
+            await SaveMain(host, "dev_logins_row");
+            Check("a dev build: Add account on the dev shard offers \"Dev account\"; dev accounts get a Dev logins row on the login screen",
+                made != null && tick && row, $"second test account in the world first {made != null}, dev tick {tick}, row {PregameCard.DevRowShown} with {at.Count} buttons");
+
+            // One click: the shard, the account, the password, its character, the world.
+            string first = null;
+
+            if (row)
+            {
+                Click(at[InputProbe.ProbeAccount]);
+                first = await InWorld();
+            }
+
+            await SaveMain(host, "dev_login_world");
+            Check("one click on a dev login goes into the world as that account's character",
+                first != null && first.Equals(InputProbe.ProbeAccount, System.StringComparison.OrdinalIgnoreCase),
+                $"in the world {first != null}, status \"{Input.Touch.Pregame.Accounts.DevLogin.Status}\"");
+
+            // The switch: Ctrl+Shift+D from the world logs out and in as the next dev account.
+            string second = null;
+
+            if (first != null)
+            {
+                PregameCard.HandleMainInput(new InputEventKey { Keycode = Key.D, CtrlPressed = true, ShiftPressed = true, Pressed = true });
+                PregameCard.HandleMainInput(new InputEventKey { Keycode = Key.D, CtrlPressed = true, ShiftPressed = true, Pressed = false });
+
+                for (ulong until = Godot.Time.GetTicksMsec() + 20000; Godot.Time.GetTicksMsec() < until && w.InGame && w.Player?.Name == first;)
+                {
+                    await InputProbe.Wait(host, 1);
+                }
+
+                second = await InWorld();
+            }
+
+            await SaveMain(host, "dev_switch_world");
+            Check("Ctrl+Shift+D in the world switches to the other dev account in one action",
+                second != null && second != first, $"from {first != null} to another {second != null && second != first}, status \"{Input.Touch.Pregame.Accounts.DevLogin.Status}\"");
+
+            // And back, from the card's row (the second screen, or the card on one screen).
+            string back = null;
+
+            if (second != null && _second)
+            {
+                // This account's profile has its own shelf setting; the card needs it off, as WorldChecks does.
+                bool shelfWas = DualScreenSettings.Current.Enabled;
+                DualScreenSettings.Edit(v => v.Enabled = false);
+
+                for (ulong until = Godot.Time.GetTicksMsec() + 10000; Godot.Time.GetTicksMsec() < until && !PregameCard.ShownOnSecond;)
+                {
+                    await InputProbe.Wait(host, 1);
+                }
+
+                bool up = PregameCard.ShownOnSecond;
+
+                // Gumps the login restored (a paperdoll) would cover the card in the photo.
+                UIManager.GetGump<Game.UI.Gumps.PaperDollGump>()?.Dispose();
+                card.Tap(card.TabButtonFor(PregameCard.Tab.Servers));
+                servers.Rebuild();
+                await InputProbe.Wait(host, 20);
+                await SaveShot(host, "servers_dev_switch");
+
+                if (servers.DevButtons.TryGetValue(InputProbe.ProbeAccount, out Button b))
+                {
+                    card.Tap(b);
+
+                    for (ulong until = Godot.Time.GetTicksMsec() + 20000; Godot.Time.GetTicksMsec() < until && w.InGame && w.Player?.Name == second;)
+                    {
+                        await InputProbe.Wait(host, 1);
+                    }
+
+                    back = await InWorld();
+                }
+
+                DualScreenSettings.Edit(v => v.Enabled = shelfWas);
+                Check("in the world, the card's Dev logins row switches back (\"Switch to\" the account)",
+                    up && back != null && back == first, $"card up on the second screen {up} ({(DualScreenSettings.Current.Enabled ? "shelf on" : "shelf off")}), buttons {servers.DevButtons.Count}, back {back == first}");
+            }
+        }
+        finally
+        {
+            foreach (var a in Input.Touch.Pregame.Accounts.AccountBook.For(dev).Where(x => x.Name == InputProbe.ProbeAccount || x.Name == other).ToList())
+            {
+                Input.Touch.Pregame.Accounts.AccountBook.Forget(dev, a);
+            }
+
+            ServerBook.PathOverride = bookWas;
+            ServerBook.Load();
+            servers.Rebuild();
+
+            if (w.InGame)
+            {
+                Network.NetClient.Socket.Disconnect();
+                Client.Game.SetScene(new Game.Scenes.LoginScene(w));
+                await AtLogin();
+            }
+        }
     }
 
     private static System.Collections.Generic.IEnumerable<Game.UI.Controls.Control> All(Game.UI.Controls.Control c) =>
@@ -756,11 +1031,13 @@ internal static class PregameProbe
 
         async System.Threading.Tasks.Task<bool> Reached()
         {
-            for (int i = 0; i < 300; i++)
+            for (ulong until = Godot.Time.GetTicksMsec() + 20000; Godot.Time.GetTicksMsec() < until;)
             {
                 Game.Scenes.LoginSteps step = Login()?.CurrentLoginStep ?? Game.Scenes.LoginSteps.Main;
 
-                if (step is Game.Scenes.LoginSteps.ServerSelection or Game.Scenes.LoginSteps.CharacterSelection)
+                // Past the account step: the server list, or on (the Autologin box runs on into the world).
+                if (step is Game.Scenes.LoginSteps.ServerSelection or Game.Scenes.LoginSteps.LoginInToServer or Game.Scenes.LoginSteps.CharacterSelection
+                    or Game.Scenes.LoginSteps.EnteringBritania || Client.Game.Scene is Game.Scenes.GameScene)
                 {
                     return true;
                 }

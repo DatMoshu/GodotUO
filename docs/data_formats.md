@@ -824,7 +824,7 @@ the address in use stays in `settings.json` (`ip`, `port`), which Play sets.
 | `favourite` | bool | Listed under Favourites |
 | `last_played` | UTC time or absent | Set on each entry into the world; Recent is the newest five that are neither own nor favourite |
 | `data_folder` | path or absent | Where the player keeps a shard's own client files, picked once through the first-run screen; Play on a shard that needs them restarts GUO with them (section 19). An entry with one is never trimmed from Recent |
-| `accounts` | list or absent | The player's accounts on it: `name`, `secret` and `last_used`. `secret.store` is `dpapi` (Windows: `blob`, base64 DPAPI output), `android-keystore` (`iv` and `blob`: AES-GCM under a non-exportable AndroidKeyStore key), `libsecret` (nothing; the keyring has it) or `none`; `secret` is absent when no password is kept. Never a plaintext password. The secret is bound to the entry's host:port:name. See docs/ui/second_screen_pregame.md, Accounts |
+| `accounts` | list or absent | The player's accounts on it: `name`, `secret` and `last_used`. `secret.store` is `dpapi` (Windows: `blob`, base64 DPAPI output), `android-keystore` (`iv` and `blob`: AES-GCM under a non-exportable AndroidKeyStore key), `libsecret` (nothing; the keyring has it) or `none`; `secret` is absent when no password is kept. `dev` (true) marks a dev build's one-click dev login, on the dev shard's entry only. Never a plaintext password. The secret is bound to the entry's host:port:name. See docs/ui/second_screen_pregame.md, Accounts |
 | `era`, `emulator`, `client_version`, `encryption`, `needs_custom_data`, `third_party_clients`, `site`, `description` | optional | The community catalogue's manifest fields (step 3); `third_party_clients: false` or another client version or encryption keeps Play from playing |
 
 A debug build adds its dev shard (from `UO_SHARD_HOST` / `UO_SHARD_PORT`) as a favourite at run time. It is
@@ -878,4 +878,17 @@ that is no longer usable drops the session at boot, with the reason shown once i
 
 Going back ("Your own files", or Play on another server) writes a one-shot file with no `data_folder`: the player's
 own encryption, and the server to play on next, if any. It is deleted as soon as it is read.
+
+## 20. Pre-game choices (`pregame.json`)
+
+Beside `settings.json` in the client home: GUO's own choices made on the pre-game card that belong to no profile
+(upstream's settings.json keeps its shape).
+
+```json
+{ "login_background": "builtin:starlit-sea" }
+```
+
+| Field | Meaning |
+|---|---|
+| `login_background` | What the canvas background (ADR-0016) shows before a profile is loaded: `""` for the last character's (ADR-0016's own rule, the default), `builtin-grey`, `builtin-wood`, `builtin:<name>` from `assets/backgrounds/backgrounds.json`, or `embedded:<file>.png`, a picture compiled in from `Resources/embedded/backgrounds`. A choice that no longer exists reads as the default. In the world the profile's own background applies |
 

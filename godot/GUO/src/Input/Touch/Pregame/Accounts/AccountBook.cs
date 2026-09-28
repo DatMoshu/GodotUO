@@ -20,6 +20,9 @@ internal sealed class SavedAccount
 
     [JsonPropertyName("last_used")] public DateTime? LastUsed { get; set; }
 
+    /// <summary>A dev account (a dev build's dev shard only): one click logs in as it (DevLogin).</summary>
+    [JsonPropertyName("dev")] public bool Dev { get; set; }
+
     [JsonIgnore] public bool HasPassword => Secret != null && Secret.Store != SecretStore.None;
 }
 
@@ -45,7 +48,7 @@ internal static class AccountBook
     /// and the store can. Null with the reason when it can't be added at all; a
     /// note in <paramref name="why"/> when it was added without its password.
     /// </summary>
-    public static SavedAccount Add(ServerEntry e, string name, string password, bool keepPassword, out string why)
+    public static SavedAccount Add(ServerEntry e, string name, string password, bool keepPassword, out string why, bool dev = false)
     {
         why = null;
         name = name?.Trim() ?? "";
@@ -71,6 +74,7 @@ internal static class AccountBook
         }
 
         a.Secret = null;
+        a.Dev = dev && e.Dev;
 
         if (keepPassword && !string.IsNullOrEmpty(password))
         {

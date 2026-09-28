@@ -2,6 +2,7 @@
 // and no server list.
 
 using System;
+using System.Linq;
 using Godot;
 using GUO.Game.Managers;
 using GUO.Game.Scenes;
@@ -154,6 +155,8 @@ internal sealed partial class PregameCard : Node
         _layer.AddChild(_view);
         _serversButtonHost = new Control { MouseFilter = Control.MouseFilterEnum.Ignore, Visible = false };
         _layer.AddChild(_serversButtonHost);
+        _devHost = new Control { MouseFilter = Control.MouseFilterEnum.Ignore, Visible = false };
+        _layer.AddChild(_devHost);
 
         // Built on first use (_Process), once the client's art is loaded.
     }
@@ -194,6 +197,15 @@ internal sealed partial class PregameCard : Node
         _serversButton = UoTheme.Button("Servers", 56);
         _serversButton.MouseFilter = Control.MouseFilterEnum.Ignore;
         _serversButtonHost.AddChild(_serversButton);
+
+        // A dev build's one-click dev logins, under it (DevLogin).
+        _devHost.Theme = UoTheme.Theme;
+        _devPlate = new PanelContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
+        _devPlate.AddThemeStyleboxOverride("panel", UoTheme.Frame(UoTheme.FieldFrame, 3));
+        _devHost.AddChild(_devPlate);
+        _devRow = new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
+        _devRow.AddThemeConstantOverride("separation", 3);
+        _devPlate.AddChild(_devRow);
 
         Show(_tab);
     }
@@ -304,11 +316,105 @@ internal sealed partial class PregameCard : Node
         _serversButtonHost.Position = at.Floor();
     }
 
+    // --- a dev build: the dev logins beside the login gump ---------------------------------
+
+    private Control _devHost;
+    private HBoxContainer _devRow;
+    private PanelContainer _devPlate;
+    private string _devNames;
+    private readonly System.Collections.Generic.List<(Button Button, Accounts.SavedAccount Account)> _devButtons = new();
+    private int _devPressed = -1;
+
+    /// <summary>Whether the dev logins stand beside the login gump now.</summary>
+    public static bool DevRowShown => _instance != null && _instance._devHost.Visible;
+
+    /// <summary>For the probe: each dev login's centre in window pixels, by account name.</summary>
+    public static System.Collections.Generic.Dictionary<string, Vector2> DevButtonCentres => _instance == null || !DevRowShown
+        ? new()
+        : _instance._devButtons.ToDictionary(d => d.Account.Name, d => _instance._devHost.Position + (_instance._devRow.Position + d.Button.Position + d.Button.Size / 2) * _instance._devHost.Scale);
+
+    /// <summary>
+    /// The row: at the login screen of a dev build with dev accounts saved,
+    /// under the Servers button's place, on every layout (the Servers button
+    /// itself stands aside when a second screen holds the card).
+    /// </summary>
+    private void PlaceDevRow()
+    {
+        var accounts = Accounts.DevLogin.Accounts;
+        bool show = accounts.Count > 0 && !OnMain && Client.Game?.Scene is LoginScene && UIManager.GetGump<LoginGump>() is LoginGump g && !g.IsDisposed;
+        _devHost.Visible = show;
+
+        if (!show)
+        {
+            return;
+        }
+
+        string names = string.Join("|", accounts.Select(a => a.Name).OrderBy(n => n, StringComparer.OrdinalIgnoreCase));
+
+        if (names != _devNames)
+        {
+            _devNames = names;
+            _devButtons.Clear();
+
+            foreach (Node n in _devRow.GetChildren())
+            {
+                _devRow.RemoveChild(n);
+                n.QueueFree();
+            }
+
+            _devRow.AddChild(UoTheme.Label("Dev logins", UoTheme.Heading));
+
+            foreach (Accounts.SavedAccount a in accounts.OrderBy(a => a.Name, StringComparer.OrdinalIgnoreCase))
+            {
+                Button b = UoTheme.Button(a.Name, 40);
+                b.MouseFilter = Control.MouseFilterEnum.Ignore;
+                _devRow.AddChild(b);
+                _devButtons.Add((b, a));
+            }
+        }
+
+        LoginGump gump = UIManager.GetGump<LoginGump>();
+        float dpi = Client.Game.DpiScale;
+        int art = Math.Max(1, UoTheme.PixelScale);
+        _devHost.Scale = new Vector2(art, art);
+        _devPlate.ResetSize();
+        Vector2 size = _devPlate.Size * art;
+        Vector2 window = GetTree().Root.Size;
+
+        // Beside the login gump on the left, where the screen has room (the
+        // Servers button takes the right); else across the top of the gump,
+        // on the chest's lid, clear of the fields and the Login arrow.
+        float left = gump.X * dpi;
+        Vector2 at = left >= size.X + 16 * art
+            ? new Vector2(left - size.X - 8 * art, (gump.Y + gump.Height / 2f) * dpi - size.Y / 2)
+            : new Vector2((gump.X + gump.Width / 2f) * dpi - size.X / 2, (gump.Y + 6) * dpi);
+        at.X = Math.Clamp(at.X, 4 * art, window.X - size.X - 4 * art);
+        at.Y = Math.Clamp(at.Y, 4 * art, window.Y - size.Y - 4 * art);
+        _devHost.Position = at.Floor();
+    }
+
+    /// <summary>The dev row's button under <paramref name="at"/> (window pixels), or -1.</summary>
+    private int DevButtonAt(Vector2 at)
+    {
+        for (int i = 0; i < _devButtons.Count; i++)
+        {
+            Button b = _devButtons[i].Button;
+
+            if (new Rect2(_devHost.Position + (b.Position + _devRow.Position) * _devHost.Scale, b.Size * _devHost.Scale).HasPoint(at))
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
     // --- every frame --------------------------------------------------------------------
 
     public override void _Process(double delta)
     {
         ServerBook.NoteWorld(Client.Game?.UO?.World?.InGame ?? false);
+        Accounts.DevLogin.Update();
 
         if (!_built)
         {
@@ -329,6 +435,7 @@ internal sealed partial class PregameCard : Node
         }
 
         PlaceServersButton();
+        PlaceDevRow();
 
         if (!Shown)
         {
@@ -467,6 +574,13 @@ internal sealed partial class PregameCard : Node
                 return true;
             }
 
+            // A dev build: Ctrl+Shift+D switches to the next dev account, from the world or the login screen.
+            if (key.Pressed && !key.Echo && key.Keycode == Key.D && key.CtrlPressed && key.ShiftPressed && Accounts.DevLogin.Available)
+            {
+                Accounts.DevLogin.SwitchToNext();
+                return true;
+            }
+
             return false;
         }
 
@@ -512,6 +626,29 @@ internal sealed partial class PregameCard : Node
 
             // Modal: nothing reaches the login gump under it.
             return e is InputEventMouse or InputEventScreenTouch or InputEventScreenDrag;
+        }
+
+        // A dev login: pressed and released on the same button.
+        if (m._devHost.Visible && touch is InputEventScreenTouch devTouch)
+        {
+            int i = m.DevButtonAt(devTouch.Position);
+
+            if (devTouch.Pressed && i >= 0)
+            {
+                m._devPressed = i;
+                return true;
+            }
+
+            if (!devTouch.Pressed && m._devPressed >= 0)
+            {
+                if (i == m._devPressed)
+                {
+                    Accounts.DevLogin.Start(m._devButtons[i].Account);
+                }
+
+                m._devPressed = -1;
+                return true;
+            }
         }
 
         if (m._serversButtonHost.Visible && touch is InputEventScreenTouch { Pressed: true } press)

@@ -126,6 +126,30 @@ internal sealed partial class PregameServers : HBoxContainer
         _parts.Clear();
         var shown = new List<ServerEntry>();
         BackButton = null;
+        DevButtons.Clear();
+
+        // A dev build: one click logs in as a dev account (or switches to it from the world).
+        IReadOnlyList<SavedAccount> dev = DevLogin.Accounts;
+
+        if (dev.Count > 0)
+        {
+            _list.AddChild(Head("Dev logins"));
+            var devRow = new HFlowContainer();
+            devRow.AddThemeConstantOverride("h_separation", 4);
+            devRow.AddThemeConstantOverride("v_separation", 3);
+
+            foreach (SavedAccount a in dev.OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase))
+            {
+                bool playing = ServerPlay.InWorld && DevLogin.InUse == a;
+                Button b = UoTheme.Button(playing ? a.Name + " (playing)" : ServerPlay.InWorld ? "Switch to " + a.Name : a.Name, 44);
+                b.Disabled = playing;
+                b.Pressed += () => { DevLogin.Start(a); _status = DevLogin.Status; ShowDetail(); };
+                devRow.AddChild(b);
+                DevButtons[a.Name] = b;
+            }
+
+            _list.AddChild(devRow);
+        }
 
         // This run plays with a shard's own files: say so, and the way back.
         if (ShardSession.Active)
@@ -718,7 +742,7 @@ internal sealed partial class PregameServers : HBoxContainer
         foreach (SavedAccount a in accounts)
         {
             bool picked = a == _account;
-            Button b = UoTheme.Button(a.Name, 44);
+            Button b = UoTheme.Button(a.Dev ? a.Name + " (dev)" : a.Name, 44);
             b.AddThemeColorOverride("font_color", picked ? UoTheme.Heading : UoTheme.Ink);
 
             if (picked)
@@ -767,6 +791,16 @@ internal sealed partial class PregameServers : HBoxContainer
         {
             KeepBox = new CheckBox { Text = "Save password", ButtonPressed = true, FocusMode = FocusModeEnum.All };
             _info.AddChild(KeepBox);
+
+            // A dev build's dev shard: an account for the one-click dev logins.
+            DevBox = null;
+
+            if (e.Dev)
+            {
+                DevBox = new CheckBox { Text = "Dev account (one-click login)", FocusMode = FocusModeEnum.All };
+                _info.AddChild(DevBox);
+            }
+
             _info.AddChild(Note("Kept encrypted by this system's keystore. The classic Save account box on the login screen still stores a typed password the upstream way."));
         }
         else
@@ -783,7 +817,7 @@ internal sealed partial class PregameServers : HBoxContainer
         save.Pressed += () =>
         {
             bool keep = KeepBox?.ButtonPressed ?? false;
-            SavedAccount a = AccountBook.Add(e, AccountField.Text, PasswordField.Text, keep, out string why);
+            SavedAccount a = AccountBook.Add(e, AccountField.Text, PasswordField.Text, keep, out string why, DevBox?.ButtonPressed ?? false);
             PasswordField.Text = "";
 
             if (a == null)
@@ -904,6 +938,8 @@ internal sealed partial class PregameServers : HBoxContainer
     public LineEdit AccountField { get; private set; }
     public LineEdit PasswordField { get; private set; }
     public CheckBox KeepBox { get; private set; }
+    public CheckBox DevBox { get; private set; }
+    public Dictionary<string, Button> DevButtons { get; } = new();
     public Dictionary<string, Button> AccountButtons { get; } = new();
     public SavedAccount PickedAccount => _account;
     public FirstRunScreen Picker { get; private set; }
