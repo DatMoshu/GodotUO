@@ -707,7 +707,14 @@ Terms:
 | `floor_z` | The ground floor's z (default 7, the originals' usual value) |
 | `storey_height` | z between storeys (default 20); `wall_height` defaults to one less |
 | `storeys[]` | Per storey, bottom up: `openings[]` (`kind` `door` or `window`, placed by `side` `N`/`E`/`S`/`W` with an `offset` along it, or by `at` `[x, y]`), `partitions[]` (inner walls: `{"x": k, "from", "to"}` or `{"y": k, ...}`), `floor_holes[]` (`[x, y]` left open, for stairwells) |
-| `roof` | `style` `gable` with `ridge` `x` or `y`. It covers x 1..W+1 and y 1..H+1 and rises 3 z a course, with gable-end fill (the wall material, 3 high) on the south or east end. The span across the ridge must be odd: W even for a ridge along y, H even for a ridge along x |
+| `roof` | `style` `gable` with `ridge` `x` or `y`: it covers x 1..W+1 and y 1..H+1 and rises 3 z a course, with gable-end fill (the wall material, 3 high) on the south or east end; the span across the ridge must be odd (W even for a ridge along y, H even for a ridge along x). Or `style` `flat`: `material` floor tiles at the top, with an optional `parapet` material |
+| `rects[]` | Instead of `size`: boxes `[x0, y0, x1, y1]`, or `{"box", "storeys", "roof"}`, whose union is the footprint (an L, a T, a U). Walls stand on the union's edge cells; a rect with fewer storeys is a lower wing with its own roof. Where roofs overlap the higher one wins, and nothing is roofed inside a taller rect |
+| `storeys[].stairs[]` | `{"at": [x, y], "rise": N/E/S/W, "width"}`: a straight flight to the next storey as the client builds them (0x009E): step i a stair piece at z + 5i on i stacked 10-high blocks, then a landing; the next floor is left open over it, and the cell past the landing is where a climber arrives |
+| `storeys[].floor` | That storey's floor material, over `materials.floor` |
+| `rect` in an opening | Its `side`/`offset` count along that rect, not the whole footprint |
+| `porches[]` | `{"box", "floor", "posts", "entry": {"side", "offset"}, "balcony": {"rail", "rail_height"}}`: paving off the house at floor level, posts at its free corners, entrance steps at its entry, and with `balcony` a railed floor over it on the second storey |
+| `yard` | `{"box", "fence", "height", "gate": {"side", "offset"}, "gate_type", "path"}`: a fence on the box's edge (closed by the house's walls where it meets them), a real gate (`IronGate` or `LightWoodGate` by default), and a path of `path` paving from the gate to the entrance steps inside the fence |
+| `decor[]` | `{"item", "at", "z", "storey"}`: an item at a cell, z above that storey's floor (or above the ground) |
 
 **A built multi** (`build/multi/built/<name>/`, from `run.py build`):
 
@@ -722,6 +729,12 @@ Terms:
     `SouthCW` in a wall along y.
   - `type` is `DarkWoodDoor` or `MetalDoor`: plain doors with the house
     doors' art. A `BaseHouseDoor` refuses everyone outside a real `BaseHouse`.
+- `stops`: where a proof walks, in order (`name`, `x`, `y` from the centre,
+  `z`): outside (or through the yard's gate), the step, the entrance, inside,
+  and per stair its foot, the storey it reaches, a room there and a balcony.
+- `local` also holds `yard` (fence, gate, box, steps, path) and `stairs`.
+- A door with no floor under it (one in a north or west wall, or upstairs)
+  gets a sill: a floor tile in the door cell.
 - `preview.png`, `preview_noroof.png` and `plan_<n>.png`.
 
 **The validator** refuses:
@@ -732,4 +745,30 @@ Terms:
 - a ground floor the outside reaches with the doors shut (a gap in a wall);
 - a floor cell not reachable through a door (ground floor) or from a stair
   (upper storeys);
-- a multi with no door.
+- a multi with no door;
+- a yard whose fence is open, or whose gate does not lead to the entrance steps.
+
+**A scene** (`kind` `scene`, `format` 1; `tools/multi/fort.py`,
+e.g. `tools/multi/examples/fort_demo.json`) is `elements[]` on one grid, and
+a `tour[]` of `{"name", "at", "z"}` stops. Wherever the tour changes level,
+the build adds a stop at the foot and the top of the stair that gets there
+(`<stop>_stair<k>_from`, `_to`): the client's pathfinder ignores z. Every element names its `part`;
+each part becomes one multi (cut in two again while it has too many
+components). Elements:
+
+| `type` | Fields |
+|---|---|
+| `wall` | `path` (points; diagonals become stepped runs), `thickness`, `z` (base), `top` (the walkway), `outer` (`left`/`right` of travel: the parapet side, crenellated), `parapet` (`outer`, `both`, `none`), `parapet_gaps`, `gates[]` (`box` or `cells`, `z`, `height`, `door` and `door_line`; without `door` it is a culvert) |
+| `tower` | `disc` `[x, y, r]`, `z`, `levels[]` (floors, 20 apart for its stairs), `top`, `doors[]` (`at`, `z`, `door`); it opens where a wall's walkway meets it at a level |
+| `platform` | `shapes[]`/`minus[]` (`box`, `disc`, `band`), `z`, `floor`, `face` (stone faces down to `base`) |
+| `causeway` | `path`, `width`, `z`, `rail` |
+| `stair` | `at`, `rise`, `z`, `to`, `width` |
+| `house` | `desc` (a house description), `at`, `z` |
+
+`scene-build` writes `build/multi/scenes/<name>/`: `scene.json` (`parts[]`
+with `name`, `centre`, `bounds`, `doors`, `components`; `bounds`, `tour`,
+`valid`, `problems`), `parts/<part>.json` (components from the part's
+centre) and `preview.png`. `scene-write` writes each part into the stage as
+`<scene>.<part>` and the scene into the stage's `scenes.json`
+(`bounds`, `tour`, `parts[]` with `id`, `centre`, `doors`). A part is
+checked for known items with art, z range and size.

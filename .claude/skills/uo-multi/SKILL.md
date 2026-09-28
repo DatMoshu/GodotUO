@@ -85,15 +85,35 @@ python tools\multi\run.py prove <name> --clip build\multi_proof\<name>.mp4 [--vi
 ```
 
 - Under 16 GB free: stop and report. `prove` refuses too.
-- Run one heavy job at a time.
-- `prove` finds a flat, empty site near the probe character. It places the
-  multi and its doors, then walks the client to four stops: the front, the
-  step, the doorway and the middle of the ground floor. It then walks to each
-  `--visit` (multi-local x, y, z), for example the top of a stair or the
-  upper floor.
+- A timing run goes alone; other Godot runs may overlap.
+- `prove` takes down what earlier proofs left standing, then finds a flat,
+  empty site near the probe character (or takes `--at X Y Z`). It places the
+  multi and its doors, then walks the client through the stops the build
+  wrote: through a yard's gate, the step, the doorway, the middle of the
+  ground floor, up each stair, into a room upstairs and out onto a balcony.
+  It then walks to each `--visit` (multi-local x, y, z).
+- A stop counts only at its x and y and within 4 of its z.
 - Every stop is a frame `<stop>.png` and a dump.
 - `report.json` says where the client stood. `PASS` means every stop was
   reached.
+
+## 4b. A scene of several multis
+
+A castle bigger than one multi is a scene (`docs/data_formats.md` section 16,
+`tools/multi/examples/fort_demo.json`): walls, towers, platforms, causeways,
+stairs and houses on one grid, cut into one multi per part.
+
+```
+python tools\multi\run.py scene-build <scene.json> [--cut Z]
+python tools\multi\run.py scene-write <name> --stage build\uodata\<stage>
+python tools\multi\run.py scene-prove <name> --stage build\uodata\<stage> --at X Y Z --clip build\multi_proof\<name>.mp4
+```
+
+- Look at `preview.png` (and `preview_below_Z.png` for the inside) first.
+- Every part is placed at the site plus its centre, so the parts meet;
+  then the tour is walked, with a stop added at each stair it climbs.
+- Without `--at` it looks for flat, empty ground big enough near the probe
+  character; a large scene usually needs a clear site given with `--at`.
 
 ## 5. Report
 

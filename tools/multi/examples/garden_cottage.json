@@ -1,0 +1,147 @@
+{
+ "format": 1,
+ "name": "garden_cottage",
+ "size": [
+  8,
+  6
+ ],
+ "materials": {
+  "wall": "plaster",
+  "foundation": "stone",
+  "floor": "wooden",
+  "steps": "stone",
+  "roof": "thatch"
+ },
+ "storeys": [
+  {
+   "openings": [
+    {
+     "kind": "door",
+     "at": [
+      4,
+      6
+     ]
+    },
+    {
+     "kind": "window",
+     "at": [
+      2,
+      6
+     ]
+    },
+    {
+     "kind": "window",
+     "at": [
+      6,
+      6
+     ]
+    },
+    {
+     "kind": "window",
+     "at": [
+      8,
+      3
+     ]
+    },
+    {
+     "kind": "window",
+     "at": [
+      0,
+      3
+     ]
+    },
+    {
+     "kind": "window",
+     "at": [
+      4,
+      0
+     ]
+    }
+   ]
+  }
+ ],
+ "roof": {
+  "style": "gable",
+  "ridge": "x"
+ },
+ "yard": {
+  "box": [
+   -3,
+   -3,
+   11,
+   10
+  ],
+  "fence": "wooden fence",
+  "height": 6,
+  "gate": {
+   "side": "S",
+   "offset": 11
+  },
+  "path": "cobblestones"
+ },
+ "decor": [
+  {
+   "item": "0x0c84",
+   "at": [
+    0,
+    8
+   ]
+  },
+  {
+   "item": "0x0c85",
+   "at": [
+    1,
+    8
+   ]
+  },
+  {
+   "item": "0x0c83",
+   "at": [
+    -1,
+    8
+   ]
+  },
+  {
+   "item": "0x0c84",
+   "at": [
+    10,
+    0
+   ]
+  },
+  {
+   "item": "0x0c8b",
+   "at": [
+    10,
+    1
+   ]
+  },
+  {
+   "item": "0x0c8c",
+   "at": [
+    10,
+    2
+   ]
+  },
+  {
+   "item": "0x0d2d",
+   "at": [
+    -2,
+    1
+   ]
+  },
+  {
+   "item": "0x0d2f",
+   "at": [
+    -2,
+    3
+   ]
+  },
+  {
+   "item": "0x0c8a",
+   "at": [
+    -2,
+    5
+   ]
+  }
+ ]
+}

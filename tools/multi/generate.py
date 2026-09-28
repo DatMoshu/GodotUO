@@ -105,6 +105,30 @@ class Catalogue:
         cands = self.material(mat).get("door", {}).get("any") or ["0x06a5"]
         return int(cands[0], 16)
 
+    def post(self, mat: str, height: int) -> int:
+        """A free-standing post (a porch corner); a lone wall piece when the material has no posts."""
+        posts = self.material(mat).get("post", {})
+        hs = sorted(posts, key=lambda h: (abs(int(h) - height), -int(h)))
+        for h in hs:
+            cands = [i for ids in posts[h].values() for i in ids]
+            if cands:
+                return self.choose(cands)
+        return self.wall(mat, height, "")
+
+    def block(self, stair: int) -> int:
+        """The solid block a staircase stands on: the 10-high bridge piece the same originals
+        stack under this stair piece (0x0738 under wooden stairs, 0x0750 under stone ones)."""
+        mine = set(self._in(f"{stair:#06x}"))
+        best, score = None, 0
+        for item, p in self.pieces.items():
+            if p.get("height") == 10 and p.get("role") != "stair" and {"surface", "bridge"} <= set(p.get("flags", [])):
+                n = len(mine & set(p.get("in", [])))
+                if n > score:
+                    best, score = item, n
+        if best is None:
+            raise DescriptionError(f"no stair block goes with stair piece {stair:#06x}")
+        return int(best, 16)
+
 
 def fallbacks(sig: str) -> list[str]:
     """Signatures to try when a piece set lacks the exact one: the straight run it
@@ -130,46 +154,151 @@ def fallbacks(sig: str) -> list[str]:
 class Built:
     comps: list[Component] = field(default_factory=list)
     doors: list[dict] = field(default_factory=list)
-    storeys: list[dict] = field(default_factory=list)       # z, walls, floor, doors per storey (local grid)
+    storeys: list[dict] = field(default_factory=list)       # z, walls, floor, open, doors, arrivals (local grid)
     notes: list[str] = field(default_factory=list)
+    stairs: list[dict] = field(default_factory=list)
 
-    def add(self, item: int, x: int, y: int, z: int, visible: bool = True, why: str = "") -> None:
+    def add(self, item: int, x: int, y: int, z: int, visible: bool = True) -> None:
         self.comps.append(Component(item, x, y, z, visible))
 
 
-def opening_cell(o: dict, w: int, h: int) -> tuple[int, int]:
+# --- footprints -------------------------------------------------------------------------------
+# A footprint is a union of boxes [x0, y0, x1, y1]. Its walls stand on the union's edge cells;
+# its floor fills the cells whose west, north and north-west neighbours are also inside, which
+# for one box is x0+1..x1, y0+1..y1 (the originals' grid).
+
+def cells_of(box) -> set[tuple[int, int]]:
+    x0, y0, x1, y1 = box
+    return {(x, y) for x in range(x0, x1 + 1) for y in range(y0, y1 + 1)}
+
+
+def region(boxes) -> set[tuple[int, int]]:
+    out: set = set()
+    for b in boxes:
+        out |= cells_of(b)
+    return out
+
+
+def edge(r: set) -> set[tuple[int, int]]:
+    return {(x, y) for (x, y) in r
+            if any((x + dx, y + dy) not in r for dx in (-1, 0, 1) for dy in (-1, 0, 1))}
+
+
+def floor_of(r: set) -> set[tuple[int, int]]:
+    return {(x, y) for (x, y) in r if (x - 1, y) in r and (x, y - 1) in r and (x - 1, y - 1) in r}
+
+
+def bbox(cells) -> tuple[int, int, int, int]:
+    xs, ys = [c[0] for c in cells], [c[1] for c in cells]
+    return min(xs), min(ys), max(xs), max(ys)
+
+
+def opening_cell(o: dict, box) -> tuple[int, int]:
+    """An opening by `at`, or by `side` and `offset` along that side of `box` (the rect it names
+    with `rect`, else the whole footprint's bounds)."""
     if "at" in o:
         return tuple(o["at"])
-    side, off = o["side"], o.get("offset", (w if o["side"] in "NS" else h) // 2)
-    return {"S": (off, h), "N": (off, 0), "W": (0, off), "E": (w, off)}[side]
+    x0, y0, x1, y1 = box
+    side = o["side"]
+    off = o.get("offset", ((x1 - x0) if side in "NS" else (y1 - y0)) // 2)
+    return {"S": (x0 + off, y1), "N": (x0 + off, y0), "W": (x0, y0 + off), "E": (x1, y0 + off)}[side]
+
+
+def partition_cells(partitions: list[dict], box) -> set[tuple[int, int]]:
+    x0, y0, x1, y1 = box
+    cells = set()
+    for p in partitions:
+        if "x" in p:
+            cells |= {(p["x"], y) for y in range(p.get("from", y0), p.get("to", y1) + 1)}
+        else:
+            cells |= {(x, p["y"]) for x in range(p.get("from", x0), p.get("to", x1) + 1)}
+    return cells
 
 
 def wall_lines(w: int, h: int, partitions: list[dict]) -> set[tuple[int, int]]:
-    cells = {(x, y) for x in range(w + 1) for y in (0, h)} | {(x, y) for y in range(h + 1) for x in (0, w)}
-    for p in partitions:
-        if "x" in p:
-            cells |= {(p["x"], y) for y in range(p.get("from", 0), p.get("to", h) + 1)}
-        else:
-            cells |= {(x, p["y"]) for x in range(p.get("from", 0), p.get("to", w) + 1)}
-    return cells
+    return edge(cells_of((0, 0, w, h))) | partition_cells(partitions, (0, 0, w, h))
+
+
+def norm_rects(desc: dict) -> list[dict]:
+    n = len(desc["storeys"])
+    if "rects" not in desc:
+        w, h = desc["size"]
+        return [{"box": (0, 0, w, h), "storeys": n, "roof": desc.get("roof")}]
+    out = []
+    for r in desc["rects"]:
+        r = {"box": r} if isinstance(r, list) else dict(r)
+        r["box"] = tuple(r["box"])
+        r.setdefault("storeys", n)
+        r.setdefault("roof", desc.get("roof"))
+        if not 1 <= r["storeys"] <= n:
+            raise DescriptionError(f"rect {r['box']}: storeys {r['storeys']} outside 1..{n}")
+        out.append(r)
+    return out
+
+
+STAIR_STEPS = 4          # four steps of 5 z climb one 20-z storey; a landing of blocks tops the run
+
+
+def staircase(b: Built, cat: Catalogue, st: dict, mat: str, z: int, floor: set, walls: set) -> tuple[set, set]:
+    """A straight stair up to the next storey, as the client's houses build it (0x009E): step i
+    is a stair piece at z + 5i on i stacked 10-high blocks, then a landing of blocks. Returns
+    the cells the next floor must leave open and the cells a climber arrives on."""
+    dx, dy = SIDE_STEP[st["rise"]]
+    px, py = (1, 0) if st["rise"] in "NS" else (0, 1)
+    ax, ay = st["at"]
+    width = st.get("width", 1)
+    across = [(ax + k * px, ay + k * py) for k in range(width)]
+    holes, arrive = set(), set()
+    for i in range(STAIR_STEPS + 2):
+        row = [(x + i * dx, y + i * dy) for (x, y) in across]
+        for c in row:
+            if c not in floor or c in walls:
+                raise DescriptionError(f"stair from {st['at']} rising {st['rise']}: cell {c} is not open floor")
+        if i == STAIR_STEPS + 1:
+            arrive |= set(row)
+            break
+        holes |= set(row)
+        rowset = set(row)
+        for (x, y) in row:
+            piece = cat.step(mat, st["rise"], signature(rowset, x, y))
+            block = cat.block(piece)
+            if i < STAIR_STEPS:
+                for k in range(i):
+                    b.add(block, x, y, z + 5 * k)
+                b.add(piece, x, y, z + 5 * i)
+            else:
+                for k in range(STAIR_STEPS):
+                    b.add(block, x, y, z + 5 * k)
+    return holes, arrive
 
 
 def build(desc: dict, cat: Catalogue) -> tuple[list[Component], dict]:
     if desc.get("format") != 1:
         raise DescriptionError("format must be 1")
-    w, h = desc["size"]
     mats = desc["materials"]
     z0 = desc.get("floor_z", 7)
     step_h = desc.get("storey_height", 20)
     wall_h = desc.get("wall_height", step_h - 1)
-    b = Built()
+    rects = norm_rects(desc)
     storeys = desc["storeys"]
+    porches = desc.get("porches", [])
+    b = Built()
+    house = region(r["box"] for r in rects)
+    porch_cells: set = set()
+    for p in porches:
+        porch_cells |= cells_of(tuple(p["box"])) - house
+    holes_next: set = set()
+    arrivals: set = set()
     for n, st in enumerate(storeys):
         z = z0 + n * step_h
-        walls = wall_lines(w, h, st.get("partitions", []))
+        fp = region(r["box"] for r in rects if r["storeys"] > n)
+        if not fp:
+            raise DescriptionError(f"storey {n}: no rect reaches it")
+        box = bbox(fp)
+        walls = edge(fp) | partition_cells(st.get("partitions", []), box)
         doors, windows = {}, set()
         for o in st.get("openings", []):
-            c = opening_cell(o, w, h)
+            c = opening_cell(o, rects[o["rect"]]["box"] if "rect" in o else box)
             if c not in walls:
                 raise DescriptionError(f"storey {n}: opening {o} at {c} is not on a wall")
             if o["kind"] == "door":
@@ -181,59 +310,258 @@ def build(desc: dict, cat: Catalogue) -> tuple[list[Component], dict]:
         solid = walls - set(doors)
         for (x, y) in sorted(solid):
             b.add(cat.wall(mats["wall"], wall_h, signature(solid, x, y), window=(x, y) in windows), x, y, z)
-        holes = {tuple(c) for c in st.get("floor_holes", [])}
-        floor = [(x, y) for x in range(1, w + 1) for y in range(1, h + 1) if (x, y) not in holes]
-        ids = cat.floor(mats["floor"])
-        for (x, y) in floor:
+        holes = {tuple(c) for c in st.get("floor_holes", [])} | holes_next
+        floor = floor_of(fp) - holes
+        ids = cat.floor(st.get("floor", mats["floor"]))
+        for (x, y) in sorted(floor):
             b.add(ids[(x * 7 + y * 13) % len(ids)], x, y, z)
         door_item = cat.door(mats["wall"])
         for (x, y), o in sorted(doors.items()):
             along_x = (x - 1, y) in walls or (x + 1, y) in walls
             b.add(door_item, x, y, z, visible=False)
+            if (x, y) not in floor:
+                # a sill: the floor runs under the south and east walls only, so a door in a north
+                # or west wall (or in an upper storey's) has nothing to stand on without one
+                b.add(ids[(x * 7 + y * 13) % len(ids)], x, y, z)
             b.doors.append({"x": x, "y": y, "z": z, "storey": n,
                             "facing": "WestCW" if along_x else "SouthCW",
                             # Plain doors, same art and sounds as the house doors: a BaseHouseDoor
                             # refuses everyone outside a real BaseHouse ("not allowed to access this").
                             "type": "MetalDoor" if o.get("door", mats.get("door", "wood")) == "metal"
                             else "DarkWoodDoor"})
+        holes_next = set()
+        stair_arrivals: set = set()
+        for s in st.get("stairs", []):
+            if n + 1 >= len(storeys):
+                raise DescriptionError(f"storey {n}: a stair leads up from the top storey")
+            h, a = staircase(b, cat, s, s.get("material", mats.get("stairs", mats.get("steps", "wooden"))), z,
+                             floor, walls)
+            holes_next |= h
+            stair_arrivals |= a
+            dx, dy = SIDE_STEP[s["rise"]]
+            b.stairs.append({"foot": [s["at"][0] - dx, s["at"][1] - dy], "z": z, "cells": sorted(h),
+                             "arrive": sorted(a)[0], "to": n + 1})
         b.storeys.append({"z": z, "walls": sorted(solid), "doors": sorted(doors), "windows": sorted(windows),
-                          "floor": floor})
+                          "floor": sorted(floor), "open": sorted(porch_cells) if n == 0 else [],
+                          "arrivals": sorted(arrivals)})
+        arrivals = stair_arrivals
+    # porches: paving off the house, posts at the free corners, and a railed balcony over it
+    for p in porches:
+        box = tuple(p["box"])
+        cells = cells_of(box) - house
+        ids = cat.floor(p.get("floor", mats["floor"]))
+        for (x, y) in sorted(cells):
+            b.add(ids[(x * 7 + y * 13) % len(ids)], x, y, z0)
+        x0, y0, x1, y1 = box
+        posts = {c for c in ((x0, y0), (x1, y0), (x0, y1), (x1, y1)) if c not in house}
+        bal = p.get("balcony")
+        for (x, y) in sorted(posts):
+            b.add(cat.post(p.get("posts", mats["wall"]), step_h if bal else wall_h), x, y, z0)
+        b.storeys[0]["walls"] = sorted(set(map(tuple, b.storeys[0]["walls"])) | posts)
+        if bal:
+            if len(b.storeys) < 2:
+                raise DescriptionError("a balcony needs a second storey to step out from")
+            zb = z0 + step_h
+            rail = edge(cells_of(box)) - house
+            for (x, y) in sorted(cells):
+                b.add(ids[(x * 7 + y * 13) % len(ids)], x, y, zb)
+            for (x, y) in sorted(rail):
+                b.add(cat.wall(bal.get("rail", "stone rail"), bal.get("rail_height", 5), signature(rail, x, y)),
+                      x, y, zb)
+            up = b.storeys[1]
+            up["open"] = sorted(set(map(tuple, up["open"])) | (cells - rail))
+            up["walls"] = sorted(set(map(tuple, up["walls"])) | rail)
+    ground_cells = house | porch_cells
     if "foundation" in mats:
-        fz = z0 - 7
-        ring = wall_lines(w, h, [])
+        ring = edge(ground_cells)
         for (x, y) in sorted(ring):
-            b.add(cat.wall(mats["foundation"], 5, signature(ring, x, y)), x, y, fz)
-    ground = b.storeys[0]
-    for (x, y) in ground["doors"]:
-        side = "S" if y == h else "N" if y == 0 else "E" if x == w else "W" if x == 0 else None
-        if side is None or "steps" not in mats:
+            b.add(cat.wall(mats["foundation"], 5, signature(ring, x, y)), x, y, z0 - 7)
+    # entrance steps: outside each ground door that opens straight onto open ground, and at each
+    # porch's entry
+    entries = []
+    for (x, y) in b.storeys[0]["doors"]:
+        for side, (dx, dy) in SIDE_STEP.items():
+            if (x + dx, y + dy) not in ground_cells and (x - dx, y - dy) in house:
+                entries.append((x, y, side))
+    for p in porches:
+        if "entry" in p:
+            entries.append((*opening_cell(p["entry"], tuple(p["box"])), p["entry"]["side"]))
+    step_rows = []
+    if "steps" in mats:
+        for (x, y, side) in entries:
+            dx, dy = SIDE_STEP[side]
+            across = [(-1, 0), (0, 0), (1, 0)] if side in "NS" else [(0, -1), (0, 0), (0, 1)]
+            row = {(x + dx + ax, y + dy + ay) for ax, ay in across}
+            step_rows.append((x + dx, y + dy, side))
+            for (sx, sy) in sorted(row):
+                b.add(cat.step(mats["steps"], TOWARD[side], signature(row, sx, sy)), sx, sy, z0 - 5)
+    # roofs, one per rect at its own top: where two cover a cell the higher wins, and nothing is
+    # roofed inside a taller rect (its upper walls stand there)
+    roof_cells: dict = {}
+    roof_z = None
+    for i, r in enumerate(rects):
+        if not r["roof"]:
             continue
-        dx, dy = SIDE_STEP[side]
-        across = [(-1, 0), (0, 0), (1, 0)] if side in "NS" else [(0, -1), (0, 0), (0, 1)]
-        row = {(x + dx + ax, y + dy + ay) for ax, ay in across}
-        for (sx, sy) in sorted(row):
-            b.add(cat.step(mats["steps"], TOWARD[side], signature(row, sx, sy)), sx, sy, z0 - 5)
-    top = z0 + len(storeys) * step_h
-    roof = desc.get("roof")
-    if roof:
-        roof_gable(b, cat, roof, mats, w, h, top)
-    cx, cy = w // 2, h // 2
+        top = z0 + r["storeys"] * step_h
+        roof_z = top if roof_z is None else min(roof_z, top)
+        rb = Built()
+        roof_rect(rb, cat, r["roof"], mats, r["box"], top)
+        taller = region(q["box"] for q in rects if q["storeys"] > r["storeys"])
+        for c in rb.comps:
+            if (c.x, c.y) not in taller:
+                roof_cells.setdefault((c.x, c.y), {}).setdefault(i, []).append(c)
+    for cell, by_rect in sorted(roof_cells.items()):
+        b.comps.extend(max(by_rect.values(), key=lambda cs: max(c.z for c in cs)))
+    yard = desc.get("yard")
+    yard_side = build_yard(b, cat, yard, z0 - 7, ground_cells, step_rows) if yard else None
+    for d in desc.get("decor", []):
+        dz = d.get("z", 0) + (b.storeys[d["storey"]]["z"] if "storey" in d else z0 - 7)
+        b.add(int(d["item"], 16) if isinstance(d["item"], str) else d["item"], d["at"][0], d["at"][1], dz)
+    x0, y0, x1, y1 = bbox(house)
+    cx, cy = (x0 + x1) // 2, (y0 + y1) // 2
+    stops = walk_stops(b, entries, yard_side, porches, house, (cx, cy), z0, step_h)
     b.add(CENTRE_MARKER, cx, cy, 0, visible=False)
     comps = [Component(c.item, c.x - cx, c.y - cy, c.z, c.visible) for c in b.comps]
     doors = [dict(d, x=d["x"] - cx, y=d["y"] - cy) for d in b.doors]
-    side = {"format": 1, "name": desc["name"], "size": [w, h], "centre": [cx, cy],
-            "storeys": [s["z"] for s in b.storeys], "roof_z": top if roof else None,
+    side = {"format": 1, "name": desc["name"], "size": [x1 - x0, y1 - y0], "centre": [cx, cy],
+            "storeys": [s["z"] for s in b.storeys], "roof_z": roof_z,
             "doors": doors, "components": len(comps), "notes": b.notes,
-            "local": {"storeys": [{k: v for k, v in s.items()} for s in b.storeys]}}
+            "stops": [dict(t, x=t["x"] - cx, y=t["y"] - cy) for t in stops],
+            "local": {"storeys": b.storeys, "yard": yard_side, "stairs": b.stairs}}
     return comps, side
 
 
-def roof_gable(b: Built, cat: Catalogue, roof: dict, mats: dict, w: int, h: int, top: int) -> None:
+def walk_stops(b: Built, entries: list, yard: dict | None, porches: list, house: set, centre, z0: int,
+               step_h: int) -> list[dict]:
+    """Where a proof walks, in order: up to the house (through the yard's gate), onto the
+    entrance step, in, to the middle of the ground floor, and for each stair its foot, the
+    floor it arrives on, and a balcony off that floor. z is local, as the doors' are."""
+    stops = []
+    if not entries:
+        return stops
+    x, y, side = entries[0]
+    if yard and yard["steps"]:
+        # the entrance the yard's path leads to
+        inner = [e for e in entries if [e[0] + SIDE_STEP[e[2]][0], e[1] + SIDE_STEP[e[2]][1]] in yard["steps"]
+                 or (e[0] + SIDE_STEP[e[2]][0], e[1] + SIDE_STEP[e[2]][1]) in set(map(tuple, yard["steps"]))]
+        x, y, side = (inner or entries)[0]
+    dx, dy = SIDE_STEP[side]
+    if yard:
+        gx, gy = yard["gate"]
+        gx0, gy0, gx1, gy1 = yard["box"]
+        ox, oy = (0, 2) if gy == gy1 else (0, -2) if gy == gy0 else (2, 0) if gx == gx1 else (-2, 0)
+        stops.append({"name": "outside", "x": gx + ox, "y": gy + oy, "z": z0 - 7})
+        stops.append({"name": "yard", "x": gx - ox // 2, "y": gy - oy // 2, "z": z0 - 7})
+    else:
+        stops.append({"name": "front", "x": x + 3 * dx, "y": y + 3 * dy, "z": z0 - 7})
+    stops.append({"name": "step", "x": x + dx, "y": y + dy, "z": z0 - 5})
+    stops.append({"name": "entrance", "x": x, "y": y, "z": z0})
+    stair_cells = {tuple(c) for st in b.stairs for c in st["cells"]}
+    stair_cells |= {tuple(c) for st in b.storeys for c in st["doors"]}      # nor stop in a doorway
+
+    def nearest(cells, at):
+        cells = [c for c in cells if c not in stair_cells]
+        return min(cells, key=lambda c: (abs(c[0] - at[0]) + abs(c[1] - at[1]), c)) if cells else None
+
+    g = b.storeys[0]
+    walk = set(map(tuple, g["floor"])) - set(map(tuple, g["walls"]))
+    inside = nearest(walk, centre)
+    if inside:
+        stops.append({"name": "inside", "x": inside[0], "y": inside[1], "z": z0})
+    for st in b.stairs:
+        up = b.storeys[st["to"]]
+        stops.append({"name": f"stair{st['to']}_foot", "x": st["foot"][0], "y": st["foot"][1], "z": st["z"]})
+        stops.append({"name": f"storey{st['to']}", "x": st["arrive"][0], "y": st["arrive"][1], "z": up["z"]})
+        upwalk = set(map(tuple, up["floor"])) - set(map(tuple, up["walls"]))
+        far = nearest(upwalk, centre)
+        if far and list(far) != st["arrive"]:
+            stops.append({"name": f"storey{st['to']}_room", "x": far[0], "y": far[1], "z": up["z"]})
+        balcony = sorted(set(map(tuple, up.get("open", []))))
+        if balcony:
+            out_doors = [d for d in map(tuple, up["doors"])
+                         if any((d[0] + ex, d[1] + ey) in set(balcony) for ex, ey in SIDE_STEP.values())]
+            if out_doors:
+                stops.append({"name": f"storey{st['to']}_balcony_door", "x": out_doors[0][0], "y": out_doors[0][1],
+                              "z": up["z"]})
+            c = balcony[len(balcony) // 2]
+            stops.append({"name": f"storey{st['to']}_balcony", "x": c[0], "y": c[1], "z": up["z"]})
+    return stops
+
+
+def build_yard(b: Built, cat: Catalogue, yard: dict, z: int, taken: set, step_rows: list) -> dict:
+    """A fence on the edge of the yard's box (not through the house: a courtyard is closed by
+    its walls) with a gate, a real gate door, and a path of paving from the gate to the
+    house's entrance steps."""
+    box = tuple(yard["box"])
+    ring = edge(cells_of(box))
+    gate = opening_cell(yard["gate"], box)
+    if gate not in ring:
+        raise DescriptionError(f"yard gate {gate} is not on the fence")
+    if gate in taken:
+        raise DescriptionError(f"yard gate {gate} is in the house")
+    fence = ring - {gate} - taken          # where the box meets the house, its walls close the yard
+    mat = yard.get("fence", "wooden fence")
+    for (x, y) in sorted(fence):
+        b.add(cat.wall(mat, yard.get("height", 11), signature(fence, x, y)), x, y, z)
+    along_x = (gate[0] - 1, gate[1]) in ring
+    b.doors.append({"x": gate[0], "y": gate[1], "z": z, "storey": None, "facing": "WestCW" if along_x else "SouthCW",
+                    "type": yard.get("gate_type", "IronGate" if "iron" in mat else "LightWoodGate")})
+    inside = cells_of(box) - ring
+    steps = {(x, y) for (x, y, _) in step_rows if (x, y) in inside}      # the entrances inside the fence
+    path = []
+    if yard.get("path") and steps:
+        # breadth first from the cell inside the gate to the nearest entrance step, round the house
+        gx, gy = gate
+        start = next(c for c in ((gx, gy - 1), (gx, gy + 1), (gx - 1, gy), (gx + 1, gy)) if c in inside)
+        prev, queue, goal = {start: None}, [start], None
+        while queue and goal is None:
+            nq = []
+            for c in queue:
+                for dx, dy in ((0, -1), (0, 1), (-1, 0), (1, 0)):
+                    nc = (c[0] + dx, c[1] + dy)
+                    if nc in prev or nc not in inside or nc in taken:
+                        continue
+                    prev[nc] = c
+                    if nc in steps:
+                        goal = nc
+                        break
+                    nq.append(nc)
+                if goal:
+                    break
+            queue = nq
+        c = prev.get(goal) if goal else None
+        while c is not None:
+            path.append(c)
+            c = prev[c]
+        ids = cat.floor(yard["path"])
+        for (x, y) in sorted(path):
+            b.add(ids[(x * 7 + y * 13) % len(ids)], x, y, z)
+    return {"fence": sorted(fence), "gate": list(gate), "box": list(box), "steps": sorted(steps), "path": sorted(path)}
+
+
+def roof_rect(b: Built, cat: Catalogue, roof: dict, mats: dict, box, top: int) -> None:
+    style = roof.get("style", "gable")
+    x0, y0, x1, y1 = box
+    if style == "gable":
+        roof_gable(b, cat, roof, mats, x1 - x0, y1 - y0, top, x0, y0)
+    elif style == "flat":
+        r = cells_of(box)
+        ids = cat.floor(roof.get("material", mats["floor"]))
+        for (x, y) in sorted(floor_of(r)):
+            b.add(ids[(x * 7 + y * 13) % len(ids)], x, y, top)
+        if roof.get("parapet"):
+            ring = edge(r)
+            for (x, y) in sorted(ring):
+                b.add(cat.wall(roof["parapet"], roof.get("parapet_height", 5), signature(ring, x, y)), x, y, top)
+    else:
+        raise DescriptionError(f"roof style '{style}' is not supported (gable, flat)")
+
+
+def roof_gable(b: Built, cat: Catalogue, roof: dict, mats: dict, w: int, h: int, top: int,
+               ox: int = 0, oy: int = 0) -> None:
     """A gable roof over x 1..W+1, y 1..H+1 (the originals' overhang), 3 z a course,
     with gable-end fill of the wall material on the visible (south or east) end."""
-    if roof.get("style", "gable") != "gable":
-        raise DescriptionError(f"roof style '{roof.get('style')}' is not supported yet")
-    mat = mats["roof"]
+    mat = roof.get("material", mats["roof"])
     ridge = roof.get("ridge", "y" if h >= w else "x")
     span = (w if ridge == "y" else h) + 1
     if span % 2 == 0:
@@ -247,15 +575,15 @@ def roof_gable(b: Built, cat: Catalogue, roof: dict, mats: dict, w: int, h: int,
         if lo == hi:
             for t in length:
                 x, y = (lo, t) if ridge == "y" else (t, lo)
-                b.add(cat.roof(mat, "ridge_y" if ridge == "y" else "ridge_x"), x, y, z)
+                b.add(cat.roof(mat, "ridge_y" if ridge == "y" else "ridge_x"), ox + x, oy + y, z)
         else:
             a_side, b_side = ("W", "E") if ridge == "y" else ("N", "S")
             for t in length:
                 ax, ay = (lo, t) if ridge == "y" else (t, lo)
                 bx, by = (hi, t) if ridge == "y" else (t, hi)
-                b.add(cat.roof(mat, a_side), ax, ay, z)
-                b.add(cat.roof(mat, b_side), bx, by, z)
+                b.add(cat.roof(mat, a_side), ox + ax, oy + ay, z)
+                b.add(cat.roof(mat, b_side), ox + bx, oy + by, z)
             fill = {((u, fill_line) if ridge == "y" else (fill_line, u)) for u in range(lo + 1, hi)}
             for (fx, fy) in sorted(fill):
-                b.add(cat.wall(mats["wall"], 3, signature(fill, fx, fy)), fx, fy, z)
+                b.add(cat.wall(mats["wall"], 3, signature(fill, fx, fy)), ox + fx, oy + fy, z)
         lo, hi, k = lo + 1, hi - 1, k + 1

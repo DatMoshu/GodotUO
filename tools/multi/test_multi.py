@@ -5,7 +5,11 @@
 Checks the multi record codecs, piece signatures and roof sides, the
 generator against a tiny hand-made catalogue (walls closed, the door a gap
 with a hidden marker and a sidecar door, the gable roof's courses and
-fill), and the validator catching a gap in a wall and a sealed room.
+fill), the validator catching a gap in a wall and a sealed room, a two-storey
+L with a stair (steps on stacked blocks, a hole above, walk stops up it), a
+fenced yard (a real gate, the validator catching a gap), and a small scene
+(a wall and a tower cut into multis, stair stops added to its tour, the same
+bytes twice).
 """
 from __future__ import annotations
 
@@ -18,6 +22,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent))
 
+import fort  # noqa: E402
 import generate  # noqa: E402
 import validate  # noqa: E402
 from mine import roof_side, signature  # noqa: E402
@@ -46,14 +51,19 @@ def fake_catalogue(folder: Path) -> None:
         },
         "stone": {
             "wall": {"5": {s: [f"{0x400 + i:#06x}"] for i, s in enumerate(SIGS)}},
-            "stair": {"N/E": ["0x0501"], "N/EW": ["0x0502"], "N/W": ["0x0503"]},
+            "stair": {"N/E": ["0x0501"], "N/EW": ["0x0502"], "N/W": ["0x0503"],
+                      "S/-": ["0x0511"], "E/-": ["0x0512"], "W/-": ["0x0513"]},
+            "floor": {"NESW": ["0x0611"]},
         },
         "wooden": {"floor": {"NESW": ["0x0601", "0x0602"]}},
         "tile": {"roof": {"N": ["0x0701"], "S": ["0x0702"], "W": ["0x0703"], "E": ["0x0704"],
                           "ridge_x": ["0x0705"], "ridge_y": ["0x0706"]}},
     }
     (folder / "families.json").write_text(json.dumps(fam), encoding="utf-8")
-    (folder / "pieces.json").write_text("{}", encoding="utf-8")
+    # the block a stair stands on: 10 high, a bridge, used in the same originals as the steps
+    pieces = {"0x0750": {"height": 10, "role": "floor", "flags": ["surface", "bridge"], "in": [1]}}
+    pieces.update({f"{i:#06x}": {"height": 5, "role": "stair", "in": [1]} for i in (0x501, 0x502, 0x503, 0x511, 0x512, 0x513)})
+    (folder / "pieces.json").write_text(json.dumps(pieces), encoding="utf-8")
 
 
 def cottage(**over) -> dict:
@@ -134,6 +144,59 @@ def main() -> int:
         nodoor = cottage(storeys=[{"openings": []}])
         comps3, side3 = generate.build(nodoor, cat)
         check(any(p == "no door" for p in validate.validate(comps3, side3, None)), "a multi with no door is caught")
+
+        # a two-storey L with a stair
+        two = cottage(name="l", size=None, rects=[[0, 0, 6, 4], [0, 4, 4, 8]], roof={"style": "flat", "material": "stone"},
+                      storeys=[{"openings": [{"kind": "door", "side": "S", "offset": 2}],
+                                "stairs": [{"at": [1, 1], "rise": "S", "material": "stone"}]},
+                               {"openings": []}])
+        del two["size"]
+        comps4, side4 = generate.build(two, cat)
+        cx, cy = side4["centre"]
+        steps4 = sorted((c.x + cx, c.y + cy, c.z) for c in comps4 if c.item == 0x511)
+        blocks = [c for c in comps4 if c.item == 0x750]
+        check(steps4 == [(1, 1 + i, 7 + 5 * i) for i in range(4)], f"stair steps rise 5 z a cell (got {steps4})")
+        check(len(blocks) == 0 + 1 + 2 + 3 + 4, f"each step stands on its blocks, the landing on four (got {len(blocks)})")
+        up = side4["local"]["storeys"][1]
+        hole = {(1, y) for y in range(1, 6)}
+        check(not hole & set(map(tuple, up["floor"])), "the floor above is open over the flight and landing")
+        names = [st["name"] for st in side4["stops"]]
+        check("stair1_foot" in names and any(st["z"] == 27 for st in side4["stops"]),
+              f"the walk climbs the stair to z 27 (stops {names})")
+        check(validate.validate(comps4, side4, None) == [], "the two-storey L validates")
+
+        # a fenced yard
+        yd = cottage(yard={"box": [-2, -1, 6, 8], "fence": "stone", "height": 5, "gate": {"side": "S", "offset": 4},
+                           "gate_type": "IronGate", "path": "stone"})
+        comps5, side5 = generate.build(yd, cat)
+        gates = [d for d in side5["doors"] if d["type"] == "IronGate"]
+        check(len(gates) == 1, "the yard has a real gate")
+        check(validate.validate(comps5, side5, None) == [], "the fenced yard validates")
+        broken = json.loads(json.dumps(side5))
+        broken["local"]["yard"]["fence"] = [f for f in broken["local"]["yard"]["fence"] if f != [-2, 3] and f != (-2, 3)]
+        check(any("fence is not closed" in p for p in validate.validate(comps5, broken, None)),
+              "a gap in the fence is caught")
+
+        # a small scene: a wall into a tower, a stair up the wall, a tour that climbs
+        scene = {"format": 1, "kind": "scene", "name": "t",
+                 "materials": {"wall": "stone", "walk": "stone", "floor": "stone", "stairs": "stone"},
+                 "elements": [
+                     {"type": "wall", "part": "wall", "path": [[0, 0], [20, 0]], "thickness": 3, "top": 20,
+                      "floor": "stone", "parapet": "none"},
+                     {"type": "tower", "part": "tower", "disc": [24, 0, 4], "levels": [0, 20], "top": 40,
+                      "floor": "stone", "parapet": False},
+                     {"type": "stair", "part": "wall", "at": [4, 3], "rise": "E", "z": 0, "to": 20}],
+                 "tour": [{"name": "foot", "at": [2, 4], "z": 0}, {"name": "walk", "at": [10, 0], "z": 20}]}
+        sc = fort.build_scene(scene, cat)
+        again = fort.build_scene(json.loads(json.dumps(scene)), cat)
+        check([p["name"] for p in sc["parts"]] == ["wall", "tower"], "a scene becomes one multi per part")
+        check([[(c.item, c.x, c.y, c.z) for c in p["comps"]] for p in sc["parts"]] ==
+              [[(c.item, c.x, c.y, c.z) for c in p["comps"]] for p in again["parts"]], "a scene builds to the same bytes")
+        tour = [t["name"] for t in sc["tour"]]
+        check(tour == ["foot", "walk_stair0_from", "walk_stair0_to", "walk"], f"the tour climbs by the stair (got {tour})")
+        climb = sc["tour"][1:3]
+        check(climb[0]["z"] == 0 and climb[1]["z"] == 20 and (climb[0]["x"], climb[0]["y"]) == (3, 3),
+              f"the climb starts at the stair's foot and ends on its landing (got {climb})")
 
     print(f"test_multi: {'OK' if not FAILS else 'FAILED'} ({len(FAILS)} failing)")
     return 0 if not FAILS else 1

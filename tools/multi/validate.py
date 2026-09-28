@@ -32,26 +32,62 @@ def flood(start: set, passable, limit: tuple[int, int, int, int]) -> set:
 
 
 def check_storey(st: dict, n: int, entries: set | None) -> list[str]:
-    """entries: None for the ground storey (entered from outside), else the cells a stair arrives on."""
+    """entries: None for the ground storey (entered from outside), else the cells a stair arrives on.
+    Open cells (a porch, a balcony) are walked but lie outside the walls, so only the floor must be shut in."""
     walls, doors, floor = set(map(tuple, st["walls"])), set(map(tuple, st["doors"])), set(map(tuple, st["floor"]))
-    xs = [c[0] for c in walls | floor]
-    ys = [c[1] for c in walls | floor]
+    opened = set(map(tuple, st.get("open", [])))
+    xs = [c[0] for c in walls | floor | opened]
+    ys = [c[1] for c in walls | floor | opened]
     lim = (min(xs) - 1, min(ys) - 1, max(xs) + 1, max(ys) + 1)
-    outside = {(x, y) for x in range(lim[0], lim[2] + 1) for y in (lim[1], lim[3])} | \
-              {(x, y) for y in range(lim[1], lim[3] + 1) for x in (lim[0], lim[2])}
+    outside = {(x, y) for x in range(lim[0], lim[2] + 1) for y in (lim[1], lim[3])} |               {(x, y) for y in range(lim[1], lim[3] + 1) for x in (lim[0], lim[2])}
     problems = []
-    walk_floor = floor - walls
+    inner = floor - walls
+    walk = (floor | opened) - walls
     shut = flood(outside, lambda c: c not in walls and c not in doors, lim)
-    leaks = sorted(walk_floor & shut)
+    leaks = sorted(inner & shut)
     if n == 0 and leaks:
         problems.append(f"storey {n}: walls not closed, outside reaches {leaks[:6]}")
     if entries is None:
         reached = flood(outside, lambda c: c not in walls, lim)
     else:
-        reached = flood(set(entries) & walk_floor, lambda c: c in walk_floor or c in doors, lim)
-    missing = sorted(walk_floor - reached)
+        reached = flood(set(entries) & walk, lambda c: c in walk or c in doors, lim)
+    missing = sorted(walk - reached)
     if missing:
         problems.append(f"storey {n}: {len(missing)} floor cells unreachable, e.g. {missing[:6]}")
+    return problems
+
+
+def check_yard(yard: dict, storeys: list[dict]) -> list[str]:
+    """The fence shuts the yard in, and the gate lets a walker through to the entrance steps."""
+    fence, gate = set(map(tuple, yard["fence"])), tuple(yard["gate"])
+    x0, y0, x1, y1 = yard["box"]
+    lim = (x0 - 1, y0 - 1, x1 + 1, y1 + 1)
+    outside = {(x, y) for x in range(lim[0], lim[2] + 1) for y in (lim[1], lim[3])} |               {(x, y) for y in range(lim[1], lim[3] + 1) for x in (lim[0], lim[2])}
+    g = storeys[0]
+    house = set(map(tuple, g["walls"])) | set(map(tuple, g["floor"])) | set(map(tuple, g.get("open", [])))
+    steps = set(map(tuple, yard["steps"]))
+    problems = []
+    if steps & flood(outside, lambda c: c not in fence and c != gate and c not in house, lim):
+        problems.append("yard: the fence is not closed")
+    if steps and not steps & flood(outside, lambda c: c not in fence and c not in house, lim):
+        problems.append("yard: no way from the gate to the entrance steps")
+    return problems
+
+
+def check_parts(comps: list[Component], data_dir: Path | None) -> list[str]:
+    """What a scene's part must meet on its own: known items with art, z in range, size."""
+    problems = []
+    if data_dir is not None:
+        td, art = TileData(data_dir), Art(data_dir)
+        for item in sorted({c.item for c in comps}):
+            if td.static(item) is None:
+                problems.append(f"item {item:#06x} is not in tiledata")
+            elif art.get_static(item) is None and any(c.visible for c in comps if c.item == item):
+                problems.append(f"item {item:#06x} has no art")
+    if any(not -128 <= c.z <= 127 for c in comps):
+        problems.append(f"a z outside -128..127 (max {max(c.z for c in comps)})")
+    if len(comps) > MAX_COMPONENTS:
+        problems.append(f"{len(comps)} components, the shard reads at most {MAX_COMPONENTS}")
     return problems
 
 
@@ -78,6 +114,8 @@ def validate(comps: list[Component], side: dict, data_dir: Path | None) -> list[
             problems.append(f"storey {n}: no stair arrives on it")
             continue
         problems += check_storey(st, n, entries)
-    if not side["doors"]:
+    if side["local"].get("yard"):
+        problems += check_yard(side["local"]["yard"], storeys)
+    if not any(d.get("storey") is not None for d in side["doors"]):
         problems.append("no door")
     return problems

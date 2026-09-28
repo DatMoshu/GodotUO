@@ -1,4 +1,4 @@
-"""Prove an authored multi in game: the private shard, a client, a walk through the door.
+"""Prove an authored multi, or a scene of them, in game: the private shard, a client, a walk.
 
 1. The private ModernUO (tools/editor_shard, this checkout's copy and ports) starts
    with the stage first in its data directories, so it reads the staged multis.
@@ -6,11 +6,13 @@
    no statics, no water), unless --at X Y gives one.
 3. A client logs in with the stage's files_override (so it draws the staged
    multi), auto_open_doors and smooth_doors on. Its window never takes the focus.
-4. The bridge's "multi" op places the multi and its doors.
-5. The character walks (the client's own pathfinder, the watch's .goto): to the
-   front, onto the step, through the door, into the middle of the ground floor,
-   and for each extra "--visit X Y Z" (multi-local), there too. Every stop is a
-   frame and a world dump; the report holds where the client says the player stood.
+4. The bridge's "multi" op places the multi and its doors (a scene: every part, at
+   the site plus the part's centre).
+5. The character walks (the client's own pathfinder, the watch's .goto) the stops
+   the generator wrote (through the yard's gate, up the step, in, up each stair, out
+   onto a balcony), or a scene's tour, and each extra "--visit X Y Z" (local). Every
+   stop is a frame and a world dump; the report holds where the client says the
+   player stood, and a stop counts only at its x and y and within 4 of its z.
 6. With --clip the walk is recorded and written as an MP4.
 
 Never the shared shard; never with less than --min-free-gb of memory free.
@@ -43,37 +45,66 @@ def free_gb() -> float:
     return float(out or 0)
 
 
-def find_site(cfg, w: int, h: int, near=START, radius: int = 60) -> tuple[int, int, int] | None:
-    """The nearest (x, y, z) whose w x h box (plus a tile of margin) is flat land with no statics."""
+def occupancy(cfg, facet: int = 0):
+    """Per cell of the facet (west of the dungeons): land z, and whether a house cannot stand
+    there (water, impassable land, or any static). Cached under build/multi, keyed by the
+    map files' sizes and times."""
+    import numpy as np
+    maps = sorted(Path(cfg.client_data).glob(f"*map{facet}*")) + sorted(Path(cfg.client_data).glob(f"*statics{facet}*"))
+    key = "|".join(f"{p.name}:{p.stat().st_size}:{int(p.stat().st_mtime)}" for p in maps)
+    cache = cfg.build / "multi" / f"occupancy{facet}.npz"
+    if cache.exists():
+        d = np.load(cache)
+        if str(d["key"]) == key:
+            return d["z"], d["blocked"]
     td = TileData(cfg.client_data)
-    with open_facet(cfg.client_data, 0) as f:
-        blocks: dict = {}
+    wet = {}
+    with open_facet(cfg.client_data, facet) as f:
+        w, h = (min(f.width_blocks * 8, 5120) if facet in (0, 1) else f.width_blocks * 8), f.height_blocks * 8
+        z = np.zeros((h, w), np.int8)
+        blocked = np.zeros((h, w), bool)
+        for bx in range(w >> 3):
+            for by in range(h >> 3):
+                b = f.read(bx, by)
+                zs = np.array(b.land_z, np.int8).reshape(8, 8)
+                ids = b.land_id
+                bl = np.zeros(64, bool)
+                for i in range(64):
+                    v = wet.get(ids[i])
+                    if v is None:
+                        land = td.land(ids[i]) or {"flags": 0}
+                        v = wet[ids[i]] = bool(land["flags"] & (WET | IMPASSABLE))
+                    bl[i] = v
+                for s in b.statics:
+                    bl[s[2] * 8 + s[1]] = True
+                z[by * 8:by * 8 + 8, bx * 8:bx * 8 + 8] = zs
+                blocked[by * 8:by * 8 + 8, bx * 8:bx * 8 + 8] = bl.reshape(8, 8)
+    cache.parent.mkdir(parents=True, exist_ok=True)
+    np.savez_compressed(cache, z=z, blocked=blocked, key=np.array(key))
+    return z, blocked
 
-        def cell(x, y):
-            b = blocks.get((x >> 3, y >> 3))
-            if b is None:
-                b = blocks[(x >> 3, y >> 3)] = f.read(x >> 3, y >> 3)
-            return b, (y & 7) * 8 + (x & 7)
 
-        def ok(x0, y0):
-            zs = set()
-            for x in range(x0 - 1, x0 + w + 2):
-                for y in range(y0 - 1, y0 + h + 2):
-                    b, i = cell(x, y)
-                    land = td.land(b.land_id[i]) or {"flags": 0}
-                    if land["flags"] & (WET | IMPASSABLE):
-                        return None
-                    if any(s[1] == (x & 7) and s[2] == (y & 7) for s in b.statics):
-                        return None
-                    zs.add(b.land_z[i])
-            return min(zs) if max(zs) - min(zs) <= 2 else None
-
-        for r in range(0, radius, 2):
-            for dx in range(-r, r + 1, 2):
-                for dy in (-r, r) if abs(dx) != r else range(-r, r + 1, 2):
-                    z = ok(near[0] + dx, near[1] + dy)
-                    if z is not None:
-                        return near[0] + dx, near[1] + dy, z
+def find_site(cfg, w: int, h: int, near=START, radius: int = 600) -> tuple[int, int, int] | None:
+    """The nearest (x, y, z) whose w x h box (plus a tile of margin) is land within 2 z with no
+    statics and no water."""
+    import numpy as np
+    z, blocked = occupancy(cfg)
+    x0, y0 = max(near[0] - radius, 1), max(near[1] - radius, 1)
+    x1, y1 = min(near[0] + radius, z.shape[1] - w - 2), min(near[1] + radius, z.shape[0] - h - 2)
+    sub = blocked[y0 - 1:y1 + h + 2, x0 - 1:x1 + w + 2].astype(np.int32)
+    sat = np.pad(sub.cumsum(0).cumsum(1), ((1, 0), (1, 0)))
+    bw, bh = w + 3, h + 3                                        # the box plus a tile each side
+    cnt = sat[bh:, bw:] - sat[:-bh, bw:] - sat[bh:, :-bw] + sat[:-bh, :-bw]
+    ys, xs = np.nonzero(cnt == 0)
+    if not len(xs):
+        return None
+    cx, cy = xs + x0, ys + y0                                    # the box's top-left corner
+    order = np.argsort(np.abs(cx - near[0]) + np.abs(cy - near[1]))
+    for i in order[:5000]:
+        bx, by = int(cx[i]), int(cy[i])
+        patch = z[by - 1:by + h + 2, bx - 1:bx + w + 2]
+        if int(patch.max()) - int(patch.min()) <= 2:
+            return bx, by, int(patch.min())
     return None
 
 
@@ -102,12 +133,69 @@ def wait_for(pred, timeout: float) -> bool:
 
 def prove(cfg, name: str, stage: Path, out: Path, clip: Path | None, at=None, visits=(), min_free_gb: float = 16,
           caption: str = "") -> int:
-    shard = [sys.executable, str(cfg.tools / "editor_shard" / "run.py")]
+    """One multi: place it on a clear site and walk the generator's stops (or the old door walk)."""
     index = json.loads((stage / "multis.json").read_text(encoding="utf-8"))
     if name not in index:
         print(f"[prove] {name} is not in {stage / 'multis.json'}; write it first")
         return 2
     m = index[name]
+    w, h = m["size"]
+    bx0, by0, bx1, by1 = m.get("bounds") or [-(w // 2), -(h // 2), w - w // 2, h - h // 2]
+    site = pick_site(cfg, at, bx0, by0, bx1, by1)
+    if site is None:
+        return 1
+    if m.get("stops"):
+        # the generator's own walk: through the yard's gate, up the step, in, up each stair
+        stops = [(t["name"], t["x"], t["y"], t["z"]) for t in m["stops"]]
+    else:
+        door = m["doors"][0]
+        side = "S" if door["facing"] == "WestCW" else "E"
+        fx, fy = (door["x"], door["y"] + 1) if side == "S" else (door["x"] + 1, door["y"])
+        floor = m["storeys"][0]
+        out_x, out_y = (fx, fy + 2) if side == "S" else (fx + 2, fy)
+        stops = [("front", out_x, out_y, 0), ("step", fx, fy, floor - 5),
+                 ("doorway", door["x"], door["y"], floor), ("inside", 0, 0, floor)]
+    stops += [(f"visit{n}", v[0], v[1], v[2]) for n, v in enumerate(visits)]
+    print(f"[prove] {name} = multi {m['id']:#06x}, {w}x{h}, at {site}", flush=True)
+    return session(cfg, stage, out, [(name, m["id"], 0, 0, m["doors"])], site, stops, clip, min_free_gb,
+                   caption or f"GUO: an authored multi ({name}), walked through in game", {"multi": name})
+
+
+def prove_scene(cfg, name: str, stage: Path, out: Path, clip: Path | None, at=None, min_free_gb: float = 16,
+                caption: str = "") -> int:
+    """A scene: every part placed at the site plus its centre, then the scene's tour walked."""
+    scenes = json.loads((stage / "scenes.json").read_text(encoding="utf-8")) if (stage / "scenes.json").exists() else {}
+    if name not in scenes:
+        print(f"[prove] no scene {name} in {stage / 'scenes.json'}; scene-write it first")
+        return 2
+    sc = scenes[name]
+    bx0, by0, bx1, by1 = sc["bounds"]
+    site = pick_site(cfg, at, bx0, by0, bx1, by1)
+    if site is None:
+        return 1
+    parts = [(f"{name}.{p['name']}", p["id"], p["centre"][0], p["centre"][1], p.get("doors", [])) for p in sc["parts"]]
+    stops = [(t["name"], t["x"], t["y"], t["z"]) for t in sc.get("tour", [])]
+    print(f"[prove] scene {name}: {len(parts)} multis at {site}", flush=True)
+    return session(cfg, stage, out, parts, site, stops, clip, min_free_gb,
+                   caption or f"GUO: an authored scene ({name}), walked through in game", {"scene": name})
+
+
+def pick_site(cfg, at, bx0, by0, bx1, by1):
+    """The world spot for local (0, 0): --at, or a clear flat box round the bounds."""
+    if at:
+        return (at[0], at[1], at[2] if len(at) > 2 else None)
+    corner = find_site(cfg, bx1 - bx0 + 4, by1 - by0 + 4)
+    if corner is None:
+        print("[prove] no flat empty site near the start")
+        return None
+    return corner[0] + 2 - bx0, corner[1] + 2 - by0, corner[2]
+
+
+def session(cfg, stage: Path, out: Path, parts: list, site, stops: list, clip: Path | None, min_free_gb: float,
+            caption: str, report: dict) -> int:
+    """Start the private shard on the stage, place every (tag, id, cx, cy, doors) at the site plus
+    (cx, cy), log a client in and walk `stops` (name, local x, y, z), a frame and a dump at each."""
+    shard = [sys.executable, str(cfg.tools / "editor_shard" / "run.py")]
     gb = free_gb()
     if gb < min_free_gb:
         print(f"[prove] only {gb:.1f} GB free; a shard and a client need {min_free_gb:.0f} GB free. Not started.")
@@ -117,19 +205,7 @@ def prove(cfg, name: str, stage: Path, out: Path, clip: Path | None, at=None, vi
     if port in (2593, 2594):
         print(f"[prove] the private shard here listens on {port}, a shared port; run editor_shard setup --port N")
         return 2
-    w, h = m["size"]
-    cx, cy = w // 2, h // 2
-    if at:
-        site = (at[0], at[1], at[2] if len(at) > 2 else None)
-    else:
-        corner = find_site(cfg, w + 4, h + 4)
-        if corner is None:
-            print("[prove] no flat empty site near the start")
-            return 1
-        site = (corner[0] + 2 + cx, corner[1] + 2 + cy, corner[2])
     x, y, z = site
-    print(f"[prove] {name} = multi {m['id']:#06x}, {w}x{h}, at {x},{y},{z} on the shard 127.0.0.1:{port}", flush=True)
-
     for scratch in ("watch", "client_home"):
         shutil.rmtree(out / scratch, ignore_errors=True)
     watch = out / "watch"
@@ -137,18 +213,26 @@ def prove(cfg, name: str, stage: Path, out: Path, clip: Path | None, at=None, vi
     subprocess.run([*shard, "stop"])
     if subprocess.run([*shard, "start", "--data-first", str(stage)]).returncode != 0:
         return 2
-    report: dict = {"multi": name, "id": m["id"], "site": [x, y, z]}
+    report["site"] = [x, y, z]
+    report["place"] = {}
     client = None
     try:
-        report["place"] = bridge(bport, {"op": "multi", "action": "place", "tag": name, "id": m["id"], "map": 0,
-                                         "x": x, "y": y, "z": z, "doors": m["doors"]}, "multi_ack")
-        print(f"[prove] place: {report['place']}", flush=True)
-        if not report["place"].get("ok"):
-            return 1
-        z = report["place"]["at"][2]
-        door = m["doors"][0]
-        side = "S" if door["facing"] == "WestCW" else "E"
-        fx, fy = (door["x"], door["y"] + 1) if side == "S" else (door["x"] + 1, door["y"])
+        # the shard keeps its world: take down whatever earlier proofs from this stage left standing
+        known = set(json.loads((stage / "multis.json").read_text(encoding="utf-8"))) if (stage / "multis.json").exists() else set()
+        removed = sum(bridge(bport, {"op": "multi", "action": "remove", "tag": t}, "multi_ack").get("removed", 0)
+                      for t in sorted(known))
+        if removed:
+            print(f"[prove] removed {removed} multi(s) left by earlier proofs", flush=True)
+        for tag, mid, cx, cy, doors in parts:
+            ack = bridge(bport, {"op": "multi", "action": "place", "tag": tag, "id": mid, "map": 0,
+                                 "x": x + cx, "y": y + cy, "z": z, "doors": doors}, "multi_ack")
+            report["place"][tag] = ack
+            print(f"[prove] place {tag}: ok {ack.get('ok')}, {ack.get('components')} components, "
+                  f"{ack.get('doors')} doors {ack.get('error', '')}", flush=True)
+            if not ack.get("ok"):
+                return 1
+            if z is None:
+                z = ack["at"][2]
         home = out / "client_home"
         (home / "cache").mkdir(parents=True)
         (home / "profiles").mkdir()
@@ -158,7 +242,7 @@ def prove(cfg, name: str, stage: Path, out: Path, clip: Path | None, at=None, vi
         (home / "profiles" / "default.json").write_text(json.dumps({"topbar_gump_is_disabled": True,
                                                                     "auto_open_doors": True, "smooth_doors": True}),
                                                         encoding="utf-8")
-        ax, ay = (x + fx, y + fy + 4) if side == "S" else (x + fx + 4, y + fy)
+        ax, ay = x + stops[0][1], y + stops[0][2]
         cmd = [str(cfg.godot_console_exe), "--path", str(cfg.godot_project), "--", "--play", "--window-size", "1024,768",
                "--screenshot-dir", str(out), "--screenshot-name", "end", "--objects-watch", str(watch),
                "--shard-command", "[self set map felucca", "--shard-command", f"[go {ax} {ay}",
@@ -182,32 +266,34 @@ def prove(cfg, name: str, stage: Path, out: Path, clip: Path | None, at=None, vi
             return d
 
         def goto(tag: str, lx: int, ly: int, lz: int) -> dict:
-            (watch / f"{tag}.goto").write_text(f"{x + lx} {y + ly} {z + lz}", encoding="utf-8")
-            wait_for(lambda: (watch / f"{tag}.arrived").exists(), 120)
-            time.sleep(0.8)
-            words = (watch / f"{tag}.arrived").read_text(encoding="utf-8").split() if (watch / f"{tag}.arrived").exists() else []
-            where = [int(v) for v in words[-3:]] if len(words) >= 3 and words[-1].lstrip("-").isdigit() else None
             want = [x + lx, y + ly, z + lz]
-            arrived = where is not None and where[:2] == want[:2]
-            stop = {"target": want, "local": [lx, ly, lz], "client_says": " ".join(words), "arrived": arrived}
+            # a long walk can stop short (a door swinging, the pathfinder's own reach): walk
+            # on from there, as a player clicks again, up to three times
+            for tries in range(1, 4):
+                (watch / f"{tag}.arrived").unlink(missing_ok=True)
+                (watch / f"{tag}.goto").write_text(" ".join(map(str, want)), encoding="utf-8")
+                wait_for(lambda: (watch / f"{tag}.arrived").exists(), 180)
+                time.sleep(0.8)
+                words = (watch / f"{tag}.arrived").read_text(encoding="utf-8").split() if (watch / f"{tag}.arrived").exists() else []
+                where = [int(v) for v in words[-3:]] if len(words) >= 3 and words[-1].lstrip("-").isdigit() else None
+                # x and y exactly, z within a step: a stair's top or a threshold can differ by a few
+                arrived = where is not None and where[:2] == want[:2] and abs(where[2] - want[2]) <= 4
+                if arrived or where is None or where[:2] == want[:2]:
+                    break
+            stop = {"target": want, "local": [lx, ly, lz], "client_says": " ".join(words), "arrived": arrived,
+                    "tries": tries}
             print(f"[prove] {tag}: {stop}", flush=True)
             look(tag)
             return stop
 
         report["start"] = look("start").get("player")
         if clip:
-            (watch / "walk.rec").write_text("40 8 jpg", encoding="utf-8")
+            (watch / "walk.rec").write_text(f"{min(40 + 12 * len(stops), 240)} 8 jpg", encoding="utf-8")
             time.sleep(1.0)
-        floor = m["storeys"][0]
-        out_x, out_y = (fx, fy + 2) if side == "S" else (fx + 2, fy)
-        stops = [("front", out_x, out_y, 0),
-                 ("step", fx, fy, floor - 5),
-                 ("doorway", door["x"], door["y"], floor),
-                 ("inside", 0, 0, floor)]
-        stops += [(f"visit{n}", v[0], v[1], v[2]) for n, v in enumerate(visits)]
         report["stops"] = {t: goto(t, lx, ly, lz) for t, lx, ly, lz in stops}
         if clip:
-            wait_for(lambda: (watch / "walk.recorded").exists(), 90)
+            (watch / "walk.stop").write_text("", encoding="utf-8")
+            wait_for(lambda: (watch / "walk.recorded").exists(), 300)
         (watch / "quit").write_text("", encoding="utf-8")
     finally:
         time.sleep(2)
@@ -218,8 +304,7 @@ def prove(cfg, name: str, stage: Path, out: Path, clip: Path | None, at=None, vi
     if clip and (watch / "walk").is_dir():
         frames = sorted((watch / "walk").glob("*.jpg")) or sorted((watch / "walk").glob("*.png"))
         ext = frames[0].suffix if frames else ".png"
-        (out / "caption.txt").write_text(caption or f"GUO: an authored multi ({name}), walked through in game",
-                                         encoding="utf-8")
+        (out / "caption.txt").write_text(caption, encoding="utf-8")
         font = "C\\:/Windows/Fonts/arial.ttf"    # ffmpeg's escape for the drive colon, once: no shell in between
         vf = (f"drawtext=fontfile='{font}':textfile=caption.txt:x=16:y=h-36:fontsize=20:fontcolor=white:"
               "box=1:boxcolor=black@0.55:boxborderw=6")
@@ -229,6 +314,6 @@ def prove(cfg, name: str, stage: Path, out: Path, clip: Path | None, at=None, vi
                             str(clip.resolve())], capture_output=True, text=True, cwd=out)
         report["clip"] = str(clip) if r.returncode == 0 else f"ffmpeg failed: {r.stderr[-300:]}"
     (out / "report.json").write_text(json.dumps(report, indent=1) + "\n", encoding="utf-8")
-    ok = report.get("place", {}).get("ok") and all(s["arrived"] for s in report.get("stops", {}).values())
+    ok = all(a.get("ok") for a in report["place"].values()) and all(s["arrived"] for s in report.get("stops", {}).values())
     print(f"[prove] {'PASS' if ok else 'FAIL'}: {out}")
     return 0 if ok else 1

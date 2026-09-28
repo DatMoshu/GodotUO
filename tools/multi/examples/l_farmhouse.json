@@ -1,0 +1,178 @@
+{
+ "format": 1,
+ "name": "l_farmhouse",
+ "rects": [
+  [
+   0,
+   0,
+   12,
+   6
+  ],
+  [
+   0,
+   6,
+   6,
+   12
+  ]
+ ],
+ "materials": {
+  "wall": "log",
+  "foundation": "stone",
+  "floor": "wooden",
+  "steps": "stone",
+  "roof": "thatch"
+ },
+ "storeys": [
+  {
+   "openings": [
+    {
+     "kind": "door",
+     "at": [
+      9,
+      6
+     ]
+    },
+    {
+     "kind": "door",
+     "at": [
+      3,
+      6
+     ]
+    },
+    {
+     "kind": "window",
+     "at": [
+      0,
+      3
+     ]
+    },
+    {
+     "kind": "window",
+     "at": [
+      3,
+      0
+     ]
+    },
+    {
+     "kind": "window",
+     "at": [
+      9,
+      0
+     ]
+    },
+    {
+     "kind": "window",
+     "at": [
+      12,
+      3
+     ]
+    },
+    {
+     "kind": "window",
+     "at": [
+      0,
+      9
+     ]
+    },
+    {
+     "kind": "window",
+     "at": [
+      3,
+      12
+     ]
+    },
+    {
+     "kind": "window",
+     "at": [
+      6,
+      9
+     ]
+    }
+   ],
+   "partitions": [
+    {
+     "y": 6,
+     "from": 0,
+     "to": 6
+    }
+   ]
+  }
+ ],
+ "rects_roof_note": "each wing its own gable",
+ "roof": {
+  "style": "gable"
+ },
+ "yard": {
+  "box": [
+   -3,
+   -3,
+   16,
+   15
+  ],
+  "fence": "wooden fence",
+  "height": 6,
+  "gate": {
+   "side": "E",
+   "offset": 12
+  },
+  "path": "dirt"
+ },
+ "decor": [
+  {
+   "item": "0x0c84",
+   "at": [
+    9,
+    11
+   ]
+  },
+  {
+   "item": "0x0c85",
+   "at": [
+    10,
+    11
+   ]
+  },
+  {
+   "item": "0x0c83",
+   "at": [
+    11,
+    11
+   ]
+  },
+  {
+   "item": "0x0c84",
+   "at": [
+    12,
+    11
+   ]
+  },
+  {
+   "item": "0x0c8b",
+   "at": [
+    9,
+    13
+   ]
+  },
+  {
+   "item": "0x0c8c",
+   "at": [
+    10,
+    13
+   ]
+  },
+  {
+   "item": "0x0c8b",
+   "at": [
+    11,
+    13
+   ]
+  },
+  {
+   "item": "0x0c8c",
+   "at": [
+    12,
+    13
+   ]
+  }
+ ]
+}

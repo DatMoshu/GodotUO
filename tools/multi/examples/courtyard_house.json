@@ -1,0 +1,209 @@
+{
+ "format": 1,
+ "name": "courtyard_house",
+ "rects": [
+  [
+   0,
+   0,
+   14,
+   4
+  ],
+  [
+   0,
+   4,
+   4,
+   12
+  ],
+  [
+   10,
+   4,
+   14,
+   12
+  ]
+ ],
+ "materials": {
+  "wall": "sandstone",
+  "foundation": "stone",
+  "floor": "sandstone",
+  "steps": "stone",
+  "roof": "tile"
+ },
+ "storeys": [
+  {
+   "openings": [
+    {
+     "kind": "door",
+     "at": [
+      7,
+      4
+     ]
+    },
+    {
+     "kind": "door",
+     "at": [
+      0,
+      8
+     ]
+    },
+    {
+     "kind": "door",
+     "at": [
+      4,
+      2
+     ]
+    },
+    {
+     "kind": "door",
+     "at": [
+      10,
+      2
+     ]
+    },
+    {
+     "kind": "window",
+     "at": [
+      4,
+      8
+     ]
+    },
+    {
+     "kind": "window",
+     "at": [
+      10,
+      8
+     ]
+    },
+    {
+     "kind": "window",
+     "at": [
+      3,
+      0
+     ]
+    },
+    {
+     "kind": "window",
+     "at": [
+      11,
+      0
+     ]
+    },
+    {
+     "kind": "window",
+     "at": [
+      2,
+      12
+     ]
+    },
+    {
+     "kind": "window",
+     "at": [
+      12,
+      12
+     ]
+    },
+    {
+     "kind": "window",
+     "at": [
+      14,
+      8
+     ]
+    },
+    {
+     "kind": "window",
+     "at": [
+      7,
+      0
+     ]
+    }
+   ],
+   "partitions": [
+    {
+     "x": 4,
+     "from": 0,
+     "to": 4
+    },
+    {
+     "x": 10,
+     "from": 0,
+     "to": 4
+    }
+   ]
+  }
+ ],
+ "roof": {
+  "style": "gable"
+ },
+ "yard": {
+  "box": [
+   4,
+   4,
+   10,
+   12
+  ],
+  "fence": "iron fence",
+  "height": 11,
+  "gate": {
+   "side": "S",
+   "offset": 3
+  },
+  "path": "cobblestones"
+ },
+ "decor": [
+  {
+   "item": "0x0c84",
+   "at": [
+    5,
+    7
+   ]
+  },
+  {
+   "item": "0x0c85",
+   "at": [
+    5,
+    8
+   ]
+  },
+  {
+   "item": "0x0c83",
+   "at": [
+    5,
+    9
+   ]
+  },
+  {
+   "item": "0x0c8b",
+   "at": [
+    9,
+    7
+   ]
+  },
+  {
+   "item": "0x0c8c",
+   "at": [
+    9,
+    8
+   ]
+  },
+  {
+   "item": "0x0c8b",
+   "at": [
+    9,
+    9
+   ]
+  },
+  {
+   "item": "0x11c9",
+   "at": [
+    5,
+    11
+   ]
+  },
+  {
+   "item": "0x11c9",
+   "at": [
+    9,
+    11
+   ]
+  }
+ ]
+}
