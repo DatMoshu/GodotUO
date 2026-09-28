@@ -95,8 +95,12 @@ VARIANTS = {
 def spec(out: Path, scene: tuple, zoom: float) -> str:
     name, x, y, z, steps = scene
     # Daylight pinned first, as ab_compare does: GUO also asks with --shard-command,
-    # ClassicUO has only this.
-    return f"{out};{name};{x};{y};{'' if z is None else z};{zoom};say:[globallight {ab.DAYLIGHT}|{steps}"
+    # ClassicUO has only this. The mouse-over highlight off (restored at the end):
+    # GUO highlights whatever tile is under the desktop's cursor, ClassicUO's
+    # window has no mouse over it, and the highlight (hue 0x14, purple) looked
+    # like a drawing bug in the first two passes.
+    return (f"{out};{name};{x};{y};{'' if z is None else z};{zoom};"
+            f"say:[globallight {ab.DAYLIGHT}|set:HighlightGameObjects=False|{steps}")
 
 
 def wait_for(path: Path, proc: subprocess.Popen, timeout: float) -> bool:
