@@ -1269,6 +1269,16 @@ public partial class Main : Node
                 string arg = list[i];
                 string Next() => i + 1 < list.Count ? list[++i] : "";
 
+                // A relative path is taken against the project folder (Godot's own
+                // working directory under --path), resolved now: StartClient later
+                // moves the working directory to the client home.
+                string NextPath()
+                {
+                    string path = Next();
+
+                    return string.IsNullOrWhiteSpace(path) ? path : System.IO.Path.GetFullPath(path);
+                }
+
                 switch (arg)
                 {
                     case "--offline":
@@ -1345,10 +1355,7 @@ public partial class Main : Node
                         o.PerfProbe = true;
                         break;
                     case "--perf-out":
-                        // A relative DIR is taken against the project folder (Godot's
-                        // own working directory under --path), resolved now: StartClient
-                        // later moves the working directory to the client home.
-                        o.PerfOut = System.IO.Path.GetFullPath(Next());
+                        o.PerfOut = NextPath();
                         break;
                     case "--perf-label":
                         o.PerfLabel = Next();
@@ -1530,7 +1537,7 @@ public partial class Main : Node
                         o.FirstRunProbe = Next();
                         break;
                     case "--cache-dir":
-                        o.CacheDir = Next();
+                        o.CacheDir = NextPath();
                         break;
                     case "--client-version":
                         o.ClientVersion = Next();
@@ -1539,7 +1546,7 @@ public partial class Main : Node
                         o.Language = Next();
                         break;
                     case "--screenshot-dir":
-                        o.ScreenshotDir = Next();
+                        o.ScreenshotDir = NextPath();
                         break;
                     case "--screenshot-name":
                         o.ScreenshotName = Next();
@@ -1551,7 +1558,7 @@ public partial class Main : Node
                         o.StoreInstall = Next();
                         break;
                     case "--files-override":
-                        o.FilesOverride = Next();
+                        o.FilesOverride = NextPath();
                         break;
                     case "--background":
                         o.Background = Next();
