@@ -32,10 +32,13 @@ internal static class GumpPresentation
         || (Configuration.ProfileManager.CurrentProfile?.MobileWindowControls ?? false);
 
     // Keep arbitrary shard dialogs and content-zoom maps on their existing paths.
-    public static bool Supports(Gump g) => Active && g != null && !g.IsDisposed && !g.IsFromServer
+    public static bool Supports(Gump g) => Active && g != null && !g.IsDisposed
         && (_followers.Contains(g)
-            || !g.IsModal && (g is PaperDollGump or ContainerGump or GridContainerGump or StatusGumpBase
-                or JournalGump or ResizableJournal || IsFullHeight(g)));
+            // A full-height gump is scaled, a shard one included: only how it
+            // is drawn and hit changes, never what is sent back.
+            || IsFullHeight(g)
+            || !g.IsFromServer && !g.IsModal && g is PaperDollGump or ContainerGump or GridContainerGump
+                or StatusGumpBase or JournalGump or ResizableJournal);
 
     /// <summary>
     /// A full-height gump (C11): one that on touch takes the whole main screen,
@@ -43,7 +46,32 @@ internal static class GumpPresentation
     /// the screen when it opens (<see cref="FitFullHeight"/>). Options, whose
     /// mobile mode this is (docs/ui/tall_gumps.md lists the other tall gumps).
     /// </summary>
-    public static bool IsFullHeight(Gump g) => g is OptionsGump;
+    public static bool IsFullHeight(Gump g) =>
+        g is OptionsGump || g.IsFromServer && FullHeightServerGumps.Contains(g.ServerSerial);
+
+    /// <summary>
+    /// Shard gumps that are full-height (docs/ui/gump_index.md: Classic plus
+    /// fit), by the type ID the shard sends. ModernUO's is the xxHash32 of the
+    /// gump class's full name (BaseGump.GetTypeId: seed 665738807, the name
+    /// as UTF-16), so it is the same on every ModernUO shard. ServUO and RunUO
+    /// number gumps differently; there these stay ordinary gumps.
+    /// </summary>
+    private static readonly System.Collections.Generic.HashSet<uint> FullHeightServerGumps = new()
+    {
+        0x7510FA8F, // Server.Engines.Help.HelpGump (page a GM)
+        0xE37B54FE, // Server.Gumps.AdminGump (staff)
+    };
+
+    /// <summary>
+    /// The top of the room a full-height gump is fitted into: below
+    /// ClassicUO's top bar when it is showing (it is always drawn on top, so
+    /// it would cover the gump's first row), else the top of the screen.
+    /// </summary>
+    public static int FullHeightTop()
+    {
+        TopBarGump bar = UIManager.GetGump<TopBarGump>();
+        return bar != null && !bar.IsDisposed && bar.IsVisible && bar.Y < 40 ? bar.Y + bar.Height : 0;
+    }
 
     /// <summary>Whether a full-height gump is up on the main screen, so the command bar steps aside.</summary>
     public static bool FullHeightOpen()
@@ -55,7 +83,7 @@ internal static class GumpPresentation
 
         foreach (Gump g in UIManager.Gumps)
         {
-            if (!g.IsDisposed && g.IsVisible && IsFullHeight(g) && !OnSecond(g))
+            if (!g.IsDisposed && g.IsVisible && IsFullHeight(g) && !OnSecond(g) && !_restored.Contains(g))
             {
                 return true;
             }
@@ -63,6 +91,38 @@ internal static class GumpPresentation
 
         return false;
     }
+
+    private static readonly System.Collections.Generic.HashSet<Gump> _restored = new();
+    private static ulong _restoreUntil;
+    private const ulong RestoreMs = 3000;
+
+    /// <summary>
+    /// Gumps the client reopens at login are not full-height: a player who
+    /// saved one open would otherwise log in to it over the whole screen and
+    /// no command bar. Called as the bar comes up for a session; any that
+    /// opens in its first seconds counts as restored (the client restores
+    /// saved gumps over the first frames in the world).
+    /// </summary>
+    public static void ExemptRestoredGumps()
+    {
+        _restored.Clear();
+        _restoreUntil = Godot.Time.GetTicksMsec() + RestoreMs;
+
+        foreach (Gump g in UIManager.Gumps)
+        {
+            if (!g.IsDisposed)
+            {
+                _restored.Add(g);
+            }
+        }
+    }
+
+    /// <summary>
+    /// The margin above and below a fitted full-height gump, in client
+    /// pixels: its edges stay clear of the screen's and of the top bar, and
+    /// its scroll areas take what no longer fits (the owner, on the C11 photos).
+    /// </summary>
+    private const int FullHeightPad = 12;
 
     private static readonly System.Collections.Generic.HashSet<Gump> _fitted = new();
 
@@ -83,14 +143,33 @@ internal static class GumpPresentation
 
         foreach (Gump g in UIManager.Gumps)
         {
-            if (g.IsDisposed || !IsFullHeight(g) || g.Width <= 0 || _fitted.Contains(g))
+            if (g.IsDisposed || !IsFullHeight(g) || g.Width <= 0 || _fitted.Contains(g) || _restored.Contains(g))
             {
                 continue;
             }
 
+            if (Godot.Time.GetTicksMsec() < _restoreUntil)
+            {
+                _restored.Add(g);
+                continue;
+            }
+
             _fitted.Add(g);
-            GumpFlick.Fit(g);
-            TouchInput.Note($"full-height: {g.GetType().Name} fitted at {g.PresentationScale:0.00}x");
+
+            // The whole main screen, the bar having stepped aside, less the top
+            // bar and a margin above and below.
+            Rectangle b = new(0, 0, Client.Game.ClientBounds.Width, Client.Game.ClientBounds.Height);
+            int top = FullHeightTop() + FullHeightPad;
+            int room = Math.Max(1, b.Height - top - FullHeightPad);
+
+            bool locked = g.PresentationLocked;
+            g.PresentationLocked = false;
+            float fit = Math.Min(b.Width / (float)g.Width, room / (float)g.Height);
+            SetScale(g, fit, new Point(g.X, g.Y));
+            g.X = b.X + Math.Max(0, (b.Width - Width(g)) / 2);
+            g.Y = top + Math.Max(0, (room - Height(g)) / 2);
+            g.PresentationLocked = locked;
+            TouchInput.Note($"full-height: {g.GetType().Name} fitted at {g.PresentationScale:0.00}x below {top}");
         }
     }
 

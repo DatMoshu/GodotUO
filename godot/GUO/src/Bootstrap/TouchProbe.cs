@@ -97,6 +97,12 @@ internal static class TouchProbe
 
         await Frames(host, 120);
 
+        // A world map or party gump a run saved open covers the world the
+        // walk checks hold on; the checks start without them.
+        UIManager.GetGump<WorldMapGump>()?.Dispose();
+        UIManager.GetGump<PartyGump>()?.Dispose();
+        await Frames(host, 5);
+
         await WalkCheck(host, world);
         await DoubleTapCheck(host, world);
         await PinchCheck(host);
@@ -108,6 +114,7 @@ internal static class TouchProbe
         await FlickCheck(host, world);
         await OptionsTouchCheck(host, world);
         await MobileOptionsCheck(host, world);
+        await HelpGumpCheck(host, world);
         // The long press is checked with hold-and-flick off, the way a player
         // who set every direction to "Do nothing" has it.
         {
@@ -131,7 +138,9 @@ internal static class TouchProbe
         bool rightHeld = false;
         bool moved = false;
 
-        foreach (Vector2 diagonal in new[] { new Vector2(1, 1), new Vector2(-1, -1), new Vector2(-1, 1), new Vector2(1, -1) })
+        // Diagonals first, then straight: a character left on a coast by an
+        // earlier run has water on some sides.
+        foreach (Vector2 diagonal in new[] { new Vector2(1, 1), new Vector2(-1, -1), new Vector2(-1, 1), new Vector2(1, -1), new Vector2(-1, 0), new Vector2(0, 1), new Vector2(0, -1), new Vector2(1, 0) })
         {
             TouchInput.Trace.Clear();
 
@@ -854,7 +863,8 @@ internal static class TouchProbe
         Compat.Rectangle drawn = GumpPresentation.Bounds(options);
         Check("Options opens fitted to the screen, over the command bar, its button row on screen",
             options.PresentationScale > 1.2f && bar.Covered && bar.ReservedFraction == 0f
-                && drawn.Bottom <= screen.Height && drawn.Right <= screen.Width,
+                && drawn.Bottom <= screen.Height - 8 && drawn.Right <= screen.Width
+                && drawn.Y >= GumpPresentation.FullHeightTop() + 8,
             $"scale {options.PresentationScale:0.00}, at {drawn}, screen {screen.Width}x{screen.Height}, bar covered {bar.Covered}");
 
         // A tap on the first check box in view toggles it; a second puts it back.
@@ -955,6 +965,34 @@ internal static class TouchProbe
         Check("Okay closes the fitted Options and the command bar comes back",
             (options.IsDisposed || UIManager.GetGump<OptionsGump>() == null) && !bar.Covered && bar.ReservedFraction > 0f,
             $"disposed {options.IsDisposed}, covered {bar.Covered}");
+    }
+
+    /// <summary>
+    /// The shard's help gump (ModernUO's HelpGump, known by its type ID) opens
+    /// full-height: fitted below the top bar, over the command bar.
+    /// </summary>
+    private static async System.Threading.Tasks.Task HelpGumpCheck(Node host, Game.World world)
+    {
+        TouchGumpBar bar = TouchInput.Bar;
+        Game.GameActions.RequestHelp();
+        Gump help = null;
+
+        for (int i = 0; i < 180 && help == null; i++)
+        {
+            await Frames(host, 1);
+
+            foreach (Gump g in UIManager.Gumps)
+            {
+                if (g.IsFromServer && !g.IsDisposed && g.ServerSerial == 0x7510FA8F) help = g;
+            }
+        }
+
+        await Frames(host, 10);
+        Check("the shard's help gump (ModernUO HelpGump, by type ID) opens full-height and fitted",
+            help != null && bar.Covered && help.PresentationScale > 1.2f && help.Y >= GumpPresentation.FullHeightTop(),
+            help == null ? "no help gump" : $"x{help.PresentationScale:0.00} at {GumpPresentation.Bounds(help)}");
+        help?.Dispose();
+        await Frames(host, 10);
     }
 
     /// <summary>The first control of a type on the gump's open page, drawn inside its scroll area.</summary>
