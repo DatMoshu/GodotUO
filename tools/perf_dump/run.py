@@ -31,6 +31,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 
+from guo.build import build_client  # noqa: E402
 from guo.config import Config, load_config  # noqa: E402
 
 # tools/ab_compare/run.py, by path: this file is run.py too.
@@ -114,17 +115,24 @@ def run_cuo(cfg: Config, out: Path, scene: tuple, size: tuple[int, int], spec: s
 
 
 def report(out: Path) -> str:
-    lines = ["| Scene | client | window | zoom | " + " | ".join(KEYS) + " | frames |",
-             "|---|---|---|---:|" + "---:|" * len(KEYS) + "---:|"]
+    # Per object: prepare's cost against how much it sorted, which separates
+    # port efficiency from GUO sorting statics upstream bakes (ADR-0004).
+    lines = ["| Scene | client | optimised | zoom | " + " | ".join(KEYS)
+             + " | frames | render-list objects | rendered objects | prepare us/object |",
+             "|---|---|---|---:|" + "---:|" * len(KEYS) + "---:|---:|---:|---:|"]
     for name, *_ in SCENES:
         for client in ("cuo", "guo"):
             f = out / name / f"{client}.json"
             if not f.exists():
-                lines.append(f"| {name} | {client} | (no result) |" + " |" * (len(KEYS) + 2))
+                lines.append(f"| {name} | {client} | (no result) |" + " |" * (len(KEYS) + 5))
                 continue
             r = json.loads(f.read_text(encoding="utf-8"))
-            lines.append(f"| {name} | {client} | {r['window']} | {r['zoom']:.1f} | "
-                         + " | ".join(str(r[k]) for k in KEYS) + f" | {r['frames_averaged']} |")
+            objects = r.get("render_list_objects")
+            per = f"{1000 * r['world_prepare_ms'] / objects:.2f}" if objects else ""
+            lines.append(f"| {name} | {client} | {r.get('optimized', '?')} | {r['zoom']:.1f} | "
+                         + " | ".join(str(r[k]) for k in KEYS)
+                         + f" | {r['frames_averaged']} | {objects if objects is not None else ''}"
+                         + f" | {r.get('rendered_objects', '')} | {per} |")
     return "\n".join(lines)
 
 
@@ -139,6 +147,8 @@ def main() -> int:
     ap.add_argument("--only", choices=["cuo", "guo"], help="run one client")
     ap.add_argument("--scene", action="append", choices=[s[0] for s in SCENES], help="run these scenes only")
     ap.add_argument("--report", action="store_true", help="print the table of results already written")
+    ap.add_argument("--as-built", action="store_true",
+                    help="run GUO as it is built, instead of rebuilding it optimised first (tools/guo/build.py)")
     args = ap.parse_args()
 
     cfg = load_config()
@@ -152,6 +162,8 @@ def main() -> int:
     size = tuple(int(v) for v in args.size.split(","))
     if args.build or not cfg.upstream_exe.exists():
         ab.build_cuo(cfg)
+    if args.only != "cuo" and not args.as_built:
+        build_client(cfg)
 
     failed = 0
     for scene in [s for s in SCENES if not args.scene or s[0] in args.scene]:

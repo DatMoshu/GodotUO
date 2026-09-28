@@ -41,10 +41,14 @@ namespace GUO.Host;
 /// Off unless GUO_PERF_DUMP set to "DIR;LABEL;X;Y;Z;ZOOM;SECONDS". Once the
 /// client is in the world, an action queued on the game loop (the main
 /// thread, between frames) turns the profiler on, sets the camera zoom and says
-/// "[go X Y Z" (the character must be a GM). SECONDS later a timer reads the
+/// "[go X Y Z" (the character must be a GM). SECONDS later a second queued action reads the
 /// profiler's averages over its last 60 frames (per drawn frame, whatever the
 /// frame rate) and writes DIR\LABEL\&lt;client&gt;.json. No keystrokes, so the
-/// window never needs the focus.
+/// window never needs the focus. The result also says whether this build is
+/// JIT-optimised, and how many objects the last frame's render lists held
+/// (every list field of GameScene's RenderLists but the gump ones; the two
+/// clients split them differently, so each is also written by name), read on the game
+/// loop between frames, so prepare's cost can be compared per object.
 /// </remarks>
 internal static class PerfDump
 {
@@ -122,7 +126,11 @@ internal static class PerfDump
         Console.WriteLine($"[perf_dump] {ClientName}: [go {_args[2]} {_args[3]} {_args[4]}, zoom {camera.Zoom:F1}");
         int seconds = int.Parse(_args[6]);
         _timer.Dispose();
-        _timer = new Timer(_ => Write(), null, seconds * 1000, Timeout.Infinite);
+        _timer = null;
+
+        // On the game loop, between frames: the render lists hold the last
+        // frame's objects then (prepare clears them at its start).
+        ClientRoot.Game.EnqueueAction((uint)(seconds * 1000), Write);
     }
 
     private static void Write()
@@ -145,12 +153,29 @@ internal static class PerfDump
                 ["render_ui_ms"] = Math.Round(Avg(Profiler.ProfilerContext.RENDER_FRAME_UI), 3),
                 ["update_world_ms"] = Math.Round(Avg(Profiler.ProfilerContext.UPDATE_WORLD), 3),
                 ["frames_averaged"] = Profiler.ProfileTimeCount,
+                ["optimized"] = !(typeof(PerfDump).Assembly.GetCustomAttribute<System.Diagnostics.DebuggableAttribute>()?.IsJITOptimizerDisabled ?? false),
+                ["rendered_objects"] = ClientRoot.Game.Scene.RenderedObjectsCount,
             };
+            int listed = 0;
+            if (Field(ClientRoot.Game.Scene, "_renderLists") is object lists)
+            {
+                foreach (FieldInfo f in lists.GetType().GetFields(Any))
+                {
+                    if (f.GetValue(lists) is System.Collections.ICollection c && f.FieldType.IsGenericType
+                        && !f.Name.Contains("gump", StringComparison.OrdinalIgnoreCase))
+                    {
+                        r["list" + f.Name] = c.Count;
+                        listed += c.Count;
+                    }
+                }
+            }
+
+            r["render_list_objects"] = listed;
             string dir = Path.Combine(_args[0], _args[1]);
             Directory.CreateDirectory(dir);
             string path = Path.Combine(dir, ClientName + ".json");
             // By hand: ClassicUO's build turns reflection-based System.Text.Json off.
-            string Value(object v) => v is string t
+            string Value(object v) => v is bool yes ? (yes ? "true" : "false") : v is string t
                 ? "\"" + t.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\""
                 : Convert.ToString(v, CultureInfo.InvariantCulture);
             File.WriteAllText(path, "{\n" + string.Join(",\n", r.Select(kv => $"  \"{kv.Key}\": {Value(kv.Value)}")) + "\n}\n");

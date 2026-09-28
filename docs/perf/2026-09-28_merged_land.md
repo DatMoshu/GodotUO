@@ -290,3 +290,47 @@ Steps, each a small slot (~10 min) or none:
 
 Recommendation: P0 at the next free slot, since every absolute number
 depends on it; P1 in the same slot; decide P2 and P3 from what they show.
+
+## P0/P1 measured (2026-09-28, fourth slot): GUO optimised; ClassicUO not yet stable
+
+Both clients now report `optimized: true` (read from the assembly), and the
+timing tools rebuild GUO with `-p:Optimize=true` first (tools/guo/build.py).
+
+**GUO, optimised: frame time roughly halves.** perf_dump, same spot, window
+and zoom as the third slot:
+
+| Scene | world prepare ms, Debug -> optimised | world draw ms, Debug -> optimised |
+|---|---:|---:|
+| open field | 6.78 -> 2.03 | 3.34 -> 1.85 |
+| Britain bank | 17.10 -> 5.49 | 17.40 -> 9.13 |
+| dense forest | 10.98 -> 2.31 | 8.98 -> 4.12 |
+| dungeon | 7.90 -> 2.32 | 5.28 -> 3.28 |
+
+perf_probe, `--merged-land=array --merged-cover` against the same run with
+`--merged-cover` off, optimised: mean frame time open field 4.4 -> 4.9 ms,
+Britain bank 16.8 -> 15.5, dense forest 8.6 -> 8.8, dungeon 8.6 -> 7.2
+(-17%), and parity is still 0 px in every scene. Optimised, 2c pays off where
+covering land is dense (bank, dungeon) and costs ~0.2-0.5 ms where it is
+sparse, so it should stay a switch until the run cache is cheaper.
+
+**ClassicUO: the measurement depends on its fade state, so there is no
+comparison table yet.** ClassicUO's own numbers are 2-4x what they were in
+the third slot (prepare, open field: 2.43 then, 10.32 and 6.73 in two runs of
+this slot; dungeon 1.76 then, 5.60 and 5.69 now). The P1 counters show why: in
+the open field 2,231 of the 2,244 objects in its render lists are in
+`_transparentObjects`, which upstream fills with anything whose `AlphaHue`
+is not 255, that is, still fading in after the `[go`. Those go down the sorted
+path instead of the chunk mesh, so how much ClassicUO has to sort depends on
+how far its fade has got when the average is taken. GUO has the same fade.
+Its numbers were steady across both slots, so either its fade finishes sooner
+or its lists hide it.
+
+Also, ms per render-list object is not comparable between the two, whatever
+the fade: upstream bakes most statics into its chunk meshes, so its lists hold
+a few hundred objects where GUO's hold thousands (ADR-0004), and
+`RenderedObjectsCount` counts mesh sprites differently in each.
+
+Next, one short slot: PerfDump waits until the transparent list is nearly
+empty (fading done) in both clients before it averages, and records the
+fading count it measured at. Then rerun the four scenes. The morning post
+should use the GUO Debug -> optimised table above, not a ClassicUO ratio.
