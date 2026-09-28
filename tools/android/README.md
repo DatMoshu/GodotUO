@@ -310,6 +310,29 @@ Thor on 2026-09-28:
   player's install has it. The client flag `--saf-forget` releases every
   folder grant the app holds.
 
+## The emulator
+
+`run.py export --abi x86_64` (or `both`) builds for the Android emulator,
+which runs x86_64 images. The default is `arm64`, for the devices. Tried on
+2026-09-28 with an Android 15 phone image (1080x2400) under WHPX, run
+headless (`-no-window`):
+
+- **Guest Vulkan does not work headless.** Both lavapipe and the host GPU
+  gave a black screen with `Couldn't present to Vulkan queue`.
+- **SwiftShader GLES does not work either:** with `-gpu swiftshader_indirect`
+  Godot's compatibility shaders fail to link and the screen stays grey.
+- **What works:** `-gpu host -feature -Vulkan`. Godot finds no Vulkan
+  device, falls back to OpenGL ES 3.1 on the host GPU, and renders.
+  `--rendering-driver` in the export args does nothing on Android, because
+  the Java side picks the driver from the project settings.
+- The first launch after a cold boot can be killed by an activity restart;
+  launch again. A monkey launch
+  (`adb shell monkey -p org.guo.client -c android.intent.category.LAUNCHER 1`)
+  works where `am start` on the activity is refused.
+- G2a on the emulator: the picker lists 341 files in 0.4 s. It copies 323
+  files (2,438 MiB) in about 6.5 min, then logs in and holds 16.7 ms in the
+  open field.
+
 ## What has actually been run, and what has only been written
 
 Recorded on 2026-09-26. The first pass was written on a machine with no

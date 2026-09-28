@@ -8,7 +8,7 @@ import os
 import subprocess
 import sys
 
-from run import BUILD_FAILED, apk_path, device_args, export_done, export_failure, export_problem, wait_for_export
+from run import BUILD_FAILED, abi_flags, apk_path, device_args, export_done, export_failure, export_problem, wait_for_export
 
 
 class ExportProblemTests(unittest.TestCase):
@@ -79,6 +79,13 @@ class DeviceArgsTests(unittest.TestCase):
 
     def test_no_client_data_leaves_it_out(self):
         self.assertEqual(device_args(self.paths(), "--x", client_data=False), "-- --play --silent --x")
+
+
+class AbiTests(unittest.TestCase):
+    def test_arm64_is_the_default_and_x86_64_is_for_the_emulator(self):
+        self.assertEqual(abi_flags("arm64"), {"ABI_ARM64": "true", "ABI_X86_64": "false"})
+        self.assertEqual(abi_flags("x86_64"), {"ABI_ARM64": "false", "ABI_X86_64": "true"})
+        self.assertEqual(abi_flags("both"), {"ABI_ARM64": "true", "ABI_X86_64": "true"})
 
 
 class ExportHangTests(unittest.TestCase):
