@@ -57,9 +57,12 @@ namespace GUO.Host;
 /// <item>wait:MS</item>
 /// <item>say:TEXT -- said as the player would (a shard command with '['); {x}, {y}, {z}, {x+2},
 /// {y-1}, ... become the player's position</item>
-/// <item>set:PROPERTY=VALUE -- a profile property (DrawRoofs=false, ...)</item>
+/// <item>set:PROPERTY=VALUE -- a profile property (DrawRoofs=false, ...), put back as it was
+/// before the run ends, so a saved profile never keeps it</item>
 /// <item>door[:X,Y] -- double-click the nearest door item within 6 tiles of the player (or within 2 of X,Y)</item>
 /// <item>find:X,Y -- only note the doors within 2 tiles of X,Y</item>
+/// <item>land:X,Y -- note the land tile there: graphic, z, stretched, texmap, and in GUO the
+/// UVs its chunk mesh holds against the texmap's own</item>
 /// <item>hide -- hide every gump but the game window, for this run only (nothing is closed or saved)</item>
 /// <item>walk:DIRECTION[:run] -- one step (North, Right, East, Down, South, Left, West, Up); the
 /// next step follows 120 ms on, so a shot right after it lands mid-step</item>
@@ -84,6 +87,7 @@ internal static class ShotDump
     private static readonly List<string> _log = new();
     private static string _variant, _dir;
     private static long _fadeStart = -1;
+    private static readonly List<(PropertyInfo, object)> _restore = new();
 
     [ModuleInitializer]
     internal static void Start()
@@ -173,6 +177,11 @@ internal static class ShotDump
     {
         if (_steps.Count == 0)
         {
+            for (int i = _restore.Count - 1; i >= 0; i--)
+            {
+                _restore[i].Item1.SetValue(ProfileManager.CurrentProfile, _restore[i].Item2);
+            }
+
             Directory.CreateDirectory(_dir);
             File.WriteAllLines(Path.Combine(_dir, _variant + ".done"), _log);
             Console.WriteLine($"[shot_dump] {_variant}: done");
@@ -213,6 +222,9 @@ internal static class ShotDump
                     break;
                 case "find":
                     Door(arg, false);
+                    break;
+                case "land":
+                    LandAt(arg);
                     break;
                 case "hide":
                     Hide();
@@ -261,7 +273,8 @@ internal static class ShotDump
         string name = assignment.Substring(0, eq);
         string value = assignment.Substring(eq + 1);
         PropertyInfo prop = typeof(Profile).GetProperty(name, BindingFlags.Instance | BindingFlags.Public);
-        prop!.SetValue(ProfileManager.CurrentProfile, Convert.ChangeType(value, prop.PropertyType, CultureInfo.InvariantCulture));
+        _restore.Add((prop, prop!.GetValue(ProfileManager.CurrentProfile)));
+        prop.SetValue(ProfileManager.CurrentProfile, Convert.ChangeType(value, prop.PropertyType, CultureInfo.InvariantCulture));
         Note($"profile {name} = {value}");
     }
 
@@ -307,6 +320,63 @@ internal static class ShotDump
 
         Note($"door 0x{best.Graphic:X4} at {best.X},{best.Y},{best.Z} {(click ? "double-clicked" : "found")}");
     }
+
+    private static void LandAt(string at)
+    {
+        string[] xy = at.Split(',');
+        int x = int.Parse(xy[0], CultureInfo.InvariantCulture), y = int.Parse(xy[1], CultureInfo.InvariantCulture);
+        Land land = null;
+        for (GameObject o = World.Map.GetTile(x, y, false); o != null; o = o.TNext)
+        {
+            if (o is Land l)
+            {
+                land = l;
+                break;
+            }
+        }
+
+        if (land == null)
+        {
+            Note($"land {x},{y}: none loaded");
+            return;
+        }
+
+        ushort tex = land.TileData.TexID;
+        ref readonly var texmap = ref ClientRoot.Game.UO.Texmaps.GetTexmap(tex);
+        string line = $"land {x},{y} at screen {land.RealScreenPosition.X},{land.RealScreenPosition.Y}: 0x{land.Graphic:X4} z {land.Z} stretched {land.IsStretched} texmap 0x{tex:X4} "
+                      + $"uv {texmap.UV.X},{texmap.UV.Y},{texmap.UV.Width},{texmap.UV.Height}";
+#if !PERF_DUMP_CUO
+        var chunk = World.Map.GetChunk(x, y, false);
+        int i = land.MeshSpriteIndex;
+        if (chunk != null && land.InChunkMesh && i >= 0 && i < chunk.Mesh.Land.Count)
+        {
+            var q = chunk.Mesh.Land.Vertices[i];
+            var t = chunk.Mesh.Land.Textures[i];
+            line += $"; mesh #{i} tex {(ReferenceEquals(t, texmap.Texture) ? "same" : "OTHER")} {t?.GetWidth()}x{t?.GetHeight()} "
+                    + $"uv0 {q.TextureCoordinate0.X * t?.GetWidth():F1},{q.TextureCoordinate0.Y * t?.GetHeight():F1} "
+                    + $"uv3 {q.TextureCoordinate3.X * t?.GetWidth():F1},{q.TextureCoordinate3.Y * t?.GetHeight():F1}";
+            if (!land.IsStretched && t != null)
+            {
+                ref readonly var art = ref ClientRoot.Game.UO.Arts.GetLand(land.Graphic);
+                int cx = (int)(q.TextureCoordinate0.X * t.GetWidth()) + 22, cy = (int)(q.TextureCoordinate0.Y * t.GetHeight()) + 22;
+                var gpu = t.GetImage()?.GetPixel(cx, cy);
+                var cpu = TextureAtlasPage(t)?.GetPixel(cx, cy);
+                line += $"; art {(ReferenceEquals(art.Texture, t) ? "same" : "OTHER")} uv {art.UV.X},{art.UV.Y}"
+                        + $"; gpu {gpu?.ToHtml(false)} cpu {cpu?.ToHtml(false)}";
+            }
+        }
+        else
+        {
+            line += $"; not in a mesh (index {i}, in mesh {land.InChunkMesh})";
+        }
+#endif
+        Note(line);
+    }
+
+#if !PERF_DUMP_CUO
+    private static Godot.Image TextureAtlasPage(Godot.Texture2D t) =>
+        GUO.Renderer.TextureAtlas.TryGetPage(t, out Godot.Image page, out _) ? page : null;
+#endif
 
     private static string Placeholders(string text)
     {
