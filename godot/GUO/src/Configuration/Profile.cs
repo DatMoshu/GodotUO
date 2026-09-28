@@ -261,6 +261,11 @@ namespace GUO.Configuration
         // A new key, false for every existing profile.
         public bool ShowWindowHandles { get; set; }
 
+        // PORT DEVIATION (GUO): the second screen as companion tabs (Journal,
+        // Character) instead of the gump shelf (CompanionTabs). A prototype,
+        // so off by default; touch with a second screen only.
+        public bool CompanionTabs { get; set; }
+
         // PORT DEVIATION (GUO): turn the mobile window controls (gump size,
         // window menu, screen transfer) on for a desktop run without touch,
         // for Android emulation. Off by default: the desktop is ClassicUO.

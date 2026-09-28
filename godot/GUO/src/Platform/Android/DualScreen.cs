@@ -301,6 +301,9 @@ namespace GUO.Platform.Android
             int mainWidth = MainWidth;
             UIManager.DrawGumpsWhere(batcher, g => g.X + (g.Width >> 1) >= mainWidth);
 
+            // Companion tabs, when on, cover the shelf (CompanionTabs).
+            CompanionTabs.DrawShelf(batcher);
+
             // The held item. GameCursor draws it at the pointer into the main
             // window's target, so a pick-up from a shelved gump put it past
             // the main window's edge, where nothing shows it (bug 2 of the
@@ -1137,6 +1140,12 @@ namespace GUO.Platform.Android
 
         private static void Deliver(InputEvent e)
         {
+            // Companion tabs, when on, have this screen's fingers first.
+            if (CompanionTabs.HandleInput(e))
+            {
+                return;
+            }
+
             if (TouchInput.Enabled)
             {
                 TouchInput.Handle(e);

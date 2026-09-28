@@ -210,6 +210,10 @@ public partial class Main : Node
                     // Debug: draw the fingers (--show-touches, or the Options toggle).
                     GUO.Input.Touch.TouchOverlay.Forced = _options.ShowTouches;
                     GUO.Input.Touch.TouchOverlay.Setup(this);
+
+                    // The second screen as companion tabs (prototype; --companion-tabs or Options).
+                    GUO.Input.Touch.CompanionTabs.Forced = _options.CompanionTabs;
+                    GUO.Input.Touch.CompanionTabs.Setup(this);
                 }
 
                 // A second display, where the device has one (or the desktop
@@ -1070,6 +1074,9 @@ public partial class Main : Node
         /// <summary>Draw every finger the touch layer sees; see TouchOverlay.</summary>
         public bool ShowTouches { get; private set; }
 
+        /// <summary>The second screen as companion tabs; see CompanionTabs.</summary>
+        public bool CompanionTabs { get; private set; }
+
         /// <summary>Mute the Master bus for the whole run; the Android tool bakes this in unless told --sound.</summary>
         public bool Silent { get; private set; }
 
@@ -1238,6 +1245,9 @@ public partial class Main : Node
                         break;
                     case "--show-touches":
                         o.ShowTouches = true;
+                        break;
+                    case "--companion-tabs":
+                        o.CompanionTabs = true;
                         break;
                     case "--gamepad-trace":
                         GUO.Input.Gamepad.GamepadInput.Trace = true;
