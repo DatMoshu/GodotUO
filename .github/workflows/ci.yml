@@ -50,6 +50,9 @@ jobs:
       - name: Configuration resolution
         run: python3 tools/guo/test_config.py
 
+      - name: Web export guard (never the official Godot, never wipes the last build)
+        run: python3 tools/web/test_run.py
+
       - name: No local config committed
         run: |
           if git ls-files --error-unmatch launchers/_shared/config.local.bat 2>/dev/null; then
