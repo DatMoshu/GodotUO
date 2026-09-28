@@ -764,6 +764,20 @@ internal static class TouchProbe
     }
 
     /// <summary>A tap at a point in client pixels (a card's control), as a finger.</summary>
+    /// <summary>Scrolls the list a control is in until it shows, as a player's drag would.</summary>
+    private static async System.Threading.Tasks.Task ScrollTo(Node host, Godot.Control c)
+    {
+        for (Node p = c?.GetParent(); p != null; p = p.GetParent())
+        {
+            if (p is ScrollContainer scroll)
+            {
+                scroll.EnsureControlVisible(c);
+                await Frames(host, 3);
+                return;
+            }
+        }
+    }
+
     private static async System.Threading.Tasks.Task TapClient(Node host, Vector2? client)
     {
         if (client == null)
@@ -1666,6 +1680,9 @@ internal static class TouchProbe
         Game.Data.Lock was = hiding.Lock;
         var seen = new System.Collections.Generic.List<Game.Data.Lock>();
 
+        // On a shorter screen (1280x720 at 1x) Hiding is below the list's fold: scrolled to, as a player does.
+        await ScrollTo(host, view.Find("lock Hiding"));
+
         for (int i = 0; i < 3; i++)
         {
             await TapClient(host, view.CentreOf(view.Find("lock Hiding")));
@@ -1684,6 +1701,7 @@ internal static class TouchProbe
         await Frames(host, 5);
         Check("the group stepper narrows the list", narrowed && view.Find("lock Hiding") != null);
 
+        await ScrollTo(host, view.Find("use Hiding"));
         await TapClient(host, view.CentreOf(view.Find("use Hiding")));
         await Frames(host, 10);
         Check("Use on a skill uses it and closes Modern Skills", !Input.Touch.Modern.ModernGump.IsOpen);
@@ -2439,8 +2457,12 @@ internal static class TouchProbe
                 Vector2? plus = WindowMenu.ButtonCentre("+");
                 if (plus != null) await Tap(host, Client(plus.Value));
                 await Frames(host, 5);
-                Check("the window menu's + steps the size by 25%", plus != null && System.Math.Abs(g.PresentationScale - (float)(System.Math.Round((before + 0.25f) * 4) / 4)) < 0.01f,
-                    $"{before} -> {g.PresentationScale}");
+                // A step, up to the most the room above the command bar holds (1.59x at 1280x720).
+                Compat.Rectangle room = GumpPresentation.DisplayBounds(false);
+                float most = System.Math.Min(room.Width / (float)g.Width, room.Height / (float)g.Height);
+                float want = System.Math.Min((float)(System.Math.Round((before + 0.25f) * 4) / 4), most);
+                Check("the window menu's + steps the size by 25%, up to what the room holds", plus != null && g.PresentationScale > before && System.Math.Abs(g.PresentationScale - want) < 0.01f,
+                    $"{before} -> {g.PresentationScale}, room holds {most:0.##}");
                 Vector2? reset = WindowMenu.ButtonCentre("Reset size");
                 if (reset != null) await Tap(host, Client(reset.Value));
                 await Frames(host, 5);
