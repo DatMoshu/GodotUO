@@ -758,13 +758,13 @@ Terms:
 
 **A scene** (`kind` `scene`, `format` 1; `tools/multi/fort.py`,
 e.g. `tools/multi/examples/fort_demo.json`) is `elements[]` on one grid, and
-a `tour[]` of `{"name", "at", "z"}` stops. Wherever the tour changes level,
-the build adds a stop at the foot and the top of the stair that gets there
-(`<stop>_stair<k>_from`, `_to`): the client's pathfinder ignores z. Every element names its `part`;
-each part becomes one multi (cut in two again while it has too many
-components, or while any component lies more than 17 tiles from the part's
-centre: ModernUO sends a multi only within 22 of its centre, so a wider one can
-be walked on before the shard has sent it). Elements:
+a `tour[]` of `{"name", "at", "z"}` stops. Every element names its `part`.
+The scene is cut into multis on a grid of 35-tile squares, one multi per
+square holding whatever stands in it (cut again on straight lines while it has
+too many components), so no two overlap and none reaches more than 17 tiles
+from its centre: ModernUO loses a multi's tiles at a point inside another
+multi's bounds where that one has none, and sends a multi only within 22 of
+its centre. Elements:
 
 | `type` | Fields |
 |---|---|
@@ -786,7 +786,8 @@ on the land below, and the client steps down into it. `scene-prove --at X
 Y` without a z stands the scene on the land height most of it covers.
 
 `scene-build` writes `build/multi/scenes/<name>/`: `scene.json` (`parts[]`
-with `name`, `centre`, `bounds`, `doors`, `components`; `bounds`, `tour`,
+with `name` (the element it mostly holds and its square), `centre`, `bounds`,
+`square`, `holds` (the elements in it), `doors`, `components`; `bounds`, `tour`,
 `valid`, `problems`), `parts/<part>.json` (components from the part's
 centre) and `preview.png`. `scene-write` writes each part into the stage as
 `<scene>.<part>` and the scene into the stage's `scenes.json`

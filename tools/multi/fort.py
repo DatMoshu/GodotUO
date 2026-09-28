@@ -22,6 +22,7 @@ part is placed at the scene's origin plus its own centre.
 """
 from __future__ import annotations
 
+import collections
 import math
 import sys
 from pathlib import Path
@@ -137,6 +138,8 @@ class Scene:
         self.ground = desc.get("ground", 0)
         self.plinth_depth = desc.get("plinth", 6)                  # below the ground, for lower land
         self.notes: list[str] = []
+        self.problems: list[str] = []
+        self.stairs: list[tuple] = []                              # (at, cells) of each stair element
 
     def add(self, item, x, y, z, rank, part, visible=True):
         self.items.append((Component(item, x, y, z, visible), rank, part))
@@ -407,6 +410,7 @@ class Scene:
         levels = [z0] + sorted(el.get("landings", [])) + [el["to"]]
         at, cells = tuple(el["at"]), set()
         self.plinth(set(self.flight_cells(el)), z0, self.mats.get("wall", "stone"), rank, part)
+        self.stairs.append((tuple(el["at"]), set(self.flight_cells(el))))
         for a, b in zip(levels, levels[1:]):
             used, arrive = self.flight(at, rise, a, b, width, mat, rank, part, base=z0)
             cells |= used
@@ -469,6 +473,11 @@ class Scene:
             if kind not in RANK:
                 raise DescriptionError(f"element {n}: unknown type '{kind}'")
             getattr(self, kind)(el, el.get("part", el.get("name", f"{kind}{n}")))
+        for at, cells in self.stairs:
+            taken = sorted(c for c in cells if self.claims.get(c, -1) > RANK["stair"])
+            if taken:
+                self.problems.append(f"the stair at {list(at)} runs into a higher element at {taken[:4]}: "
+                                     "its steps there would be dropped")
         for cells, base, z, face, rank, part in self.open_edges:
             bare = {(x, y) for (x, y) in G.edge(cells) if self.claims.get((x, y), -1) <= rank and any(
                 (x + dx, y + dy) not in cells and (x + dx, y + dy) not in self.claims
@@ -510,34 +519,46 @@ class Scene:
         return out
 
     def split(self, kept) -> list[dict]:
-        parts: dict[str, list[Component]] = {}
+        """The scene as multis on a grid: each square of the grid is one multi holding whatever
+        stands in it, so no two multis' bounds overlap (see TILE), cut again on straight lines
+        while one has too many components."""
+        xs0, ys0 = min(c.x for c, _, _ in kept), min(c.y for c, _, _ in kept)
+        squares: dict[tuple, list] = {}
         for c, _, p in kept:
-            parts.setdefault(p, []).append(c)
+            squares.setdefault(((c.x - xs0) // TILE, (c.y - ys0) // TILE), []).append((c, p))
         out = []
-        for name, comps in parts.items():
-            for sub_name, sub in cut(name, comps):
+        for (gx, gy), items in sorted(squares.items()):
+            held = collections.Counter(p for _, p in items)
+            name = f"{held.most_common(1)[0][0]}_{gx}_{gy}"
+            for sub_name, sub in cut(name, [c for c, _ in items]):
                 xs, ys = [c.x for c in sub], [c.y for c in sub]
                 cx, cy = (min(xs) + max(xs)) // 2, (min(ys) + max(ys)) // 2
                 local = [Component(c.item, c.x - cx, c.y - cy, c.z, c.visible) for c in sub]
                 local.append(Component(G.CENTRE_MARKER, 0, 0, 0, False))
-                out.append({"name": sub_name, "centre": [cx, cy], "comps": local,
-                            "bounds": [min(xs), min(ys), max(xs), max(ys)]})
-        # every door goes with the part whose bounds hold it (its own part when it was cut)
+                out.append({"name": sub_name, "centre": [cx, cy], "comps": local, "square": [gx, gy],
+                            "holds": sorted(held), "bounds": [min(xs), min(ys), max(xs), max(ys)]})
+        # every door goes with the multi of its square (a doorway itself may hold nothing)
         for d in self.doors:
-            home = [p for p in out if p["name"] == d["part"] or p["name"].startswith(d["part"] + ".")]
-            home = [p for p in home if p["bounds"][0] <= d["x"] <= p["bounds"][2]
-                    and p["bounds"][1] <= d["y"] <= p["bounds"][3]] or home or out
-            p = home[0]
+            sq = [(d["x"] - xs0) // TILE, (d["y"] - ys0) // TILE]
+            home = [p for p in out if p["square"] == sq] or out
+            inside = [p for p in home if p["bounds"][0] <= d["x"] <= p["bounds"][2]
+                      and p["bounds"][1] <= d["y"] <= p["bounds"][3]]
+            p = (inside or sorted(home, key=lambda p: abs(p["centre"][0] - d["x"]) + abs(p["centre"][1] - d["y"])))[0]
             p.setdefault("doors", []).append({"x": d["x"] - p["centre"][0], "y": d["y"] - p["centre"][1],
                                               "z": d["z"], "facing": d["facing"], "type": d["type"]})
         return out
 
 
+# ModernUO's StaticTileEnumerator stops at the first multi whose bounds hold a point and that
+# has no tile there: the multis after it in the sector are never looked at, so a floor of one
+# multi inside another's bounds can vanish on the shard and the walker drops to the land. A
+# scene's multis therefore never overlap: it is cut on a grid of TILE squares, one multi each.
 # ModernUO sends a multi only while its centre is within GlobalUpdateRange + 4 (18 + 4) of the
 # player: a component further than that from its centre can be stood on before the shard has
 # sent the multi, and the client walks the bare land under it instead. Parts keep every
 # component within REACH of their centre (a margin under 22).
 REACH = 17
+TILE = 2 * REACH + 1                       # a square's multi reaches REACH from its centre
 
 
 def cut(name: str, comps: list[Component], limit: int = MAX_COMPONENTS - 64, reach: int = REACH):
@@ -602,6 +623,12 @@ def build_scene(desc: dict, cat: Catalogue) -> dict:
     cat.fresh()
     s = Scene(desc, cat)
     parts = s.build()
+    for i, a in enumerate(parts):
+        for b in parts[i + 1:]:
+            p, q = a["bounds"], b["bounds"]
+            if not (p[2] < q[0] or q[2] < p[0] or p[3] < q[1] or q[3] < p[1]):
+                s.problems.append(f"multis {a['name']} and {b['name']} overlap: the shard would lose tiles")
     tour = walk_tour([{"name": t["name"], "x": t["at"][0], "y": t["at"][1], "z": t["z"]}
                       for t in desc.get("tour", [])], s.flights)
-    return {"format": 1, "kind": "scene", "name": desc["name"], "parts": parts, "tour": tour, "notes": s.notes}
+    return {"format": 1, "kind": "scene", "name": desc["name"], "parts": parts, "tour": tour, "notes": s.notes,
+            "problems": s.problems}

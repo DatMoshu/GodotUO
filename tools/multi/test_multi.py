@@ -194,7 +194,12 @@ def main() -> int:
                  "tour": [{"name": "foot", "at": [2, 4], "z": 0}, {"name": "walk", "at": [10, 0], "z": 20}]}
         sc = fort.build_scene(scene, cat)
         again = fort.build_scene(json.loads(json.dumps(scene)), cat)
-        check([p["name"] for p in sc["parts"]] == ["wall", "tower"], "a scene becomes one multi per part")
+        def overlap(a, b):
+            return not (a[2] < b[0] or b[2] < a[0] or a[3] < b[1] or b[3] < a[1])
+        boxes = [p["bounds"] for p in sc["parts"]]
+        check(not any(overlap(a, b) for i, a in enumerate(boxes) for b in boxes[i + 1:]),
+              f"no two multis of a scene overlap (the shard would lose one's tiles; got {boxes})")
+        check({"wall", "tower"} <= {h for p in sc["parts"] for h in p["holds"]}, "the multis say which elements they hold")
         check([[(c.item, c.x, c.y, c.z) for c in p["comps"]] for p in sc["parts"]] ==
               [[(c.item, c.x, c.y, c.z) for c in p["comps"]] for p in again["parts"]], "a scene builds to the same bytes")
         tour = [t["name"] for t in sc["tour"]]
@@ -202,6 +207,33 @@ def main() -> int:
         climb = sc["tour"][1:3]
         check(climb[0]["z"] == 0 and climb[1]["z"] == 20 and (climb[0]["x"], climb[0]["y"]) == (3, 3),
               f"the climb starts at the stair's foot and ends on its landing (got {climb})")
+
+        into = json.loads(json.dumps(scene))
+        into["elements"].append({"type": "tower", "part": "t2", "disc": [8, 5, 4], "levels": [0, 20], "top": 40,
+                                 "floor": "stone", "parapet": False})
+        check(bool(fort.build_scene(into, cat)["problems"]), "a stair run into a tower is reported")
+        check(not sc["problems"], f"a clear stair is not (got {sc['problems']})")
+
+        # the offline walk: a terrace at z 20 on walls, reached by a stair; a parapet cuts it
+        import walkcheck
+        from multifile import Component as C
+        kinds = {"0x0001": {"flags": ["impassable"], "height": 20}, "0x0002": {"flags": ["surface"], "height": 0},
+                 "0x0003": {"flags": ["surface", "bridge"], "height": 10}}
+        comps = [C(1, x, y, 0) for x in range(4, 10) for y in range(0, 3)]
+        comps += [C(2, x, y, 20) for x in range(4, 10) for y in range(0, 3)]
+        comps += [C(3, x, 1, 5 * (x - 1)) for x in (1, 2, 3)]          # steps standing at 5, 10, 15
+        terrace = [{"centre": [0, 0], "comps": comps}]
+        legs = [{"name": "foot", "x": -1, "y": 1, "z": 0}, {"name": "top", "x": 8, "y": 1, "z": 20}]
+        check(walkcheck.check_tour(terrace, legs, kinds) == [], "the walk climbs the stair onto the terrace")
+        walled = [{"centre": [0, 0], "comps": comps + [C(1, 6, y, 20) for y in range(-1, 4)]}]
+        check(len(walkcheck.check_tour(walled, legs, kinds)) == 1, "a wall across the terrace is caught")
+        # two floors at z 20 over walls, touching only at a corner: UO does not step round it
+        corner = [C(1, x, y, 0) for x in range(0, 6) for y in range(0, 6)]
+        corner += [C(2, x, y, 20) for x, y in [(0, 0), (1, 0), (0, 1), (1, 1), (2, 2), (3, 2), (2, 3), (3, 3)]]
+        corner += [C(1, x, y, 20) for x, y in [(2, 1), (1, 2), (2, 0), (0, 2)]]
+        cleg = [{"name": "a", "x": 0, "y": 0, "z": 20}, {"name": "b", "x": 3, "y": 3, "z": 20}]
+        check(len(walkcheck.check_tour([{"centre": [0, 0], "comps": corner}], cleg, kinds)) == 1,
+              "floors that touch only at a corner do not join")
 
         # a long wall is cut so the shard sends each piece before anyone stands on its far end
         long = {"format": 1, "kind": "scene", "name": "l", "materials": scene["materials"],

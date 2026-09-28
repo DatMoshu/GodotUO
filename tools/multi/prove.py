@@ -227,10 +227,9 @@ def session(cfg, stage: Path, out: Path, parts: list, site, stops: list, clip: P
     report["place"] = {}
     client = None
     try:
-        # the shard keeps its world: take down whatever earlier proofs from this stage left standing
-        known = set(json.loads((stage / "multis.json").read_text(encoding="utf-8"))) if (stage / "multis.json").exists() else set()
-        removed = sum(bridge(bport, {"op": "multi", "action": "remove", "tag": t}, "multi_ack").get("removed", 0)
-                      for t in sorted(known))
+        # the shard keeps its world: take down every multi earlier proofs left standing, from any
+        # stage (an old stage's multi ids read this stage's data, so one left up is a stranger)
+        removed = bridge(bport, {"op": "multi", "action": "remove", "tag": "*"}, "multi_ack").get("removed", 0)
         if removed:
             print(f"[prove] removed {removed} multi(s) left by earlier proofs", flush=True)
         for tag, mid, cx, cy, doors in parts:
