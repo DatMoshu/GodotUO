@@ -109,6 +109,8 @@
     <EmbeddedResource Update="src/Resources/embedded/ResGumps.resx" LogicalName="ClassicUO.Resources.ResGumps.resources" />
     <EmbeddedResource Include="src/Resources/embedded/cuologo.png" LogicalName="cuologo.png" />
     <EmbeddedResource Include="src/Resources/embedded/game-background.png" LogicalName="game-background.png" />
+    <!-- GUO: input glyphs (Kenney Input Prompts Pixel, CC0), tools/glyphs -->
+    <EmbeddedResource Include="src/Resources/embedded/glyphs/*.png" LogicalName="glyphs/%(Filename)%(Extension)" />
     <!--
       The eight UI fonts, upstream's own .xnb files. They replace the FileEmbed
       source generator the same way the two PNGs above do; see src/Render/Fonts.cs.

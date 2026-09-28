@@ -127,6 +127,7 @@ internal static class TouchProbe
         await FlickCheck(host, world);
         // The classic Options on touch, as a player who turned Modern off has it.
         await OptionsTouchCheck(host, world);
+        await GlyphSwapCheck(host, world);
         await ClassicOptionsWritesCheck(host, world);
         await MobileOptionsCheck(host, world);
         Configuration.ProfileManager.CurrentProfile.ModernGumpsOff = false;
@@ -1893,7 +1894,8 @@ internal static class TouchProbe
     private static async System.Threading.Tasks.Task ClassicOptionsWritesCheck(Node host, Game.World world)
     {
         const System.Reflection.BindingFlags Private = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
-        string[] device = { "Screen effects", "Start", "Controller buttons" };
+        // Controller buttons shows everywhere since the pad is on everywhere (ADR-0025).
+        string[] device = { "Screen effects", "Start" };
         Configuration.Profile p = Configuration.ProfileManager.CurrentProfile;
 
         int DeviceSections(Game.UI.Controls.Control c)
@@ -1928,7 +1930,7 @@ internal static class TouchProbe
 
         var options = new OptionsGump(world);
         onTouch = DeviceSections(options);
-        Check("the classic Options shows its device sections (Screen effects, Start, Controller buttons) on touch only, so the desktop's is ClassicUO's",
+        Check("the classic Options shows its device sections (Screen effects, Start) on touch only, so the desktop's is ClassicUO's",
             onDesktop == 0 && onTouch == device.Length, $"desktop {onDesktop}, touch {onTouch} of {device.Length}");
 
         string slotsWas = p.TouchBarSlots, altsWas = p.TouchBarAlts, wordsWas = p.TouchBarWords;
@@ -1967,6 +1969,75 @@ internal static class TouchProbe
             p.TouchBarAlts = altsWas;
             p.TouchBarWords = wordsWas;
             p.TouchSayBank = bankWas;
+            await Frames(host, 5);
+        }
+    }
+
+    /// <summary>
+    /// Button prompts follow the last input (ADR-0025): the window menu's
+    /// prompt row shows a pad's buttons after a pad button, the click after a
+    /// key or the mouse, and nothing after a touch; the command bar's tab
+    /// wears the printed Y; each family has its own glyphs.
+    /// </summary>
+    private static async System.Threading.Tasks.Task GlyphSwapCheck(Node host, Game.World world)
+    {
+        // The glyph set per family, from the printed button InputMode resolves.
+        string xbox = Input.Glyphs.InputGlyphs.NameFor(Input.PadAction.Confirm, Input.InputKind.Gamepad, Input.PadFamily.Xbox, JoyButton.A);
+        string ps = Input.Glyphs.InputGlyphs.NameFor(Input.PadAction.Confirm, Input.InputKind.Gamepad, Input.PadFamily.PlayStation, JoyButton.A);
+        string nin = Input.Glyphs.InputGlyphs.NameFor(Input.PadAction.Cancel, Input.InputKind.Gamepad, Input.PadFamily.Nintendo, JoyButton.B);
+        string psB = Input.Glyphs.InputGlyphs.NameFor(Input.PadAction.Cancel, Input.InputKind.Gamepad, Input.PadFamily.PlayStation, JoyButton.B);
+        string key = Input.Glyphs.InputGlyphs.NameFor(Input.PadAction.Cancel, Input.InputKind.KeyboardMouse, Input.PadFamily.Xbox, JoyButton.B);
+        string touch = Input.Glyphs.InputGlyphs.NameFor(Input.PadAction.Confirm, Input.InputKind.Touch, Input.PadFamily.Xbox, JoyButton.A);
+        bool embedded = true;
+
+        foreach (string name in new[] { "pad_a", "pad_b", "pad_x", "pad_y", "ps_cross", "ps_circle", "ps_square", "ps_triangle", "dpad", "stick_r", "key_esc", "mouse", "mouse_left", "mouse_right" })
+        {
+            embedded &= typeof(Input.Glyphs.InputGlyphs).Assembly.GetManifestResourceStream($"glyphs/{name}.png") != null;
+        }
+
+        Check("each pad family has its own glyphs (Xbox and Nintendo letters, PlayStation symbols), keys and mouse theirs, touch none; all embedded",
+            xbox == "pad_a" && ps == "ps_cross" && nin == "pad_b" && psB == "ps_circle" && key == "key_esc" && touch == null && embedded,
+            $"xbox A {xbox}, ps A {ps}, nintendo B {nin}, ps B {psB}, key cancel {key}, touch {touch ?? "none"}, embedded {embedded}");
+
+        PaperDollGump doll = await FreshPaperdoll(host, world);
+
+        if (doll == null)
+        {
+            Check("a paperdoll opens for the glyph check", false);
+            return;
+        }
+
+        Configuration.Profile p = Configuration.ProfileManager.CurrentProfile;
+        string layoutWas = p.GamepadLayout;
+        Input.InputKind kindWas = Input.InputMode.Current;
+
+        try
+        {
+            // A pad's button (a lettered pad whose layout is set), then the mouse, then a finger.
+            p.GamepadLayout = "labels";
+            WindowMenu.Open(doll);
+            await Frames(host, 15);
+            Input.InputMode.Note(new InputEventJoypadButton { Device = 0, ButtonIndex = JoyButton.A, Pressed = true });
+            await Frames(host, 5);
+            string padRow = WindowMenu.Prompts;
+            bool tab = TouchInput.Bar != null && TouchInput.Bar.HandleShown;
+            string badge = TouchGumpBar.BadgeDrawn;
+            Input.InputMode.Note(new InputEventKey { Keycode = Key.Shift, Pressed = true });
+            await Frames(host, 5);
+            string keyRow = WindowMenu.Prompts;
+            Input.InputMode.Switch(Input.InputKind.Touch);
+            await Frames(host, 5);
+            string touchRow = WindowMenu.Prompts;
+
+            Check("the window menu's prompts swap on the last input: a pad's A, B and D-pad, then the click, then none for a finger; the bar's tab wears Y",
+                padRow == "pad_a pad_b dpad" && keyRow == "mouse_left" && touchRow == "" && tab && badge == "pad_y",
+                $"pad \"{padRow}\", key \"{keyRow}\", touch \"{touchRow}\", bar tab shown {tab}, badge {badge ?? "none"}");
+        }
+        finally
+        {
+            p.GamepadLayout = layoutWas;
+            Input.InputMode.Switch(kindWas);
+            WindowMenu.Close();
             await Frames(host, 5);
         }
     }

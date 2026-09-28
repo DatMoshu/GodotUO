@@ -2333,6 +2333,14 @@ namespace GUO.Game.UI.Gumps
             // PORT DEVIATION (GUO): the pad is on by default; this turns it off.
             sectionPad.Add(_gamepad = AddCheckBox(null, "Use a controller", _currentProfile.Gamepad, startX, startY));
 
+            // PORT DEVIATION (GUO): what each pad button does, in the glyphs of
+            // the pad last used (Input.Glyphs, ADR-0025).
+            foreach ((GUO.Input.PadAction action, string words) in GUO.Input.Glyphs.GlyphPic.Legend)
+            {
+                sectionPad.Add(new GUO.Input.Glyphs.GlyphPic(action));
+                sectionPad.AddRight(AddLabel(null, words, startX, startY), 6);
+            }
+
             Add(rightArea, PAGE);
         }
 
