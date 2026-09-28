@@ -338,6 +338,8 @@ public partial class Main : Node
 
         System.IO.Directory.CreateDirectory(dataDir);
         System.Environment.CurrentDirectory = dataDir;
+        // The player's own looks and shaders (ADR-0023).
+        GUO.Renderer.PostFx.PostFxLibrary.UserFolder = System.IO.Path.Combine(dataDir, "postfx");
 
         GD.Print($"[GUO] client home   : {dataDir}");
 

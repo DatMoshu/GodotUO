@@ -1,0 +1,16 @@
+{
+ "name": "Glow",
+ "description": "Bloom around torches, lamps and spells, from the light buffer.",
+ "passes": [
+  {
+   "shader": "bloom",
+   "params": {
+    "threshold": 0.55,
+    "radius": 6,
+    "intensity": 0.7,
+    "from_world": 0.2
+   }
+  }
+ ],
+ "bindings": []
+}

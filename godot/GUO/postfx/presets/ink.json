@@ -1,0 +1,22 @@
+{
+ "name": "Ink Outline",
+ "description": "Cel shading with dark ink along edges.",
+ "passes": [
+  {
+   "shader": "cel",
+   "params": {
+    "bands": 5,
+    "saturation": 1.1
+   }
+  },
+  {
+   "shader": "outline",
+   "params": {
+    "mode": 0,
+    "threshold": 0.24,
+    "strength": 0.8
+   }
+  }
+ ],
+ "bindings": []
+}

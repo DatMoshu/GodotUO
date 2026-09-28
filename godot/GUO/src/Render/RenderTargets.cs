@@ -172,7 +172,10 @@ namespace GUO.Renderer
             batcher.SetSampler(_defaultSamplerState);
 
             batcher.Draw(
-                WorldRenderTarget,
+                // PORT DEVIATION (GUO): the world goes through the post-processing
+                // stack (ADR-0023). With Classic, the default, this is the world
+                // target's own texture, drawn exactly as upstream draws it.
+                PostFx.PostFxStack.Instance.Process(WorldRenderTarget, LightRenderTarget),
                 _gameWorldSceneOnScreen,
                 fullAlphaNoColor,
                 0f

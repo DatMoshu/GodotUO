@@ -1,0 +1,23 @@
+{
+ "name": "Moonlight",
+ "description": "A LUT grade for night: blue and dim.",
+ "passes": [
+  {
+   "shader": "lut",
+   "params": {
+    "lut_tex": "res://postfx/luts/moonlight.png",
+    "lut_size": 16,
+    "strength": 1.0
+   }
+  },
+  {
+   "shader": "vignette",
+   "params": {
+    "radius": 0.9,
+    "softness": 0.5,
+    "strength": 0.4
+   }
+  }
+ ],
+ "bindings": []
+}

@@ -1,0 +1,22 @@
+{
+ "name": "Noir",
+ "description": "Hard black and white with a heavy vignette.",
+ "passes": [
+  {
+   "shader": "mono",
+   "params": {
+    "style": 2,
+    "contrast": 1.0
+   }
+  },
+  {
+   "shader": "vignette",
+   "params": {
+    "radius": 0.75,
+    "softness": 0.4,
+    "strength": 0.75
+   }
+  }
+ ],
+ "bindings": []
+}

@@ -1,0 +1,14 @@
+{
+ "name": "Cel",
+ "description": "Flat bands of light, hue kept, a touch more colour.",
+ "passes": [
+  {
+   "shader": "cel",
+   "params": {
+    "bands": 4,
+    "saturation": 1.15
+   }
+  }
+ ],
+ "bindings": []
+}
