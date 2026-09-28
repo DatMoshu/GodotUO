@@ -107,7 +107,9 @@ draws the floor, and a later step is refused with a reset to the land's z.
 The patch looks on to the next multi. `tools/multi` does not depend on it
 (its scenes never overlap multis' bounds, so they work on a stock shard); the
 patch is for the dev shard, and for any overlapping multis a shard places.
-To be reported upstream (the owner decides; a draft is kept in `build/`).
+Reported upstream as modernuo/ModernUO#2682, with a two-multi repro (fails
+on stock with the walled multi placed first, passes placed second or
+patched). Delete this patch when upstream takes a fix.
 
 Keep this list append-only and numbered. A patch that upstream adopts should
 be deleted, not silently dropped from the set.
