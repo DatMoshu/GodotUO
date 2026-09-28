@@ -45,6 +45,17 @@ internal static class GumpPresentation
     /// </summary>
     public static bool IsFullHeight(Gump g) => g is OptionsGump;
 
+    /// <summary>
+    /// The top of the room a full-height gump is fitted into: below
+    /// ClassicUO's top bar when it is showing (it is always drawn on top, so
+    /// it would cover the gump's first row), else the top of the screen.
+    /// </summary>
+    public static int FullHeightTop()
+    {
+        TopBarGump bar = UIManager.GetGump<TopBarGump>();
+        return bar != null && !bar.IsDisposed && bar.IsVisible && bar.Y < 40 ? bar.Y + bar.Height : 0;
+    }
+
     /// <summary>Whether a full-height gump is up on the main screen, so the command bar steps aside.</summary>
     public static bool FullHeightOpen()
     {
@@ -89,8 +100,18 @@ internal static class GumpPresentation
             }
 
             _fitted.Add(g);
-            GumpFlick.Fit(g);
-            TouchInput.Note($"full-height: {g.GetType().Name} fitted at {g.PresentationScale:0.00}x");
+            Rectangle b = DisplayBounds(false);
+            int top = FullHeightTop();
+            int room = Math.Max(1, b.Height - top);
+
+            bool locked = g.PresentationLocked;
+            g.PresentationLocked = false;
+            float fit = Math.Min(b.Width / (float)g.Width, room / (float)g.Height);
+            SetScale(g, fit, new Point(g.X, g.Y));
+            g.X = b.X + Math.Max(0, (b.Width - Width(g)) / 2);
+            g.Y = top + Math.Max(0, (room - Height(g)) / 2);
+            g.PresentationLocked = locked;
+            TouchInput.Note($"full-height: {g.GetType().Name} fitted at {g.PresentationScale:0.00}x below {top}");
         }
     }
 
