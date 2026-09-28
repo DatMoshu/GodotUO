@@ -147,8 +147,8 @@ is not secret (upstream saves it in the clear too), and it is kept in the clear.
   `JavaClassWrapper` passes all of them: the varargs setters take a `string[]`, `byte[]` goes both ways, the inner
   class's constructor is found (the store tries `KeyGenParameterSpec$Builder`, then `Builder`), and `null` goes in
   as an empty `Variant`. No plugin is needed.
-  The key is made on the first save. A reinstall or cleared app data removes it, and the saved passwords then ask
-  to be typed again. Measured on the Thor-bottom emulator (x86_64, 2026-09-28): the pregame probe's accounts checks
+  The key is made on the first save. A reinstall or cleared app data removes it, and each saved password then has to
+  be typed once more. Measured on the Thor-bottom emulator (x86_64, 2026-09-28): the pregame probe's accounts checks
   pass on a first run (the key made) and a second (the key read back), 29/29 each. Not yet run on the Thor itself.
 - **Linux / Steam Deck:** P/Invoke of `libsecret-1.so.0` (`secret_password_store_sync`, `_lookup_sync`, `_clear_sync`).
   If the library or the Secret Service is missing, the store is `none` and the UI says so. There's no plaintext

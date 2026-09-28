@@ -165,7 +165,17 @@ internal sealed class AndroidKeystoreStore : ISecretStore
             return null;
         }
 
-        if (Java(store, "containsAlias", out why, Alias).AsBool())
+        bool exists = Java(store, "containsAlias", out why, Alias).AsBool();
+
+        if (why != null)
+        {
+            // Not "no key": a Keystore that failed to answer. Making one now
+            // would replace the key under the alias and orphan every saved
+            // password (GUOUI's review).
+            return null;
+        }
+
+        if (exists)
         {
             GodotObject entry = Java(store, "getEntry", out why, Alias, default(Variant)).AsGodotObject();
             GodotObject existing = entry == null ? null : Java(entry, "getSecretKey", out why).AsGodotObject();
