@@ -1241,17 +1241,33 @@ internal static class TouchProbe
         }
 
         Vector2I was = DisplayServer.WindowGetSize();
+        DisplayServer.WindowMode mode = DisplayServer.WindowGetMode();
         Rect2 before = view.Rect;
 
         try
         {
+            // A maximized window ignores a new size: a run without
+            // --window-size comes up maximized (3840x2054 on a 4K monitor's
+            // work area, the director, 2026-09-28) and the screen never shrank.
+            if (mode != DisplayServer.WindowMode.Windowed)
+            {
+                DisplayServer.WindowSetMode(DisplayServer.WindowMode.Windowed);
+                await Frames(host, 10);
+            }
+
             DisplayServer.WindowSetSize(new Vector2I(1280, 400));
+
+            for (int i = 0; i < 120 && GUO.Client.Game.ClientBounds.Height > 480; i++)
+            {
+                await Frames(host, 1);
+            }
+
             await Frames(host, 60);
             Compat.Rectangle main = GUO.Client.Game.ClientBounds;
             Rect2 after = view.Rect;
             Check("a Modern view open through a resize is placed again inside the new screen",
                 after != before && after.End.Y <= main.Height + 1 && after.End.X <= main.Width + 1,
-                $"card {before} -> {after}, screen {main.Width}x{main.Height}");
+                $"card {before} -> {after}, screen {main.Width}x{main.Height}, window was {mode}");
 
             // Drag the page column up from its first page until Touch shows.
             Godot.Control first = view.Find("General");
@@ -1283,6 +1299,12 @@ internal static class TouchProbe
         finally
         {
             DisplayServer.WindowSetSize(was);
+
+            if (mode != DisplayServer.WindowMode.Windowed)
+            {
+                DisplayServer.WindowSetMode(mode);
+            }
+
             await Frames(host, 60);
             Input.Touch.Modern.ModernGump.Current?.Close();
         }
