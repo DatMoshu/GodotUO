@@ -194,7 +194,7 @@ internal sealed partial class PregameSettings : HBoxContainer
         Value("Client", () => string.IsNullOrWhiteSpace(s.ClientVersion) ? "Found from the files" : s.ClientVersion);
         Value("State", () => Client.Game?.UO?.FileManager != null ? "Loaded, in use now" : "Not loaded");
         Act("Choose folder...", () => GUO.Host.FirstRunScreen.OpenChange());
-        Note("The folder picker opens on the top screen. A new folder applies the next time GUO starts.");
+        Note("The folder picker opens over the login screen. A new folder applies the next time GUO starts.");
     }
 
     private void Account()
@@ -210,7 +210,7 @@ internal sealed partial class PregameSettings : HBoxContainer
     private void Screen()
     {
         Act("Screen effects...", GUO.Renderer.PostFx.PostFxMenu.Toggle);
-        Note("The look of the world: the effects menu opens on the top screen, with the world behind it as its preview.");
+        Note("The look of the world: the effects menu opens over the login screen, with the world behind it as its preview.");
         Note(ProfileNote + "the game window's size, zoom and gump scale.");
     }
 

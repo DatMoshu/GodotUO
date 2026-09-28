@@ -797,3 +797,27 @@ the address in use stays in `settings.json` (`ip`, `port`), which Play sets.
 
 A debug build adds its dev shard (from `UO_SHARD_HOST` / `UO_SHARD_PORT`) as a favourite at run time. It is
 never written to the file, and a release build never has it (`OS.IsDebugBuild()`).
+
+## 18. The community server catalogue (`servers/catalogue.json`)
+
+The Servers tab's **Community** group. It lives at the repo root in `servers/`, is built into the client as the
+embedded resource `servers/catalogue.json`, and is read once per run and again on **Refresh**. Every entry is
+owner-approved and allows third-party clients (`servers/README.md`); `servers/catalogue.sample.json` shows every
+field filled in.
+
+```json
+{ "version": 1, "servers": [ { "name": "Example Shard", "host": "play.example.com", "port": 2593, "era": "AOS",
+  "emulator": "ModernUO", "third_party_clients": true, "site": "https://example.com", "description": "..." } ] }
+```
+
+| Field | Type | Meaning |
+|---|---|---|
+| `version` | int | 1 |
+| `servers[]` | objects | The `servers.json` entry fields of section 17 without `own`, `favourite` and `last_played` |
+
+An entry without a name or host, with a port outside 1-65535, or with `third_party_clients: false` is skipped. A file
+that doesn't parse leaves the group with "The server list couldn't be loaded". A catalogue shard the player
+favourites or plays on is copied into `servers.json` and then lists under Favourites or Recent instead.
+
+Live status is a bare TCP connect to the host and port, timed from the moment it is resolved: at most 8 at once, a
+3 s timeout, repeated every 60 s while the Servers tab is showing. Nothing is sent and no result is stored.

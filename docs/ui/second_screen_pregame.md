@@ -90,7 +90,7 @@ screen feels like one object.
 
 - Buttons: **Play**, **Add server**, **Refresh**, **Favourite** / **Unfavourite**, **Choose folder…**, **Test
   controller**.
-- Empty Community: "The server list couldn't be loaded. Your saved servers are below. Refresh to try again."
+- Empty Community: "The server list couldn't be loaded. Your saved servers are above. Refresh to try again."
 - Unreachable: "Shard B isn't answering (no reply in 3 s). It may be down, or the address is wrong."
 - Sentence case, no all-caps labels, no exclamation marks.
 
