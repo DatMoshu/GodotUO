@@ -121,7 +121,8 @@ client in with the stage's `files_override`. The bridge's `equip` op puts the
 item on the character. The client's dump, a frame and a walking clip follow,
 then everything stops.
 
-`build\uodata_play\report.json` has:
+Each run writes to its own folder, `build\uodata_play\desktop-<time>\` (or
+`device-<time>\`), printed as `[play] output:`. Its `report.json` has:
 
 - `equip.ok`, `can_equip`, `check_equip` from the shard;
 - `worn_seen_by_client`;
@@ -129,7 +130,7 @@ then everything stops.
 - `clip`.
 
 Worn on the server and seen by the client are two different claims. Report
-both. Look at `build\uodata_play\watch\equipped.png` yourself before calling
+both. Look at `watch\equipped.png` in that folder yourself before calling
 the item visible.
 
 **On a device (the Thor):** the device reads the stage through

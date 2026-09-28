@@ -110,11 +110,16 @@ def main() -> int:
     cfg = load_config()
     stage = args.stage.resolve()
     item = int(args.item, 0) if args.item else json.loads((stage / "dreadcrest.json").read_text())["item"]
-    out = (args.out or cfg.build / "uodata_play").resolve()
-    if out.exists():
-        shutil.rmtree(out)
+    # Each run gets its own folder, so a later run (a device pass, say) never
+    # deletes an earlier run's clip and frames. Only this run's scratch is reset.
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    out = (args.out or cfg.build / "uodata_play" / f"{'device' if args.device else 'desktop'}-{stamp}").resolve()
+    for scratch in ("watch", "client_home"):
+        if (out / scratch).exists():
+            shutil.rmtree(out / scratch)
     watch = out / "watch"
     watch.mkdir(parents=True)
+    print(f"[play] output: {out}", flush=True)
     tools = cfg.tools
 
     sh(str(tools / "editor_shard" / "run.py"), "stop")
