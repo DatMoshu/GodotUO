@@ -36,7 +36,7 @@ COLUMNS = ("mean_ms", "p95_ms", "p99_ms", "draw_calls", "batcher_items", "textur
 def compare(out: Path, a: str, b: str) -> int:
     ra = {r["scene"]: r for r in json.loads((out / f"perf_{a}.json").read_text(encoding="utf-8"))["scenes"]}
     rb = {r["scene"]: r for r in json.loads((out / f"perf_{b}.json").read_text(encoding="utf-8"))["scenes"]}
-    lines = [f"# {a} vs {b}", "", "| Scene | " + " | ".join(f"{c} ({a} → {b})" for c in COLUMNS) + " |",
+    lines = [f"# {a} vs {b}", "", "| Scene | " + " | ".join(f"{c} ({a} -> {b})" for c in COLUMNS) + " |",
              "|---|" + "---:|" * len(COLUMNS)]
     for scene in ra:
         if scene not in rb:
@@ -45,7 +45,7 @@ def compare(out: Path, a: str, b: str) -> int:
         for c in COLUMNS:
             x, y = ra[scene][c], rb[scene][c]
             pct = f" ({(y - x) / x * 100:+.0f}%)" if x else ""
-            cells.append(f"{x} → {y}{pct}")
+            cells.append(f"{x} -> {y}{pct}")
         lines.append(f"| {scene} | " + " | ".join(cells) + " |")
     text = "\n".join(lines) + "\n"
     (out / f"compare_{a}_vs_{b}.md").write_text(text, encoding="utf-8")
