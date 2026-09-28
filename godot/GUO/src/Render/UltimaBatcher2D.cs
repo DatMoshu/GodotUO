@@ -233,6 +233,7 @@ namespace GUO.Renderer
         private void AppendToRun(Texture2D texture, Vector2 p0, Vector2 p1, Vector2 p2, Vector2 p3,
                                  Vector2 t0, Vector2 t1, Vector2 t2, Vector2 t3, Color modulate)
         {
+            FlushCover();
             if (!ReferenceEquals(texture, _runTexture) || _runItem != _current)
             {
                 FlushRun();
@@ -259,8 +260,15 @@ namespace GUO.Renderer
             }
         }
 
-        /// <summary>Sends the pending run, if there is one, as one triangle array.</summary>
+        /// <summary>Sends what is pending: a covering-land run (B4 fix 2c), then the quad run.</summary>
         private void FlushRun()
+        {
+            FlushCover();
+            FlushQuadRun();
+        }
+
+        /// <summary>Sends the pending run, if there is one, as one triangle array.</summary>
+        private void FlushQuadRun()
         {
             if (_runPoints.Count == 0)
             {
@@ -358,6 +366,7 @@ namespace GUO.Renderer
             CoverRuns = 0;
             _lastKind = -1;
             FramesBegun++;
+            _coverRuns.NextFrame();
             _itemCount = 0;
             _sizedTexture = null;
             TextureSwitches = 0;
@@ -707,11 +716,33 @@ void fragment() {
                 return 0;
             }
 
+            var offset = new Vector2(-offsetX, -offsetY);
+
+            // B4 fix 2c: held back and drawn with the tiles that follow it as
+            // one mesh, unless the id mirror needs each tile's own texture.
+            if (MergedCover && !_mirroring)
+            {
+                Texture2D t = layer.Textures[index];
+                int page = LandPages.LayerOf(t);
+                if (page >= 0)
+                {
+                    if (_cover.Count > 0 && _coverOffset != offset)
+                    {
+                        FlushCover();
+                    }
+
+                    FlushQuadRun();
+                    _coverOffset = offset;
+                    _cover.Add((layer, index, page, LandPages.ScaleOf(t)));
+                    return 1;
+                }
+            }
+
+            FlushCover();
             ArrayMesh mesh = layer.GetSpriteMesh(index);
 
             // The same route DrawMeshLayer takes: the offset on the item, the
             // mesh drawn untransformed. A run of covering tiles shares one item.
-            var offset = new Vector2(-offsetX, -offsetY);
 
             if (!ReferenceEquals(_itemMaterial, _meshMaterial) || _itemOffset != offset)
             {
@@ -737,6 +768,53 @@ void fragment() {
             MirrorBackgroundMesh(mesh, offset, layer.Textures[index]); // PORT DEVIATION (GUO): ADR-0023
 
             return 1;
+        }
+
+        /// <summary>
+        /// Epic B, B4 fix 2c (--merged-cover): consecutive covering-land tiles,
+        /// held back by DrawMeshSprite and drawn as one mesh over LandPages'
+        /// Texture2DArray by FlushCover -- which every other draw reaches
+        /// first, through FlushRun or AppendToRun, so the order is unchanged.
+        /// </summary>
+        public static bool MergedCover;
+        private readonly List<(MeshLayer Layer, int Index, int Page, Vector2 Scale)> _cover = new();
+        private Vector2 _coverOffset;
+        private long _coverSynced = -1;
+        private readonly CoverRuns _coverRuns = new();
+
+        private void FlushCover()
+        {
+            if (_cover.Count == 0)
+            {
+                return;
+            }
+
+            // Once a frame (re-uploaded pages), and again whenever a tile brought a new page.
+            if (LandPages.Dirty || _coverSynced != FramesBegun)
+            {
+                LandPages.Sync();
+                _coverSynced = FramesBegun;
+            }
+
+            ArrayMesh mesh = _coverRuns.Get(_cover);
+            _cover.Clear();
+
+            if (!ReferenceEquals(_itemMaterial, _landArrayMaterial) || _itemOffset != _coverOffset)
+            {
+                Vector2 keep = _worldOffset;
+
+                _worldOffset = _coverOffset;
+                _nextMaterial = _landArrayMaterial;
+                Cut();
+                _nextMaterial = _currentMaterial;
+                _worldOffset = keep;
+            }
+
+            FlushQuadRun();
+            _landArrayMaterial.SetShaderParameter("land_pages", LandPages.Array);
+            Commands++;
+            Count(4, default);
+            RenderingServer.CanvasItemAddMesh(_current, mesh.GetRid(), Transform2D.Identity, Colors.White, default);
         }
 
         /// <summary>
