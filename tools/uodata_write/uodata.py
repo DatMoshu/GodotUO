@@ -385,6 +385,17 @@ class Registry:
         self.save()
         return lo, hi
 
+    def note(self, namespace: str, id: int, what: str) -> str | None:
+        """Marks an id used in the pack whose range holds it; returns that pack, or None."""
+        for name, p in self.data["packs"].items():
+            if any(lo <= id <= hi for lo, hi in p["ranges"].get(namespace, [])):
+                used = p["used"].setdefault(namespace, {})
+                if id not in used.values():
+                    used[what] = id
+                    self.save()
+                return name
+        return None
+
     def take(self, pack: str, namespace: str, what: str) -> int:
         p = self.data["packs"][pack]
         used = p["used"].setdefault(namespace, {})
@@ -448,6 +459,13 @@ def write_records(stage: Stage, records: list[AssetRecord]) -> list[str]:
                 f.write(r.data)
             done.append(f"hue {r.id}")
     stage.save()
+    # An id written inside a pack's range is marked used there, whoever wrote it
+    # (uopack's pack path picks ids itself rather than through take()).
+    reg = Registry(stage)
+    for r in records:
+        ns = {"static": "static", "tiledata-item": "static", "anim": "anim", "gump": "gump"}.get(r.kind)
+        if ns:
+            reg.note(ns, r.id, f"{r.kind}-{r.id:#x}")
     return done
 
 
