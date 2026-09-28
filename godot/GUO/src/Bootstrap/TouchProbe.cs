@@ -130,6 +130,7 @@ internal static class TouchProbe
         await MobileOptionsCheck(host, world);
         Configuration.ProfileManager.CurrentProfile.ModernGumpsOff = false;
         await ModernOptionsCheck(host, world);
+        await ModernMacrosCheck(host, world);
         await ModernPartyCheck(host, world);
         await ModernSkillsCheck(host, world);
         await ModernJournalCheck(host, world);
@@ -1094,6 +1095,92 @@ internal static class TouchProbe
             && classic.PresentationScale > 1.2f && !Input.Touch.Modern.ModernGump.IsOpen);
         UIManager.GetGump<OptionsGump>()?.Dispose();
         await Frames(host, 10);
+    }
+
+    /// <summary>
+    /// Modern Options' Macros page: a macro is added by name, an action picked
+    /// for it, a choice picked for that action, and its button placed, all by
+    /// taps, editing World.Macros as the classic page does; a second tap on
+    /// Delete removes it and its button.
+    /// </summary>
+    private static async System.Threading.Tasks.Task ModernMacrosCheck(Node host, Game.World world)
+    {
+        const string name = "GUO probe macro";
+
+        if (world.Macros.FindMacro(name) is Game.Managers.Macro stale)
+        {
+            world.Macros.Remove(stale);
+        }
+
+        Game.GameActions.OpenSettings(world);
+        await Frames(host, 10);
+        var view = Input.Touch.Modern.ModernGump.Current as Input.Touch.Modern.ModernOptions;
+
+        if (view == null)
+        {
+            Check("Modern Options opens for its Macros page", false);
+            return;
+        }
+
+        await TapClient(host, view.CentreOf(view.Find("Macros")));
+        Input.Touch.Modern.ModernMacros page = view.Macros;
+
+        if (view.Find("new name") is Godot.LineEdit field)
+        {
+            field.Text = name;
+        }
+
+        await TapClient(host, view.CentreOf(view.Find("add")));
+        Game.Managers.Macro macro = world.Macros.FindMacro(name);
+        Check("on the Macros page, Add makes a macro by the typed name and opens it",
+            macro != null && page?.View == "macro " + name, $"macro {macro != null}, view {page?.View}");
+
+        if (macro == null)
+        {
+            view.Close();
+            return;
+        }
+
+        // Add action -> Open, then its choice -> the second of Open's list.
+        await TapClient(host, view.CentreOf(view.Find("add action")));
+        await TapClient(host, view.CentreOf(view.Find("pick Open")));
+        await TapClient(host, view.CentreOf(view.Find("choice 1")));
+        await TapClient(host, view.CentreOf(page.Pick(1)));
+        var first = macro.Items as Game.Managers.MacroObject;
+        int count = 0, offset = 0;
+        Game.Managers.Macro.GetBoundByCode(Game.Managers.MacroType.Open, ref count, ref offset);
+        Check("an action and its choice are picked by taps (Open, the second of its list)",
+            first != null && first.Code == Game.Managers.MacroType.Open && (int)first.SubCode == offset + 1 && page.View == "macro " + name,
+            $"action {first?.Code}, choice {first?.SubCode} (expected {(Game.Managers.MacroSubType)(offset + 1)}), view {page.View}");
+
+        await TapClient(host, view.CentreOf(view.Find("place " + name)));
+        await Frames(host, 5);
+        bool placed = false;
+
+        foreach (Gump g in UIManager.Gumps)
+        {
+            if (g is MacroButtonGump b && b._macro == macro) placed = true;
+        }
+
+        Check("Place button makes the macro's MacroButtonGump, as the classic list's drag does", placed);
+
+        await TapClient(host, view.CentreOf(view.Find("delete")));
+        await TapClient(host, view.CentreOf(view.Find("delete")));
+        await Frames(host, 5);
+        bool left = false;
+
+        foreach (Gump g in UIManager.Gumps)
+        {
+            if (g is MacroButtonGump b && b._macro == macro) left = true;
+        }
+
+        Check("a second tap on Delete removes the macro and its button, back to the list",
+            world.Macros.FindMacro(name) == null && !left && page.View == "list",
+            $"macro {world.Macros.FindMacro(name) != null}, button {left}, view {page.View}");
+
+        await TapClient(host, view.CentreOf(view.Find("Okay")));
+        await Frames(host, 5);
+        Input.Touch.Modern.ModernGump.Current?.Close();
     }
 
     /// <summary>

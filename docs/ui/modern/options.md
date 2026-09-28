@@ -78,6 +78,20 @@ tall, and all of it is the target.
   - circle of transparency;
   - shadows;
   - death screen.
+- **Macros** (ModernMacros), a page of its own kind, in three views:
+  - **the list:** a name field and Add, then a row per macro with Edit and
+    Place button;
+  - **one macro:** its key (shown, not edited, since a phone has no keys;
+    Classic view sets it), then its actions. Each action is a plate naming
+    its type, with its choice or its text under it, and Remove. Then come
+    Add action and Place button. Delete asks for a second tap;
+  - **a picker:** a finger-sized list of the action types, or of one
+    type's choices, the current one lit.
+
+  The classic page does the same with combo boxes. Edits are live on the
+  macros, as there, and Apply or Okay saves them (`World.Macros.Save()`, as
+  the classic Apply does). Place button makes the MacroButtonGump that the
+  classic list's drag makes.
 - **Containers:** grid view, grid slot size.
 - **Touch:**
   - vibrate when the bar snaps;

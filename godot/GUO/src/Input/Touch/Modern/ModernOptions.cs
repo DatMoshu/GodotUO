@@ -49,7 +49,7 @@ internal sealed partial class ModernOptions : ModernGump
         public Action<object> Show; // puts a value into the setting's control
     }
 
-    private static readonly string[] Pages = { "General", "Sound", "Video", "Containers", "Touch" };
+    private static readonly string[] Pages = { "General", "Sound", "Video", "Macros", "Containers", "Touch" };
 
     private readonly List<Setting> _settings = new();
     private readonly Dictionary<Setting, object> _values = new();
@@ -59,6 +59,8 @@ internal sealed partial class ModernOptions : ModernGump
     private Label _title;
     private ScrollContainer _scroll;
     private bool _audioChanged;
+    private ModernMacros _macros;
+    private bool _macrosChanged;
 
     public ModernOptions(World world) : base(world)
     {
@@ -222,6 +224,14 @@ internal sealed partial class ModernOptions : ModernGump
             rows.AddThemeConstantOverride("separation", 2);
             pages.AddChild(rows);
             _pageRows[page] = rows;
+
+            // Macros is a page of its own kind: the macro list and editor (ModernMacros).
+            if (page == "Macros")
+            {
+                _macros = new ModernMacros(World, Text, () => _macrosChanged = true);
+                rows.AddChild(_macros);
+                continue;
+            }
 
             foreach (Setting s in _settings)
             {
@@ -427,6 +437,11 @@ internal sealed partial class ModernOptions : ModernGump
         }
 
         _scroll.ScrollVertical = 0;
+
+        if (page == "Macros")
+        {
+            _macros?.ShowList();
+        }
     }
 
     private void Apply()
@@ -450,6 +465,13 @@ internal sealed partial class ModernOptions : ModernGump
 
             if (!p.EnableMusic) Client.Game.Audio.StopMusic();
             if (!p.EnableSound) Client.Game.Audio.StopSounds();
+        }
+
+        // As the classic Apply does: the macros are edited live and saved here.
+        if (_macrosChanged)
+        {
+            World.Macros.Save();
+            _macrosChanged = false;
         }
 
         GD.Print($"[GUO] modern: Options applied");
@@ -479,13 +501,20 @@ internal sealed partial class ModernOptions : ModernGump
 
     // --- the probe ----------------------------------------------------------------------------
 
+    /// <summary>For the probe: the Macros page.</summary>
+    public ModernMacros Macros => _macros;
+
+    /// <summary>For the probe: open a page by name.</summary>
+    public void Page(string page) => ShowPage(page);
+
     /// <summary>For the probe: the control of a setting (by its words) or a footer button (by name), if on the open page.</summary>
     public Control Find(string what)
     {
         foreach (Node n in Card.FindChildren("*", "Control", true, false))
         {
             if (n is Control c && c.IsVisibleInTree()
-                && ((c.HasMeta("setting") && (string)c.GetMeta("setting") == what) || c.Name == what || c is Button b && b.Text == what))
+                && ((c.HasMeta("setting") && (string)c.GetMeta("setting") == what) || (c.HasMeta("macros") && (string)c.GetMeta("macros") == what)
+                    || c.Name == what || c is Button b && b.Text == what))
             {
                 return c;
             }
