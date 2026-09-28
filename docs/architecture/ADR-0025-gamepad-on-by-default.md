@@ -29,6 +29,23 @@ gamepad, or touch) and switches the moment another one is used, with no
 delay, the way console-style PC games hot-swap. The pointer and the UI's
 button glyphs follow the mode.
 
+## Engine Compatibility
+
+Godot 4.7.2 mono. It uses Godot's own joypad events (`InputEventJoypadButton`,
+`InputEventJoypadMotion`), `Input.GetJoyName`, and the device id
+`InputEvent.DeviceIdEmulation` that marks mouse events Godot makes from a
+touch. There is no new engine feature, no GDExtension, and no SDL outside
+Godot.
+
+## ADR Dependencies
+
+- **ADR-0006** (GameController as a Godot node): `_Input` is where every event
+  arrives, so the input mode is noted there first.
+- **ADR-0017** (Android) and **ADR-0018** (Steam Deck): the platforms where the
+  pad was already on. This extends it to the Windows desktop.
+- **ADR-0024** (Modern gumps): GUO-UI's glyphs in Godot views follow
+  `InputMode.Changed`.
+
 ## Context
 
 Review P1 (2026-09-28) found that GamepadInput acted on the Windows desktop,
@@ -84,6 +101,13 @@ GamepadProbe on the desktop (`--gamepad-probe`) checks:
 - the pointer hides when idle, returns on the right stick, and is kept for
   a target cursor;
 - with "Use a controller" off, a pad does nothing.
+
+## GDD Requirements Addressed
+
+The owner's decision (2026-09-28, relayed by the director): the gamepad is
+on by default on every platform, desktop included, with AAA-style hot
+swapping. The last input used (keyboard and mouse, or pad) sets the mode,
+the pointer and UI glyphs follow it, and switching back is instant.
 
 ## Related
 
