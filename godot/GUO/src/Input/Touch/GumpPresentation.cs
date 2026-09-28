@@ -39,7 +39,7 @@ internal static class GumpPresentation
             // one (the world map) is sized instead (FitFullHeight).
             || IsFullHeight(g) && g is not ResizableGump
             || !g.IsFromServer && !g.IsModal && g is PaperDollGump or ContainerGump or GridContainerGump
-                or StatusGumpBase or JournalGump or ResizableJournal);
+                or StatusGumpBase or JournalGump or ResizableJournal or ShopGump);
 
     /// <summary>
     /// A full-height gump (C11): one that on touch takes the whole main screen,
