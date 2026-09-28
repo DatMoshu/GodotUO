@@ -1490,6 +1490,16 @@ internal static class TouchProbe
             return;
         }
 
+        // Folded rows, so several show at once (C14); a tap unfolds one.
+        await Frames(host, 5);
+        int inView = view.RowsInView;
+        float folded = view.ListRow(0).Size.Y;
+        await TapClient(host, view.CentreOf(view.ListRow(0)));
+        await Frames(host, 3);
+        Check("the abilities list shows at least three folded rows at once, and a tap unfolds a row to its whole text and weapons",
+            inView >= 3 && view.Unfolded(0) && view.ListRow(0).Size.Y > folded,
+            $"rows in view {inView}, row 1 unfolded {view.Unfolded(0)}, height {folded} -> {view.ListRow(0).Size.Y}");
+
         foreach (Gump g in UIManager.Gumps)
         {
             if (g is UseAbilityButtonGump old) old.Dispose();

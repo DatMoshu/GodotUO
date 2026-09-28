@@ -32,6 +32,7 @@ internal sealed partial class ModernAbilities : ModernGump
     private readonly TextureButton[] _current = new TextureButton[2];
     private readonly Label[] _currentName = new Label[2];
     private VBoxContainer _list;
+    private ScrollContainer _listScroll;
     private List<ushort>[] _weapons;
     private readonly List<(TextureRect rect, ushort icon)> _iconless = new();
 
@@ -113,7 +114,8 @@ internal sealed partial class ModernAbilities : ModernGump
         // phone every line here is a list row fewer (C14).
         Label hint = UoTheme.Label("Tap to use, hold to place a button.", UoTheme.Muted);
         hint.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-        hint.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+        hint.ClipText = true;
+        hint.TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis;
         header.AddChild(hint);
         Button classic = UoTheme.Button("Classic view", 90);
         classic.Pressed += OpenClassic;
@@ -150,7 +152,7 @@ internal sealed partial class ModernAbilities : ModernGump
 
         col.AddChild(new HSeparator());
 
-        var scroll = new ScrollContainer { SizeFlagsVertical = Control.SizeFlags.ExpandFill, HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled };
+        var scroll = _listScroll = new ScrollContainer { SizeFlagsVertical = Control.SizeFlags.ExpandFill, HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled };
         scroll.AddThemeStyleboxOverride("panel", UoTheme.Frame(UoTheme.FieldFrame, 4));
         col.AddChild(scroll);
         _list = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
@@ -178,7 +180,10 @@ internal sealed partial class ModernAbilities : ModernGump
 
     private Control Row(int i)
     {
-        var row = new HBoxContainer();
+        // Folded, a row is its name and the first line of what it does,
+        // about an icon tall, so a landscape phone shows several (C14); a tap
+        // unfolds it to the whole text and the weapons that have it.
+        var row = new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Stop };
         row.AddThemeConstantOverride("separation", 6);
         ushort iconId = (ushort)(0x5200 + i);
         var icon = new TextureRect { Texture = UoTheme.GumpTexture(iconId), StretchMode = TextureRect.StretchModeEnum.KeepCentered, CustomMinimumSize = new Vector2(44, 44), SizeFlagsVertical = Control.SizeFlags.ShrinkBegin };
@@ -191,18 +196,19 @@ internal sealed partial class ModernAbilities : ModernGump
         row.AddChild(icon);
 
         var text = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
-        text.AddThemeConstantOverride("separation", 0);
+        text.AddThemeConstantOverride("separation", -6);
         row.AddChild(text);
         text.AddChild(UoTheme.Label(StringHelper.CapitalizeAllWords(AbilityData.Abilities[i].Name), UoTheme.Heading));
+        Label aboutLabel = null, weaponsLabel = null;
 
         string about = Client.Game.UO.FileManager.Clilocs.GetString(1061693 + i);
 
         if (!string.IsNullOrEmpty(about))
         {
             Label l = UoTheme.Label(about, UoTheme.Ink);
-            l.AutowrapMode = TextServer.AutowrapMode.WordSmart;
             l.AddThemeConstantOverride("line_spacing", WrapSpacing);
             text.AddChild(l);
+            aboutLabel = l;
         }
 
         if (_weapons != null && i < _weapons.Length && _weapons[i] is List<ushort> weapons && weapons.Count > 0)
@@ -222,9 +228,37 @@ internal sealed partial class ModernAbilities : ModernGump
             w.AutowrapMode = TextServer.AutowrapMode.WordSmart;
             w.AddThemeConstantOverride("line_spacing", WrapSpacing);
             text.AddChild(w);
+            weaponsLabel = w;
         }
 
+        Fold(aboutLabel, weaponsLabel, true);
+        row.GuiInput += e =>
+        {
+            if (e is InputEventMouseButton { ButtonIndex: MouseButton.Left, Pressed: false })
+            {
+                bool open = !(bool)row.GetMeta("open", false);
+                row.SetMeta("open", open);
+                Fold(aboutLabel, weaponsLabel, !open);
+            }
+        };
+
         return row;
+    }
+
+    /// <summary>A list row folded (one line of text, "..." where cut) or unfolded (all of it).</summary>
+    private static void Fold(Label about, Label weapons, bool folded)
+    {
+        if (about != null)
+        {
+            about.AutowrapMode = folded ? TextServer.AutowrapMode.Off : TextServer.AutowrapMode.WordSmart;
+            about.ClipText = folded;
+            about.TextOverrunBehavior = folded ? TextServer.OverrunBehavior.TrimEllipsis : TextServer.OverrunBehavior.NoTrimming;
+        }
+
+        if (weapons != null)
+        {
+            weapons.Visible = !folded;
+        }
     }
 
     protected override void Refresh()
@@ -318,6 +352,32 @@ internal sealed partial class ModernAbilities : ModernGump
 
     /// <summary>For the probe: the rows listed.</summary>
     public int Rows => _list.GetChildCount();
+
+    /// <summary>For the probe: list rows wholly in view.</summary>
+    public int RowsInView
+    {
+        get
+        {
+            Rect2 view = _listScroll.GetGlobalRect();
+            int n = 0;
+
+            foreach (Node c in _list.GetChildren())
+            {
+                if (c is Control row && view.Encloses(row.GetGlobalRect()))
+                {
+                    n++;
+                }
+            }
+
+            return n;
+        }
+    }
+
+    /// <summary>For the probe: a list row.</summary>
+    public Control ListRow(int i) => _list.GetChild<Control>(i);
+
+    /// <summary>For the probe: whether a list row is unfolded.</summary>
+    public bool Unfolded(int i) => (bool)ListRow(i).GetMeta("open", false);
 
     /// <summary>For the probe: abilities with their weapons read from the book's table.</summary>
     public int WithWeapons
