@@ -123,6 +123,27 @@ internal static class UoTheme
 
     private const byte UoFont = 1;
 
+    /// <summary>The plate's content margins, above and below the caption.</summary>
+    private const int PlateTextTop = 2, PlateTextBottom = 3;
+
+    /// <summary>
+    /// The font on a plate. The font's line box is its tallest glyph, so a
+    /// caption plus the plate's margins came to 28 art pixels and the 23-pixel
+    /// plate stretched to fit, its rims doubling rows. The caption's line box
+    /// loses the difference below the baseline (the room under the tallest
+    /// glyph's descent), which keeps the letters where they sat on the plate.
+    /// </summary>
+    public static Font PlateFont
+    {
+        get
+        {
+            Font font = Font;
+            int over = (int) font.GetHeight(FontSize) + PlateTextTop + PlateTextBottom - ButtonHeight;
+
+            return over > 0 ? new FontVariation { BaseFont = font, SpacingBottom = -over } : font;
+        }
+    }
+
     /// <summary>Printable ASCII and the few symbols GUO's UI uses.</summary>
     private static IEnumerable<char> Charset()
     {
@@ -410,7 +431,7 @@ internal static class UoTheme
             {
                 BgColor = new Color(0.62f, 0.58f, 0.52f) * shade, BorderColor = new Color("c8a45c"),
                 BorderWidthLeft = 1, BorderWidthTop = 1, BorderWidthRight = 1, BorderWidthBottom = 1,
-                ContentMarginLeft = 10, ContentMarginRight = 10, ContentMarginTop = 2, ContentMarginBottom = 3,
+                ContentMarginLeft = 10, ContentMarginRight = 10, ContentMarginTop = PlateTextTop, ContentMarginBottom = PlateTextBottom,
             };
         }
 
@@ -420,7 +441,7 @@ internal static class UoTheme
             TextureMarginLeft = 12, TextureMarginRight = 12, TextureMarginTop = 0, TextureMarginBottom = 0,
             AxisStretchHorizontal = StyleBoxTexture.AxisStretchMode.Tile,
             ModulateColor = new Color(shade, shade, shade),
-            ContentMarginLeft = 12, ContentMarginRight = 12, ContentMarginTop = 2, ContentMarginBottom = 3,
+            ContentMarginLeft = 12, ContentMarginRight = 12, ContentMarginTop = PlateTextTop, ContentMarginBottom = PlateTextBottom,
         };
     }
 
@@ -544,8 +565,11 @@ internal static class UoTheme
         theme.SetStylebox("panel", "PanelContainer", Frame(StoneFrame));
         theme.SetStylebox("panel", "Panel", Frame(StoneFrame));
 
+        Font plateFont = PlateFont;
+
         foreach (string control in new[] { "Button", "OptionButton", "MenuButton" })
         {
+            theme.SetFont("font", control, plateFont);
             theme.SetStylebox("normal", control, Plate());
             theme.SetStylebox("hover", control, Plate(0.88f));
             theme.SetStylebox("pressed", control, Plate(0.70f));
