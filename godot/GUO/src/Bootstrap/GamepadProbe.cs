@@ -252,14 +252,10 @@ internal static class GamepadProbe
                 first != null && second != null && second != first && Where() == stood,
                 $"{Name(first)} -> {Name(second)}, at {stood} -> {Where()}");
 
+            // + sits right of - on the stepper row, above the slider.
             for (int i = 0; i < 12 && Name(GUO.Input.Touch.WindowMenu.FocusOwner) != "+"; i++)
             {
-                await Button(host, JoyButton.DpadRight);
-
-                if (Name(GUO.Input.Touch.WindowMenu.FocusOwner) != "+")
-                {
-                    await Button(host, JoyButton.DpadDown);
-                }
+                await Button(host, Name(GUO.Input.Touch.WindowMenu.FocusOwner) == "-" ? JoyButton.DpadRight : JoyButton.DpadUp);
             }
 
             before = opened.PresentationScale;

@@ -189,6 +189,10 @@ internal sealed partial class WindowMenu : Node
         var plus = Touch(new Button { Text = "+" }, 40);
         plus.Pressed += () => Step(0.25f);
         stepper.AddChild(plus);
+        // The D-pad steps across the size between them, which Godot's own
+        // neighbour search does not.
+        minus.FocusNeighborRight = minus.GetPathTo(plus);
+        plus.FocusNeighborLeft = plus.GetPathTo(minus);
 
         _slider = new HSlider
         {
