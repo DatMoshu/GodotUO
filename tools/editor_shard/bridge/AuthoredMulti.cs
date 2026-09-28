@@ -7,7 +7,8 @@
 //   BaseHouse.AddSouthDoor/AddEastDoor do. A multi already carrying the tag is
 //   removed first, so placing again replaces it.
 // {"op":"multi","action":"remove","tag":"cottage"}
-//   deletes the multi with that tag and its doors.
+//   deletes the multi with that tag and its doors; the tag "*" deletes every authored multi
+//   (a proof starts from a clean world whatever earlier stages placed).
 //
 // The reply is {"op":"multi_ack","action":...,"ok":true,"tag":...,"serial":...,"doors":n}
 // or ok false with an error.
@@ -137,7 +138,7 @@ public static class AuthoredMultis
             return 0;
         }
 
-        var found = World.Items.Values.OfType<GUOAuthoredMulti>().Where(m => m.Tag == tag).ToList();
+        var found = World.Items.Values.OfType<GUOAuthoredMulti>().Where(m => tag == "*" || m.Tag == tag).ToList();
         foreach (GUOAuthoredMulti m in found)
         {
             m.Delete();

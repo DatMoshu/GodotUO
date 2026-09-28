@@ -106,8 +106,8 @@ def main() -> int:
         check(at[(0, 2, 7)].item == 0x202, "the west window is the NS window piece")
         door = at.get((2, 4, 7))
         check(door is not None and door.item == 0x6A5 and not door.visible, "the door cell holds only a hidden door marker")
-        check(at[(1, 4, 7)].item == 0x100 + SIGS.index("W") and at[(3, 4, 7)].item == 0x100 + SIGS.index("E"),
-              "the wall ends beside the door are end pieces (W, E)")
+        check(at[(1, 4, 7)].item == 0x100 + SIGS.index("EW") and at[(3, 4, 7)].item == 0x100 + SIGS.index("EW"),
+              "the wall runs on beside the door (EW pieces, as the originals), no end pieces")
         check(side["doors"] == [{"x": 0, "y": 2, "z": 7, "storey": 0, "facing": "WestCW", "type": "DarkWoodDoor"}],
               "the sidecar door: centre-relative, WestCW in a wall along x")
         check(sum(1 for c in comps if c.z == 0 and c.item >= 0x400 and c.item < 0x500) == 16,
@@ -118,7 +118,8 @@ def main() -> int:
         check(roofs == [27, 30, 33], f"gable courses 3 z apart from the wall top (got {roofs})")
         check(all(c.x + 2 == 3 for c in comps if c.item == 0x706), "a W=4 house ridges on x = 3 (x 1..5)")
         fill = sorted((c.x + 2, c.y + 2, c.z) for c in comps if c.item == 0x301)
-        check(fill == [(2, 4, 27), (3, 4, 27), (3, 4, 30), (4, 4, 27)], f"gable fill on the south end (got {fill})")
+        check(fill == [(2, 0, 27), (2, 4, 27), (3, 0, 27), (3, 0, 30), (3, 4, 27), (3, 4, 30), (4, 0, 27), (4, 4, 27)],
+              f"gable fill on both ends, the hidden north one too (got {fill})")
         check(validate.validate(comps, side, None) == [], "the cottage validates")
 
         try:
@@ -177,6 +178,10 @@ def main() -> int:
         check(any("fence is not closed" in p for p in validate.validate(comps5, broken, None)),
               "a gap in the fence is caught")
 
+        again_c, _ = generate.build(cottage(), cat)
+        check([(c.item, c.x, c.y, c.z) for c in again_c] == [(c.item, c.x, c.y, c.z) for c in comps],
+              "a house builds the same after other builds on the same catalogue")
+
         # a small scene: a wall into a tower, a stair up the wall, a tour that climbs
         scene = {"format": 1, "kind": "scene", "name": "t",
                  "materials": {"wall": "stone", "walk": "stone", "floor": "stone", "stairs": "stone"},
@@ -189,7 +194,12 @@ def main() -> int:
                  "tour": [{"name": "foot", "at": [2, 4], "z": 0}, {"name": "walk", "at": [10, 0], "z": 20}]}
         sc = fort.build_scene(scene, cat)
         again = fort.build_scene(json.loads(json.dumps(scene)), cat)
-        check([p["name"] for p in sc["parts"]] == ["wall", "tower"], "a scene becomes one multi per part")
+        def overlap(a, b):
+            return not (a[2] < b[0] or b[2] < a[0] or a[3] < b[1] or b[3] < a[1])
+        boxes = [p["bounds"] for p in sc["parts"]]
+        check(not any(overlap(a, b) for i, a in enumerate(boxes) for b in boxes[i + 1:]),
+              f"no two multis of a scene overlap (the shard would lose one's tiles; got {boxes})")
+        check({"wall", "tower"} <= {h for p in sc["parts"] for h in p["holds"]}, "the multis say which elements they hold")
         check([[(c.item, c.x, c.y, c.z) for c in p["comps"]] for p in sc["parts"]] ==
               [[(c.item, c.x, c.y, c.z) for c in p["comps"]] for p in again["parts"]], "a scene builds to the same bytes")
         tour = [t["name"] for t in sc["tour"]]
@@ -197,6 +207,58 @@ def main() -> int:
         climb = sc["tour"][1:3]
         check(climb[0]["z"] == 0 and climb[1]["z"] == 20 and (climb[0]["x"], climb[0]["y"]) == (3, 3),
               f"the climb starts at the stair's foot and ends on its landing (got {climb})")
+
+        into = json.loads(json.dumps(scene))
+        into["elements"].append({"type": "tower", "part": "t2", "disc": [8, 5, 4], "levels": [0, 20], "top": 40,
+                                 "floor": "stone", "parapet": False})
+        check(bool(fort.build_scene(into, cat)["problems"]), "a stair run into a tower is reported")
+        check(not sc["problems"], f"a clear stair is not (got {sc['problems']})")
+
+        # the offline walk: a terrace at z 20 on walls, reached by a stair; a parapet cuts it
+        import walkcheck
+        from multifile import Component as C
+        kinds = {"0x0001": {"flags": ["impassable"], "height": 20}, "0x0002": {"flags": ["surface"], "height": 0},
+                 "0x0003": {"flags": ["surface", "bridge"], "height": 10}}
+        comps = [C(1, x, y, 0) for x in range(4, 10) for y in range(0, 3)]
+        comps += [C(2, x, y, 20) for x in range(4, 10) for y in range(0, 3)]
+        comps += [C(3, x, 1, 5 * (x - 1)) for x in (1, 2, 3)]          # steps standing at 5, 10, 15
+        terrace = [{"centre": [0, 0], "comps": comps}]
+        legs = [{"name": "foot", "x": -1, "y": 1, "z": 0}, {"name": "top", "x": 8, "y": 1, "z": 20}]
+        check(walkcheck.check_tour(terrace, legs, kinds) == [], "the walk climbs the stair onto the terrace")
+        walled = [{"centre": [0, 0], "comps": comps + [C(1, 6, y, 20) for y in range(-1, 4)]}]
+        check(len(walkcheck.check_tour(walled, legs, kinds)) == 1, "a wall across the terrace is caught")
+        # two floors at z 20 over walls, touching only at a corner: UO does not step round it
+        corner = [C(1, x, y, 0) for x in range(0, 6) for y in range(0, 6)]
+        corner += [C(2, x, y, 20) for x, y in [(0, 0), (1, 0), (0, 1), (1, 1), (2, 2), (3, 2), (2, 3), (3, 3)]]
+        corner += [C(1, x, y, 20) for x, y in [(2, 1), (1, 2), (2, 0), (0, 2)]]
+        cleg = [{"name": "a", "x": 0, "y": 0, "z": 20}, {"name": "b", "x": 3, "y": 3, "z": 20}]
+        check(len(walkcheck.check_tour([{"centre": [0, 0], "comps": corner}], cleg, kinds)) == 1,
+              "floors that touch only at a corner do not join")
+
+        # a long wall is cut so the shard sends each piece before anyone stands on its far end
+        long = {"format": 1, "kind": "scene", "name": "l", "materials": scene["materials"],
+                "elements": [{"type": "wall", "part": "wall", "path": [[0, 0], [60, 0]], "thickness": 3, "top": 20,
+                              "floor": "stone", "parapet": "none"}], "tour": []}
+        sl = fort.build_scene(long, cat)
+        reach = max(max(abs(c.x), abs(c.y)) for p in sl["parts"] for c in p["comps"])
+        check(len(sl["parts"]) > 1 and reach <= fort.REACH,
+              f"every part reaches no further than {fort.REACH} from its centre (got {len(sl['parts'])} parts, {reach})")
+
+        # a causeway with buttresses, reached by a stair that pauses on a landing
+        way = {"format": 1, "kind": "scene", "name": "w",
+               "materials": {"wall": "stone", "walk": "stone", "floor": "stone", "stairs": "stone"},
+               "elements": [
+                   {"type": "causeway", "part": "way", "path": [[0, 0], [0, 12]], "width": 3, "z": 20,
+                    "floor": "stone", "rail": "stone", "buttress": 4},
+                   {"type": "stair", "part": "way", "at": [-1, 22], "rise": "N", "z": 0, "to": 20,
+                    "width": 3, "landings": [10]}],
+               "tour": [{"name": "foot", "at": [0, 24], "z": 0}, {"name": "top", "at": [0, 6], "z": 20}]}
+        sw = fort.build_scene(way, cat)
+        xy = {(c.x + sw["parts"][0]["centre"][0], c.y + sw["parts"][0]["centre"][1]) for c in sw["parts"][0]["comps"]}
+        check((-3, 4) in xy and (3, 4) in xy, "a buttress stands out from each side of the causeway")
+        tour = [(t["name"], t["z"]) for t in sw["tour"]]
+        check([z for _, z in tour] == [0, 0, 10, 10, 20, 20],
+              f"the climb pauses on the landing (got {tour})")
 
     print(f"test_multi: {'OK' if not FAILS else 'FAILED'} ({len(FAILS)} failing)")
     return 0 if not FAILS else 1

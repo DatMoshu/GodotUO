@@ -1,0 +1,19 @@
+diff --git a/Projects/Server/Maps/Map.StaticTileEnumerator.cs b/Projects/Server/Maps/Map.StaticTileEnumerator.cs
+index 27075b5..9bfb7b6 100644
+--- a/Projects/Server/Maps/Map.StaticTileEnumerator.cs
++++ b/Projects/Server/Maps/Map.StaticTileEnumerator.cs
+@@ -99,7 +99,13 @@ public partial class Map
+                 {
+                     _tiles = multi.Components.Tiles[offsetX][offsetY];
+                     _index = -1;
+-                    return SetTile();
++
++                    // A multi can hold the point in its bounds with no tile there: look on to
++                    // the next multi instead of ending the enumeration.
++                    if (SetTile())
++                    {
++                        return true;
++                    }
+                 }
+             }
+ 

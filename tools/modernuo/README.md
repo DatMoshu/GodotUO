@@ -96,6 +96,19 @@ shard (packet 0xBC), so A/B comparisons are unaffected; only the art changes.
 Set it back to 4 in `src/Distribution/Data/map-definitions.json` to test the
 Desolation art.
 
+### `patches/0004-multi-tile-enumerator.patch` (an upstream bug fix)
+
+`Map.StaticTileEnumerator.SetMulti` ends the whole enumeration when a multi
+holds the point in its bounds but has no tile there, so the multis after it in
+the sector are never looked at. A floor of one multi inside another's bounds
+(a courtyard inside a ring wall's bounding box) then does not exist for
+movement: the shard lets a walker drop to the land while the client still
+draws the floor, and a later step is refused with a reset to the land's z.
+The patch looks on to the next multi. `tools/multi` does not depend on it
+(its scenes never overlap multis' bounds, so they work on a stock shard); the
+patch is for the dev shard, and for any overlapping multis a shard places.
+To be reported upstream (the owner decides; a draft is kept in `build/`).
+
 Keep this list append-only and numbered. A patch that upstream adopts should
 be deleted, not silently dropped from the set.
 

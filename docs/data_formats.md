@@ -707,7 +707,7 @@ Terms:
 | `floor_z` | The ground floor's z (default 7, the originals' usual value) |
 | `storey_height` | z between storeys (default 20); `wall_height` defaults to one less |
 | `storeys[]` | Per storey, bottom up: `openings[]` (`kind` `door` or `window`, placed by `side` `N`/`E`/`S`/`W` with an `offset` along it, or by `at` `[x, y]`), `partitions[]` (inner walls: `{"x": k, "from", "to"}` or `{"y": k, ...}`), `floor_holes[]` (`[x, y]` left open, for stairwells) |
-| `roof` | `style` `gable` with `ridge` `x` or `y`: it covers x 1..W+1 and y 1..H+1 and rises 3 z a course, with gable-end fill (the wall material, 3 high) on the south or east end; the span across the ridge must be odd (W even for a ridge along y, H even for a ridge along x). Or `style` `flat`: `material` floor tiles at the top, with an optional `parapet` material |
+| `roof` | `style` `gable` with `ridge` `x` or `y`: it covers x 1..W+1 and y 1..H+1 and rises 3 z a course, with gable-end fill (the wall material, 3 high) on both ends (the originals fill only the south or east end the client shows; generated multis are complete on every side); the span across the ridge must be odd (W even for a ridge along y, H even for a ridge along x). Or `style` `flat`: `material` floor tiles at the top, with an optional `parapet` material |
 | `rects[]` | Instead of `size`: boxes `[x0, y0, x1, y1]`, or `{"box", "storeys", "roof"}`, whose union is the footprint (an L, a T, a U). Walls stand on the union's edge cells; a rect with fewer storeys is a lower wing with its own roof. Where roofs overlap the higher one wins, and nothing is roofed inside a taller rect |
 | `storeys[].stairs[]` | `{"at": [x, y], "rise": N/E/S/W, "width"}`: a straight flight to the next storey as the client builds them (0x009E): step i a stair piece at z + 5i on i stacked 10-high blocks, then a landing; the next floor is left open over it, and the cell past the landing is where a climber arrives |
 | `storeys[].floor` | That storey's floor material, over `materials.floor` |
@@ -735,6 +735,14 @@ Terms:
 - `local` also holds `yard` (fence, gate, box, steps, path) and `stairs`.
 - A door with no floor under it (one in a north or west wall, or upstairs)
   gets a sill: a floor tile in the door cell.
+- Beside a door the wall's run piece stands, as if the wall went on through
+  the doorway (the originals: stone 385 runs to 54 ends).
+- A foundation and a flat roof's parapet (`parapet_height`, default 6) are
+  courses of the material's low pieces that belong with the walls already
+  picked: the client's stone castles found and top their walls with that
+  wall's own 3-high pieces, not the whiter 5-high set.
+- A row of entrance steps is one step piece end to end wherever the
+  originals use that piece at the ends.
 - `preview.png`, `preview_noroof.png` and `plan_<n>.png`.
 
 **The validator** refuses:
@@ -750,23 +758,36 @@ Terms:
 
 **A scene** (`kind` `scene`, `format` 1; `tools/multi/fort.py`,
 e.g. `tools/multi/examples/fort_demo.json`) is `elements[]` on one grid, and
-a `tour[]` of `{"name", "at", "z"}` stops. Wherever the tour changes level,
-the build adds a stop at the foot and the top of the stair that gets there
-(`<stop>_stair<k>_from`, `_to`): the client's pathfinder ignores z. Every element names its `part`;
-each part becomes one multi (cut in two again while it has too many
-components). Elements:
+a `tour[]` of `{"name", "at", "z"}` stops. Every element names its `part`.
+The scene is cut into multis on a grid of 35-tile squares, one multi per
+square holding whatever stands in it (cut again on straight lines while it has
+too many components), so no two overlap and none reaches more than 17 tiles
+from its centre: ModernUO loses a multi's tiles at a point inside another
+multi's bounds where that one has none, and sends a multi only within 22 of
+its centre. Elements:
 
 | `type` | Fields |
 |---|---|
 | `wall` | `path` (points; diagonals become stepped runs), `thickness`, `z` (base), `top` (the walkway), `outer` (`left`/`right` of travel: the parapet side, crenellated), `parapet` (`outer`, `both`, `none`), `parapet_gaps`, `gates[]` (`box` or `cells`, `z`, `height`, `door` and `door_line`; without `door` it is a culvert) |
 | `tower` | `disc` `[x, y, r]`, `z`, `levels[]` (floors, 20 apart for its stairs, which turn over three rows so no flight stands over another: a walker climbing one stacked over another was dropped to the floor below in game), `top`, `doors[]` (`at`, `z`, `door`); it opens where a wall's walkway meets it at a level |
-| `platform` | `shapes[]`/`minus[]` (`box`, `disc`, `band`), `z`, `floor`, `face` (stone faces down to `base`) |
-| `causeway` | `path`, `width`, `z`, `rail` |
-| `stair` | `at`, `rise`, `z`, `to`, `width` |
+| `platform` | `shapes[]`/`minus[]` (`box`, `disc`, `band`), `z`, `floor`, `face` (stone faces down to `base`; with `false`, faces still stand on every edge cell nothing else stands against, so no side is left open) |
+| `causeway` | `path`, `width`, `z`, `rail`, `floor`, `buttress` (every N cells along it, a pier two cells long stands out from each side, of the face material's run pieces) |
+| `stair` | `at`, `rise`, `z`, `to`, `width`, `landings` (z levels where it pauses on a landing `landing` cells long, default 2, then goes on the same way; everything stands on blocks from `z`) |
 | `house` | `desc` (a house description), `at`, `z` |
 
+A scene's `ground` (default 0) is the height it stands on; `plinth` (default
+6) is how far below that its walls, towers, platforms, causeways, stairs and
+houses reach, in the walls' own low pieces, so lower land shows stone.
+Parapets are two courses of those low pieces with a merlon of the same
+piece, turned with the wall, on every other cell. Every floor 16 or more
+above the ground (a gate's passage, a platform, a tower's first level)
+stands on a solid fill up to 15 under it: a hollow there is room to stand
+on the land below, and the client steps down into it. `scene-prove --at X
+Y` without a z stands the scene on the land height most of it covers.
+
 `scene-build` writes `build/multi/scenes/<name>/`: `scene.json` (`parts[]`
-with `name`, `centre`, `bounds`, `doors`, `components`; `bounds`, `tour`,
+with `name` (the element it mostly holds and its square), `centre`, `bounds`,
+`square`, `holds` (the elements in it), `doors`, `components`; `bounds`, `tour`,
 `valid`, `problems`), `parts/<part>.json` (components from the part's
 centre) and `preview.png`. `scene-write` writes each part into the stage as
 `<scene>.<part>` and the scene into the stage's `scenes.json`

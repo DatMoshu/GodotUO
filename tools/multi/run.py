@@ -181,6 +181,7 @@ def cmd_scene_build(cfg, a) -> int:
     import generate
     import render
     import validate
+    import walkcheck
     from multifile import Component
     desc = json.loads(a.desc.read_text(encoding="utf-8"))
     out = a.out or cfg.build / "multi" / "scenes" / desc["name"]
@@ -193,7 +194,9 @@ def cmd_scene_build(cfg, a) -> int:
     (out / "parts").mkdir(parents=True, exist_ok=True)
     for old in (out / "parts").glob("*.json"):
         old.unlink()
-    problems, every = [], []
+    problems, every = list(sc.get("problems", [])), []
+    # an offline walk of the tour: where a proof would stop, before it spends a shard run
+    problems += walkcheck.check_tour(sc["parts"], sc["tour"], cat.pieces, desc.get("ground", 0))
     for p in sc["parts"]:
         problems += [f"{p['name']}: {q}" for q in validate.check_parts(p["comps"], cfg.client_data)]
         (out / "parts" / f"{p['name']}.json").write_text(json.dumps([c.as_list() for c in p["comps"]]),

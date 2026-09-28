@@ -22,6 +22,7 @@ part is placed at the scene's origin plus its own centre.
 """
 from __future__ import annotations
 
+import collections
 import math
 import sys
 from pathlib import Path
@@ -36,14 +37,15 @@ RANK = {"platform": 0, "causeway": 1, "stair": 2, "wall": 2, "tower": 3, "house"
 HEIGHTS = (20, 10, 5, 3)
 
 
-def courses(z0: int, z1: int, cuts=()) -> list[tuple[int, int]]:
-    """(z, height) pieces stacking z0 up to z1, breaking at every cut (an opening's sill or head)."""
+def courses(z0: int, z1: int, cuts=(), heights=HEIGHTS) -> list[tuple[int, int]]:
+    """(z, height) pieces stacking z0 up to z1, breaking at every cut (an opening's sill or head),
+    in `heights` (a set's own, so no piece of another set's colour creeps in)."""
     marks = sorted({z0, z1} | {c for c in cuts if z0 < c < z1})
     out = []
     for a, b in zip(marks, marks[1:]):
         z = a
-        while b - z >= 3:
-            h = next(h for h in HEIGHTS if h <= b - z)
+        while b - z >= min(heights):
+            h = next(h for h in heights if h <= b - z)
             out.append((z, h))
             z += h
     return out
@@ -130,8 +132,14 @@ class Scene:
         self.claims: dict[tuple[int, int], int] = {}              # cell -> highest rank standing on it
         self.doors: list[dict] = []
         self.walks: list[dict] = []                                # wall walkways: cells, z
-        self.flights: list[dict] = []                              # every stair: foot, arrive, z_from, z_to
+        self.flights: list[dict] = []
+        self.open_edges: list[tuple] = []                          # unfaced platforms, faced where bare                              # every stair: foot, arrive, z_from, z_to
+        self.surfaces: list[tuple] = []                            # (x, y, z, rank, part) a walker stands on
+        self.ground = desc.get("ground", 0)
+        self.plinth_depth = desc.get("plinth", 6)                  # below the ground, for lower land
         self.notes: list[str] = []
+        self.problems: list[str] = []
+        self.stairs: list[tuple] = []                              # (at, cells) of each stair element
 
     def add(self, item, x, y, z, rank, part, visible=True):
         self.items.append((Component(item, x, y, z, visible), rank, part))
@@ -151,28 +159,51 @@ class Scene:
         ids = self.floor_ids(mat)
         for (x, y) in sorted(cells):
             self.add(ids[(x * 7 + y * 13) % len(ids)], x, y, z, rank, part)
+            self.surfaces.append((x, y, z, rank, part))
+
+    def plinth(self, cells, z0, mat, rank, part):
+        """Under what stands on the ground, courses of the wall's own low pieces going down
+        `plinth` below it (the client's stone buildings stand on such courses), so land lower
+        than the site's height shows stone, not a gap."""
+        if self.plinth_depth <= 0 or z0 != self.ground or not cells:
+            return
+        cells = set(cells)
+        h = self.cat.low(mat)
+        n = -(-self.plinth_depth // h)
+        for (x, y) in sorted(cells):
+            for k in range(n):
+                self.add(self.cat.wall(mat, h, signature(cells, x, y)), x, y, z0 - (n - k) * h, rank, part)
 
     def stack(self, cells, z0, z1, mat, rank, part, cuts=(), openings=()):
         """Wall pieces on `cells` from z0 to z1; `openings` are (cells, z_from, z_to) left open."""
-        for z, h in courses(z0, z1, cuts):
+        for z, h in courses(z0, z1, cuts, self.cat.set_heights(mat)):
             solid = set(cells)
             for oc, a, b in openings:
                 if a <= z < b:
                     solid -= set(oc)
             for (x, y) in sorted(solid):
                 self.add(self.cat.wall(mat, h, signature(solid, x, y)), x, y, z, rank, part)
+        self.plinth(cells, z0, mat, rank, part)
 
     def parapet(self, cells, z, mat, rank, part, crenels=True):
+        """Two courses of the wall's own low pieces, and on every other cell a merlon of the same
+        piece, turned with the wall under it (the client's castles build them so)."""
         cells = set(cells)
+        top = z
         for (x, y) in sorted(cells):
-            self.add(self.cat.wall(mat, 5, signature(cells, x, y)), x, y, z, rank, part)
+            course = self.cat.course(mat, 6, signature(cells, x, y))
+            for dz, item in course:
+                self.add(item, x, y, z + dz, rank, part)
+            top = max(top, z + course[-1][0] + self.cat.low(mat))
         if crenels:
             merlons = {(x, y) for (x, y) in cells if (x + y) % 2 == 0}
             for (x, y) in sorted(merlons):
-                self.add(self.cat.wall(mat, 5, "-"), x, y, z + 5, rank, part)
+                self.add(self.cat.wall(mat, self.cat.low(mat), signature(cells, x, y)), x, y, top, rank, part)
 
-    def flight(self, at, rise, z_from, z_to, width, mat, rank, part):
-        """A straight stair: step i a stair piece at z_from + 5i on i blocks, then a landing."""
+    def flight(self, at, rise, z_from, z_to, width, mat, rank, part, base=None):
+        """A straight stair: step i a stair piece at z_from + 5i on i blocks, then a landing;
+        with `base` below z_from, blocks stand under all of it from there."""
+        under = range(z_from if base is None else base, z_from, 5)
         if (z_to - z_from) % 5:
             raise DescriptionError(f"a stair from z {z_from} to {z_to}: the rise is not a multiple of 5")
         n = (z_to - z_from) // 5
@@ -185,15 +216,21 @@ class Scene:
             for (x, y) in sorted(row):
                 piece = self.cat.step(mat, rise, signature(row, x, y))
                 block = self.cat.block(piece)
+                for zz in under:
+                    self.add(block, x, y, zz, rank, part)
                 for k in range(i):
                     self.add(block, x, y, z_from + 5 * k, rank, part)
                 self.add(piece, x, y, z_from + 5 * i, rank, part)
+                self.surfaces.append((x, y, z_from, rank, part))
             cells |= row
         landing = {(x + n * dx, y + n * dy) for (x, y) in across}
         for (x, y) in sorted(landing):
             block = self.cat.block(self.cat.step(mat, rise, signature(landing, x, y)))
+            for zz in under:
+                self.add(block, x, y, zz, rank, part)
             for k in range(n):                     # the top block stands a walker at z_to
                 self.add(block, x, y, z_from + 5 * k, rank, part)
+            self.surfaces.append((x, y, z_from, rank, part))
         arrive = {(x + (n + 1) * dx, y + (n + 1) * dy) for (x, y) in across}
         self.flights.append({"foot": [across[0][0] - dx, across[0][1] - dy], "arrive": list(min(landing)),    # stands at z_to whichever way it is left
                              "z_from": z_from, "z_to": z_to})
@@ -221,14 +258,19 @@ class Scene:
                 self.gate_doors(g, gc, gz, part)
         # faces: the band's edge, and round each passage the band's edge with the passage taken out
         faces = G.edge(cells)
-        for z, h in courses(base, top, cuts):
+        for z, h in courses(base, top, cuts, self.cat.set_heights(mat)):
             gone = set()
             for gc, a, b in openings:
                 if a <= z < b:
                     gone |= gc
             solid = G.edge(cells - gone) if gone else faces
+            # beside a door the wall runs on through the doorway (as the originals build it)
+            hung = {tuple(c) for g in el.get("gates", []) if g.get("door")
+                    and g.get("z", base) <= z < g.get("z", base) + g.get("height", 20)
+                    for c in g.get("door_line", [])}
             for (x, y) in sorted(solid):
-                self.add(self.cat.wall(mat, h, signature(solid, x, y)), x, y, z, rank, part)
+                self.add(self.cat.wall(mat, h, signature(solid | hung, x, y)), x, y, z, rank, part)
+        self.plinth(faces, base, mat, rank, part)
         self.paint_floor(cells, top, self.mat(el, "walk", self.mats.get("walk", "stone")), rank, part)
         para = {c for c in faces if side.get(c, 0) == outer}
         if el.get("parapet", "outer") == "both":
@@ -311,8 +353,12 @@ class Scene:
         cells = region_of(el)
         base, z = el.get("base", 0), el["z"]
         self.paint_floor(cells, z, self.mat(el, "floor", "flagstones"), rank, part)
+        face = self.mat(el, "face", self.mats.get("wall", "stone"))
         if el.get("face", True):
-            self.stack(G.edge(cells), base, z, self.mat(el, "face", self.mats.get("wall", "stone")), rank, part)
+            self.stack(G.edge(cells), base, z, face, rank, part)
+        else:
+            # faced later only where nothing else stands against it: no side is ever left open
+            self.open_edges.append((cells, base, z, face, rank, part))
         self.claim(cells, rank)
 
     def causeway(self, el, part):
@@ -327,17 +373,79 @@ class Scene:
         rail = rim - end_rows
         for (x, y) in sorted(rail):
             self.add(self.cat.wall(self.mat(el, "rail", "stone rail"), 5, signature(rail, x, y)), x, y, z, rank, part)
+        # buttresses: every `buttress` cells along it, a pier standing out from each side
+        every = el.get("buttress", 0)
+        if every:
+            line = path_cells(el["path"])
+            piers = set()
+            for i, (px, py) in enumerate(line):
+                if i % every or i < 2 or i > len(line) - 3:
+                    continue
+                for c in rim - end_rows:
+                    if abs(c[0] - px) + abs(c[1] - py) == (el.get("width", 3) + 2) // 2 and (
+                            c[0] == px or c[1] == py):
+                        ox, oy = (c[0] - px), (c[1] - py)
+                        ox, oy = (ox > 0) - (ox < 0), (oy > 0) - (oy < 0)
+                        # two cells along the way, so each pier is a short run of wall
+                        piers |= {(c[0] + ox, c[1] + oy), (c[0] + ox + abs(oy), c[1] + oy + abs(ox))}
+            piers -= cells
+            if piers:
+                # the run piece of the way's direction on every cell: the originals' ends and corners
+                # come from other sets, and a pier this short would be all ends
+                face = self.mat(el, "face", self.mats.get("wall", "stone"))
+                run = "NS" if len({x for (x, _) in line}) == 1 else "EW"
+                for zz, h in courses(base, z - 5, (), self.cat.set_heights(face)):
+                    for (x, y) in sorted(piers):
+                        self.add(self.cat.wall(face, h, run), x, y, zz, rank, part)
+                self.plinth(piers, base, face, rank, part)
+                self.claim(piers, rank)
         self.claim(cells, rank)
 
     def stair(self, el, part):
-        cells, _ = self.flight(tuple(el["at"]), el["rise"], el.get("z", 0), el["to"], el.get("width", 1),
-                               self.mat(el, "stairs", "stone"), RANK["stair"], part)
-        self.claim(cells, RANK["stair"])
+        """A straight stair; with `landings` (z levels on the way) it pauses at each on a landing
+        `landing` cells long (default 2) before the next flight goes on the same way."""
+        rank, mat = RANK["stair"], self.mat(el, "stairs", "stone")
+        z0, rise, width = el.get("z", 0), el["rise"], el.get("width", 1)
+        dx, dy = SIDE_STEP[rise]
+        levels = [z0] + sorted(el.get("landings", [])) + [el["to"]]
+        at, cells = tuple(el["at"]), set()
+        self.plinth(set(self.flight_cells(el)), z0, self.mats.get("wall", "stone"), rank, part)
+        self.stairs.append((tuple(el["at"]), set(self.flight_cells(el))))
+        for a, b in zip(levels, levels[1:]):
+            used, arrive = self.flight(at, rise, a, b, width, mat, rank, part, base=z0)
+            cells |= used
+            if b == el["to"]:
+                break
+            # the landing: the flight's own landing row, and more rows of blocks standing at b
+            row = sorted(arrive)
+            for k in range(el.get("landing", 2) - 1):
+                for (x, y) in row:
+                    c = (x + k * dx, y + k * dy)
+                    block = self.cat.block(self.cat.step(mat, rise, "EW" if rise in "NS" else "NS"))
+                    for j in range((b - z0) // 5):
+                        self.add(block, c[0], c[1], z0 + 5 * j, rank, part)
+                    self.surfaces.append((c[0], c[1], b, rank, part))
+                    cells.add(c)
+            k = el.get("landing", 2) - 1
+            at = (row[0][0] + k * dx, row[0][1] + k * dy)
+        self.claim(cells, rank)
+
+    def flight_cells(self, el):
+        n = (el["to"] - el.get("z", 0)) // 5 + len(el.get("landings", [])) * (el.get("landing", 2) - 1)
+        dx, dy = SIDE_STEP[el["rise"]]
+        px, py = (1, 0) if el["rise"] in "NS" else (0, 1)
+        return [(el["at"][0] + k * px + i * dx, el["at"][1] + k * py + i * dy)
+                for k in range(el.get("width", 1)) for i in range(n + 1)]
 
     def house(self, el, part):
-        comps, side = G.build(el["desc"], self.cat)
+        comps, side = G.build(el["desc"], self.cat, fresh=False)
         ox, oy = el["at"]
         oz = el.get("z", 0)
+        if oz == self.ground and "foundation" in el["desc"].get("materials", {}):
+            g0 = side["local"]["storeys"][0]
+            foot = set(map(tuple, g0["walls"] + g0["floor"] + g0.get("open", [])))
+            self.plinth({(x + ox, y + oy) for (x, y) in G.edge(foot)}, oz, el["desc"]["materials"]["foundation"],
+                        RANK["house"], part)
         cx, cy = side["centre"]
         for c in comps:
             if c.item == G.CENTRE_MARKER and not c.visible:
@@ -351,6 +459,9 @@ class Scene:
             self.flights.append({"foot": [st["foot"][0] + ox, st["foot"][1] + oy],
                                  "arrive": [st["arrive"][0] + ox, st["arrive"][1] + oy],
                                  "z_from": st["z"] + oz, "z_to": zs[st["to"]] + oz})
+        g = side["local"]["storeys"][0]
+        for (x, y) in map(tuple, g["floor"] + g.get("open", []) + g["doors"]):
+            self.surfaces.append((x + ox, y + oy, g["z"] + oz, RANK["house"], part))
         cells = set()
         for st in side["local"]["storeys"]:
             cells |= set(map(tuple, st["walls"])) | set(map(tuple, st["floor"]))
@@ -362,43 +473,106 @@ class Scene:
             if kind not in RANK:
                 raise DescriptionError(f"element {n}: unknown type '{kind}'")
             getattr(self, kind)(el, el.get("part", el.get("name", f"{kind}{n}")))
+        for at, cells in self.stairs:
+            taken = sorted(c for c in cells if self.claims.get(c, -1) > RANK["stair"])
+            if taken:
+                self.problems.append(f"the stair at {list(at)} runs into a higher element at {taken[:4]}: "
+                                     "its steps there would be dropped")
+        for cells, base, z, face, rank, part in self.open_edges:
+            bare = {(x, y) for (x, y) in G.edge(cells) if self.claims.get((x, y), -1) <= rank and any(
+                (x + dx, y + dy) not in cells and (x + dx, y + dy) not in self.claims
+                for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)))}
+            if bare:
+                self.stack(bare, base, z, face, rank, part)
         kept = [(c, r, p) for (c, r, p) in self.items if self.claims.get((c.x, c.y), -1) <= r]
-        return self.split(kept)
+        return self.split(kept + self.fill(kept))
+
+    def fill(self, kept) -> list[tuple]:
+        """Solid ground under raised floors. A floor 16 or more above the ground with nothing
+        under it leaves room to stand on the land below, and a walker stepping off a gate's
+        passage or a platform drops into it; UO's own buildings stand on solid foundations."""
+        ground = self.desc.get("ground", 0)
+        lowest: dict = {}
+        for (x, y, z, rank, part) in self.surfaces:
+            if self.claims.get((x, y), -1) <= rank and ((x, y) not in lowest or z < lowest[(x, y)][0]):
+                lowest[(x, y)] = (z, rank, part)
+        floors = {(x, y, z) for (x, y, z, _, _) in self.surfaces}
+        # a wall already standing on the ground there leaves no room either
+        low_solid = {(c.x, c.y) for (c, _, _) in kept if ground <= c.z < ground + 5 and (c.x, c.y, c.z) not in floors}
+        bottom = ground - self.plinth_depth              # land may lie as low as the plinth reaches
+        need: dict = {}
+        for (x, y), (z, rank, part) in lowest.items():
+            if z - bottom >= 16 and (x, y) not in low_solid:
+                need.setdefault((z, rank, part), set()).add((x, y))
+        out = []
+        mat = self.mats.get("fill", self.mats.get("wall", "stone"))
+        h = self.cat.set_heights(mat)[0]
+        solid = self.cat.wall(mat, h, "EW")      # a plain run: an inner cell's four-way piece is an arch
+        for (z, rank, part), cells in sorted(need.items()):
+            # the wall set's own pieces, hung flush under the floor and on down until no walker
+            # fits below them
+            top = z
+            while top - bottom >= 16:
+                for (x, y) in sorted(cells):
+                    out.append((Component(solid, x, y, top - h), rank, part))
+                top -= h
+        return out
 
     def split(self, kept) -> list[dict]:
-        parts: dict[str, list[Component]] = {}
+        """The scene as multis on a grid: each square of the grid is one multi holding whatever
+        stands in it, so no two multis' bounds overlap (see TILE), cut again on straight lines
+        while one has too many components."""
+        xs0, ys0 = min(c.x for c, _, _ in kept), min(c.y for c, _, _ in kept)
+        squares: dict[tuple, list] = {}
         for c, _, p in kept:
-            parts.setdefault(p, []).append(c)
+            squares.setdefault(((c.x - xs0) // TILE, (c.y - ys0) // TILE), []).append((c, p))
         out = []
-        for name, comps in parts.items():
-            for sub_name, sub in cut(name, comps):
+        for (gx, gy), items in sorted(squares.items()):
+            held = collections.Counter(p for _, p in items)
+            name = f"{held.most_common(1)[0][0]}_{gx}_{gy}"
+            for sub_name, sub in cut(name, [c for c, _ in items]):
                 xs, ys = [c.x for c in sub], [c.y for c in sub]
                 cx, cy = (min(xs) + max(xs)) // 2, (min(ys) + max(ys)) // 2
                 local = [Component(c.item, c.x - cx, c.y - cy, c.z, c.visible) for c in sub]
                 local.append(Component(G.CENTRE_MARKER, 0, 0, 0, False))
-                out.append({"name": sub_name, "centre": [cx, cy], "comps": local,
-                            "bounds": [min(xs), min(ys), max(xs), max(ys)]})
-        # every door goes with the part whose bounds hold it (its own part when it was cut)
+                out.append({"name": sub_name, "centre": [cx, cy], "comps": local, "square": [gx, gy],
+                            "holds": sorted(held), "bounds": [min(xs), min(ys), max(xs), max(ys)]})
+        # every door goes with the multi of its square (a doorway itself may hold nothing)
         for d in self.doors:
-            home = [p for p in out if p["name"] == d["part"] or p["name"].startswith(d["part"] + ".")]
-            home = [p for p in home if p["bounds"][0] <= d["x"] <= p["bounds"][2]
-                    and p["bounds"][1] <= d["y"] <= p["bounds"][3]] or home or out
-            p = home[0]
+            sq = [(d["x"] - xs0) // TILE, (d["y"] - ys0) // TILE]
+            home = [p for p in out if p["square"] == sq] or out
+            inside = [p for p in home if p["bounds"][0] <= d["x"] <= p["bounds"][2]
+                      and p["bounds"][1] <= d["y"] <= p["bounds"][3]]
+            p = (inside or sorted(home, key=lambda p: abs(p["centre"][0] - d["x"]) + abs(p["centre"][1] - d["y"])))[0]
             p.setdefault("doors", []).append({"x": d["x"] - p["centre"][0], "y": d["y"] - p["centre"][1],
                                               "z": d["z"], "facing": d["facing"], "type": d["type"]})
         return out
 
 
-def cut(name: str, comps: list[Component], limit: int = MAX_COMPONENTS - 64):
-    """A part as it is, or cut in two across its longer side until each piece fits a multi."""
-    if len(comps) <= limit:
-        return [(name, comps)]
+# ModernUO's StaticTileEnumerator stops at the first multi whose bounds hold a point and that
+# has no tile there: the multis after it in the sector are never looked at, so a floor of one
+# multi inside another's bounds can vanish on the shard and the walker drops to the land. A
+# scene's multis therefore never overlap: it is cut on a grid of TILE squares, one multi each.
+# ModernUO sends a multi only while its centre is within GlobalUpdateRange + 4 (18 + 4) of the
+# player: a component further than that from its centre can be stood on before the shard has
+# sent the multi, and the client walks the bare land under it instead. Parts keep every
+# component within REACH of their centre (a margin under 22).
+REACH = 17
+TILE = 2 * REACH + 1                       # a square's multi reaches REACH from its centre
+
+
+def cut(name: str, comps: list[Component], limit: int = MAX_COMPONENTS - 64, reach: int = REACH):
+    """A part as it is, or cut in two across its longer side until each piece fits a multi
+    and reaches no further than `reach` from its centre."""
     xs, ys = [c.x for c in comps], [c.y for c in comps]
+    wide = max(max(xs) - min(xs), max(ys) - min(ys)) > 2 * reach
+    if len(comps) <= limit and not wide:
+        return [(name, comps)]
     if max(xs) - min(xs) >= max(ys) - min(ys):
-        mid = sorted(xs)[len(xs) // 2]
+        mid = (min(xs) + max(xs) + 1) // 2 if wide else sorted(xs)[len(xs) // 2]
         a, b = [c for c in comps if c.x < mid], [c for c in comps if c.x >= mid]
     else:
-        mid = sorted(ys)[len(ys) // 2]
+        mid = (min(ys) + max(ys) + 1) // 2 if wide else sorted(ys)[len(ys) // 2]
         a, b = [c for c in comps if c.y < mid], [c for c in comps if c.y >= mid]
     return cut(name + ".a", a, limit) + cut(name + ".b", b, limit)
 
@@ -446,8 +620,15 @@ def walk_tour(stops: list[dict], flights: list[dict]) -> list[dict]:
 def build_scene(desc: dict, cat: Catalogue) -> dict:
     if desc.get("format") != 1 or desc.get("kind") != "scene":
         raise DescriptionError("a scene has format 1 and kind 'scene'")
+    cat.fresh()
     s = Scene(desc, cat)
     parts = s.build()
+    for i, a in enumerate(parts):
+        for b in parts[i + 1:]:
+            p, q = a["bounds"], b["bounds"]
+            if not (p[2] < q[0] or q[2] < p[0] or p[3] < q[1] or q[3] < p[1]):
+                s.problems.append(f"multis {a['name']} and {b['name']} overlap: the shard would lose tiles")
     tour = walk_tour([{"name": t["name"], "x": t["at"][0], "y": t["at"][1], "z": t["z"]}
                       for t in desc.get("tour", [])], s.flights)
-    return {"format": 1, "kind": "scene", "name": desc["name"], "parts": parts, "tour": tour, "notes": s.notes}
+    return {"format": 1, "kind": "scene", "name": desc["name"], "parts": parts, "tour": tour, "notes": s.notes,
+            "problems": s.problems}
