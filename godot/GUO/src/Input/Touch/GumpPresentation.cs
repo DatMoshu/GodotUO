@@ -239,6 +239,11 @@ internal static class GumpPresentation
 
             if (_restored.Contains(g) || Godot.Time.GetTicksMsec() < _restoreUntil || g.PresentationScale != 1f)
             {
+                // Reopened at its saved size, which may be from a larger
+                // screen (a foldable, unfolded then folded): still never over
+                // the character.
+                KeepClearOfCharacter(g);
+                _sized[g] = g.PresentationScale;
                 continue;
             }
 
@@ -249,10 +254,67 @@ internal static class GumpPresentation
             if (scale > 1.01f)
             {
                 SetScale(g, scale, new Point(g.X, g.Y));
-                _sized[g] = g.PresentationScale;
                 TouchInput.Note($"paperdoll: opened at {g.PresentationScale:0.00}x");
             }
+
+            KeepClearOfCharacter(g);
+            _sized[g] = g.PresentationScale;
         }
+    }
+
+    /// <summary>
+    /// Beside the character, never over it. The camera keeps the character
+    /// in the middle of the world view; a paperdoll that reaches into that
+    /// column is made small enough to fit left of it (never below 1x) and
+    /// moved there. On a small screen (a folded phone, 620x540 at scale 2)
+    /// the height fit alone covered the character. One already beside it,
+    /// on either side, is left where it is.
+    /// </summary>
+    private static void KeepClearOfCharacter(Gump g)
+    {
+        int clearX = PlayerColumnLeft();
+
+        if (g.X + Width(g) <= clearX || g.X >= clearX + PlayerHalfWidth * 2)
+        {
+            return;
+        }
+
+        Rectangle room = DisplayBounds(false);
+        float side = Math.Max(1f, (clearX - room.X - EdgeGap) / (float)g.Width);
+
+        if (g.PresentationScale > side + 0.001f)
+        {
+            bool locked = g.PresentationLocked;
+            g.PresentationLocked = false;
+            SetScale(g, side, new Point(g.X, g.Y));
+            g.PresentationLocked = locked;
+        }
+
+        g.X = Math.Max(room.X + EdgeGap, clearX - Width(g));
+        g.Y = Math.Max(g.Y, FullHeightTop() + EdgeGap);
+        Clamp(g, false);
+        Godot.GD.Print($"[GUO] paperdoll: {g.PresentationScale:0.00}x at {g.X},{g.Y}, left of the character (column from {clearX})");
+    }
+
+    /// <summary>Space kept between a placed gump and the screen's edge, in client pixels.</summary>
+    private const int EdgeGap = 4;
+
+    /// <summary>
+    /// Half the width kept clear around the character, in client pixels: a
+    /// body with a weapon out spans about 44 art pixels, and the camera lags a
+    /// step behind a walk.
+    /// </summary>
+    private const int PlayerHalfWidth = 32;
+
+    /// <summary>The left edge of the column the character stands in: the middle of the world view.</summary>
+    private static int PlayerColumnLeft()
+    {
+        Configuration.Profile p = Configuration.ProfileManager.CurrentProfile;
+        Rectangle main = DisplayBounds(false);
+        int middle = p != null && p.GameWindowSize.X > 0
+            ? p.GameWindowPosition.X + p.GameWindowSize.X / 2
+            : main.X + main.Width / 2;
+        return middle - PlayerHalfWidth;
     }
 
     private static readonly System.Collections.Generic.HashSet<Gump> _followers = new();

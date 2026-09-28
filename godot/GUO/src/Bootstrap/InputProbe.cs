@@ -759,7 +759,10 @@ internal static class InputProbe
             $"[GUO] input probe: no character at {centre}; "
                 + $"over {Game.SelectedObject.Object?.GetType().Name ?? "nothing"} "
                 + $"0x{(Game.SelectedObject.Object as Game.GameObjects.Entity)?.Serial ?? 0:X}, "
-                + $"gump {Game.Managers.UIManager.MouseOverControl?.GetType().Name ?? "none"}, "
+                + $"gump {Game.Managers.UIManager.MouseOverControl?.GetType().Name ?? "none"}"
+                + $" in {Game.Managers.UIManager.MouseOverControl?.RootParent?.GetType().Name ?? "none"}"
+                + $" at {Game.Managers.UIManager.MouseOverControl?.ScreenCoordinateX},{Game.Managers.UIManager.MouseOverControl?.ScreenCoordinateY}"
+                + $" {Game.Managers.UIManager.MouseOverControl?.Width}x{Game.Managers.UIManager.MouseOverControl?.Height}, "
                 + $"player {(Client.Game.UO.World.Player == null ? "gone" : "here")}"
         );
 
