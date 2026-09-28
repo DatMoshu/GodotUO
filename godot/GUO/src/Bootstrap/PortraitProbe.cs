@@ -64,7 +64,15 @@ internal static class PortraitProbe
         Row(2, "the login gump fits", loginL, loginP, login == null || !loginP.StartsWith("fits"));
 
         await Rotate(host, false);
+
+        // Logged in as DualProbe does on a device: the touch layer would
+        // swallow the probe's clicks, which aim in client pixels.
+        bool touch = TouchInput.Enabled;
+        TouchInput.Enabled = false;
+        InputProbe.PointerScale = Client.Game.DpiScale;
         await InputProbe.EnterTheWorld(host, 200);
+        InputProbe.PointerScale = 1f;
+        TouchInput.Enabled = touch;
         World world = Client.Game.UO.World;
 
         if (!world.InGame)
