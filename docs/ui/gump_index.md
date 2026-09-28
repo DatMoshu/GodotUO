@@ -34,8 +34,8 @@ The measurements behind the risk column are in `tall_gumps.md`.
 | 1 | **Options** (OptionsGump) | 700 × 499 | High | Dense mouse layout, 13 pages. C11 fits it at 2x; a thumb still needs bigger rows and lists | **Modern: classic-styled** (the owner): the same page column and grey Options look, with finger-sized rows, touch lists and sliders, and a pinned button row. The settings it covers write the profile fields Classic's Apply writes; Classic view covers the rest |
 | 2 | **Party** (PartyGump) | 450 × 480 | High | 960 tall at 2x: under the bar at any usable size | Modern: member list with bars, Add/Remove/Leave/Loot as plates, one column |
 | 3 | **Skills** (SkillGumpAdvanced 500 × 360; StandardSkillsGump 345 × 294) | as listed | High | 58 rows of 1 mm text, and tiny lock and up/down arrows | Modern: a scrolling list with finger-sized rows, a tap to use, a lock toggle per row, and a group filter |
-| 4 | **Macro editor** (MacroGump) | **1095** × 355 | High | Too wide for any usable scale (2190 px at 2x) | Modern: a macro list, then an action list for the chosen macro (two levels, not three columns). Keys stay desktop-only |
-| 5 | **World map** (WorldMapGump) | 400 × 400, resizable | High | Map players want it full screen; its context menus and markers are mouse-sized | Modern: a full-screen map with pinch zoom and pan, markers and "follow me" as plates. It reuses WorldMapGump's map texture |
+| 4 | **Macro editor** (MacroGump) | 260 × 200 panel (its bounds run from 0,0: the "1095 wide" first measured was that, not the panel) | Low | The fast-assign editor is small; the full macro list is Options' Macros page, whose rows are combo boxes | **Classic** for the fast editor; the Macros page is a later page of Modern Options |
+| 5 | **World map** (WorldMapGump) | 400 × 400, resizable | High | Map players want it full screen; its markers and context menu are mouse-sized | **Proposed: Classic plus fit, with touch gestures**: sized to the whole screen (it is resizable, so it draws more map, not bigger pixels), a pinch zooms the map and a drag pans it. A Godot rebuild would redo its map rendering for no gain; the map is a picture, not a form. Pending the director's call |
 | 6 | **Spellbook** (SpellbookGump), abilities book (CombatBookGump), racial book | 406 × 229 | Medium | Small spell icons and page corners | Modern: a spell grid (icon and name), a tap to cast, and a hold to place a spell button |
 | 7 | **Vendor buy / sell** (ShopGump) | 283 × 307 art, list scrolls | Medium | Tiny +/- and amount buttons | Modern: a list with a stepper per line and a total |
 | 8 | **Bulletin board** (BulletinBoardGump) | 490 × 410 | Medium | Under three rows | Modern: a post list, then the post; or Classic plus fit |
@@ -84,11 +84,12 @@ The measurements behind the risk column are in `tall_gumps.md`.
 Build the Modern views above in order, each with a probe check and Thor and
 Odin photos, and commit each gump in its own small batch:
 
-1. Options (classic-styled);
-2. Party;
-3. Skills;
-4. Macro editor;
-5. World map.
+1. Options (classic-styled): done;
+2. Party: done;
+3. Skills: done;
+4. Macro editor: re-measured as small (see above), Classic;
+5. World map: proposed as Classic plus fit with gestures;
+6. Spellbook: next.
 
 Help and Admin are shard gumps. By ADR-0024 they stay Classic, with the
 type-ID full-height fit as their treatment.

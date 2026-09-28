@@ -45,7 +45,7 @@ against three rows' 702 px.
 | Gump | Size | Source | At 1.11 | Fits at 2x? | One screen (Odin, Thor top) | Two screens (Thor) | Treatment |
 |---|---|---|---|---|---|---|---|
 | **Options** | 700 × 499 | measured | 777 × 554 | 1512 × 1078: over the bar only | Tiny at 1.11; at 2x its bottom row is under the bar | Same on the top screen | **Done (C11):** full-height, fitted to the screen, drawn over the bar |
-| **Macro editor** (MacroGump) | **1095** × 355 | measured | 1215 × 394 | Too wide: 2190 px | The widest gump; at 1.11 its text is unreadable | The lower screen is 1240 wide, so only 1.13x | **Scale to fit the width** (about 1.75x on 1920); keep on the top screen |
+| **Macro editor** (MacroGump) | a 260 × 200 panel; the gump's bounds run from 0,0 to the panel, so it measured 1095 × 355 | measured, corrected | fits | yes | Fine | Fine | Classic (the full macro list is Options' Macros page) |
 | **Party** (PartyGump) | 450 × 480 | measured | 500 × 533 | 960 tall: no (no) | Under the bar at any usable size | Fits the lower screen at 2x (960 < 1080) | **Move to the lower screen**; on one screen **full-height** (over the bar) |
 | **Skills, advanced** | 500 × 360 | measured | 555 × 400 | 720: yes (no) | Fine with one row; under three rows | Fits the lower screen at 2x | **Scale to fit** above the rows; **lower screen** on the Thor |
 | **Skills, standard** | 345 × 294 | measured | 383 × 326 | 588: yes (yes) | Fine, and its list scrolls | Fine | Scale (pinch); nothing new needed |
