@@ -44,9 +44,23 @@ namespace GUO.Input.Gamepad
     /// when that is "auto" from the pad's name and the device model. A pad
     /// that cannot be resolved gets no face-button actions and one message
     /// saying where to choose; it is never guessed. Walking needs no layout.
+    ///
+    /// Gated (<see cref="Enabled"/>): on where a pad is how the device is held
+    /// (Android, the Linux export the Steam Deck runs); off on any other
+    /// desktop, where upstream has no pad handling at all and a connected pad
+    /// must do nothing (desktop 1:1), unless the player opts in under Options
+    /// ("Use a controller on this computer", Profile.GamepadOnDesktop).
     /// </remarks>
     internal static class GamepadInput
     {
+        private static readonly bool PadPlatform = OS.GetName() is "Android" or "Linux";
+
+        /// <summary>For probes: force the gate on or off; null follows the platform and the profile.</summary>
+        public static bool? Forced { get; set; }
+
+        /// <summary>Whether pad events do anything; see the remarks.</summary>
+        public static bool Enabled => Forced ?? (PadPlatform || (ProfileManager.CurrentProfile?.GamepadOnDesktop ?? false));
+
         /// <summary>Log every joypad event to the console (and logcat): --gamepad-trace.</summary>
         public static bool Trace { get; set; }
 
@@ -65,6 +79,14 @@ namespace GUO.Input.Gamepad
         /// <summary>Returns true when the event was a joypad event and is handled.</summary>
         public static bool Handle(InputEvent e)
         {
+            if (!Enabled)
+            {
+                // Not ours to take: the client goes on as if no pad were there.
+                ReleaseAll();
+
+                return false;
+            }
+
             HookConnections();
 
             switch (e)
@@ -96,6 +118,13 @@ namespace GUO.Input.Gamepad
         /// <summary>Once a frame: a held direction walks, a tilted right stick moves the pointer.</summary>
         public static void Update(double delta)
         {
+            if (!Enabled)
+            {
+                ReleaseAll();
+
+                return;
+            }
+
             Walk();
 
             if (Math.Abs(_rightX) < 0.2f && Math.Abs(_rightY) < 0.2f)
@@ -316,6 +345,18 @@ namespace GUO.Input.Gamepad
                     _rightY = e.AxisValue;
 
                     break;
+            }
+        }
+
+        /// <summary>Drop anything held when the gate closes, so nothing keeps walking.</summary>
+        private static void ReleaseAll()
+        {
+            if (_held[0] || _held[1] || _held[2] || _held[3] || _rightX != 0f || _rightY != 0f)
+            {
+                Array.Clear(_dpad);
+                Array.Clear(_stick);
+                UpdateArrows();
+                _rightX = _rightY = 0f;
             }
         }
 

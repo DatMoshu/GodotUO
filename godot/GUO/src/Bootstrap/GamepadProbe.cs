@@ -79,6 +79,28 @@ internal static class GamepadProbe
 
         await InputProbe.Wait(host, 60);
 
+        // Desktop 1:1 (review P1): with the gate at its default a desktop pad
+        // does nothing -- no walk, no Escape. Then the gate is opened for the
+        // rest, which tests the layer itself.
+        if (!GamepadInput.Enabled)
+        {
+            var cursor = Client.Game.UO.World.TargetManager;
+            (ushort x, ushort y) idle = Where();
+            await Hold(host, new InputEventJoypadButton { ButtonIndex = JoyButton.DpadRight, Pressed = true },
+                new InputEventJoypadButton { ButtonIndex = JoyButton.DpadRight, Pressed = false });
+            cursor.SetTargeting(CursorTarget.Object, 0, TargetType.Neutral);
+            await Button(host, JoyButton.B);
+            Check("on a desktop, by default, a pad does nothing (no walk, no cancel)",
+                Where() == idle && cursor.IsTargeting, $"at {idle} -> {Where()}, targeting {cursor.IsTargeting}");
+            cursor.CancelTarget();
+        }
+        else
+        {
+            GD.Print($"[GUO] gamepad probe: skip  the desktop gate check (the pad is on here: {OS.GetName()})");
+        }
+
+        GamepadInput.Forced = true;
+
         if (Clip)
         {
             await InputProbe.Say(host, ClipSpot);
@@ -177,6 +199,7 @@ internal static class GamepadProbe
 
         profile.GamepadLayout = manual;
         GamepadInput.ForgetLayouts();
+        GamepadInput.Forced = null;
         Passed = _failed == 0;
         GD.Print($"[GUO] gamepad probe: {(Passed ? "PASS" : $"FAIL ({_failed})")}");
     }

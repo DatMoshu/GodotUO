@@ -67,6 +67,7 @@ namespace GUO.Game.UI.Gumps
 
         // PORT DEVIATION (GUO): the gamepad's face-button layout (Input.Gamepad).
         private Combobox _gamepadLayout;
+        private Checkbox _gamepadOnDesktop; // PORT DEVIATION (GUO)
         private static readonly string[] GamepadLayouts = { "auto", "labels", "swapped" };
         private Combobox _cotType;
         private DataBox _databox;
@@ -2316,6 +2317,12 @@ namespace GUO.Game.UI.Gumps
                 )
             );
 
+            // PORT DEVIATION (GUO): a desktop has no pad handling unless asked for.
+            if (!(Godot.OS.GetName() is "Android" or "Linux"))
+            {
+                sectionPad.Add(_gamepadOnDesktop = AddCheckBox(null, "Use a controller on this computer", _currentProfile.GamepadOnDesktop, startX, startY));
+            }
+
             Add(rightArea, PAGE);
         }
 
@@ -4072,6 +4079,7 @@ namespace GUO.Game.UI.Gumps
                     _screenSaverChoice.SelectedIndex = 0; // PORT DEVIATION (GUO)
                     _splashIntro.IsChecked = true; // PORT DEVIATION (GUO)
                     _gamepadLayout.SelectedIndex = 0; // PORT DEVIATION (GUO)
+                    if (_gamepadOnDesktop != null) _gamepadOnDesktop.IsChecked = false; // PORT DEVIATION (GUO)
                     _sliderScreenZoom.Value = 0;
                     _lightBar.Value = 0;
                     _enableLight.IsChecked = false;
@@ -4586,6 +4594,7 @@ namespace GUO.Game.UI.Gumps
 
             // PORT DEVIATION (GUO): a new layout choice applies to connected pads at once.
             string gamepadLayout = GamepadLayouts[Math.Max(0, _gamepadLayout.SelectedIndex)];
+            if (_gamepadOnDesktop != null) _currentProfile.GamepadOnDesktop = _gamepadOnDesktop.IsChecked; // PORT DEVIATION (GUO)
 
             if (_currentProfile.GamepadLayout != gamepadLayout)
             {
