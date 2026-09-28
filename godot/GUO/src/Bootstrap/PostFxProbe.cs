@@ -43,7 +43,25 @@ void fragment() { COLOR = texture(source, SCREEN_UV); }";
 
     public static async System.Threading.Tasks.Task Run(Node host, string dir)
     {
+        // A device run names a user:// folder (the app's own files, pulled with run-as).
+        if (dir.StartsWith("user://"))
+        {
+            dir = ProjectSettings.GlobalizePath(dir);
+        }
+
         Directory.CreateDirectory(dir);
+
+        // With --autologin (a device run: the probe's clicks are desktop
+        // coordinates) the client logs itself in; wait for it before clicking.
+        for (int i = 0; i < 60 * 90 && !Client.Game.UO.World.InGame; i++)
+        {
+            await host.ToSignal(host.GetTree(), SceneTree.SignalName.ProcessFrame);
+            if (i == 60 * 5 && Client.Game.Scene is Game.Scenes.LoginScene login && !login.CanAutologin)
+            {
+                break;
+            }
+        }
+
         if (!Client.Game.UO.World.InGame)
         {
             await InputProbe.EnterTheWorld(host, 200);

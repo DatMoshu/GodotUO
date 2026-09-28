@@ -93,6 +93,87 @@ def sheet(args) -> int:
     return 0 if rc == 0 else 1
 
 
+def device(args) -> int:
+    """The same proof on an Android device (the Thor): an APK with the probe baked
+    in, the private shard reached through adb reverse, the report and frames
+    pulled back with run-as, then the app stopped and the device put to sleep."""
+    cfg = load_config()
+    sys.path.insert(0, str(cfg.tools / "android"))
+    import run as android  # tools/android/run.py
+
+    p = android.Paths(cfg)
+    out = (args.out or cfg.build / "postfx_device" / time.strftime("%Y%m%d-%H%M%S")).resolve()
+    out.mkdir(parents=True, exist_ok=True)
+    say(f"output: {out}")
+    tools = cfg.tools
+    state = cfg.build / "shard_private" / "state.json"
+    port_ok = state.exists() and json.loads(state.read_text(encoding="utf-8")).get("port") == args.port
+    if not port_ok and shard(tools, "setup", "--port", str(args.port)) != 0:
+        return 2
+    shard(tools, "stop")
+    if shard(tools, "start", "--no-bridge") != 0:
+        return 2
+    rc = 1
+    try:
+        adb = android.adb_cmd(p)
+        if subprocess.run(adb + ["reverse", f"tcp:{args.port}", f"tcp:{args.port}"]).returncode != 0:
+            say("adb reverse failed; is the device connected?")
+            return 2
+        x, y = args.at.split(",")
+        extra = (f'--host 127.0.0.1 --port {args.port} --account guoprobe --autologin --postfx-sheet user://postfx_sheet '
+                 f'--shard-command "[self set map felucca" --shard-command "[go {x} {y}"')
+        apk = p.out_dir / "GUO-postfx.apk"
+        if not args.no_export and android.export(p, extra, apk) != 0:
+            return 1
+        if android.install(p, apk) != 0:
+            return 1
+        subprocess.run(adb + ["shell", "run-as", cfg.android_package, "rm", "-rf", "files/postfx_sheet"])
+        subprocess.run(adb + ["logcat", "-c"])
+        if android.start_app(p) != 0:
+            return 1
+        log = out / "logcat.txt"
+        done = False
+        with log.open("w", encoding="utf-8", errors="replace") as f:
+            proc = subprocess.Popen(adb + ["logcat", "-v", "time"] + android.LOGCAT_FILTER, stdout=subprocess.PIPE,
+                                    text=True, encoding="utf-8", errors="replace")
+            t0 = time.time()
+            try:
+                for line in proc.stdout:
+                    f.write(line)
+                    if "postfx probe" in line:
+                        print("  " + line.strip()[-160:])
+                    if "postfx probe: ok" in line or "postfx probe: FAIL" in line or "postfx probe: never got into" in line:
+                        done = "postfx probe: ok" in line
+                        break
+                    if time.time() - t0 > args.timeout:
+                        say("timeout")
+                        break
+            finally:
+                proc.kill()
+        # Pull the report and frames out of the app's own files.
+        listing = subprocess.run(adb + ["shell", "run-as", cfg.android_package, "ls", "files/postfx_sheet"],
+                                 capture_output=True, text=True).stdout.split()
+        for name in listing:
+            with (out / name).open("wb") as f:
+                subprocess.run(adb + ["exec-out", "run-as", cfg.android_package, "cat", f"files/postfx_sheet/{name}"], stdout=f)
+        say(f"pulled {len(listing)} files")
+        if (out / "report.json").exists():
+            make_sheet(out, json.loads((out / "report.json").read_text(encoding="utf-8")))
+        rc = 0 if done else 1
+    finally:
+        # Always stop the shard; the device steps may fail if no single device is picked.
+        try:
+            android.stop_app(p)
+            # Asleep again, as the device's other users expect.
+            subprocess.run(android.adb_cmd(p) + ["shell", "input", "keyevent", "KEYCODE_SLEEP"])
+            subprocess.run(android.adb_cmd(p) + ["reverse", "--remove", f"tcp:{args.port}"])
+        except SystemExit:
+            pass
+        shard(tools, "stop")
+    say(f"device run {'ok' if rc == 0 else 'FAILED'}; {out}")
+    return rc
+
+
 def make_sheet(out: Path, report: dict) -> None:
     """A grid of every look, each labelled with its name and GPU cost."""
     from PIL import Image, ImageDraw
@@ -130,12 +211,20 @@ def main() -> int:
     s.add_argument("--at", default="1475,1645", help="x,y on Felucca to stand at (default: Britain)")
     s.add_argument("--size", default="1280,800")
     s.add_argument("--out", type=Path)
+    d = sub.add_parser("device", help="the same proof on the attached Android device (adb)")
+    d.add_argument("--port", type=int, default=2596)
+    d.add_argument("--at", default="1475,1645")
+    d.add_argument("--out", type=Path)
+    d.add_argument("--timeout", type=int, default=900)
+    d.add_argument("--no-export", action="store_true", help="reuse build/android/GUO-postfx.apk")
     sub.add_parser("luts")
     args = ap.parse_args()
     if args.cmd == "luts":
         import luts  # noqa: F401  (tools/postfx/luts.py)
 
         return luts.main()
+    if args.cmd == "device":
+        return device(args)
     return sheet(args)
 
 
