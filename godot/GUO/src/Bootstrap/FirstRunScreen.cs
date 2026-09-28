@@ -42,6 +42,50 @@ internal sealed partial class FirstRunScreen : CanvasLayer
 
     private Action<string> _chosen;
     private bool _change;
+
+    private static FirstRunScreen _shown;
+    private readonly GUO.Input.Touch.FingerAsMouse _finger = new();
+
+    public override void _EnterTree() => _shown = this;
+
+    public override void _ExitTree()
+    {
+        if (_shown == this)
+        {
+            _shown = null;
+        }
+    }
+
+    /// <summary>
+    /// For GameController._Input, once the client runs (the change screen from
+    /// Settings or Options): the screen covers the window and is modal, so
+    /// every pointer event and key is its controls', and not the game's. A
+    /// finger is pushed in as the mouse (FingerAsMouse): with the touch layer
+    /// on, Godot makes no mouse copy of it, and Cancel did not answer a tap
+    /// on the Thor (2026-09-28).
+    /// </summary>
+    public static bool OwnsInput(InputEvent e)
+    {
+        FirstRunScreen s = _shown;
+
+        if (s == null || !IsInstanceValid(s) || !s.IsInsideTree())
+        {
+            return false;
+        }
+
+        if (s._finger.Pushing)
+        {
+            return true;
+        }
+
+        if (e is InputEventScreenTouch or InputEventScreenDrag)
+        {
+            s._finger.Take(e, new Rect2(Vector2.Zero, s.GetViewport().GetVisibleRect().Size), s.GetViewport());
+            return true;
+        }
+
+        return e is InputEventMouse or InputEventKey;
+    }
     private Label _folder;
     private VBoxContainer _checks;
     private Label _verdict;
