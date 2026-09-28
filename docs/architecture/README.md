@@ -15,7 +15,7 @@ it is taken even if its file has not landed yet.
 | 0004 | World mesh on canvas meshes | main |
 | 0005 | Audio on Godot streams | main |
 | 0006 | GameController as a Godot node | main |
-| 0007 | Sorted world in batched meshes | main (proposed) |
+| 0007 | Sorted world in batched meshes | proposed; B2 measured 2026-09-27, recommend reject |
 | 0008 | Web | work/android |
 | 0009 | Second display | work/dual-screen |
 | 0010 | Editor addon shape | work/editor |
