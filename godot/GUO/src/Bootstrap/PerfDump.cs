@@ -184,6 +184,10 @@ internal static class PerfDump
                 ["at"] = world?.Player != null ? $"{world.Player.X},{world.Player.Y},{world.Player.Z}" : "",
                 ["zoom"] = ClientRoot.Game.Scene.Camera.Zoom,
                 ["window"] = $"{bounds.Width}x{bounds.Height}",
+                // The world viewport in the client's own pixels. ClientBounds
+                // can be in points under high DPI, so this, not "window", is
+                // what says the two clients frame the same view.
+                ["camera_bounds"] = $"{ClientRoot.Game.Scene.Camera.Bounds.Width}x{ClientRoot.Game.Scene.Camera.Bounds.Height}",
                 ["world_prepare_ms"] = Math.Round(Avg(Profiler.ProfilerContext.RENDER_FRAME_WORLD_PREPARE), 3),
                 ["world_draw_ms"] = Math.Round(Avg(Profiler.ProfilerContext.RENDER_FRAME_WORLD), 3),
                 ["render_frame_ms"] = Math.Round(Avg(Profiler.ProfilerContext.RENDER_FRAME), 3),

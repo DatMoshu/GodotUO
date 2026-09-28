@@ -367,3 +367,14 @@ with zoom 2.5. Until both clients are shown to frame the same view, the ratio
 means nothing. Before any ratio, `launchers\dev\side_by_side.bat` or a
 screenshot from each client at the perf spot must show the same view, and
 the rendered-object counts must agree.
+
+**A lead for the framing check (desk, after the slot).** This display runs
+at 1.5x scaling. ClassicUO is started with `FNA_GRAPHICS_ENABLE_HIGHDPI=1`
+and a `window_size` of 2560x1440. If FNA takes that size in points, its back
+buffer is 3840x2160 pixels, and with `screen_scale` cancelling the scaling it
+frames 2.25x GUO's area. The rendered-object ratios (2.2, 1.9, 2.0, 1.9x) fit.
+Against that, ab_compare sizes ClassicUO the same way and its screenshot
+sheets have lined up. So PerfDump now also records `camera_bounds` (the world
+viewport in the client's own pixels, from the same ported Camera in both),
+and the next run settles it without a screenshot. If they differ, perf_dump
+should give ClassicUO the window size divided by the display scale.
