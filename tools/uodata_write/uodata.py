@@ -13,7 +13,7 @@ Containers written (append-only, so nothing existing moves):
                  art.mul / artidx.mul and gumpart.mul / gumpidx.mul when an
                  install has them instead of UOPs
   in place       tiledata.mul item records, hues.mul blocks
-  multis         MultiCollection.uop: a new entry per multi (UOP layout, uncompressed),
+  multis         MultiCollection.uop: a new entry per multi (UOP layout, zlib, flag 1),
                  or multi.mul / multi.idx on installs without it (the index grown if needed)
 """
 from __future__ import annotations
@@ -24,6 +24,7 @@ import os
 import shutil
 import struct
 import sys
+import zlib
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -161,8 +162,9 @@ def uop_table(path: Path) -> dict:
     return _UOP_CACHE[key]
 
 
-def uop_append(path: Path, items: list[tuple[str, bytes]]) -> None:
-    """Append entries (uncompressed, flag 0) and chain a new block of them onto the table.
+def uop_append(path: Path, items: list[tuple[str, bytes]], compress: bool = False) -> None:
+    """Append entries and chain a new block of them onto the table: uncompressed (flag 0),
+    or with compress zlib-compressed (flag 1) as MultiCollection.uop's own entries are.
     Refuses a name that is already in the file: this writer never replaces."""
     table = uop_table(path)
     for name, _ in items:
@@ -184,8 +186,10 @@ def uop_append(path: Path, items: list[tuple[str, bytes]]) -> None:
         entries = []
         for name, data in items:
             at = f.tell()
-            f.write(data)
-            entries.append(struct.pack("<qiiiQIh", at, 0, len(data), len(data), uop_hash(name), 0, 0))
+            stored = zlib.compress(data) if compress else data
+            f.write(stored)
+            entries.append(struct.pack("<qiiiQIh", at, 0, len(stored), len(data), uop_hash(name), 0,
+                                       1 if compress else 0))
         block_at = f.tell()
         f.write(struct.pack("<iq", len(items), 0) + b"".join(entries))
         f.seek(last + 4)
@@ -488,7 +492,10 @@ def write_records(stage: Stage, records: list[AssetRecord]) -> list[str]:
                 raise ValueError(f"multi id {r.id:#x} is beyond {MULTI_LIMIT - 1:#x}, which the shard cannot address")
         try:
             uop = stage.path("MultiCollection.uop")
-            uop_append(uop, [(MULTI_PATTERN.format(r.id), r.data) for r in multis])
+            # Compressed, as the client's own are: ModernUO's MultiData.LoadUOP only reads
+            # an entry from the file when it is compressed (an uncompressed one is parsed
+            # from whatever its buffer last held).
+            uop_append(uop, [(MULTI_PATTERN.format(r.id), r.data) for r in multis], compress=True)
         except FileNotFoundError:
             mul, idx = stage.path("multi.mul"), stage.path("multi.idx")
             for r in multis:
@@ -542,7 +549,8 @@ def read_back(stage: Stage, r: AssetRecord) -> bytes | dict | None:
         return read_tile(stage.read_path("tiledata.mul"), r.id)
     if r.kind == "multi":
         try:
-            return uop_read(stage.read_path("MultiCollection.uop"), MULTI_PATTERN.format(r.id))
+            raw = uop_read(stage.read_path("MultiCollection.uop"), MULTI_PATTERN.format(r.id))
+            return zlib.decompress(raw) if raw else raw
         except FileNotFoundError:
             o, n, _ = idx_entry(stage.read_path("multi.idx"), r.id)
             if n <= 0:

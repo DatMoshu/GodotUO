@@ -102,6 +102,12 @@ def test_multis(tmp: Path) -> None:
                       multi_record(0x3F00, [(0x203, -1, -1, 7, 0), (0x6A5, 0, 1, 7, 1), (1, 0, 0, 0, 1)]))
     U.write_records(stage, [rec])
     check(U.read_back(stage, rec) == rec.data and U.read_back_equal(stage, rec), "a multi reads back equal from the UOP")
+    raw = stage.read_path("MultiCollection.uop").read_bytes()
+    _m, _v, _s, first, _bs, _n = struct.unpack_from("<IIIqIi", raw, 0)
+    _f, block = struct.unpack_from("<iq", raw, first)
+    _o, _h, comp, decomp, _hash, _a, flag = struct.unpack_from("<qiiiQIh", raw, block + 12)
+    check(flag == 1 and decomp == len(rec.data) and comp != decomp,
+          "a multi entry is zlib-compressed (flag 1), as the shard needs")
     check(0x3F00 not in U.free_multis(stage), "a written multi id is no longer free")
     check(U.Registry(stage, {}).data["packs"]["multi"]["used"]["multi"] == {"cottage": 0x3F00}, "slots.json records the multi")
     try:
