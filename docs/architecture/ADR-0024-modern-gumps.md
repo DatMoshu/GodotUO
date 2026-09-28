@@ -133,6 +133,19 @@ probe.
   - Touch builds start with On (a PlatformDefaults entry); the desktop
     starts with Off.
   - Shown in Options' Touch section.
+- **Always-open gumps get a reader, not a replacement.** Some classic gumps
+  are open for the whole session and restored at login (the journal first
+  of all). Replacing one with a modal Modern view would put a modal over
+  the game at every login and take the gump off the screen. Such a gump
+  therefore stays Classic and stays out of the registry. Its Modern view is
+  a reader the player opens on purpose, over the classic gump: from the
+  window menu's "Read" on that gump, and from the command bar (for the
+  journal, the "Read Journal" action, which is the journal slot's first hold
+  alternate). The reader reads the same state and writes the classic gump's
+  own profile fields (the journal's four filters), so both always agree.
+  The journal's reader is `ModernJournal`, and its lines are the same
+  `JournalReader` the companion tabs show on a second screen (C7), so there
+  is one journal reader, not two (director, 2026-09-28).
 
 ### Key Interfaces
 

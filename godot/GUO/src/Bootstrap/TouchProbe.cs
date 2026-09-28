@@ -132,6 +132,7 @@ internal static class TouchProbe
         await ModernOptionsCheck(host, world);
         await ModernPartyCheck(host, world);
         await ModernSkillsCheck(host, world);
+        await ModernJournalCheck(host, world);
         await ModernSpellbookCheck(host, world);
         Configuration.ProfileManager.CurrentProfile.ModernGumpsOff = true;
         await HelpGumpCheck(host, world);
@@ -1099,6 +1100,94 @@ internal static class TouchProbe
     /// Modern view; out of a party it says so; Add member sends the classic
     /// invite request (the shard answers with a target cursor); Cancel closes.
     /// </summary>
+    /// <summary>
+    /// The Modern journal (ADR-0024, gump index 10) is a reader, not a
+    /// replacement: the classic journal opens and stays; its window menu's
+    /// Read opens the reader over it with the journal's lines; a filter plate
+    /// writes the classic journal's own profile field and hides those lines;
+    /// the bar's "journalread" (the journal slot's first hold alternate)
+    /// opens it too.
+    /// </summary>
+    private static async System.Threading.Tasks.Task ModernJournalCheck(Node host, Game.World world)
+    {
+        for (int i = 0; i < 3; i++)
+        {
+            Game.GameActions.Print(world, $"touch probe journal line {i + 1}", 0x3B2, Game.Data.MessageType.System, 3, false);
+        }
+
+        UIManager.GetGump<JournalGump>()?.Dispose();
+        UIManager.GetGump<ResizableJournal>()?.Dispose();
+        await Frames(host, 5);
+        Game.GameActions.OpenJournal(world);
+        await Frames(host, 20);
+        Gump classic = (Gump)UIManager.GetGump<JournalGump>() ?? UIManager.GetGump<ResizableJournal>();
+        Check("the journal opens Classic on touch (a reader is offered, not a replacement)",
+            classic != null && !Input.Touch.Modern.ModernGump.IsOpen, $"classic {classic?.GetType().Name ?? "none"}");
+
+        if (classic == null)
+        {
+            return;
+        }
+
+        WindowMenu.Open(classic);
+        await Frames(host, 15);
+        Vector2? read = WindowMenu.ButtonCentre("Read");
+
+        if (read != null)
+        {
+            await Tap(host, Client(read.Value));
+        }
+
+        await Frames(host, 20);
+        var view = Input.Touch.Modern.ModernJournal.OpenNow;
+        int lines = view?.Reader.LineCount ?? 0;
+        Check("the journal's window menu has Read, which opens the Modern reader with the journal's lines, the classic journal still open",
+            read != null && view != null && lines > 0 && !classic.IsDisposed,
+            $"read {read != null}, reader {view != null}, lines {lines}, classic open {!classic.IsDisposed}");
+
+        if (view == null)
+        {
+            WindowMenu.Close();
+            return;
+        }
+
+        // The probe's lines are one kind; its filter hides them and writes the classic journal's field.
+        Game.Data.TextType kind = JournalManager.Entries[JournalManager.Entries.Count - 1].TextType;
+        string plate = kind switch
+        {
+            Game.Data.TextType.SYSTEM => "filter System",
+            Game.Data.TextType.OBJECT => "filter Objects",
+            Game.Data.TextType.GUILD_ALLY => "filter Guild",
+            _ => "filter Client",
+        };
+        bool before = Input.Touch.JournalReader.Shows(kind);
+        await TapClient(host, view.CentreOf(view.Find(plate)));
+        await Frames(host, 10);
+        int hidden = view.Reader.LineCount;
+        bool after = Input.Touch.JournalReader.Shows(kind);
+        await TapClient(host, view.CentreOf(view.Find(plate)));
+        await Frames(host, 10);
+        Check("a filter plate hides that kind of line and writes the classic journal's own profile field; a second tap shows them again",
+            before && !after && hidden < lines && Input.Touch.JournalReader.Shows(kind) && view.Reader.LineCount == lines,
+            $"{plate}: shown {before} -> {after} -> {Input.Touch.JournalReader.Shows(kind)}, lines {lines} -> {hidden} -> {view.Reader.LineCount}");
+
+        await TapClient(host, view.CentreOf(view.Find("X")));
+        await Frames(host, 5);
+        bool closed = !Input.Touch.Modern.ModernGump.IsOpen && !classic.IsDisposed;
+
+        TouchInput.Bar.Invoke("journalread");
+        await Frames(host, 15);
+        bool fromBar = Input.Touch.Modern.ModernJournal.OpenNow != null;
+        Input.Touch.Modern.ModernGump.Current?.Close();
+        await Frames(host, 5);
+        Check("X closes the reader and leaves the classic journal; the bar's Read Journal (the journal slot's first hold alternate) opens it",
+            closed && fromBar && Input.Touch.BarCatalogue.DefaultAlternates("journal").Item1 == "journalread",
+            $"closed {closed}, from bar {fromBar}, journal alternates {Input.Touch.BarCatalogue.DefaultAlternates("journal")}");
+
+        classic.Dispose();
+        await Frames(host, 5);
+    }
+
     private static async System.Threading.Tasks.Task ModernPartyCheck(Node host, Game.World world)
     {
         UIManager.Add(new PartyGump(world, 100, 100, world.Party.CanLoot));

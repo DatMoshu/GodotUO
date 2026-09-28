@@ -1206,6 +1206,13 @@ namespace GUO.Input.Touch
 
                     break;
 
+                case "journalread":
+                    // The journal in large type (ADR-0024: a reader, not a
+                    // replacement); the classic journal stays as it is.
+                    Modern.ModernJournal.OpenReader(world);
+
+                    break;
+
                 case "map":
                     GameActions.OpenMiniMap(world);
 

@@ -135,6 +135,39 @@ saves the log to `build\android\smoke_logcat.txt`, stops the app and exits 0.
 A `FAIL` line, a `FATAL EXCEPTION`, the process dying, or the timeout
 (default 240 s; first launch decodes a lot) exit 1.
 
+## Playing on the dev shard from a device
+
+The smoke only needs the login gump. Anything that goes into the world needs
+the device to reach the shard running on this PC, and a login that works on
+a handheld's screen:
+
+- **Reach the shard over adb.** When the `ip` in the app's `settings.json`
+  (in its files folder) is loopback, the device looks for the shard on its
+  own 127.0.0.1. Forward that port to this PC first, and remove the forward
+  when you are done:
+
+  ```
+  adb -s <device> reverse tcp:2593 tcp:2593
+  adb -s <device> reverse --remove tcp:2593
+  ```
+
+  Use `push-stage --reverse PORT` to do the same while staging a build.
+- **Let the client log itself in.** The probes' scripted login
+  (`InputProbe.EnterTheWorld`) clicks the desktop login layout. On a
+  handheld the login gump is centred and scaled somewhere else, so the
+  clicks miss and the run stops at "never got into the world". Bake the
+  account and `--autologin` into the export instead; the gallery waits for
+  that login rather than clicking:
+
+  ```
+  python tools\android\run.py export --args "--account <account> --autologin --ui-gallery --screenshot-name gallery"
+  ```
+
+  With no `--password`, the password defaults to the account name, as the
+  dev shard's test accounts use. The gallery writes to `user://screenshots`
+  (`files/screenshots` in the app's data, readable with
+  `adb exec-out run-as org.guo.client cat files/screenshots/<name>.png`).
+
 ## The touch layer on the desktop
 
 `launchers\dev\touch_probe.bat` runs the client with `--play --touch-probe`
