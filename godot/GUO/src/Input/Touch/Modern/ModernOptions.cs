@@ -5,6 +5,7 @@ using Godot;
 using GUO.Configuration;
 using GUO.Game;
 using GUO.Game.Data;
+using GUO.Game.Managers;
 using GUO.Game.Scenes;
 using GUO.Game.UI.Gumps;
 
@@ -49,7 +50,7 @@ internal sealed partial class ModernOptions : ModernGump
         public Action<object> Show; // puts a value into the setting's control
     }
 
-    private static readonly string[] Pages = { "General", "Sound", "Video", "Macros", "Containers", "Touch" };
+    private static readonly string[] Pages = { "General", "Sound", "Video", "Macros", "Tooltip", "Fonts", "Speech", "Containers", "Touch" };
 
     private readonly List<Setting> _settings = new();
     private readonly Dictionary<Setting, object> _values = new();
@@ -130,6 +131,34 @@ internal sealed partial class ModernOptions : ModernGump
         Bool("Video", "Shadows", p => p.ShadowsEnabled, (p, v) => p.ShadowsEnabled = v);
         Bool("Video", "Death screen", p => p.EnableDeathScreen, (p, v) => p.EnableDeathScreen = v);
 
+        // Tooltip, Fonts and Speech: the classic pages' boxes and sliders, with
+        // their ranges. Hues and font pickers stay in Classic view.
+        Bool("Tooltip", "Use tooltips", p => p.UseTooltip, (p, v) => p.UseTooltip = v);
+        Int("Tooltip", "Delay before display", 0, 1000, p => p.TooltipDelayBeforeDisplay, (p, v) => p.TooltipDelayBeforeDisplay = v);
+        Int("Tooltip", "Tooltip zoom", 100, 200, p => p.TooltipDisplayZoom, (p, v) => p.TooltipDisplayZoom = v);
+        Int("Tooltip", "Background opacity", 0, 100, p => p.TooltipBackgroundOpacity, (p, v) => p.TooltipBackgroundOpacity = v);
+
+        Bool("Fonts", "Override the game font", p => p.OverrideAllFonts, (p, v) => p.OverrideAllFonts = v);
+        Choice("Fonts", "Override with", new[] { "ASCII", "Unicode" }, p => p.OverrideAllFontsIsUnicode ? 1 : 0, (p, v) => p.OverrideAllFontsIsUnicode = v == 1);
+        Bool("Fonts", "Force Unicode in the journal", p => p.ForceUnicodeJournal, (p, v) => p.ForceUnicodeJournal = v);
+
+        Bool("Speech", "Scale speech delay by length", p => p.ScaleSpeechDelay, (p, v) => p.ScaleSpeechDelay = v);
+        Int("Speech", "Speech delay", 0, 1000, p => p.SpeechDelay, (p, v) => p.SpeechDelay = v);
+        Bool("Speech", "Save the journal to a file", p => p.SaveJournalToFile, (p, v) => p.SaveJournalToFile = v);
+        // As the classic Apply: a change also switches the system chat's state.
+        Bool("Speech", "Chat opens on Enter", p => p.ActivateChatAfterEnter, (p, v) =>
+        {
+            if (p.ActivateChatAfterEnter != v)
+            {
+                UIManager.SystemChat.IsActive = !v;
+                p.ActivateChatAfterEnter = v;
+            }
+        });
+        Bool("Speech", "Hide the chat gradient", p => p.HideChatGradient, (p, v) => p.HideChatGradient = v);
+        Bool("Speech", "Ignore guild messages", p => p.IgnoreGuildMessages, (p, v) => p.IgnoreGuildMessages = v);
+        Bool("Speech", "Ignore alliance messages", p => p.IgnoreAllianceMessages, (p, v) => p.IgnoreAllianceMessages = v);
+        Bool("Speech", "Party messages overhead", p => p.OverheadPartyMessages, (p, v) => p.OverheadPartyMessages = v);
+
         Bool("Containers", "Grid view", p => p.GridContainers, (p, v) => p.GridContainers = v);
         Int("Containers", "Grid slot size", GridContainerGump.MIN_SLOT, GridContainerGump.MAX_SLOT, p => p.GridContainerSlotSize, (p, v) => p.GridContainerSlotSize = v);
 
@@ -173,9 +202,20 @@ internal sealed partial class ModernOptions : ModernGump
         outer.AddChild(body);
 
         // The page column, as the classic's NiceButtons: text, the open one lit.
-        var column = new VBoxContainer { CustomMinimumSize = new Vector2(112, 0) };
+        // It scrolls with a drag where the pages outgrow a short screen, Classic
+        // view pinned under it.
+        var side = new VBoxContainer { CustomMinimumSize = new Vector2(112, 0) };
+        side.AddThemeConstantOverride("separation", 2);
+        body.AddChild(side);
+        var columnScroll = new ScrollContainer
+        {
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
+            HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
+        };
+        side.AddChild(columnScroll);
+        var column = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
         column.AddThemeConstantOverride("separation", 2);
-        body.AddChild(column);
+        columnScroll.AddChild(column);
 
         foreach (string page in Pages)
         {
@@ -193,12 +233,11 @@ internal sealed partial class ModernOptions : ModernGump
             _pageButtons[page] = b;
         }
 
-        column.AddChild(new Control { SizeFlagsVertical = Control.SizeFlags.ExpandFill });
-        column.AddChild(RuleLine(true));
+        side.AddChild(RuleLine(true));
         Button classic = Row(UoTheme.Button("Classic view"));
         classic.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
         classic.Pressed += OpenClassic;
-        column.AddChild(classic);
+        side.AddChild(classic);
 
         body.AddChild(RuleLine(false));
 

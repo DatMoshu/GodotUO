@@ -131,6 +131,7 @@ internal static class TouchProbe
         Configuration.ProfileManager.CurrentProfile.ModernGumpsOff = false;
         await ModernOptionsCheck(host, world);
         await ModernMacrosCheck(host, world);
+        await ModernOptionsPagesCheck(host, world);
         await ModernPartyCheck(host, world);
         await ModernSkillsCheck(host, world);
         await ModernJournalCheck(host, world);
@@ -1095,6 +1096,40 @@ internal static class TouchProbe
             && classic.PresentationScale > 1.2f && !Input.Touch.Modern.ModernGump.IsOpen);
         UIManager.GetGump<OptionsGump>()?.Dispose();
         await Frames(host, 10);
+    }
+
+    /// <summary>
+    /// Modern Options' Tooltip, Fonts and Speech pages: a tapped box on each
+    /// lands in the profile field the classic Apply writes, on Okay.
+    /// </summary>
+    private static async System.Threading.Tasks.Task ModernOptionsPagesCheck(Node host, Game.World world)
+    {
+        Configuration.Profile p = Configuration.ProfileManager.CurrentProfile;
+        bool tooltip = p.UseTooltip, unicode = p.ForceUnicodeJournal, party = p.OverheadPartyMessages;
+        Game.GameActions.OpenSettings(world);
+        await Frames(host, 10);
+
+        if (Input.Touch.Modern.ModernGump.Current is not Input.Touch.Modern.ModernOptions view)
+        {
+            Check("Modern Options opens for its Tooltip, Fonts and Speech pages", false);
+            return;
+        }
+
+        await TapClient(host, view.CentreOf(view.Find("Tooltip")));
+        await TapClient(host, view.CentreOf(view.Find("Use tooltips")));
+        await TapClient(host, view.CentreOf(view.Find("Fonts")));
+        await TapClient(host, view.CentreOf(view.Find("Force Unicode in the journal")));
+        await TapClient(host, view.CentreOf(view.Find("Speech")));
+        await TapClient(host, view.CentreOf(view.Find("Party messages overhead")));
+        await TapClient(host, view.CentreOf(view.Find("Okay")));
+        await Frames(host, 5);
+        Check("the Tooltip, Fonts and Speech pages' boxes land in the profile on Okay",
+            p.UseTooltip != tooltip && p.ForceUnicodeJournal != unicode && p.OverheadPartyMessages != party,
+            $"tooltips {tooltip} -> {p.UseTooltip}, unicode journal {unicode} -> {p.ForceUnicodeJournal}, party overhead {party} -> {p.OverheadPartyMessages}");
+        p.UseTooltip = tooltip;
+        p.ForceUnicodeJournal = unicode;
+        p.OverheadPartyMessages = party;
+        Input.Touch.Modern.ModernGump.Current?.Close();
     }
 
     /// <summary>

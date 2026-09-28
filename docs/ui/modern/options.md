@@ -92,6 +92,21 @@ tall, and all of it is the target.
   macros, as there, and Apply or Okay saves them (`World.Macros.Save()`, as
   the classic Apply does). Place button makes the MacroButtonGump that the
   classic list's drag makes.
+- **Tooltip:** use tooltips; the delay, the zoom and the background
+  opacity, as sliders over the classic's ranges.
+- **Fonts:** override the game font, as ASCII or Unicode; force Unicode in
+  the journal.
+- **Speech:**
+  - scale the speech delay, and the delay itself;
+  - save the journal to a file;
+  - chat opens on Enter (switching the system chat as the classic Apply
+    does);
+  - hide the chat gradient;
+  - ignore guild or alliance messages;
+  - party messages overhead.
+
+  The hues and the font pickers on these pages stay in Classic view: they
+  need a colour picker and a font preview of their own.
 - **Containers:** grid view, grid slot size.
 - **Touch:**
   - vibrate when the bar snaps;
@@ -99,7 +114,10 @@ tall, and all of it is the target.
   - hold-and-flick (four choices);
   - "Edit the command bar" (the slot editor).
 
-**The escape:** "Classic view", at the foot of the page column, opens the
+The pages follow the classic's order. The page column scrolls with a drag
+where nine pages outgrow a short screen.
+
+**The escape:** "Classic view", pinned at the foot of the page column, opens the
 ported Options, fitted, for everything Modern does not show. A page's
 Default puts that page's covered settings back to the profile's defaults.
 
