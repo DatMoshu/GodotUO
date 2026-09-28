@@ -434,7 +434,8 @@ internal sealed partial class PregameServers : HBoxContainer
             _detail.AddChild(Note($"Log out and play on {e.Name}?", UoTheme.Ink));
             var yesNo = new HFlowContainer();
             yesNo.AddThemeConstantOverride("h_separation", 4);
-            Button yes = UoTheme.Button("Log out and play", 64);
+            // Narrow: the question above already names the server.
+            Button yes = UoTheme.Button(_narrow ? "Log out" : "Log out and play", _narrow ? 44 : 64);
             yes.AddThemeColorOverride("font_color", UoTheme.Danger);
             yes.Pressed += () => { _confirmLogout = false; DoPlay(e); };
             Button no = UoTheme.Button("Stay", 40);
