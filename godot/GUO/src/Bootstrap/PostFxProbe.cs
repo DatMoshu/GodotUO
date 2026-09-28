@@ -155,6 +155,8 @@ void fragment() { COLOR = texture(source, SCREEN_UV); }";
 
         // 5. The mobile tier: heavy looks at half resolution.
         var tiers = new JsonObject();
+        // The quality is the player's setting and is saved; put it back after.
+        bool fullQualityWas = stack.FullQuality;
         foreach (string name in new[] { "Glow", "Ink Outline" })
         {
             PostFxPreset heavy = PostFxLibrary.Find(name);
@@ -179,6 +181,7 @@ void fragment() { COLOR = texture(source, SCREEN_UV); }";
             stack.FullQuality = true;
         }
 
+        stack.FullQuality = fullQualityWas;
         report["tiers"] = tiers;
 
         // 6. The object-id buffer: off unless a pass reads it, then one id per object.

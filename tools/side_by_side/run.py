@@ -241,6 +241,8 @@ def start_guo(cfg, go: str, character: str, x: int, y: int, w: int, h: int) -> s
             "--",
             "--play",
             "--stay",
+            # Beside ClassicUO, so the Classic look, whatever look is saved.
+            "--postfx", "off",
             "--cache-dir", str(home / "cache"),
             "--account", account,
             "--password", account,

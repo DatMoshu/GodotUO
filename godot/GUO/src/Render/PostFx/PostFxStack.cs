@@ -67,6 +67,19 @@ namespace GUO.Renderer.PostFx
         public float Scale { get; private set; } = 1f;
 
         private PostFxPreset _preset = PostFxPreset.Classic();
+
+        // The look the player chose, which state.json keeps: not a look shown
+        // with remember: false. A quality change saved the look on screen, so
+        // the postfx probe's tier step (Ink Outline, then full quality) left
+        // every later start on Ink Outline (the Thor, found by GUO3, 2026-09-28).
+        private string _remembered = PostFxPreset.Classic().Name;
+
+        /// <summary>
+        /// --postfx NAME|off: the look for this run only (off is Classic);
+        /// state.json is neither read for it nor written. Perf and smoke runs
+        /// pass it so a look a player or a probe saved does not time with them.
+        /// </summary>
+        public static string RunOverride { get; set; }
         private SubViewport _viewport;
 
         // The object-id buffer (ADR-0023, section 3): only while an enabled pass
@@ -120,6 +133,7 @@ namespace GUO.Renderer.PostFx
             _dirty = true;
             if (remember)
             {
+                _remembered = _preset.Name;
                 SaveState();
             }
 
@@ -365,7 +379,15 @@ namespace GUO.Renderer.PostFx
             {
                 _loadedState = true;
                 PostFxMenu.Install();
-                LoadState();
+                if (RunOverride != null)
+                {
+                    UseRunOverride();
+                }
+                else
+                {
+                    LoadState();
+                }
+
                 PostFxLibrary.Changed += OnFileChanged;
             }
         }
@@ -432,6 +454,11 @@ namespace GUO.Renderer.PostFx
 
                 string name = state?["active"]?.GetValue<string>();
                 PostFxPreset p = name != null ? PostFxLibrary.Find(name) : null;
+                if (p != null)
+                {
+                    _remembered = p.Name;
+                }
+
                 if (p != null && !p.IsClassic)
                 {
                     Use(p, remember: false);
@@ -443,10 +470,29 @@ namespace GUO.Renderer.PostFx
             }
         }
 
+        private void UseRunOverride()
+        {
+            bool off = RunOverride.Equals("off", StringComparison.OrdinalIgnoreCase) ||
+                       RunOverride.Equals("classic", StringComparison.OrdinalIgnoreCase);
+            PostFxPreset p = off ? PostFxPreset.Classic() : PostFxLibrary.Find(RunOverride);
+            if (p == null)
+            {
+                GD.PushWarning($"[GUO] postfx: --postfx {RunOverride}: no such look; Classic");
+                p = PostFxPreset.Classic();
+            }
+
+            Use(p, remember: false);
+            GD.Print($"[GUO] postfx: look for this run: {_preset.Name} (--postfx; state.json not read or written)");
+        }
+
+        // --postfx: nothing this run changes is saved over the player's look.
+        // A probe that saves into a folder of its own lifts it for its check.
+        private static bool SuppressSave => RunOverride != null;
+
         private void SaveState()
         {
             string file = PostFxLibrary.StateFile;
-            if (file == null)
+            if (file == null || SuppressSave)
             {
                 return;
             }
@@ -454,7 +500,7 @@ namespace GUO.Renderer.PostFx
             try
             {
                 Directory.CreateDirectory(System.IO.Path.GetDirectoryName(file));
-                var state = new JsonObject { ["active"] = _preset.Name };
+                var state = new JsonObject { ["active"] = _remembered };
                 if (_fullQuality.HasValue)
                 {
                     state["full_quality"] = _fullQuality.Value;

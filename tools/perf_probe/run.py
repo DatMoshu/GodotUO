@@ -84,6 +84,9 @@ def main() -> int:
            "UO_SHARD_PORT": str(args.port or cfg.shard_port)}
     cmd = [str(cfg.godot_console_exe), "--path", str(cfg.godot_project), "--", "--play", "--silent",
            "--window-size", args.size, "--perf-probe", "--perf-out", str(out), "--perf-label", args.label, *(["--perf-zoom", str(args.zoom)] if args.zoom else []),
+           # Timed in the Classic look unless the caller names one: a saved
+           # look adds its passes to every number. The report says which ran.
+           *([] if "--postfx" in args.args else ["--postfx", "off"]),
            *shlex.split(args.args)]
     log = out / f"perf_{args.label}.log"
     print(f"[perf] {args.label}: shard {env['UO_SHARD_HOST']}:{env['UO_SHARD_PORT']}, window {args.size}, log {log}", flush=True)
