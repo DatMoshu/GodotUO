@@ -126,6 +126,7 @@ internal static class TouchProbe
         await ModernSpellbookCheck(host, world);
         Configuration.ProfileManager.CurrentProfile.ModernGumpsOff = true;
         await HelpGumpCheck(host, world);
+        await WorldMapCheck(host, world);
         // The long press is checked with hold-and-flick off, the way a player
         // who set every direction to "Do nothing" has it.
         {
@@ -1259,6 +1260,49 @@ internal static class TouchProbe
         if (standIn)
         {
             world.RemoveItem(book.Serial, true);
+        }
+    }
+
+    /// <summary>
+    /// The world map (Classic + fit + gestures): opened during play it is sized
+    /// to the room below the top bar, over the command bar, at its own zoom;
+    /// a pinch on it zooms the map, not the gump.
+    /// </summary>
+    private static async System.Threading.Tasks.Task WorldMapCheck(Node host, Game.World world)
+    {
+        TouchGumpBar bar = TouchInput.Bar;
+        Compat.Rectangle screen = GUO.Client.Game.ClientBounds;
+        int top = GumpPresentation.FullHeightTop();
+        Game.GameActions.OpenWorldMap(world);
+        await Frames(host, 60);
+        WorldMapGump map = UIManager.GetGump<WorldMapGump>();
+        Check("the world map opens full-height: sized (not scaled) to the room below the top bar, over the command bar",
+            map != null && bar.Covered && map.Y >= top && map.Height >= screen.Height - top - 30 && map.PresentationScale == 1f,
+            map == null ? "no map" : $"at {map.X},{map.Y} {map.Width}x{map.Height}, top {top}, covered {bar.Covered}");
+
+        if (map != null)
+        {
+            float zoom = map.Zoom;
+            Vector2 c = Client(new Vector2(map.X + map.Width / 2f, map.Y + map.Height / 2f));
+            // Fingers together: zoom out (a saved zoom may already be the most in).
+            Touch(0, c - new Vector2(220, 0), true);
+            Touch(1, c + new Vector2(220, 0), true);
+            await Frames(host, 2);
+
+            for (int i = 1; i <= 12; i++)
+            {
+                Drag(0, c - new Vector2(220 - i * 15, 0), new Vector2(15, 0));
+                Drag(1, c + new Vector2(220 - i * 15, 0), new Vector2(-15, 0));
+                await Frames(host, 2);
+            }
+
+            Touch(0, c - new Vector2(40, 0), false);
+            Touch(1, c + new Vector2(40, 0), false);
+            await Frames(host, 10);
+            Check("a pinch on the world map zooms the map, not the gump", map.Zoom != zoom && map.PresentationScale == 1f,
+                $"zoom {zoom} -> {map.Zoom}");
+            map.Dispose();
+            await Frames(host, 10);
         }
     }
 

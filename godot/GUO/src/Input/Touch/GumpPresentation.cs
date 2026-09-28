@@ -35,8 +35,9 @@ internal static class GumpPresentation
     public static bool Supports(Gump g) => Active && g != null && !g.IsDisposed
         && (_followers.Contains(g)
             // A full-height gump is scaled, a shard one included: only how it
-            // is drawn and hit changes, never what is sent back.
-            || IsFullHeight(g)
+            // is drawn and hit changes, never what is sent back. A resizable
+            // one (the world map) is sized instead (FitFullHeight).
+            || IsFullHeight(g) && g is not ResizableGump
             || !g.IsFromServer && !g.IsModal && g is PaperDollGump or ContainerGump or GridContainerGump
                 or StatusGumpBase or JournalGump or ResizableJournal);
 
@@ -47,7 +48,7 @@ internal static class GumpPresentation
     /// mobile mode this is (docs/ui/tall_gumps.md lists the other tall gumps).
     /// </summary>
     public static bool IsFullHeight(Gump g) =>
-        g is OptionsGump || g.IsFromServer && FullHeightServerGumps.Contains(g.ServerSerial);
+        g is OptionsGump or WorldMapGump || g.IsFromServer && FullHeightServerGumps.Contains(g.ServerSerial);
 
     /// <summary>
     /// Shard gumps that are full-height (docs/ui/gump_index.md: Classic plus
@@ -161,6 +162,18 @@ internal static class GumpPresentation
             Rectangle b = new(0, 0, Client.Game.ClientBounds.Width, Client.Game.ClientBounds.Height);
             int top = FullHeightTop() + FullHeightPad;
             int room = Math.Max(1, b.Height - top - FullHeightPad);
+
+            if (g is ResizableGump resizable)
+            {
+                // The world map (docs/ui/gump_index.md: Classic + fit + gestures):
+                // sized, not scaled, so it draws more map at its own zoom; a
+                // pinch zooms it and, in its Free view, a drag pans it.
+                Point size = resizable.ResizeWindow(new Point(b.Width, room));
+                g.X = b.X + Math.Max(0, (b.Width - size.X) / 2);
+                g.Y = top;
+                TouchInput.Note($"full-height: {g.GetType().Name} sized to {size.X}x{size.Y}");
+                continue;
+            }
 
             bool locked = g.PresentationLocked;
             g.PresentationLocked = false;
