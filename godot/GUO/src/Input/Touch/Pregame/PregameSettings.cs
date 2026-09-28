@@ -205,6 +205,32 @@ internal sealed partial class PregameSettings : HBoxContainer
         Check("Reconnect when the connection drops", () => s.Reconnect, v => s.Reconnect = v);
         Value("Last server", () => string.IsNullOrWhiteSpace(s.LastServerName) ? "None yet" : s.LastServerName);
         Note("The account name and password are typed on the login gump.");
+
+        // GUO's saved accounts, per server (the Servers tab adds them).
+        var saved = ServerBook.WithAccounts.OrderBy(e => e.Name, StringComparer.OrdinalIgnoreCase).ToList();
+        _fields.AddChild(UoTheme.Label("Saved accounts", UoTheme.Heading));
+
+        if (saved.Count == 0)
+        {
+            Note("None yet. Add one on a server's page in the Servers tab.");
+        }
+
+        foreach (ServerEntry e in saved)
+        {
+            foreach (Accounts.SavedAccount a in Accounts.AccountBook.For(e))
+            {
+                Act($"Forget {a.Name} on {e.Name}", () => { Accounts.AccountBook.Forget(e, a); ShowGroup("Account"); });
+            }
+        }
+
+        if (saved.Count > 0)
+        {
+            Act("Forget all saved accounts", () => { Accounts.AccountBook.ForgetAll(); ShowGroup("Account"); });
+        }
+
+        Note(Accounts.SecretStore.Current.Available
+            ? "Their passwords are encrypted by this system's keystore. That keeps them safe in a copied or shared settings folder, not from a program running as you."
+            : Accounts.SecretStore.Current is Accounts.NoStore none ? none.Why : "Passwords aren't saved on this system.");
     }
 
     private void Screen()

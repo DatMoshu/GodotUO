@@ -67,9 +67,12 @@ internal static class ServerPlay
     /// Play on <paramref name="e"/>: the address goes into the settings; from
     /// the world the player is logged out first (the card has asked); at the
     /// login steps the client goes back to its first one, and when the login
-    /// gump holds an account name it logs in as its own arrow would.
+    /// gump holds an account name it logs in as its own arrow would. With a
+    /// saved <paramref name="account"/>, its name and password go into the
+    /// gump first (a login the accounts manager started: settings.json keeps
+    /// no copy of the password).
     /// </summary>
-    public static void Play(ServerEntry e)
+    public static void Play(ServerEntry e, Accounts.SavedAccount account = null)
     {
         if (Check(e, out string reason) != Verdict.Ready)
         {
@@ -125,9 +128,36 @@ internal static class ServerPlay
         }
 
         LoginGump gump = UIManager.GetGump<LoginGump>();
-        string account = gump == null ? null : All(gump).OfType<Game.UI.Controls.StbTextBox>().FirstOrDefault()?.Text;
+        var boxes = gump == null ? new System.Collections.Generic.List<Game.UI.Controls.StbTextBox>() : All(gump).OfType<Game.UI.Controls.StbTextBox>().ToList();
 
-        if (gump != null && !string.IsNullOrWhiteSpace(account))
+        // The login gump's two fields: the account, then the password.
+        if (account != null && boxes.Count >= 2)
+        {
+            boxes[0].SetText(account.Name);
+            string password = Accounts.AccountBook.Password(e, account, out string why);
+
+            if (password == null)
+            {
+                boxes[1].SetText("");
+                boxes[1].SetKeyboardFocus();
+                LastOutcome = account.HasPassword
+                    ? $"Couldn't read the saved password for {account.Name}: {why}. Type it on the login screen, and save it again here."
+                    : $"Type the password for {account.Name} on the login screen.";
+                return;
+            }
+
+            boxes[1].SetText(password);
+            Accounts.AccountBook.Touch(e, account);
+            login.ManagedLogin = true;
+            gump.OnButtonClick(0); // the login gump's own arrow (Buttons.NextArrow)
+            login.ManagedLogin = false;
+            LastOutcome = $"Logging in to {e.Name} as {account.Name}.";
+            return;
+        }
+
+        string typed = boxes.FirstOrDefault()?.Text;
+
+        if (gump != null && !string.IsNullOrWhiteSpace(typed))
         {
             gump.OnButtonClick(0); // the login gump's own arrow (Buttons.NextArrow)
             LastOutcome = $"Logging in to {e.Name}.";

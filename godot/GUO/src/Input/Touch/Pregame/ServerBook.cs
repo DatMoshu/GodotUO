@@ -42,6 +42,9 @@ internal sealed class ServerEntry
     /// </summary>
     [JsonPropertyName("data_folder")] public string DataFolder { get; set; }
 
+    /// <summary>The player's accounts on it (AccountBook), or null; passwords only as the keystore's ciphertext.</summary>
+    [JsonPropertyName("accounts")] public List<Accounts.SavedAccount> Accounts { get; set; }
+
     /// <summary>When it was last played on (UTC), or null.</summary>
     [JsonPropertyName("last_played")] public DateTime? LastPlayed { get; set; }
 
@@ -218,6 +221,34 @@ internal static class ServerBook
         return e;
     }
 
+    /// <summary>
+    /// The book's entry that keeps a server's accounts, made if need be. The dev
+    /// shard's is a plain entry at its address, which no group shows.
+    /// </summary>
+    public static ServerEntry Hold(ServerEntry e)
+    {
+        if (!e.Dev)
+        {
+            return Keep(e);
+        }
+
+        ServerEntry kept = Servers.FirstOrDefault(s => s.Same(e.Host, e.Port));
+
+        if (kept == null)
+        {
+            kept = new ServerEntry { Name = e.Name, Host = e.Host, Port = e.Port };
+            Servers.Add(kept);
+        }
+
+        return kept;
+    }
+
+    /// <summary>The book's entry that keeps a server's accounts, if there is one yet.</summary>
+    public static ServerEntry Holding(ServerEntry e) => Servers.Contains(e) ? e : Servers.FirstOrDefault(s => s.Same(e.Host, e.Port));
+
+    /// <summary>The entries with saved accounts.</summary>
+    public static IEnumerable<ServerEntry> WithAccounts => Servers.Where(s => s.Accounts is { Count: > 0 });
+
     /// <summary>The book's entry for a server, a catalogue shard copied in first.</summary>
     private static ServerEntry Keep(ServerEntry e)
     {
@@ -291,8 +322,8 @@ internal static class ServerBook
 
         e.LastPlayed = DateTime.UtcNow;
 
-        // Recent keeps five: older plain entries (not own, not favourite, no files kept) go.
-        foreach (ServerEntry old in Servers.Where(x => x.LastPlayed != null && !x.Own && !x.Favourite && x.DataFolder == null).OrderByDescending(x => x.LastPlayed).Skip(RecentKept).ToList())
+        // Recent keeps five: older plain entries (not own, not favourite, no files or accounts kept) go.
+        foreach (ServerEntry old in Servers.Where(x => x.LastPlayed != null && !x.Own && !x.Favourite && x.DataFolder == null && x.Accounts == null).OrderByDescending(x => x.LastPlayed).Skip(RecentKept).ToList())
         {
             Servers.Remove(old);
         }

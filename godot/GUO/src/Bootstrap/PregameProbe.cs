@@ -103,6 +103,7 @@ internal static class PregameProbe
             await ServersChecks(host, card);
             await CatalogueChecks(host, card);
             await ShardFilesChecks(host, card);
+            await AccountsChecks(host, card);
         }
         finally
         {
@@ -317,6 +318,17 @@ internal static class PregameProbe
             asked &= !_overflow.Contains("servers_logout");
             Check("in the world, Play asks \"Log out and play\"; Stay keeps the player in; yes logs out to the login screen",
                 asked && stayed && out_, $"asked {asked}, stayed {stayed}, at login {out_}, status \"{servers.Status}\"");
+
+            if (out_)
+            {
+                for (int i = 0; i < 120 && UIManager.GetGump<LoginGump>() == null; i++)
+                {
+                    await InputProbe.Wait(host, 1);
+                }
+
+                await InputProbe.Wait(host, 10);
+                await AccountLoginChecks(host, card);
+            }
         }
         finally
         {
@@ -620,6 +632,203 @@ internal static class PregameProbe
     }
 
     private static string _clickDetail = "";
+
+    /// <summary>
+    /// Accounts, with a fake one made for the run (its password random and
+    /// never printed): saved through the page, kept only as the keystore's
+    /// ciphertext, read back, useless on another entry, forgotten.
+    /// </summary>
+    private static async System.Threading.Tasks.Task AccountsChecks(Node host, PregameCard card)
+    {
+        PregameServers servers = card.Servers;
+        ServerEntry e = ServerBook.Add("Probe Accounts", "accounts.invalid", "2595", out _);
+        ServerEntry moved = ServerBook.Add("Probe Moved", "moved.invalid", "2596", out _);
+        string password = System.Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(12));
+        Input.Touch.Pregame.Accounts.ISecretStore store = Input.Touch.Pregame.Accounts.SecretStore.Current;
+
+        try
+        {
+            servers.Rebuild();
+            await InputProbe.Wait(host, 3);
+            await Reveal(host, card, servers.RowFor(e));
+            await InputProbe.Wait(host, 4);
+            bool none = servers.AddAccountButton != null && servers.DetailText.Contains("None saved.");
+            await Reveal(host, card, servers.AddAccountButton);
+            await InputProbe.Wait(host, 4);
+            bool form = servers.AccountField != null && servers.PasswordField is { Secret: true } && servers.AccountSaveButton != null;
+
+            if (form)
+            {
+                servers.AccountField.Text = "guoprobe";
+                servers.PasswordField.Text = password;
+
+                if (servers.KeepBox != null)
+                {
+                    servers.KeepBox.ButtonPressed = true;
+                }
+
+                await SaveShot(host, "servers_account_add");
+                card.Tap(servers.AccountSaveButton);
+                await InputProbe.Wait(host, 4);
+            }
+
+            Input.Touch.Pregame.Accounts.SavedAccount a = Input.Touch.Pregame.Accounts.AccountBook.For(e).FirstOrDefault(x => x.Name == "guoprobe");
+            string file = System.IO.File.ReadAllText(ServerBook.FilePath);
+            bool clean = !file.Contains(password) && !file.Contains(Utility.Crypter.Encrypt(password)) && !file.Contains(System.Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(password)));
+            await SaveShot(host, "servers_account_saved");
+            Check("Add account on a server's page saves it; servers.json keeps no password (neither plain, nor Crypter, nor base64)",
+                none && form && a != null && clean && servers.PickedAccount == a && (store.Available ? a.HasPassword && a.Secret.Store == store.Kind : !a.HasPassword),
+                $"empty note {none}, form {form}, saved {a != null}, store {a?.Secret?.Store ?? "none"} ({store.Kind}), file clean {clean}, picked {servers.PickedAccount?.Name}");
+
+            if (store.Available && a != null)
+            {
+                string back = Input.Touch.Pregame.Accounts.AccountBook.Password(e, a, out string why);
+                string stolen = store.Unprotect(Input.Touch.Pregame.Accounts.AccountBook.Binding(moved, a.Name), a.Secret, out string whyMoved);
+                Check($"the {store.Kind} store gives the password back, and not for another entry it's copied onto",
+                    back == password && stolen == null,
+                    $"round trip {(back == password ? "same" : "different: " + why)}, on another entry {(stolen == null ? "refused (" + whyMoved + ")" : "decrypted")}");
+            }
+
+            if (a != null)
+            {
+                await Reveal(host, card, servers.ForgetAccountButton);
+                await InputProbe.Wait(host, 4);
+                file = System.IO.File.ReadAllText(ServerBook.FilePath);
+                Check("Forget removes the account and its secret from servers.json",
+                    Input.Touch.Pregame.Accounts.AccountBook.For(e).Count == 0 && !file.Contains("guoprobe") && servers.PickedAccount == null,
+                    $"left {Input.Touch.Pregame.Accounts.AccountBook.For(e).Count}, in the file {file.Contains("guoprobe")}");
+            }
+        }
+        finally
+        {
+            ServerBook.Remove(e);
+            ServerBook.Remove(moved);
+            servers.Rebuild();
+        }
+    }
+
+    /// <summary>
+    /// At the login screen, on the shard: a login the accounts manager starts
+    /// reaches the shard and leaves settings.json's password as it was, with
+    /// the classic Save account box ticked; a typed login with the box ticked
+    /// is saved the upstream way. The account is the probe's test account.
+    /// </summary>
+    private static async System.Threading.Tasks.Task AccountLoginChecks(Node host, PregameCard card)
+    {
+        Configuration.Settings gs = Configuration.Settings.GlobalSettings;
+        PregameServers servers = card.Servers;
+        ServerEntry here = servers.Listed.FirstOrDefault(x => x.Same(gs.IP, gs.Port));
+        var store = Input.Touch.Pregame.Accounts.SecretStore.Current;
+
+        if (here == null || !store.Available)
+        {
+            Check("a saved account logs in from the Servers tab", false, here == null ? "the server in use isn't listed" : $"no keystore here ({store.Kind})");
+            return;
+        }
+
+        bool saveWas = gs.SaveAccount;
+        string userWas = gs.Username;
+        string passWas = gs.Password;
+        string mark = Utility.Crypter.Encrypt("guo-probe-mark");
+        Game.Scenes.LoginScene Login() => Client.Game.GetScene<Game.Scenes.LoginScene>();
+
+        async System.Threading.Tasks.Task<bool> Reached()
+        {
+            for (int i = 0; i < 300; i++)
+            {
+                Game.Scenes.LoginSteps step = Login()?.CurrentLoginStep ?? Game.Scenes.LoginSteps.Main;
+
+                if (step is Game.Scenes.LoginSteps.ServerSelection or Game.Scenes.LoginSteps.CharacterSelection)
+                {
+                    return true;
+                }
+
+                await InputProbe.Wait(host, 1);
+            }
+
+            return false;
+        }
+
+        // The login gump's own box: its arrow copies the box into the setting.
+        void Tick(bool on)
+        {
+            LoginGump g = UIManager.GetGump<LoginGump>();
+            Game.UI.Controls.Checkbox box = g == null ? null : All(g).OfType<Game.UI.Controls.Checkbox>().FirstOrDefault(c => c.Text == Resources.ResGumps.SaveAccount);
+
+            if (box != null)
+            {
+                box.IsChecked = on;
+            }
+
+            gs.SaveAccount = on;
+        }
+
+        async System.Threading.Tasks.Task Back()
+        {
+            Network.NetClient.Socket.Disconnect();
+            Client.Game.SetScene(new Game.Scenes.LoginScene(Client.Game.UO.World));
+
+            for (int i = 0; i < 120 && UIManager.GetGump<LoginGump>() == null; i++)
+            {
+                await InputProbe.Wait(host, 1);
+            }
+
+            await InputProbe.Wait(host, 10);
+        }
+
+        try
+        {
+            Tick(true);
+            gs.Username = "";
+            gs.Password = mark;
+            Input.Touch.Pregame.Accounts.AccountBook.Add(here, InputProbe.ProbeAccount, InputProbe.ProbePassword, true, out _);
+            card.Tap(card.TabButtonFor(PregameCard.Tab.Servers));
+            servers.Rebuild();
+            await InputProbe.Wait(host, 3);
+            await Reveal(host, card, servers.RowFor(servers.Listed.First(x => x.Same(gs.IP, gs.Port))));
+            await InputProbe.Wait(host, 4);
+            bool picked = servers.PickedAccount?.Name == InputProbe.ProbeAccount;
+            bool ticked = LoginBox(Resources.ResGumps.SaveAccount) == true;
+            await SaveShot(host, "servers_account_play");
+            card.Tap(servers.PlayButton);
+            bool reached = await Reached();
+            bool kept = gs.Password == mark && gs.Username == "";
+            Check("a saved account logs in with Play (the shard answers with its server list), and settings.json keeps no copy of it with Save account ticked",
+                picked && ticked && reached && kept && gs.SaveAccount, $"picked {picked}, box ticked {ticked}/{gs.SaveAccount}, reached {reached} ({Login()?.CurrentLoginStep}), settings untouched {kept}, status \"{servers.Status}\"");
+            await Back();
+
+            // A typed login, the box ticked: upstream's way, unchanged.
+            LoginGump gump = UIManager.GetGump<LoginGump>();
+            var boxes = gump == null ? new System.Collections.Generic.List<Game.UI.Controls.StbTextBox>() : All(gump).OfType<Game.UI.Controls.StbTextBox>().ToList();
+            bool typed = false;
+
+            if (boxes.Count >= 2)
+            {
+                Tick(true);
+                boxes[0].SetText(InputProbe.ProbeAccount);
+                boxes[1].SetText(InputProbe.ProbePassword);
+                gump.OnButtonClick(0);
+                typed = await Reached();
+            }
+
+            bool classic = gs.Username == InputProbe.ProbeAccount && gs.Password == Utility.Crypter.Encrypt(InputProbe.ProbePassword);
+            Check("a typed login with the classic Save account box ticked is saved the upstream way",
+                typed && classic, $"reached {typed}, saved as upstream {classic} (box {gs.SaveAccount}, name {gs.Username == InputProbe.ProbeAccount}, password {gs.Password == Utility.Crypter.Encrypt(InputProbe.ProbePassword)}, still the mark {gs.Password == mark}, gumps {boxes.Count})");
+            await Back();
+        }
+        finally
+        {
+            foreach (var a in Input.Touch.Pregame.Accounts.AccountBook.For(here).Where(x => x.Name == InputProbe.ProbeAccount).ToList())
+            {
+                Input.Touch.Pregame.Accounts.AccountBook.Forget(here, a);
+            }
+
+            Tick(saveWas);
+            gs.Username = userWas;
+            gs.Password = passWas;
+            gs.Save();
+        }
+    }
 
     private static async System.Threading.Tasks.Task ShardFilesChecks(Node host, PregameCard card)
     {

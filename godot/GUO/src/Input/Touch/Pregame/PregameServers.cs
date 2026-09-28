@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Godot;
 using GUO.Host;
+using GUO.Input.Touch.Pregame.Accounts;
 using GUO.Utility;
 
 namespace GUO.Input.Touch.Pregame;
@@ -47,6 +48,10 @@ internal sealed partial class PregameServers : HBoxContainer
     private Question _ask;
     private bool _adding;
     private LineEdit _addName, _addHost, _addPort;
+    private bool _addingAccount;
+    private SavedAccount _account;
+    private ServerEntry _accountFor;
+    private string _accountNames;
     private string _status = "";
     private bool _narrow;
 
@@ -74,7 +79,7 @@ internal sealed partial class PregameServers : HBoxContainer
         under.AddThemeConstantOverride("separation", 4);
         left.AddChild(under);
         Button add = UoTheme.Button("Add server", 72);
-        add.Pressed += () => { _adding = true; _ask = null; ShowDetail(); };
+        add.Pressed += () => { _adding = true; _addingAccount = false; _ask = null; ShowDetail(); };
         under.AddChild(add);
         AddButton = add;
         Button refresh = UoTheme.Button("Refresh", 52);
@@ -335,6 +340,7 @@ internal sealed partial class PregameServers : HBoxContainer
         }
 
         _adding = false;
+        _addingAccount = false;
         _ask = null;
         _status = "";
         Select(e, true);
@@ -382,6 +388,9 @@ internal sealed partial class PregameServers : HBoxContainer
         SiteButton = null;
         FilesButton = null;
         NoButton = null;
+        AddAccountButton = null;
+        ForgetAccountButton = null;
+        AccountButtons.Clear();
         _pingNote = null;
 
         // What there is to read scrolls; Play and the actions stay at the
@@ -399,6 +408,12 @@ internal sealed partial class PregameServers : HBoxContainer
         }
 
         ServerEntry e = _selected;
+
+        if (e != null && _addingAccount)
+        {
+            AccountForm(e);
+            return;
+        }
 
         if (e == null)
         {
@@ -470,6 +485,11 @@ internal sealed partial class PregameServers : HBoxContainer
         {
             AskRow();
             return;
+        }
+
+        if (verdict != ServerPlay.Verdict.NotAllowed)
+        {
+            AccountsBlock(e);
         }
 
         // Play: the login gump's own arrow, the one bright thing on the card.
@@ -661,10 +681,129 @@ internal sealed partial class PregameServers : HBoxContainer
 
     private void DoPlay(ServerEntry e)
     {
-        ServerPlay.Play(e);
+        ServerPlay.Play(e, _account);
         _status = ServerPlay.LastOutcome;
         Rebuild();
         Changed?.Invoke();
+    }
+
+    // --- accounts -------------------------------------------------------------------
+
+    /// <summary>The server's saved accounts: a tap picks the one Play logs in as.</summary>
+    private void AccountsBlock(ServerEntry e)
+    {
+        IReadOnlyList<SavedAccount> accounts = AccountBook.For(e);
+
+        // A new page, or a changed list, picks the last used; the player can pick another, or none.
+        string listed = string.Join("|", accounts.Select(a => a.Name));
+
+        if (_accountFor == null || !_accountFor.Same(e.Host, e.Port) || listed != _accountNames)
+        {
+            _accountFor = e;
+            _accountNames = listed;
+            _account = accounts.FirstOrDefault();
+        }
+
+        _info.AddChild(UoTheme.Label("Accounts", UoTheme.Heading));
+
+        if (accounts.Count == 0)
+        {
+            _info.AddChild(Note("None saved. Play uses what's typed on the login screen."));
+        }
+
+        var names = new HFlowContainer();
+        names.AddThemeConstantOverride("h_separation", 4);
+        names.AddThemeConstantOverride("v_separation", 3);
+
+        foreach (SavedAccount a in accounts)
+        {
+            bool picked = a == _account;
+            Button b = UoTheme.Button(a.Name, 44);
+            b.AddThemeColorOverride("font_color", picked ? UoTheme.Heading : UoTheme.Ink);
+
+            if (picked)
+            {
+                b.AddThemeStyleboxOverride("normal", UoTheme.Plate(UoTheme.SelectedShade));
+            }
+
+            b.TooltipText = a.HasPassword ? "Password saved" : "No password saved";
+            b.Pressed += () => { _account = picked ? null : a; ShowDetail(); };
+            names.AddChild(b);
+            AccountButtons[a.Name] = b;
+        }
+
+        Button add = UoTheme.Button("Add account", 60);
+        add.Pressed += () => { _addingAccount = true; _ask = null; ShowDetail(); };
+        names.AddChild(add);
+        AddAccountButton = add;
+        _info.AddChild(names);
+
+        if (_account != null)
+        {
+            _info.AddChild(Note(_account.HasPassword
+                ? $"Play logs in as {_account.Name}."
+                : $"Play fills in {_account.Name}; type the password on the login screen."));
+            Button forget = UoTheme.Button($"Forget {_account.Name}", 60);
+            SavedAccount gone = _account;
+            forget.Pressed += () => { AccountBook.Forget(e, gone); _account = null; _accountFor = null; ShowDetail(); };
+            forget.SizeFlagsHorizontal = SizeFlags.ShrinkBegin;
+            _info.AddChild(forget);
+            ForgetAccountButton = forget;
+        }
+    }
+
+    private void AccountForm(ServerEntry e)
+    {
+        ISecretStore store = SecretStore.Current;
+        _info.AddChild(UoTheme.Label($"Add an account for {e.Name}", UoTheme.Heading));
+        _info.AddChild(UoTheme.Label("Account", UoTheme.Muted));
+        _info.AddChild(AccountField = Field("Account name"));
+        _info.AddChild(UoTheme.Label("Password", UoTheme.Muted));
+        _info.AddChild(PasswordField = Field(""));
+        PasswordField.Secret = true;
+        KeepBox = null;
+
+        if (store.Available)
+        {
+            KeepBox = new CheckBox { Text = "Save password", ButtonPressed = true, FocusMode = FocusModeEnum.All };
+            _info.AddChild(KeepBox);
+            _info.AddChild(Note("Kept encrypted by this system's keystore. The classic Save account box on the login screen still stores a typed password the upstream way."));
+        }
+        else
+        {
+            _info.AddChild(Note(store is NoStore none ? none.Why : "Passwords aren't saved on this system.", UoTheme.Ink));
+        }
+
+        Label error = Note("", UoTheme.Danger);
+        _info.AddChild(error);
+
+        var buttons = new HFlowContainer();
+        buttons.AddThemeConstantOverride("h_separation", 4);
+        Button save = UoTheme.Button("Save", 44);
+        save.Pressed += () =>
+        {
+            bool keep = KeepBox?.ButtonPressed ?? false;
+            SavedAccount a = AccountBook.Add(e, AccountField.Text, PasswordField.Text, keep, out string why);
+            PasswordField.Text = "";
+
+            if (a == null)
+            {
+                error.Text = why;
+                return;
+            }
+
+            _addingAccount = false;
+            _account = a;
+            _accountFor = e;
+            _status = keep && !a.HasPassword ? $"Saved {a.Name} without its password: {why}." : "";
+            ShowDetail();
+        };
+        Button cancel = UoTheme.Button("Cancel", 44);
+        cancel.Pressed += () => { _addingAccount = false; PasswordField.Text = ""; ShowDetail(); };
+        buttons.AddChild(save);
+        buttons.AddChild(cancel);
+        _detail.AddChild(buttons);
+        AccountSaveButton = save;
     }
 
     private void AddForm()
@@ -759,6 +898,14 @@ internal sealed partial class PregameServers : HBoxContainer
     public Button NoButton { get; private set; }
     public Button FilesButton { get; private set; }
     public Button BackButton { get; private set; }
+    public Button AddAccountButton { get; private set; }
+    public Button AccountSaveButton { get; private set; }
+    public Button ForgetAccountButton { get; private set; }
+    public LineEdit AccountField { get; private set; }
+    public LineEdit PasswordField { get; private set; }
+    public CheckBox KeepBox { get; private set; }
+    public Dictionary<string, Button> AccountButtons { get; } = new();
+    public SavedAccount PickedAccount => _account;
     public FirstRunScreen Picker { get; private set; }
     public LineEdit[] AddFields => new[] { _addName, _addHost, _addPort };
     public string Status => _status;
