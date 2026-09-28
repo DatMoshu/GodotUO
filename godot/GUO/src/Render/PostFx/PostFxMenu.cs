@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Text.Json.Nodes;
 using Godot;
+using UoTheme = GUO.Input.Touch.UoTheme;
 
 namespace GUO.Renderer.PostFx
 {
@@ -13,36 +14,39 @@ namespace GUO.Renderer.PostFx
     /// and "save as preset". Opened from Options (Video) and with Ctrl+Shift+E.
     /// </summary>
     /// <remarks>
-    /// A card of Godot Controls on its own CanvasLayer, above the game and
-    /// never under an effect (effects only touch the world target). While it is
-    /// open, <see cref="OwnsInput"/> tells the game controller to leave the
-    /// events over it to the card, as it does for the Store window.
+    /// A card of Godot Controls on its own CanvasLayer, above the game and never
+    /// under an effect (effects only touch the world target). It is built in the
+    /// UO style (docs/ui/uo_godot_style.md) from <see cref="UoTheme"/>: the stone
+    /// frame, the parchment for each pass, marble plates, UO's own check boxes,
+    /// slider and font, in art pixels, scaled by a whole number
+    /// (<see cref="UoTheme.PixelScale"/>) and sampled nearest.
+    ///
+    /// The guide's cards draw into a SubViewport and push pointer events in by
+    /// hand; this one scales its control tree directly on the CanvasLayer, which
+    /// gives the same whole-pixel result and lets Godot deliver its own input.
+    /// While it is open, <see cref="OwnsInput"/> tells the game controller to
+    /// leave the events over it to the card, as it does for the Store window.
     /// </remarks>
     internal sealed partial class PostFxMenu : Node
     {
-        private static readonly Color Gold = new("dfbb77"), Text = new("eeeade"), Muted = new("abb5ac");
-
-        // Text that sits straight on the card: dark ink on UO's light stone
-        // gump (as the client's own gumps write on stone), light text on the
-        // plain dark fallback. Text inside the dark boxes stays parchment.
-        private static bool _stone;
-        private static Color OnCard => _stone ? new Color("2a1f12") : Gold;
-        private static Color OnCardMuted => _stone ? new Color("4a4336") : Muted;
-        private const float Width = 360f;
+        /// <summary>The card's width in art pixels.</summary>
+        private const float Width = 300f;
 
         private static PostFxMenu _instance;
 
         private CanvasLayer _layer;
         private PanelContainer _card;
+        private bool _artTheme;
         private VBoxContainer _passes;
         private OptionButton _presets;
-        private CheckButton _compare, _fullQuality;
+        private CheckBox _compare, _fullQuality;
         private HSlider _split;
         private LineEdit _saveName;
         private Label _subtitle, _cost;
         private List<PostFxPreset> _presetList = new();
         private bool _syncing;
         private double _costTimer;
+        private int _scale = 1;
 
         public static bool IsOpen => _instance != null && GodotObject.IsInstanceValid(_instance) && _instance._layer.Visible;
 
@@ -92,7 +96,8 @@ namespace GUO.Renderer.PostFx
             var me = _instance;
             if (e is InputEventMouse mouse)
             {
-                return me._card.GetGlobalRect().HasPoint(mouse.Position);
+                // The card is scaled: its rect on screen is its size times the scale.
+                return new Rect2(me._card.GlobalPosition, me._card.Size * me._card.Scale).HasPoint(mouse.Position);
             }
 
             if (e is InputEventKey)
@@ -110,13 +115,11 @@ namespace GUO.Renderer.PostFx
             AddChild(_layer);
             _card = new PanelContainer
             {
-                Theme = BuildTheme(), CustomMinimumSize = new Vector2(Width, 0),
-                // Rule 7: the gump frame is pixel art, drawn nearest.
+                Theme = UoTheme.Theme,
+                CustomMinimumSize = new Vector2(Width, 0),
+                // Rule 7: gump art and the bitmap font, drawn nearest.
                 TextureFilter = CanvasItem.TextureFilterEnum.Nearest,
             };
-            StyleBox frame = CardStyle();
-            _stone = frame is StyleBoxTexture;
-            _card.AddThemeStyleboxOverride("panel", frame);
             _layer.AddChild(_card);
             Build();
             PostFxStack.Instance.PresetChanged += () => { if (IsOpen) CallDeferred(MethodName.Refresh); };
@@ -143,18 +146,25 @@ namespace GUO.Renderer.PostFx
                 return;
             }
 
-            // Keep the card at the top right and within the window.
-            Vector2 size = GetViewport().GetVisibleRect().Size;
-            float maxH = Math.Max(240f, size.Y - 32f);
+            // Top right, within the window; the layout is in art pixels.
+            Vector2 screen = GetViewport().GetVisibleRect().Size / _scale;
+            float maxH = Math.Max(160f, screen.Y - 16f);
             Vector2 min = _card.GetCombinedMinimumSize();
             _card.Size = new Vector2(Math.Max(Width, min.X), Math.Min(Math.Max(min.Y, maxH * 0.8f), maxH));
-            // Placed by its real width, so a wide control never pushes it off screen.
-            _card.Position = new Vector2(Math.Max(8f, size.X - _card.Size.X - 16f), 16f);
+            _card.Position = new Vector2(Math.Max(4f, screen.X - _card.Size.X - 8f), 8f) * _scale;
 
             _costTimer -= delta;
             if (_costTimer <= 0)
             {
                 _costTimer = 0.5;
+
+                // Opened before the gump art was ready: swap the flat stand-in for the art.
+                if (!_artTheme && UoTheme.Ready)
+                {
+                    _card.Theme = UoTheme.Theme;
+                    _artTheme = true;
+                }
+
                 double ms = PostFxStack.Instance.LastGpuMs;
                 _cost.Text = PostFxStack.Instance.Preset.IsClassic && PostFxStack.Instance.Split <= 0f
                     ? "Classic: nothing added to the frame"
@@ -164,6 +174,11 @@ namespace GUO.Renderer.PostFx
 
         private void Open()
         {
+            // The theme is the art once the gumps are loaded; pick it up and the scale now.
+            _artTheme = UoTheme.Ready;
+            _card.Theme = UoTheme.Theme;
+            _scale = UoTheme.PixelScale;
+            _card.Scale = new Vector2(_scale, _scale);
             Refresh();
             _layer.Visible = true;
         }
@@ -178,26 +193,29 @@ namespace GUO.Renderer.PostFx
 
         private void Build()
         {
+            // Spacing from the guide: 4 art px between controls, 6 between groups.
             var col = new VBoxContainer();
-            col.AddThemeConstantOverride("separation", 10);
+            col.AddThemeConstantOverride("separation", 6);
             _card.AddChild(col);
 
             var head = new HBoxContainer();
             var titles = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
             titles.AddThemeConstantOverride("separation", 0);
-            titles.AddChild(Lbl("Screen effects", 19, OnCard));
-            _subtitle = Lbl("", 12, OnCardMuted);
+            titles.AddChild(UoTheme.Label("Screen effects", UoTheme.Heading, 2));
+            _subtitle = Lbl("", UoTheme.Muted, wrap: true);
             titles.AddChild(_subtitle);
             head.AddChild(titles);
-            var close = new Button { Text = "✕", Flat = true, TooltipText = "Close (Esc)" };
-            close.AddThemeColorOverride("font_color", OnCard);
-            close.AddThemeColorOverride("font_hover_color", OnCardMuted);
+            var close = UoTheme.Button("Close");
+            close.TooltipText = "Esc";
             close.Pressed += Close;
             head.AddChild(close);
             col.AddChild(head);
-            col.AddChild(new HSeparator { Modulate = new Color(Gold, 0.35f) });
+            col.AddChild(new HSeparator());
 
-            _presets = new OptionButton { FitToLongestItem = false, ClipText = true, CustomMinimumSize = new Vector2(Width - 60f, 0) };
+            _presets = new OptionButton
+            {
+                FitToLongestItem = false, ClipText = true, CustomMinimumSize = new Vector2(Width - 32f, UoTheme.ButtonHeight),
+            };
             _presets.ItemSelected += i =>
             {
                 if (!_syncing && i >= 0 && i < _presetList.Count)
@@ -207,12 +225,7 @@ namespace GUO.Renderer.PostFx
             };
             col.AddChild(_presets);
 
-            var compareRow = new HBoxContainer();
-            _compare = new CheckButton { Text = "Compare with Classic", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
-            _compare.AddThemeColorOverride("font_color", OnCard);
-            _compare.AddThemeColorOverride("font_hover_color", OnCard);
-            _compare.AddThemeColorOverride("font_pressed_color", OnCard);
-            _compare.AddThemeColorOverride("font_hover_pressed_color", OnCard);
+            _compare = new CheckBox { Text = "Compare with Classic" };
             _compare.Toggled += on =>
             {
                 if (_syncing)
@@ -224,8 +237,7 @@ namespace GUO.Renderer.PostFx
                 PostFxStack.Instance.Rebuild();
                 _split.Editable = on;
             };
-            compareRow.AddChild(_compare);
-            col.AddChild(compareRow);
+            col.AddChild(_compare);
             _split = Slider(0.05, 0.95, 0.01, 0.5);
             _split.TooltipText = "Classic is left of the line, the effect right of it";
             _split.ValueChanged += v =>
@@ -237,16 +249,11 @@ namespace GUO.Renderer.PostFx
             };
             col.AddChild(_split);
 
-            _fullQuality = new CheckButton
+            _fullQuality = new CheckBox
             {
                 Text = "Full resolution",
                 TooltipText = "Off: looks with a heavy pass (glow, outline) run at half resolution, for weaker GPUs",
             };
-            foreach (string c in new[] { "font_color", "font_hover_color", "font_pressed_color", "font_hover_pressed_color" })
-            {
-                _fullQuality.AddThemeColorOverride(c, OnCard);
-            }
-
             _fullQuality.Toggled += on =>
             {
                 if (!_syncing)
@@ -256,35 +263,32 @@ namespace GUO.Renderer.PostFx
             };
             col.AddChild(_fullQuality);
 
-            col.AddChild(new HSeparator { Modulate = new Color(Gold, 0.2f) });
+            col.AddChild(new HSeparator());
             var scroll = new ScrollContainer
             {
-                CustomMinimumSize = new Vector2(0, 260), SizeFlagsVertical = Control.SizeFlags.ExpandFill,
+                CustomMinimumSize = new Vector2(0, 200), SizeFlagsVertical = Control.SizeFlags.ExpandFill,
                 HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
             };
             _passes = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
-            _passes.AddThemeConstantOverride("separation", 8);
+            _passes.AddThemeConstantOverride("separation", 6);
             scroll.AddChild(_passes);
             col.AddChild(scroll);
 
-            col.AddChild(new HSeparator { Modulate = new Color(Gold, 0.2f) });
+            col.AddChild(new HSeparator());
             var saveRow = new HBoxContainer();
+            saveRow.AddThemeConstantOverride("separation", 4);
             _saveName = new LineEdit
             {
                 PlaceholderText = "Name your look", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-                CustomMinimumSize = new Vector2(120, 0),
+                CustomMinimumSize = new Vector2(100, UoTheme.ButtonHeight),
             };
             saveRow.AddChild(_saveName);
-            var save = new Button { Text = "Save as preset" };
-            save.AddThemeStyleboxOverride("normal", Box("b58e42", "dfbb77"));
-            save.AddThemeStyleboxOverride("hover", Box("c79d4d", "f0d08a"));
-            save.AddThemeColorOverride("font_color", new Color("141917"));
-            save.AddThemeColorOverride("font_hover_color", new Color("141917"));
+            var save = UoTheme.Button("Save look");
             save.Pressed += SaveAs;
             saveRow.AddChild(save);
             col.AddChild(saveRow);
 
-            _cost = Lbl("", 11, OnCardMuted);
+            _cost = Lbl("", UoTheme.Muted);
             _cost.TooltipText = "Ctrl+Shift+E opens and closes this; -postfx in chat does it by command";
             col.AddChild(_cost);
         }
@@ -341,7 +345,7 @@ namespace GUO.Renderer.PostFx
 
             if (preset.Passes.Count == 0)
             {
-                _passes.AddChild(Lbl("Classic draws the world exactly as ClassicUO does. Pick a look above.", 12, OnCardMuted, wrap: true));
+                _passes.AddChild(Lbl("Classic draws the world exactly as ClassicUO does. Pick a look above.", UoTheme.Muted, wrap: true));
                 return;
             }
 
@@ -351,14 +355,20 @@ namespace GUO.Renderer.PostFx
                 PostFxPass pass = preset.Passes[index];
                 Shader shader = PostFxLibrary.Shader(pass.Shader);
 
+                // Each pass on parchment, the guide's frame for a list's entries.
                 var box = new PanelContainer();
-                box.AddThemeStyleboxOverride("panel", Box("141a17", "2c352f"));
+                box.AddThemeStyleboxOverride("panel", UoTheme.Frame(UoTheme.FieldFrame, 5));
                 var inner = new VBoxContainer();
                 inner.AddThemeConstantOverride("separation", 4);
                 box.AddChild(inner);
 
-                var toggle = new CheckButton { Text = Title(pass.Shader), ButtonPressed = pass.Enabled };
-                toggle.AddThemeColorOverride("font_color", Gold);
+                var toggle = new CheckBox { Text = Title(pass.Shader), ButtonPressed = pass.Enabled };
+                // Colour means state: the heading colour marks the pass's own switch.
+                foreach (string c in new[] { "font_color", "font_hover_color", "font_pressed_color", "font_hover_pressed_color" })
+                {
+                    toggle.AddThemeColorOverride(c, UoTheme.Heading);
+                }
+
                 toggle.Toggled += on =>
                 {
                     pass.Enabled = on;
@@ -368,7 +378,7 @@ namespace GUO.Renderer.PostFx
 
                 if (shader == null)
                 {
-                    inner.AddChild(Lbl($"No shader \"{pass.Shader}\".", 11, new Color("d98a7a")));
+                    inner.AddChild(Lbl($"No shader \"{pass.Shader}\".", UoTheme.Danger));
                 }
                 else
                 {
@@ -391,8 +401,8 @@ namespace GUO.Renderer.PostFx
             if (u.IsEnum)
             {
                 var row = new HBoxContainer();
-                row.AddChild(Lbl(u.Label, 12, Text, expand: true));
-                var pick = new OptionButton { CustomMinimumSize = new Vector2(150, 0) };
+                row.AddChild(Lbl(u.Label, UoTheme.Ink, expand: true));
+                var pick = new OptionButton { CustomMinimumSize = new Vector2(120, UoTheme.ButtonHeight), ClipText = true };
                 foreach (string option in u.Options)
                 {
                     pick.AddItem(option.Contains(':') ? option[..option.IndexOf(':')] : option);
@@ -410,9 +420,9 @@ namespace GUO.Renderer.PostFx
                 var row = new VBoxContainer();
                 row.AddThemeConstantOverride("separation", 0);
                 var label = new HBoxContainer();
-                label.AddChild(Lbl(u.Label, 12, Text, expand: true));
+                label.AddChild(Lbl(u.Label, UoTheme.Ink, expand: true));
                 double value = current.VariantType is Variant.Type.Float or Variant.Type.Int ? current.AsDouble() : u.Min;
-                var shown = Lbl(Format(value, u), 12, Muted);
+                var shown = Lbl(Format(value, u), UoTheme.Muted);
                 label.AddChild(shown);
                 row.AddChild(label);
                 var slider = Slider(u.Min, u.Max, u.Step, value);
@@ -428,11 +438,11 @@ namespace GUO.Renderer.PostFx
             if (u.IsColor)
             {
                 var row = new HBoxContainer();
-                row.AddChild(Lbl(u.Label, 12, Text, expand: true));
+                row.AddChild(Lbl(u.Label, UoTheme.Ink, expand: true));
                 var picker = new ColorPickerButton
                 {
                     Color = current.VariantType == Variant.Type.Color ? current.AsColor() : Colors.White,
-                    CustomMinimumSize = new Vector2(64, 24),
+                    CustomMinimumSize = new Vector2(48, UoTheme.ButtonHeight),
                 };
                 picker.ColorChanged += c =>
                     PostFxStack.Instance.SetParam(passIndex, u.Name, new JsonArray(c.R, c.G, c.B, c.A));
@@ -472,7 +482,7 @@ namespace GUO.Renderer.PostFx
             }
         }
 
-        // --- style (the window menu's and the Store's) -----------------------------------
+        // --- small helpers ------------------------------------------------------------
 
         private static string Title(string shader) =>
             shader.Length == 0 ? "?" : char.ToUpperInvariant(shader[0]) + shader[1..].Replace('_', ' ');
@@ -480,152 +490,16 @@ namespace GUO.Renderer.PostFx
         private static string Format(double v, PostFxUniform u) =>
             u.Type == Variant.Type.Int || u.Step >= 1f ? $"{v:0}" : u.Step >= 0.1f ? $"{v:0.0}" : $"{v:0.00}";
 
-        private static HSlider Slider(double min, double max, double step, double value)
+        // The theme draws UO's bar and knob; only the range is set here.
+        private static HSlider Slider(double min, double max, double step, double value) => new()
         {
-            var s = new HSlider
-            {
-                MinValue = min, MaxValue = max, Step = step, Value = value,
-                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, CustomMinimumSize = new Vector2(0, 22),
-            };
-            s.AddThemeStyleboxOverride("slider", new StyleBoxFlat
-            {
-                BgColor = new Color("2c352f"), ContentMarginTop = 2, ContentMarginBottom = 2,
-            });
-            s.AddThemeStyleboxOverride("grabber_area", new StyleBoxFlat
-            {
-                BgColor = new Color(Gold, 0.8f), ContentMarginTop = 2, ContentMarginBottom = 2,
-            });
-            s.AddThemeStyleboxOverride("grabber_area_highlight", new StyleBoxFlat { BgColor = Gold });
-            return s;
-        }
-
-        /// <summary>
-        /// The card's frame: UO's own dark stone ResizePic (0x0A28, the one the
-        /// character screen uses), its nine pieces composed into one texture and
-        /// tiled like the client tiles them. Without client data, a square frame
-        /// in the same colours, with a hard 90s shadow and no rounding.
-        /// </summary>
-        private static StyleBox CardStyle()
-        {
-            StyleBoxTexture gump = GumpFrame(0x0A28);
-            if (gump != null)
-            {
-                return gump;
-            }
-
-            return new StyleBoxFlat
-            {
-                BgColor = new Color(0.078f, 0.098f, 0.090f, 0.97f),
-                BorderColor = new Color(Gold, 0.55f),
-                BorderWidthLeft = 2, BorderWidthRight = 2, BorderWidthTop = 2, BorderWidthBottom = 2,
-                ShadowColor = new Color(0, 0, 0, 0.6f), ShadowSize = 0, ShadowOffset = new Vector2(3, 3),
-                ContentMarginLeft = 16, ContentMarginRight = 16, ContentMarginTop = 12, ContentMarginBottom = 14,
-                AntiAliasing = false,
-            };
-        }
-
-        private static StyleBoxTexture GumpFrame(ushort graphic)
-        {
-            try
-            {
-                var gumps = GUO.Client.Game?.UO?.FileManager?.Gumps;
-                if (gumps == null)
-                {
-                    return null;
-                }
-
-                var pieces = new Image[9];
-                for (int i = 0; i < 9; i++)
-                {
-                    var info = gumps.GetGump((uint)(graphic + i));
-                    if (info.Width <= 0 || info.Height <= 0)
-                    {
-                        return null;
-                    }
-
-                    // Pixels are 0xAABBGGRR, i.e. RGBA8 bytes in memory.
-                    byte[] bytes = System.Runtime.InteropServices.MemoryMarshal
-                        .AsBytes(info.Pixels.Slice(0, info.Width * info.Height)).ToArray();
-                    pieces[i] = Image.CreateFromData(info.Width, info.Height, false, Image.Format.Rgba8, bytes);
-                }
-
-                int left = pieces[0].GetWidth(), right = pieces[2].GetWidth();
-                int top = pieces[0].GetHeight(), bottom = pieces[6].GetHeight();
-                int midW = pieces[4].GetWidth(), midH = pieces[4].GetHeight();
-                var sheet = Image.CreateEmpty(left + midW + right, top + midH + bottom, false, Image.Format.Rgba8);
-                void Put(int i, int x, int y) => sheet.BlitRect(pieces[i], new Rect2I(0, 0, pieces[i].GetSize()), new Vector2I(x, y));
-                Put(0, 0, 0);
-                Put(1, left, 0);
-                Put(2, left + midW, 0);
-                Put(3, 0, top);
-                Put(4, left, top);
-                Put(5, left + midW, top);
-                Put(6, 0, top + midH);
-                Put(7, left, top + midH);
-                Put(8, left + midW, top + midH);
-
-                return new StyleBoxTexture
-                {
-                    Texture = ImageTexture.CreateFromImage(sheet),
-                    TextureMarginLeft = left, TextureMarginRight = right, TextureMarginTop = top, TextureMarginBottom = bottom,
-                    AxisStretchHorizontal = StyleBoxTexture.AxisStretchMode.Tile,
-                    AxisStretchVertical = StyleBoxTexture.AxisStretchMode.Tile,
-                    ContentMarginLeft = left + 8, ContentMarginRight = right + 8,
-                    ContentMarginTop = top + 4, ContentMarginBottom = bottom + 6,
-                };
-            }
-            catch (Exception e)
-            {
-                GD.PushWarning($"[GUO] postfx menu: no gump frame: {e.Message}");
-                return null;
-            }
-        }
-
-        // Square, 1 px, no anti-aliasing: pixel-art boxes, not rounded cards.
-        private static StyleBoxFlat Box(string bg, string border) => new()
-        {
-            BgColor = new Color(bg), BorderColor = new Color(border),
-            BorderWidthLeft = 1, BorderWidthRight = 1, BorderWidthTop = 1, BorderWidthBottom = 1,
-            AntiAliasing = false,
-            ContentMarginLeft = 10, ContentMarginRight = 10, ContentMarginTop = 6, ContentMarginBottom = 6,
+            MinValue = min, MaxValue = max, Step = step, Value = value,
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
         };
 
-        private static Theme BuildTheme()
+        private static Label Lbl(string text, Color color, bool expand = false, bool wrap = false)
         {
-            var theme = new Theme { DefaultFontSize = 14 };
-            foreach (string control in new[] { "Button", "CheckButton", "CheckBox", "OptionButton", "ColorPickerButton" })
-            {
-                theme.SetStylebox("normal", control, Box("202922", "455342"));
-                theme.SetStylebox("hover", control, Box("303d2e", "b4a16b"));
-                theme.SetStylebox("pressed", control, Box("3f4931", "dfbb77"));
-                theme.SetStylebox("disabled", control, Box("181d1a", "2c332e"));
-                theme.SetStylebox("focus", control, new StyleBoxEmpty());
-                theme.SetColor("font_color", control, Text);
-                theme.SetColor("font_hover_color", control, Text);
-                theme.SetColor("font_pressed_color", control, Text);
-            }
-
-            foreach (string control in new[] { "CheckButton", "CheckBox" })
-            {
-                // Toggles read as rows, not boxed buttons.
-                theme.SetStylebox("normal", control, new StyleBoxEmpty());
-                theme.SetStylebox("hover", control, new StyleBoxEmpty());
-                theme.SetStylebox("pressed", control, new StyleBoxEmpty());
-                theme.SetStylebox("hover_pressed", control, new StyleBoxEmpty());
-            }
-
-            theme.SetStylebox("normal", "LineEdit", Box("141a17", "455342"));
-            theme.SetStylebox("focus", "LineEdit", Box("141a17", "dfbb77"));
-            theme.SetColor("font_color", "LineEdit", Text);
-            theme.SetColor("font_color", "Label", Text);
-            return theme;
-        }
-
-        private static Label Lbl(string text, int size, Color color, bool expand = false, bool wrap = false)
-        {
-            var l = new Label { Text = text, VerticalAlignment = VerticalAlignment.Center };
-            l.AddThemeFontSizeOverride("font_size", size);
-            l.AddThemeColorOverride("font_color", color);
+            Label l = UoTheme.Label(text, color);
             if (expand)
             {
                 l.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
@@ -634,7 +508,7 @@ namespace GUO.Renderer.PostFx
             if (wrap)
             {
                 l.AutowrapMode = TextServer.AutowrapMode.WordSmart;
-                l.CustomMinimumSize = new Vector2(Width - 40f, 0);
+                l.CustomMinimumSize = new Vector2(Width - 60f, 0);
             }
 
             return l;

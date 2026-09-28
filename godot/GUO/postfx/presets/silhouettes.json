@@ -1,0 +1,15 @@
+{
+ "name": "Silhouettes",
+ "description": "Ink around every character, item and static, from the object buffer: the art inside stays clean.",
+ "passes": [
+  {
+   "shader": "outline_objects",
+   "params": {
+    "edges": 0,
+    "thickness": 1,
+    "strength": 0.9
+   }
+  }
+ ],
+ "bindings": []
+}

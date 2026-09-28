@@ -96,11 +96,40 @@ effect that wants light reads it as an input and does not replace that blend.
 | `light_tex` | `LightRenderTarget`'s texture | now (bloom from lights) |
 | `palette_tex` | a palette strip from the preset (LUT or EGA/handheld palettes) | now |
 | `lut_tex` | a 3D LUT laid out as a strip (N*N x N) | now |
-| `id_tex` | an object-id mask (PixelPicker's idea: one colour per game object) | later, when an effect needs object outlines |
+| `id_tex` | the object-id buffer: one colour per world object (below) | built; the Silhouettes look uses it |
 | `depth_tex` | the isometric depth the batcher already computes per sprite | later |
 
 The framework creates a buffer only when an enabled pass declares it, so
 Classic pays nothing.
+
+#### The object-id buffer
+
+`id_tex` is a SubViewport the world target's size, created only while an
+enabled pass declares it. While it exists, the batcher mirrors the world's
+sprites into one canvas item under it, in painter order, with an alpha-test
+shader that writes a flat colour (a marked deviation in `UltimaBatcher2D`,
+reviewed with GUOeditor):
+
+- `RenderLists` sets `CurrentObjectId` per object (`PostFxIds.Of`): an
+  entity's serial, or a hash of a static's graphic and position.
+- Land is background (id 0), and so is a flat walkable static (a floor or a
+  paved road: surface, height 0), so floors are not outlined tile by tile.
+  Land that covers an object (`CoverFromBelow`) paints background over it,
+  so hidden parts are not outlined.
+- The id comes from the vertex colour through a flat varying: a canvas
+  shader's fragment `COLOR` is already multiplied by the texture, which gave
+  thousands of false ids in the first proof run.
+- Proof (desktop sheet, Britain bank): the id buffer is absent under
+  Classic; with Silhouettes on, 149 distinct ids on screen.
+- Shadows are skipped, and BatchedWorld runs fall back to the plain path
+  while mirroring.
+- Nothing else changes: with no id pass, `SetRenderTarget` leaves the mirror
+  off, and no extra call, item or batch-counter entry is made.
+
+The `outline_objects` pass inks where a pixel's id differs from a neighbour's
+("Around each object") or where it meets the ground ("Only against the
+ground"). So characters, items and statics get clean silhouettes and
+textures are never traced inside. Depth (`depth_tex`) is still future work.
 
 ### 4. Presets are text
 

@@ -430,6 +430,10 @@ namespace GUO.Game.Scenes
             for (int i = 0; i < span.Length; i++)
             {
                 ref readonly Drawable next = ref span[i];
+                // PORT DEVIATION (GUO): whose pixels these are, for the
+                // post-processing id buffer (ADR-0023); land here covers, so it
+                // paints background. Read only while an id pass is on.
+                batcher.CurrentObjectId = next.Object is Land ? -1 : Renderer.PostFx.PostFxIds.Of(next.Object);
 
                 if (next.Mesh != null)
                 {
@@ -456,6 +460,7 @@ namespace GUO.Game.Scenes
                 }
             }
 
+            batcher.CurrentObjectId = 0; // PORT DEVIATION (GUO): ADR-0023
             return done;
         }
 
@@ -502,6 +507,8 @@ namespace GUO.Game.Scenes
                 if (obj.Z <= maxGroundZ)
                 {
                     float depth = obj.CalculateDepthZ();
+                    // PORT DEVIATION (GUO): the id buffer (ADR-0023); first-drawn land is background.
+                    batcher.CurrentObjectId = obj is Land ? 0 : Renderer.PostFx.PostFxIds.Of(obj);
 
                     if (obj.Draw(batcher, obj.RealScreenPosition.X, obj.RealScreenPosition.Y, depth))
                     {
@@ -510,6 +517,7 @@ namespace GUO.Game.Scenes
                 }
             }
 
+            batcher.CurrentObjectId = 0; // PORT DEVIATION (GUO): ADR-0023
             return done;
         }
 

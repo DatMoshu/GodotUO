@@ -174,7 +174,43 @@ void fragment() { COLOR = texture(source, SCREEN_UV); }";
 
         report["tiers"] = tiers;
 
-        // 6. The A/B split, on one look.
+        // 6. The object-id buffer: off unless a pass reads it, then one id per object.
+        stack.Use(PostFxPreset.Classic(), remember: false);
+        await Frames(host, 5);
+        bool idOff = !stack.IdCanvas.IsValid;
+        PostFxPreset sil = PostFxLibrary.Find("Silhouettes");
+        var idReport = new JsonObject { ["off_without_id_pass"] = idOff };
+        if (sil != null)
+        {
+            stack.Use(sil, remember: false);
+            double ms = await Gpu(host);
+            await Snap(host, dir, "silhouettes");
+            await host.ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+            Image ids = stack.IdTexture?.GetImage();
+            int distinct = 0;
+            if (ids != null)
+            {
+                ids.SavePng(Path.Combine(dir, "silhouettes_ids.png"));
+                ids.Convert(Image.Format.Rgba8);
+                byte[] d = ids.GetData();
+                var seen = new HashSet<int>();
+                for (int i = 0; i < d.Length; i += 4)
+                {
+                    seen.Add(d[i] << 16 | d[i + 1] << 8 | d[i + 2]);
+                }
+
+                distinct = seen.Count;
+            }
+
+            idReport["gpu_ms"] = Math.Round(ms, 4);
+            idReport["distinct_ids_on_screen"] = distinct;
+            GD.Print($"[GUO] postfx probe: id buffer off without an id pass: {idOff}; Silhouettes {ms:0.000} ms, {distinct} distinct ids on screen");
+            ok &= idOff && distinct > 1;
+        }
+
+        report["object_ids"] = idReport;
+
+        // 7. The A/B split, on one look.
         PostFxPreset noir = PostFxLibrary.Find("Noir");
         if (noir != null)
         {

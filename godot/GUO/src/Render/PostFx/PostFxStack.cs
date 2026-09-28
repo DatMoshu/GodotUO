@@ -68,6 +68,20 @@ namespace GUO.Renderer.PostFx
 
         private PostFxPreset _preset = PostFxPreset.Classic();
         private SubViewport _viewport;
+
+        // The object-id buffer (ADR-0023, section 3): only while an enabled pass
+        // declares id_tex. The batcher mirrors the world's sprites into it.
+        private SubViewport _idViewport;
+        private Node2D _idHost;
+
+        /// <summary>The canvas item the batcher mirrors into; invalid when no pass wants ids.</summary>
+        internal Rid IdCanvas => _idHost != null && GodotObject.IsInstanceValid(_idHost) ? _idHost.GetCanvasItem() : default;
+
+        /// <summary>The id buffer's texture, for PostFxProbe; null when no pass wants ids.</summary>
+        internal Texture2D IdTexture => _idViewport?.GetTexture();
+
+        /// <summary>The world target the id buffer shadows.</summary>
+        internal RenderTarget2D IdFor { get; private set; }
         private Sprite2D _base;
         private readonly List<(PostFxPass pass, ColorRect rect, ShaderMaterial material)> _built = new();
         private ColorRect _split;
@@ -177,6 +191,11 @@ namespace GUO.Renderer.PostFx
                 {
                     b.material.SetShaderParameter("light_tex", light?.Texture);
                 }
+
+                if (_idViewport != null && b.material.Shader != null && HasUniform(b.material.Shader, "id_tex"))
+                {
+                    b.material.SetShaderParameter("id_tex", _idViewport.GetTexture());
+                }
             }
 
             if (_split != null)
@@ -200,6 +219,24 @@ namespace GUO.Renderer.PostFx
             }
 
             bool heavy = _preset.Passes.Exists(p => p.Enabled && IsHeavy(PostFxLibrary.Shader(p.Shader)));
+
+            // The id buffer, only when a pass reads it; created before the stack's
+            // own viewport, so it renders first. Always the world's full size.
+            if (_preset.Passes.Exists(p => p.Enabled && HasUniform(PostFxLibrary.Shader(p.Shader), "id_tex")))
+            {
+                _idViewport = new SubViewport
+                {
+                    Size = new Vector2I(world.Width, world.Height),
+                    TransparentBg = true,
+                    RenderTargetUpdateMode = SubViewport.UpdateMode.Always,
+                    Disable3D = true,
+                    CanvasItemDefaultTextureFilter = Viewport.DefaultCanvasItemTextureFilter.Nearest,
+                };
+                _idHost = new Node2D();
+                _idViewport.AddChild(_idHost);
+                host.AddChild(_idViewport);
+                IdFor = world;
+            }
             Scale = !FullQuality && heavy ? 0.5f : 1f;
             Vector2I size = Scaled(world);
 
@@ -273,6 +310,10 @@ namespace GUO.Renderer.PostFx
 
         private void Teardown()
         {
+            _idViewport?.QueueFree();
+            _idViewport = null;
+            _idHost = null;
+            IdFor = null;
             _viewport?.QueueFree();
             _viewport = null;
             _base = null;
