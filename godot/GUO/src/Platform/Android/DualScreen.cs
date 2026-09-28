@@ -104,6 +104,15 @@ namespace GUO.Platform.Android
         public static bool ShelfOn { get; private set; }
 
         /// <summary>
+        /// Hold the second screen on, or stop holding it (the screen saver's
+        /// sleep, S14). Nothing without a real second display.
+        /// </summary>
+        public static void KeepScreenOn(bool on)
+        {
+            _instance?._display?.KeepScreenOn(on);
+        }
+
+        /// <summary>
         /// Set by the probe to measure the main screen without the second one:
         /// nothing is drawn or pushed, everything else stays as it is.
         /// </summary>

@@ -79,6 +79,7 @@ namespace GUO.Platform.Android
         private GodotObject _touchListener;
         private Callable _openCallable;
         private Callable _closeCallable;
+        private Callable _keepOnCallable;
         private int _bitmapWidth, _bitmapHeight;
 
         private readonly ConcurrentQueue<TouchEvent> _touches = new();
@@ -411,6 +412,43 @@ namespace GUO.Platform.Android
         public bool TryDequeueTouch(out TouchEvent e)
         {
             return _touches.TryDequeue(out e);
+        }
+
+        /// <summary>
+        /// Set or clear FLAG_KEEP_SCREEN_ON on the presentation's window, on
+        /// Android's UI thread. While any shown window carries the flag the
+        /// device never sleeps, so the screen saver's sleep clears it here too.
+        /// </summary>
+        public void KeepScreenOn(bool on)
+        {
+            if (_presentation == null)
+            {
+                return;
+            }
+
+            try
+            {
+                _keepOnCallable = Callable.From(() =>
+                {
+                    try
+                    {
+                        GodotObject window = _presentation?.Call("getWindow").AsGodotObject();
+                        window?.Call(on ? "addFlags" : "clearFlags", 0x80);
+                        Check(on ? "addFlags(KEEP_SCREEN_ON)" : "clearFlags(KEEP_SCREEN_ON)");
+                    }
+                    catch (Exception e)
+                    {
+                        LastError = e.Message;
+                    }
+                });
+
+                GodotObject runnable = _runtime.Call("createRunnableFromGodotCallable", _keepOnCallable).AsGodotObject();
+                _activity.Call("runOnUiThread", runnable);
+            }
+            catch (Exception e)
+            {
+                LastError = e.Message;
+            }
         }
 
         public void Close()
