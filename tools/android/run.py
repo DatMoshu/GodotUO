@@ -607,8 +607,30 @@ def export(p: Paths, extra_args: str, apk: Path, sound: bool = False) -> int:
     if result.returncode != 0 or not apk.exists():
         say(f"export FAILED (exit {result.returncode}); full log: {log}")
         return 1
+    problem = export_problem(text, apk)
+    if problem:
+        say(f"export FAILED: {problem}; full log: {log}")
+        return 1
     say(f"exported {apk} ({apk.stat().st_size // 1024 // 1024} MB); log: {log}")
     return 0
+
+
+# Godot exits 0 and writes an APK even when the C# did not build: the APK
+# then holds no GUO.dll and the device boots to nothing (C9's first Odin run).
+BUILD_FAILED = "Failed to build project"
+
+
+def export_problem(log_text: str, apk: Path) -> str | None:
+    """Why an APK Godot says it exported is not a build, or None when it is."""
+    if BUILD_FAILED in log_text:
+        return f"Godot logged '{BUILD_FAILED}' (the C# did not compile; run dotnet build to see why)"
+    try:
+        with zipfile.ZipFile(apk) as z:
+            if not any(n.startswith("assets/.godot/mono/") and n.endswith("/GUO.dll") for n in z.namelist()):
+                return "the APK holds no GUO.dll (no C# assemblies were packed)"
+    except zipfile.BadZipFile:
+        return "the APK is not a valid zip"
+    return None
 
 
 def install(p: Paths, apk: Path) -> int:
@@ -886,6 +908,77 @@ def dual_probe(p: Paths, timeout: int, skip_export: bool, extra_args: str, stay:
     return 1
 
 
+PORTRAIT_DONE = "[GUO] portrait probe: done"
+PORTRAIT_FAIL = "[GUO] portrait probe: FAIL"
+PORTRAIT_HOLD = "[GUO] portrait: hold "
+PORTRAIT_ROW = "[GUO] portrait: row "
+
+
+def portrait_probe(p: Paths, timeout: int, skip_export: bool, extra_args: str, stay: bool) -> int:
+    """C9: export with --portrait-probe, photograph each state it holds, write the table."""
+    apk = p.out_dir / "GUO-portrait.apk"
+    if not skip_export:
+        if export(p, f"--portrait-probe {extra_args}".strip(), apk) != 0:
+            return 1
+    if install(p, apk) != 0:
+        say("install FAILED")
+        return 1
+
+    out = p.out_dir / "portrait"
+    out.mkdir(parents=True, exist_ok=True)
+    adb = adb_cmd(p)
+    wake_device(p)
+    subprocess.run(adb + ["logcat", "-c"])
+    stop_app(p)
+    if start_app(p) != 0:
+        return 1
+
+    say(f"waiting up to {timeout}s for '{PORTRAIT_DONE}' on logcat, photographing each hold")
+    deadline = time.time() + timeout
+    shot: set[str] = set()
+    verdict = None
+    log_text = ""
+    while time.time() < deadline:
+        time.sleep(1)
+        log_text = subprocess.run(adb + ["logcat", "-d", "-v", "time"] + LOGCAT_FILTER,
+                                  capture_output=True, text=True, errors="replace").stdout
+        # The client holds each state for five seconds after naming it.
+        for line in log_text.splitlines():
+            if PORTRAIT_HOLD in line:
+                name = line.split(PORTRAIT_HOLD, 1)[1].strip()
+                if name and name not in shot:
+                    shot.add(name)
+                    ok = screencap(p, out / f"{name}.png")
+                    say(f"hold {name}: " + ("photographed" if ok else "screencap failed"))
+        if PORTRAIT_DONE in log_text:
+            verdict = True
+            break
+        if PORTRAIT_FAIL in log_text or "FATAL EXCEPTION" in log_text or "[GUO] FATAL" in log_text:
+            verdict = False
+            break
+        if f"Process {p.cfg.android_package}" in log_text and "has died" in log_text:
+            verdict = False
+            break
+
+    if not stay:
+        stop_app(p)
+    (out / "portrait_logcat.txt").write_text(log_text, encoding="utf-8")
+
+    rows = [line.split(PORTRAIT_ROW, 1)[1].strip() for line in log_text.splitlines() if PORTRAIT_ROW in line]
+    table = out / "portrait_table.md"
+    header = ["| # | Measure | Landscape | Portrait | Verdict |", "|---|---|---|---|---|"]
+    table.write_text("\n".join(header + rows) + "\n", encoding="utf-8")
+    for r in rows:
+        print("  " + r)
+
+    if verdict:
+        say(f"OK; {len(shot)} photos and the table in {out}")
+        return 0
+    say("FAILED: " + ("the client reported a failure or died" if verdict is False
+                      else f"no '{PORTRAIT_DONE}' within {timeout}s") + f"; what there is: {out}")
+    return 1
+
+
 # ---------------------------------------------------------------------------
 # main
 # ---------------------------------------------------------------------------
@@ -924,6 +1017,11 @@ def main(argv: list[str] | None = None) -> int:
     dp.add_argument("--no-export", action="store_true", help="reuse build\\android\\GUO-dual.apk")
     dp.add_argument("--args", default="", help="extra client flags to bake in (e.g. --host <pc-lan-ip>)")
     dp.add_argument("--stay", action="store_true", help="leave the app running afterwards")
+    pp = sub.add_parser("portrait_probe", help="C9: export with --portrait-probe, photograph each state, write the table")
+    pp.add_argument("--timeout", type=int, default=600, help="seconds to wait for the probe to finish")
+    pp.add_argument("--no-export", action="store_true", help="reuse build\\android\\GUO-portrait.apk")
+    pp.add_argument("--args", default="", help="extra client flags to bake in (e.g. --host <pc-lan-ip>)")
+    pp.add_argument("--stay", action="store_true", help="leave the app running afterwards")
     sub.add_parser("displays", help="list the device's displays as dumpsys reports them")
 
     args = parser.parse_args(argv)
@@ -957,6 +1055,8 @@ def main(argv: list[str] | None = None) -> int:
         return smoke(p, args.timeout, args.no_export, args.sound)
     if args.command == "dual_probe":
         return dual_probe(p, args.timeout, args.no_export, args.args, args.stay)
+    if args.command == "portrait_probe":
+        return portrait_probe(p, args.timeout, args.no_export, args.args, args.stay)
     if args.command == "displays":
         for d in android_displays(p):
             print("  " + str(d))
