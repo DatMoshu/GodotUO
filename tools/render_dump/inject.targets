@@ -6,9 +6,11 @@
     in the build imports it; only the client takes the file.
   -->
   <PropertyGroup Condition="'$(MSBuildProjectName)' == 'ClassicUO.Client'">
-    <DefineConstants>$(DefineConstants);RENDER_DUMP_CUO</DefineConstants>
+    <DefineConstants>$(DefineConstants);RENDER_DUMP_CUO;PERF_DUMP_CUO</DefineConstants>
   </PropertyGroup>
   <ItemGroup Condition="'$(MSBuildProjectName)' == 'ClassicUO.Client'">
     <Compile Include="$(MSBuildThisFileDirectory)..\..\godot\GUO\src\Bootstrap\RenderDump.cs" Link="RenderDumpInjected\RenderDump.cs" />
+    <!-- Epic B, B4: world prepare and draw timed by ClassicUO's own profiler (GUO_PERF_DUMP). -->
+    <Compile Include="$(MSBuildThisFileDirectory)..\..\godot\GUO\src\Bootstrap\PerfDump.cs" Link="PerfDumpInjected\PerfDump.cs" />
   </ItemGroup>
 </Project>

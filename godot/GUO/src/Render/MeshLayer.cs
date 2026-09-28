@@ -90,6 +90,11 @@ namespace GUO.Renderer
         public bool[] Visible = new bool[INITIAL_CAPACITY];
         public int VisibleSpriteCount;
         public TextureRun[] VisibleRuns = new TextureRun[16];
+
+        // PORT DEVIATION (GUO): not upstream's. Counts the times the visible
+        // runs were rebuilt, so MergedLand (--merged-land, Epic B) knows when
+        // its merged meshes are stale without comparing the sprites.
+        public int BuildStamp;
         public int VisibleRunCount;
         private bool _visibilityDirty = true;
         private bool _alphaDirty;
@@ -371,6 +376,7 @@ namespace GUO.Renderer
         /// </remarks>
         private void BuildRunMeshes()
         {
+            BuildStamp++;
             // Walk the visible sprites in the same order the runs were closed
             // in: runs are contiguous stretches of the visible subset, so run
             // N's sprites are simply the next r.Count of them.

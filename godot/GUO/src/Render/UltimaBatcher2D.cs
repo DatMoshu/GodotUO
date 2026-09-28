@@ -605,6 +605,20 @@ void fragment() {
         /// ArrayMesh per run, because canvas_item_add_mesh takes a single
         /// texture per call. See ADR-0004.
         /// </remarks>
+        /// <summary>
+        /// One merged land mesh (MergedLand, --merged-land): drawn as a run of
+        /// DrawMeshLayer is, on the mesh material under the world offset.
+        /// </summary>
+        public void DrawLandMesh(ArrayMesh mesh, Texture2D texture)
+        {
+            EnsureStarted();
+            EnsureMaterial(_meshMaterial);
+            FlushRun();
+            Commands++;
+            Count(2, default);
+            RenderingServer.CanvasItemAddMesh(_current, mesh.GetRid(), Transform2D.Identity, Colors.White, texture.GetRid());
+        }
+
         public int DrawMeshLayer(MeshLayer layer)
         {
             EnsureStarted();
