@@ -346,6 +346,11 @@ public partial class Main : Node
     /// </remarks>
     private void StartClient()
     {
+        if (_options.SafForget)
+        {
+            GD.Print($"[GUO] saf           : --saf-forget released {SafFolder.Release()} grant(s)");
+        }
+
         string dataDir = GuoDataDirectory();
 
         // --background mode[:path]: what the window shows behind the world
@@ -1113,6 +1118,7 @@ public partial class Main : Node
         public bool PerfProbe { get; private set; }
 
         public string PerfOut { get; private set; } = "";
+        public bool SafForget { get; private set; }
 
         public string PerfLabel { get; private set; } = "";
 
@@ -1440,6 +1446,10 @@ public partial class Main : Node
                         break;
                     case "--focus":
                         o._noFocus = false;
+                        break;
+                    case "--saf-forget":
+                        // Android: give back every picked-folder grant (G2a cleanup).
+                        o.SafForget = true;
                         break;
                     case "--login-probe":
                         o.LoginProbe = true;

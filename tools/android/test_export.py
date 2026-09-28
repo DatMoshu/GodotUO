@@ -8,7 +8,7 @@ import os
 import subprocess
 import sys
 
-from run import BUILD_FAILED, apk_path, export_done, export_failure, export_problem, wait_for_export
+from run import BUILD_FAILED, apk_path, device_args, export_done, export_failure, export_problem, wait_for_export
 
 
 class ExportProblemTests(unittest.TestCase):
@@ -58,6 +58,27 @@ class ApkPathTests(unittest.TestCase):
     def test_any_other_failure_names_the_path(self):
         apk = Path("C:/somewhere/x.apk")
         self.assertIn(str(apk), export_failure(1, "", apk))
+
+
+class DeviceArgsTests(unittest.TestCase):
+    class _Cfg:
+        android_client_data = "/sdcard/Android/data/org.guo.client/files/uo"
+        android_account = ""
+
+    class _Paths:
+        pass
+
+    def paths(self):
+        p = self._Paths()
+        p.cfg = self._Cfg()
+        return p
+
+    def test_the_data_folder_is_baked_by_default(self):
+        self.assertEqual(device_args(self.paths(), "--x"),
+                         "-- --play --client-data /sdcard/Android/data/org.guo.client/files/uo --silent --x")
+
+    def test_no_client_data_leaves_it_out(self):
+        self.assertEqual(device_args(self.paths(), "--x", client_data=False), "-- --play --silent --x")
 
 
 class ExportHangTests(unittest.TestCase):

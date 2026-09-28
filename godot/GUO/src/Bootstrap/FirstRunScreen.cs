@@ -2,6 +2,7 @@ namespace GUO.Host;
 
 using System;
 using System.IO;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Godot;
@@ -22,7 +23,12 @@ using Godot;
 /// Re-opened from Options ("Change UO folder…", a marked PORT DEVIATION in
 /// OptionsGump) through <see cref="OpenChange"/>: the same screen in change
 /// mode, which saves the folder into upstream's settings and says it applies
-/// on the next start. The Android folder picker (SAF) is not handled here.
+/// on the next start.
+///
+/// On Android (G2a) Choose folder opens the system's folder picker (the
+/// Storage Access Framework, through Godot's native dialog). The folder is
+/// checked through the grant it returns, and Continue copies its game data
+/// into GUO's own data folder, with progress, before going on (SafFolder).
 ///
 /// On the web (ADR-0008, ADR-0021) Choose folder opens the browser's own
 /// picker through tools/web/guo_data.js: the player's folder is read in place
@@ -195,6 +201,10 @@ internal sealed partial class FirstRunScreen : CanvasLayer
 
     private static bool Web => OS.HasFeature("web");
 
+    private static bool Android => OS.GetName() == "Android";
+
+    private List<string> _treeFiles;
+
     private int _webPicks;
 
     public override void _Process(double delta)
@@ -227,16 +237,24 @@ internal sealed partial class FirstRunScreen : CanvasLayer
             return;
         }
 
-        string start = _picked ?? System.Environment.GetFolderPath(System.Environment.SpecialFolder.ProgramFilesX86);
+        string start = Android ? "" : _picked ?? System.Environment.GetFolderPath(System.Environment.SpecialFolder.ProgramFilesX86);
         if (DisplayServer.HasFeature(DisplayServer.Feature.NativeDialogFile))
         {
             DisplayServer.FileDialogShow("Choose your Ultima Online Classic folder", start ?? "", "", false,
                 DisplayServer.FileDialogMode.OpenDir, Array.Empty<string>(),
                 Callable.From<bool, string[], int>((ok, paths, _) =>
                 {
+                    GD.Print($"[GUO] first run     : folder dialog {(ok ? "returned " + string.Join(", ", paths) : "cancelled")}");
                     if (ok && paths.Length > 0)
                     {
-                        Pick(paths[0]);
+                        if (SafFolder.IsTree(paths[0]))
+                        {
+                            PickTree(paths[0]);
+                        }
+                        else
+                        {
+                            Pick(paths[0]);
+                        }
                     }
                 }));
             return;
@@ -292,8 +310,77 @@ internal sealed partial class FirstRunScreen : CanvasLayer
         GD.Print($"[GUO] first run     : picked {folder}: {(ok ? "valid" : $"{missing} missing")}");
     }
 
+    /// <summary>Android: checks a folder picked through the Storage Access Framework.</summary>
+    public void PickTree(string tree)
+    {
+        _picked = tree;
+        _folder.Text = SafFolder.Label(tree);
+        _folder.AddThemeColorOverride("font_color", Text);
+        foreach (Node n in _checks.GetChildren())
+        {
+            n.QueueFree();
+        }
+
+        List<string> files = SafFolder.Files(tree, out bool listed);
+        _treeFiles = files.Where(SafFolder.IsData).ToList();
+        var check = SafFolder.Check(files);
+        var grid = new GridContainer { Columns = 4 };
+        grid.AddThemeConstantOverride("h_separation", 18);
+        _checks.AddChild(grid);
+        foreach ((string key, string form) in check)
+        {
+            grid.AddChild(Label((form != null ? "✓ " : "✗ ") + key + (form != null ? $" ({form})" : ""), 13, form != null ? Good : Bad));
+        }
+
+        int missing = check.Count(c => c.Form == null);
+        bool ok = missing == 0;
+        _verdict.Text = ok
+            ? $"Found: all {check.Count} required files are there. Continue copies the game data ({_treeFiles.Count} files) "
+              + "into GUO's own folder once; your folder is only read."
+            : $"Missing {missing} of {check.Count} required files. This does not look like an Ultima Online Classic folder.";
+        _verdict.AddThemeColorOverride("font_color", ok ? Good : Bad);
+        _continue.Disabled = !ok;
+        GD.Print($"[GUO] first run     : picked {tree} ({(listed ? $"listed, {files.Count} files, {_treeFiles.Count} of them data" : "not listable; required names probed")}): "
+                 + (ok ? "valid" : $"{missing} missing"));
+    }
+
+    private async Task FinishTree()
+    {
+        string dest = DataSources.PlatformDefaults().FirstOrDefault();
+        if (dest == null)
+        {
+            return;
+        }
+
+        _continue.Disabled = true;
+        _verdict.AddThemeColorOverride("font_color", Text);
+        string failed = await SafFolder.Copy(_picked, _treeFiles, dest, (done, total, name) =>
+        {
+            _verdict.Text = $"Copying the game data: {done / (1 << 20)} of {total / (1 << 20)} MB ({(total > 0 ? done * 100 / total : 0)}%), {name}";
+        });
+
+        if (failed != null || DataSources.Validate(dest) != null)
+        {
+            string why = failed ?? DataSources.Validate(dest);
+            _verdict.Text = $"The copy did not finish: {why}. Choose the folder again to retry.";
+            _verdict.AddThemeColorOverride("font_color", Bad);
+            GD.PrintErr($"[GUO] first run     : copy into {dest} failed: {why}");
+            return;
+        }
+
+        SafFolder.Release(_picked);
+        QueueFree();
+        _chosen?.Invoke(dest);
+    }
+
     private void Finish()
     {
+        if (SafFolder.IsTree(_picked))
+        {
+            _ = FinishTree();
+            return;
+        }
+
         if (_picked == null || DataSources.Validate(_picked) != null)
         {
             return;
