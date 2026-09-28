@@ -99,11 +99,14 @@ class Paths:
             self.templates_dir = self.web_godot.parent / "editor_data" / "export_templates" / self.templates_version
             self.web_templates = [self.templates_dir / "web_debug.zip"]
 
-    def godot_console(self) -> Path:
+    def web_console(self) -> Path | None:
+        """The Godot that can export C# to the web: GODOT_CONSOLE if set, else
+        the fork (UO_WEB_GODOT). Never the pinned official engine, which
+        refuses the export (ADR-0008)."""
         env = os.environ.get("GODOT_CONSOLE")
         if env and Path(env).exists():
             return Path(env)
-        return self.web_godot or self.cfg.godot_console_exe
+        return self.web_godot
 
     def private_dotnet(self) -> Path | None:
         d = self.godot_web_dir / "dotnet" if self.godot_web_dir else None
@@ -202,8 +205,9 @@ class Doctor:
         self.check("dotnet SDK", dotnet is not None, dotnet or "not on PATH",
                    "install the .NET 8 SDK (or newer) and put dotnet on PATH")
 
-        console = p.godot_console()
-        self.check("Godot console (C# web export)", p.web_godot is not None, str(console),
+        console = p.web_console()
+        self.check("Godot console (C# web export)", console is not None,
+                   str(console or p.cfg.web_godot or "UO_WEB_GODOT not set"),
                    r"set up tools\godot_web (its README); the pinned engine refuses a C# web export (ADR-0008)")
 
         have = [t for t in p.web_templates if t.exists()]
@@ -276,21 +280,30 @@ def ensure_solution(p: Paths) -> None:
 
 
 def export(p: Paths, page: Path, release: bool = False) -> int:
-    console = p.godot_console()
-    if not console.exists():
-        sys.exit(f"[web] Godot console not found at {console}; run doctor")
+    console = p.web_console()
+    if console is None:
+        configured = f" (UO_WEB_GODOT is {p.cfg.web_godot}, which does not exist)" if p.cfg.web_godot else ""
+        say("export refused: the Godot that can export C# to the web (the fork, tools\\godot_web) "
+            f"was not found{configured}. Set UO_WEB_GODOT to its console exe and run "
+            "`python tools\\web\\run.py doctor`. The official Godot cannot export C# to the web "
+            f"(ADR-0008) and is never used instead; {page.parent} is untouched.")
+        return 2
     p.out_dir.mkdir(parents=True, exist_ok=True)
     ensure_solution(p)
-    render_preset(p, page)
-    for old in p.out_dir.glob(page.stem + ".*"):
-        old.unlink()
+    # The engine writes into a staging folder; the last good export is only
+    # replaced once the new one has succeeded and been patched.
+    staging = page.parent / "_export_staging"
+    shutil.rmtree(staging, ignore_errors=True)
+    staging.mkdir(parents=True)
+    staged = staging / page.name
+    render_preset(p, staged)
 
     log = p.out_dir / "export.log"
     started = time.time()
     with open(log, "w", encoding="utf-8") as f:
         result = run(
             [console, "--headless", "--path", p.project, "--export-release" if release else "--export-debug",
-             PRESET_NAME, page],
+             PRESET_NAME, staged],
             stdout=f, stderr=subprocess.STDOUT, text=True, env=p.web_env(),
         )
     text = log.read_text(encoding="utf-8", errors="replace")
@@ -299,14 +312,28 @@ def export(p: Paths, page: Path, release: bool = False) -> int:
             print("  " + line.strip()[:200])
     # The engine logs a failed C# build as an error but still writes a page
     # (with no game assembly in it), so an ERROR line fails the export too.
-    if result.returncode != 0 or not page.exists() or re.search(r"^ERROR:", text, re.MULTILINE):
-        say(f"export FAILED (exit {result.returncode}); full log: {log}")
+    if result.returncode != 0 or not staged.exists() or re.search(r"^ERROR:", text, re.MULTILINE):
+        say(f"export FAILED (exit {result.returncode}); full log: {log}; the previous export is untouched")
         return 1
-    rc = patch_page(p, page)
+    rc = patch_page(p, staged)
     if rc:
+        say("the previous export is untouched")
         return rc
+    promote(staging, page)
     say(f"exported {page} in {time.time() - started:.0f} s; log: {log}")
     return 0
+
+
+def promote(staging: Path, page: Path) -> None:
+    """Replaces the previous export's files with the staged ones."""
+    for old in page.parent.glob(page.stem + ".*"):
+        old.unlink()
+    for new in staging.iterdir():
+        target = page.parent / new.name
+        if target.exists():
+            target.unlink()
+        new.replace(target)
+    staging.rmdir()
 
 
 # The two edits the exported engine JS needs, each anchored on text the
@@ -336,8 +363,8 @@ def patch_page(p: Paths, page: Path) -> int:
             return 1
         text = text.replace(anchor, replacement)
     js.write_text(text, encoding="utf-8")
-    shutil.copy2(HERE / "guo_data.js", p.out_dir / "guo_data.js")
-    shutil.copy2(HERE / "guo_picker_worker.js", p.out_dir / "guo_picker_worker.js")
+    shutil.copy2(HERE / "guo_data.js", page.parent / "guo_data.js")
+    shutil.copy2(HERE / "guo_picker_worker.js", page.parent / "guo_picker_worker.js")
     say(f"patched {js.name} (FS + guoBeforeMain) and copied guo_data.js, guo_picker_worker.js")
     return 0
 
