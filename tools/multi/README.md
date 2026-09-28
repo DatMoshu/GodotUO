@@ -55,6 +55,12 @@ description format, the built multi and its sidecar.
   range is 0x3F00-0x3FFF (`tools/uodata_write/ranges.json`).
 - At most 4,676 components per multi: ModernUO reads an entry into 64 KB. A
   bigger building is several multis.
+- No component more than 17 tiles from its multi's centre (`fort.REACH`).
+  ModernUO sends a multi only while its centre is within `GlobalUpdateRange + 4`
+  (18 + 4 = 22) of the player, so a wider multi can be stood on before the
+  shard has sent it: the client then walks the bare land under it (a castle
+  gate 23 from its wall's centre dropped the walker to the ground). Scenes cut
+  their parts by extent as well as by count. Do not raise it past 21.
 - The catalogue is derived from client data: it stays in `build/`, never in a
   commit. So do built multis, stages, proofs and clips.
 
@@ -89,6 +95,18 @@ of its levels the tower opens there; a higher-ranked element (house > tower >
 wall > causeway > platform) takes the cells it stands on from lower ones. The
 whole scene is cut into parts, one per element's `part`, and a part over the
 size limit is cut again in two until each fits one multi.
+
+A long stair can pause on landings, and a causeway can carry buttresses. A
+build never depends on what was built before it in the same process: the
+catalogue forgets its picks at the start of each house or scene.
+
+## Complete on every side
+
+The client's own buildings often skip what it never shows: the north or west
+gable end, trim and foundation on a back wall. Generated multis do not. Every
+side has its walls, foundation, trim and gable fill, and a platform's bare
+edges are faced even when the description turns faces off, so the data holds
+the whole building (a 3D build of it, say).
 
 ## Known
 

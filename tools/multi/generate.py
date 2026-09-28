@@ -43,6 +43,11 @@ class Catalogue:
         self.context: collections.Counter = collections.Counter()
         self.last_step: dict = {}
 
+    def fresh(self) -> None:
+        """Forget what earlier builds picked: a build never depends on what was built before it."""
+        self.context.clear()
+        self.last_step.clear()
+
     def _in(self, item: str) -> list[int]:
         return self.pieces.get(item, {}).get("in", [])
 
@@ -73,6 +78,19 @@ class Catalogue:
             cands = [i for ids in fam[str(h)].values() for i in ids]
             return max(sum(self.context[m] for m in self._in(c)) for c in cands)
         return max(hs, key=lambda h: (fit(h), -abs(h - 5), h))
+
+    def set_heights(self, mat: str) -> tuple[int, ...]:
+        """The wall heights of the set already in use for this material, tallest first: a
+        material's pieces of other heights are often another set (another colour); all of its
+        heights while nothing is picked yet."""
+        fam = self.material(mat).get("wall", {})
+
+        def fit(h):
+            return max(sum(self.context[m] for m in self._in(c)) for ids in fam[h].values() for c in ids)
+        fits = {int(h): fit(h) for h in fam}
+        best = max(fits.values(), default=0)
+        keep = [h for h, f in fits.items() if best == 0 or f * 4 >= best]
+        return tuple(sorted(keep, reverse=True))
 
     def course(self, mat: str, total: int, sig: str) -> list[tuple[int, int]]:
         """(dz, item) low pieces stacked to at least `total` (never short: a floor sits on it)."""
@@ -299,9 +317,11 @@ def staircase(b: Built, cat: Catalogue, st: dict, mat: str, z: int, floor: set, 
     return holes, arrive
 
 
-def build(desc: dict, cat: Catalogue) -> tuple[list[Component], dict]:
+def build(desc: dict, cat: Catalogue, fresh: bool = True) -> tuple[list[Component], dict]:
     if desc.get("format") != 1:
         raise DescriptionError("format must be 1")
+    if fresh:
+        cat.fresh()
     mats = desc["materials"]
     z0 = desc.get("floor_z", 7)
     step_h = desc.get("storey_height", 20)
@@ -590,7 +610,9 @@ def roof_rect(b: Built, cat: Catalogue, roof: dict, mats: dict, box, top: int) -
 def roof_gable(b: Built, cat: Catalogue, roof: dict, mats: dict, w: int, h: int, top: int,
                ox: int = 0, oy: int = 0) -> None:
     """A gable roof over x 1..W+1, y 1..H+1 (the originals' overhang), 3 z a course,
-    with gable-end fill of the wall material on the visible (south or east) end."""
+    with gable-end fill of the wall material on both ends. The originals fill only the end
+    the client shows (south or east); ours are complete on every side, so the data holds the
+    whole building (for a 3D build of it, say)."""
     mat = roof.get("material", mats["roof"])
     ridge = roof.get("ridge", "y" if h >= w else "x")
     span = (w if ridge == "y" else h) + 1
@@ -598,7 +620,7 @@ def roof_gable(b: Built, cat: Catalogue, roof: dict, mats: dict, w: int, h: int,
         raise DescriptionError(f"a gable roof with its ridge along {ridge} needs an even "
                                f"{'width' if ridge == 'y' else 'depth'} (the originals' ridge sits on one tile)")
     length = range(1, (h if ridge == "y" else w) + 2)
-    fill_line = h if ridge == "y" else w
+    fill_lines = (0, h) if ridge == "y" else (0, w)
     lo, hi, k = 1, span, 0
     while lo <= hi:
         z = top + 3 * k
@@ -613,7 +635,8 @@ def roof_gable(b: Built, cat: Catalogue, roof: dict, mats: dict, w: int, h: int,
                 bx, by = (hi, t) if ridge == "y" else (t, hi)
                 b.add(cat.roof(mat, a_side), ox + ax, oy + ay, z)
                 b.add(cat.roof(mat, b_side), ox + bx, oy + by, z)
-            fill = {((u, fill_line) if ridge == "y" else (fill_line, u)) for u in range(lo + 1, hi)}
-            for (fx, fy) in sorted(fill):
-                b.add(cat.wall(mats["wall"], 3, signature(fill, fx, fy)), ox + fx, oy + fy, z)
+            for line in fill_lines:
+                fill = {((u, line) if ridge == "y" else (line, u)) for u in range(lo + 1, hi)}
+                for (fx, fy) in sorted(fill):
+                    b.add(cat.wall(mats["wall"], 3, signature(fill, fx, fy)), ox + fx, oy + fy, z)
         lo, hi, k = lo + 1, hi - 1, k + 1

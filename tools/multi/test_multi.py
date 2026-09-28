@@ -118,7 +118,8 @@ def main() -> int:
         check(roofs == [27, 30, 33], f"gable courses 3 z apart from the wall top (got {roofs})")
         check(all(c.x + 2 == 3 for c in comps if c.item == 0x706), "a W=4 house ridges on x = 3 (x 1..5)")
         fill = sorted((c.x + 2, c.y + 2, c.z) for c in comps if c.item == 0x301)
-        check(fill == [(2, 4, 27), (3, 4, 27), (3, 4, 30), (4, 4, 27)], f"gable fill on the south end (got {fill})")
+        check(fill == [(2, 0, 27), (2, 4, 27), (3, 0, 27), (3, 0, 30), (3, 4, 27), (3, 4, 30), (4, 0, 27), (4, 4, 27)],
+              f"gable fill on both ends, the hidden north one too (got {fill})")
         check(validate.validate(comps, side, None) == [], "the cottage validates")
 
         try:
@@ -177,6 +178,10 @@ def main() -> int:
         check(any("fence is not closed" in p for p in validate.validate(comps5, broken, None)),
               "a gap in the fence is caught")
 
+        again_c, _ = generate.build(cottage(), cat)
+        check([(c.item, c.x, c.y, c.z) for c in again_c] == [(c.item, c.x, c.y, c.z) for c in comps],
+              "a house builds the same after other builds on the same catalogue")
+
         # a small scene: a wall into a tower, a stair up the wall, a tour that climbs
         scene = {"format": 1, "kind": "scene", "name": "t",
                  "materials": {"wall": "stone", "walk": "stone", "floor": "stone", "stairs": "stone"},
@@ -197,6 +202,31 @@ def main() -> int:
         climb = sc["tour"][1:3]
         check(climb[0]["z"] == 0 and climb[1]["z"] == 20 and (climb[0]["x"], climb[0]["y"]) == (3, 3),
               f"the climb starts at the stair's foot and ends on its landing (got {climb})")
+
+        # a long wall is cut so the shard sends each piece before anyone stands on its far end
+        long = {"format": 1, "kind": "scene", "name": "l", "materials": scene["materials"],
+                "elements": [{"type": "wall", "part": "wall", "path": [[0, 0], [60, 0]], "thickness": 3, "top": 20,
+                              "floor": "stone", "parapet": "none"}], "tour": []}
+        sl = fort.build_scene(long, cat)
+        reach = max(max(abs(c.x), abs(c.y)) for p in sl["parts"] for c in p["comps"])
+        check(len(sl["parts"]) > 1 and reach <= fort.REACH,
+              f"every part reaches no further than {fort.REACH} from its centre (got {len(sl['parts'])} parts, {reach})")
+
+        # a causeway with buttresses, reached by a stair that pauses on a landing
+        way = {"format": 1, "kind": "scene", "name": "w",
+               "materials": {"wall": "stone", "walk": "stone", "floor": "stone", "stairs": "stone"},
+               "elements": [
+                   {"type": "causeway", "part": "way", "path": [[0, 0], [0, 12]], "width": 3, "z": 20,
+                    "floor": "stone", "rail": "stone", "buttress": 4},
+                   {"type": "stair", "part": "way", "at": [-1, 22], "rise": "N", "z": 0, "to": 20,
+                    "width": 3, "landings": [10]}],
+               "tour": [{"name": "foot", "at": [0, 24], "z": 0}, {"name": "top", "at": [0, 6], "z": 20}]}
+        sw = fort.build_scene(way, cat)
+        xy = {(c.x + sw["parts"][0]["centre"][0], c.y + sw["parts"][0]["centre"][1]) for c in sw["parts"][0]["comps"]}
+        check((-3, 4) in xy and (3, 4) in xy, "a buttress stands out from each side of the causeway")
+        tour = [(t["name"], t["z"]) for t in sw["tour"]]
+        check([z for _, z in tour] == [0, 0, 10, 10, 20, 20],
+              f"the climb pauses on the landing (got {tour})")
 
     print(f"test_multi: {'OK' if not FAILS else 'FAILED'} ({len(FAILS)} failing)")
     return 0 if not FAILS else 1
