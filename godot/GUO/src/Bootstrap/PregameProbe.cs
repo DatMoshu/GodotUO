@@ -186,6 +186,7 @@ internal static class PregameProbe
         Check("every settings group opens on a tap and fits the card's width", misfits.Length == 0, misfits.Length == 0 ? $"{PregameSettings.Groups.Length} groups, card {card.Geometry}" : misfits);
 
         await LoginBackgroundChecks(host, card, settings);
+        await ScreenEffectsChecks(host, card, settings);
 
         // Profile-only settings are named, not shown disabled.
         card.Tap(settings.GroupButton("Controls"));
@@ -439,6 +440,97 @@ internal static class PregameProbe
             Renderer.PregameBackground.Set(Renderer.PregameBackground.Follow);
             Renderer.PregameBackground.PathOverride = null;
             Renderer.PregameBackground.Reload();
+        }
+    }
+
+    /// <summary>
+    /// Screen: "Screen effects" shows the look on now (Off for Classic), steps
+    /// round the looks, and Off goes back to Classic in one tap; a look
+    /// changed elsewhere shows on the line. Saved in a folder of the probe's
+    /// own, and the player's look put back.
+    /// </summary>
+    private static async System.Threading.Tasks.Task ScreenEffectsChecks(Node host, PregameCard card, PregameSettings settings)
+    {
+        var stack = Renderer.PostFx.PostFxStack.Instance;
+        stack.EnsureLoaded();
+        Renderer.PostFx.PostFxPreset was = stack.Preset;
+        string folder = Renderer.PostFx.PostFxLibrary.UserFolder;
+        string mine = ProjectSettings.GlobalizePath($"user://probe_postfx_{_tag}");
+        Renderer.PostFx.PostFxLibrary.UserFolder = mine;
+        string state = System.IO.Path.Combine(mine, "state.json");
+
+        try
+        {
+            stack.Use(Renderer.PostFx.PostFxPreset.Classic());
+            card.Tap(settings.GroupButton("Screen"));
+            await InputProbe.Wait(host, 5);
+
+            if (!settings.CycleButtons.TryGetValue("Screen effects", out var cycle) || settings.ScreenEffectsOffButton is not Godot.Button off)
+            {
+                Check("Screen has a Screen effects line with Off", false, "no line");
+                return;
+            }
+
+            string atOff = cycle.Value.Text;
+            bool offHidden = off.Disabled && off.Modulate.A == 0;
+
+            // Two steps on, so Off saves more than one tap back.
+            card.Tap(cycle.Next);
+            await InputProbe.Wait(host, 4);
+            card.Tap(cycle.Next);
+            await InputProbe.Wait(host, 4);
+            string look = cycle.Value.Text;
+            bool on = look != "Off" && stack.Preset.Name == look && !off.Disabled;
+            string saved = SavedLook(state);
+            await Save(host, "settings_screen_effects_on");
+
+            card.Tap(off);
+            await InputProbe.Wait(host, 4);
+            bool backOff = cycle.Value.Text == "Off" && stack.Preset.IsClassic && off.Disabled;
+            string savedOff = SavedLook(state);
+
+            Check("Screen: Screen effects shows Off for Classic, steps to a look (on the world, kept), and Off goes back to Classic in one tap",
+                atOff == "Off" && offHidden && on && saved == look && backOff && savedOff == "Classic",
+                $"at first \"{atOff}\" (Off hidden {offHidden}), two steps \"{look}\" (on {on}, saved \"{saved}\"), Off: {backOff}, saved \"{savedOff}\"");
+
+            // A look set elsewhere (the effects menu) shows on the line.
+            Renderer.PostFx.PostFxPreset other = Renderer.PostFx.PostFxLibrary.Presets().FirstOrDefault(p => !p.IsClassic);
+
+            if (other != null)
+            {
+                stack.Use(other);
+                await InputProbe.Wait(host, 4);
+                Check("Screen: a look changed in the effects menu shows on the Screen effects line",
+                    cycle.Value.Text == other.Name && !off.Disabled, $"line \"{cycle.Value.Text}\", look {other.Name}");
+            }
+        }
+        finally
+        {
+            Renderer.PostFx.PostFxLibrary.UserFolder = folder;
+            stack.Use(was, remember: false);
+
+            try
+            {
+                System.IO.Directory.Delete(mine, true);
+            }
+            catch (System.IO.IOException)
+            {
+            }
+        }
+    }
+
+    /// <summary>The look a postfx state.json keeps, parsed (the file escapes an &amp;).</summary>
+    private static string SavedLook(string file)
+    {
+        try
+        {
+            return System.IO.File.Exists(file)
+                ? System.Text.Json.Nodes.JsonNode.Parse(System.IO.File.ReadAllText(file))?["active"]?.GetValue<string>() ?? ""
+                : "";
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return "";
         }
     }
 

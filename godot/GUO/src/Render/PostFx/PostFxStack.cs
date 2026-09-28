@@ -354,7 +354,12 @@ namespace GUO.Renderer.PostFx
             }
         }
 
-        private void Housekeeping()
+        /// <summary>
+        /// The saved look read in, once: on the first world frame, or sooner
+        /// for a screen that shows it before there is a world (the pre-game
+        /// Settings' Screen effects line).
+        /// </summary>
+        public void EnsureLoaded()
         {
             if (!_loadedState)
             {
@@ -363,6 +368,11 @@ namespace GUO.Renderer.PostFx
                 LoadState();
                 PostFxLibrary.Changed += OnFileChanged;
             }
+        }
+
+        private void Housekeeping()
+        {
+            EnsureLoaded();
 
             double now = GUO.Time.Ticks / 1000.0;
             if (now >= _nextPoll)

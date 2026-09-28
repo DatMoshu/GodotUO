@@ -238,10 +238,65 @@ internal sealed partial class PregameSettings : HBoxContainer
     {
         Cycle("Login background", () => Renderer.PregameBackground.Current.Title, Renderer.PregameBackground.Step);
         Note("Behind the login screen and the character list; in the world, your character's own background (Options) applies.");
+        Cycle("Screen effects", ScreenEffectsName, StepScreenEffects);
+        ScreenEffectsOff();
         Act("Screen effects...", GUO.Renderer.PostFx.PostFxMenu.Toggle);
         Note("The look of the world: the effects menu opens over the login screen, with the world behind it as its preview.");
         Note(ProfileNote + "the game window's size, zoom and gump scale.");
     }
+
+    /// <summary>The look on now: Off for Classic, else its name.</summary>
+    private static string ScreenEffectsName()
+    {
+        var stack = GUO.Renderer.PostFx.PostFxStack.Instance;
+        stack.EnsureLoaded();
+
+        return stack.Preset.IsClassic ? "Off" : stack.Preset.Name;
+    }
+
+    /// <summary>The next or previous look, round the list (Off first), kept as the player's.</summary>
+    private void StepScreenEffects(int by)
+    {
+        var stack = GUO.Renderer.PostFx.PostFxStack.Instance;
+        stack.EnsureLoaded();
+        List<GUO.Renderer.PostFx.PostFxPreset> looks = GUO.Renderer.PostFx.PostFxLibrary.Presets();
+        int at = stack.Preset.IsClassic ? 0 : Math.Max(0, looks.FindIndex(p => string.Equals(p.Name, stack.Preset.Name, StringComparison.OrdinalIgnoreCase)));
+        stack.Use(looks[((at + by) % looks.Count + looks.Count) % looks.Count]);
+    }
+
+    // A look changed elsewhere (the effects menu over this card, a macro):
+    // the line shows it. Deferred: the change may come from inside a press.
+    public override void _EnterTree() => GUO.Renderer.PostFx.PostFxStack.Instance.PresetChanged += OnLookChanged;
+
+    public override void _ExitTree() => GUO.Renderer.PostFx.PostFxStack.Instance.PresetChanged -= OnLookChanged;
+
+    private void OnLookChanged() => Callable.From(() => { if (IsInsideTree()) Refresh(); }).CallDeferred();
+
+    /// <summary>
+    /// Off on the Screen effects line: back to Classic in one tap, however
+    /// far round the list the look is. Set a little apart from the stepper,
+    /// so it doesn't read as a third arrow, and faded out (not removed, so
+    /// the row keeps still) while the look is already off (GUOUI's review).
+    /// </summary>
+    private void ScreenEffectsOff()
+    {
+        (Button back, Label value, Button next) = CycleButtons["Screen effects"];
+        Button off = UoTheme.Button("Off", 28);
+        off.Pressed += () => GUO.Renderer.PostFx.PostFxStack.Instance.Use(GUO.Renderer.PostFx.PostFxPreset.Classic());
+        next.GetParent().AddChild(new Control { CustomMinimumSize = new Vector2(4, 0), MouseFilter = MouseFilterEnum.Ignore });
+        next.GetParent().AddChild(off);
+        _refreshers.Add(() =>
+        {
+            bool on = ScreenEffectsName() != "Off";
+            off.Disabled = !on;
+            off.FocusMode = on ? FocusModeEnum.All : FocusModeEnum.None;
+            off.Modulate = new Color(1, 1, 1, on ? 1 : 0);
+        });
+        ScreenEffectsOffButton = off;
+    }
+
+    /// <summary>For the probe: the Off button on the Screen effects line.</summary>
+    public Button ScreenEffectsOffButton { get; private set; }
 
     private void SecondScreen()
     {
