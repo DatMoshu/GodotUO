@@ -122,6 +122,7 @@ internal static class TouchProbe
         Configuration.ProfileManager.CurrentProfile.ModernGumpsOff = false;
         await ModernOptionsCheck(host, world);
         await ModernPartyCheck(host, world);
+        await ModernSkillsCheck(host, world);
         Configuration.ProfileManager.CurrentProfile.ModernGumpsOff = true;
         await HelpGumpCheck(host, world);
         // The long press is checked with hold-and-flick off, the way a player
@@ -1115,6 +1116,54 @@ internal static class TouchProbe
         }
 
         Check("Cancel closes Modern Party", !Input.Touch.Modern.ModernGump.IsOpen);
+    }
+
+    /// <summary>
+    /// Modern Skills (ADR-0024, gump 3): opening the skills opens its Modern
+    /// view with every skill; a tap on a lock cycles it through the classic
+    /// states; the group stepper narrows the list; Use uses the skill and closes.
+    /// </summary>
+    private static async System.Threading.Tasks.Task ModernSkillsCheck(Node host, Game.World world)
+    {
+        Game.GameActions.OpenSkills(world);
+        await Frames(host, 20);
+        var view = Input.Touch.Modern.ModernGump.Current as Input.Touch.Modern.ModernSkills;
+        int all = world.Player.Skills.Length;
+        Check("the skills gump opens as its Modern view, every skill listed, the classic not added",
+            view != null && UIManager.GetGump<StandardSkillsGump>() == null && UIManager.GetGump<SkillGumpAdvanced>() == null
+                && view.Find("lock Hiding") != null,
+            $"modern {view != null}, skills {all}");
+
+        if (view == null)
+        {
+            return;
+        }
+
+        Game.Data.Skill hiding = System.Array.Find(world.Player.Skills, s => s?.Name == "Hiding");
+        Game.Data.Lock was = hiding.Lock;
+        var seen = new System.Collections.Generic.List<Game.Data.Lock>();
+
+        for (int i = 0; i < 3; i++)
+        {
+            await TapClient(host, view.CentreOf(view.Find("lock Hiding")));
+            await Frames(host, 5);
+            seen.Add(hiding.Lock);
+        }
+
+        Check("a tap on a skill's lock cycles it through the classic states and back",
+            seen.Count == 3 && seen[2] == was && seen[0] != was && seen[1] != was && seen[0] != seen[1],
+            $"{was} -> {string.Join(" -> ", seen)}");
+
+        await TapClient(host, view.CentreOf(view.Find("group next")));
+        await Frames(host, 5);
+        bool narrowed = view.Find("lock Hiding") == null || world.SkillsGroupManager.Groups.Count == 0;
+        await TapClient(host, view.CentreOf(view.Find("group prev")));
+        await Frames(host, 5);
+        Check("the group stepper narrows the list", narrowed && view.Find("lock Hiding") != null);
+
+        await TapClient(host, view.CentreOf(view.Find("use Hiding")));
+        await Frames(host, 10);
+        Check("Use on a skill uses it and closes Modern Skills", !Input.Touch.Modern.ModernGump.IsOpen);
     }
 
     /// <summary>The first control of a type on the gump's open page, drawn inside its scroll area.</summary>

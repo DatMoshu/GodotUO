@@ -146,6 +146,15 @@ internal static class GalleryProbe
         UIManager.GetGump<OptionsGump>()?.Dispose();
         await InputProbe.Wait(host, 10);
 
+        // Skills, Modern (ADR-0024, gump 3).
+        profile.ModernGumpsOff = false;
+        Game.GameActions.OpenSkills(world);
+        await InputProbe.Wait(host, 30);
+        await Save(host, "skills");
+        Input.Touch.Modern.ModernGump.Current?.Close();
+        profile.ModernGumpsOff = true;
+        await InputProbe.Wait(host, 10);
+
         // Party, Modern (ADR-0024, gump 2).
         profile.ModernGumpsOff = false;
         UIManager.Add(new PartyGump(world, 100, 100, world.Party.CanLoot));

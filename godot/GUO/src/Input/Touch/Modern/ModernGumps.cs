@@ -24,6 +24,8 @@ internal static class ModernGumps
     {
         [typeof(OptionsGump)] = world => new ModernOptions(world),
         [typeof(PartyGump)] = world => new ModernParty(world),
+        [typeof(StandardSkillsGump)] = world => new ModernSkills(world),
+        [typeof(SkillGumpAdvanced)] = world => new ModernSkills(world),
     };
 
     private static readonly Dictionary<Type, ModernGump> _open = new();
