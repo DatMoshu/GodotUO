@@ -34,6 +34,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from guo import FILE_REGISTRY, DataFile, load_config  # noqa: E402
 from guo.formats import by_subsystem, index_dir  # noqa: E402
+from guo.datasources import WIZARD_EXIT  # noqa: E402
 
 
 def _probe(entry: DataFile, data_dir: Path) -> dict:
@@ -88,9 +89,10 @@ def cmd_verify(args: argparse.Namespace) -> int:
     quiet = args.quiet
 
     if not data_dir.is_dir():
-        print(f"[uodata] FATAL: client data directory not found: {data_dir}")
-        print("[uodata] Set UO_CLIENT_DATA in launchers/_shared/config.bat")
-        return 2
+        # ADR-0021: no data yet is the first-run wizard's case, not a crash.
+        print(f"[uodata] no UO client data at {data_dir or '(not set)'}: run the first-run wizard, "
+              "or set UO_CLIENT_DATA in launchers/_shared/config.local.bat")
+        return WIZARD_EXIT
 
     results = [_probe(e, data_dir) for e in FILE_REGISTRY]
     present = [r for r in results if r["satisfied"]]
