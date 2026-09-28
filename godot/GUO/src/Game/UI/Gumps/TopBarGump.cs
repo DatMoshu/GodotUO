@@ -105,11 +105,28 @@ namespace GUO.Game.UI.Gumps
 
             int startX = 30;
 
+            // PORT DEVIATION (GUO): on a touch screen narrower than the bar (the
+            // Thor's 1920x1080 at 2x is 960 wide; the bar is about 1110), the
+            // buttons wrap to another row instead of running off the right edge.
+            // Off the touch layer: one false test, and the bar is upstream's.
+            int wrapAt = GUO.Input.Touch.TouchInput.Enabled ? GUO.Input.Touch.GumpPresentation.DisplayBounds(false).Width : int.MaxValue;
+            int row = 0, widest = 0;
+            WrapWidth = wrapAt;
+
             for (int i = 0; i < textTable.Length; i++)
             {
                 if (!hasUOStore && i >= (int)Buttons.UOStore)
                 {
                     break;
+                }
+
+                // PORT DEVIATION (GUO): the wrap; see above.
+                if (startX > 30 && startX + (textTable[i][0] != 0 ? largeWidth : smallWidth) + 2 > wrapAt)
+                {
+                    widest = System.Math.Max(widest, startX);
+                    startX = 30;
+                    row++;
+                    background.Height = 27 + row * RowStep;
                 }
 
                 ushort graphic = (ushort)(textTable[i][0] != 0 ? 0x098D : 0x098B);
@@ -129,7 +146,7 @@ namespace GUO.Game.UI.Gumps
                     {
                         ButtonAction = ButtonAction.Activate,
                         X = startX,
-                        Y = 1,
+                        Y = 1 + row * RowStep, // PORT DEVIATION (GUO): the wrap
                         FontCenter = true
                     },
                     1
@@ -139,10 +156,33 @@ namespace GUO.Game.UI.Gumps
                 background.Width = startX;
             }
 
-            background.Width = startX + 1;
+            background.Width = System.Math.Max(widest, startX) + 1; // PORT DEVIATION (GUO): the widest row
 
             //layer
             LayerOrder = UILayer.Over;
+        }
+
+        private const int RowStep = 26; // PORT DEVIATION (GUO): a wrapped row, the button's height and a pixel
+
+        /// <summary>PORT DEVIATION (GUO): the screen width the buttons were wrapped for (see the constructor).</summary>
+        internal int WrapWidth { get; private set; }
+
+        /// <summary>
+        /// PORT DEVIATION (GUO): the touch layer, once a frame: a screen whose
+        /// width changed (a rotation, a resize) gets the bar built again for it,
+        /// as Options rebuilds it.
+        /// </summary>
+        internal static void Rewrap(World world)
+        {
+            TopBarGump gump = UIManager.GetGump<TopBarGump>();
+
+            if (gump == null || gump.IsDisposed || gump.WrapWidth == GUO.Input.Touch.GumpPresentation.DisplayBounds(false).Width)
+            {
+                return;
+            }
+
+            gump.Dispose();
+            Create(world);
         }
 
         public bool IsMinimized { get; private set; }

@@ -97,6 +97,17 @@ internal static class TouchProbe
 
         await Frames(host, 120);
 
+        // The owner's Thor report: at 1920x1080 (2x, 960 wide) the top bar ran
+        // off the right edge. It wraps to another row on a narrower screen.
+        {
+            TopBarGump bar = UIManager.GetGump<TopBarGump>();
+            int room = GUO.Input.Touch.GumpPresentation.DisplayBounds(false).Width;
+            int right = bar == null ? 0 : bar.X + GUO.Input.Touch.GumpPresentation.Width(bar);
+            Check("the top bar fits inside the screen (its buttons wrap to another row on a narrow one)",
+                bar != null && (bar.IsMinimized || right <= room),
+                bar == null ? "no top bar" : $"bar {bar.X}..{right} x {bar.Height}, screen {room} wide, minimised {bar.IsMinimized}");
+        }
+
         // The checks that open Options mean the classic gump; Modern Options
         // (ADR-0024) has its own check, which turns it on.
         Configuration.ProfileManager.CurrentProfile.ModernGumpsOff = true;
