@@ -137,7 +137,7 @@ internal static class PerfProbe
         long drawsBefore = UltimaBatcher2D.FramesBegun;
 
         var ms = new double[Frames];
-        double kRect = 0, kAffine = 0, kMesh = 0, kTri = 0, kBatches = 0, kCover = 0;
+        double kRect = 0, kAffine = 0, kMesh = 0, kTri = 0, kBatches = 0, kCover = 0, kCoverRuns = 0, coverQueued = 0, coverOverlapping = 0;
         double calls = 0, items = 0, switches = 0, commands = 0, prepare = 0, world = 0, cpu = 0, gpu = 0, objects = 0;
         long allocatedBefore = System.GC.GetTotalAllocatedBytes();
         System.TimeSpan pausedBefore = System.GC.GetTotalPauseDuration();
@@ -162,6 +162,10 @@ internal static class PerfProbe
             kTri += k.Triangles;
             kBatches += k.Batches;
             kCover += k.CoverMeshes;
+            kCoverRuns += k.CoverRuns;
+            var cq = GUO.Game.Scenes.RenderLists.LastCover;
+            coverQueued += cq.Queued;
+            coverOverlapping += cq.Overlapping;
             prepare += GUO.Utility.Profiler.GetContext(GUO.Utility.Profiler.ProfilerContext.RENDER_FRAME_WORLD_PREPARE).LastTime;
             world += GUO.Utility.Profiler.GetContext(GUO.Utility.Profiler.ProfilerContext.RENDER_FRAME_WORLD).LastTime;
             cpu += RenderingServer.ViewportGetMeasuredRenderTimeCpu(viewport);
@@ -205,6 +209,9 @@ internal static class PerfProbe
             ["cmd_affine_rects"] = System.Math.Round(kAffine / Frames, 1),
             ["cmd_meshes"] = System.Math.Round(kMesh / Frames, 1),
             ["cmd_cover_meshes"] = System.Math.Round(kCover / Frames, 1),
+            ["cover_runs"] = System.Math.Round(kCoverRuns / Frames, 1),
+            ["cover_queued"] = System.Math.Round(coverQueued / Frames, 1),
+            ["cover_overlapping"] = System.Math.Round(coverOverlapping / Frames, 1),
             ["cmd_triangles"] = System.Math.Round(kTri / Frames, 1),
             ["estimated_batches"] = System.Math.Round(kBatches / Frames, 1),
             ["gc_ms_per_frame"] = System.Math.Round(gcMs, 3),
@@ -322,11 +329,11 @@ internal static class PerfProbe
         }
 
         md.AppendLine();
-        md.AppendLine("| Scene | draw calls | estimated batches | rects | transformed rects | chunk land meshes | covering land meshes | triangle lists |");
-        md.AppendLine("|---|---:|---:|---:|---:|---:|---:|---:|");
+        md.AppendLine("| Scene | draw calls | estimated batches | rects | transformed rects | chunk land meshes | covering land meshes | covering runs | covering queued | of which overlap | triangle lists |");
+        md.AppendLine("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|");
         foreach (var r in results)
         {
-            md.AppendLine($"| {r["scene"]} | {r["draw_calls"]} | {r["estimated_batches"]} | {r["cmd_rects"]} | {r["cmd_affine_rects"]} | {r["cmd_meshes"]} | {r["cmd_cover_meshes"]} | {r["cmd_triangles"]} |");
+            md.AppendLine($"| {r["scene"]} | {r["draw_calls"]} | {r["estimated_batches"]} | {r["cmd_rects"]} | {r["cmd_affine_rects"]} | {r["cmd_meshes"]} | {r["cmd_cover_meshes"]} | {r["cover_runs"]} | {r["cover_queued"]} | {r["cover_overlapping"]} | {r["cmd_triangles"]} |");
         }
 
         if (results.Any(r => r.ContainsKey("parity_violations")))

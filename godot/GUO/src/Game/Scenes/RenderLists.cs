@@ -162,6 +162,7 @@ namespace GUO.Game.Scenes
             // A sprite drops 4 pixels per z and a tile row is 22 pixels down
             // the screen; one more row for the height of the diamond itself.
             int reach = Math.Min(8, ((ground.Z - obj.Z) * 4 + 43) / 22 + 1);
+            int half = CoverHalfWidth(obj);
 
             for (int dy = 0; dy <= reach; dy++)
             {
@@ -178,12 +179,60 @@ namespace GUO.Game.Scenes
 
                     if (landDepth > depth)
                     {
+                        // B4 fix 2: a diamond spans 22 px either side of its
+                        // column, (dx - dy) * 22 across from the object's.
+                        bool overlaps = half < 0 || Math.Abs(dx - dy) * 22 < 22 + half;
+
+                        CoverQueued++;
+                        if (overlaps)
+                        {
+                            CoverOverlapping++;
+                        }
+                        else if (CoverCull)
+                        {
+                            continue;
+                        }
+
                         _covering.Add(land);
                         _world.Add(new Drawable(land, landDepth, _queued++));
                     }
                 }
             }
         }
+
+        // PORT DEVIATION (GUO): Epic B, B4 fix 2 (docs/perf/2026-09-28_merged_land.md).
+        // Covering tiles queued this frame, and how many of them overlap the
+        // sprite of the object that queued them; --cover-cull queues only
+        // those. A redrawn tile repaints the bake's own pixels, so one clear of
+        // the object changes nothing unless another earlier sprite overlaps it
+        // -- the case the five-frame parity check is there to catch.
+        public static bool CoverCull;
+        public static int CoverQueued, CoverOverlapping;
+        public static (int Queued, int Overlapping) LastCover;
+
+        /// <summary>
+        /// Half the width of what <paramref name="obj"/> draws, centred on its
+        /// tile's column (DrawStatic: x - (UV.Width / 2 - 22) from the tile's
+        /// left corner), or -1 when that is not known exactly: items (stacks,
+        /// corpses), animated or wet art (another frame, a scaled copy), and
+        /// what may cast a skewed shadow or become a stump.
+        /// </summary>
+        private static int CoverHalfWidth(GameObject obj)
+        {
+            ushort graphic = obj.Graphic;
+            ref GUO.Assets.StaticTiles data = ref Client.Game.UO.FileManager.TileData.StaticData[graphic];
+
+            if (obj is not (Static or Multi) || data.IsAnimated || data.IsWet || data.IsFoliage
+                || GUO.Game.Data.StaticFilters.IsTree(graphic, out _) || GUO.Game.Data.StaticFilters.IsRock(graphic))
+            {
+                return -1;
+            }
+
+            ref readonly var art = ref Client.Game.UO.Arts.GetArt(graphic);
+
+            return art.Texture == null ? -1 : art.UV.Width >> 1;
+        }
+        // END PORT DEVIATION (GUO)
 
         private static Land LandAt(Map.Map map, int x, int y)
         {
@@ -231,6 +280,8 @@ namespace GUO.Game.Scenes
             _stretchedTiles.Clear();
             _world.Clear();
             _covering.Clear();
+            LastCover = (CoverQueued, CoverOverlapping); // PORT DEVIATION (GUO): B4 fix 2 counters
+            CoverQueued = CoverOverlapping = 0;
             _queued = 0;
             _transparentObjects.Clear();
             _gumps.Clear();
