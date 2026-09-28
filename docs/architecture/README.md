@@ -33,4 +33,4 @@ it is taken even if its file has not landed yet.
 | 0022 | Authoring UO data files | work/editor-uodata |
 | 0023 | Post-processing and shader framework | work/render-postfx |
 
-Next free: 0024.
+Next free: 0025 (0024 reserved: modern gumps, C12).
