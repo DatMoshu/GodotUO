@@ -1233,7 +1233,8 @@ internal static class TouchProbe
     /// </summary>
     private static async System.Threading.Tasks.Task ModernJournalCheck(Node host, Game.World world)
     {
-        for (int i = 0; i < 3; i++)
+        // More lines than the reader holds, so it has to open scrolled to the newest.
+        for (int i = 0; i < 90; i++)
         {
             Game.GameActions.Print(world, $"touch probe journal line {i + 1}", 0x3B2, Game.Data.MessageType.System, 3, false);
         }
@@ -1267,6 +1268,9 @@ internal static class TouchProbe
         Check("the journal's window menu has Read, which opens the Modern reader with the journal's lines, the classic journal still open",
             read != null && view != null && lines > 0 && !classic.IsDisposed,
             $"read {read != null}, reader {view != null}, lines {lines}, classic open {!classic.IsDisposed}");
+        Check("the reader opens at the newest line, following (the Thor check found it opening at the oldest)",
+            view != null && view.Reader.AtEnd && view.Reader.Following && view.Reader.ScrollVertical > 0,
+            $"at end {view?.Reader.AtEnd}, following {view?.Reader.Following}, scroll {view?.Reader.ScrollVertical}");
 
         if (view == null)
         {

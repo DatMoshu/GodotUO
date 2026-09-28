@@ -48,7 +48,20 @@ internal sealed partial class JournalReader : ScrollContainer
         AddChild(_lines);
         _spacer = new Control { SizeFlagsVertical = SizeFlags.ExpandFill, MouseFilter = MouseFilterEnum.Ignore };
         _lines.AddChild(_spacer);
+
+        // Shown again (a tab switched back, the reader reopened): at the newest line.
+        VisibilityChanged += () =>
+        {
+            if (IsVisibleInTree())
+            {
+                _follow = true;
+                _placed = -1;
+            }
+        };
     }
+
+    /// <summary>True when the newest line is in view, for the probe.</summary>
+    public bool AtEnd => AtBottom();
 
     /// <summary>Lines shown now, for the probe.</summary>
     public int LineCount => _lines.GetChildCount() - 1;
@@ -142,9 +155,16 @@ internal sealed partial class JournalReader : ScrollContainer
 
     public override void _Process(double delta)
     {
+        if (!IsVisibleInTree())
+        {
+            return;
+        }
+
         // Only a scroll the reader did not make (a finger, through ModernGump
         // or ScrollBy) decides whether it follows: back to the bottom, it does.
-        if (ScrollVertical != _placed)
+        // Before its first placing (-1) the scroll is where it opened, the top,
+        // which is no finger's choice: it opens at the newest line.
+        if (_placed >= 0 && ScrollVertical != _placed)
         {
             _follow = AtBottom();
         }
