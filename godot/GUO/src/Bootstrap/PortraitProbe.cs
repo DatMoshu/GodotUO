@@ -118,7 +118,7 @@ internal static class PortraitProbe
         var r = new Rotation();
         void Count() => r.Events++;
         vp.SizeChanged += Count;
-        ulong start = Time.GetTicksMsec();
+        ulong start = Godot.Time.GetTicksMsec();
 
         if (OS.GetName() == "Android")
         {
@@ -145,7 +145,7 @@ internal static class PortraitProbe
             if (now.Y > now.X == portrait)
             {
                 r.Flipped = true;
-                r.Ms = Time.GetTicksMsec() - start;
+                r.Ms = Godot.Time.GetTicksMsec() - start;
 
                 break;
             }
@@ -302,10 +302,10 @@ internal static class PortraitProbe
     private static async System.Threading.Tasks.Task Hold(string name)
     {
         GD.Print($"[GUO] portrait: hold {name}");
-        ulong until = Time.GetTicksMsec() + HoldMs;
+        ulong until = Godot.Time.GetTicksMsec() + HoldMs;
         var tree = (SceneTree)Engine.GetMainLoop();
 
-        while (Time.GetTicksMsec() < until)
+        while (Godot.Time.GetTicksMsec() < until)
         {
             await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
         }
