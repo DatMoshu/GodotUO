@@ -599,7 +599,7 @@ public partial class Main : Node
     private async void PostFxSheetThenQuit()
     {
         await Preamble();
-        await PostFxProbe.Run(this, _options.PostFxSheet);
+        await PostFxProbe.Run(this, _options.PostFxSheet, _options.PostFxTour);
         Quit(PostFxProbe.Passed ? 0 : 1);
     }
 
@@ -1120,6 +1120,9 @@ public partial class Main : Node
         /// <summary>Photograph and time every post-processing look into this folder (ADR-0023).</summary>
         public string PostFxSheet { get; private set; }
 
+        /// <summary>--postfx-tour: with --postfx-sheet, run the live tour into that folder instead of the sheet.</summary>
+        public bool PostFxTour { get; private set; }
+
         /// <summary>--perf-parity: per scene, compare --batched-world with the plain path pixel for pixel.</summary>
         public bool PerfParity { get; private set; }
 
@@ -1371,6 +1374,9 @@ public partial class Main : Node
                         break;
                     case "--postfx-sheet":
                         o.PostFxSheet = Next();
+                        break;
+                    case "--postfx-tour":
+                        o.PostFxTour = true;
                         break;
                     case "--door-probe":
                         o.DoorProbe = true;
