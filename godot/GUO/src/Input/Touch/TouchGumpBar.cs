@@ -1709,13 +1709,40 @@ namespace GUO.Input.Touch
         /// A caption that fits <paramref name="room"/> pixels: whole when it
         /// fits, else cut at a word with "..." after it, as the abilities book
         /// cuts its rows (the UO font has no "…"). When not even one word and
-        /// "..." fit, the first word alone, which the caller clips.
+        /// "..." fit, the first word cut short with "..." ("Las..."), so a cut
+        /// is always marked; when not even one letter and "..." fit, the first
+        /// word alone, which the caller clips. Kept per caption and room: it
+        /// runs on every draw, and each measure makes a label texture.
         /// </summary>
         private string FitCaption(string caption, float room)
         {
+            if (string.IsNullOrEmpty(caption) || room <= 0)
+            {
+                return caption;
+            }
+
+            var key = (caption, (int) room);
+
+            if (!_fitted.TryGetValue(key, out string fitted))
+            {
+                if (_fitted.Count > 256)
+                {
+                    _fitted.Clear();
+                }
+
+                _fitted[key] = fitted = Fit(caption, room);
+            }
+
+            return fitted;
+        }
+
+        private readonly Dictionary<(string, int), string> _fitted = new();
+
+        private string Fit(string caption, float room)
+        {
             float Width(string c) => (LabelTexture(c, null)?.GetWidth() ?? 0) * CaptionScale;
 
-            if (string.IsNullOrEmpty(caption) || room <= 0 || Width(caption) <= room)
+            if (Width(caption) <= room)
             {
                 return caption;
             }
@@ -1725,6 +1752,16 @@ namespace GUO.Input.Touch
             for (int n = words.Length - 1; n > 0; n--)
             {
                 string cut = string.Join(" ", words, 0, n).TrimEnd(',', '.', ';', ':') + "...";
+
+                if (Width(cut) <= room)
+                {
+                    return cut;
+                }
+            }
+
+            for (int k = words[0].Length - 1; k > 0; k--)
+            {
+                string cut = words[0][..k] + "...";
 
                 if (Width(cut) <= room)
                 {
