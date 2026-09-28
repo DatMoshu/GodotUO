@@ -7,9 +7,9 @@
 #             the .NET half of a Godot Android export. This is exactly what
 #             Godot runs inside --export-debug Android before it packs the
 #             APK; it proves the net9.0 target and the plugin-host guard.
-#   web       reported, not built: Godot 4 mono cannot export C# to the web
-#             (docs/architecture/ADR-0008-web-target.md). The job is a
-#             reminder that prints the recorded reason.
+#   web       reported, not built: the web build is exported locally with
+#             tools/web on a community Godot build (ADR-0008, Accepted); CI
+#             does not build it yet. The job checks the tool is present.
 #
 # What CI cannot do: run the engine (tools/godot is gitignored, ~350 MB),
 # export an APK (needs the mono export templates, an SDK and a keystore),
@@ -137,12 +137,13 @@ jobs:
           echo "$(ls build/android/publish_check | wc -l) files published"
 
   web:
-    name: web export (unsupported upstream)
+    name: web export (local only, not built in CI)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Report why there is no web build
+      - name: Report where the web build comes from
         run: |
-          echo "Godot 4.x mono cannot export C#/.NET to the web (godotengine/godot#70796)."
-          echo "The engine's refusal and the pipeline that waits for it: docs/architecture/ADR-0008-web-target.md"
+          echo "The web build is exported locally with tools/web (python tools/web/run.py export),"
+          echo "on the community Godot build in tools/godot_web: docs/architecture/ADR-0008-web-target.md (Accepted)."
+          echo "It is not built in CI yet."
           test -f tools/web/run.py && test -f tools/web/export_presets.template.cfg

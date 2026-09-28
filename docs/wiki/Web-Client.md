@@ -84,6 +84,6 @@ about 370 MiB for a short session, out of 2.6 GB.
 - **Picking your UO folder in the browser** (instead of running `serve`):
   with no install served, the first-run screen's Choose folder opens the
   browser's folder picker, and the files are read where they are, never
-  uploaded. Tested in Chrome; in Firefox the client does not yet get past
-  its splash (with or without a picked folder). The pick lasts for the
-  visit: the next visit asks again.
+  uploaded. Tested in Chrome. Firefox starts the client several times
+  more slowly, and with a picked folder its tab does not respond until the
+  start finishes. The pick lasts for the visit: the next visit asks again.
