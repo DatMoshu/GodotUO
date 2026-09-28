@@ -6,6 +6,7 @@
     python tools/multi/run.py write   NAME [--stage DIR]       a built multi into the staged set
     python tools/multi/run.py prove   NAME [--stage DIR] [--clip OUT.mp4] [--at X Y [Z]] [--visit X Y Z ...]
     python tools/multi/run.py show    ID [--data DIR] [--png FILE]
+    python tools/multi/run.py storeys DESC.json --project DIR   raise storeys on map buildings, as a world project
     python tools/multi/run.py scene-build SCENE.json [--cut Z]  a scene: every element, cut into parts
     python tools/multi/run.py scene-write NAME [--stage DIR]    each part as a multi, and the scene
     python tools/multi/run.py scene-prove NAME [--stage DIR] [--clip OUT.mp4] [--at X Y [Z]]
@@ -258,6 +259,50 @@ def cmd_scene_prove(cfg, a) -> int:
                              caption=a.caption or "")
 
 
+def cmd_storeys(cfg, a) -> int:
+    """Raise storeys on buildings that stand in the statics (storeys.py): a world project, its
+    record, previews (whole, and cut above each storey), and the offline walk of its tour."""
+    import generate
+    import render
+    import storeys
+    import walkcheck
+    desc = json.loads(a.desc.read_text(encoding="utf-8"))
+    cat = generate.Catalogue(a.catalogue or cfg.build / "multi" / "catalogue")
+    try:
+        built = storeys.build(desc, cat, cfg.client_data)
+    except generate.DescriptionError as e:
+        print(f"[multi] {a.desc}: {e}")
+        return 1
+    project = a.project
+    written = storeys.write_project(built, project, desc["name"], cfg)
+    from multifile import Component
+    comps = [Component(sid, bx * 8 + sx, by * 8 + sy, z) for (bx, by), v in built["blocks"].items()
+             for sid, sx, sy, z, _ in v["statics"]]
+    ground = desc.get("ground", 0)
+    problems = []
+    tour = desc.get("tour", [])
+    if tour:
+        stops = [{"name": t["name"], "x": t["at"][0], "y": t["at"][1], "z": t["z"]} for t in tour]
+        problems = walkcheck.check_tour([{"centre": [0, 0], "comps": comps}], stops, cat.pieces, ground)
+    prev = project / "preview"
+    prev.mkdir(exist_ok=True)
+    render.render(comps, cfg.client_data, prev / "whole.png")
+    for z in sorted({st["z"] for rec in built["buildings"] for st in rec["storeys"][:-1]}):
+        render.render(comps, cfg.client_data, prev / f"cut_below_{z + 19}.png", max_z=z + 19)
+    record = {"name": desc["name"], "facet": built["facet"], "blocks": sorted(map(list, built["blocks"])),
+              "buildings": built["buildings"], "added": len(built["added"]), "removed": len(built["removed"]),
+              "tour": tour, "problems": problems}
+    (project / "storeys.json").write_text(json.dumps(record, indent=1) + "\n", encoding="utf-8")
+    for rec in built["buildings"]:
+        print(f"[multi]   {rec['name']}: storeys at z {[s['z'] for s in rec['storeys']]}, "
+              f"{len(rec['footprint'])} cells, {len(rec['stairs'])} stair(s)")
+    for p_ in problems:
+        print(f"[multi]   PROBLEM {p_}")
+    print(f"[multi] {desc['name']}: {len(written)} blocks, +{len(built['added'])} -{len(built['removed'])} statics "
+          f"-> {project} ({'valid' if not problems else 'NOT valid'})")
+    return 0 if not problems else 1
+
+
 def cmd_show(cfg, a) -> int:
     import render
     from multifile import Multis
@@ -317,6 +362,10 @@ def main() -> int:
     p.add_argument("--caption")
     p.add_argument("--at", type=int, nargs="+", metavar="N")
     p.add_argument("--min-free-gb", type=float, default=16)
+    p = sub.add_parser("storeys")
+    p.add_argument("desc", type=Path)
+    p.add_argument("--project", type=Path, required=True)
+    p.add_argument("--catalogue", type=Path)
     p = sub.add_parser("show")
     p.add_argument("id")
     p.add_argument("--data", type=Path)
@@ -324,7 +373,7 @@ def main() -> int:
     a = ap.parse_args()
     cfg = load_config()
     return {"mine": cmd_mine, "sheets": cmd_sheets, "build": cmd_build, "write": cmd_write, "prove": cmd_prove, "show": cmd_show,
-            "scene-build": cmd_scene_build, "scene-write": cmd_scene_write, "scene-prove": cmd_scene_prove}[a.cmd](cfg, a)
+            "scene-build": cmd_scene_build, "storeys": cmd_storeys, "scene-write": cmd_scene_write, "scene-prove": cmd_scene_prove}[a.cmd](cfg, a)
 
 
 if __name__ == "__main__":

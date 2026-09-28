@@ -110,6 +110,18 @@ materials (a list, the first dominant) so a large paved area is not one tile. A
 build never depends on what was built before it in the same process: the
 catalogue forgets its picks at the start of each house or scene.
 
+## Storeys on the map's buildings
+
+`run.py storeys DESC --project DIR` takes buildings that already stand in the
+map's statics and stacks storeys on them (`storeys.py`, data_formats section
+16): the ground storey is kept as it is, the old roof goes, and walls, floors,
+stairs and a flat roof with a parapet go on top. The output is a world project,
+not multis: `tools/world/run.py export` and `verify` turn it into map files the
+shard reads first and the client reads through its override list. Nothing
+needs placing at boot, the doors and vendors downstairs keep their places, and
+there is no multi overlap to worry about. The tour is walked offline as for a
+scene.
+
 ## The offline walk
 
 `scene-build` walks the tour offline (`walkcheck.py`) before any proof: a

@@ -279,6 +279,10 @@ def main() -> int:
         buried, _ = walkcheck.surfaces([{"centre": [0, 0], "comps": [C(2, 0, 0, 20), C(3, 0, 0, 20)]}], kinds, 0)
         check(20 not in buried[(0, 0)] and 25 in buried[(0, 0)],
               f"a floor with a block standing on it is not stood on, the block is (got {buried[(0, 0)]})")
+        # a goal on open land beyond the scene's reach round it is still found
+        far = [{"name": "in", "x": 0, "y": 0, "z": 0}, {"name": "out", "x": 0, "y": 30, "z": 0}]
+        check(walkcheck.check_tour([{"centre": [0, 0], "comps": [C(2, 0, 0, 0)]}], far, kinds) == [],
+              "a stop on the land well past the scene is reached")
         # a long wall on the land with its only way round forty cells off: a detour, reported
         long_wall = [{"centre": [0, 0], "comps": [C(1, 0, y, 0) for y in range(-40, 41)]}]
         dleg = [{"name": "west", "x": -1, "y": 0, "z": 0}, {"name": "east", "x": 1, "y": 0, "z": 0}]
@@ -311,6 +315,23 @@ def main() -> int:
         tour = [(t["name"], t["z"]) for t in sw["tour"]]
         check([z for _, z in tour] == [0, 0, 10, 10, 20, 20],
               f"the climb pauses on the landing (got {tour})")
+
+    # storeys: a map building's footprint is its walls and what they enclose, the doorway closed,
+    # a pitched roof's eaves left out
+    import storeys
+    pieces = {"0x0001": {"role": "wall"}, "0x0002": {"role": "roof"}, "0x0003": {"role": "floor"}}
+    cells = {}
+    for x in range(10, 16):
+        for y in range(20, 25):
+            if x in (10, 15) or y in (20, 24):
+                if (x, y) != (15, 22):        # a doorway in the east wall
+                    cells.setdefault((x, y), []).append((1, 0, 0))
+            cells.setdefault((x, y), []).append((2, 20, 0))
+    for y in range(19, 26):                   # the eaves, a cell out on the west
+        cells.setdefault((9, y), []).append((2, 20, 0))
+    fp, walls = storeys.footprint((8, 18, 17, 26), cells, pieces, 0, 20)
+    check(fp == {(x, y) for x in range(10, 16) for y in range(20, 25)} and (15, 22) not in walls,
+          f"a map building's footprint is its walls and inside, doorway closed, eaves out (got {len(fp)} cells)")
 
     print(f"test_multi: {'OK' if not FAILS else 'FAILED'} ({len(FAILS)} failing)")
     return 0 if not FAILS else 1

@@ -802,3 +802,30 @@ centre) and `preview.png`. `scene-write` writes each part into the stage as
 `<scene>.<part>` and the scene into the stage's `scenes.json`
 (`bounds`, `tour`, `parts[]` with `id`, `centre`, `doors`). A part is
 checked for known items with art, z range and size.
+
+**Storeys on the map's own buildings** (`kind` `storeys`, `format` 1;
+`tools/multi/storeys.py`, `run.py storeys DESC --project DIR`) raise
+buildings that already stand in the statics instead of placing multis, and
+write the result as a world project (section 9) for `tools/world` to export.
+The ground storey stays as the map has it (walls, floor, furnishings), so the
+shard's doors, signs and vendors there stay valid; everything in the
+footprint from the ground walls' top up (and a pitched roof's eaves one cell
+round it) goes. `buildings[]`:
+
+| Field | Meaning |
+|---|---|
+| `name` | The building's name in the record |
+| `box` `[x0, y0, x1, y1]` | Map cells that hold it: the footprint is its ground walls (wall, window or post pieces at `base_z`) and what they enclose or a flat roof at their top covers, doorways closed |
+| `base_z`, `storey_height` | The ground storey's z (default 0) and z between storeys (default 20) |
+| `storeys` | How many storeys in all, the ground one included (2 or more) |
+| `wall`, `floor`, `stair_material` | Families for the storeys added: walls repeat the outline (a ground doorway in it becomes wall) and the ground partitions, with a window every `window_every` cells (default 3) of a straight run |
+| `roof` | `{"floor", "parapet"}`: the flat roof's tiles and its 5-high parapet |
+| `stairs[]` | `{"storey", "at", "rise", "width"}`: a house stair (above) from that storey to the next; the ground storey's own pieces on its cells go |
+| `hue` | A hue for every piece added |
+
+`tour[]` is as a scene's, in map coordinates. The project folder gets
+`project.json`, `blocks/`, `storeys.json` (per building its storey z levels,
+stairs with foot, cells and arrival, footprint, `roof_z`; the counts added and
+removed; the tour and its walk problems) and `preview/` (`whole.png`, and
+`cut_below_<z>.png` above each storey).
+

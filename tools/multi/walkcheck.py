@@ -71,8 +71,9 @@ def path(stand: dict, covered: set, start: tuple, goal: tuple, ground: int = 0, 
     first = (start[0], start[1], sz)
     seen = {first: 0}
     heap = [(0, 0, first)]
-    xs = [x for x, _ in covered] or [start[0]]
-    ys = [y for _, y in covered] or [start[1]]
+    # the scene and the land round it, and both ends of the leg wherever they are
+    xs = [x for x, _ in covered] + [start[0], goal[0]]
+    ys = [y for _, y in covered] + [start[1], goal[1]]
     lo_x, hi_x, lo_y, hi_y = min(xs) - 4, max(xs) + 4, min(ys) - 4, max(ys) + 4
     while heap:
         _, g, (x, y, z) = heapq.heappop(heap)
