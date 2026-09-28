@@ -21,6 +21,15 @@ internal static class GamepadProbe
 {
     public static bool Passed { get; private set; }
 
+    /// <summary>
+    /// Paced for a screen recording (--gamepad-clip): the run starts at the
+    /// Britain bank, where the lamps light the street at night, and Y holds
+    /// the command bar's second row open for three seconds. About 15 s.
+    /// </summary>
+    public static bool Clip;
+
+    private const string ClipSpot = "[go 1434 1699 0";
+
     private static int _failed;
 
     private static void Check(string what, bool ok, string detail = "")
@@ -69,6 +78,13 @@ internal static class GamepadProbe
         }
 
         await InputProbe.Wait(host, 60);
+
+        if (Clip)
+        {
+            await InputProbe.Say(host, ClipSpot);
+            await InputProbe.Wait(host, 120);
+            GD.Print("[GUO] gamepad probe: clip, at the Britain bank");
+        }
 
         Profile profile = ProfileManager.CurrentProfile;
         string manual = profile.GamepadLayout;
@@ -145,10 +161,10 @@ internal static class GamepadProbe
         {
             int rows = bar.RowsOpen;
             await Button(host, JoyButton.Y);
-            await InputProbe.Wait(host, 30);
+            await InputProbe.Wait(host, Clip ? 180 : 30);
             int opened = bar.RowsOpen;
             await Button(host, JoyButton.Y);
-            await InputProbe.Wait(host, 30);
+            await InputProbe.Wait(host, Clip ? 90 : 30);
             Check("Y opens and closes the command bar's rows, as the handle does",
                 opened != rows && bar.RowsOpen == rows, $"{rows} -> {opened} -> {bar.RowsOpen}");
         }
