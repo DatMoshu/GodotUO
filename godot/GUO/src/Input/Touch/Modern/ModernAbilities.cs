@@ -95,6 +95,9 @@ internal sealed partial class ModernAbilities : ModernGump
         return true;
     }
 
+    // The UO font's lines are far apart for its glyphs; wrapped lines closer.
+    private const int WrapSpacing = -6;
+
     protected override void Build(PanelContainer card)
     {
         var col = new VBoxContainer();
@@ -103,17 +106,21 @@ internal sealed partial class ModernAbilities : ModernGump
 
         var header = new HBoxContainer();
         col.AddChild(header);
-        Label title = UoTheme.Label("Abilities", UoTheme.Heading, 2);
-        title.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-        header.AddChild(title);
+        header.AddThemeConstantOverride("separation", 8);
+        header.AddChild(UoTheme.Label("Abilities", UoTheme.Heading, 2));
+
+        // The hint beside the title, not a line of its own: on a landscape
+        // phone every line here is a list row fewer (C14).
+        Label hint = UoTheme.Label("Tap to use, hold to place a button.", UoTheme.Muted);
+        hint.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        hint.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+        header.AddChild(hint);
         Button classic = UoTheme.Button("Classic view", 90);
         classic.Pressed += OpenClassic;
         header.AddChild(classic);
         Button close = UoTheme.Button("X", 30);
         close.Pressed += Close;
         header.AddChild(close);
-
-        col.AddChild(UoTheme.Label("Your weapon's abilities: tap to use, hold to place a button.", UoTheme.Muted));
 
         var now = new HBoxContainer();
         now.AddThemeConstantOverride("separation", 8);
@@ -122,19 +129,21 @@ internal sealed partial class ModernAbilities : ModernGump
         for (int i = 0; i < 2; i++)
         {
             bool primary = i == 0;
-            var tile = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
-            tile.AddThemeConstantOverride("separation", 2);
+            // A tile: the big icon, its name and role beside it, one icon tall.
+            var tile = new HBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, Alignment = BoxContainer.AlignmentMode.Center };
+            tile.AddThemeConstantOverride("separation", 6);
             now.AddChild(tile);
-            var icon = new TextureButton { StretchMode = TextureButton.StretchModeEnum.KeepCentered, CustomMinimumSize = new Vector2(48, 48), SizeFlagsHorizontal = Control.SizeFlags.ShrinkCenter };
+            var icon = new TextureButton { StretchMode = TextureButton.StretchModeEnum.KeepCentered, CustomMinimumSize = new Vector2(48, 48), SizeFlagsVertical = Control.SizeFlags.ShrinkCenter };
             icon.SetMeta("ability", primary ? "primary" : "secondary");
             icon.Pressed += () => { Close(); if (primary) GameActions.UsePrimaryAbility(World); else GameActions.UseSecondaryAbility(World); };
             tile.AddChild(icon);
+            var words = new VBoxContainer { SizeFlagsVertical = Control.SizeFlags.ShrinkCenter };
+            words.AddThemeConstantOverride("separation", 0);
+            tile.AddChild(words);
             Label name = UoTheme.Label("", UoTheme.Ink);
-            name.HorizontalAlignment = HorizontalAlignment.Center;
-            tile.AddChild(name);
+            words.AddChild(name);
             Label which = UoTheme.Label(primary ? "Primary" : "Secondary", UoTheme.Muted);
-            which.HorizontalAlignment = HorizontalAlignment.Center;
-            tile.AddChild(which);
+            words.AddChild(which);
             _current[i] = icon;
             _currentName[i] = name;
         }
@@ -145,7 +154,7 @@ internal sealed partial class ModernAbilities : ModernGump
         scroll.AddThemeStyleboxOverride("panel", UoTheme.Frame(UoTheme.FieldFrame, 4));
         col.AddChild(scroll);
         _list = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
-        _list.AddThemeConstantOverride("separation", 6);
+        _list.AddThemeConstantOverride("separation", 4);
         scroll.AddChild(_list);
     }
 
@@ -182,7 +191,7 @@ internal sealed partial class ModernAbilities : ModernGump
         row.AddChild(icon);
 
         var text = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
-        text.AddThemeConstantOverride("separation", 1);
+        text.AddThemeConstantOverride("separation", 0);
         row.AddChild(text);
         text.AddChild(UoTheme.Label(StringHelper.CapitalizeAllWords(AbilityData.Abilities[i].Name), UoTheme.Heading));
 
@@ -192,6 +201,7 @@ internal sealed partial class ModernAbilities : ModernGump
         {
             Label l = UoTheme.Label(about, UoTheme.Ink);
             l.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+            l.AddThemeConstantOverride("line_spacing", WrapSpacing);
             text.AddChild(l);
         }
 
@@ -210,6 +220,7 @@ internal sealed partial class ModernAbilities : ModernGump
 
             Label w = UoTheme.Label(string.Join(", ", names), UoTheme.Muted);
             w.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+            w.AddThemeConstantOverride("line_spacing", WrapSpacing);
             text.AddChild(w);
         }
 

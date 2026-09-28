@@ -233,20 +233,19 @@ internal sealed partial class ModernOptions : ModernGump
         body.AddThemeConstantOverride("separation", 6);
         outer.AddChild(body);
 
-        // The page column, as the classic's NiceButtons: text, the open one lit.
-        // It scrolls with a drag where the pages outgrow a short screen, Classic
-        // view pinned under it.
-        var side = new VBoxContainer { CustomMinimumSize = new Vector2(112, 0) };
-        side.AddThemeConstantOverride("separation", 2);
-        body.AddChild(side);
+        // The page column, as the classic's NiceButtons: text, the open one lit,
+        // the rows touching (each is its whole target), so all ten fit a 1080p
+        // phone at 3x (C13). Classic view sits in the footer, not under it. On
+        // a shorter screen the column scrolls with a drag.
         var columnScroll = new ScrollContainer
         {
+            CustomMinimumSize = new Vector2(112, 0),
             SizeFlagsVertical = Control.SizeFlags.ExpandFill,
             HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
         };
-        side.AddChild(columnScroll);
+        body.AddChild(columnScroll);
         var column = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
-        column.AddThemeConstantOverride("separation", 2);
+        column.AddThemeConstantOverride("separation", 0);
         columnScroll.AddChild(column);
 
         foreach (string page in Pages)
@@ -264,12 +263,6 @@ internal sealed partial class ModernOptions : ModernGump
             column.AddChild(b);
             _pageButtons[page] = b;
         }
-
-        side.AddChild(RuleLine(true));
-        Button classic = Row(UoTheme.Button("Classic view"));
-        classic.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
-        classic.Pressed += OpenClassic;
-        side.AddChild(classic);
 
         body.AddChild(RuleLine(false));
 
@@ -343,6 +336,12 @@ internal sealed partial class ModernOptions : ModernGump
             n.QueueFree();
         }
 
+        // Classic view first, apart from the classic's own four.
+        Button classic = Row(UoTheme.Button("Classic view"));
+        classic.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
+        classic.Pressed += OpenClassic;
+        _footer.AddChild(classic);
+        _footer.AddChild(RuleLine(false));
         _footer.AddChild(Jewel(0x00F3, 0x00F1, 0x00F2, "Cancel", Close));
         _footer.AddChild(Jewel(0x00EF, 0x00F0, 0x00EE, "Apply", Apply));
         _footer.AddChild(Jewel(0x00F6, 0x00F4, 0x00F5, "Default", Default));
