@@ -126,6 +126,7 @@ internal static class GumpPresentation
     private const int FullHeightPad = 12;
 
     private static readonly System.Collections.Generic.HashSet<Gump> _fitted = new();
+    private static readonly System.Collections.Generic.Dictionary<Gump, (Point Size, Point At)> _placeWhenSized = new();
 
     /// <summary>
     /// Fit each full-height gump that has just opened to the main screen, as
@@ -142,6 +143,26 @@ internal static class GumpPresentation
 
         _fitted.RemoveWhere(g => g.IsDisposed);
         _restored.RemoveWhere(g => g.IsDisposed);
+
+        // A sized gump takes its new size on its next update: until then it is
+        // as tall as it last was (a world map saved at 1240x1029 on a 720-tall
+        // screen) and was clamped to the top of the screen. It is placed again
+        // once the size has taken.
+        foreach (Gump g in System.Linq.Enumerable.ToList(_placeWhenSized.Keys))
+        {
+            (Point size, Point at) = _placeWhenSized[g];
+
+            if (g.IsDisposed)
+            {
+                _placeWhenSized.Remove(g);
+            }
+            else if (g.Width == size.X && g.Height == size.Y)
+            {
+                g.X = at.X;
+                g.Y = at.Y;
+                _placeWhenSized.Remove(g);
+            }
+        }
 
         foreach (Gump g in UIManager.Gumps)
         {
@@ -172,6 +193,7 @@ internal static class GumpPresentation
                 Point size = resizable.ResizeWindow(new Point(b.Width, room));
                 g.X = b.X + Math.Max(0, (b.Width - size.X) / 2);
                 g.Y = top;
+                _placeWhenSized[g] = (size, new Point(g.X, g.Y));
                 TouchInput.Note($"full-height: {g.GetType().Name} sized to {size.X}x{size.Y}");
                 continue;
             }
@@ -402,6 +424,18 @@ internal static class GumpPresentation
 
     public static bool OnSecond(Gump g) => DualScreen.ShelfOn && g.X >= DualScreen.MainWidth;
 
+    /// <summary>
+    /// The room a gump is kept in: its screen, less the command bar's rows,
+    /// except for a full-height gump on the main screen, which the bar steps
+    /// aside for. Kept out of the whole screen, it was sized to the room
+    /// above the bar (1.13x, not its fit, at 1280x720) and a world map as
+    /// tall as the screen was pushed up under the top bar.
+    /// </summary>
+    private static Rectangle Room(Gump g, bool second) =>
+        !second && TouchInput.Enabled && IsFullHeight(g)
+            ? Client.Game?.ClientBounds ?? new Rectangle(0, 0, 640, 480)
+            : DisplayBounds(second);
+
     // The renderer stores the shelf to the right; players see it below the main screen.
     // Keep that storage detail out of window dragging, including pointer jumps between panels.
     public static bool MoveDragged(Gump g, Point previous, Point pointer)
@@ -439,7 +473,7 @@ internal static class GumpPresentation
     /// <summary>Keep the gump inside the given screen, whichever side of the seam its origin is on now.</summary>
     public static void Clamp(Gump g, bool second)
     {
-        Rectangle b = DisplayBounds(second);
+        Rectangle b = Room(g, second);
         g.X = Math.Clamp(g.X, b.X, b.X + Math.Max(0, b.Width - Width(g)));
         g.Y = Math.Clamp(g.Y, 0, Math.Max(0, b.Height - Height(g)));
     }
@@ -453,7 +487,7 @@ internal static class GumpPresentation
         // seam, and Clamp would then have put it on the main screen (seen on
         // the Thor).
         bool second = OnSecond(g);
-        Rectangle b = DisplayBounds(second);
+        Rectangle b = Room(g, second);
         float fit = Math.Min(b.Width / (float)g.Width, b.Height / (float)g.Height);
         // If the original gump is too large even at minimum, retain a reachable origin/reset.
         float next = Math.Clamp(requested, MinScale, Math.Max(MinScale, Math.Min(MaxScale, fit)));
