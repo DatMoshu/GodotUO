@@ -45,21 +45,20 @@ namespace GUO.Input.Gamepad
     /// that cannot be resolved gets no face-button actions and one message
     /// saying where to choose; it is never guessed. Walking needs no layout.
     ///
-    /// Gated (<see cref="Enabled"/>): on where a pad is how the device is held
-    /// (Android, the Linux export the Steam Deck runs); off on any other
-    /// desktop, where upstream has no pad handling at all and a connected pad
-    /// must do nothing (desktop 1:1), unless the player opts in under Options
-    /// ("Use a controller on this computer", Profile.GamepadOnDesktop).
+    /// On by default on every platform, the Windows desktop included, where
+    /// upstream has no pad at all: the owner's decision of 2026-09-28
+    /// (ADR-0025), over desktop 1:1. Options > "Use a controller"
+    /// (Profile.Gamepad) turns it off, and then a pad does nothing
+    /// (<see cref="Enabled"/>). Which input is in use, pad or keyboard and
+    /// mouse, is <see cref="InputMode"/>.
     /// </remarks>
     internal static class GamepadInput
     {
-        private static readonly bool PadPlatform = OS.GetName() is "Android" or "Linux";
-
         /// <summary>For probes: force the gate on or off; null follows the platform and the profile.</summary>
         public static bool? Forced { get; set; }
 
         /// <summary>Whether pad events do anything; see the remarks.</summary>
-        public static bool Enabled => Forced ?? (PadPlatform || (ProfileManager.CurrentProfile?.GamepadOnDesktop ?? false));
+        public static bool Enabled => Forced ?? (ProfileManager.CurrentProfile?.Gamepad ?? true);
 
         /// <summary>Log every joypad event to the console (and logcat): --gamepad-trace.</summary>
         public static bool Trace { get; set; }
@@ -132,6 +131,7 @@ namespace GUO.Input.Gamepad
                 return;
             }
 
+            InputMode.PointerUsed();
             float scale = (float) Client.Game.DpiScale;
             Vector2 at = new Vector2(Mouse.Position.X, Mouse.Position.Y) * scale
                 + new Vector2(_rightX, _rightY) * PointerSpeed * (float) delta;
@@ -271,6 +271,8 @@ namespace GUO.Input.Gamepad
             switch (printed.Value)
             {
                 case JoyButton.A:
+                    InputMode.PointerUsed();
+
                     if (!Touch.WindowMenu.Accept(e.Pressed))
                     {
                         Click(e.Pressed);

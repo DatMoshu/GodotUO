@@ -79,24 +79,73 @@ internal static class GamepadProbe
 
         await InputProbe.Wait(host, 60);
 
-        // Desktop 1:1 (review P1): with the gate at its default a desktop pad
-        // does nothing -- no walk, no Escape. Then the gate is opened for the
-        // rest, which tests the layer itself.
-        if (!GamepadInput.Enabled)
+        // ADR-0025 (the owner, 2026-09-28): a pad works by default on every
+        // platform, the input mode follows whatever was used last, the
+        // pointer hides while the pad is idle, and "Use a controller" off
+        // makes a pad do nothing. Then the gate is forced open for the rest.
         {
+            var profile0 = ProfileManager.CurrentProfile;
             var cursor = Client.Game.UO.World.TargetManager;
-            (ushort x, ushort y) idle = Where();
+            bool kept = profile0.Gamepad;
+            int changes = 0;
+            System.Action<GUO.Input.InputKind> count = _ => changes++;
+            GUO.Input.InputMode.Changed += count;
+
+            profile0.Gamepad = true;
+            GUO.Input.InputMode.Switch(GUO.Input.InputKind.KeyboardMouse);
+            changes = 0;
+            (ushort, ushort) at = Where();
+            await Hold(host, new InputEventJoypadButton { ButtonIndex = JoyButton.DpadRight, Pressed = true },
+                new InputEventJoypadButton { ButtonIndex = JoyButton.DpadRight, Pressed = false });
+            Check("a pad works by default: the D-pad walks", new Profile().Gamepad && GamepadInput.Enabled && Where() != at,
+                $"default {new Profile().Gamepad}, at {at} -> {Where()}");
+            Check("a pad button switches the input mode to Gamepad, once",
+                GUO.Input.InputMode.Current == GUO.Input.InputKind.Gamepad && changes == 1,
+                $"{GUO.Input.InputMode.Current}, {changes} change(s), pad \"{GUO.Input.InputMode.PadName}\" {GUO.Input.InputMode.PadFamily}");
+
+            Godot.Input.ParseInputEvent(new InputEventKey { Keycode = Key.Shift, PhysicalKeycode = Key.Shift, Pressed = true });
+            Godot.Input.ParseInputEvent(new InputEventKey { Keycode = Key.Shift, PhysicalKeycode = Key.Shift, Pressed = false });
+            await InputProbe.Wait(host, 2);
+            Check("a key switches it back to KeyboardMouse at once", GUO.Input.InputMode.Current == GUO.Input.InputKind.KeyboardMouse && changes == 2,
+                $"{GUO.Input.InputMode.Current}, {changes} change(s)");
+
+            await Button(host, JoyButton.Start);
+            Vector2 mouse = new Vector2(GUO.Input.Mouse.Position.X, GUO.Input.Mouse.Position.Y);
+            Godot.Input.ParseInputEvent(new InputEventMouseMotion { Position = mouse, Relative = new Vector2(1, 0) });
+            await InputProbe.Wait(host, 2);
+            bool stillPad = GUO.Input.InputMode.Current == GUO.Input.InputKind.Gamepad;
+            Godot.Input.ParseInputEvent(new InputEventMouseMotion { Position = mouse, Relative = new Vector2(12, 0) });
+            await InputProbe.Wait(host, 2);
+            Check("a mouse moved a few pixels switches it back; a 1 px jitter does not",
+                stillPad && GUO.Input.InputMode.Current == GUO.Input.InputKind.KeyboardMouse, $"after 1 px: pad {stillPad}; after 12 px: {GUO.Input.InputMode.Current}");
+
+            await Button(host, JoyButton.Start);
+            bool shownAtFirst = !GUO.Input.InputMode.PointerHidden;
+            await InputProbe.Wait(host, 300);
+            bool hiddenIdle = GUO.Input.InputMode.PointerHidden;
+            await Hold(host, new InputEventJoypadMotion { Axis = JoyAxis.RightX, AxisValue = 0.8f },
+                new InputEventJoypadMotion { Axis = JoyAxis.RightX, AxisValue = 0f });
+            bool shownOnStick = !GUO.Input.InputMode.PointerHidden;
+            await InputProbe.Wait(host, 300);
+            cursor.SetTargeting(CursorTarget.Object, 0, TargetType.Neutral);
+            bool shownTargeting = !GUO.Input.InputMode.PointerHidden;
+            cursor.CancelTarget();
+            Check("the pointer: shown on switching to the pad, hidden when idle, back on the right stick, kept for a target cursor",
+                shownAtFirst && hiddenIdle && shownOnStick && shownTargeting,
+                $"first {shownAtFirst}, idle hidden {hiddenIdle}, stick {shownOnStick}, targeting {shownTargeting}");
+
+            profile0.Gamepad = false;
+            at = Where();
             await Hold(host, new InputEventJoypadButton { ButtonIndex = JoyButton.DpadRight, Pressed = true },
                 new InputEventJoypadButton { ButtonIndex = JoyButton.DpadRight, Pressed = false });
             cursor.SetTargeting(CursorTarget.Object, 0, TargetType.Neutral);
             await Button(host, JoyButton.B);
-            Check("on a desktop, by default, a pad does nothing (no walk, no cancel)",
-                Where() == idle && cursor.IsTargeting, $"at {idle} -> {Where()}, targeting {cursor.IsTargeting}");
+            Check("\"Use a controller\" off: a pad does nothing (no walk, no cancel)",
+                Where() == at && cursor.IsTargeting, $"at {at} -> {Where()}, targeting {cursor.IsTargeting}");
             cursor.CancelTarget();
-        }
-        else
-        {
-            GD.Print($"[GUO] gamepad probe: skip  the desktop gate check (the pad is on here: {OS.GetName()})");
+
+            profile0.Gamepad = kept;
+            GUO.Input.InputMode.Changed -= count;
         }
 
         GamepadInput.Forced = true;

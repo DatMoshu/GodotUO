@@ -33,5 +33,6 @@ it is taken even if its file has not landed yet.
 | 0022 | Authoring UO data files | work/editor-uodata |
 | 0023 | Post-processing and shader framework | work/render-postfx |
 | 0024 | Modern gumps (Godot views of client gumps for touch) | work/ui-fullheight (proposed) |
+| 0025 | The gamepad on by default; the input mode follows the last input | work/pad-default-guo2 |
 
 Next free: 0025.
