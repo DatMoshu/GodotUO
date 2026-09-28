@@ -1251,6 +1251,9 @@ public partial class Main : Node
                     case "--zoom-probe":
                         o.ZoomProbe = true;
                         break;
+                    case "--merged-land=ordered":
+                        GUO.Renderer.MergedLand.Ordered = true;
+                        goto case "--merged-land";
                     case "--merged-land":
                         GUO.Renderer.MergedLand.Enabled = true;
                         GUO.Host.PerfProbe.ParityToggle = on => GUO.Renderer.MergedLand.Enabled = on;

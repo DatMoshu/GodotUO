@@ -9,35 +9,45 @@ namespace GUO.Renderer
 {
     /// <summary>
     /// Epic B, B4 fix 1 (--merged-land): the land of every visible chunk drawn
-    /// as one mesh per texture instead of one mesh per texture run per chunk.
+    /// as a few meshes instead of one mesh per texture run per chunk.
     /// </summary>
     /// <remarks>
     /// GUO addition, not in ClassicUO. Every <c>canvas_item_add_mesh</c> is a
     /// draw call of its own in Godot's canvas renderer, and zoomed out the land
-    /// pass alone was 1,200-4,000 of them (perf probe, 2026-09-27). The land
-    /// pass draws before the sorted world, all on the mesh material, so its
-    /// meshes can be merged across chunks. The merged meshes are rebuilt only
-    /// when the visible chunks, or any chunk's visible land (its
-    /// <see cref="MeshLayer.BuildStamp"/>), change -- standing still costs
-    /// nothing; stepping across a chunk edge costs one rebuild.
+    /// pass alone was 1,200-4,000 of them (perf probe, 2026-09-27). The merged
+    /// meshes are rebuilt only when the visible chunks, or any chunk's visible
+    /// land (<see cref="MeshLayer.BuildStamp"/>), change.
     ///
-    /// Grouping by texture changes the order land is drawn in across chunks.
-    /// Land tiles only overlap where a stretched tile reaches over its
-    /// neighbour, which is where a difference could show; the perf probe's
-    /// --perf-parity checks the picture.
+    /// Two groupings:
+    /// <list type="bullet">
+    /// <item>By texture (<c>--merged-land</c>): one mesh per texture, the
+    /// fewest calls. It changes the order land is drawn in, and neighbouring
+    /// tiles overlap along their diamond edges, so edge pixels can differ
+    /// from upstream's (measured: hundreds of pixels a frame on tile
+    /// edges).</item>
+    /// <item>Ordered (<c>--merged-land=ordered</c>): sprites in exactly the
+    /// order the per-chunk runs drew them, a new mesh only where the texture
+    /// changes -- runs merge only across chunk edges. The same picture by
+    /// construction; fewer calls only where consecutive runs share a
+    /// texture.</item>
+    /// </list>
     /// </remarks>
     internal sealed class MergedLand
     {
         public static bool Enabled;
+        public static bool Ordered;
 
         private readonly List<(MeshLayer Layer, int Stamp)> _key = new();
         private readonly List<(MeshLayer Layer, int Stamp)> _now = new();
-        private readonly List<Texture2D> _order = new();
-        private readonly Dictionary<Texture2D, int> _counts = new();
-        private readonly Dictionary<Texture2D, ArrayMesh> _meshes = new();
+        private readonly List<(Texture2D Texture, List<(MeshLayer Layer, int Index)> Sprites)> _segments = new();
+        private readonly List<ArrayMesh> _meshes = new();
+        private bool _keyOrdered;
         private int _sprites;
 
         public int Rebuilds { get; private set; }
+
+        /// <summary>Meshes drawn a frame, for the perf probe.</summary>
+        public static int LastSegments;
 
         /// <summary>Draws the land of these layers; returns how many sprites, as DrawMeshLayer does.</summary>
         public int Draw(UltimaBatcher2D batcher, List<MeshLayer> layers)
@@ -51,18 +61,20 @@ namespace GUO.Renderer
                 }
             }
 
-            if (!Same())
+            if (!Same() || _keyOrdered != Ordered)
             {
                 Rebuild();
                 _key.Clear();
                 _key.AddRange(_now);
+                _keyOrdered = Ordered;
             }
 
-            foreach (Texture2D texture in _order)
+            for (int i = 0; i < _segments.Count; i++)
             {
-                batcher.DrawLandMesh(_meshes[texture], texture);
+                batcher.DrawLandMesh(_meshes[i], _segments[i].Texture);
             }
 
+            LastSegments = _segments.Count;
             return _sprites;
         }
 
@@ -87,87 +99,80 @@ namespace GUO.Renderer
         private void Rebuild()
         {
             Rebuilds++;
-            _order.Clear();
-            _counts.Clear();
+            _segments.Clear();
             _sprites = 0;
+            var byTexture = new Dictionary<Texture2D, int>();
 
-            // How many sprites each texture has, in first-appearance order.
+            // Chunk by chunk, sprite by sprite: the order DrawMeshLayer drew in.
             foreach ((MeshLayer layer, _) in _now)
             {
                 for (int i = 0; i < layer.Count; i++)
                 {
-                    if (!layer.Visible[i] || layer.Textures[i] == null)
+                    Texture2D t = layer.Textures[i];
+                    if (!layer.Visible[i] || t == null)
                     {
                         continue;
                     }
 
-                    Texture2D t = layer.Textures[i];
-                    if (!_counts.TryGetValue(t, out int n))
-                    {
-                        _order.Add(t);
-                        n = 0;
-                    }
-
-                    _counts[t] = n + 1;
                     _sprites++;
+                    if (Ordered)
+                    {
+                        if (_segments.Count == 0 || !ReferenceEquals(_segments[^1].Texture, t))
+                        {
+                            _segments.Add((t, new List<(MeshLayer, int)>()));
+                        }
+
+                        _segments[^1].Sprites.Add((layer, i));
+                    }
+                    else
+                    {
+                        if (!byTexture.TryGetValue(t, out int s))
+                        {
+                            byTexture[t] = s = _segments.Count;
+                            _segments.Add((t, new List<(MeshLayer, int)>()));
+                        }
+
+                        _segments[s].Sprites.Add((layer, i));
+                    }
                 }
             }
 
-            var at = new Dictionary<Texture2D, int>();
-            var points = new Dictionary<Texture2D, Vector2[]>();
-            var uvs = new Dictionary<Texture2D, Vector2[]>();
-            var colors = new Dictionary<Texture2D, Color[]>();
-            var custom = new Dictionary<Texture2D, float[]>();
-            foreach (Texture2D t in _order)
+            while (_meshes.Count < _segments.Count)
             {
-                int v = _counts[t] * 6;
-                at[t] = 0;
-                points[t] = new Vector2[v];
-                uvs[t] = new Vector2[v];
-                colors[t] = new Color[v];
-                custom[t] = new float[v * 4];
+                _meshes.Add(new ArrayMesh());
             }
 
-            // Chunk by chunk, sprite by sprite: within a texture the order is the
-            // order the per-chunk meshes drew in.
-            foreach ((MeshLayer layer, _) in _now)
+            for (int s = 0; s < _segments.Count; s++)
             {
-                for (int i = 0; i < layer.Count; i++)
+                List<(MeshLayer Layer, int Index)> sprites = _segments[s].Sprites;
+                int v = sprites.Count * 6;
+                var points = new Vector2[v];
+                var uvs = new Vector2[v];
+                var colors = new Color[v];
+                var custom = new float[v * 4];
+                int w = 0;
+                foreach ((MeshLayer layer, int i) in sprites)
                 {
-                    if (!layer.Visible[i] || layer.Textures[i] == null)
-                    {
-                        continue;
-                    }
-
-                    Texture2D t = layer.Textures[i];
-                    int w = at[t];
                     ref MeshQuad q = ref layer.Vertices[i];
 
                     // MeshLayer.WriteTriangles' winding: 0 1 2, 1 3 2.
-                    Put(points[t], uvs[t], colors[t], custom[t], w + 0, q.Position0, q.TextureCoordinate0, q.Hue0, q.Normal0);
-                    Put(points[t], uvs[t], colors[t], custom[t], w + 1, q.Position1, q.TextureCoordinate1, q.Hue1, q.Normal1);
-                    Put(points[t], uvs[t], colors[t], custom[t], w + 2, q.Position2, q.TextureCoordinate2, q.Hue2, q.Normal2);
-                    Put(points[t], uvs[t], colors[t], custom[t], w + 3, q.Position1, q.TextureCoordinate1, q.Hue1, q.Normal1);
-                    Put(points[t], uvs[t], colors[t], custom[t], w + 4, q.Position3, q.TextureCoordinate3, q.Hue3, q.Normal3);
-                    Put(points[t], uvs[t], colors[t], custom[t], w + 5, q.Position2, q.TextureCoordinate2, q.Hue2, q.Normal2);
-                    at[t] = w + 6;
-                }
-            }
-
-            foreach (Texture2D t in _order)
-            {
-                if (!_meshes.TryGetValue(t, out ArrayMesh mesh))
-                {
-                    _meshes[t] = mesh = new ArrayMesh();
+                    Put(points, uvs, colors, custom, w + 0, q.Position0, q.TextureCoordinate0, q.Hue0, q.Normal0);
+                    Put(points, uvs, colors, custom, w + 1, q.Position1, q.TextureCoordinate1, q.Hue1, q.Normal1);
+                    Put(points, uvs, colors, custom, w + 2, q.Position2, q.TextureCoordinate2, q.Hue2, q.Normal2);
+                    Put(points, uvs, colors, custom, w + 3, q.Position1, q.TextureCoordinate1, q.Hue1, q.Normal1);
+                    Put(points, uvs, colors, custom, w + 4, q.Position3, q.TextureCoordinate3, q.Hue3, q.Normal3);
+                    Put(points, uvs, colors, custom, w + 5, q.Position2, q.TextureCoordinate2, q.Hue2, q.Normal2);
+                    w += 6;
                 }
 
+                ArrayMesh mesh = _meshes[s];
                 mesh.ClearSurfaces();
                 var arrays = new Godot.Collections.Array();
                 arrays.Resize((int)Mesh.ArrayType.Max);
-                arrays[(int)Mesh.ArrayType.Vertex] = points[t];
-                arrays[(int)Mesh.ArrayType.TexUV] = uvs[t];
-                arrays[(int)Mesh.ArrayType.Color] = colors[t];
-                arrays[(int)Mesh.ArrayType.Custom0] = custom[t];
+                arrays[(int)Mesh.ArrayType.Vertex] = points;
+                arrays[(int)Mesh.ArrayType.TexUV] = uvs;
+                arrays[(int)Mesh.ArrayType.Color] = colors;
+                arrays[(int)Mesh.ArrayType.Custom0] = custom;
                 mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays, null, null,
                     (Mesh.ArrayFormat)((ulong)Mesh.ArrayCustomFormat.RgbaFloat << (int)Mesh.ArrayFormat.FormatCustom0Shift));
             }
