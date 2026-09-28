@@ -1,0 +1,16 @@
+{
+ "format": 1,
+ "name": "cottage",
+ "size": [8, 6],
+ "materials": {"wall": "plaster", "foundation": "stone", "floor": "wooden", "steps": "stone", "roof": "tile", "door": "wood"},
+ "storeys": [
+  {"openings": [
+    {"kind": "door", "side": "S", "offset": 4},
+    {"kind": "window", "side": "S", "offset": 2},
+    {"kind": "window", "side": "S", "offset": 6},
+    {"kind": "window", "side": "E", "offset": 3},
+    {"kind": "window", "side": "W", "offset": 3}
+  ]}
+ ],
+ "roof": {"style": "gable", "ridge": "x"}
+}

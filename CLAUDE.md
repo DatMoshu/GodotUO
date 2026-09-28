@@ -40,7 +40,7 @@ launchers/        .bat entry points, grouped by job. Start here.
   dev/            build, smoke, screenshot, sync, cache
   android/        doctor, export, install, run, smoke on a device (ADR-0017)
   windows/        doctor, export -- the .exe, with the sigil as its icon
-  web/            doctor, export, serve, smoke -- blocked upstream (ADR-0008)
+  web/            doctor, export, serve, smoke -- on a community C# web build (ADR-0008)
   steamdeck/      doctor, export, push, run, screenshot, smoke over ssh (ADR-0018)
 godot/GUO/        the Godot project
   src/Compat/     XNA compatibility shim — read its README first
@@ -53,6 +53,8 @@ tools/            one folder per job + one per third-party program
   android/        the Android export tool + preset template
   windows/        the Windows export tool + preset template + icon check
   web/            the web export tool + preset template
+  godot_web/      the community Godot 4.7.2 build that exports C# to the web (gitignored; README only)
+  ws_bridge/      WebSocket-to-TCP bridge between the browser client and the shard
   steamdeck/      the Linux export tool + preset template; talks to a Deck over ssh
   brand/          builds every app icon and the splash from design/brand/
 design/brand/     the GUO sigil, master of every icon (never the engine's logo)
@@ -107,7 +109,7 @@ launchers\shard\populate.bat               generate its world (once)
 launchers\game\play.bat                    run the client
 launchers\android\doctor.bat               what an Android export needs on this machine
 launchers\android\smoke.bat                export, install, run on the device, wait for the login gump
-launchers\web\doctor.bat                   why there is no web export yet (ADR-0008)
+launchers\web\doctor.bat                   what the web export needs (the fork in tools/godot_web, ADR-0008)
 launchers\windows\export.bat               export the Windows build and check its icon
 launchers\steamdeck\doctor.bat             what a Steam Deck build needs, here and on the Deck (ssh)
 launchers\steamdeck\smoke.bat              export, push, run on the Deck, wait for the login gump, screenshot

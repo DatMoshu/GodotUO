@@ -136,6 +136,7 @@ internal static class DualProbe
 
         bool layout = await CheckGumpLayout(host, paperdoll);
         layout &= await CheckFlickReset(host, paperdoll);
+        layout &= await CheckShelfChip(host);
         Passed = shelved && pushing && layout;
 
         if (Passed)
@@ -337,6 +338,57 @@ internal static class DualProbe
         GD.Print($"[GUO] dual layout: flick Reset after up-and-back stays home, from away goes home: {stays}, {back} (home is the {(home ? "second" : "main")} screen)");
 
         return stays && back;
+    }
+
+    /// <summary>
+    /// C8 on the Thor: a window on the lower screen minimised to a chip, the
+    /// chip on the lower screen (not on the main screen's bar), and a tap on
+    /// it bringing the window back. Needs the touch layer (--touch).
+    /// </summary>
+    private static async System.Threading.Tasks.Task<bool> CheckShelfChip(Node host)
+    {
+        Input.Touch.TouchGumpBar bar = Input.Touch.TouchInput.Bar;
+        Gump g = null;
+
+        foreach (Gump candidate in Game.Managers.UIManager.Gumps)
+        {
+            if (!candidate.IsDisposed && candidate.IsVisible && Input.Touch.GumpPresentation.Supports(candidate)
+                && Input.Touch.GumpPresentation.OnSecond(candidate))
+            {
+                g = candidate;
+                break;
+            }
+        }
+
+        if (bar == null || g == null)
+        {
+            GD.Print($"[GUO] dual layout: shelf chip skipped (bar {bar != null}, a shelved gump {g != null}); run with --touch");
+            return bar == null;
+        }
+
+        int x = g.X, y = g.Y;
+        Input.Touch.GumpFlick.Perform(g, Input.Touch.FlickAction.Minimise);
+        await InputProbe.Wait(host, 5);
+
+        Rect2? chip = bar.ChipRect(g);
+        float lowerLeft = DualScreen.MainWidth * Client.Game.DpiScale;
+        bool onLower = chip is Rect2 r && r.Position.X >= lowerLeft;
+
+        await InputProbe.Wait(host, 10);
+
+        if (chip is Rect2 c)
+        {
+            Vector2 at = c.GetCenter();
+            Input.Touch.TouchInput.Handle(new InputEventScreenTouch { Index = 0, Position = at, Pressed = true });
+            await InputProbe.Wait(host, 3);
+            Input.Touch.TouchInput.Handle(new InputEventScreenTouch { Index = 0, Position = at, Pressed = false });
+            await InputProbe.Wait(host, 10);
+        }
+
+        bool restored = g.IsVisible && g.X == x && g.Y == y && bar.ChipRect(g) == null;
+        GD.Print($"[GUO] dual layout: a lower-screen window minimises to a chip on the lower screen and a tap restores it: {onLower}, {restored} (chip {chip})");
+
+        return onLower && restored;
     }
 
     /// <summary>Frames per second over a fixed number of frames, from the clock.</summary>

@@ -42,10 +42,12 @@ internal static class StorePack
     public const int MaxManifest = 1024 * 1024;
     // A screensaver is played by the client from profile version 11 on.
     public const int ScreensaverMinProfile = 11;
+    // Windows reserves COM1-9 and LPT1-9, and the superscript digits too (COM\u00b9 is a device).
     private static readonly HashSet<string> Devices = new(StringComparer.OrdinalIgnoreCase)
-    { "con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8", "com9", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9" };
+    { "con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8", "com9", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9",
+      "com\u00b9", "com\u00b2", "com\u00b3", "lpt\u00b9", "lpt\u00b2", "lpt\u00b3" };
     private static readonly HashSet<string> Extensions = new(StringComparer.OrdinalIgnoreCase)
-    { ".png", ".jpg", ".jpeg", ".webp", ".ogv", ".ogg", ".wav", ".json", ".txt" };
+    { ".png", ".jpg", ".jpeg", ".webp", ".ogv", ".ogg", ".wav", ".json", ".txt", ".gdshader" };
     private static readonly HashSet<string> Images = new(StringComparer.OrdinalIgnoreCase) { ".png", ".jpg", ".jpeg", ".webp" };
     private static readonly HashSet<string> Licences = new(StringComparer.Ordinal)
     { "CC0-1.0", "CC-BY-4.0", "CC-BY-SA-4.0", "MIT", "BSD-2-Clause", "BSD-3-Clause", "Apache-2.0" };
@@ -73,8 +75,29 @@ internal static class StorePack
         foreach (string part in path.Split('/'))
         {
             Require(part.Length > 0 && part.Length <= 100 && part != "." && part != ".." && !part.EndsWith('.') && !part.EndsWith(' ') && !Devices.Contains(part.Split('.')[0]), "Unsafe path component");
+            Require(!part.StartsWith('.'), "A name must have a stem, not only an extension");
             Require(!part.StartsWith("cliloc", StringComparison.OrdinalIgnoreCase) && !Regex.IsMatch(part, @"\.(mul|uop|idx|def)(\.|$)", RegexOptions.IgnoreCase), "UO client data is forbidden");
         }
+    }
+
+    /// <summary>
+    /// The one case rule both validators apply (tools/asset_store/pack.py
+    /// fold_keys is the same): Turkish dotted and dotless i are i, then each
+    /// character folds by its simple one-to-one lower and upper mapping. Two
+    /// names that share a key are one name.
+    /// </summary>
+    public static IEnumerable<string> FoldKeys(string name)
+    {
+        string n = name.Replace('ı', 'i').Replace('İ', 'i');
+        return new[] { n.ToLowerInvariant(), n.ToUpperInvariant() };
+    }
+
+    private static bool AddFolded(HashSet<string> seen, string name)
+    {
+        var keys = FoldKeys(name).ToArray();
+        if (keys.Any(seen.Contains)) return false;
+        foreach (var k in keys) seen.Add(k);
+        return true;
     }
 
     private static void UniqueJson(JsonElement element)
@@ -95,10 +118,26 @@ internal static class StorePack
     public static StoreManifest Parse(byte[] bytes)
     {
         Require(bytes.Length <= MaxManifest, "Manifest too large");
-        using var doc = JsonDocument.Parse(bytes);
-        UniqueJson(doc.RootElement);
-        Require(doc.RootElement.ValueKind == JsonValueKind.Object && doc.RootElement.TryGetProperty("min_profile_version", out var minimum) && minimum.TryGetInt32(out int min) && min >= 0, "Missing/invalid profile version");
-        var m = JsonSerializer.Deserialize<StoreManifest>(bytes);
+        Require(!(bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF), "Manifest has a byte order mark");
+        StoreManifest m;
+        // Everything the JSON layer throws is turned into the one exception the
+        // installer's callers handle: a malformed manifest is a refused pack.
+        try
+        {
+            using var doc = JsonDocument.Parse(bytes);
+            UniqueJson(doc.RootElement);
+            Require(doc.RootElement.ValueKind == JsonValueKind.Object && doc.RootElement.TryGetProperty("min_profile_version", out var minimum)
+                && minimum.ValueKind == JsonValueKind.Number && minimum.TryGetInt32(out int min) && min >= 0, "Missing/invalid profile version");
+            m = JsonSerializer.Deserialize<StoreManifest>(bytes);
+        }
+        catch (JsonException e)
+        {
+            throw new InvalidDataException("Manifest is not valid JSON: " + e.Message);
+        }
+        catch (InvalidOperationException e)
+        {
+            throw new InvalidDataException("Manifest has a value of the wrong type: " + e.Message);
+        }
         Validate(m);
         return m;
     }
@@ -107,24 +146,37 @@ internal static class StorePack
     {
         Require(m != null && m.Schema == "guo/store-pack@1", "Unsupported pack schema");
         Id(m.Id); Version(m.Version);
-        Require(m.Kind is "background" or "theme" or "sound" or "profile-preset" or "screensaver", "Unsupported pack kind; art overrides are disabled");
+        Require(m.Kind is "background" or "theme" or "sound" or "profile-preset" or "screensaver" or "postfx", "Unsupported pack kind; art overrides are disabled");
         Require(m.Licence != null && Licences.Contains(m.Licence), "Licence is not allowed");
         Require(!string.IsNullOrWhiteSpace(m.Title) && m.Title.Length <= 200 && !string.IsNullOrWhiteSpace(m.Author) && m.Author.Length <= 200, "Invalid title/author");
+        Require(!m.Title.Any(c => c < 32 || c == 127) && !m.Author.Any(c => c < 32 || c == 127), "Control characters in title/author");
         Require(m.MinProfileVersion >= 0, "Invalid profile version");
         Require(m.Files != null && m.Files.Count is > 0 and <= 1024, "Invalid files map");
-        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var names = new HashSet<string>(StringComparer.Ordinal);
         foreach (var (name, hash) in m.Files)
         {
             SafePath(name); Digest(hash);
-            Require(!name.Equals("manifest.json", StringComparison.OrdinalIgnoreCase) && Extensions.Contains(Path.GetExtension(name)) && names.Add(name), "Invalid or duplicate payload");
+            Require(!name.Equals("manifest.json", StringComparison.OrdinalIgnoreCase) && Extensions.Contains(Path.GetExtension(name)) && AddFolded(names, name), "Invalid or duplicate payload");
         }
-        foreach (string name in names)
+        foreach (string name in m.Files.Keys)
         {
             string[] parts = name.Split('/');
-            for (int i = 1; i < parts.Length; i++) Require(!names.Contains(string.Join('/', parts.Take(i))), "File/directory collision");
+            for (int i = 1; i < parts.Length; i++) Require(!FoldKeys(string.Join('/', parts.Take(i))).Any(names.Contains), "File/directory collision");
         }
         Require(m.Preview != null && m.Files.ContainsKey(m.Preview) && Images.Contains(Path.GetExtension(m.Preview)), "Preview must name a declared image");
         Require(m.Licence == "CC0-1.0" || m.Files.ContainsKey("LICENSE.txt"), "Attribution requires LICENSE.txt");
+        // Screen-effect packs (ADR-0023): presets and their shaders; shader code
+        // is accepted only in this kind.
+        if (m.Kind == "postfx")
+        {
+            Require(m.Files.Keys.Any(p => Path.GetExtension(p).Equals(".json", StringComparison.OrdinalIgnoreCase)),
+                "A postfx pack has at least one preset (.json)");
+        }
+        else
+        {
+            Require(!m.Files.Keys.Any(p => Path.GetExtension(p).Equals(".gdshader", StringComparison.OrdinalIgnoreCase)),
+                "Shader files are only allowed in a postfx pack");
+        }
         if (m.Kind == "screensaver")
         {
             Require(m.Files.Keys.Count(p => Path.GetExtension(p).Equals(".ogv", StringComparison.OrdinalIgnoreCase)) == 1, "A screensaver has exactly one .ogv loop");
@@ -142,15 +194,22 @@ internal static class StorePack
     public static StoreManifest Extract(string zipPath, string staging)
     {
         Require(new FileInfo(zipPath).Length <= MaxZip, "ZIP too large");
+        // A non-ASCII entry name must carry the ZIP's UTF-8 flag (pack.py checks
+        // the same). .NET 8 does not expose the flag, so read it here.
+        var flags = EntryNameFlags(zipPath);
         using var zip = ZipFile.OpenRead(zipPath);
+        Require(flags.Count == zip.Entries.Count, "ZIP central directory does not match its entries");
+        for (int i = 0; i < flags.Count; i++)
+            Require(flags[i].Ascii || flags[i].Utf8, "A non-ASCII entry name without the UTF-8 flag");
         Require(zip.Entries.Count is > 1 and <= 1025, "Invalid ZIP entry count");
-        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var names = new HashSet<string>(StringComparer.Ordinal);
         long total = 0;
         foreach (var entry in zip.Entries)
         {
             SafePath(entry.FullName);
             int type = (entry.ExternalAttributes >> 16) & 0xf000;
-            Require(type is 0 or 0x8000 && !entry.FullName.EndsWith('/') && names.Add(entry.FullName), "Duplicate or non-file ZIP entry");
+            Require(type is 0 or 0x8000 && !entry.FullName.EndsWith('/') && AddFolded(names, entry.FullName), "Duplicate or non-file ZIP entry");
+            Require(!entry.IsEncrypted, "Encrypted ZIP entry");
             Require(entry.Length <= (entry.FullName == "manifest.json" ? MaxManifest : MaxFile), "ZIP entry too large");
             total = checked(total + entry.Length);
             Require(total <= MaxTotal + MaxManifest, "Expanded ZIP too large");
@@ -161,7 +220,9 @@ internal static class StorePack
         using (var source = manifestEntry.Open())
         using (var memory = new MemoryStream()) { CopyLimited(source, memory, MaxManifest); raw = memory.ToArray(); }
         var m = Parse(raw);
-        Require(zip.Entries.Count == m.Files.Count + 1 && zip.Entries.All(e => e.FullName == "manifest.json" || m.Files.ContainsKey(e.FullName)), "Undeclared or missing payload");
+        var undeclared = zip.Entries.Where(e => e.FullName != "manifest.json" && !m.Files.ContainsKey(e.FullName)).Select(e => e.FullName).ToList();
+        Require(zip.Entries.Count == m.Files.Count + 1 && undeclared.Count == 0,
+            "Undeclared or missing payload" + (undeclared.Count > 0 ? ": " + string.Join(", ", undeclared) : $" ({zip.Entries.Count - 1} entries, {m.Files.Count} declared)"));
         foreach (var (name, expected) in m.Files)
         {
             string target = Path.Combine(staging, name.Replace('/', Path.DirectorySeparatorChar));
@@ -172,6 +233,49 @@ internal static class StorePack
         }
         File.WriteAllBytes(Path.Combine(staging, "manifest.json"), raw);
         return m;
+    }
+
+    /// <summary>
+    /// For each central-directory entry, in order: whether its raw name is
+    /// ASCII and whether it carries the UTF-8 flag (general purpose bit 11).
+    /// Bounded: packs are at most 512 MB with at most 1025 entries, so no ZIP64.
+    /// </summary>
+    public static List<(bool Ascii, bool Utf8)> EntryNameFlags(string zipPath)
+    {
+        byte[] tail;
+        long length;
+        using (var f = File.OpenRead(zipPath))
+        {
+            length = f.Length;
+            int take = (int)Math.Min(length, 22 + 65535);
+            tail = new byte[take];
+            f.Seek(length - take, SeekOrigin.Begin);
+            f.ReadExactly(tail);
+        }
+
+        int eocd = -1;
+        for (int i = tail.Length - 22; i >= 0; i--)
+            if (BitConverter.ToUInt32(tail, i) == 0x06054B50) { eocd = i; break; }
+        Require(eocd >= 0, "ZIP end record missing");
+        int count = BitConverter.ToUInt16(tail, eocd + 10);
+        uint size = BitConverter.ToUInt32(tail, eocd + 12), offset = BitConverter.ToUInt32(tail, eocd + 16);
+        Require(count != 0xFFFF && size != 0xFFFFFFFF && offset != 0xFFFFFFFF && offset + (long)size <= length, "ZIP64 or damaged central directory");
+        byte[] cd = new byte[size];
+        using (var f = File.OpenRead(zipPath)) { f.Seek(offset, SeekOrigin.Begin); f.ReadExactly(cd); }
+        var result = new List<(bool, bool)>();
+        for (int at = 0, n = 0; n < count; n++)
+        {
+            Require(at + 46 <= cd.Length && BitConverter.ToUInt32(cd, at) == 0x02014B50, "Damaged ZIP central directory");
+            int flags = BitConverter.ToUInt16(cd, at + 8);
+            int nameLength = BitConverter.ToUInt16(cd, at + 28), extra = BitConverter.ToUInt16(cd, at + 30), comment = BitConverter.ToUInt16(cd, at + 32);
+            Require(at + 46 + nameLength <= cd.Length, "Damaged ZIP central directory");
+            bool ascii = true;
+            for (int k = 0; k < nameLength; k++) ascii &= cd[at + 46 + k] < 0x80;
+            result.Add((ascii, (flags & 0x800) != 0));
+            at += 46 + nameLength + extra + comment;
+        }
+
+        return result;
     }
 
     public static void CopyLimited(Stream source, Stream destination, long limit)

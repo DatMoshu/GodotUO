@@ -79,6 +79,9 @@ internal static class ShardCommands
         const int QuietPolls = 10;
         const int PollsAfterReply = 120;
         const int GivenUpAfter = 60 * 15;
+        // A command that never answers at all (ServUO's [go, for one) is given
+        // up on after this many polls; one that answers keeps the long wait.
+        const int SilentGivenUpAfter = 30;
 
         int last = before;
         int quiet = 0;
@@ -105,6 +108,11 @@ internal static class ShardCommands
                 if (replied && ++quiet >= QuietPolls)
                 {
                     return true;
+                }
+
+                if (!replied && i >= SilentGivenUpAfter)
+                {
+                    return false;
                 }
 
                 continue;

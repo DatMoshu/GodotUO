@@ -15,7 +15,7 @@ it is taken even if its file has not landed yet.
 | 0004 | World mesh on canvas meshes | main |
 | 0005 | Audio on Godot streams | main |
 | 0006 | GameController as a Godot node | main |
-| 0007 | Sorted world in batched meshes | main (proposed) |
+| 0007 | Sorted world in batched meshes | proposed; B2 measured 2026-09-27, recommend reject |
 | 0008 | Web | work/android |
 | 0009 | Second display | work/dual-screen |
 | 0010 | Editor addon shape | work/editor |
@@ -29,5 +29,9 @@ it is taken even if its file has not landed yet.
 | 0018 | Steam Deck target | work/steamdeck (accepted 2026-09-27) |
 | 0019 | Asset Store | work/codex-store |
 | 0020 | Asset overlay (editor phase 5) | work/editor-p5 |
+| 0021 | Client data sources | work/editor-datasources (accepted 2026-09-27) |
+| 0022 | Authoring UO data files | work/editor-uodata |
+| 0023 | Post-processing and shader framework | work/render-postfx |
+| 0024 | Modern gumps (Godot views of client gumps for touch) | work/ui-fullheight (proposed) |
 
-Next free: 0021.
+Next free: 0025.

@@ -1,0 +1,112 @@
+---
+name: uo-multi
+description: "Author a new UO multi (house, keep, castle) and prove it in game: mine the client's buildings into a catalogue, write a description, build and validate it, write it into a staged data set in the multi range, place it on the private shard and walk through its door on camera. Never writes the install. Use for 'build a new house/keep/castle', for turning a plan into a multi, and before claiming an authored multi works."
+argument-hint: "<description.json> [--no-play] [--visit X,Y,Z ...]"
+user-invocable: true
+allowed-tools: Read, Glob, Grep, Bash
+model: sonnet
+---
+
+# UO Multi
+
+Runs the `tools/multi` flow end to end and reports what actually happened.
+The contract is `docs/data_formats.md` section 16. The staged-set rules are
+ADR-0022 and the `/uo-data` skill.
+
+**Never write under `UO_CLIENT_DATA`.** Never use the shared shard (2593),
+and never take another agent's private port.
+
+---
+
+## 0. Before anything
+
+```
+python tools\multi\test_multi.py
+python tools\uodata_write\test_uodata.py
+```
+
+- Both must print `OK`. A failure stops the flow: report the `FAIL` lines
+  verbatim.
+- The catalogue must exist: `build\multi\catalogue\families.json`. If it is
+  missing or older than the install, run `python tools\multi\run.py mine`
+  (about 10 s) and report its summary: multis by kind, buildings, storey step,
+  stair rise, ground floor z.
+
+## 1. The description
+
+- Read the description and check its materials against `families.json`: a
+  material must have the roles it is used for (walls at the wall height, a
+  floor, `stair` pieces for steps, `roof` sides for the roof style).
+- For a new style, look before you choose:
+  `python tools\multi\run.py sheets` writes contact sheets per kind and per
+  material under `build\multi\catalogue\sheets`.
+- Show the owner the ones you picked from.
+
+## 2. Build
+
+```
+python tools\multi\run.py build <description.json>
+```
+
+- Exit 0 means valid. A `PROBLEM` line is a stop: fix the description, not
+  the validator.
+- Open `preview.png`, `preview_noroof.png` and `plan_<n>.png` in
+  `build\multi\built\<name>\` and look at them before going on. A floating
+  roof, a missing corner or a wall across a door is found here more cheaply
+  than on the shard.
+
+## 3. Write into the stage
+
+```
+python tools\multi\run.py write <name>
+python tools\uodata_write\run.py verify --stage build\uodata\multi
+```
+
+- It must print `read back equal`, `components equal` and
+  `install unchanged: True`. Anything else is a failure: say so and stop.
+- The writer only adds. A name already in the stage is refused; build it
+  under a new name, or start a new stage.
+
+## 4. In game (unless `--no-play`)
+
+This needs this checkout's private shard on a port of its own. Set it up
+once:
+
+```
+python tools\editor_shard\run.py setup --port <N>
+python tools\editor_shard\run.py bridge --bridge-port <M>
+```
+
+Then:
+
+```
+powershell "(Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory/1MB"
+python tools\multi\run.py prove <name> --clip build\multi_proof\<name>.mp4 [--visit X,Y,Z ...]
+```
+
+- Under 16 GB free: stop and report. `prove` refuses too.
+- Run one heavy job at a time.
+- `prove` finds a flat, empty site near the probe character. It places the
+  multi and its doors, then walks the client to four stops: the front, the
+  step, the doorway and the middle of the ground floor. It then walks to each
+  `--visit` (multi-local x, y, z), for example the top of a stair or the
+  upper floor.
+- Every stop is a frame `<stop>.png` and a dump.
+- `report.json` says where the client stood. `PASS` means every stop was
+  reached.
+
+## 5. Report
+
+| Step | Result |
+|---|---|
+| tests | `test_multi` / `test_uodata` OK |
+| build | components, doors, storeys, valid |
+| write | multi id, read back, install unchanged |
+| prove | site, place ack, each stop reached (and the z the client reports), clip |
+
+- Show the frames. "Walked in through the door" is claimed only with the
+  `doorway` and `inside` stops reached.
+- "The roof hides" is claimed only with an inside frame that shows the
+  interior.
+- Confidential projects stay in the terminal. Post nothing unless the owner
+  says so.

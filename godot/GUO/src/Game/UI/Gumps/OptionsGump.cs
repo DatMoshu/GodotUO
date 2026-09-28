@@ -62,6 +62,7 @@ namespace GUO.Game.UI.Gumps
         private HSliderBar _screenSaverMinutes;
         private Combobox _screenSaverChoice;
         private List<string> _screenSaverChoices;
+        private Checkbox _splashIntro; // PORT DEVIATION (GUO): the boot splash (SplashIntro), device-wide
 
         // PORT DEVIATION (GUO): the gamepad's face-button layout (Input.Gamepad).
         private Combobox _gamepadLayout;
@@ -127,6 +128,13 @@ namespace GUO.Game.UI.Gumps
         private Combobox _dualScaleFine; // PORT DEVIATION (GUO)
         private HSliderBar _chevronInset; // PORT DEVIATION (GUO)
         private Combobox[] _flick; // PORT DEVIATION (GUO): hold-and-flick, up/down/left/right
+        private Combobox[] _barSlots; // PORT DEVIATION (GUO): the command bar's thirty slots
+        private InputField[] _barSay; // PORT DEVIATION (GUO): the command bar's speech words
+        private Checkbox _barVibrate, _barReduceMotion; // PORT DEVIATION (GUO)
+        private Checkbox _showTouches; // PORT DEVIATION (GUO): debug touch overlay
+        private Checkbox _companionTabs; // PORT DEVIATION (GUO): the second screen as companion tabs
+        private Checkbox _showHandles; // PORT DEVIATION (GUO): the "UI" window handles always drawn
+        private Checkbox _mobileControls; // PORT DEVIATION (GUO): desktop dev toggle, Android emulation
         private static readonly int[] DualScaleFinePercents = { 0, 100, 125, 150 };
         private Checkbox _holdShiftForContext, _holdShiftToSplitStack, _reduceFPSWhenInactive, _sallosEasyGrab, _partyInviteGump, _objectsFading, _textFading, _holdAltToMoveGumps;
         private Combobox _hpComboBox, _healtbarType, _fieldsType, _hpComboBoxShowWhen;
@@ -983,24 +991,17 @@ namespace GUO.Game.UI.Gumps
                 section3.PopIndent();
             }
 
-            // PORT DEVIATION (GUO): the touch bar's chevron, moved in from the
-            // corner (TouchGumpBar). An option to compare; 0 is the corner.
-            if (GUO.Input.Touch.TouchInput.Enabled)
+            // PORT DEVIATION (GUO): the size and screen handle (GumpPresentation)
+            // drawn on every supported window. Off: on touch a hold-and-release
+            // opens its menu; with a mouse it fades in near the window's top edge.
+            // A desktop without touch is ClassicUO; this dev toggle turns the
+            // mobile window controls on there, for Android emulation.
+            if (!Godot.OS.HasFeature("mobile"))
             {
-                section3.Add(AddLabel(null, "Touch bar chevron inset from the corner", 0, 0));
-                section3.AddRight(_chevronInset = AddHSlider(null, 0, 200, _currentProfile.TouchChevronInset, 0, 0, 120));
-
-                // Hold a gump still, then flick: what each direction does (GumpFlick).
-                int[] current = { _currentProfile.FlickUp, _currentProfile.FlickDown, _currentProfile.FlickLeft, _currentProfile.FlickRight };
-                _flick = new Combobox[4];
-
-                for (int i = 0; i < 4; i++)
-                {
-                    section3.Add(AddLabel(null, $"Hold and flick {GUO.Input.Touch.GumpFlick.DirectionNames[i]}", 0, 0));
-                    section3.AddRight(_flick[i] = AddCombobox(null, GUO.Input.Touch.GumpFlick.ActionTitles,
-                        System.Math.Clamp(current[i], 0, GUO.Input.Touch.GumpFlick.ActionTitles.Length - 1), 0, 0, 170));
-                }
+                section3.Add(_mobileControls = AddCheckBox(null, "Mobile window controls (for Android emulation)", _currentProfile.MobileWindowControls, 0, 0));
             }
+
+            section3.Add(_showHandles = AddCheckBox(null, "Show window handles", _currentProfile.ShowWindowHandles, 0, 0));
 
             section3.Add
             (
@@ -1189,8 +1190,68 @@ namespace GUO.Game.UI.Gumps
             );
 
 
+            // PORT DEVIATION (GUO): the touch settings, on a touch build only,
+            // grouped: the command bar, then windows, then debugging.
+            SettingsSection sectionTouch = null;
+
+            if (GUO.Input.Touch.TouchInput.Enabled)
+            {
+                sectionTouch = AddSettingsSection(box, "Touch");
+                sectionTouch.Y = section3.Bounds.Bottom + 40;
+
+                // The command bar's thirty slots (TouchGumpBar), row 1 first.
+                string[] choices = GUO.Input.Touch.TouchGumpBar.Choices;
+                string[] titles = System.Array.ConvertAll(choices, GUO.Input.Touch.TouchGumpBar.LongTitle);
+                string[] slots = GUO.Input.Touch.TouchGumpBar.Slots;
+                _barSlots = new Combobox[slots.Length];
+
+                for (int i = 0; i < slots.Length; i++)
+                {
+                    int per = GUO.Input.Touch.TouchGumpBar.PerRow;
+                    sectionTouch.Add(AddLabel(null, $"Command bar row {i / per + 1}, slot {i % per + 1}", 0, 0));
+                    sectionTouch.AddRight(_barSlots[i] = AddCombobox(null, titles, System.Math.Max(0, System.Array.IndexOf(choices, slots[i])), 0, 0, 170));
+                }
+
+                // What the speech slots say, for a shard that answers to other words.
+                string[] sayNames = { "Bank", "Guards", "All Follow Me", "All Stop" };
+                string[] sayWords = { _currentProfile.TouchSayBank, _currentProfile.TouchSayGuards, _currentProfile.TouchSayFollow, _currentProfile.TouchSayStop };
+                _barSay = new InputField[sayNames.Length];
+
+                for (int i = 0; i < sayNames.Length; i++)
+                {
+                    sectionTouch.Add(AddLabel(null, $"{sayNames[i]} says", 0, 0));
+                    sectionTouch.AddRight(_barSay[i] = AddInputField(null, 0, 0, 170, TEXTBOX_HEIGHT, null, 0, false, false));
+                    _barSay[i].SetText(sayWords[i] ?? "");
+                }
+
+                sectionTouch.Add(_barVibrate = AddCheckBox(null, "Vibrate when the command bar snaps", _currentProfile.TouchVibrate, 0, 0));
+                sectionTouch.Add(_barReduceMotion = AddCheckBox(null, "Reduce motion (the command bar snaps without sliding)", _currentProfile.TouchReduceMotion, 0, 0));
+
+                // The arrow, moved in from the corner. An option to compare; 0 is the corner.
+                sectionTouch.Add(AddLabel(null, "Command bar arrow inset from the corner", 0, 0));
+                sectionTouch.AddRight(_chevronInset = AddHSlider(null, 0, 200, _currentProfile.TouchChevronInset, 0, 0, 120));
+
+                // Hold a gump still, then flick: what each direction does (GumpFlick).
+                int[] current = { _currentProfile.FlickUp, _currentProfile.FlickDown, _currentProfile.FlickLeft, _currentProfile.FlickRight };
+                _flick = new Combobox[4];
+
+                for (int i = 0; i < 4; i++)
+                {
+                    sectionTouch.Add(AddLabel(null, $"Hold and flick {GUO.Input.Touch.GumpFlick.DirectionNames[i]}", 0, 0));
+                    sectionTouch.AddRight(_flick[i] = AddCombobox(null, GUO.Input.Touch.GumpFlick.ActionTitles,
+                        System.Math.Clamp(current[i], 0, GUO.Input.Touch.GumpFlick.ActionTitles.Length - 1), 0, 0, 170));
+                }
+
+                if (GUO.Platform.Android.DualScreen.HasSecondaryDisplay)
+                {
+                    sectionTouch.Add(_companionTabs = AddCheckBox(null, "Companion tabs on the second screen (prototype)", _currentProfile.CompanionTabs, 0, 0));
+                }
+
+                sectionTouch.Add(_showTouches = AddCheckBox(null, "Debug: show touches on screen", _currentProfile.DebugShowTouches, 0, 0));
+            }
+
             SettingsSection section4 = AddSettingsSection(box, "Miscellaneous");
-            section4.Y = section3.Bounds.Bottom + 40;
+            section4.Y = (sectionTouch ?? section3).Bounds.Bottom + 40;
 
             section4.Add
             (
@@ -2191,12 +2252,53 @@ namespace GUO.Game.UI.Gumps
                 )
             );
 
+            // PORT DEVIATION (GUO): the boot splash (GUO.Host.SplashIntro). Not a
+            // profile setting: it plays before anyone logs in, so it is kept
+            // for the device in user://guo_splash.cfg.
+            // PORT DEVIATION (GUO): screen effects (ADR-0023). The looks live in
+            // their own card; Classic, the default, is ClassicUO's own picture.
+            SettingsSection sectionFx = AddSettingsSection(box, "Screen effects");
+            sectionFx.Y = section7.Bounds.Bottom + 40;
+            NiceButton effects = new NiceButton(startX, startY, 160, 20, ButtonAction.Activate, "Screen effects...")
+            {
+                IsSelectable = false, ButtonParameter = (int) Buttons.Disabled
+            };
+            effects.MouseUp += (s, e) => GUO.Renderer.PostFx.PostFxMenu.Toggle();
+            sectionFx.Add(effects);
+            sectionFx.Add(AddLabel(null, "Looks for the world only (never the gumps); Ctrl+Shift+E", startX, startY));
+            // END PORT DEVIATION (GUO)
+
+            SettingsSection section8 = AddSettingsSection(box, "Start");
+            section8.Y = sectionFx.Bounds.Bottom + 40; // PORT DEVIATION (GUO): after Screen effects
+
+            section8.Add
+            (
+                _splashIntro = AddCheckBox
+                (
+                    null,
+                    "Play the GUO intro on start",
+                    GUO.Host.SplashIntro.Enabled,
+                    startX,
+                    startY
+                )
+            );
+
+            // PORT DEVIATION (GUO): the UO folder (ADR-0021). Opens the
+            // first-run screen in change mode; the new folder is saved to
+            // settings.json and used on the next start.
+            NiceButton changeFolder = new NiceButton(startX, startY, 160, 20, ButtonAction.Activate, "Change UO folder...")
+            {
+                IsSelectable = false, ButtonParameter = (int) Buttons.Disabled
+            };
+            changeFolder.MouseUp += (s, e) => GUO.Host.FirstRunScreen.OpenChange();
+            section8.Add(changeFolder);
+
             // PORT DEVIATION (GUO): the gamepad's A/B/X/Y (Input.Gamepad). A
             // pad the client cannot recognise waits for this choice.
-            SettingsSection section8 = AddSettingsSection(box, "Controller buttons");
-            section8.Y = section7.Bounds.Bottom + 40;
-            section8.Add(AddLabel(null, "A/B/X/Y", startX, startY));
-            section8.AddRight
+            SettingsSection sectionPad = AddSettingsSection(box, "Controller buttons");
+            sectionPad.Y = section8.Bounds.Bottom + 40; // PORT DEVIATION (GUO): after Start
+            sectionPad.Add(AddLabel(null, "A/B/X/Y", startX, startY));
+            sectionPad.AddRight
             (
                 _gamepadLayout = AddCombobox
                 (
@@ -3962,6 +4064,7 @@ namespace GUO.Game.UI.Gumps
                     _screenSaver.IsChecked = false; // PORT DEVIATION (GUO)
                     _screenSaverMinutes.Value = 10; // PORT DEVIATION (GUO)
                     _screenSaverChoice.SelectedIndex = 0; // PORT DEVIATION (GUO)
+                    _splashIntro.IsChecked = true; // PORT DEVIATION (GUO)
                     _gamepadLayout.SelectedIndex = 0; // PORT DEVIATION (GUO)
                     _sliderScreenZoom.Value = 0;
                     _lightBar.Value = 0;
@@ -4164,6 +4267,36 @@ namespace GUO.Game.UI.Gumps
                 _currentProfile.DualScreenShelveOthers = _dualShelveOthers.IsChecked;
                 _currentProfile.DualScreenScale = _dualScale.Value;
                 _currentProfile.DualScreenScalePercent = DualScaleFinePercents[System.Math.Clamp(_dualScaleFine.SelectedIndex, 0, DualScaleFinePercents.Length - 1)];
+            }
+
+            _currentProfile.ShowWindowHandles = _showHandles.IsChecked; // PORT DEVIATION (GUO)
+
+            if (_mobileControls != null)
+            {
+                _currentProfile.MobileWindowControls = _mobileControls.IsChecked; // PORT DEVIATION (GUO)
+            }
+
+            if (_companionTabs != null)
+            {
+                _currentProfile.CompanionTabs = _companionTabs.IsChecked;
+            }
+
+            if (_showTouches != null)
+            {
+                _currentProfile.DebugShowTouches = _showTouches.IsChecked;
+            }
+
+            if (_barSlots != null)
+            {
+                string[] choices = GUO.Input.Touch.TouchGumpBar.Choices;
+                _currentProfile.TouchBarSlots = string.Join(",", System.Array.ConvertAll(_barSlots,
+                    c => choices[System.Math.Clamp(c.SelectedIndex, 0, choices.Length - 1)]));
+                _currentProfile.TouchSayBank = _barSay[0].Text ?? "";
+                _currentProfile.TouchSayGuards = _barSay[1].Text ?? "";
+                _currentProfile.TouchSayFollow = _barSay[2].Text ?? "";
+                _currentProfile.TouchSayStop = _barSay[3].Text ?? "";
+                _currentProfile.TouchVibrate = _barVibrate.IsChecked;
+                _currentProfile.TouchReduceMotion = _barReduceMotion.IsChecked;
             }
 
             if (_flick != null)
@@ -4437,6 +4570,11 @@ namespace GUO.Game.UI.Gumps
             _currentProfile.ScreenSaver = _screenSaver.IsChecked; // PORT DEVIATION (GUO)
             _currentProfile.ScreenSaverMinutes = _screenSaverMinutes.Value; // PORT DEVIATION (GUO)
             _currentProfile.ScreenSaverChoice = _screenSaverChoices[Math.Max(0, _screenSaverChoice.SelectedIndex)]; // PORT DEVIATION (GUO)
+
+            if (_splashIntro.IsChecked != GUO.Host.SplashIntro.Enabled)
+            {
+                GUO.Host.SplashIntro.Enabled = _splashIntro.IsChecked; // PORT DEVIATION (GUO)
+            }
 
             // PORT DEVIATION (GUO): a new layout choice applies to connected pads at once.
             string gamepadLayout = GamepadLayouts[Math.Max(0, _gamepadLayout.SelectedIndex)];
@@ -5058,6 +5196,11 @@ namespace GUO.Game.UI.Gumps
                 _databox.WantUpdateSize = true;
             }
 
+            // PORT DEVIATION (GUO): on touch, rows are further apart, so a
+            // finger on the fitted Options (C11) hits the row it means; the
+            // desktop keeps upstream's 2.
+            private static int RowGap => GUO.Input.Touch.TouchInput.Enabled ? 8 : 2;
+
             public override T Add<T>(T c, int page = 0)
             {
                 int i = _databox.Children.Count - 1;
@@ -5067,9 +5210,9 @@ namespace GUO.Game.UI.Gumps
                 {
                     if (_databox.Children[i].IsVisible)
                     {
-                        if (bottom == 0 || bottom < _databox.Children[i].Bounds.Bottom + 2)
+                        if (bottom == 0 || bottom < _databox.Children[i].Bounds.Bottom + RowGap)
                         {
-                            bottom = _databox.Children[i].Bounds.Bottom + 2;
+                            bottom = _databox.Children[i].Bounds.Bottom + RowGap;
                         }
                         else
                         {
@@ -5084,7 +5227,7 @@ namespace GUO.Game.UI.Gumps
                 _databox.Add(c, page);
                 _databox.WantUpdateSize = true;
 
-                Height += c.Height + 2;
+                Height += c.Height + RowGap;
 
                 return c;
             }

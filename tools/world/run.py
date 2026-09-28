@@ -9,6 +9,8 @@ it into files a server and a client can read, and checks them:
     python tools/world/run.py export [--project DIR] [--out DIR] [--force]
     python tools/world/run.py verify [--project DIR] [--out DIR]
     python tools/world/run.py pack   [--project DIR] [--out FILE.zip]
+    python tools/world/run.py apply-commands [--project DIR] --host H --port P [--dry-run]
+    python tools/world/run.py ultimalive [--project DIR] [--out DIR] [--clear-ultimalive]
 
 Or through the launcher:
 
@@ -66,9 +68,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from guo import load_config  # noqa: E402
 from guo import uoart, worldobjects  # noqa: E402
-from backends import modernuo  # noqa: E402
+from backends import modernuo, servuo  # noqa: E402
 
-BACKENDS = {modernuo.NAME: modernuo}
+BACKENDS = {modernuo.NAME: modernuo, servuo.NAME: servuo}
 from guo.uomap import IDX_SIZE, MAP_BLOCK, STATIC_SIZE, Block, facet_files, install_fingerprint, open_facet  # noqa: E402
 
 
@@ -125,7 +127,49 @@ def cmd_blocks(cfg, project: Path) -> int:
     return 0
 
 
-def cmd_export(cfg, project: Path, out: Path, force: bool) -> int:
+def ultimalive_root(given: Path | None) -> Path:
+    import os
+    return given or Path(os.environ.get("ProgramData", r"C:\\ProgramData"))
+
+
+def check_ultimalive(out: Path, facets: dict, shard: str, root: Path, clear: bool) -> int:
+    """A client that has played on an UltimaLive shard keeps its own copy of each map
+    (<ProgramData>/<shard name>/map<N>.mul) and, once made, never refreshes it from the
+    install or an export: it would go on showing the old map. Compare that copy with the
+    exported map on the blocks the project replaces; report a stale one with the exact fix, or remove it
+    when asked (--clear-ultimalive). Returns how many stale copies remain."""
+    folder = root / shard
+    stale = 0
+    for facet, bs in sorted(facets.items()):
+        if not (folder / f"map{facet}.mul").is_file():
+            continue
+        # The project's replaced blocks, land and statics, in the copy against the export.
+        with open_facet(folder, facet) as copy, open_facet(out, facet) as exp:
+            differ = 0
+            for (bx, by) in bs:
+                a, b = copy.read(bx, by), exp.read(bx, by)
+                if a.land_id != b.land_id or a.land_z != b.land_z or Counter(a.statics) != Counter(b.statics):
+                    differ += 1
+        copy_path = folder / f"map{facet}.mul"
+        if differ == 0:
+            print(f"[world] UltimaLive copy {copy_path} already has this export's {len(bs)} block(s)")
+            continue
+        if clear:
+            for name in (f"map{facet}.mul", f"staidx{facet}.mul", f"statics{facet}.mul"):
+                (folder / name).unlink(missing_ok=True)
+            print(f"[world] UltimaLive copy of map{facet} was stale ({differ} of {len(bs)} block(s)); removed. "
+                  f"The client makes a fresh one at its next login to {shard}.")
+            continue
+        stale += 1
+        print(f"[world] WARNING: the client's UltimaLive copy {copy_path} lacks {differ} of this export's {len(bs)} block(s).")
+        print(f"[world]   A client that already played on '{shard}' keeps showing the OLD map until it is removed.")
+        print(f"[world]   Fix: close the client, then run this export again with --clear-ultimalive")
+        print(f"[world]        (or delete {folder}); the client copies the new map at its next login.")
+    return stale
+
+
+def cmd_export(cfg, project: Path, out: Path, force: bool, ul_shard: str = "GUO-Editor-Private",
+               ul_root: Path | None = None, ul_clear: bool = False) -> int:
     data = cfg.client_data
     if inside(out, data):
         print(f"[world] REFUSED: {out} is inside UO_CLIENT_DATA ({data}). The install is never written.")
@@ -218,6 +262,9 @@ def cmd_export(cfg, project: Path, out: Path, force: bool) -> int:
         manifest["objects"] = {"backend": backend.NAME, "spawners": len(objects.spawners), "items": len(objects.items),
                                "files": {p.relative_to(out).as_posix(): sha1(p) for p in written}}
         print(f"[world] objects: {len(objects.spawners)} spawner(s), {len(objects.items)} item(s) -> {backend.NAME} files in {out / 'shard'}")
+
+    if blocks:
+        check_ultimalive(out, blocks, ul_shard, ultimalive_root(ul_root), ul_clear)
 
     (out / "files_override.txt").write_text("\n".join(override_lines) + "\n", encoding="utf-8")
     (out / "export.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
@@ -363,12 +410,13 @@ def verify_objects(project: Path, out: Path) -> int:
     objects = worldobjects.load(project)
     if not objects:
         return 0
-    spawners, items = modernuo.read_back(out, project.name)
+    backend = BACKENDS[cfg_backend()]
+    spawners, items = backend.read_back(out, project.name)
     failures = 0
-    got = {r["guid"]: r for r in spawners}
+    got = {r.get("guid") or r.get("UniqueId"): r for r in spawners}
     for s in objects.spawners:
         r = got.pop(s.id, None)
-        want = modernuo.spawner_record(s)
+        want = backend.spawner_record(s)
         if r != want:
             failures += 1
             print(f"[world] FAIL spawner {s.id}: {'missing' if r is None else 'differs from the model'}")
@@ -387,7 +435,7 @@ def verify_objects(project: Path, out: Path) -> int:
         print("[world] FAIL guo_objects.json does not list exactly the model's objects")
     if failures == 0:
         print(f"[world] objects: {len(objects.spawners)} spawner(s) and {len(objects.items)} item(s) read back from the "
-              f"ModernUO files equal the model; the manifest lists all of them")
+              f"{backend.NAME} files equal the model; the manifest lists all of them")
     return failures
 
 
@@ -523,12 +571,100 @@ def cmd_pack(cfg, project: Path, out: Path) -> int:
     return 0
 
 
+def cmd_apply_commands(cfg, project: Path, host: str, port: int, dry_run: bool) -> int:
+    """World objects onto a shard WITHOUT GUO's bridge: a GM client types the server's own commands.
+
+    Only for ModernUO. The project keeps a record per shard of what this
+    placed (shard/applied/<host>_<port>.json); removals use only that
+    record's tags, so nothing the fallback did not place can be removed.
+    """
+    import os
+    import subprocess
+    from guo.process import no_activate
+
+    try:
+        objects = worldobjects.load(project)
+    except (ValueError, KeyError) as ex:
+        print(f"[world] REFUSED: shard/objects.json is not valid: {ex}")
+        return 1
+    rec_path = project / "shard" / "applied" / f"{host.replace(':', '_')}_{port}.json"
+    record = json.loads(rec_path.read_text(encoding="utf-8")) if rec_path.is_file() else {"spawners": {}, "items": {}}
+    commands, new_record, notes = modernuo.plan_commands(objects, record)
+    for n in notes:
+        print(f"[world] note: {n}")
+    if not commands:
+        print(f"[world] {host}:{port} already matches the project: nothing to type")
+        return 0
+    for c in commands:
+        print(f"[world]   {c}")
+    if dry_run:
+        return 0
+
+    home = cfg.build / "world_commands" / "client_home"
+    shutil.rmtree(home, ignore_errors=True)
+    (home / "cache").mkdir(parents=True)
+    (home / "profiles").mkdir()
+    (home / "settings.json").write_text(json.dumps({"profilespath": str(home / "profiles")}), encoding="utf-8")
+    cmd = [str(cfg.godot_console_exe), "--headless", "--path", str(cfg.godot_project), "--", "--play"]
+    for c in commands:
+        cmd += ["--shard-command", c]
+    env = {**os.environ, "UO_CLIENT_DATA": str(cfg.client_data), "UO_CACHE_DIR": str(home / "cache"),
+           "UO_CLIENT_VERSION": cfg.client_version, "UO_SHARD_HOST": host, "UO_SHARD_PORT": str(port)}
+    log = cfg.build / "world_commands" / "client.log"
+    # Headless, the client captures no frame; it ends once every command has been answered.
+    with log.open("w", encoding="utf-8", errors="replace") as f:
+        proc = subprocess.Popen(cmd, stdout=f, stderr=subprocess.STDOUT, env=env, **no_activate())
+        done = False
+        for _ in range(1200):
+            text = log.read_text(encoding="utf-8", errors="replace")
+            if "shard commands done" in text or "shard commands FAILED" in text or proc.poll() is not None:
+                done = "shard commands done" in text
+                break
+            if text.count("[GUO] shard command: [") >= len(commands):
+                # The last command is printed before it is typed: wait for the
+                # shard's answer to it (or 30 s) before ending the client.
+                import time as _t
+                for _ in range(60):
+                    tail = log.read_text(encoding="utf-8", errors="replace").rsplit("[GUO] shard command: [", 1)[-1]
+                    if "[GUO] shard says:" in tail:
+                        break
+                    _t.sleep(0.5)
+                _t.sleep(2)
+                done = True
+                break
+            import time as _t
+            _t.sleep(0.5)
+        if proc.poll() is None:
+            proc.kill()
+    if not done:
+        print(f"[world] FAILED: the GM client did not get through the commands; see {log}")
+        return 1
+    if "Awaiting confirmation" in log.read_text(encoding="utf-8", errors="replace"):
+        # A remove matched more than one object and the shard asked a GM to
+        # confirm; nothing was removed. Tags are unique per placement, so this
+        # means the shard holds objects this record does not describe.
+        print(f"[world] FAILED: the shard asked to confirm a removal (more than one match); nothing removed. See {log}")
+        return 1
+    rec_path.parent.mkdir(parents=True, exist_ok=True)
+    rec_path.write_text(json.dumps(new_record, indent=2) + "\n", encoding="utf-8")
+    print(f"[world] {len(commands)} command(s) typed on {host}:{port}; record: {rec_path}")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("command", choices=["blocks", "export", "verify", "pack"])
+    ap.add_argument("command", choices=["blocks", "export", "verify", "pack", "apply-commands", "ultimalive"])
+    ap.add_argument("--host", help="shard host (apply-commands)")
+    ap.add_argument("--port", type=int, help="shard port (apply-commands)")
+    ap.add_argument("--dry-run", action="store_true", help="print the commands only (apply-commands)")
     ap.add_argument("--project", type=Path, help="world project folder (default UO_WORLD_PROJECT)")
     ap.add_argument("--out", type=Path, help="export folder (default <project>/export)")
     ap.add_argument("--force", action="store_true", help="export a project made on another install")
+    ap.add_argument("--ultimalive-shard", default=None,
+                    help="UltimaLive shard name whose client map copies to check (export; default GUO_BRIDGE_SHARD or GUO-Editor-Private)")
+    ap.add_argument("--ultimalive-root", type=Path, help="folder holding the copies (export; default %%ProgramData%%)")
+    ap.add_argument("--clear-ultimalive", action="store_true",
+                    help="remove a stale client UltimaLive map copy instead of only reporting it (export)")
     args = ap.parse_args()
 
     cfg = load_config()
@@ -536,6 +672,18 @@ def main() -> int:
     if not (project / "project.json").exists():
         print(f"[world] not a world project: {project}")
         return 2
+    if args.command == "ultimalive":
+        # Only the check: is a client's UltimaLive map copy older than this export?
+        import os
+        shard = args.ultimalive_shard or os.environ.get("GUO_BRIDGE_SHARD") or "GUO-Editor-Private"
+        stale = check_ultimalive((args.out or project / "export").resolve(), project_blocks(project), shard,
+                                 ultimalive_root(args.ultimalive_root), args.clear_ultimalive)
+        return 1 if stale else 0
+    if args.command == "apply-commands":
+        if not args.host or not args.port:
+            print("[world] apply-commands needs --host and --port")
+            return 2
+        return cmd_apply_commands(cfg, project, args.host, args.port, args.dry_run)
     if args.command == "pack":
         return cmd_pack(cfg, project, (args.out or cfg.build / "world_pack" / f"{project.name}.zip").resolve())
     out = (args.out or project / "export").resolve()
@@ -543,7 +691,9 @@ def main() -> int:
     if args.command == "blocks":
         return cmd_blocks(cfg, project)
     if args.command == "export":
-        return cmd_export(cfg, project, out, args.force)
+        import os
+        shard = args.ultimalive_shard or os.environ.get("GUO_BRIDGE_SHARD") or "GUO-Editor-Private"
+        return cmd_export(cfg, project, out, args.force, shard, args.ultimalive_root, args.clear_ultimalive)
     return cmd_verify(cfg, project, out)
 
 

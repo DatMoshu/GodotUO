@@ -8,7 +8,7 @@ r"""Build, install, run and smoke-test GUO on an Android device.
                                       gump, pull a screenshot and a log
 
     python tools\android\run.py <doctor|templates|keystore|settings|preset|
-                                 export|install|run|logcat|push|smoke> [...]
+                                 export|install|run|logcat|push|push-stage|smoke> [...]
 
 What Godot needs to export a .NET project for Android, and where each part
 comes from, is in ADR-0017 and README.md next to this file. In short: a
@@ -47,6 +47,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from guo.config import Config, load_config  # noqa: E402
+from guo.datasources import WIZARD_EXIT, resolve_config  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 TEMPLATE = HERE / "export_presets.template.cfg"
@@ -666,9 +667,15 @@ def push_data(p: Paths) -> int:
     the app (`secure_mkdirs failed`). `--sync` skips what is already there
     and unchanged, so reruns are cheap. Non-zero on the first adb failure.
     """
-    src = p.cfg.client_data
-    if not (src / "tiledata.mul").exists():
-        sys.exit(f"[android] {src} does not look like a UO install (no tiledata.mul)")
+    res = resolve_config(p.cfg)
+    if not res.ok:
+        # ADR-0021: nothing to push is not an error; the app opens the
+        # first-run wizard on the device.
+        say(res.message())
+        for note in res.notes:
+            say(f"  passed over: {note}")
+        return WIZARD_EXIT
+    src = res.client_data
     dst = p.cfg.android_client_data
     files = sorted(f for f in src.iterdir() if f.is_file())
     total = sum(f.stat().st_size for f in files)
@@ -687,6 +694,53 @@ def push_data(p: Paths) -> int:
             say(f"FAILED: adb push exited {result.returncode} on batch starting at {chunk[0].name}")
             return result.returncode or 1
     say(f"pushed; {len(files)} files on the device under {dst}")
+    return 0
+
+
+def push_stage(p: Paths, stage: Path, reverse: int | None) -> int:
+    """Put a staged data set (ADR-0022) on the device next to the pushed install.
+
+    Each file the stage's files_override.txt names is pushed into the device's
+    client data folder as stage-<pack>-<name> -- flat, because adb cannot make
+    a subfolder there (see push_data) -- with an override file,
+    stage-<pack>.override.txt, mapping the names to those paths. The device's
+    copy of the install is not changed. A build made with
+    --args "--files-override <that file>" reads the stage; the command to make
+    it is printed. --reverse PORT forwards the device's 127.0.0.1:PORT to this
+    PC's, so the device reaches the private shard, which listens on loopback only.
+    """
+    stage = stage.resolve()
+    listing = stage / "files_override.txt"
+    if not listing.exists():
+        sys.exit(f"[android] {stage} is not a staged data set (no files_override.txt)")
+    pack = stage.name
+    dst = p.cfg.android_client_data
+    lines, files = [], []
+    for line in listing.read_text(encoding="utf-8").splitlines():
+        if "=" not in line or line.lstrip().startswith(("#", ";")):
+            continue
+        name, local = (x.strip() for x in line.split("=", 1))
+        remote = f"{dst}/stage-{pack}-{Path(local).name}"
+        files.append((Path(local), remote))
+        lines.append(f"{name}={remote}")
+    override = p.out_dir / f"stage-{pack}.override.txt"
+    override.parent.mkdir(parents=True, exist_ok=True)
+    override.write_bytes(("".join(line + chr(10) for line in lines)).encode("utf-8"))
+    files.append((override, f"{dst}/{override.name}"))
+    total = sum(f.stat().st_size for f, _ in files)
+    say(f"pushing stage {pack}: {len(files)} files, {total / 2**20:.0f} MB -> {dst}")
+    for local, remote in files:
+        if subprocess.run(adb_cmd(p) + ["push", "--sync", str(local), remote]).returncode != 0:
+            say(f"FAILED: adb push {local.name}")
+            return 1
+    if reverse:
+        if subprocess.run(adb_cmd(p) + ["reverse", f"tcp:{reverse}", f"tcp:{reverse}"]).returncode != 0:
+            say(f"FAILED: adb reverse tcp:{reverse}")
+            return 1
+        say(f"device 127.0.0.1:{reverse} -> this PC's 127.0.0.1:{reverse}")
+    say("pushed. Build with the stage:")
+    say(f'  python tools/android/run.py export --args "--files-override {dst}/{override.name}'
+        + (f' --host 127.0.0.1 --port {reverse}"' if reverse else '"'))
     return 0
 
 
@@ -858,6 +912,9 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("run", help="start the app and stream its logcat")
     sub.add_parser("logcat", help="stream the app's logcat")
     sub.add_parser("push", help="adb push the UO client data to the device")
+    ps = sub.add_parser("push-stage", help="adb push a staged data set (ADR-0022) beside the client data")
+    ps.add_argument("stage", type=Path, help="the stage folder, e.g. build/uodata/moshu")
+    ps.add_argument("--reverse", type=int, metavar="PORT", help="adb reverse tcp:PORT, to reach a loopback shard")
     sm = sub.add_parser("smoke", help="export, install, run, wait for the login gump, pull a screenshot")
     sm.add_argument("--timeout", type=int, default=240, help="seconds to wait for the login gump")
     sm.add_argument("--no-export", action="store_true", help="reuse build\\android\\GUO-smoke.apk")
@@ -894,6 +951,8 @@ def main(argv: list[str] | None = None) -> int:
         return stream_logcat(p)
     if args.command == "push":
         return push_data(p)
+    if args.command == "push-stage":
+        return push_stage(p, args.stage, args.reverse)
     if args.command == "smoke":
         return smoke(p, args.timeout, args.no_export, args.sound)
     if args.command == "dual_probe":

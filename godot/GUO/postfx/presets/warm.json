@@ -1,0 +1,15 @@
+{
+ "name": "Warm Grade",
+ "description": "Warmer, richer colour.",
+ "passes": [
+  {
+   "shader": "grade",
+   "params": {
+    "temperature": 0.35,
+    "saturation": 1.15,
+    "contrast": 1.08
+   }
+  }
+ ],
+ "bindings": []
+}

@@ -232,10 +232,41 @@ namespace GUO.Configuration
         public bool GridContainers { get; set; }
         public int GridContainerSlotSize { get; set; } = 44;
 
-        // PORT DEVIATION (GUO): the touch bar's chevron and its row of combat
-        // macros, which comes up by itself on entering War mode unless the
-        // player hid it this session (TouchGumpBar); a mobile default.
+        // PORT DEVIATION (GUO): the command bar's handle and its rows 2 and 3,
+        // which open by themselves on entering War mode unless the player
+        // closed them this session (TouchGumpBar); a mobile default. The
+        // name is from when it was one macro row.
         public bool TouchMacroRow { get; set; }
+
+        // PORT DEVIATION (GUO): the old macro row's six slots. Superseded by
+        // TouchBarSlots (C8); kept so saved profiles still read.
+        public string TouchMacroSlots { get; set; } = "m:nearest,m:attack,m:next,m:last,m:bandage,m:war";
+
+        // PORT DEVIATION (GUO): the command bar's thirty slots, row 1 first,
+        // by action name (TouchGumpBar.Choices, comma-separated).
+        public string TouchBarSlots { get; set; } = GUO.Input.Touch.TouchGumpBar.DefaultSlots;
+
+        // PORT DEVIATION (GUO): what the command bar's speech slots say; a
+        // shard may answer to other words.
+        public string TouchSayBank { get; set; } = "bank";
+        public string TouchSayGuards { get; set; } = "guards";
+        public string TouchSayFollow { get; set; } = "all follow me";
+        public string TouchSayStop { get; set; } = "all stop";
+
+        // PORT DEVIATION (GUO): each slot's two alternates in its hold popup
+        // (C10): thirty "a|b" pairs, row 1 first, by action name
+        // (BarCatalogue); null keeps every slot's defaults.
+        public string TouchBarAlts { get; set; }
+
+        // PORT DEVIATION (GUO): the words of the command bar's speech actions,
+        // "id=words|id=words" (BarCatalogue.SetWords); a shard may answer to
+        // other words.
+        public string TouchBarWords { get; set; } = "";
+
+        // PORT DEVIATION (GUO): a light vibration when the command bar snaps
+        // to a row count (off by default), and no settle animation.
+        public bool TouchVibrate { get; set; }
+        public bool TouchReduceMotion { get; set; }
 
         // PORT DEVIATION (GUO): how far the chevron sits in from the right
         // edge of the screen, in client px (TouchGumpBar); 0 keeps it at the
@@ -246,6 +277,27 @@ namespace GUO.Configuration
         // (GumpFlick, FlickAction values). The owner is still choosing, so each
         // direction is an option; these are the proposed defaults.
         public int FlickUp { get; set; } = 1;
+
+        // PORT DEVIATION (GUO): debug, draw every finger the touch layer sees
+        // (TouchOverlay). Off by default.
+        public bool DebugShowTouches { get; set; }
+
+        // PORT DEVIATION (GUO): the "UI" window handles (GumpPresentation)
+        // always drawn, where the mobile window controls are on. Off by
+        // default: on touch the menu opens from a hold-and-release on the gump.
+        // A new key, false for every existing profile.
+        public bool ShowWindowHandles { get; set; }
+
+        // PORT DEVIATION (GUO): the second screen as companion tabs (Journal,
+        // Character) instead of the gump shelf (CompanionTabs). A prototype,
+        // so off by default; touch with a second screen only.
+        public bool CompanionTabs { get; set; }
+
+        // PORT DEVIATION (GUO): turn the mobile window controls (gump size,
+        // window menu, screen transfer) on for a desktop run without touch,
+        // for Android emulation. Off by default: the desktop is ClassicUO.
+        public bool MobileWindowControls { get; set; }
+
         public int FlickDown { get; set; } = 2;
         public int FlickLeft { get; set; } = 3;
         public int FlickRight { get; set; } = 4;

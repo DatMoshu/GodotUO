@@ -32,6 +32,22 @@ namespace GUO.Input.Touch
                 return;
             }
 
+            if (BarEditor.IsOpen)
+            {
+                BarEditor.Close();
+                GD.Print("[GUO] back: close BarEditor");
+
+                return;
+            }
+
+            if (WindowMenu.IsOpen)
+            {
+                WindowMenu.Close();
+                GD.Print("[GUO] back: close WindowMenu");
+
+                return;
+            }
+
             if (CloseTopGump())
             {
                 return;

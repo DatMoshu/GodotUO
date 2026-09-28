@@ -97,14 +97,24 @@ internal static class TouchProbe
 
         await Frames(host, 120);
 
+        // A world map or party gump a run saved open covers the world the
+        // walk checks hold on; the checks start without them.
+        UIManager.GetGump<WorldMapGump>()?.Dispose();
+        UIManager.GetGump<PartyGump>()?.Dispose();
+        await Frames(host, 5);
+
         await WalkCheck(host, world);
         await DoubleTapCheck(host, world);
         await PinchCheck(host);
         await BarCheck(host);
         await ParkCheck(host);
         await TargetTapCheck(host, world);
-        await MacroRowCheck(host, world);
+        await CommandBarCheck(host, world);
+        await BarHoldCheck(host, world);
         await FlickCheck(host, world);
+        await OptionsTouchCheck(host, world);
+        await MobileOptionsCheck(host, world);
+        await HelpGumpCheck(host, world);
         // The long press is checked with hold-and-flick off, the way a player
         // who set every direction to "Do nothing" has it.
         {
@@ -116,6 +126,7 @@ internal static class TouchProbe
         }
         await GumpScaleCheck(host, world);
         await ScaledContainerCheck(host, world);
+        await BarCostCheck(host);
 
         Finish();
     }
@@ -127,7 +138,9 @@ internal static class TouchProbe
         bool rightHeld = false;
         bool moved = false;
 
-        foreach (Vector2 diagonal in new[] { new Vector2(1, 1), new Vector2(-1, -1), new Vector2(-1, 1), new Vector2(1, -1) })
+        // Diagonals first, then straight: a character left on a coast by an
+        // earlier run has water on some sides.
+        foreach (Vector2 diagonal in new[] { new Vector2(1, 1), new Vector2(-1, -1), new Vector2(-1, 1), new Vector2(1, -1), new Vector2(-1, 0), new Vector2(0, 1), new Vector2(0, -1), new Vector2(1, 0) })
         {
             TouchInput.Trace.Clear();
 
@@ -264,6 +277,80 @@ internal static class TouchProbe
             string.Join(" | ", TouchInput.Trace)
         );
         Check("the backpack opened", UIManager.GetGump<ContainerGump>() != null);
+
+        // C8: a bar button runs when the finger lifts, not when it lands.
+        // Down on Journal: nothing yet. Slid well off it: let go, and nothing
+        // runs on lifting. Rolled a few pixels: it still runs.
+        UIManager.GetGump<JournalGump>()?.Dispose();
+        await Frames(host, 5);
+        TouchInput.Trace.Clear();
+        Rect2 journal = bar.ButtonRect("journal");
+        Vector2 at = journal.Position + journal.Size / 2;
+
+        Touch(0, at, true);
+        await Frames(host, 5);
+        bool notOnDown = UIManager.GetGump<JournalGump>() == null;
+        Drag(0, at + new Vector2(0, -TouchInput.BarSlopPixels * 3), new Vector2(0, -TouchInput.BarSlopPixels * 3));
+        await Frames(host, 2);
+        Touch(0, at + new Vector2(0, -TouchInput.BarSlopPixels * 3), false);
+        await Frames(host, 30);
+
+        Check(
+            "a bar button does nothing on the finger's landing, and nothing if the finger slides off it",
+            notOnDown && UIManager.GetGump<JournalGump>() == null && TouchInput.Trace.Exists(t => t.StartsWith("bar -> journal let go")),
+            string.Join(" | ", TouchInput.Trace)
+        );
+
+        TouchInput.Trace.Clear();
+        Vector2 rolled = at + new Vector2(TouchInput.BarSlopPixels / 2, 0);
+        Touch(0, at, true);
+        await Frames(host, 3);
+        Drag(0, rolled, rolled - at);
+        await Frames(host, 2);
+        Touch(0, rolled, false);
+        await Frames(host, 30);
+
+        Check(
+            "a finger that rolls a little on a bar button still presses it on lifting",
+            UIManager.GetGump<JournalGump>() != null && TouchInput.Trace.Contains("bar -> journal"),
+            string.Join(" | ", TouchInput.Trace)
+        );
+        UIManager.GetGump<JournalGump>()?.Dispose();
+        await Frames(host, 5);
+    }
+
+    /// <summary>
+    /// What the bar costs a frame, with the macro row up and the world
+    /// running: its own _Process and _Draw time and how often it drew, next
+    /// to the whole frame's process time. Printed for the before/after
+    /// comparison; the check is only that it was measured.
+    /// </summary>
+    private static async System.Threading.Tasks.Task BarCostCheck(Node host)
+    {
+        TouchGumpBar bar = TouchInput.Bar;
+
+        if (bar == null || !bar.Shown)
+        {
+            Check("the bar's frame cost is measured", false, "no bar");
+            return;
+        }
+
+        const int frames = 600;
+        double process = 0;
+        TouchGumpBar.CostTicks = 0;
+        TouchGumpBar.DrawCount = 0;
+
+        for (int i = 0; i < frames; i++)
+        {
+            await Frames(host, 1);
+            process += Performance.GetMonitor(Performance.Monitor.TimeProcess);
+        }
+
+        double barUs = TouchGumpBar.CostTicks * 1_000_000.0 / System.Diagnostics.Stopwatch.Frequency / frames;
+        string line = $"bar {barUs:F1} us/frame, {TouchGumpBar.DrawCount} draws in {frames} frames, "
+            + $"frame process {process / frames * 1000:F2} ms, {UIManager.Gumps.Count} gumps, rows {bar.RowsOpen}";
+        GD.Print($"[GUO] touch probe: bar cost: {line}");
+        Check("the bar's frame cost is measured", TouchGumpBar.DrawCount >= 0, line);
     }
 
     /// <summary>
@@ -329,26 +416,30 @@ internal static class TouchProbe
     }
 
     /// <summary>
-    /// The chevron and the macro row: the row comes up on entering War mode,
-    /// a macro button runs its macro (War/Peace), the chevron hides the row,
-    /// a hidden row stays hidden through the next War mode, and the chevron
-    /// brings it back. Leaves the row up for the photograph.
+    /// The command bar (C8): row 1 never moves; War mode opens two rows; a
+    /// row button runs its macro; the handle's tap goes 1 to 2 and back to 1;
+    /// a closed bar stays closed through the next War mode; a slow drag snaps
+    /// to the nearest row count and a flick goes all the way; a drag that
+    /// starts on a row runs nothing and moves nothing; the targeting swap
+    /// happens in place. Leaves three rows up for the photograph.
     /// </summary>
-    private static async System.Threading.Tasks.Task MacroRowCheck(Node host, Game.World world)
+    private static async System.Threading.Tasks.Task CommandBarCheck(Node host, Game.World world)
     {
         TouchGumpBar bar = TouchInput.Bar;
         Configuration.Profile profile = Configuration.ProfileManager.CurrentProfile;
 
         if (bar == null || profile == null)
         {
-            Check("the macro row", false, "no bar or no profile");
+            Check("the command bar", false, "no bar or no profile");
 
             return;
         }
 
-        // A desktop profile does not have the mobile default; the probe
-        // turns it on for this run, as Options would.
+        // A desktop profile does not have the mobile defaults; the probe
+        // turns them on for this run, as Options would.
         profile.TouchMacroRow = true;
+        profile.TouchBarSlots = TouchGumpBar.DefaultSlots;
+        profile.TouchReduceMotion = false;
 
         if (world.Player.InWarMode)
         {
@@ -356,46 +447,290 @@ internal static class TouchProbe
             await Frames(host, 60);
         }
 
-        // A character that logged in at war has already had its row come up.
+        // A character that logged in at war has already had its rows open.
         bar.ResetSession();
         await Frames(host, 5);
-        Check("the chevron is shown and the row is down", bar.ChevronShown && !bar.RowShown);
+        Check("the handle is shown and one row is open", bar.HandleShown && bar.RowsOpen == 1 && bar.Height == 1f);
 
+        Rect2 row1 = bar.SlotRect(1, 0);
+        Rect2 handle1 = bar.HandleRect();
         TouchInput.Trace.Clear();
         Game.GameActions.ToggleWarMode(world.Player);
-        await Frames(host, 60);
+        await Settled(host, bar);
 
         Check(
-            "the row comes up on entering War mode",
-            world.Player.InWarMode && bar.RowShown,
-            $"war {world.Player.InWarMode}, row {bar.RowShown} | {string.Join(" | ", TouchInput.Trace)}"
+            "War mode opens two rows, row 1 stays where it was and the handle rises one row",
+            world.Player.InWarMode && bar.RowsOpen == 2 && bar.SlotRect(1, 0) == row1
+                && Mathf.IsEqualApprox(handle1.Position.Y - bar.HandleRect().Position.Y, row1.Size.Y),
+            $"war {world.Player.InWarMode}, rows {bar.RowsOpen}, row 1 {row1} -> {bar.SlotRect(1, 0)}, handle {handle1.Position.Y} -> {bar.HandleRect().Position.Y} | {string.Join(" | ", TouchInput.Trace)}"
         );
 
-        Rect2 war = bar.ButtonRect("m:war");
-        await Tap(host, war.Position + war.Size / 2);
+        Rect2 war = bar.ButtonRect("war");
+        await Tap(host, war.GetCenter());
         await Frames(host, 60);
 
         Check("the War/Peace button ran its macro", !world.Player.InWarMode, string.Join(" | ", TouchInput.Trace));
 
-        Rect2 chevron = bar.ChevronRect();
-        await Tap(host, chevron.Position + chevron.Size / 2);
-        await Frames(host, 5);
+        Check("row 2 holds the proposal's buttons",
+            string.Join(",", TouchGumpBar.Row(2)) == "next,object,heal,cure,ability1,ability2,lastspell,lastskill,armdisarm,status");
 
-        Check("the chevron hides the row", !bar.RowShown && bar.HiddenThisSession);
+        await Tap(host, bar.HandleRect().GetCenter());
+        await Settled(host, bar);
+
+        Check("a tap on the handle at two rows closes to one", bar.RowsOpen == 1 && bar.HiddenThisSession,
+            string.Join(" | ", TouchInput.Trace));
+
+        Game.GameActions.ToggleWarMode(world.Player);
+        await Settled(host, bar);
+
+        Check("a closed bar stays at one row on entering War mode", world.Player.InWarMode && bar.RowsOpen == 1);
 
         Game.GameActions.ToggleWarMode(world.Player);
         await Frames(host, 60);
 
-        Check("a hidden row stays down on entering War mode", world.Player.InWarMode && !bar.RowShown);
+        await Tap(host, bar.HandleRect().GetCenter());
+        await Settled(host, bar);
+        Check("a tap on the handle at one row opens two", bar.RowsOpen == 2, string.Join(" | ", TouchInput.Trace));
 
-        Game.GameActions.ToggleWarMode(world.Player);
-        await Frames(host, 60);
+        await Tap(host, bar.HandleRect().GetCenter());
+        await Settled(host, bar);
 
-        chevron = bar.ChevronRect();
-        await Tap(host, chevron.Position + chevron.Size / 2);
+        // A slow drag of a row and a bit snaps to the nearest count: two.
+        TouchInput.Trace.Clear();
+        Vector2 grip = bar.HandleRect().GetCenter();
+        await Swipe(host, grip, grip - new Vector2(0, row1.Size.Y * 1.3f), 700);
+        await Settled(host, bar);
+
+        Check("a slow drag on the handle snaps to the nearest row count", bar.RowsOpen == 2,
+            $"rows {bar.RowsOpen} | {string.Join(" | ", TouchInput.Trace)}");
+
+        // A flick up goes all the way; a flick down all the way back.
+        TouchInput.Trace.Clear();
+        grip = bar.HandleRect().GetCenter();
+        await Swipe(host, grip, grip - new Vector2(0, 60), 40);
+        await Settled(host, bar);
+        bool up = bar.RowsOpen == 3;
+
+        grip = bar.HandleRect().GetCenter();
+        await Swipe(host, grip, grip + new Vector2(0, 60), 40);
+        await Settled(host, bar);
+
+        Check("a flick up opens three rows and a flick down closes to one", up && bar.RowsOpen == 1,
+            $"up {up}, rows {bar.RowsOpen} | {string.Join(" | ", TouchInput.Trace)}");
+
+        // The rows never take the gesture: a drag from Map moves nothing and opens nothing.
+        UIManager.GetGump<MiniMapGump>()?.Dispose();
         await Frames(host, 5);
+        TouchInput.Trace.Clear();
+        Rect2 map = bar.ButtonRect("map");
+        await Swipe(host, map.GetCenter(), map.GetCenter() - new Vector2(0, 200), 500);
+        await Frames(host, 30);
 
-        Check("the chevron brings the row back", bar.RowShown, string.Join(" | ", TouchInput.Trace));
+        Check("a drag that starts on a row button moves no rows and runs nothing",
+            bar.RowsOpen == 1 && UIManager.GetGump<MiniMapGump>() == null,
+            $"rows {bar.RowsOpen} | {string.Join(" | ", TouchInput.Trace)}");
+
+        // While targeting, Chat and War/Peace become Self and Cancel in place.
+        int chatAt = System.Array.IndexOf(TouchGumpBar.Row(1), "chat");
+        int warAt = System.Array.IndexOf(TouchGumpBar.Row(1), "war");
+        world.TargetManager.SetTargeting(CursorTarget.Position, 0, TargetType.Neutral);
+        await Frames(host, 5);
+        string[] swapped = TouchGumpBar.Row(1);
+        bool inPlace = swapped[chatAt] == "self" && swapped[warAt] == "cancel";
+        await Tap(host, bar.SlotRect(1, warAt).GetCenter());
+        await Frames(host, 10);
+
+        Check("while targeting, Chat and War/Peace are Self and Cancel in place, and Cancel cancels",
+            inPlace && !world.TargetManager.IsTargeting, string.Join(",", swapped));
+
+        grip = bar.HandleRect().GetCenter();
+        await Swipe(host, grip, grip - new Vector2(0, 60), 40);
+        await Settled(host, bar);
+
+        // For the photograph: the nearest other mobile as the last target,
+        // so the handle strip shows its name and strips.
+        Game.GameObjects.Mobile nearest = null;
+
+        foreach (Game.GameObjects.Mobile m in world.Mobiles.Values)
+        {
+            if (m != world.Player && (nearest == null || m.Distance < nearest.Distance))
+            {
+                nearest = m;
+            }
+        }
+
+        if (nearest != null)
+        {
+            world.TargetManager.LastTargetInfo.SetEntity(nearest.Serial);
+        }
+    }
+
+    /// <summary>
+    /// The hold popup (C10): a hold on a bar button opens three buttons above
+    /// it; sliding onto an alternate and letting go runs it; sliding onto Edit
+    /// opens the slot editor, where a pick and Save change the slot; letting go
+    /// anywhere else runs nothing. Then the rule for tall windows: one moved up
+    /// to fit above the open rows, and only one taller than that room left
+    /// overlapping them.
+    /// </summary>
+    private static async System.Threading.Tasks.Task BarHoldCheck(Node host, Game.World world)
+    {
+        TouchGumpBar bar = TouchInput.Bar;
+        Configuration.Profile profile = Configuration.ProfileManager.CurrentProfile;
+
+        if (bar == null || profile == null)
+        {
+            Check("the hold popup", false, "no bar or no profile");
+            return;
+        }
+
+        profile.TouchBarSlots = TouchGumpBar.DefaultSlots;
+        profile.TouchBarAlts = null;
+        int slot = System.Array.IndexOf(TouchGumpBar.Row(1), "attack");
+        Check("a slot with alternates is marked, and Attack Last's first is Attack Selected",
+            TouchGumpBar.HasAlternates(slot) && TouchGumpBar.Alternates(slot).alt1 == "attacksel");
+
+        // Hold, slide to the first alternate, let go.
+        TouchInput.Trace.Clear();
+        Rect2 cell = bar.SlotRect(1, slot);
+        await HoldThenSlide(host, bar, cell.GetCenter(), 1);
+
+        Check("hold, slide onto an alternate and let go: it runs, and the tap's action does not",
+            TouchInput.Trace.Contains("popup -> attacksel") && !TouchInput.Trace.Contains("bar -> attack"),
+            string.Join(" | ", TouchInput.Trace));
+
+        // Hold and let go off the popup: nothing.
+        TouchInput.Trace.Clear();
+        await HoldThenSlide(host, bar, cell.GetCenter(), 0);
+
+        Check("hold, then let go away from the popup: nothing runs",
+            TouchInput.Trace.Contains("popup -> cancelled") && !TouchInput.Trace.Exists(t => t.StartsWith("bar -> attack")),
+            string.Join(" | ", TouchInput.Trace));
+
+        // Hold, slide to Edit: the editor, for this slot.
+        TouchInput.Trace.Clear();
+        await HoldThenSlide(host, bar, cell.GetCenter(), 3);
+        await Frames(host, 10);
+
+        Check("hold, slide onto Edit: the slot editor opens for that slot",
+            BarEditor.IsOpen && BarEditor.Slot == slot, string.Join(" | ", TouchInput.Trace));
+
+        if (BarEditor.IsOpen)
+        {
+            // Change the second alternate to Next Hostile, with taps, and save.
+            await TapClient(host, BarEditor.CentreOf("Hold 2: Ability 1"));
+            await TapClient(host, BarEditor.CentreOf("Targeting"));
+            await TapClient(host, BarEditor.CentreOf("nexthostile"));
+            string[] picked = BarEditor.Picked;
+            await TapClient(host, BarEditor.CentreOf("Save"));
+            await Frames(host, 5);
+
+            Check("in the editor, a pick and Save change the slot's second alternate, by name",
+                !BarEditor.IsOpen && TouchGumpBar.Alternates(slot).alt2 == "nexthostile" && TouchGumpBar.Slots[slot] == "attack",
+                $"picked {string.Join(",", picked ?? new string[0])}, now {TouchGumpBar.Alternates(slot)}, alts \"{profile.TouchBarAlts}\"");
+        }
+
+        profile.TouchBarAlts = null;
+
+        // Tall windows and three open rows.
+        Game.GameActions.OpenSettings(world);
+        await Frames(host, 30);
+        TouchGumpBar.Row(1);
+        Game.UI.Gumps.Gump options = UIManager.GetGump<Game.UI.Gumps.OptionsGump>();
+        Vector2 grip = bar.HandleRect().GetCenter();
+        await Swipe(host, grip, grip - new Vector2(0, 400), 60);
+        await Settled(host, bar);
+        await Frames(host, 40);
+
+        if (options != null)
+        {
+            int room = GumpPresentation.DisplayBounds(false).Height;
+            int h = GumpPresentation.Height(options);
+            bool fits = h <= room ? options.Y + h <= room : options.Y == 0;
+            Check("with three rows open, a tall window moves up to fit above them, or to the top if taller than the room",
+                bar.RowsOpen == 3 && fits, $"rows {bar.RowsOpen}, room {room}, options at {options.Y} height {h}");
+            options.Dispose();
+        }
+
+        await Frames(host, 5);
+    }
+
+    /// <summary>
+    /// A finger held on a bar button until its popup opens, then slid to popup
+    /// button <paramref name="index"/> (1, 2 the alternates, 3 Edit; 0 away
+    /// from it) and lifted.
+    /// </summary>
+    private static async System.Threading.Tasks.Task HoldThenSlide(Node host, TouchGumpBar bar, Vector2 at, int index)
+    {
+        Touch(0, at, true);
+        ulong until = Godot.Time.GetTicksMsec() + TouchInput.BarPopupMs + 150;
+
+        while (Godot.Time.GetTicksMsec() < until)
+        {
+            await Frames(host, 1);
+        }
+
+        Vector2 to = index > 0 ? bar.PopupRect(index).GetCenter() : new Vector2(at.X, 40);
+        Vector2 mid = (at + to) / 2;
+        Drag(0, mid, mid - at);
+        await Frames(host, 2);
+        Drag(0, to, to - mid);
+        await Frames(host, 2);
+        Touch(0, to, false);
+        await Frames(host, 10);
+    }
+
+    /// <summary>A tap at a point in client pixels (a card's control), as a finger.</summary>
+    private static async System.Threading.Tasks.Task TapClient(Node host, Vector2? client)
+    {
+        if (client == null)
+        {
+            return;
+        }
+
+        await Tap(host, client.Value * GUO.Client.Game.DpiScale);
+        await Frames(host, 3);
+    }
+
+    /// <summary>Wait for the bar to stop moving (its settle is 200 ms).</summary>
+    private static async System.Threading.Tasks.Task Settled(Node host, TouchGumpBar bar)
+    {
+        ulong until = Godot.Time.GetTicksMsec() + 1500;
+        await Frames(host, 3);
+
+        while (bar.Moving && Godot.Time.GetTicksMsec() < until)
+        {
+            await Frames(host, 1);
+        }
+
+        await Frames(host, 3);
+    }
+
+    /// <summary>A finger from one point to another over a time, whatever the frame rate.</summary>
+    private static async System.Threading.Tasks.Task Swipe(Node host, Vector2 from, Vector2 to, int milliseconds)
+    {
+        Touch(0, from, true);
+        await Frames(host, 1);
+        ulong start = Godot.Time.GetTicksMsec();
+        Vector2 last = from;
+
+        while (true)
+        {
+            float t = System.Math.Min(1f, (Godot.Time.GetTicksMsec() - start) / (float)milliseconds);
+            Vector2 at = from.Lerp(to, t);
+            Drag(0, at, at - last);
+            last = at;
+
+            if (t >= 1f)
+            {
+                break;
+            }
+
+            await Frames(host, 1);
+        }
+
+        Touch(0, to, false);
+        await Frames(host, 5);
     }
 
     /// <summary>
@@ -431,8 +766,11 @@ internal static class TouchProbe
                 string.Join(" | ", TouchInput.Trace));
             Touch(0, at.Value + new Vector2(6, 0), false);
             await Frames(host, 5);
-            Check("letting go inside the threshold does nothing",
-                GumpFlick.LastResult.Contains("nothing") && !g.IsDisposed && GumpFlick.Lifted == null, GumpFlick.LastResult);
+            Check("letting go in place opens the window menu, and nothing else",
+                GumpFlick.LastResult.Contains("menu") && !g.IsDisposed && GumpFlick.Lifted == null
+                && WindowMenu.IsOpen && WindowMenu.Target == g, GumpFlick.LastResult);
+            WindowMenu.Close();
+            await Frames(host, 5);
 
             // Up and down on a single screen: fit to screen.
             float before = g.PresentationScale;
@@ -463,11 +801,299 @@ internal static class TouchProbe
             toast?.OnButtonClick(1);
             await Frames(host, 60);
             Check("Reopen brings it back", UIManager.GetGump<PaperDollGump>(world.Player.Serial) != null);
+
+            // Minimise to the touch bar: hidden, a chip on the bar, and a tap
+            // on the chip shows it again where it was, at the size it was.
+            g = UIManager.GetGump<PaperDollGump>(world.Player.Serial);
+            p.FlickLeft = (int)FlickAction.Minimise;
+            GumpPresentation.SetScale(g, 1.25f, new Compat.Point(g.X, g.Y));
+            (int mx, int my, float ms) = (g.X, g.Y, g.PresentationScale);
+            at = await FlickPoint(host, g);
+            await Flick(host, at.Value, new Vector2(-160, 0));
+            Rect2? chip = TouchInput.Bar.ChipRect(g);
+            Check("flick left set to Minimise hides the gump and puts a chip on the touch bar",
+                GumpFlick.LastResult == "flick left -> Minimise" && !g.IsVisible && !g.IsDisposed && chip != null,
+                $"{GumpFlick.LastResult}, visible {g.IsVisible}, chip {chip}");
+
+            if (chip != null)
+            {
+                await Tap(host, chip.Value.GetCenter());
+                await Frames(host, 5);
+            }
+
+            Check("a tap on the chip restores it at the same place and size, and the chip goes",
+                g.IsVisible && g.X == mx && g.Y == my && g.PresentationScale == ms && TouchInput.Bar.ChipRect(g) == null,
+                $"visible {g.IsVisible}, at {g.X},{g.Y} (was {mx},{my}), scale {g.PresentationScale} (was {ms}) | {string.Join(" | ", TouchInput.Trace)}");
+            GumpPresentation.Reset(g);
         }
         finally
         {
             GumpFlick.Cancel();
             (p.FlickUp, p.FlickDown, p.FlickLeft, p.FlickRight) = saved;
+        }
+    }
+
+    /// <summary>
+    /// The Odin findings (C2): a gump is kept above the touch bar, and a
+    /// vertical swipe inside a scroll area (the Options pages) scrolls it
+    /// instead of dragging the gump.
+    /// </summary>
+    /// <summary>
+    /// Options on touch (C11): it opens fitted to the screen, over the command
+    /// bar (which steps aside), with its button row on screen; a tap toggles a
+    /// check box; a combo box's list opens where the box is drawn, at its
+    /// scale; a page tab switches the page; Okay closes it and the bar is back.
+    /// </summary>
+    private static async System.Threading.Tasks.Task MobileOptionsCheck(Node host, Game.World world)
+    {
+        UIManager.GetGump<OptionsGump>()?.Dispose();
+        await Frames(host, 5);
+        Game.GameActions.OpenSettings(world);
+        await Frames(host, 30);
+        OptionsGump options = UIManager.GetGump<OptionsGump>();
+        TouchGumpBar bar = TouchInput.Bar;
+
+        if (options == null || bar == null)
+        {
+            Check("mobile Options", false, "no Options or no bar");
+            return;
+        }
+
+        Compat.Rectangle screen = GUO.Client.Game.ClientBounds;
+        Compat.Rectangle drawn = GumpPresentation.Bounds(options);
+        Check("Options opens fitted to the screen, over the command bar, its button row on screen",
+            options.PresentationScale > 1.2f && bar.Covered && bar.ReservedFraction == 0f
+                && drawn.Bottom <= screen.Height - 8 && drawn.Right <= screen.Width
+                && drawn.Y >= GumpPresentation.FullHeightTop() + 8,
+            $"scale {options.PresentationScale:0.00}, at {drawn}, screen {screen.Width}x{screen.Height}, bar covered {bar.Covered}");
+
+        // A tap on the first check box in view toggles it; a second puts it back.
+        Game.UI.Controls.Checkbox box = First<Game.UI.Controls.Checkbox>(options);
+        bool toggled = false;
+
+        if (box != null)
+        {
+            bool was = box.IsChecked;
+            await Tap(host, DrawnCentre(box));
+            await Frames(host, 5);
+            toggled = box.IsChecked != was;
+            await Tap(host, DrawnCentre(box));
+            await Frames(host, 5);
+            toggled &= box.IsChecked == was;
+        }
+
+        Check("a tap on a check box in the fitted Options toggles it", toggled, box == null ? "no check box" : box.Text);
+
+        // A combo box: its list opens at the box, drawn at the same scale.
+        Game.UI.Controls.Combobox combo = First<Game.UI.Controls.Combobox>(options);
+        bool listOk = false;
+        string listDetail = "no combo box";
+
+        if (combo != null)
+        {
+            Vector2 at = DrawnCentre(combo);
+            await Tap(host, at);
+            await Frames(host, 10);
+            Gump list = null;
+
+            foreach (Gump g in UIManager.Gumps)
+            {
+                if (g.GetType().Name == "ComboboxGump" && !g.IsDisposed) list = g;
+            }
+
+            Compat.Point boxAt = GumpPresentation.ToScreen(combo, new Compat.Point(combo.ScreenCoordinateX, combo.ScreenCoordinateY));
+            listOk = list != null && System.Math.Abs(list.X - boxAt.X) <= 2 && Mathf.IsEqualApprox(list.PresentationScale, options.PresentationScale);
+            listDetail = list == null ? "no list" : $"list at {list.X},{list.Y} x{list.PresentationScale:0.00}, box at {boxAt.X},{boxAt.Y}";
+            list?.Dispose();
+            await Frames(host, 5);
+        }
+
+        Check("a combo box in the fitted Options opens its list at the box, at its scale", listOk, listDetail);
+
+        // The Sound page's tab.
+        Game.UI.Controls.NiceButton sound = null;
+
+        foreach (Game.UI.Controls.Control c in options.Children)
+        {
+            if (c is Game.UI.Controls.NiceButton nb && nb.ButtonParameter == 2 && nb.X == 10) sound = nb; // the page column: Sound is page 2
+        }
+
+        if (sound != null)
+        {
+            await Tap(host, DrawnCentre(sound));
+            await Frames(host, 5);
+        }
+
+        Check("a tap on a page tab in the fitted Options switches the page", options.ActivePage == 2, $"page {options.ActivePage}");
+
+        // A slider on that page follows the finger across the scaled gump.
+        Game.UI.Controls.HSliderBar slider = First<Game.UI.Controls.HSliderBar>(options);
+        string sliderDetail = "no slider";
+        bool slid = false;
+
+        if (slider != null)
+        {
+            int kept = slider.Value;
+            // From the thumb's end to the bar's middle: about half.
+            int y = slider.ScreenCoordinateY + slider.Height / 2;
+            Compat.Point from = GumpPresentation.ToScreen(slider, new Compat.Point(slider.ScreenCoordinateX + slider.Width - 4, y));
+            Compat.Point mid = GumpPresentation.ToScreen(slider, new Compat.Point(slider.ScreenCoordinateX + slider.Width / 2, y));
+            await Swipe(host, Client(new Vector2(from.X, from.Y)), Client(new Vector2(mid.X, mid.Y)), 400);
+            await Frames(host, 5);
+            int half = (slider.MinValue + slider.MaxValue) / 2, slack = (slider.MaxValue - slider.MinValue) / 8;
+            slid = System.Math.Abs(slider.Value - half) <= slack;
+            sliderDetail = $"{kept} -> {slider.Value} of {slider.MinValue}..{slider.MaxValue}";
+            slider.Value = kept;
+        }
+
+        Check("a slider in the fitted Options follows the finger (dragged to the middle: about half)", slid, sliderDetail);
+
+        // Okay: closed, and the bar is back.
+        Game.UI.Controls.Button ok = null;
+
+        foreach (Game.UI.Controls.Control c in options.Children)
+        {
+            if (c is Game.UI.Controls.Button b && b.ButtonID == 4) ok = b;
+        }
+
+        if (ok != null)
+        {
+            await Tap(host, DrawnCentre(ok));
+            await Frames(host, 20);
+        }
+
+        Check("Okay closes the fitted Options and the command bar comes back",
+            (options.IsDisposed || UIManager.GetGump<OptionsGump>() == null) && !bar.Covered && bar.ReservedFraction > 0f,
+            $"disposed {options.IsDisposed}, covered {bar.Covered}");
+    }
+
+    /// <summary>
+    /// The shard's help gump (ModernUO's HelpGump, known by its type ID) opens
+    /// full-height: fitted below the top bar, over the command bar.
+    /// </summary>
+    private static async System.Threading.Tasks.Task HelpGumpCheck(Node host, Game.World world)
+    {
+        TouchGumpBar bar = TouchInput.Bar;
+        Game.GameActions.RequestHelp();
+        Gump help = null;
+
+        for (int i = 0; i < 180 && help == null; i++)
+        {
+            await Frames(host, 1);
+
+            foreach (Gump g in UIManager.Gumps)
+            {
+                if (g.IsFromServer && !g.IsDisposed && g.ServerSerial == 0x7510FA8F) help = g;
+            }
+        }
+
+        await Frames(host, 10);
+        Check("the shard's help gump (ModernUO HelpGump, by type ID) opens full-height and fitted",
+            help != null && bar.Covered && help.PresentationScale > 1.2f && help.Y >= GumpPresentation.FullHeightTop(),
+            help == null ? "no help gump" : $"x{help.PresentationScale:0.00} at {GumpPresentation.Bounds(help)}");
+        help?.Dispose();
+        await Frames(host, 10);
+    }
+
+    /// <summary>The first control of a type on the gump's open page, drawn inside its scroll area.</summary>
+    private static T First<T>(Gump g) where T : Game.UI.Controls.Control
+    {
+        foreach (Game.UI.Controls.Control top in g.Children)
+        {
+            if (!top.IsVisible || top.Page != 0 && top.Page != g.ActivePage) continue;
+
+            T found = Find<T>(top);
+            if (found != null) return found;
+        }
+
+        return null;
+
+        static T Find<TC>(Game.UI.Controls.Control c) where TC : Game.UI.Controls.Control
+        {
+            if (c is T t && c.IsVisible && c.Width > 0) return t;
+
+            foreach (Game.UI.Controls.Control child in c.Children)
+            {
+                if (!child.IsVisible) continue;
+                T f = Find<TC>(child);
+                if (f != null) return f;
+            }
+
+            return null;
+        }
+    }
+
+    /// <summary>The window position of a control's centre, where its gump draws it.</summary>
+    private static Vector2 DrawnCentre(Game.UI.Controls.Control c)
+    {
+        Compat.Point p = GumpPresentation.ToScreen(c, new Compat.Point(c.ScreenCoordinateX + c.Width / 2, c.ScreenCoordinateY + c.Height / 2));
+        return Client(new Vector2(p.X, p.Y));
+    }
+
+    private static async System.Threading.Tasks.Task OptionsTouchCheck(Node host, Game.World world)
+    {
+        Game.GameActions.OpenSettings(world);
+        await Frames(host, 60);
+        OptionsGump options = UIManager.GetGump<OptionsGump>();
+
+        if (options == null)
+        {
+            Check("Options opens for the touch checks", false);
+            return;
+        }
+
+        try
+        {
+            int bottom = GumpPresentation.DisplayBounds(false).Height;
+            options.Y = bottom - 20;
+            await Frames(host, 5);
+            Check("a gump pushed under the touch bar is moved back above it",
+                options.Y + options.Height <= bottom, $"bottom edge {options.Y + options.Height}, bar at {bottom}");
+
+            options.Y = 0;
+            await Frames(host, 5);
+
+            // The first scroll area on the open page that has more than it shows.
+            Game.UI.Controls.ScrollArea area = null;
+            foreach (Game.UI.Controls.Control c in options.FindControls<Game.UI.Controls.ScrollArea>())
+            {
+                if (c.IsVisible && c.Page == options.ActivePage && c is Game.UI.Controls.ScrollArea a
+                    && a.ScrollMaxValue > a.ScrollMinValue) { area = a; break; }
+            }
+
+            if (area == null)
+            {
+                Check("an Options page with a scroll area", false);
+                return;
+            }
+
+            int before = area.ScrollValue;
+            int gx = options.X, gy = options.Y;
+            // Where the area is drawn: Options is fitted to the screen on touch (C11).
+            Compat.Point drawn = GumpPresentation.ToScreen(area,
+                new Compat.Point(area.ScreenCoordinateX + 60, area.ScreenCoordinateY + (int)(area.Height * 0.7f)));
+            Vector2 start = Client(new Vector2(drawn.X, drawn.Y));
+            TouchInput.Trace.Clear();
+            Touch(0, start, true);
+            await Frames(host, 2);
+
+            for (int i = 1; i <= 8; i++)
+            {
+                Drag(0, start + new Vector2(0, -25 * i), new Vector2(0, -25));
+                await Frames(host, 1);
+            }
+
+            Touch(0, start + new Vector2(0, -200), false);
+            await Frames(host, 10);
+
+            Check("a vertical swipe inside an Options page scrolls it and leaves the gump where it was",
+                area.ScrollValue > before && options.X == gx && options.Y == gy && !Mouse.LButtonPressed,
+                $"scroll {before} -> {area.ScrollValue}, gump {gx},{gy} -> {options.X},{options.Y} | {string.Join(" | ", TouchInput.Trace)}");
+        }
+        finally
+        {
+            options.Dispose();
+            await Frames(host, 5);
         }
     }
 
@@ -701,22 +1327,46 @@ internal static class TouchProbe
 
             await Frames(host, 35);
             Compat.Rectangle gem = GumpPresentation.GemRect(g);
+
+            // Hidden by default on touch: a tap where the handle would be opens nothing.
+            var prof = Configuration.ProfileManager.CurrentProfile;
+            bool shown = prof.ShowWindowHandles;
+            prof.ShowWindowHandles = false;
+            await Frames(host, 5);
+            Check("window handles are hidden by default", GumpPresentation.GemAlpha(g) == 0f
+                && !GumpPresentation.OpenGem(new Compat.Point(gem.X + 14, gem.Y + 14)));
+
+            // With "Show window handles" on, the handle opens the menu as before.
+            prof.ShowWindowHandles = true;
+            await Frames(host, 5);
             TouchInput.Trace.Clear();
             await Tap(host, Client(new Vector2(gem.X + 14, gem.Y + 14)));
-            var menu = UIManager.GetGump<GumpLayoutGump>();
-            Check("window gem opens size and screen controls", menu != null,
+            prof.ShowWindowHandles = shown;
+            Check("window gem opens size and screen controls", WindowMenu.IsOpen && WindowMenu.Target == g,
                 $"gem {gem.X},{gem.Y}, disposed {g.IsDisposed}, modal {UIManager.IsModalOpen}, held {GUO.Client.Game.UO.GameCursor.ItemHold.Enabled}, "
                 + $"top {UIManager.Gumps.First?.Value.GetType().Name} | {string.Join(" | ", TouchInput.Trace)}");
-            if (menu != null)
+            if (WindowMenu.IsOpen)
             {
-                await Tap(host, Client(new Vector2(menu.X + 100, menu.Y + 90)));
-                Check("Reset size restores original scale", g.PresentationScale == 1f);
+                await Frames(host, 12); // the card's open animation
+                float before = g.PresentationScale;
+                Vector2? plus = WindowMenu.ButtonCentre("+");
+                if (plus != null) await Tap(host, Client(plus.Value));
+                await Frames(host, 5);
+                Check("the window menu's + steps the size by 25%", plus != null && System.Math.Abs(g.PresentationScale - (float)(System.Math.Round((before + 0.25f) * 4) / 4)) < 0.01f,
+                    $"{before} -> {g.PresentationScale}");
+                Vector2? reset = WindowMenu.ButtonCentre("Reset size");
+                if (reset != null) await Tap(host, Client(reset.Value));
+                await Frames(host, 5);
+                Check("Reset size restores original scale", g.PresentationScale == 1f, $"scale {g.PresentationScale}");
+                Rect2 card = WindowMenu.CardRect;
+                await Tap(host, Client(new Vector2(card.Position.X - 60 > 0 ? card.Position.X - 60 : card.End.X + 60, card.Position.Y + 20)));
+                Check("a tap outside the card closes the menu, and does nothing else", !WindowMenu.IsOpen && !g.IsDisposed);
             }
         }
         finally
         {
             hit.Dispose();
-            UIManager.GetGump<GumpLayoutGump>()?.Dispose();
+            WindowMenu.Close();
             g.X = oldX; g.Y = oldY; g.PresentationScale = oldScale; g.PresentationLocked = oldLock;
         }
     }

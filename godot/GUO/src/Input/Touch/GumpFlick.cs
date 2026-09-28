@@ -24,6 +24,7 @@ internal enum FlickAction
     SizeMenu = 5,
     ToggleLock = 6,
     ShelfAutoSlot = 7,
+    Minimise = 8,
 }
 
 /// <summary>
@@ -52,6 +53,9 @@ internal static class GumpFlick
     /// <summary>The direction currently picked: -1 none, else 0 up, 1 down, 2 left, 3 right.</summary>
     public static int Direction { get; private set; } = -1;
 
+    /// <summary>What was under the finger at the last CanStart, for the trace.</summary>
+    public static string LastRefusal { get; private set; } = "";
+
     /// <summary>What the last finished flick did, for the probe and the trace.</summary>
     public static string LastResult { get; private set; } = "";
 
@@ -65,6 +69,7 @@ internal static class GumpFlick
     {
         "Do nothing", "Send to top screen", "Send to bottom screen", "Close (with Reopen)",
         "Reset size", "Size menu", "Lock / unlock size", "Shelf's own slot",
+        "Minimise to the touch bar",
     };
 
     /// <summary>
@@ -84,6 +89,7 @@ internal static class GumpFlick
 
         Control over = UIManager.MouseOverControl;
         Gump root = GumpPresentation.Root(over);
+        LastRefusal = $"over {over?.GetType().Name ?? "nothing"} in {root?.GetType().Name ?? "nothing"}, supported {GumpPresentation.Supports(root)}";
 
         if (!GumpPresentation.Supports(root) || UIManager.IsModalOpen || UIManager.IsDragging
             || Client.Game.UO.GameCursor.ItemHold.Enabled || Client.Game.UO.World.TargetManager.IsTargeting)
@@ -157,7 +163,10 @@ internal static class GumpFlick
 
         if (direction < 0)
         {
-            return LastResult = "flick: released inside the threshold -> nothing";
+            // Released where it was lifted: the window's size and screen menu,
+            // which on touch replaces the always-drawn "UI" handle.
+            GumpPresentation.OpenMenu(g);
+            return LastResult = "flick: released in place -> menu";
         }
 
         FlickAction action = ActionFor(direction);
@@ -222,8 +231,7 @@ internal static class GumpFlick
                 break;
 
             case FlickAction.SizeMenu:
-                UIManager.GetGump<GumpLayoutGump>()?.Dispose();
-                UIManager.Add(new GumpLayoutGump(g));
+                GumpPresentation.OpenMenu(g);
                 break;
 
             case FlickAction.ToggleLock:
@@ -232,6 +240,10 @@ internal static class GumpFlick
 
             case FlickAction.ShelfAutoSlot:
                 DualScreen.Reshelve(g);
+                break;
+
+            case FlickAction.Minimise:
+                GumpMinimise.Minimise(g);
                 break;
         }
     }
@@ -312,6 +324,28 @@ internal static class GumpFlick
         {
             DrawChip(b, g, r, display, dir);
         }
+
+        DrawCentreHint(b, r);
+    }
+
+    /// <summary>"Release: menu" at the gump's centre while no direction is picked.</summary>
+    private static void DrawCentreHint(UltimaBatcher2D b, Rectangle r)
+    {
+        const string label = "Release: menu";
+
+        if (!_labels.TryGetValue(label, out RenderedText text) || text.IsDestroyed)
+        {
+            _labels[label] = text = RenderedText.Create(label, 0x0481, 1, true);
+        }
+
+        int w = text.Width + 16, h = Math.Max(22, text.Height + 8);
+        int x = r.X + (r.Width - w) / 2, y = r.Y + (r.Height - h) / 2;
+        float alpha = Direction < 0 ? 0.85f : 0.3f;
+        b.Draw(SolidColorTextureCache.GetTexture(new Color(20, 25, 23)), new Rectangle(x, y, w, h),
+            ShaderHueTranslator.GetHueVector(0, false, alpha), 0);
+        b.DrawRectangle(SolidColorTextureCache.GetTexture(new Color(223, 187, 119)), x, y, w - 1, h - 1,
+            ShaderHueTranslator.GetHueVector(0, false, alpha), 0);
+        text.Draw(b, x + 8, y + (h - text.Height) / 2, 0, Direction < 0 ? 1f : 0.35f);
     }
 
     private static string ChipLabel(Gump g, FlickAction action)
@@ -327,6 +361,7 @@ internal static class GumpFlick
             FlickAction.SizeMenu => "Size menu",
             FlickAction.ToggleLock => g.PresentationLocked ? "Unlock size" : "Lock size",
             FlickAction.ShelfAutoSlot => "To its shelf slot",
+            FlickAction.Minimise => "Minimise",
             _ => "Nothing",
         };
     }

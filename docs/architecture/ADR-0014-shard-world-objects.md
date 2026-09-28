@@ -45,9 +45,52 @@ restart.
   2. the anvil at its new cell and not at the old one;
   3. all of them gone, the horse included.
 
-Accepted on that evidence (the director's condition). Still to build: the
-GM-command fallback for shards without the bridge, and the ServUO and
-RunUO backends.
+Accepted on that evidence (the director's condition).
+
+2026-09-27 (slice 3, the GM-command fallback): `python
+tools\editor_objects_proof\run.py --commands` passes 11/11, with the shard
+started **without** the bridge (a plain ModernUO; the check confirms no
+bridge line in its log).
+
+1. `tools\world apply-commands` placed the project's anvil and Horse spawner,
+   both tagged.
+2. A GM placed an untagged decoy anvil on the anvil's own cell.
+3. The edited project was applied:
+   - the tagged anvil was removed from that cell and placed at its new one;
+   - the spawner was removed;
+   - a hued item was placed;
+   - **the decoy was left standing**, the only thing on the old cell.
+4. Applying it again typed nothing.
+
+Found and fixed on the way: ModernUO asks a GM to confirm a delete that
+matches more than one object, and a scripted client cannot. So tags are
+unique per placement (a nonce), and `apply-commands` fails if the shard asks
+to confirm.
+
+2026-09-27 (the ServUO backend): a private ServUO (`tools\servuo`, pub57 at
+`d76bf44`, 127.0.0.1:2596) was used. `tools\world export` with
+`UO_SHARD_BACKEND=servuo` wrote XmlSpawner XML (`XmlSpawner/guo-<project>.xml`:
+`UniqueId` = the object id, the home range as the spawn rectangle, delays in
+minutes, the entries as `Objects2`) and the shared decoration cfg; `verify`
+read them back equal to the model. `tools\editor_objects_proof --servuo`
+passes:
+
+1. The files were placed beside ServUO, which was then restarted.
+2. A GM client typed `[XmlLoad guo-<project>.xml` and `[Decorate`.
+3. The client's world holds the anvil at its cell and the XmlSpawner, with a
+   horse spawned beside it. The frame shows them.
+
+The GM-command fallback on ServUO: `editor_objects_proof --commands
+--servuo` passes 11/11 on a fresh ServUO world, the same checks as on the
+plain ModernUO, decoy included.
+
+Found on the way: ServUO's `[go` answers nothing, and the scripted client
+waited about 15 minutes for a reply to it. A command with no reply at all
+is now given up after 30 polls (GUO's `ShardCommands`). Also, `apply-commands`
+counted its "no reply" lines as commands, ended the client early and wrote a
+record for a placement that never happened; it now counts only command lines.
+
+Still to build: the RunUO backend.
 
 ## Decision Makers
 
@@ -216,16 +259,34 @@ too: ModernUO's import deletes the old spawner with the same GUID. It
 
 **Live apply (after the export slice).** The bridge gains `object.put` and
 `object.delete` ops (`docs/data_formats.md` §10), applying one object on the
-game thread with the same code as the boot sync. §4.7's first cut, the GM
-client typing `[add` / `[props` / `[remove`, is kept as the universal
-fallback for shards without the bridge.
+game thread with the same code as the boot sync.
+
+**The GM-command fallback (shards without the bridge).** `tools\world
+apply-commands --host H --port P`: a GUO client, logged in as a GM, types the
+server's own commands. §4.7's first cut; it needs no targeting.
+
+| Change | Commands |
+|---|---|
+| Place | `[TileXYZ x y 1 1 z <Type> <args> set Name <tag> ...` |
+| Remove | on the recorded cell: `[Range 0 Remove where <Type> Name == <tag>` |
+| Move or change | remove, then place |
+
+**It can never remove what it did not place.**
+
+- Every placement carries a name tag of its own, `guo-<id8>-<nonce>`, and
+  it removes only by that tag, so a remove matches exactly one object. Shard content has no GUO tag, so even an item
+  with the same art on the same cell cannot match.
+- It keeps a record per shard in the project,
+  `shard/applied/<host>_<port>.json`, and targets only ids in it.
+
+Its limit: one entry per spawner (`[TileXYZ` makes one).
 
 ### 4. Other backends (§4.8), in this ADR's scope but not in the first slice
 
 | Backend | Reads and writes | Sync |
 |---|---|---|
 | ModernUO | JSON spawners, cfg decoration | bridge (private) or GM import commands |
-| ServUO | XmlSpawner `.xml` + cfg decoration | `[xmlload` / `[xmlspawner` commands via the GM client; an optional bridge script later |
+| ServUO | XmlSpawner `.xml` + cfg decoration (built: `tools/world/backends/servuo.py`) | `[XmlLoad` (replaces by `UniqueId`) and `[Decorate` via the GM client; deletions through `apply-commands`; an optional bridge script later |
 | RunUO 2.x | commands only (spawners live in the binary save) | the GM client; the commands sent are logged to `shard/commands.log` as the replayable record |
 | Sphere, UOX3, POL | not designed for | the adapter interface is what they would implement |
 

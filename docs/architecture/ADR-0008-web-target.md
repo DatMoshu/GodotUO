@@ -2,7 +2,12 @@
 
 ## Status
 
-Proposed — blocked upstream. On 2026-09-26 the pinned engine refused the
+Accepted, as amended on 2026-09-27 (Amendment 1, at the end): the export is
+made with a community Godot 4.7.2 build that can export C# to the web, and
+`python tools\web\run.py smoke` passed in Chrome and Firefox on it. The
+original status is kept below for the record.
+
+*Original (2026-09-26):* Proposed — blocked upstream. On 2026-09-26 the pinned engine refused the
 export on this machine with the exact text quoted under Validation. The
 tooling, the preset, the server and the smoke are written and the parts that
 do not need an export (doctor, serve) are run; nothing has rendered a frame
@@ -17,6 +22,10 @@ exits 0 on a Godot build that can export C# to the web.
 
 2026-09-26 — against Godot 4.7.2 stable mono, its mono export templates,
 and .NET SDK 10.0.301 on Windows 11.
+
+2026-09-27 — Amendment 1, against the tools/godot_web fork (Godot 4.7.2
+mono + godotengine/godot#106125, Emscripten 6.0.5, threaded), a private .NET
+SDK 10.0.301 with wasm-tools-net9, Chrome and Firefox 132 headless.
 
 ## Decision Makers
 
@@ -226,8 +235,115 @@ Recorded 2026-09-26 on Windows 11, Godot 4.7.2 stable mono (pinned in
    the browser half has not run against a real page and is **written, not
    verified**.
 
+## Amendment 1, 2026-09-27: export with a community fork; client data over HTTP; the shard over WebSocket
+
+The research is `docs/web/unblock-report.md`. What changed, and why:
+
+### The engine: a community fork, isolated (owner decision A)
+
+Godot has not merged C# web export and will not in 4.8 (#106125 and #118976
+are both drafts). But ComplexRobot/godot-dotnet-web-export publishes a
+Windows build of **exactly our pin, 4.7.2-stable, with #106125 merged**, and
+its web templates. The owner approved using it on this PC (CI undecided).
+It lives in the gitignored `tools/godot_web`, whose README records its origin
+and SHA-256, and it is kept from touching the pinned engine:
+
+- its `install.bat` is never run. That script would put web templates in the
+  pinned engine's `%APPDATA%` template folder, and a rebuilt
+  `Godot.NET.Sdk 4.7.2` (same version number as the official one) into a
+  user-wide NuGet feed;
+- the editor runs self-contained (`._sc_`); a web export gets a private
+  `NUGET_PACKAGES` and a private .NET SDK in `tools/godot_web/dotnet`.
+  `dotnet workload` fails on this PC's machine-wide SDK, and would need admin
+  rights anyway. The owner approved the private SDK zip too;
+- `UO_WEB_GODOT` names the fork's console; only `tools/web` uses it.
+
+`GUO.csproj` targets net9.0 and compiles `src/Platform/Web/Program.cs` only
+when `GodotTargetPlatform` is `web`, as Android already has net9.0.
+
+### Client data: served from the player's own PC, read lazily (owner decision B)
+
+Decision 4 above ("designed, not built") is replaced. The install is never
+hosted by us (rule 8). `tools\web\run.py serve` hands the player's own
+`UO_CLIENT_DATA` to the page from 127.0.0.1: `/uo/_index.json` (every file
+and its size) plus HTTP `Range` reads. `tools/web/guo_data.js` mounts it
+into Emscripten's filesystem at `/uo` as lazy read-only files, fetched in
+1 MiB chunks through a synchronous *byte source*, with a 384 MiB LRU. The
+client opens `/uo/<file>` exactly as on the desktop, so no loader changed.
+
+The byte source is the seam the owner asked for. The two other deployments
+reuse everything above it:
+
+- *the player picks their UO folder* (File System Access / OPFS): a `File`
+  cannot be read synchronously on the main thread, so that source reads in
+  a worker and hands bytes over through a `SharedArrayBuffer` (the page is
+  already cross-origin isolated). Not built;
+- *a shard hosts its own client files*: `httpSource` pointed at the shard's
+  URL. Already works, given CORS/CORP headers on that server.
+
+wasm32's 4 GB address space is why the files are lazy and not copied in;
+the login screen reads 227 MiB of 2.6 GB.
+
+To get there the export patches the engine's JS at two anchors, each asserted
+to occur exactly once: `Module.guoFS = FS`, and a `guoBeforeMain(Module,
+args)` hook right before `main()`. A template that changes fails the export
+loudly instead of loading a page that cannot mount anything.
+
+### The client: four browser-only deviations, all off on the desktop
+
+- `MMFileReader` reads through the `FileStream` (no mmap of a lazy file);
+  `GUO_NO_MMAP=1` selects it anywhere.
+- zlib: the template links no `System.IO.Compression.Native`, so every BCL
+  zlib stream fails, and upstream's `ZLIBStream` wraps `DeflateStream`. A
+  dependency-free inflater (`ManagedInflate.cs`, after zlib's puff.c) is used
+  in a browser; `GUO_ZLIB=managed` selects it anywhere. It matched .NET's
+  zlib on 1,196 buffers at every level.
+- The logger skips console colour (throws, as on Android).
+- The socket: upstream's `WebSocketWrapper` needs a raw TCP socket and a
+  blocking connect; in a browser `NetClient` uses `GodotWebSocketWrapper`
+  over Godot's `WebSocketPeer`, polled once a frame like the TCP socket,
+  with sends queued until it opens. `ignore_relay_ip` is on in a browser, so
+  the client returns to the bridge after the login server's relay.
+
+### The shard: a WebSocket bridge
+
+ModernUO speaks raw TCP only. `tools/ws_bridge` (standard-library Python,
+the job of upstream's `tools/ws/proxy.mjs`) listens on
+`ws://127.0.0.1:UO_WS_BRIDGE_PORT` (2594) and relays to the shard. It listens
+on loopback by default, and refuses a browser `Origin` other than the local
+page's, since any site can open a WebSocket to localhost. Encryption and
+compression pass through untouched.
+
+### Threads
+
+The template is threaded, so the page must be cross-origin isolated;
+`serve` sends COOP/COEP. The report's no-threads build (for hosts that
+cannot send the headers) needs a source build of #118976 and is not done.
+
+### Validation (Amendment 1)
+
+1. `python tools\web\run.py smoke`, both browsers, with the page argument
+   `--login-probe-stay`: exit 0. `[GUO] login probe: ok login gump rendered`
+   in Chrome after 57 s and in Firefox after 235 s, with identical
+   screenshots. 250 range requests, 227 MiB read.
+2. `python tools\ws_bridge\run.py test`: the dev shard answers a 0xEF+0x80
+   login with a 0xA8 server list through the bridge. `test --fake` passes
+   without a shard.
+3. Desktop unchanged: `dotnet build` 0 errors; `launchers\dev\smoke.bat` OK;
+   `--offline` loads every archive the same with `GUO_NO_MMAP=1
+   GUO_ZLIB=managed` as without.
+
+### Still open
+
+A hosted deployment (a static host plus a public `wss://` bridge behind
+TLS); the folder-picker byte source; CI use of the fork (an owner decision);
+a no-threads build; audio in a headless page (autoplay is blocked until a
+user gesture); payload size (67 MB wasm + 68 MB pck, uncompressed).
+
 ## Related
 
+- `tools/godot_web/README.md`, `tools/ws_bridge/README.md`,
+  `docs/web/unblock-report.md` (Amendment 1).
 - ADR-0017 (Android target): the tool this one mirrors, and the touch layer
   a web build on a phone would reuse.
 - ADR-0001 (render presenter seam): why the client owns its window and scale.

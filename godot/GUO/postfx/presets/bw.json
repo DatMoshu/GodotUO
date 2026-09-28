@@ -1,0 +1,14 @@
+{
+ "name": "Black & White",
+ "description": "Greyscale.",
+ "passes": [
+  {
+   "shader": "mono",
+   "params": {
+    "style": 0,
+    "contrast": 1.05
+   }
+  }
+ ],
+ "bindings": []
+}

@@ -1,5 +1,43 @@
 using GUO.Store;
 
+// The shared validation corpus (tools/asset_store/corpus, S6): the C# installer's verdict on every file.
+if (args.Length == 3 && args[0] == "corpus")
+{
+    var results = new SortedDictionary<string, Dictionary<string, string>>(StringComparer.Ordinal);
+    foreach (string file in Directory.GetFiles(args[1]).OrderBy(f => f, StringComparer.Ordinal))
+    {
+        string name = Path.GetFileName(file);
+        if (name == "expect.json") continue;
+        string staging = Path.Combine(Path.GetTempPath(), "guo-corpus-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            if (name.EndsWith(".zip", StringComparison.Ordinal))
+            {
+                Directory.CreateDirectory(staging);
+                StorePack.Extract(file, staging);
+            }
+            else
+            {
+                StorePack.Parse(File.ReadAllBytes(file));
+            }
+
+            results[name] = new() { ["result"] = "accept" };
+        }
+        catch (Exception e)
+        {
+            results[name] = new() { ["result"] = "reject", ["error"] = e.GetType().Name + ": " + e.Message };
+        }
+        finally
+        {
+            try { if (Directory.Exists(staging)) Directory.Delete(staging, true); } catch (IOException) { }
+        }
+    }
+
+    File.WriteAllText(args[2], System.Text.Json.JsonSerializer.Serialize(results, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+    Console.WriteLine($"corpus: {results.Count} file(s) -> {args[2]}");
+    return 0;
+}
+
 try
 {
     string profile = Path.Combine(args[1], "..", "profile-settings");

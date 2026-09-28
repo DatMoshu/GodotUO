@@ -1,4 +1,5 @@
 """Hermetic configuration precedence and path-resolution regressions."""
+import json
 import os
 from pathlib import Path
 import sys
@@ -8,6 +9,8 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from guo.config import find_repo_root, load_config, parse_config_bat
+from guo import datasources
+from guo.formats import required_files
 
 
 class ConfigTests(unittest.TestCase):
@@ -26,6 +29,11 @@ class ConfigTests(unittest.TestCase):
         self.home_lookup = patch("guo.config.Path.home", return_value=self.root / "fixture-home")
         self.home_lookup.start()
         self.addCleanup(self.home_lookup.stop)
+        # The platform defaults read this machine's registry and folders; the
+        # tests name their own.
+        self.defaults_lookup = patch("guo.datasources.platform_defaults", return_value=[])
+        self.defaults_lookup.start()
+        self.addCleanup(self.defaults_lookup.stop)
 
     def test_environment_local_default_precedence(self):
         self.assertEqual(load_config(self.root).client_version, "default")
@@ -122,6 +130,164 @@ class ConfigTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             find_repo_root(nested)
 
+
+def make_install(folder: Path, skip: str = "") -> Path:
+    """A fake data set: one empty file per form of every required entry, but `skip`."""
+    folder.mkdir(parents=True, exist_ok=True)
+    for f in required_files():
+        if f.key == skip:
+            continue
+        for name in (f.uop[:1] or f.mul[:1] + f.indexed_by):
+            (folder / name).write_bytes(b"")
+    return folder
+
+
+def make_custom(folder: Path, mode: str, files: dict | None = None, ea: bool = False) -> Path:
+    folder.mkdir(parents=True, exist_ok=True)
+    for name in files or {}:
+        (folder / name).write_bytes(b"x")
+    (folder / "guo_data.json").write_text(json.dumps({
+        "format": "guo/data-folder@1", "name": "fixture", "mode": mode,
+        "files": files or {}, "contains_ea_data": ea}), encoding="utf-8")
+    return folder
+
+
+class DataSourceTests(unittest.TestCase):
+    """ADR-0021: custom folder, then the install (environment, setting, default), then the wizard."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(prefix="guo-datasources-test-")
+        self.addCleanup(self.temp.cleanup)
+        self.dir = Path(self.temp.name)
+
+    def test_validity_is_the_required_set(self):
+        good = make_install(self.dir / "good")
+        self.assertTrue(datasources.validate_install(good).ok)
+        key = required_files()[0].key
+        bad = datasources.validate_install(make_install(self.dir / "bad", skip=key))
+        self.assertFalse(bad.ok)
+        self.assertEqual(bad.missing, [key])
+        self.assertFalse(datasources.validate_install(None).ok)
+        self.assertFalse(datasources.validate_install(Path("")).ok)
+
+    def test_a_mul_without_its_index_is_not_valid(self):
+        entry = next(f for f in required_files() if f.indexed_by and not f.uop)
+        folder = make_install(self.dir / "noindex")
+        for name in entry.indexed_by:
+            (folder / name).unlink()
+        self.assertIn(entry.key, datasources.validate_install(folder).missing)
+
+    def test_order_environment_then_setting_then_default(self):
+        env, setting, default = (make_install(self.dir / n) for n in ("env", "setting", "default"))
+        r = datasources.resolve("", str(env), str(setting), [default])
+        self.assertEqual((r.source, r.client_data, r.origin), ("install", env, "environment"))
+        r = datasources.resolve("", "", str(setting), [default])
+        self.assertEqual((r.client_data, r.origin), (setting, "setting"))
+        r = datasources.resolve("", "", "", [self.dir / "missing", default])
+        self.assertEqual((r.client_data, r.origin), (default, "default"))
+
+    def test_a_broken_setting_is_reported_not_replaced(self):
+        default = make_install(self.dir / "default")
+        r = datasources.resolve("", "", str(self.dir / "typo"), [default])
+        self.assertEqual(r.source, "wizard")
+        self.assertIsNone(r.client_data)
+        self.assertTrue(any("typo" in n for n in r.notes))
+        self.assertIn("first-run wizard", r.message())
+
+    def test_nothing_anywhere_is_the_wizard(self):
+        r = datasources.resolve("", "", "", [])
+        self.assertFalse(r.ok)
+        self.assertEqual(r.source, "wizard")
+
+    def test_complete_custom_folder_comes_first(self):
+        install = make_install(self.dir / "install")
+        custom = make_custom(make_install(self.dir / "custom"), "complete")
+        r = datasources.resolve(str(custom), str(install), "", [])
+        self.assertEqual((r.source, r.client_data, r.custom), ("custom", custom, custom))
+
+    def test_incomplete_complete_folder_falls_back_to_the_install(self):
+        install = make_install(self.dir / "install")
+        custom = make_custom(self.dir / "custom", "complete")
+        r = datasources.resolve(str(custom), str(install), "", [])
+        self.assertEqual((r.source, r.client_data), ("install", install))
+        self.assertTrue(any("custom" in n for n in r.notes))
+
+    def test_layered_folder_over_the_install(self):
+        install = make_install(self.dir / "install")
+        custom = make_custom(self.dir / "custom", "layered", {"tiledata.mul": {"sha1": "x"}, "artLegacyMUL.uop": {}})
+        r = datasources.resolve(str(custom), "", str(install), [])
+        self.assertEqual((r.source, r.client_data, r.origin), ("install+custom", install, "setting"))
+        self.assertEqual(r.overrides, {"tiledata.mul": custom / "tiledata.mul", "artlegacymul.uop": custom / "artLegacyMUL.uop"})
+        out = datasources.write_override(r, self.dir / "build" / "override.txt")
+        self.assertEqual(out.read_text(encoding="utf-8").splitlines()[1], f"tiledata.mul={custom / 'tiledata.mul'}")
+
+    def test_layered_folder_alone_is_the_wizard(self):
+        custom = make_custom(self.dir / "custom", "layered", {"tiledata.mul": {}})
+        r = datasources.resolve(str(custom), "", "", [])
+        self.assertEqual(r.source, "wizard")
+        self.assertTrue(any("needs a valid UO install" in n for n in r.notes))
+
+    def test_manifest_is_checked(self):
+        install = make_install(self.dir / "install")
+        (self.dir / "plain").mkdir()
+        ea = make_custom(self.dir / "ea", "layered", {"a.mul": {}}, ea=True)
+        gone = make_custom(self.dir / "gone", "layered", {"a.mul": {}})
+        (gone / "a.mul").unlink()
+        undeclared = make_custom(self.dir / "undeclared", "layered", {"a.mul": {}})
+        m = json.loads((undeclared / "guo_data.json").read_text(encoding="utf-8"))
+        del m["contains_ea_data"]
+        (undeclared / "guo_data.json").write_text(json.dumps(m), encoding="utf-8")
+        esc = make_custom(self.dir / "esc", "layered", {})
+        m = json.loads((esc / "guo_data.json").read_text(encoding="utf-8"))
+        m["files"] = {"../install/tiledata.mul": {}}
+        (esc / "guo_data.json").write_text(json.dumps(m), encoding="utf-8")
+        cases = {
+            "no manifest": (self.dir / "plain", "no guo_data.json"),
+            "undeclared": (undeclared, "contains_ea_data"),
+            "missing file": (gone, "not a file"),
+            "path escape": (esc, "not a file"),
+        }
+        for label, (folder, needle) in cases.items():
+            r = datasources.resolve(str(folder), str(install), "", [])
+            self.assertEqual(r.source, "install", label)
+            self.assertTrue(any(needle in n for n in r.notes), label)
+        # EA-derived data is allowed in a local folder, and marked as such.
+        r = datasources.resolve(str(ea), str(install), "", [])
+        self.assertEqual((r.source, r.local_only), ("install+custom", True))
+        self.assertIn("never shipped", r.message())
+
+    def test_runtime_table_matches_formats(self):
+        """The client's DataRequirements.g.cs is generated from FILE_REGISTRY and must be current."""
+        import importlib.util
+
+        repo = Path(__file__).resolve().parents[2]
+        spec = importlib.util.spec_from_file_location("datasources_run", repo / "tools" / "datasources" / "run.py")
+        run = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(run)
+        have = (repo / run.GENERATED).read_text(encoding="utf-8").replace("\r\n", "\n")
+        self.assertEqual(have, run.generated_cs(), "run: python tools/datasources/run.py gen-cs")
+        for f in required_files():
+            self.assertIn(f'new("{f.key}", ', have)
+
+    def test_config_uses_the_same_order(self):
+        root = self.dir / "repo"
+        shared = root / "launchers" / "_shared"
+        shared.mkdir(parents=True)
+        (shared / "config.bat").write_text("", encoding="utf-8")
+        setting = make_install(self.dir / "setting")
+        (shared / "config.local.bat").write_text(f'set "UO_CLIENT_DATA={setting}"', encoding="utf-8")
+        with patch.dict(os.environ, {"UO_CACHE_DIR": str(self.dir / "cache")}, clear=True), patch("guo.datasources.platform_defaults", return_value=[]):
+            cfg = load_config(root)
+            self.assertEqual((cfg.client_data, cfg.client_data_setting, cfg.client_data_env), (setting, str(setting), ""))
+            self.assertEqual(datasources.resolve_config(cfg).origin, "setting")
+            os.environ["UO_CLIENT_DATA"] = str(self.dir / "broken")
+            cfg = load_config(root)
+            self.assertEqual(cfg.client_data, self.dir / "broken")
+            self.assertEqual(datasources.resolve_config(cfg).source, "wizard")
+        default = make_install(self.dir / "default")
+        (shared / "config.local.bat").write_text("", encoding="utf-8")
+        with patch.dict(os.environ, {"UO_CACHE_DIR": str(self.dir / "cache")}, clear=True), patch("guo.datasources.platform_defaults", return_value=[default]):
+            self.assertEqual(load_config(root).client_data, default)
 
 if __name__ == "__main__":
     unittest.main()

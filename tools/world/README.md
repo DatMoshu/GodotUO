@@ -115,3 +115,57 @@ placed objects in its save. They take effect through a **sync**:
 - on the private instance, `tools\editor_shard start --objects <export>`;
 - on any other ModernUO shard, the GM commands in `APPLY.txt`, which add and
   update but cannot delete.
+
+## apply-commands: world objects on a shard without GUO's bridge
+
+```
+python tools\world\run.py apply-commands [--project DIR] --host H --port P [--dry-run]
+```
+
+This is the fallback of ADR-0014. A GUO client, logged in as a GM (the
+configured account), types the server's own commands (ModernUO) to bring the
+shard from what this fallback placed there before to what the project holds.
+
+| Change | Commands |
+|---|---|
+| Place an item | `[go x y z`, then `[TileXYZ x y 1 1 z Static <id> set Name <tag> [Hue <h>]` |
+| Place a spawner | `[TileXYZ ... Spawner <entry> set Name <tag> Count ... HomeRange ...`, then `[Range 0 Respawn where Spawner Name == <tag>` |
+| Remove | `[go` to the recorded cell, then `[Range 0 Remove where <Type> Name == <tag>` |
+| Move or change | remove, then place |
+
+**It cannot remove what it did not place.** Every placement carries a name
+tag of its own, `guo-<id8>-<nonce>`, so no two placements share one. It removes only by that tag, only on the
+cell it recorded, and only ids in its record: `<project>\shard\applied\<host>_<port>.json`,
+written after the commands went through. Shard content carries no GUO tag,
+so no command it types can match it, even an item with the same art on the
+same cell.
+
+Limits:
+
+- A spawner with more than one entry cannot be made with `[TileXYZ`; it is
+  skipped and named.
+- Items and spawners show their tag as their name when clicked.
+- A run is slow: the client waits for each command's answer to fall quiet,
+  about a minute per command.
+
+## Stale UltimaLive copies
+
+A client that has played on an UltimaLive shard keeps its own copy of each map,
+under `%ProgramData%\<shard name>\`. Once that copy exists, the client never
+refreshes it from the install or an export. After a re-export it would go on
+showing the old map.
+
+`export` checks for this. For each facet it exports, it compares the client's
+copy with the export on every block the project replaces, land and statics.
+If a copy lacks any of them, `export` prints a WARNING with the number of
+stale blocks and the exact fix. With `--clear-ultimalive` it removes that
+facet's copy itself, and the client makes a fresh one at its next login.
+`ultimalive` runs the same check against an existing export, without
+exporting again.
+
+- The shard name is `--ultimalive-shard`, else `GUO_BRIDGE_SHARD`, else
+  `GUO-Editor-Private`.
+- The root is `--ultimalive-root`, else `%ProgramData%`.
+
+Nothing is removed without `--clear-ultimalive`. `editor_smoke` covers
+both paths, in a scratch root.

@@ -48,6 +48,52 @@ Measured 2026-09-27: 8/8 checks. The shard acknowledged each put or delete
 in 0-16 ms, and the frames show the anvil and the horse appear, the anvil
 move, and everything go.
 
+## Commands mode (a shard without GUO's bridge)
+
+```
+python tools\editor_objects_proof
+un.py --commands --project DIR --project2 DIR2
+```
+
+1. One boot with the bridge and an empty manifest clears what earlier bridge
+   runs placed. Then the shard starts with the bridge **unlisted**
+   (`tools\editor_shard start --no-bridge`): a plain ModernUO.
+2. `tools\world apply-commands` places `--project` through a GM client.
+3. A GM places an untagged **decoy** anvil on the project anvil's cell: shard
+   content that the fallback must never remove.
+4. `--project2` (the same project edited, with its record of what the
+   fallback placed) is applied.
+5. Checks:
+   - the project's anvil moved, still tagged;
+   - its spawner is gone;
+   - the hued item stands;
+   - the decoy is the only thing left on the old cell;
+   - applying `--project2` again types nothing.
+
+## ServUO
+
+```
+python tools\editor_objects_proofun.py --servuo --project DIR
+python tools\editor_objects_proofun.py --commands --servuo --project DIR --project2 DIR2
+```
+
+`--servuo` exports with the ServUO backend (XmlSpawner XML + decoration cfg),
+verifies, puts the files beside the private ServUO (`tools\servuo`,
+127.0.0.1:2596), restarts it, and has a GM client type `[XmlLoad` and
+`[Decorate`. The client must then see each item at its cell, and each
+spawner with its creature nearby. `--commands --servuo` runs the GM-command
+fallback's checks, decoy included, against ServUO instead of the private
+ModernUO.
+
+## Clip
+
+`--live --clip FILE.mp4` adds a recorded pass after the live checks pass:
+
+- the client (windowed, never focused) records 16 s at 10 frames a second
+  (`<name>.rec` in its watch folder) while the editor puts, moves and
+  deletes;
+- ffmpeg writes an H.264 MP4 with a caption for each step.
+
 Output: `build\editor_objects_proof\`, holding `report.json`,
 `client_objects.json`, `client.png` and the logs. It contains renders of
 client art, so it is never committed.

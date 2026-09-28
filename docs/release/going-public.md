@@ -16,6 +16,41 @@ repository public; that switch is only ever the owner's.
 - [x] Downloadable builds from the `release` workflow; a `v*` tag makes one draft release with all three
       platforms and uses `docs/release/<tag>.md` as its notes.
 
+## Readiness review, 2026-09-27 midday
+
+- [x] LICENSE: BSD 2-Clause, crediting ClassicUO (andreakarasho) and the GUO contributors.
+- [x] CONTRIBUTING, SECURITY, CODE_OF_CONDUCT (added), issue and PR templates.
+- [x] README status section brought up to date (Android on two devices, Steam Deck, touch features,
+      the Store and editor, the web build in progress).
+- [x] Repository size: the pack is 54 MB. The largest blobs are the built-in background videos (2–5 MB
+      each), the README image, and the brand sigil.
+- [x] `.claude/` (agents, skills, rules, hooks) is public by design, with MIT provenance in
+      `docs/upstream/`. The privacy scan covers it.
+- [x] The web engine fork and its private .NET SDK stay out of git (`tools/godot_web/` holds only a README).
+- [x] **The press kit in history:** `design/press-kit/` (commit 9d3ebf4, removed in adf622b) remains in
+      history. Its `guo-godot-mark-*` is described in its own README as a "custom Godot face", a
+      derivative of the Godot logo (CC BY 4.0, Andrea Calabró). Credited in `docs/upstream/BRAND.md`,
+      which is what the licence asks for, so no history rewrite is needed. The current builds use the
+      GUO sigil only.
+- [ ] **The stale remote branch** `codex/guo-brand-icons` on GitHub has 2 commits not on main
+      ("Use custom GUO icon and add full emblem to README", "Remove black background from README
+      emblem"). Both are superseded by the sigil work already on main. Delete with
+      `git push origin --delete codex/guo-brand-icons` (owner's go).
+- [ ] **The CI Android APK is debug-signed with a keystore made fresh on each run,** so a newer download
+      can't install over an older one (uninstall first). Say so in the release notes, or add a stable signing
+      key as a GitHub secret before the first public release.
+
+## Prepared, ready to run on the owner's go
+
+- **Branch protection** (after going public), one command:
+  `gh api -X PUT repos/DatMoshu/GodotUO/branches/main/protection --input docs/release/branch-protection.json`
+  (requires `CI / guard` and `CI / build`; admins may still push, so the director workflow keeps working).
+- **Security settings**:
+  - `gh api -X PUT repos/DatMoshu/GodotUO/private-vulnerability-reporting`
+  - `gh api -X PUT repos/DatMoshu/GodotUO/vulnerability-alerts`
+  - secret scanning and push protection: Settings, then Code security.
+- **Pages**: Settings, then Pages, then Source: GitHub Actions, then `gh workflow run pages`.
+
 ## The owner decides
 
 - [ ] **Local backup branches** with the pre-scrub history (`backup/main-unscrubbed`,

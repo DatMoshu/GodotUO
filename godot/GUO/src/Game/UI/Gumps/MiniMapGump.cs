@@ -8,6 +8,9 @@ using GUO.Game.Scenes;
 using GUO.Input;
 using GUO.Renderer;
 using GUO.Utility;
+// PORT DEVIATION (GUO): shim tier. FNA's Texture2D.GetData and
+// SetDataPointerEXT have no Godot equivalent on an atlas page; the two pixel
+// reads/writes below go through TextureAtlas.TryReadRegion/TryWriteRegion.
 using GUO.Compat;
 using System;
 using System.Xml;

@@ -30,10 +30,16 @@ parts that genuinely bind to FNA are reimplemented on Godot.
 - The last side-by-side sweep against ClassicUO (`docs/parity_2026-09-23.md`)
   matched in five of eight places. The other three show known rendering
   differences, listed there with their causes.
-- Windows, and an Android ARM64 debug build that has run on one device
-  (`docs/architecture/ADR-0017-android-target.md`). A web build is blocked
-  upstream: Godot 4.7 .NET cannot export C# to the web
-  (`docs/architecture/ADR-0008-web-target.md`).
+- Builds for Windows, Android (ARM64, tested on an AYN Thor dual-screen
+  handheld and a single-screen Odin 2 Mini) and the Steam Deck, all from one
+  repository; every push to main produces downloadable builds.
+- Touch play on phones and handhelds: a touch bar, a combat macro row, pinch
+  and flick to size or move windows between screens, and an OLED screen saver.
+- The GodotUO Asset Store and the GodotUO editor (world, art and live world
+  objects) are built in; see the wiki.
+- A web client: it plays on a local shard in Chrome. Godot 4.7 cannot export
+  C# to the web, so it is exported with a community build of the engine
+  (`docs/wiki/Web-Client.md`).
 
 Bug reports that compare GUO against ClassicUO in the same place are the most
 useful thing you can send. See `CONTRIBUTING.md`.
@@ -91,7 +97,7 @@ CI** — the console build blocks and writes to stdout.
 | **Android** (ARM64) | `launchers\android\doctor.bat`, then `launchers\android\smoke.bat` — [docs/wiki/Android-Build.md](docs/wiki/Android-Build.md) | Debug build; runs on one device, including its second screen |
 | **Steam Deck** (SteamOS) | `launchers\steamdeck\doctor.bat`, then `launchers\steamdeck\smoke.bat` — [docs/steamdeck.md](docs/steamdeck.md) | Exports, installs over ssh and reaches the login screen (ADR-0018) |
 | **Godot editor** | `launchers\editor\open_project.bat` — [docs/wiki/Editor.md](docs/wiki/Editor.md) | Browse the UO data, edit the world, export it to a shard |
-| **Web** | `launchers\web\doctor.bat` | Blocked upstream: Godot 4.7 cannot export C# to the web ([ADR-0008](docs/architecture/ADR-0008-web-target.md)) |
+| **Web** (Chrome, Firefox) | `launchers\web\doctor.bat`, then `launchers\web\smoke.bat` — [Web Client](docs/wiki/Web-Client.md) | Plays on a local shard in Chrome, and reaches the login screen in Firefox, on a community engine build ([ADR-0008](docs/architecture/ADR-0008-web-target.md)) |
 
 Each platform reads the same `config.local.bat` settings, and every device
 brings its own copy of your UO install; nothing in this repository or in a

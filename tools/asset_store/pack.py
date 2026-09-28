@@ -10,17 +10,35 @@ from pathlib import Path
 
 PACK_SCHEMA = "guo/store-pack@1"
 INDEX_SCHEMA = "guo/store-index@1"
-KINDS = {"background", "theme", "sound", "profile-preset", "screensaver"}
+KINDS = {"background", "theme", "sound", "profile-preset", "screensaver", "postfx"}
 # A screensaver is played by the client from profile version 11 on.
 SCREENSAVER_MIN_PROFILE = 11
 LICENCES = {"CC0-1.0", "CC-BY-4.0", "CC-BY-SA-4.0", "MIT", "BSD-2-Clause", "BSD-3-Clause", "Apache-2.0"}
-EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".ogv", ".ogg", ".wav", ".json", ".txt"}
+EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".ogv", ".ogg", ".wav", ".json", ".txt", ".gdshader"}
 IMAGES = {".png", ".jpg", ".jpeg", ".webp"}
 MAX_ZIP = 512 * 1024 * 1024
 MAX_TOTAL = 1024 * 1024 * 1024
 MAX_FILE = 256 * 1024 * 1024
 MAX_MANIFEST = 1024 * 1024
-DEVICES = {"con", "prn", "aux", "nul", *(f"com{i}" for i in range(1, 10)), *(f"lpt{i}" for i in range(1, 10))}
+# Windows reserves COM1-9 and LPT1-9, and the superscript digits too (COM\u00b9 is a device).
+_DIGITS = [str(i) for i in range(1, 10)] + ["\u00b9", "\u00b2", "\u00b3"]
+DEVICES = {"con", "prn", "aux", "nul", *(f"com{d}" for d in _DIGITS), *(f"lpt{d}" for d in _DIGITS)}
+
+
+def units(value: str) -> int:
+    """Length in UTF-16 code units: what the C# installer and the file system count."""
+    return len(value.encode("utf-16-le", "surrogatepass")) // 2
+
+
+def fold_keys(value: str) -> set[str]:
+    """The one case rule both validators apply (StorePack.FoldKeys is the same):
+    Turkish dotted and dotless i are i, then each character folds by its simple
+    one-to-one lower and upper mapping (as NTFS and .NET do; no "ß" -> "SS").
+    Two names that share a key are one name."""
+    value = value.replace("ı", "i").replace("İ", "i")
+    lower = "".join(c.lower() if len(c.lower()) == 1 else c for c in value)
+    upper = "".join(c.upper() if len(c.upper()) == 1 else c for c in value)
+    return {lower, upper}
 
 
 def require(ok, message):
@@ -41,10 +59,11 @@ def identifier(value):
 
 
 def safe_path(value):
-    require(isinstance(value, str) and 0 < len(value) <= 240, "invalid payload path")
+    require(isinstance(value, str) and 0 < units(value) <= 240, "invalid payload path")
     require(not any(ord(c) < 32 or c in '\\:<>"|?*' for c in value), "unsafe payload path")
     for part in value.split("/"):
-        require(part not in {"", ".", ".."} and len(part) <= 100 and not part.endswith((".", " ")) and part.split(".")[0].lower() not in DEVICES, "unsafe payload component")
+        require(part not in {"", ".", ".."} and units(part) <= 100 and not part.endswith((".", " ")) and part.split(".")[0].lower() not in DEVICES, "unsafe payload component")
+        require(not part.startswith("."), "a name must have a stem, not only an extension")
         require(not part.lower().startswith("cliloc") and not re.search(r"\.(mul|uop|idx|def)(\.|$)", part, re.IGNORECASE), "UO client data is forbidden")
     return value
 
@@ -57,9 +76,31 @@ def unique_object(pairs):
     return result
 
 
+def no_constant(name):
+    raise ValueError(f"{name} is not JSON")
+
+
+def valid_unicode(value):
+    """Every string in the manifest must be encodable UTF-8: no lone surrogates."""
+    if isinstance(value, str):
+        try:
+            value.encode("utf-8")
+        except UnicodeEncodeError:
+            raise ValueError("invalid Unicode in the manifest") from None
+    elif isinstance(value, dict):
+        for k, v in value.items():
+            valid_unicode(k)
+            valid_unicode(v)
+    elif isinstance(value, list):
+        for v in value:
+            valid_unicode(v)
+
+
 def parse_manifest(raw):
     require(len(raw) <= MAX_MANIFEST, "manifest too large")
-    m = json.loads(raw.decode("utf-8"), object_pairs_hook=unique_object)
+    require(not raw.startswith(b"\xef\xbb\xbf"), "manifest has a byte order mark")
+    m = json.loads(raw.decode("utf-8"), object_pairs_hook=unique_object, parse_constant=no_constant)
+    valid_unicode(m)
     require(isinstance(m, dict), "manifest must be an object")
     require(m.get("schema") == PACK_SCHEMA, "unsupported pack schema")
     identifier(m.get("id"))
@@ -67,7 +108,9 @@ def parse_manifest(raw):
     require(m.get("kind") in KINDS, "unsupported pack kind (art-override is disabled)")
     require(m.get("licence") in LICENCES, "licence is not allowed")
     for key in ("title", "author"):
-        require(isinstance(m.get(key), str) and m[key].strip() and len(m[key]) <= 200, f"invalid {key}")
+        value = m.get(key)
+        require(isinstance(value, str) and units(value) <= 200 and not any(ord(c) < 32 or ord(c) == 127 for c in value)
+                and value.strip(), f"invalid {key}")
     require(type(m.get("min_profile_version")) is int and 0 <= m["min_profile_version"] <= 2147483647, "invalid min_profile_version")
     files = m.get("files")
     require(isinstance(files, dict) and 0 < len(files) <= 1024, "invalid files map")
@@ -75,13 +118,18 @@ def parse_manifest(raw):
     for name, digest in files.items():
         safe_path(name)
         require(name.lower() != "manifest.json" and Path(name).suffix.lower() in EXTENSIONS, "unsupported payload type")
-        require(name.lower() not in seen, "case-alias payload")
-        seen.add(name.lower())
+        require(not (fold_keys(name) & seen), "case-alias payload")
+        seen |= fold_keys(name)
         require(isinstance(digest, str) and re.fullmatch("[0-9a-f]{64}", digest), "invalid SHA-256")
     for name in seen:
         require(not any("/".join(name.split("/")[:i]) in seen for i in range(1, len(name.split("/")))), "file/directory collision")
     require(isinstance(m.get("preview"), str) and m["preview"] in files and Path(m["preview"]).suffix.lower() in IMAGES, "preview must name a declared image")
     require(m["licence"] == "CC0-1.0" or "LICENSE.txt" in files, "attribution requires LICENSE.txt")
+    # Screen-effect packs (ADR-0023): presets and shaders; shader code only in this kind.
+    if m["kind"] == "postfx":
+        require(any(Path(n).suffix.lower() == ".json" for n in files), "a postfx pack has at least one preset (.json)")
+    else:
+        require(not any(Path(n).suffix.lower() == ".gdshader" for n in files), "shader files are only allowed in a postfx pack")
     if m["kind"] == "screensaver":
         require(sum(Path(n).suffix.lower() == ".ogv" for n in files) == 1, "a screensaver has exactly one .ogv loop")
         require(m["min_profile_version"] >= SCREENSAVER_MIN_PROFILE, f"a screensaver needs min_profile_version {SCREENSAVER_MIN_PROFILE} or later")
@@ -103,11 +151,12 @@ def verify(path):
         total = 0
         for item in entries:
             safe_path(item.filename)
-            require(item.filename.lower() not in names, "duplicate ZIP entry")
-            names.add(item.filename.lower())
+            require(not (fold_keys(item.filename) & names), "duplicate ZIP entry")
+            names |= fold_keys(item.filename)
             mode = item.external_attr >> 16
             require(not item.is_dir() and not stat.S_ISLNK(mode) and stat.S_IFMT(mode) in {0, stat.S_IFREG}, "non-file ZIP entry")
             require(not item.flag_bits & 1, "encrypted ZIP entry")
+            require(item.filename.isascii() or item.flag_bits & 0x800, "a non-ASCII entry name without the UTF-8 flag")
             require(item.compress_type in {zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED}, "unsupported ZIP compression")
             require(item.file_size <= (MAX_MANIFEST if item.filename == "manifest.json" else MAX_FILE), "entry too large")
             total += item.file_size

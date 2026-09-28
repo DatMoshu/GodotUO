@@ -131,6 +131,16 @@ namespace GUO
                 Settings.GlobalSettings.Save();
             }
 
+            // PORT DEVIATION (GUO): a browser reaches the shard only through a
+            // WebSocket bridge (tools/ws_bridge), and cannot follow the relay
+            // packet to the game server's raw TCP address. Upstream's own
+            // ignore_relay_ip is exactly the fix; the web build turns it on.
+            if (OperatingSystem.IsBrowser())
+            {
+                Settings.GlobalSettings.IgnoreRelayIp = true;
+            }
+            // END PORT DEVIATION (GUO)
+
             if (string.IsNullOrWhiteSpace(Settings.GlobalSettings.Language))
             {
                 Log.Trace("language is not set. Trying to get the OS language.");

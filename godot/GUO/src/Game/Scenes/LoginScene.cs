@@ -926,7 +926,11 @@ namespace GUO.Game.Scenes
     {
         private IPAddress _ipAddress;
         private IPAddress _ipAddressLittleEndian;
-        private Ping _pinger = new Ping();
+        // PORT DEVIATION (GUO): a browser has no ICMP (System.Net.Ping throws
+        // PlatformNotSupportedException, and the static PingOptions below
+        // killed the server list). There the entry has no pinger; DoPing and
+        // Dispose already skip a null one, and the list shows no latency.
+        private Ping _pinger = OperatingSystem.IsBrowser() ? null : new Ping();
         private bool _sending;
         private readonly bool[] _last10Results = new bool[10];
         private int _resultIndex;
@@ -978,7 +982,8 @@ namespace GUO.Game.Scenes
                 Log.Error(e.ToString());
             }
 
-            entry._pinger.PingCompleted += entry.PingerOnPingCompleted;
+            if (entry._pinger != null) // PORT DEVIATION (GUO): no pinger in a browser
+                entry._pinger.PingCompleted += entry.PingerOnPingCompleted;
 
             return entry;
         }
@@ -994,7 +999,7 @@ namespace GUO.Game.Scenes
         public IPStatus PingStatus;
 
         private static byte[] _buffData = new byte[32];
-        private static PingOptions _pingOptions = new PingOptions(64, true);
+        private static PingOptions _pingOptions = OperatingSystem.IsBrowser() ? null : new PingOptions(64, true); // PORT DEVIATION (GUO): no ICMP in a browser
 
         public void DoPing()
         {

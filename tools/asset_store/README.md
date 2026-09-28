@@ -24,6 +24,16 @@ real packs exist. They are generated in code (drawn previews, synthesised
 sound, CC0), carry ids starting `sample-` and the author "GodotUO sample",
 and the web page marks them Sample. `seed.py` never publishes them.
 
+`seed.py` publishes three groups:
+- the ten built-in backgrounds, as `background` packs;
+- the store-only screensaver, as a `screensaver` pack;
+- six Store-only background loops that the client does not ship
+  (`tools/bg_videos/store_loops.py`), as `background` packs.
+
+It renders those six into `build/bg_videos/store` first if they are
+missing, which takes a few minutes; `--skip-store-loops` leaves them out.
+Every pack is a reproducible ZIP, so reseeding the same store is a no-op.
+
 In GodotUO, open **Options → Video → Store**. Install a pack, reopen Options,
 select its Store background and Apply. Installed packs sort first. Updates
 compare numeric versions; older versions remain removable. The catalogue
@@ -78,3 +88,23 @@ the real editor without activation, displays those runtime captures on an
 explicitly labelled evidence board, and captures the editor viewport. This
 is a proof scene, not a Store editor dock. Existing editor sources are not
 modified. Generated screenshots and logs stay under `build/screenshots`.
+
+## The validation corpus
+
+```
+python tools\asset_store\test_corpus.py
+```
+
+`corpus/cases.json` describes 70 packs and manifests: good ones, and ones
+that break a rule in `docs/data_formats.md` §12. They cover Unicode length
+and case edges, hidden `.mul`/`.uop`/`.idx`/`.def` suffixes, path tricks,
+the `screensaver` rules, hostile ZIP entries, and malformed JSON.
+
+`corpus/build.py` writes them into one folder at test time (the ZIPs byte
+by byte, so a case can set raw name bytes, flags, methods and modes). The
+Python publisher (`pack.py`) and the C# installer (`StorePack`, through
+`headless/StoreSmoke corpus`) both judge every file. Both must match
+`expect`, and a C# refusal must be an exception the installer's callers
+handle. CI runs it.
+
+To add a rule, add its case here first; then make both sides pass.

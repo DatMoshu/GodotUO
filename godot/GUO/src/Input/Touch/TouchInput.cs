@@ -80,6 +80,14 @@ namespace GUO.Input.Touch
         /// <summary>Viewport pixels a finger may wander and still be still.</summary>
         public const float MovePixels = 12f;
 
+        /// <summary>
+        /// Viewport pixels a finger on a bar button may wander and still
+        /// press it on lifting: more than a tap's, since a thumb rolls as it
+        /// comes off a button. Beyond it the press is let go, as a scroll
+        /// that began on a button lets go on a phone.
+        /// </summary>
+        public const float BarSlopPixels = 24f;
+
         /// <summary>Change in finger distance that is one zoom notch.</summary>
         public const float PinchStepPixels = 40f;
 
@@ -110,11 +118,38 @@ namespace GUO.Input.Touch
             /// <summary>A gump is lifted for a flick (GumpFlick); the finger picks a direction.</summary>
             Flick,
 
+            /// <summary>A vertical swipe that began in a scroll area scrolls it with the finger.</summary>
+            Scroll,
+
+            /// <summary>A finger is on a touch bar button; it acts when the finger lifts on it.</summary>
+            Bar,
+
+            /// <summary>A finger is on the bar's handle: a tap, or a drag that moves the rows.</summary>
+            Handle,
+
             /// <summary>The gesture is spent; wait for the finger to lift.</summary>
             Done,
         }
 
         private static Phase _phase;
+
+        /// <summary>
+        /// Fingers lifted so far. A lift can end a drag, a pinch or a flick
+        /// that moved a gump, so the bar checks the gumps clear of it again.
+        /// </summary>
+        public static int Lifts { get; private set; }
+
+        /// <summary>The bar button a finger in <see cref="Phase.Bar"/> pressed.</summary>
+        private static string _barAction;
+
+        /// <summary>The slot that finger is on (row 1 first), or -1 for a chip.</summary>
+        private static int _barSlot = -1;
+
+        /// <summary>
+        /// Milliseconds a finger stays on a bar button before its popup opens
+        /// (C10): past a tap, short of the long press a gump would give.
+        /// </summary>
+        public const int BarPopupMs = 450;
         private static int _primary = -1;
         private static int _secondary = -1;
         private static Vector2 _downAt;
@@ -253,6 +288,14 @@ namespace GUO.Input.Touch
         /// <returns>True when the event was consumed here.</returns>
         public static bool Handle(InputEvent e)
         {
+            // The second screen's fingers come here directly (DualScreen.Deliver).
+            if (BarEditor.HandleInput(e) || WindowMenu.HandleInput(e))
+            {
+                return true;
+            }
+
+            TouchOverlay.Note(e);
+
             switch (e)
             {
                 case InputEventScreenTouch touch:
@@ -306,6 +349,14 @@ namespace GUO.Input.Touch
             FlushRelease(false);
             ParkWhenLifted();
 
+            // A finger held still on a bar button: its popup (C10).
+            if (_phase == Phase.Bar && _bar != null && _barSlot >= 0 && _bar.PopupSlot < 0
+                && Godot.Time.GetTicksMsec() - _downTime >= BarPopupMs)
+            {
+                _bar.OpenPopup(_barSlot);
+                Note($"bar hold -> popup for {_barAction}");
+            }
+
             if (_phase != Phase.Pending)
             {
                 return;
@@ -353,6 +404,8 @@ namespace GUO.Input.Touch
             }
             else if (held >= LongPressMs)
             {
+                if (TraceToLog) Note($"no flick lift: {GumpFlick.LastRefusal}");
+
                 // Over a gump, or nowhere: the right click.
                 Press(MouseButton.Right, _lastAt);
                 Release(MouseButton.Right, _lastAt);
@@ -448,11 +501,24 @@ namespace GUO.Input.Touch
             }
         }
 
+        /// <summary>A finger on a bar button stops being a tap: nothing runs when it lifts.</summary>
+        private static void LetGoOfBar(string why)
+        {
+            _bar?.Hold(null);
+            Note($"bar -> {_barAction} let go ({why})");
+            _barAction = null;
+            _phase = Phase.Done;
+        }
+
         /// <summary>Focus loss / touch cancellation must never turn a pending pinch into a click.</summary>
         public static void CancelGesture()
         {
             if (_phase == Phase.RightHeld) Release(MouseButton.Right, ParkedAt);
             if (_phase == Phase.LeftHeld) Release(MouseButton.Left, ParkedAt);
+            if (_phase == Phase.Handle) _bar?.EndDrag(_lastAt);
+            _bar?.CancelPopup();
+            _bar?.Hold(null);
+            _barAction = null;
             GumpFlick.Cancel();
             _phase = Phase.Idle;
             _primary = _secondary = -1;
@@ -494,9 +560,13 @@ namespace GUO.Input.Touch
 
                 if (_bar != null && _bar.HitTest(at, out string action))
                 {
-                    _bar.Invoke(action);
-                    _phase = Phase.Done;
-                    Note($"bar -> {action}");
+                    // Pressed now, run on release (C8): a finger that lands
+                    // on a button on its way somewhere else runs nothing. The
+                    // handle is a tap, or a drag once it moves.
+                    _barAction = action;
+                    _barSlot = action == TouchGumpBar.Handle ? -1 : _bar.SlotAt(at);
+                    _bar.Hold(action);
+                    _phase = action == TouchGumpBar.Handle ? Phase.Handle : Phase.Bar;
 
                     return;
                 }
@@ -528,6 +598,22 @@ namespace GUO.Input.Touch
             {
                 _secondary = index;
                 _secondaryAt = at;
+
+                // A second finger lets go of a bar button: it is no tap.
+                if (_phase == Phase.Bar)
+                {
+                    _bar?.CancelPopup();
+                    LetGoOfBar("second finger");
+                    return;
+                }
+
+                // A second finger on a dragged handle: the bar settles where it is.
+                if (_phase == Phase.Handle)
+                {
+                    _bar?.EndDrag(_lastAt);
+                    LetGoOfBar("second finger");
+                    return;
+                }
 
                 // A second finger while a gump is lifted puts it down: no flick.
                 if (_phase == Phase.Flick)
@@ -582,6 +668,11 @@ namespace GUO.Input.Touch
                 case Phase.Pending:
                     if (at.DistanceTo(_downAt) > MovePixels)
                     {
+                        if (StartScroll(at))
+                        {
+                            break;
+                        }
+
                         if (OverWorld(_downAt))
                         {
                             // A swipe: walk that way, from the first pixel.
@@ -616,11 +707,100 @@ namespace GUO.Input.Touch
                     GumpFlick.Move(at);
 
                     break;
+
+                case Phase.Bar:
+                    if (_bar != null && _bar.PopupSlot >= 0)
+                    {
+                        // The popup is up: the finger picks among its buttons.
+                        _bar.HoverPopup(at);
+                    }
+                    else if (at.DistanceTo(_downAt) > BarSlopPixels)
+                    {
+                        LetGoOfBar("moved off");
+                    }
+
+                    break;
+
+                case Phase.Handle:
+                    // Still, it may yet be a tap; once it moves, the rows
+                    // follow the finger from where it went down.
+                    if (_barAction != null && at.DistanceTo(_downAt) > MovePixels)
+                    {
+                        _barAction = null;
+                        _bar?.BeginDrag(_downAt);
+                        Note("handle -> drag");
+                    }
+
+                    if (_barAction == null)
+                    {
+                        _bar?.Drag(at);
+                    }
+
+                    break;
+
+                case Phase.Scroll:
+                    if (_scrollBar != null && !_scrollBar.IsDisposed)
+                    {
+                        // Content follows the finger: moving it up shows what is below.
+                        // In a gump drawn scaled (Options on touch), a unit of
+                        // scroll is that many screen pixels.
+                        float dpi = (Client.Game?.DpiScale ?? 1f) * GumpPresentation.Scale(_scrollBar);
+                        int value = _scrollStart - (int)System.Math.Round((at.Y - _downAt.Y) / dpi);
+                        _scrollBar.Value = System.Math.Clamp(value, _scrollBar.MinValue, _scrollBar.MaxValue);
+                    }
+
+                    break;
             }
+        }
+
+        private static Game.UI.Controls.ScrollBarBase _scrollBar;
+        private static int _scrollStart;
+
+        /// <summary>
+        /// A mostly vertical move that began over the inside of a ScrollArea
+        /// (an Options page, a list) scrolls the area instead of dragging the
+        /// gump; a drag from the gump's frame or title still moves it. The
+        /// area's own scroll bar (its first child, as ScrollArea draws it)
+        /// takes the value, so upstream's ScrollArea is untouched. Seen on the
+        /// Odin: a swipe on Options' Video page dragged the whole gump.
+        /// </summary>
+        private static bool StartScroll(Vector2 at)
+        {
+            Vector2 d = at - _downAt;
+
+            if (System.Math.Abs(d.Y) < System.Math.Abs(d.X) * 1.2f)
+            {
+                return false;
+            }
+
+            // On the scroll bar itself its thumb and arrows work as they do
+            // with a mouse (the opposite direction to a finger scroll).
+            if (UIManager.MouseOverControl is Game.UI.Controls.ScrollBarBase)
+            {
+                return false;
+            }
+
+            for (Game.UI.Controls.Control c = UIManager.MouseOverControl; c != null; c = c.Parent)
+            {
+                if (c is Game.UI.Controls.ScrollArea area && area.Children.Count > 0
+                    && area.Children[0] is Game.UI.Controls.ScrollBarBase bar && bar.MaxValue > bar.MinValue)
+                {
+                    _scrollBar = bar;
+                    _scrollStart = bar.Value;
+                    _phase = Phase.Scroll;
+                    Note($"swipe in {area.RootParent?.GetType().Name ?? "a gump"} -> scroll");
+
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static void FingerUp(int index, Vector2 at)
         {
+            Lifts++;
+
             if (_phase == Phase.Pinch || _phase == Phase.Done)
                 _ignoreMagnifyUntil = Godot.Time.GetTicksMsec() + 250;
             if (index == _secondary)
@@ -700,6 +880,72 @@ namespace GUO.Input.Touch
 
                 case Phase.Flick:
                     Note(GumpFlick.End(at));
+
+                    break;
+
+                case Phase.Scroll:
+                    _scrollBar = null;
+                    Note("finger up -> scroll over");
+
+                    break;
+
+                case Phase.Handle:
+                    _bar?.Hold(null);
+
+                    if (_barAction != null)
+                    {
+                        _bar?.TapHandle();
+                    }
+                    else
+                    {
+                        _bar?.EndDrag(at);
+                    }
+
+                    _barAction = null;
+
+                    break;
+
+                case Phase.Bar when _bar != null && _bar.PopupSlot >= 0:
+                    {
+                        // The popup: run what the finger let go on, open the
+                        // slot editor, or (elsewhere) nothing.
+                        int slot = _bar.PopupSlot;
+                        string choice = _bar.ClosePopup(at);
+                        _bar.Hold(null);
+
+                        if (choice == "edit")
+                        {
+                            BarEditor.Open(slot);
+                            Note($"popup -> edit slot {slot}");
+                        }
+                        else if (choice != null)
+                        {
+                            _bar.Invoke(choice);
+                            Note($"popup -> {choice}");
+                        }
+                        else
+                        {
+                            Note("popup -> cancelled");
+                        }
+
+                        _barAction = null;
+                        _barSlot = -1;
+
+                        break;
+                    }
+
+                case Phase.Bar:
+                    // The finger may have rolled onto the next button inside
+                    // the allowance; only the one it pressed runs.
+                    _bar?.Hold(null);
+
+                    if (_bar != null && at.DistanceTo(_downAt) <= BarSlopPixels)
+                    {
+                        _bar.Invoke(_barAction);
+                        Note($"bar -> {_barAction}");
+                    }
+
+                    _barAction = null;
 
                     break;
             }

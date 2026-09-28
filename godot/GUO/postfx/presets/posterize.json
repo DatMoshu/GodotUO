@@ -1,0 +1,13 @@
+{
+ "name": "Posterize",
+ "description": "Fewer colour levels per channel.",
+ "passes": [
+  {
+   "shader": "posterize",
+   "params": {
+    "levels": 6
+   }
+  }
+ ],
+ "bindings": []
+}

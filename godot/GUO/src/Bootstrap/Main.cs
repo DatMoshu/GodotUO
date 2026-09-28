@@ -114,39 +114,26 @@ public partial class Main : Node
         }
 
         GD.Print($"[GUO] mode          : {_options.Mode}");
-        GD.Print($"[GUO] client data   : {_options.ClientData}");
         GD.Print($"[GUO] cache         : {_options.CacheDir}");
 
-        if (string.IsNullOrWhiteSpace(_options.ClientData))
+        // ADR-0021: a custom data folder, then the UO install, else the
+        // first-run wizard. Every mode below reads what this decides.
+        DataSources.Result data = ResolveData();
+        if (!data.Ok)
         {
-            Fail(
-                "No UO client data directory configured.\n"
-                + "Set UO_CLIENT_DATA in launchers\\_shared\\config.local.bat, or pass\n"
-                + "  --client-data \"<path to your UO install>\""
-            );
+            OnNoValidData(data);
             return;
         }
 
-        if (!DirAccess.DirExistsAbsolute(_options.ClientData))
-        {
-            Fail($"UO client data directory does not exist: {_options.ClientData}");
-            return;
-        }
+        RunWithData();
+    }
 
-        // Guard against pointing at a folder that is not actually a UO install.
-        // tiledata.mul is present in every client version and has no UOP form,
-        // which makes it the cheapest reliable probe.
-        string probe = _options.ClientData.PathJoin("tiledata.mul");
-        if (!FileAccess.FileExists(probe))
-        {
-            Fail(
-                $"'{_options.ClientData}' does not look like a UO install "
-                + "(no tiledata.mul).\n"
-                + "Run launchers\\pipeline\\01_verify_client_data.bat to diagnose."
-            );
-            return;
-        }
-
+    /// <summary>
+    /// Everything that needs the client data, once ResolveData (or the
+    /// first-run screen) has decided it.
+    /// </summary>
+    private void RunWithData()
+    {
         GD.Print("[GUO] client data looks valid.");
 
         switch (_options.Mode)
@@ -219,6 +206,14 @@ public partial class Main : Node
                     // login scene, so the first layout already sees it.
                     GUO.Input.Touch.TouchInput.RequestedScale = _options.ScreenScale;
                     GUO.Input.Touch.TouchInput.TraceToLog = _options.TouchTrace;
+
+                    // Debug: draw the fingers (--show-touches, or the Options toggle).
+                    GUO.Input.Touch.TouchOverlay.Forced = _options.ShowTouches;
+                    GUO.Input.Touch.TouchOverlay.Setup(this);
+
+                    // The second screen as companion tabs (prototype; --companion-tabs or Options).
+                    GUO.Input.Touch.CompanionTabs.Forced = _options.CompanionTabs;
+                    GUO.Input.Touch.CompanionTabs.Setup(this);
                 }
 
                 // A second display, where the device has one (or the desktop
@@ -243,6 +238,14 @@ public partial class Main : Node
                 {
                     MacroProbeThenQuit();
                 }
+                else if (_options.UiGallery)
+                {
+                    UiGalleryThenQuit();
+                }
+                else if (_options.PresentationParity)
+                {
+                    PresentationParityThenQuit();
+                }
                 else if (_options.DualProbe)
                 {
                     DualProbeThenMaybeQuit();
@@ -254,6 +257,14 @@ public partial class Main : Node
                 else if (_options.ZoomProbe)
                 {
                     ZoomProbeThenQuit();
+                }
+                else if (_options.PerfProbe)
+                {
+                    PerfProbeThenQuit();
+                }
+                else if (!string.IsNullOrEmpty(_options.PostFxSheet))
+                {
+                    PostFxSheetThenQuit();
                 }
                 else if (_options.DoorProbe)
                 {
@@ -343,6 +354,8 @@ public partial class Main : Node
 
         System.IO.Directory.CreateDirectory(dataDir);
         System.Environment.CurrentDirectory = dataDir;
+        // The player's own looks and shaders (ADR-0023).
+        GUO.Renderer.PostFx.PostFxLibrary.UserFolder = System.IO.Path.Combine(dataDir, "postfx");
 
         GD.Print($"[GUO] client home   : {dataDir}");
 
@@ -354,6 +367,12 @@ public partial class Main : Node
             "-ip", _options.ShardHost,
             "-port", _options.ShardPort.ToString(),
         };
+
+        if (!string.IsNullOrWhiteSpace(_options.FilesOverride))
+        {
+            args.AddRange(new[] { "-filesoverride", _options.FilesOverride });
+            GD.Print($"[GUO] files override : {_options.FilesOverride}");
+        }
 
         if (_options.AutoLogin && !string.IsNullOrWhiteSpace(_options.Account))
         {
@@ -376,7 +395,18 @@ public partial class Main : Node
             StoreInstallNow(_options.StoreInstall);
         }
 
-        Bootstrap.Boot(null, args.ToArray());
+        string[] bootArgs = args.ToArray();
+
+        // The boot splash covers the first frames, then crossfades into the
+        // login screen; the client boots underneath it when its hold ends.
+        if (_options.Splash ?? (!_options.Scripted && SplashIntro.Enabled))
+        {
+            SplashIntro.Play(this, () => Bootstrap.Boot(null, bootArgs), SplashIntro.ReducedMotion);
+        }
+        else
+        {
+            Bootstrap.Boot(null, bootArgs);
+        }
     }
 
     private static void StoreInstallNow(string id)
@@ -483,6 +513,8 @@ public partial class Main : Node
         _options.ShardCommands.Count > 0
         || _options.HighlightProbe
         || _options.ZoomProbe
+        || _options.PerfProbe
+        || !string.IsNullOrEmpty(_options.PostFxSheet)
         || _options.DoorProbe
         || _options.GamepadProbe
         || _options.AssetProbe.Length > 0
@@ -551,6 +583,21 @@ public partial class Main : Node
     /// Hover a meshed tile or static, leave and come back, photograph it, then quit;
     /// see HighlightProbe.
     /// </summary>
+    /// <summary>Frame time in the five fixed scenes, then quit; see PerfProbe.</summary>
+    private async void PerfProbeThenQuit()
+    {
+        await PerfProbe.Run(this, _options.PerfOut, _options.PerfLabel, _options.PerfZoom, _options.PerfParity);
+        Quit(PerfProbe.Passed ? 0 : 1);
+    }
+
+    /// <summary>Photograph and time every post-processing look, then quit; see PostFxProbe.</summary>
+    private async void PostFxSheetThenQuit()
+    {
+        await Preamble();
+        await PostFxProbe.Run(this, _options.PostFxSheet);
+        Quit(PostFxProbe.Passed ? 0 : 1);
+    }
+
     /// <summary>Time the world at every other zoom step, then quit; see ZoomProbe.</summary>
     private async void ZoomProbeThenQuit()
     {
@@ -707,6 +754,20 @@ public partial class Main : Node
         Quit(TouchProbe.Passed ? 0 : 1);
     }
 
+    /// <summary>Check gump presentation is absent on a default desktop, and exit with the verdict.</summary>
+    private async void PresentationParityThenQuit()
+    {
+        await PresentationParityProbe.Run(this);
+        Quit(PresentationParityProbe.Passed ? 0 : 1);
+    }
+
+    /// <summary>Picture each of GUO's own mobile UIs and exit; see GalleryProbe.</summary>
+    private async void UiGalleryThenQuit()
+    {
+        await GalleryProbe.Run(this, _options.ScreenshotDir, _options.ScreenshotName);
+        Quit(GalleryProbe.Passed ? 0 : 1);
+    }
+
     /// <summary>Tap the six macros against fixtures and exit with the verdict; see MacroProbe.</summary>
     private async void MacroProbeThenQuit()
     {
@@ -778,6 +839,86 @@ public partial class Main : Node
         return true;
     }
 
+    /// <summary>
+    /// Resolves the client data by ADR-0021 (see DataSources) and applies it:
+    /// the install becomes ClientData, and a layered custom folder becomes the
+    /// files override unless --files-override was given.
+    /// </summary>
+    private DataSources.Result ResolveData()
+    {
+        string exeDir = System.IO.Path.GetDirectoryName(OS.GetExecutablePath()) ?? "";
+        var inputs = new DataSources.Inputs
+        {
+            CustomFlag = _options.CustomData,
+            CustomEnv = System.Environment.GetEnvironmentVariable("UO_CUSTOM_DATA") ?? "",
+            ShippedFolder = exeDir.Length > 0 ? System.IO.Path.Combine(exeDir, "guo_data") : "",
+            InstallConfigured = _options.ClientData,
+            InstallConfiguredOrigin = _options.ClientDataFromFlag ? "flag" : "environment",
+            SettingsFile = System.IO.Path.Combine(GuoDataDirectory(), Configuration.Settings.SETTINGS_FILENAME),
+            Defaults = DataSources.PlatformDefaults(),
+        };
+
+        DataSources.Result r = DataSources.Resolve(inputs);
+        foreach (string note in r.Notes)
+        {
+            GD.Print($"[GUO] data passed over: {note}");
+        }
+
+        if (!r.Ok)
+        {
+            return r;
+        }
+
+        string filesOverride = _options.FilesOverride;
+        if (r.Overrides.Count > 0 && string.IsNullOrWhiteSpace(filesOverride))
+        {
+            filesOverride = DataSources.WriteOverride(r, System.IO.Path.Combine(GuoDataDirectory(), "guo_data_override.txt"));
+        }
+
+        _options.UseData(r.ClientData, filesOverride);
+        GD.Print($"[GUO] data source   : {r.Source} ({r.Origin})" + (r.Custom != null ? $", custom {r.Custom}" : "")
+                 + (r.LocalOnly ? ", EA-derived: local only" : ""));
+        GD.Print($"[GUO] client data   : {_options.ClientData}");
+        return r;
+    }
+
+    /// <summary>
+    /// The one place the client lands when there is no valid data (ADR-0021):
+    /// the first-run screen, which asks for the UO install, saves it as
+    /// settings.json ultimaonlinedirectory and continues to login in this run.
+    /// A run with no window (headless) or a mode other than play cannot ask,
+    /// so it logs the reason and exits as before.
+    /// </summary>
+    private void OnNoValidData(DataSources.Result data)
+    {
+        GD.Print($"[GUO] data source   : wizard needed: {data.Reason}");
+        if (_options.Mode == RunMode.Play && DisplayServer.GetName() != "headless")
+        {
+            string configured = string.IsNullOrWhiteSpace(_options.ClientData)
+                ? null
+                : $"{(_options.ClientDataFromFlag ? "--client-data" : "UO_CLIENT_DATA")} = {_options.ClientData}";
+            FirstRunScreen.Open(this, data, configured, _options.FirstRunProbe, _options.ScreenshotDir, OnInstallChosen);
+            return;
+        }
+
+        Fail(
+            "No valid UO client data: the first-run wizard is needed.\n"
+            + $"  {data.Reason}\n"
+            + "Set UO_CLIENT_DATA in launchers\\_shared\\config.local.bat, or pass\n"
+            + "  --client-data \"<path to your UO install>\""
+        );
+    }
+
+    /// <summary>The first-run screen's Continue: save the choice and go on to login.</summary>
+    private void OnInstallChosen(string folder)
+    {
+        string settings = System.IO.Path.Combine(GuoDataDirectory(), Configuration.Settings.SETTINGS_FILENAME);
+        DataSources.SaveSetting(settings, folder);
+        GD.Print($"[GUO] data source   : install (chosen) {folder}; saved to {settings}");
+        _options.UseData(folder, _options.FilesOverride);
+        RunWithData();
+    }
+
     private void Fail(string message)
     {
         GD.PrintErr($"[GUO] FATAL: {message}");
@@ -804,6 +945,26 @@ public partial class Main : Node
         public RunMode Mode { get; private set; } = RunMode.Play;
 
         public string ClientData { get; private set; } = "";
+
+        /// <summary>True when ClientData came from --client-data rather than UO_CLIENT_DATA.</summary>
+        public bool ClientDataFromFlag { get; private set; }
+
+        /// <summary>A custom data folder (ADR-0021): --custom-data PATH.</summary>
+        public string CustomData { get; private set; } = "";
+
+        /// <summary>
+        /// Scripted first run: --first-run-probe FOLDER shows the first-run
+        /// screen, photographs it, "picks" FOLDER without a dialog, photographs
+        /// the check, and presses Continue.
+        /// </summary>
+        public string FirstRunProbe { get; private set; } = "";
+
+        /// <summary>What ResolveData decided: the install to open, and the files override.</summary>
+        internal void UseData(string clientData, string filesOverride)
+        {
+            ClientData = clientData;
+            FilesOverride = filesOverride;
+        }
 
         public string CacheDir { get; private set; } = "";
 
@@ -842,12 +1003,16 @@ public partial class Main : Node
                 || TradePartner
                 || HighlightProbe
                 || ZoomProbe
+                || PerfProbe
+                || !string.IsNullOrEmpty(PostFxSheet)
                 || DoorProbe
                 || GamepadProbe
                 || EffectsProbe > 0
                 || EndureSeconds > 0
                 || TouchProbe
                 || MacroProbe
+                || UiGallery
+                || PresentationParity
                 || LoginProbe
                 || UiProbe
                 || DualProbe
@@ -923,6 +1088,20 @@ public partial class Main : Node
         /// <summary>Time the world at each zoom level rather than play.</summary>
         public bool ZoomProbe { get; private set; }
 
+        /// <summary>Frame time in five fixed scenes rather than play (PerfProbe): --perf-probe [--perf-out DIR] [--perf-label NAME].</summary>
+        public bool PerfProbe { get; private set; }
+
+        public string PerfOut { get; private set; } = "";
+
+        public string PerfLabel { get; private set; } = "";
+
+        public float PerfZoom { get; private set; }
+        /// <summary>Photograph and time every post-processing look into this folder (ADR-0023).</summary>
+        public string PostFxSheet { get; private set; }
+
+        /// <summary>--perf-parity: per scene, compare --batched-world with the plain path pixel for pixel.</summary>
+        public bool PerfParity { get; private set; }
+
         public bool DoorProbe { get; private set; }
 
         /// <summary>File the world objects near the player are written to after the shard commands; see ObjectsDump.</summary>
@@ -958,11 +1137,30 @@ public partial class Main : Node
         /// <summary>Tap each of the touch bar's six macros against spawned fixtures; see MacroProbe.</summary>
         public bool MacroProbe { get; private set; }
 
+        /// <summary>Picture each of GUO's own mobile UIs; see GalleryProbe.</summary>
+        public bool UiGallery { get; private set; }
+
+        /// <summary>Desktop defaults leave gump drawing and hit testing as ClassicUO's; see PresentationParityProbe.</summary>
+        public bool PresentationParity { get; private set; }
+
         /// <summary>Echo every gesture the touch layer resolves to the log, for a device run read over logcat.</summary>
         public bool TouchTrace { get; private set; }
 
+        /// <summary>Draw every finger the touch layer sees; see TouchOverlay.</summary>
+        public bool ShowTouches { get; private set; }
+
+        /// <summary>The second screen as companion tabs; see CompanionTabs.</summary>
+        public bool CompanionTabs { get; private set; }
+
         /// <summary>Mute the Master bus for the whole run; the Android tool bakes this in unless told --sound.</summary>
         public bool Silent { get; private set; }
+
+        /// <summary>
+        /// Whether to play the boot splash (SplashIntro): <c>--splash</c> and
+        /// <c>--no-splash</c> decide it outright; with neither, an interactive
+        /// run follows the player's Options choice and a scripted run skips it.
+        /// </summary>
+        public bool? Splash { get; private set; }
 
         /// <summary>
         /// Wait for the login gump to be drawn, say so on the log, and either
@@ -1013,6 +1211,14 @@ public partial class Main : Node
         /// version), for scripted and device runs: --store-install ID.
         /// </summary>
         public string StoreInstall { get; private set; }
+
+        /// <summary>
+        /// Upstream's files_override for this run: a file of name=path lines
+        /// that replace single client files, e.g. a staged data set
+        /// (ADR-0022) on a device, where settings.json cannot be reached:
+        /// --files-override PATH.
+        /// </summary>
+        public string FilesOverride { get; private set; }
 
         /// <summary>Dotted client version, e.g. "7.0.107.76".</summary>
         public string ClientVersion { get; private set; } = "7.0.107.76";
@@ -1080,6 +1286,27 @@ public partial class Main : Node
                     case "--gamepad-probe":
                         o.GamepadProbe = true;
                         break;
+                    case "--batched-world":
+                        GUO.Renderer.UltimaBatcher2D.BatchedWorld = true;
+                        break;
+                    case "--perf-probe":
+                        o.PerfProbe = true;
+                        break;
+                    case "--perf-out":
+                        o.PerfOut = Next();
+                        break;
+                    case "--perf-label":
+                        o.PerfLabel = Next();
+                        break;
+                    case "--perf-parity":
+                        o.PerfParity = true;
+                        break;
+                    case "--perf-zoom":
+                        o.PerfZoom = float.Parse(Next(), System.Globalization.CultureInfo.InvariantCulture);
+                        break;
+                    case "--postfx-sheet":
+                        o.PostFxSheet = Next();
+                        break;
                     case "--door-probe":
                         o.DoorProbe = true;
                         break;
@@ -1105,18 +1332,37 @@ public partial class Main : Node
                         o.Touch = true;
                         o.TouchProbe = true;
                         break;
+                    case "--presentation-parity":
+                        o.PresentationParity = true;
+                        break;
                     case "--macro-probe":
                         o.Touch = true;
                         o.MacroProbe = true;
                         break;
+                    case "--ui-gallery":
+                        o.Touch = true;
+                        o.UiGallery = true;
+                        break;
                     case "--touch-trace":
                         o.TouchTrace = true;
+                        break;
+                    case "--show-touches":
+                        o.ShowTouches = true;
+                        break;
+                    case "--companion-tabs":
+                        o.CompanionTabs = true;
                         break;
                     case "--gamepad-trace":
                         GUO.Input.Gamepad.GamepadInput.Trace = true;
                         break;
                     case "--silent":
                         o.Silent = true;
+                        break;
+                    case "--splash":
+                        o.Splash = true;
+                        break;
+                    case "--no-splash":
+                        o.Splash = false;
                         break;
                     case "--no-focus":
                         o._noFocus = true;
@@ -1217,6 +1463,13 @@ public partial class Main : Node
                         break;
                     case "--client-data":
                         o.ClientData = Next();
+                        o.ClientDataFromFlag = true;
+                        break;
+                    case "--custom-data":
+                        o.CustomData = Next();
+                        break;
+                    case "--first-run-probe":
+                        o.FirstRunProbe = Next();
                         break;
                     case "--cache-dir":
                         o.CacheDir = Next();
@@ -1238,6 +1491,9 @@ public partial class Main : Node
                         break;
                     case "--store-install":
                         o.StoreInstall = Next();
+                        break;
+                    case "--files-override":
+                        o.FilesOverride = Next();
                         break;
                     case "--background":
                         o.Background = Next();

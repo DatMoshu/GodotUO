@@ -144,6 +144,10 @@ REM  The WebSocket bridge the web client reaches the shard through
 REM  (tools\ws_bridge, launchers\web\ws_bridge.bat): ws://127.0.0.1:<this>
 REM  relays to UO_SHARD_HOST:UO_SHARD_PORT. Upstream's test proxy uses 2594.
 if not defined UO_WS_BRIDGE_PORT    set "UO_WS_BRIDGE_PORT=2594"
+REM  The Godot build that can export C# to the web: a community 4.7.2 mono
+REM  build kept apart from the pinned engine, with its own .NET SDK, in
+REM  tools\godot_web (gitignored; see its README). Only tools\web uses it.
+if not defined UO_WEB_GODOT         set "UO_WEB_GODOT=%UO_ROOT%\tools\godot_web\Godot_v4.7.2-stable_mono_web_export_win64\Godot_v4.7.2-stable_mono_web_export_win64_console.exe"
 
 REM --- Steam Deck (optional) ----------------------------------------------
 REM  Only launchers\steamdeck\*.bat and tools\steamdeck read these. See

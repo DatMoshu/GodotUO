@@ -14,6 +14,8 @@
 //      other editors: last write per block wins, and each relay names its author.
 //   3. A "command" message runs a GM command as a named online character, via
 //      CommandSystem.Handle, exactly as if they had typed it.
+//   4. A "multi" message places or removes an authored multi and its doors
+//      (AuthoredMulti.cs, tools/multi).
 //
 // Live edits are held in memory. The world project (the editor's files) is the
 // source of truth; tools/world export + a restart make them permanent.
@@ -359,6 +361,22 @@ public static class EditorBridge
                 {
                     Core.LoopContext.Post(() => RunCommand(conn, msg));
                 }
+                else if (op == "equip")
+                {
+                    Core.LoopContext.Post(() => Equip(conn, msg));
+                }
+                else if (op == "equip-many")
+                {
+                    Core.LoopContext.Post(() => EquipMany(conn, msg));
+                }
+                else if (op == "unequip")
+                {
+                    Core.LoopContext.Post(() => Unequip(conn, msg));
+                }
+                else if (op == "multi")
+                {
+                    Core.LoopContext.Post(() => AuthoredMultis.Handle(msg, conn.Send));
+                }
                 else if (op == "object")
                 {
                     long received = Environment.TickCount64;
@@ -554,6 +572,140 @@ public static class EditorBridge
             "GUO editor bridge: object {0} {1} {2} from '{3}': {4}; relayed to {5} editor(s) in {6} ms",
             action, kind, id, from.Name, outcome, editors, ms
         );
+    }
+
+    // {"op":"equip","as":"<online character>","item_id":65520,"hue":0}
+    // A new Item of that id, on the layer its tiledata names, equipped on the
+    // character; whatever held that layer goes to the backpack. How a new
+    // wearable (ADR-0022) is put on a character without a target cursor.
+    private static Mobile Online(string who) =>
+        NetState.Instances.Select(ns => ns.Mobile)
+            .FirstOrDefault(x => x != null && string.Equals(x.RawName, who, StringComparison.OrdinalIgnoreCase));
+
+    private static void Equip(EditorConnection from, JsonNode msg)
+    {
+        string who = (string)msg["as"];
+        Mobile m = Online(who);
+        if (m == null)
+        {
+            from.Send(new JsonObject { ["op"] = "equip", ["ok"] = false, ["error"] = $"'{who}' is not online" });
+            return;
+        }
+
+        JsonObject r = EquipOne(m, (int)msg["item_id"], (int?)msg["hue"] ?? 0);
+        r["op"] = "equip";
+        from.Send(r);
+        Log.Information("GUO editor bridge: '{0}' equipped {1} on {2}: {3}", from.Name, (string)r["item"], m.RawName, (bool)r["ok"]);
+    }
+
+    // {"op":"equip-many","as":"<online character>","item_ids":[65504, ...],"hue":0}
+    // Each in turn, as "equip" does: whatever held its layer goes to the backpack.
+    private static void EquipMany(EditorConnection from, JsonNode msg)
+    {
+        string who = (string)msg["as"];
+        Mobile m = Online(who);
+        if (m == null)
+        {
+            from.Send(new JsonObject { ["op"] = "equip-many", ["ok"] = false, ["error"] = $"'{who}' is not online" });
+            return;
+        }
+
+        var results = new JsonArray();
+        bool all = true;
+        foreach (JsonNode id in msg["item_ids"]!.AsArray())
+        {
+            JsonObject r = EquipOne(m, (int)id!, (int?)msg["hue"] ?? 0);
+            all &= (bool)r["ok"];
+            results.Add(r);
+        }
+
+        from.Send(new JsonObject { ["op"] = "equip-many", ["ok"] = all, ["as"] = m.RawName, ["results"] = results });
+        Log.Information("GUO editor bridge: '{0}' equipped {1} item(s) on {2}: {3}", from.Name, results.Count, m.RawName, all);
+    }
+
+    // {"op":"unequip","as":"<online character>","item_ids":[65505, ...]}
+    // Each worn item with that id goes to the backpack; hair (virtual on
+    // ModernUO) is cleared.
+    private static void Unequip(EditorConnection from, JsonNode msg)
+    {
+        string who = (string)msg["as"];
+        Mobile m = Online(who);
+        if (m == null)
+        {
+            from.Send(new JsonObject { ["op"] = "unequip", ["ok"] = false, ["error"] = $"'{who}' is not online" });
+            return;
+        }
+
+        var removed = new JsonArray();
+        var missing = new JsonArray();
+        foreach (JsonNode node in msg["item_ids"]!.AsArray())
+        {
+            int id = (int)node!;
+            if (m.HairItemID == id)
+            {
+                m.HairItemID = 0;
+                removed.Add($"hair 0x{id:X4}");
+                continue;
+            }
+
+            Item worn = m.Items.FirstOrDefault(i => i.ItemID == id && i.Parent == m);
+            if (worn == null)
+            {
+                missing.Add($"0x{id:X4}");
+                continue;
+            }
+
+            m.Backpack?.DropItem(worn);
+            removed.Add($"0x{id:X4} from {worn.Layer}");
+        }
+
+        from.Send(new JsonObject { ["op"] = "unequip", ["ok"] = missing.Count == 0, ["as"] = m.RawName,
+                                   ["removed"] = removed, ["not_worn"] = missing });
+        Log.Information("GUO editor bridge: '{0}' took {1} item(s) off {2}", from.Name, removed.Count, m.RawName);
+    }
+
+    // One item onto the character, on the layer its tiledata names. A hand item
+    // clears both hands into the backpack (a shield conflicts with a two-handed
+    // weapon); anything else clears only its own layer. Hair is ModernUO's
+    // virtual hair (HairItemID), not an item.
+    private static JsonObject EquipOne(Mobile m, int itemId, int hue)
+    {
+        var layer = (Layer)TileData.ItemTable[itemId & TileData.MaxItemValue].Quality;
+        if (layer == Layer.Hair)
+        {
+            m.HairItemID = itemId;
+            m.HairHue = hue;
+            return new JsonObject { ["ok"] = true, ["as"] = m.RawName, ["item"] = $"0x{itemId:X4}", ["item_id"] = itemId,
+                                    ["layer"] = "Hair", ["serial"] = 0, ["virtual_hair"] = true };
+        }
+
+        if (m.Backpack == null)
+        {
+            m.AddItem(new Server.Items.Backpack());
+        }
+
+        var moved = new JsonArray();
+        var clear = layer is Layer.OneHanded or Layer.TwoHanded ? new[] { Layer.OneHanded, Layer.TwoHanded } : new[] { layer };
+        foreach (var l in clear)
+        {
+            if (m.FindItemOnLayer(l) is { } held)
+            {
+                m.Backpack.DropItem(held);
+                moved.Add($"{held.GetType().Name} 0x{held.ItemID:X4} from {l}");
+            }
+        }
+
+        var item = new Item(itemId) { Layer = layer, Hue = hue, Movable = true };
+        bool canEquip = item.CanEquip(m), checkEquip = m.CheckEquip(item);
+        bool ok = m.EquipItem(item);
+        if (!ok)
+        {
+            item.Delete();
+        }
+
+        return new JsonObject { ["ok"] = ok, ["as"] = m.RawName, ["item"] = $"0x{itemId:X4}", ["item_id"] = itemId,
+                                ["layer"] = layer.ToString(), ["serial"] = ok ? (uint)item.Serial : 0,
+                                ["can_equip"] = canEquip, ["check_equip"] = checkEquip, ["moved_to_pack"] = moved };
     }
 
     // {"op":"command","as":"Guosweep","text":"[add ..."}

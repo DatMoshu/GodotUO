@@ -91,6 +91,27 @@ class StoreTests(unittest.TestCase):
             with self.subTest(label), self.assertRaises(ValueError):
                 verify(self.screensaver(**kwargs))
 
+    def postfx(self, files):
+        self.manifest.update(kind="postfx", id="test-looks")
+        for name, data in files.items():
+            self.manifest["files"][name] = hashlib.sha256(data).hexdigest()
+        return self.pack(files)
+
+    def test_postfx_kind(self):
+        # ADR-0023: presets and shaders; a LUT image rides along.
+        pack = self.postfx({"looks/dusk.json": b'{"name": "Dusk", "passes": []}',
+                            "looks/dusk.gdshader": b"shader_type canvas_item;", "looks/dusk_lut.png": b"png"})
+        self.assertEqual(verify(pack)["kind"], "postfx")
+
+    def test_reject_postfx_contract(self):
+        with self.subTest("no preset"), self.assertRaises(ValueError):
+            verify(self.postfx({"only.gdshader": b"shader_type canvas_item;"}))
+        self.setUp()
+        # Shader code is accepted in a postfx pack only.
+        self.manifest["files"]["sneaky.gdshader"] = hashlib.sha256(b"x").hexdigest()
+        with self.subTest("shader in a background pack"), self.assertRaises(ValueError):
+            verify(self.pack({"sneaky.gdshader": b"x"}))
+
     def test_http_ranges_and_head(self):
         root = self.root / "cdn"
         publish(self.pack(), root)

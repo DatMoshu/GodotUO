@@ -1,0 +1,15 @@
+{
+ "name": "EGA",
+ "description": "The 16-colour EGA palette, dithered.",
+ "passes": [
+  {
+   "shader": "palette",
+   "params": {
+    "palette": 0,
+    "dither": 0.6,
+    "pixel": 1
+   }
+  }
+ ],
+ "bindings": []
+}

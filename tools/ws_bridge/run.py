@@ -158,9 +158,14 @@ def http_error(writer: asyncio.StreamWriter, status: str) -> None:
 
 
 class Bridge:
-    def __init__(self, target: tuple[str, int], origins: set[str]):
+    def __init__(self, target: tuple[str, int], origins: set[str], trace: bool = False):
         self.target = target
         self.origins = origins  # "*" = any
+        self.trace = trace
+
+    def traced(self, direction: str, data: bytes) -> None:
+        if self.trace:
+            log(f"{direction} {len(data):6d} bytes  {data[:24].hex(' ')}")
 
     def origin_ok(self, origin: str | None) -> bool:
         if origin is None:
@@ -215,6 +220,7 @@ class Bridge:
                 if msg is None:
                     ws_w.write(encode_frame(OP_CLOSE, struct.pack(">H", 1000)))
                     return
+                self.traced("client -> shard", msg[1])
                 tcp_w.write(msg[1])
                 await tcp_w.drain()
 
@@ -224,6 +230,7 @@ class Bridge:
                 if not data:
                     ws_w.write(encode_frame(OP_CLOSE, struct.pack(">H", 1000)))
                     return
+                self.traced("shard -> client", data)
                 ws_w.write(encode_frame(OP_BINARY, data))
                 await ws_w.drain()
 
@@ -243,8 +250,9 @@ class Bridge:
                 pass
 
 
-async def start_bridge(listen: str, port: int, target: tuple[str, int], origins: set[str]) -> asyncio.base_events.Server:
-    bridge = Bridge(target, origins)
+async def start_bridge(listen: str, port: int, target: tuple[str, int], origins: set[str],
+                       trace: bool = False) -> asyncio.base_events.Server:
+    bridge = Bridge(target, origins, trace)
     return await asyncio.start_server(bridge.handle, listen, port, limit=MAX_HEADER)
 
 
@@ -390,6 +398,7 @@ def main() -> int:
     s.add_argument("--target", type=parse_target, default=(cfg.shard_host, cfg.shard_port))
     s.add_argument("--allow-origin", action="append", default=[],
                    help="another page origin allowed to connect, or * for any")
+    s.add_argument("--trace", action="store_true", help="log every message: direction, size, first bytes")
     t = sub.add_parser("test")
     t.add_argument("--fake", action="store_true", help="use an in-process stand-in shard")
     args = ap.parse_args()
@@ -400,7 +409,7 @@ def main() -> int:
     origins = default_origins(cfg.web_port) | {o.rstrip("/") for o in args.allow_origin}
 
     async def serve_forever():
-        server = await start_bridge(args.listen, args.port, args.target, origins)
+        server = await start_bridge(args.listen, args.port, args.target, origins, args.trace)
         if args.listen not in ("127.0.0.1", "localhost", "::1"):
             log(f"WARNING: listening on {args.listen}, reachable from other machines")
         log(f"ws://{args.listen}:{args.port} -> {args.target[0]}:{args.target[1]}; "

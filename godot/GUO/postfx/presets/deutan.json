@@ -1,0 +1,14 @@
+{
+ "name": "Colour Help: Deuteranopia",
+ "description": "Shifts red-green confusions for deuteranopia.",
+ "passes": [
+  {
+   "shader": "daltonize",
+   "params": {
+    "kind": 1,
+    "simulate": 0
+   }
+  }
+ ],
+ "bindings": []
+}

@@ -54,7 +54,153 @@ internal static class ObjectsDump
                 host.GetViewport().GetTexture().GetImage().SavePng(Path.Combine(dir, name + ".png"));
             }
 
+            // <name>.walk8 holding frames per direction (default 70): the eight
+            // screen directions (InputProbe.WalkEight), then <name>.walked.
+            foreach (string request in Directory.GetFiles(dir, "*.walk8"))
+            {
+                string name = Path.GetFileNameWithoutExtension(request);
+                int frames = int.TryParse(File.ReadAllText(request).Trim(), out int fr) && fr > 0 ? fr : 70;
+                File.Delete(request);
+                bool walked = await InputProbe.WalkEight(host, frames);
+                File.WriteAllText(Path.Combine(dir, name + ".walked"), walked ? "moved" : "did not move");
+            }
+
+            // <name>.paperdoll: the player's paperdoll opened (where worn gear shows).
+            foreach (string request in Directory.GetFiles(dir, "*.paperdoll"))
+            {
+                File.Delete(request);
+                if (Client.Game?.UO?.World is World pw && pw.Player != null)
+                {
+                    GameActions.OpenPaperdoll(pw, pw.Player.Serial);
+                }
+            }
+
+            // <name>.options holding a page number: Options opened on that page
+            // (3 is Video, where "Change UO folder..." sits).
+            foreach (string request in Directory.GetFiles(dir, "*.options"))
+            {
+                int page = int.TryParse(File.ReadAllText(request).Trim(), out int p) ? p : 0;
+                File.Delete(request);
+                if (Client.Game?.UO?.World is World w)
+                {
+                    GameActions.OpenSettings(w, page);
+                    // Down to the page's last section, where the GUO rows are.
+                    for (int f = 0; f < 3; f++)
+                    {
+                        await host.ToSignal(host.GetTree(), Godot.SceneTree.SignalName.ProcessFrame);
+                    }
+
+                    if (GUO.Game.Managers.UIManager.GetGump<GUO.Game.UI.Gumps.OptionsGump>() is { } g)
+                    {
+                        foreach (var c in g.Children)
+                        {
+                            if (c is GUO.Game.UI.Controls.ScrollArea area && c.Page == page)
+                            {
+                                for (int i = 0; i < 400; i++)
+                                {
+                                    area.Scroll(false);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // <name>.changefolder holding a folder: the Options button's action
+            // (FirstRunScreen.OpenChange), scripted to pick that folder and Save;
+            // its screenshots go to <dir>/<name>/.
+            foreach (string request in Directory.GetFiles(dir, "*.changefolder"))
+            {
+                string name = Path.GetFileNameWithoutExtension(request);
+                string folder = File.ReadAllText(request).Trim();
+                File.Delete(request);
+                FirstRunScreen.OpenChange(folder, Path.Combine(dir, name));
+            }
+
+            // <name>.walk: the character walks the four screen diagonals (InputProbe's
+            // walk), then <name>.walked. A recording started before it keeps going.
+            foreach (string request in Directory.GetFiles(dir, "*.walk"))
+            {
+                string name = Path.GetFileNameWithoutExtension(request);
+                File.Delete(request);
+                bool walked = await InputProbe.WalkAround(host);
+                File.WriteAllText(Path.Combine(dir, name + ".walked"), walked ? "moved" : "did not move");
+            }
+
+            // <name>.goto holding "x y z [distance]": the player's pathfinder walks
+            // there (doors on the way open as the profile's auto_open_doors and
+            // smooth_doors allow), then <name>.arrived holding "path|no path x y z",
+            // where it stopped. How tools/multi walks through an authored multi.
+            foreach (string request in Directory.GetFiles(dir, "*.goto"))
+            {
+                string name = Path.GetFileNameWithoutExtension(request);
+                string[] words = File.ReadAllText(request).Split((char[]) null, System.StringSplitOptions.RemoveEmptyEntries);
+                File.Delete(request);
+                PlayerMobile player = Client.Game?.UO?.World?.Player;
+                string result = "no player";
+                if (player != null && words.Length >= 3)
+                {
+                    bool path = player.Pathfinder.WalkTo(int.Parse(words[0]), int.Parse(words[1]), int.Parse(words[2]),
+                                                         words.Length > 3 ? int.Parse(words[3]) : 0);
+                    // Autowalk is stepped by the game scene; this only waits for it to stop.
+                    for (int wait = 0; path && wait < 1800 && player.Pathfinder.AutoWalking; wait++)
+                    {
+                        await host.ToSignal(host.GetTree(), Godot.SceneTree.SignalName.ProcessFrame);
+                    }
+
+                    result = $"{(path ? "path" : "no path")} {player.X} {player.Y} {player.Z}";
+                }
+
+                File.WriteAllText(Path.Combine(dir, name + ".arrived"), result);
+            }
+
+            // <name>.rec holding "seconds fps": frames into <dir>/<name>/0001.png ...,
+            // for a clip (tools/editor_objects_proof --live --clip). Windowed only.
+            // Runs beside the watch, so a walk can be recorded.
+            foreach (string request in Directory.GetFiles(dir, "*.rec"))
+            {
+                string name = Path.GetFileNameWithoutExtension(request);
+                string[] args = File.ReadAllText(request).Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+                File.Delete(request);
+                _ = Record(host, dir, name, args);
+            }
+
             await host.ToSignal(host.GetTree().CreateTimer(0.25), Godot.SceneTreeTimer.SignalName.Timeout);
+        }
+    }
+
+    private static async System.Threading.Tasks.Task Record(Godot.Node host, string dir, string name, string[] args)
+    {
+        {
+                double seconds = args.Length > 0 ? double.Parse(args[0], System.Globalization.CultureInfo.InvariantCulture) : 10;
+                double fps = args.Length > 1 ? double.Parse(args[1], System.Globalization.CultureInfo.InvariantCulture) : 10;
+                // A third word "jpg" saves JPEGs (quality 0.92): much quicker to write
+                // than PNG, so a 1024x768 recording keeps its frame rate.
+                bool jpg = args.Length > 2 && args[2] == "jpg";
+                string frames = Path.Combine(dir, name);
+                Directory.CreateDirectory(frames);
+                var clock = System.Diagnostics.Stopwatch.StartNew();
+                int n = 0;
+                while (clock.Elapsed.TotalSeconds < seconds)
+                {
+                    await host.ToSignal(Godot.RenderingServer.Singleton, Godot.RenderingServerInstance.SignalName.FramePostDraw);
+                    if (clock.Elapsed.TotalSeconds * fps >= n)
+                    {
+                        Godot.Image frame = host.GetViewport().GetTexture().GetImage();
+                        if (jpg)
+                        {
+                            frame.SaveJpg(Path.Combine(frames, $"{++n:D4}.jpg"), 0.92f);
+                        }
+                        else
+                        {
+                            frame.SavePng(Path.Combine(frames, $"{++n:D4}.png"));
+                        }
+                    }
+                }
+
+                // "frames seconds": the rate the frames were actually taken at.
+                File.WriteAllText(Path.Combine(dir, name + ".recorded"),
+                    $"{n} {clock.Elapsed.TotalSeconds.ToString("F3", System.Globalization.CultureInfo.InvariantCulture)}");
         }
     }
 
@@ -85,8 +231,23 @@ internal static class ObjectsDump
             }
         }
 
+        // What the player wears (items whose container is the player), with the layer.
+        var worn = new List<Dictionary<string, object>>();
+        if (world?.Player != null)
+        {
+            foreach (Item i in world.Items.Values)
+            {
+                if (i.Container == world.Player.Serial)
+                {
+                    worn.Add(new() { ["serial"] = i.Serial, ["graphic"] = $"0x{i.Graphic:X4}", ["layer"] = i.Layer.ToString(),
+                        ["hue"] = $"0x{i.Hue:X4}" });
+                }
+            }
+        }
+
         var report = new Dictionary<string, object>
         {
+            ["worn"] = worn,
             ["map"] = world?.MapIndex ?? -1,
             ["player"] = world?.Player != null ? new[] { (int)world.Player.X, world.Player.Y, world.Player.Z } : null,
             ["items"] = items,

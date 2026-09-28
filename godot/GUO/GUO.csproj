@@ -4,6 +4,11 @@
     <!-- Godot 4.7's prebuilt Android template is built for net9.0 and refuses
          anything else; the desktop stays on net8.0. ADR-0017. -->
     <TargetFramework Condition="'$(GodotTargetPlatform)' == 'android'">net9.0</TargetFramework>
+    <!-- The web export exists only in the fork in tools/godot_web, whose
+         runtime is .NET 9's browser-wasm Mono; it also needs an entry point,
+         src/Platform/Web/Program.cs, which no other build compiles.
+         ADR-0008. -->
+    <TargetFramework Condition="'$(GodotTargetPlatform)' == 'web'">net9.0</TargetFramework>
     <EnableDynamicLoading>true</EnableDynamicLoading>
     <RootNamespace>GUO</RootNamespace>
     <AssemblyName>GUO</AssemblyName>
@@ -27,6 +32,10 @@
     UpstreamDir can be overridden (-p:UpstreamDir=... or the environment) for
     a checkout that keeps sources/ elsewhere, such as a git worktree.
   -->
+  <ItemGroup Condition="'$(GodotTargetPlatform)' != 'web'">
+    <Compile Remove="src/Platform/Web/Program.cs" />
+  </ItemGroup>
+
   <PropertyGroup>
     <UpstreamDir Condition="'$(UpstreamDir)' == ''">$(MSBuildThisFileDirectory)..\..\sources\ClassicUO</UpstreamDir>
   </PropertyGroup>

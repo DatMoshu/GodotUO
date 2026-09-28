@@ -335,10 +335,13 @@ class Doctor:
             timeout=30, quiet=True,
         )
         have = set(re.findall(r"^HAVE=(\w+)$", facts, re.MULTILINE))
-        self.check("UO client data on the Deck", "DATA=yes" in facts,
-                   f"{deck.client_data}/tiledata.mul" + ("" if "DATA=yes" in facts else " missing"),
-                   f"copy your UO install to {deck.client_data} on the Deck yourself (docs\\steamdeck.md); "
-                   "the tools never push it")
+        # ADR-0021: no data on the Deck is not a failure. The client opens the
+        # first-run wizard there; the tools never push the install.
+        if "DATA=yes" in facts:
+            self.check("UO client data on the Deck", True, f"{deck.client_data}/tiledata.mul")
+        else:
+            print(f"  info UO client data on the Deck   none at {deck.client_data}: GUO opens the first-run "
+                  "wizard there, or copy your UO install to it yourself (docs\\steamdeck.md)")
         self.check("screenshot tool on the Deck", bool(have & {"spectacle", "grim"}),
                    ", ".join(sorted(have & {"spectacle", "grim"})) or "neither spectacle nor grim",
                    "Desktop mode: Discover > Spectacle (SteamOS ships it)")
@@ -465,7 +468,7 @@ def export(p: Paths) -> int:
 # ---------------------------------------------------------------------------
 
 
-def launcher_script(deck: Deck, shard_host: str, shard_port: int) -> str:
+def launcher_script(deck: Deck, shard_host: str, shard_port: int, data_default: bool = False) -> str:
     data = deck.client_data
     if data.startswith("~/"):
         data = '"$HOME/' + data[2:] + '"'
@@ -474,6 +477,9 @@ def launcher_script(deck: Deck, shard_host: str, shard_port: int) -> str:
     else:
         data = "'" + data + "'"
     account = f" --account '{deck.account}'" if deck.account else ""
+    # --data-default: no --client-data, so the client resolves its data itself
+    # by ADR-0021 (saved setting, then ~/UO, else the first-run screen).
+    client_data = "" if data_default else f" --client-data {data}"
     return (
         "#!/bin/bash\n"
         "# GUO on the Steam Deck. Written by tools/steamdeck/run.py push; edit\n"
@@ -481,11 +487,11 @@ def launcher_script(deck: Deck, shard_host: str, shard_port: int) -> str:
         "# Extra flags go through: ./guo.sh --login-probe-stay, ./guo.sh --sound.\n"
         "# After \"--\": the client reads only what follows it (OS.GetCmdlineUserArgs).\n"
         'cd "$(dirname "$(readlink -f "$0")")" || exit 1\n'
-        f'exec ./{EXE_NAME} -- --play --client-data {data} --host {shard_host} --port {shard_port}{account} "$@"\n'
+        f'exec ./{EXE_NAME} -- --play{client_data} --host {shard_host} --port {shard_port}{account} "$@"\n'
     )
 
 
-def push(p: Paths, deck: Deck, shard_host: str | None, shard_port: int | None) -> int:
+def push(p: Paths, deck: Deck, shard_host: str | None, shard_port: int | None, data_default: bool = False) -> int:
     deck.require()
     data = p.data_dir()
     if not (p.exe.exists() and p.pck.exists() and data):
@@ -496,7 +502,7 @@ def push(p: Paths, deck: Deck, shard_host: str | None, shard_port: int | None) -
     if host in ("127.0.0.1", "localhost", "::1"):
         say(f"note: guo.sh will point at {host}:{port}, which on the Deck is the Deck itself; "
             "pass --host <the shard's LAN address> to push, or set UO_SHARD_HOST in config.local.bat")
-    script = launcher_script(deck, host, port).encode("utf-8")
+    script = launcher_script(deck, host, port, data_default).encode("utf-8")
     files = [p.exe, p.pck, *[f for f in data.rglob("*") if f.is_file()]]
     total = sum(f.stat().st_size for f in files)
     say(f"pushing {len(files) + 1} files ({total // 1024 // 1024} MB) to {deck.target}:{deck.install_dir}")
@@ -729,6 +735,8 @@ def main(argv: list[str] | None = None) -> int:
     pu = sub.add_parser("push", help="copy the export onto the Deck and write guo.sh")
     pu.add_argument("--host", default=None, help="shard address guo.sh connects to (default UO_SHARD_HOST)")
     pu.add_argument("--port", type=int, default=None, help="shard port (default UO_SHARD_PORT)")
+    pu.add_argument("--data-default", action="store_true",
+                    help="guo.sh passes no --client-data: the client resolves its data itself (ADR-0021)")
     ru = sub.add_parser("run", help="start the client in the Deck's desktop session")
     ru.add_argument("--args", default="", help="extra client flags (e.g. --sound, --login-probe-stay)")
     ru.add_argument("--wait", type=int, default=0, help="seconds to follow guo.log afterwards (0 = return at once)")
@@ -760,7 +768,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "export":
         return export(p)
     if args.command == "push":
-        return push(p, deck, args.host, args.port)
+        return push(p, deck, args.host, args.port, args.data_default)
     if args.command == "run":
         return run_app(p, deck, args.args, args.wait)
     if args.command == "stop":

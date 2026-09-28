@@ -1,0 +1,15 @@
+{
+ "name": "Vignette",
+ "description": "Darker edges.",
+ "passes": [
+  {
+   "shader": "vignette",
+   "params": {
+    "radius": 0.8,
+    "softness": 0.45,
+    "strength": 0.6
+   }
+  }
+ ],
+ "bindings": []
+}

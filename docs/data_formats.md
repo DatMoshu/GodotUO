@@ -279,6 +279,7 @@ line, UTF-8, `\n`-terminated. ADR-0012 has the reasoning.
 | `block` | `facet`, `bx`, `by`, `land`: 64 `[id, z]` pairs, row-major (index `y*8+x`), `statics`: `[id, x, y, z, hue]` per static (`x`, `y` 0..7 in the block), `sent_ms` (sender's clock, unix ms, optional) | Replaces the whole block in the server's own map (walking, line of sight and placement see it), pushes it to UltimaLive clients on that map, relays it to the other editors; answered with `ack` |
 | `command` | `as` (an online character's name), `text` (e.g. `[where`) | Runs the GM command as that character (`CommandSystem.Handle`); answered with `command` |
 | `object` | `action` `put` with `kind` (`spawner` or `item`) and `object` (as in `shard/objects.json`, section 13); or `action` `delete` with `kind` and `id` | Applies it to the world with the boot sync's code (ADR-0014), relays it to the other editors; answered with `object_ack` |
+| `multi` | `action` `place` with `tag`, `id` (multi id), `map`, `x`, `y`, `z` (optional: the land's average z), `doors` (as in a built multi's `multi.json`, section 16); or `action` `remove` with `tag` | Places an authored multi (`GUOAuthoredMulti`) and a real door per entry, replacing a multi with the same tag; `remove` deletes it and its doors. Answered with `multi_ack` |
 
 **Bridge to editor**
 
@@ -290,6 +291,7 @@ line, UTF-8, `\n`-terminated. ADR-0012 has the reasoning.
 | `command` | `ok`, `as`, `text`, or `error` |
 | `object` | as sent, plus `from`: another editor's world-object change. Last write per object wins |
 | `object_ack` | `action`, `kind`, `id`, `outcome` (`Added`, `Changed`, `Kept`, `Deleted`, `Missing`, `Skipped`), `editors`, `ms` |
+| `multi_ack` | `action`, `tag`, `ok`; on a place `serial`, `at` `[x, y, z]`, `components`, `doors`, `replaced`; on a remove `removed`; or `error` |
 | `error` | `error` |
 
 **Bridge to game client** (UltimaLive, as `src/Game/UltimaLive.cs` reads it)
@@ -389,6 +391,9 @@ data or executable code. `art-override` is reserved and rejected.
 }
 ```
 
+- The manifest is UTF-8 **without** a byte order mark, strict JSON (no
+  `NaN` or `Infinity`), no duplicate keys, and every string valid Unicode
+  (no lone surrogates).
 - IDs match `[a-z0-9][a-z0-9-]{0,63}` (Windows device names excluded).
   Versions are three decimal components, each 0..2147483647, without
   leading zeros. Compare numerically, not lexicographically.
@@ -397,8 +402,10 @@ data or executable code. `art-override` is reserved and rejected.
   `BSD-3-Clause`, `Apache-2.0`. Publishers are responsible for provenance;
   the identifier does not establish ownership. Non-CC0 packs must include
   `LICENSE.txt` with the licence and attribution.
-- `title` and `author` are nonempty strings, at most 200 characters.
-  `min_profile_version` is an integer 0..2147483647; newer requirements
+- `title` and `author` are strings of at most 200 characters, not only
+  whitespace, with no control characters (U+0000-U+001F, U+007F).
+  `min_profile_version` is a JSON integer 0..2147483647 (not `true`,
+  `11.0` or `"11"`); newer requirements
   block installation. `preview` names a declared PNG/JPG/JPEG/WebP file.
 - `files` maps every payload path to its SHA-256 (manifest excluded).
   Payload types: `.png`, `.jpg`, `.jpeg`, `.webp`, `.ogv`, `.ogg`, `.wav`,
@@ -412,10 +419,22 @@ data or executable code. `art-override` is reserved and rejected.
   are forbidden case-insensitively, even when renamed with another suffix.
 - Paths use `/`, are relative, have no empty, `.` or `..` components,
   backslashes, colons, control characters, Windows reserved device names,
-  trailing dots/spaces or Windows special characters. Each component is
-  at most 100 characters, each path at most 240. Duplicate paths (including
-  case aliases), symlinks, encrypted entries, directory entries, undeclared
-  files, and ancestor/file collisions are rejected. No automatic extraction
+  trailing dots/spaces or Windows special characters. Windows device
+  names include the superscript forms (`COM¹`). A component must have a
+  stem: `.png` alone is refused. Each component is at most 100 and each
+  path at most 240 **UTF-16 code units** (what the file system counts; an
+  emoji is two). Duplicate paths, symlinks, encrypted entries, directory
+  entries, undeclared files, and ancestor/file collisions are rejected.
+- Case aliases: two names are one name when they share a folding key.
+  Turkish dotted and dotless i count as i. Then each character folds by its
+  simple one-to-one lower and upper mapping, as NTFS and .NET do: `K` (Kelvin
+  sign) and `k` alias, `ß` and `ss` do not.
+- A non-ASCII ZIP entry name must carry the ZIP's UTF-8 flag (bit 11).
+  Without it the name is ambiguous (CP437 by the spec, UTF-8 to many tools).
+- `tools/asset_store/corpus/cases.json` holds a case for each of these
+  rules. `tools/asset_store/test_corpus.py` runs the Python publisher and
+  the C# installer over the same built folder, and CI requires both to
+  agree with every case. No automatic extraction
   API is trusted to perform path validation.
 - Limits: 512 MiB ZIP, 1 GiB total uncompressed payload, 256 MiB per
   payload, 1 MiB manifest, 1024 payload files. Checks run before extraction;
@@ -528,3 +547,189 @@ by map, y, x, id.
 The shard's record of what GUO applied is not a file: it lives in the world
 save as the `GUOWorldObjects` persistence (spawner GUID to a record hash, item
 id to serial).
+
+---
+
+## 14. Authored data sets (ADR-0022)
+
+New content goes into a **stage**, never the install:
+`tools/uodata_write` writes it, `tools/uopack` feeds it from PNGs, and the
+`/uo-data` skill runs the whole flow.
+
+**The stage folder** (`build/uodata/<pack>/`, gitignored: it holds copies of
+proprietary files):
+
+| File | Contents |
+|---|---|
+| `<install file>` | A copy of each file written to, made on first write. Only these. |
+| `stage.json` | `format`, `install` (path read from), `files {lowercase name: {sha1, size}}` of each original at copy time |
+| `guo_data.json` | The custom-data manifest (§15): `mode` layered, `files` the staged copies, `contains_ea_data` true (local only). Set `UO_CUSTOM_DATA` to the stage to play with it |
+| `files_override.txt` | `name=<absolute staged path>` per staged file, for the client's `settings.json` `files_override` |
+| `slots.json` | `format`, `packs {pack: {ranges {ns: [[first, last]...]}, used {ns: {what: id}}}}`; `ns` is `static`, `anim`, `gump` or `multi` |
+| `multis.json` | (written by `tools/multi write`) `{name: {id, doors, size, storeys}}` per authored multi, what `prove` places |
+| `dreadcrest.json` | (the Dreadcrest run only) `item`, `body`, `gumps` |
+
+**The range policy** (`tools/uodata_write/ranges.json`, or a maintainer's
+file of the same shape in `--ranges` / `UO_DATA_RANGES`):
+
+| Field | Meaning |
+|---|---|
+| `never {ns: [[first, last]...]}` | Ids never handed out. A maintainer's lists are added to the default's. |
+| `packs {pack: {ns: [first, last]}}` | A pack's fixed range. A maintainer's entry replaces the default's for that namespace. Refused, not trimmed, if any id in it is not free. |
+
+**Asset records** (`tools/guo/uorecord.py`, between uopack and the writers):
+`AssetRecord(kind, id, data, meta)`.
+
+| `kind` | `data` | `meta` |
+|---|---|---|
+| `static`, `land` | The art entry as stored. A static keeps its 4-byte header as read, which is not always 0. A UOP land entry is 2048 bytes: 1,012 pixels plus 24 bytes of padding, kept. | |
+| `gump` | `uint32 width, uint32 height`, then the rows (the UOP layout; flag 0 uncompressed) | `width`, `height` |
+| `anim` | One direction's frame group as `anim.mul` stores it | `action`, `direction` |
+| `tiledata-item` | empty | Any of `flags weight layer count anim hue light height name`; the rest keep their value |
+| `hue` | One 88-byte hue entry | |
+| `multi` | The `MultiCollection.uop` record: `uint32 id, int32 count`, then per component `uint16 item, int16 x, y, z, uint16 flags` (0 shown, 1 hidden), `uint32 0` (no cliloc list). Ids stay below 0x4000, which the shard masks to | |
+
+**Writes** (all append-only except the in-place records):
+
+- **LegacyMUL UOP.** The data is appended, then one new block
+  (`int32 count, int64 next = 0`, then `count` × 34-byte entries:
+  `int64 offset, int32 header_len 0, int32 size, int32 decompressed size,
+  uint64 hash, uint32 adler 0, int16 flag 0`). The previous last block's
+  `next` field (at +4) is set to it, and the header's file count at offset 24
+  is increased. Names: art `build/artlegacymul/{id:08d}.tga` (a static's index
+  is 0x4000 + id), gumps `build/gumpartlegacymul/{id:08d}.tga`.
+- **MUL + IDX.** The data is appended to the `.mul`; the 12-byte `.idx` entry
+  `int32 offset, int32 length, int32 extra` is written at `index × 12`.
+- **anim.idx index.** For a body below 200: `body × 110`. Below 400:
+  `22000 + (body − 200) × 65`. Otherwise `35000 + (body − 400) × 175`. Add
+  `action × 5 + direction`.
+- **tiledata.mul (new format).** 512 land groups of `4 + 32 × 30` bytes, then
+  static groups of `4 + 32 × 41`. An item's 41 bytes are
+  `uint64 flags, u8 weight, u8 layer, int32 count, u16 anim, u16 hue,
+  u16 light, u8 height, char[20] name`, written in place.
+- **Paperdoll gumps** of a wearable with animation body `b`: male
+  `50000 + b`, female `60000 + b`.
+- **Multis.** A new `MultiCollection.uop` entry `build/multicollection/{id:06d}.bin`
+  (uncompressed). On an install without the UOP, `multi.mul` gets the
+  components as 16-byte records (`uint16 item, int16 x, y, z, uint32 flags`
+  1 shown / 0 hidden, `uint32 0`) and `multi.idx` is grown to hold the id. The
+  `multi` pack's range is 0x3F00-0x3FFF.
+
+---
+
+## 15. Client data sources and the custom-data manifest (ADR-0021)
+
+Which data a run reads is resolved in this order:
+
+1. a custom data folder;
+2. the UO install (the environment, then the saved setting, then the
+   platform default);
+3. the first-run wizard.
+
+`tools/guo/datasources.py` is the tools' half and the runtime must match
+it. A folder is **valid** when every required `FILE_REGISTRY` entry is
+satisfied under the rules of §3.
+
+**Settings**
+
+| Key | Where | Meaning |
+|---|---|---|
+| `UO_CUSTOM_DATA` | environment, `config.local.bat`, central config; the client also reads `--custom-data` and a `guo_data/` folder beside its executable | A custom data folder (needs a manifest) |
+| `UO_CLIENT_DATA` | environment, then `config.local.bat` or the central config; the client: `--client-data`, then the environment, then `settings.json` `ultimaonlinedirectory` | The UO install. The first one set is the only one tried |
+| `UO_DATA_SOURCE` | set by `play.bat` for the client | `install`, `install+custom`, `custom` or `wizard` |
+| `UO_FILES_OVERRIDE` | set by `play.bat` | A layered folder's override file, passed as `--files-override` |
+
+**Exit code 3** from a tool means "no valid data: run the first-run wizard".
+It is not a failure.
+
+**`guo_data.json`** (at the root of the custom folder):
+
+| Field | Meaning |
+|---|---|
+| `format` | `"guo/data-folder@1"` |
+| `name` | A short name for the pack |
+| `mode` | `"complete"`: a whole data set, valid on its own. `"layered"`: files that replace single install files |
+| `files` | `{file name: {...}}`. Each is a plain file name in the folder (no paths) that must exist. For `layered`, the name is the install file it replaces, matched case-insensitively. The value may hold `sha1`, `size` and `replaces` |
+| `contains_ea_data` | **Required**, true or false. `true` (a staged set, anything made from the user's install) is local only; release and publishing tools refuse it |
+| `license`, `source` | Where the content comes from and under what terms. Required for a pack that is shipped or published |
+| `client_version` | Optional: the client version the pack was made against |
+
+A layered folder reaches the client as upstream's `files_override` file:
+one `name=absolute path` line per file, lowercase names. Launchers write it
+to `build/datasources/files_override.txt`, so a pack itself never carries an
+absolute path. A staged set (§14) writes its own manifest with `mode:
+layered` and `contains_ea_data: true`.
+
+---
+
+## 16. Multi descriptions and the multi catalogue (tools/multi)
+
+A multi (a house, keep, castle or boat) is a list of components
+`(item, x, y, z, shown)` around a centre. `tools/multi` authors new ones:
+it mines the client's own buildings into a catalogue, expands a readable
+**description** into components, validates them, writes them into a stage
+(section 14) and proves them on the private shard. The `/uo-multi` skill
+runs the flow.
+
+**The catalogue** (`build/multi/catalogue/`, gitignored: derived from
+client data, so never committed), written by `run.py mine`:
+
+| File | Contents |
+|---|---|
+| `multis.json` | Per client multi: `id`, `kind` (`one-storey`, `two-storey`, `large-house`, `castle-or-keep`, `boat`, `open`, `marker`), `bounds`, `size`, `components`, `roles` (count per role), `storeys` (floor z levels), `storey_steps`, `wall_height`, `wall_materials`, `floor_materials`, `roof` (`z_from`, `z_to`, `step`, `above_top_storey`), `stairs` (runs, as in `stairs.json`), `doors` `[x, y, z, item, shown]`, `markers` (hidden components) |
+| `families.json` | What generators pick from, most used first: `material → wall/window/post → height → signature → [ids]`, `material → roof → side → [ids]`, `material → stair → "ascent/signature" → [ids]`, `material → floor → signature → [ids]`, `material → door → any → [ids]` |
+| `pieces.json` | Per item id: `name`, `flags`, `height`, `role`, `material`, `signature`, `roof_side`, `step`, `uses_multi`, `uses_statics`, `multis`, `in` (multi ids that use it), `z_above_floor` |
+| `stairs.json` | Every stair run: `items`, `tiles`, `z_from`, `z_to`, `rise` (z per step), `direction`, `from_storey`, `to_storey`, `cells`, `source` |
+| `buildings.json` | Clusters of wall statics on a facet (west of the dungeons), each analysed like a multi, plus `furnishing` (item → count) |
+| `furnishing.json` | Per furnishing item: `placed`, `against_wall` and `on_surface` (fractions), `with` (the items most often in the same building) |
+| `summary.json` | Counts: multis by kind, statics and buildings scanned, `storey_steps`, `stair_rise`, `ground_floor_z` |
+
+Terms:
+
+- A **role** is `wall`, `window`, `post`, `door`, `floor`, `stair`, `roof`,
+  `deco` or `marker` (a hidden component), read from tiledata flags.
+- A **material** is the tile name without its role word. Walls, windows,
+  posts and doors take the wall material of the level they stand in, because
+  some tile names are unreliable.
+- A **signature** is which of `N` (y − 1), `E` (x + 1), `S` (y + 1) and
+  `W` (x − 1) hold the same kind of piece at the same z (`-` for none).
+- A roof **side** is the side a slope faces (`N`, `E`, `S`, `W`, or a corner
+  such as `NW`), or `ridge_x`/`ridge_y` along the top, or `cap`.
+- A step's **ascent** is the side the next higher surface is on.
+
+**A description** (`format` 1; e.g. `tools/multi/examples/cottage.json`):
+
+| Field | Meaning |
+|---|---|
+| `name` | The multi's name in the stage |
+| `size` `[W, H]` | Outer walls on the lines x = 0, x = W, y = 0 and y = H. The floor fills x 1..W, y 1..H, as the client's houses do |
+| `materials` | Required: `wall`, `floor`. Optional: `foundation` (a 5-high ring at `floor_z − 7`), `steps` (outside each ground-floor door), `roof`, `door` (`wood` or `metal`) |
+| `floor_z` | The ground floor's z (default 7, the originals' usual value) |
+| `storey_height` | z between storeys (default 20); `wall_height` defaults to one less |
+| `storeys[]` | Per storey, bottom up: `openings[]` (`kind` `door` or `window`, placed by `side` `N`/`E`/`S`/`W` with an `offset` along it, or by `at` `[x, y]`), `partitions[]` (inner walls: `{"x": k, "from", "to"}` or `{"y": k, ...}`), `floor_holes[]` (`[x, y]` left open, for stairwells) |
+| `roof` | `style` `gable` with `ridge` `x` or `y`. It covers x 1..W+1 and y 1..H+1 and rises 3 z a course, with gable-end fill (the wall material, 3 high) on the south or east end. The span across the ridge must be odd: W even for a ridge along y, H even for a ridge along x |
+
+**A built multi** (`build/multi/built/<name>/`, from `run.py build`):
+
+- `components.json`: `[item, x, y, z]` per component, with a fifth element
+  `0` when hidden, centred on `(W // 2, H // 2)`.
+- `multi.json`: `name`, `size`, `centre`, `storeys` (z), `roof_z`, `doors`,
+  `components`, `valid`, `problems`, `multi_id` (once written), and `local`
+  (the grid per storey, for the validator).
+  - Each door has `x` and `y` from the centre, `z`, `storey`, `facing` and
+    `type`.
+  - `facing` is ModernUO's `DoorFacing`: `WestCW` in a wall along x,
+    `SouthCW` in a wall along y.
+  - `type` is `DarkWoodDoor` or `MetalDoor`: plain doors with the house
+    doors' art. A `BaseHouseDoor` refuses everyone outside a real `BaseHouse`.
+- `preview.png`, `preview_noroof.png` and `plan_<n>.png`.
+
+**The validator** refuses:
+
+- an item missing from tiledata, or one with no art;
+- a z outside −128..127;
+- more than 4,676 components (the shard reads an entry into 64 KB);
+- a ground floor the outside reaches with the doors shut (a gap in a wall);
+- a floor cell not reachable through a door (ground floor) or from a stair
+  (upper storeys);
+- a multi with no door.

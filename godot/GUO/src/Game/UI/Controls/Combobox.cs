@@ -125,32 +125,38 @@ namespace GUO.Game.UI.Controls
                 return;
             }
 
-            int comboY = ScreenCoordinateY + Offset.Y;
+            // PORT DEVIATION (GUO): in a gump drawn scaled (GumpPresentation,
+            // Options on touch), the list opens where the box is drawn and at
+            // its scale; unscaled it is upstream's arithmetic unchanged.
+            float scale = GUO.Input.Touch.GumpPresentation.Scale(this);
+            GUO.Compat.Point drawn = GUO.Input.Touch.GumpPresentation.ToScreen(this, new GUO.Compat.Point(ScreenCoordinateX, ScreenCoordinateY + Offset.Y));
+            int comboY = drawn.Y;
+            int listHeight = (int)(_maxHeight * scale);
 
             if (comboY < 0)
             {
                 comboY = 0;
             }
-            else if (comboY + _maxHeight > Client.Game.ClientBounds.Height)
+            else if (comboY + listHeight > Client.Game.ClientBounds.Height)
             {
-                comboY = Client.Game.ClientBounds.Height - _maxHeight;
+                comboY = Client.Game.ClientBounds.Height - listHeight;
             }
 
-            UIManager.Add
+            var list = new ComboboxGump
             (
-                new ComboboxGump
-                (
-                    // might crash
-                    (RootParent as Gump).World,
-                    ScreenCoordinateX,
-                    comboY,
-                    Width,
-                    _maxHeight,
-                    _items,
-                    _font,
-                    this
-                )
+                // might crash
+                (RootParent as Gump).World,
+                drawn.X,
+                comboY,
+                Width,
+                _maxHeight,
+                _items,
+                _font,
+                this
             );
+
+            GUO.Input.Touch.GumpPresentation.Follow(list, this);
+            UIManager.Add(list);
 
             base.OnMouseUp(x, y, button);
         }
