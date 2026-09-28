@@ -49,3 +49,29 @@ touched), one export, one Odin run inside a heavy-job slot. Rows 6–8 add
 about half a day, and only on a keep. The Odin is a
 single screen, so the Thor's dual-screen path (`DualScreen.ShelfOn`) stays out
 of scope.
+
+## Result — Odin 2 Mini, 2026-09-28
+
+One run, rows 1–5 (`launchers\android\portrait_probe.bat`). Photos and the
+table: `build/android/portrait/`.
+
+| # | Measure | Landscape | Portrait | |
+|---|---|---|---|---|
+| 1 | the rotation | — | flipped in 95 ms, one resize, atlases intact | ok |
+| 2 | the login gump | fits, 640x480 in 960x540 at 2x | fits in size (640x480 in 719x1279 at 1.5x) but keeps its landscape place, off the right edge | ok (a fix: centre on resize) |
+| 3 | world tiles, across x down | 15.3 x 8.6 | 11.5 x 20.4 | ok |
+| 4 | command bar slot, w x h | 13.2 x 7 mm, three rows 28 % | 7.4 x 2.3 mm, three rows 5 % | **KILL** |
+| 5 | scale to fit the width | paperdoll 3.66, backpack 3.40, Modern Options 1.03, Modern Skills 1.36 | paperdoll 2.74, backpack 2.55, Modern Options 1.04, Modern Skills 1.04 | ok |
+
+**Verdict: kill, by the rule set before the run.** Row 4 trips it: ten
+slots across 1080 px leave a 108 px cell, the bar's art scale is chosen
+from the cell's width (`TouchGumpBar.ComputeLayout`, 64 px per step), so it
+drops to 1x and a plate is 2.3 mm tall — the labels overlap and a thumb
+cannot hit one. Everything else held: the rotation is a plain resize, the
+world is playable (and shows twice as far north-south), and the everyday
+gumps fit.
+
+What reversing it would take, if the owner wants portrait anyway: a portrait
+command bar (five slots a row, or an art scale from the screen's height),
+and the pre-game gumps re-centred on a resize. Rows 6–8 (saved positions,
+the IME, the pad) were not run, as agreed for a kill.
