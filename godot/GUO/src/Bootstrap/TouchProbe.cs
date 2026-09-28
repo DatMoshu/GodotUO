@@ -1126,6 +1126,11 @@ internal static class TouchProbe
         // A colour: Change, shade 3, the first cell, Use this colour.
         await TapClient(host, view.CentreOf(view.Find("Speech colour")));
         bool picking = view.HuePicker.Visible;
+        await Frames(host, 2);
+        int litWanted = speechHue >= 2 ? (speechHue + 3) % Input.Touch.Modern.ModernHuePicker.Shades : 0;
+        Check("the colour picker lights the current hue's shade, and Use this colour sits above the grid (no scroll to confirm)",
+            view.HuePicker.LitShade == litWanted && view.HuePicker.UseAboveGrid,
+            $"lit shade {view.HuePicker.LitShade + 1} (wanted {litWanted + 1}), use above grid {view.HuePicker.UseAboveGrid}");
         await TapClient(host, view.CentreOf(view.Find("Shade 3")));
         await TapClient(host, view.CentreOf(view.Find("hue cell 0")));
         await TapClient(host, view.CentreOf(view.Find("Use this colour")));

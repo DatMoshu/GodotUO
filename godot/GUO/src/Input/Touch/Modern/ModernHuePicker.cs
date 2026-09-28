@@ -8,6 +8,10 @@ namespace GUO.Input.Touch.Modern;
 /// Modern Options' colour picker: the classic ColorPickerGump's palette as
 /// finger-sized cells. 20 × 10 hues, five shades as plates for the classic's
 /// slider, a preview of the chosen hue, then "Use this colour" or Back.
+/// The header row holds Back, the preview and "Use this colour", above the
+/// grid, so a phone never scrolls to confirm (the grid is taller than a
+/// 1080p card at 3x). The current shade is lit: the style guide's selected
+/// plate (86%, Heading caption) with a gold bar under it.
 /// </summary>
 /// <remarks>
 /// PORT DEVIATION (GUO): not in ClassicUO. The palette is ColorPickerBox's own
@@ -20,8 +24,9 @@ internal sealed partial class ModernHuePicker : VBoxContainer
     public const int Columns = 20, Rows = 10, Shades = 5;
     private const int CellHeight = 22;
 
-    private readonly Label _title;
     private readonly Label _number;
+    private readonly Button _use;
+    private readonly ColorRect[] _lit = new ColorRect[Shades];
     private readonly ColorRect _preview;
     private readonly GridContainer _grid;
     private readonly Button[] _shades = new Button[Shades];
@@ -42,15 +47,24 @@ internal sealed partial class ModernHuePicker : VBoxContainer
         Button back = Tagged(UoTheme.Button("‹ Back", 60), "hue back");
         back.Pressed += () => _back?.Invoke();
         head.AddChild(back);
-        _title = UoTheme.Label("", UoTheme.Gold);
-        _title.SizeFlagsHorizontal = SizeFlags.ExpandFill;
-        _title.ClipText = true;
-        head.AddChild(_title);
-        _preview = new ColorRect { CustomMinimumSize = new Vector2(40, 18), SizeFlagsVertical = SizeFlags.ShrinkCenter };
-        head.AddChild(_preview);
+        // The page title above already names the setting; the row is for acting.
+        head.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill });
+        var frame = new PanelContainer { SizeFlagsVertical = SizeFlags.ShrinkCenter };
+        var edge = new StyleBoxFlat { BgColor = Colors.Transparent, BorderColor = UoTheme.Cream };
+        edge.SetBorderWidthAll(1);
+        frame.AddThemeStyleboxOverride("panel", edge);
+        _preview = new ColorRect { CustomMinimumSize = new Vector2(40, 16) };
+        frame.AddChild(_preview);
+        head.AddChild(frame);
         _number = UoTheme.Label("", text);
-        _number.CustomMinimumSize = new Vector2(44, 0);
+        _number.CustomMinimumSize = new Vector2(40, 0);
         head.AddChild(_number);
+        // The primary action, captioned in Heading as the style guide's primary is.
+        _use = Tagged(UoTheme.Button("Use this colour", 120), "Use this colour");
+        _use.AddThemeColorOverride("font_color", UoTheme.Heading);
+        _use.SizeFlagsVertical = SizeFlags.ShrinkCenter;
+        _use.Pressed += () => _chosen?.Invoke(_hue);
+        head.AddChild(_use);
 
         var shades = new HBoxContainer();
         shades.AddThemeConstantOverride("separation", 4);
@@ -60,10 +74,17 @@ internal sealed partial class ModernHuePicker : VBoxContainer
         for (int g = 0; g < Shades; g++)
         {
             int shade = g;
+            var holder = new VBoxContainer();
+            holder.AddThemeConstantOverride("separation", 1);
             Button b = Tagged(UoTheme.Button((g + 1).ToString(), 34), $"Shade {g + 1}");
             b.Pressed += () => SetShade(shade);
-            shades.AddChild(b);
+            holder.AddChild(b);
+            // Lit: a gold bar under the current shade (gold means lit on the dark band).
+            var lit = new ColorRect { Color = UoTheme.Gold, CustomMinimumSize = new Vector2(0, 2) };
+            holder.AddChild(lit);
+            shades.AddChild(holder);
             _shades[g] = b;
+            _lit[g] = lit;
         }
 
         _grid = new GridContainer { Columns = Columns, SizeFlagsHorizontal = SizeFlags.ExpandFill };
@@ -80,11 +101,6 @@ internal sealed partial class ModernHuePicker : VBoxContainer
             _grid.AddChild(b);
             _cells[k] = b;
         }
-
-        Button use = Tagged(UoTheme.Button("Use this colour", 120), "Use this colour");
-        use.SizeFlagsHorizontal = SizeFlags.ShrinkBegin;
-        use.Pressed += () => _chosen?.Invoke(_hue);
-        AddChild(use);
     }
 
     private static Button Tagged(Button b, string tag)
@@ -113,7 +129,6 @@ internal sealed partial class ModernHuePicker : VBoxContainer
     /// <summary>Opens on <paramref name="current"/>, at its shade.</summary>
     public void Open(string title, ushort current, Action<ushort> chosen, Action back)
     {
-        _title.Text = title;
         _chosen = chosen;
         _back = back;
         _shade = current >= 2 ? (current + 3) % Shades : 0;
@@ -127,7 +142,10 @@ internal sealed partial class ModernHuePicker : VBoxContainer
 
         for (int i = 0; i < Shades; i++)
         {
-            _shades[i].AddThemeStyleboxOverride("normal", UoTheme.Plate(i == g ? UoTheme.SelectedShade : 1f));
+            bool on = i == g;
+            _shades[i].AddThemeStyleboxOverride("normal", UoTheme.Plate(on ? UoTheme.SelectedShade : 1f));
+            _shades[i].AddThemeColorOverride("font_color", on ? UoTheme.Heading : UoTheme.Ink);
+            _lit[i].Color = on ? UoTheme.Gold : Colors.Transparent;
         }
 
         for (int k = 0; k < _cells.Length; k++)
@@ -167,4 +185,10 @@ internal sealed partial class ModernHuePicker : VBoxContainer
 
     /// <summary>For the probe: the hue selected now.</summary>
     public ushort Selected => _hue;
+
+    /// <summary>For the probe: the shade lit now (0-based).</summary>
+    public int LitShade => _shade;
+
+    /// <summary>For the probe: "Use this colour" sits above the grid, so it needs no scroll.</summary>
+    public bool UseAboveGrid => _use.GetGlobalRect().End.Y <= _grid.GetGlobalRect().Position.Y;
 }
