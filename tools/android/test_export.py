@@ -5,7 +5,10 @@ from pathlib import Path
 
 import os
 
-from run import BUILD_FAILED, apk_path, export_failure, export_problem
+import subprocess
+import sys
+
+from run import BUILD_FAILED, apk_path, export_done, export_failure, export_problem, wait_for_export
 
 
 class ExportProblemTests(unittest.TestCase):
@@ -55,6 +58,46 @@ class ApkPathTests(unittest.TestCase):
     def test_any_other_failure_names_the_path(self):
         apk = Path("C:/somewhere/x.apk")
         self.assertIn(str(apk), export_failure(1, "", apk))
+
+
+class ExportHangTests(unittest.TestCase):
+    # The line as Godot 4.7.2 writes it, console colours and all.
+    DONE = "\x1b[92m[ DONE ]\x1b[39m \x1b[1mexport\x1b[22m\x1b[39m\x1b[0m\n"
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.log = Path(self.temp.name) / "export.log"
+
+    def sleeper(self, seconds):
+        proc = subprocess.Popen([sys.executable, "-c", f"import time; time.sleep({seconds})"])
+        self.addCleanup(lambda: proc.poll() is None and proc.kill())
+        return proc
+
+    def test_done_is_found_through_the_colours(self):
+        self.assertTrue(export_done("[  99% ] export | Verifying APK...\n" + self.DONE))
+        self.assertFalse(export_done("[  99% ] export | Verifying APK...\n"))
+
+    def test_a_godot_that_exits_is_waited_for(self):
+        self.log.write_text("", encoding="utf-8")
+        code, stopped = wait_for_export(self.sleeper(0), self.log, grace=5, limit=30, poll=0.05)
+        self.assertEqual((code, stopped), (0, None))
+
+    def test_a_godot_that_hangs_after_done_is_stopped(self):
+        self.log.write_text(self.DONE, encoding="utf-8")
+        proc = self.sleeper(60)
+        code, stopped = wait_for_export(proc, self.log, grace=0.2, limit=30, poll=0.05)
+        self.assertIsNone(code)
+        self.assertIn("DONE", stopped)
+        self.assertIsNotNone(proc.poll())
+
+    def test_a_godot_that_never_finishes_is_stopped_at_the_limit(self):
+        self.log.write_text("", encoding="utf-8")
+        proc = self.sleeper(60)
+        code, stopped = wait_for_export(proc, self.log, grace=5, limit=0.3, poll=0.05)
+        self.assertIsNone(code)
+        self.assertIn("had not exited", stopped)
+        self.assertIsNotNone(proc.poll())
 
 
 if __name__ == "__main__":
