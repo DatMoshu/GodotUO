@@ -115,7 +115,6 @@ internal sealed partial class ModernAbilities : ModernGump
         Label hint = UoTheme.Label("Tap to use, hold to place a button.", UoTheme.Muted);
         hint.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         hint.ClipText = true;
-        hint.TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis;
         header.AddChild(hint);
         Button classic = UoTheme.Button("Classic view", 90);
         classic.Pressed += OpenClassic;
@@ -250,15 +249,64 @@ internal sealed partial class ModernAbilities : ModernGump
     {
         if (about != null)
         {
+            if (!about.HasMeta("full"))
+            {
+                about.SetMeta("full", about.Text);
+                about.Resized += () => FitLine(about);
+            }
+
+            about.SetMeta("folded", folded);
             about.AutowrapMode = folded ? TextServer.AutowrapMode.Off : TextServer.AutowrapMode.WordSmart;
             about.ClipText = folded;
-            about.TextOverrunBehavior = folded ? TextServer.OverrunBehavior.TrimEllipsis : TextServer.OverrunBehavior.NoTrimming;
+            FitLine(about);
         }
 
         if (weapons != null)
         {
             weapons.Visible = !folded;
         }
+    }
+
+    /// <summary>
+    /// A folded row's text, cut at a word to its width with "..." after it.
+    /// Done here, not by the label's own trimming: its ellipsis is one
+    /// character, and the UO font has no "…" (a lone "." reads as the
+    /// sentence's end).
+    /// </summary>
+    private static void FitLine(Label label)
+    {
+        string full = (string)label.GetMeta("full", "");
+
+        if (!(bool)label.GetMeta("folded", false) || label.Size.X <= 0)
+        {
+            label.Text = full;
+            return;
+        }
+
+        Font font = label.GetThemeFont("font");
+        int size = label.GetThemeFontSize("font_size");
+
+        if (font.GetStringSize(full, HorizontalAlignment.Left, -1, size).X <= label.Size.X)
+        {
+            label.Text = full;
+            return;
+        }
+
+        string[] words = full.Split(' ');
+        string fit = "";
+
+        for (int n = words.Length - 1; n > 0; n--)
+        {
+            string cut = string.Join(" ", words, 0, n).TrimEnd(',', '.', ';', ':') + "...";
+
+            if (font.GetStringSize(cut, HorizontalAlignment.Left, -1, size).X <= label.Size.X)
+            {
+                fit = cut;
+                break;
+            }
+        }
+
+        label.Text = fit;
     }
 
     protected override void Refresh()
