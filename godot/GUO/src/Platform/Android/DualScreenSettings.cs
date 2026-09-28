@@ -12,7 +12,7 @@ namespace GUO.Platform.Android
     /// <summary>
     /// The second screen's settings as the running client sees them: which
     /// gumps the shelf takes, the shelf's pixel scale, and whether the
-    /// shelf is used at all. Read and written by the welcome panel on the
+    /// shelf is used at all. Read and written by the pre-game card on the
     /// second screen, by Options, and by <see cref="DualScreen"/> each frame.
     /// </summary>
     /// <remarks>

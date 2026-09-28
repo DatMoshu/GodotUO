@@ -965,8 +965,8 @@ namespace GUO.Game.UI.Gumps
             );
 
             // PORT DEVIATION (GUO): the second screen, where there is one.
-            // The same settings the welcome panel on that screen offers
-            // (DualWelcomeGump); DualScreen applies them live.
+            // The same settings the pre-game card on that screen offers
+            // (PregameCard); DualScreen applies them live.
             if (GUO.Platform.Android.DualScreen.HasSecondaryDisplay)
             {
                 section3.Add

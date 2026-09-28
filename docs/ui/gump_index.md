@@ -77,7 +77,7 @@ The measurements behind the risk column are in `tall_gumps.md`.
 | Ignore list (IgnoreManagerGump), user markers (UserMarkersGump) | ≤ 320 × 220 | |
 | Location go (LocationGoGump), quest arrow, tip notice, name overhead, network stats, debug, credits, menu (MenuGump) | small | MenuGump's large constant is a scroll height, not its size |
 | Login: login, server select, character select, loading (LoginGump, ServerSelectionGump, CharacterSelectionGump, LoadingGump) | ≤ 451 × 343 | Centred for touch already |
-| GUO's own: the top bar (TopBarGump), the world view (WorldViewportGump), DualWelcomeGump, GumpLayoutGump | – | Not gumps a player opens |
+| GUO's own: the top bar (TopBarGump), the world view (WorldViewportGump), GumpLayoutGump (the second screen's pre-game card is a Godot card, not a gump) | – | Not gumps a player opens |
 
 ## Tonight (the owner's night task)
 

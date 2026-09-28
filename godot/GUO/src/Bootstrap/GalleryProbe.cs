@@ -117,6 +117,17 @@ internal static class GalleryProbe
             WindowMenu.Open(paperdoll);
             await InputProbe.Wait(host, 30);
             await Save(host, "window_menu");
+
+            // The same with a pad's button last (ADR-0025): the prompt row and
+            // the bar tab's badge show the pad's glyphs; then back to touch.
+            string layoutWas = profile.GamepadLayout;
+            profile.GamepadLayout = "labels";
+            Input.InputMode.Note(new InputEventJoypadButton { Device = 0, ButtonIndex = JoyButton.A, Pressed = true });
+            await InputProbe.Wait(host, 10);
+            await Save(host, "window_menu_pad");
+            Input.InputMode.Switch(Input.InputKind.Touch);
+            profile.GamepadLayout = layoutWas;
+            await InputProbe.Wait(host, 5);
             WindowMenu.Close();
             await InputProbe.Wait(host, 5);
 
