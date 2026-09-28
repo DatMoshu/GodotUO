@@ -5164,6 +5164,11 @@ namespace GUO.Game.UI.Gumps
                 _databox.WantUpdateSize = true;
             }
 
+            // PORT DEVIATION (GUO): on touch, rows are further apart, so a
+            // finger on the fitted Options (C11) hits the row it means; the
+            // desktop keeps upstream's 2.
+            private static int RowGap => GUO.Input.Touch.TouchInput.Enabled ? 8 : 2;
+
             public override T Add<T>(T c, int page = 0)
             {
                 int i = _databox.Children.Count - 1;
@@ -5173,9 +5178,9 @@ namespace GUO.Game.UI.Gumps
                 {
                     if (_databox.Children[i].IsVisible)
                     {
-                        if (bottom == 0 || bottom < _databox.Children[i].Bounds.Bottom + 2)
+                        if (bottom == 0 || bottom < _databox.Children[i].Bounds.Bottom + RowGap)
                         {
-                            bottom = _databox.Children[i].Bounds.Bottom + 2;
+                            bottom = _databox.Children[i].Bounds.Bottom + RowGap;
                         }
                         else
                         {
@@ -5190,7 +5195,7 @@ namespace GUO.Game.UI.Gumps
                 _databox.Add(c, page);
                 _databox.WantUpdateSize = true;
 
-                Height += c.Height + 2;
+                Height += c.Height + RowGap;
 
                 return c;
             }

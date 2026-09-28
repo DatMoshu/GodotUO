@@ -107,6 +107,7 @@ internal static class TouchProbe
         await BarHoldCheck(host, world);
         await FlickCheck(host, world);
         await OptionsTouchCheck(host, world);
+        await MobileOptionsCheck(host, world);
         // The long press is checked with hold-and-flick off, the way a player
         // who set every direction to "Do nothing" has it.
         {
@@ -828,6 +829,169 @@ internal static class TouchProbe
     /// vertical swipe inside a scroll area (the Options pages) scrolls it
     /// instead of dragging the gump.
     /// </summary>
+    /// <summary>
+    /// Options on touch (C11): it opens fitted to the screen, over the command
+    /// bar (which steps aside), with its button row on screen; a tap toggles a
+    /// check box; a combo box's list opens where the box is drawn, at its
+    /// scale; a page tab switches the page; Okay closes it and the bar is back.
+    /// </summary>
+    private static async System.Threading.Tasks.Task MobileOptionsCheck(Node host, Game.World world)
+    {
+        UIManager.GetGump<OptionsGump>()?.Dispose();
+        await Frames(host, 5);
+        Game.GameActions.OpenSettings(world);
+        await Frames(host, 30);
+        OptionsGump options = UIManager.GetGump<OptionsGump>();
+        TouchGumpBar bar = TouchInput.Bar;
+
+        if (options == null || bar == null)
+        {
+            Check("mobile Options", false, "no Options or no bar");
+            return;
+        }
+
+        Compat.Rectangle screen = GUO.Client.Game.ClientBounds;
+        Compat.Rectangle drawn = GumpPresentation.Bounds(options);
+        Check("Options opens fitted to the screen, over the command bar, its button row on screen",
+            options.PresentationScale > 1.2f && bar.Covered && bar.ReservedFraction == 0f
+                && drawn.Bottom <= screen.Height && drawn.Right <= screen.Width,
+            $"scale {options.PresentationScale:0.00}, at {drawn}, screen {screen.Width}x{screen.Height}, bar covered {bar.Covered}");
+
+        // A tap on the first check box in view toggles it; a second puts it back.
+        Game.UI.Controls.Checkbox box = First<Game.UI.Controls.Checkbox>(options);
+        bool toggled = false;
+
+        if (box != null)
+        {
+            bool was = box.IsChecked;
+            await Tap(host, DrawnCentre(box));
+            await Frames(host, 5);
+            toggled = box.IsChecked != was;
+            await Tap(host, DrawnCentre(box));
+            await Frames(host, 5);
+            toggled &= box.IsChecked == was;
+        }
+
+        Check("a tap on a check box in the fitted Options toggles it", toggled, box == null ? "no check box" : box.Text);
+
+        // A combo box: its list opens at the box, drawn at the same scale.
+        Game.UI.Controls.Combobox combo = First<Game.UI.Controls.Combobox>(options);
+        bool listOk = false;
+        string listDetail = "no combo box";
+
+        if (combo != null)
+        {
+            Vector2 at = DrawnCentre(combo);
+            await Tap(host, at);
+            await Frames(host, 10);
+            Gump list = null;
+
+            foreach (Gump g in UIManager.Gumps)
+            {
+                if (g.GetType().Name == "ComboboxGump" && !g.IsDisposed) list = g;
+            }
+
+            Compat.Point boxAt = GumpPresentation.ToScreen(combo, new Compat.Point(combo.ScreenCoordinateX, combo.ScreenCoordinateY));
+            listOk = list != null && System.Math.Abs(list.X - boxAt.X) <= 2 && Mathf.IsEqualApprox(list.PresentationScale, options.PresentationScale);
+            listDetail = list == null ? "no list" : $"list at {list.X},{list.Y} x{list.PresentationScale:0.00}, box at {boxAt.X},{boxAt.Y}";
+            list?.Dispose();
+            await Frames(host, 5);
+        }
+
+        Check("a combo box in the fitted Options opens its list at the box, at its scale", listOk, listDetail);
+
+        // The Sound page's tab.
+        Game.UI.Controls.NiceButton sound = null;
+
+        foreach (Game.UI.Controls.Control c in options.Children)
+        {
+            if (c is Game.UI.Controls.NiceButton nb && nb.ButtonParameter == 2 && nb.X == 10) sound = nb; // the page column: Sound is page 2
+        }
+
+        if (sound != null)
+        {
+            await Tap(host, DrawnCentre(sound));
+            await Frames(host, 5);
+        }
+
+        Check("a tap on a page tab in the fitted Options switches the page", options.ActivePage == 2, $"page {options.ActivePage}");
+
+        // A slider on that page follows the finger across the scaled gump.
+        Game.UI.Controls.HSliderBar slider = First<Game.UI.Controls.HSliderBar>(options);
+        string sliderDetail = "no slider";
+        bool slid = false;
+
+        if (slider != null)
+        {
+            int kept = slider.Value;
+            // From the thumb's end to the bar's middle: about half.
+            int y = slider.ScreenCoordinateY + slider.Height / 2;
+            Compat.Point from = GumpPresentation.ToScreen(slider, new Compat.Point(slider.ScreenCoordinateX + slider.Width - 4, y));
+            Compat.Point mid = GumpPresentation.ToScreen(slider, new Compat.Point(slider.ScreenCoordinateX + slider.Width / 2, y));
+            await Swipe(host, Client(new Vector2(from.X, from.Y)), Client(new Vector2(mid.X, mid.Y)), 400);
+            await Frames(host, 5);
+            int half = (slider.MinValue + slider.MaxValue) / 2, slack = (slider.MaxValue - slider.MinValue) / 8;
+            slid = System.Math.Abs(slider.Value - half) <= slack;
+            sliderDetail = $"{kept} -> {slider.Value} of {slider.MinValue}..{slider.MaxValue}";
+            slider.Value = kept;
+        }
+
+        Check("a slider in the fitted Options follows the finger (dragged to the middle: about half)", slid, sliderDetail);
+
+        // Okay: closed, and the bar is back.
+        Game.UI.Controls.Button ok = null;
+
+        foreach (Game.UI.Controls.Control c in options.Children)
+        {
+            if (c is Game.UI.Controls.Button b && b.ButtonID == 4) ok = b;
+        }
+
+        if (ok != null)
+        {
+            await Tap(host, DrawnCentre(ok));
+            await Frames(host, 20);
+        }
+
+        Check("Okay closes the fitted Options and the command bar comes back",
+            (options.IsDisposed || UIManager.GetGump<OptionsGump>() == null) && !bar.Covered && bar.ReservedFraction > 0f,
+            $"disposed {options.IsDisposed}, covered {bar.Covered}");
+    }
+
+    /// <summary>The first control of a type on the gump's open page, drawn inside its scroll area.</summary>
+    private static T First<T>(Gump g) where T : Game.UI.Controls.Control
+    {
+        foreach (Game.UI.Controls.Control top in g.Children)
+        {
+            if (!top.IsVisible || top.Page != 0 && top.Page != g.ActivePage) continue;
+
+            T found = Find<T>(top);
+            if (found != null) return found;
+        }
+
+        return null;
+
+        static T Find<TC>(Game.UI.Controls.Control c) where TC : Game.UI.Controls.Control
+        {
+            if (c is T t && c.IsVisible && c.Width > 0) return t;
+
+            foreach (Game.UI.Controls.Control child in c.Children)
+            {
+                if (!child.IsVisible) continue;
+                T f = Find<TC>(child);
+                if (f != null) return f;
+            }
+
+            return null;
+        }
+    }
+
+    /// <summary>The window position of a control's centre, where its gump draws it.</summary>
+    private static Vector2 DrawnCentre(Game.UI.Controls.Control c)
+    {
+        Compat.Point p = GumpPresentation.ToScreen(c, new Compat.Point(c.ScreenCoordinateX + c.Width / 2, c.ScreenCoordinateY + c.Height / 2));
+        return Client(new Vector2(p.X, p.Y));
+    }
+
     private static async System.Threading.Tasks.Task OptionsTouchCheck(Node host, Game.World world)
     {
         Game.GameActions.OpenSettings(world);
@@ -867,7 +1031,10 @@ internal static class TouchProbe
 
             int before = area.ScrollValue;
             int gx = options.X, gy = options.Y;
-            Vector2 start = Client(new Vector2(area.ScreenCoordinateX + 60, area.ScreenCoordinateY + area.Height * 0.7f));
+            // Where the area is drawn: Options is fitted to the screen on touch (C11).
+            Compat.Point drawn = GumpPresentation.ToScreen(area,
+                new Compat.Point(area.ScreenCoordinateX + 60, area.ScreenCoordinateY + (int)(area.Height * 0.7f)));
+            Vector2 start = Client(new Vector2(drawn.X, drawn.Y));
             TouchInput.Trace.Clear();
             Touch(0, start, true);
             await Frames(host, 2);

@@ -133,6 +133,13 @@ internal static class GalleryProbe
             await Save(host, "editor");
         }
 
+        // Options, as a touch player gets it (C11).
+        Game.GameActions.OpenSettings(world);
+        await InputProbe.Wait(host, 60);
+        await Save(host, "options");
+        UIManager.GetGump<OptionsGump>()?.Dispose();
+        await InputProbe.Wait(host, 10);
+
         Passed = true;
         GD.Print("[GUO] gallery: ok");
     }

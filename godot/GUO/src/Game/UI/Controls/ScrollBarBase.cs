@@ -101,8 +101,12 @@ namespace GUO.Game.UI.Controls
 
             if (_btnSliderClicked)
             {
-                int x = Mouse.Position.X - X - ParentX;
-                int y = Mouse.Position.Y - Y - ParentY;
+                // PORT DEVIATION (GUO): in a gump drawn scaled (GumpPresentation:
+                // Options on touch, a pinched journal), the pointer is taken into
+                // the gump's own space; unscaled this is Mouse.Position unchanged.
+                Point pointer = GUO.Input.Touch.GumpPresentation.ToLocal(this, Mouse.Position);
+                int x = pointer.X - X - ParentX;
+                int y = pointer.Y - Y - ParentY;
 
                 CalculateByPosition(x, y);
             }
