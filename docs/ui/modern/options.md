@@ -107,6 +107,10 @@ tall, and all of it is the target.
 
   The hues and the font pickers on these pages stay in Classic view: they
   need a colour picker and a font preview of their own.
+- **Combat:** ask before a criminal act, or a criminal beneficial one; cast
+  spells by one click; buff bar timers; fast spell assign; colour spells by
+  kind; show DPS with damage. The notoriety and spell hues stay in Classic
+  view.
 - **Containers:** grid view, grid slot size.
 - **Touch:**
   - vibrate when the bar snaps;
@@ -115,7 +119,7 @@ tall, and all of it is the target.
   - "Edit the command bar" (the slot editor).
 
 The pages follow the classic's order. The page column scrolls with a drag
-where nine pages outgrow a short screen.
+where ten pages outgrow a short screen.
 
 **The escape:** "Classic view", pinned at the foot of the page column, opens the
 ported Options, fitted, for everything Modern does not show. A page's

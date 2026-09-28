@@ -50,7 +50,7 @@ internal sealed partial class ModernOptions : ModernGump
         public Action<object> Show; // puts a value into the setting's control
     }
 
-    private static readonly string[] Pages = { "General", "Sound", "Video", "Macros", "Tooltip", "Fonts", "Speech", "Containers", "Touch" };
+    private static readonly string[] Pages = { "General", "Sound", "Video", "Macros", "Tooltip", "Fonts", "Speech", "Combat", "Containers", "Touch" };
 
     private readonly List<Setting> _settings = new();
     private readonly Dictionary<Setting, object> _values = new();
@@ -158,6 +158,15 @@ internal sealed partial class ModernOptions : ModernGump
         Bool("Speech", "Ignore guild messages", p => p.IgnoreGuildMessages, (p, v) => p.IgnoreGuildMessages = v);
         Bool("Speech", "Ignore alliance messages", p => p.IgnoreAllianceMessages, (p, v) => p.IgnoreAllianceMessages = v);
         Bool("Speech", "Party messages overhead", p => p.OverheadPartyMessages, (p, v) => p.OverheadPartyMessages = v);
+
+        // Combat: its boxes; the notoriety and spell hues stay in Classic view.
+        Bool("Combat", "Ask before a criminal act", p => p.EnabledCriminalActionQuery, (p, v) => p.EnabledCriminalActionQuery = v);
+        Bool("Combat", "Ask before a criminal beneficial act", p => p.EnabledBeneficialCriminalActionQuery, (p, v) => p.EnabledBeneficialCriminalActionQuery = v);
+        Bool("Combat", "Cast spells by one click", p => p.CastSpellsByOneClick, (p, v) => p.CastSpellsByOneClick = v);
+        Bool("Combat", "Buff bar timers", p => p.BuffBarTime, (p, v) => p.BuffBarTime = v);
+        Bool("Combat", "Fast spell assign", p => p.FastSpellsAssign, (p, v) => p.FastSpellsAssign = v);
+        Bool("Combat", "Colour spells by kind", p => p.EnabledSpellHue, (p, v) => p.EnabledSpellHue = v);
+        Bool("Combat", "Show DPS with damage", p => p.ShowDPSWithDamageNumbers, (p, v) => p.ShowDPSWithDamageNumbers = v);
 
         Bool("Containers", "Grid view", p => p.GridContainers, (p, v) => p.GridContainers = v);
         Int("Containers", "Grid slot size", GridContainerGump.MIN_SLOT, GridContainerGump.MAX_SLOT, p => p.GridContainerSlotSize, (p, v) => p.GridContainerSlotSize = v);
