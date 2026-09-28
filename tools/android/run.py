@@ -588,6 +588,8 @@ def export(p: Paths, extra_args: str, apk: Path, sound: bool = False) -> int:
     if not console.exists():
         sys.exit(f"[android] Godot console not found at {console}; run doctor")
     p.out_dir.mkdir(parents=True, exist_ok=True)
+    apk = apk_path(apk)
+    apk.parent.mkdir(parents=True, exist_ok=True)
     write_editor_settings(p)
     ensure_solution(p)
     render_preset(p, device_args(p, extra_args, sound), apk)
@@ -605,7 +607,7 @@ def export(p: Paths, extra_args: str, apk: Path, sound: bool = False) -> int:
         if re.search(r"error|failed|not found|required", line, re.IGNORECASE):
             print("  " + line.strip())
     if result.returncode != 0 or not apk.exists():
-        say(f"export FAILED (exit {result.returncode}); full log: {log}")
+        say(f"export FAILED: {export_failure(result.returncode, text, apk)}; full log: {log}")
         return 1
     problem = export_problem(text, apk)
     if problem:
@@ -613,6 +615,23 @@ def export(p: Paths, extra_args: str, apk: Path, sound: bool = False) -> int:
         return 1
     say(f"exported {apk} ({apk.stat().st_size // 1024 // 1024} MB); log: {log}")
     return 0
+
+
+def apk_path(apk: Path) -> Path:
+    """The APK path made absolute from where run.py was started.
+
+    Godot runs with --path at the project, so it would read a relative path
+    from there: `--out build/android/x.apk` then meant godot/GUO/build/android,
+    and failed as "Target folder does not exist" without naming it.
+    """
+    return Path(apk).resolve()
+
+
+def export_failure(returncode: int, log_text: str, apk: Path) -> str:
+    """Why Godot wrote no APK, naming the path it was asked for."""
+    if "Target folder does not exist" in log_text:
+        return f"Godot could not write to the folder of {apk}"
+    return f"exit {returncode}, no APK at {apk}"
 
 
 # Godot exits 0 and writes an APK even when the C# did not build: the APK
