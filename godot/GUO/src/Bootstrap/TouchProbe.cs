@@ -1389,6 +1389,7 @@ internal static class TouchProbe
         await Frames(host, 10);
         float first = doll?.PresentationScale ?? 0f;
         bool fits = doll != null && GumpPresentation.Bounds(doll).Height <= GumpPresentation.DisplayBounds(false).Height;
+        float rememberedAfterFit = GumpPresentation.PaperdollScale;
 
         if (doll != null)
         {
@@ -1411,6 +1412,8 @@ internal static class TouchProbe
         Check("a paperdoll opened on one touch screen starts larger than 1x, within the room; the next opens at the size the player gave the last",
             first > 1.3f && fits && again != null && Mathf.IsEqualApprox(again.PresentationScale, 1.5f),
             $"first {first:0.00}, fits {fits}, next {again?.PresentationScale:0.00}");
+        Check("the fit alone is not remembered as the player's size, only a size the player gives",
+            rememberedAfterFit == 0f, $"remembered after the fit {rememberedAfterFit:0.00}");
 
         // The long press after this looks for its point at 1x.
         if (again != null)
