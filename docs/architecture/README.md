@@ -32,5 +32,6 @@ it is taken even if its file has not landed yet.
 | 0021 | Client data sources | work/editor-datasources (accepted 2026-09-27) |
 | 0022 | Authoring UO data files | work/editor-uodata |
 | 0023 | Post-processing and shader framework | work/render-postfx |
+| 0024 | Modern gumps (Godot views of client gumps for touch) | work/ui-fullheight (proposed) |
 
-Next free: 0024.
+Next free: 0025.

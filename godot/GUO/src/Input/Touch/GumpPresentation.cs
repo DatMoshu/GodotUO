@@ -32,10 +32,13 @@ internal static class GumpPresentation
         || (Configuration.ProfileManager.CurrentProfile?.MobileWindowControls ?? false);
 
     // Keep arbitrary shard dialogs and content-zoom maps on their existing paths.
-    public static bool Supports(Gump g) => Active && g != null && !g.IsDisposed && !g.IsFromServer
+    public static bool Supports(Gump g) => Active && g != null && !g.IsDisposed
         && (_followers.Contains(g)
-            || !g.IsModal && (g is PaperDollGump or ContainerGump or GridContainerGump or StatusGumpBase
-                or JournalGump or ResizableJournal || IsFullHeight(g)));
+            // A full-height gump is scaled, a shard one included: only how it
+            // is drawn and hit changes, never what is sent back.
+            || IsFullHeight(g)
+            || !g.IsFromServer && !g.IsModal && g is PaperDollGump or ContainerGump or GridContainerGump
+                or StatusGumpBase or JournalGump or ResizableJournal);
 
     /// <summary>
     /// A full-height gump (C11): one that on touch takes the whole main screen,
@@ -43,7 +46,21 @@ internal static class GumpPresentation
     /// the screen when it opens (<see cref="FitFullHeight"/>). Options, whose
     /// mobile mode this is (docs/ui/tall_gumps.md lists the other tall gumps).
     /// </summary>
-    public static bool IsFullHeight(Gump g) => g is OptionsGump;
+    public static bool IsFullHeight(Gump g) =>
+        g is OptionsGump || g.IsFromServer && FullHeightServerGumps.Contains(g.ServerSerial);
+
+    /// <summary>
+    /// Shard gumps that are full-height (docs/ui/gump_index.md: Classic plus
+    /// fit), by the type ID the shard sends. ModernUO's is the xxHash32 of the
+    /// gump class's full name (BaseGump.GetTypeId: seed 665738807, the name
+    /// as UTF-16), so it is the same on every ModernUO shard. ServUO and RunUO
+    /// number gumps differently; there these stay ordinary gumps.
+    /// </summary>
+    private static readonly System.Collections.Generic.HashSet<uint> FullHeightServerGumps = new()
+    {
+        0x7510FA8F, // Server.Engines.Help.HelpGump (page a GM)
+        0xE37B54FE, // Server.Gumps.AdminGump (staff)
+    };
 
     /// <summary>
     /// The top of the room a full-height gump is fitted into: below
