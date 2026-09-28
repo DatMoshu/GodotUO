@@ -545,11 +545,11 @@ internal static class PregameProbe
                 a.Dot == ServerPing.Kind.Up && !a.Red && a.Ping.EndsWith(" ms") && b.Dot == ServerPing.Kind.Down && !b.Red && b.Ping == "\u2014" && c.Red,
                 $"answers {a.Dot}/{a.Ping}, silent {b.Dot}/{b.Ping}, other client red {c.Red}");
 
-            card.Tap(servers.RowFor(answers));
+            await Reveal(host, card, servers.RowFor(answers));
             await InputProbe.Wait(host, 4);
             await SaveShot(host, "servers_community");
             bool answering = servers.DetailText.Contains("Answering,") && servers.SiteButton != null && !servers.DetailText.Contains("127.0.0.1");
-            card.Tap(servers.RowFor(silent));
+            await Reveal(host, card, servers.RowFor(silent));
             await InputProbe.Wait(host, 4);
             await SaveShot(host, "servers_silent");
             Check("a catalogue shard's page: its time and Site when it answers, and without its address; the silent one says why",
@@ -557,7 +557,7 @@ internal static class PregameProbe
                 $"answering page {answering}, silent page \"{Cut(servers.DetailText)}\"");
 
             // A favourite catalogue shard is the player's: it lists under Favourites once.
-            card.Tap(servers.RowFor(answers));
+            await Reveal(host, card, servers.RowFor(answers));
             await InputProbe.Wait(host, 4);
             card.Tap(servers.FavouriteButton);
             await InputProbe.Wait(host, 5);
