@@ -26,6 +26,7 @@ import importlib.util
 import os
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -83,6 +84,13 @@ SCENES = [
     ("moongate", 1336, 1997, None, "hide|shot:view"),
     ("walk-mid-step", 1495, 1629, 10,
      "hide|shot:still|walk:West|shot:mid1|walk:West|shot:mid2|walk:West:run|shot:mid3|walk:Up:run|shot:mid4"),
+    # River banks, shot close (--zoom 0.6): stretched grass rising from the
+    # water's z over the water statics on it (ADR-0004's covering land). The
+    # player stands in the water; 1546,1572 and 1403,1665 came from a scan of
+    # statics0 for water with land two tiles on 10+ z above it.
+    ("river-healers", 1522, 1646, None, "hide|shot:view"),
+    ("river-north", 1546, 1572, None, "hide|shot:view"),
+    ("river-west", 1403, 1665, None, "hide|shot:view"),
 ]
 
 VARIANTS = {
@@ -122,19 +130,98 @@ def end(proc: subprocess.Popen) -> None:
         proc.kill()
 
 
+class Tucked(threading.Thread):
+    """Keeps a client's windows just right of every monitor while it runs.
+
+    Both clients photograph their own back buffer, which draws the same off the
+    desktop as on it, so a run need not be seen: shown, it lands on the owner's
+    screen, and on a scaled display ClassicUO's is its size times the scale
+    (FNA_GRAPHICS_ENABLE_HIGHDPI), too big to fit. Neither client can be told to
+    start off the screen -- ClassicUO clamps its position into a display
+    (GameController.SetWindowPositionBySettings) and moves again on login -- so
+    its windows, and those of the process it starts (godot-console runs the
+    editor binary), are moved back out whenever they come in. Without taking
+    focus: the Godot run is --no-focus, and SDL is asked not to activate.
+    """
+
+    def __init__(self, proc: subprocess.Popen) -> None:
+        super().__init__(daemon=True)
+        self.pid = proc.pid
+        self.done = threading.Event()
+
+    def run(self) -> None:
+        import ctypes
+        from ctypes import wintypes
+
+        try:
+            user32, kernel32 = ctypes.windll.user32, ctypes.windll.kernel32
+        except AttributeError:
+            return
+        ab.display_scale()  # per-monitor DPI aware first, or the metrics come back in scaled units
+        # SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SM_CXVIRTUALSCREEN: the desktop across all monitors.
+        right = user32.GetSystemMetrics(76) + user32.GetSystemMetrics(78)
+        top = user32.GetSystemMetrics(77)
+
+        class ENTRY(ctypes.Structure):
+            _fields_ = [("dwSize", wintypes.DWORD), ("cntUsage", wintypes.DWORD), ("th32ProcessID", wintypes.DWORD),
+                        ("th32DefaultHeapID", ctypes.c_void_p), ("th32ModuleID", wintypes.DWORD),
+                        ("cntThreads", wintypes.DWORD), ("th32ParentProcessID", wintypes.DWORD),
+                        ("pcPriClassBase", ctypes.c_long), ("dwFlags", wintypes.DWORD), ("szExeFile", ctypes.c_char * 260)]
+
+        kernel32.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
+
+        def family() -> set[int]:
+            snap = kernel32.CreateToolhelp32Snapshot(2, 0)  # TH32CS_SNAPPROCESS
+            parents = {}
+            e = ENTRY()
+            e.dwSize = ctypes.sizeof(ENTRY)
+            ok = kernel32.Process32First(snap, ctypes.byref(e))
+            while ok:
+                parents[e.th32ProcessID] = e.th32ParentProcessID
+                ok = kernel32.Process32Next(snap, ctypes.byref(e))
+            kernel32.CloseHandle(snap)
+            pids = {self.pid}
+            grew = True
+            while grew:
+                more = {p for p, parent in parents.items() if parent in pids} - pids
+                pids |= more
+                grew = bool(more)
+            return pids
+
+        proc_type = ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
+        while not self.done.wait(0.05):
+            pids = family()
+
+            def tuck(hwnd, _):
+                pid = wintypes.DWORD()
+                user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+                if pid.value in pids and user32.IsWindowVisible(hwnd):
+                    r = wintypes.RECT()
+                    user32.GetWindowRect(hwnd, ctypes.byref(r))
+                    if r.left < right:
+                        # SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE
+                        user32.SetWindowPos(hwnd, None, right + 64, top, 0, 0, 0x0001 | 0x0004 | 0x0010)
+                return True
+
+            user32.EnumWindows(proc_type(tuck), 0)
+
+
 def run_guo(cfg: Config, out: Path, scene: tuple, variant: str, size: str, s: str, timeout: float) -> bool:
     folder = out / scene[0]
     folder.mkdir(parents=True, exist_ok=True)
     env = {**ab.guo_environment(cfg), "GUO_SHOT_DUMP": s, "GUO_SHOT_VARIANT": variant}
     proc = subprocess.Popen(
         [str(cfg.godot_console_exe), "--path", str(cfg.godot_project), "--", "--play", "--silent",
-         "--window-size", size, "--account", cfg.shard_owner, "--password", cfg.shard_owner_password,
+         "--window-size", size, "--no-focus", "--account", cfg.shard_owner, "--password", cfg.shard_owner_password,
          "--shard-command", f"[globallight {ab.DAYLIGHT}", "--stay", *VARIANTS[variant]],
         stdout=(folder / f"{variant}.log").open("w", encoding="utf-8", errors="replace"), stderr=subprocess.STDOUT, env=env,
     )
+    tucked = Tucked(proc)
+    tucked.start()
     try:
         return wait_for(folder / f"{variant}.done", proc, timeout)
     finally:
+        tucked.done.set()
         end(proc)
 
 
@@ -169,11 +256,14 @@ def run_cuo(cfg: Config, out: Path, scene: tuple, size: tuple[int, int], s: str,
         cwd=str(cfg.upstream_build),
         stdout=(folder / "cuo.log").open("w", encoding="utf-8", errors="replace"), stderr=subprocess.STDOUT,
         env={**os.environ, "FNA_GRAPHICS_ENABLE_HIGHDPI": "1", "__COMPAT_LAYER": "HighDpiAware",
-             "GUO_SHOT_DUMP": s},
+             "GUO_SHOT_DUMP": s, "SDL_WINDOW_ACTIVATE_WHEN_SHOWN": "0"},
     )
+    tucked = Tucked(proc)
+    tucked.start()
     try:
         return wait_for(folder / "cuo.done", proc, timeout)
     finally:
+        tucked.done.set()
         end(proc)
 
 
