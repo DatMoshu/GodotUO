@@ -293,6 +293,7 @@ internal static class PregameProbe
         }
 
         bool shelfWas = DualScreenSettings.Current.Enabled;
+        string shelfProfile = Configuration.ProfileManager.ProfilePath;
         DualScreenSettings.Edit(v => v.Enabled = false);
 
         try
@@ -365,7 +366,37 @@ internal static class PregameProbe
         }
         finally
         {
-            DualScreenSettings.Edit(v => v.Enabled = shelfWas);
+            RestoreShelf(shelfProfile, shelfWas);
+        }
+    }
+
+    /// <summary>
+    /// Puts a character's shelf setting back into its own profile. The checks
+    /// log out and in as other accounts meanwhile: an Edit at the end went to
+    /// whatever was loaded then (the login screen's session copy, or the dev
+    /// test account's profile), and the probe account kept its shelf off, so
+    /// the dual probe after it shelved nothing.
+    /// </summary>
+    private static void RestoreShelf(string profilePath, bool enabled)
+    {
+        if (string.IsNullOrEmpty(profilePath))
+        {
+            return;
+        }
+
+        if (Configuration.ProfileManager.CurrentProfile != null && Configuration.ProfileManager.ProfilePath == profilePath)
+        {
+            DualScreenSettings.Edit(v => v.Enabled = enabled);
+            return;
+        }
+
+        string file = System.IO.Path.Combine(profilePath, "profile.json");
+        var saved = Configuration.ConfigurationResolver.Load<Configuration.Profile>(file, Configuration.ProfileJsonContext.DefaultToUse.Profile);
+
+        if (saved != null && saved.DualScreenEnabled != enabled)
+        {
+            saved.DualScreenEnabled = enabled;
+            Configuration.ProfileManager.Save(saved, profilePath);
         }
     }
 
@@ -695,7 +726,8 @@ internal static class PregameProbe
             if (second != null && _second)
             {
                 // This account's profile has its own shelf setting; the card needs it off, as WorldChecks does.
-                bool shelfWas = DualScreenSettings.Current.Enabled;
+                // It stays off: the second test account is this check's alone. The first account's is put
+                // back by WorldChecks, into its own profile.
                 DualScreenSettings.Edit(v => v.Enabled = false);
 
                 for (ulong until = Godot.Time.GetTicksMsec() + 10000; Godot.Time.GetTicksMsec() < until && !PregameCard.ShownOnSecond;)
@@ -724,7 +756,6 @@ internal static class PregameProbe
                     back = await InWorld();
                 }
 
-                DualScreenSettings.Edit(v => v.Enabled = shelfWas);
                 Check("in the world, the card's Dev logins row switches back (\"Switch to\" the account)",
                     up && back != null && back == first, $"card up on the second screen {up} ({(DualScreenSettings.Current.Enabled ? "shelf on" : "shelf off")}), buttons {servers.DevButtons.Count}, back {back == first}");
             }
