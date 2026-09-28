@@ -120,8 +120,11 @@ strict count 0 at 2560x1440 and the default size):
   a tile repaints the bake's own pixels, so it changes the frame only where
   something drawn earlier in the sorted pass overlaps it. The object it is
   queued for is that something; a tile outside the object's sprite rect
-  (plus the diamond's stretch) repaints identical pixels. Another object
-  that needs the same tile queues it itself. Pure CPU culling, and it also
+  (plus the diamond's stretch) repaints the bake's pixels unless some other
+  earlier sprite overlaps it there. Another below-ground object queues the
+  tiles it needs itself; an object above ground that the redraw happens to
+  cover today is the case the cull could change, and the parity gate is what
+  shows whether that ever occurs. Pure CPU culling, and it also
   cuts world-prepare time; expected to remove most of the square outside
   `|dx - dy| <= 1-2`.
 - **2c. Merge each run into one mesh over the land array** (`--merged-cover`):
