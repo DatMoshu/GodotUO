@@ -18,7 +18,10 @@ namespace GUO.Host;
 /// double tap setting the address, the verdicts, Recent; the community
 /// catalogue (a file of the probe's own) with each row's status dot from a
 /// real TCP connect to a local listener, Refresh, and the limit of eight
-/// timings at once. Settings: the tabs
+/// timings at once; a shard with its own client files (a fake folder the
+/// probe writes, never real shard data): its folder picked through the
+/// first-run screen, the restart question, the session file, the resolver
+/// taking the folder, and the way back, with the restart held back. Settings: the tabs
 /// and groups answer taps, a setting reaches settings.json and the login
 /// gump's own box, every group fits the card. Each is photographed. Logs no
 /// one in; the servers are kept in a file of the probe's own and the
@@ -99,6 +102,7 @@ internal static class PregameProbe
         {
             await ServersChecks(host, card);
             await CatalogueChecks(host, card);
+            await ShardFilesChecks(host, card);
         }
         finally
         {
@@ -362,7 +366,7 @@ internal static class PregameProbe
     private static async System.Threading.Tasks.Task ServersChecks(Node host, PregameCard card)
     {
         // A servers.json of the probe's own, empty.
-        ServerBook.PathOverride = ProjectSettings.GlobalizePath("user://probe_servers.json");
+        ServerBook.PathOverride = ProjectSettings.GlobalizePath($"user://probe_servers_{_tag}.json");
         System.IO.File.Delete(ServerBook.PathOverride);
         ServerBook.Load();
 
@@ -505,7 +509,7 @@ internal static class PregameProbe
 
         try
         {
-            string path = ProjectSettings.GlobalizePath("user://probe_catalogue.json");
+            string path = ProjectSettings.GlobalizePath($"user://probe_catalogue_{_tag}.json");
             ServerCatalogue.PathOverride = path;
             System.IO.File.WriteAllText(path, "{ \"version\": 1, \"servers\": ["
                 + $"{{ \"name\": \"Probe Answers\", \"host\": \"127.0.0.1\", \"port\": {openPort}, \"era\": \"AOS\", \"emulator\": \"ModernUO\", \"third_party_clients\": true, \"site\": \"https://example.com\", \"description\": \"A catalogue shard the probe listens for.\" }},"
@@ -538,12 +542,21 @@ internal static class PregameProbe
                 await InputProbe.Wait(host, 6);
             }
 
+            // Red is for a shard GUO can't play at all; one for another client can, after a restart.
+            ServerEntry closed = ServerBook.Add("Probe Closed", "closed.invalid", "2598", out _);
+            closed.ThirdPartyClients = false;
+            servers.Rebuild();
+            await InputProbe.Wait(host, 3);
             var a = servers.RowStatus(answers);
             var b = servers.RowStatus(silent);
             var c = servers.RowStatus(other);
-            Check("a row's dot is gold with its time when the shard answers, hollow with a dash when it doesn't, red when GUO can't play there",
-                a.Dot == ServerPing.Kind.Up && !a.Red && a.Ping.EndsWith(" ms") && b.Dot == ServerPing.Kind.Down && !b.Red && b.Ping == "\u2014" && c.Red,
-                $"answers {a.Dot}/{a.Ping}, silent {b.Dot}/{b.Ping}, other client red {c.Red}");
+            bool closedRed = servers.RowStatus(closed).Red;
+            ServerBook.Remove(closed);
+            servers.Rebuild();
+            await InputProbe.Wait(host, 3);
+            Check("a row's dot is gold with its time when the shard answers, hollow with a dash when it doesn't, red only when GUO can't play there",
+                a.Dot == ServerPing.Kind.Up && !a.Red && a.Ping.EndsWith(" ms") && b.Dot == ServerPing.Kind.Down && !b.Red && b.Ping == "\u2014" && !c.Red && closedRed,
+                $"answers {a.Dot}/{a.Ping}, silent {b.Dot}/{b.Ping}, other client red {c.Red}, own client only red {closedRed}");
 
             await Reveal(host, card, servers.RowFor(answers));
             await InputProbe.Wait(host, 4);
@@ -603,6 +616,151 @@ internal static class PregameProbe
         finally
         {
             open.Stop();
+        }
+    }
+
+    private static string _clickDetail = "";
+
+    private static async System.Threading.Tasks.Task ShardFilesChecks(Node host, PregameCard card)
+    {
+        // A fake shard folder: a layered guo_data.json over one file of GUO's
+        // own making; and one whose manifest is incomplete.
+        string good = ProjectSettings.GlobalizePath($"user://probe_shard_files_{_tag}");
+        string bad = ProjectSettings.GlobalizePath($"user://probe_shard_bad_{_tag}");
+        System.IO.Directory.CreateDirectory(good);
+        System.IO.Directory.CreateDirectory(bad);
+        System.IO.File.WriteAllText(System.IO.Path.Combine(good, "guo_probe.txt"), "made by the pregame probe");
+        System.IO.File.WriteAllText(System.IO.Path.Combine(good, DataSources.Manifest),
+            "{ \"format\": \"guo/data-folder@1\", \"mode\": \"layered\", \"contains_ea_data\": false, \"license\": \"CC0\", \"source\": \"GUO pregame probe\", \"files\": { \"guo_probe.txt\": {} } }");
+        System.IO.File.WriteAllText(System.IO.Path.Combine(bad, DataSources.Manifest), "{ \"format\": \"guo/data-folder@1\", \"mode\": \"layered\" }");
+
+        string sessionWas = ShardSession.FilePath;
+        ShardSession.FilePath = ProjectSettings.GlobalizePath($"user://probe_shard_session_{_tag}.json");
+        System.IO.File.Delete(ShardSession.FilePath);
+        int restarts = 0;
+        ShardSession.RestartHook = () => restarts++;
+        Configuration.Settings gs = Configuration.Settings.GlobalSettings;
+        PregameServers servers = card.Servers;
+        ServerEntry e = ServerBook.Add("Probe Custom", "custom.invalid", "2597", out _);
+
+        try
+        {
+            e.NeedsCustomData = true;
+            ServerBook.Save();
+            servers.Rebuild();
+            await InputProbe.Wait(host, 3);
+            await Reveal(host, card, servers.RowFor(e));
+            await InputProbe.Wait(host, 4);
+            Check("a shard that needs its own files says so and can still be played (Play is lit, its dot not red)",
+                servers.DetailText.Contains("needs its own client files. Choose where they are, and GUO restarts with them.")
+                && servers.PlayButton != null && !servers.PlayButton.Disabled && !servers.RowStatus(e).Red,
+                $"page \"{Cut(servers.DetailText)}\"");
+
+            // Play: the first-run screen, for its folder. A bad pick is refused; the fake one is taken.
+            card.Tap(servers.PlayButton);
+            await InputProbe.Wait(host, 6);
+            FirstRunScreen picker = servers.Picker;
+            bool open = picker != null && FirstRunScreen.IsOpen;
+            bool refused = false, taken = false;
+
+            if (open)
+            {
+                picker.Pick(bad);
+                await InputProbe.Wait(host, 2);
+                refused = picker.ContinueButton.Disabled;
+                picker.Pick(good);
+                await InputProbe.Wait(host, 3);
+                taken = !picker.ContinueButton.Disabled;
+                await SaveMain(host, "shard_files_picker");
+
+                // Save with a click pushed into the main window, through the game's input.
+                Vector2 at = picker.ContinueButton.GetGlobalRect().GetCenter();
+                Viewport main = picker.GetViewport();
+                main.PushInput(new InputEventMouseMotion { Position = at, GlobalPosition = at }, true);
+                await InputProbe.Wait(host, 2);
+                main.PushInput(new InputEventMouseButton { Position = at, GlobalPosition = at, ButtonIndex = MouseButton.Left, Pressed = true }, true);
+                await InputProbe.Wait(host, 2);
+                main.PushInput(new InputEventMouseButton { Position = at, GlobalPosition = at, ButtonIndex = MouseButton.Left, Pressed = false }, true);
+                await InputProbe.Wait(host, 8);
+                _clickDetail = "";
+
+                // The desktop's dual-screen simulator does not let a pushed
+                // click reach the main window's controls (one screen does):
+                // Save is pressed directly there, and the detail says so.
+                if (FirstRunScreen.IsOpen && _second)
+                {
+                    picker.ContinueButton.EmitSignal(BaseButton.SignalName.Pressed);
+                    await InputProbe.Wait(host, 8);
+                    _clickDetail = "; the pushed click did not land in the dual-screen simulator, Save pressed directly";
+                }
+            }
+
+            ServerEntry kept = ServerBook.Find("custom.invalid", 2597);
+            string saved = System.IO.File.ReadAllText(ServerBook.FilePath);
+            Check("Play opens the first-run screen for its files: a folder without a whole manifest is refused, the fake one saved with a click, kept in servers.json",
+                open && refused && taken && !FirstRunScreen.IsOpen && kept?.DataFolder == good && saved.Contains("\"data_folder\""),
+                $"picker {open}, bad refused {refused}, good taken {taken}, still open {FirstRunScreen.IsOpen}, kept \"{kept?.DataFolder}\" (picked \"{good}\"), in the file {saved.Contains("\"data_folder\"")}{_clickDetail}");
+
+            // Then the question, and a restart (held back) with the session written down.
+            await SaveShot(host, "servers_shard_restart");
+            bool asked = servers.DetailText.Contains("Restart GUO with Probe Custom's files?") && servers.ConfirmButton != null;
+
+            if (asked)
+            {
+                card.Tap(servers.ConfirmButton);
+                await InputProbe.Wait(host, 4);
+            }
+
+            string json = System.IO.File.Exists(ShardSession.FilePath) ? System.IO.File.ReadAllText(ShardSession.FilePath) : "";
+            Check("\"Restart GUO\" writes the session (the shard, its folder, the player's own encryption) and restarts",
+                asked && restarts == 1 && json.Contains("\"Probe Custom\"") && json.Contains("2597") && json.Contains($"probe_shard_files_{_tag}") && json.Contains("own_encryption"),
+                $"asked {asked}, restarts {restarts}, session {(json.Length > 0 ? "written" : "missing")}");
+
+            // What the next start does with it: the session read, the folder in the custom slot over the install.
+            ShardSession.Data d = ShardSession.Load();
+            DataSources.Result r = DataSources.Resolve(new DataSources.Inputs { CustomFlag = d?.DataFolder ?? "", InstallConfigured = gs.UltimaOnlineDirectory, InstallConfiguredOrigin = "setting" });
+            Check("the next start reads the session and puts its folder in ADR-0021's custom slot over the install",
+                ShardSession.Active && ShardSession.FolderKind(good, out _) == "custom" && r.Source == "install+custom" && r.Overrides.ContainsKey("guo_probe.txt"),
+                $"active {ShardSession.Active}, resolved {r.Source}, overrides {string.Join(",", r.Overrides.Keys)}");
+
+            // Running with its files: the banner and the way back.
+            servers.Rebuild();
+            await InputProbe.Wait(host, 3);
+            await Reveal(host, card, servers.RowFor(ServerBook.Find("custom.invalid", 2597)));
+            await InputProbe.Wait(host, 4);
+            bool running = servers.BackButton != null && ServerPlay.Check(kept, out _) == ServerPlay.Verdict.Ready && servers.DetailText.Contains("GUO is running with its files now.");
+            await SaveShot(host, "servers_shard_session");
+            await Reveal(host, card, servers.BackButton);
+            await InputProbe.Wait(host, 4);
+            bool askedBack = servers.DetailText.Contains("Restart GUO with your own files?");
+
+            if (askedBack)
+            {
+                card.Tap(servers.ConfirmButton);
+                await InputProbe.Wait(host, 4);
+            }
+
+            json = System.IO.File.Exists(ShardSession.FilePath) ? System.IO.File.ReadAllText(ShardSession.FilePath) : "";
+            ShardSession.Data back = ShardSession.Load();
+            Check("with its files: the list says so, the shard plays as is, and \"Your own files\" restarts back (a one-shot file, gone once read)",
+                running && askedBack && restarts == 2 && back != null && back.DataFolder == null && !json.Contains($"probe_shard_files_{_tag}")
+                && !ShardSession.Active && !System.IO.File.Exists(ShardSession.FilePath),
+                $"banner {servers.BackButton != null}, running {running}, asked {askedBack}, restarts {restarts}");
+        }
+        finally
+        {
+            ShardSession.RestartHook = null;
+            ShardSession.SetCurrentForProbe(null);
+            ShardSession.TryDelete();
+            ShardSession.FilePath = sessionWas;
+            ServerEntry left = ServerBook.Find("custom.invalid", 2597);
+
+            if (left != null)
+            {
+                ServerBook.Remove(left);
+            }
+
+            servers.Rebuild();
         }
     }
 

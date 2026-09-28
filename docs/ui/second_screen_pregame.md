@@ -49,7 +49,7 @@ art the paperdoll and book gumps use, not a Godot tab bar.
 |---|---|
 | Before login, and the shard's client version and encryption match the running client | Set `Settings.GlobalSettings.IP/Port` in memory (and save it to settings.json), then reconnect. The top screen's login gump shows the shard's name and keeps the account fields |
 | In the world | "Log out and play on Shard B?" → logout → the same as above |
-| The shard needs its own data (a custom art pack, another client version or encryption) | "Shard B needs its own client files. Restart GUO with them?" → a restart with that shard's data folder (ADR-0021's custom data slot) and version. The folder is set up once, through the first-run folder picker |
+| The shard needs its own data (a custom art pack, another client version or encryption) | The page says so. The first Play opens the first-run screen for its folder (a whole client, or a folder with a `guo_data.json`), kept as the entry's `data_folder`. Then "Restart GUO with Shard B's files?" → a restart with that folder (ADR-0021's custom data slot, or the install for a whole client), its version, encryption and address (`shard_session.json`, data_formats.md section 19). The list then says "GUO is running with Shard B's files" with **Your own files** to go back; Play on any other server asks to restart with the player's own files first. "Change files" picks the folder again |
 | The shard lists `third_party_clients: no` | The row's dot is red. Play is disabled, with the reason: "This shard only allows its own client." The shard's site link stays available |
 
 ## Where the server list comes from

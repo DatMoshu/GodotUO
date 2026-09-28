@@ -36,6 +36,12 @@ internal sealed class ServerEntry
 
     [JsonPropertyName("favourite")] public bool Favourite { get; set; }
 
+    /// <summary>
+    /// Where the player keeps this shard's own client files (picked once), for
+    /// a shard that needs them; GUO restarts with them to play there.
+    /// </summary>
+    [JsonPropertyName("data_folder")] public string DataFolder { get; set; }
+
     /// <summary>When it was last played on (UTC), or null.</summary>
     [JsonPropertyName("last_played")] public DateTime? LastPlayed { get; set; }
 
@@ -190,23 +196,45 @@ internal static class ServerBook
             return e;
         }
 
-        if (!Servers.Contains(e))
-        {
-            ServerEntry kept = Servers.FirstOrDefault(s => s.Same(e.Host, e.Port));
-
-            if (kept == null)
-            {
-                kept = ServerCatalogue.Servers.Contains(e) ? ServerCatalogue.Copy(e) : e;
-                Servers.Add(kept);
-            }
-
-            e = kept;
-        }
-
+        e = Keep(e);
         e.Favourite = on;
         Save();
 
         return e;
+    }
+
+    /// <summary>Keeps where a shard's own client files are (null forgets it); the book's entry is returned.</summary>
+    public static ServerEntry SetDataFolder(ServerEntry e, string folder)
+    {
+        if (e.Dev)
+        {
+            return e;
+        }
+
+        e = Keep(e);
+        e.DataFolder = string.IsNullOrWhiteSpace(folder) ? null : folder;
+        Save();
+
+        return e;
+    }
+
+    /// <summary>The book's entry for a server, a catalogue shard copied in first.</summary>
+    private static ServerEntry Keep(ServerEntry e)
+    {
+        if (Servers.Contains(e))
+        {
+            return e;
+        }
+
+        ServerEntry kept = Servers.FirstOrDefault(s => s.Same(e.Host, e.Port));
+
+        if (kept == null)
+        {
+            kept = ServerCatalogue.Servers.Contains(e) ? ServerCatalogue.Copy(e) : e;
+            Servers.Add(kept);
+        }
+
+        return kept;
     }
 
     /// <summary>Forgets one of the player's own servers (or a recent one).</summary>
@@ -263,8 +291,8 @@ internal static class ServerBook
 
         e.LastPlayed = DateTime.UtcNow;
 
-        // Recent keeps five: older plain entries (not own, not favourite) go.
-        foreach (ServerEntry old in Servers.Where(x => x.LastPlayed != null && !x.Own && !x.Favourite).OrderByDescending(x => x.LastPlayed).Skip(RecentKept).ToList())
+        // Recent keeps five: older plain entries (not own, not favourite, no files kept) go.
+        foreach (ServerEntry old in Servers.Where(x => x.LastPlayed != null && !x.Own && !x.Favourite && x.DataFolder == null).OrderByDescending(x => x.LastPlayed).Skip(RecentKept).ToList())
         {
             Servers.Remove(old);
         }

@@ -814,6 +814,7 @@ the address in use stays in `settings.json` (`ip`, `port`), which Play sets.
 | `own` | bool | Added by hand; only these show their address on screen |
 | `favourite` | bool | Listed under Favourites |
 | `last_played` | UTC time or absent | Set on each entry into the world; Recent is the newest five that are neither own nor favourite |
+| `data_folder` | path or absent | Where the player keeps a shard's own client files, picked once through the first-run screen; Play on a shard that needs them restarts GUO with them (section 19). An entry with one is never trimmed from Recent |
 | `era`, `emulator`, `client_version`, `encryption`, `needs_custom_data`, `third_party_clients`, `site`, `description` | optional | The community catalogue's manifest fields (step 3); `third_party_clients: false` or another client version or encryption keeps Play from playing |
 
 A debug build adds its dev shard (from `UO_SHARD_HOST` / `UO_SHARD_PORT`) as a favourite at run time. It is
@@ -842,3 +843,29 @@ favourites or plays on is copied into `servers.json` and then lists under Favour
 
 Live status is a bare TCP connect to the host and port, timed from the moment it is resolved: at most 8 at once, a
 3 s timeout, repeated every 60 s while the Servers tab is showing. Nothing is sent and no result is stored.
+
+## 19. Playing with a shard's own files (`shard_session.json`)
+
+Beside `settings.json` in the client home. Written by Play on a shard that needs its own client files, and read by
+Main at the next start before the data is resolved (ADR-0021). GUO then restarts (`OS.SetRestartOnExit`, the same
+arguments; a run from source is given its project as an absolute `--path`).
+
+```json
+{ "name": "Shard B", "host": "play.example.com", "port": 2593, "data_folder": "/path/to/shard-b-client",
+  "client_version": "7.0.15.1", "encryption": 1, "own_encryption": 0, "started": "2026-09-28T19:00:00Z" }
+```
+
+| Field | Meaning |
+|---|---|
+| `name`, `host`, `port` | The shard; the run connects there instead of `UO_SHARD_HOST` / `UO_SHARD_PORT` |
+| `data_folder` | Its files, read in place. With a valid `guo_data.json` (section 15) it is the custom folder of ADR-0021; without one it must be a whole client and is the run's install. A `--custom-data` or `--client-data` flag still wins |
+| `client_version`, `encryption` | The shard's, when its entry names them; else the configured ones |
+| `own_encryption` | The player's own, put back when they go back |
+| `started` | When the session began |
+
+While the file has a `data_folder`, every start uses it, and the Servers tab says so with "Your own files". A folder
+that is no longer usable drops the session at boot, with the reason shown once in the Servers tab.
+
+Going back ("Your own files", or Play on another server) writes a one-shot file with no `data_folder`: the player's
+own encryption, and the server to play on next, if any. It is deleted as soon as it is read.
+
