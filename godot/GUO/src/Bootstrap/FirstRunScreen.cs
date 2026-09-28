@@ -19,11 +19,11 @@ using Godot;
 /// style (charcoal and gold), like Input/Touch/WindowMenu. It adds no
 /// textures and leaves the project's nearest-neighbour default alone.
 ///
-/// Re-opening from Options (later): call <see cref="Open"/> with a Result
-/// whose Reason says "change the UO folder" and a callback that saves and asks
-/// for a restart; the Options gump is ported code, so that button is a marked
-/// PORT DEVIATION when it is added. The Android folder picker (SAF) and the web
-/// are not handled here.
+/// Re-opened from Options ("Change UO folder…", a marked PORT DEVIATION in
+/// OptionsGump) through <see cref="OpenChange"/>: the same screen in change
+/// mode, which saves the folder into upstream's settings and says it applies
+/// on the next start. The Android folder picker (SAF) and the web are not
+/// handled here.
 /// </remarks>
 internal sealed partial class FirstRunScreen : CanvasLayer
 {
@@ -31,6 +31,7 @@ internal sealed partial class FirstRunScreen : CanvasLayer
         Good = new("8fc79a"), Bad = new("e08a7a"), Back = new("0b0e0d");
 
     private Action<string> _chosen;
+    private bool _change;
     private Label _folder;
     private VBoxContainer _checks;
     private Label _verdict;
@@ -44,18 +45,38 @@ internal sealed partial class FirstRunScreen : CanvasLayer
     /// photographs, picks that folder without a dialog, photographs, continues.
     /// </summary>
     public static FirstRunScreen Open(Node host, DataSources.Result data, string configured, string probeFolder,
-                                      string shotDir, Action<string> chosen)
+                                      string shotDir, Action<string> chosen, bool change = false)
     {
-        var screen = new FirstRunScreen { _chosen = chosen, Layer = 128 };
+        var screen = new FirstRunScreen { _chosen = chosen, _change = change, Layer = 128 };
         host.AddChild(screen);
         screen.Build(data, configured);
-        GD.Print("[GUO] first run     : screen shown");
+        GD.Print($"[GUO] first run     : screen shown{(change ? " (change from Options)" : "")}");
         if (!string.IsNullOrWhiteSpace(probeFolder))
         {
             _ = screen.Probe(probeFolder, shotDir);
         }
 
         return screen;
+    }
+
+    /// <summary>
+    /// Options' "Change UO folder…": the screen in change mode over the running
+    /// client. Save stores the folder in upstream's settings.json
+    /// (ultimaonlinedirectory); the client keeps its loaded data until the next
+    /// start. <paramref name="probeFolder"/> scripts it as in <see cref="Open"/>.
+    /// </summary>
+    public static FirstRunScreen OpenChange(string probeFolder = null, string shotDir = null)
+    {
+        var host = ((SceneTree)Engine.GetMainLoop()).Root;
+        string current = Configuration.Settings.GlobalSettings.UltimaOnlineDirectory;
+        var data = new DataSources.Result();
+        data.Notes.Add($"current folder {current}");
+        return Open(host, data, null, probeFolder, shotDir, folder =>
+        {
+            Configuration.Settings.GlobalSettings.UltimaOnlineDirectory = folder;
+            Configuration.Settings.GlobalSettings.Save();
+            GD.Print($"[GUO] first run     : UO folder changed to {folder}; applies on the next start");
+        }, change: true);
     }
 
     private void Build(DataSources.Result data, string configured)
@@ -86,12 +107,16 @@ internal sealed partial class FirstRunScreen : CanvasLayer
         col.AddThemeConstantOverride("separation", 10);
         card.AddChild(col);
 
-        col.AddChild(Label("Welcome to GUO", 24, Gold));
+        col.AddChild(Label(_change ? "Change UO folder" : "Welcome to GUO", 24, Gold));
         col.AddChild(Label(
             "GUO plays Ultima Online with the game files from your own copy of the Classic client. "
             + "They are not included. Choose the folder where Ultima Online Classic is installed.", 15, Text, wrap: true));
         col.AddChild(new HSeparator { Modulate = new Color(Gold, 0.35f) });
-        col.AddChild(Label("Why this screen: " + data.Reason, 13, Muted, wrap: true));
+        col.AddChild(Label(
+            _change
+                ? $"Now using: {Configuration.Settings.GlobalSettings.UltimaOnlineDirectory}. The folder you choose is used the next time GUO starts."
+                : "Why this screen: " + data.Reason,
+            13, Muted, wrap: true));
         if (configured != null)
         {
             col.AddChild(Label(
@@ -115,11 +140,20 @@ internal sealed partial class FirstRunScreen : CanvasLayer
         _verdict = Label("", 15, Muted, wrap: true);
         col.AddChild(_verdict);
 
-        _continue = GoldButton("Continue");
+        var buttons = new HBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ShrinkEnd };
+        buttons.AddThemeConstantOverride("separation", 10);
+        col.AddChild(buttons);
+        if (_change)
+        {
+            Button cancel = GoldButton("Cancel");
+            cancel.Pressed += QueueFree;
+            buttons.AddChild(cancel);
+        }
+
+        _continue = GoldButton(_change ? "Save" : "Continue");
         _continue.Disabled = true;
-        _continue.SizeFlagsHorizontal = Control.SizeFlags.ShrinkEnd;
         _continue.Pressed += () => Finish();
-        col.AddChild(_continue);
+        buttons.AddChild(_continue);
     }
 
     private static Label Label(string text, int size, Color color, bool wrap = false)
@@ -243,7 +277,7 @@ internal sealed partial class FirstRunScreen : CanvasLayer
         await Shot(Path.Combine(dir, "first_run_2_bad_pick.png"));
         Pick(folder);
         await Shot(Path.Combine(dir, "first_run_3_good_pick.png"));
-        GD.Print($"[GUO] first run     : probe pressing Continue ({(_continue.Disabled ? "disabled" : "enabled")})");
+        GD.Print($"[GUO] first run     : probe pressing {_continue.Text} ({(_continue.Disabled ? "disabled" : "enabled")})");
         _continue.EmitSignal(BaseButton.SignalName.Pressed);
     }
 

@@ -54,6 +54,48 @@ internal static class ObjectsDump
                 host.GetViewport().GetTexture().GetImage().SavePng(Path.Combine(dir, name + ".png"));
             }
 
+            // <name>.options holding a page number: Options opened on that page
+            // (3 is Video, where "Change UO folder..." sits).
+            foreach (string request in Directory.GetFiles(dir, "*.options"))
+            {
+                int page = int.TryParse(File.ReadAllText(request).Trim(), out int p) ? p : 0;
+                File.Delete(request);
+                if (Client.Game?.UO?.World is World w)
+                {
+                    GameActions.OpenSettings(w, page);
+                    // Down to the page's last section, where the GUO rows are.
+                    for (int f = 0; f < 3; f++)
+                    {
+                        await host.ToSignal(host.GetTree(), Godot.SceneTree.SignalName.ProcessFrame);
+                    }
+
+                    if (GUO.Game.Managers.UIManager.GetGump<GUO.Game.UI.Gumps.OptionsGump>() is { } g)
+                    {
+                        foreach (var c in g.Children)
+                        {
+                            if (c is GUO.Game.UI.Controls.ScrollArea area && c.Page == page)
+                            {
+                                for (int i = 0; i < 400; i++)
+                                {
+                                    area.Scroll(false);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // <name>.changefolder holding a folder: the Options button's action
+            // (FirstRunScreen.OpenChange), scripted to pick that folder and Save;
+            // its screenshots go to <dir>/<name>/.
+            foreach (string request in Directory.GetFiles(dir, "*.changefolder"))
+            {
+                string name = Path.GetFileNameWithoutExtension(request);
+                string folder = File.ReadAllText(request).Trim();
+                File.Delete(request);
+                FirstRunScreen.OpenChange(folder, Path.Combine(dir, name));
+            }
+
             // <name>.walk: the character walks the four screen diagonals (InputProbe's
             // walk), then <name>.walked. A recording started before it keeps going.
             foreach (string request in Directory.GetFiles(dir, "*.walk"))
