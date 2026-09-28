@@ -368,11 +368,11 @@ internal sealed partial class WindowMenu : Node
         float s = _gump.PresentationScale;
         _title.Text = Title(_gump);
         bool second = GumpPresentation.OnSecond(_gump);
-        _caption.Text = (DualScreen.ShelfOn ? (second ? "Bottom screen" : "Top screen") : "This screen") + $", {s * 100:0}%";
+        _caption.Text = (DualScreen.ShelfOn ? (second ? DualScreen.SecondName : DualScreen.FirstName) : "This screen") + $", {s * 100:0}%";
         _sizeLabel.Text = $"{s * 100:0}%";
         _slider.Value = s * 100;
         _lock.ButtonPressed = _gump.PresentationLocked;
-        _move.Text = DualScreen.ShelfOn ? (second ? "Move to top screen" : "Move to bottom screen") : "Fit to screen";
+        _move.Text = DualScreen.ShelfOn ? "Move to " + (second ? DualScreen.FirstName : DualScreen.SecondName).ToLowerInvariant() : "Fit to screen";
         _read.Visible = _gump is JournalGump or ResizableJournal;
         _syncing = false;
     }

@@ -264,6 +264,13 @@ namespace GUO.Input.Touch
             // goes to the world.
             int scale = requested > 0 ? requested : System.Math.Max(1, shorter / 480);
 
+            // One step less where that makes room for the one-screen panel
+            // beside the login screen (the unfolded Fold).
+            if (requested <= 0)
+            {
+                scale = GUO.Platform.Android.DualScreen.ScaleForPanel(size, scale);
+            }
+
             // The client's DpiScale is the OS scale times ScreenScale, and an
             // Android display reports its density there (the Thor: 369 dpi,
             // 2.3x). The whole-number scale chosen here is the TOTAL the art

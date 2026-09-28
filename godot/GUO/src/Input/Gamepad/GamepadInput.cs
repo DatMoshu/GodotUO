@@ -255,6 +255,17 @@ namespace GUO.Input.Gamepad
                 case JoyButton.DpadLeft: _dpad[2] = e.Pressed; UpdateArrows(); return;
                 case JoyButton.DpadRight: _dpad[3] = e.Pressed; UpdateArrows(); return;
                 case JoyButton.A or JoyButton.B or JoyButton.X or JoyButton.Y: break;
+
+                // Back (Select, View): the one-screen drawer, open or closed.
+                // A no-op with a second screen, or with the panel off.
+                case JoyButton.Back:
+                    if (e.Pressed)
+                    {
+                        GUO.Platform.Android.DualScreen.ToggleDrawer();
+                    }
+
+                    return;
+
                 default: return;
             }
 

@@ -5,6 +5,9 @@ screen. On a device with one screen, the same panel opens as a card from the log
 [uo_godot_style.md](uo_godot_style.md) in full: only the client's own art, whole pixels, font 1, and quiet stone and
 parchment.
 
+Where a one-screen window has room beside the login gump, the card is docked on its left instead of opening as a
+card: see [one_screen_panel.md](one_screen_panel.md).
+
 ## What it is for
 
 Before login, the player has two questions: *where do I play* and *how is the client set up*. The top screen keeps

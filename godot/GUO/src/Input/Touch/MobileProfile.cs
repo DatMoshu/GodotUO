@@ -33,14 +33,29 @@ namespace GUO.Input.Touch
         /// </summary>
         public static void CentreLoginGump(Gump gump)
         {
-            if (!Active || gump == null || Client.Game == null)
+            // With the one-screen panel docked on the left, the gumps are
+            // centred in what is right of it, the desktop's widened login
+            // window included.
+            int dock = GUO.Platform.Android.DualScreen.PregameDockReserve;
+
+            if (!(Active || dock > 0) || gump == null || Client.Game == null)
             {
+                return;
+            }
+
+            if (!Active)
+            {
+                // The desktop: the login window is being sized to the dock
+                // and the login screen (LoginScene.Load), not yet resized.
+                gump.X = dock;
+                gump.Y = 0;
+
                 return;
             }
 
             Compat.Rectangle bounds = Client.Game.ClientBounds;
 
-            gump.X = System.Math.Max(0, (bounds.Width - LoginWidth) / 2);
+            gump.X = dock + System.Math.Max(0, (bounds.Width - dock - LoginWidth) / 2);
             gump.Y = System.Math.Max(0, (bounds.Height - LoginHeight) / 2);
         }
     }

@@ -354,8 +354,8 @@ internal static class GumpFlick
 
         return action switch
         {
-            FlickAction.ToTopScreen => second ? "To top screen" : "Fit to screen",
-            FlickAction.ToBottomScreen => !second && DualScreen.ShelfOn ? "To bottom screen" : "Fit to screen",
+            FlickAction.ToTopScreen => second ? "To " + DualScreen.FirstName.ToLowerInvariant() : "Fit to screen",
+            FlickAction.ToBottomScreen => !second && DualScreen.ShelfOn ? "To " + DualScreen.SecondName.ToLowerInvariant() : "Fit to screen",
             FlickAction.Close => "Close",
             FlickAction.Reset => "Reset size",
             FlickAction.SizeMenu => "Size menu",

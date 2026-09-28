@@ -32,6 +32,9 @@ namespace GUO.Platform.Android
         /// <summary>Largest shelf scale the panel is worth; 0 means "as the main screen".</summary>
         public const int MaxScale = 3;
 
+        /// <summary>Set by --one-screen on|off: the one-screen panel regardless of the setting.</summary>
+        public static bool? PanelForced { get; set; }
+
         /// <summary>One set of values; the profile's shape, without the profile.</summary>
         public sealed class Values
         {
@@ -43,6 +46,18 @@ namespace GUO.Platform.Android
             public bool Others;
             public int Scale;
             public int ScalePercent;
+
+            /// <summary>The one-screen panel: 0 as the platform has it, 1 on, 2 off (Profile.OneScreenPanel).</summary>
+            public int OnePanel;
+
+            /// <summary>The drawer on the right edge, not the left.</summary>
+            public bool DrawerRight;
+
+            /// <summary>On a near-square screen, a top/bottom split instead of the drawer.</summary>
+            public bool SquareSplit;
+
+            /// <summary>Whether the one-screen panel is on: the setting, or by default the touch layer.</summary>
+            public bool PanelOn => PanelForced ?? (OnePanel == 1 || (OnePanel == 0 && Input.Touch.TouchInput.Enabled));
 
             public Values Clone() => (Values) MemberwiseClone();
 
@@ -56,6 +71,9 @@ namespace GUO.Platform.Android
                 Others = p.DualScreenShelveOthers,
                 Scale = Math.Clamp(p.DualScreenScale, 0, MaxScale),
                 ScalePercent = Math.Clamp(p.DualScreenScalePercent, 0, MaxScale * 100),
+                OnePanel = Math.Clamp(p.OneScreenPanel, 0, 2),
+                DrawerRight = p.OneScreenDrawerSide == 1,
+                SquareSplit = p.OneScreenSquareLayout == 1,
             };
 
             public void Into(Profile p)
@@ -68,6 +86,9 @@ namespace GUO.Platform.Android
                 p.DualScreenShelveOthers = Others;
                 p.DualScreenScale = Scale;
                 p.DualScreenScalePercent = ScalePercent;
+                p.OneScreenPanel = OnePanel;
+                p.OneScreenDrawerSide = DrawerRight ? 1 : 0;
+                p.OneScreenSquareLayout = SquareSplit ? 1 : 0;
             }
         }
 

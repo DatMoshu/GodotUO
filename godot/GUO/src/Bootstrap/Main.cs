@@ -292,6 +292,10 @@ public partial class Main : Node
                 {
                     GamepadProbeThenQuit();
                 }
+                else if (_options.OneScreenProbe)
+                {
+                    OneScreenProbeThenQuit();
+                }
                 else if (_options.AssetProbe.Length > 0)
                 {
                     AssetProbeThenQuit();
@@ -611,6 +615,7 @@ public partial class Main : Node
         || !string.IsNullOrEmpty(_options.PostFxSheet)
         || _options.DoorProbe
         || _options.GamepadProbe
+        || _options.OneScreenProbe
         || _options.AssetProbe.Length > 0
         || _options.EffectsProbe > 0
         || _options.TradePartner
@@ -705,6 +710,20 @@ public partial class Main : Node
         await Preamble();
         await ZoomProbe.Run(this);
         Quit(ZoomProbe.Passed ? 0 : 1);
+    }
+
+    /// <summary>The one-screen drawer in the world; see OneScreenProbe.</summary>
+    private async void OneScreenProbeThenQuit()
+    {
+        await Preamble();
+        await OneScreenProbe.Run(this, _options.ScreenshotDir, _options.ScreenshotName);
+
+        if (_options.Stay)
+        {
+            return;
+        }
+
+        Quit(OneScreenProbe.Passed ? 0 : 1);
     }
 
     /// <summary>Walk and confirm/cancel by injected joypad events; see GamepadProbe.</summary>
@@ -1236,6 +1255,7 @@ public partial class Main : Node
                 || !string.IsNullOrEmpty(PostFxSheet)
                 || DoorProbe
                 || GamepadProbe
+                || OneScreenProbe
                 || EffectsProbe > 0
                 || EndureSeconds > 0
                 || TouchProbe
@@ -1347,6 +1367,9 @@ public partial class Main : Node
 
         /// <summary>Check the gamepad layer by injected joypad events (--gamepad-probe).</summary>
         public bool GamepadProbe { get; private set; }
+
+        /// <summary>--one-screen-probe: the one-screen drawer in the world; see OneScreenProbe.</summary>
+        public bool OneScreenProbe { get; private set; }
 
         /// <summary>Folder the asset probe writes to; empty means no probe (see AssetProbe).</summary>
         public string AssetProbe { get; private set; } = "";
@@ -1592,6 +1615,9 @@ public partial class Main : Node
                     case "--gamepad-probe":
                         o.GamepadProbe = true;
                         break;
+                    case "--one-screen-probe":
+                        o.OneScreenProbe = true;
+                        break;
                     case "--gamepad-clip":
                         // The probe paced for a screen recording: at the Britain bank, Y's rows held open.
                         GUO.Host.GamepadProbe.Clip = true;
@@ -1729,6 +1755,10 @@ public partial class Main : Node
                         break;
                     case "--dual-off":
                         o.DualOff = true;
+                        break;
+                    case "--one-screen":
+                        // The one-screen panel on or off, whatever the setting (DualScreen.Panel).
+                        GUO.Platform.Android.DualScreenSettings.PanelForced = Next() != "off";
                         break;
                     case "--screen-scale":
                         if (int.TryParse(Next(), out int screenScale))

@@ -40,6 +40,11 @@ internal static class TouchProbe
     {
         Checks.Clear();
 
+        // The touch layer on one plain screen: the one-screen side panel,
+        // on by default with touch, would shelve the paperdoll into its
+        // drawer. It has its own probe (OneScreenProbe); --one-screen wins.
+        Platform.Android.DualScreenSettings.PanelForced ??= false;
+
         await Frames(host, 200);
 
         Check("the touch layer is on", TouchInput.Enabled);

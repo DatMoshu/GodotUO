@@ -97,7 +97,9 @@ namespace GUO.Game.Scenes
                 Client.Game.RestoreWindow();
             }
 
-            int width = Client.Game.ScaleWithDpi(640);
+            // PORT DEVIATION (GUO): wider by the one-screen panel's dock when
+            // the desktop has it on (opt-in; DualScreen.Panel), 0 otherwise.
+            int width = Client.Game.ScaleWithDpi(640 + GUO.Platform.Android.DualScreen.DesktopDockWidth);
             int height = Client.Game.ScaleWithDpi(480);
             // PORT DEVIATION (GUO): SDL_SetWindowMinimumSize takes the window
             // handle; Godot's DisplayServer already knows which window.
