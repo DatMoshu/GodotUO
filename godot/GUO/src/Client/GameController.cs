@@ -705,6 +705,10 @@ namespace GUO
         /// </remarks>
         public override void _Input(InputEvent @event)
         {
+            // PORT DEVIATION (GUO): which input is in use, pad or keyboard and
+            // mouse or touch, switched by the event itself (ADR-0025).
+            GUO.Input.InputMode.Note(@event);
+
             // PORT DEVIATION (GUO): every input counts as activity for the
             // screen saver, and the one that wakes it goes no further.
             if (GUO.Game.Managers.ScreenSaver.NoteInput())
@@ -979,7 +983,12 @@ namespace GUO
             _uoSpriteBatch.End();
 
             _uoSpriteBatch.Begin();
-            UO.GameCursor?.Draw(_uoSpriteBatch);
+            // PORT DEVIATION (GUO): no cursor while a pad is in use and its
+            // pointer idle (ADR-0025, Input.InputMode.PointerHidden).
+            if (!GUO.Input.InputMode.PointerHidden)
+            {
+                UO.GameCursor?.Draw(_uoSpriteBatch);
+            }
             // PORT DEVIATION (GUO): with the pointer on a dual-screen device's
             // second screen, a badge of the held item on this one. ADR-0009.
             GUO.Platform.Android.DualScreen.DrawMainBadge(_uoSpriteBatch);

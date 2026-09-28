@@ -67,7 +67,7 @@ namespace GUO.Game.UI.Gumps
 
         // PORT DEVIATION (GUO): the gamepad's face-button layout (Input.Gamepad).
         private Combobox _gamepadLayout;
-        private Checkbox _gamepadOnDesktop; // PORT DEVIATION (GUO)
+        private Checkbox _gamepad; // PORT DEVIATION (GUO)
         private static readonly string[] GamepadLayouts = { "auto", "labels", "swapped" };
         private Combobox _cotType;
         private DataBox _databox;
@@ -2313,8 +2313,9 @@ namespace GUO.Game.UI.Gumps
 
             // PORT DEVIATION (GUO): the gamepad's A/B/X/Y (Input.Gamepad). A
             // pad the client cannot recognise waits for this choice.
-            SettingsSection sectionPad = deviceSettings ? AddSettingsSection(box, "Controller buttons") : new SettingsSection("Controller buttons", box.Width);
-            sectionPad.Y = section8.Bounds.Bottom + 40; // PORT DEVIATION (GUO): after Start
+            // A pad works on every platform (ADR-0025), so this section shows on the desktop too.
+            SettingsSection sectionPad = AddSettingsSection(box, "Controller buttons");
+            sectionPad.Y = (deviceSettings ? section8 : section7).Bounds.Bottom + 40; // PORT DEVIATION (GUO): after Start, or the screen saver where Start is hidden
             sectionPad.Add(AddLabel(null, "A/B/X/Y", startX, startY));
             sectionPad.AddRight
             (
@@ -2329,11 +2330,8 @@ namespace GUO.Game.UI.Gumps
                 )
             );
 
-            // PORT DEVIATION (GUO): a desktop has no pad handling unless asked for.
-            if (!(Godot.OS.GetName() is "Android" or "Linux"))
-            {
-                sectionPad.Add(_gamepadOnDesktop = AddCheckBox(null, "Use a controller on this computer", _currentProfile.GamepadOnDesktop, startX, startY));
-            }
+            // PORT DEVIATION (GUO): the pad is on by default; this turns it off.
+            sectionPad.Add(_gamepad = AddCheckBox(null, "Use a controller", _currentProfile.Gamepad, startX, startY));
 
             Add(rightArea, PAGE);
         }
@@ -4091,7 +4089,7 @@ namespace GUO.Game.UI.Gumps
                     _screenSaverChoice.SelectedIndex = 0; // PORT DEVIATION (GUO)
                     _splashIntro.IsChecked = true; // PORT DEVIATION (GUO)
                     _gamepadLayout.SelectedIndex = 0; // PORT DEVIATION (GUO)
-                    if (_gamepadOnDesktop != null) _gamepadOnDesktop.IsChecked = false; // PORT DEVIATION (GUO)
+                    _gamepad.IsChecked = true; // PORT DEVIATION (GUO)
                     _sliderScreenZoom.Value = 0;
                     _lightBar.Value = 0;
                     _enableLight.IsChecked = false;
@@ -4627,7 +4625,7 @@ namespace GUO.Game.UI.Gumps
 
             // PORT DEVIATION (GUO): a new layout choice applies to connected pads at once.
             string gamepadLayout = GamepadLayouts[Math.Max(0, _gamepadLayout.SelectedIndex)];
-            if (_gamepadOnDesktop != null) _currentProfile.GamepadOnDesktop = _gamepadOnDesktop.IsChecked; // PORT DEVIATION (GUO)
+            _currentProfile.Gamepad = _gamepad.IsChecked; // PORT DEVIATION (GUO)
 
             if (_currentProfile.GamepadLayout != gamepadLayout)
             {
