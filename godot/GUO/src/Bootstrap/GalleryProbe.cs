@@ -217,6 +217,13 @@ internal static class GalleryProbe
         profile.ModernGumpsOff = true;
         await InputProbe.Wait(host, 10);
 
+        // The journal's Modern reader (ADR-0024: a reader, not a replacement).
+        Input.Touch.Modern.ModernJournal.OpenReader(world);
+        await InputProbe.Wait(host, 40);
+        await Save(host, "journal");
+        Input.Touch.Modern.ModernGump.Current?.Close();
+        await InputProbe.Wait(host, 10);
+
         // The world map, Classic and fitted below the bar (ADR-0024: Classic + fit
         // + gestures), then its markers manager, Modern (gump index 9).
         UIManager.GetGump<WorldMapGump>()?.Dispose();

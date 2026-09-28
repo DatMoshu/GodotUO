@@ -49,6 +49,7 @@ internal static class BarCatalogue
         new("paperdoll", "Paperdoll", "Paperdoll", Windows),
         new("backpack", "Backpack", "Backpack", Windows),
         new("journal", "Journal", "Journal", Windows),
+        new("journalread", "Read the journal (large type)", "Read Journal", Windows),
         new("map", "Radar map", "Map", Windows),
         new("worldmap", "World map", "World Map", Windows, MacroType.Open, MacroSubType.WorldMap),
         new("status", "Status", "Status", Windows, MacroType.Open, MacroSubType.Status),
@@ -150,7 +151,7 @@ internal static class BarCatalogue
     {
         "paperdoll" => ("status", "skills"),
         "backpack" => ("bank", "closecorpses"),
-        "journal" => ("chat", "party"),
+        "journal" => ("journalread", "chat"),
         "map" => ("worldmap", "zoomout"),
         "chat" => ("party", "guild"),
         "war" => ("armdisarm", "equiplast"),

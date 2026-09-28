@@ -54,6 +54,7 @@ internal sealed partial class WindowMenu : Node
     private HSlider _slider;
     private CheckBox _lock;
     private Button _move;
+    private Button _read; // the journal only: its Modern reader (ADR-0024)
     private bool _syncing;
     private bool _dragging;
     private float _scale = 1f;
@@ -224,6 +225,18 @@ internal sealed partial class WindowMenu : Node
             Place();
         };
         col.AddChild(reset);
+
+        // The journal: read it full height in large type (the Modern journal).
+        _read = Touch(new Button { Text = "Read" });
+        _read.AddThemeColorOverride("font_color", Heading);
+        _read.Pressed += () =>
+        {
+            if (_gump?.World == null) return;
+            Game.World world = _gump.World;
+            Hide();
+            Modern.ModernJournal.OpenReader(world);
+        };
+        col.AddChild(_read);
     }
 
     // --- behaviour ------------------------------------------------------------
@@ -334,6 +347,7 @@ internal sealed partial class WindowMenu : Node
         _slider.Value = s * 100;
         _lock.ButtonPressed = _gump.PresentationLocked;
         _move.Text = DualScreen.ShelfOn ? (second ? "Move to top screen" : "Move to bottom screen") : "Fit to screen";
+        _read.Visible = _gump is JournalGump or ResizableJournal;
         _syncing = false;
     }
 
