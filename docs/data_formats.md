@@ -759,7 +759,7 @@ components). Elements:
 | `type` | Fields |
 |---|---|
 | `wall` | `path` (points; diagonals become stepped runs), `thickness`, `z` (base), `top` (the walkway), `outer` (`left`/`right` of travel: the parapet side, crenellated), `parapet` (`outer`, `both`, `none`), `parapet_gaps`, `gates[]` (`box` or `cells`, `z`, `height`, `door` and `door_line`; without `door` it is a culvert) |
-| `tower` | `disc` `[x, y, r]`, `z`, `levels[]` (floors, 20 apart for its stairs), `top`, `doors[]` (`at`, `z`, `door`); it opens where a wall's walkway meets it at a level |
+| `tower` | `disc` `[x, y, r]`, `z`, `levels[]` (floors, 20 apart for its stairs, which turn over three rows so no flight stands over another: a walker climbing one stacked over another was dropped to the floor below in game), `top`, `doors[]` (`at`, `z`, `door`); it opens where a wall's walkway meets it at a level |
 | `platform` | `shapes[]`/`minus[]` (`box`, `disc`, `band`), `z`, `floor`, `face` (stone faces down to `base`) |
 | `causeway` | `path`, `width`, `z`, `rail` |
 | `stair` | `at`, `rise`, `z`, `to`, `width` |
