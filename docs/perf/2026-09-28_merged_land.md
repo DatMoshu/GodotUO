@@ -217,7 +217,13 @@ material and offset back exactly as it found them (it also runs inside Cut).
 **Recommendation:** 2c can go on with 1b on the desktop. It needs a Thor pass
 first, like 1b (the dungeon's 36 px there is still being explained).
 
-**ClassicUO against GUO, same spot, same window and zoom.** From each
+**ClassicUO against GUO, same spot, same window and zoom.** *Caveat, found
+after the run: GUO was measured as the editor runs it, the Debug
+configuration, which builds with `Optimize=false`; ClassicUO was built
+`-c Release`. The absolute gap below is therefore overstated, most of all
+for prepare, which is plain C#. Every on/off comparison in this document
+is within one build and stands. Exported builds (ExportRelease) are
+optimised, so players never ran this code unoptimised.* From each
 client's own profiler (the average over its last 60 frames), PerfDump in both,
 ClassicUO built out of tree with it injected. GUO on the default path
 (no merged flags).
@@ -236,3 +242,51 @@ profile of prepare (GUO's added work in it: covering land, the id mirror, the
 mesh bookkeeping) before any more draw-side work. The ClassicUO JSON write
 first failed (its build turns reflection-based System.Text.Json off); PerfDump
 now writes it by hand.
+
+## World prepare (plan, 2026-09-28, desk only, for review)
+
+Prepare in both clients is `GameScene.FillGameObjectList`, and GUO's copy is
+upstream's but for one argument (`ChunkMesh.Build` takes no device). The
+sorting file carries one deviation (the lights of statics upstream would
+have baked). The measured 2.8-4.5x has two known causes before any profile:
+
+1. **GUO was unoptimised** (`Optimize=false`, above). This is a measurement
+   defect, not a client defect, and it goes first.
+2. **GUO sorts every static; upstream bakes most of them.**
+   `ChunkMesh.IsStaticExcludedFromMesh` returns true for everything (ADR-0004:
+   with no depth buffer a baked chunk cannot take part in the painter's
+   sort), so each visible static goes through AddTileToRenderList,
+   CheckIfBehindATree, PushToRenderQueue and the sort, where upstream's mesh
+   fast path skips them. That is more work per frame by design, and it grows
+   with static density, which fits the bank (4.3x) against the open field
+   (2.8x).
+
+Steps, each a small slot (~10 min) or none:
+
+- **P0, measure fairly (1 slot).** perf_dump and perf_probe build GUO with
+  `-p:Optimize=true` into the folder the editor runs from, and record it in
+  their output (`optimize: true`). Rerun the four-scene ClassicUO comparison
+  and one `--merged-land=array --merged-cover` probe. Expected: prepare and
+  world draw both fall; how far says how much of the gap is left.
+- **P1, work per object (no new slot; rides on P0).** PerfDump also records
+  the render-list sizes, read the same way in both clients (the lists are
+  the same fields): objects sorted, statics meshed, covering land queued.
+  GUO's ms per sorted object against ClassicUO's separates port efficiency
+  from ADR-0004's extra statics.
+- **P2, profile (1 slot, only if P0 leaves more than ~1.5x per object).**
+  `dotnet-trace` on the running GUO process, 10 s at the bank, optimised
+  build, top methods under FillGameObjectList. It is a new third-party tool,
+  so it gets its own `tools/dotnet_trace/` README (version, origin) and
+  nothing installed globally.
+- **P3, reduce (design, then code; after P1/P2).** Candidates, cheapest
+  first: (a) keep the per-static data prepare recomputes each frame
+  (StaticTiles lookups, the behind-a-tree test inputs) on the static
+  itself, for statics that do not move, as a GUO-side cache with a PORT
+  DEVIATION marker; (b) cull statics wholly outside the viewport before they
+  reach the sort, if upstream's bounds test runs later than GUO needs;
+  (c) the real fix for cause 2, a depth-tested world pass (ADR-0001), which
+  would let statics be baked as upstream does. That is an ADR decision, not
+  a B4 task.
+
+Recommendation: P0 at the next free slot, since every absolute number
+depends on it; P1 in the same slot; decide P2 and P3 from what they show.
