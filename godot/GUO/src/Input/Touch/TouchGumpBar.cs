@@ -290,17 +290,9 @@ namespace GUO.Input.Touch
 
         private void ProcessBar()
         {
-            // A full-height gump (Options on touch, C11) is fitted to the whole
-            // screen and drawn over the bar: the bar steps aside, reserving
-            // nothing and taking no taps, until it closes.
-            GumpPresentation.FitFullHeight();
-            Covered = GumpPresentation.FullHeightOpen();
-
             // The idle screen saver draws in the client's canvas, under this
             // layer; a bar left lit on an OLED panel is what it is there to
             // prevent, so the bar goes with it.
-            Visible = !GUO.Game.Managers.ScreenSaver.Active && !Covered;
-
             bool inGame = Client.Game?.UO?.World?.InGame ?? false;
 
             if (inGame != Shown)
@@ -310,11 +302,24 @@ namespace GUO.Input.Touch
                 _rowsSurface.QueueRedraw();
 
                 // A new session: one row, and entering War mode may open two.
+                // Gumps reopened at login are not full-height (C11).
+                if (inGame)
+                {
+                    GumpPresentation.ExemptRestoredGumps();
+                }
+
                 _height = _target = 1f;
                 _dragging = false;
                 HiddenThisSession = false;
                 _wasWar = false;
             }
+
+            // A full-height gump (Options on touch, C11) is fitted to the whole
+            // screen and drawn over the bar: the bar steps aside, reserving
+            // nothing and taking no taps, until it closes.
+            GumpPresentation.FitFullHeight();
+            Covered = GumpPresentation.FullHeightOpen();
+            Visible = !GUO.Game.Managers.ScreenSaver.Active && !Covered;
 
             if (!Shown)
             {

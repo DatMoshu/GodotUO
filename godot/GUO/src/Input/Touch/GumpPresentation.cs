@@ -66,7 +66,7 @@ internal static class GumpPresentation
 
         foreach (Gump g in UIManager.Gumps)
         {
-            if (!g.IsDisposed && g.IsVisible && IsFullHeight(g) && !OnSecond(g))
+            if (!g.IsDisposed && g.IsVisible && IsFullHeight(g) && !OnSecond(g) && !_restored.Contains(g))
             {
                 return true;
             }
@@ -74,6 +74,38 @@ internal static class GumpPresentation
 
         return false;
     }
+
+    private static readonly System.Collections.Generic.HashSet<Gump> _restored = new();
+    private static ulong _restoreUntil;
+    private const ulong RestoreMs = 3000;
+
+    /// <summary>
+    /// Gumps the client reopens at login are not full-height: a player who
+    /// saved one open would otherwise log in to it over the whole screen and
+    /// no command bar. Called as the bar comes up for a session; any that
+    /// opens in its first seconds counts as restored (the client restores
+    /// saved gumps over the first frames in the world).
+    /// </summary>
+    public static void ExemptRestoredGumps()
+    {
+        _restored.Clear();
+        _restoreUntil = Godot.Time.GetTicksMsec() + RestoreMs;
+
+        foreach (Gump g in UIManager.Gumps)
+        {
+            if (!g.IsDisposed)
+            {
+                _restored.Add(g);
+            }
+        }
+    }
+
+    /// <summary>
+    /// The margin above and below a fitted full-height gump, in client
+    /// pixels: its edges stay clear of the screen's and of the top bar, and
+    /// its scroll areas take what no longer fits (the owner, on the C11 photos).
+    /// </summary>
+    private const int FullHeightPad = 12;
 
     private static readonly System.Collections.Generic.HashSet<Gump> _fitted = new();
 
@@ -94,15 +126,24 @@ internal static class GumpPresentation
 
         foreach (Gump g in UIManager.Gumps)
         {
-            if (g.IsDisposed || !IsFullHeight(g) || g.Width <= 0 || _fitted.Contains(g))
+            if (g.IsDisposed || !IsFullHeight(g) || g.Width <= 0 || _fitted.Contains(g) || _restored.Contains(g))
             {
                 continue;
             }
 
+            if (Godot.Time.GetTicksMsec() < _restoreUntil)
+            {
+                _restored.Add(g);
+                continue;
+            }
+
             _fitted.Add(g);
-            Rectangle b = DisplayBounds(false);
-            int top = FullHeightTop();
-            int room = Math.Max(1, b.Height - top);
+
+            // The whole main screen, the bar having stepped aside, less the top
+            // bar and a margin above and below.
+            Rectangle b = new(0, 0, Client.Game.ClientBounds.Width, Client.Game.ClientBounds.Height);
+            int top = FullHeightTop() + FullHeightPad;
+            int room = Math.Max(1, b.Height - top - FullHeightPad);
 
             bool locked = g.PresentationLocked;
             g.PresentationLocked = false;

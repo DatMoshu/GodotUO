@@ -97,6 +97,12 @@ internal static class TouchProbe
 
         await Frames(host, 120);
 
+        // A world map or party gump a run saved open covers the world the
+        // walk checks hold on; the checks start without them.
+        UIManager.GetGump<WorldMapGump>()?.Dispose();
+        UIManager.GetGump<PartyGump>()?.Dispose();
+        await Frames(host, 5);
+
         await WalkCheck(host, world);
         await DoubleTapCheck(host, world);
         await PinchCheck(host);
@@ -131,7 +137,9 @@ internal static class TouchProbe
         bool rightHeld = false;
         bool moved = false;
 
-        foreach (Vector2 diagonal in new[] { new Vector2(1, 1), new Vector2(-1, -1), new Vector2(-1, 1), new Vector2(1, -1) })
+        // Diagonals first, then straight: a character left on a coast by an
+        // earlier run has water on some sides.
+        foreach (Vector2 diagonal in new[] { new Vector2(1, 1), new Vector2(-1, -1), new Vector2(-1, 1), new Vector2(1, -1), new Vector2(-1, 0), new Vector2(0, 1), new Vector2(0, -1), new Vector2(1, 0) })
         {
             TouchInput.Trace.Clear();
 
@@ -854,7 +862,8 @@ internal static class TouchProbe
         Compat.Rectangle drawn = GumpPresentation.Bounds(options);
         Check("Options opens fitted to the screen, over the command bar, its button row on screen",
             options.PresentationScale > 1.2f && bar.Covered && bar.ReservedFraction == 0f
-                && drawn.Bottom <= screen.Height && drawn.Right <= screen.Width,
+                && drawn.Bottom <= screen.Height - 8 && drawn.Right <= screen.Width
+                && drawn.Y >= GumpPresentation.FullHeightTop() + 8,
             $"scale {options.PresentationScale:0.00}, at {drawn}, screen {screen.Width}x{screen.Height}, bar covered {bar.Covered}");
 
         // A tap on the first check box in view toggles it; a second puts it back.
