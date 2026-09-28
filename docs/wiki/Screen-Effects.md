@@ -13,6 +13,10 @@ ADR-0023.
 ## Choosing a look
 
 - **Options > Video > Screen effects...**, or **Ctrl+Shift+E** in game.
+- Before you log in: **Settings > Screen > Screen effects** shows the look
+  that's on (**Off** for Classic). The arrows step through the looks, and
+  **Off** goes back to Classic in one tap. **Screen effects...** there opens
+  the full menu.
 - Pick a look. Each pass has a toggle and its own settings. The sliders and
   choices come from the shader itself, so a new effect brings its own
   controls.
