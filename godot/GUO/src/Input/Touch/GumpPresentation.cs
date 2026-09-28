@@ -32,9 +32,87 @@ internal static class GumpPresentation
         || (Configuration.ProfileManager.CurrentProfile?.MobileWindowControls ?? false);
 
     // Keep arbitrary shard dialogs and content-zoom maps on their existing paths.
-    public static bool Supports(Gump g) => Active && g != null && !g.IsDisposed && !g.IsFromServer && !g.IsModal
-        && g is PaperDollGump or ContainerGump or GridContainerGump or StatusGumpBase
-            or JournalGump or ResizableJournal;
+    public static bool Supports(Gump g) => Active && g != null && !g.IsDisposed && !g.IsFromServer
+        && (_followers.Contains(g)
+            || !g.IsModal && (g is PaperDollGump or ContainerGump or GridContainerGump or StatusGumpBase
+                or JournalGump or ResizableJournal || IsFullHeight(g)));
+
+    /// <summary>
+    /// A full-height gump (C11): one that on touch takes the whole main screen,
+    /// drawn over the command bar, which steps aside while it is up. Fitted to
+    /// the screen when it opens (<see cref="FitFullHeight"/>). Options, whose
+    /// mobile mode this is (docs/ui/tall_gumps.md lists the other tall gumps).
+    /// </summary>
+    public static bool IsFullHeight(Gump g) => g is OptionsGump;
+
+    /// <summary>Whether a full-height gump is up on the main screen, so the command bar steps aside.</summary>
+    public static bool FullHeightOpen()
+    {
+        if (!TouchInput.Enabled)
+        {
+            return false;
+        }
+
+        foreach (Gump g in UIManager.Gumps)
+        {
+            if (!g.IsDisposed && g.IsVisible && IsFullHeight(g) && !OnSecond(g))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static readonly System.Collections.Generic.HashSet<Gump> _fitted = new();
+
+    /// <summary>
+    /// Fit each full-height gump that has just opened to the main screen, as
+    /// large as it goes, centred: on a handheld that is about twice its size,
+    /// finger-sized, with its own Cancel/Apply/Okay row always on screen.
+    /// Once per gump, so a pinch or the window menu can size it after.
+    /// </summary>
+    public static void FitFullHeight()
+    {
+        if (!TouchInput.Enabled)
+        {
+            return;
+        }
+
+        _fitted.RemoveWhere(g => g.IsDisposed);
+
+        foreach (Gump g in UIManager.Gumps)
+        {
+            if (g.IsDisposed || !IsFullHeight(g) || g.Width <= 0 || _fitted.Contains(g))
+            {
+                continue;
+            }
+
+            _fitted.Add(g);
+            GumpFlick.Fit(g);
+            TouchInput.Note($"full-height: {g.GetType().Name} fitted at {g.PresentationScale:0.00}x");
+        }
+    }
+
+    private static readonly System.Collections.Generic.HashSet<Gump> _followers = new();
+
+    /// <summary>
+    /// A popup a control of a scaled gump opens (a combobox's list) takes its
+    /// owner's scale: drawn, and hit, at the same size as what opened it.
+    /// </summary>
+    public static void Follow(Gump popup, Control owner)
+    {
+        float s = Scale(owner);
+
+        if (popup == null || s == 1f)
+        {
+            return;
+        }
+
+        _followers.RemoveWhere(g => g.IsDisposed);
+        _followers.Add(popup);
+        popup.PresentationScale = s;
+    }
     // The handle is drawn only when asked for (Options, "Show window handles");
     // on touch the menu opens from a hold-and-release on the gump.
     private static bool GemVisible(Gump g) => Supports(g) && GemAlpha(g) > 0f;

@@ -133,6 +133,15 @@ internal static class GalleryProbe
             await Save(host, "editor");
         }
 
+        // Options, as a touch player gets it (C11).
+        Game.GameActions.OpenSettings(world);
+        await InputProbe.Wait(host, 60);
+        await Save(host, "options");
+        UIManager.GetGump<OptionsGump>()?.Dispose();
+        await InputProbe.Wait(host, 10);
+
+        await MeasureGumps(host, world);
+
         Passed = true;
         GD.Print("[GUO] gallery: ok");
     }
@@ -198,6 +207,58 @@ internal static class GalleryProbe
         await InputProbe.Wait(host, 5);
 
         return false;
+    }
+
+    /// <summary>
+    /// The size of every gump the client can open by itself, and of the
+    /// shard's bank box and a vendor's buy list (asked for by speech, as a
+    /// player does, near the dev shard's NPCs): "[GUO] gump size: Type WxH".
+    /// For docs/ui/tall_gumps.md. Sizes are the gump's own, unscaled.
+    /// </summary>
+    private static async System.Threading.Tasks.Task MeasureGumps(Node host, Game.World world)
+    {
+        var seen = new System.Collections.Generic.HashSet<Gump>();
+
+        async System.Threading.Tasks.Task Report(string what, System.Action open, int frames = 60)
+        {
+            foreach (Gump g in UIManager.Gumps) seen.Add(g);
+            open();
+            await InputProbe.Wait(host, frames);
+
+            foreach (Gump g in UIManager.Gumps)
+            {
+                if (!seen.Contains(g) && !g.IsDisposed)
+                {
+                    GD.Print($"[GUO] gump size: {what}: {g.GetType().Name} {g.Width}x{g.Height}");
+                    seen.Add(g);
+                }
+            }
+        }
+
+        Configuration.Profile p = Configuration.ProfileManager.CurrentProfile;
+        bool standard = p.StandardSkillsGump;
+
+        await Report("Options", () => Game.GameActions.OpenSettings(world));
+        UIManager.GetGump<OptionsGump>()?.Dispose();
+        await Report("Paperdoll", () => Game.GameActions.OpenPaperdoll(world, world.Player.Serial));
+        await Report("Status", () => Game.GameActions.OpenStatusBar(world));
+        await Report("Journal", () => Game.GameActions.OpenJournal(world));
+        p.StandardSkillsGump = true;
+        await Report("Skills (standard)", () => Game.GameActions.OpenSkills(world));
+        UIManager.GetGump<StandardSkillsGump>()?.Dispose();
+        p.StandardSkillsGump = false;
+        await Report("Skills (advanced)", () => Game.GameActions.OpenSkills(world));
+        UIManager.GetGump<SkillGumpAdvanced>()?.Dispose();
+        p.StandardSkillsGump = standard;
+        await Report("Radar map", () => Game.GameActions.OpenMiniMap(world));
+        await Report("World map", () => Game.GameActions.OpenWorldMap(world), 120);
+        await Report("Backpack", () => Game.GameActions.OpenBackpack(world));
+        await Report("Abilities book", () => Game.GameActions.OpenAbilitiesBook(world));
+        await Report("Macro button editor", () => Game.GameActions.OpenMacroGump(world, "probe"));
+        await Report("Bank (said 'bank')", () => Game.GameActions.Say("bank"), 120);
+        await Report("Vendor (said 'vendor buy')", () => Game.GameActions.Say("vendor buy"), 120);
+        await Report("Guild", () => Game.GameActions.OpenGuildGump(world), 90);
+        await Report("Party", () => UIManager.Add(new PartyGump(world, 100, 100, world.Party.CanLoot)));
     }
 
     private static async System.Threading.Tasks.Task Save(Node host, string name)

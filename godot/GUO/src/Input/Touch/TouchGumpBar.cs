@@ -210,6 +210,9 @@ namespace GUO.Input.Touch
         /// <summary>Whether the bar is drawn and takes taps.</summary>
         public bool Shown { get; private set; }
 
+        /// <summary>Whether a full-height gump is up over the bar (C11): hidden, reserving nothing, no taps.</summary>
+        public bool Covered { get; private set; }
+
         /// <summary>Whether the profile offers the handle and rows 2 and 3.</summary>
         public bool HandleShown => Shown && (ProfileManager.CurrentProfile?.TouchMacroRow ?? false);
 
@@ -259,7 +262,7 @@ namespace GUO.Input.Touch
             {
                 float viewHeight = _surface.GetViewportRect().Size.Y;
 
-                if (!Shown || viewHeight <= 0f)
+                if (!Shown || Covered || viewHeight <= 0f)
                 {
                     return 0f;
                 }
@@ -287,10 +290,16 @@ namespace GUO.Input.Touch
 
         private void ProcessBar()
         {
+            // A full-height gump (Options on touch, C11) is fitted to the whole
+            // screen and drawn over the bar: the bar steps aside, reserving
+            // nothing and taking no taps, until it closes.
+            GumpPresentation.FitFullHeight();
+            Covered = GumpPresentation.FullHeightOpen();
+
             // The idle screen saver draws in the client's canvas, under this
             // layer; a bar left lit on an OLED panel is what it is there to
             // prevent, so the bar goes with it.
-            Visible = !GUO.Game.Managers.ScreenSaver.Active;
+            Visible = !GUO.Game.Managers.ScreenSaver.Active && !Covered;
 
             bool inGame = Client.Game?.UO?.World?.InGame ?? false;
 
@@ -1055,7 +1064,7 @@ namespace GUO.Input.Touch
         {
             action = null;
 
-            if (!Shown)
+            if (!Shown || Covered)
             {
                 return false;
             }

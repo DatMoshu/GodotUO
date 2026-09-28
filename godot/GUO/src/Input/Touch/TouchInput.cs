@@ -742,7 +742,9 @@ namespace GUO.Input.Touch
                     if (_scrollBar != null && !_scrollBar.IsDisposed)
                     {
                         // Content follows the finger: moving it up shows what is below.
-                        float dpi = Client.Game?.DpiScale ?? 1f;
+                        // In a gump drawn scaled (Options on touch), a unit of
+                        // scroll is that many screen pixels.
+                        float dpi = (Client.Game?.DpiScale ?? 1f) * GumpPresentation.Scale(_scrollBar);
                         int value = _scrollStart - (int)System.Math.Round((at.Y - _downAt.Y) / dpi);
                         _scrollBar.Value = System.Math.Clamp(value, _scrollBar.MinValue, _scrollBar.MaxValue);
                     }
