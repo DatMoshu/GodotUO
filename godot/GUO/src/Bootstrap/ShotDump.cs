@@ -54,6 +54,7 @@ namespace GUO.Host;
 /// for the fade-in after the jump, then STEPS, separated by '|':
 /// <list type="bullet">
 /// <item>shot:NAME -- the client's own screenshot (TakeScreenshot), moved to DIR\LABEL\VARIANT_NAME.png</item>
+/// <item>anim:GROUP -- the player loops animation group GROUP (0x6E-style, client-side)</item>
 /// <item>wait:MS</item>
 /// <item>say:TEXT -- said as the player would (a shard command with '['); {x}, {y}, {z}, {x+2},
 /// {y-1}, ... become the player's position</item>
@@ -232,6 +233,16 @@ internal static class ShotDump
                 case "walk":
                     Walk(arg);
                     delay = 120;
+                    break;
+                case "anim":
+                    {
+                        // The player plays animation group GROUP on a loop, as a
+                        // server's 0x6E would ask: a look at a body's actions
+                        // (an attack) without a fight. Client-side only.
+                        byte group = byte.Parse(arg, CultureInfo.InvariantCulture);
+                        World.Player.SetAnimation(group, 2, 0, 20, true, true, true);
+                        Note($"anim {group}");
+                    }
                     break;
                 default:
                     Note($"unknown step {step}");
