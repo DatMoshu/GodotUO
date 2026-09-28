@@ -138,6 +138,13 @@ long detour for its distance: the client's pathfinder is an A* on the straight
 distance with 10,000 nodes, and it gave up on a walk sent the long way round a
 wall because a culvert was too low to pass. Put a stop on the way instead.
 
+The pathfinder also aims at a stop's x and y only: it ends at the first cell it
+reaches there, at whatever z. A stop straight above the last one (the same room
+a storey up) ends on the floor it started on, so the check reports a stop whose
+x and y are nearer at another z; put a stop in the middle of the stair, then one
+at its top. A step lands on the highest surface in reach, so a walker never
+drops through a floor, nor sideways into a stair's flight.
+
 ## Complete on every side
 
 The client's own buildings often skip what it never shows: the north or west

@@ -113,6 +113,17 @@ def raise_building(bd: dict, cat: G.Catalogue, cells: dict) -> tuple[list[Compon
                 removed.add((c[0], c[1], z, sid))
     b = G.Built()
     wall_mat, floor_mat = bd["wall"], bd.get("floor", "stone")
+    # "ground": upstairs repeats the piece the ground storey has in each wall cell (its
+    # windows too), so the storeys match; other cells take the ground walls' commonest family
+    ground_piece = {}
+    if wall_mat == "ground":
+        for c in ground_walls:
+            ws = [sid for sid, z, _ in cells.get(c, []) if z == base and is_wall(cat.pieces.get(f"{sid:#06x}", {}))
+                  and cat.pieces[f"{sid:#06x}"].get("height", 0) >= step - 1]
+            if ws:
+                ground_piece[c] = ws[0]
+        mats = [cat.pieces[f"{sid:#06x}"].get("material") for sid in ground_piece.values()]
+        wall_mat = max(set(mats), key=mats.count) if mats else "stone"
     every = bd.get("window_every", 3)
     ground_open = fp - ground_walls
     stairs = sorted(bd.get("stairs", []), key=lambda s: s["storey"])
@@ -125,12 +136,16 @@ def raise_building(bd: dict, cat: G.Catalogue, cells: dict) -> tuple[list[Compon
             walls = ground_walls
         else:
             walls = upper_walls
-            floor = fp - holes_next
+            floor = fp - holes_next - {c for fh in bd.get("floor_holes", []) if fh["storey"] == k
+                                       for c in G.cells_of(fh["box"])}
             ids = cat.floor(floor_mat if k < n else bd.get("roof", {}).get("floor", floor_mat))
             for (x, y) in sorted(floor):
                 b.add(ids[(x * 7 + y * 13) % len(ids)], x, y, z)
             if k < n:
                 for (x, y) in sorted(walls):
+                    if (x, y) in ground_piece:
+                        b.add(ground_piece[(x, y)], x, y, z)
+                        continue
                     sig = signature(walls, x, y)
                     window = (x, y) in outline and sig in ("EW", "NS") and (x + y) % every == 0
                     b.add(cat.wall(wall_mat, step - 1, sig, window=window), x, y, z)

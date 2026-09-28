@@ -283,6 +283,16 @@ def main() -> int:
         far = [{"name": "in", "x": 0, "y": 0, "z": 0}, {"name": "out", "x": 0, "y": 30, "z": 0}]
         check(walkcheck.check_tour([{"centre": [0, 0], "comps": [C(2, 0, 0, 0)]}], far, kinds) == [],
               "a stop on the land well past the scene is reached")
+        # two floors over the same cells, a hole in the upper one: a stop straight above the last is
+        # ambiguous to the client, which aims at x and y only; a walker never drops through a floor
+        two = [C(2, x, 1, 0) for x in range(9)] + [C(2, x, 0, 0) for x in range(4, 9)]
+        two += [C(2, x, 0, 20) for x in range(4, 9)] + [C(3, x, 0, 5 * x) for x in range(4)]  # steps 5..20
+        up = [{"name": "low", "x": 6, "y": 0, "z": 0}, {"name": "high", "x": 6, "y": 0, "z": 20}]
+        got = walkcheck.check_tour([{"centre": [0, 0], "comps": two}], up, kinds)
+        check(len(got) == 1 and "stops short at z 0" in got[0], f"a stop straight above the last is reported (got {got})")
+        stand, cov = walkcheck.surfaces([{"centre": [0, 0], "comps": two}], kinds, 0)
+        check(walkcheck.search(stand, cov, (5, 0, 20), (6, 0, 0), 0, 4)[0] > 1,
+              "a walker on the upper floor does not drop through it to the one below")
         # a long wall on the land with its only way round forty cells off: a detour, reported
         long_wall = [{"centre": [0, 0], "comps": [C(1, 0, y, 0) for y in range(-40, 41)]}]
         dleg = [{"name": "west", "x": -1, "y": 0, "z": 0}, {"name": "east", "x": 1, "y": 0, "z": 0}]
