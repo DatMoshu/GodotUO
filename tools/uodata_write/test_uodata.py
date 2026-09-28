@@ -132,6 +132,73 @@ def test_multis(tmp: Path) -> None:
     check(digest(install) == before and digest(mul_install) == mul_before, "both installs are byte for byte unchanged")
 
 
+def refused(what: str, fn) -> None:
+    try:
+        fn()
+        check(False, what)
+    except ValueError:
+        check(True, what)
+
+
+def test_refusals(tmp: Path) -> None:
+    """Review M3/M4/L7: occupied MUL slots, the old tiledata layout, bad hue records;
+    each refused before anything is written."""
+    install = tmp / "install-mul"
+    fake_install(install)
+    # a MUL art install: artidx.mul/art.mul (static 0 used), gumpidx.mul/gumpart.mul (gump 0 used)
+    (install / "artLegacyMUL.uop").unlink()
+    (install / "gumpartLegacyMUL.uop").unlink()
+    art_idx = [(-1, -1, 0)] * (U.LAND_COUNT + 64)
+    art_idx[U.LAND_COUNT] = (0, 4, 0)
+    (install / "artidx.mul").write_bytes(b"".join(struct.pack("<iii", *e) for e in art_idx))
+    (install / "art.mul").write_bytes(b"ART0")
+    (install / "gumpidx.mul").write_bytes(struct.pack("<iii", 0, 4, 0x00020002) + struct.pack("<iii", -1, -1, 0) * 15)
+    (install / "gumpart.mul").write_bytes(b"GMP0")
+    (install / "hues.mul").write_bytes(bytes(2 * U.HUE_GROUP))
+    before = digest(install)
+
+    stage = U.Stage(tmp / "stage-mul", install)
+    used_anim = AssetRecord("anim", 400, b"new-frames", {"action": 0, "direction": 0})
+    refused("MUL art: an occupied artidx slot is refused",
+            lambda: U.write_records(stage, [AssetRecord("static", 0, b"NEW")]))
+    refused("MUL gumps: an occupied gumpidx slot is refused",
+            lambda: U.write_records(stage, [AssetRecord("gump", 0, struct.pack("<II", 1, 1) + b"gg")]))
+    refused("anims: an occupied anim.idx slot is refused",
+            lambda: U.write_records(stage, [used_anim]))
+    refused("a refused record stops the whole call: the free one before it is not written either",
+            lambda: U.write_records(stage, [AssetRecord("static", 20, b"FREE"), AssetRecord("static", 0, b"NEW")]))
+    check(stage.meta["files"] == {}, "after the refusals nothing was copied into the stage")
+
+    U.write_records(stage, [AssetRecord("static", 0, b"NEW!"), used_anim], replace=True)
+    check(U.read_back(stage, AssetRecord("static", 0, b"")) == b"NEW!" and U.read_back(stage, used_anim) == used_anim.data,
+          "with replace, occupied MUL art and anim slots are overwritten")
+    U.write_records(stage, [AssetRecord("static", 20, b"FREE")])
+    check(U.read_back(stage, AssetRecord("static", 20, b"")) == b"FREE", "a free MUL slot is written without replace")
+
+    # hues: exactly one 88-byte record, id 1..count
+    refused("a hue record longer than 88 bytes is refused", lambda: U.write_records(stage, [AssetRecord("hue", 1, bytes(176))]))
+    refused("hue id 0 is refused", lambda: U.write_records(stage, [AssetRecord("hue", 0, bytes(88))]))
+    refused("a hue past the end of hues.mul is refused", lambda: U.write_records(stage, [AssetRecord("hue", 17, bytes(88))]))
+    U.write_records(stage, [AssetRecord("hue", 16, b"" * 88)])
+    raw = stage.read_path("hues.mul").read_bytes()
+    check(raw[U.HUE_GROUP + 4 + 7 * 88:U.HUE_GROUP + 4 + 8 * 88] == b"" * 88 and raw.count(1) == 88,
+          "the last hue in hues.mul is written in place, nothing else")
+
+    # tiledata: the pre-7.0.9.0 layout is refused
+    old = tmp / "install-oldtile"
+    fake_install(old)
+    (old / "tiledata.mul").write_bytes(bytes(U.TILE_OLD_LAND_BYTES + 2 * U.TILE_OLD_STATIC_BLOCK))
+    check(U.tile_layout(old / "tiledata.mul") == "old" and U.tile_layout(install / "tiledata.mul") == "new",
+          "the tiledata layout is told from the file's size")
+    ostage = U.Stage(tmp / "stage-oldtile", old)
+    refused("writing a tiledata item into the old layout is refused",
+            lambda: U.write_records(ostage, [AssetRecord("tiledata-item", 5, b"", {"name": "x"})]))
+    refused("reading the old layout is refused", lambda: U.read_tile(old / "tiledata.mul", 5))
+    refused("counting items in the old layout is refused", lambda: U.static_count(old / "tiledata.mul"))
+    check(ostage.meta["files"] == {}, "the refused tiledata write copied nothing")
+    check(digest(install) == before, "the MUL install is byte for byte unchanged")
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="uodata-test-") as tmp:
         tmp = Path(tmp)
@@ -248,6 +315,7 @@ def main() -> int:
         check(stage.check_install_unchanged() == [] and digest(install) == before, "the install is byte for byte unchanged")
 
         test_multis(tmp)
+        test_refusals(tmp)
 
     print(f"test_uodata: {'OK' if not FAILS else 'FAILED'} ({len(FAILS)} failing)")
     return 0 if not FAILS else 1
