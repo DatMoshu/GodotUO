@@ -155,6 +155,7 @@ internal static class ObjectsDump
             }
 
             // <name>.rec holding "seconds fps": frames into <dir>/<name>/0001.png ...,
+            // until the seconds run out or <name>.stop appears,
             // for a clip (tools/editor_objects_proof --live --clip). Windowed only.
             // Runs beside the watch, so a walk can be recorded.
             foreach (string request in Directory.GetFiles(dir, "*.rec"))
@@ -181,7 +182,9 @@ internal static class ObjectsDump
                 Directory.CreateDirectory(frames);
                 var clock = System.Diagnostics.Stopwatch.StartNew();
                 int n = 0;
-                while (clock.Elapsed.TotalSeconds < seconds)
+                // <name>.stop ends it early: a walk of unknown length asks for plenty, then stops it
+                string stop = Path.Combine(dir, name + ".stop");
+                while (clock.Elapsed.TotalSeconds < seconds && !File.Exists(stop))
                 {
                     await host.ToSignal(Godot.RenderingServer.Singleton, Godot.RenderingServerInstance.SignalName.FramePostDraw);
                     if (clock.Elapsed.TotalSeconds * fps >= n)

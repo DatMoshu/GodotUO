@@ -1,0 +1,39 @@
+{
+ "format": 1,
+ "kind": "scene",
+ "name": "fort_demo",
+ "materials": {"wall": "stone", "walk": "stone", "paving": "flagstones", "stairs": "stone"},
+ "elements": [
+  {"type": "wall", "part": "walls", "path": [[0, 0], [40, 0], [40, 30], [0, 30], [0, 0]], "thickness": 3,
+   "top": 40, "outer": "left",
+   "gates": [{"box": [19, 29, 20, 31], "z": 0, "height": 20, "door": "MetalDoor", "door_line": [[19, 31], [20, 31]]}]},
+  {"type": "tower", "part": "tower_nw", "disc": [0, 0, 4], "levels": [0, 20, 40], "top": 60,
+   "doors": [{"at": [4, 2], "z": 0, "door": "DarkWoodDoor"}]},
+  {"type": "tower", "part": "tower_ne", "disc": [40, 0, 4], "levels": [0, 20, 40], "top": 60},
+  {"type": "tower", "part": "tower_se", "disc": [40, 30, 4], "levels": [0, 20, 40], "top": 60},
+  {"type": "tower", "part": "tower_sw", "disc": [0, 30, 4], "levels": [0, 20, 40], "top": 60},
+  {"type": "stair", "part": "walls", "at": [8, 28], "rise": "E", "z": 0, "to": 40},
+  {"type": "house", "part": "keep", "at": [15, 8], "desc": {
+    "format": 1, "name": "fort_demo_keep", "size": [10, 8],
+    "materials": {"wall": "stone", "foundation": "stone", "floor": "marble", "steps": "stone", "stairs": "stone",
+                  "roof": "slate"},
+    "storeys": [
+     {"openings": [{"kind": "door", "side": "S", "offset": 5, "door": "metal"},
+                   {"kind": "window", "side": "W", "offset": 4}, {"kind": "window", "side": "E", "offset": 4}],
+      "stairs": [{"at": [9, 2], "rise": "S"}]},
+     {"floor": "wooden", "openings": [{"kind": "window", "side": "S", "offset": 3}, {"kind": "window", "side": "S", "offset": 7},
+                   {"kind": "window", "side": "N", "offset": 5}]}],
+    "roof": {"style": "flat", "material": "stone", "parapet": "stone"}}}
+ ],
+ "tour": [
+  {"name": "outside", "at": [19, 35], "z": 0},
+  {"name": "gate", "at": [19, 30], "z": 0},
+  {"name": "courtyard", "at": [19, 22], "z": 0},
+  {"name": "keep_door", "at": [20, 16], "z": 7},
+  {"name": "keep_upstairs", "at": [24, 15], "z": 27},
+  {"name": "wall_stair_foot", "at": [7, 28], "z": 0},
+  {"name": "walkway", "at": [17, 30], "z": 40},
+  {"name": "tower_se", "at": [38, 30], "z": 40},
+  {"name": "tower_se_top", "at": [40, 32], "z": 60}
+ ]
+}

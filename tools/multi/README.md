@@ -13,6 +13,9 @@ python tools\multi\run.py build   DESC.json [--out DIR]                     gene
 python tools\multi\run.py write   NAME [--stage DIR]                        into the stage, read back
 python tools\multi\run.py prove   NAME [--clip OUT.mp4] [--visit X,Y,Z]     place it, walk in, film it
 python tools\multi\run.py show    ID [--data DIR] [--png FILE]              render any multi
+python tools\multi\run.py scene-build SCENE.json [--cut Z]                  a scene of many multis
+python tools\multi\run.py scene-write NAME [--stage DIR]                    every part into the stage
+python tools\multi\run.py scene-prove NAME [--clip OUT.mp4] [--at X Y Z]    place them all, walk the tour
 python tools\multi\test_multi.py                                            synthetic tests, no client data
 ```
 
@@ -23,11 +26,12 @@ python tools\multi\test_multi.py                                            synt
 | `multifile.py` | Multi records: read every multi (MultiCollection.uop, else multi.mul/idx), encode new ones |
 | `pieces.py` | Roles and materials from tiledata flags and names |
 | `mine.py` | The catalogue: every client multi and the buildings in a facet's statics |
-| `generate.py` | A description into components, every piece looked up in the catalogue |
+| `generate.py` | A description into components, every piece looked up in the catalogue: footprints of several rects (L, T, U), per-rect storeys and roofs, porches, balconies, fenced yards with gates and paths, stairs, sills, walk stops |
+| `fort.py` | Scenes: walls with walkways, parapets, gates and culverts; round towers with stairs; platforms; causeways; stairs; houses; composed on one grid and cut into multis that join |
 | `validate.py` | Ids, z range, size, walls closed, floors reachable, a door |
 | `render.py` | Offline isometric previews, per-storey plans, contact sheets |
 | `prove.py` | The private shard, a client, the walk through the door, frames and a clip |
-| `examples/` | Generic descriptions |
+| `examples/` | Generic descriptions: seven houses (one and two storeys) and a small castle scene |
 
 `docs/data_formats.md` section 16 is the contract: the catalogue files, the
 description format, the built multi and its sidecar.
@@ -61,6 +65,27 @@ must be set up on a port of its own (`setup --port N`, `bridge --bridge-port M`)
 never the shared shard. It needs 16 GB free (`--min-free-gb`), starts the shard
 with the stage first in its data directories, places the multi with the bridge's
 `multi` op, logs a client in (windowed, never focused, with `auto_open_doors`),
-and walks it with the client's pathfinder (the watch's `.goto`): the front, the
-step, the doorway, the middle of the ground floor, then each `--visit`. Every
-stop is a frame and a dump of where the client says the player stands.
+and walks it with the client's pathfinder (the watch's `.goto`) through the
+stops the generator wrote: through the yard's gate, onto the step, in, to the
+middle of the ground floor, up each stair, out onto a balcony, then each
+`--visit`. A stop counts only when the client stands at its x and y and within
+4 of its z. Every stop is a frame and a dump of where the client says the
+player stands. Before placing, it takes down every multi of the stage that an
+earlier proof left standing (the shard keeps its world).
+
+A scene (`scene-prove`) is placed part by part at the site plus each part's
+centre, so the parts meet exactly, then its `tour` is walked. A scene larger
+than the flat, clear ground near the start needs `--at X Y Z`.
+
+## Houses and scenes
+
+A house description (section 16) gives a footprint as one `size` or several
+`rects`, each with its own storey count and roof, and per storey its openings,
+partitions and stairs. Porches, balconies, a fenced yard and decor are optional.
+Building twice gives the same bytes.
+
+A scene is elements on one grid. Where a wall's walkway reaches a tower at one
+of its levels the tower opens there; a higher-ranked element (house > tower >
+wall > causeway > platform) takes the cells it stands on from lower ones. The
+whole scene is cut into parts, one per element's `part`, and a part over the
+size limit is cut again in two until each fits one multi.

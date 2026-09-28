@@ -1,0 +1,307 @@
+{
+ "format": 1,
+ "name": "t_manor",
+ "rects": [
+  {
+   "box": [
+    0,
+    0,
+    14,
+    8
+   ],
+   "storeys": 2,
+   "roof": {
+    "style": "gable",
+    "ridge": "x"
+   }
+  },
+  {
+   "box": [
+    4,
+    8,
+    10,
+    16
+   ],
+   "storeys": 1,
+   "roof": {
+    "style": "gable",
+    "ridge": "y"
+   }
+  }
+ ],
+ "materials": {
+  "wall": "stone",
+  "foundation": "stone",
+  "floor": "marble",
+  "steps": "stone",
+  "roof": "slate",
+  "stairs": "stone"
+ },
+ "storeys": [
+  {
+   "openings": [
+    {
+     "kind": "door",
+     "at": [
+      7,
+      16
+     ]
+    },
+    {
+     "kind": "door",
+     "at": [
+      5,
+      0
+     ]
+    },
+    {
+     "kind": "door",
+     "at": [
+      7,
+      4
+     ]
+    },
+    {
+     "kind": "window",
+     "at": [
+      2,
+      0
+     ]
+    },
+    {
+     "kind": "window",
+     "at": [
+      10,
+      0
+     ]
+    },
+    {
+     "kind": "window",
+     "at": [
+      0,
+      4
+     ]
+    },
+    {
+     "kind": "window",
+     "at": [
+      14,
+      4
+     ]
+    },
+    {
+     "kind": "window",
+     "at": [
+      2,
+      8
+     ]
+    },
+    {
+     "kind": "window",
+     "at": [
+      12,
+      8
+     ]
+    },
+    {
+     "kind": "window",
+     "at": [
+      4,
+      12
+     ]
+    },
+    {
+     "kind": "window",
+     "at": [
+      10,
+      12
+     ]
+    }
+   ],
+   "partitions": [
+    {
+     "x": 7,
+     "from": 0,
+     "to": 8
+    }
+   ],
+   "stairs": [
+    {
+     "at": [
+      12,
+      2
+     ],
+     "rise": "S"
+    }
+   ]
+  },
+  {
+   "floor": "wooden",
+   "openings": [
+    {
+     "kind": "door",
+     "at": [
+      6,
+      0
+     ]
+    },
+    {
+     "kind": "door",
+     "at": [
+      7,
+      5
+     ]
+    },
+    {
+     "kind": "window",
+     "at": [
+      2,
+      0
+     ]
+    },
+    {
+     "kind": "window",
+     "at": [
+      10,
+      0
+     ]
+    },
+    {
+     "kind": "window",
+     "at": [
+      0,
+      4
+     ]
+    },
+    {
+     "kind": "window",
+     "at": [
+      14,
+      4
+     ]
+    },
+    {
+     "kind": "window",
+     "at": [
+      3,
+      8
+     ]
+    },
+    {
+     "kind": "window",
+     "at": [
+      11,
+      8
+     ]
+    },
+    {
+     "kind": "window",
+     "at": [
+      7,
+      8
+     ]
+    }
+   ],
+   "partitions": [
+    {
+     "x": 7,
+     "from": 1,
+     "to": 8
+    }
+   ]
+  }
+ ],
+ "porches": [
+  {
+   "box": [
+    3,
+    -4,
+    11,
+    0
+   ],
+   "floor": "flagstones",
+   "posts": "stone",
+   "entry": {
+    "side": "N",
+    "offset": 4
+   },
+   "balcony": {
+    "rail": "stone rail",
+    "rail_height": 5
+   }
+  }
+ ],
+ "yard": {
+  "box": [
+   -3,
+   -8,
+   17,
+   20
+  ],
+  "fence": "iron fence",
+  "height": 11,
+  "gate": {
+   "side": "S",
+   "offset": 10
+  },
+  "path": "cobblestones"
+ },
+ "decor": [
+  {
+   "item": "0x0c84",
+   "at": [
+    3,
+    18
+   ]
+  },
+  {
+   "item": "0x0c85",
+   "at": [
+    4,
+    18
+   ]
+  },
+  {
+   "item": "0x0c83",
+   "at": [
+    5,
+    18
+   ]
+  },
+  {
+   "item": "0x0c8b",
+   "at": [
+    9,
+    18
+   ]
+  },
+  {
+   "item": "0x0c8c",
+   "at": [
+    10,
+    18
+   ]
+  },
+  {
+   "item": "0x0c8b",
+   "at": [
+    11,
+    18
+   ]
+  },
+  {
+   "item": "0x11c9",
+   "at": [
+    1,
+    10
+   ]
+  },
+  {
+   "item": "0x11c9",
+   "at": [
+    13,
+    10
+   ]
+  }
+ ]
+}
