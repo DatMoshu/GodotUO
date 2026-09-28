@@ -416,12 +416,42 @@ internal static class UoTheme
 
         return new StyleBoxTexture
         {
-            Texture = GumpTexture(ButtonPlate),
+            Texture = PlateTexture(plate),
             TextureMarginLeft = 12, TextureMarginRight = 12, TextureMarginTop = 0, TextureMarginBottom = 0,
             AxisStretchHorizontal = StyleBoxTexture.AxisStretchMode.Tile,
             ModulateColor = new Color(shade, shade, shade),
             ContentMarginLeft = 12, ContentMarginRight = 12, ContentMarginTop = 2, ContentMarginBottom = 3,
         };
+    }
+
+    private static Texture2D _plate;
+
+    /// <summary>
+    /// The plate without its top row. That row is empty but for two short dark
+    /// runs (x 70-72 and 86-89 of 0x098D); the client draws the plate once and
+    /// they read as a shadow, but tiled along a wide button they repeat as
+    /// stray dots above its edge.
+    /// </summary>
+    private static Texture2D PlateTexture(Image plate)
+    {
+        if (_plate != null)
+        {
+            return _plate;
+        }
+
+        Image clean = (Image) plate.Duplicate();
+
+        if (clean.IsCompressed())
+        {
+            clean.Decompress();
+        }
+
+        for (int x = 0; x < clean.GetWidth(); x++)
+        {
+            clean.SetPixel(x, 0, Colors.Transparent);
+        }
+
+        return _plate = ImageTexture.CreateFromImage(clean);
     }
 
     /// <summary>A slider's bar: its two end caps and its middle tiled.</summary>
@@ -484,6 +514,7 @@ internal static class UoTheme
     {
         _theme = null;
         _font = null;
+        _plate = null;
         _images.Clear();
         _textures.Clear();
     }

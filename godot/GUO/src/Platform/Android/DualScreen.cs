@@ -258,7 +258,6 @@ namespace GUO.Platform.Android
 
             _instance = instance;
             host.AddChild(instance);
-            Input.Touch.Pregame.PregameCard.Setup(host);
         }
 
         /// <summary>

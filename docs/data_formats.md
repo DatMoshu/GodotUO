@@ -772,3 +772,28 @@ centre) and `preview.png`. `scene-write` writes each part into the stage as
 `<scene>.<part>` and the scene into the stage's `scenes.json`
 (`bounds`, `tour`, `parts[]` with `id`, `centre`, `doors`). A part is
 checked for known items with art, z range and size.
+
+## 17. The player's servers (`servers.json`)
+
+GUO's own file beside upstream's `settings.json` (same folder), written by the pre-game card's Servers tab
+(`src/Input/Touch/Pregame/ServerBook.cs`, docs/ui/second_screen_pregame.md). Upstream's settings keep their shape;
+the address in use stays in `settings.json` (`ip`, `port`), which Play sets.
+
+```json
+{ "servers": [
+  { "name": "My shard", "host": "play.example.com", "port": 2593, "own": true, "favourite": false,
+    "last_played": "2026-09-28T12:00:00Z" }
+] }
+```
+
+| Field | Type | Meaning |
+|---|---|---|
+| `name` | string | What the list shows |
+| `host`, `port` | string, int | The login server's address |
+| `own` | bool | Added by hand; only these show their address on screen |
+| `favourite` | bool | Listed under Favourites |
+| `last_played` | UTC time or absent | Set on each entry into the world; Recent is the newest five that are neither own nor favourite |
+| `era`, `emulator`, `client_version`, `encryption`, `needs_custom_data`, `third_party_clients`, `site`, `description` | optional | The community catalogue's manifest fields (step 3); `third_party_clients: false` or another client version or encryption keeps Play from playing |
+
+A debug build adds its dev shard (from `UO_SHARD_HOST` / `UO_SHARD_PORT`) as a favourite at run time. It is
+never written to the file, and a release build never has it (`OS.IsDebugBuild()`).
