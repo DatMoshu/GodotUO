@@ -140,3 +140,45 @@ Order: 2a, then 2b (likely the larger and simpler win), then 2c if the
 remaining runs justify it. The ClassicUO world-prepare comparison runs in the
 next heavy slot after the device jobs, so it can also weigh 2b's saving
 against upstream's prepare time.
+
+## Fix 2a and 2b measured (2026-09-28, second slot)
+
+Same setup: 2560x1440, zoom 2.5, order plain / `--cover-cull` / plain
+again / cull at the default size, 33-35 GB free.
+
+**2a, the counters (plain run):**
+
+| Scene | covering meshes | covering runs | mean run | queued | of which overlap their object |
+|---|---:|---:|---:|---:|---:|
+| open field | 345 | 173 | 2.0 | 345 | 278 (81%) |
+| Britain bank | 3,266 | 796 | 4.1 | 3,291 | 2,582 (78%) |
+| dense forest | 564 | 161 | 3.5 | 564 | 564 (100%) |
+| dungeon | 3,557 | 629 | 5.7 | 3,557 | 2,234 (63%) |
+
+**2b, `--cover-cull`: a no-go.** Covering meshes fall 345 -> 284, 3,266 ->
+2,942 and 3,557 -> 2,817 (the forest keeps all 564, every one of them
+overlapping), and mean frame time 5-10% against the mean of the two plain
+runs (dungeon 20.4 -> 18.4 ms, Britain bank 44.8 -> 42.2), but pixel
+parity breaks: 402, 607 and 666 stable pixels differ repeatably in the open
+field, Britain bank and dungeon at 2560x1440 (185 in the dungeon at the
+default size). The differences are small spots spread over the floor at tile
+spacing, not around mobiles: the likely cause is the one that broke the
+by-texture land merge. Neighbouring diamonds overlap along their edges, and
+once a tile is redrawn but its culled neighbour is not, the redrawn tile's
+edge lands over the neighbour's. The cull could only be exact by keeping
+whole neighbourhoods, which gives back most of what it saves. The flag stays
+in, off, as the measured record; it should not be used.
+
+**So 2c is next, and 2a says it is worth it.** Runs average 4.1 tiles in
+Britain bank and 5.7 in the dungeon, over the "about 3" the plan set: one
+mesh per run would take covering land from 3,266 to about 796 draw calls in
+the bank and from 3,557 to about 629 in the dungeon, and it keeps the
+painter's order, so parity holds by construction rather than by luck.
+
+**The ClassicUO comparison did not run.** Neither client started its
+measurement: ClassicUO reached the world but PerfDump waited for a first
+message that a quiet shard never sends (the login's messages come before its
+timer sees the player), and GUO's `--play` stayed at the login gump, since it
+logs in only with something scripted to do. Both are fixed (PerfDump now
+queues its start on the game loop; the driver gives GUO one shard command and
+`--stay`) and wait for the next slot, with ClassicUO rebuilt.

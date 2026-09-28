@@ -38,8 +38,8 @@ namespace GUO.Host;
 /// </summary>
 /// <remarks>
 /// Off unless GUO_PERF_DUMP set to "DIR;LABEL;X;Y;Z;ZOOM;SECONDS". Once the
-/// client is in the world, the first message it receives -- on the main thread,
-/// between frames -- turns the profiler on, sets the camera zoom and says
+/// client is in the world, an action queued on the game loop (the main
+/// thread, between frames) turns the profiler on, sets the camera zoom and says
 /// "[go X Y Z" (the character must be a GM). SECONDS later a timer reads the
 /// profiler's averages over its last 60 frames (per drawn frame, whatever the
 /// frame rate) and writes DIR\LABEL\&lt;client&gt;.json. No keystrokes, so the
@@ -89,9 +89,15 @@ internal static class PerfDump
                 return;
             }
 
-            world.MessageManager.MessageReceived += (_, _) => OnMainThread();
+            // Onto the main thread through the game loop's own queue, a few
+            // seconds on so the world has settled. Waiting for the first
+            // message instead never fires on a quiet shard: the login's
+            // messages come before this timer sees the player. The queue is a
+            // plain list, so this one Add races the loop's walk of it; once,
+            // in a harness that is off unless GUO_PERF_DUMP is set.
             _attached = world;
-            Console.WriteLine($"[perf_dump] {ClientName}: in the world; waiting for a message to start");
+            ClientRoot.Game.EnqueueAction(3000, OnMainThread);
+            Console.WriteLine($"[perf_dump] {ClientName}: in the world; starting in 3 s");
         }
         catch (Exception e)
         {

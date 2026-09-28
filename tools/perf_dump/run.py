@@ -5,8 +5,8 @@ r"""World prepare and world draw, ClassicUO against GUO, in the same scenes (Epi
 
 Each client runs once per scene with GUO_PERF_DUMP set (see
 godot/GUO/src/Bootstrap/PerfDump.cs, compiled into both). Once in the world,
-the first message the client receives turns its own profiler on, sets the
-zoom and says "[go X Y Z"; SECONDS later it writes the averages of its last 60
+an action queued on its game loop turns its own profiler on, sets the zoom
+and says "[go X Y Z"; SECONDS later it writes the averages of its last 60
 frames to build\perf_dump\<scene>\<client>.json, and this script ends it.
 No keystrokes and no focus: ClassicUO logs in with -autologin, GUO with
 --play, both as the shard owner (a GM) and the same character, with the same
@@ -79,8 +79,11 @@ def run_guo(cfg: Config, out: Path, scene: tuple, size: str, spec: str, timeout:
     log.parent.mkdir(parents=True, exist_ok=True)
     env = {**ab.guo_environment(cfg), "GUO_PERF_DUMP": spec}
     proc = subprocess.Popen(
+        # --play logs in only with something scripted to do: one shard
+        # command (the daylight ab_compare pins too), then --stay.
         [str(cfg.godot_console_exe), "--path", str(cfg.godot_project), "--", "--play", "--silent",
-         "--window-size", size, "--account", cfg.shard_owner, "--password", cfg.shard_owner_password],
+         "--window-size", size, "--account", cfg.shard_owner, "--password", cfg.shard_owner_password,
+         "--shard-command", f"[globallight {ab.DAYLIGHT}", "--stay"],
         stdout=log.open("w", encoding="utf-8", errors="replace"), stderr=subprocess.STDOUT, env=env,
     )
     try:
@@ -131,7 +134,7 @@ def main() -> int:
     ap.add_argument("--size", default="2560,1440", help="window size of both clients")
     ap.add_argument("--zoom", type=float, default=2.5, help="camera zoom, clamped by each client")
     ap.add_argument("--seconds", type=int, default=20, help="settle time after [go before the averages are read")
-    ap.add_argument("--timeout", type=float, default=180, help="per client and scene")
+    ap.add_argument("--timeout", type=float, default=150, help="per client and scene")
     ap.add_argument("--build", action="store_true", help="build ClassicUO first (tools/ab_compare)")
     ap.add_argument("--only", choices=["cuo", "guo"], help="run one client")
     ap.add_argument("--report", action="store_true", help="print the table of results already written")
