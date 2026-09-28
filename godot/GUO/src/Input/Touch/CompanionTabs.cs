@@ -45,16 +45,14 @@ internal sealed partial class CompanionTabs : Node
     private SubViewport _viewport;
     private Control _root, _panel, _pill;
     private Button _tabJournal, _tabCharacter;
-    private Control _journalView, _characterView;
-    private VBoxContainer _journalLines;
+    private JournalReader _journalView;
+    private Control _characterView;
     private Label _name, _title;
     private readonly Dictionary<string, Label> _values = new();
     private ProgressBar _hits, _mana, _stam;
     private float _scale = 1f;
     private int _tab; // 0 journal, 1 character
     private bool _classic;
-    private float _journalScroll;       // logical px from the bottom; 0 follows new lines
-    private int _journalSeen = -1;
     private double _refresh;
     private Vector2 _size;              // the panel's logical size: the second screen's
     private bool _dragging;
@@ -146,16 +144,10 @@ internal sealed partial class CompanionTabs : Node
         tabs.AddChild(new Control { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill });
         tabs.AddChild(Tab("Classic", () => SetClassic(true)));
 
-        // Journal: the newest lines at the bottom; a finger drag scrolls back.
-        _journalView = new Control { SizeFlagsVertical = Control.SizeFlags.ExpandFill, ClipContents = true, MouseFilter = Control.MouseFilterEnum.Ignore };
+        // Journal: the newest lines at the bottom; a finger drag scrolls back
+        // (the one journal reader, shared with the Modern journal).
+        _journalView = new JournalReader();
         col.AddChild(_journalView);
-        var journalCard = new Panel { MouseFilter = Control.MouseFilterEnum.Ignore };
-        journalCard.AddThemeStyleboxOverride("panel", Parchment());
-        journalCard.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
-        _journalView.AddChild(journalCard);
-        _journalLines = new VBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
-        _journalLines.AddThemeConstantOverride("separation", 1);
-        _journalView.AddChild(_journalLines);
 
         // Character: who, the three bars, then the numbers.
         _characterView = new VBoxContainer { SizeFlagsVertical = Control.SizeFlags.ExpandFill, Visible = false };
@@ -310,58 +302,8 @@ internal sealed partial class CompanionTabs : Node
 
         _refresh = 0.25;
 
-        if (_tab == 0) RefreshJournal();
+        if (_tab == 0) _journalView.Refresh();
         else RefreshCharacter();
-    }
-
-    private void RefreshJournal()
-    {
-        var entries = JournalManager.Entries;
-        int count = entries.Count;
-
-        if (count != _journalSeen)
-        {
-            _journalSeen = count;
-
-            foreach (Node n in _journalLines.GetChildren())
-            {
-                n.QueueFree();
-            }
-
-            for (int i = Math.Max(0, count - 80); i < count; i++)
-            {
-                JournalEntry e = entries[i];
-                if (e == null) continue;
-                bool system = string.IsNullOrEmpty(e.Name) || e.Name == "System";
-                var row = new HBoxContainer();
-                row.AddThemeConstantOverride("separation", 6);
-                Label time = Lbl(e.Time.ToString("HH:mm"), false, Muted);
-                time.AutowrapMode = TextServer.AutowrapMode.Off;
-                time.CustomMinimumSize = new Vector2(32, 0);
-                time.VerticalAlignment = VerticalAlignment.Top;
-                row.AddChild(time);
-                var text = Lbl(system ? e.Text : $"{e.Name}: {e.Text}", false, system ? Heading : Text);
-                text.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-                row.AddChild(text);
-                _journalLines.AddChild(row);
-            }
-        }
-
-        LayoutJournal();
-    }
-
-    /// <summary>Pin the lines to the bottom of the view, minus how far the finger scrolled back.</summary>
-    private void LayoutJournal()
-    {
-        Vector2 view = _journalView.Size;
-        _journalLines.Position = new Vector2(12, 0);
-        _journalLines.Size = new Vector2(Math.Max(0, view.X - 24), 0);
-        _journalLines.ResetSize();
-        _journalLines.Size = new Vector2(Math.Max(0, view.X - 24), _journalLines.GetCombinedMinimumSize().Y);
-        float content = _journalLines.Size.Y;
-        float maxBack = Math.Max(0, content - (view.Y - 20));
-        _journalScroll = Math.Clamp(_journalScroll, 0, maxBack);
-        _journalLines.Position = new Vector2(12, view.Y - 10 - content + _journalScroll);
     }
 
     private void RefreshCharacter()
@@ -450,8 +392,7 @@ internal sealed partial class CompanionTabs : Node
                     if (Math.Abs(client.Y - m._dragLast.Y) > 0 || m._dragMoved)
                     {
                         m._dragMoved |= Math.Abs(dy) > 0.5f;
-                        m._journalScroll += dy / m._scale;
-                        m.LayoutJournal();
+                        m._journalView.ScrollBy(dy / m._scale);
                     }
                     m._dragLast = client;
                 }
