@@ -126,11 +126,26 @@ internal static class TouchProbe
         UIManager.GetGump<StandardSkillsGump>()?.Dispose();
         UIManager.GetGump<SkillGumpAdvanced>()?.Dispose();
         UIManager.GetGump<OptionsGump>()?.Dispose();
+        UIManager.GetGump<JournalGump>()?.Dispose();
+
+        // A shard's gump left by a run whose check failed (the help gump, 2.2x at 1920x1080,
+        // covered the world the walk check holds): closed as a right-click does, so the shard
+        // hears it closed too.
+        foreach (Gump g in System.Linq.Enumerable.ToList(UIManager.Gumps))
+        {
+            if (g.IsFromServer && g.ServerSerial != 0 && !g.IsDisposed)
+            {
+                CloseServerGump(g);
+            }
+        }
+
         GumpPresentation.PaperdollScale = 0f;
         float zoomWas = GUO.Client.Game.Scene.Camera.Zoom;
         GUO.Client.Game.Scene.Camera.Zoom = new Configuration.Profile().DefaultScale;
         TouchInput.Note($"probe: clean start, zoom {zoomWas:0.00} -> {GUO.Client.Game.Scene.Camera.Zoom:0.00}");
         await Frames(host, 5);
+        GD.Print("[GUO] touch probe: open at the start: " + string.Join(", ", System.Linq.Enumerable.Select(System.Linq.Enumerable.Where(UIManager.Gumps, g => !g.IsDisposed),
+            g => $"{g.GetType().Name} {g.X},{g.Y} {GumpPresentation.Width(g)}x{g.Height} scale {g.PresentationScale:0.##}")));
 
         await WalkCheck(host, world);
         await DoubleTapCheck(host, world);
@@ -1059,8 +1074,20 @@ internal static class TouchProbe
         Check("the shard's help gump (ModernUO HelpGump, by type ID) opens full-height and fitted",
             help != null && bar.Covered && help.PresentationScale > 1.2f && help.Y >= GumpPresentation.FullHeightTop(),
             help == null ? "no help gump" : $"x{help.PresentationScale:0.00} at {GumpPresentation.Bounds(help)}");
-        help?.Dispose();
+        CloseServerGump(help);
         await Frames(host, 10);
+    }
+
+    /// <summary>Closes a shard's gump as upstream's right-click does: button 0 to the shard, then gone.</summary>
+    private static void CloseServerGump(Gump g)
+    {
+        if (g == null || g.IsDisposed)
+        {
+            return;
+        }
+
+        g.OnButtonClick(0);
+        g.Dispose();
     }
 
     /// <summary>

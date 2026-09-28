@@ -526,15 +526,29 @@ internal sealed partial class PregameSettings : HBoxContainer
         return text;
     }
 
-    /// <summary>A setting with a few named values: the value between a back and a next button, round the list.</summary>
+    /// <summary>
+    /// A setting with a few named values: the value between a back and a next
+    /// button, round the list. On a narrow card (the Thor's) the name stands on
+    /// its own line above them: beside them it broke mid-word and clipped the value.
+    /// </summary>
     private void Cycle(string key, Func<string> get, Action<int> step)
     {
         var row = new HBoxContainer();
         row.AddThemeConstantOverride("separation", 4);
         Label k = UoTheme.Label(key, UoTheme.Muted);
-        k.CustomMinimumSize = new Vector2(_narrow ? 48 : 64, 0);
         k.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         k.AddThemeConstantOverride("line_spacing", LineSpacing);
+
+        if (_narrow)
+        {
+            _fields.AddChild(k);
+        }
+        else
+        {
+            k.CustomMinimumSize = new Vector2(64, 0);
+            row.AddChild(k);
+        }
+
         Button back = UoTheme.Button("<", 18);
         Label v = UoTheme.Label("", UoTheme.Ink);
         v.ClipText = true;
@@ -543,7 +557,6 @@ internal sealed partial class PregameSettings : HBoxContainer
         Button next = UoTheme.Button(">", 18);
         back.Pressed += () => { step(-1); v.Text = get(); };
         next.Pressed += () => { step(1); v.Text = get(); };
-        row.AddChild(k);
         row.AddChild(back);
         row.AddChild(v);
         row.AddChild(next);
