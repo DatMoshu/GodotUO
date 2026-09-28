@@ -19,3 +19,12 @@ assignments overwrote earlier values; lowercase names did not resolve.
 The resolver now reads the local layer first, keeps the guard and normalizes
 batch names. It remains a narrow assignment parser: it does not execute
 batch commands, follow `call` statements or evaluate arbitrary batch code.
+
+Data sources (ADR-0021, `DataSourceTests`): validity as the required set of
+`formats.FILE_REGISTRY` (a MUL without its index does not count), the order
+environment > saved setting > platform default, a broken setting reported
+rather than replaced, nothing valid resolving to the wizard, complete and
+layered custom folders, the `guo_data.json` checks (missing manifest,
+undeclared `contains_ea_data`, a missing file, a name escaping the folder),
+and `load_config` agreeing with the resolver. The platform defaults are
+patched out, so the machine's own registry and install are never read.

@@ -12,6 +12,11 @@ REM ============================================================================
 
 REM  Your Ultima Online Classic install (the folder holding the .uop / .mul files).
 if not defined UO_CLIENT_DATA       set "UO_CLIENT_DATA=C:\Program Files (x86)\Electronic Arts\Ultima Online Classic"
+REM  Left unset, the tools look in the registry and Program Files for it and,
+REM  failing that, report "run the first-run wizard" (ADR-0021).
+REM  A custom data folder with a guo_data.json manifest, read before the
+REM  install -- for example a staged set from tools\uodata_write (ADR-0022):
+REM if not defined UO_CUSTOM_DATA     set "UO_CUSTOM_DATA=%UO_ROOT%\build\uodata\moshu"
 
 REM  The client version of that install. Check it with:
 REM      launchers\pipeline\01_verify_client_data.bat

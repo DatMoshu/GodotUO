@@ -335,10 +335,13 @@ class Doctor:
             timeout=30, quiet=True,
         )
         have = set(re.findall(r"^HAVE=(\w+)$", facts, re.MULTILINE))
-        self.check("UO client data on the Deck", "DATA=yes" in facts,
-                   f"{deck.client_data}/tiledata.mul" + ("" if "DATA=yes" in facts else " missing"),
-                   f"copy your UO install to {deck.client_data} on the Deck yourself (docs\\steamdeck.md); "
-                   "the tools never push it")
+        # ADR-0021: no data on the Deck is not a failure. The client opens the
+        # first-run wizard there; the tools never push the install.
+        if "DATA=yes" in facts:
+            self.check("UO client data on the Deck", True, f"{deck.client_data}/tiledata.mul")
+        else:
+            print(f"  info UO client data on the Deck   none at {deck.client_data}: GUO opens the first-run "
+                  "wizard there, or copy your UO install to it yourself (docs\\steamdeck.md)")
         self.check("screenshot tool on the Deck", bool(have & {"spectacle", "grim"}),
                    ", ".join(sorted(have & {"spectacle", "grim"})) or "neither spectacle nor grim",
                    "Desktop mode: Discover > Spectacle (SteamOS ships it)")

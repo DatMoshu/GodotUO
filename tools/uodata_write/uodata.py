@@ -123,6 +123,12 @@ class Stage:
         lines = ["# GUO staged data set (tools/uodata_write, ADR-0022): UOFilesOverrideMap entries"]
         lines += [f"{k}={self.root / v['name']}" for k, v in sorted(self.meta["files"].items())]
         (self.root / "files_override.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
+        # ADR-0021: a stage is a layered custom data folder (UO_CUSTOM_DATA). Its
+        # files are modified copies of the user's install, so it is local only.
+        manifest = {"format": "guo/data-folder@1", "name": self.root.name, "mode": "layered",
+                    "files": {v["name"]: {"replaces": k} for k, v in sorted(self.meta["files"].items())},
+                    "contains_ea_data": True, "source": "tools/uodata_write (ADR-0022)"}
+        (self.root / "guo_data.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
 
     def check_install_unchanged(self) -> list[str]:
         """The install files the stage copied must still hash as they did."""

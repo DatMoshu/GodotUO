@@ -126,6 +126,14 @@ class Config:
     deck_client_data: str
     deck_account: str
 
+    # --- client data sources (ADR-0021; tools/guo/datasources.py) ---
+    # The raw configured values, kept apart so the resolver can tell where
+    # client_data came from. client_data above is the first VALID candidate
+    # in the ADR's order, or the first configured one when none is valid.
+    client_data_env: str = ""
+    client_data_setting: str = ""
+    custom_data_setting: str = ""
+
     # --- derived paths (never configured directly) ---
     @property
     def godot_project(self) -> Path:
@@ -238,6 +246,22 @@ def load_config(root: Path | None = None) -> Config:
     if not store.is_absolute():
         store = root / store
 
+    # ADR-0021: environment, then the saved setting (config.local.bat or the
+    # central config; config.bat ships none), then the platform default; the
+    # first that is a valid data set wins. None valid: the first configured
+    # value, so a tool can still say what it looked at.
+    def raw(value: str) -> str:
+        value = os.path.expandvars(value.replace("%UO_ROOT%", str(root))) if value else ""
+        return "" if "%" in value else value
+
+    client_data_env = raw(environment.get("UO_CLIENT_DATA", ""))
+    client_data_setting = raw(from_bat.get("UO_CLIENT_DATA", ""))
+    custom_data_setting = raw(get("UO_CUSTOM_DATA"))
+    from .datasources import resolve
+
+    found = resolve("", client_data_env, client_data_setting)
+    client_data = found.client_data or Path(client_data_env or client_data_setting)
+
     return Config(
         deck_host=get("UO_DECK_HOST", ""),
         deck_user=get("UO_DECK_USER", "deck"),
@@ -266,7 +290,10 @@ def load_config(root: Path | None = None) -> Config:
         store_url=get("UO_STORE_URL", "http://127.0.0.1:18865"),
         godot_version=get("GODOT_VERSION", "4.7.2-stable"),
         godot_flavor=get("GODOT_FLAVOR", "mono_win64"),
-        client_data=Path(os.path.expandvars(get("UO_CLIENT_DATA"))),
+        client_data=client_data,
+        client_data_env=client_data_env,
+        client_data_setting=client_data_setting,
+        custom_data_setting=custom_data_setting,
         client_version=get("UO_CLIENT_VERSION", "7.0.15.1"),
         cache_dir=Path(os.path.expandvars(cache)),
         world_project=Path(os.path.expandvars(world)),

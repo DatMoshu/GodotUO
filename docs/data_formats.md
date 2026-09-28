@@ -561,6 +561,7 @@ proprietary files):
 |---|---|
 | `<install file>` | A copy of each file written to, made on first write. Only these. |
 | `stage.json` | `format`, `install` (path read from), `files {lowercase name: {sha1, size}}` of each original at copy time |
+| `guo_data.json` | The custom-data manifest (§15): `mode` layered, `files` the staged copies, `contains_ea_data` true (local only). Set `UO_CUSTOM_DATA` to the stage to play with it |
 | `files_override.txt` | `name=<absolute staged path>` per staged file, for the client's `settings.json` `files_override` |
 | `slots.json` | `format`, `packs {pack: {ranges {ns: [[first, last]...]}, used {ns: {what: id}}}}`; `ns` is `static`, `anim` or `gump` |
 | `dreadcrest.json` | (the Dreadcrest run only) `item`, `body`, `gumps` |
@@ -604,3 +605,48 @@ file of the same shape in `--ranges` / `UO_DATA_RANGES`):
   u16 light, u8 height, char[20] name`, written in place.
 - **Paperdoll gumps** of a wearable with animation body `b`: male
   `50000 + b`, female `60000 + b`.
+
+---
+
+## 15. Client data sources and the custom-data manifest (ADR-0021)
+
+Which data a run reads is resolved in this order:
+
+1. a custom data folder;
+2. the UO install (the environment, then the saved setting, then the
+   platform default);
+3. the first-run wizard.
+
+`tools/guo/datasources.py` is the tools' half and the runtime must match
+it. A folder is **valid** when every required `FILE_REGISTRY` entry is
+satisfied under the rules of §3.
+
+**Settings**
+
+| Key | Where | Meaning |
+|---|---|---|
+| `UO_CUSTOM_DATA` | environment, `config.local.bat`, central config; the client also reads `--custom-data` and a `guo_data/` folder beside its executable | A custom data folder (needs a manifest) |
+| `UO_CLIENT_DATA` | environment, then `config.local.bat` or the central config; the client: `--client-data`, then the environment, then `settings.json` `ultimaonlinedirectory` | The UO install. The first one set is the only one tried |
+| `UO_DATA_SOURCE` | set by `play.bat` for the client | `install`, `install+custom`, `custom` or `wizard` |
+| `UO_FILES_OVERRIDE` | set by `play.bat` | A layered folder's override file, passed as `--files-override` |
+
+**Exit code 3** from a tool means "no valid data: run the first-run wizard".
+It is not a failure.
+
+**`guo_data.json`** (at the root of the custom folder):
+
+| Field | Meaning |
+|---|---|
+| `format` | `"guo/data-folder@1"` |
+| `name` | A short name for the pack |
+| `mode` | `"complete"`: a whole data set, valid on its own. `"layered"`: files that replace single install files |
+| `files` | `{file name: {...}}`. Each is a plain file name in the folder (no paths) that must exist. For `layered`, the name is the install file it replaces, matched case-insensitively. The value may hold `sha1`, `size` and `replaces` |
+| `contains_ea_data` | **Required**, true or false. `true` (a staged set, anything made from the user's install) is local only; release and publishing tools refuse it |
+| `license`, `source` | Where the content comes from and under what terms. Required for a pack that is shipped or published |
+| `client_version` | Optional: the client version the pack was made against |
+
+A layered folder reaches the client as upstream's `files_override` file:
+one `name=absolute path` line per file, lowercase names. Launchers write it
+to `build/datasources/files_override.txt`, so a pack itself never carries an
+absolute path. A staged set (§14) writes its own manifest with `mode:
+layered` and `contains_ea_data: true`.

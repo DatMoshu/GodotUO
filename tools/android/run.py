@@ -47,6 +47,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from guo.config import Config, load_config  # noqa: E402
+from guo.datasources import WIZARD_EXIT, resolve_config  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 TEMPLATE = HERE / "export_presets.template.cfg"
@@ -666,9 +667,15 @@ def push_data(p: Paths) -> int:
     the app (`secure_mkdirs failed`). `--sync` skips what is already there
     and unchanged, so reruns are cheap. Non-zero on the first adb failure.
     """
-    src = p.cfg.client_data
-    if not (src / "tiledata.mul").exists():
-        sys.exit(f"[android] {src} does not look like a UO install (no tiledata.mul)")
+    res = resolve_config(p.cfg)
+    if not res.ok:
+        # ADR-0021: nothing to push is not an error; the app opens the
+        # first-run wizard on the device.
+        say(res.message())
+        for note in res.notes:
+            say(f"  passed over: {note}")
+        return WIZARD_EXIT
+    src = res.client_data
     dst = p.cfg.android_client_data
     files = sorted(f for f in src.iterdir() if f.is_file())
     total = sum(f.stat().st_size for f in files)
