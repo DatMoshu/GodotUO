@@ -1036,11 +1036,6 @@ internal static class PregameProbe
 
     private static string _clickDetail = "";
 
-    /// <summary>
-    /// Accounts, with a fake one made for the run (its password random and
-    /// never printed): saved through the page, kept only as the keystore's
-    /// ciphertext, read back, useless on another entry, forgotten.
-    /// </summary>
     /// <summary>--accounts-restart save|check|auto: the saved-password check split across an app restart.</summary>
     public static string RestartPhase { get; set; }
 
@@ -1057,6 +1052,12 @@ internal static class PregameProbe
         var store = Input.Touch.Pregame.Accounts.SecretStore.Current;
         string marker = ProjectSettings.GlobalizePath("user://probe_accounts_restart.txt");
         const string Name = "guokeep";
+
+        // A servers file of the probe's own, one name for both launches: the
+        // player's list is never touched, even when check never runs.
+        string bookWas = ServerBook.PathOverride;
+        ServerBook.PathOverride = ProjectSettings.GlobalizePath("user://probe_servers_restart.json");
+        ServerBook.Load();
         ServerEntry e = ServerBook.Find("restart.invalid", 2597) ?? ServerBook.Add("Probe Restart", "restart.invalid", "2597", out _);
         servers.Rebuild();
         await InputProbe.Wait(host, 3);
@@ -1071,7 +1072,8 @@ internal static class PregameProbe
         GD.Print($"[GUO] pregame probe: accounts across a restart, {phase}");
 
         // One screen without room: the card opens from the Servers button.
-        for (int i = 0; i < 60 && !PregameCard.ShownOnSecond && !PregameCard.OnMain && PregameCard.ServersButtonCentre == null; i++)
+        // A clock, not frames: a slow device draws fewer of them.
+        for (ulong until = Godot.Time.GetTicksMsec() + 5000; Godot.Time.GetTicksMsec() < until && !PregameCard.ShownOnSecond && !PregameCard.OnMain && PregameCard.ServersButtonCentre == null;)
         {
             await InputProbe.Wait(host, 1);
         }
@@ -1114,6 +1116,8 @@ internal static class PregameProbe
             Check($"restart, save: an account is saved with its password in the {store.Kind} store",
                 store.Available && a != null && a.HasPassword && a.Secret.Store == store.Kind,
                 $"saved {a != null}, store {a?.Secret?.Store ?? "none"} ({store.Kind})");
+            ServerBook.PathOverride = bookWas;
+            ServerBook.Load();
             return;
         }
 
@@ -1133,19 +1137,26 @@ internal static class PregameProbe
                 await Reveal(host, card, servers.ForgetAccountButton);
                 await InputProbe.Wait(host, 4);
                 string file = System.IO.File.ReadAllText(ServerBook.FilePath);
-                Check("restart, check: Forget removes it, and its secret, from servers.json",
+                Check("restart, check: Forget removes it, and its secret, from the servers file",
                     Input.Touch.Pregame.Accounts.AccountBook.For(e).Count == 0 && !file.Contains(Name),
                     $"left {Input.Touch.Pregame.Accounts.AccountBook.For(e).Count}, in the file {file.Contains(Name)}");
             }
         }
         finally
         {
-            ServerBook.Remove(e);
+            System.IO.File.Delete(ServerBook.PathOverride);
+            ServerBook.PathOverride = bookWas;
+            ServerBook.Load();
             servers.Rebuild();
             System.IO.File.Delete(marker);
         }
     }
 
+    /// <summary>
+    /// Accounts, with a fake one made for the run (its password random and
+    /// never printed): saved through the page, kept only as the keystore's
+    /// ciphertext, read back, useless on another entry, forgotten.
+    /// </summary>
     private static async System.Threading.Tasks.Task AccountsChecks(Node host, PregameCard card)
     {
         PregameServers servers = card.Servers;
