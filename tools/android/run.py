@@ -521,7 +521,19 @@ def make_keystore(p: Paths) -> int:
     return result.returncode
 
 
-def render_preset(p: Paths, extra_args: str, export_path: Path) -> Path:
+ABIS = ("arm64", "x86_64", "both")
+
+
+def abi_flags(abi: str) -> dict[str, str]:
+    """The preset's architecture switches: arm64 for handhelds and phones,
+    x86_64 for the Android emulator on a PC, or both in one APK."""
+    return {
+        "ABI_ARM64": "true" if abi in ("arm64", "both") else "false",
+        "ABI_X86_64": "true" if abi in ("x86_64", "both") else "false",
+    }
+
+
+def render_preset(p: Paths, extra_args: str, export_path: Path, abi: str = "arm64") -> Path:
     text = TEMPLATE.read_text(encoding="utf-8")
     values = {
         "PACKAGE": p.cfg.android_package,
@@ -530,6 +542,7 @@ def render_preset(p: Paths, extra_args: str, export_path: Path) -> Path:
         "KEYSTORE_PASSWORD": p.cfg.android_keystore_password,
         "EXTRA_ARGS": extra_args.replace('"', '\\"'),
         "EXPORT_PATH": str(export_path).replace("\\", "/"),
+        **abi_flags(abi),
     }
     for key, value in values.items():
         text = text.replace("{{" + key + "}}", value)
@@ -587,7 +600,8 @@ def device_args(p: Paths, extra: str, sound: bool = False, client_data: bool = T
 # ---------------------------------------------------------------------------
 
 
-def export(p: Paths, extra_args: str, apk: Path, sound: bool = False, client_data: bool = True) -> int:
+def export(p: Paths, extra_args: str, apk: Path, sound: bool = False, client_data: bool = True,
+           abi: str = "arm64") -> int:
     console = p.godot_console()
     if not console.exists():
         sys.exit(f"[android] Godot console not found at {console}; run doctor")
@@ -596,7 +610,7 @@ def export(p: Paths, extra_args: str, apk: Path, sound: bool = False, client_dat
     apk.parent.mkdir(parents=True, exist_ok=True)
     write_editor_settings(p)
     ensure_solution(p)
-    render_preset(p, device_args(p, extra_args, sound, client_data), apk)
+    render_preset(p, device_args(p, extra_args, sound, client_data), apk, abi)
     if apk.exists():
         apk.unlink()
 
@@ -1074,6 +1088,8 @@ def main(argv: list[str] | None = None) -> int:
     ex.add_argument("--args", default="", help="extra client flags to bake in (after --play --client-data ...)")
     ex.add_argument("--out", default=None, help="APK path (default build\\android\\GUO-debug.apk)")
     ex.add_argument("--sound", action="store_true", help="audible build (default bakes --silent)")
+    ex.add_argument("--abi", choices=ABIS, default="arm64",
+                    help="arm64 (devices, the default), x86_64 (the Android emulator on a PC) or both")
     ex.add_argument("--no-client-data", action="store_true",
                     help="bake no --client-data: the client looks for its data itself, as a player's install does")
     ins = sub.add_parser("install", help="adb install the APK")
@@ -1116,7 +1132,8 @@ def main(argv: list[str] | None = None) -> int:
         render_preset(p, device_args(p, args.args, args.sound), p.apk)
         return 0
     if args.command == "export":
-        return export(p, args.args, Path(args.out) if args.out else p.apk, args.sound, not args.no_client_data)
+        return export(p, args.args, Path(args.out) if args.out else p.apk, args.sound, not args.no_client_data,
+                      args.abi)
     if args.command == "install":
         return install(p, Path(args.apk) if args.apk else p.apk)
     if args.command == "run":
