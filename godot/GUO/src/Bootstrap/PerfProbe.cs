@@ -18,7 +18,8 @@ namespace GUO.Host;
 /// off, draw calls, and the batcher's own counts -- canvas items opened (each
 /// is a batch break), texture switches and draw commands -- next to the
 /// client's profiler phases. Written as a markdown table and JSON into
-/// <c>--perf-out</c> (launchers\dev\perf_probe.bat puts it in build\perf).
+/// <c>--perf-out</c> (launchers\dev\perf_probe.bat puts it in build\perf); a
+/// relative one is under the project folder, godot/GUO.
 /// </summary>
 /// <remarks>
 /// The scenes are reached with GM <c>[go</c> commands, so any shard where the
