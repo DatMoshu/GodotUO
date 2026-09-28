@@ -9,15 +9,21 @@
 #if PERF_DUMP_CUO
 using ClassicUO.Configuration;
 using ClassicUO.Game;
+using ClassicUO.Game.Data;
 using ClassicUO.Game.GameObjects;
+using ClassicUO.Game.Managers;
 using ClassicUO.Game.Scenes;
+using ClassicUO.Game.UI.Gumps;
 using ClientRoot = ClassicUO.Client;
 using Env = ClassicUO.CUOEnviroment;
 #else
 using GUO.Configuration;
 using GUO.Game;
+using GUO.Game.Data;
 using GUO.Game.GameObjects;
+using GUO.Game.Managers;
 using GUO.Game.Scenes;
+using GUO.Game.UI.Gumps;
 using ClientRoot = GUO.Client;
 using Env = GUO.CUOEnviroment;
 #endif
@@ -49,9 +55,14 @@ namespace GUO.Host;
 /// <list type="bullet">
 /// <item>shot:NAME -- the client's own screenshot (TakeScreenshot), moved to DIR\LABEL\VARIANT_NAME.png</item>
 /// <item>wait:MS</item>
-/// <item>say:TEXT -- said as the player would (a shard command with '[')</item>
+/// <item>say:TEXT -- said as the player would (a shard command with '['); {x}, {y}, {z}, {x+2},
+/// {y-1}, ... become the player's position</item>
 /// <item>set:PROPERTY=VALUE -- a profile property (DrawRoofs=false, ...)</item>
-/// <item>door -- double-click the nearest door item within 6 tiles</item>
+/// <item>door[:X,Y] -- double-click the nearest door item within 6 tiles of the player (or within 2 of X,Y)</item>
+/// <item>find:X,Y -- only note the doors within 2 tiles of X,Y</item>
+/// <item>hide -- hide every gump but the game window, for this run only (nothing is closed or saved)</item>
+/// <item>walk:DIRECTION[:run] -- one step (North, Right, East, Down, South, Left, West, Up); the
+/// next step follows 120 ms on, so a shot right after it lands mid-step</item>
 /// </list>
 /// VARIANT is "cuo" or "guo", or GUO_SHOT_VARIANT when set (guo-array, ...).
 /// DIR\LABEL\VARIANT.done is written last, with a line per step.
@@ -187,6 +198,7 @@ internal static class ShotDump
                     Note($"wait {arg} ms");
                     break;
                 case "say":
+                    arg = Placeholders(arg);
                     GameActions.Say(arg);
                     Note($"said {arg}");
                     delay = 1500;
@@ -195,9 +207,19 @@ internal static class ShotDump
                     Set(arg);
                     break;
                 case "door":
-                    Door();
+                    Door(arg, true);
                     // The door's own open/close animation is a couple of frames.
                     delay = 1500;
+                    break;
+                case "find":
+                    Door(arg, false);
+                    break;
+                case "hide":
+                    Hide();
+                    break;
+                case "walk":
+                    Walk(arg);
+                    delay = 120;
                     break;
                 default:
                     Note($"unknown step {step}");
@@ -243,9 +265,18 @@ internal static class ShotDump
         Note($"profile {name} = {value}");
     }
 
-    private static void Door()
+    private static void Door(string at, bool click)
     {
         var player = World.Player;
+        int x = player.X, y = player.Y, range = 6;
+        if (!string.IsNullOrEmpty(at))
+        {
+            string[] xy = at.Split(',');
+            x = int.Parse(xy[0], CultureInfo.InvariantCulture);
+            y = int.Parse(xy[1], CultureInfo.InvariantCulture);
+            range = 2;
+        }
+
         Item best = null;
         int bestDistance = int.MaxValue;
         foreach (Item item in World.Items.Values)
@@ -255,8 +286,8 @@ internal static class ShotDump
                 continue;
             }
 
-            int d = Math.Max(Math.Abs(item.X - player.X), Math.Abs(item.Y - player.Y));
-            if (d <= 6 && d < bestDistance)
+            int d = Math.Max(Math.Abs(item.X - x), Math.Abs(item.Y - y));
+            if (d <= range && d < bestDistance)
             {
                 best = item;
                 bestDistance = d;
@@ -265,12 +296,55 @@ internal static class ShotDump
 
         if (best == null)
         {
-            Note("door: none within 6 tiles");
+            Note($"door: none within {range} tiles of {x},{y}");
             return;
         }
 
-        GameActions.DoubleClick(World, best.Serial);
-        Note($"door 0x{best.Graphic:X4} at {best.X},{best.Y},{best.Z} double-clicked");
+        if (click)
+        {
+            GameActions.DoubleClick(World, best.Serial);
+        }
+
+        Note($"door 0x{best.Graphic:X4} at {best.X},{best.Y},{best.Z} {(click ? "double-clicked" : "found")}");
+    }
+
+    private static string Placeholders(string text)
+    {
+        var p = World.Player;
+        return System.Text.RegularExpressions.Regex.Replace(text, @"\{([xyz])([+-]\d+)?\}", m =>
+        {
+            int v = m.Groups[1].Value switch { "x" => p.X, "y" => p.Y, _ => p.Z };
+            if (m.Groups[2].Success)
+            {
+                v += int.Parse(m.Groups[2].Value, CultureInfo.InvariantCulture);
+            }
+
+            return v.ToString(CultureInfo.InvariantCulture);
+        });
+    }
+
+    private static void Hide()
+    {
+        int hidden = 0;
+        foreach (Gump gump in UIManager.Gumps)
+        {
+            if (gump is not WorldViewportGump && gump.IsVisible)
+            {
+                gump.IsVisible = false;
+                hidden++;
+            }
+        }
+
+        Note($"hid {hidden} gumps");
+    }
+
+    private static void Walk(string arg)
+    {
+        string[] parts = arg.Split(':');
+        var direction = (Direction)Enum.Parse(typeof(Direction), parts[0], true);
+        var p = World.Player;
+        bool ok = p.Walk(direction, parts.Length > 1 && parts[1] == "run");
+        Note($"walk {direction} from {p.X},{p.Y},{p.Z}: {(ok ? "started" : "refused")}");
     }
 
     private static void Note(string line)

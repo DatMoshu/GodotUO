@@ -52,6 +52,37 @@ SCENES = [
     ("healers-door-outside", 1482, 1612, None, "shot:closed|door|shot:open|door|shot:closed-again"),
     ("healers-door-inside", 1474, 1612, 20, "shot:closed|door|shot:open|door|shot:closed-again"),
     ("britain-street", 1602, 1591, None, "shot:view"),
+    # Second pass, zoomed out (--zoom 1.5), gumps hidden. The owner's cases: the
+    # player BEHIND a building (north or west of it, the roof on), with blood and
+    # small items between the player and the back wall, where the roof must hide
+    # them; an interior door (a door between two rooms, found by
+    # tools/visual_ab's door probe) from inside with the roof hidden and from
+    # outside with it on; mid-step shots for "looks different when moving"; and
+    # a sweep from [go britain (1495,1629,10), the owner's "teleport spot".
+    # Items are statics (they do not decay) added again by each client: the same
+    # graphic twice on a tile draws the same.
+    ("behind-healers-north", 1474, 1604, None,
+     "hide|say:[TileXYZ 1468 1606 13 1 {z} Static 0x122A|say:[TileXYZ 1471 1605 2 1 {z} Static 0x0EED"
+     "|say:[TileXYZ 1477 1605 2 1 {z} Static 0x0E21|wait:800|shot:items"),
+    ("behind-healers-west", 1463, 1612, None,
+     "hide|say:[TileXYZ 1466 1608 1 9 {z} Static 0x122A|say:[TileXYZ 1465 1610 1 2 {z} Static 0x0EED"
+     "|wait:800|shot:items"),
+    ("behind-neighbour-north", 1454, 1604, None,
+     "hide|say:[TileXYZ 1448 1606 13 1 {z} Static 0x122A|say:[TileXYZ 1452 1605 2 1 {z} Static 0x0E21"
+     "|wait:800|shot:items"),
+    ("door-a-inside", 1547, 1652, 26, "hide|shot:closed|door:1547,1655|shot:open|door:1547,1655|shot:closed-again"),
+    ("door-a-outside-north", 1547, 1644, None,
+     "hide|shot:closed|door:1547,1655|shot:open|door:1547,1655|shot:closed-again"),
+    ("door-a-outside-south", 1547, 1666, None,
+     "hide|shot:closed|door:1547,1655|shot:open|door:1547,1655|shot:closed-again"),
+    ("door-b-inside", 1602, 1651, 10, "hide|shot:closed|door:1599,1651|shot:open|door:1599,1651|shot:closed-again"),
+    ("door-b-outside-east", 1610, 1651, None,
+     "hide|shot:closed|door:1599,1651|shot:open|door:1599,1651|shot:closed-again"),
+    ("go-britain", 1495, 1629, 10, "hide|shot:view"),
+    ("sweep-west", 1462, 1628, None, "hide|shot:view"),
+    ("moongate", 1336, 1997, None, "hide|shot:view"),
+    ("walk-mid-step", 1495, 1629, 10,
+     "hide|shot:still|walk:West|shot:mid1|walk:West|shot:mid2|walk:West:run|shot:mid3|walk:Up:run|shot:mid4"),
 ]
 
 VARIANTS = {
