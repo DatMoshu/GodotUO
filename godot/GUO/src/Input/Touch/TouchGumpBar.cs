@@ -161,6 +161,13 @@ namespace GUO.Input.Touch
         private bool _wasWar;
 
         /// <summary>
+        /// For the touch probe: the time the bar has spent in its own
+        /// _Process and _Draw, in Stopwatch ticks, and how many times it drew.
+        /// </summary>
+        internal static long CostTicks;
+        internal static int DrawCount;
+
+        /// <summary>
         /// Start the row's session state over, as entering the world does:
         /// down, not hidden, and the current stance taken as already seen. For
         /// the touch probe, whose character may log in already at war.
@@ -200,6 +207,13 @@ namespace GUO.Input.Touch
         }
 
         public override void _Process(double delta)
+        {
+            long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+            ProcessBar();
+            CostTicks += System.Diagnostics.Stopwatch.GetTimestamp() - t0;
+        }
+
+        private void ProcessBar()
         {
             // The idle screen saver draws in the client's canvas, under this
             // layer; a bar left lit on an OLED panel is what it is there to
@@ -802,6 +816,14 @@ namespace GUO.Input.Touch
                 bar._pressed == action && Godot.Time.GetTicksMsec() - bar._pressedAt < PressedMs;
 
             public override void _Draw()
+            {
+                long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+                DrawBar();
+                CostTicks += System.Diagnostics.Stopwatch.GetTimestamp() - t0;
+                DrawCount++;
+            }
+
+            private void DrawBar()
             {
                 if (GetParent() is not TouchGumpBar bar || !bar.Shown)
                 {

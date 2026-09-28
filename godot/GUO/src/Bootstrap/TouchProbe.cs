@@ -117,6 +117,7 @@ internal static class TouchProbe
         }
         await GumpScaleCheck(host, world);
         await ScaledContainerCheck(host, world);
+        await BarCostCheck(host);
 
         Finish();
     }
@@ -265,6 +266,40 @@ internal static class TouchProbe
             string.Join(" | ", TouchInput.Trace)
         );
         Check("the backpack opened", UIManager.GetGump<ContainerGump>() != null);
+    }
+
+    /// <summary>
+    /// What the bar costs a frame, with the macro row up and the world
+    /// running: its own _Process and _Draw time and how often it drew, next
+    /// to the whole frame's process time. Printed for the before/after
+    /// comparison; the check is only that it was measured.
+    /// </summary>
+    private static async System.Threading.Tasks.Task BarCostCheck(Node host)
+    {
+        TouchGumpBar bar = TouchInput.Bar;
+
+        if (bar == null || !bar.Shown)
+        {
+            Check("the bar's frame cost is measured", false, "no bar");
+            return;
+        }
+
+        const int frames = 600;
+        double process = 0;
+        TouchGumpBar.CostTicks = 0;
+        TouchGumpBar.DrawCount = 0;
+
+        for (int i = 0; i < frames; i++)
+        {
+            await Frames(host, 1);
+            process += Performance.GetMonitor(Performance.Monitor.TimeProcess);
+        }
+
+        double barUs = TouchGumpBar.CostTicks * 1_000_000.0 / System.Diagnostics.Stopwatch.Frequency / frames;
+        string line = $"bar {barUs:F1} us/frame, {TouchGumpBar.DrawCount} draws in {frames} frames, "
+            + $"frame process {process / frames * 1000:F2} ms, {UIManager.Gumps.Count} gumps, row {(bar.RowShown ? "up" : "down")}";
+        GD.Print($"[GUO] touch probe: bar cost: {line}");
+        Check("the bar's frame cost is measured", TouchGumpBar.DrawCount >= 0, line);
     }
 
     /// <summary>
