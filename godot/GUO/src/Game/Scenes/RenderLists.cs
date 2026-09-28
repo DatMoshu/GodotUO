@@ -74,12 +74,14 @@ namespace GUO.Game.Scenes
         /// stable, so without this a pile of objects on one tile would shuffle
         /// from frame to frame and shimmer.
         /// </remarks>
-        private readonly struct Drawable(GameObject obj, float depth, int seq, MeshLayer mesh = null)
+        private readonly struct Drawable(GameObject obj, float depth, int seq, MeshLayer mesh = null,
+            Mobile.DrawPass pass = Mobile.DrawPass.All)
         {
             public readonly GameObject Object = obj;
             public readonly float Depth = depth;
             public readonly int Seq = seq;
             public readonly MeshLayer Mesh = mesh;
+            public readonly Mobile.DrawPass Pass = pass;
         }
 
         private readonly List<GameObject> _tiles = [];
@@ -359,7 +361,22 @@ namespace GUO.Game.Scenes
                 case Item:
                 case GameEffect:
                     float depth = toRender.CalculateDepthZ();
-                    _world.Add(new Drawable(toRender, depth, _queued++));
+
+                    if (toRender is Mobile)
+                    {
+                        // Upstream's MobileView draws the shadow at depth and
+                        // the body at depth + 1, everything else here at + 0.5
+                        // (ADR-0004's amendment): the body wins against what is
+                        // up to half a step deeper -- a swimmer over the water
+                        // statics in front of it -- and the shadow loses.
+                        _world.Add(new Drawable(toRender, depth, _queued++, null, Mobile.DrawPass.Shadow));
+                        _world.Add(new Drawable(toRender, depth + 0.5f, _queued++, null, Mobile.DrawPass.Body));
+                    }
+                    else
+                    {
+                        _world.Add(new Drawable(toRender, depth, _queued++));
+                    }
+
                     CoverFromBelow(toRender, depth);
                     break;
 
@@ -541,6 +558,28 @@ namespace GUO.Game.Scenes
                 if (next.Object is Land land && _covering.Contains(land))
                 {
                     done += DrawCovering(batcher, land, next.Depth);
+                    continue;
+                }
+
+                if (next.Pass != Mobile.DrawPass.All)
+                {
+                    if (next.Object.Z <= maxGroundZ)
+                    {
+                        Mobile.Pass = next.Pass;
+                        bool drawn = next.Object.Draw(
+                            batcher,
+                            next.Object.RealScreenPosition.X,
+                            next.Object.RealScreenPosition.Y,
+                            next.Pass == Mobile.DrawPass.Body ? next.Depth - 0.5f : next.Depth
+                        );
+                        Mobile.Pass = Mobile.DrawPass.All;
+
+                        if (drawn && next.Pass == Mobile.DrawPass.Body)
+                        {
+                            done++;
+                        }
+                    }
+
                     continue;
                 }
 

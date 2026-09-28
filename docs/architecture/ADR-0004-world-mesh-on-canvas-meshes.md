@@ -193,9 +193,16 @@ batcher and is left as it was.
 
 Mobiles and effects never trigger it: upstream draws them at `+ 1`, in front of
 the land of their own tile, so a mobile below the ground would still be hidden
-by land further in front but not by its own tile. GUO's sort also ignores that
-`+ 1` today; that is a separate, smaller parity gap, recorded here and not fixed
-by this amendment.
+by land further in front but not by its own tile. GUO's sort also ignored that
+`+ 1`, a separate, smaller parity gap: a swimmer was cut off at the chest by the
+water statics in front of it. Closed 2026-09-28: a mobile is queued twice, its
+shadow and aura at its depth (where upstream draws them) and its body at depth
++ 0.5 (`Mobile.DrawPass`).
+
+The trigger itself takes the highest drawn corner of the ground and of the tile
+in front of it (2026-09-28), not the ground's own z: a river bank's stretched
+grass rises from the water's z over the water statics standing on it, which the
+own-z test never saw, and the water painted over the bank in diamond teeth.
 
 ### Rejected
 
