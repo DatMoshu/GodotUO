@@ -23,6 +23,7 @@ internal static class ModernGumps
     private static readonly Dictionary<Type, Func<World, ModernGump>> _factories = new()
     {
         [typeof(OptionsGump)] = world => new ModernOptions(world),
+        [typeof(PartyGump)] = world => new ModernParty(world),
     };
 
     private static readonly Dictionary<Type, ModernGump> _open = new();

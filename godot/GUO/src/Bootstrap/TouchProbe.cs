@@ -121,6 +121,7 @@ internal static class TouchProbe
         await MobileOptionsCheck(host, world);
         Configuration.ProfileManager.CurrentProfile.ModernGumpsOff = false;
         await ModernOptionsCheck(host, world);
+        await ModernPartyCheck(host, world);
         Configuration.ProfileManager.CurrentProfile.ModernGumpsOff = true;
         await HelpGumpCheck(host, world);
         // The long press is checked with hold-and-flick off, the way a player
@@ -1072,6 +1073,48 @@ internal static class TouchProbe
             && classic.PresentationScale > 1.2f && !Input.Touch.Modern.ModernGump.IsOpen);
         UIManager.GetGump<OptionsGump>()?.Dispose();
         await Frames(host, 10);
+    }
+
+    /// <summary>
+    /// Modern Party (ADR-0024, gump 2): opening the party gump opens its
+    /// Modern view; out of a party it says so; Add member sends the classic
+    /// invite request (the shard answers with a target cursor); Cancel closes.
+    /// </summary>
+    private static async System.Threading.Tasks.Task ModernPartyCheck(Node host, Game.World world)
+    {
+        UIManager.Add(new PartyGump(world, 100, 100, world.Party.CanLoot));
+        await Frames(host, 20);
+        var view = Input.Touch.Modern.ModernGump.Current as Input.Touch.Modern.ModernParty;
+        Check("the party gump opens as its Modern view, the classic gump not added",
+            view != null && UIManager.GetGump<PartyGump>() == null && TouchInput.Bar.Covered,
+            $"modern {view != null}, classic {UIManager.GetGump<PartyGump>() != null}");
+
+        if (view == null)
+        {
+            return;
+        }
+
+        await TapClient(host, view.CentreOf(view.Find("Add member")));
+        bool targeting = false;
+
+        for (int i = 0; i < 120 && !targeting; i++)
+        {
+            await Frames(host, 1);
+            targeting = world.TargetManager.IsTargeting;
+        }
+
+        Check("Modern Party's Add member sends the invite request (the shard's target cursor comes up)", targeting,
+            world.Party.Leader == 0 ? "not in a party (as expected)" : "in a party");
+        world.TargetManager.CancelTarget();
+        await Frames(host, 5);
+
+        if (Input.Touch.Modern.ModernGump.IsOpen)
+        {
+            await TapClient(host, view.CentreOf(view.Find("Cancel")));
+            await Frames(host, 5);
+        }
+
+        Check("Cancel closes Modern Party", !Input.Touch.Modern.ModernGump.IsOpen);
     }
 
     /// <summary>The first control of a type on the gump's open page, drawn inside its scroll area.</summary>
