@@ -30,6 +30,16 @@ namespace GUO.Renderer
         private static readonly Dictionary<Texture2D, int> _index = new();
         private static bool _rebuild;
 
+        /// <summary>
+        /// Layers the array was created with: a power of two, at least
+        /// <see cref="MinCapacity"/>, the spares blank. A Texture2DArray's layer
+        /// count is fixed at creation, so a page added within it is one layer
+        /// copy, not a copy of every layer; only outgrowing it rebuilds.
+        /// </summary>
+        private static int _capacity;
+
+        private const int MinCapacity = 4;
+
         public static Texture2DArray Array { get; private set; }
 
         /// <summary>A page was added since the last <see cref="Sync"/>.</summary>
@@ -37,6 +47,16 @@ namespace GUO.Renderer
 
         /// <summary>Layer copies made, for the perf probe and PerfDump.</summary>
         public static int Uploads;
+
+        /// <summary>
+        /// Of <see cref="Uploads"/>: copies of every layer because a page was
+        /// added (Rebuilds), and copies of one layer because its page was
+        /// uploaded again (Bumps) -- something new was packed onto it.
+        /// </summary>
+        public static int Rebuilds, Bumps;
+
+        /// <summary>Whether <paramref name="texture"/> is a layer already.</summary>
+        public static bool Holds(Texture2D texture) => texture != null && _index.ContainsKey(texture);
 
         /// <summary>Layers in the array (pages land has been drawn from).</summary>
         public static int Layers => _layers.Count;
@@ -76,25 +96,42 @@ namespace GUO.Renderer
                 return;
             }
 
-            if (_rebuild || Array == null)
+            if (Array == null || _layers.Count > _capacity)
             {
+                _capacity = MinCapacity;
+                while (_capacity < _layers.Count)
+                {
+                    _capacity *= 2;
+                }
+
                 var images = new Godot.Collections.Array<Image>();
-                for (int i = 0; i < _layers.Count; i++)
+                for (int i = 0; i < _capacity; i++)
                 {
                     // A page gone from the atlas (never while the atlases live:
-                    // they are only disposed whole, which resets this) is a blank layer.
-                    images.Add(TextureAtlas.TryGetPage(_layers[i], out Image page, out int version)
-                        ? Padded(page)
-                        : Image.CreateEmpty(Size, Size, false, Image.Format.Rgba8));
-                    _versions[i] = version;
+                    // they are only disposed whole, which resets this) is a
+                    // blank layer, as is every spare.
+                    if (i < _layers.Count && TextureAtlas.TryGetPage(_layers[i], out Image page, out int version))
+                    {
+                        images.Add(Padded(page));
+                        _versions[i] = version;
+                    }
+                    else
+                    {
+                        images.Add(Image.CreateEmpty(Size, Size, false, Image.Format.Rgba8));
+                    }
                 }
 
                 Array ??= new Texture2DArray();
                 Array.CreateFromImages(images);
-                Uploads += _layers.Count;
+                Uploads += _capacity;
+                Rebuilds += _capacity;
                 _rebuild = false;
                 return;
             }
+
+            // A page added within the capacity has version -1 here, so the
+            // loop below copies it into its blank layer.
+            _rebuild = false;
 
             for (int i = 0; i < _layers.Count; i++)
             {
@@ -103,6 +140,7 @@ namespace GUO.Renderer
                     Array.UpdateLayer(Padded(page), i);
                     _versions[i] = version;
                     Uploads++;
+                    Bumps++;
                 }
             }
         }
@@ -118,6 +156,7 @@ namespace GUO.Renderer
             _versions.Clear();
             _index.Clear();
             _rebuild = false;
+            _capacity = 0;
             Array?.Dispose();
             Array = null;
         }

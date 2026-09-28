@@ -257,6 +257,8 @@ internal static class PerfProbe
         double kRect = 0, kAffine = 0, kMesh = 0, kTri = 0, kBatches = 0, kCover = 0, kCoverRuns = 0, coverQueued = 0, coverOverlapping = 0;
         double calls = 0, items = 0, switches = 0, commands = 0, prepare = 0, world = 0, cpu = 0, gpu = 0, objects = 0;
         int uploadsBefore = LandPages.Uploads, uploadsMax = 0, uploadFrames = 0, uploadsLast = LandPages.Uploads;
+        int rebuildsBefore = LandPages.Rebuilds, bumpsBefore = LandPages.Bumps;
+        int landOntoBefore = GUO.Renderer.Arts.Art.LandOntoLandLayer, staticOntoBefore = GUO.Renderer.Arts.Art.StaticOntoLandLayer;
         // An upload lands in the frame after the one that drew it: its cost is
         // in the next frame's time. Kept apart, since a p99 over thousands of
         // frames never sees a few dozen.
@@ -359,6 +361,10 @@ internal static class PerfProbe
             ["land_uploads"] = uploads,
             ["land_uploads_per_frame"] = System.Math.Round((double)uploads / n, 3),
             ["land_uploads_max_in_a_frame"] = uploadsMax,
+            ["land_rebuild_copies"] = LandPages.Rebuilds - rebuildsBefore,
+            ["land_bump_copies"] = LandPages.Bumps - bumpsBefore,
+            ["land_sprites_onto_land_layers"] = GUO.Renderer.Arts.Art.LandOntoLandLayer - landOntoBefore,
+            ["static_sprites_onto_land_layers"] = GUO.Renderer.Arts.Art.StaticOntoLandLayer - staticOntoBefore,
             ["frames_with_land_upload"] = uploadFrames,
             ["land_upload_mib_per_frame"] = System.Math.Round((double)uploads * LandPages.LayerBytes / (1 << 20) / n, 2),
             ["upload_frames_mean_ms"] = uploadMs.Count > 0 ? System.Math.Round(uploadMs.Average(), 3) : 0.0,

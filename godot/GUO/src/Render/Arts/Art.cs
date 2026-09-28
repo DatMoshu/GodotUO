@@ -17,6 +17,14 @@ namespace GUO.Renderer.Arts
     {
         private readonly SpriteInfo[] _spriteInfos;
         private readonly TextureAtlas _atlas;
+        // PORT DEVIATION (GUO): Epic B, land-array step 2. With
+        // --merged-land=array, land art gets pages of its own: every page land
+        // is drawn from is a layer of LandPages' Texture2DArray, and a static
+        // packed onto a shared page made that layer stale and cost a copy of
+        // the whole page (the bump counter: 32 of 34 sprites packed onto land
+        // layers on a desktop walk were statics). Upstream shares one atlas.
+        private TextureAtlas _landAtlas;
+        // END PORT DEVIATION (GUO)
         private readonly PixelPicker _picker = new PixelPicker();
         private readonly Rectangle[] _realArtBounds;
         private readonly ArtLoader _artLoader;
@@ -30,6 +38,13 @@ namespace GUO.Renderer.Arts
             _spriteInfos = new SpriteInfo[_artLoader.File.Entries.Length];
             _realArtBounds = new Rectangle[_spriteInfos.Length];
         }
+
+        // PORT DEVIATION (GUO): Epic B, the land-array bump counter. Sprites
+        // packed onto a page LandPages already holds as a layer, split by
+        // what they are: each makes that layer stale, so the next frame
+        // copies the whole page again.
+        public static int LandOntoLandLayer, StaticOntoLandLayer;
+        // END PORT DEVIATION (GUO)
 
         public ref readonly SpriteInfo GetLand(uint idx)
             => ref Get((uint)(idx & ~0x4000));
@@ -58,12 +73,23 @@ namespace GUO.Renderer.Arts
                     return ref Get(0); // ItemID of "UNUSED" placeholder
                 }
 
-                spriteInfo.Texture = _atlas.AddSprite(
+                // PORT DEVIATION (GUO): land onto its own pages under --merged-land=array (above).
+                TextureAtlas atlas = idx < 0x4000 && MergedLand.Array
+                    ? _landAtlas ??= new TextureAtlas(4096, 4096)
+                    : _atlas;
+
+                spriteInfo.Texture = atlas.AddSprite(
                     artInfo.Pixels,
                     artInfo.Width,
                     artInfo.Height,
                     out spriteInfo.UV
                 );
+
+                // PORT DEVIATION (GUO): the bump counter above.
+                if (LandPages.Holds(spriteInfo.Texture))
+                {
+                    if (idx < 0x4000) LandOntoLandLayer++; else StaticOntoLandLayer++;
+                }
 
                 if (idx > 0x4000)
                 {
