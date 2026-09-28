@@ -179,20 +179,34 @@ internal static class ServerBook
         return e;
     }
 
-    public static void SetFavourite(ServerEntry e, bool on)
+    /// <summary>
+    /// Favourites a server, or not. A catalogue shard is copied into the book
+    /// first; the book's entry is returned (the one the list now shows).
+    /// </summary>
+    public static ServerEntry SetFavourite(ServerEntry e, bool on)
     {
         if (e.Dev)
         {
-            return;
+            return e;
         }
 
         if (!Servers.Contains(e))
         {
-            Servers.Add(e);
+            ServerEntry kept = Servers.FirstOrDefault(s => s.Same(e.Host, e.Port));
+
+            if (kept == null)
+            {
+                kept = ServerCatalogue.Servers.Contains(e) ? ServerCatalogue.Copy(e) : e;
+                Servers.Add(kept);
+            }
+
+            e = kept;
         }
 
         e.Favourite = on;
         Save();
+
+        return e;
     }
 
     /// <summary>Forgets one of the player's own servers (or a recent one).</summary>
@@ -236,7 +250,9 @@ internal static class ServerBook
 
         if (e == null)
         {
-            e = new ServerEntry { Host = s.IP, Port = s.Port };
+            // A catalogue shard keeps its manifest; any other is its address.
+            ServerEntry listed = ServerCatalogue.Find(s.IP, s.Port);
+            e = listed != null ? ServerCatalogue.Copy(listed) : new ServerEntry { Host = s.IP, Port = s.Port };
             Servers.Add(e);
         }
 

@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "servers": [
+    {
+      "name": "Example Shard",
+      "host": "play.example.com",
+      "port": 2593,
+      "era": "AOS",
+      "emulator": "ModernUO",
+      "client_version": "7.0.102.3",
+      "encryption": 0,
+      "needs_custom_data": false,
+      "third_party_clients": true,
+      "site": "https://example.com",
+      "description": "One or two sentences a player reads before choosing it: the ruleset, the rates, what makes it different."
+    }
+  ]
+}

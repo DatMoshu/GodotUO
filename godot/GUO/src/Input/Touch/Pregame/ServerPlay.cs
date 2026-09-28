@@ -95,7 +95,7 @@ internal static class ServerPlay
                 Client.Game.SetScene(new LoginScene(world));
             }
 
-            LastOutcome = $"Logged out. Log in to {e.Name} on the top screen.";
+            LastOutcome = $"Logged out. Log in to {e.Name} on the login screen.";
             return;
         }
 
@@ -112,7 +112,7 @@ internal static class ServerPlay
             // Mid-login on another server: start the login over, on this one.
             NetClient.Socket.Disconnect();
             Client.Game.SetScene(new LoginScene(world));
-            LastOutcome = $"Log in to {e.Name} on the top screen.";
+            LastOutcome = $"Log in to {e.Name} on the login screen.";
             return;
         }
 
@@ -126,7 +126,7 @@ internal static class ServerPlay
             return;
         }
 
-        LastOutcome = $"Type your account and password on the top screen to log in to {e.Name}.";
+        LastOutcome = $"Type your account and password on the login screen to log in to {e.Name}.";
     }
 
     private static System.Collections.Generic.IEnumerable<Game.UI.Controls.Control> All(Game.UI.Controls.Control c) =>

@@ -15,7 +15,10 @@ namespace GUO.Host;
 /// screen where there is one (a device's, or --dual-screen WxH on a
 /// desktop), else opened over the login screen from its Servers button.
 /// Servers: the dev favourite, adding a server, a favourite, Play and a
-/// double tap setting the address, the verdicts, Recent. Settings: the tabs
+/// double tap setting the address, the verdicts, Recent; the community
+/// catalogue (a file of the probe's own) with each row's status dot from a
+/// real TCP connect to a local listener, Refresh, and the limit of eight
+/// timings at once. Settings: the tabs
 /// and groups answer taps, a setting reaches settings.json and the login
 /// gump's own box, every group fits the card. Each is photographed. Logs no
 /// one in; the servers are kept in a file of the probe's own and the
@@ -95,6 +98,7 @@ internal static class PregameProbe
         try
         {
             await ServersChecks(host, card);
+            await CatalogueChecks(host, card);
         }
         finally
         {
@@ -103,6 +107,10 @@ internal static class PregameProbe
             gs.Save();
             ServerBook.PathOverride = null;
             ServerBook.Load();
+            ServerCatalogue.PathOverride = null;
+            ServerCatalogue.Load();
+            ServerPing.Clear();
+            card.Servers.Rebuild();
         }
 
         // The tabs.
@@ -482,6 +490,120 @@ internal static class PregameProbe
 
         // The probe's own server goes.
         ServerBook.Remove(own);
+    }
+
+    private static async System.Threading.Tasks.Task CatalogueChecks(Node host, PregameCard card)
+    {
+        // Two local ports: one listening (a shard that answers), one just shut (one that doesn't).
+        var open = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+        open.Start();
+        var shutter = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+        shutter.Start();
+        int openPort = ((System.Net.IPEndPoint) open.LocalEndpoint).Port;
+        int shutPort = ((System.Net.IPEndPoint) shutter.LocalEndpoint).Port;
+        shutter.Stop();
+
+        try
+        {
+            string path = ProjectSettings.GlobalizePath("user://probe_catalogue.json");
+            ServerCatalogue.PathOverride = path;
+            System.IO.File.WriteAllText(path, "{ \"version\": 1, \"servers\": ["
+                + $"{{ \"name\": \"Probe Answers\", \"host\": \"127.0.0.1\", \"port\": {openPort}, \"era\": \"AOS\", \"emulator\": \"ModernUO\", \"third_party_clients\": true, \"site\": \"https://example.com\", \"description\": \"A catalogue shard the probe listens for.\" }},"
+                + $"{{ \"name\": \"Probe Silent\", \"host\": \"127.0.0.1\", \"port\": {shutPort}, \"era\": \"T2A\", \"third_party_clients\": true }},"
+                + "{ \"name\": \"Probe Other Client\", \"host\": \"c.invalid\", \"port\": 2593, \"client_version\": \"5.0.9.1\", \"third_party_clients\": true },"
+                + "{ \"name\": \"Probe Own Client Only\", \"host\": \"d.invalid\", \"port\": 2593, \"third_party_clients\": false },"
+                + "{ \"name\": \"Probe No Host\", \"port\": 2593 }"
+                + "] }");
+            ServerPing.Clear();
+
+            PregameServers servers = card.Servers;
+            card.Tap(servers.RefreshButton);
+            await InputProbe.Wait(host, 5);
+
+            ServerEntry answers = servers.Listed.FirstOrDefault(e => e.Name == "Probe Answers");
+            ServerEntry silent = servers.Listed.FirstOrDefault(e => e.Name == "Probe Silent");
+            ServerEntry other = servers.Listed.FirstOrDefault(e => e.Name == "Probe Other Client");
+            Check("Community lists the catalogue's shards, less one for its own client only and one without an address",
+                answers != null && silent != null && other != null && ServerCatalogue.Servers.Count == 3 && !servers.Listed.Any(e => e.Name.StartsWith("Probe Own") || e.Name.StartsWith("Probe No")),
+                $"catalogue {ServerCatalogue.Servers.Count}: {string.Join(", ", ServerCatalogue.Servers.Select(e => e.Name))}");
+
+            if (answers == null || silent == null || other == null)
+            {
+                return;
+            }
+
+            // The timings land within the 3 s timeout (the shut port refuses at once).
+            for (int i = 0; i < 60 && (servers.RowStatus(answers).Dot != ServerPing.Kind.Up || servers.RowStatus(silent).Dot != ServerPing.Kind.Down); i++)
+            {
+                await InputProbe.Wait(host, 6);
+            }
+
+            var a = servers.RowStatus(answers);
+            var b = servers.RowStatus(silent);
+            var c = servers.RowStatus(other);
+            Check("a row's dot is gold with its time when the shard answers, hollow with a dash when it doesn't, red when GUO can't play there",
+                a.Dot == ServerPing.Kind.Up && !a.Red && a.Ping.EndsWith(" ms") && b.Dot == ServerPing.Kind.Down && !b.Red && b.Ping == "\u2014" && c.Red,
+                $"answers {a.Dot}/{a.Ping}, silent {b.Dot}/{b.Ping}, other client red {c.Red}");
+
+            card.Tap(servers.RowFor(answers));
+            await InputProbe.Wait(host, 4);
+            await SaveShot(host, "servers_community");
+            bool answering = servers.DetailText.Contains("Answering,") && servers.SiteButton != null && !servers.DetailText.Contains("127.0.0.1");
+            card.Tap(servers.RowFor(silent));
+            await InputProbe.Wait(host, 4);
+            await SaveShot(host, "servers_silent");
+            Check("a catalogue shard's page: its time and Site when it answers, and without its address; the silent one says why",
+                answering && servers.DetailText.Contains("Probe Silent isn't answering (no reply in 3 s). It may be down, or the address is wrong."),
+                $"answering page {answering}, silent page \"{Cut(servers.DetailText)}\"");
+
+            // A favourite catalogue shard is the player's: it lists under Favourites once.
+            card.Tap(servers.RowFor(answers));
+            await InputProbe.Wait(host, 4);
+            card.Tap(servers.FavouriteButton);
+            await InputProbe.Wait(host, 5);
+            ServerEntry kept = servers.Selected;
+            int listedOnce = servers.Listed.Count(e => e.Same("127.0.0.1", openPort));
+            bool faved = kept != null && kept.Favourite && ServerBook.Favourites.Contains(kept) && listedOnce == 1;
+            card.Tap(servers.FavouriteButton);
+            await InputProbe.Wait(host, 5);
+            ServerBook.Remove(kept);
+            servers.Rebuild();
+            await InputProbe.Wait(host, 3);
+            Check("Favourite on a catalogue shard keeps a copy under Favourites, listed once",
+                faved, $"favourite {kept?.Favourite}, listed {listedOnce} time(s)");
+
+            // A catalogue that doesn't read: the group says so, and Refresh reads it again.
+            System.IO.File.WriteAllText(path, "{ not json");
+            card.Tap(servers.RefreshButton);
+            await InputProbe.Wait(host, 5);
+            string empty = string.Join(" | ", servers.FindChildren("*", "Label", true, false).OfType<Label>().Select(l => l.Text));
+            await SaveShot(host, "servers_catalogue_failed");
+            Check("a catalogue that can't be read leaves the saved servers and says so",
+                !ServerCatalogue.Loaded && empty.Contains("The server list couldn't be loaded. Your saved servers are above. Refresh to try again."),
+                $"loaded {ServerCatalogue.Loaded}");
+
+            // Twelve at once: never more than eight connects open.
+            ServerPing.Clear();
+            var many = Enumerable.Range(0, 12).Select(i => new ServerEntry { Name = $"t{i}", Host = $"127.0.0.{i + 2}", Port = shutPort }).ToList();
+
+            foreach (ServerEntry e in many)
+            {
+                ServerPing.Want(e);
+            }
+
+            for (int i = 0; i < 90 && many.Any(e => ServerPing.Get(e).Busy); i++)
+            {
+                await InputProbe.Wait(host, 6);
+            }
+
+            Check("at most eight timings run at once, and each ends",
+                ServerPing.MostAtOnce <= ServerPing.AtOnce && ServerPing.MostAtOnce > 0 && many.All(e => !ServerPing.Get(e).Busy && ServerPing.Get(e).Kind != ServerPing.Kind.Unknown),
+                $"most at once {ServerPing.MostAtOnce}, ended {many.Count(e => !ServerPing.Get(e).Busy)} of {many.Count}");
+        }
+        finally
+        {
+            open.Stop();
+        }
     }
 
     /// <summary>Scrolls a control into view (a finger would), lets the layout settle, taps it.</summary>
