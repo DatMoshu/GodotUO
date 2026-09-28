@@ -89,3 +89,11 @@ of its levels the tower opens there; a higher-ranked element (house > tower >
 wall > causeway > platform) takes the cells it stands on from lower ones. The
 whole scene is cut into parts, one per element's `part`, and a part over the
 size limit is cut again in two until each fits one multi.
+
+## Known
+
+- Avoid flights stacked in the same cells. A climber who reached the top of
+  a flight standing over another was snapped back to the floor below (a
+  resync) in a castle scene, while a lone tower with the same stacking
+  climbed fine. The cause is not yet isolated (ModernUO or the client);
+  towers now turn their flights over three rows so none stacks.
