@@ -110,6 +110,9 @@ namespace GUO.Input.Touch
             /// <summary>A gump is lifted for a flick (GumpFlick); the finger picks a direction.</summary>
             Flick,
 
+            /// <summary>A vertical swipe that began in a scroll area scrolls it with the finger.</summary>
+            Scroll,
+
             /// <summary>The gesture is spent; wait for the finger to lift.</summary>
             Done,
         }
@@ -592,6 +595,11 @@ namespace GUO.Input.Touch
                 case Phase.Pending:
                     if (at.DistanceTo(_downAt) > MovePixels)
                     {
+                        if (StartScroll(at))
+                        {
+                            break;
+                        }
+
                         if (OverWorld(_downAt))
                         {
                             // A swipe: walk that way, from the first pixel.
@@ -626,7 +634,62 @@ namespace GUO.Input.Touch
                     GumpFlick.Move(at);
 
                     break;
+
+                case Phase.Scroll:
+                    if (_scrollBar != null && !_scrollBar.IsDisposed)
+                    {
+                        // Content follows the finger: moving it up shows what is below.
+                        float dpi = Client.Game?.DpiScale ?? 1f;
+                        int value = _scrollStart - (int)System.Math.Round((at.Y - _downAt.Y) / dpi);
+                        _scrollBar.Value = System.Math.Clamp(value, _scrollBar.MinValue, _scrollBar.MaxValue);
+                    }
+
+                    break;
             }
+        }
+
+        private static Game.UI.Controls.ScrollBarBase _scrollBar;
+        private static int _scrollStart;
+
+        /// <summary>
+        /// A mostly vertical move that began over the inside of a ScrollArea
+        /// (an Options page, a list) scrolls the area instead of dragging the
+        /// gump; a drag from the gump's frame or title still moves it. The
+        /// area's own scroll bar (its first child, as ScrollArea draws it)
+        /// takes the value, so upstream's ScrollArea is untouched. Seen on the
+        /// Odin: a swipe on Options' Video page dragged the whole gump.
+        /// </summary>
+        private static bool StartScroll(Vector2 at)
+        {
+            Vector2 d = at - _downAt;
+
+            if (System.Math.Abs(d.Y) < System.Math.Abs(d.X) * 1.2f)
+            {
+                return false;
+            }
+
+            // On the scroll bar itself its thumb and arrows work as they do
+            // with a mouse (the opposite direction to a finger scroll).
+            if (UIManager.MouseOverControl is Game.UI.Controls.ScrollBarBase)
+            {
+                return false;
+            }
+
+            for (Game.UI.Controls.Control c = UIManager.MouseOverControl; c != null; c = c.Parent)
+            {
+                if (c is Game.UI.Controls.ScrollArea area && area.Children.Count > 0
+                    && area.Children[0] is Game.UI.Controls.ScrollBarBase bar && bar.MaxValue > bar.MinValue)
+                {
+                    _scrollBar = bar;
+                    _scrollStart = bar.Value;
+                    _phase = Phase.Scroll;
+                    Note($"swipe in {area.RootParent?.GetType().Name ?? "a gump"} -> scroll");
+
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static void FingerUp(int index, Vector2 at)
@@ -710,6 +773,12 @@ namespace GUO.Input.Touch
 
                 case Phase.Flick:
                     Note(GumpFlick.End(at));
+
+                    break;
+
+                case Phase.Scroll:
+                    _scrollBar = null;
+                    Note("finger up -> scroll over");
 
                     break;
             }

@@ -189,7 +189,7 @@ namespace GUO.Input.Touch
 
                 Layout(out Rect2 band, out _, out _, out _);
 
-                return band.Size.Y * (RowShown ? 2 : 1) / viewHeight;
+                return (band.Size.Y + (RowShown ? band.Size.Y + StripHeight(band) : 0f)) / viewHeight;
             }
         }
 
@@ -234,6 +234,44 @@ namespace GUO.Input.Touch
 
                 // The window can change size under it, and so can the scale.
                 _surface.QueueRedraw();
+
+                KeepGumpsAboveBar();
+            }
+        }
+
+        /// <summary>
+        /// Keep every gump on the main screen clear of the bar: a gump whose
+        /// bottom edge runs under it moves up (to the top, if it is taller than
+        /// the room). Checked every frame, so it covers a gump's first open, a
+        /// drag, and the macro row opening under a gump. Seen on the Odin: the
+        /// Options gump's Cancel/Apply/Default/Okay row sat under the bar.
+        /// The world view and the top bar are left alone, as are hidden gumps
+        /// and anything on the second screen, which has no bar.
+        /// </summary>
+        private static void KeepGumpsAboveBar()
+        {
+            if (Client.Game == null)
+            {
+                return;
+            }
+
+            int bottom = GumpPresentation.DisplayBounds(false).Height;
+            int mainWidth = GUO.Platform.Android.DualScreen.ShelfOn ? GUO.Platform.Android.DualScreen.MainWidth : int.MaxValue;
+
+            foreach (Game.UI.Gumps.Gump g in UIManager.Gumps)
+            {
+                if (g.IsDisposed || !g.IsVisible || g.Height <= 0 || g.X >= mainWidth
+                    || g is Game.UI.Gumps.WorldViewportGump || g is Game.UI.Gumps.TopBarGump)
+                {
+                    continue;
+                }
+
+                int h = GumpPresentation.Supports(g) ? GumpPresentation.Height(g) : g.Height;
+
+                if (g.Y + h > bottom)
+                {
+                    g.Y = System.Math.Max(0, bottom - h);
+                }
             }
         }
 
@@ -316,7 +354,25 @@ namespace GUO.Input.Touch
         }
 
         /// <summary>The macro row's band: the bar's band, moved up by its own height.</summary>
-        private static Rect2 RowBand(Rect2 band) => new(band.Position.X, band.Position.Y - band.Size.Y, band.Size.X, band.Size.Y);
+        /// <summary>
+        /// The macro row's band: above the strip that holds the chevron and
+        /// the minimised-gump chips, which stays put whether the row is open
+        /// or not. The chevron used to ride on top of the row, so opening the
+        /// row moved it and a second tap at its old spot hit a macro (seen
+        /// on the Odin).
+        /// </summary>
+        private Rect2 RowBand(Rect2 band)
+        {
+            float lift = band.Size.Y + StripHeight(band);
+            return new Rect2(band.Position.X, band.Position.Y - lift, band.Size.X, band.Size.Y);
+        }
+
+        /// <summary>The chevron/chip strip's height: one button's art height plus a small gap.</summary>
+        private float StripHeight(Rect2 band)
+        {
+            Layout(out _, out _, out Vector2 art, out float spacing);
+            return art.Y + spacing / 6f;
+        }
 
         /// <summary>
         /// The chevron tab: two button heights wide and one tall, on top of
@@ -325,7 +381,7 @@ namespace GUO.Input.Touch
         public Rect2 ChevronRect()
         {
             Layout(out Rect2 band, out _, out Vector2 art, out float spacing);
-            Rect2 top = RowShown ? RowBand(band) : band;
+            Rect2 top = band; // fixed: the strip right above the bar, row or no row
             var size = new Vector2(art.Y * 2, art.Y);
 
             // The profile's inset, in client px, moves it in from the corner,
@@ -394,7 +450,7 @@ namespace GUO.Input.Touch
             }
 
             Layout(out Rect2 band, out int artScale, out Vector2 art, out float spacing);
-            Rect2 top = RowShown ? RowBand(band) : band;
+            Rect2 top = band; // the chevron's strip, which never moves
             float h = art.Y, gap = spacing / 3f;
             float y = top.Position.Y - h - gap / 2f;
             float left = spacing / 2f;
@@ -759,7 +815,7 @@ namespace GUO.Input.Touch
 
                 if (bar.RowShown)
                 {
-                    DrawRect(RowBand(band), new Color(0f, 0f, 0f, 0.55f));
+                    DrawRect(bar.RowBand(band), new Color(0f, 0f, 0f, 0.55f));
                 }
 
                 if (bar.ChevronShown)

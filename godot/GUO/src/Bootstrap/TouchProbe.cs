@@ -105,6 +105,7 @@ internal static class TouchProbe
         await TargetTapCheck(host, world);
         await MacroRowCheck(host, world);
         await FlickCheck(host, world);
+        await OptionsTouchCheck(host, world);
         // The long press is checked with hold-and-flick off, the way a player
         // who set every direction to "Do nothing" has it.
         {
@@ -361,9 +362,13 @@ internal static class TouchProbe
         await Frames(host, 5);
         Check("the chevron is shown and the row is down", bar.ChevronShown && !bar.RowShown);
 
+        Rect2 chevronDown = bar.ChevronRect();
         TouchInput.Trace.Clear();
         Game.GameActions.ToggleWarMode(world.Player);
         await Frames(host, 60);
+
+        Check("the chevron stays where it was when the row opens", bar.ChevronRect() == chevronDown,
+            $"{chevronDown} -> {bar.ChevronRect()}");
 
         Check(
             "the row comes up on entering War mode",
@@ -495,6 +500,75 @@ internal static class TouchProbe
         {
             GumpFlick.Cancel();
             (p.FlickUp, p.FlickDown, p.FlickLeft, p.FlickRight) = saved;
+        }
+    }
+
+    /// <summary>
+    /// The Odin findings (C2): a gump is kept above the touch bar, and a
+    /// vertical swipe inside a scroll area (the Options pages) scrolls it
+    /// instead of dragging the gump.
+    /// </summary>
+    private static async System.Threading.Tasks.Task OptionsTouchCheck(Node host, Game.World world)
+    {
+        Game.GameActions.OpenSettings(world);
+        await Frames(host, 60);
+        OptionsGump options = UIManager.GetGump<OptionsGump>();
+
+        if (options == null)
+        {
+            Check("Options opens for the touch checks", false);
+            return;
+        }
+
+        try
+        {
+            int bottom = GumpPresentation.DisplayBounds(false).Height;
+            options.Y = bottom - 20;
+            await Frames(host, 5);
+            Check("a gump pushed under the touch bar is moved back above it",
+                options.Y + options.Height <= bottom, $"bottom edge {options.Y + options.Height}, bar at {bottom}");
+
+            options.Y = 0;
+            await Frames(host, 5);
+
+            // The first scroll area on the open page that has more than it shows.
+            Game.UI.Controls.ScrollArea area = null;
+            foreach (Game.UI.Controls.Control c in options.FindControls<Game.UI.Controls.ScrollArea>())
+            {
+                if (c.IsVisible && c.Page == options.ActivePage && c is Game.UI.Controls.ScrollArea a
+                    && a.ScrollMaxValue > a.ScrollMinValue) { area = a; break; }
+            }
+
+            if (area == null)
+            {
+                Check("an Options page with a scroll area", false);
+                return;
+            }
+
+            int before = area.ScrollValue;
+            int gx = options.X, gy = options.Y;
+            Vector2 start = Client(new Vector2(area.ScreenCoordinateX + 60, area.ScreenCoordinateY + area.Height * 0.7f));
+            TouchInput.Trace.Clear();
+            Touch(0, start, true);
+            await Frames(host, 2);
+
+            for (int i = 1; i <= 8; i++)
+            {
+                Drag(0, start + new Vector2(0, -25 * i), new Vector2(0, -25));
+                await Frames(host, 1);
+            }
+
+            Touch(0, start + new Vector2(0, -200), false);
+            await Frames(host, 10);
+
+            Check("a vertical swipe inside an Options page scrolls it and leaves the gump where it was",
+                area.ScrollValue > before && options.X == gx && options.Y == gy && !Mouse.LButtonPressed,
+                $"scroll {before} -> {area.ScrollValue}, gump {gx},{gy} -> {options.X},{options.Y} | {string.Join(" | ", TouchInput.Trace)}");
+        }
+        finally
+        {
+            options.Dispose();
+            await Frames(host, 5);
         }
     }
 
