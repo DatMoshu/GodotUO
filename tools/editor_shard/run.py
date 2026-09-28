@@ -191,7 +191,7 @@ def cmd_start(cfg, data_first: Path | None, objects: Path | None = None, clear: 
     log = (h / "shard.log").open("w", encoding="utf-8", errors="replace")
     env = {**__import__("os").environ,
            "GUO_BRIDGE_PORT": str(state.get("bridge_port", 2595)),
-           "GUO_BRIDGE_SHARD": state.get("bridge_shard", "GUO-Editor-Private"),
+           "GUO_BRIDGE_SHARD": __import__("os").environ.get("GUO_BRIDGE_SHARD") or state.get("bridge_shard", "GUO-Editor-Private"),
            "GUO_BRIDGE_MAPS": state.get("bridge_maps", ALL_FACETS)}
     proc = subprocess.Popen([str(exe)], cwd=str(h), env=env, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
                             creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0))

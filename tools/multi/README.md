@@ -122,6 +122,13 @@ needs placing at boot, the doors and vendors downstairs keep their places, and
 there is no multi overlap to worry about. The tour is walked offline as for a
 scene.
 
+`run.py world-prove PROJECT` walks the tour in game on the export: the private
+shard reads it first and the client through its override list. UltimaLive
+clients keep a copy of the map per shard name and never refresh it, so the
+proof gives the shard a name of its own for the export's bytes and removes the
+copy it made afterwards. `--no-roofs` turns the client's roof drawing off (it
+hides pieces flagged as roof only; a flat roof of floor tiles stays).
+
 ## The offline walk
 
 `scene-build` walks the tour offline (`walkcheck.py`) before any proof: a

@@ -7,6 +7,7 @@
     python tools/multi/run.py prove   NAME [--stage DIR] [--clip OUT.mp4] [--at X Y [Z]] [--visit X Y Z ...]
     python tools/multi/run.py show    ID [--data DIR] [--png FILE]
     python tools/multi/run.py storeys DESC.json --project DIR   raise storeys on map buildings, as a world project
+    python tools/multi/run.py world-prove PROJECT [--export DIR] [--tour JSON] [--clip OUT.mp4] [--no-roofs]
     python tools/multi/run.py scene-build SCENE.json [--cut Z]  a scene: every element, cut into parts
     python tools/multi/run.py scene-write NAME [--stage DIR]    each part as a multi, and the scene
     python tools/multi/run.py scene-prove NAME [--stage DIR] [--clip OUT.mp4] [--at X Y [Z]]
@@ -259,6 +260,21 @@ def cmd_scene_prove(cfg, a) -> int:
                              caption=a.caption or "")
 
 
+def cmd_world_prove(cfg, a) -> int:
+    """Walk a storeys project's export (or any tools/world export with --tour) in game."""
+    import prove
+    project = a.project.resolve()
+    export = (a.export or project / "export").resolve()
+    tour_file = a.tour or project / "storeys.json"
+    tour = json.loads(tour_file.read_text(encoding="utf-8"))["tour"]
+    stops = [(t["name"], t["at"][0], t["at"][1], t["z"]) for t in tour]
+    out = (a.out or cfg.build / "multi_proof" / f"{project.name}-{time.strftime('%Y%m%d-%H%M%S')}").resolve()
+    out.mkdir(parents=True, exist_ok=True)
+    profile = {"draw_roofs": False} if a.no_roofs else None
+    return prove.prove_world(cfg, export, stops, out, a.clip, min_free_gb=a.min_free_gb, caption=a.caption or "",
+                             profile=profile)
+
+
 def cmd_storeys(cfg, a) -> int:
     """Raise storeys on buildings that stand in the statics (storeys.py): a world project, its
     record, previews (whole, and cut above each storey), and the offline walk of its tour."""
@@ -362,6 +378,15 @@ def main() -> int:
     p.add_argument("--caption")
     p.add_argument("--at", type=int, nargs="+", metavar="N")
     p.add_argument("--min-free-gb", type=float, default=16)
+    p = sub.add_parser("world-prove")
+    p.add_argument("project", type=Path)
+    p.add_argument("--export", type=Path)
+    p.add_argument("--tour", type=Path)
+    p.add_argument("--out", type=Path)
+    p.add_argument("--clip", type=Path)
+    p.add_argument("--caption")
+    p.add_argument("--no-roofs", action="store_true")
+    p.add_argument("--min-free-gb", type=float, default=16)
     p = sub.add_parser("storeys")
     p.add_argument("desc", type=Path)
     p.add_argument("--project", type=Path, required=True)
@@ -373,7 +398,7 @@ def main() -> int:
     a = ap.parse_args()
     cfg = load_config()
     return {"mine": cmd_mine, "sheets": cmd_sheets, "build": cmd_build, "write": cmd_write, "prove": cmd_prove, "show": cmd_show,
-            "scene-build": cmd_scene_build, "storeys": cmd_storeys, "scene-write": cmd_scene_write, "scene-prove": cmd_scene_prove}[a.cmd](cfg, a)
+            "scene-build": cmd_scene_build, "storeys": cmd_storeys, "world-prove": cmd_world_prove, "scene-write": cmd_scene_write, "scene-prove": cmd_scene_prove}[a.cmd](cfg, a)
 
 
 if __name__ == "__main__":
