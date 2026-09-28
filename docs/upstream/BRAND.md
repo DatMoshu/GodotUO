@@ -25,4 +25,5 @@ The current builds don't use the Godot face; they use the GUO sigil above.
 - Built-in background loops, screensavers and Store sample packs: procedural, CC0
   (`godot/GUO/assets/backgrounds/LICENSE.md`, `godot/GUO/assets/screensavers/LICENSE.md`,
   `tools/asset_store/samples.py`).
+- Button glyphs: Kenney's "Input Prompts Pixel", CC0 (`docs/upstream/KENNEY_INPUT_PROMPTS.md`).
 - Ultima Online game art is never included; players supply their own installation.

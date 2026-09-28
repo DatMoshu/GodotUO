@@ -274,6 +274,9 @@ namespace GUO.Input.Touch
         /// <summary>Open or close the command bar's rows, as a tap on the handle does (a gamepad's Y).</summary>
         public void ToggleRow() => TapHandle();
 
+        /// <summary>For the probe: the glyph on the tab at its last draw, or null.</summary>
+        public static string BadgeDrawn { get; private set; }
+
         public override void _Ready()
         {
             Layer = 10;
@@ -425,6 +428,9 @@ namespace GUO.Input.Touch
             h.Add(PopupSlot);
             h.Add(PopupHover);
             h.Add(ProfileManager.CurrentProfile?.TouchBarAlts);
+            h.Add(InputMode.Current);
+            h.Add(InputMode.PadFamily);
+            h.Add(InputMode.PadLayout);
 
             IReadOnlyList<Game.UI.Gumps.Gump> gumps = GumpMinimise.Gumps;
             h.Add(gumps.Count);
@@ -1723,6 +1729,18 @@ namespace GUO.Input.Touch
                 Vector2 size = uv.Size * s;
                 Vector2 at = tab.Position + ((tab.Size - size) / 2).Floor();
                 canvas.DrawTextureRectRegion(tex, new Rect2(at, size), uv);
+            }
+
+            // With a pad in hand, the button that works the tab (printed Y,
+            // ADR-0025) as a badge on its top right corner; none for a finger.
+            BadgeDrawn = null;
+
+            if (Glyphs.InputGlyphs.For(PadAction.Y) is Texture2D badge)
+            {
+                int g = Glyphs.InputGlyphs.Size * s;
+                var at = new Vector2(tab.End.X - g * 2 / 3, tab.Position.Y - g / 3);
+                canvas.DrawTextureRect(badge, new Rect2(at, new Vector2(g, g)), false);
+                BadgeDrawn = Glyphs.InputGlyphs.LastShown[PadAction.Y];
             }
         }
 

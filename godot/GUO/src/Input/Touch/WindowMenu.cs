@@ -241,7 +241,29 @@ internal sealed partial class WindowMenu : Node
             Modern.ModernJournal.OpenReader(world);
         };
         col.AddChild(_read);
+
+        // The buttons that work the card, in the input in use (ADR-0025):
+        // a pad's A, B and D-pad, or the click (a click outside closes it:
+        // no key does); none for a finger.
+        _prompts = new Glyphs.PromptRow(
+            (PadAction.Confirm, "Press", false),
+            (PadAction.Cancel, "Close", true),
+            (PadAction.Walk, "Choose", true));
+        col.AddChild(_prompts);
+        _prompts.Rebuilt += () =>
+        {
+            if (IsOpen)
+            {
+                Place();
+            }
+        };
+        Glyphs.InputGlyphs.TooltipFollows(close, "Close", PadAction.Cancel, padOnly: true);
     }
+
+    private Glyphs.PromptRow _prompts;
+
+    /// <summary>For the probe: the prompt glyphs shown now.</summary>
+    public static string Prompts => _instance?._prompts?.Shown ?? "";
 
     // --- behaviour ------------------------------------------------------------
 

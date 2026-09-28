@@ -216,7 +216,7 @@ namespace GUO.Renderer.PostFx
             titles.AddChild(_subtitle);
             head.AddChild(titles);
             var close = UoTheme.Button("Close");
-            close.TooltipText = "Esc";
+            GUO.Input.Glyphs.InputGlyphs.TooltipFollows(close, "Close", GUO.Input.PadAction.Cancel);
             close.Pressed += Close;
             head.AddChild(close);
             col.AddChild(head);
