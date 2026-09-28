@@ -263,6 +263,10 @@ namespace GUO.Configuration
         // other words.
         public string TouchBarWords { get; set; } = "";
 
+        // PORT DEVIATION (GUO): the Modern views of client gumps (ADR-0024)
+        // are used on touch unless this is set; the desktop never uses them.
+        public bool ModernGumpsOff { get; set; }
+
         // PORT DEVIATION (GUO): a light vibration when the command bar snaps
         // to a row count (off by default), and no settle animation.
         public bool TouchVibrate { get; set; }

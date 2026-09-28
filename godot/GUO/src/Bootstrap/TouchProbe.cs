@@ -97,6 +97,10 @@ internal static class TouchProbe
 
         await Frames(host, 120);
 
+        // The checks that open Options mean the classic gump; Modern Options
+        // (ADR-0024) has its own check, which turns it on.
+        Configuration.ProfileManager.CurrentProfile.ModernGumpsOff = true;
+
         // A world map or party gump a run saved open covers the world the
         // walk checks hold on; the checks start without them.
         UIManager.GetGump<WorldMapGump>()?.Dispose();
@@ -112,8 +116,12 @@ internal static class TouchProbe
         await CommandBarCheck(host, world);
         await BarHoldCheck(host, world);
         await FlickCheck(host, world);
+        // The classic Options on touch, as a player who turned Modern off has it.
         await OptionsTouchCheck(host, world);
         await MobileOptionsCheck(host, world);
+        Configuration.ProfileManager.CurrentProfile.ModernGumpsOff = false;
+        await ModernOptionsCheck(host, world);
+        Configuration.ProfileManager.CurrentProfile.ModernGumpsOff = true;
         await HelpGumpCheck(host, world);
         // The long press is checked with hold-and-flick off, the way a player
         // who set every direction to "Do nothing" has it.
@@ -992,6 +1000,77 @@ internal static class TouchProbe
             help != null && bar.Covered && help.PresentationScale > 1.2f && help.Y >= GumpPresentation.FullHeightTop(),
             help == null ? "no help gump" : $"x{help.PresentationScale:0.00} at {GumpPresentation.Bounds(help)}");
         help?.Dispose();
+        await Frames(host, 10);
+    }
+
+    /// <summary>
+    /// Modern Options (ADR-0024): on touch, opening Options opens its Modern
+    /// view (the classic gump is not added), over the command bar; a page tab
+    /// switches the page; a check box row and a slider change their values;
+    /// Okay writes them to the profile fields the classic Apply writes; Cancel
+    /// writes nothing; Classic view opens the ported Options.
+    /// </summary>
+    private static async System.Threading.Tasks.Task ModernOptionsCheck(Node host, Game.World world)
+    {
+        Configuration.Profile p = Configuration.ProfileManager.CurrentProfile;
+        TouchGumpBar bar = TouchInput.Bar;
+        UIManager.GetGump<OptionsGump>()?.Dispose();
+        await Frames(host, 5);
+
+        Game.GameActions.OpenSettings(world);
+        await Frames(host, 20);
+        var view = Input.Touch.Modern.ModernGump.Current as Input.Touch.Modern.ModernOptions;
+        Check("on touch, Options opens as its Modern view, over the command bar, the classic gump not added",
+            view != null && Input.Touch.Modern.ModernGump.IsOpen && UIManager.GetGump<OptionsGump>() == null && bar.Covered,
+            $"modern {view != null}, classic {UIManager.GetGump<OptionsGump>() != null}, covered {bar.Covered}");
+
+        if (view == null)
+        {
+            return;
+        }
+
+        // General: toggle Always run by a tap on its row; Sound: drag the music volume to the middle.
+        bool run = p.AlwaysRun;
+        await TapClient(host, view.CentreOf(view.Find("Always run")));
+        await TapClient(host, view.CentreOf(view.Find("Sound")));
+        Godot.Control music = view.Find("Music volume");
+        int musicWas = p.MusicVolume;
+
+        if (music != null)
+        {
+            await Swipe(host, Client(view.AlongOf(music, 0.95f)), Client(view.AlongOf(music, 0.5f)), 400);
+            await Frames(host, 5);
+        }
+
+        await TapClient(host, view.CentreOf(view.Find("Okay")));
+        await Frames(host, 10);
+
+        Check("in Modern Options, a tapped check box and a dragged slider land in the profile on Okay",
+            !Input.Touch.Modern.ModernGump.IsOpen && p.AlwaysRun != run && System.Math.Abs(p.MusicVolume - 50) <= 10 && !bar.Covered,
+            $"always run {run} -> {p.AlwaysRun}, music {musicWas} -> {p.MusicVolume}, open {Input.Touch.Modern.ModernGump.IsOpen}");
+
+        // Cancel writes nothing.
+        Game.GameActions.OpenSettings(world);
+        await Frames(host, 10);
+        view = Input.Touch.Modern.ModernGump.Current as Input.Touch.Modern.ModernOptions;
+        bool before = p.AlwaysRun;
+        await TapClient(host, view.CentreOf(view.Find("General")));
+        await TapClient(host, view.CentreOf(view.Find("Always run")));
+        await TapClient(host, view.CentreOf(view.Find("Cancel")));
+        await Frames(host, 5);
+        Check("Cancel in Modern Options writes nothing", p.AlwaysRun == before && !Input.Touch.Modern.ModernGump.IsOpen);
+
+        // Put them back, and Classic view opens the ported gump.
+        p.AlwaysRun = run;
+        p.MusicVolume = musicWas;
+        Game.GameActions.OpenSettings(world);
+        await Frames(host, 10);
+        view = Input.Touch.Modern.ModernGump.Current as Input.Touch.Modern.ModernOptions;
+        await TapClient(host, view.CentreOf(view.Find("Classic view")));
+        await Frames(host, 20);
+        Check("Classic view opens the ported Options, fitted", UIManager.GetGump<OptionsGump>() is OptionsGump classic
+            && classic.PresentationScale > 1.2f && !Input.Touch.Modern.ModernGump.IsOpen);
+        UIManager.GetGump<OptionsGump>()?.Dispose();
         await Frames(host, 10);
     }
 

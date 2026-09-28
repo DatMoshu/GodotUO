@@ -133,10 +133,16 @@ internal static class GalleryProbe
             await Save(host, "editor");
         }
 
-        // Options, as a touch player gets it (C11).
+        // Options, as a touch player gets it: Modern (ADR-0024), then Classic, fitted (C11).
+        profile.ModernGumpsOff = false;
         Game.GameActions.OpenSettings(world);
         await InputProbe.Wait(host, 60);
         await Save(host, "options");
+        Input.Touch.Modern.ModernGump.Current?.Close();
+        profile.ModernGumpsOff = true;
+        Game.GameActions.OpenSettings(world);
+        await InputProbe.Wait(host, 60);
+        await Save(host, "options_classic");
         UIManager.GetGump<OptionsGump>()?.Dispose();
         await InputProbe.Wait(host, 10);
 

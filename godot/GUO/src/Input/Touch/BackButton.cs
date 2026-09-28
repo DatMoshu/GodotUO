@@ -32,6 +32,14 @@ namespace GUO.Input.Touch
                 return;
             }
 
+            if (Modern.ModernGump.IsOpen)
+            {
+                Modern.ModernGump.Current.Close();
+                GD.Print("[GUO] back: close a Modern gump");
+
+                return;
+            }
+
             if (BarEditor.IsOpen)
             {
                 BarEditor.Close();

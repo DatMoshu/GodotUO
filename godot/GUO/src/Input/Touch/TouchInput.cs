@@ -289,7 +289,7 @@ namespace GUO.Input.Touch
         public static bool Handle(InputEvent e)
         {
             // The second screen's fingers come here directly (DualScreen.Deliver).
-            if (BarEditor.HandleInput(e) || WindowMenu.HandleInput(e))
+            if (Modern.ModernGump.HandleInput(e) || BarEditor.HandleInput(e) || WindowMenu.HandleInput(e))
             {
                 return true;
             }

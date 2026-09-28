@@ -422,6 +422,16 @@ namespace GUO.Game.Managers
 
         public static void Add(Gump gump, bool front = true)
         {
+            // PORT DEVIATION (GUO): on touch, a gump with a Modern view
+            // (ADR-0024) opens as that instead; the classic one is not added.
+            // The desktop never has one chosen, so this is false there.
+            if (GUO.Input.Touch.Modern.ModernGumps.TryOpenInstead(gump))
+            {
+                gump.Dispose();
+
+                return;
+            }
+
             if (!gump.IsDisposed)
             {
                 if (front)

@@ -291,6 +291,15 @@ internal static class UoTheme
         }
 
         Image image = atlas.GetRegion(new Rect2I(info.UV.X, info.UV.Y, info.UV.Width, info.UV.Height));
+
+        // A read before the atlas upload has landed comes back all
+        // transparent: not kept, so the next call reads again (GUOWeb's fix
+        // on its branch, the same shape).
+        if (image.IsInvisible())
+        {
+            return null;
+        }
+
         _images[id] = image;
 
         return image;
