@@ -169,6 +169,17 @@ internal static class GalleryProbe
                 await InputProbe.Wait(host, 10);
                 await Save(host, "options_macro");
             }
+
+            // The colour picker, over the Speech page's Speech colour.
+            options.Page("Speech");
+            await InputProbe.Wait(host, 5);
+
+            if (options.Find("Speech colour") is Godot.BaseButton change)
+            {
+                change.EmitSignal(Godot.BaseButton.SignalName.Pressed);
+                await InputProbe.Wait(host, 10);
+                await Save(host, "options_colour");
+            }
         }
 
         Input.Touch.Modern.ModernGump.Current?.Close();
