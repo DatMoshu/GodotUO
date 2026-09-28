@@ -101,10 +101,19 @@ internal static class TouchProbe
         // (ADR-0024) has its own check, which turns it on.
         Configuration.ProfileManager.CurrentProfile.ModernGumpsOff = true;
 
-        // A world map or party gump a run saved open covers the world the
-        // walk checks hold on; the checks start without them.
+        // Gumps a run saved open cover the world the walk, pinch and target
+        // checks touch, or stand in for the ones a check opens; the checks
+        // start without them, and at the default zoom (a run can save another).
         UIManager.GetGump<WorldMapGump>()?.Dispose();
         UIManager.GetGump<PartyGump>()?.Dispose();
+        UIManager.GetGump<PaperDollGump>(world.Player.Serial)?.Dispose();
+        UIManager.GetGump<StandardSkillsGump>()?.Dispose();
+        UIManager.GetGump<SkillGumpAdvanced>()?.Dispose();
+        UIManager.GetGump<OptionsGump>()?.Dispose();
+        GumpPresentation.PaperdollScale = 0f;
+        float zoomWas = GUO.Client.Game.Scene.Camera.Zoom;
+        GUO.Client.Game.Scene.Camera.Zoom = new Configuration.Profile().DefaultScale;
+        TouchInput.Note($"probe: clean start, zoom {zoomWas:0.00} -> {GUO.Client.Game.Scene.Camera.Zoom:0.00}");
         await Frames(host, 5);
 
         await WalkCheck(host, world);
@@ -209,6 +218,12 @@ internal static class TouchProbe
             string.Join(" | ", TouchInput.Trace)
         );
         Check("the paperdoll opened", UIManager.GetGump<PaperDollGump>() != null);
+
+        // On one touch screen it opens fitted, up to 2x, over the middle of the
+        // world the pinch and target checks touch; they start without it.
+        UIManager.GetGump<PaperDollGump>()?.Dispose();
+        GumpPresentation.PaperdollScale = 0f;
+        await Frames(host, 5);
     }
 
     /// <summary>Two fingers spreading zoom the camera in.</summary>
@@ -1128,9 +1143,22 @@ internal static class TouchProbe
     /// </summary>
     private static async System.Threading.Tasks.Task ModernSkillsCheck(Node host, Game.World world)
     {
+        // A classic skills gump already up would be un-minimized, not opened.
+        UIManager.GetGump<StandardSkillsGump>()?.Dispose();
+        UIManager.GetGump<SkillGumpAdvanced>()?.Dispose();
+        await Frames(host, 5);
+
+        // The gump opens on the server's answer to the skills request.
         Game.GameActions.OpenSkills(world);
-        await Frames(host, 20);
-        var view = Input.Touch.Modern.ModernGump.Current as Input.Touch.Modern.ModernSkills;
+        Input.Touch.Modern.ModernSkills view = null;
+
+        for (int i = 0; i < 180 && view == null; i++)
+        {
+            await Frames(host, 1);
+            view = Input.Touch.Modern.ModernGump.Current as Input.Touch.Modern.ModernSkills;
+        }
+
+        await Frames(host, 5);
         int all = world.Player.Skills.Length;
         Check("the skills gump opens as its Modern view, every skill listed, the classic not added",
             view != null && UIManager.GetGump<StandardSkillsGump>() == null && UIManager.GetGump<SkillGumpAdvanced>() == null
