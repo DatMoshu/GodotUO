@@ -699,6 +699,19 @@ internal static class InputProbe
         Compat.Rectangle bounds = Client.Game.Window.ClientBounds;
         var centre = new Vector2(bounds.Width / 2f, bounds.Height / 2f);
 
+        // On a device the window is not the world: the Thor's holds the
+        // second screen's shelf beside it, and its middle is the seam. The
+        // character is drawn at the middle of the world view instead.
+        Configuration.Profile view = Configuration.ProfileManager.CurrentProfile;
+
+        if (PointerScale != 1f && view != null)
+        {
+            centre = new Vector2(
+                view.GameWindowPosition.X + view.GameWindowSize.X / 2f,
+                view.GameWindowPosition.Y + view.GameWindowSize.Y / 2f
+            );
+        }
+
         // A column and a little either side of it. The character is drawn
         // at the middle of the window, but not to the pixel -- the camera
         // lags a step, and standing among other people its own sprite can be

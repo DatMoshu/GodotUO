@@ -51,7 +51,14 @@ internal static class GamepadProbe
 
         if (!Client.Game.UO.World.InGame)
         {
+            // On a device, as DualProbe logs in: the touch layer would
+            // swallow the probe's clicks, which aim in client pixels.
+            bool touchOn = GUO.Input.Touch.TouchInput.Enabled;
+            GUO.Input.Touch.TouchInput.Enabled = false;
+            InputProbe.PointerScale = Client.Game.DpiScale;
             await InputProbe.EnterTheWorld(host, 200);
+            InputProbe.PointerScale = 1f;
+            GUO.Input.Touch.TouchInput.Enabled = touchOn;
         }
 
         if (!Client.Game.UO.World.InGame)
@@ -70,10 +77,21 @@ internal static class GamepadProbe
         // Unknown: B does nothing, and says where to choose.
         profile.GamepadLayout = "auto";
         GamepadInput.ForgetLayouts();
-        targets.SetTargeting(CursorTarget.Object, 0, TargetType.Neutral);
-        await Button(host, JoyButton.B);
-        Check("an unknown pad's B does not cancel", targets.IsTargeting);
-        targets.CancelTarget();
+        // Only where the pad is unknown: the desktop's injected one, the Odin's.
+        // The Thor's own pad resolves, and there B cancels, as it should.
+        GamepadLayout auto = GamepadInput.Resolve(0);
+
+        if (auto == GamepadLayout.Unknown)
+        {
+            targets.SetTargeting(CursorTarget.Object, 0, TargetType.Neutral);
+            await Button(host, JoyButton.B);
+            Check("an unknown pad's B does not cancel", targets.IsTargeting);
+            targets.CancelTarget();
+        }
+        else
+        {
+            GD.Print($"[GUO] gamepad probe: skip  the unknown-pad check (this pad resolves to {auto})");
+        }
 
         profile.GamepadLayout = "labels";
         GamepadInput.ForgetLayouts();
@@ -95,7 +113,12 @@ internal static class GamepadProbe
         await Button(host, JoyButton.B);
         Check("B cancels a target cursor", !targets.IsTargeting);
 
-        // A takes one where the pointer is: on the character.
+        // A takes one where the pointer is: on the character. On a device the
+        // pointer is placed as the login is typed: touch aside, client pixels
+        // scaled to the window.
+        bool touchWas = GUO.Input.Touch.TouchInput.Enabled;
+        GUO.Input.Touch.TouchInput.Enabled = false;
+        InputProbe.PointerScale = Client.Game.DpiScale;
         Vector2? character = await InputProbe.FindCharacter(host);
 
         if (character == null)
@@ -104,12 +127,15 @@ internal static class GamepadProbe
         }
         else
         {
-            GUO.Input.GodotInput.Handle(new InputEventMouseMotion { Position = character.Value });
+            GUO.Input.GodotInput.Handle(new InputEventMouseMotion { Position = character.Value * InputProbe.PointerScale });
             bool taken = false;
             targets.SetTargeting(o => taken = o != null, 0, TargetType.Neutral);
             await Button(host, JoyButton.A);
             Check("A takes a target under the pointer", taken && !targets.IsTargeting);
         }
+
+        InputProbe.PointerScale = 1f;
+        GUO.Input.Touch.TouchInput.Enabled = touchWas;
 
         // Y taps the command bar's handle: one row opens to two, and back.
         // The bar is there only with the touch layer on (a device).
