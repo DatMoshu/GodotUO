@@ -30,6 +30,9 @@ namespace GUO.Input.Gamepad
     /// <item>printed A: a left click at the pointer (confirm);</item>
     /// <item>printed B: Escape (cancel: a target cursor, a text field);</item>
     /// <item>printed Y: the touch bar's macro row, open or closed;</item>
+    /// <item>printed X: the window menu (size, lock, screen) for the topmost
+    /// window, or closed again; mobile only, as the menu is. While it is up, A
+    /// presses the card's control under the pointer and B closes it;</item>
     /// <item>right stick: moves the pointer.</item>
     /// </list>
     /// </summary>
@@ -225,7 +228,32 @@ namespace GUO.Input.Gamepad
                     break;
 
                 case JoyButton.B:
+                    if (Touch.WindowMenu.IsOpen)
+                    {
+                        if (e.Pressed)
+                        {
+                            Touch.WindowMenu.Close();
+                        }
+
+                        break;
+                    }
+
                     PressKey(Godot.Key.Escape, e.Pressed);
+
+                    break;
+
+                case JoyButton.X:
+                    if (e.Pressed)
+                    {
+                        if (Touch.WindowMenu.IsOpen)
+                        {
+                            Touch.WindowMenu.Close();
+                        }
+                        else
+                        {
+                            Touch.GumpPresentation.OpenMenuForTop();
+                        }
+                    }
 
                     break;
 
@@ -317,8 +345,16 @@ namespace GUO.Input.Gamepad
         {
             float scale = (float) Client.Game.DpiScale;
             Vector2 at = new Vector2(Mouse.Position.X, Mouse.Position.Y) * scale;
+            var click = new InputEventMouseButton { ButtonIndex = MouseButton.Left, Pressed = pressed, Position = at };
 
-            GodotInput.Handle(new InputEventMouseButton { ButtonIndex = MouseButton.Left, Pressed = pressed, Position = at });
+            // The window menu takes pointer events before the game does, as it
+            // does a touch; outside the card a press closes it.
+            if (Touch.WindowMenu.HandleInput(click))
+            {
+                return;
+            }
+
+            GodotInput.Handle(click);
         }
 
         private static void TellUnknown(int device)

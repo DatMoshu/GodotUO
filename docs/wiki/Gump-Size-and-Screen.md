@@ -56,7 +56,7 @@ The saved gump layout includes its current scale, pinch lock, and manual-placeme
 
 GumpPresentation adds a render transform around the existing draw queue, including clipping, and inverses pointer/event coordinates for legacy controls. Scoped pointer coordinates cover controls that read Mouse directly. Server gump layouts, reply IDs, world movement, and the existing global container scale are unchanged.
 
-Scaling is intentionally limited to the supported client-owned types. Arbitrary shard dialogs, spellbooks, anchored macro-button groups, and maps' window sizes are not given a generic scale transform yet. The UI handle is a mouse/touch control; native controller navigation is not introduced by this change.
+Scaling is intentionally limited to the supported client-owned types. Arbitrary shard dialogs, spellbooks, anchored macro-button groups, and maps' window sizes are not given a generic scale transform yet. The UI handle is a mouse/touch control. On a controller, printed **X** opens the same menu for the topmost window (X again, or B, closes it), and **A** presses the menu control under the pointer, which the right stick moves; there is no focus navigation between controls yet.
 
 ## Verification
 

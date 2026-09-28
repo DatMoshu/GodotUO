@@ -173,10 +173,87 @@ internal static class GamepadProbe
             GD.Print("[GUO] gamepad check: skip Y on the command bar (no touch bar, or its rows are off)");
         }
 
+        await WindowMenu(host, profile);
+
         profile.GamepadLayout = manual;
         GamepadInput.ForgetLayouts();
         Passed = _failed == 0;
         GD.Print($"[GUO] gamepad probe: {(Passed ? "PASS" : $"FAIL ({_failed})")}");
+    }
+
+    /// <summary>
+    /// X opens the window menu for the topmost window and closes it again; A
+    /// presses the card's control under the pointer; B closes it. The menu is
+    /// mobile only, so on a desktop the check turns on the mobile window
+    /// controls for its duration.
+    /// </summary>
+    private static async System.Threading.Tasks.Task WindowMenu(Node host, Profile profile)
+    {
+        var world = Client.Game.UO.World;
+        bool mobile = profile.MobileWindowControls;
+        profile.MobileWindowControls = true;
+        Game.UI.Gumps.PaperDollGump doll = null;
+
+        try
+        {
+            GUO.Input.Touch.WindowMenu.Close();
+            Game.GameActions.OpenPaperdoll(world, world.Player.Serial);
+
+            for (int i = 0; i < 180 && (doll = UIManager.GetGump<Game.UI.Gumps.PaperDollGump>(world.Player.Serial)) == null; i++)
+            {
+                await InputProbe.Wait(host, 1);
+            }
+
+            if (doll == null)
+            {
+                Check("a paperdoll to open the window menu on", false);
+
+                return;
+            }
+
+            UIManager.MakeTopMostGump(doll);
+            await InputProbe.Wait(host, 10);
+
+            await Button(host, JoyButton.X);
+            var opened = GUO.Input.Touch.WindowMenu.Target;
+            Check("X opens the window menu for the topmost window",
+                GUO.Input.Touch.WindowMenu.IsOpen && opened != null, $"target {opened?.GetType().Name ?? "none"}");
+
+            if (!GUO.Input.Touch.WindowMenu.IsOpen)
+            {
+                return;
+            }
+
+            // A on the card's + steps the size, as a tap does.
+            await InputProbe.Wait(host, 12);
+            float before = opened.PresentationScale;
+            Vector2? plus = GUO.Input.Touch.WindowMenu.ButtonCentre("+");
+
+            if (plus != null)
+            {
+                GUO.Input.GodotInput.Handle(new InputEventMouseMotion { Position = plus.Value * Client.Game.DpiScale });
+                await InputProbe.Wait(host, 2);
+                await Button(host, JoyButton.A);
+            }
+
+            Check("A presses the window menu's + under the pointer",
+                plus != null && opened.PresentationScale > before + 0.01f, $"{before} -> {opened.PresentationScale}");
+            opened.PresentationScale = before;
+
+            await Button(host, JoyButton.B);
+            Check("B closes the window menu", !GUO.Input.Touch.WindowMenu.IsOpen && !opened.IsDisposed);
+
+            await Button(host, JoyButton.X);
+            bool again = GUO.Input.Touch.WindowMenu.IsOpen;
+            await Button(host, JoyButton.X);
+            Check("X closes the window menu it opened", again && !GUO.Input.Touch.WindowMenu.IsOpen, $"opened {again}");
+        }
+        finally
+        {
+            GUO.Input.Touch.WindowMenu.Close();
+            doll?.Dispose();
+            profile.MobileWindowControls = mobile;
+        }
     }
 
     private static (ushort, ushort) Where() => (Client.Game.UO.World.Player.X, Client.Game.UO.World.Player.Y);
