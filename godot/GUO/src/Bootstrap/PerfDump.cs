@@ -148,7 +148,7 @@ internal static class PerfDump
     private static long _fadeStart = -1, _fadeWaitMs;
     private static int _fadingAtEnd = -1;
 #if !PERF_DUMP_CUO
-    private static int _uploadsAtFade;
+    private static int _uploadsAtFade, _bumpsAtFade, _staticOntoAtFade;
     private static long _framesAtFade;
 #endif
 
@@ -171,6 +171,8 @@ internal static class PerfDump
             _fadeWaitMs = now - _fadeStart;
 #if !PERF_DUMP_CUO
             _uploadsAtFade = GUO.Renderer.LandPages.Uploads;
+            _bumpsAtFade = GUO.Renderer.LandPages.Bumps;
+            _staticOntoAtFade = GUO.Renderer.Arts.Art.StaticOntoLandLayer;
             _framesAtFade = GUO.Renderer.UltimaBatcher2D.FramesBegun;
 #endif
             Console.WriteLine($"[perf_dump] {ClientName}: {fading} fading after {_fadeWaitMs} ms more; averaging");
@@ -232,6 +234,8 @@ internal static class PerfDump
             r["land_layers"] = GUO.Renderer.LandPages.Layers;
             r["land_uploads"] = uploads;
             r["land_uploads_per_frame"] = frames > 0 ? Math.Round((double)uploads / frames, 3) : 0.0;
+            r["land_bump_copies"] = GUO.Renderer.LandPages.Bumps - _bumpsAtFade;
+            r["static_sprites_onto_land_layers"] = GUO.Renderer.Arts.Art.StaticOntoLandLayer - _staticOntoAtFade;
 #endif
             string dir = Path.Combine(_args[0], _args[1]);
             Directory.CreateDirectory(dir);
