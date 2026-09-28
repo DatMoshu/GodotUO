@@ -178,6 +178,28 @@ password. It checks that:
 
 On Android it runs on the Thor once the store is built.
 
+## Dev logins (dev builds only)
+
+A dev build logs in to its dev shard with one click, as one of the player's dev accounts, and switches between them
+from the world in one action. A release build has no dev shard (`ServerBook.SetDevShard` is debug-build only), so it
+has none of this.
+
+- **Setting up (once per account):** Servers tab, the Dev shard's page, **Add account**: the account name, its
+  password, **Save password**, and **Dev account (one-click login)**. The password is kept like any saved account's
+  (the OS keystore; never a repo file, config.bat or a log).
+- **At the login screen:** a Dev logins row on the chest's lid (beside the gump on a wide screen), one button per dev
+  account, and the same row at the top of the card's Servers list. One click: the dev shard, the account, its
+  password, the shard's server, and the account's character when it has exactly one (the character list when it has
+  several; "make one" when it has none).
+- **From the world:** Ctrl+Shift+D logs out and in as the next dev account (by name, round the list). The card's row
+  says "Switch to <name>", and the account in play reads "(playing)".
+- **Admin access** is the shard's, not GUO's. The dev shard creates an account on its first login. To make one an
+  administrator, log in with the shard's owner account (`UO_SHARD_OWNER`), type `[admin`, open Accounts, find the
+  account, and set its access level. ModernUO's console has no command for it (only save, shutdown, restart).
+- The dev shard allows `accountHandler.maxAccountsPerIP` accounts per address (4 in tools/modernuo's template). Every
+  client on this machine, and a device reaching it through `adb reverse`, is 127.0.0.1, so new accounts can be
+  refused once the test accounts fill it.
+
 ## Copy
 
 - Buttons: **Play**, **Add server**, **Refresh**, **Favourite** / **Unfavourite**, **Choose folder…**, **Test

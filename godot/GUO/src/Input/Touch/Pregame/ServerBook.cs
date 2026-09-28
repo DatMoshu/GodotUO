@@ -83,6 +83,9 @@ internal static class ServerBook
     /// Set once by Main in a debug build only (<see cref="OS.IsDebugBuild"/>): a
     /// release export has no way to turn it on.
     /// </summary>
+    /// <summary>The dev build's own shard, or null (a release build, or none configured).</summary>
+    public static ServerEntry DevEntry => _dev;
+
     public static void SetDevShard(string host, int port)
     {
         if (!OS.IsDebugBuild() || string.IsNullOrWhiteSpace(host) || port <= 0)
