@@ -336,7 +336,8 @@ def patch_page(p: Paths, page: Path) -> int:
         text = text.replace(anchor, replacement)
     js.write_text(text, encoding="utf-8")
     shutil.copy2(HERE / "guo_data.js", p.out_dir / "guo_data.js")
-    say(f"patched {js.name} (FS + guoBeforeMain) and copied guo_data.js")
+    shutil.copy2(HERE / "guo_picker_worker.js", p.out_dir / "guo_picker_worker.js")
+    say(f"patched {js.name} (FS + guoBeforeMain) and copied guo_data.js, guo_picker_worker.js")
     return 0
 
 
@@ -518,7 +519,7 @@ FAILURE = re.compile(r"\[GUO\] FATAL|login probe: FAIL|SharedArrayBuffer|Uncaugh
 
 
 def smoke(p: Paths, timeout: int, skip_export: bool, browsers: list[str], data: Path | None,
-          wait_for: str, query: str, video: bool = False, linger: float = 2.0) -> int:
+          wait_for: str, query: str, video: bool = False, linger: float = 2.0, pick: Path | None = None) -> int:
     """Export, serve (with the client data), load the page headless in each
     browser, and wait for the client to say it drew the login gump.
 
@@ -531,7 +532,7 @@ def smoke(p: Paths, timeout: int, skip_export: bool, browsers: list[str], data: 
     # Browser console lines carry any character; the Windows console does not.
     sys.stdout.reconfigure(errors="replace")
     try:
-        from playwright.sync_api import sync_playwright
+        from playwright.sync_api import Error as PlaywrightError, sync_playwright
     except ImportError:
         say("smoke FAILED: needs Python Playwright (pip install playwright)")
         return 1
@@ -575,7 +576,14 @@ def smoke(p: Paths, timeout: int, skip_export: bool, browsers: list[str], data: 
             started = time.time()
             page.goto(url)
             outcome = "timeout"
+            picked = False
             while time.time() - started < timeout:
+                # --pick: the first-run screen is up; give the page the folder
+                # the way a player's pick arrives (the folder <input>).
+                if pick and not picked and any("first run     : screen shown" in line for line in lines):
+                    say(f"{kind}: picking {pick} in the page")
+                    page.set_input_files("#guo-picker", str(pick))
+                    picked = True
                 if any(wait_for in line for line in lines):
                     outcome = "ok"
                     break
@@ -586,9 +594,17 @@ def smoke(p: Paths, timeout: int, skip_export: bool, browsers: list[str], data: 
             # Let the frame after the marker present; --linger keeps the page
             # (and a --video recording) running longer after the marker.
             page.wait_for_timeout(int(max(linger, 2.0) * 1000))
-            page.screenshot(path=str(shot))
-            mounted = page.evaluate("window.guoWeb && window.guoWeb.mounted ? "
-                                    "window.guoWeb.mounted.cache.stats : null")
+            try:
+                page.screenshot(path=str(shot))
+            except PlaywrightError as e:
+                # A hung page cannot be photographed; keep its console anyway.
+                say(f"{kind}: no screenshot ({str(e).splitlines()[0]})")
+                outcome = "failed" if outcome == "ok" else outcome
+            try:
+                mounted = page.evaluate("window.guoWeb && window.guoWeb.mounted ? "
+                                        "window.guoWeb.mounted.cache.stats : null")
+            except PlaywrightError:
+                mounted = None
             recording = page.video.path() if video and page.video else None
             context.close()
             browser.close()
@@ -637,6 +653,7 @@ def main(argv: list[str] | None = None) -> int:
                     help="chrome and/or firefox (default: both)")
     sm.add_argument("--wait-for", default=LOGIN_OK, help="the console line that passes the smoke")
     sm.add_argument("--query", default="arg=--login-probe-stay", help="the page URL's query string")
+    sm.add_argument("--pick", type=Path, help="serve no install; pick this folder in the page's first-run screen")
     sm.add_argument("--video", action="store_true", help="record each browser (webm, build/web/smoke_<browser>_video)")
     sm.add_argument("--linger", type=float, default=2.0, help="seconds to keep the page after the marker")
 
@@ -655,7 +672,8 @@ def main(argv: list[str] | None = None) -> int:
         return serve(p, Path(args.root) if args.root else p.out_dir, data)
     if args.command == "smoke":
         return smoke(p, args.timeout, args.no_export, args.browser or ["chrome", "firefox"],
-                     default_data(p), args.wait_for, args.query, args.video, args.linger)
+                     None if args.pick else default_data(p), args.wait_for, args.query, args.video, args.linger,
+                     args.pick)
     return 2
 
 

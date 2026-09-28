@@ -147,11 +147,173 @@
 
 	window.guoWeb = { httpSource, mount };
 
+	// --- the player's own folder (ADR-0021: the web's first-run screen) -------
+	//
+	// A File can only be read asynchronously on the main thread, and the
+	// client reads synchronously. So the picked files go to a worker
+	// (guo_picker_worker.js) that reads them with FileReaderSync; a read is a
+	// request in a SharedArrayBuffer and a spin until the worker answers
+	// (Atomics.wait is not allowed on a page's main thread). The page is
+	// cross-origin isolated already (the threaded engine needs it), which is
+	// what makes SharedArrayBuffer available.
+
+	const PICK_ROOT = '/uo_picked';
+
+	// A read that takes this long has stalled, not slowed: fail it rather than hang the tab.
+	const STALL_MS = 10000;
+
+	function workerSource(entries) {
+		const ctrl = new Int32Array(new SharedArrayBuffer(8 * 4));
+		const data = new Uint8Array(new SharedArrayBuffer(CHUNK));
+		const worker = new Worker('guo_picker_worker.js');
+		const byPath = new Map(entries.map((e, i) => [e.path, i]));
+		let reads = 0;
+		const ready = new Promise((resolve, reject) => {
+			worker.onmessage = (e) => (e.data.ready ? resolve(e.data.count) : null);
+			worker.onerror = (e) => reject(new Error(e.message || 'the picker worker failed'));
+		});
+		worker.postMessage({ files: entries.map((e) => e.file), ctrl: ctrl.buffer, data: data.buffer });
+		return {
+			name: 'picked folder',
+			ready,
+			list() {
+				return { files: entries.map((e) => ({ path: e.path, size: e.file.size })) };
+			},
+			read(path, offset, length) {
+				const out = new Uint8Array(length);
+				let done = 0;
+				while (done < length) {
+					ctrl[1] = byPath.get(path);
+					const at = offset + done;
+					ctrl[2] = at % 4294967296;
+					ctrl[3] = Math.floor(at / 4294967296);
+					ctrl[4] = Math.min(CHUNK, length - done);
+					Atomics.store(ctrl, 0, 1);
+					Atomics.notify(ctrl, 0);
+					const deadline = performance.now() + STALL_MS;
+					while (Atomics.load(ctrl, 0) === 1) {
+						// spin: the worker answers in well under a millisecond per chunk
+						if (performance.now() > deadline) {
+							Atomics.store(ctrl, 0, 0);
+							throw new Error('the picker worker did not answer reading ' + path + ' after '
+								+ reads + ' reads; this browser cannot read a picked file while the page waits');
+						}
+					}
+					reads++;
+					if (Atomics.load(ctrl, 0) === 3 || ctrl[5] === 0) {
+						Atomics.store(ctrl, 0, 0);
+						throw new Error('reading ' + path + ' failed');
+					}
+					out.set(data.subarray(0, ctrl[5]), done);
+					done += ctrl[5];
+					Atomics.store(ctrl, 0, 0);
+				}
+				return out;
+			},
+		};
+	}
+
+	// The picked folder's files, relative to it. A folder <input> gives
+	// "Folder/sub/file"; the directory picker gives handles walked here.
+	async function entriesFromHandle(dir, prefix, out) {
+		for await (const [name, handle] of dir.entries()) {
+			if (handle.kind === 'file') {
+				out.push({ path: prefix + name, file: await handle.getFile() });
+			} else if (prefix.split('/').length < 3) {
+				await entriesFromHandle(handle, prefix + name + '/', out);
+			}
+		}
+		return out;
+	}
+
+	function entriesFromInput(files) {
+		const out = [];
+		for (const f of files) {
+			const rel = f.webkitRelativePath || f.name;
+			out.push({ path: rel.includes('/') ? rel.slice(rel.indexOf('/') + 1) : rel, file: f });
+		}
+		return out;
+	}
+
+	async function mountPicked(entries, label) {
+		const web = window.guoWeb;
+		web.pickState = 'reading';
+		try {
+			const source = workerSource(entries);
+			await source.ready;
+			const FS = web.FS;
+			// A second pick replaces the first.
+			try { FS.unmount(PICK_ROOT); } catch (e) { /* not a mount point */ }
+			try { removeTree(FS, PICK_ROOT); } catch (e) { /* nothing there */ }
+			const mounted = mount(FS, PICK_ROOT, source);
+			web.picked = { label, count: mounted.count, bytes: mounted.bytes, cache: mounted.cache };
+			web.pickCount = (web.pickCount || 0) + 1;
+			web.pickState = 'ready';
+			log('picked "' + label + '": ' + mounted.count + ' files, '
+				+ (mounted.bytes / 1048576).toFixed(0) + ' MiB, at ' + PICK_ROOT + ' (read in place, never uploaded)');
+		} catch (e) {
+			web.pickState = 'error: ' + e.message;
+			log('pick failed: ' + e.message);
+		}
+	}
+
+	function removeTree(FS, path) {
+		for (const name of FS.readdir(path)) {
+			if (name === '.' || name === '..') { continue; }
+			const p = path + '/' + name;
+			if (FS.isDir(FS.stat(p).mode)) { removeTree(FS, p); } else { FS.unlink(p); }
+		}
+		FS.rmdir(path);
+	}
+
+	// The folder <input>: every browser has it; tests fill it directly.
+	function pickerInput() {
+		let input = document.getElementById('guo-picker');
+		if (!input) {
+			input = document.createElement('input');
+			input.type = 'file';
+			input.id = 'guo-picker';
+			input.webkitdirectory = true;
+			input.multiple = true;
+			input.style.display = 'none';
+			input.addEventListener('change', () => {
+				if (input.files && input.files.length) {
+					const first = input.files[0].webkitRelativePath || '';
+					mountPicked(entriesFromInput(input.files), first.split('/')[0] || 'folder');
+				} else {
+					window.guoWeb.pickState = 'cancelled';
+				}
+			});
+			document.body.appendChild(input);
+		}
+		return input;
+	}
+
+	/** Called by the client's first-run screen (Choose folder), inside the click's user activation. */
+	function pickFolder() {
+		const web = window.guoWeb;
+		web.pickState = 'picking';
+		if (window.showDirectoryPicker && params.get('picker') !== 'input') {
+			window.showDirectoryPicker({ id: 'guo-uo-folder', mode: 'read' })
+				.then(async (dir) => mountPicked(await entriesFromHandle(dir, '', []), dir.name))
+				.catch((e) => { web.pickState = e && e.name === 'AbortError' ? 'cancelled' : 'error: ' + e; });
+		} else {
+			pickerInput().click();
+		}
+		return web.pickState;
+	}
+
+	window.guoWeb.pickFolder = pickFolder;
+	window.guoWeb.pickRoot = PICK_ROOT;
+	window.guoWeb.pickState = 'none';
+	document.addEventListener('DOMContentLoaded', pickerInput);
+
 	window.guoBeforeMain = function (Module, args) {
 		const FS = Module['guoFS'];
 		if (!FS) {
 			throw new Error('guo_data.js: the engine does not expose FS (was GUO.js patched by tools/web/run.py export?)');
 		}
+		window.guoWeb.FS = FS;
 		let shard = {};
 		// The engine opens its pack by the path it is given, relative to the
 		// working directory, and keeps reopening it for every resource. The
@@ -166,10 +328,19 @@
 			args.push('--');
 		}
 		const data = params.get('data') || 'uo/';
+		let mounted = null;
+		const base = new URL(data === 'none' ? '.' : data, window.location.href).href;
+		const t0 = performance.now();
 		if (data !== 'none') {
-			const base = new URL(data, window.location.href).href;
-			const t0 = performance.now();
-			const mounted = mount(FS, '/uo', httpSource(base));
+			try {
+				mounted = mount(FS, '/uo', httpSource(base));
+			} catch (e) {
+				// No install served: the client's own resolver finds no data
+				// and shows the first-run screen, where the player picks theirs.
+				log('no install served at ' + base + ' (' + e.message + '); the first-run screen will ask for a folder');
+			}
+		}
+		if (mounted) {
 			window.guoWeb.mounted = mounted;
 			log('mounted ' + mounted.count + ' files, ' + (mounted.bytes / 1048576).toFixed(0)
 				+ ' MiB, from ' + base + ' at /uo in ' + (performance.now() - t0).toFixed(0) + ' ms (read lazily)');
