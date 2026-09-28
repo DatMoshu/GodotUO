@@ -89,3 +89,51 @@ not across them; the two plain runs bracketing the array run agree within
 array, in either the loose count or the strict one. Whatever they were
 (flickering light is the likely cause), they were not a repeatable rendering
 difference.
+
+## Fix 2 (plan): covering land
+
+Covering land is land drawn a second time inside the sorted pass
+(`RenderLists.CoverFromBelow`, ADR-0004's amendment), one
+`CanvasItemAddMesh` per tile (`UltimaBatcher2D.DrawMeshSprite`). Godot's
+canvas never batches meshes, so every tile is a draw call: 345 / 3,266 /
+564 / 3,557 a frame in the four scenes, 81-85% of what is left in Britain
+bank and the dungeon after fix 1b. Two things set that count, and each has
+its own fix:
+
+1. **How many tiles are queued.** For each object below the land of its own
+   tile, `CoverFromBelow` queues the whole square of tiles in front of it,
+   `(reach + 1)^2`, up to 81. A tile at `(dx, dy)` sits `(dx - dy) * 22` px
+   across from the object, so only the tiles near the diagonal can overlap
+   its sprite at all.
+2. **How they are submitted.** Covering tiles sit in the sorted list at their
+   own depth, between statics, so only consecutive ones can share a mesh
+   without changing the painter's order.
+
+Steps, each behind a flag and gated on exact parity (five-frame check,
+strict count 0 at 2560x1440 and the default size):
+
+- **2a. Measure first (a counter, no behaviour change).** Covering runs per
+  frame (consecutive `DrawMeshSprite` calls with nothing between them) and
+  mean run length; and, per queued tile, whether its screen rect overlaps the
+  queuing object's sprite bounds. These decide how much 2b and 2c can win.
+- **2b. Queue only tiles that overlap the object** (`--cover-cull`). Redrawing
+  a tile repaints the bake's own pixels, so it changes the frame only where
+  something drawn earlier in the sorted pass overlaps it. The object it is
+  queued for is that something; a tile outside the object's sprite rect
+  (plus the diamond's stretch) repaints identical pixels. Another object
+  that needs the same tile queues it itself. Pure CPU culling, and it also
+  cuts world-prepare time; expected to remove most of the square outside
+  `|dx - dy| <= 1-2`.
+- **2c. Merge each run into one mesh over the land array** (`--merged-cover`):
+  the tiles of a run share `LandPages` and `uo_hue_land_array.gdshader` from
+  fix 1b, cached by the run's (layer, index) sequence so a still frame
+  rebuilds nothing. Draw calls fall to the number of runs; worth building only
+  if 2a shows runs longer than about 3.
+- **Not planned:** reordering covering tiles past sprites they do not overlap
+  (merging across runs). That is ADR-0007's general sorted batching, not a
+  land fix.
+
+Order: 2a, then 2b (likely the larger and simpler win), then 2c if the
+remaining runs justify it. The ClassicUO world-prepare comparison runs in the
+next heavy slot after the device jobs, so it can also weigh 2b's saving
+against upstream's prepare time.
