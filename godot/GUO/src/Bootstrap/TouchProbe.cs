@@ -127,11 +127,13 @@ internal static class TouchProbe
         await FlickCheck(host, world);
         // The classic Options on touch, as a player who turned Modern off has it.
         await OptionsTouchCheck(host, world);
+        await ClassicOptionsWritesCheck(host, world);
         await MobileOptionsCheck(host, world);
         Configuration.ProfileManager.CurrentProfile.ModernGumpsOff = false;
         await ModernOptionsCheck(host, world);
         await ModernMacrosCheck(host, world);
         await ModernOptionsPagesCheck(host, world);
+        await ModernOptionsShortCheck(host, world);
         await ModernPartyCheck(host, world);
         await ModernSkillsCheck(host, world);
         await ModernJournalCheck(host, world);
@@ -238,6 +240,16 @@ internal static class TouchProbe
         Renderer.Camera camera = GUO.Client.Game.Scene.Camera;
         float before = camera.Zoom;
 
+        // A desktop profile that never turned wheel zoom on keeps it off (review L2).
+        Configuration.Profile profile = Configuration.ProfileManager.CurrentProfile;
+        bool wheelWas = profile.EnableMousewheelScaleZoom;
+        bool desktop = Configuration.PlatformDefaults.Platform == Configuration.ProfilePlatform.Desktop;
+
+        if (desktop)
+        {
+            profile.EnableMousewheelScaleZoom = false;
+        }
+
         // Spread the fingers to zoom in, unless the profile left the camera
         // at its closest already -- then bring them together and zoom out.
         // Zoom is a divisor here: smaller is closer, and ZoomIn subtracts.
@@ -278,6 +290,13 @@ internal static class TouchProbe
             string.Join(" | ", TouchInput.Trace)
         );
         Check("the camera zoom changed", !Mathf.IsEqualApprox(before, after), $"{before:F2} -> {after:F2}");
+
+        if (desktop)
+        {
+            Check("a pinch on a desktop profile zooms without turning its wheel zoom on for good",
+                !profile.EnableMousewheelScaleZoom, $"wheel zoom after the pinch {profile.EnableMousewheelScaleZoom}");
+            profile.EnableMousewheelScaleZoom = wheelWas;
+        }
 
         // Put it back: the zoom is saved with the profile, and the next run
         // should start where this one did.
@@ -1107,6 +1126,11 @@ internal static class TouchProbe
         Configuration.Profile p = Configuration.ProfileManager.CurrentProfile;
         bool tooltip = p.UseTooltip, unicode = p.ForceUnicodeJournal, party = p.OverheadPartyMessages;
         ushort speechHue = p.SpeechHue;
+        bool buffTimers = p.BuffBarTime, chatOnEnter = p.ActivateChatAfterEnter;
+        bool chatActive = UIManager.SystemChat?.IsActive ?? false;
+        ushort innocentHue = p.InnocentHue;
+        string gumpsXml = System.IO.Path.Combine(Configuration.ProfileManager.ProfilePath ?? "", "gumps.xml");
+        System.DateTime savedBefore = System.IO.File.Exists(gumpsXml) ? System.IO.File.GetLastWriteTimeUtc(gumpsXml) : default;
         Game.GameActions.OpenSettings(world);
         await Frames(host, 10);
 
@@ -1137,8 +1161,30 @@ internal static class TouchProbe
         ushort expected = Input.Touch.Modern.ModernHuePicker.HueAt(0, 2);
         bool back = !view.HuePicker.Visible;
 
+        // Chat opens on Enter, whose Apply also switches the system chat (review M7).
+        await TapClient(host, view.CentreOf(view.Find("Chat opens on Enter")));
+
+        // The Combat page: a box and a colour (review M7).
+        await TapClient(host, view.CentreOf(view.Find("Combat")));
+        await TapClient(host, view.CentreOf(view.Find("Buff bar timers")));
+        await TapClient(host, view.CentreOf(view.Find("Innocent colour")));
+        await Frames(host, 2);
+        await TapClient(host, view.CentreOf(view.Find("Shade 3")));
+        await TapClient(host, view.CentreOf(view.Find("hue cell 0")));
+        await TapClient(host, view.CentreOf(view.Find("Use this colour")));
+
+        await Frames(host, 30); // time passes, so a save shows in the file's time
         await TapClient(host, view.CentreOf(view.Find("Okay")));
         await Frames(host, 5);
+        Check("the Combat page's box and colour land in the profile on Okay",
+            p.BuffBarTime != buffTimers && p.InnocentHue == expected,
+            $"buff timers {buffTimers} -> {p.BuffBarTime}, innocent hue {innocentHue} -> {p.InnocentHue} (expected {expected})");
+        Check("Chat opens on Enter lands on Okay and switches the system chat as the classic Apply does",
+            p.ActivateChatAfterEnter != chatOnEnter && UIManager.SystemChat != null && UIManager.SystemChat.IsActive == !p.ActivateChatAfterEnter,
+            $"chat on Enter {chatOnEnter} -> {p.ActivateChatAfterEnter}, system chat active {chatActive} -> {UIManager.SystemChat?.IsActive}");
+        System.DateTime savedAfter = System.IO.File.Exists(gumpsXml) ? System.IO.File.GetLastWriteTimeUtc(gumpsXml) : default;
+        Check("Okay saves the profile to disk, as the classic Apply does (review L1)",
+            savedAfter > savedBefore, $"gumps.xml {savedBefore:HH:mm:ss.fff} -> {savedAfter:HH:mm:ss.fff}");
         Check("the Tooltip, Fonts and Speech pages' boxes land in the profile on Okay",
             p.UseTooltip != tooltip && p.ForceUnicodeJournal != unicode && p.OverheadPartyMessages != party,
             $"tooltips {tooltip} -> {p.UseTooltip}, unicode journal {unicode} -> {p.ForceUnicodeJournal}, party overhead {party} -> {p.OverheadPartyMessages}");
@@ -1149,7 +1195,80 @@ internal static class TouchProbe
         p.UseTooltip = tooltip;
         p.ForceUnicodeJournal = unicode;
         p.OverheadPartyMessages = party;
+        p.BuffBarTime = buffTimers;
+        p.InnocentHue = innocentHue;
+        p.ActivateChatAfterEnter = chatOnEnter;
+
+        if (UIManager.SystemChat != null)
+        {
+            UIManager.SystemChat.IsActive = chatActive;
+        }
+
         Input.Touch.Modern.ModernGump.Current?.Close();
+    }
+
+    /// <summary>
+    /// Modern Options on a short screen (review M7, L4): the window shrinks
+    /// under the open view, which places itself again inside it; the page
+    /// column scrolls with a drag to its last page, and a tap there opens it.
+    /// </summary>
+    private static async System.Threading.Tasks.Task ModernOptionsShortCheck(Node host, Game.World world)
+    {
+        Game.GameActions.OpenSettings(world);
+        await Frames(host, 10);
+
+        if (Input.Touch.Modern.ModernGump.Current is not Input.Touch.Modern.ModernOptions view)
+        {
+            Check("Modern Options opens for the short screen check", false);
+            return;
+        }
+
+        Vector2I was = DisplayServer.WindowGetSize();
+        Rect2 before = view.Rect;
+
+        try
+        {
+            DisplayServer.WindowSetSize(new Vector2I(1280, 400));
+            await Frames(host, 60);
+            Compat.Rectangle main = GUO.Client.Game.ClientBounds;
+            Rect2 after = view.Rect;
+            Check("a Modern view open through a resize is placed again inside the new screen",
+                after != before && after.End.Y <= main.Height + 1 && after.End.X <= main.Width + 1,
+                $"card {before} -> {after}, screen {main.Width}x{main.Height}");
+
+            // Drag the page column up from its first page until Touch shows.
+            Godot.Control first = view.Find("General");
+            Godot.Control last = view.Find("Touch");
+
+            if (first != null && last != null)
+            {
+                Vector2 start = view.CentreOf(first) * GUO.Client.Game.DpiScale;
+                Touch(0, start, true);
+                await Frames(host, 2);
+
+                for (int i = 1; i <= 10; i++)
+                {
+                    Drag(0, start + new Vector2(0, -30 * i), new Vector2(0, -30));
+                    await Frames(host, 1);
+                }
+
+                Touch(0, start + new Vector2(0, -300), false);
+                await Frames(host, 10);
+            }
+
+            bool shown = last != null && view.Rect.HasPoint(view.CentreOf(last));
+            await TapClient(host, last != null ? view.CentreOf(last) : null);
+            await Frames(host, 5);
+            Check("on a short screen the page column scrolls by a drag to its last page (Touch), and a tap opens it",
+                shown && view.Find("Reduce motion") != null,
+                $"Touch in the card {shown}, Touch page open {view.Find("Reduce motion") != null}, card {view.Rect}");
+        }
+        finally
+        {
+            DisplayServer.WindowSetSize(was);
+            await Frames(host, 60);
+            Input.Touch.Modern.ModernGump.Current?.Close();
+        }
     }
 
     /// <summary>
@@ -1753,6 +1872,93 @@ internal static class TouchProbe
     {
         Compat.Point p = GumpPresentation.ToScreen(c, new Compat.Point(c.ScreenCoordinateX + c.Width / 2, c.ScreenCoordinateY + c.Height / 2));
         return Client(new Vector2(p.X, p.Y));
+    }
+
+    /// <summary>
+    /// The classic Options' GUO parts (review P2, M1, M2): its device sections
+    /// are there on touch and absent on the desktop; its Apply writes a speech
+    /// slot's words where the bar reads them, and gives a slot whose action
+    /// changed that action's alternates while the others keep theirs.
+    /// </summary>
+    private static async System.Threading.Tasks.Task ClassicOptionsWritesCheck(Node host, Game.World world)
+    {
+        const System.Reflection.BindingFlags Private = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+        string[] device = { "Screen effects", "Start", "Controller buttons" };
+        Configuration.Profile p = Configuration.ProfileManager.CurrentProfile;
+
+        int DeviceSections(Game.UI.Controls.Control c)
+        {
+            int n = c is Game.UI.Controls.Label l && System.Array.IndexOf(device, l.Text) >= 0 ? 1 : 0;
+
+            foreach (Game.UI.Controls.Control child in c.Children)
+            {
+                n += DeviceSections(child);
+            }
+
+            return n;
+        }
+
+        // P2: built as the desktop builds it, then as touch does.
+        bool touchWas = TouchInput.Enabled, mobileWas = p.MobileWindowControls;
+        int onDesktop, onTouch;
+
+        try
+        {
+            TouchInput.Enabled = false;
+            p.MobileWindowControls = false;
+            var desktop = new OptionsGump(world);
+            onDesktop = DeviceSections(desktop);
+            desktop.Dispose();
+        }
+        finally
+        {
+            TouchInput.Enabled = touchWas;
+            p.MobileWindowControls = mobileWas;
+        }
+
+        var options = new OptionsGump(world);
+        onTouch = DeviceSections(options);
+        Check("the classic Options shows its device sections (Screen effects, Start, Controller buttons) on touch only, so the desktop's is ClassicUO's",
+            onDesktop == 0 && onTouch == device.Length, $"desktop {onDesktop}, touch {onTouch} of {device.Length}");
+
+        string slotsWas = p.TouchBarSlots, altsWas = p.TouchBarAlts, wordsWas = p.TouchBarWords;
+        string bankWas = p.TouchSayBank;
+
+        try
+        {
+            // The bar editor has saved words for Bank, and alternates for every slot.
+            BarCatalogue.SetWords("bank", "probe editor words");
+            string[] slots = TouchGumpBar.Slots;
+            int kept = 0, changed = 1;
+            TouchGumpBar.SetSlot(kept, slots[kept], "status", null);
+            string target = slots[changed] == "bandage" ? "heal" : "bandage";
+
+            // Options: Bank's words typed, slot 2's action changed, then Apply.
+            var say = (System.Array)typeof(OptionsGump).GetField("_barSay", Private).GetValue(options);
+            object bankField = say.GetValue(0);
+            bankField.GetType().GetMethod("SetText").Invoke(bankField, new object[] { "probe classic words" });
+            var boxes = (Game.UI.Controls.Combobox[])typeof(OptionsGump).GetField("_barSlots", Private).GetValue(options);
+            boxes[changed].SelectedIndex = System.Array.IndexOf(TouchGumpBar.Choices, target);
+            typeof(OptionsGump).GetMethod("Apply", Private).Invoke(options, null);
+            await Frames(host, 5);
+
+            string words = BarCatalogue.WordsFor("bank");
+            Check("the classic Options' words for a speech slot reach the bar after the bar editor saved its own (review M1)",
+                words == "probe classic words", $"bank says \"{words}\"");
+            (string a, string b) moved = TouchGumpBar.Alternates(changed), stay = TouchGumpBar.Alternates(kept);
+            Check("a slot whose action changes in the classic Options gets that action's alternates; the others keep theirs (review M2)",
+                TouchGumpBar.Slots[changed] == target && moved == BarCatalogue.DefaultAlternates(target) && stay == ("status", null),
+                $"slot 2 {TouchGumpBar.Slots[changed]} alternates {moved} (wanted {BarCatalogue.DefaultAlternates(target)}), slot 1 {stay}");
+        }
+        finally
+        {
+            options.Dispose();
+            p.TouchBarSlots = slotsWas;
+            p.TouchBarAlts = altsWas;
+            p.TouchBarWords = wordsWas;
+            p.TouchSayBank = bankWas;
+            await Frames(host, 5);
+        }
     }
 
     private static async System.Threading.Tasks.Task OptionsTouchCheck(Node host, Game.World world)

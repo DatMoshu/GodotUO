@@ -44,6 +44,28 @@ internal static class ModernGumps
     /// <summary>The next gump of this type opens Classic: a Modern view's "Classic view".</summary>
     public static void OpenClassicNext(Type classic) => _classicNext = classic;
 
+    /// <summary>True while a classic gump replaced by its Modern view is disposed.</summary>
+    public static bool Replacing { get; private set; }
+
+    /// <summary>
+    /// Dispose a classic gump that TryOpenInstead replaced. It was never
+    /// shown, so side effects of closing it (the spellbook's sound) are
+    /// skipped while <see cref="Replacing"/> is set.
+    /// </summary>
+    public static void DisposeReplaced(Gump gump)
+    {
+        Replacing = true;
+
+        try
+        {
+            gump.Dispose();
+        }
+        finally
+        {
+            Replacing = false;
+        }
+    }
+
     /// <summary>
     /// The UIManager.Add hook: when the gump has a Modern view and it is
     /// chosen, open that instead and say so; the caller does not add the
