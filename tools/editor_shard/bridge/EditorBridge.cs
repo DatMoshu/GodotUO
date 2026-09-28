@@ -14,6 +14,8 @@
 //      other editors: last write per block wins, and each relay names its author.
 //   3. A "command" message runs a GM command as a named online character, via
 //      CommandSystem.Handle, exactly as if they had typed it.
+//   4. A "multi" message places or removes an authored multi and its doors
+//      (AuthoredMulti.cs, tools/multi).
 //
 // Live edits are held in memory. The world project (the editor's files) is the
 // source of truth; tools/world export + a restart make them permanent.
@@ -370,6 +372,10 @@ public static class EditorBridge
                 else if (op == "unequip")
                 {
                     Core.LoopContext.Post(() => Unequip(conn, msg));
+                }
+                else if (op == "multi")
+                {
+                    Core.LoopContext.Post(() => AuthoredMultis.Handle(msg, conn.Send));
                 }
                 else if (op == "object")
                 {

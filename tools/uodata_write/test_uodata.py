@@ -78,6 +78,54 @@ def digest(root: Path) -> dict:
     return {p.name: hashlib.sha1(p.read_bytes()).hexdigest() for p in sorted(root.iterdir())}
 
 
+def multi_record(multi_id: int, comps: list[tuple[int, int, int, int, int]]) -> bytes:
+    out = struct.pack("<Ii", multi_id, len(comps))
+    for item, x, y, z, flags in comps:
+        out += struct.pack("<HhhhHI", item, x, y, z, flags, 0)
+    return out
+
+
+def test_multis(tmp: Path) -> None:
+    """Multis: MultiCollection.uop on a UOP install, multi.mul/idx (grown) on a MUL one."""
+    install = tmp / "install-multi"
+    fake_install(install)
+    make_uop(install / "MultiCollection.uop", {U.MULTI_PATTERN.format(i): multi_record(i, [(0x63, 0, 0, 0, 0)])
+                                               for i in range(3)})
+    before = digest(install)
+    stage = U.Stage(tmp / "stage-multi", install)
+    fm = U.free_multis(stage)
+    check(fm[:2] == [3, 4] and len(fm) == U.MULTI_LIMIT - 3, "free multis: every id below 0x4000 without an entry")
+    policy = {"never": {}, "packs": {"multi": {"multi": [0x3F00, 0x3FFF]}}}
+    reg = U.Registry(stage, policy)
+    check(reg.reserve("multi", "multi", fm, 1) == (0x3F00, 0x3FFF), "the multi pack takes its fixed range")
+    rec = AssetRecord("multi", reg.take("multi", "multi", "cottage"),
+                      multi_record(0x3F00, [(0x203, -1, -1, 7, 0), (0x6A5, 0, 1, 7, 1), (1, 0, 0, 0, 1)]))
+    U.write_records(stage, [rec])
+    check(U.read_back(stage, rec) == rec.data and U.read_back_equal(stage, rec), "a multi reads back equal from the UOP")
+    check(0x3F00 not in U.free_multis(stage), "a written multi id is no longer free")
+    check(U.Registry(stage, {}).data["packs"]["multi"]["used"]["multi"] == {"cottage": 0x3F00}, "slots.json records the multi")
+    try:
+        U.write_records(stage, [AssetRecord("multi", 0x4000, rec.data)])
+        check(False, "a multi id the shard cannot address is refused")
+    except ValueError:
+        check(True, "a multi id the shard cannot address is refused")
+
+    mul_install = tmp / "install-multi-mul"
+    fake_install(mul_install)
+    (mul_install / "multi.idx").write_bytes(struct.pack("<iii", 0, 16, 0) + struct.pack("<iii", -1, -1, 0))
+    (mul_install / "multi.mul").write_bytes(struct.pack("<HhhhII", 0x63, 0, 0, 0, 1, 0))
+    mul_before = digest(mul_install)
+    mstage = U.Stage(tmp / "stage-multi-mul", mul_install)
+    rec = AssetRecord("multi", 40, multi_record(40, [(0x203, 2, 3, 7, 0), (0x6A5, 0, 1, 7, 1)]))
+    U.write_records(mstage, [rec])
+    got = U.read_back(mstage, rec)
+    check(got == U.multi_to_mul(rec.data) and U.read_back_equal(mstage, rec), "a multi reads back from multi.mul")
+    check(struct.unpack_from("<HhhhI", got, 16)[4] == 0 and struct.unpack_from("<HhhhI", got, 0)[4] == 1,
+          "multi.mul flags: shown 1, hidden 0")
+    check(mstage.read_path("multi.idx").stat().st_size == 41 * 12, "multi.idx grew to hold id 40")
+    check(digest(install) == before and digest(mul_install) == mul_before, "both installs are byte for byte unchanged")
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="uodata-test-") as tmp:
         tmp = Path(tmp)
@@ -192,6 +240,8 @@ def main() -> int:
               "the stage copied exactly the five files it wrote")
         check((stage.root / "files_override.txt").read_text().count("=") == 5, "files_override.txt lists them")
         check(stage.check_install_unchanged() == [] and digest(install) == before, "the install is byte for byte unchanged")
+
+        test_multis(tmp)
 
     print(f"test_uodata: {'OK' if not FAILS else 'FAILED'} ({len(FAILS)} failing)")
     return 0 if not FAILS else 1

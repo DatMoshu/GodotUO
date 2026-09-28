@@ -10,6 +10,9 @@
                            body/action/direction (palette, frame count, lookup table, frames)
   kind "tiledata-item"     id = item id; data = b""; meta = the fields to set (see uodata_write.TILE_FIELDS)
   kind "hue"               id = hue number (1-based); data = the 88-byte hues.mul block
+  kind "multi"             id = multi id (below 0x4000); data = the MultiCollection.uop record:
+                           uint32 id, int32 count, then per component uint16 item, int16 x, y, z,
+                           uint16 flags (0 shown, 1 hidden), uint32 0
 
 Sidecars (PNG paths and the rest) belong to tools/uopack; a record carries only what the
 writers need.
@@ -18,7 +21,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-KINDS = {"static", "land", "gump", "anim", "tiledata-item", "hue"}
+KINDS = {"static", "land", "gump", "anim", "tiledata-item", "hue", "multi"}
 
 
 @dataclass

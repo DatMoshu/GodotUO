@@ -13,6 +13,8 @@ Containers written (append-only, so nothing existing moves):
                  art.mul / artidx.mul and gumpart.mul / gumpidx.mul when an
                  install has them instead of UOPs
   in place       tiledata.mul item records, hues.mul blocks
+  multis         MultiCollection.uop: a new entry per multi (UOP layout, uncompressed),
+                 or multi.mul / multi.idx on installs without it (the index grown if needed)
 """
 from __future__ import annotations
 
@@ -41,6 +43,8 @@ PEOPLE_FIRST = 400
 ART_PATTERN = "build/artlegacymul/{0:08d}.tga"
 GUMP_PATTERN = "build/gumpartlegacymul/{0:08d}.tga"
 ANIM_UOP_PATTERN = "build/animationlegacyframe/{0:06d}/{1:02d}.bin"
+MULTI_PATTERN = "build/multicollection/{0:06d}.bin"
+MULTI_LIMIT = 0x4000                   # the shard masks multi ids with 0x3FFF
 
 TILE_FIELDS = ("flags", "weight", "layer", "count", "anim", "hue", "light", "height", "name")
 
@@ -280,6 +284,30 @@ def free_gumps(stage: Stage, limit: int = 0x10000) -> set[int]:
         return {i for i in range(min(limit, idx.stat().st_size // 12)) if idx_entry(idx, i)[1] <= 0}
 
 
+def free_multis(stage: Stage) -> list[int]:
+    """Multi ids below MULTI_LIMIT with no entry (UOP, else multi.idx)."""
+    try:
+        table = uop_table(stage.read_path("MultiCollection.uop"))
+        return [i for i in range(MULTI_LIMIT) if uop_hash(MULTI_PATTERN.format(i)) not in table]
+    except FileNotFoundError:
+        idx = stage.read_path("multi.idx")
+        n = idx.stat().st_size // 12
+        return [i for i in range(MULTI_LIMIT) if i >= n or idx_entry(idx, i)[1] <= 0]
+
+
+def multi_to_mul(data: bytes) -> bytes:
+    """A multi record in the UOP layout (uint32 id, int32 count, per component item, x, y, z,
+    uint16 flags, uint32 n, n uint32) as multi.mul stores it (16 bytes a component,
+    flags: 0 hidden, 1 shown)."""
+    _id, count = struct.unpack_from("<Ii", data, 0)
+    out, p = bytearray(), 8
+    for _ in range(count):
+        item, x, y, z, flags, n = struct.unpack_from("<HhhhHI", data, p)
+        p += 14 + 4 * n
+        out += struct.pack("<HhhhII", item, x, y, z, 0 if flags == 1 else 1, 0)
+    return bytes(out)
+
+
 def definition_bodies(stage: Stage) -> set[int]:
     """Bodies any .def file or mobtypes.txt names: not free, whatever the index says."""
     import re
@@ -453,6 +481,23 @@ def write_records(stage: Stage, records: list[AssetRecord]) -> list[str]:
         for r in anims:
             mul_append(mul, idx, anim_index(r.id, r.meta["action"], r.meta["direction"]), r.data)
         done.append(f"anim: {len(anims)} body/action/direction payload(s) for bodies {sorted({r.id for r in anims})}")
+    multis = [r for r in records if r.kind == "multi"]
+    if multis:
+        for r in multis:
+            if not 0 <= r.id < MULTI_LIMIT:
+                raise ValueError(f"multi id {r.id:#x} is beyond {MULTI_LIMIT - 1:#x}, which the shard cannot address")
+        try:
+            uop = stage.path("MultiCollection.uop")
+            uop_append(uop, [(MULTI_PATTERN.format(r.id), r.data) for r in multis])
+        except FileNotFoundError:
+            mul, idx = stage.path("multi.mul"), stage.path("multi.idx")
+            for r in multis:
+                n = idx.stat().st_size // 12
+                if r.id >= n:
+                    with idx.open("ab") as f:
+                        f.write(struct.pack("<iii", -1, -1, 0) * (r.id + 1 - n))
+                mul_append(mul, idx, r.id, multi_to_mul(r.data))
+        done += [f"multi {r.id:#x} ({struct.unpack_from('<i', r.data, 4)[0]} components)" for r in multis]
     for r in records:
         if r.kind == "tiledata-item":
             write_tile(stage.path("tiledata.mul"), r.id, {k: v for k, v in r.meta.items() if k in TILE_FIELDS})
@@ -469,7 +514,7 @@ def write_records(stage: Stage, records: list[AssetRecord]) -> list[str]:
     # (uopack's pack path picks ids itself rather than through take()).
     reg = Registry(stage)
     for r in records:
-        ns = {"static": "static", "tiledata-item": "static", "anim": "anim", "gump": "gump"}.get(r.kind)
+        ns = {"static": "static", "tiledata-item": "static", "anim": "anim", "gump": "gump", "multi": "multi"}.get(r.kind)
         if ns:
             reg.note(ns, r.id, f"{r.kind}-{r.id:#x}")
     return done
@@ -495,4 +540,22 @@ def read_back(stage: Stage, r: AssetRecord) -> bytes | dict | None:
             return f.read(n)
     if r.kind == "tiledata-item":
         return read_tile(stage.read_path("tiledata.mul"), r.id)
+    if r.kind == "multi":
+        try:
+            return uop_read(stage.read_path("MultiCollection.uop"), MULTI_PATTERN.format(r.id))
+        except FileNotFoundError:
+            o, n, _ = idx_entry(stage.read_path("multi.idx"), r.id)
+            if n <= 0:
+                return None
+            with stage.read_path("multi.mul").open("rb") as f:
+                f.seek(o)
+                return f.read(n)
     return None
+
+
+def read_back_equal(stage: Stage, r: AssetRecord) -> bool:
+    """Whether the stage holds what the record says (multis compare in the layout they were stored in)."""
+    got = read_back(stage, r)
+    if r.kind == "multi" and got is not None and got != r.data:
+        return got == multi_to_mul(r.data)
+    return got == r.data
