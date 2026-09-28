@@ -80,6 +80,14 @@ namespace GUO.Input.Touch
         /// <summary>Viewport pixels a finger may wander and still be still.</summary>
         public const float MovePixels = 12f;
 
+        /// <summary>
+        /// Viewport pixels a finger on a bar button may wander and still
+        /// press it on lifting: more than a tap's, since a thumb rolls as it
+        /// comes off a button. Beyond it the press is let go, as a scroll
+        /// that began on a button lets go on a phone.
+        /// </summary>
+        public const float BarSlopPixels = 24f;
+
         /// <summary>Change in finger distance that is one zoom notch.</summary>
         public const float PinchStepPixels = 40f;
 
@@ -113,11 +121,23 @@ namespace GUO.Input.Touch
             /// <summary>A vertical swipe that began in a scroll area scrolls it with the finger.</summary>
             Scroll,
 
+            /// <summary>A finger is on a touch bar button; it acts when the finger lifts on it.</summary>
+            Bar,
+
             /// <summary>The gesture is spent; wait for the finger to lift.</summary>
             Done,
         }
 
         private static Phase _phase;
+
+        /// <summary>
+        /// Fingers lifted so far. A lift can end a drag, a pinch or a flick
+        /// that moved a gump, so the bar checks the gumps clear of it again.
+        /// </summary>
+        public static int Lifts { get; private set; }
+
+        /// <summary>The bar button a finger in <see cref="Phase.Bar"/> pressed.</summary>
+        private static string _barAction;
         private static int _primary = -1;
         private static int _secondary = -1;
         private static Vector2 _downAt;
@@ -461,11 +481,22 @@ namespace GUO.Input.Touch
             }
         }
 
+        /// <summary>A finger on a bar button stops being a tap: nothing runs when it lifts.</summary>
+        private static void LetGoOfBar(string why)
+        {
+            _bar?.Hold(null);
+            Note($"bar -> {_barAction} let go ({why})");
+            _barAction = null;
+            _phase = Phase.Done;
+        }
+
         /// <summary>Focus loss / touch cancellation must never turn a pending pinch into a click.</summary>
         public static void CancelGesture()
         {
             if (_phase == Phase.RightHeld) Release(MouseButton.Right, ParkedAt);
             if (_phase == Phase.LeftHeld) Release(MouseButton.Left, ParkedAt);
+            _bar?.Hold(null);
+            _barAction = null;
             GumpFlick.Cancel();
             _phase = Phase.Idle;
             _primary = _secondary = -1;
@@ -507,9 +538,11 @@ namespace GUO.Input.Touch
 
                 if (_bar != null && _bar.HitTest(at, out string action))
                 {
-                    _bar.Invoke(action);
-                    _phase = Phase.Done;
-                    Note($"bar -> {action}");
+                    // Pressed now, run on release (C8): a finger that lands
+                    // on a button on its way somewhere else runs nothing.
+                    _barAction = action;
+                    _bar.Hold(action);
+                    _phase = Phase.Bar;
 
                     return;
                 }
@@ -541,6 +574,13 @@ namespace GUO.Input.Touch
             {
                 _secondary = index;
                 _secondaryAt = at;
+
+                // A second finger lets go of a bar button: it is no tap.
+                if (_phase == Phase.Bar)
+                {
+                    LetGoOfBar("second finger");
+                    return;
+                }
 
                 // A second finger while a gump is lifted puts it down: no flick.
                 if (_phase == Phase.Flick)
@@ -635,6 +675,14 @@ namespace GUO.Input.Touch
 
                     break;
 
+                case Phase.Bar:
+                    if (at.DistanceTo(_downAt) > BarSlopPixels)
+                    {
+                        LetGoOfBar("moved off");
+                    }
+
+                    break;
+
                 case Phase.Scroll:
                     if (_scrollBar != null && !_scrollBar.IsDisposed)
                     {
@@ -694,6 +742,8 @@ namespace GUO.Input.Touch
 
         private static void FingerUp(int index, Vector2 at)
         {
+            Lifts++;
+
             if (_phase == Phase.Pinch || _phase == Phase.Done)
                 _ignoreMagnifyUntil = Godot.Time.GetTicksMsec() + 250;
             if (index == _secondary)
@@ -779,6 +829,21 @@ namespace GUO.Input.Touch
                 case Phase.Scroll:
                     _scrollBar = null;
                     Note("finger up -> scroll over");
+
+                    break;
+
+                case Phase.Bar:
+                    // The finger may have rolled onto the next button inside
+                    // the allowance; only the one it pressed runs.
+                    _bar?.Hold(null);
+
+                    if (_bar != null && at.DistanceTo(_downAt) <= BarSlopPixels)
+                    {
+                        _bar.Invoke(_barAction);
+                        Note($"bar -> {_barAction}");
+                    }
+
+                    _barAction = null;
 
                     break;
             }
