@@ -114,36 +114,14 @@ public partial class Main : Node
         }
 
         GD.Print($"[GUO] mode          : {_options.Mode}");
-        GD.Print($"[GUO] client data   : {_options.ClientData}");
         GD.Print($"[GUO] cache         : {_options.CacheDir}");
 
-        if (string.IsNullOrWhiteSpace(_options.ClientData))
+        // ADR-0021: a custom data folder, then the UO install, else the
+        // first-run wizard. Every mode below reads what this decides.
+        DataSources.Result data = ResolveData();
+        if (!data.Ok)
         {
-            Fail(
-                "No UO client data directory configured.\n"
-                + "Set UO_CLIENT_DATA in launchers\\_shared\\config.local.bat, or pass\n"
-                + "  --client-data \"<path to your UO install>\""
-            );
-            return;
-        }
-
-        if (!DirAccess.DirExistsAbsolute(_options.ClientData))
-        {
-            Fail($"UO client data directory does not exist: {_options.ClientData}");
-            return;
-        }
-
-        // Guard against pointing at a folder that is not actually a UO install.
-        // tiledata.mul is present in every client version and has no UOP form,
-        // which makes it the cheapest reliable probe.
-        string probe = _options.ClientData.PathJoin("tiledata.mul");
-        if (!FileAccess.FileExists(probe))
-        {
-            Fail(
-                $"'{_options.ClientData}' does not look like a UO install "
-                + "(no tiledata.mul).\n"
-                + "Run launchers\\pipeline\\01_verify_client_data.bat to diagnose."
-            );
+            OnNoValidData(data);
             return;
         }
 
@@ -797,6 +775,65 @@ public partial class Main : Node
         return true;
     }
 
+    /// <summary>
+    /// Resolves the client data by ADR-0021 (see DataSources) and applies it:
+    /// the install becomes ClientData, and a layered custom folder becomes the
+    /// files override unless --files-override was given.
+    /// </summary>
+    private DataSources.Result ResolveData()
+    {
+        string exeDir = System.IO.Path.GetDirectoryName(OS.GetExecutablePath()) ?? "";
+        var inputs = new DataSources.Inputs
+        {
+            CustomFlag = _options.CustomData,
+            CustomEnv = System.Environment.GetEnvironmentVariable("UO_CUSTOM_DATA") ?? "",
+            ShippedFolder = exeDir.Length > 0 ? System.IO.Path.Combine(exeDir, "guo_data") : "",
+            InstallConfigured = _options.ClientData,
+            InstallConfiguredOrigin = _options.ClientDataFromFlag ? "flag" : "environment",
+            SettingsFile = System.IO.Path.Combine(GuoDataDirectory(), Configuration.Settings.SETTINGS_FILENAME),
+            Defaults = DataSources.PlatformDefaults(),
+        };
+
+        DataSources.Result r = DataSources.Resolve(inputs);
+        foreach (string note in r.Notes)
+        {
+            GD.Print($"[GUO] data passed over: {note}");
+        }
+
+        if (!r.Ok)
+        {
+            return r;
+        }
+
+        string filesOverride = _options.FilesOverride;
+        if (r.Overrides.Count > 0 && string.IsNullOrWhiteSpace(filesOverride))
+        {
+            filesOverride = DataSources.WriteOverride(r, System.IO.Path.Combine(GuoDataDirectory(), "guo_data_override.txt"));
+        }
+
+        _options.UseData(r.ClientData, filesOverride);
+        GD.Print($"[GUO] data source   : {r.Source} ({r.Origin})" + (r.Custom != null ? $", custom {r.Custom}" : "")
+                 + (r.LocalOnly ? ", EA-derived: local only" : ""));
+        GD.Print($"[GUO] client data   : {_options.ClientData}");
+        return r;
+    }
+
+    /// <summary>
+    /// The one place the client lands when there is no valid data (ADR-0021).
+    /// The first-run wizard (G2) replaces this body; until then it logs the
+    /// reason and exits as before.
+    /// </summary>
+    private void OnNoValidData(DataSources.Result data)
+    {
+        GD.Print($"[GUO] data source   : wizard needed: {data.Reason}");
+        Fail(
+            "No valid UO client data: the first-run wizard is needed.\n"
+            + $"  {data.Reason}\n"
+            + "Set UO_CLIENT_DATA in launchers\\_shared\\config.local.bat, or pass\n"
+            + "  --client-data \"<path to your UO install>\""
+        );
+    }
+
     private void Fail(string message)
     {
         GD.PrintErr($"[GUO] FATAL: {message}");
@@ -823,6 +860,19 @@ public partial class Main : Node
         public RunMode Mode { get; private set; } = RunMode.Play;
 
         public string ClientData { get; private set; } = "";
+
+        /// <summary>True when ClientData came from --client-data rather than UO_CLIENT_DATA.</summary>
+        public bool ClientDataFromFlag { get; private set; }
+
+        /// <summary>A custom data folder (ADR-0021): --custom-data PATH.</summary>
+        public string CustomData { get; private set; } = "";
+
+        /// <summary>What ResolveData decided: the install to open, and the files override.</summary>
+        internal void UseData(string clientData, string filesOverride)
+        {
+            ClientData = clientData;
+            FilesOverride = filesOverride;
+        }
 
         public string CacheDir { get; private set; } = "";
 
@@ -1263,6 +1313,10 @@ public partial class Main : Node
                         break;
                     case "--client-data":
                         o.ClientData = Next();
+                        o.ClientDataFromFlag = true;
+                        break;
+                    case "--custom-data":
+                        o.CustomData = Next();
                         break;
                     case "--cache-dir":
                         o.CacheDir = Next();
