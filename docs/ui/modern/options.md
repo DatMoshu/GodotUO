@@ -116,8 +116,11 @@ tall, and all of it is the target.
 - **A colour row:** its name, a swatch and the hue number, and Change. Change
   shows the colour picker (ModernHuePicker) in place of the page. It is the
   classic ColorPickerGump's palette (20 × 10 hues, the same hues) as
-  finger-sized cells, with its slider's five shades as plates, and then Use
-  this colour or Back. The hue is written on Apply, as the classic's is.
+  finger-sized cells, with its slider's five shades as plates. Its top row
+  holds Back, the framed preview and **Use this colour**, above the grid, so a
+  phone never scrolls to confirm (on a 1080p card at 3x only 7 of the 10 rows
+  fit). The current shade is lit: the selected plate with a Heading caption
+  and a gold bar under it. The hue is written on Apply, as the classic's is.
 - **Containers:** grid view, grid slot size.
 - **Touch:**
   - vibrate when the bar snaps;
