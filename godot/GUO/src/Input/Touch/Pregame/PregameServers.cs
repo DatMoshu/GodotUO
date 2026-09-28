@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Godot;
+using GUO.Host;
 using GUO.Utility;
 
 namespace GUO.Input.Touch.Pregame;
@@ -40,7 +41,10 @@ internal sealed partial class PregameServers : HBoxContainer
     private ServerEntry _selected;
     private ulong _lastTapMs;
     private ServerEntry _lastTapped;
-    private bool _confirmLogout;
+    /// <summary>A question the page asks before a log-out or a restart; null when none.</summary>
+    private sealed record Question(string Text, string Yes, float YesWidth, string No, Action Do);
+
+    private Question _ask;
     private bool _adding;
     private LineEdit _addName, _addHost, _addPort;
     private string _status = "";
@@ -70,7 +74,7 @@ internal sealed partial class PregameServers : HBoxContainer
         under.AddThemeConstantOverride("separation", 4);
         left.AddChild(under);
         Button add = UoTheme.Button("Add server", 72);
-        add.Pressed += () => { _adding = true; _confirmLogout = false; ShowDetail(); };
+        add.Pressed += () => { _adding = true; _ask = null; ShowDetail(); };
         under.AddChild(add);
         AddButton = add;
         Button refresh = UoTheme.Button("Refresh", 52);
@@ -116,6 +120,22 @@ internal sealed partial class PregameServers : HBoxContainer
         _rows.Clear();
         _parts.Clear();
         var shown = new List<ServerEntry>();
+        BackButton = null;
+
+        // This run plays with a shard's own files: say so, and the way back.
+        if (ShardSession.Active)
+        {
+            _list.AddChild(Note($"GUO is running with {ShardSession.Current.Name}'s files.", UoTheme.Ink));
+            Button back = UoTheme.Button("Your own files", 72);
+            back.SizeFlagsHorizontal = SizeFlags.ShrinkBegin;
+            back.Pressed += () => Ask(new Question("Restart GUO with your own files?", "Restart GUO", 60, "Not now", () => ShardSession.End()));
+            _list.AddChild(back);
+            BackButton = back;
+        }
+        else if (ShardSession.Dropped != null)
+        {
+            _list.AddChild(Note(ShardSession.Dropped, UoTheme.Danger));
+        }
 
         Group("Favourites", ServerBook.Favourites, shown);
         Group("Your servers", ServerBook.Own, shown);
@@ -132,7 +152,7 @@ internal sealed partial class PregameServers : HBoxContainer
             _list.AddChild(Head("Community"));
             _list.AddChild(Note("The server list couldn't be loaded. Your saved servers are above. Refresh to try again."));
         }
-        else if (!Group("Community", ServerCatalogue.Servers, shown))
+        else if (!Group("Community", ServerCatalogue.Servers.Select(c => ServerBook.Find(c.Host, c.Port) ?? c), shown))
         {
             _list.AddChild(Head("Community"));
             _list.AddChild(Note("No community shards are listed yet."));
@@ -229,7 +249,8 @@ internal sealed partial class PregameServers : HBoxContainer
             line.AddChild(c);
         }
 
-        parts.Dot.Blocked = ServerPlay.Check(e, out _) != ServerPlay.Verdict.Ready;
+        // Red only where GUO can't play at all: one that needs its own files can, after a restart.
+        parts.Dot.Blocked = ServerPlay.Check(e, out _) == ServerPlay.Verdict.NotAllowed;
         b.Pressed += () => Tapped(e);
         _rows[e] = b;
         _parts[e] = parts;
@@ -283,7 +304,7 @@ internal sealed partial class PregameServers : HBoxContainer
     {
         ServerPing.Kind.Down => $"{e.Name} isn't answering (no reply in {ServerPing.TimeoutMs / 1000} s). It may be down, or the address is wrong.",
         ServerPing.Kind.Up => $"Answering, {r.Ms} ms.",
-        _ => "Checking whether it answers\u2026",
+        _ => "Checking whether it answers...",
     };
 
     /// <summary>Refresh: the catalogue read again, every row timed anew.</summary>
@@ -314,7 +335,7 @@ internal sealed partial class PregameServers : HBoxContainer
         }
 
         _adding = false;
-        _confirmLogout = false;
+        _ask = null;
         _status = "";
         Select(e, true);
     }
@@ -359,6 +380,8 @@ internal sealed partial class PregameServers : HBoxContainer
         PlayButton = null;
         ConfirmButton = null;
         SiteButton = null;
+        FilesButton = null;
+        NoButton = null;
         _pingNote = null;
 
         // What there is to read scrolls; Play and the actions stay at the
@@ -379,6 +402,12 @@ internal sealed partial class PregameServers : HBoxContainer
 
         if (e == null)
         {
+            if (_ask != null)
+            {
+                AskRow();
+                return;
+            }
+
             _info.AddChild(Note("Choose a server on the left, or add one."));
             return;
         }
@@ -423,34 +452,30 @@ internal sealed partial class PregameServers : HBoxContainer
 
         ServerPlay.Verdict verdict = ServerPlay.Check(e, out string reason);
 
-        if (verdict != ServerPlay.Verdict.Ready)
+        if (verdict == ServerPlay.Verdict.NotAllowed)
         {
             _info.AddChild(Note(reason, UoTheme.Danger));
         }
-
-
-        if (_confirmLogout)
+        else if (verdict == ServerPlay.Verdict.NeedsOwnData)
         {
-            _detail.AddChild(Note($"Log out and play on {e.Name}?", UoTheme.Ink));
-            var yesNo = new HFlowContainer();
-            yesNo.AddThemeConstantOverride("h_separation", 4);
-            // Narrow: the question above already names the server.
-            Button yes = UoTheme.Button(_narrow ? "Log out" : "Log out and play", _narrow ? 44 : 64);
-            yes.AddThemeColorOverride("font_color", UoTheme.Danger);
-            yes.Pressed += () => { _confirmLogout = false; DoPlay(e); };
-            Button no = UoTheme.Button("Stay", 40);
-            no.Pressed += () => { _confirmLogout = false; ShowDetail(); };
-            yesNo.AddChild(yes);
-            yesNo.AddChild(no);
-            _detail.AddChild(yesNo);
-            ConfirmButton = yes;
+            _info.AddChild(Note(reason, UoTheme.Ink));
+        }
+
+        if (ShardSession.IsFor(e))
+        {
+            _info.AddChild(Note("GUO is running with its files now."));
+        }
+
+        if (_ask != null)
+        {
+            AskRow();
             return;
         }
 
         // Play: the login gump's own arrow, the one bright thing on the card.
         var play = new HBoxContainer { MouseFilter = MouseFilterEnum.Ignore };
         play.AddThemeConstantOverride("separation", 6);
-        PlayButton = Arrow(verdict == ServerPlay.Verdict.Ready);
+        PlayButton = Arrow(verdict != ServerPlay.Verdict.NotAllowed);
         PlayButton.Pressed += PlayPressed;
         play.AddChild(PlayButton);
         PlayButton.TooltipText = "Play";
@@ -458,7 +483,7 @@ internal sealed partial class PregameServers : HBoxContainer
         // The newer clients' arrow is a plate that says Login; the older one is a bare arrow and gets its word.
         if (Client.Game.UO.Version < Utility.ClientVersion.CV_706400)
         {
-            play.AddChild(UoTheme.Label("Play", verdict == ServerPlay.Verdict.Ready ? UoTheme.Heading : UoTheme.Muted));
+            play.AddChild(UoTheme.Label("Play", verdict != ServerPlay.Verdict.NotAllowed ? UoTheme.Heading : UoTheme.Muted));
         }
         _detail.AddChild(play);
 
@@ -484,6 +509,15 @@ internal sealed partial class PregameServers : HBoxContainer
             Button forget = UoTheme.Button("Forget", 44);
             forget.Pressed += () => { ServerBook.Remove(e); _selected = null; Rebuild(); };
             actions.AddChild(forget);
+        }
+
+        // A shard played with its own files: where they are can change.
+        if (!e.Dev && !string.IsNullOrWhiteSpace(e.DataFolder) && (verdict == ServerPlay.Verdict.NeedsOwnData || ShardSession.IsFor(e)))
+        {
+            Button files = UoTheme.Button("Change files", 56);
+            files.Pressed += () => ChooseFiles(e, false);
+            actions.AddChild(files);
+            FilesButton = files;
         }
 
         // A catalogue shard's own page, in the browser.
@@ -523,19 +557,106 @@ internal sealed partial class PregameServers : HBoxContainer
     {
         ServerEntry e = _selected;
 
-        if (e == null || ServerPlay.Check(e, out _) != ServerPlay.Verdict.Ready)
+        if (e == null)
         {
+            return;
+        }
+
+        ServerPlay.Verdict verdict = ServerPlay.Check(e, out _);
+
+        if (verdict == ServerPlay.Verdict.NotAllowed)
+        {
+            return;
+        }
+
+        // A restart ends a session in the world: the question says so.
+        string leaving = ServerPlay.InWorld ? " You'll be logged out." : "";
+
+        // Its own files: picked once, then GUO restarts with them.
+        if (verdict == ServerPlay.Verdict.NeedsOwnData)
+        {
+            if (string.IsNullOrWhiteSpace(e.DataFolder))
+            {
+                ChooseFiles(e, true);
+                return;
+            }
+
+            Ask(new Question($"Restart GUO with {e.Name}'s files?{leaving}", "Restart GUO", 60, "Not now", () => ShardSession.Start(e)));
+            return;
+        }
+
+        // Running with another shard's files: back to the player's own first.
+        if (ShardSession.Active && !ShardSession.IsFor(e))
+        {
+            Ask(new Question($"Restart GUO with your own files and play on {e.Name}?{leaving}", "Restart GUO", 60, "Not now", () => ShardSession.End(e)));
             return;
         }
 
         if (ServerPlay.InWorld)
         {
-            _confirmLogout = true;
-            ShowDetail();
+            // Narrow: the question already names the server.
+            Ask(new Question($"Log out and play on {e.Name}?", _narrow ? "Log out" : "Log out and play", _narrow ? 44 : 64, "Stay", () => DoPlay(e)));
             return;
         }
 
         DoPlay(e);
+    }
+
+    private void Ask(Question q)
+    {
+        _ask = q;
+        _adding = false;
+        ShowDetail();
+    }
+
+    /// <summary>The question, its yes in Danger, and its no.</summary>
+    private void AskRow()
+    {
+        Question q = _ask;
+        _detail.AddChild(Note(q.Text, UoTheme.Ink));
+        var yesNo = new HFlowContainer();
+        yesNo.AddThemeConstantOverride("h_separation", 4);
+        yesNo.AddThemeConstantOverride("v_separation", 3);
+        Button yes = UoTheme.Button(q.Yes, q.YesWidth);
+        yes.AddThemeColorOverride("font_color", UoTheme.Danger);
+        yes.Pressed += () =>
+        {
+            _ask = null;
+            q.Do();
+
+            // A restart may be held back (the probe): the page comes back.
+            if (IsInsideTree())
+            {
+                ShowDetail();
+            }
+        };
+        Button no = UoTheme.Button(q.No, 40);
+        no.Pressed += () => { _ask = null; ShowDetail(); };
+        yesNo.AddChild(yes);
+        yesNo.AddChild(no);
+        _detail.AddChild(yesNo);
+        ConfirmButton = yes;
+        NoButton = no;
+    }
+
+    /// <summary>
+    /// The first-run screen, for the folder of <paramref name="e"/>'s own
+    /// client files; kept in servers.json. Then, from Play, the restart question.
+    /// </summary>
+    private void ChooseFiles(ServerEntry e, bool thenPlay)
+    {
+        GD.Print($"[GUO] pregame card: choose files for \"{e.Name}\"");
+        Picker = FirstRunScreen.OpenForShard(e.Name, folder =>
+        {
+            _selected = ServerBook.SetDataFolder(e, folder);
+            GD.Print($"[GUO] pregame card: files for \"{_selected.Name}\" kept");
+            Rebuild();
+
+            if (thenPlay)
+            {
+                PlayPressed();
+            }
+        });
     }
 
     private void DoPlay(ServerEntry e)
@@ -635,6 +756,10 @@ internal sealed partial class PregameServers : HBoxContainer
     public Button SaveButton { get; private set; }
     public Button FavouriteButton { get; private set; }
     public Button ConfirmButton { get; private set; }
+    public Button NoButton { get; private set; }
+    public Button FilesButton { get; private set; }
+    public Button BackButton { get; private set; }
+    public FirstRunScreen Picker { get; private set; }
     public LineEdit[] AddFields => new[] { _addName, _addHost, _addPort };
     public string Status => _status;
     public bool Adding => _adding;

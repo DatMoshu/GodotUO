@@ -92,6 +92,12 @@ namespace GUO.Input.Glyphs
                         return "stick_r";
                     }
 
+                    // Back / Select / View: one glyph for every family, as the D-pad and sticks are.
+                    if (action == PadAction.Back)
+                    {
+                        return "pad_back";
+                    }
+
                     if (printed == null)
                     {
                         return null;
@@ -137,6 +143,7 @@ namespace GUO.Input.Glyphs
                 "pad_b" => "B",
                 "pad_x" => "X",
                 "pad_y" => "Y",
+                "pad_back" => "Back",
                 "ps_cross" => "Cross",
                 "ps_circle" => "Circle",
                 "ps_square" => "Square",

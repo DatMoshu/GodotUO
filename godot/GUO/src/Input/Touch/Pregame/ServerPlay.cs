@@ -27,6 +27,12 @@ internal static class ServerPlay
     {
         reason = null;
 
+        // This run already plays with the shard's own files.
+        if (Host.ShardSession.IsFor(e))
+        {
+            return Verdict.Ready;
+        }
+
         if (!e.ThirdPartyClients)
         {
             reason = "This shard only allows its own client.";
@@ -42,7 +48,9 @@ internal static class ServerPlay
         {
             reason = $"{e.Name} needs its own client files"
                 + (version ? $" (client {e.ClientVersion}; GUO runs {s.ClientVersion})" : encryption ? " (another encryption)" : "")
-                + ". Set GUO up with them, then restart it.";
+                + (string.IsNullOrWhiteSpace(e.DataFolder)
+                    ? ". Choose where they are, and GUO restarts with them."
+                    : ". Play restarts GUO with them.");
             return Verdict.NeedsOwnData;
         }
 

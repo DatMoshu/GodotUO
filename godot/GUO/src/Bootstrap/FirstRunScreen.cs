@@ -25,6 +25,11 @@ using Godot;
 /// mode, which saves the folder into upstream's settings and says it applies
 /// on the next start.
 ///
+/// A shard that plays with its own client files is given its folder through
+/// <see cref="OpenForShard"/>: the same screen, which also accepts a folder
+/// with a guo_data.json manifest (ShardSession), and hands the folder back
+/// without saving anything of the player's own.
+///
 /// On Android (G2a) Choose folder opens the system's folder picker (the
 /// Storage Access Framework, through Godot's native dialog). The folder is
 /// checked through the grant it returns, and Continue copies its game data
@@ -86,6 +91,14 @@ internal sealed partial class FirstRunScreen : CanvasLayer
 
         return e is InputEventMouse or InputEventKey;
     }
+
+    private string _shard;
+
+    /// <summary>Whether the screen is up.</summary>
+    public static bool IsOpen => _shown != null && IsInstanceValid(_shown) && _shown.IsInsideTree();
+
+    /// <summary>For the probe.</summary>
+    public Button ContinueButton => _continue;
     private Label _folder;
     private VBoxContainer _checks;
     private Label _verdict;
@@ -99,9 +112,9 @@ internal sealed partial class FirstRunScreen : CanvasLayer
     /// photographs, picks that folder without a dialog, photographs, continues.
     /// </summary>
     public static FirstRunScreen Open(Node host, DataSources.Result data, string configured, string probeFolder,
-                                      string shotDir, Action<string> chosen, bool change = false)
+                                      string shotDir, Action<string> chosen, bool change = false, string shard = null)
     {
-        var screen = new FirstRunScreen { _chosen = chosen, _change = change, Layer = 128 };
+        var screen = new FirstRunScreen { _chosen = chosen, _change = change, _shard = shard, Layer = 128 };
         host.AddChild(screen);
         screen.Build(data, configured);
         GD.Print($"[GUO] first run     : screen shown{(change ? " (change from Options)" : "")}");
@@ -133,6 +146,16 @@ internal sealed partial class FirstRunScreen : CanvasLayer
         }, change: true);
     }
 
+    /// <summary>
+    /// The folder of a shard's own client files, picked once: a whole client
+    /// or a folder with a guo_data.json. Save hands it to <paramref name="chosen"/>.
+    /// </summary>
+    public static FirstRunScreen OpenForShard(string shard, Action<string> chosen)
+    {
+        var host = ((SceneTree)Engine.GetMainLoop()).Root;
+        return Open(host, new DataSources.Result(), null, null, null, chosen, change: true, shard: shard);
+    }
+
     private void Build(DataSources.Result data, string configured)
     {
         var theme = new Theme { DefaultFontSize = 15 };
@@ -161,13 +184,18 @@ internal sealed partial class FirstRunScreen : CanvasLayer
         col.AddThemeConstantOverride("separation", 10);
         card.AddChild(col);
 
-        col.AddChild(Label(_change ? "Change UO folder" : "Welcome to GUO", 24, Gold));
+        col.AddChild(Label(_shard != null ? $"Files for {_shard}" : _change ? "Change UO folder" : "Welcome to GUO", 24, Gold));
         col.AddChild(Label(
-            "GUO plays Ultima Online with the game files from your own copy of the Classic client. "
-            + "They are not included. Choose the folder where Ultima Online Classic is installed.", 15, Text, wrap: true));
+            _shard != null
+                ? $"{_shard} plays with its own client files. Choose the folder you installed them in. "
+                  + "GUO reads them where they are and leaves your own UO folder as it is."
+                : "GUO plays Ultima Online with the game files from your own copy of the Classic client. "
+                  + "They are not included. Choose the folder where Ultima Online Classic is installed.", 15, Text, wrap: true));
         col.AddChild(new HSeparator { Modulate = new Color(Gold, 0.35f) });
         col.AddChild(Label(
-            _change
+            _shard != null
+                ? $"GUO keeps using your own files until you play on {_shard}. Then it restarts with these, and you can go back from the Servers tab."
+                : _change
                 ? $"Now using: {Configuration.Settings.GlobalSettings.UltimaOnlineDirectory}. The folder you choose is used the next time GUO starts."
                 : "Why this screen: " + data.Reason,
             13, Muted, wrap: true));
@@ -284,7 +312,7 @@ internal sealed partial class FirstRunScreen : CanvasLayer
         string start = Android ? "" : _picked ?? System.Environment.GetFolderPath(System.Environment.SpecialFolder.ProgramFilesX86);
         if (DisplayServer.HasFeature(DisplayServer.Feature.NativeDialogFile))
         {
-            DisplayServer.FileDialogShow("Choose your Ultima Online Classic folder", start ?? "", "", false,
+            DisplayServer.FileDialogShow(_shard != null ? $"Choose {_shard}'s client folder" : "Choose your Ultima Online Classic folder", start ?? "", "", false,
                 DisplayServer.FileDialogMode.OpenDir, Array.Empty<string>(),
                 Callable.From<bool, string[], int>((ok, paths, _) =>
                 {
@@ -308,7 +336,7 @@ internal sealed partial class FirstRunScreen : CanvasLayer
         {
             FileMode = FileDialog.FileModeEnum.OpenDir,
             Access = FileDialog.AccessEnum.Filesystem,
-            Title = "Choose your Ultima Online Classic folder",
+            Title = _shard != null ? $"Choose {_shard}'s client folder" : "Choose your Ultima Online Classic folder",
             CurrentDir = start ?? "",
             UseNativeDialog = false,
         };
@@ -333,6 +361,11 @@ internal sealed partial class FirstRunScreen : CanvasLayer
             n.QueueFree();
         }
 
+        if (_shard != null && PickForShard(folder))
+        {
+            return;
+        }
+
         var grid = new GridContainer { Columns = 4 };
         grid.AddThemeConstantOverride("h_separation", 18);
         _checks.AddChild(grid);
@@ -352,6 +385,27 @@ internal sealed partial class FirstRunScreen : CanvasLayer
         _verdict.AddThemeColorOverride("font_color", ok ? Good : Bad);
         _continue.Disabled = !ok;
         GD.Print($"[GUO] first run     : picked {folder}: {(ok ? "valid" : $"{missing} missing")}");
+    }
+
+    /// <summary>
+    /// A shard's folder with a guo_data.json: the manifest decides, not the
+    /// install's file list. False for a folder without one (checked as a whole client).
+    /// </summary>
+    private bool PickForShard(string folder)
+    {
+        if (!File.Exists(Path.Combine(folder, DataSources.Manifest)))
+        {
+            return false;
+        }
+
+        string kind = ShardSession.FolderKind(folder, out string why);
+        _verdict.Text = kind != null
+            ? $"Found a GUO data folder: its {DataSources.Manifest} checks out."
+            : $"This folder can't be used: {why}.";
+        _verdict.AddThemeColorOverride("font_color", kind != null ? Good : Bad);
+        _continue.Disabled = kind == null;
+        GD.Print($"[GUO] first run     : picked {folder} for {_shard}: {(kind != null ? "valid (" + kind + ")" : why)}");
+        return true;
     }
 
     /// <summary>Android: checks a folder picked through the Storage Access Framework.</summary>
@@ -391,6 +445,14 @@ internal sealed partial class FirstRunScreen : CanvasLayer
     private async Task FinishTree()
     {
         string dest = DataSources.PlatformDefaults().FirstOrDefault();
+
+        // A shard's files go beside the player's own, never over them.
+        if (dest != null && _shard != null)
+        {
+            string slug = new string(_shard.ToLowerInvariant().Select(c => char.IsLetterOrDigit(c) ? c : '_').ToArray());
+            dest = Path.Combine(Path.GetDirectoryName(dest.TrimEnd('/')) ?? dest, "shards", slug);
+        }
+
         if (dest == null)
         {
             return;
@@ -425,7 +487,7 @@ internal sealed partial class FirstRunScreen : CanvasLayer
             return;
         }
 
-        if (_picked == null || DataSources.Validate(_picked) != null)
+        if (_picked == null || (_shard != null ? ShardSession.FolderKind(_picked, out _) == null : DataSources.Validate(_picked) != null))
         {
             return;
         }

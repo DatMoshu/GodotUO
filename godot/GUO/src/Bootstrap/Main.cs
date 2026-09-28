@@ -116,9 +116,13 @@ public partial class Main : Node
         GD.Print($"[GUO] mode          : {_options.Mode}");
         GD.Print($"[GUO] cache         : {_options.CacheDir}");
 
+        // A shard played with its own files (ShardSession) comes first: it
+        // decides the custom folder, the version and the address of this run.
+        ApplyShardSession();
+
         // ADR-0021: a custom data folder, then the UO install, else the
         // first-run wizard. Every mode below reads what this decides.
-        DataSources.Result data = ResolveData();
+        DataSources.Result data = _data = ResolveData();
         if (!data.Ok)
         {
             OnNoValidData(data);
@@ -223,7 +227,7 @@ public partial class Main : Node
                 // The pre-game card: the second screen's, or over the login
                 // screen from its Servers button. A debug build lists its dev
                 // shard; ServerBook ignores this in a release build.
-                GUO.Input.Touch.Pregame.ServerBook.SetDevShard(_options.ShardHost, _options.ShardPort);
+                GUO.Input.Touch.Pregame.ServerBook.SetDevShard(_configShardHost ?? _options.ShardHost, _configShardHost != null ? _configShardPort : _options.ShardPort);
                 GUO.Input.Touch.Pregame.PregameCard.Setup(this);
 
                 // Commands and a probe together: the commands run first
@@ -386,6 +390,12 @@ public partial class Main : Node
             "-ip", _options.ShardHost,
             "-port", _options.ShardPort.ToString(),
         };
+
+        if (_sessionEncryption is int encryption)
+        {
+            args.AddRange(new[] { "-encryption", encryption.ToString() });
+            GD.Print($"[GUO] encryption     : {encryption} (shard session)");
+        }
 
         if (!string.IsNullOrWhiteSpace(_options.FilesOverride))
         {
@@ -802,7 +812,34 @@ public partial class Main : Node
     /// </summary>
     private async void PregameProbeThenMaybeQuit()
     {
+        // GUO_PROBE_REAL_RESTART=1: after the probe, a real restart onto a
+        // probe shard's fake files (the probe's own folder). The run that
+        // restarts reports what it booted on, leaves its line beside the
+        // session (its output reaches no console), removes the session, quits.
+        bool realRestart = System.Environment.GetEnvironmentVariable("GUO_PROBE_REAL_RESTART") == "1" && !OS.HasFeature("mobile");
+
+        if (realRestart && ShardSession.Active)
+        {
+            string line = $"[GUO] pregame probe: restarted with \"{ShardSession.Current.Name}\"'s files: data source {_data?.Source}, custom {_data?.Custom}, client {_options.ClientVersion}, shard {_options.ShardHost}:{_options.ShardPort}";
+            GD.Print(line);
+            System.IO.File.WriteAllText(System.IO.Path.Combine(GuoDataDirectory(), "probe_restart_result.txt"), line);
+            ShardSession.TryDelete();
+            Quit(_data?.Source == "install+custom" ? 0 : 1);
+            return;
+        }
+
         await PregameProbe.Run(this, _options.ScreenshotDir, _options.ScreenshotName, !string.IsNullOrWhiteSpace(_options.Account));
+
+        if (realRestart && PregameProbe.Passed)
+        {
+            string tag = string.IsNullOrWhiteSpace(_options.ScreenshotName) ? "pregame" : _options.ScreenshotName;
+            ShardSession.Start(new GUO.Input.Touch.Pregame.ServerEntry
+            {
+                Name = "Probe Restart", Host = "127.0.0.1", Port = 2599, ClientVersion = _options.ClientVersion,
+                DataFolder = ProjectSettings.GlobalizePath($"user://probe_shard_files_{tag}"),
+            });
+            return;
+        }
 
         if (!OS.HasFeature("mobile"))
         {
@@ -887,6 +924,59 @@ public partial class Main : Node
         return true;
     }
 
+    private DataSources.Result _data;
+    private string _configShardHost;
+    private int _configShardPort;
+    private int? _sessionEncryption;
+
+    /// <summary>
+    /// Reads shard_session.json (ShardSession) and applies it to this run's
+    /// options: the shard's folder as the custom data (a manifest folder) or
+    /// the install (a whole client), its client version and encryption, and
+    /// its address. A --custom-data or --client-data flag still wins. The
+    /// one-shot file that goes back carries only the player's own encryption
+    /// and the server to play on next.
+    /// </summary>
+    private void ApplyShardSession()
+    {
+        ShardSession.FilePath = System.IO.Path.Combine(GuoDataDirectory(), "shard_session.json");
+        ShardSession.Data d = ShardSession.Load();
+
+        if (d == null)
+        {
+            return;
+        }
+
+        _configShardHost = _options.ShardHost;
+        _configShardPort = _options.ShardPort;
+        _sessionEncryption = d.Encryption;
+
+        if (d.DataFolder == null)
+        {
+            if (!string.IsNullOrWhiteSpace(d.Host) && d.Port > 0)
+            {
+                _options.UseShardSession(d.Host, d.Port, null, null, null);
+            }
+
+            GD.Print($"[GUO] shard session : back to your own files{(string.IsNullOrWhiteSpace(d.Name) ? "" : $", playing on \"{d.Name}\"")}");
+            return;
+        }
+
+        string kind = ShardSession.FolderKind(d.DataFolder, out string why);
+
+        if (kind == null)
+        {
+            ShardSession.Drop(d, why);
+            _sessionEncryption = d.OwnEncryption;
+            return;
+        }
+
+        _options.UseShardSession(d.Host, d.Port, d.ClientVersion,
+            kind == "custom" && string.IsNullOrWhiteSpace(_options.CustomData) ? d.DataFolder : null,
+            kind == "install" && !_options.ClientDataFromFlag ? d.DataFolder : null);
+        GD.Print($"[GUO] shard session : \"{d.Name}\" with its files ({kind}), client {_options.ClientVersion}");
+    }
+
     /// <summary>
     /// Resolves the client data by ADR-0021 (see DataSources) and applies it:
     /// the install becomes ClientData, and a layered custom folder becomes the
@@ -901,7 +991,7 @@ public partial class Main : Node
             CustomEnv = System.Environment.GetEnvironmentVariable("UO_CUSTOM_DATA") ?? "",
             ShippedFolder = exeDir.Length > 0 ? System.IO.Path.Combine(exeDir, "guo_data") : "",
             InstallConfigured = _options.ClientData,
-            InstallConfiguredOrigin = _options.ClientDataFromFlag ? "flag" : "environment",
+            InstallConfiguredOrigin = _options.ClientDataFromFlag ? "flag" : _options.ClientDataFromShard ? "shard" : "environment",
             SettingsFile = System.IO.Path.Combine(GuoDataDirectory(), Configuration.Settings.SETTINGS_FILENAME),
             Defaults = DataSources.PlatformDefaults(),
         };
@@ -1006,6 +1096,32 @@ public partial class Main : Node
         /// the check, and presses Continue.
         /// </summary>
         public string FirstRunProbe { get; private set; } = "";
+
+        /// <summary>True when ClientData is a shard session's whole client (ShardSession).</summary>
+        public bool ClientDataFromShard { get; private set; }
+
+        /// <summary>A shard session's address, client version and files (ShardSession); null keeps a value.</summary>
+        internal void UseShardSession(string host, int port, string clientVersion, string customData, string clientData)
+        {
+            ShardHost = host;
+            ShardPort = port;
+
+            if (!string.IsNullOrWhiteSpace(clientVersion))
+            {
+                ClientVersion = clientVersion;
+            }
+
+            if (customData != null)
+            {
+                CustomData = customData;
+            }
+
+            if (clientData != null)
+            {
+                ClientData = clientData;
+                ClientDataFromShard = true;
+            }
+        }
 
         /// <summary>What ResolveData decided: the install to open, and the files override.</summary>
         internal void UseData(string clientData, string filesOverride)
