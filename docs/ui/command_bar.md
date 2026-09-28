@@ -51,8 +51,9 @@ which ten cells fit across the view. It is 3 on both handhelds.
 | Cell | 1/10 of the width: 192 px |
 | Plate | cell less a 16 px gap, by 23 art px × s: 176 × 69. The plate is cropped from its middle, never stretched |
 | Row | the plate plus 11 art px of padding: 34 × s = 102 px (7.1 mm on the Thor, 5.9 mm on the Odin). The hit target is the whole cell, 192 × 102 |
-| Handle strip | 20 art px × s = 60 px. It holds the target in the centre and the arrow on the right |
-| Arrow tab | a 0x098B plate cropped to 42 art px (126 × 69 at 3x, overhanging the strip). The gold arrow 0x0983 (up) / 0x0985 (down) sits in it at s |
+| Handle strip | 24 art px × s = 72 px. It holds the chips on the left, the target in the centre and the arrow on the right |
+| Arrow tab | a 0x098B plate cropped to 42 art px (126 × 69 at 3x), centred over the last column. The gold arrow 0x0983 (up) / 0x0985 (down) sits in it at s |
+| Target strips | 2 art px tall each, 1 art px apart, framed; as wide as the name, 40 to 80 art px |
 
 ```
  ┌──────────────────────────── handle strip ─────────────────────────────┐
