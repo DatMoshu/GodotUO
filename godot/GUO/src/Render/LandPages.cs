@@ -75,8 +75,11 @@ namespace GUO.Renderer
                 var images = new Godot.Collections.Array<Image>();
                 for (int i = 0; i < _layers.Count; i++)
                 {
-                    TextureAtlas.TryGetPage(_layers[i], out Image page, out int version);
-                    images.Add(Padded(page));
+                    // A page gone from the atlas (never while the atlases live:
+                    // they are only disposed whole, which resets this) is a blank layer.
+                    images.Add(TextureAtlas.TryGetPage(_layers[i], out Image page, out int version)
+                        ? Padded(page)
+                        : Image.CreateEmpty(Size, Size, false, Image.Format.Rgba8));
                     _versions[i] = version;
                 }
 
@@ -89,14 +92,28 @@ namespace GUO.Renderer
 
             for (int i = 0; i < _layers.Count; i++)
             {
-                TextureAtlas.TryGetPage(_layers[i], out Image page, out int version);
-                if (version != _versions[i])
+                if (TextureAtlas.TryGetPage(_layers[i], out Image page, out int version) && version != _versions[i])
                 {
                     Array.UpdateLayer(Padded(page), i);
                     _versions[i] = version;
                     Uploads++;
                 }
             }
+        }
+
+        /// <summary>
+        /// Forget every page and free the array: the atlases were disposed
+        /// (<see cref="TextureAtlas.DisposeAll"/>, an embedded unload), so the
+        /// textures held here are dead and the next load starts again.
+        /// </summary>
+        public static void Reset()
+        {
+            _layers.Clear();
+            _versions.Clear();
+            _index.Clear();
+            _rebuild = false;
+            Array?.Dispose();
+            Array = null;
         }
 
         private static Image Padded(Image page)

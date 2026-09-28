@@ -144,10 +144,12 @@ internal static class PerfProbe
         int maxFps = Engine.MaxFps;
         Engine.MaxFps = 0;
         // Upstream's own pacing (GameController._intervalFixedUpdate) skips the
-        // draw when a frame comes early: one draw per 1000/FPS ms, and one per
-        // 217 ms while the window is inactive -- which a probe window, never
-        // focused, always is. Left alone, most measured frames draw nothing.
-        // Made tiny for the measurement, so every frame draws; put back after.
+        // draw when a frame comes early: one draw per 1000/FPS ms. (Its 217 ms
+        // inactive tick does not apply: GameController.IsActive counts a
+        // scripted, unfocusable window as active.) Uncapped, the engine runs
+        // far faster than that interval, so left alone most measured frames
+        // would draw nothing. Made tiny for the measurement, so every frame
+        // draws; put back after.
         var field = typeof(GUO.GameController).GetField("_intervalFixedUpdate",
             System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
         float[] interval = field?.GetValue(Client.Game) as float[];

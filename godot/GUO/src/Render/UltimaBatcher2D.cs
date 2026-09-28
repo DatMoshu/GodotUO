@@ -305,6 +305,16 @@ namespace GUO.Renderer
             _blendMaterials.Clear();
             _meshMaterial?.Dispose();
             _material?.Dispose();
+
+            // PORT DEVIATION (GUO): the land-array material (B4) and the id
+            // mirror's canvas item (ADR-0023) are this batcher's too.
+            _landArrayMaterial?.Dispose();
+
+            if (_idItem.IsValid)
+            {
+                RenderingServer.FreeRid(_idItem);
+                _idItem = default;
+            }
         }
 
         public void SetBrightlight(float f)
@@ -615,22 +625,7 @@ void fragment() {
         {
         }
 
-        /// <summary>
-        /// Draws one chunk mesh layer: its visible sprites, already grouped
-        /// into one mesh per texture. Returns how many sprites were drawn, as
-        /// upstream's caller counts.
-        /// </summary>
-        /// <remarks>
-        /// PORT DEVIATION (GUO): upstream binds the layer's vertex buffer and a
-        /// shared index buffer on the device and issues DrawIndexedPrimitives
-        /// per run. There is no buffer to bind; MeshLayer has already built one
-        /// ArrayMesh per run, because canvas_item_add_mesh takes a single
-        /// texture per call. See ADR-0004.
-        /// </remarks>
-        /// <summary>
-        /// One merged land mesh (MergedLand, --merged-land): drawn as a run of
-        /// DrawMeshLayer is, on the mesh material under the world offset.
-        /// </summary>
+        /// <summary>The land mesh shader on LandPages' Texture2DArray (--merged-land=array).</summary>
         private ShaderMaterial _landArrayMaterial;
 
         /// <summary>
@@ -649,6 +644,10 @@ void fragment() {
             RenderingServer.CanvasItemAddMesh(_current, mesh.GetRid(), Transform2D.Identity, Colors.White, default);
         }
 
+        /// <summary>
+        /// One merged land mesh (MergedLand, --merged-land): drawn as a run of
+        /// DrawMeshLayer is, on the mesh material under the world offset.
+        /// </summary>
         public void DrawLandMesh(ArrayMesh mesh, Texture2D texture)
         {
             EnsureStarted();
@@ -659,6 +658,18 @@ void fragment() {
             RenderingServer.CanvasItemAddMesh(_current, mesh.GetRid(), Transform2D.Identity, Colors.White, texture.GetRid());
         }
 
+        /// <summary>
+        /// Draws one chunk mesh layer: its visible sprites, already grouped
+        /// into one mesh per texture. Returns how many sprites were drawn, as
+        /// upstream's caller counts.
+        /// </summary>
+        /// <remarks>
+        /// PORT DEVIATION (GUO): upstream binds the layer's vertex buffer and a
+        /// shared index buffer on the device and issues DrawIndexedPrimitives
+        /// per run. There is no buffer to bind; MeshLayer has already built one
+        /// ArrayMesh per run, because canvas_item_add_mesh takes a single
+        /// texture per call. See ADR-0004.
+        /// </remarks>
         public int DrawMeshLayer(MeshLayer layer)
         {
             EnsureStarted();
