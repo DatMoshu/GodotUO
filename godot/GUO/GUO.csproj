@@ -109,6 +109,7 @@
     <EmbeddedResource Update="src/Resources/embedded/ResGumps.resx" LogicalName="ClassicUO.Resources.ResGumps.resources" />
     <EmbeddedResource Include="src/Resources/embedded/cuologo.png" LogicalName="cuologo.png" />
     <EmbeddedResource Include="src/Resources/embedded/game-background.png" LogicalName="game-background.png" />
+    <EmbeddedResource Include="src/Resources/embedded/backgrounds/*.png" LogicalName="backgrounds/%(Filename)%(Extension)" />
     <!-- GUO: input glyphs (Kenney Input Prompts Pixel, CC0), tools/glyphs -->
     <EmbeddedResource Include="src/Resources/embedded/glyphs/*.png" LogicalName="glyphs/%(Filename)%(Extension)" />
     <!-- GUO: the community server catalogue, servers/ at the repo root (docs/data_formats.md 18) -->

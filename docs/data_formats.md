@@ -870,3 +870,16 @@ that is no longer usable drops the session at boot, with the reason shown once i
 Going back ("Your own files", or Play on another server) writes a one-shot file with no `data_folder`: the player's
 own encryption, and the server to play on next, if any. It is deleted as soon as it is read.
 
+## 20. Pre-game choices (`pregame.json`)
+
+Beside `settings.json` in the client home: GUO's own choices made on the pre-game card that belong to no profile
+(upstream's settings.json keeps its shape).
+
+```json
+{ "login_background": "builtin:starlit-sea" }
+```
+
+| Field | Meaning |
+|---|---|
+| `login_background` | What the canvas background (ADR-0016) shows before a profile is loaded: `""` for the last character's (ADR-0016's own rule, the default), `builtin-grey`, `builtin-wood`, `builtin:<name>` from `assets/backgrounds/backgrounds.json`, or `embedded:<file>.png`, a picture compiled in from `Resources/embedded/backgrounds`. A choice that no longer exists reads as the default. In the world the profile's own background applies |
+

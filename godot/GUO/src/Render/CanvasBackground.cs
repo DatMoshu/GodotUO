@@ -289,6 +289,15 @@ namespace GUO.Renderer
                 return CanvasBackgroundSettings.FromProfile(profile);
             }
 
+            // The login background the player chose in the pre-game card's
+            // Settings, if any; else the last character's, as below.
+            CanvasBackgroundSettings? chosen = PregameBackground.ForLogin();
+
+            if (chosen.HasValue)
+            {
+                return chosen.Value;
+            }
+
             if (!_preProfileRead)
             {
                 _preProfileRead = true;

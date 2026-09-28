@@ -153,6 +153,7 @@ internal sealed partial class PregameSettings : HBoxContainer
 
         _refreshers.Clear();
         _sliders.Clear();
+        CycleButtons.Clear();
         _reportNote = null;
         _scroll.ScrollVertical = 0;
 
@@ -235,6 +236,8 @@ internal sealed partial class PregameSettings : HBoxContainer
 
     private void Screen()
     {
+        Cycle("Login background", () => Renderer.PregameBackground.Current.Title, Renderer.PregameBackground.Step);
+        Note("Behind the login screen and the character list; in the world, your character's own background (Options) applies.");
         Act("Screen effects...", GUO.Renderer.PostFx.PostFxMenu.Toggle);
         Note("The look of the world: the effects menu opens over the login screen, with the world behind it as its preview.");
         Note(ProfileNote + "the game window's size, zoom and gump scale.");
@@ -467,6 +470,35 @@ internal sealed partial class PregameSettings : HBoxContainer
 
         return text;
     }
+
+    /// <summary>A setting with a few named values: the value between a back and a next button, round the list.</summary>
+    private void Cycle(string key, Func<string> get, Action<int> step)
+    {
+        var row = new HBoxContainer();
+        row.AddThemeConstantOverride("separation", 4);
+        Label k = UoTheme.Label(key, UoTheme.Muted);
+        k.CustomMinimumSize = new Vector2(_narrow ? 48 : 64, 0);
+        k.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+        k.AddThemeConstantOverride("line_spacing", LineSpacing);
+        Button back = UoTheme.Button("<", 18);
+        Label v = UoTheme.Label("", UoTheme.Ink);
+        v.ClipText = true;
+        v.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        v.HorizontalAlignment = HorizontalAlignment.Center;
+        Button next = UoTheme.Button(">", 18);
+        back.Pressed += () => { step(-1); v.Text = get(); };
+        next.Pressed += () => { step(1); v.Text = get(); };
+        row.AddChild(k);
+        row.AddChild(back);
+        row.AddChild(v);
+        row.AddChild(next);
+        _fields.AddChild(row);
+        _refreshers.Add(() => v.Text = get());
+        CycleButtons[key] = (back, v, next);
+    }
+
+    /// <summary>For the probe: each cycle's back button, value and next button, by its key.</summary>
+    public Dictionary<string, (Button Back, Label Value, Button Next)> CycleButtons { get; } = new();
 
     private void Act(string text, Action run)
     {

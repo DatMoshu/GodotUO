@@ -163,6 +163,8 @@ internal static class PregameProbe
 
         Check("every settings group opens on a tap and fits the card's width", misfits.Length == 0, misfits.Length == 0 ? $"{PregameSettings.Groups.Length} groups, card {card.Geometry}" : misfits);
 
+        await LoginBackgroundChecks(host, card, settings);
+
         // Profile-only settings are named, not shown disabled.
         card.Tap(settings.GroupButton("Controls"));
         await InputProbe.Wait(host, 5);
@@ -333,6 +335,87 @@ internal static class PregameProbe
         finally
         {
             DualScreenSettings.Edit(v => v.Enabled = shelfWas);
+        }
+    }
+
+    /// <summary>
+    /// Screen: "Login background" steps through what exists, the login screen
+    /// shows each at once (the canvas background, ADR-0016), and the first
+    /// choice goes back to the last character's. A file of the probe's own.
+    /// </summary>
+    private static async System.Threading.Tasks.Task LoginBackgroundChecks(Node host, PregameCard card, PregameSettings settings)
+    {
+        Renderer.PregameBackground.PathOverride = ProjectSettings.GlobalizePath($"user://probe_pregame_{_tag}.json");
+        System.IO.File.Delete(Renderer.PregameBackground.PathOverride);
+        Renderer.PregameBackground.Reload();
+
+        try
+        {
+            card.Tap(settings.GroupButton("Screen"));
+            await InputProbe.Wait(host, 5);
+
+            if (!settings.CycleButtons.TryGetValue("Login background", out var cycle))
+            {
+                Check("Screen has a Login background line", false, "no line");
+                return;
+            }
+
+            Renderer.CanvasBackground bg = Client.Game.CanvasBackground;
+            string first = cycle.Value.Text;
+            var seen = new System.Collections.Generic.List<string>();
+            bool shown = true;
+            string shot = null;
+
+            // Every choice once, round to the start.
+            for (int i = 0; i < Renderer.PregameBackground.All.Count; i++)
+            {
+                card.Tap(cycle.Next);
+                await InputProbe.Wait(host, 4);
+                string key = Renderer.PregameBackground.Key;
+                seen.Add(cycle.Value.Text);
+
+                if (key == Renderer.PregameBackground.Follow)
+                {
+                    continue;
+                }
+
+                // What is on screen: that choice (a video may show its still), drawn by the canvas background.
+                Renderer.CanvasBackgroundSettings want = Renderer.PregameBackground.ForLogin().Value;
+                bool drawn = bg == null || (bg.Current.Mode == want.Mode && bg.Current.Path == want.Path && (bg.Active || want.Mode == Renderer.CanvasBackgroundMode.BuiltinGrey));
+                shown &= drawn;
+
+                if (!drawn)
+                {
+                    GD.Print($"[GUO] pregame probe: login background \"{cycle.Value.Text}\" not on screen: {bg.Current.Mode} {bg.Current.Path}, active {bg.Active}");
+                }
+
+                if (shot == null && want.Mode == Renderer.CanvasBackgroundMode.BuiltinMedia)
+                {
+                    shot = cycle.Value.Text;
+                    await InputProbe.Wait(host, 20);
+                    await SaveMain(host, "login_background");
+                }
+            }
+
+            string file = System.IO.File.Exists(Renderer.PregameBackground.PathOverride) ? System.IO.File.ReadAllText(Renderer.PregameBackground.PathOverride) : "";
+            Renderer.PregameBackground.Step(1);
+            string saved = Renderer.PregameBackground.Key;
+            Renderer.PregameBackground.Reload();
+            bool kept = Renderer.PregameBackground.Key == saved;
+            Renderer.PregameBackground.Set(Renderer.PregameBackground.Follow);
+            card.Tap(settings.GroupButton("Screen"));
+            await InputProbe.Wait(host, 4);
+
+            Check("Screen: Login background steps through every choice (the grey, wood, the shipped ones), each on the login screen at once, kept in pregame.json, round to \"Your last character's\"",
+                first == "Your last character's" && seen.Count == Renderer.PregameBackground.All.Count && seen.Distinct().Count() == seen.Count
+                && seen[^1] == first && seen.Contains("Classic grey") && seen.Contains("Wood") && shown && file.Contains("login_background") && kept,
+                $"{seen.Count} choices ({string.Join(", ", seen.Take(4))}...), all shown {shown}, photographed \"{shot}\", file {file.Length > 0}, read back {kept}");
+        }
+        finally
+        {
+            Renderer.PregameBackground.Set(Renderer.PregameBackground.Follow);
+            Renderer.PregameBackground.PathOverride = null;
+            Renderer.PregameBackground.Reload();
         }
     }
 
