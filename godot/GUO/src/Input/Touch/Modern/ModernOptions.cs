@@ -36,7 +36,7 @@ internal sealed partial class ModernOptions : ModernGump
 
     private const int RowHeight = 26; // art pixels: 78 device pixels at 3x, 5.4 mm on the Thor
 
-    private enum Kind { Bool, Int, Choice, Action }
+    private enum Kind { Bool, Int, Choice, Action, Hue }
 
     private sealed class Setting
     {
@@ -61,6 +61,7 @@ internal sealed partial class ModernOptions : ModernGump
     private ScrollContainer _scroll;
     private bool _audioChanged;
     private ModernMacros _macros;
+    private ModernHuePicker _huePicker;
     private bool _macrosChanged;
 
     public ModernOptions(World world) : base(world)
@@ -84,6 +85,9 @@ internal sealed partial class ModernOptions : ModernGump
 
     private void Choice(string page, string label, string[] choices, Func<Profile, int> get, Action<Profile, int> set) =>
         _settings.Add(new Setting { Page = page, Label = label, Kind = Kind.Choice, Choices = choices, Get = p => get(p), Set = (p, v) => set(p, (int)v) });
+
+    private void Hue(string page, string label, Func<Profile, ushort> get, Action<Profile, ushort> set) =>
+        _settings.Add(new Setting { Page = page, Label = label, Kind = Kind.Hue, Get = p => (int)get(p), Set = (p, v) => set(p, (ushort)(int)v) });
 
     private void Action_(string page, string label, Action run) =>
         _settings.Add(new Setting { Page = page, Label = label, Kind = Kind.Action, Run = run });
@@ -131,12 +135,14 @@ internal sealed partial class ModernOptions : ModernGump
         Bool("Video", "Shadows", p => p.ShadowsEnabled, (p, v) => p.ShadowsEnabled = v);
         Bool("Video", "Death screen", p => p.EnableDeathScreen, (p, v) => p.EnableDeathScreen = v);
 
-        // Tooltip, Fonts and Speech: the classic pages' boxes and sliders, with
-        // their ranges. Hues and font pickers stay in Classic view.
+        // Tooltip, Fonts and Speech: the classic pages' boxes, sliders and
+        // colours (ModernHuePicker), with their ranges. Font pickers stay in
+        // Classic view.
         Bool("Tooltip", "Use tooltips", p => p.UseTooltip, (p, v) => p.UseTooltip = v);
         Int("Tooltip", "Delay before display", 0, 1000, p => p.TooltipDelayBeforeDisplay, (p, v) => p.TooltipDelayBeforeDisplay = v);
         Int("Tooltip", "Tooltip zoom", 100, 200, p => p.TooltipDisplayZoom, (p, v) => p.TooltipDisplayZoom = v);
         Int("Tooltip", "Background opacity", 0, 100, p => p.TooltipBackgroundOpacity, (p, v) => p.TooltipBackgroundOpacity = v);
+        Hue("Tooltip", "Tooltip text colour", p => p.TooltipTextHue, (p, v) => p.TooltipTextHue = v);
 
         Bool("Fonts", "Override the game font", p => p.OverrideAllFonts, (p, v) => p.OverrideAllFonts = v);
         Choice("Fonts", "Override with", new[] { "ASCII", "Unicode" }, p => p.OverrideAllFontsIsUnicode ? 1 : 0, (p, v) => p.OverrideAllFontsIsUnicode = v == 1);
@@ -158,8 +164,16 @@ internal sealed partial class ModernOptions : ModernGump
         Bool("Speech", "Ignore guild messages", p => p.IgnoreGuildMessages, (p, v) => p.IgnoreGuildMessages = v);
         Bool("Speech", "Ignore alliance messages", p => p.IgnoreAllianceMessages, (p, v) => p.IgnoreAllianceMessages = v);
         Bool("Speech", "Party messages overhead", p => p.OverheadPartyMessages, (p, v) => p.OverheadPartyMessages = v);
+        Hue("Speech", "Speech colour", p => p.SpeechHue, (p, v) => p.SpeechHue = v);
+        Hue("Speech", "Emote colour", p => p.EmoteHue, (p, v) => p.EmoteHue = v);
+        Hue("Speech", "Yell colour", p => p.YellHue, (p, v) => p.YellHue = v);
+        Hue("Speech", "Whisper colour", p => p.WhisperHue, (p, v) => p.WhisperHue = v);
+        Hue("Speech", "Party message colour", p => p.PartyMessageHue, (p, v) => p.PartyMessageHue = v);
+        Hue("Speech", "Guild message colour", p => p.GuildMessageHue, (p, v) => p.GuildMessageHue = v);
+        Hue("Speech", "Alliance message colour", p => p.AllyMessageHue, (p, v) => p.AllyMessageHue = v);
+        Hue("Speech", "Chat message colour", p => p.ChatMessageHue, (p, v) => p.ChatMessageHue = v);
 
-        // Combat: its boxes; the notoriety and spell hues stay in Classic view.
+        // Combat: its boxes, then the notoriety and spell colours.
         Bool("Combat", "Ask before a criminal act", p => p.EnabledCriminalActionQuery, (p, v) => p.EnabledCriminalActionQuery = v);
         Bool("Combat", "Ask before a criminal beneficial act", p => p.EnabledBeneficialCriminalActionQuery, (p, v) => p.EnabledBeneficialCriminalActionQuery = v);
         Bool("Combat", "Cast spells by one click", p => p.CastSpellsByOneClick, (p, v) => p.CastSpellsByOneClick = v);
@@ -167,6 +181,15 @@ internal sealed partial class ModernOptions : ModernGump
         Bool("Combat", "Fast spell assign", p => p.FastSpellsAssign, (p, v) => p.FastSpellsAssign = v);
         Bool("Combat", "Colour spells by kind", p => p.EnabledSpellHue, (p, v) => p.EnabledSpellHue = v);
         Bool("Combat", "Show DPS with damage", p => p.ShowDPSWithDamageNumbers, (p, v) => p.ShowDPSWithDamageNumbers = v);
+        Hue("Combat", "Innocent colour", p => p.InnocentHue, (p, v) => p.InnocentHue = v);
+        Hue("Combat", "Friend colour", p => p.FriendHue, (p, v) => p.FriendHue = v);
+        Hue("Combat", "Criminal colour", p => p.CriminalHue, (p, v) => p.CriminalHue = v);
+        Hue("Combat", "Can be attacked colour", p => p.CanAttackHue, (p, v) => p.CanAttackHue = v);
+        Hue("Combat", "Enemy colour", p => p.EnemyHue, (p, v) => p.EnemyHue = v);
+        Hue("Combat", "Murderer colour", p => p.MurdererHue, (p, v) => p.MurdererHue = v);
+        Hue("Combat", "Beneficial spell colour", p => p.BeneficHue, (p, v) => p.BeneficHue = v);
+        Hue("Combat", "Harmful spell colour", p => p.HarmfulHue, (p, v) => p.HarmfulHue = v);
+        Hue("Combat", "Neutral spell colour", p => p.NeutralHue, (p, v) => p.NeutralHue = v);
 
         Bool("Containers", "Grid view", p => p.GridContainers, (p, v) => p.GridContainers = v);
         Int("Containers", "Grid slot size", GridContainerGump.MIN_SLOT, GridContainerGump.MAX_SLOT, p => p.GridContainerSlotSize, (p, v) => p.GridContainerSlotSize = v);
@@ -289,6 +312,10 @@ internal sealed partial class ModernOptions : ModernGump
                 }
             }
         }
+
+        // The colour picker, shown in place of a page while a colour is chosen.
+        _huePicker = new ModernHuePicker(Text) { Visible = false };
+        pages.AddChild(_huePicker);
 
         // The classic window's own button row, pinned.
         outer.AddChild(RuleLine(true));
@@ -436,6 +463,26 @@ internal sealed partial class ModernOptions : ModernGump
                 return row;
             }
 
+            case Kind.Hue:
+            {
+                var row = Row(new HBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill });
+                row.AddThemeConstantOverride("separation", 6);
+                Label name = Lbl(s.Label, Text);
+                name.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+                row.AddChild(name);
+                var swatch = new ColorRect { CustomMinimumSize = new Vector2(40, 16), SizeFlagsVertical = Control.SizeFlags.ShrinkCenter };
+                row.AddChild(swatch);
+                Label number = Lbl("", Text);
+                number.CustomMinimumSize = new Vector2(40, 0);
+                row.AddChild(number);
+                Button change = UoTheme.Button("Change", 60);
+                change.SetMeta("setting", s.Label);
+                change.Pressed += () => PickHue(s);
+                row.AddChild(change);
+                s.Show = v => { swatch.Color = ModernHuePicker.ColourOf((ushort)(int)v); number.Text = ((int)v).ToString(); };
+                return row;
+            }
+
             default:
             {
                 Button b = Row(UoTheme.Button(s.Label));
@@ -469,6 +516,30 @@ internal sealed partial class ModernOptions : ModernGump
         ShowPage(_page);
     }
 
+    /// <summary>A colour setting's Change: the picker in place of the page, then back to it.</summary>
+    private void PickHue(Setting s)
+    {
+        int current = _values.TryGetValue(s, out object v) ? (int)v : 0;
+
+        foreach (Control rows in _pageRows.Values)
+        {
+            rows.Visible = false;
+        }
+
+        _title.Text = $"{_page}: {s.Label}";
+        _scroll.ScrollVertical = 0;
+        _huePicker.Visible = true;
+        _huePicker.Open(s.Label, (ushort)current, hue =>
+        {
+            _values[s] = (int)hue;
+            s.Show?.Invoke((int)hue);
+            ShowPage(_page);
+        }, () => ShowPage(_page));
+    }
+
+    /// <summary>For the probe: the colour picker.</summary>
+    public ModernHuePicker HuePicker => _huePicker;
+
     private void ShowPage(string page)
     {
         _page = page;
@@ -477,6 +548,11 @@ internal sealed partial class ModernOptions : ModernGump
         foreach (KeyValuePair<string, Control> kv in _pageRows)
         {
             kv.Value.Visible = kv.Key == page;
+        }
+
+        if (_huePicker != null)
+        {
+            _huePicker.Visible = false;
         }
 
         foreach (KeyValuePair<string, Button> kv in _pageButtons)
