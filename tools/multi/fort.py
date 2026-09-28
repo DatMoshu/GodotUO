@@ -291,7 +291,9 @@ class Scene:
             holes = set()
             nxt = levels[k + 1] if k + 1 < len(levels) else top
             if el.get("stairs", True) and nxt - z == 20:
-                row_y = cy - 1 if k % 2 == 0 else cy + 1       # alternate rows, so flights never stack
+                # rows cy-1, cy, cy+1 in turn, rising E then W, so no flight stands over another
+                # below it and each arrival is beside the next foot
+                row_y = cy - 1 + k % 3
                 row = sorted(x for (x, y) in inside if y == row_y)
                 if len(row) < 7:            # a foot, four steps, a landing, and a cell to step off onto
                     raise DescriptionError(f"tower {el.get('part')}: too narrow for a stair (row of {len(row)})")
