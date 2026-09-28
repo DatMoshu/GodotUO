@@ -186,6 +186,74 @@ internal static class GumpPresentation
         }
     }
 
+    // Each paperdoll seen, with the size it was given on opening: a size that
+    // differs from it later is the player's.
+    private static readonly System.Collections.Generic.Dictionary<Gump, float> _sized = new();
+    private static float _paperdollScale;
+
+    /// <summary>The size the next paperdoll opens at, 0 for the fit; the probe clears it.</summary>
+    internal static float PaperdollScale { get => _paperdollScale; set => _paperdollScale = value; }
+
+    /// <summary>
+    /// A paperdoll opened during play on one touch screen starts at a size a
+    /// finger can use (gump index: "the paperdoll's touch fit"): up to 2x, and
+    /// no taller than 85% of the room above the command bar. Once the player
+    /// pinches or resizes one, later paperdolls this session open at that size
+    /// instead; the fit alone is not remembered, so it follows the screen.
+    /// Not on the Thor, whose lower screen shelves it, and not for one reopened
+    /// at login, which keeps its saved size.
+    /// </summary>
+    public static void FitPaperdolls()
+    {
+        if (!TouchInput.Enabled || DualScreen.ShelfOn)
+        {
+            return;
+        }
+
+        foreach (Gump gone in System.Linq.Enumerable.ToList(System.Linq.Enumerable.Where(_sized.Keys, k => k.IsDisposed)))
+        {
+            _sized.Remove(gone);
+        }
+
+        foreach (Gump g in UIManager.Gumps)
+        {
+            if (g is not PaperDollGump || g.IsDisposed || g.Height <= 0)
+            {
+                continue;
+            }
+
+            if (_sized.TryGetValue(g, out float given))
+            {
+                // Remember a size the player chose, for the next one.
+                if (GumpFlick.Lifted != g && Math.Abs(g.PresentationScale - given) > 0.001f)
+                {
+                    _paperdollScale = g.PresentationScale;
+                    _sized[g] = g.PresentationScale;
+                }
+
+                continue;
+            }
+
+            _sized[g] = g.PresentationScale;
+
+            if (_restored.Contains(g) || Godot.Time.GetTicksMsec() < _restoreUntil || g.PresentationScale != 1f)
+            {
+                continue;
+            }
+
+            Rectangle room = DisplayBounds(false);
+            float fit = Math.Min(2f, room.Height * 0.85f / g.Height);
+            float scale = _paperdollScale > 0f ? _paperdollScale : fit;
+
+            if (scale > 1.01f)
+            {
+                SetScale(g, scale, new Point(g.X, g.Y));
+                _sized[g] = g.PresentationScale;
+                TouchInput.Note($"paperdoll: opened at {g.PresentationScale:0.00}x");
+            }
+        }
+    }
+
     private static readonly System.Collections.Generic.HashSet<Gump> _followers = new();
 
     /// <summary>

@@ -36,12 +36,24 @@ internal static class GalleryProbe
 
         await InputProbe.Wait(host, 200);
 
-        bool touch = TouchInput.Enabled;
-        TouchInput.Enabled = false;
-        await InputProbe.EnterTheWorld(host, 0);
-        TouchInput.Enabled = touch;
-
         Game.World world = Client.Game.UO.World;
+
+        // With --autologin (a device, whose login gump is not where the
+        // probe's desktop clicks land) the client logs itself in; wait for it.
+        if (Configuration.Settings.GlobalSettings.AutoLogin)
+        {
+            for (int i = 0; i < 60 && !world.InGame; i++)
+            {
+                await InputProbe.Wait(host, 60);
+            }
+        }
+        else
+        {
+            bool touch = TouchInput.Enabled;
+            TouchInput.Enabled = false;
+            await InputProbe.EnterTheWorld(host, 0);
+            TouchInput.Enabled = touch;
+        }
 
         if (!world.InGame)
         {
@@ -69,9 +81,14 @@ internal static class GalleryProbe
             world.TargetManager.LastTargetInfo.SetEntity(nearest.Serial);
         }
 
+        // The paperdoll, as a touch player opens it: fitted on one screen (gump index).
+        UIManager.GetGump<PaperDollGump>(world.Player.Serial)?.Dispose();
+        GumpPresentation.PaperdollScale = 0f;
+        await InputProbe.Wait(host, 5);
         Game.GameActions.OpenPaperdoll(world, world.Player);
         await InputProbe.Wait(host, 60);
         PaperDollGump paperdoll = UIManager.GetGump<PaperDollGump>(world.Player.Serial);
+        await Save(host, "paperdoll");
 
         // The bar, three rows open.
         TouchGumpBar bar = TouchInput.Bar;
@@ -146,10 +163,20 @@ internal static class GalleryProbe
         UIManager.GetGump<OptionsGump>()?.Dispose();
         await InputProbe.Wait(host, 10);
 
-        // Skills, Modern (ADR-0024, gump 3).
+        // Skills, Modern (ADR-0024, gump 3): opened on the server's answer,
+        // from no classic skills gump (OpenSkills would only un-minimize one).
         profile.ModernGumpsOff = false;
+        UIManager.GetGump<StandardSkillsGump>()?.Dispose();
+        UIManager.GetGump<SkillGumpAdvanced>()?.Dispose();
+        await InputProbe.Wait(host, 5);
         Game.GameActions.OpenSkills(world);
-        await InputProbe.Wait(host, 30);
+
+        for (int i = 0; i < 180 && Input.Touch.Modern.ModernGump.Current is not Input.Touch.Modern.ModernSkills; i++)
+        {
+            await InputProbe.Wait(host, 1);
+        }
+
+        await InputProbe.Wait(host, 20);
         await Save(host, "skills");
         Input.Touch.Modern.ModernGump.Current?.Close();
         profile.ModernGumpsOff = true;
@@ -188,6 +215,35 @@ internal static class GalleryProbe
         await Save(host, "party");
         Input.Touch.Modern.ModernGump.Current?.Close();
         profile.ModernGumpsOff = true;
+        await InputProbe.Wait(host, 10);
+
+        // The world map, Classic and fitted below the bar (ADR-0024: Classic + fit
+        // + gestures), then its markers manager, Modern (gump index 9).
+        UIManager.GetGump<WorldMapGump>()?.Dispose();
+        UIManager.GetGump<PaperDollGump>(world.Player.Serial)?.Dispose();
+        StatusGumpBase.GetStatusGump()?.Dispose();
+        await InputProbe.Wait(host, 5);
+        Game.GameActions.OpenWorldMap(world);
+
+        // The map image is built from the client data on first open, which on
+        // a handheld takes a while: wait for it (probe only, so by reflection).
+        System.Reflection.FieldInfo mapTexture = typeof(WorldMapGump).GetField("_mapTexture",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+
+        for (int i = 0; i < 120 && !(mapTexture?.GetValue(null) is GodotObject t && GodotObject.IsInstanceValid(t)); i++)
+        {
+            await InputProbe.Wait(host, 30);
+        }
+
+        await InputProbe.Wait(host, 60);
+        await Save(host, "worldmap");
+        profile.ModernGumpsOff = false;
+        UIManager.Add(new MarkersManagerGump(world));
+        await InputProbe.Wait(host, 40);
+        await Save(host, "markers");
+        Input.Touch.Modern.ModernGump.Current?.Close();
+        profile.ModernGumpsOff = true;
+        UIManager.GetGump<WorldMapGump>()?.Dispose();
         await InputProbe.Wait(host, 10);
 
         await MeasureGumps(host, world);

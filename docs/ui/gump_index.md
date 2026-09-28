@@ -62,7 +62,7 @@ The measurements behind the risk column are in `tall_gumps.md`.
 
 | Gump | Size | Note |
 |---|---|---|
-| Paperdoll (PaperDollGump) | 262 × 324 | Pinch-scaled; shelved on the Thor |
+| Paperdoll (PaperDollGump) | 262 × 324 | **Touch fit done.** On one touch screen it opens at up to 2x (no taller than 85% of the room above the bar). A size the player pinches or resizes it to is the size the next one opens at, but the automatic fit is not remembered, so it keeps following the screen. It is shelved on the Thor, and one reopened at login keeps its saved size (`GumpPresentation.FitPaperdolls`, touch probe) |
 | Containers (ContainerGump) | ≤ 258 × 240 | Grid view (GridContainerGump) is the touch layout |
 | Grid container, grid loot (GridContainerGump, GridLootGump) | grows with items | Scrolls; cap at the room (tall_gumps.md) |
 | Radar map (MiniMapGump), map (MapGump) | 200 × 200 | |
