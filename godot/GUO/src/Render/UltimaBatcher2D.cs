@@ -53,6 +53,7 @@ namespace GUO.Renderer
         private const string BLEND_SHADER_PATH = "res://src/Render/shaders/uo_hue_blend.gdshader";
         private const string ADD_SHADER_PATH = "res://src/Render/shaders/uo_hue_add.gdshader";
         private const string MESH_SHADER_PATH = "res://src/Render/shaders/uo_hue_mesh.gdshader";
+        private const string LAND_ARRAY_SHADER_PATH = "res://src/Render/shaders/uo_hue_land_array.gdshader";
 
         private static readonly float[] _cornerOffsetX = new float[] { 0.0f, 1.0f, 0.0f, 1.0f };
         private static readonly float[] _cornerOffsetY = new float[] { 0.0f, 0.0f, 1.0f, 1.0f };
@@ -124,6 +125,8 @@ namespace GUO.Renderer
 
             _material = new ShaderMaterial { Shader = shader };
             _meshMaterial = new ShaderMaterial { Shader = GD.Load<Shader>(MESH_SHADER_PATH) };
+            // Epic B (--merged-land=array): the land mesh shader on a Texture2DArray.
+            _landArrayMaterial = new ShaderMaterial { Shader = GD.Load<Shader>(LAND_ARRAY_SHADER_PATH) };
             _currentMaterial = _nextMaterial = _material;
         }
 
@@ -308,6 +311,7 @@ namespace GUO.Renderer
         {
             _material.SetShaderParameter(name, value);
             _meshMaterial.SetShaderParameter(name, value);
+            _landArrayMaterial.SetShaderParameter(name, value);
 
             foreach (ShaderMaterial material in _blendMaterials.Values)
             {
@@ -609,6 +613,24 @@ void fragment() {
         /// One merged land mesh (MergedLand, --merged-land): drawn as a run of
         /// DrawMeshLayer is, on the mesh material under the world offset.
         /// </summary>
+        private ShaderMaterial _landArrayMaterial;
+
+        /// <summary>
+        /// All visible land as one mesh over LandPages' Texture2DArray
+        /// (MergedLand, --merged-land=array): the land mesh shader's shading,
+        /// one draw call.
+        /// </summary>
+        public void DrawLandArrayMesh(ArrayMesh mesh, Texture2DArray pages)
+        {
+            EnsureStarted();
+            _landArrayMaterial.SetShaderParameter("land_pages", pages);
+            EnsureMaterial(_landArrayMaterial);
+            FlushRun();
+            Commands++;
+            Count(2, default);
+            RenderingServer.CanvasItemAddMesh(_current, mesh.GetRid(), Transform2D.Identity, Colors.White, default);
+        }
+
         public void DrawLandMesh(ArrayMesh mesh, Texture2D texture)
         {
             EnsureStarted();

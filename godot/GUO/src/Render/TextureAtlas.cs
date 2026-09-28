@@ -73,6 +73,11 @@ namespace GUO.Renderer
         private readonly List<ImageTexture> _textures = new List<ImageTexture>();
         private readonly List<bool> _dirty = new List<bool>();
 
+        // PORT DEVIATION (GUO): not upstream's. How many times each page was
+        // uploaded, so LandPages (--merged-land=array, Epic B) can tell when
+        // its copy of a page is stale.
+        private readonly List<int> _versions = new List<int>();
+
         private Packer _packer;
         private int _packingPageIndex = -1;
 
@@ -110,6 +115,7 @@ namespace GUO.Renderer
                 {
                     _textures[i].Update(_pages[i]);
                     _dirty[i] = false;
+                    _versions[i]++;
                 }
             }
         }
@@ -189,6 +195,25 @@ namespace GUO.Renderer
             return true;
         }
 
+        /// <summary>
+        /// The CPU copy of the atlas page <paramref name="texture"/> is, and how
+        /// many times it has been uploaded; false when it is not an atlas page.
+        /// </summary>
+        /// <remarks>PORT DEVIATION (GUO): for LandPages (Epic B), not upstream's.</remarks>
+        internal static bool TryGetPage(Texture2D texture, out Image page, out int version)
+        {
+            if (TryFindPage(texture, out TextureAtlas atlas, out int index))
+            {
+                page = atlas._pages[index];
+                version = atlas._versions[index];
+                return true;
+            }
+
+            page = null;
+            version = 0;
+            return false;
+        }
+
         private static bool TryFindPage(Texture2D texture, out TextureAtlas atlas, out int index)
         {
             for (int i = 0; i < _live.Count; i++)
@@ -235,6 +260,7 @@ namespace GUO.Renderer
                 _pages.Add(page);
                 _textures.Add(texture);
                 _dirty.Add(false);
+                _versions.Add(0);
                 pr = new Rectangle(0, 0, width, height);
                 return texture;
             }
@@ -283,6 +309,7 @@ namespace GUO.Renderer
             _pages.Add(page);
             _textures.Add(ImageTexture.CreateFromImage(page));
             _dirty.Add(false);
+            _versions.Add(0);
             _packingPageIndex = _textures.Count - 1;
 
             _packer?.Dispose();

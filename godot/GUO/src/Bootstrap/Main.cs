@@ -1266,6 +1266,9 @@ public partial class Main : Node
                     case "--zoom-probe":
                         o.ZoomProbe = true;
                         break;
+                    case "--merged-land=array":
+                        GUO.Renderer.MergedLand.Array = true;
+                        goto case "--merged-land=ordered";
                     case "--merged-land=ordered":
                         GUO.Renderer.MergedLand.Ordered = true;
                         goto case "--merged-land";
