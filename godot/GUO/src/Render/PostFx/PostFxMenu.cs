@@ -36,7 +36,7 @@ namespace GUO.Renderer.PostFx
         private PanelContainer _card;
         private VBoxContainer _passes;
         private OptionButton _presets;
-        private CheckButton _compare;
+        private CheckButton _compare, _fullQuality;
         private HSlider _split;
         private LineEdit _saveName;
         private Label _subtitle, _cost;
@@ -237,6 +237,25 @@ namespace GUO.Renderer.PostFx
             };
             col.AddChild(_split);
 
+            _fullQuality = new CheckButton
+            {
+                Text = "Full resolution",
+                TooltipText = "Off: looks with a heavy pass (glow, outline) run at half resolution, for weaker GPUs",
+            };
+            foreach (string c in new[] { "font_color", "font_hover_color", "font_pressed_color", "font_hover_pressed_color" })
+            {
+                _fullQuality.AddThemeColorOverride(c, OnCard);
+            }
+
+            _fullQuality.Toggled += on =>
+            {
+                if (!_syncing)
+                {
+                    PostFxStack.Instance.FullQuality = on;
+                }
+            };
+            col.AddChild(_fullQuality);
+
             col.AddChild(new HSeparator { Modulate = new Color(Gold, 0.2f) });
             var scroll = new ScrollContainer
             {
@@ -298,6 +317,7 @@ namespace GUO.Renderer.PostFx
                 _presets.Select(selected);
                 _subtitle.Text = string.IsNullOrEmpty(stack.Preset.Description) ? stack.Preset.Name : stack.Preset.Description;
                 _compare.ButtonPressed = stack.Split > 0f;
+                _fullQuality.ButtonPressed = stack.FullQuality;
                 _split.Editable = stack.Split > 0f;
                 if (stack.Split > 0f)
                 {
