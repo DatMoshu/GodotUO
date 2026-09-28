@@ -166,10 +166,21 @@ tritanopia).
 - Desktop: at most **1.0 ms** of GPU time per pass at 1080p, and 3 ms for a
   whole preset. Each pass's cost is measured by the proof run and listed in
   Validation.
-- Mobile and web tier (`OS.HasFeature("mobile")` or `web`): presets whose
-  passes are marked `"heavy": true` (bloom, outline with a wide kernel, CRT)
-  are offered but flagged, and the stack may run passes at half resolution on
-  those tiers (upscaled nearest). Classic costs nothing anywhere.
+- Mobile and web tier (`OS.HasFeature("mobile")` or `web`;
+  `GUO_POSTFX_TIER=half|full` overrides it for a test run):
+  - A shader marks itself heavy with a `// postfx: heavy` line. Bloom and
+    outline do, having 8 or more taps a pixel.
+  - When any enabled pass is heavy, the whole stack runs at **half the world
+    target's size**. The world is sampled down nearest (every other art
+    pixel), and the result is scaled back up nearest by the same draw that
+    places the world, so it stays pixel art, only chunkier (rule 7).
+  - A look is capped at 4 passes (8 on the desktop).
+  - "Full resolution" in the menu (remembered in `state.json`) turns half
+    resolution off. It is on by default on the desktop, off on the mobile
+    tier.
+  - Measured on the desktop: Glow 0.21 → 0.10 ms and Ink Outline 0.19 →
+    0.07 ms. A Thor frame-time check is still to do.
+- Classic costs nothing on any tier.
 
 ## Alternatives rejected
 

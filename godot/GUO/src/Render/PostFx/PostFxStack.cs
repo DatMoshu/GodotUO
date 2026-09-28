@@ -35,6 +35,37 @@ namespace GUO.Renderer.PostFx
 
         public const int MaxPasses = 8;
 
+        /// <summary>A look's pass cap on phones, handhelds and the web (ADR-0023, section 7).</summary>
+        public const int MaxPassesMobile = 4;
+
+        /// <summary>The mobile/web tier: weaker GPUs, where a heavy look runs at half resolution.</summary>
+        public static bool MobileTier =>
+            System.Environment.GetEnvironmentVariable("GUO_POSTFX_TIER") is string t && t.Length > 0
+                ? t == "half"
+                : OS.HasFeature("mobile") || OS.HasFeature("web");
+
+        private bool? _fullQuality;
+
+        /// <summary>
+        /// Run every look at the world's own resolution. Off by default on the
+        /// mobile tier, where a look with a heavy pass (a shader marked
+        /// "// postfx: heavy") runs at half resolution and is scaled back up,
+        /// nearest, by the same draw that scales the world. Remembered in state.json.
+        /// </summary>
+        public bool FullQuality
+        {
+            get => _fullQuality ?? !MobileTier;
+            set
+            {
+                _fullQuality = value;
+                _dirty = true;
+                SaveState();
+            }
+        }
+
+        /// <summary>The scale the stack runs at now: 1, or 0.5 for a heavy look on the mobile tier.</summary>
+        public float Scale { get; private set; } = 1f;
+
         private PostFxPreset _preset = PostFxPreset.Classic();
         private SubViewport _viewport;
         private Sprite2D _base;
@@ -65,9 +96,11 @@ namespace GUO.Renderer.PostFx
         public void Use(PostFxPreset preset, bool remember = true)
         {
             _preset = preset?.Clone() ?? PostFxPreset.Classic();
-            if (_preset.Passes.Count > MaxPasses)
+            int cap = MobileTier ? MaxPassesMobile : MaxPasses;
+            if (_preset.Passes.Count > cap)
             {
-                _preset.Passes.RemoveRange(MaxPasses, _preset.Passes.Count - MaxPasses);
+                GD.PushWarning($"[GUO] postfx: {_preset.Name} has {_preset.Passes.Count} passes; {cap} run on this device");
+                _preset.Passes.RemoveRange(cap, _preset.Passes.Count - cap);
             }
 
             _dirty = true;
@@ -131,7 +164,7 @@ namespace GUO.Renderer.PostFx
             // Rebuilt when the world target is replaced (a resize), so the stack
             // is always created after the target it reads.
             if (_dirty || _viewport == null || !ReferenceEquals(_builtFor, world) ||
-                _viewport.Size != new Vector2I(world.Width, world.Height))
+                _viewport.Size != Scaled(world))
             {
                 Build(world);
             }
@@ -166,15 +199,23 @@ namespace GUO.Renderer.PostFx
                 return;
             }
 
+            bool heavy = _preset.Passes.Exists(p => p.Enabled && IsHeavy(PostFxLibrary.Shader(p.Shader)));
+            Scale = !FullQuality && heavy ? 0.5f : 1f;
+            Vector2I size = Scaled(world);
+
             _viewport = new SubViewport
             {
-                Size = new Vector2I(world.Width, world.Height),
+                Size = size,
                 TransparentBg = true,
                 RenderTargetUpdateMode = SubViewport.UpdateMode.Always,
                 Disable3D = true,
                 CanvasItemDefaultTextureFilter = Viewport.DefaultCanvasItemTextureFilter.Nearest,
             };
-            _base = new Sprite2D { Centered = false, TextureFilter = CanvasItem.TextureFilterEnum.Nearest };
+            // Sampled down nearest at half resolution: every other art pixel.
+            _base = new Sprite2D
+            {
+                Centered = false, TextureFilter = CanvasItem.TextureFilterEnum.Nearest, Scale = new Vector2(Scale, Scale),
+            };
             _viewport.AddChild(_base);
 
             foreach (PostFxPass pass in _preset.Passes)
@@ -198,7 +239,7 @@ namespace GUO.Renderer.PostFx
                 }
 
                 _viewport.AddChild(new BackBufferCopy { CopyMode = BackBufferCopy.CopyModeEnum.Viewport });
-                var rect = FullRect(world, material);
+                var rect = FullRect(size, material);
                 _viewport.AddChild(rect);
                 _built.Add((pass, rect, material));
             }
@@ -206,7 +247,7 @@ namespace GUO.Renderer.PostFx
             if (Split > 0f)
             {
                 _viewport.AddChild(new BackBufferCopy { CopyMode = BackBufferCopy.CopyModeEnum.Viewport });
-                _split = FullRect(world, new ShaderMaterial { Shader = SplitShader() });
+                _split = FullRect(size, new ShaderMaterial { Shader = SplitShader() });
                 _viewport.AddChild(_split);
             }
 
@@ -216,9 +257,15 @@ namespace GUO.Renderer.PostFx
             _dirty = false;
         }
 
-        private static ColorRect FullRect(RenderTarget2D world, Material material) => new()
+        private Vector2I Scaled(RenderTarget2D world) =>
+            Scale >= 1f ? new Vector2I(world.Width, world.Height)
+                : new Vector2I(Math.Max(1, (int)Math.Ceiling(world.Width * Scale)), Math.Max(1, (int)Math.Ceiling(world.Height * Scale)));
+
+        internal static bool IsHeavy(Shader shader) => shader != null && shader.Code.Contains("// postfx: heavy");
+
+        private static ColorRect FullRect(Vector2I size, Material material) => new()
         {
-            Size = new Vector2(world.Width, world.Height),
+            Size = size,
             Material = material,
             TextureFilter = CanvasItem.TextureFilterEnum.Nearest,
             MouseFilter = Control.MouseFilterEnum.Ignore,
@@ -326,7 +373,13 @@ namespace GUO.Renderer.PostFx
 
             try
             {
-                string name = JsonNode.Parse(File.ReadAllText(file))?["active"]?.GetValue<string>();
+                JsonNode state = JsonNode.Parse(File.ReadAllText(file));
+                if (state?["full_quality"] is JsonValue fq)
+                {
+                    _fullQuality = fq.GetValue<bool>();
+                }
+
+                string name = state?["active"]?.GetValue<string>();
                 PostFxPreset p = name != null ? PostFxLibrary.Find(name) : null;
                 if (p != null && !p.IsClassic)
                 {
@@ -350,7 +403,13 @@ namespace GUO.Renderer.PostFx
             try
             {
                 Directory.CreateDirectory(System.IO.Path.GetDirectoryName(file));
-                File.WriteAllText(file, new JsonObject { ["active"] = _preset.Name }.ToJsonString());
+                var state = new JsonObject { ["active"] = _preset.Name };
+                if (_fullQuality.HasValue)
+                {
+                    state["full_quality"] = _fullQuality.Value;
+                }
+
+                File.WriteAllText(file, state.ToJsonString());
             }
             catch (Exception e)
             {

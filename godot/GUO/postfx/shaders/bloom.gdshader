@@ -2,6 +2,7 @@
 // (torches, spells, lamps: the client's own light sprites), plus, optionally,
 // around the world's brightest pixels. One stateless pass: a sparse disc of
 // taps, no blur carried between frames.
+// postfx: heavy   (8 or more taps a pixel; half resolution on the mobile tier, ADR-0023)
 shader_type canvas_item;
 render_mode blend_disabled;
 

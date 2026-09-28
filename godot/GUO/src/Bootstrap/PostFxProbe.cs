@@ -128,7 +128,35 @@ void fragment() { COLOR = texture(source, SCREEN_UV); }";
 
         report["presets"] = presets;
 
-        // 5. The A/B split, on one look.
+        // 5. The mobile tier: heavy looks at half resolution.
+        var tiers = new JsonObject();
+        foreach (string name in new[] { "Glow", "Ink Outline" })
+        {
+            PostFxPreset heavy = PostFxLibrary.Find(name);
+            if (heavy == null)
+            {
+                continue;
+            }
+
+            stack.Use(heavy, remember: false);
+            stack.FullQuality = true;
+            double full = await Gpu(host);
+            stack.FullQuality = false;
+            double half = await Gpu(host);
+            string file = $"tier_half_{Slug(name)}";
+            await Snap(host, dir, file);
+            tiers[name] = new JsonObject
+            {
+                ["full_gpu_ms"] = Math.Round(full, 4), ["half_gpu_ms"] = Math.Round(half, 4),
+                ["half_scale"] = stack.Scale, ["png"] = file + ".png",
+            };
+            GD.Print($"[GUO] postfx probe: tier {name}: full {full:0.000} ms, half {half:0.000} ms (scale {stack.Scale})");
+            stack.FullQuality = true;
+        }
+
+        report["tiers"] = tiers;
+
+        // 6. The A/B split, on one look.
         PostFxPreset noir = PostFxLibrary.Find("Noir");
         if (noir != null)
         {

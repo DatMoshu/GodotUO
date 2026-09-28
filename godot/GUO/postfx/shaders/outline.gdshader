@@ -1,6 +1,7 @@
 // Outline: ink along edges, found from brightness (luma) or colour differences
 // between neighbouring pixels, at the art's own pixel size (ADR-0023). Object-id
 // edges (only between different objects) come later with an id buffer.
+// postfx: heavy   (8 or more taps a pixel; half resolution on the mobile tier, ADR-0023)
 shader_type canvas_item;
 render_mode blend_disabled;
 
