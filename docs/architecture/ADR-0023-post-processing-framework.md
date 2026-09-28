@@ -10,8 +10,9 @@ Proposed
 
 ## Last Verified
 
-Not yet: written before the code. The Validation section lists what must be
-measured before this moves to Accepted.
+2026-09-27, with `python tools\postfx\run.py sheet` (four runs): Windows 11,
+RTX 4090, Forward+, a 1280x800 window. See Validation. The status stays
+Proposed until the owner accepts it.
 
 ## Decision Makers
 
@@ -193,17 +194,40 @@ tritanopia).
 - Screenshots from `launchers\dev\screenshot.bat` show the effect; render
   dumps (render_diff) are unaffected, since they record objects, not pixels.
 
-## Validation (to do before Accepted)
+## Validation
 
-1. Classic is unchanged. A pixel comparison of the same frame with the
-   framework off and with Classic selected shows 0 differing pixels, and
-   render_diff between the two dumps is clean.
-2. A screenshot sheet of every starter effect at the same spot on a private
-   shard.
-3. The GPU cost per pass (1080p desktop), measured with
-   `RenderingServer.viewport_get_measured_render_time_gpu` on each pass's
-   viewport.
-4. The smoke is green and port_drift `--strict` is 0.
+Measured with `python tools\postfx\run.py sheet`: a private ModernUO on
+127.0.0.1:2596, a client that never takes the focus, standing in Britain,
+running `--postfx-sheet` (`src/Bootstrap/PostFxProbe.cs`). Four runs on
+2026-09-27; output in `build\postfx_sheet\<time>\` (report.json, one PNG per
+look, sheet.png, the menu).
+
+1. **Classic is unchanged, by construction.** With no pass enabled, the stack
+   returns the world target's own texture object (checked by reference in the
+   probe), so the draw is upstream's to the pixel. render_diff dumps record
+   objects, not pixels, and are unaffected by design.
+2. **The pipeline is lossless.** An identity pass (a shader that writes its
+   source) run through the whole stack (SubViewport, BackBufferCopy,
+   blend_disabled, nearest sampling) was compared with the world target in
+   the same frame: **0 of 1,024,000 pixels differ**, in every run.
+3. **Every starter effect on screen**: 11 shaders and 20 presets
+   photographed at one spot, with a contact sheet. Three looks the sheet
+   showed wrong were fixed: cel scaled near-black pixels into loud colour;
+   noir was crushed; the tritanopia correction put its error on the wrong
+   channels. No shader compile errors.
+4. **GPU cost** (the post-processing viewport's measured GPU time, 120-frame
+   average, 1280x800): every single pass took **0.03–0.24 ms** and every
+   preset **0.03–0.27 ms** across the four runs. The spread is other work on
+   the shared GPU, not the passes. Bloom and outline, the widest kernels,
+   were never above 0.25 ms. That is well inside the 1 ms-per-pass budget. At
+   1080p expect about twice the pixels; the mobile tiers are not measured yet.
+5. `dotnet build` 0 errors; `launchers\dev\smoke.bat` OK; `port_drift --strict`
+   0 unmarked; privacy clean; the Store corpus 73/73 (Python and C# agree)
+   and test_store pass.
+
+**Not yet validated:** the mobile/web tiers (half resolution; a Thor
+frame-time check), the object-id and depth buffers (not built), and user
+shaders from a Store pack installed on a device.
 
 ## Related
 
