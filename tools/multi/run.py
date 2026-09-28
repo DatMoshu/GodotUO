@@ -116,10 +116,19 @@ def cmd_write(cfg, a) -> int:
     if "multi" not in reg.data["packs"]:
         reg.reserve("multi", "multi", U.free_multis(stage), 256)
     used = reg.data["packs"]["multi"].get("used", {}).get("multi", {})
+    placed = stage.root / "multis.json"
+    index = json.loads(placed.read_text(encoding="utf-8")) if placed.exists() else {}
     if a.name in used:
-        print(f"[multi] {a.name} is already multi {used[a.name]:#06x} in this stage (the writer only adds; "
-              f"build it under a new name, or start a new stage)")
-        return 1
+        mid = used[a.name]
+        if Multis(stage.root).get(mid) != comps:
+            print(f"[multi] {a.name} is already multi {mid:#06x} in this stage with other components (the writer "
+                  f"only adds; build it under a new name, or start a new stage)")
+            return 1
+        # The same components: only the sidecar (doors, say) is refreshed.
+        index[a.name] = {"id": mid, "doors": side["doors"], "size": side["size"], "storeys": side["storeys"]}
+        placed.write_text(json.dumps(index, indent=1), encoding="utf-8")
+        print(f"[multi] {a.name} is multi {mid:#06x} already, components equal; its sidecar is refreshed")
+        return 0
     mid = reg.take("multi", "multi", a.name)
     rec = AssetRecord("multi", mid, encode_uop(mid, comps))
     for line in U.write_records(stage, [rec]):
@@ -130,8 +139,6 @@ def cmd_write(cfg, a) -> int:
     changed = stage.check_install_unchanged()
     side["multi_id"] = mid
     (built / "multi.json").write_text(json.dumps(side, indent=1), encoding="utf-8")
-    placed = stage.root / "multis.json"
-    index = json.loads(placed.read_text(encoding="utf-8")) if placed.exists() else {}
     index[a.name] = {"id": mid, "doors": side["doors"], "size": side["size"], "storeys": side["storeys"]}
     placed.write_text(json.dumps(index, indent=1), encoding="utf-8")
     print(f"[multi] {a.name} = multi {mid:#06x}: read back {'equal' if same else 'DIFFERENT'}, "
