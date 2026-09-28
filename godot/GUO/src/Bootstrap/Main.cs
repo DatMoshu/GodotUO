@@ -1284,6 +1284,24 @@ public partial class Main : Node
         /// <summary>Cliloc language suffix; "enu" for English.</summary>
         public string Language { get; private set; } = "enu";
 
+        /// <summary>
+        /// Sets the land grouping (MergedLand): the flags set exactly one mode,
+        /// so an explicit flag also undoes Android's default. The perf probe's
+        /// parity toggle turns the chosen mode on and off.
+        /// </summary>
+        private static void MergedLandMode(bool enabled, bool ordered, bool array)
+        {
+            GUO.Renderer.MergedLand.Enabled = enabled;
+            GUO.Renderer.MergedLand.Ordered = ordered;
+            GUO.Renderer.MergedLand.Array = array;
+
+            if (enabled)
+            {
+                GUO.Host.PerfProbe.ParityToggle = on => GUO.Renderer.MergedLand.Enabled = on;
+                GUO.Host.PerfProbe.ParityState = () => GUO.Renderer.MergedLand.Enabled;
+            }
+        }
+
         public static Options Parse(IEnumerable<string> args)
         {
             var o = new Options
@@ -1298,6 +1316,15 @@ public partial class Main : Node
             if (int.TryParse(Env("UO_SHARD_PORT", "2593"), out int envPort))
             {
                 o.ShardPort = envPort;
+            }
+
+            // B7, the land array: on by default on Android, the owner's decision
+            // (2026-09-28; docs/perf/2026-09-28_land_array_walk.md). The desktop,
+            // the Deck and the web keep upstream's per-chunk land. Any
+            // --merged-land flag below overrides it; --merged-land=off turns it off.
+            if (OperatingSystem.IsAndroid())
+            {
+                MergedLandMode(true, true, true);
             }
 
             var list = new List<string>(args);
@@ -1355,15 +1382,16 @@ public partial class Main : Node
                         o.PortraitProbe = true;
                         break;
                     case "--merged-land=array":
-                        GUO.Renderer.MergedLand.Array = true;
-                        goto case "--merged-land=ordered";
+                        MergedLandMode(true, true, true);
+                        break;
                     case "--merged-land=ordered":
-                        GUO.Renderer.MergedLand.Ordered = true;
-                        goto case "--merged-land";
+                        MergedLandMode(true, true, false);
+                        break;
                     case "--merged-land":
-                        GUO.Renderer.MergedLand.Enabled = true;
-                        GUO.Host.PerfProbe.ParityToggle = on => GUO.Renderer.MergedLand.Enabled = on;
-                        GUO.Host.PerfProbe.ParityState = () => GUO.Renderer.MergedLand.Enabled;
+                        MergedLandMode(true, false, false);
+                        break;
+                    case "--merged-land=off":
+                        MergedLandMode(false, false, false);
                         break;
                     case "--cover-cull":
                         // Epic B, B4 fix 2b: covering land only where it overlaps its object.

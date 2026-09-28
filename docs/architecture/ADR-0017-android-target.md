@@ -317,6 +317,24 @@ its own export decisions; a controller mapping; on-device shard discovery;
 save-game and profile sync between devices; any change to the gumps' pixel
 layout for small screens.
 
+## Amendment, 2026-09-28: the land array by default
+
+On Android the land is drawn with `--merged-land=array` by default: every
+visible land tile in one mesh, in upstream's order, over a Texture2DArray
+of land pages (B7). The owner decided this on 2026-09-28, after the Thor walk
+on the land-only atlas (`docs/perf/2026-09-28_land_array_walk.md`):
+- The walk's mean is 16.88 ms against 16.99 ms without the array, and p99
+  29.1 against 30.4 ms.
+- A land-page upload still costs about one vsync. Uploads happen 0 to 4
+  times in a 12 s walk, and are never worse than the walk's own hitches.
+- The array adds 80 MiB of GPU memory.
+- The visual A/B against upstream's land is clean.
+
+`--merged-land=off` restores upstream's per-chunk land, and any other
+`--merged-land` flag picks that mode instead. The desktop, the Steam Deck and
+the web are unchanged. The next step, if the hitch matters, is uploading only
+the rows of a page that changed.
+
 ## Alternatives Rejected
 
 - **Godot stretch (`canvas_items`/`viewport`) for the phone.** Filters the
