@@ -270,6 +270,10 @@ public partial class Main : Node
                 {
                     DoorProbeThenQuit();
                 }
+                else if (_options.GamepadProbe)
+                {
+                    GamepadProbeThenQuit();
+                }
                 else if (_options.AssetProbe.Length > 0)
                 {
                     AssetProbeThenQuit();
@@ -512,6 +516,7 @@ public partial class Main : Node
         || _options.PerfProbe
         || !string.IsNullOrEmpty(_options.PostFxSheet)
         || _options.DoorProbe
+        || _options.GamepadProbe
         || _options.AssetProbe.Length > 0
         || _options.EffectsProbe > 0
         || _options.TradePartner
@@ -599,6 +604,14 @@ public partial class Main : Node
         await Preamble();
         await ZoomProbe.Run(this);
         Quit(ZoomProbe.Passed ? 0 : 1);
+    }
+
+    /// <summary>Walk and confirm/cancel by injected joypad events; see GamepadProbe.</summary>
+    private async void GamepadProbeThenQuit()
+    {
+        await Preamble();
+        await GamepadProbe.Run(this);
+        Quit(GamepadProbe.Passed ? 0 : 1);
     }
 
     /// <summary>Shut and open the doors on screen, keeping every frame after; see DoorProbe.</summary>
@@ -993,6 +1006,7 @@ public partial class Main : Node
                 || PerfProbe
                 || !string.IsNullOrEmpty(PostFxSheet)
                 || DoorProbe
+                || GamepadProbe
                 || EffectsProbe > 0
                 || EndureSeconds > 0
                 || TouchProbe
@@ -1095,6 +1109,9 @@ public partial class Main : Node
 
         /// <summary>Folder the client watches for dump requests after the shard commands; see ObjectsDump.Watch.</summary>
         public string ObjectsWatch { get; private set; } = "";
+
+        /// <summary>Check the gamepad layer by injected joypad events (--gamepad-probe).</summary>
+        public bool GamepadProbe { get; private set; }
 
         /// <summary>Folder the asset probe writes to; empty means no probe (see AssetProbe).</summary>
         public string AssetProbe { get; private set; } = "";
@@ -1282,6 +1299,9 @@ public partial class Main : Node
                         GUO.Game.Scenes.RenderLists.CoverCull = true;
                         GUO.Host.PerfProbe.ParityToggle = on => GUO.Game.Scenes.RenderLists.CoverCull = on;
                         GUO.Host.PerfProbe.ParityState = () => GUO.Game.Scenes.RenderLists.CoverCull;
+                        break;
+                    case "--gamepad-probe":
+                        o.GamepadProbe = true;
                         break;
                     case "--batched-world":
                         GUO.Renderer.UltimaBatcher2D.BatchedWorld = true;

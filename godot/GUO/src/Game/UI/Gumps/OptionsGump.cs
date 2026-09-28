@@ -63,6 +63,10 @@ namespace GUO.Game.UI.Gumps
         private Combobox _screenSaverChoice;
         private List<string> _screenSaverChoices;
         private Checkbox _splashIntro; // PORT DEVIATION (GUO): the boot splash (SplashIntro), device-wide
+
+        // PORT DEVIATION (GUO): the gamepad's face-button layout (Input.Gamepad).
+        private Combobox _gamepadLayout;
+        private static readonly string[] GamepadLayouts = { "auto", "labels", "swapped" };
         private Combobox _cotType;
         private DataBox _databox;
         private HSliderBar _delay_before_display_tooltip, _tooltip_zoom, _tooltip_background_opacity;
@@ -2291,6 +2295,24 @@ namespace GUO.Game.UI.Gumps
             changeFolder.MouseUp += (s, e) => GUO.Host.FirstRunScreen.OpenChange();
             section8.Add(changeFolder);
 
+            // PORT DEVIATION (GUO): the gamepad's A/B/X/Y (Input.Gamepad). A
+            // pad the client cannot recognise waits for this choice.
+            SettingsSection sectionPad = AddSettingsSection(box, "Controller buttons");
+            sectionPad.Y = section8.Bounds.Bottom + 40; // PORT DEVIATION (GUO): after Start
+            sectionPad.Add(AddLabel(null, "A/B/X/Y", startX, startY));
+            sectionPad.AddRight
+            (
+                _gamepadLayout = AddCombobox
+                (
+                    null,
+                    new[] { "Automatic (known devices)", "As printed on the pad", "A/B and X/Y swapped (Thor in XBox mode)" },
+                    Math.Max(0, Array.IndexOf(GamepadLayouts, _currentProfile.GamepadLayout)),
+                    startX,
+                    startY,
+                    250
+                )
+            );
+
             Add(rightArea, PAGE);
         }
 
@@ -4045,6 +4067,7 @@ namespace GUO.Game.UI.Gumps
                     _screenSaverMinutes.Value = 10; // PORT DEVIATION (GUO)
                     _screenSaverChoice.SelectedIndex = 0; // PORT DEVIATION (GUO)
                     _splashIntro.IsChecked = true; // PORT DEVIATION (GUO)
+                    _gamepadLayout.SelectedIndex = 0; // PORT DEVIATION (GUO)
                     _sliderScreenZoom.Value = 0;
                     _lightBar.Value = 0;
                     _enableLight.IsChecked = false;
@@ -4554,6 +4577,15 @@ namespace GUO.Game.UI.Gumps
             if (_splashIntro.IsChecked != GUO.Host.SplashIntro.Enabled)
             {
                 GUO.Host.SplashIntro.Enabled = _splashIntro.IsChecked; // PORT DEVIATION (GUO)
+            }
+
+            // PORT DEVIATION (GUO): a new layout choice applies to connected pads at once.
+            string gamepadLayout = GamepadLayouts[Math.Max(0, _gamepadLayout.SelectedIndex)];
+
+            if (_currentProfile.GamepadLayout != gamepadLayout)
+            {
+                _currentProfile.GamepadLayout = gamepadLayout;
+                GUO.Input.Gamepad.GamepadInput.ForgetLayouts();
             }
 
             if (_enableLight.IsChecked)

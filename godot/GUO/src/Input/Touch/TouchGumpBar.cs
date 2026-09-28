@@ -271,6 +271,9 @@ namespace GUO.Input.Touch
             }
         }
 
+        /// <summary>Open or close the command bar's rows, as a tap on the handle does (a gamepad's Y).</summary>
+        public void ToggleRow() => TapHandle();
+
         public override void _Ready()
         {
             Layer = 10;
