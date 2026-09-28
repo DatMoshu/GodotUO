@@ -25,6 +25,7 @@ with the project, and the client only ever reads your install.
 - New here: [Getting Started](Getting-Started.md), then [Configuration](Configuration.md).
 - Want a build: [Windows Build](Windows-Build.md), [Android Build](Android-Build.md), [Steam Deck](Steam-Deck.md), [Web Client](Web-Client.md), [Dual Screen](Dual-Screen.md), or [Download a build](Getting-Started.md#download-a-build).
 - Playing on a phone: [Mobile UI](Mobile-UI.md), [Canvas Background](Canvas-Background.md).
+- A different look for the world: [Screen Effects](Screen-Effects.md).
 - Planning player helpers: [Player command index and controller research](../player-command-and-controller-research.md).
 - Planning the second screen: [OpenMW-DS comparison, tabs, gump transfer, and pinch scaling](../second-screen-ui-research.md).
 - Resizing or moving windows: [Gump size and screen controls](Gump-Size-and-Screen.md).

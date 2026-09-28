@@ -192,6 +192,28 @@ use every group.
    or should only reference packs of those kinds.
 3. The `sound` slots list: which of GUO's own sounds are replaceable.
 
+## Amendment 3 — the `postfx` kind (Proposed with ADR-0023, 2026-09-27)
+
+A sixth kind, `postfx`, carries screen-effect looks for the post-processing
+framework (ADR-0023): preset `.json` files, the `.gdshader` passes they
+name, and images they reference (LUTs, palette strips). It must hold at
+least one preset. **`.gdshader` is accepted in this kind only**; any other
+kind that carries one is refused. The Python publisher (`pack.py`) and the
+C# installer (`StorePack.Validate`) enforce the same rule, and the shared
+corpus has cases for it: `ok-postfx`, `postfx-no-preset` and
+`shader-outside-postfx`.
+
+Installing needs no apply step and touches no profile key. `PostFxLibrary`
+reads installed `postfx` packs (`user://store/<id>/<version>/`) as read-only
+folders after the player's own `postfx/` folder, so a player's same-named
+look wins. The effects menu lists their presets beside the built-in ones.
+
+A shader is code, but it is GPU code in Godot's sandboxed shading language.
+It cannot reach files, the network or the game state, and it only ever sees
+the world texture (and the light target when it asks). The worst a bad
+shader can do is a black or garish world, or a slow frame. Uninstalling the
+pack, or choosing Classic, undoes it.
+
 ## Alternatives
 
 - A native service or database adds deployment dependencies without helping

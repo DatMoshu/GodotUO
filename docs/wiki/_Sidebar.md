@@ -18,6 +18,7 @@
 **Playing**
 - [Mobile UI](Mobile-UI.md)
 - [Canvas Background](Canvas-Background.md)
+- [Screen Effects](Screen-Effects.md)
 - [Dev Shard](Dev-Shard.md)
 
 **Developing**

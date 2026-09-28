@@ -47,7 +47,7 @@ internal static class StorePack
     { "con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8", "com9", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9",
       "com\u00b9", "com\u00b2", "com\u00b3", "lpt\u00b9", "lpt\u00b2", "lpt\u00b3" };
     private static readonly HashSet<string> Extensions = new(StringComparer.OrdinalIgnoreCase)
-    { ".png", ".jpg", ".jpeg", ".webp", ".ogv", ".ogg", ".wav", ".json", ".txt" };
+    { ".png", ".jpg", ".jpeg", ".webp", ".ogv", ".ogg", ".wav", ".json", ".txt", ".gdshader" };
     private static readonly HashSet<string> Images = new(StringComparer.OrdinalIgnoreCase) { ".png", ".jpg", ".jpeg", ".webp" };
     private static readonly HashSet<string> Licences = new(StringComparer.Ordinal)
     { "CC0-1.0", "CC-BY-4.0", "CC-BY-SA-4.0", "MIT", "BSD-2-Clause", "BSD-3-Clause", "Apache-2.0" };
@@ -146,7 +146,7 @@ internal static class StorePack
     {
         Require(m != null && m.Schema == "guo/store-pack@1", "Unsupported pack schema");
         Id(m.Id); Version(m.Version);
-        Require(m.Kind is "background" or "theme" or "sound" or "profile-preset" or "screensaver", "Unsupported pack kind; art overrides are disabled");
+        Require(m.Kind is "background" or "theme" or "sound" or "profile-preset" or "screensaver" or "postfx", "Unsupported pack kind; art overrides are disabled");
         Require(m.Licence != null && Licences.Contains(m.Licence), "Licence is not allowed");
         Require(!string.IsNullOrWhiteSpace(m.Title) && m.Title.Length <= 200 && !string.IsNullOrWhiteSpace(m.Author) && m.Author.Length <= 200, "Invalid title/author");
         Require(!m.Title.Any(c => c < 32 || c == 127) && !m.Author.Any(c => c < 32 || c == 127), "Control characters in title/author");
@@ -165,6 +165,18 @@ internal static class StorePack
         }
         Require(m.Preview != null && m.Files.ContainsKey(m.Preview) && Images.Contains(Path.GetExtension(m.Preview)), "Preview must name a declared image");
         Require(m.Licence == "CC0-1.0" || m.Files.ContainsKey("LICENSE.txt"), "Attribution requires LICENSE.txt");
+        // Screen-effect packs (ADR-0023): presets and their shaders; shader code
+        // is accepted only in this kind.
+        if (m.Kind == "postfx")
+        {
+            Require(m.Files.Keys.Any(p => Path.GetExtension(p).Equals(".json", StringComparison.OrdinalIgnoreCase)),
+                "A postfx pack has at least one preset (.json)");
+        }
+        else
+        {
+            Require(!m.Files.Keys.Any(p => Path.GetExtension(p).Equals(".gdshader", StringComparison.OrdinalIgnoreCase)),
+                "Shader files are only allowed in a postfx pack");
+        }
         if (m.Kind == "screensaver")
         {
             Require(m.Files.Keys.Count(p => Path.GetExtension(p).Equals(".ogv", StringComparison.OrdinalIgnoreCase)) == 1, "A screensaver has exactly one .ogv loop");
