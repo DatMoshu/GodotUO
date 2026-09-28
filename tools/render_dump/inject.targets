@@ -12,5 +12,7 @@
     <Compile Include="$(MSBuildThisFileDirectory)..\..\godot\GUO\src\Bootstrap\RenderDump.cs" Link="RenderDumpInjected\RenderDump.cs" />
     <!-- Epic B, B4: world prepare and draw timed by ClassicUO's own profiler (GUO_PERF_DUMP). -->
     <Compile Include="$(MSBuildThisFileDirectory)..\..\godot\GUO\src\Bootstrap\PerfDump.cs" Link="PerfDumpInjected\PerfDump.cs" />
+    <!-- B7: the same spot photographed by each client's own screenshot code (GUO_SHOT_DUMP). -->
+    <Compile Include="$(MSBuildThisFileDirectory)..\..\godot\GUO\src\Bootstrap\ShotDump.cs" Link="PerfDumpInjected\ShotDump.cs" />
   </ItemGroup>
 </Project>
