@@ -61,6 +61,13 @@ internal static class SecretStore
             return new DpapiStore();
         }
 
+        if (OperatingSystem.IsAndroid())
+        {
+            var android = new AndroidKeystoreStore();
+
+            return android.Available ? android : new NoStore($"Passwords aren't saved here: {android.Unavailable}. You'll type it at login.");
+        }
+
         return new NoStore(OperatingSystem.IsBrowser()
             ? "Passwords are never saved in the browser."
             : "Passwords aren't saved on this system. You'll type it at login.");

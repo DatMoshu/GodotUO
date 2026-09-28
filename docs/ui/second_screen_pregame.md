@@ -143,9 +143,13 @@ is not secret (upstream saves it in the clear too), and it is kept in the clear.
 
 - **Windows:** P/Invoke of `crypt32.dll` `CryptProtectData` / `CryptUnprotectData`. No NuGet package.
 - **Android:** the JNI route that `SafFolder` uses (`JavaClassWrapper`, and the activity from the `AndroidRuntime`
-  singleton): `KeyGenParameterSpec.Builder`, `KeyGenerator`, `KeyStore` and `Cipher`. If `JavaClassWrapper` can't
-  pass one of those calls (varargs, byte arrays), the fallback is a small Android plugin with the same four calls.
-  That adds a plugin to the export, so it would go to the director first.
+  singleton): `KeyGenParameterSpec.Builder`, `KeyGenerator`, `KeyStore` and `Cipher` (`AndroidKeystoreStore`).
+  `JavaClassWrapper` passes all of them: the varargs setters take a `string[]`, `byte[]` goes both ways, the inner
+  class's constructor is found (the store tries `KeyGenParameterSpec$Builder`, then `Builder`), and `null` goes in
+  as an empty `Variant`. No plugin is needed.
+  The key is made on the first save. A reinstall or cleared app data removes it, and the saved passwords then ask
+  to be typed again. Measured on the Thor-bottom emulator (x86_64, 2026-09-28): the pregame probe's accounts checks
+  pass on a first run (the key made) and a second (the key read back), 29/29 each. Not yet run on the Thor itself.
 - **Linux / Steam Deck:** P/Invoke of `libsecret-1.so.0` (`secret_password_store_sync`, `_lookup_sync`, `_clear_sync`).
   If the library or the Secret Service is missing, the store is `none` and the UI says so. There's no plaintext
   fallback. In the Deck's Game Mode, the keyring may be locked; a lookup that fails asks for the password once.
