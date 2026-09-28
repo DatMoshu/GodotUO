@@ -117,19 +117,19 @@ def run_cuo(cfg: Config, out: Path, scene: tuple, size: tuple[int, int], spec: s
 def report(out: Path) -> str:
     # Per object: prepare's cost against how much it sorted, which separates
     # port efficiency from GUO sorting statics upstream bakes (ADR-0004).
-    lines = ["| Scene | client | optimised | zoom | " + " | ".join(KEYS)
+    lines = ["| Scene | client | optimised | zoom | camera | " + " | ".join(KEYS)
              + " | frames | render-list objects | rendered objects | prepare us/object | fading | fade wait s |",
-             "|---|---|---|---:|" + "---:|" * len(KEYS) + "---:|---:|---:|---:|---:|---:|"]
+             "|---|---|---|---:|---|" + "---:|" * len(KEYS) + "---:|---:|---:|---:|---:|---:|"]
     for name, *_ in SCENES:
         for client in ("cuo", "guo"):
             f = out / name / f"{client}.json"
             if not f.exists():
-                lines.append(f"| {name} | {client} | (no result) |" + " |" * (len(KEYS) + 7))
+                lines.append(f"| {name} | {client} | (no result) |" + " |" * (len(KEYS) + 8))
                 continue
             r = json.loads(f.read_text(encoding="utf-8"))
             objects = r.get("render_list_objects")
             per = f"{1000 * r['world_prepare_ms'] / objects:.2f}" if objects else ""
-            lines.append(f"| {name} | {client} | {r.get('optimized', '?')} | {r['zoom']:.1f} | "
+            lines.append(f"| {name} | {client} | {r.get('optimized', '?')} | {r['zoom']:.1f} | {r.get('camera_bounds', '?')} | "
                          + " | ".join(str(r[k]) for k in KEYS)
                          + f" | {r['frames_averaged']} | {objects if objects is not None else ''}"
                          + f" | {r.get('rendered_objects', '')} | {per} | {r.get('fading_when_averaging', '')}"
