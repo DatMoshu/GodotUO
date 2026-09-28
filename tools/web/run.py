@@ -275,7 +275,7 @@ def ensure_solution(p: Paths) -> None:
         sys.exit("[web] could not produce GUO.sln")
 
 
-def export(p: Paths, page: Path) -> int:
+def export(p: Paths, page: Path, release: bool = False) -> int:
     console = p.godot_console()
     if not console.exists():
         sys.exit(f"[web] Godot console not found at {console}; run doctor")
@@ -289,7 +289,8 @@ def export(p: Paths, page: Path) -> int:
     started = time.time()
     with open(log, "w", encoding="utf-8") as f:
         result = run(
-            [console, "--headless", "--path", p.project, "--export-debug", PRESET_NAME, page],
+            [console, "--headless", "--path", p.project, "--export-release" if release else "--export-debug",
+             PRESET_NAME, page],
             stdout=f, stderr=subprocess.STDOUT, text=True, env=p.web_env(),
         )
     text = log.read_text(encoding="utf-8", errors="replace")
@@ -518,8 +519,17 @@ LOGIN_FAIL = "[GUO] login probe: FAIL"
 FAILURE = re.compile(r"\[GUO\] FATAL|login probe: FAIL|SharedArrayBuffer|Uncaught|RuntimeError|Aborted\(|ERROR: System\.")
 
 
+def firefox_pref(text: str) -> tuple[str, object]:
+    """KEY=VALUE from the command line as a Firefox pref: true/false and integers keep their type."""
+    key, _, value = text.partition("=")
+    if value in ("true", "false"):
+        return key, value == "true"
+    return key, int(value) if value.lstrip("-").isdigit() else value
+
+
 def smoke(p: Paths, timeout: int, skip_export: bool, browsers: list[str], data: Path | None,
-          wait_for: str, query: str, video: bool = False, linger: float = 2.0, pick: Path | None = None) -> int:
+          wait_for: str, query: str, video: bool = False, linger: float = 2.0, pick: Path | None = None,
+          firefox_prefs: dict | None = None, release: bool = False) -> int:
     """Export, serve (with the client data), load the page headless in each
     browser, and wait for the client to say it drew the login gump.
 
@@ -537,7 +547,7 @@ def smoke(p: Paths, timeout: int, skip_export: bool, browsers: list[str], data: 
         say("smoke FAILED: needs Python Playwright (pip install playwright)")
         return 1
     if not skip_export:
-        rc = export(p, p.page)
+        rc = export(p, p.page, release)
         if rc != 0:
             say("smoke FAILED at export; nothing to load")
             return rc
@@ -559,7 +569,7 @@ def smoke(p: Paths, timeout: int, skip_export: bool, browsers: list[str], data: 
             log = p.out_dir / f"smoke_{kind}.txt"
             try:
                 if kind == "firefox":
-                    browser = pw.firefox.launch(headless=True)
+                    browser = pw.firefox.launch(headless=True, firefox_user_prefs=firefox_prefs or None)
                 else:
                     browser = pw.chromium.launch(channel="chrome", headless=True)
             except Exception as e:  # a missing browser is a failed smoke, not a crash
@@ -642,6 +652,8 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("preset", help="render export_presets.cfg from the template")
     ex = sub.add_parser("export", help="export the web build, headless")
     ex.add_argument("--out", default=None, help="page path (default build\\web\\GUO.html)")
+    ex.add_argument("--release", action="store_true",
+                    help="the release template and a Release .NET build (no assertions, optimised)")
     sv = sub.add_parser("serve", help="serve build\\web with cross-origin isolation headers")
     sv.add_argument("--root", default=None, help="folder to serve (default build\\web)")
     sv.add_argument("--data", default=None, help="the UO install to serve at /uo/ (default UO_CLIENT_DATA)")
@@ -653,6 +665,9 @@ def main(argv: list[str] | None = None) -> int:
                     help="chrome and/or firefox (default: both)")
     sm.add_argument("--wait-for", default=LOGIN_OK, help="the console line that passes the smoke")
     sm.add_argument("--query", default="arg=--login-probe-stay", help="the page URL's query string")
+    sm.add_argument("--release", action="store_true", help="export with --release (see export)")
+    sm.add_argument("--firefox-pref", action="append", metavar="KEY=VALUE",
+                    help="set a Firefox pref for the run (e.g. javascript.options.wasm_baselinejit=false)")
     sm.add_argument("--pick", type=Path, help="serve no install; pick this folder in the page's first-run screen")
     sm.add_argument("--video", action="store_true", help="record each browser (webm, build/web/smoke_<browser>_video)")
     sm.add_argument("--linger", type=float, default=2.0, help="seconds to keep the page after the marker")
@@ -666,14 +681,14 @@ def main(argv: list[str] | None = None) -> int:
         render_preset(p, p.page)
         return 0
     if args.command == "export":
-        return export(p, Path(args.out) if args.out else p.page)
+        return export(p, Path(args.out) if args.out else p.page, args.release)
     if args.command == "serve":
         data = None if args.no_data else (Path(args.data) if args.data else default_data(p))
         return serve(p, Path(args.root) if args.root else p.out_dir, data)
     if args.command == "smoke":
         return smoke(p, args.timeout, args.no_export, args.browser or ["chrome", "firefox"],
                      None if args.pick else default_data(p), args.wait_for, args.query, args.video, args.linger,
-                     args.pick)
+                     args.pick, dict(firefox_pref(v) for v in args.firefox_pref or []), args.release)
     return 2
 
 

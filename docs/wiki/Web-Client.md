@@ -57,7 +57,7 @@ for any client argument.
 
 | | Chrome | Firefox |
 |---|---|---|
-| Login screen | yes (57 s from a cold start, headless) | yes (235 s, headless) |
+| Login screen | yes (52-58 s from a cold start, headless) | yes (213-235 s, headless) |
 | Log in, relay, create a character | yes | not yet run |
 | In the world: walk, sound, backpack, drag and drop | yes | not yet run |
 
@@ -75,8 +75,10 @@ about 370 MiB for a short session, out of 2.6 GB.
 - **The page must be cross-origin isolated** (the engine is threaded).
   `serve` sends the headers; most static hosts do not.
 - **Big download**: about 67 MB of wasm and 68 MB of pack, uncompressed.
-- **Slow first start** (about a minute in Chrome), much of it the .NET
-  runtime starting in WebAssembly.
+- **Slow first start**: about a minute in Chrome and three and a half in
+  Firefox, much of it the .NET runtime interpreting C# in WebAssembly.
+  Firefox cannot finish optimising a module this size during the start
+  (`docs/web/2026-09-28_firefox_boot.md`).
 - **No server latency** in the server list: browsers cannot ping.
 - **Sound needs a click** in a real browser: pages may not play audio before
   the first user gesture.
@@ -84,6 +86,5 @@ about 370 MiB for a short session, out of 2.6 GB.
 - **Picking your UO folder in the browser** (instead of running `serve`):
   with no install served, the first-run screen's Choose folder opens the
   browser's folder picker, and the files are read where they are, never
-  uploaded. Tested in Chrome. Firefox starts the client several times
-  more slowly, and with a picked folder its tab does not respond until the
-  start finishes. The pick lasts for the visit: the next visit asks again.
+  uploaded. Works in Chrome and Firefox; in Firefox the tab does not
+  respond until the slow start finishes. The pick lasts for the visit: the next visit asks again.

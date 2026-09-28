@@ -101,10 +101,11 @@ Re-opening from Options, verified 2026-09-27:
   (`tools/web/guo_data.js`); a worker (`guo_picker_worker.js`) reads the
   picked files in place and they are mounted at `/uo_picked`; nothing is
   uploaded. In Firefox the pick itself works (mounted, valid, the client
-  boots on it), but the boot is five to six times slower than in Chrome, as
-  it is with the install served over HTTP, and the tab does not respond
-  while the picked files are read; the login gump was not reached within
-  240 s. A read the worker does not answer in 10 s fails with a message
+  boots on it), and the login gump draws after 212.7 s (2026-09-28): the
+  same as with the install served over HTTP, and about four times Chrome's,
+  because Firefox runs the wasm itself slowly, not the reads
+  (`docs/web/2026-09-28_firefox_boot.md`). The tab does not respond while it
+  boots. A read the worker does not answer in 10 s fails with a message
   instead of hanging the tab.
 - the Android and Deck platform defaults at runtime. They are written, but
   not yet run on a device.
