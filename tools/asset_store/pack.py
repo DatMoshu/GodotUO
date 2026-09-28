@@ -10,11 +10,11 @@ from pathlib import Path
 
 PACK_SCHEMA = "guo/store-pack@1"
 INDEX_SCHEMA = "guo/store-index@1"
-KINDS = {"background", "theme", "sound", "profile-preset", "screensaver"}
+KINDS = {"background", "theme", "sound", "profile-preset", "screensaver", "postfx"}
 # A screensaver is played by the client from profile version 11 on.
 SCREENSAVER_MIN_PROFILE = 11
 LICENCES = {"CC0-1.0", "CC-BY-4.0", "CC-BY-SA-4.0", "MIT", "BSD-2-Clause", "BSD-3-Clause", "Apache-2.0"}
-EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".ogv", ".ogg", ".wav", ".json", ".txt"}
+EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".ogv", ".ogg", ".wav", ".json", ".txt", ".gdshader"}
 IMAGES = {".png", ".jpg", ".jpeg", ".webp"}
 MAX_ZIP = 512 * 1024 * 1024
 MAX_TOTAL = 1024 * 1024 * 1024
@@ -125,6 +125,11 @@ def parse_manifest(raw):
         require(not any("/".join(name.split("/")[:i]) in seen for i in range(1, len(name.split("/")))), "file/directory collision")
     require(isinstance(m.get("preview"), str) and m["preview"] in files and Path(m["preview"]).suffix.lower() in IMAGES, "preview must name a declared image")
     require(m["licence"] == "CC0-1.0" or "LICENSE.txt" in files, "attribution requires LICENSE.txt")
+    # Screen-effect packs (ADR-0023): presets and shaders; shader code only in this kind.
+    if m["kind"] == "postfx":
+        require(any(Path(n).suffix.lower() == ".json" for n in files), "a postfx pack has at least one preset (.json)")
+    else:
+        require(not any(Path(n).suffix.lower() == ".gdshader" for n in files), "shader files are only allowed in a postfx pack")
     if m["kind"] == "screensaver":
         require(sum(Path(n).suffix.lower() == ".ogv" for n in files) == 1, "a screensaver has exactly one .ogv loop")
         require(m["min_profile_version"] >= SCREENSAVER_MIN_PROFILE, f"a screensaver needs min_profile_version {SCREENSAVER_MIN_PROFILE} or later")

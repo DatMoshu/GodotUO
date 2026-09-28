@@ -1,0 +1,42 @@
+{
+ "name": "Blood Rush",
+ "description": "The world narrows and reddens as you lose health.",
+ "passes": [
+  {
+   "shader": "grade",
+   "params": {
+    "saturation": 1.0
+   }
+  },
+  {
+   "shader": "vignette",
+   "params": {
+    "radius": 0.9,
+    "softness": 0.55,
+    "strength": 0.0,
+    "color": [
+     0.45,
+     0.0,
+     0.0,
+     1.0
+    ]
+   }
+  }
+ ],
+ "bindings": [
+  {
+   "pass": 1,
+   "param": "strength",
+   "from": "hp_missing",
+   "scale": 1.1,
+   "offset": 0.0
+  },
+  {
+   "pass": 0,
+   "param": "saturation",
+   "from": "hp_missing",
+   "scale": -0.7,
+   "offset": 1.0
+  }
+ ]
+}

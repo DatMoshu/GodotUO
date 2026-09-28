@@ -1,0 +1,15 @@
+{
+ "name": "Handheld",
+ "description": "Four shades of green, dithered, chunky pixels.",
+ "passes": [
+  {
+   "shader": "palette",
+   "params": {
+    "palette": 1,
+    "dither": 0.7,
+    "pixel": 2
+   }
+  }
+ ],
+ "bindings": []
+}

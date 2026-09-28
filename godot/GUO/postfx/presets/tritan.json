@@ -1,0 +1,14 @@
+{
+ "name": "Colour Help: Tritanopia",
+ "description": "Shifts blue-yellow confusions for tritanopia.",
+ "passes": [
+  {
+   "shader": "daltonize",
+   "params": {
+    "kind": 2,
+    "simulate": 0
+   }
+  }
+ ],
+ "bindings": []
+}

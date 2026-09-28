@@ -258,6 +258,10 @@ public partial class Main : Node
                 {
                     PerfProbeThenQuit();
                 }
+                else if (!string.IsNullOrEmpty(_options.PostFxSheet))
+                {
+                    PostFxSheetThenQuit();
+                }
                 else if (_options.DoorProbe)
                 {
                     DoorProbeThenQuit();
@@ -342,6 +346,8 @@ public partial class Main : Node
 
         System.IO.Directory.CreateDirectory(dataDir);
         System.Environment.CurrentDirectory = dataDir;
+        // The player's own looks and shaders (ADR-0023).
+        GUO.Renderer.PostFx.PostFxLibrary.UserFolder = System.IO.Path.Combine(dataDir, "postfx");
 
         GD.Print($"[GUO] client home   : {dataDir}");
 
@@ -500,6 +506,7 @@ public partial class Main : Node
         || _options.HighlightProbe
         || _options.ZoomProbe
         || _options.PerfProbe
+        || !string.IsNullOrEmpty(_options.PostFxSheet)
         || _options.DoorProbe
         || _options.AssetProbe.Length > 0
         || _options.EffectsProbe > 0
@@ -572,6 +579,14 @@ public partial class Main : Node
     {
         await PerfProbe.Run(this, _options.PerfOut, _options.PerfLabel, _options.PerfZoom);
         Quit(PerfProbe.Passed ? 0 : 1);
+    }
+
+    /// <summary>Photograph and time every post-processing look, then quit; see PostFxProbe.</summary>
+    private async void PostFxSheetThenQuit()
+    {
+        await Preamble();
+        await PostFxProbe.Run(this, _options.PostFxSheet);
+        Quit(PostFxProbe.Passed ? 0 : 1);
     }
 
     /// <summary>Time the world at every other zoom step, then quit; see ZoomProbe.</summary>
@@ -965,6 +980,7 @@ public partial class Main : Node
                 || HighlightProbe
                 || ZoomProbe
                 || PerfProbe
+                || !string.IsNullOrEmpty(PostFxSheet)
                 || DoorProbe
                 || EffectsProbe > 0
                 || EndureSeconds > 0
@@ -1054,6 +1070,8 @@ public partial class Main : Node
         public string PerfLabel { get; private set; } = "";
 
         public float PerfZoom { get; private set; }
+        /// <summary>Photograph and time every post-processing look into this folder (ADR-0023).</summary>
+        public string PostFxSheet { get; private set; }
 
         public bool DoorProbe { get; private set; }
 
@@ -1241,6 +1259,9 @@ public partial class Main : Node
                         break;
                     case "--perf-zoom":
                         o.PerfZoom = float.Parse(Next(), System.Globalization.CultureInfo.InvariantCulture);
+                        break;
+                    case "--postfx-sheet":
+                        o.PostFxSheet = Next();
                         break;
                     case "--door-probe":
                         o.DoorProbe = true;

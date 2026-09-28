@@ -1,0 +1,15 @@
+{
+ "name": "Faded Film",
+ "description": "A LUT grade: lifted blacks, soft colour.",
+ "passes": [
+  {
+   "shader": "lut",
+   "params": {
+    "lut_tex": "res://postfx/luts/faded_film.png",
+    "lut_size": 16,
+    "strength": 1.0
+   }
+  }
+ ],
+ "bindings": []
+}

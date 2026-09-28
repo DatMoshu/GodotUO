@@ -691,6 +691,41 @@
     "\u00e9t\u00e9.png": "x"
    },
    "zip": {}
+  },
+  {
+   "name": "ok-postfx",
+   "expect": "accept",
+   "why": "ADR-0023: a preset, a shader and a LUT image",
+   "manifest": {
+    "kind": "postfx"
+   },
+   "payload": {
+    "still.png": "png",
+    "looks/dusk.json": "{\"name\": \"Dusk\", \"passes\": []}",
+    "looks/dusk.gdshader": "shader_type canvas_item;",
+    "looks/dusk_lut.png": "png"
+   }
+  },
+  {
+   "name": "postfx-no-preset",
+   "expect": "reject",
+   "why": "a postfx pack needs at least one preset .json",
+   "manifest": {
+    "kind": "postfx"
+   },
+   "payload": {
+    "still.png": "png",
+    "only.gdshader": "shader_type canvas_item;"
+   }
+  },
+  {
+   "name": "shader-outside-postfx",
+   "expect": "reject",
+   "why": "shader code is accepted only in a postfx pack",
+   "payload": {
+    "still.png": "png",
+    "sneaky.gdshader": "x"
+   }
   }
  ]
 }

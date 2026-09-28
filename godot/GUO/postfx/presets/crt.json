@@ -1,0 +1,16 @@
+{
+ "name": "CRT",
+ "description": "Scanlines and an aperture mask.",
+ "passes": [
+  {
+   "shader": "crt",
+   "params": {
+    "scanlines": 0.35,
+    "line_pixels": 2,
+    "mask": 0.2,
+    "edge": 0.25
+   }
+  }
+ ],
+ "bindings": []
+}

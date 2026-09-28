@@ -732,6 +732,13 @@ namespace GUO
                 return;
             }
 
+            // PORT DEVIATION (GUO): the screen effects menu (ADR-0023) is a
+            // Godot card too; events over it go to its controls, not the client.
+            if (GUO.Renderer.PostFx.PostFxMenu.OwnsInput(@event))
+            {
+                return;
+            }
+
             // PORT DEVIATION (GUO): the window menu (a Godot card) takes the
             // pointer while it is open; a press outside it closes it.
             if (GUO.Input.Touch.WindowMenu.HandleInput(@event))

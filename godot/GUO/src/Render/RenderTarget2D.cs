@@ -85,6 +85,10 @@ namespace GUO.Renderer
 
         public Texture2D Texture => _viewport.GetTexture();
 
+        /// <summary>The node the viewport hangs under; the post-processing stack
+        /// (ADR-0023) puts its own viewport beside it.</summary>
+        public Node Parent => _viewport.GetParent();
+
         /// <summary>
         /// What the target shows where nothing has been drawn. A fully
         /// transparent colour means the viewport's own transparent background,

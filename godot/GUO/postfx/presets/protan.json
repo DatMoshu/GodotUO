@@ -1,0 +1,14 @@
+{
+ "name": "Colour Help: Protanopia",
+ "description": "Shifts red-green confusions for protanopia.",
+ "passes": [
+  {
+   "shader": "daltonize",
+   "params": {
+    "kind": 0,
+    "simulate": 0
+   }
+  }
+ ],
+ "bindings": []
+}

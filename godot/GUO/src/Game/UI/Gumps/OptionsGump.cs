@@ -2251,8 +2251,21 @@ namespace GUO.Game.UI.Gumps
             // PORT DEVIATION (GUO): the boot splash (GUO.Host.SplashIntro). Not a
             // profile setting: it plays before anyone logs in, so it is kept
             // for the device in user://guo_splash.cfg.
+            // PORT DEVIATION (GUO): screen effects (ADR-0023). The looks live in
+            // their own card; Classic, the default, is ClassicUO's own picture.
+            SettingsSection sectionFx = AddSettingsSection(box, "Screen effects");
+            sectionFx.Y = section7.Bounds.Bottom + 40;
+            NiceButton effects = new NiceButton(startX, startY, 160, 20, ButtonAction.Activate, "Screen effects...")
+            {
+                IsSelectable = false, ButtonParameter = (int) Buttons.Disabled
+            };
+            effects.MouseUp += (s, e) => GUO.Renderer.PostFx.PostFxMenu.Toggle();
+            sectionFx.Add(effects);
+            sectionFx.Add(AddLabel(null, "Looks for the world only (never the gumps); Ctrl+Shift+E", startX, startY));
+            // END PORT DEVIATION (GUO)
+
             SettingsSection section8 = AddSettingsSection(box, "Start");
-            section8.Y = section7.Bounds.Bottom + 40;
+            section8.Y = sectionFx.Bounds.Bottom + 40; // PORT DEVIATION (GUO): after Screen effects
 
             section8.Add
             (

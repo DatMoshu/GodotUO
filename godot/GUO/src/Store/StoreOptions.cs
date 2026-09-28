@@ -27,6 +27,14 @@ internal static class StoreOptions
             yield return ($"user://store/{m.Id}/{m.Version}/{StorePack.ScreensaverLoop(m)}", $"Store: {m.Title} ({m.Version})");
     }
 
+    /// <summary>The folders of installed screen-effect packs (ADR-0023), for PostFxLibrary.</summary>
+    public static IEnumerable<string> InstalledPostFxFolders()
+    {
+        using var client = CreateClient(StoreAddress.Default);
+        foreach (var m in client.Installed().Where(m => m.Kind == "postfx").OrderBy(m => m.Title))
+            yield return ProjectSettings.GlobalizePath($"user://store/{m.Id}/{m.Version}");
+    }
+
     private static bool ResetRemovedBackground(string id, string version)
     {
         var profile = ProfileManager.CurrentProfile;

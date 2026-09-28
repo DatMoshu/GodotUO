@@ -1,0 +1,15 @@
+{
+ "name": "Teal & Orange",
+ "description": "A LUT grade: warm lights, teal shadows.",
+ "passes": [
+  {
+   "shader": "lut",
+   "params": {
+    "lut_tex": "res://postfx/luts/teal_orange.png",
+    "lut_size": 16,
+    "strength": 1.0
+   }
+  }
+ ],
+ "bindings": []
+}

@@ -1,0 +1,29 @@
+{
+ "name": "Battle Focus",
+ "description": "Warm and sharp at peace; cold and hard in war mode.",
+ "passes": [
+  {
+   "shader": "grade",
+   "params": {
+    "temperature": 0.1,
+    "contrast": 1.0
+   }
+  }
+ ],
+ "bindings": [
+  {
+   "pass": 0,
+   "param": "contrast",
+   "from": "war_mode",
+   "scale": 0.25,
+   "offset": 1.0
+  },
+  {
+   "pass": 0,
+   "param": "temperature",
+   "from": "war_mode",
+   "scale": -0.45,
+   "offset": 0.1
+  }
+ ]
+}

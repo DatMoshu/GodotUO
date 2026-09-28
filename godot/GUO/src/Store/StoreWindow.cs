@@ -26,7 +26,7 @@ internal sealed partial class StoreWindow : CanvasLayer
     private readonly Dictionary<string, Task<byte[]>> _previews = new();
     private static readonly Color Gold = new("dfbb77"), Muted = new("abb5ac");
     private readonly CancellationTokenSource _cancel = new();
-    private readonly string[] _kinds = { "", "background", "theme", "sound", "profile-preset", "screensaver" };
+    private readonly string[] _kinds = { "", "background", "theme", "sound", "profile-preset", "screensaver", "postfx" };
 
     /// <summary>Whether the window is up; GameController then leaves input to its controls.</summary>
     public static bool IsOpen => GodotObject.IsInstanceValid(_open);

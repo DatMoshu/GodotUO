@@ -31,5 +31,6 @@ it is taken even if its file has not landed yet.
 | 0020 | Asset overlay (editor phase 5) | work/editor-p5 |
 | 0021 | Client data sources | work/editor-datasources (accepted 2026-09-27) |
 | 0022 | Authoring UO data files | work/editor-uodata |
+| 0023 | Post-processing and shader framework | work/render-postfx |
 
-Next free: 0024 (0023 reserved: post-processing, Epic I).
+Next free: 0024.

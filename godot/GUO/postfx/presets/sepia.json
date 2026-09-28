@@ -1,0 +1,22 @@
+{
+ "name": "Sepia",
+ "description": "An old photograph.",
+ "passes": [
+  {
+   "shader": "mono",
+   "params": {
+    "style": 1,
+    "contrast": 1.0
+   }
+  },
+  {
+   "shader": "vignette",
+   "params": {
+    "radius": 0.95,
+    "softness": 0.5,
+    "strength": 0.45
+   }
+  }
+ ],
+ "bindings": []
+}
