@@ -367,6 +367,11 @@ public partial class Main : Node
 
         string dataDir = GuoDataDirectory();
 
+        if (_options.ScratchProfile && !_options.OwnProfile)
+        {
+            dataDir = ScratchHome(dataDir);
+        }
+
         // --background mode[:path]: what the window shows behind the world
         // for this run only; the profile is neither read for it nor written.
         if (!string.IsNullOrWhiteSpace(_options.Background))
@@ -459,6 +464,65 @@ public partial class Main : Node
         {
             GD.Print($"[GUO] store install: {id} FAILED: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// A client home for this run only, under <paramref name="home"/>/scratch:
+    /// its settings.json (the client data, the shard) and nothing else, so
+    /// the profile, the saved gumps and the saved look start as a new
+    /// player's. A probe run on the usual home read what the last run saved
+    /// (a paperdoll fit for a 640x480 world view, the director, 2026-09-28).
+    /// One folder per process, so runs side by side do not share one; homes
+    /// left by earlier runs are cleared once a day old.
+    /// </summary>
+    private static string ScratchHome(string home)
+    {
+        string root = System.IO.Path.Combine(home, "scratch");
+        string dir = System.IO.Path.Combine(root, System.Environment.ProcessId.ToString());
+
+        try
+        {
+            System.IO.Directory.CreateDirectory(root);
+
+            foreach (string old in System.IO.Directory.GetDirectories(root))
+            {
+                if (old != dir && System.IO.Directory.GetLastWriteTimeUtc(old) < System.DateTime.UtcNow.AddDays(-1))
+                {
+                    System.IO.Directory.Delete(old, true);
+                }
+            }
+
+            if (System.IO.Directory.Exists(dir))
+            {
+                System.IO.Directory.Delete(dir, true);
+            }
+
+            System.IO.Directory.CreateDirectory(dir);
+            string settings = System.IO.Path.Combine(home, "settings.json");
+
+            if (System.IO.File.Exists(settings))
+            {
+                // Profiles go under the scratch home, not a path the usual one names.
+                var json = System.Text.Json.Nodes.JsonNode.Parse(System.IO.File.ReadAllText(settings));
+
+                if (json is System.Text.Json.Nodes.JsonObject o)
+                {
+                    o.Remove("profilespath");
+                }
+
+                System.IO.File.WriteAllText(System.IO.Path.Combine(dir, "settings.json"), json?.ToJsonString() ?? "{}");
+            }
+        }
+        catch (System.Exception ex)
+        {
+            GD.PrintErr($"[GUO] scratch home: {ex.Message}; the usual home is used");
+
+            return home;
+        }
+
+        GD.Print($"[GUO] scratch home  : a new profile for this run ({dir})");
+
+        return dir;
     }
 
     /// <summary>
@@ -1305,6 +1369,16 @@ public partial class Main : Node
         /// <summary>Drive the touch layer with synthetic fingers and check the client reacted.</summary>
         public bool TouchProbe { get; private set; }
 
+        /// <summary>
+        /// Run in a client home of its own, made fresh (<see cref="ScratchHome"/>):
+        /// a new profile, no saved gumps or look. On with --touch-probe;
+        /// --own-profile keeps the usual home.
+        /// </summary>
+        public bool ScratchProfile { get; private set; }
+
+        /// <summary>--own-profile: a probe that would take a scratch home keeps the usual one.</summary>
+        public bool OwnProfile { get; private set; }
+
         /// <summary>Tap each of the touch bar's six macros against spawned fixtures; see MacroProbe.</summary>
         public bool MacroProbe { get; private set; }
 
@@ -1580,6 +1654,13 @@ public partial class Main : Node
                     case "--touch-probe":
                         o.Touch = true;
                         o.TouchProbe = true;
+                        o.ScratchProfile = true;
+                        break;
+                    case "--scratch-profile":
+                        o.ScratchProfile = true;
+                        break;
+                    case "--own-profile":
+                        o.OwnProfile = true;
                         break;
                     case "--presentation-parity":
                         o.PresentationParity = true;

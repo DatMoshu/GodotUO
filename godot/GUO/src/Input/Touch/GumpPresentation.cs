@@ -306,13 +306,19 @@ internal static class GumpPresentation
     /// </summary>
     private const int PlayerHalfWidth = 32;
 
-    /// <summary>The left edge of the column the character stands in: the middle of the world view.</summary>
+    /// <summary>
+    /// The left edge of the column the character stands in: the middle of the
+    /// world view on screen now. Not the profile's GameWindowSize, which is
+    /// the view the last session saved on its way out (GameScene.Unload): a
+    /// run after one that left another view put the paperdoll by a character
+    /// who was not there, and sized it for that.
+    /// </summary>
     private static int PlayerColumnLeft()
     {
-        Configuration.Profile p = Configuration.ProfileManager.CurrentProfile;
+        Rectangle view = Client.Game.Scene?.Camera?.Bounds ?? Rectangle.Empty;
         Rectangle main = DisplayBounds(false);
-        int middle = p != null && p.GameWindowSize.X > 0
-            ? p.GameWindowPosition.X + p.GameWindowSize.X / 2
+        int middle = view.Width > 0
+            ? view.X + view.Width / 2
             : main.X + main.Width / 2;
         return middle - PlayerHalfWidth;
     }
