@@ -392,6 +392,10 @@ namespace GUO.Renderer
             EnsureNotStarted();
 
             RenderingServer.CanvasItemSetTransform(_target, viewTransform);
+            if (_mirroring)
+            {
+                RenderingServer.CanvasItemSetTransform(_idItem, viewTransform); // PORT DEVIATION (GUO): ADR-0023
+            }
 
             _sizedTexture = null;
             _started = true;
@@ -425,12 +429,123 @@ namespace GUO.Renderer
         /// reason it already is: items already submitted stay where they were
         /// submitted.
         /// </remarks>
+        // PORT DEVIATION (GUO): the post-processing object-id mirror (ADR-0023).
+        // Strictly off unless an enabled post-processing pass declares id_tex:
+        // then, while the world target is bound, every upright or rotated sprite
+        // is also drawn, in the same order, into one canvas item under the id
+        // viewport, in a flat colour naming the object being drawn
+        // (CurrentObjectId, set by RenderLists). Land is background (id 0), and
+        // BatchedWorld runs are not mirrored. None of this is counted in
+        // Commands or the texture/flush counters.
+
+        /// <summary>
+        /// The object the next sprites belong to, for the id mirror: 0 draws
+        /// nothing into it, a negative id paints background over what is below
+        /// (land that covers an object).
+        /// </summary>
+        public int CurrentObjectId { get; set; }
+
+        private bool _mirroring;
+        private Rid _idItem;
+        private static ShaderMaterial _idMaterial;
+        private readonly Color[] _idColors = new Color[4];
+        private readonly Vector2[] _idPoints = new Vector2[4];
+
+        private void BeginIdMirror(RenderTarget2D target)
+        {
+            var stack = PostFx.PostFxStack.Instance;
+            Rid canvas = stack.IdCanvas;
+            _mirroring = target != null && canvas.IsValid && ReferenceEquals(target, stack.IdFor);
+            if (!_mirroring)
+            {
+                return;
+            }
+
+            _idMaterial ??= new ShaderMaterial
+            {
+                Shader = new Shader
+                {
+                    Code = @"shader_type canvas_item;
+render_mode blend_disabled;
+// ADR-0023: an object's pixels in its id colour, where its sprite is solid.
+// The id comes from the vertex colour alone: fragment COLOR is already multiplied by the texture.
+varying flat vec3 id;
+void vertex() { id = COLOR.rgb; }
+void fragment() {
+    if (texture(TEXTURE, UV).a < 0.5) { discard; }
+    COLOR = vec4(id, 1.0);
+}",
+                },
+            };
+            if (!_idItem.IsValid)
+            {
+                _idItem = RenderingServer.CanvasItemCreate();
+                RenderingServer.CanvasItemSetMaterial(_idItem, _idMaterial.GetRid());
+                RenderingServer.CanvasItemSetDefaultTextureFilter(_idItem, RenderingServer.CanvasItemTextureFilter.Nearest);
+            }
+
+            RenderingServer.CanvasItemSetParent(_idItem, canvas);
+            RenderingServer.CanvasItemClear(_idItem);
+        }
+
+        private static Color IdColor(int id) =>
+            id < 0 ? Colors.Black : new(((id >> 16) & 0xFF) / 255f, ((id >> 8) & 0xFF) / 255f, (id & 0xFF) / 255f, 1f);
+
+        private void MirrorRect(Rect2 rect, Texture2D texture, Rect2 source)
+        {
+            if (!_mirroring || CurrentObjectId == 0)
+            {
+                return;
+            }
+
+            rect.Position += _itemOffset;
+            RenderingServer.CanvasItemAddTextureRectRegion(_idItem, rect, RidOf(texture), source, IdColor(CurrentObjectId), false, false);
+        }
+
+        /// <summary>Set around a shadow: shadows are not the object, so they stay background.</summary>
+        private bool _idSkip;
+
+        /// <summary>
+        /// Covering land (DrawMeshSprite) paints background over what it hides,
+        /// or the id buffer would keep the hidden object and outline its hidden
+        /// part. The mesh in black: the id shader writes vertex colour times
+        /// modulate, which is 0, the background id.
+        /// </summary>
+        private void MirrorBackgroundMesh(ArrayMesh mesh, Vector2 offset, Texture2D texture)
+        {
+            if (!_mirroring)
+            {
+                return;
+            }
+
+            RenderingServer.CanvasItemAddMesh(_idItem, mesh.GetRid(), new Transform2D(0f, offset), Colors.Black, texture.GetRid());
+        }
+
+        private void MirrorQuad(Texture2D texture)
+        {
+            if (!_mirroring || CurrentObjectId == 0 || _idSkip)
+            {
+                return;
+            }
+
+            Color c = IdColor(CurrentObjectId);
+            for (int i = 0; i < 4; i++)
+            {
+                _idColors[i] = c;
+                _idPoints[i] = _quadPoints[i] + _itemOffset;
+            }
+
+            RenderingServer.CanvasItemAddTriangleArray(_idItem, _quadIndices, _idPoints, _idColors, _quadUVs, null, null, RidOf(texture));
+        }
+        // END PORT DEVIATION (GUO)
+
         public void SetRenderTarget(RenderTarget2D target)
         {
             EnsureNotStarted();
 
             _target = target == null ? _parent : target.CanvasItem;
             _currentTarget = target;
+            BeginIdMirror(target); // PORT DEVIATION (GUO): ADR-0023's id mirror; see above
 
             // Upstream's targets are RenderTargetUsage.DiscardContents
             // (GameController.PreparingDeviceSettings), and FNA clears such a
@@ -574,6 +689,7 @@ namespace GUO.Renderer
                 Transform2D.Identity,
                 Colors.White,
                 layer.Textures[index].GetRid());
+            MirrorBackgroundMesh(mesh, offset, layer.Textures[index]); // PORT DEVIATION (GUO): ADR-0023
 
             return 1;
         }
@@ -946,7 +1062,9 @@ namespace GUO.Renderer
             hue.Y = ShaderHueTranslator.SHADER_SHADOW;
             hue.Z = 1f;
 
+            _idSkip = true; // PORT DEVIATION (GUO): a shadow is not the object (ADR-0023)
             AddQuad(texture, hue);
+            _idSkip = false;
         }
 
         public void DrawCharacterSitted
@@ -1515,7 +1633,8 @@ namespace GUO.Renderer
             int textureWidth = WidthOf(texture);
             int textureHeight = HeightOf(texture);
 
-            if (rotationSin == 0f && rotationCos == 1f && effects == 0 && BatchedWorld)
+            // PORT DEVIATION (GUO): the id mirror (ADR-0023) follows the plain path only.
+            if (rotationSin == 0f && rotationCos == 1f && effects == 0 && BatchedWorld && !_mirroring)
             {
                 float x0 = destinationX - originX * destinationW, y0 = destinationY - originY * destinationH;
                 float x1 = x0 + destinationW, y1 = y0 + destinationH;
@@ -1532,25 +1651,28 @@ namespace GUO.Renderer
                 FlushRun();
                 Commands++;
                 Count(0, RidOf(texture));
+                var destinationRect = new Rect2(
+                    destinationX - originX * destinationW,
+                    destinationY - originY * destinationH,
+                    destinationW,
+                    destinationH);
+                var sourceRect = new Rect2(
+                    sourceX * textureWidth,
+                    sourceY * textureHeight,
+                    sourceW * textureWidth,
+                    sourceH * textureHeight);
                 RenderingServer.CanvasItemAddTextureRectRegion
                 (
                     _current,
-                    new Rect2(
-                        destinationX - originX * destinationW,
-                        destinationY - originY * destinationH,
-                        destinationW,
-                        destinationH),
+                    destinationRect,
                     RidOf(texture),
-                    new Rect2(
-                        sourceX * textureWidth,
-                        sourceY * textureHeight,
-                        sourceW * textureWidth,
-                        sourceH * textureHeight),
+                    sourceRect,
                     Encode(color),
                     false,
                     // Upstream clamps nothing, so neither does this.
                     false
                 );
+                MirrorRect(destinationRect, texture, sourceRect); // PORT DEVIATION (GUO): ADR-0023
 
                 return;
             }
@@ -1630,8 +1752,9 @@ namespace GUO.Renderer
             EnsureMaterial(_currentMaterial);
 
             Color modulate = Encode(color);
+            MirrorQuad(texture); // PORT DEVIATION (GUO): ADR-0023's id mirror, before any path returns
 
-            if (BatchedWorld)
+            if (BatchedWorld && !_mirroring)
             {
                 AppendToRun(texture, _quadPoints[0], _quadPoints[1], _quadPoints[2], _quadPoints[3],
                     _quadUVs[0], _quadUVs[1], _quadUVs[2], _quadUVs[3], modulate);
