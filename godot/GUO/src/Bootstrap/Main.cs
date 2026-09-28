@@ -623,6 +623,13 @@ public partial class Main : Node
     {
         await Preamble();
         await GamepadProbe.Run(this);
+
+        // --stay: the session stays up afterwards, for a check by hand on the device.
+        if (_options.Stay)
+        {
+            return;
+        }
+
         Quit(GamepadProbe.Passed ? 0 : 1);
     }
 
