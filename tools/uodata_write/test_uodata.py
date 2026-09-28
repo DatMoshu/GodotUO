@@ -178,6 +178,13 @@ def main() -> int:
               "tiledata: only the one record changed")
         check(U.read_tile(stage.read_path("tiledata.mul"), 56)["weight"] == 0, "tiledata: fields not given keep their value")
 
+        used = U.Registry(stage, {}).data["packs"]["alpha"]["used"]["static"]
+        check(sorted(used.values()) == [56, 57] and "one" in used,
+              "a write inside a pack's range is recorded once, under the name take() gave it")
+        U.write_records(stage, [AssetRecord("static", 58, b"THIRD")])
+        check(U.Registry(stage, {}).data["packs"]["alpha"]["used"]["static"].get("static-0x3a") == 58,
+              "a write that bypassed take() is recorded in slots.json")
+
         # after writing, the slot is no longer free
         check(56 not in U.free_statics(stage) and 401 not in U.free_people_bodies(stage), "written slots are no longer free")
 
