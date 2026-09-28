@@ -33,6 +33,7 @@ right, Shard in the bottom panel.
 | 4 | The **live tier** (ADR-0012): a UO Shard dock that talks to a private ModernUO instance through a bridge assembly, so a block edit is pushed to the shard and to connected clients (UltimaLive) while they play. | Done |
 | 5 | **Asset edits** (ADR-0020, reserved as 0013): land art, static art, gumps and hues replaced from PNG in the world project's `assets\`, shown at once in the Assets dock and the World tab, exported as a `verdata.mul` and a patched `hues.mul` that any ClassicUO-lineage client loads through `files_override`. | Done |
 | 6 | Shard world objects and backends (ADR-0014, reserved). | Not started |
+| H | **Bulk import/export** (ADR-0022): the Assets dock's Bulk tab unpacks art, land, gumps, animations or tiledata to PNG plus JSON sidecars and packs an edited folder into a staged data set, by running `tools/uopack` and showing its lines; Verify re-checks the stage and the untouched install. See [Author UO Data](Author-UO-Data.md). | Done (unpack smoke-tested) |
 
 "Done" here means the phase's check has been run and its README or ADR
 records the run; the details are in each validation section.
