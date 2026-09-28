@@ -23,7 +23,7 @@ Written up overnight 2026-09-26 so the owner could decide; see
   - Settings: vsync, the frame cap and upstream's draw pacing lifted, 360
     frames per scene.
 
-Zoomed out, where this ADR's cost lives (2560x1440, zoom 3). Mean frame time
+Zoomed out, where this ADR's cost lives (2560x1440, zoom 2.5 -- the camera's maximum, as upstream's; the runs asked for 3 and the probe logged the clamp). Mean frame time
 and world draw are in ms:
 
 | Scene | mean, plain | mean, batched | world draw, plain | world draw, batched | draw calls | draw commands, plain | draw commands, batched | alloc KB/frame, batched |
