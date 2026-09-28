@@ -1277,6 +1277,12 @@ public partial class Main : Node
                         GUO.Host.PerfProbe.ParityToggle = on => GUO.Renderer.MergedLand.Enabled = on;
                         GUO.Host.PerfProbe.ParityState = () => GUO.Renderer.MergedLand.Enabled;
                         break;
+                    case "--cover-cull":
+                        // Epic B, B4 fix 2b: covering land only where it overlaps its object.
+                        GUO.Game.Scenes.RenderLists.CoverCull = true;
+                        GUO.Host.PerfProbe.ParityToggle = on => GUO.Game.Scenes.RenderLists.CoverCull = on;
+                        GUO.Host.PerfProbe.ParityState = () => GUO.Game.Scenes.RenderLists.CoverCull;
+                        break;
                     case "--batched-world":
                         GUO.Renderer.UltimaBatcher2D.BatchedWorld = true;
                         break;

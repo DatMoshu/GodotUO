@@ -171,13 +171,21 @@ namespace GUO.Renderer
         /// </summary>
         public static int[] Kinds = new int[5];  // 4: covering-land tile meshes (DrawMeshSprite)
         public static int EstimatedBatches;
-        public static (int Rects, int Affine, int Meshes, int Triangles, int Batches, int CoverMeshes) LastKinds;
+
+        /// <summary>Runs of consecutive covering-land meshes: what one mesh per run would cost (B4 fix 2c).</summary>
+        public static int CoverRuns;
+        public static (int Rects, int Affine, int Meshes, int Triangles, int Batches, int CoverMeshes, int CoverRuns) LastKinds;
         private int _lastKind = -1;
         private Rid _lastKindItem, _lastKindTexture;
 
         private void Count(int kind, Rid texture)
         {
             Kinds[kind]++;
+            if (kind == 4 && _lastKind != 4)
+            {
+                CoverRuns++;
+            }
+
             if (kind == 1 || kind == 2 || kind == 4 || kind != _lastKind || _current != _lastKindItem || texture != _lastKindTexture)
             {
                 EstimatedBatches++;
@@ -344,9 +352,10 @@ namespace GUO.Renderer
             EnsureNotStarted();
 
             LastFrame = (TextureSwitches, _itemCount, Commands);
-            LastKinds = (Kinds[0], Kinds[1], Kinds[2], Kinds[3], EstimatedBatches, Kinds[4]);
+            LastKinds = (Kinds[0], Kinds[1], Kinds[2], Kinds[3], EstimatedBatches, Kinds[4], CoverRuns);
             System.Array.Clear(Kinds);
             EstimatedBatches = 0;
+            CoverRuns = 0;
             _lastKind = -1;
             FramesBegun++;
             _itemCount = 0;
