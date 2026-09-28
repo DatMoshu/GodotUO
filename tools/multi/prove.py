@@ -220,7 +220,7 @@ def prove(cfg, name: str, stage: Path, out: Path, clip: Path | None, at=None, vi
         ext = frames[0].suffix if frames else ".png"
         (out / "caption.txt").write_text(caption or f"GUO: an authored multi ({name}), walked through in game",
                                          encoding="utf-8")
-        font = "C\\\\:/Windows/Fonts/arial.ttf"
+        font = "C\\:/Windows/Fonts/arial.ttf"    # ffmpeg's escape for the drive colon, once: no shell in between
         vf = (f"drawtext=fontfile='{font}':textfile=caption.txt:x=16:y=h-36:fontsize=20:fontcolor=white:"
               "box=1:boxcolor=black@0.55:boxborderw=6")
         clip.parent.mkdir(parents=True, exist_ok=True)
