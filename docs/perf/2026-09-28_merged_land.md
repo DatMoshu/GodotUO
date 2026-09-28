@@ -157,7 +157,8 @@ again / cull at the default size, 33-35 GB free.
 
 **2b, `--cover-cull`: a no-go.** Covering meshes fall 345 -> 284, 3,266 ->
 2,942 and 3,557 -> 2,817 (the forest keeps all 564, every one of them
-overlapping), and mean frame time 3-7% against the two plain runs, but pixel
+overlapping), and mean frame time 5-10% against the mean of the two plain
+runs (dungeon 20.4 -> 18.4 ms, Britain bank 44.8 -> 42.2), but pixel
 parity breaks: 402, 607 and 666 stable pixels differ repeatably in the open
 field, Britain bank and dungeon at 2560x1440 (185 in the dungeon at the
 default size). The differences are small spots spread over the floor at tile
