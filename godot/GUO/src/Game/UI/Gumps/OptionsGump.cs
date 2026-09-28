@@ -126,6 +126,7 @@ namespace GUO.Game.UI.Gumps
         private Combobox[] _flick; // PORT DEVIATION (GUO): hold-and-flick, up/down/left/right
         private Combobox[] _macroSlots; // PORT DEVIATION (GUO): the touch macro row's six slots
         private Checkbox _showTouches; // PORT DEVIATION (GUO): debug touch overlay
+        private Checkbox _companionTabs; // PORT DEVIATION (GUO): the second screen as companion tabs
         private Checkbox _showHandles; // PORT DEVIATION (GUO): the "UI" window handles always drawn
         private Checkbox _mobileControls; // PORT DEVIATION (GUO): desktop dev toggle, Android emulation
         private static readonly int[] DualScaleFinePercents = { 0, 100, 125, 150 };
@@ -1004,6 +1005,7 @@ namespace GUO.Game.UI.Gumps
                 section3.AddRight(_chevronInset = AddHSlider(null, 0, 200, _currentProfile.TouchChevronInset, 0, 0, 120));
 
                 section3.Add(_showTouches = AddCheckBox(null, "Debug: show touches on screen", _currentProfile.DebugShowTouches, 0, 0));
+                section3.Add(_companionTabs = AddCheckBox(null, "Companion tabs on the second screen (prototype)", _currentProfile.CompanionTabs, 0, 0));
 
                 // Hold a gump still, then flick: what each direction does (GumpFlick).
                 int[] current = { _currentProfile.FlickUp, _currentProfile.FlickDown, _currentProfile.FlickLeft, _currentProfile.FlickRight };
@@ -4198,6 +4200,11 @@ namespace GUO.Game.UI.Gumps
             if (_mobileControls != null)
             {
                 _currentProfile.MobileWindowControls = _mobileControls.IsChecked; // PORT DEVIATION (GUO)
+            }
+
+            if (_companionTabs != null)
+            {
+                _currentProfile.CompanionTabs = _companionTabs.IsChecked;
             }
 
             if (_showTouches != null)
