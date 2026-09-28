@@ -22,6 +22,17 @@ namespace GUO.Game.GameObjects
         private static int _startCharacterFeetY;
         private static int _characterFrameHeight;
 
+        // PORT DEVIATION (GUO): upstream draws a mobile's shadow and aura at
+        // depth and its body at depth + 1, and its depth buffer places each
+        // on its own. GUO's world sort orders whole Draw calls, so
+        // RenderLists queues a mobile twice -- Shadow at depth, Body at
+        // depth + 0.5, a half past the + 0.5 of land and statics -- and this
+        // says which half the call draws. All draws both (no sort around it).
+        internal enum DrawPass : byte { All, Shadow, Body }
+
+        internal static DrawPass Pass;
+        // END PORT DEVIATION (GUO)
+
         public override bool Draw(UltimaBatcher2D batcher, int posX, int posY, float depth)
         {
             if (IsDestroyed || !AllowedToDraw)
@@ -48,7 +59,7 @@ namespace GUO.Game.GameObjects
 
             bool hasShadow = !IsDead && !IsHidden && ProfileManager.CurrentProfile.ShadowsEnabled;
 
-            if (World.AuraManager.IsEnabled)
+            if (World.AuraManager.IsEnabled && Pass != DrawPass.Body) // PORT DEVIATION (GUO): the aura is drawn with the shadow
             {
                 World.AuraManager.Draw(
                     batcher,
@@ -427,7 +438,7 @@ namespace GUO.Game.GameObjects
                         }
                         else
                         {
-                            if (item.ItemData.IsLight)
+                            if (item.ItemData.IsLight && Pass != DrawPass.Shadow) // PORT DEVIATION (GUO): once, with the body
                             {
                                 Client.Game
                                     .GetScene<GameScene>()
@@ -439,7 +450,7 @@ namespace GUO.Game.GameObjects
                     }
                     else
                     {
-                        if (item.ItemData.IsLight)
+                        if (item.ItemData.IsLight && Pass != DrawPass.Shadow) // PORT DEVIATION (GUO): once, with the body
                         {
                             Client.Game.GetScene<GameScene>().AddLight(this, item, drawX, drawY);
 
@@ -662,6 +673,12 @@ namespace GUO.Game.GameObjects
             bool charIsSitting
         )
         {
+            // PORT DEVIATION (GUO): only this pass's half (Mobile.Pass).
+            if (Pass != DrawPass.All && hasShadow != (Pass == DrawPass.Shadow))
+            {
+                return;
+            }
+
             if (id >= Client.Game.UO.Animations.MaxAnimationCount || owner == null)
             {
                 return;

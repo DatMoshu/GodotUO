@@ -206,6 +206,12 @@ internal static class RenderDump
                         break;
                     }
 
+                    // A mobile is queued twice, shadow then body; the body is the object.
+                    if (entry.GetType().GetField("Pass", Any)?.GetValue(entry)?.ToString() == "Shadow")
+                    {
+                        continue;
+                    }
+
                     obj = wrapped;
                     depth = entry.GetType().GetField("Depth", Any)?.GetValue(entry) as float?;
                 }
