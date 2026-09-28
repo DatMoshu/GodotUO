@@ -324,6 +324,9 @@ namespace GUO.Platform.Android
                 DrawHeldBadge(batcher, mainWidth + BadgeMargin, _instance._logicalHeight - BadgeMargin);
             }
 
+            // Minimised-window chips live on this screen on the Thor (C8).
+            TouchGumpBar.DrawShelfChips(batcher);
+
             // The window menu, when it is for a gump on this screen.
             WindowMenu.DrawShelf(batcher);
 

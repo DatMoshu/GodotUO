@@ -8,7 +8,10 @@ using GUO.Game;
 using GUO.Game.Data;
 using GUO.Game.GameObjects;
 using GUO.Game.Managers;
+using GUO.Platform.Android;
+using GUO.Renderer;
 using GUO.Resources;
+using Rectangle = GUO.Compat.Rectangle;
 
 namespace GUO.Input.Touch
 {
@@ -850,23 +853,48 @@ namespace GUO.Input.Touch
             List<(string, Rect2)> result = _chips;
             IReadOnlyList<Game.UI.Gumps.Gump> gumps = GumpMinimise.Gumps;
 
-            if (!Shown || !HandleShown || gumps.Count == 0)
+            bool shelf = OnShelf;
+
+            if (!Shown || !shelf && !HandleShown || gumps.Count == 0)
             {
                 _chipFirst = _chipsFirst = 0;
                 return result;
             }
 
-            Layout(out Geometry geo);
-            int s = geo.Scale;
-            float h = PlateArt * s, gap = GapArt * s;
-            float y = geo.StripTop + (int)((geo.StripBottom - geo.StripTop - h) / 2);
-            float left = gap;
+            float s, h, gap, y, left, right, arrowW, captionScale;
 
-            // Up to the target's name, which has the strip's middle.
-            float right = geo.View.X / 2 - 60 * s;
-            float arrowW = 16 * s;
+            if (shelf)
+            {
+                // The Thor: along the bottom of the lower screen, above the
+                // companion tabs' strip, at the shelf's own scale (one client
+                // pixel each); in window pixels, which is what a touch on
+                // that screen arrives in (DualScreen.ToWindow).
+                float dpi = Client.Game.DpiScale;
+                s = dpi;
+                h = PlateArt * s;
+                gap = GapArt * s;
+                y = (DualScreen.LogicalHeight - DualScreen.BottomReserve - GapArt - PlateArt) * dpi;
+                left = (DualScreen.MainWidth + GapArt) * dpi;
+                right = (DualScreen.MainWidth + DualScreen.LogicalWidth - GapArt) * dpi;
+                arrowW = 16 * s;
+                captionScale = 1;
+            }
+            else
+            {
+                // The Odin's tray: the handle strip's left, up to the target's
+                // name, which has the strip's middle.
+                Layout(out Geometry geo);
+                s = geo.Scale;
+                h = PlateArt * s;
+                gap = GapArt * s;
+                y = geo.StripTop + (int)((geo.StripBottom - geo.StripTop - h) / 2);
+                left = gap;
+                right = geo.View.X / 2 - 60 * s;
+                arrowW = 16 * s;
+                captionScale = CaptionScale;
+            }
 
-            float Width(int i) => System.Math.Max(30 * s, (LabelTexture(Label("chip:" + i), null)?.GetWidth() ?? 40) * CaptionScale + 8 * s);
+            float Width(int i) => System.Math.Max(30 * s, (LabelTexture(Label("chip:" + i), null)?.GetWidth() ?? 40) * captionScale + 8 * s);
 
             _chipFirst = System.Math.Clamp(_chipFirst, 0, gumps.Count - 1);
             bool before = _chipFirst > 0;
@@ -896,6 +924,77 @@ namespace GUO.Input.Touch
             _chipsFirst = _chipFirst;
 
             return result;
+        }
+
+        /// <summary>
+        /// Whether the chips sit on the lower screen: on a two-screen device
+        /// with the shelf on (the Thor). The Odin keeps them in the handle
+        /// strip, its tray, which shows only while something is minimised.
+        /// </summary>
+        private static bool OnShelf => DualScreen.ShelfOn;
+
+        /// <summary>
+        /// The chips on the lower screen, drawn into its target with the
+        /// client's batcher: the small plate and the caption in font 1, both
+        /// at the shelf's scale, as its gumps are drawn. Called by
+        /// DualScreen.Draw.
+        /// </summary>
+        public static void DrawShelfChips(UltimaBatcher2D batcher)
+        {
+            TouchGumpBar bar = TouchInput.Bar;
+
+            if (bar == null || !bar.Shown || !OnShelf || Client.Game?.UO?.Gumps == null)
+            {
+                return;
+            }
+
+            float dpi = Client.Game.DpiScale;
+            ref readonly var plate = ref Client.Game.UO.Gumps.GetGump(SmallPlateGump);
+
+            foreach ((string chip, Rect2 r) in bar.ChipRects())
+            {
+                var dest = new Rectangle((int)(r.Position.X / dpi), (int)(r.Position.Y / dpi), (int)(r.Size.X / dpi), (int)(r.Size.Y / dpi));
+                bool lit = bar.Lit(chip) || bar._held == chip;
+                var hue = ShaderHueTranslator.GetHueVector(0, false, lit ? 0.7f : 1f);
+
+                if (plate.Texture != null)
+                {
+                    // Cropped from the middle, as the main screen's plates are.
+                    int leftW = System.Math.Min(plate.UV.Width, (dest.Width + 1) / 2);
+                    int rightW = System.Math.Min(plate.UV.Width - leftW, dest.Width - leftW);
+                    batcher.Draw(plate.Texture, new Rectangle(dest.X, dest.Y, leftW, dest.Height),
+                        new Rectangle(plate.UV.X, plate.UV.Y, leftW, plate.UV.Height), hue, 0f);
+                    batcher.Draw(plate.Texture, new Rectangle(dest.X + leftW, dest.Y, rightW, dest.Height),
+                        new Rectangle(plate.UV.X + plate.UV.Width - rightW, plate.UV.Y, rightW, plate.UV.Height), hue, 0f);
+                }
+                else
+                {
+                    batcher.Draw(SolidColorTextureCache.GetTexture(GUO.Compat.Color.Black), dest, hue, 0f);
+                }
+
+                RenderedText text = bar.ShelfCaption(Label(chip));
+                text?.Draw(batcher, dest.X + (dest.Width - text.Width) / 2, dest.Y + (dest.Height - text.Height) / 2, 0f);
+            }
+        }
+
+        /// <summary>Captions for the lower screen's chips, kept until the cache starts over.</summary>
+        private readonly Dictionary<string, RenderedText> _shelfCaptions = new();
+
+        private RenderedText ShelfCaption(string caption)
+        {
+            if (!_shelfCaptions.TryGetValue(caption, out RenderedText text))
+            {
+                if (_shelfCaptions.Count > LabelCacheLimit)
+                {
+                    foreach (RenderedText t in _shelfCaptions.Values) t.Destroy();
+                    _shelfCaptions.Clear();
+                }
+
+                text = RenderedText.Create(caption, 0, LabelFont, true);
+                _shelfCaptions[caption] = text;
+            }
+
+            return text;
         }
 
         private readonly List<(string action, Rect2 rect)> _chips = new();
@@ -1387,6 +1486,8 @@ namespace GUO.Input.Touch
             canvas.DrawString(font, textAt, caption, HorizontalAlignment.Left, -1, fontSize, ink ?? new Color(0.1f, 0.08f, 0.06f));
         }
 
+        private static readonly List<(string, Rect2)> _noChips = new();
+
         private bool Lit(string action) =>
             _pressed == action && Godot.Time.GetTicksMsec() - _pressedAt < PressedMs;
 
@@ -1403,8 +1504,9 @@ namespace GUO.Input.Touch
 
             canvas.DrawRect(StripRect(), Band);
 
-            // Minimised gumps (GumpMinimise): a chip each, tap to restore.
-            foreach ((string chip, Rect2 r) in ChipRects())
+            // Minimised gumps (GumpMinimise): a chip each, tap to restore. On
+            // the Thor they are on the lower screen (DrawShelfChips).
+            foreach ((string chip, Rect2 r) in OnShelf ? _noChips : ChipRects())
             {
                 bool lit = Lit(chip) || _held == chip;
                 DrawPlate(canvas, SmallPlateGump, r, s, lit ? new Color(0.7f, 0.7f, 0.7f) : Colors.White);
