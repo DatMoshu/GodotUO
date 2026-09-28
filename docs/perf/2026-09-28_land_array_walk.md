@@ -124,3 +124,19 @@ Measured, for the owner's rule ("the upload frames no longer miss vsync"):
 vsync, but uploads happen in half the walks, a few times each, and never
 worse than the walk's own hitches without the array. Raw files are in the
 measuring worktree's build/android/m5c (gitignored).
+
+## Decision (re-run)
+
+The owner's call, relayed by the director on 2026-09-28: **B7 is on for
+Android.** `--merged-land=array` is the Android default, and
+`--merged-land=off` turns it off. The desktop, the Deck and the web stay off.
+The record is ADR-0017's amendment of the same date.
+
+Checked on the Thor with the default build (no `--merged-land` flag),
+`--perf-parity` against the per-chunk land on the same frames (14:03-14:05):
+
+| Scene | pixels that differ | draw calls, array | draw calls, off | mean ms, array | mean ms, off |
+|---|---:|---:|---:|---:|---:|
+| login | 0 of 2,073,600 | 44 | – | 8.48 | – |
+| open field | 0 of 2,072,193 | 165 | 205 | 16.79 | 16.79 |
+| walk (4 uploads) | – | 195 | 231 | 16.79 | 16.80 |
