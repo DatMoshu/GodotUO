@@ -65,12 +65,18 @@ internal static class PerfProbe
     public static System.Func<bool> ParityState = () => UltimaBatcher2D.BatchedWorld;
     private const int Frames = 360;
 
-    /// <summary>A run needs longer than a still scene to cross a few chunks.</summary>
-    private const int WalkFrames = 1200;
+    /// <summary>
+    /// A run is timed, not counted in frames: uncapped, a desktop draws a
+    /// thousand frames and more a second, a handheld sixty, and the ground
+    /// covered is what matters. Twelve seconds of running crosses several chunks.
+    /// </summary>
+    private const double WalkMs = 12000;
 
     /// <summary>
     /// Runs the player on, a step whenever the walker takes one, turning to the
-    /// next heading when blocked for a second or so; counts the tiles covered.
+    /// next heading when blocked for a second (by the clock: a frame can be well
+    /// under a millisecond, and a running step takes a fifth of a second);
+    /// counts the tiles covered.
     /// </summary>
     private sealed class Runner
     {
@@ -80,7 +86,8 @@ internal static class PerfProbe
             Game.Data.Direction.South, Game.Data.Direction.North, Game.Data.Direction.East,
         };
 
-        private int _heading, _still;
+        private int _heading;
+        private ulong _movedAt;
         private int _x = -1, _y = -1;
 
         public int Tiles { get; private set; }
@@ -93,15 +100,20 @@ internal static class PerfProbe
                 return;
             }
 
-            if (_x >= 0 && (player.X != _x || player.Y != _y))
+            ulong now = Godot.Time.GetTicksMsec();
+            if (_x < 0 || player.X != _x || player.Y != _y)
             {
-                Tiles += System.Math.Max(System.Math.Abs(player.X - _x), System.Math.Abs(player.Y - _y));
-                _still = 0;
+                if (_x >= 0)
+                {
+                    Tiles += System.Math.Max(System.Math.Abs(player.X - _x), System.Math.Abs(player.Y - _y));
+                }
+
+                _movedAt = now;
             }
-            else if (_x >= 0 && ++_still > 90)
+            else if (now - _movedAt > 1000)
             {
                 _heading = (_heading + 1) % Headings.Length;
-                _still = 0;
+                _movedAt = now;
             }
 
             _x = player.X;
@@ -196,7 +208,7 @@ internal static class PerfProbe
     {
         // A pixel comparison needs a still frame; a run has none.
         Dictionary<string, object> parity = _parity && !walks ? await Parity(host, name) : null;
-        int n = walks ? WalkFrames : Frames;
+        int n = Frames;
         Runner runner = walks ? new Runner() : null;
 
         // Uncapped: with vsync or a frame cap every frame below the cap reads as
@@ -225,25 +237,39 @@ internal static class PerfProbe
         await InputProbe.Wait(host, 30);
         long drawsBefore = UltimaBatcher2D.FramesBegun;
 
-        var ms = new double[n];
+        var ms = new List<double>(walks ? 20000 : n);
         double kRect = 0, kAffine = 0, kMesh = 0, kTri = 0, kBatches = 0, kCover = 0, kCoverRuns = 0, coverQueued = 0, coverOverlapping = 0;
         double calls = 0, items = 0, switches = 0, commands = 0, prepare = 0, world = 0, cpu = 0, gpu = 0, objects = 0;
         int uploadsBefore = LandPages.Uploads, uploadsMax = 0, uploadFrames = 0, uploadsLast = LandPages.Uploads;
+        // An upload lands in the frame after the one that drew it: its cost is
+        // in the next frame's time. Kept apart, since a p99 over thousands of
+        // frames never sees a few dozen.
+        var uploadMs = new List<double>();
+        bool uploadedLast = false;
         long allocatedBefore = System.GC.GetTotalAllocatedBytes();
         System.TimeSpan pausedBefore = System.GC.GetTotalPauseDuration();
         await host.ToSignal(host.GetTree(), SceneTree.SignalName.ProcessFrame);
         long last = System.Diagnostics.Stopwatch.GetTimestamp();
-        for (int i = 0; i < n; i++)
+        double elapsed = 0;
+        for (int i = 0; walks ? elapsed < WalkMs : i < n; i++)
         {
             runner?.Step();
             await host.ToSignal(host.GetTree(), SceneTree.SignalName.ProcessFrame);
             long now = System.Diagnostics.Stopwatch.GetTimestamp();
-            ms[i] = (now - last) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+            double frameMs = (now - last) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+            ms.Add(frameMs);
+            elapsed += frameMs;
             last = now;
             int up = LandPages.Uploads - uploadsLast;
             uploadsLast = LandPages.Uploads;
             uploadsMax = System.Math.Max(uploadsMax, up);
             uploadFrames += up > 0 ? 1 : 0;
+            if (up > 0 || uploadedLast)
+            {
+                uploadMs.Add(frameMs);
+            }
+
+            uploadedLast = up > 0;
             calls += Performance.GetMonitor(Performance.Monitor.RenderTotalDrawCallsInFrame);
             objects += Performance.GetMonitor(Performance.Monitor.RenderTotalObjectsInFrame);
             (int sw, int it, int cm) = UltimaBatcher2D.LastFrame;
@@ -267,6 +293,7 @@ internal static class PerfProbe
             gpu += RenderingServer.ViewportGetMeasuredRenderTimeGpu(viewport);
         }
 
+        n = ms.Count;
         long draws = UltimaBatcher2D.FramesBegun - drawsBefore;
         int uploads = LandPages.Uploads - uploadsBefore;
         double allocatedKb = (System.GC.GetTotalAllocatedBytes() - allocatedBefore) / 1024.0 / n;
@@ -318,6 +345,9 @@ internal static class PerfProbe
             ["land_uploads_max_in_a_frame"] = uploadsMax,
             ["frames_with_land_upload"] = uploadFrames,
             ["land_upload_mib_per_frame"] = System.Math.Round((double)uploads * LandPages.LayerBytes / (1 << 20) / n, 2),
+            ["upload_frames_mean_ms"] = uploadMs.Count > 0 ? System.Math.Round(uploadMs.Average(), 3) : 0.0,
+            ["upload_frames_max_ms"] = uploadMs.Count > 0 ? System.Math.Round(uploadMs.Max(), 3) : 0.0,
+            ["max_ms"] = System.Math.Round(ms.Max(), 3),
         };
         if (parity != null)
         {
@@ -435,7 +465,7 @@ internal static class PerfProbe
         md.AppendLine();
         md.AppendLine($"{System.DateTime.Now:yyyy-MM-dd HH:mm}, {OS.GetName()}, {RenderingServer.GetVideoAdapterName()}, "
                       + $"window {size.X}x{size.Y}, zoom {Client.Game?.Scene?.Camera?.Zoom:F1}, vsync and frame cap off, "
-                      + $"{Frames} frames per scene ({WalkFrames} for a run) after {Settle} to settle, "
+                      + $"{Frames} frames per scene ({WalkMs / 1000:0} s for a run) after {Settle} to settle, "
                       + (optimized ? "optimised build." : "UNOPTIMISED build (Debug, Optimize=false)."));
         md.AppendLine();
         md.AppendLine("| Scene | mean ms | p95 ms | p99 ms | FPS | alloc KB/frame | draws/frame | draw calls | batcher items | texture switches | draw commands | world prepare ms | world draw ms | render CPU ms | GPU ms |");
@@ -456,13 +486,14 @@ internal static class PerfProbe
         }
 
         md.AppendLine();
-        md.AppendLine("| Scene | tiles moved | land layers | land-array uploads | per frame | most in a frame | frames with one | MiB/frame |");
-        md.AppendLine("|---|---:|---:|---:|---:|---:|---:|---:|");
+        md.AppendLine("| Scene | tiles moved | land layers | land-array uploads | per frame | most in a frame | frames with one | MiB/frame | those frames and the next: mean ms | their max ms | max ms of any frame |");
+        md.AppendLine("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|");
         foreach (var r in results)
         {
             md.AppendLine($"| {r["scene"]} | {r.GetValueOrDefault("tiles_moved", 0)} | {r.GetValueOrDefault("land_layers", 0)} | {r.GetValueOrDefault("land_uploads", 0)} | "
                           + $"{r.GetValueOrDefault("land_uploads_per_frame", 0)} | {r.GetValueOrDefault("land_uploads_max_in_a_frame", 0)} | "
-                          + $"{r.GetValueOrDefault("frames_with_land_upload", 0)} | {r.GetValueOrDefault("land_upload_mib_per_frame", 0)} |");
+                          + $"{r.GetValueOrDefault("frames_with_land_upload", 0)} | {r.GetValueOrDefault("land_upload_mib_per_frame", 0)} | "
+                          + $"{r.GetValueOrDefault("upload_frames_mean_ms", 0)} | {r.GetValueOrDefault("upload_frames_max_ms", 0)} | {r.GetValueOrDefault("max_ms", 0)} |");
         }
 
         if (results.Any(r => r.ContainsKey("parity_violations")))
