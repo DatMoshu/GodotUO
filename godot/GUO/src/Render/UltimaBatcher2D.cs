@@ -154,6 +154,20 @@ namespace GUO.Renderer
 
         public int TextureSwitches, FlushesDone;
 
+        /// <summary>Canvas draw commands added this frame: one per sprite, mesh or triangle list.</summary>
+        public int Commands;
+
+        /// <summary>
+        /// The previous frame's counters, kept by BeginFrame before it resets
+        /// them, for the perf probe (src/Bootstrap/PerfProbe.cs): texture
+        /// switches, canvas items opened (every one is a batch break -- a new
+        /// material, clip, target or blend), and draw commands.
+        /// </summary>
+        public static (int TextureSwitches, int Items, int Commands) LastFrame;
+
+        /// <summary>Frames begun since start: the perf probe checks every measured frame really drew.</summary>
+        public static long FramesBegun;
+
         public void Dispose()
         {
             for (int i = 0; i < _items.Count; i++)
@@ -224,10 +238,13 @@ namespace GUO.Renderer
         {
             EnsureNotStarted();
 
+            LastFrame = (TextureSwitches, _itemCount, Commands);
+            FramesBegun++;
             _itemCount = 0;
             _sizedTexture = null;
             TextureSwitches = 0;
             FlushesDone = 0;
+            Commands = 0;
 
             // Once a frame, before anything draws. Godot cannot upload part of
             // a texture, so TextureAtlas blits sprites into a CPU-side page as
@@ -388,6 +405,8 @@ namespace GUO.Renderer
                     continue;
                 }
 
+                Commands++;
+
                 RenderingServer.CanvasItemAddMesh(
                     _current,
                     mesh.GetRid(),
@@ -436,6 +455,8 @@ namespace GUO.Renderer
                 _nextMaterial = _currentMaterial;
                 _worldOffset = keep;
             }
+
+            Commands++;
 
             RenderingServer.CanvasItemAddMesh(
                 _current,
@@ -1316,6 +1337,7 @@ namespace GUO.Renderer
         {
             if (!ReferenceEquals(texture, _sizedTexture))
             {
+                TextureSwitches++;
                 _sizedTexture = texture;
                 _sizedWidth = texture.GetWidth();
                 _sizedHeight = texture.GetHeight();
@@ -1387,6 +1409,7 @@ namespace GUO.Renderer
             {
                 // The overwhelmingly common case: an upright, unmirrored rect.
                 // One canvas command, no per-draw arrays.
+                Commands++;
                 RenderingServer.CanvasItemAddTextureRectRegion
                 (
                     _current,
@@ -1496,6 +1519,8 @@ namespace GUO.Renderer
             _quadColors[2] = modulate;
             _quadColors[3] = modulate;
 
+            Commands++;
+
             RenderingServer.CanvasItemAddTriangleArray
             (
                 _current,
@@ -1574,6 +1599,7 @@ namespace GUO.Renderer
             var region = new Rect2(left, top, right - left, bottom - top);
 
             RenderingServer.CanvasItemAddSetTransform(_current, new Transform2D(axisX, axisY, origin));
+            Commands++;
             RenderingServer.CanvasItemAddTextureRectRegion(_current, region, RidOf(texture), region, modulate, false, false);
             RenderingServer.CanvasItemAddSetTransform(_current, Transform2D.Identity);
 
@@ -1701,6 +1727,7 @@ namespace GUO.Renderer
             RenderingServer.CanvasItemSetDrawIndex(item, _itemCount);
 
             _itemCount++;
+            FlushesDone++;
 
             return item;
         }
