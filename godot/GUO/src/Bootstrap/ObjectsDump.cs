@@ -54,6 +54,27 @@ internal static class ObjectsDump
                 host.GetViewport().GetTexture().GetImage().SavePng(Path.Combine(dir, name + ".png"));
             }
 
+            // <name>.walk8 holding frames per direction (default 70): the eight
+            // screen directions (InputProbe.WalkEight), then <name>.walked.
+            foreach (string request in Directory.GetFiles(dir, "*.walk8"))
+            {
+                string name = Path.GetFileNameWithoutExtension(request);
+                int frames = int.TryParse(File.ReadAllText(request).Trim(), out int fr) && fr > 0 ? fr : 70;
+                File.Delete(request);
+                bool walked = await InputProbe.WalkEight(host, frames);
+                File.WriteAllText(Path.Combine(dir, name + ".walked"), walked ? "moved" : "did not move");
+            }
+
+            // <name>.paperdoll: the player's paperdoll opened (where worn gear shows).
+            foreach (string request in Directory.GetFiles(dir, "*.paperdoll"))
+            {
+                File.Delete(request);
+                if (Client.Game?.UO?.World is World pw && pw.Player != null)
+                {
+                    GameActions.OpenPaperdoll(pw, pw.Player.Serial);
+                }
+            }
+
             // <name>.options holding a page number: Options opened on that page
             // (3 is Video, where "Change UO folder..." sits).
             foreach (string request in Directory.GetFiles(dir, "*.options"))
@@ -126,6 +147,9 @@ internal static class ObjectsDump
         {
                 double seconds = args.Length > 0 ? double.Parse(args[0], System.Globalization.CultureInfo.InvariantCulture) : 10;
                 double fps = args.Length > 1 ? double.Parse(args[1], System.Globalization.CultureInfo.InvariantCulture) : 10;
+                // A third word "jpg" saves JPEGs (quality 0.92): much quicker to write
+                // than PNG, so a 1024x768 recording keeps its frame rate.
+                bool jpg = args.Length > 2 && args[2] == "jpg";
                 string frames = Path.Combine(dir, name);
                 Directory.CreateDirectory(frames);
                 var clock = System.Diagnostics.Stopwatch.StartNew();
@@ -135,11 +159,21 @@ internal static class ObjectsDump
                     await host.ToSignal(Godot.RenderingServer.Singleton, Godot.RenderingServerInstance.SignalName.FramePostDraw);
                     if (clock.Elapsed.TotalSeconds * fps >= n)
                     {
-                        host.GetViewport().GetTexture().GetImage().SavePng(Path.Combine(frames, $"{++n:D4}.png"));
+                        Godot.Image frame = host.GetViewport().GetTexture().GetImage();
+                        if (jpg)
+                        {
+                            frame.SaveJpg(Path.Combine(frames, $"{++n:D4}.jpg"), 0.92f);
+                        }
+                        else
+                        {
+                            frame.SavePng(Path.Combine(frames, $"{++n:D4}.png"));
+                        }
                     }
                 }
 
-                File.WriteAllText(Path.Combine(dir, name + ".recorded"), n.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                // "frames seconds": the rate the frames were actually taken at.
+                File.WriteAllText(Path.Combine(dir, name + ".recorded"),
+                    $"{n} {clock.Elapsed.TotalSeconds.ToString("F3", System.Globalization.CultureInfo.InvariantCulture)}");
         }
     }
 
