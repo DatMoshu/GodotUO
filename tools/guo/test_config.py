@@ -256,6 +256,19 @@ class DataSourceTests(unittest.TestCase):
         self.assertEqual((r.source, r.local_only), ("install+custom", True))
         self.assertIn("never shipped", r.message())
 
+    def test_runtime_table_matches_formats(self):
+        """The client's DataRequirements.g.cs is generated from FILE_REGISTRY and must be current."""
+        import importlib.util
+
+        repo = Path(__file__).resolve().parents[2]
+        spec = importlib.util.spec_from_file_location("datasources_run", repo / "tools" / "datasources" / "run.py")
+        run = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(run)
+        have = (repo / run.GENERATED).read_text(encoding="utf-8").replace("\r\n", "\n")
+        self.assertEqual(have, run.generated_cs(), "run: python tools/datasources/run.py gen-cs")
+        for f in required_files():
+            self.assertIn(f'new("{f.key}", ', have)
+
     def test_config_uses_the_same_order(self):
         root = self.dir / "repo"
         shared = root / "launchers" / "_shared"

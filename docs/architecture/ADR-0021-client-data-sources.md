@@ -39,13 +39,29 @@ exist yet):
   writes `HKLM\SOFTWARE\WOW6432Node\Electronic Arts\EA Games\Ultima Online Classic`,
   value `InstallDir`, on the owner's machine.
 
+The runtime half, `godot/GUO/src/Bootstrap/DataSources.cs`, verified
+2026-09-27:
+
+- The resolver replaced the client's `tiledata.mul` probe. Its required
+  table, `DataRequirements.g.cs`, is generated from `FILE_REGISTRY`
+  (`tools\datasources\run.py gen-cs`), and `test_config.py` fails if it is
+  stale.
+- Five windowed desktop runs (never focused), with `--login-probe`:
+
+| Run | Result |
+|---|---|
+| `UO_CLIENT_DATA` a missing folder | logs "wizard needed" with the reason, exits through `OnNoValidData` |
+| normal (`UO_CLIENT_DATA`) | install (environment); login gump drawn |
+| `UO_CUSTOM_DATA` = the Dreadcrest stage | install+custom, 5 override entries loaded, marked local only; login gump drawn |
+| no `UO_CLIENT_DATA`, `settings.json` `ultimaonlinedirectory` set | install (setting); login gump drawn |
+| nothing set | install (default) from the registry `InstallDir`; login gump drawn |
+
 **Not yet verified:**
 
-- the runtime side. The client still checks only `tiledata.mul` and exits
-  with a message when data is missing. G2 replaces that exit with the wizard,
-  and must use the validity rule below.
-- a fresh clone reaching the wizard: it reaches the "run the wizard" message
-  and a client start, and stops there until G2.
+- the wizard screen (G2 UI). `Main.OnNoValidData` is the one call site it
+  replaces. Until then that call site logs the reason and exits as before.
+- the Android and Deck platform defaults at runtime. They are written, but
+  not yet run on a device.
 
 ## Context
 
