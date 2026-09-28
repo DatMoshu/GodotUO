@@ -111,6 +111,26 @@ internal static class GamepadProbe
             Check("A takes a target under the pointer", taken && !targets.IsTargeting);
         }
 
+        // Y taps the command bar's handle: one row opens to two, and back.
+        // The bar is there only with the touch layer on (a device).
+        var bar = GUO.Input.Touch.TouchInput.Bar;
+
+        if (bar != null && bar.HandleShown)
+        {
+            int rows = bar.RowsOpen;
+            await Button(host, JoyButton.Y);
+            await InputProbe.Wait(host, 30);
+            int opened = bar.RowsOpen;
+            await Button(host, JoyButton.Y);
+            await InputProbe.Wait(host, 30);
+            Check("Y opens and closes the command bar's rows, as the handle does",
+                opened != rows && bar.RowsOpen == rows, $"{rows} -> {opened} -> {bar.RowsOpen}");
+        }
+        else
+        {
+            GD.Print("[GUO] gamepad check: skip Y on the command bar (no touch bar, or its rows are off)");
+        }
+
         profile.GamepadLayout = manual;
         GamepadInput.ForgetLayouts();
         Passed = _failed == 0;
