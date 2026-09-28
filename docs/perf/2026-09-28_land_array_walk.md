@@ -82,3 +82,45 @@ layer.
 
 Raw files: `perf_walk-{array,off}.{md,json}` from both pairs, kept in the
 measuring worktree's build/android/m5 and m5b (gitignored).
+
+## Re-run on the land-only atlas (596a3e7)
+
+GUO3's fix (work/integration 596a3e7) gives land its own Art atlas under
+the flag and creates the array with spare layers, so a new page is one
+layer copy, not a rebuild. The same Thor, the same route and flags, four
+alternating pairs (13:49-14:02), each a fresh install and start. The probe
+now also reports the array's capacity and the video memory, read at the
+end of the walk.
+
+| Thor, walk | array 1 | off 1 | array 2 | off 2 | array 3 | off 3 | array 4 | off 4 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| mean ms | 16.91 | 16.89 | 16.88 | 16.96 | 16.89 | 16.79 | 16.84 | 17.30 |
+| p95 ms | 21.86 | 21.58 | 21.64 | 22.43 | 22.44 | 18.39 | 18.12 | 27.18 |
+| p99 ms | 30.09 | 31.16 | 29.15 | 31.69 | 29.70 | 23.18 | 27.37 | 35.66 |
+| max ms | 35.71 | 35.17 | 34.42 | 39.06 | 34.75 | 35.98 | 29.22 | 50.24 |
+| land-array uploads (all bumps, no rebuilds) | 3 | 0 | 0 | 0 | 0 | 0 | 4 | 0 |
+| upload frames and the next: mean ms | 22.68 | – | – | – | – | – | 22.76 | – |
+| upload frames and the next: max ms | 30.09 | – | – | – | – | – | 29.21 | – |
+| array layers used / created | 2 / 4 | – | 2 / 4 | – | 2 / 4 | – | 2 / 4 | – |
+| video memory, MiB | 348.0 | 267.4 | 348.0 | 267.3 | 348.3 | 267.1 | 347.1 | 266.8 |
+
+- **Uploads are rare now:** 3, 0, 0 and 4 in a 12 s walk, against 16 and 6
+  before. None is a rebuild.
+- **An upload still costs a vsync.** The upload frames and the frames after
+  them average 22.7 ms, about 6 ms over the mean, which is what one upload
+  cost before. So in two walks of four, the array adds three or four missed
+  vsyncs. The fix took away the count, not the cost of each.
+- **Those hitches are inside the walk's own noise.** Their worst, 30 ms,
+  is below the p99 of three of the four walks without the array (23-36 ms,
+  worst frame 35-50 ms). Across the four pairs: mean 16.88 against 16.99 ms,
+  p99 29.1 against 30.4 ms. Draw calls vary between pairs (193 to 448), so
+  they are not compared here.
+- **GPU memory: +80 MiB.** The array is 4 layers of 16 MiB (64 MiB), of
+  which 2 are spares (32 MiB). The rest (about 16 MiB) is the land-only
+  Art page. Texture memory is 188.8 against 108.5 MiB.
+
+Measured, for the owner's rule ("the upload frames no longer miss vsync"):
+**not met as worded.** When an upload happens, the frame still misses
+vsync, but uploads happen in half the walks, a few times each, and never
+worse than the walk's own hitches without the array. Raw files are in the
+measuring worktree's build/android/m5c (gitignored).

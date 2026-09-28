@@ -58,6 +58,9 @@ namespace GUO.Renderer
         /// <summary>Whether <paramref name="texture"/> is a layer already.</summary>
         public static bool Holds(Texture2D texture) => texture != null && _index.ContainsKey(texture);
 
+        /// <summary>Layers the array holds, spares included: what it takes on the GPU is this times <see cref="LayerBytes"/>.</summary>
+        public static int Capacity => _capacity;
+
         /// <summary>Layers in the array (pages land has been drawn from).</summary>
         public static int Layers => _layers.Count;
 
