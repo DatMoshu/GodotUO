@@ -165,6 +165,15 @@ def main() -> int:
         check("stair1_foot" in names and any(st["z"] == 27 for st in side4["stops"]),
               f"the walk climbs the stair to z 27 (stops {names})")
         check(validate.validate(comps4, side4, None) == [], "the two-storey L validates")
+        # the same with a rail round the stairwell: the sides and the foot end, not the arrival
+        railed = json.loads(json.dumps(two))
+        railed["storeys"][0]["stairs"][0]["rail"] = "stone"
+        comps4r, side4r = generate.build(railed, cat)
+        rails = {(c.x + cx, c.y + cy) for c in comps4r if c.z == 27 and 0x400 <= c.item < 0x500}
+        want = {(2, y) for y in range(1, 5)}   # x 0 and y 0 are the outer walls; (2, 5) is beside the arrival
+        check(rails == want, f"the stairwell rail runs beside the flight, the arrival end open (got {sorted(rails)})")
+        check(not rails & {(0, 6), (1, 6), (2, 6)}, "no rail beside the arrival")
+        check(validate.validate(comps4r, side4r, None) == [], "the railed L validates")
 
         # a fenced yard
         yd = cottage(yard={"box": [-2, -1, 6, 8], "fence": "stone", "height": 5, "gate": {"side": "S", "offset": 4},
@@ -213,6 +222,22 @@ def main() -> int:
                                  "floor": "stone", "parapet": False})
         check(bool(fort.build_scene(into, cat)["problems"]), "a stair run into a tower is reported")
         check(not sc["problems"], f"a clear stair is not (got {sc['problems']})")
+
+        # a floor of mixed materials: the first on about half the cells, the same bytes every build
+        mixed = {"format": 1, "kind": "scene", "name": "m", "materials": {"wall": "stone"},
+                 "elements": [{"type": "platform", "part": "yard", "z": 0, "face": False,
+                               "floor": ["stone", "wooden"], "shapes": [{"box": [0, 0, 9, 9]}]}],
+                 "tour": [{"name": "a", "at": [1, 1], "z": 0}, {"name": "b", "at": [8, 8], "z": 0}]}
+        m1, m2 = fort.build_scene(mixed, cat), fort.build_scene(json.loads(json.dumps(mixed)), cat)
+        tiles = [c.item for p in m1["parts"] for c in p["comps"] if c.z == 0]
+        stone = sum(1 for i in tiles if i == 0x611)
+        check(0.35 < stone / len(tiles) < 0.65 and {0x601, 0x602} & set(tiles),
+              f"a mixed floor lays both materials, the first on about half ({stone} of {len(tiles)})")
+        grid = {(c.x + p["centre"][0], c.y + p["centre"][1]): c.item == 0x611 for p in m1["parts"] for c in p["comps"]}
+        alt = sum(grid[(x, y)] != grid[(x + 1, y)] for x in range(9) for y in range(10))
+        check(alt < 70, f"a mixed floor is scattered, not a checkerboard ({alt} of 90 neighbours differ)")
+        check([(c.item, c.x, c.y) for p in m1["parts"] for c in p["comps"]] ==
+              [(c.item, c.x, c.y) for p in m2["parts"] for c in p["comps"]], "a mixed floor builds the same bytes")
 
         # the offline walk: a terrace at z 20 on walls, reached by a stair; a parapet cuts it
         import walkcheck

@@ -709,7 +709,7 @@ Terms:
 | `storeys[]` | Per storey, bottom up: `openings[]` (`kind` `door` or `window`, placed by `side` `N`/`E`/`S`/`W` with an `offset` along it, or by `at` `[x, y]`), `partitions[]` (inner walls: `{"x": k, "from", "to"}` or `{"y": k, ...}`), `floor_holes[]` (`[x, y]` left open, for stairwells) |
 | `roof` | `style` `gable` with `ridge` `x` or `y`: it covers x 1..W+1 and y 1..H+1 and rises 3 z a course, with gable-end fill (the wall material, 3 high) on both ends (the originals fill only the south or east end the client shows; generated multis are complete on every side); the span across the ridge must be odd (W even for a ridge along y, H even for a ridge along x). Or `style` `flat`: `material` floor tiles at the top, with an optional `parapet` material |
 | `rects[]` | Instead of `size`: boxes `[x0, y0, x1, y1]`, or `{"box", "storeys", "roof"}`, whose union is the footprint (an L, a T, a U). Walls stand on the union's edge cells; a rect with fewer storeys is a lower wing with its own roof. Where roofs overlap the higher one wins, and nothing is roofed inside a taller rect |
-| `storeys[].stairs[]` | `{"at": [x, y], "rise": N/E/S/W, "width"}`: a straight flight to the next storey as the client builds them (0x009E): step i a stair piece at z + 5i on i stacked 10-high blocks, then a landing; the next floor is left open over it, and the cell past the landing is where a climber arrives |
+| `storeys[].stairs[]` | `{"at": [x, y], "rise": N/E/S/W, "width"}`: a straight flight to the next storey as the client builds them (0x009E): step i a stair piece at z + 5i on i stacked 10-high blocks, then a landing; the next floor is left open over it, and the cell past the landing is where a climber arrives; `rail` (a material, e.g. `wooden fence`) stands a low rail round that opening on the floor above, the arrival end left open, so the hole reads as a stairwell and not a gap |
 | `storeys[].floor` | That storey's floor material, over `materials.floor` |
 | `rect` in an opening | Its `side`/`offset` count along that rect, not the whole footprint |
 | `porches[]` | `{"box", "floor", "posts", "entry": {"side", "offset"}, "balcony": {"rail", "rail_height"}}`: paving off the house at floor level, posts at its free corners, entrance steps at its entry, and with `balcony` a railed floor over it on the second storey |
@@ -764,7 +764,9 @@ square holding whatever stands in it (cut again on straight lines while it has
 too many components), so no two overlap and none reaches more than 17 tiles
 from its centre: ModernUO loses a multi's tiles at a point inside another
 multi's bounds where that one has none, and sends a multi only within 22 of
-its centre. Elements:
+its centre. `"layout": "parts"` instead keeps one multi per element `part`,
+in element order, overlaps reported as notes: only for testing the shard
+against overlapping multis. Elements:
 
 | `type` | Fields |
 |---|---|
@@ -782,7 +784,10 @@ Parapets are two courses of those low pieces with a merlon of the same
 piece, turned with the wall, on every other cell. Every floor 16 or more
 above the ground (a gate's passage, a platform, a tower's first level)
 stands on a solid fill up to 15 under it: a hollow there is room to stand
-on the land below, and the client steps down into it. `scene-prove --at X
+on the land below, and the client steps down into it. Any element's `floor`
+or `walk` may be a list of materials: the first lies on about half the cells,
+the rest share the others, picked per cell by a fixed hash (CRC-32 of `x,y`),
+so a courtyard is not one tile repeated and the bytes stay the same. `scene-prove --at X
 Y` without a z stands the scene on the land height most of it covers.
 
 `scene-build` writes `build/multi/scenes/<name>/`: `scene.json` (`parts[]`

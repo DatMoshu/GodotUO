@@ -23,6 +23,7 @@ part is placed at the scene's origin plus its own centre.
 from __future__ import annotations
 
 import collections
+import zlib
 import math
 import sys
 from pathlib import Path
@@ -156,9 +157,16 @@ class Scene:
         return self.cat.floor(mat)
 
     def paint_floor(self, cells, z, mat, rank, part):
-        ids = self.floor_ids(mat)
+        # a list of materials mixes them: the first on about half the cells, the rest shared out,
+        # chosen per cell by a fixed hash (no randomness: the same scene builds the same bytes)
+        mats = mat if isinstance(mat, list) else [mat]
+        ids = [self.floor_ids(m) for m in mats]
         for (x, y) in sorted(cells):
-            self.add(ids[(x * 7 + y * 13) % len(ids)], x, y, z, rank, part)
+            k = 0
+            if len(mats) > 1:
+                h = zlib.crc32(f"{x},{y}".encode())
+                k = 0 if h % 2 == 0 else 1 + (h >> 1) % (len(mats) - 1)
+            self.add(ids[k][(x * 7 + y * 13) % len(ids[k])], x, y, z, rank, part)
             self.surfaces.append((x, y, z, rank, part))
 
     def plinth(self, cells, z0, mat, rank, part):
@@ -521,15 +529,19 @@ class Scene:
     def split(self, kept) -> list[dict]:
         """The scene as multis on a grid: each square of the grid is one multi holding whatever
         stands in it, so no two multis' bounds overlap (see TILE), cut again on straight lines
-        while one has too many components."""
+        while one has too many components. With "layout": "parts" each element's part is its
+        own multi instead, in the order the elements come (for a test that wants overlaps)."""
         xs0, ys0 = min(c.x for c, _, _ in kept), min(c.y for c, _, _ in kept)
+        by_part = self.desc.get("layout", "grid") == "parts"
+        order = list(dict.fromkeys(p for _, _, p in kept))
         squares: dict[tuple, list] = {}
         for c, _, p in kept:
-            squares.setdefault(((c.x - xs0) // TILE, (c.y - ys0) // TILE), []).append((c, p))
+            key = (order.index(p), 0) if by_part else ((c.x - xs0) // TILE, (c.y - ys0) // TILE)
+            squares.setdefault(key, []).append((c, p))
         out = []
         for (gx, gy), items in sorted(squares.items()):
             held = collections.Counter(p for _, p in items)
-            name = f"{held.most_common(1)[0][0]}_{gx}_{gy}"
+            name = order[gx] if by_part else f"{held.most_common(1)[0][0]}_{gx}_{gy}"
             for sub_name, sub in cut(name, [c for c, _ in items]):
                 xs, ys = [c.x for c in sub], [c.y for c in sub]
                 cx, cy = (min(xs) + max(xs)) // 2, (min(ys) + max(ys)) // 2
@@ -539,7 +551,7 @@ class Scene:
                             "holds": sorted(held), "bounds": [min(xs), min(ys), max(xs), max(ys)]})
         # every door goes with the multi of its square (a doorway itself may hold nothing)
         for d in self.doors:
-            sq = [(d["x"] - xs0) // TILE, (d["y"] - ys0) // TILE]
+            sq = [order.index(d["part"]), 0] if by_part else [(d["x"] - xs0) // TILE, (d["y"] - ys0) // TILE]
             home = [p for p in out if p["square"] == sq] or out
             inside = [p for p in home if p["bounds"][0] <= d["x"] <= p["bounds"][2]
                       and p["bounds"][1] <= d["y"] <= p["bounds"][3]]
@@ -627,7 +639,8 @@ def build_scene(desc: dict, cat: Catalogue) -> dict:
         for b in parts[i + 1:]:
             p, q = a["bounds"], b["bounds"]
             if not (p[2] < q[0] or q[2] < p[0] or p[3] < q[1] or q[3] < p[1]):
-                s.problems.append(f"multis {a['name']} and {b['name']} overlap: the shard would lose tiles")
+                line = f"multis {a['name']} and {b['name']} overlap: the shard may lose tiles (see README)"
+                (s.notes if desc.get("layout") == "parts" else s.problems).append(line)
     tour = walk_tour([{"name": t["name"], "x": t["at"][0], "y": t["at"][1], "z": t["z"]}
                       for t in desc.get("tour", [])], s.flights)
     return {"format": 1, "kind": "scene", "name": desc["name"], "parts": parts, "tour": tour, "notes": s.notes,

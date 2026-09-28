@@ -105,6 +105,8 @@ into multis by square (see the limits above); each names the elements it
 holds.
 
 A long stair can pause on landings, and a causeway can carry buttresses. A
+house stair can put a rail round its opening upstairs, and a floor can mix
+materials (a list, the first dominant) so a large paved area is not one tile. A
 build never depends on what was built before it in the same process: the
 catalogue forgets its picks at the start of each house or scene.
 
