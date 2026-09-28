@@ -720,7 +720,8 @@ Terms:
     `type`.
   - `facing` is ModernUO's `DoorFacing`: `WestCW` in a wall along x,
     `SouthCW` in a wall along y.
-  - `type` is `DarkWoodHouseDoor` or `MetalHouseDoor`.
+  - `type` is `DarkWoodDoor` or `MetalDoor`: plain doors with the house
+    doors' art. A `BaseHouseDoor` refuses everyone outside a real `BaseHouse`.
 - `preview.png`, `preview_noroof.png` and `plan_<n>.png`.
 
 **The validator** refuses:

@@ -192,8 +192,10 @@ def build(desc: dict, cat: Catalogue) -> tuple[list[Component], dict]:
             b.add(door_item, x, y, z, visible=False)
             b.doors.append({"x": x, "y": y, "z": z, "storey": n,
                             "facing": "WestCW" if along_x else "SouthCW",
-                            "type": "MetalHouseDoor" if o.get("door", mats.get("door", "wood")) == "metal"
-                            else "DarkWoodHouseDoor"})
+                            # Plain doors, same art and sounds as the house doors: a BaseHouseDoor
+                            # refuses everyone outside a real BaseHouse ("not allowed to access this").
+                            "type": "MetalDoor" if o.get("door", mats.get("door", "wood")) == "metal"
+                            else "DarkWoodDoor"})
         b.storeys.append({"z": z, "walls": sorted(solid), "doors": sorted(doors), "windows": sorted(windows),
                           "floor": floor})
     if "foundation" in mats:

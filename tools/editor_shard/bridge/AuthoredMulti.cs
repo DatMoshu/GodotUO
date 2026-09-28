@@ -1,7 +1,7 @@
 // Authored multis on the private shard (tools/multi, ADR-0022).
 //
 // {"op":"multi","action":"place","id":16128,"map":0,"x":1500,"y":1600,"z":0,"tag":"cottage",
-//  "doors":[{"x":1,"y":3,"z":7,"facing":"WestCW","type":"DarkWoodHouseDoor"}, ...]}
+//  "doors":[{"x":1,"y":3,"z":7,"facing":"WestCW","type":"DarkWoodDoor"}, ...]}
 //   puts a GUOAuthoredMulti of that multi id at x,y,z (z omitted: the land's average z),
 //   then a real door per entry, at the multi's centre plus x,y and its z plus z, as
 //   BaseHouse.AddSouthDoor/AddEastDoor do. A multi already carrying the tag is
@@ -106,7 +106,7 @@ public static class AuthoredMultis
             multi.MoveToWorld(new Point3D(x, y, z), map);
             foreach (JsonNode d in (JsonArray)msg["doors"] ?? new JsonArray())
             {
-                string typeName = (string)d["type"] ?? "DarkWoodHouseDoor";
+                string typeName = (string)d["type"] ?? "DarkWoodDoor";
                 Type t = AssemblyHandler.FindTypeByName(typeName) ?? throw new InvalidOperationException($"no door type {typeName}");
                 var facing = Enum.Parse<DoorFacing>((string)d["facing"] ?? "WestCW");
                 var door = (Item)Activator.CreateInstance(t, facing);
