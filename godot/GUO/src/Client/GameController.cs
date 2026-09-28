@@ -743,6 +743,16 @@ namespace GUO
                 return;
             }
 
+            // PORT DEVIATION (GUO): the pre-game card (a Godot card) takes the
+            // keys while one of its fields is typed in, the pointer while it is
+            // open over the login screen, and a tap on its Servers button.
+            if (GUO.Input.Touch.Pregame.PregameCard.HandleMainInput(@event))
+            {
+                GetViewport().SetInputAsHandled();
+
+                return;
+            }
+
             // PORT DEVIATION (GUO): a Modern gump (ADR-0024) and the command
             // bar's slot editor (Godot cards, modal) take the pointer and the
             // keys while open.

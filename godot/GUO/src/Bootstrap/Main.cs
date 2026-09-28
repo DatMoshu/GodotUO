@@ -220,6 +220,12 @@ public partial class Main : Node
                 // simulates one). Nothing is added to the tree otherwise.
                 GUO.Platform.Android.DualScreen.Setup(this, _options.DualSimulate, _options.DualOff);
 
+                // The pre-game card: the second screen's, or over the login
+                // screen from its Servers button. A debug build lists its dev
+                // shard; ServerBook ignores this in a release build.
+                GUO.Input.Touch.Pregame.ServerBook.SetDevShard(_options.ShardHost, _options.ShardPort);
+                GUO.Input.Touch.Pregame.PregameCard.Setup(this);
+
                 // Commands and a probe together: the commands run first
                 // (typically "[go" somewhere populated) and the probe follows.
                 if (_options.LoginProbe)
@@ -796,7 +802,7 @@ public partial class Main : Node
     /// </summary>
     private async void PregameProbeThenMaybeQuit()
     {
-        await PregameProbe.Run(this, _options.ScreenshotDir, _options.ScreenshotName);
+        await PregameProbe.Run(this, _options.ScreenshotDir, _options.ScreenshotName, !string.IsNullOrWhiteSpace(_options.Account));
 
         if (!OS.HasFeature("mobile"))
         {

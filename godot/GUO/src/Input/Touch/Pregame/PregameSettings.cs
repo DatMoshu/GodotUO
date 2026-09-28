@@ -49,13 +49,14 @@ internal sealed partial class PregameSettings : HBoxContainer
     private string _group = Groups[0];
     private Label _reportNote;
     private PanelContainer _page;
+    private VBoxContainer _list;
     private bool _narrow;
 
     public PregameSettings()
     {
         AddThemeConstantOverride("separation", 6);
 
-        var list = new VBoxContainer { SizeFlagsVertical = SizeFlags.ExpandFill };
+        var list = _list = new VBoxContainer { SizeFlagsVertical = SizeFlags.ExpandFill };
         list.AddThemeConstantOverride("separation", 3);
         AddChild(list);
 
@@ -96,6 +97,9 @@ internal sealed partial class PregameSettings : HBoxContainer
 
         _narrow = narrow;
         AddThemeConstantOverride("separation", narrow ? 4 : 6);
+
+        // Seven plates in 270 art px: on a narrow card they sit one pixel apart.
+        _list.AddThemeConstantOverride("separation", narrow ? 1 : 3);
         _page.AddThemeStyleboxOverride("panel", UoTheme.Frame(UoTheme.FieldFrame, narrow ? 5 : 8));
 
         for (int i = 0; i < Groups.Length; i++)
@@ -327,7 +331,6 @@ internal sealed partial class PregameSettings : HBoxContainer
 
     private void About()
     {
-        Value("GUO", () => CUOEnviroment.Version);
         Value("UO data", () => string.IsNullOrWhiteSpace(Settings.GlobalSettings.ClientVersion) ? "Found from the files" : Settings.GlobalSettings.ClientVersion);
         Note("GUO is ClassicUO on Godot, under its BSD licence. The button glyphs are Kenney's Input Prompts Pixel (CC0). Ultima Online's art is your own install and is never included.");
         Act("Report a problem", () =>
