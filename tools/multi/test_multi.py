@@ -275,6 +275,9 @@ def main() -> int:
         cleg = [{"name": "a", "x": 0, "y": 0, "z": 20}, {"name": "b", "x": 3, "y": 3, "z": 20}]
         check(len(walkcheck.check_tour([{"centre": [0, 0], "comps": corner}], cleg, kinds)) == 1,
               "floors that touch only at a corner do not join")
+        # a floor under a stair's block is buried: a walker stands on the block, not the floor
+        buried, _ = walkcheck.surfaces([{"centre": [0, 0], "comps": [C(2, 0, 0, 20), C(3, 0, 0, 20)]}], kinds, 0)
+        check(buried[(0, 0)] == [25], f"a floor with a block standing on it is not stood on (got {buried[(0, 0)]})")
         # a long wall on the land with its only way round forty cells off: a detour, reported
         long_wall = [{"centre": [0, 0], "comps": [C(1, 0, y, 0) for y in range(-40, 41)]}]
         dleg = [{"name": "west", "x": -1, "y": 0, "z": 0}, {"name": "east", "x": 1, "y": 0, "z": 0}]

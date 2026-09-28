@@ -3,7 +3,9 @@
 A rough model of UO movement, enough to catch a stair that lands behind a parapet or a floor
 that is missing before a proof spends twenty minutes finding it:
 - a cell can be stood on at the top of a surface piece (half its height for a bridge, as the
-  client counts stairs), when nothing impassable stands in the 16 z above it;
+  client counts stairs), when nothing impassable stands in the 16 z above it and no solid
+  surface (a stair's block, a step) starts there: a floor under a stair's stacked blocks is
+  buried, though its own flags would let a walker stand on it;
 - a walker moves to any of the eight neighbours, up at most a step (5 z; a stair's pieces
   rise 5 at a time), or down any distance (a walker can drop off a ledge); a diagonal step
   also needs both cells beside it open at about that height (UO does not cut corners);
@@ -26,6 +28,7 @@ def surfaces(parts: list[dict], pieces: dict, ground: int = 0) -> tuple[dict, se
     """{(x, y): [standing z, ...]} and the set of cells anything stands in."""
     stand: dict[tuple, set] = {}
     solid: dict[tuple, list] = {}
+    above: dict[tuple, list] = {}      # bottoms of solid surfaces (a block, a step): nobody stands in one
     covered = set()
     for p in parts:
         cx, cy = p["centre"][:2]
@@ -38,6 +41,8 @@ def surfaces(parts: list[dict], pieces: dict, ground: int = 0) -> tuple[dict, se
             covered.add(at)
             if "surface" in flags:
                 stand.setdefault(at, set()).add(c.z + (h // 2 if "bridge" in flags else h))
+                if h:
+                    above.setdefault(at, []).append(c.z)
             if "impassable" in flags:
                 solid.setdefault(at, []).append((c.z, c.z + h))
     out = {}
@@ -45,7 +50,8 @@ def surfaces(parts: list[dict], pieces: dict, ground: int = 0) -> tuple[dict, se
         zs = set(stand.get(at, ()))
         if not any(a <= ground < b for a, b in solid.get(at, ())):
             zs.add(ground)
-        free = sorted(z for z in zs if not any(a < z + HEADROOM and b > z for a, b in solid.get(at, ())))
+        free = sorted(z for z in zs if not any(a < z + HEADROOM and b > z for a, b in solid.get(at, ()))
+                      and not any(z <= a < z + HEADROOM for a in above.get(at, ())))
         if free:
             out[at] = free
     return out, covered
