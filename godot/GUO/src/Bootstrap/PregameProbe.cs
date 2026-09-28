@@ -458,6 +458,10 @@ internal static class PregameProbe
         string mine = ProjectSettings.GlobalizePath($"user://probe_postfx_{_tag}");
         Renderer.PostFx.PostFxLibrary.UserFolder = mine;
         string state = System.IO.Path.Combine(mine, "state.json");
+        // A tool run passes --postfx off, which saves nothing; this check
+        // saves, into its own folder, so it lifts that while it runs.
+        string runOverride = Renderer.PostFx.PostFxStack.RunOverride;
+        Renderer.PostFx.PostFxStack.RunOverride = null;
 
         try
         {
@@ -508,6 +512,7 @@ internal static class PregameProbe
         {
             Renderer.PostFx.PostFxLibrary.UserFolder = folder;
             stack.Use(was, remember: false);
+            Renderer.PostFx.PostFxStack.RunOverride = runOverride;
 
             try
             {

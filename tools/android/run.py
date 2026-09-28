@@ -592,7 +592,18 @@ def device_args(p: Paths, extra: str, sound: bool = False, client_data: bool = T
     # The configured account, unless the caller names one itself.
     if p.cfg.android_account and "--account" not in extra:
         base += f" --account {p.cfg.android_account}"
+    # A tool run (a probe, a perf walk, the smoke) in the Classic look: the
+    # device keeps a player's look in files/postfx/state.json across
+    # reinstalls, and a saved Ink Outline timed its two passes into every
+    # Thor number (2026-09-28). A build for a person keeps the saved look.
+    if is_tool_run(extra) and "--postfx" not in extra:
+        base += " --postfx off"
     return f"{base} {extra}".strip()
+
+
+def is_tool_run(extra: str) -> bool:
+    """A build that runs a probe (--perf-probe, --dual-probe, --login-probe-stay, ...), not one for play."""
+    return re.search(r"--[\w-]*probe\b", extra) is not None
 
 
 # ---------------------------------------------------------------------------

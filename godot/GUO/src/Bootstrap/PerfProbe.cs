@@ -487,13 +487,18 @@ internal static class PerfProbe
         // Debug builds (the editor's) have the JIT optimiser off; every
         // absolute number depends on it, so it is written down.
         bool optimized = !(System.Reflection.CustomAttributeExtensions.GetCustomAttribute<System.Diagnostics.DebuggableAttribute>(typeof(PerfProbe).Assembly)?.IsJITOptimizerDisabled ?? false);
+        // The post-processing look timed with the world: a saved look adds
+        // full-screen passes to every number (Ink Outline on the Thor, 2026-09-28).
+        var postFx = GUO.Renderer.PostFx.PostFxStack.Instance.Preset;
+        string look = $"{postFx.Name} ({postFx.Passes.Count(p => p.Enabled)} pass(es)"
+                      + (GUO.Renderer.PostFx.PostFxStack.RunOverride != null ? ", --postfx" : ", saved look") + ")";
         var md = new StringBuilder();
         md.AppendLine($"# Frame time: {label}");
         md.AppendLine();
         md.AppendLine($"{System.DateTime.Now:yyyy-MM-dd HH:mm}, {OS.GetName()}, {RenderingServer.GetVideoAdapterName()}, "
                       + $"window {size.X}x{size.Y}, zoom {Client.Game?.Scene?.Camera?.Zoom:F1}, vsync and frame cap off, "
                       + $"{Frames} frames per scene ({WalkMs / 1000:0} s for a run) after {Settle} to settle, "
-                      + (optimized ? "optimised build." : "UNOPTIMISED build (Debug, Optimize=false)."));
+                      + (optimized ? "optimised build" : "UNOPTIMISED build (Debug, Optimize=false)") + $", post-processing {look}.");
         md.AppendLine();
         md.AppendLine("| Scene | mean ms | p95 ms | p99 ms | FPS | alloc KB/frame | draws/frame | draw calls | batcher items | texture switches | draw commands | world prepare ms | world draw ms | render CPU ms | GPU ms |");
         md.AppendLine("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|");
@@ -538,7 +543,7 @@ internal static class PerfProbe
         md.AppendLine("Batcher items: canvas items the batcher opened (each is a batch break). Draw commands: sprites, meshes and triangle lists added.");
         File.WriteAllText(Path.Combine(dir, stem + ".md"), md.ToString());
         File.WriteAllText(Path.Combine(dir, stem + ".json"),
-            JsonSerializer.Serialize(new Dictionary<string, object> { ["label"] = label, ["window"] = $"{size.X}x{size.Y}", ["optimized"] = optimized, ["scenes"] = results },
+            JsonSerializer.Serialize(new Dictionary<string, object> { ["label"] = label, ["window"] = $"{size.X}x{size.Y}", ["optimized"] = optimized, ["postfx"] = look, ["scenes"] = results },
                 new JsonSerializerOptions { WriteIndented = true }));
         GD.Print($"[GUO] perf probe: wrote {Path.Combine(dir, stem + ".md")}");
     }

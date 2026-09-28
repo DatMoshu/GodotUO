@@ -23,6 +23,7 @@ launchers\dev\screenshot.bat --play --shot-after 300
 | `--language X` | The client's language. |
 | `--stay` | Keep running when a probe would otherwise quit (as `--login-probe-stay` does for the login probe). |
 | `--scratch-profile`, `--own-profile` | Run in a fresh client home of its own (`scratch/<pid>` under the usual one, with only `settings.json` copied in), so the profile, saved gumps and saved look start as a new player's and a run does not depend on the last. The touch probe does this by default; `--own-profile` keeps the usual home. |
+| `--postfx NAME\|off` | The post-processing look for this run only (`off` is Classic); the saved look in `postfx/state.json` is neither read nor written. The perf, A/B and smoke tools pass `--postfx off`, and a device export that runs a probe gets it unless it names a look, so a look a player or a probe saved is not timed with the build. The perf report names the look it ran. |
 
 ## Sound and focus
 

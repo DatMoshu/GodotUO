@@ -84,6 +84,7 @@ def run_guo(cfg: Config, out: Path, scene: tuple, size: str, spec: str, timeout:
         # command (the daylight ab_compare pins too), then --stay.
         [str(cfg.godot_console_exe), "--path", str(cfg.godot_project), "--", "--play", "--silent",
          "--window-size", size, "--account", cfg.shard_owner, "--password", cfg.shard_owner_password,
+         "--postfx", "off",  # the Classic look, whatever look is saved
          "--shard-command", f"[globallight {ab.DAYLIGHT}", "--stay"],
         stdout=log.open("w", encoding="utf-8", errors="replace"), stderr=subprocess.STDOUT, env=env,
     )

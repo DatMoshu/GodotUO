@@ -676,7 +676,8 @@ def smoke(p: Paths, deck: Deck, timeout: int, skip_export: bool, skip_push: bool
     deck.ssh(f"rm -f {remote_path(deck.install_dir + '/' + LOG_NAME)}", check=False, quiet=True)
     # The smoke run says on the log when the login gump is drawn, and stays
     # up so the screen can be photographed with it showing.
-    extra = "--login-probe-stay" + ("" if sound else " --silent")
+    # The Classic look: a look saved on the Deck is not the build under test.
+    extra = "--login-probe-stay --postfx off" + ("" if sound else " --silent")
     if start(deck, extra) != 0:
         return 1
 

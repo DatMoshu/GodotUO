@@ -213,6 +213,7 @@ def run_guo(cfg: Config, out: Path, scene: tuple, variant: str, size: str, s: st
     proc = subprocess.Popen(
         [str(cfg.godot_console_exe), "--path", str(cfg.godot_project), "--", "--play", "--silent",
          "--window-size", size, "--no-focus", "--account", cfg.shard_owner, "--password", cfg.shard_owner_password,
+         "--postfx", "off",  # the Classic look, whatever look is saved
          "--shard-command", f"[globallight {ab.DAYLIGHT}", "--stay", *VARIANTS[variant]],
         stdout=(folder / f"{variant}.log").open("w", encoding="utf-8", errors="replace"), stderr=subprocess.STDOUT, env=env,
     )

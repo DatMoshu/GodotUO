@@ -388,6 +388,7 @@ public partial class Main : Node
         System.Environment.CurrentDirectory = dataDir;
         // The player's own looks and shaders (ADR-0023).
         GUO.Renderer.PostFx.PostFxLibrary.UserFolder = System.IO.Path.Combine(dataDir, "postfx");
+        GUO.Renderer.PostFx.PostFxStack.RunOverride = string.IsNullOrWhiteSpace(_options.PostFx) ? null : _options.PostFx;
 
         GD.Print($"[GUO] client home   : {dataDir}");
 
@@ -1354,6 +1355,9 @@ public partial class Main : Node
         /// <summary>--postfx-tour: with --postfx-sheet, run the live tour into that folder instead of the sheet.</summary>
         public bool PostFxTour { get; private set; }
 
+        /// <summary>--postfx NAME|off: the look for this run only, state.json untouched (PostFxStack.RunOverride).</summary>
+        public string PostFx { get; private set; }
+
         /// <summary>--perf-parity: per scene, compare --batched-world with the plain path pixel for pixel.</summary>
         public bool PerfParity { get; private set; }
 
@@ -1655,6 +1659,9 @@ public partial class Main : Node
                         break;
                     case "--postfx-tour":
                         o.PostFxTour = true;
+                        break;
+                    case "--postfx":
+                        o.PostFx = Next();
                         break;
                     case "--door-probe":
                         o.DoorProbe = true;
