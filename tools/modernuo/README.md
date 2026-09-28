@@ -99,6 +99,20 @@ Desolation art.
 Keep this list append-only and numbered. A patch that upstream adopts should
 be deleted, not silently dropped from the set.
 
+### Upstream issues to report (not patched here)
+
+- **`MultiData.LoadUOP` never reads an uncompressed entry.** For an entry
+  with the compression flag 0, it takes `data = buffer.AsSpan(0, entry.Size)`
+  without reading the stream. It then parses whatever the buffer last held
+  (the previous compressed entry) and fails at boot with
+  `ArgumentOutOfRangeException: Cannot seek to position ... beyond buffer
+  length` in `MultiData.cs`. The client's own `MultiCollection.uop` entries
+  are all zlib-compressed, so a stock install never hits it. An authored
+  multi written uncompressed did (2026-09-27). The fix upstream is a
+  `stream.Read` into `buffer` on the uncompressed path.
+  `tools/uodata_write` writes multi entries compressed, so GUO does not need
+  a patch.
+
 ### `config/`
 
 `modernuo.template.json` is the full server configuration with three values
