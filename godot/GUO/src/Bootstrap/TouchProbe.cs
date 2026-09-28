@@ -1287,6 +1287,20 @@ internal static class TouchProbe
             view != null && view.Reader.AtEnd && view.Reader.Following && view.Reader.ScrollVertical > 0,
             $"at end {view?.Reader.AtEnd}, following {view?.Reader.Following}, scroll {view?.Reader.ScrollVertical}");
 
+        // With the journal full (its history is capped, so the count no longer
+        // grows), a new line still reaches the reader (the Thor's second check).
+        for (int i = JournalManager.Entries.Count; i <= Game.Constants.MAX_JOURNAL_HISTORY_COUNT; i++)
+        {
+            Game.GameActions.Print(world, $"touch probe journal filler {i}", 0x3B2, Game.Data.MessageType.System, 3, false);
+        }
+
+        await Frames(host, 20);
+        Game.GameActions.Print(world, "touch probe journal after full", 0x3B2, Game.Data.MessageType.System, 3, false);
+        await Frames(host, 30);
+        Check("with the journal full, a new line still reaches the reader, at the bottom",
+            view != null && view.Reader.LastText.Contains("touch probe journal after full") && view.Reader.AtEnd,
+            $"journal {JournalManager.Entries.Count}/{Game.Constants.MAX_JOURNAL_HISTORY_COUNT}, last shown \"{view?.Reader.LastText}\", at end {view?.Reader.AtEnd}");
+
         if (view == null)
         {
             WindowMenu.Close();

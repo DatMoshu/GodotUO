@@ -29,6 +29,9 @@ internal sealed partial class JournalReader : ScrollContainer
     private readonly VBoxContainer _lines;
     private readonly Control _spacer;
     private int _seen = -1;
+    private JournalEntry _newest;
+    private string _newestText;
+    private DateTime _newestTime;
     private string _filters = "";
     private bool _follow = true;
     private int _placed = -1; // where the reader itself last put the scroll
@@ -66,6 +69,10 @@ internal sealed partial class JournalReader : ScrollContainer
     /// <summary>Lines shown now, for the probe.</summary>
     public int LineCount => _lines.GetChildCount() - 1;
 
+    /// <summary>The newest line's text as shown, for the probe.</summary>
+    public string LastText => _lines.GetChildCount() > 1
+        && _lines.GetChild(_lines.GetChildCount() - 1) is HBoxContainer row && row.GetChild(1) is Label l ? l.Text : "";
+
     /// <summary>True while the reader follows new lines (it is at the bottom).</summary>
     public bool Following => _follow;
 
@@ -91,9 +98,20 @@ internal sealed partial class JournalReader : ScrollContainer
         int count = entries.Count;
         string filters = $"{Shows(TextType.SYSTEM)}{Shows(TextType.OBJECT)}{Shows(TextType.CLIENT)}{Shows(TextType.GUILD_ALLY)}";
 
-        if (count != _seen || filters != _filters)
+        // The journal is a capped deque (MAX_JOURNAL_HISTORY_COUNT): once full,
+        // a new line drops the oldest and the count stays put. JournalManager
+        // also recycles the dropped entry as the new one, so a new line is told
+        // by the newest entry, its text and its time, not by the count.
+        JournalEntry newest = count > 0 ? entries[count - 1] : null;
+        bool changed = count != _seen || newest != _newest
+            || (newest != null && (newest.Text != _newestText || newest.Time != _newestTime));
+
+        if (changed || filters != _filters)
         {
             _seen = count;
+            _newest = newest;
+            _newestText = newest?.Text;
+            _newestTime = newest?.Time ?? default;
             _filters = filters;
 
             foreach (Node n in _lines.GetChildren())
