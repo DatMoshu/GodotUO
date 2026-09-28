@@ -357,7 +357,18 @@ def write_cuo_config(
             if (source / f).exists():
                 shutil.copyfile(source / f, dest / f)
 
-    print(f"[ab] CUO profile: GUO's {character} profile, and as the default")
+    # GUO fits its game window to its client window; ClassicUO takes the
+    # profile's size as it is. A profile saved at 4K (3840x2054) gives
+    # ClassicUO a world view larger than its window -- more of the world
+    # drawn, and the player off-centre -- so every copy is fitted to the size
+    # asked for, at the corner, as GUO frames it.
+    for f in [profiles / "default.json", *profiles.rglob("profile.json")]:
+        p = json.loads(f.read_text(encoding="utf-8"))
+        p["game_window_size"] = {"X": size[0], "Y": size[1]}
+        p["game_window_position"] = {"X": 0, "Y": 0}
+        f.write_text(json.dumps(p, indent=2), encoding="utf-8")
+
+    print(f"[ab] CUO profile: GUO's {character} profile, and as the default, game window {size[0]}x{size[1]}")
 
     return conf
 

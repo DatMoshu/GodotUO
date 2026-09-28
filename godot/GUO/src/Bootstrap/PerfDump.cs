@@ -234,6 +234,9 @@ internal static class PerfDump
             r["land_layers"] = GUO.Renderer.LandPages.Layers;
             r["land_uploads"] = uploads;
             r["land_uploads_per_frame"] = frames > 0 ? Math.Round((double)uploads / frames, 3) : 0.0;
+            // Land drawn a second time over what is sunk under it (ADR-0004's
+            // covering land) counts as rendered here and has no ClassicUO twin.
+            r["cover_queued"] = GUO.Game.Scenes.RenderLists.LastCover.Queued;
             r["land_bump_copies"] = GUO.Renderer.LandPages.Bumps - _bumpsAtFade;
             r["static_sprites_onto_land_layers"] = GUO.Renderer.Arts.Art.StaticOntoLandLayer - _staticOntoAtFade;
 #endif
