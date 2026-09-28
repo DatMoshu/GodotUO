@@ -125,6 +125,15 @@ public partial class Main : Node
             return;
         }
 
+        RunWithData();
+    }
+
+    /// <summary>
+    /// Everything that needs the client data, once ResolveData (or the
+    /// first-run screen) has decided it.
+    /// </summary>
+    private void RunWithData()
+    {
         GD.Print("[GUO] client data looks valid.");
 
         switch (_options.Mode)
@@ -819,19 +828,40 @@ public partial class Main : Node
     }
 
     /// <summary>
-    /// The one place the client lands when there is no valid data (ADR-0021).
-    /// The first-run wizard (G2) replaces this body; until then it logs the
-    /// reason and exits as before.
+    /// The one place the client lands when there is no valid data (ADR-0021):
+    /// the first-run screen, which asks for the UO install, saves it as
+    /// settings.json ultimaonlinedirectory and continues to login in this run.
+    /// A run with no window (headless) or a mode other than play cannot ask,
+    /// so it logs the reason and exits as before.
     /// </summary>
     private void OnNoValidData(DataSources.Result data)
     {
         GD.Print($"[GUO] data source   : wizard needed: {data.Reason}");
+        if (_options.Mode == RunMode.Play && DisplayServer.GetName() != "headless")
+        {
+            string configured = string.IsNullOrWhiteSpace(_options.ClientData)
+                ? null
+                : $"{(_options.ClientDataFromFlag ? "--client-data" : "UO_CLIENT_DATA")} = {_options.ClientData}";
+            FirstRunScreen.Open(this, data, configured, _options.FirstRunProbe, _options.ScreenshotDir, OnInstallChosen);
+            return;
+        }
+
         Fail(
             "No valid UO client data: the first-run wizard is needed.\n"
             + $"  {data.Reason}\n"
             + "Set UO_CLIENT_DATA in launchers\\_shared\\config.local.bat, or pass\n"
             + "  --client-data \"<path to your UO install>\""
         );
+    }
+
+    /// <summary>The first-run screen's Continue: save the choice and go on to login.</summary>
+    private void OnInstallChosen(string folder)
+    {
+        string settings = System.IO.Path.Combine(GuoDataDirectory(), Configuration.Settings.SETTINGS_FILENAME);
+        DataSources.SaveSetting(settings, folder);
+        GD.Print($"[GUO] data source   : install (chosen) {folder}; saved to {settings}");
+        _options.UseData(folder, _options.FilesOverride);
+        RunWithData();
     }
 
     private void Fail(string message)
@@ -866,6 +896,13 @@ public partial class Main : Node
 
         /// <summary>A custom data folder (ADR-0021): --custom-data PATH.</summary>
         public string CustomData { get; private set; } = "";
+
+        /// <summary>
+        /// Scripted first run: --first-run-probe FOLDER shows the first-run
+        /// screen, photographs it, "picks" FOLDER without a dialog, photographs
+        /// the check, and presses Continue.
+        /// </summary>
+        public string FirstRunProbe { get; private set; } = "";
 
         /// <summary>What ResolveData decided: the install to open, and the files override.</summary>
         internal void UseData(string clientData, string filesOverride)
@@ -1317,6 +1354,9 @@ public partial class Main : Node
                         break;
                     case "--custom-data":
                         o.CustomData = Next();
+                        break;
+                    case "--first-run-probe":
+                        o.FirstRunProbe = Next();
                         break;
                     case "--cache-dir":
                         o.CacheDir = Next();
