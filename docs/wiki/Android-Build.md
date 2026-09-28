@@ -71,6 +71,25 @@ Recorded in ADR-0017 and the first-run commit, in case you hit them elsewhere:
   password keyboard: the two input types an Android IME must not autocorrect
   in. The IME's check mark arrives as Enter and logs in.
 
+## Why it is landscape only
+
+The export is locked to sensor-landscape. Portrait was tried on an Odin 2
+Mini (2026-09-28) and turned down on one number:
+
+| | Landscape | Portrait |
+|---|---|---|
+| Turning the screen | — | 95 ms, nothing lost |
+| World in view (tiles across x down) | 15.3 x 8.6 | 11.5 x 20.4 |
+| Command-bar button | 13.2 x 7 mm | **7.4 x 2.3 mm** |
+| Paperdoll, backpack, Modern gumps | fit | fit |
+
+The world works in portrait, and shows twice as far north and south. The
+command bar does not: its buttons shrink to 2.3 mm tall, which a thumb
+cannot hit, and the login screen stays where landscape put it, half off the
+screen. Both are fixable, so portrait could come back as an option later;
+the measurements and the probe that took them are in the repository's
+`docs/android_portrait_spike.md` and ADR-0017.
+
 ## The smoke
 
 `launchers\android\smoke.bat` exports, installs, launches, waits for the
