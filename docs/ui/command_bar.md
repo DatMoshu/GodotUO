@@ -170,3 +170,47 @@ does:
 - Open (Status, Skills, MageSpellbook, PartyManifest);
 - Say, for the speech slots. Their words are editable in the profile
   (per character and shard): `bank`, `guards`, `all follow me`, `all stop`.
+
+## The hold popup and the slot editor (C10)
+
+Holding a bar button still for 450 ms (`TouchInput.BarPopupMs`) opens three
+buttons, stacked straight above it so a thumb slides up to them. From the
+bottom they are the slot's first alternate, its second, and Edit.
+
+- Letting go on an alternate runs it. Letting go anywhere else runs nothing.
+- A tap is unchanged, and so is a finger that slides off before 450 ms.
+- The popup ticks when it opens, if "Vibrate when the command bar snaps" is on.
+- A plate with alternates carries a corner mark: three gold steps on an ink
+  square, top right.
+
+The alternates are variations of the slot's command, or commands the thirty
+slots don't cover. Every slot starts with two, from
+`BarCatalogue.DefaultAlternates`, which follows the owner's examples:
+
+- Nearest Hostile → Nearest Party, Next Hostile;
+- Heal potion → Cure, Refresh;
+- Attack Last → Attack Selected.
+
+Edit opens the slot editor, a stone card in the UO style
+(`uo_godot_style.md`):
+
+- It has three pickers: the tap and the two holds.
+- The catalogue appears in seven groups, with a search over every action.
+- A plate grid lists the actions, with "None" for an alternate.
+- A speech action's words are editable.
+- Save stores the slot by action name (`TouchBarSlots`, `TouchBarAlts`, and
+  `TouchBarWords` for the words).
+
+The catalogue (`BarCatalogue.All`) is about seventy upstream actions:
+
+- windows;
+- targeting, including the Select Nearest/Next/Previous scans with Hostile,
+  Party and Follower;
+- combat;
+- healing: bandages and each best potion;
+- magic and skills: a few spells and skills;
+- pets and speech;
+- other: doors, bow, salute, zoom, always run, buff icons.
+
+Each action has a full title for the editor and a short caption that fits a
+plate.

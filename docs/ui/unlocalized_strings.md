@@ -67,3 +67,18 @@ Its timestamps use the fixed format `HH:mm`, not the locale's.
 - Shown on the desktop too:
   - `Show window handles`;
   - `Mobile window controls (for Android emulation)`.
+
+## Added in C10
+
+- **The catalogue** (`BarCatalogue.cs`): every action's `Title` and `Short`,
+  the seven group names, and the default speech words.
+- **The slot editor** (`BarEditor.cs`):
+  - "Row N, slot M";
+  - "Tap:", "Hold 1:", "Hold 2:", "None";
+  - "Search all actions";
+  - "… says:";
+  - "Hold a bar button for its two extra actions.";
+  - "Cancel", "Save", "X".
+- **The popup:** "Edit...".
+- **The window menu:** "X", "Fit to screen".
+- **The companion tabs:** "Classic", "Tabs".

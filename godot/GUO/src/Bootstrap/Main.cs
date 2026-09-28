@@ -238,6 +238,10 @@ public partial class Main : Node
                 {
                     MacroProbeThenQuit();
                 }
+                else if (_options.UiGallery)
+                {
+                    UiGalleryThenQuit();
+                }
                 else if (_options.PresentationParity)
                 {
                     PresentationParityThenQuit();
@@ -744,6 +748,13 @@ public partial class Main : Node
         Quit(PresentationParityProbe.Passed ? 0 : 1);
     }
 
+    /// <summary>Picture each of GUO's own mobile UIs and exit; see GalleryProbe.</summary>
+    private async void UiGalleryThenQuit()
+    {
+        await GalleryProbe.Run(this, _options.ScreenshotDir, _options.ScreenshotName);
+        Quit(GalleryProbe.Passed ? 0 : 1);
+    }
+
     /// <summary>Tap the six macros against fixtures and exit with the verdict; see MacroProbe.</summary>
     private async void MacroProbeThenQuit()
     {
@@ -986,6 +997,7 @@ public partial class Main : Node
                 || EndureSeconds > 0
                 || TouchProbe
                 || MacroProbe
+                || UiGallery
                 || PresentationParity
                 || LoginProbe
                 || UiProbe
@@ -1107,6 +1119,9 @@ public partial class Main : Node
 
         /// <summary>Tap each of the touch bar's six macros against spawned fixtures; see MacroProbe.</summary>
         public bool MacroProbe { get; private set; }
+
+        /// <summary>Picture each of GUO's own mobile UIs; see GalleryProbe.</summary>
+        public bool UiGallery { get; private set; }
 
         /// <summary>Desktop defaults leave gump drawing and hit testing as ClassicUO's; see PresentationParityProbe.</summary>
         public bool PresentationParity { get; private set; }
@@ -1303,6 +1318,10 @@ public partial class Main : Node
                     case "--macro-probe":
                         o.Touch = true;
                         o.MacroProbe = true;
+                        break;
+                    case "--ui-gallery":
+                        o.Touch = true;
+                        o.UiGallery = true;
                         break;
                     case "--touch-trace":
                         o.TouchTrace = true;

@@ -739,6 +739,15 @@ namespace GUO
                 return;
             }
 
+            // PORT DEVIATION (GUO): the command bar's slot editor (a Godot
+            // card, modal) takes the pointer and the keys while it is open.
+            if (GUO.Input.Touch.BarEditor.HandleInput(@event))
+            {
+                GetViewport().SetInputAsHandled();
+
+                return;
+            }
+
             // PORT DEVIATION (GUO): the window menu (a Godot card) takes the
             // pointer while it is open; a press outside it closes it.
             if (GUO.Input.Touch.WindowMenu.HandleInput(@event))

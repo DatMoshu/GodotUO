@@ -10,9 +10,10 @@ namespace GUO.Input.Touch;
 
 /// <summary>
 /// The window menu: size, pinch lock and screen for one gump, as a card of
-/// Godot controls in the Store window's visual language (charcoal and gold,
-/// a clean sans, rounded, finger-sized). Opened by GumpPresentation.OpenMenu:
-/// a hold-and-release on touch, the handle, or a controller button.
+/// Godot controls in the client's own look (UoTheme, docs/ui/uo_godot_style.md):
+/// the grey stone frame, font 1, the marble plate buttons, UO's checkbox and
+/// slider, at a whole-number scale. Opened by GumpPresentation.OpenMenu: a
+/// hold-and-release on touch, the handle, or a controller button.
 /// </summary>
 /// <remarks>
 /// PORT DEVIATION (GUO): not in ClassicUO; mobile only (GumpPresentation.Active).
@@ -21,17 +22,16 @@ namespace GUO.Input.Touch;
 /// so it is crisp; on the second screen, which is a bitmap the client draws, it
 /// is drawn into that bitmap by DualScreen.Draw. Pointer events over the card
 /// are pushed into the viewport (<see cref="HandleInput"/>); a press outside
-/// closes it. Only the card is vector UI with default sampling; UO art keeps
-/// nearest-neighbour.
+/// closes it. All of it is UO art, sampled nearest-neighbour (rule 7).
 /// </remarks>
 internal sealed partial class WindowMenu : Node
 {
-    private const float CardWidth = 300f;   // client (dp) pixels
+    private const float CardWidth = 200f;   // art pixels (UoTheme.PixelScale device pixels each)
     private const float Pad = 14f;          // room for the shadow and the notch
     private const float Notch = 9f;
     private const double OpenSeconds = 0.12;
 
-    private static readonly Color Gold = new("dfbb77"), Text = new("eeeade"), Muted = new("abb5ac");
+    private static readonly Color Text = UoTheme.Ink, Muted = UoTheme.Muted, Heading = UoTheme.Heading;
 
     private static WindowMenu _instance;
 
@@ -52,11 +52,17 @@ internal sealed partial class WindowMenu : Node
     private TextureRect _mainView;
     private Label _title, _caption, _sizeLabel;
     private HSlider _slider;
-    private CheckButton _lock;
+    private CheckBox _lock;
     private Button _move;
     private bool _syncing;
     private bool _dragging;
     private float _scale = 1f;
+
+    /// <summary>Client pixels to device pixels (1 on the Thor).</summary>
+    private static float Dpi => Math.Max(0.01f, Client.Game?.DpiScale ?? 1f);
+
+    /// <summary>Art pixels to client pixels: the card's scale over the client's.</summary>
+    private float ArtToClient => _scale / Dpi;
     private float _alpha = 1f;
 
     /// <summary>The card's rectangle in client coordinates (either screen), including the shadow pad.</summary>
@@ -90,7 +96,8 @@ internal sealed partial class WindowMenu : Node
 
     public override void _Ready()
     {
-        _scale = Math.Max(1f, Client.Game?.DpiScale ?? 1f);
+        // A whole number, so one art pixel is a square of device pixels.
+        _scale = UoTheme.PixelScale;
 
         _viewport = new SubViewport
         {
@@ -99,6 +106,7 @@ internal sealed partial class WindowMenu : Node
             HandleInputLocally = true,
             GuiEmbedSubwindows = true,
             RenderTargetUpdateMode = SubViewport.UpdateMode.Always,
+            CanvasItemDefaultTextureFilter = Viewport.DefaultCanvasItemTextureFilter.Nearest,
         };
         AddChild(_viewport);
 
@@ -108,8 +116,7 @@ internal sealed partial class WindowMenu : Node
         _notch = new NotchControl { MouseFilter = Control.MouseFilterEnum.Ignore };
         _root.AddChild(_notch);
 
-        _card = new PanelContainer { Theme = BuildTheme(), CustomMinimumSize = new Vector2(CardWidth, 0) };
-        _card.AddThemeStyleboxOverride("panel", CardStyle());
+        _card = new PanelContainer { Theme = UoTheme.Theme, CustomMinimumSize = new Vector2(CardWidth, 0) };
         _root.AddChild(_card);
         BuildCard();
 
@@ -120,6 +127,7 @@ internal sealed partial class WindowMenu : Node
             Texture = _viewport.GetTexture(),
             MouseFilter = Control.MouseFilterEnum.Ignore,
             StretchMode = TextureRect.StretchModeEnum.Keep,
+            TextureFilter = CanvasItem.TextureFilterEnum.Nearest,
         };
         _layer.AddChild(_mainView);
 
@@ -128,63 +136,27 @@ internal sealed partial class WindowMenu : Node
 
     // --- building -------------------------------------------------------------
 
-    private static StyleBoxFlat CardStyle() => new()
-    {
-        BgColor = new Color(0.078f, 0.098f, 0.090f, 1f),
-        BorderColor = new Color(Gold, 0.45f),
-        BorderWidthLeft = 1, BorderWidthRight = 1, BorderWidthTop = 1, BorderWidthBottom = 1,
-        CornerRadiusTopLeft = 12, CornerRadiusTopRight = 12, CornerRadiusBottomLeft = 12, CornerRadiusBottomRight = 12,
-        ShadowColor = new Color(0, 0, 0, 0.45f), ShadowSize = 10, ShadowOffset = new Vector2(0, 3),
-        ContentMarginLeft = 16, ContentMarginRight = 16, ContentMarginTop = 12, ContentMarginBottom = 16,
-        AntiAliasing = true,
-    };
+    /// <summary>A label in font 1: <paramref name="big"/> is 2x, the card's title.</summary>
+    private static Label Lbl(string text, bool big, Color color) => UoTheme.Label(text, color, big ? 2 : 1);
 
-    private static StyleBoxFlat Box(string bg, string border, int radius = 8) => new()
+    /// <summary>A control at least a plate tall (a finger, once the card is scaled).</summary>
+    private static T Touch<T>(T c, float minWidth = 24f) where T : Control
     {
-        BgColor = new Color(bg), BorderColor = new Color(border),
-        BorderWidthLeft = 1, BorderWidthRight = 1, BorderWidthTop = 1, BorderWidthBottom = 1,
-        CornerRadiusTopLeft = radius, CornerRadiusTopRight = radius, CornerRadiusBottomLeft = radius, CornerRadiusBottomRight = radius,
-        ContentMarginLeft = 12, ContentMarginRight = 12, ContentMarginTop = 6, ContentMarginBottom = 6,
-    };
+        c.CustomMinimumSize = new Vector2(Math.Max(c.CustomMinimumSize.X, minWidth), UoTheme.ButtonHeight);
 
-    private static Theme BuildTheme()
-    {
-        var theme = new Theme { DefaultFontSize = 15 };
-
-        foreach (string control in new[] { "Button", "CheckButton" })
+        // A plate never stretches taller than itself: its rounded ends would.
+        if (c is Button && c is not CheckBox)
         {
-            theme.SetStylebox("normal", control, Box("202922", "455342"));
-            theme.SetStylebox("hover", control, Box("303d2e", "b4a16b"));
-            theme.SetStylebox("pressed", control, Box("3f4931", "dfbb77"));
-            theme.SetStylebox("disabled", control, Box("181d1a", "2c332e"));
-            theme.SetStylebox("focus", control, new StyleBoxEmpty());
-            theme.SetColor("font_color", control, Text);
-            theme.SetColor("font_hover_color", control, Text);
-            theme.SetColor("font_pressed_color", control, Text);
+            c.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
         }
 
-        theme.SetColor("font_color", "Label", Text);
-        return theme;
-    }
-
-    private static Label Lbl(string text, int size, Color color)
-    {
-        var l = new Label { Text = text, VerticalAlignment = VerticalAlignment.Center };
-        l.AddThemeFontSizeOverride("font_size", size);
-        l.AddThemeColorOverride("font_color", color);
-        return l;
-    }
-
-    private static T Touch<T>(T c, float minWidth = 48f) where T : Control
-    {
-        c.CustomMinimumSize = new Vector2(Math.Max(c.CustomMinimumSize.X, minWidth), 48f);
         return c;
     }
 
     private void BuildCard()
     {
         var col = new VBoxContainer();
-        col.AddThemeConstantOverride("separation", 10);
+        col.AddThemeConstantOverride("separation", 5);
         _card.AddChild(col);
 
         // Header: name and caption, and a close button.
@@ -193,51 +165,35 @@ internal sealed partial class WindowMenu : Node
         var titles = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
         titles.AddThemeConstantOverride("separation", 0);
         header.AddChild(titles);
-        titles.AddChild(_title = Lbl("Window", 20, Text));
-        titles.AddChild(_caption = Lbl("", 13, Muted));
-        var close = Touch(new Button { Text = "✕", TooltipText = "Close" });
-        close.AddThemeFontSizeOverride("font_size", 18);
+        titles.AddChild(_title = Lbl("Window", true, Heading));
+        titles.AddChild(_caption = Lbl("", false, Muted));
+        var close = Touch(new Button { Text = "X", TooltipText = "Close" }, 30);
         close.Pressed += Hide;
         header.AddChild(close);
 
-        col.AddChild(new HSeparator { Modulate = new Color(Gold, 0.35f) });
+        col.AddChild(new HSeparator());
 
         // Size: stepper and slider.
-        col.AddChild(Lbl("Size", 13, Gold));
+        col.AddChild(Lbl("Size", false, Heading));
         var stepper = new HBoxContainer();
-        stepper.AddThemeConstantOverride("separation", 8);
+        stepper.AddThemeConstantOverride("separation", 4);
         col.AddChild(stepper);
-        var minus = Touch(new Button { Text = "−" }, 64);
-        minus.AddThemeFontSizeOverride("font_size", 22);
+        var minus = Touch(new Button { Text = "-" }, 40);
         minus.Pressed += () => Step(-0.25f);
         stepper.AddChild(minus);
-        _sizeLabel = Lbl("100%", 22, Text);
+        _sizeLabel = Lbl("100%", true, Text);
         _sizeLabel.HorizontalAlignment = HorizontalAlignment.Center;
         _sizeLabel.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         stepper.AddChild(_sizeLabel);
-        var plus = Touch(new Button { Text = "+" }, 64);
-        plus.AddThemeFontSizeOverride("font_size", 22);
+        var plus = Touch(new Button { Text = "+" }, 40);
         plus.Pressed += () => Step(0.25f);
         stepper.AddChild(plus);
 
         _slider = new HSlider
         {
             MinValue = GumpPresentation.MinScale * 100, MaxValue = GumpPresentation.MaxScale * 100, Step = 1,
-            CustomMinimumSize = new Vector2(0, 32),
+            CustomMinimumSize = new Vector2(0, 16),
         };
-        _slider.AddThemeStyleboxOverride("slider", new StyleBoxFlat
-        {
-            BgColor = new Color("2c352f"), ContentMarginTop = 2, ContentMarginBottom = 2,
-            CornerRadiusTopLeft = 2, CornerRadiusTopRight = 2, CornerRadiusBottomLeft = 2, CornerRadiusBottomRight = 2,
-        });
-        _slider.AddThemeStyleboxOverride("grabber_area", new StyleBoxFlat
-        {
-            BgColor = Gold, ContentMarginTop = 2, ContentMarginBottom = 2,
-            CornerRadiusTopLeft = 2, CornerRadiusTopRight = 2, CornerRadiusBottomLeft = 2, CornerRadiusBottomRight = 2,
-        });
-        _slider.AddThemeStyleboxOverride("grabber_area_highlight", new StyleBoxFlat { BgColor = Gold });
-        _slider.AddThemeIconOverride("grabber", MakeKnob(false));
-        _slider.AddThemeIconOverride("grabber_highlight", MakeKnob(true));
         _slider.ValueChanged += v => { if (!_syncing) SetPercent((float)v / 100f); };
         // The card holds still under a dragging finger and finds its place after.
         _slider.DragStarted += () => _dragging = true;
@@ -248,20 +204,14 @@ internal sealed partial class WindowMenu : Node
         var lockRow = new VBoxContainer();
         lockRow.AddThemeConstantOverride("separation", 0);
         col.AddChild(lockRow);
-        _lock = Touch(new CheckButton { Text = "Lock pinch size" });
+        _lock = Touch(new CheckBox { Text = "Lock pinch size" });
         _lock.Toggled += on => { if (!_syncing && _gump != null) _gump.PresentationLocked = on; };
         lockRow.AddChild(_lock);
-        lockRow.AddChild(Lbl("Two fingers leave this window's size alone.", 12, Muted));
+        lockRow.AddChild(Lbl("Two fingers leave this window's size alone.", false, Muted));
 
         // Actions.
         _move = Touch(new Button { Text = "Move to bottom screen" });
-        _move.AddThemeStyleboxOverride("normal", Box("b58e42", "dfbb77"));
-        _move.AddThemeStyleboxOverride("hover", Box("c79d4d", "f0d08a"));
-        _move.AddThemeStyleboxOverride("pressed", Box("9e7a36", "dfbb77"));
-        _move.AddThemeColorOverride("font_color", new Color("141917"));
-        _move.AddThemeColorOverride("font_hover_color", new Color("141917"));
-        _move.AddThemeColorOverride("font_pressed_color", new Color("141917"));
-        _move.AddThemeFontSizeOverride("font_size", 16);
+        _move.AddThemeColorOverride("font_color", Heading);
         _move.Pressed += MoveScreen;
         col.AddChild(_move);
 
@@ -274,27 +224,6 @@ internal sealed partial class WindowMenu : Node
             Place();
         };
         col.AddChild(reset);
-    }
-
-    /// <summary>A round slider knob: gold with a dark ring, larger while held.</summary>
-    private static Texture2D MakeKnob(bool hot)
-    {
-        int size = hot ? 26 : 22;
-        var img = Image.CreateEmpty(size, size, false, Image.Format.Rgba8);
-
-        for (int y = 0; y < size; y++)
-        {
-            for (int x = 0; x < size; x++)
-            {
-                float d = new Vector2(x + 0.5f - size / 2f, y + 0.5f - size / 2f).Length();
-                float r = size / 2f;
-                Color c = d > r ? Colors.Transparent : d > r - 2.5f ? new Color("141917") : Gold;
-                if (d > r - 1f && d <= r) c.A = r - d;
-                img.SetPixel(x, y, c);
-            }
-        }
-
-        return ImageTexture.CreateFromImage(img);
     }
 
     // --- behaviour ------------------------------------------------------------
@@ -400,11 +329,11 @@ internal sealed partial class WindowMenu : Node
         float s = _gump.PresentationScale;
         _title.Text = Title(_gump);
         bool second = GumpPresentation.OnSecond(_gump);
-        _caption.Text = (DualScreen.ShelfOn ? (second ? "Bottom screen" : "Top screen") : "This screen") + $" · {s * 100:0}%";
+        _caption.Text = (DualScreen.ShelfOn ? (second ? "Bottom screen" : "Top screen") : "This screen") + $", {s * 100:0}%";
         _sizeLabel.Text = $"{s * 100:0}%";
         _slider.Value = s * 100;
         _lock.ButtonPressed = _gump.PresentationLocked;
-        _move.Text = DualScreen.ShelfOn ? (second ? "↑  Move to top screen" : "↓  Move to bottom screen") : "⤢  Fit to screen";
+        _move.Text = DualScreen.ShelfOn ? (second ? "Move to top screen" : "Move to bottom screen") : "Fit to screen";
         _syncing = false;
     }
 
@@ -443,9 +372,15 @@ internal sealed partial class WindowMenu : Node
         if (_gump == null) return;
 
         _card.ResetSize();
-        Vector2 card = _card.GetCombinedMinimumSize();
-        card.X = Math.Max(card.X, CardWidth);
-        _card.Size = card;
+        Vector2 cardArt = _card.GetCombinedMinimumSize();
+        cardArt.X = Math.Max(cardArt.X, CardWidth);
+        _card.Size = cardArt;
+
+        // The card is laid out in art pixels; the screen in client pixels.
+        // One art pixel is _scale device pixels, one client pixel DpiScale.
+        float k = ArtToClient;
+        Vector2 card = cardArt * k;
+        float pad = Pad * k;
 
         _onSecond = GumpPresentation.OnSecond(_gump);
         Compat.Rectangle d = GumpPresentation.DisplayBounds(_onSecond);
@@ -485,16 +420,16 @@ internal sealed partial class WindowMenu : Node
 
         // Where the notch sits along the facing edge: toward the gump's centre.
         float along = _notchSide <= 1
-            ? Math.Clamp(g.Y + g.Height / 2f - y, 24, card.Y - 24)
-            : Math.Clamp(g.X + g.Width / 2f - x, 24, card.X - 24);
+            ? Math.Clamp(g.Y + g.Height / 2f - y, 24 * k, card.Y - 24 * k)
+            : Math.Clamp(g.X + g.Width / 2f - x, 24 * k, card.X - 24 * k);
 
         _card.Position = new Vector2(Pad, Pad);
-        _notch.Setup(_notchSide, along, card, Pad);
-        _rect = new Rect2(x - Pad, y - Pad, card.X + Pad * 2, card.Y + Pad * 2);
+        _notch.Setup(_notchSide, along / k, cardArt, Pad);
+        _rect = new Rect2(x - pad, y - pad, card.X + pad * 2, card.Y + pad * 2);
 
-        var px = new Vector2I((int)Math.Ceiling(_rect.Size.X * _scale), (int)Math.Ceiling(_rect.Size.Y * _scale));
+        var px = new Vector2I((int)Math.Ceiling((cardArt.X + Pad * 2) * _scale), (int)Math.Ceiling((cardArt.Y + Pad * 2) * _scale));
         _viewport.Size = px;
-        _mainView.Position = _rect.Position * _scale;
+        _mainView.Position = _rect.Position * Dpi;
         _mainView.Size = px;
     }
 
@@ -542,7 +477,7 @@ internal sealed partial class WindowMenu : Node
             return true; // nothing reaches the game while the menu is up
         }
 
-        Vector2 local = (client - m._rect.Position) * m._scale;
+        Vector2 local = (client - m._rect.Position) * Dpi;
 
         if (e is InputEventScreenDrag || e is InputEventMouseMotion)
         {
@@ -590,7 +525,7 @@ internal sealed partial class WindowMenu : Node
             if (n is Button b && b.Text == text && b.IsVisibleInTree())
             {
                 Vector2 inViewport = b.GetGlobalRect().GetCenter() * _instance._scale;
-                return _instance._rect.Position + inViewport / _instance._scale;
+                return _instance._rect.Position + inViewport / Dpi;
             }
         }
         return null;
@@ -625,8 +560,9 @@ internal sealed partial class WindowMenu : Node
                 2 => new[] { o + new Vector2(_along - n, 1), o + new Vector2(_along, -n), o + new Vector2(_along + n, 1) },
                 _ => new[] { o + new Vector2(_along - n, _card.Y - 1), o + new Vector2(_along, _card.Y + n), o + new Vector2(_along + n, _card.Y - 1) },
             };
-            DrawColoredPolygon(pts, new Color(0.078f, 0.098f, 0.090f, 1f));
-            DrawPolyline(new[] { pts[0], pts[1], pts[2] }, new Color(Gold, 0.45f), 1f, true);
+            // Stone, outlined in ink, hard-edged: the frame's own colours.
+            DrawColoredPolygon(pts, new Color("7c776e"));
+            DrawPolyline(new[] { pts[0], pts[1], pts[2] }, UoTheme.Ink, 1f, false);
         }
     }
 }

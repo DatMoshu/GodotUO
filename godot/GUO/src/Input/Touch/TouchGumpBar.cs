@@ -52,13 +52,8 @@ namespace GUO.Input.Touch
     {
         // --- the slots ----------------------------------------------------
 
-        /// <summary>Every action a slot can hold, in the order Options lists them.</summary>
-        public static readonly string[] Choices =
-        {
-            "paperdoll", "backpack", "journal", "map", "chat", "war", "nearest", "attack", "last", "bandage",
-            "next", "object", "heal", "cure", "ability1", "ability2", "lastspell", "lastskill", "armdisarm", "status",
-            "skills", "spellbook", "allnames", "door", "follow", "stop", "bank", "guards", "party", "options",
-        };
+        /// <summary>Every action a slot can hold, in the order Options lists them (BarCatalogue).</summary>
+        public static readonly string[] Choices = System.Array.ConvertAll(BarCatalogue.All, a => a.Id);
 
         /// <summary>
         /// The slots a profile starts with, row 1 first: the director's
@@ -197,6 +192,7 @@ namespace GUO.Input.Touch
 
         private readonly Surface _surface = new();
         private readonly RowsSurface _rowsSurface = new();
+        private readonly PopupSurface _popupSurface = new();
 
         /// <summary>Caption textures, by caption and ink (null: the font's own).</summary>
         private readonly Dictionary<(string caption, Color? ink), Texture2D> _labels = new();
@@ -277,6 +273,9 @@ namespace GUO.Input.Touch
             Layer = 10;
             AddChild(_surface);
             _surface.AddChild(_rowsSurface);
+
+            // Last, so the popup draws over the rows and the strip.
+            AddChild(_popupSurface);
         }
 
         public override void _Process(double delta)
@@ -340,6 +339,7 @@ namespace GUO.Input.Touch
                 _drawnLook = look;
                 _surface.QueueRedraw();
                 _rowsSurface.QueueRedraw();
+                _popupSurface.QueueRedraw();
             }
 
             // The sweep runs when a gump could have come under the bar:
@@ -404,6 +404,9 @@ namespace GUO.Input.Touch
             h.Add(_pressed != null && Godot.Time.GetTicksMsec() - _pressedAt < PressedMs ? _pressed : null);
             h.Add(_chipFirst);
             h.Add(Client.Game.UO.FileManager?.Fonts != null);
+            h.Add(PopupSlot);
+            h.Add(PopupHover);
+            h.Add(ProfileManager.CurrentProfile?.TouchBarAlts);
 
             IReadOnlyList<Game.UI.Gumps.Gump> gumps = GumpMinimise.Gumps;
             h.Add(gumps.Count);
@@ -1237,66 +1240,197 @@ namespace GUO.Input.Touch
             world.Macros.Update();
         }
 
-        /// <summary>The upstream macro an action runs, if it is one.</summary>
+        /// <summary>The upstream macro an action runs, if it is one (BarCatalogue).</summary>
         private static bool MacroFor(string action, out MacroType type, out MacroSubType sub)
         {
-            type = action switch
-            {
-                // Upstream's "Select Nearest" macro with its Hostile scan: the
-                // nearest gray, criminal, enemy or murderer becomes the last
-                // target (World.FindNearest), as a ClassicUO player's macro does.
-                "nearest" => MacroType.SelectNearest,
-                "war" => MacroType.WarPeace,
-                "attack" => MacroType.AttackLast,
-                "last" => MacroType.LastTarget,
-                "bandage" => MacroType.BandageSelf,
-                "next" => MacroType.TargetNext,
-                "object" => MacroType.LastObject,
-                "heal" or "cure" => MacroType.UsePotion,
-                "ability1" => MacroType.PrimaryAbility,
-                "ability2" => MacroType.SecondaryAbility,
-                "lastspell" => MacroType.LastSpell,
-                "lastskill" => MacroType.LastSkill,
-                "armdisarm" => MacroType.ArmDisarm,
-                "allnames" => MacroType.AllNames,
-                "door" => MacroType.OpenDoor,
-                "status" or "skills" or "spellbook" or "party" => MacroType.Open,
-                _ => MacroType.None,
-            };
-
-            sub = action switch
-            {
-                "nearest" => MacroSubType.Hostile,
-                "heal" => MacroSubType.BestHealPotion,
-                "cure" => MacroSubType.BestCurePotion,
-                // The weapon hand, as upstream's "Arm/Disarm Right Hand".
-                "armdisarm" => MacroSubType.RightHand,
-                "status" => MacroSubType.Status,
-                "skills" => MacroSubType.Skills,
-                "spellbook" => MacroSubType.MageSpellbook,
-                "party" => MacroSubType.PartyManifest,
-                _ => MacroSubType.MSC_NONE,
-            };
+            BarAction a = BarCatalogue.Get(action);
+            type = a?.Type ?? MacroType.None;
+            sub = a?.Sub ?? MacroSubType.MSC_NONE;
 
             return type != MacroType.None;
         }
 
+        /// <summary>What a speech slot says: the profile's words, else its own. Null for other actions.</summary>
+        private static string SpeechFor(string action) => BarCatalogue.WordsFor(action);
+
+        // --- alternates and the hold popup (C10) -----------------------------
+
+        private static string _altsSource = "\0";
+        private static string _altsSlots;
+        private static (string, string)[] _alts;
+
         /// <summary>
-        /// What a speech slot says: the profile's words, so a shard that
-        /// answers to other words can have them. Null for other actions.
+        /// A slot's two alternates (row 1 first, 0 to 29): the profile's, else
+        /// the catalogue's defaults for the action in the slot. Null where
+        /// there is none.
         /// </summary>
-        private static string SpeechFor(string action)
+        public static (string alt1, string alt2) Alternates(int slot)
+        {
+            string source = ProfileManager.CurrentProfile?.TouchBarAlts;
+            string[] slots = Slots;
+
+            if (!ReferenceEquals(source, _altsSource) || !ReferenceEquals(_slotsSource, _altsSlots) || _alts == null)
+            {
+                _altsSource = source;
+                _altsSlots = _slotsSource;
+                _alts = new (string, string)[slots.Length];
+                string[] saved = source?.Split(',');
+
+                for (int i = 0; i < slots.Length; i++)
+                {
+                    if (saved != null && i < saved.Length)
+                    {
+                        string[] pair = saved[i].Split('|');
+                        string a = pair.Length > 0 && BarCatalogue.Contains(pair[0]) ? pair[0] : null;
+                        string b = pair.Length > 1 && BarCatalogue.Contains(pair[1]) ? pair[1] : null;
+                        _alts[i] = (a, b);
+                    }
+                    else
+                    {
+                        _alts[i] = BarCatalogue.DefaultAlternates(slots[i]);
+                    }
+                }
+            }
+
+            return slot >= 0 && slot < _alts.Length ? _alts[slot] : (null, null);
+        }
+
+        /// <summary>Whether a slot has any alternate: its plate carries the corner mark.</summary>
+        public static bool HasAlternates(int slot)
+        {
+            (string a, string b) = Alternates(slot);
+            return a != null || b != null;
+        }
+
+        /// <summary>
+        /// Set one slot: its action and its two alternates (null for none),
+        /// saved in the profile by name. Every slot's alternates are written
+        /// out, so the defaults of the others stay as they were shown.
+        /// </summary>
+        public static void SetSlot(int slot, string main, string alt1, string alt2)
         {
             Profile p = ProfileManager.CurrentProfile;
 
-            return action switch
+            if (p == null || slot < 0 || slot >= RowCount * PerRow || !BarCatalogue.Contains(main))
             {
-                "follow" => p?.TouchSayFollow ?? "all follow me",
-                "stop" => p?.TouchSayStop ?? "all stop",
-                "bank" => p?.TouchSayBank ?? "bank",
-                "guards" => p?.TouchSayGuards ?? "guards",
-                _ => null,
-            };
+                return;
+            }
+
+            var slots = (string[])Slots.Clone();
+            var alts = new string[slots.Length];
+
+            for (int i = 0; i < slots.Length; i++)
+            {
+                (string a, string b) = Alternates(i);
+                alts[i] = $"{a}|{b}";
+            }
+
+            slots[slot] = main;
+            alts[slot] = $"{alt1}|{alt2}";
+            p.TouchBarSlots = string.Join(",", slots);
+            p.TouchBarAlts = string.Join(",", alts);
+        }
+
+        /// <summary>The slot (row 1 first, 0 to 29) of an open row under a point, or -1.</summary>
+        public int SlotAt(Vector2 at)
+        {
+            if (!Shown)
+            {
+                return -1;
+            }
+
+            Layout(out Geometry geo);
+
+            for (int r = 1; r <= RowCount; r++)
+            {
+                if (!RowUp(geo, r))
+                {
+                    continue;
+                }
+
+                for (int i = 0; i < PerRow; i++)
+                {
+                    if (SlotRect(r, i).HasPoint(at))
+                    {
+                        return (r - 1) * PerRow + i;
+                    }
+                }
+            }
+
+            return -1;
+        }
+
+        /// <summary>The popup's slot, or -1 while it is closed.</summary>
+        public int PopupSlot { get; private set; } = -1;
+
+        /// <summary>The popup button a finger is over: 1 and 2 the alternates, 3 Edit, 0 none.</summary>
+        public int PopupHover { get; private set; }
+
+        /// <summary>
+        /// The popup's three buttons, stacked straight above the held one so a
+        /// thumb slides up to them: the first alternate nearest, then the
+        /// second, then Edit. 1-based: index 1, 2, 3.
+        /// </summary>
+        public Rect2 PopupRect(int index)
+        {
+            if (PopupSlot < 0)
+            {
+                return default;
+            }
+
+            Rect2 cell = SlotRect(PopupSlot / PerRow + 1, PopupSlot % PerRow);
+            return new Rect2(cell.Position - new Vector2(0, cell.Size.Y * index), cell.Size);
+        }
+
+        /// <summary>What a popup button runs: an alternate's action, "edit", or null for an empty one.</summary>
+        public string PopupAction(int index)
+        {
+            (string a, string b) = Alternates(PopupSlot);
+            return index switch { 1 => a, 2 => b, 3 => "edit", _ => null };
+        }
+
+        /// <summary>Open the popup over a held slot (the finger has stayed on it).</summary>
+        public void OpenPopup(int slot)
+        {
+            PopupSlot = slot;
+            PopupHover = 0;
+            _held = null;
+            Vibrate();
+        }
+
+        /// <summary>The finger moved while the popup is up: light the button under it.</summary>
+        public void HoverPopup(Vector2 at)
+        {
+            PopupHover = 0;
+
+            for (int i = 1; i <= 3; i++)
+            {
+                if (PopupRect(i).HasPoint(at) && PopupAction(i) != null)
+                {
+                    PopupHover = i;
+                }
+            }
+        }
+
+        /// <summary>
+        /// The finger lifted: close the popup and say what it chose, the
+        /// action under the finger, "edit", or null (let go elsewhere: cancel).
+        /// </summary>
+        public string ClosePopup(Vector2 at)
+        {
+            HoverPopup(at);
+            string choice = PopupHover > 0 ? PopupAction(PopupHover) : null;
+            PopupSlot = -1;
+            PopupHover = 0;
+
+            return choice;
+        }
+
+        /// <summary>Close the popup without choosing (a cancelled touch).</summary>
+        public void CancelPopup()
+        {
+            PopupSlot = -1;
+            PopupHover = 0;
         }
 
         // --- captions -------------------------------------------------------
@@ -1324,40 +1458,21 @@ namespace GUO.Input.Touch
                 case "journal": return cliloc?.GetString(3000129, ResGumps.Journal) ?? "Journal";
                 case "map": return cliloc?.GetString(3000430, ResGumps.Map) ?? "Map";
                 case "chat": return cliloc?.GetString(3000131, ResGumps.Chat) ?? "Chat";
-                case "options": return "Options";
                 case "self": return "Self";
                 case "cancel": return "Cancel";
+                case "edit": return "Edit...";
                 case "chips:prev": return "‹";
                 case "chips:next": return "›";
-                case "nearest": return "Nearest Foe";
-                case "attack": return "Attack Last";
-                case "last": return "Last Target";
-                case "bandage": return "Bandage Self";
-                case "next": return "Next Target";
-                case "object": return "Last Object";
-                case "heal": return "Heal Potion";
-                case "cure": return "Cure Potion";
-                case "ability1": return "Ability 1";
-                case "ability2": return "Ability 2";
-                case "lastspell": return "Last Spell";
-                case "lastskill": return "Last Skill";
-                case "armdisarm": return "Arm/Disarm";
-                case "status": return "Status";
-                case "skills": return "Skills";
-                case "spellbook": return "Spellbook";
-                case "allnames": return "All Names";
-                case "door": return "Open Door";
-                case "follow": return "All Follow Me";
-                case "stop": return "All Stop";
-                case "bank": return "Bank";
-                case "guards": return "Guards";
-                case "party": return "Party";
                 case "war":
                     return Client.Game?.UO?.World?.Player?.InWarMode == true ? "Peace" : "War";
             }
 
-            return action;
+            // Everything else: the catalogue's short caption.
+            return BarCatalogue.Get(action)?.Short ?? action;
         }
+
+        /// <summary>An action's full name, for the slot editor and Options' lists.</summary>
+        public static string LongTitle(string action) => BarCatalogue.Get(action)?.Title ?? Label(action);
 
         /// <summary>
         /// A caption drawn with the client's unicode font, as a texture: the
@@ -1653,7 +1768,58 @@ namespace GUO.Input.Touch
                         : null;
 
                     DrawCaption(canvas, Label(action), ink, plate);
+
+                    // The corner mark: a slot with alternates (a hold shows
+                    // them). Three art-pixel steps of gold in the plate's
+                    // top-right corner, inside its rim.
+                    if (HasAlternates((r - 1) * PerRow + i))
+                    {
+                        // On an ink square, clear of the rim, so it reads as a mark.
+                        Vector2 corner = plate.Position + new Vector2(plate.Size.X - 13 * s, 4 * s);
+                        canvas.DrawRect(new Rect2(corner - new Vector2(s, s), new Vector2(5 * s, 5 * s)), UoTheme.Ink);
+
+                        for (int step = 0; step < 3; step++)
+                        {
+                            canvas.DrawRect(new Rect2(corner + new Vector2(step * s, step * s), new Vector2((3 - step) * s, s)), Gold);
+                        }
+                    }
                 }
+            }
+        }
+
+        /// <summary>
+        /// The hold popup: its three buttons on a band of their own, the one
+        /// under the finger lit, an empty alternate dimmed.
+        /// </summary>
+        private void DrawPopup(CanvasItem canvas)
+        {
+            if (PopupSlot < 0)
+            {
+                return;
+            }
+
+            Layout(out Geometry geo);
+            int s = geo.Scale;
+            Rect2 top = PopupRect(3), bottom = PopupRect(1);
+            var band = new Rect2(top.Position, new Vector2(top.Size.X, bottom.End.Y - top.Position.Y));
+            canvas.DrawRect(band.Grow(s), new Color(0f, 0f, 0f, 0.75f));
+
+            for (int i = 1; i <= 3; i++)
+            {
+                Rect2 cell = PopupRect(i);
+                var plate = new Rect2(
+                    cell.Position + new Vector2((int)((cell.Size.X - geo.Plate.X) / 2), (int)((cell.Size.Y - geo.Plate.Y) / 2)),
+                    geo.Plate);
+                string action = PopupAction(i);
+                bool hot = PopupHover == i;
+
+                if (hot)
+                {
+                    plate.Position += new Vector2(0, s);
+                }
+
+                DrawPlate(canvas, PlateGump, plate, s, action == null ? new Color(0.45f, 0.45f, 0.45f) : hot ? new Color(0.7f, 0.7f, 0.7f) : Colors.White);
+                DrawCaption(canvas, action == null ? "-" : Label(action), hot ? Gold : null, plate);
             }
         }
 
@@ -1691,6 +1857,25 @@ namespace GUO.Input.Touch
 
                 CostTicks += System.Diagnostics.Stopwatch.GetTimestamp() - t0;
                 DrawCount++;
+            }
+        }
+
+        /// <summary>The control that paints the hold popup, over everything else on the layer.</summary>
+        private sealed partial class PopupSurface : Control
+        {
+            public override void _Ready()
+            {
+                MouseFilter = MouseFilterEnum.Ignore;
+                SetAnchorsPreset(LayoutPreset.FullRect);
+                TextureFilter = TextureFilterEnum.Nearest;
+            }
+
+            public override void _Draw()
+            {
+                if (GetParent() is TouchGumpBar bar && bar.Shown)
+                {
+                    bar.DrawPopup(this);
+                }
             }
         }
 
