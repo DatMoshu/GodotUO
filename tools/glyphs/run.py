@@ -37,6 +37,7 @@ TILES = {
     "pad_b": 14,
     "pad_x": 15,
     "pad_y": 16,
+    "pad_back": 616,  # the View button (two overlapping squares): Back / Select
     "dpad": 34,
     "stick_l": 416,
     "stick_r": 484,

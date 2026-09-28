@@ -13,6 +13,7 @@ Only the glyphs the client uses are copied, by `tools/glyphs/run.py`, from
 |---|---:|---|
 | `pad_a`, `pad_b`, `pad_x`, `pad_y` | 13-16 | Face buttons by printed letter (light set) |
 | `dpad` | 34 | D-pad |
+| `pad_back` | 616 | The View button (two overlapping squares), for Back / Select on every pad |
 | `stick_l`, `stick_r` | 416, 484 | Left and right stick |
 | `key_esc` | 17 | Esc key |
 | `mouse`, `mouse_left`, `mouse_right` | 76-78 | Mouse, left and right button |
