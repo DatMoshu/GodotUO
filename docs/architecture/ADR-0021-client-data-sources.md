@@ -72,13 +72,25 @@ The first-run screen (`Bootstrap/FirstRunScreen.cs`), verified 2026-09-27:
 - A headless run, or any mode other than play, still logs the reason and
   exits, because there is nobody to ask.
 
+Re-opening from Options, verified 2026-09-27:
+
+- The button is Options > Video > Start > "Change UO folder...", a marked
+  PORT DEVIATION in the ported OptionsGump.
+- It opens `FirstRunScreen.OpenChange`, the same screen in change mode:
+  "Now using: <folder>. The folder you choose is used the next time GUO
+  starts.", with Save and Cancel.
+- Save sets upstream's `Settings.GlobalSettings.UltimaOnlineDirectory` and
+  saves it.
+- Proof, on the private shard in game, windowed and never focused: the
+  button is on screen, a bad pick is refused, and Save writes the other
+  install into `settings.json`. Screenshots are in
+  `build\options_folder_proof\watch\`.
+
 **Not yet verified:**
 
 - the native folder dialog itself (`DisplayServer.FileDialogShow`, falling
   back to Godot's `FileDialog`). The probe picks a folder without opening it,
   because opening one needs a person at the desktop.
-- re-opening from Options. `FirstRunScreen.Open` is the hook; the Options
-  button will touch a ported gump and carry a PORT DEVIATION marker.
 - the Android SAF picker (GUOAndroid) and the web.
 - the Android and Deck platform defaults at runtime. They are written, but
   not yet run on a device.

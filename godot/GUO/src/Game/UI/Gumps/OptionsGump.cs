@@ -2236,6 +2236,16 @@ namespace GUO.Game.UI.Gumps
                 )
             );
 
+            // PORT DEVIATION (GUO): the UO folder (ADR-0021). Opens the
+            // first-run screen in change mode; the new folder is saved to
+            // settings.json and used on the next start.
+            NiceButton changeFolder = new NiceButton(startX, startY, 160, 20, ButtonAction.Activate, "Change UO folder...")
+            {
+                IsSelectable = false, ButtonParameter = (int) Buttons.Disabled
+            };
+            changeFolder.MouseUp += (s, e) => GUO.Host.FirstRunScreen.OpenChange();
+            section8.Add(changeFolder);
+
             Add(rightArea, PAGE);
         }
 
