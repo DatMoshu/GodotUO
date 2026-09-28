@@ -57,6 +57,7 @@ internal static class PerfProbe
     public static System.Action<bool> ParityToggle = on => UltimaBatcher2D.BatchedWorld = on;
     public static System.Func<bool> ParityState = () => UltimaBatcher2D.BatchedWorld;
     private const int Frames = 360;
+    private const double MinDrawsPerFrame = 0.95;
 
     public static async System.Threading.Tasks.Task Run(Node host, string outDir, string label, float zoom = 0, bool parity = false)
     {
@@ -105,6 +106,12 @@ internal static class PerfProbe
         }
 
         Scene[] scenes = Only.Count == 0 ? Scenes : System.Array.FindAll(Scenes, s => Only.Contains(s.Name));
+        // A misspelt --perf-scene measured nothing and still passed (review M6).
+        List<string> unknown = Only.Where(n => !Scenes.Any(s => s.Name == n)).ToList();
+        if (unknown.Count > 0)
+        {
+            GD.PrintErr($"[GUO] perf probe: no scene named {string.Join(", ", unknown)}; the scenes are {string.Join(", ", Scenes.Select(s => s.Name))}");
+        }
 
         foreach (Scene scene in scenes)
         {
@@ -131,7 +138,15 @@ internal static class PerfProbe
 
         GUO.Utility.Profiler.Enabled = profiling;
         Write(outDir, label, results);
-        Passed = results.Count == (_parity ? 2 : 1) * scenes.Length + 1;
+        // Every measured frame must have drawn (UltimaBatcher2D.FramesBegun):
+        // a frame the client skipped times nothing (review M6).
+        List<string> idle = results.Where(r => (double)r["draws_per_frame"] < MinDrawsPerFrame).Select(r => $"{r["scene"]} ({r["draws_per_frame"]})").ToList();
+        if (idle.Count > 0)
+        {
+            GD.PrintErr($"[GUO] perf probe: frames that drew nothing in {string.Join(", ", idle)}; fewer than {MinDrawsPerFrame} draws per frame");
+        }
+
+        Passed = unknown.Count == 0 && idle.Count == 0 && results.Count == (_parity ? 2 : 1) * scenes.Length + 1;
     }
 
     private static async System.Threading.Tasks.Task<Dictionary<string, object>> Measure(Node host, Rid viewport, string name, string what)
@@ -144,9 +159,10 @@ internal static class PerfProbe
         int maxFps = Engine.MaxFps;
         Engine.MaxFps = 0;
         // Upstream's own pacing (GameController._intervalFixedUpdate) skips the
-        // draw when a frame comes early: one draw per 1000/FPS ms, and one per
-        // 217 ms while the window is inactive -- which a probe window, never
-        // focused, always is. Left alone, most measured frames draw nothing.
+        // draw when a frame comes early: one draw per 1000/FPS ms. (Its 217 ms
+        // inactive tick does not apply: GameController.IsActive counts a
+        // NoFocus scripted window as active.) Left alone, an uncapped engine
+        // frame mostly comes early, and most measured frames draw nothing.
         // Made tiny for the measurement, so every frame draws; put back after.
         var field = typeof(GUO.GameController).GetField("_intervalFixedUpdate",
             System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);

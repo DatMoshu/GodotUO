@@ -331,6 +331,10 @@ namespace GUO.Configuration
         // labels (Input.Gamepad): "auto" (from the pad and the device),
         // "labels" or "swapped". Not a platform default, so no version.
         public string GamepadLayout { get; set; } = "auto";
+        // PORT DEVIATION (GUO): a controller on a Windows or macOS desktop,
+        // where upstream has none; off by default (desktop 1:1). Android and
+        // the Linux/Deck export have the pad on regardless (Input.Gamepad).
+        public bool GamepadOnDesktop { get; set; }
         public int OverrideContainerLocationSetting { get; set; } // 0 = container position, 1 = top right of screen, 2 = last dragged position, 3 = remember every container
 
         [JsonConverter(typeof(Point2Converter))] public Point OverrideContainerLocationPosition { get; set; } = new Point(200, 200);
