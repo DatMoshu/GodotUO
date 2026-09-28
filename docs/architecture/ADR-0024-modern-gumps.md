@@ -182,7 +182,15 @@ Change the ported gumps' layout under the touch layer.
 - **Rejected.** Rule 2: every edit would have to be reconciled by hand on
   every upstream merge, across thousands of lines.
 
-### Alternative 3: Modern gumps for shard gumps
+### Alternative 3: A Modern world map
+
+- **Rejected** (2026-09-28, with the director). The world map is a picture,
+  not a form. Its treatment is **Classic + fit + gestures**: sized, not
+  scaled, to the whole screen (it is resizable, so it draws more map), with a
+  pinch to zoom and a drag to pan. A Godot rebuild would redo its map
+  rendering for no gain.
+
+### Alternative 4: Modern gumps for shard gumps
 
 - **Rejected.** A server gump's layout is data the shard sends and can be
   anything. It stays Classic, fitted where tall (tall_gumps.md: "Classic
