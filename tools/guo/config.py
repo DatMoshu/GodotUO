@@ -114,6 +114,11 @@ class Config:
     web_port: int
     ws_bridge_port: int
     web_godot: Path | None
+    # LAN mode (tools/web/lan.py): serve and the bridge on this PC's private
+    # address, over TLS, for a phone on the same network. Off by default; the
+    # address is found at run time unless web_lan_host (config.local.bat) says.
+    web_lan: bool
+    web_lan_host: str
 
     # --- Steam Deck (optional; see tools/steamdeck and ADR-0018) ---
     # The host, key and known-hosts file are the user's own network and live
@@ -273,6 +278,8 @@ def load_config(root: Path | None = None) -> Config:
         web_port=web_port,
         ws_bridge_port=ws_bridge_port,
         web_godot=path_or_none("UO_WEB_GODOT"),
+        web_lan=get("UO_WEB_LAN", "0").strip() == "1",
+        web_lan_host=get("UO_WEB_LAN_HOST", "").strip(),
         android_sdk=path_or_none("UO_ANDROID_SDK")
         or Path(os.path.expandvars("%LOCALAPPDATA%")) / "Android" / "Sdk",
         android_jdk=path_or_none("UO_ANDROID_JDK"),

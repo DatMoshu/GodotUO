@@ -7,13 +7,18 @@ it touches anything, that a failed export leaves the previous build in place,
 and that a good one replaces it: the engine is a stand-in that writes (or
 fails to write) the staged page. Then the data server on an ephemeral port:
 it binds 127.0.0.1, serves ranges, answers 416 to an unsatisfiable one, and
-never serves a file outside the data folder.
+never serves a file outside the data folder. Then LAN mode (guo.lan): the
+address checks, the local CA and server certificate, and an HTTPS server that
+verifies against that CA, serves the CA at /guo-ca.crt, refuses plain http
+and turns away a public peer; and the index names no shard host.
 """
 from __future__ import annotations
 
 import dataclasses
 import http.client
 import os
+import socket
+import ssl
 import subprocess
 import sys
 import tempfile
@@ -27,6 +32,10 @@ sys.path.insert(0, str(HERE.parent))
 import run as web  # noqa: E402
 
 FAILS: list[str] = []
+
+# Example private addresses for the LAN mode checks; no machine's own.
+EXAMPLE_LAN = "192.168.1.20"
+EXAMPLE_PEER = "192.168.1.30"
 
 
 def check(ok: bool, what: str) -> None:
@@ -102,6 +111,80 @@ def data_server(tmp: Path) -> None:
         server.server_close()
 
 
+def lan_mode(tmp: Path) -> None:
+    """guo.lan and serve --lan, on loopback (the one private address every machine has)."""
+    from guo import lan
+
+    for address, private in ((EXAMPLE_LAN, True), ("127.0.0.1", True), ("fe80::1", True), (f"::ffff:{EXAMPLE_LAN}", True),
+                             ("8.8.8.8", False), ("::ffff:8.8.8.8", False), ("0.0.0.0", False), ("nonsense", False)):
+        check(lan.is_private(address) == private, f"is_private({address}) is {private}")
+    for bad in ("8.8.8.8", "127.0.0.1", "0.0.0.0"):
+        try:
+            lan.lan_address(bad)
+            check(False, f"lan_address refuses {bad}")
+        except ValueError:
+            check(True, f"lan_address refuses {bad}")
+    check(lan.lan_address(EXAMPLE_LAN) == EXAMPLE_LAN, "lan_address takes a private override")
+
+    certs = tmp / "certs"
+    ca, cert, key = lan.ensure_certificates(certs, "127.0.0.1")
+    first = cert.read_bytes(), ca.read_bytes()
+    lan.ensure_certificates(certs, "127.0.0.1")
+    check((cert.read_bytes(), ca.read_bytes()) == first, "certificates are kept while they still fit")
+    lan.ensure_certificates(certs, EXAMPLE_LAN)
+    check(ca.read_bytes() == first[1] and cert.read_bytes() != first[0],
+          "a new address: a new server certificate, the same CA (installed once)")
+    ca, cert, key = lan.ensure_certificates(certs, "127.0.0.1")
+
+    root = tmp / "lanpage"
+    root.mkdir()
+    (root / "GUO.html").write_text("page")
+    cfg = dataclasses.replace(web.load_config(), root=tmp, web_port=0)
+    server = web.make_server(web.Paths(cfg), root, None, ("127.0.0.1", ca, lan.server_context(cert, key)))
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    port = server.server_address[1]
+    trust = ssl.create_default_context(cafile=str(ca))
+    try:
+        c = http.client.HTTPSConnection("127.0.0.1", port, timeout=10, context=trust)
+        c.request("GET", "/GUO.html")
+        r = c.getresponse()
+        check(r.status == 200 and r.read() == b"page", "LAN: the page over https, verified against the local CA")
+        check(r.getheader("Cross-Origin-Opener-Policy") == "same-origin", "LAN: still cross-origin isolated")
+        c.close()
+        c = http.client.HTTPSConnection("localhost", port, timeout=10, context=trust)
+        c.request("GET", web.CA_PATH)
+        r = c.getresponse()
+        check(r.status == 200 and r.read() == ca.read_bytes(), "LAN: the CA at /guo-ca.crt, by name too")
+        c.close()
+        try:
+            c = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+            c.request("GET", "/GUO.html")
+            c.getresponse().read()
+            check(False, "LAN: plain http gets nothing")
+        except (OSError, http.client.HTTPException):
+            check(True, "LAN: plain http gets nothing")
+        check(not server.verify_request(None, ("8.8.8.8", 1)), "LAN: a public peer is turned away")
+        check(server.verify_request(None, (EXAMPLE_PEER, 1)), "LAN: a private peer is let in")
+    finally:
+        server.shutdown()
+        server.server_close()
+
+    data = tmp / "landata"
+    data.mkdir()
+    (data / "tiledata.mul").write_bytes(b"x")
+    index = web.json.loads(web.data_index(web.Paths(cfg), data))
+    check("host" not in index["shard"], "the index names no shard host (the page uses its own)")
+
+    sys.path.insert(0, str(HERE.parent / "ws_bridge"))
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("ws_bridge_run", HERE.parent / "ws_bridge" / "run.py")
+    bridge = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(bridge)
+    origins = bridge.lan_origins(EXAMPLE_LAN, 8060)
+    check(f"https://{EXAMPLE_LAN}:8060" in origins and f"https://{socket.gethostname().lower()}.local:8060" in origins
+          and not any(o.startswith("http:") for o in origins), "bridge: LAN origins are the https page's")
+
+
 def main() -> int:
     os.environ.pop("GODOT_CONSOLE", None)
     web.ensure_solution = lambda p: None
@@ -145,6 +228,9 @@ def main() -> int:
 
     with tempfile.TemporaryDirectory() as t:
         data_server(Path(t))
+
+    with tempfile.TemporaryDirectory() as t:
+        lan_mode(Path(t))
 
     print("test_run: " + ("FAILED: " + "; ".join(FAILS) if FAILS else "all ok"))
     return 1 if FAILS else 0

@@ -144,6 +144,13 @@ REM  The WebSocket bridge the web client reaches the shard through
 REM  (tools\ws_bridge, launchers\web\ws_bridge.bat): ws://127.0.0.1:<this>
 REM  relays to UO_SHARD_HOST:UO_SHARD_PORT. Upstream's test proxy uses 2594.
 if not defined UO_WS_BRIDGE_PORT    set "UO_WS_BRIDGE_PORT=2594"
+REM  LAN mode: 1 serves the page and the bridge to phones on this network
+REM  (https and wss, on this PC's private address only; tools\web\README.md,
+REM  "Play on a phone"). Off by default and never on here: set it in
+REM  config.local.bat. UO_WEB_LAN_HOST picks the address when the PC has
+REM  several; empty finds it. Never commit an address.
+if not defined UO_WEB_LAN           set "UO_WEB_LAN=0"
+if not defined UO_WEB_LAN_HOST      set "UO_WEB_LAN_HOST="
 REM  The Godot build that can export C# to the web: a community 4.7.2 mono
 REM  build kept apart from the pinned engine, with its own .NET SDK, in
 REM  tools\godot_web (gitignored; see its README). Only tools\web uses it.

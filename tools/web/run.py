@@ -47,6 +47,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from guo import lan  # noqa: E402
 from guo.config import Config, load_config  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
@@ -384,13 +385,59 @@ class IsolatedHandler(http.server.SimpleHTTPRequestHandler):
         ".pck": "application/octet-stream",
     }
 
+    # LAN mode: the local CA's certificate, for the phone to install (/guo-ca.crt).
+    ca_file: Path | None = None
+
     def end_headers(self):
         for k, v in ISOLATION_HEADERS.items():
             self.send_header(k, v)
         super().end_headers()
 
+    def do_GET(self):
+        if self.ca_file and self.path.split("?", 1)[0] == CA_PATH:
+            body = self.ca_file.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/x-x509-ca-cert")
+            self.send_header("Content-Disposition", 'attachment; filename="guo-ca.crt"')
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        return super().do_GET()
+
     def log_message(self, fmt, *args):
         say(f"http {self.address_string()} {fmt % args}")
+
+
+CA_PATH = "/guo-ca.crt"
+
+
+class LanServer(http.server.ThreadingHTTPServer):
+    """LAN mode: HTTPS on one private address, and only private or loopback peers served.
+
+    The TLS handshake runs on the request's own thread (finish_request), so a
+    slow or silent peer holds up no one else.
+    """
+
+    def __init__(self, address, handler, context):
+        self.context = context
+        super().__init__(address, handler)
+
+    def verify_request(self, request, client_address) -> bool:
+        if lan.is_private(str(client_address[0])):
+            return True
+        say(f"refused {client_address[0]}: not a private address")
+        return False
+
+    def finish_request(self, request, client_address):
+        request.settimeout(30)
+        try:
+            request = self.context.wrap_socket(request, server_side=True)
+        except (OSError, ValueError) as e:
+            # Most often a phone that does not trust the CA yet hanging up.
+            say(f"https {client_address[0]}: handshake failed ({e.__class__.__name__})")
+            return
+        super().finish_request(request, client_address)
 
 
 DATA_PREFIX = "/uo/"
@@ -399,14 +446,15 @@ DATA_PREFIX = "/uo/"
 def data_index(p: Paths, data: Path) -> bytes:
     """What guo_data.js mounts: every file of the install with its size, and
     the settings the page would otherwise have to be told (client version,
-    the shard's WebSocket bridge)."""
+    the shard's WebSocket bridge's port; the page takes the host it was served
+    from, so a phone reaches the bridge on the same PC)."""
     files = []
     for f in sorted(data.rglob("*")):
         if f.is_file():
             files.append({"path": f.relative_to(data).as_posix(), "size": f.stat().st_size})
     return json.dumps({
         "client_version": p.cfg.client_version,
-        "shard": {"host": "ws://127.0.0.1", "port": p.cfg.ws_bridge_port},
+        "shard": {"port": p.cfg.ws_bridge_port},
         "files": files,
     }).encode("utf-8")
 
@@ -414,7 +462,8 @@ def data_index(p: Paths, data: Path) -> bytes:
 class DataHandler(IsolatedHandler):
     """The page's files, plus the player's own UO install under /uo/: its
     index at /uo/_index.json and each file with HTTP Range, which is how the
-    page reads it lazily. The server only listens on 127.0.0.1."""
+    page reads it lazily. The server only listens on 127.0.0.1, or in LAN
+    mode on the private LAN address for private peers only."""
 
     data_dir: Path | None = None
     index: bytes = b""
@@ -486,14 +535,20 @@ class DataHandler(IsolatedHandler):
         super().log_message(fmt, *args)
 
 
-def make_server(p: Paths, root: Path, data: Path | None = None) -> http.server.ThreadingHTTPServer:
+def make_server(p: Paths, root: Path, data: Path | None = None,
+                lan_mode: tuple[str, Path, "ssl.SSLContext"] | None = None) -> http.server.ThreadingHTTPServer:
+    """lan_mode: (the LAN address, the CA certificate, the TLS context) -- see guo.lan."""
+    attrs = {"ca_file": lan_mode[1]} if lan_mode else {}
     if data:
         data = data.resolve()
-        cls = type("BoundDataHandler", (DataHandler,), {"data_dir": data, "index": data_index(p, data)})
-        say(f"serving the client data in {data} at {DATA_PREFIX} (this PC only)")
+        cls = type("BoundDataHandler", (DataHandler,), {**attrs, "data_dir": data, "index": data_index(p, data)})
+        say(f"serving the client data in {data} at {DATA_PREFIX} "
+            f"({'devices on this network' if lan_mode else 'this PC only'})")
     else:
-        cls = IsolatedHandler
+        cls = type("BoundHandler", (IsolatedHandler,), attrs)
     handler = functools.partial(cls, directory=str(root))
+    if lan_mode:
+        return LanServer((lan_mode[0], p.port), handler, lan_mode[2])
     return http.server.ThreadingHTTPServer(("127.0.0.1", p.port), handler)
 
 
@@ -502,12 +557,30 @@ def default_data(p: Paths) -> Path | None:
     return data if (data / "tiledata.mul").exists() else None
 
 
-def serve(p: Paths, root: Path, data: Path | None = None) -> int:
+def serve(p: Paths, root: Path, data: Path | None = None, lan_on: bool = False) -> int:
     if not root.exists():
         say(f"nothing to serve: {root} does not exist (run export first)")
         return 1
-    server = make_server(p, root, data)
-    say(f"serving {root} at http://127.0.0.1:{p.port}/{p.page.name}  (Ctrl+C stops)")
+    lan_mode = None
+    if lan_on:
+        try:
+            address = lan.lan_address(p.cfg.web_lan_host)
+        except ValueError as e:
+            say(str(e))
+            return 2
+        ca, cert, key = lan.ensure_certificates(p.cfg.build / "web" / "lan_certs", address)
+        lan_mode = (address, ca, lan.server_context(cert, key))
+    server = make_server(p, root, data, lan_mode)
+    if lan_mode:
+        names = lan.host_names(lan_mode[0])
+        say("LAN mode: devices on this network can open the page; addresses that are not private are refused")
+        say(f"on the phone, first: http is off, so install the CA from https://{names[0]}:{p.port}{CA_PATH} "
+            "(tools/web/README.md, Play on a phone)")
+        for name in names:
+            say(f"serving {root} at https://{name}:{p.port}/{p.page.name}")
+        say(f"the bridge: tools/ws_bridge/run.py serve --lan (wss, port {p.cfg.ws_bridge_port}). Ctrl+C stops.")
+    else:
+        say(f"serving {root} at http://127.0.0.1:{p.port}/{p.page.name}  (Ctrl+C stops)")
     say("headers: " + "; ".join(f"{k}: {v}" for k, v in ISOLATION_HEADERS.items()))
     try:
         server.serve_forever()
@@ -687,6 +760,8 @@ def main(argv: list[str] | None = None) -> int:
     sv.add_argument("--root", default=None, help="folder to serve (default build\\web)")
     sv.add_argument("--data", default=None, help="the UO install to serve at /uo/ (default UO_CLIENT_DATA)")
     sv.add_argument("--no-data", action="store_true", help="serve the page only")
+    sv.add_argument("--lan", action="store_true",
+                    help="for a phone on this network: https on the LAN address, private peers only (UO_WEB_LAN=1)")
     sm = sub.add_parser("smoke", help="export, serve, load headless, wait for the login gump")
     sm.add_argument("--timeout", type=int, default=240, help="seconds to give each browser")
     sm.add_argument("--no-export", action="store_true", help="reuse build\\web")
@@ -713,7 +788,7 @@ def main(argv: list[str] | None = None) -> int:
         return export(p, Path(args.out) if args.out else p.page, args.release)
     if args.command == "serve":
         data = None if args.no_data else (Path(args.data) if args.data else default_data(p))
-        return serve(p, Path(args.root) if args.root else p.out_dir, data)
+        return serve(p, Path(args.root) if args.root else p.out_dir, data, args.lan or p.cfg.web_lan)
     if args.command == "smoke":
         return smoke(p, args.timeout, args.no_export, args.browser or ["chrome", "firefox"],
                      None if args.pick else default_data(p), args.wait_for, args.query, args.video, args.linger,
