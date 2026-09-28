@@ -158,6 +158,34 @@ namespace GUO.Renderer
         public int Commands;
 
         /// <summary>
+        /// This frame's commands by kind -- plain rects, rects under a
+        /// transform (shadows, mirrors), meshes, triangle lists -- and an
+        /// estimate of the batches Godot's canvas renderer makes of them: a new
+        /// batch at a new item, a change of kind or texture, every mesh and
+        /// every transformed rect. For the perf probe (Epic B, B4): when the
+        /// estimate tracks the renderer's draw calls, the kinds say what breaks
+        /// its batches.
+        /// </summary>
+        public static int[] Kinds = new int[5];  // 4: covering-land tile meshes (DrawMeshSprite)
+        public static int EstimatedBatches;
+        public static (int Rects, int Affine, int Meshes, int Triangles, int Batches, int CoverMeshes) LastKinds;
+        private int _lastKind = -1;
+        private Rid _lastKindItem, _lastKindTexture;
+
+        private void Count(int kind, Rid texture)
+        {
+            Kinds[kind]++;
+            if (kind == 1 || kind == 2 || kind == 4 || kind != _lastKind || _current != _lastKindItem || texture != _lastKindTexture)
+            {
+                EstimatedBatches++;
+            }
+
+            _lastKind = kind;
+            _lastKindItem = _current;
+            _lastKindTexture = texture;
+        }
+
+        /// <summary>
         /// The previous frame's counters, kept by BeginFrame before it resets
         /// them, for the perf probe (src/Bootstrap/PerfProbe.cs): texture
         /// switches, canvas items opened (every one is a batch break -- a new
@@ -230,6 +258,7 @@ namespace GUO.Renderer
             }
 
             Commands++;
+            Count(3, RidOf(_runTexture));
             RenderingServer.CanvasItemAddTriangleArray(
                 _runItem, _runIndices.ToArray(), _runPoints.ToArray(), _runColors.ToArray(), _runUVs.ToArray(),
                 null, null, RidOf(_runTexture));
@@ -311,6 +340,10 @@ namespace GUO.Renderer
             EnsureNotStarted();
 
             LastFrame = (TextureSwitches, _itemCount, Commands);
+            LastKinds = (Kinds[0], Kinds[1], Kinds[2], Kinds[3], EstimatedBatches, Kinds[4]);
+            System.Array.Clear(Kinds);
+            EstimatedBatches = 0;
+            _lastKind = -1;
             FramesBegun++;
             _itemCount = 0;
             _sizedTexture = null;
@@ -480,6 +513,7 @@ namespace GUO.Renderer
                 FlushRun();
 
                 Commands++;
+                Count(2, default);
 
                 RenderingServer.CanvasItemAddMesh(
                     _current,
@@ -532,6 +566,7 @@ namespace GUO.Renderer
             FlushRun();
 
             Commands++;
+            Count(4, default);
 
             RenderingServer.CanvasItemAddMesh(
                 _current,
@@ -1496,6 +1531,7 @@ namespace GUO.Renderer
                 // One canvas command, no per-draw arrays.
                 FlushRun();
                 Commands++;
+                Count(0, RidOf(texture));
                 RenderingServer.CanvasItemAddTextureRectRegion
                 (
                     _current,
@@ -1614,6 +1650,7 @@ namespace GUO.Renderer
             FlushRun();
 
             Commands++;
+            Count(3, RidOf(texture));
 
             RenderingServer.CanvasItemAddTriangleArray
             (
@@ -1695,6 +1732,7 @@ namespace GUO.Renderer
             FlushRun();
             RenderingServer.CanvasItemAddSetTransform(_current, new Transform2D(axisX, axisY, origin));
             Commands++;
+            Count(1, RidOf(texture));
             RenderingServer.CanvasItemAddTextureRectRegion(_current, region, RidOf(texture), region, modulate, false, false);
             RenderingServer.CanvasItemAddSetTransform(_current, Transform2D.Identity);
 
