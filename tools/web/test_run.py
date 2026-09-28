@@ -5,15 +5,19 @@
 Checks that an export with no web-capable Godot (the fork) is refused before
 it touches anything, that a failed export leaves the previous build in place,
 and that a good one replaces it: the engine is a stand-in that writes (or
-fails to write) the staged page.
+fails to write) the staged page. Then the data server on an ephemeral port:
+it binds 127.0.0.1, serves ranges, answers 416 to an unsatisfiable one, and
+never serves a file outside the data folder.
 """
 from __future__ import annotations
 
 import dataclasses
+import http.client
 import os
 import subprocess
 import sys
 import tempfile
+import threading
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -53,6 +57,49 @@ def fake_engine(writes: bool, code: int):
             staged.with_suffix(".js").write_text("".join(anchor for anchor, _ in web.PAGE_PATCHES))
         return subprocess.CompletedProcess(cmd, code)
     return fake
+
+
+def data_server(tmp: Path) -> None:
+    """The /uo/ data server (make_server): bind, Range, 416, the traversal guard."""
+    root, data = tmp / "page", tmp / "data"
+    root.mkdir()
+    data.mkdir()
+    (root / "GUO.html").write_text("page")
+    (data / "tiledata.mul").write_bytes(bytes(range(100)))
+    (tmp / "secret.txt").write_text("outside")
+    cfg = dataclasses.replace(web.load_config(), root=tmp, web_port=0)
+    server = web.make_server(web.Paths(cfg), root, data)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    host, port = server.server_address[:2]
+    check(host == "127.0.0.1", f"data server binds 127.0.0.1 only (got {host})")
+
+    def get(path: str, rng: str | None = None) -> tuple[int, dict, bytes]:
+        c = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+        c.request("GET", path, headers={"Range": rng} if rng else {})
+        r = c.getresponse()
+        body = r.read()
+        c.close()
+        return r.status, {k.lower(): v for k, v in r.getheaders()}, body
+
+    try:
+        status, h, body = get("/uo/tiledata.mul")
+        check(status == 200 and body == bytes(range(100)), "a whole file is served")
+        status, h, body = get("/uo/tiledata.mul", "bytes=10-19")
+        check(status == 206 and body == bytes(range(10, 20)) and h.get("content-range") == "bytes 10-19/100",
+              "a range is served as 206 with its Content-Range")
+        status, h, body = get("/uo/tiledata.mul", "bytes=90-")
+        check(status == 206 and body == bytes(range(90, 100)), "an open-ended range runs to the end")
+        for rng in ("bytes=10-5", "bytes=100-", "bytes=abc"):
+            status, h, _ = get("/uo/tiledata.mul", rng)
+            check(status == 416 and h.get("content-range") == "bytes */100", f"{rng!r} answers 416")
+        status, _, body = get("/uo/_index.json")
+        check(status == 200 and b"tiledata.mul" in body, "the index lists the data files")
+        for bad in ("/uo/../secret.txt", "/uo/%2e%2e/secret.txt", "/uo/nothing.mul"):
+            status, _, body = get(bad)
+            check(status == 404 and b"outside" not in body, f"{bad} is not served (404)")
+    finally:
+        server.shutdown()
+        server.server_close()
 
 
 def main() -> int:
@@ -95,6 +142,9 @@ def main() -> int:
         check("guoBeforeMain" in (p.out_dir / "GUO.js").read_text(), "good export: the page is patched")
         check((p.out_dir / "guo_data.js").exists(), "good export: guo_data.js is copied next to the page")
         check(not (p.out_dir / "_export_staging").exists(), "good export: the staging folder is gone")
+
+    with tempfile.TemporaryDirectory() as t:
+        data_server(Path(t))
 
     print("test_run: " + ("FAILED: " + "; ".join(FAILS) if FAILS else "all ok"))
     return 1 if FAILS else 0

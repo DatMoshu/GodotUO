@@ -442,13 +442,15 @@ class DataHandler(IsolatedHandler):
         partial = False
         if rng:
             m = re.fullmatch(r"bytes=(\d+)-(\d*)", rng.strip())
-            if not m or int(m.group(1)) >= size:
+            if m:
+                start = int(m.group(1))
+                end = min(int(m.group(2)) if m.group(2) else size - 1, size - 1)
+            # Unparsable, past the end, or backwards ("bytes=10-5"): not satisfiable.
+            if not m or start >= size or end < start:
                 self.send_response(416)
                 self.send_header("Content-Range", f"bytes */{size}")
                 self.end_headers()
                 return
-            start = int(m.group(1))
-            end = min(int(m.group(2)) if m.group(2) else size - 1, size - 1)
             partial = True
         self.send_response(206 if partial else 200)
         self.send_header("Content-Type", "application/octet-stream")
