@@ -912,6 +912,7 @@ public partial class Main : Node
             return;
         }
 
+        PregameProbe.RestartPhase = _options.AccountsRestart;
         await PregameProbe.Run(this, _options.ScreenshotDir, _options.ScreenshotName, !string.IsNullOrWhiteSpace(_options.Account));
 
         if (realRestart && PregameProbe.Passed)
@@ -1448,6 +1449,9 @@ public partial class Main : Node
         /// <summary>The second screen's pre-game card at the login screen; see PregameProbe.</summary>
         public bool PregameProbe { get; private set; }
 
+        /// <summary>--accounts-restart save|check: only the saved-password check, split across an app restart.</summary>
+        public string AccountsRestart { get; private set; }
+
         /// <summary>Log in, use the second screen, report and photograph it; see DualProbe.</summary>
         public bool DualProbe { get; private set; }
 
@@ -1752,6 +1756,10 @@ public partial class Main : Node
                         break;
                     case "--pregame-probe":
                         o.PregameProbe = true;
+                        break;
+                    case "--accounts-restart":
+                        o.PregameProbe = true;
+                        o.AccountsRestart = Next();
                         break;
                     case "--dual-probe-held":
                         o.DualProbe = true;
