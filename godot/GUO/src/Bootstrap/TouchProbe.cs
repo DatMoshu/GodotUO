@@ -1284,23 +1284,53 @@ internal static class TouchProbe
         {
             float zoom = map.Zoom;
             Vector2 c = Client(new Vector2(map.X + map.Width / 2f, map.Y + map.Height / 2f));
-            // Fingers together: zoom out (a saved zoom may already be the most in).
-            Touch(0, c - new Vector2(220, 0), true);
-            Touch(1, c + new Vector2(220, 0), true);
-            await Frames(host, 2);
-
-            for (int i = 1; i <= 12; i++)
+            // Fingers together, then apart if that changed nothing: a saved
+            // zoom may already be the farthest out or in.
+            for (int attempt = 0; attempt < 2 && map.Zoom == zoom; attempt++)
             {
-                Drag(0, c - new Vector2(220 - i * 15, 0), new Vector2(15, 0));
-                Drag(1, c + new Vector2(220 - i * 15, 0), new Vector2(-15, 0));
+                float from = attempt == 0 ? 220 : 40, to = attempt == 0 ? 40 : 220;
+                Touch(0, c - new Vector2(from, 0), true);
+                Touch(1, c + new Vector2(from, 0), true);
                 await Frames(host, 2);
+
+                for (int i = 1; i <= 12; i++)
+                {
+                    float d = from + (to - from) * i / 12f;
+                    Drag(0, c - new Vector2(d, 0), new Vector2((to - from) / -12f, 0));
+                    Drag(1, c + new Vector2(d, 0), new Vector2((to - from) / 12f, 0));
+                    await Frames(host, 2);
+                }
+
+                Touch(0, c - new Vector2(to, 0), false);
+                Touch(1, c + new Vector2(to, 0), false);
+                await Frames(host, 10);
             }
 
-            Touch(0, c - new Vector2(40, 0), false);
-            Touch(1, c + new Vector2(40, 0), false);
-            await Frames(host, 10);
             Check("a pinch on the world map zooms the map, not the gump", map.Zoom != zoom && map.PresentationScale == 1f,
                 $"zoom {zoom} -> {map.Zoom}");
+
+            // Its markers manager, Modern (gump index 9): over the map; Go to
+            // centres the map on a marker (free view), where files are loaded.
+            Configuration.ProfileManager.CurrentProfile.ModernGumpsOff = false;
+            UIManager.Add(new MarkersManagerGump(world));
+            await Frames(host, 20);
+            var markers = Input.Touch.Modern.ModernGump.Current as Input.Touch.Modern.ModernMarkers;
+            Check("the map's markers manager opens as its Modern view", markers != null && UIManager.GetGump<MarkersManagerGump>() == null);
+
+            if (markers != null && markers.FirstMarker is string first && markers.Find("go " + first) is Godot.Control go)
+            {
+                await TapClient(host, markers.CentreOf(go));
+                await Frames(host, 10);
+                Check("Go to on a marker centres the world map on it and closes the list", map.FreeView && !Input.Touch.Modern.ModernGump.IsOpen, first);
+            }
+            else
+            {
+                GD.Print("[GUO] touch probe: no marker files loaded; Go to is not checked");
+                Input.Touch.Modern.ModernGump.Current?.Close();
+            }
+
+            Configuration.ProfileManager.CurrentProfile.ModernGumpsOff = true;
+            map.FreeView = false;
             map.Dispose();
             await Frames(host, 10);
         }
