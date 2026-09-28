@@ -256,6 +256,9 @@ internal static class PerfProbe
         byte[] da = a.GetData(), db = b.GetData(), dc = c.GetData(), db2 = b2.GetData(), dc2 = c2.GetData();
         int bpp = da.Length / (a.GetWidth() * a.GetHeight());
         long stable = 0, violations = 0, strict = 0;
+        // The largest channel difference of a repeatable pixel: 1 is rounding
+        // (fp16 math, ADR-0023's identity pass); tens is a different texel.
+        int strictMaxDelta = 0;
         var mask = Image.CreateEmpty(a.GetWidth(), a.GetHeight(), false, Image.Format.Rgba8);
         bool Eq(byte[] x, byte[] y, int at)
         {
@@ -288,6 +291,10 @@ internal static class PerfProbe
             if (repeatable)
             {
                 strict++;
+                for (int k = 0; k < bpp; k++)
+                {
+                    strictMaxDelta = System.Math.Max(strictMaxDelta, System.Math.Abs(da[i + k] - db[i + k]));
+                }
             }
 
             mask.SetPixel(px % a.GetWidth(), px / a.GetWidth(), repeatable ? Colors.Red : Colors.Yellow);
@@ -302,8 +309,12 @@ internal static class PerfProbe
             mask.SavePng(stem + "_violations.png");
         }
 
-        GD.Print($"[GUO] perf probe: parity {name}: {violations} of {stable} stable pixels differ, {strict} repeatably");
-        return new Dictionary<string, object> { ["parity_stable_px"] = stable, ["parity_violations"] = violations, ["parity_strict"] = strict };
+        GD.Print($"[GUO] perf probe: parity {name}: {violations} of {stable} stable pixels differ, {strict} repeatably (max channel delta {strictMaxDelta})");
+        return new Dictionary<string, object>
+        {
+            ["parity_stable_px"] = stable, ["parity_violations"] = violations, ["parity_strict"] = strict,
+            ["parity_strict_max_delta"] = strictMaxDelta,
+        };
     }
 
     private static void Write(string outDir, string label, List<Dictionary<string, object>> results)
@@ -339,11 +350,11 @@ internal static class PerfProbe
         if (results.Any(r => r.ContainsKey("parity_violations")))
         {
             md.AppendLine();
-            md.AppendLine("| Scene | parity: stable pixels | test differs | repeatably (strict) |");
-            md.AppendLine("|---|---:|---:|---:|");
+            md.AppendLine("| Scene | parity: stable pixels | test differs | repeatably (strict) | strict max delta |");
+            md.AppendLine("|---|---:|---:|---:|---:|");
             foreach (var r in results.Where(r => r.ContainsKey("parity_violations")))
             {
-                md.AppendLine($"| {r["scene"]} | {r["parity_stable_px"]} | {r["parity_violations"]} | {r["parity_strict"]} |");
+                md.AppendLine($"| {r["scene"]} | {r["parity_stable_px"]} | {r["parity_violations"]} | {r["parity_strict"]} | {r.GetValueOrDefault("parity_strict_max_delta", "")} |");
             }
         }
 
