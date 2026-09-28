@@ -94,7 +94,7 @@ screen feels like one object.
 - Unreachable: "Shard B isn't answering (no reply in 3 s). It may be down, or the address is wrong."
 - Sentence case, no all-caps labels, no exclamation marks.
 
-## Open questions for the owner
-1. Should the community catalogue live in this repo (`servers/catalogue.json`) and be seeded with shards that allow
-   third-party clients? Who approves additions?
-2. Should the dev shard appear as a built-in Favourite in dev builds only?
+## Owner decisions (2026-09-28)
+1. The community catalogue lives in this repo (`servers/catalogue.json`), seeded with shards that allow third-party
+   clients. The owner approves every addition.
+2. Dev builds carry a built-in dev shard Favourite from a dev-only setting; release builds never include it.
