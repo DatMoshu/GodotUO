@@ -739,9 +739,10 @@ namespace GUO
                 return;
             }
 
-            // PORT DEVIATION (GUO): the command bar's slot editor (a Godot
-            // card, modal) takes the pointer and the keys while it is open.
-            if (GUO.Input.Touch.BarEditor.HandleInput(@event))
+            // PORT DEVIATION (GUO): a Modern gump (ADR-0024) and the command
+            // bar's slot editor (Godot cards, modal) take the pointer and the
+            // keys while open.
+            if (GUO.Input.Touch.Modern.ModernGump.HandleInput(@event) || GUO.Input.Touch.BarEditor.HandleInput(@event))
             {
                 GetViewport().SetInputAsHandled();
 

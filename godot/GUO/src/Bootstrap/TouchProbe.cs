@@ -97,6 +97,10 @@ internal static class TouchProbe
 
         await Frames(host, 120);
 
+        // The checks that open Options mean the classic gump; Modern Options
+        // (ADR-0024) has its own check, which turns it on.
+        Configuration.ProfileManager.CurrentProfile.ModernGumpsOff = true;
+
         // A world map or party gump a run saved open covers the world the
         // walk checks hold on; the checks start without them.
         UIManager.GetGump<WorldMapGump>()?.Dispose();
@@ -112,9 +116,17 @@ internal static class TouchProbe
         await CommandBarCheck(host, world);
         await BarHoldCheck(host, world);
         await FlickCheck(host, world);
+        // The classic Options on touch, as a player who turned Modern off has it.
         await OptionsTouchCheck(host, world);
         await MobileOptionsCheck(host, world);
+        Configuration.ProfileManager.CurrentProfile.ModernGumpsOff = false;
+        await ModernOptionsCheck(host, world);
+        await ModernPartyCheck(host, world);
+        await ModernSkillsCheck(host, world);
+        await ModernSpellbookCheck(host, world);
+        Configuration.ProfileManager.CurrentProfile.ModernGumpsOff = true;
         await HelpGumpCheck(host, world);
+        await WorldMapCheck(host, world);
         // The long press is checked with hold-and-flick off, the way a player
         // who set every direction to "Do nothing" has it.
         {
@@ -993,6 +1005,335 @@ internal static class TouchProbe
             help == null ? "no help gump" : $"x{help.PresentationScale:0.00} at {GumpPresentation.Bounds(help)}");
         help?.Dispose();
         await Frames(host, 10);
+    }
+
+    /// <summary>
+    /// Modern Options (ADR-0024): on touch, opening Options opens its Modern
+    /// view (the classic gump is not added), over the command bar; a page tab
+    /// switches the page; a check box row and a slider change their values;
+    /// Okay writes them to the profile fields the classic Apply writes; Cancel
+    /// writes nothing; Classic view opens the ported Options.
+    /// </summary>
+    private static async System.Threading.Tasks.Task ModernOptionsCheck(Node host, Game.World world)
+    {
+        Configuration.Profile p = Configuration.ProfileManager.CurrentProfile;
+        TouchGumpBar bar = TouchInput.Bar;
+        UIManager.GetGump<OptionsGump>()?.Dispose();
+        await Frames(host, 5);
+
+        Game.GameActions.OpenSettings(world);
+        await Frames(host, 20);
+        var view = Input.Touch.Modern.ModernGump.Current as Input.Touch.Modern.ModernOptions;
+        Check("on touch, Options opens as its Modern view, over the command bar, the classic gump not added",
+            view != null && Input.Touch.Modern.ModernGump.IsOpen && UIManager.GetGump<OptionsGump>() == null && bar.Covered,
+            $"modern {view != null}, classic {UIManager.GetGump<OptionsGump>() != null}, covered {bar.Covered}");
+
+        if (view == null)
+        {
+            return;
+        }
+
+        // General: toggle Always run by a tap on its row; Sound: drag the music volume to the middle.
+        bool run = p.AlwaysRun;
+        await TapClient(host, view.CentreOf(view.Find("Always run")));
+        await TapClient(host, view.CentreOf(view.Find("Sound")));
+        Godot.Control music = view.Find("Music volume");
+        int musicWas = p.MusicVolume;
+
+        if (music != null)
+        {
+            await Swipe(host, Client(view.AlongOf(music, 0.95f)), Client(view.AlongOf(music, 0.5f)), 400);
+            await Frames(host, 5);
+        }
+
+        await TapClient(host, view.CentreOf(view.Find("Okay")));
+        await Frames(host, 10);
+
+        Check("in Modern Options, a tapped check box and a dragged slider land in the profile on Okay",
+            !Input.Touch.Modern.ModernGump.IsOpen && p.AlwaysRun != run && System.Math.Abs(p.MusicVolume - 50) <= 10 && !bar.Covered,
+            $"always run {run} -> {p.AlwaysRun}, music {musicWas} -> {p.MusicVolume}, open {Input.Touch.Modern.ModernGump.IsOpen}");
+
+        // Cancel writes nothing.
+        Game.GameActions.OpenSettings(world);
+        await Frames(host, 10);
+        view = Input.Touch.Modern.ModernGump.Current as Input.Touch.Modern.ModernOptions;
+        bool before = p.AlwaysRun;
+        await TapClient(host, view.CentreOf(view.Find("General")));
+        await TapClient(host, view.CentreOf(view.Find("Always run")));
+        await TapClient(host, view.CentreOf(view.Find("Cancel")));
+        await Frames(host, 5);
+        Check("Cancel in Modern Options writes nothing", p.AlwaysRun == before && !Input.Touch.Modern.ModernGump.IsOpen);
+
+        // Put them back, and Classic view opens the ported gump.
+        p.AlwaysRun = run;
+        p.MusicVolume = musicWas;
+        Game.GameActions.OpenSettings(world);
+        await Frames(host, 10);
+        view = Input.Touch.Modern.ModernGump.Current as Input.Touch.Modern.ModernOptions;
+        await TapClient(host, view.CentreOf(view.Find("Classic view")));
+        await Frames(host, 20);
+        Check("Classic view opens the ported Options, fitted", UIManager.GetGump<OptionsGump>() is OptionsGump classic
+            && classic.PresentationScale > 1.2f && !Input.Touch.Modern.ModernGump.IsOpen);
+        UIManager.GetGump<OptionsGump>()?.Dispose();
+        await Frames(host, 10);
+    }
+
+    /// <summary>
+    /// Modern Party (ADR-0024, gump 2): opening the party gump opens its
+    /// Modern view; out of a party it says so; Add member sends the classic
+    /// invite request (the shard answers with a target cursor); Cancel closes.
+    /// </summary>
+    private static async System.Threading.Tasks.Task ModernPartyCheck(Node host, Game.World world)
+    {
+        UIManager.Add(new PartyGump(world, 100, 100, world.Party.CanLoot));
+        await Frames(host, 20);
+        var view = Input.Touch.Modern.ModernGump.Current as Input.Touch.Modern.ModernParty;
+        Check("the party gump opens as its Modern view, the classic gump not added",
+            view != null && UIManager.GetGump<PartyGump>() == null && TouchInput.Bar.Covered,
+            $"modern {view != null}, classic {UIManager.GetGump<PartyGump>() != null}");
+
+        if (view == null)
+        {
+            return;
+        }
+
+        await TapClient(host, view.CentreOf(view.Find("Add member")));
+        bool targeting = false;
+
+        for (int i = 0; i < 120 && !targeting; i++)
+        {
+            await Frames(host, 1);
+            targeting = world.TargetManager.IsTargeting;
+        }
+
+        Check("Modern Party's Add member sends the invite request (the shard's target cursor comes up)", targeting,
+            world.Party.Leader == 0 ? "not in a party (as expected)" : "in a party");
+        world.TargetManager.CancelTarget();
+        await Frames(host, 5);
+
+        if (Input.Touch.Modern.ModernGump.IsOpen)
+        {
+            await TapClient(host, view.CentreOf(view.Find("Cancel")));
+            await Frames(host, 5);
+        }
+
+        Check("Cancel closes Modern Party", !Input.Touch.Modern.ModernGump.IsOpen);
+    }
+
+    /// <summary>
+    /// Modern Skills (ADR-0024, gump 3): opening the skills opens its Modern
+    /// view with every skill; a tap on a lock cycles it through the classic
+    /// states; the group stepper narrows the list; Use uses the skill and closes.
+    /// </summary>
+    private static async System.Threading.Tasks.Task ModernSkillsCheck(Node host, Game.World world)
+    {
+        Game.GameActions.OpenSkills(world);
+        await Frames(host, 20);
+        var view = Input.Touch.Modern.ModernGump.Current as Input.Touch.Modern.ModernSkills;
+        int all = world.Player.Skills.Length;
+        Check("the skills gump opens as its Modern view, every skill listed, the classic not added",
+            view != null && UIManager.GetGump<StandardSkillsGump>() == null && UIManager.GetGump<SkillGumpAdvanced>() == null
+                && view.Find("lock Hiding") != null,
+            $"modern {view != null}, skills {all}");
+
+        if (view == null)
+        {
+            return;
+        }
+
+        Game.Data.Skill hiding = System.Array.Find(world.Player.Skills, s => s?.Name == "Hiding");
+        Game.Data.Lock was = hiding.Lock;
+        var seen = new System.Collections.Generic.List<Game.Data.Lock>();
+
+        for (int i = 0; i < 3; i++)
+        {
+            await TapClient(host, view.CentreOf(view.Find("lock Hiding")));
+            await Frames(host, 5);
+            seen.Add(hiding.Lock);
+        }
+
+        Check("a tap on a skill's lock cycles it through the classic states and back",
+            seen.Count == 3 && seen[2] == was && seen[0] != was && seen[1] != was && seen[0] != seen[1],
+            $"{was} -> {string.Join(" -> ", seen)}");
+
+        await TapClient(host, view.CentreOf(view.Find("group next")));
+        await Frames(host, 5);
+        bool narrowed = view.Find("lock Hiding") == null || world.SkillsGroupManager.Groups.Count == 0;
+        await TapClient(host, view.CentreOf(view.Find("group prev")));
+        await Frames(host, 5);
+        Check("the group stepper narrows the list", narrowed && view.Find("lock Hiding") != null);
+
+        await TapClient(host, view.CentreOf(view.Find("use Hiding")));
+        await Frames(host, 10);
+        Check("Use on a skill uses it and closes Modern Skills", !Input.Touch.Modern.ModernGump.IsOpen);
+    }
+
+    /// <summary>
+    /// Modern Spellbook (ADR-0024, gump 6): a spellbook in the pack, opened as a
+    /// player opens it (a double-click; the shard sends the book), shows as the
+    /// Modern grid; a hold on a spell places its UseSpellButtonGump; a tap
+    /// casts (a cursor or the words follow). Skipped without a book.
+    /// </summary>
+    private static async System.Threading.Tasks.Task ModernSpellbookCheck(Node host, Game.World world)
+    {
+        Game.GameObjects.Item pack = world.Player.FindItemByLayer(Game.Data.Layer.Backpack);
+        Game.GameObjects.Item book = null;
+
+        for (var i = pack?.Items; i != null; i = i.Next)
+        {
+            if (i is Game.GameObjects.Item it && it.Graphic == 0x0EFA) book = it;
+        }
+
+        bool standIn = book == null;
+
+        if (standIn)
+        {
+            // No book in the pack (a shard that gave none, and no GM to add
+            // one): a stand-in in the client's world, as the shard would send
+            // it: a Magery book whose children's amounts are spell indices.
+            book = world.GetOrCreateItem(0x7FFFFF00);
+            book.Graphic = 0x0EFA;
+
+            // In the pack: an item on no container counts as on the ground far
+            // away, and the world's range cleanup takes it.
+            book.Container = pack.Serial;
+            pack.PushToBack(book);
+
+            for (int i = 1; i <= 16; i++)
+            {
+                Game.GameObjects.Item spell = world.GetOrCreateItem(0x7FFFFF00 + (uint)i);
+                spell.Amount = (ushort)i;
+                spell.Container = book.Serial;
+                book.PushToBack(spell);
+            }
+
+            UIManager.Add(new SpellbookGump(world, book.Serial));
+        }
+        else
+        {
+            Game.GameActions.DoubleClick(world, book.Serial);
+        }
+        Input.Touch.Modern.ModernSpellbook view = null;
+
+        for (int i = 0; i < 180 && view == null; i++)
+        {
+            await Frames(host, 1);
+            view = Input.Touch.Modern.ModernGump.Current as Input.Touch.Modern.ModernSpellbook;
+        }
+
+        await Frames(host, 20);
+        Godot.Control tile = view?.Find("Heal") ?? view?.Find("Clumsy");
+        Check("a spellbook opens as its Modern grid, the classic book not added",
+            view != null && UIManager.GetGump<SpellbookGump>() == null && tile != null,
+            $"modern {view != null}, classic {UIManager.GetGump<SpellbookGump>() != null}, a tile {tile != null}");
+
+        if (view == null || tile == null)
+        {
+            Input.Touch.Modern.ModernGump.Current?.Close();
+
+            if (standIn)
+            {
+                world.RemoveItem(book.Serial, true);
+            }
+
+            return;
+        }
+
+        // Hold: the spell's button, the desktop's UseSpellButtonGump.
+        Vector2 at = Client(view.CentreOf(tile));
+        Touch(0, at, true);
+        ulong until = Godot.Time.GetTicksMsec() + 700;
+
+        while (Godot.Time.GetTicksMsec() < until)
+        {
+            await Frames(host, 1);
+        }
+
+        Touch(0, at, false);
+        await Frames(host, 10);
+        UseSpellButtonGump button = UIManager.GetGump<UseSpellButtonGump>();
+        Check("a hold on a spell places its spell button (UseSpellButtonGump) and closes the book",
+            button != null && !Input.Touch.Modern.ModernGump.IsOpen, button == null ? "no button" : $"spell {button.SpellID}");
+        button?.Dispose();
+        await Frames(host, 5);
+
+        if (standIn)
+        {
+            world.RemoveItem(book.Serial, true);
+        }
+    }
+
+    /// <summary>
+    /// The world map (Classic + fit + gestures): opened during play it is sized
+    /// to the room below the top bar, over the command bar, at its own zoom;
+    /// a pinch on it zooms the map, not the gump.
+    /// </summary>
+    private static async System.Threading.Tasks.Task WorldMapCheck(Node host, Game.World world)
+    {
+        TouchGumpBar bar = TouchInput.Bar;
+        Compat.Rectangle screen = GUO.Client.Game.ClientBounds;
+        int top = GumpPresentation.FullHeightTop();
+        Game.GameActions.OpenWorldMap(world);
+        await Frames(host, 60);
+        WorldMapGump map = UIManager.GetGump<WorldMapGump>();
+        Check("the world map opens full-height: sized (not scaled) to the room below the top bar, over the command bar",
+            map != null && bar.Covered && map.Y >= top && map.Height >= screen.Height - top - 30 && map.PresentationScale == 1f,
+            map == null ? "no map" : $"at {map.X},{map.Y} {map.Width}x{map.Height}, top {top}, covered {bar.Covered}");
+
+        if (map != null)
+        {
+            float zoom = map.Zoom;
+            Vector2 c = Client(new Vector2(map.X + map.Width / 2f, map.Y + map.Height / 2f));
+            // Fingers together, then apart if that changed nothing: a saved
+            // zoom may already be the farthest out or in.
+            for (int attempt = 0; attempt < 2 && map.Zoom == zoom; attempt++)
+            {
+                float from = attempt == 0 ? 220 : 40, to = attempt == 0 ? 40 : 220;
+                Touch(0, c - new Vector2(from, 0), true);
+                Touch(1, c + new Vector2(from, 0), true);
+                await Frames(host, 2);
+
+                for (int i = 1; i <= 12; i++)
+                {
+                    float d = from + (to - from) * i / 12f;
+                    Drag(0, c - new Vector2(d, 0), new Vector2((to - from) / -12f, 0));
+                    Drag(1, c + new Vector2(d, 0), new Vector2((to - from) / 12f, 0));
+                    await Frames(host, 2);
+                }
+
+                Touch(0, c - new Vector2(to, 0), false);
+                Touch(1, c + new Vector2(to, 0), false);
+                await Frames(host, 10);
+            }
+
+            Check("a pinch on the world map zooms the map, not the gump", map.Zoom != zoom && map.PresentationScale == 1f,
+                $"zoom {zoom} -> {map.Zoom}");
+
+            // Its markers manager, Modern (gump index 9): over the map; Go to
+            // centres the map on a marker (free view), where files are loaded.
+            Configuration.ProfileManager.CurrentProfile.ModernGumpsOff = false;
+            UIManager.Add(new MarkersManagerGump(world));
+            await Frames(host, 20);
+            var markers = Input.Touch.Modern.ModernGump.Current as Input.Touch.Modern.ModernMarkers;
+            Check("the map's markers manager opens as its Modern view", markers != null && UIManager.GetGump<MarkersManagerGump>() == null);
+
+            if (markers != null && markers.FirstMarker is string first && markers.Find("go " + first) is Godot.Control go)
+            {
+                await TapClient(host, markers.CentreOf(go));
+                await Frames(host, 10);
+                Check("Go to on a marker centres the world map on it and closes the list", map.FreeView && !Input.Touch.Modern.ModernGump.IsOpen, first);
+            }
+            else
+            {
+                GD.Print("[GUO] touch probe: no marker files loaded; Go to is not checked");
+                Input.Touch.Modern.ModernGump.Current?.Close();
+            }
+
+            Configuration.ProfileManager.CurrentProfile.ModernGumpsOff = true;
+            map.FreeView = false;
+            map.Dispose();
+            await Frames(host, 10);
+        }
     }
 
     /// <summary>The first control of a type on the gump's open page, drawn inside its scroll area.</summary>

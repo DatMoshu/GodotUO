@@ -1,0 +1,496 @@
+// SPDX-License-Identifier: BSD-2-Clause
+using System;
+using System.Collections.Generic;
+using Godot;
+using GUO.Configuration;
+using GUO.Game;
+using GUO.Game.Data;
+using GUO.Game.Scenes;
+using GUO.Game.UI.Gumps;
+
+namespace GUO.Input.Touch.Modern;
+
+/// <summary>
+/// Options, Modern (ADR-0024, gump 1; the design is docs/ui/modern/options.md):
+/// the classic Options window's look (dark glass, font 1, grey rules, a page
+/// column, the jewelled Cancel/Apply/Default/Okay row) made for a thumb.
+/// It covers the settings a player changes on a phone; "Classic view" opens
+/// the ported Options, fitted, for the rest.
+/// </summary>
+/// <remarks>
+/// PORT DEVIATION (GUO): not in ClassicUO. Apply and Okay write each covered
+/// setting to the same Profile field the classic Apply writes, with the same
+/// side effects (the audio volumes, the roofs' redraw, the tree textures);
+/// Cancel writes nothing; Default puts the page's covered settings back to a
+/// new profile's values, as the classic Default does for its page.
+/// </remarks>
+internal sealed partial class ModernOptions : ModernGump
+{
+    // The classic Options' materials (docs/ui/modern/options.md).
+    private static readonly Color Glass = new(0.047f, 0.047f, 0.047f, 0.95f);
+    private static readonly Color Rule = new("6c6c6c");
+    private static readonly Color Text = UoTheme.Cream;
+    private static readonly Color Heading = new("9c9c9c");
+    private static readonly Color Selected = new("3a3a3a");
+
+    private const int RowHeight = 26; // art pixels: 78 device pixels at 3x, 5.4 mm on the Thor
+
+    private enum Kind { Bool, Int, Choice, Action }
+
+    private sealed class Setting
+    {
+        public string Page, Label;
+        public Kind Kind;
+        public Func<Profile, object> Get;
+        public Action<Profile, object> Set;
+        public string[] Choices;
+        public int Min, Max;
+        public Action Run;
+        public Action<object> Show; // puts a value into the setting's control
+    }
+
+    private static readonly string[] Pages = { "General", "Sound", "Video", "Containers", "Touch" };
+
+    private readonly List<Setting> _settings = new();
+    private readonly Dictionary<Setting, object> _values = new();
+    private readonly Dictionary<string, Control> _pageRows = new();
+    private readonly Dictionary<string, Button> _pageButtons = new();
+    private string _page = Pages[0];
+    private Label _title;
+    private ScrollContainer _scroll;
+    private bool _audioChanged;
+
+    public ModernOptions(World world) : base(world)
+    {
+        Define();
+    }
+
+    protected override StyleBox CardStyle => new StyleBoxFlat
+    {
+        BgColor = Glass,
+        ContentMarginLeft = 6, ContentMarginRight = 6, ContentMarginTop = 6, ContentMarginBottom = 6,
+    };
+
+    // --- the settings it covers (the classic Apply's fields) ----------------------
+
+    private void Bool(string page, string label, Func<Profile, bool> get, Action<Profile, bool> set) =>
+        _settings.Add(new Setting { Page = page, Label = label, Kind = Kind.Bool, Get = p => get(p), Set = (p, v) => set(p, (bool)v) });
+
+    private void Int(string page, string label, int min, int max, Func<Profile, int> get, Action<Profile, int> set) =>
+        _settings.Add(new Setting { Page = page, Label = label, Kind = Kind.Int, Min = min, Max = max, Get = p => get(p), Set = (p, v) => set(p, (int)v) });
+
+    private void Choice(string page, string label, string[] choices, Func<Profile, int> get, Action<Profile, int> set) =>
+        _settings.Add(new Setting { Page = page, Label = label, Kind = Kind.Choice, Choices = choices, Get = p => get(p), Set = (p, v) => set(p, (int)v) });
+
+    private void Action_(string page, string label, Action run) =>
+        _settings.Add(new Setting { Page = page, Label = label, Kind = Kind.Action, Run = run });
+
+    private void Define()
+    {
+        Bool("General", "Highlight game objects", p => p.HighlightGameObjects, (p, v) => p.HighlightGameObjects = v);
+        Bool("General", "Enable pathfinding", p => p.EnablePathfind, (p, v) => p.EnablePathfind = v);
+        Bool("General", "Always run", p => p.AlwaysRun, (p, v) => p.AlwaysRun = v);
+        Bool("General", "Unless hidden", p => p.AlwaysRunUnlessHidden, (p, v) => p.AlwaysRunUnlessHidden = v);
+        Bool("General", "Auto open doors", p => p.AutoOpenDoors, (p, v) => p.AutoOpenDoors = v);
+        Bool("General", "Smooth doors", p => p.SmoothDoors, (p, v) => p.SmoothDoors = v);
+        Bool("General", "Auto open corpses", p => p.AutoOpenCorpses, (p, v) => p.AutoOpenCorpses = v);
+        Bool("General", "Show mobiles' hits", p => p.ShowMobilesHP, (p, v) => p.ShowMobilesHP = v);
+        Bool("General", "Highlight the poisoned", p => p.HighlightMobilesByPoisoned, (p, v) => p.HighlightMobilesByPoisoned = v);
+        Bool("General", "Names overhead always on", p => p.NameOverheadToggled, (p, v) => p.NameOverheadToggled = v);
+
+        Bool("Sound", "Sounds", p => p.EnableSound, (p, v) => { p.EnableSound = v; _audioChanged = true; });
+        Int("Sound", "Sounds volume", 0, 100, p => p.SoundVolume, (p, v) => { p.SoundVolume = v; _audioChanged = true; });
+        Bool("Sound", "Music", p => p.EnableMusic, (p, v) => { p.EnableMusic = v; _audioChanged = true; });
+        Int("Sound", "Music volume", 0, 100, p => p.MusicVolume, (p, v) => { p.MusicVolume = v; _audioChanged = true; });
+        Bool("Sound", "Footsteps", p => p.EnableFootstepsSound, (p, v) => p.EnableFootstepsSound = v);
+        Bool("Sound", "Combat music", p => p.EnableCombatMusic, (p, v) => p.EnableCombatMusic = v);
+
+        // "Hide roofs" is the classic box: checked means DrawRoofs off, and a
+        // change redraws the roofs (OptionsGump.Apply).
+        Bool("Video", "Hide roofs", p => !p.DrawRoofs, (p, v) =>
+        {
+            if (p.DrawRoofs == v)
+            {
+                p.DrawRoofs = !v;
+                Client.Game.GetScene<GameScene>()?.UpdateMaxDrawZ(true);
+            }
+        });
+        Bool("Video", "Trees to stumps", p => p.TreeToStumps, (p, v) =>
+        {
+            if (p.TreeToStumps != v)
+            {
+                StaticFilters.CleanTreeTextures();
+                p.TreeToStumps = v;
+            }
+        });
+        Bool("Video", "Hide vegetation", p => p.HideVegetation, (p, v) => p.HideVegetation = v);
+        Bool("Video", "Circle of transparency", p => p.UseCircleOfTransparency, (p, v) => p.UseCircleOfTransparency = v);
+        Bool("Video", "Shadows", p => p.ShadowsEnabled, (p, v) => p.ShadowsEnabled = v);
+        Bool("Video", "Death screen", p => p.EnableDeathScreen, (p, v) => p.EnableDeathScreen = v);
+
+        Bool("Containers", "Grid view", p => p.GridContainers, (p, v) => p.GridContainers = v);
+        Int("Containers", "Grid slot size", GridContainerGump.MIN_SLOT, GridContainerGump.MAX_SLOT, p => p.GridContainerSlotSize, (p, v) => p.GridContainerSlotSize = v);
+
+        Bool("Touch", "Vibrate when the command bar snaps", p => p.TouchVibrate, (p, v) => p.TouchVibrate = v);
+        Bool("Touch", "Reduce motion", p => p.TouchReduceMotion, (p, v) => p.TouchReduceMotion = v);
+        string[] flick = GumpFlick.ActionTitles;
+        Choice("Touch", "Hold and flick up", flick, p => p.FlickUp, (p, v) => p.FlickUp = v);
+        Choice("Touch", "Hold and flick down", flick, p => p.FlickDown, (p, v) => p.FlickDown = v);
+        Choice("Touch", "Hold and flick left", flick, p => p.FlickLeft, (p, v) => p.FlickLeft = v);
+        Choice("Touch", "Hold and flick right", flick, p => p.FlickRight, (p, v) => p.FlickRight = v);
+        Action_("Touch", "Edit the command bar", () => { Close(); BarEditor.Open(0); });
+    }
+
+    // --- building ---------------------------------------------------------------------
+
+    private static Label Lbl(string text, Color color, int scale = 1)
+    {
+        Label l = UoTheme.Label(text, color, scale);
+        l.AutowrapMode = TextServer.AutowrapMode.Off;
+        return l;
+    }
+
+    private static StyleBoxFlat Flat(Color c) => new() { BgColor = c, ContentMarginLeft = 8, ContentMarginRight = 8, ContentMarginTop = 2, ContentMarginBottom = 2 };
+
+    /// <summary>A row the classic Options' way: text on the dark glass, the whole row the target.</summary>
+    private static T Row<T>(T c) where T : Control
+    {
+        c.CustomMinimumSize = new Vector2(c.CustomMinimumSize.X, RowHeight);
+        return c;
+    }
+
+    protected override void Build(PanelContainer card)
+    {
+        card.AddThemeColorOverride("font_color", Text);
+        var outer = new VBoxContainer();
+        outer.AddThemeConstantOverride("separation", 4);
+        card.AddChild(outer);
+
+        var body = new HBoxContainer { SizeFlagsVertical = Control.SizeFlags.ExpandFill };
+        body.AddThemeConstantOverride("separation", 6);
+        outer.AddChild(body);
+
+        // The page column, as the classic's NiceButtons: text, the open one lit.
+        var column = new VBoxContainer { CustomMinimumSize = new Vector2(112, 0) };
+        column.AddThemeConstantOverride("separation", 2);
+        body.AddChild(column);
+
+        foreach (string page in Pages)
+        {
+            string p = page;
+            var b = Row(new Button { Text = page, Alignment = HorizontalAlignment.Center });
+            b.AddThemeStyleboxOverride("normal", Flat(Colors.Transparent));
+            b.AddThemeStyleboxOverride("hover", Flat(Colors.Transparent));
+            b.AddThemeStyleboxOverride("pressed", Flat(Selected));
+            b.AddThemeStyleboxOverride("focus", new StyleBoxEmpty());
+            b.AddThemeColorOverride("font_color", Text);
+            b.AddThemeColorOverride("font_hover_color", Text);
+            b.AddThemeColorOverride("font_pressed_color", Colors.White);
+            b.Pressed += () => ShowPage(p);
+            column.AddChild(b);
+            _pageButtons[page] = b;
+        }
+
+        column.AddChild(new Control { SizeFlagsVertical = Control.SizeFlags.ExpandFill });
+        column.AddChild(RuleLine(true));
+        Button classic = Row(UoTheme.Button("Classic view"));
+        classic.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
+        classic.Pressed += OpenClassic;
+        column.AddChild(classic);
+
+        body.AddChild(RuleLine(false));
+
+        // The page: its name, a rule, and its rows, scrolling with a swipe.
+        var content = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        content.AddThemeConstantOverride("separation", 3);
+        body.AddChild(content);
+        _title = Lbl("", Text, 2);
+        content.AddChild(_title);
+        content.AddChild(RuleLine(true));
+        _scroll = new ScrollContainer
+        {
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
+            HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
+        };
+        content.AddChild(_scroll);
+        var pages = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        _scroll.AddChild(pages);
+
+        foreach (string page in Pages)
+        {
+            var rows = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, Visible = false };
+            rows.AddThemeConstantOverride("separation", 2);
+            pages.AddChild(rows);
+            _pageRows[page] = rows;
+
+            foreach (Setting s in _settings)
+            {
+                if (s.Page == page)
+                {
+                    rows.AddChild(BuildRow(s));
+                }
+            }
+        }
+
+        // The classic window's own button row, pinned.
+        outer.AddChild(RuleLine(true));
+        _footer = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
+        _footer.AddThemeConstantOverride("separation", 24);
+        outer.AddChild(_footer);
+        BuildFooter();
+    }
+
+    private HBoxContainer _footer;
+    private bool _jewels;
+
+    /// <summary>
+    /// The footer: the classic's jewelled buttons once their gumps can be
+    /// read (the client uploads a gump the first time it is asked for), the
+    /// marble plates until then; rebuilt on open until the jewels are in.
+    /// </summary>
+    private void BuildFooter()
+    {
+        _jewels = UoTheme.GumpTexture(0x00F3) != null && UoTheme.GumpTexture(0x00F9) != null;
+
+        foreach (Node n in _footer.GetChildren())
+        {
+            _footer.RemoveChild(n);
+            n.QueueFree();
+        }
+
+        _footer.AddChild(Jewel(0x00F3, 0x00F1, 0x00F2, "Cancel", Close));
+        _footer.AddChild(Jewel(0x00EF, 0x00F0, 0x00EE, "Apply", Apply));
+        _footer.AddChild(Jewel(0x00F6, 0x00F4, 0x00F5, "Default", Default));
+        _footer.AddChild(Jewel(0x00F9, 0x00F8, 0x00F7, "Okay", () => { Apply(); Close(); }));
+    }
+
+    protected override void Refresh()
+    {
+        if (!_jewels)
+        {
+            BuildFooter();
+        }
+    }
+
+    private static Control RuleLine(bool horizontal)
+    {
+        var r = new ColorRect { Color = Rule, MouseFilter = Control.MouseFilterEnum.Ignore };
+        r.CustomMinimumSize = horizontal ? new Vector2(0, 1) : new Vector2(1, 0);
+        return r;
+    }
+
+    /// <summary>One of the classic footer's jewelled buttons, from its own gumps.</summary>
+    private static Control Jewel(ushort normal, ushort pressed, ushort over, string name, Action run)
+    {
+        Texture2D n = UoTheme.GumpTexture(normal);
+
+        if (n == null)
+        {
+            Button fallback = UoTheme.Button(name, 64);
+            fallback.Pressed += run;
+            return fallback;
+        }
+
+        var b = new TextureButton
+        {
+            TextureNormal = n,
+            TexturePressed = UoTheme.GumpTexture(pressed),
+            TextureHover = UoTheme.GumpTexture(over),
+            TooltipText = name,
+            Name = name,
+        };
+        b.Pressed += run;
+
+        // A thumb's target, around the jewel.
+        var holder = new CenterContainer { CustomMinimumSize = new Vector2(n.GetWidth() + 12, RowHeight) };
+        holder.AddChild(b);
+        return holder;
+    }
+
+    private Control BuildRow(Setting s)
+    {
+        switch (s.Kind)
+        {
+            case Kind.Bool:
+            {
+                var box = Row(new CheckBox { Text = s.Label, SizeFlagsHorizontal = Control.SizeFlags.ExpandFill });
+                box.AddThemeColorOverride("font_color", Text);
+                box.AddThemeColorOverride("font_hover_color", Text);
+                box.AddThemeColorOverride("font_pressed_color", Text);
+                box.AddThemeColorOverride("font_hover_pressed_color", Text);
+                box.AddThemeColorOverride("font_focus_color", Text);
+                box.Toggled += on => _values[s] = on;
+                s.Show = v => box.SetPressedNoSignal((bool)v);
+                box.SetMeta("setting", s.Label);
+                return box;
+            }
+
+            case Kind.Int:
+            {
+                var row = Row(new HBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill });
+                row.AddThemeConstantOverride("separation", 8);
+                Label name = Lbl(s.Label, Text);
+                name.CustomMinimumSize = new Vector2(110, 0);
+                row.AddChild(name);
+                var slider = new HSlider
+                {
+                    MinValue = s.Min, MaxValue = s.Max, Step = 1,
+                    SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+                    SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
+                    CustomMinimumSize = new Vector2(0, 16),
+                };
+                slider.SetMeta("setting", s.Label);
+                Label value = Lbl("", Text);
+                value.CustomMinimumSize = new Vector2(28, 0);
+                slider.ValueChanged += v => { _values[s] = (int)v; value.Text = ((int)v).ToString(); };
+                s.Show = v => { slider.SetValueNoSignal((int)v); value.Text = ((int)v).ToString(); };
+                row.AddChild(slider);
+                row.AddChild(value);
+                return row;
+            }
+
+            case Kind.Choice:
+            {
+                var row = Row(new HBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill });
+                row.AddThemeConstantOverride("separation", 4);
+                Label name = Lbl(s.Label, Text);
+                name.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+                row.AddChild(name);
+                Label value = Lbl("", Text);
+                value.CustomMinimumSize = new Vector2(150, 0);
+                value.HorizontalAlignment = HorizontalAlignment.Center;
+                Button prev = UoTheme.Button("‹", 30), next = UoTheme.Button("›", 30);
+                prev.SetMeta("setting", s.Label + " prev");
+                next.SetMeta("setting", s.Label + " next");
+                int Current() => _values.TryGetValue(s, out object v) ? (int)v : 0;
+                void Step(int d)
+                {
+                    int i = ((Current() + d) % s.Choices.Length + s.Choices.Length) % s.Choices.Length;
+                    _values[s] = i;
+                    value.Text = s.Choices[i];
+                }
+                prev.Pressed += () => Step(-1);
+                next.Pressed += () => Step(1);
+                s.Show = v => value.Text = s.Choices[Math.Clamp((int)v, 0, s.Choices.Length - 1)];
+                row.AddChild(prev);
+                row.AddChild(value);
+                row.AddChild(next);
+                return row;
+            }
+
+            default:
+            {
+                Button b = Row(UoTheme.Button(s.Label));
+                b.SizeFlagsHorizontal = Control.SizeFlags.ShrinkBegin;
+                b.Pressed += () => s.Run();
+                b.SetMeta("setting", s.Label);
+                return b;
+            }
+        }
+    }
+
+    // --- state ---------------------------------------------------------------------------
+
+    protected override void OnOpen()
+    {
+        Profile p = ProfileManager.CurrentProfile;
+        _values.Clear();
+
+        if (!_jewels)
+        {
+            BuildFooter();
+        }
+
+        foreach (Setting s in _settings)
+        {
+            if (s.Get == null) continue;
+            _values[s] = s.Get(p);
+            s.Show?.Invoke(_values[s]);
+        }
+
+        ShowPage(_page);
+    }
+
+    private void ShowPage(string page)
+    {
+        _page = page;
+        _title.Text = page;
+
+        foreach (KeyValuePair<string, Control> kv in _pageRows)
+        {
+            kv.Value.Visible = kv.Key == page;
+        }
+
+        foreach (KeyValuePair<string, Button> kv in _pageButtons)
+        {
+            kv.Value.AddThemeStyleboxOverride("normal", Flat(kv.Key == page ? Selected : Colors.Transparent));
+        }
+
+        _scroll.ScrollVertical = 0;
+    }
+
+    private void Apply()
+    {
+        Profile p = ProfileManager.CurrentProfile;
+        _audioChanged = false;
+
+        foreach (Setting s in _settings)
+        {
+            if (s.Set != null && _values.TryGetValue(s, out object v) && !Equals(v, s.Get(p)))
+            {
+                s.Set(p, v);
+            }
+        }
+
+        // As the classic Apply does for the sound page.
+        if (_audioChanged && Client.Game?.Audio != null)
+        {
+            Client.Game.Audio.UpdateCurrentMusicVolume();
+            Client.Game.Audio.UpdateCurrentSoundsVolume();
+
+            if (!p.EnableMusic) Client.Game.Audio.StopMusic();
+            if (!p.EnableSound) Client.Game.Audio.StopSounds();
+        }
+
+        GD.Print($"[GUO] modern: Options applied");
+    }
+
+    /// <summary>The page's covered settings back to a new profile's values (not written until Apply).</summary>
+    private void Default()
+    {
+        var fresh = new Profile();
+
+        foreach (Setting s in _settings)
+        {
+            if (s.Page == _page && s.Get != null)
+            {
+                _values[s] = s.Get(fresh);
+                s.Show?.Invoke(_values[s]);
+            }
+        }
+    }
+
+    private void OpenClassic()
+    {
+        Close();
+        ModernGumps.OpenClassicNext(typeof(OptionsGump));
+        GameActions.OpenSettings(World);
+    }
+
+    // --- the probe ----------------------------------------------------------------------------
+
+    /// <summary>For the probe: the control of a setting (by its words) or a footer button (by name), if on the open page.</summary>
+    public Control Find(string what)
+    {
+        foreach (Node n in Card.FindChildren("*", "Control", true, false))
+        {
+            if (n is Control c && c.IsVisibleInTree()
+                && ((c.HasMeta("setting") && (string)c.GetMeta("setting") == what) || c.Name == what || c is Button b && b.Text == what))
+            {
+                return c;
+            }
+        }
+
+        return null;
+    }
+}

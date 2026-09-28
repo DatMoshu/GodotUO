@@ -127,6 +127,7 @@ namespace GUO.Game.UI.Gumps
         private Combobox[] _barSlots; // PORT DEVIATION (GUO): the command bar's thirty slots
         private InputField[] _barSay; // PORT DEVIATION (GUO): the command bar's speech words
         private Checkbox _barVibrate, _barReduceMotion; // PORT DEVIATION (GUO)
+        private Checkbox _modernGumps; // PORT DEVIATION (GUO): ADR-0024
         private Checkbox _showTouches; // PORT DEVIATION (GUO): debug touch overlay
         private Checkbox _companionTabs; // PORT DEVIATION (GUO): the second screen as companion tabs
         private Checkbox _showHandles; // PORT DEVIATION (GUO): the "UI" window handles always drawn
@@ -1220,6 +1221,7 @@ namespace GUO.Game.UI.Gumps
                     _barSay[i].SetText(sayWords[i] ?? "");
                 }
 
+                sectionTouch.Add(_modernGumps = AddCheckBox(null, "Modern gumps on touch (Options and more)", !_currentProfile.ModernGumpsOff, 0, 0));
                 sectionTouch.Add(_barVibrate = AddCheckBox(null, "Vibrate when the command bar snaps", _currentProfile.TouchVibrate, 0, 0));
                 sectionTouch.Add(_barReduceMotion = AddCheckBox(null, "Reduce motion (the command bar snaps without sliding)", _currentProfile.TouchReduceMotion, 0, 0));
 
@@ -4273,6 +4275,7 @@ namespace GUO.Game.UI.Gumps
                 _currentProfile.TouchSayFollow = _barSay[2].Text ?? "";
                 _currentProfile.TouchSayStop = _barSay[3].Text ?? "";
                 _currentProfile.TouchVibrate = _barVibrate.IsChecked;
+                _currentProfile.ModernGumpsOff = !_modernGumps.IsChecked;
                 _currentProfile.TouchReduceMotion = _barReduceMotion.IsChecked;
             }
 

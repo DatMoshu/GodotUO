@@ -133,11 +133,61 @@ internal static class GalleryProbe
             await Save(host, "editor");
         }
 
-        // Options, as a touch player gets it (C11).
+        // Options, as a touch player gets it: Modern (ADR-0024), then Classic, fitted (C11).
+        profile.ModernGumpsOff = false;
         Game.GameActions.OpenSettings(world);
         await InputProbe.Wait(host, 60);
         await Save(host, "options");
+        Input.Touch.Modern.ModernGump.Current?.Close();
+        profile.ModernGumpsOff = true;
+        Game.GameActions.OpenSettings(world);
+        await InputProbe.Wait(host, 60);
+        await Save(host, "options_classic");
         UIManager.GetGump<OptionsGump>()?.Dispose();
+        await InputProbe.Wait(host, 10);
+
+        // Skills, Modern (ADR-0024, gump 3).
+        profile.ModernGumpsOff = false;
+        Game.GameActions.OpenSkills(world);
+        await InputProbe.Wait(host, 30);
+        await Save(host, "skills");
+        Input.Touch.Modern.ModernGump.Current?.Close();
+        profile.ModernGumpsOff = true;
+        await InputProbe.Wait(host, 10);
+
+        // Spellbook, Modern (ADR-0024, gump 6): a stand-in Magery book in the pack.
+        {
+            profile.ModernGumpsOff = false;
+            Game.GameObjects.Item pack = world.Player.FindItemByLayer(Game.Data.Layer.Backpack);
+            Game.GameObjects.Item book = world.GetOrCreateItem(0x7FFFFF00);
+            book.Graphic = 0x0EFA;
+            book.Container = pack.Serial;
+            pack.PushToBack(book);
+
+            for (int i = 1; i <= 24; i++)
+            {
+                Game.GameObjects.Item spell = world.GetOrCreateItem(0x7FFFFF00 + (uint)i);
+                spell.Amount = (ushort)i;
+                spell.Container = book.Serial;
+                book.PushToBack(spell);
+            }
+
+            UIManager.Add(new SpellbookGump(world, book.Serial));
+            await InputProbe.Wait(host, 40);
+            await Save(host, "spellbook");
+            Input.Touch.Modern.ModernGump.Current?.Close();
+            world.RemoveItem(book.Serial, true);
+            profile.ModernGumpsOff = true;
+            await InputProbe.Wait(host, 10);
+        }
+
+        // Party, Modern (ADR-0024, gump 2).
+        profile.ModernGumpsOff = false;
+        UIManager.Add(new PartyGump(world, 100, 100, world.Party.CanLoot));
+        await InputProbe.Wait(host, 30);
+        await Save(host, "party");
+        Input.Touch.Modern.ModernGump.Current?.Close();
+        profile.ModernGumpsOff = true;
         await InputProbe.Wait(host, 10);
 
         await MeasureGumps(host, world);

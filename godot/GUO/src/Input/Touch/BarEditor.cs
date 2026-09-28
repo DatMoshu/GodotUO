@@ -271,7 +271,10 @@ internal sealed partial class BarEditor : Node
         }
 
         _viewport?.GuiReleaseFocus();
-        DisplayServer.VirtualKeyboardHide();
+        if (DisplayServer.HasFeature(DisplayServer.Feature.VirtualKeyboard))
+        {
+            DisplayServer.VirtualKeyboardHide();
+        }
     }
 
     private void Save()
@@ -503,7 +506,7 @@ internal sealed partial class BarEditor : Node
         _viewport.PushInput(new InputEventMouseButton { Position = local, GlobalPosition = local, ButtonIndex = MouseButton.Left, Pressed = false }, true);
 
         // A field wants the keyboard: on a phone that means the soft one.
-        if (_viewport.GuiGetFocusOwner() is LineEdit field)
+        if (_viewport.GuiGetFocusOwner() is LineEdit field && DisplayServer.HasFeature(DisplayServer.Feature.VirtualKeyboard))
         {
             DisplayServer.VirtualKeyboardShow(field.Text);
         }
@@ -525,7 +528,10 @@ internal sealed partial class BarEditor : Node
                 && (b.Text == text || b.HasMeta("action") && (string)b.GetMeta("action") == text))
             {
                 // Bring it into view first: it may be further down the list.
-                _instance._scroll.EnsureControlVisible(b);
+                if (_instance._scroll.IsAncestorOf(b))
+                {
+                    _instance._scroll.EnsureControlVisible(b);
+                }
                 Vector2 inViewport = b.GetGlobalRect().GetCenter() * _instance._scale;
                 return _instance._rect.Position + inViewport / Dpi;
             }
