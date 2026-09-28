@@ -541,6 +541,9 @@ internal sealed partial class WindowMenu : Node
         return true;
     }
 
+    /// <summary>True when the open card is on the second screen, out of the pointer's reach.</summary>
+    public static bool OnSecondScreen => IsOpen && _instance._onSecond;
+
     /// <summary>True when a control of the open card has controller focus.</summary>
     public static bool HasControllerFocus => IsOpen && _instance._viewport.GuiGetFocusOwner() != null;
 
