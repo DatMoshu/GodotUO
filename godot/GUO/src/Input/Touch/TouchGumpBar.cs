@@ -1356,6 +1356,40 @@ namespace GUO.Input.Touch
             p.TouchBarAlts = string.Join(",", alts);
         }
 
+        /// <summary>
+        /// Set every slot's action at once (the classic Options' thirty boxes).
+        /// A slot whose action changes gets the new action's default
+        /// alternates; the others keep theirs. Saved alternates are written
+        /// only when the profile already has some.
+        /// </summary>
+        public static void SetSlots(string[] main)
+        {
+            Profile p = ProfileManager.CurrentProfile;
+
+            if (p == null || main == null)
+            {
+                return;
+            }
+
+            string[] was = Slots;
+            var slots = new string[was.Length];
+            var alts = new string[was.Length];
+
+            for (int i = 0; i < was.Length; i++)
+            {
+                slots[i] = i < main.Length && BarCatalogue.Contains(main[i]) ? main[i] : was[i];
+                (string a, string b) = slots[i] == was[i] ? Alternates(i) : BarCatalogue.DefaultAlternates(slots[i]);
+                alts[i] = $"{a}|{b}";
+            }
+
+            p.TouchBarSlots = string.Join(",", slots);
+
+            if (p.TouchBarAlts != null)
+            {
+                p.TouchBarAlts = string.Join(",", alts);
+            }
+        }
+
         /// <summary>The slot (row 1 first, 0 to 29) of an open row under a point, or -1.</summary>
         public int SlotAt(Vector2 at)
         {

@@ -141,6 +141,7 @@ internal static class GumpPresentation
         }
 
         _fitted.RemoveWhere(g => g.IsDisposed);
+        _restored.RemoveWhere(g => g.IsDisposed);
 
         foreach (Gump g in UIManager.Gumps)
         {

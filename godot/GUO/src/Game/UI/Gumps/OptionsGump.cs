@@ -2230,8 +2230,20 @@ namespace GUO.Game.UI.Gumps
 
             section7.Add(AddLabel(null, "Minutes idle", startX, startY));
             section7.AddRight(_screenSaverMinutes = AddHSlider(null, 1, 60, Math.Max(1, _currentProfile.ScreenSaverMinutes), startX, startY, 150));
-            section7.Add(AddLabel(null, "Then let the device sleep after (minutes, 0 = never)", startX, startY));
-            section7.AddRight(_screenSaverSleepMinutes = AddHSlider(null, 0, 120, Math.Max(0, _currentProfile.ScreenSaverSleepMinutes), startX, startY, 150));
+            _screenSaverSleepMinutes = AddHSlider(null, 0, 120, Math.Max(0, _currentProfile.ScreenSaverSleepMinutes), startX, startY, 150);
+
+            // PORT DEVIATION (GUO): the device settings below (sleep, screen
+            // effects, Start, controller buttons) are shown on a touch build
+            // or with mobile controls only, so the desktop Options stays
+            // ClassicUO's. Hidden, their controls still exist and Apply
+            // writes back the values they were built with.
+            bool deviceSettings = GUO.Input.Touch.TouchInput.Enabled || _currentProfile.MobileWindowControls;
+
+            if (deviceSettings)
+            {
+                section7.Add(AddLabel(null, "Then let the device sleep after (minutes, 0 = never)", startX, startY));
+                section7.AddRight(_screenSaverSleepMinutes);
+            }
 
             // The effects, the built-in loops, then installed store packs.
             _screenSaverChoices = new List<string>();
@@ -2262,7 +2274,7 @@ namespace GUO.Game.UI.Gumps
             // for the device in user://guo_splash.cfg.
             // PORT DEVIATION (GUO): screen effects (ADR-0023). The looks live in
             // their own card; Classic, the default, is ClassicUO's own picture.
-            SettingsSection sectionFx = AddSettingsSection(box, "Screen effects");
+            SettingsSection sectionFx = deviceSettings ? AddSettingsSection(box, "Screen effects") : new SettingsSection("Screen effects", box.Width);
             sectionFx.Y = section7.Bounds.Bottom + 40;
             NiceButton effects = new NiceButton(startX, startY, 160, 20, ButtonAction.Activate, "Screen effects...")
             {
@@ -2273,7 +2285,7 @@ namespace GUO.Game.UI.Gumps
             sectionFx.Add(AddLabel(null, "Looks for the world only (never the gumps); Ctrl+Shift+E", startX, startY));
             // END PORT DEVIATION (GUO)
 
-            SettingsSection section8 = AddSettingsSection(box, "Start");
+            SettingsSection section8 = deviceSettings ? AddSettingsSection(box, "Start") : new SettingsSection("Start", box.Width); // PORT DEVIATION (GUO)
             section8.Y = sectionFx.Bounds.Bottom + 40; // PORT DEVIATION (GUO): after Screen effects
 
             section8.Add
@@ -2300,7 +2312,7 @@ namespace GUO.Game.UI.Gumps
 
             // PORT DEVIATION (GUO): the gamepad's A/B/X/Y (Input.Gamepad). A
             // pad the client cannot recognise waits for this choice.
-            SettingsSection sectionPad = AddSettingsSection(box, "Controller buttons");
+            SettingsSection sectionPad = deviceSettings ? AddSettingsSection(box, "Controller buttons") : new SettingsSection("Controller buttons", box.Width);
             sectionPad.Y = section8.Bounds.Bottom + 40; // PORT DEVIATION (GUO): after Start
             sectionPad.Add(AddLabel(null, "A/B/X/Y", startX, startY));
             sectionPad.AddRight
@@ -4295,12 +4307,33 @@ namespace GUO.Game.UI.Gumps
             if (_barSlots != null)
             {
                 string[] choices = GUO.Input.Touch.TouchGumpBar.Choices;
-                _currentProfile.TouchBarSlots = string.Join(",", System.Array.ConvertAll(_barSlots,
+                // PORT DEVIATION (GUO): through the bar's own writers: a slot whose action changes
+                // gets that action's alternates, and changed words go where
+                // the bar reads them (TouchBarWords) as well as the old fields.
+                GUO.Input.Touch.TouchGumpBar.SetSlots(System.Array.ConvertAll(_barSlots,
                     c => choices[System.Math.Clamp(c.SelectedIndex, 0, choices.Length - 1)]));
-                _currentProfile.TouchSayBank = _barSay[0].Text ?? "";
-                _currentProfile.TouchSayGuards = _barSay[1].Text ?? "";
-                _currentProfile.TouchSayFollow = _barSay[2].Text ?? "";
-                _currentProfile.TouchSayStop = _barSay[3].Text ?? "";
+                string[] sayIds = { "bank", "guards", "follow", "stop" };
+                string[] sayWas = { _currentProfile.TouchSayBank, _currentProfile.TouchSayGuards, _currentProfile.TouchSayFollow, _currentProfile.TouchSayStop };
+
+                for (int i = 0; i < sayIds.Length; i++)
+                {
+                    string words = _barSay[i].Text ?? "";
+
+                    if (words != (sayWas[i] ?? ""))
+                    {
+                        // Cleared, the old field must not answer for it either.
+                        switch (i)
+                        {
+                            case 0: _currentProfile.TouchSayBank = words; break;
+                            case 1: _currentProfile.TouchSayGuards = words; break;
+                            case 2: _currentProfile.TouchSayFollow = words; break;
+                            case 3: _currentProfile.TouchSayStop = words; break;
+                        }
+
+                        GUO.Input.Touch.BarCatalogue.SetWords(sayIds[i], words);
+                    }
+                }
+
                 _currentProfile.TouchVibrate = _barVibrate.IsChecked;
                 _currentProfile.ModernGumpsOff = !_modernGumps.IsChecked;
                 _currentProfile.TouchReduceMotion = _barReduceMotion.IsChecked;

@@ -35,6 +35,18 @@ internal sealed partial class ModernSpellbook : ModernGump
 
     protected override float MaxArtWidth => 520f;
 
+    /// <summary>Closes with the book's sound, as SpellbookGump.Dispose does.</summary>
+    public override void Close()
+    {
+        bool shown = Shown;
+        base.Close();
+
+        if (shown)
+        {
+            Client.Game?.Audio?.PlaySound(0x0055);
+        }
+    }
+
     public override bool Accept(Gump classic)
     {
         Item book = World.Items.Get(classic.LocalSerial);

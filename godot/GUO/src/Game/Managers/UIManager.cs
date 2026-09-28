@@ -427,7 +427,7 @@ namespace GUO.Game.Managers
             // The desktop never has one chosen, so this is false there.
             if (GUO.Input.Touch.Modern.ModernGumps.TryOpenInstead(gump))
             {
-                gump.Dispose();
+                GUO.Input.Touch.Modern.ModernGumps.DisposeReplaced(gump);
 
                 return;
             }

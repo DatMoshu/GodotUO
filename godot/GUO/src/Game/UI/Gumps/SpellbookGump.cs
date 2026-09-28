@@ -164,6 +164,10 @@ namespace GUO.Game.UI.Gumps
 
         public override void Dispose()
         {
+            // PORT DEVIATION (GUO): a book replaced by its Modern view (ADR-0024)
+            // was never shown, so it does not close with the book's sound;
+            // the Modern view plays it when it closes.
+            if (!GUO.Input.Touch.Modern.ModernGumps.Replacing)
             Client.Game.Audio.PlaySound(0x0055);
             UIManager.SavePosition(LocalSerial, Location);
             base.Dispose();

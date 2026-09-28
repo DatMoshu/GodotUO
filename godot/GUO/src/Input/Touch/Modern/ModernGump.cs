@@ -42,6 +42,9 @@ internal abstract partial class ModernGump : Node
     private TextureRect _view;
     private bool _built;
     private bool _open;
+
+    /// <summary>Whether this view is open now.</summary>
+    protected bool Shown => _open;
     private float _scale = 1f;
     private Rect2 _rect; // client pixels
 
@@ -160,6 +163,7 @@ internal abstract partial class ModernGump : Node
         Compat.Rectangle main = Client.Game.ClientBounds;
         float k = _scale / Dpi; // art to client pixels
         int top = GumpPresentation.FullHeightTop() + Pad;
+        _placedFor = (main.Width, main.Height, top, Dpi);
         float w = Math.Min(MaxArtWidth, (main.Width - 2 * Pad) / k);
         float h = Math.Max(40f, (main.Height - top - Pad) / k);
         w = (int)w;
@@ -176,6 +180,14 @@ internal abstract partial class ModernGump : Node
     }
 
     private double _refresh;
+    private (int w, int h, int top, float dpi) _placedFor;
+
+    /// <summary>The screen changed under an open view (a resize, a rotation, a screen swap).</summary>
+    private bool ScreenChanged()
+    {
+        Compat.Rectangle main = Client.Game.ClientBounds;
+        return _placedFor != (main.Width, main.Height, GumpPresentation.FullHeightTop() + Pad, Dpi);
+    }
 
     public override void _Process(double delta)
     {
@@ -188,6 +200,12 @@ internal abstract partial class ModernGump : Node
         {
             Close();
             return;
+        }
+
+        // Placed again once no finger is down, so taps map through the new rect.
+        if (!_pressing && ScreenChanged())
+        {
+            Place();
         }
 
         // A finger held still: a hold, and no tap when it lifts.

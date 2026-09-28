@@ -1303,11 +1303,13 @@ namespace GUO.Input.Touch
         /// platform defaults turn it on (PlatformDefaults), and a player who
         /// turns it off is obeyed. On a desktop run with --touch (and the
         /// touch probe) the profile is a desktop one that never asked for it,
-        /// so the first pinch turns it on.
+        /// so a pinch turns it on for its own wheel step only and puts it back:
+        /// the profile, saved, is still the desktop player's.
         /// </remarks>
         private static void ZoomBy(int direction, Vector2 at)
         {
             Profile profile = ProfileManager.CurrentProfile;
+            bool lent = false;
 
             if (profile != null && !profile.EnableMousewheelScaleZoom)
             {
@@ -1319,9 +1321,25 @@ namespace GUO.Input.Touch
                 }
 
                 profile.EnableMousewheelScaleZoom = true;
-                Note("pinch -> profile.EnableMousewheelScaleZoom = true");
+                lent = true;
             }
 
+            try
+            {
+                ZoomStep(direction, at);
+            }
+            finally
+            {
+                if (lent)
+                {
+                    profile.EnableMousewheelScaleZoom = false;
+                }
+            }
+        }
+
+        // The pinch's ctrl+wheel, handled at once by GodotInput.
+        private static void ZoomStep(int direction, Vector2 at)
+        {
             Motion(at);
 
             GodotInput.Handle(new InputEventKey

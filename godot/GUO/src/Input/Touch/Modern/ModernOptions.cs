@@ -598,6 +598,10 @@ internal sealed partial class ModernOptions : ModernGump
             _macrosChanged = false;
         }
 
+        // As the classic Apply ends: the profile goes to disk now, not at the
+        // next pause or logout, so a killed app keeps what was applied.
+        p?.Save(World, ProfileManager.ProfilePath);
+
         GD.Print($"[GUO] modern: Options applied");
     }
 
