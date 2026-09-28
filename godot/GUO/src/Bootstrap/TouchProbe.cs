@@ -133,6 +133,7 @@ internal static class TouchProbe
         await ModernPartyCheck(host, world);
         await ModernSkillsCheck(host, world);
         await ModernJournalCheck(host, world);
+        await ModernAbilitiesCheck(host, world);
         await ModernSpellbookCheck(host, world);
         Configuration.ProfileManager.CurrentProfile.ModernGumpsOff = true;
         await HelpGumpCheck(host, world);
@@ -1185,6 +1186,53 @@ internal static class TouchProbe
             $"closed {closed}, from bar {fromBar}, journal alternates {Input.Touch.BarCatalogue.DefaultAlternates("journal")}");
 
         classic.Dispose();
+        await Frames(host, 5);
+    }
+
+    /// <summary>
+    /// The abilities book, Modern (ADR-0024, gump index 6): it opens instead of
+    /// CombatBookGump with every ability and the weapons from the book's own
+    /// table; a hold on the weapon's primary ability places its
+    /// UseAbilityButtonGump, as the book's drag does, and closes it.
+    /// </summary>
+    private static async System.Threading.Tasks.Task ModernAbilitiesCheck(Node host, Game.World world)
+    {
+        UIManager.GetGump<CombatBookGump>()?.Dispose();
+        await Frames(host, 5);
+        Game.GameActions.OpenAbilitiesBook(world);
+        await Frames(host, 20);
+        var view = Input.Touch.Modern.ModernGump.Current as Input.Touch.Modern.ModernAbilities;
+        Check("the abilities book opens as its Modern view with every ability and their weapons, the classic not added",
+            view != null && UIManager.GetGump<CombatBookGump>() == null && view.Rows > 10 && view.WithWeapons > 10,
+            $"modern {view != null}, rows {view?.Rows}, with weapons {view?.WithWeapons}");
+
+        if (view == null)
+        {
+            return;
+        }
+
+        foreach (Gump g in UIManager.Gumps)
+        {
+            if (g is UseAbilityButtonGump old) old.Dispose();
+        }
+
+        Vector2 at = Client(view.CentreOf(view.Find("primary")));
+        Touch(0, at, true);
+        ulong until = Godot.Time.GetTicksMsec() + 700;
+
+        while (Godot.Time.GetTicksMsec() < until)
+        {
+            await Frames(host, 1);
+        }
+
+        Touch(0, at, false);
+        await Frames(host, 10);
+        UseAbilityButtonGump button = UIManager.GetGump<UseAbilityButtonGump>();
+        Check("a hold on the weapon's primary ability places its ability button (UseAbilityButtonGump) and closes the book",
+            button != null && button.IsPrimary && !Input.Touch.Modern.ModernGump.IsOpen,
+            button == null ? "no button" : $"ability {button.Index}");
+        button?.Dispose();
+        Input.Touch.Modern.ModernGump.Current?.Close();
         await Frames(host, 5);
     }
 

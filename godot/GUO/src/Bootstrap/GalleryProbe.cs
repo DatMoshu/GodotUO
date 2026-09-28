@@ -217,6 +217,15 @@ internal static class GalleryProbe
         profile.ModernGumpsOff = true;
         await InputProbe.Wait(host, 10);
 
+        // The abilities book, Modern (ADR-0024, gump 6).
+        profile.ModernGumpsOff = false;
+        Game.GameActions.OpenAbilitiesBook(world);
+        await InputProbe.Wait(host, 40);
+        await Save(host, "abilities");
+        Input.Touch.Modern.ModernGump.Current?.Close();
+        profile.ModernGumpsOff = true;
+        await InputProbe.Wait(host, 10);
+
         // The journal's Modern reader (ADR-0024: a reader, not a replacement).
         Input.Touch.Modern.ModernJournal.OpenReader(world);
         await InputProbe.Wait(host, 40);
