@@ -317,7 +317,8 @@ internal static class GamepadProbe
                 }
 
                 Check("A presses the window menu's + under the pointer",
-                    plus != null && opened.PresentationScale > before + 0.01f, $"{before} -> {opened.PresentationScale}");
+                    plus != null && opened.PresentationScale > before + 0.01f,
+                    $"{before} -> {opened.PresentationScale}, + at {plus?.ToString() ?? "none"}, card {GUO.Input.Touch.WindowMenu.CardRect}");
                 opened.PresentationScale = before;
             }
 
@@ -331,7 +332,7 @@ internal static class GamepadProbe
             Control second = GUO.Input.Touch.WindowMenu.FocusOwner;
             Check("the D-pad selects the window menu's controls, not walking",
                 first != null && second != null && second != first && Where() == stood,
-                $"{Name(first)} -> {Name(second)}, at {stood} -> {Where()}");
+                $"{Name(first)} -> {Name(second)}, at {stood} -> {Where()}, card {GUO.Input.Touch.WindowMenu.CardRect}, open {GUO.Input.Touch.WindowMenu.IsOpen}");
 
             // + sits right of - on the stepper row, above the slider.
             for (int i = 0; i < 12 && Name(GUO.Input.Touch.WindowMenu.FocusOwner) != "+"; i++)
