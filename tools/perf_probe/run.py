@@ -28,6 +28,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from guo import load_config  # noqa: E402
+from guo.build import build_client  # noqa: E402
 from guo.process import no_activate  # noqa: E402
 
 COLUMNS = ("mean_ms", "p95_ms", "p99_ms", "draw_calls", "batcher_items", "texture_switches", "world_draw_ms", "render_cpu_ms")
@@ -61,12 +62,17 @@ def main() -> int:
     ap.add_argument("--size", default="1280,720", help="window size; frame times compare only at one size")
     ap.add_argument("--zoom", type=float, default=0, help="camera zoom for the world scenes (0 = the profile's)")
     ap.add_argument("--compare", nargs=2, metavar=("A", "B"), help="compare two labels already measured")
+    ap.add_argument("--as-built", action="store_true",
+                    help="run GUO as it is built, instead of rebuilding it optimised first (tools/guo/build.py)")
     args = ap.parse_args()
     cfg = load_config()
     out = cfg.build / "perf"
     out.mkdir(parents=True, exist_ok=True)
     if args.compare:
         return compare(out, *args.compare)
+
+    if not args.as_built:
+        build_client(cfg)
 
     home = out / f"client_home_{args.label}"
     (home / "cache").mkdir(parents=True, exist_ok=True)
