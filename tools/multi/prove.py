@@ -175,6 +175,11 @@ def prove_scene(cfg, name: str, stage: Path, out: Path, clip: Path | None, at=No
         return 1
     parts = [(f"{name}.{p['name']}", p["id"], p["centre"][0], p["centre"][1], p.get("doors", [])) for p in sc["parts"]]
     stops = [(t["name"], t["x"], t["y"], t["z"]) for t in sc.get("tour", [])]
+    if any(t.get("on_land") for t in sc.get("tour", [])):
+        # a stop on bare land: the walker stands on the land's own z there, not the scene's ground
+        z, _ = occupancy(cfg, 0)
+        stops = [(n, x, y, int(z[site[1] + y, site[0] + x]) - site[2] if t.get("on_land") else lz)
+                 for (n, x, y, lz), t in zip(stops, sc["tour"])]
     print(f"[prove] scene {name}: {len(parts)} multis at {site}", flush=True)
     return session(cfg, stage, out, parts, site, stops, clip, min_free_gb,
                    caption or f"GUO: an authored scene ({name}), walked through in game", {"scene": name})

@@ -653,5 +653,12 @@ def build_scene(desc: dict, cat: Catalogue) -> dict:
                 (s.notes if desc.get("layout") == "parts" else s.problems).append(line)
     tour = walk_tour([{"name": t["name"], "x": t["at"][0], "y": t["at"][1], "z": t["z"]}
                       for t in desc.get("tour", [])], s.flights)
+    # a stop at the ground on a cell nothing covers stands on the land, which in game may lie a
+    # little above or below the ground the scene stands at: the proof reads the land's z there
+    covered = {(c.x + p["centre"][0], c.y + p["centre"][1]) for p in parts for c in p["comps"]}
+    ground = desc.get("ground", 0)
+    for t in tour:
+        if t["z"] == ground and (t["x"], t["y"]) not in covered:
+            t["on_land"] = True
     return {"format": 1, "kind": "scene", "name": desc["name"], "parts": parts, "tour": tour, "notes": s.notes,
             "problems": s.problems}

@@ -789,7 +789,10 @@ on the land below, and the client steps down into it. Any element's `floor`
 or `walk` may be a list of materials: the first lies on about half the cells,
 the rest share the others, picked per cell by a fixed hash (CRC-32 of `x,y`),
 so a courtyard is not one tile repeated and the bytes stay the same. `scene-prove --at X
-Y` without a z stands the scene on the land height most of it covers.
+Y` without a z stands the scene on the land height most of it covers. A tour
+stop at the ground on a cell no multi covers is marked `on_land`, and the
+proof checks it against the land's own z there (land under a wide scene is
+rarely flat).
 
 `scene-build` writes `build/multi/scenes/<name>/`: `scene.json` (`parts[]`
 with `name` (the element it mostly holds and its square), `centre`, `bounds`,

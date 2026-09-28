@@ -213,6 +213,8 @@ def main() -> int:
               [[(c.item, c.x, c.y, c.z) for c in p["comps"]] for p in again["parts"]], "a scene builds to the same bytes")
         tour = [t["name"] for t in sc["tour"]]
         check(tour == ["foot", "walk_stair0_from", "walk_stair0_to", "walk"], f"the tour climbs by the stair (got {tour})")
+        check(sc["tour"][0].get("on_land") and not sc["tour"][-1].get("on_land"),
+              "a stop on bare land at the ground is marked on_land (the proof reads the land's z), one on the wall not")
         climb = sc["tour"][1:3]
         check(climb[0]["z"] == 0 and climb[1]["z"] == 20 and (climb[0]["x"], climb[0]["y"]) == (3, 3),
               f"the climb starts at the stair's foot and ends on its landing (got {climb})")
