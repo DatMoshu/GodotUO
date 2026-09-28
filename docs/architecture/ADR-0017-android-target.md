@@ -338,6 +338,17 @@ layout for small screens.
 - **Making the gump bar a `Gump`.** It would live in the profile's gump
   list, be closable, and be scaled and drawn through the world's render path;
   every one of those is wrong for a control that must always be there.
+- **Portrait.** Spiked on the Odin 2 Mini on 2026-09-28 (C9,
+  `docs/android_portrait_spike.md`, `--portrait-probe`) and killed by the
+  rule set before the run. The rotation itself is a plain resize (95 ms, one
+  `size_changed`, the atlases intact), the world shows 11.5 x 20.4 tiles
+  against landscape's 15.3 x 8.6, and the everyday gumps fit. But ten
+  command-bar slots across 1080 px give a 108 px cell, the bar's art scale
+  follows the cell's width, and a plate drops to 7.4 x 2.3 mm: too small to
+  hit. The pre-game gumps also keep their landscape position and run off the
+  right edge. Coming back to it needs a portrait command bar (five slots a
+  row, or a scale from the height) and a re-centre on resize.
+  `window/handheld/orientation` stays sensor-landscape.
 - **Waiting for the machine to have an SDK before writing any of this.** The
   .NET half, the touch layer and the tool can all be proven on the desktop,
   and were; only the last mile needs the SDK.
