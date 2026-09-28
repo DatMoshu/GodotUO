@@ -349,6 +349,12 @@ namespace GUO.Input.Touch
             FlushRelease(false);
             ParkWhenLifted();
 
+            // The top bar wraps to the screen's width; a new width, a new bar.
+            if (Client.Game?.UO?.World is { InGame: true } world)
+            {
+                Game.UI.Gumps.TopBarGump.Rewrap(world);
+            }
+
             // A finger held still on a bar button: its popup (C10).
             if (_phase == Phase.Bar && _bar != null && _barSlot >= 0 && _bar.PopupSlot < 0
                 && Godot.Time.GetTicksMsec() - _downTime >= BarPopupMs)

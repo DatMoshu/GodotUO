@@ -76,7 +76,7 @@ belongs to a character's profile says "Set in Options once you're in the world",
 | Group | Settings |
 |---|---|
 | Your UO files | The UO folder (live check: found / version / missing files), client version, a "Choose folder…" picker (G2), clearing the cache |
-| Account | Saved accounts, remember password, auto-login, the last server |
+| Account | Saved accounts per server (see Accounts below), auto-login, the last server |
 | Screen | Window size on the desktop, the UI scale (DualScreenSettings scale), screen effects look (the ADR-0023 menu, preview on top) |
 | Second screen | Use it as a shelf in the world; the gumps to shelve (paperdoll, status, backpack, journal, others); shelf scale; companion tabs on or off |
 | Controls | Controller on or off (ADR-0025), the glyph family (automatic / Xbox / PlayStation / Nintendo / Deck), touch controls, and a "Test controller" page showing the live pad state |
@@ -85,6 +85,98 @@ belongs to a character's profile says "Set in Options once you're in the world",
 
 The groups are a vertical list on the left with the fields on the right: the same two-pane shape as Servers, so the
 screen feels like one object.
+
+## Accounts (design; the keystore part waits for the director)
+
+The player keeps accounts per server, and logs in from the list without typing. A saved password is encrypted by the
+operating system's own keystore. Upstream's `Crypter` (an XOR mask, not encryption) is never used for it.
+
+### What the player sees
+
+- **Servers tab, a server's page:** an Accounts block under Play. It lists the saved accounts by name, each with
+  **Forget**, and has **Add account**, which opens a name field, a password field and a **Save password** box (on by
+  default where a keystore exists). With no keystore, the box is gone and the line reads "Passwords aren't saved on
+  this system. You'll type it at login."
+- **Play with an account picked:** GUO fills the login gump's account and password fields and presses its arrow, as if
+  the player had typed them. With one account, it is picked already. With none, Play works as today.
+- **The login screen (the second screen, and one-screen touch):** a quick-login row above the classic gump: the
+  server, its accounts as buttons, and Login. The classic gump stays as it is under it.
+- **Settings > Account:** the same accounts, grouped by server, with Forget and "Forget all".
+- A password that can no longer be decrypted (a new Windows profile, a reset phone, a locked keyring) doesn't fail
+  silently: "Couldn't read the saved password for moshu. Type it once and it's saved again."
+
+### The classic checkbox
+
+The desktop login gump keeps its **Save account** and **Auto login** boxes working 1:1: they still write `username`
+and `password` (through `Crypter`) to settings.json, exactly as upstream. The manager never reads or writes those
+fields, and never ticks or unticks the boxes.
+
+One open point for the director: when a quick login fills the gump while the classic box is ticked, upstream's
+`LoginScene.Connect` also saves that password to settings.json through `Crypter`, next to the keystore copy. The
+recommendation is a marked `// PORT DEVIATION (GUO):` that skips that write for a login the manager started (a
+typed login is unchanged). The alternative is to leave it, and say so under Save password.
+
+### Where it is kept
+
+`servers.json` (data_formats.md section 17) gains, per server entry:
+
+```json
+"accounts": [
+  { "name": "moshu", "secret": { "store": "dpapi", "blob": "AQAAANCMnd8BFdERjHoAwE..." }, "last_used": "2026-09-28T19:00:00Z" }
+]
+```
+
+| `store` | Platform | What `secret` holds |
+|---|---|---|
+| `dpapi` | Windows | `blob`: `CryptProtectData` output, base64. CurrentUser scope, with GUO's entropy plus `host:port:name`, so a blob copied onto another entry doesn't decrypt |
+| `android-keystore` | Android | `iv` and `blob`: AES-256-GCM, with a non-exportable key (`guo.accounts.v1`) in AndroidKeyStore. `host:port:name` is the associated data |
+| `libsecret` | Linux, Steam Deck | Nothing. The password lives in the Secret Service keyring (schema `org.guo.Account`, attributes host, port, name); the file only says it's there |
+| `none` | Web, or a Linux without a keyring | Nothing. The password is never kept |
+
+No plaintext password is ever written to a file, a log, a probe screenshot or a Discord caption. The account name
+is not secret (upstream saves it in the clear too), and it is kept in the clear.
+
+### How each store is reached
+
+- **Windows:** P/Invoke of `crypt32.dll` `CryptProtectData` / `CryptUnprotectData`. No NuGet package.
+- **Android:** the JNI route that `SafFolder` uses (`JavaClassWrapper`, and the activity from the `AndroidRuntime`
+  singleton): `KeyGenParameterSpec.Builder`, `KeyGenerator`, `KeyStore` and `Cipher`. If `JavaClassWrapper` can't
+  pass one of those calls (varargs, byte arrays), the fallback is a small Android plugin with the same four calls.
+  That adds a plugin to the export, so it would go to the director first.
+- **Linux / Steam Deck:** P/Invoke of `libsecret-1.so.0` (`secret_password_store_sync`, `_lookup_sync`, `_clear_sync`).
+  If the library or the Secret Service is missing, the store is `none` and the UI says so. There's no plaintext
+  fallback. In the Deck's Game Mode, the keyring may be locked; a lookup that fails asks for the password once.
+- **Web:** `none`, always. The Save password box isn't shown.
+
+### What it protects against, and what it doesn't
+
+It protects the password in a copied, synced or shared settings folder, in a bug report, and against another user
+account on the same machine. It does not protect against malware running as the same user, or on a rooted phone:
+DPAPI and an unlocked keyring hand the password to any process of that user. The Settings > Account page says this in
+one line.
+
+### Code shape
+
+- `ISecretStore` with `Kind`, `Available`, `Protect(entry, name, password)` and `Unprotect(entry, name)`, returning
+  a secret or null with a reason. There is one implementation per platform, chosen at start.
+- `AccountBook` sits on `ServerBook` (the same file and the same save), with `Add`, `Forget`, `ForgetAll`, `Password`
+  and `Touch` (last used).
+- All of it is new GUO code under `src/Input/Touch/Pregame/Accounts/`. The only touch to a ported file is the
+  Connect deviation above, if it is approved.
+
+### The probe
+
+It uses a fake account (`guoprobe` with a random password made per run), never a real one, and doesn't print the
+password. It checks that:
+
+- the account is saved, and that servers.json contains neither the password nor its Crypter form;
+- a round trip through the store returns the password;
+- a blob moved to another entry doesn't decrypt;
+- Forget removes it (on Linux, from the keyring too);
+- quick login fills the gump and reaches the shard as the `guoeffects` account;
+- the classic box behaves as upstream on the desktop.
+
+On Android it runs on the Thor once the store is built.
 
 ## Copy
 

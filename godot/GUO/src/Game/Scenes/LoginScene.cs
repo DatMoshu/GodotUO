@@ -149,7 +149,15 @@ namespace GUO.Game.Scenes
             {
                 if (_reconnectTime < Time.Ticks)
                 {
-                    if (!string.IsNullOrEmpty(Account))
+                    // PORT DEVIATION (GUO): a login GUO's accounts manager started
+                    // reconnects with its own password, which settings.json never had
+                    // (see Connect).
+                    if (_managedLogin)
+                    {
+                        ManagedLogin = true;
+                        Connect(Account, Password);
+                    }
+                    else if (!string.IsNullOrEmpty(Account))
                     {
                         Connect(Account, Crypter.Decrypt(Settings.GlobalSettings.Password));
                     }
@@ -290,6 +298,14 @@ namespace GUO.Game.Scenes
             }
         }
 
+        /// <summary>
+        /// PORT DEVIATION (GUO): set by GUO's accounts manager just before the
+        /// login it starts; <see cref="Connect"/> takes it and clears it.
+        /// </summary>
+        public bool ManagedLogin { get; set; }
+
+        private bool _managedLogin; // PORT DEVIATION (GUO): see Connect
+
         public void Connect(string account, string password)
         {
             if (CurrentLoginStep == LoginSteps.Connecting)
@@ -300,8 +316,15 @@ namespace GUO.Game.Scenes
             Account = account;
             Password = password;
 
+            // PORT DEVIATION (GUO): a login GUO's accounts manager started keeps
+            // its password in the OS keystore, never in settings.json through
+            // Crypter; a typed login is saved exactly as upstream
+            // (docs/ui/second_screen_pregame.md, Accounts).
+            _managedLogin = ManagedLogin;
+            ManagedLogin = false;
+
             // Save credentials to config file
-            if (Settings.GlobalSettings.SaveAccount)
+            if (Settings.GlobalSettings.SaveAccount && !_managedLogin)
             {
                 Settings.GlobalSettings.Username = Account;
                 Settings.GlobalSettings.Password = Crypter.Encrypt(Password);
