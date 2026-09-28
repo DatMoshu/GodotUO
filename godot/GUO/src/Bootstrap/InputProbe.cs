@@ -2947,6 +2947,31 @@ internal static class InputProbe
         new(1, -1),
     };
 
+    /// <summary>
+    /// All eight screen directions in turn, clockwise from up, each held for
+    /// <paramref name="frames"/> frames: a showcase walk that faces the camera
+    /// every way and ends near where it began. For ObjectsDump's watch.
+    /// </summary>
+    internal static async System.Threading.Tasks.Task<bool> WalkEight(Node host, int frames)
+    {
+        Game.GameObjects.PlayerMobile player = Client.Game.UO.World?.Player;
+        if (player == null)
+        {
+            return false;
+        }
+
+        int startX = player.X, startY = player.Y;
+        bool moved = false;
+        foreach (Vector2 offset in new Vector2[] { new(0, -1), new(1, -1), new(1, 0), new(1, 1), new(0, 1), new(-1, 1), new(-1, 0), new(-1, -1) })
+        {
+            await Pull(host, offset.Normalized(), frames);
+            await Frames(host, 12);
+            moved |= player.X != startX || player.Y != startY;
+        }
+
+        return moved;
+    }
+
     /// <summary>The probe's walk (the four screen diagonals, held), for ObjectsDump's watch.</summary>
     internal static System.Threading.Tasks.Task<bool> WalkAround(Node host) => Walk(host);
 

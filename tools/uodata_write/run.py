@@ -5,6 +5,7 @@
     python tools/uodata_write/run.py reserve   --stage DIR --pack NAME [--statics N] [--bodies N]
     python tools/uodata_write/run.py dreadcrest --stage DIR --source DIR [--pack moshu]
     python tools/uodata_write/run.py verify    --stage DIR
+    python tools/uodata_write/run.py outfit    --stage DIR --source LAB [--pack astral]
 
 All take --ranges FILE (or UO_DATA_RANGES): a shard maintainer's range policy merged over
 ranges.json (ADR-0022).
@@ -17,6 +18,9 @@ dreadcrest Codex's Dreadcrest candidate (build/uo_original_expansion/dreadcrest_
            and a tiledata item (the kite shield's record with the new animation id);
            written, read back, and the install checked unchanged
 verify     every copied install file still hashes as when it was copied
+outfit     SpriteMotion's outfit-lab output (read only; the Astral Wayfarer): ids taken
+           from the pack's ranges, uopack from-outfit-lab builds the folder, uopack pack
+           writes and reads it back into the stage
 
 The stage holds files_override.txt for the client (settings.json files_override) and is
 the folder a shard lists first in its data directories.
@@ -104,9 +108,41 @@ def dreadcrest(stage: U.Stage, source: Path, pack: str, policy: dict) -> int:
     return 0 if bad == 0 and not changed else 1
 
 
+OUTFIT_ITEMS = ("sword", "robe", "hair", "shirt", "pants", "shoes", "gloves")
+
+
+def outfit(stage: U.Stage, source: Path, pack: str, policy: dict) -> int:
+    import subprocess
+
+    reg = U.Registry(stage, policy)
+    reserve(stage, reg, pack, 16, 12)
+    ids = {}
+    for k in OUTFIT_ITEMS:
+        body = reg.take(pack, "anim", k)
+        ids[k] = {"item": reg.take(pack, "static", k), "body": body, "gump": U.MALE_GUMP + body}
+        reg.data["packs"][pack]["used"].setdefault("gump", {})[f"{k}-male"] = U.MALE_GUMP + body
+    reg.save()
+    ids_path = stage.root / f"{pack}_ids.json"
+    ids_path.write_text(json.dumps(ids, indent=2) + "\n", encoding="utf-8")
+    for k, v in ids.items():
+        print(f"[uodata] {pack} {k}: item {v['item']:#06x}, body {v['body']}, male gump {v['gump']}")
+    folder = stage.root.parent / f"{stage.root.name}_src"
+    uopack = HERE.parent / "uopack" / "run.py"
+    r = subprocess.run([sys.executable, str(uopack), "from-outfit-lab", str(source), "--out", str(folder),
+                        "--ids", str(ids_path), "--data", str(stage.install)])
+    if r.returncode != 0:
+        return r.returncode
+    r = subprocess.run([sys.executable, str(uopack), "pack", str(folder), "--stage", str(stage.root)])
+    if r.returncode != 0:
+        return r.returncode
+    changed = U.Stage(stage.root, stage.install).check_install_unchanged()
+    print(f"[uodata] install unchanged: {not changed}")
+    return 0 if not changed else 1
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("command", choices=["scan", "reserve", "dreadcrest", "verify"])
+    ap.add_argument("command", choices=["scan", "reserve", "dreadcrest", "verify", "outfit"])
     ap.add_argument("--stage", type=Path, required=True)
     ap.add_argument("--source", type=Path)
     ap.add_argument("--pack", default="moshu")
@@ -125,6 +161,8 @@ def main() -> int:
         return 0
     if args.command == "dreadcrest":
         return dreadcrest(stage, args.source, args.pack, policy)
+    if args.command == "outfit":
+        return outfit(stage, args.source, args.pack, policy)
     changed = stage.check_install_unchanged()
     print(f"[uodata] install unchanged: {not changed}" + (f" (changed: {changed})" if changed else ""))
     return 0 if not changed else 1

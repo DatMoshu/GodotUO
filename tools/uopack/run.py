@@ -613,6 +613,11 @@ def main() -> int:
     d.add_argument("--body", default="849")
     d.add_argument("--gump-male", default="50849")
     d.add_argument("--gump-female", default="60849")
+    o = sub.add_parser("from-outfit-lab", help="SpriteMotion's outfit-lab output (read only) as a uopack folder")
+    o.add_argument("lab", help="workspace/ultima-online/outfit-lab (manifest.json, atlases/)")
+    o.add_argument("--out", required=True)
+    o.add_argument("--ids", required=True, help='JSON {item key: {"item": id, "body": body}}')
+    o.add_argument("--data", help="the install the originals are read from (default UO_CLIENT_DATA; never written)")
     sub.add_parser("selftest", help="synthetic round trips, no client data (CI)")
     args = ap.parse_args()
     if args.cmd == "unpack":
@@ -623,6 +628,10 @@ def main() -> int:
         return roundtrip(args)
     if args.cmd == "from-dreadcrest":
         return from_dreadcrest(args)
+    if args.cmd == "from-outfit-lab":
+        import outfit
+
+        return outfit.from_outfit_lab(args)
     import test_uopack
 
     return test_uopack.main()

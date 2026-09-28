@@ -1,14 +1,36 @@
 {
   "format": 1,
-  "_doc": "The range policy (docs/architecture/ADR-0022). never: ids the allocator never hands out. packs: a pack's fixed range per namespace, [first, last]. A shard maintainer overrides this with a file of the same shape (--ranges FILE or UO_DATA_RANGES): its never lists are added, its pack entries replace these.",
+  "_doc": "The range policy (docs/architecture/ADR-0022). never: ids the allocator never hands out. packs: a pack's fixed range per namespace, [first, last]. A shard maintainer overrides this with a file of the same shape (--ranges FILE or UO_DATA_RANGES): its never lists are added, its pack entries replace these. Bodies are fixed too, so packs staged separately never share one; a pack's paperdoll gumps follow its bodies (50000/60000 + body).",
   "never": {
-    "static": [[65535, 65535]],
+    "static": [
+      [
+        65535,
+        65535
+      ]
+    ],
     "anim": [],
     "gump": []
   },
   "packs": {
     "moshu": {
-      "static": [65520, 65534]
+      "static": [
+        65520,
+        65534
+      ],
+      "anim": [
+        849,
+        852
+      ]
+    },
+    "astral": {
+      "static": [
+        65504,
+        65519
+      ],
+      "anim": [
+        853,
+        864
+      ]
     }
   }
 }
