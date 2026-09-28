@@ -265,6 +265,17 @@ internal static class InputProbe
         }
 
         await Frames(host, 240);
+
+        // On a device the typed account can land in the world's chat entry (the
+        // Thor's showed "Guoprobe" after login), and the first thing said then
+        // carries it. A player starts with an empty line; so does the probe.
+        Game.UI.Gumps.SystemChatControl chat = Game.Managers.UIManager.SystemChat;
+
+        if (Client.Game.UO.World.InGame && chat != null && !chat.IsDisposed && chat.TextBoxControl.Text.Length > 0)
+        {
+            GD.Print($"[GUO] input probe: cleared \"{chat.TextBoxControl.Text}\" left in the chat entry by the login");
+            chat.TextBoxControl.ClearText();
+        }
     }
 
     /// <summary>

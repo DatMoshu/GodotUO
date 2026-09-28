@@ -623,6 +623,13 @@ public partial class Main : Node
     {
         await Preamble();
         await GamepadProbe.Run(this);
+
+        // --stay: the session stays up afterwards, for a check by hand on the device.
+        if (_options.Stay)
+        {
+            return;
+        }
+
         Quit(GamepadProbe.Passed ? 0 : 1);
     }
 
@@ -1320,6 +1327,10 @@ public partial class Main : Node
                     case "--gamepad-probe":
                         o.GamepadProbe = true;
                         break;
+                    case "--gamepad-clip":
+                        // The probe paced for a screen recording: at the Britain bank, Y's rows held open.
+                        GUO.Host.GamepadProbe.Clip = true;
+                        goto case "--gamepad-probe";
                     case "--merged-cover":
                         // Epic B, B4 fix 2c: each run of covering land one mesh over the land array.
                         // The parity toggle is this flag alone; give --merged-land=array before it.

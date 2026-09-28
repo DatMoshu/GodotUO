@@ -75,7 +75,14 @@ internal static class PerfProbe
         await InputProbe.Wait(host, Settle);
         results.Add(await Measure(host, viewport, "login", "the login screen over the background"));
 
+        // On a device, logged in as DualProbe does: the touch layer would
+        // swallow the probe's clicks, which aim in client pixels.
+        bool touch = GUO.Input.Touch.TouchInput.Enabled;
+        GUO.Input.Touch.TouchInput.Enabled = false;
+        InputProbe.PointerScale = Client.Game.DpiScale;
         await InputProbe.EnterTheWorld(host, 200);
+        InputProbe.PointerScale = 1f;
+        GUO.Input.Touch.TouchInput.Enabled = touch;
         World world = Client.Game.UO.World;
         if (!world.InGame)
         {
@@ -101,11 +108,25 @@ internal static class PerfProbe
             // one-off, not what a player standing still pays every frame.
             await InputProbe.Wait(host, Settle);
             results.Add(await Measure(host, viewport, scene.Name, scene.What));
+
+            // With --perf-parity, the same spot again with the path under test
+            // off: the frame-time comparison from one run (one export on a device).
+            if (_parity)
+            {
+                bool was = ParityState();
+                ParityToggle(false);
+                _parity = false;
+                await InputProbe.Wait(host, Settle);
+                results.Add(await Measure(host, viewport, scene.Name + "-off", scene.What + " (the path under test off)"));
+                _parity = true;
+                ParityToggle(was);
+                await InputProbe.Wait(host, 30);
+            }
         }
 
         GUO.Utility.Profiler.Enabled = profiling;
         Write(outDir, label, results);
-        Passed = results.Count == Scenes.Length + 1;
+        Passed = results.Count == (_parity ? 2 : 1) * Scenes.Length + 1;
     }
 
     private static async System.Threading.Tasks.Task<Dictionary<string, object>> Measure(Node host, Rid viewport, string name, string what)
