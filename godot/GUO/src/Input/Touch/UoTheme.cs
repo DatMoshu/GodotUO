@@ -291,6 +291,15 @@ internal static class UoTheme
         }
 
         Image image = atlas.GetRegion(new Rect2I(info.UV.X, info.UV.Y, info.UV.Width, info.UV.Height));
+
+        // A gump just added to the atlas can read back blank until its upload
+        // lands; do not cache that, ask again later (the stone frame came out
+        // fully transparent on a first open).
+        if (image.IsInvisible())
+        {
+            return null;
+        }
+
         _images[id] = image;
 
         return image;
@@ -447,7 +456,20 @@ internal static class UoTheme
     /// Whether the client's gumps and fonts are loaded, so the theme is UO art
     /// and not its flat fallback. Build a card once this is true.
     /// </summary>
-    public static bool Ready => Client.Game?.UO?.FileManager?.Fonts != null && GumpImage(StoneFrame) != null;
+    public static bool Ready => Client.Game?.UO?.FileManager?.Fonts != null && FrameReady(StoneFrame);
+
+    private static bool FrameReady(ushort first)
+    {
+        for (int i = 0; i < 9; i++)
+        {
+            if (GumpImage((ushort)(first + i)) == null)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
 
     /// <summary>
     /// The shared theme, in art pixels. Scale the control tree that uses it by
