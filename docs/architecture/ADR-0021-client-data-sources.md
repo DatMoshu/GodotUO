@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted (owner, 2026-09-27)
 
 ## Date
 

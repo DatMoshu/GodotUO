@@ -29,7 +29,7 @@ it is taken even if its file has not landed yet.
 | 0018 | Steam Deck target | work/steamdeck (accepted 2026-09-27) |
 | 0019 | Asset Store | work/codex-store |
 | 0020 | Asset overlay (editor phase 5) | work/editor-p5 |
-| 0021 | Client data sources | work/editor-datasources |
+| 0021 | Client data sources | work/editor-datasources (accepted 2026-09-27) |
 | 0022 | Authoring UO data files | work/editor-uodata |
 
-Next free: 0023.
+Next free: 0024 (0023 reserved: post-processing, Epic I).
