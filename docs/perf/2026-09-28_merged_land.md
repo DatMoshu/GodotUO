@@ -334,3 +334,36 @@ Next, one short slot: PerfDump waits until the transparent list is nearly
 empty (fading done) in both clients before it averages, and records the
 fading count it measured at. Then rerun the four scenes. The morning post
 should use the GUO Debug -> optimised table above, not a ClassicUO ratio.
+
+## Fade wait measured (2026-09-28, fifth slot): not a fade; the views differ
+
+PerfDump now polls the transparent list after SECONDS and averages only once
+20 or fewer objects are left in it, capped at 60 s. ClassicUO never got there:
+its transparent list held steady for the whole 60 s in every scene (open field
+2,231, Britain bank 743, dense forest 1,647, dungeon 47), so it is not a
+fade-in. Upstream also sends shadows there (`PushToRenderQueue(obj, isShadow,
+...)`), and the shared profile both clients use has `shadows_statics` on, so
+these are most likely static shadows: steady state, part of the scene.
+
+ClassicUO's figures now repeat across two slots and three runs (dungeon
+prepare 5.60, 5.69, 5.27 ms). The shared GUO profile it is given has not
+changed since 01:20, so the faster third-slot figures (dungeon 1.76 ms) are
+the outlier, and why is not known.
+
+| Scene | world prepare ms, CUO / GUO | world draw ms, CUO / GUO | rendered objects, CUO / GUO |
+|---|---:|---:|---:|
+| open field | 6.06 / 1.92 | 11.26 / 1.89 | 62,465 / 28,281 |
+| Britain bank | 8.83 / 4.82 | 14.68 / 8.94 | 88,030 / 45,906 |
+| dense forest | 7.01 / 2.94 | 15.42 / 4.61 | 72,955 / 36,859 |
+| dungeon | 5.27 / 2.76 | 9.30 / 3.36 | 59,237 / 30,874 |
+
+**This is not yet a like-for-like comparison, so there is still no ratio to
+post.** Taken at face value, optimised GUO is faster than ClassicUO
+everywhere. But ClassicUO reports about twice as many rendered objects in
+every scene. The same count comes from the same ported code in both, so
+ClassicUO is most likely drawing a larger piece of the world. A suspect is
+its settings' `screen_scale`, which cancels the display scaling, together
+with zoom 2.5. Until both clients are shown to frame the same view, the ratio
+means nothing. Before any ratio, `launchers\dev\side_by_side.bat` or a
+screenshot from each client at the perf spot must show the same view, and
+the rendered-object counts must agree.
