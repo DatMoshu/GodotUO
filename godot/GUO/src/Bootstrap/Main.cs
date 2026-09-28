@@ -1345,7 +1345,10 @@ public partial class Main : Node
                         o.PerfProbe = true;
                         break;
                     case "--perf-out":
-                        o.PerfOut = Next();
+                        // A relative DIR is taken against the project folder (Godot's
+                        // own working directory under --path), resolved now: StartClient
+                        // later moves the working directory to the client home.
+                        o.PerfOut = System.IO.Path.GetFullPath(Next());
                         break;
                     case "--perf-label":
                         o.PerfLabel = Next();
