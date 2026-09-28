@@ -106,8 +106,8 @@ def main() -> int:
         check(at[(0, 2, 7)].item == 0x202, "the west window is the NS window piece")
         door = at.get((2, 4, 7))
         check(door is not None and door.item == 0x6A5 and not door.visible, "the door cell holds only a hidden door marker")
-        check(at[(1, 4, 7)].item == 0x100 + SIGS.index("W") and at[(3, 4, 7)].item == 0x100 + SIGS.index("E"),
-              "the wall ends beside the door are end pieces (W, E)")
+        check(at[(1, 4, 7)].item == 0x100 + SIGS.index("EW") and at[(3, 4, 7)].item == 0x100 + SIGS.index("EW"),
+              "the wall runs on beside the door (EW pieces, as the originals), no end pieces")
         check(side["doors"] == [{"x": 0, "y": 2, "z": 7, "storey": 0, "facing": "WestCW", "type": "DarkWoodDoor"}],
               "the sidecar door: centre-relative, WestCW in a wall along x")
         check(sum(1 for c in comps if c.z == 0 and c.item >= 0x400 and c.item < 0x500) == 16,

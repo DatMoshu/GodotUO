@@ -735,6 +735,14 @@ Terms:
 - `local` also holds `yard` (fence, gate, box, steps, path) and `stairs`.
 - A door with no floor under it (one in a north or west wall, or upstairs)
   gets a sill: a floor tile in the door cell.
+- Beside a door the wall's run piece stands, as if the wall went on through
+  the doorway (the originals: stone 385 runs to 54 ends).
+- A foundation and a flat roof's parapet (`parapet_height`, default 6) are
+  courses of the material's low pieces that belong with the walls already
+  picked: the client's stone castles found and top their walls with that
+  wall's own 3-high pieces, not the whiter 5-high set.
+- A row of entrance steps is one step piece end to end wherever the
+  originals use that piece at the ends.
 - `preview.png`, `preview_noroof.png` and `plan_<n>.png`.
 
 **The validator** refuses:
@@ -764,6 +772,16 @@ components). Elements:
 | `causeway` | `path`, `width`, `z`, `rail` |
 | `stair` | `at`, `rise`, `z`, `to`, `width` |
 | `house` | `desc` (a house description), `at`, `z` |
+
+A scene's `ground` (default 0) is the height it stands on; `plinth` (default
+6) is how far below that its walls, towers, platforms, causeways, stairs and
+houses reach, in the walls' own low pieces, so lower land shows stone.
+Parapets are two courses of those low pieces with a merlon of the same
+piece, turned with the wall, on every other cell. Every floor 16 or more
+above the ground (a gate's passage, a platform, a tower's first level)
+stands on a solid fill up to 15 under it: a hollow there is room to stand
+on the land below, and the client steps down into it. `scene-prove --at X
+Y` without a z stands the scene on the land height most of it covers.
 
 `scene-build` writes `build/multi/scenes/<name>/`: `scene.json` (`parts[]`
 with `name`, `centre`, `bounds`, `doors`, `components`; `bounds`, `tour`,

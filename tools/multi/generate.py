@@ -41,6 +41,7 @@ class Catalogue:
         self.fam = json.loads((folder / "families.json").read_text(encoding="utf-8"))
         self.pieces = json.loads((folder / "pieces.json").read_text(encoding="utf-8"))
         self.context: collections.Counter = collections.Counter()
+        self.last_step: dict = {}
 
     def _in(self, item: str) -> list[int]:
         return self.pieces.get(item, {}).get("in", [])
@@ -58,6 +59,26 @@ class Catalogue:
         if name not in self.fam:
             raise DescriptionError(f"material '{name}' is not in the catalogue (have e.g. {sorted(self.fam)[:12]})")
         return self.fam[name]
+
+    def low(self, mat: str, most: int = 6) -> int:
+        """The height of the low pieces (a foundation, a parapet) that belong with the walls
+        already picked: a material's 5-high and 3-high pieces are often different sets, and the
+        client's castles top and found their stone walls with that wall's own 3-high pieces."""
+        fam = self.material(mat).get("wall", {})
+        hs = [int(h) for h in fam if int(h) <= most]
+        if not hs:
+            raise DescriptionError(f"material '{mat}' has no wall pieces {most} high or lower")
+
+        def fit(h):
+            cands = [i for ids in fam[str(h)].values() for i in ids]
+            return max(sum(self.context[m] for m in self._in(c)) for c in cands)
+        return max(hs, key=lambda h: (fit(h), -abs(h - 5), h))
+
+    def course(self, mat: str, total: int, sig: str) -> list[tuple[int, int]]:
+        """(dz, item) low pieces stacked to at least `total` (never short: a floor sits on it)."""
+        h = self.low(mat, max(3, min(total, 6)))
+        n = max(1, -(-total // h))
+        return [(k * h, self.wall(mat, h, sig)) for k in range(n)]
 
     def heights(self, mat: str, role: str) -> list[int]:
         return sorted(int(h) for h in self.material(mat).get(role, {}))
@@ -87,11 +108,17 @@ class Catalogue:
         return [first] + [int(c, 16) for c in with_first if int(c, 16) != first][: n - 1]
 
     def step(self, mat: str, ascent: str, sig: str) -> int:
+        """A step piece; the one already used for this material and ascent again wherever the
+        originals use it with this signature (their rows are one piece end to end)."""
+        last = self.last_step.get((mat, ascent))
+        if last is not None and f"{ascent}/{sig or '-'}" in (self.pieces.get(f"{last:#06x}", {}).get("step") or {}):
+            return last
         fam = self.material(mat).get("stair", {})
         for s in fallbacks(sig):
             cands = fam.get(f"{ascent}/{s or '-'}")
             if cands:
-                return self.choose(cands)
+                self.last_step[(mat, ascent)] = self.choose(cands)
+                return self.last_step[(mat, ascent)]
         raise DescriptionError(f"material '{mat}' has no step rising {ascent} for '{sig or '-'}'")
 
     def roof(self, mat: str, side: str) -> int:
@@ -309,7 +336,8 @@ def build(desc: dict, cat: Catalogue) -> tuple[list[Component], dict]:
                 raise DescriptionError(f"storey {n}: unknown opening kind '{o['kind']}'")
         solid = walls - set(doors)
         for (x, y) in sorted(solid):
-            b.add(cat.wall(mats["wall"], wall_h, signature(solid, x, y), window=(x, y) in windows), x, y, z)
+            # the pieces beside a door are the wall's run, as the originals build them, not ends
+            b.add(cat.wall(mats["wall"], wall_h, signature(walls, x, y), window=(x, y) in windows), x, y, z)
         holes = {tuple(c) for c in st.get("floor_holes", [])} | holes_next
         floor = floor_of(fp) - holes
         ids = cat.floor(st.get("floor", mats["floor"]))
@@ -375,7 +403,8 @@ def build(desc: dict, cat: Catalogue) -> tuple[list[Component], dict]:
     if "foundation" in mats:
         ring = edge(ground_cells)
         for (x, y) in sorted(ring):
-            b.add(cat.wall(mats["foundation"], 5, signature(ring, x, y)), x, y, z0 - 7)
+            for dz, item in cat.course(mats["foundation"], 5, signature(ring, x, y)):
+                b.add(item, x, y, z0 - 7 + dz)
     # entrance steps: outside each ground door that opens straight onto open ground, and at each
     # porch's entry
     entries = []
@@ -552,7 +581,8 @@ def roof_rect(b: Built, cat: Catalogue, roof: dict, mats: dict, box, top: int) -
         if roof.get("parapet"):
             ring = edge(r)
             for (x, y) in sorted(ring):
-                b.add(cat.wall(roof["parapet"], roof.get("parapet_height", 5), signature(ring, x, y)), x, y, top)
+                for dz, item in cat.course(roof["parapet"], roof.get("parapet_height", 6), signature(ring, x, y)):
+                    b.add(item, x, y, top + dz)
     else:
         raise DescriptionError(f"roof style '{style}' is not supported (gable, flat)")
 

@@ -183,7 +183,17 @@ def prove_scene(cfg, name: str, stage: Path, out: Path, clip: Path | None, at=No
 def pick_site(cfg, at, bx0, by0, bx1, by1):
     """The world spot for local (0, 0): --at, or a clear flat box round the bounds."""
     if at:
-        return (at[0], at[1], at[2] if len(at) > 2 else None)
+        if len(at) > 2:
+            return at[0], at[1], at[2]
+        # no z given: stand it on the land most of it covers, so its doors and gates meet the
+        # ground a walker comes from; the plinth reaches lower land, higher land is buried
+        import numpy as np
+        z, _ = occupancy(cfg, 0)
+        land = z[at[1] + by0:at[1] + by1 + 1, at[0] + bx0:at[0] + bx1 + 1]
+        vals, counts = np.unique(land, return_counts=True)
+        most = int(vals[counts.argmax()])
+        print(f"[prove] land under the scene: z {int(land.min())}..{int(land.max())}, mostly {most}; standing it at {most}")
+        return at[0], at[1], most
     corner = find_site(cfg, bx1 - bx0 + 4, by1 - by0 + 4)
     if corner is None:
         print("[prove] no flat empty site near the start")
