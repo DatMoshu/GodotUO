@@ -279,6 +279,37 @@ What the probe prints, from the Thor:
 [GUO] dual screen: ok
 ```
 
+## First run: the folder picker (G2a)
+
+With no valid data, the client shows the first-run screen. On Android,
+Choose folder opens the system folder picker (the Storage Access Framework),
+through Godot's native OpenDir dialog. What that gives, as measured on the
+Thor on 2026-09-28:
+
+- **A tree URI, not a path:** `content://com.android.externalstorage.documents/tree/primary%3A<folder>`.
+  Godot's `FileAccess` reads a file in it as `<treeUri>#<name>`.
+- **Godot's `DirAccess` cannot open a tree URI** (`InvalidParameter`), and
+  SAF names are case-sensitive: `Cliloc.enu`, `Skills.idx`. Probing the
+  required list, which is lower-case, fails. So `Bootstrap/SafFolder.cs`
+  lists the folder the way Android does, over JNI: the `AndroidRuntime`
+  singleton's activity, `getContentResolver().query()` on
+  `DocumentsContract.buildChildDocumentsUriUsingTree`. That lists 347 files
+  in about 0.15 s.
+- **JavaClassWrapper matches no overload when an argument is null.** A
+  `query(uri, projection, null, null, null)` returned no cursor and threw no
+  exception. Pass typed empty values (`""`, an empty `String[]`) instead;
+  a documents provider ignores the selection and the sort anyway.
+- **The client's readers need real paths**, so Continue copies the folder's
+  files into the app's own `files/uo`. It skips the Windows client's
+  programs, libraries and logs. Files are written as `.part` and renamed
+  when whole. The copy was 2,848 MiB in about 5.5 min (about 8.5 MB/s). The
+  app then releases its folder grant: it never reads the picked folder again.
+- The picker will not open `Android/data`, so a test folder goes elsewhere
+  (for example `/sdcard/GUO_saf_test`).
+- `run.py export --no-client-data` builds without the data path, as a
+  player's install has it. The client flag `--saf-forget` releases every
+  folder grant the app holds.
+
 ## What has actually been run, and what has only been written
 
 Recorded on 2026-09-26. The first pass was written on a machine with no

@@ -561,12 +561,16 @@ def ensure_solution(p: Paths) -> None:
         sys.exit("[android] could not produce GUO.sln; the .NET export needs one")
 
 
-def device_args(p: Paths, extra: str, sound: bool = False) -> str:
-    """The client's command line on the device: where its data is, then whatever the caller adds."""
+def device_args(p: Paths, extra: str, sound: bool = False, client_data: bool = True) -> str:
+    """The client's command line on the device: where its data is, then whatever the caller adds.
+
+    client_data=False leaves the data folder out, as a player's install has it:
+    the client finds its data itself or shows the first-run screen (G2a).
+    """
     # After "--": Main.cs reads OS.GetCmdlineUserArgs(), which is only what
     # follows the separator; without it the engine kept the flags and the
     # client saw none of them (it died with "No UO client data directory").
-    base = f"-- --play --client-data {p.cfg.android_client_data}"
+    base = "-- --play" + (f" --client-data {p.cfg.android_client_data}" if client_data else "")
     # Silent unless asked: every device run is either a tool driving the
     # handheld over adb or a person trying a build, and neither wants the
     # Britain theme over the speaker. --sound exports an audible build.
@@ -583,7 +587,7 @@ def device_args(p: Paths, extra: str, sound: bool = False) -> str:
 # ---------------------------------------------------------------------------
 
 
-def export(p: Paths, extra_args: str, apk: Path, sound: bool = False) -> int:
+def export(p: Paths, extra_args: str, apk: Path, sound: bool = False, client_data: bool = True) -> int:
     console = p.godot_console()
     if not console.exists():
         sys.exit(f"[android] Godot console not found at {console}; run doctor")
@@ -592,7 +596,7 @@ def export(p: Paths, extra_args: str, apk: Path, sound: bool = False) -> int:
     apk.parent.mkdir(parents=True, exist_ok=True)
     write_editor_settings(p)
     ensure_solution(p)
-    render_preset(p, device_args(p, extra_args, sound), apk)
+    render_preset(p, device_args(p, extra_args, sound, client_data), apk)
     if apk.exists():
         apk.unlink()
 
@@ -1070,6 +1074,8 @@ def main(argv: list[str] | None = None) -> int:
     ex.add_argument("--args", default="", help="extra client flags to bake in (after --play --client-data ...)")
     ex.add_argument("--out", default=None, help="APK path (default build\\android\\GUO-debug.apk)")
     ex.add_argument("--sound", action="store_true", help="audible build (default bakes --silent)")
+    ex.add_argument("--no-client-data", action="store_true",
+                    help="bake no --client-data: the client looks for its data itself, as a player's install does")
     ins = sub.add_parser("install", help="adb install the APK")
     ins.add_argument("--apk", default=None)
     sub.add_parser("run", help="start the app and stream its logcat")
@@ -1110,7 +1116,7 @@ def main(argv: list[str] | None = None) -> int:
         render_preset(p, device_args(p, args.args, args.sound), p.apk)
         return 0
     if args.command == "export":
-        return export(p, args.args, Path(args.out) if args.out else p.apk, args.sound)
+        return export(p, args.args, Path(args.out) if args.out else p.apk, args.sound, not args.no_client_data)
     if args.command == "install":
         return install(p, Path(args.apk) if args.apk else p.apk)
     if args.command == "run":
