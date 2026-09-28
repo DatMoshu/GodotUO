@@ -241,7 +241,7 @@ internal sealed partial class CompanionTabs : Node
         // The open tab is the pressed plate, captioned in the heading colour.
         foreach ((Button b, bool on) in new[] { (_tabJournal, tab == 0), (_tabCharacter, tab == 1) })
         {
-            b.AddThemeStyleboxOverride("normal", UoTheme.Plate(on ? 0.70f : 1f));
+            b.AddThemeStyleboxOverride("normal", UoTheme.Plate(on ? UoTheme.SelectedShade : 1f));
             b.AddThemeColorOverride("font_color", on ? Heading : Text);
         }
 

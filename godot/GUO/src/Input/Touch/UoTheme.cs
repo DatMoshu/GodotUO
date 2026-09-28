@@ -63,6 +63,13 @@ internal static class UoTheme
     public const ushort SliderLeft = 0x00D5, SliderMid = 0x00D6, SliderRight = 0x00D7, SliderThumb = 0x00D8;
     public const ushort ScrollTrack = 0x0100, ScrollThumb = 0x00FE;
 
+    /// <summary>
+    /// A selected plate (a picked tab, the chosen action): lightly shaded and
+    /// captioned in <see cref="Heading"/>. A press is darker still, and only
+    /// while the finger is down.
+    /// </summary>
+    public const float SelectedShade = 0.86f;
+
     /// <summary>The font's size in art pixels (font 1 is drawn at 1x of this).</summary>
     public const int FontSize = 16;
 

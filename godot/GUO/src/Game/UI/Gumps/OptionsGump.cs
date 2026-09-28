@@ -1197,7 +1197,7 @@ namespace GUO.Game.UI.Gumps
 
                 // The command bar's thirty slots (TouchGumpBar), row 1 first.
                 string[] choices = GUO.Input.Touch.TouchGumpBar.Choices;
-                string[] titles = System.Array.ConvertAll(choices, GUO.Input.Touch.TouchGumpBar.Title);
+                string[] titles = System.Array.ConvertAll(choices, GUO.Input.Touch.TouchGumpBar.LongTitle);
                 string[] slots = GUO.Input.Touch.TouchGumpBar.Slots;
                 _barSlots = new Combobox[slots.Length];
 

@@ -104,6 +104,7 @@ internal static class TouchProbe
         await ParkCheck(host);
         await TargetTapCheck(host, world);
         await CommandBarCheck(host, world);
+        await BarHoldCheck(host, world);
         await FlickCheck(host, world);
         await OptionsTouchCheck(host, world);
         // The long press is checked with hold-and-flick off, the way a player
@@ -552,6 +553,133 @@ internal static class TouchProbe
         {
             world.TargetManager.LastTargetInfo.SetEntity(nearest.Serial);
         }
+    }
+
+    /// <summary>
+    /// The hold popup (C10): a hold on a bar button opens three buttons above
+    /// it; sliding onto an alternate and letting go runs it; sliding onto Edit
+    /// opens the slot editor, where a pick and Save change the slot; letting go
+    /// anywhere else runs nothing. Then the rule for tall windows: one moved up
+    /// to fit above the open rows, and only one taller than that room left
+    /// overlapping them.
+    /// </summary>
+    private static async System.Threading.Tasks.Task BarHoldCheck(Node host, Game.World world)
+    {
+        TouchGumpBar bar = TouchInput.Bar;
+        Configuration.Profile profile = Configuration.ProfileManager.CurrentProfile;
+
+        if (bar == null || profile == null)
+        {
+            Check("the hold popup", false, "no bar or no profile");
+            return;
+        }
+
+        profile.TouchBarSlots = TouchGumpBar.DefaultSlots;
+        profile.TouchBarAlts = null;
+        int slot = System.Array.IndexOf(TouchGumpBar.Row(1), "attack");
+        Check("a slot with alternates is marked, and Attack Last's first is Attack Selected",
+            TouchGumpBar.HasAlternates(slot) && TouchGumpBar.Alternates(slot).alt1 == "attacksel");
+
+        // Hold, slide to the first alternate, let go.
+        TouchInput.Trace.Clear();
+        Rect2 cell = bar.SlotRect(1, slot);
+        await HoldThenSlide(host, bar, cell.GetCenter(), 1);
+
+        Check("hold, slide onto an alternate and let go: it runs, and the tap's action does not",
+            TouchInput.Trace.Contains("popup -> attacksel") && !TouchInput.Trace.Contains("bar -> attack"),
+            string.Join(" | ", TouchInput.Trace));
+
+        // Hold and let go off the popup: nothing.
+        TouchInput.Trace.Clear();
+        await HoldThenSlide(host, bar, cell.GetCenter(), 0);
+
+        Check("hold, then let go away from the popup: nothing runs",
+            TouchInput.Trace.Contains("popup -> cancelled") && !TouchInput.Trace.Exists(t => t.StartsWith("bar -> attack")),
+            string.Join(" | ", TouchInput.Trace));
+
+        // Hold, slide to Edit: the editor, for this slot.
+        TouchInput.Trace.Clear();
+        await HoldThenSlide(host, bar, cell.GetCenter(), 3);
+        await Frames(host, 10);
+
+        Check("hold, slide onto Edit: the slot editor opens for that slot",
+            BarEditor.IsOpen && BarEditor.Slot == slot, string.Join(" | ", TouchInput.Trace));
+
+        if (BarEditor.IsOpen)
+        {
+            // Change the second alternate to Next Hostile, with taps, and save.
+            await TapClient(host, BarEditor.CentreOf("Hold 2: Ability 1"));
+            await TapClient(host, BarEditor.CentreOf("Targeting"));
+            await TapClient(host, BarEditor.CentreOf("nexthostile"));
+            string[] picked = BarEditor.Picked;
+            await TapClient(host, BarEditor.CentreOf("Save"));
+            await Frames(host, 5);
+
+            Check("in the editor, a pick and Save change the slot's second alternate, by name",
+                !BarEditor.IsOpen && TouchGumpBar.Alternates(slot).alt2 == "nexthostile" && TouchGumpBar.Slots[slot] == "attack",
+                $"picked {string.Join(",", picked ?? new string[0])}, now {TouchGumpBar.Alternates(slot)}, alts \"{profile.TouchBarAlts}\"");
+        }
+
+        profile.TouchBarAlts = null;
+
+        // Tall windows and three open rows.
+        Game.GameActions.OpenSettings(world);
+        await Frames(host, 30);
+        TouchGumpBar.Row(1);
+        Game.UI.Gumps.Gump options = UIManager.GetGump<Game.UI.Gumps.OptionsGump>();
+        Vector2 grip = bar.HandleRect().GetCenter();
+        await Swipe(host, grip, grip - new Vector2(0, 400), 60);
+        await Settled(host, bar);
+        await Frames(host, 40);
+
+        if (options != null)
+        {
+            int room = GumpPresentation.DisplayBounds(false).Height;
+            int h = GumpPresentation.Height(options);
+            bool fits = h <= room ? options.Y + h <= room : options.Y == 0;
+            Check("with three rows open, a tall window moves up to fit above them, or to the top if taller than the room",
+                bar.RowsOpen == 3 && fits, $"rows {bar.RowsOpen}, room {room}, options at {options.Y} height {h}");
+            options.Dispose();
+        }
+
+        await Frames(host, 5);
+    }
+
+    /// <summary>
+    /// A finger held on a bar button until its popup opens, then slid to popup
+    /// button <paramref name="index"/> (1, 2 the alternates, 3 Edit; 0 away
+    /// from it) and lifted.
+    /// </summary>
+    private static async System.Threading.Tasks.Task HoldThenSlide(Node host, TouchGumpBar bar, Vector2 at, int index)
+    {
+        Touch(0, at, true);
+        ulong until = Godot.Time.GetTicksMsec() + TouchInput.BarPopupMs + 150;
+
+        while (Godot.Time.GetTicksMsec() < until)
+        {
+            await Frames(host, 1);
+        }
+
+        Vector2 to = index > 0 ? bar.PopupRect(index).GetCenter() : new Vector2(at.X, 40);
+        Vector2 mid = (at + to) / 2;
+        Drag(0, mid, mid - at);
+        await Frames(host, 2);
+        Drag(0, to, to - mid);
+        await Frames(host, 2);
+        Touch(0, to, false);
+        await Frames(host, 10);
+    }
+
+    /// <summary>A tap at a point in client pixels (a card's control), as a finger.</summary>
+    private static async System.Threading.Tasks.Task TapClient(Node host, Vector2? client)
+    {
+        if (client == null)
+        {
+            return;
+        }
+
+        await Tap(host, client.Value * GUO.Client.Game.DpiScale);
+        await Frames(host, 3);
     }
 
     /// <summary>Wait for the bar to stop moving (its settle is 200 ms).</summary>

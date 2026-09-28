@@ -141,6 +141,15 @@ namespace GUO.Input.Touch
 
         /// <summary>The bar button a finger in <see cref="Phase.Bar"/> pressed.</summary>
         private static string _barAction;
+
+        /// <summary>The slot that finger is on (row 1 first), or -1 for a chip.</summary>
+        private static int _barSlot = -1;
+
+        /// <summary>
+        /// Milliseconds a finger stays on a bar button before its popup opens
+        /// (C10): past a tap, short of the long press a gump would give.
+        /// </summary>
+        public const int BarPopupMs = 450;
         private static int _primary = -1;
         private static int _secondary = -1;
         private static Vector2 _downAt;
@@ -280,7 +289,7 @@ namespace GUO.Input.Touch
         public static bool Handle(InputEvent e)
         {
             // The second screen's fingers come here directly (DualScreen.Deliver).
-            if (WindowMenu.HandleInput(e))
+            if (BarEditor.HandleInput(e) || WindowMenu.HandleInput(e))
             {
                 return true;
             }
@@ -339,6 +348,14 @@ namespace GUO.Input.Touch
             FlushTap(false);
             FlushRelease(false);
             ParkWhenLifted();
+
+            // A finger held still on a bar button: its popup (C10).
+            if (_phase == Phase.Bar && _bar != null && _barSlot >= 0 && _bar.PopupSlot < 0
+                && Godot.Time.GetTicksMsec() - _downTime >= BarPopupMs)
+            {
+                _bar.OpenPopup(_barSlot);
+                Note($"bar hold -> popup for {_barAction}");
+            }
 
             if (_phase != Phase.Pending)
             {
@@ -499,6 +516,7 @@ namespace GUO.Input.Touch
             if (_phase == Phase.RightHeld) Release(MouseButton.Right, ParkedAt);
             if (_phase == Phase.LeftHeld) Release(MouseButton.Left, ParkedAt);
             if (_phase == Phase.Handle) _bar?.EndDrag(_lastAt);
+            _bar?.CancelPopup();
             _bar?.Hold(null);
             _barAction = null;
             GumpFlick.Cancel();
@@ -546,6 +564,7 @@ namespace GUO.Input.Touch
                     // on a button on its way somewhere else runs nothing. The
                     // handle is a tap, or a drag once it moves.
                     _barAction = action;
+                    _barSlot = action == TouchGumpBar.Handle ? -1 : _bar.SlotAt(at);
                     _bar.Hold(action);
                     _phase = action == TouchGumpBar.Handle ? Phase.Handle : Phase.Bar;
 
@@ -583,6 +602,7 @@ namespace GUO.Input.Touch
                 // A second finger lets go of a bar button: it is no tap.
                 if (_phase == Phase.Bar)
                 {
+                    _bar?.CancelPopup();
                     LetGoOfBar("second finger");
                     return;
                 }
@@ -689,7 +709,12 @@ namespace GUO.Input.Touch
                     break;
 
                 case Phase.Bar:
-                    if (at.DistanceTo(_downAt) > BarSlopPixels)
+                    if (_bar != null && _bar.PopupSlot >= 0)
+                    {
+                        // The popup is up: the finger picks among its buttons.
+                        _bar.HoverPopup(at);
+                    }
+                    else if (at.DistanceTo(_downAt) > BarSlopPixels)
                     {
                         LetGoOfBar("moved off");
                     }
@@ -877,6 +902,35 @@ namespace GUO.Input.Touch
                     _barAction = null;
 
                     break;
+
+                case Phase.Bar when _bar != null && _bar.PopupSlot >= 0:
+                    {
+                        // The popup: run what the finger let go on, open the
+                        // slot editor, or (elsewhere) nothing.
+                        int slot = _bar.PopupSlot;
+                        string choice = _bar.ClosePopup(at);
+                        _bar.Hold(null);
+
+                        if (choice == "edit")
+                        {
+                            BarEditor.Open(slot);
+                            Note($"popup -> edit slot {slot}");
+                        }
+                        else if (choice != null)
+                        {
+                            _bar.Invoke(choice);
+                            Note($"popup -> {choice}");
+                        }
+                        else
+                        {
+                            Note("popup -> cancelled");
+                        }
+
+                        _barAction = null;
+                        _barSlot = -1;
+
+                        break;
+                    }
 
                 case Phase.Bar:
                     // The finger may have rolled onto the next button inside

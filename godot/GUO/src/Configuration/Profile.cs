@@ -253,6 +253,16 @@ namespace GUO.Configuration
         public string TouchSayFollow { get; set; } = "all follow me";
         public string TouchSayStop { get; set; } = "all stop";
 
+        // PORT DEVIATION (GUO): each slot's two alternates in its hold popup
+        // (C10): thirty "a|b" pairs, row 1 first, by action name
+        // (BarCatalogue); null keeps every slot's defaults.
+        public string TouchBarAlts { get; set; }
+
+        // PORT DEVIATION (GUO): the words of the command bar's speech actions,
+        // "id=words|id=words" (BarCatalogue.SetWords); a shard may answer to
+        // other words.
+        public string TouchBarWords { get; set; } = "";
+
         // PORT DEVIATION (GUO): a light vibration when the command bar snaps
         // to a row count (off by default), and no settle animation.
         public bool TouchVibrate { get; set; }

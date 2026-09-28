@@ -137,13 +137,68 @@ internal static class GalleryProbe
         GD.Print("[GUO] gallery: ok");
     }
 
-    /// <summary>Hold on a bar button until its popup opens; false in a build without one.</summary>
-    private static System.Threading.Tasks.Task<bool> HoldPopup(Node host, TouchGumpBar bar) =>
-        System.Threading.Tasks.Task.FromResult(false);
+    private static int _heldSlot = -1;
 
-    /// <summary>Open the slot editor; false in a build without one.</summary>
-    private static System.Threading.Tasks.Task<bool> OpenEditor(Node host) =>
-        System.Threading.Tasks.Task.FromResult(false);
+    /// <summary>
+    /// Hold a finger on a bar button (Attack Last) until its popup opens and
+    /// slide onto the first alternate; the picture is taken with the finger
+    /// still down. The finger then lets go off the popup: nothing runs.
+    /// </summary>
+    private static async System.Threading.Tasks.Task<bool> HoldPopup(Node host, TouchGumpBar bar)
+    {
+        Rect2 attack = bar.ButtonRect("attack");
+
+        if (attack.Size == Vector2.Zero)
+        {
+            return false;
+        }
+
+        Vector2 at = attack.GetCenter();
+        Godot.Input.ParseInputEvent(new InputEventScreenTouch { Index = 0, Position = at, Pressed = true });
+        ulong until = Godot.Time.GetTicksMsec() + TouchInput.BarPopupMs + 150;
+
+        while (Godot.Time.GetTicksMsec() < until)
+        {
+            await InputProbe.Wait(host, 1);
+        }
+
+        _heldSlot = bar.PopupSlot;
+        Vector2 alt = bar.PopupRect(1).GetCenter();
+        Godot.Input.ParseInputEvent(new InputEventScreenDrag { Index = 0, Position = alt, Relative = alt - at });
+        await InputProbe.Wait(host, 5);
+        bool open = bar.PopupSlot >= 0;
+
+        if (open)
+        {
+            await Save(host, "popup");
+        }
+
+        Vector2 away = new(at.X, 40);
+        Godot.Input.ParseInputEvent(new InputEventScreenDrag { Index = 0, Position = away, Relative = away - alt });
+        await InputProbe.Wait(host, 2);
+        Godot.Input.ParseInputEvent(new InputEventScreenTouch { Index = 0, Position = away, Pressed = false });
+        await InputProbe.Wait(host, 10);
+
+        return false; // pictured already, with the finger down
+    }
+
+    /// <summary>Open the slot editor for that slot, on its alternates' picker.</summary>
+    private static async System.Threading.Tasks.Task<bool> OpenEditor(Node host)
+    {
+        BarEditor.Open(_heldSlot >= 0 ? _heldSlot : 7);
+        await InputProbe.Wait(host, 20);
+
+        if (!BarEditor.IsOpen)
+        {
+            return false;
+        }
+
+        await Save(host, "editor");
+        BarEditor.Close();
+        await InputProbe.Wait(host, 5);
+
+        return false;
+    }
 
     private static async System.Threading.Tasks.Task Save(Node host, string name)
     {
