@@ -124,6 +124,9 @@ namespace GUO.Input.Touch
             /// <summary>A finger is on a touch bar button; it acts when the finger lifts on it.</summary>
             Bar,
 
+            /// <summary>A finger is on the bar's handle: a tap, or a drag that moves the rows.</summary>
+            Handle,
+
             /// <summary>The gesture is spent; wait for the finger to lift.</summary>
             Done,
         }
@@ -495,6 +498,7 @@ namespace GUO.Input.Touch
         {
             if (_phase == Phase.RightHeld) Release(MouseButton.Right, ParkedAt);
             if (_phase == Phase.LeftHeld) Release(MouseButton.Left, ParkedAt);
+            if (_phase == Phase.Handle) _bar?.EndDrag(_lastAt);
             _bar?.Hold(null);
             _barAction = null;
             GumpFlick.Cancel();
@@ -539,10 +543,11 @@ namespace GUO.Input.Touch
                 if (_bar != null && _bar.HitTest(at, out string action))
                 {
                     // Pressed now, run on release (C8): a finger that lands
-                    // on a button on its way somewhere else runs nothing.
+                    // on a button on its way somewhere else runs nothing. The
+                    // handle is a tap, or a drag once it moves.
                     _barAction = action;
                     _bar.Hold(action);
-                    _phase = Phase.Bar;
+                    _phase = action == TouchGumpBar.Handle ? Phase.Handle : Phase.Bar;
 
                     return;
                 }
@@ -578,6 +583,14 @@ namespace GUO.Input.Touch
                 // A second finger lets go of a bar button: it is no tap.
                 if (_phase == Phase.Bar)
                 {
+                    LetGoOfBar("second finger");
+                    return;
+                }
+
+                // A second finger on a dragged handle: the bar settles where it is.
+                if (_phase == Phase.Handle)
+                {
+                    _bar?.EndDrag(_lastAt);
                     LetGoOfBar("second finger");
                     return;
                 }
@@ -679,6 +692,23 @@ namespace GUO.Input.Touch
                     if (at.DistanceTo(_downAt) > BarSlopPixels)
                     {
                         LetGoOfBar("moved off");
+                    }
+
+                    break;
+
+                case Phase.Handle:
+                    // Still, it may yet be a tap; once it moves, the rows
+                    // follow the finger from where it went down.
+                    if (_barAction != null && at.DistanceTo(_downAt) > MovePixels)
+                    {
+                        _barAction = null;
+                        _bar?.BeginDrag(_downAt);
+                        Note("handle -> drag");
+                    }
+
+                    if (_barAction == null)
+                    {
+                        _bar?.Drag(at);
                     }
 
                     break;
@@ -829,6 +859,22 @@ namespace GUO.Input.Touch
                 case Phase.Scroll:
                     _scrollBar = null;
                     Note("finger up -> scroll over");
+
+                    break;
+
+                case Phase.Handle:
+                    _bar?.Hold(null);
+
+                    if (_barAction != null)
+                    {
+                        _bar?.TapHandle();
+                    }
+                    else
+                    {
+                        _bar?.EndDrag(at);
+                    }
+
+                    _barAction = null;
 
                     break;
 

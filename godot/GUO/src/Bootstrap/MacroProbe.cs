@@ -10,7 +10,7 @@ using GUO.Input.Touch;
 namespace GUO.Host;
 
 /// <summary>
-/// Tap each of the touch bar's six macros (TouchGumpBar.MacroActions) against
+/// Tap each of the command bar's targeting and combat macros (TouchGumpBar) against
 /// fixtures spawned with GM commands on the dev shard, and check that each
 /// produces exactly the action it is named for. Sprint story S2; the matrix is
 /// docs/second-screen-ui-research.md, "Action-bar and gesture test matrix".
@@ -63,17 +63,16 @@ internal static class MacroProbe
             await Frames(host, 60);
         }
 
-        // Every macro the probe taps must be on the row: the default row has
-        // no Last Object, so the probe lays the row out itself, and puts
-        // War/Peace back for its own check (a profile setting, as Options does).
-        string savedSlots = Configuration.ProfileManager.CurrentProfile.TouchMacroSlots;
-        Configuration.ProfileManager.CurrentProfile.TouchMacroSlots = "m:nearest,m:next,m:attack,m:last,m:object,m:bandage";
-        Check("the default row starts with Nearest Hostile", TouchGumpBar.DefaultMacroSlots.StartsWith("m:nearest"));
+        // Every macro the probe taps is in the default rows 1 and 2; the
+        // probe opens two rows, as the handle's tap does.
+        string savedSlots = Configuration.ProfileManager.CurrentProfile.TouchBarSlots;
+        Configuration.ProfileManager.CurrentProfile.TouchBarSlots = TouchGumpBar.DefaultSlots;
+        Check("the default row 1 has Nearest Hostile", System.Array.IndexOf(TouchGumpBar.Row(1), "nearest") >= 0);
 
         bar.ResetSession();
-        bar.Invoke(TouchGumpBar.Chevron);
-        await Frames(host, 5);
-        Check("the macro row is up", bar.RowShown);
+        bar.TapHandle();
+        await Frames(host, 40);
+        Check("two rows are open", bar.RowsOpen == 2 && !bar.Moving);
 
         // --- fixtures ------------------------------------------------------
 
@@ -108,7 +107,7 @@ internal static class MacroProbe
         // World.FindNearest(Hostile) names, and with the rats spawned beside
         // the character that is one of them.
         uint nearestExpected = world.FindNearest(ScanTypeObject.Hostile);
-        await TapMacro(host, bar, "m:nearest");
+        await TapMacro(host, bar, "nearest");
         uint nearestGot = world.TargetManager.LastTargetInfo.Serial;
         Check("Nearest Hostile selects World.FindNearest(Hostile), here a spawned rat",
             nearestGot == nearestExpected && (nearestGot == ratA.Serial || nearestGot == ratB.Serial),
@@ -125,7 +124,7 @@ internal static class MacroProbe
         for (int i = 0; i < 12 && !reachedA; i++)
         {
             uint expected = world.FindNext(ScanTypeObject.Mobiles, world.TargetManager.LastTargetInfo.Serial, false);
-            await TapMacro(host, bar, "m:next");
+            await TapMacro(host, bar, "next");
             uint got = world.TargetManager.LastTargetInfo.Serial;
 
             seen.Add($"{Name(world, got)} 0x{got:X8}");
@@ -139,7 +138,7 @@ internal static class MacroProbe
         // --- Last Target, no cursor ----------------------------------------
 
         uint attackBefore = world.TargetManager.LastAttack;
-        await TapMacro(host, bar, "m:last");
+        await TapMacro(host, bar, "last");
         await Frames(host, 30);
         Check("Last Target with no cursor does nothing",
             !world.TargetManager.IsTargeting && world.TargetManager.LastAttack == attackBefore && !me.InWarMode);
@@ -148,7 +147,7 @@ internal static class MacroProbe
 
         int journal = JournalManager.Entries.Count;
         bool cursor = await Gm(host, world, "[get Name", null);
-        await TapMacro(host, bar, "m:last");
+        await TapMacro(host, bar, "last");
         string reply = await WaitForJournal(host, journal, "rat", 180);
         Check("Last Target answers a pending cursor with the last target",
             cursor && reply != null && !world.TargetManager.IsTargeting, reply ?? "no reply naming the rat");
@@ -166,7 +165,7 @@ internal static class MacroProbe
 
         ushort hitsBefore = ratA.Hits;
         int attackJournal = JournalManager.Entries.Count;
-        await TapMacro(host, bar, "m:attack");
+        await TapMacro(host, bar, "attack");
         bool fought = false;
 
         for (int i = 0; i < 600 && !fought; i++)
@@ -235,7 +234,7 @@ internal static class MacroProbe
             world.TargetManager.CancelTarget();
             await Frames(host, 30);
 
-            await TapMacro(host, bar, "m:object");
+            await TapMacro(host, bar, "object");
             bool again = await WaitFor(host, () => world.TargetManager.IsTargeting, 180);
             Check("Last Object uses the last object again (its target cursor comes back)",
                 world.LastObject == bandage.Serial && again, $"last object 0x{world.LastObject:X8}");
@@ -252,26 +251,26 @@ internal static class MacroProbe
         await Gm(host, world, "[set Hits 30", tm => tm.Target(me.Serial));
         await Frames(host, 30);
         journal = JournalManager.Entries.Count;
-        await TapMacro(host, bar, "m:bandage");
+        await TapMacro(host, bar, "bandage");
         string applying = await WaitForJournal(host, journal, "applying", 240);
         Check("Bandage Self starts bandaging the character",
             applying != null && !world.TargetManager.IsTargeting, applying ?? $"no bandage message; hits {me.Hits}/{me.HitsMax}");
 
         // --- War/Peace -----------------------------------------------------
 
-        Configuration.ProfileManager.CurrentProfile.TouchMacroSlots = "m:nearest,m:next,m:attack,m:last,m:bandage,m:war";
+        Configuration.ProfileManager.CurrentProfile.TouchBarSlots = TouchGumpBar.DefaultSlots;
         await Frames(host, 3);
 
         bool before = me.InWarMode;
-        await TapMacro(host, bar, "m:war");
+        await TapMacro(host, bar, "war");
         bool flipped = await WaitFor(host, () => me.InWarMode != before, 120);
-        await TapMacro(host, bar, "m:war");
+        await TapMacro(host, bar, "war");
         bool back = await WaitFor(host, () => me.InWarMode == before, 120);
         Check("War/Peace toggles the stance once per tap", flipped && back, $"war {before} -> {!before} -> {me.InWarMode}");
 
         // --- clean up ------------------------------------------------------
 
-        Configuration.ProfileManager.CurrentProfile.TouchMacroSlots = savedSlots;
+        Configuration.ProfileManager.CurrentProfile.TouchBarSlots = savedSlots;
 
         foreach (Mobile rat in new[] { ratA, ratB })
         {

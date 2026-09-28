@@ -103,7 +103,7 @@ internal static class TouchProbe
         await BarCheck(host);
         await ParkCheck(host);
         await TargetTapCheck(host, world);
-        await MacroRowCheck(host, world);
+        await CommandBarCheck(host, world);
         await FlickCheck(host, world);
         await OptionsTouchCheck(host, world);
         // The long press is checked with hold-and-flick off, the way a player
@@ -337,7 +337,7 @@ internal static class TouchProbe
 
         double barUs = TouchGumpBar.CostTicks * 1_000_000.0 / System.Diagnostics.Stopwatch.Frequency / frames;
         string line = $"bar {barUs:F1} us/frame, {TouchGumpBar.DrawCount} draws in {frames} frames, "
-            + $"frame process {process / frames * 1000:F2} ms, {UIManager.Gumps.Count} gumps, row {(bar.RowShown ? "up" : "down")}";
+            + $"frame process {process / frames * 1000:F2} ms, {UIManager.Gumps.Count} gumps, rows {bar.RowsOpen}";
         GD.Print($"[GUO] touch probe: bar cost: {line}");
         Check("the bar's frame cost is measured", TouchGumpBar.DrawCount >= 0, line);
     }
@@ -405,26 +405,30 @@ internal static class TouchProbe
     }
 
     /// <summary>
-    /// The chevron and the macro row: the row comes up on entering War mode,
-    /// a macro button runs its macro (War/Peace), the chevron hides the row,
-    /// a hidden row stays hidden through the next War mode, and the chevron
-    /// brings it back. Leaves the row up for the photograph.
+    /// The command bar (C8): row 1 never moves; War mode opens two rows; a
+    /// row button runs its macro; the handle's tap goes 1 to 2 and back to 1;
+    /// a closed bar stays closed through the next War mode; a slow drag snaps
+    /// to the nearest row count and a flick goes all the way; a drag that
+    /// starts on a row runs nothing and moves nothing; the targeting swap
+    /// happens in place. Leaves three rows up for the photograph.
     /// </summary>
-    private static async System.Threading.Tasks.Task MacroRowCheck(Node host, Game.World world)
+    private static async System.Threading.Tasks.Task CommandBarCheck(Node host, Game.World world)
     {
         TouchGumpBar bar = TouchInput.Bar;
         Configuration.Profile profile = Configuration.ProfileManager.CurrentProfile;
 
         if (bar == null || profile == null)
         {
-            Check("the macro row", false, "no bar or no profile");
+            Check("the command bar", false, "no bar or no profile");
 
             return;
         }
 
-        // A desktop profile does not have the mobile default; the probe
-        // turns it on for this run, as Options would.
+        // A desktop profile does not have the mobile defaults; the probe
+        // turns them on for this run, as Options would.
         profile.TouchMacroRow = true;
+        profile.TouchBarSlots = TouchGumpBar.DefaultSlots;
+        profile.TouchReduceMotion = false;
 
         if (world.Player.InWarMode)
         {
@@ -432,50 +436,163 @@ internal static class TouchProbe
             await Frames(host, 60);
         }
 
-        // A character that logged in at war has already had its row come up.
+        // A character that logged in at war has already had its rows open.
         bar.ResetSession();
         await Frames(host, 5);
-        Check("the chevron is shown and the row is down", bar.ChevronShown && !bar.RowShown);
+        Check("the handle is shown and one row is open", bar.HandleShown && bar.RowsOpen == 1 && bar.Height == 1f);
 
-        Rect2 chevronDown = bar.ChevronRect();
+        Rect2 row1 = bar.SlotRect(1, 0);
+        Rect2 handle1 = bar.HandleRect();
         TouchInput.Trace.Clear();
         Game.GameActions.ToggleWarMode(world.Player);
-        await Frames(host, 60);
-
-        Check("the chevron stays where it was when the row opens", bar.ChevronRect() == chevronDown,
-            $"{chevronDown} -> {bar.ChevronRect()}");
+        await Settled(host, bar);
 
         Check(
-            "the row comes up on entering War mode",
-            world.Player.InWarMode && bar.RowShown,
-            $"war {world.Player.InWarMode}, row {bar.RowShown} | {string.Join(" | ", TouchInput.Trace)}"
+            "War mode opens two rows, row 1 stays where it was and the handle rises one row",
+            world.Player.InWarMode && bar.RowsOpen == 2 && bar.SlotRect(1, 0) == row1
+                && Mathf.IsEqualApprox(handle1.Position.Y - bar.HandleRect().Position.Y, row1.Size.Y),
+            $"war {world.Player.InWarMode}, rows {bar.RowsOpen}, row 1 {row1} -> {bar.SlotRect(1, 0)}, handle {handle1.Position.Y} -> {bar.HandleRect().Position.Y} | {string.Join(" | ", TouchInput.Trace)}"
         );
 
-        Rect2 war = bar.ButtonRect("m:war");
-        await Tap(host, war.Position + war.Size / 2);
+        Rect2 war = bar.ButtonRect("war");
+        await Tap(host, war.GetCenter());
         await Frames(host, 60);
 
         Check("the War/Peace button ran its macro", !world.Player.InWarMode, string.Join(" | ", TouchInput.Trace));
 
-        Rect2 chevron = bar.ChevronRect();
-        await Tap(host, chevron.Position + chevron.Size / 2);
-        await Frames(host, 5);
+        Check("row 2 holds the proposal's buttons",
+            string.Join(",", TouchGumpBar.Row(2)) == "next,object,heal,cure,ability1,ability2,lastspell,lastskill,armdisarm,status");
 
-        Check("the chevron hides the row", !bar.RowShown && bar.HiddenThisSession);
+        await Tap(host, bar.HandleRect().GetCenter());
+        await Settled(host, bar);
+
+        Check("a tap on the handle at two rows closes to one", bar.RowsOpen == 1 && bar.HiddenThisSession,
+            string.Join(" | ", TouchInput.Trace));
+
+        Game.GameActions.ToggleWarMode(world.Player);
+        await Settled(host, bar);
+
+        Check("a closed bar stays at one row on entering War mode", world.Player.InWarMode && bar.RowsOpen == 1);
 
         Game.GameActions.ToggleWarMode(world.Player);
         await Frames(host, 60);
 
-        Check("a hidden row stays down on entering War mode", world.Player.InWarMode && !bar.RowShown);
+        await Tap(host, bar.HandleRect().GetCenter());
+        await Settled(host, bar);
+        Check("a tap on the handle at one row opens two", bar.RowsOpen == 2, string.Join(" | ", TouchInput.Trace));
 
-        Game.GameActions.ToggleWarMode(world.Player);
-        await Frames(host, 60);
+        await Tap(host, bar.HandleRect().GetCenter());
+        await Settled(host, bar);
 
-        chevron = bar.ChevronRect();
-        await Tap(host, chevron.Position + chevron.Size / 2);
+        // A slow drag of a row and a bit snaps to the nearest count: two.
+        TouchInput.Trace.Clear();
+        Vector2 grip = bar.HandleRect().GetCenter();
+        await Swipe(host, grip, grip - new Vector2(0, row1.Size.Y * 1.3f), 700);
+        await Settled(host, bar);
+
+        Check("a slow drag on the handle snaps to the nearest row count", bar.RowsOpen == 2,
+            $"rows {bar.RowsOpen} | {string.Join(" | ", TouchInput.Trace)}");
+
+        // A flick up goes all the way; a flick down all the way back.
+        TouchInput.Trace.Clear();
+        grip = bar.HandleRect().GetCenter();
+        await Swipe(host, grip, grip - new Vector2(0, 60), 40);
+        await Settled(host, bar);
+        bool up = bar.RowsOpen == 3;
+
+        grip = bar.HandleRect().GetCenter();
+        await Swipe(host, grip, grip + new Vector2(0, 60), 40);
+        await Settled(host, bar);
+
+        Check("a flick up opens three rows and a flick down closes to one", up && bar.RowsOpen == 1,
+            $"up {up}, rows {bar.RowsOpen} | {string.Join(" | ", TouchInput.Trace)}");
+
+        // The rows never take the gesture: a drag from Map moves nothing and opens nothing.
+        UIManager.GetGump<MiniMapGump>()?.Dispose();
         await Frames(host, 5);
+        TouchInput.Trace.Clear();
+        Rect2 map = bar.ButtonRect("map");
+        await Swipe(host, map.GetCenter(), map.GetCenter() - new Vector2(0, 200), 500);
+        await Frames(host, 30);
 
-        Check("the chevron brings the row back", bar.RowShown, string.Join(" | ", TouchInput.Trace));
+        Check("a drag that starts on a row button moves no rows and runs nothing",
+            bar.RowsOpen == 1 && UIManager.GetGump<MiniMapGump>() == null,
+            $"rows {bar.RowsOpen} | {string.Join(" | ", TouchInput.Trace)}");
+
+        // While targeting, Chat and War/Peace become Self and Cancel in place.
+        int chatAt = System.Array.IndexOf(TouchGumpBar.Row(1), "chat");
+        int warAt = System.Array.IndexOf(TouchGumpBar.Row(1), "war");
+        world.TargetManager.SetTargeting(CursorTarget.Position, 0, TargetType.Neutral);
+        await Frames(host, 5);
+        string[] swapped = TouchGumpBar.Row(1);
+        bool inPlace = swapped[chatAt] == "self" && swapped[warAt] == "cancel";
+        await Tap(host, bar.SlotRect(1, warAt).GetCenter());
+        await Frames(host, 10);
+
+        Check("while targeting, Chat and War/Peace are Self and Cancel in place, and Cancel cancels",
+            inPlace && !world.TargetManager.IsTargeting, string.Join(",", swapped));
+
+        grip = bar.HandleRect().GetCenter();
+        await Swipe(host, grip, grip - new Vector2(0, 60), 40);
+        await Settled(host, bar);
+
+        // For the photograph: the nearest other mobile as the last target,
+        // so the handle strip shows its name and strips.
+        Game.GameObjects.Mobile nearest = null;
+
+        foreach (Game.GameObjects.Mobile m in world.Mobiles.Values)
+        {
+            if (m != world.Player && (nearest == null || m.Distance < nearest.Distance))
+            {
+                nearest = m;
+            }
+        }
+
+        if (nearest != null)
+        {
+            world.TargetManager.LastTargetInfo.SetEntity(nearest.Serial);
+        }
+    }
+
+    /// <summary>Wait for the bar to stop moving (its settle is 200 ms).</summary>
+    private static async System.Threading.Tasks.Task Settled(Node host, TouchGumpBar bar)
+    {
+        ulong until = Godot.Time.GetTicksMsec() + 1500;
+        await Frames(host, 3);
+
+        while (bar.Moving && Godot.Time.GetTicksMsec() < until)
+        {
+            await Frames(host, 1);
+        }
+
+        await Frames(host, 3);
+    }
+
+    /// <summary>A finger from one point to another over a time, whatever the frame rate.</summary>
+    private static async System.Threading.Tasks.Task Swipe(Node host, Vector2 from, Vector2 to, int milliseconds)
+    {
+        Touch(0, from, true);
+        await Frames(host, 1);
+        ulong start = Godot.Time.GetTicksMsec();
+        Vector2 last = from;
+
+        while (true)
+        {
+            float t = System.Math.Min(1f, (Godot.Time.GetTicksMsec() - start) / (float)milliseconds);
+            Vector2 at = from.Lerp(to, t);
+            Drag(0, at, at - last);
+            last = at;
+
+            if (t >= 1f)
+            {
+                break;
+            }
+
+            await Frames(host, 1);
+        }
+
+        Touch(0, to, false);
+        await Frames(host, 5);
     }
 
     /// <summary>

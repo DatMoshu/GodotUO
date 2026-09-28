@@ -124,7 +124,9 @@ namespace GUO.Game.UI.Gumps
         private Combobox _dualScaleFine; // PORT DEVIATION (GUO)
         private HSliderBar _chevronInset; // PORT DEVIATION (GUO)
         private Combobox[] _flick; // PORT DEVIATION (GUO): hold-and-flick, up/down/left/right
-        private Combobox[] _macroSlots; // PORT DEVIATION (GUO): the touch macro row's six slots
+        private Combobox[] _barSlots; // PORT DEVIATION (GUO): the command bar's thirty slots
+        private InputField[] _barSay; // PORT DEVIATION (GUO): the command bar's speech words
+        private Checkbox _barVibrate, _barReduceMotion; // PORT DEVIATION (GUO)
         private Checkbox _showTouches; // PORT DEVIATION (GUO): debug touch overlay
         private Checkbox _companionTabs; // PORT DEVIATION (GUO): the second screen as companion tabs
         private Checkbox _showHandles; // PORT DEVIATION (GUO): the "UI" window handles always drawn
@@ -997,40 +999,6 @@ namespace GUO.Game.UI.Gumps
 
             section3.Add(_showHandles = AddCheckBox(null, "Show window handles", _currentProfile.ShowWindowHandles, 0, 0));
 
-            // PORT DEVIATION (GUO): the touch bar's chevron, moved in from the
-            // corner (TouchGumpBar). An option to compare; 0 is the corner.
-            if (GUO.Input.Touch.TouchInput.Enabled)
-            {
-                section3.Add(AddLabel(null, "Touch bar chevron inset from the corner", 0, 0));
-                section3.AddRight(_chevronInset = AddHSlider(null, 0, 200, _currentProfile.TouchChevronInset, 0, 0, 120));
-
-                section3.Add(_showTouches = AddCheckBox(null, "Debug: show touches on screen", _currentProfile.DebugShowTouches, 0, 0));
-                section3.Add(_companionTabs = AddCheckBox(null, "Companion tabs on the second screen (prototype)", _currentProfile.CompanionTabs, 0, 0));
-
-                // Hold a gump still, then flick: what each direction does (GumpFlick).
-                int[] current = { _currentProfile.FlickUp, _currentProfile.FlickDown, _currentProfile.FlickLeft, _currentProfile.FlickRight };
-                // The macro row's six slots (TouchGumpBar), left to right.
-                string[] choices = GUO.Input.Touch.TouchGumpBar.MacroChoices;
-                string[] titles = System.Array.ConvertAll(choices, GUO.Input.Touch.TouchGumpBar.MacroTitle);
-                string[] slots = GUO.Input.Touch.TouchGumpBar.MacroActions;
-                _macroSlots = new Combobox[slots.Length];
-
-                for (int i = 0; i < slots.Length; i++)
-                {
-                    section3.Add(AddLabel(null, $"Macro row slot {i + 1}", 0, 0));
-                    section3.AddRight(_macroSlots[i] = AddCombobox(null, titles, System.Math.Max(0, System.Array.IndexOf(choices, slots[i])), 0, 0, 170));
-                }
-
-                _flick = new Combobox[4];
-
-                for (int i = 0; i < 4; i++)
-                {
-                    section3.Add(AddLabel(null, $"Hold and flick {GUO.Input.Touch.GumpFlick.DirectionNames[i]}", 0, 0));
-                    section3.AddRight(_flick[i] = AddCombobox(null, GUO.Input.Touch.GumpFlick.ActionTitles,
-                        System.Math.Clamp(current[i], 0, GUO.Input.Touch.GumpFlick.ActionTitles.Length - 1), 0, 0, 170));
-                }
-            }
-
             section3.Add
             (
                 _holdDownKeyAlt = AddCheckBox
@@ -1218,8 +1186,68 @@ namespace GUO.Game.UI.Gumps
             );
 
 
+            // PORT DEVIATION (GUO): the touch settings, on a touch build only,
+            // grouped: the command bar, then windows, then debugging.
+            SettingsSection sectionTouch = null;
+
+            if (GUO.Input.Touch.TouchInput.Enabled)
+            {
+                sectionTouch = AddSettingsSection(box, "Touch");
+                sectionTouch.Y = section3.Bounds.Bottom + 40;
+
+                // The command bar's thirty slots (TouchGumpBar), row 1 first.
+                string[] choices = GUO.Input.Touch.TouchGumpBar.Choices;
+                string[] titles = System.Array.ConvertAll(choices, GUO.Input.Touch.TouchGumpBar.Title);
+                string[] slots = GUO.Input.Touch.TouchGumpBar.Slots;
+                _barSlots = new Combobox[slots.Length];
+
+                for (int i = 0; i < slots.Length; i++)
+                {
+                    int per = GUO.Input.Touch.TouchGumpBar.PerRow;
+                    sectionTouch.Add(AddLabel(null, $"Command bar row {i / per + 1}, slot {i % per + 1}", 0, 0));
+                    sectionTouch.AddRight(_barSlots[i] = AddCombobox(null, titles, System.Math.Max(0, System.Array.IndexOf(choices, slots[i])), 0, 0, 170));
+                }
+
+                // What the speech slots say, for a shard that answers to other words.
+                string[] sayNames = { "Bank", "Guards", "All Follow Me", "All Stop" };
+                string[] sayWords = { _currentProfile.TouchSayBank, _currentProfile.TouchSayGuards, _currentProfile.TouchSayFollow, _currentProfile.TouchSayStop };
+                _barSay = new InputField[sayNames.Length];
+
+                for (int i = 0; i < sayNames.Length; i++)
+                {
+                    sectionTouch.Add(AddLabel(null, $"{sayNames[i]} says", 0, 0));
+                    sectionTouch.AddRight(_barSay[i] = AddInputField(null, 0, 0, 170, TEXTBOX_HEIGHT, null, 0, false, false));
+                    _barSay[i].SetText(sayWords[i] ?? "");
+                }
+
+                sectionTouch.Add(_barVibrate = AddCheckBox(null, "Vibrate when the command bar snaps", _currentProfile.TouchVibrate, 0, 0));
+                sectionTouch.Add(_barReduceMotion = AddCheckBox(null, "Reduce motion (the command bar snaps without sliding)", _currentProfile.TouchReduceMotion, 0, 0));
+
+                // The arrow, moved in from the corner. An option to compare; 0 is the corner.
+                sectionTouch.Add(AddLabel(null, "Command bar arrow inset from the corner", 0, 0));
+                sectionTouch.AddRight(_chevronInset = AddHSlider(null, 0, 200, _currentProfile.TouchChevronInset, 0, 0, 120));
+
+                // Hold a gump still, then flick: what each direction does (GumpFlick).
+                int[] current = { _currentProfile.FlickUp, _currentProfile.FlickDown, _currentProfile.FlickLeft, _currentProfile.FlickRight };
+                _flick = new Combobox[4];
+
+                for (int i = 0; i < 4; i++)
+                {
+                    sectionTouch.Add(AddLabel(null, $"Hold and flick {GUO.Input.Touch.GumpFlick.DirectionNames[i]}", 0, 0));
+                    sectionTouch.AddRight(_flick[i] = AddCombobox(null, GUO.Input.Touch.GumpFlick.ActionTitles,
+                        System.Math.Clamp(current[i], 0, GUO.Input.Touch.GumpFlick.ActionTitles.Length - 1), 0, 0, 170));
+                }
+
+                if (GUO.Platform.Android.DualScreen.HasSecondaryDisplay)
+                {
+                    sectionTouch.Add(_companionTabs = AddCheckBox(null, "Companion tabs on the second screen (prototype)", _currentProfile.CompanionTabs, 0, 0));
+                }
+
+                sectionTouch.Add(_showTouches = AddCheckBox(null, "Debug: show touches on screen", _currentProfile.DebugShowTouches, 0, 0));
+            }
+
             SettingsSection section4 = AddSettingsSection(box, "Miscellaneous");
-            section4.Y = section3.Bounds.Bottom + 40;
+            section4.Y = (sectionTouch ?? section3).Bounds.Bottom + 40;
 
             section4.Add
             (
@@ -4222,11 +4250,17 @@ namespace GUO.Game.UI.Gumps
                 _currentProfile.DebugShowTouches = _showTouches.IsChecked;
             }
 
-            if (_macroSlots != null)
+            if (_barSlots != null)
             {
-                string[] choices = GUO.Input.Touch.TouchGumpBar.MacroChoices;
-                _currentProfile.TouchMacroSlots = string.Join(",", System.Array.ConvertAll(_macroSlots,
+                string[] choices = GUO.Input.Touch.TouchGumpBar.Choices;
+                _currentProfile.TouchBarSlots = string.Join(",", System.Array.ConvertAll(_barSlots,
                     c => choices[System.Math.Clamp(c.SelectedIndex, 0, choices.Length - 1)]));
+                _currentProfile.TouchSayBank = _barSay[0].Text ?? "";
+                _currentProfile.TouchSayGuards = _barSay[1].Text ?? "";
+                _currentProfile.TouchSayFollow = _barSay[2].Text ?? "";
+                _currentProfile.TouchSayStop = _barSay[3].Text ?? "";
+                _currentProfile.TouchVibrate = _barVibrate.IsChecked;
+                _currentProfile.TouchReduceMotion = _barReduceMotion.IsChecked;
             }
 
             if (_flick != null)
