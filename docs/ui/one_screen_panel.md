@@ -36,8 +36,9 @@ that step, but never below 2. The unfolded Fold at 2076×1557 is 3× with 52 px 
 ## The drawer
 
 - **The tab.** A stone tab (the card frame, 0x13BE) 28×60 art px, at `UoTheme.PixelScale`, on the drawer's inner
-  edge. That is the window's edge while the drawer is closed. An ink chevron with a one-pixel cream light points the
-  way a tap will move it.
+  edge. That is the window's edge while the drawer is closed. The classic gumps' gold page arrow (gump 0x15E1,
+  16×16) points the way a tap will move it, flipped rather than a second texture (GUOUI's review: the client's own
+  art over a drawn one). A hand-drawn ink chevron stands in only if the client data has no such gump.
 - **Open or close.** A tap on the tab does either. A drag on the tab pulls the drawer with the finger, and letting go
   past a third of the way decides. A tap on the world beside an open drawer closes it and does nothing else, unless an
   item is held: then it is a drop. Slides take 0.14 s.

@@ -32,7 +32,7 @@ namespace GUO.Platform.Android
     /// (MobileProfile.CentreLoginGump). Only when the window has room for
     /// both. Otherwise the card's modal stays the way in.</item>
     /// <item><b>Drawer</b>: in the world, a panel over one edge (the
-    /// player's choice), opened and closed by a stone tab with a chevron on
+    /// player's choice), opened and closed by a stone tab with a page arrow on
     /// that edge (a tap, or a drag), by a tap outside it, or by the pad's
     /// Back button. It holds the shelf gumps and the companion tabs, as the
     /// Thor's lower screen does.</item>
@@ -71,7 +71,7 @@ namespace GUO.Platform.Android
         /// <summary>Seconds the drawer takes to open or close.</summary>
         private const float SlideSeconds = 0.14f;
 
-        /// <summary>The tab, in art pixels (scaled by UoTheme.PixelScale): a stone frame with a chevron.</summary>
+        /// <summary>The tab, in art pixels (scaled by UoTheme.PixelScale): a stone frame with a page arrow.</summary>
         private const int TabWidth = 28, TabHeight = 60;
 
         /// <summary>Window px a finger moves before a press on the tab is a drag.</summary>
@@ -334,8 +334,9 @@ namespace GUO.Platform.Android
         }
 
         /// <summary>
-        /// The tab: the card's grey stone frame at the tab's size, with a
-        /// chevron in ink pointing the way the drawer will move. Built at art
+        /// The tab: the card's grey stone frame at the tab's size, with the
+        /// classic gumps' gold page arrow (gump 0x15E1, 16x16) pointing the
+        /// way the drawer will move, flipped for the other way. Built at art
         /// pixels and scaled by the cards' whole number, as every card is.
         /// </summary>
         private void BuildTab()
@@ -351,7 +352,7 @@ namespace GUO.Platform.Android
 
             _chevron = new TextureRect
             {
-                Texture = Chevron(),
+                Texture = UoTheme.GumpTexture(PageArrow) ?? Chevron(),
                 StretchMode = TextureRect.StretchModeEnum.KeepCentered,
                 TextureFilter = CanvasItem.TextureFilterEnum.Nearest,
                 MouseFilter = Control.MouseFilterEnum.Ignore,
@@ -373,9 +374,16 @@ namespace GUO.Platform.Android
             _panelLayer.AddChild(_tabGlyph);
         }
 
+        /// <summary>The classic gumps' small gold page arrow, pointing right.</summary>
+        private const ushort PageArrow = 0x15E1;
+
         private static ImageTexture _chevronTexture;
 
-        /// <summary>A right-pointing chevron, 6x11 art px, ink with a one-pixel cream light on its upper edge, as the client's arrows are lit.</summary>
+        /// <summary>
+        /// Only when the client data has no page arrow: a right-pointing
+        /// chevron, 6x11 art px, ink with a one-pixel cream light on its upper
+        /// edge, as the client's arrows are lit.
+        /// </summary>
         private static ImageTexture Chevron()
         {
             if (_chevronTexture != null)
