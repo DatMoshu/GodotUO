@@ -43,6 +43,9 @@ internal static class PerfProbe
         new("dungeon", "[go 5401 629", "the mouth of Despise (ab_compare despise-mouth): dungeon light level, torches"),
     };
 
+    /// <summary>--perf-scene NAME, repeatable: these world scenes only (all when empty).</summary>
+    public static readonly List<string> Only = new();
+
     private const int Settle = 180;
     private static string _outDir, _label;
     private static bool _parity;
@@ -101,7 +104,9 @@ internal static class PerfProbe
             GD.Print($"[GUO] perf probe: zoom {camera.Zoom:F1} (asked {zoom:F1}, range {camera.ZoomMin:F1}-{camera.ZoomMax:F1})");
         }
 
-        foreach (Scene scene in Scenes)
+        Scene[] scenes = Only.Count == 0 ? Scenes : System.Array.FindAll(Scenes, s => Only.Contains(s.Name));
+
+        foreach (Scene scene in scenes)
         {
             await InputProbe.Say(host, scene.Go);
             // Chunks newly in view load and build their meshes first; that is a
@@ -126,7 +131,7 @@ internal static class PerfProbe
 
         GUO.Utility.Profiler.Enabled = profiling;
         Write(outDir, label, results);
-        Passed = results.Count == (_parity ? 2 : 1) * Scenes.Length + 1;
+        Passed = results.Count == (_parity ? 2 : 1) * scenes.Length + 1;
     }
 
     private static async System.Threading.Tasks.Task<Dictionary<string, object>> Measure(Node host, Rid viewport, string name, string what)
