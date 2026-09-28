@@ -81,5 +81,9 @@ about 370 MiB for a short session, out of 2.6 GB.
 - **Sound needs a click** in a real browser: pages may not play audio before
   the first user gesture.
 - **No plugins** (Razor and the like are Windows DLLs).
-- Picking your UO folder in the browser, instead of running `serve`, is
-  designed but not built.
+- **Picking your UO folder in the browser** (instead of running `serve`):
+  with no install served, the first-run screen's Choose folder opens the
+  browser's folder picker, and the files are read where they are, never
+  uploaded. Tested in Chrome; in Firefox the client does not yet get past
+  its splash (with or without a picked folder). The pick lasts for the
+  visit: the next visit asks again.
