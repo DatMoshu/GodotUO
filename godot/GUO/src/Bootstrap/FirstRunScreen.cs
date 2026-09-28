@@ -22,8 +22,12 @@ using Godot;
 /// Re-opened from Options ("Change UO folder…", a marked PORT DEVIATION in
 /// OptionsGump) through <see cref="OpenChange"/>: the same screen in change
 /// mode, which saves the folder into upstream's settings and says it applies
-/// on the next start. The Android folder picker (SAF) and the web are not
-/// handled here.
+/// on the next start. The Android folder picker (SAF) is not handled here.
+///
+/// On the web (ADR-0008, ADR-0021) Choose folder opens the browser's own
+/// picker through tools/web/guo_data.js: the player's folder is read in place
+/// by a worker and mounted at /uo_picked, and this screen checks it like any
+/// other folder. Nothing is uploaded.
 /// </remarks>
 internal sealed partial class FirstRunScreen : CanvasLayer
 {
@@ -189,8 +193,40 @@ internal sealed partial class FirstRunScreen : CanvasLayer
         return b;
     }
 
+    private static bool Web => OS.HasFeature("web");
+
+    private int _webPicks;
+
+    public override void _Process(double delta)
+    {
+        // A pick made in the page (the folder dialog, or a test filling the
+        // folder input) is checked as soon as it is mounted.
+        if (!Web)
+        {
+            return;
+        }
+
+        Variant count = JavaScriptBridge.Eval("(window.guoWeb && window.guoWeb.pickCount) || 0");
+        int picks = count.VariantType is Variant.Type.Int or Variant.Type.Float ? (int)count.AsDouble() : 0;
+        if (picks != _webPicks)
+        {
+            _webPicks = picks;
+            string root = (string)JavaScriptBridge.Eval("window.guoWeb.pickRoot");
+            string label = (string)JavaScriptBridge.Eval("window.guoWeb.picked ? window.guoWeb.picked.label : ''");
+            Pick(root);
+            _folder.Text = $"{label} (read in this browser; nothing is uploaded)";
+        }
+    }
+
     private void ChooseFolder()
     {
+        if (Web)
+        {
+            // Inside the click's user activation, which the browser's picker needs.
+            JavaScriptBridge.Eval("window.guoWeb && window.guoWeb.pickFolder()");
+            return;
+        }
+
         string start = _picked ?? System.Environment.GetFolderPath(System.Environment.SpecialFolder.ProgramFilesX86);
         if (DisplayServer.HasFeature(DisplayServer.Feature.NativeDialogFile))
         {
@@ -270,6 +306,12 @@ internal sealed partial class FirstRunScreen : CanvasLayer
 
     private async Task Probe(string folder, string shotDir)
     {
+        if (folder == "web")
+        {
+            await ProbeWeb(shotDir);
+            return;
+        }
+
         string dir = string.IsNullOrWhiteSpace(shotDir) ? ProjectSettings.GlobalizePath("user://") : shotDir;
         Directory.CreateDirectory(dir);
         await Shot(Path.Combine(dir, "first_run_1_screen.png"));
@@ -279,6 +321,28 @@ internal sealed partial class FirstRunScreen : CanvasLayer
         await Shot(Path.Combine(dir, "first_run_3_good_pick.png"));
         GD.Print($"[GUO] first run     : probe pressing {_continue.Text} ({(_continue.Disabled ? "disabled" : "enabled")})");
         _continue.EmitSignal(BaseButton.SignalName.Pressed);
+    }
+
+    /// <summary>
+    /// The web's probe: the screen, then a folder picked from outside (a test
+    /// fills the page's folder input), checked, and Continue pressed.
+    /// </summary>
+    private async Task ProbeWeb(string shotDir)
+    {
+        string dir = string.IsNullOrWhiteSpace(shotDir) ? ProjectSettings.GlobalizePath("user://") : shotDir;
+        Directory.CreateDirectory(dir);
+        GD.Print("[GUO] first run     : web probe waiting for a picked folder");
+        for (int i = 0; i < 20 * 60 && _webPicks == 0; i++)
+        {
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        }
+
+        await Shot(Path.Combine(dir, "first_run_web_picked.png"));
+        GD.Print($"[GUO] first run     : web probe pressing {_continue.Text} ({(_continue.Disabled ? "disabled" : "enabled")})");
+        if (!_continue.Disabled)
+        {
+            _continue.EmitSignal(BaseButton.SignalName.Pressed);
+        }
     }
 
     private async Task Shot(string path)

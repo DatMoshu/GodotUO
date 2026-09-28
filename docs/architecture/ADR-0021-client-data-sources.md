@@ -91,7 +91,20 @@ Re-opening from Options, verified 2026-09-27:
 - the native folder dialog itself (`DisplayServer.FileDialogShow`, falling
   back to Godot's `FileDialog`). The probe picks a folder without opening it,
   because opening one needs a person at the desktop.
-- the Android SAF picker (GUOAndroid) and the web.
+- the Android SAF picker (GUOAndroid).
+- the web's folder pick in Firefox, and the native `showDirectoryPicker`
+  dialog in any browser (a headless test cannot drive it). Verified
+  2026-09-28 in Chrome: `tools\web\run.py smoke --pick FOLDER` hands the
+  page's folder input a real install (520 files, 2.5 GB), the first-run
+  screen finds it valid, Continue boots the client on it, and the login gump
+  draws. The first-run screen calls the page's picker
+  (`tools/web/guo_data.js`); a worker (`guo_picker_worker.js`) reads the
+  picked files in place and they are mounted at `/uo_picked`; nothing is
+  uploaded. In Firefox the pick itself works (mounted, valid, the client
+  boots on it), but the page stalls before the login gump, and it stalls the
+  same way with the install served over HTTP: a Firefox problem of the web
+  client as a whole, not of the pick. A read the worker does not answer in
+  10 s fails with a message instead of hanging the tab.
 - the Android and Deck platform defaults at runtime. They are written, but
   not yet run on a device.
 
@@ -187,7 +200,7 @@ Platform defaults, tried in order:
 | Windows | the registry `HKLM\SOFTWARE\WOW6432Node\Electronic Arts\EA Games\Ultima Online Classic` `InstallDir` (measured); then `%ProgramFiles(x86)%` and `%ProgramFiles%` `\Electronic Arts\Ultima Online Classic` |
 | Steam Deck and Linux | `~/UO` (the Deck tools' existing default, `UO_DECK_CLIENT_DATA`) |
 | Android | the app's external files folder, `/sdcard/Android/data/<package>/files/uo` (where `tools\android push` puts it) |
-| Web | none; the wizard (File System Access, later) |
+| Web | the install `tools\web\run.py serve` hands the page from the player's own PC (ADR-0008); without one, the wizard, whose Choose folder opens the browser's folder picker (see below) |
 
 ### What "valid" means
 
