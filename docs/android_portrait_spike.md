@@ -27,9 +27,9 @@ the screenshots go to `build/` for a post drafted in the morning.
 | # | Question | Measure | Kill if |
 |---|---|---|---|
 | 1 | Does the rotation itself work? | `ScreenSetOrientation` flips the surface; `size_changed` fires once; time to the first frame after it; textures intact (no lost GL context) | the surface is recreated and the atlases are lost |
-| 2 | Pre-game | login and character-select gumps at portrait width: `DpiScale`, whether the pre-game centring clips them | the login gump cannot be seen whole at any scale ≥ 1x |
+| 2 | Pre-game | login and character-select gumps at portrait width: `DpiScale`, whether the pre-game centring clips them | the login gump is too big for the screen at any scale ≥ 1x (placed off it is a fix, not a kill) |
 | 3 | The world | world view size with `GameWindowFullSize`; tiles visible east-west and north-south vs landscape (the isometric diamond loses width) | fewer than ~9 tiles across the character's row |
-| 4 | The command bar | cell = view width / `PerRow` (10): px and mm per slot in each orientation; three rows' height as % of the screen | a slot under ~7 mm, or three rows over ~30% of the screen |
+| 4 | The command bar | cell = view width / `PerRow` (10): px and mm per slot in each orientation; three rows' height as % of the screen | a slot under ~7 mm wide or ~5 mm tall (the plate's art scale follows the cell width, so a narrow screen shrinks it both ways), or three rows over ~30% of the screen |
 | 5 | Gumps | for paperdoll, backpack, Options (classic and Modern), Skills, Spellbook, world map: fits width at 1x? what `GumpPresentation` fit gives; which spill off the side | the everyday gumps (paperdoll, backpack, Modern views) need a sideways scroll |
 | 6 | Saved positions | gumps saved in landscape, reopened in portrait: on screen, or off the right edge? and back | (a cost, not a kill: a clamp on rotate) |
 | 7 | Soft keyboard | share of the screen the IME covers in portrait; journal/chat entry still visible | — |

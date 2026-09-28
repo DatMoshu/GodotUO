@@ -61,7 +61,7 @@ internal static class PortraitProbe
 
         bool turned = turn.Flipped && colorsP * 4 >= colorsL;
         Row(1, "the rotation", $"{colorsL} colours", $"flipped {turn.Flipped} in {turn.Ms} ms, {turn.Events} resize(s), {colorsP} colours", !turned);
-        Row(2, "the login gump fits", loginL, loginP, login == null || !loginP.StartsWith("fits"));
+        Row(2, "the login gump fits", loginL, loginP, login == null || loginP.StartsWith("too big"));
 
         await Rotate(host, false);
 
@@ -92,7 +92,7 @@ internal static class PortraitProbe
         await InputProbe.Wait(host, 30);
 
         Row(3, "world tiles across x down", land.Tiles, port.Tiles, port.TilesAcross < 9f);
-        Row(4, "command bar: slot mm, three rows % of screen", land.Bar, port.Bar, port.SlotMm < 7f || port.RowsShare > 0.30f);
+        Row(4, "command bar: slot w x h mm, three rows % of screen", land.Bar, port.Bar, port.SlotMm < 7f || port.PlateMm < 5f || port.RowsShare > 0.30f);
         Row(5, "gumps: scale to fit the width", land.Gumps, port.Gumps, port.EverydayMin < 1f);
 
         Finish(true);
@@ -162,9 +162,11 @@ internal static class PortraitProbe
     {
         Compat.Rectangle b = GumpPresentation.Bounds(g);
         Compat.Rectangle c = Client.Game.ClientBounds;
-        bool fits = b.X >= 0 && b.Y >= 0 && b.Right <= c.Width && b.Bottom <= c.Height;
+        bool size = b.Width <= c.Width && b.Height <= c.Height;
+        bool placed = b.X >= 0 && b.Y >= 0 && b.Right <= c.Width && b.Bottom <= c.Height;
+        string how = placed ? "fits" : size ? $"fits in size, placed off the screen at {b.X},{b.Y}" : "too big";
 
-        return $"{(fits ? "fits" : "clips")} {b.Width}x{b.Height} in {c.Width}x{c.Height} at dpi scale {Client.Game.DpiScale:0.##}";
+        return $"{how}: {b.Width}x{b.Height} in {c.Width}x{c.Height} at dpi scale {Client.Game.DpiScale:0.##}";
     }
 
     /// <summary>Distinct colours on a 32x32 grid of the frame: a lost atlas draws flat.</summary>
@@ -188,7 +190,7 @@ internal static class PortraitProbe
     private struct Measures
     {
         public string Tiles, Bar, Gumps;
-        public float TilesAcross, SlotMm, RowsShare, EverydayMin;
+        public float TilesAcross, SlotMm, PlateMm, RowsShare, EverydayMin;
     }
 
     private static async System.Threading.Tasks.Task<Measures> Measure(Node host, World world, string orientation)
@@ -222,8 +224,9 @@ internal static class PortraitProbe
             float dpi = System.Math.Max(1, DisplayServer.ScreenGetDpi());
             float screen = host.GetViewport().GetVisibleRect().Size.Y;
             m.SlotMm = slot.Size.X / dpi * 25.4f;
+            m.PlateMm = slot.Size.Y / dpi * 25.4f;
             m.RowsShare = slot.Size.Y * TouchGumpBar.RowCount / screen;
-            m.Bar = $"{m.SlotMm:0.#} mm ({slot.Size.X:0}x{slot.Size.Y:0} px at {dpi} dpi), three rows {m.RowsShare:P0}";
+            m.Bar = $"{m.SlotMm:0.#} x {m.PlateMm:0.#} mm ({slot.Size.X:0}x{slot.Size.Y:0} px at {dpi} dpi), three rows {m.RowsShare:P0}";
         }
 
         // 5: the gumps a player opens every session, as the client opens them.
@@ -248,9 +251,10 @@ internal static class PortraitProbe
         GameActions.OpenBackpack(world);
         await InputProbe.Wait(host, 60);
         PaperDollGump doll = UIManager.GetGump<PaperDollGump>(world.Player.Serial);
-        ContainerGump pack = UIManager.GetGump<ContainerGump>(world.Player.FindItemByLayer(Game.Data.Layer.Backpack)?.Serial ?? 0);
+        uint packSerial = world.Player.FindItemByLayer(Game.Data.Layer.Backpack)?.Serial ?? 0;
+        Gump pack = packSerial == 0 ? null : UIManager.GetGump(packSerial);
         Note("paperdoll", doll == null ? 0 : GumpPresentation.Width(doll), true);
-        Note("backpack", pack == null ? 0 : GumpPresentation.Width(pack), true);
+        Note(pack == null ? "backpack" : $"backpack ({pack.GetType().Name})", pack == null ? 0 : GumpPresentation.Width(pack), true);
         await Hold($"gumps_{orientation}");
         doll?.Dispose();
         pack?.Dispose();
