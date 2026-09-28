@@ -449,7 +449,7 @@ internal static class PregameProbe
             }
 
             string atOff = cycle.Value.Text;
-            bool offHidden = !off.Visible;
+            bool offHidden = off.Disabled && off.Modulate.A == 0;
 
             // Two steps on, so Off saves more than one tap back.
             card.Tap(cycle.Next);
@@ -457,13 +457,13 @@ internal static class PregameProbe
             card.Tap(cycle.Next);
             await InputProbe.Wait(host, 4);
             string look = cycle.Value.Text;
-            bool on = look != "Off" && stack.Preset.Name == look && off.Visible;
+            bool on = look != "Off" && stack.Preset.Name == look && !off.Disabled;
             string saved = SavedLook(state);
             await Save(host, "settings_screen_effects_on");
 
             card.Tap(off);
             await InputProbe.Wait(host, 4);
-            bool backOff = cycle.Value.Text == "Off" && stack.Preset.IsClassic && !off.Visible;
+            bool backOff = cycle.Value.Text == "Off" && stack.Preset.IsClassic && off.Disabled;
             string savedOff = SavedLook(state);
 
             Check("Screen: Screen effects shows Off for Classic, steps to a look (on the world, kept), and Off goes back to Classic in one tap",
@@ -478,7 +478,7 @@ internal static class PregameProbe
                 stack.Use(other);
                 await InputProbe.Wait(host, 4);
                 Check("Screen: a look changed in the effects menu shows on the Screen effects line",
-                    cycle.Value.Text == other.Name && off.Visible, $"line \"{cycle.Value.Text}\", look {other.Name}");
+                    cycle.Value.Text == other.Name && !off.Disabled, $"line \"{cycle.Value.Text}\", look {other.Name}");
             }
         }
         finally

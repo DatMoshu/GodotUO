@@ -274,15 +274,24 @@ internal sealed partial class PregameSettings : HBoxContainer
 
     /// <summary>
     /// Off on the Screen effects line: back to Classic in one tap, however
-    /// far round the list the look is. Hidden while the look is already off.
+    /// far round the list the look is. Set a little apart from the stepper,
+    /// so it doesn't read as a third arrow, and faded out (not removed, so
+    /// the row keeps still) while the look is already off (GUOUI's review).
     /// </summary>
     private void ScreenEffectsOff()
     {
         (Button back, Label value, Button next) = CycleButtons["Screen effects"];
         Button off = UoTheme.Button("Off", 28);
         off.Pressed += () => GUO.Renderer.PostFx.PostFxStack.Instance.Use(GUO.Renderer.PostFx.PostFxPreset.Classic());
+        next.GetParent().AddChild(new Control { CustomMinimumSize = new Vector2(4, 0), MouseFilter = MouseFilterEnum.Ignore });
         next.GetParent().AddChild(off);
-        _refreshers.Add(() => off.Visible = ScreenEffectsName() != "Off");
+        _refreshers.Add(() =>
+        {
+            bool on = ScreenEffectsName() != "Off";
+            off.Disabled = !on;
+            off.FocusMode = on ? FocusModeEnum.All : FocusModeEnum.None;
+            off.Modulate = new Color(1, 1, 1, on ? 1 : 0);
+        });
         ScreenEffectsOffButton = off;
     }
 
