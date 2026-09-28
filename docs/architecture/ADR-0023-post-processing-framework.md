@@ -179,7 +179,8 @@ tritanopia).
     resolution off. It is on by default on the desktop, off on the mobile
     tier.
   - Measured on the desktop: Glow 0.21 → 0.10 ms and Ink Outline 0.19 →
-    0.07 ms. A Thor frame-time check is still to do.
+    0.07 ms. On the AYN Thor (Adreno, a 960x540 world target): Glow
+    1.04 → 0.35 ms and Ink Outline 0.46 → 0.20 ms.
 - Classic costs nothing on any tier.
 
 ## Alternatives rejected
@@ -236,9 +237,23 @@ look, sheet.png, the menu).
    0 unmarked; privacy clean; the Store corpus 73/73 (Python and C# agree)
    and test_store pass.
 
-**Not yet validated:** the mobile/web tiers (half resolution; a Thor
-frame-time check), the object-id and depth buffers (not built), and user
-shaders from a Store pack installed on a device.
+6. **On a device**: `python tools\postfx\run.py device` on the AYN Thor
+   (2026-09-27; Compatibility renderer, a 960x540 world target, the mobile
+   tier on, autologin to the private shard through `adb reverse`):
+   - All 22 looks render as on the desktop. Every pass took 0.15–0.64 ms;
+     the most expensive was the palette remap at 0.64 ms, and every preset
+     was at most 0.64 ms.
+   - Classic still hands back the world texture itself.
+   - **The identity pass is not bit-exact on this GPU.** 358 of 518,400
+     pixels (0.07%) differ by exactly 1/255 in one or more channels,
+     scattered, with no shifts. That is medium-precision (fp16) sampling
+     rounding an 8-bit value on the way through a pass. It is invisible, and
+     Classic is unaffected, but a pass on this GPU is not lossless to the
+     bit. The candidate fix is a `highp` sample in the pass convention, to be
+     measured on the next device slot.
+
+**Not yet validated:** the object-id and depth buffers (not built), user
+shaders from a Store pack installed on a device, and the highp fix above.
 
 ## Related
 
