@@ -35,6 +35,50 @@ Open `http://127.0.0.1:8060/GUO.html`. Page parameters, all optional:
 `&host=ws://h&port=2594` (the bridge; defaults come from `serve`),
 `&arg=--foo` (any client argument, repeatable).
 
+## Play on a phone
+
+LAN mode lets a phone or tablet on the same network play from this PC. It is
+**off by default** and stays off until you turn it on.
+
+```
+set UO_WEB_LAN=1                  in launchers\_shared\config.local.bat (or pass --lan)
+launchers\shard\run.bat           the shard, as before
+launchers\web\ws_bridge.bat       now wss://<this PC>:2594
+launchers\web\serve.bat           now https://<this PC>:8060/GUO.html
+```
+
+In LAN mode both servers listen on this PC's private network address only,
+never on every interface, and turn away any connection that does not come from
+a private address: they cannot be reached from the internet, even through a
+router port-forward. Other devices on your network can reach them, and `serve`
+hands them your UO install, so use it on a network you trust. `serve` prints
+the addresses to open; if it picks the wrong network card, set
+`UO_WEB_LAN_HOST` in `config.local.bat` to this PC's address on the right one.
+
+A phone's browser runs the game only from a secure (https) page, so the first
+`serve --lan` makes a small certificate authority for this PC, kept in
+`build\web\lan_certs` (never committed). The phone has to trust it, once:
+
+1. Start the bridge and `serve` as above. When Windows asks, allow Python on
+   **private** networks only.
+2. On the phone, open `https://<this PC>:8060/guo-ca.crt` (use one of the
+   addresses `serve` prints). The browser warns that the page is not secure;
+   continue, and the file downloads.
+3. Install it as a CA certificate. On Android: Settings, Security and
+   privacy, More security settings, Encryption and credentials, Install a
+   certificate, **CA certificate**, then pick `guo-ca.crt`. (On an iPhone:
+   open the downloaded profile in Settings, install it, then turn it on under
+   General, About, Certificate Trust Settings.)
+4. Close the browser tab and open `https://<this PC>:8060/GUO.html`. It loads
+   with no warning, and the page talks to the bridge over `wss` on the same
+   host by itself.
+
+The certificate names this PC's address, its name and `<name>.local`, and is
+renewed on its own when the address changes or it nears expiry; the CA stays
+the same, so the phone installs it only once. Delete `build\web\lan_certs`
+to start over (the phone must then install the new CA, and should remove the
+old one: Encryption and credentials, User credentials).
+
 ## Settings
 
 ```
@@ -43,6 +87,8 @@ UO_WS_BRIDGE_PORT    default 2594      the WebSocket bridge's port
 UO_WEB_GODOT         tools\godot_web\...\*_console.exe   the fork that can export C# to the web
 UO_CLIENT_DATA                         the install serve hands to the page (this PC only)
 UO_CLIENT_VERSION                      told to the page through /uo/_index.json
+UO_WEB_LAN           default 0         1: serve and the bridge in LAN mode (https, wss), for a phone
+UO_WEB_LAN_HOST      default empty     this PC's LAN address, when LAN mode picks the wrong one
 ```
 
 ## How the pieces fit
@@ -67,8 +113,11 @@ UO_CLIENT_VERSION                      told to the page through /uo/_index.json
   `GodotWebSocketWrapper` over Godot's `WebSocketPeer`; `ignore_relay_ip` is
   on. Each is a marked `PORT DEVIATION (GUO)`, off on the desktop.
 - **serve** answers `/uo/_index.json` and ranged `GET /uo/<file>`, from
-  `UO_CLIENT_DATA` by default, on 127.0.0.1 only; the page's own files get
-  COOP/COEP (the threaded template needs `SharedArrayBuffer`).
+  `UO_CLIENT_DATA` by default, on 127.0.0.1 only (in LAN mode: https on the
+  LAN address, private peers only, plus `/guo-ca.crt`; `tools/guo/lan.py`);
+  the page's own files get COOP/COEP (the threaded template needs
+  `SharedArrayBuffer`). The index gives the bridge's port but no host: the
+  page uses the host it was served from, with `wss` when it is on https.
 - **smoke** uses Python Playwright (system Chrome, and Firefox from
   `tools\godot_web\browsers`), passes `?arg=--login-probe-stay`, and waits
   for `[GUO] login probe: ok`; FATAL lines and C# exceptions fail it fast.

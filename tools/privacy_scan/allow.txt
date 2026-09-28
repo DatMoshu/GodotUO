@@ -5,3 +5,8 @@
 hi@modernuo\.com
 # A home folder already elided to "...".
 Users[\\/]+\.\.\.
+
+# Web LAN mode: the test's example addresses, and the routing probe that finds
+# this PC's own LAN address at run time (nothing is sent to it).
+^EXAMPLE_(LAN|PEER) = "192\.168\.1\.(20|30)"$
+s\.connect\(\("10\.255\.255\.255", 1\)\)

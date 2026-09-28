@@ -22,7 +22,7 @@
 // Module.guoFS and to call window.guoBeforeMain(Module, args) right before
 // main(). URL parameters (all optional):
 //   ?data=uo/        where the install is served ('none' mounts nothing)
-//   &host=ws://h     the shard's WebSocket bridge (default: the page's host)
+//   &host=ws://h     the shard's WebSocket bridge (default: the page's host, wss on https)
 //   &port=2594       its port (default: what the server says, else 2594)
 //   &arg=--foo       any extra client argument, repeatable
 (function () {
@@ -350,7 +350,10 @@
 			}
 			shard = mounted.index.shard || {};
 		}
-		const host = params.get('host') || shard.host || ('ws://' + window.location.hostname);
+		// The bridge runs on the PC that served the page; over https (LAN mode,
+		// tools/web serve --lan) the browser allows only wss to it.
+		const scheme = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+		const host = params.get('host') || shard.host || (scheme + window.location.hostname);
 		const port = params.get('port') || String(shard.port || 2594);
 		args.push('--host', host, '--port', port);
 		for (const a of params.getAll('arg')) {

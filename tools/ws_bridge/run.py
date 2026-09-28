@@ -19,6 +19,12 @@ the same address after the login server's relay packet (0xA8/0x8C) instead
 of the shard's raw TCP address. That only works while the login and game
 server are one endpoint, which is true of ModernUO and of this bridge.
 
+LAN MODE (--lan, or UO_WEB_LAN=1): for a phone on the same network. The
+bridge then listens on this PC's private LAN address only, speaks wss with
+the local certificate tools\web serve --lan uses (guo.lan), lets in the page
+origins of that server, and drops any connection from an address that is not
+private or loopback. Off by default.
+
 SAFETY. It listens on loopback unless told otherwise. Any web page can open a
 WebSocket to 127.0.0.1, so a browser connection is refused unless its Origin
 is the local web server's (tools\web serve, UO_WEB_PORT) or one given with
@@ -44,6 +50,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from guo import lan  # noqa: E402
 from guo.config import load_config  # noqa: E402
 
 GUID = b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
@@ -158,10 +165,11 @@ def http_error(writer: asyncio.StreamWriter, status: str) -> None:
 
 
 class Bridge:
-    def __init__(self, target: tuple[str, int], origins: set[str], trace: bool = False):
+    def __init__(self, target: tuple[str, int], origins: set[str], trace: bool = False, private_only: bool = False):
         self.target = target
         self.origins = origins  # "*" = any
         self.trace = trace
+        self.private_only = private_only  # LAN mode: only private and loopback peers
 
     def traced(self, direction: str, data: bytes) -> None:
         if self.trace:
@@ -174,6 +182,10 @@ class Bridge:
 
     async def handle(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         peer = writer.get_extra_info("peername")
+        if self.private_only and not (peer and lan.is_private(str(peer[0]))):
+            log(f"{peer}: refused, not a private address")
+            writer.close()
+            return
         try:
             request, headers = await asyncio.wait_for(read_http_head(reader), 10)
             method = request.split(" ", 1)[0]
@@ -251,13 +263,18 @@ class Bridge:
 
 
 async def start_bridge(listen: str, port: int, target: tuple[str, int], origins: set[str],
-                       trace: bool = False) -> asyncio.base_events.Server:
-    bridge = Bridge(target, origins, trace)
-    return await asyncio.start_server(bridge.handle, listen, port, limit=MAX_HEADER)
+                       trace: bool = False, ssl_context=None, private_only: bool = False) -> asyncio.base_events.Server:
+    bridge = Bridge(target, origins, trace, private_only)
+    return await asyncio.start_server(bridge.handle, listen, port, limit=MAX_HEADER, ssl=ssl_context)
 
 
 def default_origins(web_port: int) -> set[str]:
     return {f"http://127.0.0.1:{web_port}", f"http://localhost:{web_port}"}
+
+
+def lan_origins(address: str, web_port: int) -> set[str]:
+    """The page origins of tools/web serve --lan: https on the LAN address and this PC's names."""
+    return {f"https://{name}:{web_port}" for name in lan.host_names(address)}
 
 
 # --------------------------------------------------------------------------
@@ -399,6 +416,8 @@ def main() -> int:
     s.add_argument("--allow-origin", action="append", default=[],
                    help="another page origin allowed to connect, or * for any")
     s.add_argument("--trace", action="store_true", help="log every message: direction, size, first bytes")
+    s.add_argument("--lan", action="store_true", default=cfg.web_lan,
+                   help="for a phone on this network: wss on the LAN address, private peers only (UO_WEB_LAN=1)")
     t = sub.add_parser("test")
     t.add_argument("--fake", action="store_true", help="use an in-process stand-in shard")
     args = ap.parse_args()
@@ -407,14 +426,28 @@ def main() -> int:
         return asyncio.run(run_test(cfg, args.fake))
 
     origins = default_origins(cfg.web_port) | {o.rstrip("/") for o in args.allow_origin}
+    context, scheme = None, "ws"
+    if args.lan:
+        try:
+            args.listen = lan.lan_address(cfg.web_lan_host)
+        except ValueError as e:
+            log(str(e))
+            return 2
+        _, cert, key = lan.ensure_certificates(cfg.build / "web" / "lan_certs", args.listen)
+        context, scheme = lan.server_context(cert, key), "wss"
+        origins |= lan_origins(args.listen, cfg.web_port)
 
     async def serve_forever():
-        server = await start_bridge(args.listen, args.port, args.target, origins, args.trace)
-        if args.listen not in ("127.0.0.1", "localhost", "::1"):
+        server = await start_bridge(args.listen, args.port, args.target, origins, args.trace,
+                                    context, private_only=args.lan)
+        if args.lan:
+            log("LAN mode: other devices on this network can connect; addresses that are not private are refused")
+        elif args.listen not in ("127.0.0.1", "localhost", "::1"):
             log(f"WARNING: listening on {args.listen}, reachable from other machines")
-        log(f"ws://{args.listen}:{args.port} -> {args.target[0]}:{args.target[1]}; "
+        log(f"{scheme}://{args.listen}:{args.port} -> {args.target[0]}:{args.target[1]}; "
             f"browser origins: {', '.join(sorted(origins))}")
-        log('client settings: "ip": "ws://127.0.0.1:%d", "ignore_relay_ip": true. Ctrl+C stops.' % args.port)
+        log('client settings: "ip": "%s://%s:%d", "ignore_relay_ip": true. Ctrl+C stops.'
+            % (scheme, args.listen, args.port))
         async with server:
             await server.serve_forever()
 
