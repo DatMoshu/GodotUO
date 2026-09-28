@@ -175,10 +175,64 @@ mesh per run would take covering land from 3,266 to about 796 draw calls in
 the bank and from 3,557 to about 629 in the dungeon, and it keeps the
 painter's order, so parity holds by construction rather than by luck.
 
-**The ClassicUO comparison did not run.** Neither client started its
-measurement: ClassicUO reached the world but PerfDump waited for a first
-message that a quiet shard never sends (the login's messages come before its
-timer sees the player), and GUO's `--play` stayed at the login gump, since it
-logs in only with something scripted to do. Both are fixed (PerfDump now
-queues its start on the game loop; the driver gives GUO one shard command and
-`--stay`) and wait for the next slot, with ClassicUO rebuilt.
+**The ClassicUO comparison did not run in that slot.** Neither client
+started its measurement: ClassicUO reached the world but PerfDump waited for
+a first message that a quiet shard never sends, and GUO's `--play` stayed at
+the login gump. Both were fixed for the third slot, below.
+
+## Fix 2c and the ClassicUO comparison (2026-09-28, third slot)
+
+2560x1440, zoom 2.5, `--merged-land=array` throughout, 360 frames per scene
+after 180 to settle; the "-off" rows are the same run with `--merged-cover`
+switched off, so they share the session's thermal and cache state.
+
+**2c, `--merged-cover`: parity holds, draw calls fall 29-66%.** Each run of
+covering-land tiles is one mesh over LandPages' Texture2DArray, cached from
+frame to frame (CoverRuns). The five-frame parity check is 0 px in every
+scene, and the "strict max delta" column is 0 too.
+
+| Scene | draw calls, off -> 2c | covering meshes | mean ms, off -> 2c | p95 ms, off -> 2c |
+|---|---:|---:|---:|---:|
+| open field | 539 -> 379 (-30%) | 345 -> 173 | 10.7 -> 10.6 (-1%) | 13.6 -> 12.3 |
+| Britain bank | 4,034 -> 1,624 (-60%) | 3,266 -> 796 | 36.7 -> 34.4 (-6%) | 41.5 -> 38.9 |
+| dense forest | 803 -> 400 (-50%) | 564 -> 161 | 20.5 -> 20.3 (-1%) | 23.8 -> 23.4 |
+| dungeon | 4,389 -> 1,480 (-66%) | 3,557 -> 629 | 16.2 -> 14.5 (-11%) | 21.2 -> 17.6 |
+
+Batcher items are unchanged (1,613 in the bank either way), and world draw
+ms rises by 0.1-0.6 ms, the cost of hashing and comparing the runs; the GPU
+side more than repays it where covering land is dense. Against the separate
+array-only run of the same session (`c2_array_far`), the mean falls 6-18%,
+but that pair is further apart in time and the in-run pair above is the
+number to quote.
+
+The first build of 2c broke parity badly (10-60k repeatable px, deltas near
+255: roof tiles missing over house interiors). The held run is drawn from
+inside the next draw's flush, after that draw had already checked its item's
+material and offset (`AddSprite`'s EnsureMaterial comes before FlushRun), so
+the draw landed in whatever item FlushCover left behind: first the land-array
+item, then, after a first attempt at a fix, the mesh item at the covering
+offset. FlushCover now puts the item material, item offset and the pending
+material and offset back exactly as it found them (it also runs inside Cut).
+
+**Recommendation:** 2c can go on with 1b on the desktop. It needs a Thor pass
+first, like 1b (the dungeon's 36 px there is still being explained).
+
+**ClassicUO against GUO, same spot, same window and zoom.** From each
+client's own profiler (the average over its last 60 frames), PerfDump in both,
+ClassicUO built out of tree with it injected. GUO on the default path
+(no merged flags).
+
+| Scene | world prepare ms, CUO / GUO | world draw ms, CUO / GUO | render frame ms, CUO / GUO |
+|---|---:|---:|---:|
+| open field | 2.43 / 6.78 (2.8x) | 3.40 / 3.34 (1.0x) | 6.2 / 10.8 |
+| Britain bank | 3.95 / 17.10 (4.3x) | 4.66 / 17.40 (3.7x) | 8.9 / 35.5 |
+| dense forest | 2.85 / 10.98 (3.9x) | 4.57 / 8.98 (2.0x) | 7.7 / 20.7 |
+| dungeon | 1.76 / 7.90 (4.5x) | 2.84 / 5.28 (1.9x) | 4.9 / 14.0 |
+
+World prepare, which is ported code (the render lists), not the renderer, is
+now the larger gap: 2.8-4.5x ClassicUO's in every scene, where world draw is
+at parity in the open field and 1.9-3.7x elsewhere. The next B4 step is a
+profile of prepare (GUO's added work in it: covering land, the id mirror, the
+mesh bookkeeping) before any more draw-side work. The ClassicUO JSON write
+first failed (its build turns reflection-based System.Text.Json off); PerfDump
+now writes it by hand.

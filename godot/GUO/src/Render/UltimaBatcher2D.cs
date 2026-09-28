@@ -799,15 +799,21 @@ void fragment() {
             ArrayMesh mesh = _coverRuns.Get(_cover);
             _cover.Clear();
 
-            if (!ReferenceEquals(_itemMaterial, _landArrayMaterial) || _itemOffset != _coverOffset)
+            // The item state is put back as it was found. A caller checks its
+            // material and offset (EnsureMaterial, SetWorldOffset) before it
+            // flushes, then draws into whatever item is current; left on the
+            // land-array item, or on the plain path's mesh item at the covering
+            // offset, the next sprite was drawn with the wrong shader and
+            // offset (measured: roof tiles missing, 10-60k px). This runs
+            // inside Cut too, so the pending material and offset are kept.
+            ShaderMaterial itemMaterial = _itemMaterial ?? _currentMaterial, next = _nextMaterial;
+            Vector2 itemOffset = _itemOffset, world = _worldOffset;
+            bool cut = !ReferenceEquals(_itemMaterial, _landArrayMaterial) || _itemOffset != _coverOffset;
+            if (cut)
             {
-                Vector2 keep = _worldOffset;
-
                 _worldOffset = _coverOffset;
                 _nextMaterial = _landArrayMaterial;
                 Cut();
-                _nextMaterial = _currentMaterial;
-                _worldOffset = keep;
             }
 
             FlushQuadRun();
@@ -815,6 +821,16 @@ void fragment() {
             Commands++;
             Count(4, default);
             RenderingServer.CanvasItemAddMesh(_current, mesh.GetRid(), Transform2D.Identity, Colors.White, default);
+
+            if (cut)
+            {
+                _worldOffset = itemOffset;
+                _nextMaterial = itemMaterial;
+                Cut();
+            }
+
+            _nextMaterial = next;
+            _worldOffset = world;
         }
 
         /// <summary>

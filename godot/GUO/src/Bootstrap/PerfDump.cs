@@ -23,7 +23,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using System.Runtime.CompilerServices;
-using System.Text.Json;
+using System.Globalization;
+using System.Linq;
 using System.Threading;
 
 #if PERF_DUMP_CUO
@@ -148,7 +149,11 @@ internal static class PerfDump
             string dir = Path.Combine(_args[0], _args[1]);
             Directory.CreateDirectory(dir);
             string path = Path.Combine(dir, ClientName + ".json");
-            File.WriteAllText(path, JsonSerializer.Serialize(r, new JsonSerializerOptions { WriteIndented = true }));
+            // By hand: ClassicUO's build turns reflection-based System.Text.Json off.
+            string Value(object v) => v is string t
+                ? "\"" + t.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\""
+                : Convert.ToString(v, CultureInfo.InvariantCulture);
+            File.WriteAllText(path, "{\n" + string.Join(",\n", r.Select(kv => $"  \"{kv.Key}\": {Value(kv.Value)}")) + "\n}\n");
             Console.WriteLine($"[perf_dump] {ClientName}: wrote {path}");
             _state = 2;
         }
