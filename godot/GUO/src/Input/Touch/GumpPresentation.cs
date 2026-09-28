@@ -93,7 +93,7 @@ internal static class GumpPresentation
     public static Rectangle DisplayBounds(bool second)
     {
         if (second && DualScreen.ShelfOn)
-            return new Rectangle(DualScreen.MainWidth, 0, DualScreen.LogicalWidth, DualScreen.LogicalHeight);
+            return new Rectangle(DualScreen.MainWidth, 0, DualScreen.LogicalWidth, DualScreen.LogicalHeight - DualScreen.BottomReserve);
         Rectangle main = Client.Game?.ClientBounds ?? new Rectangle(0, 0, 640, 480);
         main.Height -= (int)(main.Height * (TouchInput.Bar?.ReservedFraction ?? 0f));
         return main;
