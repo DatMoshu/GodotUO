@@ -19,7 +19,8 @@ The output is committed; run this only to change the set.
 
 What it does:
 
-- copies the tiles named in `TILES` (face buttons A/B/X/Y, D-pad, sticks, Esc,
+- copies the tiles named in `TILES` (face buttons A/B/X/Y, the View button for
+  Back, D-pad, sticks, Esc,
   mouse and its buttons) by tile number;
 - draws the four PlayStation symbols, which the pixel pack lacks, onto the
   pack's blank light disc (tile 12) in the pack's letter grey;
