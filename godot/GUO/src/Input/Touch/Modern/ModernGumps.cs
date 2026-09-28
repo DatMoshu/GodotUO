@@ -26,6 +26,7 @@ internal static class ModernGumps
         [typeof(PartyGump)] = world => new ModernParty(world),
         [typeof(StandardSkillsGump)] = world => new ModernSkills(world),
         [typeof(SkillGumpAdvanced)] = world => new ModernSkills(world),
+        [typeof(SpellbookGump)] = world => new ModernSpellbook(world),
     };
 
     private static readonly Dictionary<Type, ModernGump> _open = new();
@@ -71,6 +72,12 @@ internal static class ModernGumps
             view = _factories[type](gump.World);
             _open[type] = view;
             Client.Game.AddChild(view);
+        }
+
+        // A view may decline this particular gump (a Mastery book): Classic, then.
+        if (!view.Accept(gump))
+        {
+            return false;
         }
 
         view.Open();

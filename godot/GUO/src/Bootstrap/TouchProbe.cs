@@ -123,6 +123,7 @@ internal static class TouchProbe
         await ModernOptionsCheck(host, world);
         await ModernPartyCheck(host, world);
         await ModernSkillsCheck(host, world);
+        await ModernSpellbookCheck(host, world);
         Configuration.ProfileManager.CurrentProfile.ModernGumpsOff = true;
         await HelpGumpCheck(host, world);
         // The long press is checked with hold-and-flick off, the way a player
@@ -1164,6 +1165,101 @@ internal static class TouchProbe
         await TapClient(host, view.CentreOf(view.Find("use Hiding")));
         await Frames(host, 10);
         Check("Use on a skill uses it and closes Modern Skills", !Input.Touch.Modern.ModernGump.IsOpen);
+    }
+
+    /// <summary>
+    /// Modern Spellbook (ADR-0024, gump 6): a spellbook in the pack, opened as a
+    /// player opens it (a double-click; the shard sends the book), shows as the
+    /// Modern grid; a hold on a spell places its UseSpellButtonGump; a tap
+    /// casts (a cursor or the words follow). Skipped without a book.
+    /// </summary>
+    private static async System.Threading.Tasks.Task ModernSpellbookCheck(Node host, Game.World world)
+    {
+        Game.GameObjects.Item pack = world.Player.FindItemByLayer(Game.Data.Layer.Backpack);
+        Game.GameObjects.Item book = null;
+
+        for (var i = pack?.Items; i != null; i = i.Next)
+        {
+            if (i is Game.GameObjects.Item it && it.Graphic == 0x0EFA) book = it;
+        }
+
+        bool standIn = book == null;
+
+        if (standIn)
+        {
+            // No book in the pack (a shard that gave none, and no GM to add
+            // one): a stand-in in the client's world, as the shard would send
+            // it: a Magery book whose children's amounts are spell indices.
+            book = world.GetOrCreateItem(0x7FFFFF00);
+            book.Graphic = 0x0EFA;
+
+            // In the pack: an item on no container counts as on the ground far
+            // away, and the world's range cleanup takes it.
+            book.Container = pack.Serial;
+            pack.PushToBack(book);
+
+            for (int i = 1; i <= 16; i++)
+            {
+                Game.GameObjects.Item spell = world.GetOrCreateItem(0x7FFFFF00 + (uint)i);
+                spell.Amount = (ushort)i;
+                spell.Container = book.Serial;
+                book.PushToBack(spell);
+            }
+
+            UIManager.Add(new SpellbookGump(world, book.Serial));
+        }
+        else
+        {
+            Game.GameActions.DoubleClick(world, book.Serial);
+        }
+        Input.Touch.Modern.ModernSpellbook view = null;
+
+        for (int i = 0; i < 180 && view == null; i++)
+        {
+            await Frames(host, 1);
+            view = Input.Touch.Modern.ModernGump.Current as Input.Touch.Modern.ModernSpellbook;
+        }
+
+        await Frames(host, 20);
+        Godot.Control tile = view?.Find("Heal") ?? view?.Find("Clumsy");
+        Check("a spellbook opens as its Modern grid, the classic book not added",
+            view != null && UIManager.GetGump<SpellbookGump>() == null && tile != null,
+            $"modern {view != null}, classic {UIManager.GetGump<SpellbookGump>() != null}, a tile {tile != null}");
+
+        if (view == null || tile == null)
+        {
+            Input.Touch.Modern.ModernGump.Current?.Close();
+
+            if (standIn)
+            {
+                world.RemoveItem(book.Serial, true);
+            }
+
+            return;
+        }
+
+        // Hold: the spell's button, the desktop's UseSpellButtonGump.
+        Vector2 at = Client(view.CentreOf(tile));
+        Touch(0, at, true);
+        ulong until = Godot.Time.GetTicksMsec() + 700;
+
+        while (Godot.Time.GetTicksMsec() < until)
+        {
+            await Frames(host, 1);
+        }
+
+        Touch(0, at, false);
+        await Frames(host, 10);
+        UseSpellButtonGump button = UIManager.GetGump<UseSpellButtonGump>();
+        Check("a hold on a spell places its spell button (UseSpellButtonGump) and closes the book",
+            button != null && !Input.Touch.Modern.ModernGump.IsOpen, button == null ? "no button" : $"spell {button.SpellID}");
+        button?.Dispose();
+        await Frames(host, 5);
+
+        if (standIn)
+        {
+            world.RemoveItem(book.Serial, true);
+        }
     }
 
     /// <summary>The first control of a type on the gump's open page, drawn inside its scroll area.</summary>

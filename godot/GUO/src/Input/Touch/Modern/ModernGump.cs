@@ -55,6 +55,18 @@ internal abstract partial class ModernGump : Node
 
     protected abstract void Build(PanelContainer card);
 
+    /// <summary>
+    /// Take the classic gump that is being opened (its serial, its kind) before
+    /// the view opens for it; false keeps it Classic. By default, any.
+    /// </summary>
+    public virtual bool Accept(Game.UI.Gumps.Gump classic) => true;
+
+    /// <summary>A finger held still on a control for <see cref="HoldMs"/>: no tap follows.</summary>
+    protected virtual void OnHold(Control under) { }
+
+    /// <summary>Milliseconds a still finger takes to be a hold.</summary>
+    protected const int HoldMs = 500;
+
     /// <summary>Called on open, before it shows: read the state into the controls.</summary>
     protected virtual void OnOpen() { }
 
@@ -178,6 +190,13 @@ internal abstract partial class ModernGump : Node
             return;
         }
 
+        // A finger held still: a hold, and no tap when it lifts.
+        if (_pressing && !_dragged && !_onSlider && !_heldDone && Godot.Time.GetTicksMsec() - _pressTime >= HoldMs)
+        {
+            _heldDone = true;
+            OnHold(_pressUnder);
+        }
+
         _refresh -= delta;
 
         if (_refresh <= 0)
@@ -195,6 +214,9 @@ internal abstract partial class ModernGump : Node
     private Vector2 _pressAt;
     private Vector2 _lastAt;
     private ScrollContainer _scrollUnder;
+    private ulong _pressTime;
+    private bool _heldDone;
+    private Control _pressUnder;
 
     /// <summary>
     /// Route an event while a Modern view is open. It is modal: everything is
@@ -243,6 +265,9 @@ internal abstract partial class ModernGump : Node
             m._pressAt = m._lastAt = local;
             m._viewport.PushInput(new InputEventMouseMotion { Position = local, GlobalPosition = local }, true);
             Control under = m._viewport.GuiGetHoveredControl();
+            m._pressTime = Godot.Time.GetTicksMsec();
+            m._heldDone = false;
+            m._pressUnder = under;
             m._onSlider = under is Godot.Range and not ScrollBar;
             m._scrollUnder = FindScroll(under);
 
@@ -281,7 +306,7 @@ internal abstract partial class ModernGump : Node
             {
                 m._viewport.PushInput(new InputEventMouseButton { Position = local, GlobalPosition = local, ButtonIndex = MouseButton.Left, Pressed = false }, true);
             }
-            else if (!m._dragged)
+            else if (!m._dragged && !m._heldDone)
             {
                 m.Click(local);
             }
