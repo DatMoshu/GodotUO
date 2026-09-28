@@ -41,6 +41,14 @@ Measured in the owner's install (`unifont1.mul`), one line at 2x fits
 158 px. Every default caption fits except `Nearest Hostile` (180 px). It
 shows as `Nearest Foe` (142). `All Follow Me` (158) just fits.
 
+On a narrower view the plates shrink: at `s` = 2 (a 1240x1080 screen, the size of
+the Thor's lower panel) a plate is about 110 px and holds about 95 px
+of caption (measured on the emulator). A
+caption that does not fit is cut at a word with `...` after it, as the
+abilities book cuts its rows, because the UO font has no `…`
+(`Last Target` shows as `Last...`). One word that is still too wide shows
+its start, clipped at the plate's inner edge (`TouchGumpBar.FitCaption`).
+
 ### Layout
 
 The pixel grid is the plate's art scale, `s`: the largest whole number at

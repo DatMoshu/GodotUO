@@ -617,7 +617,10 @@ internal sealed partial class WindowMenu : Node
         {
             if (n is Button b && b.Text == text && b.IsVisibleInTree())
             {
-                Vector2 inViewport = b.GetGlobalRect().GetCenter() * _instance._scale;
+                // The global rect already carries _root's Scale (_scale): device
+                // pixels of the card's viewport. Scaling again put + outside the
+                // card wherever _scale is not 1 (Android at os scale 1.55).
+                Vector2 inViewport = b.GetGlobalRect().GetCenter();
                 return _instance._rect.Position + inViewport / Dpi;
             }
         }

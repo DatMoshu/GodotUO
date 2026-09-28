@@ -1663,6 +1663,8 @@ namespace GUO.Input.Touch
         /// <summary>A caption centred in a rectangle, at the caption scale.</summary>
         private void DrawCaption(CanvasItem canvas, string caption, Color? ink, Rect2 r)
         {
+            float room = r.Size.X - CaptionPad * CaptionScale * 2;
+            caption = FitCaption(caption, room);
             Texture2D label = LabelTexture(caption, ink);
 
             if (label != null)
@@ -1672,6 +1674,17 @@ namespace GUO.Input.Touch
                     r.Position.X + (int)((r.Size.X - size.X) / 2),
                     r.Position.Y + (int)((r.Size.Y - size.Y) / 2)
                 );
+
+                if (size.X > room && room > 0)
+                {
+                    // One word wider than the plate: its start, clipped at the plate's inner edge.
+                    int shown = (int)(room / CaptionScale);
+                    at.X = r.Position.X + CaptionPad * CaptionScale;
+                    canvas.DrawTextureRectRegion(label, new Rect2(at, new Vector2(shown * CaptionScale, size.Y)),
+                        new Rect2(0, 0, shown, label.GetHeight()));
+
+                    return;
+                }
 
                 canvas.DrawTextureRect(label, new Rect2(at, size), false);
 
@@ -1687,6 +1700,39 @@ namespace GUO.Input.Touch
             );
 
             canvas.DrawString(font, textAt, caption, HorizontalAlignment.Left, -1, fontSize, ink ?? new Color(0.1f, 0.08f, 0.06f));
+        }
+
+        /// <summary>Art pixels kept clear inside a plate on each side of its caption.</summary>
+        private const int CaptionPad = 4;
+
+        /// <summary>
+        /// A caption that fits <paramref name="room"/> pixels: whole when it
+        /// fits, else cut at a word with "..." after it, as the abilities book
+        /// cuts its rows (the UO font has no "…"). When not even one word and
+        /// "..." fit, the first word alone, which the caller clips.
+        /// </summary>
+        private string FitCaption(string caption, float room)
+        {
+            float Width(string c) => (LabelTexture(c, null)?.GetWidth() ?? 0) * CaptionScale;
+
+            if (string.IsNullOrEmpty(caption) || room <= 0 || Width(caption) <= room)
+            {
+                return caption;
+            }
+
+            string[] words = caption.Split(' ');
+
+            for (int n = words.Length - 1; n > 0; n--)
+            {
+                string cut = string.Join(" ", words, 0, n).TrimEnd(',', '.', ';', ':') + "...";
+
+                if (Width(cut) <= room)
+                {
+                    return cut;
+                }
+            }
+
+            return words[0];
         }
 
         private static readonly List<(string, Rect2)> _noChips = new();
