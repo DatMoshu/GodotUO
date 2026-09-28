@@ -130,6 +130,7 @@ internal static class PerfProbe
         long drawsBefore = UltimaBatcher2D.FramesBegun;
 
         var ms = new double[Frames];
+        double kRect = 0, kAffine = 0, kMesh = 0, kTri = 0, kBatches = 0, kCover = 0;
         double calls = 0, items = 0, switches = 0, commands = 0, prepare = 0, world = 0, cpu = 0, gpu = 0, objects = 0;
         long allocatedBefore = System.GC.GetTotalAllocatedBytes();
         System.TimeSpan pausedBefore = System.GC.GetTotalPauseDuration();
@@ -147,6 +148,13 @@ internal static class PerfProbe
             switches += sw;
             items += it;
             commands += cm;
+            var k = UltimaBatcher2D.LastKinds;
+            kRect += k.Rects;
+            kAffine += k.Affine;
+            kMesh += k.Meshes;
+            kTri += k.Triangles;
+            kBatches += k.Batches;
+            kCover += k.CoverMeshes;
             prepare += GUO.Utility.Profiler.GetContext(GUO.Utility.Profiler.ProfilerContext.RENDER_FRAME_WORLD_PREPARE).LastTime;
             world += GUO.Utility.Profiler.GetContext(GUO.Utility.Profiler.ProfilerContext.RENDER_FRAME_WORLD).LastTime;
             cpu += RenderingServer.ViewportGetMeasuredRenderTimeCpu(viewport);
@@ -186,6 +194,12 @@ internal static class PerfProbe
             ["render_cpu_ms"] = System.Math.Round(cpu / Frames, 3),
             ["render_gpu_ms"] = System.Math.Round(gpu / Frames, 3),
             ["alloc_kb_per_frame"] = System.Math.Round(allocatedKb, 1),
+            ["cmd_rects"] = System.Math.Round(kRect / Frames, 1),
+            ["cmd_affine_rects"] = System.Math.Round(kAffine / Frames, 1),
+            ["cmd_meshes"] = System.Math.Round(kMesh / Frames, 1),
+            ["cmd_cover_meshes"] = System.Math.Round(kCover / Frames, 1),
+            ["cmd_triangles"] = System.Math.Round(kTri / Frames, 1),
+            ["estimated_batches"] = System.Math.Round(kBatches / Frames, 1),
             ["gc_ms_per_frame"] = System.Math.Round(gcMs, 3),
         };
         if (parity != null)
@@ -286,6 +300,14 @@ internal static class PerfProbe
             md.AppendLine($"| {r["scene"]} | {r["mean_ms"]} | {r["p95_ms"]} | {r["p99_ms"]} | {r["fps"]} | {r["alloc_kb_per_frame"]} | {r["draws_per_frame"]} | {r["draw_calls"]} | "
                           + $"{r["batcher_items"]} | {r["texture_switches"]} | {r["draw_commands"]} | {r["world_prepare_ms"]} | "
                           + $"{r["world_draw_ms"]} | {r["render_cpu_ms"]} | {r["render_gpu_ms"]} |");
+        }
+
+        md.AppendLine();
+        md.AppendLine("| Scene | draw calls | estimated batches | rects | transformed rects | chunk land meshes | covering land meshes | triangle lists |");
+        md.AppendLine("|---|---:|---:|---:|---:|---:|---:|---:|");
+        foreach (var r in results)
+        {
+            md.AppendLine($"| {r["scene"]} | {r["draw_calls"]} | {r["estimated_batches"]} | {r["cmd_rects"]} | {r["cmd_affine_rects"]} | {r["cmd_meshes"]} | {r["cmd_cover_meshes"]} | {r["cmd_triangles"]} |");
         }
 
         if (results.Any(r => r.ContainsKey("parity_violations")))
