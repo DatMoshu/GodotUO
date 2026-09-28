@@ -771,7 +771,7 @@ against overlapping multis. Elements:
 | `type` | Fields |
 |---|---|
 | `wall` | `path` (points; diagonals become stepped runs), `thickness`, `z` (base), `top` (the walkway), `outer` (`left`/`right` of travel: the parapet side, crenellated), `parapet` (`outer`, `both`, `none`), `parapet_gaps`, `gates[]` (`box` or `cells`, `z`, `height`, `door` and `door_line`; without `door` it is a culvert) |
-| `tower` | `disc` `[x, y, r]`, `z`, `levels[]` (floors, 20 apart for its stairs, which turn over three rows so no flight stands over another: a walker climbing one stacked over another was dropped to the floor below in game), `top`, `doors[]` (`at`, `z`, `door`); it opens where a wall's walkway meets it at a level |
+| `tower` | `disc` `[x, y, r]`, `z`, `levels[]` (floors, 20 apart for its stairs, which turn over three rows so no flight stands over another: a walker climbing one stacked over another was dropped to the floor below in game), `top`, `doors[]` (`at`, `z`, `door`); it opens where a wall's walkway meets it at a level (any wall in the scene, listed before or after it) |
 | `platform` | `shapes[]`/`minus[]` (`box`, `disc`, `band`), `z`, `floor`, `face` (stone faces down to `base`; with `false`, faces still stand on every edge cell nothing else stands against, so no side is left open) |
 | `causeway` | `path`, `width`, `z`, `rail`, `floor`, `buttress` (every N cells along it, a pier two cells long stands out from each side, of the face material's run pieces) |
 | `stair` | `at`, `rise`, `z`, `to`, `width`, `landings` (z levels where it pauses on a landing `landing` cells long, default 2, then goes on the same way; everything stands on blocks from `z`) |

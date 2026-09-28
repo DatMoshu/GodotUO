@@ -16,6 +16,10 @@ import heapq
 
 HEADROOM = 16
 CLIMB = 5
+# a leg longer than this many times its straight distance (plus the slack) is a detour the client's
+# pathfinder may run out of nodes on: a culvert too low to pass sent it round a wall's far end, far
+# longer than the six cells through, and it gave up. The bound is a guess, not a measured limit
+DETOUR, DETOUR_SLACK = 3, 30
 
 
 def surfaces(parts: list[dict], pieces: dict, ground: int = 0) -> tuple[dict, set]:
@@ -47,8 +51,9 @@ def surfaces(parts: list[dict], pieces: dict, ground: int = 0) -> tuple[dict, se
     return out, covered
 
 
-def path(stand: dict, covered: set, start: tuple, goal: tuple, ground: int = 0, slack: int = 4) -> bool:
-    """A walk from (x, y, z) to (x, y, z within slack), over the scene and the open land round it."""
+def path(stand: dict, covered: set, start: tuple, goal: tuple, ground: int = 0, slack: int = 4) -> int | None:
+    """The steps of the shortest walk from (x, y, z) to (x, y, z within slack), over the scene and
+    the open land round it; None when there is none."""
     def spots(at):
         if at in stand:
             return stand[at]
@@ -56,17 +61,19 @@ def path(stand: dict, covered: set, start: tuple, goal: tuple, ground: int = 0, 
 
     sz = min(spots(start[:2]), key=lambda z: abs(z - start[2]), default=None)
     if sz is None:
-        return False
+        return None
     first = (start[0], start[1], sz)
-    seen = {first}
-    heap = [(0, first)]
+    seen = {first: 0}
+    heap = [(0, 0, first)]
     xs = [x for x, _ in covered] or [start[0]]
     ys = [y for _, y in covered] or [start[1]]
     lo_x, hi_x, lo_y, hi_y = min(xs) - 4, max(xs) + 4, min(ys) - 4, max(ys) + 4
     while heap:
-        _, (x, y, z) = heapq.heappop(heap)
+        _, g, (x, y, z) = heapq.heappop(heap)
+        if g > seen[(x, y, z)]:
+            continue
         if (x, y) == goal[:2] and abs(z - goal[2]) <= slack:
-            return True
+            return g
         for dx in (-1, 0, 1):
             for dy in (-1, 0, 1):
                 n = (x + dx, y + dy)
@@ -80,11 +87,11 @@ def path(stand: dict, covered: set, start: tuple, goal: tuple, ground: int = 0, 
                                              for side in ((x + dx, y), (x, y + dy))):
                         continue
                     k = (n[0], n[1], nz)
-                    if k not in seen:
-                        seen.add(k)
-                        est = abs(n[0] - goal[0]) + abs(n[1] - goal[1]) + abs(nz - goal[2]) // 5
-                        heapq.heappush(heap, (est, k))
-    return False
+                    if g + 1 < seen.get(k, 1 << 30):
+                        seen[k] = g + 1
+                        est = max(abs(n[0] - goal[0]), abs(n[1] - goal[1]))
+                        heapq.heappush(heap, (g + 1 + est, g + 1, k))
+    return None
 
 
 def check_tour(parts: list[dict], tour: list[dict], pieces: dict, ground: int = 0) -> list[str]:
@@ -92,7 +99,11 @@ def check_tour(parts: list[dict], tour: list[dict], pieces: dict, ground: int = 
     stand, covered = surfaces(parts, pieces, ground)
     out = []
     for a, b in zip(tour, tour[1:]):
-        if not path(stand, covered, (a["x"], a["y"], a["z"]), (b["x"], b["y"], b["z"]), ground):
-            out.append(f"no walk from {a['name']} ({a['x']}, {a['y']}, {a['z']}) "
-                       f"to {b['name']} ({b['x']}, {b['y']}, {b['z']})")
+        steps = path(stand, covered, (a["x"], a["y"], a["z"]), (b["x"], b["y"], b["z"]), ground)
+        leg = f"from {a['name']} ({a['x']}, {a['y']}, {a['z']}) to {b['name']} ({b['x']}, {b['y']}, {b['z']})"
+        if steps is None:
+            out.append(f"no walk {leg}")
+        elif steps > DETOUR * max(abs(a["x"] - b["x"]), abs(a["y"] - b["y"])) + DETOUR_SLACK:
+            out.append(f"the walk {leg} is a detour of {steps} steps: the client's pathfinder (A* on the "
+                       "straight distance, 10000 nodes) gives up on such; put a stop on the way")
     return out

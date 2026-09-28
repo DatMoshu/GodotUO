@@ -486,11 +486,18 @@ class Scene:
             self.add(item, p["at"][0], p["at"][1], p["z"], RANK["props"], part)
 
     def build(self) -> list[dict]:
-        for n, el in enumerate(self.desc["elements"]):
-            kind = el["type"]
-            if kind not in RANK:
-                raise DescriptionError(f"element {n}: unknown type '{kind}'")
-            getattr(self, kind)(el, el.get("part", el.get("name", f"{kind}{n}")))
+        els = list(enumerate(self.desc["elements"]))
+        for n, el in els:
+            if el["type"] not in RANK:
+                raise DescriptionError(f"element {n}: unknown type '{el['type']}'")
+        # walls first, so every tower knows every walkway that meets it whatever the order the
+        # scene lists them in; the items are put back in the scene's order after
+        made: dict[int, list] = {}
+        for n, el in sorted(els, key=lambda ne: (ne[1]["type"] != "wall", ne[0])):
+            start = len(self.items)
+            getattr(self, el["type"])(el, el.get("part", el.get("name", f"{el['type']}{n}")))
+            made[n] = self.items[start:]
+        self.items = [it for n, _ in els for it in made[n]]
         for at, cells in self.stairs:
             taken = sorted(c for c in cells if self.claims.get(c, -1) > RANK["stair"])
             if taken:

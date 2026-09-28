@@ -219,6 +219,11 @@ def main() -> int:
         check(climb[0]["z"] == 0 and climb[1]["z"] == 20 and (climb[0]["x"], climb[0]["y"]) == (3, 3),
               f"the climb starts at the stair's foot and ends on its landing (got {climb})")
 
+        swapped = json.loads(json.dumps(scene))
+        swapped["elements"] = [swapped["elements"][1], swapped["elements"][0], swapped["elements"][2]]
+        ss = fort.build_scene(swapped, cat)
+        same = lambda sc_: sorted((c.item, c.x + p["centre"][0], c.y + p["centre"][1], c.z) for p in sc_["parts"] for c in p["comps"])
+        check(same(ss) == same(sc), "a tower listed before the wall still opens where its walkway meets it (the same pieces)")
         into = json.loads(json.dumps(scene))
         into["elements"].append({"type": "tower", "part": "t2", "disc": [8, 5, 4], "levels": [0, 20], "top": 40,
                                  "floor": "stone", "parapet": False})
@@ -270,6 +275,13 @@ def main() -> int:
         cleg = [{"name": "a", "x": 0, "y": 0, "z": 20}, {"name": "b", "x": 3, "y": 3, "z": 20}]
         check(len(walkcheck.check_tour([{"centre": [0, 0], "comps": corner}], cleg, kinds)) == 1,
               "floors that touch only at a corner do not join")
+        # a long wall on the land with its only way round forty cells off: a detour, reported
+        long_wall = [{"centre": [0, 0], "comps": [C(1, 0, y, 0) for y in range(-40, 41)]}]
+        dleg = [{"name": "west", "x": -1, "y": 0, "z": 0}, {"name": "east", "x": 1, "y": 0, "z": 0}]
+        got = walkcheck.check_tour(long_wall, dleg, kinds)
+        check(len(got) == 1 and "detour" in got[0], f"a walk forty times its distance is reported as a detour (got {got})")
+        near = [{"name": "west", "x": -1, "y": 36, "z": 0}, {"name": "east", "x": 1, "y": 36, "z": 0}]
+        check(walkcheck.check_tour(long_wall, near, kinds) == [], "a short way round the wall's end is not")
 
         # a long wall is cut so the shard sends each piece before anyone stands on its far end
         long = {"format": 1, "kind": "scene", "name": "l", "materials": scene["materials"],
