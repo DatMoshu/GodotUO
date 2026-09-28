@@ -11,7 +11,9 @@ void fragment() {
 	vec4 c = texture(source, SCREEN_UV);
 	float l = dot(c.rgb, vec3(0.299, 0.587, 0.114));
 	float q = (floor(l * bands) + 0.5) / bands;
-	vec3 shaded = l > 0.0001 ? c.rgb * (q / l) : c.rgb;
+	// Move each pixel to its band by a brightness shift, not a scale: scaling
+	// by q / l blows near-black pixels up into loud colour.
+	vec3 shaded = clamp(c.rgb + (q - l), 0.0, 1.0);
 	float g = dot(shaded, vec3(0.299, 0.587, 0.114));
 	shaded = clamp(mix(vec3(g), shaded, saturation), 0.0, 1.0);
 	COLOR = vec4(mix(c.rgb, shaded, strength), c.a);

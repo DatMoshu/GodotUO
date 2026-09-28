@@ -6,8 +6,8 @@ shader_type canvas_item;
 render_mode blend_disabled;
 
 uniform sampler2D source : hint_screen_texture, filter_nearest;
-uniform int kind : hint_range(0, 2, 1) = 1;      // 0 protanopia, 1 deuteranopia, 2 tritanopia
-uniform int simulate : hint_range(0, 1, 1) = 0;  // 0 correct (daltonize), 1 simulate
+uniform int kind : hint_enum("Protanopia", "Deuteranopia", "Tritanopia") = 1;
+uniform int simulate : hint_enum("Correct the colours", "Show what they see") = 0;
 uniform float strength : hint_range(0.0, 1.0, 0.01) = 1.0;
 
 const mat3 RGB2LMS = mat3(vec3(17.8824, 3.45565, 0.0299566), vec3(43.5161, 27.1554, 0.184309),
@@ -36,7 +36,11 @@ void fragment() {
 		outc = sim;
 	} else {
 		vec3 err = c.rgb - sim;
-		vec3 shift = vec3(0.0, err.r * 0.7 + err.g, err.r * 0.7 + err.b);
+		// Move what the viewer cannot see onto the channels they can:
+		// red-green loss (protan, deutan) into green and blue (Fidaner et al.);
+		// blue-yellow loss (tritan) into red and green.
+		vec3 shift = kind == 2 ? vec3(err.b * 0.7 + err.r, err.b * 0.7 + err.g, 0.0)
+			: vec3(0.0, err.r * 0.7 + err.g, err.r * 0.7 + err.b);
 		outc = clamp(c.rgb + shift, 0.0, 1.0);
 	}
 	COLOR = vec4(mix(c.rgb, outc, strength), c.a);

@@ -51,6 +51,11 @@ namespace GUO.Renderer.PostFx
 
         public PostFxPreset Preset => _preset;
 
+        /// <summary>The last world target and the texture handed back for it (for PostFxProbe).</summary>
+        internal RenderTarget2D LastWorld { get; private set; }
+
+        internal Texture2D LastOutput { get; private set; }
+
         public event Action PresetChanged;
 
         /// <summary>The GPU time of the last frame's post-processing, in ms (0 when Classic).</summary>
@@ -103,9 +108,11 @@ namespace GUO.Renderer.PostFx
         public Texture2D Process(RenderTarget2D world, RenderTarget2D light)
         {
             Housekeeping();
+            LastWorld = world;
 
             if (world == null || world.IsDisposed)
             {
+                LastOutput = world;
                 return world;
             }
 
@@ -117,7 +124,8 @@ namespace GUO.Renderer.PostFx
                     Teardown();
                 }
 
-                return world.Texture;
+                LastOutput = world.Texture;
+                return LastOutput;
             }
 
             // Rebuilt when the world target is replaced (a resize), so the stack
@@ -145,7 +153,8 @@ namespace GUO.Renderer.PostFx
                 m.SetShaderParameter("split", Split);
             }
 
-            return _viewport.GetTexture();
+            LastOutput = _viewport.GetTexture();
+            return LastOutput;
         }
 
         private void Build(RenderTarget2D world)
@@ -262,6 +271,7 @@ namespace GUO.Renderer.PostFx
             if (!_loadedState)
             {
                 _loadedState = true;
+                PostFxMenu.Install();
                 LoadState();
                 PostFxLibrary.Changed += OnFileChanged;
             }
@@ -399,12 +409,16 @@ namespace GUO.Renderer.PostFx
                 return ResourceLoader.Exists(path) ? GD.Load<Texture2D>(path) : null;
             }
 
-            string user = PostFxLibrary.UserFolder != null ? System.IO.Path.Combine(PostFxLibrary.UserFolder, path) : null;
-            if (user != null && File.Exists(user) && System.IO.Path.GetFullPath(user).StartsWith(
-                    System.IO.Path.GetFullPath(PostFxLibrary.UserFolder), StringComparison.OrdinalIgnoreCase))
+            // A file beside the presets: the player's folder or an installed pack,
+            // and never outside it.
+            foreach (string folder in PostFxLibrary.SearchFolders())
             {
-                var img = Image.LoadFromFile(user);
-                return img != null ? ImageTexture.CreateFromImage(img) : null;
+                string full = System.IO.Path.GetFullPath(System.IO.Path.Combine(folder, path));
+                if (full.StartsWith(System.IO.Path.GetFullPath(folder), StringComparison.OrdinalIgnoreCase) && File.Exists(full))
+                {
+                    var img = Image.LoadFromFile(full);
+                    return img != null ? ImageTexture.CreateFromImage(img) : null;
+                }
             }
 
             return null;

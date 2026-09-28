@@ -65,14 +65,21 @@ effect that wants light reads it as an input and does not replace that blend.
   Its input is `source` (the previous pass's output, or the world target),
   with `filter_nearest`. Optional inputs are named uniforms the framework
   fills when the shader declares them (section 3).
-- Each enabled pass owns a `SubViewport` of the world target's size, with a
-  full-size `ColorRect` carrying its `ShaderMaterial`: transparent
-  background, nearest filtering, `UpdateMode.Always`, 2D only. The passes
-  are chained, not ping-ponged through two viewports. A chain of N viewports
-  renders in one frame in creation order, with no feedback loop, and a pass's
-  texture is never read by itself. The memory cost is one world-sized target
-  per enabled pass (about 8 MB at 1920x1080), so a preset is capped at 8
-  passes.
+- **One** post-processing `SubViewport` the world target's size (transparent
+  background, nearest filtering, `UpdateMode.Always`, 2D only) draws the
+  world texture. Then, per enabled pass, it draws a `BackBufferCopy` of the
+  whole viewport and a full-size `ColorRect` carrying the pass's
+  `ShaderMaterial`. The shader reads the copy as `source`
+  (`hint_screen_texture, filter_nearest`) and writes with
+  `render_mode blend_disabled`. The passes therefore run in **draw order
+  inside a single viewport**, which settles two things a chain of
+  viewports would leave to chance:
+  - no reliance on the order Godot renders sibling viewports in;
+  - a world target recreated on resize can never make a pass read last
+    frame's texture. The stack is rebuilt whenever the world target is
+    replaced, so it is always created after the target it reads.
+- The memory cost is one world-sized target, whatever the number of passes.
+  A preset is capped at 8 passes to bound the GPU time.
 - Alpha is preserved: the world target is transparent where nothing is drawn
   (the canvas background shows through, ADR-0016), and every starter shader
   passes `source.a` through.
@@ -121,8 +128,10 @@ Classic pays nothing.
   shaders, installed into the home's `postfx/` folder under the same
   allowlist rules as other kinds (only `.json` and `.gdshader`, no paths
   outside the folder). A short amendment note goes into ADR-0019.
-- The chosen preset is saved in the profile (per character), with Classic as
-  the default.
+- The chosen look is remembered in the home's `postfx/state.json` (one per
+  device, like the canvas background's device settings), with Classic as the
+  default. It is not stored in the ported profile, so the profile format stays
+  upstream's.
 
 ### 5. The menu
 
@@ -180,7 +189,7 @@ tritanopia).
 - One marked line in `RenderTargets.Draw`, one entry in the Options gump (a
   button that opens the card), one console command. Everything else is new
   GUO-owned code: `src/Render/PostFx/`, `res://postfx/`.
-- VRAM: one world-sized target per enabled pass.
+- VRAM: one world-sized target while any look other than Classic is on (about 8 MB at 1920x1080), none for Classic.
 - Screenshots from `launchers\dev\screenshot.bat` show the effect; render
   dumps (render_diff) are unaffected, since they record objects, not pixels.
 

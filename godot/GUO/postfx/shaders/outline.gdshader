@@ -5,7 +5,7 @@ shader_type canvas_item;
 render_mode blend_disabled;
 
 uniform sampler2D source : hint_screen_texture, filter_nearest;
-uniform int mode : hint_range(0, 1, 1) = 0;          // 0 luma edges, 1 colour edges
+uniform int mode : hint_enum("Brightness edges", "Colour edges") = 0;
 uniform float threshold : hint_range(0.02, 1.0, 0.01) = 0.22;
 uniform float thickness : hint_range(1.0, 3.0, 1.0) = 1.0;
 uniform vec4 ink : source_color = vec4(0.05, 0.04, 0.06, 1.0);

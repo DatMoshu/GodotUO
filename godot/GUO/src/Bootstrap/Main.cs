@@ -254,6 +254,10 @@ public partial class Main : Node
                 {
                     ZoomProbeThenQuit();
                 }
+                else if (!string.IsNullOrEmpty(_options.PostFxSheet))
+                {
+                    PostFxSheetThenQuit();
+                }
                 else if (_options.DoorProbe)
                 {
                     DoorProbeThenQuit();
@@ -497,6 +501,7 @@ public partial class Main : Node
         _options.ShardCommands.Count > 0
         || _options.HighlightProbe
         || _options.ZoomProbe
+        || !string.IsNullOrEmpty(_options.PostFxSheet)
         || _options.DoorProbe
         || _options.AssetProbe.Length > 0
         || _options.EffectsProbe > 0
@@ -564,6 +569,14 @@ public partial class Main : Node
     /// Hover a meshed tile or static, leave and come back, photograph it, then quit;
     /// see HighlightProbe.
     /// </summary>
+    /// <summary>Photograph and time every post-processing look, then quit; see PostFxProbe.</summary>
+    private async void PostFxSheetThenQuit()
+    {
+        await Preamble();
+        await PostFxProbe.Run(this, _options.PostFxSheet);
+        Quit(PostFxProbe.Passed ? 0 : 1);
+    }
+
     /// <summary>Time the world at every other zoom step, then quit; see ZoomProbe.</summary>
     private async void ZoomProbeThenQuit()
     {
@@ -954,6 +967,7 @@ public partial class Main : Node
                 || TradePartner
                 || HighlightProbe
                 || ZoomProbe
+                || !string.IsNullOrEmpty(PostFxSheet)
                 || DoorProbe
                 || EffectsProbe > 0
                 || EndureSeconds > 0
@@ -1034,6 +1048,9 @@ public partial class Main : Node
 
         /// <summary>Time the world at each zoom level rather than play.</summary>
         public bool ZoomProbe { get; private set; }
+
+        /// <summary>Photograph and time every post-processing look into this folder (ADR-0023).</summary>
+        public string PostFxSheet { get; private set; }
 
         public bool DoorProbe { get; private set; }
 
@@ -1209,6 +1226,9 @@ public partial class Main : Node
                         break;
                     case "--zoom-probe":
                         o.ZoomProbe = true;
+                        break;
+                    case "--postfx-sheet":
+                        o.PostFxSheet = Next();
                         break;
                     case "--door-probe":
                         o.DoorProbe = true;

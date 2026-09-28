@@ -27,6 +27,35 @@ namespace GUO.Renderer.PostFx
 
         public static event Action<string> Changed;
 
+        /// <summary>
+        /// Where the player's looks can come from, first match wins: their own
+        /// folder, then installed Store packs of kind "postfx" (read only).
+        /// </summary>
+        public static List<string> SearchFolders()
+        {
+            var folders = new List<string>();
+            if (UserFolder != null)
+            {
+                folders.Add(UserFolder);
+            }
+
+            try
+            {
+                folders.AddRange(GUO.Store.StoreOptions.InstalledPostFxFolders());
+            }
+            catch (Exception e)
+            {
+                GD.PushWarning($"[GUO] postfx: store packs not read: {e.Message}");
+            }
+
+            return folders;
+        }
+
+        private static readonly Dictionary<string, Shader> _registered = new(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>A shader by name from code, ahead of every file (the probe's identity pass).</summary>
+        public static void Register(string name, Shader shader) => _registered[name] = shader;
+
         public static Shader Shader(string name)
         {
             if (string.IsNullOrWhiteSpace(name))
@@ -34,9 +63,23 @@ namespace GUO.Renderer.PostFx
                 return null;
             }
 
-            string user = UserFolder != null ? System.IO.Path.Combine(UserFolder, name + ".gdshader") : null;
+            if (_registered.TryGetValue(name, out Shader registered))
+            {
+                return registered;
+            }
 
-            if (user != null && File.Exists(user))
+            string user = null;
+            foreach (string folder in SearchFolders())
+            {
+                string candidate = System.IO.Path.Combine(folder, name + ".gdshader");
+                if (File.Exists(candidate))
+                {
+                    user = candidate;
+                    break;
+                }
+            }
+
+            if (user != null)
             {
                 DateTime stamp = File.GetLastWriteTimeUtc(user);
                 if (_shaders.TryGetValue(name, out var c) && c.path == user && c.stamp == stamp)
@@ -78,11 +121,14 @@ namespace GUO.Renderer.PostFx
                 }
             }
 
-            if (UserFolder != null && Directory.Exists(UserFolder))
+            foreach (string folder in SearchFolders())
             {
-                foreach (string f in Directory.GetFiles(UserFolder, "*.gdshader"))
+                if (Directory.Exists(folder))
                 {
-                    names.Add(System.IO.Path.GetFileNameWithoutExtension(f));
+                    foreach (string f in Directory.GetFiles(folder, "*.gdshader"))
+                    {
+                        names.Add(System.IO.Path.GetFileNameWithoutExtension(f));
+                    }
                 }
             }
 
@@ -108,11 +154,21 @@ namespace GUO.Renderer.PostFx
                 TryAdd(byName, FileAccess.GetFileAsString(path), path);
             }
 
-            if (UserFolder != null && Directory.Exists(UserFolder))
+            // Store packs first, then the player's own folder, so theirs win.
+            List<string> folders = SearchFolders();
+            folders.Reverse();
+            foreach (string folder in folders)
             {
-                foreach (string f in Directory.GetFiles(UserFolder, "*.json"))
+                if (!Directory.Exists(folder))
                 {
-                    if (System.IO.Path.GetFileName(f).Equals("state.json", StringComparison.OrdinalIgnoreCase))
+                    continue;
+                }
+
+                foreach (string f in Directory.GetFiles(folder, "*.json"))
+                {
+                    string file = System.IO.Path.GetFileName(f);
+                    if (file.Equals("state.json", StringComparison.OrdinalIgnoreCase) ||
+                        file.Equals("manifest.json", StringComparison.OrdinalIgnoreCase))
                     {
                         continue;
                     }

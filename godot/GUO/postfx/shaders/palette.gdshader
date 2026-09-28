@@ -8,7 +8,7 @@ render_mode blend_disabled;
 
 uniform sampler2D source : hint_screen_texture, filter_nearest;
 uniform sampler2D palette_tex : filter_nearest;
-uniform int palette : hint_range(0, 3, 1) = 0;   // 0 EGA, 1 handheld green, 2 handheld grey, 3 palette_tex
+uniform int palette : hint_enum("EGA (16 colours)", "Handheld green", "Handheld grey", "Palette image") = 0;
 uniform int palette_tex_colors : hint_range(2, 32, 1) = 16;
 uniform float dither : hint_range(0.0, 1.0, 0.01) = 0.6;
 uniform float pixel : hint_range(1.0, 4.0, 1.0) = 1.0;   // chunkier pixels, still nearest

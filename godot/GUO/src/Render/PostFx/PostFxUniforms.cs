@@ -13,10 +13,12 @@ namespace GUO.Renderer.PostFx
         public string Name;
         public Variant.Type Type;
         public float Min, Max = 1f, Step = 0.01f;
-        public bool IsRange, IsColor;
+        public bool IsRange, IsColor, IsEnum;
+        public string[] Options = System.Array.Empty<string>();
         public Variant Default;
 
-        public string Label => Name.Replace('_', ' ');
+        /// <summary>"light_level" -> "Light level": sentence case, as the menu reads.</summary>
+        public string Label => Name.Length == 0 ? Name : char.ToUpperInvariant(Name[0]) + Name[1..].Replace('_', ' ');
     }
 
     internal static class PostFxUniforms
@@ -64,7 +66,15 @@ namespace GUO.Renderer.PostFx
                     Default = RenderingServer.ShaderGetParameterDefault(shader.GetRid(), name),
                 };
 
-                if ((type == Variant.Type.Float || type == Variant.Type.Int) && hint == PropertyHint.Range)
+                if (type == Variant.Type.Int && hint == PropertyHint.Enum)
+                {
+                    // hint_enum("A", "B"): a choice by name, shown as a dropdown.
+                    u.IsEnum = true;
+                    u.Options = hintString.Split(',');
+                    u.Min = 0;
+                    u.Max = u.Options.Length - 1;
+                }
+                else if ((type == Variant.Type.Float || type == Variant.Type.Int) && hint == PropertyHint.Range)
                 {
                     string[] parts = hintString.Split(',');
                     u.IsRange = true;
@@ -92,6 +102,9 @@ namespace GUO.Renderer.PostFx
             return list;
         }
 
+        private static readonly System.Collections.Generic.Dictionary<(ulong, string), bool> _has = new();
+
+        /// <summary>Whether a shader declares a uniform (inputs included); cached, as it is asked every frame.</summary>
         public static bool Has(Shader shader, string name)
         {
             if (shader == null)
@@ -99,15 +112,24 @@ namespace GUO.Renderer.PostFx
                 return false;
             }
 
+            var key = (shader.GetInstanceId() ^ (ulong)shader.Code.GetHashCode(), name);
+            if (_has.TryGetValue(key, out bool known))
+            {
+                return known;
+            }
+
+            bool found = false;
             foreach (Dictionary d in shader.GetShaderUniformList())
             {
                 if ((string)d["name"] == name)
                 {
-                    return true;
+                    found = true;
+                    break;
                 }
             }
 
-            return false;
+            _has[key] = found;
+            return found;
         }
 
         public static PostFxUniform Find(Shader shader, string name) => Of(shader).Find(u => u.Name == name);
