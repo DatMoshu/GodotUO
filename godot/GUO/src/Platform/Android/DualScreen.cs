@@ -246,14 +246,17 @@ namespace GUO.Platform.Android
 
                 if (instance._display == null)
                 {
-                    GD.Print("[GUO] dual screen: no second display; nothing changes");
-                    instance.Free();
-
-                    return;
+                    // One screen: the second screen can still be a panel
+                    // inside the main window (DualScreen.Panel), when the
+                    // settings and the window's size say so.
+                    GD.Print("[GUO] dual screen: no second display; the one-screen panel follows the settings");
+                    instance._panel = true;
                 }
-
-                instance._physicalWidth = instance._display.Width;
-                instance._physicalHeight = instance._display.Height;
+                else
+                {
+                    instance._physicalWidth = instance._display.Width;
+                    instance._physicalHeight = instance._display.Height;
+                }
             }
 
             _instance = instance;
@@ -269,7 +272,7 @@ namespace GUO.Platform.Android
         /// <param name="restore">The target to point the batcher back at.</param>
         public static void Draw(UltimaBatcher2D batcher, RenderTarget2D restore)
         {
-            if (!Active || Suspended || _instance?._target == null)
+            if (!Active || Suspended || _instance?._target == null || (_instance._panel && !_instance.PanelVisible))
             {
                 return;
             }
@@ -301,7 +304,11 @@ namespace GUO.Platform.Android
             int strip = 0;
             WorldViewportGump viewport = UIManager.GetGump<WorldViewportGump>();
 
-            if (viewport != null)
+            // Not on the one-screen panel: the viewport is at least 640 wide
+            // (upstream's minimum) on a 620 main window, which clipped the
+            // drawer's first 30 pixels; and only gumps whose middle is past
+            // the edge are drawn there anyway.
+            if (viewport != null && !_instance._panel)
             {
                 strip = Math.Max(0, viewport.X + viewport.Width - MainWidth);
             }
@@ -326,7 +333,14 @@ namespace GUO.Platform.Android
             // the main window's edge, where nothing shows it (bug 2 of the
             // Thor pass). Draw it here instead, and a badge on the screen
             // the pointer is not on, so the player always sees what they carry.
-            if (PointerOnShelf)
+            if (PointerOnShelf && _instance._panel && !TouchInput.Enabled && !InputMode.PointerHidden)
+            {
+                // The desktop's cursor over the one-screen panel: GameCursor
+                // drew it, and what it holds, into the main window, beyond
+                // its edge. Again here, where the pointer is.
+                Client.Game.UO?.GameCursor?.Draw(batcher);
+            }
+            else if (PointerOnShelf)
             {
                 DrawHeldItem(batcher, Mouse.Position.X, Mouse.Position.Y, 1f, true);
             }
@@ -531,7 +545,7 @@ namespace GUO.Platform.Android
 
         public override void _Process(double delta)
         {
-            bool wanted = WantedNow();
+            bool wanted = WantedNow() && (!_panel || PanelWanted());
 
             if (wanted && !Active)
             {
@@ -551,7 +565,16 @@ namespace GUO.Platform.Android
 
             DualScreenSettings.Values settings = DualScreenSettings.Current;
 
-            if (settings.Scale != _appliedScale || settings.ScalePercent != _appliedScalePercent)
+            if (_panel)
+            {
+                UpdatePanel(delta);
+
+                if (!Active)
+                {
+                    return;
+                }
+            }
+            else if (settings.Scale != _appliedScale || settings.ScalePercent != _appliedScalePercent)
             {
                 // A new pixel scale is a new target and a new bitmap: the
                 // display is reopened at the size, nothing else changes.
@@ -614,8 +637,9 @@ namespace GUO.Platform.Android
             _applied = settings;
             TakeTouches();
 
-            if (Suspended)
+            if (Suspended || _panel)
             {
+                // The panel shows the target's own texture: nothing to push.
                 return;
             }
 
@@ -639,6 +663,14 @@ namespace GUO.Platform.Android
             int scale = DualScreenSettings.Current.Scale;
             int percent = DualScreenSettings.Current.ScalePercent;
 
+            if (_panel)
+            {
+                // A panel in the main window is at the main screen's scale.
+                SizePanel();
+                scale = 0;
+                percent = 0;
+            }
+
             // The shelf's own pixel scale, or the main screen's. A fractional
             // scale (1.25, 1.5) is an option for the owner to compare: its
             // pixels are nearest-sampled, never filtered, so some art pixels
@@ -659,7 +691,7 @@ namespace GUO.Platform.Android
             {
                 _display.Open(_logicalWidth, _logicalHeight);
             }
-            else
+            else if (!_panel)
             {
                 OpenSimulator();
             }
@@ -672,8 +704,13 @@ namespace GUO.Platform.Android
             Active = true;
             _mainSize = Vector2I.Zero;
 
+            if (_panel)
+            {
+                OpenPanel();
+            }
+
             GD.Print(
-                $"[GUO] dual screen: active; second screen {_physicalWidth}x{_physicalHeight} "
+                $"[GUO] dual screen: active{(_panel ? $" as a one-screen {_kind.ToString().ToLowerInvariant()}" : "")}; second screen {_physicalWidth}x{_physicalHeight} "
                 + $"is {_logicalWidth}x{_logicalHeight} at scale {divisor:F2} ({(percent > 0 ? "fine shelf setting" : scale > 0 ? "shelf setting" : "main screen")}), main window {MainWidth} wide"
             );
         }
@@ -685,6 +722,7 @@ namespace GUO.Platform.Android
 
             _display?.Close();
             CloseSimulator();
+            ClosePanel();
 
             _target?.Dispose();
             _target = null;
@@ -809,6 +847,12 @@ namespace GUO.Platform.Android
             }
 
             Rectangle window = Client.Game.Window.ClientBounds;
+
+            // The one-screen split has the bottom of the window.
+            if (IsPanel && _instance._kind == PanelKind.Split)
+            {
+                window.Height = Math.Max(1, (int) (_instance._rect.Position.Y * Client.Game.DpiScale));
+            }
 
             viewport.ResizeGameWindow(new Point(window.Width, window.Height));
             viewport.X = -5;
@@ -1307,6 +1351,7 @@ namespace GUO.Platform.Android
                 ShelfOn = false;
                 _display?.Close();
                 CloseSimulator();
+                ClosePanel();
                 _target?.Dispose();
                 _target = null;
             }

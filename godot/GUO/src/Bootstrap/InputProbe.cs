@@ -565,11 +565,15 @@ internal static class InputProbe
             return;
         }
 
+        // Click aims relative to the login gump (Send adds its origin); the
+        // button's screen coordinates already include it.
+        Compat.Point origin = LoginOrigin();
+
         await Click(
             host,
             new Vector2(
-                button.ScreenCoordinateX + button.Width / 2f,
-                button.ScreenCoordinateY + button.Height / 2f
+                button.ScreenCoordinateX + button.Width / 2f - origin.X,
+                button.ScreenCoordinateY + button.Height / 2f - origin.Y
             )
         );
 

@@ -128,6 +128,7 @@ namespace GUO.Game.UI.Gumps
         private Checkbox _dualScreen, _dualShelvePaperdoll, _dualShelveBackpack, _dualShelveStatus, _dualShelveJournal, _dualShelveOthers;
         private HSliderBar _dualScale;
         private Combobox _dualScaleFine; // PORT DEVIATION (GUO)
+        private Combobox _onePanel, _oneSide, _oneSquare; // PORT DEVIATION (GUO): the one-screen side panel
         private HSliderBar _chevronInset; // PORT DEVIATION (GUO)
         private Combobox[] _flick; // PORT DEVIATION (GUO): hold-and-flick, up/down/left/right
         private Combobox[] _barSlots; // PORT DEVIATION (GUO): the command bar's thirty slots
@@ -966,15 +967,31 @@ namespace GUO.Game.UI.Gumps
 
             // PORT DEVIATION (GUO): the second screen, where there is one.
             // The same settings the pre-game card on that screen offers
-            // (PregameCard); DualScreen applies them live.
-            if (GUO.Platform.Android.DualScreen.HasSecondaryDisplay)
+            // (PregameCard); DualScreen applies them live. On one screen, the
+            // side panel that stands in for it (DualScreen.Panel): on or off,
+            // its edge, and on a near-square screen the split.
+            bool oneScreen = !GUO.Platform.Android.DualScreen.HasSecondaryDisplay && GUO.Platform.Android.DualScreen.IsPanel;
+
+            if (oneScreen)
+            {
+                section3.Add(AddLabel(null, "Side panel (the second screen on one screen)", 0, 0));
+                section3.AddRight(_onePanel = AddCombobox(null, new[] { "Touch screens", "On", "Off" }, System.Math.Clamp(_currentProfile.OneScreenPanel, 0, 2), 0, 0, 150));
+                section3.PushIndent();
+                section3.Add(AddLabel(null, "The drawer's edge", 0, 0));
+                section3.AddRight(_oneSide = AddCombobox(null, new[] { "Left", "Right" }, _currentProfile.OneScreenDrawerSide == 1 ? 1 : 0, 0, 0, 150));
+                section3.Add(AddLabel(null, "On a near-square screen", 0, 0));
+                section3.AddRight(_oneSquare = AddCombobox(null, new[] { "The drawer", "Top and bottom" }, _currentProfile.OneScreenSquareLayout == 1 ? 1 : 0, 0, 0, 150));
+                section3.PopIndent();
+            }
+
+            if (GUO.Platform.Android.DualScreen.HasSecondaryDisplay || oneScreen)
             {
                 section3.Add
                 (
                     _dualScreen = AddCheckBox
                     (
                         null,
-                        "Use the second screen as a shelf for gumps",
+                        oneScreen ? "Use the side panel as a shelf for gumps" : "Use the second screen as a shelf for gumps",
                         _currentProfile.DualScreenEnabled,
                         0,
                         0
@@ -987,10 +1004,15 @@ namespace GUO.Game.UI.Gumps
                 section3.Add(_dualShelveStatus = AddCheckBox(null, "Shelve the status bar when opened", _currentProfile.DualScreenShelveStatus, 0, 0));
                 section3.Add(_dualShelveJournal = AddCheckBox(null, "Shelve the journal when opened", _currentProfile.DualScreenShelveJournal, 0, 0));
                 section3.Add(_dualShelveOthers = AddCheckBox(null, "Shelve other gumps (skills, spellbook, containers)", _currentProfile.DualScreenShelveOthers, 0, 0));
-                section3.Add(AddLabel(null, "Second screen scale (0 = as the main screen)", 0, 0));
-                section3.AddRight(_dualScale = AddHSlider(null, 0, GUO.Platform.Android.DualScreenSettings.MaxScale, _currentProfile.DualScreenScale, 0, 0, 120));
-                section3.Add(AddLabel(null, "Fine second screen scale (overrides the slider)", 0, 0));
-                section3.AddRight(_dualScaleFine = AddCombobox(null, new[] { "Off", "1.0x", "1.25x", "1.5x" }, System.Math.Max(0, System.Array.IndexOf(DualScaleFinePercents, _currentProfile.DualScreenScalePercent)), 0, 0, 120));
+
+                // The panel is at the main screen's scale; a display has its own.
+                if (!oneScreen)
+                {
+                    section3.Add(AddLabel(null, "Second screen scale (0 = as the main screen)", 0, 0));
+                    section3.AddRight(_dualScale = AddHSlider(null, 0, GUO.Platform.Android.DualScreenSettings.MaxScale, _currentProfile.DualScreenScale, 0, 0, 120));
+                    section3.Add(AddLabel(null, "Fine second screen scale (overrides the slider)", 0, 0));
+                    section3.AddRight(_dualScaleFine = AddCombobox(null, new[] { "Off", "1.0x", "1.25x", "1.5x" }, System.Math.Max(0, System.Array.IndexOf(DualScaleFinePercents, _currentProfile.DualScreenScalePercent)), 0, 0, 120));
+                }
                 section3.PopIndent();
             }
 
@@ -4297,8 +4319,20 @@ namespace GUO.Game.UI.Gumps
                 _currentProfile.DualScreenShelveStatus = _dualShelveStatus.IsChecked;
                 _currentProfile.DualScreenShelveJournal = _dualShelveJournal.IsChecked;
                 _currentProfile.DualScreenShelveOthers = _dualShelveOthers.IsChecked;
-                _currentProfile.DualScreenScale = _dualScale.Value;
-                _currentProfile.DualScreenScalePercent = DualScaleFinePercents[System.Math.Clamp(_dualScaleFine.SelectedIndex, 0, DualScaleFinePercents.Length - 1)];
+
+                if (_dualScale != null)
+                {
+                    _currentProfile.DualScreenScale = _dualScale.Value;
+                    _currentProfile.DualScreenScalePercent = DualScaleFinePercents[System.Math.Clamp(_dualScaleFine.SelectedIndex, 0, DualScaleFinePercents.Length - 1)];
+                }
+            }
+
+            // PORT DEVIATION (GUO): the one-screen side panel.
+            if (_onePanel != null)
+            {
+                _currentProfile.OneScreenPanel = System.Math.Clamp(_onePanel.SelectedIndex, 0, 2);
+                _currentProfile.OneScreenDrawerSide = _oneSide.SelectedIndex == 1 ? 1 : 0;
+                _currentProfile.OneScreenSquareLayout = _oneSquare.SelectedIndex == 1 ? 1 : 0;
             }
 
             _currentProfile.ShowWindowHandles = _showHandles.IsChecked; // PORT DEVIATION (GUO)

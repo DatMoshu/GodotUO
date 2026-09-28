@@ -114,6 +114,14 @@ internal sealed partial class PregameCard : Node
                 return art;
             }
 
+            // The one-screen panel is drawn at the client's own whole-number
+            // scale, so an art pixel is a whole number of client pixels:
+            // rounded down, the card as big as the login gump's art beside it.
+            if (DualScreen.IsPanel)
+            {
+                return Math.Max(1, (int) (UoTheme.PixelScale / Client.Game.DpiScale));
+            }
+
             int physical = Math.Max(1, DualScreen.SecondWidth);
             return Math.Max(1, (int) Math.Round(UoTheme.PixelScale * (float) DualScreen.LogicalWidth / physical));
         }

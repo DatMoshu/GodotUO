@@ -187,6 +187,16 @@ namespace GUO.Configuration
         // PORT DEVIATION (GUO): a fractional second-screen scale, in percent
         // (100/125/150); 0 leaves DualScreenScale in charge. Not a default.
         public int DualScreenScalePercent { get; set; }
+
+        // PORT DEVIATION (GUO): the second screen on a device with one screen
+        // (DualScreen's panel): pre-game a panel beside the login gump, in
+        // the world a drawer on one edge. 0 follows the platform (on with the
+        // touch layer, off on the desktop), 1 on, 2 off. The drawer's edge
+        // (0 left, 1 right) and, on a near-square screen (an unfolded Fold),
+        // the layout (0 the drawer, 1 a top/bottom split).
+        public int OneScreenPanel { get; set; }
+        public int OneScreenDrawerSide { get; set; }
+        public int OneScreenSquareLayout { get; set; }
         public bool UseAlternativeLights { get; set; }
         public bool UseCustomLightLevel { get; set; }
         public byte LightLevel { get; set; }

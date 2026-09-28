@@ -58,6 +58,17 @@ internal static class PregameProbe
 
         _second = DualScreen.HasSecondaryDisplay;
 
+        // One screen with room beside the login gump: the card is docked in
+        // the one-screen panel, which counts as the second screen here, and
+        // is photographed in the main window.
+        for (int i = 0; i < 60 && !_second && DualScreen.IsPanel && !PregameCard.ShownOnSecond; i++)
+        {
+            await InputProbe.Wait(host, 1);
+        }
+
+        _panel = !_second && DualScreen.IsPanel && PregameCard.ShownOnSecond;
+        _second |= _panel;
+
         if (card == null)
         {
             Check("the pre-game card is built at the login screen", false, "not built");
@@ -71,6 +82,17 @@ internal static class PregameProbe
         {
             Check("the pre-game card is up on the second screen at the login screen, and no Servers button stands by the login gump",
                 PregameCard.ShownOnSecond && UIManager.GetGump<LoginGump>() != null && !PregameCard.ServersButtonShown, card.Geometry);
+
+            if (_panel)
+            {
+                LoginGump login = UIManager.GetGump<LoginGump>();
+                Godot.Rect2I dock = DualScreen.PanelRect;
+                Check("one screen: the card is docked on the left and the login gump sits whole to the right of it",
+                    DualScreen.PanelShape == "dock" && dock.Position.X == 0 && login != null && login.X >= dock.End.X
+                        && login.X + 640 <= Client.Game.ClientBounds.Width,
+                    $"dock {dock}, login at {login?.X},{login?.Y}, client {Client.Game.ClientBounds.Width}x{Client.Game.ClientBounds.Height}");
+                await SaveMain(host, "login_dock");
+            }
         }
         else
         {
@@ -225,7 +247,7 @@ internal static class PregameProbe
             Check("one screen: Close puts the login gump back, with its Servers button", !PregameCard.OnMain && PregameCard.ServersButtonShown);
         }
 
-        if (world && _second)
+        if (world && _second && !_panel)
         {
             await WorldChecks(host, card);
         }
@@ -342,7 +364,7 @@ internal static class PregameProbe
         GD.Print(Passed ? "[GUO] pregame: ok" : "[GUO] pregame: FAIL");
     }
 
-    private static bool _second;
+    private static bool _second, _panel;
 
     /// <summary>A left click in window pixels, through the card's main-window input as the mouse or a finger would.</summary>
     private static void Click(Vector2 at)
@@ -648,7 +670,7 @@ internal static class PregameProbe
 
     private static async System.Threading.Tasks.Task Save(Node host, string name)
     {
-        if (!_second)
+        if (!_second || _panel)
         {
             await SaveMain(host, name);
             return;

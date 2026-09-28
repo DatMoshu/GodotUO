@@ -745,6 +745,16 @@ namespace GUO
                 return;
             }
 
+            // PORT DEVIATION (GUO): on one screen, the second screen's panel
+            // (the dock beside the login gump, the drawer in the world) takes
+            // the pointer over it and its tab; see DualScreen.Panel.
+            if (GUO.Platform.Android.DualScreen.HandleMainInput(@event))
+            {
+                GetViewport().SetInputAsHandled();
+
+                return;
+            }
+
             // PORT DEVIATION (GUO): the pre-game card (a Godot card) takes the
             // keys while one of its fields is typed in, the pointer while it is
             // open over the login screen, and a tap on its Servers button.

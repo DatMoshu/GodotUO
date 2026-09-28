@@ -25,6 +25,7 @@ namespace GUO.Input.Glyphs
             (PadAction.Y, "Macro row (touch screens)"),
             (PadAction.Walk, "Walk (or the left stick)"),
             (PadAction.Pointer, "Move the pointer"),
+            (PadAction.Back, "Side panel, open or closed (one screen)"),
         };
 
         private readonly PadAction _action;
