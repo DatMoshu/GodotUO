@@ -484,7 +484,33 @@ namespace GUO.Input.Gamepad
         {
             string name = Godot.Input.GetJoyName(device);
             GD.Print($"[GUO] gamepad: device {device} {what}: \"{name}\" guid {Godot.Input.GetJoyGuid(device)} known {Godot.Input.IsJoyKnown(device)}"
-                + (what == "disconnected" ? "" : $", layout {Detect(name, OS.GetModelName(), Godot.Input.IsJoyKnown(device))} (model \"{OS.GetModelName()}\")"));
+                + (what == "disconnected" ? "" : $", layout {Detect(name, OS.GetModelName(), Godot.Input.IsJoyKnown(device))}, glyphs {InputMode.FamilyOf(name)}"
+                    + $" (model \"{OS.GetModelName()}\"{Board()})"));
+        }
+
+        /// <summary>
+        /// On Linux, the board the client runs on, from the firmware's DMI
+        /// table: a Steam Deck is "Valve Jupiter" (LCD) or "Valve Galileo"
+        /// (OLED), where OS.GetModelName says only "GenericDevice". Logged
+        /// with the pad, for the Deck's layout check (S5); nothing decides by it.
+        /// </summary>
+        private static string Board()
+        {
+            if (!OperatingSystem.IsLinux())
+            {
+                return "";
+            }
+
+            try
+            {
+                string vendor = System.IO.File.ReadAllText("/sys/devices/virtual/dmi/id/board_vendor").Trim();
+                string board = System.IO.File.ReadAllText("/sys/devices/virtual/dmi/id/board_name").Trim();
+                return $", board \"{vendor} {board}\"";
+            }
+            catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException)
+            {
+                return "";
+            }
         }
     }
 }

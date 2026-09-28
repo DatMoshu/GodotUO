@@ -190,11 +190,17 @@ tool does not edit it. Re-pushing a build does not touch the shortcut.
 
 ## 7. Controls
 
-The client is mouse-driven, exactly as on the PC: left-click to target and
-pick up, right-click-and-hold to walk, double-click to use, drag to move
-items, the keyboard to type. There is no gamepad layer yet (the Android
-touch layer, ADR-0017, is not compiled for Linux and would not help a
-gamepad). On the Deck that means:
+A controller works in GUO on every platform, on by default (ADR-0025;
+Options > "Use a controller" turns it off). The D-pad and left stick walk,
+A confirms, B cancels, X opens the window menu, the right stick moves the
+pointer, and the button glyphs follow the pad. How the Deck's built-in
+controls reach the client depends on Steam Input, and that has **not been
+measured on a Deck yet**. The controller check below (S5) measures it.
+
+The client is also mouse-driven, exactly as on the PC: left-click to target
+and pick up, right-click-and-hold to walk, double-click to use, drag to
+move items, the keyboard to type. The Android touch layer (ADR-0017) is not
+compiled for Linux. With the mouse on the Deck:
 
 - **Right trackpad** as the mouse, **R2** left-click, **L2** right-click
   (the Steam default *Keyboard (WASD) and Mouse* layout does this; in
@@ -210,6 +216,50 @@ gamepad). On the Deck that means:
 - The window is the client's own integer scale, not Godot's stretch
   (ADR-0017 section 4); on the Deck's 1280x800 panel that is a 1x client
   with the classic 640x480 login gump centred.
+
+## 7a. The controller check (S5)
+
+This measures what the Deck's built-in pad looks like to GUO, the way
+[docs/thor-controller-layout.md](thor-controller-layout.md) did for the Thor.
+It needs the Deck awake, in Desktop mode first, with the client data on it.
+
+1. Build and start it with the pad trace:
+
+   ```
+   python tools\steamdeck\run.py export
+   python tools\steamdeck\run.py push
+   python tools\steamdeck\run.py run --args="--gamepad-trace --login-probe-stay" --wait 90
+   ```
+
+   When the pad is seen, `guo.log` has one line for it:
+   `[GUO] gamepad: device N connected: "<name>" guid <guid> known <True|False>, layout <Labels|Swapped|Unknown>, glyphs <family> (model "...", board "Valve Jupiter")`.
+   Jupiter is the LCD Deck and Galileo the OLED.
+2. Press, in this order: **A** (bottom), **B** (right), **X** (left),
+   **Y** (top), the D-pad up, right, down, left, **L1**, **R1**, **L2**,
+   **R2**, **View**, **Menu**, the left stick in a circle, then the right
+   stick. Each press logs `[GUO] gamepad: device N "<name>" button <index> (<Godot name>) down`,
+   and each stick past half-way logs an `axis` line.
+3. Read them back: `python tools\steamdeck\run.py log`.
+4. Do it again in Game mode, from the Non-Steam shortcut, with the
+   shortcut's **Controller** layout set to Steam's *Gamepad* template. Under
+   Steam Input the pad can arrive under another name (Steam's virtual pad)
+   rather than as `Steam Deck`.
+
+Record for each mode: the connect line, and for each printed label the
+Godot button it gave. Then:
+
+- **Printed A gives Godot A (button 0)**, and so on for B, X and Y: the
+  layout is `Labels`. `GamepadInput.Detect` already answers that for any
+  pad SDL knows, so nothing changes.
+- **Printed A gives Godot B**: the layout is `Swapped`, and `Detect` needs
+  the Deck's name (and the Valve board) as the Thor's Xbox mode has.
+- **The glyphs are not `SteamDeck`** (for example, Steam's virtual pad reads
+  as `Xbox` or `Generic`): `InputMode.FamilyOf` needs that name, but only
+  on a Valve board, because on a PC the same virtual pad can be any
+  controller.
+- **No connect line in Desktop mode**: Steam's desktop configuration holds
+  the pad as a mouse and keyboard, so GUO gets no pad there. Game mode is
+  the one that counts; say so in section 7.
 
 ## 8. The smoke
 
