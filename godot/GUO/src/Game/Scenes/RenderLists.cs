@@ -154,14 +154,36 @@ namespace GUO.Game.Scenes
 
             Land ground = LandAt(map, obj.X, obj.Y);
 
-            if (ground == null || obj.Z >= ground.Z)
+            if (ground == null)
+            {
+                return;
+            }
+
+            // Stretched land is drawn up to its corners, not at its own z: a
+            // river bank rises from the water's z to the grass's across one
+            // tile, over the water statics standing on it. The highest corner
+            // of the ground and of the tile in front of it (whose corners reach
+            // two tiles on) is how far up land here can cover an object.
+            int top = HighestCorner(ground);
+
+            if (ground.IsStretched)
+            {
+                Land front = LandAt(map, obj.X + 1, obj.Y + 1);
+
+                if (front != null)
+                {
+                    top = Math.Max(top, HighestCorner(front));
+                }
+            }
+
+            if (obj.Z >= top)
             {
                 return;
             }
 
             // A sprite drops 4 pixels per z and a tile row is 22 pixels down
             // the screen; one more row for the height of the diamond itself.
-            int reach = Math.Min(8, ((ground.Z - obj.Z) * 4 + 43) / 22 + 1);
+            int reach = Math.Min(8, ((top - obj.Z) * 4 + 43) / 22 + 1);
             int half = CoverHalfWidth(obj);
 
             for (int dy = 0; dy <= reach; dy++)
@@ -233,6 +255,19 @@ namespace GUO.Game.Scenes
             return art.Texture == null ? -1 : art.UV.Width >> 1;
         }
         // END PORT DEVIATION (GUO)
+
+        /// <summary>The z of a land tile's highest drawn corner (ApplyStretch: YOffsets are z * 4).</summary>
+        private static int HighestCorner(Land land)
+        {
+            if (!land.IsStretched)
+            {
+                return land.Z;
+            }
+
+            ref GUO.Renderer.UltimaBatcher2D.YOffsets o = ref land.YOffsets;
+
+            return Math.Max(Math.Max(o.Top, o.Right), Math.Max(o.Left, o.Bottom)) >> 2;
+        }
 
         private static Land LandAt(Map.Map map, int x, int y)
         {

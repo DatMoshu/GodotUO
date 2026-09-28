@@ -344,7 +344,9 @@ internal static class ShotDump
         ushort tex = land.TileData.TexID;
         ref readonly var texmap = ref ClientRoot.Game.UO.Texmaps.GetTexmap(tex);
         string line = $"land {x},{y} at screen {land.RealScreenPosition.X},{land.RealScreenPosition.Y}: 0x{land.Graphic:X4} z {land.Z} stretched {land.IsStretched} texmap 0x{tex:X4} "
-                      + $"uv {texmap.UV.X},{texmap.UV.Y},{texmap.UV.Width},{texmap.UV.Height}";
+                      + $"uv {texmap.UV.X},{texmap.UV.Y},{texmap.UV.Width},{texmap.UV.Height} "
+                      + $"avgz {land.AverageZ} minz {land.MinZ} yoff {land.YOffsets.Top},{land.YOffsets.Right},{land.YOffsets.Bottom},{land.YOffsets.Left} "
+                      + $"n {N(land.NormalTop)} {N(land.NormalRight)} {N(land.NormalBottom)} {N(land.NormalLeft)}";
 #if !PERF_DUMP_CUO
         var chunk = World.Map.GetChunk(x, y, false);
         int i = land.MeshSpriteIndex;
@@ -377,6 +379,8 @@ internal static class ShotDump
     private static Godot.Image TextureAtlasPage(Godot.Texture2D t) =>
         GUO.Renderer.TextureAtlas.TryGetPage(t, out Godot.Image page, out _) ? page : null;
 #endif
+
+    private static string N(object v) => v.ToString()?.Replace(" ", "");
 
     private static string Placeholders(string text)
     {
