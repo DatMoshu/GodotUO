@@ -1804,6 +1804,15 @@ internal static class TouchProbe
         UIManager.GetGump<PaperDollGump>(world.Player.Serial)?.Dispose();
         await Frames(host, 5);
         GumpPresentation.PaperdollScale = 0f;
+
+        // The world view an earlier session saved is not the one on screen:
+        // the fit follows the view on screen, so a run does not depend on the
+        // last (first 1.12, next 1.12 on guoeffects, the director, 2026-09-28).
+        Configuration.Profile profile = Configuration.ProfileManager.CurrentProfile;
+        (Compat.Point pos, Compat.Point size) savedView = (profile.GameWindowPosition, profile.GameWindowSize);
+        profile.GameWindowPosition = new Compat.Point(0, 0);
+        profile.GameWindowSize = new Compat.Point(320, 240);
+
         Game.GameActions.OpenPaperdoll(world, world.Player.Serial);
         PaperDollGump doll = null;
 
@@ -1836,9 +1845,10 @@ internal static class TouchProbe
         }
 
         await Frames(host, 10);
+        (profile.GameWindowPosition, profile.GameWindowSize) = savedView;
         Check("a paperdoll opened on one touch screen starts larger than 1x, within the room; the next opens at the size the player gave the last",
             first > 1.3f && fits && again != null && Mathf.IsEqualApprox(again.PresentationScale, 1.5f),
-            $"first {first:0.00}, fits {fits}, next {again?.PresentationScale:0.00}");
+            $"first {first:0.00}, fits {fits}, next {again?.PresentationScale:0.00}, world view {GUO.Client.Game.Scene.Camera.Bounds}");
         Check("the fit alone is not remembered as the player's size, only a size the player gives",
             rememberedAfterFit == 0f, $"remembered after the fit {rememberedAfterFit:0.00}");
 

@@ -22,6 +22,7 @@ launchers\dev\screenshot.bat --play --shot-after 300
 | `--client-data PATH`, `--client-version V`, `--cache-dir DIR` | Override the install, its version, and the client's home folder. Probes use `--cache-dir` to get a scratch home so the real `settings.json` and profiles are never edited. |
 | `--language X` | The client's language. |
 | `--stay` | Keep running when a probe would otherwise quit (as `--login-probe-stay` does for the login probe). |
+| `--scratch-profile`, `--own-profile` | Run in a fresh client home of its own (`scratch/<pid>` under the usual one, with only `settings.json` copied in), so the profile, saved gumps and saved look start as a new player's and a run does not depend on the last. The touch probe does this by default; `--own-profile` keeps the usual home. |
 
 ## Sound and focus
 
@@ -51,7 +52,7 @@ that introduced it names what it verified.
 |---|---|---|
 | `--input-probe` | Warps the pointer onto the login gump, clicks, types, clicks Login, all through `Godot.Input.ParseInputEvent`. The shot has the typed text; the log has the login attempt. | `screenshot.bat --play --input-probe --shot-after N` (ADR-0006) |
 | `--login-probe`, `--login-probe-stay` | Prints one line once the login gump has been drawn; the Android and web smokes wait for it on logcat or the console. | `launchers\android\smoke.bat` |
-| `--touch-probe`, `--touch`, `--touch-trace` | Synthetic fingers through the touch layer on the desktop, 18 checks; `--touch` enables the layer, `--touch-trace` logs each gesture decision. | `launchers\dev\touch_probe.bat` |
+| `--touch-probe`, `--touch`, `--touch-trace` | Synthetic fingers through the touch layer on the desktop, in a scratch profile (`--own-profile` to use yours); `--touch` enables the layer, `--touch-trace` logs each gesture decision. | `launchers\dev\touch_probe.bat` |
 | `--ui-probe` | Logs in, opens the backpack and a second container, logs the profile's platform fields, checks placement and how much of each other gump the containers cover, photographs it. | the `work/ui` commits |
 | `--effects-probe N`, `--effects-plain` | Frame cost of a crowd of N blended effects; `--effects-plain` draws them without the blend. | `multi_client.bat` lane `effects` |
 | `--highlight-probe` | The mesh highlight check, which goes away and back with `[go`. | `multi_client.bat` lane `highlight` |
