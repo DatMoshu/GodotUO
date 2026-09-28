@@ -36,3 +36,56 @@ all runs: another session's touch-probe client (about 2% CPU), an MGS5 lab
 
 At 1280x720 and zoom 0.7, the ordered mode is exact in all five scenes, and
 frame time is within noise of plain (1.5-2.2 ms).
+
+## Fix 1b: `--merged-land=array` (one land mesh over a Texture2DArray)
+
+All visible land is one mesh, in the original per-chunk order; the land's
+atlas pages are the layers of one `Texture2DArray`, sampled nearest by
+`uo_hue_land_array.gdshader` (commit 11d3ec5). Same setup as above: 2560x1440
+at zoom 2.5 unless marked, order plain / array / plain / array at the
+default size.
+
+The parity check now takes five frames (plain, test, plain, test, plain).
+*Violations* are pixels stable across the three plain frames where the first
+test frame differs; *strict* are those where both test frames agree with
+each other and differ from plain, a repeatable rendering difference that
+flicker or motion almost never produce.
+
+| Scene | plain mean ms | array mean ms | plain again | plain draw calls | array | land meshes | parity violations (px) | strict (px) |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| open field | 12.3 | 12.1 (-1%) | 12.7 | 1,739 | 540 | 1,200 -> 1 | 0 | 0 |
+| Britain bank | 44.3 | 38.6 (-13%) | 43.7 | 8,000 | 4,031 | 3,976 -> 1 | 0 | 0 |
+| dense forest | 24.8 | 22.1 (-11%) | 25.4 | 3,636 | 1,362 | 2,275 -> 1 | 0 | 0 |
+| dungeon | 20.8 | 17.5 (-16%) | 22.0 | 6,304 | 4,192 | 2,113 -> 1 | 0 | 0 |
+
+34-35 GB free throughout. Idle during the runs: another project's headless
+Godot check (about 700 MB). The machine was quieter than for the runs
+above (plain Britain bank 44 ms against 62 ms), so compare within a table,
+not across them; the two plain runs bracketing the array run agree within
+1-6%.
+
+**Reading it:**
+
+- **The array keeps what the by-texture merge won and fixes its parity.**
+  Land is one mesh a frame. Draw calls fall by the same 34-69% as the
+  by-texture merge (540 / 4,031 / 1,362 / 4,192 against its 539 / 4,047 /
+  1,457 / 4,192), mean frame time by 1-16%, p99 by 15-24% in the three busy
+  scenes, and not one stable pixel differs from plain at 2560x1440.
+- **At the default size** (1280x720), parity is exact in four scenes. The
+  dense forest shows 87 differing pixels, 20 of them repeatable, all on the
+  overhead name of a wandering NPC, not on land.
+- **The open field barely moves** (-1%): with land already cheap there, its
+  frame is world prepare (6.5-7.5 ms), not drawing.
+- **What remains is covering land**: 345 / 3,266 / 564 / 3,557 draw calls a
+  frame, now most of what is left in Britain bank (81%) and the dungeon
+  (85%). That is fix 2.
+- **Recommendation:** make `--merged-land=array` the default once it has run
+  on the other targets (Android, the Deck, web), where the `Texture2DArray` is the thing to
+  watch: one 2048x2048 layer (16 MiB) per land atlas page, however small
+  the page. Until then
+  it stays behind the flag.
+
+**The dungeon's 52 pixels** from the ordered run did not appear under the
+array, in either the loose count or the strict one. Whatever they were
+(flickering light is the likely cause), they were not a repeatable rendering
+difference.
