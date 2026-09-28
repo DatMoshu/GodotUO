@@ -173,24 +173,57 @@ internal static class DataSources
             return $"not a folder: {folder}";
         }
 
-        var found = new HashSet<string>(
-            Directory.EnumerateFiles(folder).Select(f => Path.GetFileName(f).ToLowerInvariant())
-        );
-        bool Has(string[] names) => names.Any(n => found.Contains(n.ToLowerInvariant()));
+        List<string> missing = Check(folder).Where(c => c.Form == null).Select(c => c.Key).ToList();
+        return missing.Count == 0 ? null : $"missing required data: {string.Join(", ", missing)}";
+    }
 
-        var missing = new List<string>();
+    /// <summary>
+    /// Each required entry, and the form that satisfies it ("uop" or "mul"), or
+    /// null when it is missing. An unreadable or absent folder has every entry missing.
+    /// </summary>
+    public static List<(string Key, string Form)> Check(string folder)
+    {
+        var found = new HashSet<string>();
+        try
+        {
+            found.UnionWith(Directory.EnumerateFiles(folder).Select(f => Path.GetFileName(f).ToLowerInvariant()));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+        }
+
+        bool Has(string[] names) => names.Any(n => found.Contains(n.ToLowerInvariant()));
+        var result = new List<(string, string)>();
         foreach (DataRequirements.Entry e in DataRequirements.Required)
         {
             // As formats.DataFile.is_satisfied: the UOP form, or the MUL form
             // with its index; a MUL without its index does not count.
-            bool ok = Has(e.Uop) || (Has(e.Mul) && (e.Index.Length == 0 || Has(e.Index)));
-            if (!ok)
+            string form = Has(e.Uop) ? "uop" : Has(e.Mul) && (e.Index.Length == 0 || Has(e.Index)) ? "mul" : null;
+            result.Add((e.Key, form));
+        }
+
+        return result;
+    }
+
+    /// <summary>Saves the chosen install as upstream's settings.json ultimaonlinedirectory, keeping the rest.</summary>
+    public static void SaveSetting(string settingsFile, string folder)
+    {
+        System.Text.Json.Nodes.JsonObject root = null;
+        if (File.Exists(settingsFile))
+        {
+            try
             {
-                missing.Add(e.Key);
+                root = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(settingsFile)) as System.Text.Json.Nodes.JsonObject;
+            }
+            catch (JsonException)
+            {
             }
         }
 
-        return missing.Count == 0 ? null : $"missing required data: {string.Join(", ", missing)}";
+        root ??= new System.Text.Json.Nodes.JsonObject();
+        root["ultimaonlinedirectory"] = folder;
+        Directory.CreateDirectory(Path.GetDirectoryName(settingsFile)!);
+        File.WriteAllText(settingsFile, root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
     }
 
     /// <summary>The folder's guo_data.json, checked as the tools check it, or null and why not.</summary>

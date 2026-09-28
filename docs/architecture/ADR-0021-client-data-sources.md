@@ -56,10 +56,30 @@ The runtime half, `godot/GUO/src/Bootstrap/DataSources.cs`, verified
 | no `UO_CLIENT_DATA`, `settings.json` `ultimaonlinedirectory` set | install (setting); login gump drawn |
 | nothing set | install (default) from the registry `InstallDir`; login gump drawn |
 
+The first-run screen (`Bootstrap/FirstRunScreen.cs`), verified 2026-09-27:
+
+- Setup: a windowed run, never focused, with `UO_CLIENT_DATA` pointing at a
+  missing folder and `--first-run-probe <the real install> --login-probe`.
+- It shows the screen: "GUO needs your own UO install", the reason, and a
+  note that the configured `UO_CLIENT_DATA` keeps precedence.
+- A bad folder shows 12/12 missing, and Continue stays disabled.
+- The real install shows 12/12 found (UOP or MUL for each entry), and
+  Continue is enabled.
+- Continue saves `ultimaonlinedirectory` to the client home's
+  `settings.json`, and the same run goes on to draw the login gump. No
+  restart is needed.
+- Screenshots are in `build\first_run_proof\`.
+- A headless run, or any mode other than play, still logs the reason and
+  exits, because there is nobody to ask.
+
 **Not yet verified:**
 
-- the wizard screen (G2 UI). `Main.OnNoValidData` is the one call site it
-  replaces. Until then that call site logs the reason and exits as before.
+- the native folder dialog itself (`DisplayServer.FileDialogShow`, falling
+  back to Godot's `FileDialog`). The probe picks a folder without opening it,
+  because opening one needs a person at the desktop.
+- re-opening from Options. `FirstRunScreen.Open` is the hook; the Options
+  button will touch a ported gump and carry a PORT DEVIATION marker.
+- the Android SAF picker (GUOAndroid) and the web.
 - the Android and Deck platform defaults at runtime. They are written, but
   not yet run on a device.
 
