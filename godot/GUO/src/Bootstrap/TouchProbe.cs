@@ -266,6 +266,46 @@ internal static class TouchProbe
             string.Join(" | ", TouchInput.Trace)
         );
         Check("the backpack opened", UIManager.GetGump<ContainerGump>() != null);
+
+        // C8: a bar button runs when the finger lifts, not when it lands.
+        // Down on Journal: nothing yet. Slid well off it: let go, and nothing
+        // runs on lifting. Rolled a few pixels: it still runs.
+        UIManager.GetGump<JournalGump>()?.Dispose();
+        await Frames(host, 5);
+        TouchInput.Trace.Clear();
+        Rect2 journal = bar.ButtonRect("journal");
+        Vector2 at = journal.Position + journal.Size / 2;
+
+        Touch(0, at, true);
+        await Frames(host, 5);
+        bool notOnDown = UIManager.GetGump<JournalGump>() == null;
+        Drag(0, at + new Vector2(0, -TouchInput.BarSlopPixels * 3), new Vector2(0, -TouchInput.BarSlopPixels * 3));
+        await Frames(host, 2);
+        Touch(0, at + new Vector2(0, -TouchInput.BarSlopPixels * 3), false);
+        await Frames(host, 30);
+
+        Check(
+            "a bar button does nothing on the finger's landing, and nothing if the finger slides off it",
+            notOnDown && UIManager.GetGump<JournalGump>() == null && TouchInput.Trace.Exists(t => t.StartsWith("bar -> journal let go")),
+            string.Join(" | ", TouchInput.Trace)
+        );
+
+        TouchInput.Trace.Clear();
+        Vector2 rolled = at + new Vector2(TouchInput.BarSlopPixels / 2, 0);
+        Touch(0, at, true);
+        await Frames(host, 3);
+        Drag(0, rolled, rolled - at);
+        await Frames(host, 2);
+        Touch(0, rolled, false);
+        await Frames(host, 30);
+
+        Check(
+            "a finger that rolls a little on a bar button still presses it on lifting",
+            UIManager.GetGump<JournalGump>() != null && TouchInput.Trace.Contains("bar -> journal"),
+            string.Join(" | ", TouchInput.Trace)
+        );
+        UIManager.GetGump<JournalGump>()?.Dispose();
+        await Frames(host, 5);
     }
 
     /// <summary>

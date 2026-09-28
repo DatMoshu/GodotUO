@@ -85,8 +85,17 @@ namespace GUO.Input.Touch
         {
             get
             {
+                // Parsed again only when the profile's string changes: the
+                // bar asks for the row several times a frame.
+                string source = ProfileManager.CurrentProfile?.TouchMacroSlots ?? DefaultMacroSlots;
+
+                if (ReferenceEquals(source, _slotsSource) && _slots != null)
+                {
+                    return _slots;
+                }
+
                 string[] defaults = DefaultMacroSlots.Split(',');
-                string[] saved = (ProfileManager.CurrentProfile?.TouchMacroSlots ?? DefaultMacroSlots).Split(',');
+                string[] saved = source.Split(',');
                 var slots = new string[MacroSlotCount];
 
                 for (int i = 0; i < MacroSlotCount; i++)
@@ -95,9 +104,15 @@ namespace GUO.Input.Touch
                     slots[i] = System.Array.IndexOf(MacroChoices, s) >= 0 ? s : defaults[i];
                 }
 
+                _slotsSource = source;
+                _slots = slots;
+
                 return slots;
             }
         }
+
+        private static string _slotsSource;
+        private static string[] _slots;
 
         /// <summary>The upstream macro subtype a row action runs with.</summary>
         private static MacroSubType SubFor(string action) =>
@@ -141,9 +156,17 @@ namespace GUO.Input.Touch
         private const ulong PressedMs = 140;
 
         private readonly Surface _surface = new();
-        private readonly Dictionary<string, Texture2D> _labels = new();
+        /// <summary>Caption textures, by caption and whether drawn light (a chip's).</summary>
+        private readonly Dictionary<(string caption, bool light), Texture2D> _labels = new();
+
+        /// <summary>
+        /// Captions kept before the cache starts over: chips come and go with
+        /// the titles of whatever was minimised, so it would only grow.
+        /// </summary>
+        private const int LabelCacheLimit = 64;
         private string _pressed;
         private ulong _pressedAt;
+        private string _held;
 
         /// <summary>Whether the bar is drawn and takes taps.</summary>
         public bool Shown { get; private set; }
@@ -246,11 +269,82 @@ namespace GUO.Input.Touch
 
                 _wasWar = war;
 
-                // The window can change size under it, and so can the scale.
-                _surface.QueueRedraw();
+                // Drawn again only when something it shows has changed: the
+                // window or its scale, a row, a caption, a chip, a lit button.
+                int look = Look();
 
-                KeepGumpsAboveBar();
+                if (look != _drawnLook)
+                {
+                    _drawnLook = look;
+                    _surface.QueueRedraw();
+                }
+
+                // The sweep runs when a gump could have come under the bar:
+                // the bar grew, a gump opened, a finger let go of one (a drag,
+                // a pinch, a flick), and every half second for what moves a
+                // gump without a finger (the server, the window menu).
+                float top = TopEdge();
+                int lifts = TouchInput.Lifts;
+                int count = UIManager.Gumps.Count;
+
+                if (top != _sweptTop || lifts != _sweptLifts || count != _sweptCount || --_sweepIn <= 0)
+                {
+                    _sweptTop = top;
+                    _sweptLifts = lifts;
+                    _sweptCount = count;
+                    _sweepIn = SweepFrames;
+                    KeepGumpsAboveBar();
+                }
             }
+        }
+
+        /// <summary>Frames between the gump sweeps nothing asked for.</summary>
+        private const int SweepFrames = 30;
+
+        private int _drawnLook;
+        private float _sweptTop = -1f;
+        private int _sweptLifts = -1;
+        private int _sweptCount = -1;
+        private int _sweepIn;
+
+        /// <summary>The bar's top edge, row and chevron strip included, in viewport pixels.</summary>
+        private float TopEdge()
+        {
+            Layout(out Rect2 band, out _, out _, out _);
+            return band.Position.Y - (RowShown ? band.Size.Y + StripHeight(band) : 0f);
+        }
+
+        /// <summary>
+        /// Everything the bar's picture depends on, folded into one number:
+        /// when it changes, the bar is drawn again.
+        /// </summary>
+        private int Look()
+        {
+            Layout(out Rect2 band, out int artScale, out _, out _);
+            World world = Client.Game.UO.World;
+            var h = new System.HashCode();
+            h.Add(band);
+            h.Add(artScale);
+            h.Add(RowShown);
+            h.Add(ChevronShown);
+            h.Add(world.TargetManager?.IsTargeting ?? false);
+            h.Add(world.Player?.InWarMode ?? false);
+            h.Add(ProfileManager.CurrentProfile?.TouchMacroSlots);
+            h.Add(ProfileManager.CurrentProfile?.TouchChevronInset ?? 0);
+            h.Add(_held);
+            h.Add(_pressed != null && Godot.Time.GetTicksMsec() - _pressedAt < PressedMs ? _pressed : null);
+            h.Add(_chipFirst);
+            h.Add(Client.Game.UO.FileManager?.Fonts != null);
+
+            IReadOnlyList<Game.UI.Gumps.Gump> gumps = GumpMinimise.Gumps;
+            h.Add(gumps.Count);
+
+            for (int i = 0; i < gumps.Count; i++)
+            {
+                h.Add(gumps[i]);
+            }
+
+            return h.ToHashCode();
         }
 
         /// <summary>
@@ -294,6 +388,30 @@ namespace GUO.Input.Touch
         /// scale, and the size of one button's art.
         /// </summary>
         private void Layout(out Rect2 band, out int artScale, out Vector2 art, out float spacing)
+        {
+            // Worked out once a frame: every rectangle, hit test and draw
+            // asks for it, many times over.
+            ulong frame = Engine.GetProcessFrames();
+
+            if (frame != _layoutFrame)
+            {
+                _layoutFrame = frame;
+                ComputeLayout(out _band, out _artScale, out _art, out _spacing);
+            }
+
+            band = _band;
+            artScale = _artScale;
+            art = _art;
+            spacing = _spacing;
+        }
+
+        private ulong _layoutFrame = ulong.MaxValue;
+        private Rect2 _band;
+        private int _artScale;
+        private Vector2 _art;
+        private float _spacing;
+
+        private void ComputeLayout(out Rect2 band, out int artScale, out Vector2 art, out float spacing)
         {
             Vector2 view = _surface.GetViewportRect().Size;
             float scale = System.Math.Max(1f, Client.Game?.ScreenScale ?? 1f);
@@ -367,7 +485,6 @@ namespace GUO.Input.Touch
             return true;
         }
 
-        /// <summary>The macro row's band: the bar's band, moved up by its own height.</summary>
         /// <summary>
         /// The macro row's band: above the strip that holds the chevron and
         /// the minimised-gump chips, which stays put whether the row is open
@@ -454,12 +571,23 @@ namespace GUO.Input.Touch
         /// </summary>
         private List<(string action, Rect2 rect)> ChipRects()
         {
-            var result = new List<(string, Rect2)>();
+            // Laid out once a frame, like the rest of the bar; paging moves
+            // _chipFirst, and that lays them out again.
+            ulong frame = Engine.GetProcessFrames();
+
+            if (frame == _chipsFrame && _chipsFirst == _chipFirst)
+            {
+                return _chips;
+            }
+
+            _chipsFrame = frame;
+            _chips.Clear();
+            List<(string, Rect2)> result = _chips;
             IReadOnlyList<Game.UI.Gumps.Gump> gumps = GumpMinimise.Gumps;
 
             if (!Shown || gumps.Count == 0)
             {
-                _chipFirst = 0;
+                _chipFirst = _chipsFirst = 0;
                 return result;
             }
 
@@ -498,8 +626,14 @@ namespace GUO.Input.Touch
                 x += w + gap;
             }
 
+            _chipsFirst = _chipFirst;
+
             return result;
         }
+
+        private readonly List<(string action, Rect2 rect)> _chips = new();
+        private ulong _chipsFrame = ulong.MaxValue;
+        private int _chipsFirst;
 
         /// <summary>For the probe: the rectangle of the chip for this gump, if shown.</summary>
         public Rect2? ChipRect(Game.UI.Gumps.Gump g)
@@ -571,6 +705,19 @@ namespace GUO.Input.Touch
             }
 
             return false;
+        }
+
+        /// <summary>
+        /// Light a button while a finger is on it, before it runs; null lets
+        /// go. The touch layer runs the button when the finger lifts on it.
+        /// </summary>
+        public void Hold(string action)
+        {
+            if (_held != action)
+            {
+                _held = action;
+                _surface.QueueRedraw();
+            }
         }
 
         /// <summary>
@@ -688,10 +835,10 @@ namespace GUO.Input.Touch
             }
         }
 
-        /// <summary>The caption of a button: the top bar's cliloc, or its resource string.</summary>
         /// <summary>A macro action's caption, for Options' slot lists.</summary>
         public static string MacroTitle(string action) => Label(action);
 
+        /// <summary>The caption of a button: the top bar's cliloc, or its own words.</summary>
         private static string Label(string action)
         {
             if (action.StartsWith("chip:") && int.TryParse(action.Substring(5), out int ci))
@@ -738,7 +885,7 @@ namespace GUO.Input.Touch
             // on a dark fill, so its text is drawn light (cached apart).
             string caption = Label(action);
             bool light = action.StartsWith("chip");
-            string key = light ? "light|" + caption : caption;
+            var key = (caption, light);
 
             if (_labels.TryGetValue(key, out Texture2D cached))
             {
@@ -787,7 +934,9 @@ namespace GUO.Input.Touch
             return texture;
         }
 
-        public override void _ExitTree()
+        public override void _ExitTree() => ClearLabels();
+
+        private void ClearLabels()
         {
             foreach (Texture2D t in _labels.Values)
             {
@@ -813,7 +962,7 @@ namespace GUO.Input.Touch
             }
 
             private static bool lit0(TouchGumpBar bar, string action) =>
-                bar._pressed == action && Godot.Time.GetTicksMsec() - bar._pressedAt < PressedMs;
+                bar._held == action || bar._pressed == action && Godot.Time.GetTicksMsec() - bar._pressedAt < PressedMs;
 
             public override void _Draw()
             {
@@ -828,6 +977,13 @@ namespace GUO.Input.Touch
                 if (GetParent() is not TouchGumpBar bar || !bar.Shown)
                 {
                     return;
+                }
+
+                // Starting the cache over here, before anything is drawn, is
+                // safe: this draw replaces the one that used the old textures.
+                if (bar._labels.Count > LabelCacheLimit)
+                {
+                    bar.ClearLabels();
                 }
 
                 bar.Layout(out Rect2 band, out int artScale, out _, out _);
@@ -880,8 +1036,6 @@ namespace GUO.Input.Touch
                         faceUv = new Rect2(info.UV.X, info.UV.Y, info.UV.Width, info.UV.Height);
                     }
                 }
-
-                bool lit = bar._pressed != null && Godot.Time.GetTicksMsec() - bar._pressedAt < PressedMs;
 
                 var actions = new List<string>(Current);
 
@@ -946,7 +1100,7 @@ namespace GUO.Input.Touch
                         DrawRect(r, new Color(0.85f, 0.55f, 0.10f, 0.22f));
                     }
 
-                    if (lit && action == bar._pressed)
+                    if (lit0(bar, action))
                     {
                         DrawRect(r, new Color(1f, 1f, 1f, 0.25f));
                     }
