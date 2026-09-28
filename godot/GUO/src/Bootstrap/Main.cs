@@ -258,6 +258,10 @@ public partial class Main : Node
                 {
                     ZoomProbeThenQuit();
                 }
+                else if (_options.PortraitProbe)
+                {
+                    PortraitProbeThenQuit();
+                }
                 else if (_options.PerfProbe)
                 {
                     PerfProbeThenQuit();
@@ -509,6 +513,7 @@ public partial class Main : Node
         _options.ShardCommands.Count > 0
         || _options.HighlightProbe
         || _options.ZoomProbe
+        || _options.PortraitProbe
         || _options.PerfProbe
         || !string.IsNullOrEmpty(_options.PostFxSheet)
         || _options.DoorProbe
@@ -591,6 +596,13 @@ public partial class Main : Node
         await Preamble();
         await PostFxProbe.Run(this, _options.PostFxSheet);
         Quit(PostFxProbe.Passed ? 0 : 1);
+    }
+
+    /// <summary>Turn to portrait and back, measure both, then quit; see PortraitProbe (C9).</summary>
+    private async void PortraitProbeThenQuit()
+    {
+        await PortraitProbe.Run(this);
+        Quit(PortraitProbe.Passed ? 0 : 1);
     }
 
     /// <summary>Time the world at every other zoom step, then quit; see ZoomProbe.</summary>
@@ -990,6 +1002,7 @@ public partial class Main : Node
                 || TradePartner
                 || HighlightProbe
                 || ZoomProbe
+                || PortraitProbe
                 || PerfProbe
                 || !string.IsNullOrEmpty(PostFxSheet)
                 || DoorProbe
@@ -1073,6 +1086,7 @@ public partial class Main : Node
 
         /// <summary>Time the world at each zoom level rather than play.</summary>
         public bool ZoomProbe { get; private set; }
+        public bool PortraitProbe { get; private set; }
 
         /// <summary>Frame time in five fixed scenes rather than play (PerfProbe): --perf-probe [--perf-out DIR] [--perf-label NAME].</summary>
         public bool PerfProbe { get; private set; }
@@ -1265,6 +1279,9 @@ public partial class Main : Node
                         break;
                     case "--zoom-probe":
                         o.ZoomProbe = true;
+                        break;
+                    case "--portrait-probe":
+                        o.PortraitProbe = true;
                         break;
                     case "--merged-land=ordered":
                         GUO.Renderer.MergedLand.Ordered = true;

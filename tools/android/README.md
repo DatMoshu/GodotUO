@@ -16,6 +16,10 @@ launchers\android\smoke.bat      export + install + run + wait for the login
 launchers\android\dual_probe.bat export with --dual-probe + install + run + log in
                                  + wait for the second screen + photograph BOTH
                                  displays; non-zero on failure (ADR-0009)
+launchers\android\portrait_probe.bat  C9 spike: export with --portrait-probe + run;
+                                 turns the screen to portrait and back, photographs
+                                 each state, writes build\android\portrait\ (the
+                                 table and the photos); see docs\android_portrait_spike.md
 launchers\dev\touch_probe.bat    the touch layer, checked on the desktop (no device)
 ```
 
