@@ -279,6 +279,23 @@ def main() -> int:
         buried, _ = walkcheck.surfaces([{"centre": [0, 0], "comps": [C(2, 0, 0, 20), C(3, 0, 0, 20)]}], kinds, 0)
         check(20 not in buried[(0, 0)] and 25 in buried[(0, 0)],
               f"a floor with a block standing on it is not stood on, the block is (got {buried[(0, 0)]})")
+        # a goal on open land beyond the scene's reach round it is still found
+        far = [{"name": "in", "x": 0, "y": 0, "z": 0}, {"name": "out", "x": 0, "y": 30, "z": 0}]
+        check(walkcheck.check_tour([{"centre": [0, 0], "comps": [C(2, 0, 0, 0)]}], far, kinds) == [],
+              "a stop on the land well past the scene is reached")
+        # two floors over the same cells, a hole in the upper one: a stop straight above the last is
+        # ambiguous to the client, which aims at x and y only; a walker never drops through a floor
+        two = [C(2, x, 1, 0) for x in range(9)] + [C(2, x, 0, 0) for x in range(4, 9)]
+        two += [C(2, x, 0, 20) for x in range(4, 9)] + [C(3, x, 0, 5 * x) for x in range(4)]  # steps 5..20
+        up = [{"name": "low", "x": 6, "y": 0, "z": 0}, {"name": "high", "x": 6, "y": 0, "z": 20}]
+        got = walkcheck.check_tour([{"centre": [0, 0], "comps": two}], up, kinds)
+        check(len(got) == 1 and "stops short at z 0" in got[0], f"a stop straight above the last is reported (got {got})")
+        stand, cov = walkcheck.surfaces([{"centre": [0, 0], "comps": two}], kinds, 0)
+        check(walkcheck.search(stand, cov, (5, 0, 20), (6, 0, 0), 0, 4)[0] > 1,
+              "a walker on the upper floor does not drop through it to the one below")
+        # the client stands on nothing above z 112 (its pathfinder caps each cell at 128)
+        high, _ = walkcheck.surfaces([{"centre": [0, 0], "comps": [C(2, 0, 0, 112), C(2, 1, 0, 115)]}], kinds, 0)
+        check(112 in high[(0, 0)] and 115 not in high.get((1, 0), []), "a floor at 112 is stood on, one at 115 is not")
         # a long wall on the land with its only way round forty cells off: a detour, reported
         long_wall = [{"centre": [0, 0], "comps": [C(1, 0, y, 0) for y in range(-40, 41)]}]
         dleg = [{"name": "west", "x": -1, "y": 0, "z": 0}, {"name": "east", "x": 1, "y": 0, "z": 0}]
@@ -311,6 +328,23 @@ def main() -> int:
         tour = [(t["name"], t["z"]) for t in sw["tour"]]
         check([z for _, z in tour] == [0, 0, 10, 10, 20, 20],
               f"the climb pauses on the landing (got {tour})")
+
+    # storeys: a map building's footprint is its walls and what they enclose, the doorway closed,
+    # a pitched roof's eaves left out
+    import storeys
+    pieces = {"0x0001": {"role": "wall"}, "0x0002": {"role": "roof"}, "0x0003": {"role": "floor"}}
+    cells = {}
+    for x in range(10, 16):
+        for y in range(20, 25):
+            if x in (10, 15) or y in (20, 24):
+                if (x, y) != (15, 22):        # a doorway in the east wall
+                    cells.setdefault((x, y), []).append((1, 0, 0))
+            cells.setdefault((x, y), []).append((2, 20, 0))
+    for y in range(19, 26):                   # the eaves, a cell out on the west
+        cells.setdefault((9, y), []).append((2, 20, 0))
+    fp, walls = storeys.footprint((8, 18, 17, 26), cells, pieces, 0, 20)
+    check(fp == {(x, y) for x in range(10, 16) for y in range(20, 25)} and (15, 22) not in walls,
+          f"a map building's footprint is its walls and inside, doorway closed, eaves out (got {len(fp)} cells)")
 
     print(f"test_multi: {'OK' if not FAILS else 'FAILED'} ({len(FAILS)} failing)")
     return 0 if not FAILS else 1

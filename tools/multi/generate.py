@@ -284,22 +284,27 @@ def norm_rects(desc: dict) -> list[dict]:
 STAIR_STEPS = 4          # four steps of 5 z climb one 20-z storey; a landing of blocks tops the run
 
 
-def staircase(b: Built, cat: Catalogue, st: dict, mat: str, z: int, floor: set, walls: set) -> tuple[set, set]:
+def staircase(b: Built, cat: Catalogue, st: dict, mat: str, z: int, floor: set, walls: set,
+              steps: int = None, landing: bool = True) -> tuple[set, set]:
     """A straight stair up to the next storey, as the client's houses build it (0x009E): step i
     is a stair piece at z + 5i on i stacked 10-high blocks, then a landing of blocks. Returns
-    the cells the next floor must leave open and the cells a climber arrives on."""
+    the cells the next floor must leave open and the cells a climber arrives on. `steps` and
+    `landing` shorten it for a rise that is not a whole storey (the climber steps off the last
+    step onto a floor up to 4 higher)."""
+    steps = STAIR_STEPS if steps is None else steps
     dx, dy = SIDE_STEP[st["rise"]]
     px, py = (1, 0) if st["rise"] in "NS" else (0, 1)
     ax, ay = st["at"]
     width = st.get("width", 1)
     across = [(ax + k * px, ay + k * py) for k in range(width)]
     holes, arrive = set(), set()
-    for i in range(STAIR_STEPS + 2):
+    last = steps + (1 if landing else 0)
+    for i in range(last + 1):
         row = [(x + i * dx, y + i * dy) for (x, y) in across]
         for c in row:
             if c not in floor or c in walls:
                 raise DescriptionError(f"stair from {st['at']} rising {st['rise']}: cell {c} is not open floor")
-        if i == STAIR_STEPS + 1:
+        if i == last:
             arrive |= set(row)
             break
         holes |= set(row)
@@ -307,12 +312,12 @@ def staircase(b: Built, cat: Catalogue, st: dict, mat: str, z: int, floor: set, 
         for (x, y) in row:
             piece = cat.step(mat, st["rise"], signature(rowset, x, y))
             block = cat.block(piece)
-            if i < STAIR_STEPS:
+            if i < steps:
                 for k in range(i):
                     b.add(block, x, y, z + 5 * k)
                 b.add(piece, x, y, z + 5 * i)
             else:
-                for k in range(STAIR_STEPS):
+                for k in range(steps):
                     b.add(block, x, y, z + 5 * k)
     return holes, arrive
 

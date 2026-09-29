@@ -185,6 +185,33 @@ def prove_scene(cfg, name: str, stage: Path, out: Path, clip: Path | None, at=No
                    caption or f"GUO: an authored scene ({name}), walked through in game", {"scene": name})
 
 
+def prove_world(cfg, export: Path, stops: list, out: Path, clip: Path | None, min_free_gb: float = 16,
+                caption: str = "", profile: dict | None = None) -> int:
+    """A tools/world export (map edits, no multis): the shard reads it first, the client through
+    its files_override, and the tour (name, x, y, z on the map) is walked. UltimaLive clients keep
+    a copy of the map per shard name and never refresh it, so the shard takes a name of its own
+    for these bytes; a copy this proof made is removed afterwards."""
+    import hashlib
+    if not (export / "files_override.txt").exists():
+        print(f"[prove] {export} is not a tools/world export (no files_override.txt)")
+        return 2
+    h = hashlib.sha1()
+    for f in sorted(export.glob("*.mul")) + sorted(export.glob("*.uop")):
+        h.update(f.name.encode())
+        h.update(f.read_bytes())
+    name = f"GUO-Proof-{h.hexdigest()[:10]}"
+    copy = Path(os.environ.get("ProgramData", r"C:\ProgramData")) / name
+    made = not copy.exists()
+    print(f"[prove] world export {export.name}: {len(stops)} stops, shard name {name}", flush=True)
+    try:
+        return session(cfg, export, out, [], (0, 0, 0), stops, clip, min_free_gb,
+                       caption or "GUO: map edits, walked through in game", {"world": str(export)},
+                       shard_env={"GUO_BRIDGE_SHARD": name}, profile=profile)
+    finally:
+        if made and copy.is_dir() and copy.name.startswith("GUO-Proof-"):
+            shutil.rmtree(copy, ignore_errors=True)
+
+
 def pick_site(cfg, at, bx0, by0, bx1, by1):
     """The world spot for local (0, 0): --at, or a clear flat box round the bounds."""
     if at:
@@ -207,9 +234,10 @@ def pick_site(cfg, at, bx0, by0, bx1, by1):
 
 
 def session(cfg, stage: Path, out: Path, parts: list, site, stops: list, clip: Path | None, min_free_gb: float,
-            caption: str, report: dict) -> int:
+            caption: str, report: dict, shard_env: dict | None = None, profile: dict | None = None) -> int:
     """Start the private shard on the stage, place every (tag, id, cx, cy, doors) at the site plus
-    (cx, cy), log a client in and walk `stops` (name, local x, y, z), a frame and a dump at each."""
+    (cx, cy), log a client in and walk `stops` (name, local x, y, z), a frame and a dump at each.
+    `shard_env` goes to the shard's start, `profile` over the client's profile options."""
     shard = [sys.executable, str(cfg.tools / "editor_shard" / "run.py")]
     gb = free_gb()
     if gb < min_free_gb:
@@ -226,7 +254,7 @@ def session(cfg, stage: Path, out: Path, parts: list, site, stops: list, clip: P
     watch = out / "watch"
     watch.mkdir(parents=True)
     subprocess.run([*shard, "stop"])
-    if subprocess.run([*shard, "start", "--data-first", str(stage)]).returncode != 0:
+    if subprocess.run([*shard, "start", "--data-first", str(stage)], env={**os.environ, **(shard_env or {})}).returncode != 0:
         return 2
     report["site"] = [x, y, z]
     report["place"] = {}
@@ -254,7 +282,8 @@ def session(cfg, stage: Path, out: Path, parts: list, site, stops: list, clip: P
                                                         "files_override": str(stage / "files_override.txt")}),
                                             encoding="utf-8")
         (home / "profiles" / "default.json").write_text(json.dumps({"topbar_gump_is_disabled": True,
-                                                                    "auto_open_doors": True, "smooth_doors": True}),
+                                                                    "auto_open_doors": True, "smooth_doors": True,
+                                                                    **(profile or {})}),
                                                         encoding="utf-8")
         ax, ay = x + stops[0][1], y + stops[0][2]
         cmd = [str(cfg.godot_console_exe), "--path", str(cfg.godot_project), "--", "--play", "--window-size", "1024,768",

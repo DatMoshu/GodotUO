@@ -110,6 +110,25 @@ materials (a list, the first dominant) so a large paved area is not one tile. A
 build never depends on what was built before it in the same process: the
 catalogue forgets its picks at the start of each house or scene.
 
+## Storeys on the map's buildings
+
+`run.py storeys DESC --project DIR` takes buildings that already stand in the
+map's statics and stacks storeys on them (`storeys.py`, data_formats section
+16): the ground storey is kept as it is, the old roof goes, and walls, floors,
+stairs and a flat roof with a parapet go on top. The output is a world project,
+not multis: `tools/world/run.py export` and `verify` turn it into map files the
+shard reads first and the client reads through its override list. Nothing
+needs placing at boot, the doors and vendors downstairs keep their places, and
+there is no multi overlap to worry about. The tour is walked offline as for a
+scene.
+
+`run.py world-prove PROJECT` walks the tour in game on the export: the private
+shard reads it first and the client through its override list. UltimaLive
+clients keep a copy of the map per shard name and never refresh it, so the
+proof gives the shard a name of its own for the export's bytes and removes the
+copy it made afterwards. `--no-roofs` turns the client's roof drawing off (it
+hides pieces flagged as roof only; a flat roof of floor tiles stays).
+
 ## The offline walk
 
 `scene-build` walks the tour offline (`walkcheck.py`) before any proof: a
@@ -118,6 +137,18 @@ corner-cutting). A leg with no walk is a problem, and so is a leg that is a
 long detour for its distance: the client's pathfinder is an A* on the straight
 distance with 10,000 nodes, and it gave up on a walk sent the long way round a
 wall because a culvert was too low to pass. Put a stop on the way instead.
+
+The pathfinder also aims at a stop's x and y only: it ends at the first cell it
+reaches there, at whatever z. A stop straight above the last one (the same room
+a storey up) ends on the floor it started on, so the check reports a stop whose
+x and y are nearer at another z; put a stop in the middle of the stair, then one
+at its top. A step lands on the highest surface in reach, so a walker never
+drops through a floor, nor sideways into a stair's flight.
+
+Nothing above z 112 can be stood on: the client's pathfinder puts a ceiling at
+128 over every cell and wants a walker's 16 under it (seen in game: a roof at
+115 over a five-storey keep was never reached). A walkable roof deck is 112 at
+most; `storeys` takes a `roof_z` for one lower than a whole storey.
 
 ## Complete on every side
 
