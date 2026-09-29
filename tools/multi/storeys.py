@@ -265,6 +265,8 @@ def build(desc: dict, cat: G.Catalogue, data_dir: Path) -> dict:
         placed.append((ns, pcs))
     boxes = ([bd["box"] for bd in desc.get("buildings", [])] + [pv["box"] for pv in desc.get("paving", [])]
              + [rs["box"] for rs in desc.get("resurface", [])]
+             + [r["box"] for r in desc.get("reland", []) + desc.get("strip", [])]
+             + [[pr["at"][0], pr["at"][1], pr["at"][0], pr["at"][1]] for pr in desc.get("props", []) + desc.get("remove", [])]
              + [bx for ns, _ in placed for bx in ns.get("clear", [])]
              + [[min(p[1] for p in pcs), min(p[2] for p in pcs), max(p[1] for p in pcs), max(p[2] for p in pcs)]
                 for _, pcs in placed if pcs])
@@ -278,6 +280,9 @@ def build(desc: dict, cat: G.Catalogue, data_dir: Path) -> dict:
         for (x, y) in (c for bx in ns.get("clear", []) for c in G.cells_of(bx)):
             removed |= {(x, y, z, sid) for sid, z, _ in cells.get((x, y), [])}
         added += pcs
+    # props: loose pieces at map cells (street dressing, room decor, rooftop kit), kept as given
+    added += [(int(str(pr["item"]), 16), pr["at"][0], pr["at"][1], pr["z"], int(str(pr.get("hue", "0")), 16))
+              for pr in desc.get("props", [])]
     for bd in desc.get("buildings", []):
         comps, gone, rec = raise_building(bd, cat, cells)
         rec["name"] = bd["name"]
@@ -326,6 +331,42 @@ def build(desc: dict, cat: G.Catalogue, data_dir: Path) -> dict:
                     n += 1
         if not n:
             raise DescriptionError(f"resurface {rs['box']}: none of {rs['from']} there")
+    # reland: land cells in the box whose id is listed get one of `to` (grass laid as paving),
+    # except in the `keep` boxes (a park); strip: statics whose tiledata name holds one of `names`
+    # go (the trees and bushes on it)
+    def ids_of(spec):
+        out_ = set()
+        for v in spec:
+            lo, _, hi = str(v).partition("-")
+            out_ |= set(range(int(lo, 16), int(hi or lo, 16) + 1))
+        return out_
+    # remove: exact map statics to take out (loose furniture a prop replaces), each {item, at, z}
+    for rm in desc.get("remove", []):
+        sid, (x, y), z = int(str(rm["item"]), 16), rm["at"], rm["z"]
+        if any(s == sid and zz == z for s, zz, _ in cells.get((x, y), [])):
+            removed.add((x, y, z, sid))
+    relanded = set()
+    for rl in desc.get("reland", []):
+        frm, to, keep = ids_of(rl["from"]), sorted(ids_of(rl["to"])), rl.get("keep", [])
+        x0, y0, x1, y1 = rl["box"]
+        for (bx, by), blk in blocks.items():
+            for i in range(64):
+                x, y = bx * 8 + i % 8, by * 8 + i // 8
+                if x0 <= x <= x1 and y0 <= y <= y1 and blk.land_id[i] in frm and not any(
+                        k[0] <= x <= k[2] and k[1] <= y <= k[3] for k in keep):
+                    blk.land_id[i] = to[(x * 7 + y * 13) % len(to)]
+                    relanded.add((bx, by))
+    if desc.get("strip"):
+        from guo.uoread import TileData
+        td = TileData(data_dir)
+        for sp in desc["strip"]:
+            names, keep = [n.lower() for n in sp["names"]], sp.get("keep", [])
+            for (x, y) in G.cells_of(sp["box"]):
+                if any(k[0] <= x <= k[2] and k[1] <= y <= k[3] for k in keep):
+                    continue
+                for sid, z, _ in cells.get((x, y), []):
+                    if any(n in (td.static(sid) or {}).get("name", "").lower() for n in names):
+                        removed.add((x, y, z, sid))
     out = {}
     for (bx, by), blk in blocks.items():
         statics = []
@@ -333,9 +374,12 @@ def build(desc: dict, cat: G.Catalogue, data_dir: Path) -> dict:
             if (bx * 8 + sx, by * 8 + sy, z, sid) not in removed:
                 statics.append((sid, sx, sy, z, hue))
         mine = [(sid, x - bx * 8, y - by * 8, z, hue) for sid, x, y, z, hue in added if x // 8 == bx and y // 8 == by]
-        if not mine and len(statics) == len(blk.statics):
+        if not mine and len(statics) == len(blk.statics) and (bx, by) not in relanded:
             continue
         out[(bx, by)] = {"land": blk, "statics": statics + mine}
+    bad = [c for c in added if not -128 <= c[3] <= 127]
+    if bad:
+        raise DescriptionError(f"{len(bad)} piece(s) outside the map's z range -128..127, e.g. {bad[0]}")
     return {"facet": facet, "blocks": out, "buildings": records, "added": added, "removed": sorted(removed),
             "problems": scene_problems}
 

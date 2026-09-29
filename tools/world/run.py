@@ -318,6 +318,12 @@ def export_assets(data: Path, assets: dict, out: Path, override_lines: list[str]
         files[hues.name] = {"sha1": sha1(hues), "bytes": hues.stat().st_size}
         print(f"[world] assets: {len(assets['hues'])} hue(s) -> hues.mul")
 
+    tiles = project_tiledata(out)
+    if tiles:
+        rc = export_tiledata(data, tiles, out, override_lines, files)
+        if rc:
+            return rc
+
     if assets["texmaps"]:
         rc = export_texmaps(data, assets["texmaps"], out, override_lines, files)
         if rc:
@@ -347,6 +353,47 @@ def texterr_redirected(data: Path) -> set[int]:
                 except ValueError:
                     pass
     return out
+
+
+def project_tiledata(out: Path) -> dict:
+    """The project's static tiledata rows (assets/tiledata.json next to assets/art): {id: {flags, height,
+    name, weight?}}, for pieces a project adds or re-purposes."""
+    f = out.parent / "assets" / "tiledata.json"
+    if not f.is_file():
+        return {}
+    return {int(str(k), 16): v for k, v in json.loads(f.read_text(encoding="utf-8")).items()}
+
+
+def export_tiledata(data: Path, tiles: dict, out: Path, override_lines: list[str], files: dict) -> int:
+    """A copy of the install's tiledata.mul with the project's static rows written in."""
+    from guo.uoread import TileData
+    td = TileData(data)
+    dst = out / "tiledata.mul"
+    shutil.copyfile(td_path(data), dst)
+    with dst.open("r+b") as f:
+        for id_, row in sorted(tiles.items()):
+            if not 0 <= id_ < td.static_count:
+                print(f"[world] REFUSED: tiledata row 0x{id_:04X} is past the file's {td.static_count} statics")
+                return 1
+            group, j = divmod(id_, 32)
+            at = td.static_base + group * (4 + 32 * td.static_size) + 4 + j * td.static_size
+            flags = int(str(row.get("flags", 0)), 16) if isinstance(row.get("flags"), str) else row.get("flags", 0)
+            name = str(row.get("name", ""))[:20].encode("latin-1", "replace").ljust(20, b"\0")
+            head = struct.pack("<Q" if td.new else "<I", flags)
+            body = struct.pack("<BBiHHHB", int(row.get("weight", 255)), 0, 0, 0, 0, 0, int(row.get("height", 0)))
+            f.seek(at)
+            f.write(head + body + name)
+    override_lines.append(f"tiledata.mul={dst}")
+    files[dst.name] = {"sha1": sha1(dst), "bytes": dst.stat().st_size}
+    print(f"[world] assets: {len(tiles)} tiledata row(s) -> tiledata.mul")
+    return 0
+
+
+def td_path(data: Path) -> Path:
+    for f in data.iterdir():
+        if f.name.lower() == "tiledata.mul":
+            return f
+    raise FileNotFoundError(f"no tiledata.mul in {data}")
 
 
 def export_texmaps(data: Path, texmaps: list, out: Path, override_lines: list[str], files: dict) -> int:
