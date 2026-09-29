@@ -348,7 +348,7 @@ def session(cfg, stage: Path, out: Path, parts: list, site, stops: list, clip: P
         wait_for(lambda: (watch / "login.closed").exists(), 30)
         report["start"] = look("start").get("player")
         if clip:
-            (watch / "walk.rec").write_text(f"{min(40 + 12 * len(stops), 240)} 8 jpg", encoding="utf-8")
+            (watch / "walk.rec").write_text(f"{min(40 + 12 * len(stops), 900)} 8 jpg", encoding="utf-8")
             time.sleep(1.0)
         report["stops"] = {t: goto(t, lx, ly, lz) for t, lx, ly, lz in stops}
         if clip:
@@ -373,6 +373,16 @@ def session(cfg, stage: Path, out: Path, parts: list, site, stops: list, clip: P
                             "-vf", vf, "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "26", "-movflags", "+faststart",
                             str(clip.resolve())], capture_output=True, text=True, cwd=out)
         report["clip"] = str(clip) if r.returncode == 0 else f"ffmpeg failed: {r.stderr[-300:]}"
+        if r.returncode == 0:
+            # a second cut without the time the player stands still (a door, the pathfinder
+            # thinking, a still being taken): what a reviewer watches
+            tight = clip.with_name(clip.stem + "_tight" + clip.suffix)
+            subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(clip.resolve()),
+                            "-vf", "mpdecimate=hi=64*24:lo=64*8:frac=0.5,setpts=N/8/TB", "-r", "8",
+                            "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "26", "-movflags", "+faststart",
+                            str(tight.resolve())], capture_output=True, text=True)
+            if tight.exists():
+                report["clip_tight"] = str(tight)
     (out / "report.json").write_text(json.dumps(report, indent=1) + "\n", encoding="utf-8")
     ok = all(a.get("ok") for a in report["place"].values()) and all(s["arrived"] for s in report.get("stops", {}).values())
     print(f"[prove] {'PASS' if ok else 'FAIL'}: {out}")
