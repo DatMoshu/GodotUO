@@ -250,7 +250,8 @@ def build(desc: dict, cat: G.Catalogue, data_dir: Path) -> dict:
         raise DescriptionError("format must be 1 and kind 'storeys'")
     cat.fresh()
     facet = desc.get("facet", 0)
-    boxes = [bd["box"] for bd in desc["buildings"]] + [pv["box"] for pv in desc.get("paving", [])]
+    boxes = ([bd["box"] for bd in desc["buildings"]] + [pv["box"] for pv in desc.get("paving", [])]
+             + [rs["box"] for rs in desc.get("resurface", [])])
     xs = [v for bx in boxes for v in (bx[0], bx[2])]
     ys = [v for bx in boxes for v in (bx[1], bx[3])]
     blocks, cells = read_area(data_dir, facet, min(xs) - 1, min(ys) - 1, max(xs) + 1, max(ys) + 1)
@@ -291,6 +292,20 @@ def build(desc: dict, cat: G.Catalogue, data_dir: Path) -> dict:
             if any(land.get((x + dx, y + dy), z) != z for dx, dy in ((1, 0), (0, 1), (1, 1))):
                 continue
             added.append((ids[(x * 7 + y * 13) % len(ids)], x, y, z, 0))
+    # resurface: the map's own deck or floor pieces of the listed ids in the box, each put back
+    # as a piece of another floor family at the same cell and z (a timber dock laid in stone)
+    for rs in desc.get("resurface", []):
+        ids = cat.floor(rs["floor"], rs.get("variants", 4))
+        old = {int(str(i), 16) for i in rs["from"]}
+        n = 0
+        for (x, y) in G.cells_of(rs["box"]):
+            for sid, z, _ in cells.get((x, y), []):
+                if sid in old and (x, y, z, sid) not in removed:
+                    removed.add((x, y, z, sid))
+                    added.append((ids[(x * 7 + y * 13) % len(ids)], x, y, z, 0))
+                    n += 1
+        if not n:
+            raise DescriptionError(f"resurface {rs['box']}: none of {rs['from']} there")
     out = {}
     for (bx, by), blk in blocks.items():
         statics = []

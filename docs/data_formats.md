@@ -844,6 +844,7 @@ Beside `buildings[]`, a description may carry:
 | `ground` | The land's height for the offline walk: a number (default 0) for the whole scene, or `"land"` to read each cell's height from the map (a street on a slope, a building on a hill) |
 | `swaps[]` | `{"at": [x, y], "z", "item", "new"}`: that piece in place of the wall standing at the cell and z (an arch in a wall, the map's or one added). A cell with no wall there is refused unless `new` is true (a doorway the piece closes) |
 | `paving[]` | `{"box", "floor", "variants"}`: floor pieces of that family (up to `variants`, default 4) at the land's height on each flat cell of the box (all four corners level) that holds no statics |
+| `resurface[]` | `{"box", "from", "floor", "variants"}`: every map static in the box whose id is in `from` (hex strings) is replaced by a piece of the `floor` family at the same cell and z (a timber dock laid in stone). A box holding none of them is refused |
 
 `tour[]` is as a scene's, in map coordinates. The project folder gets
 `project.json`, `blocks/`, `storeys.json` (per building its storey z levels,
