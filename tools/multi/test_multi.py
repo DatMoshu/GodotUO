@@ -293,6 +293,9 @@ def main() -> int:
         stand, cov = walkcheck.surfaces([{"centre": [0, 0], "comps": two}], kinds, 0)
         check(walkcheck.search(stand, cov, (5, 0, 20), (6, 0, 0), 0, 4)[0] > 1,
               "a walker on the upper floor does not drop through it to the one below")
+        # the client stands on nothing above z 112 (its pathfinder caps each cell at 128)
+        high, _ = walkcheck.surfaces([{"centre": [0, 0], "comps": [C(2, 0, 0, 112), C(2, 1, 0, 115)]}], kinds, 0)
+        check(112 in high[(0, 0)] and 115 not in high.get((1, 0), []), "a floor at 112 is stood on, one at 115 is not")
         # a long wall on the land with its only way round forty cells off: a detour, reported
         long_wall = [{"centre": [0, 0], "comps": [C(1, 0, y, 0) for y in range(-40, 41)]}]
         dleg = [{"name": "west", "x": -1, "y": 0, "z": 0}, {"name": "east", "x": 1, "y": 0, "z": 0}]

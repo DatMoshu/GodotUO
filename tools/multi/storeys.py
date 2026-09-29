@@ -93,8 +93,13 @@ def raise_building(bd: dict, cat: G.Catalogue, cells: dict) -> tuple[list[Compon
     n = bd["storeys"]
     if n < 2:
         raise DescriptionError(f"{bd['name']}: storeys must be 2 or more (the ground storey is the map's)")
-    if base + n * step + 8 > 127:
-        raise DescriptionError(f"{bd['name']}: a roof at {base + n * step} leaves no room under z 127")
+    # the roof: a whole storey up, or `roof_z` lower. The client stands on nothing above z 112 (its
+    # pathfinder caps every cell at 128 and a walker needs 16), so a walkable deck is 112 at most
+    roof_z = bd.get("roof_z", base + n * step)
+    if roof_z + 8 > 127:
+        raise DescriptionError(f"{bd['name']}: a roof at {roof_z} leaves no room under z 127")
+    if roof_z - (base + (n - 1) * step) < 16:
+        raise DescriptionError(f"{bd['name']}: a roof at {roof_z} leaves under 16 of headroom on the top storey")
     top = base + step
     fp, ground_walls = footprint(bd["box"], cells, cat.pieces, base, top)
     if not ground_walls:
@@ -132,7 +137,7 @@ def raise_building(bd: dict, cat: G.Catalogue, cells: dict) -> tuple[list[Compon
     holes_next: set = set()
     record = {"storeys": [], "stairs": []}
     for k in range(n + 1):                 # k = n is the roof
-        z = base + k * step
+        z = base + k * step if k < n else roof_z
         if k == 0:
             floor = ground_open
             walls = ground_walls
@@ -170,10 +175,14 @@ def raise_building(bd: dict, cat: G.Catalogue, cells: dict) -> tuple[list[Compon
         stand = (floor - walls) if k else ground_open
         for s in here:
             mat = s.get("material", bd.get("stair_material", "stone"))
-            h, a = G.staircase(b, cat, s, mat, z, stand, walls if k else ground_walls)
+            rise = (roof_z if k == n - 1 else z + step) - z
+            # a step is stood on at half its 5 (the client counts stairs as bridges): n steps reach
+            # 5(n - 1) + 2, and the floor above must be within a step (5) of that
+            short = {} if rise == G.STAIR_STEPS * 5 else {"steps": max(1, -(-(rise - 7) // 5) + 1), "landing": False}
+            h, a = G.staircase(b, cat, s, mat, z, stand, walls if k else ground_walls, **short)
             holes_next |= h
             dx, dy = G.SIDE_STEP[s["rise"]]
-            record["stairs"].append({"storey": k, "from_z": z, "to_z": z + step,
+            record["stairs"].append({"storey": k, "from_z": z, "to_z": z + rise,
                                      "foot": [s["at"][0] - dx, s["at"][1] - dy], "cells": sorted(h),
                                      "arrive": sorted(a)})
             if k == 0:
@@ -185,7 +194,7 @@ def raise_building(bd: dict, cat: G.Catalogue, cells: dict) -> tuple[list[Compon
         record["storeys"].append({"z": z, "floor": len(floor), "walls": len(walls)})
     hue = int(str(bd.get("hue", "0")), 16) if isinstance(bd.get("hue"), str) else bd.get("hue", 0)
     record.update({"footprint": sorted(fp), "outline": len(outline), "partitions": sorted(partitions),
-                   "roof_z": base + n * step, "hue": hue})
+                   "roof_z": roof_z, "hue": hue})
     return b.comps, removed, record
 
 

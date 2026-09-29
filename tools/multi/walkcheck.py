@@ -11,7 +11,8 @@ that is missing before a proof spends twenty minutes finding it:
   surface in reach, never through a floor, and not into a cell whose blocks stand in the way
   between the two heights (the side of a stair's flight); a diagonal step
   also needs both cells beside it open at about that height (UO does not cut corners);
-- the land counts as a surface at the scene's ground wherever nothing covers it.
+- the land counts as a surface at the scene's ground wherever nothing covers it;
+- nothing above z 112 is stood on: the client's pathfinder caps every cell at 128.
 The shard and the client are the proof; this only says where to look.
 """
 from __future__ import annotations
@@ -19,6 +20,9 @@ from __future__ import annotations
 import heapq
 
 HEADROOM = 16
+# the client's pathfinder puts a ceiling at z 128 over every cell (CalculateNewZ) and wants a walker's
+# 16 under it: nothing above z 112 can be stood on, whatever the shard allows
+MAX_STAND = 128 - HEADROOM
 BOTTOMS: dict = {}
 CLIMB = 5
 # a leg longer than this many times its straight distance (plus the slack) is a detour the client's
@@ -57,7 +61,7 @@ def surfaces(parts: list[dict], pieces: dict, ground: int = 0) -> tuple[dict, se
         zs = set(stand.get(at, ()))
         if not any(a <= ground < b for a, b in solid.get(at, ())):
             zs.add(ground)
-        free = sorted(z for z in zs if not any(a < z + HEADROOM and b > z for a, b in solid.get(at, ()))
+        free = sorted(z for z in zs if z <= MAX_STAND and not any(a < z + HEADROOM and b > z for a, b in solid.get(at, ()))
                       and not any(z <= a < z + HEADROOM for a in above.get(at, ())))
         if free:
             out[at] = free

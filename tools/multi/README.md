@@ -145,6 +145,11 @@ x and y are nearer at another z; put a stop in the middle of the stair, then one
 at its top. A step lands on the highest surface in reach, so a walker never
 drops through a floor, nor sideways into a stair's flight.
 
+Nothing above z 112 can be stood on: the client's pathfinder puts a ceiling at
+128 over every cell and wants a walker's 16 under it (seen in game: a roof at
+115 over a five-storey keep was never reached). A walkable roof deck is 112 at
+most; `storeys` takes a `roof_z` for one lower than a whole storey.
+
 ## Complete on every side
 
 The client's own buildings often skip what it never shows: the north or west
