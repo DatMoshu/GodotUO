@@ -198,7 +198,8 @@ def cmd_scene_build(cfg, a) -> int:
         old.unlink()
     problems, every = list(sc.get("problems", [])), []
     # an offline walk of the tour: where a proof would stop, before it spends a shard run
-    problems += walkcheck.check_tour(sc["parts"], sc["tour"], cat.pieces, desc.get("ground", 0))
+    problems += walkcheck.check_tour(sc["parts"], sc["tour"], cat.pieces, desc.get("ground", 0),
+                                    desc.get("land_under_parts", True))
     for p in sc["parts"]:
         problems += [f"{p['name']}: {q}" for q in validate.check_parts(p["comps"], cfg.client_data)]
         (out / "parts" / f"{p['name']}.json").write_text(json.dumps([c.as_list() for c in p["comps"]]),
@@ -256,8 +257,10 @@ def cmd_scene_prove(cfg, a) -> int:
     stage = (a.stage or cfg.build / "uodata" / "multi").resolve()
     out = (a.out or cfg.build / "multi_proof" / f"{a.name}-{time.strftime('%Y%m%d-%H%M%S')}").resolve()
     out.mkdir(parents=True, exist_ok=True)
+    extra = [ln.strip() for ln in a.shard_commands.read_text(encoding="utf-8").splitlines()
+             if ln.strip() and not ln.lstrip().startswith("#")] if a.shard_commands else []
     return prove.prove_scene(cfg, a.name, stage, out, a.clip, at=a.at, min_free_gb=a.min_free_gb,
-                             caption=a.caption or "")
+                             caption=a.caption or "", shard_commands=extra)
 
 
 def cmd_world_prove(cfg, a) -> int:
@@ -385,6 +388,8 @@ def main() -> int:
     p.add_argument("--caption")
     p.add_argument("--at", type=int, nargs="+", metavar="N")
     p.add_argument("--min-free-gb", type=float, default=16)
+    p.add_argument("--shard-commands", type=Path,
+                   help="a file of staff commands (one per line) the client says after it arrives, before the tour")
     p = sub.add_parser("world-prove")
     p.add_argument("project", type=Path)
     p.add_argument("--export", type=Path)
