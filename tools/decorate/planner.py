@@ -516,13 +516,14 @@ def log_run(**row) -> None:
 
 
 def openai_call(messages: list, model: str = MODEL, caller: str = "GUO3", tag: str = "decorator",
-                note: str = "") -> tuple[dict, dict]:
-    """One Responses API call with the plan schema. Returns (plan, usage)."""
+                note: str = "", schema: dict = PLAN_SCHEMA, name: str = "house_plan",
+                project: str = "GUO") -> tuple[dict, dict]:
+    """One Responses API call answered in `schema` (strict JSON). Returns (answer, usage)."""
     key = api_key()
     if not key:
         raise RuntimeError("no OPENAI_API_KEY for the planner")
     body = {"model": model, "input": messages,
-            "text": {"format": {"type": "json_schema", "name": "house_plan", "schema": PLAN_SCHEMA, "strict": True}}}
+            "text": {"format": {"type": "json_schema", "name": name, "schema": schema, "strict": True}}}
     if model.startswith(("gpt-5", "o")):
         body["reasoning"] = {"effort": EFFORT}
     req = urllib.request.Request(API + "/responses", data=json.dumps(body).encode(), method="POST",
@@ -539,14 +540,14 @@ def openai_call(messages: list, model: str = MODEL, caller: str = "GUO3", tag: s
         except Exception:
             msg = ""
         err = redact(f"HTTP {e.code}: {msg}")
-        log_run(caller=caller, tag=tag, kind="plan", model=model, status="error", prompt_chars=chars,
+        log_run(caller=caller, tag=tag, kind="plan", model=model, status="error", prompt_chars=chars, project=project,
                 latency_s=round(time.time() - t0, 1), error=err, outputs=note)
         raise RuntimeError(err) from None
     usage = resp.get("usage") or {}
     text = "".join(c.get("text", "") for o in resp.get("output", []) if o.get("type") == "message"
                    for c in o.get("content", []) if c.get("type") == "output_text")
     det = usage.get("input_tokens_details") or {}
-    log_run(caller=caller, tag=tag, kind="plan", model=resp.get("model", model), status="ok", prompt_chars=chars,
+    log_run(caller=caller, tag=tag, kind="plan", model=resp.get("model", model), status="ok", prompt_chars=chars, project=project,
             input_tokens=usage.get("input_tokens"), input_text_tokens=None,
             input_image_tokens=det.get("image_tokens"), output_tokens=usage.get("output_tokens"),
             latency_s=round(time.time() - t0, 1), outputs=note)
