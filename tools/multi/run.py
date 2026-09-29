@@ -268,11 +268,12 @@ def cmd_world_prove(cfg, a) -> int:
     tour_file = a.tour or project / "storeys.json"
     tour = json.loads(tour_file.read_text(encoding="utf-8"))["tour"]
     stops = [(t["name"], t["at"][0], t["at"][1], t["z"]) for t in tour]
+    jumps = {t["name"]: t["go"] for t in tour if t.get("go")}   # true: to x y z; "xy": the shard picks z
     out = (a.out or cfg.build / "multi_proof" / f"{project.name}-{time.strftime('%Y%m%d-%H%M%S')}").resolve()
     out.mkdir(parents=True, exist_ok=True)
     profile = {"draw_roofs": False} if a.no_roofs else None
     return prove.prove_world(cfg, export, stops, out, a.clip, min_free_gb=a.min_free_gb, caption=a.caption or "",
-                             profile=profile)
+                             profile=profile, jumps=jumps)
 
 
 def cmd_storeys(cfg, a) -> int:
@@ -302,10 +303,10 @@ def cmd_storeys(cfg, a) -> int:
         xs, ys = [p[0] for p in pts], [p[1] for p in pts]
         area, _ = storeys.read_area(cfg.client_data, built["facet"], min(xs) - 6, min(ys) - 6, max(xs) + 6, max(ys) + 6)
         ground = {(bx * 8 + i % 8, by * 8 + i // 8): blk.land_z[i] for (bx, by), blk in area.items() for i in range(64)}
-    problems = []
+    problems = list(built.get("problems", []))
     if tour:
         stops = [{"name": t["name"], "x": t["at"][0], "y": t["at"][1], "z": t["z"]} for t in tour]
-        problems = walkcheck.check_tour([{"centre": [0, 0], "comps": comps}], stops, cat.pieces, ground)
+        problems += walkcheck.check_tour([{"centre": [0, 0], "comps": comps}], stops, cat.pieces, ground)
     prev = project / "preview"
     prev.mkdir(exist_ok=True)
     render.render(comps, cfg.client_data, prev / "whole.png")

@@ -24,7 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import generate as G  # noqa: E402
-from generate import DescriptionError, signature  # noqa: E402
+from generate import DescriptionError, scatter, signature  # noqa: E402
 from guo.uomap import install_fingerprint, open_facet  # noqa: E402
 from multifile import Component  # noqa: E402
 
@@ -96,8 +96,9 @@ def raise_building(bd: dict, cat: G.Catalogue, cells: dict) -> tuple[list[Compon
     base = bd.get("base_z", 0)
     step = bd.get("storey_height", 20)
     n = bd["storeys"]
-    if n < 2:
-        raise DescriptionError(f"{bd['name']}: storeys must be 2 or more (the ground storey is the map's)")
+    if n < 1:
+        raise DescriptionError(f"{bd['name']}: storeys must be 1 or more (the ground storey is the map's; "
+                               "1 only puts a flat roof on it)")
     # the roof: a whole storey up, or `roof_z` lower. The client stands on nothing above z 112 (its
     # pathfinder caps every cell at 128 and a walker needs 16), so a walkable deck is 112 at most
     roof_z = bd.get("roof_z", base + n * step)
@@ -173,13 +174,13 @@ def raise_building(bd: dict, cat: G.Catalogue, cells: dict) -> tuple[list[Compon
                                        for c in G.cells_of(fh["box"])}
             ids = cat.floor(floor_mat if k < n else bd.get("roof", {}).get("floor", floor_mat))
             for (x, y) in sorted(floor):
-                b.add(ids[(x * 7 + y * 13) % len(ids)], x, y, z)
+                b.add(scatter(ids, x, y), x, y, z)
             if k == set_from and strip:
                 # the terrace: the storey below's roof over the strip, with a parapet on its open edges
                 t_ids = cat.floor(bd.get("roof", {}).get("floor", floor_mat))
                 edge = strip & outline
                 for (x, y) in sorted(strip - fpk):
-                    b.add(t_ids[(x * 7 + y * 13) % len(t_ids)], x, y, z)
+                    b.add(scatter(t_ids, x, y), x, y, z)
                 for (x, y) in sorted(edge):
                     b.add(cat.wall(bd.get("roof", {}).get("parapet", wall_mat), 5, signature(edge, x, y)), x, y, z)
             if k < n:
@@ -250,14 +251,39 @@ def build(desc: dict, cat: G.Catalogue, data_dir: Path) -> dict:
         raise DescriptionError("format must be 1 and kind 'storeys'")
     cat.fresh()
     facet = desc.get("facet", 0)
-    boxes = [bd["box"] for bd in desc["buildings"]] + [pv["box"] for pv in desc.get("paving", [])]
+    # scenes: a new build from the scene generator (fort.py) put down whole at a site, in place
+    # of what stood in its clear boxes (a building rebuilt from nothing on its own plot)
+    import fort
+    placed, scene_problems = [], []
+    for ns in desc.get("scenes", []):
+        sc = fort.build_scene(ns["scene"], cat)
+        scene_problems += [f"{ns['scene']['name']}: {q}" for q in sc.get("problems", []) if "overlap" not in q]
+        ox, oy, oz = ns["at"][0], ns["at"][1], ns.get("z", 0)
+        hue = int(str(ns.get("hue", "0")), 16) if isinstance(ns.get("hue"), str) else ns.get("hue", 0)
+        pcs = [(c.item, c.x + p["centre"][0] + ox, c.y + p["centre"][1] + oy, c.z + oz, hue)
+               for p in sc["parts"] for c in p["comps"] if c.visible]
+        placed.append((ns, pcs))
+    boxes = ([bd["box"] for bd in desc.get("buildings", [])] + [pv["box"] for pv in desc.get("paving", [])]
+             + [rs["box"] for rs in desc.get("resurface", []) + desc.get("reclad", [])]
+             + [r["box"] for r in desc.get("reland", []) + desc.get("strip", [])]
+             + [[pr["at"][0], pr["at"][1], pr["at"][0], pr["at"][1]] for pr in desc.get("props", []) + desc.get("remove", []) + desc.get("land", [])]
+             + [bx for ns, _ in placed for bx in ns.get("clear", [])]
+             + [[min(p[1] for p in pcs), min(p[2] for p in pcs), max(p[1] for p in pcs), max(p[2] for p in pcs)]
+                for _, pcs in placed if pcs])
     xs = [v for bx in boxes for v in (bx[0], bx[2])]
     ys = [v for bx in boxes for v in (bx[1], bx[3])]
     blocks, cells = read_area(data_dir, facet, min(xs) - 1, min(ys) - 1, max(xs) + 1, max(ys) + 1)
     added: list[tuple[int, int, int, int, int]] = []
     removed: set = set()
     records = []
-    for bd in desc["buildings"]:
+    for ns, pcs in placed:
+        for (x, y) in (c for bx in ns.get("clear", []) for c in G.cells_of(bx)):
+            removed |= {(x, y, z, sid) for sid, z, _ in cells.get((x, y), [])}
+        added += pcs
+    # props: loose pieces at map cells (street dressing, room decor, rooftop kit), kept as given
+    added += [(int(str(pr["item"]), 16), pr["at"][0], pr["at"][1], pr["z"], int(str(pr.get("hue", "0")), 16))
+              for pr in desc.get("props", [])]
+    for bd in desc.get("buildings", []):
         comps, gone, rec = raise_building(bd, cat, cells)
         rec["name"] = bd["name"]
         records.append(rec)
@@ -290,7 +316,152 @@ def build(desc: dict, cat: G.Catalogue, data_dir: Path) -> dict:
                 continue
             if any(land.get((x + dx, y + dy), z) != z for dx, dy in ((1, 0), (0, 1), (1, 1))):
                 continue
-            added.append((ids[(x * 7 + y * 13) % len(ids)], x, y, z, 0))
+            added.append((scatter(ids, x, y), x, y, z, 0))
+    def ids_of(spec):
+        out_ = set()
+        for v in spec:
+            lo, _, hi = str(v).partition("-")
+            out_ |= set(range(int(lo, 16), int(hi or lo, 16) + 1))
+        return out_
+    # resurface: the map's own deck or floor pieces of the listed ids in the box, each put back
+    # as a piece of another floor family at the same cell and z (a timber dock laid in stone)
+    for rs in desc.get("resurface", []):
+        ids = cat.floor(rs["floor"], rs.get("variants", 4))
+        old = ids_of(rs["from"])
+        n = 0
+        for (x, y) in G.cells_of(rs["box"]):
+            for sid, z, _ in cells.get((x, y), []):
+                if sid in old and (x, y, z, sid) not in removed:
+                    removed.add((x, y, z, sid))
+                    added.append((scatter(ids, x, y), x, y, z, 0))
+                    n += 1
+        if not n and not rs.get("optional"):
+            raise DescriptionError(f"resurface {rs['box']}: none of {rs['from']} there")
+    # reclad: the map's own wall, window, post and stair pieces of one material in the box, each
+    # put back as the piece of another material with the same part, height and joins (a timber
+    # shed clad in brick); a piece the other material has no match for stays and is counted
+    for rc in desc.get("reclad", []):
+        src, dst = cat.material(rc["from"]), cat.material(rc["to"])
+        kinds = rc.get("kinds", ["wall", "window", "post", "stair"])
+        only = ids_of(rc["ids"]) if rc.get("ids") else None
+        where = {}
+        for kind in kinds:
+            for key, v in src.get(kind, {}).items():
+                for sig, ids in (v.items() if isinstance(v, dict) else [("", v)]):
+                    for i in ids:
+                        if only is None or int(i, 16) in only:
+                            where.setdefault(int(i, 16), (kind, key, sig))
+        def match(kind, key, sig):
+            got = dst.get(kind, {})
+            if key in got:
+                v = got[key]
+                if not isinstance(v, dict):
+                    return v
+                if sig in v:
+                    return v[sig]
+            if kind == "stair" or not key.isdigit():
+                return None
+            # the nearest height, then the closest joins (the most shared sides, the fewest extra);
+            # a window or post the other material lacks becomes its plain wall
+            want = set(sig) - {"-"}
+            best = None
+            for k2 in (kind, "wall") if kind != "wall" else ("wall",):
+                for h, v in dst.get(k2, {}).items():
+                    if not (h.isdigit() and isinstance(v, dict)):
+                        continue
+                    for s2, ids2 in v.items():
+                        have = set(s2) - {"-"}
+                        score = (k2 != kind, abs(int(h) - int(key)), -len(want & have), len(have - want))
+                        if best is None or score < best[0]:
+                            best = (score, ids2)
+            return best[1] if best else None
+        n = kept = 0
+        for (x, y) in G.cells_of(rc["box"]):
+            for sid, z, hue in cells.get((x, y), []):
+                if sid not in where or (x, y, z, sid) in removed:
+                    continue
+                ids = match(*where[sid])
+                if not ids:
+                    kept += 1
+                    continue
+                removed.add((x, y, z, sid))
+                added.append((int(ids[0], 16), x, y, z, hue))
+                n += 1
+        if not n and not rc.get("optional"):
+            raise DescriptionError(f"reclad {rc['box']}: no {rc['from']} pieces there")
+        if kept:
+            scene_problems.append(f"reclad {rc['box']}: {kept} {rc['from']} piece(s) have no {rc['to']} match and stay")
+    # reland: land cells in the box whose id is listed get one of `to` (grass laid as paving),
+    # except in the `keep` boxes (a park); strip: statics whose tiledata name holds one of `names`
+    # go (the trees and bushes on it)
+    # remove: exact map statics to take out (loose furniture a prop replaces), each {item, at, z}
+    for rm in desc.get("remove", []):
+        sid, (x, y), z = int(str(rm["item"]), 16), rm["at"], rm["z"]
+        if any(s == sid and zz == z for s, zz, _ in cells.get((x, y), [])):
+            removed.add((x, y, z, sid))
+    relanded = set()
+    for rl in desc.get("reland", []):
+        frm, to, keep = ids_of(rl["from"]), sorted(ids_of(rl["to"])), rl.get("keep", [])
+        x0, y0, x1, y1 = rl["box"]
+        # sparse N: only a cell with fewer than N listed cells in the 5 x 5 round it (a stray
+        # patch goes, a road or a yard of them stays)
+        sparse = rl.get("sparse")
+        if sparse:
+            listed = {(bx * 8 + i % 8, by * 8 + i // 8) for (bx, by), blk in blocks.items() for i in range(64)
+                      if blk.land_id[i] in frm}
+        for (bx, by), blk in blocks.items():
+            for i in range(64):
+                x, y = bx * 8 + i % 8, by * 8 + i // 8
+                if x0 <= x <= x1 and y0 <= y <= y1 and blk.land_id[i] in frm and not any(
+                        k[0] <= x <= k[2] and k[1] <= y <= k[3] for k in keep) and not (sparse and sum(
+                        (x + dx, y + dy) in listed for dx in range(-2, 3) for dy in range(-2, 3)) - 1 >= sparse):
+                    blk.land_id[i] = scatter(to, x, y)
+                    relanded.add((bx, by))
+        # level N: a paved cell (one of `to`) with nothing standing on it, lying within N of the
+        # middle height of its eight neighbours, takes that height: a lone dip or bump shades
+        # the four tiles round it into a dark cross once the ground is one flat material
+        if rl.get("level"):
+            tos, lz = set(to), {}
+            for (bx, by), blk in blocks.items():
+                for i in range(64):
+                    lz[(bx * 8 + i % 8, by * 8 + i // 8)] = (blk, i)
+            new = {}
+            for (x, y), (blk, i) in lz.items():
+                if not (x0 <= x <= x1 and y0 <= y <= y1) or blk.land_id[i] not in tos or cells.get((x, y)):
+                    continue
+                nb = sorted(lz[(x + dx, y + dy)][0].land_z[lz[(x + dx, y + dy)][1]]
+                            for dx in (-1, 0, 1) for dy in (-1, 0, 1) if (dx or dy) and (x + dx, y + dy) in lz)
+                if len(nb) == 8:
+                    mid = (nb[3] + nb[4]) // 2
+                    if mid != blk.land_z[i] and abs(mid - blk.land_z[i]) <= rl["level"]:
+                        new[(x, y)] = mid
+            for (x, y), z in new.items():
+                blk, i = lz[(x, y)]
+                blk.land_z[i] = z
+                relanded.add((x // 8, y // 8))
+    # land: single cells painted by hand, {at, id, z?}: the tile (and height) of that cell
+    if desc.get("land"):
+        at_cell = {(bx * 8 + i % 8, by * 8 + i // 8): (blk, i) for (bx, by), blk in blocks.items() for i in range(64)}
+        for ld in desc["land"]:
+            x, y = ld["at"]
+            if (x, y) not in at_cell:
+                continue
+            blk, i = at_cell[(x, y)]
+            blk.land_id[i] = int(str(ld["id"]), 16)
+            if "z" in ld:
+                blk.land_z[i] = ld["z"]
+            relanded.add((x // 8, y // 8))
+    if desc.get("strip"):
+        from guo.uoread import TileData
+        td = TileData(data_dir)
+        for sp in desc["strip"]:
+            names, keep = [n.lower() for n in sp["names"]], sp.get("keep", [])
+            for (x, y) in G.cells_of(sp["box"]):
+                if any(k[0] <= x <= k[2] and k[1] <= y <= k[3] for k in keep):
+                    continue
+                for sid, z, _ in cells.get((x, y), []):
+                    if any(n in (td.static(sid) or {}).get("name", "").lower() for n in names):
+                        removed.add((x, y, z, sid))
     out = {}
     for (bx, by), blk in blocks.items():
         statics = []
@@ -298,10 +469,14 @@ def build(desc: dict, cat: G.Catalogue, data_dir: Path) -> dict:
             if (bx * 8 + sx, by * 8 + sy, z, sid) not in removed:
                 statics.append((sid, sx, sy, z, hue))
         mine = [(sid, x - bx * 8, y - by * 8, z, hue) for sid, x, y, z, hue in added if x // 8 == bx and y // 8 == by]
-        if not mine and len(statics) == len(blk.statics):
+        if not mine and len(statics) == len(blk.statics) and (bx, by) not in relanded:
             continue
         out[(bx, by)] = {"land": blk, "statics": statics + mine}
-    return {"facet": facet, "blocks": out, "buildings": records, "added": added, "removed": sorted(removed)}
+    bad = [c for c in added if not -128 <= c[3] <= 127]
+    if bad:
+        raise DescriptionError(f"{len(bad)} piece(s) outside the map's z range -128..127, e.g. {bad[0]}")
+    return {"facet": facet, "blocks": out, "buildings": records, "added": added, "removed": sorted(removed),
+            "problems": scene_problems}
 
 
 def write_project(built: dict, folder: Path, name: str, cfg) -> list[Path]:
@@ -323,4 +498,9 @@ def write_project(built: dict, folder: Path, name: str, cfg) -> list[Path]:
         p.write_text(json.dumps({"format": 1, "facet": built["facet"], "block": [bx, by], "land": land,
                                  "statics": statics}, indent=1) + "\n", encoding="utf-8")
         written.append(p)
+    # the project is this build's alone: a block an earlier build wrote and this one does not
+    # (a reland taken out) goes, or it would outlive the description that made it
+    for old in bdir.glob("*.json"):
+        if old not in written:
+            old.unlink()
     return written

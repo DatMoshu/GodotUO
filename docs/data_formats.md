@@ -324,6 +324,7 @@ written.
                             tiledata of the land tiles that use it
   gumps/0xNNNN.png          gump, by gump id
   hues/0xNNNN.json          hue, by hue number (1-based, as shards write it)
+  tiledata.json             static tiledata rows (optional): {"0xNNNN": {"flags", "height", "name", "weight"}}
 ```
 
 **Images.** RGBA PNG, already reduced to UO colour: each channel's low three
@@ -357,6 +358,7 @@ texture; export warns about it.
 | File | Contents |
 |---|---|
 | `verdata.mul` | `int32 count`, then `count` records of five `uint32` (file id, block, position, length, extra), then the data. Art is file id 4, block = land id or `0x4000` + item id, in the art layouts below. Gumps are file id 12, extra = `width << 16 \| height`. The install's own patches are kept unless the project replaces the same id. 16 zero bytes pad the end |
+| `tiledata.mul` | Only with `tiledata.json`. A copy of the install's with each listed static row written: flags (hex string or number), weight (default 255), height, name (20 bytes); layer, count, anim, hue and light 0. A row past the file's static count is refused |
 | `texmaps.mul`, `texidx.mul` | Only with `art/texmaps/`. Copies of the install's: each replaced texmap's 16-bit colours (row by row, 0x2000 or 0x8000 bytes) are appended to `texmaps.mul`, and its `texidx.mul` record (int32 offset, int32 length, int32 extra, extra kept) points at them. Every other record and byte is the install's. Upstream never applies verdata texmaps (file id 10), hence copies |
 | `hues.mul` | The install's, with each replaced hue's 88 bytes (32 colours, start, end, 20-byte name) written in place |
 | `files_override.txt` | Adds `verdata.mul=`, `hues.mul=`, `texmaps.mul=` and `texidx.mul=` lines, for the files written |
@@ -827,7 +829,7 @@ round it) goes. `buildings[]`:
 | `name` | The building's name in the record |
 | `box` `[x0, y0, x1, y1]` | Map cells that hold it: the footprint is its ground walls (wall, window or post pieces at `base_z`, give or take 2: on uneven land the map sets some a unit off) and what they enclose or a flat roof at their top covers, doorways closed |
 | `base_z`, `storey_height` | The ground storey's z (default 0) and z between storeys (default 20) |
-| `storeys` | How many storeys in all, the ground one included (2 or more) |
+| `storeys` | How many storeys in all, the ground one included (1 or more: 1 keeps the ground storey and replaces its pitched roof with a flat one, `roof` and `roof_z` as for any building) |
 | `wall`, `floor`, `stair_material` | Families for the storeys added: walls repeat the outline (a ground doorway in it becomes wall) and the ground partitions, with a window every `window_every` cells (default 3) of a straight run. `wall` `ground` repeats the ground storey's own piece in each wall cell (its windows too); other cells take the ground walls' commonest family |
 | `roof` | `{"floor", "parapet", "trim"}`: the flat roof's tiles, its 5-high parapet, and optional `trim`: heights of low-wall courses laid on the parapet in turn (e.g. `[2, 3]`), in the parapet's family; a corner the family has no piece of that height for takes its 2-high corner |
 | `stairs[]` | `{"storey", "at", "rise", "width"}`: a house stair (above) from that storey to the next; the ground storey's own pieces on its cells go |
@@ -844,8 +846,18 @@ Beside `buildings[]`, a description may carry:
 | `ground` | The land's height for the offline walk: a number (default 0) for the whole scene, or `"land"` to read each cell's height from the map (a street on a slope, a building on a hill) |
 | `swaps[]` | `{"at": [x, y], "z", "item", "new"}`: that piece in place of the wall standing at the cell and z (an arch in a wall, the map's or one added). A cell with no wall there is refused unless `new` is true (a doorway the piece closes) |
 | `paving[]` | `{"box", "floor", "variants"}`: floor pieces of that family (up to `variants`, default 4) at the land's height on each flat cell of the box (all four corners level) that holds no statics |
+| `resurface[]` | `{"box", "from", "floor", "variants"}`: every map static in the box whose id is in `from` (hex strings) is replaced by a piece of the `floor` family at the same cell and z (a timber dock laid in stone). A box holding none of them is refused unless `"optional": true` (a sweep over many boxes) |
+| `scenes[]` | `{"scene", "at", "z", "clear", "hue"}`: a new building in place of an old one. `scene` is a scene description (as `scene-build` takes, its own `tour` ignored), stood with its grid origin at map `at` and raised by `z`; every map static in each `clear` box is removed first. The scene's pieces go into the statics, so its doors are not placed (the shard's own doors stay where they were: keep the ground floor's doorways on those cells). `buildings[]` may then be left out. The scene's problems, other than part overlaps, count as the project's |
+| `props[]` | `{"item", "at", "z", "hue"}`: loose pieces at map cells (street dressing, room decor, rooftop kit), added as given; `item` and `hue` are hex strings |
+| `remove[]` | `{"item", "at", "z"}`: exact map statics taken out (the loose furniture a prop replaces); one not there is skipped |
+| `reclad[]` | `{"box", "from", "to", "kinds", "ids"}`: every map wall, window, post or stair piece (`kinds`, default all four) of material `from` in the box becomes the `to` material's piece with the same part, height and joins; failing that, the nearest height and closest joins, and a window or post `to` lacks becomes its plain wall. `ids` (hex or `"lo-hi"`) limits it to those source pieces. A piece with no match stays and is reported; a box with none is refused unless `"optional": true` (a sweep over many boxes) |
+| `reland[]` | `{"box", "from", "to", "keep"}`: land cells in the box whose id is in `from` get one of `to` (ids or `"lo-hi"` hex ranges, picked per cell by a fixed hash), except inside the `keep` boxes: a district's grass laid as paving, a park left. `sparse` N takes only a cell with fewer than N listed cells in the 5 x 5 round it (stray patches go, a road of them stays); `level` N gives a paved cell with nothing on it the middle height of its eight neighbours when within N (a lone dip shades a dark cross into flat paving) |
+| `land[]` | `{"at": [x, y], "id", "z"}`: one land cell painted by hand, its tile id (hex) and, when given, its height. Applied after `reland[]` |
+| `strip[]` | `{"box", "names", "keep"}`: map statics in the box whose tiledata name contains one of `names` (case ignored) are removed, except inside `keep`: the trees and brush on paved ground, the pitched-roof pieces a flat roof leaves |
 
-`tour[]` is as a scene's, in map coordinates. The project folder gets
+`tour[]` is as a scene's, in map coordinates; for `world-prove` a stop may add `"go"`: `true` steps
+there by staff command (`[go x y z`) instead of walking, `"xy"` leaves the z to the shard (a spot
+for a still: a roof, a place no path reaches). The project folder gets
 `project.json`, `blocks/`, `storeys.json` (per building its storey z levels,
 stairs with foot, cells and arrival, footprint, `roof_z`; the counts added and
 removed; the tour and its walk problems) and `preview/` (`whole.png`, and

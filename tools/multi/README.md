@@ -83,7 +83,8 @@ stops the generator wrote: through the yard's gate, onto the step, in, to the
 middle of the ground floor, up each stair, out onto a balcony, then each
 `--visit`. A stop counts only when the client stands at its x and y and within
 4 of its z. Every stop is a frame and a dump of where the client says the
-player stands. Before placing, it takes down every multi of the stage that an
+player stands. After login every gump closes (the watch's `.closegumps`: the
+paperdoll the shard opens), so frames and films show the world alone. Before placing, it takes down every multi of the stage that an
 earlier proof left standing (the shard keeps its world).
 
 A scene (`scene-prove`) is placed part by part at the site plus each part's
