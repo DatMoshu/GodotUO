@@ -68,6 +68,9 @@ namespace GUO.Input.Gamepad
 
         private static bool _connectHooked;
         private static readonly Dictionary<int, GamepadLayout> _layouts = new();
+
+        /// <summary>For a stand-in pad (<see cref="InputMode.StandIn"/>): its layout, as if detected.</summary>
+        internal static void KnownLayout(int device, GamepadLayout layout) => _layouts[device] = layout;
         private static readonly HashSet<string> _toldUnknown = new();
         private static readonly bool[] _dpad = new bool[4];   // up, down, left, right
         private static readonly bool[] _stick = new bool[4];
