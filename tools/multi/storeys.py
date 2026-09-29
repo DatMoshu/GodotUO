@@ -317,11 +317,17 @@ def build(desc: dict, cat: G.Catalogue, data_dir: Path) -> dict:
             if any(land.get((x + dx, y + dy), z) != z for dx, dy in ((1, 0), (0, 1), (1, 1))):
                 continue
             added.append((ids[(x * 7 + y * 13) % len(ids)], x, y, z, 0))
+    def ids_of(spec):
+        out_ = set()
+        for v in spec:
+            lo, _, hi = str(v).partition("-")
+            out_ |= set(range(int(lo, 16), int(hi or lo, 16) + 1))
+        return out_
     # resurface: the map's own deck or floor pieces of the listed ids in the box, each put back
     # as a piece of another floor family at the same cell and z (a timber dock laid in stone)
     for rs in desc.get("resurface", []):
         ids = cat.floor(rs["floor"], rs.get("variants", 4))
-        old = {int(str(i), 16) for i in rs["from"]}
+        old = ids_of(rs["from"])
         n = 0
         for (x, y) in G.cells_of(rs["box"]):
             for sid, z, _ in cells.get((x, y), []):
@@ -329,14 +335,8 @@ def build(desc: dict, cat: G.Catalogue, data_dir: Path) -> dict:
                     removed.add((x, y, z, sid))
                     added.append((ids[(x * 7 + y * 13) % len(ids)], x, y, z, 0))
                     n += 1
-        if not n:
+        if not n and not rs.get("optional"):
             raise DescriptionError(f"resurface {rs['box']}: none of {rs['from']} there")
-    def ids_of(spec):
-        out_ = set()
-        for v in spec:
-            lo, _, hi = str(v).partition("-")
-            out_ |= set(range(int(lo, 16), int(hi or lo, 16) + 1))
-        return out_
     # reclad: the map's own wall, window, post and stair pieces of one material in the box, each
     # put back as the piece of another material with the same part, height and joins (a timber
     # shed clad in brick); a piece the other material has no match for stays and is counted
@@ -387,7 +387,7 @@ def build(desc: dict, cat: G.Catalogue, data_dir: Path) -> dict:
                 removed.add((x, y, z, sid))
                 added.append((int(ids[0], 16), x, y, z, hue))
                 n += 1
-        if not n:
+        if not n and not rc.get("optional"):
             raise DescriptionError(f"reclad {rc['box']}: no {rc['from']} pieces there")
         if kept:
             scene_problems.append(f"reclad {rc['box']}: {kept} {rc['from']} piece(s) have no {rc['to']} match and stay")
