@@ -103,6 +103,9 @@ class Catalogue:
 
     def course(self, mat: str, total: int, sig: str) -> list[tuple[int, int]]:
         """(dz, item) low pieces stacked to at least `total` (never short: a floor sits on it)."""
+        if total > 6 and not any(h <= 6 for h in self.heights(mat, "wall")):
+            # a family with no low pieces (a tall parapet of full walls): one course of its walls
+            return [(0, self.wall(mat, total, sig))]
         h = self.low(mat, max(3, min(total, 6)))
         n = max(1, -(-total // h))
         return [(k * h, self.wall(mat, h, sig)) for k in range(n)]
@@ -624,7 +627,12 @@ def roof_rect(b: Built, cat: Catalogue, roof: dict, mats: dict, box, top: int) -
         for (x, y) in sorted(floor_of(r)):
             b.add(scatter(ids, x, y), x, y, top)
         if roof.get("parapet"):
-            ring = edge(r)
+            # parapet_gaps: edge cells left open (where an outside stair steps onto the roof),
+            # floored at the roof's height instead
+            gaps = {tuple(c) for c in roof.get("parapet_gaps", [])} & edge(r)
+            for (x, y) in sorted(gaps - floor_of(r)):
+                b.add(scatter(ids, x, y), x, y, top)
+            ring = edge(r) - gaps
             for (x, y) in sorted(ring):
                 for dz, item in cat.course(roof["parapet"], roof.get("parapet_height", 6), signature(ring, x, y)):
                     b.add(item, x, y, top + dz)

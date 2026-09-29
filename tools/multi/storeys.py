@@ -168,6 +168,16 @@ def raise_building(bd: dict, cat: G.Catalogue, cells: dict) -> tuple[list[Compon
         if k == 0:
             floor = ground_open
             walls = ground_walls
+            if bd.get("reface") and wall_mat != "ground":
+                # reface: the map's ground-storey walls give way to the building's own wall
+                # material, piece for piece (a window stays a window), so the whole face matches
+                for (x, y) in sorted(ground_walls):
+                    for sid, zz, _ in cells.get((x, y), []):
+                        info = cat.pieces.get(f"{sid:#06x}", {})
+                        if abs(zz - base) <= BASE_SLACK and is_wall(info) and info.get("height", 0) >= step - 1:
+                            removed.add((x, y, zz, sid))
+                            b.add(cat.wall(wall_mat, step - 1, signature(ground_walls, x, y),
+                                           window=info.get("role") == "window"), x, y, zz)
         else:
             fpk, outline_k, walls = shape(k)
             floor = fpk - holes_next - {c for fh in bd.get("floor_holes", []) if fh["storey"] == k
