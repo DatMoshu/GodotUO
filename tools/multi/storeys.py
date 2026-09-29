@@ -403,13 +403,42 @@ def build(desc: dict, cat: G.Catalogue, data_dir: Path) -> dict:
     for rl in desc.get("reland", []):
         frm, to, keep = ids_of(rl["from"]), sorted(ids_of(rl["to"])), rl.get("keep", [])
         x0, y0, x1, y1 = rl["box"]
+        # sparse N: only a cell with fewer than N listed cells in the 5 x 5 round it (a stray
+        # patch goes, a road or a yard of them stays)
+        sparse = rl.get("sparse")
+        if sparse:
+            listed = {(bx * 8 + i % 8, by * 8 + i // 8) for (bx, by), blk in blocks.items() for i in range(64)
+                      if blk.land_id[i] in frm}
         for (bx, by), blk in blocks.items():
             for i in range(64):
                 x, y = bx * 8 + i % 8, by * 8 + i // 8
                 if x0 <= x <= x1 and y0 <= y <= y1 and blk.land_id[i] in frm and not any(
-                        k[0] <= x <= k[2] and k[1] <= y <= k[3] for k in keep):
+                        k[0] <= x <= k[2] and k[1] <= y <= k[3] for k in keep) and not (sparse and sum(
+                        (x + dx, y + dy) in listed for dx in range(-2, 3) for dy in range(-2, 3)) - 1 >= sparse):
                     blk.land_id[i] = to[(x * 7 + y * 13) % len(to)]
                     relanded.add((bx, by))
+        # level N: a paved cell (one of `to`) with nothing standing on it, lying within N of the
+        # middle height of its eight neighbours, takes that height: a lone dip or bump shades
+        # the four tiles round it into a dark cross once the ground is one flat material
+        if rl.get("level"):
+            tos, lz = set(to), {}
+            for (bx, by), blk in blocks.items():
+                for i in range(64):
+                    lz[(bx * 8 + i % 8, by * 8 + i // 8)] = (blk, i)
+            new = {}
+            for (x, y), (blk, i) in lz.items():
+                if not (x0 <= x <= x1 and y0 <= y <= y1) or blk.land_id[i] not in tos or cells.get((x, y)):
+                    continue
+                nb = sorted(lz[(x + dx, y + dy)][0].land_z[lz[(x + dx, y + dy)][1]]
+                            for dx in (-1, 0, 1) for dy in (-1, 0, 1) if (dx or dy) and (x + dx, y + dy) in lz)
+                if len(nb) == 8:
+                    mid = (nb[3] + nb[4]) // 2
+                    if mid != blk.land_z[i] and abs(mid - blk.land_z[i]) <= rl["level"]:
+                        new[(x, y)] = mid
+            for (x, y), z in new.items():
+                blk, i = lz[(x, y)]
+                blk.land_z[i] = z
+                relanded.add((x // 8, y // 8))
     if desc.get("strip"):
         from guo.uoread import TileData
         td = TileData(data_dir)
