@@ -37,6 +37,7 @@ launchers\dev\screenshot.bat --play --shot-after 300
 |---|---|
 | `--screenshot` | Screenshot mode: draw one fixed frame and save it. `screenshot.bat` sets this. |
 | `--shot-after N` | Capture after N frames instead. The client spends its first frames loading, so a shot taken at once is a black window; ADR-0006's validation uses `--play --shot-after N`. |
+| `--hide-gumps` | The world without the UI, for screenshots and films: every gump but the world view, the top bar, the command bar, the Modern views, the window menu, the pre-game card and the cursor are hidden; mobiles, items, overhead names and speech stay. Nothing is closed or moved. Ctrl+Shift+H toggles it in any run. |
 | `--screenshot-dir DIR`, `--screenshot-name NAME` | Where and what to save. |
 | `--background SPEC` | Override the canvas background for this run, never saved. See [Canvas Background](Canvas-Background.md). |
 | `--shard-command "TEXT"` | Type a line into the chat once in the world, for example `[go 1602 1591`; the parity tools stand a client in a place with it. |

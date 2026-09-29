@@ -996,8 +996,9 @@ namespace GUO
 
             _uoSpriteBatch.Begin();
             // PORT DEVIATION (GUO): no cursor while a pad is in use and its
-            // pointer idle (ADR-0025, Input.InputMode.PointerHidden).
-            if (!GUO.Input.InputMode.PointerHidden)
+            // pointer idle (ADR-0025, Input.InputMode.PointerHidden), or
+            // while the UI is hidden for a clean shot (Renderer.CleanShots).
+            if (!GUO.Input.InputMode.PointerHidden && !GUO.Renderer.CleanShots.Hidden)
             {
                 UO.GameCursor?.Draw(_uoSpriteBatch);
             }
