@@ -339,6 +339,19 @@ def build(desc: dict, cat: G.Catalogue, data_dir: Path) -> dict:
             lo, _, hi = str(v).partition("-")
             out_ |= set(range(int(lo, 16), int(hi or lo, 16) + 1))
         return out_
+    # strip: map statics named so, taken out before resurface and reclad, which would otherwise
+    # put a re-arted copy of what is stripped back
+    if desc.get("strip"):
+        from guo.uoread import TileData
+        td = TileData(data_dir)
+        for sp in desc["strip"]:
+            names, keep = [n.lower() for n in sp["names"]], sp.get("keep", [])
+            for (x, y) in G.cells_of(sp["box"]):
+                if any(k[0] <= x <= k[2] and k[1] <= y <= k[3] for k in keep):
+                    continue
+                for sid, z, _ in cells.get((x, y), []):
+                    if any(n in (td.static(sid) or {}).get("name", "").lower() for n in names):
+                        removed.add((x, y, z, sid))
     # resurface: the map's own deck or floor pieces of the listed ids in the box, each put back
     # as a piece of another floor family at the same cell and z (a timber dock laid in stone)
     for rs in desc.get("resurface", []):
@@ -462,17 +475,6 @@ def build(desc: dict, cat: G.Catalogue, data_dir: Path) -> dict:
             if "z" in ld:
                 blk.land_z[i] = ld["z"]
             relanded.add((x // 8, y // 8))
-    if desc.get("strip"):
-        from guo.uoread import TileData
-        td = TileData(data_dir)
-        for sp in desc["strip"]:
-            names, keep = [n.lower() for n in sp["names"]], sp.get("keep", [])
-            for (x, y) in G.cells_of(sp["box"]):
-                if any(k[0] <= x <= k[2] and k[1] <= y <= k[3] for k in keep):
-                    continue
-                for sid, z, _ in cells.get((x, y), []):
-                    if any(n in (td.static(sid) or {}).get("name", "").lower() for n in names):
-                        removed.add((x, y, z, sid))
     out = {}
     for (bx, by), blk in blocks.items():
         statics = []

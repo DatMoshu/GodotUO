@@ -545,9 +545,16 @@ def build(desc: dict, cat: Catalogue, fresh: bool = True) -> tuple[list[Componen
         rb = Built()
         roof_rect(rb, cat, r["roof"], mats, r["box"], top)
         taller = region(q["box"] for q in rects if q["storeys"] > r["storeys"])
+        # where this roof's parapet runs into a taller rect's wall, its last piece (on that wall's
+        # cell) carries the parapet up to the wall's face: kept, or the parapet stops a cell short
+        ring = edge(cells_of(r["box"]))
+        junction = {(x, y) for (x, y) in ring & taller
+                    if any((x + dx, y + dy) in ring - taller for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)))}
         for c in rb.comps:
             if (c.x, c.y) not in taller:
                 roof_cells.setdefault((c.x, c.y), {}).setdefault(i, []).append(c)
+            elif (c.x, c.y) in junction and cat.pieces.get(f"{c.item:#06x}", {}).get("role") in ("wall", "post"):
+                b.comps.append(c)
     for cell, by_rect in sorted(roof_cells.items()):
         b.comps.extend(max(by_rect.values(), key=lambda cs: max(c.z for c in cs)))
     yard = desc.get("yard")
