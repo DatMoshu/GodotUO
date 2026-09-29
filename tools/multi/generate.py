@@ -45,6 +45,26 @@ def scatter(ids: list[int], x: int, y: int) -> int:
     return ids[0] if h % 2 == 0 else ids[1 + (h >> 1) % (len(ids) - 1)]
 
 
+def faces(sig: str) -> tuple[bool, bool]:
+    """(EW, NS): the faces a wall cell with neighbours `sig` needs. A piece draws its cell's south
+    edge (EW) or east edge (NS). The south edge is needed when the run goes on west, or when it
+    goes east and no N-S wall crosses the cell (a run's end at a door); where one crosses, that
+    wall's line is the building's edge and the south edge would stick out past it. Likewise the
+    east edge. So a front corner (NW) takes both (the originals' V), NE the NS face, SW the EW
+    face, and a back corner (ES) neither (the originals' post)."""
+    return ("W" in sig or ("E" in sig and not {"N", "S"} & set(sig)),
+            "N" in sig or ("S" in sig and not {"E", "W"} & set(sig)))
+
+
+class Piece(int):
+    """A wall piece, with the pieces that stand with it in its cell (`extra`): a corner the family
+    has no piece for is built from its two straight faces. A negative piece is "nothing here"."""
+    extra: tuple = ()
+
+
+NOTHING = Piece(-1)
+
+
 class Catalogue:
     def __init__(self, folder: Path):
         self.fam = json.loads((folder / "families.json").read_text(encoding="utf-8"))
@@ -121,11 +141,48 @@ class Catalogue:
         if not hs:
             raise DescriptionError(f"material '{mat}' has no {'/'.join(roles)} pieces")
         for h in hs[:2]:
+            got = lambda s: [i for r in roles for i in fam.get(r, {}).get(str(h), {}).get(s, [])]
+            if sig and not window and not self.fits(got(sig), sig):
+                joint = self.joint(fam, roles, h, sig, got)
+                if joint is not None:
+                    return joint
             for s in fallbacks(sig):
-                cands = [i for r in roles for i in fam.get(r, {}).get(str(h), {}).get(s, [])]
+                cands = self.fits(got(s), sig) if (s == sig and sig and not window) else got(s)
                 if cands:
                     return self.choose(cands)
         raise DescriptionError(f"material '{mat}' has no {roles[0]} piece near height {height} for '{sig or '-'}'")
+
+    def fits(self, cands: list[str], sig: str) -> list[str]:
+        """The candidates whose own commonest signature needs the same faces as `sig` (see
+        `joint`): the mined sets list a straight at a back corner or a run's end where the
+        originals happened to put one, and that straight draws a face past the corner."""
+        need = faces
+        def main(i):
+            seen = self.pieces.get(i, {}).get("signature") or {}
+            return max(seen, key=seen.get) if seen else None
+        return [i for i in cands if main(i) is None or need(main(i)) == need(sig)]
+
+    def joint(self, fam: dict, roles, h: int, sig: str, got) -> Piece | None:
+        """A corner, join or end the family has no fitting piece for, built from the faces it
+        needs (see `faces`): its V piece or both straights, one straight, or a post (or nothing)."""
+        ew = self.fits(got("EW"), "EW") or got("W") or got("E")
+        ns = self.fits(got("NS"), "NS") or got("N") or got("S")
+        want_ew, want_ns = faces(sig)
+        if want_ew and want_ns:
+            v = self.fits(got("NW"), "NW")
+            if v:
+                return Piece(self.choose(v))
+            if ew and ns:
+                p = Piece(self.choose(ew))
+                p.extra = (self.choose(ns),)
+                return p
+            return None
+        if want_ew:
+            return Piece(self.choose(ew)) if ew else None
+        if want_ns:
+            return Piece(self.choose(ns)) if ns else None
+        posts = self.fits(got("ES"), "ES") or [i for ids in fam.get("post", {}).get(str(h), {}).values() for i in ids]
+        return Piece(self.choose(posts)) if posts else NOTHING
 
     def floor(self, mat: str, n: int = 4) -> list[int]:
         fam = self.material(mat).get("floor", {})
@@ -216,7 +273,11 @@ class Built:
     stairs: list[dict] = field(default_factory=list)
 
     def add(self, item: int, x: int, y: int, z: int, visible: bool = True) -> None:
-        self.comps.append(Component(item, x, y, z, visible))
+        if item < 0:                                   # Catalogue.NOTHING: no piece in this cell
+            return
+        self.comps.append(Component(int(item), x, y, z, visible))
+        for e in getattr(item, "extra", ()):
+            self.comps.append(Component(int(e), x, y, z, visible))
 
 
 # --- footprints -------------------------------------------------------------------------------
