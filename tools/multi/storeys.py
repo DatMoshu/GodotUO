@@ -498,4 +498,9 @@ def write_project(built: dict, folder: Path, name: str, cfg) -> list[Path]:
         p.write_text(json.dumps({"format": 1, "facet": built["facet"], "block": [bx, by], "land": land,
                                  "statics": statics}, indent=1) + "\n", encoding="utf-8")
         written.append(p)
+    # the project is this build's alone: a block an earlier build wrote and this one does not
+    # (a reland taken out) goes, or it would outlive the description that made it
+    for old in bdir.glob("*.json"):
+        if old not in written:
+            old.unlink()
     return written
