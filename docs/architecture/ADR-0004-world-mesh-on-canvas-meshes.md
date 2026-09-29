@@ -179,7 +179,8 @@ pixels by depth; GUO painted the land first and the foundation over it.
 Option (b) of the parity doc. The bake stays as it is. When a static, multi or
 item is queued below its own tile's land (`obj.Z < land.Z`),
 `RenderLists.CoverFromBelow` also queues the land tiles in front of it -- the
-tiles its sprite can reach on screen, at most 8 -- into the sorted list, at the
+tiles its sprite can reach on screen: the 8-tile square in front of it, and past
+that the tiles down its diagonal and across its width (parity F6) -- into the sorted list, at the
 land's own depth, once per frame each. Sorted, the land lands after the sunk
 object and paints over it, which is the result the depth buffer gives.
 
