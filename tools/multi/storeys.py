@@ -266,7 +266,7 @@ def build(desc: dict, cat: G.Catalogue, data_dir: Path) -> dict:
     boxes = ([bd["box"] for bd in desc.get("buildings", [])] + [pv["box"] for pv in desc.get("paving", [])]
              + [rs["box"] for rs in desc.get("resurface", []) + desc.get("reclad", [])]
              + [r["box"] for r in desc.get("reland", []) + desc.get("strip", [])]
-             + [[pr["at"][0], pr["at"][1], pr["at"][0], pr["at"][1]] for pr in desc.get("props", []) + desc.get("remove", [])]
+             + [[pr["at"][0], pr["at"][1], pr["at"][0], pr["at"][1]] for pr in desc.get("props", []) + desc.get("remove", []) + desc.get("land", [])]
              + [bx for ns, _ in placed for bx in ns.get("clear", [])]
              + [[min(p[1] for p in pcs), min(p[2] for p in pcs), max(p[1] for p in pcs), max(p[2] for p in pcs)]
                 for _, pcs in placed if pcs])
@@ -439,6 +439,18 @@ def build(desc: dict, cat: G.Catalogue, data_dir: Path) -> dict:
                 blk, i = lz[(x, y)]
                 blk.land_z[i] = z
                 relanded.add((x // 8, y // 8))
+    # land: single cells painted by hand, {at, id, z?}: the tile (and height) of that cell
+    if desc.get("land"):
+        at_cell = {(bx * 8 + i % 8, by * 8 + i // 8): (blk, i) for (bx, by), blk in blocks.items() for i in range(64)}
+        for ld in desc["land"]:
+            x, y = ld["at"]
+            if (x, y) not in at_cell:
+                continue
+            blk, i = at_cell[(x, y)]
+            blk.land_id[i] = int(str(ld["id"]), 16)
+            if "z" in ld:
+                blk.land_z[i] = ld["z"]
+            relanded.add((x // 8, y // 8))
     if desc.get("strip"):
         from guo.uoread import TileData
         td = TileData(data_dir)
