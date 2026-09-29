@@ -100,7 +100,9 @@ def raise_building(bd: dict, cat: G.Catalogue, cells: dict) -> tuple[list[Compon
     if not ground_walls:
         raise DescriptionError(f"{bd['name']}: no walls stand at z {base} in {bd['box']}")
     outline = {(x, y) for (x, y) in fp if any((x + dx, y + dy) not in fp for dx, dy in N4)}
-    partitions = ground_walls - outline
+    # upstairs repeats the ground storey's inner walls, or (partitions false) is one hall: a wall
+    # round a void below (a hall two storeys tall) has no door to repeat
+    partitions = ground_walls - outline if bd.get("partitions", True) else set()
     upper_walls = outline | partitions
     # what goes: everything in the footprint (and a roof's overhang one cell round it) from the
     # ground storey's wall top up
@@ -147,6 +149,14 @@ def raise_building(bd: dict, cat: G.Catalogue, cells: dict) -> tuple[list[Compon
                         b.add(ground_piece[(x, y)], x, y, z)
                         continue
                     sig = signature(walls, x, y)
+                    if ground_piece and sig in ("EW", "NS"):
+                        # a closed doorway takes the piece of the run it stands in
+                        run = ((1, 0), (-1, 0), (2, 0), (-2, 0)) if sig == "EW" else ((0, 1), (0, -1), (0, 2), (0, -2))
+                        near = [ground_piece[(x + dx, y + dy)] for dx, dy in run if (x + dx, y + dy) in ground_piece
+                                and signature(walls, x + dx, y + dy) == sig]
+                        if near:
+                            b.add(near[0], x, y, z)
+                            continue
                     window = (x, y) in outline and sig in ("EW", "NS") and (x + y) % every == 0
                     b.add(cat.wall(wall_mat, step - 1, sig, window=window), x, y, z)
             else:
