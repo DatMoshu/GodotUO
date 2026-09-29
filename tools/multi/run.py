@@ -295,8 +295,14 @@ def cmd_storeys(cfg, a) -> int:
     comps = [Component(sid, bx * 8 + sx, by * 8 + sy, z) for (bx, by), v in built["blocks"].items()
              for sid, sx, sy, z, _ in v["statics"]]
     ground = desc.get("ground", 0)
-    problems = []
     tour = desc.get("tour", [])
+    if ground == "land" and tour:
+        # the map's own land heights round the scene and the tour (a street on a slope, a hill)
+        pts = [c[1:3] for c in built["added"]] + [t["at"] for t in tour]
+        xs, ys = [p[0] for p in pts], [p[1] for p in pts]
+        area, _ = storeys.read_area(cfg.client_data, built["facet"], min(xs) - 6, min(ys) - 6, max(xs) + 6, max(ys) + 6)
+        ground = {(bx * 8 + i % 8, by * 8 + i // 8): blk.land_z[i] for (bx, by), blk in area.items() for i in range(64)}
+    problems = []
     if tour:
         stops = [{"name": t["name"], "x": t["at"][0], "y": t["at"][1], "z": t["z"]} for t in tour]
         problems = walkcheck.check_tour([{"centre": [0, 0], "comps": comps}], stops, cat.pieces, ground)

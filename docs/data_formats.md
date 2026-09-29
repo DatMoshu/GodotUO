@@ -825,17 +825,25 @@ round it) goes. `buildings[]`:
 | Field | Meaning |
 |---|---|
 | `name` | The building's name in the record |
-| `box` `[x0, y0, x1, y1]` | Map cells that hold it: the footprint is its ground walls (wall, window or post pieces at `base_z`) and what they enclose or a flat roof at their top covers, doorways closed |
+| `box` `[x0, y0, x1, y1]` | Map cells that hold it: the footprint is its ground walls (wall, window or post pieces at `base_z`, give or take 2: on uneven land the map sets some a unit off) and what they enclose or a flat roof at their top covers, doorways closed |
 | `base_z`, `storey_height` | The ground storey's z (default 0) and z between storeys (default 20) |
 | `storeys` | How many storeys in all, the ground one included (2 or more) |
 | `wall`, `floor`, `stair_material` | Families for the storeys added: walls repeat the outline (a ground doorway in it becomes wall) and the ground partitions, with a window every `window_every` cells (default 3) of a straight run. `wall` `ground` repeats the ground storey's own piece in each wall cell (its windows too); other cells take the ground walls' commonest family |
-| `roof` | `{"floor", "parapet"}`: the flat roof's tiles and its 5-high parapet |
+| `roof` | `{"floor", "parapet", "trim"}`: the flat roof's tiles, its 5-high parapet, and optional `trim`: heights of low-wall courses laid on the parapet in turn (e.g. `[2, 3]`), in the parapet's family; a corner the family has no piece of that height for takes its 2-high corner |
 | `stairs[]` | `{"storey", "at", "rise", "width"}`: a house stair (above) from that storey to the next; the ground storey's own pieces on its cells go |
 | `setback` | `{"side", "cells", "storey"}`: from that storey (default 1) up the building steps in that many cells from one side (`N`, `E`, `S`, `W`); the strip left over is a terrace on the storey below, floored with the roof's tiles and edged with its parapet |
 | `roof_z` | The roof deck's z, when lower than a whole storey up (16 or more above the top storey). The client stands on nothing above z 112 (its pathfinder caps every cell at 128, and a walker needs 16), so a walkable deck is 112 at most; the stair to it is a short flight with no landing |
 | `partitions` | `false`: upper storeys have no inner walls (the ground storey's may enclose a void, a hall two storeys tall, with no door to repeat) |
 | `floor_holes[]` | `{"storey", "box"}`: cells left open in that storey's floor, over a stair the map already has |
 | `hue` | A hue for every piece added |
+
+Beside `buildings[]`, a description may carry:
+
+| Field | Meaning |
+|---|---|
+| `ground` | The land's height for the offline walk: a number (default 0) for the whole scene, or `"land"` to read each cell's height from the map (a street on a slope, a building on a hill) |
+| `swaps[]` | `{"at": [x, y], "z", "item", "new"}`: that piece in place of the wall standing at the cell and z (an arch in a wall, the map's or one added). A cell with no wall there is refused unless `new` is true (a doorway the piece closes) |
+| `paving[]` | `{"box", "floor", "variants"}`: floor pieces of that family (up to `variants`, default 4) at the land's height on each flat cell of the box (all four corners level) that holds no statics |
 
 `tour[]` is as a scene's, in map coordinates. The project folder gets
 `project.json`, `blocks/`, `storeys.json` (per building its storey z levels,
