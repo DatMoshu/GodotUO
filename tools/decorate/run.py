@@ -6,6 +6,10 @@
     python tools/decorate/run.py preview  DESC.json [--seed N] [--out DIR]
     python tools/decorate/run.py demo     [--seed N]          preview the t_manor, l_townhouse, courtyard_house examples
 
+decorate, preview and demo take --planner ai: an OpenAI model plans each house (planner.py), the
+decorator places and checks it; answers are cached in build/decorate/plans/, --offline uses only
+the cache. --brief says what the house is; --type STOREY:X,Y=TYPE forces a room's type.
+
 The database (default build/decorate/decor.sqlite) and the previews
 (build/decorate/previews/) are derived from client data: they stay in build/.
 The UO install is read in place, never written.
@@ -97,7 +101,12 @@ def library(cfg, a):
         if item not in known:
             known[item] = art.get_static(item) is not None
         return known[item]
-    return decorate.Library.from_db(db.open_ro(db_path(cfg, a)), has_art=has_art)
+    return decorate.Library.from_db(db.open_ro(db_path(cfg, a)), has_art=has_art, facings=facings(a))
+
+
+def facings(a):
+    import decorate
+    return decorate.load_facings(a.facings) if getattr(a, "facings", None) else None
 
 
 def load_sidecar(cfg, ref: str) -> tuple[dict, Path]:
@@ -111,13 +120,40 @@ def load_sidecar(cfg, ref: str) -> tuple[dict, Path]:
     return json.loads(p.read_text(encoding="utf-8")), p
 
 
+def forced_types(a) -> dict:
+    out = {}
+    for t in getattr(a, "type", None) or []:
+        key, _eq, rtype = t.partition("=")
+        out[key] = rtype
+    return out
+
+
+def furnish(cfg, a, side: dict, lib, seed: int, density: float) -> tuple[list, list]:
+    """The decor list and report for a built house, by the rules or by the AI planner."""
+    import decorate
+    types = forced_types(a)
+    if getattr(a, "planner", "rules") != "ai":
+        return decorate.decorate(side, lib, seed=seed, density=density, types=types)
+    import db
+    import planner
+    decor, report, meta = planner.decorate_ai(
+        side, lib, db.open_ro(db_path(cfg, a)), seed=seed, brief=a.brief or "", density=density, types=types,
+        cache_dir=cfg.build / "decorate" / "plans", model=a.model or planner.MODEL, offline=a.offline)
+    tokens = sum((u.get("input_tokens") or 0) + (u.get("output_tokens") or 0) for u in meta["usage"])
+    report = report + [f"planner: {meta['model']}, " + ("cached" if meta["cached"] else f"{meta['calls']} call(s)")
+                       + f", {tokens} tokens; refused at first {len(meta['errors_first'])}, "
+                       f"after the retry {len(meta['errors_final'])} (moved {len(meta['moved'])}); by the rules: "
+                       + (", ".join(meta["fallback_rooms"]) or "none")] + [f"planner refused: {e}" for e in meta["errors_final"]]
+    return decor, report
+
+
 def cmd_decorate(cfg, a) -> int:
     import decorate
     side, _where = load_sidecar(cfg, a.sidecar)
-    decor, report = decorate.decorate(side, library(cfg, a), seed=a.seed, density=a.density)
+    decor, report = furnish(cfg, a, side, library(cfg, a), a.seed, a.density)
     for line in report:
         print(line)
-    problems = decorate.check(side, decor)
+    problems = decorate.check(side, decor, facings(a))
     for pr in problems:
         print(f"[decorate] PROBLEM {pr}")
     out = {"name": side["name"], "seed": a.seed, "decor": decor}
@@ -135,7 +171,7 @@ def cmd_decorate(cfg, a) -> int:
     return 1 if problems else 0
 
 
-def preview(cfg, desc_path: Path, seed: int, out_dir: Path, lib, density: float = 1.0) -> dict:
+def preview(cfg, desc_path: Path, seed: int, out_dir: Path, lib, density: float = 1.0, a=None) -> dict:
     """Build the description as it is and furnished, and render both (roof off)."""
     import decorate
     import generate
@@ -144,13 +180,13 @@ def preview(cfg, desc_path: Path, seed: int, out_dir: Path, lib, density: float 
     desc = json.loads(desc_path.read_text(encoding="utf-8"))
     cat = generate.Catalogue(cfg.build / "multi" / "catalogue")
     comps, side = generate.build(desc, cat)
-    decor, report = decorate.decorate(side, lib, seed=seed, density=density)
+    decor, report = furnish(cfg, a, side, lib, seed, density)
     furnished = dict(desc, decor=[d for d in desc.get("decor", []) if "storey" not in d] + decor)
     comps2, side2 = generate.build(furnished, generate.Catalogue(cfg.build / "multi" / "catalogue"))
-    problems = decorate.check(side, decor) + validate.validate(comps2, side2, cfg.client_data)
+    problems = decorate.check(side, decor, facings(a)) + validate.validate(comps2, side2, cfg.client_data)
     report = report + [f"PROBLEM {p}" for p in problems] + [f"{len(decor)} items; " + (
         "check and validate: clean" if not problems else f"{len(problems)} problem(s)")]
-    name = desc["name"]
+    name = desc["name"] + ("_ai" if getattr(a, "planner", "rules") == "ai" else "")
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / f"{name}_decorated.json").write_text(json.dumps(furnished, indent=1), encoding="utf-8")
     (out_dir / f"{name}_report.txt").write_text("\n".join(report) + "\n", encoding="utf-8")
@@ -174,7 +210,7 @@ def preview(cfg, desc_path: Path, seed: int, out_dir: Path, lib, density: float 
 def cmd_preview(cfg, a) -> int:
     lib = library(cfg, a)
     out = a.out or cfg.build / "decorate" / "previews"
-    r = preview(cfg, a.desc, a.seed, out, lib, a.density)
+    r = preview(cfg, a.desc, a.seed, out, lib, a.density, a)
     print("\n".join(r["report"]))
     for k, p in r["shots"].items():
         print(f"[decorate] {k}: {p}")
@@ -184,10 +220,10 @@ def cmd_preview(cfg, a) -> int:
 def cmd_demo(cfg, a) -> int:
     import db
     import decorate
-    lib = decorate.Library.from_db(db.open_ro(db_path(cfg, a)))
+    lib = decorate.Library.from_db(db.open_ro(db_path(cfg, a)), facings=facings(a))
     out = a.out or cfg.build / "decorate" / "previews"
     for name in DEMO:
-        r = preview(cfg, HERE.parent / "multi" / "examples" / f"{name}.json", a.seed, out, lib)
+        r = preview(cfg, HERE.parent / "multi" / "examples" / f"{name}.json", a.seed, out, lib, a.density, a)
         print("\n".join(r["report"]))
         print(f"[decorate] {name}: {r['items']} items, components {r['components'][0]} -> {r['components'][1]}")
     print(f"[decorate] previews: {out}")
@@ -204,21 +240,30 @@ def main() -> int:
     s.add_argument("--decoration", type=Path, help="the shard's Data/Decoration folder (ModernUO)")
     s.add_argument("--no-decoration", action="store_true", help="the statics alone, without the shard's decoration")
     sub.add_parser("stats", help="summarise the database")
-    s = sub.add_parser("decorate", help="a decor list for a built multi")
+    s = dec = sub.add_parser("decorate", help="a decor list for a built multi")
     s.add_argument("sidecar", help="a built multi's name, folder or multi.json")
     s.add_argument("--seed", type=int, default=1)
     s.add_argument("--density", type=float, default=1.0, help="scale the learned furnishing density")
     s.add_argument("--out", type=Path)
     s.add_argument("--desc", type=Path, help="write the whole description with the decor merged in")
-    s = sub.add_parser("preview", help="before/after renders of one description")
+    s = pre = sub.add_parser("preview", help="before/after renders of one description")
     s.add_argument("desc", type=Path)
     s.add_argument("--seed", type=int, default=1)
     s.add_argument("--density", type=float, default=1.0, help="scale the learned furnishing density")
     s.add_argument("--out", type=Path)
-    s = sub.add_parser("demo", help="previews of the three demo examples")
+    s = dem = sub.add_parser("demo", help="previews of the three demo examples")
     s.add_argument("--seed", type=int, default=1)
     s.add_argument("--density", type=float, default=1.0, help="scale the learned furnishing density")
     s.add_argument("--out", type=Path)
+    for s in (dec, pre, dem):
+        s.add_argument("--planner", choices=("rules", "ai"), default="rules",
+                       help="who lays out the rooms: the learned rules, or an OpenAI model checked by them")
+        s.add_argument("--brief", help="what the house is, for the AI planner (e.g. 'a weaver's home and shop')")
+        s.add_argument("--type", action="append", metavar="STOREY:X,Y=TYPE", help="force the type of the room holding a cell")
+        s.add_argument("--model", help="the planner's model (default GUO_DECORATE_MODEL, else gpt-5.4-mini)")
+        s.add_argument("--offline", action="store_true", help="AI planner: cached plans only, never call the API")
+        s.add_argument("--facings", type=Path, help="which wall sides each item's art may face away from "
+                       "({\"items\": {\"0x0a2c\": [\"N\"]}}); pieces never face a wall")
     a = p.parse_args()
     cfg = load_config()
     return {"mine": cmd_mine, "stats": cmd_stats, "decorate": cmd_decorate, "preview": cmd_preview,
