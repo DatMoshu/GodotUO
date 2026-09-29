@@ -11,7 +11,8 @@ that is missing before a proof spends twenty minutes finding it:
   surface in reach, never through a floor, and not into a cell whose blocks stand in the way
   between the two heights (the side of a stair's flight); a diagonal step
   also needs both cells beside it open at about that height (UO does not cut corners);
-- the land counts as a surface at the scene's ground wherever nothing covers it;
+- the land counts as a surface at the scene's ground wherever nothing covers it (one height, or
+  the map's own per cell);
 - nothing above z 112 is stood on: the client's pathfinder caps every cell at 128.
 The shard and the client are the proof; this only says where to look.
 """
@@ -31,7 +32,13 @@ CLIMB = 5
 DETOUR, DETOUR_SLACK = 3, 30
 
 
-def surfaces(parts: list[dict], pieces: dict, ground: int = 0) -> tuple[dict, set]:
+def land_at(ground, at) -> int:
+    """The land's height at a cell: `ground` is one height for the whole scene, or {(x, y): z}
+    read from the map (0 where it has none)."""
+    return ground.get(at, 0) if isinstance(ground, dict) else ground
+
+
+def surfaces(parts: list[dict], pieces: dict, ground=0) -> tuple[dict, set]:
     """{(x, y): [standing z, ...]} and the set of cells anything stands in."""
     stand: dict[tuple, set] = {}
     solid: dict[tuple, list] = {}
@@ -59,8 +66,9 @@ def surfaces(parts: list[dict], pieces: dict, ground: int = 0) -> tuple[dict, se
     BOTTOMS = {at: [a for a, _ in solid.get(at, ())] + above.get(at, []) for at in covered}
     for at in set(stand) | covered:
         zs = set(stand.get(at, ()))
-        if not any(a <= ground < b for a, b in solid.get(at, ())):
-            zs.add(ground)
+        g = land_at(ground, at)
+        if not any(a <= g < b for a, b in solid.get(at, ())):
+            zs.add(g)
         free = sorted(z for z in zs if z <= MAX_STAND and not any(a < z + HEADROOM and b > z for a, b in solid.get(at, ()))
                       and not any(z <= a < z + HEADROOM for a in above.get(at, ())))
         if free:
@@ -68,21 +76,21 @@ def surfaces(parts: list[dict], pieces: dict, ground: int = 0) -> tuple[dict, se
     return out, covered
 
 
-def path(stand: dict, covered: set, start: tuple, goal: tuple, ground: int = 0, slack: int = 4) -> int | None:
+def path(stand: dict, covered: set, start: tuple, goal: tuple, ground=0, slack: int = 4) -> int | None:
     """The steps of the shortest walk from (x, y, z) to (x, y, z within slack), over the scene and
     the open land round it; None when there is none."""
     got = search(stand, covered, start, goal, ground, slack)
     return None if got is None else got[0]
 
 
-def search(stand: dict, covered: set, start: tuple, goal: tuple, ground: int = 0,
+def search(stand: dict, covered: set, start: tuple, goal: tuple, ground=0,
            slack: int | None = 4) -> tuple[int, int] | None:
     """(steps, z reached) of the shortest walk to the goal's x and y, at its z within slack, or at
     any z with slack None (where the client's pathfinder stops: it aims at x and y only)."""
     def spots(at):
         if at in stand:
             return stand[at]
-        return [ground] if at not in covered else []
+        return [land_at(ground, at)] if at not in covered else []
 
     sz = min(spots(start[:2]), key=lambda z: abs(z - start[2]), default=None)
     if sz is None:
@@ -121,7 +129,7 @@ def search(stand: dict, covered: set, start: tuple, goal: tuple, ground: int = 0
     return None
 
 
-def check_tour(parts: list[dict], tour: list[dict], pieces: dict, ground: int = 0) -> list[str]:
+def check_tour(parts: list[dict], tour: list[dict], pieces: dict, ground=0) -> list[str]:
     """Each leg of the tour that has no walk, as a problem line."""
     stand, covered = surfaces(parts, pieces, ground)
     out = []

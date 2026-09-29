@@ -320,6 +320,8 @@ written.
 <UO_WORLD_PROJECT>/assets/
   art/land/0xNNNN.png       land tile, by land id
   art/statics/0xNNNN.png    static, by item id (not 0x4000 + id)
+  art/texmaps/0xNNNN.png    texmap (optional), by texmap index: the TexID in
+                            tiledata of the land tiles that use it
   gumps/0xNNNN.png          gump, by gump id
   hues/0xNNNN.json          hue, by hue number (1-based, as shards write it)
 ```
@@ -332,6 +334,13 @@ bits are dropped (15-bit colour), so the file shows what the client will draw.
 | Land | exactly 44x44; only the 1,012 pixels of the diamond are used | none | stored as 0 |
 | Static | up to 1024x1024 | alpha < 128 is transparent (0) | opaque black is stored as `0x0421` |
 | Gump | up to 2048x2048 | alpha < 128 is transparent (0) | opaque black is stored as `0x0421` |
+| Texmap | exactly 64x64 or 128x128 | none | stored as 0 |
+
+A texmap is the texture the client stretches over **sloped** land (a cell whose
+corners differ in height); flat land draws the land art instead. So a replaced
+land tile that sits on slopes needs its texmap too, or the slopes keep the old
+look. An index that `TexTerr.def` redirects to another entry never shows its own
+texture; export warns about it.
 
 **`hues/0xNNNN.json`**
 
@@ -348,8 +357,9 @@ bits are dropped (15-bit colour), so the file shows what the client will draw.
 | File | Contents |
 |---|---|
 | `verdata.mul` | `int32 count`, then `count` records of five `uint32` (file id, block, position, length, extra), then the data. Art is file id 4, block = land id or `0x4000` + item id, in the art layouts below. Gumps are file id 12, extra = `width << 16 \| height`. The install's own patches are kept unless the project replaces the same id. 16 zero bytes pad the end |
+| `texmaps.mul`, `texidx.mul` | Only with `art/texmaps/`. Copies of the install's: each replaced texmap's 16-bit colours (row by row, 0x2000 or 0x8000 bytes) are appended to `texmaps.mul`, and its `texidx.mul` record (int32 offset, int32 length, int32 extra, extra kept) points at them. Every other record and byte is the install's. Upstream never applies verdata texmaps (file id 10), hence copies |
 | `hues.mul` | The install's, with each replaced hue's 88 bytes (32 colours, start, end, 20-byte name) written in place |
-| `files_override.txt` | Adds `verdata.mul=` and `hues.mul=` lines |
+| `files_override.txt` | Adds `verdata.mul=`, `hues.mul=`, `texmaps.mul=` and `texidx.mul=` lines, for the files written |
 | `export.json` | Gains `assets`: the ids per kind and the files' SHA-1 |
 
 Layouts, as `ArtLoader` and `GumpsLoader` read them (and as
@@ -815,17 +825,25 @@ round it) goes. `buildings[]`:
 | Field | Meaning |
 |---|---|
 | `name` | The building's name in the record |
-| `box` `[x0, y0, x1, y1]` | Map cells that hold it: the footprint is its ground walls (wall, window or post pieces at `base_z`) and what they enclose or a flat roof at their top covers, doorways closed |
+| `box` `[x0, y0, x1, y1]` | Map cells that hold it: the footprint is its ground walls (wall, window or post pieces at `base_z`, give or take 2: on uneven land the map sets some a unit off) and what they enclose or a flat roof at their top covers, doorways closed |
 | `base_z`, `storey_height` | The ground storey's z (default 0) and z between storeys (default 20) |
 | `storeys` | How many storeys in all, the ground one included (2 or more) |
 | `wall`, `floor`, `stair_material` | Families for the storeys added: walls repeat the outline (a ground doorway in it becomes wall) and the ground partitions, with a window every `window_every` cells (default 3) of a straight run. `wall` `ground` repeats the ground storey's own piece in each wall cell (its windows too); other cells take the ground walls' commonest family |
-| `roof` | `{"floor", "parapet"}`: the flat roof's tiles and its 5-high parapet |
+| `roof` | `{"floor", "parapet", "trim"}`: the flat roof's tiles, its 5-high parapet, and optional `trim`: heights of low-wall courses laid on the parapet in turn (e.g. `[2, 3]`), in the parapet's family; a corner the family has no piece of that height for takes its 2-high corner |
 | `stairs[]` | `{"storey", "at", "rise", "width"}`: a house stair (above) from that storey to the next; the ground storey's own pieces on its cells go |
 | `setback` | `{"side", "cells", "storey"}`: from that storey (default 1) up the building steps in that many cells from one side (`N`, `E`, `S`, `W`); the strip left over is a terrace on the storey below, floored with the roof's tiles and edged with its parapet |
 | `roof_z` | The roof deck's z, when lower than a whole storey up (16 or more above the top storey). The client stands on nothing above z 112 (its pathfinder caps every cell at 128, and a walker needs 16), so a walkable deck is 112 at most; the stair to it is a short flight with no landing |
 | `partitions` | `false`: upper storeys have no inner walls (the ground storey's may enclose a void, a hall two storeys tall, with no door to repeat) |
 | `floor_holes[]` | `{"storey", "box"}`: cells left open in that storey's floor, over a stair the map already has |
 | `hue` | A hue for every piece added |
+
+Beside `buildings[]`, a description may carry:
+
+| Field | Meaning |
+|---|---|
+| `ground` | The land's height for the offline walk: a number (default 0) for the whole scene, or `"land"` to read each cell's height from the map (a street on a slope, a building on a hill) |
+| `swaps[]` | `{"at": [x, y], "z", "item", "new"}`: that piece in place of the wall standing at the cell and z (an arch in a wall, the map's or one added). A cell with no wall there is refused unless `new` is true (a doorway the piece closes) |
+| `paving[]` | `{"box", "floor", "variants"}`: floor pieces of that family (up to `variants`, default 4) at the land's height on each flat cell of the box (all four corners level) that holds no statics |
 
 `tour[]` is as a scene's, in map coordinates. The project folder gets
 `project.json`, `blocks/`, `storeys.json` (per building its storey z levels,

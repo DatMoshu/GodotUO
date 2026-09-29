@@ -35,8 +35,11 @@ hues as JSON) export as a patch set:
                       one (ours win on the same id). Every client applies a
                       non-empty verdata.mul, whatever its version.
   hues.mul            a copy of the install's with the replaced hues written in
+  texmaps.mul         copies of the install's with each replaced texmap (the
+  texidx.mul          texture sloped land draws with) appended and its index
+                      entry pointed at it; the client ignores verdata texmaps
 
-Both are generated, never committed: they are derived from the install.
+All are generated, never committed: they are derived from the install.
 
 A server reads the export by listing the folder FIRST in its data directories
 (ModernUO: dataDirectories in modernuo.json), ahead of the install.
@@ -315,14 +318,92 @@ def export_assets(data: Path, assets: dict, out: Path, override_lines: list[str]
         files[hues.name] = {"sha1": sha1(hues), "bytes": hues.stat().st_size}
         print(f"[world] assets: {len(assets['hues'])} hue(s) -> hues.mul")
 
+    if assets["texmaps"]:
+        rc = export_texmaps(data, assets["texmaps"], out, override_lines, files)
+        if rc:
+            return rc
+
     manifest["assets"] = {
         "land": [f"0x{i:04X}" for i, _ in assets["land"]],
+        "texmaps": [f"0x{i:04X}" for i, _ in assets["texmaps"]],
         "statics": [f"0x{i:04X}" for i, _ in assets["statics"]],
         "gumps": [f"0x{i:04X}" for i, _ in assets["gumps"]],
         "hues": [i for i, _ in assets["hues"]],
         "files": files,
     }
     return 0
+
+
+def texterr_redirected(data: Path) -> set[int]:
+    """Texmap indices TexTerr.def points at another entry (TexmapsLoader.Load): a replacement there never shows."""
+    path = data / "TexTerr.def"
+    out = set()
+    if path.is_file():
+        for line in path.read_text(encoding="latin-1").splitlines():
+            line = line.split("#", 1)[0].strip()
+            if "{" in line:
+                try:
+                    out.add(int(line.split()[0]))
+                except ValueError:
+                    pass
+    return out
+
+
+def export_texmaps(data: Path, texmaps: list, out: Path, override_lines: list[str], files: dict) -> int:
+    idx_src, mul_src = data / "texidx.mul", data / "texmaps.mul"
+    count = idx_src.stat().st_size // uoart.TEXIDX_RECORD
+    redirected = texterr_redirected(data)
+    encoded = []
+    for id_, png in texmaps:
+        size, px = uoart.texmap_pixels(png)
+        if not size or id_ >= count:
+            print(f"[world] REFUSED: {png} is not a 64x64 or 128x128 texmap with an index below {count}")
+            return 1
+        if id_ in redirected:
+            print(f"[world] WARNING: TexTerr.def points texmap {id_} at another entry; the client will not show 0x{id_:04X}.png")
+        encoded.append((id_, uoart.encode_texmap(px)))
+    idx, mul = out / "texidx.mul", out / "texmaps.mul"
+    shutil.copyfile(idx_src, idx)
+    shutil.copyfile(mul_src, mul)
+    with idx.open("r+b") as xf, mul.open("r+b") as mf:
+        mf.seek(0, 2)
+        for id_, raw in encoded:
+            at = mf.tell()
+            mf.write(raw)
+            xf.seek(id_ * uoart.TEXIDX_RECORD)
+            _, _, extra = struct.unpack("<iii", xf.read(uoart.TEXIDX_RECORD))
+            xf.seek(id_ * uoart.TEXIDX_RECORD)
+            xf.write(struct.pack("<iii", at, len(raw), extra))
+    for f in (mul, idx):
+        override_lines.append(f"{f.name}={f}")
+        files[f.name] = {"sha1": sha1(f), "bytes": f.stat().st_size}
+    print(f"[world] assets: {len(encoded)} texmap(s) -> texmaps.mul, texidx.mul")
+    return 0
+
+
+def verify_texmaps(cfg, texmaps: list, out: Path) -> int:
+    """Each replaced entry decodes to its PNG; every other index entry, and the install's bytes, are untouched."""
+    data = cfg.client_data
+    a_idx, b_idx = (out / "texidx.mul").read_bytes(), (data / "texidx.mul").read_bytes()
+    a_mul, b_mul = (out / "texmaps.mul").read_bytes(), (data / "texmaps.mul").read_bytes()
+    failures = 0
+    ours = {}
+    for id_, png in texmaps:
+        size, want = uoart.texmap_pixels(png)
+        at, length, _ = struct.unpack_from("<iii", a_idx, id_ * uoart.TEXIDX_RECORD)
+        got_size, have = uoart.decode_texmap(a_mul[at:at + length]) if at >= 0 and length > 0 else (0, [])
+        if (got_size, have) != (size, want):
+            failures += 1
+            print(f"[world] FAIL texmap 0x{id_:04X}: does not decode to its PNG")
+        ours[id_] = True
+    other = sum(1 for n in range(len(b_idx) // uoart.TEXIDX_RECORD) if n not in ours and
+                a_idx[n * uoart.TEXIDX_RECORD:(n + 1) * uoart.TEXIDX_RECORD] != b_idx[n * uoart.TEXIDX_RECORD:(n + 1) * uoart.TEXIDX_RECORD])
+    if len(a_idx) != len(b_idx) or other or a_mul[:len(b_mul)] != b_mul:
+        failures += 1
+        print(f"[world] FAIL texmaps: {other} other index entr(ies) changed, or the install's texture data was altered")
+    if not failures:
+        print(f"[world] assets: {len(ours)} texmap(s) decode to the project's PNGs; every other texmap is the install's")
+    return failures
 
 
 def verify_assets(cfg, project: Path, out: Path) -> int:
@@ -373,6 +454,9 @@ def verify_assets(cfg, project: Path, out: Path) -> int:
         if failures == 0:
             print(f"[world] assets: {len(ours)} art/gump patch(es) decode to the project's PNGs exactly"
                   + (f"; the install's {kept} other patch(es) kept" if kept else ""))
+
+    if assets["texmaps"]:
+        failures += verify_texmaps(cfg, assets["texmaps"], out)
 
     if assets["hues"]:
         mine = {e.hue: e for e in (uoart.read_hue(p) for _, p in assets["hues"])}
@@ -517,6 +601,8 @@ def cmd_pack(cfg, project: Path, out: Path) -> int:
     meta = json.loads((project / "project.json").read_text(encoding="utf-8"))
     blocks = sorted((project / "blocks").glob("*/*.json"))
     assets = uoart.project_assets(project)
+    if assets["texmaps"]:
+        print(f"[world] NOTE: {len(assets['texmaps'])} texmap(s) are export-only; store packs do not carry them yet")
 
     # Check every file parses and fits before anything is written, so a pack
     # that leaves this machine always exports.

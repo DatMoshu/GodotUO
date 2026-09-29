@@ -15,6 +15,12 @@ position, length, extra), then the data. File id 4 is art (block = art index:
 land id, or 0x4000 + static id), 12 is gumps (extra = width << 16 | height).
 Upstream applies a non-empty verdata.mul on every client version.
 
+texmaps.mul / texidx.mul: the textures sloped land is drawn with. Entry n is
+the texture of every land tile whose tiledata TexID is n: 64x64 (0x2000 bytes)
+or 128x128 (0x8000 bytes) of 16-bit colours, row by row, no transparency.
+Upstream never applies verdata to them (UOFileManager skips file id 10), so a
+replaced texmap ships as patched copies of the two files instead.
+
 hues.mul: groups of a uint32 header and eight 88-byte hues (32 colours, table
 start, table end, a 20-byte name). Hue n (1-based) is group (n-1)//8, entry
 (n-1)%8.
@@ -124,6 +130,27 @@ def encode_gump(px: list[int], w: int, h: int) -> bytes:
     return bytes(out)
 
 
+TEXMAP_SIZES = {64: 0x2000, 128: 0x8000}
+TEXIDX_RECORD = 12
+
+
+def texmap_pixels(path: Path) -> tuple[int, list[int]]:
+    """A square texmap PNG as UO colour (every pixel kept, no transparency); size 0 if not 64 or 128 square."""
+    from PIL import Image
+
+    with Image.open(path) as im:
+        im = im.convert("RGBA")
+        w, h = im.size
+        data = list(im.getdata())
+    if w != h or w not in TEXMAP_SIZES:
+        return 0, []
+    return w, [to16(r, g, b, a, True) for r, g, b, a in data]
+
+
+def encode_texmap(px: list[int]) -> bytes:
+    return b"".join(struct.pack("<H", v) for v in px)
+
+
 # --- decoders (mirror the loaders, independently of the encoders) ------------
 
 def decode_land(raw: bytes) -> list[int]:
@@ -135,6 +162,12 @@ def decode_land(raw: bytes) -> list[int]:
                 px[y * 44 + x] = struct.unpack_from("<H", raw, at)[0]
                 at += 2
     return px
+
+
+def decode_texmap(raw: bytes) -> tuple[int, list[int]]:
+    """TexmapsLoader.GetTexmap: 0x2000 bytes is 64x64, anything else 128x128."""
+    size = 64 if len(raw) == 0x2000 else 128
+    return size, list(struct.unpack_from(f"<{size * size}H", raw))
 
 
 def decode_static(raw: bytes) -> tuple[int, int, list[int]]:
@@ -214,6 +247,7 @@ def project_assets(project: Path) -> dict[str, list[tuple[int, Path]]]:
         "land": _ids(a / "art" / "land", ".png"),
         "statics": _ids(a / "art" / "statics", ".png"),
         "gumps": _ids(a / "gumps", ".png"),
+        "texmaps": _ids(a / "art" / "texmaps", ".png"),
         "hues": _ids(a / "hues", ".json"),
     }
 

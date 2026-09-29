@@ -345,6 +345,21 @@ def main() -> int:
     fp, walls = storeys.footprint((8, 18, 17, 26), cells, pieces, 0, 20)
     check(fp == {(x, y) for x in range(10, 16) for y in range(20, 25)} and (15, 22) not in walls,
           f"a map building's footprint is its walls and inside, doorway closed, eaves out (got {len(fp)} cells)")
+    # on uneven land the map sets a ground wall a unit off (19 in a row at 20): it still counts
+    raised = {c: [(sid, z + 20 - (1 if c == (12, 20) and sid == 1 else 0), h) for sid, z, h in v] for c, v in cells.items()}
+    fp20, walls20 = storeys.footprint((8, 18, 17, 26), raised, pieces, 20, 40)
+    check((12, 20) in walls20 and fp20 == fp, "a ground wall a unit below the base still closes the footprint")
+
+    # the offline walk on the map's own land heights: a slope up to a stop at z 20 is walked,
+    # and the same stop on flat ground at 0 is not
+    import walkcheck
+    kinds = {"0x0001": {"flags": ["impassable"], "height": 20}}
+    ramp = {(x, 0): 4 * x for x in range(6)}
+    leg = [{"name": "low", "x": 0, "y": 0, "z": 0}, {"name": "high", "x": 5, "y": 0, "z": 20}]
+    check(walkcheck.check_tour([{"centre": [0, 0], "comps": []}], leg, kinds, ramp) == [],
+          "a stop up a slope of land is reached on the land's own heights")
+    check(len(walkcheck.check_tour([{"centre": [0, 0], "comps": []}], leg, kinds, 0)) == 1,
+          "the same stop on one flat ground height is not")
 
     print(f"test_multi: {'OK' if not FAILS else 'FAILED'} ({len(FAILS)} failing)")
     return 0 if not FAILS else 1

@@ -50,11 +50,16 @@ def is_wall(info: dict) -> bool:
     return info.get("role") in ("wall", "window", "post") or "wall" in info.get("flags", [])
 
 
+# ground walls stand at the base give or take this much: on uneven land the map sets some a unit
+# or two off (a wall at 19 in a row at 20)
+BASE_SLACK = 2
+
+
 def footprint(box, cells: dict, pieces: dict, base: int, top: int) -> tuple[set, set]:
     """The building's cells (walls, and what they enclose or its old roof covers) and its ground
-    wall cells: pieces standing at the base that are walls, windows or posts."""
+    wall cells: pieces standing at the base (within BASE_SLACK) that are walls, windows or posts."""
     walls = {c for c, ss in cells.items()
-             if any(z == base and is_wall(pieces.get(f"{sid:#06x}", {})) for sid, z, _ in ss)}
+             if any(abs(z - base) <= BASE_SLACK and is_wall(pieces.get(f"{sid:#06x}", {})) for sid, z, _ in ss)}
     # a flat roof (floor pieces at the wall top) marks the building too; a pitched roof's eaves
     # overhang the walls, so roof pieces do not
     covered = {c for c, ss in cells.items()
@@ -146,7 +151,7 @@ def raise_building(bd: dict, cat: G.Catalogue, cells: dict) -> tuple[list[Compon
     ground_piece = {}
     if wall_mat == "ground":
         for c in ground_walls:
-            ws = [sid for sid, z, _ in cells.get(c, []) if z == base and is_wall(cat.pieces.get(f"{sid:#06x}", {}))
+            ws = [sid for sid, z, _ in cells.get(c, []) if abs(z - base) <= BASE_SLACK and is_wall(cat.pieces.get(f"{sid:#06x}", {}))
                   and cat.pieces[f"{sid:#06x}"].get("height", 0) >= step - 1]
             if ws:
                 ground_piece[c] = ws[0]
@@ -197,6 +202,18 @@ def raise_building(bd: dict, cat: G.Catalogue, cells: dict) -> tuple[list[Compon
                 para = bd.get("roof", {}).get("parapet", wall_mat)
                 for (x, y) in sorted(outline_k):
                     b.add(cat.wall(para, 5, signature(outline_k, x, y)), x, y, z)
+                # trim: courses of low wall on the parapet, each `h` high; a corner the family
+                # has no piece of that height for takes its lowest course's corner instead
+                zt = z + 5
+                for h in bd.get("roof", {}).get("trim", []):
+                    for (x, y) in sorted(outline_k):
+                        sig = signature(outline_k, x, y)
+                        sid = cat.wall(para, h, sig)
+                        if cat.pieces.get(f"{sid:#06x}", {}).get("material") != cat.pieces.get(
+                                f"{cat.wall(para, 5, sig):#06x}", {}).get("material"):
+                            sid = cat.wall(para, 2, sig)
+                        b.add(sid, x, y, zt)
+                    zt += h
         holes_next = set()
         here = [s for s in stairs if s["storey"] == k]
         if here and k >= n:
@@ -233,8 +250,9 @@ def build(desc: dict, cat: G.Catalogue, data_dir: Path) -> dict:
         raise DescriptionError("format must be 1 and kind 'storeys'")
     cat.fresh()
     facet = desc.get("facet", 0)
-    xs = [v for bd in desc["buildings"] for v in (bd["box"][0], bd["box"][2])]
-    ys = [v for bd in desc["buildings"] for v in (bd["box"][1], bd["box"][3])]
+    boxes = [bd["box"] for bd in desc["buildings"]] + [pv["box"] for pv in desc.get("paving", [])]
+    xs = [v for bx in boxes for v in (bx[0], bx[2])]
+    ys = [v for bx in boxes for v in (bx[1], bx[3])]
     blocks, cells = read_area(data_dir, facet, min(xs) - 1, min(ys) - 1, max(xs) + 1, max(ys) + 1)
     added: list[tuple[int, int, int, int, int]] = []
     removed: set = set()
@@ -245,6 +263,34 @@ def build(desc: dict, cat: G.Catalogue, data_dir: Path) -> dict:
         records.append(rec)
         removed |= gone
         added += [(c.item, c.x, c.y, c.z, rec["hue"]) for c in comps if c.visible]
+    # swaps: one piece put in place of the wall at a cell and height (an arch in a wall); "new"
+    # allows a cell with no wall there (a doorway the piece closes)
+    for sw in desc.get("swaps", []):
+        x, y, z, item = sw["at"][0], sw["at"][1], sw["z"], int(str(sw["item"]), 16)
+        walls_here = [(sid, zz) for sid, zz, _ in cells.get((x, y), []) if zz == z and is_wall(cat.pieces.get(f"{sid:#06x}", {}))]
+        removed |= {(x, y, zz, sid) for sid, zz in walls_here}
+        before = len(added)
+        added = [a for a in added if not (a[1] == x and a[2] == y and a[3] == z and is_wall(cat.pieces.get(f"{a[0]:#06x}", {})))]
+        if before == len(added) and not walls_here and not sw.get("new"):
+            raise DescriptionError(f"swap at {x},{y} z {z}: no wall there to replace")
+        added.append((item, x, y, z, 0))
+    # paving: floor pieces at the land's height on flat cells (all four corners level) that hold
+    # no statics, e.g. a square in front of a door
+    for pv in desc.get("paving", []):
+        ids = cat.floor(pv["floor"], pv.get("variants", 4))
+        land = {}
+        x0, y0, x1, y1 = pv["box"]
+        for (bx, by), blk in blocks.items():
+            for i in range(64):
+                land[(bx * 8 + i % 8, by * 8 + i // 8)] = blk.land_z[i]
+        taken = {(a[1], a[2]) for a in added}
+        for (x, y) in G.cells_of(pv["box"]):
+            z = land.get((x, y))
+            if z is None or cells.get((x, y)) or (x, y) in taken:
+                continue
+            if any(land.get((x + dx, y + dy), z) != z for dx, dy in ((1, 0), (0, 1), (1, 1))):
+                continue
+            added.append((ids[(x * 7 + y * 13) % len(ids)], x, y, z, 0))
     out = {}
     for (bx, by), blk in blocks.items():
         statics = []
