@@ -283,6 +283,12 @@ def build(desc: dict, cat: G.Catalogue, data_dir: Path) -> dict:
     # props: loose pieces at map cells (street dressing, room decor, rooftop kit), kept as given
     added += [(int(str(pr["item"]), 16), pr["at"][0], pr["at"][1], pr["z"], int(str(pr.get("hue", "0")), 16))
               for pr in desc.get("props", [])]
+    # remove: exact map statics to take out (loose furniture a prop replaces), each {item, at, z};
+    # taken out first, so a later reclad or resurface does not put a re-arted copy back
+    for rm in desc.get("remove", []):
+        sid, (x, y), z = int(str(rm["item"]), 16), rm["at"], rm["z"]
+        if any(s == sid and zz == z for s, zz, _ in cells.get((x, y), [])):
+            removed.add((x, y, z, sid))
     for bd in desc.get("buildings", []):
         comps, gone, rec = raise_building(bd, cat, cells)
         rec["name"] = bd["name"]
@@ -394,11 +400,6 @@ def build(desc: dict, cat: G.Catalogue, data_dir: Path) -> dict:
     # reland: land cells in the box whose id is listed get one of `to` (grass laid as paving),
     # except in the `keep` boxes (a park); strip: statics whose tiledata name holds one of `names`
     # go (the trees and bushes on it)
-    # remove: exact map statics to take out (loose furniture a prop replaces), each {item, at, z}
-    for rm in desc.get("remove", []):
-        sid, (x, y), z = int(str(rm["item"]), 16), rm["at"], rm["z"]
-        if any(s == sid and zz == z for s, zz, _ in cells.get((x, y), [])):
-            removed.add((x, y, z, sid))
     relanded = set()
     for rl in desc.get("reland", []):
         frm, to, keep = ids_of(rl["from"]), sorted(ids_of(rl["to"])), rl.get("keep", [])
