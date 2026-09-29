@@ -850,10 +850,13 @@ Beside `buildings[]`, a description may carry:
 | `scenes[]` | `{"scene", "at", "z", "clear", "hue"}`: a new building in place of an old one. `scene` is a scene description (as `scene-build` takes, its own `tour` ignored), stood with its grid origin at map `at` and raised by `z`; every map static in each `clear` box is removed first. The scene's pieces go into the statics, so its doors are not placed (the shard's own doors stay where they were: keep the ground floor's doorways on those cells). `buildings[]` may then be left out. The scene's problems, other than part overlaps, count as the project's |
 | `props[]` | `{"item", "at", "z", "hue"}`: loose pieces at map cells (street dressing, room decor, rooftop kit), added as given; `item` and `hue` are hex strings |
 | `remove[]` | `{"item", "at", "z"}`: exact map statics taken out (the loose furniture a prop replaces); one not there is skipped |
+| `reclad[]` | `{"box", "from", "to", "kinds", "ids"}`: every map wall, window, post or stair piece (`kinds`, default all four) of material `from` in the box becomes the `to` material's piece with the same part, height and joins; failing that, the nearest height and closest joins, and a window or post `to` lacks becomes its plain wall. `ids` (hex or `"lo-hi"`) limits it to those source pieces. A piece with no match stays and is reported; a box with none is refused |
 | `reland[]` | `{"box", "from", "to", "keep"}`: land cells in the box whose id is in `from` get one of `to` (ids or `"lo-hi"` hex ranges, picked per cell by a fixed hash), except inside the `keep` boxes: a district's grass laid as paving, a park left |
 | `strip[]` | `{"box", "names", "keep"}`: map statics in the box whose tiledata name contains one of `names` (case ignored) are removed, except inside `keep`: the trees and brush on paved ground, the pitched-roof pieces a flat roof leaves |
 
-`tour[]` is as a scene's, in map coordinates. The project folder gets
+`tour[]` is as a scene's, in map coordinates; for `world-prove` a stop may add `"go"`: `true` steps
+there by staff command (`[go x y z`) instead of walking, `"xy"` leaves the z to the shard (a spot
+for a still: a roof, a place no path reaches). The project folder gets
 `project.json`, `blocks/`, `storeys.json` (per building its storey z levels,
 stairs with foot, cells and arrival, footprint, `roof_z`; the counts added and
 removed; the tour and its walk problems) and `preview/` (`whole.png`, and

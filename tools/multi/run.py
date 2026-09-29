@@ -268,11 +268,12 @@ def cmd_world_prove(cfg, a) -> int:
     tour_file = a.tour or project / "storeys.json"
     tour = json.loads(tour_file.read_text(encoding="utf-8"))["tour"]
     stops = [(t["name"], t["at"][0], t["at"][1], t["z"]) for t in tour]
+    jumps = {t["name"]: t["go"] for t in tour if t.get("go")}   # true: to x y z; "xy": the shard picks z
     out = (a.out or cfg.build / "multi_proof" / f"{project.name}-{time.strftime('%Y%m%d-%H%M%S')}").resolve()
     out.mkdir(parents=True, exist_ok=True)
     profile = {"draw_roofs": False} if a.no_roofs else None
     return prove.prove_world(cfg, export, stops, out, a.clip, min_free_gb=a.min_free_gb, caption=a.caption or "",
-                             profile=profile)
+                             profile=profile, jumps=jumps)
 
 
 def cmd_storeys(cfg, a) -> int:

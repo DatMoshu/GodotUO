@@ -264,7 +264,7 @@ def build(desc: dict, cat: G.Catalogue, data_dir: Path) -> dict:
                for p in sc["parts"] for c in p["comps"] if c.visible]
         placed.append((ns, pcs))
     boxes = ([bd["box"] for bd in desc.get("buildings", [])] + [pv["box"] for pv in desc.get("paving", [])]
-             + [rs["box"] for rs in desc.get("resurface", [])]
+             + [rs["box"] for rs in desc.get("resurface", []) + desc.get("reclad", [])]
              + [r["box"] for r in desc.get("reland", []) + desc.get("strip", [])]
              + [[pr["at"][0], pr["at"][1], pr["at"][0], pr["at"][1]] for pr in desc.get("props", []) + desc.get("remove", [])]
              + [bx for ns, _ in placed for bx in ns.get("clear", [])]
@@ -331,15 +331,69 @@ def build(desc: dict, cat: G.Catalogue, data_dir: Path) -> dict:
                     n += 1
         if not n:
             raise DescriptionError(f"resurface {rs['box']}: none of {rs['from']} there")
-    # reland: land cells in the box whose id is listed get one of `to` (grass laid as paving),
-    # except in the `keep` boxes (a park); strip: statics whose tiledata name holds one of `names`
-    # go (the trees and bushes on it)
     def ids_of(spec):
         out_ = set()
         for v in spec:
             lo, _, hi = str(v).partition("-")
             out_ |= set(range(int(lo, 16), int(hi or lo, 16) + 1))
         return out_
+    # reclad: the map's own wall, window, post and stair pieces of one material in the box, each
+    # put back as the piece of another material with the same part, height and joins (a timber
+    # shed clad in brick); a piece the other material has no match for stays and is counted
+    for rc in desc.get("reclad", []):
+        src, dst = cat.material(rc["from"]), cat.material(rc["to"])
+        kinds = rc.get("kinds", ["wall", "window", "post", "stair"])
+        only = ids_of(rc["ids"]) if rc.get("ids") else None
+        where = {}
+        for kind in kinds:
+            for key, v in src.get(kind, {}).items():
+                for sig, ids in (v.items() if isinstance(v, dict) else [("", v)]):
+                    for i in ids:
+                        if only is None or int(i, 16) in only:
+                            where.setdefault(int(i, 16), (kind, key, sig))
+        def match(kind, key, sig):
+            got = dst.get(kind, {})
+            if key in got:
+                v = got[key]
+                if not isinstance(v, dict):
+                    return v
+                if sig in v:
+                    return v[sig]
+            if kind == "stair" or not key.isdigit():
+                return None
+            # the nearest height, then the closest joins (the most shared sides, the fewest extra);
+            # a window or post the other material lacks becomes its plain wall
+            want = set(sig) - {"-"}
+            best = None
+            for k2 in (kind, "wall") if kind != "wall" else ("wall",):
+                for h, v in dst.get(k2, {}).items():
+                    if not (h.isdigit() and isinstance(v, dict)):
+                        continue
+                    for s2, ids2 in v.items():
+                        have = set(s2) - {"-"}
+                        score = (k2 != kind, abs(int(h) - int(key)), -len(want & have), len(have - want))
+                        if best is None or score < best[0]:
+                            best = (score, ids2)
+            return best[1] if best else None
+        n = kept = 0
+        for (x, y) in G.cells_of(rc["box"]):
+            for sid, z, hue in cells.get((x, y), []):
+                if sid not in where or (x, y, z, sid) in removed:
+                    continue
+                ids = match(*where[sid])
+                if not ids:
+                    kept += 1
+                    continue
+                removed.add((x, y, z, sid))
+                added.append((int(ids[0], 16), x, y, z, hue))
+                n += 1
+        if not n:
+            raise DescriptionError(f"reclad {rc['box']}: no {rc['from']} pieces there")
+        if kept:
+            scene_problems.append(f"reclad {rc['box']}: {kept} {rc['from']} piece(s) have no {rc['to']} match and stay")
+    # reland: land cells in the box whose id is listed get one of `to` (grass laid as paving),
+    # except in the `keep` boxes (a park); strip: statics whose tiledata name holds one of `names`
+    # go (the trees and bushes on it)
     # remove: exact map statics to take out (loose furniture a prop replaces), each {item, at, z}
     for rm in desc.get("remove", []):
         sid, (x, y), z = int(str(rm["item"]), 16), rm["at"], rm["z"]

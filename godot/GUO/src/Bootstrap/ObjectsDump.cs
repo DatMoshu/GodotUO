@@ -127,6 +127,47 @@ internal static class ObjectsDump
                 File.WriteAllText(Path.Combine(dir, name + ".walked"), walked ? "moved" : "did not move");
             }
 
+            // <name>.say holding a line: the player says it (a shard command such as
+            // "[go x y z" on a staff account), then <name>.said once it has gone.
+            foreach (string request in Directory.GetFiles(dir, "*.say"))
+            {
+                string name = Path.GetFileNameWithoutExtension(request);
+                string line = File.ReadAllText(request).Trim();
+                File.Delete(request);
+                if (Client.Game?.UO?.World?.Player != null && line.Length > 0)
+                {
+                    GameActions.Say(line);
+                }
+
+                await host.ToSignal(host.GetTree().CreateTimer(1.0), Godot.SceneTreeTimer.SignalName.Timeout);
+                File.WriteAllText(Path.Combine(dir, name + ".said"), line);
+            }
+
+            // <name>.closegumps: every open gump closes (the paperdoll a shard opens at
+            // login, the status bar), then <name>.closed holding how many. For review
+            // frames and films that show the world alone.
+            foreach (string request in Directory.GetFiles(dir, "*.closegumps"))
+            {
+                string name = Path.GetFileNameWithoutExtension(request);
+                File.Delete(request);
+                // not the world viewport: it is a gump too, and draws the world
+                var open = new List<GUO.Game.UI.Gumps.Gump>();
+                foreach (var g in GUO.Game.Managers.UIManager.Gumps)
+                {
+                    if (g is not GUO.Game.UI.Gumps.WorldViewportGump)
+                    {
+                        open.Add(g);
+                    }
+                }
+
+                foreach (var g in open)
+                {
+                    g.Dispose();
+                }
+
+                File.WriteAllText(Path.Combine(dir, name + ".closed"), open.Count.ToString());
+            }
+
             // <name>.goto holding "x y z [distance]": the player's pathfinder walks
             // there (doors on the way open as the profile's auto_open_doors and
             // smooth_doors allow), then <name>.arrived holding "path|no path x y z",

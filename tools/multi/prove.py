@@ -186,7 +186,7 @@ def prove_scene(cfg, name: str, stage: Path, out: Path, clip: Path | None, at=No
 
 
 def prove_world(cfg, export: Path, stops: list, out: Path, clip: Path | None, min_free_gb: float = 16,
-                caption: str = "", profile: dict | None = None) -> int:
+                caption: str = "", profile: dict | None = None, jumps=()) -> int:
     """A tools/world export (map edits, no multis): the shard reads it first, the client through
     its files_override, and the tour (name, x, y, z on the map) is walked. UltimaLive clients keep
     a copy of the map per shard name and never refresh it, so the shard takes a name of its own
@@ -206,7 +206,7 @@ def prove_world(cfg, export: Path, stops: list, out: Path, clip: Path | None, mi
     try:
         return session(cfg, export, out, [], (0, 0, 0), stops, clip, min_free_gb,
                        caption or "GUO: map edits, walked through in game", {"world": str(export)},
-                       shard_env={"GUO_BRIDGE_SHARD": name}, profile=profile)
+                       shard_env={"GUO_BRIDGE_SHARD": name}, profile=profile, jumps=jumps)
     finally:
         if made and copy.is_dir() and copy.name.startswith("GUO-Proof-"):
             shutil.rmtree(copy, ignore_errors=True)
@@ -234,7 +234,8 @@ def pick_site(cfg, at, bx0, by0, bx1, by1):
 
 
 def session(cfg, stage: Path, out: Path, parts: list, site, stops: list, clip: Path | None, min_free_gb: float,
-            caption: str, report: dict, shard_env: dict | None = None, profile: dict | None = None) -> int:
+            caption: str, report: dict, shard_env: dict | None = None, profile: dict | None = None,
+            jumps=()) -> int:
     """Start the private shard on the stage, place every (tag, id, cx, cy, doors) at the site plus
     (cx, cy), log a client in and walk `stops` (name, local x, y, z), a frame and a dump at each.
     `shard_env` goes to the shard's start, `profile` over the client's profile options."""
@@ -310,6 +311,19 @@ def session(cfg, stage: Path, out: Path, parts: list, site, stops: list, clip: P
 
         def goto(tag: str, lx: int, ly: int, lz: int) -> dict:
             want = [x + lx, y + ly, z + lz]
+            if tag in jumps:
+                # a spot for a still, not a walk: the staff account steps there by command
+                (watch / f"{tag}.said").unlink(missing_ok=True)
+                (watch / f"{tag}.say").write_text("[go " + " ".join(map(str, want[:2] if jumps[tag] == "xy" else want)),
+                                                   encoding="utf-8")
+                wait_for(lambda: (watch / f"{tag}.said").exists(), 30)
+                time.sleep(2.5)
+                where = look(tag).get("player")
+                arrived = bool(where) and where[:2] == want[:2] and (jumps[tag] == "xy" or abs(where[2] - want[2]) <= 4)
+                stop = {"target": want, "local": [lx, ly, lz], "client_says": f"go {where}", "arrived": arrived,
+                        "tries": 1, "jump": True}
+                print(f"[prove] {tag}: {stop}", flush=True)
+                return stop
             # a long walk can stop short (a door swinging, the pathfinder's own reach): walk
             # on from there, as a player clicks again, up to three times
             for tries in range(1, 4):
@@ -329,6 +343,9 @@ def session(cfg, stage: Path, out: Path, parts: list, site, stops: list, clip: P
             look(tag)
             return stop
 
+        # the world alone in every frame: the paperdoll the shard opens at login and the rest go
+        (watch / "login.closegumps").write_text("", encoding="utf-8")
+        wait_for(lambda: (watch / "login.closed").exists(), 30)
         report["start"] = look("start").get("player")
         if clip:
             (watch / "walk.rec").write_text(f"{min(40 + 12 * len(stops), 240)} 8 jpg", encoding="utf-8")
