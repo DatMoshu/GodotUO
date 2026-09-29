@@ -376,6 +376,14 @@ public partial class Main : Node
             dataDir = ScratchHome(dataDir);
         }
 
+        // Clean shots: --hide-gumps starts with the UI hidden; Ctrl+Shift+H toggles it.
+        AddChild(new GUO.Renderer.CleanShots { Name = "CleanShots" });
+
+        if (_options.HideGumps)
+        {
+            GUO.Renderer.CleanShots.Set(true);
+        }
+
         // --background mode[:path]: what the window shows behind the world
         // for this run only; the profile is neither read for it nor written.
         if (!string.IsNullOrWhiteSpace(_options.Background))
@@ -1232,6 +1240,9 @@ public partial class Main : Node
         /// </summary>
         public int ShotAfter { get; private set; }
 
+        /// <summary>--hide-gumps: the world without the UI, for screenshots and films (Renderer.CleanShots).</summary>
+        public bool HideGumps { get; private set; }
+
         /// <summary>Drive the running client with synthesised input.</summary>
         public bool InputProbe { get; private set; }
 
@@ -1835,6 +1846,9 @@ public partial class Main : Node
                         break;
                     case "--shard-command":
                         o.ShardCommands.Add(Next());
+                        break;
+                    case "--hide-gumps":
+                        o.HideGumps = true;
                         break;
                     case "--shot-after":
                         if (int.TryParse(Next(), out int frames))

@@ -326,7 +326,7 @@ namespace GUO.Input.Touch
             GumpPresentation.FitFullHeight();
             GumpPresentation.FitPaperdolls();
             Covered = GumpPresentation.FullHeightOpen() || Modern.ModernGump.IsOpen;
-            Visible = !GUO.Game.Managers.ScreenSaver.Active && !Covered;
+            Visible = !GUO.Game.Managers.ScreenSaver.Active && !Covered && !Renderer.CleanShots.Hidden;
 
             if (!Shown)
             {

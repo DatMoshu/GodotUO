@@ -590,6 +590,12 @@ internal static class GumpPresentation
 
     public static void Queue(Gump g, RenderLists lists, ref float depth)
     {
+        // --hide-gumps / Ctrl+Shift+H: only the world's viewport is drawn.
+        if (!Renderer.CleanShots.Draws(g))
+        {
+            return;
+        }
+
         float s = Scale(g);
         // A gump lifted for a flick (GumpFlick) is drawn a little larger
         // about its centre, still nearest-sampled, with its outline and chips.
