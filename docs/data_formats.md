@@ -320,6 +320,8 @@ written.
 <UO_WORLD_PROJECT>/assets/
   art/land/0xNNNN.png       land tile, by land id
   art/statics/0xNNNN.png    static, by item id (not 0x4000 + id)
+  art/texmaps/0xNNNN.png    texmap (optional), by texmap index: the TexID in
+                            tiledata of the land tiles that use it
   gumps/0xNNNN.png          gump, by gump id
   hues/0xNNNN.json          hue, by hue number (1-based, as shards write it)
 ```
@@ -332,6 +334,13 @@ bits are dropped (15-bit colour), so the file shows what the client will draw.
 | Land | exactly 44x44; only the 1,012 pixels of the diamond are used | none | stored as 0 |
 | Static | up to 1024x1024 | alpha < 128 is transparent (0) | opaque black is stored as `0x0421` |
 | Gump | up to 2048x2048 | alpha < 128 is transparent (0) | opaque black is stored as `0x0421` |
+| Texmap | exactly 64x64 or 128x128 | none | stored as 0 |
+
+A texmap is the texture the client stretches over **sloped** land (a cell whose
+corners differ in height); flat land draws the land art instead. So a replaced
+land tile that sits on slopes needs its texmap too, or the slopes keep the old
+look. An index that `TexTerr.def` redirects to another entry never shows its own
+texture; export warns about it.
 
 **`hues/0xNNNN.json`**
 
@@ -348,8 +357,9 @@ bits are dropped (15-bit colour), so the file shows what the client will draw.
 | File | Contents |
 |---|---|
 | `verdata.mul` | `int32 count`, then `count` records of five `uint32` (file id, block, position, length, extra), then the data. Art is file id 4, block = land id or `0x4000` + item id, in the art layouts below. Gumps are file id 12, extra = `width << 16 \| height`. The install's own patches are kept unless the project replaces the same id. 16 zero bytes pad the end |
+| `texmaps.mul`, `texidx.mul` | Only with `art/texmaps/`. Copies of the install's: each replaced texmap's 16-bit colours (row by row, 0x2000 or 0x8000 bytes) are appended to `texmaps.mul`, and its `texidx.mul` record (int32 offset, int32 length, int32 extra, extra kept) points at them. Every other record and byte is the install's. Upstream never applies verdata texmaps (file id 10), hence copies |
 | `hues.mul` | The install's, with each replaced hue's 88 bytes (32 colours, start, end, 20-byte name) written in place |
-| `files_override.txt` | Adds `verdata.mul=` and `hues.mul=` lines |
+| `files_override.txt` | Adds `verdata.mul=`, `hues.mul=`, `texmaps.mul=` and `texidx.mul=` lines, for the files written |
 | `export.json` | Gains `assets`: the ids per kind and the files' SHA-1 |
 
 Layouts, as `ArtLoader` and `GumpsLoader` read them (and as
