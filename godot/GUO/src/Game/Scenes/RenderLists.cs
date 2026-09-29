@@ -185,13 +185,28 @@ namespace GUO.Game.Scenes
 
             // A sprite drops 4 pixels per z and a tile row is 22 pixels down
             // the screen; one more row for the height of the diamond itself.
-            int reach = Math.Min(8, ((top - obj.Z) * 4 + 43) / 22 + 1);
+            int rows = ((top - obj.Z) * 4 + 43) / 22 + 1;
+            int reach = Math.Min(8, rows);
             int half = CoverHalfWidth(obj);
 
-            for (int dy = 0; dy <= reach; dy++)
+            // F6: the 8-tile square reaches 16 rows down its diagonal, about
+            // 77 z. Deeper (a tower's z -128 foot under z 0 land) the sprite
+            // hangs further down the screen than that, and the front course
+            // showed through the land ClassicUO's depth buffer hides it under.
+            // Past the square, only the tiles down the diagonal to the sprite's
+            // foot (dx + dy rows down) and across its width can cover it.
+            int far = Math.Max(reach, rows);
+
+            for (int dy = 0; dy <= far; dy++)
             {
-                for (int dx = 0; dx <= reach; dx++)
+                for (int dx = 0; dx <= far; dx++)
                 {
+                    if ((dx > reach || dy > reach)
+                        && (dx + dy > rows || (half >= 0 && Math.Abs(dx - dy) * 22 >= 22 + half)))
+                    {
+                        continue;
+                    }
+
                     Land land = dx == 0 && dy == 0 ? ground : LandAt(map, obj.X + dx, obj.Y + dy);
 
                     if (land == null || land.AlphaHue == 0 || _covering.Contains(land))
