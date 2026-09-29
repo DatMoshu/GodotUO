@@ -108,7 +108,28 @@ def raise_building(bd: dict, cat: G.Catalogue, cells: dict) -> tuple[list[Compon
     # upstairs repeats the ground storey's inner walls, or (partitions false) is one hall: a wall
     # round a void below (a hall two storeys tall) has no door to repeat
     partitions = ground_walls - outline if bd.get("partitions", True) else set()
-    upper_walls = outline | partitions
+    # a setback: from `storey` up the building steps in `cells` from one side, and the strip left
+    # over is a terrace on the storey below (a floor and a parapet): a lower face on a lane
+    strip = set()
+    sb = bd.get("setback")
+    if sb:
+        side, deep = sb["side"], sb["cells"]
+        axis, far = {"W": (0, False), "E": (0, True), "N": (1, False), "S": (1, True)}[side]
+        lines: dict = {}
+        for c in fp:
+            lines.setdefault(c[1 - axis], []).append(c[axis])
+        for other, vals in lines.items():
+            edge = max(vals) if far else min(vals)
+            for c in fp:
+                if c[1 - axis] == other and abs(c[axis] - edge) < deep:
+                    strip.add(c)
+    set_from = sb.get("storey", 1) if sb else n + 1
+
+    def shape(k):
+        """The footprint, its outline and its walls at storey k."""
+        f = fp - strip if k >= set_from else fp
+        o = {(x, y) for (x, y) in f if any((x + dx, y + dy) not in f for dx, dy in N4)}
+        return f, o, o | (partitions & f)
     # what goes: everything in the footprint (and a roof's overhang one cell round it) from the
     # ground storey's wall top up
     grown = {(x + dx, y + dy) for (x, y) in fp for dx in (-1, 0, 1) for dy in (-1, 0, 1)}
@@ -142,12 +163,20 @@ def raise_building(bd: dict, cat: G.Catalogue, cells: dict) -> tuple[list[Compon
             floor = ground_open
             walls = ground_walls
         else:
-            walls = upper_walls
-            floor = fp - holes_next - {c for fh in bd.get("floor_holes", []) if fh["storey"] == k
+            fpk, outline_k, walls = shape(k)
+            floor = fpk - holes_next - {c for fh in bd.get("floor_holes", []) if fh["storey"] == k
                                        for c in G.cells_of(fh["box"])}
             ids = cat.floor(floor_mat if k < n else bd.get("roof", {}).get("floor", floor_mat))
             for (x, y) in sorted(floor):
                 b.add(ids[(x * 7 + y * 13) % len(ids)], x, y, z)
+            if k == set_from and strip:
+                # the terrace: the storey below's roof over the strip, with a parapet on its open edges
+                t_ids = cat.floor(bd.get("roof", {}).get("floor", floor_mat))
+                edge = strip & outline
+                for (x, y) in sorted(strip - fpk):
+                    b.add(t_ids[(x * 7 + y * 13) % len(t_ids)], x, y, z)
+                for (x, y) in sorted(edge):
+                    b.add(cat.wall(bd.get("roof", {}).get("parapet", wall_mat), 5, signature(edge, x, y)), x, y, z)
             if k < n:
                 for (x, y) in sorted(walls):
                     if (x, y) in ground_piece:
@@ -162,12 +191,12 @@ def raise_building(bd: dict, cat: G.Catalogue, cells: dict) -> tuple[list[Compon
                         if near:
                             b.add(near[0], x, y, z)
                             continue
-                    window = (x, y) in outline and sig in ("EW", "NS") and (x + y) % every == 0
+                    window = (x, y) in outline_k and sig in ("EW", "NS") and (x + y) % every == 0
                     b.add(cat.wall(wall_mat, step - 1, sig, window=window), x, y, z)
             else:
                 para = bd.get("roof", {}).get("parapet", wall_mat)
-                for (x, y) in sorted(outline):
-                    b.add(cat.wall(para, 5, signature(outline, x, y)), x, y, z)
+                for (x, y) in sorted(outline_k):
+                    b.add(cat.wall(para, 5, signature(outline_k, x, y)), x, y, z)
         holes_next = set()
         here = [s for s in stairs if s["storey"] == k]
         if here and k >= n:
