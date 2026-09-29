@@ -178,7 +178,15 @@ def prove_scene(cfg, name: str, stage: Path, out: Path, clip: Path | None, at=No
     if any(t.get("on_land") for t in sc.get("tour", [])):
         # a stop on bare land: the walker stands on the land's own z there, not the scene's ground
         z, _ = occupancy(cfg, 0)
-        stops = [(n, x, y, int(z[site[1] + y, site[0] + x]) - site[2] if t.get("on_land") else lz)
+
+        def land_at(wx: int, wy: int) -> int:
+            if wy < z.shape[0] and wx < z.shape[1]:
+                return int(z[wy, wx])
+            # east of the dungeons, past what occupancy caches: the facet's own cell
+            with open_facet(cfg.client_data, 0) as f:
+                return f.read(wx >> 3, wy >> 3).land_z[(wy & 7) * 8 + (wx & 7)]
+
+        stops = [(n, x, y, land_at(site[0] + x, site[1] + y) - site[2] if t.get("on_land") else lz)
                  for (n, x, y, lz), t in zip(stops, sc["tour"])]
     print(f"[prove] scene {name}: {len(parts)} multis at {site}", flush=True)
     return session(cfg, stage, out, parts, site, stops, clip, min_free_gb,
