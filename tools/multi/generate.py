@@ -36,6 +36,15 @@ def signature(cells, x: int, y: int) -> str:
     return "".join(d for d, dx, dy in DIRS if (x + dx, y + dy) in cells)
 
 
+def scatter(ids: list[int], x: int, y: int) -> int:
+    """A floor variant for a cell: the first piece on about half the cells, the others scattered
+    by a hash of the cell, so large floors and roofs show no diagonal stripes."""
+    if len(ids) == 1:
+        return ids[0]
+    h = ((x * 73856093) ^ (y * 19349663)) & 0xFFFF
+    return ids[0] if h % 2 == 0 else ids[1 + (h >> 1) % (len(ids) - 1)]
+
+
 class Catalogue:
     def __init__(self, folder: Path):
         self.fam = json.loads((folder / "families.json").read_text(encoding="utf-8"))
@@ -368,7 +377,7 @@ def build(desc: dict, cat: Catalogue, fresh: bool = True) -> tuple[list[Componen
         floor = floor_of(fp) - holes
         ids = cat.floor(st.get("floor", mats["floor"]))
         for (x, y) in sorted(floor):
-            b.add(ids[(x * 7 + y * 13) % len(ids)], x, y, z)
+            b.add(scatter(ids, x, y), x, y, z)
         # a stair's "rail": a low rail round its opening in this floor, the arrival end left open
         for mat, ring in rails_next:
             cells = (ring & floor) - walls
@@ -382,7 +391,7 @@ def build(desc: dict, cat: Catalogue, fresh: bool = True) -> tuple[list[Componen
             if (x, y) not in floor:
                 # a sill: the floor runs under the south and east walls only, so a door in a north
                 # or west wall (or in an upper storey's) has nothing to stand on without one
-                b.add(ids[(x * 7 + y * 13) % len(ids)], x, y, z)
+                b.add(scatter(ids, x, y), x, y, z)
             b.doors.append({"x": x, "y": y, "z": z, "storey": n,
                             "facing": "WestCW" if along_x else "SouthCW",
                             # Plain doors, same art and sounds as the house doors: a BaseHouseDoor
@@ -415,7 +424,7 @@ def build(desc: dict, cat: Catalogue, fresh: bool = True) -> tuple[list[Componen
         cells = cells_of(box) - house
         ids = cat.floor(p.get("floor", mats["floor"]))
         for (x, y) in sorted(cells):
-            b.add(ids[(x * 7 + y * 13) % len(ids)], x, y, z0)
+            b.add(scatter(ids, x, y), x, y, z0)
         x0, y0, x1, y1 = box
         posts = {c for c in ((x0, y0), (x1, y0), (x0, y1), (x1, y1)) if c not in house}
         bal = p.get("balcony")
@@ -428,7 +437,7 @@ def build(desc: dict, cat: Catalogue, fresh: bool = True) -> tuple[list[Componen
             zb = z0 + step_h
             rail = edge(cells_of(box)) - house
             for (x, y) in sorted(cells):
-                b.add(ids[(x * 7 + y * 13) % len(ids)], x, y, zb)
+                b.add(scatter(ids, x, y), x, y, zb)
             for (x, y) in sorted(rail):
                 b.add(cat.wall(bal.get("rail", "stone rail"), bal.get("rail_height", 5), signature(rail, x, y)),
                       x, y, zb)
@@ -600,7 +609,7 @@ def build_yard(b: Built, cat: Catalogue, yard: dict, z: int, taken: set, step_ro
             c = prev[c]
         ids = cat.floor(yard["path"])
         for (x, y) in sorted(path):
-            b.add(ids[(x * 7 + y * 13) % len(ids)], x, y, z)
+            b.add(scatter(ids, x, y), x, y, z)
     return {"fence": sorted(fence), "gate": list(gate), "box": list(box), "steps": sorted(steps), "path": sorted(path)}
 
 
@@ -613,7 +622,7 @@ def roof_rect(b: Built, cat: Catalogue, roof: dict, mats: dict, box, top: int) -
         r = cells_of(box)
         ids = cat.floor(roof.get("material", mats["floor"]))
         for (x, y) in sorted(floor_of(r)):
-            b.add(ids[(x * 7 + y * 13) % len(ids)], x, y, top)
+            b.add(scatter(ids, x, y), x, y, top)
         if roof.get("parapet"):
             ring = edge(r)
             for (x, y) in sorted(ring):

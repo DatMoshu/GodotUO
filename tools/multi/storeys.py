@@ -24,7 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import generate as G  # noqa: E402
-from generate import DescriptionError, signature  # noqa: E402
+from generate import DescriptionError, scatter, signature  # noqa: E402
 from guo.uomap import install_fingerprint, open_facet  # noqa: E402
 from multifile import Component  # noqa: E402
 
@@ -174,13 +174,13 @@ def raise_building(bd: dict, cat: G.Catalogue, cells: dict) -> tuple[list[Compon
                                        for c in G.cells_of(fh["box"])}
             ids = cat.floor(floor_mat if k < n else bd.get("roof", {}).get("floor", floor_mat))
             for (x, y) in sorted(floor):
-                b.add(ids[(x * 7 + y * 13) % len(ids)], x, y, z)
+                b.add(scatter(ids, x, y), x, y, z)
             if k == set_from and strip:
                 # the terrace: the storey below's roof over the strip, with a parapet on its open edges
                 t_ids = cat.floor(bd.get("roof", {}).get("floor", floor_mat))
                 edge = strip & outline
                 for (x, y) in sorted(strip - fpk):
-                    b.add(t_ids[(x * 7 + y * 13) % len(t_ids)], x, y, z)
+                    b.add(scatter(t_ids, x, y), x, y, z)
                 for (x, y) in sorted(edge):
                     b.add(cat.wall(bd.get("roof", {}).get("parapet", wall_mat), 5, signature(edge, x, y)), x, y, z)
             if k < n:
@@ -316,7 +316,7 @@ def build(desc: dict, cat: G.Catalogue, data_dir: Path) -> dict:
                 continue
             if any(land.get((x + dx, y + dy), z) != z for dx, dy in ((1, 0), (0, 1), (1, 1))):
                 continue
-            added.append((ids[(x * 7 + y * 13) % len(ids)], x, y, z, 0))
+            added.append((scatter(ids, x, y), x, y, z, 0))
     def ids_of(spec):
         out_ = set()
         for v in spec:
@@ -333,7 +333,7 @@ def build(desc: dict, cat: G.Catalogue, data_dir: Path) -> dict:
             for sid, z, _ in cells.get((x, y), []):
                 if sid in old and (x, y, z, sid) not in removed:
                     removed.add((x, y, z, sid))
-                    added.append((ids[(x * 7 + y * 13) % len(ids)], x, y, z, 0))
+                    added.append((scatter(ids, x, y), x, y, z, 0))
                     n += 1
         if not n and not rs.get("optional"):
             raise DescriptionError(f"resurface {rs['box']}: none of {rs['from']} there")
@@ -415,7 +415,7 @@ def build(desc: dict, cat: G.Catalogue, data_dir: Path) -> dict:
                 if x0 <= x <= x1 and y0 <= y <= y1 and blk.land_id[i] in frm and not any(
                         k[0] <= x <= k[2] and k[1] <= y <= k[3] for k in keep) and not (sparse and sum(
                         (x + dx, y + dy) in listed for dx in range(-2, 3) for dy in range(-2, 3)) - 1 >= sparse):
-                    blk.land_id[i] = to[(x * 7 + y * 13) % len(to)]
+                    blk.land_id[i] = scatter(to, x, y)
                     relanded.add((bx, by))
         # level N: a paved cell (one of `to`) with nothing standing on it, lying within N of the
         # middle height of its eight neighbours, takes that height: a lone dip or bump shades
