@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted — 2026-09-28, by the owner.
 
 ## Date
 
@@ -11,8 +11,7 @@ Proposed
 ## Last Verified
 
 2026-09-27, with `python tools\postfx\run.py sheet` (four runs): Windows 11,
-RTX 4090, Forward+, a 1280x800 window. See Validation. The status stays
-Proposed until the owner accepts it.
+RTX 4090, Forward+, a 1280x800 window. See Validation.
 
 ## Decision Makers
 
