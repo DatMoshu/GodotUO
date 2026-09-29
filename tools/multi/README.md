@@ -150,6 +150,11 @@ Nothing above z 112 can be stood on: the client's pathfinder puts a ceiling at
 115 over a five-storey keep was never reached). A walkable roof deck is 112 at
 most; `storeys` takes a `roof_z` for one lower than a whole storey.
 
+Keep legs to 18 cells or less. The pathfinder searches only the map the client
+has loaded round the player: a 20-cell leg along an open street answered "no
+path" every time the walk came from the far side, and passed when the client
+had stood at the goal before. The check reports a longer leg.
+
 ## Complete on every side
 
 The client's own buildings often skip what it never shows: the north or west

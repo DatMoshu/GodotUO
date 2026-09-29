@@ -30,6 +30,10 @@ CLIMB = 5
 # pathfinder may run out of nodes on: a culvert too low to pass sent it round a wall's far end, far
 # longer than the six cells through, and it gave up. The bound is a guess, not a measured limit
 DETOUR, DETOUR_SLACK = 3, 30
+# a leg longer than this (in cells, the larger of dx and dy) can reach past the map the client has
+# loaded round the player, and it answers "no path": seen at 20 cells, after the walk had come from
+# the far side (the same leg passed when the client had been at the goal before)
+LEG_MAX = 18
 
 
 def land_at(ground, at) -> int:
@@ -136,7 +140,9 @@ def check_tour(parts: list[dict], tour: list[dict], pieces: dict, ground=0) -> l
     for a, b in zip(tour, tour[1:]):
         steps = path(stand, covered, (a["x"], a["y"], a["z"]), (b["x"], b["y"], b["z"]), ground)
         leg = f"from {a['name']} ({a['x']}, {a['y']}, {a['z']}) to {b['name']} ({b['x']}, {b['y']}, {b['z']})"
-        if steps is None:
+        if max(abs(a["x"] - b["x"]), abs(a["y"] - b["y"])) > LEG_MAX:
+            out.append(f"the leg {leg} is over {LEG_MAX} cells: the client may not have that far loaded; put a stop on the way")
+        elif steps is None:
             out.append(f"no walk {leg}")
         elif ((near := search(stand, covered, (a["x"], a["y"], a["z"]), (b["x"], b["y"], b["z"]), ground, None))
               and abs(near[1] - b["z"]) > 4 and near[0] < steps):

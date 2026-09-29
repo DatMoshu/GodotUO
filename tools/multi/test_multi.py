@@ -280,9 +280,13 @@ def main() -> int:
         check(20 not in buried[(0, 0)] and 25 in buried[(0, 0)],
               f"a floor with a block standing on it is not stood on, the block is (got {buried[(0, 0)]})")
         # a goal on open land beyond the scene's reach round it is still found
-        far = [{"name": "in", "x": 0, "y": 0, "z": 0}, {"name": "out", "x": 0, "y": 30, "z": 0}]
+        far = [{"name": "in", "x": 0, "y": 0, "z": 0}, {"name": "out", "x": 0, "y": 18, "z": 0}]
         check(walkcheck.check_tour([{"centre": [0, 0], "comps": [C(2, 0, 0, 0)]}], far, kinds) == [],
               "a stop on the land well past the scene is reached")
+        # a leg past what the client keeps loaded round the player answers "no path" in game
+        farther = [{"name": "in", "x": 0, "y": 0, "z": 0}, {"name": "out", "x": 0, "y": 30, "z": 0}]
+        got = walkcheck.check_tour([{"centre": [0, 0], "comps": [C(2, 0, 0, 0)]}], farther, kinds)
+        check(len(got) == 1 and "over 18 cells" in got[0], f"a leg of 30 cells is reported (got {got})")
         # two floors over the same cells, a hole in the upper one: a stop straight above the last is
         # ambiguous to the client, which aims at x and y only; a walker never drops through a floor
         two = [C(2, x, 1, 0) for x in range(9)] + [C(2, x, 0, 0) for x in range(4, 9)]
