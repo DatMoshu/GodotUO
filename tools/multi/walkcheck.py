@@ -42,7 +42,7 @@ def land_at(ground, at) -> int:
     return ground.get(at, 0) if isinstance(ground, dict) else ground
 
 
-def surfaces(parts: list[dict], pieces: dict, ground=0) -> tuple[dict, set]:
+def surfaces(parts: list[dict], pieces: dict, ground=0, land_under: bool = True) -> tuple[dict, set]:
     """{(x, y): [standing z, ...]} and the set of cells anything stands in."""
     stand: dict[tuple, set] = {}
     solid: dict[tuple, list] = {}
@@ -71,7 +71,9 @@ def surfaces(parts: list[dict], pieces: dict, ground=0) -> tuple[dict, set]:
     for at in set(stand) | covered:
         zs = set(stand.get(at, ()))
         g = land_at(ground, at)
-        if not any(a <= g < b for a, b in solid.get(at, ())):
+        # land_under False: the land over the parts is not walked on (the void's land is
+        # impassable; a scene sunk below it is entered by its own stair)
+        if land_under and not any(a <= g < b for a, b in solid.get(at, ())):
             zs.add(g)
         free = sorted(z for z in zs if z <= MAX_STAND and not any(a < z + HEADROOM and b > z for a, b in solid.get(at, ()))
                       and not any(z <= a < z + HEADROOM for a in above.get(at, ())))
@@ -133,9 +135,9 @@ def search(stand: dict, covered: set, start: tuple, goal: tuple, ground=0,
     return None
 
 
-def check_tour(parts: list[dict], tour: list[dict], pieces: dict, ground=0) -> list[str]:
+def check_tour(parts: list[dict], tour: list[dict], pieces: dict, ground=0, land_under: bool = True) -> list[str]:
     """Each leg of the tour that has no walk, as a problem line."""
-    stand, covered = surfaces(parts, pieces, ground)
+    stand, covered = surfaces(parts, pieces, ground, land_under)
     out = []
     for a, b in zip(tour, tour[1:]):
         steps = path(stand, covered, (a["x"], a["y"], a["z"]), (b["x"], b["y"], b["z"]), ground)

@@ -162,7 +162,7 @@ def prove(cfg, name: str, stage: Path, out: Path, clip: Path | None, at=None, vi
 
 
 def prove_scene(cfg, name: str, stage: Path, out: Path, clip: Path | None, at=None, min_free_gb: float = 16,
-                caption: str = "") -> int:
+                caption: str = "", shard_commands: list[str] = ()) -> int:
     """A scene: every part placed at the site plus its centre, then the scene's tour walked."""
     scenes = json.loads((stage / "scenes.json").read_text(encoding="utf-8")) if (stage / "scenes.json").exists() else {}
     if name not in scenes:
@@ -190,7 +190,8 @@ def prove_scene(cfg, name: str, stage: Path, out: Path, clip: Path | None, at=No
                  for (n, x, y, lz), t in zip(stops, sc["tour"])]
     print(f"[prove] scene {name}: {len(parts)} multis at {site}", flush=True)
     return session(cfg, stage, out, parts, site, stops, clip, min_free_gb,
-                   caption or f"GUO: an authored scene ({name}), walked through in game", {"scene": name})
+                   caption or f"GUO: an authored scene ({name}), walked through in game", {"scene": name},
+                   shard_commands=shard_commands)
 
 
 def prove_world(cfg, export: Path, stops: list, out: Path, clip: Path | None, min_free_gb: float = 16,
@@ -243,7 +244,7 @@ def pick_site(cfg, at, bx0, by0, bx1, by1):
 
 def session(cfg, stage: Path, out: Path, parts: list, site, stops: list, clip: Path | None, min_free_gb: float,
             caption: str, report: dict, shard_env: dict | None = None, profile: dict | None = None,
-            jumps=()) -> int:
+            jumps=(), shard_commands: list[str] = ()) -> int:
     """Start the private shard on the stage, place every (tag, id, cx, cy, doors) at the site plus
     (cx, cy), log a client in and walk `stops` (name, local x, y, z), a frame and a dump at each.
     `shard_env` goes to the shard's start, `profile` over the client's profile options."""
@@ -287,8 +288,10 @@ def session(cfg, stage: Path, out: Path, parts: list, site, stops: list, clip: P
         home = out / "client_home"
         (home / "cache").mkdir(parents=True)
         (home / "profiles").mkdir()
+        # a stage that carries a verdata.mul (staged art patches) is drawn with it
         (home / "settings.json").write_text(json.dumps({"profilespath": str(home / "profiles"),
-                                                        "files_override": str(stage / "files_override.txt")}),
+                                                        "files_override": str(stage / "files_override.txt"),
+                                                        "use_verdata": (stage / "verdata.mul").exists()}),
                                             encoding="utf-8")
         (home / "profiles" / "default.json").write_text(json.dumps({"topbar_gump_is_disabled": True,
                                                                     "auto_open_doors": True, "smooth_doors": True,
@@ -299,11 +302,16 @@ def session(cfg, stage: Path, out: Path, parts: list, site, stops: list, clip: P
                "--screenshot-dir", str(out), "--screenshot-name", "end", "--objects-watch", str(watch),
                "--shard-command", "[self set map felucca", "--shard-command", f"[go {ax} {ay}",
                "--shard-command", "[where"]
+        # staff commands of the caller's (NPCs for a filmed tour: "[TileXYZ x y 1 1 z Type set Body n ..."),
+        # said after the client has arrived and before the tour starts
+        for c in shard_commands:
+            cmd += ["--shard-command", c]
         env = {**os.environ, "UO_CLIENT_DATA": str(cfg.client_data), "UO_CACHE_DIR": str(home / "cache"),
                "UO_CLIENT_VERSION": cfg.client_version, "UO_SHARD_HOST": "127.0.0.1", "UO_SHARD_PORT": str(port)}
         client = subprocess.Popen(cmd, stdout=(out / "client.log").open("w", encoding="utf-8", errors="replace"),
                                   stderr=subprocess.STDOUT, env=env, **no_activate())
-        if not wait_for(lambda: (watch / "watching").exists(), 300):
+        # a silent staff command holds the client about 30 s before it says the next one
+        if not wait_for(lambda: (watch / "watching").exists(), 300 + 35 * len(shard_commands)):
             print("[prove] the client never reached its watch")
             return 1
         time.sleep(4)

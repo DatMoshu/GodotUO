@@ -91,6 +91,17 @@ A scene (`scene-prove`) is placed part by part at the site plus each part's
 centre, so the parts meet exactly, then its `tour` is walked. A scene larger
 than the flat, clear ground near the start needs `--at X Y Z`.
 
+`--shard-commands FILE` gives staff commands (one per line, `#` for comments)
+that the client says after it arrives and before the tour, e.g. NPCs for a
+filmed tour: `[TileXYZ x y w 1 z Rabbit set Body N Name "..."`. Keep each line
+short (the chat line cuts a long one off); each silent command holds the client
+about 30 s. A stage that holds a `verdata.mul` (staged art patches) is drawn
+with it (`use_verdata`).
+
+A scene sunk below impassable land (the void east of the map, entered by its own
+stair down) sets `"land_under_parts": false`, so the offline walk does not stand
+the walker on the land over the parts.
+
 ## Houses and scenes
 
 A house description (section 16) gives a footprint as one `size` or several

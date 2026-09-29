@@ -279,6 +279,16 @@ def main() -> int:
         buried, _ = walkcheck.surfaces([{"centre": [0, 0], "comps": [C(2, 0, 0, 20), C(3, 0, 0, 20)]}], kinds, 0)
         check(20 not in buried[(0, 0)] and 25 in buried[(0, 0)],
               f"a floor with a block standing on it is not stood on, the block is (got {buried[(0, 0)]})")
+        # a scene sunk under the land (a void's land is impassable): a stair from the open land at
+        # z 0 down to a floor at z -20. Counted as walkable over the parts, the land keeps the walker
+        # at z 0; with land_under False it goes down the steps
+        sunk = [C(3, x, 0, -5 * x - 5) for x in (1, 2, 3)]           # steps standing at -5, -10, -15
+        sunk += [C(2, x, 0, -20) for x in range(4, 9)]
+        down = [{"name": "land", "x": 0, "y": 0, "z": 0}, {"name": "floor", "x": 6, "y": 0, "z": -20}]
+        check(len(walkcheck.check_tour([{"centre": [0, 0], "comps": sunk}], down, kinds)) == 1,
+              "land counted over a sunk scene keeps the walker above its floor")
+        check(walkcheck.check_tour([{"centre": [0, 0], "comps": sunk}], down, kinds, 0, False) == [],
+              "with land_under False the walk goes down the stair to the sunk floor")
         # a goal on open land beyond the scene's reach round it is still found
         far = [{"name": "in", "x": 0, "y": 0, "z": 0}, {"name": "out", "x": 0, "y": 18, "z": 0}]
         check(walkcheck.check_tour([{"centre": [0, 0], "comps": [C(2, 0, 0, 0)]}], far, kinds) == [],
