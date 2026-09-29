@@ -296,6 +296,10 @@ public partial class Main : Node
                 {
                     OneScreenProbeThenQuit();
                 }
+                else if (_options.GlyphShots)
+                {
+                    GlyphShotsThenQuit();
+                }
                 else if (_options.AssetProbe.Length > 0)
                 {
                     AssetProbeThenQuit();
@@ -625,6 +629,7 @@ public partial class Main : Node
         || _options.DoorProbe
         || _options.GamepadProbe
         || _options.OneScreenProbe
+        || _options.GlyphShots
         || _options.AssetProbe.Length > 0
         || _options.EffectsProbe > 0
         || _options.TradePartner
@@ -733,6 +738,13 @@ public partial class Main : Node
         }
 
         Quit(OneScreenProbe.Passed ? 0 : 1);
+    }
+
+    /// <summary>The button glyphs for each input, photographed; see GlyphShots.</summary>
+    private async void GlyphShotsThenQuit()
+    {
+        await Preamble();
+        Quit(await GlyphShots.Run(this, _options.ScreenshotDir) ? 0 : 1);
     }
 
     /// <summary>Walk and confirm/cancel by injected joypad events; see GamepadProbe.</summary>
@@ -1269,6 +1281,7 @@ public partial class Main : Node
                 || DoorProbe
                 || GamepadProbe
                 || OneScreenProbe
+                || GlyphShots
                 || EffectsProbe > 0
                 || EndureSeconds > 0
                 || TouchProbe
@@ -1386,6 +1399,9 @@ public partial class Main : Node
 
         /// <summary>--one-screen-probe: the one-screen drawer in the world; see OneScreenProbe.</summary>
         public bool OneScreenProbe { get; private set; }
+
+        /// <summary>--glyph-shots: photograph the button glyphs for Xbox, PlayStation and keyboard; see GlyphShots.</summary>
+        public bool GlyphShots { get; private set; }
 
         /// <summary>Folder the asset probe writes to; empty means no probe (see AssetProbe).</summary>
         public string AssetProbe { get; private set; } = "";
@@ -1636,6 +1652,9 @@ public partial class Main : Node
                         break;
                     case "--one-screen-probe":
                         o.OneScreenProbe = true;
+                        break;
+                    case "--glyph-shots":
+                        o.GlyphShots = true;
                         break;
                     case "--gamepad-clip":
                         // The probe paced for a screen recording: at the Britain bank, Y's rows held open.

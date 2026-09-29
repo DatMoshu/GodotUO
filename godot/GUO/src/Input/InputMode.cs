@@ -241,6 +241,31 @@ namespace GUO.Input
             return PadFamily.Generic;
         }
 
+        private const int StandInDevice = 99;
+
+        /// <summary>
+        /// For photos and probes: a pad of <paramref name="family"/> in use
+        /// without one plugged in, its buttons as printed, so its glyphs show
+        /// (--glyph-shots). From one pad family to another the mode is Gamepad
+        /// both times, so the change is announced anyway: the prompts redraw.
+        /// </summary>
+        internal static void StandIn(PadFamily family, string name)
+        {
+            PadDevice = StandInDevice;
+            PadName = name;
+            PadFamily = family;
+            Gamepad.GamepadInput.KnownLayout(StandInDevice, Gamepad.GamepadLayout.Labels);
+
+            if (Current == InputKind.Gamepad)
+            {
+                GD.Print($"[GUO] input mode: Gamepad (\"{PadName}\", {PadFamily})");
+                Changed?.Invoke(InputKind.Gamepad);
+                return;
+            }
+
+            Switch(InputKind.Gamepad);
+        }
+
         /// <summary>For probes: set the mode as if that input had just been used.</summary>
         public static void Switch(InputKind kind)
         {
