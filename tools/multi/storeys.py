@@ -96,8 +96,9 @@ def raise_building(bd: dict, cat: G.Catalogue, cells: dict) -> tuple[list[Compon
     base = bd.get("base_z", 0)
     step = bd.get("storey_height", 20)
     n = bd["storeys"]
-    if n < 2:
-        raise DescriptionError(f"{bd['name']}: storeys must be 2 or more (the ground storey is the map's)")
+    if n < 1:
+        raise DescriptionError(f"{bd['name']}: storeys must be 1 or more (the ground storey is the map's; "
+                               "1 only puts a flat roof on it)")
     # the roof: a whole storey up, or `roof_z` lower. The client stands on nothing above z 112 (its
     # pathfinder caps every cell at 128 and a walker needs 16), so a walkable deck is 112 at most
     roof_z = bd.get("roof_z", base + n * step)
@@ -250,15 +251,34 @@ def build(desc: dict, cat: G.Catalogue, data_dir: Path) -> dict:
         raise DescriptionError("format must be 1 and kind 'storeys'")
     cat.fresh()
     facet = desc.get("facet", 0)
-    boxes = ([bd["box"] for bd in desc["buildings"]] + [pv["box"] for pv in desc.get("paving", [])]
-             + [rs["box"] for rs in desc.get("resurface", [])])
+    # scenes: a new build from the scene generator (fort.py) put down whole at a site, in place
+    # of what stood in its clear boxes (a building rebuilt from nothing on its own plot)
+    import fort
+    placed, scene_problems = [], []
+    for ns in desc.get("scenes", []):
+        sc = fort.build_scene(ns["scene"], cat)
+        scene_problems += [f"{ns['scene']['name']}: {q}" for q in sc.get("problems", []) if "overlap" not in q]
+        ox, oy, oz = ns["at"][0], ns["at"][1], ns.get("z", 0)
+        hue = int(str(ns.get("hue", "0")), 16) if isinstance(ns.get("hue"), str) else ns.get("hue", 0)
+        pcs = [(c.item, c.x + p["centre"][0] + ox, c.y + p["centre"][1] + oy, c.z + oz, hue)
+               for p in sc["parts"] for c in p["comps"] if c.visible]
+        placed.append((ns, pcs))
+    boxes = ([bd["box"] for bd in desc.get("buildings", [])] + [pv["box"] for pv in desc.get("paving", [])]
+             + [rs["box"] for rs in desc.get("resurface", [])]
+             + [bx for ns, _ in placed for bx in ns.get("clear", [])]
+             + [[min(p[1] for p in pcs), min(p[2] for p in pcs), max(p[1] for p in pcs), max(p[2] for p in pcs)]
+                for _, pcs in placed if pcs])
     xs = [v for bx in boxes for v in (bx[0], bx[2])]
     ys = [v for bx in boxes for v in (bx[1], bx[3])]
     blocks, cells = read_area(data_dir, facet, min(xs) - 1, min(ys) - 1, max(xs) + 1, max(ys) + 1)
     added: list[tuple[int, int, int, int, int]] = []
     removed: set = set()
     records = []
-    for bd in desc["buildings"]:
+    for ns, pcs in placed:
+        for (x, y) in (c for bx in ns.get("clear", []) for c in G.cells_of(bx)):
+            removed |= {(x, y, z, sid) for sid, z, _ in cells.get((x, y), [])}
+        added += pcs
+    for bd in desc.get("buildings", []):
         comps, gone, rec = raise_building(bd, cat, cells)
         rec["name"] = bd["name"]
         records.append(rec)
@@ -316,7 +336,8 @@ def build(desc: dict, cat: G.Catalogue, data_dir: Path) -> dict:
         if not mine and len(statics) == len(blk.statics):
             continue
         out[(bx, by)] = {"land": blk, "statics": statics + mine}
-    return {"facet": facet, "blocks": out, "buildings": records, "added": added, "removed": sorted(removed)}
+    return {"facet": facet, "blocks": out, "buildings": records, "added": added, "removed": sorted(removed),
+            "problems": scene_problems}
 
 
 def write_project(built: dict, folder: Path, name: str, cfg) -> list[Path]:

@@ -302,10 +302,10 @@ def cmd_storeys(cfg, a) -> int:
         xs, ys = [p[0] for p in pts], [p[1] for p in pts]
         area, _ = storeys.read_area(cfg.client_data, built["facet"], min(xs) - 6, min(ys) - 6, max(xs) + 6, max(ys) + 6)
         ground = {(bx * 8 + i % 8, by * 8 + i // 8): blk.land_z[i] for (bx, by), blk in area.items() for i in range(64)}
-    problems = []
+    problems = list(built.get("problems", []))
     if tour:
         stops = [{"name": t["name"], "x": t["at"][0], "y": t["at"][1], "z": t["z"]} for t in tour]
-        problems = walkcheck.check_tour([{"centre": [0, 0], "comps": comps}], stops, cat.pieces, ground)
+        problems += walkcheck.check_tour([{"centre": [0, 0], "comps": comps}], stops, cat.pieces, ground)
     prev = project / "preview"
     prev.mkdir(exist_ok=True)
     render.render(comps, cfg.client_data, prev / "whole.png")

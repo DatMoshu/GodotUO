@@ -827,7 +827,7 @@ round it) goes. `buildings[]`:
 | `name` | The building's name in the record |
 | `box` `[x0, y0, x1, y1]` | Map cells that hold it: the footprint is its ground walls (wall, window or post pieces at `base_z`, give or take 2: on uneven land the map sets some a unit off) and what they enclose or a flat roof at their top covers, doorways closed |
 | `base_z`, `storey_height` | The ground storey's z (default 0) and z between storeys (default 20) |
-| `storeys` | How many storeys in all, the ground one included (2 or more) |
+| `storeys` | How many storeys in all, the ground one included (1 or more: 1 keeps the ground storey and replaces its pitched roof with a flat one, `roof` and `roof_z` as for any building) |
 | `wall`, `floor`, `stair_material` | Families for the storeys added: walls repeat the outline (a ground doorway in it becomes wall) and the ground partitions, with a window every `window_every` cells (default 3) of a straight run. `wall` `ground` repeats the ground storey's own piece in each wall cell (its windows too); other cells take the ground walls' commonest family |
 | `roof` | `{"floor", "parapet", "trim"}`: the flat roof's tiles, its 5-high parapet, and optional `trim`: heights of low-wall courses laid on the parapet in turn (e.g. `[2, 3]`), in the parapet's family; a corner the family has no piece of that height for takes its 2-high corner |
 | `stairs[]` | `{"storey", "at", "rise", "width"}`: a house stair (above) from that storey to the next; the ground storey's own pieces on its cells go |
@@ -845,6 +845,7 @@ Beside `buildings[]`, a description may carry:
 | `swaps[]` | `{"at": [x, y], "z", "item", "new"}`: that piece in place of the wall standing at the cell and z (an arch in a wall, the map's or one added). A cell with no wall there is refused unless `new` is true (a doorway the piece closes) |
 | `paving[]` | `{"box", "floor", "variants"}`: floor pieces of that family (up to `variants`, default 4) at the land's height on each flat cell of the box (all four corners level) that holds no statics |
 | `resurface[]` | `{"box", "from", "floor", "variants"}`: every map static in the box whose id is in `from` (hex strings) is replaced by a piece of the `floor` family at the same cell and z (a timber dock laid in stone). A box holding none of them is refused |
+| `scenes[]` | `{"scene", "at", "z", "clear", "hue"}`: a new building in place of an old one. `scene` is a scene description (as `scene-build` takes, its own `tour` ignored), stood with its grid origin at map `at` and raised by `z`; every map static in each `clear` box is removed first. The scene's pieces go into the statics, so its doors are not placed (the shard's own doors stay where they were: keep the ground floor's doorways on those cells). `buildings[]` may then be left out. The scene's problems, other than part overlaps, count as the project's |
 
 `tour[]` is as a scene's, in map coordinates. The project folder gets
 `project.json`, `blocks/`, `storeys.json` (per building its storey z levels,
