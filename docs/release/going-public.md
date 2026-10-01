@@ -54,7 +54,7 @@ repository public; that switch is only ever the owner's.
 
 ## Owner decisions before the switch
 
-- [ ] **A stable Android key (optional; until then the notes say "uninstall first").** The release job
+- [x] **A stable Android key** (secret set 2026-10-01; the v0.1.0 notes no longer say "uninstall first"). The release job
       uses the `ANDROID_DEBUG_KEYSTORE_B64` secret when it exists, so every APK shares one key and
       installs over the last. Make the key once, in PowerShell, in a folder outside the repo:
       ```
