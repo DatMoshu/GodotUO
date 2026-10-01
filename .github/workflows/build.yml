@@ -43,7 +43,7 @@ jobs:
     name: desktop C# (Windows)
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # The client compiles against upstream's cuoapi.dll (sources/ is
       # gitignored), so fetch ClassicUO at the reviewed pin, as ci.yml does.
       - name: Read upstream pin
@@ -86,7 +86,7 @@ jobs:
     name: android-arm64 publish (no device)
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # The client compiles against upstream's cuoapi.dll (sources/ is
       # gitignored), so fetch ClassicUO at the reviewed pin, as ci.yml does.
       - name: Read upstream pin
@@ -140,7 +140,7 @@ jobs:
     name: web export (local only, not built in CI)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Report where the web build comes from
         run: |
           echo "The web build is exported locally with tools/web (python tools/web/run.py export),"
