@@ -92,7 +92,7 @@ reloads? And the exported clients (desktop, and the Android and web builds on
 
 ### Constraints
 
-- GUO never writes to `UO_CLIENT_DATA` (CLAUDE.md rule 8; plan §2).
+- GUO never writes to `UO_CLIENT_DATA` (AGENTS.md rule 8; plan §2).
 - Pixel art is never filtered: every `TextureRect`, `ItemList` and later
   `SubViewport` the addon makes sets nearest sampling explicitly.
 - Hooks into ported code are `// PORT DEVIATION (GUO):` blocks and keep

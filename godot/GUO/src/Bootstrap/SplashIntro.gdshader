@@ -1,6 +1,6 @@
 // The boot splash's sigil (SplashIntro.cs): its fade, and one soft band of
 // light that crosses the gold. The sigil is a painted image, not pixel art,
-// so it is sampled smoothly, with mipmaps (CLAUDE.md rule 7 does not apply).
+// so it is sampled smoothly, with mipmaps (AGENTS.md rule 7 does not apply).
 shader_type canvas_item;
 
 uniform sampler2D sigil : filter_linear_mipmap, repeat_disable;

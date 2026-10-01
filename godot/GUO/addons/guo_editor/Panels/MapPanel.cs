@@ -132,7 +132,7 @@ public partial class MapPanel : AssetPanel
             StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
             SizeFlagsVertical = SizeFlags.ExpandFill,
             CustomMinimumSize = new Vector2(0, 200),
-            // Never filter pixel art (CLAUDE.md rule 7).
+            // Never filter pixel art (AGENTS.md rule 7).
             TextureFilter = TextureFilterEnum.Nearest,
             MouseFilter = MouseFilterEnum.Stop,
         };

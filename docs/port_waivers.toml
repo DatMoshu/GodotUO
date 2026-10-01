@@ -13,7 +13,7 @@
 #
 # Rules for adding one:
 #   * The decision must already exist somewhere durable -- an ADR, a PORT GAP
-#     comment in the code, or a rule in CLAUDE.md. Link it.
+#     comment in the code, or a rule in AGENTS.md. Link it.
 #   * `replaced_by` names what does the job now, or "deleted" when nothing
 #     does because nothing needs to.
 #   * A file that is merely hard, or merely not started, does not get one.

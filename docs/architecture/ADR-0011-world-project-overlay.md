@@ -42,7 +42,7 @@ Project owner (Moshu); GUO-Fable (plan author); GUOEditor session.
 
 ## Summary
 
-The editor never writes to the client install (CLAUDE.md rule 8). Map edits
+The editor never writes to the client install (AGENTS.md rule 8). Map edits
 are kept in a **world project**, a folder at `UO_WORLD_PROJECT`, as whole
 replaced 8x8 blocks, one JSON file per block. The project is laid over a
 loaded map by repointing those blocks' `IndexMap` entries at a scratch file

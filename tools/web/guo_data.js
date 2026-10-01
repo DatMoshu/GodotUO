@@ -1,6 +1,6 @@
 // GUO on the web: the client-data layer (ADR-0008, amendment 1).
 //
-// The UO install can never be part of the page (CLAUDE.md rule 8) and is too
+// The UO install can never be part of the page (AGENTS.md rule 8) and is too
 // big for the wasm heap, so it is mounted into Emscripten's filesystem at
 // /uo as lazy, read-only files: a file's size is known up front, and its
 // bytes are fetched on first read, in 1 MiB chunks, through a "byte source".

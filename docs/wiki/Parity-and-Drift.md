@@ -14,10 +14,10 @@ launchers\pipeline\03_port_audit.bat      REM writes docs\port_status.md
 `tools\port_audit` classifies every upstream file by how tightly it binds to
 FNA (`verbatim`, `shim`, `rewrite`) from its imports, and matches filenames
 in `godot\GUO\src`. It says which files exist. It does not say they work:
-**"Ported" is not "working"** (CLAUDE.md rule 6). CI fails if the committed
+**"Ported" is not "working"** (AGENTS.md rule 6). CI fails if the committed
 `docs\port_status.md` differs from a fresh run. Files that will never be
 ported are listed with their reason in `docs\port_waivers.toml`; a waiver
-needs an ADR, a `PORT GAP` comment or a CLAUDE.md rule behind it and does not
+needs an ADR, a `PORT GAP` comment or a AGENTS.md rule behind it and does not
 improve the number.
 
 ## The PORT DEVIATION rule

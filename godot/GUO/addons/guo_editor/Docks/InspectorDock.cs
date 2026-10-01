@@ -81,7 +81,7 @@ public partial class InspectorDock : EditorDock
         {
             StretchMode = TextureRect.StretchModeEnum.Keep,
             ExpandMode = TextureRect.ExpandModeEnum.KeepSize,
-            // Never filter pixel art (CLAUDE.md rule 7).
+            // Never filter pixel art (AGENTS.md rule 7).
             TextureFilter = TextureFilterEnum.Nearest,
         };
         centre.AddChild(_preview);

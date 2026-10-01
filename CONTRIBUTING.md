@@ -25,7 +25,7 @@ and file formats; architecture decisions live in [the ADR index](docs/architectu
 
 ## The rules a PR is checked against
 
-These come from `CLAUDE.md` and apply to every change.
+These come from `AGENTS.md` and apply to every change.
 
 1. **Never edit `sources/`.** It is the upstream reference, read only.
 2. **Port faithfully.** No reformatting, renaming, modernising or

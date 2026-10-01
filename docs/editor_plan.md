@@ -2,7 +2,7 @@
 
 **Audience:** the GUOEditor session (and whoever picks the work up after it).
 **Status:** proposed 2026-09-26; becomes binding through the ADRs listed in §7.
-**Read first:** `CLAUDE.md`, `docs/port_plan.md`, `docs/data_formats.md`,
+**Read first:** `AGENTS.md`, `docs/port_plan.md`, `docs/data_formats.md`,
 `docs/architecture/ADR-0001..0006`, `docs/uoww-reference.md`,
 `tools/guoasset/README.md`.
 
@@ -23,7 +23,7 @@ renderer, so what you see in the editor is what the client shows.
 
 ## 2. The one rule that shapes everything
 
-**GUO never writes to the client install** (`CLAUDE.md` rule 8,
+**GUO never writes to the client install** (`AGENTS.md` rule 8,
 `docs/uoww-reference.md`). An editor that edits maps looks like it violates
 this. It does not, if edits live in a **world project**: a folder of ours
 (`UO_WORLD_PROJECT`, default `build\world\default` in `config.bat`) holding an overlay over

@@ -52,7 +52,7 @@ All of them are built from the one committed master,
 `design\brand\guo-sigil.png`, by `python tools\brand\run.py`
 (`launchers\dev\brand_icons.bat`). Change the sigil, rerun the tool, commit
 what it wrote. The sigil is not pixel art, so the tool resamples it with
-Lanczos; CLAUDE.md rule 7 is about the game's art.
+Lanczos; AGENTS.md rule 7 is about the game's art.
 
 One thing an export cannot change: a run **through the engine binary**
 (`play.bat`, `screenshot.bat`, the editor) shows the engine's icon in the

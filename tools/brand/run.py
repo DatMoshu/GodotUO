@@ -38,7 +38,7 @@ light taskbar as well as a dark one. Only the adaptive foreground keeps the
 transparency: Android composes it over the background layer itself.
 
 This is the brand, not UO pixel art: Lanczos resampling throughout
-(CLAUDE.md rule 7 is about the game's art, and does not apply here).
+(AGENTS.md rule 7 is about the game's art, and does not apply here).
 """
 
 from __future__ import annotations

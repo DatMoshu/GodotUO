@@ -118,7 +118,7 @@ jobs:
         run: python -m compileall -q tools
 
       # Every ported file that differs from upstream (at the pin fetched
-      # above) must say why, with // PORT DEVIATION (GUO): (CLAUDE.md rule 2).
+      # above) must say why, with // PORT DEVIATION (GUO): (AGENTS.md rule 2).
       - name: Port drift is marked
         run: python tools/port_drift/run.py --strict
 

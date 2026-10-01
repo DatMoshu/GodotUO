@@ -49,7 +49,7 @@ session.
 ## Summary
 
 Phase 5 of docs/editor_plan.md: edited art, gumps and hues. The editor never
-writes the install (CLAUDE.md rule 8), so, as with map blocks (ADR-0011),
+writes the install (AGENTS.md rule 8), so, as with map blocks (ADR-0011),
 replacements live in the **world project**, under `assets/`:
 
 - **Land art, static art and gumps are PNG files**, stored already reduced to

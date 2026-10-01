@@ -168,3 +168,5 @@ tools/web/hello/export_presets.cfg
 
 # ServUO checkout and build (GPL-3.0, never vendored): tools/servuo
 tools/servuo/src/
+# Codex's view of the skills: a local link to .claude/skills (tools/agent_skills).
+.agents/

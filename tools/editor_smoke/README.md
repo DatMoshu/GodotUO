@@ -91,7 +91,7 @@ launchers\dev\editor_smoke.bat [same flags]
 | `editor.log` | the editor's stdout/stderr |
 
 These are renders of client art: they stay under `build\` and are never
-committed (CLAUDE.md rule 8).
+committed (AGENTS.md rule 8).
 
 ## Headless vs windowed
 

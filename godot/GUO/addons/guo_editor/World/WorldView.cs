@@ -224,7 +224,7 @@ public partial class WorldView : VBoxContainer
             SizeFlagsVertical = SizeFlags.ExpandFill,
             SizeFlagsHorizontal = SizeFlags.ExpandFill,
             FocusMode = FocusModeEnum.All,
-            // Pixel art is never filtered (CLAUDE.md rule 7).
+            // Pixel art is never filtered (AGENTS.md rule 7).
             TextureFilter = TextureFilterEnum.Nearest,
         };
         _container.GuiInput += OnInput;

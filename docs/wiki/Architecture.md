@@ -69,7 +69,7 @@ emitting a new field.
 
 ## The rules the ADRs sit under
 
-From CLAUDE.md, in force for every change:
+From AGENTS.md, in force for every change:
 
 1. Never edit `sources\`.
 2. Port faithfully; mark unavoidable changes `PORT DEVIATION (GUO)`.

@@ -32,7 +32,7 @@ resource; an exported build never shows it. See [Windows Build](Windows-Build.md
 UO's art is hand-placed pixels at one client pixel per screen pixel, and any
 bilinear sampling smears it. `default_texture_filter=0` in `project.godot`
 is deliberate, and every new viewport or material must keep nearest-neighbour
-sampling (CLAUDE.md rule 7). The exceptions are things that are not UO art:
+sampling (AGENTS.md rule 7). The exceptions are things that are not UO art:
 the brand sigil (Lanczos) and a player's own background picture or video
 (`Linear`).
 
@@ -84,6 +84,8 @@ plugin host is a Windows-only build item.
 
 **Where are the agents and skills?**
 `.claude\` holds the studio agents (from Claude Code Game Studios, MIT) and
-the port-specific ones listed in `CLAUDE.md`. They follow the same rules a
+the port-specific ones listed in `AGENTS.md`. Claude Code, Codex, GitHub
+Copilot and Cursor all read the same instructions and skills (Codex needs
+`launchers\dev\agent_skills.bat` once). They follow the same rules a
 person does; nothing they run is undisclosed, and `SECURITY.md` counts a
 hook that sends data anywhere as in scope.

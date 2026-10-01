@@ -8,4 +8,4 @@ and the Android launcher set -- by `python tools\brand\run.py`
 commit what it wrote.
 
 It is not UO art and it is not pixel art: the tool resamples it with
-Lanczos, and rule 7 in CLAUDE.md (never filter pixel art) does not apply.
+Lanczos, and rule 7 in AGENTS.md (never filter pixel art) does not apply.

@@ -97,7 +97,7 @@ public abstract partial class GridPanel : AssetPanel
             SameColumnWidth = icons,
             FixedIconSize = icons ? new Vector2I(IconSize, IconSize) : Vector2I.Zero,
             FixedColumnWidth = icons ? IconSize + 20 : 0,
-            // Pixel art is never filtered (CLAUDE.md rule 7); icons are scaled.
+            // Pixel art is never filtered (AGENTS.md rule 7); icons are scaled.
             TextureFilter = TextureFilterEnum.Nearest,
             CustomMinimumSize = new Vector2(0, 240),
         };
