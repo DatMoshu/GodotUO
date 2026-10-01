@@ -117,7 +117,9 @@ def ensure_certificates(folder: Path, address: str) -> tuple[Path, Path, Path]:
         san = cert.extensions.get_extension_for_class(x509.SubjectAlternativeName).value
         have = {str(v) for v in san.get_values_for_type(x509.IPAddress)} | \
                {v.lower() for v in san.get_values_for_type(x509.DNSName)}
-        fresh = cert.not_valid_after_utc - now > datetime.timedelta(days=30)
+        # not_valid_after_utc needs cryptography 42+; older ones (CI's system Python) have the naive UTC one.
+        expires = getattr(cert, "not_valid_after_utc", None) or cert.not_valid_after.replace(tzinfo=datetime.timezone.utc)
+        fresh = expires - now > datetime.timedelta(days=30)
         if have >= wanted and fresh and cert.issuer == ca.subject:
             return ca_file, cert_file, key_file
 

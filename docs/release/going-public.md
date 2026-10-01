@@ -54,13 +54,18 @@ repository public; that switch is only ever the owner's.
 
 ## Owner decisions before the switch
 
-- [ ] **The CI Android APK is debug-signed with a keystore made fresh on each run,** so a newer download
-      can't install over an older one (uninstall first). Say so in the release notes, or add a stable
-      signing key as a GitHub secret before the first public release.
-- [ ] **The Android download's shard address** (`127.0.0.1`): ship as is with a note, or add an in-app
-      shard address before release.
-- [ ] **Five open Dependabot PRs** (#6–#10, GitHub Actions bumps): merge them after CI passes, or close
-      them.
+- [ ] **A stable Android key (optional; until then the notes say "uninstall first").** The release job
+      uses the `ANDROID_DEBUG_KEYSTORE_B64` secret when it exists, so every APK shares one key and
+      installs over the last. Make the key once, in PowerShell, in a folder outside the repo:
+      ```
+      & "$env:JAVA_HOME\bin\keytool.exe" -genkeypair -keystore guo-debug.keystore -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -storepass android -keypass android -dname "CN=Android Debug,O=Android,C=US"
+      [Convert]::ToBase64String([IO.File]::ReadAllBytes("guo-debug.keystore")) | gh secret set ANDROID_DEBUG_KEYSTORE_B64 -R DatMoshu/GodotUO
+      ```
+      Keep the `.keystore` file backed up: a lost key means one more "uninstall first" release. Once
+      the secret is set, drop the "uninstall the previous one" sentence from `docs/release/v0.1.0.md`.
+- [x] **The Android download's shard address** ships fixed at `127.0.0.1:2593` (owner, 2026-10-01).
+      The release notes say so, with `adb reverse` or an own-address export as the ways to reach a shard.
+- [x] **Dependabot PRs #6–#10** (GitHub Actions bumps): merge (owner, 2026-10-01).
 
 ## The switch and after (commands ready)
 

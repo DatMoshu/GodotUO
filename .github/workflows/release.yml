@@ -8,8 +8,9 @@
 #
 # No UO client data is involved: an export packs the project, never the
 # install, and every player brings their own (UO_CLIENT_DATA). The APK is a
-# DEBUG build, signed with the standard Android debug key that the job makes
-# with keytool on the runner and throws away; no keystore is ever committed
+# DEBUG build, signed with the standard Android debug key: the stable one in
+# the ANDROID_DEBUG_KEYSTORE_B64 secret, else a fresh one made on the runner
+# and thrown away. No keystore is ever committed
 # and no release key exists here. A release-signed APK stays on the owner's
 # machine.
 
@@ -225,14 +226,24 @@ jobs:
         with:
           python-version: '3.12'
 
-      # A fresh standard debug key (androiddebugkey/android) made on the
-      # runner, outside the checkout; it lives and dies with this job.
+      # The debug key (androiddebugkey/android), written to the runner outside
+      # the checkout. With the ANDROID_DEBUG_KEYSTORE_B64 secret set, every
+      # build uses that one stable key, so a new APK installs over the old
+      # one; without it the job makes a fresh key that dies with the job.
       - name: Debug keystore
         env:
           UO_ANDROID_SDK: ${{ env.ANDROID_HOME }}
           UO_ANDROID_JDK: ${{ env.JAVA_HOME }}
           UO_ANDROID_KEYSTORE: ${{ runner.temp }}\debug.keystore
-        run: python tools/android/run.py keystore
+          STABLE_KEYSTORE: ${{ secrets.ANDROID_DEBUG_KEYSTORE_B64 }}
+        shell: pwsh
+        run: |
+          if ($env:STABLE_KEYSTORE) {
+            [IO.File]::WriteAllBytes($env:UO_ANDROID_KEYSTORE, [Convert]::FromBase64String($env:STABLE_KEYSTORE))
+            Write-Host "Debug keystore: the stable key from the ANDROID_DEBUG_KEYSTORE_B64 secret"
+          } else {
+            python tools/android/run.py keystore
+          }
       - name: Export Android (arm64, debug)
         env:
           UO_ANDROID_SDK: ${{ env.ANDROID_HOME }}
