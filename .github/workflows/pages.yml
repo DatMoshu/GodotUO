@@ -44,7 +44,7 @@ jobs:
           relative_links:
             enabled: true
           EOF
-      - uses: actions/configure-pages@v5
+      - uses: actions/configure-pages@v6
       - uses: actions/jekyll-build-pages@v1
         with:
           source: ./_src
