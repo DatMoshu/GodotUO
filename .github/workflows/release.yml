@@ -128,12 +128,12 @@ jobs:
       - name: Export Steam Deck (Linux x86_64)
         run: python tools/steamdeck/run.py export
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: GUO-windows-x86_64
           path: build/windows/
           if-no-files-found: error
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: GUO-steamdeck-linux-x86_64
           path: build/steamdeck/
@@ -251,7 +251,7 @@ jobs:
           UO_ANDROID_KEYSTORE: ${{ runner.temp }}\debug.keystore
         run: python tools/android/run.py export
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: GUO-android-arm64-debug
           path: build/android/GUO-debug.apk
