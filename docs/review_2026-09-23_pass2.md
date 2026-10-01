@@ -1,6 +1,6 @@
 # Review 2026-09-23, second pass
 
-Sprint S5 in `docs/sprints_overnight.md`. This pass reads what the first pass
+The second review pass of 2026-09-23. This pass reads what the first pass
 did not: the code named below, the Python tools and every launcher. It fixes
 nothing. Findings are ranked most severe first.
 

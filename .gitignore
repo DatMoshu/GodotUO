@@ -81,8 +81,15 @@ CLAUDE.local.md
 
 # === Your machine =========================================================
 # Your own paths: copy launchers/_shared/config.local.bat.example.
-launchers/_shared/config.local.bat
-production/session-logs/
+launchers/_shared/config.local.bat*
+!launchers/_shared/config.local.bat.example
+# Agent working files (sprints, session state, logs) stay local, as in CCGS upstream.
+production/*
+!production/session-state/
+production/session-state/*
+!production/session-state/.gitkeep
+# Browser-automation snapshots.
+.playwright-mcp/
 
 # === Temporary and cache ==================================================
 *.tmp

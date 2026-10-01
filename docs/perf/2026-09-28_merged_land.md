@@ -5,7 +5,7 @@ the frame cap and upstream's draw pacing lifted, 360 frames per scene.
 Order: plain, `--merged-land`, `--merged-land=ordered`, plain again. The
 second plain run is slower because free memory fell from 18 to 13.6 GB when
 another job started, so the first plain run is the reference. Idle during
-all runs: another session's touch-probe client (about 2% CPU), an MGS5 lab
+all runs: another session's touch-probe client (about 2% CPU), another project's tool
 (1.4%) and the shared shard (0%).
 
 | Scene | plain mean ms | by texture mean ms | ordered mean ms | plain draw calls | by texture | ordered | parity by texture (px) | parity ordered (px) |

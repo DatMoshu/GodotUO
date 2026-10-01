@@ -5,65 +5,76 @@ repository public; that switch is only ever the owner's.
 
 ## Already done
 
-- [x] Full-history scan of `main` (2026-09-27): no tokens, keys, private addresses, device serials or
-      personal emails. The only emails are GitHub noreply, Anthropic's co-author noreply, ModernUO's
-      contact in its file headers, and example domains. (The Thor's SurfaceFlinger display id remains in
-      two historical diffs; it identifies a device model and port, not a person.)
-- [x] CI guards on every push: no client data, no machine paths, `tools/privacy_scan`, docs links.
-- [x] Licences: ClassicUO BSD 2-Clause headers kept; provenance in `docs/upstream/`; CC0 for the
-      built-in backgrounds and the store's sample packs.
-- [x] README, CHANGELOG, CONTRIBUTING, SECURITY, issue and PR templates, the wiki, Known Issues.
-- [x] Downloadable builds from the `release` workflow; a `v*` tag makes one draft release with all three
-      platforms and uses `docs/release/<tag>.md` as its notes.
+- [x] **Full-history scan, refreshed 2026-10-01:** every commit on `main` (888) and every pull-request ref
+      GitHub keeps (`refs/pull/*`). Results:
+  - no tokens, keys, LAN addresses, device serials or personal emails;
+  - no material from other projects;
+  - every identity is a GitHub noreply address.
 
-## Readiness review, 2026-09-27 midday
+  The pre-scrub commits are not on GitHub (checked by SHA). Two harmless remnants stay in old diffs:
+  - an old checkout folder name, without a user name;
+  - the Thor's SurfaceFlinger display id, which identifies a device model and port, not a person.
+- [x] **Agent working files out of the tree (2026-10-01):**
+  - `production/` keeps only `session-state/.gitkeep`, as in Claude Code Game Studios upstream. Sprint
+    plans, session state and logs are gitignored.
+  - The overnight sprint plan and the Discord post tool for Codex's dungeons are removed.
+- [x] **`.gitignore` covers** every `config.local.bat*` (backups too), `.playwright-mcp/`, `.claude/worktrees/`,
+      `.claude/settings.local.json` and `tools/privacy_scan/deny.local.txt`.
+- [x] **CI guards on every push:** no client data, no machine paths, `tools/privacy_scan`, docs links.
+      The private deny list exists only on the director's machine, so the full privacy grep is a local
+      gate before every push to `main`.
+- [x] **Licences:**
+  - ClassicUO's BSD 2-Clause headers are kept, with provenance in `docs/upstream/`.
+  - CCGS (MIT) and Kenney's input prompts (CC0) are recorded there too.
+  - The built-in backgrounds and the store's sample packs are CC0.
+  - The old press kit's Godot-logo derivative is credited in `docs/upstream/BRAND.md`.
+- [x] **Project files:** README, CHANGELOG, CONTRIBUTING, SECURITY, CODE_OF_CONDUCT, the issue and PR
+      templates, the wiki and Known Issues.
+- [x] **Downloadable builds** come from the `release` workflow: a `v*` tag makes one draft release with all
+      three platforms.
+- [x] **The pack is about 200 MB.** The largest blobs are the built-in background videos (2–5 MB each),
+      the README image and the brand sigil.
 
-- [x] LICENSE: BSD 2-Clause, crediting ClassicUO (andreakarasho) and the GUO contributors.
-- [x] CONTRIBUTING, SECURITY, CODE_OF_CONDUCT (added), issue and PR templates.
-- [x] README status section brought up to date (Android on two devices, Steam Deck, touch features,
-      the Store and editor, the web build in progress).
-- [x] Repository size: the pack is 54 MB. The largest blobs are the built-in background videos (2–5 MB
-      each), the README image, and the brand sigil.
-- [x] `.claude/` (agents, skills, rules, hooks) is public by design, with MIT provenance in
-      `docs/upstream/`. The privacy scan covers it.
-- [x] The web engine fork and its private .NET SDK stay out of git (`tools/godot_web/` holds only a README).
-- [x] **The press kit in history:** `design/press-kit/` (commit 9d3ebf4, removed in adf622b) remains in
-      history. Its `guo-godot-mark-*` is described in its own README as a "custom Godot face", a
-      derivative of the Godot logo (CC BY 4.0, Andrea Calabró). Credited in `docs/upstream/BRAND.md`,
-      which is what the licence asks for, so no history rewrite is needed. The current builds use the
-      GUO sigil only.
-- [ ] **The stale remote branch** `codex/guo-brand-icons` on GitHub has 2 commits not on main
-      ("Use custom GUO icon and add full emblem to README", "Remove black background from README
-      emblem"). Both are superseded by the sigil work already on main. Delete with
-      `git push origin --delete codex/guo-brand-icons` (owner's go).
+## Owner, on the machine
+
+- [ ] **Run `build/cleanup_2026-09-28/cleanup.bat` in the main checkout.** It backs up the stale edits,
+      resets to `origin/main`, deletes the stray files and removes the idle worktrees.
+- [ ] **Then run `build/cleanup_2026-09-28/prune_branches.bat`.** It deletes:
+  - the 110 merged local branches;
+  - the pre-scrub branches (`backup/*`, `work/director-ci`, `work/background`, `work/editor`, `work/ui`);
+  - the stale `uoport/*` refs.
+
+  It first checks a backup bundle kept outside the repo (the script names it), which holds every
+  branch it deletes.
+
+  Six pre-scrub branches are still checked out in worktrees, so the script can't delete them:
+  `work/docs`, `work/dual-launch`, `work/icon`, `work/steamdeck`, `work/trial-render` and
+  `work/video-content`. Never push them. Remove those worktrees when their agents are done.
+- [ ] **Never `git push --all`.** Push only `main` and named work branches.
+
+## Owner decisions before the switch
+
 - [ ] **The CI Android APK is debug-signed with a keystore made fresh on each run,** so a newer download
-      can't install over an older one (uninstall first). Say so in the release notes, or add a stable signing
-      key as a GitHub secret before the first public release.
+      can't install over an older one (uninstall first). Say so in the release notes, or add a stable
+      signing key as a GitHub secret before the first public release.
+- [ ] **The Android download's shard address** (`127.0.0.1`): ship as is with a note, or add an in-app
+      shard address before release.
+- [ ] **Five open Dependabot PRs** (#6–#10, GitHub Actions bumps): merge them after CI passes, or close
+      them.
 
-## Prepared, ready to run on the owner's go
+## The switch and after (commands ready)
 
-- **Branch protection** (after going public), one command:
-  `gh api -X PUT repos/DatMoshu/GodotUO/branches/main/protection --input docs/release/branch-protection.json`
-  (requires `CI / guard` and `CI / build`; admins may still push, so the director workflow keeps working).
-- **Security settings**:
+- [ ] **Repository visibility:** Settings → General → Change visibility → Public.
+- [ ] **Security settings:**
   - `gh api -X PUT repos/DatMoshu/GodotUO/private-vulnerability-reporting`
   - `gh api -X PUT repos/DatMoshu/GodotUO/vulnerability-alerts`
-  - secret scanning and push protection: Settings, then Code security.
-- **Pages**: Settings, then Pages, then Source: GitHub Actions, then `gh workflow run pages`.
-
-## The owner decides
-
-- [ ] **Local backup branches** with the pre-scrub history (`backup/main-unscrubbed`,
-      `backup/director-ci-old`, `backup/main-pre-night`): delete them, or keep them and never push them.
-- [ ] **The Android download's shard address** (`127.0.0.1`): ship as is with the note in the release
-      notes, or add an in-app shard address before release.
-- [ ] **Repository visibility**: Settings → General → Change visibility → Public.
-- [ ] **Pages**: Settings → Pages → Source: GitHub Actions, then run the `pages` workflow (it's manual
-      now). Add a push trigger in `.github/workflows/pages.yml` if you want it to follow main.
-- [ ] **Security settings** once public: enable private vulnerability reporting (SECURITY.md points to
-      it), Dependabot alerts, and secret scanning with push protection.
-- [ ] **Branch protection on main**: require the `CI` and `build` checks; decide whether the director
-      keeps direct push or moves to PRs.
-- [ ] **First release**: tag `v0.1.0` on a green main, check the draft release's three downloads and
+  - secret scanning and push protection: Settings → Code security.
+- [ ] **Branch protection:**
+      `gh api -X PUT repos/DatMoshu/GodotUO/branches/main/protection --input docs/release/branch-protection.json`
+      (requires `CI / guard` and `CI / build`; admins may still push, so the director workflow keeps
+      working).
+- [ ] **Pages:** Settings → Pages → Source: GitHub Actions, then `gh workflow run pages`. Add a push
+      trigger in `.github/workflows/pages.yml` if Pages should follow `main`.
+- [ ] **First release:** tag `v0.1.0` on a green `main`, check the draft release's three downloads and
       notes, then publish it.
-- [ ] **Announce**: the #godot-uo-client showcase posts are ready to adapt.
+- [ ] **Announce:** the showcase post drafts are ready to adapt.
