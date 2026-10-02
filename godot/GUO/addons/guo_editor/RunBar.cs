@@ -5,216 +5,159 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Net.Sockets;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Godot;
 
-/// <summary>
-/// The editor toolbar's run bar: start a shard and start one to four clients, the same
-/// launchers a person runs (launchers\shard\run.bat, tools\editor_shard, launchers\game\play.bat).
-/// Everything it starts runs detached in its own window and outlives the editor. The dot says
-/// whether the chosen shard answers; Start server is off while it does.
-/// </summary>
 [Tool]
 public partial class RunBar : HBoxContainer
 {
-    private const int DevShard = 0, PrivateShard = 1;
-
+    private ServerProfiles _profiles;
     private OptionButton _server, _count;
-    private Button _startServer, _startClients;
-    private Label _dot;
-    private Timer _poll;
-    private bool _checking, _up;
+    private Button _start, _stop;
+    private Label _status;
+    private Godot.Timer _poll;
+    private bool _busy;
+    private TcpClient _connection;
+    private Task _connect;
+    private string _connectingId;
+    private DateTime _deadline;
+    private long _generation;
+    private string Root => Path.Combine(EditorData.RepoRoot, "build", "editor_servers");
+    private string ListPath => Path.Combine(Root, "profiles.json");
+    private ServerProfile Selected => _profiles?.Servers.FirstOrDefault(s => s.Id == _profiles.Selected);
+    private string State(ServerProfile s) => Path.Combine(Root, s.Id, "process.json");
 
     public override void _Ready()
     {
-        _server = new OptionButton { TooltipText = "The dev shard (launchers\\shard\\run.bat, shared with other agents and devices),\nor this checkout's private ModernUO (tools\\editor_shard)." };
-        _server.AddItem("Dev shard", DevShard);
-        _server.AddItem("Private shard", PrivateShard);
-        _server.ItemSelected += _ => { _up = false; Refresh(); Poll(); };
-        AddChild(_server);
-
-        _dot = new Label { Text = "●", TooltipText = "Whether the shard answers" };
-        AddChild(_dot);
-
-        _startServer = new Button { Text = "Start server" };
-        _startServer.Pressed += StartServer;
-        AddChild(_startServer);
-
-        AddChild(new VSeparator());
-
-        _startClients = new Button { Text = "Start client", TooltipText = "launchers\\game\\play.bat, logged out at the login screen.\nTwo or more are tiled across the screen. One account per client: a second login kicks the first." };
-        _startClients.Pressed += StartClients;
-        AddChild(_startClients);
-
-        _count = new OptionButton { TooltipText = "How many clients" };
-        for (int i = 1; i <= 4; i++)
-        {
-            _count.AddItem($"× {i}", i);
-        }
-        _count.ItemSelected += i => _startClients.Text = i == 0 ? "Start client" : $"Start {i + 1} clients";
-        AddChild(_count);
-
-        _poll = new Timer { WaitTime = 2.0, Autostart = true };
-        _poll.Timeout += Poll;
-        AddChild(_poll);
-        Refresh();
-        Poll();
-    }
-
-    private (string Host, int Port) Target()
-    {
-        if (_server.Selected == PrivateShard)
-        {
-            string state = Path.Combine(EditorData.Setting("UO_BUILD", Path.Combine(EditorData.RepoRoot, "build")), "shard_private", "state.json");
-            try
-            {
-                using var doc = JsonDocument.Parse(File.ReadAllText(state));
-                return ("127.0.0.1", doc.RootElement.GetProperty("port").GetInt32());
-            }
-            catch (Exception)
-            {
-                return ("127.0.0.1", 0);   // not set up yet
-            }
-        }
-
-        return (EditorData.Setting("UO_SHARD_HOST", "127.0.0.1"),
-            int.TryParse(EditorData.Setting("UO_SHARD_PORT", "2593"), out int p) ? p : 2593);
-    }
-
-    private void Poll()
-    {
-        if (_checking)
-        {
-            return;
-        }
-
-        _checking = true;
-        var (host, port) = Target();
-        Task.Run(async () =>
-        {
-            bool up = false;
-            if (port > 0)
-            {
-                try
-                {
-                    using var tcp = new TcpClient();
-                    up = await tcp.ConnectAsync(host, port).WaitAsync(TimeSpan.FromMilliseconds(400)).ContinueWith(t => t.IsCompletedSuccessfully);
-                }
-                catch (Exception)
-                {
-                    up = false;
-                }
-            }
-
-            Callable.From(() => { _checking = false; _up = up; Refresh(); }).CallDeferred();
-        });
-    }
-
-    private void Refresh()
-    {
-        if (!IsInstanceValid(_dot))
-        {
-            return;
-        }
-
-        var (host, port) = Target();
-        _dot.Modulate = _up ? new Color(0.35f, 0.85f, 0.4f) : new Color(0.55f, 0.55f, 0.55f);
-        _dot.TooltipText = port == 0 ? "The private shard is not set up: python tools\\editor_shard\\run.py setup --port N"
-            : _up ? $"Answering on {host}:{port}" : $"Nothing on {host}:{port}";
-        _startServer.Disabled = _up || port == 0;
-        _startServer.Text = _up ? "Server running" : "Start server";
-    }
-
-    private void StartServer()
-    {
-        if (_server.Selected == PrivateShard)
-        {
-            Launch(EditorData.Setting("UO_PYTHON", "python"), new[] { Path.Combine(EditorData.RepoRoot, "tools", "editor_shard", "run.py"), "start" }, "GUO private shard", null);
-        }
-        else
-        {
-            Launch(Script("shard", "run"), Array.Empty<string>(), "GUO dev shard", null);
-        }
-
-        _startServer.Disabled = true;
-        _startServer.Text = "Starting…";
-    }
-
-    private void StartClients()
-    {
-        int n = _count.GetSelectedId();
-        var (host, port) = Target();
-        var env = new Dictionary<string, string>();
-
-        // The private shard is not in config.bat: these reach play.bat for this start only.
-        if (_server.Selected == PrivateShard && port > 0)
-        {
-            env["UO_SHARD_HOST"] = host;
-            env["UO_SHARD_PORT"] = port.ToString();
-        }
-
-        Rect2I screen = DisplayServer.ScreenGetUsableRect(DisplayServer.WindowGetCurrentScreen());
-        int cols = n == 1 ? 1 : 2, rows = (n + 1) / 2;
-        int w = screen.Size.X / cols, h = screen.Size.Y / rows;
-
-        for (int i = 0; i < n; i++)
-        {
-            var args = new List<string>();
-            if (n > 1)
-            {
-                // Title bars take some room: a little under the cell, so neighbours don't overlap.
-                args.AddRange(new[] { "--window-size", $"{w - 16},{h - 48}", "--window-position", $"{screen.Position.X + i % cols * w},{screen.Position.Y + i / cols * h + 32}" });
-            }
-
-            Launch(Script("game", "play"), args, $"GUO client {i + 1}", env);
-        }
-    }
-
-    private static string Script(string folder, string name) =>
-        Path.Combine(EditorData.RepoRoot, "launchers", folder, name + (OperatingSystem.IsWindows() ? ".bat" : ".sh"));
-
-    /// <summary>Starts a program in a window of its own and lets it go: nothing here waits on it or stops it.</summary>
-    private static void Launch(string program, IEnumerable<string> args, string title, Dictionary<string, string> env)
-    {
-        var psi = new ProcessStartInfo { UseShellExecute = false, WorkingDirectory = EditorData.RepoRoot };
-        if (OperatingSystem.IsWindows())
-        {
-            psi.FileName = "cmd.exe";
-            psi.ArgumentList.Add("/c");
-            psi.ArgumentList.Add("start");
-            psi.ArgumentList.Add(title);
-            psi.ArgumentList.Add(program);
-        }
-        else
-        {
-            psi.FileName = program.EndsWith(".sh", StringComparison.Ordinal) ? "bash" : program;
-            if (psi.FileName == "bash")
-            {
-                psi.ArgumentList.Add(program);
-            }
-        }
-
-        foreach (string a in args)
-        {
-            psi.ArgumentList.Add(a);
-        }
-
-        foreach (var (k, v) in env ?? new Dictionary<string, string>())
-        {
-            psi.Environment[k] = v;
-        }
-
         try
         {
-            Process.Start(psi)?.Dispose();
-            GD.Print($"[GUO editor] started {title}");
+            _profiles = ServerProfiles.Load(ListPath);
+            if (!File.Exists(ListPath))
+            {
+                _profiles.Servers.Add(new ServerProfile { Name = "Configured shard", Host = EditorData.Setting("UO_SHARD_HOST", "127.0.0.1"),
+                    Port = int.TryParse(EditorData.Setting("UO_SHARD_PORT", "2593"), out int port) ? port : 2593,
+                    ClientProject = ProjectSettings.GlobalizePath("res://"), ClientData = EditorData.Setting("UO_CLIENT_DATA", "") });
+                string home = Path.Combine(EditorData.RepoRoot, "build", "shard_private");
+                if (File.Exists(Path.Combine(home, "state.json")))
+                {
+                    using var state = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(home, "state.json")));
+                    _profiles.Servers.Add(new ServerProfile { Name = "Private shard", Host = "127.0.0.1", Port = state.RootElement.GetProperty("port").GetInt32(),
+                        ServerDirectory = home, Executable = Path.Combine(home, "ModernUO.exe"), ClientProject = ProjectSettings.GlobalizePath("res://"),
+                        ClientData = EditorData.Setting("UO_CLIENT_DATA", "") });
+                }
+                _profiles.Selected = _profiles.Servers[0].Id; _profiles.Save(ListPath);
+            }
         }
-        catch (Exception ex)
+        catch (Exception e) { GD.PushError("Server profiles: " + e.Message); _profiles = new(); _loadFailed = true; }
+        _server = new OptionButton { TooltipText = "Saved server profiles. Each keeps its own server paths and client files." };
+        _server.ItemSelected += i => { _profiles.Selected = _profiles.Servers[(int)i].Id; Save(); _generation++; Poll(); };
+        AddChild(_server);
+        var manage = new Button { Text = "Manage servers" }; manage.Pressed += Manage; AddChild(manage);
+        _status = new Label { Text = "Checking…" }; AddChild(_status);
+        _start = new Button { Text = "Start server" }; _start.Pressed += () => Run(Start); AddChild(_start);
+        _stop = new Button { Text = "Stop server", TooltipText = "Ends only the server process this manager started. Save the world in the server first; unsaved changes are lost." };
+        _stop.Pressed += ConfirmStop; AddChild(_stop);
+        AddChild(new VSeparator());
+        var clients = new Button { Text = "Start clients" }; clients.Pressed += () => Run(StartClients); AddChild(clients);
+        _count = new OptionButton(); for (int n = 1; n <= 4; n++) _count.AddItem($"× {n}", n); AddChild(_count);
+        Rebuild();
+        _poll = new Godot.Timer { WaitTime = 2, Autostart = true }; _poll.Timeout += Poll; AddChild(_poll); Poll();
+    }
+    public override void _ExitTree() { _generation++; _poll?.Stop(); _connection?.Dispose(); _connection = null; _connect = null; }
+    private bool _loadFailed;
+    private void Save() { if (_loadFailed) throw new InvalidDataException("Repair the existing profiles.json before saving; it was not overwritten."); _profiles.Save(ListPath); }
+    private void Rebuild()
+    {
+        _server.Clear(); foreach (var s in _profiles.Servers) _server.AddItem(s.Name);
+        int selected = _profiles.Servers.FindIndex(s => s.Id == _profiles.Selected);
+        if (selected < 0 && _profiles.Servers.Count > 0) { selected = 0; _profiles.Selected = _profiles.Servers[0].Id; }
+        if (selected >= 0) _server.Selected = selected;
+        _generation++;
+    }
+    private void Run(Action action) { try { action(); } catch (Exception e) { _status.Text = e.Message; GD.PushError(e.Message); } }
+    private void Poll()
+    {
+        var s = Selected;
+        if (_busy || s == null || !IsInsideTree()) return;
+        try
         {
-            GD.PushError($"[GUO editor] couldn't start {title}: {ex.Message}");
+            if (_connect != null && (_connectingId != s.Id || _connect.IsCompleted || DateTime.UtcNow >= _deadline))
+            {
+                bool online = _connectingId == s.Id && _connect.IsCompletedSuccessfully;
+                _ = _connect.Exception; // Observe failures; no addon continuation survives assembly reload.
+                _connection.Dispose(); _connection = null; _connect = null;
+                bool managed = ManagedServerProcess.Running(State(s));
+                _status.Text = managed ? "Managed - running" : online ? "Online - external" : "Offline";
+                _status.TooltipText = $"{s.Host}:{s.Port}";
+                _start.Disabled = online || managed || string.IsNullOrEmpty(s.Executable);
+                _stop.Disabled = !managed;
+            }
+            if (_connect == null)
+            {
+                _connection = new TcpClient(); _connectingId = s.Id;
+                _deadline = DateTime.UtcNow.AddSeconds(1);
+                _connect = _connection.ConnectAsync(s.Host, s.Port);
+            }
         }
+        catch (Exception e) { _connection?.Dispose(); _connection = null; _connect = null; _status.Text = e.Message; }
+    }
+    private void Start()
+    {
+        var s = Selected; if (s == null || _busy) return;
+        ManagedServerProcess.Start(s, State(s));
+        _start.Disabled = true; _status.Text = "Started " + s.Name; Poll();
+    }
+    private void ConfirmStop()
+    {
+        var s = Selected; if (s == null || _busy) return;
+        var dialog = new ConfirmationDialog { Title = "Stop " + s.Name, DialogText = "Save the world in the server first. Stopping ends this managed process and loses unsaved changes.", OkButtonText = "Stop server" };
+        AddChild(dialog); dialog.Canceled += dialog.QueueFree;
+        dialog.Confirmed += () =>
+        {
+            dialog.QueueFree(); _busy = true;
+            try { ManagedServerProcess.Stop(State(s)); }
+            catch (Exception e) { if (IsInsideTree()) _status.Text = e.Message; }
+            finally { _busy = false; Poll(); }
+        };
+        dialog.PopupCentered();
+    }
+    private string Engine()
+    {
+        string path = OS.GetExecutablePath();
+        if (OperatingSystem.IsWindows() && !path.EndsWith("_console.exe", StringComparison.OrdinalIgnoreCase))
+            path = Path.Combine(Path.GetDirectoryName(path), Path.GetFileNameWithoutExtension(path) + "_console.exe");
+        if (!File.Exists(path)) throw new FileNotFoundException("The blocking Godot console executable is required", path);
+        return path;
+    }
+    private void StartClients()
+    {
+        var s = Selected ?? throw new InvalidOperationException("Select a server first");
+        if (!File.Exists(Path.Combine(s.ClientProject, "project.godot"))) throw new InvalidDataException("Choose the client's Godot project folder");
+        if (!string.IsNullOrEmpty(s.ClientData) && !Directory.Exists(s.ClientData)) throw new InvalidDataException("Client data folder does not exist");
+        if (!string.IsNullOrEmpty(s.ContentLock) && (!File.Exists(s.ContentLock) || !Directory.Exists(s.ContentStore))) throw new InvalidDataException("Choose an existing content lock and installed content store");
+        for (int n = 0; n < _count.GetSelectedId(); n++)
+        {
+            string cache = Path.Combine(Root, s.Id, "clients", n.ToString(), "cache"); Directory.CreateDirectory(cache);
+            var psi = new ProcessStartInfo(Engine()) { UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = s.ClientProject };
+            foreach (string arg in new[] { "--path", s.ClientProject, "--", "--cache-dir", cache }) psi.ArgumentList.Add(arg);
+            // Only this launch is changed; client settings/accounts/cache are separate per server and slot.
+            foreach (string key in psi.Environment.Keys.Where(k => k.StartsWith("UO_", StringComparison.Ordinal) && (k.Contains("PROBE", StringComparison.Ordinal) || k.StartsWith("UO_CONTENT_", StringComparison.Ordinal) || k == "UO_CUSTOM_DATA")).ToArray()) psi.Environment.Remove(key);
+            psi.Environment["UO_SHARD_HOST"] = s.Host; psi.Environment["UO_SHARD_PORT"] = s.Port.ToString();
+            psi.Environment["UO_CACHE_DIR"] = cache;
+            psi.Environment["UO_CONTENT_STORE"] = string.IsNullOrEmpty(s.ContentStore) ? Path.Combine(Root, s.Id, "store") : s.ContentStore;
+            psi.Environment["UO_CLIENT_DATA"] = s.ClientData;
+            if (!string.IsNullOrEmpty(s.ContentLock)) { psi.Environment["UO_CONTENT_LOCK"] = s.ContentLock; psi.Environment["UO_CONTENT_STORE"] = s.ContentStore; }
+            Process.Start(psi)?.Dispose();
+        }
+        _status.Text = "Clients started for " + s.Name;
+    }
+    private void Manage()
+    {
+        var window = new ServerManagerWindow(); AddChild(window);
+        window.Open(_profiles, Selected, State, Engine, () => { Save(); Rebuild(); Poll(); });
     }
 }
 #endif

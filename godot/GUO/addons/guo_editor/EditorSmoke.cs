@@ -120,6 +120,29 @@ public partial class EditorSmoke : Node
 
     private string Suffix => _afterReload ? "_after_reload" : "";
 
+    private void CheckServerManager()
+    {
+        var window = new ServerManagerWindow();
+        AddChild(window);
+        try
+        {
+            var profile = new ServerProfile { Name="Smoke profile", ClientProject=ProjectSettings.GlobalizePath("res://") };
+            var profiles = new ServerProfiles { Selected=profile.Id, Servers=new() { profile } };
+            int saves=0;
+            window.Open(profiles, profile, s=>Path.Combine(_out,s.Id,"process.json"), ()=>OS.GetExecutablePath(), ()=>saves++);
+            var buttons = window.FindChildren("*", "Button", true, false).OfType<Button>().ToList();
+            buttons.Single(b=>b.Text=="Save profile").EmitSignal(Button.SignalName.Pressed);
+            buttons.Single(b=>b.Text=="Add backend starters").EmitSignal(Button.SignalName.Pressed);
+            buttons.Single(b=>b.Text=="Add backend starters").EmitSignal(Button.SignalName.Pressed);
+            bool ok=saves==3 && profiles.Servers.Count==7 && profiles.Servers.Select(s=>s.Id).Distinct().Count()==7;
+            ServerProfiles.Validate(profiles);
+            _report["server_manager"] = new Dictionary<string, object> { ["ok"]=ok, ["profiles"]=profiles.Servers.Count, ["saves"]=saves };
+            if(!ok) _failures.Add("Server manager profile save / starter creation failed");
+        }
+        catch(Exception e) { _failures.Add("Server manager: "+e.Message); }
+        finally { window.QueueFree(); }
+    }
+
     public override void _Process(double delta)
     {
         if (_out == null)
@@ -136,6 +159,7 @@ public partial class EditorSmoke : Node
                 if (_data.IsLoaded || _data.Error != null)
                 {
                     CheckLoaded();
+                    CheckServerManager();
                     _stage = _failures.Count > 0 ? 9
                         : ArgValue(LiveFlag) != null ? 40
                         : ArgValue(WorldShotFlag) != null ? 30 : 1;

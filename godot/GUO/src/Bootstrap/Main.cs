@@ -1082,8 +1082,6 @@ public partial class Main : Node
 
             if (string.IsNullOrWhiteSpace(System.Environment.GetEnvironmentVariable("UO_CONTENT_LOCK")))
             {
-                System.Environment.SetEnvironmentVariable("UO_CONTENT_LOCK", d.ContentLock);
-
                 // A lock that won't mount (a pack changed or removed since, a descriptor the
                 // client can't serve) drops the session instead of stopping GUO from starting.
                 GUO.Store.StoreRuntimeContent.SessionLock = d.ContentLock;

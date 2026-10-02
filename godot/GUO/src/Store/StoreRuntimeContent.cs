@@ -38,6 +38,7 @@ internal sealed class StoreRuntimeContent : IDisposable
     public static StoreRuntimeContent LoadConfigured(UOFileManager files, string language)
     {
         string path = Environment.GetEnvironmentVariable("UO_CONTENT_LOCK");
+        if (string.IsNullOrWhiteSpace(path)) path = SessionLock;
         string root = Environment.GetEnvironmentVariable("UO_CONTENT_STORE");
         if (string.IsNullOrWhiteSpace(root)) root = ProjectSettings.GlobalizePath("user://store");
         if (string.IsNullOrWhiteSpace(path))
