@@ -193,6 +193,8 @@ def main() -> int:
                          "only when the person at the machine agrees")
     ap.add_argument("--reload", action="store_true", help="also rebuild and hot-reload the assembly")
     ap.add_argument("--art", default="0x0E75", help="art id (static) the dock searches for")
+    ap.add_argument("--multi-dump", default="",
+                    help="comma list of multi ids whose panel composite is also saved as multi_XXXX.png")
     ap.add_argument("--out", type=Path, help="output folder (default build/editor_smoke/<mode>)")
     ap.add_argument("--no-build", action="store_true", help="skip the first C# build")
     args = ap.parse_args()
@@ -222,6 +224,8 @@ def main() -> int:
     if args.headless:
         cmd.insert(1, "--headless")
     cmd += ["--", "--guo-editor-smoke", str(out), "--guo-editor-smoke-art", args.art]
+    if args.multi_dump:
+        cmd += ["--guo-editor-multi-dump", args.multi_dump]
     if args.reload:
         cmd.append("--guo-editor-smoke-reload")
 
