@@ -16,10 +16,37 @@ internal static class StoreServerExport
         var maps = new List<object>();
         var tiles = new List<object>();
         var regions = new List<object>();
+        var decorations = new List<object>();
         foreach (var pack in closure.Packs.Values)
             foreach (var component in pack.Manifest.Components ?? new())
             {
                 if (component.Target == "client") continue;
+                if (component.Type == "decoration")
+                {
+                    using var decorationDoc = JsonDocument.Parse(pack.ReadPayload(component.Entry));
+                    var decorationRoot = decorationDoc.RootElement;
+                    int facet = decorationRoot.GetProperty("facet").GetInt32();
+                    var records = decorationRoot.GetProperty("items");
+                    StorePack.Require(facet is >= 0 and < 256 && records.GetArrayLength() is > 0 and <= 4096, "Invalid decoration facet or count");
+                    var placed = new List<object>();
+                    var identities = new HashSet<string>(StringComparer.Ordinal);
+                    foreach (var item in records.EnumerateArray())
+                    {
+                        string id = item.GetProperty("id").GetString(), reference = item.GetProperty("graphic").GetString();
+                        StorePack.Id(id);
+                        StorePack.Require(identities.Add(id), "Duplicate decoration item ID");
+                        StorePack.Require(component.References != null && component.References.Contains(reference)
+                            && contentLock.Bindings.TryGetValue(reference, out var ignored), "Undeclared decoration graphic reference");
+                        var artBinding = contentLock.Bindings[reference];
+                        StorePack.Require(artBinding.Type == "static", "Decoration graphic reference must be static art");
+                        int x = item.GetProperty("x").GetInt32(), y = item.GetProperty("y").GetInt32();
+                        int z = item.GetProperty("z").GetSByte(), hue = item.GetProperty("hue").GetUInt16();
+                        StorePack.Require(x is >= 0 and <= 65535 && y is >= 0 and <= 65535 && hue <= 0x3fff, "Invalid decoration coordinates or hue");
+                        placed.Add(new { id, graphic = artBinding.Id, x, y, z, hue });
+                    }
+                    decorations.Add(new { identity = pack.Id + ":" + component.Id, facet, items = placed });
+                    continue;
+                }
                 if (component.Type == "region")
                 {
                     using var regionDoc = JsonDocument.Parse(pack.ReadPayload(component.Entry));
@@ -65,11 +92,11 @@ internal static class StoreServerExport
                 StorePack.Require(name != null && name.Length is > 0 and <= 100 && double.IsFinite(weight) && weight >= 0 && weight <= 100000, "Invalid item definition");
                 items.Add(new { identity = pack.Id + ":" + component.Id, graphic = binding.Id, name, weight, movable = row.GetProperty("movable").GetBoolean() });
             }
-        StorePack.Require(items.Count > 0 || maps.Count > 0 || tiles.Count > 0 || regions.Count > 0, "No supported server content in deployment");
+        StorePack.Require(items.Count > 0 || maps.Count > 0 || tiles.Count > 0 || regions.Count > 0 || decorations.Count > 0, "No supported server content in deployment");
         string destination = Path.GetFullPath(output);
         StoreClient.NoLinks(destination);
         Directory.CreateDirectory(Path.GetDirectoryName(destination));
-        byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(new { schema = "guo/server-content@1", identity_hash = closure.IdentityHash, items, maps, tiles, regions }, new JsonSerializerOptions { WriteIndented = true });
+        byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(new { schema = "guo/server-content@1", identity_hash = closure.IdentityHash, items, maps, tiles, regions, decorations }, new JsonSerializerOptions { WriteIndented = true });
         StorePack.Require(bytes.Length <= 16 * 1024 * 1024, "Server export exceeds adapter size limit");
         using var stream = new FileStream(destination, FileMode.CreateNew, FileAccess.Write, FileShare.None);
         stream.Write(bytes);

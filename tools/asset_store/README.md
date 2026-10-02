@@ -82,7 +82,7 @@ python tools/asset_store/run.py --store-dir build/asset_pack_test_store serve
 ```
 
 The content examples include client art, ASCII/Unicode bitmap fonts, authored
-terrain/static blocks, server regions, shared collision metadata, a dependent
+terrain/static blocks, server regions, decoration sets, shared collision metadata, a dependent
 server item pack, and combined packs.
 Published versions are immutable: regenerate into
 a fresh directory when changing their contents. Installation is inactive;

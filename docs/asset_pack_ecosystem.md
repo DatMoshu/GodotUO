@@ -135,6 +135,28 @@ Guarded, dungeon and other specialized region policies are not yet exposed.
 The private-shard probe verifies registration, name lookup and bounds. Delivery
 of music and entry/exit messages to a connected player remains unverified.
 
+## Server decoration sets
+
+Server-target decoration entries declare a `facet` and `items`. Each placement
+has a stable local `id`, an explicitly referenced static-art `graphic`, world
+`x`/`y`/`z`, and `hue`. Export resolves the art binding. The adapter validates
+the whole set before exposing administrator commands:
+
+- `GUOPackDecorate pack-id:component-id` applies or updates the set.
+- `GUOPackUndecorate pack-id:component-id` removes only that set's owned objects,
+  including when its definition is no longer installed.
+
+Installation and server startup do not place decorations. Stable placement IDs
+preserve existing item serials on repeat application. Removed IDs are cleaned
+up when the set is explicitly reapplied. Ownership uses a separate
+`content_items` record inside the existing GUO world-save persistence, so the
+editor's object sync does not remove pack decorations. Save the world to
+persist placement/removal; switching a content lock does not undo world edits.
+Current placements are static scenery, not scripted/interactable item classes.
+The live probe verifies placement, ownership serialization, repeat application,
+removal and preservation of an unrelated object. Full save/restart testing of
+pack decoration ownership remains outstanding.
+
 ## Required evidence
 
 Publisher and C# installer must agree on valid and invalid v2 envelopes.
@@ -165,7 +187,7 @@ The portable tool is built with
   restart and may refuse unsupported payloads. It never executes scripts.
 - `rollback-content STORE ACTIVE`: reverify and select the previous lock.
 - `deactivate-content ACTIVE`: select original assets and retain the previous lock.
-- `export-server STORE LOCK OUTPUT`: export supported server item, tiledata, map and region
+- `export-server STORE LOCK OUTPUT`: export supported server item, tiledata, map, region and decoration
   definitions with numeric IDs from the same client/server lock; output must be new.
 
 ModernUO's private editor bridge can load that export through

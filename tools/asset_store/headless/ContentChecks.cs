@@ -116,6 +116,23 @@ internal static class ContentChecks
             StorePack.Require(rejected, "Malformed region accepted");
         }
         Console.WriteLine("content: region export, music reference binding and four malformed-region cases PASS");
+        var decoration = client.VerifyContent("sample-content-decoration", "1.0.0");
+        var decorationLock = new StoreContentLock { Pack = "sample-content-decoration", Version = "1.0.0", IdentityHash = decoration.IdentityHash };
+        string decorationLockPath = Path.Combine(root, "decoration-lock.json"), decorationExport = Path.Combine(root, "decoration-export.json");
+        File.WriteAllText(decorationLockPath, JsonSerializer.Serialize(decorationLock));
+        bool missingGraphic = false;
+        try { StoreServerExport.Export(client, decorationLockPath, decorationExport); } catch (InvalidDataException) { missingGraphic = true; }
+        StorePack.Require(missingGraphic && !File.Exists(decorationExport), "Unbound decoration wrote a server export");
+        decorationLock.Bindings.Add("sample-content-art:stone", new StoreContentBinding { Type = "static", Id = 3701 });
+        File.WriteAllText(decorationLockPath, JsonSerializer.Serialize(decorationLock));
+        StoreServerExport.Export(client, decorationLockPath, decorationExport);
+        using (var exported = JsonDocument.Parse(File.ReadAllBytes(decorationExport)))
+        {
+            var set = exported.RootElement.GetProperty("decorations")[0];
+            StorePack.Require(set.GetProperty("facet").GetInt32() == 0 && set.GetProperty("items").GetArrayLength() == 2
+                && set.GetProperty("items")[0].GetProperty("graphic").GetInt32() == 3701, "Decoration export lost placements or binding");
+        }
+        Console.WriteLine("content: decoration export and missing-graphic rejection without partial output PASS");
         string payload = Path.Combine(root, art.Id, art.Version, "stone.png");
         File.AppendAllText(payload, "tampered");
         bool refused = false;

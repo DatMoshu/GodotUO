@@ -17,7 +17,7 @@ public static class ContentPacks
     public static void Initialize()
     {
         string path = Environment.GetEnvironmentVariable("UO_SERVER_CONTENT");
-        if (string.IsNullOrWhiteSpace(path)) return;
+        if (string.IsNullOrWhiteSpace(path)) { new ContentDecorations().Register(false); return; }
         if (new FileInfo(path).Length > 16 * 1024 * 1024) throw new InvalidDataException("Server content exceeds limit");
         using var doc = JsonDocument.Parse(File.ReadAllBytes(path));
         if (doc.RootElement.GetProperty("schema").GetString() != "guo/server-content@1") throw new InvalidDataException("Unsupported server content");
@@ -34,9 +34,11 @@ public static class ContentPacks
         var maps = ContentMaps.Stage(doc.RootElement);
         var tiles = ContentTiles.Stage(doc.RootElement);
         var regions = ContentRegions.Stage(doc.RootElement);
+        var decorations = ContentDecorations.Stage(doc.RootElement);
         ContentTiles.Apply(tiles, Environment.GetEnvironmentVariable("UO_SERVER_CONTENT_PROBE") == "1");
         maps.Apply(Environment.GetEnvironmentVariable("UO_SERVER_CONTENT_PROBE") == "1");
         regions.Apply(Environment.GetEnvironmentVariable("UO_SERVER_CONTENT_PROBE") == "1");
+        decorations.Register(Environment.GetEnvironmentVariable("UO_SERVER_CONTENT_PROBE") == "1");
         foreach (var pair in staged) Items.Add(pair.Key, pair.Value);
         CommandSystem.Register("GUOPackItem", AccessLevel.GameMaster, Give);
         Console.WriteLine($"[GUO content] Loaded {Items.Count} item definitions; no world objects created.");
