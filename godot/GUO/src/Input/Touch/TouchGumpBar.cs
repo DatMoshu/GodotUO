@@ -1259,6 +1259,12 @@ namespace GUO.Input.Touch
                     GameActions.OpenSettings(world);
 
                     break;
+                case "scripts":
+                    Modern.ModernScripts.Show(world);
+                    break;
+                case "stopscript":
+                    world.Scripts.Stop();
+                    break;
             }
         }
 

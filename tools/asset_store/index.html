@@ -213,14 +213,16 @@ dd { margin: 0; overflow-wrap: anywhere; }
 "use strict";
 const $ = (s) => document.querySelector(s);
 const SHELVES = [
+  { kind: "razor-script", title: "Razor scripts", blurb: "Razor CE scripts to preview and add to your personal library. Installing never runs them.", layout: "rows" },
   { kind: "background", title: "Backgrounds", blurb: "What shows around and behind the game: still art or a slow loop.", layout: "panes" },
   { kind: "theme", title: "Themes", blurb: "Colours for the client's own panels and buttons.", layout: "rows" },
   { kind: "sound", title: "Sounds", blurb: "Ambient loops and effects to play under the world.", layout: "rows" },
   { kind: "profile-preset", title: "Layout presets", blurb: "Where each window sits, tuned for a phone, a dual screen or a Deck.", layout: "rows" },
   { kind: "screensaver", title: "Screensavers", blurb: "Loops that play when the client sits idle, drifting so nothing burns into an OLED screen.", layout: "panes" },
 ];
-const KIND_NAME = { background: "Background", theme: "Theme", sound: "Sound", "profile-preset": "Layout preset", screensaver: "Screensaver" };
+const KIND_NAME = { background: "Background", theme: "Theme", sound: "Sound", "profile-preset": "Layout preset", screensaver: "Screensaver", "razor-script": "Razor scripts" };
 const NOTES = {
+  "razor-script": "After installing in GUO, choose Browse scripts to preview and add personal copies. Updates and uninstall keep your copies. Embedded CE support is still growing; check the preview before running. These are not Razor Enhanced Python scripts.",
   background: "After installing, pick it in Options under the background list, then Apply.",
   theme: "Installs the theme's files. Applying themes in the client is still to come.",
   sound: "Installs the sound's files. Playing them in the client is still to come.",

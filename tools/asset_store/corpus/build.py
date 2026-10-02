@@ -34,6 +34,8 @@ BASE = {
 
 def data(value) -> bytes:
     if isinstance(value, dict):
+        if "repeat" in value:
+            return (value["repeat"] * value["count"]).encode("utf-8")
         return base64.b64decode(value["b64"])
     return value.encode("utf-8")
 

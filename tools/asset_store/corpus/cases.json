@@ -693,6 +693,73 @@
    "zip": {}
   },
   {
+   "name": "ok-razor-script",
+   "expect": "accept",
+   "why": "Razor CE text in its own pack kind",
+   "manifest": { "kind": "razor-script" },
+   "payload": { "still.png": "png", "scripts/hello.razor": "sysmsg 'Hello'\n" },
+   "zip": {}
+  },
+  {
+   "name": "razor-no-script",
+   "expect": "reject",
+   "why": "Script packs require at least one .razor file",
+   "manifest": { "kind": "razor-script" }
+  },
+  {
+   "name": "razor-outside-kind",
+   "expect": "reject",
+   "why": "Scripts cannot be hidden in another pack kind",
+   "payload": { "still.png": "png", "hello.razor": "sysmsg 'Hello'" }
+  },
+  {
+   "name": "razor-invalid-utf8",
+   "expect": "reject",
+   "why": "Script text must decode as strict UTF-8",
+   "manifest": { "kind": "razor-script" },
+   "payload": { "still.png": "png", "hello.razor": { "b64": "/w==" } },
+   "zip": {}
+  },
+  {
+   "name": "razor-empty",
+   "expect": "reject",
+   "why": "Whitespace-only scripts are refused",
+   "manifest": { "kind": "razor-script" },
+   "payload": { "still.png": "png", "hello.razor": " \t\r\n" },
+   "zip": {}
+  },
+  {
+   "name": "razor-control",
+   "expect": "reject",
+   "why": "Binary/control characters are not scripts",
+   "manifest": { "kind": "razor-script" },
+   "payload": { "still.png": "png", "hello.razor": "sysmsg\u0000hidden" },
+   "zip": {}
+  },
+  {
+   "name": "razor-bom",
+   "expect": "accept",
+   "why": "Script BOM accepted without changing manifest BOM rules",
+   "manifest": { "kind": "razor-script" },
+   "payload": { "still.png": "png", "hello.RAZOR": "\ufeffsysmsg 'Hello'" },
+   "zip": {}
+  },
+  {
+   "name": "razor-too-long",
+   "expect": "reject",
+   "why": "Scripts cannot exceed the editor's UTF-16 character limit",
+   "manifest": { "kind": "razor-script" },
+   "payload": { "still.png": "png", "hello.razor": { "repeat": "a", "count": 65537 } },
+   "zip": {}
+  },
+  {
+   "name": "razor-enhanced-python",
+   "expect": "reject",
+   "why": "Razor CE packs do not admit Python executables",
+   "manifest": { "kind": "razor-script" },
+   "payload": { "still.png": "png", "hello.razor": "sysmsg 'Hello'", "helper.py": "print('no')" }
+  },
+  {
    "name": "ok-postfx",
    "expect": "accept",
    "why": "ADR-0023: a preset, a shader and a LUT image",

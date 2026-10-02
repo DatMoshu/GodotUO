@@ -12,6 +12,18 @@ word, as the bar's Paperdoll/Inventory/Journal/Map/Chat captions do (3000133,
 
 Measured on `work/ui-command-bar` after a43a4af.
 
+## Embedded scripts preview (desktop and touch)
+
+`src/Input/Touch/Modern/ModernScripts.cs` adds Scripts — CE preview, Close,
+Load, New, Script name, Save, Run, Stop, the supported-command/help text,
+unsaved/overwrite confirmations and file/status messages. Runtime diagnostics
+in `src/Game/Scripting/ScriptRunner.cs`, `ClientScriptHost.cs` and
+`ScriptLibrary.cs` are also English pending localization. These appear on
+desktop when the user explicitly opens the scripts panel.
+The starter popup, search/preview descriptions and templates, command signatures,
+Suggest/Indent buttons, My scripts list, and Scripts/Stop script command-bar
+actions are also English literals in this preview.
+
 ## Touch bar — `src/Input/Touch/TouchGumpBar.cs` (`Label`)
 
 | String | Where |

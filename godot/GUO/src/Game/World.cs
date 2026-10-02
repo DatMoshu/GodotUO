@@ -46,6 +46,8 @@ namespace GUO.Game
             NameOverHeadManager = new NameOverHeadManager(this);
             Macros = new MacroManager(this);
             CommandManager = new CommandManager(this);
+            // PORT DEVIATION (GUO): optional embedded scripting, owned by this world.
+            Scripts = new Scripting.ScriptRunner(new Scripting.ClientScriptHost(this));
             Weather = new Weather(this);
             InfoBars = new InfoBarManager(this);
         }
@@ -95,6 +97,8 @@ namespace GUO.Game
         public MacroManager Macros { get; }
 
         public CommandManager CommandManager { get; }
+
+        public Scripting.ScriptRunner Scripts { get; }
 
         public Weather Weather { get; }
 
@@ -262,6 +266,7 @@ namespace GUO.Game
 
         public void Update()
         {
+            Scripts.Tick(System.Environment.TickCount64);
             if (Player != null)
             {
                 if (SerialHelper.IsValid(ObjectToRemove))
@@ -785,6 +790,7 @@ namespace GUO.Game
 
         public void Clear()
         {
+            Scripts.Stop("Logged out");
             foreach (Mobile mobile in Mobiles.Values)
             {
                 RemoveMobile(mobile);

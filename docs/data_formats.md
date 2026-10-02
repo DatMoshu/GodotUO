@@ -384,8 +384,9 @@ None of these files are committed: they derive from the install.
 ## 12. GUO Asset Store packs (ADR-0019)
 
 A pack is a ZIP with one UTF-8 `manifest.json` at its root. Schema id:
-**`guo/store-pack@1`**. It contains only user media/settings, never UO client
-data or executable code. `art-override` is reserved and rejected.
+**`guo/store-pack@1`**. It contains user media/settings and the explicitly
+allowed shader/script formats below, never UO client data or native/.NET
+executables. `art-override` is reserved and rejected.
 
 ```json
 {
@@ -409,7 +410,7 @@ data or executable code. `art-override` is reserved and rejected.
 - IDs match `[a-z0-9][a-z0-9-]{0,63}` (Windows device names excluded).
   Versions are three decimal components, each 0..2147483647, without
   leading zeros. Compare numerically, not lexicographically.
-- Kinds: `background`, `theme`, `sound`, `profile-preset`, `screensaver`. Licence allowlist:
+- Kinds: `background`, `theme`, `sound`, `profile-preset`, `screensaver`, `postfx`, `razor-script`. Licence allowlist:
   `CC0-1.0`, `CC-BY-4.0`, `CC-BY-SA-4.0`, `MIT`, `BSD-2-Clause`,
   `BSD-3-Clause`, `Apache-2.0`. Publishers are responsible for provenance;
   the identifier does not establish ownership. Non-CC0 packs must include
@@ -427,6 +428,14 @@ data or executable code. `art-override` is reserved and rejected.
   first profile version that can pick one; both the publisher and the
   installer reject anything else. Its `preview` is the still the Store
   shows.
+  `.razor` is allowed only in `razor-script` packs, which require at least
+  one such file. Each script is nonempty UTF-8 text (an optional UTF-8 BOM
+  is accepted), at most 262144 bytes and 65536 UTF-16 code units after BOM
+  removal; control characters other than tab, CR and LF are refused.
+  Both publisher and installer validate the text, not its CE semantics.
+  The kind means Razor CE command scripts, not Razor Enhanced Python or
+  ASP.NET Razor templates. Other supported media/text files may accompany it;
+  existing licence, preview, path and hash requirements still apply.
   `.mul`, `.uop`, `.idx`, `.def`, and any basename beginning `cliloc`
   are forbidden case-insensitively, even when renamed with another suffix.
 - Paths use `/`, are relative, have no empty, `.` or `..` components,

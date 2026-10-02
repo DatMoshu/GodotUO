@@ -244,6 +244,10 @@ public partial class Main : Node
                 {
                     TouchProbeThenQuit();
                 }
+                else if (_options.ScriptsProbe)
+                {
+                    ScriptsProbeThenQuit();
+                }
                 else if (_options.MacroProbe)
                 {
                     MacroProbeThenQuit();
@@ -958,6 +962,14 @@ public partial class Main : Node
         Quit(GalleryProbe.Passed ? 0 : 1);
     }
 
+    /// <summary>Exercise the embedded script editor against the dev shard.</summary>
+    private async void ScriptsProbeThenQuit()
+    {
+        bool passed = await ScriptsProbe.Run(this, _options.ScreenshotDir, _options.ScreenshotName);
+        bool captured = await CaptureFrame();
+        Quit(passed && captured ? 0 : 1);
+    }
+
     /// <summary>Tap the six macros against fixtures and exit with the verdict; see MacroProbe.</summary>
     private async void MacroProbeThenQuit()
     {
@@ -1286,6 +1298,7 @@ public partial class Main : Node
                 || EndureSeconds > 0
                 || TouchProbe
                 || MacroProbe
+                || ScriptsProbe
                 || UiGallery
                 || PresentationParity
                 || LoginProbe
@@ -1436,6 +1449,8 @@ public partial class Main : Node
 
         /// <summary>Tap each of the touch bar's six macros against spawned fixtures; see MacroProbe.</summary>
         public bool MacroProbe { get; private set; }
+
+        public bool ScriptsProbe { get; private set; }
 
         /// <summary>Picture each of GUO's own mobile UIs; see GalleryProbe.</summary>
         public bool UiGallery { get; private set; }
@@ -1731,6 +1746,10 @@ public partial class Main : Node
                         break;
                     case "--presentation-parity":
                         o.PresentationParity = true;
+                        break;
+                    case "--scripts-probe":
+                        o.ScriptsProbe = true;
+                        o.ScratchProfile = true;
                         break;
                     case "--macro-probe":
                         o.Touch = true;

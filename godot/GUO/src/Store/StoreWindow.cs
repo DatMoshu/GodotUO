@@ -26,7 +26,7 @@ internal sealed partial class StoreWindow : CanvasLayer
     private readonly Dictionary<string, Task<byte[]>> _previews = new();
     private static readonly Color Gold = new("dfbb77"), Muted = new("abb5ac");
     private readonly CancellationTokenSource _cancel = new();
-    private readonly string[] _kinds = { "", "background", "theme", "sound", "profile-preset", "screensaver", "postfx" };
+    private readonly string[] _kinds = { "", "background", "theme", "sound", "profile-preset", "screensaver", "postfx", "razor-script" };
 
     /// <summary>Whether the window is up; GameController then leaves input to its controls.</summary>
     public static bool IsOpen => GodotObject.IsInstanceValid(_open);
@@ -68,7 +68,7 @@ internal sealed partial class StoreWindow : CanvasLayer
         if (!compact)
         {
             column.AddChild(Text("Make the world your own.", 32, new Color("eeeade")));
-            column.AddChild(Text("Backgrounds, sounds, themes and presets for your next adventure.", 15, Muted));
+            column.AddChild(Text("Backgrounds, sounds, themes, presets and Razor scripts for your next adventure.", 15, Muted));
         }
         var addressRow = new HBoxContainer(); column.AddChild(addressRow);
         var addressLabel = Text("Store address", 14, Gold);
@@ -81,7 +81,7 @@ internal sealed partial class StoreWindow : CanvasLayer
         connect.Pressed += () => _ = Refresh(true); _address.TextSubmitted += text => { _ = Refresh(true); };
         var filters = new HBoxContainer(); column.AddChild(filters);
         _search = new LineEdit { PlaceholderText = "Search packs or creators…", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, CustomMinimumSize = new Vector2(0, 42) }; Touchable(_search); filters.AddChild(_search);
-        _kind = Touchable(new OptionButton()); foreach (string title in new[] { "All kinds", "Backgrounds", "Themes", "Sounds", "Profile presets", "Screensavers" }) _kind.AddItem(title);
+        _kind = Touchable(new OptionButton()); foreach (string title in new[] { "All kinds", "Backgrounds", "Themes", "Sounds", "Profile presets", "Screensavers", "Screen effects", "Razor scripts" }) _kind.AddItem(title);
         filters.AddChild(_kind); _search.TextChanged += _ => Render(); _kind.ItemSelected += _ => Render();
         var scroll = _scroll = new ScrollContainer { SizeFlagsVertical = Control.SizeFlags.ExpandFill, SizeFlagsHorizontal = Control.SizeFlags.ExpandFill }; column.AddChild(scroll);
         _list = new GridContainer { Columns = logical.X >= 950 ? 2 : 1, SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
@@ -214,6 +214,17 @@ internal sealed partial class StoreWindow : CanvasLayer
             var action = Touchable(new Button { Text = present ? "Uninstall" : !compatible ? "Needs newer GUO" : update ? "Update" : "Install", Disabled = _busy || (!present && !compatible) });
             action.SizeFlagsHorizontal = Control.SizeFlags.ShrinkBegin;
             info.AddChild(action); action.Pressed += () => _ = Change(entry, present);
+            if (present && m.Kind == "razor-script")
+            {
+                var browse = Touchable(new Button { Text = "Browse scripts", Disabled = _busy || !(Client.Game?.UO?.World?.InGame ?? false) });
+                info.AddChild(browse);
+                browse.Pressed += () =>
+                {
+                    QueueFree();
+                    GUO.Input.Touch.Modern.ModernScripts.ShowStorePack(Client.Game.UO.World, m.Id, m.Version);
+                };
+                info.AddChild(Text("Preview and add personal copies. Nothing runs automatically.", 12, Muted));
+            }
         }
         // Installed packs remain removable even if a publisher delists them.
         foreach (var m in installed.Where(m => !_entries.Any(p => p.Manifest.Id == m.Id && p.Manifest.Version == m.Version)))
@@ -233,7 +244,9 @@ internal sealed partial class StoreWindow : CanvasLayer
             _status.Text = (remove ? "Removing " : "Installing ") + entry.Manifest.Title + "…";
             if (remove) _client.Uninstall(entry.Manifest.Id, entry.Manifest.Version);
             else await _client.Install(entry, _cancel.Token);
-            if (IsInsideTree()) _status.Text = remove ? _client.LastUninstallMessage : "Installed and verified. Reopen Options and select the background, then Apply.";
+            if (IsInsideTree()) _status.Text = entry.Manifest.Kind == "razor-script"
+                ? remove ? "Script pack removed. Personal copies are kept." : "Scripts installed and verified. Log in, then Browse scripts to add personal copies."
+                : remove ? _client.LastUninstallMessage : "Installed and verified. Reopen Options and select the background, then Apply.";
         }
         catch (Exception e) { if (IsInsideTree()) _status.Text = e.Message; }
         finally { _busy = false; if (IsInsideTree()) Render(); }
