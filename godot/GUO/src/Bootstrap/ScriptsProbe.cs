@@ -173,12 +173,32 @@ internal static class ScriptsProbe
             var preview = Find<CodeEdit>(panel, c => c != editor);
             Check(preview.Text.Contains("Hello from your GUO script pack"), "store source is previewed after verification");
             await Capture("-store-library");
+            var approve = Find<Button>(panel, b => b.Text == "Approve");
+            if (approve?.IsVisibleInTree() == true)
+            {
+                Check(Button("Enable").Disabled && Button("Run pack").Disabled, "managed execution starts unapproved");
+                await Click(approve);
+                Check(!Button("Enable").Disabled && !world.PackScripts.Running, "approval is separate from enable and execution");
+                await Click(Button("Enable"));
+                Check(!Button("Run pack").Disabled && !world.PackScripts.Running, "enable never starts execution");
+                await Capture("-managed-approved");
+                Check(Button("Rollback").GetGlobalRect().End.Y <= host.GetViewport().GetVisibleRect().End.Y - 8,
+                    "managed controls remain fully inside visible viewport");
+                await Click(Button("Run pack"));
+                await InputProbe.Wait(host, 10);
+                Check(JournalManager.Entries.Any(entry => entry.Text == "Hello from your GUO script pack"), "explicit managed Run executes source");
+                await Click(Button("Disable"));
+                Check(!world.PackScripts.Running && Button("Run pack").Disabled, "managed Disable stops execution");
+                await Click(Button("Revoke"));
+                Check(!approve.Disabled && Button("Enable").Disabled, "managed Revoke removes approval");
+                world.Scripts.Start("pause 30000\nsysmsg 'must not run'");
+            }
             await Click(Button("Add to my scripts"));
             Check(library.ItemCount == count + 1 && editor.Text == edits && world.Scripts.Running, "store import adds a copy without replacing edits or execution");
             string copy = library.GetItemText(library.Selected);
             Check(File.Exists(Path.Combine(ProfileManager.ProfilePath, "scripts", "script-" + copy + ".razor.LICENSE.txt")), "store attribution retained beside personal script");
             world.Scripts.Stop();
-            Check(!JournalManager.Entries.Any(entry => entry.Text == "Hello from your GUO script pack"), "store install, preview and import never execute source");
+            Check(!world.PackScripts.Running, "store import never starts managed execution");
         }
 
         // Leave the useful example open for CaptureFrame, including its real completion state.

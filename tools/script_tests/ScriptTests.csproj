@@ -5,6 +5,10 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../../godot/GUO/src/Store/ScriptPackSession.cs" Link="ScriptPackSession.cs" />
+    <Compile Include="../../godot/GUO/src/Store/StoreContent.cs" Link="StoreContent.cs" />
+    <Compile Include="../../godot/GUO/src/Store/StoreVerifiedContent.cs" Link="StoreVerifiedContent.cs" />
+    <Compile Include="../../godot/GUO/src/Game/Scripting/CapabilityScriptHost.cs" Link="CapabilityScriptHost.cs" />
     <Compile Include="../../godot/GUO/src/Store/StorePack.cs" Link="StorePack.cs" />
     <Compile Include="../../godot/GUO/src/Store/StoreAddress.cs" Link="StoreAddress.cs" />
     <Compile Include="../../godot/GUO/src/Store/StoreClient.cs" Link="StoreClient.cs" />

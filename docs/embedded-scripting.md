@@ -177,21 +177,47 @@ script. Installation, browsing and compatibility checks never execute the
 source. Updating or uninstalling a pack does not modify personal copies.
 The store tests cover payload rejection, tampering, duplicate imports, updates
 and cleanup: 82 Python/C# validator cases agree, 10 store tests pass and the
-HTTP store smoke passes. Live store-to-editor proof remains pending.
+HTTP store smoke passes. The desktop store-to-editor proof passes 46 checks,
+including actual clicks through approval, enable, Run, disable, revoke and import.
+At 1280x720 with simulated touch and UI scale 2, 47 checks pass, including a
+viewport-bound check for the managed controls. The first capture exposed a
+clipped bottom row; a wrapping button row fixed it and the new capture was
+visually inspected. This remains desktop touch simulation, not a device test.
 
 This v1 adapter is not the final ecosystem contract. The asset-pack coordinator
 owns `guo/store-pack@2` shared validators, UI and contracts. Its script components
 declare `type: script`, a local component ID, target, entry, language `razor-ce`,
 runtime `guo-razor`, an exact `runtime_version` and required capabilities.
 Namespaced identities are `pack-id:component-id`; dependencies pin exact versions
-and the shared resolver must also pin payload hashes. Initial execution will be
+and the verified closure pins payload hashes for approval. Initial execution is
 client-only. Unsupported targets, runtimes, versions and capabilities stay inert.
 
-Approval and activation for v2 are not implemented yet. Approval must bind the
-entire manifest, all declared payload hashes, capabilities and resolved dependency
-identities; changing auxiliary files must require renewed approval too. Install
-must remain separate from approval, enable and Run. Disable or uninstall must
-stop affected managed execution. Failed activation must retain the previous
-activation, but rollback cannot undo gameplay actions already sent to a server.
+`ScriptPackSession` implements session-only review, approval, enable, Run,
+disable, revoke and rollback. Approval binds the entire canonical manifest,
+all declared payload hashes, capabilities and resolved dependency identities.
+Changing auxiliary files requires renewed approval. Each review/approval/enable/
+Run reverifies through `VerifyContent` and uses bounded `ReadPayload` bytes.
+No executable is loaded directly from a disk path. A `CapabilityScriptHost`
+checks declarations before compilation and again before prepared actions run;
+unknown capabilities and commands fail closed. Runtime version `0.1.0` denotes
+the implemented CE subset, not full compatibility.
+
+The world owns the session and ticks its runner. A store change only signals a
+dirty flag from its notification thread; the next game-thread tick reverifies
+approvals before any action. Disable, revoke, dependency removal and logout
+stop affected execution. Logout disposes the store client and unsubscribes the
+notification handler. The editor and emergency stop controls cover both runners.
+Failed activation retains the previous activation. Rollback reverifies an old
+approved release and never restarts it automatically; it cannot undo gameplay
+actions already sent to a server. Approvals are deliberately not persisted.
+Manual filesystem mutations outside StoreClient are caught on the next explicit
+review/enable/Run or reconciliation; already loaded source does not change.
+
+The isolated scripting suite passes 100 checks including capabilities, approval
+gates, dependency auxiliary changes, revoked actions, rollback and notification-
+driven uninstall cleanup. The v2 Python/C# corpus agrees on 18 cases. Generate
+the original managed example with `tools/asset_store/razor_scripts.py --managed`.
+Personal copies are explicitly independent, editable scripts; they do not retain
+managed pack approval and run only through the separate personal editor action.
 There are no install hooks or automatic world-save migrations. Server migration
 and snapshot machinery belongs to the server integration.

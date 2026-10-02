@@ -77,7 +77,7 @@ def preview() -> bytes:
     return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(raw, 9)) + chunk(b"IEND", b"")
 
 
-def make_pack(path: Path, version="1.0.0") -> Path:
+def make_pack(path: Path, version="1.0.0", managed=False) -> Path:
     files = {name: source.encode("utf-8") for name, source in SCRIPTS.items()}
     files.update({"preview.png": preview(), "LICENSE.txt": LICENCE.encode("utf-8"),
                   "README.txt": b"Original GUO Razor CE starters. Install, Browse scripts, preview, then Add to my scripts.\nInstalling does not execute anything. Heal depends on your character and shard.\nPersonal copies survive updates and uninstall; retain their accompanying licence files when sharing.\nThese are not Razor Enhanced Python or ASP.NET templates.\n"})
@@ -85,6 +85,13 @@ def make_pack(path: Path, version="1.0.0") -> Path:
                     kind="razor-script", title="Razor CE essentials", author="GUO contributors",
                     licence="BSD-2-Clause", min_profile_version=6, preview="preview.png",
                     files={name: hashlib.sha256(data).hexdigest() for name, data in files.items()})
+    if managed:
+        capabilities = {"welcome": ["client.message"], "open-backpack": ["player.inventory.use"],
+                        "heal-self": ["player.spell.cast", "player.target"]}
+        manifest.update(schema="guo/store-pack@2", kind="content", target="client", dependencies={},
+                        components=[dict(id=Path(name).stem, type="script", target="client", entry=name,
+                                         language="razor-ce", runtime="guo-razor", runtime_version="0.1.0",
+                                         capabilities=capabilities[Path(name).stem]) for name in SCRIPTS])
     files["manifest.json"] = json.dumps(manifest, sort_keys=True, indent=2).encode("utf-8")
     with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         for name, data in sorted(files.items()):
@@ -98,11 +105,12 @@ def make_pack(path: Path, version="1.0.0") -> Path:
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--store-dir", type=Path)
+    parser.add_argument("--managed", action="store_true", help="Publish v2 managed components at version 2.0.0")
     args = parser.parse_args()
     root = args.store_dir or load_config().store_dir
     with tempfile.TemporaryDirectory(prefix="guo-razor-pack-") as temporary:
-        publish(make_pack(Path(temporary) / "razor-starters.zip"), root)
-    print(f"Published guo-razor-starters 1.0.0 to {root}")
+        publish(make_pack(Path(temporary) / "razor-starters.zip", "2.0.0" if args.managed else "1.0.0", args.managed), root)
+    print(f"Published guo-razor-starters to {root}")
 
 
 if __name__ == "__main__":

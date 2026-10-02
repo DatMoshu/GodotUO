@@ -99,6 +99,10 @@ namespace GUO.Game
         public CommandManager CommandManager { get; }
 
         public Scripting.ScriptRunner Scripts { get; }
+        private Store.ScriptPackSession _packScripts;
+        public Store.ScriptPackSession PackScripts => _packScripts ??= new Store.ScriptPackSession(
+            Store.StoreOptions.CreateClient(Store.StoreAddress.Default), new Scripting.ClientScriptHost(this));
+        public void StopScripts() { Scripts.Stop(); _packScripts?.Stop(); }
 
         public Weather Weather { get; }
 
@@ -267,6 +271,7 @@ namespace GUO.Game
         public void Update()
         {
             Scripts.Tick(System.Environment.TickCount64);
+            _packScripts?.Tick(System.Environment.TickCount64);
             if (Player != null)
             {
                 if (SerialHelper.IsValid(ObjectToRemove))
@@ -791,6 +796,8 @@ namespace GUO.Game
         public void Clear()
         {
             Scripts.Stop("Logged out");
+            _packScripts?.Dispose();
+            _packScripts = null;
             foreach (Mobile mobile in Mobiles.Values)
             {
                 RemoveMobile(mobile);

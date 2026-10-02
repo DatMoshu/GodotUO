@@ -1263,7 +1263,7 @@ namespace GUO.Input.Touch
                     Modern.ModernScripts.Show(world);
                     break;
                 case "stopscript":
-                    world.Scripts.Stop();
+                    world.StopScripts();
                     break;
             }
         }

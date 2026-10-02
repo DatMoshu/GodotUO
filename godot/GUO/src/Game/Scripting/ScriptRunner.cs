@@ -62,6 +62,7 @@ internal sealed partial class ScriptRunner
                         break;
                     case "waitfortarget":
                     case "wft":
+                        _host.ValidateTargetWait();
                         if (words.Count > 1) throw new FormatException("Expected an optional timeout in milliseconds.");
                         duration = words.Count == 0 ? () => 30000 : CompileDuration(words[0]);
                         command = "waitfortarget";
@@ -211,6 +212,7 @@ internal interface IScriptHost
 {
     bool Connected { get; }
     bool HasTarget { get; }
+    void ValidateTargetWait() { }
     // Bind must only validate and prepare an action, never execute it.
     Action Bind(string command, IReadOnlyList<string> args);
     void Validate(string command, IReadOnlyList<string> args) => Bind(command, args);

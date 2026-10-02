@@ -171,7 +171,57 @@ finally
 {
     if (Directory.Exists(directory)) Directory.Delete(directory, true);
 }
+var capabilityInner = new CapabilityProbeHost();
+bool lease = true;
+var grants = new List<string> { "client.message" };
+var restricted = new CapabilityScriptHost(capabilityInner, grants, () => lease);
+var managedRunner = new ScriptRunner(restricted);
+Check(!managedRunner.Start("sysmsg before\nsay forbidden") && capabilityInner.Calls == 0,
+    "missing action capability rejects whole script before side effects");
+Check(!managedRunner.Start("sysmsg before\nwft 100"), "target wait requires declared capability before execution");
+Check(!managedRunner.Start("if hp > 0\nsysmsg forbidden\nendif"), "world expressions require read capability");
+Check(!managedRunner.Start("if insysmsg secret\nsysmsg forbidden\nendif"), "journal expressions require separate read capability");
+grants.Add("player.speech");
+Check(!managedRunner.Start("say forbidden"), "mutating caller capability list cannot expand grants");
+Check(managedRunner.Start("sysmsg allowed"), "declared capability permits compilation without execution");
+Check(capabilityInner.Calls == 0, "capability validation does not execute prepared actions");
+managedRunner.Tick(0);
+Check(capabilityInner.Calls == 1, "approved action executes through host");
+Action prepared = restricted.Bind("sysmsg", new[] { "prepared" });
+lease = false;
+bool revoked = false;
+try { prepared(); } catch (FormatException) { revoked = true; }
+Check(revoked && capabilityInner.Calls == 1, "revocation blocks previously prepared action");
+lease = true;
+Check(managedRunner.Start("pause 100\nsysmsg forbidden"), "approved waiting script starts");
+managedRunner.Tick(0);
+lease = false;
+managedRunner.Tick(100);
+Check(!managedRunner.Running && capabilityInner.Calls == 1, "revocation stops pending execution");
+bool unknownCapability = false;
+try { _ = new CapabilityScriptHost(capabilityInner, new[] { "future.execute" }, () => true); }
+catch (FormatException) { unknownCapability = true; }
+Check(unknownCapability, "unknown capabilities fail closed");
+var fullyGranted = new CapabilityScriptHost(capabilityInner,
+    new[] { "world.read", "journal.read", "player.target" }, () => true);
+Check((int)fullyGranted.Evaluate("hp", Array.Empty<string>()) == 50 &&
+    (bool)fullyGranted.Evaluate("insysmsg", new[] { "text" }) && fullyGranted.HasTarget,
+    "declared reads and targeting reach host");
+bool unmapped = false;
+try { fullyGranted.Bind("futurecommand", Array.Empty<string>()); } catch (FormatException) { unmapped = true; }
+Check(unmapped, "new commands require explicit capability mapping");
+ScriptPackChecks.Run(Check);
 Console.WriteLine($"{passed} checks passed.");
+
+sealed class CapabilityProbeHost : IScriptHost
+{
+    public int Calls;
+    public bool Connected => true;
+    public bool HasTarget => true;
+    public bool HasExpression(string name) => name is "hp" or "insysmsg";
+    public object Evaluate(string name, IReadOnlyList<string> args) => name == "hp" ? 50 : true;
+    public Action Bind(string command, IReadOnlyList<string> args) => () => Calls++;
+}
 
 sealed class FakeHost : IScriptHost
 {

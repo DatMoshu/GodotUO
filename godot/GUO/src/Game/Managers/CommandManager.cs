@@ -24,7 +24,7 @@ namespace GUO.Game.Managers
         {
             // PORT DEVIATION (GUO): native scripting panel; no external assistant.
             Register("scripts", s => Input.Touch.Modern.ModernScripts.Show(_world));
-            Register("stopscript", s => _world.Scripts.Stop());
+            Register("stopscript", s => _world.StopScripts());
             Register
             (
                 "info",

@@ -35,6 +35,9 @@ internal sealed partial class ModernScripts : ModernGump
     private StoreScript _selectedPackScript;
     private System.Collections.Generic.IReadOnlyList<StoreScript> _storeScripts = Array.Empty<StoreScript>();
     private Button _addStarter;
+    private VBoxContainer _packActions;
+    private Button _approvePack, _enablePack, _runPack;
+    private ScriptPackReview _packReview;
     private readonly string[] _spells = SpellsMagery.GetAllSpells.Values.Select(s => s.Name.ToLowerInvariant()).ToArray();
     private ScriptCompletion _completion;
     private bool _compact;
@@ -66,7 +69,7 @@ internal sealed partial class ModernScripts : ModernGump
         if (world == null || !world.InGame) return false;
         if (key.CtrlPressed && key.ShiftPressed && key.Keycode == Key.F12)
         {
-            world.Scripts.Stop();
+            world.StopScripts();
             return true;
         }
         if (key.CtrlPressed && key.ShiftPressed && key.Keycode == Key.R)
@@ -194,8 +197,8 @@ internal sealed partial class ModernScripts : ModernGump
         _editPane.AddChild(_status);
         var actions = new HBoxContainer();
         _editPane.AddChild(actions);
-        _run = AddButton(actions, "Run", () => { _notice = ""; World.Scripts.Start(_editor.Text); Refresh(); });
-        _stop = AddButton(actions, "Stop", () => { _notice = ""; World.Scripts.Stop(); Refresh(); });
+        _run = AddButton(actions, "Run", () => { _notice = ""; World.StopScripts(); World.Scripts.Start(_editor.Text); Refresh(); });
+        _stop = AddButton(actions, "Stop", () => { _notice = ""; World.StopScripts(); Refresh(); });
         var hint = _hint = UoTheme.Label("Close keeps scripts running. Stop: Ctrl+Shift+F12. Nothing runs automatically.", UoTheme.Muted);
         hint.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         _editPane.AddChild(hint);
@@ -273,7 +276,7 @@ internal sealed partial class ModernScripts : ModernGump
     private void FileAction(Action action)
     {
         try { action(); }
-        catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
+        catch (Exception ex) when (ex is IOException or InvalidDataException or FormatException or UnauthorizedAccessException)
         {
             _notice = "File error: " + ex.Message;
             if (_starterPopup?.Visible == true) _starterDescription.Text = _starterDescription.TooltipText = _notice;
@@ -297,10 +300,11 @@ internal sealed partial class ModernScripts : ModernGump
         _starterDescription.ClipText = shortCard;
         _starterDescription.TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis;
         _run.Disabled = World.Scripts.Running;
-        _stop.Disabled = !World.Scripts.Running;
+        _stop.Disabled = !World.Scripts.Running && !World.PackScripts.Running;
         _editor.Editable = !World.Scripts.Running;
         _status.Text = (Dirty ? "Unsaved • " : "") +
-            (string.IsNullOrEmpty(_notice) ? World.Scripts.Status + (World.Scripts.Running ? $" • Line {World.Scripts.Line}" : "") : _notice);
+            (string.IsNullOrEmpty(_notice) ? World.PackScripts.Running ? World.PackScripts.Status : World.Scripts.Status + (World.Scripts.Running ? $" • Line {World.Scripts.Line}" : "") : _notice);
+        RefreshPackActions();
     }
 
     private static CodeHighlighter Highlighting()
@@ -381,6 +385,16 @@ internal sealed partial class ModernScripts : ModernGump
         _starterPreview.AddThemeColorOverride("font_color", UoTheme.Ink);
         contents.AddChild(_starterPreview);
         _addStarter = AddButton(contents, "Add to my scripts", AddStarter);
+        _packActions = new VBoxContainer { Visible = false };
+        contents.AddChild(_packActions);
+        var approvalRow = new HFlowContainer(); _packActions.AddChild(approvalRow);
+        _approvePack = AddButton(approvalRow, "Approve", () => PackAction(() => World.PackScripts.Approve(_packReview)));
+        _enablePack = AddButton(approvalRow, "Enable", () => PackAction(() => World.PackScripts.Enable(_packReview)));
+        _runPack = AddButton(approvalRow, "Run pack", () => PackAction(() => { World.Scripts.Stop(); World.PackScripts.Run(_packReview.Identity); }));
+        var managementRow = approvalRow;
+        AddButton(managementRow, "Disable", () => PackAction(() => World.PackScripts.Disable(_packReview.Identity)));
+        AddButton(managementRow, "Revoke", () => PackAction(() => World.PackScripts.Revoke(_packReview)));
+        AddButton(managementRow, "Rollback", () => PackAction(() => World.PackScripts.Rollback(_packReview.Identity)));
         var note = _starterNote = UoTheme.Label("Adds a personal copy. It will not run or replace your current edits.", UoTheme.Muted);
         note.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         contents.AddChild(note);
@@ -422,6 +436,8 @@ internal sealed partial class ModernScripts : ModernGump
 
     private void SelectStarter(StarterScript starter)
     {
+        _packReview = null;
+        _packActions.Hide();
         _selectedStarter = starter;
         _selectedPackScript = null;
         _addStarter.Disabled = false;
@@ -432,6 +448,8 @@ internal sealed partial class ModernScripts : ModernGump
 
     private void SelectPackScript(StoreScript script)
     {
+        _packReview = null;
+        _packActions.Hide();
         _selectedStarter = null;
         _selectedPackScript = null;
         _addStarter.Disabled = true;
@@ -449,13 +467,37 @@ internal sealed partial class ModernScripts : ModernGump
             _starterDescription.TooltipText = _starterDescription.Text;
             _selectedPackScript = script;
             _addStarter.Disabled = false;
+            if (script.ComponentId != null)
+            {
+                _packReview = World.PackScripts.Review(script.Pack.Id, script.Pack.Version, script.ComponentId);
+                _starterPreview.Text = "// Approval grants: " + string.Join(", ", _packReview.Capabilities) +
+                    "\n// Session-only; Enable and Run are separate.\n" + source;
+                _packActions.Show();
+                RefreshPackActions();
+            }
         }
-        catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
+        catch (Exception ex) when (ex is IOException or InvalidDataException or FormatException or UnauthorizedAccessException)
         {
             _starterPreview.Text = "";
             _starterDescription.Text = "Cannot read pack: " + ex.Message;
             _starterDescription.TooltipText = _starterDescription.Text;
         }
+    }
+
+    private void PackAction(Action action)
+    {
+        if (_packReview == null) return;
+        FileAction(action);
+        RefreshPackActions();
+    }
+
+    private void RefreshPackActions()
+    {
+        if (_packReview == null || _approvePack == null) return;
+        bool approved = World.PackScripts.IsApproved(_packReview);
+        _approvePack.Disabled = approved;
+        _enablePack.Disabled = !approved;
+        _runPack.Disabled = !approved || !World.PackScripts.IsEnabled(_packReview);
     }
 
     private void AddStarter()
