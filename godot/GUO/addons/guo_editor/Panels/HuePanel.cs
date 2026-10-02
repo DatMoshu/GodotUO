@@ -66,6 +66,9 @@ public partial class HuePanel : GridPanel
         }
     }
 
+    /// <summary>A hue's name from hues.mul, for F3's name search.</summary>
+    public string HueName(int hue) => Name(hue);
+
     protected override string Caption(int id) => $"{id:X4}";
 
     protected override string Tooltip(int id) => $"0x{id:X4} {Name(id)}";

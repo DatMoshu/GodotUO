@@ -36,6 +36,13 @@ public partial class ArtPanel : GridPanel
         _ids[1] = null;
     }
 
+    /// <summary>Switches between Statics and Land (F3 opens an id in the right one).</summary>
+    public void SelectKind(bool land)
+    {
+        EnsureUi();
+        _kind.Selected = land ? 1 : 0;
+    }
+
     private uint Index(int id) => Land ? (uint)id : EditorData.LandCount + (uint)id;
 
     protected override IEnumerable<int> Ids()

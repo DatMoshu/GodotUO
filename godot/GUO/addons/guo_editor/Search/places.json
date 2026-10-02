@@ -1,0 +1,20 @@
+{
+  "_about": "Named places for F3 (addons/guo_editor/Search/PlacesProvider). The client data has no town or region names, so these are coordinates kept by hand: the spots this repo's own probes use, and the public moongates (Felucca map0, Trammel map1 is the same ground). They are for jumping the World view somewhere recognisable, not an authority on the shard's regions. Add a place by adding a row.",
+  "places": [
+    { "name": "Britain", "map": 0, "x": 1496, "y": 1628, "tags": "town city center centre" },
+    { "name": "Britain bank", "map": 0, "x": 1434, "y": 1699, "tags": "town bank dense" },
+    { "name": "Britain open field", "map": 0, "x": 1164, "y": 1668, "tags": "grassland field" },
+    { "name": "Minoc town", "map": 0, "x": 2500, "y": 560, "tags": "town" },
+    { "name": "Yew forest", "map": 0, "x": 633, "y": 858, "tags": "forest trees" },
+    { "name": "Despise mouth", "map": 0, "x": 5401, "y": 629, "tags": "dungeon entrance" },
+    { "name": "Moonglow moongate", "map": 0, "x": 4467, "y": 1283, "tags": "moongate town" },
+    { "name": "Britain moongate", "map": 0, "x": 1336, "y": 1997, "tags": "moongate town" },
+    { "name": "Jhelom moongate", "map": 0, "x": 1499, "y": 3771, "tags": "moongate town" },
+    { "name": "Yew moongate", "map": 0, "x": 771, "y": 752, "tags": "moongate town" },
+    { "name": "Minoc moongate", "map": 0, "x": 2701, "y": 692, "tags": "moongate town" },
+    { "name": "Trinsic moongate", "map": 0, "x": 1828, "y": 2948, "tags": "moongate town" },
+    { "name": "Skara Brae moongate", "map": 0, "x": 643, "y": 2067, "tags": "moongate town" },
+    { "name": "Magincia moongate", "map": 0, "x": 3563, "y": 2139, "tags": "moongate town" },
+    { "name": "Britain (Trammel)", "map": 1, "x": 1496, "y": 1628, "tags": "town city trammel" }
+  ]
+}

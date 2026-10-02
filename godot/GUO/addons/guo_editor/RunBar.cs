@@ -127,6 +127,18 @@ public partial class RunBar : HBoxContainer
         _startServer.Text = _up ? "Server running" : "Start server";
     }
 
+    /// <summary>What the Start server button does; F3 runs it on Enter (it opens a window).</summary>
+    public void StartServerNow()
+    {
+        if (!_startServer.Disabled)
+        {
+            StartServer();
+        }
+    }
+
+    /// <summary>What the Start client button does, with the count chosen in the bar.</summary>
+    public void StartClientsNow() => StartClients();
+
     private void StartServer()
     {
         if (_server.Selected == PrivateShard)

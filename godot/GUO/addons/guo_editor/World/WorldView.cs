@@ -505,11 +505,32 @@ public partial class WorldView : VBoxContainer
         GoTo(_host.Facet, _host.X + dx, _host.Y + dy);
     }
 
-    private static void Toggle(HBoxContainer bar, string text, bool on, Action<bool> set)
+    private readonly System.Collections.Generic.Dictionary<string, CheckBox> _toggles = new();
+
+    private void Toggle(HBoxContainer bar, string text, bool on, Action<bool> set)
     {
         var box = new CheckBox { Text = text, ButtonPressed = on };
         box.Toggled += v => set(v);
         bar.AddChild(box);
+        _toggles[text] = box;
+    }
+
+    /// <summary>The layer and guide check boxes by name (Land, Statics, Multis, Roofs, Objects, Grid, Altitude, Blocks), for F3.</summary>
+    internal System.Collections.Generic.IReadOnlyList<string> ToggleNames => new System.Collections.Generic.List<string>(_toggles.Keys);
+
+    /// <summary>A layer or guide's state; null when there is no such toggle (or the tab has not been built).</summary>
+    internal bool? GetToggle(string name) => _toggles.TryGetValue(name, out CheckBox b) ? b.ButtonPressed : null;
+
+    /// <summary>Sets a layer or guide through its check box, so the box and the world agree.</summary>
+    internal bool SetToggle(string name, bool on)
+    {
+        if (!_toggles.TryGetValue(name, out CheckBox b))
+        {
+            return false;
+        }
+
+        b.ButtonPressed = on;
+        return true;
     }
 
     /// <summary>
