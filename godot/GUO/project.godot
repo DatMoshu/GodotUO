@@ -69,6 +69,13 @@ window/stretch/aspect="expand"
 ; flag and brings the window forward for an interactive run (plain --play,
 ; or --focus), and leaves it set for everything else (or --no-focus).
 window/size/no_focus=true
+; Except on Linux/X11, where Godot makes a window created without focus an
+; override-redirect utility window: the window manager never manages it, so
+; it has no taskbar entry, is skipped by alt-tab, shows on every workspace,
+; cannot be picked as a capture source (OBS), and clearing the flag later
+; does not change that. Linux creates a normal window; Main.cs still sets the
+; flag for scripted runs, and those belong under xvfb-run there anyway.
+window/size/no_focus.linuxbsd=false
 ; Phones and tablets only (ignored on the desktop): UO is a landscape game,
 ; and the touch layer sizes its gump bar for a wide screen. ADR-0017.
 window/handheld/orientation=4
