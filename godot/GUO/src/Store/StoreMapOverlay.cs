@@ -22,6 +22,7 @@ internal sealed class StoreMapOverlay : IDisposable
     {
         StorePack.Require(map >= 0 && map < MapLoader.MAPS_COUNT, "Unknown map facet");
         using var doc = JsonDocument.Parse(data);
+        StoreMapDefinition.Validate(doc.RootElement);
         var blocks = doc.RootElement.GetProperty("blocks");
         StorePack.Require(blocks.GetArrayLength() is > 0 and <= 65536, "Invalid authored map block count");
         foreach (var row in blocks.EnumerateArray())

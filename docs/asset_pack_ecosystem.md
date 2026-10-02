@@ -94,7 +94,10 @@ clears it. The numeric binding chooses an existing facet. Overlapping authored
 blocks are rejected. Generated readers are private delete-on-close temporary
 files; the UO install is never modified. All consumers of the map block index
 see the overlay. Subsequent shard map patches retain their existing precedence.
-This is a client overlay; server collision maps must be deployed separately.
+Client-only map components affect the client. A `shared` map component in a
+combined pack is also exported for ModernUO's collision tile matrix, with the
+same explicit facet binding, cells and statics. Deploy the exported server
+definitions with the matching client lock; network negotiation is still pending.
 
 Script components are left inert by the asset mount. Their separate managed
 session owns review, approval, enablement, execution, revocation and logout.
@@ -128,13 +131,15 @@ The portable tool is built with
   keeping `ACTIVE.previous`. This selects a deployment; consumers load it on
   restart and may refuse unsupported payloads. It never executes scripts.
 - `rollback-content STORE ACTIVE`: reverify and select the previous lock.
-- `export-server STORE LOCK OUTPUT`: export supported server item definitions
-  with graphic IDs from the same client/server lock; output must be new.
+- `export-server STORE LOCK OUTPUT`: export supported server item and map
+  definitions with numeric IDs from the same client/server lock; output must be new.
 
 ModernUO's private editor bridge can load that export through
 `UO_SERVER_CONTENT`. GM command `GUOPackItem pack-id:component-id` creates a
 declared item. `UO_SERVER_CONTENT_PROBE=1` is an opt-in isolated test that
-creates then deletes each item and verifies its properties. It is not a
+creates then deletes each item and verifies its properties, and reads every
+authored terrain/static cell from the server tile matrix. Map components are
+validated and staged before any block is applied at startup. It is not a
 world-save migration or an automatic install hook.
 
 ## Evidence and remaining scope
@@ -149,7 +154,9 @@ client renderer's allocated art slots; extending that capacity remains separate 
 
 Font proof covers ASCII and Unicode pixels and metrics; map proof covers
 terrain/static block reads, bounds rejection and delete-on-close cleanup.
-Live terrain rendering and server collision-map parity remain unverified.
+A combined-world example has passed both client block reads and a live private
+ModernUO collision tile-matrix probe against the same payload. Live terrain
+rendering and player movement through the example still need verification.
 
 Not yet implemented: other server gameplay consumers;
 region components; presentation activation

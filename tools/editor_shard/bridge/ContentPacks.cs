@@ -31,10 +31,12 @@ public static class ContentPacks
                 throw new InvalidDataException("Invalid server item definition");
             staged.Add(identity, new ItemDefinition(graphic, name, weight, row.GetProperty("movable").GetBoolean()));
         }
+        var maps = ContentMaps.Stage(doc.RootElement);
+        maps.Apply(Environment.GetEnvironmentVariable("UO_SERVER_CONTENT_PROBE") == "1");
         foreach (var pair in staged) Items.Add(pair.Key, pair.Value);
         CommandSystem.Register("GUOPackItem", AccessLevel.GameMaster, Give);
         Console.WriteLine($"[GUO content] Loaded {Items.Count} item definitions; no world objects created.");
-        if (Environment.GetEnvironmentVariable("UO_SERVER_CONTENT_PROBE") == "1")
+        if (Items.Count > 0 && Environment.GetEnvironmentVariable("UO_SERVER_CONTENT_PROBE") == "1")
         {
             foreach (var definition in Items.Values)
             {

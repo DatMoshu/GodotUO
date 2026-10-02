@@ -32,7 +32,7 @@ if (args.Length == 4 && args[0] == "export-server")
 {
     using var store = new StoreClient("http://127.0.0.1:18865", args[1], int.MaxValue);
     StoreServerExport.Export(store, args[2], args[3]);
-    Console.WriteLine("Exported original item definitions with the deployment's shared graphic IDs.");
+    Console.WriteLine("Exported verified server definitions with the deployment's shared numeric bindings.");
     return 0;
 }
 

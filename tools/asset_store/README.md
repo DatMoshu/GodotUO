@@ -76,7 +76,7 @@ consumers, deployment locks and the remaining categories. Generate editable
 original assets and a local catalogue with:
 
 ```text
-python tools/asset_store/content_examples.py --out build/asset_pack_starters --store build/asset_pack_test_store
+python tools/asset_store/content_examples.py --out build/asset_pack_starters --store build/asset_pack_test_store --bundle build/guo-asset-pack-starters.zip
 python tools/asset_store/razor_scripts.py --managed --store-dir build/asset_pack_test_store
 python tools/asset_store/run.py --store-dir build/asset_pack_test_store serve
 ```
@@ -100,6 +100,15 @@ installation, mounts temporary example packs, checks the real consumers,
 and writes `build/asset_packs/runtime-pixels.png`. It removes its temporary
 store afterward. `content_smoke.py` checks HTTP publication, automatic exact
 dependency installation, and an idempotent second install.
+
+For matching client/server terrain, add `--shared-world --server-export
+build/server-content.json` to the runtime probe. The output must be new.
+The probe reads the combined-world example on the client and exports the
+same verified blocks for ModernUO. Set `UO_SERVER_CONTENT` to the absolute
+export path when starting an isolated shard with the editor bridge installed;
+`UO_SERVER_CONTENT_PROBE=1` checks all cells through its collision tile matrix.
+This does not test player movement or synchronize client/server deployments
+over the network.
 
 ## Screenshots
 

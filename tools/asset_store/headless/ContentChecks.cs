@@ -1,5 +1,6 @@
 using GUO.Store;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 internal static class ContentChecks
 {
@@ -40,6 +41,34 @@ internal static class ContentChecks
         bool badLock = false;
         try { StoreDeployment.Activate(client, candidate, active); } catch (InvalidDataException) { badLock = true; }
         StorePack.Require(badLock && StoreContentLock.Read(active).Bindings["sample-content-art:stone"].Id == 3701, "Invalid candidate changed active deployment");
+        var world = client.VerifyContent("sample-content-world", "1.0.0");
+        var worldLock = new StoreContentLock { Pack = "sample-content-world", Version = "1.0.0", IdentityHash = world.IdentityHash };
+        worldLock.Bindings.Add("sample-content-world:courtyard", new StoreContentBinding { Type = "map", Id = 0 });
+        string worldLockPath = Path.Combine(root, "world-lock.json"), exportPath = Path.Combine(root, "world-export.json");
+        File.WriteAllText(worldLockPath, JsonSerializer.Serialize(worldLock));
+        StoreServerExport.Export(client, worldLockPath, exportPath);
+        using (var exported = JsonDocument.Parse(File.ReadAllBytes(exportPath)))
+        {
+            var map = exported.RootElement.GetProperty("maps")[0];
+            StorePack.Require(map.GetProperty("facet").GetInt32() == 0 && map.GetProperty("content").GetProperty("blocks")[0].GetProperty("land")[0].GetProperty("graphic").GetInt32() == 3, "Server export lost shared terrain binding/data");
+        }
+        byte[] authored = world.Packs["sample-content-world"].ReadPayload("courtyard.json");
+        Action<JsonNode>[] invalidMaps = {
+            node => node["blocks"][0]["x"] = -1,
+            node => node["blocks"][0]["land"][0]["graphic"] = 0x4000,
+            node => node["blocks"][0]["statics"][0]["x"] = 8,
+            node => node["blocks"].AsArray().Add(node["blocks"][0].DeepClone()),
+            node => node["blocks"][0]["land"].AsArray().RemoveAt(0)
+        };
+        foreach (var mutate in invalidMaps)
+        {
+            var node = JsonNode.Parse(authored); mutate(node);
+            using var invalid = JsonDocument.Parse(node.ToJsonString());
+            bool rejected = false;
+            try { StoreMapDefinition.Validate(invalid.RootElement); } catch (InvalidDataException) { rejected = true; }
+            StorePack.Require(rejected, "Malformed map definition accepted");
+        }
+        Console.WriteLine("content: shared map export and five malformed-map rejection cases PASS");
         string payload = Path.Combine(root, art.Id, art.Version, "stone.png");
         File.AppendAllText(payload, "tampered");
         bool refused = false;

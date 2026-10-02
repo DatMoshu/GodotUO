@@ -45,8 +45,9 @@ public partial class StoreContentProbe : Node
             ref var mapIndex = ref files.Maps.GetIndex(0, 180, 210);
             mapIndex.MapFile.Seek((long)mapIndex.MapAddress, SeekOrigin.Begin);
             StorePack.Require(mapIndex.MapFile.ReadUInt32() == 0, "Authored map header differs");
+            int expectedLand = int.Parse(Environment.GetEnvironmentVariable("UO_CONTENT_PROBE_LAND") ?? "580");
             for (int cell = 0; cell < 64; cell++)
-                StorePack.Require(mapIndex.MapFile.ReadUInt16() == 580 && mapIndex.MapFile.ReadInt8() == 7, "Authored terrain cells differ");
+                StorePack.Require(mapIndex.MapFile.ReadUInt16() == expectedLand && mapIndex.MapFile.ReadInt8() == 7, "Authored terrain cells differ");
             StorePack.Require(mapIndex.StaticCount == 1 && mapIndex.StaticAddress != 0, "Authored statics absent");
             mapIndex.StaticFile.Seek((long)mapIndex.StaticAddress, SeekOrigin.Begin);
             StorePack.Require(mapIndex.StaticFile.ReadUInt16() == 3701 && mapIndex.StaticFile.ReadUInt8() == 3

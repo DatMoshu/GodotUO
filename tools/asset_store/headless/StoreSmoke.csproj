@@ -9,6 +9,7 @@
     <Compile Include="../../../godot/GUO/src/Store/StoreContentLock.cs" Link="StoreContentLock.cs" />
     <Compile Include="../../../godot/GUO/src/Store/StoreDeployment.cs" Link="StoreDeployment.cs" />
     <Compile Include="../../../godot/GUO/src/Store/StoreServerExport.cs" Link="StoreServerExport.cs" />
+    <Compile Include="../../../godot/GUO/src/Store/StoreMapDefinition.cs" Link="StoreMapDefinition.cs" />
     <Compile Include="../../../godot/GUO/src/Game/Scripting/CapabilityScriptHost.cs" Link="CapabilityScriptHost.cs" />
     <Compile Include="../../../godot/GUO/src/Store/StoreScripts.cs" Link="StoreScripts.cs" />
     <Compile Include="../../../godot/GUO/src/Game/Scripting/ScriptRunner.cs" Link="ScriptRunner.cs" />

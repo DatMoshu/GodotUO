@@ -19,6 +19,7 @@
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../../../godot/GUO/src/Store/StoreMapDefinition.cs" Link="StoreMapDefinition.cs" />
     <Reference Include="Server">
       <HintPath>$(ModernUODir)\Server.dll</HintPath>
       <Private>false</Private>

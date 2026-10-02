@@ -13,10 +13,19 @@ internal static class StoreServerExport
         var contentLock = StoreContentLock.Read(lockPath);
         var closure = contentLock.Verify(store);
         var items = new List<object>();
+        var maps = new List<object>();
         foreach (var pack in closure.Packs.Values)
             foreach (var component in pack.Manifest.Components ?? new())
             {
                 if (component.Target == "client") continue;
+                if (component.Type == "map")
+                {
+                    StorePack.Require(contentLock.Bindings.TryGetValue(pack.Id + ":" + component.Id, out var mapBinding) && mapBinding.Type == "map", "Missing map facet binding");
+                    using var mapDoc = JsonDocument.Parse(pack.ReadPayload(component.Entry));
+                    StoreMapDefinition.Validate(mapDoc.RootElement);
+                    maps.Add(new { identity = pack.Id + ":" + component.Id, facet = mapBinding.Id, content = mapDoc.RootElement.Clone() });
+                    continue;
+                }
                 StorePack.Require(component.Type == "item", "ModernUO export consumer not implemented: " + component.Type);
                 using var doc = JsonDocument.Parse(pack.ReadPayload(component.Entry));
                 var row = doc.RootElement;
@@ -28,11 +37,12 @@ internal static class StoreServerExport
                 StorePack.Require(name != null && name.Length is > 0 and <= 100 && double.IsFinite(weight) && weight >= 0 && weight <= 100000, "Invalid item definition");
                 items.Add(new { identity = pack.Id + ":" + component.Id, graphic = binding.Id, name, weight, movable = row.GetProperty("movable").GetBoolean() });
             }
-        StorePack.Require(items.Count > 0, "No server items in deployment");
+        StorePack.Require(items.Count > 0 || maps.Count > 0, "No supported server content in deployment");
         string destination = Path.GetFullPath(output);
         StoreClient.NoLinks(destination);
         Directory.CreateDirectory(Path.GetDirectoryName(destination));
-        byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(new { schema = "guo/server-content@1", identity_hash = closure.IdentityHash, items }, new JsonSerializerOptions { WriteIndented = true });
+        byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(new { schema = "guo/server-content@1", identity_hash = closure.IdentityHash, items, maps }, new JsonSerializerOptions { WriteIndented = true });
+        StorePack.Require(bytes.Length <= 16 * 1024 * 1024, "Server export exceeds adapter size limit");
         using var stream = new FileStream(destination, FileMode.CreateNew, FileAccess.Write, FileShare.None);
         stream.Write(bytes);
     }

@@ -9,6 +9,7 @@ import zlib
 import io
 import math
 import wave
+import zipfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from asset_store.seed import write_pack
@@ -68,6 +69,11 @@ def build(output, store=None):
             ("stone-item", "item", "server", "item.json", {"name": "Combined example stone", "graphic": "sample-content-combined:stone", "movable": True, "weight": 1}),
         ]),
     }
+    specs["sample-content-world"] = ("combined", [
+        ("courtyard", "map", "shared", "courtyard.json", {"blocks": [{"x": 180, "y": 210,
+            "land": [{"graphic": 3, "z": 7} for _ in range(64)],
+            "statics": [{"graphic": 3701, "x": 3, "y": 4, "z": 7, "hue": 33}]}]}),
+    ])
     result = []
     for pack_id, (target, records) in specs.items():
         payload = {"preview.png": png(128, 96, (64, 96, 128, 255)),
@@ -81,7 +87,7 @@ def build(output, store=None):
             if kind == "item": component["references"] = [data["graphic"]]
             if kind == "wearable": component["references"] = [data["art"], data["animation"], data["paperdoll"]]
             components.append(component)
-        deps = {"sample-content-art": "1.0.0"} if pack_id in ("sample-content-server", "sample-content-font") else {"sample-content-font": "1.0.0"} if pack_id == "sample-content-map" else {}
+        deps = {"sample-content-art": "1.0.0"} if pack_id in ("sample-content-server", "sample-content-font") else {"sample-content-font": "1.0.0"} if pack_id in ("sample-content-map", "sample-content-world") else {}
         m = dict(schema="guo/store-pack@2", id=pack_id, version="1.0.0", kind="content",
                  target=target, dependencies=deps, components=components, title=pack_id.replace("-", " ").title(),
                  author="GUO original procedural examples", licence="CC0-1.0", min_profile_version=6,
@@ -98,9 +104,48 @@ def build(output, store=None):
     return result
 
 
+def bundle(archives, destination):
+    """Package verified ZIPs, editable declared sources, and current documentation."""
+    from asset_store.razor_scripts import make_pack
+    destination = Path(destination)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    scripts = make_pack(destination.parent / "guo-razor-starters.zip", "2.0.0", True)
+    files = {}
+    for archive in [*archives, scripts]:
+        manifest = verify(archive)
+        files[archive.name] = archive.read_bytes()
+        with zipfile.ZipFile(archive) as source:
+            for name in ["manifest.json", *manifest["files"]]:
+                files[manifest["id"] + "/" + name] = source.read(name)
+    root = Path(__file__).resolve().parents[2]
+    files["CONTRACT.md"] = (root / "docs/asset_pack_ecosystem.md").read_bytes()
+    files["TOOLING.md"] = (root / "tools/asset_store/README.md").read_bytes()
+    files["GETTING_STARTED.md"] = (
+        "# GUO asset-pack starters\n\n"
+        "Seven original starter packs: client art, fonts, client maps, server items, combined items, "
+        "combined world maps and managed Razor scripts. ZIPs are ready for publication; folders contain editable declared sources.\n\n"
+        "Read CONTRACT.md for supported payloads and limitations, and TOOLING.md for generation and test commands. "
+        "Changing sources requires updating manifest hashes and release versions. Published releases are immutable. "
+        "Installation is inactive; content needs an explicit deployment lock and scripts need explicit approval. "
+        "The combined-world sample must use matching client and server deployments. No proprietary UO data is included.\n"
+    ).encode("utf-8")
+    with zipfile.ZipFile(destination, "w", compression=zipfile.ZIP_DEFLATED) as output:
+        for name, data in sorted(files.items()):
+            info = zipfile.ZipInfo(name, (2026, 1, 1, 0, 0, 0))
+            info.compress_type = zipfile.ZIP_DEFLATED
+            info.external_attr = 0o100644 << 16
+            output.writestr(info, data)
+    with zipfile.ZipFile(destination) as output:
+        assert output.testzip() is None
+    return destination
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", type=Path, default=Path("build/content_examples"))
     parser.add_argument("--store", type=Path)
+    parser.add_argument("--bundle", type=Path, help="Also create a reproducible source/ZIP/documentation bundle, including managed scripts")
     args = parser.parse_args()
-    for path in build(args.out, args.store): print(path)
+    archives = build(args.out, args.store)
+    for path in archives: print(path)
+    if args.bundle: print(bundle(archives, args.bundle))
