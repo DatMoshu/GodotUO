@@ -50,6 +50,23 @@ internal sealed partial class PregameDiorama : Node
         return true;
     }
 
+    /// <summary>
+    /// The window for the 3D pregame, from LoginScene.Load in place of its
+    /// 640x480: an exported Linux build (the Deck, under gamescope) goes
+    /// fullscreen; a desktop run keeps the window it has. No minimum size.
+    /// </summary>
+    public static void PrepareWindow()
+    {
+        DisplayServer.WindowSetMinSize(Vector2I.Zero);
+
+        if (OperatingSystem.IsLinux() && OS.HasFeature("template")
+            && DisplayServer.WindowGetMode() is not (DisplayServer.WindowMode.Fullscreen or DisplayServer.WindowMode.ExclusiveFullscreen))
+        {
+            DisplayServer.WindowSetMode(DisplayServer.WindowMode.Fullscreen);
+            GD.Print("[GUO] pregame3d: fullscreen (exported Linux build)");
+        }
+    }
+
     /// <summary>Whether the diorama is up and takes input.</summary>
     public static bool Active => Instance != null && IsInstanceValid(Instance) && Instance._built && !Instance.IsQueuedForDeletion();
 
@@ -137,6 +154,9 @@ internal sealed partial class PregameDiorama : Node
         };
         _layer.AddChild(_overlay);
 
+        // Every size change re-lays everything (also polled each frame).
+        GetViewport().SizeChanged += Resize;
+
         Scene = new DioramaScene();
         _viewport.AddChild(Scene.Root);
         Scene.Build();
@@ -158,6 +178,8 @@ internal sealed partial class PregameDiorama : Node
 
     public override void _ExitTree()
     {
+        GetViewport().SizeChanged -= Resize;
+
         if (Instance == this)
         {
             Instance = null;
@@ -561,7 +583,15 @@ internal sealed partial class PregameDiorama : Node
 
     private void Resize()
     {
-        Vector2I size = (Vector2I) GetViewport().GetVisibleRect().Size;
+        // The window's own size: under gamescope the root viewport can lag a
+        // resize, and what shows is the window.
+        Vector2I size = DisplayServer.WindowGetSize();
+        Vector2I vp = (Vector2I) GetViewport().GetVisibleRect().Size;
+
+        if (vp.X > 0 && vp.Y > 0 && (vp.X < size.X || vp.Y < size.Y))
+        {
+            size = new Vector2I(Math.Min(size.X, vp.X), Math.Min(size.Y, vp.Y));
+        }
 
         if (size == _windowSize || size.X <= 0 || size.Y <= 0)
         {
@@ -594,6 +624,7 @@ internal sealed partial class PregameDiorama : Node
         if (_targetPose.HasValue && Scene != null)
         {
             CameraTo((_framePose.pos, _framePose.look, FitFov(_framePose, _frameSafe)), 0.01);
+            Callable.From(ResizeLabels).CallDeferred();
         }
     }
 
@@ -796,7 +827,7 @@ internal sealed partial class PregameDiorama : Node
         // smaller than one, so the pixel font stays legible and crisp.
         float unit = PixelUnit(centre);
         float fit = world[mid] * heightFraction / lineHeight;
-        label.PixelSize = Math.Max(1f, Mathf.Floor(fit / unit)) * unit;
+        Track(label, (int) Math.Max(1f, Mathf.Floor(fit / unit)));
 
         return label;
     }
@@ -816,7 +847,7 @@ internal sealed partial class PregameDiorama : Node
         anchor.AddChild(label);
         Vector3 top = anchor.GlobalTransform * (b.GetCenter() + new Vector3(0f, b.Size.Y * 0.5f, 0f));
         label.GlobalPosition = top + Vector3.Up * gap;
-        label.PixelSize = PixelUnit(label.GlobalPosition) * scale;
+        Track(label, scale);
 
         return label;
     }
@@ -834,7 +865,7 @@ internal sealed partial class PregameDiorama : Node
         Vector3 eye = _targetPose?.pos ?? Scene.Camera.GlobalPosition;
         float radius = (anchor.GlobalBasis * b.Size).Length() * 0.25f;
         label.GlobalPosition = centre + (eye - centre).Normalized() * (radius + 0.02f);
-        label.PixelSize = PixelUnit(label.GlobalPosition) * scale;
+        Track(label, scale);
 
         return label;
     }
@@ -853,6 +884,27 @@ internal sealed partial class PregameDiorama : Node
     }
 
     private (Vector3 pos, Vector3 look, float fov)? _targetPose;
+
+    /// <summary>Every 3D label and its whole font pixels per internal pixel, sized again on a resize.</summary>
+    private readonly List<(Label3D label, int scale)> _labels = new();
+
+    private void Track(Label3D label, int scale)
+    {
+        _labels.Add((label, scale));
+        label.PixelSize = PixelUnit(label.GlobalPosition) * scale;
+    }
+
+    private void ResizeLabels()
+    {
+        _labels.RemoveAll(l => !IsInstanceValid(l.label));
+
+        foreach ((Label3D label, int scale) in _labels)
+        {
+            // In its own world scale (a UI-anchored parent rescales it).
+            float worldScale = label.GlobalBasis.Scale.Y;
+            label.PixelSize = PixelUnit(label.GlobalPosition) * scale / Math.Max(1e-4f, worldScale);
+        }
+    }
 
     /// <summary>The last framing asked for, unfitted, to fit again on a resize.</summary>
     private (Vector3 pos, Vector3 look, float fov) _framePose;

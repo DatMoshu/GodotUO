@@ -173,6 +173,23 @@ internal static class Pregame3DProbe
         Check("the lid opened", PregameDiorama.Instance.Lid > 0.95f, $"lid {PregameDiorama.Instance.Lid:0.00}");
         await Shot("01_login");
 
+        // Resized mid-login: the whole scene stays framed at each size.
+        Vector2I start = DisplayServer.WindowGetSize();
+
+        foreach (Vector2I size in new[] { new Vector2I(640, 480), new Vector2I(1920, 1080) })
+        {
+            // As a window manager would: the window and its root viewport together.
+            Host.GetTree().Root.Size = size;
+            await Frames(60);
+            Vector2I got = DisplayServer.WindowGetSize();
+            Vector2 vp = Host.GetViewport().GetVisibleRect().Size;
+            Check($"resized to {size.X}x{size.Y}", got == size && (Vector2I) vp == size, $"window {got.X}x{got.Y}, root viewport {vp.X}x{vp.Y}");
+            await Shot($"01_login_{size.X}x{size.Y}");
+        }
+
+        Host.GetTree().Root.Size = start;
+        await Frames(30);
+
         if (Step != LoginSteps.Main)
         {
             Check("still at the login step (autologin is off)", false, Step.ToString());

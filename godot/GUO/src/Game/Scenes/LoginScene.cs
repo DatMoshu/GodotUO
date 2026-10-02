@@ -97,6 +97,16 @@ namespace GUO.Game.Scenes
                 }
             }
 
+            // PORT DEVIATION (GUO): the 3D pregame fills whatever window the
+            // platform gives it (fullscreen on the Deck build); the 640x480
+            // login window, its restore and its minimum size are for the
+            // classic gumps only (docs/ui/pregame_3d.md).
+            if (GUO.Pregame3D.Pregame3DSettings.Enabled)
+            {
+                GUO.Pregame3D.PregameDiorama.PrepareWindow();
+                return;
+            }
+
             if (Client.Game.IsWindowMaximized())
             {
                 Client.Game.RestoreWindow();

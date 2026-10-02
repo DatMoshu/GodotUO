@@ -128,7 +128,12 @@ the client's font at a whole number of font pixels per internal pixel.
 
 - `Game/Scenes/LoginScene.cs` — `PORT DEVIATION (GUO)`: `GetGumpForStep`
   returns null when the 3D pregame owns the step; `Load` and
-  `UpdateCharacterList` skip their direct gump adds; `Update` tolerates a null gump.
+  `UpdateCharacterList` skip their direct gump adds; `Update` tolerates a null gump;
+  `Load` leaves the window alone (no 640x480, no restore, no minimum size) and
+  calls `PregameDiorama.PrepareWindow`, which goes fullscreen in an exported
+  Linux (Deck) build. Everything (internal resolution, FOV fit, overlay scale,
+  ui_anchors, 3D label pixel sizes) is laid out again on every window size
+  change; the window size wins when the root viewport lags it (gamescope).
 - `Client/GameController.cs` — `PORT DEVIATION (GUO)`: keys and pointer buttons
   go to `PregameDiorama.HandleMainInput` while it is up.
 - `Input/Gamepad/GamepadInput.cs` — D-pad, left stick, A/B/X/Y, Start, shoulders
