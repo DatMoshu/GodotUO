@@ -57,7 +57,7 @@ namespace GUO.Assets
         public AnimationsLoader Animations { get; }
         public AnimDataLoader AnimData { get; }
         public ArtLoader Arts { get; }
-        // GUO content-pack seam: verified startup overlays, separate from upstream readers.
+        // PORT DEVIATION (GUO): content-pack seam, verified startup overlays, separate from upstream readers.
         internal GUO.Store.StoreRuntimeContent Content { get; private set; }
         public MapLoader Maps { get; set; }
         public ClilocLoader Clilocs { get; }

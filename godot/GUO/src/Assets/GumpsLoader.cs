@@ -205,7 +205,7 @@ namespace GUO.Assets
 
         public GumpInfo GetGump(uint index)
         {
-            // GUO addition: verified pack overlay; rendering remains unchanged.
+            // PORT DEVIATION (GUO): verified pack overlay; rendering remains unchanged.
             if (FileManager.Content != null && FileManager.Content.TryImage("gump", (int)index, out var packed))
                 return new GumpInfo { Pixels = packed.Data, Width = packed.Width, Height = packed.Height };
             // Ours first, so a file can correct a gump the archive already has and not only fill

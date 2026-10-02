@@ -44,7 +44,7 @@ namespace GUO.Assets
 
         public List<MultiInfo> GetMultis(uint idx)
         {
-            // GUO addition: return a copy, preserving caller ownership of the list.
+            // PORT DEVIATION (GUO): return a copy, preserving caller ownership of the list.
             if (FileManager.Content != null && FileManager.Content.TryMulti((int)idx, out var packed)) return new List<MultiInfo>(packed);
             var list = new List<MultiInfo>();
 
