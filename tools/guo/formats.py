@@ -51,10 +51,12 @@ class DataFile:
     def present_forms(self, data_dir: Path) -> dict[str, list[str]]:
         """Return which physical forms of this entry exist in `data_dir`."""
         found = index_dir(data_dir)
+        # Report the names as they are on disk, so a caller can open them on
+        # a case-sensitive filesystem.
         return {
-            "mul": [n for n in self.mul if n.lower() in found],
-            "uop": [n for n in self.uop if n.lower() in found],
-            "index": [n for n in self.indexed_by if n.lower() in found],
+            "mul": [found[n.lower()] for n in self.mul if n.lower() in found],
+            "uop": [found[n.lower()] for n in self.uop if n.lower() in found],
+            "index": [found[n.lower()] for n in self.indexed_by if n.lower() in found],
         }
 
     def is_satisfied(self, data_dir: Path) -> bool:
@@ -68,16 +70,17 @@ class DataFile:
         return False
 
 
-def index_dir(data_dir: Path) -> set[str]:
-    """Lowercased set of filenames in `data_dir`, for case-insensitive lookup.
+def index_dir(data_dir: Path) -> dict[str, str]:
+    """Filenames in `data_dir`, lowercased name -> name on disk, for
+    case-insensitive lookup.
 
     UO installs are inconsistent about capitalisation (`Gumpart.mul` vs
     `gumpart.mul`), and the port must run on case-sensitive filesystems too.
     """
     try:
-        return {p.name.lower() for p in data_dir.iterdir() if p.is_file()}
+        return {p.name.lower(): p.name for p in data_dir.iterdir() if p.is_file()}
     except (OSError, FileNotFoundError):
-        return set()
+        return {}
 
 
 FACETS = ("Felucca", "Trammel", "Ilshenar", "Malas", "Tokuno", "TerMur")

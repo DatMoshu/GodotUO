@@ -62,8 +62,9 @@ def _probe(entry: DataFile, data_dir: Path) -> dict:
             # link, or a file being written. Treat as a hard failure.
             unreadable.append(name)
 
+    present_index = {n.lower() for n in forms["index"]}
     missing_index = [
-        n for n in entry.indexed_by if n not in forms["index"]
+        n for n in entry.indexed_by if n.lower() not in present_index
     ] if fmt == "mul" else []
 
     return {
