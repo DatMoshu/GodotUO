@@ -57,6 +57,8 @@ namespace GUO.Assets
         public AnimationsLoader Animations { get; }
         public AnimDataLoader AnimData { get; }
         public ArtLoader Arts { get; }
+        // GUO content-pack seam: verified startup overlays, separate from upstream readers.
+        internal GUO.Store.StoreRuntimeContent Content { get; private set; }
         public MapLoader Maps { get; set; }
         public ClilocLoader Clilocs { get; }
         public GumpsLoader Gumps { get; }
@@ -79,6 +81,7 @@ namespace GUO.Assets
 
         public void Dispose()
         {
+            Content?.Dispose();
             Animations.Dispose();
             AnimData.Dispose();
             Arts.Dispose();
@@ -139,6 +142,10 @@ namespace GUO.Assets
         }
 
         public void Load(bool useVerdata, string lang, string mapsLayouts = "")
+            => Load(useVerdata, lang, mapsLayouts, true);
+
+        // GUO validation probes can load the original archives without selecting content.
+        internal void Load(bool useVerdata, string lang, string mapsLayouts, bool loadContent)
         {
             Stopwatch stopwatch = Stopwatch.StartNew();
             
@@ -356,6 +363,7 @@ namespace GUO.Assets
             }
 
 
+            if (loadContent) Content = GUO.Store.StoreRuntimeContent.LoadConfigured(this, lang);
             Log.Trace($"Files loaded in: {stopwatch.ElapsedMilliseconds} ms!");
             stopwatch.Stop();
         }

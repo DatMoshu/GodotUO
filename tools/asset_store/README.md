@@ -69,7 +69,61 @@ HTML-like metadata. HTML insertion sinks and console errors fail the test.
 This is a JavaScript/DOM contract check, not CSS/layout or browser rendering
 verification. Screenshots remain the visual proof.
 
+## Client, server and combined starter packs
+
+The [content contract](../../docs/asset_pack_ecosystem.md) describes supported
+consumers, deployment locks and the remaining categories. Generate editable
+original assets and a local catalogue with:
+
+```text
+python tools/asset_store/content_examples.py --out build/asset_pack_starters --store build/asset_pack_test_store --bundle build/guo-asset-pack-starters.zip
+python tools/asset_store/razor_scripts.py --managed --store-dir build/asset_pack_test_store
+python tools/asset_store/run.py --store-dir build/asset_pack_test_store serve
+```
+
+The content examples include client art, ASCII/Unicode bitmap fonts, authored
+terrain/static blocks, server regions, decoration sets, shared collision metadata, a dependent
+server item pack, and combined packs.
+Published versions are immutable: regenerate into
+a fresh directory when changing their contents. Installation is inactive;
+numeric bindings and a verified deployment lock select runtime content.
+Managed scripts use their own explicit review/approval/enable/run controls.
+
+```text
+dotnet build tools/asset_store/headless/StoreSmoke.csproj
+python tools/asset_store/test_content.py
+python tools/asset_store/content_smoke.py
+python tools/asset_store/content_probe.py --godot <godot-console-executable> --data <your-UO-install>
+```
+
+Build the Godot C# project before the runtime probe. The probe reads your
+installation, mounts temporary example packs, checks the real consumers,
+and writes `build/asset_packs/runtime-pixels.png`. It removes its temporary
+store afterward. `content_smoke.py` checks HTTP publication, automatic exact
+dependency installation, and an idempotent second install.
+
+For matching client/server terrain, add `--shared-world --server-export
+build/server-content.json` to the runtime probe. The output must be new.
+The probe reads the combined-world example on the client and exports the
+same verified blocks for ModernUO. Set `UO_SERVER_CONTENT` to the absolute
+export path when starting an isolated shard with the editor bridge installed;
+`UO_SERVER_CONTENT_PROBE=1` checks all cells through its collision tile matrix.
+This does not test player movement or synchronize client/server deployments
+over the network.
+
+Use `--collision-world` instead of `--shared-world` for the barrier example.
+It also exports shared tiledata, and the isolated server probe verifies
+static height and `CanFit` rejection using the installed impassable flag.
+
 ## Screenshots
+
+`content_probe.py --deployment-ui` exercises the real ID/import/select/rollback
+controls against a temporary store, including rejected consumer bindings,
+unchanged live assets, startup mount and selected-dependency uninstall protection.
+Add `--visual` for `build/asset_packs/deployment-ui.png`, and `--compact` for a
+640x480 proof at `build/asset_packs/deployment-ui-compact.png`. Supply the same
+`--godot` and `--data` arguments as the runtime probe. Original-assets recovery
+is also available without the UI via `StoreSmoke deactivate-content ACTIVE`.
 
 The opt-in `res://src/Store/StoreProof.tscn` loads the normal game scene and
 constructs the real Options picker. With an installed background, it displays

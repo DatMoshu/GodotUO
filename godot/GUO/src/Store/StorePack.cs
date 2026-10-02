@@ -6,6 +6,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
@@ -24,6 +25,9 @@ internal sealed class StoreManifest
     [JsonPropertyName("min_profile_version")] public int MinProfileVersion { get; set; }
     [JsonPropertyName("preview")] public string Preview { get; set; }
     [JsonPropertyName("files")] public Dictionary<string, string> Files { get; set; }
+    [JsonPropertyName("target")] public string Target { get; set; }
+    [JsonPropertyName("dependencies")] public Dictionary<string, string> Dependencies { get; set; }
+    [JsonPropertyName("components")] public List<StoreComponent> Components { get; set; }
 }
 
 internal sealed class StoreEntry
@@ -40,6 +44,7 @@ internal static class StorePack
     public const long MaxFile = 256L * 1024 * 1024;
     public const long MaxTotal = 1024L * 1024 * 1024;
     public const int MaxManifest = 1024 * 1024;
+    public const int MaxScriptBytes = 262144, MaxScriptChars = 65536;
     // A screensaver is played by the client from profile version 11 on.
     public const int ScreensaverMinProfile = 11;
     // Windows reserves COM1-9 and LPT1-9, and the superscript digits too (COM\u00b9 is a device).
@@ -47,7 +52,7 @@ internal static class StorePack
     { "con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8", "com9", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9",
       "com\u00b9", "com\u00b2", "com\u00b3", "lpt\u00b9", "lpt\u00b2", "lpt\u00b3" };
     private static readonly HashSet<string> Extensions = new(StringComparer.OrdinalIgnoreCase)
-    { ".png", ".jpg", ".jpeg", ".webp", ".ogv", ".ogg", ".wav", ".json", ".txt", ".gdshader" };
+    { ".png", ".jpg", ".jpeg", ".webp", ".ogv", ".ogg", ".wav", ".json", ".txt", ".gdshader", ".razor" };
     private static readonly HashSet<string> Images = new(StringComparer.OrdinalIgnoreCase) { ".png", ".jpg", ".jpeg", ".webp" };
     private static readonly HashSet<string> Licences = new(StringComparer.Ordinal)
     { "CC0-1.0", "CC-BY-4.0", "CC-BY-SA-4.0", "MIT", "BSD-2-Clause", "BSD-3-Clause", "Apache-2.0" };
@@ -100,7 +105,7 @@ internal static class StorePack
         return true;
     }
 
-    private static void UniqueJson(JsonElement element)
+    internal static void UniqueJson(JsonElement element)
     {
         if (element.ValueKind == JsonValueKind.Object)
         {
@@ -126,6 +131,12 @@ internal static class StorePack
         {
             using var doc = JsonDocument.Parse(bytes);
             UniqueJson(doc.RootElement);
+            if (doc.RootElement.ValueKind == JsonValueKind.Object && doc.RootElement.TryGetProperty("schema", out var schema)
+                && schema.ValueKind == JsonValueKind.String && schema.GetString() == "guo/store-pack@2")
+            {
+                var allowed = new HashSet<string>("schema id version kind target title author licence min_profile_version preview files dependencies components url sha256 size preview_url".Split(' '), StringComparer.Ordinal);
+                Require(doc.RootElement.EnumerateObject().All(p => allowed.Contains(p.Name)), "Unknown content manifest field");
+            }
             Require(doc.RootElement.ValueKind == JsonValueKind.Object && doc.RootElement.TryGetProperty("min_profile_version", out var minimum)
                 && minimum.ValueKind == JsonValueKind.Number && minimum.TryGetInt32(out int min) && min >= 0, "Missing/invalid profile version");
             m = JsonSerializer.Deserialize<StoreManifest>(bytes);
@@ -144,9 +155,9 @@ internal static class StorePack
 
     public static void Validate(StoreManifest m)
     {
-        Require(m != null && m.Schema == "guo/store-pack@1", "Unsupported pack schema");
+        Require(m != null && m.Schema is "guo/store-pack@1" or "guo/store-pack@2", "Unsupported pack schema");
         Id(m.Id); Version(m.Version);
-        Require(m.Kind is "background" or "theme" or "sound" or "profile-preset" or "screensaver" or "postfx", "Unsupported pack kind; art overrides are disabled");
+        Require(m.Schema == "guo/store-pack@2" ? m.Kind == "content" : m.Kind is "background" or "theme" or "sound" or "profile-preset" or "screensaver" or "postfx" or "razor-script", "Unsupported pack kind");
         Require(m.Licence != null && Licences.Contains(m.Licence), "Licence is not allowed");
         Require(!string.IsNullOrWhiteSpace(m.Title) && m.Title.Length <= 200 && !string.IsNullOrWhiteSpace(m.Author) && m.Author.Length <= 200, "Invalid title/author");
         Require(!m.Title.Any(c => c < 32 || c == 127) && !m.Author.Any(c => c < 32 || c == 127), "Control characters in title/author");
@@ -165,6 +176,16 @@ internal static class StorePack
         }
         Require(m.Preview != null && m.Files.ContainsKey(m.Preview) && Images.Contains(Path.GetExtension(m.Preview)), "Preview must name a declared image");
         Require(m.Licence == "CC0-1.0" || m.Files.ContainsKey("LICENSE.txt"), "Attribution requires LICENSE.txt");
+        bool scripts = m.Files.Keys.Any(IsScript);
+        if (m.Schema == "guo/store-pack@2")
+        {
+            StoreContent.Validate(m);
+            var entries = new HashSet<string>(m.Components.Where(c => c.Type == "script").Select(c => c.Entry), StringComparer.Ordinal);
+            Require(entries.All(IsScript) && m.Files.Keys.Where(IsScript).All(entries.Contains),
+                "Every Razor payload must be a declared script component entry");
+        }
+        else Require(m.Kind == "razor-script" ? scripts : !scripts,
+            "Razor scripts require their own kind and at least one .razor file");
         // Screen-effect packs (ADR-0023): presets and their shaders; shader code
         // is accepted only in this kind.
         if (m.Kind == "postfx")
@@ -182,11 +203,26 @@ internal static class StorePack
             Require(m.Files.Keys.Count(p => Path.GetExtension(p).Equals(".ogv", StringComparison.OrdinalIgnoreCase)) == 1, "A screensaver has exactly one .ogv loop");
             Require(m.MinProfileVersion >= ScreensaverMinProfile, "A screensaver needs min_profile_version 11 or later");
         }
+        if (m.Schema == "guo/store-pack@2") StoreContent.Validate(m);
     }
 
     /// <summary>The loop a screensaver pack plays.</summary>
     public static string ScreensaverLoop(StoreManifest m) =>
         m.Files.Keys.First(p => Path.GetExtension(p).Equals(".ogv", StringComparison.OrdinalIgnoreCase));
+
+    public static bool IsScript(string path) => Path.GetExtension(path).Equals(".razor", StringComparison.OrdinalIgnoreCase);
+
+    public static string ScriptText(byte[] bytes)
+    {
+        Require(bytes.Length <= MaxScriptBytes, "Script exceeds byte limit");
+        string text;
+        int start = bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF ? 3 : 0;
+        try { text = new UTF8Encoding(false, true).GetString(bytes, start, bytes.Length - start); }
+        catch (DecoderFallbackException) { throw new InvalidDataException("Script is not valid UTF-8"); }
+        Require(!string.IsNullOrWhiteSpace(text) && text.Length <= MaxScriptChars, "Script is empty or exceeds character limit");
+        Require(!text.Any(c => c < 32 && c != '\t' && c != '\r' && c != '\n' || c == 127), "Script contains control characters");
+        return text;
+    }
 
     public static string Hash(Stream input) => Convert.ToHexString(SHA256.HashData(input)).ToLowerInvariant();
     public static string HashFile(string path) { using var input = File.OpenRead(path); return Hash(input); }
@@ -211,6 +247,7 @@ internal static class StorePack
             Require(type is 0 or 0x8000 && !entry.FullName.EndsWith('/') && AddFolded(names, entry.FullName), "Duplicate or non-file ZIP entry");
             Require(!entry.IsEncrypted, "Encrypted ZIP entry");
             Require(entry.Length <= (entry.FullName == "manifest.json" ? MaxManifest : MaxFile), "ZIP entry too large");
+            if (IsScript(entry.FullName)) Require(entry.Length <= MaxScriptBytes, "Script exceeds byte limit");
             total = checked(total + entry.Length);
             Require(total <= MaxTotal + MaxManifest, "Expanded ZIP too large");
         }
@@ -228,8 +265,9 @@ internal static class StorePack
             string target = Path.Combine(staging, name.Replace('/', Path.DirectorySeparatorChar));
             Directory.CreateDirectory(Path.GetDirectoryName(target));
             using (var source = zip.GetEntry(name).Open())
-            using (var output = new FileStream(target, FileMode.CreateNew)) CopyLimited(source, output, MaxFile);
+            using (var output = new FileStream(target, FileMode.CreateNew)) CopyLimited(source, output, IsScript(name) ? MaxScriptBytes : MaxFile);
             Require(HashFile(target) == expected, "Payload hash mismatch: " + name);
+            if (IsScript(name)) ScriptText(File.ReadAllBytes(target));
         }
         File.WriteAllBytes(Path.Combine(staging, "manifest.json"), raw);
         return m;
@@ -289,5 +327,5 @@ internal static class StorePack
     }
 
     public static bool Equivalent(StoreManifest a, StoreManifest b) =>
-        a.Schema == b.Schema && a.Id == b.Id && a.Version == b.Version && a.Kind == b.Kind && a.Title == b.Title && a.Author == b.Author && a.Licence == b.Licence && a.MinProfileVersion == b.MinProfileVersion && a.Preview == b.Preview && a.Files.Count == b.Files.Count && a.Files.All(p => b.Files.TryGetValue(p.Key, out var hash) && p.Value == hash);
+        a.Schema == b.Schema && a.Id == b.Id && a.Version == b.Version && a.Kind == b.Kind && a.Title == b.Title && a.Author == b.Author && a.Licence == b.Licence && a.MinProfileVersion == b.MinProfileVersion && a.Preview == b.Preview && a.Files.Count == b.Files.Count && a.Files.All(p => b.Files.TryGetValue(p.Key, out var hash) && p.Value == hash) && StoreContent.Equivalent(a, b);
 }

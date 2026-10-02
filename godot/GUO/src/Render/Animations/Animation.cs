@@ -15,6 +15,8 @@ namespace GUO.Renderer.Animations
         private IndexAnimation[] _dataIndex = new IndexAnimation[MAX_ANIMATIONS_DATA_INDEX_COUNT];
 
         private AnimationDirection[][][] _cache;
+        // GUO addition: pack frames share the standard atlas and pixel picker.
+        private readonly System.Collections.Generic.Dictionary<(ushort, byte, byte), SpriteInfo[]> _packFrames = new();
 
         // PORT DEVIATION (GUO): no GraphicsDevice; the atlas is created without one.
         public Animations(AnimationsLoader animationLoader)
@@ -44,7 +46,8 @@ namespace GUO.Renderer.Animations
         public int MaxAnimationCount => _dataIndex.Length;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public AnimationGroupsType GetAnimType(ushort graphic) => graphic < _dataIndex.Length ? _dataIndex[graphic]?.Type ?? 0 : 0;
+        public AnimationGroupsType GetAnimType(ushort graphic) => _animationLoader.FileManager.Content != null && _animationLoader.FileManager.Content.TryAnimationType(graphic, out var packedType)
+            ? packedType : graphic < _dataIndex.Length ? _dataIndex[graphic]?.Type ?? 0 : 0;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public AnimationFlags GetAnimFlags(ushort graphic) => graphic < _dataIndex.Length ? _dataIndex[graphic]?.Flags ?? 0 : 0;
@@ -238,6 +241,26 @@ namespace GUO.Renderer.Animations
         {
             hue = 0;
             useUOP = false;
+
+            if (_animationLoader.FileManager.Content != null && _animationLoader.FileManager.Content.TryAnimation(id, action, dir, out var packedFrames))
+            {
+                if (isEquip && GetAnimType(id) is not (AnimationGroupsType.Equipment or AnimationGroupsType.Human)) return Span<SpriteInfo>.Empty;
+                var packKey = (id, action, dir);
+                if (!_packFrames.TryGetValue(packKey, out var sprites))
+                {
+                    sprites = new SpriteInfo[packedFrames.Length];
+                    for (int i = 0; i < sprites.Length; i++)
+                    {
+                        var frame = packedFrames[i];
+                        ulong key = (uint)(id | (i << 16)) | ((ulong)(action | (dir << 8)) << 32);
+                        _picker.Set(key, frame.Width, frame.Height, frame.Pixels);
+                        sprites[i].Center.X = frame.CenterX; sprites[i].Center.Y = frame.CenterY;
+                        sprites[i].Texture = _atlas.AddSprite(frame.Pixels.AsSpan(), frame.Width, frame.Height, out sprites[i].UV);
+                    }
+                    _packFrames.Add(packKey, sprites);
+                }
+                return sprites;
+            }
 
             if (action >= AnimationsLoader.MAX_ACTIONS || dir >= AnimationsLoader.MAX_DIRECTIONS)
             {

@@ -47,6 +47,10 @@ namespace GUO.Renderer.Sounds
             {
                 ref IO.Audio.Sound music = ref _musics[index];
 
+                // GUO addition: verified content-pack music keeps the ordinary audio lifecycle.
+                if (music == null && _soundsLoader.FileManager.Content != null && _soundsLoader.FileManager.Content.TryMusic(index, out var packed))
+                    music = new GUO.Store.StoreMusic(index, packed);
+
                 if (music == null && _soundsLoader.TryGetMusicData(index, out string name, out bool loop))
                 {
                     var path = _useDigitalMusicFolder ? $"Music/Digital/{name}" : $"Music/{name}";

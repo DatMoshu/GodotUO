@@ -383,6 +383,8 @@ namespace GUO.Assets
                 // TODO: UOLive needs hashes! we need to find out a better solution, but keep 'em for the moment
                 //((UOFileUop)file)?.ClearHashes();
             }
+            // PORT DEVIATION (GUO): startup content overlays follow base archive selection.
+            FileManager.Content?.ApplyMap(this, i);
         }
 
         public void PatchMapBlock(UOFile file, ulong block, ulong address)
@@ -604,6 +606,9 @@ namespace GUO.Assets
                         }
                     }
                 }
+                // PORT DEVIATION (GUO): restore authored readers with their addresses
+                // before a fresh set of shard diffs is applied.
+                FileManager.Content?.ApplyMap(this, i);
             }
         }
 

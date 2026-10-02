@@ -31,6 +31,9 @@ namespace GUO.Assets
 
         public LightInfo GetLight(uint idx)
         {
+            // GUO addition: verified authored light image.
+            if (FileManager.Content != null && FileManager.Content.TryImage("light", (int)idx, out var packed))
+                return new LightInfo { Pixels = packed.Data, Width = packed.Width, Height = packed.Height };
             ref var entry = ref _file.GetValidRefEntry((int)idx);
 
             if (entry.Width == 0 && entry.Height == 0)

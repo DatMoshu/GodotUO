@@ -7,6 +7,12 @@ installer verified; see Validation for the exact evidence.
 
 ## Decision
 
+The content-pack expansion is tracked in
+[asset_pack_ecosystem.md](../asset_pack_ecosystem.md). Its v2 envelope adds
+client/server/combined targets and typed components while preserving v1.
+This changes packaging support; it does not imply every asset consumer is
+implemented or that installation activates content.
+
 GUO distributes independently licensed user content as ZIP packs. The pack
 and index contract is defined in [data_formats.md](../data_formats.md#12-guo-asset-store-packs-adr-0019),
 written before either producer or consumer. Supported kinds are background,
@@ -213,6 +219,28 @@ It cannot reach files, the network or the game state, and it only ever sees
 the world texture (and the light target when it asks). The worst a bad
 shader can do is a black or garish world, or a slow frame. Uninstalling the
 pack, or choosing Classic, undoes it.
+
+## Amendment 4 — Razor script packs (2026-10-02)
+
+Authorized by the owner alongside the independent BSD-2-Clause engine and
+continued optional external-assistant support. The `razor-script` kind
+stores UTF-8 `.razor` scripts under the existing immutable pack/version
+directory. The contract is in data formats section 12. No interpreter or
+assistant DLL is included; all existing provenance/licence checks remain.
+
+Install never executes a script or changes personal scripts. Installed packs
+are browsable in the in-game Scripts popup, with source preview and an
+embedded-engine validation result. Unsupported CE commands may be stored and
+copied for editing; the preview reports the limitation rather than claiming
+full CE support. Validation uses a separate runner and does not stop or run
+the player's active script.
+
+Add to my scripts copies one selected script to the current character's
+library under a new name, preserving pack/author/version/licence attribution
+in a neighbouring text file. Hashes are checked again at read/import time.
+Updates add a new immutable version; uninstall removes the pack originals,
+not personal copies. External assistants remain independently configured;
+store imports do not write into an external assistant's directories.
 
 ## Alternatives
 

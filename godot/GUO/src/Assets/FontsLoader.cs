@@ -106,6 +106,15 @@ namespace GUO.Assets
 
         public int FontCount { get; private set; }
 
+        // PORT DEVIATION (GUO): verified startup glyph overlays share the original
+        // caches, so legacy layout, HTML and the glyph atlas see identical metrics.
+        internal void ApplyContentGlyph(int font, int codepoint, FontCharacterData glyph)
+            => _fontDataASCII[font, codepoint - NOPRINT_CHARS] = glyph;
+
+        internal void ApplyContentGlyph(int font, int codepoint, FontCharacterDataUnicode glyph)
+            => _fontDataUNICODE[font, codepoint] = glyph;
+        // END PORT DEVIATION (GUO)
+
         public bool UnusePartialHue { get; set; } = false;
 
         public bool RecalculateWidthByInfo { get; set; } = false;

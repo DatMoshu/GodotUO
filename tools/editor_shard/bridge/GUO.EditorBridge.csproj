@@ -19,6 +19,11 @@
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../../../godot/GUO/src/Store/StoreMapDefinition.cs" Link="StoreMapDefinition.cs" />
+    <Compile Include="../../../godot/GUO/src/Store/StoreTileDefinition.cs" Link="StoreTileDefinition.cs" />
+    <Compile Include="../../../godot/GUO/src/Store/StoreRegionDefinition.cs" Link="StoreRegionDefinition.cs" />
+    <Compile Include="../../../godot/GUO/src/Store/StoreLootDefinition.cs" Link="StoreLootDefinition.cs" />
+    <Compile Include="../../../godot/GUO/src/Store/StoreCreatureDefinition.cs" Link="StoreCreatureDefinition.cs" />
     <Reference Include="Server">
       <HintPath>$(ModernUODir)\Server.dll</HintPath>
       <Private>false</Private>

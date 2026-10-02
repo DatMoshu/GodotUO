@@ -10,11 +10,13 @@ from pathlib import Path
 
 PACK_SCHEMA = "guo/store-pack@1"
 INDEX_SCHEMA = "guo/store-index@1"
-KINDS = {"background", "theme", "sound", "profile-preset", "screensaver", "postfx"}
+KINDS = {"background", "theme", "sound", "profile-preset", "screensaver", "postfx", "razor-script"}
 # A screensaver is played by the client from profile version 11 on.
 SCREENSAVER_MIN_PROFILE = 11
 LICENCES = {"CC0-1.0", "CC-BY-4.0", "CC-BY-SA-4.0", "MIT", "BSD-2-Clause", "BSD-3-Clause", "Apache-2.0"}
-EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".ogv", ".ogg", ".wav", ".json", ".txt", ".gdshader"}
+EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".ogv", ".ogg", ".wav", ".json", ".txt", ".gdshader", ".razor"}
+MAX_SCRIPT_BYTES = 262144
+MAX_SCRIPT_CHARS = 65536
 IMAGES = {".png", ".jpg", ".jpeg", ".webp"}
 MAX_ZIP = 512 * 1024 * 1024
 MAX_TOTAL = 1024 * 1024 * 1024
@@ -102,10 +104,10 @@ def parse_manifest(raw):
     m = json.loads(raw.decode("utf-8"), object_pairs_hook=unique_object, parse_constant=no_constant)
     valid_unicode(m)
     require(isinstance(m, dict), "manifest must be an object")
-    require(m.get("schema") == PACK_SCHEMA, "unsupported pack schema")
+    require(m.get("schema") in (PACK_SCHEMA, "guo/store-pack@2"), "unsupported pack schema")
     identifier(m.get("id"))
     version(m.get("version"))
-    require(m.get("kind") in KINDS, "unsupported pack kind (art-override is disabled)")
+    require(m.get("kind") in KINDS if m["schema"] == PACK_SCHEMA else m.get("kind") == "content", "unsupported pack kind")
     require(m.get("licence") in LICENCES, "licence is not allowed")
     for key in ("title", "author"):
         value = m.get(key)
@@ -125,6 +127,19 @@ def parse_manifest(raw):
         require(not any("/".join(name.split("/")[:i]) in seen for i in range(1, len(name.split("/")))), "file/directory collision")
     require(isinstance(m.get("preview"), str) and m["preview"] in files and Path(m["preview"]).suffix.lower() in IMAGES, "preview must name a declared image")
     require(m["licence"] == "CC0-1.0" or "LICENSE.txt" in files, "attribution requires LICENSE.txt")
+    scripts = [n for n in files if Path(n).suffix.lower() == ".razor"]
+    if m["schema"] == "guo/store-pack@2":
+        try:
+            from .content import validate_content
+        except ImportError:
+            from content import validate_content
+        validate_content(m, require, identifier, version)
+        entries = {c["entry"] for c in m["components"] if c["type"] == "script"}
+        require(all(Path(n).suffix.lower() == ".razor" for n in entries) and set(scripts) <= entries,
+                "Every Razor payload must be a declared script component entry")
+    else:
+        require(bool(scripts) if m["kind"] == "razor-script" else not scripts,
+                "Razor scripts require their own kind and at least one .razor file")
     # Screen-effect packs (ADR-0023): presets and shaders; shader code only in this kind.
     if m["kind"] == "postfx":
         require(any(Path(n).suffix.lower() == ".json" for n in files), "a postfx pack has at least one preset (.json)")
@@ -133,7 +148,21 @@ def parse_manifest(raw):
     if m["kind"] == "screensaver":
         require(sum(Path(n).suffix.lower() == ".ogv" for n in files) == 1, "a screensaver has exactly one .ogv loop")
         require(m["min_profile_version"] >= SCREENSAVER_MIN_PROFILE, f"a screensaver needs min_profile_version {SCREENSAVER_MIN_PROFILE} or later")
+    if m["schema"] == "guo/store-pack@2":
+        try:
+            from .content import validate_content
+        except ImportError:
+            from content import validate_content
+        validate_content(m, require, identifier, version)
     return m
+
+
+def script_text(raw):
+    require(len(raw) <= MAX_SCRIPT_BYTES, "script exceeds byte limit")
+    text = raw.decode("utf-8-sig", errors="strict")
+    require(text.strip() and units(text) <= MAX_SCRIPT_CHARS, "script is empty or exceeds character limit")
+    require(not any((ord(c) < 32 and c not in "\t\r\n") or ord(c) == 127 for c in text), "script contains control characters")
+    return text
 
 
 def sha256(path):
@@ -159,6 +188,8 @@ def verify(path):
             require(item.filename.isascii() or item.flag_bits & 0x800, "a non-ASCII entry name without the UTF-8 flag")
             require(item.compress_type in {zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED}, "unsupported ZIP compression")
             require(item.file_size <= (MAX_MANIFEST if item.filename == "manifest.json" else MAX_FILE), "entry too large")
+            if Path(item.filename).suffix.lower() == ".razor":
+                require(item.file_size <= MAX_SCRIPT_BYTES, "script exceeds byte limit")
             total += item.file_size
         require(total <= MAX_TOTAL + MAX_MANIFEST, "expanded ZIP too large")
         require("manifest.json" in archive.namelist(), "root manifest missing")
@@ -173,4 +204,6 @@ def verify(path):
                     require(count <= MAX_FILE, "expanded entry too large")
                     digest.update(chunk)
             require(digest.hexdigest() == expected, f"hash mismatch: {name}")
+            if Path(name).suffix.lower() == ".razor":
+                script_text(archive.read(name))
     return manifest

@@ -14,6 +14,16 @@ namespace GUO.Store;
 /// <summary>No Godot dependency: the headless smoke runs the real installer.</summary>
 internal sealed class StoreClient : IDisposable
 {
+    // Process-local lifecycle signal; consumers filter by id/version and reverify before use.
+    public static event Action<string, string, string> PackChanged;
+    private static void Changed(string operation, string id, string version)
+    {
+        var handlers = PackChanged;
+        if (handlers == null) return;
+        foreach (Action<string, string, string> handler in handlers.GetInvocationList())
+            try { handler(operation, id, version); }
+            catch (Exception e) { System.Diagnostics.Trace.TraceError("Store change listener: " + e.Message); }
+    }
     private readonly HttpClient _http = new(new HttpClientHandler { AllowAutoRedirect = false });
     private readonly string _root;
     private readonly int _profileVersion;
@@ -88,7 +98,7 @@ internal sealed class StoreClient : IDisposable
     }
 
     // Refuse reparse points at every boundary, including parents of the root.
-    private static void NoLinks(string path)
+    internal static void NoLinks(string path)
     {
         for (var info = new DirectoryInfo(Path.GetFullPath(path)); info != null; info = info.Parent)
             if (info.Exists) StorePack.Require((info.Attributes & FileAttributes.ReparsePoint) == 0, "Store path contains a link");
@@ -138,6 +148,8 @@ internal sealed class StoreClient : IDisposable
             NoLinks(destination);
             Directory.CreateDirectory(Path.GetDirectoryName(destination));
             Directory.Move(stage, destination);
+            guard.Dispose(); // Reconciliation may open its own verification lock.
+            Changed("install", entry.Manifest.Id, entry.Manifest.Version);
             return destination;
         }
         finally
@@ -147,6 +159,38 @@ internal sealed class StoreClient : IDisposable
         }
     }
 
+    public async Task<string> InstallWithDependencies(StoreEntry root, IReadOnlyList<StoreEntry> catalogue, CancellationToken ct = default)
+    {
+        var selected = new Dictionary<string, StoreEntry>(StringComparer.Ordinal);
+        var visiting = new HashSet<string>(StringComparer.Ordinal);
+        var ordered = new List<StoreEntry>();
+        void Plan(StoreEntry entry)
+        {
+            StorePack.Validate(entry.Manifest);
+            string id = entry.Manifest.Id;
+            StorePack.Require(!visiting.Contains(id), "Dependency cycle");
+            if (selected.TryGetValue(id, out var previous))
+            {
+                StorePack.Require(previous.Manifest.Version == entry.Manifest.Version, "Dependency version conflict");
+                return;
+            }
+            StorePack.Require(selected.Count < 128 && entry.Manifest.MinProfileVersion <= _profileVersion, "Dependency closure too large or incompatible");
+            selected.Add(id, entry); visiting.Add(id);
+            foreach (var dependency in entry.Manifest.Dependencies ?? new())
+            {
+                var matches = catalogue.Where(e => e.Manifest.Id == dependency.Key && e.Manifest.Version == dependency.Value).ToArray();
+                StorePack.Require(matches.Length == 1, "Required dependency unavailable: " + dependency.Key + "@" + dependency.Value);
+                Plan(matches[0]);
+            }
+            visiting.Remove(id); ordered.Add(entry);
+        }
+        Plan(root); // Reject invalid plans before downloading or installing anything.
+        string result = null;
+        foreach (var entry in ordered) result = await Install(entry, ct).ConfigureAwait(false);
+        if (root.Manifest.Schema == "guo/store-pack@2") VerifyContent(root.Manifest.Id, root.Manifest.Version);
+        return result;
+    }
+
     private static StoreManifest ReadInstalled(string directory, bool hashes)
     {
         NoLinks(directory);
@@ -154,13 +198,39 @@ internal sealed class StoreClient : IDisposable
         StorePack.Require(new FileInfo(file).Length <= StorePack.MaxManifest, "Installed manifest too large");
         var m = StorePack.Parse(File.ReadAllBytes(file));
         StorePack.Require(Path.GetFileName(directory) == m.Version && Path.GetFileName(Path.GetDirectoryName(directory)) == m.Id, "Installed manifest path mismatch");
+        long total = 0;
         foreach (var (name, expected) in m.Files)
         {
             string path = Path.Combine(directory, name.Replace('/', Path.DirectorySeparatorChar)); NoLinks(path);
             StorePack.Require(File.Exists(path), "Installed payload missing");
+            long size = new FileInfo(path).Length; total += size;
+            StorePack.Require(size <= StorePack.MaxFile && total <= StorePack.MaxTotal, "Installed payload exceeds limits");
             if (hashes) StorePack.Require(StorePack.HashFile(path) == expected, "Installed payload hash mismatch");
         }
         return m;
+    }
+
+    /// <summary>Read a declared installed file, checking its snapshot metadata and hash again.
+    /// The store lock prevents install/remove racing a script preview or personal-copy import.</summary>
+    public byte[] ReadVerifiedPayload(StoreManifest expected, string name, int limit)
+    {
+        StorePack.Validate(expected);
+        StorePack.SafePath(name);
+        using var guard = Lock();
+        string directory = Destination(expected.Id, expected.Version);
+        var manifest = ReadInstalled(directory, false);
+        StorePack.Require(StorePack.Equivalent(expected, manifest), "Installed pack changed; reopen the library");
+        StorePack.Require(manifest.Files.TryGetValue(name, out string digest), "Undeclared pack file");
+        string path = Path.Combine(directory, name.Replace('/', Path.DirectorySeparatorChar));
+        NoLinks(path);
+        using var input = File.OpenRead(path);
+        StorePack.Require(input.Length <= limit, "Pack file exceeds read limit");
+        using var bytes = new MemoryStream();
+        StorePack.CopyLimited(input, bytes, limit);
+        byte[] result = bytes.ToArray();
+        StorePack.Require(Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(result)).ToLowerInvariant() == digest,
+            "Installed payload hash mismatch: " + name);
+        return result;
     }
 
     public IReadOnlyList<StoreManifest> Installed()
@@ -180,6 +250,49 @@ internal sealed class StoreClient : IDisposable
         return result;
     }
 
+    /// <summary>Resolve an installed exact dependency closure without executing any content.</summary>
+    public StoreVerifiedContent VerifyContent(string id, string version)
+    {
+        using var guard = Lock();
+        return VerifyContentLocked(id, version);
+    }
+
+    internal IDisposable AcquireContentLock() => Lock();
+
+    // Caller holds AcquireContentLock, including during the resulting pointer mutation.
+    internal StoreVerifiedContent VerifyContentLocked(string id, string version)
+    {
+        var packs = new Dictionary<string, StoreVerifiedPack>(StringComparer.Ordinal);
+        var visiting = new HashSet<string>(StringComparer.Ordinal);
+        void Visit(string packId, string packVersion)
+        {
+            StorePack.Require(!visiting.Contains(packId), "Dependency cycle");
+            if (packs.TryGetValue(packId, out var found))
+            {
+                StorePack.Require(found.Version == packVersion, "Dependency version conflict");
+                return;
+            }
+            StorePack.Require(packs.Count + visiting.Count < 128, "Dependency closure too large");
+            string directory = Destination(packId, packVersion);
+            var m = ReadInstalled(directory, true);
+            StorePack.Require(m.MinProfileVersion <= _profileVersion, "Dependency requires a newer profile");
+            visiting.Add(packId);
+            foreach (var dependency in m.Dependencies ?? new()) Visit(dependency.Key, dependency.Value);
+            visiting.Remove(packId);
+            packs.Add(packId, new StoreVerifiedPack(directory, m));
+        }
+        Visit(id, version);
+        foreach (var pack in packs.Values)
+            foreach (var component in pack.Manifest.Components ?? new())
+                foreach (string reference in component.References ?? new())
+                {
+                    string[] parts = reference.Split(':');
+                    StorePack.Require(packs.TryGetValue(parts[0], out var dependency)
+                        && dependency.Manifest.Components != null && dependency.Manifest.Components.Any(c => c.Id == parts[1]), "Unresolved component reference");
+                }
+        return new StoreVerifiedContent(packs);
+    }
+
     private static void DeleteTree(string directory)
     {
         NoLinks(directory);
@@ -192,7 +305,17 @@ internal sealed class StoreClient : IDisposable
     {
         string destination = Destination(id, version);
         using var guard = Lock();
+        string activePath = Path.Combine(_root, ".active-content.json");
+        if (File.Exists(activePath))
+        {
+            var selected = StoreContentLock.Read(activePath);
+            var closure = selected.VerifySnapshot(VerifyContentLocked(selected.Pack, selected.Version));
+            StorePack.Require(!closure.Packs.TryGetValue(id, out var pack) || pack.Version != version,
+                "This pack is selected for startup. Select original assets or another deployment before uninstalling it.");
+        }
         if (Directory.Exists(destination)) DeleteTree(destination);
+        guard.Dispose();
+        Changed("uninstall", id, version);
         LastUninstallMessage = BackgroundRemoved?.Invoke(id, version) == true
             ? "Pack removed. Active background reset to built-in grey. Reopen Options to refresh backgrounds."
             : "Pack removed. Reopen Options to refresh backgrounds.";

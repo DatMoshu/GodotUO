@@ -292,6 +292,9 @@ internal sealed partial class ModernOptions : ModernGump
             // Macros is a page of its own kind: the macro list and editor (ModernMacros).
             if (page == "Macros")
             {
+                var scripts = UoTheme.Button("Scripts", 120);
+                scripts.Pressed += () => { Close(); ModernScripts.Show(World); };
+                rows.AddChild(scripts);
                 _macros = new ModernMacros(World, Text, () => _macrosChanged = true);
                 rows.AddChild(_macros);
                 continue;

@@ -34,6 +34,9 @@ internal abstract partial class ModernGump : Node
     /// <summary>The card's frame: UoTheme's stone unless the view is styled after its classic gump.</summary>
     protected virtual StyleBox CardStyle => null;
 
+    // Editors need native mouse selection and wheel scrolling, rather than touch-style taps.
+    protected virtual bool DirectMouseInput => false;
+
     private const int Pad = 12; // client pixels above and below, as the fitted classic gumps
 
     private SubViewport _viewport;
@@ -232,6 +235,7 @@ internal abstract partial class ModernGump : Node
     private Vector2 _pressAt;
     private Vector2 _lastAt;
     private ScrollContainer _scrollUnder;
+    private TextEdit _textUnder;
     private ulong _pressTime;
     private bool _heldDone;
     private Control _pressUnder;
@@ -248,6 +252,17 @@ internal abstract partial class ModernGump : Node
         }
 
         ModernGump m = Current;
+
+        if (m.DirectMouseInput && e is InputEventMouse mouse)
+        {
+            if (mouse is InputEventMouseButton { Pressed: true } && !m._rect.HasPoint(mouse.Position / Dpi))
+                return true;
+            using var routed = (InputEventMouse)mouse.Duplicate();
+            routed.Position = mouse.Position - m._rect.Position * Dpi;
+            routed.GlobalPosition = routed.Position;
+            m._viewport.PushInput(routed, true);
+            return true;
+        }
 
         if (e is InputEventKey key)
         {
@@ -288,6 +303,10 @@ internal abstract partial class ModernGump : Node
             m._pressUnder = under;
             m._onSlider = under is Godot.Range and not ScrollBar;
             m._scrollUnder = FindScroll(under);
+            m._textUnder = null;
+            if (m.DirectMouseInput)
+                for (Node node = under; node != null; node = node.GetParent())
+                    if (node is TextEdit text) { m._textUnder = text; break; }
 
             if (m._onSlider)
             {
@@ -308,7 +327,11 @@ internal abstract partial class ModernGump : Node
                     m._dragged = true;
                 }
 
-                if (m._dragged && m._scrollUnder != null)
+                if (m._dragged && m._textUnder != null)
+                {
+                    m._textUnder.ScrollVertical -= (local.Y - m._lastAt.Y) / m._scale / Math.Max(1, m._textUnder.GetLineHeight());
+                }
+                else if (m._dragged && m._scrollUnder != null)
                 {
                     m._scrollUnder.ScrollVertical -= (int)Math.Round((local.Y - m._lastAt.Y) / m._scale);
                 }
@@ -356,6 +379,13 @@ internal abstract partial class ModernGump : Node
         {
             DisplayServer.VirtualKeyboardShow(field.Text);
         }
+        else if (DirectMouseInput && _viewport.GuiGetFocusOwner() is TextEdit { Editable: true } editor &&
+                 DisplayServer.HasFeature(DisplayServer.Feature.VirtualKeyboard))
+        {
+            int cursor = editor.GetCaretColumn();
+            for (int line = 0; line < editor.GetCaretLine(); line++) cursor += editor.GetLine(line).Length + 1;
+            DisplayServer.VirtualKeyboardShow(editor.Text, type: DisplayServer.VirtualKeyboardType.Multiline, cursorStart: cursor);
+        }
     }
 
     // --- the probe --------------------------------------------------------------------
@@ -363,7 +393,8 @@ internal abstract partial class ModernGump : Node
     /// <summary>For the probe: the centre of a control, in client pixels.</summary>
     public Vector2 CentreOf(Control c)
     {
-        Vector2 inViewport = c.GetGlobalRect().GetCenter() * _scale;
+        // GetGlobalRect already includes the scaled root's transform.
+        Vector2 inViewport = c.GetGlobalRect().GetCenter();
         return _rect.Position + inViewport / Dpi;
     }
 
@@ -371,7 +402,7 @@ internal abstract partial class ModernGump : Node
     public Vector2 AlongOf(Control c, float t)
     {
         Rect2 r = c.GetGlobalRect();
-        Vector2 inViewport = new Vector2(r.Position.X + r.Size.X * t, r.Position.Y + r.Size.Y / 2) * _scale;
+        Vector2 inViewport = new Vector2(r.Position.X + r.Size.X * t, r.Position.Y + r.Size.Y / 2);
         return _rect.Position + inViewport / Dpi;
     }
 

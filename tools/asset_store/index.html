@@ -192,8 +192,8 @@ dd { margin: 0; overflow-wrap: anywhere; }
 </section>
 
 <footer>
-  <span>Packs hold backgrounds, themes, sounds and layout presets. None of them contain Ultima Online game data; GodotUO always reads your own install.</span>
-  <span id="sample-note" hidden>Packs marked Sample show what each shelf can hold. They were generated for this preview and do nothing yet beyond installing their files.</span>
+  <span>Packs can add client content, server definitions, scripts and presentation settings. Original Ultima Online data comes from your own installation.</span>
+  <span id="sample-note" hidden>Packs marked Sample are original starter assets. Installation keeps content inactive; game content needs a compatible deployment, and scripts need explicit approval.</span>
 </footer>
 
 <dialog id="detail" aria-labelledby="detail-title">
@@ -213,14 +213,20 @@ dd { margin: 0; overflow-wrap: anywhere; }
 "use strict";
 const $ = (s) => document.querySelector(s);
 const SHELVES = [
+  { kind: "razor-script", title: "Razor scripts", blurb: "Razor CE scripts to preview and add to your personal library. Installing never runs them.", layout: "rows" },
+  { kind: "content", title: "Game content", blurb: "Client, server and combined content packs. Check supported consumers before activation.", layout: "rows" },
+  { kind: "postfx", title: "Screen effects", blurb: "Post-processing looks for the world.", layout: "rows" },
   { kind: "background", title: "Backgrounds", blurb: "What shows around and behind the game: still art or a slow loop.", layout: "panes" },
   { kind: "theme", title: "Themes", blurb: "Colours for the client's own panels and buttons.", layout: "rows" },
   { kind: "sound", title: "Sounds", blurb: "Ambient loops and effects to play under the world.", layout: "rows" },
   { kind: "profile-preset", title: "Layout presets", blurb: "Where each window sits, tuned for a phone, a dual screen or a Deck.", layout: "rows" },
   { kind: "screensaver", title: "Screensavers", blurb: "Loops that play when the client sits idle, drifting so nothing burns into an OLED screen.", layout: "panes" },
 ];
-const KIND_NAME = { background: "Background", theme: "Theme", sound: "Sound", "profile-preset": "Layout preset", screensaver: "Screensaver" };
+const KIND_NAME = { "razor-script": "Razor scripts", content: "Game content", postfx: "Screen effect", background: "Background", theme: "Theme", sound: "Sound", "profile-preset": "Layout preset", screensaver: "Screensaver" };
 const NOTES = {
+  "razor-script": "After installing in GUO, choose Browse scripts to preview and add personal copies. Updates and uninstall keep your copies. Embedded CE support is still growing; check the preview before running. These are not Razor Enhanced Python scripts.",
+  content: "Installation stores verified files. Activation requires compatible client/server consumers and resolved dependencies.",
+  postfx: "Select an installed look from the effects menu.",
   background: "After installing, pick it in Options under the background list, then Apply.",
   theme: "Installs the theme's files. Applying themes in the client is still to come.",
   sound: "Installs the sound's files. Playing them in the client is still to come.",
@@ -247,7 +253,7 @@ function size(bytes) {
 function matches(p) {
   if (filter && p.kind !== filter) return false;
   if (!query) return true;
-  return [p.title, p.author, p.id].some((v) => String(v).toLowerCase().includes(query));
+  return [p.title, p.author, p.id, p.target || "", ...(p.components || []).map(c => c.type)].some((v) => String(v).toLowerCase().includes(query));
 }
 
 function card(p, layout) {
@@ -264,6 +270,7 @@ function card(p, layout) {
   const h = el("h3", null, p.title);
   if (isSample(p)) h.append(el("span", "badge", "Sample"));
   text.append(h, el("p", "by", `By ${p.author}`));
+  if (p.target) text.append(el("p", "by", `${p.target} · ${[...new Set((p.components || []).map(c => c.type))].join(", ")}`));
   open.append(thumb, text);
   open.addEventListener("click", () => show(p));
   art.append(open);
@@ -321,7 +328,7 @@ function feature(p, fromUser) {
     img.src = localUrl(p.preview_url);
     img.alt = p.title;
     $("#feature-title").textContent = p.title;
-    $("#feature-by").textContent = `A ${KIND_NAME[p.kind].toLowerCase()} by ${p.author}, free to use under ${p.licence}.`;
+    $("#feature-by").textContent = `${KIND_NAME[p.kind]} by ${p.author}, licensed under ${p.licence}.`;
     $("#feature-download").href = localUrl(p.url);
     img.classList.remove("fading");
   };
@@ -361,6 +368,12 @@ function show(p) {
     meta.append(el("dt", null, k), el("dd", null, v));
   }
   $("#detail-note").textContent = NOTES[p.kind] || "";
+  if (p.target) {
+    for (const [k, v] of [["Target", p.target], ["Components", [...new Set((p.components || []).map(c => c.type))].join(", ")],
+                         ["Dependencies", Object.entries(p.dependencies || {}).map(([id, version]) => `${id} @ ${version}`).join(", ") || "None"]]) {
+      meta.append(el("dt", null, k), el("dd", null, v));
+    }
+  }
   $("#detail-download").href = localUrl(p.url);
   $("#detail").showModal();
 }

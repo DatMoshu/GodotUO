@@ -219,6 +219,9 @@ public static class WorldObjectsSync
 
     /// <summary>One placed item, in the manifest's form (id, map, location, item_id, hue, type).</summary>
     public static Outcome PutItem(JsonNode m)
+        => PutItem(m, AppliedItems);
+
+    internal static Outcome PutItem(JsonNode m, JsonObject owned)
     {
         string id = (string)m["id"];
         Map map = Map.Parse((string)m["map"]);
@@ -233,7 +236,7 @@ public static class WorldObjectsSync
             return Outcome.Skipped;
         }
 
-        Item existing = AppliedItems[id]?["serial"] is JsonNode sn ? World.FindItem((Serial)(uint)sn) : null;
+        Item existing = owned[id]?["serial"] is JsonNode sn ? World.FindItem((Serial)(uint)sn) : null;
         Outcome outcome;
         if (existing is { Deleted: false })
         {
@@ -254,18 +257,21 @@ public static class WorldObjectsSync
             outcome = Outcome.Added;
         }
 
-        AppliedItems[id] = new JsonObject { ["serial"] = (uint)existing.Serial };
+        owned[id] = new JsonObject { ["serial"] = (uint)existing.Serial };
         return outcome;
     }
 
     public static Outcome DeleteItem(string id)
+        => DeleteItem(id, AppliedItems);
+
+    internal static Outcome DeleteItem(string id, JsonObject owned)
     {
-        if (AppliedItems[id]?["serial"] is not JsonNode sn)
+        if (owned[id]?["serial"] is not JsonNode sn)
         {
             return Outcome.Missing;
         }
 
-        AppliedItems.Remove(id);
+        owned.Remove(id);
         if (World.FindItem((Serial)(uint)sn) is { Deleted: false } gone)
         {
             gone.Delete();
