@@ -25,14 +25,18 @@ def main():
         def command(*arguments):
             subprocess.run(["dotnet", str(tool), *map(str, arguments)], check=True)
         command("extract-content", examples / "sample-content-art.zip", installed)
+        command("extract-content", examples / "sample-content-font.zip", installed)
+        command("extract-content", examples / "sample-content-map.zip", installed)
         lock = work / "content-lock.json"
-        command("content-lock", installed, "sample-content-art", "1.0.0", lock)
+        command("content-lock", installed, "sample-content-map", "1.0.0", lock)
         value = json.loads(lock.read_text())
         bindings = {"stone": ("static", 3701), "ground": ("land", 580), "slope": ("texmap", 1),
                     "panel": ("gump", 100), "palette": ("hue", 33), "chime": ("sound", 2000),
                     "ambience": ("music", 100), "lamp": ("light", 1), "platform": ("multi", 1),
                     "stone-data": ("tiledata", 3701), "figure": ("animation", 400), "paperdoll": ("gump", 50400)}
         value["bindings"] = {"sample-content-art:" + name: dict(type=kind, id=index) for name, (kind, index) in bindings.items()}
+        value["bindings"]["sample-content-font:letters"] = dict(type="font", id=0)
+        value["bindings"]["sample-content-map:courtyard"] = dict(type="map", id=0)
         lock.write_text(json.dumps(value, indent=2), encoding="utf-8")
         proof = root / "build/asset_packs/runtime-pixels.png"
         proof.parent.mkdir(parents=True, exist_ok=True)

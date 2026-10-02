@@ -81,6 +81,7 @@ namespace GUO.Assets
 
         public void Dispose()
         {
+            Content?.Dispose();
             Animations.Dispose();
             AnimData.Dispose();
             Arts.Dispose();

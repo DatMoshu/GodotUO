@@ -81,8 +81,9 @@ python tools/asset_store/razor_scripts.py --managed --store-dir build/asset_pack
 python tools/asset_store/run.py --store-dir build/asset_pack_test_store serve
 ```
 
-The content examples include a client pack, a server item pack depending on
-it, and a combined pack. Published versions are immutable: regenerate into
+The content examples include client art, ASCII/Unicode bitmap fonts, authored
+terrain/static blocks, a dependent server item pack, and a combined pack.
+Published versions are immutable: regenerate into
 a fresh directory when changing their contents. Installation is inactive;
 numeric bindings and a verified deployment lock select runtime content.
 Managed scripts use their own explicit review/approval/enable/run controls.

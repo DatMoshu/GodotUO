@@ -36,6 +36,34 @@ public partial class StoreContentProbe : Node
             StorePack.Require(files.TileData.StaticData[3701].Name == "Example stone" && files.TileData.StaticData[3701].Height == 8, "Tiledata overlay absent");
             StorePack.Require(files.TileData.StaticData[3701].IsWearable && files.TileData.StaticData[3701].AnimID == 400 && files.TileData.StaticData[3701].Layer == 5, "Wearable linkage absent");
             var paperdoll = files.Gumps.GetGump(50400);
+            var asciiGlyph = files.Fonts.RenderSingleGlyphASCII(0, 'A');
+            var unicodeGlyph = files.Fonts.RenderSingleGlyphUnicode(0, 'A', false, false);
+            StorePack.Require(asciiGlyph.Width == 5 && asciiGlyph.Height == 7 && asciiGlyph.AdvanceWidth == 5 && asciiGlyph.Data[0] == 0 && asciiGlyph.Data[1] != 0, "ASCII font overlay absent");
+            StorePack.Require(unicodeGlyph.Width == 5 && unicodeGlyph.Height == 7 && unicodeGlyph.BearingX == 2 && unicodeGlyph.BearingY == 2 && unicodeGlyph.AdvanceWidth == 7 && unicodeGlyph.Data[0] == 0 && unicodeGlyph.Data[1] != 0, "Unicode font metrics/pixels differ");
+            StorePack.Require(files.Fonts.GetWidthASCII(0, "AA") == 10, "Font layout and rendering disagree");
+            files.Maps.LoadMap(0);
+            ref var mapIndex = ref files.Maps.GetIndex(0, 180, 210);
+            mapIndex.MapFile.Seek((long)mapIndex.MapAddress, SeekOrigin.Begin);
+            StorePack.Require(mapIndex.MapFile.ReadUInt32() == 0, "Authored map header differs");
+            for (int cell = 0; cell < 64; cell++)
+                StorePack.Require(mapIndex.MapFile.ReadUInt16() == 580 && mapIndex.MapFile.ReadInt8() == 7, "Authored terrain cells differ");
+            StorePack.Require(mapIndex.StaticCount == 1 && mapIndex.StaticAddress != 0, "Authored statics absent");
+            mapIndex.StaticFile.Seek((long)mapIndex.StaticAddress, SeekOrigin.Begin);
+            StorePack.Require(mapIndex.StaticFile.ReadUInt16() == 3701 && mapIndex.StaticFile.ReadUInt8() == 3
+                && mapIndex.StaticFile.ReadUInt8() == 4 && mapIndex.StaticFile.ReadInt8() == 7 && mapIndex.StaticFile.ReadUInt16() == 33, "Authored statics differ");
+            var generatedMapPath = mapIndex.MapFile.FilePath;
+            // Simulate a shard diff changing the active reader, then removing it.
+            mapIndex.MapFile = files.Maps.GetMapFile(0); mapIndex.MapAddress = 0;
+            var noPatches = new GUO.IO.StackDataReader(new byte[4]);
+            files.Maps.ApplyPatches(ref noPatches);
+            StorePack.Require(mapIndex.MapFile.FilePath == generatedMapPath && mapIndex.MapAddress != 0, "Map patch reset lost the authored reader");
+            using (var invalid = new StoreMapOverlay())
+            {
+                bool refused = false;
+                try { invalid.Add(0, System.Text.Encoding.UTF8.GetBytes("{\"blocks\":[{\"x\":-1,\"y\":0,\"land\":[]}]}"), files.Maps); }
+                catch (InvalidDataException) { refused = true; }
+                StorePack.Require(refused, "Invalid map bounds accepted");
+            }
             StorePack.Require(paperdoll.Width == 32 && paperdoll.Height == 48, "Paperdoll art absent");
             var animations = new GUO.Renderer.Animations.Animations(files.Animations);
             for (byte dir = 0; dir < 5; dir++)
@@ -52,9 +80,13 @@ public partial class StoreContentProbe : Node
                 Draw(image, land.Pixels, land.Width, land.Height, 70, 12);
                 Draw(image, tex.Pixels, tex.Width, tex.Height, 130, 12);
                 Draw(image, gump.Pixels, gump.Width, gump.Height, 210, 12);
+                Draw(image, asciiGlyph.Data, asciiGlyph.Width, asciiGlyph.Height, 12, 110);
+                Draw(image, unicodeGlyph.Data, unicodeGlyph.Width, unicodeGlyph.Height, 25, 110);
                 StorePack.Require(image.SavePng(output) == Error.Ok, "Could not save decoded pixel evidence");
             }
-            GD.Print("[content probe] PASS: installed statics, 1012-pixel land diamond, texmap, gump, 32 hue colors, cliloc, PCM sound/music, light, multi, tiledata, wearable and five-direction animation atlas/anchors");
+            files.Content.Dispose();
+            StorePack.Require(!File.Exists(generatedMapPath), "Temporary map reader was not deleted on disposal");
+            GD.Print("[content probe] PASS: installed statics, 1012-pixel land diamond, texmap, gump, 32 hue colors, cliloc, PCM sound/music, light, multi, tiledata, wearable, ASCII/Unicode fonts, authored map blocks/cleanup and five-direction animation atlas/anchors");
             GetTree().Quit();
         }
         catch (Exception e) { GD.PrintErr("[content probe] FAIL: " + e); GetTree().Quit(1); }

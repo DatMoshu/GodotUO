@@ -16,10 +16,11 @@ from asset_store.pack import verify
 from asset_store.run import publish
 
 
-def png(width, height, color):
+def png(width, height, color, mask=None):
     def chunk(kind, data):
         return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
-    rows = b"".join(b"\0" + bytes(color) * width for _ in range(height))
+    rows = b"".join(b"\0" + (bytes(color) * width if mask is None else
+        b"".join(bytes(color) if mask[y][x] == "#" else b"\0\0\0\0" for x in range(width))) for y in range(height))
     return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b"")
 
 
@@ -49,6 +50,16 @@ def build(output, store=None):
             ("paperdoll", "gump", "client", "paperdoll.png", png(32, 48, (120, 144, 160, 255))),
             ("outfit", "wearable", "client", "outfit.json", {"art": "sample-content-art:stone", "animation": "sample-content-art:figure", "paperdoll": "sample-content-art:paperdoll", "layer": 5}),
         ]),
+        "sample-content-font": ("client", [
+            ("letters", "font", "client", "letters.json", {"glyphs": [
+                {"encoding": "ascii", "codepoint": 65, "image": "glyph-a.png"},
+                {"encoding": "unicode", "codepoint": 65, "image": "glyph-a.png", "offset_x": 1, "offset_y": 2}]}),
+        ]),
+        "sample-content-map": ("client", [
+            ("courtyard", "map", "client", "courtyard.json", {"blocks": [{"x": 180, "y": 210,
+                "land": [{"graphic": 580, "z": 7} for _ in range(64)],
+                "statics": [{"graphic": 3701, "x": 3, "y": 4, "z": 7, "hue": 33}]}]}),
+        ]),
         "sample-content-server": ("server", [
             ("stone-item", "item", "server", "item.json", {"name": "Example stone", "graphic": "sample-content-art:stone", "movable": True, "weight": 1}),
         ]),
@@ -62,13 +73,15 @@ def build(output, store=None):
         payload = {"preview.png": png(128, 96, (64, 96, 128, 255)),
                    "README.txt": b"Original procedural CC0 starter assets. Installation is inert. Runtime consumer support must be checked before activation.\n"}
         components = []
+        if pack_id == "sample-content-font":
+            payload["glyph-a.png"] = png(5, 7, (248, 248, 248, 255), [".###.", "#...#", "#...#", "#####", "#...#", "#...#", "#...#"])
         for local, kind, side, entry, data in records:
             payload[entry] = data if isinstance(data, bytes) else (json.dumps(data, indent=2) + "\n").encode()
             component = dict(id=local, type=kind, target=side, entry=entry)
             if kind == "item": component["references"] = [data["graphic"]]
             if kind == "wearable": component["references"] = [data["art"], data["animation"], data["paperdoll"]]
             components.append(component)
-        deps = {"sample-content-art": "1.0.0"} if pack_id == "sample-content-server" else {}
+        deps = {"sample-content-art": "1.0.0"} if pack_id in ("sample-content-server", "sample-content-font") else {"sample-content-font": "1.0.0"} if pack_id == "sample-content-map" else {}
         m = dict(schema="guo/store-pack@2", id=pack_id, version="1.0.0", kind="content",
                  target=target, dependencies=deps, components=components, title=pack_id.replace("-", " ").title(),
                  author="GUO original procedural examples", licence="CC0-1.0", min_profile_version=6,

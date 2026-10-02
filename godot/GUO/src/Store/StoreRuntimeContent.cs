@@ -12,7 +12,7 @@ using Environment = System.Environment;
 namespace GUO.Store;
 
 /// <summary>Startup-only verified overlays. No disk reads or allocations in lookup paths.</summary>
-internal sealed class StoreRuntimeContent
+internal sealed class StoreRuntimeContent : IDisposable
 {
     internal sealed record Pixels(uint[] Data, int Width, int Height);
     private readonly Dictionary<(string, int), Pixels> _images = new();
@@ -24,6 +24,9 @@ internal sealed class StoreRuntimeContent
     private readonly Dictionary<int, StaticTiles> _tiles = new();
     private readonly Dictionary<(int, int, int), AnimationsLoader.FrameInfo[]> _animations = new();
     private readonly Dictionary<int, AnimationGroupsType> _animationTypes = new();
+    private readonly StoreMapOverlay _maps = new();
+    public void ApplyMap(MapLoader maps, int map) => _maps.Apply(maps, map);
+    public void Dispose() => _maps.Dispose();
     public bool TryImage(string type, int id, out Pixels pixels) => _images.TryGetValue((type, id), out pixels);
     public bool TryString(int id, out string value) => _strings.TryGetValue(id, out value);
     public bool TrySound(int id, out byte[] value) => _sounds.TryGetValue(id, out value);
@@ -49,11 +52,13 @@ internal sealed class StoreRuntimeContent
         long pixelsTotal = 0;
         long payloadTotal = 0;
         var wearables = new List<(StoreComponent Component, byte[] Data)>();
+        var asciiGlyphs = new Dictionary<(int Font, int Code), FontCharacterData>();
+        var unicodeGlyphs = new Dictionary<(int Font, int Code), FontCharacterDataUnicode>();
         foreach (var pack in snapshot.Packs.Values)
             foreach (var component in pack.Manifest.Components ?? new())
             {
                 if (component.Target == "server" || component.Type == "script") continue; // Scripts have their own explicit approval/enable/run lifecycle.
-                StorePack.Require(component.Type is "static" or "land" or "texmap" or "gump" or "hue" or "translation" or "sound" or "music" or "multi" or "tiledata" or "light" or "animation" or "wearable", "No client consumer for " + component.Type);
+                StorePack.Require(component.Type is "static" or "land" or "texmap" or "gump" or "hue" or "translation" or "sound" or "music" or "multi" or "tiledata" or "light" or "animation" or "wearable" or "font" or "map", "No client consumer for " + component.Type);
                 byte[] data = pack.ReadPayload(component.Entry);
                 payloadTotal += data.Length;
                 StorePack.Require(payloadTotal <= 256 * 1024 * 1024, "Content payload memory budget exceeded");
@@ -97,6 +102,39 @@ internal sealed class StoreRuntimeContent
                             frameIndex++;
                         }
                         StorePack.Require(result._animations.TryAdd((id, action, dir), frames), "Duplicate animation sequence");
+                    }
+                    continue;
+                }
+                if (component.Type == "map") { result._maps.Add(id, data, files.Maps); continue; }
+                if (component.Type == "font")
+                {
+                    using var doc = JsonDocument.Parse(data);
+                    var glyphs = doc.RootElement.GetProperty("glyphs");
+                    StorePack.Require(glyphs.GetArrayLength() is > 0 and <= 65536, "Invalid glyph count");
+                    foreach (var glyph in glyphs.EnumerateArray())
+                    {
+                        string encoding = glyph.GetProperty("encoding").GetString();
+                        int code = glyph.GetProperty("codepoint").GetInt32();
+                        StorePack.Require(encoding is "ascii" or "unicode", "Unknown glyph encoding");
+                        StorePack.Require(encoding == "ascii" ? id < files.Fonts.FontCount && code is >= 32 and <= 255
+                            : id < 20 && files.Fonts.UnicodeFontExists((byte)id) && code is >= 32 and <= 65535 && code is not (>= 0xd800 and <= 0xdfff), "Invalid font slot or codepoint");
+                        var pixels = DecodeImage(pack.ReadPayload(glyph.GetProperty("image").GetString()), "font", ref pixelsTotal);
+                        if (encoding == "ascii")
+                        {
+                            var colors = new ushort[pixels.Data.Length];
+                            for (int i = 0; i < colors.Length; i++) colors[i] = pixels.Data[i] == 0 ? (ushort)0 : HuesHelper.Color32To16(pixels.Data[i]);
+                            StorePack.Require(asciiGlyphs.TryAdd((id, code), new FontCharacterData((byte)pixels.Width, (byte)pixels.Height, colors)), "Duplicate ASCII glyph");
+                        }
+                        else
+                        {
+                            int stride = (pixels.Width + 7) / 8;
+                            var mask = new byte[stride * pixels.Height];
+                            for (int y = 0; y < pixels.Height; y++) for (int x = 0; x < pixels.Width; x++)
+                                if (pixels.Data[y * pixels.Width + x] != 0) mask[y * stride + x / 8] |= (byte)(0x80 >> (x % 8));
+                            sbyte ox = glyph.TryGetProperty("offset_x", out var value) ? value.GetSByte() : (sbyte)0;
+                            sbyte oy = glyph.TryGetProperty("offset_y", out value) ? value.GetSByte() : (sbyte)0;
+                            StorePack.Require(unicodeGlyphs.TryAdd((id, code), new FontCharacterDataUnicode((sbyte)pixels.Width, (sbyte)pixels.Height, ox, oy, mask)), "Duplicate Unicode glyph");
+                        }
                     }
                     continue;
                 }
@@ -167,6 +205,10 @@ internal sealed class StoreRuntimeContent
             result._tiles[art] = tile;
         }
         // Commit only after all components and payloads validate.
+        result._maps.Compile();
+        for (int map = 0; map < MapLoader.MAPS_COUNT; map++) result.ApplyMap(files.Maps, map);
+        foreach (var (key, glyph) in asciiGlyphs) files.Fonts.ApplyContentGlyph(key.Font, key.Code, glyph);
+        foreach (var (key, glyph) in unicodeGlyphs) files.Fonts.ApplyContentGlyph(key.Font, key.Code, glyph);
         foreach (var (id, colors) in result._hues)
             for (int i = 0; i < 32; i++) files.Hues.HuesRange[(id - 1) / 8].Entries[(id - 1) % 8].ColorTable[i] = colors[i];
         foreach (var (id, tile) in result._tiles) files.TileData.StaticData[id] = tile;
@@ -177,7 +219,7 @@ internal sealed class StoreRuntimeContent
     {
                 StorePack.Require(data.Length >= 24 && data.AsSpan(0, 8).SequenceEqual(new byte[] {137,80,78,71,13,10,26,10}), "Expected PNG image");
                 uint w = BinaryPrimitives.ReadUInt32BigEndian(data.AsSpan(16, 4)), h = BinaryPrimitives.ReadUInt32BigEndian(data.AsSpan(20, 4));
-                int max = type == "gump" ? 2048 : 1024;
+                int max = type == "font" ? 127 : type == "gump" ? 2048 : 1024;
                 StorePack.Require(w > 0 && h > 0 && w <= max && h <= max, "Image dimensions exceed limit");
                 StorePack.Require(type != "land" || w == 44 && h == 44, "Land must be 44x44");
                 StorePack.Require(type != "texmap" || w == h && w is 64 or 128, "Texmap must be 64 or 128 square");

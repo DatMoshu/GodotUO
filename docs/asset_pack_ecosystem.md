@@ -79,6 +79,23 @@ declared on the component. The paperdoll binding follows the classic
 50000/60000 + animation ID mapping. This sets item animation/layer/wearable
 metadata; fitted body coverage still depends on the supplied frames.
 
+Font JSON declares `glyphs`, each with `encoding` (`ascii` or `unicode`),
+`codepoint`, and a declared PNG `image`. Unicode glyphs also accept signed
+byte `offset_x`/`offset_y`. The component's numeric binding selects an existing
+font slot. Glyph dimensions are 1..127 pixels. ASCII covers codepoints 32..255
+and keeps classic vertical alignment; Unicode covers BMP non-surrogate
+characters and uses the image's opaque pixels as a monochrome mask. Missing
+glyphs retain the base font. Fonts mount before text/atlas caches are created.
+
+Map JSON declares `blocks` with block coordinates `x`/`y`, exactly 64 row-major
+`land` cells (`graphic`, `z`), and optional `statics` (`graphic`, local `x`/`y`
+in 0..7, `z`, `hue`). Omitted statics preserve the base block; an empty array
+clears it. The numeric binding chooses an existing facet. Overlapping authored
+blocks are rejected. Generated readers are private delete-on-close temporary
+files; the UO install is never modified. All consumers of the map block index
+see the overlay. Subsequent shard map patches retain their existing precedence.
+This is a client overlay; server collision maps must be deployed separately.
+
 Script components are left inert by the asset mount. Their separate managed
 session owns review, approval, enablement, execution, revocation and logout.
 
@@ -95,8 +112,8 @@ need matching client/server IDs. Unsupported types stay visibly inactive.
 `python tools/asset_store/content_examples.py --out build/content_examples`
 creates editable source directories plus reproducible original CC0 ZIPs.
 Add `--store build/content_store` to publish through the real validator/index.
-The three examples cover client content, a server pack depending on the client
-pack, and a self-contained combined pack. They are test artwork, not finished
+The examples cover client content, bitmap fonts, authored map blocks, a server
+pack depending on the client pack, and a self-contained combined pack. They are test artwork, not finished
 production art. When changing a published example, increment its version or
 publish into a fresh test store; releases remain immutable.
 
@@ -122,7 +139,7 @@ world-save migration or an automatic install hook.
 
 ## Evidence and remaining scope
 
-The Godot `StoreContentProbe.tscn` checks thirteen client consumers, including
+The Godot `StoreContentProbe.tscn` checks fifteen client consumers, including
 five-direction animation frames through the production atlas. Original starter
 pack pixels are decoded into a proof image. A private ModernUO probe verifies
 the combined pack's item construction/removal. Full repository smoke passed
@@ -130,8 +147,12 @@ for the merged runtime and scripting changes. The HTTP dependency-install
 smoke and ten store/web tests also pass. Art bindings must fit the original
 client renderer's allocated art slots; extending that capacity remains separate work.
 
+Font proof covers ASCII and Unicode pixels and metrics; map proof covers
+terrain/static block reads, bounds rejection and delete-on-close cleanup.
+Live terrain rendering and server collision-map parity remain unverified.
+
 Not yet implemented: other server gameplay consumers;
-fonts; map/region overlays as store components; presentation activation
+region components; presentation activation
 unification; editor authoring consumers; shard content negotiation;
 full store activation UI. Animation coverage currently
 proves explicit sequences/anchors, not every body/equipment mapping. A verified
