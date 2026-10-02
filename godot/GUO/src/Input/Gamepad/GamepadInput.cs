@@ -91,6 +91,15 @@ namespace GUO.Input.Gamepad
 
             HookConnections();
 
+            // The 3D pregame (docs/ui/pregame_3d.md) takes the D-pad, the left
+            // stick, the face buttons, Start and the shoulders while it is up,
+            // as the window menu takes the D-pad; the right stick still moves
+            // the pointer. Off or not up, one false test.
+            if (GUO.Pregame3D.PregameDiorama.HandlePad(e))
+            {
+                return true;
+            }
+
             switch (e)
             {
                 case InputEventJoypadButton button:
