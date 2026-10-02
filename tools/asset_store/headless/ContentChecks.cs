@@ -133,6 +133,31 @@ internal static class ContentChecks
                 && set.GetProperty("items")[0].GetProperty("graphic").GetInt32() == 3701, "Decoration export lost placements or binding");
         }
         Console.WriteLine("content: decoration export and missing-graphic rejection without partial output PASS");
+        var lootClosure = client.VerifyContent("sample-content-loot", "1.0.0");
+        var lootLock = new StoreContentLock { Pack = "sample-content-loot", Version = "1.0.0", IdentityHash = lootClosure.IdentityHash };
+        lootLock.Bindings.Add("sample-content-art:stone", new StoreContentBinding { Type = "static", Id = 3701 });
+        string lootLockPath = Path.Combine(root, "loot-lock.json"), lootExport = Path.Combine(root, "loot-export.json");
+        File.WriteAllText(lootLockPath, JsonSerializer.Serialize(lootLock));
+        StoreServerExport.Export(client, lootLockPath, lootExport);
+        using (var exported = JsonDocument.Parse(File.ReadAllBytes(lootExport)))
+            StorePack.Require(exported.RootElement.GetProperty("loot")[0].GetProperty("content").GetProperty("entries").GetArrayLength() == 3
+                && exported.RootElement.GetProperty("items").GetArrayLength() == 1, "Loot export lost its table or dependent item");
+        foreach (string invalid in new[] {
+            "{\"entries\":[]}",
+            "{\"entries\":[{\"item\":\"missing:item\",\"chance\":1,\"min\":1,\"max\":1}]}",
+            "{\"entries\":[{\"item\":\"sample-content-server:stone-item\",\"chance\":2,\"min\":1,\"max\":1}]}",
+            "{\"entries\":[{\"item\":\"sample-content-server:stone-item\",\"chance\":1,\"min\":2,\"max\":1}]}",
+            "{\"entries\":[{\"item\":\"sample-content-server:stone-item\",\"chance\":1,\"min\":1,\"max\":257}]}",
+            "{\"entries\":[{\"item\":\"sample-content-server:stone-item\",\"chance\":1,\"min\":1,\"max\":1,\"script\":\"unexpected\"}]}"
+        })
+        {
+            bool rejected = false;
+            using var invalidDoc = JsonDocument.Parse(invalid);
+            try { StoreLootDefinition.Validate(invalidDoc.RootElement, id => id == "sample-content-server:stone-item"); }
+            catch (InvalidDataException) { rejected = true; }
+            StorePack.Require(rejected, "Invalid loot definition accepted");
+        }
+        Console.WriteLine("content: loot export, dependent item resolution and six invalid loot cases PASS");
         string payload = Path.Combine(root, art.Id, art.Version, "stone.png");
         File.AppendAllText(payload, "tampered");
         bool refused = false;

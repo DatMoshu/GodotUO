@@ -69,6 +69,12 @@ def build(output, store=None):
                 "areas": [{"x": 1440, "y": 1680, "z": -128, "width": 8, "height": 8, "depth": 256}],
                 "music": "sample-content-art:ambience", "enter_message": "Welcome to the authored courtyard.", "exit_message": "Leaving the authored courtyard."}),
         ]),
+        "sample-content-loot": ("server", [
+            ("stone-cache", "loot", "server", "loot.json", {"entries": [
+                {"item": "sample-content-server:stone-item", "chance": 1.0, "min": 1, "max": 3},
+                {"item": "sample-content-server:stone-item", "chance": 0.5, "min": 1, "max": 2},
+                {"item": "sample-content-server:stone-item", "chance": 0.0, "min": 1, "max": 1}]}),
+        ]),
         "sample-content-decoration": ("server", [
             ("courtyard", "decoration", "server", "decoration.json", {"facet": 0, "items": [
                 {"id": "stone-west", "graphic": "sample-content-art:stone", "x": 1442, "y": 1682, "z": 7, "hue": 0},
@@ -105,8 +111,10 @@ def build(output, store=None):
             if kind == "wearable": component["references"] = [data["art"], data["animation"], data["paperdoll"]]
             if kind == "region" and "music" in data: component["references"] = [data["music"]]
             if kind == "decoration": component["references"] = sorted({item["graphic"] for item in data["items"]})
+            if kind == "loot": component["references"] = sorted({item["item"] for item in data["entries"]})
             components.append(component)
         deps = {"sample-content-art": "1.0.0"} if pack_id in ("sample-content-server", "sample-content-font", "sample-content-region", "sample-content-decoration") else {"sample-content-font": "1.0.0"} if pack_id in ("sample-content-map", "sample-content-world", "sample-content-collision") else {}
+        if pack_id == "sample-content-loot": deps = {"sample-content-server": "1.0.0"}
         m = dict(schema="guo/store-pack@2", id=pack_id, version="1.0.0", kind="content",
                  target=target, dependencies=deps, components=components, title=pack_id.replace("-", " ").title(),
                  author="GUO original procedural examples", licence="CC0-1.0", min_profile_version=6,
@@ -142,7 +150,7 @@ def bundle(archives, destination):
     files["GETTING_STARTED.md"] = (
         "# GUO asset-pack starters\n\n"
         "Original starter packs: client art, fonts, client maps, server items, combined items, "
-        "combined world maps, shared collision metadata, server regions, decoration sets and managed Razor scripts. ZIPs are ready for publication; folders contain editable declared sources.\n\n"
+        "combined world maps, shared collision metadata, server regions, decoration sets, loot tables and managed Razor scripts. ZIPs are ready for publication; folders contain editable declared sources.\n\n"
         "Read CONTRACT.md for supported payloads and limitations, and TOOLING.md for generation and test commands. "
         "Changing sources requires updating manifest hashes and release versions. Published releases are immutable. "
         "Installation is inactive; content needs an explicit deployment lock and scripts need explicit approval. "

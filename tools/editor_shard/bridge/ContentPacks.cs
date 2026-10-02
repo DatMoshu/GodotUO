@@ -13,6 +13,13 @@ public static class ContentPacks
 {
     private sealed record ItemDefinition(int Graphic, string Name, double Weight, bool Movable);
     private static readonly Dictionary<string, ItemDefinition> Items = new(StringComparer.Ordinal);
+    private static ContentLoot Loot;
+
+    /// <summary>Generate authored loot on the server game thread. The caller owns the returned items.</summary>
+    public static List<Item> GenerateLoot(string identity) =>
+        (Loot ?? throw new InvalidOperationException("No content deployment loaded")).Generate(identity, CreateItem, Utility.RandomDouble);
+
+    private static Item CreateItem(string identity) => Create(Items[identity]);
 
     public static void Initialize()
     {
@@ -35,11 +42,14 @@ public static class ContentPacks
         var tiles = ContentTiles.Stage(doc.RootElement);
         var regions = ContentRegions.Stage(doc.RootElement);
         var decorations = ContentDecorations.Stage(doc.RootElement);
+        var loot = ContentLoot.Stage(doc.RootElement, staged.ContainsKey);
         ContentTiles.Apply(tiles, Environment.GetEnvironmentVariable("UO_SERVER_CONTENT_PROBE") == "1");
         maps.Apply(Environment.GetEnvironmentVariable("UO_SERVER_CONTENT_PROBE") == "1");
         regions.Apply(Environment.GetEnvironmentVariable("UO_SERVER_CONTENT_PROBE") == "1");
         decorations.Register(Environment.GetEnvironmentVariable("UO_SERVER_CONTENT_PROBE") == "1");
         foreach (var pair in staged) Items.Add(pair.Key, pair.Value);
+        Loot = loot;
+        loot.Register(CreateItem, Environment.GetEnvironmentVariable("UO_SERVER_CONTENT_PROBE") == "1");
         CommandSystem.Register("GUOPackItem", AccessLevel.GameMaster, Give);
         Console.WriteLine($"[GUO content] Loaded {Items.Count} item definitions; no world objects created.");
         if (Items.Count > 0 && Environment.GetEnvironmentVariable("UO_SERVER_CONTENT_PROBE") == "1")

@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 
 namespace GUO.Store;
@@ -17,10 +18,21 @@ internal static class StoreServerExport
         var tiles = new List<object>();
         var regions = new List<object>();
         var decorations = new List<object>();
+        var loot = new List<object>();
+        var serverItems = closure.Packs.Values.SelectMany(p => p.Manifest.Components
+            .Where(c => c.Type == "item" && c.Target != "client").Select(c => p.Id + ":" + c.Id)).ToHashSet(StringComparer.Ordinal);
         foreach (var pack in closure.Packs.Values)
             foreach (var component in pack.Manifest.Components ?? new())
             {
                 if (component.Target == "client") continue;
+                if (component.Type == "loot")
+                {
+                    using var lootDoc = JsonDocument.Parse(pack.ReadPayload(component.Entry));
+                    StoreLootDefinition.Validate(lootDoc.RootElement, reference =>
+                        component.References != null && component.References.Contains(reference) && serverItems.Contains(reference));
+                    loot.Add(new { identity = pack.Id + ":" + component.Id, content = lootDoc.RootElement.Clone() });
+                    continue;
+                }
                 if (component.Type == "decoration")
                 {
                     using var decorationDoc = JsonDocument.Parse(pack.ReadPayload(component.Entry));
@@ -96,7 +108,7 @@ internal static class StoreServerExport
         string destination = Path.GetFullPath(output);
         StoreClient.NoLinks(destination);
         Directory.CreateDirectory(Path.GetDirectoryName(destination));
-        byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(new { schema = "guo/server-content@1", identity_hash = closure.IdentityHash, items, maps, tiles, regions, decorations }, new JsonSerializerOptions { WriteIndented = true });
+        byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(new { schema = "guo/server-content@1", identity_hash = closure.IdentityHash, items, maps, tiles, regions, decorations, loot }, new JsonSerializerOptions { WriteIndented = true });
         StorePack.Require(bytes.Length <= 16 * 1024 * 1024, "Server export exceeds adapter size limit");
         using var stream = new FileStream(destination, FileMode.CreateNew, FileAccess.Write, FileShare.None);
         stream.Write(bytes);

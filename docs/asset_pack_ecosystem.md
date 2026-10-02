@@ -172,6 +172,30 @@ cleanup and removes its temporary serial evidence file. Clear the environment
 variable afterward. These probes deliberately save the private world and use
 the reserved `guo-probe` namespace; never run them on a production shard.
 
+## Server loot tables
+
+Server-target `loot` components contain `entries`, each with an `item`
+component reference, `chance` in 0..1, and inclusive integer `min`/`max`
+quantities. References must name declared server item components in the verified
+dependency closure. Each entry rolls independently. Zero chance never drops;
+one always drops. A table allows at most 64 entries and at most 256 items in
+the sum of maximum quantities. Unknown and duplicate payload fields are refused.
+
+The adapter stages all tables before applying the deployment. Installation and
+startup never grant loot. `GUOPackLoot pack-id:component-id` generates a bag for
+a game master using the same generator exposed to server gameplay callers as
+`ContentPacks.GenerateLoot(identity)`. Call this on the game thread; the caller
+owns the returned items and must place or delete them. Items are individual
+instances because base authored item definitions do not declare stackability.
+An exception during generation deletes all instances created by that roll.
+Automatic creature-death/corpse integration is still pending the creature
+consumer; the API and administrator command are the current invocation paths.
+
+`sample-content-loot` depends on `sample-content-server` and provides certain,
+optional and disabled drops. The portable check verifies export and rejects
+invalid tables. `UO_SERVER_CONTENT_PROBE=1` verifies live generated quantities
+at probability boundaries and cleanup after an injected creation failure.
+
 ## Required evidence
 
 Publisher and C# installer must agree on valid and invalid v2 envelopes.
@@ -202,7 +226,7 @@ The portable tool is built with
   restart and may refuse unsupported payloads. It never executes scripts.
 - `rollback-content STORE ACTIVE`: reverify and select the previous lock.
 - `deactivate-content ACTIVE`: select original assets and retain the previous lock.
-- `export-server STORE LOCK OUTPUT`: export supported server item, tiledata, map, region and decoration
+- `export-server STORE LOCK OUTPUT`: export supported server item, tiledata, map, region, decoration and loot
   definitions with numeric IDs from the same client/server lock; output must be new.
 
 ModernUO's private editor bridge can load that export through
