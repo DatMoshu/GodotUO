@@ -110,6 +110,10 @@ export path when starting an isolated shard with the editor bridge installed;
 This does not test player movement or synchronize client/server deployments
 over the network.
 
+Use `--collision-world` instead of `--shared-world` for the barrier example.
+It also exports shared tiledata, and the isolated server probe verifies
+static height and `CanFit` rejection using the installed impassable flag.
+
 ## Screenshots
 
 The opt-in `res://src/Store/StoreProof.tscn` loads the normal game scene and

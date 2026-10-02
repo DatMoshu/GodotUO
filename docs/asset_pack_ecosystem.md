@@ -79,6 +79,13 @@ declared on the component. The paperdoll binding follows the classic
 50000/60000 + animation ID mapping. This sets item animation/layer/wearable
 metadata; fitted body coverage still depends on the supplied frames.
 
+Shared/server tiledata components also export to ModernUO's item metadata
+table. Flags, height, name, weight, layer (server quality) and animation use
+the same numeric binding and value ranges. `light` remains a client rendering
+field. Unknown tile metadata fields are refused to catch authoring typos.
+The collision starter combines original barrier art with shared tiledata and
+a shared map block. Both sides see the same impassable flag and height.
+
 Font JSON declares `glyphs`, each with `encoding` (`ascii` or `unicode`),
 `codepoint`, and a declared PNG `image`. Unicode glyphs also accept signed
 byte `offset_x`/`offset_y`. The component's numeric binding selects an existing
@@ -131,7 +138,7 @@ The portable tool is built with
   keeping `ACTIVE.previous`. This selects a deployment; consumers load it on
   restart and may refuse unsupported payloads. It never executes scripts.
 - `rollback-content STORE ACTIVE`: reverify and select the previous lock.
-- `export-server STORE LOCK OUTPUT`: export supported server item and map
+- `export-server STORE LOCK OUTPUT`: export supported server item, tiledata and map
   definitions with numeric IDs from the same client/server lock; output must be new.
 
 ModernUO's private editor bridge can load that export through
@@ -157,6 +164,8 @@ terrain/static block reads, bounds rejection and delete-on-close cleanup.
 A combined-world example has passed both client block reads and a live private
 ModernUO collision tile-matrix probe against the same payload. Live terrain
 rendering and player movement through the example still need verification.
+The collision starter additionally verifies server static height and a
+`CanFit` rejection against the authored impassable barrier.
 
 Not yet implemented: other server gameplay consumers;
 region components; presentation activation

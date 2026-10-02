@@ -69,6 +69,29 @@ internal static class ContentChecks
             StorePack.Require(rejected, "Malformed map definition accepted");
         }
         Console.WriteLine("content: shared map export and five malformed-map rejection cases PASS");
+        var collision = client.VerifyContent("sample-content-collision", "1.0.0");
+        var collisionLock = new StoreContentLock { Pack = "sample-content-collision", Version = "1.0.0", IdentityHash = collision.IdentityHash };
+        collisionLock.Bindings.Add("sample-content-collision:courtyard", new StoreContentBinding { Type = "map", Id = 0 });
+        collisionLock.Bindings.Add("sample-content-collision:barrier-data", new StoreContentBinding { Type = "tiledata", Id = 3702 });
+        string collisionLockPath = Path.Combine(root, "collision-lock.json"), collisionExportPath = Path.Combine(root, "collision-export.json");
+        File.WriteAllText(collisionLockPath, JsonSerializer.Serialize(collisionLock));
+        StoreServerExport.Export(client, collisionLockPath, collisionExportPath);
+        using (var exported = JsonDocument.Parse(File.ReadAllBytes(collisionExportPath)))
+        {
+            var tile = exported.RootElement.GetProperty("tiles")[0];
+            StorePack.Require(tile.GetProperty("id").GetInt32() == 3702 && tile.GetProperty("content").GetProperty("flags").GetUInt64() == 64
+                && tile.GetProperty("content").GetProperty("height").GetByte() == 8, "Server export lost shared collision data");
+        }
+        foreach (string malformed in new[] { "{\"height\":256}", "{\"flags\":-1}", "{\"heigth\":8}" })
+        {
+            using var invalid = JsonDocument.Parse(malformed);
+            bool rejected = false;
+            try { StoreTileDefinition.Validate(invalid.RootElement); }
+            catch (InvalidDataException) { rejected = true; }
+            catch (FormatException) { rejected = true; }
+            StorePack.Require(rejected, "Malformed tile metadata accepted");
+        }
+        Console.WriteLine("content: shared collision metadata export and invalid-field/range rejection PASS");
         string payload = Path.Combine(root, art.Id, art.Version, "stone.png");
         File.AppendAllText(payload, "tampered");
         bool refused = false;

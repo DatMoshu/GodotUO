@@ -15,6 +15,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--godot", required=True, help="Blocking godot-console executable")
     parser.add_argument("--shared-world", action="store_true", help="Verify the combined client/server map example")
+    parser.add_argument("--collision-world", action="store_true", help="Verify combined maps and shared static collision metadata")
     parser.add_argument("--server-export", type=Path, help="Write a new ModernUO export from the same verified deployment")
     parser.add_argument("--data", default=os.environ.get("UO_CLIENT_DATA"), required=not bool(os.environ.get("UO_CLIENT_DATA")))
     args = parser.parse_args()
@@ -30,8 +31,9 @@ def main():
         command("extract-content", examples / "sample-content-font.zip", installed)
         command("extract-content", examples / "sample-content-map.zip", installed)
         command("extract-content", examples / "sample-content-world.zip", installed)
+        command("extract-content", examples / "sample-content-collision.zip", installed)
         lock = work / "content-lock.json"
-        selected = "sample-content-world" if args.shared_world else "sample-content-map"
+        selected = "sample-content-collision" if args.collision_world else "sample-content-world" if args.shared_world else "sample-content-map"
         command("content-lock", installed, selected, "1.0.0", lock)
         value = json.loads(lock.read_text())
         bindings = {"stone": ("static", 3701), "ground": ("land", 580), "slope": ("texmap", 1),
@@ -41,12 +43,15 @@ def main():
         value["bindings"] = {"sample-content-art:" + name: dict(type=kind, id=index) for name, (kind, index) in bindings.items()}
         value["bindings"]["sample-content-font:letters"] = dict(type="font", id=0)
         value["bindings"][selected + ":courtyard"] = dict(type="map", id=0)
+        if args.collision_world:
+            value["bindings"][selected + ":barrier"] = dict(type="static", id=3702)
+            value["bindings"][selected + ":barrier-data"] = dict(type="tiledata", id=3702)
         lock.write_text(json.dumps(value, indent=2), encoding="utf-8")
         if args.server_export:
             command("export-server", installed, lock, args.server_export.resolve())
         proof = root / "build/asset_packs/runtime-pixels.png"
         proof.parent.mkdir(parents=True, exist_ok=True)
-        env = dict(os.environ, UO_CLIENT_DATA=args.data, UO_CONTENT_STORE=str(installed), UO_CONTENT_LOCK=str(lock), UO_CONTENT_PROOF_IMAGE=str(proof), UO_CONTENT_PROBE_LAND="3" if args.shared_world else "580")
+        env = dict(os.environ, UO_CLIENT_DATA=args.data, UO_CONTENT_STORE=str(installed), UO_CONTENT_LOCK=str(lock), UO_CONTENT_PROOF_IMAGE=str(proof), UO_CONTENT_PROBE_LAND="3" if args.shared_world or args.collision_world else "580", UO_CONTENT_PROBE_COLLISION="1" if args.collision_world else "0")
         subprocess.run([args.godot, "--headless", "--path", str(root / "godot/GUO"), "res://src/Store/StoreContentProbe.tscn"], env=env, check=True, timeout=90)
     return 0
 

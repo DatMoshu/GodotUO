@@ -14,10 +14,19 @@ internal static class StoreServerExport
         var closure = contentLock.Verify(store);
         var items = new List<object>();
         var maps = new List<object>();
+        var tiles = new List<object>();
         foreach (var pack in closure.Packs.Values)
             foreach (var component in pack.Manifest.Components ?? new())
             {
                 if (component.Target == "client") continue;
+                if (component.Type == "tiledata")
+                {
+                    StorePack.Require(contentLock.Bindings.TryGetValue(pack.Id + ":" + component.Id, out var tileBinding) && tileBinding.Type == "tiledata", "Missing tiledata binding");
+                    using var tileDoc = JsonDocument.Parse(pack.ReadPayload(component.Entry));
+                    StoreTileDefinition.Validate(tileDoc.RootElement);
+                    tiles.Add(new { identity = pack.Id + ":" + component.Id, id = tileBinding.Id, content = tileDoc.RootElement.Clone() });
+                    continue;
+                }
                 if (component.Type == "map")
                 {
                     StorePack.Require(contentLock.Bindings.TryGetValue(pack.Id + ":" + component.Id, out var mapBinding) && mapBinding.Type == "map", "Missing map facet binding");
@@ -37,11 +46,11 @@ internal static class StoreServerExport
                 StorePack.Require(name != null && name.Length is > 0 and <= 100 && double.IsFinite(weight) && weight >= 0 && weight <= 100000, "Invalid item definition");
                 items.Add(new { identity = pack.Id + ":" + component.Id, graphic = binding.Id, name, weight, movable = row.GetProperty("movable").GetBoolean() });
             }
-        StorePack.Require(items.Count > 0 || maps.Count > 0, "No supported server content in deployment");
+        StorePack.Require(items.Count > 0 || maps.Count > 0 || tiles.Count > 0, "No supported server content in deployment");
         string destination = Path.GetFullPath(output);
         StoreClient.NoLinks(destination);
         Directory.CreateDirectory(Path.GetDirectoryName(destination));
-        byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(new { schema = "guo/server-content@1", identity_hash = closure.IdentityHash, items, maps }, new JsonSerializerOptions { WriteIndented = true });
+        byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(new { schema = "guo/server-content@1", identity_hash = closure.IdentityHash, items, maps, tiles }, new JsonSerializerOptions { WriteIndented = true });
         StorePack.Require(bytes.Length <= 16 * 1024 * 1024, "Server export exceeds adapter size limit");
         using var stream = new FileStream(destination, FileMode.CreateNew, FileAccess.Write, FileShare.None);
         stream.Write(bytes);

@@ -74,6 +74,13 @@ def build(output, store=None):
             "land": [{"graphic": 3, "z": 7} for _ in range(64)],
             "statics": [{"graphic": 3701, "x": 3, "y": 4, "z": 7, "hue": 33}]}]}),
     ])
+    specs["sample-content-collision"] = ("combined", [
+        ("barrier", "static", "client", "barrier.png", png(32, 8, (160, 104, 56, 255))),
+        ("barrier-data", "tiledata", "shared", "barrier-data.json", {"name": "Example barrier", "flags": 64, "height": 8, "weight": 255}),
+        ("courtyard", "map", "shared", "courtyard.json", {"blocks": [{"x": 180, "y": 210,
+            "land": [{"graphic": 3, "z": 7} for _ in range(64)],
+            "statics": [{"graphic": 3702, "x": 3, "y": 4, "z": 7, "hue": 0}]}]}),
+    ])
     result = []
     for pack_id, (target, records) in specs.items():
         payload = {"preview.png": png(128, 96, (64, 96, 128, 255)),
@@ -87,7 +94,7 @@ def build(output, store=None):
             if kind == "item": component["references"] = [data["graphic"]]
             if kind == "wearable": component["references"] = [data["art"], data["animation"], data["paperdoll"]]
             components.append(component)
-        deps = {"sample-content-art": "1.0.0"} if pack_id in ("sample-content-server", "sample-content-font") else {"sample-content-font": "1.0.0"} if pack_id in ("sample-content-map", "sample-content-world") else {}
+        deps = {"sample-content-art": "1.0.0"} if pack_id in ("sample-content-server", "sample-content-font") else {"sample-content-font": "1.0.0"} if pack_id in ("sample-content-map", "sample-content-world", "sample-content-collision") else {}
         m = dict(schema="guo/store-pack@2", id=pack_id, version="1.0.0", kind="content",
                  target=target, dependencies=deps, components=components, title=pack_id.replace("-", " ").title(),
                  author="GUO original procedural examples", licence="CC0-1.0", min_profile_version=6,
@@ -122,8 +129,8 @@ def bundle(archives, destination):
     files["TOOLING.md"] = (root / "tools/asset_store/README.md").read_bytes()
     files["GETTING_STARTED.md"] = (
         "# GUO asset-pack starters\n\n"
-        "Seven original starter packs: client art, fonts, client maps, server items, combined items, "
-        "combined world maps and managed Razor scripts. ZIPs are ready for publication; folders contain editable declared sources.\n\n"
+        "Original starter packs: client art, fonts, client maps, server items, combined items, "
+        "combined world maps, shared collision metadata and managed Razor scripts. ZIPs are ready for publication; folders contain editable declared sources.\n\n"
         "Read CONTRACT.md for supported payloads and limitations, and TOOLING.md for generation and test commands. "
         "Changing sources requires updating manifest hashes and release versions. Published releases are immutable. "
         "Installation is inactive; content needs an explicit deployment lock and scripts need explicit approval. "

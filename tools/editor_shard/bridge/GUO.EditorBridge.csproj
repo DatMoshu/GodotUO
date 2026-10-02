@@ -20,6 +20,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../../../godot/GUO/src/Store/StoreMapDefinition.cs" Link="StoreMapDefinition.cs" />
+    <Compile Include="../../../godot/GUO/src/Store/StoreTileDefinition.cs" Link="StoreTileDefinition.cs" />
     <Reference Include="Server">
       <HintPath>$(ModernUODir)\Server.dll</HintPath>
       <Private>false</Private>

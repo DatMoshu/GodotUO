@@ -66,6 +66,7 @@ internal sealed class ContentMaps
         }
         Console.WriteLine($"[GUO content] Applied {_blocks.Count} authored server map blocks.");
         if (!probe || _blocks.Count == 0) return;
+        int collisionChecks = 0;
         foreach (var block in _blocks)
             for (int y = 0; y < 8; y++) for (int x = 0; x < 8; x++)
             {
@@ -77,9 +78,19 @@ internal sealed class ContentMaps
                 var wanted = block.Statics[x][y];
                 if (found.Length != wanted.Length) throw new InvalidDataException("Server static count differs");
                 for (int i = 0; i < wanted.Length; i++)
+                {
                     if (found[i].ID != wanted[i].ID || found[i].Z != wanted[i].Z || found[i].Hue != wanted[i].Hue)
                         throw new InvalidDataException("Server static data differs");
+                    var metadata = TileData.ItemTable[wanted[i].ID];
+                    if (metadata.Impassable && metadata.Height > 0)
+                    {
+                        collisionChecks++;
+                        if (block.Map.CanFit(block.X * 8 + x, block.Y * 8 + y, wanted[i].Z, 16, false, false, false))
+                            throw new InvalidDataException("Authored impassable static did not block CanFit");
+                    }
+                }
             }
         Console.WriteLine("[GUO content] PASS: collision tile matrix reads every authored land/static cell unchanged.");
+        Console.WriteLine($"[GUO content] PASS: {collisionChecks} impassable static CanFit rejection checks.");
     }
 }

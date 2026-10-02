@@ -154,6 +154,7 @@ internal sealed class StoreRuntimeContent : IDisposable
                 {
                     using var doc = JsonDocument.Parse(data);
                     var row = doc.RootElement;
+                    StoreTileDefinition.Validate(row);
                     StorePack.Require(id < files.TileData.StaticData.Length, "Tiledata index exceeds client capacity");
                     var tile = files.TileData.StaticData[id];
                     if (row.TryGetProperty("flags", out var v)) tile.Flags = (TileFlag)v.GetUInt64();

@@ -32,6 +32,8 @@ public static class ContentPacks
             staged.Add(identity, new ItemDefinition(graphic, name, weight, row.GetProperty("movable").GetBoolean()));
         }
         var maps = ContentMaps.Stage(doc.RootElement);
+        var tiles = ContentTiles.Stage(doc.RootElement);
+        ContentTiles.Apply(tiles, Environment.GetEnvironmentVariable("UO_SERVER_CONTENT_PROBE") == "1");
         maps.Apply(Environment.GetEnvironmentVariable("UO_SERVER_CONTENT_PROBE") == "1");
         foreach (var pair in staged) Items.Add(pair.Key, pair.Value);
         CommandSystem.Register("GUOPackItem", AccessLevel.GameMaster, Give);

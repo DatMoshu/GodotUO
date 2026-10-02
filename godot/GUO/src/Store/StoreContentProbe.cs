@@ -50,8 +50,12 @@ public partial class StoreContentProbe : Node
                 StorePack.Require(mapIndex.MapFile.ReadUInt16() == expectedLand && mapIndex.MapFile.ReadInt8() == 7, "Authored terrain cells differ");
             StorePack.Require(mapIndex.StaticCount == 1 && mapIndex.StaticAddress != 0, "Authored statics absent");
             mapIndex.StaticFile.Seek((long)mapIndex.StaticAddress, SeekOrigin.Begin);
-            StorePack.Require(mapIndex.StaticFile.ReadUInt16() == 3701 && mapIndex.StaticFile.ReadUInt8() == 3
-                && mapIndex.StaticFile.ReadUInt8() == 4 && mapIndex.StaticFile.ReadInt8() == 7 && mapIndex.StaticFile.ReadUInt16() == 33, "Authored statics differ");
+            bool collision = Environment.GetEnvironmentVariable("UO_CONTENT_PROBE_COLLISION") == "1";
+            StorePack.Require(mapIndex.StaticFile.ReadUInt16() == (collision ? 3702 : 3701) && mapIndex.StaticFile.ReadUInt8() == 3
+                && mapIndex.StaticFile.ReadUInt8() == 4 && mapIndex.StaticFile.ReadInt8() == 7 && mapIndex.StaticFile.ReadUInt16() == (collision ? 0 : 33), "Authored statics differ");
+            if (collision)
+                StorePack.Require(files.TileData.StaticData[3702].IsImpassable && files.TileData.StaticData[3702].Height == 8
+                    && files.TileData.StaticData[3702].Name == "Example barrier" && files.Arts.GetArt(3702 + 0x4000).Height == 8, "Shared collision art/metadata differ");
             var generatedMapPath = mapIndex.MapFile.FilePath;
             // Simulate a shard diff changing the active reader, then removing it.
             mapIndex.MapFile = files.Maps.GetMapFile(0); mapIndex.MapAddress = 0;
