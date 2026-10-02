@@ -43,9 +43,7 @@ with the project, and the client only ever reads your install.
 
 GUO is **BSD 2-Clause**, the same licence as ClassicUO. Ported files keep
 their upstream copyright header; the licence text and the reviewed upstream
-commit are in `docs/upstream/`. The ModernUO patches in
-`tools/modernuo/patches/` are GPL-3.0 because they modify ModernUO, which is
-not redistributed. The `.claude/` agents and skills are MIT, adapted from
+commit are in `docs/upstream/`. The `.claude/` agents and skills are MIT, adapted from
 Claude Code Game Studios. Godot is MIT and is fetched, not redistributed.
 
 Ultima Online is a registered trademark of Electronic Arts Inc. GUO is an

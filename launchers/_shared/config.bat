@@ -71,6 +71,8 @@ REM  Set UO_SHARD_HOST above to something else to play on a remote shard; none
 REM  of this is needed then.
 if not defined UO_SHARD_NAME        set "UO_SHARD_NAME=GUO Dev"
 if not defined UO_SHARD_REPO        set "UO_SHARD_REPO=https://github.com/modernuo/ModernUO.git"
+REM  The ModernUO commit the dev shard is pinned to (fetch.bat checks it out).
+if not defined UO_SHARD_REF         set "UO_SHARD_REF=d4531cd94b739613155225c234900de9f47d2c88"
 if not defined UO_SHARD_SRC         set "UO_SHARD_SRC=%UO_ROOT%\tools\modernuo\src"
 if not defined UO_SHARD_DIST        set "UO_SHARD_DIST=%UO_SHARD_SRC%\Distribution"
 

@@ -12,14 +12,14 @@ It is a development dependency, not part of the port. Nothing in
 |---|---|
 | **Upstream** | <https://github.com/modernuo/ModernUO.git> |
 | **Licence** | GPL-3.0. Not vendored, not redistributed. The patches in `patches/` modify it and are GPL-3.0 too (see `patches/LICENSE`). |
-| **Pinned at** | `24bcfee55` — `0.15.6.178-12-g24bcfee55`, fetched 2026-09-21 |
+| **Pinned at** | `d4531cd94` (2026-09-30): `UO_SHARD_REF` in `launchers\_shared\config.bat`. `fetch.bat` checks it out and moves an older checkout to it. |
 | **Runtime** | .NET 10 SDK (ModernUO's own requirement, not the client's) |
 | **Checkout** | `tools/modernuo/src/` — **gitignored**, ~1 GB with the build |
 
 ## Use it
 
 ```
-launchers\shard\fetch.bat     clone + apply the patches   (once)
+launchers\shard\fetch.bat     clone at the pin + apply the patches   (once, and after the pin moves)
 launchers\shard\build.bat     publish release win x64     (once, ~2 min)
 launchers\shard\run.bat       run it                      (Ctrl-C to stop)
 launchers\shard\populate.bat  generate the world          (once, ~10 min)
@@ -96,20 +96,14 @@ shard (packet 0xBC), so A/B comparisons are unaffected; only the art changes.
 Set it back to 4 in `src/Distribution/Data/map-definitions.json` to test the
 Desolation art.
 
-### `patches/0004-multi-tile-enumerator.patch` (an upstream bug fix)
+### Retired
 
-`Map.StaticTileEnumerator.SetMulti` ends the whole enumeration when a multi
-holds the point in its bounds but has no tile there, so the multis after it in
-the sector are never looked at. A floor of one multi inside another's bounds
-(a courtyard inside a ring wall's bounding box) then does not exist for
-movement: the shard lets a walker drop to the land while the client still
-draws the floor, and a later step is refused with a reset to the land's z.
-The patch looks on to the next multi. `tools/multi` does not depend on it
-(its scenes never overlap multis' bounds, so they work on a stock shard); the
-patch is for the dev shard, and for any overlapping multis a shard places.
-Reported upstream as modernuo/ModernUO#2682, with a two-multi repro (fails
-on stock with the walled multi placed first, passes placed second or
-patched). Delete this patch when upstream takes a fix.
+`0004-multi-tile-enumerator` fixed tile lookups that stopped at a multi with no
+tile at the point and skipped the multis after it. Reported as
+modernuo/ModernUO#2682 and fixed upstream in #2685 (`d4531cd94`), so the pin
+moved there and the patch is gone. A checkout that still has it applied: run
+`git -C tools/modernuo/src checkout -- Projects/Server/Maps/Map.StaticTileEnumerator.cs`,
+then `fetch.bat`.
 
 Keep this list append-only and numbered. A patch that upstream adopts should
 be deleted, not silently dropped from the set.

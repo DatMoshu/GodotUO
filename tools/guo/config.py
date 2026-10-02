@@ -138,6 +138,8 @@ class Config:
     client_data_env: str = ""
     client_data_setting: str = ""
     custom_data_setting: str = ""
+    # UO_SHARD_SRC, when set: another ModernUO checkout (config.bat honours it too).
+    shard_src_setting: Path | None = None
 
     # --- derived paths (never configured directly) ---
     @property
@@ -166,8 +168,8 @@ class Config:
 
     @property
     def shard_src(self) -> Path:
-        r"""The ModernUO checkout. Untracked; launchers\shard\fetch.bat makes it."""
-        return self.tools / "modernuo" / "src"
+        r"""The ModernUO checkout (UO_SHARD_SRC). Untracked; launchers\shard\fetch.bat makes it."""
+        return self.shard_src_setting or self.tools / "modernuo" / "src"
 
     @property
     def shard_dist(self) -> Path:
@@ -316,4 +318,5 @@ def load_config(root: Path | None = None) -> Config:
             a.strip() for a in get("UO_SHARD_GM_ACCOUNTS", "guoeffects,guohighlight,guosweep").split(",") if a.strip()
         ),
         log_level=get("UO_LOG_LEVEL", "INFO"),
+        shard_src_setting=path_or_none("UO_SHARD_SRC"),
     )

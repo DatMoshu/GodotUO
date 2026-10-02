@@ -8,10 +8,10 @@ exists. Source of truth: `tools\modernuo\README.md`.
 
 | | |
 |---|---|
-| **Pinned at** | `24bcfee55` (`0.15.6.178-12-g24bcfee55`) |
+| **Pinned at** | `d4531cd94` (2026-09-30), `UO_SHARD_REF` in `config.bat` |
 | **Runtime** | .NET 10 SDK (ModernUO's requirement, not the client's) |
 | **Checkout** | `tools\modernuo\src\`, gitignored, about 1 GB built |
-| **Licence** | GPL-3.0. Not vendored. The patches in `tools\modernuo\patches\` modify it and are GPL-3.0 too. |
+| **Licence** | GPL-3.0. Not vendored: fetched at the pin. |
 
 ## Use it
 
@@ -57,15 +57,13 @@ The checkout is gitignored. What is committed reproduces it:
 
 | | |
 |---|---|
-| `patches\0001-headless-owner-account.patch` | `AccountPrompt.Initialize()` insists on an owner account at first boot and throws when stdin is redirected (every scripted run). The patch makes the owner from `UO_SHARD_OWNER` and every `UO_SHARD_GM_ACCOUNTS` entry with game master access. |
-| `patches\0002-settable-update-range.patch` | The shard's update range comes from `UO_SHARD_UPDATE_RANGE` (default 72 tiles), so a client zoomed out to a large view is sent everything on its screen. |
-| `patches\0003-felucca-spring.patch` | Felucca ships in season 4, Desolation: every tree bare. The dev characters live on Felucca, so every screenshot showed a dead world. The patch sets it to spring. Both clients get the season from the shard, so A/B comparisons are unaffected. |
+| `patches\` | Three small dev-only changes: the owner and GM accounts made on a headless boot, a settable update range, and spring on Felucca. See `tools/modernuo/README.md`. |
 | `config\modernuo.template.json` | The full server configuration with `@UO_CLIENT_DATA@`, `@UO_SHARD_NAME@`, `@UO_SHARD_PORT@` as placeholders; `expansion.json` pins Endless Journey, which a 7.0.x client expects. |
 | `configure.py` | Fills the templates into `src\Distribution\Configuration\` on first run, through `tools\guo\config.py`. Writes only files that do not exist. |
 
-Keep the patch list append-only and numbered. A patch upstream adopts is
-deleted, not silently dropped. (The README's per-patch sections describe
-0001 and 0003; 0002 is described under "Update range".)
+Bugs we find in ModernUO are reported upstream rather than patched for long:
+our multi-tile fix became ModernUO's own (#2682, fixed in #2685), so the pin
+moved past it and the patch was deleted.
 
 ## Reaching it from a device
 
