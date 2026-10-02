@@ -1,6 +1,27 @@
 using GUO.Store;
 using GUO.Game.Scripting;
 
+if (args.Length == 2 && args[0] == "ed25519")
+{
+    // Every vector verifies, and the same signature fails on a changed message or key.
+    using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllBytes(args[1]));
+    int count = 0;
+    foreach (var v in doc.RootElement.GetProperty("vectors").EnumerateArray())
+    {
+        byte[] pub = Convert.FromHexString(v.GetProperty("public").GetString());
+        byte[] msg = Convert.FromHexString(v.GetProperty("message").GetString());
+        byte[] sig = Convert.FromHexString(v.GetProperty("signature").GetString());
+        if (!Ed25519.Verify(pub, msg, sig)) throw new InvalidDataException("vector " + count + " did not verify");
+        byte[] changed = msg.Append((byte)0).ToArray();
+        if (Ed25519.Verify(pub, changed, sig)) throw new InvalidDataException("vector " + count + " verified a changed message");
+        byte[] bad = (byte[])sig.Clone(); bad[5] ^= 1;
+        if (Ed25519.Verify(pub, msg, bad)) throw new InvalidDataException("vector " + count + " verified a changed signature");
+        count++;
+    }
+    Console.WriteLine($"PASS: {count} Ed25519 vectors verify; changed messages and signatures are refused");
+    return 0;
+}
+
 if (args.Length == 4 && args[0] == "install-content")
 {
     using var store = new StoreClient(args[1], args[2], int.MaxValue);

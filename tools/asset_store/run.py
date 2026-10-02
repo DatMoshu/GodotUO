@@ -18,6 +18,7 @@ from urllib.parse import urlsplit
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from guo.config import load_config
 from asset_store.pack import INDEX_SCHEMA, require, sha256, verify, version
+from asset_store import catalogue, ed25519
 
 
 def atomic_json(path, value):
@@ -32,8 +33,17 @@ def atomic_json(path, value):
         Path(temporary).unlink(missing_ok=True)
 
 
-def make_index(root):
+def make_index(root, signer=None):
+    """The store folder's index: a signed guo/store-index@2 when signer is (secret, catalogue, base_url),
+    otherwise the unsigned v1 index a local store has always had."""
     root = Path(root).resolve()
+    if signer:
+        secret, meta, base_url = signer
+        entries = catalogue.entries_from_store(root, base_url or None)
+        catalogue.build(root, entries, meta, secret)
+        shutil.copyfile(Path(__file__).with_name("index.html"), root / "index.html")
+        return entries
+    (root / "index.json.sig").unlink(missing_ok=True)
     packs = []
     for path in sorted((root / "packs").glob("*/*.zip")):
         require(not path.is_symlink() and root in path.resolve().parents, "pack escapes store")
@@ -53,7 +63,7 @@ def make_index(root):
     return packs
 
 
-def publish(path, root):
+def publish(path, root, signer=None):
     # Stage first: validation and publication operate on exactly the same bytes.
     root = Path(root).resolve()
     root.mkdir(parents=True, exist_ok=True)
@@ -72,7 +82,7 @@ def publish(path, root):
         else:
             # Exclusive create keeps an existing release immutable across publishers.
             os.link(staged, target)  # Atomic publication, never expose a partial ZIP.
-        make_index(root)
+        make_index(root, signer)
         return m
     finally:
         staged.unlink(missing_ok=True)
@@ -152,18 +162,50 @@ def main():
     sub.add_parser("index")
     for verb in ("verify", "publish"):
         sub.add_parser(verb).add_argument("pack", type=Path)
+    k = sub.add_parser("keygen", help="write a new catalogue signing key; prints the public key")
+    k.add_argument("key", type=Path)
+    b = sub.add_parser("build-catalogue", help="a signed index from a catalogue repository's listing folder")
+    b.add_argument("--listing", type=Path, required=True)
+    b.add_argument("--site", type=Path, required=True)
+    b.add_argument("--cache", type=Path, required=True)
+    b.add_argument("--expires-days", type=int)
+    c = sub.add_parser("check-index", help="verify a store folder's signed index")
+    c.add_argument("--key", help="the trusted public key (ed25519:...); default: the key the index names")
     args = parser.parse_args()
+    signer = None
+    if config.store_signing_key and args.command not in ("keygen", "check-index"):
+        signer = (catalogue.read_secret(config.store_signing_key),
+                  {"id": config.store_catalogue_id, "title": config.store_catalogue_title}, config.store_base_url)
     try:
+        if args.command == "keygen":
+            public = catalogue.keygen(args.key)
+            print(f"Secret key written to {args.key}. Keep it out of the repository and back it up offline.")
+            print(f"Public key : {ed25519.encode(public)}")
+            print(f"Fingerprint: {ed25519.fingerprint(public)}")
+            return 0
+        if args.command == "build-catalogue":
+            require(signer, "set UO_STORE_SIGNING_KEY to sign the catalogue")
+            entries = catalogue.entries_from_listing(args.listing, args.cache, args.site)
+            index = catalogue.build(args.site, entries, signer[1], signer[0], args.expires_days)
+            print(f"Catalogue {index['catalogue']['id']} sequence {index['sequence']}: {len(entries)} pack(s)")
+            return 0
+        if args.command == "check-index":
+            root = Path(args.store_dir)
+            trusted = ed25519.decode(args.key, 32) if args.key else None
+            index = catalogue.check((root / "index.json").read_bytes(), (root / "index.json.sig").read_text(encoding="ascii"), trusted)
+            public = ed25519.decode(index["key"], 32)
+            print(f"OK: {index['catalogue']['id']} sequence {index['sequence']}, {len(index['packs'])} pack(s), key {ed25519.fingerprint(public)}")
+            return 0
         if args.command == "verify":
             m = verify(args.pack)
             print(f'Verified {m["id"]} {m["version"]}')
         elif args.command == "publish":
-            m = publish(args.pack, args.store_dir)
+            m = publish(args.pack, args.store_dir, signer)
             print(f'Published {m["id"]} {m["version"]}')
         elif args.command == "index":
-            print(f"Indexed {len(make_index(args.store_dir))} packs")
+            print(f"Indexed {len(make_index(args.store_dir, signer))} packs{' (signed)' if signer else ''}")
         else:
-            make_index(args.store_dir)
+            make_index(args.store_dir, signer)
             try:
                 httpd = server(args.store_dir, args.host, args.port)
             except OSError as exc:

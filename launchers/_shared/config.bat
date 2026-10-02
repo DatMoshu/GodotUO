@@ -196,3 +196,10 @@ if not defined UO_LOG_LEVEL         set "UO_LOG_LEVEL=INFO"
 REM --- GUO Asset Store ----------------------------------------------------
 if not defined UO_STORE_DIR         set "UO_STORE_DIR=build/store_cdn"
 if not defined UO_STORE_URL         set "UO_STORE_URL=http://127.0.0.1:18865"
+REM  A signed catalogue (ADR-0026): the store folder gets a guo/store-index@2
+REM  index signed with this key. Keep the key out of the repo (config.local.bat).
+REM  UO_STORE_BASE_URL is where the store folder is served, for absolute pack URLs.
+if not defined UO_STORE_SIGNING_KEY set "UO_STORE_SIGNING_KEY="
+if not defined UO_STORE_CATALOGUE_ID set "UO_STORE_CATALOGUE_ID=local"
+if not defined UO_STORE_CATALOGUE_TITLE set "UO_STORE_CATALOGUE_TITLE=Local GUO packs"
+if not defined UO_STORE_BASE_URL    set "UO_STORE_BASE_URL="

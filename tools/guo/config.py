@@ -179,6 +179,11 @@ class Config:
     custom_data_setting: str = ""
     # UO_SHARD_SRC, when set: another ModernUO checkout (config.bat honours it too).
     shard_src_setting: Path | None = None
+    # The store folder's signed catalogue (ADR-0026); no key means an unsigned v1 index.
+    store_signing_key: Path | None = None
+    store_catalogue_id: str = "local"
+    store_catalogue_title: str = "Local GUO packs"
+    store_base_url: str = ""
 
     # --- derived paths (never configured directly) ---
     @property
@@ -363,6 +368,10 @@ def load_config(root: Path | None = None) -> Config:
         root=root,
         store_dir=store,
         store_url=get("UO_STORE_URL", "http://127.0.0.1:18865"),
+        store_signing_key=home_path_or_none("UO_STORE_SIGNING_KEY"),
+        store_catalogue_id=get("UO_STORE_CATALOGUE_ID", "local"),
+        store_catalogue_title=get("UO_STORE_CATALOGUE_TITLE", "Local GUO packs"),
+        store_base_url=get("UO_STORE_BASE_URL"),
         godot_version=get("GODOT_VERSION", "4.7.2-stable"),
         godot_flavor=godot_flavor,
         client_data=client_data,
