@@ -765,10 +765,10 @@ namespace GUO
                 return;
             }
 
-            // PORT DEVIATION (GUO): the 3D pregame (docs/ui/pregame_3d.md, a
-            // diorama with its own focus and keyboard) takes the keys and the
+            // PORT DEVIATION (GUO): the pad-first pregame (docs/ui/pregame_3d.md, the
+            // login painting with its own focus and keyboard) takes the keys and the
             // pointer's buttons while it is up; pointer motion goes on.
-            if (GUO.Pregame3D.PregameDiorama.HandleMainInput(@event))
+            if (GUO.Pregame3D.PregameScreen.HandleMainInput(@event))
             {
                 GetViewport().SetInputAsHandled();
 

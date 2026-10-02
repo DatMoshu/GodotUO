@@ -14,11 +14,11 @@ namespace GUO.Pregame3D;
 /// </summary>
 internal abstract class Stage
 {
-    protected PregameDiorama D { get; private set; }
+    protected PregameScreen D { get; private set; }
 
     protected LoginScene Login => D.Login;
 
-    public void Attach(PregameDiorama diorama) => D = diorama;
+    public void Attach(PregameScreen screen) => D = screen;
 
     public abstract void Enter();
 
@@ -35,11 +35,19 @@ internal abstract class Stage
     {
     }
 
+    /// <summary>The window changed size (the screen has re-laid itself).</summary>
+    public virtual void Resized()
+    {
+    }
+
     /// <summary>The step's own handling of a command; false lets focus have it (directions, A).</summary>
     public virtual bool Command(PadCmd cmd) => false;
 
     /// <summary>A physical key before the default mapping (typing into a focused field).</summary>
     public virtual bool Key(InputEventKey k) => false;
+
+    /// <summary>Whether the hint band sits at the top of the screen for this step.</summary>
+    public virtual bool HintsAtTop => false;
 
     /// <summary>The hint band's text: which button does what here.</summary>
     public abstract string Hints { get; }

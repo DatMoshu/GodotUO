@@ -86,7 +86,7 @@ internal sealed partial class CreationStage
             var focus = new UiFocus(card, null, () => ChooseProfession(p)) { Tag = "prof:" + name.ToLowerInvariant() };
             focus.Shown = on =>
             {
-                card.AddThemeStyleboxOverride("panel", on ? Box(new Color("f4ead0"), Gold, 3, 4) : Box(chosen ? new Color("efe2bd") : ParchmentBg, chosen ? Active : Border, 2, 4));
+                card.AddThemeStyleboxOverride("panel", Parch(4, on ? 1 : chosen ? 2 : 0));
                 caption.AddThemeColorOverride("font_color", on ? Active : Ink);
 
                 if (on)
@@ -101,7 +101,7 @@ internal sealed partial class CreationStage
 
         PadFocus.LinkGrid(cards, 4);
 
-        PanelContainer detail = Card(new Color("efe5c8"), Border, 6);
+        PanelContainer detail = Card(6);
         detail.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
         VBoxContainer d = Overlay.Column(2);
         detail.AddChild(d);
@@ -327,7 +327,7 @@ internal sealed partial class CreationStage
 
     private void Lit(PanelContainer row, Label caption, bool on)
     {
-        row.AddThemeStyleboxOverride("panel", on ? Box(new Color("f4ead0"), Gold, 2, 4) : Box(ParchmentBg, Border, 1, 4));
+        row.AddThemeStyleboxOverride("panel", Parch(4, on ? 1 : 0));
         caption.AddThemeColorOverride("font_color", on ? Active : Ink);
     }
 
@@ -490,7 +490,7 @@ internal sealed partial class CreationStage
             var f = new UiFocus(row) { Tag = "stat:" + label.ToLowerInvariant() };
             f.Shown = on =>
             {
-                row.AddThemeStyleboxOverride("panel", on ? Box(new Color("f4ead0"), Gold, 2, 4) : Box(ParchmentBg, Border, 1, 4));
+                row.AddThemeStyleboxOverride("panel", Parch(4, on ? 1 : 0));
                 Redraw(row, StatBar(label, _stats[stat], 60, on));
             };
             f.Cycle = d =>
@@ -784,21 +784,24 @@ internal sealed partial class CreationStage
         // the card's inner width, and what is left of its height under the title and over the text.
         Vector2 room = D.OverlayRoot.Size;
         float width = Math.Max(200, room.X * 0.62f - 8 - 20);
-        float height = Math.Min(width * 0.62f, Math.Max(100, room.Y - 34 - 28 - 20 - 24 - 112));
+        // The city's text gets three lines where there is room (two on a short screen); the map the rest.
+        int lines = room.Y >= 400 ? 3 : 2;
+        float lineHeight = UoTheme.Font.GetHeight(UoTheme.FontSize) + 8;
+        float height = Math.Min(width * 0.62f, Math.Max(90, room.Y - 34 - 28 - 20 - 24 - 36 - (lines + 1) * lineHeight));
         var map = new Control { CustomMinimumSize = new Vector2(width, height), MouseFilter = Control.MouseFilterEnum.Ignore, ClipContents = true };
-        var mapFrame = Card(new Color("3a2c1c"), Border, 2);
+        var mapFrame = Card(4, Overlay.Stone);
         mapFrame.AddChild(map);
         _body.AddChild(mapFrame);
         _mapRect = new TextureRect { TextureFilter = CanvasItem.TextureFilterEnum.Nearest, StretchMode = TextureRect.StretchModeEnum.Scale, ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize, MouseFilter = Control.MouseFilterEnum.Ignore, Size = new Vector2(width, height) };
         map.AddChild(_mapRect);
 
-        PanelContainer info = Card(new Color("efe5c8"), Border, 6);
+        PanelContainer info = Card(6);
         info.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
         VBoxContainer col = Overlay.Column(2);
         info.AddChild(col);
         _cityName = Text("", Heading);
         _cityText = Text("", Ink, wrap: true);
-        _cityText.MaxLinesVisible = 3;
+        _cityText.MaxLinesVisible = lines;
         _cityText.CustomMinimumSize = new Vector2(width - 16, 0);
         col.AddChild(_cityName);
         col.AddChild(_cityText);
@@ -964,19 +967,19 @@ internal sealed partial class CreationStage
         var clilocs = Client.Game.UO.FileManager.Clilocs;
         _body.AddChild(Text("Name", Heading));
 
-        PanelContainer field = Card(new Color("f4ead0"), Border, 8);
+        PanelContainer field = Card(8);
         Label name = Text(_name.Length > 0 ? _name : "(press A to name your character)", _name.Length > 0 ? Ink : Muted, _name.Length > 0 ? 2 : 1);
         name.CustomMinimumSize = new Vector2(0, 34);
         name.VerticalAlignment = VerticalAlignment.Center;
         field.AddChild(name);
         _body.AddChild(field);
         var f = new UiFocus(field) { Tag = "name" };
-        f.Shown = on => field.AddThemeStyleboxOverride("panel", on ? Box(new Color("fbf3dc"), Gold, 3, 8) : Box(new Color("f4ead0"), Border, 2, 8));
+        f.Shown = on => field.AddThemeStyleboxOverride("panel", Parch(8, on ? 1 : 0));
         f.Pressed = EditName;
         f.Shown(false);
         _items.Add(f);
 
-        PanelContainer summary = Card(new Color("efe5c8"), Border, 6);
+        PanelContainer summary = Card(6);
         summary.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
         VBoxContainer s = Overlay.Column(1);
         summary.AddChild(s);
@@ -988,13 +991,14 @@ internal sealed partial class CreationStage
         s.AddChild(Text($"Home: {CityName() ?? "-"}", Ink));
         _body.AddChild(summary);
 
-        PanelContainer enter = Card(Active, Gold, 8);
-        Label enterText = Text("Enter Britannia", Cream, 2);
+        PanelContainer enter = Card(8);
+        enter.AddThemeStyleboxOverride("panel", Parch(8, 2));
+        Label enterText = Text("Enter Britannia", Active, 2);
         enterText.HorizontalAlignment = HorizontalAlignment.Center;
         enter.AddChild(enterText);
         _body.AddChild(enter);
         var e = new UiFocus(enter) { Tag = "enter" };
-        e.Shown = on => enter.AddThemeStyleboxOverride("panel", on ? Box(new Color("a8281a"), Gold, 3, 8) : Box(Active, Gold, 2, 8));
+        e.Shown = on => enter.AddThemeStyleboxOverride("panel", Parch(8, on ? 1 : 2));
         e.Pressed = Next;
         e.Shown(false);
         _items.Add(e);

@@ -12,7 +12,7 @@ namespace GUO.Pregame3D;
 /// <summary>
 /// <c>--pregame3d-probe</c>: the whole login driven by synthetic pad events
 /// through the real input path (Input.ParseInputEvent → GameController →
-/// GamepadInput → the diorama), with a screenshot at each step: the account
+/// GamepadInput → the pregame), with a screenshot at each step: the account
 /// and password typed on the on-screen keyboard, Login, the server, the
 /// character list, a look at character creation and back, then Play into
 /// the world. Account and password: <c>--account</c>/<c>--password</c>, else
@@ -124,7 +124,7 @@ internal static class Pregame3DProbe
     /// <summary>Types <paramref name="text"/> on the open on-screen keyboard, key by key with the D-pad and A.</summary>
     private static async Task Type(string text)
     {
-        OnScreenKeyboard osk = PregameDiorama.Instance.Keyboard;
+        OnScreenKeyboard osk = PregameScreen.Instance.Keyboard;
 
         // Clear what the field held: X deletes.
         for (int i = osk.TextValue.Length; i > 0; i--)
@@ -181,9 +181,9 @@ internal static class Pregame3DProbe
     private static async Task Probe(string account, string password)
     {
         // 1. The login step, the lid opened.
-        Check("the diorama is up", await Until(() => PregameDiorama.Active && PregameDiorama.Instance.Stage is LoginStage, 600));
+        Check("the pregame is up", await Until(() => PregameScreen.Active && PregameScreen.Instance.Stage is LoginStage, 600));
         await Frames(140);
-        Check("the lid opened", PregameDiorama.Instance.Lid > 0.95f, $"lid {PregameDiorama.Instance.Lid:0.00}");
+        Check("the painting is up", PregameScreen.Instance.Painted);
         await Shot("01_login");
 
         // Resized mid-login: the whole scene stays framed at each size.
@@ -211,20 +211,20 @@ internal static class Pregame3DProbe
         {
             // 2. The account on the keyboard: focus it (X), type, Done.
             await Press(PadCmd.X);
-            Check("X opens the keyboard on the account", PregameDiorama.Instance.Keyboard.IsOpen);
+            Check("X opens the keyboard on the account", PregameScreen.Instance.Keyboard.IsOpen);
             await Type(account);
             await Shot("02_keyboard_account");
             await Press(PadCmd.Start);
             Check("the account typed", LoginStage.AccountForProbe == account, $"\"{LoginStage.AccountForProbe}\"");
 
             // 3. Done moved focus to the password: A opens it.
-            Check("focus moved to the password", PregameDiorama.Instance.Focus.Current == PregameDiorama.Instance.FieldPassword);
+            Check("focus moved to the password", LoginStage.ProbeOnPassword);
             await Press(PadCmd.A);
-            Check("A opens the keyboard on the password", PregameDiorama.Instance.Keyboard.IsOpen);
+            Check("A opens the keyboard on the password", PregameScreen.Instance.Keyboard.IsOpen);
             await Type(password);
             await Shot("03_keyboard_password");
             await Press(PadCmd.Start);
-            Check("focus moved to Login", PregameDiorama.Instance.Focus.Current == PregameDiorama.Instance.LoginButton);
+            Check("focus moved to Login", LoginStage.ProbeOnLogin);
             await Frames(10);
             await Shot("04_login_focused");
 
@@ -244,7 +244,7 @@ internal static class Pregame3DProbe
         {
             await Frames(60);
             await Shot("06_servers");
-            Check("a scroll is focused", PregameDiorama.Instance.Focus.Current is Hotspot);
+            Check("a server is focused", ServerStage.ProbeServerFocused);
             await Press(PadCmd.A);
         }
 
@@ -268,7 +268,7 @@ internal static class Pregame3DProbe
                 await Frames(40);
             }
 
-            Check("a character is focused", PregameDiorama.Instance?.Focus.Current is Hotspot);
+            Check("a character is focused", CharacterStage.ProbeCharacterFocused);
             await Press(PadCmd.A);
         }
         else
@@ -279,7 +279,7 @@ internal static class Pregame3DProbe
         bool inWorld = await Until(() => Client.Game?.UO?.World?.InGame ?? false, 1200);
         Check("entered the world", inWorld);
         await Frames(90);
-        Check("the diorama left with the login scene", !PregameDiorama.Active);
+        Check("the pregame left with the login scene", !PregameScreen.Active);
         await Shot("12_world");
     }
 
@@ -480,7 +480,7 @@ internal static class Pregame3DProbe
 
         // 5 Name, then Enter Britannia.
         await Press(PadCmd.A);
-        Check("A on the name opens the keyboard", PregameDiorama.Instance.Keyboard.IsOpen);
+        Check("A on the name opens the keyboard", PregameScreen.Instance.Keyboard.IsOpen);
         await Type("Pebble");
         await Press(PadCmd.Start);
         await Frames(10);

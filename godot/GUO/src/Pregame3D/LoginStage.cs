@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: BSD-2-Clause
-// GUO addition, not a port: the login step of the 3D pregame, doing what the
-// classic LoginGump does (account, password, Login, Quit, Credits, its three
-// boxes) with the chest's own objects.
+// GUO addition, not a port: the login step, doing what the classic LoginGump
+// does (account, password, the arrow, Quit, Credits, its boxes) with the
+// gump's own pieces where the gump puts them, over its own painting.
 
 using System;
 using System.Collections.Generic;
 using Godot;
 using GUO.Configuration;
+using GUO.Input.Touch;
 using GUO.Input.Touch.Pregame;
 using GUO.Input.Touch.Pregame.Accounts;
 using GUO.Utility;
@@ -19,19 +20,29 @@ internal sealed class LoginStage : Stage
 
     private string _account = "";
     private string _password = "";
-    private Label3D _accountText, _passwordText, _loginText, _quitText, _creditsText;
-    private readonly Label3D[] _studText = new Label3D[3];
-    private readonly List<Hotspot> _cards = new();
-    private readonly List<SavedAccount> _cardAccounts = new();
+    private readonly List<(Control control, ShaderMaterial material)> _props = new();
+    private readonly List<IOverlayFocusable> _items = new();
+    private GumpProp _accountField, _passwordField, _arrow, _quit, _credits;
+    private readonly GumpProp[] _boxes = new GumpProp[3];
+    private Label _accountText, _passwordText;
+    private PanelContainer _saved;
     private ServerEntry _server;
-    private bool _opened;
-    private PanelContainer _credits;
+    private PanelContainer _creditsCard;
 
-    public static string AccountForProbe => (PregameDiorama.Instance?.Stage as LoginStage)?._account;
+    public static string AccountForProbe => (PregameScreen.Instance?.Stage as LoginStage)?._account;
 
-    public override string Hints => _credits != null
+    public static bool ProbeOnAccount => PregameScreen.Instance?.Stage is LoginStage s && s.D.Focus.Current == s._accountField;
+    public static bool ProbeOnPassword => PregameScreen.Instance?.Stage is LoginStage s && s.D.Focus.Current == s._passwordField;
+    public static bool ProbeOnLogin => PregameScreen.Instance?.Stage is LoginStage s && s.D.Focus.Current == s._arrow;
+
+    public override IEnumerable<IOverlayFocusable> OverlayItems => _items;
+
+    /// <summary>The painting's own text runs along its bottom: the hints go to the top here.</summary>
+    public override bool HintsAtTop => true;
+
+    public override string Hints => _creditsCard != null
         ? "B  Close"
-        : D.Focus.Current == D.FieldAccount || D.Focus.Current == D.FieldPassword
+        : D.Focus.Current == _accountField || D.Focus.Current == _passwordField
             ? "A  Type     Start  Login     Y  Credits"
             : "A  Press     Start  Login     Y  Credits";
 
@@ -45,66 +56,146 @@ internal sealed class LoginStage : Stage
             _password = string.IsNullOrEmpty(s.Password) ? "" : Crypter.Decrypt(s.Password);
         }
 
-        ShowProps(true);
-        D.Frame(D.LoginPose, new Node3D[] { D.Scene.ChestBody, D.Scene.Plaque, D.LoginButton }, _opened ? 0.7 : 0.01);
-        D.Scene.SetGutter(1f);
+        D.SetDim(1f);
+        Painting art = D.Art;
 
-        // The lid creaks open on boot, and again on the way back from a login.
-        D.LidTo(1f, _opened ? 0.8 : 1.8);
-        _opened = true;
+        if (art.LoginPanel is Rect2 panel)
+        {
+            // Older clients: the stone login panel and its three labels, under the fields.
+            PanelContainer p = Frame(0x13BE, panel.Size);
+            Prop(p, panel.Position);
+            Caption(GUO.Resources.ResGumps.LoginToUO, new Vector2(253, 305), UoTheme.Cream);
+            Caption("Account Name", new Vector2(183, 345), UoTheme.Cream);
+            Caption("Password", new Vector2(183, 385), UoTheme.Cream);
+        }
 
-        _accountText ??= D.TextOn(D.FieldAccount, "", 0.7f);
-        _passwordText ??= D.TextOn(D.FieldPassword, "", 0.7f);
-        _loginText ??= D.TextOn(D.LoginButton, "Login", 0.6f, new Color("eeeade"));
-        ShowFields();
+        _accountField = Field(art.AccountField, out _accountText);
+        _passwordField = Field(art.PasswordField, out _passwordText);
+        _accountField.Tag = "account";
+        _passwordField.Tag = "password";
+        _accountField.Activated = () => Edit(true);
+        _passwordField.Activated = () => Edit(false);
 
-        D.FieldAccount.Activated = () => Edit(true);
-        D.FieldPassword.Activated = () => Edit(false);
-        D.LoginButton.Activated = DoLogin;
-        D.Shield.Activated = () => Client.Game.Exit();
-        D.Credits.Activated = ShowCredits;
+        _arrow = Button(art.Arrow, "login", DoLogin);
+        _quit = Button(art.Quit, "quit", () => Client.Game.Exit());
+        _credits = Button(art.Credits, "credits", ShowCredits);
 
-        _quitText ??= D.TextOn(D.Shield, "Quit", 0.3f, new Color("eeeade"));
-        _creditsText ??= D.TextOn(D.Credits, "Credits", 0.45f, new Color("eeeade"));
-
-        // Short: the three sit close together on the chest's front.
-        string[] studNames = { "Autologin", "Save", "Music" };
+        // The gump's three boxes: Autologin, Save account, Music, one after the other.
+        string[] captions = { ResGumps("Autologin"), ResGumps("Save Account"), "Music" };
+        Vector2 at = art.FirstCheckbox;
 
         for (int i = 0; i < 3; i++)
         {
             int index = i;
-            D.Studs[i].Activated = () => ToggleStud(index);
-            _studText[i] ??= D.TextAbove(D.Studs[i], studNames[i], 1, gap: 0.02f);
+            _boxes[i] = new GumpProp(Painting.CheckboxOff, Painting.CheckboxOff, Painting.CheckboxOff, at) { Tag = "box" + i };
+            _boxes[i].Activated = () => Toggle(index);
+            AddProp(_boxes[i]);
+            _items.Add(_boxes[i]);
+            Label caption = Caption(captions[i], at + new Vector2(22, 1), UoTheme.Cream);
+            float width = UoTheme.Font.GetStringSize(captions[i], HorizontalAlignment.Left, -1, UoTheme.FontSize).X;
+            at += new Vector2(22 + width + 10, 0);
         }
 
-        RefreshStuds();
-        BuildCards();
+        Caption($"UO Version {Settings.GlobalSettings.ClientVersion}.", art.VersionAt, new Color("d0c8b8"));
+        RefreshBoxes();
+        ShowFields();
+        BuildSaved();
         Link();
 
-        D.Focus.Set(_account.Length > 0 ? D.FieldPassword : D.FieldAccount);
+        D.Focus.Set(_account.Length > 0 ? _passwordField : _accountField);
     }
 
     public override void Exit()
     {
         CloseCredits();
-        ClearCards();
-        ShowProps(false);
+
+        foreach ((Control control, ShaderMaterial material) in _props)
+        {
+            D.RemoveProp(control, material);
+        }
+
+        _props.Clear();
+        _items.Clear();
+        _saved?.QueueFree();
+        _saved = null;
     }
 
-    /// <summary>Shows or hides the login step's own objects.</summary>
-    private void ShowProps(bool on)
+    public override void Update(double delta)
     {
-        D.Scene.Plaque.Visible = on;
-        D.FieldAccount.Visible = on;
-        D.FieldPassword.Visible = on;
-        D.LoginButton.Visible = on;
-        D.Shield.Visible = on;
-        D.Credits.Visible = on;
-
-        foreach (Hotspot stud in D.Studs)
+        // Gump art that was not in the atlas on the first frame.
+        foreach (IOverlayFocusable i in _items)
         {
-            stud.Visible = on;
+            if (i is GumpProp p && !p.Ready)
+            {
+                p.Show();
+            }
         }
+    }
+
+    private static string ResGumps(string fallback) => fallback switch
+    {
+        "Autologin" => GUO.Resources.ResGumps.Autologin,
+        "Save Account" => GUO.Resources.ResGumps.SaveAccount,
+        _ => fallback,
+    };
+
+    // --- the pieces -------------------------------------------------------------------
+
+    private void AddProp(GumpProp p)
+    {
+        D.AddProp(p.Control, p.Material);
+        _props.Add((p.Control, p.Material));
+    }
+
+    private void Prop(Control c, Vector2 at)
+    {
+        ShaderMaterial m = GumpProp.NewMaterial();
+        c.Material = m;
+        c.Position = at;
+        D.AddProp(c, m);
+        _props.Add((c, m));
+    }
+
+    private static PanelContainer Frame(ushort first, Vector2 size)
+    {
+        var p = new PanelContainer { MouseFilter = Control.MouseFilterEnum.Ignore, Size = size, CustomMinimumSize = size };
+        p.AddThemeStyleboxOverride("panel", UoTheme.Frame(first, 4));
+        return p;
+    }
+
+    private Label Caption(string text, Vector2 at, Color color)
+    {
+        Label l = Overlay.Text(text, color);
+        l.AddThemeConstantOverride("outline_size", 3);
+        l.AddThemeColorOverride("font_outline_color", new Color(0, 0, 0, 0.8f));
+        Prop(l, at);
+        return l;
+    }
+
+    private GumpProp Field(Rect2 rect, out Label text)
+    {
+        // Exactly the gump's ResizePic size (a container would grow to its text).
+        var frame = new Panel { MouseFilter = Control.MouseFilterEnum.Ignore, Size = rect.Size };
+        frame.AddThemeStyleboxOverride("panel", Overlay.Frame(0x0BB8, 4));
+        text = Overlay.Text("", new Color("1c1812"));
+        text.UseParentMaterial = true;
+        text.ClipText = true;
+        text.Position = new Vector2(7, 0);
+        text.Size = new Vector2(rect.Size.X - 14, rect.Size.Y);
+        text.VerticalAlignment = VerticalAlignment.Center;
+        frame.AddChild(text);
+        var prop = new GumpProp(frame, rect.Position);
+        AddProp(prop);
+        _items.Add(prop);
+        return prop;
+    }
+
+    private GumpProp Button(GumpButtonArt art, string tag, Action activated)
+    {
+        var b = new GumpProp(art.Normal, art.Pressed, art.Over, art.At) { Tag = tag, Activated = activated };
+        AddProp(b);
+        _items.Add(b);
+        return b;
     }
 
     private void ShowFields()
@@ -117,35 +208,29 @@ internal sealed class LoginStage : Stage
 
     private void Link()
     {
-        Hotspot a = D.FieldAccount, p = D.FieldPassword, login = D.LoginButton, quit = D.Shield, credits = D.Credits;
-        Hotspot[] studs = D.Studs;
+        GumpProp a = _accountField, p = _passwordField, login = _arrow, quit = _quit, credits = _credits;
 
-        a.Up = null; a.Down = p; a.Left = quit; a.Right = credits;
+        a.Up = _savedItems.Count > 0 ? _savedItems[^1] : credits;
+        a.Down = p; a.Left = quit; a.Right = credits;
         p.Up = a; p.Down = login; p.Left = quit; p.Right = credits;
-        login.Up = p; login.Down = studs[1]; login.Left = quit; login.Right = credits;
-        quit.Up = null; quit.Right = a; quit.Left = null; quit.Down = studs[0];
-        credits.Up = null; credits.Left = a; credits.Right = null; credits.Down = studs[2];
+        login.Up = p; login.Down = _boxes[1]; login.Left = quit; login.Right = credits;
+        quit.Up = a; quit.Right = a; quit.Left = null; quit.Down = _boxes[0];
+        credits.Up = _savedItems.Count > 0 ? _savedItems[0] : null; credits.Left = a; credits.Right = null; credits.Down = p;
 
-        for (int i = 0; i < studs.Length; i++)
+        for (int i = 0; i < _boxes.Length; i++)
         {
-            studs[i].Up = login;
-            studs[i].Left = i > 0 ? studs[i - 1] : quit;
-            studs[i].Right = i + 1 < studs.Length ? studs[i + 1] : credits;
-            studs[i].Down = _cards.Count > 0 ? _cards[Math.Min(i * _cards.Count / studs.Length, _cards.Count - 1)] : null;
+            _boxes[i].Up = login;
+            _boxes[i].Down = null;
+            _boxes[i].Left = i > 0 ? _boxes[i - 1] : quit;
+            _boxes[i].Right = i + 1 < _boxes.Length ? _boxes[i + 1] : credits;
         }
 
-        if (_cards.Count > 0)
+        for (int i = 0; i < _savedItems.Count; i++)
         {
-            PadFocus.LinkRow(_cards.ConvertAll(c => (IFocusable) c));
-
-            foreach (Hotspot c in _cards)
-            {
-                c.Up = studs[1];
-                c.Down = null;
-            }
-
-            _cards[0].Left = null;
-            _cards[^1].Right = null;
+            _savedItems[i].Up = i > 0 ? _savedItems[i - 1] : null;
+            _savedItems[i].Down = i + 1 < _savedItems.Count ? _savedItems[i + 1] : a;
+            _savedItems[i].Left = null;
+            _savedItems[i].Right = credits;
         }
     }
 
@@ -153,7 +238,7 @@ internal sealed class LoginStage : Stage
 
     public override bool Command(PadCmd cmd)
     {
-        if (_credits != null)
+        if (_creditsCard != null)
         {
             if (cmd is PadCmd.B or PadCmd.A or PadCmd.Start)
             {
@@ -174,7 +259,7 @@ internal sealed class LoginStage : Stage
                 return true;
 
             case PadCmd.X:
-                D.Focus.Set(D.FieldAccount);
+                D.Focus.Set(_accountField);
                 Edit(true);
                 return true;
 
@@ -188,16 +273,9 @@ internal sealed class LoginStage : Stage
     /// <summary>Typing on a focused field opens its keyboard with that letter.</summary>
     public override bool Key(InputEventKey k)
     {
-        bool account = D.Focus.Current == D.FieldAccount, password = D.Focus.Current == D.FieldPassword;
+        bool account = D.Focus.Current == _accountField, password = D.Focus.Current == _passwordField;
 
-        if ((account || password) && k.Unicode >= 32 && !k.CtrlPressed && !k.AltPressed)
-        {
-            Edit(account);
-            D.Keyboard.Key(k);
-            return true;
-        }
-
-        if ((account || password) && k.Keycode == Godot.Key.Backspace)
+        if ((account || password) && ((k.Unicode >= 32 && !k.CtrlPressed && !k.AltPressed) || k.Keycode == Godot.Key.Backspace))
         {
             Edit(account);
             D.Keyboard.Key(k);
@@ -217,7 +295,7 @@ internal sealed class LoginStage : Stage
             done: text =>
             {
                 SetField(account, text);
-                D.Focus.Set(account ? D.FieldPassword : D.LoginButton);
+                D.Focus.Set(account ? _passwordField : _arrow);
                 D.RefreshHints();
             },
             cancel: () => D.RefreshHints(),
@@ -248,7 +326,7 @@ internal sealed class LoginStage : Stage
 
         if (string.IsNullOrWhiteSpace(_account))
         {
-            D.Focus.Set(D.FieldAccount);
+            D.Focus.Set(_accountField);
             Edit(true);
             return;
         }
@@ -257,9 +335,9 @@ internal sealed class LoginStage : Stage
         Login.Connect(_account, _password);
     }
 
-    // --- studs: the classic gump's three boxes -----------------------------------------
+    // --- the classic gump's three boxes ------------------------------------------------
 
-    private void ToggleStud(int i)
+    private void Toggle(int i)
     {
         Settings s = Settings.GlobalSettings;
 
@@ -278,22 +356,29 @@ internal sealed class LoginStage : Stage
         }
 
         s.Save();
-        RefreshStuds();
+        RefreshBoxes();
     }
 
-    private void RefreshStuds()
+    private void RefreshBoxes()
     {
         Settings s = Settings.GlobalSettings;
-        PregameDiorama.SetStud(D.Studs[0], s.AutoLogin);
-        PregameDiorama.SetStud(D.Studs[1], s.SaveAccount);
-        PregameDiorama.SetStud(D.Studs[2], s.LoginMusic);
+        bool[] on = { s.AutoLogin, s.SaveAccount, s.LoginMusic };
+
+        for (int i = 0; i < 3; i++)
+        {
+            ushort id = on[i] ? Painting.CheckboxOn : Painting.CheckboxOff;
+            _boxes[i].SetArt(id, id, id);
+        }
     }
 
-    // --- saved accounts as cards ---------------------------------------------------------
+    // --- saved accounts ----------------------------------------------------------------
 
-    private void BuildCards()
+    private readonly List<UiFocus> _savedItems = new();
+
+    /// <summary>The server's saved accounts (AccountBook) as a parchment list: one press logs in.</summary>
+    private void BuildSaved()
     {
-        ClearCards();
+        _savedItems.Clear();
         IReadOnlyList<SavedAccount> accounts;
 
         try
@@ -304,38 +389,43 @@ internal sealed class LoginStage : Stage
         }
         catch (Exception ex)
         {
-            // The keystore (libsecret) may be missing, e.g. a Deck in Game Mode: no cards then.
+            // The keystore (libsecret) may be missing, e.g. a Deck in Game Mode: no list then.
             GD.PrintErr($"[GUO] pregame3d: saved accounts unavailable: {ex.Message}");
             return;
         }
 
-        List<Placement> slots = D.Scene.Layout.CardSlots;
-
-        for (int i = 0; i < accounts.Count && i < slots.Count; i++)
+        if (accounts.Count == 0)
         {
-            SavedAccount account = accounts[i];
-            Node3D visual = D.Scene.Card();
-            visual.Transform = slots[i].Transform * visual.Transform;
-            D.Scene.Root.AddChild(visual);
-            Hotspot card = Hotspot.Wrap(visual, "Card" + i, D.Scene.Root);
-            card.Activated = () => PickAccount(account);
-            D.TextOn(visual, account.Name, 0.35f);
-            D.AddPickable(card);
-            _cards.Add(card);
-            _cardAccounts.Add(account);
-        }
-    }
-
-    private void ClearCards()
-    {
-        foreach (Hotspot c in _cards)
-        {
-            D.RemovePickable(c);
-            c.QueueFree();
+            return;
         }
 
-        _cards.Clear();
-        _cardAccounts.Clear();
+        _saved = Overlay.Card(Overlay.Parchment);
+        VBoxContainer col = Overlay.Column(1);
+        _saved.AddChild(col);
+        col.AddChild(Overlay.Text("Saved accounts", UoTheme.Heading));
+
+        foreach (SavedAccount account in accounts)
+        {
+            SavedAccount a = account;
+            var row = new PanelContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
+            Label l = Overlay.Text(a.Name, UoTheme.Ink);
+            row.AddChild(l);
+            col.AddChild(row);
+            var f = new UiFocus(row) { Tag = "saved:" + a.Name };
+            f.Shown = on =>
+            {
+                row.AddThemeStyleboxOverride("panel", new StyleBoxFlat { BgColor = on ? new Color(0.878f, 0.69f, 0.314f, 0.55f) : new Color(0, 0, 0, 0) });
+                l.AddThemeColorOverride("font_color", on ? UoTheme.Danger : UoTheme.Ink);
+            };
+            f.Pressed = () => PickAccount(a);
+            f.Shown(false);
+            _savedItems.Add(f);
+            _items.Add(f);
+        }
+
+        D.OverlayRoot.AddChild(_saved);
+        _saved.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.TopRight, Control.LayoutPresetMode.Minsize, 8);
+        _saved.GrowHorizontal = Control.GrowDirection.Begin;
     }
 
     /// <summary>A saved account: fill the fields and log in, as the pre-game card's Play does.</summary>
@@ -358,7 +448,7 @@ internal sealed class LoginStage : Stage
         {
             _password = "";
             ShowFields();
-            D.Focus.Set(D.FieldPassword);
+            D.Focus.Set(_passwordField);
             D.ShowMessage(account.HasPassword
                 ? $"Couldn't read the saved password for {account.Name}: {why}. Type it instead."
                 : $"Type the password for {account.Name}.", () => Edit(false));
@@ -377,29 +467,29 @@ internal sealed class LoginStage : Stage
 
     private void ShowCredits()
     {
-        if (_credits != null)
+        if (_creditsCard != null)
         {
             return;
         }
 
-        _credits = Overlay.Card(Overlay.Stone);
+        _creditsCard = Overlay.Card(Overlay.Stone);
         VBoxContainer col = Overlay.Column(6);
-        col.AddChild(Overlay.Text("Credits", Input.Touch.UoTheme.Heading, 2));
-        Label body = Overlay.Text(PregameDiorama.CreditsText, Input.Touch.UoTheme.Ink, wrap: true);
+        col.AddChild(Overlay.Text("Credits", UoTheme.Heading, 2));
+        Label body = Overlay.Text(PregameScreen.CreditsText, UoTheme.Ink, wrap: true);
         body.CustomMinimumSize = new Vector2(380, 0);
         col.AddChild(body);
-        _credits.AddChild(col);
-        D.OverlayRoot.AddChild(_credits);
-        _credits.SetAnchorsPreset(Control.LayoutPreset.Center);
-        _credits.GrowHorizontal = Control.GrowDirection.Both;
-        _credits.GrowVertical = Control.GrowDirection.Both;
+        _creditsCard.AddChild(col);
+        D.OverlayRoot.AddChild(_creditsCard);
+        _creditsCard.SetAnchorsPreset(Control.LayoutPreset.Center);
+        _creditsCard.GrowHorizontal = Control.GrowDirection.Both;
+        _creditsCard.GrowVertical = Control.GrowDirection.Both;
         D.RefreshHints();
     }
 
     private void CloseCredits()
     {
-        _credits?.QueueFree();
-        _credits = null;
+        _creditsCard?.QueueFree();
+        _creditsCard = null;
         D?.RefreshHints();
     }
 }

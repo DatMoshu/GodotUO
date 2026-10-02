@@ -58,8 +58,8 @@ internal interface IFocusable
 /// The pad focus of the 3D pregame: one focused <see cref="IFocusable"/>,
 /// moved along the explicit neighbour graph each step authors (never
 /// guessed), with a held direction repeating as a keyboard's arrows do.
-/// The input routing into it is <see cref="PregameDiorama.HandlePad"/> and
-/// <see cref="PregameDiorama.HandleMainInput"/>, the way WindowMenu takes the
+/// The input routing into it is <see cref="PregameScreen.HandlePad"/> and
+/// <see cref="PregameScreen.HandleMainInput"/>, the way WindowMenu takes the
 /// D-pad while it is open.
 /// </summary>
 internal sealed class PadFocus

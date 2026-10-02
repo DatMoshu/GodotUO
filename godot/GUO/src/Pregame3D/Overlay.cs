@@ -8,11 +8,11 @@ using GUO.Input.Touch;
 namespace GUO.Pregame3D;
 
 /// <summary>
-/// The 2D layer over the diorama: the hint band, status and message cards,
+/// The 2D layer over the painting: the hint band, status and message cards,
 /// the on-screen keyboard, the creation lists. In the UO style
 /// (docs/ui/uo_godot_style.md, UoTheme), at a whole-number scale, nearest.
 /// Godot never delivers events to it (GameController marks every event
-/// handled, ADR-0006): the diorama hit-tests it itself.
+/// handled, ADR-0006): the pregame hit-tests it itself.
 /// </summary>
 internal static class Overlay
 {
@@ -22,11 +22,61 @@ internal static class Overlay
 
     public static readonly Color Band = new(0f, 0f, 0f, 0.55f);
 
+    private static readonly System.Collections.Generic.Dictionary<(ushort, int, int), StyleBox> _frames = new();
+
+    /// <summary>
+    /// A client ResizePic as a style box (UoTheme.Frame), cached; <paramref name="tint"/>
+    /// 1 = lit for focus (the art warmed toward gold), 2 = active (toward red).
+    /// </summary>
+    public static StyleBox Frame(ushort first, int margin = -1, int tint = 0)
+    {
+        if (_frames.TryGetValue((first, margin, tint), out StyleBox cached))
+        {
+            return cached;
+        }
+
+        StyleBox box = UoTheme.Frame(first, margin);
+
+        if (tint != 0 && box is StyleBoxTexture t)
+        {
+            t = (StyleBoxTexture) t.Duplicate();
+            t.ModulateColor = tint == 1 ? new Color(1f, 0.86f, 0.52f) : new Color(1f, 0.55f, 0.48f);
+            box = t;
+        }
+
+        // Only kept once it is the art (before the gumps load, Frame is a flat stand-in).
+        if (box is StyleBoxTexture)
+        {
+            _frames[(first, margin, tint)] = box;
+        }
+
+        return box;
+    }
+
     public static PanelContainer Card(ushort frame = Parchment)
     {
         var p = new PanelContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
-        p.AddThemeStyleboxOverride("panel", UoTheme.Frame(frame));
+        p.AddThemeStyleboxOverride("panel", Frame(frame));
         return p;
+    }
+
+    /// <summary>A row on parchment that lights when focused: its frame warms, its text turns red.</summary>
+    public static UiFocus FrameRow(Control content, Label text, string tag, int margin = 4)
+    {
+        var row = new PanelContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
+        row.AddChild(content);
+        var f = new UiFocus(row) { Tag = tag };
+        f.Shown = on =>
+        {
+            row.AddThemeStyleboxOverride("panel", Frame(Parchment, margin, on ? 1 : 0));
+
+            if (text != null)
+            {
+                text.AddThemeColorOverride("font_color", on ? UoTheme.Danger : UoTheme.Ink);
+            }
+        };
+        f.Shown(false);
+        return f;
     }
 
     public static PanelContainer BandPanel(int margin = 4)

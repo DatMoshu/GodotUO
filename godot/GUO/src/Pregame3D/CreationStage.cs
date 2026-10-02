@@ -79,8 +79,8 @@ internal sealed partial class CreationStage : Stage
     private Action<bool> _popClose;
 
     // --- the figure ---
-    private Node3D _plinth;
-    private Sprite3D _figure;
+    private TextureRect _figure;
+    private Panel _shadow;
     private byte _direction = 3; // facing the viewer (UO direction 3: south-ish... see Turn)
     private int _frame;
     private double _frameTime;
@@ -90,11 +90,11 @@ internal sealed partial class CreationStage : Stage
     private int _figureHeight = 80;
     private bool _toldFigure;
 
-    public static string ProbeFocusTag => (PregameDiorama.Instance?.Stage as CreationStage)?.FocusTag;
-    public static Step? ProbeStep => (PregameDiorama.Instance?.Stage as CreationStage)?._step;
-    public static bool ProbePopoverOpen => (PregameDiorama.Instance?.Stage as CreationStage)?._popover != null;
-    public static bool ProbeMapReady => (PregameDiorama.Instance?.Stage as CreationStage)?._mapReady ?? false;
-    public static byte? ProbeDirection => (PregameDiorama.Instance?.Stage as CreationStage)?._direction;
+    public static string ProbeFocusTag => (PregameScreen.Instance?.Stage as CreationStage)?.FocusTag;
+    public static Step? ProbeStep => (PregameScreen.Instance?.Stage as CreationStage)?._step;
+    public static bool ProbePopoverOpen => (PregameScreen.Instance?.Stage as CreationStage)?._popover != null;
+    public static bool ProbeMapReady => (PregameScreen.Instance?.Stage as CreationStage)?._mapReady ?? false;
+    public static byte? ProbeDirection => (PregameScreen.Instance?.Stage as CreationStage)?._direction;
 
     private string FocusTag => (D.Focus.Current as UiFocus)?.Tag as string;
 
@@ -131,8 +131,7 @@ internal sealed partial class CreationStage : Stage
     public override void Enter()
     {
         _world = Client.Game.UO.World;
-        D.LidTo(1f, 0.6);
-        D.Scene.SetDim(0.42f);
+        D.SetDim(0.42f);
 
         // As CreateCharAppearanceGump's constructor: a human male, defaults.
         _female = false;
@@ -151,7 +150,6 @@ internal sealed partial class CreationStage : Stage
 
         BuildChrome();
         BuildFigure();
-        FrameFigure();
         ShowStep(Step.Trade);
     }
 
@@ -160,12 +158,11 @@ internal sealed partial class CreationStage : Stage
         ClosePopover(false);
         _chrome?.QueueFree();
         _chrome = null;
-        _plinth?.QueueFree();
-        _plinth = null;
         _figure = null;
+        _shadow = null;
         _items.Clear();
         D.Focus.Clear();
-        D.Scene.SetDim(1f);
+        D.SetDim(1f);
     }
 
     public override void Update(double delta)
@@ -223,11 +220,26 @@ internal sealed partial class CreationStage : Stage
             }
         }
 
-        // Whole pixels at about 47% of the screen's height (380 of 800).
-        float unit = D.PixelUnit(_figure.GlobalPosition);
-        int lines = Math.Max(1, (int) Math.Round(D.InternalHeight * 0.475f));
-        int k = Math.Max(1, (int) Math.Round(lines / (float) Math.Max(30, _figureHeight)));
-        _figure.PixelSize = unit * k;
+        PlaceFigure();
+    }
+
+    /// <summary>
+    /// The figure on the left third, its feet low, a whole number of screen
+    /// pixels to an art pixel, about 47% of the screen's height (380 of 800).
+    /// </summary>
+    private void PlaceFigure()
+    {
+        Vector2 room = D.OverlayRoot.Size;
+        int ui = D.UiScale;
+        float screenH = room.Y * ui;
+        int k = Math.Max(1, (int) Math.Round(screenH * 0.475f / Math.Max(30, _figureHeight)));
+        Vector2 size = new Vector2(Mannequin.Canvas.X, Mannequin.Canvas.Y) * k / ui;
+        Vector2 foot = new Vector2(Mannequin.Foot.X, Mannequin.Foot.Y) * k / ui;
+        var feet = new Vector2(room.X * 0.19f, room.Y * 0.86f);
+        _figure.Size = size;
+        _figure.Position = feet - foot;
+        _shadow.Size = new Vector2(34f * k / ui, 9f * k / ui);
+        _shadow.Position = feet - _shadow.Size / 2f;
     }
 
     /// <summary>The right stick turns the figure, one direction per push.</summary>
@@ -252,58 +264,39 @@ internal sealed partial class CreationStage : Stage
         _dirty = true;
     }
 
-    /// <summary>
-    /// The character-select camera, slid sideways so the figure's plinth
-    /// stands in the middle of the screen's left third, clear of the card.
-    /// </summary>
-    private void FrameFigure()
-    {
-        (Vector3 pos, Vector3 look, float fov) pose = D.StepPose("characters");
-        Aabb plinthBox = Hotspot.MeshBounds(_plinth, _plinth.GlobalTransform);
-        Vector3 target = new(plinthBox.GetCenter().X, plinthBox.End.Y, plinthBox.GetCenter().Z);
-        Vector3 forward = (pose.look - pose.pos).Normalized();
-        Vector3 right = forward.Cross(Vector3.Up).Normalized();
-        float depth = (target - pose.pos).Dot(forward);
-        float aspect = D.OverlayRoot.Size.X / Math.Max(1f, D.OverlayRoot.Size.Y);
-        float halfW = depth * Mathf.Tan(Mathf.DegToRad(pose.fov) / 2f) * aspect;
-        // Where the plinth is now across the view, and where it should be (19% from the left).
-        float now = (target - pose.pos).Dot(right);
-        float want = -halfW * (1f - 2f * 0.19f);
-        float slide = now - want;
-
-        // And up or down so its top stands at 82% of the height (the figure fills the space above).
-        Vector3 up = right.Cross(forward).Normalized();
-        float halfH = depth * Mathf.Tan(Mathf.DegToRad(pose.fov) / 2f);
-        float nowY = (target - pose.pos).Dot(up);
-        float wantY = -halfH * (2f * 0.82f - 1f);
-        float lift = nowY - wantY;
-        pose.pos += right * slide + up * lift;
-        pose.look += right * slide + up * lift;
-        D.Frame(pose, null, 0.8);
-    }
-
     private void BuildFigure()
     {
-        List<Placement> slots = D.Scene.Layout.PlinthSlots;
-        _plinth = D.Scene.Plinth();
-        _plinth.Transform = (slots.Count > 0 ? slots[slots.Count / 2].Transform : new Placement(new Vector3(0f, 0.15f, 0.6f)).Transform) * _plinth.Transform;
-        D.Scene.Root.AddChild(_plinth);
-
-        Aabb box = Hotspot.MeshBounds(_plinth, _plinth.GlobalTransform);
-        _figure = new Sprite3D
+        // A soft shadow for the figure to stand on, then the figure (xBR'd like the painting).
+        _shadow = new Panel { MouseFilter = Control.MouseFilterEnum.Ignore };
+        _shadow.AddThemeStyleboxOverride("panel", new StyleBoxFlat
+        {
+            BgColor = new Color(0f, 0f, 0f, 0.45f),
+            CornerRadiusTopLeft = 64, CornerRadiusTopRight = 64, CornerRadiusBottomLeft = 64, CornerRadiusBottomRight = 64,
+            CornerDetail = 6,
+        });
+        _figure = new TextureRect
         {
             Name = "Figure",
-            Billboard = BaseMaterial3D.BillboardModeEnum.FixedY,
-            TextureFilter = BaseMaterial3D.TextureFilterEnum.Nearest,
-            Shaded = false,
-            AlphaCut = SpriteBase3D.AlphaCutMode.Discard,
-            Centered = true,
-            Offset = new Vector2(Mannequin.Canvas.X / 2 - Mannequin.Foot.X, Mannequin.Foot.Y - Mannequin.Canvas.Y / 2),
+            TextureFilter = CanvasItem.TextureFilterEnum.Nearest,
+            StretchMode = TextureRect.StretchModeEnum.Scale,
+            ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+            Material = GumpProp.NewMaterial(),
         };
-        D.Scene.Root.AddChild(_figure);
-        _figure.GlobalPosition = new Vector3(box.GetCenter().X, box.End.Y, box.GetCenter().Z);
+        _chrome.AddChild(_shadow);
+        _chrome.AddChild(_figure);
+        _chrome.MoveChild(_shadow, 0);
+        _chrome.MoveChild(_figure, 1);
         _dirty = true;
     }
+
+    public override void Resized() => Callable.From(() =>
+    {
+        if (_figure != null)
+        {
+            PlaceFigure();
+        }
+    }).CallDeferred();
 
     // ==========================================================================
     // The character: CreateCharAppearanceGump's data flow
@@ -575,6 +568,7 @@ internal sealed partial class CreationStage : Stage
     // Chrome: tabs, the content card
     // ==========================================================================
 
+    /// <summary>A flat box: only for small marks (a bar's track, a swatch's edge, a map pin).</summary>
     private static StyleBoxFlat Box(Color bg, Color border, int width = 2, int margin = 6) => new()
     {
         BgColor = bg,
@@ -583,10 +577,13 @@ internal sealed partial class CreationStage : Stage
         ContentMarginLeft = margin, ContentMarginRight = margin, ContentMarginTop = margin - 2, ContentMarginBottom = margin - 2,
     };
 
-    private static PanelContainer Card(Color? bg = null, Color? border = null, int margin = 6)
+    /// <summary>The client's parchment (0x0BB8) as a panel; tint 1 = focused (gold), 2 = current (red).</summary>
+    private static StyleBox Parch(int margin, int tint = 0) => Overlay.Frame(Overlay.Parchment, margin, tint);
+
+    private static PanelContainer Card(int margin = 6, ushort frame = Overlay.Parchment)
     {
         var p = new PanelContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
-        p.AddThemeStyleboxOverride("panel", Box(bg ?? ParchmentBg, border ?? Border, 2, margin));
+        p.AddThemeStyleboxOverride("panel", Overlay.Frame(frame, margin));
         return p;
     }
 
@@ -605,13 +602,13 @@ internal sealed partial class CreationStage : Stage
 
         for (int i = 0; i < 5; i++)
         {
-            _tabPanels[i] = Card(margin: 5);
+            _tabPanels[i] = Card(5);
             _tabLabels[i] = Text("", Ink);
             _tabPanels[i].AddChild(_tabLabels[i]);
             _tabs.AddChild(_tabPanels[i]);
         }
 
-        _content = Card(margin: 8);
+        _content = Card(10, Overlay.Stone);
         _chrome.AddChild(_content);
         _content.AnchorLeft = 0.38f;
         _content.AnchorRight = 1f;
@@ -651,8 +648,9 @@ internal sealed partial class CreationStage : Stage
 
             _tabLabels[i].Text = $"{i + 1} {caption}";
             bool current = step == _step;
-            _tabPanels[i].AddThemeStyleboxOverride("panel", current ? Box(Active, Gold, 2, 5) : Box(skipped ? new Color("bfb595") : ParchmentBg, Border, 2, 5));
-            _tabLabels[i].AddThemeColorOverride("font_color", current ? Cream : skipped ? Muted : _done.Contains(step) ? Heading : Ink);
+            _tabPanels[i].AddThemeStyleboxOverride("panel", Parch(5, current ? 2 : 0));
+            _tabLabels[i].AddThemeColorOverride("font_color", current ? Ink : skipped ? Muted : _done.Contains(step) ? Heading : Ink);
+            _tabPanels[i].Modulate = skipped && !current ? new Color(1, 1, 1, 0.6f) : Colors.White;
         }
     }
 
@@ -839,8 +837,7 @@ internal sealed partial class CreationStage : Stage
     private void OpenPopover(Control content, List<IOverlayFocusable> items, IFocusable focus, Action<bool> close)
     {
         ClosePopover(false);
-        PanelContainer pop = Card(margin: 8);
-        pop.AddThemeStyleboxOverride("panel", Box(ParchmentBg, Gold, 2, 8));
+        PanelContainer pop = Card(10, Overlay.Stone);
         pop.AddChild(content);
         _chrome.AddChild(pop);
         pop.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.Center, Control.LayoutPresetMode.Minsize);

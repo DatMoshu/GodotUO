@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
 // GUO addition, not a port: the steps the classic client shows its
-// LoadingGump for (LoginScene.GetLoadingScreen), as the chest.
+// LoadingGump for (LoginScene.GetLoadingScreen), on its own frame art over
+// the dimmed painting.
 
 using Godot;
 using GUO.Game.Scenes;
@@ -11,8 +12,8 @@ namespace GUO.Pregame3D;
 
 /// <summary>
 /// Connecting, verifying, logging into the shard, entering Britannia,
-/// creating a character, and a server's message: the lid half closes, the
-/// candles gutter, and the status reads as the LoadingGump would.
+/// creating a character, and a server's message: the painting dims and the
+/// status reads as the LoadingGump would.
 /// </summary>
 internal sealed class StatusStage : Stage
 {
@@ -30,7 +31,7 @@ internal sealed class StatusStage : Stage
 
     public override void Enter()
     {
-        _card = Overlay.Card(Overlay.Parchment);
+        _card = Overlay.Card(0x0A28);
         _text = Overlay.Text("", UoTheme.Ink, wrap: true);
         _text.HorizontalAlignment = HorizontalAlignment.Center;
         _text.CustomMinimumSize = new Vector2(280, 0);
@@ -48,8 +49,7 @@ internal sealed class StatusStage : Stage
     {
         _step = step;
         bool waiting = step != LoginSteps.PopUpMessage;
-        D.LidTo(waiting ? 0.5f : 0.85f, 0.7);
-        D.Scene.SetGutter(waiting ? 0.55f : 0.8f);
+        D.SetDim(waiting ? 0.55f : 0.45f);
 
         if (step == LoginSteps.PopUpMessage)
         {
@@ -73,7 +73,6 @@ internal sealed class StatusStage : Stage
     {
         _card?.QueueFree();
         _card = null;
-        D.Scene.SetGutter(1f);
     }
 
     public override bool Command(PadCmd cmd)
