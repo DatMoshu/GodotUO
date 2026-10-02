@@ -154,8 +154,23 @@ editor's object sync does not remove pack decorations. Save the world to
 persist placement/removal; switching a content lock does not undo world edits.
 Current placements are static scenery, not scripted/interactable item classes.
 The live probe verifies placement, ownership serialization, repeat application,
-removal and preservation of an unrelated object. Full save/restart testing of
-pack decoration ownership remains outstanding.
+removal and preservation of an unrelated object. A separate four-process
+persistence probe has verified saved serial ownership, idempotent reapplication,
+saved removal, preservation of another owner's object, and saved cleanup.
+
+To repeat that integration check, use only the disposable `tools/editor_shard`
+private instance with an exported decoration sample in `UO_SERVER_CONTENT`.
+Install the bridge while the instance is stopped. Set
+`UO_DECORATION_PERSISTENCE_PROBE` to `seed`, `reload`, `clean`, then `verify`,
+starting a fresh process for each phase. Each phase must report
+`[GUO content persistence] PASS <phase>`. For the first three phases, also
+wait for the subsequent `Writing world save snapshot done` log before stopping
+the instance. A PASS assertion alone does not prove the asynchronous save
+finished. Retain each phase's log before the next start overwrites it.
+The final phase checks that no probe objects or ownership records survived
+cleanup and removes its temporary serial evidence file. Clear the environment
+variable afterward. These probes deliberately save the private world and use
+the reserved `guo-probe` namespace; never run them on a production shard.
 
 ## Required evidence
 

@@ -51,6 +51,9 @@ internal sealed class ContentDecorations
 
     public void Register(bool probe)
     {
+        string persistencePhase = Environment.GetEnvironmentVariable("UO_DECORATION_PERSISTENCE_PROBE");
+        if (!string.IsNullOrEmpty(persistencePhase))
+            Server.Timer.DelayCall(TimeSpan.Zero, () => ProbePersistence(persistencePhase));
         CommandSystem.Register("GUOPackDecorate", AccessLevel.Administrator, args =>
         {
             if (args.Length != 1 || !_sets.ContainsKey(args.GetString(0))) { args.Mobile.SendMessage("Usage: GUOPackDecorate pack-id:component-id"); return; }
@@ -103,6 +106,79 @@ internal sealed class ContentDecorations
         foreach (string id in owned.Select(pair => pair.Key).Where(id => id.StartsWith(identity + "/", StringComparison.Ordinal) && !wanted.Contains(id)).ToArray())
             WorldObjectsSync.DeleteItem(id, owned);
         return kept;
+    }
+
+    // Opt-in integration probe. Run only in the disposable private editor shard.
+    // Each phase runs in a separate process; the normal world save owns the serial ledger.
+    private void ProbePersistence(string phase)
+    {
+        const string identity = "guo-probe:persistence";
+        const string witness = "guo-probe:witness/keep";
+        string evidence = Path.Combine(Core.BaseDirectory, "decoration-persistence-probe.json");
+        try
+        {
+            if (phase == "seed")
+            {
+                if (File.Exists(evidence) || Owned.Any(p => p.Key.StartsWith("guo-probe:", StringComparison.Ordinal)))
+                    throw new InvalidDataException("Persistence probe already exists; reload/clean it first");
+                if (_sets.Count == 0) throw new InvalidDataException("Probe needs an exported decoration set");
+                _sets[identity] = _sets.First().Value.Select((r, i) =>
+                {
+                    var copy = r.DeepClone().AsObject();
+                    copy["id"] = identity + "/item-" + i;
+                    return copy;
+                }).ToArray();
+                Apply(identity, Owned);
+                var sentinel = new Server.Items.Static(1);
+                sentinel.MoveToWorld(new Point3D(100, 100, 0), Map.Felucca);
+                Owned[witness] = new JsonObject { ["serial"] = (uint)sentinel.Serial };
+                File.WriteAllText(evidence, new JsonObject
+                {
+                    ["records"] = new JsonArray(_sets[identity].Select(r => (JsonNode)r.DeepClone()).ToArray()),
+                    ["owned"] = Owned.DeepClone()
+                }.ToJsonString());
+            }
+            else if (phase == "reload" || phase == "clean" || phase == "verify")
+            {
+                var saved = JsonNode.Parse(File.ReadAllText(evidence)).AsObject();
+                var before = saved["owned"].AsObject();
+                var serials = before.Where(p => p.Key.StartsWith(identity + "/", StringComparison.Ordinal)).ToArray();
+                uint witnessSerial = (uint)before[witness]["serial"];
+                if (phase == "verify")
+                {
+                    if (Owned.Any(p => p.Key.StartsWith("guo-probe:", StringComparison.Ordinal))
+                        || serials.Any(p => World.FindItem((Serial)(uint)p.Value["serial"]) is { Deleted: false })
+                        || World.FindItem((Serial)witnessSerial) is { Deleted: false })
+                        throw new InvalidDataException("Probe cleanup did not persist");
+                    File.Delete(evidence);
+                    Console.WriteLine("[GUO content persistence] PASS verify: saved cleanup reloaded; no probe objects or ownership records remain.");
+                    return;
+                }
+                if (phase == "reload")
+                {
+                    foreach (var pair in serials.Append(new KeyValuePair<string, JsonNode>(witness, before[witness])))
+                        if (Owned[pair.Key] == null || (uint)Owned[pair.Key]["serial"] != (uint)pair.Value["serial"]
+                            || World.FindItem((Serial)(uint)pair.Value["serial"]) is not { Deleted: false })
+                            throw new InvalidDataException("Saved decoration serial/ownership did not reload");
+                    _sets[identity] = saved["records"].AsArray().Select(r => r.DeepClone().AsObject()).ToArray();
+                    if (Apply(identity, Owned) != serials.Length || Remove(identity, Owned) != serials.Length)
+                        throw new InvalidDataException("Reloaded decoration reapply/remove differs");
+                    if (World.FindItem((Serial)witnessSerial) is not { Deleted: false } || Owned[witness] == null)
+                        throw new InvalidDataException("Removing decorations touched another owner's item");
+                }
+                else
+                {
+                    if (serials.Any(p => Owned[p.Key] != null || World.FindItem((Serial)(uint)p.Value["serial"]) is { Deleted: false })
+                        || World.FindItem((Serial)witnessSerial) is not { Deleted: false })
+                        throw new InvalidDataException("Saved removal or unrelated item did not survive restart");
+                    WorldObjectsSync.DeleteItem(witness, Owned);
+                }
+            }
+            else throw new InvalidDataException("Unknown persistence probe phase");
+            World.Save();
+            Console.WriteLine($"[GUO content persistence] PASS {phase}: assertions passed; save requested (wait for snapshot write completion before stopping).");
+        }
+        catch (Exception ex) { Console.WriteLine($"[GUO content persistence] FAIL {phase}: {ex}"); }
     }
 
     private static int Remove(string identity, JsonObject owned)
