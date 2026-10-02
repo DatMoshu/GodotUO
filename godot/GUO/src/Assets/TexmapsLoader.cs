@@ -68,6 +68,9 @@ namespace GUO.Assets
 
         public TexmapInfo GetTexmap(uint idx)
         {
+            // GUO addition: verified pack overlay for sloped terrain.
+            if (FileManager.Content != null && FileManager.Content.TryImage("texmap", (int)idx, out var packed))
+                return new TexmapInfo { Pixels = packed.Data, Width = packed.Width, Height = packed.Height };
             ref UOFileIndex entry = ref _file.GetValidRefEntry((int)idx);
 
             if (entry.Length <= 0)

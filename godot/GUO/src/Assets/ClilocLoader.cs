@@ -174,6 +174,8 @@ namespace GUO.Assets
         [return: NotNull]
         public string GetString(int clilocNum, string fallback = null)
         {
+            // GUO addition: locale-matched authored translations.
+            if (FileManager.Content != null && FileManager.Content.TryString(clilocNum, out string packed)) return packed;
             _entries.TryGetValue(clilocNum, out string text);
 
             return text ?? fallback ?? string.Format(MISSING_CLILOC_TEXT, clilocNum);

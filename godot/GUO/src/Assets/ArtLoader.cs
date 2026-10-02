@@ -391,6 +391,9 @@ namespace GUO.Assets
 
         public ArtInfo GetArt(uint idx)
         {
+            // GUO addition: mounted pack art follows the same atlas and picking path.
+            if (FileManager.Content != null && FileManager.Content.TryImage(idx < 0x4000 ? "land" : "static", (int)(idx < 0x4000 ? idx : idx - 0x4000), out var packed))
+                return new ArtInfo { Pixels = packed.Data, Width = (short)packed.Width, Height = (short)packed.Height };
             var loadLand = idx < MAX_LAND_DATA_INDEX_COUNT;
 
             // Ours first, so a file corrects art the archive already has rather than only filling

@@ -6,6 +6,9 @@ from pathlib import Path
 import struct
 import sys
 import zlib
+import io
+import math
+import wave
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from asset_store.seed import write_pack
@@ -23,6 +26,10 @@ def png(width, height, color):
 def build(output, store=None):
     output = Path(output)
     output.mkdir(parents=True, exist_ok=True)
+    audio = io.BytesIO()
+    with wave.open(audio, "wb") as wav:
+        wav.setnchannels(1); wav.setsampwidth(2); wav.setframerate(22050)
+        wav.writeframes(b"".join(struct.pack("<h", int(2400 * math.sin(i * 2 * math.pi * 440 / 22050))) for i in range(2205)))
     specs = {
         "sample-content-art": ("client", [
             ("stone", "static", "client", "stone.png", png(32, 48, (120, 144, 160, 255))),
@@ -30,7 +37,15 @@ def build(output, store=None):
             ("slope", "texmap", "client", "slope.png", png(64, 64, (80, 144, 72, 255))),
             ("panel", "gump", "client", "panel.png", png(120, 80, (48, 64, 96, 255))),
             ("palette", "hue", "client", "palette.json", {"colors": [i * 1057 for i in range(32)], "name": "Example grey"}),
-            ("english", "translation", "client", "english.json", {"locale": "enu", "strings": {"welcome": "Welcome to the example shard"}}),
+            ("english", "translation", "client", "english.json", {"locale": "enu", "strings": {"3100001": "Welcome to the example shard"}}),
+            ("chime", "sound", "client", "chime.wav", audio.getvalue()),
+            ("ambience", "music", "client", "ambience.wav", audio.getvalue()),
+            ("lamp", "light", "client", "lamp.png", png(16, 16, (128, 128, 128, 255))),
+            ("platform", "multi", "client", "platform.json", {"items": [{"graphic": 3701, "x": 0, "y": 0, "z": 0, "visible": True}]}),
+            ("stone-data", "tiledata", "client", "stone-data.json", {"name": "Example stone", "height": 8, "weight": 1}),
+            ("figure", "animation", "client", "figure.json", {"group_type": "Human", "sequences": [
+                {"action": 0, "direction": direction, "frames": [{"image": "stone.png", "center_x": 16, "center_y": 0}, {"image": "stone.png", "center_x": 15, "center_y": 1}]}
+                for direction in range(5)]}),
         ]),
         "sample-content-server": ("server", [
             ("stone-item", "item", "server", "item.json", {"name": "Example stone", "graphic": "sample-content-art:stone", "movable": True, "weight": 1}),

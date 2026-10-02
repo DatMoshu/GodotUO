@@ -319,6 +319,8 @@ namespace GUO.Assets
 
         public unsafe bool TryGetSound(int sound, out byte[] data, out string name)
         {
+            // GUO addition: original pack WAVE decoded and verified at startup.
+            if (FileManager.Content != null && FileManager.Content.TrySound(sound, out data)) { name = "pack-sound-" + sound; return true; }
             data = null;
             name = null;
 

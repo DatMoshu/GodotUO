@@ -1,5 +1,40 @@
 using GUO.Store;
 
+if (args.Length == 4 && args[0] == "export-server")
+{
+    using var store = new StoreClient("http://127.0.0.1:18865", args[1], int.MaxValue);
+    StoreServerExport.Export(store, args[2], args[3]);
+    Console.WriteLine("Exported original item definitions with the deployment's shared graphic IDs.");
+    return 0;
+}
+
+if (args.Length == 4 && args[0] == "activate-content")
+{
+    using var store = new StoreClient("http://127.0.0.1:18865", args[1], int.MaxValue);
+    StoreDeployment.Activate(store, args[2], args[3]);
+    Console.WriteLine("Deployment selected. Restart consumers to load it; scripts remain inert.");
+    return 0;
+}
+if (args.Length == 3 && args[0] == "rollback-content")
+{
+    using var store = new StoreClient("http://127.0.0.1:18865", args[1], int.MaxValue);
+    StoreDeployment.Rollback(store, args[2]);
+    Console.WriteLine("Previous verified deployment selected. Restart consumers; gameplay side effects are not undone.");
+    return 0;
+}
+
+if (args.Length == 3 && args[0] == "extract-content")
+{
+    string stage = Path.Combine(args[2], ".stage-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(stage);
+    var manifest = StorePack.Extract(args[1], stage);
+    string destination = Path.Combine(args[2], manifest.Id, manifest.Version);
+    Directory.CreateDirectory(Path.GetDirectoryName(destination));
+    Directory.Move(stage, destination);
+    Console.WriteLine(destination);
+    return 0;
+}
+
 if (args.Length == 5 && args[0] == "content-lock")
 {
     using var store = new StoreClient("http://127.0.0.1:18865", args[1], int.MaxValue);

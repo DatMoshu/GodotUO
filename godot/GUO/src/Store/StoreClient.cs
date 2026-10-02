@@ -14,6 +14,16 @@ namespace GUO.Store;
 /// <summary>No Godot dependency: the headless smoke runs the real installer.</summary>
 internal sealed class StoreClient : IDisposable
 {
+    // Process-local lifecycle signal; consumers filter by id/version and reverify before use.
+    public static event Action<string, string, string> PackChanged;
+    private static void Changed(string operation, string id, string version)
+    {
+        var handlers = PackChanged;
+        if (handlers == null) return;
+        foreach (Action<string, string, string> handler in handlers.GetInvocationList())
+            try { handler(operation, id, version); }
+            catch (Exception e) { System.Diagnostics.Trace.TraceError("Store change listener: " + e.Message); }
+    }
     private readonly HttpClient _http = new(new HttpClientHandler { AllowAutoRedirect = false });
     private readonly string _root;
     private readonly int _profileVersion;
@@ -138,6 +148,8 @@ internal sealed class StoreClient : IDisposable
             NoLinks(destination);
             Directory.CreateDirectory(Path.GetDirectoryName(destination));
             Directory.Move(stage, destination);
+            guard.Dispose(); // Reconciliation may open its own verification lock.
+            Changed("install", entry.Manifest.Id, entry.Manifest.Version);
             return destination;
         }
         finally
@@ -228,6 +240,8 @@ internal sealed class StoreClient : IDisposable
         string destination = Destination(id, version);
         using var guard = Lock();
         if (Directory.Exists(destination)) DeleteTree(destination);
+        guard.Dispose();
+        Changed("uninstall", id, version);
         LastUninstallMessage = BackgroundRemoved?.Invoke(id, version) == true
             ? "Pack removed. Active background reset to built-in grey. Reopen Options to refresh backgrounds."
             : "Pack removed. Reopen Options to refresh backgrounds.";
