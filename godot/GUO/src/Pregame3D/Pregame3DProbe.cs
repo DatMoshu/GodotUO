@@ -134,6 +134,16 @@ internal static class Pregame3DProbe
 
         foreach (char c in text)
         {
+            if (osk.Native)
+            {
+                // The device's keyboard types real key events into the window.
+                Godot.Input.ParseInputEvent(new InputEventKey { Unicode = c, Pressed = true });
+                await Frames(2);
+                Godot.Input.ParseInputEvent(new InputEventKey { Unicode = c, Pressed = false });
+                await Frames(2);
+                continue;
+            }
+
             foreach (PadCmd cmd in osk.PathTo(c))
             {
                 await Press(cmd);

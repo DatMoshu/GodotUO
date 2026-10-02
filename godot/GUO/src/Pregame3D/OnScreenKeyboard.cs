@@ -33,6 +33,12 @@ internal sealed class OnScreenKeyboard
     private readonly PanelContainer[,] _cells = new PanelContainer[4, Columns];
     private readonly Label[,] _cellLabels = new Label[4, Columns];
     private readonly PanelContainer[] _specialCells = new PanelContainer[Specials.Length];
+    private readonly GridContainer _grid;
+    private readonly HBoxContainer _specials;
+    private readonly Label _help;
+
+    /// <summary>The device's keyboard is up (<see cref="NativeKeyboard"/>): only the field shows here.</summary>
+    public bool Native { get; private set; }
 
     private static readonly StyleBoxFlat KeyLit = new() { BgColor = new Color(0.878f, 0.69f, 0.314f, 0.85f), ContentMarginLeft = 2, ContentMarginRight = 2 };
     private static readonly StyleBoxFlat KeyUnlit = new() { BgColor = new Color(0.86f, 0.8f, 0.66f, 1f), ContentMarginLeft = 2, ContentMarginRight = 2 };
@@ -67,7 +73,7 @@ internal sealed class OnScreenKeyboard
         field.AddChild(_value);
         col.AddChild(field);
 
-        var grid = new GridContainer { Columns = Columns, MouseFilter = Control.MouseFilterEnum.Ignore };
+        var grid = _grid = new GridContainer { Columns = Columns, MouseFilter = Control.MouseFilterEnum.Ignore };
         grid.AddThemeConstantOverride("h_separation", 2);
         grid.AddThemeConstantOverride("v_separation", 2);
         col.AddChild(grid);
@@ -87,7 +93,7 @@ internal sealed class OnScreenKeyboard
             }
         }
 
-        HBoxContainer specials = Overlay.Row(2);
+        HBoxContainer specials = _specials = Overlay.Row(2);
         col.AddChild(specials);
 
         for (int i = 0; i < Specials.Length; i++)
@@ -102,7 +108,8 @@ internal sealed class OnScreenKeyboard
             _specialCells[i] = cell;
         }
 
-        col.AddChild(Overlay.Text("A type   X delete   Y shift   Start done   B cancel", UoTheme.Muted));
+        _help = Overlay.Text("", UoTheme.Muted);
+        col.AddChild(_help);
         Relabel();
     }
 
@@ -121,13 +128,39 @@ internal sealed class OnScreenKeyboard
         _col = 0;
         IsOpen = true;
         Root.Visible = true;
+
+        // The device's own keyboard when it has one; this grid otherwise.
+        Native = NativeKeyboard.Available;
+        _grid.Visible = _specials.Visible = !Native;
+        _help.Text = Native
+            ? (NativeKeyboard.Kind == "steam" ? "Steam keyboard  -  press Start when done,  B to cancel" : "Type on the keyboard  -  Start when done,  B to cancel")
+            : "A type   X delete   Y shift   Start done   B cancel";
+        GD.Print($"[GUO] pregame3d: text field \"{caption}\" via the {(Native ? NativeKeyboard.Kind + " keyboard" : "pregame's own grid keyboard")}");
+
+        // Steam's keyboard covers the lower half: the field goes to the top then.
+        Root.ResetSize();
+        Root.SetAnchorsAndOffsetsPreset(Native ? Control.LayoutPreset.CenterTop : Control.LayoutPreset.CenterBottom, Control.LayoutPresetMode.Minsize, Native ? 8 : 28);
+        Root.GrowHorizontal = Control.GrowDirection.Both;
+        Root.GrowVertical = Native ? Control.GrowDirection.End : Control.GrowDirection.Begin;
+
+        if (Native)
+        {
+            NativeKeyboard.Show(_text);
+        }
+
         Relabel();
         Show();
     }
 
     public void Close()
     {
+        if (IsOpen && Native)
+        {
+            NativeKeyboard.Hide();
+        }
+
         IsOpen = false;
+        Native = false;
         Root.Visible = false;
     }
 
@@ -136,6 +169,12 @@ internal sealed class OnScreenKeyboard
         if (!IsOpen)
         {
             return false;
+        }
+
+        // The device's keyboard types real keys (Key); the pad only finishes, cancels, deletes.
+        if (Native && cmd is not (PadCmd.Start or PadCmd.B or PadCmd.X))
+        {
+            return true;
         }
 
         switch (cmd)

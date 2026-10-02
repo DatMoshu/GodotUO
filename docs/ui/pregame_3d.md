@@ -104,7 +104,8 @@ events (see Verification).
 | `PregameDiorama.cs` | the Pregame3D node: SubViewport + upscale + post pass, overlay layer, step switching on `CurrentLoginStep`, input routing, camera framing, UI-anchored objects, 3D text |
 | `DioramaScene.cs` / `DioramaLayout.cs` | loads `layout.json` + the glbs (runtime glTF fallback when not yet imported), placeholder primitive per missing node (one log line), PSX materials, lights + flicker, lid |
 | `Hotspot.cs`, `PadFocus.cs`, `Overlay.cs` | focusable 3D objects (lift, gold rim, press, ray pick), the explicit neighbour graph + repeat, UO-styled overlay rows |
-| `OnScreenKeyboard.cs` | the keyboard: D-pad, A type, X delete, Y shift, Start done, B cancel; physical keys type too; passwords as `*` |
+| `OnScreenKeyboard.cs` | the field card; with no device keyboard, our grid: D-pad, A type, X delete, Y shift, Start done, B cancel; physical keys type too; passwords as `*` |
+| `NativeKeyboard.cs` | the device's keyboard: Steam's (`steam://open/keyboard` / `close/keyboard`) on the Deck or under Steam, the OS one on Android; Deck and Game Mode detection |
 | `LoginStage` / `StatusStage` / `ServerStage` / `CharacterStage` / `CreationStage` | one per step; drive LoginScene's own calls only |
 | `Pregame3DSettings.cs`, `Pregame3DProbe.cs` | the switch; the probe |
 
@@ -170,3 +171,18 @@ world and that the diorama freed itself; screenshots per step into
 - Creation is functional, not pretty: overlay lists, no mannequin, hues shown as numbers.
 - Server ping only where the shard's address answers ICMP; no server-book editor.
 - Sound hook (`Hotspot.PressSound`) is unset.
+
+### Steam Deck (2026-10-02)
+
+- Detection: env `SteamDeck=1`, or `/sys/class/dmi/id/board_name` /
+  `product_name` "Jupiter" or "Galileo". Game Mode: `SteamGamepadUI=1`,
+  `XDG_CURRENT_DESKTOP=gamescope` or `GAMESCOPE_WAYLAND_DISPLAY`. Under Steam:
+  either, or `SteamAppId` / `SteamClientLaunch`, or a running `steam` process.
+- Window: on the Deck never Fullscreen (gamescope gives a 1920x1080 canvas
+  scaled onto the panel); a borderless 1280x800 window at 0,0.
+- Text fields: Steam's keyboard under Steam (typing real keys; the field card
+  moves to the top, "press Start when done"); Android's own; our grid only
+  without either. Scripted runs (`--pregame3d-probe`, no-focus runs) always use
+  the grid; `GUO_NATIVE_KEYBOARD=0` forces it, `=dry` takes the Steam path
+  with the URLs only logged. The log says which: `pregame3d: keyboard = ...`.
+- `ui_anchors` boxes are clamped inside the viewport whatever the margins.

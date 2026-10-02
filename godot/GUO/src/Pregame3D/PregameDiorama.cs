@@ -59,6 +59,19 @@ internal sealed partial class PregameDiorama : Node
     {
         DisplayServer.WindowSetMinSize(Vector2I.Zero);
 
+        // The Deck: never Fullscreen. Under gamescope that takes its 1920x1080
+        // canvas, scaled onto the 1280x800 panel, and corners fall off the
+        // screen; a borderless window at the panel's own size does not.
+        if (NativeKeyboard.IsSteamDeck)
+        {
+            DisplayServer.WindowSetMode(DisplayServer.WindowMode.Windowed);
+            DisplayServer.WindowSetFlag(DisplayServer.WindowFlags.Borderless, true);
+            DisplayServer.WindowSetPosition(Vector2I.Zero);
+            DisplayServer.WindowSetSize(new Vector2I(1280, 800));
+            GD.Print($"[GUO] pregame3d: Steam Deck detected (Game Mode {NativeKeyboard.IsGameMode}): borderless 1280x800 window at 0,0");
+            return;
+        }
+
         if (OperatingSystem.IsLinux() && OS.HasFeature("template")
             && DisplayServer.WindowGetMode() is not (DisplayServer.WindowMode.Fullscreen or DisplayServer.WindowMode.ExclusiveFullscreen))
         {
@@ -721,6 +734,10 @@ internal sealed partial class PregameDiorama : Node
             bool bottom = a.Corner.StartsWith("bottom", StringComparison.OrdinalIgnoreCase);
             float cx = left ? -halfW + mx + w / 2f : halfW - mx - w / 2f;
             float cy = bottom ? -halfH + my + hgt / 2f : halfH - my - hgt / 2f;
+
+            // Never off screen: the whole box inside the viewport, whatever the margins ask.
+            cx = w >= 2f * halfW ? 0f : Math.Clamp(cx, -halfW + w / 2f, halfW - w / 2f);
+            cy = hgt >= 2f * halfH ? 0f : Math.Clamp(cy, -halfH + hgt / 2f, halfH - hgt / 2f);
             Vector3 centre = local.GetCenter() * k;
 
             // The box's centre at (cx, cy) on the plane depth_m ahead; the
