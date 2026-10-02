@@ -132,6 +132,7 @@ internal static class PregameProbe
             await ServersChecks(host, card);
             await CatalogueChecks(host, card);
             await ShardFilesChecks(host, card);
+            await ShardContentChecks(host, card);
             await AccountsChecks(host, card);
         }
         finally
@@ -1515,6 +1516,107 @@ internal static class PregameProbe
             ShardSession.TryDelete();
             ShardSession.FilePath = sessionWas;
             ServerEntry left = ServerBook.Find("custom.invalid", 2597);
+
+            if (left != null)
+            {
+                ServerBook.Remove(left);
+            }
+
+            servers.Rebuild();
+        }
+    }
+
+    /// <summary>
+    /// A shard that names its packs (ADR-0026 section 4), played through the Servers screen: the
+    /// note, Play reading its descriptor, the question, the install, and the restart with the lock
+    /// written down. Runs only when UO_PROBE_SHARD_CONTENT is a descriptor's address (tools/shard_content
+    /// prove serves one), with UO_CONTENT_STORE a store folder of the run's own. The session is copied
+    /// to UO_PROBE_SHARD_CONTENT_SESSION, when set, for the run that logs in with it.
+    /// </summary>
+    private static async System.Threading.Tasks.Task ShardContentChecks(Node host, PregameCard card)
+    {
+        string url = System.Environment.GetEnvironmentVariable("UO_PROBE_SHARD_CONTENT");
+
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            return;
+        }
+
+        string sessionWas = ShardSession.FilePath;
+        ShardSession.FilePath = ProjectSettings.GlobalizePath($"user://probe_shard_content_session_{_tag}.json");
+        System.IO.File.Delete(ShardSession.FilePath);
+        int restarts = 0;
+        ShardSession.RestartHook = () => restarts++;
+        PregameServers servers = card.Servers;
+        ServerEntry e = ServerBook.Add("Probe Content", "127.0.0.1", "2599", out _);
+
+        try
+        {
+            e.Content = url;
+            ServerBook.Save();
+            servers.Rebuild();
+            await InputProbe.Wait(host, 3);
+            await Reveal(host, card, servers.RowFor(e));
+            await InputProbe.Wait(host, 4);
+            Check("a shard that names its packs says so, and Play is lit",
+                servers.DetailText.Contains("uses content packs") && servers.PlayButton != null && !servers.PlayButton.Disabled,
+                $"page \"{Cut(servers.DetailText)}\"");
+
+            // Play: its descriptor is read, then the question names the packs and the catalogue's key.
+            card.Tap(servers.PlayButton);
+
+            for (int i = 0; i < 300 && !servers.DetailText.Contains("Install Probe Content's packs"); i++)
+            {
+                await InputProbe.Wait(host, 6);
+            }
+
+            bool asked = servers.DetailText.Contains("Install Probe Content's packs") && servers.ConfirmButton != null;
+            bool named = servers.DetailText.Contains("sample-content-") && servers.DetailText.Contains("key ");
+            await SaveShot(host, "servers_shard_content_ask");
+            Check("Play reads the shard's descriptor and asks, naming its packs and its catalogue's key",
+                asked && named, $"page \"{Cut(servers.DetailText)}\"");
+
+            if (asked)
+            {
+                card.Tap(servers.ConfirmButton);
+            }
+
+            for (int i = 0; i < 600 && restarts == 0 && !servers.DetailText.Contains("Couldn't"); i++)
+            {
+                await InputProbe.Wait(host, 6);
+            }
+
+            string json = System.IO.File.Exists(ShardSession.FilePath) ? System.IO.File.ReadAllText(ShardSession.FilePath) : "";
+            ShardSession.Data d = ShardSession.Load();
+            Check("\"Install and restart\" installs the packs, writes the lock, and restarts with the session naming it",
+                restarts == 1 && d?.ContentLock != null && System.IO.File.Exists(d.ContentLock) && d.ContentUrl == url.Trim() && d.DataFolder == null,
+                $"restarts {restarts}, session {(json.Length > 0 ? "written" : "missing")}, lock {d?.ContentLock}, page \"{Cut(servers.DetailText)}\"");
+
+            string keep = System.Environment.GetEnvironmentVariable("UO_PROBE_SHARD_CONTENT_SESSION");
+
+            if (!string.IsNullOrWhiteSpace(keep) && json.Length > 0)
+            {
+                System.IO.File.WriteAllText(keep, json);
+            }
+
+            // The next start: the shard plays as is, and the list says what this run holds.
+            servers.Rebuild();
+            await InputProbe.Wait(host, 3);
+            await Reveal(host, card, servers.RowFor(ServerBook.Find("127.0.0.1", 2599)));
+            await InputProbe.Wait(host, 4);
+            bool running = ShardSession.HasContentFor(e) && ServerPlay.Check(e, out _) == ServerPlay.Verdict.Ready
+                && servers.DetailText.Contains("GUO is running with its packs now.");
+            await SaveShot(host, "servers_shard_content_session");
+            Check("with its packs: the shard plays as is and the list says GUO runs with its packs",
+                running, $"has content {ShardSession.HasContentFor(e)}, page \"{Cut(servers.DetailText)}\"");
+        }
+        finally
+        {
+            ShardSession.RestartHook = null;
+            ShardSession.SetCurrentForProbe(null);
+            ShardSession.TryDelete();
+            ShardSession.FilePath = sessionWas;
+            ServerEntry left = ServerBook.Find("127.0.0.1", 2599);
 
             if (left != null)
             {

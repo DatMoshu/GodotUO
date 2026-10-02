@@ -76,6 +76,29 @@ The client lists every catalogue at once, asks the player to approve a new
 catalogue's key, and refuses a tampered, rolled-back, expired or re-keyed
 index (`test_catalogue.py`).
 
+## A shard's content (ADR-0026 section 4)
+
+```text
+python tools/shard_content/run.py deploy --name NAME --catalogue URL[=KEY] --pack ID --version V --bind PACK:COMPONENT=TYPE:ID ...
+python tools/shard_content/run.py check [DESCRIPTOR]
+python tools/shard_content/run.py serve
+python tools/shard_content/run.py prove
+```
+
+`deploy` installs a pack and what it needs from the named catalogues with
+the client's own installer. It writes the lock, refuses it if any client
+component has no numeric slot, writes the ModernUO export into the shard's
+`Data/GUO`, and writes the public descriptor `guo/shard-content@1` beside it.
+Put the descriptor's address in the shard's server entry as `content`. Play
+on that entry then asks, installs, and restarts GUO with the packs mounted
+for that shard only. If they can't be mounted at the next start, the session
+is dropped and GUO starts on the player's own files.
+
+`prove` runs the whole path on the editor's private shard: a signed demo
+catalogue, the deploy, Play through the Servers screen (the pregame probe),
+and a client logged in with the packs, making the pack's item.
+`test_shard_content.py` covers deploy and install without a shard.
+
 ## Verification
 
 ```text

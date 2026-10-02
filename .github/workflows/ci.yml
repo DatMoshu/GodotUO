@@ -128,8 +128,9 @@ jobs:
       # same folder of malformed packs; they must agree (S6).
       # test_store.py runs the web page's JavaScript under Node's built-ins.
       # test_content.py checks v2 content packs in both languages, and
-      # test_catalogue.py the signed catalogue indexes (ADR-0026); both use
-      # the headless C# build smoke.py makes.
+      # test_catalogue.py the signed catalogue indexes (ADR-0026), and
+      # test_shard_content.py a shard's descriptor, deployed and installed;
+      # they use the headless C# build smoke.py makes.
       - uses: actions/setup-node@v7
         with:
           node-version: '22'
@@ -141,6 +142,7 @@ jobs:
           python tools/asset_store/smoke.py
           python tools/asset_store/test_content.py
           python tools/asset_store/test_catalogue.py
+          python tools/shard_content/test_shard_content.py
 
       # Bulk unpack/pack of art, gumps and animations (Epic H, H2), on a
       # synthetic install: codecs, unpack -> pack byte identity, edits, new art.

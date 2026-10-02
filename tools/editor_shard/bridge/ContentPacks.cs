@@ -60,8 +60,8 @@ public static class ContentPacks
         loot.Register(CreateItem, Environment.GetEnvironmentVariable("UO_SERVER_CONTENT_PROBE") == "1");
         creatures.Register(Environment.GetEnvironmentVariable("UO_SERVER_CONTENT_PROBE") == "1");
         CommandSystem.Register("GUOPackItem", AccessLevel.GameMaster, Give);
-        string identity = doc.RootElement.TryGetProperty("identity_hash", out var hash) ? hash.GetString() : null;
-        Console.WriteLine($"[GUO content] Loaded {Items.Count} item definitions; no world objects created. Deployment {identity ?? "(unnamed)"}");
+        string deployment = doc.RootElement.TryGetProperty("identity_hash", out var hash) ? hash.GetString() : null;
+        Console.WriteLine($"[GUO content] Loaded {Items.Count} item definitions; no world objects created. Deployment {deployment ?? "(unnamed)"}");
         if (Items.Count > 0 && Environment.GetEnvironmentVariable("UO_SERVER_CONTENT_PROBE") == "1")
         {
             foreach (var definition in Items.Values)

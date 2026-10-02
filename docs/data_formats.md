@@ -566,6 +566,50 @@ mirrors after the store's own copy, and `sha256` and `size` are not needed.
 followed by `ed25519:` and the base64 of the 32-byte seed. It is never
 committed, and never leaves the publisher's machine or CI secret store.
 
+### Shard content descriptor, `guo/shard-content@1` (ADR-0026)
+
+What a shard runs, for its players' clients. `tools/shard_content/run.py
+deploy` writes it to `<shard>/Data/GUO/public/shard-content.json`; the shard
+serves it from any web server, and its server-list entry names the address
+as `content` (`servers.json`).
+
+```json
+{
+  "schema": "guo/shard-content@1",
+  "shard": {"name": "Example Shard", "host": "play.example.com", "port": 2593},
+  "catalogues": [{"url": "https://packs.example.com/", "key": "ed25519:<base64>"}],
+  "lock": {"schema": "guo/content-lock@1", "pack": "example-pack", "version": "1.0.0",
+           "identity_hash": "<64 hex>", "bindings": {"example-pack:stone": {"type": "static", "id": 6001}}},
+  "scripts": "forbidden"
+}
+```
+
+- At most `StorePack.MaxManifest` bytes, unique keys, fetched over HTTPS (HTTP
+  only on this computer or the LAN) with no redirects.
+- `shard.name` is 1 to 200 characters, no control characters. `host` and
+  `port` are informational; the server entry decides where the client connects.
+- `catalogues`: 1 to 16 distinct catalogue addresses, HTTPS or local HTTP.
+  `key` is the catalogue's signing key. It may be left out only for HTTP on
+  this computer or the LAN, and then the catalogue must be unsigned. A signed
+  catalogue named without a key, or one answering with a different key, is
+  refused.
+- `lock` is a deployment lock (above). The client installs `pack` `version`
+  and its dependencies from the catalogues, and the installed closure must
+  hash to `identity_hash`.
+- `scripts` is `allowed` (the default) or `forbidden`. When forbidden, the
+  client's script packs do not run while it plays on that shard.
+
+The player's yes to the shard's question approves the keys the descriptor
+names. The client writes the lock to `<store>/.shard-content/<first 16 hex of
+identity_hash>.json` and restarts. The shard session (`shard_session.json`)
+records `content_url`, `content_lock`, `content_identity` and
+`scripts_allowed`; at the next start the lock is mounted for that run only, as
+`UO_CONTENT_LOCK` would mount it. An explicit `UO_CONTENT_LOCK` still wins.
+
+The same deploy writes the neutral server export, `guo/server-content@1`, to
+`<shard>/Data/GUO/server-content.json`. The ModernUO bridge loads it at start
+when `UO_SERVER_CONTENT` is not set, and logs its `identity_hash`.
+
 ### Screensavers in the client (profile v11)
 
 `Profile.ScreenSaverChoice` (JSON `screen_saver_choice`, default

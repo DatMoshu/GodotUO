@@ -154,7 +154,7 @@ internal sealed partial class PregameServers : HBoxContainer
         // This run plays with a shard's own files: say so, and the way back.
         if (ShardSession.Active)
         {
-            _list.AddChild(Note($"GUO is running with {ShardSession.Current.Name}'s files.", UoTheme.Ink));
+            _list.AddChild(Note($"GUO is running with {ShardSession.Current.Name}'s {ShardSession.Holding}.", UoTheme.Ink));
             Button back = UoTheme.Button("Your own files", 72);
             back.SizeFlagsHorizontal = SizeFlags.ShrinkBegin;
             back.Pressed += () => Ask(new Question("Restart GUO with your own files?", "Restart GUO", 60, "Not now", () => ShardSession.End()));
@@ -507,7 +507,7 @@ internal sealed partial class PregameServers : HBoxContainer
 
         if (ShardSession.IsFor(e))
         {
-            _info.AddChild(Note("GUO is running with its files now."));
+            _info.AddChild(Note($"GUO is running with its {ShardSession.Holding} now."));
         }
 
         if (_ask != null)

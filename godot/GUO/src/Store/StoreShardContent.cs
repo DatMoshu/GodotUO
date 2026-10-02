@@ -121,6 +121,24 @@ internal sealed class StoreShardContent
     }
 
     /// <summary>
+    /// The client components of a deployment that its lock gives no numeric slot. The client's mount
+    /// (StoreRuntimeContent) needs one for each, so a lock with any of these cannot be played with.
+    /// Server components, scripts, translations and wearables take none.
+    /// </summary>
+    public static List<string> Unbound(StoreContentLock contentLock, StoreVerifiedContent snapshot) =>
+        snapshot.Packs.Values.SelectMany(p => (p.Manifest.Components ?? new())
+            .Where(c => c.Target != "server" && c.Type is not ("script" or "translation" or "wearable"))
+            .Select(c => p.Id + ":" + c.Id))
+            .Where(identity => !contentLock.Bindings.ContainsKey(identity)).OrderBy(i => i, StringComparer.Ordinal).ToList();
+
+    public static void RequireMountable(StoreContentLock contentLock, StoreVerifiedContent snapshot)
+    {
+        var unbound = Unbound(contentLock, snapshot);
+        StorePack.Require(unbound.Count == 0, $"The lock gives {unbound.Count} client component(s) no numeric slot ("
+            + string.Join(", ", unbound.Take(4)) + (unbound.Count > 4 ? ", ..." : "") + "), so the client could not mount it.");
+    }
+
+    /// <summary>
     /// Installs the lock's packs from the descriptor's catalogues and writes the lock under
     /// <paramref name="storeRoot"/>/.shard-content/. The player's yes to <see cref="Summary"/> is the
     /// approval of each catalogue key the descriptor names; a catalogue answering with another key is refused.
@@ -129,7 +147,7 @@ internal sealed class StoreShardContent
     public async Task<string> Prepare(string storeRoot, StoreTrust trust, int profileVersion, Action<string> progress = null, CancellationToken ct = default)
     {
         using (var installer = await Install(Catalogues, Lock.Pack, Lock.Version, storeRoot, trust, profileVersion, false, progress, ct).ConfigureAwait(false))
-            Lock.Verify(installer);
+            RequireMountable(Lock, Lock.Verify(installer));
         string folder = Path.Combine(Path.GetFullPath(storeRoot), ".shard-content");
         StoreClient.NoLinks(folder);
         Directory.CreateDirectory(folder);

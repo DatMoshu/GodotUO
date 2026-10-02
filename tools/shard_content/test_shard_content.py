@@ -47,14 +47,13 @@ class ShardContentTests(unittest.TestCase):
     def tearDownClass(cls):
         cls.temp.cleanup()
 
-    def deploy(self, shard, url, *extra):
+    def deploy(self, shard, url, *extra, pack="sample-content-combined", bind="sample-content-combined:stone=static:6001", ok=True):
         r = subprocess.run([sys.executable, str(TOOL), "deploy", "--name", "Test Shard", "--catalogue", url,
-                            "--pack", "sample-content-server", "--version", "1.0.0",
-                            "--bind", "sample-content-art:stone=static:3701",
+                            "--pack", pack, "--version", "1.0.0", "--bind", bind,
                             "--shard-dir", str(shard), "--work", str(shard.parent / "work"), *extra],
                            capture_output=True, text=True)
-        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        return r.stdout
+        self.assertEqual(r.returncode == 0, ok, r.stdout + r.stderr)
+        return r.stdout + r.stderr
 
     def prepare(self, url, client, *expect):
         return subprocess.run(["dotnet", str(HEADLESS), "shard-content", "prepare", url, str(client), *expect],
@@ -70,7 +69,7 @@ class ShardContentTests(unittest.TestCase):
 
             export = json.loads((shard / "Data/GUO/server-content.json").read_text(encoding="utf-8"))
             self.assertEqual(export["schema"], "guo/server-content@1")
-            self.assertEqual([(i["identity"], i["graphic"]) for i in export["items"]], [("sample-content-server:stone-item", 3701)])
+            self.assertEqual([(i["identity"], i["graphic"]) for i in export["items"]], [("sample-content-combined:stone-item", 6001)])
             descriptor = json.loads((shard / "Data/GUO/public/shard-content.json").read_text(encoding="utf-8"))
             self.assertEqual(descriptor["schema"], "guo/shard-content@1")
             self.assertEqual(descriptor["catalogues"], [{"url": url, "key": ed25519.encode(self.public)}])
@@ -85,12 +84,31 @@ class ShardContentTests(unittest.TestCase):
             self.assertIn("PASS prepare: " + export["identity_hash"], r.stdout)
             self.assertIn("Script packs are off", r.stdout)
             lock = json.loads((client / ".shard-content" / (export["identity_hash"][:16] + ".json")).read_text(encoding="utf-8"))
-            self.assertEqual(lock["bindings"], {"sample-content-art:stone": {"type": "static", "id": 3701}})
+            self.assertEqual(lock["bindings"], {"sample-content-combined:stone": {"type": "static", "id": 6001}})
             trust = json.loads((client / ".catalogues.json").read_text(encoding="utf-8"))
             self.assertEqual([r["key"] for r in trust if r["url"] == url], [ed25519.encode(self.public)])
             # Again: already approved and installed, still verifies.
             r = self.prepare(published + "shard-content.json", client)
             self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
+    def test_deploy_refuses_a_lock_the_client_could_not_mount(self):
+        # sample-content-server needs sample-content-art, whose eleven other client components get no slot.
+        with tempfile.TemporaryDirectory() as temp:
+            shard = Path(temp) / "shard"
+            (shard / "Data").mkdir(parents=True)
+            out = self.deploy(shard, serve(self, self.store), pack="sample-content-server",
+                              bind="sample-content-art:stone=static:6001", ok=False)
+            self.assertIn("no numeric slot", out)
+            self.assertFalse((shard / "Data/GUO/server-content.json").exists())
+            self.assertFalse((shard / "Data/GUO/public/shard-content.json").exists())
+
+    def test_a_descriptor_whose_lock_leaves_components_unbound_is_refused(self):
+        with tempfile.TemporaryDirectory() as temp:
+            url = self.descriptor_variant(temp, lambda v: v["lock"]["bindings"].clear())
+            r = self.prepare(url, Path(temp) / "client", "no numeric slot")
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertIn("PASS refused", r.stdout)
+            self.assertFalse((Path(temp) / "client/.shard-content").exists())
 
     def descriptor_variant(self, temp, change):
         shard = Path(temp) / "shard"

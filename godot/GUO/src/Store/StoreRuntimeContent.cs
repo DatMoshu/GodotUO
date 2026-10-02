@@ -46,8 +46,20 @@ internal sealed class StoreRuntimeContent : IDisposable
             if (!File.Exists(path)) return null;
         }
         using var store = new StoreClient("http://127.0.0.1:18865", root, GUO.Configuration.PlatformDefaults.CurrentVersion);
-        return Load(files, language, StoreContentLock.Read(path), store);
+        try { return Load(files, language, StoreContentLock.Read(path), store); }
+        catch (Exception ex) when (SessionLock != null && Path.GetFullPath(path) == Path.GetFullPath(SessionLock))
+        {
+            // Nothing was applied: Load stages every component before it changes a loader.
+            GD.PrintErr("[GUO] shard content not mounted: " + ex.Message);
+            SessionLockFailed?.Invoke(ex.Message);
+            return null;
+        }
     }
+
+    /// <summary>The lock a shard session mounts (Main), and what to do when it can't be:
+    /// the session is dropped and GUO starts with the player's own files.</summary>
+    public static string SessionLock { get; set; }
+    public static Action<string> SessionLockFailed { get; set; }
 
     internal static StoreRuntimeContent Load(UOFileManager files, string language, StoreContentLock contentLock, StoreClient store, bool apply = true)
     {

@@ -75,6 +75,16 @@ internal static class ObjectsDump
                 }
             }
 
+            // <name>.backpack: the player's backpack opened (where a created item lands).
+            foreach (string request in Directory.GetFiles(dir, "*.backpack"))
+            {
+                File.Delete(request);
+                if (Client.Game?.UO?.World is World bw && bw.Player != null)
+                {
+                    GameActions.OpenBackpack(bw);
+                }
+            }
+
             // <name>.options holding a page number: Options opened on that page
             // (3 is Video, where "Change UO folder..." sits).
             foreach (string request in Directory.GetFiles(dir, "*.options"))
@@ -277,8 +287,10 @@ internal static class ObjectsDump
 
         // What the player wears (items whose container is the player), with the layer.
         var worn = new List<Dictionary<string, object>>();
+        var backpack = new List<Dictionary<string, object>>();
         if (world?.Player != null)
         {
+            Item pack = world.Player.FindItemByLayer(GUO.Game.Data.Layer.Backpack);
             foreach (Item i in world.Items.Values)
             {
                 if (i.Container == world.Player.Serial)
@@ -286,12 +298,19 @@ internal static class ObjectsDump
                     worn.Add(new() { ["serial"] = i.Serial, ["graphic"] = $"0x{i.Graphic:X4}", ["layer"] = i.Layer.ToString(),
                         ["hue"] = $"0x{i.Hue:X4}" });
                 }
+                // what the backpack holds, at its top level (a pack's created item lands there)
+                else if (pack != null && i.Container == pack.Serial)
+                {
+                    backpack.Add(new() { ["serial"] = i.Serial, ["graphic"] = $"0x{i.Graphic:X4}", ["hue"] = $"0x{i.Hue:X4}",
+                        ["name"] = i.Name ?? "" });
+                }
             }
         }
 
         var report = new Dictionary<string, object>
         {
             ["worn"] = worn,
+            ["backpack"] = backpack,
             ["map"] = world?.MapIndex ?? -1,
             ["player"] = world?.Player != null ? new[] { (int)world.Player.X, world.Player.Y, world.Player.Z } : null,
             ["items"] = items,

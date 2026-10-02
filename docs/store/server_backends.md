@@ -41,7 +41,7 @@ also carries an `identity_hash` that names the deployment. An adapter must:
 | Licence | GPL-2.0 |
 | Adapter | a script package (`Scripts/Custom/GUO/`) ported from the ModernUO bridge |
 | Differences | item serialisation uses `Serialize`/`Deserialize` overrides, not ModernUO's source generators; `TileData` and `Map` APIs differ in names; no `System.Text.Json` on .NET Framework, so use the bundled JSON reader or a small one |
-| Work | port the bridge; a ServUO dev shard in `tools/servuo` (fetch, build, run) like `tools/modernuo`; the same probe; CI build against a pinned ServUO commit |
+| Work | port the bridge to a script package; deploy it into the private ServUO shard that `tools/servuo` already runs (pinned commit, 127.0.0.1:2596, built for the world-objects backend); a `tools/shard_content deploy --backend servuo`; the same probe and prove; a CI build against the pinned commit |
 
 ## RunUO
 

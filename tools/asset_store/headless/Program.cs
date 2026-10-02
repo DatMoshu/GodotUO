@@ -76,6 +76,14 @@ if (args.Length >= 3 && args[0] == "shard-content")
         Console.WriteLine($"PASS install: {snapshot.Packs.Count} pack(s), {snapshot.IdentityHash}");
         return 0;
     }
+    if (args[1] == "lock-check" && args.Length == 4)
+    {
+        using var store = new StoreClient("http://127.0.0.1:18865", args[2], int.MaxValue);
+        var contentLock = StoreContentLock.Read(args[3]);
+        StoreShardContent.RequireMountable(contentLock, contentLock.Verify(store));
+        Console.WriteLine($"PASS lock-check: {contentLock.Bindings.Count} binding(s), every client component has a slot");
+        return 0;
+    }
     if (args[1] == "check" && args.Length == 3)
     {
         var content = StoreShardContent.Parse("file:///descriptor", File.ReadAllBytes(args[2]));

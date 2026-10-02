@@ -67,6 +67,10 @@ internal static class ShardSession
     public static bool HasContentFor(ServerEntry e) =>
         Active && e != null && e.Same(Current.Host, Current.Port) && !string.IsNullOrWhiteSpace(e.Content) && Current.ContentUrl == e.Content.Trim();
 
+    /// <summary>What this run holds of the shard's, for the Servers screen: "files", "packs" or "files and packs".</summary>
+    public static string Holding => Current == null ? "" : Current.DataFolder != null && Current.ContentLock != null ? "files and packs"
+        : Current.ContentLock != null ? "packs" : "files";
+
     /// <summary>Script packs are off on a shard whose descriptor says so.</summary>
     public static bool ScriptsForbidden => Active && Current.ScriptsAllowed == false;
 
@@ -145,10 +149,10 @@ internal static class ShardSession
     }
 
     /// <summary>At boot, when the session's files can't be used: the player's own files, and why.</summary>
-    public static void Drop(Data d, string why)
+    public static void Drop(Data d, string why, string what = "files")
     {
         Current = null;
-        Dropped = $"{d.Name}'s files can't be used ({why}). GUO started with your own files.";
+        Dropped = $"{d.Name}'s {what} can't be used ({why}). GUO started with your own files.";
         TryDelete();
         GD.Print($"[GUO] shard session: dropped: {why}");
     }

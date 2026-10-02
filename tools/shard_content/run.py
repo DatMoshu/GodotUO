@@ -6,6 +6,7 @@
                                               [--shard-dir DIR] [--scripts allowed|forbidden]
     python tools/shard_content/run.py check   [DESCRIPTOR]
     python tools/shard_content/run.py serve   [--host 127.0.0.1] [--port 18870]
+    python tools/shard_content/run.py prove   [--out DIR] [--min-free-gb 16]
 
 deploy installs the pack and what it needs from the named catalogues, exactly
 as a player's client will (the same C# installer, through the headless store
@@ -20,6 +21,10 @@ descriptor; the fingerprint is printed so the operator can compare it with the
 one the catalogue publishes. Players approve those keys when they say yes to
 the shard's packs, and a catalogue that later answers with another key is
 refused.
+
+prove runs the whole path on the editor's private shard: a signed demo catalogue,
+deploy, the Servers screen's Play through the pregame probe, and a client logged
+in with the packs mounted, making the pack's item (prove.py says how).
 
 The descriptor is public. Serve the public folder from any web server (serve
 does it on this computer, for testing) and put its address in the shard's
@@ -115,6 +120,7 @@ def cmd_deploy(cfg, a) -> int:
     value = json.loads(lock.read_text(encoding="utf-8"))
     value["bindings"] = bindings
     lock.write_text(json.dumps(value, indent=2), encoding="utf-8")
+    print(headless("shard-content", "lock-check", store, lock).strip())
 
     export = work / "server-content.json"
     print(headless("export-server", store, lock, export).strip())
@@ -193,8 +199,14 @@ def main() -> int:
     s.add_argument("--dir")
     s.add_argument("--host", default="127.0.0.1")
     s.add_argument("--port", type=int, default=18870)
+    v = sub.add_parser("prove", help="deploy a demo to the private shard and play it through the client")
+    v.add_argument("--out", type=Path)
+    v.add_argument("--min-free-gb", type=float, default=16)
     a = p.parse_args()
     cfg = load_config()
+    if a.cmd == "prove":
+        import prove
+        return prove.prove(cfg, a, cmd_deploy)
     return {"deploy": cmd_deploy, "check": cmd_check, "serve": cmd_serve}[a.cmd](cfg, a)
 
 
