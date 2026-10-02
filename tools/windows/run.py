@@ -44,7 +44,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from guo.config import Config, load_config  # noqa: E402
+from guo.config import Config, godot_config_dir, godot_data_dir, load_config  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 TEMPLATE = HERE / "export_presets.template.cfg"
@@ -72,12 +72,11 @@ class Paths:
         self.ico = self.project / "icon.ico"
         self.splash = self.project / "splash.png"
 
-        appdata = Path(os.environ.get("APPDATA", str(Path.home() / "AppData" / "Roaming")))
-        self.godot_config = appdata / "Godot"
+        self.godot_config = godot_config_dir()
         self.editor_settings = self.godot_config / f"editor_settings-{cfg.godot_version.split('-')[0][:3]}.tres"
         # "4.7.2-stable" + mono -> "4.7.2.stable.mono", Godot's folder name.
         self.templates_version = cfg.godot_version.replace("-", ".") + ".mono"
-        self.templates_dir = self.godot_config / "export_templates" / self.templates_version
+        self.templates_dir = godot_data_dir() / "export_templates" / self.templates_version
         self.template_exe = self.templates_dir / f"windows_debug_{ARCH}.exe"
         self.template_console = self.templates_dir / f"windows_debug_{ARCH}_console.exe"
 

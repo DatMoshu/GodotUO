@@ -54,6 +54,24 @@ def native_path(value: str) -> str:
     return value if sys.platform == "win32" else value.replace("\\", "/")
 
 
+def godot_data_dir() -> Path:
+    """Where the Godot editor keeps export templates: %APPDATA%\\Godot on Windows,
+    $XDG_DATA_HOME/godot (~/.local/share/godot) on Linux."""
+    if sys.platform == "win32":
+        return Path(os.environ.get("APPDATA", str(Path.home() / "AppData" / "Roaming"))) / "Godot"
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / "Godot"
+    return Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share") / "godot"
+
+
+def godot_config_dir() -> Path:
+    """Where the Godot editor keeps editor_settings-*.tres: the same folder as
+    the templates on Windows and macOS, $XDG_CONFIG_HOME/godot on Linux."""
+    if sys.platform in ("win32", "darwin"):
+        return godot_data_dir()
+    return Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "godot"
+
+
 def find_repo_root(start: Path | None = None) -> Path:
     """Walk upward until the repo root is found.
 
