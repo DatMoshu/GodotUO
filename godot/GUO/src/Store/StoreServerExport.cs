@@ -15,10 +15,29 @@ internal static class StoreServerExport
         var items = new List<object>();
         var maps = new List<object>();
         var tiles = new List<object>();
+        var regions = new List<object>();
         foreach (var pack in closure.Packs.Values)
             foreach (var component in pack.Manifest.Components ?? new())
             {
                 if (component.Target == "client") continue;
+                if (component.Type == "region")
+                {
+                    using var regionDoc = JsonDocument.Parse(pack.ReadPayload(component.Entry));
+                    var region = regionDoc.RootElement;
+                    StoreRegionDefinition.Validate(region);
+                    int music = -1;
+                    if (region.TryGetProperty("music", out var musicValue))
+                    {
+                        string reference = musicValue.GetString();
+                        StorePack.Require(component.References != null && component.References.Contains(reference)
+                            && contentLock.Bindings.TryGetValue(reference, out var ignored), "Undeclared region music reference");
+                        var musicBinding = contentLock.Bindings[reference];
+                        StorePack.Require(musicBinding.Type == "music", "Region music reference type mismatch");
+                        music = musicBinding.Id;
+                    }
+                    regions.Add(new { identity = pack.Id + ":" + component.Id, music_id = music, content = region.Clone() });
+                    continue;
+                }
                 if (component.Type == "tiledata")
                 {
                     StorePack.Require(contentLock.Bindings.TryGetValue(pack.Id + ":" + component.Id, out var tileBinding) && tileBinding.Type == "tiledata", "Missing tiledata binding");
@@ -46,11 +65,11 @@ internal static class StoreServerExport
                 StorePack.Require(name != null && name.Length is > 0 and <= 100 && double.IsFinite(weight) && weight >= 0 && weight <= 100000, "Invalid item definition");
                 items.Add(new { identity = pack.Id + ":" + component.Id, graphic = binding.Id, name, weight, movable = row.GetProperty("movable").GetBoolean() });
             }
-        StorePack.Require(items.Count > 0 || maps.Count > 0 || tiles.Count > 0, "No supported server content in deployment");
+        StorePack.Require(items.Count > 0 || maps.Count > 0 || tiles.Count > 0 || regions.Count > 0, "No supported server content in deployment");
         string destination = Path.GetFullPath(output);
         StoreClient.NoLinks(destination);
         Directory.CreateDirectory(Path.GetDirectoryName(destination));
-        byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(new { schema = "guo/server-content@1", identity_hash = closure.IdentityHash, items, maps, tiles }, new JsonSerializerOptions { WriteIndented = true });
+        byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(new { schema = "guo/server-content@1", identity_hash = closure.IdentityHash, items, maps, tiles, regions }, new JsonSerializerOptions { WriteIndented = true });
         StorePack.Require(bytes.Length <= 16 * 1024 * 1024, "Server export exceeds adapter size limit");
         using var stream = new FileStream(destination, FileMode.CreateNew, FileAccess.Write, FileShare.None);
         stream.Write(bytes);

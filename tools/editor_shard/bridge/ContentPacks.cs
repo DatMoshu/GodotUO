@@ -33,8 +33,10 @@ public static class ContentPacks
         }
         var maps = ContentMaps.Stage(doc.RootElement);
         var tiles = ContentTiles.Stage(doc.RootElement);
+        var regions = ContentRegions.Stage(doc.RootElement);
         ContentTiles.Apply(tiles, Environment.GetEnvironmentVariable("UO_SERVER_CONTENT_PROBE") == "1");
         maps.Apply(Environment.GetEnvironmentVariable("UO_SERVER_CONTENT_PROBE") == "1");
+        regions.Apply(Environment.GetEnvironmentVariable("UO_SERVER_CONTENT_PROBE") == "1");
         foreach (var pair in staged) Items.Add(pair.Key, pair.Value);
         CommandSystem.Register("GUOPackItem", AccessLevel.GameMaster, Give);
         Console.WriteLine($"[GUO content] Loaded {Items.Count} item definitions; no world objects created.");

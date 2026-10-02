@@ -21,6 +21,7 @@
   <ItemGroup>
     <Compile Include="../../../godot/GUO/src/Store/StoreMapDefinition.cs" Link="StoreMapDefinition.cs" />
     <Compile Include="../../../godot/GUO/src/Store/StoreTileDefinition.cs" Link="StoreTileDefinition.cs" />
+    <Compile Include="../../../godot/GUO/src/Store/StoreRegionDefinition.cs" Link="StoreRegionDefinition.cs" />
     <Reference Include="Server">
       <HintPath>$(ModernUODir)\Server.dll</HintPath>
       <Private>false</Private>

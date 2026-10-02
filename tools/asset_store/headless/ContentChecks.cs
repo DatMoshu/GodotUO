@@ -92,6 +92,30 @@ internal static class ContentChecks
             StorePack.Require(rejected, "Malformed tile metadata accepted");
         }
         Console.WriteLine("content: shared collision metadata export and invalid-field/range rejection PASS");
+        var regionClosure = client.VerifyContent("sample-content-region", "1.0.0");
+        var regionLock = new StoreContentLock { Pack = "sample-content-region", Version = "1.0.0", IdentityHash = regionClosure.IdentityHash };
+        regionLock.Bindings.Add("sample-content-art:ambience", new StoreContentBinding { Type = "music", Id = 100 });
+        string regionLockPath = Path.Combine(root, "region-lock.json"), regionExportPath = Path.Combine(root, "region-export.json");
+        File.WriteAllText(regionLockPath, JsonSerializer.Serialize(regionLock));
+        StoreServerExport.Export(client, regionLockPath, regionExportPath);
+        using (var exported = JsonDocument.Parse(File.ReadAllBytes(regionExportPath)))
+            StorePack.Require(exported.RootElement.GetProperty("regions")[0].GetProperty("music_id").GetInt32() == 100, "Region music binding lost");
+        var authoredRegion = regionClosure.Packs["sample-content-region"].ReadPayload("region.json");
+        Action<JsonNode>[] invalidRegions = {
+            node => node["priority"] = 151,
+            node => node["facet"] = 256,
+            node => node["areas"][0]["width"] = 0,
+            node => node["areas"][0]["depth"] = 257
+        };
+        foreach (var mutate in invalidRegions)
+        {
+            var node = JsonNode.Parse(authoredRegion); mutate(node);
+            using var invalid = JsonDocument.Parse(node.ToJsonString());
+            bool rejected = false;
+            try { StoreRegionDefinition.Validate(invalid.RootElement); } catch (InvalidDataException) { rejected = true; }
+            StorePack.Require(rejected, "Malformed region accepted");
+        }
+        Console.WriteLine("content: region export, music reference binding and four malformed-region cases PASS");
         string payload = Path.Combine(root, art.Id, art.Version, "stone.png");
         File.AppendAllText(payload, "tampered");
         bool refused = false;

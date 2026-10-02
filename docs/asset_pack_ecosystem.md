@@ -109,6 +109,20 @@ definitions with the matching client lock; network negotiation is still pending.
 Script components are left inert by the asset mount. Their separate managed
 session owns review, approval, enablement, execution, revocation and logout.
 
+## Server regions
+
+Server-target region components declare `name`, `facet`, `priority` (0..150),
+and one or more `areas` with `x`, `y`, `z`, `width`, `height`, `depth`.
+Optional `music` is a declared component reference with an explicit music
+binding; `enter_message` and `exit_message` are text sent to players crossing
+the region. Export resolves the music ID. The adapter stages bounds and name
+checks before registering ordinary ModernUO regions. Duplicate names on a
+facet and out-of-facet areas are rejected. These are startup definitions;
+uninstalling a ZIP does not hot-unregister a running shard's regions.
+Guarded, dungeon and other specialized region policies are not yet exposed.
+The private-shard probe verifies registration, name lookup and bounds. Delivery
+of music and entry/exit messages to a connected player remains unverified.
+
 ## Required evidence
 
 Publisher and C# installer must agree on valid and invalid v2 envelopes.
@@ -138,7 +152,7 @@ The portable tool is built with
   keeping `ACTIVE.previous`. This selects a deployment; consumers load it on
   restart and may refuse unsupported payloads. It never executes scripts.
 - `rollback-content STORE ACTIVE`: reverify and select the previous lock.
-- `export-server STORE LOCK OUTPUT`: export supported server item, tiledata and map
+- `export-server STORE LOCK OUTPUT`: export supported server item, tiledata, map and region
   definitions with numeric IDs from the same client/server lock; output must be new.
 
 ModernUO's private editor bridge can load that export through
@@ -168,7 +182,7 @@ The collision starter additionally verifies server static height and a
 `CanFit` rejection against the authored impassable barrier.
 
 Not yet implemented: other server gameplay consumers;
-region components; presentation activation
+client region overlays; presentation activation
 unification; editor authoring consumers; shard content negotiation;
 full store activation UI. Animation coverage currently
 proves explicit sequences/anchors, not every body/equipment mapping. A verified
