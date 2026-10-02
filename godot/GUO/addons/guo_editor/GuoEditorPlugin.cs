@@ -33,6 +33,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
     private EditorSmoke _smoke;
     private WorldView _world;
     private ShardDock _shard;
+    private RunBar _run;
 
     // Whether the World tab was on screen when an assembly reload began.
     // A bool field survives the reload (Godot serializes it), and the editor
@@ -100,6 +101,10 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         AddDock(_shard);
         _shard.Attach(_world);
 
+        // Start server, start clients: on the toolbar, always one click away.
+        _run = new RunBar();
+        AddControlToContainer(CustomControlContainer.Toolbar, _run);
+
         MapPanel maps = _assets.Panel<MapPanel>();
         if (maps != null)
         {
@@ -155,6 +160,13 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
 
     private void TearDown()
     {
+        if (_run != null)
+        {
+            RemoveControlFromContainer(CustomControlContainer.Toolbar, _run);
+            _run.QueueFree();
+            _run = null;
+        }
+
         if (_shard != null)
         {
             // Closes the bridge connection and its reader thread before a reload.
