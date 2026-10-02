@@ -21,7 +21,9 @@ interpreter and does not try to be.
 from __future__ import annotations
 
 import os
+import platform
 import re
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -31,6 +33,25 @@ _SET_RE = re.compile(
     re.IGNORECASE,
 )
 _VAR_RE = re.compile(r"%([A-Za-z_][A-Za-z0-9_]*)%")
+
+
+def platform_godot_flavor() -> str:
+    """The Godot .NET release asset this machine runs, as named on the releases page."""
+    if sys.platform == "win32":
+        return "mono_win64"
+    if sys.platform == "darwin":
+        return "mono_macos.universal"
+    arch = "arm64" if platform.machine().lower() in ("aarch64", "arm64") else "x86_64"
+    return f"mono_linux_{arch}"
+
+
+def native_path(value: str) -> str:
+    r"""config.bat writes its paths with backslashes; elsewhere they are slashes.
+
+    "%UO_ROOT%\build\world" must become a folder two levels down on Linux,
+    not one file whose name contains backslashes.
+    """
+    return value if sys.platform == "win32" else value.replace("\\", "/")
 
 
 def find_repo_root(start: Path | None = None) -> Path:
@@ -186,14 +207,28 @@ class Config:
         return self.upstream_build / "cuo.exe"
 
     @property
+    def godot_dir(self) -> Path:
+        """The extracted release folder under tools/godot."""
+        return self.tools / "godot" / f"Godot_v{self.godot_version}_{self.godot_flavor}"
+
+    @property
     def godot_exe(self) -> Path:
         stem = f"Godot_v{self.godot_version}_{self.godot_flavor}"
-        return self.tools / "godot" / stem / f"{stem}.exe"
+        if self.godot_flavor.startswith("mono_linux_"):
+            # The Linux zip names its binary with the arch after a dot:
+            # Godot_v4.7.2-stable_mono_linux_x86_64/Godot_v4.7.2-stable_mono_linux.x86_64
+            arch = self.godot_flavor.removeprefix("mono_linux_")
+            return self.godot_dir / f"Godot_v{self.godot_version}_mono_linux.{arch}"
+        return self.godot_dir / f"{stem}.exe"
 
     @property
     def godot_console_exe(self) -> Path:
+        # Only Windows ships a separate console build; elsewhere the one
+        # binary already blocks and writes to stdout.
+        if not self.godot_flavor.startswith("mono_win"):
+            return self.godot_exe
         stem = f"Godot_v{self.godot_version}_{self.godot_flavor}"
-        return self.tools / "godot" / stem / f"{stem}_console.exe"
+        return self.godot_dir / f"{stem}_console.exe"
 
 
 def load_config(root: Path | None = None) -> Config:
@@ -220,15 +255,28 @@ def load_config(root: Path | None = None) -> Config:
     except ValueError:
         shard_port = 2593
 
-    cache = get("UO_CACHE_DIR") or str(Path.home() / ".cache" / "GUO")
+    # config.bat's default is built on %LOCALAPPDATA%, which only Windows
+    # sets; left unexpanded it would be a relative folder named "%LOCALAPPDATA%".
+    # The client keeps its profiles in the cache's parent (Main.GuoDataDirectory),
+    # so elsewhere the same layout goes under the user's data folder.
+    cache = native_path(os.path.expandvars(get("UO_CACHE_DIR")))
+    if not cache or "%" in cache:
+        data_home = os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
+        cache = str(Path(data_home) / "GUO" / "cache")
 
     def path_or_none(key: str) -> Path | None:
         # A value that still holds an unexpanded %VAR% is one whose variable
         # was not set anywhere -- JAVA_HOME on a machine without one -- and
         # means "not configured", not a folder called %JAVA_HOME%.
         # %UO_ROOT% is common.bat's, not the environment's: it is this root.
-        raw = os.path.expandvars(get(key).replace("%UO_ROOT%", str(root)))
+        raw = native_path(os.path.expandvars(get(key).replace("%UO_ROOT%", str(root))))
         return Path(raw) if raw and "%" not in raw else None
+
+    # config.bat pins the Windows build; a Windows binary cannot run anywhere
+    # else, so on another OS that default means "this OS's build".
+    godot_flavor = get("GODOT_FLAVOR") or platform_godot_flavor()
+    if sys.platform != "win32" and godot_flavor.startswith("mono_win"):
+        godot_flavor = platform_godot_flavor()
 
     package = get("UO_ANDROID_PACKAGE", "org.guo.client")
 
@@ -243,13 +291,13 @@ def load_config(root: Path | None = None) -> Config:
     # config.bat builds this on UO_ROOT, which common.bat sets before calling
     # it; outside a launcher it is this repo's root.
     world = get("UO_WORLD_PROJECT") or str(root / "build" / "world" / "default")
-    world = world.replace("%UO_ROOT%", str(root))
+    world = native_path(world.replace("%UO_ROOT%", str(root)))
 
     def home_path_or_none(key: str) -> Path | None:
         # A key file the user named with ~ or %USERPROFILE%; empty = unset.
         raw = os.path.expandvars(get(key))
         return Path(os.path.expanduser(raw)) if raw and "%" not in raw else None
-    store = Path(os.path.expandvars(get("UO_STORE_DIR", "build/store_cdn").replace("%UO_ROOT%", str(root))))
+    store = Path(native_path(os.path.expandvars(get("UO_STORE_DIR", "build/store_cdn").replace("%UO_ROOT%", str(root)))))
     if not store.is_absolute():
         store = root / store
 
@@ -298,13 +346,13 @@ def load_config(root: Path | None = None) -> Config:
         store_dir=store,
         store_url=get("UO_STORE_URL", "http://127.0.0.1:18865"),
         godot_version=get("GODOT_VERSION", "4.7.2-stable"),
-        godot_flavor=get("GODOT_FLAVOR", "mono_win64"),
+        godot_flavor=godot_flavor,
         client_data=client_data,
         client_data_env=client_data_env,
         client_data_setting=client_data_setting,
         custom_data_setting=custom_data_setting,
         client_version=get("UO_CLIENT_VERSION", "7.0.15.1"),
-        cache_dir=Path(os.path.expandvars(cache)),
+        cache_dir=Path(cache),
         world_project=Path(os.path.expandvars(world)),
         editor_live_host=get("UO_EDITOR_LIVE_HOST", "127.0.0.1"),
         editor_live_port=int(get("UO_EDITOR_LIVE_PORT", "2595") or 2595),

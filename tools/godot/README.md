@@ -35,6 +35,11 @@ The build is not in git. On a fresh clone, restore it with:
 launchers\dev\fetch_godot.bat
 ```
 
+On Linux, `launchers/dev/fetch_godot.sh` fetches
+`Godot_v4.7.2-stable_mono_linux_x86_64.zip` instead. That build has no
+separate console executable: the one binary blocks and writes to stdout, so
+`tools/guo/config.py` uses it for both. The `.cmd` shims are Windows only.
+
 ## Upgrading
 
 1. Edit `GODOT_VERSION` in `launchers\_shared\config.bat`.

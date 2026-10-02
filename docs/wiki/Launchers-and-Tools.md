@@ -8,6 +8,10 @@ under `tools\`, each with a `run.py` entry point, all importing the shared
 project depends on get a folder of their own with a README (`tools\godot`,
 `tools\modernuo`).
 
+On Linux, the desktop launchers (bootstrap, verify, build, smoke, play,
+playtest, the editor and the dev shard) have `.sh` twins beside the `.bat`
+files, sourcing `launchers/_shared/common.sh`. See [Linux](Linux.md).
+
 ## Launchers
 
 ### `_shared\`

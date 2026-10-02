@@ -11,6 +11,7 @@
 - [Glossary](Glossary.md)
 
 **Builds**
+- [Linux](Linux.md)
 - [Windows Build](Windows-Build.md)
 - [Android Build](Android-Build.md)
 - [Steam Deck](Steam-Deck.md)
