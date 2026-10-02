@@ -192,8 +192,8 @@ dd { margin: 0; overflow-wrap: anywhere; }
 </section>
 
 <footer>
-  <span>Packs hold backgrounds, themes, sounds and layout presets. None of them contain Ultima Online game data; GodotUO always reads your own install.</span>
-  <span id="sample-note" hidden>Packs marked Sample show what each shelf can hold. They were generated for this preview and do nothing yet beyond installing their files.</span>
+  <span>Packs can add client content, server definitions, scripts and presentation settings. Original Ultima Online data comes from your own installation.</span>
+  <span id="sample-note" hidden>Packs marked Sample are original starter assets. Installation keeps content inactive; game content needs a compatible deployment, and scripts need explicit approval.</span>
 </footer>
 
 <dialog id="detail" aria-labelledby="detail-title">
@@ -253,7 +253,7 @@ function size(bytes) {
 function matches(p) {
   if (filter && p.kind !== filter) return false;
   if (!query) return true;
-  return [p.title, p.author, p.id].some((v) => String(v).toLowerCase().includes(query));
+  return [p.title, p.author, p.id, p.target || "", ...(p.components || []).map(c => c.type)].some((v) => String(v).toLowerCase().includes(query));
 }
 
 function card(p, layout) {
@@ -270,6 +270,7 @@ function card(p, layout) {
   const h = el("h3", null, p.title);
   if (isSample(p)) h.append(el("span", "badge", "Sample"));
   text.append(h, el("p", "by", `By ${p.author}`));
+  if (p.target) text.append(el("p", "by", `${p.target} · ${[...new Set((p.components || []).map(c => c.type))].join(", ")}`));
   open.append(thumb, text);
   open.addEventListener("click", () => show(p));
   art.append(open);
@@ -327,7 +328,7 @@ function feature(p, fromUser) {
     img.src = localUrl(p.preview_url);
     img.alt = p.title;
     $("#feature-title").textContent = p.title;
-    $("#feature-by").textContent = `A ${KIND_NAME[p.kind].toLowerCase()} by ${p.author}, free to use under ${p.licence}.`;
+    $("#feature-by").textContent = `${KIND_NAME[p.kind]} by ${p.author}, licensed under ${p.licence}.`;
     $("#feature-download").href = localUrl(p.url);
     img.classList.remove("fading");
   };
@@ -367,6 +368,12 @@ function show(p) {
     meta.append(el("dt", null, k), el("dd", null, v));
   }
   $("#detail-note").textContent = NOTES[p.kind] || "";
+  if (p.target) {
+    for (const [k, v] of [["Target", p.target], ["Components", [...new Set((p.components || []).map(c => c.type))].join(", ")],
+                         ["Dependencies", Object.entries(p.dependencies || {}).map(([id, version]) => `${id} @ ${version}`).join(", ") || "None"]]) {
+      meta.append(el("dt", null, k), el("dd", null, v));
+    }
+  }
   $("#detail-download").href = localUrl(p.url);
   $("#detail").showModal();
 }

@@ -47,12 +47,17 @@ internal sealed class StoreRuntimeContent
         var snapshot = contentLock.Verify(store);
         var result = new StoreRuntimeContent();
         long pixelsTotal = 0;
+        long payloadTotal = 0;
+        var wearables = new List<(StoreComponent Component, byte[] Data)>();
         foreach (var pack in snapshot.Packs.Values)
             foreach (var component in pack.Manifest.Components ?? new())
             {
-                if (component.Target == "server") continue;
-                StorePack.Require(component.Type is "static" or "land" or "texmap" or "gump" or "hue" or "translation" or "sound" or "music" or "multi" or "tiledata" or "light" or "animation", "No client consumer for " + component.Type);
+                if (component.Target == "server" || component.Type == "script") continue; // Scripts have their own explicit approval/enable/run lifecycle.
+                StorePack.Require(component.Type is "static" or "land" or "texmap" or "gump" or "hue" or "translation" or "sound" or "music" or "multi" or "tiledata" or "light" or "animation" or "wearable", "No client consumer for " + component.Type);
                 byte[] data = pack.ReadPayload(component.Entry);
+                payloadTotal += data.Length;
+                StorePack.Require(payloadTotal <= 256 * 1024 * 1024, "Content payload memory budget exceeded");
+                if (component.Type == "wearable") { wearables.Add((component, data)); continue; }
                 if (component.Type == "translation")
                 {
                     using var doc = JsonDocument.Parse(data);
@@ -132,8 +137,35 @@ internal sealed class StoreRuntimeContent
                     result._hues.Add(id, colors);
                     continue;
                 }
+                if (component.Type is "static" or "land")
+                    StorePack.Require(id + (component.Type == "static" ? 0x4000 : 0) < files.Arts.File.Entries.Length,
+                        "Art binding exceeds this client's renderer capacity");
                 result._images.Add((component.Type, id), DecodeImage(data, component.Type, ref pixelsTotal));
             }
+        var equippedArt = new HashSet<int>();
+        foreach (var (component, data) in wearables)
+        {
+            using var doc = JsonDocument.Parse(data);
+            var row = doc.RootElement;
+            int Resolve(string field, string type)
+            {
+                string reference = row.GetProperty(field).GetString();
+                StorePack.Require(component.References != null && component.References.Contains(reference)
+                    && contentLock.Bindings.TryGetValue(reference, out var unused), "Undeclared wearable reference");
+                var binding = contentLock.Bindings[reference];
+                StorePack.Require(binding.Type == type, "Wearable reference type mismatch");
+                return binding.Id;
+            }
+            int art = Resolve("art", "static"), animation = Resolve("animation", "animation"), paperdoll = Resolve("paperdoll", "gump");
+            StorePack.Require(equippedArt.Add(art), "Conflicting wearable definitions for one item");
+            byte layer = row.GetProperty("layer").GetByte();
+            StorePack.Require(layer is > 0 and <= 29 && art < files.TileData.StaticData.Length, "Invalid equipment layer/art");
+            StorePack.Require(paperdoll == 50000 + animation || paperdoll == 60000 + animation, "Paperdoll ID must follow classic body-to-gump mapping");
+            StorePack.Require(result._animationTypes.TryGetValue(animation, out var type) && type is AnimationGroupsType.Human or AnimationGroupsType.Equipment, "Wearable animation must be Human or Equipment");
+            var tile = result._tiles.TryGetValue(art, out var patched) ? patched : files.TileData.StaticData[art];
+            tile.AnimID = (ushort)animation; tile.Layer = layer; tile.Flags |= TileFlag.Wearable;
+            result._tiles[art] = tile;
+        }
         // Commit only after all components and payloads validate.
         foreach (var (id, colors) in result._hues)
             for (int i = 0; i < 32; i++) files.Hues.HuesRange[(id - 1) / 8].Entries[(id - 1) % 8].ColorTable[i] = colors[i];

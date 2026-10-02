@@ -31,7 +31,7 @@ def main():
         bindings = {"stone": ("static", 3701), "ground": ("land", 580), "slope": ("texmap", 1),
                     "panel": ("gump", 100), "palette": ("hue", 33), "chime": ("sound", 2000),
                     "ambience": ("music", 100), "lamp": ("light", 1), "platform": ("multi", 1),
-                    "stone-data": ("tiledata", 3701), "figure": ("animation", 400)}
+                    "stone-data": ("tiledata", 3701), "figure": ("animation", 400), "paperdoll": ("gump", 50400)}
         value["bindings"] = {"sample-content-art:" + name: dict(type=kind, id=index) for name, (kind, index) in bindings.items()}
         lock.write_text(json.dumps(value, indent=2), encoding="utf-8")
         proof = root / "build/asset_packs/runtime-pixels.png"

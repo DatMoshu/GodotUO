@@ -34,6 +34,9 @@ public partial class StoreContentProbe : Node
             var multi = files.Multis.GetMultis(1);
             StorePack.Require(multi.Count == 1 && multi[0].ID == 3701 && multi[0].IsVisible, "Multi overlay absent");
             StorePack.Require(files.TileData.StaticData[3701].Name == "Example stone" && files.TileData.StaticData[3701].Height == 8, "Tiledata overlay absent");
+            StorePack.Require(files.TileData.StaticData[3701].IsWearable && files.TileData.StaticData[3701].AnimID == 400 && files.TileData.StaticData[3701].Layer == 5, "Wearable linkage absent");
+            var paperdoll = files.Gumps.GetGump(50400);
+            StorePack.Require(paperdoll.Width == 32 && paperdoll.Height == 48, "Paperdoll art absent");
             var animations = new GUO.Renderer.Animations.Animations(files.Animations);
             for (byte dir = 0; dir < 5; dir++)
             {
@@ -51,7 +54,7 @@ public partial class StoreContentProbe : Node
                 Draw(image, gump.Pixels, gump.Width, gump.Height, 210, 12);
                 StorePack.Require(image.SavePng(output) == Error.Ok, "Could not save decoded pixel evidence");
             }
-            GD.Print("[content probe] PASS: installed statics, 1012-pixel land diamond, texmap, gump, 32 hue colors, cliloc, PCM sound, light, multi, tiledata and five-direction animation atlas/anchors");
+            GD.Print("[content probe] PASS: installed statics, 1012-pixel land diamond, texmap, gump, 32 hue colors, cliloc, PCM sound/music, light, multi, tiledata, wearable and five-direction animation atlas/anchors");
             GetTree().Quit();
         }
         catch (Exception e) { GD.PrintErr("[content probe] FAIL: " + e); GetTree().Quit(1); }

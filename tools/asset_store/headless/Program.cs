@@ -1,6 +1,17 @@
 using GUO.Store;
 using GUO.Game.Scripting;
 
+if (args.Length == 4 && args[0] == "install-content")
+{
+    using var store = new StoreClient(args[1], args[2], int.MaxValue);
+    var catalogue = await store.FetchIndex();
+    var entry = catalogue.Where(e => e.Manifest.Id == args[3]).OrderByDescending(e => StorePack.Version(e.Manifest.Version)).First();
+    await store.InstallWithDependencies(entry, catalogue);
+    var snapshot = store.VerifyContent(entry.Manifest.Id, entry.Manifest.Version);
+    Console.WriteLine($"Installed verified closure: {snapshot.Packs.Count} packs, {snapshot.IdentityHash}");
+    return 0;
+}
+
 if (args.Length == 5 && args[0] == "content-lock")
 {
     using var store = new StoreClient("http://127.0.0.1:18865", args[1], int.MaxValue);
@@ -49,22 +60,6 @@ if (args.Length == 3 && args[0] == "extract-content")
     Directory.CreateDirectory(Path.GetDirectoryName(destination));
     Directory.Move(stage, destination);
     Console.WriteLine(destination);
-    return 0;
-}
-
-if (args.Length == 5 && args[0] == "content-lock")
-{
-    using var store = new StoreClient("http://127.0.0.1:18865", args[1], int.MaxValue);
-    var snapshot = store.VerifyContent(args[2], args[3]);
-    var contentLock = new StoreContentLock { Pack = args[2], Version = args[3], IdentityHash = snapshot.IdentityHash };
-    File.WriteAllText(args[4], System.Text.Json.JsonSerializer.Serialize(contentLock, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
-    Console.WriteLine("Wrote inert content lock. Assign explicit numeric bindings before activation.");
-    return 0;
-}
-
-if (args.Length == 3 && args[0] == "content-check")
-{
-    ContentChecks.Run(args[1], args[2]);
     return 0;
 }
 

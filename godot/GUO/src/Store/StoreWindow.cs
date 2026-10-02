@@ -245,7 +245,7 @@ internal sealed partial class StoreWindow : CanvasLayer
         {
             _status.Text = (remove ? "Removing " : "Installing ") + entry.Manifest.Title + "…";
             if (remove) _client.Uninstall(entry.Manifest.Id, entry.Manifest.Version);
-            else await _client.Install(entry, _cancel.Token);
+            else await _client.InstallWithDependencies(entry, _entries, _cancel.Token);
             if (IsInsideTree()) _status.Text = entry.Manifest.Kind == "razor-script"
                 ? remove ? "Script pack removed. Personal copies are kept." : "Scripts installed and verified. Log in, then Browse scripts to add personal copies."
                 : remove ? _client.LastUninstallMessage : "Installed and verified. Reopen Options and select the background, then Apply.";

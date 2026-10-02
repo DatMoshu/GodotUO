@@ -46,6 +46,8 @@ def build(output, store=None):
             ("figure", "animation", "client", "figure.json", {"group_type": "Human", "sequences": [
                 {"action": 0, "direction": direction, "frames": [{"image": "stone.png", "center_x": 16, "center_y": 0}, {"image": "stone.png", "center_x": 15, "center_y": 1}]}
                 for direction in range(5)]}),
+            ("paperdoll", "gump", "client", "paperdoll.png", png(32, 48, (120, 144, 160, 255))),
+            ("outfit", "wearable", "client", "outfit.json", {"art": "sample-content-art:stone", "animation": "sample-content-art:figure", "paperdoll": "sample-content-art:paperdoll", "layer": 5}),
         ]),
         "sample-content-server": ("server", [
             ("stone-item", "item", "server", "item.json", {"name": "Example stone", "graphic": "sample-content-art:stone", "movable": True, "weight": 1}),
@@ -64,6 +66,7 @@ def build(output, store=None):
             payload[entry] = data if isinstance(data, bytes) else (json.dumps(data, indent=2) + "\n").encode()
             component = dict(id=local, type=kind, target=side, entry=entry)
             if kind == "item": component["references"] = [data["graphic"]]
+            if kind == "wearable": component["references"] = [data["art"], data["animation"], data["paperdoll"]]
             components.append(component)
         deps = {"sample-content-art": "1.0.0"} if pack_id == "sample-content-server" else {}
         m = dict(schema="guo/store-pack@2", id=pack_id, version="1.0.0", kind="content",

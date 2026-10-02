@@ -469,7 +469,8 @@ public partial class Main : Node
         try
         {
             using var client = GUO.Store.StoreOptions.CreateClient(System.Environment.GetEnvironmentVariable("UO_STORE_URL") ?? GUO.Store.StoreAddress.Default);
-            var entry = System.Linq.Enumerable.FirstOrDefault(System.Linq.Enumerable.OrderByDescending(System.Linq.Enumerable.Where(client.FetchIndex().GetAwaiter().GetResult(), e => e.Manifest.Id == id), e => GUO.Store.StorePack.Version(e.Manifest.Version)));
+            var catalogue = client.FetchIndex().GetAwaiter().GetResult();
+            var entry = System.Linq.Enumerable.FirstOrDefault(System.Linq.Enumerable.OrderByDescending(System.Linq.Enumerable.Where(catalogue, e => e.Manifest.Id == id), e => GUO.Store.StorePack.Version(e.Manifest.Version)));
 
             if (entry == null)
             {
@@ -478,7 +479,7 @@ public partial class Main : Node
                 return;
             }
 
-            string path = client.Install(entry).GetAwaiter().GetResult();
+            string path = client.InstallWithDependencies(entry, catalogue).GetAwaiter().GetResult();
             GD.Print($"[GUO] store install: {id} {entry.Manifest.Version} ({entry.Manifest.Kind}) installed at {path}");
         }
         catch (Exception ex)

@@ -105,7 +105,7 @@ internal static class StorePack
         return true;
     }
 
-    private static void UniqueJson(JsonElement element)
+    internal static void UniqueJson(JsonElement element)
     {
         if (element.ValueKind == JsonValueKind.Object)
         {

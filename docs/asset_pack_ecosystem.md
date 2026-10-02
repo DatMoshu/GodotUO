@@ -72,6 +72,15 @@ follow the same verified image path. Animation JSON declares `group_type`
 (0..4, the engine supplies mirrored facings), and `frames` of `image`,
 `center_x`, `center_y`. Frame images must be declared files in the pack.
 Playback retains the existing action timing and atlas/picking pipeline.
+Music currently accepts the same PCM WAVE format as sound and loops through
+the ordinary music player. Wearable JSON names `art`, `animation`, `paperdoll`
+component references plus a numeric `layer`. All three references must be
+declared on the component. The paperdoll binding follows the classic
+50000/60000 + animation ID mapping. This sets item animation/layer/wearable
+metadata; fitted body coverage still depends on the supplied frames.
+
+Script components are left inert by the asset mount. Their separate managed
+session owns review, approval, enablement, execution, revocation and logout.
 
 ## Required evidence
 
@@ -113,15 +122,17 @@ world-save migration or an automatic install hook.
 
 ## Evidence and remaining scope
 
-The Godot `StoreContentProbe.tscn` checks eleven client consumers, including
+The Godot `StoreContentProbe.tscn` checks thirteen client consumers, including
 five-direction animation frames through the production atlas. Original starter
 pack pixels are decoded into a proof image. A private ModernUO probe verifies
 the combined pack's item construction/removal. Full repository smoke passed
-for the envelope foundation. Final runtime changes need a fresh full smoke.
+for the merged runtime and scripting changes. The HTTP dependency-install
+smoke and ten store/web tests also pass. Art bindings must fit the original
+client renderer's allocated art slots; extending that capacity remains separate work.
 
-Not yet implemented: other server gameplay consumers; wearable bundles;
-fonts; map/region overlays as store components; music; presentation activation
-unification; editor authoring consumers; shard content negotiation; automatic
-dependency download; full store activation UI. Animation coverage currently
+Not yet implemented: other server gameplay consumers;
+fonts; map/region overlays as store components; presentation activation
+unification; editor authoring consumers; shard content negotiation;
+full store activation UI. Animation coverage currently
 proves explicit sequences/anchors, not every body/equipment mapping. A verified
 envelope for one of these types does not imply executable runtime support.

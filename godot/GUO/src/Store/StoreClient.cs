@@ -159,6 +159,38 @@ internal sealed class StoreClient : IDisposable
         }
     }
 
+    public async Task<string> InstallWithDependencies(StoreEntry root, IReadOnlyList<StoreEntry> catalogue, CancellationToken ct = default)
+    {
+        var selected = new Dictionary<string, StoreEntry>(StringComparer.Ordinal);
+        var visiting = new HashSet<string>(StringComparer.Ordinal);
+        var ordered = new List<StoreEntry>();
+        void Plan(StoreEntry entry)
+        {
+            StorePack.Validate(entry.Manifest);
+            string id = entry.Manifest.Id;
+            StorePack.Require(!visiting.Contains(id), "Dependency cycle");
+            if (selected.TryGetValue(id, out var previous))
+            {
+                StorePack.Require(previous.Manifest.Version == entry.Manifest.Version, "Dependency version conflict");
+                return;
+            }
+            StorePack.Require(selected.Count < 128 && entry.Manifest.MinProfileVersion <= _profileVersion, "Dependency closure too large or incompatible");
+            selected.Add(id, entry); visiting.Add(id);
+            foreach (var dependency in entry.Manifest.Dependencies ?? new())
+            {
+                var matches = catalogue.Where(e => e.Manifest.Id == dependency.Key && e.Manifest.Version == dependency.Value).ToArray();
+                StorePack.Require(matches.Length == 1, "Required dependency unavailable: " + dependency.Key + "@" + dependency.Value);
+                Plan(matches[0]);
+            }
+            visiting.Remove(id); ordered.Add(entry);
+        }
+        Plan(root); // Reject invalid plans before downloading or installing anything.
+        string result = null;
+        foreach (var entry in ordered) result = await Install(entry, ct).ConfigureAwait(false);
+        if (root.Manifest.Schema == "guo/store-pack@2") VerifyContent(root.Manifest.Id, root.Manifest.Version);
+        return result;
+    }
+
     private static StoreManifest ReadInstalled(string directory, bool hashes)
     {
         NoLinks(directory);
@@ -166,10 +198,13 @@ internal sealed class StoreClient : IDisposable
         StorePack.Require(new FileInfo(file).Length <= StorePack.MaxManifest, "Installed manifest too large");
         var m = StorePack.Parse(File.ReadAllBytes(file));
         StorePack.Require(Path.GetFileName(directory) == m.Version && Path.GetFileName(Path.GetDirectoryName(directory)) == m.Id, "Installed manifest path mismatch");
+        long total = 0;
         foreach (var (name, expected) in m.Files)
         {
             string path = Path.Combine(directory, name.Replace('/', Path.DirectorySeparatorChar)); NoLinks(path);
             StorePack.Require(File.Exists(path), "Installed payload missing");
+            long size = new FileInfo(path).Length; total += size;
+            StorePack.Require(size <= StorePack.MaxFile && total <= StorePack.MaxTotal, "Installed payload exceeds limits");
             if (hashes) StorePack.Require(StorePack.HashFile(path) == expected, "Installed payload hash mismatch");
         }
         return m;
