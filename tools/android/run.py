@@ -46,7 +46,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from guo.config import Config, load_config  # noqa: E402
+from guo.config import Config, godot_config_dir, godot_data_dir, load_config  # noqa: E402
 from guo.datasources import WIZARD_EXIT, resolve_config  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
@@ -79,14 +79,13 @@ class Paths:
         self.preset_file = self.project / "export_presets.cfg"
         self.solution = self.project / "GUO.sln"
 
-        appdata = Path(os.environ.get("APPDATA", str(Path.home() / "AppData" / "Roaming")))
-        self.godot_config = appdata / "Godot"
+        self.godot_config = godot_config_dir()
         major_minor = ".".join(cfg.godot_version.split("-")[0].split(".")[:2])
         self.editor_settings = self.godot_config / f"editor_settings-{major_minor}.tres"
 
         # "4.7.2-stable" + mono -> "4.7.2.stable.mono", Godot's folder name.
         self.templates_version = cfg.godot_version.replace("-", ".") + ".mono"
-        self.templates_dir = self.godot_config / "export_templates" / self.templates_version
+        self.templates_dir = godot_data_dir() / "export_templates" / self.templates_version
         self.templates_tpz = (
             cfg.tools / "godot" / "templates" / f"Godot_v{cfg.godot_version}_mono_export_templates.tpz"
         )

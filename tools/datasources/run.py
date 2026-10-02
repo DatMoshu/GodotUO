@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Which client data a run would use (ADR-0021), for the launchers and for people.
 
-    python tools/datasources/run.py check [--bat FILE] [--quiet]
+    python tools/datasources/run.py check [--bat FILE] [--sh FILE] [--quiet]
     python tools/datasources/run.py gen-cs [--check]
 
 Resolves the ADR-0021 order: a custom data folder (UO_CUSTOM_DATA), then the
@@ -12,6 +12,7 @@ It prints what was chosen and every candidate that was passed over, and why.
 --bat FILE writes a batch fragment a launcher `call`s, which sets
 UO_CLIENT_DATA to the chosen install and, for a layered custom folder,
 UO_FILES_OVERRIDE to an override file written under build/datasources/.
+--sh FILE writes the same as shell exports, for the .sh launchers.
 
 gen-cs writes godot/GUO/src/Bootstrap/DataRequirements.g.cs, the runtime's copy
 of the required set in tools/guo/formats.py, so the client and the tools judge
@@ -24,6 +25,7 @@ client opens it; nothing here is an error). Reads only, apart from build/.
 from __future__ import annotations
 
 import argparse
+import shlex
 import sys
 from pathlib import Path
 
@@ -80,6 +82,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("command", choices=["check", "gen-cs"])
     ap.add_argument("--bat", type=Path, help="write set lines for a launcher to call")
+    ap.add_argument("--sh", type=Path, help="write export lines for a .sh launcher to source")
     ap.add_argument("--quiet", action="store_true", help="only the verdict line")
     ap.add_argument("--check", action="store_true", help="gen-cs: compare only")
     args = ap.parse_args()
@@ -104,6 +107,14 @@ def main() -> int:
         lines.append(f'set "UO_DATA_SOURCE={res.source}"')
         args.bat.parent.mkdir(parents=True, exist_ok=True)
         args.bat.write_text("\r\n".join(lines) + "\r\n", encoding="utf-8")
+    if args.sh:
+        values = {}
+        if res.ok:
+            values["UO_CLIENT_DATA"] = str(res.client_data)
+        values["UO_FILES_OVERRIDE"] = str(override or "")
+        values["UO_DATA_SOURCE"] = res.source
+        args.sh.parent.mkdir(parents=True, exist_ok=True)
+        args.sh.write_text("".join(f"export {k}={shlex.quote(v)}\n" for k, v in values.items()), encoding="utf-8")
     return 0 if res.ok else WIZARD_EXIT
 
 

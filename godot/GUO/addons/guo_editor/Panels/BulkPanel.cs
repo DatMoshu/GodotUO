@@ -179,7 +179,9 @@ public partial class BulkPanel : AssetPanel
     /// <summary>Runs python with the arguments; each output line goes to <paramref name="line"/>.</summary>
     private static (int Code, string Error) Run(List<string> args, Action<string> line)
     {
-        var psi = new ProcessStartInfo(EditorData.Setting("PYTHON", "python"))
+        // UO_PYTHON is config.bat's key; most Linux distributions ship only
+        // "python3", so that is the default there.
+        var psi = new ProcessStartInfo(EditorData.Setting("UO_PYTHON", OperatingSystem.IsWindows() ? "python" : "python3"))
         {
             RedirectStandardOutput = true,
             RedirectStandardError = true,

@@ -91,7 +91,28 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config.world_project, self.root / "build/world/example")
         self.assertEqual(config.godot_project, self.root / "godot/GUO")
         self.assertEqual(config.upstream_build, self.root / "build/cuo")
-        self.assertTrue(config.godot_console_exe.name.endswith("_console.exe"))
+        if sys.platform == "win32":
+            self.assertTrue(config.godot_console_exe.name.endswith("_console.exe"))
+        else:
+            self.assertEqual(config.godot_console_exe, config.godot_exe)
+
+    def test_linux_godot_build_names(self):
+        with patch("guo.config.sys.platform", "linux"), patch("guo.config.platform.machine", return_value="x86_64"):
+            self.defaults.write_text('set "GODOT_VERSION=4.7.2-stable"\nset "GODOT_FLAVOR=mono_win64"', encoding="utf-8")
+            config = load_config(self.root)
+        # config.bat's Windows pin means "this OS's build" anywhere else.
+        self.assertEqual(config.godot_flavor, "mono_linux_x86_64")
+        folder = self.root / "tools/godot/Godot_v4.7.2-stable_mono_linux_x86_64"
+        self.assertEqual(config.godot_exe, folder / "Godot_v4.7.2-stable_mono_linux.x86_64")
+        self.assertEqual(config.godot_console_exe, config.godot_exe)
+
+    def test_backslash_paths_are_native(self):
+        self.defaults.write_text('set "UO_WORLD_PROJECT=%UO_ROOT%\\build\\world\\default"', encoding="utf-8")
+        self.assertEqual(load_config(self.root).world_project, self.root / "build" / "world" / "default")
+
+    def test_unexpanded_cache_dir_falls_back_to_user_data(self):
+        self.defaults.write_text('if not defined UO_CACHE_DIR set "UO_CACHE_DIR=%LOCALAPPDATA%\\GUO\\cache"', encoding="utf-8")
+        self.assertEqual(load_config(self.root).cache_dir, self.root / "fixture-home" / ".local" / "share" / "GUO" / "cache")
 
     def test_store_defaults_are_checkout_relative(self):
         config = load_config(self.root)

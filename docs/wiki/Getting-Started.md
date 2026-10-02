@@ -4,6 +4,8 @@ From a fresh clone to a running client, on Windows. Every step is a launcher
 under `launchers\`; each one calls `launchers\_shared\common.bat` first, which
 resolves the [Configuration](Configuration.md) and locates the engine.
 
+On Linux, every launcher here has a `.sh` twin; see [Linux](Linux.md).
+
 Other platforms start from the same clone: [Windows Build](Windows-Build.md)
 (a standalone `GUO.exe`), [Android Build](Android-Build.md) (a debug APK) and
 [Steam Deck](Steam-Deck.md) (a Linux build pushed over ssh). To play without

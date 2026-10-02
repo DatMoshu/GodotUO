@@ -42,7 +42,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
+import signal
 import socket
 import subprocess
 import sys
@@ -61,13 +63,17 @@ LEAVE_OUT = {"Archives", "Backups", "Logs", "temp"}
 ALL_FACETS = "0,1,2,3,4,5"
 
 
+# The published server: an apphost named ModernUO.exe on Windows, ModernUO elsewhere.
+EXE = "ModernUO.exe" if sys.platform == "win32" else "ModernUO"
+
+
 def home(cfg) -> Path:
     return cfg.build / "shard_private"
 
 
 def default_source(cfg) -> Path:
     """The built Distribution: this checkout's, or the main worktree's (worktrees share the build)."""
-    if (cfg.shard_dist / "ModernUO.exe").exists():
+    if (cfg.shard_dist / EXE).exists():
         return cfg.shard_dist
     common = subprocess.run(["git", "-C", str(cfg.root), "rev-parse", "--git-common-dir"],
                             capture_output=True, text=True).stdout.strip()
@@ -91,7 +97,12 @@ def write_state(h: Path, state: dict) -> None:
 
 
 def pid_alive(pid: int, exe: Path) -> bool:
-    """True if pid is running and is the copy's ModernUO.exe."""
+    """True if pid is running and is the copy's ModernUO."""
+    if sys.platform != "win32":
+        try:
+            return Path(os.readlink(f"/proc/{pid}/exe")).resolve() == exe.resolve()
+        except OSError:
+            return False
     out = subprocess.run(["powershell", "-NoProfile", "-Command",
                           f"(Get-Process -Id {pid} -ErrorAction SilentlyContinue).Path"],
                          capture_output=True, text=True).stdout.strip()
@@ -111,11 +122,11 @@ def configure(h: Path, cfg, port: int, data_first: Path | None) -> None:
 
 def cmd_setup(cfg, source: Path, port: int) -> int:
     h = home(cfg)
-    if (h / "ModernUO.exe").exists():
+    if (h / EXE).exists():
         print(f"[editor_shard] already set up: {h} (delete it to start over)")
         return 2
-    if not (source / "ModernUO.exe").exists():
-        print(f"[editor_shard] no built ModernUO at {source}; build the dev shard first (launchers\\shard\\build.bat)")
+    if not (source / EXE).exists():
+        print(f"[editor_shard] no built ModernUO at {source}; build the dev shard first (launchers/shard/build.bat or build.sh)")
         return 1
     print(f"[editor_shard] copying {source} -> {h} (without {', '.join(sorted(LEAVE_OUT))})")
     shutil.copytree(source, h, ignore=lambda d, names: [n for n in names if Path(d) == source and n in LEAVE_OUT])
@@ -178,7 +189,7 @@ def cmd_start(cfg, data_first: Path | None, objects: Path | None = None, clear: 
         clear_objects(h)
     elif objects is not None and not install_objects(h, objects.resolve()):
         return 2
-    exe = h / "ModernUO.exe"
+    exe = h / EXE
     if state.get("pid") and pid_alive(state["pid"], exe):
         print(f"[editor_shard] already running (pid {state['pid']})")
         return 2
@@ -216,7 +227,7 @@ def cmd_status(cfg) -> int:
     if not state:
         print("[editor_shard] not set up")
         return 2
-    alive = bool(state.get("pid")) and pid_alive(state["pid"], h / "ModernUO.exe")
+    alive = bool(state.get("pid")) and pid_alive(state["pid"], h / EXE)
     conf = json.loads((h / "Configuration" / "modernuo.json").read_text(encoding="utf-8"))
     print(f"[editor_shard] {h}")
     print(f"[editor_shard] {'running, pid ' + str(state['pid']) if alive else 'stopped'}; "
@@ -230,7 +241,7 @@ def cmd_bridge(cfg, bridge_port: int) -> int:
     if not state:
         print("[editor_shard] not set up; run: python tools/editor_shard/run.py setup")
         return 2
-    if state.get("pid") and pid_alive(state["pid"], h / "ModernUO.exe"):
+    if state.get("pid") and pid_alive(state["pid"], h / EXE):
         print("[editor_shard] stop the private shard first; its Assemblies are in use")
         return 2
     proj = Path(__file__).resolve().parent / "bridge" / "GUO.EditorBridge.csproj"
@@ -256,12 +267,15 @@ def cmd_stop(cfg) -> int:
     h = home(cfg)
     state = read_state(h)
     pid = state.get("pid")
-    exe = h / "ModernUO.exe"
+    exe = h / EXE
     if not pid or not pid_alive(pid, exe):
         print("[editor_shard] not running")
         return 0
     # Only this copy's process, by the pid it was started with.
-    subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True)
+    if sys.platform == "win32":
+        subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True)
+    else:
+        os.kill(pid, signal.SIGTERM)
     for _ in range(30):
         if not pid_alive(pid, exe):
             break

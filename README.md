@@ -94,6 +94,7 @@ CI** — the console build blocks and writes to stdout.
 | Platform | Start here | Where it stands |
 |---|---|---|
 | **Windows** | `launchers\game\play.bat`, or a build from the `release` workflow's artifacts | Plays on a local shard |
+| **Linux** (desktop) | `launchers/pipeline/00_bootstrap.sh`, then `launchers/game/play.sh` — [docs/wiki/Linux.md](docs/wiki/Linux.md) | Smoke passes; plays on a local shard |
 | **Android** (ARM64) | `launchers\android\doctor.bat`, then `launchers\android\smoke.bat` — [docs/wiki/Android-Build.md](docs/wiki/Android-Build.md) | Debug build; runs on one device, including its second screen |
 | **Steam Deck** (SteamOS) | `launchers\steamdeck\doctor.bat`, then `launchers\steamdeck\smoke.bat` — [docs/steamdeck.md](docs/steamdeck.md) | Exports, installs over ssh and reaches the login screen (ADR-0018) |
 | **Godot editor** | `launchers\editor\open_project.bat` — [docs/wiki/Editor.md](docs/wiki/Editor.md) | Browse the UO data, edit the world, export it to a shard |
