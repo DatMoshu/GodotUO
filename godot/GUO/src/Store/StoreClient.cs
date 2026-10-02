@@ -88,7 +88,7 @@ internal sealed class StoreClient : IDisposable
     }
 
     // Refuse reparse points at every boundary, including parents of the root.
-    private static void NoLinks(string path)
+    internal static void NoLinks(string path)
     {
         for (var info = new DirectoryInfo(Path.GetFullPath(path)); info != null; info = info.Parent)
             if (info.Exists) StorePack.Require((info.Attributes & FileAttributes.ReparsePoint) == 0, "Store path contains a link");
@@ -178,6 +178,41 @@ internal sealed class StoreClient : IDisposable
             }
         }
         return result;
+    }
+
+    /// <summary>Resolve an installed exact dependency closure without executing any content.</summary>
+    public StoreVerifiedContent VerifyContent(string id, string version)
+    {
+        using var guard = Lock();
+        var packs = new Dictionary<string, StoreVerifiedPack>(StringComparer.Ordinal);
+        var visiting = new HashSet<string>(StringComparer.Ordinal);
+        void Visit(string packId, string packVersion)
+        {
+            StorePack.Require(!visiting.Contains(packId), "Dependency cycle");
+            if (packs.TryGetValue(packId, out var found))
+            {
+                StorePack.Require(found.Version == packVersion, "Dependency version conflict");
+                return;
+            }
+            StorePack.Require(packs.Count + visiting.Count < 128, "Dependency closure too large");
+            string directory = Destination(packId, packVersion);
+            var m = ReadInstalled(directory, true);
+            StorePack.Require(m.MinProfileVersion <= _profileVersion, "Dependency requires a newer profile");
+            visiting.Add(packId);
+            foreach (var dependency in m.Dependencies ?? new()) Visit(dependency.Key, dependency.Value);
+            visiting.Remove(packId);
+            packs.Add(packId, new StoreVerifiedPack(directory, m));
+        }
+        Visit(id, version);
+        foreach (var pack in packs.Values)
+            foreach (var component in pack.Manifest.Components ?? new())
+                foreach (string reference in component.References ?? new())
+                {
+                    string[] parts = reference.Split(':');
+                    StorePack.Require(packs.TryGetValue(parts[0], out var dependency)
+                        && dependency.Manifest.Components != null && dependency.Manifest.Components.Any(c => c.Id == parts[1]), "Unresolved component reference");
+                }
+        return new StoreVerifiedContent(packs);
     }
 
     private static void DeleteTree(string directory)

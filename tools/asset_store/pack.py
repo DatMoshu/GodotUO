@@ -102,10 +102,10 @@ def parse_manifest(raw):
     m = json.loads(raw.decode("utf-8"), object_pairs_hook=unique_object, parse_constant=no_constant)
     valid_unicode(m)
     require(isinstance(m, dict), "manifest must be an object")
-    require(m.get("schema") == PACK_SCHEMA, "unsupported pack schema")
+    require(m.get("schema") in (PACK_SCHEMA, "guo/store-pack@2"), "unsupported pack schema")
     identifier(m.get("id"))
     version(m.get("version"))
-    require(m.get("kind") in KINDS, "unsupported pack kind (art-override is disabled)")
+    require(m.get("kind") in KINDS if m["schema"] == PACK_SCHEMA else m.get("kind") == "content", "unsupported pack kind")
     require(m.get("licence") in LICENCES, "licence is not allowed")
     for key in ("title", "author"):
         value = m.get(key)
@@ -133,6 +133,12 @@ def parse_manifest(raw):
     if m["kind"] == "screensaver":
         require(sum(Path(n).suffix.lower() == ".ogv" for n in files) == 1, "a screensaver has exactly one .ogv loop")
         require(m["min_profile_version"] >= SCREENSAVER_MIN_PROFILE, f"a screensaver needs min_profile_version {SCREENSAVER_MIN_PROFILE} or later")
+    if m["schema"] == "guo/store-pack@2":
+        try:
+            from .content import validate_content
+        except ImportError:
+            from content import validate_content
+        validate_content(m, require, identifier, version)
     return m
 
 

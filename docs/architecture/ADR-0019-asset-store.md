@@ -7,6 +7,12 @@ installer verified; see Validation for the exact evidence.
 
 ## Decision
 
+The content-pack expansion is tracked in
+[asset_pack_ecosystem.md](../asset_pack_ecosystem.md). Its v2 envelope adds
+client/server/combined targets and typed components while preserving v1.
+This changes packaging support; it does not imply every asset consumer is
+implemented or that installation activates content.
+
 GUO distributes independently licensed user content as ZIP packs. The pack
 and index contract is defined in [data_formats.md](../data_formats.md#12-guo-asset-store-packs-adr-0019),
 written before either producer or consumer. Supported kinds are background,

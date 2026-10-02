@@ -4,6 +4,9 @@
     <ImplicitUsings>enable</ImplicitUsings><Nullable>disable</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../../../godot/GUO/src/Store/StoreContent.cs" Link="StoreContent.cs" />
+    <Compile Include="../../../godot/GUO/src/Store/StoreVerifiedContent.cs" Link="StoreVerifiedContent.cs" />
+    <Compile Include="../../../godot/GUO/src/Store/StoreContentLock.cs" Link="StoreContentLock.cs" />
     <Compile Include="../../../godot/GUO/src/Store/StoreBackground.cs" Link="StoreBackground.cs" />
     <Compile Include="../../../godot/GUO/src/Store/StoreAddress.cs" Link="StoreAddress.cs" />
     <Compile Include="../../../godot/GUO/src/Store/StorePack.cs" Link="StorePack.cs" />
