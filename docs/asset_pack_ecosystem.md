@@ -47,11 +47,23 @@ and cannot be reversed merely by switching assets.
 
 ## Client activation (initial consumers)
 
-Set `UO_CONTENT_STORE` to an installed store root and `UO_CONTENT_LOCK` to an
-explicit content-lock JSON. Activation happens at archive load, before texture
-caches are populated; restart to change deployments. Missing settings leave the
-original client path unchanged. An invalid lock or unsupported client component
+By default, the client reads `user://store/.active-content.json`, selected
+through the Store's **Configure deployment** window. No selected file means
+the original client assets. `UO_CONTENT_STORE` overrides the installed store
+root and `UO_CONTENT_LOCK` overrides the lock path; environment-managed
+deployments remain managed through the command-line tools.
+Activation happens at archive load, before texture caches are populated;
+restart to change deployments. An invalid lock or unsupported client component
 refuses the deployment rather than partially activating it.
+
+The desktop deployment window accepts explicit numeric IDs or imports an
+existing lock. **Validate & select** runs every client consumer in dry-run mode
+before atomically selecting the lock. A failure preserves the existing
+selection and running assets. **Restore previous** revalidates before rollback;
+**Use original assets** clears the selection while retaining rollback. Selected
+packs and dependencies cannot be uninstalled through the store. Server export
+remains a separate action and scripts retain their explicit approval lifecycle.
+The selection is installation-wide, not yet negotiated per shard.
 
 The lock binds namespaced identities to numeric IDs per asset type. Original
 PNG entries support static, land, texmap and gump. Land is 44x44, texmaps are
@@ -152,6 +164,7 @@ The portable tool is built with
   keeping `ACTIVE.previous`. This selects a deployment; consumers load it on
   restart and may refuse unsupported payloads. It never executes scripts.
 - `rollback-content STORE ACTIVE`: reverify and select the previous lock.
+- `deactivate-content ACTIVE`: select original assets and retain the previous lock.
 - `export-server STORE LOCK OUTPUT`: export supported server item, tiledata, map and region
   definitions with numeric IDs from the same client/server lock; output must be new.
 
@@ -183,7 +196,8 @@ The collision starter additionally verifies server static height and a
 
 Not yet implemented: other server gameplay consumers;
 client region overlays; presentation activation
-unification; editor authoring consumers; shard content negotiation;
-full store activation UI. Animation coverage currently
+unification; editor authoring consumers; shard content negotiation.
+Deployment controls have desktop and compact rendered proofs; physical touch
+and gamepad interaction remain unverified. Animation coverage currently
 proves explicit sequences/anchors, not every body/equipment mapping. A verified
 envelope for one of these types does not imply executable runtime support.

@@ -254,6 +254,14 @@ internal sealed class StoreClient : IDisposable
     public StoreVerifiedContent VerifyContent(string id, string version)
     {
         using var guard = Lock();
+        return VerifyContentLocked(id, version);
+    }
+
+    internal IDisposable AcquireContentLock() => Lock();
+
+    // Caller holds AcquireContentLock, including during the resulting pointer mutation.
+    internal StoreVerifiedContent VerifyContentLocked(string id, string version)
+    {
         var packs = new Dictionary<string, StoreVerifiedPack>(StringComparer.Ordinal);
         var visiting = new HashSet<string>(StringComparer.Ordinal);
         void Visit(string packId, string packVersion)
@@ -297,6 +305,14 @@ internal sealed class StoreClient : IDisposable
     {
         string destination = Destination(id, version);
         using var guard = Lock();
+        string activePath = Path.Combine(_root, ".active-content.json");
+        if (File.Exists(activePath))
+        {
+            var selected = StoreContentLock.Read(activePath);
+            var closure = selected.VerifySnapshot(VerifyContentLocked(selected.Pack, selected.Version));
+            StorePack.Require(!closure.Packs.TryGetValue(id, out var pack) || pack.Version != version,
+                "This pack is selected for startup. Select original assets or another deployment before uninstalling it.");
+        }
         if (Directory.Exists(destination)) DeleteTree(destination);
         guard.Dispose();
         Changed("uninstall", id, version);

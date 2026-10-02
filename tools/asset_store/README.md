@@ -117,6 +117,14 @@ static height and `CanFit` rejection using the installed impassable flag.
 
 ## Screenshots
 
+`content_probe.py --deployment-ui` exercises the real ID/import/select/rollback
+controls against a temporary store, including rejected consumer bindings,
+unchanged live assets, startup mount and selected-dependency uninstall protection.
+Add `--visual` for `build/asset_packs/deployment-ui.png`, and `--compact` for a
+640x480 proof at `build/asset_packs/deployment-ui-compact.png`. Supply the same
+`--godot` and `--data` arguments as the runtime probe. Original-assets recovery
+is also available without the UI via `StoreSmoke deactivate-content ACTIVE`.
+
 The opt-in `res://src/Store/StoreProof.tscn` loads the normal game scene and
 constructs the real Options picker. With an installed background, it displays
 that installed media outside the login gump. Set `GUO_STORE_PROOF_VIEW=store`

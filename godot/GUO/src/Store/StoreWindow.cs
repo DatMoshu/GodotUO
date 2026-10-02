@@ -216,6 +216,16 @@ internal sealed partial class StoreWindow : CanvasLayer
             var action = Touchable(new Button { Text = present ? "Uninstall" : !compatible ? "Needs newer GUO" : update ? "Update" : "Install", Disabled = _busy || (!present && !compatible) });
             action.SizeFlagsHorizontal = Control.SizeFlags.ShrinkBegin;
             info.AddChild(action); action.Pressed += () => _ = Change(entry, present);
+            if (present && m.Kind == "content")
+            {
+                var deploy = Touchable(new Button { Text = "Configure deployment", Disabled = _busy });
+                info.AddChild(deploy);
+                deploy.Pressed += () =>
+                {
+                    try { StoreDeploymentWindow.Open(this, m.Id, m.Version); }
+                    catch (Exception e) { _status.Text = "Could not review deployment: " + e.Message; }
+                };
+            }
             if (present && (m.Kind == "razor-script" || m.Components?.Any(c => c.Type == "script" && c.Target == "client") == true))
             {
                 var browse = Touchable(new Button { Text = "Browse scripts", Disabled = _busy || !(Client.Game?.UO?.World?.InGame ?? false) });
@@ -233,6 +243,16 @@ internal sealed partial class StoreWindow : CanvasLayer
         {
             var button = Touchable(new Button { Text = $"Uninstall {m.Title} {m.Version} (not in collection)", Disabled = _busy });
             _list.AddChild(button); button.Pressed += () => _ = Change(new StoreEntry { Manifest = m }, true);
+            if (m.Kind == "content")
+            {
+                var configure = Touchable(new Button { Text = $"Configure {m.Title} {m.Version}", Disabled = _busy });
+                _list.AddChild(configure);
+                configure.Pressed += () =>
+                {
+                    try { StoreDeploymentWindow.Open(this, m.Id, m.Version); }
+                    catch (Exception e) { _status.Text = "Could not review deployment: " + e.Message; }
+                };
+            }
         }
         if (_list.GetChildCount() == 0) _list.AddChild(Text("No matching packs. Try another search or kind.", 18, Muted));
     }

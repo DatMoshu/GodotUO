@@ -50,6 +50,12 @@ if (args.Length == 3 && args[0] == "rollback-content")
     Console.WriteLine("Previous verified deployment selected. Restart consumers; gameplay side effects are not undone.");
     return 0;
 }
+if (args.Length == 2 && args[0] == "deactivate-content")
+{
+    StoreDeployment.Deactivate(args[1]);
+    Console.WriteLine("Original assets selected for restart; previous deployment retained for rollback.");
+    return 0;
+}
 
 if (args.Length == 3 && args[0] == "extract-content")
 {

@@ -142,6 +142,10 @@ namespace GUO.Assets
         }
 
         public void Load(bool useVerdata, string lang, string mapsLayouts = "")
+            => Load(useVerdata, lang, mapsLayouts, true);
+
+        // GUO validation probes can load the original archives without selecting content.
+        internal void Load(bool useVerdata, string lang, string mapsLayouts, bool loadContent)
         {
             Stopwatch stopwatch = Stopwatch.StartNew();
             
@@ -359,7 +363,7 @@ namespace GUO.Assets
             }
 
 
-            Content = GUO.Store.StoreRuntimeContent.LoadConfigured(this, lang);
+            if (loadContent) Content = GUO.Store.StoreRuntimeContent.LoadConfigured(this, lang);
             Log.Trace($"Files loaded in: {stopwatch.ElapsedMilliseconds} ms!");
             stopwatch.Stop();
         }

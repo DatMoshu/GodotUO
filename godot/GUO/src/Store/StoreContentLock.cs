@@ -41,6 +41,11 @@ internal sealed class StoreContentLock
     public StoreVerifiedContent Verify(StoreClient client)
     {
         var snapshot = client.VerifyContent(Pack, Version);
+        return VerifySnapshot(snapshot);
+    }
+
+    internal StoreVerifiedContent VerifySnapshot(StoreVerifiedContent snapshot)
+    {
         StorePack.Require(snapshot.IdentityHash == IdentityHash, "Content lock no longer matches installed content");
         var numeric = new HashSet<string>(StringComparer.Ordinal);
         foreach (var (identity, binding) in Bindings)

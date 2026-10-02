@@ -38,14 +38,18 @@ internal sealed class StoreRuntimeContent : IDisposable
     public static StoreRuntimeContent LoadConfigured(UOFileManager files, string language)
     {
         string path = Environment.GetEnvironmentVariable("UO_CONTENT_LOCK");
-        if (string.IsNullOrWhiteSpace(path)) return null;
         string root = Environment.GetEnvironmentVariable("UO_CONTENT_STORE");
-        StorePack.Require(!string.IsNullOrWhiteSpace(root), "UO_CONTENT_STORE is required with UO_CONTENT_LOCK");
+        if (string.IsNullOrWhiteSpace(root)) root = ProjectSettings.GlobalizePath("user://store");
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            path = Path.Combine(root, ".active-content.json");
+            if (!File.Exists(path)) return null;
+        }
         using var store = new StoreClient("http://127.0.0.1:18865", root, GUO.Configuration.PlatformDefaults.CurrentVersion);
         return Load(files, language, StoreContentLock.Read(path), store);
     }
 
-    internal static StoreRuntimeContent Load(UOFileManager files, string language, StoreContentLock contentLock, StoreClient store)
+    internal static StoreRuntimeContent Load(UOFileManager files, string language, StoreContentLock contentLock, StoreClient store, bool apply = true)
     {
         var snapshot = contentLock.Verify(store);
         var result = new StoreRuntimeContent();
@@ -206,6 +210,7 @@ internal sealed class StoreRuntimeContent : IDisposable
             result._tiles[art] = tile;
         }
         // Commit only after all components and payloads validate.
+        if (!apply) return result;
         result._maps.Compile();
         for (int map = 0; map < MapLoader.MAPS_COUNT; map++) result.ApplyMap(files.Maps, map);
         foreach (var (key, glyph) in asciiGlyphs) files.Fonts.ApplyContentGlyph(key.Font, key.Code, glyph);

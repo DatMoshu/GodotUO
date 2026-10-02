@@ -16,6 +16,9 @@ def main():
     parser.add_argument("--godot", required=True, help="Blocking godot-console executable")
     parser.add_argument("--shared-world", action="store_true", help="Verify the combined client/server map example")
     parser.add_argument("--collision-world", action="store_true", help="Verify combined maps and shared static collision metadata")
+    parser.add_argument("--deployment-ui", action="store_true", help="Exercise real deployment controls and preservation failures")
+    parser.add_argument("--visual", action="store_true", help="Render the deployment UI proof image instead of running headless")
+    parser.add_argument("--compact", action="store_true", help="Use a 640x480 deployment UI proof viewport")
     parser.add_argument("--server-export", type=Path, help="Write a new ModernUO export from the same verified deployment")
     parser.add_argument("--data", default=os.environ.get("UO_CLIENT_DATA"), required=not bool(os.environ.get("UO_CLIENT_DATA")))
     args = parser.parse_args()
@@ -52,7 +55,12 @@ def main():
         proof = root / "build/asset_packs/runtime-pixels.png"
         proof.parent.mkdir(parents=True, exist_ok=True)
         env = dict(os.environ, UO_CLIENT_DATA=args.data, UO_CONTENT_STORE=str(installed), UO_CONTENT_LOCK=str(lock), UO_CONTENT_PROOF_IMAGE=str(proof), UO_CONTENT_PROBE_LAND="3" if args.shared_world or args.collision_world else "580", UO_CONTENT_PROBE_COLLISION="1" if args.collision_world else "0")
-        subprocess.run([args.godot, "--headless", "--path", str(root / "godot/GUO"), "res://src/Store/StoreContentProbe.tscn"], env=env, check=True, timeout=90)
+        if args.visual:
+            if not args.deployment_ui: parser.error("--visual requires --deployment-ui")
+            env["UO_DEPLOYMENT_PROOF_IMAGE"] = str(root / "build/asset_packs" / ("deployment-ui-compact.png" if args.compact else "deployment-ui.png"))
+        if args.compact: env["UO_DEPLOYMENT_PROOF_COMPACT"] = "1"
+        scene = "StoreDeploymentProbe" if args.deployment_ui else "StoreContentProbe"
+        subprocess.run([args.godot, *([] if args.visual else ["--headless"]), "--path", str(root / "godot/GUO"), f"res://src/Store/{scene}.tscn"], env=env, check=True, timeout=90)
     return 0
 
 

@@ -5,6 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../../godot/GUO/src/Store/StoreContentLock.cs" Link="StoreContentLock.cs" />
     <Compile Include="../../godot/GUO/src/Store/ScriptPackSession.cs" Link="ScriptPackSession.cs" />
     <Compile Include="../../godot/GUO/src/Store/StoreContent.cs" Link="StoreContent.cs" />
     <Compile Include="../../godot/GUO/src/Store/StoreVerifiedContent.cs" Link="StoreVerifiedContent.cs" />
