@@ -45,5 +45,8 @@ internal abstract class Stage
     public abstract string Hints { get; }
 
     /// <summary>Overlay rows the pointer can pick.</summary>
-    public virtual IEnumerable<OverlayItem> OverlayItems => System.Array.Empty<OverlayItem>();
+    public virtual IEnumerable<IOverlayFocusable> OverlayItems => System.Array.Empty<IOverlayFocusable>();
+
+    /// <summary>The right stick's X, when the step wants it (turning the figure); false leaves it to the pointer.</summary>
+    public virtual bool RightStick(float x) => false;
 }

@@ -158,7 +158,10 @@ internal static class Pregame3DProbe
     private static async Task Run()
     {
         _dir = Arg("--screenshot-dir", _dir);
-        string account = Arg("--account", "guoprobe");
+        // A fresh account (the dev shard makes it on first login) has no
+        // character, so the run goes through the whole of creation; an
+        // existing one (--account guoprobe) plays its character instead.
+        string account = Arg("--account", "p3d" + DateTime.Now.ToString("MMddHHmmss"));
         string password = Arg("--password", account);
         GamepadInput.KnownLayout(Device, GamepadLayout.Labels);
 
@@ -253,57 +256,24 @@ internal static class Pregame3DProbe
             await Frames(60);
             await Shot("07_characters");
 
-            // 7. A look at creation (X = new), a few changes, and back (B).
+            // A look at creation (X = new) and back (B).
             await Press(PadCmd.X);
 
             if (await Until(() => Step == LoginSteps.CharacterCreation, 60))
             {
                 await Frames(60);
-                await Shot("08_creation");
-                await Press(PadCmd.Down); // gender
-                await Press(PadCmd.Right);
-                await Press(PadCmd.Down); // race or skin
-                await Press(PadCmd.Down);
-                await Press(PadCmd.Right);
-                await Press(PadCmd.Right);
-                await Frames(10);
-                await Shot("09_creation_changed");
-
-                // The name on the keyboard, then Next, a profession, the cities.
-                for (int i = 0; i < 12; i++)
-                {
-                    await Press(PadCmd.Up);
-                }
-
-                await Press(PadCmd.A);
-                Check("A on Name opens the keyboard", PregameDiorama.Instance.Keyboard.IsOpen);
-                await Type("Pebble");
-                await Press(PadCmd.Start);
-                await Press(PadCmd.Start); // Next
-                await Frames(10);
-                await Shot("10_creation_profession");
-                await Press(PadCmd.A); // the first profession (or category)
-                await Frames(10);
-                await Shot("11_creation_next");
-                await Press(PadCmd.B);
-                await Press(PadCmd.B);
+                await Shot("08_creation_trade");
                 await Press(PadCmd.B);
                 Check("B goes back to the characters", await Until(() => Step == LoginSteps.CharacterSelection, 60), Step.ToString());
                 await Frames(40);
             }
-            else
-            {
-                GD.Print("[GUO] pregame3d probe: no free slot, creation not visited");
-            }
 
-            // 8. Play the focused (last played) character.
             Check("a character is focused", PregameDiorama.Instance?.Focus.Current is Hotspot);
             await Press(PadCmd.A);
         }
         else
         {
-            Check("the account has a character to play", false, "creation came up instead");
-            return;
+            await Creation();
         }
 
         bool inWorld = await Until(() => Client.Game?.UO?.World?.InGame ?? false, 1200);
@@ -311,5 +281,211 @@ internal static class Pregame3DProbe
         await Frames(90);
         Check("the diorama left with the login scene", !PregameDiorama.Active);
         await Shot("12_world");
+    }
+
+    private static string Tag => CreationStage.ProbeFocusTag ?? "";
+
+    /// <summary>Down (then up) a list until the focus's tag matches.</summary>
+    private static async Task<bool> SeekList(Func<string, bool> match)
+    {
+        foreach (PadCmd dir in new[] { PadCmd.Down, PadCmd.Up })
+        {
+            for (int i = 0; i < 40; i++)
+            {
+                if (match(Tag))
+                {
+                    return true;
+                }
+
+                string before = Tag;
+                await Press(dir);
+
+                if (Tag == before)
+                {
+                    break;
+                }
+            }
+        }
+
+        return match(Tag);
+    }
+
+    /// <summary>Row by row across a grid until the focus's tag matches.</summary>
+    private static async Task<bool> SeekGrid(Func<string, bool> match)
+    {
+        for (int i = 0; i < 6; i++)
+        {
+            await Press(PadCmd.Up);
+            await Press(PadCmd.Left);
+            await Press(PadCmd.Left);
+            await Press(PadCmd.Left);
+        }
+
+        for (int row = 0; row < 6; row++)
+        {
+            for (int col = 0; col < 6; col++)
+            {
+                if (match(Tag))
+                {
+                    return true;
+                }
+
+                string before = Tag;
+                await Press(PadCmd.Right);
+
+                if (Tag == before)
+                {
+                    break;
+                }
+            }
+
+            if (match(Tag))
+            {
+                return true;
+            }
+
+            await Press(PadCmd.Down);
+
+            for (int i = 0; i < 6; i++)
+            {
+                await Press(PadCmd.Left);
+            }
+        }
+
+        return match(Tag);
+    }
+
+    private static async Task Stick(float x)
+    {
+        Godot.Input.ParseInputEvent(new InputEventJoypadMotion { Device = Device, Axis = JoyAxis.RightX, AxisValue = x });
+        await Frames(3);
+        Godot.Input.ParseInputEvent(new InputEventJoypadMotion { Device = Device, Axis = JoyAxis.RightX, AxisValue = 0f });
+        await Frames(3);
+    }
+
+    /// <summary>Every step of the Tailor's Table, an Advanced character, then Enter Britannia.</summary>
+    private static async Task Creation()
+    {
+        Check("creation came up (a fresh account)", await Until(() => CreationStage.ProbeStep == CreationStage.Step.Trade, 120));
+        await Frames(60);
+        await Shot("c1_trade");
+
+        // 1 Trade: Advanced.
+        Check("found the Advanced card", await SeekGrid(t => t.Contains("advanced")), Tag);
+        await Frames(5);
+        await Shot("c1b_trade_advanced");
+        await Press(PadCmd.A);
+        Check("A on a card goes to Look", await Until(() => CreationStage.ProbeStep == CreationStage.Step.Look, 30));
+
+        // 2 Look: turn the figure, a hair style, a shirt colour from the palette.
+        await Frames(20);
+        byte? d0 = CreationStage.ProbeDirection;
+        await Stick(1f);
+        await Stick(1f);
+        Check("the right stick turns the figure", CreationStage.ProbeDirection != d0, $"{d0} -> {CreationStage.ProbeDirection}");
+        await SeekList(t => t == "hair");
+        await Press(PadCmd.Right);
+        await Press(PadCmd.Right);
+        Check("found the Shirt row", await SeekList(t => t == "shirt"), Tag);
+        await Press(PadCmd.A);
+        Check("A on a colour opens the palette", CreationStage.ProbePopoverOpen);
+
+        for (int i = 0; i < 5; i++)
+        {
+            await Press(PadCmd.Right);
+        }
+
+        await Press(PadCmd.Down);
+        await Press(PadCmd.Down);
+        await Frames(10);
+        await Shot("c2_palette");
+        await Press(PadCmd.A);
+        Check("A keeps the colour", !CreationStage.ProbePopoverOpen);
+        await Frames(10);
+        await Shot("c3_look");
+
+        // 3 Skills: more Str, four skills, a changed value.
+        await Press(PadCmd.Start);
+        Check("Start goes to Skills (Advanced)", await Until(() => CreationStage.ProbeStep == CreationStage.Step.Skills, 30));
+        await SeekList(t => t == "stat:str");
+
+        for (int i = 0; i < 8; i++)
+        {
+            await Press(PadCmd.Left); // Str starts at its cap: down, the others up
+        }
+
+        await SeekList(t => t == "stat:int");
+
+        for (int i = 0; i < 3; i++)
+        {
+            await Press(PadCmd.Right);
+        }
+
+        for (int slot = 0; slot < 4; slot++)
+        {
+            if (!await SeekList(t => t == $"slot:{slot}"))
+            {
+                break;
+            }
+
+            await Press(PadCmd.A);
+
+            for (int i = 0; i < 2 + slot * 3; i++)
+            {
+                await Press(PadCmd.Down);
+            }
+
+            if (slot == 1)
+            {
+                await Frames(5);
+                await Shot("c4_skill_list");
+            }
+
+            await Press(PadCmd.A);
+            await Frames(4);
+        }
+
+        await SeekList(t => t == "slot:0");
+
+        for (int i = 0; i < 6; i++)
+        {
+            await Press(PadCmd.Right);
+        }
+
+        await Frames(10);
+        await Shot("c5_skills");
+        await Press(PadCmd.Start);
+        Check("Start goes to Home", await Until(() => CreationStage.ProbeStep == CreationStage.Step.Home, 30), CreationStage.ProbeStep?.ToString());
+
+        // 4 Home: a city that is not the first offered.
+        Check("the map was drawn", await Until(() => CreationStage.ProbeMapReady, 600));
+        await Frames(10);
+        string first = Tag;
+
+        foreach (PadCmd dir in new[] { PadCmd.Right, PadCmd.Down, PadCmd.Left, PadCmd.Up })
+        {
+            if (Tag != first)
+            {
+                break;
+            }
+
+            await Press(dir);
+        }
+
+        Check("the D-pad moved to another city", Tag != first && Tag.StartsWith("city:"), $"{first} -> {Tag}");
+        await Frames(5);
+        await Shot("c6_home");
+        await Press(PadCmd.A);
+        Check("A on a city goes to Name", await Until(() => CreationStage.ProbeStep == CreationStage.Step.Name, 30));
+
+        // 5 Name, then Enter Britannia.
+        await Press(PadCmd.A);
+        Check("A on the name opens the keyboard", PregameDiorama.Instance.Keyboard.IsOpen);
+        await Type("Pebble");
+        await Press(PadCmd.Start);
+        await Frames(10);
+        await Shot("c7_name");
+        await Press(PadCmd.Start);
+        Check("Enter Britannia created the character", await Until(() => Step is LoginSteps.CharacterCreationDone or LoginSteps.EnteringBritania || (Client.Game?.UO?.World?.InGame ?? false), 120), Step.ToString());
     }
 }

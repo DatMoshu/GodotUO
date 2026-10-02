@@ -133,7 +133,11 @@ internal sealed class OnScreenKeyboard
         Native = NativeKeyboard.Available;
         _grid.Visible = _specials.Visible = !Native;
         _help.Text = Native
-            ? (NativeKeyboard.Kind == "steam" ? "Steam keyboard  -  press Start when done,  B to cancel" : "Type on the keyboard  -  Start when done,  B to cancel")
+            ? (NativeKeyboard.Kind == "steam"
+                // Steam's keyboard owns the pad while it is up: Start and B never
+                // reach us, but its Enter key does (Key: Enter commits and closes it).
+                ? "Steam keyboard  -  press Enter when done"
+                : "Type on the keyboard  -  Enter when done")
             : "A type   X delete   Y shift   Start done   B cancel";
         GD.Print($"[GUO] pregame3d: text field \"{caption}\" via the {(Native ? NativeKeyboard.Kind + " keyboard" : "pregame's own grid keyboard")}");
 

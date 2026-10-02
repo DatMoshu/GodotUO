@@ -200,6 +200,54 @@ internal sealed class PadFocus
         }
     }
 
+    /// <summary>
+    /// Neighbours from where things are (map pins, laid-out cards): each way,
+    /// the nearest one in that direction within 45 degrees.
+    /// </summary>
+    public static void LinkByPositions(IList<IFocusable> items, IList<Vector2> at)
+    {
+        for (int i = 0; i < items.Count; i++)
+        {
+            items[i].Up = Nearest(i, new Vector2(0, -1));
+            items[i].Down = Nearest(i, new Vector2(0, 1));
+            items[i].Left = Nearest(i, new Vector2(-1, 0));
+            items[i].Right = Nearest(i, new Vector2(1, 0));
+        }
+
+        IFocusable Nearest(int from, Vector2 dir)
+        {
+            IFocusable best = null;
+            float bestScore = float.MaxValue;
+
+            for (int j = 0; j < items.Count; j++)
+            {
+                if (j == from)
+                {
+                    continue;
+                }
+
+                Vector2 d = at[j] - at[from];
+                float along = d.Dot(dir);
+                float across = Math.Abs(d.Dot(new Vector2(dir.Y, -dir.X)));
+
+                if (along <= 0.5f || across > along * 1.2f)
+                {
+                    continue;
+                }
+
+                float score = along + across * 2f;
+
+                if (score < bestScore)
+                {
+                    bestScore = score;
+                    best = items[j];
+                }
+            }
+
+            return best;
+        }
+    }
+
     /// <summary>Lays <paramref name="items"/> out as a grid of <paramref name="columns"/> and links all four ways.</summary>
     public static void LinkGrid(IList<IFocusable> items, int columns)
     {

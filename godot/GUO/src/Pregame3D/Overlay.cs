@@ -75,12 +75,14 @@ internal static class Overlay
 /// A focusable overlay row: a caption, an optional value with ◄ ► when it
 /// cycles, a gold selection when focused (the style's field selection).
 /// </summary>
-internal sealed class OverlayItem : IFocusable
+internal sealed class OverlayItem : IOverlayFocusable
 {
     private static readonly StyleBoxFlat Lit = new() { BgColor = new Color(0.878f, 0.69f, 0.314f, 0.42f), ContentMarginLeft = 4, ContentMarginRight = 4, ContentMarginTop = 0, ContentMarginBottom = 0 };
     private static readonly StyleBoxFlat Unlit = new() { BgColor = new Color(0f, 0f, 0f, 0f), ContentMarginLeft = 4, ContentMarginRight = 4, ContentMarginTop = 0, ContentMarginBottom = 0 };
 
-    public readonly PanelContainer Control;
+    public PanelContainer Control { get; }
+
+    Control IOverlayFocusable.Control => Control;
     private readonly Label _caption;
     private readonly Label _value;
     private readonly Color _ink;
@@ -134,6 +136,45 @@ internal sealed class OverlayItem : IFocusable
         if (Enabled)
         {
             Activated?.Invoke();
+        }
+    }
+}
+
+/// <summary>A focusable thing of the overlay: the pointer hit-tests its control.</summary>
+internal interface IOverlayFocusable : IFocusable
+{
+    Control Control { get; }
+}
+
+/// <summary>Any overlay control made focusable: how it shows focus and what a press does are the caller's.</summary>
+internal sealed class UiFocus : IOverlayFocusable
+{
+    public UiFocus(Control control, Action<bool> shown = null, Action pressed = null)
+    {
+        Control = control;
+        Shown = shown;
+        Pressed = pressed;
+    }
+
+    public Control Control { get; }
+    public Action<bool> Shown { get; set; }
+    public Action Pressed { get; set; }
+    public object Tag { get; set; }
+    public bool Enabled { get; set; } = true;
+    public bool CanFocus => Enabled && Control.IsVisibleInTree();
+    public IFocusable Up { get; set; }
+    public IFocusable Down { get; set; }
+    public IFocusable Left { get; set; }
+    public IFocusable Right { get; set; }
+    public Action<int> Cycle { get; set; }
+
+    public void SetFocused(bool focused) => Shown?.Invoke(focused);
+
+    public void Press()
+    {
+        if (Enabled)
+        {
+            Pressed?.Invoke();
         }
     }
 }

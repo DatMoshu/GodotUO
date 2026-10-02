@@ -186,3 +186,33 @@ world and that the diorama freed itself; screenshots per step into
   the grid; `GUO_NATIVE_KEYBOARD=0` forces it, `=dry` takes the Steam path
   with the URLs only logged. The log says which: `pregame3d: keyboard = ...`.
 - `ui_anchors` boxes are clamped inside the viewport whatever the margins.
+
+### Character creation: the Tailor's Table (2026-10-02)
+
+Five steps under tabs (`1 Trade · 2 Look · 3 Skills · 4 Home · 5 Name`; a
+done step shows its choice, Skills only for Advanced). L1/R1 or Start move
+between steps, B goes back one step (out of Trade to the character list). The
+character stands large on a plinth on the left, live, drawn from the player's
+own animation art (`Mannequin.cs`: the body's stand frame plus each worn
+item's equipment frame in the client's layer order, hued on the CPU as the
+hue shader does, at a whole-number scale); the right stick turns it.
+
+- **Trade:** the profession list in the gump's order, 4x2 cards, the focused
+  one's stats and skills below; A chooses, Y picks at random.
+- **Look:** body, race, skin, hair, beard, shirt, pants; left/right cycles,
+  colours are swatches (hue → RGB from the hue data), A opens the slot's hue
+  grid (the gump's set) with a live preview, A keeps, B undoes; Y randomises.
+- **Skills (Advanced):** Str/Dex/Int with a fixed total, the gump's skill slots
+  (left/right = value, paired as the gump's sliders), A = the skill list under
+  the client's default skill groups, X clears.
+- **Home:** a map drawn at runtime from the player's map files
+  (`WorldMapImage.cs`, radar colours, land only), a pin per city at its real
+  place; the D-pad jumps pin to pin, A chooses.
+- **Name:** the name (the gump's validation) on the device keyboard or ours, a
+  summary, and Enter Britannia, which calls `LoginScene.CreateCharacter` with
+  the gump's data.
+
+The probe on a fresh account (the default) goes through every step: an
+Advanced character, a palette colour, changed stats and four skills, a city
+other than the first, then creates it and enters the world. `--account
+guoprobe` plays the existing character instead.

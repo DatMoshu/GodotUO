@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: BSD-2-Clause
-// GUO addition, not a port: character creation for the 3D pregame. The data
-// it builds is the classic gumps' (CharCreationGump, CreateCharAppearanceGump,
-// CreateCharProfessionGump, CreateCharTradeGump, CreateCharSelectionCityGump):
-// the same PlayerMobile, items, skills, stats, city and profession byte go to
+// GUO addition, not a port: character creation for the 3D pregame, the
+// "Tailor's Table" (docs/ui/pregame_3d.md). The data it builds is the classic
+// gumps' (CharCreationGump, CreateCharAppearanceGump, CreateCharProfessionGump,
+// CreateCharTradeGump, CreateCharSelectionCityGump): the same PlayerMobile,
+// items, skills, stats, city and profession byte go to
 // LoginScene.CreateCharacter. Those gumps are read, never edited.
 
 using System;
@@ -21,81 +22,117 @@ using GUO.Utility;
 
 namespace GUO.Pregame3D;
 
-internal sealed class CreationStage : Stage
+/// <summary>
+/// Five steps under tabs (Trade, Look, Skills for Advanced only, Home,
+/// Name), the character large on a plinth to the left, live. L1/R1 or
+/// Start move between steps, B goes back one (out of Trade to the
+/// character list).
+/// </summary>
+internal sealed partial class CreationStage : Stage
 {
-    private enum Page { Appearance, Profession, Trade, City }
+    public enum Step { Trade, Look, Skills, Home, Name }
 
-    private Page _page;
+    private static readonly string[] StepNames = { "Trade", "Look", "Skills", "Home", "Name" };
+
+    // --- palette (docs/ui/uo_godot_style.md + the Tailor's Table mockups) ---
+    private static readonly Color ParchmentBg = new("e8dcb8");
+    private static readonly Color Border = new("5a3a0c");
+    private static readonly Color Ink = new("1c1812");
+    private static readonly Color Heading = new("5a3a0c");
+    private static readonly Color Gold = new("e0b050");
+    private static readonly Color Active = new("8c1c12");
+    private static readonly Color Cream = new("eeeade");
+    private static readonly Color Muted = new("6e6250");
+
+    private Step _step;
+    private readonly HashSet<Step> _done = new();
     private World _world;
     private PlayerMobile _character;
+
     private bool _female;
     private RaceType _race = RaceType.HUMAN;
     private string _name = "";
     private readonly Dictionary<Layer, int> _option = new();
+
     /// <summary>Per layer: the index into its hue grid, -1 for the picker's starting hue.</summary>
     private readonly Dictionary<Layer, int> _hueIndex = new();
+
     private ProfessionInfo _profession;
     private ProfessionInfo _category;
-    private int _cityIndex;
-    private int _citySelected;
+    private int _citySelected = -1;
 
-    // Trade (advanced) page.
-    private readonly int[] _stats = new int[3];
+    private readonly int[] _stats = new int[3]; // Str, Int, Dex (the trade gump's order)
     private int[] _skillPick;
     private int[] _skillValue;
     private List<SkillEntry> _skillList;
 
-    private PanelContainer _panel;
-    private PanelContainer _summary;
-    private Label _summaryText;
-    private VBoxContainer _rows;
-    private Label _title;
-    private readonly List<OverlayItem> _items = new();
-    private Node3D _figure;
-    private Label3D _figureName;
+    // --- UI ---
+    private Control _chrome;
+    private HBoxContainer _tabs;
+    private readonly Label[] _tabLabels = new Label[5];
+    private readonly PanelContainer[] _tabPanels = new PanelContainer[5];
+    private PanelContainer _content;
+    private VBoxContainer _body;
+    private readonly List<IOverlayFocusable> _items = new();
+    private Control _popover;
+    private readonly List<IOverlayFocusable> _popItems = new();
+    private Action<bool> _popClose;
+
+    // --- the figure ---
+    private Node3D _plinth;
+    private Sprite3D _figure;
+    private byte _direction = 3; // facing the viewer (UO direction 3: south-ish... see Turn)
+    private int _frame;
+    private double _frameTime;
+    private bool _dirty = true;
+    private int _retries;
+    private float _stickX;
+    private int _figureHeight = 80;
+    private bool _toldFigure;
+
+    public static string ProbeFocusTag => (PregameDiorama.Instance?.Stage as CreationStage)?.FocusTag;
+    public static Step? ProbeStep => (PregameDiorama.Instance?.Stage as CreationStage)?._step;
+    public static bool ProbePopoverOpen => (PregameDiorama.Instance?.Stage as CreationStage)?._popover != null;
+    public static bool ProbeMapReady => (PregameDiorama.Instance?.Stage as CreationStage)?._mapReady ?? false;
+    public static byte? ProbeDirection => (PregameDiorama.Instance?.Stage as CreationStage)?._direction;
+
+    private string FocusTag => (D.Focus.Current as UiFocus)?.Tag as string;
 
     private static int SkillsCount => CharCreationGump._skillsCount;
 
-    public override IEnumerable<OverlayItem> OverlayItems => _items;
+    private bool Advanced => _profession != null && _profession.DescriptionIndex <= 0;
 
-    public override string Hints => _page switch
+    public override IEnumerable<IOverlayFocusable> OverlayItems => _popover != null ? _popItems : _items;
+
+    public override string Hints
     {
-        Page.Appearance => "<>  Change     A  Edit     Start  Next     B  Back",
-        Page.Profession => "A  Choose     B  Back",
-        Page.Trade => "<>  Change     Start  Next     B  Back",
-        _ => "A  Choose city     Start  Create     B  Back",
-    };
+        get
+        {
+            if (_popover != null)
+            {
+                return _step == Step.Skills ? "A  Choose     B  Close" : "A  Keep     B  Undo";
+            }
+
+            return _step switch
+            {
+                Step.Trade => "A  Choose     Y  Random     RS  Turn     B  Back",
+                Step.Look => "<>  Change     A  Palette     Y  Random     LB/RB  Step     Start  Next     B  Back",
+                Step.Skills => "<>  Adjust     A  Skill list     X  Clear     Start  Next     B  Back",
+                Step.Home => "A  Choose     Start  Next     B  Back",
+                _ => "A  Type     Start  Enter Britannia     B  Back",
+            };
+        }
+    }
+
+    // ==========================================================================
+    // Enter / Exit / Update
+    // ==========================================================================
 
     public override void Enter()
     {
         _world = Client.Game.UO.World;
-        D.Frame(D.StepPose("characters", -0.3f), null, 0.8);
         D.LidTo(1f, 0.6);
-
-        _panel = Overlay.Card(Overlay.Parchment);
-        VBoxContainer col = Overlay.Column(2);
-        _title = Overlay.Text("", UoTheme.Heading);
-        col.AddChild(_title);
-        _rows = Overlay.Column(1);
-        col.AddChild(_rows);
-        _panel.AddChild(col);
-        _panel.CustomMinimumSize = new Vector2(250, 0);
-        D.OverlayRoot.AddChild(_panel);
-        _panel.GrowHorizontal = Control.GrowDirection.Begin;
-        _panel.GrowVertical = Control.GrowDirection.Both;
-
-        _summary = Overlay.Card(Overlay.Stone);
-        _summaryText = Overlay.Text("", UoTheme.Ink, wrap: true);
-        _summaryText.CustomMinimumSize = new Vector2(190, 0);
-        _summary.AddChild(_summaryText);
-        D.OverlayRoot.AddChild(_summary);
-
-        // A stand-in figure on a plinth in the chest (a UO sprite billboard is a later step).
-        _figure = D.Scene.Plinth();
-        var plinths = D.Scene.Layout.PlinthSlots;
-        _figure.Transform = (plinths.Count > 0 ? plinths[plinths.Count / 2].Transform : new Placement(D.Scene.ChestInterior.Position).Transform) * _figure.Transform;
-        D.Scene.Root.AddChild(_figure);
-        _figureName = D.TextAbove(_figure, "", 1, new Color("e0b050"));
+        D.Scene.SetDim(0.42f);
 
         // As CreateCharAppearanceGump's constructor: a human male, defaults.
         _female = false;
@@ -108,22 +145,169 @@ internal sealed class CreationStage : Stage
         _citySelected = -1;
         _skillPick = null;
         _character = null;
+        _done.Clear();
+        _mapImageFor = null;
         Rebuild();
-        ShowPage(Page.Appearance);
+
+        BuildChrome();
+        BuildFigure();
+        FrameFigure();
+        ShowStep(Step.Trade);
     }
 
     public override void Exit()
     {
-        _panel?.QueueFree();
-        _summary?.QueueFree();
-        _figure?.QueueFree();
-        _panel = _summary = null;
+        ClosePopover(false);
+        _chrome?.QueueFree();
+        _chrome = null;
+        _plinth?.QueueFree();
+        _plinth = null;
         _figure = null;
         _items.Clear();
         D.Focus.Clear();
+        D.Scene.SetDim(1f);
     }
 
-    // --- the character: CreateCharAppearanceGump's data flow ------------------------------
+    public override void Update(double delta)
+    {
+        if (_figure == null)
+        {
+            return;
+        }
+
+        // A slow idle: the stand animation's frames, about five a second.
+        _frameTime += delta;
+
+        if (_frameTime > 0.2)
+        {
+            _frameTime = 0;
+            int count = Mannequin.FrameCount(_character, _direction);
+
+            if (count > 1)
+            {
+                _frame = (_frame + 1) % count;
+                _dirty = true;
+            }
+        }
+
+        if (_dirty)
+        {
+            Image img = Mannequin.Compose(_character, _direction, _frame, out bool complete);
+            _dirty = !complete && ++_retries < 30;
+
+            if (complete)
+            {
+                _retries = 0;
+            }
+
+            Rect2I used = img.GetUsedRect();
+
+            if (complete && !_toldFigure)
+            {
+                _toldFigure = true;
+                GD.Print($"[GUO] pregame3d: figure body 0x{_character.Graphic:X4} dir {_direction}: {used.Size.X}x{used.Size.Y} px drawn, {Mannequin.FrameCount(_character, _direction)} frame(s)");
+            }
+
+            if (used.Size.Y > 0)
+            {
+                _figureHeight = Mannequin.Foot.Y - used.Position.Y;
+            }
+
+            if (_figure.Texture is ImageTexture tex && tex.GetSize() == new Vector2(img.GetWidth(), img.GetHeight()))
+            {
+                tex.Update(img);
+            }
+            else
+            {
+                _figure.Texture = ImageTexture.CreateFromImage(img);
+            }
+        }
+
+        // Whole pixels at about 47% of the screen's height (380 of 800).
+        float unit = D.PixelUnit(_figure.GlobalPosition);
+        int lines = Math.Max(1, (int) Math.Round(D.InternalHeight * 0.475f));
+        int k = Math.Max(1, (int) Math.Round(lines / (float) Math.Max(30, _figureHeight)));
+        _figure.PixelSize = unit * k;
+    }
+
+    /// <summary>The right stick turns the figure, one direction per push.</summary>
+    public override bool RightStick(float x)
+    {
+        int was = Math.Abs(_stickX) > 0.6f ? Math.Sign(_stickX) : 0;
+        int now = Math.Abs(x) > 0.6f ? Math.Sign(x) : 0;
+        _stickX = x;
+
+        if (now != 0 && now != was)
+        {
+            Turn(now);
+        }
+
+        return true;
+    }
+
+    private void Turn(int d)
+    {
+        _direction = (byte) ((_direction + d + 8) % 8);
+        _frame = 0;
+        _dirty = true;
+    }
+
+    /// <summary>
+    /// The character-select camera, slid sideways so the figure's plinth
+    /// stands in the middle of the screen's left third, clear of the card.
+    /// </summary>
+    private void FrameFigure()
+    {
+        (Vector3 pos, Vector3 look, float fov) pose = D.StepPose("characters");
+        Aabb plinthBox = Hotspot.MeshBounds(_plinth, _plinth.GlobalTransform);
+        Vector3 target = new(plinthBox.GetCenter().X, plinthBox.End.Y, plinthBox.GetCenter().Z);
+        Vector3 forward = (pose.look - pose.pos).Normalized();
+        Vector3 right = forward.Cross(Vector3.Up).Normalized();
+        float depth = (target - pose.pos).Dot(forward);
+        float aspect = D.OverlayRoot.Size.X / Math.Max(1f, D.OverlayRoot.Size.Y);
+        float halfW = depth * Mathf.Tan(Mathf.DegToRad(pose.fov) / 2f) * aspect;
+        // Where the plinth is now across the view, and where it should be (19% from the left).
+        float now = (target - pose.pos).Dot(right);
+        float want = -halfW * (1f - 2f * 0.19f);
+        float slide = now - want;
+
+        // And up or down so its top stands at 82% of the height (the figure fills the space above).
+        Vector3 up = right.Cross(forward).Normalized();
+        float halfH = depth * Mathf.Tan(Mathf.DegToRad(pose.fov) / 2f);
+        float nowY = (target - pose.pos).Dot(up);
+        float wantY = -halfH * (2f * 0.82f - 1f);
+        float lift = nowY - wantY;
+        pose.pos += right * slide + up * lift;
+        pose.look += right * slide + up * lift;
+        D.Frame(pose, null, 0.8);
+    }
+
+    private void BuildFigure()
+    {
+        List<Placement> slots = D.Scene.Layout.PlinthSlots;
+        _plinth = D.Scene.Plinth();
+        _plinth.Transform = (slots.Count > 0 ? slots[slots.Count / 2].Transform : new Placement(new Vector3(0f, 0.15f, 0.6f)).Transform) * _plinth.Transform;
+        D.Scene.Root.AddChild(_plinth);
+
+        Aabb box = Hotspot.MeshBounds(_plinth, _plinth.GlobalTransform);
+        _figure = new Sprite3D
+        {
+            Name = "Figure",
+            Billboard = BaseMaterial3D.BillboardModeEnum.FixedY,
+            TextureFilter = BaseMaterial3D.TextureFilterEnum.Nearest,
+            Shaded = false,
+            AlphaCut = SpriteBase3D.AlphaCutMode.Discard,
+            Centered = true,
+            Offset = new Vector2(Mannequin.Canvas.X / 2 - Mannequin.Foot.X, Mannequin.Foot.Y - Mannequin.Canvas.Y / 2),
+        };
+        D.Scene.Root.AddChild(_figure);
+        _figure.GlobalPosition = new Vector3(box.GetCenter().X, box.End.Y, box.GetCenter().Z);
+        _dirty = true;
+    }
+
+    // ==========================================================================
+    // The character: CreateCharAppearanceGump's data flow
+    // ==========================================================================
 
     private void ResetStyles()
     {
@@ -133,22 +317,23 @@ internal sealed class CreationStage : Stage
 
     private bool HasBeard => !_female && _race != RaceType.ELF;
 
+    private ushort[] Palette(Layer layer) => layer switch
+    {
+        Layer.Invalid => CharacterCreationValues.GetSkinPallet(_race),
+        Layer.Hair or Layer.Beard => CharacterCreationValues.GetHairPallet(_race),
+        _ => null,
+    };
+
     /// <summary>A layer's hue grid as the picker builds it (ColorPickerBox: palette + 1, or 3, 8, 13 ... without one).</summary>
     private ushort[] HueGrid(Layer layer)
     {
-        ushort[] palette = layer switch
-        {
-            Layer.Invalid => CharacterCreationValues.GetSkinPallet(_race),
-            Layer.Hair or Layer.Beard => CharacterCreationValues.GetHairPallet(_race),
-            _ => null,
-        };
+        ushort[] palette = Palette(layer);
 
         if (palette != null)
         {
             return palette.Select(h => (ushort) (h + 1)).ToArray();
         }
 
-        // Shirt and pants: 10 rows x 20 columns of the hues file, from Graduation 1.
         var grid = new ushort[200];
         ushort start = 2;
 
@@ -160,7 +345,13 @@ internal sealed class CreationStage : Stage
         return grid;
     }
 
-    /// <summary>A layer's hue: the picker's starting hue (palette[0] + 1, or 2) until one is chosen.</summary>
+    /// <summary>The grid's columns, as the gump lays it out (8 rows of a palette; 10x20 otherwise).</summary>
+    private int HueColumns(Layer layer)
+    {
+        ushort[] palette = Palette(layer);
+        return palette != null ? Math.Max(1, palette.Length >> 3) : 20;
+    }
+
     private ushort Hue(Layer layer)
     {
         ushort[] grid = HueGrid(layer);
@@ -168,13 +359,7 @@ internal sealed class CreationStage : Stage
 
         if (i < 0 || i >= grid.Length)
         {
-            ushort[] palette = layer switch
-            {
-                Layer.Invalid => CharacterCreationValues.GetSkinPallet(_race),
-                Layer.Hair or Layer.Beard => CharacterCreationValues.GetHairPallet(_race),
-                _ => null,
-            };
-
+            ushort[] palette = Palette(layer);
             return (ushort) ((palette != null && palette.Length > 0 ? palette[0] : 1) + 1);
         }
 
@@ -243,13 +428,16 @@ internal sealed class CreationStage : Stage
                 break;
         }
 
-        // UpdateEquipments.
         _character.Hue = Hue(Layer.Invalid);
 
         if (HasBeard)
         {
             var beards = CharacterCreationValues.GetFacialHairComboContent(_race);
-            Push(CreateItem(beards.GetGraphic(Math.Clamp(_option[Layer.Beard], 0, beards.Labels.Length - 1)), Hue(Layer.Beard), Layer.Beard));
+
+            if (beards.Labels.Length > 0)
+            {
+                Push(CreateItem(beards.GetGraphic(Math.Clamp(_option[Layer.Beard], 0, beards.Labels.Length - 1)), Hue(Layer.Beard), Layer.Beard));
+            }
         }
 
         var hairs = CharacterCreationValues.GetHairComboContent(_female, _race);
@@ -260,7 +448,11 @@ internal sealed class CreationStage : Stage
         }
 
         _character.Name = _name;
-        UpdateSummary();
+
+        // The profession's (or the trade page's) values survive a look change.
+        ApplyTrade();
+        _dirty = true;
+        _frame = 0;
     }
 
     private void Push(Item item)
@@ -305,475 +497,291 @@ internal sealed class CreationStage : Stage
         return ((flags & CharacterListFlags.CLF_ELVEN_RACE) != 0 && locks.HasFlag(LockedFeatureFlags.ML), locks.HasFlag(LockedFeatureFlags.SA));
     }
 
-    // --- pages ------------------------------------------------------------------------
-
-    private void ShowPage(Page page, int focus = 0)
+    private List<RaceType> Races()
     {
-        _page = page;
+        (bool elf, bool garg) = AllowedRaces();
+        var races = new List<RaceType> { RaceType.HUMAN };
 
-        foreach (OverlayItem item in _items)
+        if (elf)
         {
-            _rows.RemoveChild(item.Control);
-            item.Control.QueueFree();
+            races.Add(RaceType.ELF);
+        }
+
+        if (garg)
+        {
+            races.Add(RaceType.GARGOYLE);
+        }
+
+        return races;
+    }
+
+    /// <summary>The chosen profession's skills and stats (or the trade page's) onto the character.</summary>
+    private void ApplyTrade()
+    {
+        if (_character == null)
+        {
+            return;
+        }
+
+        foreach (Skill skill in _character.Skills)
+        {
+            skill.ValueFixed = 0;
+            skill.BaseFixed = 0;
+            skill.CapFixed = 0;
+            skill.Lock = Lock.Locked;
+        }
+
+        if (_profession == null)
+        {
+            return;
+        }
+
+        if (Advanced)
+        {
+            if (_skillPick != null && _skillList != null)
+            {
+                for (int i = 0; i < _skillPick.Length; i++)
+                {
+                    if (_skillPick[i] >= 0)
+                    {
+                        Skill skill = _character.Skills[_skillList[_skillPick[i]].Index];
+                        skill.ValueFixed = (ushort) _skillValue[i];
+                    }
+                }
+            }
+
+            _character.Strength = (ushort) _stats[0];
+            _character.Intelligence = (ushort) _stats[1];
+            _character.Dexterity = (ushort) _stats[2];
+            return;
+        }
+
+        for (int i = 0; i < SkillsCount; i++)
+        {
+            int skillIndex = _profession.SkillDefVal[i, 0];
+
+            if (skillIndex < _character.Skills.Length)
+            {
+                _character.Skills[skillIndex].ValueFixed = (ushort) _profession.SkillDefVal[i, 1];
+            }
+        }
+
+        _character.Strength = (ushort) _profession.StatsVal[0];
+        _character.Intelligence = (ushort) _profession.StatsVal[1];
+        _character.Dexterity = (ushort) _profession.StatsVal[2];
+    }
+
+    // ==========================================================================
+    // Chrome: tabs, the content card
+    // ==========================================================================
+
+    private static StyleBoxFlat Box(Color bg, Color border, int width = 2, int margin = 6) => new()
+    {
+        BgColor = bg,
+        BorderColor = border,
+        BorderWidthLeft = width, BorderWidthTop = width, BorderWidthRight = width, BorderWidthBottom = width,
+        ContentMarginLeft = margin, ContentMarginRight = margin, ContentMarginTop = margin - 2, ContentMarginBottom = margin - 2,
+    };
+
+    private static PanelContainer Card(Color? bg = null, Color? border = null, int margin = 6)
+    {
+        var p = new PanelContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
+        p.AddThemeStyleboxOverride("panel", Box(bg ?? ParchmentBg, border ?? Border, 2, margin));
+        return p;
+    }
+
+    private static Label Text(string s, Color c, int scale = 1, bool wrap = false) => Overlay.Text(s, c, scale, wrap);
+
+    private void BuildChrome()
+    {
+        _chrome = new Control { MouseFilter = Control.MouseFilterEnum.Ignore };
+        D.OverlayRoot.AddChild(_chrome);
+        _chrome.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+
+        _tabs = Overlay.Row(4);
+        _chrome.AddChild(_tabs);
+        _tabs.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.CenterTop, Control.LayoutPresetMode.Minsize, 6);
+        _tabs.GrowHorizontal = Control.GrowDirection.Both;
+
+        for (int i = 0; i < 5; i++)
+        {
+            _tabPanels[i] = Card(margin: 5);
+            _tabLabels[i] = Text("", Ink);
+            _tabPanels[i].AddChild(_tabLabels[i]);
+            _tabs.AddChild(_tabPanels[i]);
+        }
+
+        _content = Card(margin: 8);
+        _chrome.AddChild(_content);
+        _content.AnchorLeft = 0.38f;
+        _content.AnchorRight = 1f;
+        _content.AnchorTop = 0f;
+        _content.AnchorBottom = 1f;
+        _content.OffsetLeft = 0;
+        _content.OffsetRight = -8;
+        _content.OffsetTop = 34;
+        _content.OffsetBottom = -28;
+        _content.ClipContents = true;
+
+        _body = Overlay.Column(4);
+        _content.AddChild(_body);
+    }
+
+    private void RefreshTabs()
+    {
+        var clilocs = Client.Game.UO.FileManager.Clilocs;
+
+        for (int i = 0; i < 5; i++)
+        {
+            var step = (Step) i;
+            bool skipped = step == Step.Skills && !Advanced;
+            string caption = StepNames[i];
+
+            if (_done.Contains(step) && step != _step)
+            {
+                caption = step switch
+                {
+                    Step.Trade when _profession != null => Title(clilocs.GetString(_profession.Localization) ?? _profession.Name),
+                    Step.Look => (_female ? "Female " : "Male ") + Title(_race.ToString()),
+                    Step.Home when CityName() != null => CityName(),
+                    Step.Name when _name.Length > 0 => _name,
+                    _ => caption,
+                };
+            }
+
+            _tabLabels[i].Text = $"{i + 1} {caption}";
+            bool current = step == _step;
+            _tabPanels[i].AddThemeStyleboxOverride("panel", current ? Box(Active, Gold, 2, 5) : Box(skipped ? new Color("bfb595") : ParchmentBg, Border, 2, 5));
+            _tabLabels[i].AddThemeColorOverride("font_color", current ? Cream : skipped ? Muted : _done.Contains(step) ? Heading : Ink);
+        }
+    }
+
+    private static string Title(string s) => string.IsNullOrEmpty(s) ? s : char.ToUpperInvariant(s[0]) + s.Substring(1).ToLowerInvariant();
+
+    // ==========================================================================
+    // Steps
+    // ==========================================================================
+
+    private void ShowStep(Step step, string focusTag = null)
+    {
+        ClosePopover(false);
+        _step = step;
+
+        foreach (Node c in _body.GetChildren())
+        {
+            _body.RemoveChild(c);
+            c.QueueFree();
         }
 
         _items.Clear();
         D.Focus.Clear();
 
-        switch (page)
+        switch (step)
         {
-            case Page.Appearance: AppearancePage(); break;
-            case Page.Profession: ProfessionPage(); break;
-            case Page.Trade: TradePage(); break;
-            case Page.City: CityPage(); break;
+            case Step.Trade: TradeStep(); break;
+            case Step.Look: LookStep(); break;
+            case Step.Skills: SkillsStep(); break;
+            case Step.Home: HomeStep(); break;
+            case Step.Name: NameStep(); break;
         }
 
-        PadFocus.LinkColumn(_items.Cast<IFocusable>().ToList());
-        D.Focus.Set(_items.Count > 0 ? _items[Math.Clamp(focus, 0, _items.Count - 1)] : null);
-        UpdateSummary();
-        D.RefreshHints();
-        Callable.From(Relayout).CallDeferred();
-    }
-
-    /// <summary>Fit both cards to what they hold now (a container grows, it never shrinks back).</summary>
-    private void Relayout()
-    {
-        if (_panel == null)
-        {
-            return;
-        }
-
-        _panel.ResetSize();
-        _panel.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.CenterRight, Control.LayoutPresetMode.Minsize, 8);
-        _summary.ResetSize();
-        _summary.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.TopLeft, Control.LayoutPresetMode.Minsize, 8);
-    }
-
-    private OverlayItem Add(string caption, Action activated = null, Action<int> cycle = null, Func<string> value = null, Color? ink = null)
-    {
-        var item = new OverlayItem(caption, activated, ink) { Cycle = cycle };
-
-        if (value != null)
-        {
-            item.Value = value();
-
-            if (cycle != null)
-            {
-                Action<int> inner = cycle;
-                item.Cycle = d =>
-                {
-                    inner(d);
-                    item.Value = value();
-                    UpdateSummary();
-                };
-            }
-        }
-
-        _rows.AddChild(item.Control);
-        _items.Add(item);
-
-        return item;
-    }
-
-    private void AppearancePage()
-    {
-        _title.Text = "Appearance";
-        var clilocs = Client.Game.UO.FileManager.Clilocs;
-        (bool allowElf, bool allowGarg) = AllowedRaces();
-        var races = new List<RaceType> { RaceType.HUMAN };
-
-        if (allowElf)
-        {
-            races.Add(RaceType.ELF);
-        }
-
-        if (allowGarg)
-        {
-            races.Add(RaceType.GARGOYLE);
-        }
-
-        Add("Name", () => EditName(), value: () => _name.Length > 0 ? _name : "(choose)");
-        Add("Gender", null, d =>
-        {
-            // HandleGenreChange: the styles reset, the hues stay.
-            _female = !_female;
-            ResetStyles();
-            Rebuild();
-            ShowPage(Page.Appearance, 1);
-        }, () => _female ? "Female" : "Male");
-
-        if (races.Count > 1)
-        {
-            Add("Race", null, d =>
-            {
-                // HandleRaceChanged: hues and styles back to their defaults.
-                int i = (races.IndexOf(_race) + d + races.Count) % races.Count;
-                _race = races[i];
-                _hueIndex.Clear();
-                ResetStyles();
-                Rebuild();
-                ShowPage(Page.Appearance, 2);
-            }, () => _race.ToString()[0] + _race.ToString().Substring(1).ToLowerInvariant());
-        }
-
-        AddHue(clilocs.GetString(3000183) ?? "Skin", Layer.Invalid);
-
-        var hairs = CharacterCreationValues.GetHairComboContent(_female, _race);
-
-        if (hairs.Labels.Length > 0)
-        {
-            Add(clilocs.GetString(_race == RaceType.GARGOYLE ? 1112309 : 3000121) ?? "Hair", null,
-                d => { _option[Layer.Hair] = (_option[Layer.Hair] + d + hairs.Labels.Length) % hairs.Labels.Length; Rebuild(); },
-                () => hairs.Labels[Math.Clamp(_option[Layer.Hair], 0, hairs.Labels.Length - 1)]);
-            AddHue(clilocs.GetString(_race == RaceType.GARGOYLE ? 1112322 : 3000184) ?? "Hair color", Layer.Hair);
-        }
-
-        if (HasBeard)
-        {
-            var beards = CharacterCreationValues.GetFacialHairComboContent(_race);
-
-            if (beards.Labels.Length > 0)
-            {
-                Add(clilocs.GetString(_race == RaceType.GARGOYLE ? 1112511 : 3000122) ?? "Facial hair", null,
-                    d => { _option[Layer.Beard] = (_option[Layer.Beard] + d + beards.Labels.Length) % beards.Labels.Length; Rebuild(); },
-                    () => beards.Labels[Math.Clamp(_option[Layer.Beard], 0, beards.Labels.Length - 1)]);
-                AddHue(clilocs.GetString(_race == RaceType.GARGOYLE ? 1112512 : 3000446) ?? "Facial hair color", Layer.Beard);
-            }
-        }
-
-        AddHue(clilocs.GetString(3000440) ?? "Shirt color", Layer.Shirt);
-
-        if (_race != RaceType.GARGOYLE)
-        {
-            AddHue(clilocs.GetString(3000441) ?? "Pants color", Layer.Pants);
-        }
-
-        Add("Next", NextFromAppearance, ink: UoTheme.Heading);
-    }
-
-    private void AddHue(string caption, Layer layer)
-    {
-        Add(caption, null, d =>
-        {
-            ushort[] grid = HueGrid(layer);
-            int i = _hueIndex.TryGetValue(layer, out int v) ? v : -1;
-            _hueIndex[layer] = ((i < 0 ? (d > 0 ? -1 : 0) : i) + d + grid.Length) % grid.Length;
-            Rebuild();
-        }, () => $"hue {Hue(layer)}");
-    }
-
-    private void EditName()
-    {
-        D.Keyboard.Open("Character name", _name, false, 16, text =>
-        {
-            _name = text.Trim();
-            Rebuild();
-            ShowPage(Page.Appearance, _items.Count - 1);
-        }, () => D.RefreshHints());
+        IFocusable focus = _items.FirstOrDefault(i => (i as UiFocus)?.Tag as string == focusTag) ?? DefaultFocus();
+        D.Focus.Set(focus);
+        RefreshTabs();
         D.RefreshHints();
     }
 
-    /// <summary>The appearance gump's Next: the name checked as it checks it.</summary>
-    private void NextFromAppearance()
+    private IFocusable DefaultFocus() => _items.FirstOrDefault(i => i.CanFocus);
+
+    /// <summary>A step forward: the current one's checks first, Skills only for Advanced.</summary>
+    private void Next()
     {
-        _character.Name = _name;
-        int invalid = CreateCharAppearanceGump.Validate(_name);
-
-        if (invalid > 0)
-        {
-            D.ShowMessage(Client.Game.UO.FileManager.Clilocs.GetString(invalid), EditName);
-            return;
-        }
-
-        (bool allowElf, bool allowGarg) = AllowedRaces();
-
-        if (_race == RaceType.ELF && !allowElf || _race == RaceType.GARGOYLE && !allowGarg)
+        if (!Leave(_step))
         {
             return;
         }
 
-        GUO.Utility.Logging.Log.Trace($"Creating character '{_name}'");
-        ShowPage(Page.Profession);
+        if (_step == Step.Name)
+        {
+            Create();
+            return;
+        }
+
+        Step next = _step + 1;
+
+        if (next == Step.Skills && !Advanced)
+        {
+            next = Step.Home;
+        }
+
+        ShowStep(next);
     }
 
-    private void ProfessionPage()
+    private void Back()
     {
-        var clilocs = Client.Game.UO.FileManager.Clilocs;
-        var all = Client.Game.UO.FileManager.Professions.Professions;
-        List<ProfessionInfo> list;
-
-        if (_category != null && all.TryGetValue(_category, out List<ProfessionInfo> children) && children != null)
+        if (_step == Step.Trade)
         {
-            list = children;
-            _title.Text = clilocs.GetString(_category.Localization) ?? "Profession";
-        }
-        else
-        {
-            list = new List<ProfessionInfo>(all.Keys);
-            _title.Text = clilocs.GetString(3000326, "Choose a Trade for Your Character");
-        }
-
-        foreach (ProfessionInfo info in list)
-        {
-            ProfessionInfo p = info;
-            Add(clilocs.GetString(p.Localization) ?? p.Name, () => ChooseProfession(p));
-        }
-    }
-
-    /// <summary>CreateCharProfessionGump.SelectProfession then CharCreationGump.SetProfession.</summary>
-    private void ChooseProfession(ProfessionInfo info)
-    {
-        var all = Client.Game.UO.FileManager.Professions.Professions;
-
-        if (info.Type == ProfessionLoader.PROF_TYPE.CATEGORY && all.TryGetValue(info, out List<ProfessionInfo> list) && list != null)
-        {
-            _category = info;
-            ShowPage(Page.Profession);
-            return;
-        }
-
-        // A profession chosen after another starts clean (the trade gump zeroes them too).
-        foreach (Skill skill in _character.Skills)
-        {
-            skill.ValueFixed = 0;
-            skill.BaseFixed = 0;
-            skill.CapFixed = 0;
-            skill.Lock = Lock.Locked;
-        }
-
-        for (int i = 0; i < SkillsCount; i++)
-        {
-            int skillIndex = info.SkillDefVal[i, 0];
-
-            if (skillIndex >= _character.Skills.Length)
+            if (_category != null)
             {
-                continue;
-            }
-
-            if ((_world.ClientFeatures.Flags & CharacterListFlags.CLF_SAMURAI_NINJA) == 0 && (skillIndex == 52 || skillIndex == 53))
-            {
-                for (int k = 0; k < i; k++)
-                {
-                    Skill skill = _character.Skills[info.SkillDefVal[k, 0]];
-                    skill.ValueFixed = 0;
-                    skill.BaseFixed = 0;
-                    skill.CapFixed = 0;
-                    skill.Lock = Lock.Locked;
-                }
-
-                D.ShowMessage(Client.Game.UO.FileManager.Clilocs.GetString(1063016));
+                _category = null;
+                ShowStep(Step.Trade);
                 return;
             }
 
-            Skill skill2 = _character.Skills[skillIndex];
-            skill2.ValueFixed = (ushort) info.SkillDefVal[i, 1];
-            skill2.BaseFixed = 0;
-            skill2.CapFixed = 0;
-            skill2.Lock = Lock.Locked;
-        }
-
-        _profession = info;
-        _character.Strength = (ushort) info.StatsVal[0];
-        _character.Intelligence = (ushort) info.StatsVal[1];
-        _character.Dexterity = (ushort) info.StatsVal[2];
-
-        ShowPage(info.DescriptionIndex > 0 ? Page.City : Page.Trade);
-    }
-
-    private void TradePage()
-    {
-        _title.Text = "Attributes and skills";
-        var clilocs = Client.Game.UO.FileManager.Clilocs;
-        (int[,] defSkills, int[] defStats) = ProfessionInfo.GetDefaults(Client.Game.UO.Version);
-
-        if (_skillPick == null || _skillPick.Length != SkillsCount)
-        {
-            _skillPick = Enumerable.Repeat(-1, SkillsCount).ToArray();
-            _skillValue = new int[SkillsCount];
-
-            for (int i = 0; i < SkillsCount; i++)
-            {
-                _skillValue[i] = defSkills[i, 1];
-            }
-
-            for (int i = 0; i < 3; i++)
-            {
-                _stats[i] = defStats[i];
-            }
-        }
-
-        _skillList = SkillChoices();
-        string[] statNames = { clilocs.GetString(3000111) ?? "Strength", clilocs.GetString(3000112) ?? "Intelligence", clilocs.GetString(3000113) ?? "Dexterity" };
-
-        for (int i = 0; i < 3; i++)
-        {
-            int stat = i;
-            Add(statNames[i], null, d => Paired(_stats, stat, d, 10, 60), () => _stats[stat].ToString());
-        }
-
-        for (int i = 0; i < SkillsCount; i++)
-        {
-            int k = i;
-            Add($"Skill {k + 1}", null, d =>
-            {
-                int n = _skillList.Count;
-                _skillPick[k] = ((_skillPick[k] < 0 ? (d > 0 ? -1 : 0) : _skillPick[k]) + d + n) % n;
-            }, () => _skillPick[k] < 0 ? "Click here" : _skillList[_skillPick[k]].Name);
-            Add("   value", null, d => Paired(_skillValue, k, d, 0, 50), () => _skillValue[k].ToString());
-        }
-
-        Add("Next", NextFromTrade, ink: UoTheme.Heading);
-    }
-
-    /// <summary>HSliderBar's paired sliders: one up, another down, the total kept.</summary>
-    private static void Paired(int[] values, int index, int delta, int min, int max)
-    {
-        int target = values[index] + delta;
-
-        if (target < min || target > max)
-        {
+            Login.StepBack();
             return;
         }
 
-        // The partner: the largest other that can give (or the smallest that can take).
-        int partner = -1;
+        Step prev = _step - 1;
 
-        for (int j = 0; j < values.Length; j++)
+        if (prev == Step.Skills && !Advanced)
         {
-            if (j == index)
-            {
-                continue;
-            }
-
-            bool can = delta > 0 ? values[j] - delta >= min : values[j] - delta <= max;
-
-            if (can && (partner < 0 || (delta > 0 ? values[j] > values[partner] : values[j] < values[partner])))
-            {
-                partner = j;
-            }
+            prev = Step.Look;
         }
 
-        if (partner < 0)
-        {
-            return;
-        }
-
-        values[index] = target;
-        values[partner] -= delta;
+        ShowStep(prev);
     }
 
-    /// <summary>The skills CreateCharTradeGump offers, by the same filters.</summary>
-    private List<SkillEntry> SkillChoices()
+    /// <summary>Whether the step may be left forward; marks it done.</summary>
+    private bool Leave(Step step)
     {
-        LockedFeatureFlags clientFlags = _world.ClientLockedFeatures.Flags;
-        List<SkillEntry> list = Client.Game.UO.FileManager.Skills.SortedSkills
-            .Where(s => s.Index != 47 && s.Index != 48 && s.Index != 54 && (_character.Race == RaceType.GARGOYLE || s.Index != 57))
-            .Where(s => clientFlags.HasFlag(LockedFeatureFlags.AOS) || (s.Index != 51 && s.Index != 50 && s.Index != 49))
-            .Where(s => clientFlags.HasFlag(LockedFeatureFlags.SE) || (s.Index != 52 && s.Index != 53))
-            .Where(s => clientFlags.HasFlag(LockedFeatureFlags.SA) || (s.Index != 55 && s.Index != 56))
-            .ToList();
-
-        if (_character.Race == RaceType.GARGOYLE)
+        switch (step)
         {
-            list.RemoveAll(s => s.Index == 31);
+            case Step.Trade when _profession == null:
+                D.ShowMessage("Choose a trade first.");
+                return false;
+
+            case Step.Skills when !SkillsValid():
+                return false;
+
+            case Step.Name when !NameValid():
+                return false;
         }
 
-        return list;
+        _done.Add(step);
+        ApplyTrade();
+        return true;
     }
-
-    /// <summary>CreateCharTradeGump's Next: three (or four) different skills, then onto the character.</summary>
-    private void NextFromTrade()
-    {
-        if (!_skillPick.All(p => p >= 0))
-        {
-            D.ShowMessage(Client.Game.UO.Version <= ClientVersion.CV_5090 ? ResGumps.YouMustHaveThreeUniqueSkillsChosen : Client.Game.UO.FileManager.Clilocs.GetString(1080032));
-            return;
-        }
-
-        if (_skillPick.Distinct().Count() != _skillPick.Length)
-        {
-            D.ShowMessage(Client.Game.UO.FileManager.Clilocs.GetString(1080032));
-            return;
-        }
-
-        foreach (Skill skill in _character.Skills)
-        {
-            skill.ValueFixed = 0;
-            skill.BaseFixed = 0;
-            skill.CapFixed = 0;
-            skill.Lock = Lock.Locked;
-        }
-
-        for (int i = 0; i < _skillPick.Length; i++)
-        {
-            Skill skill = _character.Skills[_skillList[_skillPick[i]].Index];
-            skill.ValueFixed = (ushort) _skillValue[i];
-            skill.BaseFixed = 0;
-            skill.CapFixed = 0;
-            skill.Lock = Lock.Locked;
-        }
-
-        _character.Strength = (ushort) _stats[0];
-        _character.Intelligence = (ushort) _stats[1];
-        _character.Dexterity = (ushort) _stats[2];
-
-        ShowPage(Page.City);
-    }
-
-    private void CityPage()
-    {
-        _title.Text = "Starting city";
-        CityInfo[] cities = Login.Cities ?? Array.Empty<CityInfo>();
-
-        if (cities.Length == 0)
-        {
-            Add("No city was sent", null);
-            Add("Create character", Create, ink: UoTheme.Heading);
-            return;
-        }
-
-        // CreateCharSelectionCityGump's starting city.
-        CityInfo start = Client.Game.UO.Version >= ClientVersion.CV_70130 ? Login.GetCity(0) : Login.GetCity(3) ?? Login.GetCity(0);
-
-        if (_citySelected < 0 || _citySelected >= cities.Length)
-        {
-            _citySelected = Math.Max(0, Array.IndexOf(cities, start));
-        }
-
-        _cityIndex = cities[_citySelected].Index;
-
-        for (int i = 0; i < cities.Length; i++)
-        {
-            int index = i;
-            CityInfo c = cities[i];
-            OverlayItem row = Add((i == _citySelected ? "> " : "   ") + c.City, () =>
-            {
-                _citySelected = index;
-                _cityIndex = c.Index;
-                ShowPage(Page.City, index);
-            });
-        }
-
-        Add("Create character", Create, ink: UoTheme.Heading);
-    }
-
-    private void Create()
-    {
-        if (_profession == null)
-        {
-            ShowPage(Page.Profession);
-            return;
-        }
-
-        _character.Name = _name;
-        GD.Print($"[GUO] pregame3d: create \"{_name}\" ({(_female ? "female" : "male")} {_race}), profession {_profession.DescriptionIndex}, city {_cityIndex}");
-        Login.CreateCharacter(_character, _cityIndex, (byte) _profession.DescriptionIndex);
-    }
-
-    // --- commands -----------------------------------------------------------------------
 
     public override bool Command(PadCmd cmd)
     {
+        if (_popover != null)
+        {
+            switch (cmd)
+            {
+                case PadCmd.A or PadCmd.Start:
+                    D.Focus.Current?.Press();
+                    return true;
+                case PadCmd.B:
+                    ClosePopover(false);
+                    return true;
+                case PadCmd.Up or PadCmd.Down or PadCmd.Left or PadCmd.Right:
+                    return false; // the focus moves inside the popover
+            }
+
+            return true;
+        }
+
         switch (cmd)
         {
             case PadCmd.B:
@@ -781,72 +789,151 @@ internal sealed class CreationStage : Stage
                 return true;
 
             case PadCmd.Start:
-                switch (_page)
+                if (_step == Step.Trade && _profession == null && D.Focus.Current != null)
                 {
-                    case Page.Appearance: NextFromAppearance(); break;
-                    case Page.Trade: NextFromTrade(); break;
-                    case Page.City: Create(); break;
-                    default: D.Focus.Current?.Press(); break;
+                    D.Focus.Current.Press();
+                    return true;
                 }
 
+                Next();
+                return true;
+
+            case PadCmd.RightShoulder:
+                if (_step == Step.Trade && _profession == null)
+                {
+                    D.ShowMessage("Choose a trade first.");
+                    return true;
+                }
+
+                Next();
+                return true;
+
+            case PadCmd.LeftShoulder:
+                if (_step != Step.Trade)
+                {
+                    Back();
+                }
+
+                return true;
+
+            case PadCmd.Y when _step == Step.Trade:
+                RandomTrade();
+                return true;
+
+            case PadCmd.Y when _step == Step.Look:
+                RandomLook();
+                return true;
+
+            case PadCmd.X when _step == Step.Skills:
+                ClearFocusedSkill();
                 return true;
         }
 
         return false;
     }
 
-    /// <summary>CharCreationGump.StepBack: a page back, or out to character selection from the first.</summary>
-    private void Back()
+    // ==========================================================================
+    // Popovers (palette, skill list)
+    // ==========================================================================
+
+    private void OpenPopover(Control content, List<IOverlayFocusable> items, IFocusable focus, Action<bool> close)
     {
-        switch (_page)
+        ClosePopover(false);
+        PanelContainer pop = Card(margin: 8);
+        pop.AddThemeStyleboxOverride("panel", Box(ParchmentBg, Gold, 2, 8));
+        pop.AddChild(content);
+        _chrome.AddChild(pop);
+        pop.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.Center, Control.LayoutPresetMode.Minsize);
+        pop.GrowHorizontal = Control.GrowDirection.Both;
+        pop.GrowVertical = Control.GrowDirection.Both;
+        Callable.From(() =>
         {
-            case Page.Appearance:
-                Login.StepBack();
-                break;
-
-            case Page.Profession when _category != null:
-                _category = null;
-                ShowPage(Page.Profession);
-                break;
-
-            case Page.Profession:
-                ShowPage(Page.Appearance);
-                break;
-
-            case Page.Trade:
-                ShowPage(Page.Profession);
-                break;
-
-            case Page.City:
-                ShowPage(_profession != null && _profession.DescriptionIndex > 0 ? Page.Profession : Page.Trade);
-                break;
-        }
+            if (IsInstanceValid(pop))
+            {
+                pop.ResetSize();
+                pop.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.Center, Control.LayoutPresetMode.Minsize);
+                // Over the content card, clear of the figure.
+                pop.Position = new Vector2(Math.Max(pop.Position.X, _content.Position.X), pop.Position.Y);
+            }
+        }).CallDeferred();
+        _popover = pop;
+        _popItems.Clear();
+        _popItems.AddRange(items);
+        _popClose = close;
+        D.Focus.Set(focus ?? items.FirstOrDefault());
+        D.RefreshHints();
     }
 
-    private void UpdateSummary()
+    private IFocusable _beforePopover;
+
+    private void ClosePopover(bool keep)
     {
-        if (_summaryText == null || _character == null)
+        if (_popover == null)
         {
             return;
         }
 
-        var clilocs = Client.Game.UO.FileManager.Clilocs;
-        string profession = _profession == null ? "-" : clilocs.GetString(_profession.Localization) ?? _profession.Name;
-        string skills = string.Join(", ", _character.Skills.Where(s => s.ValueFixed > 0).OrderByDescending(s => s.ValueFixed).Take(SkillsCount).Select(s => $"{s.Name} {s.ValueFixed}"));
-        string city = Login.Cities != null && _citySelected >= 0 && _citySelected < Login.Cities.Length ? Login.Cities[_citySelected].City : "-";
+        Action<bool> close = _popClose;
+        _popClose = null;
+        _popover.QueueFree();
+        _popover = null;
+        _popItems.Clear();
+        close?.Invoke(keep);
+        D.Focus.Set(_beforePopover);
+        _beforePopover = null;
+        D.RefreshHints();
+    }
 
-        _summaryText.Text = $"{(_name.Length > 0 ? _name : "(no name)")}\n"
-            + $"{(_female ? "Female" : "Male")} {_race.ToString().ToLowerInvariant()}, body 0x{_character.Graphic:X4}, skin {_character.Hue}\n"
-            + $"Profession: {profession}\n"
-            + $"Str {_character.Strength}  Int {_character.Intelligence}  Dex {_character.Dexterity}\n"
-            + $"Skills: {(skills.Length > 0 ? skills : "-")}\n"
-            + $"City: {city}";
+    private static bool IsInstanceValid(GodotObject o) => GodotObject.IsInstanceValid(o);
 
-        if (_figureName != null)
+    // ==========================================================================
+    // Create
+    // ==========================================================================
+
+    private bool NameValid()
+    {
+        _character.Name = _name;
+        int invalid = CreateCharAppearanceGump.Validate(_name);
+
+        if (invalid > 0)
         {
-            _figureName.Text = _name.Length > 0 ? _name : "?";
+            D.ShowMessage(Client.Game.UO.FileManager.Clilocs.GetString(invalid));
+            return false;
         }
 
-        Callable.From(Relayout).CallDeferred();
+        return true;
+    }
+
+    private void Create()
+    {
+        if (_profession == null)
+        {
+            ShowStep(Step.Trade);
+            return;
+        }
+
+        if (!NameValid())
+        {
+            return;
+        }
+
+        (bool allowElf, bool allowGarg) = AllowedRaces();
+
+        if (_race == RaceType.ELF && !allowElf || _race == RaceType.GARGOYLE && !allowGarg)
+        {
+            ShowStep(Step.Look);
+            return;
+        }
+
+        ApplyTrade();
+        CityInfo city = City();
+        int cityIndex = city?.Index ?? 0;
+        _character.Name = _name;
+        GUO.Utility.Logging.Log.Trace($"Creating character '{_name}'");
+        GD.Print($"[GUO] pregame3d: create \"{_name}\" ({(_female ? "female" : "male")} {_race}), profession {_profession.DescriptionIndex}, "
+            + $"str {_character.Strength} int {_character.Intelligence} dex {_character.Dexterity}, "
+            + $"skills {string.Join(", ", _character.Skills.Where(s => s.ValueFixed > 0).Select(s => $"{s.Name} {s.ValueFixed}"))}, "
+            + $"shirt hue {_character.FindItemByLayer(Layer.Shirt)?.Hue}, city {cityIndex} {city?.City}");
+        Login.CreateCharacter(_character, cityIndex, (byte) _profession.DescriptionIndex);
     }
 }

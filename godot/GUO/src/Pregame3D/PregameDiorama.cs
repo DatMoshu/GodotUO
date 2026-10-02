@@ -90,6 +90,9 @@ internal sealed partial class PregameDiorama : Node
     public Stage Stage => _stage;
     public Control OverlayRoot => _overlay;
 
+    /// <summary>The SubViewport's height in pixels (the internal resolution).</summary>
+    public int InternalHeight => _viewport.Size.Y;
+
     // The fixed hotspots of the login step.
     public Hotspot FieldAccount, FieldPassword, LoginButton, Shield, Credits;
     public readonly Hotspot[] Studs = new Hotspot[3];
@@ -344,6 +347,11 @@ internal sealed partial class PregameDiorama : Node
                         return true;
                 }
 
+                if (m.Axis == JoyAxis.RightX && _stage != null && _stage.RightStick(m.AxisValue))
+                {
+                    return true;
+                }
+
                 return false; // the right stick keeps the pointer; triggers are not ours
         }
 
@@ -547,7 +555,7 @@ internal sealed partial class PregameDiorama : Node
     {
         if (_stage != null)
         {
-            foreach (OverlayItem item in _stage.OverlayItems)
+            foreach (IOverlayFocusable item in _stage.OverlayItems)
             {
                 if (item.CanFocus && Overlay.Hit(item.Control, window))
                 {

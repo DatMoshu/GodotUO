@@ -37,6 +37,10 @@ internal sealed class DioramaScene
     private readonly HashSet<string> _told = new();
     private readonly List<ShaderMaterial> _materials = new();
     private readonly List<(OmniLight3D light, float energy, float seed)> _flicker = new();
+    private readonly List<(Light3D light, float energy)> _steady = new();
+    private Godot.Environment _env;
+    private float _ambient = 1f;
+    private float _dim = 1f;
     private readonly FastNoiseLite _noise = new() { NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin, Frequency = 2.2f };
     private Shader _psx, _cloth;
     private Vector2 _snap = new(640, 400);
@@ -77,6 +81,8 @@ internal sealed class DioramaScene
             TonemapMode = Godot.Environment.ToneMapper.Linear,
         };
         Root.AddChild(new WorldEnvironment { Environment = env });
+        _env = env;
+        _ambient = env.AmbientLightEnergy;
 
         foreach (LightSpec spec in Layout.Lights)
         {
@@ -175,6 +181,22 @@ internal sealed class DioramaScene
         ChestLid.Transform = p.Transform;
     }
 
+    /// <summary>1 = as lit; lower dims every light and the ambient (the scene behind a menu).</summary>
+    public void SetDim(float dim)
+    {
+        _dim = dim;
+
+        foreach ((Light3D light, float energy) in _steady)
+        {
+            light.LightEnergy = energy * dim;
+        }
+
+        if (_env != null)
+        {
+            _env.AmbientLightEnergy = _ambient * dim;
+        }
+    }
+
     /// <summary>1 = candles burn normally; lower gutters them (connecting).</summary>
     public void SetGutter(float g) => _gutter = g;
 
@@ -184,7 +206,7 @@ internal sealed class DioramaScene
         {
             float n = _noise.GetNoise2D((float) time * 3.1f, seed * 17f);
             float n2 = _noise.GetNoise2D((float) time * 9.7f, seed * 31f + 5f);
-            light.LightEnergy = energy * _gutter * (0.86f + 0.14f * n + 0.06f * n2);
+            light.LightEnergy = energy * _gutter * _dim * (0.86f + 0.14f * n + 0.06f * n2);
         }
     }
 
@@ -456,10 +478,12 @@ internal sealed class DioramaScene
         {
             case "directional":
                 light = new DirectionalLight3D();
+                _steady.Add((light, spec.Energy));
                 break;
 
             case "spot":
                 light = new SpotLight3D { SpotRange = spec.Range };
+                _steady.Add((light, spec.Energy));
                 break;
 
             default:
@@ -469,6 +493,10 @@ internal sealed class DioramaScene
                 if (spec.Flicker)
                 {
                     _flicker.Add((omni, spec.Energy, _flicker.Count + 1));
+                }
+                else
+                {
+                    _steady.Add((omni, spec.Energy));
                 }
 
                 break;
