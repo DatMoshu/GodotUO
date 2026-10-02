@@ -294,6 +294,15 @@ def main() -> int:
               f"{(world.get('position') or [0, '?', '?'])[1]},{(world.get('position') or [0, '?', '?'])[2]} "
               f"boot {world.get('boot_ms')} ms, {world.get('rendered_objects')} objects drawn, "
               f"{world.get('distinct_colours', 'no')} colours, picked: {world.get('picked')}")
+    search = report.get("search") or {}
+    if search:
+        print(f"[editor_smoke]   {'ok  ' if search.get('ok') else 'FAIL'} Search  F3 index ready in {search.get('index_ms')} ms, "
+              f"{search.get('menu_items')} editor menu items, {search.get('history_entries')} history entries")
+        for q in search.get("queries", []):
+            if "top_kind" in q:
+                print(f"[editor_smoke]        {'ok  ' if q.get('ok') else 'FAIL'} {q['query']!r:<20} -> {q['top_kind']} {q['top']!r} ({q['ms']} ms)")
+            else:
+                print(f"[editor_smoke]        {'ok  ' if q.get('finds_backpack') else 'FAIL'} {q['query']!r:<20} finds the backpack: {q.get('finds_backpack')}")
     overlay = world.get("overlay") or {}
     if overlay:
         print(f"[editor_smoke]   {'ok  ' if overlay.get('ok') else 'FAIL'} Overlay block 187,203: "

@@ -589,12 +589,15 @@ public partial class WorldView : VBoxContainer
         return m;
     }
 
-    private static void MenuToggle(MenuButton menu, string text, bool on, Action<bool> set)
+    private readonly System.Collections.Generic.Dictionary<string, (PopupMenu Menu, int Id, Action<bool> Set)> _toggles = new();
+
+    private void MenuToggle(MenuButton menu, string text, bool on, Action<bool> set)
     {
         PopupMenu pm = menu.GetPopup();
         int id = pm.ItemCount;
         pm.AddCheckItem(text, id);
         pm.SetItemChecked(id, on);
+        _toggles[text] = (pm, id, set);
         pm.IdPressed += i =>
         {
             if (i != id)
@@ -606,6 +609,25 @@ public partial class WorldView : VBoxContainer
             pm.SetItemChecked(id, now);
             set(now);
         };
+    }
+
+    /// <summary>The Layers and Guides menu items by name (Land, Statics, Multis, Roofs, Objects, Grid, Altitude, Blocks, ...), for F3.</summary>
+    internal System.Collections.Generic.IReadOnlyList<string> ToggleNames => new System.Collections.Generic.List<string>(_toggles.Keys);
+
+    /// <summary>A layer or guide's state; null when there is no such toggle (or the tab has not been built).</summary>
+    internal bool? GetToggle(string name) => _toggles.TryGetValue(name, out var t) ? t.Menu.IsItemChecked(t.Id) : null;
+
+    /// <summary>Sets a layer or guide through its menu item, so the menu and the world agree.</summary>
+    internal bool SetToggle(string name, bool on)
+    {
+        if (!_toggles.TryGetValue(name, out var t))
+        {
+            return false;
+        }
+
+        t.Menu.SetItemChecked(t.Id, on);
+        t.Set(on);
+        return true;
     }
 
     /// <summary>

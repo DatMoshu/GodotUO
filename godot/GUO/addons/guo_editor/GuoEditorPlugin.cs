@@ -35,6 +35,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
     private WorldView _world;
     private ShardDock _shard;
     private RunBar _run;
+    private SearchPopup _search;
 
     // Whether the World tab was on screen when an assembly reload began.
     // A bool field survives the reload (Godot serializes it), and the editor
@@ -129,6 +130,8 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
             _world.Host.OverlayChanged += maps.RefreshBlocks;
         }
 
+        _search = SearchPopup.Install(SearchContext.From(this, _data, _assets, _inspector, _world, _shard, _run, ShowInWorld));
+
         string smokeOut = EditorSmoke.OutDirFromArgs();
         string tourOut = EditorTour.OutDirFromArgs();
 
@@ -145,12 +148,14 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         if (smokeOut != null)
         {
             _smoke = new EditorSmoke(smokeOut, _data, _assets, _inspector, _world, _shard);
+            _smoke.Search = _search;
             AddChild(_smoke);
         }
 
         if (tourOut != null)
         {
             _tour = new EditorTour(tourOut, _data, _assets, _inspector, _world, _shard, _run);
+            _tour.Search = _search;
             AddChild(_tour);
         }
 
@@ -209,6 +214,9 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
 
     private void TearDown()
     {
+        SearchPopup.Remove(_search);
+        _search = null;
+
         if (_run != null)
         {
             RemoveControlFromContainer(CustomControlContainer.Toolbar, _run);

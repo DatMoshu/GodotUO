@@ -71,6 +71,9 @@ public partial class EditorSmoke : Node
     private bool _reloadTest;
     private bool _afterReload;
 
+    /// <summary>The F3 popup the plugin made, for the search checks.</summary>
+    public SearchPopup Search { get; set; }
+
     public EditorSmoke() : this(null, null, null, null, null, null)
     {
     }
@@ -153,10 +156,8 @@ public partial class EditorSmoke : Node
                 // Bring the next tab to the front and let it lay out.
                 if (_panel >= _assets.Panels.Count)
                 {
-                    // Phase 5: the asset overlay, before the World tab boots
-                    // so the world's own loaders get it too.
-                    RunAssets();
-                    _stage = 6;
+                    // Phase 4b: the F3 search, on the index the editor built.
+                    _stage = 50;
                     _frames = 0;
                     break;
                 }
@@ -183,6 +184,18 @@ public partial class EditorSmoke : Node
                     Capture(_assets.Panels[_panel]);
                     _panel++;
                     _stage = 1;
+                }
+
+                break;
+
+            case 50:
+                if (StepSearch())
+                {
+                    // Phase 5: the asset overlay, before the World tab boots
+                    // so the world's own loaders get it too.
+                    RunAssets();
+                    _stage = 6;
+                    _frames = 0;
                 }
 
                 break;

@@ -66,6 +66,9 @@ public partial class EditorTour : Node
     private double _waited;
     private readonly Stopwatch _clock = Stopwatch.StartNew();
 
+    /// <summary>The F3 popup the plugin made.</summary>
+    public SearchPopup Search { get; set; }
+
     public EditorTour() : this(null, null, null, null, null, null, null)
     {
     }
@@ -356,6 +359,7 @@ public partial class EditorTour : Node
                 ("intro", "The GUO editor", Intro),
                 ("layout", "The layout", Layout),
                 ("runbar", "Run bar: start a server, start clients", RunBarSeg),
+                ("search", "F3: search everything", SearchSeg),
                 ("art", "Assets: Art", ArtSeg),
                 ("gumps", "Assets: Gumps", GumpSeg),
                 ("anims", "Assets: Animations", AnimSeg),
@@ -1260,6 +1264,51 @@ public partial class EditorTour : Node
         await Frames(5);
         Check(!_shard.Live, "disconnecting closed the link");
         await Shot(2.5);
+    }
+
+    private async Task SearchSeg()
+    {
+        if (Search == null)
+        {
+            Skip("the F3 popup was not created");
+            return;
+        }
+
+        Say("F3 opens a search over everything: the editor's own menus, settings and screens, the GUO commands, and the UO data the client has open. "
+            + "It matches word starts and letters in order, forgives one typo, and takes ids in hex or decimal. What you ran lately ranks higher.", top: true);
+        Search.Open();
+        for (int i = 0; i < 1800 && !Search.Index.Ready; i++)
+        {
+            await Frames(1);
+        }
+
+        Check(Search.Index.Ready, "the background index finished");
+        foreach (var (query, kind, line) in new[]
+        {
+            ("backpack", "Static", "A name finds art, cliloc text and settings, grouped by kind."),
+            ("bp", "Static", "Two letters: the start of each word."),
+            ("bakcpack", "Static", "One typo is forgiven."),
+            ("0x0E75", "Static", "An id in hex or decimal (3701) opens that asset."),
+            ("grid", "World", "World tab toggles and tools are commands."),
+            ("1434 1699", "Place", "Coordinates jump the World tab: x y [z] [mapN]."),
+            ("project settings", "Menu", "Every item of the editor's own menus."),
+        })
+        {
+            Say(line, top: true);
+            Search.SetQuery(query[..Math.Max(1, query.Length / 2)]);
+            await Shot(0.4, 2);
+            var groups = Search.SetQuery(query);
+            await Frames(3);
+            SearchEntry top = SearchIndex.Top(groups);
+            bool ok = query == "bp" || query == "bakcpack"
+                ? groups.Any(g => g.Items.Any(i => i.Entry.Title == "backpack"))
+                : top?.Kind == kind;
+            Check(ok, $"'{query}' -> {top?.Kind} '{top?.Title}'");
+            await Shot(3);
+        }
+
+        Search.Close();
+        await Frames(3);
     }
 
     private async Task Outro()
