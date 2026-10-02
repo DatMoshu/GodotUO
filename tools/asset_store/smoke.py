@@ -12,6 +12,7 @@ import threading
 import zipfile
 
 from run import publish, server
+from razor_scripts import make_pack
 
 
 def main():
@@ -38,6 +39,8 @@ def main():
                 z.writestr("still.png", image)
                 z.writestr("loop.ogv", loop)
             publish(saver_pack, root / "cdn")
+            publish(make_pack(root / "scripts-v1.zip"), root / "cdn")
+            publish(make_pack(root / "scripts-v2.zip", "1.1.0"), root / "cdn")
             with server(root / "cdn", port=0) as httpd:
                 thread = threading.Thread(target=httpd.serve_forever, daemon=True)
                 thread.start()

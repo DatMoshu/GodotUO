@@ -175,6 +175,29 @@ internal sealed class StoreClient : IDisposable
         return m;
     }
 
+    /// <summary>Read a declared installed file, checking its snapshot metadata and hash again.
+    /// The store lock prevents install/remove racing a script preview or personal-copy import.</summary>
+    public byte[] ReadVerifiedPayload(StoreManifest expected, string name, int limit)
+    {
+        StorePack.Validate(expected);
+        StorePack.SafePath(name);
+        using var guard = Lock();
+        string directory = Destination(expected.Id, expected.Version);
+        var manifest = ReadInstalled(directory, false);
+        StorePack.Require(StorePack.Equivalent(expected, manifest), "Installed pack changed; reopen the library");
+        StorePack.Require(manifest.Files.TryGetValue(name, out string digest), "Undeclared pack file");
+        string path = Path.Combine(directory, name.Replace('/', Path.DirectorySeparatorChar));
+        NoLinks(path);
+        using var input = File.OpenRead(path);
+        StorePack.Require(input.Length <= limit, "Pack file exceeds read limit");
+        using var bytes = new MemoryStream();
+        StorePack.CopyLimited(input, bytes, limit);
+        byte[] result = bytes.ToArray();
+        StorePack.Require(Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(result)).ToLowerInvariant() == digest,
+            "Installed payload hash mismatch: " + name);
+        return result;
+    }
+
     public IReadOnlyList<StoreManifest> Installed()
     {
         var result = new List<StoreManifest>(); NoLinks(_root);

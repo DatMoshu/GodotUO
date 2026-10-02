@@ -9,6 +9,12 @@
     <Compile Include="../../../godot/GUO/src/Store/StoreContentLock.cs" Link="StoreContentLock.cs" />
     <Compile Include="../../../godot/GUO/src/Store/StoreDeployment.cs" Link="StoreDeployment.cs" />
     <Compile Include="../../../godot/GUO/src/Store/StoreServerExport.cs" Link="StoreServerExport.cs" />
+    <Compile Include="../../../godot/GUO/src/Game/Scripting/CapabilityScriptHost.cs" Link="CapabilityScriptHost.cs" />
+    <Compile Include="../../../godot/GUO/src/Store/StoreScripts.cs" Link="StoreScripts.cs" />
+    <Compile Include="../../../godot/GUO/src/Game/Scripting/ScriptRunner.cs" Link="ScriptRunner.cs" />
+    <Compile Include="../../../godot/GUO/src/Game/Scripting/ScriptFlow.cs" Link="ScriptFlow.cs" />
+    <Compile Include="../../../godot/GUO/src/Game/Scripting/ScriptCatalog.cs" Link="ScriptCatalog.cs" />
+    <Compile Include="../../../godot/GUO/src/Game/Scripting/ScriptLibrary.cs" Link="ScriptLibrary.cs" />
     <Compile Include="../../../godot/GUO/src/Store/StoreBackground.cs" Link="StoreBackground.cs" />
     <Compile Include="../../../godot/GUO/src/Store/StoreAddress.cs" Link="StoreAddress.cs" />
     <Compile Include="../../../godot/GUO/src/Store/StorePack.cs" Link="StorePack.cs" />

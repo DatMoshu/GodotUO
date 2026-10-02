@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../godot/GUO/src/Store/ScriptPackSession.cs" Link="ScriptPackSession.cs" />
+    <Compile Include="../../godot/GUO/src/Store/StoreContent.cs" Link="StoreContent.cs" />
+    <Compile Include="../../godot/GUO/src/Store/StoreVerifiedContent.cs" Link="StoreVerifiedContent.cs" />
+    <Compile Include="../../godot/GUO/src/Game/Scripting/CapabilityScriptHost.cs" Link="CapabilityScriptHost.cs" />
+    <Compile Include="../../godot/GUO/src/Store/StorePack.cs" Link="StorePack.cs" />
+    <Compile Include="../../godot/GUO/src/Store/StoreAddress.cs" Link="StoreAddress.cs" />
+    <Compile Include="../../godot/GUO/src/Store/StoreClient.cs" Link="StoreClient.cs" />
+    <Compile Include="../../godot/GUO/src/Store/StoreScripts.cs" Link="StoreScripts.cs" />
+    <Compile Include="../../godot/GUO/src/Game/Scripting/ScriptRunner.cs" Link="ScriptRunner.cs" />
+    <Compile Include="../../godot/GUO/src/Game/Scripting/ScriptFlow.cs" Link="ScriptFlow.cs" />
+    <Compile Include="../../godot/GUO/src/Game/Scripting/ScriptLibrary.cs" Link="ScriptLibrary.cs" />
+    <Compile Include="../../godot/GUO/src/Game/Scripting/ScriptCatalog.cs" Link="ScriptCatalog.cs" />
+  </ItemGroup>
+</Project>

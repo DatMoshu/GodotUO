@@ -38,7 +38,12 @@ class Contract(unittest.TestCase):
         m = example(); m["target"] = "client"; m["components"][0]["target"] = "server"
         cases["wrong-side"] = (m, False)
         m = example(); m["components"][0].update(type="script", language="razor-ce", runtime="guo-razor", runtime_version="0.1.0", capabilities=["client.message"])
+        cases["script-json-entry"] = (copy.deepcopy(m), False)
+        m["components"][0]["entry"] = "script.razor"
+        m["files"]["script.razor"] = hashlib.sha256(b"sysmsg hello").hexdigest()
         cases["script"] = (m, True)
+        bad = copy.deepcopy(m); bad["files"]["hidden.razor"] = bad["files"]["script.razor"]
+        cases["undeclared-script"] = (bad, False)
         bad = copy.deepcopy(m); bad["components"][0]["capabilities"] *= 2
         cases["duplicate-capability"] = (bad, False)
         bad = example(); bad["components"][0]["execute_on_install"] = True

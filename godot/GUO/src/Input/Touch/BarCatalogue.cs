@@ -60,6 +60,8 @@ internal static class BarCatalogue
         new("quests", "Quest log", "Quests", Windows, MacroType.Open, MacroSubType.QuestLog),
         new("chat", "Chat (the say line)", "Chat", Windows),
         new("options", "Options", "Options", Windows),
+        new("scripts", "Scripts", "Scripts", Windows),
+        new("stopscript", "Stop script", "Stop script", Windows),
 
         new("nearest", "Nearest hostile", "Nearest Foe", Targeting, MacroType.SelectNearest, MacroSubType.Hostile),
         new("nearestparty", "Nearest party member", "Near Party", Targeting, MacroType.SelectNearest, MacroSubType.Party),
