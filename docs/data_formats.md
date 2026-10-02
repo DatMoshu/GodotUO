@@ -383,6 +383,12 @@ None of these files are committed: they derive from the install.
 
 ## 12. GUO Asset Store packs (ADR-0019)
 
+Version 2 content envelopes, deployment targets, dependencies, component
+identities and activation locks are specified in
+[asset_pack_ecosystem.md](asset_pack_ecosystem.md). V1 below remains the
+presentation-pack contract. V2 installation is inert; individual runtime
+consumers require their own activation evidence.
+
 A pack is a ZIP with one UTF-8 `manifest.json` at its root. Schema id:
 **`guo/store-pack@1`**. It contains user media/settings and the explicitly
 allowed shader/script formats below, never UO client data or native/.NET

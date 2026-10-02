@@ -104,10 +104,10 @@ def parse_manifest(raw):
     m = json.loads(raw.decode("utf-8"), object_pairs_hook=unique_object, parse_constant=no_constant)
     valid_unicode(m)
     require(isinstance(m, dict), "manifest must be an object")
-    require(m.get("schema") == PACK_SCHEMA, "unsupported pack schema")
+    require(m.get("schema") in (PACK_SCHEMA, "guo/store-pack@2"), "unsupported pack schema")
     identifier(m.get("id"))
     version(m.get("version"))
-    require(m.get("kind") in KINDS, "unsupported pack kind (art-override is disabled)")
+    require(m.get("kind") in KINDS if m["schema"] == PACK_SCHEMA else m.get("kind") == "content", "unsupported pack kind")
     require(m.get("licence") in LICENCES, "licence is not allowed")
     for key in ("title", "author"):
         value = m.get(key)
@@ -128,8 +128,18 @@ def parse_manifest(raw):
     require(isinstance(m.get("preview"), str) and m["preview"] in files and Path(m["preview"]).suffix.lower() in IMAGES, "preview must name a declared image")
     require(m["licence"] == "CC0-1.0" or "LICENSE.txt" in files, "attribution requires LICENSE.txt")
     scripts = [n for n in files if Path(n).suffix.lower() == ".razor"]
-    require(bool(scripts) if m["kind"] == "razor-script" else not scripts,
-            "Razor scripts require their own kind and at least one .razor file")
+    if m["schema"] == "guo/store-pack@2":
+        try:
+            from .content import validate_content
+        except ImportError:
+            from content import validate_content
+        validate_content(m, require, identifier, version)
+        entries = {c["entry"] for c in m["components"] if c["type"] == "script"}
+        require(all(Path(n).suffix.lower() == ".razor" for n in entries) and set(scripts) <= entries,
+                "Every Razor payload must be a declared script component entry")
+    else:
+        require(bool(scripts) if m["kind"] == "razor-script" else not scripts,
+                "Razor scripts require their own kind and at least one .razor file")
     # Screen-effect packs (ADR-0023): presets and shaders; shader code only in this kind.
     if m["kind"] == "postfx":
         require(any(Path(n).suffix.lower() == ".json" for n in files), "a postfx pack has at least one preset (.json)")

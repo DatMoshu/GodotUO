@@ -26,7 +26,7 @@ internal sealed partial class StoreWindow : CanvasLayer
     private readonly Dictionary<string, Task<byte[]>> _previews = new();
     private static readonly Color Gold = new("dfbb77"), Muted = new("abb5ac");
     private readonly CancellationTokenSource _cancel = new();
-    private readonly string[] _kinds = { "", "background", "theme", "sound", "profile-preset", "screensaver", "postfx", "razor-script" };
+    private readonly string[] _kinds = { "", "background", "theme", "sound", "profile-preset", "screensaver", "postfx", "razor-script", "content" };
 
     /// <summary>Whether the window is up; GameController then leaves input to its controls.</summary>
     public static bool IsOpen => GodotObject.IsInstanceValid(_open);
@@ -81,7 +81,7 @@ internal sealed partial class StoreWindow : CanvasLayer
         connect.Pressed += () => _ = Refresh(true); _address.TextSubmitted += text => { _ = Refresh(true); };
         var filters = new HBoxContainer(); column.AddChild(filters);
         _search = new LineEdit { PlaceholderText = "Search packs or creators…", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, CustomMinimumSize = new Vector2(0, 42) }; Touchable(_search); filters.AddChild(_search);
-        _kind = Touchable(new OptionButton()); foreach (string title in new[] { "All kinds", "Backgrounds", "Themes", "Sounds", "Profile presets", "Screensavers", "Screen effects", "Razor scripts" }) _kind.AddItem(title);
+        _kind = Touchable(new OptionButton()); foreach (string title in new[] { "All kinds", "Backgrounds", "Themes", "Sounds", "Profile presets", "Screensavers", "Screen effects", "Razor scripts", "Game content" }) _kind.AddItem(title);
         filters.AddChild(_kind); _search.TextChanged += _ => Render(); _kind.ItemSelected += _ => Render();
         var scroll = _scroll = new ScrollContainer { SizeFlagsVertical = Control.SizeFlags.ExpandFill, SizeFlagsHorizontal = Control.SizeFlags.ExpandFill }; column.AddChild(scroll);
         _list = new GridContainer { Columns = logical.X >= 950 ? 2 : 1, SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
@@ -205,6 +205,8 @@ internal sealed partial class StoreWindow : CanvasLayer
             row.AddChild(preview); _ = Preview(entry, preview);
             var info = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill }; row.AddChild(info);
             info.AddChild(Text(m.Kind.ToUpperInvariant().Replace('-', ' ') + "  ·  " + m.Licence, 11, Gold));
+            if (m.Kind == "content")
+                info.AddChild(Text(m.Target.ToUpperInvariant() + " · " + string.Join(", ", m.Components.Select(c => c.Type).Distinct()) + " · installs inactive", 11, Muted));
             info.AddChild(Text(m.Title, 22, new Color("eeeade")));
             info.AddChild(Text("By " + m.Author, 12, Muted));
             bool present = installed.Any(p => p.Id == m.Id && p.Version == m.Version);
@@ -214,7 +216,7 @@ internal sealed partial class StoreWindow : CanvasLayer
             var action = Touchable(new Button { Text = present ? "Uninstall" : !compatible ? "Needs newer GUO" : update ? "Update" : "Install", Disabled = _busy || (!present && !compatible) });
             action.SizeFlagsHorizontal = Control.SizeFlags.ShrinkBegin;
             info.AddChild(action); action.Pressed += () => _ = Change(entry, present);
-            if (present && m.Kind == "razor-script")
+            if (present && (m.Kind == "razor-script" || m.Components?.Any(c => c.Type == "script" && c.Target == "client") == true))
             {
                 var browse = Touchable(new Button { Text = "Browse scripts", Disabled = _busy || !(Client.Game?.UO?.World?.InGame ?? false) });
                 info.AddChild(browse);

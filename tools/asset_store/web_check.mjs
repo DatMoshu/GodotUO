@@ -87,7 +87,7 @@ const page = await boot();
 const allCards = () => descendants(page.get('shelves'), 'article');
 assert.equal(allCards().length, index.packs.length, 'Every fixture pack must render');
 assert.equal(page.get('sample-note').hidden, false, 'Samples must be labelled');
-assert.equal(descendants(page.get('tabs'), 'button').length, 7, 'All plus six kind filters');
+assert.equal(descendants(page.get('tabs'), 'button').length, 7, 'All plus six populated kind filters');
 const featured = index.packs.find(p => p.id === 'moongate-shimmer');
 assert.equal(page.get('feature-title').textContent, featured.title, 'Metadata must remain literal text');
 assert.equal(page.get('feature-img').src, new URL(featured.preview_url, base).href);

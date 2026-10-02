@@ -14,6 +14,16 @@ namespace GUO.Store;
 /// <summary>No Godot dependency: the headless smoke runs the real installer.</summary>
 internal sealed class StoreClient : IDisposable
 {
+    // Process-local lifecycle signal; consumers filter by id/version and reverify before use.
+    public static event Action<string, string, string> PackChanged;
+    private static void Changed(string operation, string id, string version)
+    {
+        var handlers = PackChanged;
+        if (handlers == null) return;
+        foreach (Action<string, string, string> handler in handlers.GetInvocationList())
+            try { handler(operation, id, version); }
+            catch (Exception e) { System.Diagnostics.Trace.TraceError("Store change listener: " + e.Message); }
+    }
     private readonly HttpClient _http = new(new HttpClientHandler { AllowAutoRedirect = false });
     private readonly string _root;
     private readonly int _profileVersion;
@@ -88,7 +98,7 @@ internal sealed class StoreClient : IDisposable
     }
 
     // Refuse reparse points at every boundary, including parents of the root.
-    private static void NoLinks(string path)
+    internal static void NoLinks(string path)
     {
         for (var info = new DirectoryInfo(Path.GetFullPath(path)); info != null; info = info.Parent)
             if (info.Exists) StorePack.Require((info.Attributes & FileAttributes.ReparsePoint) == 0, "Store path contains a link");
@@ -138,6 +148,8 @@ internal sealed class StoreClient : IDisposable
             NoLinks(destination);
             Directory.CreateDirectory(Path.GetDirectoryName(destination));
             Directory.Move(stage, destination);
+            guard.Dispose(); // Reconciliation may open its own verification lock.
+            Changed("install", entry.Manifest.Id, entry.Manifest.Version);
             return destination;
         }
         finally
@@ -203,6 +215,41 @@ internal sealed class StoreClient : IDisposable
         return result;
     }
 
+    /// <summary>Resolve an installed exact dependency closure without executing any content.</summary>
+    public StoreVerifiedContent VerifyContent(string id, string version)
+    {
+        using var guard = Lock();
+        var packs = new Dictionary<string, StoreVerifiedPack>(StringComparer.Ordinal);
+        var visiting = new HashSet<string>(StringComparer.Ordinal);
+        void Visit(string packId, string packVersion)
+        {
+            StorePack.Require(!visiting.Contains(packId), "Dependency cycle");
+            if (packs.TryGetValue(packId, out var found))
+            {
+                StorePack.Require(found.Version == packVersion, "Dependency version conflict");
+                return;
+            }
+            StorePack.Require(packs.Count + visiting.Count < 128, "Dependency closure too large");
+            string directory = Destination(packId, packVersion);
+            var m = ReadInstalled(directory, true);
+            StorePack.Require(m.MinProfileVersion <= _profileVersion, "Dependency requires a newer profile");
+            visiting.Add(packId);
+            foreach (var dependency in m.Dependencies ?? new()) Visit(dependency.Key, dependency.Value);
+            visiting.Remove(packId);
+            packs.Add(packId, new StoreVerifiedPack(directory, m));
+        }
+        Visit(id, version);
+        foreach (var pack in packs.Values)
+            foreach (var component in pack.Manifest.Components ?? new())
+                foreach (string reference in component.References ?? new())
+                {
+                    string[] parts = reference.Split(':');
+                    StorePack.Require(packs.TryGetValue(parts[0], out var dependency)
+                        && dependency.Manifest.Components != null && dependency.Manifest.Components.Any(c => c.Id == parts[1]), "Unresolved component reference");
+                }
+        return new StoreVerifiedContent(packs);
+    }
+
     private static void DeleteTree(string directory)
     {
         NoLinks(directory);
@@ -216,6 +263,8 @@ internal sealed class StoreClient : IDisposable
         string destination = Destination(id, version);
         using var guard = Lock();
         if (Directory.Exists(destination)) DeleteTree(destination);
+        guard.Dispose();
+        Changed("uninstall", id, version);
         LastUninstallMessage = BackgroundRemoved?.Invoke(id, version) == true
             ? "Pack removed. Active background reset to built-in grey. Reopen Options to refresh backgrounds."
             : "Pack removed. Reopen Options to refresh backgrounds.";

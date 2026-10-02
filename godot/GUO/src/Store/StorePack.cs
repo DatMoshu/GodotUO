@@ -25,6 +25,9 @@ internal sealed class StoreManifest
     [JsonPropertyName("min_profile_version")] public int MinProfileVersion { get; set; }
     [JsonPropertyName("preview")] public string Preview { get; set; }
     [JsonPropertyName("files")] public Dictionary<string, string> Files { get; set; }
+    [JsonPropertyName("target")] public string Target { get; set; }
+    [JsonPropertyName("dependencies")] public Dictionary<string, string> Dependencies { get; set; }
+    [JsonPropertyName("components")] public List<StoreComponent> Components { get; set; }
 }
 
 internal sealed class StoreEntry
@@ -128,6 +131,12 @@ internal static class StorePack
         {
             using var doc = JsonDocument.Parse(bytes);
             UniqueJson(doc.RootElement);
+            if (doc.RootElement.ValueKind == JsonValueKind.Object && doc.RootElement.TryGetProperty("schema", out var schema)
+                && schema.ValueKind == JsonValueKind.String && schema.GetString() == "guo/store-pack@2")
+            {
+                var allowed = new HashSet<string>("schema id version kind target title author licence min_profile_version preview files dependencies components url sha256 size preview_url".Split(' '), StringComparer.Ordinal);
+                Require(doc.RootElement.EnumerateObject().All(p => allowed.Contains(p.Name)), "Unknown content manifest field");
+            }
             Require(doc.RootElement.ValueKind == JsonValueKind.Object && doc.RootElement.TryGetProperty("min_profile_version", out var minimum)
                 && minimum.ValueKind == JsonValueKind.Number && minimum.TryGetInt32(out int min) && min >= 0, "Missing/invalid profile version");
             m = JsonSerializer.Deserialize<StoreManifest>(bytes);
@@ -146,9 +155,9 @@ internal static class StorePack
 
     public static void Validate(StoreManifest m)
     {
-        Require(m != null && m.Schema == "guo/store-pack@1", "Unsupported pack schema");
+        Require(m != null && m.Schema is "guo/store-pack@1" or "guo/store-pack@2", "Unsupported pack schema");
         Id(m.Id); Version(m.Version);
-        Require(m.Kind is "background" or "theme" or "sound" or "profile-preset" or "screensaver" or "postfx" or "razor-script", "Unsupported pack kind; art overrides are disabled");
+        Require(m.Schema == "guo/store-pack@2" ? m.Kind == "content" : m.Kind is "background" or "theme" or "sound" or "profile-preset" or "screensaver" or "postfx" or "razor-script", "Unsupported pack kind");
         Require(m.Licence != null && Licences.Contains(m.Licence), "Licence is not allowed");
         Require(!string.IsNullOrWhiteSpace(m.Title) && m.Title.Length <= 200 && !string.IsNullOrWhiteSpace(m.Author) && m.Author.Length <= 200, "Invalid title/author");
         Require(!m.Title.Any(c => c < 32 || c == 127) && !m.Author.Any(c => c < 32 || c == 127), "Control characters in title/author");
@@ -168,7 +177,14 @@ internal static class StorePack
         Require(m.Preview != null && m.Files.ContainsKey(m.Preview) && Images.Contains(Path.GetExtension(m.Preview)), "Preview must name a declared image");
         Require(m.Licence == "CC0-1.0" || m.Files.ContainsKey("LICENSE.txt"), "Attribution requires LICENSE.txt");
         bool scripts = m.Files.Keys.Any(IsScript);
-        Require(m.Kind == "razor-script" ? scripts : !scripts,
+        if (m.Schema == "guo/store-pack@2")
+        {
+            StoreContent.Validate(m);
+            var entries = new HashSet<string>(m.Components.Where(c => c.Type == "script").Select(c => c.Entry), StringComparer.Ordinal);
+            Require(entries.All(IsScript) && m.Files.Keys.Where(IsScript).All(entries.Contains),
+                "Every Razor payload must be a declared script component entry");
+        }
+        else Require(m.Kind == "razor-script" ? scripts : !scripts,
             "Razor scripts require their own kind and at least one .razor file");
         // Screen-effect packs (ADR-0023): presets and their shaders; shader code
         // is accepted only in this kind.
@@ -310,5 +326,5 @@ internal static class StorePack
     }
 
     public static bool Equivalent(StoreManifest a, StoreManifest b) =>
-        a.Schema == b.Schema && a.Id == b.Id && a.Version == b.Version && a.Kind == b.Kind && a.Title == b.Title && a.Author == b.Author && a.Licence == b.Licence && a.MinProfileVersion == b.MinProfileVersion && a.Preview == b.Preview && a.Files.Count == b.Files.Count && a.Files.All(p => b.Files.TryGetValue(p.Key, out var hash) && p.Value == hash);
+        a.Schema == b.Schema && a.Id == b.Id && a.Version == b.Version && a.Kind == b.Kind && a.Title == b.Title && a.Author == b.Author && a.Licence == b.Licence && a.MinProfileVersion == b.MinProfileVersion && a.Preview == b.Preview && a.Files.Count == b.Files.Count && a.Files.All(p => b.Files.TryGetValue(p.Key, out var hash) && p.Value == hash) && StoreContent.Equivalent(a, b);
 }
