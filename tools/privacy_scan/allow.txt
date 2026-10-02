@@ -10,3 +10,6 @@ Users[\\/]+\.\.\.
 # this PC's own LAN address at run time (nothing is sent to it).
 ^EXAMPLE_(LAN|PEER) = "192\.168\.1\.(20|30)"$
 s\.connect\(\("10\.255\.255\.255", 1\)\)
+
+# Signed catalogues: a LAN pack URL the test checks is allowed (an example, nothing is fetched).
+"http://192\.168\.1\.20/a\.zip"
