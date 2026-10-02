@@ -43,6 +43,16 @@ internal static class ShardSession
         [JsonPropertyName("own_encryption")] public int? OwnEncryption { get; set; }
 
         [JsonPropertyName("started")] public DateTime? Started { get; set; }
+
+        /// <summary>The shard's content (ADR-0026): its descriptor's address, the lock this run mounts,
+        /// and whether its script packs may run. Null when the shard names no content.</summary>
+        [JsonPropertyName("content_url")] public string ContentUrl { get; set; }
+        [JsonPropertyName("content_lock")] public string ContentLock { get; set; }
+        [JsonPropertyName("content_identity")] public string ContentIdentity { get; set; }
+        [JsonPropertyName("scripts_allowed")] public bool? ScriptsAllowed { get; set; }
+
+        /// <summary>A session that changes what this run loads: the shard's files, or its content.</summary>
+        [JsonIgnore] public bool Holds => DataFolder != null || ContentLock != null;
     }
 
     /// <summary>Set by Main: shard_session.json beside settings.json.</summary>
@@ -51,7 +61,14 @@ internal static class ShardSession
     /// <summary>The shard this run plays with the files of, or null.</summary>
     public static Data Current { get; private set; }
 
-    public static bool Active => Current?.DataFolder != null;
+    public static bool Active => Current?.Holds == true;
+
+    /// <summary>Whether this run mounts <paramref name="e"/>'s content, as its descriptor named it when GUO restarted.</summary>
+    public static bool HasContentFor(ServerEntry e) =>
+        Active && e != null && e.Same(Current.Host, Current.Port) && !string.IsNullOrWhiteSpace(e.Content) && Current.ContentUrl == e.Content.Trim();
+
+    /// <summary>Script packs are off on a shard whose descriptor says so.</summary>
+    public static bool ScriptsForbidden => Active && Current.ScriptsAllowed == false;
 
     /// <summary>Why a session's files could not be used at boot, for the Servers tab to say once.</summary>
     public static string Dropped { get; set; }
@@ -111,12 +128,12 @@ internal static class ShardSession
         {
             Data d = JsonSerializer.Deserialize<Data>(File.ReadAllText(FilePath));
 
-            if (d == null || d.DataFolder == null)
+            if (d == null || !d.Holds)
             {
                 File.Delete(FilePath);
             }
 
-            Current = d?.DataFolder != null ? d : null;
+            Current = d?.Holds == true ? d : null;
             return d;
         }
         catch (Exception ex)
@@ -136,8 +153,9 @@ internal static class ShardSession
         GD.Print($"[GUO] shard session: dropped: {why}");
     }
 
-    /// <summary>Play with <paramref name="e"/>'s files (its data folder is set): write the session and restart.</summary>
-    public static void Start(ServerEntry e)
+    /// <summary>Play with <paramref name="e"/>'s files (its data folder is set) and, when given, its content
+    /// (a lock that GUO.Store.StoreShardContent.Prepare wrote): write the session and restart.</summary>
+    public static void Start(ServerEntry e, GUO.Store.StoreShardContent content = null, string contentLock = null)
     {
         Configuration.Settings s = Configuration.Settings.GlobalSettings;
         var d = new Data
@@ -145,16 +163,20 @@ internal static class ShardSession
             Name = e.Name,
             Host = e.Host.Trim(),
             Port = e.Port,
-            DataFolder = e.DataFolder,
+            DataFolder = string.IsNullOrWhiteSpace(e.DataFolder) ? null : e.DataFolder,
             ClientVersion = string.IsNullOrWhiteSpace(e.ClientVersion) ? null : e.ClientVersion.Trim(),
             Encryption = e.Encryption,
             // Going from one shard's files to another's keeps the player's own.
             OwnEncryption = Current != null ? Current.OwnEncryption : s.Encryption,
             Started = DateTime.UtcNow,
+            ContentUrl = content != null ? e.Content?.Trim() : null,
+            ContentLock = content != null ? contentLock : null,
+            ContentIdentity = content?.IdentityHash,
+            ScriptsAllowed = content?.ScriptsAllowed,
         };
 
         Write(d);
-        GD.Print($"[GUO] shard session: restart with \"{e.Name}\"'s files");
+        GD.Print($"[GUO] shard session: restart with \"{e.Name}\"'s {(d.DataFolder != null && content != null ? "files and content" : content != null ? "content" : "files")}");
         Restart();
     }
 

@@ -16,11 +16,21 @@ internal static class StoreOptions
 {
     public static string Url => StoreAddress.Load(ProfileManager.CurrentProfile == null ? null : ProfileManager.ProfilePath,
         System.Environment.GetEnvironmentVariable("UO_STORE_URL") ?? StoreAddress.Default);
-    public static StoreClient CreateClient(string url = null) => new(url ?? Url, ProjectSettings.GlobalizePath("user://store"), PlatformDefaults.CurrentVersion)
+    public static StoreClient CreateClient(string url = null) => new(url ?? Url, Root, PlatformDefaults.CurrentVersion)
     { BackgroundRemoved = ResetRemovedBackground, Trust = Trust };
 
+    /// <summary>The installed packs: user://store, or UO_CONTENT_STORE (a probe's own folder).</summary>
+    public static string Root
+    {
+        get
+        {
+            string root = System.Environment.GetEnvironmentVariable("UO_CONTENT_STORE");
+            return string.IsNullOrWhiteSpace(root) ? ProjectSettings.GlobalizePath("user://store") : root;
+        }
+    }
+
     /// <summary>The installation's approved catalogue keys (ADR-0026), beside the installed packs.</summary>
-    public static StoreTrust Trust => _trust ??= new StoreTrust(ProjectSettings.GlobalizePath("user://store/.catalogues.json"));
+    public static StoreTrust Trust => _trust ??= new StoreTrust(System.IO.Path.Combine(Root, ".catalogues.json"));
     private static StoreTrust _trust;
 
     /// <summary>Installed screensaver packs, as (loop path, title) for Options.</summary>

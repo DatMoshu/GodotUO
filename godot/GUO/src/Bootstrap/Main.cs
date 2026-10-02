@@ -1069,6 +1069,30 @@ public partial class Main : Node
         _configShardPort = _options.ShardPort;
         _sessionEncryption = d.Encryption;
 
+        if (d.ContentLock != null)
+        {
+            // The shard's packs (ADR-0026): mounted at archive load like a selected deployment. An
+            // explicit UO_CONTENT_LOCK (a developer's or a probe's) still wins.
+            if (!System.IO.File.Exists(d.ContentLock))
+            {
+                ShardSession.Drop(d, "its content lock is gone; play on it again to reinstall its packs");
+                _sessionEncryption = d.OwnEncryption;
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(System.Environment.GetEnvironmentVariable("UO_CONTENT_LOCK")))
+            {
+                System.Environment.SetEnvironmentVariable("UO_CONTENT_LOCK", d.ContentLock);
+            }
+
+            if (d.DataFolder == null)
+            {
+                _options.UseShardSession(d.Host, d.Port, null, null, null);
+                GD.Print($"[GUO] shard session : \"{d.Name}\" with its content {d.ContentIdentity?[..Math.Min(12, d.ContentIdentity.Length)]}");
+                return;
+            }
+        }
+
         if (d.DataFolder == null)
         {
             if (!string.IsNullOrWhiteSpace(d.Host) && d.Port > 0)

@@ -495,9 +495,14 @@ internal sealed partial class PregameServers : HBoxContainer
         {
             _info.AddChild(Note(reason, UoTheme.Danger));
         }
-        else if (verdict == ServerPlay.Verdict.NeedsOwnData)
+        else if (verdict is ServerPlay.Verdict.NeedsOwnData or ServerPlay.Verdict.NeedsContent)
         {
             _info.AddChild(Note(reason, UoTheme.Ink));
+        }
+
+        if (_contentStatus != null && _contentFor == e)
+        {
+            _info.AddChild(Note(_contentStatus, _contentFailed ? UoTheme.Danger : UoTheme.Ink));
         }
 
         if (ShardSession.IsFor(e))
@@ -629,6 +634,13 @@ internal sealed partial class PregameServers : HBoxContainer
             return;
         }
 
+        // Its packs: read what it names, ask, install, then restart with them mounted.
+        if (verdict == ServerPlay.Verdict.NeedsContent)
+        {
+            _ = PrepareContent(e, leaving);
+            return;
+        }
+
         // Running with another shard's files: back to the player's own first.
         if (ShardSession.Active && !ShardSession.IsFor(e))
         {
@@ -644,6 +656,57 @@ internal sealed partial class PregameServers : HBoxContainer
         }
 
         DoPlay(e);
+    }
+
+    // The content step's progress line, shown on the card of the server it is for.
+    private ServerEntry _contentFor;
+    private string _contentStatus;
+    private bool _contentFailed;
+    private bool _contentBusy;
+
+    private void ContentStatus(ServerEntry e, string text, bool failed = false)
+    {
+        _contentFor = e; _contentStatus = text; _contentFailed = failed;
+        ServerPlayStatus(text);
+        if (IsInsideTree() && _selected == e) ShowDetail();
+    }
+
+    private static void ServerPlayStatus(string text) => GD.Print("[GUO] servers: content: " + text);
+
+    /// <summary>Reads the shard's descriptor and asks; on yes installs its packs and restarts with them.</summary>
+    private async System.Threading.Tasks.Task PrepareContent(ServerEntry e, string leaving)
+    {
+        if (_contentBusy) return;
+        _contentBusy = true;
+        try
+        {
+            ContentStatus(e, "Reading what " + e.Name + " needs…");
+            var content = await GUO.Store.StoreShardContent.Fetch(e.Content);
+            ContentStatus(e, content.Summary() + ".");
+            Ask(new Question($"Install {e.Name}'s packs and restart GUO?{leaving}", "Install and restart", 76, "Not now", () => _ = InstallContent(e, content)));
+        }
+        catch (System.Exception ex)
+        {
+            ContentStatus(e, "Couldn't read " + e.Name + "'s content: " + ex.Message, true);
+        }
+        finally { _contentBusy = false; }
+    }
+
+    private async System.Threading.Tasks.Task InstallContent(ServerEntry e, GUO.Store.StoreShardContent content)
+    {
+        if (_contentBusy) return;
+        _contentBusy = true;
+        try
+        {
+            string lockPath = await content.Prepare(GUO.Store.StoreOptions.Root, GUO.Store.StoreOptions.Trust,
+                Configuration.PlatformDefaults.CurrentVersion, text => Callable.From(() => ContentStatus(e, text)).CallDeferred());
+            ShardSession.Start(e, content, lockPath);
+        }
+        catch (System.Exception ex)
+        {
+            ContentStatus(e, "Couldn't install " + e.Name + "'s packs: " + ex.Message, true);
+        }
+        finally { _contentBusy = false; }
     }
 
     private void Ask(Question q)

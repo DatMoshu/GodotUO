@@ -20,15 +20,18 @@ namespace GUO.Input.Touch.Pregame;
 /// </summary>
 internal static class ServerPlay
 {
-    public enum Verdict { Ready, NotAllowed, NeedsOwnData }
+    public enum Verdict { Ready, NotAllowed, NeedsOwnData, NeedsContent }
 
     /// <summary>Whether this client can play on <paramref name="e"/> as it runs now, and why not.</summary>
     public static Verdict Check(ServerEntry e, out string reason)
     {
         reason = null;
 
+        // A shard that names its packs (ADR-0026) is played with them mounted, which takes a restart.
+        bool content = !string.IsNullOrWhiteSpace(e.Content) && !Host.ShardSession.HasContentFor(e);
+
         // This run already plays with the shard's own files.
-        if (Host.ShardSession.IsFor(e))
+        if (Host.ShardSession.IsFor(e) && !content)
         {
             return Verdict.Ready;
         }
@@ -52,6 +55,12 @@ internal static class ServerPlay
                     ? ". Choose where they are, and GUO restarts with them."
                     : ". Play restarts GUO with them.");
             return Verdict.NeedsOwnData;
+        }
+
+        if (content)
+        {
+            reason = $"{e.Name} uses content packs. Play installs them and restarts GUO with them.";
+            return Verdict.NeedsContent;
         }
 
         return Verdict.Ready;

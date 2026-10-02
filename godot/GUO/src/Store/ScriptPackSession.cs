@@ -102,8 +102,12 @@ internal sealed class ScriptPackSession : IDisposable
         _enabled[current.Identity] = current;
     }
 
+    /// <summary>True on a shard whose content descriptor forbids script packs (ADR-0026 section 4).</summary>
+    public Func<bool> Forbidden { get; set; }
+
     public void Run(string identity)
     {
+        StorePack.Require(Forbidden?.Invoke() != true, "This shard does not allow script packs.");
         StorePack.Require(_enabled.TryGetValue(identity, out var selected), "Enable this script before running");
         var current = Current(selected);
         StorePack.Require(IsApproved(current), "Script approval is required");
@@ -111,7 +115,7 @@ internal sealed class ScriptPackSession : IDisposable
         // Start validates first, without granting the new runner an execution lease.
         bool preparing = true;
         var candidate = new ScriptRunner(new CapabilityScriptHost(_host, current.Grants,
-            () => preparing || _lease == lease && IsApproved(current) && _enabled.ContainsKey(identity)));
+            () => preparing || _lease == lease && IsApproved(current) && _enabled.ContainsKey(identity) && Forbidden?.Invoke() != true));
         StorePack.Require(candidate.Start(current.Source), candidate.Status);
         Stop("Replaced by another script");
         _lease = lease;

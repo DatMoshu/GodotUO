@@ -23,7 +23,14 @@ public static class ContentPacks
 
     public static void Initialize()
     {
+        // UO_SERVER_CONTENT names an export for this run; otherwise a deployed shard keeps it in
+        // Data/GUO/server-content.json, where tools/shard_content deploy puts it (ADR-0026 section 5).
         string path = Environment.GetEnvironmentVariable("UO_SERVER_CONTENT");
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            string deployed = Path.Combine(Core.BaseDirectory, "Data", "GUO", "server-content.json");
+            if (File.Exists(deployed)) path = deployed;
+        }
         if (string.IsNullOrWhiteSpace(path)) { new ContentDecorations().Register(false); ContentCreatures.RegisterPersistenceProbe(null); return; }
         if (new FileInfo(path).Length > 16 * 1024 * 1024) throw new InvalidDataException("Server content exceeds limit");
         using var doc = JsonDocument.Parse(File.ReadAllBytes(path));
@@ -53,7 +60,8 @@ public static class ContentPacks
         loot.Register(CreateItem, Environment.GetEnvironmentVariable("UO_SERVER_CONTENT_PROBE") == "1");
         creatures.Register(Environment.GetEnvironmentVariable("UO_SERVER_CONTENT_PROBE") == "1");
         CommandSystem.Register("GUOPackItem", AccessLevel.GameMaster, Give);
-        Console.WriteLine($"[GUO content] Loaded {Items.Count} item definitions; no world objects created.");
+        string identity = doc.RootElement.TryGetProperty("identity_hash", out var hash) ? hash.GetString() : null;
+        Console.WriteLine($"[GUO content] Loaded {Items.Count} item definitions; no world objects created. Deployment {identity ?? "(unnamed)"}");
         if (Items.Count > 0 && Environment.GetEnvironmentVariable("UO_SERVER_CONTENT_PROBE") == "1")
         {
             foreach (var definition in Items.Values)

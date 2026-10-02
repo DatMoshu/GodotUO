@@ -27,6 +27,8 @@ internal sealed class ServerEntry
     [JsonPropertyName("client_version")] public string ClientVersion { get; set; }
     [JsonPropertyName("encryption")] public int? Encryption { get; set; }
     [JsonPropertyName("needs_custom_data")] public bool NeedsCustomData { get; set; }
+    /// <summary>The shard's content descriptor (guo/shard-content@1, ADR-0026): the packs it runs.</summary>
+    [JsonPropertyName("content")] public string Content { get; set; }
     [JsonPropertyName("third_party_clients")] public bool ThirdPartyClients { get; set; } = true;
     [JsonPropertyName("site")] public string Site { get; set; }
     [JsonPropertyName("description")] public string Description { get; set; }

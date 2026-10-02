@@ -101,7 +101,8 @@ namespace GUO.Game
         public Scripting.ScriptRunner Scripts { get; }
         private Store.ScriptPackSession _packScripts;
         public Store.ScriptPackSession PackScripts => _packScripts ??= new Store.ScriptPackSession(
-            Store.StoreOptions.CreateClient(Store.StoreAddress.Default), new Scripting.ClientScriptHost(this));
+            Store.StoreOptions.CreateClient(Store.StoreAddress.Default), new Scripting.ClientScriptHost(this))
+            { Forbidden = () => Host.ShardSession.ScriptsForbidden };
         public void StopScripts() { Scripts.Stop(); _packScripts?.Stop(); }
 
         public Weather Weather { get; }

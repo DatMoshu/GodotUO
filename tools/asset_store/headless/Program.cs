@@ -58,6 +58,51 @@ if (args.Length >= 4 && args[0] == "catalogue")
     }
 }
 
+if (args.Length >= 3 && args[0] == "shard-content")
+{
+    // A shard's content (ADR-0026 section 4). install: the operator's deploy step (tools/shard_content);
+    // check: parse a descriptor file; prepare: what a player's client does on Play.
+    if (args[1] == "install" && args.Length >= 6)
+    {
+        string root = args[2];
+        var catalogues = args.Skip(5).Select(a =>
+        {
+            int split = a.IndexOf('=');
+            return new StoreShardCatalogue { Url = StoreAddress.Normalize(split < 0 ? a : a[..split]), Key = split < 0 ? null : a[(split + 1)..] };
+        }).ToList();
+        var trust = new StoreTrust(Path.Combine(root, ".catalogues.json"));
+        using var installer = await StoreShardContent.Install(catalogues, args[3], args[4], root, trust, int.MaxValue, true, Console.WriteLine);
+        var snapshot = installer.VerifyContent(args[3], args[4]);
+        Console.WriteLine($"PASS install: {snapshot.Packs.Count} pack(s), {snapshot.IdentityHash}");
+        return 0;
+    }
+    if (args[1] == "check" && args.Length == 3)
+    {
+        var content = StoreShardContent.Parse("file:///descriptor", File.ReadAllBytes(args[2]));
+        Console.WriteLine("PASS check: " + content.Summary());
+        return 0;
+    }
+    if (args[1] == "prepare" && args.Length >= 4)
+    {
+        string lockPath, identity;
+        try
+        {
+            var content = await StoreShardContent.Fetch(args[2]);
+            Console.WriteLine(content.Summary());
+            lockPath = await content.Prepare(args[3], new StoreTrust(Path.Combine(args[3], ".catalogues.json")), int.MaxValue, Console.WriteLine);
+            identity = content.IdentityHash;
+        }
+        catch (Exception refused) when (args.Length == 5 && refused.Message.Contains(args[4], StringComparison.OrdinalIgnoreCase))
+        {
+            Console.WriteLine("PASS refused: " + refused.Message);
+            return 0;
+        }
+        if (args.Length == 5) throw new InvalidDataException("expected a refusal about: " + args[4]);
+        Console.WriteLine($"PASS prepare: {identity} locked at {lockPath}");
+        return 0;
+    }
+}
+
 if (args.Length == 4 && args[0] == "install-content")
 {
     using var store = new StoreClient(args[1], args[2], int.MaxValue);
