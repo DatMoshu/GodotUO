@@ -10,6 +10,16 @@ using Godot;
 /// </summary>
 internal static class WorldAim
 {
+    /// <summary>The viewport position of a drawn object's art, lower middle, as <see cref="ScreenOf"/> does for a static.</summary>
+    public static Vector2I ScreenOfObject(WorldView world, EditorData data, GUO.Game.GameObjects.GameObject o)
+    {
+        Image art = data.ArtImage(EditorData.LandCount + o.Graphic);
+        int h = art?.GetHeight() ?? 44;
+        var at = new GUO.Compat.Point(o.RealScreenPosition.X + 22, o.RealScreenPosition.Y + 44 - h / 3);
+        var screen = world.Host.Scene.Camera.WorldToScreen(at);
+        return new Vector2I(screen.X, screen.Y);
+    }
+
     /// <summary>
     /// The viewport position of a static's art, lower middle (as a user aims at
     /// it), projected with the game's own camera. Null when block

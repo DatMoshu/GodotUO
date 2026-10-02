@@ -10,6 +10,14 @@ an MP4 with ffmpeg and writes summary.md: each segment and whether it worked.
     python tools/editor_tour/run.py              # the whole tour, live part included
     python tools/editor_tour/run.py --no-live    # skip the private shard
     python tools/editor_tour/run.py --no-build   # skip the first dotnet build
+    python tools/editor_tour/run.py --size 2560x1440 --scale 1 --segments layout,maps --no-video
+
+By default the tour records at 3840x2160 with the editor's display scale at
+1.5, so the interface is laid out like a 2560x1440 screen and is readable in
+the video. The scale is not set in the user's editor settings: the editor is
+started on a scratch settings folder (build/editor_tour/appdata, through
+APPDATA) holding just that scale, so the user's own settings, layout and
+theme are neither read nor changed.
 
 Output: build/editor_tour/<stamp>/ (frames/, tour.json, editor.log,
 editor_tour.mp4, summary.md). Frames are renders of client art: they stay
@@ -32,6 +40,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import socket
 import subprocess
 import sys
@@ -45,7 +54,7 @@ from guo import load_config  # noqa: E402
 from guo.process import no_activate  # noqa: E402
 
 TIMEOUT_S = 1500
-PORT, BRIDGE = 2602, 2603   # not used by any other checkout or by the dev shard (2593)
+PORT, BRIDGE = 2606, 2607   # this checkout's private shard; never the dev shard (2593)
 SHARD_TOOL = Path(__file__).resolve().parents[1] / "editor_shard" / "run.py"
 
 
@@ -84,6 +93,24 @@ def prepare_shard(cfg) -> tuple[bool, str]:
         time.sleep(1)
     shard("stop")
     return False, f"the private shard's editor bridge never listened on {BRIDGE}"
+
+
+def scratch_settings(root: Path, scale: float) -> dict:
+    """Environment for an editor with its own settings folder: display scale only, single window
+    (so popup menus are drawn inside the window the tour captures)."""
+    folder = root / "Godot"
+    folder.mkdir(parents=True, exist_ok=True)
+    custom = 2 if scale == 1.0 else 6   # 2 = 100%, 6 = custom
+    (folder / "editor_settings-4.7.tres").write_text(
+        "[gd_resource type=\"EditorSettings\" format=3]\n\n[resource]\n"
+        f"interface/editor/appearance/display_scale = {custom}\n"
+        f"interface/editor/appearance/custom_display_scale = {scale}\n"
+        "interface/multi_window/enable = false\n"
+        "interface/editor/display/single_window_mode = true\n",
+        encoding="utf-8")
+    env = dict(os.environ)
+    env["APPDATA"] = str(root)
+    return env
 
 
 def build(project: Path) -> bool:
@@ -146,6 +173,10 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--no-live", action="store_true", help="do not start the private shard; show the Shard dock offline")
     ap.add_argument("--no-build", action="store_true")
+    ap.add_argument("--size", default="3840x2160", help="window size, default 3840x2160")
+    ap.add_argument("--scale", type=float, default=1.5, help="editor display scale for the run, default 1.5")
+    ap.add_argument("--segments", help="comma separated segment ids to run (default all)")
+    ap.add_argument("--no-video", action="store_true", help="frames only")
     ap.add_argument("--out", type=Path, help="output folder (default build/editor_tour/<stamp>)")
     args = ap.parse_args()
 
@@ -168,7 +199,11 @@ def main() -> int:
 
     project_godot = project / "project.godot"
     before = project_godot.read_bytes()
-    cmd = [str(cfg.godot_console_exe), "--editor", "--path", str(project), "--", "--guo-editor-tour", str(out)]
+    cmd = [str(cfg.godot_console_exe), "--editor", "--path", str(project), "--", "--guo-editor-tour", str(out),
+           "--guo-editor-tour-size", args.size]
+    if args.segments:
+        cmd += ["--guo-editor-tour-segments", args.segments]
+    env = scratch_settings(cfg.build / "editor_tour" / "appdata", args.scale)
     if started_shard:
         cmd += ["--guo-editor-tour-live-port", str(BRIDGE)]
     log = out / "editor.log"
@@ -176,7 +211,7 @@ def main() -> int:
     code = None
     try:
         with log.open("w", encoding="utf-8", errors="replace") as lf:
-            proc = subprocess.Popen(cmd, stdout=lf, stderr=subprocess.STDOUT, **no_activate())
+            proc = subprocess.Popen(cmd, stdout=lf, stderr=subprocess.STDOUT, env=env, **no_activate())
             while proc.poll() is None:
                 if time.monotonic() - started > TIMEOUT_S:
                     proc.kill()
@@ -199,7 +234,7 @@ def main() -> int:
         print(f"[editor_tour] FAILED: no tour.json (editor exit {code}); see {log}")
         return 2
     report = json.loads(report_path.read_text(encoding="utf-8"))
-    mp4, video_s, err = make_video(out, report)
+    mp4, video_s, err = (None, 0.0, "skipped (--no-video)") if args.no_video else make_video(out, report)
     if mp4 is None:
         print(f"[editor_tour] video FAILED: {err}")
     write_summary(out, report, mp4, video_s, live_note, time.monotonic() - started)

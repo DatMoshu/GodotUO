@@ -22,7 +22,7 @@ public static class AssetActions
 
         bool replaced = assets.Has(kind, id);
         ins.Text += replaced
-            ? $"[color=yellow]replaced by the world project[/color]: {assets.PathOf(kind, id)}\n"
+            ? $"[color=yellow]replaced by the world project[/color]: {assets.RelativePathOf(kind, id)} (in the world project)\n"
             : "from the install\n";
 
         if (current != null)
@@ -64,7 +64,7 @@ public static class AssetActions
 
         bool replaced = assets.Has(AssetKind.Hue, hue);
         ins.Text += replaced
-            ? $"[color=yellow]replaced by the world project[/color]: {assets.PathOf(AssetKind.Hue, hue)}\n"
+            ? $"[color=yellow]replaced by the world project[/color]: {assets.RelativePathOf(AssetKind.Hue, hue)} (in the world project)\n"
             : "from the install\n";
 
         ins.Actions.Add(("Save strip PNG...", () => Pick(EditorFileDialog.FileModeEnum.SaveFile, $"hue_{hue}.png",

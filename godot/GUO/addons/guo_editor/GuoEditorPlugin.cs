@@ -28,7 +28,7 @@ using Godot;
 public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
 {
     private EditorData _data;
-    private AssetsDock _assets;
+    private AssetsView _assets;
     private InspectorDock _inspector;
     private EditorSmoke _smoke;
     private EditorTour _tour;
@@ -41,6 +41,12 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
     // does not call _MakeVisible again for a tab that is already current, so
     // without this the rebuilt view would stay hidden behind its own button.
     private bool _worldWasVisible;
+    private bool _assetsWasVisible;
+
+    private const string ResetMenuLabel = "Reset GUO layout";
+
+    /// <summary>The UO Assets view, for <see cref="GuoAssetsPlugin"/> to show and hide with its tab.</summary>
+    public static AssetsView AssetsMain { get; private set; }
 
     public const string WorldTabName = "UO World";
 
@@ -83,11 +89,15 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         }
 
         _data = new EditorData();
-        _assets = new AssetsDock(_data);
+        _assets = new AssetsView(_data);
+        AssetsMain = _assets;
         _inspector = new InspectorDock();
         _assets.Inspect += _inspector.ShowInspection;
 
-        AddDock(_assets);
+        // UO Assets is a main-screen tab (GuoAssetsPlugin owns its button).
+        EditorInterface.Singleton.GetEditorMainScreen().AddChild(_assets);
+        _assets.Visible = _assetsWasVisible;
+        _assetsWasVisible = false;
         AddDock(_inspector);
 
         // The World tab: the game's renderer, read only (ADR-0015). It starts
@@ -110,6 +120,8 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         if (maps != null)
         {
             maps.JumpToWorld += ShowInWorld;
+            _world.RadarSource = maps.RadarFor;
+            _world.Host.OverlayChanged += (_, _) => _world.Minimap?.Invalidate();
 
             // While the world runs, the radar reads the world's map (with the
             // world project over it) and repaints the blocks an edit touches.
@@ -150,7 +162,36 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
             _data.LoadAsync();
         }
 
+        AddToolMenuItem(ResetMenuLabel, Callable.From(ResetLayout));
+
+        // The default layout, once: never over a layout the user has changed.
+        Callable.From(ApplyDefaultLayoutOnFirstRun).CallDeferred();
+
         GD.Print("[GUO editor] plugin entered");
+    }
+
+    private async void ApplyDefaultLayoutOnFirstRun()
+    {
+        // The editor restores its own layout after the plugins load.
+        await ToSignal(GetTree().CreateTimer(1.0), SceneTreeTimer.SignalName.Timeout);
+        if (_inspector != null && IsInstanceValid(_inspector))
+        {
+            GuoLayout.ApplyIfFirstRun(_inspector);
+        }
+    }
+
+    /// <summary>
+    /// Restores the default GUO layout: UO Assets in the centre, the UO
+    /// Inspector in front on the right, Scene and FileSystem together on the
+    /// left, the shard dock in the bottom panel. Public so a search popup can call it.
+    /// </summary>
+    public void ResetLayout()
+    {
+        if (_inspector != null)
+        {
+            GuoLayout.Apply(_inspector);
+            _assets?.MakeVisible();
+        }
     }
 
     /// <summary>Brings the World tab forward at a cell.</summary>
@@ -195,12 +236,16 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
             _world = null;
         }
 
+        RemoveToolMenuItem(ResetMenuLabel);
+
         if (_assets != null)
         {
             _assets.Inspect -= _inspector.ShowInspection;
-            RemoveDock(_assets);
+            _assetsWasVisible = _assets.Visible;
+            _assets.GetParent()?.RemoveChild(_assets);
             _assets.QueueFree();
             _assets = null;
+            AssetsMain = null;
         }
 
         if (_inspector != null)

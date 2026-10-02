@@ -53,7 +53,7 @@ live on the private shard, outro.
 - **It never presses Start server or Start client.** They open windows on the
   desktop. It shows them, and what their tooltips say.
 - **The live part uses only this checkout's private shard**
-  (`tools\editor_shard`, game port 2602, editor bridge 2603; nothing else
+  (`tools\editor_shard`, game port 2606, editor bridge 2607; nothing else
   uses those). `run.py` sets it up if needed, starts it, and stops it
   afterwards, only if it started it. Without it (`--no-live`, or setup fails)
   the dock is shown offline and `summary.md` says so.

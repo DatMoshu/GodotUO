@@ -35,6 +35,11 @@ public partial class EditorTour : Node
 {
     public const string Flag = "--guo-editor-tour";
     public const string LivePortFlag = "--guo-editor-tour-live-port";
+    public const string SizeFlag = "--guo-editor-tour-size";
+    public const string SegmentsFlag = "--guo-editor-tour-segments";
+
+    /// <summary>The neutral name the Shard dock shows during the tour (never the user's account name).</summary>
+    private const string TourEditorName = "guo-editor";
 
     private sealed class Segment
     {
@@ -45,7 +50,7 @@ public partial class EditorTour : Node
 
     private readonly string _out;
     private readonly EditorData _data;
-    private readonly AssetsDock _assets;
+    private readonly AssetsView _assets;
     private readonly InspectorDock _inspector;
     private readonly WorldView _world;
     private readonly ShardDock _shard;
@@ -65,7 +70,7 @@ public partial class EditorTour : Node
     {
     }
 
-    public EditorTour(string outDir, EditorData data, AssetsDock assets, InspectorDock inspector, WorldView world, ShardDock shard, RunBar run)
+    public EditorTour(string outDir, EditorData data, AssetsView assets, InspectorDock inspector, WorldView world, ShardDock shard, RunBar run)
     {
         _out = outDir;
         _data = data;
@@ -135,11 +140,58 @@ public partial class EditorTour : Node
         }
     }
 
-    private string Scrub(string text) =>
-        (text ?? "")
-            .Replace(_data.ClientData ?? "\0", "UO_CLIENT_DATA")
-            .Replace(EditorData.RepoRoot, ".")
-            .Replace('\\', '/');
+    private string Scrub(string text)
+    {
+        string t = Slashes(text ?? "");
+        foreach (var (from, to) in new[]
+                 {
+                     (_data.ClientData, "UO_CLIENT_DATA"),
+                     (EditorData.RepoRoot, "."),
+                     (System.Environment.UserName, "user"),
+                 })
+        {
+            if (!string.IsNullOrEmpty(from))
+            {
+                t = System.Text.RegularExpressions.Regex.Replace(
+                    t, System.Text.RegularExpressions.Regex.Escape(Slashes(from)), to,
+                    System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            }
+        }
+
+        return t;
+    }
+
+    private static string Slashes(string text) => text.Replace((char)92, (char)47);
+
+    private bool Private(string text) =>
+        !string.IsNullOrEmpty(text) && Scrub(text) != Slashes(text);
+
+    /// <summary>Rewrites any machine path or user name still on screen (a panel's path box, a log) before a frame is taken.</summary>
+    private void ScrubUi(Node root)
+    {
+        foreach (Node n in root.GetChildren())
+        {
+            switch (n)
+            {
+                case LineEdit le when Private(le.Text):
+                    le.Text = Scrub(le.Text);
+                    break;
+                case Label l when Private(l.Text):
+                    l.Text = Scrub(l.Text);
+                    break;
+                case RichTextLabel r when Private(r.GetParsedText()):
+                    string plain = Scrub(r.GetParsedText());
+                    r.Clear();
+                    r.AppendText(plain.Replace("[", "[lb]"));
+                    break;
+                case TextEdit te when Private(te.Text):
+                    te.Text = Scrub(te.Text);
+                    break;
+            }
+
+            ScrubUi(n);
+        }
+    }
 
     private void Check(bool ok, string what)
     {
@@ -182,6 +234,8 @@ public partial class EditorTour : Node
     private async Task Shot(double hold = -1, int settle = 4)
     {
         await Frames(settle);
+        ScrubUi(EditorInterface.Singleton.GetBaseControl());
+        await Frames(2);
         Image img = EditorInterface.Singleton.GetBaseControl().GetViewport().GetTexture()?.GetImage();
         if (img == null || img.IsEmpty())
         {
@@ -240,6 +294,12 @@ public partial class EditorTour : Node
         _segNo++;
         _overlay.ClearMarks();
         _overlay.SetDetail(null);
+        if (id != "shard")
+        {
+            // The shard dock lives in the bottom panel; it covers the view only while it is the subject.
+            (GetParent() as EditorPlugin)?.HideBottomPanel();
+        }
+
         try
         {
             await body();
@@ -272,7 +332,16 @@ public partial class EditorTour : Node
             _exportDir = Path.Combine(_out, "export");
 
             DisplayServer.WindowSetMode(DisplayServer.WindowMode.Windowed);
-            DisplayServer.WindowSetSize(new Vector2I(3840, 1500));
+            Vector2I window = new(3840, 2160);
+            string sizeText = EditorSmoke.ArgValue(SizeFlag);
+            if (sizeText != null && sizeText.Split('x') is { Length: 2 } wh && int.TryParse(wh[0], out int ww) && int.TryParse(wh[1], out int wy))
+            {
+                window = new Vector2I(ww, wy);
+            }
+
+            DisplayServer.WindowSetSize(window);
+            GD.Print($"[GUO tour] window {window.X}x{window.Y}, editor scale {EditorInterface.Singleton.GetEditorScale():0.00}, screen {DisplayServer.ScreenGetSize()}");
+            _shard.EditorName = TourEditorName;
             DisplayServer.WindowSetPosition(new Vector2I(0, 0));
             await Frames(40);
             EditorInterface.Singleton.SetMainScreenEditor("2D");
@@ -296,10 +365,11 @@ public partial class EditorTour : Node
                 ("sounds", "Assets: Sounds", SoundSeg),
                 ("parity", "Assets: Parity against the reference renderer", ParitySeg),
                 ("bulk", "Assets: Bulk unpack", BulkSeg),
-                ("maps", "Assets: Maps, then Show in UO World", MapsSeg),
+                ("maps", "Assets: Maps, then jump to UO World", MapsSeg),
                 ("pick", "World tab: pick and inspect", PickSeg),
-                ("layers", "World tab: layers and seasons", LayersSeg),
-                ("guides", "World tab: grid, altitude, blocks", GuidesSeg),
+                ("layers", "World tab: the Layers menu and seasons", LayersSeg),
+                ("guides", "World tab: the Guides menu", GuidesSeg),
+                ("minimap", "World tab: the minimap", MinimapSeg),
                 ("multi", "World tab: placing a multi", MultiPlaceSeg),
                 ("overlay", "World project: the overlay", OverlaySeg),
                 ("edit", "World edits with undo and redo", EditSeg),
@@ -310,7 +380,11 @@ public partial class EditorTour : Node
                 ("outro", "That is the editor", Outro),
             };
             _segTotal = plan.Count;
-            foreach (var (id, title, body) in plan)
+            string only = EditorSmoke.ArgValue(SegmentsFlag);
+            HashSet<string> wanted = only?.Split(',').ToHashSet();
+            var chosen = plan.Where(p => wanted == null || wanted.Contains(p.Item1)).ToList();
+            _segTotal = chosen.Count;
+            foreach (var (id, title, body) in chosen)
             {
                 await Run(id, title, body);
             }
@@ -334,23 +408,38 @@ public partial class EditorTour : Node
 
     private async Task Layout()
     {
+        (GetParent() as GuoEditorPlugin)?.ResetLayout();
+        await Frames(20);
+        var art = _assets.Panel<ArtPanel>();
         _assets.MakeVisible();
+        _assets.ShowPanel(art);
         _inspector.MakeVisible();
         await Frames(10);
-        Say("UO Assets on the left, one tab per kind of client asset. Whatever you pick shows in the UO Inspector on the right.");
-        MarkControl(_assets, "UO Assets dock");
-        await Shot(3);
+        art.Search("anvil");
+        await Frames(15);
+        Button assetsTab = All<Button>(EditorInterface.Singleton.GetBaseControl()).FirstOrDefault(b => b.Text == AssetsView.TabName);
+        Say("UO Assets is a tab of its own, the whole centre of the editor: the asset tabs, a big grid (cell size S, M or L) and the search at the top. "
+            + "Whatever you pick shows in the UO Inspector, which has the full height of the right column.");
+        MarkControl(assetsTab, "UO Assets tab");
+        MarkControl(_assets, "the grid");
+        MarkControl(_inspector, "UO Inspector: preview on top, details below");
+        Check(_assets.IsInsideTree() && _inspector.IsInsideTree() && _run.IsInsideTree(), "the UO Assets tab, the inspector dock and the run bar are in the editor");
+        Check(assetsTab != null, "UO Assets is a main-screen tab");
+        await Shot(5);
         _overlay.ClearMarks();
-        MarkControl(_inspector, "UO Inspector dock");
-        await Shot(2.5);
-        _overlay.ClearMarks();
+
+        Control sceneDock = All<Control>(EditorInterface.Singleton.GetBaseControl()).FirstOrDefault(c => c.Name == "Scene" && c.GetClass() == "SceneTreeDock");
+        Control fs = EditorInterface.Singleton.GetFileSystemDock();
+        Check(sceneDock != null && fs != null && sceneDock.GetParent() == fs.GetParent(), "Scene and FileSystem share one tabbed dock on the left");
+        Check(_inspector.GetParent() is TabContainer { CurrentTab: 0 } tc && tc.GetChild(0) == _inspector, "the UO Inspector is the first tab of the right column, in front of Godot's Inspector");
         Button worldTab = All<Button>(EditorInterface.Singleton.GetBaseControl()).FirstOrDefault(b => b.Text == GuoEditorPlugin.WorldTabName);
         Say("The UO World tab is a main screen beside 2D, 3D and Script: the game's own renderer, read only until you open a world project. "
-            + "The toolbar carries the run bar, and a UO Shard dock sits at the bottom.");
+            + "Scene and FileSystem share the narrow dock on the left; the toolbar carries the run bar; the UO Shard dock sits in the bottom panel beside Output; "
+            + "Editor > Reset GUO layout brings this arrangement back.");
         MarkControl(worldTab, "UO World tab");
         MarkControl(_run, "run bar");
-        Check(_assets.IsInsideTree() && _inspector.IsInsideTree() && _run.IsInsideTree(), "both docks and the run bar are in the editor");
-        await Shot(4);
+        MarkControl(sceneDock, "Scene + FileSystem");
+        await Shot(5);
     }
 
     private async Task RunBarSeg()
@@ -544,16 +633,22 @@ public partial class EditorTour : Node
         var maps = _assets.Panel<MapPanel>();
         await ShowTab(maps);
         await Secs(1);
-        Say("Maps: a radar of every facet, one pixel per four cells. Click a cell, or type x,y: the inspector lists what is on it.");
-        await Shot(3);
-        maps.Search("1496,1628");
+        Say("Maps: the whole centre is the radar of a facet, one pixel per four cells. The wheel zooms about the pointer, a drag pans.");
+        MarkControl(maps.Radar, "radar: wheel zooms, drag pans");
+        await Shot(4);
+        _overlay.ClearMarks();
+
+        maps.Radar.Focus(new Vector2I(1496 / 4, 1628 / 4), 8);
+        await Frames(10);
+        Say("Zoomed on Britain. Click a cell: the inspector lists what is on it. Double-click, or the Jump button, goes to UO World.");
+        await Shot(4);
+        maps.ScriptedClick(1496, 1628);
         await Frames(8);
         Check(InspectorHas("Maps", false) || _inspector.Current != null, "a map cell reaches the inspector");
         var jump = _inspector.Current?.Actions.FirstOrDefault(a => a.Label == "Show in UO World");
         Button jumpButton = All<Button>(_inspector).FirstOrDefault(b => b.Text == "Show in UO World");
         MarkControl(jumpButton, "Show in UO World");
-        PointAt(jumpButton);
-        Say("The inspector's Show in UO World button jumps to that cell in the World tab. It boots the game's renderer the first time.");
+        MarkControl(All<Button>(maps).FirstOrDefault(b => b.Text == "Jump to UO World"), "Jump");
         await Shot(4);
         _overlay.ClearMarks();
         if (jump?.Run == null)
@@ -562,7 +657,8 @@ public partial class EditorTour : Node
             return;
         }
 
-        jump.Value.Run();
+        Say("The first jump boots the game's renderer in the UO World tab.");
+        maps.ScriptedClick(1496, 1628, true);
         for (int i = 0; i < 900 && !WorldUp && _world.Error == null; i++)
         {
             await Frames(1);
@@ -573,10 +669,10 @@ public partial class EditorTour : Node
         if (WorldUp)
         {
             Check(_world.Host.Scene.RenderedObjectsCount > 0, $"GameScene drew {_world.Host.Scene.RenderedObjectsCount} objects");
-            Check(_world.Host.Facet == 0 && _world.Host.X == 1496, "the view is at map0 1496,1628");
+            Check(_world.Host.Facet == 0 && _world.Host.X == 1496, "a double click on the radar jumped to map0 1496,1628");
         }
 
-        Say("The UO World tab: Britain, drawn by GameScene itself. Arrow keys or right-drag pan, the wheel zooms.");
+        Say("The UO World tab: Britain, drawn by GameScene itself. Arrow keys or right-drag pan, the wheel zooms. The minimap is in the corner.");
         MarkControl(_world, "UO World");
         await Shot(5);
     }
@@ -621,21 +717,28 @@ public partial class EditorTour : Node
         await Shot(5);
     }
 
-    private CheckBox Box(string text) => All<CheckBox>(_world).FirstOrDefault(b => b.Text == text);
-
     private async Task Toggle(string text, bool on)
     {
-        CheckBox b = Box(text);
-        if (b == null)
+        if (!_world.SetMenuItem(text, on))
         {
-            Check(false, $"no '{text}' checkbox");
+            Check(false, $"no '{text}' item in the Layers or Guides menu");
             return;
         }
 
-        PointAt(b);
-        MarkControl(b);
-        b.ButtonPressed = on;
         await Frames(6);
+    }
+
+    private async Task OpenMenu(MenuButton menu, string label)
+    {
+        _overlay.ClearMarks();
+        MarkControl(menu, label);
+        menu.ShowPopup();
+        await Frames(6);
+    }
+
+    private void CloseMenu(MenuButton menu)
+    {
+        menu.GetPopup().Hide();
     }
 
     private async Task LayersSeg()
@@ -646,13 +749,17 @@ public partial class EditorTour : Node
         }
 
         _world.ForcedMouse = null;
-        Say("Layer toggles: statics off leaves bare land.");
+        _world.GoTo(0, 1496, 1628);
+        await Frames(10);
+        Say("One Layers menu holds the layer toggles (Land, Statics, Multis, Roofs, Objects) so the toolbar fits at any width. Statics off leaves bare land.");
+        await OpenMenu(_world.LayersMenu, "Layers");
+        await Shot(3);
         await Toggle("Statics", false);
         await Shot(3);
-        Check(!_world.Host.ShowStatics, "Statics off hides the statics layer");
+        Check(!_world.Host.ShowStatics && !_world.MenuItemChecked("Statics"), "Statics off hides the statics layer");
         await Toggle("Statics", true);
-        Say("Land, statics, multis, roofs and objects switch independently. Back on.");
-        await Shot(2.5);
+        Check(_world.Host.ShowStatics, "Statics back on");
+        CloseMenu(_world.LayersMenu);
         _overlay.ClearMarks();
 
         Say("The season the shard sends for a map: the game's own seasonal graphics. Winter.");
@@ -676,14 +783,50 @@ public partial class EditorTour : Node
         await Toggle("Grid", true);
         await Toggle("Altitude", true);
         await Frames(15);
-        Say("Editor-only guides the game does not draw: the cell grid, altitude numbers and block boundaries.");
-        MarkControl(Box("Grid"));
-        MarkControl(Box("Altitude"));
-        MarkControl(Box("Blocks"));
+        Say("The Guides menu: editor-only guides the game does not draw (the cell grid, altitude numbers, block boundaries) and the minimap switch.");
+        await OpenMenu(_world.GuidesMenu, "Guides");
         await Shot(5);
         Check(_world.Guides.CellsDrawn > 0, $"guides drew {_world.Guides.CellsDrawn} cells");
+        CloseMenu(_world.GuidesMenu);
+        await Frames(5);
+        _overlay.ClearMarks();
+        await Shot(3);
         await Toggle("Grid", false);
         await Toggle("Altitude", false);
+    }
+
+    private async Task MinimapSeg()
+    {
+        if (!NeedWorld())
+        {
+            return;
+        }
+
+        _overlay.ClearMarks();
+        _world.GoTo(0, 1496, 1628);
+        await Frames(30);
+        MiniMap map = _world.Minimap;
+        Say("The minimap: the Maps radar around the camera, with the camera's viewport drawn on it. Click or drag on it to jump.");
+        MarkControl(map, "minimap");
+        await Shot(4);
+        Check(map.HasImage && map.ViewPolygon.Length == 4, "the minimap shows a radar and the viewport rectangle");
+
+        map.ScriptedJump(1330, 1580);
+        await Frames(30);
+        Check(_world.Host.X == 1330 && _world.Host.Y == 1580, "a click on the minimap moved the camera to 1330,1580");
+        Say("A click on the minimap moves the camera there.");
+        await Shot(4);
+
+        _world.SetMenuItem("Minimap", false);
+        await Frames(6);
+        Check(!map.Visible, "the Guides menu hides the minimap");
+        _overlay.ClearMarks();
+        Say("Guides > Minimap hides it.");
+        await Shot(2.5);
+        _world.SetMenuItem("Minimap", true);
+        await Frames(6);
+        _world.GoTo(0, 1496, 1628);
+        await Frames(10);
     }
 
     private async Task MultiPlaceSeg()
@@ -897,7 +1040,8 @@ public partial class EditorTour : Node
         }
 
         _overlay.SetDetail(null);
-        _world.GoTo(0, EditX, EditY);
+        // Away from the crate the edit segment left on the block, so it cannot hide the objects.
+        _world.GoTo(0, EditX - 8, EditY + 8);
         await Frames(25);
         OptionButton tool = All<OptionButton>(_world).FirstOrDefault(o => o.TooltipText == "What a left click does");
         Say("World objects live on the shard, not in the map: decoration items and spawners, in the project's shard/objects.json. PlaceItem puts an anvil.");
@@ -926,7 +1070,14 @@ public partial class EditorTour : Node
 
         Say("DeleteObject takes the anvil away again.");
         SetTool(tool, WorldTool.DeleteObject);
-        Aim(Centre + new Vector2I(-70, 20));
+        // Aim at the anvil's sprite, as a person would.
+        GUO.Game.GameObjects.Item anvil = _world.Objects.DrawnItemWithGraphic(0x0FAF);
+        Check(anvil != null, "the placed anvil is in the world");
+        if (anvil != null)
+        {
+            Aim(WorldAim.ScreenOfObject(_world, _data, anvil));
+        }
+
         await Frames(10);
         _world.ApplyTool();
         await Frames(15);
@@ -1018,6 +1169,11 @@ public partial class EditorTour : Node
         _overlay.ClearMarks();
         Say("Export writes the project to the shard's data folder (never the install): changed map and statics blocks, plus verdata.mul and hues.mul for the replaced art. tools/world does it.");
         await Shot(3);
+        if (Directory.Exists(_exportDir))
+        {
+            Directory.Delete(_exportDir, true);
+        }
+
         var (c1, t1) = await RunTool("export", "--project", _projectRoot, "--out", _exportDir);
         var files = Directory.Exists(_exportDir) ? Directory.GetFiles(_exportDir).Select(f => $"{Path.GetFileName(f)} ({new FileInfo(f).Length} B)") : Enumerable.Empty<string>();
         _overlay.SetDetail(Scrub("$ tools/world export\n" + Tail(t1, 6) + "\n" + string.Join("   ", files)));
@@ -1060,9 +1216,8 @@ public partial class EditorTour : Node
 
         CheckButton live = All<CheckButton>(_shard).First();
         var spin = All<SpinBox>(_shard).First();
-        var name = All<LineEdit>(_shard).FirstOrDefault(l => l.Text == EditorData.Setting("UO_EDITOR_NAME", System.Environment.UserName)) ?? All<LineEdit>(_shard).ElementAt(1);
         spin.Value = port;
-        name.Text = "tour";
+        _shard.EditorName = TourEditorName;
         _overlay.ClearMarks();
         MarkControl(live, "Live");
         PointAt(live);
@@ -1109,6 +1264,7 @@ public partial class EditorTour : Node
 
     private async Task Outro()
     {
+        (GetParent() as EditorPlugin)?.HideBottomPanel();
         _assets.MakeVisible();
         await Frames(5);
         int ok = _segments.Count(s => s.Skipped == null && s.Failures.Count == 0);

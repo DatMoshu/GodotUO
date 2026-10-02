@@ -31,6 +31,25 @@ public abstract partial class GridPanel : AssetPanel
     /// <summary>Icon edge in pixels; 0 makes a text list.</summary>
     protected virtual int IconSize => 44;
 
+    private int EffectiveIcon => IconSize == 0 ? 0 : (_cell > 0 ? _cell : IconSize);
+
+    private int _cell;
+
+    /// <summary>The icon edge the UO Assets view asks for (text lists ignore it).</summary>
+    public void SetCellSize(int px)
+    {
+        _cell = px;
+        if (_list != null && _list.IconMode == ItemList.IconModeEnum.Top)
+        {
+            _list.FixedIconSize = new Vector2I(px, px);
+            _list.FixedColumnWidth = px + 20;
+            if (Data != null && Data.IsLoaded && _results.Count > 0)
+            {
+                ShowPage(_page);
+            }
+        }
+    }
+
     protected virtual string Placeholder => "id (0x0E75, 3701) or name";
 
     /// <summary>Every id that exists, ascending.</summary>
@@ -88,15 +107,15 @@ public abstract partial class GridPanel : AssetPanel
         SearchBox.TextSubmitted += _ => Refresh();
         bar.AddChild(SearchBox);
 
-        bool icons = IconSize > 0;
+        bool icons = EffectiveIcon > 0;
         _list = new ItemList
         {
             SizeFlagsVertical = SizeFlags.ExpandFill,
             IconMode = icons ? ItemList.IconModeEnum.Top : ItemList.IconModeEnum.Left,
             MaxColumns = icons ? 0 : 1,
             SameColumnWidth = icons,
-            FixedIconSize = icons ? new Vector2I(IconSize, IconSize) : Vector2I.Zero,
-            FixedColumnWidth = icons ? IconSize + 20 : 0,
+            FixedIconSize = icons ? new Vector2I(EffectiveIcon, EffectiveIcon) : Vector2I.Zero,
+            FixedColumnWidth = icons ? EffectiveIcon + 20 : 0,
             // Pixel art is never filtered (AGENTS.md rule 7); icons are scaled.
             TextureFilter = TextureFilterEnum.Nearest,
             CustomMinimumSize = new Vector2(0, 240),
@@ -200,7 +219,7 @@ public abstract partial class GridPanel : AssetPanel
         {
             int id = _results[n];
             Texture2D icon = null;
-            if (IconSize > 0)
+            if (EffectiveIcon > 0)
             {
                 Image img = Icon(id);
                 icon = img != null ? ImageTexture.CreateFromImage(img) : null;

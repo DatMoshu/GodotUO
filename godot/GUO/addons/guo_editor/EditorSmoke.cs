@@ -55,7 +55,7 @@ public partial class EditorSmoke : Node
 
     private readonly string _out;
     private readonly EditorData _data;
-    private readonly AssetsDock _assets;
+    private readonly AssetsView _assets;
     private readonly InspectorDock _inspector;
     private readonly WorldView _world;
     private readonly ShardDock _shard;
@@ -75,7 +75,7 @@ public partial class EditorSmoke : Node
     {
     }
 
-    public EditorSmoke(string outDir, EditorData data, AssetsDock assets, InspectorDock inspector, WorldView world, ShardDock shard)
+    public EditorSmoke(string outDir, EditorData data, AssetsView assets, InspectorDock inspector, WorldView world, ShardDock shard)
     {
         _world = world;
         _shard = shard;

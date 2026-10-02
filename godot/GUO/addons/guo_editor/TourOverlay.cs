@@ -1,6 +1,7 @@
 #if TOOLS
 namespace GUO.Editor;
 
+using System;
 using System.Collections.Generic;
 using Godot;
 
@@ -120,6 +121,13 @@ public partial class TourOverlay : Control
 
         // Placed by hand each frame: the card's height follows its text.
         Vector2 area = GetViewportRect().Size;
+        // Sized for 3840 px wide; smaller windows get a smaller card.
+        float k = Math.Clamp(area.X / 3840f, 0.4f, 1f);
+        _body.CustomMinimumSize = new Vector2(2100 * k, 0);
+        _body.AddThemeFontSizeOverride("font_size", (int)(29 * k));
+        _title.AddThemeFontSizeOverride("font_size", (int)(40 * k));
+        _step.AddThemeFontSizeOverride("font_size", (int)(22 * k));
+        _detail.AddThemeFontSizeOverride("font_size", (int)(20 * k));
         Vector2 size = _stack.GetCombinedMinimumSize();
         _stack.Size = size;
         _stack.Position = new Vector2((area.X - size.X) / 2, _atTop ? 90 : area.Y - size.Y - 28);
