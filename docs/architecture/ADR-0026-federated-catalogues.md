@@ -206,6 +206,27 @@ None. This is infrastructure.
     - it refuses a tampered index, a rolled-back index and a changed key.
   - The existing v1 suites (`test_store`, `test_corpus`, `smoke.py`,
     `test_content`, the script tests) still pass.
-- **To do:** ModernUO end to end: a shard descriptor names a combined pack. A fresh
-  client installs it, selects it for that shard, restarts, logs in, and sees
-  the pack's item that the shard created from the same lock.
+- **Done, 2026-10-02: ModernUO end to end** (`python tools/shard_content/run.py prove`
+  on the editor's private shard):
+  - `deploy` installed `sample-content-combined` from a signed catalogue served
+    on this computer, wrote the lock, the ModernUO export and the descriptor.
+    The restarted shard's bridge logged the deployment's `identity_hash`.
+  - The pregame probe played a server entry naming the descriptor through the
+    Servers screen: the note, Play, the question with the catalogue key's
+    fingerprint, the install, and the restart with the session (36/36).
+  - A client started with that session mounted the lock, logged in, and the
+    shard's `[GUOPackItem` put the pack's item in the backpack. The client
+    knows it by the art slot the lock gave it (`0x1771`) and draws the pack's
+    art there.
+  - `test_shard_content.py` (8 tests, in CI) covers deploy and install without
+    a shard. It refuses a different catalogue key, a signed catalogue claimed
+    unsigned, an unsigned remote catalogue, a lock that no longer matches, and a
+    lock that leaves client components without a slot.
+  - Found during the proof: a lock that leaves client components unbound used
+    to crash the client at boot. Deploy and install now refuse it. A shard
+    session whose packs fail to mount is dropped, and GUO starts on the
+    player's own files (checked by hand on the failing lock).
+- **Not yet:** the descriptor's catalogues on HTTPS hosts (only loopback has
+  been run); the dev shard loading an export (only the private copy has); a
+  shard whose content changes while a player has the old lock (the player gets
+  NeedsContent again, untested).

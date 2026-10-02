@@ -23,7 +23,7 @@ also carries an `identity_hash` that names the deployment. An adapter must:
 6. Back up saves before a deployment that changes persistent objects.
    Switching assets does not undo a save migration.
 
-## ModernUO (first, in progress)
+## ModernUO (first, proven end to end 2026-10-02)
 
 | | |
 |---|---|
@@ -31,7 +31,8 @@ also carries an `identity_hash` that names the deployment. An adapter must:
 | Licence | GPL-3.0 |
 | Adapter | `tools/editor_shard/bridge` (`ContentPacks.cs` and friends), BSD-2-Clause, built against the dev shard's `Server.dll` |
 | Done | items, tiledata, map blocks, regions, decorations, loot, creatures; `GUOPackItem` staff command; probe mode |
-| To do for end to end | load the export on the dev shard (not only the editor's private copy); report `identity_hash`; the shard content descriptor; the client fetching and selecting the shard's lock; a playtest proof |
+| Done for end to end | `tools/shard_content` deploy (export into `Data/GUO`, the descriptor), the bridge reading it there and logging `identity_hash`, the client installing and mounting the shard's lock, `prove` (ADR-0026 Validation) |
+| Still to do | the dev shard (`tools/modernuo`) loading an export, not only the private copy; a deploy from the GUO editor's admin window |
 
 ## ServUO
 
