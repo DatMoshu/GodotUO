@@ -240,6 +240,19 @@ function localUrl(path) {
   if (u.origin !== location.origin || !["http:", "https:"].includes(u.protocol)) throw Error("Invalid asset URL");
   return u.href;
 }
+// A download link from a signed (v2) index may point at any HTTPS mirror; the client checks the hash.
+function linkUrl(path) {
+  const u = new URL(path, location.href);
+  if (u.origin === location.origin && ["http:", "https:"].includes(u.protocol)) return u.href;
+  if (u.protocol !== "https:" || u.username || u.password) throw Error("Invalid download URL");
+  return u.href;
+}
+// A v2 entry ({manifest, sha256, size, urls, preview_url, provenance}) in the v1 shape the page draws.
+function flatten(entry) {
+  if (!entry.manifest) return entry;
+  return Object.assign({}, entry.manifest, { sha256: entry.sha256, size: entry.size, url: entry.urls[0],
+    preview_url: entry.preview_url, provenance: entry.provenance || "" });
+}
 function el(tag, cls, text) {
   const e = document.createElement(tag);
   if (cls) e.className = cls;
@@ -329,7 +342,7 @@ function feature(p, fromUser) {
     img.alt = p.title;
     $("#feature-title").textContent = p.title;
     $("#feature-by").textContent = `${KIND_NAME[p.kind]} by ${p.author}, licensed under ${p.licence}.`;
-    $("#feature-download").href = localUrl(p.url);
+    $("#feature-download").href = linkUrl(p.url);
     img.classList.remove("fading");
   };
   const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -374,7 +387,7 @@ function show(p) {
       meta.append(el("dt", null, k), el("dd", null, v));
     }
   }
-  $("#detail-download").href = localUrl(p.url);
+  $("#detail-download").href = linkUrl(p.url);
   $("#detail").showModal();
 }
 
@@ -385,8 +398,8 @@ $("#search").addEventListener("input", (e) => { query = e.target.value.trim().to
 
 fetch("index.json").then((r) => { if (!r.ok) throw Error(`the store answered ${r.status}`); return r.json(); })
   .then((index) => {
-    if (index.schema !== "guo/store-index@1" || !Array.isArray(index.packs)) throw Error("this store's index is a format this page does not read");
-    packs = index.packs.slice().sort((a, b) => isSample(a) - isSample(b) || a.title.localeCompare(b.title));
+    if (!["guo/store-index@1", "guo/store-index@2"].includes(index.schema) || !Array.isArray(index.packs)) throw Error("this store's index is a format this page does not read");
+    packs = index.packs.map(flatten).sort((a, b) => isSample(a) - isSample(b) || a.title.localeCompare(b.title));
     $("#sample-note").hidden = !packs.some(isSample);
     renderStrip();
     renderTabs();

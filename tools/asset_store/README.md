@@ -46,6 +46,36 @@ background to built-in grey and saves the profile. Reopen Options after
 removal to refresh its background choices. Other packs and built-in choices
 are unaffected.
 
+## Signed catalogues and mirrors (ADR-0026)
+
+```text
+python tools/asset_store/run.py keygen PATH                       a catalogue signing key (never commit it)
+python tools/asset_store/run.py index                             signs when UO_STORE_SIGNING_KEY is set
+python tools/asset_store/run.py check-index [--key ed25519:...]   verify the store folder's signed index
+python tools/asset_store/run.py build-catalogue --listing packs --site site --cache C [--mirror URL] [--check]
+python tools/asset_store/run.py mirror --from URL --key ed25519:... --store-dir OUT
+```
+
+- **A signed store folder.** Set `UO_STORE_SIGNING_KEY` (in
+  `config.local.bat`), and `UO_STORE_CATALOGUE_ID`, `UO_STORE_CATALOGUE_TITLE`
+  and `UO_STORE_BASE_URL` if the defaults do not fit. `publish` and `index`
+  then write a `guo/store-index@2` index and its signature. Optional
+  `listing/<id>/<version>.json` files add a provenance line and mirror URLs.
+- **A catalogue repository.** `build-catalogue` reads one listing file per
+  pack version, downloads and verifies each ZIP, and writes a signed index
+  into `--site`. `--check` verifies only, for pull requests.
+  `catalogue_repo/` is the template for the official catalogue's repository:
+  its README, pull request checks, the publish workflow that signs in CI and
+  deploys to GitHub Pages, the report form and the licence.
+- **A mirror.** `mirror` copies a signed catalogue into a folder for any
+  static web server, checking every ZIP against the signed hash. The index
+  and its signature are copied byte for byte, last. Run it on a timer;
+  `docs/store/hosting.md` covers serving it.
+
+The client lists every catalogue at once, asks the player to approve a new
+catalogue's key, and refuses a tampered, rolled-back, expired or re-keyed
+index (`test_catalogue.py`).
+
 ## Verification
 
 ```text

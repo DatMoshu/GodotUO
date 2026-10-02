@@ -15,6 +15,8 @@ for (const source of scripts) {
 const indexResponse = await fetch(new URL('index.json', base));
 assert.equal(indexResponse.status, 200);
 const index = await indexResponse.json();
+// A signed (v2) index nests each manifest; the checks below read the v1 shape.
+index.packs = index.packs.map(p => p.manifest ? { ...p.manifest, sha256: p.sha256, size: p.size, url: p.urls[0], preview_url: p.preview_url } : p);
 assert.ok(index.packs.length >= 5, 'Fixture must exercise every pack kind');
 
 class Element {

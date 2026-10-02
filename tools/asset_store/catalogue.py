@@ -146,8 +146,12 @@ def fetch(url: str, target: Path, size: int) -> None:
             dst.write(chunk)
 
 
-def entries_from_listing(listing_dir: Path, cache: Path, site: Path, require_https: bool = True) -> list[dict]:
-    """The catalogue repository's packs/<id>/<version>.json entries; each ZIP is fetched once and verified."""
+def entries_from_listing(listing_dir: Path, cache: Path, site: Path, require_https: bool = True,
+                         mirrors: list[str] | None = None) -> list[dict]:
+    """The catalogue repository's packs/<id>/<version>.json entries; each ZIP is fetched once and verified.
+
+    Each base URL in mirrors (a host that runs `run.py mirror` against this catalogue) is listed first,
+    as <base>packs/<id>/<version>.zip. Until a mirror has synced, clients fall through to the next URL."""
     out = []
     cache.mkdir(parents=True, exist_ok=True)
     for path in sorted(Path(listing_dir).glob("*/*.json")):
@@ -180,8 +184,63 @@ def entries_from_listing(listing_dir: Path, cache: Path, site: Path, require_htt
         require((m["id"], m["version"]) == (pack_id, pack_version), f"{path}: the ZIP is {m['id']} {m['version']}")
         require(cached.stat().st_size == listing["size"], f"{path}: size disagrees")
         preview = extract_preview(cached, m, site)
-        out.append(entry(m, cached, listing["urls"], preview, listing.get("provenance", "")))
+        hosted = [base.rstrip("/") + f"/packs/{pack_id}/{pack_version}.zip" for base in mirrors or []]
+        out.append(entry(m, cached, [*hosted, *[u for u in listing["urls"] if u not in hosted]], preview, listing.get("provenance", "")))
     return out
+
+
+def fetch_index(base_url: str) -> tuple[bytes, str]:
+    base = base_url.rstrip("/") + "/"
+    with urllib.request.urlopen(urllib.request.Request(base + "index.json", headers={"User-Agent": "GUO-catalogue/1"}), timeout=60) as r:
+        raw = r.read(8 * 1024 * 1024 + 1)
+    require(len(raw) <= 8 * 1024 * 1024, "index too large")
+    with urllib.request.urlopen(urllib.request.Request(base + "index.json.sig", headers={"User-Agent": "GUO-catalogue/1"}), timeout=60) as r:
+        signature = r.read(1024).decode("ascii")
+    return raw, signature
+
+
+def mirror(base_url: str, public: bytes, out: Path) -> dict:
+    """Copies a signed catalogue into out, laid out as packs/<id>/<version>.zip and previews/..., every ZIP
+    checked against the signed hash before it is kept. The index and its signature are copied byte for byte
+    last, so a client reading the mirror never sees an index whose packs are not there yet."""
+    out = Path(out)
+    raw, signature = fetch_index(base_url)
+    seen = previous_sequence(out, json.loads(raw).get("catalogue", {}).get("id", ""))
+    index = check(raw, signature, public, seen_sequence=seen)
+    base = base_url.rstrip("/") + "/"
+    for item in index["packs"]:
+        m = item["manifest"]
+        identifier(m["id"])
+        version(m["version"])
+        target = out / "packs" / m["id"] / f'{m["version"]}.zip'
+        if not (target.is_file() and target.stat().st_size == item["size"] and sha256(target) == item["sha256"]):
+            target.parent.mkdir(parents=True, exist_ok=True)
+            partial = target.with_suffix(".part")
+            errors = []
+            for url in item["urls"]:
+                url = check_url(url if urlsplit(url).scheme else base + url)
+                try:
+                    fetch(url, partial, item["size"])
+                    if partial.stat().st_size == item["size"] and sha256(partial) == item["sha256"]:
+                        os.replace(partial, target)
+                        break
+                    errors.append(f"{url}: hash mismatch")
+                except (OSError, ValueError) as ex:
+                    errors.append(f"{url}: {ex}")
+                finally:
+                    partial.unlink(missing_ok=True)
+            require(target.is_file(), f'{m["id"]} {m["version"]}: no URL served the signed bytes ({"; ".join(errors)})')
+        verify(target)
+        extract_preview(target, m, out)
+    for name, data in (("index.json.sig", signature.encode("ascii")), ("index.json", raw)):
+        fd, temporary = tempfile.mkstemp(dir=out, suffix=".tmp")
+        try:
+            with os.fdopen(fd, "wb") as stream:
+                stream.write(data)
+            os.replace(temporary, out / name)
+        finally:
+            Path(temporary).unlink(missing_ok=True)
+    return index
 
 
 # ---------------------------------------------------------------- index

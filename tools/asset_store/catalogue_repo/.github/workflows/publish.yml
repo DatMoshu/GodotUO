@@ -1,0 +1,73 @@
+# Builds the signed catalogue and publishes it to GitHub Pages (GodotUO ADR-0026).
+# Every listing's ZIP is downloaded and verified before it is listed.
+#
+# Needs:
+#   secrets.CATALOGUE_SIGNING_KEY  the secret key file's one line (run.py keygen)
+#   vars.MIRRORS                   optional, space-separated mirror base URLs
+#   Settings > Pages > Source: GitHub Actions
+
+name: publish
+
+on:
+  push:
+    branches: [main]
+  # Weekly, so the index's 30-day expiry never runs out between merges.
+  schedule:
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7
+        with:
+          repository: DatMoshu/GodotUO
+          path: guo
+          sparse-checkout: |
+            tools/asset_store
+            tools/guo
+            launchers/_shared
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Build and sign the catalogue
+        env:
+          CATALOGUE_SIGNING_KEY: ${{ secrets.CATALOGUE_SIGNING_KEY }}
+          MIRRORS: ${{ vars.MIRRORS }}
+          UO_STORE_CATALOGUE_ID: guo-official
+          UO_STORE_CATALOGUE_TITLE: GUO packs
+        run: |
+          umask 077
+          key="$RUNNER_TEMP/catalogue.key"
+          printf '%s\n' "$CATALOGUE_SIGNING_KEY" > "$key"
+          trap 'rm -f "$key"' EXIT
+          mirrors=()
+          for m in $MIRRORS; do mirrors+=(--mirror "$m"); done
+          UO_STORE_SIGNING_KEY="$key" python guo/tools/asset_store/run.py build-catalogue \
+            --listing packs --site site --cache "$RUNNER_TEMP/cache" --expires-days 30 "${mirrors[@]}"
+          cp guo/tools/asset_store/index.html site/index.html
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

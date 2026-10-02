@@ -194,6 +194,32 @@ class CatalogueTests(unittest.TestCase):
                         self.meta, catalogue.read_secret(other))
         self.assertIn("PASS expect-key-changed", step("expect-key-changed"))
 
+    def test_mirror_copies_a_signed_catalogue_byte_for_byte(self):
+        hosted = self.root / "host"
+        hosted.mkdir()
+        zip_path = self.pack()
+        (hosted / "test-pack.zip").write_bytes(zip_path.read_bytes())
+        host_url = self.serve(hosted)
+        listing = self.root / "listing/test-pack"
+        listing.mkdir(parents=True)
+        (listing / "1.0.0.json").write_text(json.dumps({"urls": [f"{host_url}/test-pack.zip"],
+            "sha256": hashlib.sha256(zip_path.read_bytes()).hexdigest(), "size": zip_path.stat().st_size}))
+        site = self.root / "site"
+        out = self.root / "mirror"
+        mirror_base = self.serve(out.parent) + "/mirror"
+        entries = catalogue.entries_from_listing(self.root / "listing", self.root / "cache", site, require_https=False, mirrors=[mirror_base])
+        self.assertEqual(entries[0]["urls"][0], mirror_base + "/packs/test-pack/1.0.0.zip")
+        catalogue.build(site, entries, self.meta, self.secret)
+        site_url = self.serve(site)
+        index = catalogue.mirror(site_url, self.public, out)
+        self.assertEqual(index["sequence"], json.loads((site / "index.json").read_text())["sequence"])
+        self.assertEqual((out / "index.json").read_bytes(), (site / "index.json").read_bytes())
+        self.assertEqual((out / "packs/test-pack/1.0.0.zip").read_bytes(), zip_path.read_bytes())
+        self.assertTrue((out / entries[0]["preview_url"]).is_file())
+        catalogue.mirror(site_url, self.public, out)  # a second sync with nothing new is a no-op
+        with self.assertRaisesRegex(ValueError, "different key"):
+            catalogue.mirror(site_url, ed25519.public_key(os.urandom(32)), self.root / "mirror2")
+
     def test_csharp_verifier_agrees(self):
         vectors = []
         for n in range(4):

@@ -1,0 +1,30 @@
+name: Report a pack
+description: A pack breaks the content policy or infringes your rights. It is delisted while it is reviewed.
+labels: [report]
+body:
+  - type: input
+    id: pack
+    attributes:
+      label: Pack id and version
+      placeholder: moongate-shimmer 1.0.0
+    validations:
+      required: true
+  - type: dropdown
+    id: reason
+    attributes:
+      label: Reason
+      options:
+        - It contains art, sound or text from the Ultima Online client, or derived from it
+        - It contains my work without permission
+        - Its licence or credits are wrong
+        - It is malicious or does something it does not say
+        - Something else
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: Details
+      description: What is wrong and where. For a rights claim, say what work it is and how you hold the rights to it.
+    validations:
+      required: true

@@ -169,11 +169,16 @@ def main():
     b.add_argument("--site", type=Path, required=True)
     b.add_argument("--cache", type=Path, required=True)
     b.add_argument("--expires-days", type=int)
+    b.add_argument("--mirror", action="append", default=[], help="a mirror's base URL, listed first for every pack")
+    b.add_argument("--check", action="store_true", help="verify every listing and its ZIP; sign and write nothing (pull requests)")
+    m = sub.add_parser("mirror", help="copy a signed catalogue into --store-dir, verifying every ZIP")
+    m.add_argument("--from", dest="source", required=True, help="the catalogue's base URL")
+    m.add_argument("--key", required=True, help="the catalogue's public key, ed25519:...")
     c = sub.add_parser("check-index", help="verify a store folder's signed index")
     c.add_argument("--key", help="the trusted public key (ed25519:...); default: the key the index names")
     args = parser.parse_args()
     signer = None
-    if config.store_signing_key and args.command not in ("keygen", "check-index"):
+    if config.store_signing_key and args.command not in ("keygen", "check-index", "mirror"):
         signer = (catalogue.read_secret(config.store_signing_key),
                   {"id": config.store_catalogue_id, "title": config.store_catalogue_title}, config.store_base_url)
     try:
@@ -184,10 +189,18 @@ def main():
             print(f"Fingerprint: {ed25519.fingerprint(public)}")
             return 0
         if args.command == "build-catalogue":
+            if args.check:
+                entries = catalogue.entries_from_listing(args.listing, args.cache, Path(tempfile.mkdtemp()), mirrors=args.mirror)
+                print(f"Checked {len(entries)} pack(s): every listing names a ZIP that verifies")
+                return 0
             require(signer, "set UO_STORE_SIGNING_KEY to sign the catalogue")
-            entries = catalogue.entries_from_listing(args.listing, args.cache, args.site)
+            entries = catalogue.entries_from_listing(args.listing, args.cache, args.site, mirrors=args.mirror)
             index = catalogue.build(args.site, entries, signer[1], signer[0], args.expires_days)
             print(f"Catalogue {index['catalogue']['id']} sequence {index['sequence']}: {len(entries)} pack(s)")
+            return 0
+        if args.command == "mirror":
+            index = catalogue.mirror(args.source, ed25519.decode(args.key, 32), args.store_dir)
+            print(f"Mirrored {index['catalogue']['id']} sequence {index['sequence']}: {len(index['packs'])} pack(s) into {args.store_dir}")
             return 0
         if args.command == "check-index":
             root = Path(args.store_dir)

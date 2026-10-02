@@ -1,0 +1,40 @@
+# Checks a pull request's listings: each ZIP is downloaded from its URLs and
+# verified as a pack (GodotUO ADR-0026). Nothing is signed here; the signing
+# key is never available to pull requests.
+
+name: check
+
+on:
+  pull_request:
+    paths: ['packs/**']
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7
+        with:
+          repository: DatMoshu/GodotUO
+          path: guo
+          sparse-checkout: |
+            tools/asset_store
+            tools/guo
+            launchers/_shared
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Only listings change
+        env:
+          BASE: ${{ github.base_ref }}
+        run: |
+          git fetch --no-tags --depth=1 origin "$BASE"
+          bad=$(git diff --name-only "origin/$BASE" HEAD | grep -v '^packs/[a-z0-9][a-z0-9-]*/[0-9][0-9.]*\.json$' || true)
+          if [ -n "$bad" ]; then echo "A pack pull request only adds listing files. Also changed:"; echo "$bad"; exit 1; fi
+          changed=$(git diff --name-only --diff-filter=M "origin/$BASE" HEAD -- packs || true)
+          if [ -n "$changed" ]; then echo "Published listings do not change; add a new version instead (delisting removes the file):"; echo "$changed"; exit 1; fi
+      - name: Verify every listing and its ZIP
+        run: python guo/tools/asset_store/run.py build-catalogue --check --listing packs --site site --cache "$RUNNER_TEMP/cache"
