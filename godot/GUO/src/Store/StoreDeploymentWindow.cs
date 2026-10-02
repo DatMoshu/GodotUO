@@ -57,7 +57,7 @@ internal sealed partial class StoreDeploymentWindow : Window
             foreach (var component in pack.Manifest.Components ?? new())
             {
                 string identity = pack.Id + ":" + component.Id;
-                if (component.Type is "translation" or "wearable" or "script" or "item" or "region" or "decoration" or "loot") continue;
+                if (component.Type is "translation" or "wearable" or "script" or "item" or "region" or "decoration" or "loot" or "creature") continue;
                 var row = new HBoxContainer(); rows.AddChild(row);
                 row.AddChild(new Label { Text = identity + " (" + component.Type + ")", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
                     AutowrapMode = TextServer.AutowrapMode.WordSmart });

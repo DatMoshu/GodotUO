@@ -158,6 +158,25 @@ internal static class ContentChecks
             StorePack.Require(rejected, "Invalid loot definition accepted");
         }
         Console.WriteLine("content: loot export, dependent item resolution and six invalid loot cases PASS");
+        var creatureClosure = client.VerifyContent("sample-content-creature", "1.0.0");
+        var creatureLock = new StoreContentLock { Pack = "sample-content-creature", Version = "1.0.0", IdentityHash = creatureClosure.IdentityHash };
+        creatureLock.Bindings.Add("sample-content-art:stone", new StoreContentBinding { Type = "static", Id = 3701 });
+        string creatureLockPath = Path.Combine(root, "creature-lock.json"), creatureExport = Path.Combine(root, "creature-export.json");
+        File.WriteAllText(creatureLockPath, JsonSerializer.Serialize(creatureLock));
+        StoreServerExport.Export(client, creatureLockPath, creatureExport);
+        using (var exported = JsonDocument.Parse(File.ReadAllBytes(creatureExport)))
+            StorePack.Require(exported.RootElement.GetProperty("creatures")[0].GetProperty("content").GetProperty("loot").GetString() == "sample-content-loot:stone-cache", "Creature loot reference lost");
+        var creatureBytes = creatureClosure.Packs["sample-content-creature"].ReadPayload("creature.json");
+        foreach (var bad in new (string Key, JsonNode Value)[] { ("body", 0), ("hits", -1), ("ai", "arbitrary-type"), ("loot", "missing:loot"), ("wrestling", 121), ("script", "unexpected") })
+        {
+            var row = JsonNode.Parse(creatureBytes).AsObject(); row[bad.Key] = bad.Value;
+            using var invalid = JsonDocument.Parse(row.ToJsonString());
+            bool rejected = false;
+            try { StoreCreatureDefinition.Validate(invalid.RootElement, id => id == "sample-content-loot:stone-cache"); }
+            catch (InvalidDataException) { rejected = true; }
+            StorePack.Require(rejected, "Invalid creature definition accepted");
+        }
+        Console.WriteLine("content: creature export, loot references and six invalid creature cases PASS");
         string payload = Path.Combine(root, art.Id, art.Version, "stone.png");
         File.AppendAllText(payload, "tampered");
         bool refused = false;

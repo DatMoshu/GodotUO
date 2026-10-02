@@ -188,13 +188,48 @@ a game master using the same generator exposed to server gameplay callers as
 owns the returned items and must place or delete them. Items are individual
 instances because base authored item definitions do not declare stackability.
 An exception during generation deletes all instances created by that roll.
-Automatic creature-death/corpse integration is still pending the creature
-consumer; the API and administrator command are the current invocation paths.
+Authored creatures invoke the same generator through ModernUO's death hook,
+placing generated items in their normal corpse.
 
 `sample-content-loot` depends on `sample-content-server` and provides certain,
 optional and disabled drops. The portable check verifies export and rejects
 invalid tables. `UO_SERVER_CONTENT_PROBE=1` verifies live generated quantities
 at probability boundaries and cleanup after an injected creation failure.
+
+## Server creatures
+
+Server-target `creature` entries declare `name`, numeric `body`, `hue`, `sound`,
+`ai` (`animal` or `melee`), `strength`, `dexterity`, `intelligence`, `hits`,
+`damage_min`, `damage_max`, `armor`, `fame`, `karma`, `tactics`, `wrestling`,
+and `resist`. Optional `loot` names an explicitly referenced loot component.
+Stats, skills and presentation IDs are bounded; unknown/duplicate fields and
+unsupported AI names are refused. Body IDs use the shard's existing numeric
+namespace; custom client animations require a matching client deployment.
+
+`GUOPackCreature pack-id:component-id` explicitly spawns a creature at the GM's
+location. Installation and ordinary startup spawn nothing. The concrete
+`ContentCreature` uses ModernUO's BaseCreature AI, combat, death and persistence;
+its initial implementation uses aggressor targeting and 0.2/0.4 active/passive
+AI timing. Spellcasting AI, taming and species-specific behaviors are not yet
+part of this payload contract.
+
+Each spawned creature saves its identity and a snapshot of its resolved loot
+table and item definitions. Existing creatures retain their drops if the
+deployment changes or is removed; new spawns use the currently selected pack.
+The bridge assembly must remain available to load its saved creature type.
+`sample-content-creature` supplies a rat using the loot starter dependency.
+Live tests cover spawn fields and death/corpse drops. A three-process private
+shard test also saved a living creature, reloaded it without any selected
+content deployment, verified its fields and death drops, then verified saved
+cleanup on another restart.
+
+To repeat persistence testing, set `UO_CREATURE_PERSISTENCE_PROBE=seed` with
+the exported sample selected on the disposable private shard. Wait for both
+the phase PASS and subsequent snapshot-write completion; stop the instance.
+Clear `UO_SERVER_CONTENT`, start with probe phase `reload`, and again wait for
+PASS and completed snapshot writing before stopping. Start with phase `verify`
+to confirm cleanup, then stop and clear the probe variable. Preserve phase
+logs before the next start. Never run this saving probe on a production shard.
 
 ## Required evidence
 
@@ -226,7 +261,7 @@ The portable tool is built with
   restart and may refuse unsupported payloads. It never executes scripts.
 - `rollback-content STORE ACTIVE`: reverify and select the previous lock.
 - `deactivate-content ACTIVE`: select original assets and retain the previous lock.
-- `export-server STORE LOCK OUTPUT`: export supported server item, tiledata, map, region, decoration and loot
+- `export-server STORE LOCK OUTPUT`: export supported server item, tiledata, map, region, decoration, loot and creature
   definitions with numeric IDs from the same client/server lock; output must be new.
 
 ModernUO's private editor bridge can load that export through

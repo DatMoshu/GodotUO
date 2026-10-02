@@ -19,12 +19,23 @@ internal static class StoreServerExport
         var regions = new List<object>();
         var decorations = new List<object>();
         var loot = new List<object>();
+        var creatures = new List<object>();
+        var serverLoot = closure.Packs.Values.SelectMany(p => p.Manifest.Components
+            .Where(c => c.Type == "loot" && c.Target != "client").Select(c => p.Id + ":" + c.Id)).ToHashSet(StringComparer.Ordinal);
         var serverItems = closure.Packs.Values.SelectMany(p => p.Manifest.Components
             .Where(c => c.Type == "item" && c.Target != "client").Select(c => p.Id + ":" + c.Id)).ToHashSet(StringComparer.Ordinal);
         foreach (var pack in closure.Packs.Values)
             foreach (var component in pack.Manifest.Components ?? new())
             {
                 if (component.Target == "client") continue;
+                if (component.Type == "creature")
+                {
+                    using var creatureDoc = JsonDocument.Parse(pack.ReadPayload(component.Entry));
+                    StoreCreatureDefinition.Validate(creatureDoc.RootElement, reference =>
+                        component.References != null && component.References.Contains(reference) && serverLoot.Contains(reference));
+                    creatures.Add(new { identity = pack.Id + ":" + component.Id, content = creatureDoc.RootElement.Clone() });
+                    continue;
+                }
                 if (component.Type == "loot")
                 {
                     using var lootDoc = JsonDocument.Parse(pack.ReadPayload(component.Entry));
@@ -104,11 +115,11 @@ internal static class StoreServerExport
                 StorePack.Require(name != null && name.Length is > 0 and <= 100 && double.IsFinite(weight) && weight >= 0 && weight <= 100000, "Invalid item definition");
                 items.Add(new { identity = pack.Id + ":" + component.Id, graphic = binding.Id, name, weight, movable = row.GetProperty("movable").GetBoolean() });
             }
-        StorePack.Require(items.Count > 0 || maps.Count > 0 || tiles.Count > 0 || regions.Count > 0 || decorations.Count > 0, "No supported server content in deployment");
+        StorePack.Require(items.Count > 0 || maps.Count > 0 || tiles.Count > 0 || regions.Count > 0 || decorations.Count > 0 || creatures.Count > 0, "No supported server content in deployment");
         string destination = Path.GetFullPath(output);
         StoreClient.NoLinks(destination);
         Directory.CreateDirectory(Path.GetDirectoryName(destination));
-        byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(new { schema = "guo/server-content@1", identity_hash = closure.IdentityHash, items, maps, tiles, regions, decorations, loot }, new JsonSerializerOptions { WriteIndented = true });
+        byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(new { schema = "guo/server-content@1", identity_hash = closure.IdentityHash, items, maps, tiles, regions, decorations, loot, creatures }, new JsonSerializerOptions { WriteIndented = true });
         StorePack.Require(bytes.Length <= 16 * 1024 * 1024, "Server export exceeds adapter size limit");
         using var stream = new FileStream(destination, FileMode.CreateNew, FileAccess.Write, FileShare.None);
         stream.Write(bytes);
