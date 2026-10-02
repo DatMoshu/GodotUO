@@ -24,7 +24,11 @@ with the project, and the client only ever reads your install.
 
 - New here: [Getting Started](Getting-Started.md), then [Configuration](Configuration.md).
 - Want a build: [Windows Build](Windows-Build.md), [Android Build](Android-Build.md), [Steam Deck](Steam-Deck.md), [Web Client](Web-Client.md), [Dual Screen](Dual-Screen.md), or [Download a build](Getting-Started.md#download-a-build).
+- Playing: [Servers and Accounts](Servers-and-Accounts.md), [Controller](Controller.md), [Asset Store](Asset-Store.md).
 - Playing on a phone: [Mobile UI](Mobile-UI.md), [Canvas Background](Canvas-Background.md).
+- Something wrong: [Troubleshooting](Troubleshooting.md), [Known Issues](Known-Issues.md), [Community and Support](Community-and-Support.md).
+- Building content: [Building Multis](Building-Multis.md), [Author UO Data](Author-UO-Data.md).
+- Contributing: [Contributing](Contributing.md), [Working with AI Agents](Working-With-AI-Agents.md), [Roadmap](Roadmap.md), [Glossary](Glossary.md).
 - A different look for the world: [Screen Effects](Screen-Effects.md).
 - Planning player helpers: [Player command index and controller research](../player-command-and-controller-research.md).
 - Planning the second screen: [OpenMW-DS comparison, tabs, gump transfer, and pinch scaling](../second-screen-ui-research.md).

@@ -1,0 +1,14 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Ask a question
+    url: https://github.com/DatMoshu/GodotUO/discussions/categories/q-a
+    about: How do I...? Setup, configuration and playing questions go to Discussions (Q&A).
+  - name: Suggest an idea
+    url: https://github.com/DatMoshu/GodotUO/discussions/categories/ideas
+    about: Talk an idea through in Discussions first; it becomes an issue once it's agreed.
+  - name: Report a security problem
+    url: https://github.com/DatMoshu/GodotUO/security/advisories/new
+    about: Privately, never in a public issue (see SECURITY.md).
+  - name: Troubleshooting
+    url: https://github.com/DatMoshu/GodotUO/wiki/Troubleshooting
+    about: The common setup, client-data and connection problems, with fixes.

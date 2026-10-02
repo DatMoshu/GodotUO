@@ -67,19 +67,25 @@ repository public; that switch is only ever the owner's.
       The release notes say so, with `adb reverse` or an own-address export as the ways to reach a shard.
 - [x] **Dependabot PRs #6–#10** (GitHub Actions bumps): merge (owner, 2026-10-01).
 
-## The switch and after (commands ready)
+## The switch and after (done 2026-10-01)
 
-- [ ] **Repository visibility:** Settings → General → Change visibility → Public.
-- [ ] **Security settings:**
-  - `gh api -X PUT repos/DatMoshu/GodotUO/private-vulnerability-reporting`
-  - `gh api -X PUT repos/DatMoshu/GodotUO/vulnerability-alerts`
-  - secret scanning and push protection: Settings → Code security.
-- [ ] **Branch protection:**
-      `gh api -X PUT repos/DatMoshu/GodotUO/branches/main/protection --input docs/release/branch-protection.json`
-      (requires `CI / guard` and `CI / build`; admins may still push, so the director workflow keeps
-      working).
-- [ ] **Pages:** Settings → Pages → Source: GitHub Actions, then `gh workflow run pages`. Add a push
-      trigger in `.github/workflows/pages.yml` if Pages should follow `main`.
-- [ ] **First release:** tag `v0.1.0` on a green `main`, check the draft release's three downloads and
-      notes, then publish it.
+- [x] **Public** (the owner), with Wiki (editing restricted to collaborators), Discussions and
+      Sponsorships turned on.
+- [x] **Security:** private vulnerability reporting, Dependabot alerts and security updates, secret
+      scanning and push protection.
+- [x] **Branch protection on `main`:** `guard` and `build` must pass; no force pushes or deletions;
+      admins may still push, so the director workflow keeps working.
+- [x] **Merging:** branches are deleted on merge; auto-merge and "update branch" are allowed.
+- [x] **Pages:** source GitHub Actions; the `pages` workflow runs on every push that changes `site/`,
+      `docs/wiki/` or `docs/images/`. Homepage: https://datmoshu.github.io/GodotUO/
+- [x] **Wiki:** the `wiki` workflow publishes `docs/wiki/` to the GitHub Wiki (`tools/wiki_publish`).
+- [x] **Collaboration:** labels for area, platform, parity and triage; issue-template contact links
+      (Q&A, Ideas, security, Troubleshooting); `CODEOWNERS`.
+- [ ] **Wiki's first page (owner, once):** Wiki → Create the first page → Save. GitHub makes the wiki's
+      repository only then; rerun the `wiki` workflow afterwards.
+- [ ] **Sponsor button (owner):** no GitHub Sponsors profile exists yet. Join GitHub Sponsors, or name
+      another platform (Ko-fi, Patreon, a link), and `.github/FUNDING.yml` gets that entry.
+- [ ] **Discussions:** pin the welcome post in Announcements.
+- [ ] **First release:** one manual `release` run to check the stable Android key, then tag `v0.1.0`,
+      check the draft release's three downloads and notes, and publish it.
 - [ ] **Announce:** the showcase post drafts are ready to adapt.

@@ -1,0 +1,46 @@
+# GUO -- publish docs/wiki to the repository's GitHub Wiki. docs/wiki is the
+# source, reviewed like any change; the wiki is a generated copy, so edit the
+# pages here, not on GitHub (tools/wiki_publish converts the links).
+#
+# The wiki's git repository exists only after its first page is saved once on
+# GitHub (Wiki > Create the first page). Until then this job fails at the
+# clone with that hint.
+
+name: wiki
+
+on:
+  push:
+    branches: [main]
+    paths: ['docs/wiki/**', 'tools/wiki_publish/**', '.github/workflows/wiki.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wiki
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check the wiki's links
+        run: python3 tools/wiki_publish/run.py --check
+      - name: Clone the wiki
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git clone --depth 1 "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.wiki.git" _wiki \
+            || { echo "::error::No wiki repository yet: open the Wiki tab, create the first page once, then rerun."; exit 1; }
+      - name: Write and push the pages
+        run: |
+          python3 tools/wiki_publish/run.py --out _wiki --repo "$GITHUB_REPOSITORY"
+          cd _wiki
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then echo "wiki unchanged"; exit 0; fi
+          git commit -m "Publish docs/wiki at ${GITHUB_SHA::7}"
+          git push

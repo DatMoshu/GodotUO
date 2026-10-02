@@ -7,6 +7,8 @@
 - [What is GUO?](What-Is-GUO.md)
 - [FAQ](FAQ.md)
 - [Known Issues](Known-Issues.md)
+- [Troubleshooting](Troubleshooting.md)
+- [Glossary](Glossary.md)
 
 **Builds**
 - [Windows Build](Windows-Build.md)
@@ -16,9 +18,12 @@
 - [Dual Screen](Dual-Screen.md)
 
 **Playing**
+- [Servers and Accounts](Servers-and-Accounts.md)
+- [Controller](Controller.md)
 - [Mobile UI](Mobile-UI.md)
 - [Canvas Background](Canvas-Background.md)
 - [Screen Effects](Screen-Effects.md)
+- [Asset Store](Asset-Store.md)
 - [Dev Shard](Dev-Shard.md)
 
 **Developing**
@@ -27,5 +32,11 @@
 - [Editor](Editor.md)
 - [Manage Your Shard From the Editor](Manage-Your-Shard-From-The-Editor.md)
 - [Author UO Data](Author-UO-Data.md)
+- [Building Multis](Building-Multis.md)
 - [Architecture](Architecture.md)
+- [Working with AI Agents](Working-With-AI-Agents.md)
 - [Contributing](Contributing.md)
+
+**Project**
+- [Roadmap](Roadmap.md)
+- [Community and Support](Community-and-Support.md)

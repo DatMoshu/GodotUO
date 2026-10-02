@@ -5,10 +5,12 @@
 
 name: pages
 
-# Manual until the repository goes public: enabling Pages publishes a public
-# site. After Settings > Pages > Source: GitHub Actions, add a push trigger
-# on main for site/**, docs/wiki/** and docs/images/**.
+# Rebuilds on every push to main that changes the site, the wiki or the
+# images (Settings > Pages > Source: GitHub Actions, set 2026-10-01).
 on:
+  push:
+    branches: [main]
+    paths: ['site/**', 'docs/wiki/**', 'docs/images/**', '.github/workflows/pages.yml']
   workflow_dispatch:
 
 permissions:

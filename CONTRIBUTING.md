@@ -7,6 +7,12 @@ with a clear reproduction.
 Read [the port plan](docs/port_plan.md) first. It explains why the project
 is structured the way it is.
 
+Questions and ideas go to [Discussions](https://github.com/DatMoshu/GodotUO/discussions);
+bugs go to Issues. Look for `good first issue` and `help wanted` labels for a
+way in. The [wiki](https://github.com/DatMoshu/GodotUO/wiki) is generated from
+`docs/wiki/`, so a wiki fix is a pull request against those files. AI coding
+agents work under the same rules; see `AGENTS.md`.
+
 ## Setting up
 
 ```bat
