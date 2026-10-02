@@ -33,6 +33,8 @@ internal sealed class LoginStage : Stage
 
     public static bool ProbeOnAccount => PregameScreen.Instance?.Stage is LoginStage s && s.D.Focus.Current == s._accountField;
     public static bool ProbeOnPassword => PregameScreen.Instance?.Stage is LoginStage s && s.D.Focus.Current == s._passwordField;
+    public static Control ProbeAccountField => (PregameScreen.Instance?.Stage as LoginStage)?._accountField?.Control;
+    public static Control ProbePasswordField => (PregameScreen.Instance?.Stage as LoginStage)?._passwordField?.Control;
     public static bool ProbeOnLogin => PregameScreen.Instance?.Stage is LoginStage s && s.D.Focus.Current == s._arrow;
 
     public override IEnumerable<IOverlayFocusable> OverlayItems => _items;
@@ -298,8 +300,14 @@ internal sealed class LoginStage : Stage
                 D.Focus.Set(account ? _passwordField : _arrow);
                 D.RefreshHints();
             },
-            cancel: () => D.RefreshHints(),
-            changed: text => SetField(account, text));
+            cancel: () =>
+            {
+                ShowFields();
+                D.RefreshHints();
+            },
+            changed: text => SetField(account, text),
+            field: account ? _accountField.Control : _passwordField.Control,
+            fieldText: account ? _accountText : _passwordText);
         D.RefreshHints();
     }
 
@@ -314,7 +322,11 @@ internal sealed class LoginStage : Stage
             _password = text;
         }
 
-        ShowFields();
+        // The keyboard draws the field (with its caret) while it is open.
+        if (!D.Keyboard.IsOpen)
+        {
+            ShowFields();
+        }
     }
 
     private void DoLogin()

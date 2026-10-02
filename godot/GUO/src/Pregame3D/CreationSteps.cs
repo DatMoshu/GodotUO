@@ -998,11 +998,12 @@ internal sealed partial class CreationStage
     {
         var clilocs = Client.Game.UO.FileManager.Clilocs;
 
-        PanelContainer field = Card(8);
+        PanelContainer field = _nameField = Card(8);
         Label name = Text(_name.Length > 0 ? _name : "(press A to name your character)", _name.Length > 0 ? Ink : Muted, _name.Length > 0 ? 2 : 1);
         name.CustomMinimumSize = new Vector2(0, 34);
         name.VerticalAlignment = VerticalAlignment.Center;
         field.AddChild(name);
+        _nameLabel = name;
         _body.AddChild(field);
         var f = new UiFocus(field) { Tag = "name" };
         f.Shown = on => field.AddThemeStyleboxOverride("panel", Parch(8, on ? 1 : 0));
@@ -1037,14 +1038,21 @@ internal sealed partial class CreationStage
         PadFocus.LinkColumn(_items.Cast<IFocusable>().ToList());
     }
 
+    private PanelContainer _nameField;
+    private Label _nameLabel;
+
+    public static Control ProbeNameField => (PregameScreen.Instance?.Stage as CreationStage)?._nameField;
+
     private void EditName()
     {
+        // Typed at the name's own size, in the row.
+        _nameLabel?.AddThemeFontSizeOverride("font_size", UoTheme.FontSize * 2);
         D.Keyboard.Open("Character name", _name, false, 16, text =>
         {
             _name = text.Trim();
             _character.Name = _name;
             ShowStep(Step.Name, _name.Length > 0 ? "enter" : "name");
-        }, () => D.RefreshHints());
+        }, () => ShowStep(Step.Name, "name"), field: _nameField, fieldText: _nameLabel);
         D.RefreshHints();
     }
 

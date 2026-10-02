@@ -236,6 +236,7 @@ internal static class Pregame3DProbe
             // 2. The account on the keyboard: focus it (X), type, Done.
             await Press(PadCmd.X);
             Check("X opens the keyboard on the account", PregameScreen.Instance.Keyboard.IsOpen);
+            AssertFieldOnTop("account", LoginStage.ProbeAccountField);
             await Type(account);
             await Shot("02_keyboard_account");
             await Press(PadCmd.Start);
@@ -245,6 +246,7 @@ internal static class Pregame3DProbe
             Check("focus moved to the password", LoginStage.ProbeOnPassword);
             await Press(PadCmd.A);
             Check("A opens the keyboard on the password", PregameScreen.Instance.Keyboard.IsOpen);
+            AssertFieldOnTop("password", LoginStage.ProbePasswordField);
             await Type(password);
             await Shot("03_keyboard_password");
             await Press(PadCmd.Start);
@@ -339,6 +341,68 @@ internal static class Pregame3DProbe
         GumpProp g => g.Tag ?? "",
         _ => "",
     };
+
+    /// <summary>
+    /// The field being typed into is the field itself (not a card), on
+    /// screen, and nothing drawn after it covers it.
+    /// </summary>
+    private static void AssertFieldOnTop(string what, Control field)
+    {
+        OnScreenKeyboard osk = PregameScreen.Instance?.Keyboard;
+        bool inPlace = osk != null && field != null && ReferenceEquals(osk.EditedField, field);
+        Check($"{what}: typed in place in the field", inPlace, field == null ? "no field" : "the keyboard edits another control");
+
+        if (field == null || !field.IsVisibleInTree())
+        {
+            Check($"{what}: the field is visible", false);
+            return;
+        }
+
+        Rect2 r = field.GetGlobalRect();
+        Vector2I root = Host.GetTree().Root.Size;
+        bool onScreen = new Rect2(Vector2.Zero, root).Grow(6f).Encloses(r);
+        var over = new System.Collections.Generic.List<string>();
+        bool after = false;
+
+        void Walk(Node n)
+        {
+            if (n is Control c)
+            {
+                if (!c.IsVisibleInTree())
+                {
+                    return;
+                }
+
+                if (ReferenceEquals(c, field))
+                {
+                    after = true;
+                    return; // its own children are its text
+                }
+
+                bool drawsSomething = c is Panel or PanelContainer or TextureRect or ColorRect || (c is Label l && l.Text.Length > 0);
+
+                if (after && drawsSomething && !c.IsAncestorOf(field))
+                {
+                    Rect2 o = c.GetGlobalRect().Intersection(r);
+
+                    if (o.Size.X > 2 && o.Size.Y > 2)
+                    {
+                        over.Add($"{c.GetType().Name} \"{(c as Label)?.Text ?? c.Name}\"");
+                    }
+                }
+            }
+
+            foreach (Node child in n.GetChildren())
+            {
+                Walk(child);
+            }
+        }
+
+        Walk(PregameScreen.Instance.Props);
+        Walk(PregameScreen.Instance.OverlayRoot);
+        Check($"{what}: the field is on screen and nothing covers it (card shown: {osk?.CardShown})", onScreen && over.Count == 0,
+            $"at {r.Position.X:0},{r.Position.Y:0} {r.Size.X:0}x{r.Size.Y:0}; covered by {string.Join(", ", over)}");
+    }
 
     /// <summary>
     /// Every visible control of the pregame inside the root viewport (a
@@ -583,6 +647,7 @@ internal static class Pregame3DProbe
         // 5 Name, then Enter Britannia.
         await Press(PadCmd.A);
         Check("A on the name opens the keyboard", PregameScreen.Instance.Keyboard.IsOpen);
+        AssertFieldOnTop("name", CreationStage.ProbeNameField);
         await Type("Pebble");
         await Press(PadCmd.Start);
         await Frames(10);

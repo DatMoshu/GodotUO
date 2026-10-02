@@ -258,6 +258,7 @@ internal sealed partial class PregameScreen : Node
 
         Animate();
         _stage?.Update(delta);
+        Keyboard.PlaceHint();
         Focus.Update(Dispatch);
         Hover();
     }
@@ -779,6 +780,7 @@ internal sealed partial class PregameScreen : Node
 
         Keyboard = new OnScreenKeyboard();
         _overlay.AddChild(Keyboard.Root);
+        Keyboard.Attach(_overlay);
         Keyboard.Root.SetAnchorsPreset(Control.LayoutPreset.CenterBottom);
         Keyboard.Root.GrowHorizontal = Control.GrowDirection.Both;
         Keyboard.Root.GrowVertical = Control.GrowDirection.Begin;
