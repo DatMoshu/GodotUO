@@ -1085,3 +1085,27 @@ Beside `settings.json` in the client home: GUO's own choices made on the pre-gam
 |---|---|
 | `login_background` | What the canvas background (ADR-0016) shows before a profile is loaded: `""` for the last character's (ADR-0016's own rule, the default), `builtin-grey`, `builtin-wood`, `builtin:<name>` from `assets/backgrounds/backgrounds.json`, or `embedded:<file>.png`, a picture compiled in from `Resources/embedded/backgrounds`. A choice that no longer exists reads as the default. In the world the profile's own background applies |
 
+## 21. The agent request queue (`agent_queue.db`)
+
+One SQLite file per user at `UO_AGENT_QUEUE` (default `%APPDATA%/GUO/agent_queue.db`, or
+`~/.config/guo/agent_queue.db`), written by `tools/agent_queue` and read by the editor's chat window and
+by agent sessions. WAL mode, 30 s busy timeout. Times are UTC ISO-8601 with milliseconds.
+
+| `requests` column | Meaning |
+|---|---|
+| `id` | Integer primary key, increasing |
+| `to_agent`, `from_agent` | Agent names (`[A-Za-z0-9_.-]{1,40}`); `to_agent` may be `*` (the first watcher using `--include-broadcast` takes it) |
+| `text` | At most 8000 characters; never a secret |
+| `attachments` | JSON array of absolute local paths (at most 16); never copied or opened |
+| `status` | `new`, `taken`, `answered` or `cancelled` |
+| `created`, `taken_by`, `taken_at` | When posted, and who took it when |
+
+| `replies` column | Meaning |
+|---|---|
+| `id`, `request_id` | Primary key, and the request answered |
+| `from_agent`, `text`, `attachments`, `created` | As for requests |
+
+Taking a request is one transaction that moves `new` to `taken`, so no request is delivered to two
+watchers. The first reply moves a request to `answered`. The JSON lines printed by `tail` and
+`watch-replies` use the keys `id, to, from, text, attachments, status, created, taken_by, taken_at` and
+`id, request_id, from, text, attachments, created`.

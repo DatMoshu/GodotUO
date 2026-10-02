@@ -184,6 +184,8 @@ class Config:
     store_catalogue_id: str = "local"
     store_catalogue_title: str = "Local GUO packs"
     store_base_url: str = ""
+    # The agent request queue (tools/agent_queue): one SQLite file per user, outside the repo.
+    agent_queue: Path | None = None
 
     # --- derived paths (never configured directly) ---
     @property
@@ -286,6 +288,12 @@ def load_config(root: Path | None = None) -> Config:
     if not cache or "%" in cache:
         data_home = os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
         cache = str(Path(data_home) / "GUO" / "cache")
+
+    # %APPDATA% is Windows-only; elsewhere the same file goes under the user's config folder.
+    agent_queue = native_path(os.path.expandvars(get("UO_AGENT_QUEUE")))
+    if not agent_queue or "%" in agent_queue:
+        config_home = os.environ.get("XDG_CONFIG_HOME") or os.path.join(os.path.expanduser("~"), ".config")
+        agent_queue = str(Path(config_home) / "guo" / "agent_queue.db")
 
     def path_or_none(key: str) -> Path | None:
         # A value that still holds an unexpanded %VAR% is one whose variable
@@ -394,4 +402,5 @@ def load_config(root: Path | None = None) -> Config:
         ),
         log_level=get("UO_LOG_LEVEL", "INFO"),
         shard_src_setting=path_or_none("UO_SHARD_SRC"),
+        agent_queue=Path(agent_queue),
     )

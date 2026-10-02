@@ -48,6 +48,12 @@ REM  Where decoded textures/atlases are cached. Safe to delete at any time;
 REM  it is rebuilt on demand. Keep it OFF the repo tree.
 if not defined UO_CACHE_DIR         set "UO_CACHE_DIR=%LOCALAPPDATA%\GUO\cache"
 
+REM --- Agent request queue ------------------------------------------------
+REM  One SQLite file per user, shared by the editor chat window and the AI
+REM  agent sessions that watch it. Keep it OFF the repo tree. See
+REM  tools\agent_queue\README.md.
+if not defined UO_AGENT_QUEUE       set "UO_AGENT_QUEUE=%APPDATA%\GUO\agent_queue.db"
+
 REM --- World project (the editor) -----------------------------------------
 REM  Where the editor keeps map edits: whole replaced blocks laid over the
 REM  install, never written into it. See docs\data_formats.md section 9 and
