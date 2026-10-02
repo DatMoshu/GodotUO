@@ -31,7 +31,7 @@ project/assembly_name="GUO"
 
 ; The UO workbench (docs/editor_plan.md). Editor only: its code is behind
 ; #if TOOLS, so an exported client carries none of it (ADR-0010).
-enabled=PackedStringArray("res://addons/guo_editor/plugin.cfg")
+enabled=PackedStringArray("res://addons/guo_editor/plugin.cfg", "res://addons/guo_editor_assets/plugin.cfg")
 
 [input_devices]
 

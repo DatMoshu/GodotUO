@@ -37,7 +37,8 @@ public partial class MapPanel : AssetPanel
 
     private OptionButton _facet;
     private LineEdit _coords;
-    private TextureRect _radar;
+    private RadarView _radar;
+    private (int X, int Y)? _lastCell;
     private Label _status;
     private Image _radarImage;
     private int _radarFacet = -1;
@@ -58,6 +59,9 @@ public partial class MapPanel : AssetPanel
 
     /// <summary>The radar image as drawn, for the smoke check.</summary>
     public Image RadarImage => _radarImage;
+
+    /// <summary>The zoomable radar view (the whole tab), for scripted use.</summary>
+    public RadarView Radar => _radar;
 
     /// <summary>
     /// Repaints the given blocks of the radar from the current map, after an
@@ -126,17 +130,25 @@ public partial class MapPanel : AssetPanel
         _coords.TextSubmitted += t => Search(t);
         bar.AddChild(_coords);
 
-        _radar = new TextureRect
+        var jump = new Button
         {
-            ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
-            StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
-            SizeFlagsVertical = SizeFlags.ExpandFill,
-            CustomMinimumSize = new Vector2(0, 200),
-            // Never filter pixel art (AGENTS.md rule 7).
-            TextureFilter = TextureFilterEnum.Nearest,
-            MouseFilter = MouseFilterEnum.Stop,
+            Text = "Jump to UO World",
+            TooltipText = "Show the last clicked cell in the UO World tab (a double click does it too)",
         };
-        _radar.GuiInput += OnRadarInput;
+        jump.Pressed += () =>
+        {
+            if (_lastCell is { } c)
+            {
+                JumpToWorld?.Invoke(Facet, c.X, c.Y);
+            }
+        };
+        bar.AddChild(jump);
+        var fit = new Button { Text = "Fit", TooltipText = "Zoom to fit (the wheel zooms, a drag pans)" };
+        fit.Pressed += () => _radar.ZoomToFit();
+        bar.AddChild(fit);
+
+        _radar = new RadarView();
+        _radar.Picked += OnRadarPicked;
         AddChild(_radar);
 
         _status = new Label { Text = "loading client data...", ClipText = true };
@@ -224,7 +236,7 @@ public partial class MapPanel : AssetPanel
         _radarImage = Image.CreateFromData(w, bh * per, false, Image.Format.Rgba8, rgba);
         _radar.Texture = ImageTexture.CreateFromImage(_radarImage);
         _radarFacet = facet;
-        _status.Text = $"map{facet}: {bw * 8}x{bh * 8} cells, radar 1:{Stride} in {sw.ElapsedMilliseconds} ms. Click a cell.";
+        _status.Text = $"map{facet}: {bw * 8}x{bh * 8} cells, radar 1:{Stride} in {sw.ElapsedMilliseconds} ms. Click a cell, double-click to jump.";
     }
 
     /// <summary>
@@ -313,34 +325,54 @@ public partial class MapPanel : AssetPanel
         return InspectCell(x, y) ? x * 65536 + y : null;
     }
 
-    private void OnRadarInput(InputEvent e)
+    /// <summary>Does what a click (or double click) on a cell of the radar does, for scripted use.</summary>
+    public void ScriptedClick(int x, int y, bool doubleClick = false)
     {
-        if (e is not InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left } mb || _radarImage == null)
+        if (_radarImage == null)
         {
-            return;
+            Render();
         }
 
-        // Undo KeepAspectCentered: the image is scaled to fit and centred.
-        Vector2 size = _radar.Size;
-        float iw = _radarImage.GetWidth(), ih = _radarImage.GetHeight();
-        float scale = Math.Min(size.X / iw, size.Y / ih);
-        Vector2 origin = (size - new Vector2(iw, ih) * scale) / 2;
-        Vector2 p = (mb.Position - origin) / scale;
-        if (p.X < 0 || p.Y < 0 || p.X >= iw || p.Y >= ih)
-        {
-            return;
-        }
+        OnRadarPicked(new Vector2I(x / Stride, y / Stride), false, doubleClick);
+    }
 
-        int x = (int)p.X * Stride, y = (int)p.Y * Stride;
+    private void OnRadarPicked(Vector2I px, bool ctrl, bool doubleClick)
+    {
+        int x = px.X * Stride, y = px.Y * Stride;
         _coords.Text = $"{x},{y}";
-        if (mb.CtrlPressed)
+        _lastCell = (x, y);
+        _radar.Mark = px;
+        if (ctrl || doubleClick)
         {
-            // Ctrl+click: straight to the World tab.
+            // Ctrl+click or a double click: straight to the World tab.
             JumpToWorld?.Invoke(Facet, x, y);
             return;
         }
 
         InspectCell(x, y);
+    }
+
+    /// <summary>The radar's image for a facet (rendered on first use), for the World tab's minimap. Null if the install has no such map.</summary>
+    public Image RadarFor(int facet)
+    {
+        if (Data == null || !Data.IsLoaded || _facet == null)
+        {
+            return null;
+        }
+
+        if (_radarFacet != facet || _radarImage == null)
+        {
+            int at = _facet.GetItemIndex(facet);
+            if (at < 0)
+            {
+                return null;
+            }
+
+            _facet.Select(at);
+            Render();
+        }
+
+        return _radarFacet == facet ? _radarImage : null;
     }
 
     private bool InspectCell(int x, int y)
@@ -409,7 +441,7 @@ public partial class MapPanel : AssetPanel
             sb.Append(line).Append('\n');
         }
 
-        sb.Append($"(radar of the {side}x{side} cells around it, {Zoom}x; Ctrl+click the radar to jump)\n");
+        sb.Append($"(radar of the {side}x{side} cells around it, {Zoom}x; double-click the radar to jump)\n");
         var inspection = Inspection.Still("Maps", $"{x},{y}", img, sb.ToString());
         inspection.Actions.Add(("Show in UO World", () => JumpToWorld?.Invoke(facet, x, y)));
         Raise(inspection);

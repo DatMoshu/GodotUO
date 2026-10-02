@@ -69,6 +69,10 @@ public sealed class AssetOverlay
     public string PathOf(AssetKind kind, int id) =>
         Path.Combine(Root, Folder(kind), $"0x{id:X4}" + (kind == AssetKind.Hue ? ".json" : ".png"));
 
+    /// <summary>The same file as the world project names it ("assets/art/statics/0x0E75.png"): what the UI shows, never the machine's full path.</summary>
+    public string RelativePathOf(AssetKind kind, int id) =>
+        Path.GetRelativePath(Root, PathOf(kind, id)).Replace(Path.DirectorySeparatorChar, '/');
+
     public bool Has(AssetKind kind, int id) => File.Exists(PathOf(kind, id));
 
     /// <summary>Every id the project replaces for a kind, ascending.</summary>

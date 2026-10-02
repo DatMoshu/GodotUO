@@ -112,6 +112,20 @@ internal sealed class ObjectLayer
     public Guid? IdOf(object picked) =>
         picked is Item item && _bySerial.TryGetValue(item.Serial, out Guid id) ? id : null;
 
+    /// <summary>One of the layer's drawn items with a graphic, or null (the tour aims at it).</summary>
+    public Item DrawnItemWithGraphic(ushort graphic)
+    {
+        foreach (uint serial in _bySerial.Keys)
+        {
+            if (_host.World?.Get(serial) is Item item && item.Graphic == graphic)
+            {
+                return item;
+            }
+        }
+
+        return null;
+    }
+
     /// <summary>How many of the layer's objects are in the embedded world right now.</summary>
     public int DrawnCount
     {

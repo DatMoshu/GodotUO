@@ -384,3 +384,18 @@ Phase 0-2 merged: open the editor, browse any asset, jump the world view to
 Britain, and a screenshot of that view pixel-matches the client's own
 screenshot at the same coordinates, with `editor_smoke` proving it headless.
 No writable feature ships until that is true.
+
+## Default layout (2026-10)
+
+UO Assets is a main-screen tab (the whole centre: asset tabs, S/M/L cell size,
+a zoomable radar in Maps with double-click to jump), supplied by the small
+`addons/guo_editor_assets` plugin because one plugin owns one main screen. The
+UO Inspector has the full height of the right column in front of Godot's
+Inspector (preview on top, scrolling details below); Scene and FileSystem share
+the left dock; the UO Shard dock is in the bottom panel. The World toolbar folds
+the layer and guide toggles into Layers and Guides menus, and a minimap
+(Guides > Minimap) sits in the view. The layout is applied once (a flag in the
+editor's project metadata) or by Project > Tools > Reset GUO layout
+(`GuoEditorPlugin.ResetLayout()`); a layout the user changed is not touched.
+The tour records at 3840x2160 with display scale 1.5 on a scratch settings
+folder, so the user's editor settings are never changed.
