@@ -194,12 +194,18 @@ None. This is infrastructure.
 
 ## Validation
 
-To be filled in as each step lands:
-
-- RFC 8032 vectors pass in C# and Python, and each verifies the other's
-  signatures.
-- A signed index with mirrors on two hosts installs from the second host when
-  the first fails. A tampered index and a rolled-back index are refused.
-- ModernUO end to end: a shard descriptor names a combined pack. A fresh
+- **Done, 2026-10-02:** `python tools/asset_store/test_catalogue.py`, 9
+  tests, in CI.
+  - The RFC 8032 vectors pass in C# and Python. The Python signer matches
+    the `cryptography` package, and the C# verifier verifies Python's
+    signatures on random messages.
+  - The real C# client, against a signed catalogue served locally:
+    - it asks for approval of a new key;
+    - it installs a pack whose first URL is dead from the mirror that serves
+      the listed bytes;
+    - it refuses a tampered index, a rolled-back index and a changed key.
+  - The existing v1 suites (`test_store`, `test_corpus`, `smoke.py`,
+    `test_content`, the script tests) still pass.
+- **To do:** ModernUO end to end: a shard descriptor names a combined pack. A fresh
   client installs it, selects it for that shard, restarts, logs in, and sees
   the pack's item that the shard created from the same lock.

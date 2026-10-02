@@ -27,6 +27,14 @@ class Quiet(SimpleHTTPRequestHandler):
 
 
 class CatalogueTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        # Build the headless checker first: a stale build would test yesterday's client.
+        project = ROOT / "tools/asset_store/headless/StoreSmoke.csproj"
+        built = subprocess.run(["dotnet", "build", str(project), "-v", "q", "-nologo"], capture_output=True, text=True)
+        if built.returncode:
+            raise RuntimeError("the headless store checker does not build: " + built.stdout[-2000:])
+
     def setUp(self):
         temp = tempfile.TemporaryDirectory()
         self.addCleanup(temp.cleanup)
@@ -136,9 +144,57 @@ class CatalogueTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "HTTPS"):
             catalogue.entries_from_listing(self.root / "listing", self.root / "cache2", site)
 
+    def serve(self, folder):
+        httpd = ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(Quiet, directory=str(folder)))
+        threading.Thread(target=httpd.serve_forever, daemon=True).start()
+        self.addCleanup(httpd.server_close)
+        self.addCleanup(httpd.shutdown)
+        return f"http://127.0.0.1:{httpd.server_port}"
+
+    def test_csharp_client_end_to_end(self):
+        """The real C# client: approval, a dead first URL and a working mirror, tampering, rollback, a new key."""
+        store, mirror, installed = self.root / "cdn", self.root / "mirror", self.root / "installed"
+        mirror.mkdir()
+        publish(self.pack(), store)
+        mirror_url = self.serve(mirror)
+        (store / "listing/test-pack").mkdir(parents=True)
+        (store / "listing/test-pack/1.0.0.json").write_text(json.dumps({"urls": [mirror_url + "/test-pack.zip"], "provenance": "drawn for the test"}))
+        catalogue.build(store, catalogue.entries_from_store(store, None), self.meta, self.secret)
+        # The catalogue's own copy goes away: installing has to fall through to the mirror.
+        os.replace(store / "packs/test-pack/1.0.0.zip", mirror / "test-pack.zip")
+        url = self.serve(store)
+
+        def step(*args, expect=0):
+            out = subprocess.run(["dotnet", str(HEADLESS), "catalogue", args[0], url, str(installed), *args[1:]],
+                                 capture_output=True, text=True, timeout=120)
+            self.assertEqual(out.returncode, expect, f"{args}: {out.stdout}{out.stderr}")
+            return out.stdout
+
+        self.assertIn("PASS expect-approval", step("expect-approval"))
+        step("approve")
+        self.assertIn("signed True", step("list"))
+        self.assertIn("PASS install: test-pack 1.0.0", step("install", "test-pack"))
+        self.assertTrue((installed / "test-pack/1.0.0/still.png").is_file())
+
+        old = (store / "index.json").read_bytes(), (store / "index.json.sig").read_bytes()
+        (store / "index.json").write_bytes(old[0].replace(b"Test catalogue", b"Evil catalogue"))
+        step("expect-refused", "does not verify")
+
+        catalogue.build(store, [catalogue.entry(json.loads(old[0])["packs"][0]["manifest"], mirror / "test-pack.zip",
+                                                [mirror_url + "/test-pack.zip"], json.loads(old[0])["packs"][0]["preview_url"], "")],
+                        self.meta, self.secret)
+        step("list")
+        (store / "index.json").write_bytes(old[0]); (store / "index.json.sig").write_bytes(old[1])
+        step("expect-refused", "rollback")
+
+        other = self.root / "other.key"
+        catalogue.keygen(other)
+        catalogue.build(store, [catalogue.entry(json.loads(old[0])["packs"][0]["manifest"], mirror / "test-pack.zip",
+                                                [mirror_url + "/test-pack.zip"], json.loads(old[0])["packs"][0]["preview_url"], "")],
+                        self.meta, catalogue.read_secret(other))
+        self.assertIn("PASS expect-key-changed", step("expect-key-changed"))
+
     def test_csharp_verifier_agrees(self):
-        if not HEADLESS.is_file():
-            self.skipTest("build tools/asset_store/headless first")
         vectors = []
         for n in range(4):
             secret, message = os.urandom(32), os.urandom(n * 37)

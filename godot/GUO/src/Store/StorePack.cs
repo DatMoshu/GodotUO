@@ -33,9 +33,18 @@ internal sealed class StoreManifest
 internal sealed class StoreEntry
 {
     public StoreManifest Manifest { get; init; }
+    /// <summary>The v1 index's relative URL; null for a v2 entry, which has only <see cref="Urls"/>.</summary>
     public string Url { get; init; }
     public string Sha256 { get; init; }
     public long Size { get; init; }
+    /// <summary>Where the ZIP can be fetched, tried in order; the hash and size pin it wherever it comes from.</summary>
+    public IReadOnlyList<Uri> Urls { get; init; }
+    public Uri PreviewUri { get; init; }
+    /// <summary>The catalogue that listed it, and whether that catalogue's index was signed (ADR-0026).</summary>
+    public string CatalogueTitle { get; init; }
+    public string CatalogueUrl { get; init; }
+    public bool Signed { get; init; }
+    public string Provenance { get; init; }
 }
 
 internal static class StorePack

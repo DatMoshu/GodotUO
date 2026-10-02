@@ -25,12 +25,21 @@ internal sealed class StoreClient : IDisposable
             catch (Exception e) { System.Diagnostics.Trace.TraceError("Store change listener: " + e.Message); }
     }
     private readonly HttpClient _http = new(new HttpClientHandler { AllowAutoRedirect = false });
+    // Hash-pinned downloads from a signed index may follow a mirror's redirect (GitHub release
+    // assets redirect to their storage host); .NET never follows HTTPS to plain HTTP.
+    private readonly HttpClient _pinned = new(new HttpClientHandler { AllowAutoRedirect = true, MaxAutomaticRedirections = 5 });
     private readonly string _root;
     private readonly int _profileVersion;
     private readonly Uri _base;
     public string Root => _root;
     public Func<string, string, bool> BackgroundRemoved { get; set; }
     public string LastUninstallMessage { get; private set; } = "Pack removed. Reopen Options to refresh backgrounds.";
+    /// <summary>Which catalogue keys are approved. Without one, a signed (v2) index is refused.</summary>
+    public StoreTrust Trust { get; set; }
+    /// <summary>The catalogue the last <see cref="FetchIndex"/> read: its title, and whether it was signed.</summary>
+    public string CatalogueTitle { get; private set; }
+    public bool CatalogueSigned { get; private set; }
+    public string BaseUrl => _base.AbsoluteUri;
 
     public StoreClient(string storeUrl, string installRoot, int profileVersion)
     {
@@ -38,6 +47,7 @@ internal sealed class StoreClient : IDisposable
         _root = Path.GetFullPath(installRoot);
         _profileVersion = profileVersion;
         _http.Timeout = TimeSpan.FromMinutes(5);
+        _pinned.Timeout = TimeSpan.FromMinutes(30);
     }
 
     private Uri Address(string relative)
@@ -49,9 +59,22 @@ internal sealed class StoreClient : IDisposable
         return uri;
     }
 
-    private async Task Download(string relative, Stream output, long limit, CancellationToken ct)
+    private Task Download(string relative, Stream output, long limit, CancellationToken ct) => Download(_http, Address(relative), output, limit, ct);
+
+    /// <summary>A URL from a signed index: relative ones stay under the catalogue, absolute ones are HTTPS
+    /// (or plain HTTP on loopback or the LAN).</summary>
+    private Uri Resolve(string url)
     {
-        using var response = await _http.GetAsync(Address(relative), HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
+        StorePack.Require(!string.IsNullOrEmpty(url) && url.Length <= 2048 && !url.Any(c => c <= ' '), "Invalid URL in index");
+        if (!url.Contains("://", StringComparison.Ordinal)) return Address(url);
+        var uri = new Uri(url, UriKind.Absolute);
+        StorePack.Require(StoreTrust.AllowedRemote(uri), "Pack URLs must be HTTPS, or HTTP on this computer or the LAN: " + url);
+        return uri;
+    }
+
+    private static async Task Download(HttpClient http, Uri uri, Stream output, long limit, CancellationToken ct)
+    {
+        using var response = await http.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
         StorePack.Require(response.Content.Headers.ContentLength is not long size || size <= limit, "Download exceeds size limit");
         using var input = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
@@ -67,8 +90,17 @@ internal sealed class StoreClient : IDisposable
     {
         using var data = new MemoryStream();
         await Download("index.json", data, 8 * 1024 * 1024, ct).ConfigureAwait(false);
-        using var doc = JsonDocument.Parse(data.ToArray());
-        StorePack.Require(doc.RootElement.GetProperty("schema").GetString() == "guo/store-index@1", "Unsupported store index");
+        byte[] raw = data.ToArray();
+        using var doc = JsonDocument.Parse(raw);
+        string schema = doc.RootElement.GetProperty("schema").GetString();
+        if (schema == "guo/store-index@2")
+        {
+            using var signature = new MemoryStream();
+            await Download("index.json.sig", signature, 1024, ct).ConfigureAwait(false);
+            return ReadSigned(doc.RootElement, raw, Encoding.ASCII.GetString(signature.ToArray()));
+        }
+        StorePack.Require(schema == "guo/store-index@1", "Unsupported store index");
+        CatalogueTitle = _base.Host; CatalogueSigned = false;
         var result = new List<StoreEntry>();
         var seen = new HashSet<string>();
         foreach (var item in doc.RootElement.GetProperty("packs").EnumerateArray())
@@ -81,7 +113,54 @@ internal sealed class StoreClient : IDisposable
             string digest = item.GetProperty("sha256").GetString(); StorePack.Digest(digest);
             long size = item.GetProperty("size").GetInt64();
             StorePack.Require(size > 0 && size <= StorePack.MaxZip && seen.Add(manifest.Id + "/" + manifest.Version), "Invalid or duplicate index entry");
-            result.Add(new StoreEntry { Manifest = manifest, Url = url, Sha256 = digest, Size = size });
+            result.Add(new StoreEntry
+            {
+                Manifest = manifest, Url = url, Sha256 = digest, Size = size, Urls = new[] { Address(url) },
+                PreviewUri = Address($"previews/{manifest.Id}/{manifest.Version}/{manifest.Preview}"),
+                CatalogueTitle = _base.Host, CatalogueUrl = _base.AbsoluteUri, Signed = false,
+            });
+        }
+        return result;
+    }
+
+    /// <summary>guo/store-index@2 (ADR-0026): the signature over the exact bytes, the key's approval, the
+    /// expiry, then every entry. Nothing is listed unless all of it holds.</summary>
+    private IReadOnlyList<StoreEntry> ReadSigned(JsonElement root, byte[] raw, string signatureText)
+    {
+        byte[] key = Ed25519.Decode(root.GetProperty("key").GetString(), 32);
+        byte[] signature = Ed25519.Decode(signatureText, 64);
+        StorePack.Require(Ed25519.Verify(key, raw, signature), "The catalogue's signature does not verify. It may have been tampered with, or is mid-update: try again.");
+        var catalogue = root.GetProperty("catalogue");
+        string id = catalogue.GetProperty("id").GetString(); StorePack.Id(id);
+        string title = catalogue.GetProperty("title").GetString();
+        StorePack.Require(!string.IsNullOrWhiteSpace(title) && title.Length <= 200 && !title.Any(char.IsControl), "Invalid catalogue title");
+        long sequence = root.GetProperty("sequence").GetInt64();
+        if (root.TryGetProperty("expires", out var expires))
+            StorePack.Require(DateTime.ParseExact(expires.GetString(), "yyyy-MM-ddTHH:mm:ssZ", System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.AdjustToUniversal | System.Globalization.DateTimeStyles.AssumeUniversal) >= DateTime.UtcNow,
+                "This catalogue's index has expired; its owner has not refreshed it.");
+        StorePack.Require(Trust != null, "No catalogue trust list; signed catalogues cannot be checked.");
+        Trust.Evaluate(_base.AbsoluteUri, id, title, key, sequence);
+        CatalogueTitle = title; CatalogueSigned = true;
+        var result = new List<StoreEntry>();
+        var seen = new HashSet<string>();
+        foreach (var item in root.GetProperty("packs").EnumerateArray())
+        {
+            StorePack.Require(result.Count < 10000, "Index has too many packs");
+            var manifest = StorePack.Parse(Encoding.UTF8.GetBytes(item.GetProperty("manifest").GetRawText()));
+            string digest = item.GetProperty("sha256").GetString(); StorePack.Digest(digest);
+            long size = item.GetProperty("size").GetInt64();
+            StorePack.Require(size > 0 && size <= StorePack.MaxZip && seen.Add(manifest.Id + "/" + manifest.Version), "Invalid or duplicate index entry");
+            var urls = item.GetProperty("urls").EnumerateArray().Select(u => Resolve(u.GetString())).ToArray();
+            StorePack.Require(urls.Length is > 0 and <= 16, "An index entry needs one to sixteen URLs");
+            string provenance = item.TryGetProperty("provenance", out var p) ? p.GetString() ?? "" : "";
+            StorePack.Require(provenance.Length <= 500 && !provenance.Any(char.IsControl), "Invalid provenance");
+            result.Add(new StoreEntry
+            {
+                Manifest = manifest, Sha256 = digest, Size = size, Urls = urls,
+                PreviewUri = Resolve(item.GetProperty("preview_url").GetString()),
+                CatalogueTitle = title, CatalogueUrl = _base.AbsoluteUri, Signed = true, Provenance = provenance,
+            });
         }
         return result;
     }
@@ -90,7 +169,8 @@ internal sealed class StoreClient : IDisposable
     {
         var manifest = entry.Manifest;
         using var data = new MemoryStream();
-        await Download($"previews/{manifest.Id}/{manifest.Version}/{manifest.Preview}", data, 8 * 1024 * 1024, ct).ConfigureAwait(false);
+        await Download(entry.Signed ? _pinned : _http, entry.PreviewUri ?? Address($"previews/{manifest.Id}/{manifest.Version}/{manifest.Preview}"),
+            data, 8 * 1024 * 1024, ct).ConfigureAwait(false);
         byte[] bytes = data.ToArray();
         StorePack.Require(Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)).ToLowerInvariant()
             == manifest.Files[manifest.Preview], "Preview hash mismatch");
@@ -138,9 +218,25 @@ internal sealed class StoreClient : IDisposable
         string zip = stage + ".zip";
         try
         {
-            using (var output = new FileStream(zip, FileMode.CreateNew, FileAccess.Write, FileShare.None))
-                await Download(entry.Url, output, entry.Size, ct).ConfigureAwait(false);
-            StorePack.Require(new FileInfo(zip).Length == entry.Size && StorePack.HashFile(zip) == entry.Sha256, "Downloaded ZIP hash/size mismatch");
+            // Each URL in turn until one serves exactly the listed bytes; a mirror that is down
+            // or serves something else costs only a retry.
+            var errors = new List<string>();
+            foreach (var uri in entry.Urls ?? new[] { Address(entry.Url) })
+            {
+                try
+                {
+                    using (var output = new FileStream(zip, FileMode.Create, FileAccess.Write, FileShare.None))
+                        await Download(entry.Signed ? _pinned : _http, uri, output, entry.Size, ct).ConfigureAwait(false);
+                    if (new FileInfo(zip).Length == entry.Size && StorePack.HashFile(zip) == entry.Sha256) { errors = null; break; }
+                    errors.Add(uri.Host + ": hash/size mismatch");
+                }
+                catch (Exception e) when (e is HttpRequestException or IOException or InvalidDataException
+                    || e is TaskCanceledException && !ct.IsCancellationRequested)
+                {
+                    errors.Add(uri.Host + ": " + e.Message);
+                }
+            }
+            StorePack.Require(errors == null, "Downloaded ZIP hash/size mismatch (" + string.Join("; ", errors ?? new List<string>()) + ")");
             Directory.CreateDirectory(stage);
             var manifest = await Task.Run(() => StorePack.Extract(zip, stage), ct).ConfigureAwait(false);
             StorePack.Require(StorePack.Equivalent(manifest, entry.Manifest), "Index and pack manifest disagree");
@@ -324,5 +420,5 @@ internal sealed class StoreClient : IDisposable
     public bool HasUpdate(StoreEntry entry) => entry.Manifest.MinProfileVersion <= _profileVersion &&
         Installed().Any(m => m.Id == entry.Manifest.Id && StorePack.Version(m.Version) < StorePack.Version(entry.Manifest.Version));
 
-    public void Dispose() => _http.Dispose();
+    public void Dispose() { _http.Dispose(); _pinned.Dispose(); }
 }

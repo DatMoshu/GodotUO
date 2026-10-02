@@ -25,5 +25,6 @@
     <Compile Include="../../../godot/GUO/src/Store/StoreAddress.cs" Link="StoreAddress.cs" />
     <Compile Include="../../../godot/GUO/src/Store/StorePack.cs" Link="StorePack.cs" />
     <Compile Include="../../../godot/GUO/src/Store/StoreClient.cs" Link="StoreClient.cs" />
+    <Compile Include="../../../godot/GUO/src/Store/StoreTrust.cs" Link="StoreTrust.cs" />
   </ItemGroup>
 </Project>

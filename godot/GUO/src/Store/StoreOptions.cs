@@ -17,7 +17,11 @@ internal static class StoreOptions
     public static string Url => StoreAddress.Load(ProfileManager.CurrentProfile == null ? null : ProfileManager.ProfilePath,
         System.Environment.GetEnvironmentVariable("UO_STORE_URL") ?? StoreAddress.Default);
     public static StoreClient CreateClient(string url = null) => new(url ?? Url, ProjectSettings.GlobalizePath("user://store"), PlatformDefaults.CurrentVersion)
-    { BackgroundRemoved = ResetRemovedBackground };
+    { BackgroundRemoved = ResetRemovedBackground, Trust = Trust };
+
+    /// <summary>The installation's approved catalogue keys (ADR-0026), beside the installed packs.</summary>
+    public static StoreTrust Trust => _trust ??= new StoreTrust(ProjectSettings.GlobalizePath("user://store/.catalogues.json"));
+    private static StoreTrust _trust;
 
     /// <summary>Installed screensaver packs, as (loop path, title) for Options.</summary>
     public static IEnumerable<(string, string)> InstalledScreensavers()

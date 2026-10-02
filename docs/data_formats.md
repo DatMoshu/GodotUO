@@ -492,6 +492,80 @@ Publication validates before writing; an existing id/version is immutable
 ZIPs; replacement of the index is atomic. HTTP serves GET/HEAD and single
 byte ranges (`206`, `Content-Range`); unsatisfiable ranges return `416`.
 
+### Signed catalogue index, `guo/store-index@2` (ADR-0026)
+
+A catalogue that signs its index publishes two files at its root:
+`index.json` and `index.json.sig`. The signature file is one line,
+`ed25519:` followed by the standard base64 of the 64-byte Ed25519 (RFC 8032)
+signature over the **exact bytes** of `index.json`. Nothing is
+canonicalised, so the index is never re-serialised between signing and
+verifying.
+
+```json
+{
+  "schema": "guo/store-index@2",
+  "catalogue": { "id": "guo-official", "title": "GUO packs", "homepage": "https://..." },
+  "key": "ed25519:<base64 of the 32-byte public key>",
+  "sequence": 1791043200,
+  "issued": "2026-10-02T20:00:00Z",
+  "expires": "2026-11-01T20:00:00Z",
+  "packs": [
+    {
+      "manifest": { "...": "the pack's manifest.json, as section 12 above" },
+      "sha256": "<64 lowercase hex digits of the whole ZIP>",
+      "size": 123456,
+      "urls": ["packs/moongate-shimmer/1.0.0.zip", "https://mirror.example.org/moongate-shimmer-1.0.0.zip"],
+      "preview_url": "previews/moongate-shimmer/1.0.0/still.png",
+      "provenance": "Rendered in Blender from an original scene"
+    }
+  ]
+}
+```
+
+- `catalogue.id` follows the pack id syntax. `title` is at most 200
+  characters, with no control characters. `homepage` is optional.
+- `key` names the signing key. A client checks that it is the key it trusts
+  for this catalogue (below); naming it only lets a new catalogue be
+  approved.
+- `sequence` is an integer that only rises. The publisher uses at least the
+  current Unix time in seconds, and at least the previous index's number
+  plus one. A client refuses an index whose sequence is lower than the
+  highest it has seen from that catalogue.
+- `expires` is optional. A client refuses an index past it.
+- `urls`: 1 to 16 places to fetch the ZIP, tried in order. A relative URL
+  resolves under the index and may not leave it. An absolute URL is HTTPS,
+  or plain HTTP only to loopback or a private LAN address (10/8,
+  172.16/12, 192.168/16, 169.254/16, IPv6 loopback, link-local and
+  unique-local, `localhost`, `*.lan`, `*.local`). No credentials and no
+  fragment. Downloads from a signed index may follow up to five redirects,
+  never from HTTPS to HTTP; the hash and size decide whether the bytes are
+  the pack.
+- `provenance` is optional, at most 500 characters, no control characters:
+  how the content was made (the content policy, `docs/store/content_policy.md`).
+- A `guo/store-index@1` index (above) is still read, and the client shows its
+  packs as **unsigned**. `run.py` writes v2 whenever `UO_STORE_SIGNING_KEY`
+  is set, and v1 otherwise.
+
+**The client's trust list** is `user://store/.catalogues.json`, an array of
+`{"url", "id", "title", "key", "sequence"}`. A catalogue added by URL has no
+`key` until the player approves the fingerprint the Store shows: the first
+16 hex digits of the key's SHA-256, in groups of four. A different key at a
+known address is refused until the player approves it again. The official
+catalogue (`StoreTrust.OfficialUrl`) is trusted by the keys compiled into the
+client (`StoreTrust.OfficialKeys`), and cannot be removed.
+
+**Listing files** (`run.py build-catalogue`, the catalogue repository): one
+JSON file per pack version at `packs/<id>/<version>.json`, with exactly the
+fields `urls` (HTTPS), `sha256`, `size` and an optional `provenance`. The
+builder downloads each ZIP once from the first URL that serves the listed
+bytes, verifies it as a pack, and lists it. In a store folder,
+`listing/<id>/<version>.json` holds the same fields; there `urls` adds
+mirrors after the store's own copy, and `sha256` and `size` are not needed.
+
+**Secret key file** (`run.py keygen`): one line, `guo-catalogue-secret `
+followed by `ed25519:` and the base64 of the 32-byte seed. It is never
+committed, and never leaves the publisher's machine or CI secret store.
+
 ### Screensavers in the client (profile v11)
 
 `Profile.ScreenSaverChoice` (JSON `screen_saver_choice`, default

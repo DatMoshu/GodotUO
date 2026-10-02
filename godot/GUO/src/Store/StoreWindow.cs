@@ -19,6 +19,11 @@ internal sealed partial class StoreWindow : CanvasLayer
     private LineEdit _search;
     private LineEdit _address;
     private OptionButton _kind;
+    private OptionButton _source;
+    private Button _remove;
+    private VBoxContainer _approvals;
+    // The catalogues of the last refresh, in the order the source picker lists them after "All catalogues".
+    private readonly List<(string Url, string Title, bool Official)> _sources = new();
     private StoreEntry[] _entries = Array.Empty<StoreEntry>();
     private bool _busy;
     private float _ui = 1f;
@@ -70,15 +75,22 @@ internal sealed partial class StoreWindow : CanvasLayer
             column.AddChild(Text("Make the world your own.", 32, new Color("eeeade")));
             column.AddChild(Text("Backgrounds, sounds, themes, presets and Razor scripts for your next adventure.", 15, Muted));
         }
+        // Catalogues (ADR-0026): the official one, any the player added, and this
+        // character's own store address. Packs from all of them are listed together.
         var addressRow = new HBoxContainer(); column.AddChild(addressRow);
-        var addressLabel = Text("Store address", 14, Gold);
+        var addressLabel = Text("Catalogues", 14, Gold);
         addressLabel.AutowrapMode = TextServer.AutowrapMode.Off;
         addressLabel.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
         addressRow.AddChild(addressLabel);
-        _address = new LineEdit { PlaceholderText = "https://store.example.com/", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, CustomMinimumSize = new Vector2(0, 48) };
+        _source = Touchable(new OptionButton { CustomMinimumSize = new Vector2(0, 48) }); addressRow.AddChild(_source);
+        _source.ItemSelected += _ => Render();
+        _address = new LineEdit { PlaceholderText = "Add a catalogue: https://packs.example.com/", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, CustomMinimumSize = new Vector2(0, 48) };
         Touchable(_address); addressRow.AddChild(_address);
-        var connect = Touchable(new Button { Text = "Save & connect", CustomMinimumSize = new Vector2(0, 48) }); addressRow.AddChild(connect);
-        connect.Pressed += () => _ = Refresh(true); _address.TextSubmitted += text => { _ = Refresh(true); };
+        var connect = Touchable(new Button { Text = "Add", CustomMinimumSize = new Vector2(0, 48) }); addressRow.AddChild(connect);
+        connect.Pressed += () => _ = Add(); _address.TextSubmitted += text => { _ = Add(); };
+        _remove = Touchable(new Button { Text = "Remove", CustomMinimumSize = new Vector2(0, 48), Disabled = true }); addressRow.AddChild(_remove);
+        _remove.Pressed += RemoveSelected;
+        _approvals = new VBoxContainer(); column.AddChild(_approvals);
         var filters = new HBoxContainer(); column.AddChild(filters);
         _search = new LineEdit { PlaceholderText = "Search packs or creators…", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, CustomMinimumSize = new Vector2(0, 42) }; Touchable(_search); filters.AddChild(_search);
         _kind = Touchable(new OptionButton()); foreach (string title in new[] { "All kinds", "Backgrounds", "Themes", "Sounds", "Profile presets", "Screensavers", "Screen effects", "Razor scripts", "Game content" }) _kind.AddItem(title);
@@ -88,8 +100,7 @@ internal sealed partial class StoreWindow : CanvasLayer
         _list.AddThemeConstantOverride("h_separation", 14); _list.AddThemeConstantOverride("v_separation", 14); scroll.AddChild(_list);
         _status = Text("Loading collection…", 13, Muted); column.AddChild(_status);
         if (!compact) column.AddChild(Text("After installing: reopen Options, choose your background, then Apply.", 12, Muted));
-        try { _address.Text = StoreOptions.Url; _ = Refresh(); }
-        catch (Exception) { _status.Text = "Could not read this profile's store address. Enter an address and Save & connect."; }
+        _ = Refresh();
     }
 
     /// <summary>A control at least a finger's size on a touch screen (48 logical px tall, 7 mm on the Thor); unchanged elsewhere.</summary>
@@ -161,28 +172,118 @@ internal sealed partial class StoreWindow : CanvasLayer
         catch (Exception) { /* A missing preview must not prevent installation. */ }
     }
 
-    private async Task Refresh(bool saveAddress = false)
+    /// <summary>Every catalogue to list from: the trust list's (official first), then this character's own
+    /// store address when it is not already one of them.</summary>
+    private List<(string Url, string Title, bool Official)> Sources()
+    {
+        var list = _client.Trust.Catalogues().Select(r => (r.Url, r.Title ?? new Uri(r.Url).Host, r.Official)).ToList();
+        try
+        {
+            string own = StoreAddress.Normalize(StoreOptions.Url);
+            if (list.All(s => s.Url != own)) list.Add((own, own == StoreAddress.Normalize(StoreAddress.Default) ? "This computer" : new Uri(own).Host, false));
+        }
+        catch (Exception) { /* An unreadable saved address is simply not listed. */ }
+        return list;
+    }
+
+    private async Task Refresh()
     {
         if (_busy) return;
         _busy = true;
         try
         {
-            string url = StoreAddress.Normalize(_address.Text);
-            if (saveAddress) StoreAddress.Save(ProfileManager.CurrentProfile == null ? null : ProfileManager.ProfilePath, url);
-            _client.Dispose(); _client = StoreOptions.CreateClient(url);
             _previews.Clear(); _entries = Array.Empty<StoreEntry>();
-            _address.Text = url; _status.Text = "Connecting to store…";
+            foreach (Node child in _approvals.GetChildren()) { _approvals.RemoveChild(child); child.QueueFree(); }
+            _sources.Clear(); _sources.AddRange(Sources());
+            int picked = _source.Selected;
+            _source.Clear(); _source.AddItem("All catalogues");
+            foreach (var source in _sources) _source.AddItem(source.Title);
+            _source.Selected = picked >= 0 && picked < _source.ItemCount ? picked : 0;
+            _status.Text = "Connecting to " + _sources.Count + " catalogue(s)…";
             Render();
             using var connection = CancellationTokenSource.CreateLinkedTokenSource(_cancel.Token);
             connection.CancelAfter(TimeSpan.FromSeconds(15));
-            _entries = (await _client.FetchIndex(connection.Token)).ToArray();
+            // All catalogues at once; each one's failure is its own line, never the whole Store's.
+            var fetches = _sources.Select(async source =>
+            {
+                using var client = StoreOptions.CreateClient(source.Url);
+                try { return (source, (IReadOnlyList<StoreEntry>)await client.FetchIndex(connection.Token), (Exception)null, client.CatalogueSigned); }
+                catch (Exception e) { return (source, (IReadOnlyList<StoreEntry>)Array.Empty<StoreEntry>(), e, false); }
+            }).ToArray();
+            var results = await Task.WhenAll(fetches);
             if (!IsInsideTree()) return;
-            _status.Text = $"{_entries.Length} packs in the collection · {_client.Installed().Count} installed";
+            var merged = new List<StoreEntry>();
+            var lines = new List<string>();
+            int conflicts = 0;
+            foreach (var (source, entries, error, signed) in results)
+            {
+                if (error is StoreTrustRequired trust) { Approval(trust); lines.Add(source.Title + ": waiting for your approval"); continue; }
+                if (error != null) { lines.Add(source.Title + ": " + Reason(error)); continue; }
+                // A pack two catalogues list with the same bytes is one pack; different bytes under one
+                // id and version cannot both install, so the first catalogue's listing wins.
+                foreach (var entry in entries)
+                {
+                    var same = merged.FirstOrDefault(e => e.Manifest.Id == entry.Manifest.Id && e.Manifest.Version == entry.Manifest.Version);
+                    if (same == null) merged.Add(entry);
+                    else if (same.Sha256 != entry.Sha256) conflicts++;
+                }
+                lines.Add($"{source.Title}: {entries.Count} pack(s), {(signed ? "signed" : "unsigned")}");
+            }
+            _entries = merged.ToArray();
+            _status.Text = $"{_entries.Length} packs · {_client.Installed().Count} installed  ·  " + string.Join("  ·  ", lines)
+                + (conflicts > 0 ? $"  ·  {conflicts} conflicting listing(s) hidden" : "");
         }
-        catch (System.Net.Http.HttpRequestException) { if (IsInsideTree()) _status.Text = "Store unreachable. Check the address, server and network connection, then Refresh."; }
-        catch (TaskCanceledException) { if (IsInsideTree()) _status.Text = "Store connection timed out. Check the address and try Refresh."; }
-        catch (Exception e) { if (IsInsideTree()) _status.Text = "Could not load collection: " + e.Message; }
+        catch (Exception e) { if (IsInsideTree()) _status.Text = "Could not load the catalogues: " + e.Message; }
         finally { _busy = false; if (IsInsideTree()) Render(); }
+    }
+
+    private static string Reason(Exception e) => e switch
+    {
+        System.Net.Http.HttpRequestException => "unreachable",
+        TaskCanceledException => "timed out",
+        _ => e.Message,
+    };
+
+    /// <summary>A catalogue whose key is not approved: its name, address and key fingerprint, and the choice.</summary>
+    private void Approval(StoreTrustRequired trust)
+    {
+        var card = new PanelContainer(); card.AddThemeStyleboxOverride("panel", Box(trust.KeyChanged ? "3a1f1c" : "232b1f", trust.KeyChanged ? "c0604f" : "b4a16b", 12));
+        _approvals.AddChild(card);
+        var column = new VBoxContainer(); card.AddChild(column);
+        column.AddChild(Text(trust.KeyChanged ? "This catalogue's key changed" : "Approve a new catalogue?", 16, trust.KeyChanged ? new Color("f0a090") : Gold));
+        column.AddChild(Text($"\"{trust.Pending.Title}\" at {trust.Pending.Url}", 13, new Color("eeeade")));
+        column.AddChild(Text("Key fingerprint " + trust.Fingerprint + (trust.KeyChanged
+            ? ". Approve only if the catalogue's owner announced a new key; otherwise someone else may be answering at this address."
+            : ". Compare it with the one the catalogue's owner publishes. Approving lists its packs; nothing installs on its own."), 12, Muted));
+        var row = new HBoxContainer(); column.AddChild(row);
+        var approve = Touchable(new Button { Text = trust.KeyChanged ? "Approve the new key" : "Approve" }); row.AddChild(approve);
+        var dismiss = Touchable(new Button { Text = "Not now" }); row.AddChild(dismiss);
+        approve.Pressed += () =>
+        {
+            try { _client.Trust.Approve(trust.Pending); _ = Refresh(); }
+            catch (Exception e) { _status.Text = "Could not approve: " + e.Message; }
+        };
+        dismiss.Pressed += () => { _approvals.RemoveChild(card); card.QueueFree(); };
+    }
+
+    private async Task Add()
+    {
+        try
+        {
+            string url = _client.Trust.Add(_address.Text);
+            _address.Text = "";
+            _status.Text = "Added " + url + ". Its packs are listed once you approve its key.";
+            await Refresh();
+        }
+        catch (Exception e) { _status.Text = "Could not add that catalogue: " + e.Message; }
+    }
+
+    private void RemoveSelected()
+    {
+        int index = _source.Selected - 1;
+        if (index < 0 || index >= _sources.Count || _sources[index].Official) return;
+        try { _client.Trust.Remove(_sources[index].Url); _source.Selected = 0; _ = Refresh(); }
+        catch (Exception e) { _status.Text = "Could not remove that catalogue: " + e.Message; }
     }
 
     private void Render()
@@ -190,7 +291,10 @@ internal sealed partial class StoreWindow : CanvasLayer
         foreach (Node child in _list.GetChildren()) { _list.RemoveChild(child); child.QueueFree(); }
         var installed = _client.Installed();
         string query = _search.Text;
-        foreach (var entry in _entries.Where(p => (_kind.Selected == 0 || p.Manifest.Kind == _kinds[_kind.Selected]) &&
+        int sourceIndex = _source.Selected - 1;
+        string onlyFrom = sourceIndex >= 0 && sourceIndex < _sources.Count ? _sources[sourceIndex].Url : null;
+        _remove.Disabled = onlyFrom == null || _sources[sourceIndex].Official;
+        foreach (var entry in _entries.Where(p => (onlyFrom == null || p.CatalogueUrl == onlyFrom) && (_kind.Selected == 0 || p.Manifest.Kind == _kinds[_kind.Selected]) &&
             (p.Manifest.Title.Contains(query, StringComparison.OrdinalIgnoreCase) || p.Manifest.Author.Contains(query, StringComparison.OrdinalIgnoreCase) || p.Manifest.Id.Contains(query, StringComparison.OrdinalIgnoreCase)))
             .OrderByDescending(p => installed.Any(m => m.Id == p.Manifest.Id && m.Version == p.Manifest.Version))
             .ThenBy(p => p.Manifest.Title).ThenByDescending(p => StorePack.Version(p.Manifest.Version)))
@@ -209,6 +313,8 @@ internal sealed partial class StoreWindow : CanvasLayer
                 info.AddChild(Text(m.Target.ToUpperInvariant() + " · " + string.Join(", ", m.Components.Select(c => c.Type).Distinct()) + " · installs inactive", 11, Muted));
             info.AddChild(Text(m.Title, 22, new Color("eeeade")));
             info.AddChild(Text("By " + m.Author, 12, Muted));
+            info.AddChild(Text((entry.Signed ? "Listed by " : "Unsigned, from ") + entry.CatalogueTitle
+                + (string.IsNullOrEmpty(entry.Provenance) ? "" : "  ·  " + entry.Provenance), 11, entry.Signed ? Muted : new Color("d9a066")));
             bool present = installed.Any(p => p.Id == m.Id && p.Version == m.Version);
             bool compatible = m.MinProfileVersion <= PlatformDefaults.CurrentVersion;
             bool update = installed.Any(p => p.Id == m.Id && StorePack.Version(p.Version) < StorePack.Version(m.Version));

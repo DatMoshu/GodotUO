@@ -22,6 +22,42 @@ if (args.Length == 2 && args[0] == "ed25519")
     return 0;
 }
 
+if (args.Length >= 4 && args[0] == "catalogue")
+{
+    // One step of tools/asset_store/test_catalogue.py's end-to-end run against a signed catalogue (ADR-0026).
+    string step = args[1], url = args[2], root = args[3];
+    var trust = new StoreTrust(Path.Combine(root, ".catalogues.json"));
+    using var client = new StoreClient(url, root, int.MaxValue) { Trust = trust };
+    try
+    {
+        var entries = await client.FetchIndex();
+        if (step == "approve" || step.StartsWith("expect-", StringComparison.Ordinal) && step != "expect-list")
+            throw new InvalidDataException("expected a refusal, got " + entries.Count + " pack(s)");
+        if (step == "install")
+        {
+            var entry = entries.Single(e => e.Manifest.Id == args[4]);
+            await client.InstallWithDependencies(entry, entries);
+            Console.WriteLine($"PASS install: {entry.Manifest.Id} {entry.Manifest.Version} from {client.CatalogueTitle}, signed {entry.Signed}");
+        }
+        else Console.WriteLine($"PASS list: {entries.Count} pack(s) from {client.CatalogueTitle}, signed {client.CatalogueSigned}, "
+            + string.Join(", ", entries.Select(e => e.Manifest.Id + " " + string.Join(" ", e.Urls.Select(u => u.Host + ":" + u.Port)))));
+        return 0;
+    }
+    catch (StoreTrustRequired pending) when (step is "approve" or "expect-approval" or "expect-key-changed")
+    {
+        if (step == "expect-key-changed" && !pending.KeyChanged) throw new InvalidDataException("expected a key change");
+        if (step == "expect-approval" && pending.KeyChanged) throw new InvalidDataException("expected a new catalogue, not a key change");
+        if (step == "approve") trust.Approve(pending.Pending);
+        Console.WriteLine($"PASS {step}: {pending.Pending.Title}, key {pending.Fingerprint}");
+        return 0;
+    }
+    catch (InvalidDataException refused) when (step == "expect-refused" && refused.Message.Contains(args[4], StringComparison.OrdinalIgnoreCase))
+    {
+        Console.WriteLine("PASS refused: " + refused.Message);
+        return 0;
+    }
+}
+
 if (args.Length == 4 && args[0] == "install-content")
 {
     using var store = new StoreClient(args[1], args[2], int.MaxValue);
