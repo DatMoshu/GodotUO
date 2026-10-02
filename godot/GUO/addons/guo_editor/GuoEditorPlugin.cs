@@ -31,6 +31,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
     private AssetsDock _assets;
     private InspectorDock _inspector;
     private EditorSmoke _smoke;
+    private EditorTour _tour;
     private WorldView _world;
     private ShardDock _shard;
     private RunBar _run;
@@ -117,11 +118,12 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         }
 
         string smokeOut = EditorSmoke.OutDirFromArgs();
+        string tourOut = EditorTour.OutDirFromArgs();
 
         // A tool started this editor (the smoke flag): its window must not
         // take the keyboard or the foreground from whoever is working, as a
         // scripted game run's does not (Bootstrap/Main.cs NoFocus).
-        if (smokeOut != null && DisplayServer.GetName() != "headless")
+        if ((smokeOut != null || tourOut != null) && DisplayServer.GetName() != "headless")
         {
             DisplayServer.WindowSetFlag(DisplayServer.WindowFlags.NoFocus, true);
             DisplayServer.WindowSetFlag(DisplayServer.WindowFlags.AlwaysOnTop, false);
@@ -134,10 +136,16 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
             AddChild(_smoke);
         }
 
+        if (tourOut != null)
+        {
+            _tour = new EditorTour(tourOut, _data, _assets, _inspector, _world, _shard, _run);
+            AddChild(_tour);
+        }
+
         // The headless editor is used to import and to build solutions
         // (launchers\dev\smoke.bat, build.bat); opening the install there is
         // time spent for nobody. The smoke check asks for it explicitly.
-        if (smokeOut != null || DisplayServer.GetName() != "headless")
+        if (smokeOut != null || tourOut != null || DisplayServer.GetName() != "headless")
         {
             _data.LoadAsync();
         }
@@ -200,6 +208,13 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
             RemoveDock(_inspector);
             _inspector.QueueFree();
             _inspector = null;
+        }
+
+        if (_tour != null)
+        {
+            RemoveChild(_tour);
+            _tour.QueueFree();
+            _tour = null;
         }
 
         if (_smoke != null)

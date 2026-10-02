@@ -97,7 +97,7 @@ public partial class EditorSmoke : Node
     /// <summary>The output directory from the command line, or null when this is not a smoke run.</summary>
     public static string OutDirFromArgs() => ArgValue(Flag);
 
-    private static string ArgValue(string flag)
+    internal static string ArgValue(string flag)
     {
         string[] args = OS.GetCmdlineUserArgs();
         for (int i = 0; i < args.Length; i++)
@@ -1103,28 +1103,15 @@ public partial class EditorSmoke : Node
     /// </summary>
     private bool AimAt(ushort id)
     {
-        var chunk = _world.Host.World.Map.GetChunk2(EditBx, EditBy, load: true);
-        for (int x = 0; x < 8; x++)
+        Vector2I? screen = WorldAim.ScreenOf(_world, _data, EditBx, EditBy, id);
+        if (screen is not { } at)
         {
-            for (int y = 0; y < 8; y++)
-            {
-                for (var o = chunk?.GetHeadObject(x, y); o != null; o = o.TNext)
-                {
-                    if (o is GUO.Game.GameObjects.Static && o.Graphic == id)
-                    {
-                        Image art = _data.ArtImage(EditorData.LandCount + id);
-                        int h = art?.GetHeight() ?? 44;
-                        var world = new GUO.Compat.Point(o.RealScreenPosition.X + 22, o.RealScreenPosition.Y + 44 - h / 3);
-                        var screen = _world.Host.Scene.Camera.WorldToScreen(world);
-                        _world.ForcedMouse = new Vector2I(screen.X, screen.Y);
-                        _editReport[$"aim_{id:X4}"] = new[] { screen.X, screen.Y };
-                        return true;
-                    }
-                }
-            }
+            return false;
         }
 
-        return false;
+        _world.ForcedMouse = at;
+        _editReport[$"aim_{id:X4}"] = new[] { at.X, at.Y };
+        return true;
     }
 
     private Color RadarAt(int x, int y)
