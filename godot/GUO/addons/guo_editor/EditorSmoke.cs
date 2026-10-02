@@ -486,6 +486,19 @@ public partial class EditorSmoke : Node
             }
         }
 
+        // --guo-editor-multi-dump 0x64,0x1000: also write those multis'
+        // composites (what the panel and inspector draw) to <out>/multi_XXXX.png.
+        if (panel is MultiPanel && ArgValue("--guo-editor-multi-dump") is string dump)
+        {
+            Directory.CreateDirectory(_out);
+            foreach (string tok in dump.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                int mid = tok.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? Convert.ToInt32(tok[2..], 16) : int.Parse(tok);
+                Image composite = MultiPanel.CompositeOf(_data, mid);
+                composite?.SavePng(Path.Combine(_out, $"multi_{mid:X4}{Suffix}.png"));
+            }
+        }
+
         if (panel is SoundPanel sounds && selected != null)
         {
             string played = sounds.SmokePlay();
