@@ -35,7 +35,7 @@ internal static class Overlay
             return cached;
         }
 
-        StyleBox box = UoTheme.Frame(first, margin);
+        StyleBox box = Compose(first, margin) ?? UoTheme.Frame(first, margin);
 
         if (tint != 0 && box is StyleBoxTexture t)
         {
@@ -44,13 +44,155 @@ internal static class Overlay
             box = t;
         }
 
-        // Only kept once it is the art (before the gumps load, Frame is a flat stand-in).
+        // Only kept once it is the art. Before the gumps load Frame is a flat
+        // stand-in: marked, so the screen swaps it for the art when it arrives
+        // (ReplaceStandIns) and the probe can tell none is left.
         if (box is StyleBoxTexture)
         {
             _frames[(first, margin, tint)] = box;
         }
+        else
+        {
+            box.SetMeta(StandInMeta, new Vector3I(first, margin, tint));
+            StandInsHandedOut = true;
+        }
 
         return box;
+    }
+
+    /// <summary>
+    /// A ResizePic from the pregame's own gump images (PregameAssets), as
+    /// UoTheme.Frame composes it: corners, tiled edges, a tiled centre. Null
+    /// while a piece is missing.
+    /// </summary>
+    private static StyleBox Compose(ushort first, int contentMargin)
+    {
+        var pieces = new Image[9];
+
+        for (int i = 0; i < 9; i++)
+        {
+            pieces[i] = PregameAssets.Gump((ushort) (first + i));
+
+            if (pieces[i] == null)
+            {
+                return null;
+            }
+        }
+
+        int l = pieces[0].GetWidth(), t = pieces[0].GetHeight();
+        int r = pieces[2].GetWidth(), b = pieces[6].GetHeight();
+        int cw = pieces[4].GetWidth(), ch = pieces[4].GetHeight();
+        Image composite = Image.CreateEmpty(l + cw + r, t + ch + b, false, Image.Format.Rgba8);
+
+        void Put(Image piece, int x, int y, int w, int h)
+        {
+            for (int yy = 0; yy < h; yy += piece.GetHeight())
+            {
+                for (int xx = 0; xx < w; xx += piece.GetWidth())
+                {
+                    composite.BlitRect(piece, new Rect2I(0, 0, Math.Min(piece.GetWidth(), w - xx), Math.Min(piece.GetHeight(), h - yy)), new Vector2I(x + xx, y + yy));
+                }
+            }
+        }
+
+        Put(pieces[0], 0, 0, l, t);
+        Put(pieces[1], l, 0, cw, t);
+        Put(pieces[2], l + cw, 0, r, t);
+        Put(pieces[3], 0, t, l, ch);
+        Put(pieces[4], l, t, cw, ch);
+        Put(pieces[5], l + cw, t, r, ch);
+        Put(pieces[6], 0, t + ch, l, b);
+        Put(pieces[7], l, t + ch, cw, b);
+        Put(pieces[8], l + cw, t + ch, r, b);
+
+        int m = contentMargin < 0 ? Math.Max(l, t) + 4 : contentMargin;
+
+        return new StyleBoxTexture
+        {
+            Texture = ImageTexture.CreateFromImage(composite),
+            TextureMarginLeft = l, TextureMarginTop = t, TextureMarginRight = r, TextureMarginBottom = b,
+            AxisStretchHorizontal = StyleBoxTexture.AxisStretchMode.Tile,
+            AxisStretchVertical = StyleBoxTexture.AxisStretchMode.Tile,
+            ContentMarginLeft = m, ContentMarginRight = m, ContentMarginTop = m, ContentMarginBottom = m,
+        };
+    }
+
+    public const string StandInMeta = "pregame_frame_stand_in";
+
+    /// <summary>Whether a flat stand-in has been handed out since the last sweep.</summary>
+    public static bool StandInsHandedOut { get; set; }
+
+    /// <summary>Every ResizePic the pregame draws.</summary>
+    public static readonly ushort[] FrameIds = { Parchment, Stone, 0x0A28, 0x0DAC };
+
+    /// <summary>Asks for each frame's nine gumps; true once all of them are in the atlas.</summary>
+    public static bool FramesReady()
+    {
+        bool ready = true;
+
+        foreach (ushort first in FrameIds)
+        {
+            for (int i = 0; i < 9; i++)
+            {
+                ready &= PregameAssets.Gump((ushort) (first + i)) != null;
+            }
+        }
+
+        return ready;
+    }
+
+    /// <summary>Swaps any stand-in under <paramref name="root"/> for the art, now that it is here; how many are left.</summary>
+    public static int ReplaceStandIns(Node root)
+    {
+        int left = 0;
+
+        void Walk(Node n)
+        {
+            if (n is Control c && c.HasThemeStyleboxOverride("panel") && c.GetThemeStylebox("panel") is StyleBox sb && sb.HasMeta(StandInMeta))
+            {
+                Vector3I key = sb.GetMeta(StandInMeta).AsVector3I();
+                StyleBox art = Frame((ushort) key.X, key.Y, key.Z);
+
+                if (art is StyleBoxTexture)
+                {
+                    c.AddThemeStyleboxOverride("panel", art);
+                }
+                else
+                {
+                    left++;
+                }
+            }
+
+            foreach (Node child in n.GetChildren())
+            {
+                Walk(child);
+            }
+        }
+
+        Walk(root);
+        return left;
+    }
+
+    /// <summary>For the probe: the stand-ins still showing under <paramref name="root"/>.</summary>
+    public static int CountStandIns(Node root)
+    {
+        int count = 0;
+
+        void Walk(Node n)
+        {
+            if (n is Control c && c.IsVisibleInTree() && c.HasThemeStyleboxOverride("panel") && c.GetThemeStylebox("panel") is StyleBox sb && sb.HasMeta(StandInMeta))
+            {
+                count++;
+            }
+
+            foreach (Node child in n.GetChildren())
+            {
+                Walk(child);
+            }
+        }
+
+        Walk(root);
+        return count;
     }
 
     public static PanelContainer Card(ushort frame = Parchment)

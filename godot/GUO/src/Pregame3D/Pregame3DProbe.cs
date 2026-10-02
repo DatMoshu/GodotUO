@@ -95,6 +95,7 @@ internal static class Pregame3DProbe
         string path = System.IO.Path.Combine(_dir, $"pregame3d_{name}.png");
         frame.SavePng(path);
         GD.Print($"[GUO] pregame3d probe: shot {path}");
+        AssertOnScreen(name);
     }
 
     /// <summary>One press and release of a pad button, through the real event queue.</summary>
@@ -161,7 +162,7 @@ internal static class Pregame3DProbe
         // A fresh account (the dev shard makes it on first login) has no
         // character, so the run goes through the whole of creation; an
         // existing one (--account guoprobe) plays its character instead.
-        string account = Arg("--account", "p3d" + DateTime.Now.ToString("MMddHHmmss"));
+        string account = Arg("--account", "guoprobe");
         string password = Arg("--password", account);
         GamepadInput.KnownLayout(Device, GamepadLayout.Labels);
 
@@ -172,6 +173,14 @@ internal static class Pregame3DProbe
         catch (Exception ex)
         {
             Check("ran to the end", false, ex.ToString());
+        }
+
+        lock (PregameAssets.Timings)
+        {
+            foreach (var kv in PregameAssets.Timings)
+            {
+                GD.Print($"[GUO] pregame3d probe: timing {kv.Key}: {kv.Value} ms");
+            }
         }
 
         GD.Print($"[GUO] pregame3d probe: {(_failed == 0 ? "PASS" : $"FAIL ({_failed})")}");
@@ -186,9 +195,24 @@ internal static class Pregame3DProbe
         Check("the painting is up", PregameScreen.Instance.Painted);
         await Shot("01_login");
 
-        // Resized mid-login: the whole scene stays framed at each size.
+        // The Deck's case first: the OS window grows (to 1280x800) while the
+        // root viewport is left at the project's 1280x720. The pregame must
+        // notice, resize the root, and fill the whole window.
+        // (Started at the project's own 1280x720, as the Deck is.)
         Vector2I start = DisplayServer.WindowGetSize();
 
+        if (start == new Vector2I(1280, 720))
+        {
+            var deck = new Vector2I(1280, 800);
+            DisplayServer.WindowSetSize(deck);
+            await Frames(60);
+            Vector2I rootNow = Host.GetTree().Root.Size;
+            Check("window and root viewport agree after an OS-side resize", DisplayServer.WindowGetSize() == deck && rootNow == deck, $"window {DisplayServer.WindowGetSize().X}x{DisplayServer.WindowGetSize().Y}, root {rootNow.X}x{rootNow.Y}");
+            await Shot("01_login_deck_mismatch");
+            start = deck;
+        }
+
+        // Resized mid-login: the whole scene stays framed at each size.
         foreach (Vector2I size in new[] { new Vector2I(640, 480), new Vector2I(1920, 1080) })
         {
             // As a window manager would: the window and its root viewport together.
@@ -256,22 +280,43 @@ internal static class Pregame3DProbe
             await Frames(60);
             await Shot("07_characters");
 
-            // A look at creation (X = new) and back (B).
-            await Press(PadCmd.X);
-
-            if (await Until(() => Step == LoginSteps.CharacterCreation, 60))
+            // One account for every run (the shard allows few per IP): the
+            // probe's own character from the last run is deleted first, with
+            // the gump's Delete and its question. The dev shard's first
+            // account (guoprobe) is its owner, so a young character may go.
+            for (int tries = 0; tries < 3 && HasProbeCharacter(); tries++)
             {
-                await Frames(60);
-                await Shot("08_creation_trade");
-                await Press(PadCmd.B);
-                Check("B goes back to the characters", await Until(() => Step == LoginSteps.CharacterSelection, 60), Step.ToString());
-                await Frames(40);
+                if (!await SeekList(t => t.Equals("char:" + ProbeName, StringComparison.OrdinalIgnoreCase)))
+                {
+                    Check("found last run's character to delete", false, Tag);
+                    break;
+                }
+
+                await Press(PadCmd.Y);
+                await Frames(5);
+                await Shot("07b_delete_question");
+                await Press(PadCmd.A);
+                bool gone = await Until(() => !HasProbeCharacter() || !string.IsNullOrEmpty(Login?.PopupMessage) || PregameScreen.Instance.ModalOpen, 600);
+                await Frames(30);
+                Check("last run's character deleted", !HasProbeCharacter(), Login?.PopupMessage ?? "");
+
+                if (PregameScreen.Instance.ModalOpen)
+                {
+                    await Press(PadCmd.A);
+                }
+
+                if (!gone)
+                {
+                    break;
+                }
             }
 
-            Check("a character is focused", CharacterStage.ProbeCharacterFocused);
-            await Press(PadCmd.A);
+            await Frames(30);
+            await Press(PadCmd.X);
+            Check("X opens creation", await Until(() => Step == LoginSteps.CharacterCreation, 120), Step.ToString());
         }
-        else
+
+        if (Step == LoginSteps.CharacterCreation)
         {
             await Creation();
         }
@@ -283,7 +328,64 @@ internal static class Pregame3DProbe
         await Shot("12_world");
     }
 
-    private static string Tag => CreationStage.ProbeFocusTag ?? "";
+    private const string ProbeName = "Pebble";
+
+    private static bool HasProbeCharacter() => Array.Exists(Login?.Characters ?? Array.Empty<string>(), c => string.Equals(c, ProbeName, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>The focused thing's tag, on any step.</summary>
+    private static string Tag => PregameScreen.Instance?.Focus.Current switch
+    {
+        UiFocus u => u.Tag as string ?? "",
+        GumpProp g => g.Tag ?? "",
+        _ => "",
+    };
+
+    /// <summary>
+    /// Every visible control of the pregame inside the root viewport (a
+    /// scroll's rows are its own business); fails loudly with the offenders.
+    /// </summary>
+    private static void AssertOnScreen(string where)
+    {
+        if (!PregameScreen.Active)
+        {
+            return;
+        }
+
+        Vector2I root = Host.GetTree().Root.Size;
+        Rect2 screen = new Rect2(Vector2.Zero, root).Grow(6f); // the drift moves the painting's pieces a few pixels
+        var bad = new System.Collections.Generic.List<string>();
+
+        void Walk(Node n, bool clipped)
+        {
+            if (n is Control c)
+            {
+                if (!c.IsVisibleInTree())
+                {
+                    return;
+                }
+
+                Rect2 r = c.GetGlobalRect();
+
+                if (!clipped && r.Size.X > 0 && r.Size.Y > 0 && !screen.Encloses(r))
+                {
+                    bad.Add($"{c.GetType().Name} \"{(c as Label)?.Text ?? c.Name}\" at {r.Position.X:0},{r.Position.Y:0} {r.Size.X:0}x{r.Size.Y:0}");
+                }
+
+                clipped |= c is ScrollContainer;
+            }
+
+            foreach (Node child in n.GetChildren())
+            {
+                Walk(child, clipped);
+            }
+        }
+
+        Walk(PregameScreen.Instance.OverlayRoot, false);
+        Walk(PregameScreen.Instance.Props, false);
+        Check($"{where}: everything inside the {root.X}x{root.Y} screen", bad.Count == 0, string.Join("; ", bad.GetRange(0, Math.Min(6, bad.Count))));
+        int standIns = Overlay.CountStandIns(PregameScreen.Instance.OverlayRoot) + Overlay.CountStandIns(PregameScreen.Instance.Props);
+        Check($"{where}: no flat stand-in frames, only the client's art", standIns == 0, $"{standIns} stand-in(s)");
+    }
 
     /// <summary>Down (then up) a list until the focus's tag matches.</summary>
     private static async Task<bool> SeekList(Func<string, bool> match)

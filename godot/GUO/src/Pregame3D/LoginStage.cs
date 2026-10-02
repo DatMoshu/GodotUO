@@ -480,7 +480,7 @@ internal sealed class LoginStage : Stage
         col.AddChild(body);
         _creditsCard.AddChild(col);
         D.OverlayRoot.AddChild(_creditsCard);
-        _creditsCard.SetAnchorsPreset(Control.LayoutPreset.Center);
+        _creditsCard.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.Center, Control.LayoutPresetMode.Minsize);
         _creditsCard.GrowHorizontal = Control.GrowDirection.Both;
         _creditsCard.GrowVertical = Control.GrowDirection.Both;
         D.RefreshHints();

@@ -138,6 +138,9 @@ internal sealed partial class PregameScreen : Node
     private float _dim = 1f;
     private Tween _dimTween;
     private int _frames;
+    private bool _framesReady;
+    private bool _mapStarted;
+    private Label _loading;
     private readonly List<ShaderMaterial> _propMaterials = new();
     private readonly bool[] _stick = new bool[4];
 
@@ -168,6 +171,7 @@ internal sealed partial class PregameScreen : Node
 
         BuildOverlay();
         Resize();
+        PregameAssets.Start(Art);
         _built = true;
 
         GD.Print($"[GUO] pregame3d: up ({(Art.Modern ? "the 7.0.64+ login painting 0x014E" : "the older login art")}, from the client's files)");
@@ -207,6 +211,44 @@ internal sealed partial class PregameScreen : Node
         KeepDeckWindow();
         Resize();
         Paint();
+
+        // No step is built before everything it can show is loaded (a
+        // stand-in would show flat boxes, then the art): the painting with a
+        // small "Loading" line meanwhile.
+        if (!_framesReady)
+        {
+            _framesReady = PregameAssets.Ready && _painted && Overlay.FramesReady();
+            _loading.Text = $"Loading...  {(int) (PregameAssets.Progress * 100)}%";
+
+            if (!_framesReady)
+            {
+                return;
+            }
+
+            _loading.Visible = false;
+            GD.Print($"[GUO] pregame3d: shown after {_frames} frames");
+        }
+
+        // After the login: the figure's frames, a little each frame; the Home
+        // map as soon as the shard has sent its cities.
+        if (login.CurrentLoginStep is not (LoginSteps.Main or LoginSteps.Connecting or LoginSteps.VerifyingAccount))
+        {
+            PregameAssets.StartAfterLogin();
+        }
+
+        PregameAssets.Step();
+
+        if (login.Cities != null && !_mapStarted)
+        {
+            _mapStarted = true;
+            CreationStage.PrefetchMap(login.Cities, _overlay.Size);
+        }
+
+        // The safety net: any stand-in handed out after all is swapped for the art.
+        if (Overlay.StandInsHandedOut && _frames % 15 == 0)
+        {
+            Overlay.StandInsHandedOut = Overlay.ReplaceStandIns(_overlay) + Overlay.ReplaceStandIns(_props) > 0;
+        }
 
         if (_step != login.CurrentLoginStep)
         {
@@ -248,7 +290,7 @@ internal sealed partial class PregameScreen : Node
     /// <summary>The painting, once its gumps are in the atlas.</summary>
     private void Paint()
     {
-        if (_painted || _paint == null)
+        if (_painted || _paint == null || !PregameAssets.Ready)
         {
             return;
         }
@@ -669,17 +711,25 @@ internal sealed partial class PregameScreen : Node
 
     private void Resize()
     {
-        // The window's own size: under gamescope the root viewport can lag a
-        // resize, and what shows is the window.
+        // The OS window is the truth. Under gamescope (and a WM-less X server)
+        // the root viewport can stay at the project's 1280x720 while the
+        // window is 1280x800: the root is told the window's size, so what
+        // renders is the whole window, and the layout follows the window only.
         Vector2I size = DisplayServer.WindowGetSize();
-        Vector2I vp = (Vector2I) GetViewport().GetVisibleRect().Size;
+        Vector2I root = GetTree().Root.Size;
 
-        if (vp.X > 0 && vp.Y > 0 && (vp.X < size.X || vp.Y < size.Y))
+        if (size.X <= 0 || size.Y <= 0)
         {
-            size = new Vector2I(Math.Min(size.X, vp.X), Math.Min(size.Y, vp.Y));
+            return;
         }
 
-        if (size == _windowSize || size.X <= 0 || size.Y <= 0)
+        if (root != size)
+        {
+            GD.Print($"[GUO] pregame3d: window {size.X}x{size.Y} but root viewport {root.X}x{root.Y}: root resized to the window");
+            GetTree().Root.Size = size;
+        }
+
+        if (size == _windowSize)
         {
             return;
         }
@@ -705,7 +755,7 @@ internal sealed partial class PregameScreen : Node
         _overlay.Position = Vector2.Zero;
         _overlay.Size = screen / ui;
 
-        GD.Print($"[GUO] pregame3d: window {size.X}x{size.Y}, painting x{_paintScale:0.###} at {_paintOrigin.X:0},{_paintOrigin.Y:0}, overlay x{ui}");
+        GD.Print($"[GUO] pregame3d: window {size.X}x{size.Y}, root viewport {GetTree().Root.Size.X}x{GetTree().Root.Size.Y}, painting x{_paintScale:0.###} at {_paintOrigin.X:0},{_paintOrigin.Y:0}, overlay x{ui}");
         _stage?.Resized();
     }
 
@@ -714,10 +764,18 @@ internal sealed partial class PregameScreen : Node
         _hintBand = Overlay.BandPanel();
         _hintBand.SetAnchorsPreset(Control.LayoutPreset.BottomWide);
         _hintBand.GrowVertical = Control.GrowDirection.Begin;
-        _hint = Overlay.Text("", UoTheme.Cream);
+        _hint = Overlay.Text("", UoTheme.Cream, wrap: true);
         _hint.HorizontalAlignment = HorizontalAlignment.Center;
         _hintBand.AddChild(_hint);
         _overlay.AddChild(_hintBand);
+
+        _loading = Overlay.Text("Loading...", UoTheme.Cream);
+        _loading.AddThemeConstantOverride("outline_size", 4);
+        _loading.AddThemeColorOverride("font_outline_color", new Color(0, 0, 0, 0.8f));
+        _overlay.AddChild(_loading);
+        _loading.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.CenterBottom, Control.LayoutPresetMode.Minsize, 40);
+        _loading.GrowHorizontal = Control.GrowDirection.Both;
+        _loading.GrowVertical = Control.GrowDirection.Begin;
 
         Keyboard = new OnScreenKeyboard();
         _overlay.AddChild(Keyboard.Root);
@@ -755,7 +813,7 @@ internal sealed partial class PregameScreen : Node
         col.AddChild(Overlay.Text(confirm ? "A  Yes     B  No" : "A  OK", UoTheme.Heading));
         _modal.AddChild(col);
         _overlay.AddChild(_modal);
-        _modal.SetAnchorsPreset(Control.LayoutPreset.Center);
+        _modal.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.Center, Control.LayoutPresetMode.Minsize);
         _modal.GrowHorizontal = Control.GrowDirection.Both;
         _modal.GrowVertical = Control.GrowDirection.Both;
         _modalAnswer = answer;

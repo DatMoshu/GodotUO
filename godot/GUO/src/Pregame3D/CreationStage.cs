@@ -73,6 +73,7 @@ internal sealed partial class CreationStage : Stage
     private readonly PanelContainer[] _tabPanels = new PanelContainer[5];
     private PanelContainer _content;
     private VBoxContainer _body;
+    private ScrollContainer _scroll;
     private readonly List<IOverlayFocusable> _items = new();
     private Control _popover;
     private readonly List<IOverlayFocusable> _popItems = new();
@@ -88,6 +89,7 @@ internal sealed partial class CreationStage : Stage
     private int _retries;
     private float _stickX;
     private int _figureHeight = 80;
+    private Rect2I _used = new(Mannequin.Foot.X - 16, Mannequin.Foot.Y - 64, 32, 64);
     private bool _toldFigure;
 
     public static string ProbeFocusTag => (PregameScreen.Instance?.Stage as CreationStage)?.FocusTag;
@@ -145,7 +147,6 @@ internal sealed partial class CreationStage : Stage
         _skillPick = null;
         _character = null;
         _done.Clear();
-        _mapImageFor = null;
         Rebuild();
 
         BuildChrome();
@@ -153,8 +154,17 @@ internal sealed partial class CreationStage : Stage
         ShowStep(Step.Trade);
     }
 
+    private void KeepInView(IFocusable f)
+    {
+        if (_popover == null && f is IOverlayFocusable o && _scroll != null && GodotObject.IsInstanceValid(_scroll) && _body.IsAncestorOf(o.Control))
+        {
+            Callable.From(() => { if (GodotObject.IsInstanceValid(_scroll) && GodotObject.IsInstanceValid(o.Control)) _scroll.EnsureControlVisible(o.Control); }).CallDeferred();
+        }
+    }
+
     public override void Exit()
     {
+        D.Focus.Moved -= KeepInView;
         ClosePopover(false);
         _chrome?.QueueFree();
         _chrome = null;
@@ -210,13 +220,21 @@ internal sealed partial class CreationStage : Stage
                 _figureHeight = Mannequin.Foot.Y - used.Position.Y;
             }
 
-            if (_figure.Texture is ImageTexture tex && tex.GetSize() == new Vector2(img.GetWidth(), img.GetHeight()))
+            // Only the drawn part (the canvas is mostly empty), so the figure's
+            // rect is the figure: placed by its feet, it stays on screen.
+            if (used.Size.X > 0 && used.Size.Y > 0)
             {
-                tex.Update(img);
-            }
-            else
-            {
-                _figure.Texture = ImageTexture.CreateFromImage(img);
+                _used = used;
+                Image crop = img.GetRegion(used);
+
+                if (_figure.Texture is ImageTexture tex && tex.GetSize() == new Vector2(crop.GetWidth(), crop.GetHeight()))
+                {
+                    tex.Update(crop);
+                }
+                else
+                {
+                    _figure.Texture = ImageTexture.CreateFromImage(crop);
+                }
             }
         }
 
@@ -232,12 +250,18 @@ internal sealed partial class CreationStage : Stage
         Vector2 room = D.OverlayRoot.Size;
         int ui = D.UiScale;
         float screenH = room.Y * ui;
-        int k = Math.Max(1, (int) Math.Round(screenH * 0.475f / Math.Max(30, _figureHeight)));
-        Vector2 size = new Vector2(Mannequin.Canvas.X, Mannequin.Canvas.Y) * k / ui;
-        Vector2 foot = new Vector2(Mannequin.Foot.X, Mannequin.Foot.Y) * k / ui;
         var feet = new Vector2(room.X * 0.19f, room.Y * 0.86f);
-        _figure.Size = size;
-        _figure.Position = feet - foot;
+        int k = Math.Max(1, (int) Math.Round(screenH * 0.475f / Math.Max(30, _figureHeight)));
+
+        // Never taller than the room between the tabs and the feet, nor wider than the left third.
+        while (k > 1 && (_used.Size.Y * k / (float) ui > feet.Y - 36 || _used.Size.X * k / (float) ui > room.X * 0.36f))
+        {
+            k--;
+        }
+
+        _figure.Size = new Vector2(_used.Size.X, _used.Size.Y) * k / ui;
+        // Where the canvas's foot point lands: the crop keeps its offset from it.
+        _figure.Position = feet - new Vector2(Mannequin.Foot.X - _used.Position.X, Mannequin.Foot.Y - _used.Position.Y) * k / ui;
         _shadow.Size = new Vector2(34f * k / ui, 9f * k / ui);
         _shadow.Position = feet - _shadow.Size / 2f;
     }
@@ -620,8 +644,22 @@ internal sealed partial class CreationStage : Stage
         _content.OffsetBottom = -28;
         _content.ClipContents = true;
 
-        _body = Overlay.Column(4);
-        _content.AddChild(_body);
+        // The step's content fits the card: rows are compact, and only when a
+        // step still has more than the room between the tabs and the hint
+        // bar does it scroll (the focused row kept in view).
+        _scroll = new ScrollContainer
+        {
+            HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
+            VerticalScrollMode = ScrollContainer.ScrollMode.Auto,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+            FollowFocus = false,
+        };
+        _content.AddChild(_scroll);
+        _body = Overlay.Column(2);
+        _body.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        _body.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
+        _scroll.AddChild(_body);
+        D.Focus.Moved += KeepInView;
     }
 
     private void RefreshTabs()

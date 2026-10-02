@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Godot;
 using GUO.Assets;
 using GUO.Game.Data;
@@ -56,22 +57,22 @@ internal sealed partial class CreationStage
             ProfessionInfo p = info;
             string name = Title(clilocs.GetString(p.Localization) ?? p.Name);
             PanelContainer card = Card(margin: 4);
-            Texture2D iconProbe = p.Graphic != 0 ? UoTheme.GumpTexture(p.Graphic) : null;
-            card.CustomMinimumSize = new Vector2(84, iconProbe != null ? 50 : 30);
+            Texture2D icon = p.Graphic != 0 ? PregameAssets.Texture(p.Graphic) : null;
             card.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-            VBoxContainer col = Overlay.Column(1);
+            VBoxContainer col = Overlay.Column(0);
             card.AddChild(col);
-
-            Texture2D icon = iconProbe;
 
             if (icon != null)
             {
+                // The profession's icon inside the card, above its name: its
+                // own size when it fits, else shrunk to the card's icon row.
+                float iconRow = Math.Min(icon.GetHeight(), Math.Max(20f, (D.OverlayRoot.Size.Y - 34 - 28) * 0.13f));
                 col.AddChild(new TextureRect
                 {
                     Texture = icon,
-                    StretchMode = TextureRect.StretchModeEnum.KeepCentered,
+                    StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
                     TextureFilter = CanvasItem.TextureFilterEnum.Nearest,
-                    CustomMinimumSize = new Vector2(0, Math.Min(40, icon.GetHeight())),
+                    CustomMinimumSize = new Vector2(0, iconRow),
                     ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
                     MouseFilter = Control.MouseFilterEnum.Ignore,
                 });
@@ -252,7 +253,6 @@ internal sealed partial class CreationStage
     private void LookStep()
     {
         var clilocs = Client.Game.UO.FileManager.Clilocs;
-        _body.AddChild(Text("Look", Heading));
         List<RaceType> races = Races();
 
         LookRow("body", "Body", () => _female ? "Female" : "Male", d =>
@@ -313,7 +313,7 @@ internal sealed partial class CreationStage
 
     private PanelContainer RowShell(string caption, out HBoxContainer value, out Label captionLabel)
     {
-        PanelContainer row = Card(margin: 4);
+        PanelContainer row = Card(margin: 3);
         HBoxContainer h = Overlay.Row(6);
         row.AddChild(h);
         captionLabel = Text(caption, Ink);
@@ -327,7 +327,7 @@ internal sealed partial class CreationStage
 
     private void Lit(PanelContainer row, Label caption, bool on)
     {
-        row.AddThemeStyleboxOverride("panel", Parch(4, on ? 1 : 0));
+        row.AddThemeStyleboxOverride("panel", Parch(3, on ? 1 : 0));
         caption.AddThemeColorOverride("font_color", on ? Active : Ink);
     }
 
@@ -483,14 +483,14 @@ internal sealed partial class CreationStage
         {
             int stat = index;
             string label = name.Length > 3 ? name.Substring(0, 3) : name;
-            PanelContainer row = Card(margin: 4);
+            PanelContainer row = Card(margin: 3);
             _body.AddChild(row);
             Control bar = StatBar(label, _stats[stat], 60);
             row.AddChild(bar);
             var f = new UiFocus(row) { Tag = "stat:" + label.ToLowerInvariant() };
             f.Shown = on =>
             {
-                row.AddThemeStyleboxOverride("panel", Parch(4, on ? 1 : 0));
+                row.AddThemeStyleboxOverride("panel", Parch(3, on ? 1 : 0));
                 Redraw(row, StatBar(label, _stats[stat], 60, on));
             };
             f.Cycle = d =>
@@ -745,7 +745,6 @@ internal sealed partial class CreationStage
     // ==========================================================================
 
     private bool _mapReady;
-    private string _mapImageFor;
     private TextureRect _mapRect;
     private ImageTexture _mapTexture;
     private Label _cityName, _cityText;
@@ -776,18 +775,11 @@ internal sealed partial class CreationStage
     private void HomeStep()
     {
         CityInfo[] cities = Cities;
-        _body.AddChild(Text("Home", Heading));
         City();
 
-        // The map: as wide as the card, about 4:3, never taller than the room left.
-        // From the overlay's size (the card has not been laid out yet on a first show):
-        // the card's inner width, and what is left of its height under the title and over the text.
-        Vector2 room = D.OverlayRoot.Size;
-        float width = Math.Max(200, room.X * 0.62f - 8 - 20);
-        // The city's text gets three lines where there is room (two on a short screen); the map the rest.
-        int lines = room.Y >= 400 ? 3 : 2;
-        float lineHeight = UoTheme.Font.GetHeight(UoTheme.FontSize) + 8;
-        float height = Math.Min(width * 0.62f, Math.Max(90, room.Y - 34 - 28 - 20 - 24 - 36 - (lines + 1) * lineHeight));
+        MapPlan plan = PlanMap(cities, D.OverlayRoot.Size);
+        float width = plan.Width, height = plan.Height;
+        int lines = plan.Lines;
         var map = new Control { CustomMinimumSize = new Vector2(width, height), MouseFilter = Control.MouseFilterEnum.Ignore, ClipContents = true };
         var mapFrame = Card(4, Overlay.Stone);
         mapFrame.AddChild(map);
@@ -813,70 +805,47 @@ internal sealed partial class CreationStage
             return;
         }
 
-        // The cities' real places on their facet (the 7.0.13+ list carries
-        // them); an older list has only the old gump's points, so no map.
-        bool real = cities.All(c => c.IsNewCity);
-        int facet = (int) cities[0].Map;
-        int minX = cities.Min(c => c.X), maxX = cities.Max(c => c.X), minY = cities.Min(c => c.Y), maxY = cities.Max(c => c.Y);
-        float spanX = Math.Max(200, maxX - minX), spanY = Math.Max(200, maxY - minY);
-        // Fit the cities with a margin, at the panel's aspect.
-        float aspect = width / height;
-        float padX = spanX * 0.12f + 60, padY = spanY * 0.12f + 60;
-        float rw = spanX + padX * 2, rh = spanY + padY * 2;
-
-        if (rw / rh > aspect)
-        {
-            rh = rw / aspect;
-        }
-        else
-        {
-            rw = rh * aspect;
-        }
-
-        // Britannia's mainland on the first two facets ends at x 5120 (the lost lands lie east).
-        int facetWidth = facet <= 1 ? 5120 : Client.Game.UO.FileManager.Maps.MapsDefaultSize[Math.Clamp(facet, 0, 5), 0];
-        int facetHeight = Client.Game.UO.FileManager.Maps.MapsDefaultSize[Math.Clamp(facet, 0, 5), 1];
-
-        // Never past the facet's edge: the region gets narrower (or shorter)
-        // than the panel, and the map is shown letterboxed at its own aspect.
-        rw = Math.Min(rw, facetWidth);
-        rh = Math.Min(rh, facetHeight);
-        float dispW = Math.Min(width, height * rw / rh), dispH = dispW * rh / rw;
-        var dispAt = new Vector2((width - dispW) / 2f, (height - dispH) / 2f);
-
-        float rx = Math.Clamp((minX + maxX) / 2f - rw / 2f, 0, Math.Max(0, facetWidth - rw));
-        float ry = Math.Clamp((minY + maxY) / 2f - rh / 2f, 0, Math.Max(0, facetHeight - rh));
-        var region = new Rect2I((int) rx, (int) ry, (int) rw, (int) rh);
-        string key = $"{facet}:{region}:{(int) dispW}x{(int) dispH}";
+        bool real = plan.Real;
+        Rect2I region = plan.Region;
+        float dispW = plan.Shown.Size.X, dispH = plan.Shown.Size.Y;
+        Vector2 dispAt = plan.Shown.Position;
         _mapRect.Position = dispAt;
-        _mapRect.Size = new Vector2(dispW, dispH);
+        _mapRect.Size = plan.Shown.Size;
 
-        if (real && _mapImageFor != key)
+        if (real)
         {
+            // Started after the login (PrefetchMap) with this same plan; if it
+            // is not done yet, a line in the panel says so until it is.
+            Label drawing = Text("Drawing the map...", Cream);
+            drawing.Position = new Vector2(10, 8);
+            map.AddChild(drawing);
+            Task<Image> task = PregameAssets.Map(plan.Facet, region, new Vector2I((int) dispW, (int) dispH));
             _mapReady = false;
-            _mapImageFor = key;
-            WorldMapImage.Build(facet, region, new Vector2I((int) dispW, (int) dispH)).ContinueWith(t =>
+
+            void Show(Image img)
             {
-                Image img = t.Result;
-                Callable.From(() =>
+                if (img != null && IsInstanceValid(_mapRect))
                 {
-                    if (img != null && _mapImageFor == key)
-                    {
-                        _mapTexture = ImageTexture.CreateFromImage(img);
+                    _mapTexture = ImageTexture.CreateFromImage(img);
+                    _mapRect.Texture = _mapTexture;
+                }
 
-                        if (IsInstanceValid(_mapRect))
-                        {
-                            _mapRect.Texture = _mapTexture;
-                        }
+                if (IsInstanceValid(drawing))
+                {
+                    drawing.Visible = false;
+                }
 
-                        _mapReady = true;
-                    }
-                }).CallDeferred();
-            });
-        }
-        else if (real)
-        {
-            _mapRect.Texture = _mapTexture;
+                _mapReady = true;
+            }
+
+            if (task.IsCompleted)
+            {
+                Show(task.Result);
+            }
+            else
+            {
+                task.ContinueWith(t => Callable.From(() => Show(t.Result)).CallDeferred());
+            }
         }
         else
         {
@@ -944,6 +913,69 @@ internal sealed partial class CreationStage
         Callable.From(() => { if (sel >= 0 && sel < pins.Count) D.Focus.Set(pins[sel]); }).CallDeferred();
     }
 
+    private readonly record struct MapPlan(bool Real, int Facet, Rect2I Region, float Width, float Height, Rect2 Shown, int Lines);
+
+    /// <summary>
+    /// The Home map's size in the card (from the overlay's room) and the
+    /// region of the facet it shows: the cities with a margin, never past the
+    /// mainland's edge, letterboxed at its own aspect.
+    /// </summary>
+    private static MapPlan PlanMap(CityInfo[] cities, Vector2 room)
+    {
+        float width = Math.Max(200, room.X * 0.62f - 8 - 20);
+        // The city's text gets three lines where there is room (two on a short screen); the map the rest.
+        int lines = room.Y >= 400 ? 3 : 2;
+        float lineHeight = UoTheme.Font.GetHeight(UoTheme.FontSize) + 8;
+        float height = Math.Min(width * 0.62f, Math.Max(90, room.Y - 34 - 28 - 20 - 24 - 36 - (lines + 1) * lineHeight));
+
+        if (cities.Length == 0)
+        {
+            return new MapPlan(false, 0, default, width, height, new Rect2(0, 0, width, height), lines);
+        }
+
+        // The cities' real places on their facet (the 7.0.13+ list carries
+        // them); an older list has only the old gump's points, so no map.
+        bool real = cities.All(c => c.IsNewCity);
+        int facet = (int) cities[0].Map;
+        int minX = cities.Min(c => c.X), maxX = cities.Max(c => c.X), minY = cities.Min(c => c.Y), maxY = cities.Max(c => c.Y);
+        float spanX = Math.Max(200, maxX - minX), spanY = Math.Max(200, maxY - minY);
+        float aspect = width / height;
+        float padX = spanX * 0.12f + 60, padY = spanY * 0.12f + 60;
+        float rw = spanX + padX * 2, rh = spanY + padY * 2;
+
+        if (rw / rh > aspect)
+        {
+            rh = rw / aspect;
+        }
+        else
+        {
+            rw = rh * aspect;
+        }
+
+        // Britannia's mainland on the first two facets ends at x 5120 (the lost lands lie east).
+        int facetWidth = facet <= 1 ? 5120 : Client.Game.UO.FileManager.Maps.MapsDefaultSize[Math.Clamp(facet, 0, 5), 0];
+        int facetHeight = Client.Game.UO.FileManager.Maps.MapsDefaultSize[Math.Clamp(facet, 0, 5), 1];
+        rw = Math.Min(rw, facetWidth);
+        rh = Math.Min(rh, facetHeight);
+        float dispW = (int) Math.Min(width, height * rw / rh), dispH = (int) (dispW * rh / rw);
+        var dispAt = new Vector2((int) ((width - dispW) / 2f), (int) ((height - dispH) / 2f));
+        float rx = Math.Clamp((minX + maxX) / 2f - rw / 2f, 0, Math.Max(0, facetWidth - rw));
+        float ry = Math.Clamp((minY + maxY) / 2f - rh / 2f, 0, Math.Max(0, facetHeight - rh));
+
+        return new MapPlan(real, facet, new Rect2I((int) rx, (int) ry, (int) rw, (int) rh), width, height, new Rect2(dispAt, dispW, dispH), lines);
+    }
+
+    /// <summary>After the login, as soon as the cities are known: the Home map, drawn in the background.</summary>
+    public static void PrefetchMap(CityInfo[] cities, Vector2 room)
+    {
+        MapPlan plan = PlanMap(cities, room);
+
+        if (plan.Real)
+        {
+            PregameAssets.Map(plan.Facet, plan.Region, new Vector2I((int) plan.Shown.Size.X, (int) plan.Shown.Size.Y));
+        }
+    }
+
     /// <summary>A city's description without its HTML (the clilocs carry h2 and br).</summary>
     private static string PlainText(string html)
     {
@@ -965,7 +997,6 @@ internal sealed partial class CreationStage
     private void NameStep()
     {
         var clilocs = Client.Game.UO.FileManager.Clilocs;
-        _body.AddChild(Text("Name", Heading));
 
         PanelContainer field = Card(8);
         Label name = Text(_name.Length > 0 ? _name : "(press A to name your character)", _name.Length > 0 ? Ink : Muted, _name.Length > 0 ? 2 : 1);

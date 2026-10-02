@@ -46,6 +46,25 @@ internal sealed class Painting
 
     private readonly List<(ushort id, Vector2I at, Vector2I tiled)> _layers = new();
 
+    /// <summary>Every gump of this login screen: the painting's layers and the buttons in all their states.</summary>
+    public IEnumerable<ushort> GumpIds
+    {
+        get
+        {
+            foreach ((ushort id, Vector2I _, Vector2I _) in _layers)
+            {
+                yield return id;
+            }
+
+            foreach (GumpButtonArt b in new[] { Quit, Credits, Arrow })
+            {
+                yield return b.Normal;
+                yield return b.Pressed;
+                yield return b.Over;
+            }
+        }
+    }
+
     public Painting()
     {
         Modern = Client.Game.UO.Version >= ClientVersion.CV_706400;
@@ -99,7 +118,7 @@ internal sealed class Painting
 
         foreach ((ushort id, Vector2I at, Vector2I tiled) in _layers)
         {
-            Image gump = UoTheme.GumpImage(id);
+            Image gump = PregameAssets.Gump(id);
 
             if (gump == null)
             {

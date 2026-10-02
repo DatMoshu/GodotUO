@@ -28,6 +28,8 @@ internal static class Mannequin
 
     private const byte StandGroup = (byte) PeopleAnimationGroup.Stand;
 
+    private static readonly Dictionary<ulong, Image> _pages = new();
+
     /// <summary>How many frames the stand animation has for this body and direction (at least 1).</summary>
     public static int FrameCount(PlayerMobile m, byte direction)
     {
@@ -114,7 +116,9 @@ internal static class Mannequin
 
         ulong key = sprite.Texture.GetRid().Id;
 
-        if (!atlases.TryGetValue(key, out Image atlas))
+        // An atlas page read back once and kept (a read-back is the whole page):
+        // dropped again when a sprite on it is not in the copy yet.
+        if (!atlases.TryGetValue(key, out Image atlas) && !_pages.TryGetValue(key, out atlas))
         {
             atlas = sprite.Texture.GetImage();
 
@@ -129,6 +133,7 @@ internal static class Mannequin
             }
 
             atlases[key] = atlas;
+            _pages[key] = atlas;
         }
 
         if (hue == 0)
@@ -142,6 +147,7 @@ internal static class Mannequin
 
         if (part.IsInvisible())
         {
+            _pages.Remove(key);
             return false;
         }
 

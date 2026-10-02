@@ -134,7 +134,7 @@ internal sealed class GumpProp : IOverlayFocusable
             return;
         }
 
-        Texture2D t = UoTheme.GumpTexture(_down ? _pressed : _focused ? _over : _normal) ?? UoTheme.GumpTexture(_normal);
+        Texture2D t = PregameAssets.Texture(_down ? _pressed : _focused ? _over : _normal) ?? PregameAssets.Texture(_normal);
 
         if (t != null && t != _rect.Texture)
         {
