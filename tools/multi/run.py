@@ -7,7 +7,7 @@
     python tools/multi/run.py prove   NAME [--stage DIR] [--clip OUT.mp4] [--at X Y [Z]] [--visit X Y Z ...]
     python tools/multi/run.py show    ID [--data DIR] [--png FILE]
     python tools/multi/run.py storeys DESC.json --project DIR   raise storeys on map buildings, as a world project
-    python tools/multi/run.py world-prove PROJECT [--export DIR] [--tour JSON] [--clip OUT.mp4] [--no-roofs]
+    python tools/multi/run.py world-prove PROJECT [--export DIR] [--tour JSON] [--clip OUT.mp4] [--no-roofs] [--bright]
     python tools/multi/run.py scene-build SCENE.json [--cut Z]  a scene: every element, cut into parts
     python tools/multi/run.py scene-write NAME [--stage DIR]    each part as a multi, and the scene
     python tools/multi/run.py scene-prove NAME [--stage DIR] [--clip OUT.mp4] [--at X Y [Z]]
@@ -271,9 +271,12 @@ def cmd_world_prove(cfg, a) -> int:
     jumps = {t["name"]: t["go"] for t in tour if t.get("go")}   # true: to x y z; "xy": the shard picks z
     out = (a.out or cfg.build / "multi_proof" / f"{project.name}-{time.strftime('%Y%m%d-%H%M%S')}").resolve()
     out.mkdir(parents=True, exist_ok=True)
-    profile = {"draw_roofs": False} if a.no_roofs else None
+    profile = {"draw_roofs": False} if a.no_roofs else {}
+    if a.bright:
+        # full daylight whatever the region says: a dungeon region's dark hides the build
+        profile.update({"use_custom_light_level": True, "light_level": 0, "light_level_type": 0})
     return prove.prove_world(cfg, export, stops, out, a.clip, min_free_gb=a.min_free_gb, caption=a.caption or "",
-                             profile=profile, jumps=jumps)
+                             profile=profile or None, jumps=jumps)
 
 
 def cmd_storeys(cfg, a) -> int:
@@ -393,6 +396,7 @@ def main() -> int:
     p.add_argument("--clip", type=Path)
     p.add_argument("--caption")
     p.add_argument("--no-roofs", action="store_true")
+    p.add_argument("--bright", action="store_true", help="the client's own light level at full day")
     p.add_argument("--min-free-gb", type=float, default=16)
     p = sub.add_parser("storeys")
     p.add_argument("desc", type=Path)
