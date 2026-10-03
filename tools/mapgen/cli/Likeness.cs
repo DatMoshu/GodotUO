@@ -60,6 +60,9 @@ public static class Likeness
         var beach = new HashSet<ushort>(ir.Tables.Beach);
         bool IsWater(int i) => water.Contains(land[i]) || IsSeabed(land[i])
             || (ir.Biome is { } b && (b[i] == (byte)BiomeId.DeepWater || b[i] == (byte)BiomeId.ShallowWater));
+        // The coast is the sea's: Felucca draws almost no rivers in land tiles, so its shore share is a
+        // sea-coast share, and the generator's river banks are left out of it.
+        bool IsSea(int i) => IsWater(i) && !(ir.Biome is { } b && b[i] == (byte)BiomeId.River);
 
         var counts = new Dictionary<string, int>();
         int landCells = 0, z0 = 0, shore = 0, shoreSand = 0;
@@ -77,7 +80,7 @@ public static class Likeness
             for (int dx = -1; dx <= 1 && !coast; dx++)
             {
                 int nx = x + dx, ny = y + dy;
-                if ((dx | dy) != 0 && nx >= 0 && ny >= 0 && nx < w && ny < h && IsWater(ny * w + nx)) coast = true;
+                if ((dx | dy) != 0 && nx >= 0 && ny >= 0 && nx < w && ny < h && IsSea(ny * w + nx)) coast = true;
             }
             if (coast) { shore++; if (IsShoreSand(land[i], beach)) shoreSand++; }
         }

@@ -1263,7 +1263,8 @@ transition table give the same hash; a user's resolved table (`prepare --measure
 - `measured` and `felucca`: shares of land at z 0, forest, grass, sand, rock, jungle, and sand along
   coasts (`shore_sand`), plus statics per 100 land tiles (measured only). The seabed (land tiles
   0x4C–0x64 dug under the water, as Felucca's shallows are) counts as water, so the coast is the dry
-  shore; shore sand is the beach pool or a sand edge tile (0x1A–0x4B). The Felucca values are its whole
+  shore. The coast is the sea's: river cells are water but do not make a coast, since Felucca draws
+  almost no rivers in land tiles and its shore share is a sea-coast share. Shore sand is the beach pool or a sand edge tile (0x1A–0x4B). The Felucca values are its whole
   surface (map 0, 5120x4096), measured 2026-10-03 by the same rules;
 - `classes` (land shares by tile-table class; `edge` means transition tiles);
 - `score` (0–100). It is a guide, not the judge.
