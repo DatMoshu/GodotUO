@@ -33,9 +33,9 @@ def send(msg: dict) -> None:
     sys.stdout.flush()
 
 
-def update(session: str, kind: str, **fields) -> None:
+def update(session: str, what: str, **fields) -> None:
     send({"jsonrpc": "2.0", "method": "session/update",
-          "params": {"sessionId": session, "update": {"sessionUpdate": kind, **fields}}})
+          "params": {"sessionId": session, "update": {"sessionUpdate": what, **fields}}})
 
 
 def text_block(text: str) -> dict:

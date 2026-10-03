@@ -194,6 +194,16 @@ public partial class EditorSmoke : Node
             case 50:
                 if (StepSearch())
                 {
+                    _stage = 60;
+                    _frames = 0;
+                }
+
+                break;
+
+            case 60:
+                // The AI hub (ADR-0028): ACP, Ollama and queue, against stubs.
+                if (StepAi())
+                {
                     // Phase 5: the asset overlay, before the World tab boots
                     // so the world's own loaders get it too.
                     RunAssets();
