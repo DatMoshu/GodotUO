@@ -58,6 +58,16 @@ public partial class EditorSmoke
 
                 RunSearchChecks();
                 _report["search"] = _searchReport;
+                // First frame of the popup: the status line is inside the panel.
+                Search.Open("backpack");
+                float overflow = Search.StatusOverflow();
+                Search.Close();
+                _searchReport["status_overflow_px"] = overflow;
+                if (overflow > 0.5f)
+                {
+                    SearchFail($"the popup's status line is {overflow} px below the panel's bottom edge on its first frame");
+                }
+
                 if (Headless)
                 {
                     return true;
