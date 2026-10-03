@@ -41,6 +41,24 @@ public partial class ShardDock : EditorDock
 
     private long _lastSentMs;
 
+    // The Live map layer's feed (ADR-0027): polled while Live is on and the World tab shows.
+    private List<LiveMobile> _liveMobiles = new();
+    private double _pollClock;
+    private long _pollSentMs;
+    private int _pollReq;
+    private int _pollAnswered;
+    private const double PollSeconds = 1.0;
+    private const int PollMargin = 24;
+
+    /// <summary>The last "mobiles" reply, verbatim.</summary>
+    public JsonNode LastMobiles { get; private set; }
+
+    /// <summary>How many "mobiles" requests the Live layer has sent.</summary>
+    public int MobilePolls => _pollReq;
+
+    /// <summary>The mobiles the Live layer is drawing, as the shard last reported them.</summary>
+    internal IReadOnlyList<LiveMobile> LiveMobiles => _liveMobiles;
+
     public bool Live => _link.Connected;
 
     /// <summary>The "as editor" name (the tour sets a neutral one so no frame shows a user name).</summary>
@@ -73,6 +91,44 @@ public partial class ShardDock : EditorDock
         _world.Editor.BlockWritten += OnBlockWritten;
         _world.Objects.Put += OnObjectPut;
         _world.Objects.Deleted += OnObjectDeleted;
+        _world.Layers.LiveSource = () => _liveMobiles;
+    }
+
+    /// <summary>
+    /// Asks the bridge for the mobiles in the visible region plus a margin
+    /// when the Live layer is on, this dock is connected and the World tab
+    /// shows, about once a second, with one request in flight.
+    /// </summary>
+    private void PollLive(double delta)
+    {
+        if (_world == null || !_link.Connected || !_world.Layers.Live.On || !_world.IsVisibleInTree())
+        {
+            return;
+        }
+
+        _pollClock += delta;
+        bool waiting = _pollReq > _pollAnswered && DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - _pollSentMs < 3000;
+        if (_pollClock < PollSeconds || waiting)
+        {
+            return;
+        }
+
+        (int Facet, int X0, int Y0, int X1, int Y1)? view = _world.Layers.LastView;
+        if (view == null)
+        {
+            if (!_world.Host.IsBooted)
+            {
+                return;
+            }
+
+            var player = _world.Host.World.Player;
+            view = (_world.Host.Facet, player.X - 64, player.Y - 64, player.X + 64, player.Y + 64);
+        }
+
+        _pollClock = 0;
+        _pollSentMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var v = view.Value;
+        _link.RequestMobiles(++_pollReq, v.Facet, v.X0 - PollMargin, v.Y0 - PollMargin, v.X1 + PollMargin, v.Y1 + PollMargin, _as?.Text);
     }
 
     public override void _Ready()
@@ -159,6 +215,7 @@ public partial class ShardDock : EditorDock
     public void Disconnect()
     {
         _link.Disconnect();
+        _liveMobiles = new List<LiveMobile>();
         _status.Text = "live: off";
         _live?.SetPressedNoSignal(false);
         Log("disconnected");
@@ -208,6 +265,7 @@ public partial class ShardDock : EditorDock
 
     public override void _Process(double delta)
     {
+        PollLive(delta);
         for (JsonNode msg = _link.Poll(); msg != null; msg = _link.Poll())
         {
             long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
@@ -251,6 +309,21 @@ public partial class ShardDock : EditorDock
                     ObjectAcks.Add(msg);
                     Log($"shard: {(string)msg["action"]} {(string)msg["kind"]} {(string)msg["outcome"]} in {(long)msg["ms"]} ms, "
                         + $"relayed to {(int)msg["editors"]} editor(s)");
+                    break;
+                case "mobiles":
+                    _pollAnswered = Math.Max(_pollAnswered, (int?)msg["req"] ?? 0);
+                    if (msg["ok"] is JsonNode ok && !(bool)ok)
+                    {
+                        if ((string)msg["error"] != "rate limited")
+                        {
+                            Log($"[color=orange]live layer: {(string)msg["error"]}[/color]");
+                        }
+
+                        break;
+                    }
+
+                    LastMobiles = msg;
+                    _liveMobiles = ShardLink.ToMobiles(msg);
                     break;
                 case "command":
                     LastCommand = msg;

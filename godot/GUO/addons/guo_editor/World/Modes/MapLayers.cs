@@ -39,7 +39,8 @@ internal interface IMapLayer
 }
 
 /// <summary>A live player or mobile, as the shard's bridge reports it.</summary>
-internal readonly record struct LiveMobile(string Name, int Facet, int X, int Y, int Z, bool Player);
+internal readonly record struct LiveMobile(string Name, int Facet, int X, int Y, int Z, bool Player,
+    uint Serial = 0, int Body = 0, int Hits = 0, int MaxHits = 0, int Notoriety = 0);
 
 /// <summary>Sextant and plain coordinates, the way ModernUO's sextant computes them.</summary>
 internal static class Coordinates
@@ -137,6 +138,9 @@ internal sealed class MapLayers
 
     public IMapLayer Named(string name) => All.FirstOrDefault(l => l.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
 
+    /// <summary>The cells the last <see cref="Draw"/> covered (facet, then a bounding square), for what polls a feed for the visible region.</summary>
+    public (int Facet, int X0, int Y0, int X1, int Y1)? LastView { get; private set; }
+
     public void Draw(IPaint p, ModeContext ctx)
     {
         CellGeometry g = ctx.Geo;
@@ -153,6 +157,7 @@ internal sealed class MapLayers
             MaxY = g.CentreY + half,
             GroundZ = (x, y) => g.ZAt(x, y),
         };
+        LastView = (v.Facet, (int)v.MinX, (int)v.MinY, (int)v.MaxX, (int)v.MaxY);
         DrawOn(p, v);
     }
 
