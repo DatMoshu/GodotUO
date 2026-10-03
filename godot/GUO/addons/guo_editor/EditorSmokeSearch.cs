@@ -68,6 +68,27 @@ public partial class EditorSmoke
                     SearchFail($"the popup's status line is {overflow} px below the panel's bottom edge on its first frame");
                 }
 
+                _frames = 0;
+                _searchPhase = 3;
+                RunSettingsEntry("ProjectSetting:application/config/name");
+                return false;
+
+            case 3:
+            case 4:
+                if (_frames < 15)
+                {
+                    return false;
+                }
+
+                CheckSettingsEntry(_searchPhase == 3 ? "project" : "editor", _searchPhase == 3 ? "Project Settings" : "Editor Settings");
+                if (_searchPhase == 3)
+                {
+                    _frames = 0;
+                    _searchPhase = 4;
+                    RunSettingsEntry("EditorSetting:");
+                    return false;
+                }
+
                 if (Headless)
                 {
                     return true;
@@ -100,6 +121,32 @@ public partial class EditorSmoke
 
                 Search.Close();
                 return true;
+        }
+    }
+
+    private void RunSettingsEntry(string key)
+    {
+        GodotSettingsProvider settings = Search.Index.Providers.OfType<GodotSettingsProvider>().First();
+        SearchEntry entry = settings.Entries.FirstOrDefault(e => key.EndsWith(":") ? e.Key.StartsWith(key) : e.Key == key);
+        if (entry == null)
+        {
+            SearchFail($"no settings entry {key}");
+            return;
+        }
+
+        entry.Run();
+    }
+
+    // Enter on a settings entry opens the dialog and fills its search box.
+    private void CheckSettingsEntry(string which, string dialogText)
+    {
+        GodotSettingsProvider settings = Search.Index.Providers.OfType<GodotSettingsProvider>().First();
+        var open = settings.LastOpen;
+        _searchReport[$"settings_{which}_dialog"] = open?.Dialog;
+        _searchReport[$"settings_{which}_search"] = open?.Search;
+        if (open == null || open.Value.Dialog == null || string.IsNullOrEmpty(open.Value.Search))
+        {
+            SearchFail($"a {which} settings entry did not open {dialogText} with its search filled: {open?.Dialog} / {open?.Search}");
         }
     }
 
