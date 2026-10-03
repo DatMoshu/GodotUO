@@ -10,7 +10,7 @@ writes legacy MUL map files. The owner wrote it as an addition to a CentrED# for
 | `MapGen/` | The generator library (`GUO.MapGen`, net8.0). Namespaces stay `CentrED.MapGen.*` |
 | `MapGen/presets/` | Presets (`*.preset.json`), the tile tables, GUO's transition table (`transitions.guo.json`) and scatter table (`scatter.guo.json`) |
 | `MapGen/Mining/` | The owner's importer for Dragon's transition rules (`prepare --dragon`, optional) |
-| `MapGen.Tests/` | 262 tests: determinism, terrain invariants, coasts, the transition and scatter tables, stamps, the MUL writer, the Dragon importer. None needs local data |
+| `MapGen.Tests/` | 263 tests: determinism, terrain invariants, coasts, the transition and scatter tables, stamps, the MUL writer, the Dragon importer. None needs local data |
 | `cli/` | `guo-mapgen`, the command-line front end the editor's Map Generator tab runs |
 | `data/` | Shipped data: the dungeon roster and decor table (hand-written by the owner) |
 | `run.py` | Builds the CLI into `build/mapgen/cli` on first use and runs it with the config's paths |
@@ -60,6 +60,10 @@ trunks with it when there is no `tree-statics.json`. How it was made is in `docs
 terms are unverified). `run.py prepare --dragon DIR` converts your own copy into `UO_MAPGEN_DATA`;
 `run --brushes dragon` then uses it, and `coverage` compares against it.
 
+The editor's MapGen tab picks the table under *Transition table*: GUO (the default, with your measured
+weights when `prepare --measure` wrote them), GUO core (the committed table alone), Dragon once prepared,
+or a table file of your own. It passes the choice as `--brushes`; Export reuses it.
+
 **UO Landscaper's statics and transitions** are optional. Biome Static Scatter reads them when its
 *Catalogue* names `mined/landscaper-statics`, and Swamp Surface when its *Transition catalogue* names
 `mined/landscaper-transitions`; by default both use GUO's own tables. norad32's MIT mod began by
@@ -97,6 +101,13 @@ images after a Gemini review; tune the generator against them:
 3. **Rivers run dead straight** along mountain feet for long stretches, on diagonals.
 4. **Land runs off the map edge** on the left, right and bottom.
 5. **Beaches (fixed 2026-10-03):** the card counted Felucca's seabed as land, so its 31% coast sand
-   measured the seabed. Counted as water, Felucca's dry coast is 83% sand and the generator's 89%. The
+   measured the seabed. Counted as water, Felucca's dry coast is 83% sand and the generator's 91%. The
    Shallows pass now shapes the seabed as Felucca does and ripples the waterline sand.
 6. **Too flat:** 66% of land is at z 0, against 63% in Felucca (counting the seabed as water).
+7. **Too much sand (fixed 2026-10-03):** sand was 2.8% of land against Felucca's 1.3%. Over half of
+   it lined the rivers: the grass-to-water bridge put a sand cell on every river bank, and Felucca
+   draws almost no rivers in land tiles and no sand along them. `Land Transitions.RiverBankDirt` (on
+   in felucca-stage18) makes those banks dirt, edged into the grass as roads are; the desert threshold
+   drops from 6 to 4, leaving desert at about 0.5% of land, as Felucca's deep-inland sand is. Sand is
+   now 1.25%. What remains above Felucca is rippled waterline sand: Felucca often puts the grass/sand
+   edge tile right on the waterline, where the generator keeps a sand cell between.

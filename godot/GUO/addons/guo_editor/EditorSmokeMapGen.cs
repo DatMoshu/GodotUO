@@ -65,7 +65,16 @@ public partial class EditorSmoke
                 _mapgenReport["tab_controls"] = view.TunableControlCount;
                 MapGenCheck("tab_groups_match", view.PassGroupCount == runnable && view.PassGroupCount > 0, $"{view.PassGroupCount} groups for {runnable} passes");
                 List<string> args = view.BuildRunArgs("x");
-                MapGenCheck("tab_args_preset_only", !args.Contains("--set") && !args.Contains("--disable"), string.Join(' ', args));
+                MapGenCheck("tab_args_preset_only", !args.Contains("--set") && !args.Contains("--disable") && !args.Contains("--brushes"), string.Join(' ', args));
+
+                // The transition-table picker: GUO by default (no --brushes), guo-core passed through.
+                bool core = view.SelectTable("guo-core");
+                List<string> coreArgs = view.BuildRunArgs("x");
+                int bi = coreArgs.IndexOf("--brushes");
+                _mapgenReport["tables"] = string.Join(",", view.TableChoices);
+                MapGenCheck("tab_table_picker", view.TableChoices.Contains("guo") && core && bi >= 0 && coreArgs[bi + 1] == "guo-core",
+                    $"{string.Join(",", view.TableChoices)}; {string.Join(' ', coreArgs)}");
+                view.SelectTable("guo");
             }
             else
             {

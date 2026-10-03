@@ -172,4 +172,28 @@ public class GuoTransitionTableTests
         Assert.Equal(5 + 8, on.Height_Z![on.Index(12, 8)]);   // Grassland>Mountain N lifts at most 8
         Assert.Equal(0x023B, on.LandId![on.Index(12, 8)]);     // and the N edge tile is drawn
     }
+
+    [Fact]
+    public void RiverBankDirt_DirtOnRiverBanks_SandWhereTheRiverMeetsTheSea()
+    {
+        // Grass with a river down x = 16 that runs into the sea at y >= 26.
+        BiomeId Bio(int x, int y) => y >= 26 ? BiomeId.ShallowWater : x == 16 ? BiomeId.River : BiomeId.Grassland;
+        var dirt = new HashSet<ushort> { 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77, 0x78 };   // the road dirt pool
+
+        var off = Map(32, Bio);
+        Run(off, new LandTransitionParams());
+        Assert.Equal(BiomeId.Beach, (BiomeId)off.Biome![off.Index(15, 10)]);       // the sand bank, as before
+
+        var on = Map(32, Bio);
+        var report = Run(on, new LandTransitionParams { RiverBankDirt = true });
+        foreach (int x in new[] { 15, 17 })
+        {
+            Assert.Equal(BiomeId.Road, (BiomeId)on.Biome![on.Index(x, 10)]);          // both banks are dirt
+            Assert.Contains(on.LandId![on.Index(x, 10)], dirt);
+        }
+        Assert.DoesNotContain(on.LandId![on.Index(14, 10)], dirt);                    // the grass behind is edged, not dirt
+        Assert.NotEqual(off.LandId![off.Index(14, 10)], on.LandId[on.Index(14, 10)]); // its edge now faces dirt, not sand
+        Assert.Equal(BiomeId.Beach, (BiomeId)on.Biome![on.Index(15, 25)]);           // beside the sea: still sand
+        Assert.Contains(report.Notes, n => n.Contains("dirt river banks="));
+    }
 }

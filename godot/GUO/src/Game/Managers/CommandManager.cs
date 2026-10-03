@@ -22,6 +22,10 @@ namespace GUO.Game.Managers
 
         public void Initialize()
         {
+            // PORT DEVIATION (GUO): explicit local UI authoring capture/apply, preserving live control behavior.
+            Register("gumpcapture", _ => GUO.UI.Authoring.GumpCapture.SaveOpen(_world));
+            Register("gumpapply", args => GUO.UI.Authoring.GumpCapture.ApplyFile(_world, args));
+            Register("gumpopen", args => Input.Touch.Modern.ModernAuthoredGump.PreviewFile(_world, args));
             // PORT DEVIATION (GUO): native scripting panel; no external assistant.
             Register("scripts", s => Input.Touch.Modern.ModernScripts.Show(_world));
             Register("stopscript", s => _world.StopScripts());

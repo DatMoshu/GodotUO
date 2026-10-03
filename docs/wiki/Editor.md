@@ -11,6 +11,12 @@ The add-on lives in `godot\GUO\addons\guo_editor\`. It is enabled in
 docks laid out: Assets on the left, World in the centre, Inspector on the
 right, Shard in the bottom panel.
 
+**UO Gumps** is the layout authoring tab for classic gump documents and native
+Godot forms. It includes a canvas, layers, properties, undo/redo, classic
+layout import/export and live-client capture/apply. See the
+[Gump Studio guide](../ui/gump_studio.md) for commands, runtime integration
+and the limits of custom-control captures.
+
 ## Shape (ADR-0010)
 
 - The add-on is C#, compiled into the same assembly as the client behind

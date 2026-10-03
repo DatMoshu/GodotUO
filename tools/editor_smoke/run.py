@@ -332,7 +332,7 @@ def main() -> int:
               f"{mapgen.get('passes')} passes, {mapgen.get('tunables')} settings ({mapgen.get('preset')}), 256x256 seed 42 "
               f"hash {str(mapgen.get('hash'))[:12]} twice, no rivers {str(mapgen.get('hash_no_rivers'))[:12]}, export "
               f"{mapgen.get('export_cells')} cells + {mapgen.get('export_statics')} statics read back, "
-              f"{mapgen.get('world_blocks')} world blocks, tab {mapgen.get('tab_groups')} groups / {mapgen.get('tab_controls')} controls")
+              f"{mapgen.get('world_blocks')} world blocks, tab {mapgen.get('tab_groups')} groups / {mapgen.get('tab_controls')} controls, tables {mapgen.get('tables')}")
         for k in bad:
             print(f"[editor_smoke]        failed: {k}")
     store = report.get("store") or {}

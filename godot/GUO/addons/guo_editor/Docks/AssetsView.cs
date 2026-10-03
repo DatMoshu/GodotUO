@@ -27,6 +27,8 @@ public partial class AssetsView : VBoxContainer
     public event Action<Inspection> Inspect;
 
     public IReadOnlyList<AssetPanel> Panels => _panels;
+    /// <summary>A compact instance of the same asset browser for the gump workspace.</summary>
+    public bool GumpsOnly { get; set; }
 
     public AssetsView() : this(null)
     {
@@ -78,7 +80,7 @@ public partial class AssetsView : VBoxContainer
         bar.AddChild(_cells);
         bar.AddChild(new Label
         {
-            Text = "  Pick an asset; the UO Inspector (right) shows it. Search is at the top of each tab.",
+            Text = GumpsOnly ? "UO Assets · Gumps — search by client gump name or ID; double-click to add" : "  Pick an asset; the UO Inspector (right) shows it. Search is at the top of each tab.",
             SizeFlagsHorizontal = SizeFlags.ExpandFill,
             ClipText = true,
         });
@@ -86,16 +88,19 @@ public partial class AssetsView : VBoxContainer
         _tabs = new TabContainer { SizeFlagsVertical = SizeFlags.ExpandFill };
         AddChild(_tabs);
 
-        Add("Art", new ArtPanel());
-        Add("Gumps", new GumpPanel());
-        Add("Anims", new AnimationPanel());
-        Add("Hues", new HuePanel());
-        Add("Multis", new MultiPanel());
-        Add("Maps", new MapPanel());
-        Add("Cliloc", new ClilocPanel());
-        Add("Sounds", new SoundPanel());
-        Add("Bulk", new BulkPanel());
-        Add("Parity", new ParityPanel());
+        if (!GumpsOnly) Add("Art", new ArtPanel());
+        Add("Gumps", new GumpPanel { MinimumGridHeight = GumpsOnly ? 90 : 240 });
+        if (!GumpsOnly)
+        {
+            Add("Anims", new AnimationPanel());
+            Add("Hues", new HuePanel());
+            Add("Multis", new MultiPanel());
+            Add("Maps", new MapPanel());
+            Add("Cliloc", new ClilocPanel());
+            Add("Sounds", new SoundPanel());
+            Add("Bulk", new BulkPanel());
+            Add("Parity", new ParityPanel());
+        }
         ApplyCellSize();
 
         if (_data.IsLoaded || _data.Error != null)
