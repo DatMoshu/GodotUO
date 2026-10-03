@@ -403,6 +403,7 @@ public partial class MultiEditView : VBoxContainer, IMultiComponentSink
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
             Modulate = new Color(1, 1, 1, 0.6f),
         });
+        BuildDeploy(save);
     }
 
     /// <summary>Mounts another panel (a generator, say) in the right-hand tabs.</summary>
@@ -845,6 +846,7 @@ public partial class MultiEditView : VBoxContainer, IMultiComponentSink
 
         _canvas?.Detach();
         DisposeGenerator();
+        ReleaseDeploy();
         AfterWrite = null;
         PreviewInWorld = null;
         MultiLoader.EditorOverlay = null;

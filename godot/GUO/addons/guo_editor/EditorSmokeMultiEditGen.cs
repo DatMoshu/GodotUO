@@ -92,6 +92,36 @@ public partial class EditorSmoke
         view.NewMulti();
         MeUnsaved(view);
         view.NewMulti();
+        MeDeploy(view, root);
+    }
+
+    private void MeDeploy(MultiEditView view, string root)
+    {
+        // Rules only: nothing is started, no shard, no client (the smoke stage never deploys).
+        string home = Path.Combine(root, "deploy_home");
+        Directory.CreateDirectory(home);
+        File.WriteAllText(Path.Combine(home, "state.json"), "{\"port\": 2599}");
+        MeCheck("deploy_refuses_shared_port", MultiEditView.RefuseReason("127.0.0.1", 2593, home, home, 2593) != null);
+        MeCheck("deploy_refuses_remote_host", MultiEditView.RefuseReason("shard.example.org", 2599, home, home, 2599) != null);
+        MeCheck("deploy_refuses_other_server", MultiEditView.RefuseReason("127.0.0.1", 2599, Path.Combine(root, "elsewhere"), home, 2599) != null);
+        MeCheck("deploy_refuses_port_mismatch", MultiEditView.RefuseReason("127.0.0.1", 2600, home, home, 2599) != null);
+        MeCheck("deploy_refuses_unset_up_shard", MultiEditView.RefuseReason("127.0.0.1", 2599, home, home, null) != null);
+        MeCheck("deploy_accepts_the_private_shard", MultiEditView.RefuseReason("127.0.0.1", 2599, home, home, 2599) == null);
+
+        string profiles = Path.Combine(root, "deploy_profiles.json");
+        var list = new ServerProfiles();
+        list.Servers.Add(new ServerProfile { Name = "Shared", Port = 2593 });
+        list.Servers.Add(new ServerProfile { Name = "Private", Port = 2599, ServerDirectory = home });
+        list.Selected = list.Servers[0].Id;
+        list.Save(profiles);
+        var targets = view.DeployTargets(profiles, home);
+        MeCheck("deploy_targets_only_private", targets.Count == 2 && targets.Single(t => t.Name == "Shared").Refused != null && targets.Single(t => t.Name == "Private").Refused == null);
+
+        // The real profiles: a confirmation at most, never a process.
+        string plan = view.RequestDeploy();
+        MeCheck("deploy_asks_before_anything", (plan == null) == !view.DeployPending && !view.DeployRunning);
+        view.CancelDeploy();
+        MeCheck("deploy_cancel_starts_nothing", !view.DeployPending && !view.DeployRunning);
     }
 
     private void MeUnsaved(MultiEditView view)
