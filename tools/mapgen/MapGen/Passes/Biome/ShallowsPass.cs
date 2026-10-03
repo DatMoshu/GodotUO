@@ -1,5 +1,6 @@
 using CentrED.MapGen.Data;
 using CentrED.MapGen.IR;
+using CentrED.MapGen.Noise;
 using CentrED.MapGen.Pipeline;
 
 namespace CentrED.MapGen.Passes.Biome;
@@ -9,15 +10,15 @@ public sealed class ShallowsParams
     [TunableDisplay("Shaped bed", Tooltip = "Shape the dug seabed as Felucca does: the ring next to the shore takes the light bed edge 0x4C-0x57 turned toward the deeper bed, the next ring the mid edge 0x58-0x63 turned toward the shore, the rest the flat bed 0x64.")]
     public bool ShapedBed { get; set; } = true;
 
-    [TunableDisplay("Rippled sand", Tooltip = "Beach sand on the waterline becomes Felucca's rippled wet sand: 0x1A with the water to the north or east, 0x1B to the south or west, 0x1C around a point.")]
-    public bool RippledSand { get; set; } = true;
+    [TunableDisplay("Waterline sand", Tooltip = "Beach sand on the waterline with grass behind it takes Felucca's grass-fringed wet sand for its shape (0x21-0x28 straight, 0x1A-0x1C outward points, 0x1D-0x20 inward corners) and the grass behind turns plain; with more sand behind it, it ripples (0x1A-0x1C).")]
+    public bool WaterlineSand { get; set; } = true;
 }
 
 /// <summary>
 /// Felucca's shallows over the band Dig Shore digs: the seabed is land tiles at <see cref="GenIR.ShoreDigZ"/>,
 /// 10 below the water statics, in three bands (light, mid, flat) whose edge tiles face the right way, with
-/// rippled wet sand on the dry side. Measured on the owner's Felucca: which side of each bed tile holds the
-/// deeper bed or the shore. Runs last, after Land Transitions has drawn the beach this pass ripples.
+/// Felucca's wet-sand edge on the dry side. Measured on the owner's Felucca: which side of each bed tile holds the
+/// deeper bed or the shore. Runs last, after Land Transitions has drawn the beach this pass edges.
 /// </summary>
 public sealed class ShallowsPass : IGenerationPass
 {
@@ -42,6 +43,18 @@ public sealed class ShallowsPass : IGenerationPass
         ["in_NE"] = 0x61, ["in_SE"] = 0x62, ["in_SW"] = 0x63, ["in_NW"] = 0x60,
     };
     public const ushort FlatBed = 0x64;
+
+    // Wet sand on the waterline, named by where the water lies (measured on the owner's Felucca, each tile
+    // 92-98% one shape). Straight sides have two tiles, the first three times as common; outward points are
+    // the rippled tiles (0x1C serves both SE and NW), inward corners their own four.
+    public static readonly IReadOnlyDictionary<string, ushort[]> Waterline = new Dictionary<string, ushort[]>
+    {
+        ["N"] = new ushort[] { 0x24, 0x24, 0x24, 0x28 }, ["E"] = new ushort[] { 0x23, 0x23, 0x23, 0x27 },
+        ["S"] = new ushort[] { 0x21, 0x21, 0x21, 0x25 }, ["W"] = new ushort[] { 0x22, 0x22, 0x22, 0x26 },
+        ["NE"] = new ushort[] { 0x1A }, ["SW"] = new ushort[] { 0x1B }, ["SE"] = new ushort[] { 0x1C }, ["NW"] = new ushort[] { 0x1C },
+        ["in_SE"] = new ushort[] { 0x1D }, ["in_SW"] = new ushort[] { 0x1E }, ["in_NE"] = new ushort[] { 0x1F }, ["in_NW"] = new ushort[] { 0x20 },
+    };
+    /// <summary>Rippled wet sand, for a waterline with more sand behind it: water north or east, south or west, around.</summary>
     public const ushort RippleNE = 0x1A, RippleSW = 0x1B, Ripple = 0x1C;
 
     /// <summary>A seabed land tile (light ring, mid ring or flat bed).</summary>
@@ -109,7 +122,7 @@ public sealed class ShallowsPass : IGenerationPass
         bool Deeper(int j) => (kind[j] == 1 && ring[j] != 1) || kind[j] == 2;
         bool Shallower(int j) => kind[j] == 0 || (kind[j] == 1 && ring[j] == 1);
 
-        int light = 0, mid = 0, flat = 0, slivers = 0, rippled = 0;
+        int light = 0, mid = 0, flat = 0, slivers = 0, waterline = 0;
         if (p.ShapedBed)
             for (int i = 0; i < n; i++)
             {
@@ -126,25 +139,58 @@ public sealed class ShallowsPass : IGenerationPass
                 l[G(i)] = id;
             }
 
-        if (p.RippledSand)
+        int rippled = 0, plainGrass = 0, regrassEdged = 0;
+        if (p.WaterlineSand)
         {
+            // The waterline: beach sand touching the bed. Felucca's is one cell of wet sand with grass
+            // straight behind it (the tile carries the grass fringe), so where only grass lies behind, the
+            // cell takes the tile for its shape and the grass behind loses the sand edge it drew toward it.
+            // Where more sand lies behind (a wide beach, a desert), the cell ripples instead.
             var beach = new HashSet<ushort>(ir.Tables.Beach);
+            var line = new bool[n];
+            for (int i = 0; i < n; i++)
+                line[i] = kind[i] == 0 && beach.Contains(l[G(i)]) && Mask(i, j => kind[j] == 1) != 0;
+            bool Sand(int j) => kind[j] == 0 && (BiomeId)bio[G(j)] is BiomeId.Beach or BiomeId.Desert;
+            var fringed = new bool[n];
             const byte northEast = EdgeShapes.NW | EdgeShapes.N | EdgeShapes.NE | EdgeShapes.E | EdgeShapes.SE;
             const byte southWest = EdgeShapes.SE | EdgeShapes.S | EdgeShapes.SW | EdgeShapes.W | EdgeShapes.NW;
             for (int i = 0; i < n; i++)
             {
-                if (kind[i] != 0) continue;
-                int g = G(i);
-                if (!beach.Contains(l[g])) continue;
+                if (!line[i]) continue;
+                int g = G(i), gx = ir.Scope.X1 + i % w, gy = ir.Scope.Y1 + i / w;
+                bool sandBehind = Mask(i, j => Sand(j) && !line[j]) != 0;
+                if (!sandBehind && EdgeShapes.ShapeOf(Mask(i, j => kind[j] != 0)) is { } shape)
+                {
+                    var ids = Waterline[shape];
+                    l[g] = ids[FieldOps.Hash(gx, gy, ir.Seed ^ 0x5A4DUL) % (uint)ids.Length];
+                    fringed[i] = true;
+                    waterline++;
+                    continue;
+                }
                 byte m = Mask(i, j => kind[j] == 1);
-                if (m == 0) continue;
                 bool ne = (m & (EdgeShapes.N | EdgeShapes.NE | EdgeShapes.E)) != 0, sw = (m & (EdgeShapes.S | EdgeShapes.SW | EdgeShapes.W)) != 0;
                 l[g] = ne && (m & ~northEast) == 0 ? RippleNE : sw && (m & ~southWest) == 0 ? RippleSW : Ripple;
                 rippled++;
             }
+
+            // Grass behind a fringed waterline: its Grassland>Beach edge tile is redrawn against the sand
+            // that is left (none: plain grass).
+            if (ir.Brushes.Lookup("Grassland", "Beach") is { } lut && ir.Tables.Land.TryGetValue(BiomeId.Grassland, out var grass) && grass.Length > 0)
+            {
+                var edgeIds = new HashSet<ushort>(lut.Where(e => e is not null).SelectMany(e => e!));
+                for (int i = 0; i < n; i++)
+                {
+                    int g = G(i);
+                    if (kind[i] != 0 || !edgeIds.Contains(l[g]) || Mask(i, j => fringed[j]) == 0) continue;
+                    int gx = ir.Scope.X1 + i % w, gy = ir.Scope.Y1 + i / w;
+                    byte m = Mask(i, j => Sand(j) && !fringed[j]);
+                    if (m == 0) { l[g] = LatticePick.Pick(grass, gx, gy, ir.Seed); plainGrass++; }
+                    else if (lut[m] is { Length: > 0 } c) { l[g] = c[FieldOps.Hash(gx, gy, ir.Seed ^ 0x5A4EUL) % (uint)c.Length]; regrassEdged++; }
+                }
+            }
         }
 
-        ctx.Report.TilesTouched = light + mid + flat + rippled;
-        ctx.Report.Notes.Add($"Shallows: bed {beds} (light ring {light}, mid ring {mid}, flat {flat}, slivers {slivers}); rippled sand {rippled}");
+        ctx.Report.TilesTouched = light + mid + flat + waterline + rippled + plainGrass + regrassEdged;
+        ctx.Report.Notes.Add($"Shallows: bed {beds} (light ring {light}, mid ring {mid}, flat {flat}, slivers {slivers}); waterline: fringed {waterline}, rippled {rippled}; grass behind: plain {plainGrass}, re-edged {regrassEdged}");
     }
 }

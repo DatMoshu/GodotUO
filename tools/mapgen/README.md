@@ -10,7 +10,7 @@ writes legacy MUL map files. The owner wrote it as an addition to a CentrED# for
 | `MapGen/` | The generator library (`GUO.MapGen`, net8.0). Namespaces stay `CentrED.MapGen.*` |
 | `MapGen/presets/` | Presets (`*.preset.json`), the tile tables, GUO's transition table (`transitions.guo.json`) and scatter table (`scatter.guo.json`) |
 | `MapGen/Mining/` | The owner's importer for Dragon's transition rules (`prepare --dragon`, optional) |
-| `MapGen.Tests/` | 263 tests: determinism, terrain invariants, coasts, the transition and scatter tables, stamps, the MUL writer, the Dragon importer. None needs local data |
+| `MapGen.Tests/` | 264 tests: determinism, terrain invariants, coasts, the transition and scatter tables, stamps, the MUL writer, the Dragon importer. None needs local data |
 | `cli/` | `guo-mapgen`, the command-line front end the editor's Map Generator tab runs |
 | `data/` | Shipped data: the dungeon roster and decor table (hand-written by the owner) |
 | `run.py` | Builds the CLI into `build/mapgen/cli` on first use and runs it with the config's paths |
@@ -102,12 +102,14 @@ images after a Gemini review; tune the generator against them:
 4. **Land runs off the map edge** on the left, right and bottom.
 5. **Beaches (fixed 2026-10-03):** the card counted Felucca's seabed as land, so its 31% coast sand
    measured the seabed. Counted as water, Felucca's dry coast is 83% sand and the generator's 91%. The
-   Shallows pass now shapes the seabed as Felucca does and ripples the waterline sand.
+   Shallows pass now shapes the seabed as Felucca does and draws its waterline (see 7).
 6. **Too flat:** 66% of land is at z 0, against 63% in Felucca (counting the seabed as water).
 7. **Too much sand (fixed 2026-10-03):** sand was 2.8% of land against Felucca's 1.3%. Over half of
    it lined the rivers: the grass-to-water bridge put a sand cell on every river bank, and Felucca
    draws almost no rivers in land tiles and no sand along them. `Land Transitions.RiverBankDirt` (on
    in felucca-stage18) makes those banks dirt, edged into the grass as roads are; the desert threshold
    drops from 6 to 4, leaving desert at about 0.5% of land, as Felucca's deep-inland sand is. Sand is
-   now 1.25%. What remains above Felucca is rippled waterline sand: Felucca often puts the grass/sand
-   edge tile right on the waterline, where the generator keeps a sand cell between.
+   now 1.25%. The waterline (also 2026-10-03): Felucca's grass coast is one cell of grass-fringed wet
+   sand with plain grass behind it. The generator drew a sand cell, rippled, with a grass edge behind
+   it; the Shallows pass now draws Felucca's cell and turns the grass behind plain. The analyzer's
+   sand share went 0.049 -> 0.038, against Felucca's 0.034.
