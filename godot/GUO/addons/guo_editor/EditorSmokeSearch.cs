@@ -134,6 +134,10 @@ public partial class EditorSmoke
         Ask("3701", "Static", e => e.Hint.StartsWith("0x0E75", StringComparison.Ordinal));
         Ask("statics", "World", e => e.Title.StartsWith("Statics", StringComparison.Ordinal));
         Ask("grid", "World", e => e.Title.StartsWith("Grid", StringComparison.Ordinal));
+        Ask("view walkability", "World", e => e.Title == "View: Walkability");
+        Ask("view height", "World", e => e.Title == "View: Height");
+        Ask("layer regions", "World", e => e.Title == "Layer: Regions");
+        Ask("layer spawns", "World", e => e.Title == "Layer: Spawns");
         Ask("1434 1699", "Place", e => e.Target == (0, 1434, 1699));
         Ask("1434 1699 0 map1", "Place", e => e.Target == (1, 1434, 1699));
         Ask("project settings", "Menu");

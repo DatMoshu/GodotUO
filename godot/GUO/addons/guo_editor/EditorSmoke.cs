@@ -1298,6 +1298,9 @@ public partial class EditorSmoke : Node
             _world.Guides.Altitude = false;
             _editReport["block_file"] = _world.Host.Project.BlockPath(0, EditBx, EditBy);
         }));
+
+        // ADR-0027: render modes and map layers.
+        AddModeSteps();
     }
 
     private void WorldFail(string why)

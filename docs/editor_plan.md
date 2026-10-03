@@ -149,6 +149,15 @@ must not grow by the editor.
 - Editor-only overlays drawn on top: grid, altitude numbers, block
   boundaries, selection outline, the stamp ghost. These are canvas items in
   the addon, not changes to the renderer.
+- **Render modes and map layers (ADR-0027, built).** The World toolbar's third
+  row has a View menu (Height, Walkability, Reachability, Types, IDs, Land
+  mesh, Problems, Project diff; a tinted or solid fill; a legend chip), a Map
+  layers menu (Places, Regions, Spawns, Houses, Live, Pins, Measure, Route; drawn
+  on the minimap too), and a Scene pack button (`build/scene_packs/<stamp>/`,
+  `scene.json` in `docs/data_formats.md` section 23). Code:
+  `addons/guo_editor/World/Modes/`. Walkability and the route use the client's
+  own `Pathfinder` (`CalculateNewZ` / `CanWalk`). F3 has "View: <mode>" and
+  "Layer: <name>". The Live layer needs the bridge to report mobiles (not yet).
 - Performance target: the viewer must scroll as fast as the game (it is the
   game's renderer). Editing a block invalidates its `ChunkMesh` only.
 

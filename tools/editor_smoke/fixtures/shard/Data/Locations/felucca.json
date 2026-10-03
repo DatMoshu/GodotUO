@@ -1,0 +1,11 @@
+{
+  "name": "Felucca",
+  "categories": [
+    {
+      "name": "Fixture",
+      "locations": [
+        { "name": "Fixture Landmark", "location": [1500, 1630, 0] }
+      ]
+    }
+  ]
+}

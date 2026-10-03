@@ -26,6 +26,9 @@ public partial class MiniMap : Control
     /// <summary>Raised with the cell clicked.</summary>
     public event Action<int, int> Jump;
 
+    /// <summary>The map layers drawn over the radar (set by the World tab).</summary>
+    internal MapLayers Layers { get; set; }
+
     /// <summary>True once a radar image is on show.</summary>
     public bool HasImage => _texture != null;
 
@@ -91,6 +94,25 @@ public partial class MiniMap : Control
         if (_texture != null)
         {
             DrawTextureRect(_texture, new Rect2(Origin, _texture.GetSize() * Scale), false);
+        }
+
+        if (Layers is { AnyOn: true })
+        {
+            // The same layers as the World view, at the radar's own scale.
+            Vector2 origin = Origin;
+            float scale = Scale;
+            Layers.DrawOn(new CanvasPaint(this), new LayerView
+            {
+                Project = (x, y, z) => origin + new Vector2(x, y) / Stride * scale,
+                Facet = _facet,
+                PxPerCell = scale / Stride,
+                Screen = new Rect2(Vector2.Zero, Size),
+                Minimap = true,
+                MinX = (-origin.X / scale) * Stride,
+                MinY = (-origin.Y / scale) * Stride,
+                MaxX = ((Size.X - origin.X) / scale) * Stride,
+                MaxY = ((Size.Y - origin.Y) / scale) * Stride,
+            });
         }
 
         if (_view.Length == 4)

@@ -378,6 +378,8 @@ public partial class EditorTour : Node
                 ("overlay", "World project: the overlay", OverlaySeg),
                 ("edit", "World edits with undo and redo", EditSeg),
                 ("objects", "World objects: items and spawners", ObjectsSeg),
+                ("modes", "World tab: render modes (View menu)", ModesSeg),
+                ("maplayers", "World tab: map layers, measure, route, scene pack", MapLayersSeg),
                 ("assetoverlay", "Asset overlay: replace art, never the install", AssetOverlaySeg),
                 ("export", "Export and verify", ExportSeg),
                 ("shard", "UO Shard dock: live", ShardSeg),

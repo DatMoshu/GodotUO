@@ -63,5 +63,38 @@ for these modes.
 
 ## Validation
 
-To do: per-mode smoke checks; a tour segment per mode; a scene pack reviewed
-by a vision model, results shown to the owner before anything is shared.
+Built 2026-10-02 on `work/map-modes`. `tools/editor_smoke` (headless) checks,
+at map0 1496,1628, with images written under `modes/` in its output folder:
+
+- Height: a z range with a legend, contours drawn; Walkability: every
+  impassable tall wall cell without a floor is blocked (109 of 109), the
+  centre road is open, four classes appear; Reachability: the fill from the
+  centre reaches over 3000 cells, finds cut-off cells, and the image has both
+  green and orange; Types: wall, land, floor, roof, stairs, foliage, water and
+  more found; IDs: hover text names the graphic; Land mesh: stretched land
+  found in the Yew hills; Problems: classification (z-fight and hole rules are
+  heuristics, see below); Project diff: the stamped block is marked, an
+  install block is not; solid and tinted alpha; the legend chip.
+- Layers against a regions fixture (`tools/editor_smoke/fixtures/shard`):
+  places (hand kept and Data/Locations), regions (the fixture's two on
+  Felucca, one on Trammel, outlines drawn), spawns with their ring, houses
+  through the game's `House`, live (a fed list, not a shard), pins saved to and
+  read from `pins.json`, measure (4 tiles, 5 straight), route (A* on the
+  client's rules), the sextant of Britain, the minimap sharing the list.
+- A scene pack: files written, `scene.json` read back, its pixel-to-cell grid
+  round-trips through the view's projection, the default mode images exist.
+- F3: "View: Walkability", "View: Height", "Layer: Regions", "Layer: Spawns".
+- The toolbar's widest row is under 1920 px at minimum size.
+
+Heuristics to know: Types and Problems use tiledata flags plus tile names; a
+z-fight is two statics on a cell at the same z that are the same graphic or two
+floors (a wall's two faces share a z); a hole is a floorless cell between two
+floored ones; statics-on-water excludes water, surfaces and bridges.
+Walkability asks `CalculateNewZ` from each height a cell offers, heading north;
+a shard can be stricter.
+
+Not yet: the Live layer's source from the bridge (the bridge reports no
+mobiles; the layer takes a feed), pack regions from an installed pack folder
+(only `<project>/regions/`), the tour segments recorded in a window, a scene
+pack reviewed by a vision model (results go to the owner before anything is
+shared).

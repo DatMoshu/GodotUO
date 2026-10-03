@@ -1,7 +1,10 @@
-; GUO - Godot project
+; Engine configuration file.
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
 ;
-; Generated as part of the ClassicUO -> Godot port scaffold.
-; Engine: Godot 4.7.2 .NET (mono). The .NET build is required; the port is C#.
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
 
 config_version=5
 
@@ -10,18 +13,21 @@ config_version=5
 config/name="GUO"
 config/description="Godot Ultima Online - the Classic client, ported from ClassicUO onto Godot."
 run/main_scene="res://scenes/Main.tscn"
+config/quit_on_go_back=false
 config/features=PackedStringArray("4.7", "C#", "Forward Plus")
-config/icon="res://icon.png"
-; The brand sigil, built by tools\brand\run.py from design\brand\guo-sigil.png:
-; icon.png is the window and taskbar icon at runtime, icon.ico is what the
-; Windows executable carries, splash.png replaces the engine's boot logo.
-config/windows_native_icon="res://icon.ico"
 boot_splash/bg_color=Color(0.0784314, 0.0627451, 0.0470588, 1)
 boot_splash/image="res://splash.png"
-boot_splash/stretch_mode=1
-; Android Back must not end the session on one press: GameController
-; routes the request to Input/Touch/BackButton.cs instead.
-config/quit_on_go_back=false
+config/icon="res://icon.png"
+config/windows_native_icon="res://icon.ico"
+
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=720
+window/size/no_focus=true
+window/stretch/aspect="expand"
+window/handheld/orientation=4
+window/size/no_focus.linuxbsd=false
 
 [dotnet]
 
@@ -29,57 +35,13 @@ project/assembly_name="GUO"
 
 [editor_plugins]
 
-; The UO workbench (docs/editor_plan.md). Editor only: its code is behind
-; #if TOOLS, so an exported client carries none of it (ADR-0010).
 enabled=PackedStringArray("res://addons/guo_editor/plugin.cfg", "res://addons/guo_editor_assets/plugin.cfg")
 
 [input_devices]
 
-; Android reports a pinch as InputEventMagnifyGesture and a two-finger
-; scroll as InputEventPanGesture. Off, Godot's GestureDetector only
-; forwards two-finger moves when their centre moves, so a symmetric
-; pinch never reaches the game at all (seen on the AYN Thor). The
-; touch layer (src/Input/Touch) turns the magnify events into zoom notches.
 pointing/android/enable_pan_and_scale_gestures=true
 
 [rendering]
 
-renderer/rendering_method="forward_plus"
-; UO art is authored as pixel art: never filter it.
 textures/canvas_textures/default_texture_filter=0
 textures/vram_compression/import_etc2_astc=true
-
-[display]
-
-window/size/viewport_width=1280
-window/size/viewport_height=720
-; No stretch. The client sizes its own window -- the login screen asks for
-; 640x480, the game for whatever the profile saved -- and draws one client
-; pixel per screen pixel, as the original does. Any stretch mode would keep
-; the root viewport at the size above and scale the result, which both
-; filters pixel art and leaves the client drawing into a corner of a buffer
-; it does not know the size of.
-window/stretch/mode="disabled"
-window/stretch/aspect="expand"
-; The window is created without the right to take keyboard focus. Scripted
-; runs (probes, screenshots, playtests, the multi-client sweep) start on a
-; desktop somebody is working at, and a window that activates itself steals
-; the keys they are typing. Only the creation flag stops the first
-; activation, which happens before any script runs; Main.cs then clears the
-; flag and brings the window forward for an interactive run (plain --play,
-; or --focus), and leaves it set for everything else (or --no-focus).
-window/size/no_focus=true
-; Except on Linux/X11, where Godot makes a window created without focus an
-; override-redirect utility window: the window manager never manages it, so
-; it has no taskbar entry, is skipped by alt-tab, shows on every workspace,
-; cannot be picked as a capture source (OBS), and clearing the flag later
-; does not change that. Linux creates a normal window; Main.cs still sets the
-; flag for scripted runs, and those belong under xvfb-run there anyway.
-window/size/no_focus.linuxbsd=false
-; Phones and tablets only (ignored on the desktop): UO is a landscape game,
-; and the touch layer sizes its gump bar for a wide screen. ADR-0017.
-window/handheld/orientation=4
-
-[debug]
-
-gdscript/warnings/enable=true
