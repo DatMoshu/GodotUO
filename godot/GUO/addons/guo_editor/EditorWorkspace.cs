@@ -17,7 +17,10 @@ internal static class EditorWorkspace
     private static bool _migrated;
 
     /// <summary>The earlier per-checkout profiles file.</summary>
-    public static string LegacyProfiles => Path.Combine(EditorData.RepoRoot, "build", "editor_servers", "profiles.json");
+    public static string LegacyProfiles => LegacyOverride ?? Path.Combine(EditorData.RepoRoot, "build", "editor_servers", "profiles.json");
+
+    /// <summary>For the smoke check: a fixture in place of the earlier profiles file.</summary>
+    public static string LegacyOverride { get; set; }
 
     /// <summary>The project the editor has open: what a guo-project client with no program starts.</summary>
     public static string HostProject => ProjectSettings.GlobalizePath("res://").TrimEnd('/', '\\');

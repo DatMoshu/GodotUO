@@ -170,6 +170,7 @@ public partial class EditorSmoke : Node
                 {
                     CheckLoaded();
                     CheckServerManager();
+                    CheckClientProfiles();
                     CheckGumpStudio();
                     if (Array.IndexOf(OS.GetCmdlineUserArgs(), "--guo-gump-studio-only") >= 0)
                     {
