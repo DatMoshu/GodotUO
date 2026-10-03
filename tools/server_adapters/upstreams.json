@@ -1,0 +1,4 @@
+{
+  "servuo": { "repo": "https://github.com/ServUO/ServUO.git", "commit": "d76bf4443cf76d081ddaf8f57c87ff33749256af" },
+  "runuo": { "repo": "https://github.com/runuo/runuo.git", "commit": "71b2794f12eb6f948b1c5598ae8b350401a22d4d" }
+}

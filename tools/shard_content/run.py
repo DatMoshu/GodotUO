@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deploy content packs to a ModernUO shard and publish what its players need (ADR-0026 section 4).
+"""Deploy content packs to a supported shard and publish what its players need (ADR-0026 section 4).
 
     python tools/shard_content/run.py deploy --name NAME --catalogue URL[=KEY] [--catalogue ...]
                                               --pack ID --version V --bind REF=TYPE:ID [--bind ...]
@@ -41,9 +41,9 @@ import functools
 import json
 import os
 import re
-import shutil
 import subprocess
 import sys
+import tempfile
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -97,8 +97,11 @@ def replace(path: Path, data: bytes) -> None:
 
 
 def cmd_deploy(cfg, a) -> int:
+    backend = getattr(a, "backend", "modernuo")
+    if backend != "modernuo" and not a.shard_dir:
+        raise SystemExit("--shard-dir is required for non-ModernUO deployments")
     shard = Path(a.shard_dir) if a.shard_dir else default_shard(cfg)
-    if not (shard / "Data").is_dir():
+    if not shard.is_dir() or (backend == "modernuo" and not (shard / "Data").is_dir()):
         print(f"[shard_content] {shard} is not a ModernUO install (no Data folder); for the editor's shard run: python tools/editor_shard/run.py setup")
         return 2
     catalogues = [parse_catalogue(c) for c in a.catalogue]
@@ -109,8 +112,8 @@ def cmd_deploy(cfg, a) -> int:
 
     # A fresh store each deploy: what lands in the lock is exactly what the catalogues serve now.
     work = Path(a.work) if a.work else cfg.build / "shard_content" / re.sub(r"[^a-z0-9-]+", "-", a.name.lower()).strip("-")
-    if work.exists():
-        shutil.rmtree(work)
+    work.mkdir(parents=True, exist_ok=True)
+    work = Path(tempfile.mkdtemp(prefix="deploy-", dir=work))
     store = work / "store"
     store.mkdir(parents=True)
     print(headless("shard-content", "install", store, a.pack, a.version, *[u if k is None else f"{u}={k}" for u, k in catalogues]).strip())
@@ -124,7 +127,12 @@ def cmd_deploy(cfg, a) -> int:
 
     export = work / "server-content.json"
     print(headless("export-server", store, lock, export).strip())
-    replace(shard / "Data" / "GUO" / "server-content.json", export.read_bytes())
+    bundle = None
+    if backend != "modernuo":
+        from server_adapters.run import generate
+        slots_path = getattr(a, "adapter_slots", None)
+        slots = json.loads(Path(slots_path).read_text(encoding="utf-8")) if slots_path else None
+        bundle = generate(export, backend, work / "adapter", slots, getattr(a, "sphere_existing_graphic", []))
 
     # The keys the install step approved, for the catalogues named without one.
     listed = store / ".catalogues.json"
@@ -144,9 +152,25 @@ def cmd_deploy(cfg, a) -> int:
         "scripts": a.scripts,
     }
     out = Path(a.descriptor) if a.descriptor else shard / "Data" / "GUO" / "public" / "shard-content.json"
-    replace(out, (json.dumps(descriptor, indent=2) + "\n").encode("utf-8"))
-    print(headless("shard-content", "check", out).strip())
+    descriptor_bytes = (json.dumps(descriptor, indent=2) + "\n").encode("utf-8")
+    staged_descriptor = work / "shard-content.json"
+    staged_descriptor.write_bytes(descriptor_bytes)
+    print(headless("shard-content", "check", staged_descriptor).strip())
+    if bundle is not None:
+        from server_adapters.run import install
+        if a.descriptor:
+            raise SystemExit("Native adapter deployments publish the descriptor under Data/GUO/public; serve that folder")
+        install(bundle, shard, {"Data/GUO/server-content.json": export.read_bytes(), "Data/GUO/public/shard-content.json": descriptor_bytes})
+    else:
+        replace(shard / "Data" / "GUO" / "server-content.json", export.read_bytes())
+        replace(out, descriptor_bytes)
     print(f"[shard_content] deployment {value['identity_hash'][:16]}: export in {shard / 'Data' / 'GUO'}, descriptor {out}")
+    if backend == "sphere":
+        print("[shard_content] add scripts/guo_content.scp to spheretables.scp [RESOURCES] before restarting")
+    elif backend in ("servuo", "runuo"):
+        print("[shard_content] rebuild server scripts before restarting (or use the native startup compiler)")
+    elif backend == "uox3":
+        print("[shard_content] requires DEFSDIRECTORY=./dfndata/; custom layouts need explicit integration")
     print("[shard_content] restart the shard to load it; put the descriptor's address in the server entry's \"content\"")
     return 0
 
@@ -181,6 +205,9 @@ def main() -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="cmd", required=True)
     d = sub.add_parser("deploy", help="install, lock and export a shard's packs; write its descriptor")
+    d.add_argument("--backend", choices=["modernuo", "servuo", "runuo", "pol", "sphere", "uox3"], default="modernuo")
+    d.add_argument("--sphere-existing-graphic", action="append", type=lambda s: int(s, 0), default=[], help="reuse an existing Sphere numeric ITEMDEF; repeat for each slot")
+    d.add_argument("--adapter-slots", help="POL identity-to-reserved-object-type JSON mapping")
     d.add_argument("--name", required=True, help="the shard's name, as players see it")
     d.add_argument("--catalogue", action="append", required=True, help="URL or URL=ed25519:KEY; repeat for several")
     d.add_argument("--pack", required=True)
@@ -188,11 +215,11 @@ def main() -> int:
     d.add_argument("--bind", action="append", default=[], help="pack:component=type:id, the numeric slot a component takes")
     d.add_argument("--bindings", help="a JSON file of bindings, {\"pack:component\": {\"type\": ..., \"id\": ...}}")
     d.add_argument("--scripts", choices=["allowed", "forbidden"], default="allowed")
-    d.add_argument("--shard-dir", help="the ModernUO install (default: the editor's private shard)")
+    d.add_argument("--shard-dir", help="the server install (required outside ModernUO)")
     d.add_argument("--host", help="the shard's address, for the descriptor")
     d.add_argument("--port", type=int)
     d.add_argument("--descriptor", help="where to write the descriptor (default <shard>/Data/GUO/public/shard-content.json)")
-    d.add_argument("--work", help="working folder (default build/shard_content/<name>)")
+    d.add_argument("--work", help="parent of unique deployment work folders; existing files are preserved")
     c = sub.add_parser("check", help="parse a descriptor as the client does")
     c.add_argument("descriptor", nargs="?")
     s = sub.add_parser("serve", help="serve the public folder over HTTP, for testing")

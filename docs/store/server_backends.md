@@ -2,8 +2,10 @@
 
 ADR-0026 section 5: packs carry data, and each server backend has one small
 adapter that reads the store's neutral export, `guo/server-content@1`.
-ModernUO comes first and is done end to end. The rest follow in the order
-below, after ModernUO is proven.
+ModernUO is proven end to end. The other five now have generated native adapters in
+[tools/server_adapters](../../tools/server_adapters/README.md), with explicit capability gates.
+ServUO/RunUO support all seven sections except unsupported tile metadata fields; POL, Sphere
+and UOX3 currently support item definitions only. Native probes are not full client playtests.
 
 ## The contract every adapter implements
 
@@ -40,18 +42,20 @@ also carries an `identity_hash` that names the deployment. An adapter must:
 |---|---|
 | Language | C#, .NET Framework 4.x / Mono, scripts compiled by the server at start |
 | Licence | GPL-2.0 |
-| Adapter | a script package (`Scripts/Custom/GUO/`) ported from the ModernUO bridge |
-| Differences | item serialisation uses `Serialize`/`Deserialize` overrides, not ModernUO's source generators; `TileData` and `Map` APIs differ in names; no `System.Text.Json` on .NET Framework, so use the bundled JSON reader or a small one |
-| Work | port the bridge to a script package; deploy it into the private ServUO shard that `tools/servuo` already runs (pinned commit, 127.0.0.1:2596, built for the world-objects backend); a `tools/shard_content deploy --backend servuo`; the same probe and prove; a CI build against the pinned commit |
+| Adapter | a generated C# package (`Scripts/Custom/GUO/`) using the same neutral export |
+| Differences | item serialisation uses `Serialize`/`Deserialize` overrides, not ModernUO's source generators; `TileData` and `Map` APIs differ in names; no runtime JSON dependency: validated data becomes generated C# initializers |
+| Implemented | generated C# package, `deploy --backend servuo`, all-section compile/runtime and persistence probes; CI compile against the pinned commit |
+| Remaining | live GUO client playtest against a deployed shard |
 
 ## RunUO
 
 | | |
 |---|---|
-| Language | C#, .NET Framework 2.0-era scripts |
+| Language | C#, .NET Framework 4.5.2 at the validated pin |
 | Licence | GPL-2.0 |
-| Adapter | the ServUO package, trimmed to RunUO 2.x APIs |
-| Work | as ServUO; lower priority, since most RunUO shards have moved to ServUO or ModernUO |
+| Adapter | the shared generated package, compiled and probed against the pinned RunUO APIs |
+| Implemented | generated C# package, `deploy --backend runuo`, full upstream compile and real API/persistence probes |
+| Remaining | live GUO client playtest |
 
 ## POL (Penultima Online)
 
@@ -59,22 +63,25 @@ also carries an `identity_hash` that names the deployment. An adapter must:
 |---|---|
 | Language | C++ core; content in eScript (`.src`) and config files (`.cfg`) |
 | Licence | check before shipping an adapter |
-| Adapter | a POL package (`pkg/guo/`): a generator turns the export into `itemdesc.cfg` entries, `npcdesc.cfg` creatures, region config and a start script that places decorations |
+| Adapter | a POL package (`pkg/guo_content/`): generated `itemdesc.cfg` entries with explicit object types; other sections are refused |
 | Differences | items and NPCs are config-defined, so generating config is more natural than reading JSON at runtime. Map blocks go through POL's realm tools, not at runtime. |
-| Work | a generator in `tools/server_adapters/pol`; a POL dev shard tool; a probe that boots POL and checks the generated objects |
+| Implemented | native itemdesc/package generator, explicit object-type allocation, POL config parser proof |
+| Remaining | creatures, loot, regions, decorations, realm/map and tile integration; live client proof |
 
 ## Sphere
 
 | | |
 |---|---|
 | Language | C++ core; content in `.scp` script files |
-| Adapter | a generator writing `.scp` item and character definitions |
-| Work | the generator plus a Sphere dev shard tool, as for POL |
+| Adapter | a generator writing `.scp` item and graphic-base definitions; character definitions remain pending |
+| Implemented | native item generator with new graphic base definitions and collision checks; native item creation proof |
+| Remaining | other server sections and full live client proof |
 
 ## UOX3 and others
 
 UOX3 uses JavaScript and DFN definition files. The same generator approach
-applies. Further backends are added when a shard asks for one.
+is implemented for item definitions, with native UOX3 item creation tested. Other server
+sections and a full live client proof remain. Further backends are added when a shard asks for one.
 
 ## Order and gates
 

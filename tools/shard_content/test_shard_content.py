@@ -102,6 +102,29 @@ class ShardContentTests(unittest.TestCase):
             self.assertFalse((shard / "Data/GUO/server-content.json").exists())
             self.assertFalse((shard / "Data/GUO/public/shard-content.json").exists())
 
+    def test_native_backend_deployments_keep_client_and_server_identity_together(self):
+        for backend in ("servuo", "runuo", "pol", "sphere", "uox3"):
+            with self.subTest(backend=backend), tempfile.TemporaryDirectory() as temp:
+                shard = Path(temp) / "shard"
+                shard.mkdir()
+                work = Path(temp) / "work"
+                work.mkdir()
+                sentinel = work / "operator-notes.txt"
+                sentinel.write_text("keep")
+                slots = Path(temp) / "slots.json"
+                slots.write_text(json.dumps({"sample-content-combined:stone-item": 0x50000}))
+                extra = ["--backend", backend]
+                if backend == "pol": extra += ["--adapter-slots", str(slots)]
+                self.deploy(shard, serve(self, self.store), *extra)
+                installed = json.loads((shard / "Data/GUO/adapter-install.json").read_text())
+                export = json.loads((shard / "Data/GUO/server-content.json").read_text())
+                descriptor = json.loads((shard / "Data/GUO/public/shard-content.json").read_text())
+                self.assertEqual(installed["backend"], backend)
+                self.assertEqual(installed["identity_hash"], export["identity_hash"])
+                self.assertEqual(export["identity_hash"], descriptor["lock"]["identity_hash"])
+                self.assertEqual(sentinel.read_text(), "keep")
+                self.assertTrue(all((shard / path).is_file() for path in installed["files"]))
+
     def test_a_descriptor_whose_lock_leaves_components_unbound_is_refused(self):
         with tempfile.TemporaryDirectory() as temp:
             url = self.descriptor_variant(temp, lambda v: v["lock"]["bindings"].clear())

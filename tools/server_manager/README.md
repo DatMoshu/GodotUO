@@ -14,11 +14,11 @@ The Godot editor run bar keeps named local servers and remote endpoints. Each pr
 | Backend | Starter game port | GUO server content adapter |
 |---|---:|---|
 | ModernUO | 2610 | Implemented; validate each deployment |
-| ServUO | 2611 | Pending |
-| RunUO | 2612 | Pending |
-| POL | 2613 | Pending |
-| Sphere X | 2614 | Pending |
-| UOX3 | 2615 | Pending |
+| ServUO | 2611 | All seven sections; tile light/animation overrides refused |
+| RunUO | 2612 | All seven sections; tile light/animation overrides refused |
+| POL | 2613 | Item definitions |
+| Sphere X | 2614 | Item definitions |
+| UOX3 | 2615 | Item definitions |
 
 These are starter profiles, not bundled or prevalidated server distributions. Custom executable names/platform builds can be selected with Browse. The upstream links and setup requirements are in `backends.json`. Each native installation needs separate world saves, configuration and admin/bridge ports. The existing ModernUO editor bridge is not automatically switched by selecting another server in this run bar.
 
@@ -26,7 +26,7 @@ Profiles live in ignored `build/editor_servers/profiles.json`; suggested install
 
 ## Validation checklist per backend
 
-Record the exact server revision, client version, configuration and results in local build artifacts. Prove login/account creation, character creation, entering the world, movement, items/gumps, save and restart. Then validate a server-only pack, client-only pack, combined pack, update/rollback, removal and reconnect. Unsupported content adapters must remain marked pending; do not infer support from a successful login. ModernUO is the first complete adapter target; the other five need separate adapters before their server-side asset packs can pass.
+Record the exact server revision, client version, configuration and results in local build artifacts. Prove login/account creation, character creation, entering the world, movement, items/gumps, save and restart. Then validate a server-only pack, client-only pack, combined pack, update/rollback, removal and reconnect. The generators reject unsupported sections before publication. See [adapter usage and limits](../server_adapters/README.md). A successful native probe does not replace a live GUO login/world/save/restart proof for each backend.
 
 Process safety regression check: `dotnet run --project tools/server_manager/tests/ServerManager.Tests.csproj`.
 Editor lifecycle check: `python tools/editor_smoke/run.py --headless --reload`.

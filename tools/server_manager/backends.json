@@ -14,7 +14,7 @@
     "source": "https://github.com/ServUO/ServUO",
     "executable": "ServUO.exe",
     "port": 2611,
-    "adapter": "not implemented for GUO asset packs",
+    "adapter": "implemented: all seven server sections (tile light/animation fields refused); compiled and runtime-probed; live GUO gameplay pending",
     "setup": "Use tools/servuo/run.py fetch, build and configure for the existing private backend. For another instance copy its built distribution to a separate folder; configure Config/Server.cfg and client data."
   },
   {
@@ -23,7 +23,7 @@
     "source": "https://github.com/runuo/runuo",
     "executable": "RunUO.exe",
     "port": 2612,
-    "adapter": "not implemented for GUO asset packs",
+    "adapter": "implemented: all seven server sections (tile light/animation fields refused); compiled and runtime-probed; live GUO gameplay pending",
     "setup": "Build the upstream solution with its documented .NET Framework toolchain. Configure its server-list/listener and data paths, then create the initial administrator account."
   },
   {
@@ -32,7 +32,7 @@
     "source": "https://github.com/polserver/polserver",
     "executable": "pol.exe",
     "port": 2613,
-    "adapter": "not implemented for GUO asset packs",
+    "adapter": "implemented: item definitions, explicit reserved object types; native config parser tested; other sections refused",
     "setup": "Obtain/build the upstream core and a compatible POL distribution. Configure pol.cfg, realms, scripts and accounts; compile the realm from your own UO data."
   },
   {
@@ -41,7 +41,7 @@
     "source": "https://github.com/Sphereserver/Source-X",
     "executable": "spheresvr.exe",
     "port": 2614,
-    "adapter": "not implemented for GUO asset packs",
+    "adapter": "implemented: item definitions; native item creation tested; other sections refused",
     "setup": "Obtain/build Source-X and the compatible Scripts-X script pack. Configure sphere.ini server address, port and local client data paths; create an administrator account."
   },
   {
@@ -50,7 +50,7 @@
     "source": "https://github.com/UOX3DevTeam/UOX3",
     "executable": "uox3.exe",
     "port": 2615,
-    "adapter": "not implemented for GUO asset packs",
+    "adapter": "implemented: item definitions; native item creation tested; other sections refused",
     "setup": "Obtain a release or build make/VS2022/uox3.sln with C++ tools. Keep its data/scripts with the executable; configure uox.ini, client data and an administrator account."
   }
 ]

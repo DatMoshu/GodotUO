@@ -47,6 +47,9 @@ jobs:
           python3 tools/docs_lint/test_docs_lint.py
           python3 tools/docs_lint/run.py
 
+      - name: Server adapter generation and deployment guards
+        run: python3 tools/server_adapters/tests/test_adapters.py
+
       - name: Configuration resolution
         run: python3 tools/guo/test_config.py
 
@@ -168,3 +171,19 @@ jobs:
             echo "::error::docs/port_status.md is stale. Run launchers\\pipeline\\03_port_audit.bat and commit it."
             exit 1
           fi
+
+  server-adapters:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        backend: [servuo, runuo]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 8.0.x
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Compile all content sections against pinned server APIs
+        run: python tools/server_adapters/prove_csharp.py --backend ${{ matrix.backend }} --out build/adapter-${{ matrix.backend }} --compile-only
