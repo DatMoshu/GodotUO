@@ -26,6 +26,9 @@ public enum WorldTool
     Measure,
     Route,
     Pin,
+
+    // The Multi Editor's World selection (ADR-0031): two corner clicks.
+    Area,
 }
 
 /// <summary>
@@ -228,6 +231,40 @@ internal sealed class WorldEditor
                 b.Statics[i] = s;
             }
         }, $"hue 0x{hue:X4} on 0x{id:X4} at {x},{y} z {z}");
+
+    /// <summary>
+    /// Every static in a rectangle of cells, as the project (or the install) has them: x, y (world cells) and
+    /// the static. Each block is read once.
+    /// </summary>
+    public List<(int X, int Y, WorldStatic S)> StaticsInRect(int facet, int x0, int y0, int x1, int y1)
+    {
+        var list = new List<(int, int, WorldStatic)>();
+        WorldProject project = _host.Project;
+        for (int bx = x0 >> 3; bx <= x1 >> 3; bx++)
+        {
+            for (int by = y0 >> 3; by <= y1 >> 3; by++)
+            {
+                WorldBlock b = project?.BlockText(facet, bx, by) != null
+                    ? WorldProject.ReadBlock(project.BlockPath(facet, bx, by))
+                    : WorldProject.Capture(Maps, facet, bx, by);
+                if (b == null)
+                {
+                    continue;
+                }
+
+                foreach (WorldStatic s in b.Statics)
+                {
+                    int x = (bx << 3) + s.X, y = (by << 3) + s.Y;
+                    if (x >= x0 && x <= x1 && y >= y0 && y <= y1)
+                    {
+                        list.Add((x, y, s));
+                    }
+                }
+            }
+        }
+
+        return list;
+    }
 
     /// <summary>Statics on a cell as the project (or the install) has them, bottom first.</summary>
     public List<WorldStatic> StaticsAt(int facet, int x, int y)

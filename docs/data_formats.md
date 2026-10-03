@@ -1440,3 +1440,21 @@ Same parameters and seed, same bytes.
 The validator (section 16) also refuses a roof with floor open to the sky, a door with nowhere to stand on a side, and
 a stair whose foot is unreachable, whose arrival is not floor above, whose hole is not cut, or that does not climb the
 gap between its storeys.
+## 28. Multi components description (`*.multi.json`, ADR-0031)
+
+The Multi Editor's own file, in `build/multi/edit/` (gitignored: it holds client-derived layouts).
+Unlike a §16 description, which a generator expands, this one lists the components themselves. It is
+diffable (one component per line) and keeps the hue, which a multi record cannot.
+
+| Field | Meaning |
+|---|---|
+| `format` | `1` |
+| `kind` | `"components"` |
+| `name` | The multi's name in a stage |
+| `source` | The client multi id it was opened from, or `null` |
+| `floor_z`, `storey_height` | `7` and `20`, the client's story heights |
+| `components` | `[item, x, y, z, shown, hue]` per component, in list order (the order breaks ties in painting): `item` and `hue` numbers, `shown` `1` or `0`, x/y from the centre |
+
+Writing it to a stage goes through the built form of §16 (`components.json`: `[item, x, y, z]` with a
+fifth element `0` when hidden, plus a `multi.json` with `valid`, `problems`, `doors`, `size`,
+`storeys`) and `tools/multi write`. The hue is not written.

@@ -174,6 +174,42 @@ public sealed class GuoProvider : SearchProvider
                 });
         }
 
+        // --- the Multi Editor (ADR-0031) ------------------------------------------
+        MultiEditView me = _ctx.MultiEdit;
+        if (me != null)
+        {
+            void Show() => (_ctx.Plugin as GuoEditorPlugin)?.ShowMultiEditor();
+            Add("Multi", "Multi Editor: open the tab", "edit houses, keeps and boats", "multi editor house keep boat tab build", Show, bonus: 10);
+            Add("Multi", "Multi Editor: new multi", "a blank multi", "multi editor new blank house", () => { Show(); me.NewMulti(); });
+            Add("Multi", "Multi Editor: save description", "write build/multi/edit/NAME.multi.json", "multi editor save description json",
+                () => { Show(); SearchContext.Toast($"Saved {me.SaveDescription()}"); });
+            Add("Multi", "Multi Editor: write to stage", "into the staged data set, never the install", "multi editor write stage save uodata",
+                async () => { Show(); var r = await me.SaveToStageAsync(); SearchContext.Toast(r.Ok ? $"{r.Name} = multi 0x{r.Id:X4}" : r.Error ?? "write failed", r.Ok ? EditorToaster.Severity.Info : EditorToaster.Severity.Warning); });
+            Add("Multi", "Multi Editor: undo", "Ctrl+Z", "multi editor undo history", () => me.Doc.Undo());
+            Add("Multi", "Multi Editor: redo", "Ctrl+Y", "multi editor redo history", () => me.Doc.Redo());
+            Add("Multi", "Multi Editor: preview in World", "place the last written multi in the World tab", "multi editor preview world place", () => me.PreviewNow());
+            foreach (MultiTool tool in Enum.GetValues<MultiTool>())
+            {
+                MultiTool t = tool;
+                Add("Multi", $"Multi tool: {t}", "Multi Editor tool", $"multi editor tool {t}", () => { Show(); me.SetTool(t); });
+            }
+
+            foreach (StoryVision mode in Enum.GetValues<StoryVision>())
+            {
+                StoryVision m = mode;
+                Add("Multi", $"Multi vision: {m}", "the client's per-story vision mode for the story being edited", $"multi editor vision story floor {m}",
+                    () => { Show(); me.SetVision(me.Canvas.ActiveStory, m); });
+            }
+
+            Add("World", "World selection to multi", "take the Area tool's statics into a new multi", "world area selection multi statics house save",
+                () =>
+                {
+                    int n = _ctx.World.SaveAreaAsMulti();
+                    SearchContext.Toast(n > 0 ? $"{n} statics are in the Multi Editor" : "Pick an area first: World tool Area, two corner clicks",
+                        n > 0 ? EditorToaster.Severity.Info : EditorToaster.Severity.Warning);
+                });
+        }
+
         // --- shard -------------------------------------------------------------
         Add("GUO", "Shard: connect (live)", "UO Shard dock: connect the editor bridge", "shard live connect bridge server link",
             () =>
