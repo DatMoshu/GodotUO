@@ -29,16 +29,15 @@
     handed. Referenced from the upstream checkout by HintPath, exactly as
     upstream's ClassicUO.Client.csproj does, and never re-declared here: a
     hand-written copy that drifted by one field would corrupt every plugin.
-    UpstreamDir can be overridden (-p:UpstreamDir=... or the environment) for
-    a checkout that keeps sources/ elsewhere, such as a git worktree.
+    UpstreamDir is resolved in tools/msbuild/UpstreamDir.props: an override
+    (-p:UpstreamDir=..., the environment, or UO_UPSTREAM_DIR), else this
+    checkout's sources/, else (in a git worktree) the main checkout's.
   -->
   <ItemGroup Condition="'$(GodotTargetPlatform)' != 'web'">
     <Compile Remove="src/Platform/Web/Program.cs" />
   </ItemGroup>
 
-  <PropertyGroup>
-    <UpstreamDir Condition="'$(UpstreamDir)' == ''">$(MSBuildThisFileDirectory)..\..\sources\ClassicUO</UpstreamDir>
-  </PropertyGroup>
+  <Import Project="$(MSBuildThisFileDirectory)../../tools/msbuild/UpstreamDir.props" />
   <ItemGroup>
     <Reference Include="cuoapi">
       <HintPath>$(UpstreamDir)\external\cuoapi\cuoapi.dll</HintPath>
