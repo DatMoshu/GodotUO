@@ -170,6 +170,15 @@ def sha256(path):
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
+def derived_from_client_art(node):
+    """True when a provenance record (the editor's art pipeline, ADR-0029) marks any image as derived from client art."""
+    if isinstance(node, dict):
+        return node.get("derived_from_client_art") is True or any(derived_from_client_art(v) for v in node.values())
+    if isinstance(node, list):
+        return any(derived_from_client_art(v) for v in node)
+    return False
+
+
 def verify(path):
     path = Path(path)
     require(path.stat().st_size <= MAX_ZIP, "ZIP too large")
@@ -206,4 +215,11 @@ def verify(path):
             require(digest.hexdigest() == expected, f"hash mismatch: {name}")
             if Path(name).suffix.lower() == ".razor":
                 script_text(archive.read(name))
+            if Path(name).name.lower().endswith("provenance.json"):
+                # The content policy (docs/store/content_policy.md): work derived from client art is refused.
+                try:
+                    record = json.loads(archive.read(name))
+                except ValueError:
+                    raise ValueError(f"unreadable provenance file: {name}") from None
+                require(not derived_from_client_art(record), f"{name} marks an image as derived from client art; the content policy refuses it")
     return manifest

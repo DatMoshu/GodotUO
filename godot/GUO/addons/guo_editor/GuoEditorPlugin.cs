@@ -36,6 +36,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
     private ShardDock _shard;
     private RunBar _run;
     private AiDock _ai;
+    private ArtDock _art;
     private SearchPopup _search;
 
     // Whether the World tab was on screen when an assembly reload began.
@@ -126,6 +127,12 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         _ai = new AiDock();
         AddDock(_ai);
 
+        // The art pipeline (ADR-0029): image services, and the watcher that imports what Pixelorama
+        // and Pinta save. It owns worker tasks, which TearDown cancels.
+        _art = new ArtDock();
+        _art.Attach(_data, () => _inspector?.Current);
+        AddDock(_art);
+
         // Start server, start clients: on the toolbar, always one click away.
         _run = new RunBar();
         AddControlToContainer(CustomControlContainer.Toolbar, _run);
@@ -168,6 +175,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
             _smoke = new EditorSmoke(smokeOut, _data, _assets, _inspector, _world, _shard);
             _smoke.Search = _search;
             _smoke.Ai = _ai;
+            _smoke.Art = _art;
             AddChild(_smoke);
         }
 
@@ -243,6 +251,14 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
             RemoveControlFromContainer(CustomControlContainer.Toolbar, _run);
             _run.QueueFree();
             _run = null;
+        }
+
+        if (_art != null)
+        {
+            _art.Shutdown();
+            RemoveDock(_art);
+            _art.QueueFree();
+            _art = null;
         }
 
         if (_ai != null)

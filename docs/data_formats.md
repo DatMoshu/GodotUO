@@ -1155,3 +1155,29 @@ with a vision model is the user's own tool and key.
 | `modes[]` | `{name, file, summary, legend: [{label, colour "#rrggbb"}]}` per mode image |
 | `objects[]` | Up to 4000 statics, multi parts and placed items in view: `kind` (`static`, `multi`, `item`), `graphic` (`0x0E75`), `name`, `type` (the Types mode's word), `x, y, z, height`, and `box` `[x0, y0, x1, y1]` in pixels (the art's rectangle from its size; approximate) |
 | `layers` | One array per layer switched on: `{label, x, y, z, detail, px, py, on_view, sextant}` |
+
+## 24. The art exchange folder and asset provenance (ADR-0029)
+
+**Exchange folder** (`UO_ART_EXCHANGE`, default `build/art_exchange/`, never under `UO_CLIENT_DATA`):
+`out/` PNG + sidecar the editor hands to Pixelorama; `in/` what the Pixelorama extension saves back (the
+sidecar is written first, the PNG second); `pinta/` PNG + sidecar that Pinta edits in place (a PNG newer than
+its sidecar is an edit); `done/` and `rejected/` (with `<stem>.reason.txt`) for finished `in/` pairs;
+`workflows/` ComfyUI API-format workflow files (`UO_COMFY_WORKFLOWS`); `hues.json` the user's own hue table
+written from the loaded hues.mul: `{"format":1,"hues":[{"id","name","colors":[32 x "RRGGBB"]}]}`.
+It is generated from the user's install and is never committed or shipped.
+
+**Sidecar** `<stem>.json`, stem `<kind>_0x<ID>[_h<hue>]`:
+`{"kind":"land|static|gump","id":int,"hue":int?,"size":[w,h],"stem":str,"provenance":{...}}`.
+
+**Provenance** `{"tool","model"?,"workflow"?,"seed"?,"inputs":[str],"derived_from_client_art":bool}`.
+`inputs` entries read `client:<kind>:0x<ID>` (the install's art) or `overlay:<kind>:0x<ID>`. The overlay keeps
+one record per replaced image in `<project>/assets/provenance.json`:
+`{"format":1,"entries":{"assets/art/statics/0x0E75.png":{...provenance..., "imported":"UTC time"}}}`.
+`derived_from_client_art` is true when any input was client art, and for a PNG of unknown origin (the
+inspector's "Import PNG..." records `tool: "import-png"` as derived). Such images stay local: a pack
+containing a `*provenance.json` with a derived entry is refused by `tools/asset_store/pack.py verify`
+(content policy, `docs/store/content_policy.md`).
+
+**UO post-process** (every import path): alpha keyed at 50 % (UO has one-bit transparency); land masked to the
+44x44 diamond (larger whole multiples scaled with nearest sampling); statics trimmed of empty top rows and equal
+empty columns each side; reduced to 15-bit colour as the overlay stores it.
