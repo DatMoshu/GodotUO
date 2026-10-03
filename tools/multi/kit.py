@@ -394,7 +394,7 @@ def split_rooms(box, target: int, walls: set, reserved: set, rng: random.Random,
         done = False
         for k in cands:
             line = [(k, y) for y in range(y0, y1 + 1)] if by_x else [(x, k) for x in range(x0, x1 + 1)]
-            if set(line) & reserved or line[0] not in walls or line[-1] not in walls:
+            if set(line) & reserved or line[0] not in walls or line[-1] not in walls or {line[0], line[-1]} & set(doors):
                 continue
             spots = []
             for c in line[2:-2]:
