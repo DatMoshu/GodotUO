@@ -1219,6 +1219,7 @@ mined data (`mined/...`, `Data/map-mining/...`, `client/ClassicUO/Data/...`) res
 | `sizes` | `[width, height]` pairs to offer: 256–2048 squares and the client's facet sizes |
 | `passes[]` | In pipeline order: `index`, `name` (also the preset key), `category`, `enabled` (with the preset applied), `default_enabled`, `heavy` (switched off by `--fast`), `file_side_effects` (always off from GUO), `tunables[]` |
 | `tunables[]` | `key` (the parameter name), `label`, `tooltip`, `type` (`int`, `double`, `bool`, `string`, `enum`, `other`), `editable` (false for `other` and read-only), `value` (with the preset), `default` (the pass's own), `min`/`max` when the pass declares a range, `options` for an enum, `tile_set` (`land`/`static`) for tile-id lists |
+| `tables[]` | The transition tables `run --brushes` can name: `id` (`guo`, `guo-core`, `dragon`), `label`, `description`, `available` (false for `dragon` until `prepare --dragon` has run). `guo` is the default and uses the user's measured weights when `prepare --measure` wrote them; `guo-core` is the committed table alone. The editor's MapGen tab offers these plus a table file of the user's own |
 | `warnings` | Preset problems (unknown pass or key) |
 
 ### `run --out DIR [options]` → JSON lines, then the folder

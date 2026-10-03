@@ -1,5 +1,6 @@
 using System.Reflection;
 using CentrED.MapGen;
+using CentrED.MapGen.Data;
 using CentrED.MapGen.Pipeline;
 using CentrED.MapGen.Presets;
 
@@ -66,7 +67,37 @@ public static class SchemaCommand
             ["default_preset"] = Presets.Default,
             ["sizes"] = Sizes,
             ["passes"] = passes,
+            ["tables"] = Tables(),
             ["warnings"] = warnings,
+        };
+    }
+
+    /// <summary>The transition tables <c>run --brushes</c> can name, and whether each can load here.</summary>
+    public static List<object?> Tables()
+    {
+        bool resolved = File.Exists(RepoRootResolver.Resolve(GuoTransitionTable.ResolvedRelativePath));
+        bool dragon = File.Exists(PipelineFactory.ResolveBrushesPath("dragon"));
+        return new List<object?>
+        {
+            new Dictionary<string, object?>
+            {
+                ["id"] = "guo", ["label"] = resolved ? "GUO (measured on your Felucca)" : "GUO", ["available"] = true,
+                ["description"] = resolved
+                    ? "GUO's table with the tile weights prepare --measure read from your own Felucca. The default."
+                    : "GUO's own transition table. The default; prepare --measure adds weights from your own Felucca.",
+            },
+            new Dictionary<string, object?>
+            {
+                ["id"] = "guo-core", ["label"] = "GUO core", ["available"] = true,
+                ["description"] = "GUO's committed table only, ignoring any measured weights: the same on every machine.",
+            },
+            new Dictionary<string, object?>
+            {
+                ["id"] = "dragon", ["label"] = "Dragon", ["available"] = dragon,
+                ["description"] = dragon
+                    ? "Your Dragon import (prepare --dragon)."
+                    : "Not prepared: run guo-mapgen prepare --dragon DIR on your own Dragon copy first.",
+            },
         };
     }
 
