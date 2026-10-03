@@ -248,6 +248,11 @@ class Config:
 
     @property
     def godot_console_exe(self) -> Path:
+        # An engine somewhere else (a worktree without the tools\godot junction):
+        # the same GODOT_CONSOLE variable the launchers set.
+        override = os.environ.get("GODOT_CONSOLE")
+        if override and Path(override).is_file():
+            return Path(override)
         # Only Windows ships a separate console build; elsewhere the one
         # binary already blocks and writes to stdout.
         if not self.godot_flavor.startswith("mono_win"):

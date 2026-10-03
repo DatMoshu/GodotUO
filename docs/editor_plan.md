@@ -399,3 +399,24 @@ editor's project metadata) or by Project > Tools > Reset GUO layout
 (`GuoEditorPlugin.ResetLayout()`); a layout the user changed is not touched.
 The tour records at 3840x2160 with display scale 1.5 on a scratch settings
 folder, so the user's editor settings are never changed.
+
+## AI hub (2026-10, ADR-0028)
+
+The **AI** dock (`addons/guo_editor/AI/`, bottom panel beside UO Shard) has three tabs.
+
+* **Chat** talks to Ollama (`/api/tags`, streaming `/api/chat`; the URL follows `OLLAMA_HOST`), to
+  any OpenAI-compatible endpoint the user adds (key sealed by the pre-game accounts' `SecretStore`:
+  DPAPI on Windows), and to an agent started in the Agents tab. All providers implement `IChatProvider`.
+* **Agents** starts a coding agent CLI over ACP (`AcpClient`: JSON-RPC 2.0, one JSON message per
+  line, `initialize`, `session/new`, `session/prompt`, `session/update`, `session/request_permission`,
+  `session/cancel`). Presets: OpenCode, Codex, Claude Code, Gemini CLI, a custom command. They are
+  found on PATH; a missing one shows the install and sign-in commands to run. Permission requests open a
+  dialog, one action at a time (no "always" option is offered). The client advertises no file system
+  and no terminal, so an agent can only ask.
+* **Queue** posts to and reads `tools/agent_queue` (data_formats section 21) by running that tool;
+  it lists requests and shows the selected one's replies, polling every 2.5 s while visible.
+
+F3 has "AI: new chat", "AI: show queue/agents" and "AI: start agent X". Child processes die in
+`AiDock.Shutdown`, which the plugin calls on close and before an assembly reload. The smoke's AI stage
+runs everything against a fake ACP agent, stub HTTP servers and a temporary queue (`tools/ai_hub`).
+The editor model tools are not built yet: the models see no editor state and have no tools.

@@ -74,6 +74,9 @@ public partial class EditorSmoke : Node
     /// <summary>The F3 popup the plugin made, for the search checks.</summary>
     public SearchPopup Search { get; set; }
 
+    /// <summary>The AI dock the plugin made, for the AI checks (ADR-0028).</summary>
+    public AiDock Ai { get; set; }
+
     public EditorSmoke() : this(null, null, null, null, null, null)
     {
     }
@@ -190,6 +193,16 @@ public partial class EditorSmoke : Node
 
             case 50:
                 if (StepSearch())
+                {
+                    _stage = 60;
+                    _frames = 0;
+                }
+
+                break;
+
+            case 60:
+                // The AI hub (ADR-0028): ACP, Ollama and queue, against stubs.
+                if (StepAi())
                 {
                     // Phase 5: the asset overlay, before the World tab boots
                     // so the world's own loaders get it too.
