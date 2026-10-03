@@ -117,7 +117,7 @@
 | `/prototype` | Concept prototype — throwaway build right after brainstorm to validate core idea (Phase 1) |
 | `/vertical-slice` | Pre-Production validation — production-quality end-to-end build before committing to Production (Phase 4) |
 | `/onboard` | Generate contextual onboarding document for a new contributor or agent |
-| `/localize` | Localization workflow: string extraction, validation, translation readiness |
+| `/localize` | GUO and shard translations: source updates, new languages, review tracking, runtime QA and owner onboarding (see [guide](../../docs/localization.md)) |
 
 ## Team Orchestration
 

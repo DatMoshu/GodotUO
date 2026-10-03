@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../godot/GUO/src/Localization/*.cs" Exclude="../../godot/GUO/src/Localization/JournalTranslationCommand.cs;../../godot/GUO/src/Localization/JournalTranslationHost.cs" Link="%(Filename)%(Extension)" />
+    <Compile Include="../../godot/GUO/src/Game/Data/MessageType.cs" Link="MessageType.cs" />
+  </ItemGroup>
+</Project>

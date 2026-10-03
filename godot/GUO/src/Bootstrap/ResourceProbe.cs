@@ -25,6 +25,7 @@ public static class ResourceProbe
         bool ok = true;
 
         ok &= CheckString("ResGumps", ResGumps.Accept);
+        ok &= CheckString("JournalTranslationLabel", ResGumps.ResourceManager.GetString("JournalTranslationLabel"));
         ok &= CheckString("ResGeneral", ResGeneral.Alliance0);
         ok &= CheckString("ResErrorMessages", ResErrorMessages.CharacterAlreadyExists);
 

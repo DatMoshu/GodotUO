@@ -7,6 +7,7 @@ using GUO.Game.Data;
 using GUO.Utility;
 using GUO.Utility.Collections;
 using GUO.Utility.Logging;
+using GUO.Localization;
 
 namespace GUO.Game.Managers
 {
@@ -14,13 +15,19 @@ namespace GUO.Game.Managers
     {
         private StreamWriter _fileWriter;
         private bool _writerHasException;
+        // PORT DEVIATION (GUO): opt-in journal translation; the logic lives in GUO.Localization.
+        private static long _nextEntryId;
+        private readonly JournalTranslationHost _translation = new();
+        public static int TranslationRevision => JournalTranslationHost.Revision;
+        public string TranslationStatus => _translation.Status;
+        public long LastTranslationMilliseconds => _translation.LastMilliseconds;
 
         public static Deque<JournalEntry> Entries { get; } = new Deque<JournalEntry>(Constants.MAX_JOURNAL_HISTORY_COUNT);
 
         public event EventHandler<JournalEntry> EntryAdded;
 
 
-        public void Add(string text, ushort hue, string name, uint? serial, TextType type, bool isunicode = true, MessageType messageType = MessageType.Regular)
+        public void Add(string text, ushort hue, string name, uint? serial, TextType type, bool isunicode = true, MessageType messageType = MessageType.Regular, bool translate = false)
         {
             JournalEntry entry = Entries.Count >= Constants.MAX_JOURNAL_HISTORY_COUNT ? Entries.RemoveFromFront() : new JournalEntry();
 
@@ -35,6 +42,9 @@ namespace GUO.Game.Managers
             DateTime timeNow = DateTime.Now;
 
             entry.Text = text;
+            // PORT DEVIATION (GUO): id lets a late translation find its recycled entry.
+            entry.Id = ++_nextEntryId;
+            entry.Translation = null;
             entry.Font = font;
             entry.Hue = hue;
             entry.Name = name;
@@ -51,6 +61,10 @@ namespace GUO.Game.Managers
 
             Entries.AddToBack(entry);
             EntryAdded.Raise(entry);
+
+            // PORT DEVIATION (GUO): hand eligible public speech to the off-thread translator.
+            if (translate)
+                _translation.Queue(entry);
 
             if (_fileWriter == null && !_writerHasException)
             {
@@ -123,12 +137,22 @@ namespace GUO.Game.Managers
         public void Clear()
         {
             //Entries.Clear();
+            ResetTranslation(); // PORT DEVIATION (GUO)
             CloseWriter();
         }
+
+        // PORT DEVIATION (GUO): World.Update calls this on the game thread.
+        public void UpdateTranslation(System.Collections.Generic.ISet<string> ignored) => _translation.Update(Entries, ignored);
+
+        public void ResetTranslation() => _translation.Reset();
     }
 
     internal class JournalEntry
     {
+        // PORT DEVIATION (GUO): translation shown under the untouched original text.
+        public long Id;
+        public string Translation;
+        public string DisplayText => Translation == null ? Text : Text + "\n" + Translation;
         public byte Font;
         public ushort Hue;
 

@@ -1009,7 +1009,7 @@ namespace GUO.Network
                 }
             }
 
-            world.MessageManager.HandleMessage(entity, text, name, hue, type, (byte)font, text_type);
+            world.MessageManager.HandleMessage(entity, text, name, hue, type, (byte)font, text_type, translationEligible: true);
         }
 
         private static void DeleteObject(World world, ref StackDataReader p)
@@ -3694,7 +3694,8 @@ namespace GUO.Network
                 ProfileManager.CurrentProfile.ChatFont,
                 text_type,
                 true,
-                lang
+                lang,
+                translationEligible: true
             );
         }
 

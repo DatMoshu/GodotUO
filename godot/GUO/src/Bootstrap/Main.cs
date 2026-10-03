@@ -234,7 +234,11 @@ public partial class Main : Node
 
                 // Commands and a probe together: the commands run first
                 // (typically "[go" somewhere populated) and the probe follows.
-                if (_options.LoginProbe)
+                if (_options.TranslationProbe)
+                {
+                    TranslationProbeThenQuit();
+                }
+                else if (_options.LoginProbe)
                 {
                     LoginProbeThenMaybeQuit();
                 }
@@ -898,6 +902,12 @@ public partial class Main : Node
         }
     }
 
+    private async void TranslationProbeThenQuit()
+    {
+        bool passed = await JournalTranslationProbe.Run(this, _options.ScreenshotDir);
+        Quit(passed ? 0 : 1);
+    }
+
     /// <summary>
     /// Drive the touch layer with synthetic fingers, photograph the result,
     /// and exit with the verdict; see TouchProbe.
@@ -1332,6 +1342,7 @@ public partial class Main : Node
                 || UiGallery
                 || PresentationParity
                 || LoginProbe
+                || TranslationProbe
                 || UiProbe
                 || DualProbe
                 || PregameProbe
@@ -1513,6 +1524,7 @@ public partial class Main : Node
         /// the smoke reads back through logcat).
         /// </summary>
         public bool LoginProbe { get; private set; }
+        public bool TranslationProbe { get; private set; }
         public bool UiProbe { get; private set; }
 
         /// <summary>Whether the login probe quits once it has reported. Default true.</summary>
@@ -1830,6 +1842,10 @@ public partial class Main : Node
                         break;
                     case "--ui-probe":
                         o.UiProbe = true;
+                        break;
+                    case "--translation-probe":
+                        o.TranslationProbe = true;
+                        o.ScratchProfile = true;
                         break;
                     case "--login-probe-stay":
                         o.LoginProbe = true;

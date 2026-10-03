@@ -206,6 +206,7 @@ Unreal specialists were removed. Port-specific additions:
 | `mobile-web-engineer` | Android and web exports, the touch layer, CI for both |
 | `uo-editor-engineer` | The GUO editor add-on and the world tools |
 | `uo-multi-architect` | Authoring new multis: mining, generators, validators, proofs |
+| `localization-lead` | GUO UI and shard translations, source drift, new languages and multilingual onboarding; see `docs/localization.md` |
 
 **Path rules.** `.claude/rules/*.md` hold coding rules; each one's `paths:`
 front matter says which files it covers. Read the matching rules before

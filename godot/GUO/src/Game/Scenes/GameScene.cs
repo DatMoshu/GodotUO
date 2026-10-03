@@ -115,6 +115,8 @@ namespace GUO.Game.Scenes
             _healthLinesManager = new HealthLinesManager(_world);
 
             _world.CommandManager.Initialize();
+            // PORT DEVIATION (GUO): the -translate command.
+            _world.CommandManager.Register("translate", args => Localization.JournalTranslationCommand.Run(_world, args));
 
             WorldViewportGump viewport = new WorldViewportGump(_world, this);
             UIManager.Add(viewport, false);
@@ -284,7 +286,11 @@ namespace GUO.Game.Scenes
 
             if (!string.IsNullOrEmpty(text))
             {
-                _world.Journal.Add(text, hue, name, e.Parent?.Serial, e.TextType, e.IsUnicode, e.Type);
+                // PORT DEVIATION (GUO): public mobile speech only. Private channels, labels,
+                // system/cliloc text, spells and commands never reach the provider.
+                bool translate = Localization.JournalTranslationPolicy.CanTranslate(e.Type, text,
+                    e.TranslationEligible, e.Parent is Mobile, _world.IgnoreManager.IgnoredCharsList.Contains(name));
+                _world.Journal.Add(text, hue, name, e.Parent?.Serial, e.TextType, e.IsUnicode, e.Type, translate);
             }
         }
 

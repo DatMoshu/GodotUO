@@ -18,7 +18,8 @@ namespace GUO.Game.Managers
             byte font,
             TextType text_type,
             bool unicode = false,
-            string lang = null
+            string lang = null,
+            bool translationEligible = false // // PORT DEVIATION (GUO): set by the network handlers for received speech
         )
         {
             Parent = parent;
@@ -28,6 +29,7 @@ namespace GUO.Game.Managers
             Type = type;
             Font = font;
             Language = lang;
+            TranslationEligible = translationEligible;
             AffixType = AffixType.None;
             IsUnicode = unicode;
             TextType = text_type;
@@ -47,6 +49,7 @@ namespace GUO.Game.Managers
         public byte Font { get; }
 
         public string Language { get; }
+        public bool TranslationEligible { get; }
 
         public uint Cliloc { get; }
 

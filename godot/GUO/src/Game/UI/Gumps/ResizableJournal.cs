@@ -16,6 +16,8 @@ namespace GUO.Game.UI.Gumps
 {
     internal class ResizableJournal : ResizableGump
     {
+        // PORT DEVIATION (GUO): rebuild the list when a translation lands.
+        private int _translationRevision = JournalManager.TranslationRevision;
         #region VARS
         public static bool ReloadTabs { get; set; } = false;
 
@@ -277,6 +279,12 @@ namespace GUO.Game.UI.Gumps
 
             if (IsDisposed) return;
 
+            if (_translationRevision != JournalManager.TranslationRevision)
+            {
+                _translationRevision = JournalManager.TranslationRevision;
+                _journalArea.RefreshTranslations();
+            }
+
             if (X != _lastX || Y != _lastY)
             {
                 _lastX = X;
@@ -426,7 +434,7 @@ namespace GUO.Game.UI.Gumps
 
                 journalDatas.AddToBack(
                     new JournalData(
-                        new Label($"{e.Name}: {e.Text}", e.IsUnicode, e.Hue, Width - BORDER_WIDTH - timeS.Width, font: e.Font),
+                        new Label($"{e.Name}: {e.DisplayText}", e.Translation != null || e.IsUnicode, e.Hue, Width - BORDER_WIDTH - timeS.Width, font: e.Translation == null ? e.Font : (byte)0),
                         timeS,
                         e.TextType,
                         e.MessageType
@@ -468,6 +476,17 @@ namespace GUO.Game.UI.Gumps
                     _.Destroy();
 
                 journalDatas.Clear();
+            }
+
+            public void RefreshTranslations()
+            {
+                bool following = _scrollBar.Value == _scrollBar.MaxValue;
+                int position = _scrollBar.Value;
+                Reset();
+                _scrollBar.MaxValue = 0;
+                _scrollBar.Value = 0;
+                _resizableJournal.InitJournalEntries();
+                _scrollBar.Value = following ? _scrollBar.MaxValue : position;
             }
 
             public override void Dispose()

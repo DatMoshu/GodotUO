@@ -1667,4 +1667,19 @@ start your first counter</value>
   <data name="JournalFileWithSerial" xml:space="preserve">
     <value>Add speaker serial to journal entries</value>
   </data>
+  <data name="JournalTranslationHelp" xml:space="preserve">
+    <value>Local journal translation: -translate SOURCE TARGET (example: it en) | -translate languages | -translate off | -translate status. Enabling sends public speech and emotes to your local Ollama. Originals remain visible.</value>
+  </data>
+  <data name="JournalTranslationEnabled" xml:space="preserve">
+    <value>Local journal translation enabled: {0} &gt; {1}. Public speech/emotes go to local Ollama; originals are retained. Private channels are excluded. Machine output is unreviewed; language quality and font support vary.</value>
+  </data>
+  <data name="JournalTranslationDisabled" xml:space="preserve">
+    <value>Journal translation is off. Pending requests cancelled.</value>
+  </data>
+  <data name="JournalTranslationStatus" xml:space="preserve">
+    <value>Journal translation: {0}; direction {1} &gt; {2}; provider state: {3}; last request: {4} ms.</value>
+  </data>
+  <data name="JournalTranslationLabel" xml:space="preserve">
+    <value>[Machine translation {0} &gt; {1}] </value>
+  </data>
 </root>

@@ -89,7 +89,8 @@ namespace GUO.Game.Managers
             byte font,
             TextType textType,
             bool unicode = false,
-            string lang = null
+            string lang = null,
+            bool translationEligible = false // // PORT DEVIATION (GUO): passed through to MessageEventArgs
         )
         {
             if (string.IsNullOrEmpty(text))
@@ -278,7 +279,8 @@ namespace GUO.Game.Managers
                     font,
                     textType,
                     unicode,
-                    lang
+                    lang,
+                    translationEligible
                 ),
                 parent
             );

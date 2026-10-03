@@ -273,6 +273,8 @@ namespace GUO.Game
         {
             Scripts.Tick(System.Environment.TickCount64);
             _packScripts?.Tick(System.Environment.TickCount64);
+            // PORT DEVIATION (GUO): apply finished translations on the game thread.
+            Journal.UpdateTranslation(IgnoreManager.IgnoredCharsList);
             if (Player != null)
             {
                 if (SerialHelper.IsValid(ObjectToRemove))

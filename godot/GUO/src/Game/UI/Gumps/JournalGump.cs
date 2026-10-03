@@ -23,6 +23,8 @@ namespace GUO.Game.UI.Gumps
         private bool _isMinimized;
         private readonly RenderedTextList _journalEntries;
         private readonly ScrollFlag _scrollBar;
+        // PORT DEVIATION (GUO): rebuild the list when a translation lands.
+        private int _translationRevision = JournalManager.TranslationRevision;
 
         public JournalGump(World world) : base(world, 0, 0)
         {
@@ -253,6 +255,16 @@ namespace GUO.Game.UI.Gumps
         {
             base.Update();
 
+            if (_translationRevision != JournalManager.TranslationRevision)
+            {
+                _translationRevision = JournalManager.TranslationRevision;
+                bool following = _scrollBar.Value == _scrollBar.MaxValue;
+                int position = _scrollBar.Value;
+                _journalEntries.ClearEntries();
+                InitializeJournalEntries();
+                _scrollBar.Value = following ? _scrollBar.MaxValue : position;
+            }
+
             WantUpdateSize = true;
             _journalEntries.Height = Height - (98 + DIFF_Y);
 
@@ -270,19 +282,19 @@ namespace GUO.Game.UI.Gumps
             if (!string.IsNullOrEmpty(usrSend) && World.IgnoreManager.IgnoredCharsList.Contains(usrSend))
                 return;
 
-            string text = $"{usrSend}: {entry.Text}";
+            string text = $"{usrSend}: {entry.DisplayText}";
 
             if (string.IsNullOrEmpty(usrSend))
             {
-                text = entry.Text;
+                text = entry.DisplayText;
             }
 
             _journalEntries.AddEntry
             (
                 text,
-                entry.Font,
+                entry.Translation == null ? entry.Font : 0,
                 entry.Hue,
-                entry.IsUnicode,
+                entry.Translation != null || entry.IsUnicode,
                 entry.Time,
                 entry.TextType
             );
@@ -604,7 +616,7 @@ namespace GUO.Game.UI.Gumps
                 return true;
             }
 
-            public override void Dispose()
+            public void ClearEntries()
             {
                 for (int i = 0; i < _entries.Count; i++)
                 {
@@ -616,7 +628,13 @@ namespace GUO.Game.UI.Gumps
                 _entries.Clear();
                 _hours.Clear();
                 _text_types.Clear();
+                _scrollBar.MaxValue = 0;
+                _scrollBar.Value = 0;
+            }
 
+            public override void Dispose()
+            {
+                ClearEntries();
                 base.Dispose();
             }
         }

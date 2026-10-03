@@ -29,6 +29,7 @@ internal sealed partial class JournalReader : ScrollContainer
     private readonly VBoxContainer _lines;
     private readonly Control _spacer;
     private int _seen = -1;
+    private int _translationRevision = -1;
     private JournalEntry _newest;
     private string _newestText;
     private DateTime _newestTime;
@@ -103,12 +104,13 @@ internal sealed partial class JournalReader : ScrollContainer
         // also recycles the dropped entry as the new one, so a new line is told
         // by the newest entry, its text and its time, not by the count.
         JournalEntry newest = count > 0 ? entries[count - 1] : null;
-        bool changed = count != _seen || newest != _newest
+        bool changed = _translationRevision != JournalManager.TranslationRevision || count != _seen || newest != _newest
             || (newest != null && (newest.Text != _newestText || newest.Time != _newestTime));
 
         if (changed || filters != _filters)
         {
             _seen = count;
+            _translationRevision = JournalManager.TranslationRevision;
             _newest = newest;
             _newestText = newest?.Text;
             _newestTime = newest?.Time ?? default;
@@ -151,7 +153,7 @@ internal sealed partial class JournalReader : ScrollContainer
         time.CustomMinimumSize = new Vector2(32, 0);
         time.VerticalAlignment = VerticalAlignment.Top;
         row.AddChild(time);
-        Label text = UoTheme.Label(system ? e.Text : $"{e.Name}: {e.Text}", system ? UoTheme.Heading : UoTheme.Ink);
+        Label text = UoTheme.Label(system ? e.DisplayText : $"{e.Name}: {e.DisplayText}", system ? UoTheme.Heading : UoTheme.Ink);
         text.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         text.SizeFlagsHorizontal = SizeFlags.ExpandFill;
         row.AddChild(text);

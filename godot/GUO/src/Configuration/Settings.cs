@@ -49,6 +49,15 @@ namespace GUO.Configuration
 
         [JsonPropertyName("lang")] public string Language { get; set; } = "";
 
+        // PORT DEVIATION (GUO): journal translation settings; explicit opt-in, off by default, loopback Ollama only.
+        [JsonPropertyName("journal_translation_enabled")] public bool JournalTranslationEnabled { get; set; }
+        [JsonPropertyName("journal_translation_source")] public string JournalTranslationSource { get; set; } = "it";
+        [JsonPropertyName("journal_translation_target")] public string JournalTranslationTarget { get; set; } = "en";
+        [JsonPropertyName("journal_translation_endpoint")] public string JournalTranslationEndpoint { get; set; } = "http://127.0.0.1:11434/api/chat";
+        [JsonPropertyName("journal_translation_model")] public string JournalTranslationModel { get; set; } = "qwen3:4b";
+        [JsonPropertyName("journal_translation_timeout_seconds")] public int JournalTranslationTimeoutSeconds { get; set; } = 30;
+        [JsonPropertyName("journal_translation_glossary")] public System.Collections.Generic.Dictionary<string, string> JournalTranslationGlossary { get; set; } = new();
+
         [JsonPropertyName("lastservernum")] public ushort LastServerNum { get; set; } = 1;
 
         [JsonPropertyName("last_server_name")] public string LastServerName { get; set; } = string.Empty;
