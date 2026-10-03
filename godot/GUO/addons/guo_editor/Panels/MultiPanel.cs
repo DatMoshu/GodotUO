@@ -27,6 +27,18 @@ public partial class MultiPanel : GridPanel
 {
     private List<int> _ids;
 
+    /// <summary>Opens a multi in the Multi Editor (set by the plugin; ADR-0031).</summary>
+    public static Action<int> EditRequested { get; set; }
+
+    /// <summary>Lists the multis the Multi Editor wrote to a stage as well, after a write.</summary>
+    public void RefreshIds()
+    {
+        _ids = null;
+        OnAssetsChanged();
+    }
+
+    protected override void ForgetIds() => _ids = null;
+
     public override string SmokeQuery => "0x0064";
 
     protected override int IconSize => 0;
@@ -51,6 +63,20 @@ public partial class MultiPanel : GridPanel
                 {
                 }
             }
+        }
+
+        if (MultiLoader.EditorOverlay != null)
+        {
+            // Multis written to a stage this session (PORT DEVIATION hook in MultiLoader).
+            foreach (uint staged in MultiLoader.EditorOverlay.Keys)
+            {
+                if (!_ids.Contains((int)staged))
+                {
+                    _ids.Add((int)staged);
+                }
+            }
+
+            _ids.Sort();
         }
 
         return _ids;
@@ -78,7 +104,13 @@ public partial class MultiPanel : GridPanel
             sb.Append($"  0x{group.Key:X4} x{group.Count()}  {Data.NameOf(index)}\n");
         }
 
-        return Inspection.Still("Multis", $"0x{id:X4}", composite, sb.ToString());
+        Inspection ins = Inspection.Still("Multis", $"0x{id:X4}", composite, sb.ToString());
+        if (EditRequested != null)
+        {
+            ins.Actions.Add(("Edit in Multi Editor", () => EditRequested(id)));
+        }
+
+        return ins;
     }
 
     /// <summary>The composite for a multi id, or null. Also the Parity panel's GUO side.</summary>

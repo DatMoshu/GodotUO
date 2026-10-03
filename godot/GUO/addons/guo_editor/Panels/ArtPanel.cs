@@ -68,6 +68,9 @@ public partial class ArtPanel : GridPanel
         return _ids[k];
     }
 
+    protected override Godot.Collections.Dictionary DragPayload(int id) =>
+        Land ? null : new Godot.Collections.Dictionary { ["guo_static"] = id };
+
     protected override string Caption(int id) => $"{id:X4}";
 
     protected override string Tooltip(int id) => $"0x{id:X4} {Data.NameOf(Index(id))}";

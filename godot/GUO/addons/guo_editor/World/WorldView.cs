@@ -2,6 +2,7 @@
 namespace GUO.Editor;
 
 using System;
+using System.Linq;
 using System.Globalization;
 using System.Text;
 using Godot;
@@ -265,6 +266,9 @@ public partial class WorldView : VBoxContainer
         var redo = new Button { Text = "Redo", TooltipText = "Ctrl+Y" };
         redo.Pressed += () => _editor.Redo();
         tools.AddChild(redo);
+        var areaToMulti = new Button { Text = "Area to multi", TooltipText = "Tool Area: click two corners, then take the statics inside into a new multi in the Multi Editor" };
+        areaToMulti.Pressed += () => SaveAreaAsMulti();
+        tools.AddChild(areaToMulti);
         tools.AddChild(new VSeparator());
         // One menu for the layers and one for the guides: the toolbar must fit
         // at 2560 px and below without pushing the inspector off screen.
@@ -730,6 +734,10 @@ public partial class WorldView : VBoxContainer
             case WorldTool.DeleteObject:
                 return ApplyObjectTool(o);
 
+            case WorldTool.Area:
+                SetAreaCorner(o.X, o.Y);
+                return _status.Text;
+
             case WorldTool.Measure:
             case WorldTool.Route:
             case WorldTool.Pin:
@@ -748,6 +756,99 @@ public partial class WorldView : VBoxContainer
         }
 
         return _editor.LastWhat;
+    }
+
+    private (int X, int Y)? _areaA, _areaB;
+
+    /// <summary>The rectangle the Area tool selected, corners in either order, or null.</summary>
+    public (int X0, int Y0, int X1, int Y1)? Area =>
+        _areaA is { } a && _areaB is { } b ? (Math.Min(a.X, b.X), Math.Min(a.Y, b.Y), Math.Max(a.X, b.X), Math.Max(a.Y, b.Y)) : null;
+
+    /// <summary>Raised with a name and the parts when the area is taken into a multi (the plugin opens the Multi Editor).</summary>
+    internal Action<string, System.Collections.Generic.List<MultiPart>> AreaToMulti { get; set; }
+
+    /// <summary>The Area tool's click: the first sets a corner, the second the other, a third starts again.</summary>
+    public void SetAreaCorner(int x, int y)
+    {
+        if (_areaA == null || _areaB != null)
+        {
+            _areaA = (x, y);
+            _areaB = null;
+            _status.Text = $"Area: corner {x},{y}; click the other corner";
+        }
+        else
+        {
+            _areaB = (x, y);
+            (int X0, int Y0, int X1, int Y1) a = Area.Value;
+            _status.Text = $"Area: {a.X1 - a.X0 + 1} x {a.Y1 - a.Y0 + 1} cells; 'Area to multi' takes its statics";
+        }
+
+        _guides.Area = Area ?? (_areaA is { } c ? (c.X, c.Y, c.X, c.Y) : null);
+    }
+
+    /// <summary>Sets both corners at once (the smoke check, F3).</summary>
+    public void SetArea(int x0, int y0, int x1, int y1)
+    {
+        _areaA = (x0, y0);
+        _areaB = (x1, y1);
+        _guides.Area = Area;
+    }
+
+    /// <summary>
+    /// The statics inside the area (the project's blocks first, else the map's), centred on the area and
+    /// re-based on the land's z at its middle, as a multi's parts. The land itself is not taken.
+    /// </summary>
+    public System.Collections.Generic.List<MultiPart> AreaParts(out string name)
+    {
+        name = null;
+        if (Area is not { } a || !_host.IsBooted)
+        {
+            return null;
+        }
+
+        int cx = (a.X0 + a.X1) / 2, cy = (a.Y0 + a.Y1) / 2;
+        int baseZ = _host.World.Map.GetTileZ(cx, cy);
+        name = $"world_{_host.Facet}_{a.X0}_{a.Y0}";
+        return _editor.StaticsInRect(_host.Facet, a.X0, a.Y0, a.X1, a.Y1)
+            .OrderBy(t => t.X).ThenBy(t => t.Y).ThenBy(t => t.S.Z)
+            .Select(t => new MultiPart { Id = t.S.Id, X = (short)(t.X - cx), Y = (short)(t.Y - cy), Z = (short)(t.S.Z - baseZ), Shown = true, Hue = t.S.Hue })
+            .ToList();
+    }
+
+    /// <summary>Takes the area's statics into a new multi in the Multi Editor (ADR-0031). Returns how many.</summary>
+    public int SaveAreaAsMulti()
+    {
+        var parts = AreaParts(out string name);
+        if (parts == null)
+        {
+            _status.Text = "Area to multi: pick two corners with the Area tool first";
+            return 0;
+        }
+
+        if (parts.Count == 0)
+        {
+            _status.Text = "Area to multi: there are no statics in that rectangle";
+            return 0;
+        }
+
+        AreaToMulti?.Invoke(name, parts);
+        _status.Text = $"Area to multi: {parts.Count} statics into the Multi Editor";
+        return parts.Count;
+    }
+
+    private const uint PreviewSerial = 0x4000_F001;
+
+    /// <summary>Places a multi (one the Multi Editor wrote to a stage, say) beside the view centre. False when the world is not up.</summary>
+    public bool PreviewMulti(int id)
+    {
+        if (!_host.IsBooted)
+        {
+            return false;
+        }
+
+        _host.RemoveServerObject(PreviewSerial);
+        int x = _host.X + 4, y = _host.Y;
+        return _host.PlaceServerMulti(PreviewSerial, (ushort)id, (ushort)x, (ushort)y, _host.World.Map.GetTileZ(x, y)) != null;
     }
 
     /// <summary>The world-object tools (ADR-0014) on the picked object or cell.</summary>

@@ -201,6 +201,9 @@ public partial class MultiCanvas : Control
 
     public float ZoomFactor => Zoom;
 
+    /// <summary>Where a cell's centre at z is on this control (for tests and tours).</summary>
+    public Vector2 ScreenOf(int x, int y, int z) => P(x, y, z) * Zoom + _origin;
+
     /// <summary>Centres the multi and picks the largest zoom that shows all of it.</summary>
     public void FitView()
     {

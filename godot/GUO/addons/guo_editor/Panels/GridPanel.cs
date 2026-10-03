@@ -58,6 +58,28 @@ public abstract partial class GridPanel : AssetPanel
     /// <summary>The label in the list.</summary>
     protected abstract string Caption(int id);
 
+    /// <summary>What dragging this id out of the list carries (the Multi Editor drops it), or null for nothing.</summary>
+    protected virtual Godot.Collections.Dictionary DragPayload(int id) => null;
+
+    private Variant DragData(Vector2 at)
+    {
+        int item = _list.GetItemAtPosition(at, true);
+        if (item < 0)
+        {
+            return default;
+        }
+
+        int id = (int)(long)_list.GetItemMetadata(item);
+        Godot.Collections.Dictionary payload = DragPayload(id);
+        if (payload == null)
+        {
+            return default;
+        }
+
+        _list.SetDragPreview(new Label { Text = Tooltip(id) });
+        return payload;
+    }
+
     protected virtual string Tooltip(int id) => Caption(id);
 
     protected virtual Image Icon(int id) => null;
@@ -121,6 +143,7 @@ public abstract partial class GridPanel : AssetPanel
             CustomMinimumSize = new Vector2(0, 240),
         };
         _list.ItemSelected += item => Pick((int)(long)_list.GetItemMetadata((int)item));
+        _list.SetDragForwarding(Callable.From<Vector2, Variant>(DragData), default, default);
         AddChild(_list);
 
         var pager = new HBoxContainer();
