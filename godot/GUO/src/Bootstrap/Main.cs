@@ -84,6 +84,8 @@ public partial class Main : Node
 
     public override void _Ready()
     {
+        Automation.McpHost.Attach(this);
+
         // Parsed in _EnterTree; Godot calls that first, and the window flags
         // wanted deciding before anything else ran.
         _options ??= Options.Parse(OS.GetCmdlineUserArgs());
