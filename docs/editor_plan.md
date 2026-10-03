@@ -473,3 +473,24 @@ The store code in `src/Store` deserializes with System.Text.Json's default optio
 assembly across a hot reload; `StoreView.Shutdown` clears that cache (`StoreBench.ReleaseJsonCaches`).
 Not built: an exact-pixel check of a pack's images against the client's art (needs the client data; the verdict says
 what it cannot see), several root packs in one deployment, a hosted-catalogue admin (mirror health, takedown).
+
+## Logs dock (2026-10)
+
+A bottom-panel **Logs** dock (`addons/guo_editor/Logs/`) tails what the other docks only summarise, read only.
+One sub-tab per source, found automatically and re-checked every three seconds: **Server** (the newest `.log` or
+`.txt` under the selected run-bar profile's `Logs` folders, or the dev shard's distribution `Logs` for a profile
+with no server folder), **Client 1..4** (the console of each client the run bar started: the run bar now starts a
+client through `cmd /c ... > build/editor_servers/<id>/clients/<n>/client.log`, because a client has no stdout the
+editor could keep; those lines are UTC, so the tab says so and puts the local time in front of each stamped line),
+**Client files** (the packet logger and crash dumps under the client project's `Logs`), **Godot log**
+(`user://logs/godot.log`, the editor's own output when file logging is on) and any file added with **Add file...**
+(remembered in `build/editor_logs/sources.json`, data_formats section 25).
+Each view has follow, pause, a text filter, a level filter (error/warn/info, coloured), find, clear view (never
+touches the file), copy selection, open folder and a line cap (default 5000). The tail is a polling worker task
+(`LogTailer`): shared-read opens that last one read, a file that does not exist yet, truncation and rotation, and
+a file over 512 KB entered at its end. Secrets in a line (the shapes `tools/agent_queue` refuses, `password=`
+pairs, bearer tokens, keys) are shown as `[redacted]`. F3 has "Logs: server", "Logs: client N", "Logs: add file".
+The smoke's Logs stage writes fixture logs under its output folder and checks all of the above, then that no
+worker task survives shutdown (and the reload run proves the same across an assembly reload).
+Not built: the server's own console output when the run bar started it (the managed process is not redirected,
+so its log files are what is shown); capturing the editor's in-process output without file logging.

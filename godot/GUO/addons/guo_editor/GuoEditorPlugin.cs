@@ -38,6 +38,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
     private AiDock _ai;
     private StoreView _store;
     private ArtDock _art;
+    private LogsDock _logs;
     private SearchPopup _search;
 
     // Whether the World tab was on screen when an assembly reload began.
@@ -147,6 +148,11 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         _art.Attach(_data, () => _inspector?.Current);
         AddDock(_art);
 
+        // The Logs dock: the server's and the clients' logs, tailed read only. It owns worker
+        // tasks, which TearDown cancels.
+        _logs = new LogsDock();
+        AddDock(_logs);
+
         // Start server, start clients: on the toolbar, always one click away.
         _run = new RunBar();
         AddControlToContainer(CustomControlContainer.Toolbar, _run);
@@ -168,6 +174,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         SearchContext searchContext = SearchContext.From(this, _data, _assets, _inspector, _world, _shard, _run, ShowInWorld);
         searchContext.Ai = _ai;
         searchContext.Store = _store;
+        searchContext.Logs = _logs;
         _search = SearchPopup.Install(searchContext);
         _ai.UseTools(searchContext, () => _search?.Index);
         _ai.Hub.SelectionImage = () => _inspector?.Current?.Image;
@@ -193,6 +200,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
             _smoke.Ai = _ai;
             _smoke.Store = _store;
             _smoke.Art = _art;
+            _smoke.Logs = _logs;
             AddChild(_smoke);
         }
 
@@ -269,6 +277,15 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
             RemoveControlFromContainer(CustomControlContainer.Toolbar, _run);
             _run.QueueFree();
             _run = null;
+        }
+
+        if (_logs != null)
+        {
+            // Cancels every log tailer before a reload or when the editor closes.
+            _logs.Shutdown();
+            RemoveDock(_logs);
+            _logs.QueueFree();
+            _logs = null;
         }
 
         if (_art != null)

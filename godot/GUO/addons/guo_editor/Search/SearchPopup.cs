@@ -81,6 +81,7 @@ public partial class SearchPopup : Control
         _index.Add(new GuoProvider(ctx));
         _index.Add(new AiProvider(ctx));
         _index.Add(new StoreProvider(ctx));
+        _index.Add(new LogsProvider(ctx));
         _index.Add(new PlacesProvider(ctx));
         _index.Add(menus);
         _index.Add(new GodotScreenProvider());

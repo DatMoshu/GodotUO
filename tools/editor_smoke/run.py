@@ -337,6 +337,16 @@ def main() -> int:
         print(f"[editor_smoke]        provenance: {art.get('provenance')}")
         for k in bad:
             print(f"[editor_smoke]        failed: {k}")
+    logs = report.get("logs") or {}
+    if logs:
+        checks = [k for k, v in logs.items() if v is True or v is False]
+        bad = [k for k in checks if logs[k] is False]
+        print(f"[editor_smoke]   {'ok  ' if logs.get('ok') else 'FAIL'} Logs    {len(checks) - len(bad)}/{len(checks)} checks: "
+              f"tail with a missing-then-created file, shared read, follow/pause, text and level filters, colours, find, "
+              f"secrets hidden, truncation and rotation, line cap, huge file tail, UTC beside local, remembered files, "
+              f"clean disposal; dock sources: {logs.get('views')}")
+        for k in bad:
+            print(f"[editor_smoke]        failed: {k}")
     overlay = world.get("overlay") or {}
     if overlay:
         print(f"[editor_smoke]   {'ok  ' if overlay.get('ok') else 'FAIL'} Overlay block 187,203: "

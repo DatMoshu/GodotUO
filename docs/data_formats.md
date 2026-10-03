@@ -1181,3 +1181,18 @@ containing a `*provenance.json` with a derived entry is refused by `tools/asset_
 **UO post-process** (every import path): alpha keyed at 50 % (UO has one-bit transparency); land masked to the
 44x44 diamond (larger whole multiples scaled with nearest sampling); statics trimmed of empty top rows and equal
 empty columns each side; reduced to 15-bit colour as the overlay stores it.
+
+---
+
+## 25. The Logs dock's file list (`build/editor_logs/sources.json`)
+
+The editor's Logs dock follows log files read only. The only thing it writes is this list of the files the user
+added with "Add file...", plus the line cap, in `build/editor_logs/sources.json` (never under `UO_CLIENT_DATA`,
+never committed): `{"format": 1, "cap": 5000, "files": [{"path": "<absolute path>"}]}`. `cap` is the number of
+lines each view keeps (100 to 200000). Only absolute paths are accepted. The list is the editor's own and is not
+exported anywhere. A missing or unreadable file is an empty list.
+
+The dock also reads, and never writes: the run bar's `build/editor_servers/profiles.json` (section 17's sibling,
+the selected profile's `ServerDirectory`, `ServerProject`, `Executable`, `ClientProject`), and the per-client
+console file the run bar redirects a client's output to, `build/editor_servers/<profile id>/clients/<n>/client.log`
+(plain UTF-8 text, one line per console line; the client writes its time in UTC).
