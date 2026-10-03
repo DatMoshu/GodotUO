@@ -233,6 +233,8 @@ install as whole replaced blocks. ADR-0011 has the reasoning.
 <UO_WORLD_PROJECT>/
   project.json                  name, format, the base install it was made on
   blocks/<facet>/<bx>_<by>.json one file per replaced 8x8 block
+  pins.json                     the editor's map bookmarks (ADR-0027), see below
+  regions/**/*.json             pack regions drawn by the Regions layer (section 12, kind `region`)
   .cache/                       scratch; safe to delete; never committed
 ```
 
@@ -260,6 +262,9 @@ and every static. A block not in the project is the install's.
 The block file mirrors the client's own block layout (`MapBlock`: a header
 and 64 cells of id and z; `StaticsBlock`: id, x, y, z, hue), so a project
 converts to `mapdif`/`stadif` or patched `map`/`statics` files without loss.
+**`pins.json`** (the Pins map layer): `{"format": 1, "pins": [{"name", "facet", "x", "y", "z", "note"}]}`,
+written whole on every change; the editor's own, never exported to a shard.
+
 That export, into the **shard's** data folder and never the install, is
 `tools/world` (phase 3). Extend this section before emitting a new field.
 
@@ -1109,3 +1114,29 @@ Taking a request is one transaction that moves `new` to `taken`, so no request i
 watchers. The first reply moves a request to `answered`. The JSON lines printed by `tail` and
 `watch-replies` use the keys `id, to, from, text, attachments, status, created, taken_by, taken_at` and
 `id, request_id, from, text, attachments, created`.
+
+
+## 22. Scene pack (`scene.json`, ADR-0027)
+
+The World tab's "Scene pack" button writes `build/scene_packs/<yyyyMMdd_HHmmss>/` (under `build/`, never
+committed, since it holds client art): `shot.png` (the world frame; absent when there is no display), one
+PNG per chosen render mode named after it (`height.png`, `walkability.png`, `land_mesh.png`, ...; the mode
+drawn over the shot when there is one, else on dark), and `scene.json`. Everything is the size of the
+viewport, so a pixel means the same thing in all of them. The editor sends the pack nowhere; reviewing it
+with a vision model is the user's own tool and key.
+
+| Field | Meaning |
+|---|---|
+| `format` | `1` |
+| `created` | ISO 8601 UTC |
+| `facet` | Map index |
+| `camera.centre` | `[x, y, z]` of the cell the view is centred on |
+| `camera.zoom`, `camera.viewport` | Zoom, and `[width, height]` in pixels |
+| `camera.sextant` | The centre as ModernUO's Sextant item reads it, e.g. `0°21'S 12°9'E` |
+| `shot` | `"shot.png"` or `null` |
+| `pixel_to_cell.origin` | Pixel of the centre cell's top corner (the point `(cx, cy, cz)`) |
+| `pixel_to_cell.x_step`, `y_step`, `z_step` | Pixel offset per +1 in x, y and z: `pixel(x,y,z) = origin + (x-cx)*x_step + (y-cy)*y_step + (z-cz)*z_step` |
+| `pixel_to_cell.grid` | Every 80 px: `{px, py, x, y}`, the (fractional) cell under that pixel on flat ground at the centre's z |
+| `modes[]` | `{name, file, summary, legend: [{label, colour "#rrggbb"}]}` per mode image |
+| `objects[]` | Up to 4000 statics, multi parts and placed items in view: `kind` (`static`, `multi`, `item`), `graphic` (`0x0E75`), `name`, `type` (the Types mode's word), `x, y, z, height`, and `box` `[x0, y0, x1, y1]` in pixels (the art's rectangle from its size; approximate) |
+| `layers` | One array per layer switched on: `{label, x, y, z, detail, px, py, on_view, sextant}` |

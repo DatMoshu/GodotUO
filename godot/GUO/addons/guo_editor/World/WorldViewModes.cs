@@ -55,6 +55,18 @@ public partial class WorldView
         lp.IdPressed += id => SetLayer(_mapLayers.All[(int)id].Name, !_mapLayers.All[(int)id].On);
         // AddCheckItem without an id numbers items by index, which is what IdPressed reports.
 
+        _scenePackButton = new Button
+        {
+            Text = "Scene pack",
+            TooltipText = "Write build/scene_packs/<time>/: the frame, an image of the chosen render mode (Height, Walkability and Types when none is), and scene.json. Nothing is sent anywhere.",
+        };
+        _scenePackButton.Pressed += () =>
+        {
+            string dir = WriteScenePack();
+            _status.Text = dir == null ? "Scene pack: the world is not up" : $"Scene pack written to {dir}";
+        };
+        row.AddChild(_scenePackButton);
+
         _cursor = new Label { Text = "", SizeFlagsHorizontal = SizeFlags.ExpandFill, ClipText = true };
         row.AddChild(_cursor);
     }
@@ -78,6 +90,10 @@ public partial class WorldView
 
         return true;
     }
+
+    /// <summary>Writes a scene pack of the view as it is (ADR-0027); the active mode, or Height, Walkability and Types. Returns its folder.</summary>
+    public string WriteScenePack(System.Collections.Generic.IEnumerable<string> modes = null, string root = null) =>
+        ScenePack.Write(this, _data, modes ?? (ViewMode.Length > 0 ? new[] { ViewMode } : ScenePack.DefaultModes), root);
 
     public string ViewMode => _modeNode?.ModeName ?? "";
 

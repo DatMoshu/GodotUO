@@ -101,6 +101,32 @@ public partial class EditorSmoke
             ModeExpect(_world.Minimap?.Layers == layers, "minimap_shares_layers");
         }));
 
+        // The scene pack: shot (windowed only), a mode image each, scene.json.
+        _steps.Add((2, () =>
+        {
+            _world.SetViewMode("Walkability");
+            string dir = _world.WriteScenePack(null, Path.Combine(_out, "scene_packs"));
+            _modesReport["scene_pack"] = dir;
+            ModeExpect(dir != null && File.Exists(Path.Combine(dir, "scene.json")) && File.Exists(Path.Combine(dir, "walkability.png")), "scene_pack_files");
+            if (dir == null)
+            {
+                return;
+            }
+
+            var scene = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(Path.Combine(dir, "scene.json")));
+            ModeExpect((int)scene["format"] == 1 && (int)scene["facet"] == 0 && (int)scene["camera"]["centre"][0] == ModeX, "scene_json_camera");
+            int objects = scene["objects"].AsArray().Count;
+            _modesReport["scene_objects"] = objects;
+            ModeExpect(objects > 20 && scene["layers"]["Regions"] != null && scene["modes"].AsArray().Count == 1, "scene_json_objects_layers_modes");
+            var first = scene["pixel_to_cell"]["grid"].AsArray()[5];
+            CellGeometry geo = _world.Modes.Context(false).Geo;
+            Vector2 back = geo.Project((float)first["x"], (float)first["y"], geo.CentreZ);
+            ModeExpect(Math.Abs(back.X - (int)first["px"]) <= 3 && Math.Abs(back.Y - (int)first["py"]) <= 3, "scene_json_pixel_to_cell_round_trips");
+            _world.SetViewMode("Off");
+            string defaults = _world.WriteScenePack(null, Path.Combine(_out, "scene_packs"));
+            ModeExpect(defaults != null && File.Exists(Path.Combine(defaults, "height.png")) && File.Exists(Path.Combine(defaults, "types.png")), "scene_pack_default_modes");
+        }));
+
         // Take the test objects away again.
         _steps.Add((2, () =>
         {

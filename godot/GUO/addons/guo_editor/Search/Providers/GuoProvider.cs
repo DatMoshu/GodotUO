@@ -69,6 +69,41 @@ public sealed class GuoProvider : SearchProvider
                 });
         }
 
+        // --- render modes and map layers (ADR-0027) ------------------------------
+        foreach (string mode in new[] { "Off" }.Concat(_ctx.World.Modes?.ModeNames ?? WorldModeNames()))
+        {
+            string m = mode;
+            Add("World", $"View: {m}", m == "Off" ? "World tab render mode: none" : "World tab render mode: recolour the world",
+                $"world view mode render diagnostic overlay {m}",
+                () =>
+                {
+                    _ctx.ShowWorldTab();
+                    _ctx.World.SetViewMode(m);
+                    SearchContext.Toast($"World view: {m}");
+                }, bonus: 8);
+        }
+
+        foreach (string layer in _ctx.World.LayerNames)
+        {
+            string l = layer;
+            Add("World", $"Layer: {l}", "World tab and minimap map layer", $"world map layer overlay show hide toggle {l}",
+                () =>
+                {
+                    _ctx.ShowWorldTab();
+                    bool on = !_ctx.World.LayerOn(l);
+                    _ctx.World.SetLayer(l, on);
+                    SearchContext.Toast($"World layer {l}: {(on ? "on" : "off")}");
+                }, bonus: 8);
+        }
+
+        Add("World", "Scene pack", "write the frame, mode images and scene.json under build/scene_packs", "scene pack export screenshot review modes json",
+            () =>
+            {
+                _ctx.ShowWorldTab();
+                string dir = _ctx.World.WriteScenePack();
+                SearchContext.Toast(dir == null ? "Scene pack: the world is not up" : $"Scene pack written to {dir}");
+            });
+
         foreach (WorldTool tool in Enum.GetValues<WorldTool>())
         {
             WorldTool t = tool;
@@ -183,6 +218,8 @@ public sealed class GuoProvider : SearchProvider
                 }
             });
     }
+
+    private static IEnumerable<string> WorldModeNames() => WorldModeList.All().Select(m => m.Name);
 
     private void Add(string kind, string title, string hint, string tags, Action run, int bonus = 0)
     {
