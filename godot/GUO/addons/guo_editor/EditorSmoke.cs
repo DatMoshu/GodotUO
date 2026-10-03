@@ -243,6 +243,15 @@ public partial class EditorSmoke : Node
                 // The art pipeline (ADR-0029): exchange folder, watcher, post-process, stub services.
                 if (StepArt())
                 {
+                    _stage = 65;
+                }
+
+                break;
+
+            case 65:
+                // The Map Generator (ADR-0030): schema, determinism, a pass toggle, export.
+                if (StepMapGen())
+                {
                     // Phase 5: the asset overlay, before the World tab boots
                     // so the world's own loaders get it too.
                     RunAssets();

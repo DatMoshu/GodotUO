@@ -1,0 +1,71 @@
+{
+  "name": "Test (no POI / no stamps)",
+  "description": "Validation preset for land/statics/transitions iteration. Climate tuned for visible biome variety (forest + grass + mountain + thin shoreline). Disables every pass that places buildings or POI/road graphics. Output exercises terrain shaping, biome assignment, transitions (incl. mountain↔grass), mountain shape, coast terraces, river bank smoothing, road centerline painting, and biome static scatter. Designed to render the right-half of the original Felucca map for side-by-side comparison.",
+  "seed": 7,
+  "passes": {
+    "Noise Height": {
+      "Octaves": 6,
+      "BaseFrequency": 0.0036,
+      "Lacunarity": 2.1,
+      "Gain": 0.5,
+      "VerticalScale": 88,
+      "ContinentFalloff": 0.2
+    },
+    "Hydraulic Erosion": {
+      "DropletCount": 60000,
+      "Lifetime": 28
+    },
+    "Mountain Shape": {
+      "SlopeThreshold": 14,
+      "MinRegionSize": 9,
+      "PeakSplatterFreq": 350,
+      "PeakAltitudeVariance": 6
+    },
+    "Moisture & Climate": {
+      "MoisturePerSeaCell": 2.5,
+      "LandDecay": 0.002,
+      "BaseTemperature": 140
+    },
+    "Biome Assign": {
+      "SeaLevelZ": 0,
+      "MountainZ": 32,
+      "SnowTemperature": 30,
+      "DesertMoistureMax": 20,
+      "ForestMoistureMin": 150,
+      "SwampMoistureMin": 200,
+      "WetlandMoistureMin": 230,
+      "JungleTemperature": 188
+    },
+    "Biome Altitude Jitter": {
+      "Frequency": 700,
+      "SandJitter": 0
+    },
+    "Coast Terrace": {
+      "MinCliffHeight": 8,
+      "TerraceBandWidth": 2,
+      "TerraceStepZ": 4
+    },
+    "Land Transitions": {
+      "MinSourceBand": 2
+    },
+    "River Carve": {
+      "SourceCount": 48,
+      "MinSourceZ": 14,
+      "BankBand": 2
+    },
+    "Forest Scatter": {
+      "DensityMultiplier": 2.5,
+      "MinRadius": 3,
+      "MaxSlope": 28
+    },
+    "Biome Static Scatter": {
+      "DensityMultiplier": 1.5,
+      "MinRadius": 4,
+      "MaxSlope": 28
+    }
+  },
+  "disable_passes": [
+    "POI Stamps",
+    "Road Stamps"
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "name": "Jungle Continent",
+  "description": "Dense jungle continent — high moisture, lots of trees, many rivers, fewer towns.",
+  "seed": 99,
+  "passes": {
+    "Noise Height": {
+      "Octaves": 5,
+      "BaseFrequency": 0.0035,
+      "VerticalScale": 56,
+      "ContinentFalloff": 0.4
+    },
+    "Moisture & Climate": {
+      "MoisturePerSeaCell": 2.4,
+      "BaseTemperature": 230
+    },
+    "Biome Assign": {
+      "SwampMoistureMin": 195,
+      "WetlandMoistureMin": 225,
+      "JungleTemperature": 185,
+      "ForestMoistureMin": 70,
+      "DesertMoistureMax": 8
+    },
+    "Forest Scatter": {
+      "DensityMultiplier": 1.6,
+      "MinRadius": 3
+    },
+    "River Carve": {
+      "SourceCount": 64
+    },
+    "POI Stamps": {
+      "ControlPointsPerQuadrant": 2,
+      "DungeonsPerQuadrant": 2
+    }
+  }
+}

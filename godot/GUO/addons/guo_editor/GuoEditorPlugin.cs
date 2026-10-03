@@ -39,6 +39,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
     private StoreView _store;
     private ArtDock _art;
     private LogsDock _logs;
+    private MapGenView _mapgen;
     private SearchPopup _search;
 
     // Whether the World tab was on screen when an assembly reload began.
@@ -48,6 +49,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
     private bool _worldWasVisible;
     private bool _assetsWasVisible;
     private bool _storeWasVisible;
+    private bool _mapgenWasVisible;
 
     private const string ResetMenuLabel = "Reset GUO layout";
 
@@ -56,6 +58,9 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
 
     /// <summary>The UO Store view, for <see cref="GuoStorePlugin"/> to show and hide with its tab.</summary>
     public static StoreView StoreMain { get; private set; }
+
+    /// <summary>The Map Generator view, for <see cref="GuoMapGenPlugin"/> to show and hide with its tab.</summary>
+    public static MapGenView MapGenMain { get; private set; }
 
     public const string WorldTabName = "UO World";
 
@@ -152,6 +157,14 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         // tasks, which TearDown cancels.
         _logs = new LogsDock();
         AddDock(_logs);
+
+        // The Map Generator (ADR-0030): a main-screen tab (GuoMapGenPlugin owns its button). It runs
+        // tools/mapgen as a process and opens what it exports in the World tab.
+        _mapgen = new MapGenView { OpenInWorld = OpenGeneratedWorld };
+        MapGenMain = _mapgen;
+        EditorInterface.Singleton.GetEditorMainScreen().AddChild(_mapgen);
+        _mapgen.Visible = _mapgenWasVisible;
+        _mapgenWasVisible = false;
 
         // Start server, start clients: on the toolbar, always one click away.
         _run = new RunBar();
@@ -267,8 +280,26 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         }
     }
 
+    /// <summary>Opens a generated world project in the World tab at a cell.</summary>
+    private void OpenGeneratedWorld(string root, int facet, int x, int y)
+    {
+        ShowInWorld(facet, x, y);
+        _world?.OpenProject(root);
+    }
+
     private void TearDown()
     {
+        if (_mapgen != null)
+        {
+            // Stops a generator run in progress before a reload.
+            _mapgen.Shutdown();
+            _mapgenWasVisible = _mapgen.Visible;
+            _mapgen.GetParent()?.RemoveChild(_mapgen);
+            _mapgen.QueueFree();
+            _mapgen = null;
+            MapGenMain = null;
+        }
+
         SearchPopup.Remove(_search);
         _search = null;
 

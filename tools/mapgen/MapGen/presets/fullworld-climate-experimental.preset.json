@@ -1,0 +1,74 @@
+{
+  "name": "Fullworld Climate Experimental (ProjectCog port)",
+  "description": "DIAGNOSTIC PRESET — fullworld-grassland baseline (7168x4096) with the four ProjectCog climate-stack ports layered on top: anisotropic ridge fBm, multiplicative peak erosion, domain warp on T/H sample coords, and equator-gradient biome-threshold bias. Used to validate whether the latitude-band artifacts seen in the 512x512 Biome Lab sandbox are a scale artifact (small fetch distance) or a real per-row bug in the equator bias. KNOWN ISSUE: equator bias is currently computed per-row inside BiomeAssignPass, so horizontal bands may persist even with domain warp on; if visible at this scale, Phase B per-cell fix is needed. Same climate-sweep calibration as fullworld-grassland (MoisturePerSeaCell=0.4, LandDecay=0.15) so coastlines saturate ~640 sea tiles and dry interiors drift through forest -> grass -> savanna -> desert as expected.",
+  "seed": 1234567,
+  "passes": {
+    "Noise Height": {
+      "Octaves": 7,
+      "BaseFrequency": 0.0035,
+      "Lacunarity": 2.1,
+      "Gain": 0.5,
+      "VerticalScale": 88,
+      "ContinentFalloff": 0.3,
+      "RidgeStrength": 0.35,
+      "RidgeFreqShort": 0.035,
+      "RidgeFreqLong": 0.008,
+      "RidgeOctaves": 4,
+      "PeakErosionStrength": 0.4,
+      "PeakErosionFrequency": 0.04,
+      "PeakErosionOctaves": 3
+    },
+    "Mountain Shape": {
+      "SlopeThreshold": 4,
+      "MinRegionSize": 6,
+      "AltitudeBandsCsv": "20,30,50,60,65,70",
+      "PeakSplatterFreq": 350,
+      "PeakAltitudeVariance": 6
+    },
+    "Moisture & Climate": {
+      "WindDirectionDeg": 180,
+      "Bidirectional": true,
+      "MoisturePerSeaCell": 0.4,
+      "LandDecay": 0.15,
+      "RainShadowZ": 55,
+      "BaseTemperature": 195,
+      "LapseRate": 1.5,
+      "LatitudeFalloff": 0.7,
+      "DomainWarpAmplitude": 48.0,
+      "DomainWarpFrequency": 0.0035
+    },
+    "Biome Assign": {
+      "SeaLevelZ": 0,
+      "MountainZ": 50,
+      "SnowTemperature": 30,
+      "TundraTemperature": 60,
+      "DesertMoistureMax": 28,
+      "ForestMoistureMin": 210,
+      "DenseForestMoistureMin": 245,
+      "JungleTemperature": 192,
+      "SavannaTemperature": 188,
+      "SwampMoistureMin": 200,
+      "WetlandMoistureMin": 230,
+      "LowlandZWindow": 5,
+      "SwampMinDistFromWater": 2,
+      "SwampPatchNoiseScale": 0.08,
+      "SwampPatchThreshold": 0.35,
+      "EquatorBiasStrength": 1.0,
+      "EquatorForestShift": 30,
+      "EquatorDesertShift": 15,
+      "EquatorJungleShift": 25,
+      "EquatorSnowShift": 20
+    },
+    "Coast Smooth": {
+      "BeachBand": 2
+    },
+    "Forest Scatter": {
+      "DensityMultiplier": 0.9,
+      "MinRadius": 4
+    },
+    "POI Stamps": {
+      "ControlPointsPerQuadrant": 2,
+      "DungeonsPerQuadrant": 1
+    }
+  }
+}

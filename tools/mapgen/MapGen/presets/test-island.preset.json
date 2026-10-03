@@ -1,0 +1,35 @@
+{
+  "name": "Test Island (1024, thin beaches)",
+  "description": "Single-island preset for tools/scripts/mapgen/test-island-roundtrip.bat. Inherits defaults from test-no-poi but trims the sand frontier and dug-shore band so the larger 1024x1024 canvas devotes more area to interior biomes (snow, jungle, desert, swamp) instead of coast. Pair with test-paint-island.ps1 -Size 1024.",
+  "seed": 1234567,
+  "passes": {
+    "Biome Assign": {
+      "SeaLevelZ": 0,
+      "MountainZ": 32,
+      "SnowTemperature": 30,
+      "DesertMoistureMax": 20,
+      "ForestMoistureMin": 150,
+      "SwampMoistureMin": 200,
+      "WetlandMoistureMin": 230,
+      "JungleTemperature": 188
+    },
+    "Land Transitions": {
+      "MinSourceBand": 2
+    },
+    "Dig Shore": {
+      "SandExtension": 1,
+      "DigBandWidth": 2,
+      "SandExtensionZ": -2
+    },
+    "Coast Smooth": {
+      "BeachBand": 1
+    }
+  },
+  "disable_passes": [
+    "POI Stamps",
+    "Road Stamps",
+    "River Carve",
+    "Road Graph",
+    "Road Centerline"
+  ]
+}

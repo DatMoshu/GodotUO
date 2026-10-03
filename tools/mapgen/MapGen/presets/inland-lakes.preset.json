@@ -1,0 +1,62 @@
+{
+  "name": "Inland Lakes (No Ocean)",
+  "description": "Full continent map with NO edge ocean — every water tile is an interior lake formed by deep noise valleys. Shape falloff disabled so the landmass fills the entire canvas. SeaLevelZ pulled well below the noise minimum so only the deepest depressions become water (~5-10% lake coverage). Swamps spawn inland of every lake via the SwampMinDistFromWater berm + patch-noise interleaving committed in this session.",
+  "seed": 8675309,
+  "passes": {
+    "Noise Height": {
+      "Octaves": 7,
+      "BaseFrequency": 0.003,
+      "Lacunarity": 2.1,
+      "Gain": 0.5,
+      "VerticalScale": 96,
+      "Shape": "Radial",
+      "ShapeStrength": 0.0,
+      "ContinentFalloff": 0.0
+    },
+    "Mountain Shape": {
+      "SlopeThreshold": 4,
+      "MinRegionSize": 6,
+      "AltitudeBandsCsv": "20,30,50,60,65,70",
+      "PeakSplatterFreq": 350,
+      "PeakAltitudeVariance": 6
+    },
+    "Moisture & Climate": {
+      "WindDirectionDeg": 180,
+      "Bidirectional": true,
+      "MoisturePerSeaCell": 0.9,
+      "LandDecay": 0.02,
+      "RainShadowZ": 50,
+      "BaseTemperature": 170,
+      "LapseRate": 1.6,
+      "LatitudeFalloff": 0.25
+    },
+    "Biome Assign": {
+      "SeaLevelZ": -32,
+      "MountainZ": 32,
+      "SnowTemperature": 30,
+      "TundraTemperature": 45,
+      "DesertMoistureMax": 30,
+      "ForestMoistureMin": 205,
+      "DenseForestMoistureMin": 240,
+      "SavannaTemperature": 256,
+      "JungleTemperature": 256,
+      "SwampMoistureMin": 195,
+      "WetlandMoistureMin": 225,
+      "LowlandZWindow": 4,
+      "SwampMinDistFromWater": 2,
+      "SwampPatchNoiseScale": 0.08,
+      "SwampPatchThreshold": 0.35
+    },
+    "Coast Smooth": {
+      "BeachBand": 1
+    },
+    "Forest Scatter": {
+      "DensityMultiplier": 1.1,
+      "MinRadius": 4
+    },
+    "POI Stamps": {
+      "ControlPointsPerQuadrant": 2,
+      "DungeonsPerQuadrant": 1
+    }
+  }
+}

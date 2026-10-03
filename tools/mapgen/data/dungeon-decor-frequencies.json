@@ -1,0 +1,62 @@
+{
+  "_comment": "Decor tile catalogue for DungeonDecorScatterPass. Hand-curated MVP from canonical UO dungeon static IDs (bones, gore, torches, web, urns, barrels). Replace with DungeonDecorMinerPass output (Despise/Wrong/Deceit static dump) when implemented. Weight = relative selection probability inside the category.",
+  "source": "hand-curated MVP",
+  "wall_tiles":  [
+    { "id": "0x008E", "weight": 1 }
+  ],
+  "floor_tiles": [
+    { "id": "0x0513", "weight": 1 }
+  ],
+  "decor": {
+    "bones": [
+      { "id": "0x0ECA", "weight": 3 },
+      { "id": "0x0ECB", "weight": 3 },
+      { "id": "0x0ECC", "weight": 2 },
+      { "id": "0x0ECD", "weight": 2 },
+      { "id": "0x0ECE", "weight": 2 },
+      { "id": "0x0ECF", "weight": 1 },
+      { "id": "0x0ED0", "weight": 1 },
+      { "id": "0x0ED1", "weight": 1 },
+      { "id": "0x0ED2", "weight": 1 }
+    ],
+    "blood": [
+      { "id": "0x122A", "weight": 2 },
+      { "id": "0x122B", "weight": 2 },
+      { "id": "0x122C", "weight": 1 },
+      { "id": "0x122D", "weight": 1 },
+      { "id": "0x122E", "weight": 1 },
+      { "id": "0x122F", "weight": 1 }
+    ],
+    "web": [
+      { "id": "0x10D7", "weight": 2 },
+      { "id": "0x10D8", "weight": 2 },
+      { "id": "0x10D9", "weight": 1 },
+      { "id": "0x10DA", "weight": 1 },
+      { "id": "0x10DB", "weight": 1 }
+    ],
+    "torches": [
+      { "id": "0x0A12", "weight": 2 },
+      { "id": "0x0A15", "weight": 1 },
+      { "id": "0x0B26", "weight": 1 }
+    ],
+    "urns": [
+      { "id": "0x0E20", "weight": 2 },
+      { "id": "0x0E21", "weight": 1 },
+      { "id": "0x0E7B", "weight": 1 }
+    ],
+    "barrels_crates": [
+      { "id": "0x0E77", "weight": 3 },
+      { "id": "0x0E7F", "weight": 2 },
+      { "id": "0x0E3F", "weight": 2 },
+      { "id": "0x0E42", "weight": 1 }
+    ]
+  },
+  "density_by_room_kind": {
+    "Boss":     { "bones": 0.06, "blood": 0.04, "web": 0.02, "torches": 0.008, "urns": 0.01, "barrels_crates": 0.005 },
+    "Elite":    { "bones": 0.04, "blood": 0.02, "web": 0.02, "torches": 0.008, "urns": 0.015, "barrels_crates": 0.01 },
+    "Trash":    { "bones": 0.02, "blood": 0.01, "web": 0.015,"torches": 0.005, "urns": 0.02, "barrels_crates": 0.02 },
+    "Treasure": { "bones": 0.01, "blood": 0.005,"web": 0.01, "torches": 0.012, "urns": 0.03, "barrels_crates": 0.02 },
+    "Empty":    { "bones": 0.005,"blood": 0.0,  "web": 0.01, "torches": 0.0,   "urns": 0.005,"barrels_crates": 0.005 },
+    "Corridor": { "bones": 0.005,"blood": 0.002,"web": 0.005,"torches": 0.0,   "urns": 0.0,  "barrels_crates": 0.0 }
+  }
+}

@@ -70,6 +70,12 @@ REM  install, never written into it. See docs\data_formats.md section 9 and
 REM  docs\architecture\ADR-0011-world-project-overlay.md.
 if not defined UO_WORLD_PROJECT     set "UO_WORLD_PROJECT=%UO_ROOT%\build\world\default"
 
+REM --- Map generator (tools\mapgen, ADR-0030) -------------------------------
+REM  Per-user generator data: everything mined from your client data (stamp
+REM  library, coast atlas, tree statics) and the validator's reports. GUO never
+REM  ships it. Keep it OFF the repo tree. See docs\data_formats.md section 26.
+if not defined UO_MAPGEN_DATA       set "UO_MAPGEN_DATA=%LOCALAPPDATA%\GUO\mapgen"
+
 REM  The live tier: the editor bridge of the shard the UO Shard dock connects
 REM  to (tools\editor_shard\bridge; the private instance by default), and the
 REM  name this editor shows to other editors there. ADR-0012.

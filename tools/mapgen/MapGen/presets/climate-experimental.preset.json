@@ -1,0 +1,59 @@
+{
+  "name": "Climate Experimental (ProjectCog port, 512 sandbox)",
+  "description": "Demonstrates the four climate-stack ports from ProjectCog: anisotropic ridge fBm (directional mountain chains), multiplicative peak erosion (weathered ridges), domain warp on T/H fields (organic latitude/wind bends), and equator-gradient biome-threshold bias. CALIBRATED FOR 512x512 BIOME LAB SANDBOX — the moisture sweep is scale-dependent, so MoisturePerSeaCell/LandDecay/ForestMoistureMin are tuned for short fetches. Target histogram: ~40% land, with Grassland/Forest/DenseForest/Desert all present plus polar Snow + equatorial Jungle. Compare in Biome Lab → tick Compare A|B → load 'Fullworld Grassland' in Slot B (visible as the no-climate-stack baseline).",
+  "seed": 1234567,
+  "passes": {
+    "Noise Height": {
+      "Octaves": 6,
+      "BaseFrequency": 0.0055,
+      "Lacunarity": 2.1,
+      "Gain": 0.5,
+      "VerticalScale": 88,
+      "ContinentFalloff": 0.3,
+      "RidgeStrength": 0.35,
+      "RidgeFreqShort": 0.035,
+      "RidgeFreqLong": 0.008,
+      "RidgeOctaves": 4,
+      "PeakErosionStrength": 0.4,
+      "PeakErosionFrequency": 0.04,
+      "PeakErosionOctaves": 3
+    },
+    "Moisture & Climate": {
+      "WindDirectionDeg": 180,
+      "Bidirectional": true,
+      "MoisturePerSeaCell": 2.0,
+      "LandDecay": 0.075,
+      "RainShadowZ": 55,
+      "BaseTemperature": 195,
+      "LapseRate": 1.5,
+      "LatitudeFalloff": 0.7,
+      "DomainWarpAmplitude": 18.0,
+      "DomainWarpFrequency": 0.012
+    },
+    "Biome Assign": {
+      "SeaLevelZ": 0,
+      "MountainZ": 50,
+      "SnowTemperature": 73,
+      "TundraTemperature": 100,
+      "DesertMoistureMax": 28,
+      "ForestMoistureMin": 85,
+      "DenseForestMoistureMin": 180,
+      "JungleTemperature": 192,
+      "SavannaTemperature": 188,
+      "SwampMoistureMin": 200,
+      "WetlandMoistureMin": 230,
+      "LowlandZWindow": 5,
+      "SwampMinDistFromWater": 2,
+      "SwampPatchNoiseScale": 0.08,
+      "SwampPatchThreshold": 0.35,
+      "EquatorBiasStrength": 1.0,
+      "EquatorForestShift": 15,
+      "EquatorDesertShift": 10,
+      "EquatorJungleShift": 25,
+      "EquatorSnowShift": 30
+    },
+    "Coast Smooth": {
+      "BeachBand": 2
+    }
+  }
+}

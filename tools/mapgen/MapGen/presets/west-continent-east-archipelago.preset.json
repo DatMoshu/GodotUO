@@ -1,0 +1,56 @@
+{
+  "name": "West Continent + East Archipelago",
+  "description": "One big landmass on the west half (offset-radial, leaves ~15% margin from the map edges) paired with scattered archipelago islands on the east half. Central meridional strait stays open. Biome thresholds match two-continent-strait so Snow/Tundra/Jungle/Savanna/Swamp/Wetland/DenseForest all spawn.",
+  "seed": 49374,
+  "passes": {
+    "Noise Height": {
+      "Octaves": 7,
+      "BaseFrequency": 0.0035,
+      "Lacunarity": 2.1,
+      "Gain": 0.5,
+      "VerticalScale": 96,
+      "Shape": "WestContinentEastArchipelago",
+      "ShapeStrength": 0.55,
+      "ArchipelagoScale": 0.014,
+      "ContinentFalloff": 0.0
+    },
+    "Mountain Shape": {
+      "SlopeThreshold": 4,
+      "MinRegionSize": 6,
+      "AltitudeBandsCsv": "20,30,50,60,65,70",
+      "PeakSplatterFreq": 350,
+      "PeakAltitudeVariance": 6
+    },
+    "Moisture & Climate": {
+      "WindDirectionDeg": 180,
+      "Bidirectional": true,
+      "MoisturePerSeaCell": 0.08,
+      "LandDecay": 0.15,
+      "RainShadowZ": 50,
+      "BaseTemperature": 220,
+      "LapseRate": 1.6,
+      "LatitudeFalloff": 0.7
+    },
+    "Biome Assign": {
+      "SeaLevelZ": 0,
+      "MountainZ": 38,
+      "SnowTemperature": 50,
+      "TundraTemperature": 95,
+      "DesertMoistureMax": 25,
+      "ForestMoistureMin": 200,
+      "DenseForestMoistureMin": 240,
+      "SavannaTemperature": 175,
+      "JungleTemperature": 195,
+      "SwampMoistureMin": 220,
+      "WetlandMoistureMin": 235,
+      "LowlandZWindow": 4
+    },
+    "Coast Smooth": {
+      "BeachBand": 2
+    },
+    "Forest Scatter": {
+      "DensityMultiplier": 1.0,
+      "MinRadius": 4
+    }
+  }
+}

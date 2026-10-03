@@ -1,0 +1,39 @@
+{
+  "name": "Maze (Stone walls + marble floor)",
+  "description": "Recursive-backtracker maze over the entire scope. 3-wide corridors (marble floor 0x0513) separated by 1-tile stone walls (0x008E). Pair with paint-maze.ps1 (flat grass terrain) and make-maze.bat. Default 512x512 scope = ~128x128 maze cells.",
+  "seed": 1337,
+  "passes": {
+    "Maze Stamp": {
+      "CorridorWidth": 3,
+      "WallThickness": 1,
+      "WallId": 128,
+      "FloorId": 1299,
+      "FlattenZ": true,
+      "FloorZ": 0,
+      "PlaceFloor": true,
+      "WallIdNS": 130,
+      "WallIdEW": 129
+    }
+  },
+  "disable_passes": [
+    "Hydraulic Erosion",
+    "Mountain Shape",
+    "Biome Altitude Jitter",
+    "Coast Smooth",
+    "Auto Coast",
+    "Dig Shore",
+    "Coast Terrace",
+    "Land Transitions",
+    "Cliff Edge",
+    "River Carve",
+    "POI Stamps",
+    "Road Graph",
+    "Road Centerline",
+    "Road Stamps",
+    "Forest Scatter",
+    "Biome Static Scatter",
+    "Mountain Edge Statics",
+    "Mountain Path",
+    "Cave Wall Statics"
+  ]
+}
