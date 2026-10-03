@@ -1390,3 +1390,53 @@ group is `{name, freq, any[] or sets[]}`:
 Ground-cover groups name no tree and hold no trunk or canopy: trees are Forest Scatter's.
 
 ### `presets` → `{"schema": "guo.mapgen.presets/1", "presets": [...]}`
+
+## 27. Multi styles, generator operations and the legacy formats (`tools/multi`)
+
+Section 16 describes what a multi is and how a description is built. This section is what the editor's
+Generate panel and the generators share. (If another branch also takes 27, renumber at merge.)
+
+**Style catalogue** (`guo.multi.styles/1`). Files: `tools/multi/styles/*.json` (hand-authored, committed,
+provenance in the file) and the user's own `build/multi/styles/*.json` (`run.py styles --mine`, mined from the
+client's multis, never committed); later files win. `{"format": "guo.multi.styles/1", "provenance", "styles":
+{key: style}}`. A style is keyed by piece role; ids are hex strings (or a list of variants, the first preferred):
+
+| Field | Meaning |
+|---|---|
+| `name`, `material`, `hues` | Display name, material family, allowed hues (empty: unrestricted) |
+| `z` | `floor` (7), `storey` (20), `wall` (19), `roof_step` (3), `stair_step` (5), `stair_block` (10) |
+| `walls`, `foundation`, `parapet`, `trim`, `gable_fill` | A **run set**: `height`, `EW` (along x, draws its cell's south edge), `NS` (along y, east edge), `post`, `corners` `{NW, NE, SW, SE}` (the corner's place on the building; NW is the back post, SE the front corner showing both faces), `junctions` `{EW, NS}`. A missing corner falls back to the straights, a missing post to the NW corner, each noted |
+| `windows[]` | Sets `{EW, NS}`; a house picks one by seed |
+| `doors` | `kind` (`wood`, `metal`, ...) -> `{type, EW: {closed, open}, NS: {closed, open}}`: real door ids with their open pairs, and the ModernUO door type for the sidecar |
+| `floors[]` | `{id, weight}` |
+| `roof` | `gable` `{N, S, E, W, ridge_x, ridge_y}`, `hip` `{NW, NE, SW, SE, cap}`, `flat` (an id), `eaves` (optional sides) |
+| `stairs` | `straight` `{N, E, S, W}` (the piece rising that way), `turned` (optional own pieces), `ladder` (optional id), `block` (the solid under a step) |
+
+**Operations** (`run.py house|autowall|roof|stairs|rotate|mirror|import|export|styles`, JSON via `--in`,
+`--json` or stdin, result to stdout or `--out`; `run.py serve` answers one request per line, `{"op": ..., ...}`).
+Every answer has `components` (`[item, x, y, z]`, a fifth element `0` when hidden), `notes`, `ms`, or `error`.
+Same parameters and seed, same bytes.
+
+- `autowall`: `style`, `path` (points; diagonals become stepped runs), `closed`, `z`, `storeys`, `window_every`,
+  `window_offset`, `door` (`{index|at, kind, storey}` or false), `existing` (cells already walls, for joins).
+  Also returns `doors` and `windows`.
+- `roof`: `style`, `kind` (`gable|hip|flat`), `boxes` (wall boxes, or `{box, z, ridge}`), `z`, `ridge`, `parapet`,
+  `fill`. Courses 3 z apart; a gable with an odd span is widened by one, with a note.
+- `stairs`: `style`, `at`, `rise`, `kind` (`straight|turned|ladder`), `turn` (`left|right`), `width`, `steps`, `z`,
+  `open` (box or cells the flight may stand on), `above` `{box, z, floor}`. Returns `holes` (cells the floor above
+  must leave open), `arrive`, `foot`; with `above` the floor above is laid with the hole cut.
+- `house`: `style`, `seed`, `shape` (`rect|L|T|U|cross`), `width`, `depth`, `storeys` (1-3), `rooms`, `roof`
+  (`gable|hip|flat|none`), `porch`, `balcony`, `windows`, `window_every`, `foundation`, `vary_wings`, `door`, `yard`.
+  Returns the section 16 `description` it expanded, the doors, `stops`, `centre`, and `problems` from the validator.
+- `rotate` (`turns` 1-3, clockwise seen from above) and `mirror` (`axis` `x`: east becomes west, `y`):
+  `components` in and out. Wall pieces move by edge, not cell (a mirrored east face is a west face, which is the next
+  cell's east edge); a corner drawing both faces splits into its straights. Ids come from `guo.multi.orient/1`
+  (`wall` `{id: {axis, ew, ns}}`, `map` `{rot90, mirror_x, mirror_y: {id: id}}`, `door_bases`), built from the styles,
+  and with `run.py orient-table` from the mined catalogue and tiledata names.
+- `import` / `export`: `format` is one of `txt` (UOFiddler and Ultima SDK text, `0xID x y z flags`), `uoa` (UO Architect
+  text, 4 header lines), `uoab` (UO Architect binary designs, version 1 or 2), `wsc`, `csv-punt`, `csv-swerv`,
+  `centred` (CentrED# `id,x,y,z,hue,flags`) and `uox3`. Import detects the format from the name and head and recentres.
+
+The validator (section 16) also refuses a roof with floor open to the sky, a door with nowhere to stand on a side, and
+a stair whose foot is unreachable, whose arrival is not floor above, whose hole is not cut, or that does not climb the
+gap between its storeys.

@@ -130,3 +130,7 @@ python tools\multi\run.py scene-prove <name> --stage build\uodata\<stage> --at X
   interior.
 - Confidential projects stay in the terminal. Post nothing unless the owner
   says so.
+
+## Generators and styles
+
+For a quick start or an editor panel, `run.py house|autowall|roof|stairs|rotate|mirror|import|export` (JSON in and out, deterministic by seed) build from the style catalogue (`run.py styles`; data_formats section 27). Mine the client's own styles with `run.py styles --mine` (local, never committed). Check the result with the validator problems it returns, then continue with build, write and prove.
