@@ -52,9 +52,14 @@ corners are 0x3DDB–0x3DE8. Felucca draws three of the four inner corners with 
 (0x3DED, 0x3DEE, 0x3DEF: about 900 corners each) and the south-west one with 0x3DC2. Swamp Surface draws
 grass against moss from the existing `Grassland>Swamp` pair.
 
-Not drawn yet, found while measuring: Felucca's shallows are a seabed of land tiles (0x64 flat and its
-slopes 0x58–0x63) under water statics, with sand behind. The generator draws open water tiles instead,
-and the table stands sand plain against them.
+**Shallows (2026-10-03).** Felucca's shallows are a seabed of land tiles 10 below the water statics
+(z −15 under statics at −5), up to about ten cells out from the shore, then open water tiles at −5.
+The seabed comes in three bands: a light ring (0x4C–0x57) next to the shore, a mid ring (0x58–0x63)
+and the flat bed (0x64). The rings' twelve tiles each are edge shapes, read from the owner's Felucca:
+for each tile, which side holds the deeper bed (light ring) or the shore (mid ring). On the dry side,
+rippled wet sand (0x1A with the water north or east, 0x1B south or west, 0x1C around) lines the
+waterline. Dig Shore digs the band; the Shallows pass gives it these shapes. The counts stay on the
+owner's machine.
 
 ## GUO's scatter table (2026-10-03)
 
