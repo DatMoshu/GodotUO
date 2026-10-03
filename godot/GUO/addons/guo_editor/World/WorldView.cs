@@ -21,6 +21,11 @@ public partial class WorldView : VBoxContainer
     private readonly WorldHost _host = new();
     private readonly WorldEditor _editor;
     private WorldGuides _guides;
+    private WorldModes _modeNode;
+    private LegendChip _chip;
+    private MenuButton _viewMenu, _layerMenu;
+    private Label _cursor;
+    private readonly MapLayers _mapLayers;
     private OptionButton _tool;
     private SpinBox _hue;
     private Label _brush;
@@ -120,6 +125,16 @@ public partial class WorldView : VBoxContainer
     private Guid? _moving;
     public WorldGuides Guides => _guides;
 
+    /// <summary>The render modes' host (ADR-0027), for the smoke check, the tour and F3.</summary>
+    internal WorldModes Modes => _modeNode;
+
+    /// <summary>The map layers drawn on this view and on the minimap.</summary>
+    internal MapLayers Layers => _mapLayers;
+
+    internal LegendChip Chip => _chip;
+    internal MenuButton ViewMenu => _viewMenu;
+    internal MenuButton MapLayersMenu => _layerMenu;
+
     /// <summary>The tool a left click uses.</summary>
     public WorldTool Tool
     {
@@ -167,9 +182,15 @@ public partial class WorldView : VBoxContainer
             UpdateStatus();
             _status.Text = what;
         };
+        _mapLayers = new MapLayers(_host)
+        {
+            ProjectRoot = () => _host.Project?.Root,
+            Objects = () => _objects.Objects,
+        };
         _editor = new WorldEditor(_host);
         _editor.Changed += what =>
         {
+            _modeNode?.Invalidate();
             UpdateStatus();
             _status.Text = $"{what}   (undo {_editor.UndoCount}, redo {_editor.RedoCount})";
         };
@@ -277,6 +298,8 @@ public partial class WorldView : VBoxContainer
         MenuToggle(_guideMenu, "Blocks", true, v => _guides.Blocks = v);
         MenuToggle(_guideMenu, "Minimap", true, v => _minimap.Visible = v);
 
+        BuildModeRow();
+
         _stage = new Control
         {
             SizeFlagsVertical = SizeFlags.ExpandFill,
@@ -298,6 +321,7 @@ public partial class WorldView : VBoxContainer
         // The minimap: a radar around the camera in a corner of the view.
         _minimap = new MiniMap { Name = "MiniMap" };
         _minimap.Jump += (x, y) => GoTo(_host.Facet, x, y);
+        _minimap.Layers = _mapLayers;
         _stage.AddChild(_minimap);
 
         _viewport = new SubViewport
@@ -316,6 +340,15 @@ public partial class WorldView : VBoxContainer
         _guides = new WorldGuides { Name = "Guides" };
         _guides.Attach(_host);
         _viewport.AddChild(_guides);
+
+        // After the guides: the active render mode and the map layers (ADR-0027).
+        _modeNode = new WorldModes { Name = "Modes" };
+        _modeNode.Attach(_host);
+        _modeNode.Layers = _mapLayers;
+        _viewport.AddChild(_modeNode);
+
+        _chip = new LegendChip { Name = "Legend", Visible = false, Position = new Vector2(10, 10) };
+        _stage.AddChild(_chip);
 
         VisibilityChanged += OnVisibilityChanged;
     }
@@ -392,6 +425,8 @@ public partial class WorldView : VBoxContainer
         _editor.Clear();
         _moving = null;
         WorldProject project = _host.OpenProject(root);
+        _mapLayers.ProjectChanged();
+        _modeNode?.Invalidate();
         _objects.Open(project?.Root);
         UpdateStatus();
         return project;
@@ -470,6 +505,7 @@ public partial class WorldView : VBoxContainer
         }
 
         _guides.Hover = Tool != WorldTool.Select && _host.Picked is GameObject hover ? (hover.X, hover.Y) : null;
+        UpdateModeUi();
         Vector2 local = _container.GetLocalMousePosition();
         Vector2I? mouse = ForcedMouse ?? (new Rect2(Vector2.Zero, _container.Size).HasPoint(local)
             ? new Vector2I((int)local.X, (int)local.Y)
@@ -515,6 +551,11 @@ public partial class WorldView : VBoxContainer
                 _container.GrabFocus();
                 if (Tool == WorldTool.Select)
                 {
+                    if (_modeNode.ModeName == "Reachability" && _host.Picked is GameObject at)
+                    {
+                        _modeNode.SetOrigin(at.X, at.Y, StandZ(at));
+                    }
+
                     InspectPicked();
                 }
                 else
@@ -689,6 +730,11 @@ public partial class WorldView : VBoxContainer
             case WorldTool.DeleteObject:
                 return ApplyObjectTool(o);
 
+            case WorldTool.Measure:
+            case WorldTool.Route:
+            case WorldTool.Pin:
+                return _status.Text = ApplyMapTool(o.X, o.Y, StandZ(o));
+
             default:
                 InspectPicked();
                 return "inspected";
@@ -846,6 +892,7 @@ public partial class WorldView : VBoxContainer
             _data.AssetsApplied -= OnAssetsApplied;
         }
 
+        _modeNode?.Detach();
         _host.Dispose();
     }
 }
