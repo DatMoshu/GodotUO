@@ -14,6 +14,7 @@ namespace CentrED.MapGen.Pipeline;
 public sealed class PipelineDataOptions
 {
     public string? TileTablesPath { get; set; }
+    /// <summary>The transition table: null or "guo" (default), "guo-core", "dragon" or a file (<see cref="PipelineFactory.ResolveBrushesPath"/>).</summary>
     public string? BrushesPath { get; set; }
     public string? TreeStaticsPath { get; set; }
 }
@@ -98,9 +99,8 @@ public static class PipelineFactory
 
     public const string PresetsRelPath = "tools/mapgen/MapGen/presets";
     public const string TreeStaticsRelPath = "client/ClassicUO/Data/tree-statics.json";
-    /// <summary>The Dragon brush table in the generator data folder (UO_MAPGEN_DATA), built there by <c>guo-mapgen prepare</c>.</summary>
+    /// <summary>The user's optional Dragon brush table in the generator data folder (UO_MAPGEN_DATA), built there by <c>guo-mapgen prepare --dragon</c>.</summary>
     public const string DragonBrushesRelPath = LandBrushTable.DataJsonRelativePath;
-    public const string MinedBrushesRelPath = "mined/stamps/_transitions/landbrush.json";
 
     public static string DefaultPresetsDir => RepoRootResolver.Resolve(PresetsRelPath);
     public static string DefaultTreeStaticsPath => RepoRootResolver.Resolve(TreeStaticsRelPath);
@@ -373,15 +373,20 @@ public static class PipelineFactory
     // IR + data
     // =====================================================================
 
-    /// <summary>Resolves the brush table: explicit path, then the user's Dragon import, then a copy in the repo (if any), then the mined Felucca dump.</summary>
+    /// <summary>
+    /// Resolves the brush table: an explicit path; "guo" (the default) is the user's resolved GUO table
+    /// when <c>prepare --measure</c> wrote one, else the committed GUO table; "dragon" is the user's Dragon
+    /// import (<c>prepare --dragon</c>).
+    /// </summary>
     public static string ResolveBrushesPath(string? explicitPath)
     {
-        if (!string.IsNullOrWhiteSpace(explicitPath)) return explicitPath;
-        string dragon = RepoRootResolver.Resolve(DragonBrushesRelPath);
-        if (File.Exists(dragon)) return dragon;
-        string shipped = RepoRootResolver.Resolve(LandBrushTable.DefaultJsonRelativePath);
-        if (File.Exists(shipped)) return shipped;
-        return RepoRootResolver.Resolve(MinedBrushesRelPath);
+        if (string.IsNullOrWhiteSpace(explicitPath) || explicitPath.Equals("guo", StringComparison.OrdinalIgnoreCase))
+            return LandBrushTable.DefaultPath();
+        if (explicitPath.Equals("guo-core", StringComparison.OrdinalIgnoreCase))
+            return RepoRootResolver.Resolve(GuoTransitionTable.RelativePath);
+        if (explicitPath.Equals("dragon", StringComparison.OrdinalIgnoreCase))
+            return RepoRootResolver.Resolve(DragonBrushesRelPath);
+        return explicitPath;
     }
 
     public static string ResolveTreeStaticsPath(string? explicitPath)

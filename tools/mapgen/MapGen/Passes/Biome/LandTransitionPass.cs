@@ -7,9 +7,9 @@ namespace CentrED.MapGen.Passes.Biome;
 
 public sealed class LandTransitionParams
 {
-    [TunableDisplay("Grass mud banks", Tooltip = "Use Dragon grass2water-dark for grass coasts, matching its terrain-pair configuration.")]
+    [TunableDisplay("Grass mud banks", Tooltip = "With a Dragon table (--brushes dragon): use its grass2water-dark brush for grass coasts.")]
     public bool GrassMudBanks { get; set; } = false;
-    [TunableDisplay("Measured transition atlas", Tooltip = "Optional local exact-mask frequencies mined by transition_atlas.py. Missing masks retain the Dragon rules.")]
+    [TunableDisplay("Measured transition atlas", Tooltip = "Optional local exact-mask frequencies (guo-mapgen prepare --measure writes Data/map-mining/guo-transition-atlas.json). Missing masks keep the transition table's tiles.")]
     public string ReferenceAtlasPath { get; set; } = "";
     [TunableDisplay("Minimum transition samples")]
     [TunableRange(1, 1000)]
@@ -52,12 +52,22 @@ public sealed class LandTransitionParams
     [TunableDisplay("Flatten gentle transition", Tooltip = "Pull land-land edge cells halfway toward the Z of the biome they blend into.")]
     public bool FlattenGentleTransition { get; set; } = true;
 
+    // GUO tables give each edge shape a height offset (a rock lip, a bank dropping to water).
+    // Off by default: heights stay the terrain passes' own.
+    [TunableDisplay("Edge z offsets", Tooltip = "Move edge cells toward the other side's height by the transition table's per-shape offset (rock lips on north/west edges). Off keeps the terrain heights.")]
+    public bool EdgeZOffsets { get; set; } = false;
+
+    [TunableDisplay("Bridge passes", Tooltip = "Owner cells facing a material their pair has no tile for become the pair's 'via' material (grass between forest and sand, sand between grass and water); repeated with the swamp/rock bridges until nothing changes, at most N rounds.")]
+    [TunableRange(1, 12)]
+    public int BridgePasses { get; set; } = 6;
+
     [TunableDisplay("Sliver passes", Tooltip = "Boundary cells no transition tile can render (1-wide strips, checkerboards) adopt the neighbouring biome; repeated up to N times.")]
     [TunableRange(0, 6)]
     public int SliverPasses { get; set; } = 3;
 }
 
-// One generic transition engine driven by the land brush table (DragonMod rules).
+// One generic transition engine driven by the land transition table (GUO's own, transitions.guo.json;
+// optionally a Dragon import).
 //
 //  1. Every land cell is classified by BIOME into a class (Grass, Forest, Jungle, Sand,
 //     Snow, Mountain, Swamp, Water). LandIds are never used to decide what a cell is, so
@@ -201,8 +211,18 @@ public sealed class LandTransitionPass : IGenerationPass
         }
         if (pairsLoaded == 0)
         {
-            report.Warnings.Add("Land Transitions: no brush table loaded (landbrush.dragon.json; build it with guo-mapgen prepare --dragon DIR) — boundaries stay hard edges.");
+            report.Warnings.Add("Land Transitions: no transition table loaded (tools/mapgen/MapGen/presets/transitions.guo.json) — boundaries stay hard edges.");
             return;
+        }
+        // Table-driven bridges and plain pairs (GUO tables; a Dragon table has neither).
+        var via = new Cls[9, 9];
+        var plain = new bool[9, 9];
+        foreach (var (o, t) in Pairs)
+        {
+            string key = BrushName[(int)o] + ">" + BrushName[(int)t];
+            if (lut[(int)o, (int)t] is null && brushes.Via.TryGetValue(key, out var vName))
+                via[(int)o, (int)t] = (Cls)Math.Max(0, Array.FindIndex(BrushName, nm => string.Equals(nm, vName, StringComparison.OrdinalIgnoreCase)));
+            plain[(int)o, (int)t] = brushes.Plain.Contains(key);
         }
 
         int G(int li) => ir.Index(scope.X1 + li % sw, scope.Y1 + li / sw);
@@ -254,18 +274,41 @@ public sealed class LandTransitionPass : IGenerationPass
         for (int i = 0; i < n; i++) cls[i] = fixedCell[i] ? Cls.None : ClassOf((BiomeId)b[G(i)]);
 
         // --- bridging -----------------------------------------------------------------
-        // Swamp only has brushes against grass and forest: a swamp cell touching sand,
-        // water, rock, snow or jungle becomes grass, whose ring blends into both sides
-        // (Felucca's swamps sit in grass too). Rock has no brush against water: a mountain
-        // cell on a river or the coast becomes sand (sand blends into rock and water).
-        int bridged = 0;
+        // Fixed bridges: swamp only has brushes against grass and forest, so a swamp cell
+        // touching sand, water, rock, snow or jungle becomes grass, whose ring blends into both
+        // sides (Felucca's swamps sit in grass too). Rock has no brush against water: a
+        // mountain cell on a river or the coast becomes sand (sand blends into rock and water).
+        // Table bridges (GUO tables): an owner cell facing a class its pair has no tile for
+        // becomes the pair's via class (forest -> grass at sand, grass -> sand at water).
+        // Each can create work for the other (grass turned sand beside a swamp), so with a
+        // table that has bridges both repeat until nothing changes, up to BridgePasses rounds.
+        // A table without bridges (Dragon) runs the fixed bridges once.
+        int bridged = 0, viaBridged = 0;
+        int rounds = brushes.Via.Count > 0 ? Math.Max(1, p.BridgePasses) : 1;
+        for (int round = 0; round < rounds; round++)
+        {
+            int fixedChanged = Bridge((self, c) =>
+                self is Cls.Swamp && !(owner[(int)self, (int)c] || owner[(int)c, (int)self]) ? Cls.Grass
+                : self is Cls.Mountain && c == Cls.Water ? Cls.Sand
+                : Cls.None);
+            int viaChanged = brushes.Via.Count > 0
+                ? Bridge((self, c) => self is Cls.Water || !owner[(int)self, (int)c] ? Cls.None : via[(int)self, (int)c])
+                : 0;
+            bridged += fixedChanged;
+            viaBridged += viaChanged;
+            if (fixedChanged + viaChanged == 0) break;
+        }
+
+        // One bridging sweep over a class snapshot: the first neighbour for which rule(self,
+        // neighbour) names a class turns the cell into it. Returns how many cells changed.
+        int Bridge(Func<Cls, Cls, Cls> rule)
         {
             var next = (Cls[])cls.Clone();
+            int changed = 0;
             for (int i = 0; i < n; i++)
             {
                 var self = cls[i];
-                if (self is not (Cls.Swamp or Cls.Mountain) || !InRegion(i)) continue;
-                var to = self == Cls.Swamp ? Cls.Grass : Cls.Sand;
+                if (self is Cls.None || !InRegion(i)) continue;
                 int lx = i % sw, ly = i / sw;
                 foreach (var (dx, dy, _) in DirOffsets)
                 {
@@ -273,19 +316,21 @@ public sealed class LandTransitionPass : IGenerationPass
                     if ((uint)nx >= (uint)sw || (uint)ny >= (uint)sh) continue;
                     var c = cls[ny * sw + nx];
                     if (c == Cls.None || c == self) continue;
-                    if (self == Cls.Mountain ? c != Cls.Water : owner[(int)self, (int)c] || owner[(int)c, (int)self]) continue;
+                    var to = rule(self, c);
+                    if (to == Cls.None) continue;
                     next[i] = to;
                     break;
                 }
-                if (next[i] != to) continue;
+                if (next[i] == self) continue;
                 int g = G(i);
-                var bio = to == Cls.Grass ? BiomeId.Grassland : BiomeId.Beach;
+                var bio = RepresentativeBiome(next[i]);
                 b[g] = (byte)bio;
                 if (ir.Tables.Land.TryGetValue(bio, out var set) && set.Length > 0)
                     l[g] = LatticePick.Pick(set, scope.X1 + lx, scope.Y1 + ly, ir.Seed);
-                bridged++;
+                changed++;
             }
             cls = next;
+            return changed;
         }
 
         // --- sliver absorption -------------------------------------------------------
@@ -359,7 +404,7 @@ public sealed class LandTransitionPass : IGenerationPass
         }
 
         // --- paint ---------------------------------------------------------------------
-        int painted = 0, hardEdges = 0, bluffs = 0, flattened = 0;
+        int painted = 0, hardEdges = 0, bluffs = 0, flattened = 0, lipped = 0;
         var pairCounts = new Dictionary<(Cls, Cls), int>();
         var bankLut = brushes.IsLoaded ? brushes.Lookup("Grassland", "Water") : null;
         var newZ = z is null ? null : (sbyte[])z.Clone();
@@ -400,12 +445,31 @@ public sealed class LandTransitionPass : IGenerationPass
                 cands = cands.Where(id => !TileFlags.IsWaterLandId(id)).ToArray();
             if (cands is not { Length: > 0 })
             {
-                hardEdges++;
+                if (!plain[(int)cls[i], (int)o]) hardEdges++;
                 continue;
             }
             l[g] = cands[hash % (uint)cands.Length];
             painted++;
             pairCounts[(cls[i], o)] = pairCounts.GetValueOrDefault((cls[i], o)) + 1;
+
+            // Table height offset: move toward the other side's mean height, at most the shape's offset.
+            if (p.EdgeZOffsets && newZ is not null && (dirty is null || !dirty[g])
+                && brushes.EdgeZ.TryGetValue(BrushName[(int)cls[i]] + ">" + BrushName[(int)o], out var zByDir)
+                && EdgeShapes.ShapeOf(mask[i]) is { } shape && EdgeShapes.TryDirection(shape, out byte sdir)
+                && zByDir.TryGetValue(sdir, out sbyte off))
+            {
+                int sum = 0, cnt = 0;
+                foreach (var (dx, dy, bit) in DirOffsets)
+                {
+                    if ((mask[i] & bit) == 0) continue;
+                    sum += z![ir.Index(gx + dx, gy + dy)];
+                    cnt++;
+                }
+                int toward = (int)Math.Round((double)sum / cnt) - z![g];
+                int moved = off > 0 ? Math.Clamp(toward, 0, (int)off) : Math.Clamp(toward, (int)off, 0);
+                if (moved != 0) { newZ[g] = (sbyte)Math.Clamp(z[g] + moved, sbyte.MinValue, sbyte.MaxValue); lipped++; }
+                continue;
+            }
 
             // Relative flatten for land-land edges.
             if (p.FlattenGentleTransition && newZ is not null && o != Cls.Water && (dirty is null || !dirty[g]))
@@ -443,7 +507,7 @@ public sealed class LandTransitionPass : IGenerationPass
         }
 
         report.TilesTouched = painted + roadEdges + reset;
-        report.Notes.Add($"transitions painted={painted} (bluff banks={bluffs}), slivers absorbed={absorbed}, bridged (swamp->grass, rock->sand at water)={bridged}, z-flattened={flattened}, pairs: "
+        report.Notes.Add($"transitions painted={painted} (bluff banks={bluffs}), table={brushes.Source}, via-bridged={viaBridged}, slivers absorbed={absorbed}, bridged (swamp->grass, rock->sand at water)={bridged}, z-flattened={flattened}, z-offset={lipped}, pairs: "
             + string.Join(", ", pairCounts.OrderByDescending(kv => kv.Value).Select(kv => $"{kv.Key.Item1}>{kv.Key.Item2}={kv.Value}")));
         if (p.StrictNoGrassSurvivors && (hardEdges > 0 || unpaired > 0))
             report.Warnings.Add($"Land Transitions: {hardEdges} boundary cells kept an interior tile (no brush tile for their mask); {unpaired} edges between biome classes with no transition pair.");
