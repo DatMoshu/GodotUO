@@ -1,0 +1,10 @@
+{
+	"name": "GUOTools",
+	"display_name": "GUO tools for Ultima Online art",
+	"description": "UO hue palettes (read from the user's own hues.mul through GUO), templates for land, statics, gumps and animation frames, a size and transparency check, and Save back to GUO. MIT; see the GUO repository, tools/pixelorama.",
+	"author": "GUO",
+	"version": "0.1.0",
+	"license": "MIT",
+	"nodes": ["GUOTools.tscn"],
+	"supported_api_versions": [9]
+}

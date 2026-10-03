@@ -326,6 +326,17 @@ def main() -> int:
         print(f"[editor_smoke]        {store.get('browse_status')}")
         for k in bad:
             print(f"[editor_smoke]        failed: {k}")
+    art = report.get("art") or {}
+    if art:
+        checks = [k for k, v in art.items() if v is True or v is False]
+        bad = [k for k in checks if art[k] is False]
+        print(f"[editor_smoke]   {'ok  ' if art.get('ok') else 'FAIL'} Art     {len(checks) - len(bad)}/{len(checks)} checks: "
+              f"export, scripted save imported by the watcher, post-process, provenance, Pinta in place, "
+              f"ComfyUI + Retro Diffusion stubs ({art.get('comfy_progress_events')} progress events)")
+        print(f"[editor_smoke]        {art.get('detect')}")
+        print(f"[editor_smoke]        provenance: {art.get('provenance')}")
+        for k in bad:
+            print(f"[editor_smoke]        failed: {k}")
     overlay = world.get("overlay") or {}
     if overlay:
         print(f"[editor_smoke]   {'ok  ' if overlay.get('ok') else 'FAIL'} Overlay block 187,203: "

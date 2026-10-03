@@ -76,3 +76,18 @@ The install and sign-in commands were taken from the vendors' pages on 2026-10-0
 opencode.ai/docs/acp, the codex-acp and claude-agent-acp repositories). The `opencode-ai` package name
 and `opencode auth login` were not confirmed on a fetched page; if either has moved, `opencode` itself
 prints its install and login help.
+
+## Sessions, Services, tools, attach
+
+* **Sessions** lists local Claude Code, Codex and Cursor sessions, read only: project, last activity, first user
+  line (the first 32 KB of a transcript at most). It reads `~/.claude/projects/*/*.jsonl`, `~/.codex/sessions/**`,
+  `~/.codex/session_index.jsonl` and Cursor's project folders, and never opens `auth.json`, `.credentials*`, `.env`
+  or `config.toml`. `GUO_AI_HOME` points it at another home folder. "Send to queue" posts to `PROJECT-ID8`.
+* **Services** keeps the OpenAI-compatible endpoints, ComfyUI, Retro Diffusion and Ollama in one list
+  (`%APPDATA%/GUO/ai_endpoints.json` and `ai_services.json`, keys sealed by the OS store). Test calls a free
+  read-only endpoint (model list, status, credit balance), never a generation. Other code reads them through
+  `AiHub.Services` (`ServiceBook.Find`, `KeyFor`).
+* **Editor tools** (tick "Editor tools" in Chat; the model must support tool calls): `search`, `inspect_asset`,
+  `jump_world`, all read only. A tool that changes anything is registered with `ReadOnly = false` and asks in a dialog.
+* **Attach selection** sends the UO Inspector's picture to a vision model. It is client art: the chat says so, local
+  Ollama is allowed, and a remote endpoint needs "Allow client art" ticked on its Services entry (off by default).

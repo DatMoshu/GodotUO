@@ -284,6 +284,7 @@ line, UTF-8, `\n`-terminated. ADR-0012 has the reasoning.
 | `block` | `facet`, `bx`, `by`, `land`: 64 `[id, z]` pairs, row-major (index `y*8+x`), `statics`: `[id, x, y, z, hue]` per static (`x`, `y` 0..7 in the block), `sent_ms` (sender's clock, unix ms, optional) | Replaces the whole block in the server's own map (walking, line of sight and placement see it), pushes it to UltimaLive clients on that map, relays it to the other editors; answered with `ack` |
 | `command` | `as` (an online character's name), `text` (e.g. `[where`) | Runs the GM command as that character (`CommandSystem.Handle`); answered with `command` |
 | `object` | `action` `put` with `kind` (`spawner` or `item`) and `object` (as in `shard/objects.json`, section 13); or `action` `delete` with `kind` and `id` | Applies it to the world with the boot sync's code (ADR-0014), relays it to the other editors; answered with `object_ack` |
+| `mobiles` | `facet`, `x0`, `y0`, `x1`, `y1` (inclusive rectangle; clamped to the map and to 1024 cells a side), `req` (echoed), `as` (optional: an online character that must be a GameMaster or above) | Read-only. Players and mobiles in the rectangle, at most 500; answered with `mobiles`. Needs a prior `hello`; at most one request per 250 ms per connection (the Live map layer, ADR-0027, polls it about once a second for the visible region plus a margin) |
 | `multi` | `action` `place` with `tag`, `id` (multi id), `map`, `x`, `y`, `z` (optional: the land's average z), `doors` (as in a built multi's `multi.json`, section 16); or `action` `remove` with `tag` | Places an authored multi (`GUOAuthoredMulti`) and a real door per entry, replacing a multi with the same tag; `remove` deletes it and its doors. Answered with `multi_ack` |
 
 **Bridge to editor**
@@ -296,6 +297,7 @@ line, UTF-8, `\n`-terminated. ADR-0012 has the reasoning.
 | `command` | `ok`, `as`, `text`, or `error` |
 | `object` | as sent, plus `from`: another editor's world-object change. Last write per object wins |
 | `object_ack` | `action`, `kind`, `id`, `outcome` (`Added`, `Changed`, `Kept`, `Deleted`, `Missing`, `Skipped`), `editors`, `ms` |
+| `mobiles` | `req`, `ok`, `facet`, the clamped `x0`,`y0`,`x1`,`y1`, `count`, `truncated` (hit the 500 cap), `mobiles`: per mobile `serial`, `name`, `body`, `x`, `y`, `z`, `facet`, `isPlayer`, `hits`, `maxHits`, `notoriety` (ModernUO's 1 innocent .. 7 invulnerable, computed with no viewer); or `ok` false with `error` (`rate limited`, `say hello first`, `no map N`, `'X' is not online`, `'X' is not staff`) |
 | `multi_ack` | `action`, `tag`, `ok`; on a place `serial`, `at` `[x, y, z]`, `components`, `doors`, `replaced`; on a remove `removed`; or `error` |
 | `error` | `error` |
 
@@ -1119,10 +1121,15 @@ watchers. The first reply moves a request to `answered`. The JSON lines printed 
 ## 22. The AI dock's endpoints (`ai_endpoints.json`)
 
 Written by the editor's AI dock (ADR-0028) to `%APPDATA%/GUO/ai_endpoints.json` (`~/.config/guo/` elsewhere),
-never to a project or `.godot`. A JSON array of `{ "Name", "Url", "Model", "Key" }` for the OpenAI-compatible
-endpoints the user added. `Key` is `{ "store", "iv", "blob" }`, the same `Secret` that `servers.json` keeps
+never to a project or `.godot`. A JSON array of `{ "Name", "Url", "Model", "AllowClientArt", "Key" }` for the OpenAI-compatible
+endpoints the user added. `AllowClientArt` (default false) is the per-endpoint leave to send client art (asset
+pictures) to that server. `Key` is `{ "store", "iv", "blob" }`, the same `Secret` that `servers.json` keeps
 for a pre-game password: ciphertext sealed by the operating system's store (DPAPI on Windows), bound to
 `ai:URL:NAME`, or null when the endpoint has no key or the platform keeps none. The key itself is never in the file.
+
+The other services (ComfyUI, Retro Diffusion, Ollama) are in `ai_services.json` beside it: an array of
+`{ "Kind", "Name", "Url", "Model", "AllowClientArt", "Key" }` with `Kind` one of `ComfyUi`, `RetroDiffusion`,
+`Ollama`, and `Key` sealed the same way (bound to `svc:KIND:URL:NAME`). `ServiceBook` presents both files as one list.
 
 ## 23. Scene pack (`scene.json`, ADR-0027)
 
@@ -1148,3 +1155,29 @@ with a vision model is the user's own tool and key.
 | `modes[]` | `{name, file, summary, legend: [{label, colour "#rrggbb"}]}` per mode image |
 | `objects[]` | Up to 4000 statics, multi parts and placed items in view: `kind` (`static`, `multi`, `item`), `graphic` (`0x0E75`), `name`, `type` (the Types mode's word), `x, y, z, height`, and `box` `[x0, y0, x1, y1]` in pixels (the art's rectangle from its size; approximate) |
 | `layers` | One array per layer switched on: `{label, x, y, z, detail, px, py, on_view, sextant}` |
+
+## 24. The art exchange folder and asset provenance (ADR-0029)
+
+**Exchange folder** (`UO_ART_EXCHANGE`, default `build/art_exchange/`, never under `UO_CLIENT_DATA`):
+`out/` PNG + sidecar the editor hands to Pixelorama; `in/` what the Pixelorama extension saves back (the
+sidecar is written first, the PNG second); `pinta/` PNG + sidecar that Pinta edits in place (a PNG newer than
+its sidecar is an edit); `done/` and `rejected/` (with `<stem>.reason.txt`) for finished `in/` pairs;
+`workflows/` ComfyUI API-format workflow files (`UO_COMFY_WORKFLOWS`); `hues.json` the user's own hue table
+written from the loaded hues.mul: `{"format":1,"hues":[{"id","name","colors":[32 x "RRGGBB"]}]}`.
+It is generated from the user's install and is never committed or shipped.
+
+**Sidecar** `<stem>.json`, stem `<kind>_0x<ID>[_h<hue>]`:
+`{"kind":"land|static|gump","id":int,"hue":int?,"size":[w,h],"stem":str,"provenance":{...}}`.
+
+**Provenance** `{"tool","model"?,"workflow"?,"seed"?,"inputs":[str],"derived_from_client_art":bool}`.
+`inputs` entries read `client:<kind>:0x<ID>` (the install's art) or `overlay:<kind>:0x<ID>`. The overlay keeps
+one record per replaced image in `<project>/assets/provenance.json`:
+`{"format":1,"entries":{"assets/art/statics/0x0E75.png":{...provenance..., "imported":"UTC time"}}}`.
+`derived_from_client_art` is true when any input was client art, and for a PNG of unknown origin (the
+inspector's "Import PNG..." records `tool: "import-png"` as derived). Such images stay local: a pack
+containing a `*provenance.json` with a derived entry is refused by `tools/asset_store/pack.py verify`
+(content policy, `docs/store/content_policy.md`).
+
+**UO post-process** (every import path): alpha keyed at 50 % (UO has one-bit transparency); land masked to the
+44x44 diamond (larger whole multiples scaled with nearest sampling); statics trimmed of empty top rows and equal
+empty columns each side; reduced to 15-bit colour as the overlay stores it.

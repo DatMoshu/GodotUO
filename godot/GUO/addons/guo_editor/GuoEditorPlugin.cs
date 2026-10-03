@@ -37,6 +37,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
     private RunBar _run;
     private AiDock _ai;
     private StoreView _store;
+    private ArtDock _art;
     private SearchPopup _search;
 
     // Whether the World tab was on screen when an assembly reload began.
@@ -140,6 +141,12 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         _ai = new AiDock();
         AddDock(_ai);
 
+        // The art pipeline (ADR-0029): image services, and the watcher that imports what Pixelorama
+        // and Pinta save. It owns worker tasks, which TearDown cancels.
+        _art = new ArtDock();
+        _art.Attach(_data, () => _inspector?.Current);
+        AddDock(_art);
+
         // Start server, start clients: on the toolbar, always one click away.
         _run = new RunBar();
         AddControlToContainer(CustomControlContainer.Toolbar, _run);
@@ -162,6 +169,9 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         searchContext.Ai = _ai;
         searchContext.Store = _store;
         _search = SearchPopup.Install(searchContext);
+        _ai.UseTools(searchContext, () => _search?.Index);
+        _ai.Hub.SelectionImage = () => _inspector?.Current?.Image;
+        _ai.Hub.SelectionLabel = () => _inspector?.Current is Inspection i ? $"{i.Source} {i.Id}" : null;
 
         string smokeOut = EditorSmoke.OutDirFromArgs();
         string tourOut = EditorTour.OutDirFromArgs();
@@ -182,6 +192,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
             _smoke.Search = _search;
             _smoke.Ai = _ai;
             _smoke.Store = _store;
+            _smoke.Art = _art;
             AddChild(_smoke);
         }
 
@@ -258,6 +269,14 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
             RemoveControlFromContainer(CustomControlContainer.Toolbar, _run);
             _run.QueueFree();
             _run = null;
+        }
+
+        if (_art != null)
+        {
+            _art.Shutdown();
+            RemoveDock(_art);
+            _art.QueueFree();
+            _art = null;
         }
 
         if (_ai != null)

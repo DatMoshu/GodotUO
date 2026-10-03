@@ -224,6 +224,13 @@ class Config:
     # worktree with neither falls back to the main checkout's copies.
     godot_home_setting: Path | None = None
     upstream_dir_setting: Path | None = None
+    # The art pipeline (ADR-0029): the exchange folder, optional exe overrides,
+    # ComfyUI. Keys for paid image services live in the OS store, not here.
+    art_exchange: Path | None = None
+    pixelorama_setting: Path | None = None
+    pinta_setting: Path | None = None
+    comfy_url: str = "http://127.0.0.1:8188"
+    comfy_workflows: Path | None = None
 
     # --- derived paths (never configured directly) ---
     @property
@@ -473,4 +480,9 @@ def load_config(root: Path | None = None) -> Config:
         agent_queue=Path(agent_queue),
         godot_home_setting=godot_home_setting,
         upstream_dir_setting=upstream_dir_setting,
+        art_exchange=Path(native_path(get("UO_ART_EXCHANGE").replace("%UO_ROOT%", str(root)) or str(root / "build" / "art_exchange"))),
+        pixelorama_setting=path_or_none("UO_PIXELORAMA"),
+        pinta_setting=path_or_none("UO_PINTA"),
+        comfy_url=get("UO_COMFY_URL", "http://127.0.0.1:8188"),
+        comfy_workflows=Path(native_path(get("UO_COMFY_WORKFLOWS").replace("%UO_ROOT%", str(root)) or str(root / "build" / "art_exchange" / "workflows"))),
     )
