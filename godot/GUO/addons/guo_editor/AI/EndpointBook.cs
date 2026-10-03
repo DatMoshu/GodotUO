@@ -21,6 +21,13 @@ internal sealed class EndpointBook
         public string Name { get; set; } = "";
         public string Url { get; set; } = "";
         public string Model { get; set; } = "";
+
+        /// <summary>
+        /// Whether client art (an asset picture from the user's UO install) may be sent to this endpoint.
+        /// Off unless the user turns it on, per endpoint: it is a remote server.
+        /// </summary>
+        public bool AllowClientArt { get; set; }
+
         public Secret Key { get; set; }
     }
 
@@ -56,6 +63,7 @@ internal sealed class EndpointBook
                         Name = (string)n?["Name"] ?? "",
                         Url = (string)n?["Url"] ?? "",
                         Model = (string)n?["Model"] ?? "",
+                        AllowClientArt = (bool?)n?["AllowClientArt"] == true,
                         Key = k == null ? null : new Secret { Store = (string)k["store"] ?? SecretStore.None, Iv = (string)k["iv"], Blob = (string)k["blob"] },
                     });
                 }
@@ -73,7 +81,7 @@ internal sealed class EndpointBook
         var list = new JsonArray();
         foreach (Entry e in Entries)
         {
-            var o = new JsonObject { ["Name"] = e.Name, ["Url"] = e.Url, ["Model"] = e.Model };
+            var o = new JsonObject { ["Name"] = e.Name, ["Url"] = e.Url, ["Model"] = e.Model, ["AllowClientArt"] = e.AllowClientArt };
             if (e.Key != null)
             {
                 o["Key"] = new JsonObject { ["store"] = e.Key.Store, ["iv"] = e.Key.Iv, ["blob"] = e.Key.Blob };
@@ -86,11 +94,17 @@ internal sealed class EndpointBook
     }
 
     /// <summary>Adds or replaces an endpoint. A blank <paramref name="key"/> keeps the stored one; null with a reason if the key could not be sealed.</summary>
-    public bool Put(string name, string url, string model, string key, out string why)
+    public bool Put(string name, string url, string model, string key, out string why, bool? allowClientArt = null)
     {
         why = null;
         Entry old = Entries.Find(e => e.Name == name);
-        var entry = new Entry { Name = name, Url = url, Model = model, Key = old?.Key };
+        var entry = new Entry { Name = name, Url = url, Model = model, Key = old?.Key, AllowClientArt = allowClientArt ?? old?.AllowClientArt ?? false };
+        if (string.IsNullOrEmpty(key) && old?.Key != null && old.Url != url)
+        {
+            // The key is bound to the URL it was sealed for: move it when the URL changes.
+            key = SecretStore.Current.Unprotect(Binding(old.Name, old.Url), old.Key, out _);
+        }
+
         if (!string.IsNullOrEmpty(key))
         {
             Secret sealedKey = SecretStore.Current.Protect(Binding(name, url), key, out why);
@@ -129,7 +143,7 @@ internal sealed class EndpointBook
     public string KeyFor(Entry e) =>
         e?.Key == null ? null : SecretStore.Current.Unprotect(Binding(e.Name, e.Url), e.Key, out _);
 
-    public OpenAiCompatProvider Provider(Entry e) => new(e.Name, e.Url, () => KeyFor(e)) { Model = e.Model };
+    public OpenAiCompatProvider Provider(Entry e) => new(e.Name, e.Url, () => KeyFor(e)) { Model = e.Model, AllowClientArt = e.AllowClientArt };
 
     /// <summary>Whether this platform can keep a key at all.</summary>
     public static bool CanKeepKeys => SecretStore.Current.Available;

@@ -4,6 +4,7 @@ namespace GUO.Editor;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
@@ -11,8 +12,16 @@ using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 
-/// <summary>One turn of a conversation.</summary>
-public sealed record ChatMessage(string Role, string Text);
+/// <summary>
+/// One turn of a conversation. <see cref="Images"/> are PNG bytes attached to a user turn for vision
+/// models; they are client art, so a provider refuses them unless sending client art to it is allowed.
+/// </summary>
+public sealed record ChatMessage(string Role, string Text)
+{
+    public IReadOnlyList<byte[]> Images { get; init; }
+
+    public bool HasImages => Images is { Count: > 0 };
+}
 
 /// <summary>
 /// A chat backend that streams its answer (ADR-0028). Implementations touch no
@@ -60,12 +69,29 @@ public abstract class HttpChatProvider : IChatProvider, IDisposable
     public abstract Task<IReadOnlyList<string>> ListModelsAsync(CancellationToken ct);
     public abstract Task<string> StreamAsync(IReadOnlyList<ChatMessage> history, Action<string, bool> onChunk, CancellationToken ct);
 
-    protected static JsonArray Messages(IReadOnlyList<ChatMessage> history)
+    /// <summary>Read-only editor tools offered to the model, or null (ADR-0028). Only providers that can call functions use it.</summary>
+    public IChatTools Tools { get; set; }
+
+    /// <summary>Most rounds of "the model calls tools, we answer" in one turn.</summary>
+    public int MaxToolRounds { get; set; } = 4;
+
+    /// <summary>Whether client art (asset pictures) may be sent to this provider. Local Ollama: yes. A remote server: only when the user said so.</summary>
+    public abstract bool ClientArtAllowed { get; }
+
+    /// <summary>One message in the provider's own wire format.</summary>
+    protected abstract JsonObject Encode(ChatMessage m);
+
+    protected JsonArray Messages(IReadOnlyList<ChatMessage> history)
     {
+        if (history.Any(m => m.HasImages) && !ClientArtAllowed)
+        {
+            throw new InvalidOperationException($"{Name}: client art is not allowed to be sent here (turn on \"Allow client art\" for this endpoint in the Services tab)");
+        }
+
         var a = new JsonArray();
         foreach (ChatMessage m in history)
         {
-            a.Add(new JsonObject { ["role"] = m.Role, ["content"] = m.Text });
+            a.Add(Encode(m));
         }
 
         return a;
@@ -126,6 +152,18 @@ public abstract class HttpChatProvider : IChatProvider, IDisposable
         }
     }
 
+    protected static JsonNode TryParse(string s)
+    {
+        try
+        {
+            return string.IsNullOrWhiteSpace(s) ? new JsonObject() : JsonNode.Parse(s);
+        }
+        catch (Exception)
+        {
+            return new JsonObject();
+        }
+    }
+
     protected static string Short(string s) => s.Length > 300 ? s[..300] + "..." : s;
 
     public void Dispose() => Http.Dispose();
@@ -153,6 +191,23 @@ public sealed class OllamaProvider : HttpChatProvider
     public override string Name => "Ollama (local)";
     public string BaseUrl => _base;
 
+    /// <summary>The user allowed client art for a remote Ollama (a local one needs no leave).</summary>
+    public bool AllowClientArt { get; set; }
+
+    public override bool ClientArtAllowed =>
+        AllowClientArt || Uri.TryCreate(_base, UriKind.Absolute, out Uri u) && (u.IsLoopback || u.Host == "localhost");
+
+    protected override JsonObject Encode(ChatMessage m)
+    {
+        var o = new JsonObject { ["role"] = m.Role, ["content"] = m.Text };
+        if (m.HasImages)
+        {
+            o["images"] = new JsonArray(m.Images.Select(b => (JsonNode)Convert.ToBase64String(b)).ToArray());
+        }
+
+        return o;
+    }
+
     public override async Task<IReadOnlyList<string>> ListModelsAsync(CancellationToken ct)
     {
         JsonNode tags = JsonNode.Parse(await GetStringAsync(_base + "/api/tags", ct).ConfigureAwait(false));
@@ -174,46 +229,86 @@ public sealed class OllamaProvider : HttpChatProvider
 
     public override async Task<string> StreamAsync(IReadOnlyList<ChatMessage> history, Action<string, bool> onChunk, CancellationToken ct)
     {
-        var body = new JsonObject { ["model"] = Model, ["messages"] = Messages(history), ["stream"] = true, ["think"] = Think };
-        using var req = new HttpRequestMessage(HttpMethod.Post, _base + "/api/chat")
-        {
-            Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json"),
-        };
+        JsonArray msgs = Messages(history);
         string stop = "stream ended";
-        await ReadLinesAsync(req, line =>
+        for (int round = 0; ; round++)
         {
-            if (line.Length == 0)
+            var body = new JsonObject { ["model"] = Model, ["messages"] = JsonNode.Parse(msgs.ToJsonString()), ["stream"] = true, ["think"] = Think };
+            bool offer = Tools != null && round < MaxToolRounds;
+            if (offer)
             {
+                body["tools"] = Tools.Specs();
+            }
+
+            using var req = new HttpRequestMessage(HttpMethod.Post, _base + "/api/chat")
+            {
+                Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json"),
+            };
+            var calls = new JsonArray();
+            var said = new StringBuilder();
+            await ReadLinesAsync(req, line =>
+            {
+                if (line.Length == 0)
+                {
+                    return true;
+                }
+
+                JsonNode j = JsonNode.Parse(line);
+                if ((string)j?["error"] is string err)
+                {
+                    throw new IOException(err);
+                }
+
+                string think = (string)j?["message"]?["thinking"];
+                if (!string.IsNullOrEmpty(think))
+                {
+                    onChunk(think, true);
+                }
+
+                string text = (string)j?["message"]?["content"];
+                if (!string.IsNullOrEmpty(text))
+                {
+                    said.Append(text);
+                    onChunk(text, false);
+                }
+
+                if (j?["message"]?["tool_calls"] is JsonArray tc)
+                {
+                    foreach (JsonNode c in tc)
+                    {
+                        calls.Add(c.DeepClone());
+                    }
+                }
+
+                if ((bool?)j?["done"] == true)
+                {
+                    stop = (string)j["done_reason"] ?? "stop";
+                    return false;
+                }
+
                 return true;
-            }
+            }, ct).ConfigureAwait(false);
 
-            JsonNode j = JsonNode.Parse(line);
-            if ((string)j?["error"] is string err)
+            if (calls.Count == 0 || !offer)
             {
-                throw new IOException(err);
+                return stop;
             }
 
-            string think = (string)j?["message"]?["thinking"];
-            if (!string.IsNullOrEmpty(think))
+            msgs.Add(new JsonObject { ["role"] = "assistant", ["content"] = said.ToString(), ["tool_calls"] = calls });
+            foreach (JsonNode c in calls)
             {
-                onChunk(think, true);
-            }
+                string name = (string)c?["function"]?["name"] ?? "";
+                JsonNode args = c?["function"]?["arguments"];
+                if (args is JsonValue sv && sv.TryGetValue(out string raw))
+                {
+                    args = TryParse(raw);
+                }
 
-            string text = (string)j?["message"]?["content"];
-            if (!string.IsNullOrEmpty(text))
-            {
-                onChunk(text, false);
+                onChunk($"[tool {name} {args?.ToJsonString()}]\n", true);
+                string result = await Tools.RunAsync(name, args, ct).ConfigureAwait(false);
+                msgs.Add(new JsonObject { ["role"] = "tool", ["tool_name"] = name, ["content"] = result });
             }
-
-            if ((bool?)j?["done"] == true)
-            {
-                stop = (string)j["done_reason"] ?? "stop";
-                return false;
-            }
-
-            return true;
-        }, ct).ConfigureAwait(false);
-        return stop;
+        }
     }
 }
 
@@ -238,6 +333,31 @@ public sealed class OpenAiCompatProvider : HttpChatProvider
     public override string Id => "openai:" + _name;
     public override string Name => _name;
     public string BaseUrl => _base;
+
+    /// <summary>Whether the user allowed client art to be sent to this endpoint (off by default: it is a remote server).</summary>
+    public bool AllowClientArt { get; set; }
+
+    public override bool ClientArtAllowed => AllowClientArt;
+
+    protected override JsonObject Encode(ChatMessage m)
+    {
+        if (!m.HasImages)
+        {
+            return new JsonObject { ["role"] = m.Role, ["content"] = m.Text };
+        }
+
+        var parts = new JsonArray { new JsonObject { ["type"] = "text", ["text"] = m.Text } };
+        foreach (byte[] png in m.Images)
+        {
+            parts.Add(new JsonObject
+            {
+                ["type"] = "image_url",
+                ["image_url"] = new JsonObject { ["url"] = "data:image/png;base64," + Convert.ToBase64String(png) },
+            });
+        }
+
+        return new JsonObject { ["role"] = m.Role, ["content"] = parts };
+    }
 
     private void Auth(HttpRequestMessage req)
     {
@@ -270,43 +390,114 @@ public sealed class OpenAiCompatProvider : HttpChatProvider
 
     public override async Task<string> StreamAsync(IReadOnlyList<ChatMessage> history, Action<string, bool> onChunk, CancellationToken ct)
     {
-        var body = new JsonObject { ["model"] = Model, ["messages"] = Messages(history), ["stream"] = true };
-        using var req = new HttpRequestMessage(HttpMethod.Post, _base + "/chat/completions")
-        {
-            Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json"),
-        };
-        Auth(req);
+        JsonArray msgs = Messages(history);
         string stop = "stream ended";
-        await ReadLinesAsync(req, line =>
+        for (int round = 0; ; round++)
         {
-            if (!line.StartsWith("data:", StringComparison.Ordinal))
+            var body = new JsonObject { ["model"] = Model, ["messages"] = JsonNode.Parse(msgs.ToJsonString()), ["stream"] = true };
+            bool offer = Tools != null && round < MaxToolRounds;
+            if (offer)
             {
+                body["tools"] = Tools.Specs();
+            }
+
+            using var req = new HttpRequestMessage(HttpMethod.Post, _base + "/chat/completions")
+            {
+                Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json"),
+            };
+            Auth(req);
+            var said = new StringBuilder();
+            var ids = new SortedDictionary<int, string>();
+            var names = new SortedDictionary<int, string>();
+            var args = new SortedDictionary<int, StringBuilder>();
+            await ReadLinesAsync(req, line =>
+            {
+                if (!line.StartsWith("data:", StringComparison.Ordinal))
+                {
+                    return true;
+                }
+
+                string data = line[5..].Trim();
+                if (data == "[DONE]")
+                {
+                    if (stop == "stream ended")
+                    {
+                        stop = "stop";
+                    }
+
+                    return false;
+                }
+
+                JsonNode choice = JsonNode.Parse(data)?["choices"]?[0];
+                string text = (string)choice?["delta"]?["content"];
+                if (!string.IsNullOrEmpty(text))
+                {
+                    said.Append(text);
+                    onChunk(text, false);
+                }
+
+                if (choice?["delta"]?["tool_calls"] is JsonArray tc)
+                {
+                    foreach (JsonNode c in tc)
+                    {
+                        int at = (int?)c?["index"] ?? 0;
+                        if ((string)c?["id"] is string id)
+                        {
+                            ids[at] = id;
+                        }
+
+                        if ((string)c?["function"]?["name"] is string n)
+                        {
+                            names[at] = n;
+                        }
+
+                        if (!args.TryGetValue(at, out StringBuilder sb))
+                        {
+                            args[at] = sb = new StringBuilder();
+                        }
+
+                        sb.Append((string)c?["function"]?["arguments"]);
+                    }
+                }
+
+                string reason = (string)choice?["finish_reason"];
+                if (!string.IsNullOrEmpty(reason))
+                {
+                    stop = reason;
+                }
+
                 return true;
-            }
+            }, ct).ConfigureAwait(false);
 
-            string data = line[5..].Trim();
-            if (data == "[DONE]")
+            if (names.Count == 0 || !offer)
             {
-                stop = "stop";
-                return false;
+                return stop;
             }
 
-            JsonNode choice = JsonNode.Parse(data)?["choices"]?[0];
-            string text = (string)choice?["delta"]?["content"];
-            if (!string.IsNullOrEmpty(text))
+            var calls = new JsonArray();
+            foreach (int at in names.Keys)
             {
-                onChunk(text, false);
+                string raw = args.TryGetValue(at, out StringBuilder a) ? a.ToString() : "{}";
+                calls.Add(new JsonObject
+                {
+                    ["id"] = ids.GetValueOrDefault(at, "call_" + at),
+                    ["type"] = "function",
+                    ["function"] = new JsonObject { ["name"] = names[at], ["arguments"] = raw.Length > 0 ? raw : "{}" },
+                });
             }
 
-            string reason = (string)choice?["finish_reason"];
-            if (!string.IsNullOrEmpty(reason))
+            msgs.Add(new JsonObject { ["role"] = "assistant", ["content"] = said.ToString(), ["tool_calls"] = calls });
+            foreach (JsonNode c in calls)
             {
-                stop = reason;
+                string name = (string)c["function"]["name"];
+                JsonNode parsed = TryParse((string)c["function"]["arguments"]);
+                onChunk($"[tool {name} {parsed?.ToJsonString()}]\n", true);
+                string result = await Tools.RunAsync(name, parsed, ct).ConfigureAwait(false);
+                msgs.Add(new JsonObject { ["role"] = "tool", ["tool_call_id"] = (string)c["id"], ["content"] = result });
             }
 
-            return true;
-        }, ct).ConfigureAwait(false);
-        return stop;
+            stop = "stream ended";
+        }
     }
 }
 #endif
