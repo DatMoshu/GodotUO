@@ -29,7 +29,7 @@ public partial class MultiEditView
 
     public static string PrivateHome => Path.Combine(EditorData.RepoRoot, "build", "shard_private");
 
-    private static string ProfilesPath => Path.Combine(EditorData.RepoRoot, "build", "editor_servers", "profiles.json");
+    private static string ProfilesPath => EditorWorkspace.ServersPath;
 
     /// <summary>
     /// Why a server may not receive a deployed multi, or null when it may: loopback only, never 2593, and it has to be the

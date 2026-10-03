@@ -136,7 +136,7 @@ public partial class EditorSmoke : Node
         AddChild(window);
         try
         {
-            var profile = new ServerProfile { Name="Smoke profile", ClientProject=ProjectSettings.GlobalizePath("res://") };
+            var profile = new ServerProfile { Name="Smoke profile" };
             var profiles = new ServerProfiles { Selected=profile.Id, Servers=new() { profile } };
             int saves=0;
             window.Open(profiles, profile, s=>Path.Combine(_out,s.Id,"process.json"), ()=>OS.GetExecutablePath(), ()=>saves++);
