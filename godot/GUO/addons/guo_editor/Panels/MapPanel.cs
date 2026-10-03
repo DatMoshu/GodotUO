@@ -57,6 +57,36 @@ public partial class MapPanel : AssetPanel
 
     private MapLoader Maps => MapSource?.Invoke() ?? Data.Files.Maps;
 
+    /// <summary>One block at one pixel per cell: what the radar draws when zoomed in (RadarView.DetailBlock).</summary>
+    private Image DetailBlock(int bx, int by)
+    {
+        if (Data == null || !Data.IsLoaded || _radarFacet < 0)
+        {
+            return null;
+        }
+
+        var colours = new ushort[64];
+        if (!ReadBlock(_radarFacet, bx, by, colours, null))
+        {
+            return null;
+        }
+
+        var rgb = new byte[64 * 3];
+        for (int y = 0; y < 8; y++)
+        {
+            for (int x = 0; x < 8; x++)
+            {
+                uint c = GUO.Utility.HuesHelper.Color16To32(colours[y * 8 + x]);
+                int o = (y * 8 + x) * 3;
+                rgb[o] = (byte)c;
+                rgb[o + 1] = (byte)(c >> 8);
+                rgb[o + 2] = (byte)(c >> 16);
+            }
+        }
+
+        return Image.CreateFromData(8, 8, false, Image.Format.Rgb8, rgb);
+    }
+
     /// <summary>The radar image as drawn, for the smoke check.</summary>
     public Image RadarImage => _radarImage;
 
@@ -81,6 +111,7 @@ public partial class MapPanel : AssetPanel
         foreach (int number in blocks)
         {
             int bx = number / height, by = number % height;
+            _radar?.DropDetail(bx, by);
             if (!ReadBlock(facet, bx, by, colours, null))
             {
                 continue;
@@ -148,6 +179,7 @@ public partial class MapPanel : AssetPanel
         bar.AddChild(fit);
 
         _radar = new RadarView();
+        _radar.DetailBlock = DetailBlock;
         _radar.Picked += OnRadarPicked;
         AddChild(_radar);
 
@@ -235,6 +267,7 @@ public partial class MapPanel : AssetPanel
 
         _radarImage = Image.CreateFromData(w, bh * per, false, Image.Format.Rgba8, rgba);
         _radar.Texture = ImageTexture.CreateFromImage(_radarImage);
+        _radar.ClearDetail();
         _radarFacet = facet;
         _status.Text = $"map{facet}: {bw * 8}x{bh * 8} cells, radar 1:{Stride} in {sw.ElapsedMilliseconds} ms. Click a cell, double-click to jump.";
     }

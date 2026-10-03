@@ -65,7 +65,6 @@ public partial class ShardDock : EditorDock
         LayoutKey = "guo_shard";
         DefaultSlot = DockSlot.Bottom;
         AvailableLayouts = DockLayout.Horizontal | DockLayout.Floating;
-        IconName = "Network";
     }
 
     internal void Attach(WorldView world)

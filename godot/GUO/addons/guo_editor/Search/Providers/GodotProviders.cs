@@ -318,8 +318,12 @@ public sealed class GodotSettingsProvider : SearchProvider
         }.Prepare());
     }
 
+    /// <summary>What the last Open found, for the smoke check: the dialog's class, its search text (null if no dialog or no box).</summary>
+    public (string Dialog, string Search)? LastOpen { get; private set; }
+
     private void Open(bool project, string name)
     {
+        LastOpen = null;
         string menuText = project ? "Project Settings" : "Editor Settings";
         string filter = name.Split('/')[^1].Replace('_', ' ');
         if (_menus.Press(menuText))
@@ -331,10 +335,12 @@ public sealed class GodotSettingsProvider : SearchProvider
                     .OfType<Window>()
                     .FirstOrDefault(w => w.Visible && (w.GetClass() == (project ? "ProjectSettingsEditor" : "EditorSettingsDialog")));
                 LineEdit search = dialog == null ? null : GodotUi.All<LineEdit>(dialog).FirstOrDefault();
+                LastOpen = (dialog?.GetClass(), search?.Text);
                 if (search != null)
                 {
                     search.Text = filter;
                     search.EmitSignal(LineEdit.SignalName.TextChanged, filter);
+                    LastOpen = (dialog.GetClass(), search.Text);
                 }
                 else if (!project)
                 {

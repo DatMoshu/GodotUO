@@ -189,6 +189,7 @@ public partial class SearchPopup : Control
         var size = new Vector2(Math.Min(1500, parent.Size.X - 80), Math.Min(1000, parent.Size.Y - 120));
         _panel.Size = size;
         _panel.Position = new Vector2((parent.Size.X - size.X) / 2, Math.Max(40, (parent.Size.Y - size.Y) / 3));
+        Resort();
     }
 
     public override void _Notification(int what)
@@ -276,9 +277,20 @@ public partial class SearchPopup : Control
         Layout();
         _box.Text = text;
         Refresh();
+        Resort();
         _box.GrabFocus();
         _box.SelectAll();
     }
+
+    /// <summary>
+    /// Lays the panel's containers out now. Their own sort is deferred, so on the
+    /// first frame after the size or the status text changed the status line
+    /// was still where the last layout put it, over the panel's bottom edge.
+    /// </summary>
+    private void Resort() => _panel?.PropagateNotification((int)Container.NotificationSortChildren);
+
+    /// <summary>How far the status line's bottom is below the panel's, in pixels (0 or less is inside), for the smoke check.</summary>
+    public float StatusOverflow() => _status == null ? 0 : _status.GetGlobalRect().End.Y - _panel.GetGlobalRect().End.Y;
 
     public void Close()
     {

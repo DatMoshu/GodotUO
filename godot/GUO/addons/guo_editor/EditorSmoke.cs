@@ -522,6 +522,42 @@ public partial class EditorSmoke : Node
             }
         }
 
+        if (panel is MapPanel mapPanel && mapPanel.Radar != null)
+        {
+            // Zoomed in, the radar redraws per cell: the detail of the blocks around
+            // Britain's bank, saved as a frame, must differ from the 1:4 overview.
+            RadarView view = mapPanel.Radar;
+            int bx = 1496 / 8 - 12, by = 1628 / 8 - 8;
+            Image detail = view.ComposeDetail(bx, by, 24, 16);
+            detail.SavePng(Path.Combine(_out, $"maps_detail{Suffix}.png"));
+            Image overview = mapPanel.RadarImage;
+            Image scaled = overview == null ? null : overview.GetRegion(new Rect2I(bx * 2, by * 2, 48, 32));
+            scaled?.Resize(192, 128, Image.Interpolation.Nearest);
+            int differing = 0;
+            if (scaled != null)
+            {
+                Image d2 = (Image)detail.Duplicate();
+                d2.Resize(192, 128, Image.Interpolation.Nearest);
+                for (int y = 0; y < 128; y++)
+                {
+                    for (int x = 0; x < 192; x++)
+                    {
+                        if (d2.GetPixel(x, y) != scaled.GetPixel(x, y))
+                        {
+                            differing++;
+                        }
+                    }
+                }
+            }
+
+            result["detail_png"] = Path.Combine(_out, $"maps_detail{Suffix}.png");
+            result["detail_pixels_differing_from_overview"] = differing;
+            if (differing == 0 || detail.GetSize() != new Vector2I(192, 128))
+            {
+                failures.Add("the zoomed-in radar detail is not finer than the overview");
+            }
+        }
+
         result["ok"] = failures.Count == 0;
         result["failures"] = failures;
         foreach (string f in failures)
@@ -853,6 +889,7 @@ public partial class EditorSmoke : Node
         // Multi 0x0064 (a small house) a few cells south of the view centre,
         // through the same calls a server's world-object packet makes.
         var item = _world.Host.PlaceServerMulti(0x4000_0064, 0x0064, 1500, 1634, 10);
+        _world.Host.PlaceServerMulti(0x4000_0076, 0x0076, 1512, 1634, 10);
         _worldReport["multi_placed"] = item != null;
         if (item == null)
         {
@@ -908,6 +945,9 @@ public partial class EditorSmoke : Node
             }
         }
 
+        CompareMultiOrder(0x4000_0064, 0x0064, 1500, 1634);
+        CompareMultiOrder(0x4000_0076, 0x0076, 1512, 1634);
+
         Image frame = _world.Capture();
         if (frame != null && !frame.IsEmpty())
         {
@@ -915,6 +955,66 @@ public partial class EditorSmoke : Node
             frame.SavePng(path);
             _worldReport["multi_png"] = path;
         }
+    }
+
+    // The Multis panel's fixed preview against the world's own tile order: for
+    // each cell of a placed house, the components in the map's tile list (the
+    // order the game draws a tile in) and the preview's ClientOrder, as
+    // (graphic, z) lists. Cross-cell order is the depth sort in both.
+    private void CompareMultiOrder(uint serial, ushort id, int x0, int y0)
+    {
+        string key = $"multi_order_{id:X4}";
+        if (!_world.Host.World.HouseManager.TryGetHouse(serial, out var house))
+        {
+            _worldReport[key] = "no house";
+            return;
+        }
+
+        var world = new Dictionary<(int, int), List<string>>();
+        foreach (var cell in house.Components.Select(m => (m.X, m.Y)).Distinct())
+        {
+            var chunk = _world.Host.World.Map.GetChunk(cell.X, cell.Y, load: true);
+            var list = new List<string>();
+            for (var o = chunk?.GetHeadObject(cell.X % 8, cell.Y % 8); o != null; o = o.TNext)
+            {
+                if (o is GUO.Game.GameObjects.Multi m && house.Components.Contains(m))
+                {
+                    list.Add($"{m.Graphic:X4}@{m.Z - 10}");
+                }
+            }
+
+            world[(cell.X - x0, cell.Y - y0)] = list;
+        }
+
+        var preview = new Dictionary<(int, int), List<string>>();
+        foreach (var p in MultiPanel.ClientOrder(_data, _data.Files.Multis.GetMultis(id)))
+        {
+            if (!preview.TryGetValue((p.X, p.Y), out var l))
+            {
+                preview[(p.X, p.Y)] = l = new List<string>();
+            }
+
+            l.Add($"{p.ID:X4}@{p.Z}");
+        }
+
+        int cells = 0, same = 0;
+        var diffs = new List<string>();
+        foreach (var kv in world)
+        {
+            cells++;
+            preview.TryGetValue(kv.Key, out var pl);
+            string w = string.Join(",", kv.Value), pv = string.Join(",", pl ?? new List<string>());
+            if (w == pv)
+            {
+                same++;
+            }
+            else if (diffs.Count < 12)
+            {
+                diffs.Add($"{kv.Key}: world [{w}] preview [{pv}]");
+            }
+        }
+
+        _worldReport[key] = new Dictionary<string, object> { ["cells"] = cells, ["same_order"] = same, ["differences"] = diffs };
     }
 
     // Block 187,203 holds the view centre, 1496,1628. The overlay puts three
@@ -1092,7 +1192,7 @@ public partial class EditorSmoke : Node
     private readonly Dictionary<string, object> _editReport = new();
     private readonly List<(int Wait, Action Run)> _steps = new();
     private int _step;
-    private Color _radarBefore;
+    private Color _radarBefore, _minimapBefore;
 
     private void EditFail(string why)
     {
@@ -1178,6 +1278,7 @@ public partial class EditorSmoke : Node
             _world.ForcedMouse = new Vector2I((int)_world.Size.X / 2, (int)(_world.Size.Y / 2));
             _data.CurrentArt = EditorData.LandCount + Tree;
             _radarBefore = RadarAt(EditX, EditY);
+            _minimapBefore = _world.Minimap?.PixelAt(EditX, EditY) ?? default;
             _editReport["install_statics"] = ChunkStatics(false);
         }));
 
@@ -1263,6 +1364,15 @@ public partial class EditorSmoke : Node
             _editReport["radar_before"] = _radarBefore.ToHtml();
             _editReport["radar_after"] = after.ToHtml();
             Expect(after != _radarBefore, "radar_shows_overlay");
+        }));
+
+        // The minimap repaints the edit without a facet change or a jump.
+        _steps.Add((wait, () =>
+        {
+            Color mini = _world.Minimap?.PixelAt(EditX, EditY) ?? default;
+            _editReport["minimap_before"] = _minimapBefore.ToHtml();
+            _editReport["minimap_after"] = mini.ToHtml();
+            Expect(mini != _minimapBefore, "minimap_shows_edit");
         }));
 
         // Layers: statics off, then on.
