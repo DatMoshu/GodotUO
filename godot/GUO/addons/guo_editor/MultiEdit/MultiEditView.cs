@@ -164,6 +164,7 @@ public partial class MultiEditView : VBoxContainer, IMultiComponentSink
         _openId.TextSubmitted += _ => OpenTyped();
         bar.AddChild(_openId);
         bar.AddChild(Tip(Btn("Open", OpenTyped), "Open a client multi by id"));
+        BuildFormatMenus(bar);
         bar.AddChild(new VSeparator());
 
         var group = new ButtonGroup();

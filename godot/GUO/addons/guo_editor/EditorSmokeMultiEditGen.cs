@@ -88,6 +88,71 @@ public partial class EditorSmoke
         view.NewMulti();
         await MeClipboardAsync(view, root);
         view.NewMulti();
+        await MeFormatsAsync(view, root);
+        view.NewMulti();
+    }
+
+    private static List<(int, int, int, int)> Shape(MultiDocument doc, bool shown, bool hue, out List<int> flags)
+    {
+        int cx = (doc.Parts.Min(p => (int)p.X) + doc.Parts.Max(p => (int)p.X)) / 2, cy = (doc.Parts.Min(p => (int)p.Y) + doc.Parts.Max(p => (int)p.Y)) / 2;
+        var rows = doc.Parts.Select(p => ((int)p.Id, p.X - cx, p.Y - cy, (int)p.Z, (shown && !p.Shown ? 1 : 0), hue ? (int)p.Hue : 0)).OrderBy(t => t).ToList();
+        flags = rows.Select(r => r.Item5 * 100000 + r.Item6).ToList();
+        return rows.Select(r => (r.Item1, r.Item2, r.Item3, r.Item4)).ToList();
+    }
+
+    private async Task MeFormatsAsync(MultiEditView view, string root)
+    {
+        MultiDocument doc = view.Doc;
+        GeneratePanel panel = view.GeneratePanel;
+        string dir = Path.Combine(root, "formats");
+        Directory.CreateDirectory(dir);
+        view.ShowGenerateTab();
+        panel.SelectGenerator("house");
+        await view.ApplyGeneratedAsync(true);
+        MultiPart hidden = doc.Parts.FirstOrDefault(p => !p.Shown);
+        doc.SetHue(new[] { doc.Parts[3].Uid, doc.Parts[4].Uid }, 21);
+        int count = doc.Parts.Count, hiddenCount = doc.Parts.Count(p => !p.Shown), hued = doc.Parts.Count(p => p.Hue != 0);
+        _meReport["format_components"] = count;
+        _meReport["format_hidden"] = hiddenCount;
+        var kept = new List<string>();
+        foreach ((string format, string ext, _) in MultiEditView.LegacyFormats)
+        {
+            string file = Path.Combine(dir, $"smoke_{format}.{ext}");
+            string err = await view.ExportFileAsync(file, format);
+            MeCheck($"export_{format}", err == null && File.Exists(file) && new FileInfo(file).Length > 0, err);
+            if (err != null)
+            {
+                continue;
+            }
+
+            // Compare what the format carries. Hue: uoab, wsc, centred. Hidden flag: not uoab, wsc or uox3 (they carry none).
+            bool hue = format is "uoab" or "wsc" or "centred";
+            bool flag = format is not ("uoab" or "wsc" or "uox3");
+            var want = Shape(doc, flag, hue, out List<int> wantFlags);
+            err = await view.ImportFileAsync(file, format);
+            MeCheck($"import_{format}", err == null && doc.Parts.Count == count, err ?? $"{doc.Parts.Count} vs {count}");
+            if (err == null)
+            {
+                var got = Shape(doc, flag, hue, out List<int> gotFlags);
+                MeCheck($"round_trip_{format}", got.SequenceEqual(want) && gotFlags.SequenceEqual(wantFlags),
+                    $"shape {got.SequenceEqual(want)} flags {gotFlags.SequenceEqual(wantFlags)}");
+                kept.Add($"{format}:{(hue ? "hue " : "")}{(flag ? "hidden" : "")}".Trim());
+            }
+
+            // Back to the original for the next format.
+            doc.Undo();
+            doc.JumpTo(0);
+            await view.ApplyGeneratedAsync(true);
+            doc.SetHue(new[] { doc.Parts[3].Uid, doc.Parts[4].Uid }, 21);
+        }
+
+        _meReport["format_round_trips"] = string.Join(" ", kept);
+        string detect = Path.Combine(dir, "smoke_txt.txt");
+        MeCheck("import_detects_format", File.Exists(detect) && await view.ImportFileAsync(detect) == null && doc.Parts.Count == count);
+        MeCheck("import_missing_file_reports", await view.ImportFileAsync(Path.Combine(dir, "nope.txt")) != null);
+        MeCheck("formats_outside_install", Path.GetFullPath(dir).StartsWith(Path.GetFullPath(_out), StringComparison.OrdinalIgnoreCase));
+        _ = hidden;
+        _ = hued;
     }
 
     private async Task MeClipboardAsync(MultiEditView view, string root)
