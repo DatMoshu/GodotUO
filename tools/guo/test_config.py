@@ -44,6 +44,14 @@ class ConfigTests(unittest.TestCase):
         os.environ["UO_CLIENT_VERSION"] = ""
         self.assertEqual(load_config(self.root).client_version, "local")
 
+    def test_workspace_dir_order_and_default(self):
+        from guo.config import default_workspace_dir
+        self.assertEqual(load_config(self.root).workspace_dir, Path(default_workspace_dir()))
+        self.local.write_text('set "UO_WORKSPACE_DIR=%UO_ROOT%/ws-local"', encoding="utf-8")
+        self.assertEqual(load_config(self.root).workspace_dir, self.root / "ws-local")
+        os.environ["UO_WORKSPACE_DIR"] = str(self.root / "ws-env")
+        self.assertEqual(load_config(self.root).workspace_dir, self.root / "ws-env")
+
     def test_playerbots_configuration_keeps_separate_profile(self):
         self.defaults.write_text(
             'if not defined UO_PLAYERBOTS_DIR set "UO_PLAYERBOTS_DIR=%UO_ROOT%/build/playerbots"\n'

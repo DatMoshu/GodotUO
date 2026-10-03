@@ -82,7 +82,8 @@ parsing the .bat files directly when run outside a launcher, so behaviour is
 identical from a launcher, the editor, an agent or CI.
 
 Key settings: `UO_CLIENT_DATA` (your UO install), `UO_CLIENT_VERSION`,
-`UO_CACHE_DIR`, `UO_SHARD_HOST` / `UO_SHARD_PORT`, `UO_GODOT_HOME` (the
+`UO_CACHE_DIR`, `UO_WORKSPACE_DIR` (the per-user server and client
+profiles, default `%LOCALAPPDATA%\GUO`), `UO_SHARD_HOST` / `UO_SHARD_PORT`, `UO_GODOT_HOME` (the
 engine folder, `tools\godot`) and `UO_UPSTREAM_DIR` (the folder holding
 ClassicUO, `sources`).
 
