@@ -329,7 +329,7 @@ internal sealed class ProblemsMode : CellMode
 
     public override IReadOnlyList<LegendItem> Legend(ModeContext ctx) => new[]
     {
-        new LegendItem("hole in a floor", Hole), new LegendItem("z-fight (same cell, same z)", ZFight), new LegendItem("static on water", OnWater),
+        new LegendItem("hole in a floor", Hole), new LegendItem("z-fight (same cell and z, same graphic or two floors)", ZFight), new LegendItem("static on water", OnWater),
     };
 
     protected override Color? Fill(ModeContext ctx, int x, int y)

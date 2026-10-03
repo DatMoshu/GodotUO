@@ -470,7 +470,8 @@ internal sealed class WorldData
     /// What is wrong on a cell. A hole: no floor on the cell while the cells
     /// either side of it (north and south, or east and west) both have one,
     /// and nothing built stands on it. A z-fight: two statics (not placed
-    /// items) on the cell at the same z. On water: a static that is neither
+    /// items) on the cell at the same z that draw over each other: the same
+    /// graphic twice, or two floors (a wall's two faces share a z and are not one). On water: a static that is neither
     /// water nor a surface standing on water land.
     /// </summary>
     public Problem ProblemsAt(int x, int y)
@@ -498,7 +499,8 @@ internal sealed class WorldData
 
             for (int c = a + 1; c < objs.Count; c++)
             {
-                if (!objs[c].IsItem && objs[c].Z == objs[a].Z)
+                if (!objs[c].IsItem && objs[c].Z == objs[a].Z
+                    && (objs[c].Graphic == objs[a].Graphic || (objs[c].Kind == Kind.Floor && objs[a].Kind == Kind.Floor)))
                 {
                     p |= Problem.ZFight;
                 }

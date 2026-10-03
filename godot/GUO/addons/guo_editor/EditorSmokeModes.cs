@@ -35,6 +35,8 @@ public partial class EditorSmoke
         }
     }
 
+    internal static string FixtureShardFolder() => FixtureShard();
+
     private static string FixtureShard() => Path.Combine(EditorData.RepoRoot, "tools", "editor_smoke", "fixtures", "shard");
 
     private ImagePaint RenderMode(IWorldMode mode, ModeContext ctx, string file)
