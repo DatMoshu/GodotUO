@@ -1310,3 +1310,22 @@ The line is `{"event":"done", ok, dragon?, landscaper?}`:
 Exit 1 when a requested part produced nothing.
 
 ### `presets` → `{"schema": "guo.mapgen.presets/1", "presets": [...]}`
+
+## 27. Multi components description (`*.multi.json`, ADR-0031)
+
+The Multi Editor's own file, in `build/multi/edit/` (gitignored: it holds client-derived layouts).
+Unlike a §16 description, which a generator expands, this one lists the components themselves. It is
+diffable (one component per line) and keeps the hue, which a multi record cannot.
+
+| Field | Meaning |
+|---|---|
+| `format` | `1` |
+| `kind` | `"components"` |
+| `name` | The multi's name in a stage |
+| `source` | The client multi id it was opened from, or `null` |
+| `floor_z`, `storey_height` | `7` and `20`, the client's story heights |
+| `components` | `[item, x, y, z, shown, hue]` per component, in list order (the order breaks ties in painting): `item` and `hue` numbers, `shown` `1` or `0`, x/y from the centre |
+
+Writing it to a stage goes through the built form of §16 (`components.json`: `[item, x, y, z]` with a
+fifth element `0` when hidden, plus a `multi.json` with `valid`, `problems`, `doors`, `size`,
+`storeys`) and `tools/multi write`. The hue is not written.

@@ -90,22 +90,30 @@ public partial class MultiPanel : GridPanel
     /// (the sort key); within one tile, a Multi of equal priority is inserted
     /// before the existing ones, so later list entries paint first.
     /// </summary>
-    internal static List<MultiInfo> ClientOrder(EditorData data, List<MultiInfo> parts)
+    internal static List<MultiInfo> ClientOrder(EditorData data, List<MultiInfo> parts) =>
+        ClientOrderOf(data, parts, p => (p.ID, p.X, p.Y, p.Z, p.IsVisible));
+
+    /// <summary>
+    /// <see cref="ClientOrder"/> for any part type (the Multi Editor's canvas shares this one sort):
+    /// <paramref name="key"/> gives a part's id, x, y, z and whether it is shown.
+    /// </summary>
+    internal static List<T> ClientOrderOf<T>(EditorData data, IList<T> parts, Func<T, (int Id, int X, int Y, int Z, bool Visible)> key)
     {
         StaticTiles[] tiles = data.Files.TileData.StaticData;
-        var keyed = new List<(MultiInfo p, float depth, int seq)>();
+        var keyed = new List<(T p, int x, int y, float depth, int seq)>();
         for (int i = 0; i < parts.Count; i++)
         {
-            MultiInfo p = parts[i];
-            if (!p.IsVisible)
+            T p = parts[i];
+            (int id, int px, int py, int z, bool visible) = key(p);
+            if (!visible)
             {
                 continue;
             }
 
-            int pz = p.Z;
-            if (p.ID < tiles.Length)
+            int pz = z;
+            if (id < tiles.Length)
             {
-                StaticTiles t = tiles[p.ID];
+                StaticTiles t = tiles[id];
                 if (t.IsBackground)
                 {
                     pz--;
@@ -122,7 +130,7 @@ public partial class MultiPanel : GridPanel
                 }
             }
 
-            keyed.Add((p, (p.X + p.Y) + (127 + pz) * 0.01f, i));
+            keyed.Add((p, px, py, (px + py) + (127 + pz) * 0.01f, i));
         }
 
         // Depth first; equal depth keeps the render list's order, which on a
@@ -135,12 +143,12 @@ public partial class MultiPanel : GridPanel
                 return c;
             }
 
-            if (a.p.X == b.p.X && a.p.Y == b.p.Y)
+            if (a.x == b.x && a.y == b.y)
             {
                 return b.seq.CompareTo(a.seq);
             }
 
-            c = a.p.Y.CompareTo(b.p.Y);
+            c = a.y.CompareTo(b.y);
             return c != 0 ? c : a.seq.CompareTo(b.seq);
         });
         return keyed.Select(k => k.p).ToList();
