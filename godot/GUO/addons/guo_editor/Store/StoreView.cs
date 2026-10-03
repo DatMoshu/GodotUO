@@ -19,7 +19,7 @@ using Godot;
 [Tool]
 public partial class StoreView : VBoxContainer
 {
-    public const string TabName = "UO Store";
+    public const string TabName = "Store";
 
     private TabContainer _tabs;
     private StoreBench _bench;
