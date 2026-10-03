@@ -16,7 +16,7 @@ public partial class GuoStorePlugin : EditorPlugin
     public override string _GetPluginName() => StoreView.TabName;
 
     public override Texture2D _GetPluginIcon() =>
-        EditorInterface.Singleton.GetEditorTheme().GetIcon("AssetLib", "EditorIcons");
+        EditorInterface.Singleton.GetEditorTheme().GetIcon("Load", "EditorIcons");
 
     public override void _MakeVisible(bool visible)
     {

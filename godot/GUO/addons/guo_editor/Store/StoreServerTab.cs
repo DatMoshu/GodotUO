@@ -46,6 +46,9 @@ public partial class StoreServerTab : VBoxContainer, IStoreSection
 
     private StoreBench Bench => _view.Bench;
 
+    /// <summary>A profile list to use instead of the run bar's file (the smoke check's scratch shard).</summary>
+    internal ServerProfiles ProfilesOverride { get; set; }
+
     private ServerProfile Current => _profiles?.Servers.ElementAtOrDefault(_profile?.Selected ?? -1);
 
     private StoreManifest Pack => _packs?.GetSelectedItems().Length > 0 ? _installed.ElementAtOrDefault(_packs.GetSelectedItems()[0]) : null;
@@ -178,7 +181,7 @@ public partial class StoreServerTab : VBoxContainer, IStoreSection
         string keep = Current?.Id;
         try
         {
-            _profiles = ServerProfiles.Load(Bench.ProfilesPath);
+            _profiles = ProfilesOverride ?? ServerProfiles.Load(Bench.ProfilesPath);
         }
         catch (Exception e)
         {

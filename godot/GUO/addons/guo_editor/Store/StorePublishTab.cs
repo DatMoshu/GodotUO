@@ -48,6 +48,10 @@ public partial class StorePublishTab : VBoxContainer, IStoreSection
 
     public bool IsBusy => _busy;
 
+    public bool CanPublish => _publish != null && !_publish.Disabled;
+
+    public void SetStoreFolder(string folder) => _store.Text = folder;
+
     public override void _Ready()
     {
         AddChild(new Label

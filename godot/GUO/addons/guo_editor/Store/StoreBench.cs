@@ -219,6 +219,27 @@ internal sealed class StoreBench : IDisposable
         }
     }
 
+    /// <summary>
+    /// The client's store code (<see cref="StoreClient"/>, <see cref="StoreTrust"/>) deserializes its
+    /// records with System.Text.Json's default options, whose process-wide cache would keep this
+    /// assembly's types, and so the whole assembly, alive past an editor reload. The runtime clears
+    /// that cache for its own hot reload through an internal update handler; the editor asks the
+    /// same thing before the assembly is unloaded.
+    /// </summary>
+    public static void ReleaseJsonCaches()
+    {
+        try
+        {
+            Type handler = typeof(System.Text.Json.JsonSerializer).Assembly.GetType("System.Text.Json.JsonSerializerOptionsUpdateHandler");
+            handler?.GetMethod("ClearCache", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic)
+                ?.Invoke(null, new object[] { null });
+        }
+        catch (Exception)
+        {
+            // Best effort: without it a reload may need an editor restart, as before.
+        }
+    }
+
     public void Dispose()
     {
         Cancel.Cancel();

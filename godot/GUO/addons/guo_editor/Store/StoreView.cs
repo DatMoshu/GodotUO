@@ -45,6 +45,7 @@ public partial class StoreView : VBoxContainer
     /// <summary>The smoke check points the store at a scratch folder and away from the internet.</summary>
     internal void UseBench(StoreBench bench)
     {
+        _bench?.Dispose();
         _bench = bench;
     }
 
@@ -107,6 +108,7 @@ public partial class StoreView : VBoxContainer
     {
         _bench?.Dispose();
         _bench = null;
+        StoreBench.ReleaseJsonCaches();
     }
 
     public override void _ExitTree() => Shutdown();

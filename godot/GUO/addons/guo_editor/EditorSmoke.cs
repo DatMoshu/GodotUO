@@ -229,7 +229,8 @@ public partial class EditorSmoke : Node
 
             case 60:
                 // The AI hub (ADR-0028): ACP, Ollama and queue, against stubs.
-                if (StepAi())
+                // One after the other: both are async stages that wait on the scene tree's timers.
+                if (StepAi() && StepStore())
                 {
                     // Phase 5: the asset overlay, before the World tab boots
                     // so the world's own loaders get it too.
