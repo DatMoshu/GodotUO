@@ -25,7 +25,7 @@ public partial class MultiEditView
 
     /// <summary>
     /// Runs rotate (<paramref name="turns"/> quarter turns clockwise) or mirror (<paramref name="axis"/> x or y) on the
-    /// selection or the whole multi. A selection turns about its own centre and keeps its top corner where it was; the
+    /// selection or the whole multi. A selection turns about the centre of what it draws and stays there; the
     /// whole multi turns about its centre cell (0,0). Returns whether anything changed.
     /// </summary>
     public async Task<bool> TransformAsync(string op, int turns = 1, string axis = "x")
@@ -37,20 +37,15 @@ public partial class MultiEditView
             return false;
         }
 
-        int px = 0, py = 0, minX = targets.Min(p => (int)p.X), minY = targets.Min(p => (int)p.Y);
-        if (!whole)
-        {
-            px = (minX + targets.Max(p => (int)p.X)) / 2;
-            py = (minY + targets.Max(p => (int)p.Y)) / 2;
-        }
-
+        // The selection goes in at its own cells and the tool turns it about the centre of what it draws
+        // (keep_centre), so an even-sized selection no longer creeps a cell.
         var comps = new JsonArray();
         foreach (MultiPart p in targets)
         {
-            comps.Add((JsonNode)new JsonArray(p.Id, p.X - px, p.Y - py, p.Z, p.Shown ? 1 : 0));
+            comps.Add((JsonNode)new JsonArray(p.Id, p.X, p.Y, p.Z, p.Shown ? 1 : 0));
         }
 
-        var args = new JsonObject { ["components"] = comps };
+        var args = new JsonObject { ["components"] = comps, ["keep_centre"] = !whole };
         if (op == "rotate")
         {
             args["turns"] = ((turns % 4) + 4) % 4;
@@ -72,19 +67,12 @@ public partial class MultiEditView
             return false;
         }
 
-        int ox = 0, oy = 0;
-        if (!whole && r.Components.Count > 0)
-        {
-            ox = minX - (r.Components.Min(c => c.X) + px);          // keep the selection's top corner in place
-            oy = minY - (r.Components.Min(c => c.Y) + py);
-        }
-
         bool sameCount = r.Components.Count == targets.Count;
         var made = new List<MultiPart>();
         for (int i = 0; i < r.Components.Count; i++)
         {
             GenComponent c = r.Components[i];
-            made.Add(_doc.Make((ushort)c.Item, c.X + px + ox, c.Y + py + oy, c.Z, c.Visible, sameCount ? targets[i].Hue : (ushort)0));
+            made.Add(_doc.Make((ushort)c.Item, c.X, c.Y, c.Z, c.Visible, sameCount ? targets[i].Hue : (ushort)0));
         }
 
         var gone = new HashSet<int>(targets.Select(t => t.Uid));

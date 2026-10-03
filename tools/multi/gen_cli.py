@@ -92,7 +92,7 @@ def op_rotate(ctx: Context, p: dict) -> dict:
     turns = int(p.get("turns", 1)) % 4
     op = ("rot90", "rot180", "rot270")[turns - 1] if turns else None
     table = ctx.table()
-    out = orient.transform(comps, op, table, p.get("recentre", False)) if op else comps
+    out = orient.transform(comps, op, table, p.get("recentre", False), p.get("keep_centre", False)) if op else comps
     return {"components": kit.comps_out(out), "notes": [] if table["wall"] else ["no remap table: ids unchanged"],
             "ms": kit.ms_since(t0)}
 
@@ -101,7 +101,7 @@ def op_mirror(ctx: Context, p: dict) -> dict:
     t0 = time.perf_counter()
     axis = p.get("axis", "x")
     comps = comps_in(p["components"])
-    out = orient.transform(comps, "mirror_x" if axis == "x" else "mirror_y", ctx.table(), p.get("recentre", False))
+    out = orient.transform(comps, "mirror_x" if axis == "x" else "mirror_y", ctx.table(), p.get("recentre", False), p.get("keep_centre", False))
     return {"components": kit.comps_out(out), "notes": [], "ms": kit.ms_since(t0)}
 
 
