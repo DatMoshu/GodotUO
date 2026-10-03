@@ -10,7 +10,7 @@ writes legacy MUL map files. The owner wrote it as an addition to a CentrED# for
 | `MapGen/` | The generator library (`GUO.MapGen`, net8.0). Namespaces stay `CentrED.MapGen.*` |
 | `MapGen/presets/` | Presets (`*.preset.json`), the tile tables, GUO's transition table (`transitions.guo.json`) and scatter table (`scatter.guo.json`) |
 | `MapGen/Mining/` | The owner's importer for Dragon's transition rules (`prepare --dragon`, optional) |
-| `MapGen.Tests/` | 258 tests: determinism, terrain invariants, coasts, the transition and scatter tables, stamps, the MUL writer, the Dragon importer. None needs local data |
+| `MapGen.Tests/` | 262 tests: determinism, terrain invariants, coasts, the transition and scatter tables, stamps, the MUL writer, the Dragon importer. None needs local data |
 | `cli/` | `guo-mapgen`, the command-line front end the editor's Map Generator tab runs |
 | `data/` | Shipped data: the dungeon roster and decor table (hand-written by the owner) |
 | `run.py` | Builds the CLI into `build/mapgen/cli` on first use and runs it with the config's paths |
@@ -96,6 +96,7 @@ images after a Gemini review; tune the generator against them:
    valleys inside it. Change only the range shape: the owner's mountain and road heights stay.
 3. **Rivers run dead straight** along mountain feet for long stretches, on diagonals.
 4. **Land runs off the map edge** on the left, right and bottom.
-5. **No beaches:** `shore_sand` measured 0%, against 31% in Felucca. The coast atlas is mined data,
-   and it was absent here. Expect this until the "Prepare generator data" step exists.
-6. **Too flat:** 65% of land is at z 0, against 56% in Felucca.
+5. **Beaches (fixed 2026-10-03):** the card counted Felucca's seabed as land, so its 31% coast sand
+   measured the seabed. Counted as water, Felucca's dry coast is 83% sand and the generator's 89%. The
+   Shallows pass now shapes the seabed as Felucca does and ripples the waterline sand.
+6. **Too flat:** 66% of land is at z 0, against 63% in Felucca (counting the seabed as water).
