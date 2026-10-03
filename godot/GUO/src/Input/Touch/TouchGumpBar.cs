@@ -325,7 +325,8 @@ namespace GUO.Input.Touch
             // nothing and taking no taps, until it closes.
             GumpPresentation.FitFullHeight();
             GumpPresentation.FitPaperdolls();
-            Covered = GumpPresentation.FullHeightOpen() || Modern.ModernGump.IsOpen;
+            Covered = GumpPresentation.FullHeightOpen() || Modern.ModernGump.IsOpen
+                || (Platform.Android.AdaptiveLayout.Active && !Platform.Android.AdaptiveLayout.MacrosOpen);
             Visible = !GUO.Game.Managers.ScreenSaver.Active && !Covered && !Renderer.CleanShots.Hidden;
 
             if (!Shown)
@@ -537,6 +538,11 @@ namespace GUO.Input.Touch
         private Geometry ComputeLayout(float height)
         {
             var g = new Geometry { View = _surface.GetViewportRect().Size };
+            if (Platform.Android.AdaptiveLayout.Active)
+            {
+                var world = Platform.Android.AdaptiveLayout.Layout.World;
+                g.View = new Vector2(world.Width, world.Height) * Client.Game.DpiScale;
+            }
 
             // The largest whole-number scale at which ten plates fit across,
             // each at least 64 art px of cell (the plate's 58 plus the gap);

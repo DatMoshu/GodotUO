@@ -144,6 +144,8 @@ design/press-kit/
 *.idsig
 *.keystore
 *.jks
+godot/GUO/android/build/
+godot/GUO/android/.build_version
 
 # === Agent coordination ===================================================
 # Director/Codex hand-over notes and session hand-offs name local machines,

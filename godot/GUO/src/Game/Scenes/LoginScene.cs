@@ -215,6 +215,9 @@ namespace GUO.Game.Scenes
             }
         }
 
+        // PORT DEVIATION (GUO): rotation must re-centre the existing step, not reset login.
+        internal void RecenterForDevice() => GUO.Input.Touch.MobileProfile.CentreLoginGump(_currentGump);
+
         private Gump GetGumpForStep()
         {
             foreach (Item item in _world.Items.Values)

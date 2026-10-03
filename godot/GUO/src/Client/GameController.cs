@@ -748,7 +748,8 @@ namespace GUO
             // PORT DEVIATION (GUO): on one screen, the second screen's panel
             // (the dock beside the login gump, the drawer in the world) takes
             // the pointer over it and its tab; see DualScreen.Panel.
-            if (GUO.Platform.Android.DualScreen.HandleMainInput(@event))
+            if (GUO.Platform.Android.AdaptiveLayout.HandleInput(@event)
+                || GUO.Platform.Android.DualScreen.HandleMainInput(@event))
             {
                 GetViewport().SetInputAsHandled();
 
@@ -1163,6 +1164,13 @@ namespace GUO
 
         private void WindowOnClientSizeChanged(int width, int height)
         {
+            // PORT DEVIATION (GUO): folds/rotations change both available size and safe art scale.
+            if (GUO.Input.Touch.TouchInput.Enabled)
+            {
+                GUO.Input.Touch.TouchInput.CancelGesture();
+                GUO.Input.Touch.TouchInput.ApplyScreenScale(GUO.Input.Touch.TouchInput.RequestedScale);
+                if (Scene is LoginScene login) login.RecenterForDevice();
+            }
             if (!IsWindowMaximized() && Window.AllowUserResizing)
             {
                 if (ProfileManager.CurrentProfile != null)

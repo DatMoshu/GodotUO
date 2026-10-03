@@ -6,6 +6,13 @@ why the plugin host is compiled out, how touch maps onto the mouse) are in
 [ADR-0017](../../docs/architecture/ADR-0017-android-target.md). This file is
 the how-to.
 
+For Android UI development run `launchers\android\device_manager.bat` (or
+`python tools/android/device_manager.py`). **GUO Device Test Manager** creates
+missing AVDs, launches device profiles, applies display presets and captures
+screenshots, silent videos, diagnostics and JSON reproduction metadata under
+`build/device-tests`.
+See [setup and coverage](../../docs/ui/device_test_manager.md).
+
 ```
 launchers\android\doctor.bat     what is missing on this machine, with the fix
 launchers\android\export.bat     debug APK -> build\android\GUO-debug.apk
@@ -52,7 +59,9 @@ Then, in this order (`doctor.bat` tells you which are still missing):
    Point `UO_ANDROID_JDK` at it (or have `JAVA_HOME` set).
 2. **Android SDK.** Android Studio's SDK Manager, or the command-line tools,
    with `platform-tools`, `build-tools;35.0.1` and `platforms;android-35`.
-   No NDK is needed: the preset does not use a Gradle build.
+   The Gradle export packages AndroidX WindowManager for fold events. The runner
+   installs the matching Godot Android source template automatically; the first
+   export needs access to Maven dependencies.
 3. **Export templates** for the pinned engine: put
    `Godot_v4.7.2-stable_mono_export_templates.tpz` in `tools\godot\templates`
    (the same place `fetch_godot.bat` puts the engine) and run
