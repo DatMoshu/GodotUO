@@ -758,7 +758,7 @@ public partial class MultiEditView : VBoxContainer, IMultiComponentSink
         }
     }
 
-    private void PreviewNow()
+    public void PreviewNow()
     {
         if (_lastWritten is int id)
         {

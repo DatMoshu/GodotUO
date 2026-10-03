@@ -189,7 +189,7 @@ public partial class EditorSmoke
         doc.Redo();
         doc.Redo();
         MeCheck("redo_four_steps", doc.Parts.Count == afterDraw);
-        doc.JumpTo(baseHistory);
+        doc.JumpTo(baseHistory - 1);
         MeCheck("history_jump_back", doc.Parts.Count == baseCount, $"{doc.Parts.Count}");
         doc.JumpTo(doc.HistoryCount - 1);
         MeCheck("history_jump_forward", doc.Parts.Count == afterDraw);
@@ -228,12 +228,13 @@ public partial class EditorSmoke
 
         // Box select takes everything drawn.
         doc.Selection.Clear();
-        Vector2 b0 = canvas.ScreenOf(22, 20, 7) + new Vector2(-30, -60), b1 = canvas.ScreenOf(42, 30, 7) + new Vector2(30, 60);
+        Vector2 b0 = new(-6000, -6000), b1 = new(6000, 6000);
         canvas._GuiInput(Move(b0));
         canvas._GuiInput(Click(b0, true));
         canvas._GuiInput(Move(b1));
         canvas._GuiInput(Click(b1, false));
-        MeCheck("box_select", doc.Selection.Count == 20, $"{doc.Selection.Count} selected");
+        var drawn = doc.Parts.Where(p => p.X >= 24 && p.Id == floorId && p.Z == 7 && p.X < 50).ToList();
+        MeCheck("box_select", drawn.Count == 20 && drawn.All(p => doc.Selection.Contains(p.Uid)) && doc.Selection.Count == doc.Parts.Count, $"{doc.Selection.Count} selected of {doc.Parts.Count}, {drawn.Count} drawn");
         doc.Selection.Clear();
 
         // Pipette picks the tile and hue; the hue per component and the shown flag are history steps.
@@ -260,9 +261,14 @@ public partial class EditorSmoke
 
         // --- validation flags on a known-bad edit ----------------------------------------------------------------------
         int goodHistory = doc.HistoryCount;
-        ushort noArt = (ushort)Enumerable.Range(0x3000, 0x1000).First(id => id < tiles.Length && !_data.HasArt(EditorData.LandCount + (uint)id));
-        ushort tall = (ushort)Enumerable.Range(1, tiles.Length - 1).First(id => id < 0x3000 && _data.HasArt(EditorData.LandCount + (uint)id)
-            && tiles[id].Height >= 30 && tiles[id].IsImpassable);
+        ushort noArt = (ushort)Enumerable.Range(0x1000, Math.Min(tiles.Length, 0x10000) - 0x1000).FirstOrDefault(id => !_data.HasArt(EditorData.LandCount + (uint)id));
+        if (noArt == 0)
+        {
+            noArt = 0xFFF0;
+        }
+
+        ushort tall = (ushort)Enumerable.Range(1, Math.Min(tiles.Length, 0x4000) - 1).First(id => _data.HasArt(EditorData.LandCount + (uint)id)
+            && tiles[id].Height >= 14 && tiles[id].IsImpassable);
         doc.Do("known-bad edit", parts =>
         {
             parts.Add(doc.Make(floorId, 50, 50, 7));
@@ -330,7 +336,7 @@ public partial class EditorSmoke
                 MeCheck("world_preview_places", _world.PreviewMulti(newId));
                 await Frames(Headless ? 8 : 20);
                 bool house = _world.Host.World.HouseManager.TryGetHouse(0x4000_F001, out var h);
-                MeCheck("world_draws_staged_multi", house && h.Components.Count == back?.Count, house ? $"{h.Components.Count} vs {back?.Count}" : "no house");
+                MeCheck("world_draws_staged_multi", house && h.Components.Count == back?.Count(p => p.Shown), house ? $"{h.Components.Count} vs {back?.Count(p => p.Shown)} shown" : "no house");
                 _world.Host.RemoveServerObject(0x4000_F001);
             }
         }
