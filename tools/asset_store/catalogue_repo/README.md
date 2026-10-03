@@ -11,7 +11,7 @@ a pull request before it appears. The catalogue is signed: CI signs the index
 on every merge, and the client refuses an index that does not verify.
 
 - **The catalogue:** <https://datmoshu.github.io/GodotUO-packs/>
-- **Signing key fingerprint:** `KEY-FINGERPRINT` (the client shows the same one)
+- **Signing key fingerprint:** `5660 9E81 07F4 7AAD` (the client shows the same one)
 
 ## What is in this repository
 

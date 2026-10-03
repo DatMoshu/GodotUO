@@ -47,7 +47,10 @@ public static class ExternalTools
                     continue;
                 }
 
+                // The winget/Inno installer puts it in Pinta\bin.
+                candidates.Add(Path.Combine(root, "Pinta", "bin", "Pinta.exe"));
                 candidates.Add(Path.Combine(root, "Pinta", "Pinta.exe"));
+                candidates.Add(Path.Combine(root, "Programs", "Pinta", "bin", "Pinta.exe"));
                 candidates.Add(Path.Combine(root, "Programs", "Pinta", "Pinta.exe"));
             }
         }
