@@ -60,6 +60,10 @@ trunks with it when there is no `tree-statics.json`. How it was made is in `docs
 terms are unverified). `run.py prepare --dragon DIR` converts your own copy into `UO_MAPGEN_DATA`;
 `run --brushes dragon` then uses it, and `coverage` compares against it.
 
+The editor's MapGen tab picks the table under *Transition table*: GUO (the default, with your measured
+weights when `prepare --measure` wrote them), GUO core (the committed table alone), Dragon once prepared,
+or a table file of your own. It passes the choice as `--brushes`; Export reuses it.
+
 **UO Landscaper's statics and transitions** are optional. Biome Static Scatter reads them when its
 *Catalogue* names `mined/landscaper-statics`, and Swamp Surface when its *Transition catalogue* names
 `mined/landscaper-transitions`; by default both use GUO's own tables. norad32's MIT mod began by

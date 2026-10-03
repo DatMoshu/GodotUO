@@ -73,8 +73,10 @@ public partial class MapGenView : VBoxContainer
     private readonly List<(int Index, string Name, string File)> _steps = new();
     private readonly Random _random = new();
 
-    private OptionButton _preset, _size, _layer;
+    private OptionButton _preset, _size, _layer, _table;
     private readonly List<string> _presetValues = new();
+    private readonly List<string> _tableValues = new();
+    private string _tableFile;
     private SpinBox _seed;
     private CheckBox _fast, _stepPreviews;
     private Button _generate, _cancel, _export, _openWorld, _savePreset;
@@ -95,6 +97,12 @@ public partial class MapGenView : VBoxContainer
     public int PassGroupCount => _passes.Count;
     public int TunableControlCount => _passes.Sum(p => p.Tunables.Count);
     public string LastRun => _lastRun;
+
+    /// <summary>The transition table the next run uses: guo, guo-core, dragon or a file path.</summary>
+    public string CurrentTable => _tableValues.Count > 0 && _table.Selected >= 0 ? _tableValues[_table.Selected] : "guo";
+
+    /// <summary>The tables the picker offers (ids, and file paths once picked).</summary>
+    public IReadOnlyList<string> TableChoices => _tableValues;
 
     public MapGenView()
     {
@@ -155,6 +163,17 @@ public partial class MapGenView : VBoxContainer
         seedRow.AddChild(_seed);
         seedRow.AddChild(dice);
         col.AddChild(seedRow);
+
+        col.AddChild(Heading("Transition table"));
+        _table = new OptionButton { TooltipText = "Which tiles blend one ground into another. GUO's own table is the default." };
+        _table.ItemSelected += i =>
+        {
+            if (_tableValues[(int)i] == FileChoice)
+            {
+                PickTableFile();
+            }
+        };
+        col.AddChild(_table);
 
         col.AddChild(Heading("Size"));
         _size = new OptionButton { TooltipText = "Map size in tiles. The client's facets are 7168x4096 (Felucca, Trammel), 2304x1600 (Ilshenar), 2560x2048 (Malas), 1448x1448 (Tokuno)." };
@@ -307,6 +326,7 @@ public partial class MapGenView : VBoxContainer
 
         FillPresets(schema, presetId);
         FillSizes(schema);
+        FillTables(schema);
 
         foreach (Node child in _passList.GetChildren())
         {
@@ -351,6 +371,85 @@ public partial class MapGenView : VBoxContainer
 
         int sel = _presetValues.FindIndex(v => v == current || Path.GetFileName(v) == current + ".preset.json");
         _preset.Select(Math.Max(0, sel));
+    }
+
+    private const string FileChoice = "<file>";
+
+    /// <summary>The schema's tables, then a table file once one was picked, then "Other file...".</summary>
+    private void FillTables(JsonElement schema)
+    {
+        string old = _tableValues.Count > 0 ? CurrentTable : "guo";
+        _tableValues.Clear();
+        _table.Clear();
+        if (schema.TryGetProperty("tables", out JsonElement tables))
+        {
+            foreach (JsonElement t in tables.EnumerateArray())
+            {
+                _tableValues.Add(t.GetProperty("id").GetString());
+                _table.AddItem(t.GetProperty("label").GetString());
+                int i = _table.ItemCount - 1;
+                _table.SetItemTooltip(i, t.GetProperty("description").GetString());
+                _table.SetItemDisabled(i, !t.GetProperty("available").GetBoolean());
+            }
+        }
+        else
+        {
+            _tableValues.Add("guo");
+            _table.AddItem("GUO");
+        }
+
+        if (_tableFile != null)
+        {
+            _tableValues.Add(_tableFile);
+            _table.AddItem("file: " + Path.GetFileName(_tableFile));
+            _table.SetItemTooltip(_table.ItemCount - 1, _tableFile);
+        }
+
+        _tableValues.Add(FileChoice);
+        _table.AddItem("Other file...");
+        _table.SetItemTooltip(_table.ItemCount - 1, "A transition table JSON of your own: GUO's format (guo.mapgen.transitions/1) or a LandBrush (Dragon) export.");
+        SelectTable(old);
+    }
+
+    /// <summary>Selects a table by id or file path; false (and GUO selected) when it is not offered or not prepared.</summary>
+    public bool SelectTable(string value)
+    {
+        int sel = _tableValues.IndexOf(value);
+        bool ok = sel >= 0 && !_table.IsItemDisabled(sel) && value != FileChoice;
+        _table.Select(ok ? sel : 0);
+        return ok;
+    }
+
+    private void PickTableFile()
+    {
+        string back = _tableFile ?? "guo";
+        var dialog = new FileDialog
+        {
+            FileMode = FileDialog.FileModeEnum.OpenFile,
+            Access = FileDialog.AccessEnum.Filesystem,
+            Title = "Choose a transition table",
+            CurrentDir = _tableFile != null ? Path.GetDirectoryName(_tableFile) : EditorData.RepoRoot,
+        };
+        dialog.AddFilter("*.json", "Transition table");
+        dialog.FileSelected += path =>
+        {
+            _tableFile = path;
+            if (_schema is JsonElement s)
+            {
+                FillTables(s);
+            }
+
+            SelectTable(path);
+            Log($"[color=gray]transition table: {Path.GetFileName(path)}[/color]");
+            dialog.QueueFree();
+        };
+        dialog.Canceled += () =>
+        {
+            SelectTable(back);
+            dialog.QueueFree();
+        };
+        AddChild(dialog);
+        dialog.PopupCentered(new Vector2I(800, 500));
     }
 
     private void FillSizes(JsonElement schema)
@@ -606,6 +705,11 @@ public partial class MapGenView : VBoxContainer
         var args = new List<string> { "run", "--out", outDir, "--preset", CurrentPreset(), "--seed", ((long)_seed.Value).ToString(CultureInfo.InvariantCulture) };
         string[] size = (_size.ItemCount > 0 ? _size.GetItemText(_size.Selected) : "1024 x 1024").Split(" x ");
         args.AddRange(new[] { "--width", size[0], "--height", size[1] });
+        if (CurrentTable != "guo" && CurrentTable != FileChoice)
+        {
+            args.AddRange(new[] { "--brushes", CurrentTable });
+        }
+
         if (_fast.ButtonPressed)
         {
             args.Add("--fast");
