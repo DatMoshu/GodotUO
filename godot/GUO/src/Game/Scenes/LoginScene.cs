@@ -77,8 +77,13 @@ namespace GUO.Game.Scenes
             LoginBackground background = new LoginBackground(_world);
             UIManager.Add(background);
             GUO.Input.Touch.MobileProfile.CentreLoginGump(background);
-            UIManager.Add(_currentGump = new LoginGump(_world, this));
-            GUO.Input.Touch.MobileProfile.CentreLoginGump(_currentGump);
+            // PORT DEVIATION (GUO): the pad-first pregame owns the login steps when it
+            // is on (docs/ui/pregame_3d.md): no classic gump then.
+            if (!GUO.Pregame3D.PregameScreen.Owns(CurrentLoginStep))
+            {
+                UIManager.Add(_currentGump = new LoginGump(_world, this));
+                GUO.Input.Touch.MobileProfile.CentreLoginGump(_currentGump);
+            }
 
             Client.Game.Audio.PlayMusic(Client.Game.Audio.LoginMusicIndex, false, true);
 
@@ -90,6 +95,16 @@ namespace GUO.Game.Scenes
                     CUOEnviroment.SkipLoginScreen = false;
                     Connect(Settings.GlobalSettings.Username, Crypter.Decrypt(Settings.GlobalSettings.Password));
                 }
+            }
+
+            // PORT DEVIATION (GUO): the pad-first pregame fills whatever window the
+            // platform gives it (fullscreen on the Deck build); the 640x480
+            // login window, its restore and its minimum size are for the
+            // classic gumps only (docs/ui/pregame_3d.md).
+            if (GUO.Pregame3D.Pregame3DSettings.Enabled)
+            {
+                GUO.Pregame3D.PregameScreen.PrepareWindow();
+                return;
             }
 
             if (Client.Game.IsWindowMaximized())
@@ -140,9 +155,16 @@ namespace GUO.Game.Scenes
 
                 // this trick avoid the flickering
                 Gump g = _currentGump;
-                UIManager.Add(_currentGump = GetGumpForStep());
-                GUO.Input.Touch.MobileProfile.CentreLoginGump(_currentGump); // PORT DEVIATION (GUO): see Load
-                g.Dispose();
+                // PORT DEVIATION (GUO): GetGumpForStep returns null for a step
+                // the pad-first pregame owns (see there); nothing to add, nothing to
+                // dispose then.
+                _currentGump = GetGumpForStep();
+                if (_currentGump != null)
+                {
+                    UIManager.Add(_currentGump);
+                    GUO.Input.Touch.MobileProfile.CentreLoginGump(_currentGump); // PORT DEVIATION (GUO): see Load
+                }
+                g?.Dispose();
 
                 _lastLoginStep = CurrentLoginStep;
             }
@@ -207,6 +229,19 @@ namespace GUO.Game.Scenes
 
             _world.Mobiles.Clear();
             _world.Items.Clear();
+
+            // PORT DEVIATION (GUO): the pad-first pregame (src/Pregame3D,
+            // docs/ui/pregame_3d.md) owns every login step when it is on; it
+            // follows CurrentLoginStep itself, so no classic gump is made.
+            if (GUO.Pregame3D.PregameScreen.Owns(CurrentLoginStep))
+            {
+                if (CurrentLoginStep == LoginSteps.Main)
+                {
+                    PopupMessage = null;
+                }
+
+                return null;
+            }
 
             switch (CurrentLoginStep)
             {
@@ -618,6 +653,14 @@ namespace GUO.Game.Scenes
             UIManager.GetGump<CharacterSelectionGump>()?.Dispose();
 
             _currentGump?.Dispose();
+
+            // PORT DEVIATION (GUO): the pad-first pregame shows the list (and the
+            // message left in PopupMessage) itself; see GetGumpForStep.
+            if (GUO.Pregame3D.PregameScreen.Owns(CurrentLoginStep))
+            {
+                _currentGump = null;
+                return;
+            }
 
             UIManager.Add(_currentGump = new CharacterSelectionGump(_world));
             GUO.Input.Touch.MobileProfile.CentreLoginGump(_currentGump); // PORT DEVIATION (GUO): see Load
