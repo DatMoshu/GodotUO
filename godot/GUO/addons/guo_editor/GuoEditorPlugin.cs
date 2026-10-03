@@ -40,6 +40,9 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
     private ArtDock _art;
     private LogsDock _logs;
     private MapGenView _mapgen;
+    private GumpStudio _gumps;
+    private bool _gumpsWasVisible;
+    public static GumpStudio GumpsMain { get; private set; }
     private SearchPopup _search;
 
     // Whether the World tab was on screen when an assembly reload began.
@@ -110,6 +113,10 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         }
 
         _data = new EditorData();
+        _gumps = new GumpStudio(_data);
+        GumpsMain = _gumps;
+        EditorInterface.Singleton.GetEditorMainScreen().AddChild(_gumps);
+        _gumps.Visible = _gumpsWasVisible;
         _assets = new AssetsView(_data);
         AssetsMain = _assets;
         _inspector = new InspectorDock();
@@ -133,6 +140,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         // The World tab: the game's renderer, read only (ADR-0015). It starts
         // the world the first time it is shown, not here.
         _world = new WorldView(_data);
+        _gumps.PreviewWorld = () => _world.EnsureBooted() ? _world.Host.World : throw new System.InvalidOperationException(_world.Error);
         EditorInterface.Singleton.GetEditorMainScreen().AddChild(_world);
         _world.Visible = _worldWasVisible;
         _worldWasVisible = false;
@@ -289,6 +297,17 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
 
     private void TearDown()
     {
+        // Save recovery before StoreView clears System.Text.Json's process-wide type caches.
+        // Serializing after that cache release pins this assembly and prevents hot reload.
+        if (_gumps != null)
+        {
+            _gumpsWasVisible = _gumps.Visible;
+            _gumps.Shutdown();
+            _gumps.GetParent()?.RemoveChild(_gumps);
+            _gumps.QueueFree();
+            _gumps = null;
+            GumpsMain = null;
+        }
         if (_mapgen != null)
         {
             // Stops a generator run in progress before a reload.

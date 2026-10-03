@@ -170,6 +170,21 @@ public partial class EditorSmoke : Node
                 {
                     CheckLoaded();
                     CheckServerManager();
+                    CheckGumpStudio();
+                    if (Array.IndexOf(OS.GetCmdlineUserArgs(), "--guo-gump-studio-only") >= 0)
+                    {
+                        if (!Headless && Array.IndexOf(OS.GetCmdlineUserArgs(), "--guo-gump-studio-visual") >= 0 && _failures.Count == 0)
+                        {
+                            StartGumpVisual(); _stage = 70; _frames = 0; break;
+                        }
+                        if (_reloadTest && !_afterReload && _failures.Count == 0)
+                        {
+                            RequestReload();
+                            _stage = 4;
+                        }
+                        else Finish();
+                        break;
+                    }
                     _stage = _failures.Count > 0 ? 9
                         : ArgValue(LiveFlag) != null ? 40
                         : ArgValue(WorldShotFlag) != null ? 30 : 1;
@@ -181,6 +196,24 @@ public partial class EditorSmoke : Node
                     _stage = 9;
                 }
 
+                break;
+
+            case 70:
+                if (_frames > 45)
+                {
+                    CaptureGumpVisual("wide");
+                    _gumpProofWindow.Size = new Vector2I(1280, 900);
+                    _stage = 71; _frames = 0;
+                }
+                break;
+            case 71:
+                if (_frames > 45)
+                {
+                    CaptureGumpVisual("compact");
+                    FinishGumpVisual();
+                    if (_reloadTest && !_afterReload && _failures.Count == 0) { RequestReload(); _stage = 4; }
+                    else Finish();
+                }
                 break;
 
             case 1:
