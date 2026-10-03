@@ -344,6 +344,7 @@ public partial class EditorSmoke
         // --- World selection to a new multi ------------------------------------------------------------------------------------
         if (_world != null && _world.IsBooted)
         {
+            view.SaveDescription();                       // the World selection asks before it replaces unsaved work
             _world.SetArea(1490, 1620, 1530, 1660);
             var taken = _world.AreaParts(out string worldName);
             MeCheck("world_selection_has_statics", taken is { Count: > 0 }, $"{taken?.Count}");

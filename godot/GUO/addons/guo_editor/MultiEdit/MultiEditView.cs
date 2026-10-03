@@ -107,6 +107,7 @@ public partial class MultiEditView : VBoxContainer, IMultiComponentSink
         _doc = new MultiDocument();
         _doc.Changed += OnDocChanged;
         Build();
+        MarkSaved();
         if (_data.IsLoaded)
         {
             OnDataLoaded();
@@ -159,7 +160,7 @@ public partial class MultiEditView : VBoxContainer, IMultiComponentSink
         // Row 1: files, tools, history.
         var bar = new HBoxContainer();
         AddChild(bar);
-        bar.AddChild(Tip(Btn("New", NewMulti), "A blank multi (the history starts again)"));
+        bar.AddChild(Tip(Btn("New", () => GuardUnsaved(NewMulti)), "A blank multi (the history starts again; asks first when there are unsaved changes)"));
         _openId = new LineEdit { PlaceholderText = "client multi id", CustomMinimumSize = new Vector2(110, 0), TooltipText = "0x0064 or 100" };
         _openId.TextSubmitted += _ => OpenTyped();
         bar.AddChild(_openId);
@@ -203,6 +204,7 @@ public partial class MultiEditView : VBoxContainer, IMultiComponentSink
         bar.AddChild(Tip(Btn("+", () => _canvas.ZoomBy(1)), "Zoom in (nearest sampling; the wheel zooms at the pointer)"));
         bar.AddChild(new VSeparator());
         bar.AddChild(Tip(Btn("Preview in World", () => PreviewNow()), "Place the last written multi in the World tab"));
+        BuildTitle(bar);
         _summary = new Label { SizeFlagsHorizontal = SizeFlags.ExpandFill, ClipText = true };
         bar.AddChild(_summary);
 
@@ -490,6 +492,7 @@ public partial class MultiEditView : VBoxContainer, IMultiComponentSink
         _dirty = true;
         _since = 0;
         _stamp++;
+        UpdateTitle();
     }
 
     public override void _Process(double delta)
@@ -609,6 +612,7 @@ public partial class MultiEditView : VBoxContainer, IMultiComponentSink
         _canvas.SetEditZ(Stories.FloorZ);
         _canvas.FitView();
         ValidateNow();
+        MarkSaved();
     }
 
     private void OpenTyped()
@@ -618,7 +622,15 @@ public partial class MultiEditView : VBoxContainer, IMultiComponentSink
         bool ok = t.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
             ? int.TryParse(t.AsSpan(2), System.Globalization.NumberStyles.HexNumber, null, out id)
             : int.TryParse(t, out id);
-        if (!ok || !OpenClientMulti(id))
+        if (!ok)
+        {
+            _status.Text = $"'{t}' is not a client multi";
+            return;
+        }
+
+        bool opened = false;
+        GuardUnsaved(() => opened = OpenClientMulti(id));
+        if (!opened && !UnsavedPromptOpen)
         {
             _status.Text = $"'{t}' is not a client multi";
         }
@@ -661,6 +673,7 @@ public partial class MultiEditView : VBoxContainer, IMultiComponentSink
         _canvas.SetEditZ(Stories.FloorZ);
         _canvas.FitView();
         ValidateNow();
+        MarkSaved();
     }
 
     public bool OpenDescription(string path)
@@ -669,6 +682,7 @@ public partial class MultiEditView : VBoxContainer, IMultiComponentSink
         {
             (string name, int? source, List<MultiPart> parts) = MultiStore.FromJson(File.ReadAllText(path));
             OpenParts(name, parts, source);
+            MarkSaved(path);
             return true;
         }
         catch (Exception ex)
@@ -690,7 +704,7 @@ public partial class MultiEditView : VBoxContainer, IMultiComponentSink
         dialog.AddFilter("*.multi.json", "Multi description");
         dialog.FileSelected += p =>
         {
-            OpenDescription(p);
+            GuardUnsaved(() => OpenDescription(p));
             dialog.QueueFree();
         };
         dialog.Canceled += dialog.QueueFree;
@@ -704,6 +718,7 @@ public partial class MultiEditView : VBoxContainer, IMultiComponentSink
         string path = MultiStore.SaveDescription(name, _doc.Source, _doc.Parts);
         _saveLog.Text = $"saved {path}";
         _doc.Name = name;
+        MarkSaved(path);
         return path;
     }
 

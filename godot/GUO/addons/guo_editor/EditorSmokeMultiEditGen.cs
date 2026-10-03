@@ -90,6 +90,59 @@ public partial class EditorSmoke
         view.NewMulti();
         await MeFormatsAsync(view, root);
         view.NewMulti();
+        MeUnsaved(view);
+        view.NewMulti();
+    }
+
+    private void MeUnsaved(MultiEditView view)
+    {
+        MultiDocument doc = view.Doc;
+        MultiCanvas canvas = view.Canvas;
+        view.SetName("smoke_unsaved");
+        MeCheck("fresh_multi_not_modified", !view.Modified && !view.TitleText.EndsWith("*"), view.TitleText);
+        _meReport["title_fresh"] = view.TitleText;
+        canvas.SetEditZ(7);
+        view.SetTool(MultiTool.Draw);
+        view.Palette.Choose(_data.Files.TileData.StaticData.Length > 0x400 ? (ushort)0x400 : (ushort)1);
+        doc.Place(canvas.TileId, 1, 1, 7);
+        MeCheck("edit_marks_modified", view.Modified && view.TitleText.EndsWith(" *"), view.TitleText);
+        _meReport["title_modified"] = view.TitleText;
+
+        bool ran = false;
+        view.GuardUnsaved(() => ran = true);
+        MeCheck("prompt_blocks_new", !ran && view.UnsavedPromptOpen);
+        view.ResolveUnsaved(UnsavedChoice.Cancel);
+        MeCheck("prompt_cancel_keeps_everything", !ran && !view.UnsavedPromptOpen && doc.Parts.Count == 1 && view.Modified);
+        view.GuardUnsaved(() => ran = true);
+        view.ResolveUnsaved(UnsavedChoice.Discard);
+        MeCheck("prompt_discard_goes_on", ran && view.Modified);
+        ran = false;
+        view.GuardUnsaved(() => ran = true);
+        view.ResolveUnsaved(UnsavedChoice.Save);
+        string saved = Path.Combine(MultiStore.EditDir, "smoke_unsaved.multi.json");
+        MeCheck("prompt_save_writes_then_goes_on", ran && File.Exists(saved) && !view.Modified && view.TitleText == "smoke_unsaved.multi.json", view.TitleText);
+
+        // Undo back to the saved state clears the mark; one step on shows it again; nothing to ask when clean.
+        doc.Place(canvas.TileId, 2, 2, 7);
+        MeCheck("second_edit_modified", view.Modified);
+        doc.Undo();
+        MeCheck("undo_to_saved_state_clears_mark", !view.Modified);
+        ran = false;
+        view.GuardUnsaved(() => ran = true);
+        MeCheck("clean_document_does_not_ask", ran && !view.UnsavedPromptOpen);
+
+        // The real New button path, and a close request with changes (a recovery file, since quitting cannot be stopped).
+        doc.Place(canvas.TileId, 3, 3, 7);
+        view.GuardUnsaved(view.NewMulti);
+        MeCheck("new_asks_when_modified", view.UnsavedPromptOpen && doc.Parts.Count == 2);
+        view.ResolveUnsaved(UnsavedChoice.Discard);
+        MeCheck("new_after_discard", doc.Parts.Count == 0 && !view.Modified);
+        doc.Place(canvas.TileId, 4, 4, 7);
+        string recovery = view.SaveRecovery();
+        MeCheck("close_keeps_recovery_file", File.Exists(recovery) && recovery.EndsWith(".recovery.multi.json"));
+        File.Delete(recovery);
+        File.Delete(saved);
+        view.ResolveUnsaved(UnsavedChoice.Cancel);
     }
 
     private static List<(int, int, int, int)> Shape(MultiDocument doc, bool shown, bool hue, out List<int> flags)

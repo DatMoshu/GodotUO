@@ -185,7 +185,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         _world.AreaToMulti = (name, parts) =>
         {
             ShowMultiEditor();
-            _multiedit?.OpenParts(name, parts);
+            _multiedit?.GuardUnsaved(() => _multiedit.OpenParts(name, parts));
         };
 
         // Start server, start clients: on the toolbar, always one click away.
@@ -325,7 +325,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
     private void OpenInMultiEditor(int id)
     {
         ShowMultiEditor();
-        _multiedit?.OpenClientMulti(id);
+        _multiedit?.GuardUnsaved(() => _multiedit.OpenClientMulti(id));
     }
 
     /// <summary>After a write to a stage: the Multis panel lists the new multi without a restart.</summary>
