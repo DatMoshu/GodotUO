@@ -628,7 +628,7 @@ public partial class EditorSmoke
     /// <summary>Ollama and OpenAI-compatible stubs on a loopback port.</summary>
     private sealed class StubServer : IDisposable
     {
-        private readonly HttpListener _listener = new();
+        private HttpListener _listener;
         private readonly CancellationTokenSource _stop = new();
 
         public string Url { get; }
@@ -642,9 +642,10 @@ public partial class EditorSmoke
         {
             for (int port = 18434; ; port++)
             {
+                // A failed Start() disposes the listener, so each port gets a new one.
+                _listener = new HttpListener();
                 try
                 {
-                    _listener.Prefixes.Clear();
                     _listener.Prefixes.Add($"http://127.0.0.1:{port}/");
                     _listener.Start();
                     Url = $"http://127.0.0.1:{port}";
