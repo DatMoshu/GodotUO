@@ -376,6 +376,9 @@ public partial class EditorSmoke
                 AiCheck("queue_tab_list", Ai.Queue.Requests.Count == 2 && Ai.Queue.Requests[^1].Text == "from the tab");
             }
 
+            // --- (d) the Sessions tab, against a fake home folder ----------------------------------------
+            await CheckSessionsAsync(temp, db);
+
             // --- shutdown: every child process dies ---------------------------------------------------
             Ai.Shutdown();
             await Delay(0.4);
@@ -386,6 +389,97 @@ public partial class EditorSmoke
         }
 
         _aiReport["chunks_streamed"] = _aiReport.GetValueOrDefault("acp_chunks");
+    }
+
+    /// <summary>
+    /// The Sessions tab reads a temporary home: fake Claude, Codex and Cursor folders, plus credential
+    /// files that hold a marker string. The scanner's open log proves none of them was opened, the list
+    /// proves the marker never reached the screen, and a transcript whose first user line lies beyond
+    /// the byte cap proves the cap holds.
+    /// </summary>
+    private async Task CheckSessionsAsync(string temp, string db)
+    {
+        const string Marker = "sk-FAKE-SECRET-DO-NOT-READ";
+        string home = Path.Combine(temp, $"fakehome{Suffix}");
+        if (Directory.Exists(home))
+        {
+            Directory.Delete(home, true);
+        }
+
+        void Put(string rel, string content)
+        {
+            string path = Path.Combine(home, rel);
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllText(path, content);
+        }
+
+        string Line(JsonObject o) => o.ToJsonString() + "\n";
+        JsonObject UserLine(string cwd, JsonNode content, bool meta = false) =>
+            new() { ["type"] = "user", ["isMeta"] = meta, ["cwd"] = cwd, ["message"] = new JsonObject { ["role"] = "user", ["content"] = content } };
+
+        Put(Path.Combine(".claude", "projects", "d--fake-AlphaProj", "aaaa1111-0000.jsonl"),
+            Line(UserLine("C:\\fake\\AlphaProj", "<system-reminder>skip me</system-reminder>", true))
+            + Line(UserLine("C:\\fake\\AlphaProj", new JsonArray(new JsonObject { ["type"] = "text", ["text"] = "Fix the zebra widget please" })))
+            + Line(new JsonObject { ["type"] = "assistant", ["message"] = new JsonObject { ["content"] = "on it" } }));
+        Put(Path.Combine(".claude", "projects", "d--fake-BetaProj", "bbbb2222-0000.jsonl"),
+            Line(new JsonObject { ["type"] = "summary", ["cwd"] = "C:\\fake\\BetaProj", ["pad"] = new string('p', 100 * 1024) })
+            + Line(UserLine("C:\\fake\\BetaProj", "a first line beyond the byte cap")));
+        Put(Path.Combine(".claude", ".credentials.json"), "{\"token\":\"" + Marker + "\"}");
+        Put(Path.Combine(".codex", "auth.json"), "{\"OPENAI_API_KEY\":\"" + Marker + "\"}");
+        Put(Path.Combine(".codex", "config.toml"), "api_key = \"" + Marker + "\"\n");
+        Put(Path.Combine(".codex", "sessions", "2026", "10", "01", "rollout-2026-10-01T10-00-00-cdx00001.jsonl"),
+            Line(new JsonObject { ["type"] = "session_meta", ["payload"] = new JsonObject { ["id"] = "cdx00001", ["cwd"] = "C:\\fake\\GammaProj" } })
+            + Line(new JsonObject { ["type"] = "event_msg", ["payload"] = new JsonObject { ["type"] = "user_message", ["message"] = "Port the llama loader" } }));
+        Put(Path.Combine(".codex", "session_index.jsonl"),
+            Line(new JsonObject { ["id"] = "cdx00001", ["thread_name"] = "dup of a listed one", ["updated_at"] = "2026-10-01T10:00:00Z" })
+            + Line(new JsonObject { ["id"] = "cdx00002", ["thread_name"] = "Index only thread", ["updated_at"] = "2026-10-02T09:00:00Z" }));
+        Put(Path.Combine(".cursor", "projects", "delta-proj", "marker.txt"), "x");
+        Put(".env", "SECRET=" + Marker);
+
+        var opened = new List<string>();
+        AiSessionsTab tab = Ai.Sessions;
+        tab.Home = home;
+        tab.Opened = p =>
+        {
+            lock (opened)
+            {
+                opened.Add(p);
+            }
+        };
+        string launched = null;
+        tab.OpenWith = p => launched = p;
+        Ai.ShowTab("Sessions");
+        await tab.RefreshAsync();
+
+        string list = tab.ListText;
+        _aiReport["sessions_listed"] = tab.Sessions.Count;
+        AiCheck("sessions_claude", list.Contains("AlphaProj") && list.Contains("Fix the zebra widget please") && !list.Contains("skip me"), list);
+        AiCheck("sessions_codex", list.Contains("GammaProj") && list.Contains("Port the llama loader") && list.Contains("Index only thread") && !list.Contains("dup of a listed one"), list);
+        AiCheck("sessions_cursor", tab.Sessions.Any(s => s.Source == "Cursor" && s.Project == "delta-proj"), list);
+        string openedText;
+        int openedCount;
+        lock (opened)
+        {
+            openedText = string.Join("\n", opened);
+            openedCount = opened.Count;
+        }
+
+        bool touchedSecrets = openedText.Contains("auth.json") || openedText.Contains(".credentials") || openedText.Contains("config.toml")
+            || openedText.Contains(".env");
+        AiCheck("sessions_never_open_credentials", openedCount >= 4 && !touchedSecrets, openedText);
+        AiCheck("sessions_secret_not_shown", !list.Contains(Marker) && !list.Contains("sk-FAKE"), list);
+        SessionInfo beta = tab.Sessions.FirstOrDefault(s => s.Project.Contains("BetaProj"));
+        AiCheck("sessions_byte_cap", beta != null && beta.First.Length == 0, beta?.First);
+        _aiReport["sessions_files_opened"] = openedCount;
+
+        AiCheck("sessions_select", tab.Select("aaaa1111-0000"));
+        AiCheck("sessions_open_transcript", tab.OpenSelected() && launched != null && launched.EndsWith("aaaa1111-0000.jsonl", StringComparison.Ordinal), launched);
+        string name = tab.Selected?.QueueName;
+        long id = await tab.SendSelectedAsync("please look at the zebra widget");
+        var q = new QueueClient(EditorData.RepoRoot, db);
+        var (all, err) = await q.ListAsync(50);
+        AiCheck("sessions_send_to_queue", id > 0 && all != null && all.Any(r => r.Id == id && r.To == name && r.Text.Contains("zebra")), $"{name} {id} {err}");
+        _aiReport["sessions_queue_name"] = name;
     }
 
     private async Task<string> WithTimeout(Task<string> t, double seconds)

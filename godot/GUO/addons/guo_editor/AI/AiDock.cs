@@ -22,6 +22,7 @@ public partial class AiDock : EditorDock
     private AiChatTab _chat;
     private AiAgentsTab _agents;
     private AiQueueTab _queue;
+    private AiSessionsTab _sessions;
     private readonly Queue<(AgentSession Session, JsonNode Params, TaskCompletionSource<JsonNode> Result)> _asks = new();
     private AcceptDialog _dialog;
     private TaskCompletionSource<JsonNode> _dialogResult;
@@ -30,6 +31,7 @@ public partial class AiDock : EditorDock
     public AiChatTab Chat => _chat;
     public AiAgentsTab Agents => _agents;
     public AiQueueTab Queue => _queue;
+    public AiSessionsTab Sessions => _sessions;
     internal AiHub Hub => _hub;
 
     /// <summary>The permission dialog on screen, or null (the smoke answers it).</summary>
@@ -63,13 +65,15 @@ public partial class AiDock : EditorDock
         _queue = new AiQueueTab(_hub);
         _tabs.AddChild(_chat);
         _tabs.AddChild(_agents);
+        _sessions = new AiSessionsTab(_hub, () => _queue);
         _tabs.AddChild(_queue);
+        _tabs.AddChild(_sessions);
         _hub.Permission = AskPermission;
     }
 
     public override void _Process(double delta) => _hub.Drain();
 
-    /// <summary>Brings a tab forward: "Chat", "Agents" or "Queue".</summary>
+    /// <summary>Brings a tab forward: "Chat", "Agents", "Queue", "Sessions" or "Services".</summary>
     public void ShowTab(string name)
     {
         MakeVisible();

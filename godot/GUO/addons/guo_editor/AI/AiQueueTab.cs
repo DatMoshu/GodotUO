@@ -58,6 +58,9 @@ public partial class AiQueueTab : VBoxContainer
 
     public IReadOnlyList<QueueRequest> Requests => _requests;
 
+    /// <summary>Why the last post was refused, or null.</summary>
+    public string LastError { get; private set; }
+
     /// <summary>The detail pane as plain text.</summary>
     public string DetailText => _detail?.GetParsedText() ?? "";
 
@@ -147,6 +150,7 @@ public partial class AiQueueTab : VBoxContainer
     {
         _queue ??= new QueueClient();
         (long id, string error) = await _queue.PostAsync(to.Trim(), from.Trim(), text);
+        LastError = id > 0 ? null : error;
         _hub?.Post(() =>
         {
             if (id > 0)
