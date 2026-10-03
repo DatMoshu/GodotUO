@@ -54,3 +54,12 @@ contract for both the publisher and the client. Only publish content you hold
 the rights to, and put its licence in the pack's manifest.
 
 The design record is ADR-0019 (`docs/architecture/ADR-0019-asset-store.md`).
+
+## Who goes where
+
+- **Players**: the game client. Options, Video, Store lists the catalogues, asks you to approve a new catalogue's
+  key, and installs packs. A shard that publishes content installs its packs automatically when you press Play.
+- **Shard owners and pack authors**: the GUO editor's **UO Store** tab (next to UO World and UO Assets). Browse and
+  install into the editor's own store, deploy a pack to one of your server profiles (ModernUO, ServUO, RunUO, POL,
+  Sphere, UOX3), see what each server has deployed and roll back, verify a pack ZIP, publish it to a local store and
+  prepare the pull request for the official catalogue. See `tools/asset_store/README.md`.

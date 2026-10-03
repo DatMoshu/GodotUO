@@ -197,6 +197,9 @@ public partial class EditorSmoke
         Ask("layer spawns", "World", e => e.Title == "Layer: Spawns");
         Ask("1434 1699", "Place", e => e.Target == (0, 1434, 1699));
         Ask("1434 1699 0 map1", "Place", e => e.Target == (1, 1434, 1699));
+        Ask("store publish", "Store", e => e.Title == "Store: publish a pack");
+        Ask("store server content", "Store", e => e.Title == "Store: server content");
+        Ask("store approve key", "Store", e => e.Title == "Store: approve a catalogue key");
         Ask("project settings", "Menu");
         Ask("gump 100", "Gump");
         Ask("hue 33", "Hue");

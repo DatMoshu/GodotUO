@@ -91,6 +91,44 @@ class ShardContentTests(unittest.TestCase):
             r = self.prepare(published + "shard-content.json", client)
             self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
 
+    def tool(self, *args):
+        return subprocess.run([sys.executable, str(TOOL), *args], capture_output=True, text=True)
+
+    def test_dry_run_builds_and_checks_but_writes_nothing_into_the_shard(self):
+        with tempfile.TemporaryDirectory() as temp:
+            shard = Path(temp) / "shard"
+            (shard / "Data").mkdir(parents=True)
+            out = self.deploy(shard, serve(self, self.store), "--dry-run")
+            self.assertIn("dry run", out)
+            self.assertFalse((shard / "Data/GUO").exists())
+
+    def test_status_reports_the_deployment_and_rollback_restores_the_previous_one(self):
+        with tempfile.TemporaryDirectory() as temp:
+            shard = Path(temp) / "shard"
+            (shard / "Data").mkdir(parents=True)
+            url = serve(self, self.store)
+            nothing = json.loads(self.tool("status", "--shard-dir", str(shard), "--json").stdout)
+            self.assertIsNone(nothing["deployed"])
+            self.deploy(shard, url)
+            first = json.loads(self.tool("status", "--shard-dir", str(shard), "--json").stdout)
+            self.assertEqual(first["deployed"]["pack"], "sample-content-combined")
+            self.assertTrue(first["deployed"]["descriptor_matches_export"])
+            self.assertIsNone(first["previous"])
+            self.assertEqual(self.tool("rollback", "--shard-dir", str(shard)).returncode, 2)
+            # A different slot is a different deployment of the same pack; the first one is kept.
+            self.deploy(shard, url, bind="sample-content-combined:stone=static:6002")
+            second = json.loads(self.tool("status", "--shard-dir", str(shard), "--json").stdout)
+            graphic = lambda: json.loads((shard / "Data/GUO/server-content.json").read_text(encoding="utf-8"))["items"][0]["graphic"]
+            self.assertEqual(graphic(), 6002)
+            self.assertEqual(second["previous"]["identity_hash"], first["deployed"]["identity_hash"])
+            r = self.tool("rollback", "--shard-dir", str(shard))
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            back = json.loads(self.tool("status", "--shard-dir", str(shard), "--json").stdout)
+            self.assertEqual(back["deployed"]["identity_hash"], first["deployed"]["identity_hash"])
+            self.assertEqual(graphic(), 6001)
+            self.assertEqual(self.tool("rollback", "--shard-dir", str(shard)).returncode, 0)
+            self.assertEqual(graphic(), 6002)
+
     def test_deploy_refuses_a_lock_the_client_could_not_mount(self):
         # sample-content-server needs sample-content-art, whose eleven other client components get no slot.
         with tempfile.TemporaryDirectory() as temp:

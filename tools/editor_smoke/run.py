@@ -316,6 +316,16 @@ def main() -> int:
               f"dock agent + permission dialog + chat + queue tab, children killed")
         for k in bad:
             print(f"[editor_smoke]        failed: {k}")
+    store = report.get("store") or {}
+    if store:
+        checks = [k for k, v in store.items() if v is True or v is False]
+        bad = [k for k in checks if store[k] is False]
+        print(f"[editor_smoke]   {'ok  ' if store.get('ok') else 'FAIL'} Store   {len(checks) - len(bad)}/{len(checks)} checks: local signed catalogue "
+              f"{store.get('catalogue')}, key approved, install/remove, verify (good and refused), publish, catalogue PR prepared, "
+              f"deployment {str(store.get('deployment_identity'))[:16]} to a scratch shard folder; private shard: {store.get('private_shard_dry_run', 'dry run ok')}")
+        print(f"[editor_smoke]        {store.get('browse_status')}")
+        for k in bad:
+            print(f"[editor_smoke]        failed: {k}")
     art = report.get("art") or {}
     if art:
         checks = [k for k, v in art.items() if v is True or v is False]

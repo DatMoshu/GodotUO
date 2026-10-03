@@ -19,6 +19,7 @@ public sealed class SearchContext
     public ShardDock Shard;
     public RunBar Run;
     public AiDock Ai;
+    public StoreView Store;
     public EditorPlugin Plugin;
 
     /// <summary>Brings the World tab forward at a cell (the plugin's own method).</summary>

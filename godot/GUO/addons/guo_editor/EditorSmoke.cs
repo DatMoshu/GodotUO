@@ -78,6 +78,9 @@ public partial class EditorSmoke : Node
     public AiDock Ai { get; set; }
     public ArtDock Art { get; set; }
 
+    /// <summary>The UO Store tab the plugin made, for the store checks (ADR-0026 section 8).</summary>
+    public StoreView Store { get; set; }
+
     public EditorSmoke() : this(null, null, null, null, null, null)
     {
     }
@@ -227,7 +230,8 @@ public partial class EditorSmoke : Node
 
             case 60:
                 // The AI hub (ADR-0028): ACP, Ollama and queue, against stubs.
-                if (StepAi())
+                // One after the other: both are async stages that wait on the scene tree's timers.
+                if (StepAi() && StepStore())
                 {
                     _stage = 61;
                     _frames = 0;

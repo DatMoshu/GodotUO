@@ -5,6 +5,8 @@
                                               --pack ID --version V --bind REF=TYPE:ID [--bind ...]
                                               [--shard-dir DIR] [--scripts allowed|forbidden]
     python tools/shard_content/run.py check   [DESCRIPTOR]
+    python tools/shard_content/run.py status  [--shard-dir DIR] [--json]
+    python tools/shard_content/run.py rollback [--shard-dir DIR]
     python tools/shard_content/run.py serve   [--host 127.0.0.1] [--port 18870]
     python tools/shard_content/run.py prove   [--out DIR] [--min-free-gb 16]
 
@@ -96,6 +98,75 @@ def replace(path: Path, data: bytes) -> None:
     os.replace(temporary, path)
 
 
+def guo_files(shard: Path) -> tuple[Path, Path]:
+    return shard / "Data" / "GUO" / "server-content.json", shard / "Data" / "GUO" / "public" / "shard-content.json"
+
+
+def keep_previous(shard: Path) -> None:
+    """The deployment being replaced stays in Data/GUO/previous, so `rollback` has something to restore."""
+    export, descriptor = guo_files(shard)
+    if export.is_file() and descriptor.is_file():
+        previous = shard / "Data" / "GUO" / "previous"
+        replace(previous / "server-content.json", export.read_bytes())
+        replace(previous / "shard-content.json", descriptor.read_bytes())
+
+
+def describe(export: Path, descriptor: Path) -> dict | None:
+    if not (export.is_file() and descriptor.is_file()):
+        return None
+    e = json.loads(export.read_text(encoding="utf-8"))
+    d = json.loads(descriptor.read_text(encoding="utf-8"))
+    lock = d.get("lock", {})
+    return {"identity_hash": e.get("identity_hash"), "pack": lock.get("pack"), "version": lock.get("version"),
+            "name": d.get("shard", {}).get("name"), "scripts": d.get("scripts"),
+            "catalogues": [{"url": c["url"], "key": ed25519.fingerprint(ed25519.decode(c["key"], 32)) if c.get("key") else None} for c in d.get("catalogues", [])],
+            "descriptor_matches_export": lock.get("identity_hash") == e.get("identity_hash")}
+
+
+def cmd_status(cfg, a) -> int:
+    """What a shard folder has deployed, and what a rollback would restore. Reads files only."""
+    shard = Path(a.shard_dir) if a.shard_dir else default_shard(cfg)
+    export, descriptor = guo_files(shard)
+    marker = shard / "Data" / "GUO" / "adapter-install.json"
+    backend = json.loads(marker.read_text(encoding="utf-8")).get("backend") if marker.is_file() else ("modernuo" if (shard / "Data").is_dir() else None)
+    revisions = shard / "Data" / "GUO" / "revisions"
+    previous = shard / "Data" / "GUO" / "previous"
+    report = {"shard_dir": str(shard), "exists": shard.is_dir(), "backend": backend,
+              "deployed": describe(export, descriptor),
+              "previous": describe(previous / "server-content.json", previous / "shard-content.json"),
+              "adapter_revisions": len(list(revisions.iterdir())) if revisions.is_dir() else 0}
+    if a.json:
+        print(json.dumps(report))
+    elif report["deployed"] is None:
+        print(f"[shard_content] nothing deployed in {shard}")
+    else:
+        d = report["deployed"]
+        print(f"[shard_content] {shard}: {d['pack']} {d['version']} deployment {str(d['identity_hash'])[:16]}"
+              + (f", previous {report['previous']['pack']} {report['previous']['version']}" if report["previous"] else ", no previous deployment kept"))
+    return 0
+
+
+def cmd_rollback(cfg, a) -> int:
+    """Swap in the previous deployment (ModernUO). The one replaced becomes the previous, so a second rollback undoes the first."""
+    shard = Path(a.shard_dir) if a.shard_dir else default_shard(cfg)
+    export, descriptor = guo_files(shard)
+    previous = shard / "Data" / "GUO" / "previous"
+    if (shard / "Data" / "GUO" / "adapter-install.json").is_file():
+        print("[shard_content] this shard has a native adapter install; roll back by deploying the older pack version again "
+              "(deploy keeps each replaced file in Data/GUO/revisions)")
+        return 2
+    if not (previous / "server-content.json").is_file():
+        print(f"[shard_content] no previous deployment is kept in {shard}")
+        return 2
+    wanted = (previous / "server-content.json").read_bytes(), (previous / "shard-content.json").read_bytes()
+    keep_previous(shard)
+    replace(export, wanted[0])
+    replace(descriptor, wanted[1])
+    d = describe(export, descriptor)
+    print(f"[shard_content] rolled back to {d['pack']} {d['version']} (deployment {d['identity_hash'][:16]}); restart the shard to load it")
+    return 0
+
+
 def cmd_deploy(cfg, a) -> int:
     backend = getattr(a, "backend", "modernuo")
     if backend != "modernuo" and not a.shard_dir:
@@ -156,12 +227,17 @@ def cmd_deploy(cfg, a) -> int:
     staged_descriptor = work / "shard-content.json"
     staged_descriptor.write_bytes(descriptor_bytes)
     print(headless("shard-content", "check", staged_descriptor).strip())
+    if getattr(a, "dry_run", False):
+        print(f"[shard_content] dry run: deployment {value['identity_hash'][:16]} is built and checked in {work}; nothing was written to {shard}")
+        print(f"[shard_content] it would write Data/GUO/server-content.json and Data/GUO/public/shard-content.json" + (f" and the {backend} files" if bundle is not None else ""))
+        return 0
     if bundle is not None:
         from server_adapters.run import install
         if a.descriptor:
             raise SystemExit("Native adapter deployments publish the descriptor under Data/GUO/public; serve that folder")
         install(bundle, shard, {"Data/GUO/server-content.json": export.read_bytes(), "Data/GUO/public/shard-content.json": descriptor_bytes})
     else:
+        keep_previous(shard)
         replace(shard / "Data" / "GUO" / "server-content.json", export.read_bytes())
         replace(out, descriptor_bytes)
     print(f"[shard_content] deployment {value['identity_hash'][:16]}: export in {shard / 'Data' / 'GUO'}, descriptor {out}")
@@ -220,6 +296,12 @@ def main() -> int:
     d.add_argument("--port", type=int)
     d.add_argument("--descriptor", help="where to write the descriptor (default <shard>/Data/GUO/public/shard-content.json)")
     d.add_argument("--work", help="parent of unique deployment work folders; existing files are preserved")
+    d.add_argument("--dry-run", action="store_true", help="install, lock, export and check, but write nothing into the shard")
+    st = sub.add_parser("status", help="what a shard folder has deployed (files only)")
+    st.add_argument("--shard-dir")
+    st.add_argument("--json", action="store_true")
+    rb = sub.add_parser("rollback", help="restore the previous deployment (ModernUO); restart the shard after")
+    rb.add_argument("--shard-dir")
     c = sub.add_parser("check", help="parse a descriptor as the client does")
     c.add_argument("descriptor", nargs="?")
     s = sub.add_parser("serve", help="serve the public folder over HTTP, for testing")
@@ -234,7 +316,7 @@ def main() -> int:
     if a.cmd == "prove":
         import prove
         return prove.prove(cfg, a, cmd_deploy)
-    return {"deploy": cmd_deploy, "check": cmd_check, "serve": cmd_serve}[a.cmd](cfg, a)
+    return {"deploy": cmd_deploy, "check": cmd_check, "serve": cmd_serve, "status": cmd_status, "rollback": cmd_rollback}[a.cmd](cfg, a)
 
 
 if __name__ == "__main__":
