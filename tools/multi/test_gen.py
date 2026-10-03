@@ -6,6 +6,7 @@ import io
 import json
 import sys
 import time
+from collections import Counter
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -163,14 +164,14 @@ def run(check) -> None:
     for op in ("rot90", "rot180", "rot270", "mirror_x", "mirror_y"):
         out = orient.transform(house_c, op, table)
         check(len(out) >= len(house_c) * 0.9 and all(isinstance(c.item, int) for c in out), f"{op}: components come out")
-    norm = lambda cs: sorted((c.item, c.x, c.y, c.z) for c in cs)
-    walls_only = [c for c in house_c if c.item in (0x101, 0x102) and c.z == 7]
+    norm = lambda cs: sorted((c.item, c.x, c.y, c.z, c.visible) for c in cs)
+    walls_only = house_c
     wx = orient.transform(orient.transform(walls_only, "mirror_x", table), "mirror_x", table)
-    check(norm(wx) == norm(walls_only), "mirror_x twice returns the walls to their cells")
+    check(norm(wx) == norm(walls_only), "mirror_x twice returns the whole house to its cells")
     wy = orient.transform(orient.transform(walls_only, "mirror_y", table), "mirror_y", table)
-    check(norm(wy) == norm(walls_only), "mirror_y twice returns the walls to their cells")
+    check(norm(wy) == norm(walls_only), "mirror_y twice returns the whole house to its cells")
     rr = orient.transform(orient.transform(orient.transform(orient.transform(walls_only, "rot90", table), "rot90", table), "rot90", table), "rot90", table)
-    check(norm(rr) == norm(walls_only), "four quarter turns return the walls to their cells")
+    check(norm(rr) == norm(walls_only), "four quarter turns return the whole house to its cells")
     ew = [Component(0x101, 3, 0, 7)]
     check([(c.item, c.x, c.y) for c in orient.transform(ew, "rot90", table)] == [(0x102, -2, 3)], "an EW wall turns into an NS wall one clockwise quarter on")
     roofs = [Component(0x401, 0, 0, 27), Component(0x403, 1, 0, 27)]
@@ -191,8 +192,10 @@ def run(check) -> None:
     vcorner = orient.transform([Component(0x12, 0, 0, 7)], "mirror_x", fam_table)
     check(sorted(c.item for c in vcorner) == [0x10, 0x11], "a corner drawing both faces splits into its straights when mirrored")
 
+    run_orient(check)
+
     # --- formats
-    tiles = [formats.Tile(0x203, -3, -3, 7, True, 0x44), formats.Tile(0x6A5, 0, 3, 7, False, 0), formats.Tile(0x1, 5, -2, -1, True, 0)]
+    tiles =[formats.Tile(0x203, -3, -3, 7, True, 0x44), formats.Tile(0x6A5, 0, 3, 7, False, 0), formats.Tile(0x1, 5, -2, -1, True, 0)]
     for fmt in formats.FORMATS:
         data = formats.write(fmt, tiles)
         back = formats.read(fmt, data)
@@ -226,6 +229,126 @@ def run(check) -> None:
     ans = [json.loads(ln) for ln in out.getvalue().splitlines()]
     check(len(ans) == 5 and "components" in ans[0] and ans[0]["id"] == 1 and "error" in ans[3] and "error" in ans[4], "serve: one answer per request, errors as data")
     check(ans[1]["components"][0][0] == 0x102, "serve: rotate through the op")
+
+
+def multiset(comps, lossy=None) -> Counter:
+    """id, x, y, z and flags of every piece; `lossy` folds ids that share one turned art (window sets)."""
+    lossy = {int(k, 16): int(v, 16) for k, v in (lossy or {}).items()}
+    return Counter((lossy.get(c.item, c.item), c.x, c.y, c.z, c.visible) for c in comps)
+
+
+def apply_ops(comps, ops, table):
+    for op in ops:
+        comps = orient.transform(comps, op, table)
+    return comps
+
+
+IDENTITIES = (["rot90"] * 4, ["rot270"] * 4, ["rot180", "rot180"], ["rot90", "rot270"], ["rot90", "rot90", "rot180"],
+              ["mirror_x", "mirror_x"], ["mirror_y", "mirror_y"], ["mirror_x", "mirror_y", "rot180"])
+
+
+def identity_failures(label, comps, table) -> list[str]:
+    """Which of the round trips that must return the building do not."""
+    want = multiset(comps, table.get("lossy"))
+    out = []
+    for ops in IDENTITIES:
+        got = multiset(apply_ops(comps, ops, table), table.get("lossy"))
+        if got != want:
+            out.append(f"{label}: {'+'.join(ops)} (+{sum((got - want).values())} -{sum((want - got).values())})")
+    return out
+
+
+def as_comps(rows) -> list[Component]:
+    return [Component(*r[:4], len(r) < 5) for r in rows]
+
+
+def run_orient(check) -> None:
+    """Rotate and mirror return a building exactly: every generator output, in the synthetic style and in the
+    committed default styles, through four quarter turns and two mirrors."""
+    fake_table = orient.table_from_styles(FAKE)
+    default = S.load_file(HERE / "styles" / "default.json")
+    sets = [("fake", FAKE, fake_table)] + [(k, {k: v}, orient.table_from_styles({k: v})) for k, v in default.items()]
+    bad: list[str] = []
+    count = 0
+    t0 = time.perf_counter()
+    for name, sty, table in sets:
+        key = next(iter(sty))
+        cat = S.StyleCatalogue(json.loads(json.dumps(sty)))
+        cases: list = []
+        for storeys in (1, 2):
+            cases.append((f"{name} ring x{storeys}", kit.autowall(cat, {"style": key, "path": [[0, 0], [8, 0], [8, 8], [0, 8]], "closed": True, "door": False, "storeys": storeys})))
+        cases.append((f"{name} open run", kit.autowall(cat, {"style": key, "path": [[0, 0], [9, 0], [9, 6], [3, 6]], "door": {"index": "middle"}})))
+        cases.append((f"{name} tee", kit.autowall(cat, {"style": key, "path": [[0, 0], [8, 0]], "existing": [[4, 1], [4, 2], [4, 3]], "door": False})))
+        for kind in ("gable", "hip", "flat"):
+            for box in ([0, 0, 8, 6], [0, 0, 7, 8], [0, 0, 6, 6]):
+                cases.append((f"{name} roof {kind} {box}", kit.roof(cat, {"style": key, "kind": kind, "box": box, "z": 27, "parapet": kind == "flat"})))
+        for kind in ("straight", "turned", "ladder"):
+            for rise in "NESW":
+                for width in (1, 2):
+                    cases.append((f"{name} stairs {kind} {rise} w{width}", kit.stairs(cat, {"style": key, "at": [2, 2], "rise": rise, "kind": kind, "z": 7, "width": width})))
+        for shape in kit.SHAPES:
+            for roof in ("gable", "hip", "flat"):
+                for storeys in (1, 2):
+                    extra = {"balcony": True, "yard": True, "porch": True} if storeys == 2 else {}
+                    cases.append((f"{name} house {shape}/{roof}/{storeys}", kit.house(cat, dict({"style": key, "seed": 4 + storeys, "shape": shape, "width": 16, "depth": 14,
+                                                                                               "storeys": storeys, "roof": roof, "rooms": 5}, **extra))))
+        for label, res in cases:
+            count += 1
+            bad += identity_failures(label, as_comps(res["components"]), table)
+    check(not bad, f"rotate x4, rotate 90 + 270, rotate 180 x2 and mirror x2 return every one of {count} generated pieces sets exactly" +
+          (f" (failing: {bad[:3]})" if bad else ""))
+    print(f"     orient identities: {count} generator outputs x {len(IDENTITIES)} round trips in {time.perf_counter() - t0:.1f} s")
+
+    # the corner of a ring: one rotation puts the front corner piece at the new front corner
+    sty = {"s": default["stone_tile"]}
+    stone_table = orient.table_from_styles(sty)
+    se = S.ids_of(sty["s"]["walls"]["corners"]["SE"])[0]
+    post = S.ids_of(sty["s"]["walls"]["post"])[0]
+    ring = as_comps(kit.autowall(S.StyleCatalogue(json.loads(json.dumps(sty))), {"style": "s", "path": [[0, 0], [8, 0], [8, 8], [0, 8]], "closed": True, "door": False, "windows": False})["components"])
+    once = orient.transform(ring, "rot90", stone_table)
+    check(len(once) == len(ring), "a turned closed ring has as many pieces as before (the split corner comes back together)")
+    check(sum(1 for c in once if c.item == se) == 1 and sum(1 for c in once if c.item == post) == 1, "a turned ring has one front corner piece and its post")
+    ex = orient.extent(once, stone_table)
+    corner = next(c for c in once if c.item == se)
+    check((corner.x + 1, corner.y + 1) == (ex[1], ex[3]), "the front corner piece of a turned ring stands at the new south-east vertex")
+    # a T of two walls holds an EW and an NS straight in one cell: that is not a corner and must stay two pieces
+    tee = [Component(0x101, 0, 0, 7), Component(0x102, 0, 0, 7), Component(0x101, 1, 0, 7), Component(0x102, 0, 1, 7)]
+    check(multiset(apply_ops(tee, ["rot90"] * 4, fake_table)) == multiset(tee), "a cell crossed by walls keeps its two straights through four turns")
+    lone = [Component(0x101, 0, 0, 7), Component(0x102, 0, 1, 7)]          # a north-east corner of plain straights
+    check([c.item for c in orient.transform(lone, "rot90", fake_table)] == [0x104], "two straights that now meet as a front corner become the corner piece")
+
+    # roofs, ridges and stairs by side, in the synthetic style and the defaults
+    for op, side_map in (("rot90", {"N": "E", "E": "S", "S": "W", "W": "N"}), ("mirror_x", {"N": "N", "E": "W", "S": "S", "W": "E"}),
+                         ("mirror_y", {"N": "S", "E": "E", "S": "N", "W": "W"})):
+        got = {s: orient.transform([Component(fake_ids, 0, 0, 27)], op, fake_table)[0].item for s, fake_ids in (("N", 0x401), ("S", 0x402), ("E", 0x403), ("W", 0x404))}
+        want = {s: {"N": 0x401, "S": 0x402, "E": 0x403, "W": 0x404}[side_map[s]] for s in "NSEW"}
+        check(got == want, f"gable slopes by side under {op}")
+        hip = {s: orient.transform([Component(i, 0, 0, 27)], op, fake_table)[0].item for s, i in (("NW", 0x411), ("NE", 0x412), ("SW", 0x413), ("SE", 0x414))}
+        hip_want = {"rot90": {"NW": 0x412, "NE": 0x414, "SE": 0x413, "SW": 0x411}, "mirror_x": {"NW": 0x412, "NE": 0x411, "SW": 0x414, "SE": 0x413},
+                    "mirror_y": {"NW": 0x413, "NE": 0x414, "SW": 0x411, "SE": 0x412}}[op]
+        check(hip == hip_want, f"hip corners under {op}: SE and ES spellings alike")
+    check(orient.transform([Component(0x405, 0, 0, 40)], "rot90", fake_table)[0].item == 0x406 and
+          orient.transform([Component(0x405, 0, 0, 40)], "mirror_x", fake_table)[0].item == 0x405, "a ridge along x turns to a ridge along y and keeps under a mirror")
+    check(orient.transform([Component(0x415, 0, 0, 40)], "rot90", fake_table)[0].item == 0x415, "a hip cap has no side")
+
+    # a turned selection stays where it is
+    house = as_comps(kit.house(fake_cat(), {"style": "a", "seed": 3, "width": 12, "depth": 10, "roof": "flat"})["components"])
+    for part in (house, [c for c in house if c.x > -3]):
+        for width_drop in (0, 1):
+            sel = [c for c in part if c.x >= -6 + width_drop]
+            before = orient.extent(sel, fake_table)
+            for op in ("rot90", "rot180", "mirror_x", "mirror_y"):
+                after = orient.extent(orient.transform(sel, op, fake_table, keep_centre=True), fake_table)
+                if sum(before) % 2 == 0 or op.startswith("mirror"):
+                    shift = (abs(before[0] + before[1] - after[0] - after[1]), abs(before[2] + before[3] - after[2] - after[3]))
+                    check(shift == (0, 0), f"{op} of a selection keeps its centre (off by {shift} half cells)")
+                else:
+                    check(after[0] == before[0] and after[2] == before[2], f"{op} of an odd-by-even selection keeps its top corner")
+                if op == "rot90":
+                    sel4 = sel
+                    for _ in range(4):
+                        sel4 = orient.transform(sel4, "rot90", fake_table, keep_centre=True)
+                    check(multiset(sel4) == multiset(sel), "a selection turned four times about its centre is where it began")
 
 
 def main() -> int:

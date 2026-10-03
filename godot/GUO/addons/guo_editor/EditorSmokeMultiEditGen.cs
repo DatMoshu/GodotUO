@@ -422,8 +422,7 @@ public partial class EditorSmoke
         MeCheck("stairs_tool_undo_closes_hole", doc.Parts.Count == floorCount);
         doc.Redo();
 
-        // Rotate x4 and mirror x2 return to the original (stairs and straight walls; corner and hip pieces are
-        // not an involution in tools/multi's remap table: reported in the notes).
+        // Rotate x4 and mirror x2 return to the original (a floor with a stair, then a whole house below).
         List<(int, int, int, int, bool, int)> original = Sig(doc);
         for (int i = 0; i < 4; i++)
         {
@@ -461,6 +460,47 @@ public partial class EditorSmoke
         MeCheck("rotate_is_one_undo_step", doc.HistoryCount == rotHistory + 1);
         doc.Undo();
         MeCheck("rotate_undo", Sig(doc).SequenceEqual(original));
+
+        // A whole generated house (walls with corners, windows, doors, stairs, a gable roof) is the same after four turns
+        // and after two mirrors: the corner pieces split on a turn and come back together.
+        view.NewMulti();
+        view.ShowGenerateTab();
+        panel.SelectGenerator("house");
+        await view.ApplyGeneratedAsync(true);
+        List<(int, int, int, int, bool, int)> houseSig = Sig(doc);
+        MeCheck("rotate_house_generated", houseSig.Count > 100, $"{houseSig.Count} pieces");
+        for (int i = 0; i < 4; i++)
+        {
+            await view.TransformAsync("rotate", 1);
+        }
+
+        MeCheck("rotate_house_x4_returns_original", Sig(doc).SequenceEqual(houseSig), $"{doc.Parts.Count} vs {houseSig.Count}");
+        for (int i = 0; i < 2; i++)
+        {
+            await view.TransformAsync("mirror", axis: "x");
+        }
+
+        MeCheck("mirror_house_x2_returns_original", Sig(doc).SequenceEqual(houseSig), $"{doc.Parts.Count} vs {houseSig.Count}");
+        for (int i = 0; i < 2; i++)
+        {
+            await view.TransformAsync("mirror", axis: "y");
+        }
+
+        MeCheck("mirror_house_y2_returns_original", Sig(doc).SequenceEqual(houseSig), $"{doc.Parts.Count} vs {houseSig.Count}");
+        // The upper storey alone, selected: four turns about its own centre leave it where it was.
+        doc.Selection.Clear();
+        foreach (MultiPart p in doc.Parts.Where(p => p.Z >= 27))
+        {
+            doc.Selection.Add(p.Uid);
+        }
+
+        for (int i = 0; i < 4; i++)
+        {
+            await view.TransformAsync("rotate", 1);
+        }
+
+        MeCheck("rotate_house_selection_x4_returns_original", Sig(doc).SequenceEqual(houseSig), $"{doc.Parts.Count} vs {houseSig.Count}");
+        doc.Selection.Clear();
     }
 }
 #endif

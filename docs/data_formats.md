@@ -1439,9 +1439,15 @@ Same parameters and seed, same bytes.
   Returns the section 16 `description` it expanded, the doors, `stops`, `centre`, and `problems` from the validator.
 - `rotate` (`turns` 1-3, clockwise seen from above) and `mirror` (`axis` `x`: east becomes west, `y`):
   `components` in and out. Wall pieces move by edge, not cell (a mirrored east face is a west face, which is the next
-  cell's east edge); a corner drawing both faces splits into its straights. Ids come from `guo.multi.orient/1`
-  (`wall` `{id: {axis, ew, ns}}`, `map` `{rot90, mirror_x, mirror_y: {id: id}}`, `door_bases`), built from the styles,
-  and with `run.py orient-table` from the mined catalogue and tiledata names.
+  cell's east edge); a corner drawing both faces splits into its straights, and an EW and an NS straight of one run set
+  that stand in one cell at a vertex with exactly two wall ends are joined again into that corner piece. So four turns
+  or two mirrors return a generated building exactly (same id, x, y, z and flags); the NE and SW corners and the
+  junctions turn into each other, a post stays on its vertex. `keep_centre` turns or mirrors about the centre of what
+  the pieces draw, so a selection stays in place (a box that cannot turn about its middle on the grid, odd by even,
+  keeps its top corner instead, which keeps four turns exact). Ids come from
+  `guo.multi.orient/1` (`wall` `{id: {axis, ew, ns}}`, `map` `{rot90, mirror_x, mirror_y: {id: id}}`, `door_bases`, and
+  `lossy` `{id: id}` for window sets that share one art on the other axis, which come back as the first set), built from
+  the styles, and with `run.py orient-table` from the mined catalogue and tiledata names.
 - `import` / `export`: `format` is one of `txt` (UOFiddler and Ultima SDK text, `0xID x y z flags`), `uoa` (UO Architect
   text, 4 header lines), `uoab` (UO Architect binary designs, version 1 or 2), `wsc`, `csv-punt`, `csv-swerv`,
   `centred` (CentrED# `id,x,y,z,hue,flags`) and `uox3`. Import detects the format from the name and head and recentres.
