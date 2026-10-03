@@ -1,0 +1,60 @@
+{
+  "name": "Fullworld Grassland",
+  "description": "Full Felucca-size (7168x4096) procgen preset where Grassland is the dominant interior biome. Tuning model: bidirectional moisture sweep saturates coasts at ~640 sea tiles, then LandDecay=0.15 drops ~150 moisture per 1000 land tiles — so coastlines read as Forest/DenseForest, mid-continent reads as Grassland, and deep dry interiors degrade to Savanna/Desert. Latitude band drives Jungle (equator), Snow/Tundra (poles). Low-altitude wet pockets pick up Swamp/Wetland. Full biome palette enabled; only Mountain/High-Mountain altitude bands stay at the defaults.",
+  "seed": 1234567,
+  "passes": {
+    "Noise Height": {
+      "Octaves": 7,
+      "BaseFrequency": 0.0035,
+      "Lacunarity": 2.1,
+      "Gain": 0.5,
+      "VerticalScale": 88,
+      "ContinentFalloff": 0.3
+    },
+    "Mountain Shape": {
+      "SlopeThreshold": 4,
+      "MinRegionSize": 6,
+      "AltitudeBandsCsv": "20,30,50,60,65,70",
+      "PeakSplatterFreq": 350,
+      "PeakAltitudeVariance": 6
+    },
+    "Moisture & Climate": {
+      "WindDirectionDeg": 180,
+      "Bidirectional": true,
+      "MoisturePerSeaCell": 0.4,
+      "LandDecay": 0.15,
+      "RainShadowZ": 55,
+      "BaseTemperature": 195,
+      "LapseRate": 1.5,
+      "LatitudeFalloff": 0.7
+    },
+    "Biome Assign": {
+      "SeaLevelZ": 0,
+      "MountainZ": 50,
+      "SnowTemperature": 30,
+      "TundraTemperature": 60,
+      "DesertMoistureMax": 28,
+      "ForestMoistureMin": 210,
+      "DenseForestMoistureMin": 245,
+      "JungleTemperature": 192,
+      "SavannaTemperature": 188,
+      "SwampMoistureMin": 200,
+      "WetlandMoistureMin": 230,
+      "LowlandZWindow": 5,
+      "SwampMinDistFromWater": 2,
+      "SwampPatchNoiseScale": 0.08,
+      "SwampPatchThreshold": 0.35
+    },
+    "Coast Smooth": {
+      "BeachBand": 2
+    },
+    "Forest Scatter": {
+      "DensityMultiplier": 0.9,
+      "MinRadius": 4
+    },
+    "POI Stamps": {
+      "ControlPointsPerQuadrant": 2,
+      "DungeonsPerQuadrant": 1
+    }
+  }
+}

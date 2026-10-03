@@ -1,0 +1,59 @@
+{
+  "name": "Rooms Maze 256 (compact dungeon, 256x256)",
+  "description": "Compact 256x256 variant of rooms-maze.preset.json. Smaller room target + smaller rooms + tighter padding so a 256-tile scope still feels dense. Pair with make-rooms-maze-256.bat. Inherits the same Wall/Floor/Decor/Spawner pass stack — only carve params differ.",
+  "seed": 4242,
+  "passes": {
+    "Rooms Carve": {
+      "MaxLeafSize": 32,
+      "MinLeafSize": 16,
+      "RoomMin": 7,
+      "RoomMax": 26,
+      "LeafMargin": 1,
+      "TunnelHalfWidth": 1,
+      "WeightTrash": 5,
+      "WeightElite": 2,
+      "WeightBoss": 1,
+      "WeightTreasure": 1,
+      "WeightEmpty": 1
+    },
+    "Rooms Stamp": {
+      "WallId": 128,
+      "FloorId": 1299,
+      "FlattenZ": true,
+      "FloorZ": 0,
+      "FloorOnCorridors": true,
+      "WallIdNS": 130,
+      "WallIdEW": 129
+    },
+    "Dungeon Decor Scatter": {
+      "DensityMultiplier": 1.0
+    },
+    "Dungeon Spawner Emit": {
+      "Map": "Felucca",
+      "NamePrefix": "RoomsMaze256",
+      "Basename": "rooms-maze-256"
+    }
+  },
+  "disable_passes": [
+    "Hydraulic Erosion",
+    "Mountain Shape",
+    "Biome Altitude Jitter",
+    "Coast Smooth",
+    "Auto Coast",
+    "Dig Shore",
+    "Coast Terrace",
+    "Land Transitions",
+    "Cliff Edge",
+    "River Carve",
+    "POI Stamps",
+    "Road Graph",
+    "Road Centerline",
+    "Road Stamps",
+    "Forest Scatter",
+    "Biome Static Scatter",
+    "Mountain Edge Statics",
+    "Mountain Path",
+    "Cave Wall Statics",
+    "Maze Stamp"
+  ]
+}

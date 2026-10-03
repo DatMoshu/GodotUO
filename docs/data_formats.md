@@ -43,6 +43,7 @@ Every key resolves as: **environment variable → `config.local.bat` →
 | `UO_CLIENT_VERSION` | Client version the data corresponds to (e.g. `7.0.107.76`) |
 | `UO_CACHE_DIR` | Disposable decode cache |
 | `UO_WORLD_PROJECT` | The editor's world project folder (§9); default `build\world\default` |
+| `UO_MAPGEN_DATA` | The map generator's per-user data folder (§24): mined stamps, coast atlas, tree statics, validator reports; default `%LOCALAPPDATA%\GUO\mapgen` |
 | `UO_EDITOR_LIVE_HOST` / `UO_EDITOR_LIVE_PORT` | The editor bridge the UO Shard dock connects to (§10); default `127.0.0.1:2595`, the private instance |
 | `UO_EDITOR_NAME` | The name this editor shows other editors on the bridge |
 | `UO_SHARD_HOST` / `UO_SHARD_PORT` | Shard to connect to |
@@ -1147,3 +1148,80 @@ with a vision model is the user's own tool and key.
 | `modes[]` | `{name, file, summary, legend: [{label, colour "#rrggbb"}]}` per mode image |
 | `objects[]` | Up to 4000 statics, multi parts and placed items in view: `kind` (`static`, `multi`, `item`), `graphic` (`0x0E75`), `name`, `type` (the Types mode's word), `x, y, z, height`, and `box` `[x0, y0, x1, y1]` in pixels (the art's rectangle from its size; approximate) |
 | `layers` | One array per layer switched on: `{label, x, y, z, detail, px, py, on_view, sextant}` |
+
+## 24. Map generator CLI (`guo-mapgen`, ADR-0030)
+
+`tools/mapgen/cli` builds `guo-mapgen` on the vendored generator (`tools/mapgen/MapGen`). The editor's
+Map Generator tab runs it as a process; scripts call `python tools/mapgen/run.py <command> ...`, which
+builds it on first use. **Every command prints JSON to stdout, one value per line**; the generator's
+own log goes to stderr. Exit codes: `0` ok, `1` failed (a crash, or an export that did not verify),
+`2` a usage error. Errors print `{"event":"error","message":...}`.
+
+Environment: `UO_CLIENT_DATA` (radar colours; `--client-data` overrides) and `MAPGEN_DATA_DIR`, the
+per-user data folder (`UO_MAPGEN_DATA`; the editor passes it on). Data paths inside presets that name
+mined data (`mined/...`, `Data/map-mining/...`, `client/ClassicUO/Data/...`) resolve into that folder.
+
+### `schema [--preset P]` → one object, `"schema": "guo.mapgen.schema/1"`
+
+| Field | Meaning |
+|---|---|
+| `preset` | `{id, name, description, seed}` of the preset the values come from (default `felucca-stage18`) |
+| `presets`, `default_preset` | Preset ids in `tools/mapgen/MapGen/presets` (file name without `.preset.json`) |
+| `sizes` | `[width, height]` pairs to offer: 256–2048 squares and the client's facet sizes |
+| `passes[]` | In pipeline order: `index`, `name` (also the preset key), `category`, `enabled` (with the preset applied), `default_enabled`, `heavy` (switched off by `--fast`), `file_side_effects` (always off from GUO), `tunables[]` |
+| `tunables[]` | `key` (the parameter name), `label`, `tooltip`, `type` (`int`, `double`, `bool`, `string`, `enum`, `other`), `editable` (false for `other` and read-only), `value` (with the preset), `default` (the pass's own), `min`/`max` when the pass declares a range, `options` for an enum, `tile_set` (`land`/`static`) for tile-id lists |
+| `warnings` | Preset problems (unknown pass or key) |
+
+### `run --out DIR [options]` → JSON lines, then the folder
+
+Options:
+- `--preset P` (id or path);
+- `--seed N` (default: the preset's seed, else 1234567);
+- `--size N` or `--width W --height H` (multiples of 8, 64..7168 × 64..4096; default 1024);
+- `--set "Pass Name.Key=value"` (repeatable; int/double/bool/string/enum, invariant culture);
+- `--disable "Pass Name"` and `--enable "Pass Name"` (repeatable);
+- `--fast` (heavy passes off);
+- `--step-previews` (one PNG per pass);
+- `--preview-max N` (longest side of preview PNGs, default 1024; larger maps are block-averaged);
+- `--client-data DIR`.
+
+`--out` must be new or empty, and outside `UO_CLIENT_DATA`.
+
+Lines: `{"event":"start", preset, seed, width, height, passes, enabled, out}`, then per pass
+`{"event":"pass", index, count, name, enabled, ms, preview, notes[], warnings[]}` (`preview` is the
+PNG's path relative to `--out`, or null), then `{"event":"done", hash, elapsed_ms, out, stats, warnings}`.
+
+Folder:
+
+| File | Content |
+|---|---|
+| `run.json` | `"schema": "guo.mapgen.run/1"`, `generator`, `preset`, `seed`, `width`, `height`, `fast`, `sets`, `disable`, `enable`, `hash`, `elapsed_ms`, `statics`, `stats`, `files`, `passes[]` (`index, name, enabled, ms, warnings`), `warnings`, `radar_colours` |
+| `preset.json` | The effective preset (a normal `.preset.json`): every `--set`, toggle and `--fast` choice folded in. `export` regenerates from it |
+| `radar.png` | Client radar colours from `radarcol.mul`: the top static where there is one, else the land. Falls back to biome colours without client data |
+| `biome.png`, `height.png` | Biome classes; heights (grey above 0, blue below) |
+| `steps/NN-pass-name.png` | With `--step-previews`: the map after each enabled pass (radar once land ids exist, biome or height before) |
+| `map.bin` | Analyzer dump: int32 width, int32 height; per cell, row-major, uint16 land id, int8 z, uint8 biome; int32 count; per static uint16 x, uint16 y, int8 z, uint16 id |
+
+`hash` is SHA-256 over `"guo-mapgen-1"`, width and height (uint16), the land ids, the heights and every
+static op (kind, x, y, z, id, hue) in pipeline order. The same preset, seed, size and options give the
+same hash.
+
+`stats` (the Felucca-likeness card) holds:
+- `available` and `land_share`;
+- `measured` and `felucca`: shares of land at z 0, forest, grass, sand, rock, jungle, and sand along
+  coasts, plus statics per 100 land tiles (measured only). The Felucca values are the main continent,
+  measured 2026-10-02;
+- `classes` (land shares by tile-table class; `edge` means transition tiles);
+- `score` (0–100). It is a guide, not the judge.
+
+### `export --run DIR [--facet N]` → JSON lines, then `DIR/export/`
+
+`export` regenerates the run from `preset.json`, `seed`, `width` and `height`. It refuses when the hash
+differs from `run.json`'s. It then writes `export/map/map{N}.mul`, `staidx{N}.mul` and `statics{N}.mul`
+(legacy MUL, facet `N`, default 0). Finally it reads every cell and static back.
+`export/export-verify.json` holds `ok`, `land_cells_checked`, `land_mismatches`, `statics_expected`,
+`statics_found`, `static_mismatches`, `hash`, `facet`, `width`, `height`, `land_tiles_written`,
+`statics_written` and `files`. The final line is `{"event":"done", ok, hash, export, verify}`. Exit 1
+when `ok` is false. Opening the export as a world project and deploying it to a shard are separate steps.
+
+### `presets` → `{"schema": "guo.mapgen.presets/1", "presets": [...]}`

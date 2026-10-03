@@ -1,0 +1,49 @@
+{
+  "_doc": "MapGen tile tables. ushort tile IDs (decimal or 0xHEX). Single source of truth, loaded by TileTables.Default / TileTables.LoadDefault() (CLI, editor, web). TileTables.BuildDefault() is an identical built-in copy for checkouts without this file. Beach: WALKABLE sand is ONLY 0x16-0x19 (22-25) — the 4 soft-sand variants. 0x1A-0x1C (26-28) are sloped-sand variants flagged Impassable in tiledata (used for cliff/dune slope edges, never as a beach fill). 0x64 (100) is a decorative impassable scatter tile. Wet-sand rim (0x75-0x78) belongs in a separate water-edge transition pass, not in this fill pool. Distribution is uniform — earlier 0x19 x8 weighting produced visible diamond banding when CoastSmoothPass.BrushCoherence painted NxN coherent blocks.",
+  "beach":  ["0x16","0x17","0x18","0x19"],
+  "water":  ["0xA8", "0xA9", "0xAA", "0xAB"],
+  "river":  ["0xA8", "0xA9", "0xAA", "0xAB"],
+  "road":   ["0x47", "0x48", "0x49"],
+  "_doc_land": "Interior (plain) land tile per biome. Verified against real Britannia (tiledata names + frequency): forest floor 0xC4-0xC7 evenly, jungle floor 0xAC-0xAF, mountain interior 0x22C-0x22F 'rock'. 0xC8-0xCB are forest/grass blend tiles and 0xDC-0xDF cliff faces; neither is an interior fill. TileTables.BuildDefault() mirrors this file exactly (asserted by TileTablesTests).",
+  "land": {
+    "DeepWater":    ["0xA8","0xA9","0xAA","0xAB"],
+    "ShallowWater": ["0xA8","0xA9","0xAA","0xAB"],
+    "River":        ["0xA8","0xA9","0xAA","0xAB"],
+    "Beach":        ["0x16","0x17","0x18","0x19"],
+    "Grassland":    ["0x03","0x04","0x05","0x06"],
+    "Forest":       ["0xC4","0xC5","0xC6","0xC7"],
+    "DenseForest":  ["0xC4","0xC5","0xC6","0xC7"],
+    "Jungle":       ["0xAC","0xAD","0xAE","0xAF"],
+    "Savanna":      ["0x03","0x04","0x05","0x06"],
+    "Desert":       ["0x16","0x17","0x18","0x19"],
+    "Tundra":       ["0x011A","0x011B","0x011C","0x011D"],
+    "Snow":         ["0x011A","0x011B","0x011C","0x011D"],
+    "Mountain":     ["0x022C","0x022D","0x022E","0x022F"],
+    "HighMountain": ["0x022C","0x022D","0x022E","0x022F"],
+    "Swamp":        ["0x3DEB","0x3DEC","0x3DED","0x3DEE","0x3DEF"],
+    "Wetland":      ["0x3DEB","0x3DEC","0x3DED","0x3DEE","0x3DEF"]
+  },
+  "_doc_forest_species": "Leafy/summer tree IDs. 0x0CCA-0x0CCC are dead/winter and only used for tundra+snow. Oak/cedar/palm dominant elsewhere.",
+  "forest_species": {
+    "Forest":      ["0x0CCD","0x0CCE","0x0CD0","0x0CD3","0x0CD8"],
+    "DenseForest": ["0x0CCD","0x0CCE","0x0CD0","0x0CD8"],
+    "Jungle":      ["0x0CCD","0x0CD3","0x0CD8","0x0D24","0x0D2D"],
+    "Grassland":   ["0x0CCE","0x0CD0"],
+    "Savanna":     ["0x0CD3","0x0CCE"],
+    "Tundra":      ["0x0CFE","0x0CFF"],
+    "Snow":        ["0x0CFE"],
+    "Swamp":       ["0x0CD0","0x0D2C"],
+    "Wetland":     ["0x0CD0"]
+  },
+  "forest_density": {
+    "Forest": 1.0,
+    "DenseForest": 1.6,
+    "Jungle": 1.4,
+    "Grassland": 0.15,
+    "Savanna": 0.25,
+    "Tundra": 0.25,
+    "Snow": 0.05,
+    "Swamp": 0.6,
+    "Wetland": 0.4
+  }
+}

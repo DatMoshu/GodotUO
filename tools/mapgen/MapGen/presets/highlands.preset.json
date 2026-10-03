@@ -1,0 +1,31 @@
+{
+  "name": "Highlands",
+  "description": "Mountainous interior with low coastline. High Z range; many rivers; sparse trees on slopes.",
+  "seed": 12,
+  "passes": {
+    "Noise Height": {
+      "Octaves": 6,
+      "BaseFrequency": 0.0032,
+      "Lacunarity": 2.1,
+      "Gain": 0.55,
+      "VerticalScale": 110,
+      "ContinentFalloff": 0.5
+    },
+    "Hydraulic Erosion": {
+      "DropletCount": 80000,
+      "Lifetime": 32
+    },
+    "Biome Assign": {
+      "MountainZ": 30,
+      "SwampMoistureMin": 215,
+      "WetlandMoistureMin": 245
+    },
+    "River Carve": {
+      "SourceCount": 96
+    },
+    "Forest Scatter": {
+      "DensityMultiplier": 0.7,
+      "MaxSlope": 24
+    }
+  }
+}

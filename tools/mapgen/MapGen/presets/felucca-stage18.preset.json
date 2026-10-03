@@ -1,0 +1,125 @@
+{
+  "name": "Felucca Calibrated",
+  "description": "Measured Felucca calibration, work in progress. Natural grass/forest shores without a mandatory sand fringe.",
+  "seed": 1234567,
+  "passes": {
+    "Noise Height": {
+      "Octaves": 7,
+      "BaseFrequency": 0.0035,
+      "Lacunarity": 2.1,
+      "Gain": 0.5,
+      "VerticalScale": 88,
+      "ContinentFalloff": 0.3
+    },
+    "Mountain Shape": {
+      "SlopeThreshold": 4,
+      "MinRegionSize": 6,
+      "AltitudeBandsCsv": "",
+      "PeakSplatterFreq": 350,
+      "PeakAltitudeVariance": 5,
+      "SteepProfile": true,
+      "FootZ": 2,
+      "PeakZ": 50,
+      "RampTiles": 10,
+      "MaxStep": 16
+    },
+    "Moisture & Climate": {
+      "WindDirectionDeg": 180,
+      "Bidirectional": true,
+      "MoisturePerSeaCell": 0.4,
+      "LandDecay": 0.15,
+      "RainShadowZ": 55,
+      "BaseTemperature": 195,
+      "LapseRate": 1.5,
+      "LatitudeFalloff": 0.7
+    },
+    "Biome Assign": {
+      "SeaLevelZ": 0,
+      "MountainZ": 50,
+      "SnowTemperature": 0,
+      "TundraTemperature": 0,
+      "DesertMoistureMax": 6,
+      "ForestMoistureMin": 180,
+      "DenseForestMoistureMin": 245,
+      "JungleTemperature": 150,
+      "SavannaTemperature": 188,
+      "SwampMoistureMin": 235,
+      "WetlandMoistureMin": 256,
+      "LowlandZWindow": 5,
+      "SwampMinDistFromWater": 2,
+      "SwampPatchNoiseScale": 0.08,
+      "SwampPatchThreshold": 0.35,
+      "ForceBeachFringe": false,
+      "FlatLowlandFraction": 0.45,
+      "SnowCaps": false,
+      "ForestMosaicShare": 0.36,
+      "ForestMosaicFrequency": 0.2,
+      "SmoothPasses": 1,
+      "MountainMinLandFraction": 0.13
+    },
+    "Coast Smooth": {
+      "BeachBand": 2
+    },
+    "Forest Scatter": {
+      "DensityMultiplier": 0.6,
+      "MinRadius": 2,
+      "ShoreBuffer": 1,
+      "SpeciesTablesPath": "Data/map-mining/felucca-static-atlas-v2/species.json"
+    },
+    "POI Stamps": {
+      "ControlPointsPerQuadrant": 2,
+      "DungeonsPerQuadrant": 1
+    },
+    "Dig Shore": {
+      "SandExtension": 0,
+      "DigBandWidth": 12,
+      "PlainDeepBed": true,
+      "DigNarrowInlets": true
+    },
+    "Auto Coast": {
+      "DrawShoreDepth": false
+    },
+    "Land Transitions": {
+      "GrassMudBanks": true,
+      "CliffDzThreshold": 0,
+      "ReferenceAtlasPath": "Data/map-mining/felucca-transition-atlas.json"
+    },
+    "Biome Altitude Jitter": {
+      "GrassJitter": 0,
+      "ForestJitter": 0,
+      "SandJitter": 0,
+      "DesertJitter": 0,
+      "SwampJitter": 0,
+      "SnowJitter": 0,
+      "MountainJitter": 4,
+      "MountainSmoothPasses": 0,
+      "NoiseFrequency": 0,
+      "Frequency": 700
+    },
+    "Biome Static Scatter": {
+      "DenseBiomesCsv": "Swamp,Wetland,Jungle,Forest,DenseForest,Grassland,Savanna",
+      "DensityMultiplier": 1.0,
+      "MinRadius": 3,
+      "GroundCoverOnly": true,
+      "ChanceOverridesCsv": "Forest=37,DenseForest=37,Grassland=5,Savanna=5,Jungle=30",
+      "CataloguePath": "Data/map-mining/felucca-static-atlas-v2"
+    },
+    "Reference Coast": {
+      "MinimumSupport": 30,
+      "AtlasPath": "Data/map-mining/felucca-coast-atlas-v2.json"
+    },
+    "Mountain Edge Statics": {
+      "InteriorDensity": 0
+    },
+    "River Carve": {
+      "EightDirectionFlow": true,
+      "MinSourceZ": 0,
+      "MaxSourceZ": 10,
+      "SourceCount": 20
+    },
+    "Swamp Surface": {
+      "MossBorderWidth": 2
+    },
+    "Mountain Path": {}
+  }
+}

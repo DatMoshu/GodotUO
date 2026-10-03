@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    guo-mapgen: the command-line front end of the map generator (tools/mapgen/MapGen).
+    The editor's Map Generator tab runs it as a process; scripts and CI call it directly.
+    Contract: docs/data_formats.md, "Map generator CLI".
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>guo-mapgen</AssemblyName>
+    <RootNamespace>GuoMapGen</RootNamespace>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MapGen\GUO.MapGen.csproj" />
+  </ItemGroup>
+
+</Project>

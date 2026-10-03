@@ -213,6 +213,8 @@ class Config:
     shard_src_setting: Path | None = None
     # The store folder's signed catalogue (ADR-0026); no key means an unsigned v1 index.
     store_signing_key: Path | None = None
+    # The map generator's per-user data folder (UO_MAPGEN_DATA, ADR-0030): mined, never shipped.
+    mapgen_data: Path | None = None
     store_catalogue_id: str = "local"
     store_catalogue_title: str = "Local GUO packs"
     store_base_url: str = ""
@@ -338,6 +340,11 @@ def load_config(root: Path | None = None) -> Config:
         data_home = os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
         cache = str(Path(data_home) / "GUO" / "cache")
 
+    # Same rule for the map generator's data folder: next to the cache's own default.
+    mapgen_data = native_path(os.path.expandvars(get("UO_MAPGEN_DATA")))
+    if not mapgen_data or "%" in mapgen_data:
+        mapgen_data = str(Path(cache).parent / "mapgen")
+
     # %APPDATA% is Windows-only; elsewhere the same file goes under the user's config folder.
     agent_queue = native_path(os.path.expandvars(get("UO_AGENT_QUEUE")))
     if not agent_queue or "%" in agent_queue:
@@ -456,6 +463,7 @@ def load_config(root: Path | None = None) -> Config:
         custom_data_setting=custom_data_setting,
         client_version=get("UO_CLIENT_VERSION", "7.0.15.1"),
         cache_dir=Path(cache),
+        mapgen_data=Path(mapgen_data),
         world_project=Path(os.path.expandvars(world)),
         editor_live_host=get("UO_EDITOR_LIVE_HOST", "127.0.0.1"),
         editor_live_port=int(get("UO_EDITOR_LIVE_PORT", "2595") or 2595),

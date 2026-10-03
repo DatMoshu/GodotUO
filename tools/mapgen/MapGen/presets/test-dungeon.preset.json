@@ -1,0 +1,35 @@
+{
+  "name": "Test Dungeon (Surface Cave, 512x512, upper-left)",
+  "description": "MVP1 dungeon preset for tools/scripts/mapgen/test-dungeon-roundtrip.bat. Paints a 512x512 surface cave (HighMountain ring + Cave-biome horseshoe corridor) in the upper-left of the Felucca map. Palette derived from real Felucca dumps at (5694,325) and (6155,762). v3 fix: Biome Altitude Jitter is now enabled with CaveJitter=2 so 0x0244 floor tiles render as tan land-art (not solid black stretched-art). MountainJitter=0 keeps the wall band flat-rendered which works fine for 0x022C-0x022F. Pair with test-paint-dungeon.ps1 -Size 512.",
+  "seed": 7654321,
+  "passes": {
+    "Biome Altitude Jitter": {
+      "CaveJitter": 2,
+      "GrassJitter": 0,
+      "ForestJitter": 0,
+      "SandJitter": 0,
+      "SwampJitter": 0,
+      "DesertJitter": 0,
+      "SnowJitter": 0
+    },
+    "Land Transitions": {
+      "MinSourceBand": 1
+    }
+  },
+  "disable_passes": [
+    "Coast Smooth",
+    "Auto Coast",
+    "Dig Shore",
+    "Coast Terrace",
+    "Cliff Edge",
+    "River Carve",
+    "POI Stamps",
+    "Road Graph",
+    "Road Centerline",
+    "Road Stamps",
+    "Forest Scatter",
+    "Biome Static Scatter",
+    "Mountain Edge Statics",
+    "Mountain Path"
+  ]
+}
