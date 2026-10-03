@@ -14,10 +14,13 @@ using GUO.Assets;
 /// their art.
 /// </summary>
 /// <remarks>
-/// The composite is a preview, not the world renderer: components are sorted
-/// by <c>X + Y</c> then <c>Z</c> and placed on the 44x44 diamond grid with
-/// <c>Z * 4</c> lift, which is how UO lays statics out. Phase 2's World tab
-/// draws multis through <c>GameScene</c> itself.
+/// The composite is a preview, not the world renderer: components are placed
+/// on the 44x44 diamond grid with <c>Z * 4</c> lift and painted in the order
+/// the client's depth buffer settles them: <c>(X + Y) + (127 + PriorityZ) *
+/// 0.01</c>, with <c>PriorityZ</c> computed as <c>Chunk.AddGameObject</c>
+/// does (Background -1, Height != 0 +1, MultiMovable +1), ties going to the
+/// part <c>Chunk</c> would have put later on the tile. The World tab draws
+/// multis through <c>GameScene</c> itself.
 /// </remarks>
 [Tool]
 public partial class MultiPanel : GridPanel
@@ -81,12 +84,74 @@ public partial class MultiPanel : GridPanel
     /// <summary>The composite for a multi id, or null. Also the Parity panel's GUO side.</summary>
     public static Image CompositeOf(EditorData data, int id) => Composite(data, data.Files.Multis.GetMultis((uint)id));
 
+    /// <summary>
+    /// The visible parts in the client's painting order. Mirrors
+    /// <c>Chunk.AddGameObject</c> (priority Z) and <c>GameObject.CalculateDepthZ</c>
+    /// (the sort key); within one tile, a Multi of equal priority is inserted
+    /// before the existing ones, so later list entries paint first.
+    /// </summary>
+    internal static List<MultiInfo> ClientOrder(EditorData data, List<MultiInfo> parts)
+    {
+        StaticTiles[] tiles = data.Files.TileData.StaticData;
+        var keyed = new List<(MultiInfo p, float depth, int seq)>();
+        for (int i = 0; i < parts.Count; i++)
+        {
+            MultiInfo p = parts[i];
+            if (!p.IsVisible)
+            {
+                continue;
+            }
+
+            int pz = p.Z;
+            if (p.ID < tiles.Length)
+            {
+                StaticTiles t = tiles[p.ID];
+                if (t.IsBackground)
+                {
+                    pz--;
+                }
+
+                if (t.Height != 0)
+                {
+                    pz++;
+                }
+
+                if (t.IsMultiMovable)
+                {
+                    pz++;
+                }
+            }
+
+            keyed.Add((p, (p.X + p.Y) + (127 + pz) * 0.01f, i));
+        }
+
+        // Depth first; equal depth keeps the render list's order, which on a
+        // tile is the reverse of insertion for equal-priority Multis.
+        keyed.Sort((a, b) =>
+        {
+            int c = a.depth.CompareTo(b.depth);
+            if (c != 0)
+            {
+                return c;
+            }
+
+            if (a.p.X == b.p.X && a.p.Y == b.p.Y)
+            {
+                return b.seq.CompareTo(a.seq);
+            }
+
+            c = a.p.Y.CompareTo(b.p.Y);
+            return c != 0 ? c : a.seq.CompareTo(b.seq);
+        });
+        return keyed.Select(k => k.p).ToList();
+    }
+
     private static Image Composite(EditorData data, List<MultiInfo> parts)
     {
         var placed = new List<(Image img, int x, int y)>();
         int minX = int.MaxValue, minY = int.MaxValue, maxX = int.MinValue, maxY = int.MinValue;
 
-        foreach (MultiInfo p in parts.Where(p => p.IsVisible).OrderBy(p => p.X + p.Y).ThenBy(p => p.Z))
+        foreach (MultiInfo p in ClientOrder(data, parts))
         {
             Image art = data.ArtImage(EditorData.LandCount + p.ID);
             if (art == null)

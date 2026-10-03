@@ -43,6 +43,21 @@ public partial class ShardDock : EditorDock
 
     public bool Live => _link.Connected;
 
+    /// <summary>The "as editor" name (the tour sets a neutral one so no frame shows a user name).</summary>
+    public string EditorName
+    {
+        get => _name?.Text ?? "";
+        set
+        {
+            if (_name == null)
+            {
+                _Ready();
+            }
+
+            _name.Text = value;
+        }
+    }
+
     public ShardDock()
     {
         Name = "UOShard";
@@ -50,7 +65,6 @@ public partial class ShardDock : EditorDock
         LayoutKey = "guo_shard";
         DefaultSlot = DockSlot.Bottom;
         AvailableLayouts = DockLayout.Horizontal | DockLayout.Floating;
-        IconName = "Network";
     }
 
     internal void Attach(WorldView world)

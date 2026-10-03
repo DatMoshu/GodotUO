@@ -39,6 +39,8 @@ def exports() -> dict[str, str]:
         "UO_ROOT": str(cfg.root),
         "UO_GODOT_PROJECT": str(cfg.godot_project),
         "UO_SOURCES": str(cfg.sources),
+        "UO_UPSTREAM_DIR": str(cfg.sources),
+        "UO_GODOT_HOME": str(cfg.godot_home),
         "UO_TOOLS": str(cfg.tools),
         "UO_DOCS": str(cfg.docs),
         "UO_BUILD": str(cfg.build),

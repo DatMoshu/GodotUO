@@ -26,9 +26,7 @@
     <InvariantGlobalization>true</InvariantGlobalization>
   </PropertyGroup>
 
-  <PropertyGroup>
-    <UpstreamDir Condition="'$(UpstreamDir)' == ''">$(MSBuildThisFileDirectory)..\..\sources\ClassicUO</UpstreamDir>
-  </PropertyGroup>
+  <Import Project="$(MSBuildThisFileDirectory)../msbuild/UpstreamDir.props" />
 
   <ItemGroup>
     <ProjectReference Include="$(UpstreamDir)\src\ClassicUO.Assets\ClassicUO.Assets.csproj" />

@@ -92,6 +92,13 @@ public partial class BulkPanel : AssetPanel
         AddChild(_log);
     }
 
+    /// <summary>What the Verify stage button does (F3 runs it on Enter).</summary>
+    public void RunVerify()
+    {
+        EnsureUi();
+        RunAsync("verify", VerifyArgs(), _stage.Text);
+    }
+
     private static LineEdit Folder(string path) =>
         new() { Text = path, SizeFlagsHorizontal = SizeFlags.ExpandFill, TooltipText = "a folder" };
 

@@ -89,6 +89,38 @@ def find_repo_root(start: Path | None = None) -> Path:
     )
 
 
+def main_checkout(root: Path) -> Path | None:
+    """The main checkout this worktree belongs to, or None when root is one.
+
+    A git worktree has a `.git` FILE holding `gitdir: <common>/worktrees/<name>`;
+    that folder's `commondir` names the shared .git, whose parent is the main
+    checkout. Read from the files, not git, so it works without git on PATH and
+    matches the MSBuild fallback in godot/GUO/GUO.csproj.
+    """
+    dot_git = root / ".git"
+    if not dot_git.is_file():
+        return None
+    try:
+        line = dot_git.read_text(encoding="utf-8", errors="replace").strip()
+    except OSError:
+        return None
+    if not line.lower().startswith("gitdir:"):
+        return None
+    gitdir = Path(line[len("gitdir:"):].strip())
+    if not gitdir.is_absolute():
+        gitdir = root / gitdir
+    common = gitdir.parent.parent
+    commondir = gitdir / "commondir"
+    if commondir.is_file():
+        try:
+            value = Path(commondir.read_text(encoding="utf-8", errors="replace").strip())
+            common = value if value.is_absolute() else gitdir / value
+        except OSError:
+            pass
+    main = common.resolve().parent
+    return main if main != root.resolve() and (main / "launchers" / "_shared" / "config.bat").is_file() else None
+
+
 def parse_config_bat(path: Path, initial: dict[str, str] | None = None) -> dict[str, str]:
     """Extract the settings from config.bat without executing it."""
     values = {key.upper(): value for key, value in (initial or {}).items()}
@@ -184,6 +216,14 @@ class Config:
     store_catalogue_id: str = "local"
     store_catalogue_title: str = "Local GUO packs"
     store_base_url: str = ""
+    # The agent request queue (tools/agent_queue): one SQLite file per user, outside the repo.
+    agent_queue: Path | None = None
+    # UO_GODOT_HOME: the folder holding the pinned engine's release folder
+    # (what tools/godot is in the main checkout). UO_UPSTREAM_DIR: the folder
+    # holding ClassicUO (what sources/ is). Both resolved by load_config; a
+    # worktree with neither falls back to the main checkout's copies.
+    godot_home_setting: Path | None = None
+    upstream_dir_setting: Path | None = None
 
     # --- derived paths (never configured directly) ---
     @property
@@ -192,7 +232,13 @@ class Config:
 
     @property
     def sources(self) -> Path:
-        return self.root / "sources"
+        """The folder holding ClassicUO (UO_UPSTREAM_DIR; sources/ by default)."""
+        return self.upstream_dir_setting or self.root / "sources"
+
+    @property
+    def godot_home(self) -> Path:
+        """The folder holding the engine release folder (UO_GODOT_HOME; tools/godot by default)."""
+        return self.godot_home_setting or self.tools / "godot"
 
     @property
     def upstream(self) -> Path:
@@ -231,8 +277,8 @@ class Config:
 
     @property
     def godot_dir(self) -> Path:
-        """The extracted release folder under tools/godot."""
-        return self.tools / "godot" / f"Godot_v{self.godot_version}_{self.godot_flavor}"
+        """The extracted release folder under godot_home (tools/godot)."""
+        return self.godot_home / f"Godot_v{self.godot_version}_{self.godot_flavor}"
 
     @property
     def godot_exe(self) -> Path:
@@ -246,6 +292,11 @@ class Config:
 
     @property
     def godot_console_exe(self) -> Path:
+        # An explicit console build: the same GODOT_CONSOLE variable the
+        # launchers set (common.bat derives it from UO_GODOT_HOME).
+        override = os.environ.get("GODOT_CONSOLE")
+        if override and Path(override).is_file():
+            return Path(override)
         # Only Windows ships a separate console build; elsewhere the one
         # binary already blocks and writes to stdout.
         if not self.godot_flavor.startswith("mono_win"):
@@ -287,6 +338,12 @@ def load_config(root: Path | None = None) -> Config:
         data_home = os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
         cache = str(Path(data_home) / "GUO" / "cache")
 
+    # %APPDATA% is Windows-only; elsewhere the same file goes under the user's config folder.
+    agent_queue = native_path(os.path.expandvars(get("UO_AGENT_QUEUE")))
+    if not agent_queue or "%" in agent_queue:
+        config_home = os.environ.get("XDG_CONFIG_HOME") or os.path.join(os.path.expanduser("~"), ".config")
+        agent_queue = str(Path(config_home) / "guo" / "agent_queue.db")
+
     def path_or_none(key: str) -> Path | None:
         # A value that still holds an unexpanded %VAR% is one whose variable
         # was not set anywhere -- JAVA_HOME on a machine without one -- and
@@ -302,6 +359,25 @@ def load_config(root: Path | None = None) -> Config:
         godot_flavor = platform_godot_flavor()
 
     package = get("UO_ANDROID_PACKAGE", "org.guo.client")
+
+    # UO_GODOT_HOME / UO_UPSTREAM_DIR (common.bat does the same): a configured
+    # value wins; otherwise this checkout's copy when it has one, otherwise --
+    # in a git worktree, which gets neither gitignored folder -- the main
+    # checkout's. No directory links needed.
+    godot_version = get("GODOT_VERSION", "4.7.2-stable")
+    release = f"Godot_v{godot_version}_{godot_flavor}"
+    main = main_checkout(root)
+
+    def local_or_main(key: str, relative: str, marker: str) -> Path | None:
+        configured = path_or_none(key)
+        if configured is not None:
+            return configured
+        if (root / relative / marker).exists() or main is None:
+            return None
+        return main / relative if (main / relative / marker).exists() else None
+
+    godot_home_setting = local_or_main("UO_GODOT_HOME", "tools/godot", release)
+    upstream_dir_setting = local_or_main("UO_UPSTREAM_DIR", "sources", "ClassicUO")
 
     try:
         web_port = int(get("UO_WEB_PORT", "8060"))
@@ -372,7 +448,7 @@ def load_config(root: Path | None = None) -> Config:
         store_catalogue_id=get("UO_STORE_CATALOGUE_ID", "local"),
         store_catalogue_title=get("UO_STORE_CATALOGUE_TITLE", "Local GUO packs"),
         store_base_url=get("UO_STORE_BASE_URL"),
-        godot_version=get("GODOT_VERSION", "4.7.2-stable"),
+        godot_version=godot_version,
         godot_flavor=godot_flavor,
         client_data=client_data,
         client_data_env=client_data_env,
@@ -394,4 +470,7 @@ def load_config(root: Path | None = None) -> Config:
         ),
         log_level=get("UO_LOG_LEVEL", "INFO"),
         shard_src_setting=path_or_none("UO_SHARD_SRC"),
+        agent_queue=Path(agent_queue),
+        godot_home_setting=godot_home_setting,
+        upstream_dir_setting=upstream_dir_setting,
     )

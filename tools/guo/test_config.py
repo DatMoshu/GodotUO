@@ -96,6 +96,44 @@ class ConfigTests(unittest.TestCase):
         else:
             self.assertEqual(config.godot_console_exe, config.godot_exe)
 
+    def _worktree(self) -> Path:
+        # The fixture root is the main checkout; a worktree of it under
+        # .claude/worktrees, linked the way `git worktree add` links one.
+        admin = self.root / ".git" / "worktrees" / "wt"
+        admin.mkdir(parents=True)
+        (admin / "commondir").write_text("../..\n", encoding="utf-8")
+        wt = self.root / ".claude" / "worktrees" / "wt"
+        (wt / "launchers" / "_shared").mkdir(parents=True)
+        (wt / "launchers" / "_shared" / "config.bat").write_text(self.defaults.read_text(encoding="utf-8"), encoding="utf-8")
+        (wt / ".git").write_text(f"gitdir: {admin}\n", encoding="utf-8")
+        return wt
+
+    def test_worktree_falls_back_to_main_checkout_engine_and_upstream(self):
+        release = "Godot_v4.7.2-stable_mono_win64"
+        self.defaults.write_text('set "GODOT_VERSION=4.7.2-stable"\nset "GODOT_FLAVOR=mono_win64"', encoding="utf-8")
+        (self.root / "tools" / "godot" / release).mkdir(parents=True)
+        (self.root / "sources" / "ClassicUO").mkdir(parents=True)
+        wt = self._worktree()
+        with patch("guo.config.sys.platform", "win32"):
+            config = load_config(wt)
+            self.assertEqual(config.godot_home, self.root.resolve() / "tools" / "godot")
+            self.assertEqual(config.godot_dir, self.root.resolve() / "tools" / "godot" / release)
+            self.assertEqual(config.upstream, self.root.resolve() / "sources" / "ClassicUO")
+            # A worktree's own copy wins over the main checkout's...
+            (wt / "sources" / "ClassicUO").mkdir(parents=True)
+            self.assertEqual(load_config(wt).upstream, wt.resolve() / "sources" / "ClassicUO")
+            # ...and a configured value wins over both.
+            os.environ["UO_UPSTREAM_DIR"] = str(self.root / "elsewhere")
+            os.environ["UO_GODOT_HOME"] = str(self.root / "engine")
+            config = load_config(wt)
+            self.assertEqual(config.upstream, self.root / "elsewhere" / "ClassicUO")
+            self.assertEqual(config.godot_home, self.root / "engine")
+
+    def test_main_checkout_keeps_its_own_folders(self):
+        config = load_config(self.root)
+        self.assertEqual(config.godot_home, self.root.resolve() / "tools" / "godot")
+        self.assertEqual(config.sources, self.root.resolve() / "sources")
+
     def test_linux_godot_build_names(self):
         with patch("guo.config.sys.platform", "linux"), patch("guo.config.platform.machine", return_value="x86_64"):
             self.defaults.write_text('set "GODOT_VERSION=4.7.2-stable"\nset "GODOT_FLAVOR=mono_win64"', encoding="utf-8")

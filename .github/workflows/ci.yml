@@ -53,6 +53,9 @@ jobs:
       - name: Configuration resolution
         run: python3 tools/guo/test_config.py
 
+      - name: Agent request queue
+        run: python3 tools/agent_queue/test_agent_queue.py
+
       - name: Web export guard (never the official Godot, never wipes the last build)
         run: python3 tools/web/test_run.py
 

@@ -30,6 +30,9 @@ public partial class RunBar : HBoxContainer
     private ServerProfile Selected => _profiles?.Servers.FirstOrDefault(s => s.Id == _profiles.Selected);
     private string State(ServerProfile s) => Path.Combine(Root, s.Id, "process.json");
 
+    public void StartServerNow() { if (!_start.Disabled) Run(Start); }
+    public void StartClientsNow() => Run(StartClients);
+
     public override void _Ready()
     {
         try

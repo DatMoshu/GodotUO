@@ -765,6 +765,16 @@ namespace GUO
                 return;
             }
 
+            // PORT DEVIATION (GUO): the pad-first pregame (docs/ui/pregame_3d.md, the
+            // login painting with its own focus and keyboard) takes the keys and the
+            // pointer's buttons while it is up; pointer motion goes on.
+            if (GUO.Pregame3D.PregameScreen.HandleMainInput(@event))
+            {
+                GetViewport().SetInputAsHandled();
+
+                return;
+            }
+
             // PORT DEVIATION (GUO): a Modern gump (ADR-0024) and the command
             // bar's slot editor (Godot cards, modal) take the pointer and the
             // keys while open.

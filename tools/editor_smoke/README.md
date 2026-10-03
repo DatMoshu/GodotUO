@@ -107,3 +107,13 @@ still runs. The windowed mode opens an editor window for about a minute
 
 Exit codes: 0 every check passed, 1 a check failed, 2 the editor could not
 be started or timed out (600 s).
+
+## F3 search (Phase 4b)
+
+F3 (rebindable: Editor Settings > Shortcuts, `guo_editor/search`) opens a search over the editor's menus, settings and
+screens, the GUO commands, and the UO data the loaders have open (art by name or id, gumps, hues, multis, bodies,
+sounds, cliloc text, places). Code: `godot/GUO/addons/guo_editor/Search/`; one provider class per source. Named
+places live in `Search/places.json` (the client data has no town names). The smoke queries "backpack", "0x0E75",
+"3701", "statics", "grid", a coordinate, "project settings", "bp" and a typo, asserts the top result's kind, runs two
+harmless entries, and (windowed) saves `search_backpack.png`. The recent-use history is in the editor's project
+metadata, not in a tracked file.

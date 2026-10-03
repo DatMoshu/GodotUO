@@ -15,7 +15,10 @@ adds how the branches are run.
   `docs\architecture\README.md` before an ADR is written so they do not
   collide.
 - The owner keeps a worktree per branch (`.claude\worktrees\<name>`) so
-  branches do not tread on each other's build output.
+  branches do not tread on each other's build output. A worktree uses the
+  main checkout's engine and upstream reference through `UO_GODOT_HOME` and
+  `UO_UPSTREAM_DIR` (no directory links); run
+  `launchers\dev\worktree_setup.bat` once in a fresh one.
 
 ## Before you commit
 

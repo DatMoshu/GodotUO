@@ -1693,6 +1693,11 @@ public partial class Main : Node
                     case "--gamepad-probe":
                         o.GamepadProbe = true;
                         break;
+                    case "--pregame-3d":
+                    case "--pregame-classic":
+                    case "--pregame3d-probe":
+                        // Read by GUO.Pregame3D.Pregame3DSettings (docs/ui/pregame_3d.md).
+                        break;
                     case "--one-screen-probe":
                         o.OneScreenProbe = true;
                         break;

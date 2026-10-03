@@ -55,7 +55,7 @@ public partial class EditorSmoke : Node
 
     private readonly string _out;
     private readonly EditorData _data;
-    private readonly AssetsDock _assets;
+    private readonly AssetsView _assets;
     private readonly InspectorDock _inspector;
     private readonly WorldView _world;
     private readonly ShardDock _shard;
@@ -71,11 +71,17 @@ public partial class EditorSmoke : Node
     private bool _reloadTest;
     private bool _afterReload;
 
+    /// <summary>The F3 popup the plugin made, for the search checks.</summary>
+    public SearchPopup Search { get; set; }
+
+    /// <summary>The AI dock the plugin made, for the AI checks (ADR-0028).</summary>
+    public AiDock Ai { get; set; }
+
     public EditorSmoke() : this(null, null, null, null, null, null)
     {
     }
 
-    public EditorSmoke(string outDir, EditorData data, AssetsDock assets, InspectorDock inspector, WorldView world, ShardDock shard)
+    public EditorSmoke(string outDir, EditorData data, AssetsView assets, InspectorDock inspector, WorldView world, ShardDock shard)
     {
         _world = world;
         _shard = shard;
@@ -97,7 +103,7 @@ public partial class EditorSmoke : Node
     /// <summary>The output directory from the command line, or null when this is not a smoke run.</summary>
     public static string OutDirFromArgs() => ArgValue(Flag);
 
-    private static string ArgValue(string flag)
+    internal static string ArgValue(string flag)
     {
         string[] args = OS.GetCmdlineUserArgs();
         for (int i = 0; i < args.Length; i++)
@@ -177,10 +183,8 @@ public partial class EditorSmoke : Node
                 // Bring the next tab to the front and let it lay out.
                 if (_panel >= _assets.Panels.Count)
                 {
-                    // Phase 5: the asset overlay, before the World tab boots
-                    // so the world's own loaders get it too.
-                    RunAssets();
-                    _stage = 6;
+                    // Phase 4b: the F3 search, on the index the editor built.
+                    _stage = 50;
                     _frames = 0;
                     break;
                 }
@@ -207,6 +211,28 @@ public partial class EditorSmoke : Node
                     Capture(_assets.Panels[_panel]);
                     _panel++;
                     _stage = 1;
+                }
+
+                break;
+
+            case 50:
+                if (StepSearch())
+                {
+                    _stage = 60;
+                    _frames = 0;
+                }
+
+                break;
+
+            case 60:
+                // The AI hub (ADR-0028): ACP, Ollama and queue, against stubs.
+                if (StepAi())
+                {
+                    // Phase 5: the asset overlay, before the World tab boots
+                    // so the world's own loaders get it too.
+                    RunAssets();
+                    _stage = 6;
+                    _frames = 0;
                 }
 
                 break;
@@ -497,6 +523,19 @@ public partial class EditorSmoke : Node
             }
         }
 
+        // --guo-editor-multi-dump 0x64,0x1000: also write those multis'
+        // composites (what the panel and inspector draw) to <out>/multi_XXXX.png.
+        if (panel is MultiPanel && ArgValue("--guo-editor-multi-dump") is string dump)
+        {
+            Directory.CreateDirectory(_out);
+            foreach (string tok in dump.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                int mid = tok.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? Convert.ToInt32(tok[2..], 16) : int.Parse(tok);
+                Image composite = MultiPanel.CompositeOf(_data, mid);
+                composite?.SavePng(Path.Combine(_out, $"multi_{mid:X4}{Suffix}.png"));
+            }
+        }
+
         if (panel is SoundPanel sounds && selected != null)
         {
             string played = sounds.SmokePlay();
@@ -504,6 +543,42 @@ public partial class EditorSmoke : Node
             if (played != null)
             {
                 failures.Add(played);
+            }
+        }
+
+        if (panel is MapPanel mapPanel && mapPanel.Radar != null)
+        {
+            // Zoomed in, the radar redraws per cell: the detail of the blocks around
+            // Britain's bank, saved as a frame, must differ from the 1:4 overview.
+            RadarView view = mapPanel.Radar;
+            int bx = 1496 / 8 - 12, by = 1628 / 8 - 8;
+            Image detail = view.ComposeDetail(bx, by, 24, 16);
+            detail.SavePng(Path.Combine(_out, $"maps_detail{Suffix}.png"));
+            Image overview = mapPanel.RadarImage;
+            Image scaled = overview == null ? null : overview.GetRegion(new Rect2I(bx * 2, by * 2, 48, 32));
+            scaled?.Resize(192, 128, Image.Interpolation.Nearest);
+            int differing = 0;
+            if (scaled != null)
+            {
+                Image d2 = (Image)detail.Duplicate();
+                d2.Resize(192, 128, Image.Interpolation.Nearest);
+                for (int y = 0; y < 128; y++)
+                {
+                    for (int x = 0; x < 192; x++)
+                    {
+                        if (d2.GetPixel(x, y) != scaled.GetPixel(x, y))
+                        {
+                            differing++;
+                        }
+                    }
+                }
+            }
+
+            result["detail_png"] = Path.Combine(_out, $"maps_detail{Suffix}.png");
+            result["detail_pixels_differing_from_overview"] = differing;
+            if (differing == 0 || detail.GetSize() != new Vector2I(192, 128))
+            {
+                failures.Add("the zoomed-in radar detail is not finer than the overview");
             }
         }
 
@@ -838,6 +913,7 @@ public partial class EditorSmoke : Node
         // Multi 0x0064 (a small house) a few cells south of the view centre,
         // through the same calls a server's world-object packet makes.
         var item = _world.Host.PlaceServerMulti(0x4000_0064, 0x0064, 1500, 1634, 10);
+        _world.Host.PlaceServerMulti(0x4000_0076, 0x0076, 1512, 1634, 10);
         _worldReport["multi_placed"] = item != null;
         if (item == null)
         {
@@ -893,6 +969,9 @@ public partial class EditorSmoke : Node
             }
         }
 
+        CompareMultiOrder(0x4000_0064, 0x0064, 1500, 1634);
+        CompareMultiOrder(0x4000_0076, 0x0076, 1512, 1634);
+
         Image frame = _world.Capture();
         if (frame != null && !frame.IsEmpty())
         {
@@ -900,6 +979,66 @@ public partial class EditorSmoke : Node
             frame.SavePng(path);
             _worldReport["multi_png"] = path;
         }
+    }
+
+    // The Multis panel's fixed preview against the world's own tile order: for
+    // each cell of a placed house, the components in the map's tile list (the
+    // order the game draws a tile in) and the preview's ClientOrder, as
+    // (graphic, z) lists. Cross-cell order is the depth sort in both.
+    private void CompareMultiOrder(uint serial, ushort id, int x0, int y0)
+    {
+        string key = $"multi_order_{id:X4}";
+        if (!_world.Host.World.HouseManager.TryGetHouse(serial, out var house))
+        {
+            _worldReport[key] = "no house";
+            return;
+        }
+
+        var world = new Dictionary<(int, int), List<string>>();
+        foreach (var cell in house.Components.Select(m => (m.X, m.Y)).Distinct())
+        {
+            var chunk = _world.Host.World.Map.GetChunk(cell.X, cell.Y, load: true);
+            var list = new List<string>();
+            for (var o = chunk?.GetHeadObject(cell.X % 8, cell.Y % 8); o != null; o = o.TNext)
+            {
+                if (o is GUO.Game.GameObjects.Multi m && house.Components.Contains(m))
+                {
+                    list.Add($"{m.Graphic:X4}@{m.Z - 10}");
+                }
+            }
+
+            world[(cell.X - x0, cell.Y - y0)] = list;
+        }
+
+        var preview = new Dictionary<(int, int), List<string>>();
+        foreach (var p in MultiPanel.ClientOrder(_data, _data.Files.Multis.GetMultis(id)))
+        {
+            if (!preview.TryGetValue((p.X, p.Y), out var l))
+            {
+                preview[(p.X, p.Y)] = l = new List<string>();
+            }
+
+            l.Add($"{p.ID:X4}@{p.Z}");
+        }
+
+        int cells = 0, same = 0;
+        var diffs = new List<string>();
+        foreach (var kv in world)
+        {
+            cells++;
+            preview.TryGetValue(kv.Key, out var pl);
+            string w = string.Join(",", kv.Value), pv = string.Join(",", pl ?? new List<string>());
+            if (w == pv)
+            {
+                same++;
+            }
+            else if (diffs.Count < 12)
+            {
+                diffs.Add($"{kv.Key}: world [{w}] preview [{pv}]");
+            }
+        }
+
+        _worldReport[key] = new Dictionary<string, object> { ["cells"] = cells, ["same_order"] = same, ["differences"] = diffs };
     }
 
     // Block 187,203 holds the view centre, 1496,1628. The overlay puts three
@@ -1077,7 +1216,7 @@ public partial class EditorSmoke : Node
     private readonly Dictionary<string, object> _editReport = new();
     private readonly List<(int Wait, Action Run)> _steps = new();
     private int _step;
-    private Color _radarBefore;
+    private Color _radarBefore, _minimapBefore;
 
     private void EditFail(string why)
     {
@@ -1127,28 +1266,15 @@ public partial class EditorSmoke : Node
     /// </summary>
     private bool AimAt(ushort id)
     {
-        var chunk = _world.Host.World.Map.GetChunk2(EditBx, EditBy, load: true);
-        for (int x = 0; x < 8; x++)
+        Vector2I? screen = WorldAim.ScreenOf(_world, _data, EditBx, EditBy, id);
+        if (screen is not { } at)
         {
-            for (int y = 0; y < 8; y++)
-            {
-                for (var o = chunk?.GetHeadObject(x, y); o != null; o = o.TNext)
-                {
-                    if (o is GUO.Game.GameObjects.Static && o.Graphic == id)
-                    {
-                        Image art = _data.ArtImage(EditorData.LandCount + id);
-                        int h = art?.GetHeight() ?? 44;
-                        var world = new GUO.Compat.Point(o.RealScreenPosition.X + 22, o.RealScreenPosition.Y + 44 - h / 3);
-                        var screen = _world.Host.Scene.Camera.WorldToScreen(world);
-                        _world.ForcedMouse = new Vector2I(screen.X, screen.Y);
-                        _editReport[$"aim_{id:X4}"] = new[] { screen.X, screen.Y };
-                        return true;
-                    }
-                }
-            }
+            return false;
         }
 
-        return false;
+        _world.ForcedMouse = at;
+        _editReport[$"aim_{id:X4}"] = new[] { at.X, at.Y };
+        return true;
     }
 
     private Color RadarAt(int x, int y)
@@ -1176,6 +1302,7 @@ public partial class EditorSmoke : Node
             _world.ForcedMouse = new Vector2I((int)_world.Size.X / 2, (int)(_world.Size.Y / 2));
             _data.CurrentArt = EditorData.LandCount + Tree;
             _radarBefore = RadarAt(EditX, EditY);
+            _minimapBefore = _world.Minimap?.PixelAt(EditX, EditY) ?? default;
             _editReport["install_statics"] = ChunkStatics(false);
         }));
 
@@ -1263,6 +1390,15 @@ public partial class EditorSmoke : Node
             Expect(after != _radarBefore, "radar_shows_overlay");
         }));
 
+        // The minimap repaints the edit without a facet change or a jump.
+        _steps.Add((wait, () =>
+        {
+            Color mini = _world.Minimap?.PixelAt(EditX, EditY) ?? default;
+            _editReport["minimap_before"] = _minimapBefore.ToHtml();
+            _editReport["minimap_after"] = mini.ToHtml();
+            Expect(mini != _minimapBefore, "minimap_shows_edit");
+        }));
+
         // Layers: statics off, then on.
         _steps.Add((1, () => _world.Host.ShowStatics = false));
         _steps.Add((wait, () =>
@@ -1296,6 +1432,9 @@ public partial class EditorSmoke : Node
             _world.Guides.Altitude = false;
             _editReport["block_file"] = _world.Host.Project.BlockPath(0, EditBx, EditBy);
         }));
+
+        // ADR-0027: render modes and map layers.
+        AddModeSteps();
     }
 
     private void WorldFail(string why)

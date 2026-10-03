@@ -31,6 +31,13 @@ public partial class SoundPanel : GridPanel
 
     protected override int IconSize => 0;
 
+    /// <summary>Switches between Effects and Music (F3 opens an id in the right one).</summary>
+    public void SelectKind(bool music)
+    {
+        EnsureUi();
+        _kind.Selected = music ? 1 : 0;
+    }
+
     private bool Music => _kind != null && _kind.Selected == 1;
 
     protected override string Placeholder => "id (0x0055) or name";

@@ -17,7 +17,7 @@ public partial class InspectorDock : EditorDock
     private HBoxContainer _player;
     private Button _play;
     private HSlider _frame;
-    private HBoxContainer _actions;
+    private HFlowContainer _actions;
     private RichTextLabel _fields;
 
     private double _clock;
@@ -34,7 +34,7 @@ public partial class InspectorDock : EditorDock
         Name = "UOInspector";
         Title = "UO Inspector";
         LayoutKey = "guo_inspector";
-        DefaultSlot = DockSlot.RightBl;
+        DefaultSlot = DockSlot.RightUl;
         AvailableLayouts = DockLayout.Vertical | DockLayout.Floating;
         IconName = "Search";
     }
@@ -46,15 +46,26 @@ public partial class InspectorDock : EditorDock
             return;
         }
 
+        float scale = EditorInterface.Singleton.GetEditorScale();
         var root = new VBoxContainer();
         root.SetAnchorsPreset(LayoutPreset.FullRect);
         AddChild(root);
 
+        // Top: the preview, which keeps its pixel size and scrolls (a multi or
+        // a zoomed radar is bigger than the dock; scaling it would resample).
+        var top = new VBoxContainer
+        {
+            SizeFlagsVertical = SizeFlags.ExpandFill,
+            CustomMinimumSize = new Vector2(0, 220 * scale),
+            SizeFlagsStretchRatio = 1.1f,
+        };
+        root.AddChild(top);
+
         var row = new HBoxContainer();
-        root.AddChild(row);
+        top.AddChild(row);
         row.AddChild(new Label { Text = "Zoom" });
         _zoom = new OptionButton();
-        foreach (int z in new[] { 1, 2, 3, 4 })
+        foreach (int z in new[] { 1, 2, 3, 4, 5, 6, 7, 8 })
         {
             _zoom.AddItem($"{z}x");
         }
@@ -63,14 +74,21 @@ public partial class InspectorDock : EditorDock
         _zoom.ItemSelected += _ => ShowFrame((int)_frame.Value);
         row.AddChild(_zoom);
 
-        // The preview keeps its pixel size and scrolls: a multi or a zoomed
-        // radar is bigger than the dock, and scaling it down would resample.
-        var scroll = new ScrollContainer
+        _player = new HBoxContainer { Visible = false, SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        row.AddChild(_player);
+        _play = new Button { Text = "Pause" };
+        _play.Pressed += () =>
         {
-            CustomMinimumSize = new Vector2(0, 260),
-            SizeFlagsVertical = SizeFlags.ExpandFill,
+            _playing = !_playing;
+            _play.Text = _playing ? "Pause" : "Play";
         };
-        root.AddChild(scroll);
+        _player.AddChild(_play);
+        _frame = new HSlider { SizeFlagsHorizontal = SizeFlags.ExpandFill, SizeFlagsVertical = SizeFlags.ShrinkCenter, Step = 1 };
+        _frame.ValueChanged += v => ShowFrame((int)v);
+        _player.AddChild(_frame);
+
+        var scroll = new ScrollContainer { SizeFlagsVertical = SizeFlags.ExpandFill };
+        top.AddChild(scroll);
         var centre = new CenterContainer
         {
             SizeFlagsHorizontal = SizeFlags.ExpandFill,
@@ -86,30 +104,33 @@ public partial class InspectorDock : EditorDock
         };
         centre.AddChild(_preview);
 
-        _player = new HBoxContainer { Visible = false };
-        root.AddChild(_player);
-        _play = new Button { Text = "Pause" };
-        _play.Pressed += () =>
+        // Bottom: buttons (wrapping) and the details, scrolling, so nothing is cut off.
+        var detailScroll = new ScrollContainer
         {
-            _playing = !_playing;
-            _play.Text = _playing ? "Pause" : "Play";
+            SizeFlagsVertical = SizeFlags.ExpandFill,
+            HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
+            CustomMinimumSize = new Vector2(0, 160 * scale),
+            SizeFlagsStretchRatio = 1f,
         };
-        _player.AddChild(_play);
-        _frame = new HSlider { SizeFlagsHorizontal = SizeFlags.ExpandFill, Step = 1 };
-        _frame.ValueChanged += v => ShowFrame((int)v);
-        _player.AddChild(_frame);
+        root.AddChild(detailScroll);
+        var details = new VBoxContainer
+        {
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+        };
+        detailScroll.AddChild(details);
 
-        _actions = new HBoxContainer();
-        root.AddChild(_actions);
+        _actions = new HFlowContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        details.AddChild(_actions);
 
         _fields = new RichTextLabel
         {
             BbcodeEnabled = true,
             FitContent = true,
             SelectionEnabled = true,
-            Text = "Pick something in the UO Assets dock.",
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            Text = "Pick something in the UO Assets tab.",
         };
-        root.AddChild(_fields);
+        details.AddChild(_fields);
     }
 
     public void ShowInspection(Inspection inspection)

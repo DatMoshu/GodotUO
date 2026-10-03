@@ -193,6 +193,8 @@ def main() -> int:
                          "only when the person at the machine agrees")
     ap.add_argument("--reload", action="store_true", help="also rebuild and hot-reload the assembly")
     ap.add_argument("--art", default="0x0E75", help="art id (static) the dock searches for")
+    ap.add_argument("--multi-dump", default="",
+                    help="comma list of multi ids whose panel composite is also saved as multi_XXXX.png")
     ap.add_argument("--out", type=Path, help="output folder (default build/editor_smoke/<mode>)")
     ap.add_argument("--no-build", action="store_true", help="skip the first C# build")
     args = ap.parse_args()
@@ -222,6 +224,8 @@ def main() -> int:
     if args.headless:
         cmd.insert(1, "--headless")
     cmd += ["--", "--guo-editor-smoke", str(out), "--guo-editor-smoke-art", args.art]
+    if args.multi_dump:
+        cmd += ["--guo-editor-multi-dump", args.multi_dump]
     if args.reload:
         cmd.append("--guo-editor-smoke-reload")
 
@@ -294,6 +298,24 @@ def main() -> int:
               f"{(world.get('position') or [0, '?', '?'])[1]},{(world.get('position') or [0, '?', '?'])[2]} "
               f"boot {world.get('boot_ms')} ms, {world.get('rendered_objects')} objects drawn, "
               f"{world.get('distinct_colours', 'no')} colours, picked: {world.get('picked')}")
+    search = report.get("search") or {}
+    if search:
+        print(f"[editor_smoke]   {'ok  ' if search.get('ok') else 'FAIL'} Search  F3 index ready in {search.get('index_ms')} ms, "
+              f"{search.get('menu_items')} editor menu items, {search.get('history_entries')} history entries")
+        for q in search.get("queries", []):
+            if "top_kind" in q:
+                print(f"[editor_smoke]        {'ok  ' if q.get('ok') else 'FAIL'} {q['query']!r:<20} -> {q['top_kind']} {q['top']!r} ({q['ms']} ms)")
+            else:
+                print(f"[editor_smoke]        {'ok  ' if q.get('finds_backpack') else 'FAIL'} {q['query']!r:<20} finds the backpack: {q.get('finds_backpack')}")
+    ai = report.get("ai") or {}
+    if ai:
+        checks = [k for k, v in ai.items() if v is True or v is False]
+        bad = [k for k in checks if ai[k] is False]
+        print(f"[editor_smoke]   {'ok  ' if ai.get('ok') else 'FAIL'} AI      {len(checks) - len(bad)}/{len(checks)} checks: ACP vs fake agent "
+              f"({ai.get('chunks_streamed')} chunks streamed), Ollama + OpenAI-compatible stubs, queue in a temp db, "
+              f"dock agent + permission dialog + chat + queue tab, children killed")
+        for k in bad:
+            print(f"[editor_smoke]        failed: {k}")
     overlay = world.get("overlay") or {}
     if overlay:
         print(f"[editor_smoke]   {'ok  ' if overlay.get('ok') else 'FAIL'} Overlay block 187,203: "

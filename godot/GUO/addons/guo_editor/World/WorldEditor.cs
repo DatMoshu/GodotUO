@@ -21,6 +21,11 @@ public enum WorldTool
     PlaceSpawner,
     MoveObject,
     DeleteObject,
+
+    // Map layers' tools (ADR-0027).
+    Measure,
+    Route,
+    Pin,
 }
 
 /// <summary>

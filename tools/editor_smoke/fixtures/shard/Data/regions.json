@@ -1,0 +1,26 @@
+[
+  {
+    "$type": "TownRegion",
+    "Map": "Felucca",
+    "Name": "Fixture Square",
+    "Priority": 50,
+    "Area": [{"x1": 1486, "y1": 1618, "x2": 1506, "y2": 1638}]
+  },
+  {
+    "$type": "DungeonRegion",
+    "Map": "Felucca",
+    "Name": "Fixture Cellar",
+    "Priority": 50,
+    "Area": [
+      {"x1": 1510, "y1": 1640, "x2": 1514, "y2": 1644},
+      {"x1": 1516, "y1": 1640, "x2": 1520, "y2": 1644}
+    ]
+  },
+  {
+    "$type": "BaseRegion",
+    "Map": "Trammel",
+    "Name": "Fixture Other Facet",
+    "Priority": 50,
+    "Area": [{"x1": 100, "y1": 100, "x2": 120, "y2": 120}]
+  }
+]

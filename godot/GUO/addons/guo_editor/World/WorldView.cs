@@ -21,6 +21,11 @@ public partial class WorldView : VBoxContainer
     private readonly WorldHost _host = new();
     private readonly WorldEditor _editor;
     private WorldGuides _guides;
+    private WorldModes _modeNode;
+    private LegendChip _chip;
+    private MenuButton _viewMenu, _layerMenu;
+    private Label _cursor;
+    private readonly MapLayers _mapLayers;
     private OptionButton _tool;
     private SpinBox _hue;
     private Label _brush;
@@ -41,6 +46,60 @@ public partial class WorldView : VBoxContainer
     private LineEdit _coords;
     private Label _status;
     private SubViewportContainer _container;
+    private Control _stage;
+    private MiniMap _minimap;
+    private MenuButton _layers, _guideMenu;
+
+    /// <summary>Where the minimap gets a facet's radar image; set by the plugin (the Maps tab renders it).</summary>
+    public Func<int, Image> RadarSource { get; set; }
+
+    /// <summary>The minimap, for the smoke check and the tour.</summary>
+    internal MiniMap Minimap => _minimap;
+
+    /// <summary>The Layers and Guides menus' buttons.</summary>
+    public MenuButton LayersMenu => _layers;
+    public MenuButton GuidesMenu => _guideMenu;
+
+    /// <summary>Sets a layer or guide item (by its label) in the Layers or Guides menu, as a click on it would. False if there is none.</summary>
+    public bool SetMenuItem(string label, bool on)
+    {
+        foreach (MenuButton m in new[] { _layers, _guideMenu })
+        {
+            PopupMenu pm = m?.GetPopup();
+            for (int i = 0; pm != null && i < pm.ItemCount; i++)
+            {
+                if (pm.GetItemText(i) == label)
+                {
+                    if (pm.IsItemChecked(i) != on)
+                    {
+                        pm.EmitSignal(PopupMenu.SignalName.IdPressed, pm.GetItemId(i));
+                    }
+
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>Whether a Layers or Guides item is checked.</summary>
+    public bool MenuItemChecked(string label)
+    {
+        foreach (MenuButton m in new[] { _layers, _guideMenu })
+        {
+            PopupMenu pm = m?.GetPopup();
+            for (int i = 0; pm != null && i < pm.ItemCount; i++)
+            {
+                if (pm.GetItemText(i) == label)
+                {
+                    return pm.IsItemChecked(i);
+                }
+            }
+        }
+
+        return false;
+    }
     private SubViewport _viewport;
     private Node2D _canvas;
 
@@ -65,6 +124,16 @@ public partial class WorldView : VBoxContainer
     /// <summary>The object MoveObject picked up and will put down on the next click.</summary>
     private Guid? _moving;
     public WorldGuides Guides => _guides;
+
+    /// <summary>The render modes' host (ADR-0027), for the smoke check, the tour and F3.</summary>
+    internal WorldModes Modes => _modeNode;
+
+    /// <summary>The map layers drawn on this view and on the minimap.</summary>
+    internal MapLayers Layers => _mapLayers;
+
+    internal LegendChip Chip => _chip;
+    internal MenuButton ViewMenu => _viewMenu;
+    internal MenuButton MapLayersMenu => _layerMenu;
 
     /// <summary>The tool a left click uses.</summary>
     public WorldTool Tool
@@ -113,9 +182,15 @@ public partial class WorldView : VBoxContainer
             UpdateStatus();
             _status.Text = what;
         };
+        _mapLayers = new MapLayers(_host)
+        {
+            ProjectRoot = () => _host.Project?.Root,
+            Objects = () => _objects.Objects,
+        };
         _editor = new WorldEditor(_host);
         _editor.Changed += what =>
         {
+            _modeNode?.Invalidate();
             UpdateStatus();
             _status.Text = $"{what}   (undo {_editor.UndoCount}, redo {_editor.RedoCount})";
         };
@@ -191,11 +266,14 @@ public partial class WorldView : VBoxContainer
         redo.Pressed += () => _editor.Redo();
         tools.AddChild(redo);
         tools.AddChild(new VSeparator());
-        Toggle(tools, "Land", true, v => _host.ShowLand = v);
-        Toggle(tools, "Statics", true, v => _host.ShowStatics = v);
-        Toggle(tools, "Multis", true, v => _host.ShowMultis = v);
-        Toggle(tools, "Roofs", true, v => _host.ShowRoofs = v);
-        Toggle(tools, "Objects", true, v => _objects.Visible = v);
+        // One menu for the layers and one for the guides: the toolbar must fit
+        // at 2560 px and below without pushing the inspector off screen.
+        _layers = Menu(tools, "Layers", "What the world draws: land, statics, multis, roofs, world objects");
+        MenuToggle(_layers, "Land", true, v => _host.ShowLand = v);
+        MenuToggle(_layers, "Statics", true, v => _host.ShowStatics = v);
+        MenuToggle(_layers, "Multis", true, v => _host.ShowMultis = v);
+        MenuToggle(_layers, "Roofs", true, v => _host.ShowRoofs = v);
+        MenuToggle(_layers, "Objects", true, v => _objects.Visible = v);
         tools.AddChild(new Label { Text = "spawns" });
         _spawnEntry = new LineEdit
         {
@@ -214,21 +292,37 @@ public partial class WorldView : VBoxContainer
         _season.ItemSelected += i => _host.Season = (GUO.Game.Managers.Season)(int)i;
         tools.AddChild(_season);
         tools.AddChild(new VSeparator());
-        Toggle(tools, "Grid", false, v => _guides.Grid = v);
-        Toggle(tools, "Altitude", false, v => _guides.Altitude = v);
-        Toggle(tools, "Blocks", true, v => _guides.Blocks = v);
+        _guideMenu = Menu(tools, "Guides", "Editor-only guides: cell grid, altitude numbers, block boundaries, the minimap");
+        MenuToggle(_guideMenu, "Grid", false, v => _guides.Grid = v);
+        MenuToggle(_guideMenu, "Altitude", false, v => _guides.Altitude = v);
+        MenuToggle(_guideMenu, "Blocks", true, v => _guides.Blocks = v);
+        MenuToggle(_guideMenu, "Minimap", true, v => _minimap.Visible = v);
+
+        BuildModeRow();
+
+        _stage = new Control
+        {
+            SizeFlagsVertical = SizeFlags.ExpandFill,
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+        };
+        AddChild(_stage);
 
         _container = new SubViewportContainer
         {
             Stretch = true,
-            SizeFlagsVertical = SizeFlags.ExpandFill,
-            SizeFlagsHorizontal = SizeFlags.ExpandFill,
             FocusMode = FocusModeEnum.All,
             // Pixel art is never filtered (AGENTS.md rule 7).
             TextureFilter = TextureFilterEnum.Nearest,
         };
         _container.GuiInput += OnInput;
-        AddChild(_container);
+        _stage.AddChild(_container);
+        _container.SetAnchorsPreset(LayoutPreset.FullRect);
+
+        // The minimap: a radar around the camera in a corner of the view.
+        _minimap = new MiniMap { Name = "MiniMap" };
+        _minimap.Jump += (x, y) => GoTo(_host.Facet, x, y);
+        _minimap.Layers = _mapLayers;
+        _stage.AddChild(_minimap);
 
         _viewport = new SubViewport
         {
@@ -246,6 +340,15 @@ public partial class WorldView : VBoxContainer
         _guides = new WorldGuides { Name = "Guides" };
         _guides.Attach(_host);
         _viewport.AddChild(_guides);
+
+        // After the guides: the active render mode and the map layers (ADR-0027).
+        _modeNode = new WorldModes { Name = "Modes" };
+        _modeNode.Attach(_host);
+        _modeNode.Layers = _mapLayers;
+        _viewport.AddChild(_modeNode);
+
+        _chip = new LegendChip { Name = "Legend", Visible = false, Position = new Vector2(10, 10) };
+        _stage.AddChild(_chip);
 
         VisibilityChanged += OnVisibilityChanged;
     }
@@ -322,6 +425,8 @@ public partial class WorldView : VBoxContainer
         _editor.Clear();
         _moving = null;
         WorldProject project = _host.OpenProject(root);
+        _mapLayers.ProjectChanged();
+        _modeNode?.Invalidate();
         _objects.Open(project?.Root);
         UpdateStatus();
         return project;
@@ -394,7 +499,13 @@ public partial class WorldView : VBoxContainer
             _brush.Text = $"static 0x{id:X4} {_data.NameOf(_data.CurrentArt)}";
         }
 
+        if (_minimap != null && _minimap.Visible)
+        {
+            _minimap.Update(_host, RadarSource, size, _host.Scene.Camera.Zoom);
+        }
+
         _guides.Hover = Tool != WorldTool.Select && _host.Picked is GameObject hover ? (hover.X, hover.Y) : null;
+        UpdateModeUi();
         Vector2 local = _container.GetLocalMousePosition();
         Vector2I? mouse = ForcedMouse ?? (new Rect2(Vector2.Zero, _container.Size).HasPoint(local)
             ? new Vector2I((int)local.X, (int)local.Y)
@@ -440,6 +551,11 @@ public partial class WorldView : VBoxContainer
                 _container.GrabFocus();
                 if (Tool == WorldTool.Select)
                 {
+                    if (_modeNode.ModeName == "Reachability" && _host.Picked is GameObject at)
+                    {
+                        _modeNode.SetOrigin(at.X, at.Y, StandZ(at));
+                    }
+
                     InspectPicked();
                 }
                 else
@@ -505,11 +621,54 @@ public partial class WorldView : VBoxContainer
         GoTo(_host.Facet, _host.X + dx, _host.Y + dy);
     }
 
-    private static void Toggle(HBoxContainer bar, string text, bool on, Action<bool> set)
+    private static MenuButton Menu(HBoxContainer bar, string text, string tip)
     {
-        var box = new CheckBox { Text = text, ButtonPressed = on };
-        box.Toggled += v => set(v);
-        bar.AddChild(box);
+        var m = new MenuButton { Text = text, TooltipText = tip, Flat = false };
+        bar.AddChild(m);
+        // Stay open while ticking several items.
+        m.GetPopup().HideOnCheckableItemSelection = false;
+        return m;
+    }
+
+    private readonly System.Collections.Generic.Dictionary<string, (PopupMenu Menu, int Id, Action<bool> Set)> _toggles = new();
+
+    private void MenuToggle(MenuButton menu, string text, bool on, Action<bool> set)
+    {
+        PopupMenu pm = menu.GetPopup();
+        int id = pm.ItemCount;
+        pm.AddCheckItem(text, id);
+        pm.SetItemChecked(id, on);
+        _toggles[text] = (pm, id, set);
+        pm.IdPressed += i =>
+        {
+            if (i != id)
+            {
+                return;
+            }
+
+            bool now = !pm.IsItemChecked(id);
+            pm.SetItemChecked(id, now);
+            set(now);
+        };
+    }
+
+    /// <summary>The Layers and Guides menu items by name (Land, Statics, Multis, Roofs, Objects, Grid, Altitude, Blocks, ...), for F3.</summary>
+    internal System.Collections.Generic.IReadOnlyList<string> ToggleNames => new System.Collections.Generic.List<string>(_toggles.Keys);
+
+    /// <summary>A layer or guide's state; null when there is no such toggle (or the tab has not been built).</summary>
+    internal bool? GetToggle(string name) => _toggles.TryGetValue(name, out var t) ? t.Menu.IsItemChecked(t.Id) : null;
+
+    /// <summary>Sets a layer or guide through its menu item, so the menu and the world agree.</summary>
+    internal bool SetToggle(string name, bool on)
+    {
+        if (!_toggles.TryGetValue(name, out var t))
+        {
+            return false;
+        }
+
+        t.Menu.SetItemChecked(t.Id, on);
+        t.Set(on);
+        return true;
     }
 
     /// <summary>
@@ -570,6 +729,11 @@ public partial class WorldView : VBoxContainer
             case WorldTool.MoveObject:
             case WorldTool.DeleteObject:
                 return ApplyObjectTool(o);
+
+            case WorldTool.Measure:
+            case WorldTool.Route:
+            case WorldTool.Pin:
+                return _status.Text = ApplyMapTool(o.X, o.Y, StandZ(o));
 
             default:
                 InspectPicked();
@@ -693,16 +857,21 @@ public partial class WorldView : VBoxContainer
         _container.Stretch = size == null;
         if (size is { } s)
         {
-            _container.SizeFlagsHorizontal = SizeFlags.ShrinkBegin;
-            _container.SizeFlagsVertical = SizeFlags.ShrinkBegin;
+            _container.SetAnchorsPreset(LayoutPreset.TopLeft);
             _container.CustomMinimumSize = new Vector2(s.X, s.Y);
+            _container.Size = new Vector2(s.X, s.Y);
+            _stage.CustomMinimumSize = new Vector2(s.X, s.Y);
+            _stage.SizeFlagsHorizontal = SizeFlags.ShrinkBegin;
+            _stage.SizeFlagsVertical = SizeFlags.ShrinkBegin;
             _viewport.Size = s;
         }
         else
         {
-            _container.SizeFlagsHorizontal = SizeFlags.ExpandFill;
-            _container.SizeFlagsVertical = SizeFlags.ExpandFill;
             _container.CustomMinimumSize = Vector2.Zero;
+            _container.SetAnchorsPreset(LayoutPreset.FullRect);
+            _stage.CustomMinimumSize = Vector2.Zero;
+            _stage.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+            _stage.SizeFlagsVertical = SizeFlags.ExpandFill;
         }
     }
 
@@ -723,6 +892,7 @@ public partial class WorldView : VBoxContainer
             _data.AssetsApplied -= OnAssetsApplied;
         }
 
+        _modeNode?.Detach();
         _host.Dispose();
     }
 }

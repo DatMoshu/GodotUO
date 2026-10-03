@@ -89,6 +89,9 @@ internal sealed partial class PregameCard : Node
 
     public PregameServers Servers => _servers;
 
+    /// <summary>For the probe: the control that has the card's focus (the pad's cursor), or null.</summary>
+    public Control PadFocusOwner => _viewport?.GuiGetFocusOwner();
+
     /// <summary>
     /// Art pixels to the card's viewport pixels. On the second screen: the
     /// cards' scale (UoTheme.PixelScale) carried through the shelf's own
@@ -673,6 +676,80 @@ internal sealed partial class PregameCard : Node
     }
 
     private bool _serversPressed;
+
+    // --- the pad (the pad-first pregame, docs/ui/pregame_3d.md) -------------------------
+
+    /// <summary>
+    /// One pad command for the card open over the main screen: a Godot ui_ action
+    /// pushed into the card's viewport, so the controls' own focus navigation moves
+    /// and presses. With nothing focused yet, the first command only focuses the
+    /// selected server (or the first button). False when the card is not open there.
+    /// </summary>
+    public static bool PadAction(string action)
+    {
+        if (_instance == null || !_instance._onMain)
+        {
+            return false;
+        }
+
+        SubViewport vp = _instance._viewport;
+        Control owner = vp.GuiGetFocusOwner();
+
+        if (owner == null || !GodotObject.IsInstanceValid(owner) || !owner.IsVisibleInTree())
+        {
+            _instance.FocusFirst();
+            return true;
+        }
+
+        vp.PushInput(new InputEventAction { Action = action, Pressed = true, Strength = 1f }, true);
+        vp.PushInput(new InputEventAction { Action = action, Pressed = false }, true);
+        owner = vp.GuiGetFocusOwner();
+
+        // A scrolled list follows the focus.
+        for (Node n = owner?.GetParent(); n != null && n != _instance._root; n = n.GetParent())
+        {
+            if (n is ScrollContainer sc)
+            {
+                sc.EnsureControlVisible(owner);
+                break;
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>B on the card: answers "no" to the question it asks, else closes it.</summary>
+    public static void PadBack()
+    {
+        if (_instance == null || !_instance._onMain)
+        {
+            return;
+        }
+
+        Button no = _instance._servers?.NoButton;
+
+        if (no != null && GodotObject.IsInstanceValid(no) && no.IsVisibleInTree())
+        {
+            no.EmitSignal(BaseButton.SignalName.Pressed);
+            return;
+        }
+
+        CloseOnMain();
+    }
+
+    private void FocusFirst()
+    {
+        Control target = _servers.Selected != null ? _servers.RowFor(_servers.Selected) : null;
+
+        if (target == null || !target.IsVisibleInTree())
+        {
+            Control open = _tab == Tab.Servers ? _servers : _settings;
+            target = open.FindChildren("*", "BaseButton", true, false).OfType<BaseButton>()
+                .FirstOrDefault(b => b.FocusMode == Control.FocusModeEnum.All && !b.Disabled && b.IsVisibleInTree());
+        }
+
+        target?.GrabFocus();
+    }
 
     /// <summary>A finger at <paramref name="local"/> (the card's viewport pixels); also the probe's tap.</summary>
     public void Pointer(InputEvent e, Vector2 local)

@@ -43,8 +43,9 @@ To build it on its own:
 dotnet build tools\plugin_host\GUO.PluginHost.csproj
 ```
 
-In a git worktree, where `sources\` is not checked out, pass
-`-p:UpstreamDir=<main checkout>\sources\ClassicUO` to either build.
+In a git worktree, where `sources\` is not checked out, both builds find the
+main checkout's through `tools/msbuild/UpstreamDir.props`; set
+`UO_UPSTREAM_DIR` or pass `-p:UpstreamDir=...` to point anywhere else.
 
 ## When it runs
 

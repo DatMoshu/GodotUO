@@ -3,8 +3,6 @@ namespace GUO.Editor;
 
 using System;
 using Godot;
-using GUO.Game;
-using CPoint = GUO.Compat.Point;
 
 /// <summary>
 /// The editor's own guides over the world view: the cell grid, land
@@ -50,51 +48,24 @@ public partial class WorldGuides : Node2D
             return;
         }
 
-        var camera = _host.Scene.Camera;
-        int w = camera.Bounds.Width, h = camera.Bounds.Height;
-        if (w <= 0 || h <= 0)
+        CellGeometry geo = CellGeometry.From(_host);
+        if (geo == null)
         {
             return;
         }
 
-        World world = _host.World;
-        int px = world.Player.X, py = world.Player.Y, pz = world.Player.Z;
-        int offX = (px - py) * 22 - (w >> 1);
-        int offY = (px + py) * 22 - ((h >> 1) + (pz << 2));
-
-        // Enough cells to cover the view at this zoom.
-        int range = (int)(Math.Max(w, h) / 44f * camera.Zoom) + 2;
-        var map = world.Map;
+        var map = _host.World.Map;
         _font ??= ThemeDB.FallbackFont;
 
         var gridColour = new Color(1, 1, 1, 0.4f);
         var blockColour = new Color(1f, 0.85f, 0.2f, 0.85f);
         var hoverColour = new Color(0.3f, 1f, 0.3f, 0.95f);
 
-        Vector2 Corner(int x, int y)
         {
-            sbyte z = map.GetTileZ(x, y);
-            var world = new CPoint((x - y) * 22 - offX, (x + y) * 22 - (z << 2) - offY - 22);
-            CPoint s = camera.WorldToScreen(world);
-            return new Vector2(s.X, s.Y);
-        }
-
-        for (int x = px - range; x <= px + range; x++)
-        {
-            for (int y = py - range; y <= py + range; y++)
+            foreach (CellQuad q in geo.Cells())
             {
-                if (x < 0 || y < 0)
-                {
-                    continue;
-                }
-
-                // The diamond's corners: top (x,y), right (x+1,y),
-                // bottom (x+1,y+1), left (x,y+1).
-                Vector2 top = Corner(x, y), right = Corner(x + 1, y), bottom = Corner(x + 1, y + 1), left = Corner(x, y + 1);
-                if (top.X < -64 || top.X > w + 64 || top.Y < -64 || top.Y > h + 128)
-                {
-                    continue;
-                }
+                int x = q.X, y = q.Y;
+                Vector2 top = q.Top, right = q.Right, bottom = q.Bottom, left = q.Left;
 
                 CellsDrawn++;
                 if (Grid)

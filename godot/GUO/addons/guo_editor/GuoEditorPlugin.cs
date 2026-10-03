@@ -28,18 +28,27 @@ using Godot;
 public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
 {
     private EditorData _data;
-    private AssetsDock _assets;
+    private AssetsView _assets;
     private InspectorDock _inspector;
     private EditorSmoke _smoke;
+    private EditorTour _tour;
     private WorldView _world;
     private ShardDock _shard;
     private RunBar _run;
+    private AiDock _ai;
+    private SearchPopup _search;
 
     // Whether the World tab was on screen when an assembly reload began.
     // A bool field survives the reload (Godot serializes it), and the editor
     // does not call _MakeVisible again for a tab that is already current, so
     // without this the rebuilt view would stay hidden behind its own button.
     private bool _worldWasVisible;
+    private bool _assetsWasVisible;
+
+    private const string ResetMenuLabel = "Reset GUO layout";
+
+    /// <summary>The UO Assets view, for <see cref="GuoAssetsPlugin"/> to show and hide with its tab.</summary>
+    public static AssetsView AssetsMain { get; private set; }
 
     public const string WorldTabName = "UO World";
 
@@ -58,7 +67,12 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         }
     }
 
-    public override void _EnterTree() => Build();
+    public override void _EnterTree()
+    {
+        // Only a fresh start can tell: a reload (no _EnterTree) keeps the live layout.
+        _layoutLost = GuoLayout.WasApplied() && !GuoLayout.SavedLayoutExists();
+        Build();
+    }
 
     public override void _ExitTree() => TearDown();
 
@@ -74,6 +88,8 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         Callable.From(Build).CallDeferred();
     }
 
+    private bool _layoutLost;
+
     private void Build()
     {
         if (_data != null)
@@ -82,11 +98,15 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         }
 
         _data = new EditorData();
-        _assets = new AssetsDock(_data);
+        _assets = new AssetsView(_data);
+        AssetsMain = _assets;
         _inspector = new InspectorDock();
         _assets.Inspect += _inspector.ShowInspection;
 
-        AddDock(_assets);
+        // UO Assets is a main-screen tab (GuoAssetsPlugin owns its button).
+        EditorInterface.Singleton.GetEditorMainScreen().AddChild(_assets);
+        _assets.Visible = _assetsWasVisible;
+        _assetsWasVisible = false;
         AddDock(_inspector);
 
         // The World tab: the game's renderer, read only (ADR-0015). It starts
@@ -101,6 +121,11 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         AddDock(_shard);
         _shard.Attach(_world);
 
+        // The AI hub (ADR-0028): chat, agents over ACP, the request queue. It owns child
+        // processes (agent CLIs), which TearDown kills.
+        _ai = new AiDock();
+        AddDock(_ai);
+
         // Start server, start clients: on the toolbar, always one click away.
         _run = new RunBar();
         AddControlToContainer(CustomControlContainer.Toolbar, _run);
@@ -109,6 +134,8 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         if (maps != null)
         {
             maps.JumpToWorld += ShowInWorld;
+            _world.RadarSource = maps.RadarFor;
+            _world.Host.OverlayChanged += (f, b) => _world.Minimap?.Invalidate(f, b);
 
             // While the world runs, the radar reads the world's map (with the
             // world project over it) and repaints the blocks an edit touches.
@@ -116,12 +143,17 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
             _world.Host.OverlayChanged += maps.RefreshBlocks;
         }
 
+        SearchContext searchContext = SearchContext.From(this, _data, _assets, _inspector, _world, _shard, _run, ShowInWorld);
+        searchContext.Ai = _ai;
+        _search = SearchPopup.Install(searchContext);
+
         string smokeOut = EditorSmoke.OutDirFromArgs();
+        string tourOut = EditorTour.OutDirFromArgs();
 
         // A tool started this editor (the smoke flag): its window must not
         // take the keyboard or the foreground from whoever is working, as a
         // scripted game run's does not (Bootstrap/Main.cs NoFocus).
-        if (smokeOut != null && DisplayServer.GetName() != "headless")
+        if ((smokeOut != null || tourOut != null) && DisplayServer.GetName() != "headless")
         {
             DisplayServer.WindowSetFlag(DisplayServer.WindowFlags.NoFocus, true);
             DisplayServer.WindowSetFlag(DisplayServer.WindowFlags.AlwaysOnTop, false);
@@ -131,18 +163,58 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         if (smokeOut != null)
         {
             _smoke = new EditorSmoke(smokeOut, _data, _assets, _inspector, _world, _shard);
+            _smoke.Search = _search;
+            _smoke.Ai = _ai;
             AddChild(_smoke);
+        }
+
+        if (tourOut != null)
+        {
+            _tour = new EditorTour(tourOut, _data, _assets, _inspector, _world, _shard, _run);
+            _tour.Search = _search;
+            _tour.Ai = _ai;
+            AddChild(_tour);
         }
 
         // The headless editor is used to import and to build solutions
         // (launchers\dev\smoke.bat, build.bat); opening the install there is
         // time spent for nobody. The smoke check asks for it explicitly.
-        if (smokeOut != null || DisplayServer.GetName() != "headless")
+        if (smokeOut != null || tourOut != null || DisplayServer.GetName() != "headless")
         {
             _data.LoadAsync();
         }
 
+        AddToolMenuItem(ResetMenuLabel, Callable.From(ResetLayout));
+
+        // The default layout, once: never over a layout the user has changed.
+        Callable.From(ApplyDefaultLayoutOnFirstRun).CallDeferred();
+
         GD.Print("[GUO editor] plugin entered");
+    }
+
+    private async void ApplyDefaultLayoutOnFirstRun()
+    {
+        // The editor restores its own layout after the plugins load.
+        await ToSignal(GetTree().CreateTimer(1.0), SceneTreeTimer.SignalName.Timeout);
+        if (_inspector != null && IsInstanceValid(_inspector))
+        {
+            GuoLayout.ApplyIfFirstRun(_inspector, _layoutLost);
+            _layoutLost = false;
+        }
+    }
+
+    /// <summary>
+    /// Restores the default GUO layout: UO Assets in the centre, the UO
+    /// Inspector in front on the right, Scene and FileSystem together on the
+    /// left, the shard dock in the bottom panel. Public so a search popup can call it.
+    /// </summary>
+    public void ResetLayout()
+    {
+        if (_inspector != null)
+        {
+            GuoLayout.Apply(_inspector);
+            _assets?.MakeVisible();
+        }
     }
 
     /// <summary>Brings the World tab forward at a cell.</summary>
@@ -160,11 +232,23 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
 
     private void TearDown()
     {
+        SearchPopup.Remove(_search);
+        _search = null;
+
         if (_run != null)
         {
             RemoveControlFromContainer(CustomControlContainer.Toolbar, _run);
             _run.QueueFree();
             _run = null;
+        }
+
+        if (_ai != null)
+        {
+            // Kills the agent CLIs it started and stops any stream, before a reload or when the editor closes.
+            _ai.Shutdown();
+            RemoveDock(_ai);
+            _ai.QueueFree();
+            _ai = null;
         }
 
         if (_shard != null)
@@ -187,12 +271,16 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
             _world = null;
         }
 
+        RemoveToolMenuItem(ResetMenuLabel);
+
         if (_assets != null)
         {
             _assets.Inspect -= _inspector.ShowInspection;
-            RemoveDock(_assets);
+            _assetsWasVisible = _assets.Visible;
+            _assets.GetParent()?.RemoveChild(_assets);
             _assets.QueueFree();
             _assets = null;
+            AssetsMain = null;
         }
 
         if (_inspector != null)
@@ -200,6 +288,13 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
             RemoveDock(_inspector);
             _inspector.QueueFree();
             _inspector = null;
+        }
+
+        if (_tour != null)
+        {
+            RemoveChild(_tour);
+            _tour.QueueFree();
+            _tour = null;
         }
 
         if (_smoke != null)

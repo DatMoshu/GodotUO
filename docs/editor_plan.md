@@ -149,6 +149,15 @@ must not grow by the editor.
 - Editor-only overlays drawn on top: grid, altitude numbers, block
   boundaries, selection outline, the stamp ghost. These are canvas items in
   the addon, not changes to the renderer.
+- **Render modes and map layers (ADR-0027, built).** The World toolbar's third
+  row has a View menu (Height, Walkability, Reachability, Types, IDs, Land
+  mesh, Problems, Project diff; a tinted or solid fill; a legend chip), a Map
+  layers menu (Places, Regions, Spawns, Houses, Live, Pins, Measure, Route; drawn
+  on the minimap too), and a Scene pack button (`build/scene_packs/<stamp>/`,
+  `scene.json` in `docs/data_formats.md` section 23). Code:
+  `addons/guo_editor/World/Modes/`. Walkability and the route use the client's
+  own `Pathfinder` (`CalculateNewZ` / `CanWalk`). F3 has "View: <mode>" and
+  "Layer: <name>". The Live layer needs the bridge to report mobiles (not yet).
 - Performance target: the viewer must scroll as fast as the game (it is the
   game's renderer). Editing a block invalidates its `ChunkMesh` only.
 
@@ -384,3 +393,39 @@ Phase 0-2 merged: open the editor, browse any asset, jump the world view to
 Britain, and a screenshot of that view pixel-matches the client's own
 screenshot at the same coordinates, with `editor_smoke` proving it headless.
 No writable feature ships until that is true.
+
+## Default layout (2026-10)
+
+UO Assets is a main-screen tab (the whole centre: asset tabs, S/M/L cell size,
+a zoomable radar in Maps with double-click to jump), supplied by the small
+`addons/guo_editor_assets` plugin because one plugin owns one main screen. The
+UO Inspector has the full height of the right column in front of Godot's
+Inspector (preview on top, scrolling details below); Scene and FileSystem share
+the left dock; the UO Shard dock is in the bottom panel. The World toolbar folds
+the layer and guide toggles into Layers and Guides menus, and a minimap
+(Guides > Minimap) sits in the view. The layout is applied once (a flag in the
+editor's project metadata) or by Project > Tools > Reset GUO layout
+(`GuoEditorPlugin.ResetLayout()`); a layout the user changed is not touched.
+The tour records at 3840x2160 with display scale 1.5 on a scratch settings
+folder, so the user's editor settings are never changed.
+
+## AI hub (2026-10, ADR-0028)
+
+The **AI** dock (`addons/guo_editor/AI/`, bottom panel beside UO Shard) has three tabs.
+
+* **Chat** talks to Ollama (`/api/tags`, streaming `/api/chat`; the URL follows `OLLAMA_HOST`), to
+  any OpenAI-compatible endpoint the user adds (key sealed by the pre-game accounts' `SecretStore`:
+  DPAPI on Windows), and to an agent started in the Agents tab. All providers implement `IChatProvider`.
+* **Agents** starts a coding agent CLI over ACP (`AcpClient`: JSON-RPC 2.0, one JSON message per
+  line, `initialize`, `session/new`, `session/prompt`, `session/update`, `session/request_permission`,
+  `session/cancel`). Presets: OpenCode, Codex, Claude Code, Gemini CLI, a custom command. They are
+  found on PATH; a missing one shows the install and sign-in commands to run. Permission requests open a
+  dialog, one action at a time (no "always" option is offered). The client advertises no file system
+  and no terminal, so an agent can only ask.
+* **Queue** posts to and reads `tools/agent_queue` (data_formats section 21) by running that tool;
+  it lists requests and shows the selected one's replies, polling every 2.5 s while visible.
+
+F3 has "AI: new chat", "AI: show queue/agents" and "AI: start agent X". Child processes die in
+`AiDock.Shutdown`, which the plugin calls on close and before an assembly reload. The smoke's AI stage
+runs everything against a fake ACP agent, stub HTTP servers and a temporary queue (`tools/ai_hub`).
+The editor model tools are not built yet: the models see no editor state and have no tools.

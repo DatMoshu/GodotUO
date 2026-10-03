@@ -26,7 +26,9 @@ not settings.
 |---|---|---|
 | `GODOT_VERSION` | `4.7.2-stable` | Pinned engine version the bootstrap fetches. |
 | `GODOT_FLAVOR` | `mono_win64` | Must be a mono/.NET flavour; the plain build cannot run C#. |
-| `GODOT_EXE` | unset | Override the engine executable. Leave unset to use `tools\godot`. |
+| `GODOT_EXE` | unset | Override the engine executable. Leave unset to use `UO_GODOT_HOME`. |
+| `UO_GODOT_HOME` | `tools\godot` | The folder holding the pinned release folder. A git worktree without one uses the main checkout's. |
+| `UO_UPSTREAM_DIR` | `sources` | The folder holding `ClassicUO`. A git worktree without one uses the main checkout's (MSBuild too). |
 
 ## Client data and cache
 

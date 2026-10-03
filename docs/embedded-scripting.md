@@ -140,7 +140,7 @@ runner and library checks. Run the client with `--scripts-probe` against the
 local dev shard for real editor input, save/load, Run/Stop, validation and
 journal checks. The probe uses a scratch profile and captures the panel through
 the standard `--screenshot-dir` / `--screenshot-name` options. Build with
-`dotnet build godot/GUO/GUO.csproj`; worktrees can supply `-p:UpstreamDir=...`.
+`dotnet build godot/GUO/GUO.csproj`; a worktree finds the main checkout's upstream by itself.
 
 Mobile and web packaging, physical-device soft keyboard behavior and full CE
 compatibility have not been verified. The feature does not depend on the

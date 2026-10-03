@@ -39,9 +39,7 @@
   </ItemGroup>
 
   <!-- Same override as GUO.csproj, for a checkout that keeps sources/ elsewhere. -->
-  <PropertyGroup>
-    <UpstreamDir Condition="'$(UpstreamDir)' == ''">$(MSBuildThisFileDirectory)..\..\sources\ClassicUO</UpstreamDir>
-  </PropertyGroup>
+  <Import Project="$(MSBuildThisFileDirectory)../msbuild/UpstreamDir.props" />
   <ItemGroup>
     <Reference Include="cuoapi">
       <HintPath>$(UpstreamDir)\external\cuoapi\cuoapi.dll</HintPath>
