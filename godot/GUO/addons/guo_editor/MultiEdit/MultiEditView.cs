@@ -220,10 +220,11 @@ public partial class MultiEditView : VBoxContainer, IMultiComponentSink
             sel.AddChild(Tip(Btn($"z{(d > 0 ? "+" : "")}{d}", () => _canvas.NudgeZ(d)), "Group z: moves the selection, or the editing z with none ([ ] PgUp PgDn)"));
         }
 
+        BuildTransformButtons(sel);
         sel.AddChild(new VSeparator());
         _hint = new Label
         {
-            Text = "S select  D draw  E erase  I pipette  R rect  L line  B brush  M move   [ ] z   arrows nudge   G grid  F floor",
+            Text = "S select  D draw  E erase  I pipette  R rect  L line  B brush  M move  W wall  O roof  T stairs   [ ] z   arrows nudge   G grid  F floor",
             SizeFlagsHorizontal = SizeFlags.ExpandFill,
             ClipText = true,
             Modulate = new Color(1, 1, 1, 0.6f),
