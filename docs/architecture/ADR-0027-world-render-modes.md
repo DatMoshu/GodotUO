@@ -93,8 +93,13 @@ floored ones; statics-on-water excludes water, surfaces and bridges.
 Walkability asks `CalculateNewZ` from each height a cell offers, heading north;
 a shard can be stricter.
 
-Not yet: the Live layer's source from the bridge (the bridge reports no
-mobiles; the layer takes a feed), pack regions from an installed pack folder
-(only `<project>/regions/`), the tour segments recorded in a window, a scene
+The Live layer's feed is the bridge's `mobiles` op (docs/data_formats.md section 10):
+the Shard dock polls it about once a second, for the visible region plus a margin,
+while Live is on and the World tab shows. The Regions layer also reads region packs
+installed in the editor's pack store (through `StoreClient`, so manifests and hashes
+are checked) and the shard folder's `Data/GUO/server-content.json`, each labelled with
+its source.
+
+Not yet: the tour segments recorded in a window, a scene
 pack reviewed by a vision model (results go to the owner before anything is
 shared).
