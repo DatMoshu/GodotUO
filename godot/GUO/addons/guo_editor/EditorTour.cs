@@ -70,6 +70,9 @@ public partial class EditorTour : Node
     public SearchPopup Search { get; set; }
     public AiDock Ai { get; set; }
 
+    /// <summary>The UO Store tab the plugin made, for the tour.</summary>
+    public StoreView Store { get; set; }
+
     public EditorTour() : this(null, null, null, null, null, null, null)
     {
     }

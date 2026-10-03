@@ -36,6 +36,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
     private ShardDock _shard;
     private RunBar _run;
     private AiDock _ai;
+    private StoreView _store;
     private SearchPopup _search;
 
     // Whether the World tab was on screen when an assembly reload began.
@@ -44,11 +45,15 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
     // without this the rebuilt view would stay hidden behind its own button.
     private bool _worldWasVisible;
     private bool _assetsWasVisible;
+    private bool _storeWasVisible;
 
     private const string ResetMenuLabel = "Reset GUO layout";
 
     /// <summary>The UO Assets view, for <see cref="GuoAssetsPlugin"/> to show and hide with its tab.</summary>
     public static AssetsView AssetsMain { get; private set; }
+
+    /// <summary>The UO Store view, for <see cref="GuoStorePlugin"/> to show and hide with its tab.</summary>
+    public static StoreView StoreMain { get; private set; }
 
     public const string WorldTabName = "UO World";
 
@@ -109,6 +114,15 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         _assetsWasVisible = false;
         AddDock(_inspector);
 
+        // UO Store is the third main-screen tab (GuoStorePlugin owns its button): catalogues, server
+        // content and publishing for shard owners and pack authors (ADR-0026 section 8). It loads its
+        // catalogues when first shown.
+        _store = new StoreView();
+        StoreMain = _store;
+        EditorInterface.Singleton.GetEditorMainScreen().AddChild(_store);
+        _store.Visible = _storeWasVisible;
+        _storeWasVisible = false;
+
         // The World tab: the game's renderer, read only (ADR-0015). It starts
         // the world the first time it is shown, not here.
         _world = new WorldView(_data);
@@ -129,6 +143,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         // Start server, start clients: on the toolbar, always one click away.
         _run = new RunBar();
         AddControlToContainer(CustomControlContainer.Toolbar, _run);
+        _store.Run = _run;
 
         MapPanel maps = _assets.Panel<MapPanel>();
         if (maps != null)
@@ -145,6 +160,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
 
         SearchContext searchContext = SearchContext.From(this, _data, _assets, _inspector, _world, _shard, _run, ShowInWorld);
         searchContext.Ai = _ai;
+        searchContext.Store = _store;
         _search = SearchPopup.Install(searchContext);
 
         string smokeOut = EditorSmoke.OutDirFromArgs();
@@ -165,6 +181,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
             _smoke = new EditorSmoke(smokeOut, _data, _assets, _inspector, _world, _shard);
             _smoke.Search = _search;
             _smoke.Ai = _ai;
+            _smoke.Store = _store;
             AddChild(_smoke);
         }
 
@@ -173,6 +190,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
             _tour = new EditorTour(tourOut, _data, _assets, _inspector, _world, _shard, _run);
             _tour.Search = _search;
             _tour.Ai = _ai;
+            _tour.Store = _store;
             AddChild(_tour);
         }
 
@@ -258,6 +276,17 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
             RemoveDock(_shard);
             _shard.QueueFree();
             _shard = null;
+        }
+
+        if (_store != null)
+        {
+            // Kills any tool process it started and cancels its catalogue fetches.
+            _storeWasVisible = _store.Visible;
+            _store.Shutdown();
+            _store.GetParent()?.RemoveChild(_store);
+            _store.QueueFree();
+            _store = null;
+            StoreMain = null;
         }
 
         if (_world != null)

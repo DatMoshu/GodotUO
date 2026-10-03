@@ -30,6 +30,13 @@ public partial class RunBar : HBoxContainer
     private ServerProfile Selected => _profiles?.Servers.FirstOrDefault(s => s.Id == _profiles.Selected);
     private string State(ServerProfile s) => Path.Combine(Root, s.Id, "process.json");
 
+    /// <summary>Re-reads the profile list after another part of the editor (the UO Store tab) changed it.</summary>
+    public void ReloadProfiles()
+    {
+        try { _profiles = ServerProfiles.Load(ListPath); _loadFailed = false; Rebuild(); Poll(); }
+        catch (Exception e) { _status.Text = e.Message; }
+    }
+
     public void StartServerNow() { if (!_start.Disabled) Run(Start); }
     public void StartClientsNow() => Run(StartClients);
 

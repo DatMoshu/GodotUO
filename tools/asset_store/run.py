@@ -252,9 +252,9 @@ def main():
             print(f"OK: {index['catalogue']['id']} sequence {index['sequence']}, {len(index['packs'])} pack(s), key {ed25519.fingerprint(public)}")
             return 0
         if args.command == "check":
-            from asset_store.policy import inspect_pack
+            from asset_store.policy import inspect_folder, inspect_pack
             try:
-                report = inspect_pack(args.pack, args.store_dir)
+                report = inspect_folder(args.pack) if Path(args.pack).is_dir() else inspect_pack(args.pack, args.store_dir)
             except (ValueError, OSError, zipfile.BadZipFile, KeyError, TypeError) as exc:
                 report = {"ok": False, "error": str(exc)}
             if args.json:

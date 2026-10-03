@@ -77,6 +77,9 @@ public partial class EditorSmoke : Node
     /// <summary>The AI dock the plugin made, for the AI checks (ADR-0028).</summary>
     public AiDock Ai { get; set; }
 
+    /// <summary>The UO Store tab the plugin made, for the store checks (ADR-0026 section 8).</summary>
+    public StoreView Store { get; set; }
+
     public EditorSmoke() : this(null, null, null, null, null, null)
     {
     }

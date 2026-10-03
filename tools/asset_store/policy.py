@@ -64,6 +64,23 @@ def magic_ok(name: str, data: bytes) -> bool:
 
 def assess(path: Path, manifest: dict) -> dict:
     """The policy verdict for a pack ZIP whose manifest already verified."""
+    with zipfile.ZipFile(path) as archive:
+        def read(name: str, limit: int) -> tuple[int, bytes]:
+            with archive.open(name) as stream:
+                return archive.getinfo(name).file_size, stream.read(limit)
+        return assess_with(manifest, read)
+
+
+def assess_folder(folder: Path, manifest: dict) -> dict:
+    """The same verdict for an installed pack's folder (the editor's store keeps packs unpacked)."""
+    def read(name: str, limit: int) -> tuple[int, bytes]:
+        target = Path(folder) / name
+        with target.open("rb") as stream:
+            return target.stat().st_size, stream.read(limit)
+    return assess_with(manifest, read)
+
+
+def assess_with(manifest: dict, read) -> dict:
     findings: list[dict] = []
 
     def add(level: str, text: str) -> None:
@@ -75,23 +92,20 @@ def assess(path: Path, manifest: dict) -> dict:
             add("refused", f"The {key} claims to be official Ultima Online content (Names rule): {value!r}")
         elif MENTIONS.search(value):
             add("review", f"The {key} mentions Ultima Online; a reviewer checks it does not imply the pack is official: {value!r}")
-    with zipfile.ZipFile(path) as archive:
-        for name in manifest["files"]:
-            stem = Path(name).stem.lower()
-            ext = Path(name).suffix.lower()
-            if ext not in EXTENSIONS:
-                add("refused", f"{name}: a file type packs may not carry")
-                continue
-            if stem in CLIENT_STEMS:
-                add("review", f"{name}: named like one of the client's files; it must be your own work")
-            size = archive.getinfo(name).file_size
-            # A JSON file is parsed whole (up to 16 MB); anything else is judged by its first bytes.
-            with archive.open(name) as stream:
-                head = stream.read(16 * 1024 * 1024 if ext == ".json" else 4096)
-            if (ext != ".json" or size <= 16 * 1024 * 1024) and not magic_ok(name, head):
-                add("refused", f"{name}: the content is not a {ext} file, whatever its name says")
-            if ext == ".razor":
-                add("review", f"{name}: a script; a reviewer reads what it does before it is listed")
+    for name in manifest["files"]:
+        stem = Path(name).stem.lower()
+        ext = Path(name).suffix.lower()
+        if ext not in EXTENSIONS:
+            add("refused", f"{name}: a file type packs may not carry")
+            continue
+        if stem in CLIENT_STEMS:
+            add("review", f"{name}: named like one of the client's files; it must be your own work")
+        # A JSON file is parsed whole (up to 16 MB); anything else is judged by its first bytes.
+        size, head = read(name, 16 * 1024 * 1024 if ext == ".json" else 4096)
+        if (ext != ".json" or size <= 16 * 1024 * 1024) and not magic_ok(name, head):
+            add("refused", f"{name}: the content is not a {ext} file, whatever its name says")
+        if ext == ".razor":
+            add("review", f"{name}: a script; a reviewer reads what it does before it is listed")
     if manifest.get("licence") != "CC0-1.0":
         add("info", f"Licence {manifest['licence']}: credit is in LICENSE.txt, which the catalogue shows")
     verdict = "refused" if any(f["level"] == "refused" for f in findings) else "review" if any(f["level"] == "review" for f in findings) else "pass"
@@ -144,3 +158,17 @@ def listing_for(path: Path, urls: list[str], provenance: str) -> tuple[dict, dic
     require(0 < len(provenance.strip()) <= MAX_PROVENANCE and not any(ord(c) < 32 for c in provenance),
             f"Say how the content was made, in 1 to {MAX_PROVENANCE} characters")
     return {"urls": urls, "sha256": info["sha256"], "size": info["size"], "provenance": provenance.strip()}, info
+
+
+def inspect_folder(folder: Path) -> dict:
+    """An installed pack: the manifest's facts and its verdict. Hashes are re-read by the client's own installer."""
+    folder = Path(folder)
+    try:
+        from .pack import parse_manifest
+    except ImportError:
+        from pack import parse_manifest
+    manifest = parse_manifest((folder / "manifest.json").read_bytes())
+    for name, digest in manifest["files"].items():
+        require(sha256(folder / name) == digest, f"hash mismatch: {name}")
+    return {"ok": True, "id": manifest["id"], "version": manifest["version"], "kind": manifest["kind"], "title": manifest["title"],
+            "licence": manifest["licence"], "policy": assess_folder(folder, manifest)}
