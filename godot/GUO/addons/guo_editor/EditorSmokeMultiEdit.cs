@@ -362,6 +362,7 @@ public partial class EditorSmoke
         MeCheck("seam_adds", doc.Parts.Count == 4);
         view.NewMulti();
         MeCheck("new_blank_multi", doc.Parts.Count == 0 && doc.HistoryCount == 1);
+        await RunMultiEditPhase2Async(view, root, floorId);
 
         // The install's multi file is as it was.
         var installAfter = File.Exists(installUop) ? new FileInfo(installUop) : null;

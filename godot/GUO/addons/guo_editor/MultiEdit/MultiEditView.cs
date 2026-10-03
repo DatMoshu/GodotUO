@@ -171,6 +171,7 @@ public partial class MultiEditView : VBoxContainer, IMultiComponentSink
         {
             (MultiTool.Select, "Select", "S"), (MultiTool.Draw, "Draw", "D"), (MultiTool.Erase, "Erase", "E"), (MultiTool.Pipette, "Pipette", "I"),
             (MultiTool.Rect, "Rect", "R"), (MultiTool.Line, "Line", "L"), (MultiTool.Brush, "Brush", "B"), (MultiTool.Move, "Move", "M"),
+            (MultiTool.WallRun, "Wall", "W"), (MultiTool.Roof, "Roof", "O"), (MultiTool.Stairs, "Stairs", "T"),
         })
         {
             MultiTool tool = t;
@@ -245,6 +246,7 @@ public partial class MultiEditView : VBoxContainer, IMultiComponentSink
         _tabs = new TabContainer { CustomMinimumSize = new Vector2(300, 0), SizeFlagsVertical = SizeFlags.ExpandFill };
         split.AddChild(_tabs);
         BuildTabs();
+        BuildGenerator();
 
         _status = new Label { Text = "", ClipText = true };
         AddChild(_status);
@@ -411,6 +413,13 @@ public partial class MultiEditView : VBoxContainer, IMultiComponentSink
     public void SetTool(MultiTool tool)
     {
         _canvas.Tool = tool;
+        if (tool is MultiTool.WallRun or MultiTool.Roof or MultiTool.Stairs)
+        {
+            ShowGenerateTab();
+            _genPanel.SelectGenerator(tool == MultiTool.WallRun ? "autowall" : tool == MultiTool.Roof ? "roof" : "stairs");
+            RefreshToolContext();
+        }
+
         if (_toolButtons.TryGetValue(tool, out Button b))
         {
             b.SetPressedNoSignal(true);
@@ -772,16 +781,24 @@ public partial class MultiEditView : VBoxContainer, IMultiComponentSink
 
     // --- the generator seam -----------------------------------------------------------------------------------
 
-    public void PushComponents(string name, IReadOnlyList<GeneratedPart> parts, bool replace)
+    public void PushComponents(string name, IReadOnlyList<GeneratedPart> parts, bool replace) =>
+        PushComponentsWith(name, name, parts, replace, null);
+
+    /// <summary>
+    /// <see cref="PushComponents"/> with a second edit in the same undo step (the stair tool opens the floor above).
+    /// <paramref name="step"/> names the history entry, <paramref name="name"/> the multi when it replaces.
+    /// </summary>
+    internal void PushComponentsWith(string step, string name, IReadOnlyList<GeneratedPart> parts, bool replace, Action<List<MultiPart>> extra)
     {
         var made = parts.Select(g => _doc.Make(g.Id, g.X, g.Y, g.Z, g.Shown, g.Hue)).ToList();
-        _doc.Do($"{(replace ? "generate" : "add")} {name} ({made.Count})", list =>
+        _doc.Do($"{(replace ? "generate" : "add")} {step} ({made.Count})", list =>
         {
             if (replace)
             {
                 list.Clear();
             }
 
+            extra?.Invoke(list);
             list.AddRange(made);
         });
         if (replace)
@@ -808,6 +825,7 @@ public partial class MultiEditView : VBoxContainer, IMultiComponentSink
         }
 
         _canvas?.Detach();
+        DisposeGenerator();
         AfterWrite = null;
         PreviewInWorld = null;
         MultiLoader.EditorOverlay = null;

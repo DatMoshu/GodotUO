@@ -17,6 +17,9 @@ public enum MultiTool
     Line,
     Brush,
     Move,
+    WallRun,
+    Roof,
+    Stairs,
 }
 
 /// <summary>The client's seven per-story vision modes (CUSTOM_HOUSE_FLOOR_VISION_STATE).</summary>
@@ -238,6 +241,8 @@ public partial class MultiCanvas : Control
 
     // --- what is drawn -------------------------------------------------------------------
 
+    internal bool IsFloorPart(MultiPart p) => IsFloor(p);
+
     private bool IsFloor(MultiPart p)
     {
         if (_tables != null && _tables.FloorIds.Count > 0)
@@ -418,6 +423,7 @@ public partial class MultiCanvas : Control
         }
 
         DrawnCount = drawn;
+        DrawGhost();
 
         if (ShowWalkable && _result != null)
         {
@@ -437,6 +443,7 @@ public partial class MultiCanvas : Control
             }
         }
 
+        DrawGeneratorTools();
         DrawToolPreview();
         DrawSetTransform(Vector2.Zero, 0, Vector2.One);
 
@@ -711,6 +718,7 @@ public partial class MultiCanvas : Control
     private void OnMove(InputEventMouseMotion mm)
     {
         _hover = CellAt(mm.Position, EditZ);
+        GhostMove(mm.Position);
         MultiPart? under = PickAt(mm.Position);
         _hoverUid = under?.Uid;
         if (_drawingNow)
@@ -756,6 +764,12 @@ public partial class MultiCanvas : Control
     private void OnPress(InputEventMouseButton lb)
     {
         _hover = CellAt(lb.Position, EditZ);
+        if (GhostPress(lb) || (IsPlacementTool(Tool) && PlacementPress(lb)))
+        {
+            QueueRedraw();
+            return;
+        }
+
         MultiPart? under = PickAt(lb.Position);
         switch (Tool)
         {
@@ -838,6 +852,15 @@ public partial class MultiCanvas : Control
     private void OnRelease(InputEventMouseButton lb)
     {
         _hover = CellAt(lb.Position, EditZ);
+        if (IsPlacementTool(Tool) && _drawingNow)
+        {
+            PlacementRelease(lb);
+            _drawingNow = false;
+            _dragStart = null;
+            QueueRedraw();
+            return;
+        }
+
         switch (Tool)
         {
             case MultiTool.Select when _boxStart is { } start:
@@ -914,6 +937,12 @@ public partial class MultiCanvas : Control
 
     private bool OnKey(InputEventKey k)
     {
+        if (GhostKey(k))
+        {
+            QueueRedraw();
+            return true;
+        }
+
         if (k.CtrlPressed && !k.ShiftPressed)
         {
             switch (k.Keycode)
@@ -935,6 +964,15 @@ public partial class MultiCanvas : Control
                     return true;
                 case Key.S:
                     SaveRequested?.Invoke();
+                    return true;
+                case Key.C:
+                    RaiseCommand("copy");
+                    return true;
+                case Key.X:
+                    RaiseCommand("cut");
+                    return true;
+                case Key.V:
+                    RaiseCommand("paste");
                     return true;
             }
         }
@@ -960,6 +998,9 @@ public partial class MultiCanvas : Control
             case Key.L: Tool = MultiTool.Line; break;
             case Key.B: Tool = MultiTool.Brush; break;
             case Key.M: Tool = MultiTool.Move; break;
+            case Key.W: Tool = MultiTool.WallRun; break;
+            case Key.O: Tool = MultiTool.Roof; break;
+            case Key.T: Tool = MultiTool.Stairs; break;
             case Key.G: ShowGrid = !ShowGrid; break;
             case Key.F: ShowVirtualFloor = !ShowVirtualFloor; break;
             case Key.Home: FitView(); break;
