@@ -1465,3 +1465,7 @@ diffable (one component per line) and keeps the hue, which a multi record cannot
 Writing it to a stage goes through the built form of §16 (`components.json`: `[item, x, y, z]` with a
 fifth element `0` when hidden, plus a `multi.json` with `valid`, `problems`, `doors`, `size`,
 `storeys`) and `tools/multi write`. The hue is not written.
+
+**Stamps.** The Multi Editor's stamps library (ADR-0031, phase 2) stores each stamp as a section 28 description, centred on
+its box, in `user://guo_multiedit_stamps/NAME.multi.json` (the user's GUO data folder; never the repo). A
+`NAME.recovery.multi.json` in `build/multi/edit/` is the same format, written when the editor closes with unsaved changes.

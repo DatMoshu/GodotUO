@@ -122,6 +122,28 @@ public partial class EditorSmoke
         MeCheck("deploy_asks_before_anything", (plan == null) == !view.DeployPending && !view.DeployRunning);
         view.CancelDeploy();
         MeCheck("deploy_cancel_starts_nothing", !view.DeployPending && !view.DeployRunning);
+
+        // F3: every new action has an entry.
+        GuoProvider guo = Search?.Index.Providers.OfType<GuoProvider>().FirstOrDefault();
+        if (guo != null)
+        {
+            string[] want =
+            {
+                "Multi tool: WallRun", "Multi tool: Roof", "Multi tool: Stairs", "Multi Editor: open the Generate panel",
+                "Multi Editor: apply the generated multi (replace)", "Multi Editor: apply the generated multi (add)", "Multi Editor: rotate 90",
+                "Multi Editor: flip east-west", "Multi Editor: flip north-south", "Multi Editor: copy", "Multi Editor: cut", "Multi Editor: paste",
+                "Multi Editor: erase the whole stair or roof", "Multi Editor: save selection as a stamp", "Multi Editor: deploy to private shard",
+            };
+            var titles = guo.Entries.Select(e => e.Title).ToHashSet();
+            string[] missing = want.Where(w => !titles.Contains(w)).ToArray();
+            foreach ((string format, _, string label) in MultiEditView.LegacyFormats)
+            {
+                missing = missing.Concat(new[] { $"Multi Editor: import {label}", $"Multi Editor: export {label}" }.Where(w => !titles.Contains(w))).ToArray();
+            }
+
+            MeCheck("f3_has_every_new_action", missing.Length == 0, string.Join(", ", missing));
+            _meReport["f3_multi_entries"] = guo.Entries.Count(e => e.Kind == "Multi");
+        }
     }
 
     private void MeUnsaved(MultiEditView view)

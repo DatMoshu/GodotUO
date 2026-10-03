@@ -46,6 +46,12 @@ public partial class MultiEditView
         }
     }
 
+    /// <summary>Opens the import dialog for one format (F3).</summary>
+    public void ImportDialog(string format) => OpenFormatDialog(LegacyFormats.First(f => f.Format == format), false);
+
+    /// <summary>Opens the export dialog for one format (F3).</summary>
+    public void ExportDialog(string format) => OpenFormatDialog(LegacyFormats.First(f => f.Format == format), true);
+
     private void OpenFormatDialog((string Format, string Ext, string Label) f, bool export)
     {
         var dialog = new FileDialog

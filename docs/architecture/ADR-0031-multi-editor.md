@@ -85,3 +85,26 @@ data set through `tools/multi`. It never writes the install. This ADR covers pha
   checks that a known-bad edit raises the expected flags, saves to a temp stage and reads it back equal,
   and takes a World selection into a new multi.
 - `python tools/port_drift/run.py --strict` stays green (one small hook in `MultiLoader`).
+
+## Phase 2 (generators, clipboard, formats)
+
+- **Generate panel.** `GeneratePanel` is mounted in the right-hand tabs and shares one `tools/multi serve` process
+  (`MultiGenerateClient`) with rotate, mirror, import and export; the view disposes it in `Shutdown`, so a hot reload
+  releases it. Every control change regenerates after a short debounce into a **ghost** layer on the canvas (only while
+  the Generate tab is the visible one); Apply (replace or add) is one undo step.
+- **Placement tools.** Wall (W: click a path, Enter, or click the first point to close), Roof (O: drag a box, or select the
+  walls) and Stairs (T: drag from the foot in the direction it rises) only collect a place and hand it to the panel as its
+  `Context`; the stair Apply also removes the floor above where the flight comes up, in the same step.
+- **Rotate 90, Flip E-W, Flip N-S** act on the selection (about its centre, top corner kept) or the whole multi (about
+  the centre cell). `tools/multi`'s remap is not an involution for corner posts and hip roofs (it splits a corner into its
+  straights), so four turns return the original for stairs and straight walls, not for every building.
+- **Copy, cut, paste** and **stamps** use a ghost that follows the pointer; a click places it as one step. Stamps are
+  section 28 descriptions in `user://guo_multiedit_stamps`. Alt+click with Erase (or the Erase group button) removes a whole
+  stair or roof.
+- **Import and export** menus for txt, uoa, uoab, wsc, csv-punt, csv-swerv, centred and uox3.
+- **Unsaved changes** are detected by content (undoing back to the saved state clears the mark); New, Open, Import and the
+  World/Multis hand-overs ask first; the title shows the file with a `*`. An add-on cannot stop the editor from quitting,
+  so a close request with changes writes `NAME.recovery.multi.json` beside the other descriptions.
+- **Deploy to private shard** needs a run-bar profile that is this checkout's private shard (loopback, the port in
+  `build/shard_private/state.json`, never 2593), asks first, writes the stage, and runs `tools/multi prove`. The smoke stage
+  checks the refusal rules and never starts it.
