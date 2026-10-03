@@ -10,6 +10,7 @@ came from and under what terms.
 | `MapGen/presets/*.preset.json` | The owner's presets: pass parameters only, no tile rows. `felucca-stage18` is the measured Felucca candidate; its mined atlases are referenced by path and resolve into `UO_MAPGEN_DATA` | The owner's own (every commit by the owner's account in their project) |
 | `MapGen/presets/tile-tables.default.json` | The owner's tile pools: a few dozen land tile ids per biome, chosen from tiledata names and the owner's own Felucca measurements (the file and `TileTables.cs` say so) | The owner's own |
 | `MapGen/presets/transitions.guo.json`, `MapGen/Data/GuoTransitionTable.cs`, `MapGen/Data/EdgeShapes.cs`, `cli/Measure.cs`, `cli/Coverage.cs` | GUO's own transition table and its tools, written in GUO on 2026-10-03 (method below) | GUO's own |
+| `MapGen/presets/scatter.guo.json`, `MapGen/Data/GuoScatterTable.cs` | GUO's own scatter table and loader, written in GUO on 2026-10-03 (method below) | GUO's own |
 | `transitions.guo.resolved.json`, `map-mining/guo-transition-*.json` (**not in the repo**) | Written per user by `guo-mapgen prepare --measure` from the user's own Felucca, into `UO_MAPGEN_DATA` | Measurements of client data (rule 8): never committed |
 | `MapGen/Mining/DragonRulesImporter.cs`, `MapGen.Tests/DragonRulesImporterTests.cs` | The owner's MapMiner importer for Dragon's transition rules (namespace kept) | The owner's own |
 | `landbrush.dragon.json` (**not in the repo**) | Built per user by `guo-mapgen prepare --dragon DIR` from the transition rule files (`Scripts/map/*.txt`) of the user's own copy of the community map tool Dragon (release 1.03.62 with the Imod13 mod), into `UO_MAPGEN_DATA`. It holds tile ids and neighbour masks only. Used only on request (`run --brushes dragon`) and as a coverage reference (`coverage`, counts only) | **Unverified.** Dragon's rule files carry no licence statement, so GUO does not ship the table |
@@ -48,6 +49,29 @@ Not drawn yet, found while measuring: Felucca's shallows are a seabed of land ti
 slopes 0x58–0x63) under water statics, with sand behind. The generator draws open water tiles instead,
 and the table stands sand plain against them.
 
+## GUO's scatter table (2026-10-03)
+
+`scatter.guo.json` replaces UO Landscaper's statics as Biome Static Scatter's default catalogue and
+as the trunk/canopy pairing when there is no `tree-statics.json`. No row was copied from UO Landscaper
+or any other tool, and no Landscaper file was opened while it was written.
+
+How it was made:
+1. A local count over the owner's own Felucca: for every plain-ground cell of eight materials, which
+   statics stand on it and in what stacks (4.9 million cells). The counts stay on the owner's machine.
+2. Natural statics only, picked by tiledata name and then checked on contact sheets of the owner's
+   client art: grasses, flowers, ferns, rocks, mushrooms, logs, brambles, jungle plants, cacti and
+   swamp plants. Man-made statics that stand on plain ground in Felucca (docks, walls, roofs, hay,
+   hedges) are left out.
+3. Groups are named by what they are; each group's weight follows its share of the measured
+   placements, rounded. A biome's chance is the share of its cells that hold ground cover only (no tree,
+   no building), rounded: grass 5%, forest 22%, jungle 20%, swamp 8%, beach 4%. Felucca leaves snow and
+   mountain ground bare, so those chances are 0 (the groups are there for anyone who raises them).
+4. The tree pairs are the trunk/canopy stacks the count found on forest and swamp ground (12 pairs),
+   plus the two cypresses the art sheet shows with the same layout. Each trunk takes its green canopy.
+
+Desert is authored, not measured (Felucca's sand is mostly shore): the beach's desert plants, with
+cacti first.
+
 ## Audit of third-party map-tool data (2026-10-03)
 
 **Dragon (transition rules).** Its rule files carry no licence statement. GUO keeps only the owner's
@@ -79,10 +103,8 @@ checked from its full history (70 commits):
 So none of it ships. It was removed from the history GUO publishes, and the generator reads it from
 `UO_MAPGEN_DATA` when a user supplies it. **Without it:**
 - Swamp Surface leaves the swamp interior unchanged; with it, it reworked 7,754 cells on a 1024 map;
-- trunk/canopy pairing has no fallback when there is no `tree-statics.json`: 5% fewer statics
-  (145,019 to 137,545 at 1024 with seed 1234567);
-- presets that use Biome Static Scatter's default catalogue scatter nothing (`felucca-stage18` uses the
-  mined Felucca atlas instead).
+- trunk/canopy pairing and Biome Static Scatter use GUO's scatter table instead (above). With the
+  scatter pass off, the maps hash as with the Landscaper pairing, so the pairing matches.
 
 Land, heights and the likeness score do not change. With the data prepared locally, the maps hash
 exactly as before (seed 42 at 256: `a862a102`; seed 1234567 at 1024: `5c9a4ed5`).

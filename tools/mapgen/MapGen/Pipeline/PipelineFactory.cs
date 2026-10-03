@@ -429,10 +429,11 @@ public static class PipelineFactory
 
         string treesPath = ResolveTreeStaticsPath(data.TreeStaticsPath);
         if (!File.Exists(treesPath))
-            warnings?.Add($"tree-statics.json not found at {treesPath} — using the UO Landscaper statics in the data folder (if prepared) for trunk/canopy pairing");
+            warnings?.Add($"tree-statics.json not found at {treesPath} — using GUO's scatter table for trunk/canopy pairing");
         var trees = File.Exists(treesPath)
             ? Cached("trees", treesPath, p => TreeStatics.LoadOrEmpty(p!))
-            : TreeStatics.FromCatalogue(RepoRootResolver.Resolve("mined/landscaper-statics"));
+            : Cached("scatter-trees", RepoRootResolver.Resolve(GuoScatterTable.RelativePath),
+                p => File.Exists(p) ? GuoScatterTable.Load(p!).ToTreeStatics() : TreeStatics.Empty);
 
         return new GenIR(width, height, scope, seed)
         {
