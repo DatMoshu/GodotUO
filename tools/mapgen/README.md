@@ -26,7 +26,7 @@ dotnet test tools\mapgen\MapGen.Tests\GUO.MapGen.Tests.csproj
 ```
 
 - **Commands.** `schema`, `presets`, `run`, `export` and `prepare`, and the run folder's files, are specified in
-  `docs/data_formats.md` §24.
+  `docs/data_formats.md` §26.
 - **Fresh folders only.** Every run writes to a fresh folder. `export` regenerates the map and writes
   `export/map/map0.mul`, `staidx0.mul` and `statics0.mul` only when the hash matches the run. Then it
   reads every cell back.

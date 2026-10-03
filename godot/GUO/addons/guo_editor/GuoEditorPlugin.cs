@@ -36,6 +36,9 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
     private ShardDock _shard;
     private RunBar _run;
     private AiDock _ai;
+    private StoreView _store;
+    private ArtDock _art;
+    private LogsDock _logs;
     private MapGenView _mapgen;
     private SearchPopup _search;
 
@@ -45,12 +48,16 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
     // without this the rebuilt view would stay hidden behind its own button.
     private bool _worldWasVisible;
     private bool _assetsWasVisible;
+    private bool _storeWasVisible;
     private bool _mapgenWasVisible;
 
     private const string ResetMenuLabel = "Reset GUO layout";
 
     /// <summary>The UO Assets view, for <see cref="GuoAssetsPlugin"/> to show and hide with its tab.</summary>
     public static AssetsView AssetsMain { get; private set; }
+
+    /// <summary>The UO Store view, for <see cref="GuoStorePlugin"/> to show and hide with its tab.</summary>
+    public static StoreView StoreMain { get; private set; }
 
     /// <summary>The Map Generator view, for <see cref="GuoMapGenPlugin"/> to show and hide with its tab.</summary>
     public static MapGenView MapGenMain { get; private set; }
@@ -114,6 +121,15 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         _assetsWasVisible = false;
         AddDock(_inspector);
 
+        // UO Store is the third main-screen tab (GuoStorePlugin owns its button): catalogues, server
+        // content and publishing for shard owners and pack authors (ADR-0026 section 8). It loads its
+        // catalogues when first shown.
+        _store = new StoreView();
+        StoreMain = _store;
+        EditorInterface.Singleton.GetEditorMainScreen().AddChild(_store);
+        _store.Visible = _storeWasVisible;
+        _storeWasVisible = false;
+
         // The World tab: the game's renderer, read only (ADR-0015). It starts
         // the world the first time it is shown, not here.
         _world = new WorldView(_data);
@@ -131,6 +147,17 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         _ai = new AiDock();
         AddDock(_ai);
 
+        // The art pipeline (ADR-0029): image services, and the watcher that imports what Pixelorama
+        // and Pinta save. It owns worker tasks, which TearDown cancels.
+        _art = new ArtDock();
+        _art.Attach(_data, () => _inspector?.Current);
+        AddDock(_art);
+
+        // The Logs dock: the server's and the clients' logs, tailed read only. It owns worker
+        // tasks, which TearDown cancels.
+        _logs = new LogsDock();
+        AddDock(_logs);
+
         // The Map Generator (ADR-0030): a main-screen tab (GuoMapGenPlugin owns its button). It runs
         // tools/mapgen as a process and opens what it exports in the World tab.
         _mapgen = new MapGenView { OpenInWorld = OpenGeneratedWorld };
@@ -142,6 +169,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         // Start server, start clients: on the toolbar, always one click away.
         _run = new RunBar();
         AddControlToContainer(CustomControlContainer.Toolbar, _run);
+        _store.Run = _run;
 
         MapPanel maps = _assets.Panel<MapPanel>();
         if (maps != null)
@@ -158,7 +186,12 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
 
         SearchContext searchContext = SearchContext.From(this, _data, _assets, _inspector, _world, _shard, _run, ShowInWorld);
         searchContext.Ai = _ai;
+        searchContext.Store = _store;
+        searchContext.Logs = _logs;
         _search = SearchPopup.Install(searchContext);
+        _ai.UseTools(searchContext, () => _search?.Index);
+        _ai.Hub.SelectionImage = () => _inspector?.Current?.Image;
+        _ai.Hub.SelectionLabel = () => _inspector?.Current is Inspection i ? $"{i.Source} {i.Id}" : null;
 
         string smokeOut = EditorSmoke.OutDirFromArgs();
         string tourOut = EditorTour.OutDirFromArgs();
@@ -178,6 +211,9 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
             _smoke = new EditorSmoke(smokeOut, _data, _assets, _inspector, _world, _shard);
             _smoke.Search = _search;
             _smoke.Ai = _ai;
+            _smoke.Store = _store;
+            _smoke.Art = _art;
+            _smoke.Logs = _logs;
             AddChild(_smoke);
         }
 
@@ -186,6 +222,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
             _tour = new EditorTour(tourOut, _data, _assets, _inspector, _world, _shard, _run);
             _tour.Search = _search;
             _tour.Ai = _ai;
+            _tour.Store = _store;
             AddChild(_tour);
         }
 
@@ -273,6 +310,23 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
             _run = null;
         }
 
+        if (_logs != null)
+        {
+            // Cancels every log tailer before a reload or when the editor closes.
+            _logs.Shutdown();
+            RemoveDock(_logs);
+            _logs.QueueFree();
+            _logs = null;
+        }
+
+        if (_art != null)
+        {
+            _art.Shutdown();
+            RemoveDock(_art);
+            _art.QueueFree();
+            _art = null;
+        }
+
         if (_ai != null)
         {
             // Kills the agent CLIs it started and stops any stream, before a reload or when the editor closes.
@@ -289,6 +343,17 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
             RemoveDock(_shard);
             _shard.QueueFree();
             _shard = null;
+        }
+
+        if (_store != null)
+        {
+            // Kills any tool process it started and cancels its catalogue fetches.
+            _storeWasVisible = _store.Visible;
+            _store.Shutdown();
+            _store.GetParent()?.RemoveChild(_store);
+            _store.QueueFree();
+            _store = null;
+            StoreMain = null;
         }
 
         if (_world != null)

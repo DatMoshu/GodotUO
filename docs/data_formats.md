@@ -43,7 +43,7 @@ Every key resolves as: **environment variable → `config.local.bat` →
 | `UO_CLIENT_VERSION` | Client version the data corresponds to (e.g. `7.0.107.76`) |
 | `UO_CACHE_DIR` | Disposable decode cache |
 | `UO_WORLD_PROJECT` | The editor's world project folder (§9); default `build\world\default` |
-| `UO_MAPGEN_DATA` | The map generator's per-user data folder (§24): mined stamps, coast atlas, tree statics, validator reports; default `%LOCALAPPDATA%\GUO\mapgen` |
+| `UO_MAPGEN_DATA` | The map generator's per-user data folder (§26): mined stamps, coast atlas, tree statics, validator reports; default `%LOCALAPPDATA%\GUO\mapgen` |
 | `UO_EDITOR_LIVE_HOST` / `UO_EDITOR_LIVE_PORT` | The editor bridge the UO Shard dock connects to (§10); default `127.0.0.1:2595`, the private instance |
 | `UO_EDITOR_NAME` | The name this editor shows other editors on the bridge |
 | `UO_SHARD_HOST` / `UO_SHARD_PORT` | Shard to connect to |
@@ -285,6 +285,7 @@ line, UTF-8, `\n`-terminated. ADR-0012 has the reasoning.
 | `block` | `facet`, `bx`, `by`, `land`: 64 `[id, z]` pairs, row-major (index `y*8+x`), `statics`: `[id, x, y, z, hue]` per static (`x`, `y` 0..7 in the block), `sent_ms` (sender's clock, unix ms, optional) | Replaces the whole block in the server's own map (walking, line of sight and placement see it), pushes it to UltimaLive clients on that map, relays it to the other editors; answered with `ack` |
 | `command` | `as` (an online character's name), `text` (e.g. `[where`) | Runs the GM command as that character (`CommandSystem.Handle`); answered with `command` |
 | `object` | `action` `put` with `kind` (`spawner` or `item`) and `object` (as in `shard/objects.json`, section 13); or `action` `delete` with `kind` and `id` | Applies it to the world with the boot sync's code (ADR-0014), relays it to the other editors; answered with `object_ack` |
+| `mobiles` | `facet`, `x0`, `y0`, `x1`, `y1` (inclusive rectangle; clamped to the map and to 1024 cells a side), `req` (echoed), `as` (optional: an online character that must be a GameMaster or above) | Read-only. Players and mobiles in the rectangle, at most 500; answered with `mobiles`. Needs a prior `hello`; at most one request per 250 ms per connection (the Live map layer, ADR-0027, polls it about once a second for the visible region plus a margin) |
 | `multi` | `action` `place` with `tag`, `id` (multi id), `map`, `x`, `y`, `z` (optional: the land's average z), `doors` (as in a built multi's `multi.json`, section 16); or `action` `remove` with `tag` | Places an authored multi (`GUOAuthoredMulti`) and a real door per entry, replacing a multi with the same tag; `remove` deletes it and its doors. Answered with `multi_ack` |
 
 **Bridge to editor**
@@ -297,6 +298,7 @@ line, UTF-8, `\n`-terminated. ADR-0012 has the reasoning.
 | `command` | `ok`, `as`, `text`, or `error` |
 | `object` | as sent, plus `from`: another editor's world-object change. Last write per object wins |
 | `object_ack` | `action`, `kind`, `id`, `outcome` (`Added`, `Changed`, `Kept`, `Deleted`, `Missing`, `Skipped`), `editors`, `ms` |
+| `mobiles` | `req`, `ok`, `facet`, the clamped `x0`,`y0`,`x1`,`y1`, `count`, `truncated` (hit the 500 cap), `mobiles`: per mobile `serial`, `name`, `body`, `x`, `y`, `z`, `facet`, `isPlayer`, `hits`, `maxHits`, `notoriety` (ModernUO's 1 innocent .. 7 invulnerable, computed with no viewer); or `ok` false with `error` (`rate limited`, `say hello first`, `no map N`, `'X' is not online`, `'X' is not staff`) |
 | `multi_ack` | `action`, `tag`, `ok`; on a place `serial`, `at` `[x, y, z]`, `components`, `doors`, `replaced`; on a remove `removed`; or `error` |
 | `error` | `error` |
 
@@ -858,7 +860,7 @@ Terms:
 | `floor_z` | The ground floor's z (default 7, the originals' usual value) |
 | `storey_height` | z between storeys (default 20); `wall_height` defaults to one less |
 | `storeys[]` | Per storey, bottom up: `openings[]` (`kind` `door` or `window`, placed by `side` `N`/`E`/`S`/`W` with an `offset` along it, or by `at` `[x, y]`), `partitions[]` (inner walls: `{"x": k, "from", "to"}` or `{"y": k, ...}`), `floor_holes[]` (`[x, y]` left open, for stairwells) |
-| `roof` | `style` `gable` with `ridge` `x` or `y`: it covers x 1..W+1 and y 1..H+1 and rises 3 z a course, with gable-end fill (the wall material, 3 high) on both ends (the originals fill only the south or east end the client shows; generated multis are complete on every side); the span across the ridge must be odd (W even for a ridge along y, H even for a ridge along x). Or `style` `flat`: `material` floor tiles at the top, with an optional `parapet` material |
+| `roof` | `style` `gable` with `ridge` `x` or `y`: it covers x 1..W+1 and y 1..H+1 and rises 3 z a course, with gable-end fill (the wall material, 3 high) on both ends (the originals fill only the south or east end the client shows; generated multis are complete on every side); the span across the ridge must be odd (W even for a ridge along y, H even for a ridge along x). Or `style` `flat`: `material` floor tiles at the top, with an optional `parapet` material; `parapet_gaps` (cells) leave the parapet open and floored there, where an outside stair steps onto the roof |
 | `rects[]` | Instead of `size`: boxes `[x0, y0, x1, y1]`, or `{"box", "storeys", "roof"}`, whose union is the footprint (an L, a T, a U). Walls stand on the union's edge cells; a rect with fewer storeys is a lower wing with its own roof. Where roofs overlap the higher one wins, and nothing is roofed inside a taller rect |
 | `storeys[].stairs[]` | `{"at": [x, y], "rise": N/E/S/W, "width"}`: a straight flight to the next storey as the client builds them (0x009E): step i a stair piece at z + 5i on i stacked 10-high blocks, then a landing; the next floor is left open over it, and the cell past the landing is where a climber arrives; `rail` (a material, e.g. `wooden fence`) stands a low rail round that opening on the floor above, the arrival end left open, so the hole reads as a stairwell and not a gap |
 | `storeys[].floor` | That storey's floor material, over `materials.floor` |
@@ -973,6 +975,7 @@ round it) goes. `buildings[]`:
 | `roof` | `{"floor", "parapet", "trim"}`: the flat roof's tiles, its 5-high parapet, and optional `trim`: heights of low-wall courses laid on the parapet in turn (e.g. `[2, 3]`), in the parapet's family; a corner the family has no piece of that height for takes its 2-high corner |
 | `stairs[]` | `{"storey", "at", "rise", "width"}`: a house stair (above) from that storey to the next; the ground storey's own pieces on its cells go |
 | `setback` | `{"side", "cells", "storey"}`: from that storey (default 1) up the building steps in that many cells from one side (`N`, `E`, `S`, `W`); the strip left over is a terrace on the storey below, floored with the roof's tiles and edged with its parapet |
+| `reface` | `true`: the ground storey's walls (the map's) are replaced piece for piece by `wall`'s pieces, a window by a window, so the building is one material from the ground up (not with `wall` `ground`) |
 | `roof_z` | The roof deck's z, when lower than a whole storey up (16 or more above the top storey). The client stands on nothing above z 112 (its pathfinder caps every cell at 128, and a walker needs 16), so a walkable deck is 112 at most; the stair to it is a short flight with no landing |
 | `partitions` | `false`: upper storeys have no inner walls (the ground storey's may enclose a void, a hall two storeys tall, with no door to repeat) |
 | `floor_holes[]` | `{"storey", "box"}`: cells left open in that storey's floor, over a stair the map already has |
@@ -1119,10 +1122,15 @@ watchers. The first reply moves a request to `answered`. The JSON lines printed 
 ## 22. The AI dock's endpoints (`ai_endpoints.json`)
 
 Written by the editor's AI dock (ADR-0028) to `%APPDATA%/GUO/ai_endpoints.json` (`~/.config/guo/` elsewhere),
-never to a project or `.godot`. A JSON array of `{ "Name", "Url", "Model", "Key" }` for the OpenAI-compatible
-endpoints the user added. `Key` is `{ "store", "iv", "blob" }`, the same `Secret` that `servers.json` keeps
+never to a project or `.godot`. A JSON array of `{ "Name", "Url", "Model", "AllowClientArt", "Key" }` for the OpenAI-compatible
+endpoints the user added. `AllowClientArt` (default false) is the per-endpoint leave to send client art (asset
+pictures) to that server. `Key` is `{ "store", "iv", "blob" }`, the same `Secret` that `servers.json` keeps
 for a pre-game password: ciphertext sealed by the operating system's store (DPAPI on Windows), bound to
 `ai:URL:NAME`, or null when the endpoint has no key or the platform keeps none. The key itself is never in the file.
+
+The other services (ComfyUI, Retro Diffusion, Ollama) are in `ai_services.json` beside it: an array of
+`{ "Kind", "Name", "Url", "Model", "AllowClientArt", "Key" }` with `Kind` one of `ComfyUi`, `RetroDiffusion`,
+`Ollama`, and `Key` sealed the same way (bound to `svc:KIND:URL:NAME`). `ServiceBook` presents both files as one list.
 
 ## 23. Scene pack (`scene.json`, ADR-0027)
 
@@ -1149,7 +1157,48 @@ with a vision model is the user's own tool and key.
 | `objects[]` | Up to 4000 statics, multi parts and placed items in view: `kind` (`static`, `multi`, `item`), `graphic` (`0x0E75`), `name`, `type` (the Types mode's word), `x, y, z, height`, and `box` `[x0, y0, x1, y1]` in pixels (the art's rectangle from its size; approximate) |
 | `layers` | One array per layer switched on: `{label, x, y, z, detail, px, py, on_view, sextant}` |
 
-## 24. Map generator CLI (`guo-mapgen`, ADR-0030)
+## 24. The art exchange folder and asset provenance (ADR-0029)
+
+**Exchange folder** (`UO_ART_EXCHANGE`, default `build/art_exchange/`, never under `UO_CLIENT_DATA`):
+`out/` PNG + sidecar the editor hands to Pixelorama; `in/` what the Pixelorama extension saves back (the
+sidecar is written first, the PNG second); `pinta/` PNG + sidecar that Pinta edits in place (a PNG newer than
+its sidecar is an edit); `done/` and `rejected/` (with `<stem>.reason.txt`) for finished `in/` pairs;
+`workflows/` ComfyUI API-format workflow files (`UO_COMFY_WORKFLOWS`); `hues.json` the user's own hue table
+written from the loaded hues.mul: `{"format":1,"hues":[{"id","name","colors":[32 x "RRGGBB"]}]}`.
+It is generated from the user's install and is never committed or shipped.
+
+**Sidecar** `<stem>.json`, stem `<kind>_0x<ID>[_h<hue>]`:
+`{"kind":"land|static|gump","id":int,"hue":int?,"size":[w,h],"stem":str,"provenance":{...}}`.
+
+**Provenance** `{"tool","model"?,"workflow"?,"seed"?,"inputs":[str],"derived_from_client_art":bool}`.
+`inputs` entries read `client:<kind>:0x<ID>` (the install's art) or `overlay:<kind>:0x<ID>`. The overlay keeps
+one record per replaced image in `<project>/assets/provenance.json`:
+`{"format":1,"entries":{"assets/art/statics/0x0E75.png":{...provenance..., "imported":"UTC time"}}}`.
+`derived_from_client_art` is true when any input was client art, and for a PNG of unknown origin (the
+inspector's "Import PNG..." records `tool: "import-png"` as derived). Such images stay local: a pack
+containing a `*provenance.json` with a derived entry is refused by `tools/asset_store/pack.py verify`
+(content policy, `docs/store/content_policy.md`).
+
+**UO post-process** (every import path): alpha keyed at 50 % (UO has one-bit transparency); land masked to the
+44x44 diamond (larger whole multiples scaled with nearest sampling); statics trimmed of empty top rows and equal
+empty columns each side; reduced to 15-bit colour as the overlay stores it.
+
+---
+
+## 25. The Logs dock's file list (`build/editor_logs/sources.json`)
+
+The editor's Logs dock follows log files read only. The only thing it writes is this list of the files the user
+added with "Add file...", plus the line cap, in `build/editor_logs/sources.json` (never under `UO_CLIENT_DATA`,
+never committed): `{"format": 1, "cap": 5000, "files": [{"path": "<absolute path>"}]}`. `cap` is the number of
+lines each view keeps (100 to 200000). Only absolute paths are accepted. The list is the editor's own and is not
+exported anywhere. A missing or unreadable file is an empty list.
+
+The dock also reads, and never writes: the run bar's `build/editor_servers/profiles.json` (section 17's sibling,
+the selected profile's `ServerDirectory`, `ServerProject`, `Executable`, `ClientProject`), and the per-client
+console file the run bar redirects a client's output to, `build/editor_servers/<profile id>/clients/<n>/client.log`
+(plain UTF-8 text, one line per console line; the client writes its time in UTC).
+
+## 26. Map generator CLI (`guo-mapgen`, ADR-0030)
 
 `tools/mapgen/cli` builds `guo-mapgen` on the vendored generator (`tools/mapgen/MapGen`). The editor's
 Map Generator tab runs it as a process; scripts call `python tools/mapgen/run.py <command> ...`, which

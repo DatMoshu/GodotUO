@@ -73,7 +73,7 @@ if not defined UO_WORLD_PROJECT     set "UO_WORLD_PROJECT=%UO_ROOT%\build\world\
 REM --- Map generator (tools\mapgen, ADR-0030) -------------------------------
 REM  Per-user generator data: everything mined from your client data (stamp
 REM  library, coast atlas, tree statics) and the validator's reports. GUO never
-REM  ships it. Keep it OFF the repo tree. See docs\data_formats.md section 24.
+REM  ships it. Keep it OFF the repo tree. See docs\data_formats.md section 26.
 if not defined UO_MAPGEN_DATA       set "UO_MAPGEN_DATA=%LOCALAPPDATA%\GUO\mapgen"
 
 REM  The live tier: the editor bridge of the shard the UO Shard dock connects
@@ -225,3 +225,15 @@ if not defined UO_STORE_SIGNING_KEY set "UO_STORE_SIGNING_KEY="
 if not defined UO_STORE_CATALOGUE_ID set "UO_STORE_CATALOGUE_ID=local"
 if not defined UO_STORE_CATALOGUE_TITLE set "UO_STORE_CATALOGUE_TITLE=Local GUO packs"
 if not defined UO_STORE_BASE_URL    set "UO_STORE_BASE_URL="
+
+REM --- Art pipeline (ADR-0029) ---------------------------------------------
+REM  The folder the editor and the pixel/photo editors trade images in: PNG +
+REM  sidecar out, saved results in, hues.json for the Pixelorama extension.
+REM  UO_PINTA / UO_PIXELORAMA name an exe when it is not found by itself.
+REM  UO_COMFY_URL is the ComfyUI server; UO_COMFY_WORKFLOWS a folder of its
+REM  API-format workflow .json files. Keys for paid services are NOT here.
+if not defined UO_ART_EXCHANGE      set "UO_ART_EXCHANGE=%UO_ROOT%\build\art_exchange"
+if not defined UO_PIXELORAMA        set "UO_PIXELORAMA="
+if not defined UO_PINTA             set "UO_PINTA="
+if not defined UO_COMFY_URL         set "UO_COMFY_URL=http://127.0.0.1:8188"
+if not defined UO_COMFY_WORKFLOWS   set "UO_COMFY_WORKFLOWS=%UO_ROOT%\build\art_exchange\workflows"

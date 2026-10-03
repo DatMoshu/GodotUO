@@ -39,7 +39,7 @@ user's client files.
    - **Provenance:** `docs/upstream/mapgen.md`.
    - **Repo-relative data paths** point at `tools/mapgen/...`.
 2. **One CLI, `guo-mapgen`** (`tools/mapgen/cli`), with the commands `schema`, `presets`, `run` and `export`.
-   - Contract: `docs/data_formats.md` §24.
+   - Contract: `docs/data_formats.md` §26.
    - Every front end (the editor tab, scripts, CI) uses it. The editor runs it as a **process**: a 7168×4096 map
      holds about 200 MB of fields, and a generator crash or a long run must not take the editor down.
 3. **The panel is generated from `schema`.** The tab builds one group per pass (an on/off toggle, a

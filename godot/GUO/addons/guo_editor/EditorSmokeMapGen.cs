@@ -88,7 +88,7 @@ public partial class EditorSmoke
 
     private async Task RunMapGenAsync()
     {
-        string root = Path.Combine(Path.GetFullPath(_out), "mapgen");
+        string root = Path.Combine(Path.GetFullPath(_out), "mapgen" + Suffix);
         Directory.CreateDirectory(root);
 
         (JsonElement? schema, string error) = await MapGenCli.QueryAsync(new[] { "schema" });

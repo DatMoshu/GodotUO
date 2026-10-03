@@ -13,7 +13,7 @@ using System.Threading.Tasks;
 /// <summary>
 /// Runs the map generator CLI (tools/mapgen, ADR-0030) as a process: <c>python tools/mapgen/run.py</c>
 /// builds <c>guo-mapgen</c> on first use and passes it the config's client data and generator data
-/// folder. Every stdout line is one JSON value (docs/data_formats.md §24); callbacks run on the
+/// folder. Every stdout line is one JSON value (docs/data_formats.md §26); callbacks run on the
 /// reader thread, so a UI marshals them itself.
 /// </summary>
 public static class MapGenCli

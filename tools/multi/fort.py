@@ -143,7 +143,11 @@ class Scene:
         self.stairs: list[tuple] = []                              # (at, cells) of each stair element
 
     def add(self, item, x, y, z, rank, part, visible=True):
-        self.items.append((Component(item, x, y, z, visible), rank, part))
+        if item < 0:                                   # Catalogue.NOTHING: no piece in this cell
+            return
+        self.items.append((Component(int(item), x, y, z, visible), rank, part))
+        for e in getattr(item, "extra", ()):
+            self.items.append((Component(int(e), x, y, z, visible), rank, part))
 
     def claim(self, cells, rank):
         for c in cells:

@@ -327,6 +327,37 @@ def main() -> int:
               f"{mapgen.get('world_blocks')} world blocks, tab {mapgen.get('tab_groups')} groups / {mapgen.get('tab_controls')} controls")
         for k in bad:
             print(f"[editor_smoke]        failed: {k}")
+    store = report.get("store") or {}
+    if store:
+        checks = [k for k, v in store.items() if v is True or v is False]
+        bad = [k for k in checks if store[k] is False]
+        print(f"[editor_smoke]   {'ok  ' if store.get('ok') else 'FAIL'} Store   {len(checks) - len(bad)}/{len(checks)} checks: local signed catalogue "
+              f"{store.get('catalogue')}, key approved, install/remove, verify (good and refused), publish, catalogue PR prepared, "
+              f"deployment {str(store.get('deployment_identity'))[:16]} to a scratch shard folder; private shard: {store.get('private_shard_dry_run', 'dry run ok')}")
+        print(f"[editor_smoke]        {store.get('browse_status')}")
+        for k in bad:
+            print(f"[editor_smoke]        failed: {k}")
+    art = report.get("art") or {}
+    if art:
+        checks = [k for k, v in art.items() if v is True or v is False]
+        bad = [k for k in checks if art[k] is False]
+        print(f"[editor_smoke]   {'ok  ' if art.get('ok') else 'FAIL'} Art     {len(checks) - len(bad)}/{len(checks)} checks: "
+              f"export, scripted save imported by the watcher, post-process, provenance, Pinta in place, "
+              f"ComfyUI + Retro Diffusion stubs ({art.get('comfy_progress_events')} progress events)")
+        print(f"[editor_smoke]        {art.get('detect')}")
+        print(f"[editor_smoke]        provenance: {art.get('provenance')}")
+        for k in bad:
+            print(f"[editor_smoke]        failed: {k}")
+    logs = report.get("logs") or {}
+    if logs:
+        checks = [k for k, v in logs.items() if v is True or v is False]
+        bad = [k for k in checks if logs[k] is False]
+        print(f"[editor_smoke]   {'ok  ' if logs.get('ok') else 'FAIL'} Logs    {len(checks) - len(bad)}/{len(checks)} checks: "
+              f"tail with a missing-then-created file, shared read, follow/pause, text and level filters, colours, find, "
+              f"secrets hidden, truncation and rotation, line cap, huge file tail, UTC beside local, remembered files, "
+              f"clean disposal; dock sources: {logs.get('views')}")
+        for k in bad:
+            print(f"[editor_smoke]        failed: {k}")
     overlay = world.get("overlay") or {}
     if overlay:
         print(f"[editor_smoke]   {'ok  ' if overlay.get('ok') else 'FAIL'} Overlay block 187,203: "

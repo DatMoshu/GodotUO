@@ -39,7 +39,8 @@ internal interface IMapLayer
 }
 
 /// <summary>A live player or mobile, as the shard's bridge reports it.</summary>
-internal readonly record struct LiveMobile(string Name, int Facet, int X, int Y, int Z, bool Player);
+internal readonly record struct LiveMobile(string Name, int Facet, int X, int Y, int Z, bool Player,
+    uint Serial = 0, int Body = 0, int Hits = 0, int MaxHits = 0, int Notoriety = 0);
 
 /// <summary>Sextant and plain coordinates, the way ModernUO's sextant computes them.</summary>
 internal static class Coordinates
@@ -103,6 +104,9 @@ internal sealed class MapLayers
     public WorldHost Host;
 
     public Func<string> ProjectRoot = () => null;
+
+    /// <summary>The folder of installed store packs (the editor's pack store, <c>StoreOptions.Root</c>); a smoke points it at a fixture.</summary>
+    public Func<string> PackStoreRoot = () => GUO.Store.StoreOptions.Root;
     public Func<ShardObjects> Objects = () => null;
     public Func<IEnumerable<LiveMobile>> LiveSource = () => Array.Empty<LiveMobile>();
 
@@ -137,6 +141,9 @@ internal sealed class MapLayers
 
     public IMapLayer Named(string name) => All.FirstOrDefault(l => l.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
 
+    /// <summary>The cells the last <see cref="Draw"/> covered (facet, then a bounding square), for what polls a feed for the visible region.</summary>
+    public (int Facet, int X0, int Y0, int X1, int Y1)? LastView { get; private set; }
+
     public void Draw(IPaint p, ModeContext ctx)
     {
         CellGeometry g = ctx.Geo;
@@ -153,6 +160,7 @@ internal sealed class MapLayers
             MaxY = g.CentreY + half,
             GroundZ = (x, y) => g.ZAt(x, y),
         };
+        LastView = (v.Facet, (int)v.MinX, (int)v.MinY, (int)v.MaxX, (int)v.MaxY);
         DrawOn(p, v);
     }
 
@@ -294,12 +302,34 @@ internal sealed class RegionsLayer : IMapLayer
     public RegionsLayer(MapLayers m) => _m = m;
 
     public string Name => "Regions";
-    public string Summary => "ModernUO Data/regions.json and the project's pack regions, outlined and named";
+    public string Summary => "ModernUO Data/regions.json, the project's, installed and deployed pack regions, outlined and named (labelled with their source)";
     public bool On { get; set; }
 
     public void Reload() => _regions = null;
 
-    public IReadOnlyList<Region> All => _regions ??= Load();
+    private DateTime _loadedAt;
+
+    // Installed packs change while the editor runs (the store tab): look again every few seconds.
+    public IReadOnlyList<Region> All => _regions == null || (DateTime.UtcNow - _loadedAt).TotalSeconds > 5 ? Refresh() : _regions;
+
+    private List<Region> Refresh()
+    {
+        _loadedAt = DateTime.UtcNow;
+        return _regions = Load();
+    }
+
+    /// <summary>A pack region's row (ADR-0026 kind "region"): name, facet, areas x, y, width, height.</summary>
+    private static Region FromPackRow(JsonNode j, string fallbackName, string source)
+    {
+        var reg = new Region { Name = (string)j["name"] ?? fallbackName, Type = "PackRegion", Facet = (int?)j["facet"] ?? 0, Source = source };
+        foreach (JsonNode a in j["areas"]?.AsArray() ?? new JsonArray())
+        {
+            reg.Areas.Add(((int)a["x"], (int)a["y"], (int)a["x"] + (int)a["width"] - 1, (int)a["y"] + (int)a["height"] - 1));
+        }
+
+        return reg;
+    }
+
 
     private List<Region> Load()
     {
@@ -349,14 +379,7 @@ internal sealed class RegionsLayer : IMapLayer
             {
                 try
                 {
-                    JsonNode j = JsonNode.Parse(File.ReadAllText(f));
-                    var reg = new Region { Name = (string)j["name"] ?? Path.GetFileNameWithoutExtension(f), Type = "PackRegion", Facet = (int?)j["facet"] ?? 0, Source = "pack" };
-                    foreach (JsonNode a in j["areas"]?.AsArray() ?? new JsonArray())
-                    {
-                        reg.Areas.Add(((int)a["x"], (int)a["y"], (int)a["x"] + (int)a["width"] - 1, (int)a["y"] + (int)a["height"] - 1));
-                    }
-
-                    list.Add(reg);
+                    list.Add(FromPackRow(JsonNode.Parse(File.ReadAllText(f)), Path.GetFileNameWithoutExtension(f), "project pack"));
                 }
                 catch (Exception ex)
                 {
@@ -365,7 +388,75 @@ internal sealed class RegionsLayer : IMapLayer
             }
         }
 
+        LoadInstalled(list);
+        LoadDeployed(list);
         return list;
+    }
+
+    // Region packs installed in the editor's pack store, read through StoreClient (it checks the manifest and the payload hash).
+    private void LoadInstalled(List<Region> list)
+    {
+        string store = _m.PackStoreRoot();
+        if (string.IsNullOrWhiteSpace(store) || !Directory.Exists(store))
+        {
+            return;
+        }
+
+        try
+        {
+            using var client = new GUO.Store.StoreClient(GUO.Store.StoreAddress.Default, store, GUO.Configuration.PlatformDefaults.CurrentVersion);
+            foreach (GUO.Store.StoreManifest m in client.Installed())
+            {
+                foreach (GUO.Store.StoreComponent c in m.Components ?? new List<GUO.Store.StoreComponent>())
+                {
+                    if (c.Type != "region")
+                    {
+                        continue;
+                    }
+
+                    try
+                    {
+                        JsonNode row = JsonNode.Parse(client.ReadVerifiedPayload(m, c.Entry, 1 << 20));
+                        list.Add(FromPackRow(row, c.Id, $"installed pack {m.Id} {m.Version}"));
+                    }
+                    catch (Exception ex)
+                    {
+                        GD.PrintErr($"[GUO editor] installed region {m.Id}:{c.Id}: {ex.Message}");
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            GD.PrintErr($"[GUO editor] installed packs {store}: {ex.Message}");
+        }
+    }
+
+    // The shard folder's deployed content (Data/GUO/server-content.json, ADR-0026): regions[].content is the same row.
+    private void LoadDeployed(List<Region> list)
+    {
+        if (_m.ShardFolder.Length == 0)
+        {
+            return;
+        }
+
+        string file = Path.Combine(_m.ShardFolder, "Data", "GUO", "server-content.json");
+        if (!File.Exists(file))
+        {
+            return;
+        }
+
+        try
+        {
+            foreach (JsonNode r in JsonNode.Parse(File.ReadAllText(file))["regions"]?.AsArray() ?? new JsonArray())
+            {
+                list.Add(FromPackRow(r["content"], (string)r["identity"] ?? "", $"deployed {(string)r["identity"]}"));
+            }
+        }
+        catch (Exception ex)
+        {
+            GD.PrintErr($"[GUO editor] {file}: {ex.Message}");
+        }
     }
 
     public static Color ColourOf(string type) => type switch
@@ -380,7 +471,7 @@ internal sealed class RegionsLayer : IMapLayer
 
     public IEnumerable<LayerItem> Items(int facet) =>
         All.Where(r => r.Facet == facet && r.Areas.Count > 0)
-            .Select(r => new LayerItem("Regions", r.Name, facet, (r.Areas[0].X0 + r.Areas[0].X1) / 2, (r.Areas[0].Y0 + r.Areas[0].Y1) / 2, 0, r.Type));
+            .Select(r => new LayerItem("Regions", r.Name, facet, (r.Areas[0].X0 + r.Areas[0].X1) / 2, (r.Areas[0].Y0 + r.Areas[0].Y1) / 2, 0, r.Source.Length > 0 ? $"{r.Type} ({r.Source})" : r.Type));
 
     public void Draw(IPaint p, LayerView v)
     {
@@ -406,7 +497,7 @@ internal sealed class RegionsLayer : IMapLayer
                     Vector2 at = v.Project((a.X0 + a.X1) / 2f, (a.Y0 + a.Y1) / 2f, v.GroundZ((a.X0 + a.X1) / 2, (a.Y0 + a.Y1) / 2));
                     if (v.Sees(at))
                     {
-                        p.Text(at, r.Name, c, v.Minimap ? 9 : 12);
+                        p.Text(at, r.Type == "PackRegion" && !v.Minimap ? $"{r.Name} [{r.Source}]" : r.Name, c, v.Minimap ? 9 : 12);
                         labelled = true;
                     }
                 }

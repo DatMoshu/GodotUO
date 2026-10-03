@@ -81,8 +81,20 @@ a provenance record.
 
 ## Validation
 
-To do:
-- A static round trip: GUO to Pixelorama, a scripted save, then back into
-  the overlay and drawn in the World tab.
-- One ComfyUI run against the local server with a small workflow, imported
-  with its provenance.
+Done (2026-10-02, headless editor smoke, `python tools/editor_smoke/run.py`, also with `--reload`):
+- The static round trip, with a scripted save: export of a client static to the exchange folder, a modified PNG
+  copied to `in/` as the extension writes it, the watcher importing it (trimmed, keyed, reduced to UO colour),
+  the loaders returning it, provenance recorded as derived from client art. Not yet seen drawn in the World tab
+  by eye, and not driven through a real Pixelorama window.
+- Pinta in-place edits, a refusal to `rejected/`, the shared post-process, detection output (Pixelorama found,
+  Pinta missing with the install hint on this machine).
+- ComfyUI and Retro Diffusion against stub servers only: upload, bound prompt, seed and size, websocket progress,
+  history, view, import with provenance. No real ComfyUI run and no paid call has been made.
+- The extension's scripts parse against Pixelorama v1.2.3's source (`run.py check`); the release build starts
+  headless with the extension installed and prints no extension error. Its menu items were not clicked.
+- The store refuses a pack whose provenance marks derived art (`tools/asset_store/pack.py`, tested). The C#
+  installer does not mirror that check; publication is the Python tool.
+
+Still to do:
+- One ComfyUI run against a local server with a small workflow.
+- A windowed Pixelorama session through the extension's menus, and a tour segment.

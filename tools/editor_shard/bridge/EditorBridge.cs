@@ -280,6 +280,7 @@ public static class EditorBridge
         public TcpClient Client;
         public StreamWriter Writer;
         public string Name = "?";
+        public long LastMobilesMs;
         private readonly object _lock = new();
 
         public void Send(JsonObject msg)
@@ -388,6 +389,24 @@ public static class EditorBridge
                 else if (op == "multi")
                 {
                     Core.LoopContext.Post(() => AuthoredMultis.Handle(msg, conn.Send));
+                }
+                else if (op == "mobiles")
+                {
+                    int req = (int?)msg["req"] ?? 0;
+                    long now = Environment.TickCount64;
+                    if (now - conn.LastMobilesMs < LiveMobiles.MinIntervalMs)
+                    {
+                        conn.Send(LiveMobiles.Refuse(req, "rate limited"));
+                        continue;
+                    }
+
+                    conn.LastMobilesMs = now;
+                    bool hello = conn.Name != "?";
+                    Core.LoopContext.Post(() =>
+                    {
+                        string refused = LiveMobiles.Authorise(msg, hello);
+                        conn.Send(refused != null ? LiveMobiles.Refuse(req, refused) : LiveMobiles.Query(msg));
+                    });
                 }
                 else if (op == "object")
                 {

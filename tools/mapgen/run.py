@@ -5,7 +5,7 @@
     python tools/mapgen/run.py export --run build/mapgen/runs/first
     python tools/mapgen/run.py --build-only
 
-The CLI's contract (commands, JSON lines, the run folder) is docs/data_formats.md section 24.
+The CLI's contract (commands, JSON lines, the run folder) is docs/data_formats.md section 26.
 UO_CLIENT_DATA and UO_MAPGEN_DATA come from the usual config (environment, config.local.bat,
 config.bat) and are passed to the generator, so a run here matches a run from the editor.
 """

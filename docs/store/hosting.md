@@ -69,7 +69,7 @@ setup:
 ### Administration
 
 Never expose an admin port. Reach the server's admin tools from home, or from
-outside over a VPN such as WireGuard or Tailscale. GUO's admin windows talk
+outside over a VPN such as WireGuard or Tailscale. GUO's admin windows (the editor's UO Store tab) talk
 to the server the same way (ADR-0026 section 8).
 
 ## RAID is not a backup

@@ -59,3 +59,11 @@ listing rights.
 
 The store and its packs are "GUO packs". Nothing in a pack or its listing may
 claim to be official Ultima Online content, or use Ultima Online logos.
+
+## What is checked automatically
+
+`python tools/asset_store/run.py check PACK` (the editor's Publish tab shows the same) returns `refused`, `review` or
+`pass`. It refuses a payload whose bytes are not the file type its name says (an executable renamed `.png`) and a
+title, author or id that claims to be official Ultima Online content. It flags for review a file named like one of
+the client's files, a mention of Ultima Online, and every script. It cannot tell whether your art started from the
+client's pixels: that is the reviewers' call, from the provenance line, so `pass` is not approval.

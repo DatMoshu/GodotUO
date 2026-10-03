@@ -76,6 +76,10 @@ public partial class EditorSmoke : Node
 
     /// <summary>The AI dock the plugin made, for the AI checks (ADR-0028).</summary>
     public AiDock Ai { get; set; }
+    public ArtDock Art { get; set; }
+
+    /// <summary>The UO Store tab the plugin made, for the store checks (ADR-0026 section 8).</summary>
+    public StoreView Store { get; set; }
 
     public EditorSmoke() : this(null, null, null, null, null, null)
     {
@@ -226,7 +230,18 @@ public partial class EditorSmoke : Node
 
             case 60:
                 // The AI hub (ADR-0028): ACP, Ollama and queue, against stubs.
-                if (StepAi())
+                // One after the other: both are async stages that wait on the scene tree's timers.
+                if (StepAi() && StepStore() && StepLogs())
+                {
+                    _stage = 61;
+                    _frames = 0;
+                }
+
+                break;
+
+            case 61:
+                // The art pipeline (ADR-0029): exchange folder, watcher, post-process, stub services.
+                if (StepArt())
                 {
                     _stage = 65;
                 }
@@ -749,6 +764,12 @@ public partial class EditorSmoke : Node
         if (_liveRole == "objects")
         {
             StepLiveObjects();
+            return;
+        }
+
+        if (_liveRole == "mobiles")
+        {
+            StepLiveMobiles();
             return;
         }
 

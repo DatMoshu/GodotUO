@@ -30,6 +30,13 @@ public partial class RunBar : HBoxContainer
     private ServerProfile Selected => _profiles?.Servers.FirstOrDefault(s => s.Id == _profiles.Selected);
     private string State(ServerProfile s) => Path.Combine(Root, s.Id, "process.json");
 
+    /// <summary>Re-reads the profile list after another part of the editor (the UO Store tab) changed it.</summary>
+    public void ReloadProfiles()
+    {
+        try { _profiles = ServerProfiles.Load(ListPath); _loadFailed = false; Rebuild(); Poll(); }
+        catch (Exception e) { _status.Text = e.Message; }
+    }
+
     public void StartServerNow() { if (!_start.Disabled) Run(Start); }
     public void StartClientsNow() => Run(StartClients);
 
@@ -144,8 +151,20 @@ public partial class RunBar : HBoxContainer
         for (int n = 0; n < _count.GetSelectedId(); n++)
         {
             string cache = Path.Combine(Root, s.Id, "clients", n.ToString(), "cache"); Directory.CreateDirectory(cache);
-            var psi = new ProcessStartInfo(Engine()) { UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = s.ClientProject };
-            foreach (string arg in new[] { "--path", s.ClientProject, "--", "--cache-dir", cache }) psi.ArgumentList.Add(arg);
+            // The client's console goes to a file the Logs dock tails (a client has no stdout the editor could keep).
+            string console = LogSources.ClientConsole(s.Id, n, Root); Directory.CreateDirectory(Path.GetDirectoryName(console));
+            ProcessStartInfo psi;
+            string[] clientArgs = { "--path", s.ClientProject, "--", "--cache-dir", cache };
+            if (OperatingSystem.IsWindows() && !new[] { Engine(), console }.Concat(clientArgs).Any(a => a.Contains('"') || a.Contains('%') || a.Contains('^') || a.Contains('&')))
+            {
+                psi = new ProcessStartInfo("cmd.exe") { UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = s.ClientProject };
+                psi.Arguments = "/d /s /c \"\"" + Engine() + "\" " + string.Join(" ", clientArgs.Select(a => "\"" + a + "\"")) + " > \"" + console + "\" 2>&1\"";
+            }
+            else
+            {
+                psi = new ProcessStartInfo(Engine()) { UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = s.ClientProject };
+                foreach (string arg in clientArgs) psi.ArgumentList.Add(arg);
+            }
             // Only this launch is changed; client settings/accounts/cache are separate per server and slot.
             foreach (string key in psi.Environment.Keys.Where(k => k.StartsWith("UO_", StringComparison.Ordinal) && (k.Contains("PROBE", StringComparison.Ordinal) || k.StartsWith("UO_CONTENT_", StringComparison.Ordinal) || k == "UO_CUSTOM_DATA")).ToArray()) psi.Environment.Remove(key);
             psi.Environment["UO_SHARD_HOST"] = s.Host; psi.Environment["UO_SHARD_PORT"] = s.Port.ToString();

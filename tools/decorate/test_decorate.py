@@ -4,6 +4,7 @@
 """
 from __future__ import annotations
 
+import json
 import sys
 import tempfile
 import traceback
@@ -18,6 +19,7 @@ import classify  # noqa: E402
 import db  # noqa: E402
 import decorate  # noqa: E402
 import mine_decor  # noqa: E402
+import planner  # noqa: E402
 import rooms as R  # noqa: E402
 
 WALL, IMP, SURF, WIN = classify.WALL, classify.IMPASSABLE, classify.SURFACE, classify.WINDOW
@@ -200,6 +202,139 @@ def test_check_catches():
     # a wall of furniture across the west room cuts the front door off from the partition door
     wall = [{"item": "0x0b34", "at": [x, 5], "z": 0, "storey": 0} for x in range(1, 6)]
     assert any("cut off" in p for p in decorate.check(side, wall)), decorate.check(side, wall)
+
+
+def rules_plan(side: dict, lib, allowed) -> dict:
+    """A plan in the model's answer format made from the rules' own placements (so it is valid)."""
+    import random
+    all_plans = planner.house_plans(side)
+    rooms = []
+    for rid, rp in planner.room_ids(all_plans).items():
+        n, st, _p, walls = all_plans[rp.storey]
+        rp.type = "smithy" if rp.storey == 0 and (2, 2) in rp.room.cells else "bedroom"
+        decorate.furnish_room(random.Random(3), lib, rp, walls, set(map(tuple, st["windows"])),
+                              set(map(tuple, st["doors"])))
+        pl = []
+        for tp, x, y in rp.placed:
+            if tp.on_wall:                        # the model names the room cell before the wall
+                d = planner.R.STEP[tp.against[0]]
+                x, y = x - d[0], y - d[1]
+            pl.append({"template": tp.id, "x": x, "y": y})
+        rooms.append({"room": rid, "type": rp.type, "focal": pl[0]["template"] if pl else -1,
+                      "placements": pl, "reason": "test"})
+    return {"rooms": rooms}
+
+
+def test_planner():
+    with tempfile.TemporaryDirectory() as d:
+        p = Path(d) / "decor.sqlite"
+        make_db(p)
+        con = db.open_ro(p)
+        lib = decorate.Library.from_db(con)
+        side = sidecar()
+        allowed = ("bedroom", "smithy")
+        req = planner.build_request(side, lib, con, "a smith's house", allowed)
+        assert "s0r0" in req["user"] and req["pngs"] and req["pngs"][0][1:4] == b"PNG", req["user"][:200]
+        assert '"examples"' in req["user"] and req["offered"]
+        good = rules_plan(side, lib, allowed)
+        assert all(r["placements"] for r in good["rooms"]), good
+
+        # a valid answer: placed as planned, one call, nothing by the rules, and cached
+        calls = []
+
+        def fake(answers):
+            def call(msgs, note=""):
+                calls.append(msgs)
+                return answers[len(calls) - 1], {"input_tokens": 10, "output_tokens": 5}
+            return call
+        cache = Path(d) / "plans"
+        a, report, meta = planner.decorate_ai(side, lib, con, seed=2, allowed=allowed, cache_dir=cache,
+                                              call=fake([good]))
+        assert meta["calls"] == 1 and not meta["errors_final"] and not meta["fallback_rooms"], (meta, report)
+        assert a and decorate.check(side, a) == [], decorate.check(side, a)
+        assert any(dd["item"] == "0x0fb1" and dd["storey"] == 0 and dd["at"][0] < 6 for dd in a), a
+        assert len(list(cache.glob("*.json"))) == 1
+
+        # the cache answers the second time; offline never calls
+        def boom(msgs, note=""):
+            raise AssertionError("called the API")
+        b, _r, meta2 = planner.decorate_ai(side, lib, con, seed=2, allowed=allowed, cache_dir=cache,
+                                           call=boom, offline=True)
+        assert meta2["cached"] and a == b
+
+        # a broken answer goes back once with its errors; the corrected one is used
+        bad = json.loads(json.dumps(good))
+        room0 = bad["rooms"][0]
+        room0["placements"].insert(0, {"template": room0["placements"][0]["template"], "x": -40, "y": -40})
+        bad["rooms"][1]["type"] = "throne-room"
+        calls.clear()
+        c, _r, meta3 = planner.decorate_ai(side, lib, con, seed=3, allowed=allowed, call=fake([bad, good]))
+        assert meta3["calls"] == 2 and len(meta3["errors_first"]) == 2 and not meta3["errors_final"], meta3
+        errs = calls[1][-1]["content"]
+        assert "outside the room" in errs and "throne-room" in errs, errs
+
+        # an answer that stays wrong: its rooms fall back to the rules, and the house is still clean
+        calls.clear()
+        e, _r, meta4 = planner.decorate_ai(side, lib, con, seed=4, allowed=allowed,
+                                           call=fake([{"rooms": []}, {"rooms": []}]))
+        assert set(meta4["fallback_rooms"]) == set(planner.room_ids(planner.house_plans(side))), meta4
+        assert e and decorate.check(side, e) == []
+
+        # no plan at all (offline, nothing cached) is the rules' house
+        f, _r, meta5 = planner.decorate_ai(side, lib, con, seed=4, allowed=allowed, offline=True)
+        assert meta5["errors_final"][0].startswith("no plan") and f and decorate.check(side, f) == []
+
+        # a forced type overrides the model's choice for that room, and the model is told
+        calls.clear()
+        g, _r, meta6 = planner.decorate_ai(side, lib, con, seed=5, allowed=allowed, types={"0:2,2": "bedroom"},
+                                           call=fake([good, good]))
+        assert meta6["calls"] == 2 and "must be a bedroom" in calls[1][-1]["content"], meta6
+        assert meta6["fallback_rooms"] == ["s0r0"], meta6
+        assert not any(dd["item"] == "0x0fb1" and dd["storey"] == 0 and dd["at"][0] < 6 for dd in g), g
+        con.close()
+
+
+def test_planner_why_not():
+    side = sidecar()
+    all_plans = planner.house_plans(side)
+    ids = planner.room_ids(all_plans)
+    rp = next(r for r in ids.values() if r.storey == 0 and (2, 2) in r.room.cells)
+    walls = all_plans[0][3]
+    tp = decorate.Template(1, [[0xA63, 0, 0, 0], [0xA63, 1, 0, 0]], 2, 1, frozenset({(0, 0), (1, 0)}), "N",
+                           False, {"bed": 2}, 1, {})
+    assert planner.why_not(tp, 2, 1, rp, walls) == ""
+    assert "must stand against" in planner.why_not(tp, 2, 3, rp, walls)
+    assert "outside the room" in planner.why_not(tp, 5, 0, rp, walls)
+
+
+def test_facings():
+    """Art that only faces one way: a bed whose back may only go north never stands against
+    another wall, and the check counts a piece that faces a wall."""
+    with tempfile.TemporaryDirectory() as d:
+        p = Path(d) / "decor.sqlite"
+        make_db(p)
+        con = db.open_ro(p)
+        free = decorate.Library.from_db(con)
+        f = Path(d) / "facings.json"
+        f.write_text(json.dumps({"items": {"0x0a63": ["W"]}}), encoding="utf-8")
+        facings = decorate.load_facings(f)
+        only_w = decorate.Library.from_db(con, facings=facings)
+        con.close()
+    beds = lambda lib: [t for t in lib.templates if any(it[0] == 0xA63 for it in t.items)]  # noqa: E731
+    assert beds(free) and all("N" in t.against for t in beds(free))
+    assert not beds(only_w), "a bed whose art needs a west wall was kept for a north wall"
+    side = sidecar()
+    a, _ = decorate.decorate(side, free, seed=5, allowed=("bedroom", "smithy"))
+    assert decorate.check(side, a) == []
+    wrong = decorate.check(side, a, facings)
+    n_beds = sum(dd["item"] == "0x0a63" for dd in a)
+    assert n_beds and len(wrong) == n_beds and "faces a wall" in wrong[0], wrong
+    ok = dict(facings)
+    ok[0xA63] = {"N"}
+    assert decorate.check(side, a, ok) == []
+    # hung on a wall: its back is that wall
+    hung = [{"item": "0x0a63", "at": [3, 0], "z": 5, "storey": 0}]
+    assert decorate.check(side, hung, ok) == [] and decorate.wrong_facing(side, hung, facings)
 
 
 def main() -> int:

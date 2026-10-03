@@ -295,7 +295,7 @@ public partial class MapGenView : VBoxContainer
         }).CallDeferred();
     }
 
-    /// <summary>Builds the controls from a <c>schema</c> object (docs/data_formats.md §24).</summary>
+    /// <summary>Builds the controls from a <c>schema</c> object (docs/data_formats.md §26).</summary>
     public void LoadSchema(JsonElement schema)
     {
         _schema = schema;

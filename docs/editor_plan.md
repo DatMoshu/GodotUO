@@ -429,3 +429,68 @@ F3 has "AI: new chat", "AI: show queue/agents" and "AI: start agent X". Child pr
 `AiDock.Shutdown`, which the plugin calls on close and before an assembly reload. The smoke's AI stage
 runs everything against a fake ACP agent, stub HTTP servers and a temporary queue (`tools/ai_hub`).
 The editor model tools are not built yet: the models see no editor state and have no tools.
+
+## Art pipeline (2026-10, ADR-0029)
+
+The inspector's art, land and gump views have **Edit in Pixelorama** and **Edit in Pinta**. Each writes a PNG
+and a sidecar to the exchange folder (`build/art_exchange/`, data_formats section 24) and opens the editor;
+the **Art** dock (bottom panel) polls the folder once a second and imports what comes back through the shared
+UO post-process into the world project's asset overlay, recording provenance. Pixelorama is the owner's fork
+(`DatMoshu/GUO-Pixelorama`, fetched by `tools/pixelorama/run.py`) with the `GUOTools` extension
+(`tools/pixelorama/extension/`: hue palettes, UO templates, size check, Save back to GUO). Pinta is the user's own
+install (`winget install Pinta.Pinta`). The Art dock also queues ComfyUI workflows (progress over its websocket)
+and a Retro Diffusion provider (key from the AI dock's endpoint book named "Retro Diffusion"), gallery, then
+"Import to overlay". The smoke's Art stage runs all of it against stubs and checks the install is untouched.
+Not built: hosting Pixelorama as an editor tab; a live hue preview inside Pixelorama; animation frames
+round-trip (templates exist, the overlay has no animation kind yet).
+
+## UO Store tab (2026-10, ADR-0026 section 8)
+
+The third main-screen tab, next to UO World and UO Assets (`addons/guo_editor_store/` owns the tab button,
+`addons/guo_editor/Store/` the view). It is the store for **shard owners and pack authors**; players keep using
+the game client's Store (Options, Video, Store) and the automatic shard content on Play.
+
+* **Browse and install.** Catalogues from the client's own `StoreTrust` (a new key asks for approval, showing its
+  fingerprint; a changed key is a louder warning), `StoreClient` for signatures, hashes and installs. Search, pack
+  details (kind, version, target, dependencies, signature, provenance) and the automatic content-policy verdict
+  (`tools/asset_store/policy.py`, shown once a pack is installed). The store is `build/editor_store/`, never the
+  game's `user://store`. Installed packs are inert files: the game's content mount is startup-only and bound by a
+  deployment lock, so they do **not** appear in UO Assets or UO World live; the tab says so.
+* **Server content.** A profile from the run bar's list (`build/editor_servers/profiles.json`), one installed pack
+  (a deployment is that pack plus the exact packs it depends on), numeric slots for its client components, then
+  `tools/shard_content/run.py deploy` through the backend adapter for the profile's type (`--dry-run` builds and
+  checks without writing). The log and result are shown, as is what each profile has deployed (`status`) and a
+  rollback (`rollback`: ModernUO swaps `Data/GUO/previous` in; native adapters redeploy the older version).
+  "Use for Start clients" puts the deployment's lock and store on the profile so the run bar's Start clients mounts
+  it. Test only on the private shard (never the dev shard).
+* **Publish.** `run.py check` (schema, hashes, dependencies, policy verdict), `publish` into a local store, and
+  `prepare-listing`, which writes `packs/<id>/<version>.json` and `PULL_REQUEST.md` for DatMoshu/GodotUO-packs and
+  prints the `gh` commands. No GitHub call and no signing key in the editor; the official catalogue is signed by its CI.
+* **F3** has "Store: ..." entries (`StoreProvider`), and the smoke has a Store stage against a local signed catalogue
+  (`tools/editor_smoke/store_fixture.py`) and a scratch ModernUO-shaped folder.
+
+The store code in `src/Store` deserializes with System.Text.Json's default options, which would pin the editor's
+assembly across a hot reload; `StoreView.Shutdown` clears that cache (`StoreBench.ReleaseJsonCaches`).
+Not built: an exact-pixel check of a pack's images against the client's art (needs the client data; the verdict says
+what it cannot see), several root packs in one deployment, a hosted-catalogue admin (mirror health, takedown).
+
+## Logs dock (2026-10)
+
+A bottom-panel **Logs** dock (`addons/guo_editor/Logs/`) tails what the other docks only summarise, read only.
+One sub-tab per source, found automatically and re-checked every three seconds: **Server** (the newest `.log` or
+`.txt` under the selected run-bar profile's `Logs` folders, or the dev shard's distribution `Logs` for a profile
+with no server folder), **Client 1..4** (the console of each client the run bar started: the run bar now starts a
+client through `cmd /c ... > build/editor_servers/<id>/clients/<n>/client.log`, because a client has no stdout the
+editor could keep; those lines are UTC, so the tab says so and puts the local time in front of each stamped line),
+**Client files** (the packet logger and crash dumps under the client project's `Logs`), **Godot log**
+(`user://logs/godot.log`, the editor's own output when file logging is on) and any file added with **Add file...**
+(remembered in `build/editor_logs/sources.json`, data_formats section 25).
+Each view has follow, pause, a text filter, a level filter (error/warn/info, coloured), find, clear view (never
+touches the file), copy selection, open folder and a line cap (default 5000). The tail is a polling worker task
+(`LogTailer`): shared-read opens that last one read, a file that does not exist yet, truncation and rotation, and
+a file over 512 KB entered at its end. Secrets in a line (the shapes `tools/agent_queue` refuses, `password=`
+pairs, bearer tokens, keys) are shown as `[redacted]`. F3 has "Logs: server", "Logs: client N", "Logs: add file".
+The smoke's Logs stage writes fixture logs under its output folder and checks all of the above, then that no
+worker task survives shutdown (and the reload run proves the same across an assembly reload).
+Not built: the server's own console output when the run bar started it (the managed process is not redirected,
+so its log files are what is shown); capturing the editor's in-process output without file logging.

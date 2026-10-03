@@ -170,3 +170,8 @@ tools/web/hello/export_presets.cfg
 tools/servuo/src/
 # Codex's view of the skills: a local link to .claude/skills (tools/agent_skills).
 .agents/
+
+# tools/pixelorama (ADR-0029): Pixelorama source and release build are fetched
+# (MIT, third-party); the README, run.py and the GUO extension are ours.
+tools/pixelorama/src/
+tools/pixelorama/bin/
