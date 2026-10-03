@@ -429,3 +429,17 @@ F3 has "AI: new chat", "AI: show queue/agents" and "AI: start agent X". Child pr
 `AiDock.Shutdown`, which the plugin calls on close and before an assembly reload. The smoke's AI stage
 runs everything against a fake ACP agent, stub HTTP servers and a temporary queue (`tools/ai_hub`).
 The editor model tools are not built yet: the models see no editor state and have no tools.
+
+## Art pipeline (2026-10, ADR-0029)
+
+The inspector's art, land and gump views have **Edit in Pixelorama** and **Edit in Pinta**. Each writes a PNG
+and a sidecar to the exchange folder (`build/art_exchange/`, data_formats section 24) and opens the editor;
+the **Art** dock (bottom panel) polls the folder once a second and imports what comes back through the shared
+UO post-process into the world project's asset overlay, recording provenance. Pixelorama is the owner's fork
+(`DatMoshu/GUO-Pixelorama`, fetched by `tools/pixelorama/run.py`) with the `GUOTools` extension
+(`tools/pixelorama/extension/`: hue palettes, UO templates, size check, Save back to GUO). Pinta is the user's own
+install (`winget install Pinta.Pinta`). The Art dock also queues ComfyUI workflows (progress over its websocket)
+and a Retro Diffusion provider (key from the AI dock's endpoint book named "Retro Diffusion"), gallery, then
+"Import to overlay". The smoke's Art stage runs all of it against stubs and checks the install is untouched.
+Not built: hosting Pixelorama as an editor tab; a live hue preview inside Pixelorama; animation frames
+round-trip (templates exist, the overlay has no animation kind yet).
