@@ -1291,13 +1291,22 @@ default (0, 0); both must be multiples of 8. Every block is a full `blocks/<face
 `done.world` carries the same object. Opening the project in the World tab is a separate step, and so
 is deploying it to a shard.
 
-### `prepare --dragon DIR [--out FILE]` → one JSON line
+### `prepare [--dragon DIR [--out FILE]] [--landscaper DIR]` → one JSON line
 
-`prepare` builds the land brush table from the user's own copy of the community map tool Dragon. `DIR`
-is a Dragon folder or its `Scripts/map`. The table is written to `UO_MAPGEN_DATA/landbrush.dragon.json`,
-or to `FILE`. GUO does not ship the table: Dragon's terms are unverified (`docs/upstream/mapgen.md`).
-The line is `{"event":"done", ok, output, rules_dir, files, rules, skipped, brushes, unknown_biomes}`.
-Exit 1 when no rule parsed. Without the table, Land Transitions warns and leaves biome borders as hard
-edges.
+`prepare` copies third-party map-tool data from the user's own copies into `UO_MAPGEN_DATA`. GUO ships
+none of it (`docs/upstream/mapgen.md`). At least one option is required.
+- `--dragon DIR`: a Dragon folder or its `Scripts/map`. The owner's importer converts the transition
+  rules into `landbrush.dragon.json` (or `FILE`). Without it, Land Transitions leaves biome borders as
+  hard edges.
+- `--landscaper DIR`: a UO Landscaper install or mod, or its `Data`. `Data/Statics/**/*.xml` is copied to
+  `landscaper-statics/` and `Data/Transitions/**/*.xml` to `landscaper-transitions/`, with the layout
+  kept. Without them, Swamp Surface, the trunk/canopy fallback and Biome Static Scatter's default
+  catalogue warn and skip.
+
+The line is `{"event":"done", ok, dragon?, landscaper?}`:
+- `dragon` is `{ok, output, rules_dir, files, rules, skipped, brushes, unknown_biomes}`;
+- `landscaper` is `{ok, data_dir, statics_files, transition_files, output}`.
+
+Exit 1 when a requested part produced nothing.
 
 ### `presets` → `{"schema": "guo.mapgen.presets/1", "presets": [...]}`

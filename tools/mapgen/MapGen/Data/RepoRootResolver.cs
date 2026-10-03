@@ -1,7 +1,7 @@
 namespace CentrED.MapGen.Data;
 
 // Resolves a path that's logically relative to the repo root. CentrED.exe runs
-// from tools/CentrED/output/ so plain "tools/mapgen/data/landscaper-statics" can't
+// from tools/CentrED/output/ so plain "tools/mapgen/MapGen/presets" can't
 // be opened directly. Walks up from CWD and AppContext.BaseDirectory looking for a
 // repo marker (.git, CLAUDE.md, or tools/CentrED/), then resolves the relative path.
 public static class RepoRootResolver

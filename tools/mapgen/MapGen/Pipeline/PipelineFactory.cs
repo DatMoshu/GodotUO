@@ -424,10 +424,10 @@ public static class PipelineFactory
 
         string treesPath = ResolveTreeStaticsPath(data.TreeStaticsPath);
         if (!File.Exists(treesPath))
-            warnings?.Add($"tree-statics.json not found at {treesPath} — using grouped Norad catalogue for trunk/canopy pairing");
+            warnings?.Add($"tree-statics.json not found at {treesPath} — using the UO Landscaper statics in the data folder (if prepared) for trunk/canopy pairing");
         var trees = File.Exists(treesPath)
             ? Cached("trees", treesPath, p => TreeStatics.LoadOrEmpty(p!))
-            : TreeStatics.FromCatalogue(RepoRootResolver.Resolve("tools/mapgen/data/landscaper-statics"));
+            : TreeStatics.FromCatalogue(RepoRootResolver.Resolve("mined/landscaper-statics"));
 
         return new GenIR(width, height, scope, seed)
         {

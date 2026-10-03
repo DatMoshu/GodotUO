@@ -57,15 +57,18 @@ user's client files.
    - Validation reports go there too, never into the repo.
    - Passes whose data is missing warn and fall back (for example, Reference Coast keeps the brush
      transitions). A later "Prepare generator data" step will mine that data from `UO_CLIENT_DATA`.
-6. **Shipped data.** All of it is either our own or MIT:
-   - presets and tile tables;
-   - the hand-written dungeon roster and decor table;
-   - two transition files and the statics catalogue from norad32's UO Landscaper mod (MIT);
+6. **Shipped data is only the owner's own:** presets, tile tables, and the hand-written dungeon roster
+   and decor table. No third-party map-tool data ships (audit in `docs/upstream/mapgen.md`):
    - **not** `landbrush.dragon.json`, our conversion of Dragon Imod13's transition rules. Dragon's rule
-     files carry no licence statement (`docs/upstream/mapgen.md`). Until the owner clears it, the
-     table is built per user: `guo-mapgen prepare --dragon DIR` runs the owner's importer over the
-     user's own Dragon copy and writes the table into `UO_MAPGEN_DATA`. Without it, Land Transitions
-     warns and leaves biome borders as hard edges, and the tests that need it skip with that reason.
+     files carry no licence statement;
+   - **not** UO Landscaper's statics or transitions. norad32's MIT mod began by importing the closed
+     original's data, and most of the files GUO used trace to it.
+
+   Users supply both from their own copies: `guo-mapgen prepare --dragon DIR --landscaper DIR` writes
+   them into `UO_MAPGEN_DATA`. Without them, Land Transitions leaves biome borders as hard edges, Swamp
+   Surface and the trunk/canopy fallback skip, and the tests that need the brush table skip with that
+   reason. GUO's own transition table, built from data we author, is the follow-up that replaces them
+   as the default.
 7. **The default preset is `felucca-stage18`**, the current measured candidate. The owner's mountain and
    road heights stay as they are. The experimental stage20 is not promoted.
 

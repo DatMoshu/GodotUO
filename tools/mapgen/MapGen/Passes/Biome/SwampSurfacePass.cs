@@ -10,7 +10,7 @@ namespace CentrED.MapGen.Passes.Biome;
 public sealed class SwampSurfaceParams
 {
     [TunableDisplay("Transition catalogue", Tooltip = "Norad MIT transition XML root; preserves the catalogue's exact 3x3 direction convention.")]
-    public string CataloguePath { get; set; } = "tools/mapgen/data/landscaper-transitions";
+    public string CataloguePath { get; set; } = "mined/landscaper-transitions";
     [TunableDisplay("Moss border width", Tooltip = "Moss tiles separate swamp interiors from grass; the two surface families must never be randomly mixed.")]
     [TunableRange(2, 8)]
     public int MossBorderWidth { get; set; } = 2;

@@ -12,13 +12,13 @@ writes legacy MUL map files. The owner wrote it as an addition to a CentrED# for
 | `MapGen/Mining/` | The owner's importer for Dragon's transition rules (`prepare`) |
 | `MapGen.Tests/` | 224 tests: determinism, terrain invariants, coasts, transitions, stamps, the MUL writer, the Dragon importer. The 16 that need the brush table skip without it |
 | `cli/` | `guo-mapgen`, the command-line front end the editor's Map Generator tab runs |
-| `data/` | Shipped data: the dungeon roster and decor table (hand-written) and norad32's UO Landscaper statics and transitions (MIT) |
+| `data/` | Shipped data: the dungeon roster and decor table (hand-written by the owner) |
 | `run.py` | Builds the CLI into `build/mapgen/cli` on first use and runs it with the config's paths |
 
 ## Use
 
 ```
-python tools\mapgen\run.py prepare --dragon <your Dragon folder>
+python tools\mapgen\run.py prepare --dragon <your Dragon folder> --landscaper <your UO Landscaper folder>
 python tools\mapgen\run.py schema
 python tools\mapgen\run.py run --out build\mapgen\runs\try1 --size 1024 --seed 42 --step-previews
 python tools\mapgen\run.py export --run build\mapgen\runs\try1
@@ -42,6 +42,13 @@ not ship it. Build it once from your own Dragon copy (a Dragon folder, or its `S
 `run.py prepare --dragon DIR`. It goes into `UO_MAPGEN_DATA`. Without it, biome borders stay hard
 edges, and Land Transitions says so in its warnings. For tests, `MAPGEN_BRUSH_TABLE` can point at a
 table anywhere.
+
+**UO Landscaper's statics and transitions** feed Biome Static Scatter's default catalogue, the
+trunk/canopy pairing when there is no `tree-statics.json`, and Swamp Surface. norad32's MIT mod began by
+importing the closed original's data, and most of these files trace to it
+(`docs/upstream/mapgen.md`), so GUO does not ship them either. Copy them from your own copy with
+`run.py prepare --landscaper DIR`. Without them those passes warn and skip; land and heights do not
+change.
 
 Some passes read data mined from a user's own client files. GUO never ships it either:
 - the stamp library (`mined/stamps`);

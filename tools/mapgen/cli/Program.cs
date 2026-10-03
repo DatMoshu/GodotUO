@@ -8,7 +8,7 @@
 //                      [--fast] [--step-previews] [--preview-max N] [--client-data DIR]
 //   guo-mapgen export  --run DIR [--facet N] [--client-data DIR]
 //   guo-mapgen presets
-//   guo-mapgen prepare --dragon DIR [--out FILE]       land brush table from the user's Dragon copy
+//   guo-mapgen prepare [--dragon DIR [--out FILE]] [--landscaper DIR]   map-tool data from the user's own copies
 
 using System.Text.Json;
 using GuoMapGen;

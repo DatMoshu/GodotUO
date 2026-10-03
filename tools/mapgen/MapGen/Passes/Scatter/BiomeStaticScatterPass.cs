@@ -14,8 +14,8 @@ public sealed class BiomeStaticScatterParams
     [TunableDisplay("Biome chance overrides", Tooltip = "Optional percentages, e.g. Forest=30,Grassland=6. Applies before density multiplier.")]
     public string ChanceOverridesCsv { get; set; } = "";
 
-    [TunableDisplay("Catalogue path", Tooltip = "Norad-style XML root, e.g. tools/mapgen/data/landscaper-statics")]
-    public string CataloguePath { get; set; } = "tools/mapgen/data/landscaper-statics";
+    [TunableDisplay("Catalogue path", Tooltip = "Norad-style XML root. Default: the user's UO Landscaper statics in the generator data folder (guo-mapgen prepare --landscaper DIR)")]
+    public string CataloguePath { get; set; } = "mined/landscaper-statics";
 
     [TunableDisplay("Min radius (tiles)")] [TunableRange(2, 32)]
     public int MinRadius { get; set; } = 4;
