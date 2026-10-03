@@ -23,6 +23,7 @@ public partial class AiDock : EditorDock
     private AiAgentsTab _agents;
     private AiQueueTab _queue;
     private AiSessionsTab _sessions;
+    private AiServicesTab _services;
     private readonly Queue<(AgentSession Session, JsonNode Params, TaskCompletionSource<JsonNode> Result)> _asks = new();
     private AcceptDialog _dialog;
     private TaskCompletionSource<JsonNode> _dialogResult;
@@ -32,6 +33,7 @@ public partial class AiDock : EditorDock
     public AiAgentsTab Agents => _agents;
     public AiQueueTab Queue => _queue;
     public AiSessionsTab Sessions => _sessions;
+    public AiServicesTab Services => _services;
     internal AiHub Hub => _hub;
 
     /// <summary>The permission dialog on screen, or null (the smoke answers it).</summary>
@@ -68,6 +70,8 @@ public partial class AiDock : EditorDock
         _sessions = new AiSessionsTab(_hub, () => _queue);
         _tabs.AddChild(_queue);
         _tabs.AddChild(_sessions);
+        _services = new AiServicesTab(_hub);
+        _tabs.AddChild(_services);
         _hub.Permission = AskPermission;
     }
 
@@ -98,6 +102,41 @@ public partial class AiDock : EditorDock
     {
         ShowTab("Chat");
         _chat.NewChat();
+    }
+
+    /// <summary>
+    /// Gives the chat models their read-only editor tools (search, inspect, jump). A tool that changes
+    /// anything asks the user in a dialog first (<see cref="AskApproval"/>); today none does.
+    /// </summary>
+    internal void UseTools(SearchContext ctx, Func<SearchIndex> index)
+    {
+        _hub.Tools = AiToolHost.For(ctx, index, _hub.Post);
+        _hub.Tools.Approve = AskApproval;
+    }
+
+    /// <summary>A yes/no dialog for an action a model wants to take that changes something.</summary>
+    private Task<bool> AskApproval(string what)
+    {
+        var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _hub.Post(() =>
+        {
+            var dlg = new ConfirmationDialog
+            {
+                Title = "A model wants to change something",
+                DialogText = $"The chat model asks to run:\n\n{what}\n\nAllow this once?",
+                DialogAutowrap = true,
+                OkButtonText = "Allow once",
+                CancelButtonText = "Refuse",
+                Exclusive = true,
+            };
+            dlg.Confirmed += () => tcs.TrySetResult(true);
+            dlg.Canceled += () => tcs.TrySetResult(false);
+            dlg.Confirmed += dlg.QueueFree;
+            dlg.Canceled += dlg.QueueFree;
+            EditorInterface.Singleton.GetBaseControl().AddChild(dlg);
+            dlg.PopupCentered(new Vector2I(520, 240));
+        });
+        return tcs.Task;
     }
 
     // --- permission requests from agents -------------------------------------------------------

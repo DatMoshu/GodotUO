@@ -17,7 +17,42 @@ public sealed class AiHub
 {
     private readonly ConcurrentQueue<Action> _main = new();
 
-    internal EndpointBook Endpoints { get; } = new();
+    internal EndpointBook Endpoints { get; private set; }
+
+    /// <summary>Every third-party service endpoint and key (OpenAI-compatible, ComfyUI, Retro Diffusion, Ollama).</summary>
+    public ServiceBook Services { get; private set; }
+
+    /// <summary>The services changed (added, edited, removed): the Chat and Services tabs redraw.</summary>
+    public event Action ServicesChanged;
+
+    /// <summary>The read-only tools offered to chat models; the plugin fills it in (null: none).</summary>
+    public AiToolHost Tools { get; set; }
+
+    /// <summary>The picture of what is selected in the UO Inspector (client art), or null. Set by the plugin.</summary>
+    public Func<Godot.Image> SelectionImage { get; set; }
+
+    /// <summary>What the selection is called ("Statics 0x0E75"), or null.</summary>
+    public Func<string> SelectionLabel { get; set; }
+
+    public AiHub()
+    {
+        UseBooks(new EndpointBook(), null);
+    }
+
+    /// <summary>Points the hub at other files (the smoke uses temporary ones); the user's own are the default.</summary>
+    internal void UseBooks(EndpointBook endpoints, string servicesPath)
+    {
+        Endpoints = endpoints;
+        Services = new ServiceBook(endpoints, servicesPath);
+        NotifyServices();
+    }
+
+    /// <summary>The services changed: tell the tabs.</summary>
+    public void NotifyServices()
+    {
+        ServicesChanged?.Invoke();
+        SessionsChanged?.Invoke();
+    }
 
     /// <summary>Running agents; changed only on the main thread.</summary>
     public List<AgentSession> Sessions { get; } = new();

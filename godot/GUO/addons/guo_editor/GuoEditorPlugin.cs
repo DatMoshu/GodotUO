@@ -146,6 +146,9 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         SearchContext searchContext = SearchContext.From(this, _data, _assets, _inspector, _world, _shard, _run, ShowInWorld);
         searchContext.Ai = _ai;
         _search = SearchPopup.Install(searchContext);
+        _ai.UseTools(searchContext, () => _search?.Index);
+        _ai.Hub.SelectionImage = () => _inspector?.Current?.Image;
+        _ai.Hub.SelectionLabel = () => _inspector?.Current is Inspection i ? $"{i.Source} {i.Id}" : null;
 
         string smokeOut = EditorSmoke.OutDirFromArgs();
         string tourOut = EditorTour.OutDirFromArgs();
