@@ -4,15 +4,18 @@ using CentrED.MapMiner.Mining;
 namespace GuoMapGen;
 
 /// <summary>
-/// <c>prepare [--dragon DIR] [--landscaper DIR]</c>: copies third-party map-tool data from the user's own
-/// copies into the generator data folder (UO_MAPGEN_DATA). GUO ships none of it (docs/upstream/mapgen.md).
+/// <c>prepare [--measure] [--dragon DIR] [--landscaper DIR]</c>: builds the generator's per-user data in the
+/// generator data folder (UO_MAPGEN_DATA). GUO ships none of it (docs/upstream/mapgen.md).
 /// <list type="bullet">
+/// <item><c>--measure</c>: measures the transitions of the user's own Felucca and resolves GUO's
+/// transition table against them (<see cref="MeasureCommand"/>). Without it the generator uses the
+/// committed table's core tiles.</item>
 /// <item><c>--dragon</c>: Dragon's <c>Scripts/map/*.txt</c> transition rules, converted by the owner's
-/// importer into <c>landbrush.dragon.json</c>. Without it, Land Transitions leaves hard edges.</item>
+/// importer into <c>landbrush.dragon.json</c>, for <c>run --brushes dragon</c> and coverage comparisons.</item>
 /// <item><c>--landscaper</c>: UO Landscaper's <c>Data/Statics/*.xml</c> into <c>landscaper-statics/</c>
-/// (Biome Static Scatter, and trunk/canopy pairing when there is no tree-statics.json) and its
-/// <c>Data/Transitions</c> into <c>landscaper-transitions/</c> (Swamp Surface). Without them those
-/// passes warn and skip.</item>
+/// (Biome Static Scatter, when its Catalogue names that folder; GUO's scatter table is the default) and
+/// its <c>Data/Transitions</c> into <c>landscaper-transitions/</c> (Swamp Surface, when its Transition
+/// catalogue names that folder; GUO's transition table is the default).</item>
 /// </list>
 /// </summary>
 public static class PrepareCommand
@@ -20,8 +23,9 @@ public static class PrepareCommand
     public static int Execute(Args a, JsonEmitter json)
     {
         string? dragon = a.Get("dragon"), landscaper = a.Get("landscaper");
-        if (dragon is null && landscaper is null)
-            throw new CliError("prepare needs --dragon DIR (a Dragon install, or its Scripts/map folder) and/or --landscaper DIR (a UO Landscaper install or mod, holding Data/Statics and Data/Transitions)");
+        bool measure = a.Flag("measure");
+        if (dragon is null && landscaper is null && !measure)
+            throw new CliError("prepare needs --measure (mine the transitions of your own Felucca), --dragon DIR (a Dragon install, or its Scripts/map folder) and/or --landscaper DIR (a UO Landscaper install or mod, holding Data/Statics and Data/Transitions)");
 
         bool ok = true;
         var done = new Dictionary<string, object?>();
@@ -53,6 +57,16 @@ public static class PrepareCommand
                 ["ok"] = landscaperOk, ["data_dir"] = Path.GetFullPath(data), ["statics_files"] = statics, ["transition_files"] = transitions,
                 ["output"] = Path.GetFullPath(RepoRootResolver.Resolve("mined/")),
             };
+        }
+
+        if (measure)
+        {
+            string clientData = a.Get("client-data") ?? Environment.GetEnvironmentVariable("UO_CLIENT_DATA")
+                ?? throw new CliError("--measure needs the client data: set UO_CLIENT_DATA or pass --client-data DIR");
+            var m = MeasureCommand.Run(clientData, a.Int("region-width", 5120));
+            ok &= m["ok"] is true;
+            done["measure"] = m;
+            if (m["ok"] is true) done["resolved"] = MeasureCommand.Resolve((string)m["summary"]!);
         }
 
         done["ok"] = ok;

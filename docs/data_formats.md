@@ -1232,7 +1232,10 @@ Options:
 - `--fast` (heavy passes off);
 - `--step-previews` (one PNG per pass);
 - `--preview-max N` (longest side of preview PNGs, default 1024; larger maps are block-averaged);
-- `--client-data DIR`.
+- `--client-data DIR`;
+- `--brushes T`, the transition table: `guo` (default: the user's resolved table when `prepare --measure`
+  wrote one, else the committed table), `guo-core` (the committed table only), `dragon` (the user's
+  Dragon import) or a file.
 
 `--out` must be new or empty, and outside `UO_CLIENT_DATA`.
 
@@ -1244,7 +1247,7 @@ Folder:
 
 | File | Content |
 |---|---|
-| `run.json` | `"schema": "guo.mapgen.run/1"`, `generator`, `preset`, `seed`, `width`, `height`, `fast`, `sets`, `disable`, `enable`, `hash`, `elapsed_ms`, `statics`, `stats`, `files`, `passes[]` (`index, name, enabled, ms, warnings`), `warnings`, `radar_colours` |
+| `run.json` | `"schema": "guo.mapgen.run/1"`, `generator`, `preset`, `seed`, `width`, `height`, `fast`, `sets`, `disable`, `enable`, `brushes` (the `--brushes` choice; `export` uses it), `brush_table` (`guo`, `dragon` or empty: what loaded), `hash`, `elapsed_ms`, `statics`, `stats`, `files`, `passes[]` (`index, name, enabled, ms, warnings`), `warnings`, `radar_colours` |
 | `preset.json` | The effective preset (a normal `.preset.json`): every `--set`, toggle and `--fast` choice folded in. `export` regenerates from it |
 | `radar.png` | Client radar colours from `radarcol.mul`: the top static where there is one, else the land. Falls back to biome colours without client data |
 | `biome.png`, `height.png` | Biome classes; heights (grey above 0, blue below) |
@@ -1252,14 +1255,17 @@ Folder:
 | `map.bin` | Analyzer dump: int32 width, int32 height; per cell, row-major, uint16 land id, int8 z, uint8 biome; int32 count; per static uint16 x, uint16 y, int8 z, uint16 id |
 
 `hash` is SHA-256 over `"guo-mapgen-1"`, width and height (uint16), the land ids, the heights and every
-static op (kind, x, y, z, id, hue) in pipeline order. The same preset, seed, size and options give the
-same hash.
+static op (kind, x, y, z, id, hue) in pipeline order. The same preset, seed, size, options and
+transition table give the same hash; a user's resolved table (`prepare --measure`) changes it.
 
 `stats` (the Felucca-likeness card) holds:
 - `available` and `land_share`;
 - `measured` and `felucca`: shares of land at z 0, forest, grass, sand, rock, jungle, and sand along
-  coasts, plus statics per 100 land tiles (measured only). The Felucca values are the main continent,
-  measured 2026-10-02;
+  coasts (`shore_sand`), plus statics per 100 land tiles (measured only). The seabed (land tiles
+  0x4C–0x64 dug under the water, as Felucca's shallows are) counts as water, so the coast is the dry
+  shore. The coast is the sea's: river cells are water but do not make a coast, since Felucca draws
+  almost no rivers in land tiles and its shore share is a sea-coast share. Shore sand is the beach pool or a sand edge tile (0x1A–0x4B). The Felucca values are its whole
+  surface (map 0, 5120x4096), measured 2026-10-03 by the same rules;
 - `classes` (land shares by tile-table class; `edge` means transition tiles);
 - `score` (0–100). It is a guide, not the judge.
 
@@ -1291,22 +1297,178 @@ default (0, 0); both must be multiples of 8. Every block is a full `blocks/<face
 `done.world` carries the same object. Opening the project in the World tab is a separate step, and so
 is deploying it to a shard.
 
-### `prepare [--dragon DIR [--out FILE]] [--landscaper DIR]` → one JSON line
+### `prepare [--measure [--client-data DIR]] [--dragon DIR [--out FILE]] [--landscaper DIR]` → one JSON line
 
-`prepare` copies third-party map-tool data from the user's own copies into `UO_MAPGEN_DATA`. GUO ships
-none of it (`docs/upstream/mapgen.md`). At least one option is required.
+`prepare` builds the generator's per-user data in `UO_MAPGEN_DATA`, from the user's own client and
+copies. GUO ships none of it (`docs/upstream/mapgen.md`). At least one option is required.
+- `--measure`: reads the user's own Felucca (map0 of `UO_CLIENT_DATA`) and writes
+  `map-mining/guo-transition-atlas.json` (per pair and neighbour mask, the tiles used and how often: the
+  format Land Transitions' *Measured transition atlas* reads), `map-mining/guo-transition-measure.json`
+  (`"schema": "guo.mapgen.transition-measure/1"`: per pair `samples`, `slivers` and per edge shape
+  `count`, `top` (up to 8 `[id, count]`), `dz_owner`, `dz_other`; per material its interior tile
+  counts; `source` with the map file's name, size and SHA-256), and the resolved transition table
+  `transitions.guo.resolved.json` (below). An edge sample is a cell whose tile is not in an interior pool
+  and whose 8 neighbours hold interior tiles of exactly two materials; its mask is the neighbours of the
+  other material.
 - `--dragon DIR`: a Dragon folder or its `Scripts/map`. The owner's importer converts the transition
-  rules into `landbrush.dragon.json` (or `FILE`). Without it, Land Transitions leaves biome borders as
-  hard edges.
+  rules into `landbrush.dragon.json` (or `FILE`), for `run --brushes dragon` and `coverage`.
 - `--landscaper DIR`: a UO Landscaper install or mod, or its `Data`. `Data/Statics/**/*.xml` is copied to
   `landscaper-statics/` and `Data/Transitions/**/*.xml` to `landscaper-transitions/`, with the layout
-  kept. Without them, Swamp Surface, the trunk/canopy fallback and Biome Static Scatter's default
-  catalogue warn and skip.
+  kept. Neither is needed: Swamp Surface reads the transitions only when its *Transition catalogue* names
+  that folder, and Biome Static Scatter the statics only when its *Catalogue* does. Their defaults are
+  GUO's transition and scatter tables (below).
 
-The line is `{"event":"done", ok, dragon?, landscaper?}`:
+The line is `{"event":"done", ok, measure?, resolved?, dragon?, landscaper?}`:
+- `measure` is `{ok, atlas, summary, pairs, samples, region}`;
+- `resolved` is `{ok, output, added_variants, pairs_with_tiles}`;
 - `dragon` is `{ok, output, rules_dir, files, rules, skipped, brushes, unknown_biomes}`;
 - `landscaper` is `{ok, data_dir, statics_files, transition_files, output}`.
 
 Exit 1 when a requested part produced nothing.
 
+### `coverage` → one JSON line
+
+What each transition table present can draw, in counts only: the committed table (`guo-core`), the
+user's resolved table (`guo-resolved`) and Dragon import (`dragon`). The line is
+`{"event":"done", "schema":"guo.mapgen.coverage/1", tables[], missing[], pairs[]}`; each pair row is
+`{pair, <table>: {shapes, masks, ids, via, plain}}`: the edge shapes with a tile (of 12), the neighbour
+masks with a tile (of 255), the distinct tile ids, the bridge material and whether the pair needs no
+tile. No table's rows are printed.
+
+### Transition table (`tools/mapgen/MapGen/presets/transitions.guo.json`)
+
+GUO's own land transition table, `"format": "guo.mapgen.transitions/1"`, and the generator's default
+(Land Transitions, road edges, mountain trails). It holds what GUO authors; the per-user tile variants
+come from `prepare --measure`, which writes a resolved copy in the same format to
+`UO_MAPGEN_DATA/transitions.guo.resolved.json` with a `resolved_from` object (`measure`: the measured
+map's `source`; `added_variants`).
+
+| Field | Meaning |
+|---|---|
+| `format` | `guo.mapgen.transitions/1` |
+| `resolve` | How measured variants join: `min_pair_samples`, `min_shape_samples`, `min_share` (of the shape's samples), `max_variants` per shape, `scale` (the weight of the most used variant) |
+| `materials` | Name → `{biomes[], notes}`: the materials pairs may name, and the biomes that map to each |
+| `pairs[]` | One per owner/other pair, below |
+
+A pair:
+
+| Field | Meaning |
+|---|---|
+| `owner`, `other` | Materials. Owner cells next to other cells are repainted; the other side keeps its tile |
+| `edges` | Shape → list of land ids, each `"0xHHHH"` (weight 1) or `["0xHHHH", weight]`. A pair with edges lists all 12 shapes |
+| `z` | Shape (or `"*"`) → the most an edge cell moves toward the other side's mean height, used when Land Transitions' *Edge z offsets* is on. Positive lifts (a rock lip), negative drops (a bank) |
+| `via` | The material an owner cell facing the other becomes when the pair has no tile for it (*Bridge passes*) |
+| `plain` | `true`: the pair needs no edge tile (sand against water); not reported as a hard edge |
+| `measure` | `false`: `prepare --measure` adds nothing to this pair (default `true`) |
+| `notes` | Why the pair is drawn as it is |
+
+Edge shapes are named by where the other material lies, in tile directions (N is y−1, E is x+1):
+`N`, `E`, `S`, `W` are straight edges (the other side covers that side and its two corners);
+`NE`, `SE`, `SW`, `NW` are outer corners (two sides and the corner between); `in_NE`, `in_SE`, `in_SW`,
+`in_NW` are inner corners (only that diagonal neighbour is other). A cell's neighbour mask resolves to
+the smallest shape that contains it; a mask no shape contains is a one-tile sliver, which Land
+Transitions absorbs into the other side.
+
+Swamp Surface reads two pairs: `Grassland>Swamp` (grass against the moss band) and `Swamp>Bog` (the moss
+band against the open bog inside). `Bog` is a material with no biome, so Land Transitions never meets
+it. Each pair comes from the user's resolved table when it has it, else from the committed table. An
+edge tile may be an interior tile of its owner's own material, as on Felucca, where the moss/bog inner
+corners are moss tiles with a dark corner.
+
+### Scatter table (`tools/mapgen/MapGen/presets/scatter.guo.json`)
+
+GUO's own scatter table, `"format": "guo.mapgen.scatter/1"`: what Biome Static Scatter puts on the
+ground per biome, and which tree trunk takes which canopy (Forest Scatter, and every pass that pairs
+trunks, when there is no `tree-statics.json`). Biome Static Scatter's *Catalogue* is `guo` by default;
+it also takes a file in this format or a folder of UO Landscaper statics XML (a user's own, from
+`prepare --landscaper`). A catalogue that is not found falls back to `guo` with a note.
+
+| Field | Meaning |
+|---|---|
+| `format` | `guo.mapgen.scatter/1` |
+| `aliases` | Biome → biome whose groups and chance it borrows (`Savanna` → `Grassland`) |
+| `trees[]` | `{trunk, leaves, name}`: a trunk static and the canopy drawn on the same tile |
+| `biomes` | Biome name (as in `BiomeId`) → `{chance, notes, groups[]}` |
+
+`chance` is the percentage of cells (dense biomes) or Poisson samples (the rest) that get a group. A
+group is `{name, freq, any[] or sets[]}`:
+- `freq` is the group's weight within the biome, however many variants it has;
+- `any` lists single statics, `"0xHHHH"`, one picked per placement;
+- `sets` lists assemblies placed whole, each a list of `[id, x, y, z]` or `[id, x, y, z, hue]` (x, y
+  in −8..8, z in −64..64, relative to the origin cell).
+
+Ground-cover groups name no tree and hold no trunk or canopy: trees are Forest Scatter's.
+
 ### `presets` → `{"schema": "guo.mapgen.presets/1", "presets": [...]}`
+
+## 27. Multi styles, generator operations and the legacy formats (`tools/multi`)
+
+Section 16 describes what a multi is and how a description is built. This section is what the editor's
+Generate panel and the generators share. (If another branch also takes 27, renumber at merge.)
+
+**Style catalogue** (`guo.multi.styles/1`). Files: `tools/multi/styles/*.json` (hand-authored, committed,
+provenance in the file) and the user's own `build/multi/styles/*.json` (`run.py styles --mine`, mined from the
+client's multis, never committed); later files win. `{"format": "guo.multi.styles/1", "provenance", "styles":
+{key: style}}`. A style is keyed by piece role; ids are hex strings (or a list of variants, the first preferred):
+
+| Field | Meaning |
+|---|---|
+| `name`, `material`, `hues` | Display name, material family, allowed hues (empty: unrestricted) |
+| `z` | `floor` (7), `storey` (20), `wall` (19), `roof_step` (3), `stair_step` (5), `stair_block` (10) |
+| `walls`, `foundation`, `parapet`, `trim`, `gable_fill` | A **run set**: `height`, `EW` (along x, draws its cell's south edge), `NS` (along y, east edge), `post`, `corners` `{NW, NE, SW, SE}` (the corner's place on the building; NW is the back post, SE the front corner showing both faces), `junctions` `{EW, NS}`. A missing corner falls back to the straights, a missing post to the NW corner, each noted |
+| `windows[]` | Sets `{EW, NS}`; a house picks one by seed |
+| `doors` | `kind` (`wood`, `metal`, ...) -> `{type, EW: {closed, open}, NS: {closed, open}}`: real door ids with their open pairs, and the ModernUO door type for the sidecar |
+| `floors[]` | `{id, weight}` |
+| `roof` | `gable` `{N, S, E, W, ridge_x, ridge_y}`, `hip` `{NW, NE, SW, SE, cap}`, `flat` (an id), `eaves` (optional sides) |
+| `stairs` | `straight` `{N, E, S, W}` (the piece rising that way), `turned` (optional own pieces), `ladder` (optional id), `block` (the solid under a step) |
+
+**Operations** (`run.py house|autowall|roof|stairs|rotate|mirror|import|export|styles`, JSON via `--in`,
+`--json` or stdin, result to stdout or `--out`; `run.py serve` answers one request per line, `{"op": ..., ...}`).
+Every answer has `components` (`[item, x, y, z]`, a fifth element `0` when hidden), `notes`, `ms`, or `error`.
+Same parameters and seed, same bytes.
+
+- `autowall`: `style`, `path` (points; diagonals become stepped runs), `closed`, `z`, `storeys`, `window_every`,
+  `window_offset`, `door` (`{index|at, kind, storey}` or false), `existing` (cells already walls, for joins).
+  Also returns `doors` and `windows`.
+- `roof`: `style`, `kind` (`gable|hip|flat`), `boxes` (wall boxes, or `{box, z, ridge}`), `z`, `ridge`, `parapet`,
+  `fill`. Courses 3 z apart; a gable with an odd span is widened by one, with a note.
+- `stairs`: `style`, `at`, `rise`, `kind` (`straight|turned|ladder`), `turn` (`left|right`), `width`, `steps`, `z`,
+  `open` (box or cells the flight may stand on), `above` `{box, z, floor}`. Returns `holes` (cells the floor above
+  must leave open), `arrive`, `foot`; with `above` the floor above is laid with the hole cut.
+- `house`: `style`, `seed`, `shape` (`rect|L|T|U|cross`), `width`, `depth`, `storeys` (1-3), `rooms`, `roof`
+  (`gable|hip|flat|none`), `porch`, `balcony`, `windows`, `window_every`, `foundation`, `vary_wings`, `door`, `yard`.
+  Returns the section 16 `description` it expanded, the doors, `stops`, `centre`, and `problems` from the validator.
+- `rotate` (`turns` 1-3, clockwise seen from above) and `mirror` (`axis` `x`: east becomes west, `y`):
+  `components` in and out. Wall pieces move by edge, not cell (a mirrored east face is a west face, which is the next
+  cell's east edge); a corner drawing both faces splits into its straights. Ids come from `guo.multi.orient/1`
+  (`wall` `{id: {axis, ew, ns}}`, `map` `{rot90, mirror_x, mirror_y: {id: id}}`, `door_bases`), built from the styles,
+  and with `run.py orient-table` from the mined catalogue and tiledata names.
+- `import` / `export`: `format` is one of `txt` (UOFiddler and Ultima SDK text, `0xID x y z flags`), `uoa` (UO Architect
+  text, 4 header lines), `uoab` (UO Architect binary designs, version 1 or 2), `wsc`, `csv-punt`, `csv-swerv`,
+  `centred` (CentrED# `id,x,y,z,hue,flags`) and `uox3`. Import detects the format from the name and head and recentres.
+
+The validator (section 16) also refuses a roof with floor open to the sky, a door with nowhere to stand on a side, and
+a stair whose foot is unreachable, whose arrival is not floor above, whose hole is not cut, or that does not climb the
+gap between its storeys.
+## 28. Multi components description (`*.multi.json`, ADR-0031)
+
+The Multi Editor's own file, in `build/multi/edit/` (gitignored: it holds client-derived layouts).
+Unlike a §16 description, which a generator expands, this one lists the components themselves. It is
+diffable (one component per line) and keeps the hue, which a multi record cannot.
+
+| Field | Meaning |
+|---|---|
+| `format` | `1` |
+| `kind` | `"components"` |
+| `name` | The multi's name in a stage |
+| `source` | The client multi id it was opened from, or `null` |
+| `floor_z`, `storey_height` | `7` and `20`, the client's story heights |
+| `components` | `[item, x, y, z, shown, hue]` per component, in list order (the order breaks ties in painting): `item` and `hue` numbers, `shown` `1` or `0`, x/y from the centre |
+
+Writing it to a stage goes through the built form of §16 (`components.json`: `[item, x, y, z]` with a
+fifth element `0` when hidden, plus a `multi.json` with `valid`, `problems`, `doors`, `size`,
+`storeys`) and `tools/multi write`. The hue is not written.
+
+**Stamps.** The Multi Editor's stamps library (ADR-0031, phase 2) stores each stamp as a section 28 description, centred on
+its box, in `user://guo_multiedit_stamps/NAME.multi.json` (the user's GUO data folder; never the repo). A
+`NAME.recovery.multi.json` in `build/multi/edit/` is the same format, written when the editor closes with unsaved changes.

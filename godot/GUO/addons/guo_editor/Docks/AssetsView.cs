@@ -16,7 +16,7 @@ using Godot;
 [Tool]
 public partial class AssetsView : VBoxContainer
 {
-    public const string TabName = "UO Assets";
+    public const string TabName = "Assets";
 
     private readonly EditorData _data;
     private TabContainer _tabs;

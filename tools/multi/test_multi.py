@@ -396,6 +396,9 @@ def main() -> int:
         b.add(generate.NOTHING, 1, 0, 0)
         check(sorted(c.item for c in b.comps) == [0xA01, 0xA02], "both straights are placed; nothing places nothing")
 
+    import test_gen                               # styles, generators, rotate/mirror, formats
+    test_gen.run(check)
+
     print(f"test_multi: {'OK' if not FAILS else 'FAILED'} ({len(FAILS)} failing)")
     return 0 if not FAILS else 1
 

@@ -2,10 +2,10 @@ using System.Text.Json;
 
 namespace CentrED.MapGen.Data;
 
-// Loader for the LandBrush JSON produced by TransitionMiner (and compatible
-// with CentrED's LandBrush Manager). Used by LandTransitionPass to look up
-// the right tile for a given (selfBiome, otherBiome, dirMask) triple instead
-// of relying on hardcoded id ranges.
+// The brush engine's transition table. Loads GUO's own table (guo.mapgen.transitions/1, see
+// GuoTransitionTable; the default) or a LandBrush JSON in the CentrED/Dragon layout (the user's
+// optional Dragon import). Used by LandTransitionPass to look up the right tile for a given
+// (selfBiome, otherBiome, dirMask) triple instead of relying on hardcoded id ranges.
 //
 // HashKey9 (optional, F-1): 9-byte string of biome group codes for the 3x3
 // neighbourhood (NW N NE W C E SW S SE), matching uo-landscaper-mod's format.
@@ -29,7 +29,20 @@ public sealed class LandBrushTable
         public byte Direction;
         public string? HashKey9;     // optional 9-cell biome-group hex (18 chars), e.g. "010118181801181818"
         public sbyte AltIDMod;       // optional z offset (Norad-compatible); 0 if absent
+        public int Weight = 1;       // relative frequency among the entries that fit a mask (GUO tables)
     }
+
+    /// <summary>"guo" for GUO's own table, "dragon" for a LandBrush JSON, "" for an empty table.</summary>
+    public string Source { get; init; } = "";
+
+    /// <summary>"Owner>Other" to the material an owner cell facing the other becomes when no tile fits (GUO tables).</summary>
+    public Dictionary<string, string> Via { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>"Owner>Other" pairs that need no edge tile at all (sand against water).</summary>
+    public HashSet<string> Plain { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>"Owner>Other" to shape direction to the most an edge cell moves toward the other side's height.</summary>
+    public Dictionary<string, Dictionary<byte, sbyte>> EdgeZ { get; } = new(StringComparer.OrdinalIgnoreCase);
 
     public Dictionary<string, Brush> Brushes { get; } = new(StringComparer.OrdinalIgnoreCase);
 
@@ -37,31 +50,30 @@ public sealed class LandBrushTable
 
     public static LandBrushTable Empty { get; } = new();
 
-    /// <summary>
-    /// Repo-relative path of a brush table shipped in the repo (DragonMod rules import). GUO does not
-    /// ship one until the owner clears Dragon's terms (docs/upstream/mapgen.md); the user's own import
-    /// lives in the data folder (<see cref="DataJsonRelativePath"/>).
-    /// </summary>
-    public const string DefaultJsonRelativePath = "tools/mapgen/MapGen/presets/landbrush.dragon.json";
-
-    /// <summary>The user's Dragon import in the generator data folder (UO_MAPGEN_DATA/landbrush.dragon.json).</summary>
+    /// <summary>The user's optional Dragon import in the generator data folder (UO_MAPGEN_DATA/landbrush.dragon.json).
+    /// Used only when asked for (<c>guo-mapgen run --brushes dragon</c>); GUO ships none (docs/upstream/mapgen.md).</summary>
     public const string DataJsonRelativePath = "mined/landbrush.dragon.json";
 
-    /// <summary>Loads the user's import, else a shipped table; <see cref="Empty"/> when neither exists.</summary>
-    public static LandBrushTable LoadDefault()
+    /// <summary>The default table: the user's resolved GUO table when <c>prepare --measure</c> wrote one, else the committed GUO table.</summary>
+    public static string DefaultPath()
     {
-        string user = RepoRootResolver.Resolve(DataJsonRelativePath);
-        return LoadOrEmpty(File.Exists(user) ? user : RepoRootResolver.Resolve(DefaultJsonRelativePath));
+        string resolved = RepoRootResolver.Resolve(GuoTransitionTable.ResolvedRelativePath);
+        return File.Exists(resolved) ? resolved : RepoRootResolver.Resolve(GuoTransitionTable.RelativePath);
     }
 
+    /// <summary>Loads <see cref="DefaultPath"/>.</summary>
+    public static LandBrushTable LoadDefault() => LoadOrEmpty(DefaultPath());
+
+    /// <summary>Loads a GUO table or a LandBrush (Dragon layout) JSON; <see cref="Empty"/> when missing or unreadable.</summary>
     public static LandBrushTable LoadOrEmpty(string? path)
     {
         if (string.IsNullOrEmpty(path) || !File.Exists(path)) return Empty;
         try
         {
+            if (GuoTransitionTable.IsGuoTable(path)) return GuoTransitionTable.Load(path).ToBrushTable();
             using var fs = File.OpenRead(path);
             using var doc = JsonDocument.Parse(fs);
-            var t = new LandBrushTable();
+            var t = new LandBrushTable { Source = "dragon" };
             foreach (var bp in doc.RootElement.EnumerateObject())
             {
                 if (bp.Name.StartsWith("_")) continue; // skip provenance / metadata fields
@@ -105,16 +117,11 @@ public sealed class LandBrushTable
 
     // Returns a tile id for the given transition, or 0 if no entry covers the mask.
     // Picks the entry with the smallest direction-bit-count that fully contains the
-    // requested mask — same algorithm as CentrED's TryGetMinimalTransition.
+    // requested mask — same algorithm as CentrED's TryGetMinimalTransition — by weight.
     public ushort PickTransitionTile(string self, string other, byte mask, Random rng)
     {
-        if (!Brushes.TryGetValue(self, out var brush)) return 0;
-        if (!brush.Transitions.TryGetValue(other, out var list) || list.Count == 0) return 0;
-        var matched = list.Where(t => (t.Direction & mask) == mask).ToList();
-        if (matched.Count == 0) return 0;
-        int minPop = matched.Min(t => PopCount(t.Direction));
-        var best = matched.Where(t => PopCount(t.Direction) == minPop).ToArray();
-        return best[rng.Next(best.Length)].TileID;
+        var c = Lookup(self, other)?[mask];
+        return c is { Length: > 0 } ? c[rng.Next(c.Length)] : (ushort)0;
     }
 
     // Deterministic variant of PickTransitionTile: chooses among the equally-minimal
@@ -135,7 +142,8 @@ public sealed class LandBrushTable
     private readonly Dictionary<(string, string), ushort[]?[]?> _lookups = new();
 
     // Per-pair table: for each 8-bit mask, the tile ids of the minimal-popcount entries
-    // whose Direction is a superset of the mask (CentrED's TryGetMinimalTransition).
+    // whose Direction is a superset of the mask (CentrED's TryGetMinimalTransition), each
+    // repeated by its weight (an id listed twice keeps its largest weight; weight 1 = once).
     // null = pair absent. Built once per pair.
     public ushort[]?[]? Lookup(string self, string other)
     {
@@ -151,14 +159,22 @@ public sealed class LandBrushTable
                 {
                     int best = int.MaxValue;
                     var ids = new List<ushort>();
+                    var weights = new List<int>();
                     foreach (var t in list)
                     {
                         if ((t.Direction & mask) != mask) continue;
                         int pc = PopCount(t.Direction);
-                        if (pc < best) { best = pc; ids.Clear(); }
-                        if (pc == best && !ids.Contains(t.TileID)) ids.Add(t.TileID);
+                        if (pc < best) { best = pc; ids.Clear(); weights.Clear(); }
+                        if (pc != best) continue;
+                        int at = ids.IndexOf(t.TileID);
+                        if (at < 0) { ids.Add(t.TileID); weights.Add(Math.Max(1, t.Weight)); }
+                        else weights[at] = Math.Max(weights[at], t.Weight);
                     }
-                    lut[mask] = ids.Count > 0 ? ids.ToArray() : null;
+                    if (ids.Count == 0) { lut[mask] = null; continue; }
+                    var pick = new List<ushort>();
+                    for (int k = 0; k < ids.Count; k++)
+                        for (int w = 0; w < weights[k]; w++) pick.Add(ids[k]);
+                    lut[mask] = pick.ToArray();
                 }
             }
             _lookups[(self, other)] = lut;

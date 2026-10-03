@@ -361,8 +361,10 @@ public class StampSystemTests
             Assert.InRange(i, 0, validator - 1);
             Assert.False(steps[i].Enabled, n + " must be opt-in: it changes every preset's look");
         }
-        Assert.IsType<StaticResnapPass>(steps[^1].Pass);
-        Assert.True(steps[^1].Enabled);
+        // Resnap is the last pass that moves heights or statics; only Shallows (land ids only) follows it.
+        var resnap = steps.Single(s => s.Pass is StaticResnapPass);
+        Assert.True(resnap.Enabled);
+        Assert.All(steps.Skip(steps.IndexOf(resnap) + 1), s => Assert.Equal(IrFields.LandId, s.Pass.Writes));
     }
 
     // ------------------------------------------------------------------ POIs

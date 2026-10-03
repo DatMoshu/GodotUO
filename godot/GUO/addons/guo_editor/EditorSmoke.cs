@@ -374,7 +374,7 @@ public partial class EditorSmoke : Node
                     _world.ForcedMouse = null;
                     _world.Tool = WorldTool.Select;
                     _editReport["ok"] = !_editReport.ContainsKey("failed");
-                    _stage = 9;
+                    _stage = 66;
                 }
                 else if (_frames >= _steps[_step].Wait)
                 {
@@ -389,6 +389,15 @@ public partial class EditorSmoke : Node
 
                     _step++;
                     _frames = 0;
+                }
+
+                break;
+
+            case 66:
+                // The Multi Editor (ADR-0031), with the World up for the selection and the preview.
+                if (StepMultiEdit(delta))
+                {
+                    _stage = 9;
                 }
 
                 break;

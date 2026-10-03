@@ -27,6 +27,18 @@ public partial class MultiPanel : GridPanel
 {
     private List<int> _ids;
 
+    /// <summary>Opens a multi in the Multi Editor (set by the plugin; ADR-0031).</summary>
+    public static Action<int> EditRequested { get; set; }
+
+    /// <summary>Lists the multis the Multi Editor wrote to a stage as well, after a write.</summary>
+    public void RefreshIds()
+    {
+        _ids = null;
+        OnAssetsChanged();
+    }
+
+    protected override void ForgetIds() => _ids = null;
+
     public override string SmokeQuery => "0x0064";
 
     protected override int IconSize => 0;
@@ -51,6 +63,20 @@ public partial class MultiPanel : GridPanel
                 {
                 }
             }
+        }
+
+        if (MultiLoader.EditorOverlay != null)
+        {
+            // Multis written to a stage this session (PORT DEVIATION hook in MultiLoader).
+            foreach (uint staged in MultiLoader.EditorOverlay.Keys)
+            {
+                if (!_ids.Contains((int)staged))
+                {
+                    _ids.Add((int)staged);
+                }
+            }
+
+            _ids.Sort();
         }
 
         return _ids;
@@ -78,7 +104,13 @@ public partial class MultiPanel : GridPanel
             sb.Append($"  0x{group.Key:X4} x{group.Count()}  {Data.NameOf(index)}\n");
         }
 
-        return Inspection.Still("Multis", $"0x{id:X4}", composite, sb.ToString());
+        Inspection ins = Inspection.Still("Multis", $"0x{id:X4}", composite, sb.ToString());
+        if (EditRequested != null)
+        {
+            ins.Actions.Add(("Edit in Multi Editor", () => EditRequested(id)));
+        }
+
+        return ins;
     }
 
     /// <summary>The composite for a multi id, or null. Also the Parity panel's GUO side.</summary>
@@ -90,22 +122,30 @@ public partial class MultiPanel : GridPanel
     /// (the sort key); within one tile, a Multi of equal priority is inserted
     /// before the existing ones, so later list entries paint first.
     /// </summary>
-    internal static List<MultiInfo> ClientOrder(EditorData data, List<MultiInfo> parts)
+    internal static List<MultiInfo> ClientOrder(EditorData data, List<MultiInfo> parts) =>
+        ClientOrderOf(data, parts, p => (p.ID, p.X, p.Y, p.Z, p.IsVisible));
+
+    /// <summary>
+    /// <see cref="ClientOrder"/> for any part type (the Multi Editor's canvas shares this one sort):
+    /// <paramref name="key"/> gives a part's id, x, y, z and whether it is shown.
+    /// </summary>
+    internal static List<T> ClientOrderOf<T>(EditorData data, IList<T> parts, Func<T, (int Id, int X, int Y, int Z, bool Visible)> key)
     {
         StaticTiles[] tiles = data.Files.TileData.StaticData;
-        var keyed = new List<(MultiInfo p, float depth, int seq)>();
+        var keyed = new List<(T p, int x, int y, float depth, int seq)>();
         for (int i = 0; i < parts.Count; i++)
         {
-            MultiInfo p = parts[i];
-            if (!p.IsVisible)
+            T p = parts[i];
+            (int id, int px, int py, int z, bool visible) = key(p);
+            if (!visible)
             {
                 continue;
             }
 
-            int pz = p.Z;
-            if (p.ID < tiles.Length)
+            int pz = z;
+            if (id < tiles.Length)
             {
-                StaticTiles t = tiles[p.ID];
+                StaticTiles t = tiles[id];
                 if (t.IsBackground)
                 {
                     pz--;
@@ -122,7 +162,7 @@ public partial class MultiPanel : GridPanel
                 }
             }
 
-            keyed.Add((p, (p.X + p.Y) + (127 + pz) * 0.01f, i));
+            keyed.Add((p, px, py, (px + py) + (127 + pz) * 0.01f, i));
         }
 
         // Depth first; equal depth keeps the render list's order, which on a
@@ -135,12 +175,12 @@ public partial class MultiPanel : GridPanel
                 return c;
             }
 
-            if (a.p.X == b.p.X && a.p.Y == b.p.Y)
+            if (a.x == b.x && a.y == b.y)
             {
                 return b.seq.CompareTo(a.seq);
             }
 
-            c = a.p.Y.CompareTo(b.p.Y);
+            c = a.y.CompareTo(b.y);
             return c != 0 ? c : a.seq.CompareTo(b.seq);
         });
         return keyed.Select(k => k.p).ToList();

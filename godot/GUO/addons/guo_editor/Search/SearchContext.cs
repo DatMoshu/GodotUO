@@ -21,6 +21,7 @@ public sealed class SearchContext
     public AiDock Ai;
     public StoreView Store;
     public LogsDock Logs;
+    public MultiEditView MultiEdit;
     public EditorPlugin Plugin;
 
     /// <summary>Brings the World tab forward at a cell (the plugin's own method).</summary>

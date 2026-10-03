@@ -6,9 +6,13 @@
 //   guo-mapgen run     --out DIR [--preset P] [--seed N] [--width W --height H | --size N]
 //                      [--set "Pass.Key=value"]... [--disable "Pass"]... [--enable "Pass"]...
 //                      [--fast] [--step-previews] [--preview-max N] [--client-data DIR]
+//                      [--brushes guo|guo-core|dragon|FILE]
 //   guo-mapgen export  --run DIR [--facet N] [--client-data DIR]
 //   guo-mapgen presets
-//   guo-mapgen prepare [--dragon DIR [--out FILE]] [--landscaper DIR]   map-tool data from the user's own copies
+//   guo-mapgen prepare [--dragon DIR [--out FILE]] [--landscaper DIR] [--measure [--client-data DIR]]
+//                      map-tool data from the user's own copies; --measure mines their own Felucca
+//                      and resolves GUO's transition table against it
+//   guo-mapgen coverage                                 what each transition table can draw (counts only)
 
 using System.Text.Json;
 using GuoMapGen;
@@ -34,8 +38,10 @@ try
             return ExportCommand.Execute(a, json);
         case "prepare":
             return PrepareCommand.Execute(a, json);
+        case "coverage":
+            return CoverageCommand.Execute(a, json);
         default:
-            json.Event("error", new() { ["message"] = $"unknown command '{a.Command}'. Commands: schema, presets, run, export, prepare" });
+            json.Event("error", new() { ["message"] = $"unknown command '{a.Command}'. Commands: schema, presets, run, export, prepare, coverage" });
             return 2;
     }
 }
@@ -83,11 +89,11 @@ namespace GuoMapGen
         private readonly HashSet<string> _flags = new(StringComparer.OrdinalIgnoreCase);
 
         private static readonly HashSet<string> FlagNames = new(StringComparer.OrdinalIgnoreCase)
-            { "fast", "step-previews", "progress-json" };
+            { "fast", "step-previews", "progress-json", "measure" };
 
         public static Args Parse(string[] argv)
         {
-            if (argv.Length == 0) throw new CliError("no command. Commands: schema, presets, run, export, prepare");
+            if (argv.Length == 0) throw new CliError("no command. Commands: schema, presets, run, export, prepare, coverage");
             var a = new Args { Command = argv[0].ToLowerInvariant() };
             for (int i = 1; i < argv.Length; i++)
             {

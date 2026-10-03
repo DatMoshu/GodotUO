@@ -43,6 +43,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
     private GumpStudio _gumps;
     private bool _gumpsWasVisible;
     public static GumpStudio GumpsMain { get; private set; }
+    private MultiEditView _multiedit;
     private SearchPopup _search;
 
     // Whether the World tab was on screen when an assembly reload began.
@@ -53,6 +54,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
     private bool _assetsWasVisible;
     private bool _storeWasVisible;
     private bool _mapgenWasVisible;
+    private bool _multieditWasVisible;
 
     private const string ResetMenuLabel = "Reset GUO layout";
 
@@ -65,7 +67,10 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
     /// <summary>The Map Generator view, for <see cref="GuoMapGenPlugin"/> to show and hide with its tab.</summary>
     public static MapGenView MapGenMain { get; private set; }
 
-    public const string WorldTabName = "UO World";
+    /// <summary>The Multi Editor view, for <see cref="GuoMultiEditPlugin"/> to show and hide with its tab.</summary>
+    public static MultiEditView MultiEditMain { get; private set; }
+
+    public const string WorldTabName = "World";
 
     public override bool _HasMainScreen() => true;
 
@@ -174,6 +179,23 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         _mapgen.Visible = _mapgenWasVisible;
         _mapgenWasVisible = false;
 
+        // The Multi Editor (ADR-0031): a main-screen tab (GuoMultiEditPlugin owns its button).
+        _multiedit = new MultiEditView(_data)
+        {
+            AfterWrite = AfterMultiWrite,
+            PreviewInWorld = PreviewMultiInWorld,
+        };
+        MultiEditMain = _multiedit;
+        EditorInterface.Singleton.GetEditorMainScreen().AddChild(_multiedit);
+        _multiedit.Visible = _multieditWasVisible;
+        _multieditWasVisible = false;
+        MultiPanel.EditRequested = OpenInMultiEditor;
+        _world.AreaToMulti = (name, parts) =>
+        {
+            ShowMultiEditor();
+            _multiedit?.GuardUnsaved(() => _multiedit.OpenParts(name, parts));
+        };
+
         // Start server, start clients: on the toolbar, always one click away.
         _run = new RunBar();
         AddControlToContainer(CustomControlContainer.Toolbar, _run);
@@ -196,6 +218,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         searchContext.Ai = _ai;
         searchContext.Store = _store;
         searchContext.Logs = _logs;
+        searchContext.MultiEdit = _multiedit;
         _search = SearchPopup.Install(searchContext);
         _ai.UseTools(searchContext, () => _search?.Index);
         _ai.Hub.SelectionImage = () => _inspector?.Current?.Image;
@@ -222,6 +245,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
             _smoke.Store = _store;
             _smoke.Art = _art;
             _smoke.Logs = _logs;
+            _smoke.MultiEdit = _multiedit;
             AddChild(_smoke);
         }
 
@@ -295,6 +319,41 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         _world?.OpenProject(root);
     }
 
+    /// <summary>Brings the Multi Editor tab forward.</summary>
+    public void ShowMultiEditor()
+    {
+        EditorInterface.Singleton.SetMainScreenEditor(MultiEditView.TabName);
+        if (_multiedit != null)
+        {
+            _multiedit.Visible = true;
+        }
+    }
+
+    /// <summary>Opens a client multi in the Multi Editor (the Multis panel's button, F3).</summary>
+    private void OpenInMultiEditor(int id)
+    {
+        ShowMultiEditor();
+        _multiedit?.GuardUnsaved(() => _multiedit.OpenClientMulti(id));
+    }
+
+    /// <summary>After a write to a stage: the Multis panel lists the new multi without a restart.</summary>
+    private void AfterMultiWrite(SaveResult result)
+    {
+        _assets?.Panel<MultiPanel>()?.RefreshIds();
+    }
+
+    private void PreviewMultiInWorld(int id)
+    {
+        if (_world == null || !_world.PreviewMulti(id))
+        {
+            SearchContext.Toast("Open the World tab once so it can place the multi.", EditorToaster.Severity.Warning);
+            return;
+        }
+
+        EditorInterface.Singleton.SetMainScreenEditor(WorldTabName);
+        _world.Visible = true;
+    }
+
     private void TearDown()
     {
         // Save recovery before StoreView clears System.Text.Json's process-wide type caches.
@@ -308,6 +367,18 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
             _gumps = null;
             GumpsMain = null;
         }
+        if (_multiedit != null)
+        {
+            // Frees the canvas textures and drops the loader overlay before a reload.
+            _multieditWasVisible = _multiedit.Visible;
+            _multiedit.Shutdown();
+            MultiPanel.EditRequested = null;
+            _multiedit.GetParent()?.RemoveChild(_multiedit);
+            _multiedit.QueueFree();
+            _multiedit = null;
+            MultiEditMain = null;
+        }
+
         if (_mapgen != null)
         {
             // Stops a generator run in progress before a reload.

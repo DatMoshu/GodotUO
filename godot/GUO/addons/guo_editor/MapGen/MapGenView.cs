@@ -22,7 +22,7 @@ using Godot;
 [Tool]
 public partial class MapGenView : VBoxContainer
 {
-    public const string TabName = "Map Generator";
+    public const string TabName = "MapGen";
 
     /// <summary>Opens a world project in the World tab and shows a cell there: (root, facet, x, y).</summary>
     public Action<string, int, int, int> OpenInWorld;

@@ -316,6 +316,14 @@ def main() -> int:
               f"dock agent + permission dialog + chat + queue tab, children killed")
         for k in bad:
             print(f"[editor_smoke]        failed: {k}")
+    multiedit = report.get("multiedit") or {}
+    if multiedit:
+        checks = [k for k, v in multiedit.items() if v is True or v is False]
+        bad = [k for k in checks if multiedit[k] is False]
+        print(f"[editor_smoke]   {'ok  ' if multiedit.get('ok') else 'FAIL'} MultiEdit  {len(checks) - len(bad)}/{len(checks)} checks: "
+              f"opened {multiedit.get('parts_opened')} parts, {multiedit.get('palette_groups')} palette groups, bad edit flags "
+              f"[{multiedit.get('bad_findings')}], staged as multi {multiedit.get('multi_id')} read back equal, "
+              f"world selection {multiedit.get('world_selection_statics')} statics")
     mapgen = report.get("mapgen") or {}
     if mapgen:
         checks = [k for k, v in mapgen.items() if v is True or v is False]

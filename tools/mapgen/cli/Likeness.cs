@@ -9,18 +9,27 @@ namespace GuoMapGen;
 /// </summary>
 public static class Likeness
 {
-    // Felucca main continent, measured 2026-10-02 (land only). Classes here come from the tile
-    // tables, so they line up with the analyzer's only roughly.
+    // Felucca's surface (map 0, 5120x4096), measured 2026-10-03 by this card's own rules: the seabed is
+    // water, as below. Classes come from the tile tables, so they line up with the analyzer's only roughly.
     public static readonly Dictionary<string, double> Felucca = new()
     {
-        ["z0_share"] = 0.559,
-        ["forest"] = 0.355,
-        ["grass"] = 0.249,
-        ["sand"] = 0.030,
-        ["rock"] = 0.098,
-        ["jungle"] = 0.065,
-        ["shore_sand"] = 0.312,
+        ["z0_share"] = 0.628,
+        ["forest"] = 0.360,
+        ["grass"] = 0.264,
+        ["sand"] = 0.013,
+        ["rock"] = 0.109,
+        ["jungle"] = 0.064,
+        ["shore_sand"] = 0.830,
     };
+
+    /// <summary>
+    /// Felucca's shallows: land tiles (light ring 0x4C-0x57, mid ring 0x58-0x63, flat bed 0x64) dug 10 below
+    /// the water statics. The card counts them as water, so the coast it measures is the dry shore.
+    /// </summary>
+    public static bool IsSeabed(ushort id) => id is >= 0x4C and <= 0x64;
+
+    /// <summary>Shore sand: the beach pool or the sand edge tiles (0x1A-0x4B: rippled sand and sand against grass).</summary>
+    public static bool IsShoreSand(ushort id, HashSet<ushort> beach) => beach.Contains(id) || id is >= 0x1A and <= 0x4B;
 
     public static Dictionary<string, object?> Measure(GenIR ir)
     {
@@ -48,8 +57,12 @@ public static class Likeness
 
         var water = new HashSet<ushort>(ir.Tables.Water.Concat(ir.Tables.River)) { 0xA8, 0xA9, 0xAA, 0xAB, 0x136, 0x137 };
         int w = ir.Width, h = ir.Height, n = w * h;
-        bool IsWater(int i) => water.Contains(land[i])
+        var beach = new HashSet<ushort>(ir.Tables.Beach);
+        bool IsWater(int i) => water.Contains(land[i]) || IsSeabed(land[i])
             || (ir.Biome is { } b && (b[i] == (byte)BiomeId.DeepWater || b[i] == (byte)BiomeId.ShallowWater));
+        // The coast is the sea's: Felucca draws almost no rivers in land tiles, so its shore share is a
+        // sea-coast share, and the generator's river banks are left out of it.
+        bool IsSea(int i) => IsWater(i) && !(ir.Biome is { } b && b[i] == (byte)BiomeId.River);
 
         var counts = new Dictionary<string, int>();
         int landCells = 0, z0 = 0, shore = 0, shoreSand = 0;
@@ -67,9 +80,9 @@ public static class Likeness
             for (int dx = -1; dx <= 1 && !coast; dx++)
             {
                 int nx = x + dx, ny = y + dy;
-                if ((dx | dy) != 0 && nx >= 0 && ny >= 0 && nx < w && ny < h && IsWater(ny * w + nx)) coast = true;
+                if ((dx | dy) != 0 && nx >= 0 && ny >= 0 && nx < w && ny < h && IsSea(ny * w + nx)) coast = true;
             }
-            if (coast) { shore++; if (cls == "sand") shoreSand++; }
+            if (coast) { shore++; if (IsShoreSand(land[i], beach)) shoreSand++; }
         }
 
         double Share(string c) => landCells == 0 ? 0 : counts.GetValueOrDefault(c) / (double)landCells;

@@ -38,7 +38,7 @@ public class SeamAndStaticRuleTests
         Assert.True(StampSeams.IsAvailable, "StampSeams cannot see LandTransitionPass.RunOnMask");
     }
 
-    [BrushFact]
+    [Fact]
     public void RunOnMask_GivesAStampedCobblePatchRoadEdges_AndLeavesTheRestAlone()
     {
         var ir = GrassMap();
@@ -72,7 +72,7 @@ public class SeamAndStaticRuleTests
         }
     }
 
-    [BrushFact]
+    [Fact]
     public void RunOnMask_StampedSandBlendsIntoGrass()
     {
         var ir = GrassMap();

@@ -8,9 +8,9 @@ writes legacy MUL map files. The owner wrote it as an addition to a CentrED# for
 | Folder | What |
 |---|---|
 | `MapGen/` | The generator library (`GUO.MapGen`, net8.0). Namespaces stay `CentrED.MapGen.*` |
-| `MapGen/presets/` | Presets (`*.preset.json`) and the tile tables |
-| `MapGen/Mining/` | The owner's importer for Dragon's transition rules (`prepare`) |
-| `MapGen.Tests/` | 224 tests: determinism, terrain invariants, coasts, transitions, stamps, the MUL writer, the Dragon importer. The 16 that need the brush table skip without it |
+| `MapGen/presets/` | Presets (`*.preset.json`), the tile tables, GUO's transition table (`transitions.guo.json`) and scatter table (`scatter.guo.json`) |
+| `MapGen/Mining/` | The owner's importer for Dragon's transition rules (`prepare --dragon`, optional) |
+| `MapGen.Tests/` | 263 tests: determinism, terrain invariants, coasts, the transition and scatter tables, stamps, the MUL writer, the Dragon importer. None needs local data |
 | `cli/` | `guo-mapgen`, the command-line front end the editor's Map Generator tab runs |
 | `data/` | Shipped data: the dungeon roster and decor table (hand-written by the owner) |
 | `run.py` | Builds the CLI into `build/mapgen/cli` on first use and runs it with the config's paths |
@@ -18,15 +18,16 @@ writes legacy MUL map files. The owner wrote it as an addition to a CentrED# for
 ## Use
 
 ```
-python tools\mapgen\run.py prepare --dragon <your Dragon folder> --landscaper <your UO Landscaper folder>
+python tools\mapgen\run.py prepare --measure
+python tools\mapgen\run.py prepare --landscaper <your UO Landscaper folder>
 python tools\mapgen\run.py schema
 python tools\mapgen\run.py run --out build\mapgen\runs\try1 --size 1024 --seed 42 --step-previews
 python tools\mapgen\run.py export --run build\mapgen\runs\try1
 dotnet test tools\mapgen\MapGen.Tests\GUO.MapGen.Tests.csproj
 ```
 
-- **Commands.** `schema`, `presets`, `run`, `export` and `prepare`, and the run folder's files, are specified in
-  `docs/data_formats.md` §26.
+- **Commands.** `schema`, `presets`, `run`, `export`, `prepare` and `coverage`, the run folder's files and
+  the transition table are specified in `docs/data_formats.md` §26.
 - **Fresh folders only.** Every run writes to a fresh folder. `export` regenerates the map and writes
   `export/map/map0.mul`, `staidx0.mul` and `statics0.mul` only when the hash matches the run. Then it
   reads every cell back.
@@ -34,21 +35,36 @@ dotnet test tools\mapgen\MapGen.Tests\GUO.MapGen.Tests.csproj
 - **Default preset: `felucca-stage18`,** the current Felucca-calibrated candidate (measured against
   Felucca's main continent). Keep its mountain and road heights as they are.
 
+## The transition table
+
+**`MapGen/presets/transitions.guo.json`** is GUO's own table of tile transitions between biomes, and
+the default. It holds what we author: which side owns each edge, a core tile family per pair
+(14 pairs, all 12 edge shapes each), bridges where Britannia puts a material between two others (sand
+between grass and water, grass between forest and sand), rock-lip heights and notes. How its ids were
+chosen is in `docs/upstream/mapgen.md`.
+
+`run.py prepare --measure` measures your own Felucca and writes a resolved copy with the variants your
+client uses into `UO_MAPGEN_DATA`; the generator prefers it. `run.py coverage` compares the tables you
+have, in counts.
+
+## The scatter table
+
+**`MapGen/presets/scatter.guo.json`** is GUO's own table of what grows on each biome's ground (grass,
+flowers, ferns, rocks, mushrooms, logs, jungle plants, cacti, swamp plants) and which tree trunk takes
+which canopy. Biome Static Scatter reads it by default (*Catalogue* `guo`); Forest Scatter pairs
+trunks with it when there is no `tree-statics.json`. How it was made is in `docs/upstream/mapgen.md`.
+
 ## Data that is not here
 
-**The land brush table** (`landbrush.dragon.json`) holds the tile transitions between biomes. It is
-converted from the rule files of the community map tool Dragon, whose terms are unverified, so GUO does
-not ship it. Build it once from your own Dragon copy (a Dragon folder, or its `Scripts/map`) with
-`run.py prepare --dragon DIR`. It goes into `UO_MAPGEN_DATA`. Without it, biome borders stay hard
-edges, and Land Transitions says so in its warnings. For tests, `MAPGEN_BRUSH_TABLE` can point at a
-table anywhere.
+**Dragon's transition rules** (`landbrush.dragon.json`) are optional. GUO does not ship them (their
+terms are unverified). `run.py prepare --dragon DIR` converts your own copy into `UO_MAPGEN_DATA`;
+`run --brushes dragon` then uses it, and `coverage` compares against it.
 
-**UO Landscaper's statics and transitions** feed Biome Static Scatter's default catalogue, the
-trunk/canopy pairing when there is no `tree-statics.json`, and Swamp Surface. norad32's MIT mod began by
-importing the closed original's data, and most of these files trace to it
-(`docs/upstream/mapgen.md`), so GUO does not ship them either. Copy them from your own copy with
-`run.py prepare --landscaper DIR`. Without them those passes warn and skip; land and heights do not
-change.
+**UO Landscaper's statics and transitions** are optional. Biome Static Scatter reads them when its
+*Catalogue* names `mined/landscaper-statics`, and Swamp Surface when its *Transition catalogue* names
+`mined/landscaper-transitions`; by default both use GUO's own tables. norad32's MIT mod began by
+importing the closed original's data, and most of these files trace to it (`docs/upstream/mapgen.md`),
+so GUO does not ship them. Copy them from your own copy with `run.py prepare --landscaper DIR`.
 
 Some passes read data mined from a user's own client files. GUO never ships it either:
 - the stamp library (`mined/stamps`);
@@ -57,7 +73,7 @@ Some passes read data mined from a user's own client files. GUO never ships it e
 
 Those paths resolve into the per-user data folder, `UO_MAPGEN_DATA` (default `%LOCALAPPDATA%\GUO\mapgen`),
 which the CLI receives as `MAPGEN_DATA_DIR`. Without the data, those passes warn and fall back: no
-stamps, and coasts keep the brush transitions. A "Prepare generator data" step that mines it from
+stamps, and coasts keep the table's transitions. A "Prepare generator data" step that mines it from
 `UO_CLIENT_DATA` is planned (ADR-0030). The validator's reports go to the same folder.
 
 ## The editor tab
@@ -80,6 +96,14 @@ images after a Gemini review; tune the generator against them:
    valleys inside it. Change only the range shape: the owner's mountain and road heights stay.
 3. **Rivers run dead straight** along mountain feet for long stretches, on diagonals.
 4. **Land runs off the map edge** on the left, right and bottom.
-5. **No beaches:** `shore_sand` measured 0%, against 31% in Felucca. The coast atlas is mined data,
-   and it was absent here. Expect this until the "Prepare generator data" step exists.
-6. **Too flat:** 65% of land is at z 0, against 56% in Felucca.
+5. **Beaches (fixed 2026-10-03):** the card counted Felucca's seabed as land, so its 31% coast sand
+   measured the seabed. Counted as water, Felucca's dry coast is 83% sand and the generator's 91%. The
+   Shallows pass now shapes the seabed as Felucca does and ripples the waterline sand.
+6. **Too flat:** 66% of land is at z 0, against 63% in Felucca (counting the seabed as water).
+7. **Too much sand (fixed 2026-10-03):** sand was 2.8% of land against Felucca's 1.3%. Over half of
+   it lined the rivers: the grass-to-water bridge put a sand cell on every river bank, and Felucca
+   draws almost no rivers in land tiles and no sand along them. `Land Transitions.RiverBankDirt` (on
+   in felucca-stage18) makes those banks dirt, edged into the grass as roads are; the desert threshold
+   drops from 6 to 4, leaving desert at about 0.5% of land, as Felucca's deep-inland sand is. Sand is
+   now 1.25%. What remains above Felucca is rippled waterline sand: Felucca often puts the grass/sand
+   edge tile right on the waterline, where the generator keeps a sand cell between.

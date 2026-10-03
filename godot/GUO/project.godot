@@ -35,7 +35,7 @@ project/assembly_name="GUO"
 
 [editor_plugins]
 
-enabled=PackedStringArray("res://addons/guo_editor/plugin.cfg", "res://addons/guo_editor_assets/plugin.cfg", "res://addons/guo_editor_store/plugin.cfg", "res://addons/guo_editor_mapgen/plugin.cfg", "res://addons/guo_editor_gumps/plugin.cfg")
+enabled=PackedStringArray("res://addons/guo_editor/plugin.cfg", "res://addons/guo_editor_assets/plugin.cfg", "res://addons/guo_editor_store/plugin.cfg", "res://addons/guo_editor_mapgen/plugin.cfg", "res://addons/guo_editor_multiedit/plugin.cfg", "res://addons/guo_editor_gumps/plugin.cfg")
 
 [input_devices]
 

@@ -33,7 +33,7 @@ public class PresetSmokeTests
             yield return new object[] { Path.GetFileName(f) };
     }
 
-    [BrushTheory]
+    [Theory]
     [MemberData(nameof(PresetFiles))]
     public void Preset_RunsWithoutThrowing_AndProducesABiomeDistribution(string presetFile)
     {

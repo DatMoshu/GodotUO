@@ -37,6 +37,7 @@ public static class DefaultPipeline
         "Town Stamps",
         "Reference Coast",
         "Swamp Surface",
+        "Shallows",
     };
 
     // Canonical pass order. UI lets users toggle individual steps; reordering within a category
@@ -84,6 +85,8 @@ public static class DefaultPipeline
             new TownStampPass(),                   // library town stamps inside Town footprints (disabled by default)
             new MapValidatorPass(),
             new StaticResnapPass(),                // last: moves occupancy-recorded statics by the validator's land-Z changes, drops duplicates
+            new ShallowsPass(),                    // after everything: Felucca's seabed shapes under Dig Shore's water, rippled sand on the
+                                                   // waterline. Land ids only; appended so no earlier step's RNG stream moves.
         }
         .Select(p => new PipelineStep
         {

@@ -14,8 +14,8 @@ public sealed class BiomeStaticScatterParams
     [TunableDisplay("Biome chance overrides", Tooltip = "Optional percentages, e.g. Forest=30,Grassland=6. Applies before density multiplier.")]
     public string ChanceOverridesCsv { get; set; } = "";
 
-    [TunableDisplay("Catalogue path", Tooltip = "Norad-style XML root. Default: the user's UO Landscaper statics in the generator data folder (guo-mapgen prepare --landscaper DIR)")]
-    public string CataloguePath { get; set; } = "mined/landscaper-statics";
+    [TunableDisplay("Catalogue", Tooltip = "guo (GUO's own scatter table, the default), a guo.mapgen.scatter/1 file, or a folder of UO Landscaper statics XML (e.g. mined/landscaper-statics after guo-mapgen prepare --landscaper DIR). A catalogue that is not found falls back to guo.")]
+    public string CataloguePath { get; set; } = "guo";
 
     [TunableDisplay("Min radius (tiles)")] [TunableRange(2, 32)]
     public int MinRadius { get; set; } = 4;
@@ -76,22 +76,46 @@ public sealed class BiomeStaticScatterPass : IGenerationPass
 
     public object CreateDefaultParams() => new BiomeStaticScatterParams();
 
+    /// <summary>
+    /// The scatter catalogue: "guo" (or empty) is GUO's own table; a folder is read as UO Landscaper
+    /// statics XML; a file as a <c>guo.mapgen.scatter/1</c> table. Anything not found falls back to GUO's table.
+    /// </summary>
+    public static BiomeStaticsTable LoadCatalogue(string? path, List<string> notes, out string source)
+    {
+        if (!string.IsNullOrWhiteSpace(path) && !path.Equals("guo", StringComparison.OrdinalIgnoreCase))
+        {
+            string resolved = RepoRootResolver.Resolve(path);
+            if (Directory.Exists(resolved))
+            {
+                source = resolved;
+                var norad = BiomeStaticsTable.LoadFromNorad(resolved, out var unknown);
+                if (unknown.Count > 0) notes.Add($"unmapped catalogue files skipped: {string.Join(", ", unknown)}");
+                return norad;
+            }
+            if (File.Exists(resolved))
+            {
+                source = resolved;
+                return GuoScatterTable.Load(resolved).ToStaticsTable();
+            }
+            notes.Add($"scatter catalogue {path} not found; using GUO's scatter table");
+        }
+        source = "GUO's scatter table";
+        return GuoScatterTable.LoadDefault().ToStaticsTable();
+    }
+
     public void Run(GenContext ctx, object parameters)
     {
         var p = (BiomeStaticScatterParams)parameters;
         var ir = ctx.IR;
         if (ir.Biome is null || ir.Height_Z is null) return;
 
-        var resolvedPath = RepoRootResolver.Resolve(p.CataloguePath);
-        var table = BiomeStaticsTable.LoadFromNorad(resolvedPath, out var unknown);
+        var table = LoadCatalogue(p.CataloguePath, ctx.Report.Notes, out string source);
         if (table.ByBiome.Count == 0)
         {
-            ctx.Report.Warnings.Add($"BiomeStaticScatter: no catalogues loaded from {resolvedPath}");
+            ctx.Report.Warnings.Add($"BiomeStaticScatter: no catalogues loaded from {source}");
             return;
         }
-        ctx.Report.Notes.Add($"loaded {table.ByBiome.Count} biome catalogues from {resolvedPath}");
-        if (unknown.Count > 0)
-            ctx.Report.Notes.Add($"unmapped catalogue files skipped: {string.Join(", ", unknown)}");
+        ctx.Report.Notes.Add($"loaded {table.ByBiome.Count} biome catalogues from {source}");
 
         if (p.GroundCoverOnly)
             foreach (var cat in table.ByBiome.Values)

@@ -9,8 +9,8 @@ namespace CentrED.MapGen.Passes.Biome;
 
 public sealed class SwampSurfaceParams
 {
-    [TunableDisplay("Transition catalogue", Tooltip = "Norad MIT transition XML root; preserves the catalogue's exact 3x3 direction convention.")]
-    public string CataloguePath { get; set; } = "mined/landscaper-transitions";
+    [TunableDisplay("Transition catalogue", Tooltip = "guo (GUO's transition table: Grassland>Swamp and Swamp>Bog, the default), or a folder of UO Landscaper transition XML (e.g. mined/landscaper-transitions after guo-mapgen prepare --landscaper DIR). A folder that is not found falls back to guo.")]
+    public string CataloguePath { get; set; } = "guo";
     [TunableDisplay("Moss border width", Tooltip = "Moss tiles separate swamp interiors from grass; the two surface families must never be randomly mixed.")]
     [TunableRange(2, 8)]
     public int MossBorderWidth { get; set; } = 2;
@@ -32,14 +32,23 @@ public sealed class SwampSurfacePass : IGenerationPass
     {
         var p = (SwampSurfaceParams)parameters; var ir = ctx.IR;
         if (ir.Biome is null || ir.LandId is null || ir.Height_Z is null) return;
-        string root = RepoRootResolver.Resolve(p.CataloguePath);
+        Dictionary<byte, Dictionary<byte, ushort[]>>? guo = null;
+        string source;
+        string root = p.CataloguePath.Equals("guo", StringComparison.OrdinalIgnoreCase) ? "" : RepoRootResolver.Resolve(p.CataloguePath);
         string[] files = { Path.Combine(root, "land/1-Grass/1-Grass_To_50-Moss.xml"), Path.Combine(root, "Wild/Swamp/Moss -- Swamp.xml") };
-        if (files.Any(f => !File.Exists(f)))
+        if (root.Length == 0 || files.Any(f => !File.Exists(f)))
         {
-            ctx.Report.Warnings.Add("Swamp Surface: transition catalogue missing; surface unchanged");
-            return;
+            if (root.Length > 0) ctx.Report.Notes.Add($"Swamp Surface: no transition catalogue at {p.CataloguePath}; using GUO's transition table");
+            guo = GuoEdges(out source);
+            if (guo is null)
+            {
+                ctx.Report.Warnings.Add($"Swamp Surface: {source} has no Grassland>Swamp and Swamp>Bog edges; surface unchanged");
+                return;
+            }
         }
+        else source = root;
         var rules = new Dictionary<string, Rule>();
+        if (guo is null)
         foreach (string file in files)
         foreach (var entry in XDocument.Load(file).Descendants("TransInfo"))
         {
@@ -89,6 +98,19 @@ public sealed class SwampSurfacePass : IGenerationPass
                 ushort[]? pool = own == 0x29 ? Swamp : own == 0x32 ? Moss : null;
                 if ((own == 1 && hasMoss) || (own == 0x32 && hasSwamp))
                 {
+                    if (guo is not null)
+                    {
+                        // GUO's table: the shape of the other side's neighbours picks the edge; a sliver keeps the interior.
+                        byte other = own == 1 ? (byte)0x32 : (byte)0x29;
+                        byte mask = 0;
+                        for (int k = 0; k < 8; k++) if (cells9[MaskCell[k]] == other) mask |= (byte)(1 << k);
+                        if (guo[own].TryGetValue(mask, out var tiles)) pool = tiles;
+                        else approximated++;
+                        if (pool is not { Length: > 0 }) continue;
+                        ir.LandId[G(i)] = LatticePick.Pick(pool, ir.Scope.X1 + x, ir.Scope.Y1 + y, ir.Seed);
+                        painted++;
+                        continue;
+                    }
                     string key = Convert.ToHexString(cells9);
                     if (!cache.TryGetValue(key, out var edge))
                     {
@@ -117,6 +139,38 @@ public sealed class SwampSurfacePass : IGenerationPass
             }
         }
         ctx.Report.TilesTouched = painted;
-        ctx.Report.Notes.Add($"separate moss/swamp surfaces={painted}; nearest-pattern fallback={approximated}; catalogue patterns={rules.Count}");
+        ctx.Report.Notes.Add(guo is null
+            ? $"separate moss/swamp surfaces={painted}; nearest-pattern fallback={approximated}; catalogue patterns={rules.Count}"
+            : $"separate moss/swamp surfaces={painted}; slivers kept as interior={approximated}; edges from {source}");
+    }
+
+    /// <summary>The 3x3 cell (row-major, centre 4) of each EdgeShapes bit: N, NE, E, SE, S, SW, W, NW.</summary>
+    private static readonly int[] MaskCell = { 1, 2, 5, 8, 7, 6, 3, 0 };
+
+    /// <summary>
+    /// Edges from GUO's transition table, per owner surface (1 grass, 0x32 moss) and neighbour mask: grass
+    /// against moss is the table's Grassland>Swamp pair, moss against bog its Swamp>Bog pair. Each pair comes
+    /// from the user's resolved table when it has it (a table resolved before the pair existed does not),
+    /// else from the committed one.
+    /// </summary>
+    private static Dictionary<byte, Dictionary<byte, ushort[]>>? GuoEdges(out string source)
+    {
+        string committedPath = RepoRootResolver.Resolve(GuoTransitionTable.RelativePath), resolvedPath = LandBrushTable.DefaultPath();
+        var committed = File.Exists(committedPath) ? GuoTransitionTable.Load(committedPath) : null;
+        var resolved = resolvedPath != committedPath && File.Exists(resolvedPath) && GuoTransitionTable.IsGuoTable(resolvedPath)
+            ? GuoTransitionTable.Load(resolvedPath) : null;
+        source = "GUO's transition table";
+        var result = new Dictionary<byte, Dictionary<byte, ushort[]>>();
+        foreach (var (own, owner, other) in new[] { ((byte)1, "Grassland", "Swamp"), ((byte)0x32, "Swamp", "Bog") })
+        {
+            var pair = resolved?.Find(owner, other) is { Edges.Count: > 0 } r ? r : committed?.Find(owner, other);
+            if (pair is null || pair.Edges.Count == 0) return null;
+            var byMask = new Dictionary<byte, ushort[]>();
+            for (int mask = 1; mask < 256; mask++)
+                if (EdgeShapes.ShapeOf((byte)mask) is { } shape && pair.Edges.TryGetValue(shape, out var tiles))
+                    byMask[(byte)mask] = tiles.SelectMany(t => Enumerable.Repeat(t.Id, t.Weight)).ToArray();
+            result[own] = byMask;
+        }
+        return result;
     }
 }

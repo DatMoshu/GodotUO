@@ -38,7 +38,7 @@
       "MountainZ": 50,
       "SnowTemperature": 0,
       "TundraTemperature": 0,
-      "DesertMoistureMax": 6,
+      "DesertMoistureMax": 4,
       "ForestMoistureMin": 180,
       "DenseForestMoistureMin": 245,
       "JungleTemperature": 150,
@@ -63,8 +63,7 @@
     "Forest Scatter": {
       "DensityMultiplier": 0.6,
       "MinRadius": 2,
-      "ShoreBuffer": 1,
-      "SpeciesTablesPath": "Data/map-mining/felucca-static-atlas-v2/species.json"
+      "ShoreBuffer": 1
     },
     "POI Stamps": {
       "ControlPointsPerQuadrant": 2,
@@ -82,6 +81,7 @@
     "Land Transitions": {
       "GrassMudBanks": true,
       "CliffDzThreshold": 0,
+      "RiverBankDirt": true,
       "ReferenceAtlasPath": "Data/map-mining/felucca-transition-atlas.json"
     },
     "Biome Altitude Jitter": {
@@ -100,9 +100,7 @@
       "DenseBiomesCsv": "Swamp,Wetland,Jungle,Forest,DenseForest,Grassland,Savanna",
       "DensityMultiplier": 1.0,
       "MinRadius": 3,
-      "GroundCoverOnly": true,
-      "ChanceOverridesCsv": "Forest=37,DenseForest=37,Grassland=5,Savanna=5,Jungle=30",
-      "CataloguePath": "Data/map-mining/felucca-static-atlas-v2"
+      "GroundCoverOnly": true
     },
     "Reference Coast": {
       "MinimumSupport": 30,
@@ -120,6 +118,7 @@
     "Swamp Surface": {
       "MossBorderWidth": 2
     },
+    "Shallows": {},
     "Mountain Path": {}
   }
 }
