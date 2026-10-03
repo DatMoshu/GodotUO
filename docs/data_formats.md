@@ -1119,10 +1119,15 @@ watchers. The first reply moves a request to `answered`. The JSON lines printed 
 ## 22. The AI dock's endpoints (`ai_endpoints.json`)
 
 Written by the editor's AI dock (ADR-0028) to `%APPDATA%/GUO/ai_endpoints.json` (`~/.config/guo/` elsewhere),
-never to a project or `.godot`. A JSON array of `{ "Name", "Url", "Model", "Key" }` for the OpenAI-compatible
-endpoints the user added. `Key` is `{ "store", "iv", "blob" }`, the same `Secret` that `servers.json` keeps
+never to a project or `.godot`. A JSON array of `{ "Name", "Url", "Model", "AllowClientArt", "Key" }` for the OpenAI-compatible
+endpoints the user added. `AllowClientArt` (default false) is the per-endpoint leave to send client art (asset
+pictures) to that server. `Key` is `{ "store", "iv", "blob" }`, the same `Secret` that `servers.json` keeps
 for a pre-game password: ciphertext sealed by the operating system's store (DPAPI on Windows), bound to
 `ai:URL:NAME`, or null when the endpoint has no key or the platform keeps none. The key itself is never in the file.
+
+The other services (ComfyUI, Retro Diffusion, Ollama) are in `ai_services.json` beside it: an array of
+`{ "Kind", "Name", "Url", "Model", "AllowClientArt", "Key" }` with `Kind` one of `ComfyUi`, `RetroDiffusion`,
+`Ollama`, and `Key` sealed the same way (bound to `svc:KIND:URL:NAME`). `ServiceBook` presents both files as one list.
 
 ## 23. Scene pack (`scene.json`, ADR-0027)
 

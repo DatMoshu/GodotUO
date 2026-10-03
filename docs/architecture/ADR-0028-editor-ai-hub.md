@@ -96,8 +96,29 @@ paid service and no real model:
 Also checked by hand: a short chat with the local Ollama (qwen3:8b); a Gemini CLI 0.11.3 ACP handshake
 (initialize works, session/new answers "Authentication required", so Gemini needs its own sign-in first).
 
+Added in the follow-up (the same AI stage, 69 checks in all):
+
+- Sessions tab: a fake home folder (Claude jsonl, Codex sessions and index, Cursor project, plus `auth.json`,
+  `.credentials.json`, `config.toml` and `.env` holding a marker string). The scanner's open log shows no
+  credential file opened, the marker is not on screen, a first user line beyond the 32 KB cap is not read,
+  "Open transcript" hands the right file to the viewer hook, "Send to queue" posts to the session's name.
+- Services tab: add, test, remove against stubs for OpenAI-compatible, ComfyUI (`/system_stats`), Ollama
+  (`/api/tags`) and Retro Diffusion (`/v1/inferences/credits`, key as `X-RD-Token`); keys are not in the files as text;
+  a dead server fails its test. Test never generates anything.
+- Editor tools: the stub OpenAI-compatible server answers with a streamed function call (`search`), the editor runs it,
+  and the stub sees the `tool` message in the next request; `inspect_asset` runs; an unknown tool and a changing tool
+  with no approval are refused.
+- Vision: the attached picture reaches the stub as an `image_url` data URI (OpenAI-compatible) and as `images[]`
+  (Ollama); a remote endpoint with "Allow client art" off refuses and keeps the attachment; local Ollama needs no
+  leave; the chat shows a one-line client-art notice.
+
+Not done: attaching the current World frame (the headless editor cannot capture it; only the selected asset
+picture is attached), `jump_world` is covered by construction but not exercised by the smoke, the Retro Diffusion
+credits endpoint is taken from its docs and was not called live, and the Art/ providers (ComfyUI, Retro Diffusion)
+that will read `ServiceBook` are another change.
+
 Still to do:
 - Queue tests beyond tools/agent_queue's own (two watchers racing from the dock).
 - One real round trip with a Claude session watching the queue.
 - A real agent turn through OpenCode or Codex with a ChatGPT sign-in (not run: neither is installed here).
-- Editor tools for the models (read-only search, inspect, jump) and vision input.
+- A real tool-calling model (the stubs only prove the wire format) and a real vision model.
