@@ -14,8 +14,8 @@ namespace GuoMapGen;
 /// importer into <c>landbrush.dragon.json</c>, for <c>run --brushes dragon</c> and coverage comparisons.</item>
 /// <item><c>--landscaper</c>: UO Landscaper's <c>Data/Statics/*.xml</c> into <c>landscaper-statics/</c>
 /// (Biome Static Scatter, when its Catalogue names that folder; GUO's scatter table is the default) and
-/// its <c>Data/Transitions</c> into <c>landscaper-transitions/</c> (Swamp Surface, which warns and skips
-/// without them).</item>
+/// its <c>Data/Transitions</c> into <c>landscaper-transitions/</c> (Swamp Surface, when its Transition
+/// catalogue names that folder; GUO's transition table is the default).</item>
 /// </list>
 /// </summary>
 public static class PrepareCommand

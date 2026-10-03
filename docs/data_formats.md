@@ -1311,8 +1311,9 @@ copies. GUO ships none of it (`docs/upstream/mapgen.md`). At least one option is
   rules into `landbrush.dragon.json` (or `FILE`), for `run --brushes dragon` and `coverage`.
 - `--landscaper DIR`: a UO Landscaper install or mod, or its `Data`. `Data/Statics/**/*.xml` is copied to
   `landscaper-statics/` and `Data/Transitions/**/*.xml` to `landscaper-transitions/`, with the layout
-  kept. Without them, Swamp Surface warns and skips. Biome Static Scatter reads the statics only when its
-  *Catalogue* names that folder; its default is GUO's scatter table (below).
+  kept. Neither is needed: Swamp Surface reads the transitions only when its *Transition catalogue* names
+  that folder, and Biome Static Scatter the statics only when its *Catalogue* does. Their defaults are
+  GUO's transition and scatter tables (below).
 
 The line is `{"event":"done", ok, measure?, resolved?, dragon?, landscaper?}`:
 - `measure` is `{ok, atlas, summary, pairs, samples, region}`;
@@ -1364,6 +1365,12 @@ Edge shapes are named by where the other material lies, in tile directions (N is
 `in_NW` are inner corners (only that diagonal neighbour is other). A cell's neighbour mask resolves to
 the smallest shape that contains it; a mask no shape contains is a one-tile sliver, which Land
 Transitions absorbs into the other side.
+
+Swamp Surface reads two pairs: `Grassland>Swamp` (grass against the moss band) and `Swamp>Bog` (the moss
+band against the open bog inside). `Bog` is a material with no biome, so Land Transitions never meets
+it. Each pair comes from the user's resolved table when it has it, else from the committed table. An
+edge tile may be an interior tile of its owner's own material, as on Felucca, where the moss/bog inner
+corners are moss tiles with a dark corner.
 
 ### Scatter table (`tools/mapgen/MapGen/presets/scatter.guo.json`)
 

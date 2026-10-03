@@ -65,7 +65,8 @@ user's client files.
      original's data, and most of the files GUO used trace to it.
 
    Users may supply both from their own copies: `guo-mapgen prepare --dragon DIR --landscaper DIR`
-   writes them into `UO_MAPGEN_DATA`. Without Landscaper's, Swamp Surface skips.
+   writes them into `UO_MAPGEN_DATA`. Nothing needs Landscaper's: Swamp Surface and Biome Static Scatter
+   use GUO's tables unless pointed at a Landscaper folder.
    - **GUO's own transition table** (`transitions.guo.json`, data_formats §26) is the default: the pairs,
      a core tile family per pair, bridges, heights and notes, all authored in GUO. `prepare --measure`
      resolves it against the user's own Felucca into `UO_MAPGEN_DATA`. Dragon's table is used only on
