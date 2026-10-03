@@ -27,8 +27,9 @@ nothing to stdout.
 
 **`dotnet build` can't find `cuoapi.dll`.**
 The client compiles against upstream's `cuoapi.dll` in `sources\ClassicUO`.
-Run the bootstrap. In a git worktree, set `UpstreamDir` or link `sources\`
-(see [Contributing](Contributing.md)).
+Run the bootstrap. A git worktree finds the main checkout's `sources\` by
+itself (`tools/msbuild/UpstreamDir.props`); if that checkout keeps it
+elsewhere, set `UO_UPSTREAM_DIR` (see [Contributing](Contributing.md)).
 
 ## Client data
 

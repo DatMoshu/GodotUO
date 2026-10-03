@@ -87,7 +87,7 @@ class Paths:
         self.templates_version = cfg.godot_version.replace("-", ".") + ".mono"
         self.templates_dir = godot_data_dir() / "export_templates" / self.templates_version
         self.templates_tpz = (
-            cfg.tools / "godot" / "templates" / f"Godot_v{cfg.godot_version}_mono_export_templates.tpz"
+            cfg.godot_home / "templates" / f"Godot_v{cfg.godot_version}_mono_export_templates.tpz"
         )
 
         self.sdk = cfg.android_sdk

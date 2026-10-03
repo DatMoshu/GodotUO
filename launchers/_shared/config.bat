@@ -28,7 +28,17 @@ REM  Version string must match the folder under tools\godot.
 if not defined GODOT_VERSION        set "GODOT_VERSION=4.7.2-stable"
 if not defined GODOT_FLAVOR         set "GODOT_FLAVOR=mono_win64"
 
-REM  Leave GODOT_EXE unset to use the pinned build in tools\godot.
+REM  Where the pinned build and the upstream reference live. Both are
+REM  gitignored, so a git worktree has neither: leave these unset and a
+REM  worktree uses the main checkout's copies (common.bat and
+REM  tools\guo\config.py find it from the worktree's .git file; no directory
+REM  links). Set them in config.local.bat to point anywhere else.
+REM  UO_GODOT_HOME   = the folder holding Godot_v<version>_<flavor> (tools\godot)
+REM  UO_UPSTREAM_DIR = the folder holding ClassicUO (sources)
+REM  if not defined UO_GODOT_HOME   set "UO_GODOT_HOME=C:\Path\To\tools\godot"
+REM  if not defined UO_UPSTREAM_DIR set "UO_UPSTREAM_DIR=C:\Path\To\sources"
+
+REM  Leave GODOT_EXE unset to use the pinned build in UO_GODOT_HOME.
 REM  Set it to an absolute path to use a Godot installed elsewhere.
 REM  if not defined GODOT_EXE       set "GODOT_EXE=C:\Path\To\Godot.exe"
 

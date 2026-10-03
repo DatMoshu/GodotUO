@@ -1,0 +1,42 @@
+<Project>
+  <!--
+    UpstreamDir: the ClassicUO checkout (sources/ClassicUO) the GUO projects
+    reference cuoapi.dll and the asset loaders from. Imported by
+    godot/GUO/GUO.csproj, tools/plugin_host, tools/plugin_probe/managed and
+    tools/guoasset, so all four agree.
+
+    First hit wins, the same order as launchers/_shared/common.bat and
+    tools/guo/config.py:
+      1. UpstreamDir itself (-p:UpstreamDir=... or the environment)
+      2. UO_UPSTREAM_DIR (the folder holding ClassicUO), from the environment
+         (common.bat exports it, so every launcher build gets it)
+      3. this checkout's sources/ClassicUO
+      4. in a git worktree, which has no sources/ (it is gitignored), the main
+         checkout's: the worktree's .git is a FILE, "gitdir: <common .git>/
+         worktrees/<name>", and the main checkout is that .git's parent. Read
+         with property functions, so no git, no shelling out, no links.
+  -->
+  <PropertyGroup>
+    <_GuoRepoRoot>$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)', '..', '..'))</_GuoRepoRoot>
+    <UpstreamDir Condition="'$(UpstreamDir)' == '' and '$(UO_UPSTREAM_DIR)' != ''">$(UO_UPSTREAM_DIR)\ClassicUO</UpstreamDir>
+    <UpstreamDir Condition="'$(UpstreamDir)' == '' and Exists('$(_GuoRepoRoot)sources\ClassicUO')">$(_GuoRepoRoot)sources\ClassicUO</UpstreamDir>
+  </PropertyGroup>
+
+  <!-- A worktree: .git is a file (a checkout's .git is a folder with a HEAD). -->
+  <PropertyGroup Condition="'$(UpstreamDir)' == '' and Exists('$(_GuoRepoRoot).git') and !Exists('$(_GuoRepoRoot).git\HEAD')">
+    <_GuoGitFile>$([System.IO.File]::ReadAllText('$(_GuoRepoRoot).git').Trim())</_GuoGitFile>
+    <_GuoGitDir Condition="$(_GuoGitFile.StartsWith('gitdir:'))">$(_GuoGitFile.Substring(7).Trim())</_GuoGitDir>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(_GuoGitDir)' != ''">
+    <_GuoGitDir>$([MSBuild]::NormalizeDirectory('$(_GuoRepoRoot)', '$(_GuoGitDir)'))</_GuoGitDir>
+    <_GuoCommonDir>..\..</_GuoCommonDir>
+    <_GuoCommonDir Condition="Exists('$(_GuoGitDir)commondir')">$([System.IO.File]::ReadAllText('$(_GuoGitDir)commondir').Trim())</_GuoCommonDir>
+    <_GuoMainCheckout>$([MSBuild]::NormalizeDirectory('$(_GuoGitDir)', '$(_GuoCommonDir)', '..'))</_GuoMainCheckout>
+    <UpstreamDir Condition="Exists('$(_GuoMainCheckout)sources\ClassicUO')">$(_GuoMainCheckout)sources\ClassicUO</UpstreamDir>
+  </PropertyGroup>
+
+  <!-- Nothing found: the old default, so the error names the expected place. -->
+  <PropertyGroup>
+    <UpstreamDir Condition="'$(UpstreamDir)' == ''">$(_GuoRepoRoot)sources\ClassicUO</UpstreamDir>
+  </PropertyGroup>
+</Project>

@@ -81,7 +81,17 @@ parsing the .bat files directly when run outside a launcher, so behaviour is
 identical from a launcher, the editor, an agent or CI.
 
 Key settings: `UO_CLIENT_DATA` (your UO install), `UO_CLIENT_VERSION`,
-`UO_CACHE_DIR`, `UO_SHARD_HOST` / `UO_SHARD_PORT`.
+`UO_CACHE_DIR`, `UO_SHARD_HOST` / `UO_SHARD_PORT`, `UO_GODOT_HOME` (the
+engine folder, `tools\godot`) and `UO_UPSTREAM_DIR` (the folder holding
+ClassicUO, `sources`).
+
+**Git worktrees need no directory links.** A worktree has no `tools\godot`
+or `sources\ClassicUO` (both gitignored); left unset, `UO_GODOT_HOME` and
+`UO_UPSTREAM_DIR` resolve to the main checkout's copies, in the launchers,
+`tools/guo/config.py` and MSBuild alike. In a fresh worktree run
+`python tools\worktree_setup\run.py` (or `launchers\dev\worktree_setup.bat`)
+once: it copies your `config.local.bat` and `deny.local.txt` across, checks
+both folders resolve and runs the headless import. Never `mklink`.
 
 ---
 
@@ -103,6 +113,7 @@ launchers\dev\multi_client.bat             four scripted clients at once, tiled 
 launchers\dev\side_by_side.bat             ClassicUO and GUO live on one monitor, same spot (needs a shard)
 launchers\dev\render_diff.bat NAME         compare the two clients' "renderdump NAME" dumps
 launchers\dev\sync_upstream.bat            check upstream drift
+launchers\dev\worktree_setup.bat           ready a fresh git worktree (no links)
 launchers\dev\build_guoasset.bat           build the parity reference MCP
 launchers\shard\run.bat                    run the local dev shard
 launchers\shard\populate.bat               generate its world (once)
