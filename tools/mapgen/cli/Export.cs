@@ -9,7 +9,8 @@ namespace GuoMapGen;
 /// <c>export</c>: turn a run folder into client map files. The map is regenerated from the run's
 /// effective preset, seed and size; its hash must equal run.json's (the generator is
 /// deterministic), then the legacy MUL triad is written to &lt;run&gt;/export/map and read back
-/// cell by cell. The result is export/export-verify.json.
+/// cell by cell. The result is export/export-verify.json. With --world-project, a verified map is
+/// also written as a world project's blocks (WorldProjectWriter) for the editor's World tab.
 /// </summary>
 public static class ExportCommand
 {
@@ -18,6 +19,8 @@ public static class ExportCommand
         var runDir = a.Get("run") ?? throw new CliError("export needs --run DIR (a folder written by run)");
         int facet = a.Int("facet", 0);
         if (facet is < 0 or > 5) throw new CliError("--facet must be 0..5");
+        string? worldProject = a.Get("world-project");
+        int originX = a.Int("origin-x", 0), originY = a.Int("origin-y", 0);
 
         var runJsonPath = Path.Combine(runDir, "run.json");
         if (!File.Exists(runJsonPath)) throw new CliError($"not a run folder (no run.json): {runDir}");
@@ -77,7 +80,14 @@ public static class ExportCommand
             JsonSerializer.Serialize(verify, new JsonSerializerOptions { WriteIndented = true }));
 
         bool ok = (bool)verify["ok"]!;
-        json.Event("done", new() { ["ok"] = ok, ["hash"] = hash, ["export"] = Path.GetFullPath(exportDir), ["verify"] = verify });
+        Dictionary<string, object?>? world = null;
+        if (ok && worldProject is not null)
+            world = WorldProjectWriter.Write(ir, worldProject, facet, originX, originY, hash, runDir);
+        json.Event("done", new()
+        {
+            ["ok"] = ok, ["hash"] = hash, ["export"] = Path.GetFullPath(exportDir), ["verify"] = verify,
+            ["world_project"] = worldProject is null ? null : Path.GetFullPath(worldProject), ["world"] = world,
+        });
         return ok ? 0 : 1;
     }
 }

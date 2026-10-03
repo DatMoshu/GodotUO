@@ -1214,14 +1214,32 @@ same hash.
 - `classes` (land shares by tile-table class; `edge` means transition tiles);
 - `score` (0–100). It is a guide, not the judge.
 
-### `export --run DIR [--facet N]` → JSON lines, then `DIR/export/`
+### `export --run DIR [--facet N] [--world-project DIR --origin-x X --origin-y Y]` → JSON lines, then `DIR/export/`
 
 `export` regenerates the run from `preset.json`, `seed`, `width` and `height`. It refuses when the hash
 differs from `run.json`'s. It then writes `export/map/map{N}.mul`, `staidx{N}.mul` and `statics{N}.mul`
 (legacy MUL, facet `N`, default 0). Finally it reads every cell and static back.
 `export/export-verify.json` holds `ok`, `land_cells_checked`, `land_mismatches`, `statics_expected`,
 `statics_found`, `static_mismatches`, `hash`, `facet`, `width`, `height`, `land_tiles_written`,
-`statics_written` and `files`. The final line is `{"event":"done", ok, hash, export, verify}`. Exit 1
-when `ok` is false. Opening the export as a world project and deploying it to a shard are separate steps.
+`statics_written` and `files`. The final line is
+`{"event":"done", ok, hash, export, verify, world_project, world}`. Exit 1 when `ok` is false.
+
+With `--world-project DIR`, a verified export is also written as a world project (§9) in `DIR`, which
+must be new or empty. The map lands on facet `N` with its top-left cell at (`--origin-x`, `--origin-y`),
+default (0, 0); both must be multiples of 8. Every block is a full `blocks/<facet>/<bx>_<by>.json`
+(64 land cells plus its statics), written exactly as the World tab writes one. Beside them,
+`generated.json` records where the project came from:
+
+| Field | Meaning |
+|---|---|
+| `schema` | `guo.mapgen.generated/1` |
+| `created` | UTC time, ISO 8601 |
+| `hash` | The map hash (the same as the run's) |
+| `run` | The run folder |
+| `facet`, `origin`, `size` | Where the map sits: facet, `[x, y]` of its top-left cell, `[width, height]` |
+| `blocks` | How many block files were written |
+
+`done.world` carries the same object. Opening the project in the World tab is a separate step, and so
+is deploying it to a shard.
 
 ### `presets` → `{"schema": "guo.mapgen.presets/1", "presets": [...]}`

@@ -316,6 +316,17 @@ def main() -> int:
               f"dock agent + permission dialog + chat + queue tab, children killed")
         for k in bad:
             print(f"[editor_smoke]        failed: {k}")
+    mapgen = report.get("mapgen") or {}
+    if mapgen:
+        checks = [k for k, v in mapgen.items() if v is True or v is False]
+        bad = [k for k in checks if mapgen[k] is False]
+        print(f"[editor_smoke]   {'ok  ' if mapgen.get('ok') else 'FAIL'} MapGen  {len(checks) - len(bad)}/{len(checks)} checks: "
+              f"{mapgen.get('passes')} passes, {mapgen.get('tunables')} settings ({mapgen.get('preset')}), 256x256 seed 42 "
+              f"hash {str(mapgen.get('hash'))[:12]} twice, no rivers {str(mapgen.get('hash_no_rivers'))[:12]}, export "
+              f"{mapgen.get('export_cells')} cells + {mapgen.get('export_statics')} statics read back, "
+              f"{mapgen.get('world_blocks')} world blocks, tab {mapgen.get('tab_groups')} groups / {mapgen.get('tab_controls')} controls")
+        for k in bad:
+            print(f"[editor_smoke]        failed: {k}")
     overlay = world.get("overlay") or {}
     if overlay:
         print(f"[editor_smoke]   {'ok  ' if overlay.get('ok') else 'FAIL'} Overlay block 187,203: "

@@ -228,6 +228,15 @@ public partial class EditorSmoke : Node
                 // The AI hub (ADR-0028): ACP, Ollama and queue, against stubs.
                 if (StepAi())
                 {
+                    _stage = 65;
+                }
+
+                break;
+
+            case 65:
+                // The Map Generator (ADR-0030): schema, determinism, a pass toggle, export.
+                if (StepMapGen())
+                {
                     // Phase 5: the asset overlay, before the World tab boots
                     // so the world's own loaders get it too.
                     RunAssets();

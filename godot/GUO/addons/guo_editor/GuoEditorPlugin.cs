@@ -36,6 +36,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
     private ShardDock _shard;
     private RunBar _run;
     private AiDock _ai;
+    private MapGenView _mapgen;
     private SearchPopup _search;
 
     // Whether the World tab was on screen when an assembly reload began.
@@ -44,11 +45,15 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
     // without this the rebuilt view would stay hidden behind its own button.
     private bool _worldWasVisible;
     private bool _assetsWasVisible;
+    private bool _mapgenWasVisible;
 
     private const string ResetMenuLabel = "Reset GUO layout";
 
     /// <summary>The UO Assets view, for <see cref="GuoAssetsPlugin"/> to show and hide with its tab.</summary>
     public static AssetsView AssetsMain { get; private set; }
+
+    /// <summary>The Map Generator view, for <see cref="GuoMapGenPlugin"/> to show and hide with its tab.</summary>
+    public static MapGenView MapGenMain { get; private set; }
 
     public const string WorldTabName = "UO World";
 
@@ -125,6 +130,14 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         // processes (agent CLIs), which TearDown kills.
         _ai = new AiDock();
         AddDock(_ai);
+
+        // The Map Generator (ADR-0030): a main-screen tab (GuoMapGenPlugin owns its button). It runs
+        // tools/mapgen as a process and opens what it exports in the World tab.
+        _mapgen = new MapGenView { OpenInWorld = OpenGeneratedWorld };
+        MapGenMain = _mapgen;
+        EditorInterface.Singleton.GetEditorMainScreen().AddChild(_mapgen);
+        _mapgen.Visible = _mapgenWasVisible;
+        _mapgenWasVisible = false;
 
         // Start server, start clients: on the toolbar, always one click away.
         _run = new RunBar();
@@ -230,8 +243,26 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         }
     }
 
+    /// <summary>Opens a generated world project in the World tab at a cell.</summary>
+    private void OpenGeneratedWorld(string root, int facet, int x, int y)
+    {
+        ShowInWorld(facet, x, y);
+        _world?.OpenProject(root);
+    }
+
     private void TearDown()
     {
+        if (_mapgen != null)
+        {
+            // Stops a generator run in progress before a reload.
+            _mapgen.Shutdown();
+            _mapgenWasVisible = _mapgen.Visible;
+            _mapgen.GetParent()?.RemoveChild(_mapgen);
+            _mapgen.QueueFree();
+            _mapgen = null;
+            MapGenMain = null;
+        }
+
         SearchPopup.Remove(_search);
         _search = null;
 

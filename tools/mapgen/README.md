@@ -43,3 +43,27 @@ Those paths resolve into the per-user data folder, `UO_MAPGEN_DATA` (default `%L
 which the CLI receives as `MAPGEN_DATA_DIR`. Without the data, those passes warn and fall back: no
 stamps, and coasts keep the brush transitions. A "Prepare generator data" step that mines it from
 `UO_CLIENT_DATA` is planned (ADR-0030). The validator's reports go to the same folder.
+
+## The editor tab
+
+The GUO editor's **Map Generator** tab (`godot/GUO/addons/guo_editor/MapGen`) runs this CLI through
+`run.py`. It has presets, a seed, a size and six quick knobs. Each pass gets a group with an on/off
+toggle, a control per setting, reset, randomise and locks. A radar, biome and height preview shows the
+result, with a stepper over the per-pass pictures. A Felucca-likeness card scores it. **Export map
+files** writes the MUL triad and a world project, and **Open in UO World** opens that project. The
+editor smoke checks the tab (stage `mapgen`).
+
+## Known look problems (2026-10-02)
+
+These come from a 1024x1024 `felucca-stage18` run with seed 1234567. Each was checked against the
+images after a Gemini review; tune the generator against them:
+
+1. **Roads draw rectangles** and run in long axis-aligned stretches with right-angle turns. They
+   should wind between places.
+2. **Mountains are plateaus.** In `height.png` each range is one flat, bright block with no ridges or
+   valleys inside it. Change only the range shape: the owner's mountain and road heights stay.
+3. **Rivers run dead straight** along mountain feet for long stretches, on diagonals.
+4. **Land runs off the map edge** on the left, right and bottom.
+5. **No beaches:** `shore_sand` measured 0%, against 31% in Felucca. The coast atlas is mined data,
+   and it was absent here. Expect this until the "Prepare generator data" step exists.
+6. **Too flat:** 65% of land is at z 0, against 56% in Felucca.
