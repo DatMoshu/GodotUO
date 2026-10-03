@@ -124,7 +124,12 @@ def client_shot(cfg, client_root: Path, x: int, y: int, out: Path, override: Pat
     # A fresh profile starts from default.json: no top bar over the world.
     (profiles / "default.json").write_text(json.dumps({"topbar_gump_is_disabled": True}), encoding="utf-8")
 
-    console = client_root / "tools" / "godot" / "godot-console.cmd"
+    # This checkout: the resolved engine (UO_GODOT_HOME; a worktree's is the
+    # main checkout's). Another checkout: its own pinned shim.
+    if client_root.resolve() == cfg.root.resolve():
+        console = cfg.godot_console_exe
+    else:
+        console = client_root / "tools" / "godot" / "godot-console.cmd"
     cmd = [str(console), "--path", str(client_root / "godot" / "GUO"), "--",
            "--play", "--account", account, "--password", account, "--character", account.capitalize(),
            "--window-position", "40,40", "--window-size", "1024,768",
