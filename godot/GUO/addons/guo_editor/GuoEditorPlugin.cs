@@ -35,6 +35,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
     private WorldView _world;
     private ShardDock _shard;
     private RunBar _run;
+    private AiDock _ai;
     private SearchPopup _search;
 
     // Whether the World tab was on screen when an assembly reload began.
@@ -113,6 +114,11 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         AddDock(_shard);
         _shard.Attach(_world);
 
+        // The AI hub (ADR-0028): chat, agents over ACP, the request queue. It owns child
+        // processes (agent CLIs), which TearDown kills.
+        _ai = new AiDock();
+        AddDock(_ai);
+
         // Start server, start clients: on the toolbar, always one click away.
         _run = new RunBar();
         AddControlToContainer(CustomControlContainer.Toolbar, _run);
@@ -130,7 +136,9 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
             _world.Host.OverlayChanged += maps.RefreshBlocks;
         }
 
-        _search = SearchPopup.Install(SearchContext.From(this, _data, _assets, _inspector, _world, _shard, _run, ShowInWorld));
+        SearchContext searchContext = SearchContext.From(this, _data, _assets, _inspector, _world, _shard, _run, ShowInWorld);
+        searchContext.Ai = _ai;
+        _search = SearchPopup.Install(searchContext);
 
         string smokeOut = EditorSmoke.OutDirFromArgs();
         string tourOut = EditorTour.OutDirFromArgs();
@@ -149,6 +157,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         {
             _smoke = new EditorSmoke(smokeOut, _data, _assets, _inspector, _world, _shard);
             _smoke.Search = _search;
+            _smoke.Ai = _ai;
             AddChild(_smoke);
         }
 
@@ -222,6 +231,15 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
             RemoveControlFromContainer(CustomControlContainer.Toolbar, _run);
             _run.QueueFree();
             _run = null;
+        }
+
+        if (_ai != null)
+        {
+            // Kills the agent CLIs it started and stops any stream, before a reload or when the editor closes.
+            _ai.Shutdown();
+            RemoveDock(_ai);
+            _ai.QueueFree();
+            _ai = null;
         }
 
         if (_shard != null)
