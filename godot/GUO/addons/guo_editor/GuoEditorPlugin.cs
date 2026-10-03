@@ -66,7 +66,12 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         }
     }
 
-    public override void _EnterTree() => Build();
+    public override void _EnterTree()
+    {
+        // Only a fresh start can tell: a reload (no _EnterTree) keeps the live layout.
+        _layoutLost = GuoLayout.WasApplied() && !GuoLayout.SavedLayoutExists();
+        Build();
+    }
 
     public override void _ExitTree() => TearDown();
 
@@ -81,6 +86,8 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         GD.Print("[GUO editor] assembly reloaded: rebuilding docks");
         Callable.From(Build).CallDeferred();
     }
+
+    private bool _layoutLost;
 
     private void Build()
     {
@@ -181,7 +188,8 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         await ToSignal(GetTree().CreateTimer(1.0), SceneTreeTimer.SignalName.Timeout);
         if (_inspector != null && IsInstanceValid(_inspector))
         {
-            GuoLayout.ApplyIfFirstRun(_inspector);
+            GuoLayout.ApplyIfFirstRun(_inspector, _layoutLost);
+            _layoutLost = false;
         }
     }
 
