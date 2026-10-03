@@ -61,6 +61,13 @@ public sealed class LandTransitionParams
     [TunableRange(1, 12)]
     public int BridgePasses { get; set; } = 6;
 
+    // Felucca has almost no rivers drawn in land tiles, and no sand along the few it has. The
+    // grass->water bridge puts a sand cell on every river bank, which at 1024 is more sand than
+    // all the deserts. On: a bank cell the bridges made sand, beside a river and away from the
+    // sea, becomes dirt instead, blended into the grass as roads are (Grassland>Dirt edges).
+    [TunableDisplay("Dirt river banks", Tooltip = "Grass and forest cells bridged to sand beside a river (not the sea) become dirt, edged into the grass like a road. Off keeps sand banks.")]
+    public bool RiverBankDirt { get; set; } = false;
+
     [TunableDisplay("Sliver passes", Tooltip = "Boundary cells no transition tile can render (1-wide strips, checkerboards) adopt the neighbouring biome; repeated up to N times.")]
     [TunableRange(0, 6)]
     public int SliverPasses { get; set; } = 3;
@@ -284,6 +291,7 @@ public sealed class LandTransitionPass : IGenerationPass
         // table that has bridges both repeat until nothing changes, up to BridgePasses rounds.
         // A table without bridges (Dragon) runs the fixed bridges once.
         int bridged = 0, viaBridged = 0;
+        var cls0 = p.RiverBankDirt ? (Cls[])cls.Clone() : null;
         int rounds = brushes.Via.Count > 0 ? Math.Max(1, p.BridgePasses) : 1;
         for (int round = 0; round < rounds; round++)
         {
@@ -298,6 +306,33 @@ public sealed class LandTransitionPass : IGenerationPass
             viaBridged += viaChanged;
             if (fixedChanged + viaChanged == 0) break;
         }
+
+        // River banks: a grass, forest or jungle cell the bridges turned to sand, beside a river
+        // and not beside the sea, becomes dirt. It leaves the class grid (like a road), so the
+        // owner sides do not edge toward it; the road painter edges the grass into it below.
+        int dirtBanks = 0;
+        if (cls0 is not null)
+            for (int i = 0; i < n; i++)
+            {
+                if (cls[i] != Cls.Sand || cls0[i] is not (Cls.Grass or Cls.Forest or Cls.Jungle) || !InRegion(i)) continue;
+                int lx = i % sw, ly = i / sw;
+                bool river = false, sea = false;
+                foreach (var (dx, dy, _) in DirOffsets)
+                {
+                    int nx = lx + dx, ny = ly + dy;
+                    if ((uint)nx >= (uint)sw || (uint)ny >= (uint)sh) continue;
+                    var nb = (BiomeId)b[G(ny * sw + nx)];
+                    river |= nb == BiomeId.River;
+                    sea |= nb is BiomeId.DeepWater or BiomeId.ShallowWater;
+                }
+                if (!river || sea) continue;
+                int g = G(i);
+                cls[i] = Cls.None;
+                b[g] = (byte)BiomeId.Road;
+                l[g] = LatticePick.Pick(Network.RoadPaint.DirtTiles, scope.X1 + lx, scope.Y1 + ly, ir.Seed);
+                dirtRoad.Add(g);
+                dirtBanks++;
+            }
 
         // One bridging sweep over a class snapshot: the first neighbour for which rule(self,
         // neighbour) names a class turns the cell into it. Returns how many cells changed.
@@ -507,7 +542,7 @@ public sealed class LandTransitionPass : IGenerationPass
         }
 
         report.TilesTouched = painted + roadEdges + reset;
-        report.Notes.Add($"transitions painted={painted} (bluff banks={bluffs}), table={brushes.Source}, via-bridged={viaBridged}, slivers absorbed={absorbed}, bridged (swamp->grass, rock->sand at water)={bridged}, z-flattened={flattened}, z-offset={lipped}, pairs: "
+        report.Notes.Add($"transitions painted={painted} (bluff banks={bluffs}), table={brushes.Source}, via-bridged={viaBridged}, slivers absorbed={absorbed}, bridged (swamp->grass, rock->sand at water)={bridged}, dirt river banks={dirtBanks}, z-flattened={flattened}, z-offset={lipped}, pairs: "
             + string.Join(", ", pairCounts.OrderByDescending(kv => kv.Value).Select(kv => $"{kv.Key.Item1}>{kv.Key.Item2}={kv.Value}")));
         if (p.StrictNoGrassSurvivors && (hardEdges > 0 || unpaired > 0))
             report.Warnings.Add($"Land Transitions: {hardEdges} boundary cells kept an interior tile (no brush tile for their mask); {unpaired} edges between biome classes with no transition pair.");

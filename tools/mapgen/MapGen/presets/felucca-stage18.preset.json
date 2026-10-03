@@ -38,7 +38,7 @@
       "MountainZ": 50,
       "SnowTemperature": 0,
       "TundraTemperature": 0,
-      "DesertMoistureMax": 6,
+      "DesertMoistureMax": 4,
       "ForestMoistureMin": 180,
       "DenseForestMoistureMin": 245,
       "JungleTemperature": 150,
@@ -81,6 +81,7 @@
     "Land Transitions": {
       "GrassMudBanks": true,
       "CliffDzThreshold": 0,
+      "RiverBankDirt": true,
       "ReferenceAtlasPath": "Data/map-mining/felucca-transition-atlas.json"
     },
     "Biome Altitude Jitter": {

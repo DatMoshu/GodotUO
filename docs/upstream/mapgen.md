@@ -61,6 +61,12 @@ rippled wet sand (0x1A with the water north or east, 0x1B south or west, 0x1C ar
 waterline. Dig Shore digs the band; the Shallows pass gives it these shapes. The counts stay on the
 owner's machine.
 
+**Sand and river banks (2026-10-03).** Felucca's sand is 1.3% of its land: about 40% of it in deserts
+20 or more cells from water, the rest on sea beaches. It draws almost no rivers in land tiles (some
+200 water cells away from the sea, banked with sand, snow and rock), so it has no rule for a river
+bank. On its waterline the grass/dirt tiles (0x8D–0xA7) outnumber plain sand.
+GUO's river banks are therefore dirt (`RiverBankDirt`), blended into grass with the road edges.
+
 ## GUO's scatter table (2026-10-03)
 
 `scatter.guo.json` replaces UO Landscaper's statics as Biome Static Scatter's default catalogue and
