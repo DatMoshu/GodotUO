@@ -172,6 +172,7 @@ public partial class EditorSmoke : Node
                     CheckServerManager();
                     CheckClientProfiles();
                     CheckGumpStudio();
+                    CheckAssetFields();
                     if (Array.IndexOf(OS.GetCmdlineUserArgs(), "--guo-gump-studio-only") >= 0)
                     {
                         if (!Headless && Array.IndexOf(OS.GetCmdlineUserArgs(), "--guo-gump-studio-visual") >= 0 && _failures.Count == 0)
@@ -211,6 +212,14 @@ public partial class EditorSmoke : Node
                 if (_frames > 45)
                 {
                     CaptureGumpVisual("compact");
+                    OpenQuickAddSuggestions();
+                    _stage = 72; _frames = 0;
+                }
+                break;
+            case 72:
+                if (_frames > 30)
+                {
+                    CaptureQuickAddSuggestions();
                     FinishGumpVisual();
                     if (_reloadTest && !_afterReload && _failures.Count == 0) { RequestReload(); _stage = 4; }
                     else Finish();

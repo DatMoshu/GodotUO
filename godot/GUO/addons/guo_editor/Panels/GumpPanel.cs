@@ -24,7 +24,7 @@ using GUO.IO;
 public partial class GumpPanel : GridPanel
 {
     private List<int> _ids;
-    private Dictionary<int, SortedSet<string>> _usedBy;
+    private static Dictionary<int, SortedSet<string>> _usedBy;
 
     public override string SmokeQuery => "0x0064";
 
@@ -63,7 +63,7 @@ public partial class GumpPanel : GridPanel
     protected override string Placeholder => "Search name (paperdoll, status, button…), decimal or 0x ID — Enter";
     protected override string Tooltip(int id) => $"0x{id:X4} · {ArtName(id)}\n" +
         (UsedBy().TryGetValue(id, out var users) ? string.Join(", ", users) : "Local client gump art");
-    private static string ArtName(int id) => id switch
+    internal static string ArtName(int id) => id switch
     {
         >= 5054 and <= 5062 => "stone window background frame",
         >= 3000 and <= 3008 => "parchment window background frame",
@@ -76,6 +76,16 @@ public partial class GumpPanel : GridPanel
     };
 
     protected override Image Icon(int id) => Data.GumpImage(id);
+
+    /// <summary>A gump's searchable name: what its art is, then the UI classes that name it (asset fields search this).</summary>
+    internal static string NameOf(int id)
+    {
+        string art = ArtName(id);
+        string users = UsedBy().TryGetValue(id, out var set) ? string.Join(", ", set) : "";
+        return art.Length > 0 && users.Length > 0 ? $"{art}: {users}" : art + users;
+    }
+
+    protected override Godot.Collections.Dictionary DragPayload(int id) => new() { ["guo_gump"] = id };
 
     protected override Inspection Describe(int id)
     {
@@ -104,7 +114,7 @@ public partial class GumpPanel : GridPanel
 
     private static readonly Regex Literal = new(@"\b0x([0-9A-Fa-f]{2,4})\b|\b(\d{2,5})\b");
 
-    private Dictionary<int, SortedSet<string>> UsedBy()
+    private static Dictionary<int, SortedSet<string>> UsedBy()
     {
         if (_usedBy != null)
         {

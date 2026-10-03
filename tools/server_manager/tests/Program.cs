@@ -94,6 +94,12 @@ try {
     var bp=ClientLaunch.PlanBuild(build,"127.0.0.1",2610,idA,1,Path.Combine(home,"store"),"");
     Require(bp.Environment["UO_CACHE_DIR"]==Path.Combine(Workspace.RunSlot(idA,build.Id,1),"cache") && bp.Environment["UO_CLIENT_DATA"]==data && bp.Environment["UO_SHARD_PORT"]=="2610","build environment");
     ClientLaunch.WritePlugins(bp.SlotDir,build); Require(File.ReadAllText(Path.Combine(bp.SlotDir,"settings.json")).Contains("p.dll"),"plugins missing for a build");
+    build.Meta.Version="7.0.50.0"; build.Meta.Encryption=1; build.Plugins=Array.Empty<string>();
+    var configured=ClientLaunch.GuoEnvironment("127.0.0.1",2610,bp.SlotDir,build,home,"");
+    Require(configured["UO_CLIENT_VERSION"]=="7.0.50.0","profile version not applied to launch");
+    ClientLaunch.WritePlugins(bp.SlotDir,build);
+    using(var settings=JsonDocument.Parse(File.ReadAllText(Path.Combine(bp.SlotDir,"settings.json"))))
+        Require(settings.RootElement.GetProperty("plugins").GetArrayLength()==0 && settings.RootElement.GetProperty("encryption").GetInt32()==1,"removed plugins or profile encryption not applied");
     Console.WriteLine("PASS: external and build launch plans, exact-process tracking, no injection into external clients");
 
     // The pregame's lookup: a folder profile is found again, an overlay is the custom slot.

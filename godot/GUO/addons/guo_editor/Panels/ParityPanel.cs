@@ -35,7 +35,8 @@ public partial class ParityPanel : AssetPanel
     private static readonly string[] Kinds = { "static", "land", "gump", "multi" };
 
     private OptionButton _kind;
-    private LineEdit _id;
+    private AssetField _id;
+    private static readonly AssetPickKind[] FieldKinds = { AssetPickKind.Static, AssetPickKind.Land, AssetPickKind.Gump, AssetPickKind.Multi };
     private Button _go;
     private Label _status;
     private bool _busy;
@@ -63,11 +64,12 @@ public partial class ParityPanel : AssetPanel
         }
 
         bar.AddChild(_kind);
-        _id = new LineEdit { PlaceholderText = "id (0x0E75)", SizeFlagsHorizontal = SizeFlags.ExpandFill };
-        _id.TextSubmitted += _ => CompareAsync();
+        _id = new AssetField(Data, AssetPickKind.Static) { AlwaysCommit = true, Placeholder = "name or id (0x0E75)" };
+        _id.Committed += _ => CompareAsync();
+        _kind.ItemSelected += i => _id.Kind = FieldKinds[i];
         bar.AddChild(_id);
-        _go = new Button { Text = "Compare" };
-        _go.Pressed += CompareAsync;
+        _go = new Button { Text = "Compare", FocusMode = FocusModeEnum.None };
+        _go.Pressed += () => _id.CommitTyped();
         bar.AddChild(_go);
 
         _status = new Label
@@ -107,11 +109,13 @@ public partial class ParityPanel : AssetPanel
     {
         EnsureUi();
         _kind.Selected = 0;
-        _id.Text = text;
+        _id.Kind = FieldKinds[0];
         if (!TryParseId(text, out int id))
         {
             return null;
         }
+
+        _id.Value = id;
 
         (string refPath, string error) = Reference(Kinds[_kind.Selected], id);
         return Show(Kinds[_kind.Selected], id, refPath, error) ? id : null;
@@ -119,7 +123,8 @@ public partial class ParityPanel : AssetPanel
 
     private void CompareAsync()
     {
-        if (_busy || !TryParseId(_id.Text, out int id))
+        int id = _id.Value;
+        if (_busy || id <= 0)
         {
             _status.Text = _busy ? "already comparing" : "type an id";
             return;

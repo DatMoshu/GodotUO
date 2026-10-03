@@ -27,10 +27,12 @@ public partial class GumpStudio : VBoxContainer
     private string _path = "", _saved = "";
     private bool _refreshing;
     private AssetsView _gumpAssets;
+    private AssetField _quickAdd;
     private ScrollContainer _inspectorScroll;
     private HSplitContainer _rightSplit;
     private float UiScale => EditorInterface.Singleton.GetEditorScale();
     internal AssetsView GumpAssets => _gumpAssets;
+    internal AssetField QuickAddField => _quickAdd;
     internal ScrollContainer PropertiesScroll => _inspectorScroll;
     internal Func<GUO.Game.World> PreviewWorld { get; set; }
     public GumpDocument Document => _document;
@@ -83,13 +85,21 @@ public partial class GumpStudio : VBoxContainer
         var libraryColumn = new VBoxContainer { CustomMinimumSize = new Vector2(210 * UiScale, 0) }; split.AddChild(libraryColumn);
         var libraryScroll = new ScrollContainer { SizeFlagsVertical = SizeFlags.ExpandFill, HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled }; libraryColumn.AddChild(libraryScroll);
         var library = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill, SizeFlagsVertical = SizeFlags.ExpandFill }; libraryScroll.AddChild(library);
+        library.AddChild(new Label { Text = "Add gump art" });
+        _quickAdd = new AssetField(_data, AssetPickKind.Gump)
+        {
+            QuickAdd = true,
+            Placeholder = "name or id, Enter adds",
+            TooltipText = "Type a gump's name (paperdoll, button, stone) or its id (0x0BB8, 3000, bb8).\nEnter adds it and keeps the box ready for the next one. The search button browses all gumps.",
+        };
+        _quickAdd.Committed += id => Guard(() => AddArt(id));
+        library.AddChild(_quickAdd);
+        library.AddChild(new HSeparator());
         library.AddChild(new Label { Text = "ELEMENTS" });
         var palette = new OptionButton();
         foreach (var kind in Enum.GetValues<GumpElementKind>()) palette.AddItem(kind.ToString());
         library.AddChild(palette);
         AddButton(library, "+ Add element", () => AddElement((GumpElementKind)palette.Selected));
-        library.AddChild(new HSeparator());
-        AddButton(library, "Browse gump art…", () => PickGumpArt(AddArt));
         library.AddChild(new HSeparator());
         library.AddChild(new Label { Text = "LAYERS · Shift-click to select" });
         _layers = new ItemList { SelectMode = ItemList.SelectModeEnum.Multi, SizeFlagsVertical = SizeFlags.ExpandFill, CustomMinimumSize = new Vector2(190, 160) };
@@ -111,6 +121,7 @@ public partial class GumpStudio : VBoxContainer
         _canvas.SelectionChanged += () => { RefreshLayers(); RefreshProperties(); };
         _canvas.BeginEdit += () => _history.Push(_document);
         _canvas.EndEdit += Refresh;
+        _canvas.ArtDropped += (id, at) => Guard(() => AddArt(id, at));
         _canvas.Replied += r => SetStatus($"Reply {r.ButtonId} · switches [{string.Join(", ", r.Switches)}] · entries {string.Join(", ", r.Entries.Select(t => $"{t.Item1}={t.Item2}"))}");
         _inspectorScroll = new ScrollContainer { CustomMinimumSize = new Vector2(310 * UiScale, 0), HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled };
         right.AddChild(_inspectorScroll);
@@ -162,14 +173,24 @@ public partial class GumpStudio : VBoxContainer
         doc.Elements.Add(new GumpElement { Kind = GumpElementKind.Button, Name = "Continue", X = 448, Y = 400, Width = 160, Height = 48, Text = "Continue", Graphic = modern ? 0 : 247, GraphicDown = modern ? 0 : 248, Anchor = "BottomRight" });
         LoadDocument(doc); _path = ""; _saved = doc.ToJson(); Refresh();
     }
-    public void AddArt(int id)
+    /// <summary>
+    /// Adds gump art as an image. Dropped art lands where it was dropped; typed
+    /// or double-clicked art lands just below and right of the selection, so a
+    /// run of quick adds fans out instead of stacking at the corner.
+    /// </summary>
+    public void AddArt(int id, Vector2? at = null)
     {
         var texture = Texture(id) ?? throw new InvalidDataException($"No local gump art at 0x{id:X4}; wait for the client data to load.");
+        int grid = _canvas.Snap ? Math.Max(1, _canvas.Grid) : 1;
+        var anchor = Selected().LastOrDefault();
+        Vector2 spot = at ?? (anchor != null && !anchor.Locked ? new Vector2(anchor.X + 16, anchor.Y + 16) : new Vector2(16, 16));
+        int x = (int)Math.Round(spot.X / grid) * grid, y = (int)Math.Round(spot.Y / grid) * grid;
         Mutate(() =>
         {
-            var e = new GumpElement { Kind = GumpElementKind.Image, Name = $"Art 0x{id:X4}", Graphic = id, Width = texture.GetWidth(), Height = texture.GetHeight(), Page = _canvas.Page };
+            var e = new GumpElement { Kind = GumpElementKind.Image, Name = $"Art 0x{id:X4}", Graphic = id, X = x, Y = y, Width = texture.GetWidth(), Height = texture.GetHeight(), Page = _canvas.Page };
             _document.Elements.Add(e); Select(e);
         });
+        SetStatus($"Added gump 0x{id:X4} at {x}, {y}");
     }
     private void AddElement(GumpElementKind kind) => Mutate(() =>
     {

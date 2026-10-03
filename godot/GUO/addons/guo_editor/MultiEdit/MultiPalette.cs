@@ -27,7 +27,7 @@ public partial class MultiPalette : VBoxContainer
     private LineEdit _search;
     private ItemList _list;
     private Label _current;
-    private SpinBox _hue;
+    private AssetField _hue;
     private Button _star;
     private List<ushort> _allWithArt;
     private readonly List<ushort> _shown = new();
@@ -113,15 +113,24 @@ public partial class MultiPalette : VBoxContainer
         var hueRow = new HBoxContainer();
         AddChild(hueRow);
         hueRow.AddChild(new Label { Text = "hue" });
-        _hue = new SpinBox { MinValue = 0, MaxValue = 3000, Step = 1, TooltipText = "Hue for what you draw (decimal). A multi record has no hue: it is kept in the editor's description only." };
-        _hue.ValueChanged += v => HueChanged?.Invoke((ushort)v);
+        _hue = new AssetField(_data, AssetPickKind.Hue)
+        {
+            AllowZero = true,
+            Placeholder = "0",
+            TooltipText = "Hue for what you draw: a name or an id, 0 for none. A multi record has no hue: it is kept in the editor's description only.",
+        };
+        _hue.Committed += v => HueChanged?.Invoke((ushort)v);
         hueRow.AddChild(_hue);
     }
 
     public void SetHue(ushort hue)
     {
         EnsureUi();
-        _hue.Value = hue;
+        if (_hue.Value != hue)
+        {
+            _hue.Value = hue;
+            HueChanged?.Invoke(hue);
+        }
     }
 
     /// <summary>Rebuilds the group list and the tiles for the current mode.</summary>

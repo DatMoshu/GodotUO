@@ -70,6 +70,11 @@ internal static class ClientLaunch
             env["UO_CLIENT_DATA"] = client.BaseData;
         }
 
+        if (!string.IsNullOrWhiteSpace(client.Meta.Version))
+        {
+            env["UO_CLIENT_VERSION"] = client.Meta.Version;
+        }
+
         string overlay = ClientRegistry.OverlayFolder(client);
 
         if (overlay != null && File.Exists(Path.Combine(overlay, "guo_data.json")))
@@ -151,12 +156,12 @@ internal static class ClientLaunch
     }
 
     /// <summary>
-    /// Puts the client's plugins into the slot's settings.json (a GUO client reads them there). An external
-    /// client is never given any. The rest of the file is kept as it is.
+    /// Puts the client's plugins and optional encryption into the slot's settings.json. An empty plugin
+    /// list clears the previous selection. External clients are untouched; other settings are preserved.
     /// </summary>
     public static void WritePlugins(string slotDir, ClientProfile client)
     {
-        if (client.Kind == ClientKinds.External || client.Plugins.Length == 0)
+        if (client.Kind == ClientKinds.External)
         {
             return;
         }
@@ -164,6 +169,10 @@ internal static class ClientLaunch
         string file = Path.Combine(slotDir, "settings.json");
         JsonObject settings = File.Exists(file) ? JsonNode.Parse(File.ReadAllText(file)) as JsonObject ?? new JsonObject() : new JsonObject();
         settings["plugins"] = new JsonArray(client.Plugins.Select(p => (JsonNode) JsonValue.Create(p)).ToArray());
+        if (client.Meta.Encryption is int encryption)
+        {
+            settings["encryption"] = encryption;
+        }
         Workspace.WriteAtomic(file, System.Text.Encoding.UTF8.GetBytes(settings.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true })));
     }
 }
