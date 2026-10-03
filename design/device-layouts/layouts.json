@@ -1,0 +1,434 @@
+[
+  {
+    "id": "phone",
+    "title": "Phone landscape",
+    "width": 840,
+    "height": 390,
+    "layout": {
+      "Posture": 1,
+      "World": {
+        "X": 0,
+        "Y": 0,
+        "Width": 840,
+        "Height": 260,
+        "Right": 840,
+        "Bottom": 260,
+        "Empty": false
+      },
+      "Companion": {
+        "X": 104,
+        "Y": 260,
+        "Width": 632,
+        "Height": 130,
+        "Right": 736,
+        "Bottom": 390,
+        "Empty": false
+      },
+      "Movement": {
+        "X": 0,
+        "Y": 260,
+        "Width": 104,
+        "Height": 130,
+        "Right": 104,
+        "Bottom": 390,
+        "Empty": false
+      },
+      "Actions": {
+        "X": 736,
+        "Y": 260,
+        "Width": 104,
+        "Height": 130,
+        "Right": 840,
+        "Bottom": 390,
+        "Empty": false
+      },
+      "Hinge": {
+        "X": 0,
+        "Y": 0,
+        "Width": 0,
+        "Height": 0,
+        "Right": 0,
+        "Bottom": 0,
+        "Empty": true
+      }
+    }
+  },
+  {
+    "id": "cover",
+    "title": "Fold closed / cover",
+    "width": 390,
+    "height": 840,
+    "layout": {
+      "Posture": 1,
+      "World": {
+        "X": 0,
+        "Y": 0,
+        "Width": 390,
+        "Height": 560,
+        "Right": 390,
+        "Bottom": 560,
+        "Empty": false
+      },
+      "Companion": {
+        "X": 97,
+        "Y": 560,
+        "Width": 196,
+        "Height": 280,
+        "Right": 293,
+        "Bottom": 840,
+        "Empty": false
+      },
+      "Movement": {
+        "X": 0,
+        "Y": 560,
+        "Width": 97,
+        "Height": 280,
+        "Right": 97,
+        "Bottom": 840,
+        "Empty": false
+      },
+      "Actions": {
+        "X": 293,
+        "Y": 560,
+        "Width": 97,
+        "Height": 280,
+        "Right": 390,
+        "Bottom": 840,
+        "Empty": false
+      },
+      "Hinge": {
+        "X": 0,
+        "Y": 0,
+        "Width": 0,
+        "Height": 0,
+        "Right": 0,
+        "Bottom": 0,
+        "Empty": true
+      }
+    }
+  },
+  {
+    "id": "flat",
+    "title": "Fold open / flat",
+    "width": 800,
+    "height": 840,
+    "layout": {
+      "Posture": 2,
+      "World": {
+        "X": 0,
+        "Y": 0,
+        "Width": 800,
+        "Height": 420,
+        "Right": 800,
+        "Bottom": 420,
+        "Empty": false
+      },
+      "Companion": {
+        "X": 104,
+        "Y": 420,
+        "Width": 592,
+        "Height": 420,
+        "Right": 696,
+        "Bottom": 840,
+        "Empty": false
+      },
+      "Movement": {
+        "X": 0,
+        "Y": 420,
+        "Width": 104,
+        "Height": 420,
+        "Right": 104,
+        "Bottom": 840,
+        "Empty": false
+      },
+      "Actions": {
+        "X": 696,
+        "Y": 420,
+        "Width": 104,
+        "Height": 420,
+        "Right": 800,
+        "Bottom": 840,
+        "Empty": false
+      },
+      "Hinge": {
+        "X": 0,
+        "Y": 0,
+        "Width": 0,
+        "Height": 0,
+        "Right": 0,
+        "Bottom": 0,
+        "Empty": true
+      }
+    }
+  },
+  {
+    "id": "tabletop",
+    "title": "Fold / tabletop",
+    "width": 800,
+    "height": 840,
+    "layout": {
+      "Posture": 3,
+      "World": {
+        "X": 0,
+        "Y": 0,
+        "Width": 800,
+        "Height": 400,
+        "Right": 800,
+        "Bottom": 400,
+        "Empty": false
+      },
+      "Companion": {
+        "X": 104,
+        "Y": 440,
+        "Width": 592,
+        "Height": 400,
+        "Right": 696,
+        "Bottom": 840,
+        "Empty": false
+      },
+      "Movement": {
+        "X": 0,
+        "Y": 440,
+        "Width": 104,
+        "Height": 400,
+        "Right": 104,
+        "Bottom": 840,
+        "Empty": false
+      },
+      "Actions": {
+        "X": 696,
+        "Y": 440,
+        "Width": 104,
+        "Height": 400,
+        "Right": 800,
+        "Bottom": 840,
+        "Empty": false
+      },
+      "Hinge": {
+        "X": 0,
+        "Y": 400,
+        "Width": 800,
+        "Height": 40,
+        "Right": 800,
+        "Bottom": 440,
+        "Empty": false
+      }
+    }
+  },
+  {
+    "id": "book",
+    "title": "Fold / book",
+    "width": 900,
+    "height": 760,
+    "layout": {
+      "Posture": 4,
+      "World": {
+        "X": 0,
+        "Y": 0,
+        "Width": 430,
+        "Height": 600,
+        "Right": 430,
+        "Bottom": 600,
+        "Empty": false
+      },
+      "Companion": {
+        "X": 470,
+        "Y": 0,
+        "Width": 430,
+        "Height": 600,
+        "Right": 900,
+        "Bottom": 600,
+        "Empty": false
+      },
+      "Movement": {
+        "X": 0,
+        "Y": 600,
+        "Width": 430,
+        "Height": 160,
+        "Right": 430,
+        "Bottom": 760,
+        "Empty": false
+      },
+      "Actions": {
+        "X": 470,
+        "Y": 600,
+        "Width": 430,
+        "Height": 160,
+        "Right": 900,
+        "Bottom": 760,
+        "Empty": false
+      },
+      "Hinge": {
+        "X": 430,
+        "Y": 0,
+        "Width": 40,
+        "Height": 760,
+        "Right": 470,
+        "Bottom": 760,
+        "Empty": false
+      }
+    }
+  },
+  {
+    "id": "tent",
+    "title": "Tent / external controller",
+    "width": 840,
+    "height": 520,
+    "layout": {
+      "Posture": 5,
+      "World": {
+        "X": 0,
+        "Y": 0,
+        "Width": 840,
+        "Height": 520,
+        "Right": 840,
+        "Bottom": 520,
+        "Empty": false
+      },
+      "Companion": {
+        "X": 0,
+        "Y": 0,
+        "Width": 0,
+        "Height": 0,
+        "Right": 0,
+        "Bottom": 0,
+        "Empty": true
+      },
+      "Movement": {
+        "X": 0,
+        "Y": 0,
+        "Width": 0,
+        "Height": 0,
+        "Right": 0,
+        "Bottom": 0,
+        "Empty": true
+      },
+      "Actions": {
+        "X": 0,
+        "Y": 0,
+        "Width": 0,
+        "Height": 0,
+        "Right": 0,
+        "Bottom": 0,
+        "Empty": true
+      },
+      "Hinge": {
+        "X": 0,
+        "Y": 0,
+        "Width": 0,
+        "Height": 0,
+        "Right": 0,
+        "Bottom": 0,
+        "Empty": true
+      }
+    }
+  },
+  {
+    "id": "tablet-landscape",
+    "title": "Tablet landscape",
+    "width": 1280,
+    "height": 800,
+    "layout": {
+      "Posture": 6,
+      "World": {
+        "X": 0,
+        "Y": 0,
+        "Width": 1280,
+        "Height": 533,
+        "Right": 1280,
+        "Bottom": 533,
+        "Empty": false
+      },
+      "Companion": {
+        "X": 104,
+        "Y": 533,
+        "Width": 1072,
+        "Height": 267,
+        "Right": 1176,
+        "Bottom": 800,
+        "Empty": false
+      },
+      "Movement": {
+        "X": 0,
+        "Y": 533,
+        "Width": 104,
+        "Height": 267,
+        "Right": 104,
+        "Bottom": 800,
+        "Empty": false
+      },
+      "Actions": {
+        "X": 1176,
+        "Y": 533,
+        "Width": 104,
+        "Height": 267,
+        "Right": 1280,
+        "Bottom": 800,
+        "Empty": false
+      },
+      "Hinge": {
+        "X": 0,
+        "Y": 0,
+        "Width": 0,
+        "Height": 0,
+        "Right": 0,
+        "Bottom": 0,
+        "Empty": true
+      }
+    }
+  },
+  {
+    "id": "tablet-portrait",
+    "title": "Tablet portrait",
+    "width": 800,
+    "height": 1280,
+    "layout": {
+      "Posture": 6,
+      "World": {
+        "X": 0,
+        "Y": 0,
+        "Width": 800,
+        "Height": 853,
+        "Right": 800,
+        "Bottom": 853,
+        "Empty": false
+      },
+      "Companion": {
+        "X": 104,
+        "Y": 853,
+        "Width": 592,
+        "Height": 427,
+        "Right": 696,
+        "Bottom": 1280,
+        "Empty": false
+      },
+      "Movement": {
+        "X": 0,
+        "Y": 853,
+        "Width": 104,
+        "Height": 427,
+        "Right": 104,
+        "Bottom": 1280,
+        "Empty": false
+      },
+      "Actions": {
+        "X": 696,
+        "Y": 853,
+        "Width": 104,
+        "Height": 427,
+        "Right": 800,
+        "Bottom": 1280,
+        "Empty": false
+      },
+      "Hinge": {
+        "X": 0,
+        "Y": 0,
+        "Width": 0,
+        "Height": 0,
+        "Right": 0,
+        "Bottom": 0,
+        "Empty": true
+      }
+    }
+  }
+]

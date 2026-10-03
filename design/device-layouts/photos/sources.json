@@ -1,0 +1,24 @@
+[
+  {
+    "file": "pixel9.jpg",
+    "device": "Pixel 9",
+    "source_page": "https://commons.wikimedia.org/wiki/File:Pixel_9.jpg",
+    "download": "https://upload.wikimedia.org/wikipedia/commons/c/cf/Pixel_9.jpg",
+    "author": "Miyako Fujimiya",
+    "license": "CC0",
+    "license_url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+    "changes": "None. Original photograph; displayed at responsive sizes. Screen contents are original, not GUO.",
+    "sha256": "b280c0e3120d9d472080de9ce9484f7de627e38d1e6c6bc3deaa650b42c2ddb1"
+  },
+  {
+    "file": "fold7.jpg",
+    "device": "Samsung Galaxy Z Fold7",
+    "source_page": "https://commons.wikimedia.org/wiki/File:Samsung_Galaxy_Z_Fold_7.jpg",
+    "download": "https://upload.wikimedia.org/wikipedia/commons/4/46/Samsung_Galaxy_Z_Fold_7.jpg",
+    "author": "Ivebeenhacked",
+    "license": "CC BY-SA 4.0",
+    "license_url": "https://creativecommons.org/licenses/by-sa/4.0",
+    "changes": "None. Original photograph; displayed at responsive sizes. Screen contents are original, not GUO.",
+    "sha256": "12ba7df2eeb46d83ae8858a1344d6a4a1421d54c3889aa758bcf017fdc7de2ec"
+  }
+]
