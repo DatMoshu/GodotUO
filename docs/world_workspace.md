@@ -6,12 +6,19 @@ checkouts do not switch to this branch automatically.
 
 ## Layout
 
-The World tab has one command row, a scrollable icon rail, an asset/brush
-library, the map, and a scrollable settings panel. **Brushes** toggles the
-library; **Precision** hides the library and keeps settings; **Focus** (Tab
-while the map has keyboard focus) hides both panels and Godot's docks.
-Click Focus again to restore the editing panels. Godot's global navigation
-and shard run bar remain available.
+The World tab has one command row and a scrollable icon rail. A resizable
+left workspace holds the brush library above **Tools / UO Inspector** tabs;
+the map fills the right side. Drag the vertical divider to change the left
+workspace width and the horizontal divider to change the library height.
+Those sizes are remembered per checkout in editor metadata.
+
+**Brushes** toggles the library; **Precision** hides the library and keeps
+settings; **Focus** (Tab while the map has keyboard focus) hides the left
+workspace. Click Focus again to restore it. All six UO tabs (World, Assets,
+Store, MapGen, Multis, Gumps) automatically hide Godot's Scene, History and
+other side docks and place the UO Inspector on the left. Switching back to
+a Godot tab restores the previous dock visibility. Godot's global navigation,
+shard run bar and bottom-panel buttons remain available.
 
 Tool names and shortcuts appear in tooltips. Existing layers, render modes,
 season, scene packs, spawners and Area-to-multi remain in the settings panel.
@@ -20,10 +27,18 @@ Block outlines now start disabled; enable them in **Guides** when needed.
 ## Paint and sculpt
 
 1. Choose **Scatter**, **Terrain**, or **Sculpt** in the library, then choose
-   an asset. Search accepts names, decimal IDs and `0x` IDs. Terrain and
-   statics use separate ID spaces.
+   an asset. As you type, an autocomplete popup searches **both land and
+   statics**, using F3's fuzzy name matching and decimal/`0x` ID lookup.
+   Rows show type, thumbnail, name and ID. Up/Down chooses a row, Enter or a
+   click applies it, and Escape dismisses it. Typing alone never changes the
+   selected brush. Selecting a result switches the brush target to its type;
+   land and statics still use separate ID spaces. The kind selector controls
+   the thumbnail grid; it does not restrict autocomplete.
 2. Choose the brush operation and target. Set round/square footprint, size,
    density, spacing, strength and hue in **Brush**.
+   Drag a numeric label horizontally to adjust its value; hold Shift for
+   finer control. Values still respect each tool's allowed range. Direct
+   number entry and spinner arrows remain available.
 3. Drag on the map. Highlighted cells show the affected footprint; static
    paint also shows ghost art. Release to apply; Escape cancels. A stroke
    spanning several map blocks is one undo operation. Ctrl+Z undoes;
@@ -31,7 +46,7 @@ Block outlines now start disabled; enable them in **Guides** when needed.
 4. **+ Variation** adds the selected asset to the mixture. The variation
    panel shows thumbnails and editable relative weights. The advanced field
    accepts `0x0CCA:3, 0x0CCB:1`; press Enter to rebuild the thumbnail rows.
-5. Name and save a preset. Double-click a saved preset to reuse it. Favorites
+5. Expand **Saved presets**, name and save a preset. Double-click a saved preset to reuse it. Favorites
    are available in the library and through **Q** over the map.
 
 Scatter is deterministic for the seed and world cell, including across
@@ -115,7 +130,9 @@ must remain local and uncommitted.
 
 The editor smoke now uses viewport coordinates for picking and checks brush
 footprints, repeatable variants, multi-block undo/redo, duplicate prevention,
-no-op filtering, terrain locks and rollback of a failed batch. The existing
+no-op filtering, terrain locks and rollback of a failed batch. It also checks
+combined autocomplete, keyboard selection, typo matching, dismissal, numeric
+label dragging, fine adjustment and limits. The existing
 art smoke checks export/import against stubs, including Pixelorama's return
 format and Pinta's save-in-place path. It does not simulate painting inside
 the external applications or make paid image-provider calls.

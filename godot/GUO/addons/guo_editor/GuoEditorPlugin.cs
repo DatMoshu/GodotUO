@@ -191,6 +191,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         _multiedit.Visible = _multieditWasVisible;
         _multieditWasVisible = false;
         MultiPanel.EditRequested = OpenInMultiEditor;
+        BuildUoLayout();
         _world.AreaToMulti = (name, parts) =>
         {
             ShowMultiEditor();
@@ -357,6 +358,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
 
     private void TearDown()
     {
+        RemoveUoLayout();
         // Save recovery before StoreView clears System.Text.Json's process-wide type caches.
         // Serializing after that cache release pins this assembly and prevents hot reload.
         if (_gumps != null)

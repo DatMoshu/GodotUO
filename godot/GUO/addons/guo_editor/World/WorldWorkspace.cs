@@ -15,6 +15,17 @@ public partial class WorldView
     private WorldTool _activeTool;
     private HBoxContainer _legacyTools, _legacyModes;
     private Control _library, _settings, _quickFavorites;
+    private VSplitContainer _leftWorkspace;
+    private TabContainer _detailTabs;
+    internal VBoxContainer InspectorHost { get; private set; }
+    internal ArtPanel BrushLibrary => _brushArt;
+    internal SpinBox BrushSizeInput => _numbers["Size (tiles)"];
+    internal void ShowInspectorTab(bool inspector) => _detailTabs.CurrentTab = inspector ? 1 : 0;
+    // Methods deliberately: Godot serializes settable properties during assembly reload.
+    internal Vector2I GetWorkspaceSplit() => new(((HSplitContainer)_leftWorkspace.GetParent()).SplitOffsets[0], _leftWorkspace.SplitOffsets[0]);
+    internal void SetWorkspaceSplit(Vector2I value)
+    { ((HSplitContainer)_leftWorkspace.GetParent()).SplitOffsets = new[] { value.X }; _leftWorkspace.SplitOffsets = new[] { value.Y }; }
+    internal float LibraryHeight => _library.Size.Y;
     private ArtPanel _brushArt;
     private readonly Dictionary<WorldTool, Button> _toolButtons = new();
     private readonly WorldBrush _recipe = new();
@@ -57,9 +68,11 @@ public partial class WorldView
     private SpinBox Number(Node parent, string label, double value, double min, double max, Action<int> change)
     {
         var row = new HBoxContainer(); parent.AddChild(row);
-        row.AddChild(new Label { Text = label, SizeFlagsHorizontal = SizeFlags.ExpandFill });
+        var caption = new Label { Text = label, SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        row.AddChild(caption);
         var spin = new SpinBox { MinValue = min, MaxValue = max, Value = value, Step = 1, CustomMinimumSize = new Vector2(95, 0) };
-        row.AddChild(spin); spin.ValueChanged += v => change((int)v); _numbers[label] = spin; return spin;
+        row.AddChild(spin); spin.ValueChanged += v => change((int)v); _numbers[label] = spin;
+        NumericScrub.Attach(caption, spin); return spin;
     }
 
     private CheckBox Check(Node parent, string label, bool value, Action<bool> change)
@@ -92,14 +105,18 @@ public partial class WorldView
             button.Pressed += () => Tool = entry.Tool; rail.AddChild(button); _toolButtons[entry.Tool] = button;
         }
 
-        var library = new VBoxContainer { CustomMinimumSize = new Vector2(290, 0) };
-        body.AddChild(library); _library = library;
+        var workspace = new HSplitContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill, SizeFlagsVertical = SizeFlags.ExpandFill, SplitOffsets = new[] { 520 } };
+        body.AddChild(workspace);
+        _leftWorkspace = new VSplitContainer { CustomMinimumSize = new Vector2(310, 0), SplitOffsets = new[] { 650 } };
+        workspace.AddChild(_leftWorkspace);
+        var library = new VBoxContainer { CustomMinimumSize = new Vector2(290, 180) };
+        _leftWorkspace.AddChild(library); _library = library;
         library.AddChild(new Label { Text = "Brush library" });
         var recipes = new HFlowContainer(); library.AddChild(recipes);
         ActionButton(recipes, "Scatter", () => QuickRecipe(false, "Paint", 7, 35, 2));
         ActionButton(recipes, "Terrain", () => QuickRecipe(true, "Paint", 5, 100, 1));
         ActionButton(recipes, "Sculpt", () => QuickRecipe(true, "Raise", 5, 100, 1));
-        _brushArt = new ArtPanel { MinimumGridHeight = 100, ShowNames = true, SizeFlagsVertical = SizeFlags.ExpandFill };
+        _brushArt = new ArtPanel { MinimumGridHeight = 80, ShowNames = true, Autocomplete = true, SizeFlagsVertical = SizeFlags.ExpandFill };
         _brushArt.SetCellSize(80);
         _brushArt.Attach(_data); library.AddChild(_brushArt);
         _brushArt.Inspect += ins =>
@@ -124,16 +141,20 @@ public partial class WorldView
             RebuildVariants();
         });
         _favoriteButtons = new HFlowContainer(); library.AddChild(_favoriteButtons);
-        _presets = new ItemList { CustomMinimumSize = new Vector2(0, 100), TooltipText = "Double-click a saved brush recipe to load it" };
-        library.AddChild(_presets); _presets.ItemActivated += i => ReadPreset(_presets.GetItemText((int)i));
-        _presetName = new LineEdit { PlaceholderText = "Name this brush preset" }; library.AddChild(_presetName);
-        var presetActions = new HBoxContainer(); library.AddChild(presetActions);
+        var presetSection = Section(library, "Saved presets");
+        _presets = new ItemList { CustomMinimumSize = new Vector2(0, 70), TooltipText = "Double-click a saved brush recipe to load it" };
+        presetSection.AddChild(_presets); _presets.ItemActivated += i => ReadPreset(_presets.GetItemText((int)i));
+        _presetName = new LineEdit { PlaceholderText = "Name this brush preset" }; presetSection.AddChild(_presetName);
+        var presetActions = new HBoxContainer(); presetSection.AddChild(presetActions);
         ActionButton(presetActions, "Save preset", SaveBrushPreset);
         ActionButton(presetActions, "Load", () => { var s = _presets.GetSelectedItems(); if (s.Length > 0) ReadPreset(_presets.GetItemText(s[0])); });
 
-        _stage.Reparent(body);
-        var scroll = new ScrollContainer { CustomMinimumSize = new Vector2(270, 0), HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled };
-        body.AddChild(scroll); _settings = scroll;
+        _stage.Reparent(workspace);
+        _detailTabs = new TabContainer { CustomMinimumSize = new Vector2(0, 180) };
+        _leftWorkspace.AddChild(_detailTabs); _settings = _detailTabs;
+        var scroll = new ScrollContainer { Name = "Tools", CustomMinimumSize = new Vector2(270, 0), HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled };
+        _detailTabs.AddChild(scroll);
+        InspectorHost = new VBoxContainer { Name = "UO Inspector" }; _detailTabs.AddChild(InspectorHost);
         var options = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill }; scroll.AddChild(options);
         options.AddChild(new Label { Text = "Tool settings" });
         _brush.Reparent(options); _brush.ClipText = true; _brush.CustomMinimumSize = new Vector2(240, 0);
@@ -155,7 +176,8 @@ public partial class WorldView
         Number(brushSettings, "Density (%)", 35, 0, 100, v => _recipe.Density = v);
         Number(brushSettings, "Spacing (tiles)", 2, 1, 16, v => _recipe.Spacing = v);
         Number(brushSettings, "Strength", 1, 1, 32, v => _recipe.Strength = v);
-        brushSettings.AddChild(new Label { Text = "Hue (decimal)" });
+        var hueLabel = new Label { Text = "Hue (decimal)" }; brushSettings.AddChild(hueLabel);
+        NumericScrub.Attach(hueLabel, _hue);
         _hue.Reparent(brushSettings); _hue.TooltipText = "Hue (decimal); applies to Stamp and brush painting/recoloring";
         _hue.ValueChanged += v => _recipe.Hue = (ushort)v;
 
@@ -210,14 +232,19 @@ public partial class WorldView
         var spacer = new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill }; bar.AddChild(spacer);
         ActionButton(bar, "Undo", () => _editor.Undo(), "Ctrl+Z");
         ActionButton(bar, "Redo", () => _editor.Redo(), "Ctrl+Y");
-        ActionButton(bar, "Brushes", () => _library.Visible = !_library.Visible);
-        ActionButton(bar, "Precision", () => { _library.Hide(); _settings.Show(); });
+        ActionButton(bar, "Brushes", () => { _leftWorkspace.Show(); _library.Visible = !_library.Visible; });
+        ActionButton(bar, "Precision", () => { _leftWorkspace.Show(); _library.Hide(); _settings.Show(); });
         ActionButton(bar, "Focus", ToggleWorkspaceFocus, "Tab: hide panels and Godot docks");
         _previewLabel = new Label { Position = new Vector2(12, 12), MouseFilter = MouseFilterEnum.Ignore };
         _stage.AddChild(_previewLabel);
         var quick = new PanelContainer { Visible = false, Position = new Vector2(24, 60) };
         _stage.AddChild(quick); _quickFavorites = quick;
         SyncToolButtons(); LoadBrushPresets();
+        var preferences = EditorInterface.Singleton.GetEditorSettings();
+        workspace.SplitOffsets = new[] { preferences.GetProjectMetadata("guo_world", "left_width", 520).AsInt32() };
+        _leftWorkspace.SplitOffsets = new[] { preferences.GetProjectMetadata("guo_world", "library_height", 650).AsInt32() };
+        workspace.Dragged += offset => preferences.SetProjectMetadata("guo_world", "left_width", offset);
+        _leftWorkspace.Dragged += offset => preferences.SetProjectMetadata("guo_world", "library_height", offset);
     }
 
     private void OnBrushDataLoaded() { _brushArt?.OnDataLoaded(); RebuildFavorites(); RebuildVariants(); }
@@ -237,6 +264,7 @@ public partial class WorldView
         _recipe.FixedHeight = false; _checks["Fixed placement plane"].ButtonPressed = false;
         BrushHue = 0;
         _library.Show(); _settings.Show();
+        _leftWorkspace.Show();
         SetToggle("Blocks", false);
         _brushArt.Search("tree");
         EditorInterface.Singleton.SetDistractionFreeMode(true);
@@ -292,9 +320,9 @@ public partial class WorldView
 
     private void ToggleWorkspaceFocus()
     {
-        bool focus = _settings.Visible || _library.Visible;
-        _settings.Visible = !focus; _library.Visible = !focus;
-        EditorInterface.Singleton.SetDistractionFreeMode(focus);
+        bool focus = _leftWorkspace.Visible;
+        _leftWorkspace.Visible = !focus;
+        EditorInterface.Singleton.SetDistractionFreeMode(true);
         if (focus) FocusRequested?.Invoke();
     }
 

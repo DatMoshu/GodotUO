@@ -4,6 +4,7 @@ namespace GUO.Editor;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Godot;
 
 public partial class EditorSmoke
 {
@@ -70,6 +71,42 @@ public partial class EditorSmoke
         Expect(firstEdge && brush.PlanCells(data, new[] { (x + 1, y) }, 0x00A8).Contains((x, y)), "brush_edges_reconnect_existing_stroke");
         if (firstEdge) editor.Undo();
         Expect(project.BlockText(0, a.Item1, a.Item2) == beforeA && project.BlockText(0, b.Item1, b.Item2) == beforeB, "brush_test_restores_project");
+        VerifyWorkspaceInteractions();
+    }
+
+    private void VerifyWorkspaceInteractions()
+    {
+        Expect(EditorInterface.Singleton.IsDistractionFreeModeEnabled() && _world.InspectorHost.GetChildCount() > 0, "world_uses_left_inspector_without_native_docks");
+        var size = _world.BrushSizeInput;
+        var label = (Control)size.GetParent().GetChild(0);
+        double original = size.Value;
+        size.Value = 7;
+        label.EmitSignal(Control.SignalName.GuiInput, new InputEventMouseButton { ButtonIndex = MouseButton.Left, Pressed = true });
+        label.EmitSignal(Control.SignalName.GuiInput, new InputEventMouseMotion { ButtonMask = MouseButtonMask.Left, Relative = new Vector2(12, 0) });
+        Expect(size.Value == 11, "drag_label_adjusts_brush_size");
+        label.EmitSignal(Control.SignalName.GuiInput, new InputEventMouseMotion { ButtonMask = MouseButtonMask.Left, ShiftPressed = true, Relative = new Vector2(-12, 0) });
+        Expect(size.Value == 10, "shift_drag_label_adjusts_finely");
+        label.EmitSignal(Control.SignalName.GuiInput, new InputEventMouseMotion { ButtonMask = MouseButtonMask.Left, Relative = new Vector2(9999, 0) });
+        Expect(size.Value == 31, "drag_label_clamps_to_tool_range");
+        label.EmitSignal(Control.SignalName.GuiInput, new InputEventMouseButton { ButtonIndex = MouseButton.Left, Pressed = false });
+        size.Value = original;
+
+        var art = _world.BrushLibrary;
+        var box = art.SearchInput;
+        uint before = _data.CurrentArt;
+        int shared = Enumerable.Range(1, 1024).First(i => _data.HasArt((uint)i) && _data.HasArt(EditorData.LandCount + (uint)i));
+        box.GrabFocus(); box.Text = $"0x{shared:X4}"; art.Suggestions.RefreshSuggestions();
+        Expect(art.Suggestions.Visible && art.Suggestions.Results.Any(e => e.Kind == "Land") && art.Suggestions.Results.Any(e => e.Kind == "Static"), "autocomplete_combines_land_and_statics");
+        Expect(_data.CurrentArt == before, "autocomplete_typing_does_not_change_brush");
+        box.EmitSignal(Control.SignalName.GuiInput, new InputEventKey { Keycode = Key.Down, Pressed = true });
+        box.EmitSignal(Control.SignalName.GuiInput, new InputEventKey { Keycode = Key.Enter, Pressed = true });
+        Expect(!art.Suggestions.Visible && _data.CurrentArt == (uint)shared, "autocomplete_keyboard_selects_land_target");
+        box.Text = "bakcpack"; art.Suggestions.RefreshSuggestions();
+        Expect(art.Suggestions.Results.Any(e => e.Title.Contains("backpack", StringComparison.OrdinalIgnoreCase)), "autocomplete_reuses_f3_typo_matching");
+        box.EmitSignal(Control.SignalName.GuiInput, new InputEventKey { Keycode = Key.Escape, Pressed = true });
+        Expect(!art.Suggestions.Visible, "autocomplete_escape_dismisses");
+        box.ReleaseFocus(); _data.CurrentArt = before;
+        art.SelectKind(before < EditorData.LandCount); art.Search("");
     }
 }
 #endif

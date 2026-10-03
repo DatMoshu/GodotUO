@@ -1508,14 +1508,38 @@ public partial class EditorSmoke : Node
         _steps.Add((1, VerifyBrushWorkspace));
         if (!Headless)
         {
+            Vector2I originalSplit = default;
+            float originalCanvasWidth = 0, originalLibraryHeight = 0;
             _steps.Add((1, () => { _world.GoTo(0, 1651, 2660); _world.ShowWorkspacePreview(); }));
             _steps.Add((20, () => _world.ForcedMouse = _world.CanvasSize / 2));
             _steps.Add((20, () =>
             {
                 using Image shot = EditorInterface.Singleton.GetBaseControl().GetViewport().GetTexture()?.GetImage();
                 shot?.SavePng(Path.Combine(_out, $"editor_brush_workspace{Suffix}.png"));
-                _world.Tool = WorldTool.Select;
-                EditorInterface.Singleton.SetDistractionFreeMode(false);
+            }));
+            _steps.Add((1, () => { var box = _world.BrushLibrary.SearchInput; box.GrabFocus(); box.Text = "water"; _world.BrushLibrary.Suggestions.RefreshSuggestions(); }));
+            _steps.Add((20, () =>
+            {
+                using Image shot = EditorInterface.Singleton.GetBaseControl().GetViewport().GetTexture()?.GetImage();
+                shot?.SavePng(Path.Combine(_out, $"editor_brush_autocomplete{Suffix}.png"));
+                _world.BrushLibrary.Suggestions.Hide(); _world.BrushLibrary.SearchInput.ReleaseFocus();
+                _world.ShowInspectorTab(true);
+            }));
+            _steps.Add((20, () =>
+            {
+                using Image shot = EditorInterface.Singleton.GetBaseControl().GetViewport().GetTexture()?.GetImage();
+                shot?.SavePng(Path.Combine(_out, $"editor_brush_inspector{Suffix}.png"));
+                _world.ShowInspectorTab(false); _world.Tool = WorldTool.Select;
+                originalSplit = _world.GetWorkspaceSplit();
+                originalCanvasWidth = _world.CanvasSize.X; originalLibraryHeight = _world.LibraryHeight;
+                _world.SetWorkspaceSplit(originalSplit + new Vector2I(140, 80));
+            }));
+            _steps.Add((20, () =>
+            {
+                Expect(_world.CanvasSize.X < originalCanvasWidth && _world.LibraryHeight > originalLibraryHeight, "workspace_resize_changes_canvas_and_library");
+                using Image shot = EditorInterface.Singleton.GetBaseControl().GetViewport().GetTexture()?.GetImage();
+                shot?.SavePng(Path.Combine(_out, $"editor_brush_resized{Suffix}.png"));
+                _world.SetWorkspaceSplit(originalSplit);
             }));
         }
         // ADR-0027: render modes and map layers.

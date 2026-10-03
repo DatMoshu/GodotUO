@@ -15,6 +15,21 @@ using GUO.Assets;
 public partial class ArtPanel : GridPanel
 {
     public bool ShowNames { get; set; }
+    public bool Autocomplete { get; set; }
+    internal LineEdit SearchInput => SearchBox;
+    internal ArtAutocomplete Suggestions { get; private set; }
+
+    protected override void SearchUiReady()
+    {
+        if (Autocomplete)
+        {
+            SearchBox.PlaceholderText = "Search land & statics…";
+            var complete = new ArtAutocomplete();
+            Suggestions = complete;
+            AddChild(complete);
+            complete.Attach(SearchBox, Data, (land, id) => { SelectKind(land); Search($"0x{id:X4}"); });
+        }
+    }
     private OptionButton _kind;
     private readonly List<int>[] _ids = new List<int>[2];
 
