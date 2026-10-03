@@ -56,10 +56,17 @@ grass against moss from the existing `Grassland>Swamp` pair.
 (z −15 under statics at −5), up to about ten cells out from the shore, then open water tiles at −5.
 The seabed comes in three bands: a light ring (0x4C–0x57) next to the shore, a mid ring (0x58–0x63)
 and the flat bed (0x64). The rings' twelve tiles each are edge shapes, read from the owner's Felucca:
-for each tile, which side holds the deeper bed (light ring) or the shore (mid ring). On the dry side,
-rippled wet sand (0x1A with the water north or east, 0x1B south or west, 0x1C around) lines the
-waterline. Dig Shore digs the band; the Shallows pass gives it these shapes. The counts stay on the
-owner's machine.
+for each tile, which side holds the deeper bed (light ring) or the shore (mid ring). Dig Shore digs
+the band; the Shallows pass gives it these shapes. The counts stay on the owner's machine.
+
+**The waterline.** On the dry side, Felucca's grass coast is a single cell of wet sand whose tile
+carries the grass fringe on its land side, with plain grass (0x03–0x06) straight behind it (85% of
+cases). The tile depends on where the water lies, each measured at 92–98% one shape: straight sides
+0x24/0x28 (water north), 0x23/0x27 (east), 0x21/0x25 (south), 0x22/0x26 (west), the first of each
+pair three times as common; outward points are the rippled tiles 0x1A (north-east), 0x1B (south-west)
+and 0x1C (south-east and north-west); inward corners, with the water only diagonal, 0x1D (south-east),
+0x1E (south-west), 0x1F (north-east), 0x20 (north-west). Where more sand lies behind the waterline
+(a wide beach or a desert), the generator ripples the cell instead.
 
 **Sand and river banks (2026-10-03).** Felucca's sand is 1.3% of its land: about 40% of it in deserts
 20 or more cells from water, the rest on sea beaches. It draws almost no rivers in land tiles (some
