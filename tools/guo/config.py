@@ -211,6 +211,8 @@ class Config:
     custom_data_setting: str = ""
     # UO_SHARD_SRC, when set: another ModernUO checkout (config.bat honours it too).
     shard_src_setting: Path | None = None
+    playerbots_dir: Path | None = None
+    playerbots_port: int = 2640
     # The store folder's signed catalogue (ADR-0026); no key means an unsigned v1 index.
     store_signing_key: Path | None = None
     # The map generator's per-user data folder (UO_MAPGEN_DATA, ADR-0030): mined, never shipped.
@@ -485,6 +487,8 @@ def load_config(root: Path | None = None) -> Config:
         ),
         log_level=get("UO_LOG_LEVEL", "INFO"),
         shard_src_setting=path_or_none("UO_SHARD_SRC"),
+        playerbots_dir=path_or_none("UO_PLAYERBOTS_DIR"),
+        playerbots_port=int(get("UO_PLAYERBOTS_PORT", "2640")),
         agent_queue=Path(agent_queue),
         godot_home_setting=godot_home_setting,
         upstream_dir_setting=upstream_dir_setting,

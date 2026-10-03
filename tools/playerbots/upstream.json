@@ -1,0 +1,13 @@
+{
+  "repository": "https://github.com/Klein187/uo-offline.git",
+  "commit": "d73330ee0f40c0f9d29a173fd568ca64ea629624",
+  "server_repository": "https://github.com/modernuo/ModernUO.git",
+  "server_commit": "d4531cd94b739613155225c234900de9f47d2c88",
+  "patches": [
+    "0001-basehouse-keep-ownerless-bot-houses.patch",
+    "0003-securetrade-allow-bot-participant.patch",
+    "0006-bitmapastar-bots-path-through-unlocked-doors.patch",
+    "0007-corpsepackets-null-equip-list-crashes-login.patch"
+  ],
+  "data": ["Destinations", "Waypoints", "Zones", "PlayerBotChat"]
+}

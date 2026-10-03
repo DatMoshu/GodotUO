@@ -1,0 +1,9 @@
+{
+  "spawners": [
+    {"map": "Felucca", "x": 1434, "y": 1697, "z": 0, "behaviorName": "BankSitter", "amount": 10, "boundsRadius": 10},
+    {"map": "Felucca", "x": 1434, "y": 1697, "z": 0, "behaviorName": "Traveler", "amount": 10, "boundsRadius": 18},
+    {"map": "Felucca", "x": 1434, "y": 1697, "z": 0, "behaviorName": "Shopper", "amount": 10, "boundsRadius": 18},
+    {"map": "Felucca", "x": 1434, "y": 1697, "z": 0, "behaviorName": "Crafter", "amount": 10, "boundsRadius": 18},
+    {"map": "Felucca", "x": 1434, "y": 1697, "z": 0, "behaviorName": "Wander", "amount": 10, "boundsRadius": 18}
+  ]
+}
