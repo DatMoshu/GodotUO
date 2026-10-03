@@ -46,6 +46,9 @@ public sealed class MultiGenerateClient : IDisposable
         _python = QueueClient.FindPython();
     }
 
+    /// <summary>The serve process's id, or null while none runs (the smoke check proves there is only one).</summary>
+    public int? ProcessId => _proc is { HasExited: false } ? _proc.Id : null;
+
     public bool Available => _python != null && File.Exists(_script);
 
     public string Why => _python == null ? "python was not found on PATH" : !File.Exists(_script) ? $"{_script} is missing" : null;

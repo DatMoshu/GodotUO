@@ -107,6 +107,7 @@ public partial class MultiEditView : VBoxContainer, IMultiComponentSink
         _doc = new MultiDocument();
         _doc.Changed += OnDocChanged;
         Build();
+        MarkSaved();
         if (_data.IsLoaded)
         {
             OnDataLoaded();
@@ -159,11 +160,12 @@ public partial class MultiEditView : VBoxContainer, IMultiComponentSink
         // Row 1: files, tools, history.
         var bar = new HBoxContainer();
         AddChild(bar);
-        bar.AddChild(Tip(Btn("New", NewMulti), "A blank multi (the history starts again)"));
+        bar.AddChild(Tip(Btn("New", () => GuardUnsaved(NewMulti)), "A blank multi (the history starts again; asks first when there are unsaved changes)"));
         _openId = new LineEdit { PlaceholderText = "client multi id", CustomMinimumSize = new Vector2(110, 0), TooltipText = "0x0064 or 100" };
         _openId.TextSubmitted += _ => OpenTyped();
         bar.AddChild(_openId);
         bar.AddChild(Tip(Btn("Open", OpenTyped), "Open a client multi by id"));
+        BuildFormatMenus(bar);
         bar.AddChild(new VSeparator());
 
         var group = new ButtonGroup();
@@ -171,6 +173,7 @@ public partial class MultiEditView : VBoxContainer, IMultiComponentSink
         {
             (MultiTool.Select, "Select", "S"), (MultiTool.Draw, "Draw", "D"), (MultiTool.Erase, "Erase", "E"), (MultiTool.Pipette, "Pipette", "I"),
             (MultiTool.Rect, "Rect", "R"), (MultiTool.Line, "Line", "L"), (MultiTool.Brush, "Brush", "B"), (MultiTool.Move, "Move", "M"),
+            (MultiTool.WallRun, "Wall", "W"), (MultiTool.Roof, "Roof", "O"), (MultiTool.Stairs, "Stairs", "T"),
         })
         {
             MultiTool tool = t;
@@ -201,6 +204,7 @@ public partial class MultiEditView : VBoxContainer, IMultiComponentSink
         bar.AddChild(Tip(Btn("+", () => _canvas.ZoomBy(1)), "Zoom in (nearest sampling; the wheel zooms at the pointer)"));
         bar.AddChild(new VSeparator());
         bar.AddChild(Tip(Btn("Preview in World", () => PreviewNow()), "Place the last written multi in the World tab"));
+        BuildTitle(bar);
         _summary = new Label { SizeFlagsHorizontal = SizeFlags.ExpandFill, ClipText = true };
         bar.AddChild(_summary);
 
@@ -219,10 +223,12 @@ public partial class MultiEditView : VBoxContainer, IMultiComponentSink
             sel.AddChild(Tip(Btn($"z{(d > 0 ? "+" : "")}{d}", () => _canvas.NudgeZ(d)), "Group z: moves the selection, or the editing z with none ([ ] PgUp PgDn)"));
         }
 
+        BuildTransformButtons(sel);
+        BuildClipboardButtons(sel);
         sel.AddChild(new VSeparator());
         _hint = new Label
         {
-            Text = "S select  D draw  E erase  I pipette  R rect  L line  B brush  M move   [ ] z   arrows nudge   G grid  F floor",
+            Text = "S select  D draw  E erase  I pipette  R rect  L line  B brush  M move  W wall  O roof  T stairs   [ ] z   arrows nudge   G grid  F floor",
             SizeFlagsHorizontal = SizeFlags.ExpandFill,
             ClipText = true,
             Modulate = new Color(1, 1, 1, 0.6f),
@@ -245,6 +251,8 @@ public partial class MultiEditView : VBoxContainer, IMultiComponentSink
         _tabs = new TabContainer { CustomMinimumSize = new Vector2(300, 0), SizeFlagsVertical = SizeFlags.ExpandFill };
         split.AddChild(_tabs);
         BuildTabs();
+        BuildGenerator();
+        BuildClipboard();
 
         _status = new Label { Text = "", ClipText = true };
         AddChild(_status);
@@ -395,6 +403,7 @@ public partial class MultiEditView : VBoxContainer, IMultiComponentSink
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
             Modulate = new Color(1, 1, 1, 0.6f),
         });
+        BuildDeploy(save);
     }
 
     /// <summary>Mounts another panel (a generator, say) in the right-hand tabs.</summary>
@@ -411,6 +420,13 @@ public partial class MultiEditView : VBoxContainer, IMultiComponentSink
     public void SetTool(MultiTool tool)
     {
         _canvas.Tool = tool;
+        if (tool is MultiTool.WallRun or MultiTool.Roof or MultiTool.Stairs)
+        {
+            ShowGenerateTab();
+            _genPanel.SelectGenerator(tool == MultiTool.WallRun ? "autowall" : tool == MultiTool.Roof ? "roof" : "stairs");
+            RefreshToolContext();
+        }
+
         if (_toolButtons.TryGetValue(tool, out Button b))
         {
             b.SetPressedNoSignal(true);
@@ -477,6 +493,7 @@ public partial class MultiEditView : VBoxContainer, IMultiComponentSink
         _dirty = true;
         _since = 0;
         _stamp++;
+        UpdateTitle();
     }
 
     public override void _Process(double delta)
@@ -596,6 +613,7 @@ public partial class MultiEditView : VBoxContainer, IMultiComponentSink
         _canvas.SetEditZ(Stories.FloorZ);
         _canvas.FitView();
         ValidateNow();
+        MarkSaved();
     }
 
     private void OpenTyped()
@@ -605,7 +623,15 @@ public partial class MultiEditView : VBoxContainer, IMultiComponentSink
         bool ok = t.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
             ? int.TryParse(t.AsSpan(2), System.Globalization.NumberStyles.HexNumber, null, out id)
             : int.TryParse(t, out id);
-        if (!ok || !OpenClientMulti(id))
+        if (!ok)
+        {
+            _status.Text = $"'{t}' is not a client multi";
+            return;
+        }
+
+        bool opened = false;
+        GuardUnsaved(() => opened = OpenClientMulti(id));
+        if (!opened && !UnsavedPromptOpen)
         {
             _status.Text = $"'{t}' is not a client multi";
         }
@@ -648,6 +674,7 @@ public partial class MultiEditView : VBoxContainer, IMultiComponentSink
         _canvas.SetEditZ(Stories.FloorZ);
         _canvas.FitView();
         ValidateNow();
+        MarkSaved();
     }
 
     public bool OpenDescription(string path)
@@ -656,6 +683,7 @@ public partial class MultiEditView : VBoxContainer, IMultiComponentSink
         {
             (string name, int? source, List<MultiPart> parts) = MultiStore.FromJson(File.ReadAllText(path));
             OpenParts(name, parts, source);
+            MarkSaved(path);
             return true;
         }
         catch (Exception ex)
@@ -677,7 +705,7 @@ public partial class MultiEditView : VBoxContainer, IMultiComponentSink
         dialog.AddFilter("*.multi.json", "Multi description");
         dialog.FileSelected += p =>
         {
-            OpenDescription(p);
+            GuardUnsaved(() => OpenDescription(p));
             dialog.QueueFree();
         };
         dialog.Canceled += dialog.QueueFree;
@@ -691,6 +719,7 @@ public partial class MultiEditView : VBoxContainer, IMultiComponentSink
         string path = MultiStore.SaveDescription(name, _doc.Source, _doc.Parts);
         _saveLog.Text = $"saved {path}";
         _doc.Name = name;
+        MarkSaved(path);
         return path;
     }
 
@@ -772,16 +801,24 @@ public partial class MultiEditView : VBoxContainer, IMultiComponentSink
 
     // --- the generator seam -----------------------------------------------------------------------------------
 
-    public void PushComponents(string name, IReadOnlyList<GeneratedPart> parts, bool replace)
+    public void PushComponents(string name, IReadOnlyList<GeneratedPart> parts, bool replace) =>
+        PushComponentsWith(name, name, parts, replace, null);
+
+    /// <summary>
+    /// <see cref="PushComponents"/> with a second edit in the same undo step (the stair tool opens the floor above).
+    /// <paramref name="step"/> names the history entry, <paramref name="name"/> the multi when it replaces.
+    /// </summary>
+    internal void PushComponentsWith(string step, string name, IReadOnlyList<GeneratedPart> parts, bool replace, Action<List<MultiPart>> extra)
     {
         var made = parts.Select(g => _doc.Make(g.Id, g.X, g.Y, g.Z, g.Shown, g.Hue)).ToList();
-        _doc.Do($"{(replace ? "generate" : "add")} {name} ({made.Count})", list =>
+        _doc.Do($"{(replace ? "generate" : "add")} {step} ({made.Count})", list =>
         {
             if (replace)
             {
                 list.Clear();
             }
 
+            extra?.Invoke(list);
             list.AddRange(made);
         });
         if (replace)
@@ -808,6 +845,8 @@ public partial class MultiEditView : VBoxContainer, IMultiComponentSink
         }
 
         _canvas?.Detach();
+        DisposeGenerator();
+        ReleaseDeploy();
         AfterWrite = null;
         PreviewInWorld = null;
         MultiLoader.EditorOverlay = null;

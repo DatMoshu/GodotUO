@@ -344,6 +344,7 @@ public partial class EditorSmoke
         // --- World selection to a new multi ------------------------------------------------------------------------------------
         if (_world != null && _world.IsBooted)
         {
+            view.SaveDescription();                       // the World selection asks before it replaces unsaved work
             _world.SetArea(1490, 1620, 1530, 1660);
             var taken = _world.AreaParts(out string worldName);
             MeCheck("world_selection_has_statics", taken is { Count: > 0 }, $"{taken?.Count}");
@@ -362,6 +363,7 @@ public partial class EditorSmoke
         MeCheck("seam_adds", doc.Parts.Count == 4);
         view.NewMulti();
         MeCheck("new_blank_multi", doc.Parts.Count == 0 && doc.HistoryCount == 1);
+        await RunMultiEditPhase2Async(view, root, floorId);
 
         // The install's multi file is as it was.
         var installAfter = File.Exists(installUop) ? new FileInfo(installUop) : null;

@@ -180,7 +180,36 @@ public sealed class GuoProvider : SearchProvider
         {
             void Show() => (_ctx.Plugin as GuoEditorPlugin)?.ShowMultiEditor();
             Add("Multi", "Multi Editor: open the tab", "edit houses, keeps and boats", "multi editor house keep boat tab build", Show, bonus: 10);
-            Add("Multi", "Multi Editor: new multi", "a blank multi", "multi editor new blank house", () => { Show(); me.NewMulti(); });
+            Add("Multi", "Multi Editor: new multi", "a blank multi (asks first when there are unsaved changes)", "multi editor new blank house", () => { Show(); me.GuardUnsaved(me.NewMulti); });
+            Add("Multi", "Multi Editor: open the Generate panel", "styles, generators and the live ghost preview", "multi editor generate panel style house wall roof stairs preview", () => { Show(); me.ShowGenerateTab(); });
+            Add("Multi", "Multi Editor: apply the generated multi (replace)", "the Generate panel's preview replaces the multi, one undo step", "multi editor generate apply replace",
+                async () => { Show(); me.ShowGenerateTab(); await me.ApplyGeneratedAsync(true); });
+            Add("Multi", "Multi Editor: apply the generated multi (add)", "the Generate panel's preview is added, one undo step", "multi editor generate apply add",
+                async () => { Show(); me.ShowGenerateTab(); await me.ApplyGeneratedAsync(false); });
+            Add("Multi", "Multi Editor: rotate 90", "the selection, or the whole multi", "multi editor rotate turn 90 clockwise", async () => { Show(); await me.TransformAsync("rotate", 1); });
+            Add("Multi", "Multi Editor: flip east-west", "mirror the selection, or the whole multi", "multi editor mirror flip east west x", async () => { Show(); await me.TransformAsync("mirror", axis: "x"); });
+            Add("Multi", "Multi Editor: flip north-south", "mirror the selection, or the whole multi", "multi editor mirror flip north south y", async () => { Show(); await me.TransformAsync("mirror", axis: "y"); });
+            Add("Multi", "Multi Editor: copy", "Ctrl+C", "multi editor copy selection clipboard", () => me.CopySelection());
+            Add("Multi", "Multi Editor: cut", "Ctrl+X", "multi editor cut selection clipboard", () => me.CutSelection());
+            Add("Multi", "Multi Editor: paste", "Ctrl+V: a ghost follows the pointer", "multi editor paste clipboard ghost", () => { Show(); me.PasteClipboard(); });
+            Add("Multi", "Multi Editor: erase the whole stair or roof", "the group the selection touches", "multi editor erase group stair roof", () => me.EraseGroupOfSelection());
+            Add("Multi", "Multi Editor: save selection as a stamp", "into the user's GUO folder", "multi editor stamp save selection library",
+                () => { string n = $"stamp_{DateTime.Now:yyyyMMdd_HHmmss}"; SearchContext.Toast(me.SaveStamp(n) != null ? $"Saved stamp {n}" : "Select something first", EditorToaster.Severity.Info); });
+            foreach (string stamp in me.Stamps())
+            {
+                string s = stamp;
+                Add("Multi", $"Multi stamp: {s}", "place it with a ghost", $"multi editor stamp place {s}", () => { Show(); me.PlaceStamp(s); });
+            }
+
+            foreach ((string format, _, string label) in MultiEditView.LegacyFormats)
+            {
+                string f = format;
+                Add("Multi", $"Multi Editor: import {label}", "another tool's multi file", $"multi editor import open {f} {label}", () => { Show(); me.ImportDialog(f); });
+                Add("Multi", $"Multi Editor: export {label}", "write the multi in another tool's format", $"multi editor export save {f} {label}", () => { Show(); me.ExportDialog(f); });
+            }
+
+            Add("Multi", "Multi Editor: deploy to private shard", "write to the stage, place it on the private shard (asks first, never 2593)", "multi editor deploy private shard place prove",
+                () => { Show(); me.RequestDeploy(); });
             Add("Multi", "Multi Editor: save description", "write build/multi/edit/NAME.multi.json", "multi editor save description json",
                 () => { Show(); SearchContext.Toast($"Saved {me.SaveDescription()}"); });
             Add("Multi", "Multi Editor: write to stage", "into the staged data set, never the install", "multi editor write stage save uodata",
