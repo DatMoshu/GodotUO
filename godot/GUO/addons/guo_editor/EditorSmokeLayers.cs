@@ -45,8 +45,10 @@ public partial class EditorSmoke
                 house.Add(0x0E75, 0, (ushort)(1490 + i), 1620, data.LandZ(1490 + i, 1620), false, false);
             }
 
+            // Other stages may have placed houses already: the fixture adds exactly one.
+            int housesBefore = layers.Items("Houses", 0).Count();
             world.HouseManager.Add(serial, house);
-            ModeExpect(layers.Items("Houses", 0).Count() == 1, "layer_houses");
+            ModeExpect(layers.Items("Houses", 0).Count() == housesBefore + 1, "layer_houses");
 
             // Live: a mobile and a player as the bridge would report them.
             layers.LiveSource = () => new[] { new LiveMobile("Fixture Player", 0, 1497, 1629, 0, true), new LiveMobile("a horse", 0, 1494, 1630, 0, false) };
