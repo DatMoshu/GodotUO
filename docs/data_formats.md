@@ -1109,3 +1109,11 @@ Taking a request is one transaction that moves `new` to `taken`, so no request i
 watchers. The first reply moves a request to `answered`. The JSON lines printed by `tail` and
 `watch-replies` use the keys `id, to, from, text, attachments, status, created, taken_by, taken_at` and
 `id, request_id, from, text, attachments, created`.
+
+## 22. The AI dock's endpoints (`ai_endpoints.json`)
+
+Written by the editor's AI dock (ADR-0028) to `%APPDATA%/GUO/ai_endpoints.json` (`~/.config/guo/` elsewhere),
+never to a project or `.godot`. A JSON array of `{ "Name", "Url", "Model", "Key" }` for the OpenAI-compatible
+endpoints the user added. `Key` is `{ "store", "iv", "blob" }`, the same `Secret` that `servers.json` keeps
+for a pre-game password: ciphertext sealed by the operating system's store (DPAPI on Windows), bound to
+`ai:URL:NAME`, or null when the endpoint has no key or the platform keeps none. The key itself is never in the file.

@@ -25,6 +25,7 @@ public sealed class QueueClient
 {
     private readonly string _script;
     private readonly string _python;
+    private readonly CancellationTokenSource _life = new();
 
     /// <summary>The queue file; the tool's own default (UO_AGENT_QUEUE) when empty.</summary>
     public string Db { get; set; }
@@ -45,12 +46,6 @@ public sealed class QueueClient
 
     public static string FindPython()
     {
-        string set = System.Environment.GetEnvironmentVariable("UO_PYTHON");
-        if (!string.IsNullOrEmpty(set) && File.Exists(set))
-        {
-            return set;
-        }
-
         return AgentCatalog.Resolve("python") ?? AgentCatalog.Resolve("python3") ?? AgentCatalog.Resolve("py");
     }
 
@@ -85,7 +80,8 @@ public sealed class QueueClient
 
         psi.Environment["PYTHONIOENCODING"] = "utf-8";
         psi.Environment["PYTHONUTF8"] = "1";
-        using var cts = new CancellationTokenSource(Timeout);
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(_life.Token);
+        cts.CancelAfter(Timeout);
         using Process p = Process.Start(psi);
         try
         {
@@ -114,6 +110,9 @@ public sealed class QueueClient
             return (-2, "", $"agent_queue did not answer within {Timeout.TotalSeconds:0} s");
         }
     }
+
+    /// <summary>Stops everything in flight: the editor is closing or reloading.</summary>
+    public void Shutdown() => _life.Cancel();
 
     /// <summary>Posts a request; the new id, or 0 with the reason (the tool refuses secrets and over-long text).</summary>
     public async Task<(long Id, string Error)> PostAsync(string to, string from, string text, IEnumerable<string> attach = null)

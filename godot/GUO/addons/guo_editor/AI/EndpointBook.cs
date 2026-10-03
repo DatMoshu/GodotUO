@@ -4,7 +4,6 @@ namespace GUO.Editor;
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Text.Json;
 using System.Text.Json.Nodes;
 using GUO.Input.Touch.Pregame.Accounts;
 
@@ -40,13 +39,26 @@ internal sealed class EndpointBook
 
     private static string Binding(string name, string url) => $"ai:{url}:{name}";
 
+    // Hand-written JSON on purpose: System.Text.Json's typed serializer caches metadata for our types
+    // in the runtime, which keeps this assembly from unloading when the editor reloads it.
     private void Load()
     {
+        Entries = new();
         try
         {
-            if (File.Exists(_path))
+            if (File.Exists(_path) && JsonNode.Parse(File.ReadAllText(_path)) is JsonArray list)
             {
-                Entries = JsonSerializer.Deserialize<List<Entry>>(File.ReadAllText(_path)) ?? new();
+                foreach (JsonNode n in list)
+                {
+                    JsonNode k = n?["Key"];
+                    Entries.Add(new Entry
+                    {
+                        Name = (string)n?["Name"] ?? "",
+                        Url = (string)n?["Url"] ?? "",
+                        Model = (string)n?["Model"] ?? "",
+                        Key = k == null ? null : new Secret { Store = (string)k["store"] ?? SecretStore.None, Iv = (string)k["iv"], Blob = (string)k["blob"] },
+                    });
+                }
             }
         }
         catch (Exception)
@@ -58,7 +70,19 @@ internal sealed class EndpointBook
     private void Save()
     {
         Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
-        File.WriteAllText(_path, JsonSerializer.Serialize(Entries, new JsonSerializerOptions { WriteIndented = true }));
+        var list = new JsonArray();
+        foreach (Entry e in Entries)
+        {
+            var o = new JsonObject { ["Name"] = e.Name, ["Url"] = e.Url, ["Model"] = e.Model };
+            if (e.Key != null)
+            {
+                o["Key"] = new JsonObject { ["store"] = e.Key.Store, ["iv"] = e.Key.Iv, ["blob"] = e.Key.Blob };
+            }
+
+            list.Add(o);
+        }
+
+        File.WriteAllText(_path, list.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
     }
 
     /// <summary>Adds or replaces an endpoint. A blank <paramref name="key"/> keeps the stored one; null with a reason if the key could not be sealed.</summary>

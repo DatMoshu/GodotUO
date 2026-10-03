@@ -82,8 +82,22 @@ with the user's own plan.
 
 ## Validation
 
-To do:
-- Queue tests (post, tail, reply, offset resume, two watchers racing).
-- ACP framing against a fake agent.
-- A smoke check against a stub Ollama server.
+Phase 2 (the dock) is built; `python tools/editor_smoke/run.py` has an AI stage that checks, with no
+paid service and no real model:
+
+- ACP framing against `tools/ai_hub/fake_acp_agent.py`: initialize, session/new, a prompt whose
+  chunks stream in, a permission request answered, a silent agent timing out, its process killed.
+- The Ollama provider and an OpenAI-compatible provider against stub HTTP servers (models, streamed
+  answer, thinking text, bearer key, idle timeout); an endpoint key stored sealed, not as text.
+- Queue post, list, refuse a secret, reply seen, in a temporary database; the same through the Queue tab.
+- The dock: detection of the presets, an agent started from the Agents tab, its permission dialog
+  answered, a chat turn through it and through stub Ollama, every child process dead after Shutdown.
+
+Also checked by hand: a short chat with the local Ollama (qwen3:8b); a Gemini CLI 0.11.3 ACP handshake
+(initialize works, session/new answers "Authentication required", so Gemini needs its own sign-in first).
+
+Still to do:
+- Queue tests beyond tools/agent_queue's own (two watchers racing from the dock).
 - One real round trip with a Claude session watching the queue.
+- A real agent turn through OpenCode or Codex with a ChatGPT sign-in (not run: neither is installed here).
+- Editor tools for the models (read-only search, inspect, jump) and vision input.

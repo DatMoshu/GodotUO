@@ -24,7 +24,7 @@ public partial class AiQueueTab : VBoxContainer
     private RichTextLabel _detail;
     private Label _status, _db;
     private double _clock = PollSeconds;
-    private bool _polling, _built;
+    private bool _polling, _built, _stopped;
     private long _selected;
     private readonly List<QueueRequest> _requests = new();
 
@@ -129,7 +129,7 @@ public partial class AiQueueTab : VBoxContainer
 
     public override void _Process(double delta)
     {
-        if (!_built || !IsVisibleInTree())
+        if (!_built || _stopped || !IsVisibleInTree())
         {
             return;
         }
@@ -249,6 +249,13 @@ public partial class AiQueueTab : VBoxContainer
         {
             _polling = false;
         }
+    }
+
+    /// <summary>Stops polling and kills what is in flight (dock closing, assembly reload).</summary>
+    public void Shutdown()
+    {
+        _stopped = true;
+        _queue?.Shutdown();
     }
 
     /// <summary>The request the detail pane last showed, with its replies.</summary>

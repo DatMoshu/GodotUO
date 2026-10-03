@@ -191,6 +191,8 @@ public partial class AiDock : EditorDock
 
         _dialog = null;
         _chat?.Shutdown();
+        _queue?.Shutdown();
+        SetProcess(false);
         _hub.Shutdown();
     }
 }

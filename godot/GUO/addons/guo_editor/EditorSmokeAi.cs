@@ -45,6 +45,11 @@ public partial class EditorSmoke
     /// <summary>One tick of the stage; true when it is finished.</summary>
     private bool StepAi()
     {
+        if (System.Environment.GetEnvironmentVariable("GUO_AI_SKIP") != null)
+        {
+            return true;
+        }
+
         if (_aiTask == null)
         {
             _aiReport["ok"] = true;
@@ -248,7 +253,7 @@ public partial class EditorSmoke
             // The key for an endpoint is sealed by the operating system's store, never written as text.
             if (EndpointBook.CanKeepKeys)
             {
-                string book = Path.Combine(temp, "endpoints.json");
+                string book = Path.Combine(temp, $"endpoints{Suffix}.json");
                 var eb = new EndpointBook(book);
                 bool put = eb.Put("Stub", stub.Url + "/v1", "gpt-stub", "k-secret-xyz", out string whyPut);
                 string file = File.ReadAllText(book);
@@ -321,8 +326,27 @@ public partial class EditorSmoke
             AiCheck("chat_server_down", Ai.Chat.LastError != null && swDown.Elapsed.TotalSeconds < 12, Ai.Chat.LastError);
             Ai.Chat.OllamaUrl = OllamaProvider.DefaultUrl;
 
+            // Optional, by hand: GUO_AI_REAL_OLLAMA=qwen3:8b chats with the local Ollama (free, nothing leaves the machine).
+            string real = System.Environment.GetEnvironmentVariable("GUO_AI_REAL_OLLAMA");
+            if (!string.IsNullOrEmpty(real))
+            {
+                Ai.Chat.SelectProvider("ollama");
+                IReadOnlyList<string> have = await Ai.Chat.RefreshModelsAsync();
+                _aiReport["real_ollama_models"] = string.Join(",", have);
+                Ai.Chat.Current.Model = real;
+                Ai.Chat.NewChat();
+                Ai.Chat.SendText("Reply with exactly the word: pong");
+                await Until(() => Ai.Chat.Busy, 2);
+                await Until(() => !Ai.Chat.Busy, 100);
+                string reply = Ai.Chat.History.Count >= 2 ? Ai.Chat.History[^1].Text : "";
+                _aiReport["real_ollama_reply"] = reply;
+                GD.Print($"[GUO editor] smoke AI real Ollama {real}: '{reply.Trim()}'");
+                AiCheck("real_ollama_chat", reply.Length > 0, Ai.Chat.LastError ?? "no reply");
+                Ai.Chat.NewChat();
+            }
+
             // --- (c) the queue, in a temporary database -----------------------------------------------
-            string db = Path.Combine(temp, "queue.db");
+            string db = Path.Combine(temp, $"queue{Suffix}.db");
             var q = new QueueClient(root, db);
             AiCheck("queue_available", q.Available, q.Why);
             if (q.Available)
