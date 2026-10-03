@@ -68,6 +68,7 @@ public partial class EditorTour : Node
 
     /// <summary>The F3 popup the plugin made.</summary>
     public SearchPopup Search { get; set; }
+    public AiDock Ai { get; set; }
 
     public EditorTour() : this(null, null, null, null, null, null, null)
     {
@@ -161,6 +162,11 @@ public partial class EditorTour : Node
             }
         }
 
+        // Whatever home folder is left (the user name is already "user"), and any address but the loopback.
+        t = System.Text.RegularExpressions.Regex.Replace(t, @"[A-Za-z]:/Users/[^/\s)]+", "~");
+        t = System.Text.RegularExpressions.Regex.Replace(t, @"(?<![A-Za-z])[A-Za-z]:/(?:ProgramData|Users)/[^/\s)'""]+", "~");
+        t = System.Text.RegularExpressions.Regex.Replace(t, @"(?<![A-Za-z])[A-Za-z]:/[^\s)'""]+", "<local path>");
+        t = System.Text.RegularExpressions.Regex.Replace(t, @"(?<![\d.])(?!127\.0\.0\.1(?![\d.]))\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(?![\d])", "host");
         return t;
     }
 
@@ -360,6 +366,7 @@ public partial class EditorTour : Node
                 ("layout", "The layout", Layout),
                 ("runbar", "Run bar: start a server, start clients", RunBarSeg),
                 ("search", "F3: search everything", SearchSeg),
+                ("ai", "The AI dock: Chat, Agents, Queue", AiSeg),
                 ("art", "Assets: Art", ArtSeg),
                 ("gumps", "Assets: Gumps", GumpSeg),
                 ("anims", "Assets: Animations", AnimSeg),
@@ -646,7 +653,8 @@ public partial class EditorTour : Node
 
         maps.Radar.Focus(new Vector2I(1496 / 4, 1628 / 4), 8);
         await Frames(10);
-        Say("Zoomed on Britain. Click a cell: the inspector lists what is on it. Double-click, or the Jump button, goes to UO World.");
+        Check(maps.Radar.ShowingDetail, $"zoomed in, the radar shows per-cell detail ({maps.Radar.DetailBlocksDrawn} blocks)");
+        Say("Zoomed on Britain: past a point the 1:4 overview gives way to the detail, one pixel per cell. Click a cell: the inspector lists what is on it. Double-click, or the Jump button, goes to UO World.");
         await Shot(4);
         maps.ScriptedClick(1496, 1628);
         await Frames(8);
@@ -985,6 +993,10 @@ public partial class EditorTour : Node
         }
 
         await Frames(10);
+        Say("The minimap repaints as you edit: the crate's cell changes colour there too, without a jump.");
+        MarkControl(_world.Minimap, "minimap refreshes");
+        await Shot(3);
+        _overlay.ClearMarks();
         Say("Hue: recolour that static (hue 33, red).");
         SetTool(tool, WorldTool.Hue);
         _world.BrushHue = 0x0021;
@@ -1266,6 +1278,31 @@ public partial class EditorTour : Node
         await Frames(5);
         Check(!_shard.Live, "disconnecting closed the link");
         await Shot(2.5);
+    }
+
+    private async Task AiSeg()
+    {
+        if (Ai == null)
+        {
+            Skip("the AI dock was not created");
+            return;
+        }
+
+        Say("The AI dock sits beside the editor's other docks. Three tabs: Chat talks to an agent, Agents starts and stops them, Queue posts work for the shard-side tools. "
+            + "This tour only shows the tabs; it starts no agent and sends no prompt.", top: true);
+        foreach (var (tab, line) in new[]
+        {
+            ("Chat", "Chat: a conversation with whichever agent is started. Nothing is started here."),
+            ("Agents", "Agents: presets for the agent CLIs, each runs on its own login. None is started in this tour."),
+            ("Queue", "Queue: requests for the shared work queue, with their state."),
+        })
+        {
+            Say(line, top: true);
+            Ai.ShowTab(tab);
+            await Frames(8);
+            Check(Ai.Visible, $"the {tab} tab shows");
+            await Shot(4);
+        }
     }
 
     private async Task SearchSeg()
