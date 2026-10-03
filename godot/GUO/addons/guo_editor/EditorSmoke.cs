@@ -509,6 +509,42 @@ public partial class EditorSmoke : Node
             }
         }
 
+        if (panel is MapPanel mapPanel && mapPanel.Radar != null)
+        {
+            // Zoomed in, the radar redraws per cell: the detail of the blocks around
+            // Britain's bank, saved as a frame, must differ from the 1:4 overview.
+            RadarView view = mapPanel.Radar;
+            int bx = 1496 / 8 - 12, by = 1628 / 8 - 8;
+            Image detail = view.ComposeDetail(bx, by, 24, 16);
+            detail.SavePng(Path.Combine(_out, $"maps_detail{Suffix}.png"));
+            Image overview = mapPanel.RadarImage;
+            Image scaled = overview == null ? null : overview.GetRegion(new Rect2I(bx * 2, by * 2, 48, 32));
+            scaled?.Resize(192, 128, Image.Interpolation.Nearest);
+            int differing = 0;
+            if (scaled != null)
+            {
+                Image d2 = (Image)detail.Duplicate();
+                d2.Resize(192, 128, Image.Interpolation.Nearest);
+                for (int y = 0; y < 128; y++)
+                {
+                    for (int x = 0; x < 192; x++)
+                    {
+                        if (d2.GetPixel(x, y) != scaled.GetPixel(x, y))
+                        {
+                            differing++;
+                        }
+                    }
+                }
+            }
+
+            result["detail_png"] = Path.Combine(_out, $"maps_detail{Suffix}.png");
+            result["detail_pixels_differing_from_overview"] = differing;
+            if (differing == 0 || detail.GetSize() != new Vector2I(192, 128))
+            {
+                failures.Add("the zoomed-in radar detail is not finer than the overview");
+            }
+        }
+
         result["ok"] = failures.Count == 0;
         result["failures"] = failures;
         foreach (string f in failures)
