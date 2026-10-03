@@ -31,7 +31,7 @@ public static class ContentPacks
             string deployed = Path.Combine(Core.BaseDirectory, "Data", "GUO", "server-content.json");
             if (File.Exists(deployed)) path = deployed;
         }
-        if (string.IsNullOrWhiteSpace(path)) { new ContentDecorations().Register(false); ContentCreatures.RegisterPersistenceProbe(null); return; }
+        if (string.IsNullOrWhiteSpace(path)) { new ContentDecorations().Register(false); new ContentSpawners().Register(false); ContentCreatures.RegisterPersistenceProbe(null); return; }
         if (new FileInfo(path).Length > 16 * 1024 * 1024) throw new InvalidDataException("Server content exceeds limit");
         using var doc = JsonDocument.Parse(File.ReadAllBytes(path));
         if (doc.RootElement.GetProperty("schema").GetString() != "guo/server-content@1") throw new InvalidDataException("Unsupported server content");
@@ -51,6 +51,7 @@ public static class ContentPacks
         var decorations = ContentDecorations.Stage(doc.RootElement);
         var loot = ContentLoot.Stage(doc.RootElement, staged.ContainsKey);
         var creatures = ContentCreatures.Stage(doc.RootElement);
+        var spawners = ContentSpawners.Stage(doc.RootElement, creatures);
         ContentTiles.Apply(tiles, Environment.GetEnvironmentVariable("UO_SERVER_CONTENT_PROBE") == "1");
         maps.Apply(Environment.GetEnvironmentVariable("UO_SERVER_CONTENT_PROBE") == "1");
         regions.Apply(Environment.GetEnvironmentVariable("UO_SERVER_CONTENT_PROBE") == "1");
@@ -59,6 +60,7 @@ public static class ContentPacks
         Loot = loot;
         loot.Register(CreateItem, Environment.GetEnvironmentVariable("UO_SERVER_CONTENT_PROBE") == "1");
         creatures.Register(Environment.GetEnvironmentVariable("UO_SERVER_CONTENT_PROBE") == "1");
+        spawners.Register(Environment.GetEnvironmentVariable("UO_SERVER_CONTENT_PROBE") == "1");
         CommandSystem.Register("GUOPackItem", AccessLevel.GameMaster, Give);
         string deployment = doc.RootElement.TryGetProperty("identity_hash", out var hash) ? hash.GetString() : null;
         Console.WriteLine($"[GUO content] Loaded {Items.Count} item definitions; no world objects created. Deployment {deployment ?? "(unnamed)"}");

@@ -20,6 +20,9 @@ internal static class StoreServerExport
         var decorations = new List<object>();
         var loot = new List<object>();
         var creatures = new List<object>();
+        var spawners = new List<object>();
+        var serverCreatures = closure.Packs.Values.SelectMany(p => p.Manifest.Components
+            .Where(c => c.Type == "creature" && c.Target != "client").Select(c => p.Id + ":" + c.Id)).ToHashSet(StringComparer.Ordinal);
         var serverLoot = closure.Packs.Values.SelectMany(p => p.Manifest.Components
             .Where(c => c.Type == "loot" && c.Target != "client").Select(c => p.Id + ":" + c.Id)).ToHashSet(StringComparer.Ordinal);
         var serverItems = closure.Packs.Values.SelectMany(p => p.Manifest.Components
@@ -28,6 +31,14 @@ internal static class StoreServerExport
             foreach (var component in pack.Manifest.Components ?? new())
             {
                 if (component.Target == "client") continue;
+                if (component.Type == "spawner")
+                {
+                    using var spawnerDoc = JsonDocument.Parse(pack.ReadPayload(component.Entry));
+                    StoreSpawnerDefinition.Validate(spawnerDoc.RootElement, reference =>
+                        component.References != null && component.References.Contains(reference) && serverCreatures.Contains(reference));
+                    spawners.Add(new { identity = pack.Id + ":" + component.Id, content = spawnerDoc.RootElement.Clone() });
+                    continue;
+                }
                 if (component.Type == "creature")
                 {
                     using var creatureDoc = JsonDocument.Parse(pack.ReadPayload(component.Entry));
@@ -119,7 +130,7 @@ internal static class StoreServerExport
         string destination = Path.GetFullPath(output);
         StoreClient.NoLinks(destination);
         Directory.CreateDirectory(Path.GetDirectoryName(destination));
-        byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(new { schema = "guo/server-content@1", identity_hash = closure.IdentityHash, items, maps, tiles, regions, decorations, loot, creatures }, new JsonSerializerOptions { WriteIndented = true });
+        byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(new { schema = "guo/server-content@1", identity_hash = closure.IdentityHash, items, maps, tiles, regions, decorations, loot, creatures, spawners }, new JsonSerializerOptions { WriteIndented = true });
         StorePack.Require(bytes.Length <= 16 * 1024 * 1024, "Server export exceeds adapter size limit");
         using var stream = new FileStream(destination, FileMode.CreateNew, FileAccess.Write, FileShare.None);
         stream.Write(bytes);

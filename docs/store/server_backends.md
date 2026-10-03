@@ -10,7 +10,7 @@ and UOX3 currently support item definitions only. Native probes are not full cli
 ## The contract every adapter implements
 
 The export (`StoreServerExport`) writes one JSON file with these sections:
-`items`, `tiles`, `maps`, `regions`, `decorations`, `loot`, `creatures`. It
+`items`, `tiles`, `maps`, `regions`, `decorations`, `loot`, `creatures`, and (ModernUO only) `spawners`. It
 also carries an `identity_hash` that names the deployment. An adapter must:
 
 1. Refuse an unknown `schema` and any section it does not implement, rather
@@ -32,7 +32,7 @@ also carries an `identity_hash` that names the deployment. An adapter must:
 | Language | C#, .NET 10 |
 | Licence | GPL-3.0 |
 | Adapter | `tools/editor_shard/bridge` (`ContentPacks.cs` and friends), BSD-2-Clause, built against the dev shard's `Server.dll` |
-| Done | items, tiledata, map blocks, regions, decorations, loot, creatures; `GUOPackItem` staff command; probe mode |
+| Done | items, tiledata, map blocks, regions, decorations, loot, creatures, spawners; `GUOPackItem`, `GUOPackSpawn` staff commands; probe mode |
 | Done for end to end | `tools/shard_content` deploy (export into `Data/GUO`, the descriptor), the bridge reading it there and logging `identity_hash`, the client installing and mounting the shard's lock, `prove` (ADR-0026 Validation) |
 | Editor | the UO Store tab, Server content: deploy, dry run, status and rollback for a server profile (2026-10, smoke-checked against a scratch folder) |
 | Still to do | the dev shard (`tools/modernuo`) loading an export, not only the private copy |

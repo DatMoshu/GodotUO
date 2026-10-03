@@ -196,6 +196,28 @@ optional and disabled drops. The portable check verifies export and rejects
 invalid tables. `UO_SERVER_CONTENT_PROBE=1` verifies live generated quantities
 at probability boundaries and cleanup after an injected creation failure.
 
+## Server spawners
+
+Server-target `spawner` entries place a population of one authored creature.
+Every field is required and nothing else is accepted: `creature` (the
+`pack:component` of a server `creature` the entry lists in `references` and the
+deployment contains), `facet`, `x`, `y`, `z` (the centre), `radius` (0 to 64),
+`count` (1 to 64), `min_delay` and `max_delay` (seconds, 1 to 86400, max not
+below min) and `team`. The area must lie inside the shard's facet when the
+bridge stages it. The values are authored world positions, not data read from
+a client install.
+
+The bridge builds a native ModernUO spawner (`ContentSpawner`, which records
+its pack identity and a content hash) and fills it. `GUOPackSpawn
+pack-id:component-id` creates or refreshes it; applying unchanged content again
+keeps the live spawn. `GUOPackUnspawn pack-id:component-id` removes the owned
+spawner and its creatures. Both are Administrator commands, and installation or
+ordinary startup place nothing. The spawner entry carries the creature recipe
+(definition plus loot snapshot) so a restarted shard respawns the same creature
+without a selected deployment. Adapters that do not implement `spawners` refuse
+an export that has the section (ServUO and RunUO currently do).
+`sample-content-spawner` supplies a rat nest depending on `sample-content-creature`.
+
 ## Server creatures
 
 Server-target `creature` entries declare `name`, numeric `body`, `hue`, `sound`,
@@ -261,7 +283,7 @@ The portable tool is built with
   restart and may refuse unsupported payloads. It never executes scripts.
 - `rollback-content STORE ACTIVE`: reverify and select the previous lock.
 - `deactivate-content ACTIVE`: select original assets and retain the previous lock.
-- `export-server STORE LOCK OUTPUT`: export supported server item, tiledata, map, region, decoration, loot and creature
+- `export-server STORE LOCK OUTPUT`: export supported server item, tiledata, map, region, decoration, loot, creature and spawner
   definitions with numeric IDs from the same client/server lock; output must be new.
 
 ModernUO's private editor bridge can load that export through
