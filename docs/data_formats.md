@@ -1232,7 +1232,10 @@ Options:
 - `--fast` (heavy passes off);
 - `--step-previews` (one PNG per pass);
 - `--preview-max N` (longest side of preview PNGs, default 1024; larger maps are block-averaged);
-- `--client-data DIR`.
+- `--client-data DIR`;
+- `--brushes T`, the transition table: `guo` (default: the user's resolved table when `prepare --measure`
+  wrote one, else the committed table), `guo-core` (the committed table only), `dragon` (the user's
+  Dragon import) or a file.
 
 `--out` must be new or empty, and outside `UO_CLIENT_DATA`.
 
@@ -1244,7 +1247,7 @@ Folder:
 
 | File | Content |
 |---|---|
-| `run.json` | `"schema": "guo.mapgen.run/1"`, `generator`, `preset`, `seed`, `width`, `height`, `fast`, `sets`, `disable`, `enable`, `hash`, `elapsed_ms`, `statics`, `stats`, `files`, `passes[]` (`index, name, enabled, ms, warnings`), `warnings`, `radar_colours` |
+| `run.json` | `"schema": "guo.mapgen.run/1"`, `generator`, `preset`, `seed`, `width`, `height`, `fast`, `sets`, `disable`, `enable`, `brushes` (the `--brushes` choice; `export` uses it), `brush_table` (`guo`, `dragon` or empty: what loaded), `hash`, `elapsed_ms`, `statics`, `stats`, `files`, `passes[]` (`index, name, enabled, ms, warnings`), `warnings`, `radar_colours` |
 | `preset.json` | The effective preset (a normal `.preset.json`): every `--set`, toggle and `--fast` choice folded in. `export` regenerates from it |
 | `radar.png` | Client radar colours from `radarcol.mul`: the top static where there is one, else the land. Falls back to biome colours without client data |
 | `biome.png`, `height.png` | Biome classes; heights (grey above 0, blue below) |
@@ -1252,8 +1255,8 @@ Folder:
 | `map.bin` | Analyzer dump: int32 width, int32 height; per cell, row-major, uint16 land id, int8 z, uint8 biome; int32 count; per static uint16 x, uint16 y, int8 z, uint16 id |
 
 `hash` is SHA-256 over `"guo-mapgen-1"`, width and height (uint16), the land ids, the heights and every
-static op (kind, x, y, z, id, hue) in pipeline order. The same preset, seed, size and options give the
-same hash.
+static op (kind, x, y, z, id, hue) in pipeline order. The same preset, seed, size, options and
+transition table give the same hash; a user's resolved table (`prepare --measure`) changes it.
 
 `stats` (the Felucca-likeness card) holds:
 - `available` and `land_share`;
@@ -1291,22 +1294,75 @@ default (0, 0); both must be multiples of 8. Every block is a full `blocks/<face
 `done.world` carries the same object. Opening the project in the World tab is a separate step, and so
 is deploying it to a shard.
 
-### `prepare [--dragon DIR [--out FILE]] [--landscaper DIR]` → one JSON line
+### `prepare [--measure [--client-data DIR]] [--dragon DIR [--out FILE]] [--landscaper DIR]` → one JSON line
 
-`prepare` copies third-party map-tool data from the user's own copies into `UO_MAPGEN_DATA`. GUO ships
-none of it (`docs/upstream/mapgen.md`). At least one option is required.
+`prepare` builds the generator's per-user data in `UO_MAPGEN_DATA`, from the user's own client and
+copies. GUO ships none of it (`docs/upstream/mapgen.md`). At least one option is required.
+- `--measure`: reads the user's own Felucca (map0 of `UO_CLIENT_DATA`) and writes
+  `map-mining/guo-transition-atlas.json` (per pair and neighbour mask, the tiles used and how often: the
+  format Land Transitions' *Measured transition atlas* reads), `map-mining/guo-transition-measure.json`
+  (`"schema": "guo.mapgen.transition-measure/1"`: per pair `samples`, `slivers` and per edge shape
+  `count`, `top` (up to 8 `[id, count]`), `dz_owner`, `dz_other`; per material its interior tile
+  counts; `source` with the map file's name, size and SHA-256), and the resolved transition table
+  `transitions.guo.resolved.json` (below). An edge sample is a cell whose tile is not in an interior pool
+  and whose 8 neighbours hold interior tiles of exactly two materials; its mask is the neighbours of the
+  other material.
 - `--dragon DIR`: a Dragon folder or its `Scripts/map`. The owner's importer converts the transition
-  rules into `landbrush.dragon.json` (or `FILE`). Without it, Land Transitions leaves biome borders as
-  hard edges.
+  rules into `landbrush.dragon.json` (or `FILE`), for `run --brushes dragon` and `coverage`.
 - `--landscaper DIR`: a UO Landscaper install or mod, or its `Data`. `Data/Statics/**/*.xml` is copied to
   `landscaper-statics/` and `Data/Transitions/**/*.xml` to `landscaper-transitions/`, with the layout
   kept. Without them, Swamp Surface, the trunk/canopy fallback and Biome Static Scatter's default
   catalogue warn and skip.
 
-The line is `{"event":"done", ok, dragon?, landscaper?}`:
+The line is `{"event":"done", ok, measure?, resolved?, dragon?, landscaper?}`:
+- `measure` is `{ok, atlas, summary, pairs, samples, region}`;
+- `resolved` is `{ok, output, added_variants, pairs_with_tiles}`;
 - `dragon` is `{ok, output, rules_dir, files, rules, skipped, brushes, unknown_biomes}`;
 - `landscaper` is `{ok, data_dir, statics_files, transition_files, output}`.
 
 Exit 1 when a requested part produced nothing.
+
+### `coverage` → one JSON line
+
+What each transition table present can draw, in counts only: the committed table (`guo-core`), the
+user's resolved table (`guo-resolved`) and Dragon import (`dragon`). The line is
+`{"event":"done", "schema":"guo.mapgen.coverage/1", tables[], missing[], pairs[]}`; each pair row is
+`{pair, <table>: {shapes, masks, ids, via, plain}}`: the edge shapes with a tile (of 12), the neighbour
+masks with a tile (of 255), the distinct tile ids, the bridge material and whether the pair needs no
+tile. No table's rows are printed.
+
+### Transition table (`tools/mapgen/MapGen/presets/transitions.guo.json`)
+
+GUO's own land transition table, `"format": "guo.mapgen.transitions/1"`, and the generator's default
+(Land Transitions, road edges, mountain trails). It holds what GUO authors; the per-user tile variants
+come from `prepare --measure`, which writes a resolved copy in the same format to
+`UO_MAPGEN_DATA/transitions.guo.resolved.json` with a `resolved_from` object (`measure`: the measured
+map's `source`; `added_variants`).
+
+| Field | Meaning |
+|---|---|
+| `format` | `guo.mapgen.transitions/1` |
+| `resolve` | How measured variants join: `min_pair_samples`, `min_shape_samples`, `min_share` (of the shape's samples), `max_variants` per shape, `scale` (the weight of the most used variant) |
+| `materials` | Name → `{biomes[], notes}`: the materials pairs may name, and the biomes that map to each |
+| `pairs[]` | One per owner/other pair, below |
+
+A pair:
+
+| Field | Meaning |
+|---|---|
+| `owner`, `other` | Materials. Owner cells next to other cells are repainted; the other side keeps its tile |
+| `edges` | Shape → list of land ids, each `"0xHHHH"` (weight 1) or `["0xHHHH", weight]`. A pair with edges lists all 12 shapes |
+| `z` | Shape (or `"*"`) → the most an edge cell moves toward the other side's mean height, used when Land Transitions' *Edge z offsets* is on. Positive lifts (a rock lip), negative drops (a bank) |
+| `via` | The material an owner cell facing the other becomes when the pair has no tile for it (*Bridge passes*) |
+| `plain` | `true`: the pair needs no edge tile (sand against water); not reported as a hard edge |
+| `measure` | `false`: `prepare --measure` adds nothing to this pair (default `true`) |
+| `notes` | Why the pair is drawn as it is |
+
+Edge shapes are named by where the other material lies, in tile directions (N is y−1, E is x+1):
+`N`, `E`, `S`, `W` are straight edges (the other side covers that side and its two corners);
+`NE`, `SE`, `SW`, `NW` are outer corners (two sides and the corner between); `in_NE`, `in_SE`, `in_SW`,
+`in_NW` are inner corners (only that diagonal neighbour is other). A cell's neighbour mask resolves to
+the smallest shape that contains it; a mask no shape contains is a one-tile sliver, which Land
+Transitions absorbs into the other side.
 
 ### `presets` → `{"schema": "guo.mapgen.presets/1", "presets": [...]}`

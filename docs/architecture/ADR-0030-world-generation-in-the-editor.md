@@ -64,11 +64,13 @@ user's client files.
    - **not** UO Landscaper's statics or transitions. norad32's MIT mod began by importing the closed
      original's data, and most of the files GUO used trace to it.
 
-   Users supply both from their own copies: `guo-mapgen prepare --dragon DIR --landscaper DIR` writes
-   them into `UO_MAPGEN_DATA`. Without them, Land Transitions leaves biome borders as hard edges, Swamp
-   Surface and the trunk/canopy fallback skip, and the tests that need the brush table skip with that
-   reason. GUO's own transition table, built from data we author, is the follow-up that replaces them
-   as the default.
+   Users may supply both from their own copies: `guo-mapgen prepare --dragon DIR --landscaper DIR`
+   writes them into `UO_MAPGEN_DATA`. Without Landscaper's, Swamp Surface and the trunk/canopy fallback
+   skip.
+   - **GUO's own transition table** (`transitions.guo.json`, data_formats §26) is the default: the pairs,
+     a core tile family per pair, bridges, heights and notes, all authored in GUO. `prepare --measure`
+     resolves it against the user's own Felucca into `UO_MAPGEN_DATA`. Dragon's table is used only on
+     request (`run --brushes dragon`). The tests use the committed table and never skip.
 7. **The default preset is `felucca-stage18`**, the current measured candidate. The owner's mountain and
    road heights stay as they are. The experimental stage20 is not promoted.
 

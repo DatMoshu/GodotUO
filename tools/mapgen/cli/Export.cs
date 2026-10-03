@@ -35,7 +35,8 @@ public static class ExportCommand
 
         // The effective preset already holds every --set, --disable, --enable and --fast choice.
         var preset = MapGenPreset.Load(Path.Combine(runDir, "preset.json"));
-        var settings = new RunSettings("run", seed, width, height, false, Array.Empty<string>(), Array.Empty<string>(), Array.Empty<string>());
+        string? brushes = r.TryGetProperty("brushes", out var br) ? br.GetString() : null;
+        var settings = new RunSettings("run", seed, width, height, false, Array.Empty<string>(), Array.Empty<string>(), Array.Empty<string>(), brushes);
         var warnings = new List<string>();
         var steps = Pipeline.Build(preset, settings, warnings);
         json.Event("start", new() { ["run"] = Path.GetFullPath(runDir), ["width"] = width, ["height"] = height, ["seed"] = seed });

@@ -10,7 +10,7 @@ namespace GuoMapGen;
 
 /// <summary>The settings a run was made with; written to run.json and read back by export.</summary>
 public sealed record RunSettings(string PresetId, long Seed, int Width, int Height, bool Fast,
-    IReadOnlyList<string> Sets, IReadOnlyList<string> Disable, IReadOnlyList<string> Enable);
+    IReadOnlyList<string> Sets, IReadOnlyList<string> Disable, IReadOnlyList<string> Enable, string? Brushes = null);
 
 /// <summary>
 /// <c>run</c>: generate one map into a fresh folder. Emits one JSON line per pass
@@ -33,7 +33,7 @@ public static class RunCommand
         string presetId = Path.GetFileName(presetPath)[..^".preset.json".Length];
         long seed = a.Long("seed") ?? preset.Seed ?? 1234567;
         var settings = new RunSettings(presetId, seed, width, height, a.Flag("fast"),
-            a.All("set").ToList(), a.All("disable").ToList(), a.All("enable").ToList());
+            a.All("set").ToList(), a.All("disable").ToList(), a.All("enable").ToList(), a.Get("brushes"));
 
         OutputFolder.PrepareFresh(outDir);
         var warnings = new List<string>();
@@ -93,6 +93,7 @@ public static class RunCommand
             ["generator"] = GeneratorInfo.Describe(),
             ["preset"] = presetId, ["seed"] = seed, ["width"] = width, ["height"] = height,
             ["fast"] = settings.Fast, ["sets"] = settings.Sets, ["disable"] = settings.Disable, ["enable"] = settings.Enable,
+            ["brushes"] = settings.Brushes ?? "guo", ["brush_table"] = ir.Brushes.Source,
             ["hash"] = hash, ["elapsed_ms"] = total.ElapsedMilliseconds,
             ["statics"] = ir.StaticOps.Count(o => o.Kind == StaticOpKind.Add),
             ["stats"] = stats, ["files"] = files, ["passes"] = passes, ["warnings"] = warnings,
@@ -138,7 +139,8 @@ public static class Pipeline
         List<string> warnings, Action<int, PipelineStep, long, GenIR>? afterStep = null)
     {
         var ir = PipelineFactory.CreateIR((ushort)s.Width, (ushort)s.Height,
-            PipelineFactory.FullScope(s.Width, s.Height), unchecked((ulong)s.Seed), null, warnings);
+            PipelineFactory.FullScope(s.Width, s.Height), unchecked((ulong)s.Seed),
+            new PipelineDataOptions { BrushesPath = s.Brushes }, warnings);
         var runner = new PipelineRunner();
         for (int i = 0; i < steps.Count; i++)
         {

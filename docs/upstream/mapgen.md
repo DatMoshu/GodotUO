@@ -9,15 +9,51 @@ came from and under what terms.
 | `MapGen/Compat/RectU16.cs`, `MapGen/Compat/Uop.cs` | CentrED# `Shared/Network/RectU16.cs` (minus the packet reader) and `Shared/Uop.cs` | MIT, kaczy93 |
 | `MapGen/presets/*.preset.json` | The owner's presets: pass parameters only, no tile rows. `felucca-stage18` is the measured Felucca candidate; its mined atlases are referenced by path and resolve into `UO_MAPGEN_DATA` | The owner's own (every commit by the owner's account in their project) |
 | `MapGen/presets/tile-tables.default.json` | The owner's tile pools: a few dozen land tile ids per biome, chosen from tiledata names and the owner's own Felucca measurements (the file and `TileTables.cs` say so) | The owner's own |
+| `MapGen/presets/transitions.guo.json`, `MapGen/Data/GuoTransitionTable.cs`, `MapGen/Data/EdgeShapes.cs`, `cli/Measure.cs`, `cli/Coverage.cs` | GUO's own transition table and its tools, written in GUO on 2026-10-03 (method below) | GUO's own |
+| `transitions.guo.resolved.json`, `map-mining/guo-transition-*.json` (**not in the repo**) | Written per user by `guo-mapgen prepare --measure` from the user's own Felucca, into `UO_MAPGEN_DATA` | Measurements of client data (rule 8): never committed |
 | `MapGen/Mining/DragonRulesImporter.cs`, `MapGen.Tests/DragonRulesImporterTests.cs` | The owner's MapMiner importer for Dragon's transition rules (namespace kept) | The owner's own |
-| `landbrush.dragon.json` (**not in the repo**) | Built per user by `guo-mapgen prepare --dragon DIR` from the transition rule files (`Scripts/map/*.txt`) of the user's own copy of the community map tool Dragon (release 1.03.62 with the Imod13 mod), into `UO_MAPGEN_DATA`. It holds tile ids and neighbour masks only | **Unverified.** Dragon's rule files carry no licence statement, so GUO does not ship the table until the owner decides |
+| `landbrush.dragon.json` (**not in the repo**) | Built per user by `guo-mapgen prepare --dragon DIR` from the transition rule files (`Scripts/map/*.txt`) of the user's own copy of the community map tool Dragon (release 1.03.62 with the Imod13 mod), into `UO_MAPGEN_DATA`. It holds tile ids and neighbour masks only. Used only on request (`run --brushes dragon`) and as a coverage reference (`coverage`, counts only) | **Unverified.** Dragon's rule files carry no licence statement, so GUO does not ship the table |
 | UO Landscaper statics and transitions (**not in the repo**) | Copied per user by `guo-mapgen prepare --landscaper DIR` from the user's own UO Landscaper install or norad32's mod, into `UO_MAPGEN_DATA` (`landscaper-statics/`, `landscaper-transitions/`) | Not cleanly MIT: see below. GUO does not ship them |
 | `data/dungeon-roster.json`, `data/dungeon-decor-frequencies.json` | Hand-written by the owner: ModernUO creature class names and about 40 dungeon static ids with weights (the files say "hand-curated") | The owner's own |
+
+## GUO's transition table (2026-10-03)
+
+`transitions.guo.json` replaces Dragon's table as the generator's default. No row was copied from
+Dragon, UO Landscaper or any other map tool, and neither was opened while the ids were chosen; the
+local Dragon import was used afterwards only to check the direction convention (four pairs, matching)
+and for the `coverage` counts.
+
+What is authored: the pair list and which side owns each edge (the generator's own), the twelve
+edge-shape model (`EdgeShapes.cs`), the bridges (`via`), the height offsets, the weights and the notes.
+
+How the tile ids were chosen, per pair:
+1. `prepare --measure` counted, on the owner's own Felucca, which tile sits in each edge shape between
+   two plain materials (291,700 samples over 25 pairs). These counts stay on the owner's machine.
+2. A contact sheet of the most used tile per shape, drawn from the owner's own client art, was checked
+   by eye.
+3. A second check read each tile's art directly: the diamond is split into eight direction sectors and
+   each sector is classed as owner or other by colour. For high-contrast pairs (sand, rock, dirt, snow)
+   it agrees with the measurement on all 12 shapes of every family (11 of 12 for dirt/cobble). It cannot
+   separate green from green (grass/forest, grass/jungle, grass/swamp), so those rest on the measured
+   shares (70–94% per shape) and the contact sheet.
+4. Rare families (sand/rock, sand/jungle, snow/dirt) were read from the art first and agree with the
+   few samples Felucca has.
+
+Heights: the `z` offsets are rounded from the measured mean height of edge cells relative to each side.
+A rock edge cell sits about 8 above the grass on north- and west-facing edges, and about 13 at the
+north-west outer corner, while south and east edges barely move. Applying them is off by default
+(*Edge z offsets*), so terrain heights stay the terrain passes' own.
+
+Not drawn yet, found while measuring: Felucca's shallows are a seabed of land tiles (0x64 flat and its
+slopes 0x58–0x63) under water statics, with sand behind. The generator draws open water tiles instead,
+and the table stands sand plain against them.
 
 ## Audit of third-party map-tool data (2026-10-03)
 
 **Dragon (transition rules).** Its rule files carry no licence statement. GUO keeps only the owner's
-importer; users build the table from their own copy (`prepare --dragon`).
+importer; users build the table from their own copy (`prepare --dragon`) and use it only on request
+(`run --brushes dragon`). With it, the maps hash exactly as before GUO's table existed (seed 42 at 256:
+`a862a102`; seed 1234567 at 1024: `5c9a4ed5`).
 
 **UO Landscaper.** The original tool (Dknight and Khaybel of OrBSydia) is closed and its data carries
 no open licence. norad32's mod (github.com/norad32/uo-landscaper-mod, MIT, created 2024-11-22) is
