@@ -126,11 +126,15 @@ internal static class StoreServerExport
                 StorePack.Require(name != null && name.Length is > 0 and <= 100 && double.IsFinite(weight) && weight >= 0 && weight <= 100000, "Invalid item definition");
                 items.Add(new { identity = pack.Id + ":" + component.Id, graphic = binding.Id, name, weight, movable = row.GetProperty("movable").GetBoolean() });
             }
-        StorePack.Require(items.Count > 0 || maps.Count > 0 || tiles.Count > 0 || regions.Count > 0 || decorations.Count > 0 || creatures.Count > 0, "No supported server content in deployment");
+        StorePack.Require(items.Count > 0 || maps.Count > 0 || tiles.Count > 0 || regions.Count > 0 || decorations.Count > 0 || creatures.Count > 0 || spawners.Count > 0, "No supported server content in deployment");
         string destination = Path.GetFullPath(output);
         StoreClient.NoLinks(destination);
         Directory.CreateDirectory(Path.GetDirectoryName(destination));
-        byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(new { schema = "guo/server-content@1", identity_hash = closure.IdentityHash, items, maps, tiles, regions, decorations, loot, creatures, spawners }, new JsonSerializerOptions { WriteIndented = true });
+        // spawners is written only when present: a backend without spawner support refuses any section it does not implement.
+        object document = spawners.Count > 0
+            ? new { schema = "guo/server-content@1", identity_hash = closure.IdentityHash, items, maps, tiles, regions, decorations, loot, creatures, spawners }
+            : new { schema = "guo/server-content@1", identity_hash = closure.IdentityHash, items, maps, tiles, regions, decorations, loot, creatures };
+        byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(document, new JsonSerializerOptions { WriteIndented = true });
         StorePack.Require(bytes.Length <= 16 * 1024 * 1024, "Server export exceeds adapter size limit");
         using var stream = new FileStream(destination, FileMode.CreateNew, FileAccess.Write, FileShare.None);
         stream.Write(bytes);

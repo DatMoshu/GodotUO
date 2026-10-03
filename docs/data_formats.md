@@ -618,7 +618,7 @@ The same deploy writes the neutral server export, `guo/server-content@1`, to
 `<shard>/Data/GUO/server-content.json`. The ModernUO bridge loads it at start
 when `UO_SERVER_CONTENT` is not set, and logs its `identity_hash`.
 
-The export's optional `spawners` array holds `{identity, content}` rows, where
+The export's optional `spawners` array (written only when the deployment has a spawner) holds `{identity, content}` rows, where
 `content` is exactly the fields of a pack `spawner` component payload:
 `creature` (a `pack:component` identity of a `creature` in the same export),
 `facet`, `x`, `y`, `z`, `radius` (0 to 64), `count` (1 to 64), `min_delay` and
