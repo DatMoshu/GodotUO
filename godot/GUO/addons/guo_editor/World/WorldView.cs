@@ -139,13 +139,15 @@ public partial class WorldView : VBoxContainer
     /// <summary>The tool a left click uses.</summary>
     public WorldTool Tool
     {
-        get => _tool == null ? WorldTool.Select : (WorldTool)_tool.Selected;
+        get => _activeTool;
         set
         {
+            _activeTool = value;
             if (_tool != null)
             {
                 _tool.Selected = (int)value;
             }
+            SyncToolButtons();
         }
     }
 
@@ -164,6 +166,7 @@ public partial class WorldView : VBoxContainer
 
     /// <summary>When set, the pointer position the game's picking uses, instead of the real one (smoke check).</summary>
     public Vector2I? ForcedMouse { get; set; }
+    internal Vector2I CanvasSize => _viewport?.Size ?? Vector2I.Zero;
 
     public WorldView() : this(null)
     {
@@ -248,6 +251,7 @@ public partial class WorldView : VBoxContainer
         // Second row: tools, brush, history, layers.
         var tools = new HBoxContainer();
         AddChild(tools);
+        _legacyTools = tools;
         _tool = new OptionButton { TooltipText = "What a left click does" };
         foreach (string t in Enum.GetNames<WorldTool>())
         {
@@ -255,6 +259,7 @@ public partial class WorldView : VBoxContainer
         }
 
         tools.AddChild(_tool);
+        _tool.ItemSelected += i => Tool = (WorldTool)(int)i;
         _brush = new Label { Text = "static: pick art in UO Assets" };
         tools.AddChild(_brush);
         tools.AddChild(new Label { Text = "hue" });
@@ -299,7 +304,7 @@ public partial class WorldView : VBoxContainer
         _guideMenu = Menu(tools, "Guides", "Editor-only guides: cell grid, altitude numbers, block boundaries, the minimap");
         MenuToggle(_guideMenu, "Grid", false, v => _guides.Grid = v);
         MenuToggle(_guideMenu, "Altitude", false, v => _guides.Altitude = v);
-        MenuToggle(_guideMenu, "Blocks", true, v => _guides.Blocks = v);
+        MenuToggle(_guideMenu, "Blocks", false, v => _guides.Blocks = v);
         MenuToggle(_guideMenu, "Minimap", true, v => _minimap.Visible = v);
 
         BuildModeRow();
@@ -354,11 +359,14 @@ public partial class WorldView : VBoxContainer
         _chip = new LegendChip { Name = "Legend", Visible = false, Position = new Vector2(10, 10) };
         _stage.AddChild(_chip);
 
+        BuildWorkspace(bar, tools);
+
         VisibilityChanged += OnVisibilityChanged;
     }
 
     private void OnVisibilityChanged()
     {
+        if (!Visible) { _painting = false; _stroke.Clear(); _spacePan = false; }
         if (Visible)
         {
             EnsureBooted();
@@ -417,6 +425,7 @@ public partial class WorldView : VBoxContainer
 
     private void OnAssetsApplied()
     {
+        _ghostTextures.Clear(); _previewArt = uint.MaxValue;
         if (IsInstanceValid(this) && _host.World != null && _data?.Assets != null)
         {
             _host.ApplyAssets(_data.Assets);
@@ -426,12 +435,15 @@ public partial class WorldView : VBoxContainer
     /// <summary>Opens a world project (creating it if needed) and forgets the old one's undo history.</summary>
     public WorldProject OpenProject(string root)
     {
+        _stackIndex = -1;
         _editor.Clear();
+        _stackCell = null;
         _moving = null;
         WorldProject project = _host.OpenProject(root);
         _mapLayers.ProjectChanged();
         _modeNode?.Invalidate();
         _objects.Open(project?.Root);
+        LoadBrushPresets();
         UpdateStatus();
         return project;
     }
@@ -447,6 +459,7 @@ public partial class WorldView : VBoxContainer
     /// <summary>Moves the view; starts the world first if needed.</summary>
     public bool GoTo(int facet, int x, int y)
     {
+        _stackIndex = -1;
         _pending = (facet, x, y);
         if (!EnsureBooted())
         {
@@ -509,6 +522,7 @@ public partial class WorldView : VBoxContainer
         }
 
         _guides.Hover = Tool != WorldTool.Select && _host.Picked is GameObject hover ? (hover.X, hover.Y) : null;
+        UpdateWorkspace(delta);
         UpdateModeUi();
         Vector2 local = _container.GetLocalMousePosition();
         Vector2I? mouse = ForcedMouse ?? (new Rect2(Vector2.Zero, _container.Size).HasPoint(local)
@@ -533,6 +547,8 @@ public partial class WorldView : VBoxContainer
         {
             return;
         }
+
+        if (WorkspaceInput(e)) { _container.AcceptEvent(); return; }
 
         switch (e)
         {
@@ -681,7 +697,7 @@ public partial class WorldView : VBoxContainer
     /// </summary>
     public string ApplyTool(bool big = false)
     {
-        if (_host.Picked is not GameObject o)
+        if (EffectivePicked() is not GameObject o)
         {
             return _status.Text = "nothing under the pointer";
         }
@@ -699,8 +715,9 @@ public partial class WorldView : VBoxContainer
                 }
 
                 // On top of what was clicked: a static's top, or the land.
-                sbyte z = o is Static st ? (sbyte)Math.Min(127, st.Z + st.ItemData.Height) : o.Z;
-                done = _editor.Stamp(facet, o.X, o.Y, z, (ushort)(art - EditorData.LandCount), BrushHue);
+                sbyte z = _recipe.FixedHeight ? (sbyte)_recipe.Height : o is Static st ? (sbyte)Math.Min(127, st.Z + st.ItemData.Height) : o.Z;
+                var stampCell = BrushCell(o);
+                done = _editor.Stamp(facet, stampCell.X, stampCell.Y, z, (ushort)(art - EditorData.LandCount), BrushHue);
                 break;
             }
 
@@ -715,6 +732,7 @@ public partial class WorldView : VBoxContainer
 
             case WorldTool.Raise:
             case WorldTool.Lower:
+                if (_lockTerrain?.ButtonPressed == true) return _status.Text = "Terrain is locked";
                 int step = (big ? 5 : 1) * (Tool == WorldTool.Raise ? 1 : -1);
                 done = _editor.Altitude(facet, o.X, o.Y, step);
                 break;
@@ -917,7 +935,7 @@ public partial class WorldView : VBoxContainer
     /// <summary>Inspects what the game's picking found under the pointer on the last frame.</summary>
     public Inspection InspectPicked()
     {
-        if (_host.Picked is not GameObject o)
+        if (EffectivePicked() is not GameObject o)
         {
             _status.Text = "nothing under the pointer";
             return null;
@@ -940,6 +958,11 @@ public partial class WorldView : VBoxContainer
 
         sb.Append("(picked by the game's own PixelPicker)\n");
         var inspection = Inspection.Still("World", $"{o.X},{o.Y}", _data?.ArtImage(index), sb.ToString());
+        if (_data?.IsLoaded == true && o is Land or Static)
+        {
+            _data.CurrentArt = index;
+            AssetActions.Add(inspection, _data, land ? AssetKind.Land : AssetKind.Static, o.Graphic, inspection.Image);
+        }
         Inspect?.Invoke(inspection);
         return inspection;
     }
@@ -981,6 +1004,8 @@ public partial class WorldView : VBoxContainer
 
     public void Shutdown()
     {
+        _brushArt?.Shutdown();
+        if (_data != null) _data.Loaded -= OnBrushDataLoaded;
         SetProcess(false);
         VisibilityChanged -= OnVisibilityChanged;
         if (_container != null)

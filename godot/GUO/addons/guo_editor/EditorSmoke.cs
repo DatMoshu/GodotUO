@@ -307,7 +307,7 @@ public partial class EditorSmoke : Node
                 {
                     CheckWorld();
                     CheckWorldAssets();
-                    _world.ForcedMouse = new Vector2I((int)_world.Size.X / 2, (int)(_world.Size.Y / 2));
+                    _world.ForcedMouse = _world.CanvasSize / 2;
                     _stage = 8;
                     _frames = 0;
                 }
@@ -1371,7 +1371,7 @@ public partial class EditorSmoke : Node
         {
             _world.OpenProject(root);
             _world.GoTo(0, EditX, EditY);
-            _world.ForcedMouse = new Vector2I((int)_world.Size.X / 2, (int)(_world.Size.Y / 2));
+            _world.ForcedMouse = _world.CanvasSize / 2;
             _data.CurrentArt = EditorData.LandCount + Tree;
             _radarBefore = RadarAt(EditX, EditY);
             _minimapBefore = _world.Minimap?.PixelAt(EditX, EditY) ?? default;
@@ -1505,6 +1505,19 @@ public partial class EditorSmoke : Node
             _editReport["block_file"] = _world.Host.Project.BlockPath(0, EditBx, EditBy);
         }));
 
+        _steps.Add((1, VerifyBrushWorkspace));
+        if (!Headless)
+        {
+            _steps.Add((1, () => { _world.GoTo(0, 1651, 2660); _world.ShowWorkspacePreview(); }));
+            _steps.Add((20, () => _world.ForcedMouse = _world.CanvasSize / 2));
+            _steps.Add((20, () =>
+            {
+                using Image shot = EditorInterface.Singleton.GetBaseControl().GetViewport().GetTexture()?.GetImage();
+                shot?.SavePng(Path.Combine(_out, $"editor_brush_workspace{Suffix}.png"));
+                _world.Tool = WorldTool.Select;
+                EditorInterface.Singleton.SetDistractionFreeMode(false);
+            }));
+        }
         // ADR-0027: render modes and map layers.
         AddModeSteps();
     }

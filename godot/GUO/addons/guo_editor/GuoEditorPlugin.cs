@@ -145,6 +145,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         // The World tab: the game's renderer, read only (ADR-0015). It starts
         // the world the first time it is shown, not here.
         _world = new WorldView(_data);
+        _world.FocusRequested += HideBottomPanel;
         _gumps.PreviewWorld = () => _world.EnsureBooted() ? _world.Host.World : throw new System.InvalidOperationException(_world.Error);
         EditorInterface.Singleton.GetEditorMainScreen().AddChild(_world);
         _world.Visible = _worldWasVisible;

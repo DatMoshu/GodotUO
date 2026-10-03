@@ -15,10 +15,10 @@ tools/pixelorama/src, never committed. See README.md in this folder.
 from __future__ import annotations
 
 import argparse
-import configparser
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -28,7 +28,7 @@ import zipfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from guo.config import find_repo_root, load_config  # noqa: E402
+from guo.config import find_repo_root, load_config, main_checkout  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 TAG = "v1.2.3"
@@ -58,10 +58,15 @@ def find_exe() -> Path | None:
     if configured and configured.is_file():
         return configured
     names = ("Pixelorama.exe",) if sys.platform == "win32" else ("Pixelorama.x86_64", "Pixelorama")
-    for name in names:
-        for hit in sorted(bin_dir().rglob(name)) if bin_dir().is_dir() else []:
-            if hit.is_file():
-                return hit
+    main = main_checkout(find_repo_root())
+    folders = [bin_dir()]
+    if main is not None:
+        folders.append(main / "tools" / "pixelorama" / "bin")
+    for folder in folders:
+        for name in names:
+            for hit in sorted(folder.rglob(name)) if folder.is_dir() else []:
+                if hit.is_file():
+                    return hit
     found = shutil.which("Pixelorama") or shutil.which("pixelorama")
     return Path(found) if found else None
 
@@ -158,20 +163,41 @@ def build_extension(out: Path) -> Path:
     return out
 
 
+def enable_extension_text(text: str) -> str:
+    """Patch one Godot ConfigFile key without parsing/reformatting Variant values.
+
+    ConfigFile resembles INI but allows multiline dictionaries and arrays that
+    Python's configparser cannot read. Preserve every unrelated byte instead.
+    """
+    newline = "\r\n" if "\r\n" in text else "\n"
+    headers = list(re.finditer(r"^\[([^\r\n]+)\][ \t]*\r?$", text, re.MULTILINE))
+    for index, header in enumerate(headers):
+        if header.group(1) != "extensions":
+            continue
+        end = headers[index + 1].start() if index + 1 < len(headers) else len(text)
+        section = text[header.end():end]
+        pattern = rf'^(?P<lead>[ \t]*"?{re.escape(EXTENSION_NAME)}"?[ \t]*=[ \t]*)[^\r\n]*'
+        if re.search(pattern, section, re.MULTILINE):
+            section = re.sub(pattern, lambda match: match.group("lead") + "true", section, flags=re.MULTILINE)
+        else:
+            section += ("" if section.endswith("\n") else newline) + f"{EXTENSION_NAME}=true" + newline
+        return text[:header.end()] + section + text[end:]
+    return text + ("" if not text or text.endswith("\n") else newline) + f"[extensions]{newline}{EXTENSION_NAME}=true{newline}"
+
+
 def enable_in_config() -> Path:
-    """Pixelorama starts a new extension disabled; its config.ini remembers the choice."""
+    """Enable the GUO extension, preserving Pixelorama's other preferences."""
     ini = user_dir() / "config.ini"
-    text = ini.read_text(encoding="utf-8") if ini.is_file() else ""
-    cp = configparser.RawConfigParser(strict=False)
-    cp.optionxform = str  # keep case
-    cp.read_string(text)
-    if not cp.has_section("extensions"):
-        cp.add_section("extensions")
-    if cp.get("extensions", EXTENSION_NAME, fallback="") != "true":
-        cp.set("extensions", EXTENSION_NAME, "true")
+    text = ini.read_bytes().decode("utf-8") if ini.is_file() else ""
+    updated = enable_extension_text(text)
+    if updated != text:
         ini.parent.mkdir(parents=True, exist_ok=True)
-        with ini.open("w", encoding="utf-8") as f:
-            cp.write(f, space_around_delimiters=False)
+        backup = ini.with_suffix(".guo-backup.ini")
+        if ini.is_file() and not backup.exists():
+            shutil.copy2(ini, backup)
+        temporary = ini.with_suffix(".guo-tmp.ini")
+        temporary.write_bytes(updated.encode("utf-8"))
+        temporary.replace(ini)
     return ini
 
 

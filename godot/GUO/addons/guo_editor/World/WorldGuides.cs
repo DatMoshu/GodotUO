@@ -28,7 +28,11 @@ public partial class WorldGuides : Node2D
 
     public bool Grid { get; set; }
     public bool Altitude { get; set; }
-    public bool Blocks { get; set; } = true;
+    public bool Blocks { get; set; }
+    internal readonly System.Collections.Generic.HashSet<(int X, int Y)> BrushCells = new();
+    internal int? PlaneZ;
+    internal readonly System.Collections.Generic.List<(int X, int Y, int Z, Texture2D Texture)> Ghosts = new();
+    internal readonly System.Collections.Generic.List<(int X, int Y, int Z, Texture2D Texture)> RoofGhosts = new();
 
     /// <summary>Cells outlined on the last draw, for the smoke check.</summary>
     public int CellsDrawn { get; private set; }
@@ -58,6 +62,7 @@ public partial class WorldGuides : Node2D
         }
 
         var map = _host.World.Map;
+        TextureFilter = TextureFilterEnum.Nearest;
         _font ??= ThemeDB.FallbackFont;
 
         var gridColour = new Color(1, 1, 1, 0.4f);
@@ -71,6 +76,14 @@ public partial class WorldGuides : Node2D
                 Vector2 top = q.Top, right = q.Right, bottom = q.Bottom, left = q.Left;
 
                 CellsDrawn++;
+                if (BrushCells.Contains((x, y)))
+                {
+                    Vector2[] points = PlaneZ is int pz
+                        ? new[] { geo.Project(x, y, pz), geo.Project(x + 1, y, pz), geo.Project(x + 1, y + 1, pz), geo.Project(x, y + 1, pz) }
+                        : new[] { top, right, bottom, left };
+                    DrawColoredPolygon(points, new Color(0.15f, 0.9f, 0.8f, 0.22f));
+                    DrawPolyline(new[] { points[0], points[1], points[2], points[3], points[0] }, new Color(0.2f, 0.95f, 0.85f, 0.8f));
+                }
                 if (Grid)
                 {
                     DrawLine(top, right, gridColour);
@@ -113,6 +126,18 @@ public partial class WorldGuides : Node2D
                     DrawPolyline(new[] { top, right, bottom, left, top }, hoverColour, 2f);
                 }
             }
+        }
+        foreach (var ghost in RoofGhosts)
+        {
+            Vector2 foot = geo.Project(ghost.X + 0.5f, ghost.Y + 0.5f, ghost.Z);
+            Vector2 size = ghost.Texture.GetSize() / geo.Zoom;
+            DrawTextureRect(ghost.Texture, new Rect2(foot - new Vector2(size.X / 2, size.Y), size), false, new Color(1f, 1f, 1f, 0.18f));
+        }
+        foreach (var ghost in Ghosts)
+        {
+            Vector2 foot = geo.Project(ghost.X + 0.5f, ghost.Y + 0.5f, ghost.Z);
+            Vector2 size = ghost.Texture.GetSize() / geo.Zoom;
+            DrawTextureRect(ghost.Texture, new Rect2(foot - new Vector2(size.X / 2, size.Y), size), false, new Color(0.4f, 1f, 0.9f, 0.45f));
         }
     }
 }

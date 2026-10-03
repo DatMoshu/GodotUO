@@ -52,6 +52,11 @@ internal sealed class WorldHost : IDisposable
     // game would set when shown; roofs are the profile's own DrawRoofs.
     private bool _showLand = true, _showStatics = true, _showMultis = true;
     private bool _layersTouched;
+    private int _minVisibleZ = -128, _maxVisibleZ = 127;
+    private bool _ghostRoofs;
+    public bool GhostRoofs { get => _ghostRoofs; set { _ghostRoofs = value; _layersTouched = true; } }
+    public int MinVisibleZ { get => _minVisibleZ; set { _minVisibleZ = Math.Clamp(value, -128, 127); _layersTouched = true; } }
+    public int MaxVisibleZ { get => _maxVisibleZ; set { _maxVisibleZ = Math.Clamp(value, -128, 127); _layersTouched = true; } }
 
     public bool ShowLand { get => _showLand; set { _showLand = value; _layersTouched = true; } }
     public bool ShowStatics { get => _showStatics; set { _showStatics = value; _layersTouched = true; } }
@@ -280,6 +285,8 @@ internal sealed class WorldHost : IDisposable
                                 continue;
                         }
 
+                        want &= o.Z >= _minVisibleZ && o.Z <= _maxVisibleZ;
+                        if (_ghostRoofs && o is Static roof && roof.ItemData.IsRoof) want = false;
                         if (o.AllowedToDraw != want)
                         {
                             o.AllowedToDraw = want;
