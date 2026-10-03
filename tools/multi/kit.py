@@ -376,7 +376,7 @@ def wings_for(shape: str, w: int, d: int) -> tuple[list[tuple], list[str]]:
     return [(0, cy, w, cy + t), (cx, 0, cx + t, d)], notes
 
 
-def split_rooms(box, target: int, walls: set, reserved: set, rng: random.Random, min_side: int = 3):
+def split_rooms(box, target: int, walls: set, reserved: set, rng: random.Random, min_side: int = 3, inside: set | None = None):
     """Recursive room split of a wall box by partitions: the largest room is cut along its longer axis at
     a random line, until `target` rooms. Returns (partitions [{x|y, from, to}], doorways [(x, y)], rooms)."""
     rooms = [tuple(box)]
@@ -394,7 +394,7 @@ def split_rooms(box, target: int, walls: set, reserved: set, rng: random.Random,
         done = False
         for k in cands:
             line = [(k, y) for y in range(y0, y1 + 1)] if by_x else [(x, k) for x in range(x0, x1 + 1)]
-            if set(line) & reserved or line[0] not in walls or line[-1] not in walls or {line[0], line[-1]} & set(doors):
+            if set(line) & reserved or not all(c in walls or (inside and c in inside) for c in (line[0], line[-1])) or {line[0], line[-1]} & set(doors):
                 continue
             spots = []
             for c in line[2:-2]:
@@ -511,7 +511,7 @@ def house_description(cat, p: dict) -> tuple[dict, list[str]]:
         if n == 0:
             openings.append({"kind": "door", "at": list(door_cell), "door": p.get("door", "wood")})
         if n_rooms > 1:
-            parts, dcells, rooms = split_rooms(mb, n_rooms, walls, reserved[n], rng)
+            parts, dcells, rooms = split_rooms(mb, n_rooms, walls, reserved[n], rng, inside=footprint(n))
             if len(rooms) < n_rooms:
                 notes.append(f"storey {n}: {len(rooms)} rooms of {n_rooms} fit")
             for pt in parts:
