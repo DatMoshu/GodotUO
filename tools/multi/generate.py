@@ -42,6 +42,13 @@ def scatter(ids: list[int], x: int, y: int) -> int:
     if len(ids) == 1:
         return ids[0]
     h = ((x * 73856093) ^ (y * 19349663)) & 0xFFFF
+    weights = getattr(ids, "weights", None)            # a style's weighted floors (styles.Weighted)
+    if weights:
+        pick = h % sum(weights)
+        for i, w in zip(ids, weights):
+            if pick < w:
+                return i
+            pick -= w
     return ids[0] if h % 2 == 0 else ids[1 + (h >> 1) % (len(ids) - 1)]
 
 
@@ -448,9 +455,12 @@ def build(desc: dict, cat: Catalogue, fresh: bool = True) -> tuple[list[Componen
             for (x, y) in sorted(cells):
                 b.add(cat.wall(mat, 5, signature(cells, x, y)), x, y, z)
             solid |= cells
-        door_item = cat.door(mats["wall"])
         for (x, y), o in sorted(doors.items()):
             along_x = (x - 1, y) in walls or (x + 1, y) in walls
+            kind = o.get("door", mats.get("door", "wood"))
+            # a style catalogue knows the door by facing and kind; a mined one has one id
+            door_item = (cat.door(mats["wall"], "EW" if along_x else "NS", kind) if hasattr(cat, "door_type")
+                         else cat.door(mats["wall"]))
             b.add(door_item, x, y, z, visible=False)
             if (x, y) not in floor:
                 # a sill: the floor runs under the south and east walls only, so a door in a north
@@ -460,8 +470,8 @@ def build(desc: dict, cat: Catalogue, fresh: bool = True) -> tuple[list[Componen
                             "facing": "WestCW" if along_x else "SouthCW",
                             # Plain doors, same art and sounds as the house doors: a BaseHouseDoor
                             # refuses everyone outside a real BaseHouse ("not allowed to access this").
-                            "type": "MetalDoor" if o.get("door", mats.get("door", "wood")) == "metal"
-                            else "DarkWoodDoor"})
+                            "type": cat.door_type(mats["wall"], kind) if hasattr(cat, "door_type")
+                            else "MetalDoor" if kind == "metal" else "DarkWoodDoor"})
         holes_next = set()
         rails_next = []
         stair_arrivals: set = set()
@@ -477,7 +487,7 @@ def build(desc: dict, cat: Catalogue, fresh: bool = True) -> tuple[list[Componen
                 rails_next.append((s["rail"], near(h) - h - near(a)))
             dx, dy = SIDE_STEP[s["rise"]]
             b.stairs.append({"foot": [s["at"][0] - dx, s["at"][1] - dy], "z": z, "cells": sorted(h),
-                             "arrive": sorted(a)[0], "to": n + 1})
+                             "arrive": sorted(a)[0], "to": n + 1, "rise": 5 * STAIR_STEPS})
         b.storeys.append({"z": z, "walls": sorted(solid), "doors": sorted(doors), "windows": sorted(windows),
                           "floor": sorted(floor), "open": sorted(porch_cells) if n == 0 else [],
                           "arrivals": sorted(arrivals)})
@@ -704,8 +714,13 @@ def roof_rect(b: Built, cat: Catalogue, roof: dict, mats: dict, box, top: int) -
             for (x, y) in sorted(ring):
                 for dz, item in cat.course(roof["parapet"], roof.get("parapet_height", 6), signature(ring, x, y)):
                     b.add(item, x, y, top + dz)
+    elif style == "hip":
+        import kit
+        mat = roof.get("material", mats["roof"])
+        for item, x, y, z in kit.hip_cells(cat, mat, box, top, roof.get("overhang", 1)):
+            b.add(item, x, y, z)
     else:
-        raise DescriptionError(f"roof style '{style}' is not supported (gable, flat)")
+        raise DescriptionError(f"roof style '{style}' is not supported (gable, hip, flat)")
 
 
 def roof_gable(b: Built, cat: Catalogue, roof: dict, mats: dict, w: int, h: int, top: int,
