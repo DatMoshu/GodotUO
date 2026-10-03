@@ -36,7 +36,7 @@ public class TerrainInvariantTests
             var ir = new GenIR(size, size, new RectU16(0, 0, (ushort)(size - 1), (ushort)(size - 1)), unchecked((ulong)(p.Seed ?? 1234567)))
             {
                 Tables = TileTables.LoadOrDefault(TestRepo.Path(TileTables.DefaultJsonRelativePath)),
-                Brushes = LandBrushTable.LoadOrEmpty(TestRepo.Path(LandBrushTable.DefaultJsonRelativePath)),
+                Brushes = LandBrushTable.LoadOrEmpty(TestRepo.BrushTable),
             };
             Assert.True(ir.Brushes.IsLoaded, "landbrush.dragon.json did not load");
             new PipelineRunner().Run(ir, steps);
@@ -55,7 +55,7 @@ public class TerrainInvariantTests
 
     private static bool IsWaterBiome(byte b) => (BiomeId)b is BiomeId.DeepWater or BiomeId.ShallowWater or BiomeId.River;
 
-    [Theory]
+    [BrushTheory]
     [MemberData(nameof(StandardPresets))]
     public void NoLandAtOrBelowTheWaterPlane(string preset)
     {
@@ -72,7 +72,7 @@ public class TerrainInvariantTests
 
     // The DragonMod tables map near-full water masks to the pure water tile 0xAA; painting
     // that on a beach cell left "water" standing on dry land at the wrong Z.
-    [Theory]
+    [BrushTheory]
     [MemberData(nameof(StandardPresets))]
     public void NoWaterTileOnALandCell(string preset)
     {
@@ -88,7 +88,7 @@ public class TerrainInvariantTests
 
     // The edge band is cut in Biome Assign, before the coast: the band is ocean and the
     // cut has the usual shore (no plain grass/forest tile against water anywhere).
-    [Theory]
+    [BrushTheory]
     [InlineData("archipelago")]
     [InlineData("continent")]
     public void EdgeBandIsOcean_AndItsSeamHasEdgeTiles(string preset)
@@ -115,7 +115,7 @@ public class TerrainInvariantTests
     }
 
     // Swamp has brushes only against grass and forest; anything else is a hard edge.
-    [Theory]
+    [BrushTheory]
     [InlineData("continent")]
     [InlineData("jungle")]
     [InlineData("archipelago")]
@@ -145,7 +145,7 @@ public class TerrainInvariantTests
         Assert.True(bad == 0, $"{preset}: {bad} swamp edges against a class with no brush, first {first}");
     }
 
-    [Theory]
+    [BrushTheory]
     [MemberData(nameof(StandardPresets))]
     public void EveryWaterBodyIsFlat_AndTheDugShoreIsOneLevel(string preset)
     {
@@ -183,7 +183,7 @@ public class TerrainInvariantTests
         }
     }
 
-    [Theory]
+    [BrushTheory]
     [InlineData("continent", 512)]
     [InlineData("jungle", 512)]
     [InlineData("highlands", 512)]
@@ -211,7 +211,7 @@ public class TerrainInvariantTests
         Assert.True(bad == 0, $"{preset}: {bad} river bank steps > 4, first {first}");
     }
 
-    [Fact]
+    [BrushFact]
     public void JungleInteriorIsPreserved()
     {
         var ir = Run("jungle", 512);
@@ -228,7 +228,7 @@ public class TerrainInvariantTests
         Assert.True(pct > 80.0, $"only {pct:F1}% of jungle cells kept a jungle interior tile");
     }
 
-    [Theory]
+    [BrushTheory]
     [MemberData(nameof(StandardPresets))]
     public void NoLandBiomeAbove95Percent(string preset)
     {
@@ -247,7 +247,7 @@ public class TerrainInvariantTests
         Assert.True(pct <= 95.0, $"{preset}: {(BiomeId)peak} covers {pct:F1}% of the land");
     }
 
-    [Theory]
+    [BrushTheory]
     [InlineData("continent")]
     [InlineData("highlands")]
     [InlineData("test-island")]
@@ -270,7 +270,7 @@ public class TerrainInvariantTests
         Assert.True(bad == 0, $"{preset}: {bad} of {mountain} mountain cells use a non-mountain tile, first {first}");
     }
 
-    [Theory]
+    [BrushTheory]
     [MemberData(nameof(StandardPresets))]
     public void NoSingleTileSpikesOrPits(string preset)
     {
@@ -298,7 +298,7 @@ public class TerrainInvariantTests
         Assert.True(spikes == 0, $"{preset}: {spikes} single-tile spikes/pits, first {first}");
     }
 
-    [Fact]
+    [BrushFact]
     public void SameSeed_SameLand_WithRealBrushes()
     {
         var a = Run("continent", 256);
@@ -311,7 +311,7 @@ public class TerrainInvariantTests
         Assert.Equal(a.StaticOps.Count, b.StaticOps.Count);
     }
 
-    [Fact]
+    [BrushFact]
     public void RoadsAreAtLeastTwoWide_AndUseRealTiles()
     {
         var ir = Run("inland-lakes-with-roads", 512, roads: true);
@@ -371,10 +371,10 @@ public class TileTableSourceTests
             Assert.DoesNotContain(ids, id => id is >= 0xDC and <= 0xDF);
     }
 
-    [Fact]
+    [BrushFact]
     public void BrushTable_LoadsAndCoversTheAllowListedPairs()
     {
-        var b = LandBrushTable.LoadOrEmpty(TestRepo.Path(LandBrushTable.DefaultJsonRelativePath));
+        var b = LandBrushTable.LoadOrEmpty(TestRepo.BrushTable);
         Assert.True(b.IsLoaded);
         foreach (var (self, other) in new[] { ("Grassland", "Beach"), ("Grassland", "Water"), ("Beach", "Water"),
                      ("Grassland", "Mountain"), ("Grassland", "Forest"), ("Grassland", "Jungle"), ("Grassland", "Swamp"),

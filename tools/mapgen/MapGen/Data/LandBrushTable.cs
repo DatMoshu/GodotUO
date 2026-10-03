@@ -37,11 +37,22 @@ public sealed class LandBrushTable
 
     public static LandBrushTable Empty { get; } = new();
 
-    /// <summary>Repo-relative path of the canonical brush table (DragonMod rules import).</summary>
+    /// <summary>
+    /// Repo-relative path of a brush table shipped in the repo (DragonMod rules import). GUO does not
+    /// ship one until the owner clears Dragon's terms (docs/upstream/mapgen.md); the user's own import
+    /// lives in the data folder (<see cref="DataJsonRelativePath"/>).
+    /// </summary>
     public const string DefaultJsonRelativePath = "tools/mapgen/MapGen/presets/landbrush.dragon.json";
 
-    /// <summary>Loads the canonical brush table via <see cref="RepoRootResolver"/>; <see cref="Empty"/> when unreachable.</summary>
-    public static LandBrushTable LoadDefault() => LoadOrEmpty(RepoRootResolver.Resolve(DefaultJsonRelativePath));
+    /// <summary>The user's Dragon import in the generator data folder (UO_MAPGEN_DATA/landbrush.dragon.json).</summary>
+    public const string DataJsonRelativePath = "mined/landbrush.dragon.json";
+
+    /// <summary>Loads the user's import, else a shipped table; <see cref="Empty"/> when neither exists.</summary>
+    public static LandBrushTable LoadDefault()
+    {
+        string user = RepoRootResolver.Resolve(DataJsonRelativePath);
+        return LoadOrEmpty(File.Exists(user) ? user : RepoRootResolver.Resolve(DefaultJsonRelativePath));
+    }
 
     public static LandBrushTable LoadOrEmpty(string? path)
     {

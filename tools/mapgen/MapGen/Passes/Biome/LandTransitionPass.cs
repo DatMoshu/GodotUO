@@ -201,7 +201,7 @@ public sealed class LandTransitionPass : IGenerationPass
         }
         if (pairsLoaded == 0)
         {
-            report.Warnings.Add("Land Transitions: no brush table loaded (landbrush.dragon.json) — boundaries stay hard edges.");
+            report.Warnings.Add("Land Transitions: no brush table loaded (landbrush.dragon.json; build it with guo-mapgen prepare --dragon DIR) — boundaries stay hard edges.");
             return;
         }
 

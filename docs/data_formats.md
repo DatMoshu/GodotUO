@@ -1242,4 +1242,13 @@ default (0, 0); both must be multiples of 8. Every block is a full `blocks/<face
 `done.world` carries the same object. Opening the project in the World tab is a separate step, and so
 is deploying it to a shard.
 
+### `prepare --dragon DIR [--out FILE]` → one JSON line
+
+`prepare` builds the land brush table from the user's own copy of the community map tool Dragon. `DIR`
+is a Dragon folder or its `Scripts/map`. The table is written to `UO_MAPGEN_DATA/landbrush.dragon.json`,
+or to `FILE`. GUO does not ship the table: Dragon's terms are unverified (`docs/upstream/mapgen.md`).
+The line is `{"event":"done", ok, output, rules_dir, files, rules, skipped, brushes, unknown_biomes}`.
+Exit 1 when no rule parsed. Without the table, Land Transitions warns and leaves biome borders as hard
+edges.
+
 ### `presets` → `{"schema": "guo.mapgen.presets/1", "presets": [...]}`

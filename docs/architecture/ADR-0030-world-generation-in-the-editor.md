@@ -61,9 +61,11 @@ user's client files.
    - presets and tile tables;
    - the hand-written dungeon roster and decor table;
    - two transition files and the statics catalogue from norad32's UO Landscaper mod (MIT);
-   - `landbrush.dragon.json`, our conversion of Dragon Imod13's transition rules. Dragon's rule files
-     carry no licence statement. This is recorded in `docs/upstream/mapgen.md`, and the owner decides
-     before it is pushed.
+   - **not** `landbrush.dragon.json`, our conversion of Dragon Imod13's transition rules. Dragon's rule
+     files carry no licence statement (`docs/upstream/mapgen.md`). Until the owner clears it, the
+     table is built per user: `guo-mapgen prepare --dragon DIR` runs the owner's importer over the
+     user's own Dragon copy and writes the table into `UO_MAPGEN_DATA`. Without it, Land Transitions
+     warns and leaves biome borders as hard edges, and the tests that need it skip with that reason.
 7. **The default preset is `felucca-stage18`**, the current measured candidate. The owner's mountain and
    road heights stay as they are. The experimental stage20 is not promoted.
 

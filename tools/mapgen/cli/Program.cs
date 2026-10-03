@@ -8,6 +8,7 @@
 //                      [--fast] [--step-previews] [--preview-max N] [--client-data DIR]
 //   guo-mapgen export  --run DIR [--facet N] [--client-data DIR]
 //   guo-mapgen presets
+//   guo-mapgen prepare --dragon DIR [--out FILE]       land brush table from the user's Dragon copy
 
 using System.Text.Json;
 using GuoMapGen;
@@ -31,8 +32,10 @@ try
             return RunCommand.Execute(a, json);
         case "export":
             return ExportCommand.Execute(a, json);
+        case "prepare":
+            return PrepareCommand.Execute(a, json);
         default:
-            json.Event("error", new() { ["message"] = $"unknown command '{a.Command}'. Commands: schema, presets, run, export" });
+            json.Event("error", new() { ["message"] = $"unknown command '{a.Command}'. Commands: schema, presets, run, export, prepare" });
             return 2;
     }
 }
@@ -84,7 +87,7 @@ namespace GuoMapGen
 
         public static Args Parse(string[] argv)
         {
-            if (argv.Length == 0) throw new CliError("no command. Commands: schema, presets, run, export");
+            if (argv.Length == 0) throw new CliError("no command. Commands: schema, presets, run, export, prepare");
             var a = new Args { Command = argv[0].ToLowerInvariant() };
             for (int i = 1; i < argv.Length; i++)
             {

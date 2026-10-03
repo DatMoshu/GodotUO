@@ -18,7 +18,7 @@ public class SeamAndStaticRuleTests
         var ir = new GenIR((ushort)size, (ushort)size, new RectU16(0, 0, (ushort)(size - 1), (ushort)(size - 1)), 42)
         {
             Tables = TileTables.LoadOrDefault(TestRepo.Path(TileTables.DefaultJsonRelativePath)),
-            Brushes = LandBrushTable.LoadOrEmpty(TestRepo.Path(LandBrushTable.DefaultJsonRelativePath)),
+            Brushes = LandBrushTable.LoadOrEmpty(TestRepo.BrushTable),
         };
         ir.EnsureHeight(); ir.EnsureBiome(); ir.EnsureLandId();
         for (int i = 0; i < ir.TileCount; i++)
@@ -38,7 +38,7 @@ public class SeamAndStaticRuleTests
         Assert.True(StampSeams.IsAvailable, "StampSeams cannot see LandTransitionPass.RunOnMask");
     }
 
-    [Fact]
+    [BrushFact]
     public void RunOnMask_GivesAStampedCobblePatchRoadEdges_AndLeavesTheRestAlone()
     {
         var ir = GrassMap();
@@ -72,7 +72,7 @@ public class SeamAndStaticRuleTests
         }
     }
 
-    [Fact]
+    [BrushFact]
     public void RunOnMask_StampedSandBlendsIntoGrass()
     {
         var ir = GrassMap();
