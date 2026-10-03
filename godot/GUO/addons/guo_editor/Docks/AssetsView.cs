@@ -67,8 +67,14 @@ public partial class AssetsView : VBoxContainer
             _cells.AddItem(c);
         }
 
-        _cells.Selected = 1;
-        _cells.ItemSelected += _ => ApplyCellSize();
+        // Remembered between sessions in the editor's project metadata (under .godot, not tracked).
+        int saved = EditorInterface.Singleton.GetEditorSettings().GetProjectMetadata("guo_editor", "cell_size", 1).AsInt32();
+        _cells.Selected = System.Math.Clamp(saved, 0, 2);
+        _cells.ItemSelected += i =>
+        {
+            EditorInterface.Singleton.GetEditorSettings().SetProjectMetadata("guo_editor", "cell_size", (int)i);
+            ApplyCellSize();
+        };
         bar.AddChild(_cells);
         bar.AddChild(new Label
         {
