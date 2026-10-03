@@ -1311,8 +1311,8 @@ copies. GUO ships none of it (`docs/upstream/mapgen.md`). At least one option is
   rules into `landbrush.dragon.json` (or `FILE`), for `run --brushes dragon` and `coverage`.
 - `--landscaper DIR`: a UO Landscaper install or mod, or its `Data`. `Data/Statics/**/*.xml` is copied to
   `landscaper-statics/` and `Data/Transitions/**/*.xml` to `landscaper-transitions/`, with the layout
-  kept. Without them, Swamp Surface, the trunk/canopy fallback and Biome Static Scatter's default
-  catalogue warn and skip.
+  kept. Without them, Swamp Surface warns and skips. Biome Static Scatter reads the statics only when its
+  *Catalogue* names that folder; its default is GUO's scatter table (below).
 
 The line is `{"event":"done", ok, measure?, resolved?, dragon?, landscaper?}`:
 - `measure` is `{ok, atlas, summary, pairs, samples, region}`;
@@ -1364,5 +1364,29 @@ Edge shapes are named by where the other material lies, in tile directions (N is
 `in_NW` are inner corners (only that diagonal neighbour is other). A cell's neighbour mask resolves to
 the smallest shape that contains it; a mask no shape contains is a one-tile sliver, which Land
 Transitions absorbs into the other side.
+
+### Scatter table (`tools/mapgen/MapGen/presets/scatter.guo.json`)
+
+GUO's own scatter table, `"format": "guo.mapgen.scatter/1"`: what Biome Static Scatter puts on the
+ground per biome, and which tree trunk takes which canopy (Forest Scatter, and every pass that pairs
+trunks, when there is no `tree-statics.json`). Biome Static Scatter's *Catalogue* is `guo` by default;
+it also takes a file in this format or a folder of UO Landscaper statics XML (a user's own, from
+`prepare --landscaper`). A catalogue that is not found falls back to `guo` with a note.
+
+| Field | Meaning |
+|---|---|
+| `format` | `guo.mapgen.scatter/1` |
+| `aliases` | Biome → biome whose groups and chance it borrows (`Savanna` → `Grassland`) |
+| `trees[]` | `{trunk, leaves, name}`: a trunk static and the canopy drawn on the same tile |
+| `biomes` | Biome name (as in `BiomeId`) → `{chance, notes, groups[]}` |
+
+`chance` is the percentage of cells (dense biomes) or Poisson samples (the rest) that get a group. A
+group is `{name, freq, any[] or sets[]}`:
+- `freq` is the group's weight within the biome, however many variants it has;
+- `any` lists single statics, `"0xHHHH"`, one picked per placement;
+- `sets` lists assemblies placed whole, each a list of `[id, x, y, z]` or `[id, x, y, z, hue]` (x, y
+  in −8..8, z in −64..64, relative to the origin cell).
+
+Ground-cover groups name no tree and hold no trunk or canopy: trees are Forest Scatter's.
 
 ### `presets` → `{"schema": "guo.mapgen.presets/1", "presets": [...]}`

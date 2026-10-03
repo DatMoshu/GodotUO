@@ -65,12 +65,14 @@ user's client files.
      original's data, and most of the files GUO used trace to it.
 
    Users may supply both from their own copies: `guo-mapgen prepare --dragon DIR --landscaper DIR`
-   writes them into `UO_MAPGEN_DATA`. Without Landscaper's, Swamp Surface and the trunk/canopy fallback
-   skip.
+   writes them into `UO_MAPGEN_DATA`. Without Landscaper's, Swamp Surface skips.
    - **GUO's own transition table** (`transitions.guo.json`, data_formats §26) is the default: the pairs,
      a core tile family per pair, bridges, heights and notes, all authored in GUO. `prepare --measure`
      resolves it against the user's own Felucca into `UO_MAPGEN_DATA`. Dragon's table is used only on
      request (`run --brushes dragon`). The tests use the committed table and never skip.
+   - **GUO's own scatter table** (`scatter.guo.json`, data_formats §26) is Biome Static Scatter's default
+     catalogue and the trunk/canopy pairing: natural ground cover per biome and the tree pairs, authored
+     in GUO with chances from the owner's own Felucca, measured locally.
 7. **The default preset is `felucca-stage18`**, the current measured candidate. The owner's mountain and
    road heights stay as they are. The experimental stage20 is not promoted.
 

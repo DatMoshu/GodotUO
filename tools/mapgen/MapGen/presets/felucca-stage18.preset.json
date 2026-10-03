@@ -100,9 +100,7 @@
       "DenseBiomesCsv": "Swamp,Wetland,Jungle,Forest,DenseForest,Grassland,Savanna",
       "DensityMultiplier": 1.0,
       "MinRadius": 3,
-      "GroundCoverOnly": true,
-      "ChanceOverridesCsv": "Forest=37,DenseForest=37,Grassland=5,Savanna=5,Jungle=30",
-      "CataloguePath": "Data/map-mining/felucca-static-atlas-v2"
+      "GroundCoverOnly": true
     },
     "Reference Coast": {
       "MinimumSupport": 30,

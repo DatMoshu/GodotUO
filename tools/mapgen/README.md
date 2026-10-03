@@ -8,9 +8,9 @@ writes legacy MUL map files. The owner wrote it as an addition to a CentrED# for
 | Folder | What |
 |---|---|
 | `MapGen/` | The generator library (`GUO.MapGen`, net8.0). Namespaces stay `CentrED.MapGen.*` |
-| `MapGen/presets/` | Presets (`*.preset.json`), the tile tables and GUO's transition table (`transitions.guo.json`) |
+| `MapGen/presets/` | Presets (`*.preset.json`), the tile tables, GUO's transition table (`transitions.guo.json`) and scatter table (`scatter.guo.json`) |
 | `MapGen/Mining/` | The owner's importer for Dragon's transition rules (`prepare --dragon`, optional) |
-| `MapGen.Tests/` | 236 tests: determinism, terrain invariants, coasts, the transition table, stamps, the MUL writer, the Dragon importer. None needs local data |
+| `MapGen.Tests/` | 255 tests: determinism, terrain invariants, coasts, the transition and scatter tables, stamps, the MUL writer, the Dragon importer. None needs local data |
 | `cli/` | `guo-mapgen`, the command-line front end the editor's Map Generator tab runs |
 | `data/` | Shipped data: the dungeon roster and decor table (hand-written by the owner) |
 | `run.py` | Builds the CLI into `build/mapgen/cli` on first use and runs it with the config's paths |
@@ -47,18 +47,24 @@ chosen is in `docs/upstream/mapgen.md`.
 client uses into `UO_MAPGEN_DATA`; the generator prefers it. `run.py coverage` compares the tables you
 have, in counts.
 
+## The scatter table
+
+**`MapGen/presets/scatter.guo.json`** is GUO's own table of what grows on each biome's ground (grass,
+flowers, ferns, rocks, mushrooms, logs, jungle plants, cacti, swamp plants) and which tree trunk takes
+which canopy. Biome Static Scatter reads it by default (*Catalogue* `guo`); Forest Scatter pairs
+trunks with it when there is no `tree-statics.json`. How it was made is in `docs/upstream/mapgen.md`.
+
 ## Data that is not here
 
 **Dragon's transition rules** (`landbrush.dragon.json`) are optional. GUO does not ship them (their
 terms are unverified). `run.py prepare --dragon DIR` converts your own copy into `UO_MAPGEN_DATA`;
 `run --brushes dragon` then uses it, and `coverage` compares against it.
 
-**UO Landscaper's statics and transitions** feed Biome Static Scatter's default catalogue, the
-trunk/canopy pairing when there is no `tree-statics.json`, and Swamp Surface. norad32's MIT mod began by
-importing the closed original's data, and most of these files trace to it
-(`docs/upstream/mapgen.md`), so GUO does not ship them either. Copy them from your own copy with
-`run.py prepare --landscaper DIR`. Without them those passes warn and skip; land and heights do not
-change.
+**UO Landscaper's statics and transitions** feed Swamp Surface, and Biome Static Scatter when its
+*Catalogue* names `mined/landscaper-statics`. norad32's MIT mod began by importing the closed original's
+data, and most of these files trace to it (`docs/upstream/mapgen.md`), so GUO does not ship them
+either. Copy them from your own copy with `run.py prepare --landscaper DIR`. Without them Swamp Surface
+warns and skips; land and heights do not change.
 
 Some passes read data mined from a user's own client files. GUO never ships it either:
 - the stamp library (`mined/stamps`);
