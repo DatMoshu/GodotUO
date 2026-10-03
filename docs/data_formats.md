@@ -618,6 +618,14 @@ The same deploy writes the neutral server export, `guo/server-content@1`, to
 `<shard>/Data/GUO/server-content.json`. The ModernUO bridge loads it at start
 when `UO_SERVER_CONTENT` is not set, and logs its `identity_hash`.
 
+The export's optional `spawners` array holds `{identity, content}` rows, where
+`content` is exactly the fields of a pack `spawner` component payload:
+`creature` (a `pack:component` identity of a `creature` in the same export),
+`facet`, `x`, `y`, `z`, `radius` (0 to 64), `count` (1 to 64), `min_delay` and
+`max_delay` (seconds, 1 to 86400, `max_delay` >= `min_delay`) and `team`. All
+are integers and all are required; unknown fields are refused. A backend that
+does not implement `spawners` refuses the export (`docs/store/server_backends.md`).
+
 ### Screensavers in the client (profile v11)
 
 `Profile.ScreenSaverChoice` (JSON `screen_saver_choice`, default
