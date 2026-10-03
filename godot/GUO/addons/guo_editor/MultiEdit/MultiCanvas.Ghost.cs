@@ -50,6 +50,20 @@ public partial class MultiCanvas
     /// <summary>The view's menu commands that have a key: copy, cut, paste.</summary>
     public event Action<string> Command;
 
+    /// <summary>Alt+click with the Erase tool on a stair or roof piece: its part's uid.</summary>
+    public event Action<int> EraseGroupRequested;
+
+    private bool EraseGroupPress(InputEventMouseButton lb, MultiPart? under)
+    {
+        if (!lb.AltPressed || under is not { } u)
+        {
+            return false;
+        }
+
+        EraseGroupRequested?.Invoke(u.Uid);
+        return true;
+    }
+
     public void SetGhost(IEnumerable<MultiPart> parts, bool follow = false)
     {
         _ghost = parts.ToList();

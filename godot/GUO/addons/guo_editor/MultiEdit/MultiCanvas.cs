@@ -820,6 +820,11 @@ public partial class MultiCanvas : Control
                 _dragStart = _hover;
                 break;
             case MultiTool.Erase:
+                if (EraseGroupPress(lb, under))
+                {
+                    break;
+                }
+
                 _drawingNow = true;
                 _eraseSet = new HashSet<int>();
                 if (under is { } eu)

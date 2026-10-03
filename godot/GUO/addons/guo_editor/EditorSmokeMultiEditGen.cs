@@ -86,6 +86,94 @@ public partial class EditorSmoke
         view.NewMulti();
         await MeToolsAsync(view, floorId);
         view.NewMulti();
+        await MeClipboardAsync(view, root);
+        view.NewMulti();
+    }
+
+    private async Task MeClipboardAsync(MultiEditView view, string root)
+    {
+        MultiCanvas canvas = view.Canvas;
+        MultiDocument doc = view.Doc;
+        GeneratePanel panel = view.GeneratePanel;
+        view.StampsDir = Path.Combine(root, "stamps");
+        view.ShowGenerateTab();
+        panel.SelectGenerator("house");
+        // The house generator is deterministic (same seed, same bytes), so this is the same building every run.
+        await view.ApplyGeneratedAsync(true);
+        int total = doc.Parts.Count;
+
+        // Erase a whole roof and a whole stair.
+        MultiPart roof = doc.Parts.FirstOrDefault(p => view.GroupOf(p.Uid).Count > 1 && p.Z >= 27);
+        bool haveRoof = roof.Uid != 0;
+        MeCheck("group_finds_a_roof_or_stair", haveRoof);
+        if (haveRoof)
+        {
+            int n = view.GroupOf(roof.Uid).Count;
+            MeCheck("erase_group_one_step", view.EraseGroup(roof.Uid) && doc.Parts.Count == total - n && doc.HistoryNames[^1].StartsWith("erase "), $"{n} group, {doc.Parts.Count} of {total}");
+            doc.Undo();
+            MeCheck("erase_group_undo", doc.Parts.Count == total);
+            _meReport["erase_group_size"] = n;
+        }
+
+        MultiPart stair = doc.Parts.FirstOrDefault(p => view.GroupOf(p.Uid).Count > 1 && view.GroupOf(p.Uid).Count != (haveRoof ? view.GroupOf(roof.Uid).Count : -1));
+        if (stair.Uid != 0)
+        {
+            int n = view.GroupOf(stair.Uid).Count;
+            MeCheck("erase_second_group", view.EraseGroup(stair.Uid) && doc.Parts.Count == total - n);
+            doc.Undo();
+        }
+
+        // Copy, paste with a ghost, cut.
+        doc.Selection.Clear();
+        foreach (MultiPart p in doc.Parts.Take(10))
+        {
+            doc.Selection.Add(p.Uid);
+        }
+
+        MeCheck("copy_selection", view.CopySelection() && view.ClipboardCount == 10);
+        int steps = doc.HistoryCount, cursor = doc.Cursor;
+        MeCheck("paste_starts_ghost", view.PasteClipboard() && canvas.GhostFollowsMouse && canvas.GhostCount == 10 && doc.HistoryCount == steps);
+        canvas.PlaceGhostAt(40, 40);
+        var added = doc.Parts.Skip(total).ToList();
+        MeCheck("paste_places_one_step", added.Count == 10 && doc.Cursor == cursor + 1 && !canvas.GhostFollowsMouse && canvas.GhostCount == 0 && doc.HistoryNames[^1] == "paste 10",
+            $"added {added.Count} history {doc.HistoryCount} vs {steps + 1}, follow {canvas.GhostFollowsMouse}, ghost {canvas.GhostCount}, last {doc.HistoryNames[^1]}");
+        MeCheck("paste_lands_at_pointer", added.Count > 0 && Math.Abs(added.Average(p => p.X) - 40) <= 6 && Math.Abs(added.Average(p => p.Y) - 40) <= 6);
+        doc.Undo();
+        MeCheck("paste_undo", doc.Parts.Count == total);
+        doc.Redo();
+        doc.Selection.Clear();
+        foreach (MultiPart p in doc.Parts.Skip(total))
+        {
+            doc.Selection.Add(p.Uid);
+        }
+
+        MeCheck("cut_removes_and_copies", view.CutSelection() && doc.Parts.Count == total && view.ClipboardCount == 10);
+        view.PasteClipboard();
+        canvas._GuiInput(new InputEventKey { Keycode = Key.Escape, Pressed = true });
+        MeCheck("paste_escape_cancels", !canvas.GhostFollowsMouse && canvas.GhostCount == 0 && doc.Parts.Count == total);
+
+        // A stamp round trip: save the selection, place it elsewhere, the same pieces and hues.
+        MultiPart first = doc.Parts[0];
+        doc.SetHue(new[] { first.Uid }, 9);
+        doc.Selection.Clear();
+        foreach (MultiPart p in doc.Parts.Take(8))
+        {
+            doc.Selection.Add(p.Uid);
+        }
+
+        var saved = Sig(doc).Where(t => doc.Parts.Take(8).Any(p => p.Id == t.Item1 && p.X == t.Item2 && p.Y == t.Item3 && p.Z == t.Item4)).ToList();
+        string path = view.SaveStamp("smoke stamp");
+        MeCheck("stamp_saved_under_stamps_dir", path != null && File.Exists(path) && view.Stamps().Contains("smoke_stamp"), path);
+        MeCheck("stamp_file_is_description", path != null && MultiStore.FromJson(File.ReadAllText(path)).Parts.Count == 8);
+        int before = doc.Parts.Count;
+        MeCheck("stamp_place_ghost", view.PlaceStamp("smoke_stamp") && canvas.GhostCount == 8 && canvas.GhostFollowsMouse);
+        canvas.PlaceGhostAt(-40, -40);
+        var placed = doc.Parts.Skip(before).ToList();
+        var origin = doc.Parts.Take(8).Select(p => (p.Id, p.Hue)).OrderBy(t => t).ToList();
+        MeCheck("stamp_round_trip", placed.Count == 8 && placed.Select(p => (p.Id, p.Hue)).OrderBy(t => t).SequenceEqual(origin) && placed.Any(p => p.Hue == 9),
+            $"{placed.Count} placed");
+        MeCheck("stamp_delete", view.DeleteStamp("smoke_stamp") && !view.Stamps().Contains("smoke_stamp"));
+        MeCheck("stamps_not_in_install", Path.GetFullPath(view.StampsDir).StartsWith(Path.GetFullPath(_out), StringComparison.OrdinalIgnoreCase));
     }
 
     private static List<(int, int, int, int, bool, int)> Sig(MultiDocument doc) =>

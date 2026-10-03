@@ -221,6 +221,7 @@ public partial class MultiEditView : VBoxContainer, IMultiComponentSink
         }
 
         BuildTransformButtons(sel);
+        BuildClipboardButtons(sel);
         sel.AddChild(new VSeparator());
         _hint = new Label
         {
@@ -248,6 +249,7 @@ public partial class MultiEditView : VBoxContainer, IMultiComponentSink
         split.AddChild(_tabs);
         BuildTabs();
         BuildGenerator();
+        BuildClipboard();
 
         _status = new Label { Text = "", ClipText = true };
         AddChild(_status);
