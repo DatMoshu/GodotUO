@@ -17,6 +17,7 @@
     "Snow": { "biomes": ["Snow", "Tundra"], "notes": "Snow ground." },
     "Mountain": { "biomes": ["Mountain", "HighMountain"], "notes": "Rock. Never an owner: its neighbours draw the rock edge, raised on the north and west sides." },
     "Swamp": { "biomes": ["Swamp", "Wetland"], "notes": "Moss and bog. Only grass and forest blend into it." },
+    "Bog": { "biomes": [], "notes": "The open bog inside a swamp (0x3DE9-0x3DEC). No biome of its own: Swamp Surface splits each swamp into a moss band and a bog interior." },
     "Water": { "biomes": ["DeepWater", "ShallowWater", "River"], "notes": "Never an owner and never painted with an edge tile." },
     "Dirt": { "biomes": ["Road"], "notes": "Dirt roads and trails (RoadPaint.DirtTiles)." },
     "Cobble": { "biomes": ["Road"], "notes": "Cobblestone streets (RoadPaint.CobbleTiles). Grass and forest meet cobble through their dirt edge." }
@@ -109,6 +110,16 @@
       "edges": {},
       "via": "Grassland",
       "notes": "Forest meets swamp through grass in Britannia (63 scattered edges)."
+    },
+    {
+      "owner": "Swamp", "other": "Bog",
+      "edges": {
+        "N": ["0x3DE0", "0x3DE1", "0x3DE2"], "E": ["0x3DDD", "0x3DDE"], "S": ["0x3DDF", "0x3DE8"], "W": ["0x3DDB", "0x3DDC"],
+        "NE": ["0x3DE4"], "SE": ["0x3DE5"], "SW": ["0x3DE3"], "NW": ["0x3DE6"],
+        "in_NE": ["0x3DEE"], "in_SE": ["0x3DEF"], "in_SW": ["0x3DC2"], "in_NW": ["0x3DED"]
+      },
+      "measure": false,
+      "notes": "Moss band against open bog, drawn by Swamp Surface (Land Transitions never meets Bog). Felucca draws the inner corners with moss tiles whose art carries a dark corner, and 0x3DC2 for the south-west one."
     },
     {
       "owner": "Forest", "other": "Water",

@@ -63,8 +63,7 @@
     "Forest Scatter": {
       "DensityMultiplier": 0.6,
       "MinRadius": 2,
-      "ShoreBuffer": 1,
-      "SpeciesTablesPath": "Data/map-mining/felucca-static-atlas-v2/species.json"
+      "ShoreBuffer": 1
     },
     "POI Stamps": {
       "ControlPointsPerQuadrant": 2,

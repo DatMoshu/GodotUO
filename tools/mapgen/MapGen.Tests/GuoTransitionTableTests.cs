@@ -34,6 +34,10 @@ public class GuoTransitionTableTests
     {
         var t = Committed();
         var interior = new HashSet<ushort>(TileTables.BuiltIn.Land.Values.SelectMany(v => v));
+        var materials = JsonNode.Parse(File.ReadAllText(TestRepo.BrushTable))!["materials"]!.AsObject();
+        HashSet<ushort> InteriorOf(string material) => materials[material]!["biomes"]!.AsArray()
+            .Select(b => Enum.Parse<BiomeId>((string)b!)).Where(TileTables.BuiltIn.Land.ContainsKey)
+            .SelectMany(b => TileTables.BuiltIn.Land[b]).ToHashSet();
         foreach (var p in t.Pairs)
         {
             Assert.True(t.Materials.Contains(p.Owner) && t.Materials.Contains(p.Other), p.Key);
@@ -43,7 +47,10 @@ public class GuoTransitionTableTests
             Assert.Equal(EdgeShapes.All.Length, p.Edges.Count);
             var ids = p.Edges.Values.SelectMany(v => v.Select(e => e.Id)).ToList();
             Assert.Equal(ids.Count, ids.Distinct().Count());
-            Assert.DoesNotContain(ids, id => interior.Contains(id) || TileFlags.IsWaterLandId(id));
+            // An edge tile is no material's interior, except the owner's own where Felucca draws a corner with it
+            // (Swamp>Bog's inner corners are moss tiles with a dark corner).
+            var own = InteriorOf(p.Owner);
+            Assert.DoesNotContain(ids, id => (interior.Contains(id) && !own.Contains(id)) || TileFlags.IsWaterLandId(id));
         }
         // A bridge lands on a material both sides can meet.
         foreach (var p in t.Pairs.Where(p => p.Via is not null))

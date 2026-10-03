@@ -10,7 +10,7 @@ writes legacy MUL map files. The owner wrote it as an addition to a CentrED# for
 | `MapGen/` | The generator library (`GUO.MapGen`, net8.0). Namespaces stay `CentrED.MapGen.*` |
 | `MapGen/presets/` | Presets (`*.preset.json`), the tile tables, GUO's transition table (`transitions.guo.json`) and scatter table (`scatter.guo.json`) |
 | `MapGen/Mining/` | The owner's importer for Dragon's transition rules (`prepare --dragon`, optional) |
-| `MapGen.Tests/` | 255 tests: determinism, terrain invariants, coasts, the transition and scatter tables, stamps, the MUL writer, the Dragon importer. None needs local data |
+| `MapGen.Tests/` | 258 tests: determinism, terrain invariants, coasts, the transition and scatter tables, stamps, the MUL writer, the Dragon importer. None needs local data |
 | `cli/` | `guo-mapgen`, the command-line front end the editor's Map Generator tab runs |
 | `data/` | Shipped data: the dungeon roster and decor table (hand-written by the owner) |
 | `run.py` | Builds the CLI into `build/mapgen/cli` on first use and runs it with the config's paths |
@@ -60,11 +60,11 @@ trunks with it when there is no `tree-statics.json`. How it was made is in `docs
 terms are unverified). `run.py prepare --dragon DIR` converts your own copy into `UO_MAPGEN_DATA`;
 `run --brushes dragon` then uses it, and `coverage` compares against it.
 
-**UO Landscaper's statics and transitions** feed Swamp Surface, and Biome Static Scatter when its
-*Catalogue* names `mined/landscaper-statics`. norad32's MIT mod began by importing the closed original's
-data, and most of these files trace to it (`docs/upstream/mapgen.md`), so GUO does not ship them
-either. Copy them from your own copy with `run.py prepare --landscaper DIR`. Without them Swamp Surface
-warns and skips; land and heights do not change.
+**UO Landscaper's statics and transitions** are optional. Biome Static Scatter reads them when its
+*Catalogue* names `mined/landscaper-statics`, and Swamp Surface when its *Transition catalogue* names
+`mined/landscaper-transitions`; by default both use GUO's own tables. norad32's MIT mod began by
+importing the closed original's data, and most of these files trace to it (`docs/upstream/mapgen.md`),
+so GUO does not ship them. Copy them from your own copy with `run.py prepare --landscaper DIR`.
 
 Some passes read data mined from a user's own client files. GUO never ships it either:
 - the stamp library (`mined/stamps`);
