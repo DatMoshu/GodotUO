@@ -67,7 +67,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
     /// <summary>The Multi Editor view, for <see cref="GuoMultiEditPlugin"/> to show and hide with its tab.</summary>
     public static MultiEditView MultiEditMain { get; private set; }
 
-    public const string WorldTabName = "UO World";
+    public const string WorldTabName = "World";
 
     public override bool _HasMainScreen() => true;
 

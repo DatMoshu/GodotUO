@@ -45,6 +45,13 @@ A rock edge cell sits about 8 above the grass on north- and west-facing edges, a
 north-west outer corner, while south and east edges barely move. Applying them is off by default
 (*Edge z offsets*), so terrain heights stay the terrain passes' own.
 
+**Moss and bog (`Swamp>Bog`).** Swamp Surface splits each swamp into a moss band and an open bog
+interior. The pair's ids were read from the owner's Felucca: for each tile of the moss/bog family, which
+side of it holds bog interior, then checked on a contact sheet of the art. Straight edges and outer
+corners are 0x3DDB–0x3DE8. Felucca draws three of the four inner corners with ordinary moss tiles
+(0x3DED, 0x3DEE, 0x3DEF: about 900 corners each) and the south-west one with 0x3DC2. Swamp Surface draws
+grass against moss from the existing `Grassland>Swamp` pair.
+
 Not drawn yet, found while measuring: Felucca's shallows are a seabed of land tiles (0x64 flat and its
 slopes 0x58–0x63) under water statics, with sand behind. The generator draws open water tiles instead,
 and the table stands sand plain against them.
@@ -102,7 +109,9 @@ checked from its full history (70 commits):
 
 So none of it ships. It was removed from the history GUO publishes, and the generator reads it from
 `UO_MAPGEN_DATA` when a user supplies it. **Without it:**
-- Swamp Surface leaves the swamp interior unchanged; with it, it reworked 7,754 cells on a 1024 map;
+- Swamp Surface draws its moss and bog edges from GUO's transition table (`Swamp>Bog`, above). It
+  repaints as many cells as with Landscaper's transitions (7,243 at 1024 with seed 1234567), and the
+  edges read alike in a close-up;
 - trunk/canopy pairing and Biome Static Scatter use GUO's scatter table instead (above). With the
   scatter pass off, the maps hash as with the Landscaper pairing, so the pairing matches.
 

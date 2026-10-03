@@ -29,7 +29,7 @@ public interface IMultiComponentSink
 [Tool]
 public partial class MultiEditView : VBoxContainer, IMultiComponentSink
 {
-    public const string TabName = "Multi Editor";
+    public const string TabName = "Multis";
 
     private EditorData _data;
     private MultiDocument _doc;
