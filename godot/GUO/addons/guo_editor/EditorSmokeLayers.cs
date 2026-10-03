@@ -21,6 +21,8 @@ public partial class EditorSmoke
         {
             ModeContext ctx = _world.Modes.Context(false);
             WorldData data = _world.Modes.Data;
+            // The editor's own pack store must not leak the machine's installed packs into the fixture counts.
+            layers.PackStoreRoot = () => Path.Combine(_out, "store_empty");
             layers.ShardFolder = FixtureShard();
 
             // Places: the hand kept list plus the shard folder's Data/Locations.
@@ -32,6 +34,17 @@ public partial class EditorSmoke
             var regions = layers.Items("Regions", 0).ToList();
             _modesReport["regions_facet0"] = regions.Select(r => r.Label).ToList();
             ModeExpect(regions.Count == 2 && regions.Any(r => r.Label == "Fixture Square") && layers.Items("Regions", 1).Count() == 1, "layer_regions_fixture");
+
+            // Pack regions from an installed pack and a deployed server-content.json, each labelled with its source.
+            string store = BuildRegionPackFixture(Path.Combine(_out, "store_fixture"), Path.Combine(_out, "deployed_shard"));
+            layers.PackStoreRoot = () => store;
+            layers.ShardFolder = Path.Combine(_out, "deployed_shard");
+            var packRegions = layers.Items("Regions", 0).ToList();
+            _modesReport["pack_regions"] = packRegions.Select(r => $"{r.Label} | {r.Detail}").ToList();
+            ModeExpect(packRegions.Any(r => r.Label == "Store Fixture Region" && r.Detail.Contains("installed pack store-fixture-regions 1.0.0")), "layer_regions_installed_pack");
+            ModeExpect(packRegions.Any(r => r.Label == "Deployed Fixture Region" && r.Detail.Contains("deployed fixture-deploy:deployed")), "layer_regions_deployed");
+            layers.PackStoreRoot = () => Path.Combine(_out, "store_empty");
+            layers.ShardFolder = FixtureShard();
 
             // Spawns: one in the project, with its home ring.
             ShardSpawner sp = _world.Objects.PlaceSpawner(0, 1500, 1630, data.LandZ(1500, 1630), "Horse");
@@ -152,6 +165,40 @@ public partial class EditorSmoke
             _world.SetFixedSize(null);
             _modesReport.TryAdd("ok", true);
         }));
+    }
+
+    /// <summary>An installed region pack (hash-checked by StoreClient) in a store folder, and a shard folder with a deployed server-content.json.</summary>
+    private static string BuildRegionPackFixture(string store, string shard)
+    {
+        const string id = "store-fixture-regions", version = "1.0.0";
+        string dir = Path.Combine(store, id, version);
+        Directory.CreateDirectory(dir);
+        string row = "{\"name\":\"Store Fixture Region\",\"facet\":0,\"priority\":50,\"areas\":[{\"x\":1480,\"y\":1610,\"z\":-128,\"width\":30,\"height\":30,\"depth\":255}]}";
+        File.WriteAllText(Path.Combine(dir, "region.json"), row);
+        File.WriteAllBytes(Path.Combine(dir, "preview.png"), new byte[] { 1, 2, 3 });
+        var manifest = new GUO.Store.StoreManifest
+        {
+            Schema = "guo/store-pack@2", Id = id, Version = version, Kind = "content", Title = "Store fixture regions", Author = "smoke",
+            Licence = "CC0-1.0", MinProfileVersion = 0, Preview = "preview.png", Target = "server",
+            Dependencies = new System.Collections.Generic.Dictionary<string, string>(),
+            Files = new System.Collections.Generic.Dictionary<string, string>
+            {
+                ["region.json"] = GUO.Store.StorePack.HashFile(Path.Combine(dir, "region.json")),
+                ["preview.png"] = GUO.Store.StorePack.HashFile(Path.Combine(dir, "preview.png")),
+            },
+            Components = new System.Collections.Generic.List<GUO.Store.StoreComponent>
+            {
+                new() { Id = "square", Type = "region", Target = "server", Entry = "region.json" },
+            },
+        };
+        File.WriteAllText(Path.Combine(dir, "manifest.json"), System.Text.Json.JsonSerializer.Serialize(manifest));
+
+        string deployed = Path.Combine(shard, "Data", "GUO");
+        Directory.CreateDirectory(deployed);
+        File.WriteAllText(Path.Combine(deployed, "server-content.json"),
+            "{\"regions\":[{\"identity\":\"fixture-deploy:deployed\",\"music_id\":-1,\"content\":"
+            + "{\"name\":\"Deployed Fixture Region\",\"facet\":0,\"priority\":50,\"areas\":[{\"x\":1520,\"y\":1610,\"z\":-128,\"width\":20,\"height\":20,\"depth\":255}]}}]}");
+        return store;
     }
 }
 #endif
