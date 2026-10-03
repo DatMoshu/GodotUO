@@ -49,6 +49,7 @@ sources/ClassicUO/  upstream reference — READ ONLY, never edit
 tools/            one folder per job + one per third-party program
   guo/            shared Python package; all tools import from here
   guoasset/       parity reference renderer (MCP), on upstream's loaders
+  guo_mcp/        opt-in loopback MCP to drive a running client (data_formats section 29)
   modernuo/       the dev shard: patches, config templates (src/ gitignored)
   android/        the Android export tool + preset template
   windows/        the Windows export tool + preset template + icon check
@@ -115,6 +116,7 @@ launchers\dev\render_diff.bat NAME         compare the two clients' "renderdump 
 launchers\dev\sync_upstream.bat            check upstream drift
 launchers\dev\worktree_setup.bat           ready a fresh git worktree (no links)
 launchers\dev\build_guoasset.bat           build the parity reference MCP
+launchers\dev\mcp.bat                      run the client with its automation MCP on (GUO_MCP_PORT + GUO_MCP_TOKEN)
 launchers\shard\run.bat                    run the local dev shard
 launchers\shard\populate.bat               generate its world (once)
 launchers\game\play.bat                    run the client
