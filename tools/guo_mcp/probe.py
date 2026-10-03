@@ -56,7 +56,7 @@ def main():
                     if time.monotonic() > deadline:
                         raise TimeoutError("MCP did not start")
                     time.sleep(0.1)
-            bridge = subprocess.Popen([sys.executable, str(root / "tools/guo_mcp/bridge.py")], env=env,
+            bridge = subprocess.Popen([sys.executable, str(root / "tools/guo_mcp/run.py")], env=env,
                                       stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=log, text=True, encoding="utf-8")
             replies = queue.Queue()
             def receive():

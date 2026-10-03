@@ -1,7 +1,10 @@
 # GUO UI MCP
 
+Wire format: `docs/data_formats.md`, section 29. Entry point: `run.py`
+(`run.py` = stdio bridge, `run.py probe` = self-test).
+
 GUO embeds its UI automation server in the normal client bootstrap. Codex,
-Claude and other MCP clients attach through `bridge.py` (Python 3.12+, stdlib
+Claude and other MCP clients attach through `run.py` (Python 3.12+, stdlib
 only). The bridge speaks standard newline-delimited MCP on stdio and keeps
 Godot logs off that channel. GUO owns tool discovery, UI inspection and input;
 the bridge only forwards messages over an authenticated loopback socket.
@@ -21,13 +24,14 @@ launchers\dev\mcp.bat --headless
 
 The launcher uses normal shared GUO configuration, silences audio and avoids
 stealing focus. It accepts the usual GUO user arguments after `--headless`.
-An exported desktop GUO also enables the server when these environment
-variables are present. Without `GUO_MCP_PORT`, no listener is created.
+An exported desktop debug build also enables the server when these
+environment variables are present. A release export (`template_release`)
+never does. Without `GUO_MCP_PORT`, no listener is created.
 One agent controls each instance at a time; use separate ports for separate
 instances. Close the bridge to hand control to another agent.
 
 Configure your MCP client's stdio server command as `python`, arguments as
-the **absolute path** to `tools/guo_mcp/bridge.py`, and its environment with
+the **absolute path** to `tools/guo_mcp/run.py` (no subcommand runs the bridge), and its environment with
 the same `GUO_MCP_PORT` and `GUO_MCP_TOKEN`. For clients using `mcpServers`:
 
 ```json
@@ -35,7 +39,7 @@ the same `GUO_MCP_PORT` and `GUO_MCP_TOKEN`. For clients using `mcpServers`:
   "mcpServers": {
     "guo": {
       "command": "python",
-      "args": ["<absolute-checkout-path>/tools/guo_mcp/bridge.py"],
+      "args": ["<absolute-checkout-path>/tools/guo_mcp/run.py"],
       "env": {
         "GUO_MCP_PORT": "18670",
         "GUO_MCP_TOKEN": "<same-generated-secret-as-GUO>"
@@ -50,7 +54,7 @@ For clients using TOML server configuration, the equivalent entry is:
 ```toml
 [mcp_servers.guo]
 command = "python"
-args = ["<absolute-checkout-path>/tools/guo_mcp/bridge.py"]
+args = ["<absolute-checkout-path>/tools/guo_mcp/run.py"]
 
 [mcp_servers.guo.env]
 GUO_MCP_PORT = "18670"
@@ -93,7 +97,7 @@ succeeded. Inspect the resulting UI after each meaningful action.
 
 ## Boundaries
 
-Desktop only; web and mobile exports do not start this listener. Binding is
+Desktop only; web and mobile exports and release builds do not start this listener. Binding is
 IPv4 loopback only, with a required token and five-second authentication
 deadline. Input messages are limited to 64 KiB; commands have a 30-second
 deadline and execute serially on the scene thread. Expired queued commands
@@ -105,10 +109,10 @@ game/server content. Screenshots can contain whatever is visible to the user.
 ## Verification
 
 ```powershell
-python tools/guo_mcp/probe.py
-python tools/guo_mcp/probe.py --headed
+python tools/guo_mcp/run.py probe
+python tools/guo_mcp/run.py probe --headed
 # With configured local UO data, also check the real login gumps:
-python tools/guo_mcp/probe.py --client
+python tools/guo_mcp/run.py probe --client
 ```
 
 The probe starts an isolated synthetic Godot scene without UO data or a shard,

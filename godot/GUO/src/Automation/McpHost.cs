@@ -39,8 +39,14 @@ public partial class McpHost : Node
     {
         string portText = System.Environment.GetEnvironmentVariable("GUO_MCP_PORT");
         if (string.IsNullOrEmpty(portText)) return;
+        // An exported release build never listens, whatever the environment says.
+        if (OS.HasFeature("template_release"))
+        {
+            GD.PrintErr("[GUO MCP] Disabled in release builds.");
+            return;
+        }
         string token = System.Environment.GetEnvironmentVariable("GUO_MCP_TOKEN");
-        if (!int.TryParse(portText, out int port) || port < 1024 || port > 65535 || token?.Length < 32 || token == null)
+        if (!int.TryParse(portText, out int port) || port < 1024 || port > 65535 || token == null || token.Length < 32)
         {
             GD.PrintErr("[GUO MCP] GUO_MCP_PORT must be 1024..65535 and GUO_MCP_TOKEN at least 32 characters.");
             return;

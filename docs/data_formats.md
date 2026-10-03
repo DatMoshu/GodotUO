@@ -1479,3 +1479,31 @@ fifth element `0` when hidden, plus a `multi.json` with `valid`, `problems`, `do
 **Stamps.** The Multi Editor's stamps library (ADR-0031, phase 2) stores each stamp as a section 28 description, centred on
 its box, in `user://guo_multiedit_stamps/NAME.multi.json` (the user's GUO data folder; never the repo). A
 `NAME.recovery.multi.json` in `build/multi/edit/` is the same format, written when the editor closes with unsaved changes.
+
+
+---
+
+## 29. GUO automation MCP (`tools/guo_mcp`, `godot/GUO/src/Automation/McpHost.cs`)
+
+An opt-in local control channel for a running desktop GUO, for AI agents. Off unless both
+`GUO_MCP_PORT` (1024..65535) and `GUO_MCP_TOKEN` (32+ characters, no newline) are in the environment;
+never started in `template_release` builds, on web, or on mobile. The listener binds IPv4 loopback
+(`127.0.0.1`) only.
+
+**Transport.** Newline-delimited UTF-8 over TCP, one controller at a time, lines capped at 64 KiB. The
+first line a client sends is the token alone; it must arrive within 5 seconds and is compared in fixed
+time, and a wrong token closes the socket without a reply. After that every line is one JSON-RPC 2.0
+message of MCP revision `2025-06-18` (`initialize`, `ping`, `tools/list`, `tools/call`; notifications get
+no reply). `tools/guo_mcp/run.py` is the stdio bridge: it sends the token, then relays lines both ways.
+
+**Tools** (a call runs on the scene thread, 30 second deadline, serial):
+
+| Tool | Arguments | Result |
+|---|---|---|
+| `guo_ui` | none | text content holding JSON: `scene`, `headless`, `width`, `height`, `classicScale`, `truncated`, `controls[]` of `{system: "classic"\|"godot", type, name?, x, y, width, height, enabled?, focused, text}` (viewport pixels, at most 2000, editable field values omitted) |
+| `guo_input` | `kind` `motion\|button\|key\|text`; `x`,`y`; `button` `Left\|Right\|Middle\|WheelUp\|WheelDown`; `key` (Godot key name); `pressed`; `text` (at most 1024 characters); `shift`,`ctrl`,`alt` | text content; `isError` on bad arguments |
+| `guo_wait` | `frames` 1..600 | text content after that many process frames |
+| `guo_screenshot` | none | `image/png` content (base64); `isError` when headless |
+
+No shell, script, file or packet tools exist. Synthetic keys and buttons still held when the controller
+disconnects are released.

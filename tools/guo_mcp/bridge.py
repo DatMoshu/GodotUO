@@ -31,9 +31,13 @@ def main():
             connection.sendall(line)
 
 
-if __name__ == "__main__":
+def run():
     try:
         main()
     except (OSError, ValueError) as error:
         print(f"GUO MCP bridge: {error}", file=sys.stderr)
         sys.exit(1)
+
+
+if __name__ == "__main__":
+    run()
