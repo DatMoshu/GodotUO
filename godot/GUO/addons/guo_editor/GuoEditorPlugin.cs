@@ -172,6 +172,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         {
             _tour = new EditorTour(tourOut, _data, _assets, _inspector, _world, _shard, _run);
             _tour.Search = _search;
+            _tour.Ai = _ai;
             AddChild(_tour);
         }
 
