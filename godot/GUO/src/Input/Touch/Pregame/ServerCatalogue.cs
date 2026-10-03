@@ -85,7 +85,8 @@ internal static class ServerCatalogue
                 e.Own = false;
                 e.Favourite = false;
                 e.LastPlayed = null;
-                e.DataFolder = null;
+                e.ClientId = null;
+                e.LegacyDataFolder = null;
                 e.Accounts = null;
                 _servers.Add(e);
             }
@@ -108,7 +109,8 @@ internal static class ServerCatalogue
         c.Own = false;
         c.Favourite = false;
         c.LastPlayed = null;
-        c.DataFolder = null;
+        c.ClientId = null;
+        c.LegacyDataFolder = null;
         c.Accounts = null;
         return c;
     }

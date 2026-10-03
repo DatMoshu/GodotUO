@@ -815,6 +815,24 @@ internal static class PregameProbe
         System.IO.File.Delete(ServerBook.PathOverride);
         ServerBook.Load();
 
+        // ADR-0032: an entry's earlier private folder becomes a client profile once; the old file is kept.
+        {
+            string legacy = System.IO.Path.GetFullPath(ProjectSettings.GlobalizePath($"user://probe_legacy_{_tag}"));
+            System.IO.Directory.CreateDirectory(legacy);
+            System.IO.File.WriteAllText(ServerBook.FilePath, "{\"servers\":[{\"name\":\"Legacy\",\"host\":\"legacy.invalid\",\"port\":2596,\"data_folder\":" + System.Text.Json.JsonSerializer.Serialize(legacy) + "}]}");
+            ServerBook.Load();
+            ServerEntry moved = ServerBook.Find("legacy.invalid", 2596);
+            string movedText = System.IO.File.ReadAllText(ServerBook.FilePath);
+            GUO.Workspace.ClientProfile moved1 = moved?.ClientId == null ? null : GUO.Workspace.ClientRegistry.Current.Find(moved.ClientId);
+            Check("an entry's earlier data folder is moved into a client profile (read in place), the file now names the client, the old file is kept",
+                moved1 != null && moved1.BaseData == legacy && moved.DataFolder == legacy && movedText.Contains("\"client_id\"") && !movedText.Contains("\"data_folder\"")
+                && System.IO.File.Exists(ServerBook.FilePath + ".migrated"),
+                $"client {moved1?.Name}, base {moved1?.BaseData}, file {movedText.Length} bytes");
+            System.IO.File.Delete(ServerBook.FilePath);
+            System.IO.File.Delete(ServerBook.FilePath + ".migrated");
+            ServerBook.Load();
+        }
+
         card.Tap(card.TabButtonFor(PregameCard.Tab.Servers));
         await InputProbe.Wait(host, 6);
         PregameServers servers = card.Servers;
@@ -1460,8 +1478,8 @@ internal static class PregameProbe
             ServerEntry kept = ServerBook.Find("custom.invalid", 2597);
             string saved = System.IO.File.ReadAllText(ServerBook.FilePath);
             Check("Play opens the first-run screen for its files: a folder without a whole manifest is refused, the fake one saved with a click, kept in servers.json",
-                open && refused && taken && !FirstRunScreen.IsOpen && kept?.DataFolder == good && saved.Contains("\"data_folder\""),
-                $"picker {open}, bad refused {refused}, good taken {taken}, still open {FirstRunScreen.IsOpen}, kept \"{kept?.DataFolder}\" (picked \"{good}\"), in the file {saved.Contains("\"data_folder\"")}{_clickDetail}");
+                open && refused && taken && !FirstRunScreen.IsOpen && kept?.DataFolder == good && saved.Contains("\"client_id\"") && !saved.Contains("\"data_folder\"") && GUO.Workspace.ClientRegistry.Current.Find(kept.ClientId)?.Overlay == good,
+                $"picker {open}, bad refused {refused}, good taken {taken}, still open {FirstRunScreen.IsOpen}, kept \"{kept?.DataFolder}\" (picked \"{good}\"), client in the file {saved.Contains("\"client_id\"")}{_clickDetail}");
 
             // Then the question, and a restart (held back) with the session written down.
             await SaveShot(host, "servers_shard_restart");
