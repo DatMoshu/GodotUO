@@ -166,7 +166,7 @@ namespace GUO.Platform.Android
         /// Logical pixels along the second screen's bottom that gumps are kept
         /// out of: the companion tabs' "‹ Tabs" strip in Classic mode, 0 otherwise.
         /// </summary>
-        public static int BottomReserve => Input.Touch.CompanionTabs.ShelfReserve;
+        public static int BottomReserve => Input.Touch.CompanionTabs.ShelfReserve + AdaptiveLayout.CompanionReserve;
 
         public static int LogicalWidth => _instance?._logicalWidth ?? 0;
 
@@ -261,6 +261,7 @@ namespace GUO.Platform.Android
 
             _instance = instance;
             host.AddChild(instance);
+            AdaptiveLayout.Setup(host);
         }
 
         /// <summary>
@@ -545,6 +546,7 @@ namespace GUO.Platform.Android
 
         public override void _Process(double delta)
         {
+            AdaptiveLayout.UpdateLayout();
             bool wanted = WantedNow() && (!_panel || PanelWanted());
 
             if (wanted && !Active)
@@ -554,6 +556,7 @@ namespace GUO.Platform.Android
             else if (!wanted && Active)
             {
                 Deactivate();
+                FillMainWithWorld();
             }
 
             if (!Active)
@@ -848,6 +851,15 @@ namespace GUO.Platform.Android
 
             Rectangle window = Client.Game.Window.ClientBounds;
 
+            if (AdaptiveLayout.Active)
+            {
+                var world = AdaptiveLayout.Layout.World;
+                float dpi = Client.Game.DpiScale;
+                viewport.ResizeGameWindow(new Point((int)(world.Width * dpi), (int)(world.Height * dpi)));
+                viewport.SetGameWindowPosition(new Point(world.X - 5, world.Y - 5));
+                return;
+            }
+
             // The one-screen split has the bottom of the window.
             if (IsPanel && _instance._kind == PanelKind.Split)
             {
@@ -1056,6 +1068,14 @@ namespace GUO.Platform.Android
                 if (UIManager.IsDragging && UIManager.DraggingControl?.RootParent == g)
                 {
                     continue;
+                }
+
+                // PORT DEVIATION: compact adaptive companions must not crop controls.
+                if (AdaptiveLayout.Active && Input.Touch.GumpPresentation.Supports(g))
+                {
+                    float fit = Math.Min(_logicalWidth / (float)g.Width,
+                        Math.Max(1, _logicalHeight - BottomReserve) / (float)g.Height);
+                    if (g.PresentationScale > fit) g.PresentationScale = Math.Max(0.1f, fit);
                 }
 
                 int x = Math.Clamp(g.X - MainWidth, 0, Math.Max(0, _logicalWidth - Input.Touch.GumpPresentation.Width(g)));

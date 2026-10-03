@@ -610,6 +610,30 @@ def is_tool_run(extra: str) -> bool:
 # ---------------------------------------------------------------------------
 
 
+def ensure_android_source(p: Paths) -> None:
+    """Install the pinned Gradle source once, without overwriting local customizations."""
+    target = p.project / "android" / "build"
+    target.mkdir(parents=True, exist_ok=True)
+    # This is Gradle source, not Godot resources. Otherwise the next editor scan
+    # creates *.webp.import files inside res/ and Android's resource compiler fails.
+    (target / ".gdignore").touch()
+    for imported in (target / "res").rglob("*.import"):
+        if imported.resolve().is_relative_to(target.resolve()):
+            imported.unlink()
+    if (target / "build.gradle").exists():
+        return
+    source = p.templates_dir / "android_source.zip"
+    if not source.exists():
+        sys.exit(f"[android] missing {source}; run templates first")
+    with zipfile.ZipFile(source) as archive:
+        for member in archive.infolist():
+            destination = (target / member.filename).resolve()
+            if not destination.is_relative_to(target.resolve()):
+                raise ValueError("Unsafe Android source template path")
+        archive.extractall(target)
+    (p.project / "android" / ".build_version").write_text(p.templates_version, encoding="utf-8")
+
+
 def export(p: Paths, extra_args: str, apk: Path, sound: bool = False, client_data: bool = True,
            abi: str = "arm64") -> int:
     console = p.godot_console()
@@ -620,6 +644,7 @@ def export(p: Paths, extra_args: str, apk: Path, sound: bool = False, client_dat
     apk.parent.mkdir(parents=True, exist_ok=True)
     write_editor_settings(p)
     ensure_solution(p)
+    ensure_android_source(p)
     render_preset(p, device_args(p, extra_args, sound, client_data), apk, abi)
     if apk.exists():
         apk.unlink()

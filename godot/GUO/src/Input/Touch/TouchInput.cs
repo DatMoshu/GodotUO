@@ -262,7 +262,7 @@ namespace GUO.Input.Touch
 
             // The login screen is 480 tall and has to fit; anything left over
             // goes to the world.
-            int scale = requested > 0 ? requested : System.Math.Max(1, shorter / 480);
+            int scale = requested > 0 ? requested : System.Math.Max(1, System.Math.Min(size.X / 640, size.Y / 480));
 
             // One step less where that makes room for the one-screen panel
             // beside the login screen (the unfolded Fold).

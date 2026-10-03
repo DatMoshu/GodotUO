@@ -182,6 +182,7 @@ internal static class GumpPresentation
             // The whole main screen, the bar having stepped aside, less the top
             // bar and a margin above and below.
             Rectangle b = new(0, 0, Client.Game.ClientBounds.Width, Client.Game.ClientBounds.Height);
+            if (AdaptiveLayout.Active) b = DisplayBounds(false);
             int top = FullHeightTop() + FullHeightPad;
             int room = Math.Max(1, b.Height - top - FullHeightPad);
 
@@ -424,6 +425,11 @@ internal static class GumpPresentation
         if (second && DualScreen.ShelfOn)
             return new Rectangle(DualScreen.MainWidth, 0, DualScreen.LogicalWidth, DualScreen.LogicalHeight - DualScreen.BottomReserve);
         Rectangle main = Client.Game?.ClientBounds ?? new Rectangle(0, 0, 640, 480);
+        if (AdaptiveLayout.Active)
+        {
+            var world = AdaptiveLayout.Layout.World;
+            main = new Rectangle(world.X, world.Y, world.Width, world.Height);
+        }
         main.Height -= (int)(main.Height * (TouchInput.Bar?.ReservedFraction ?? 0f));
         return main;
     }
@@ -439,7 +445,7 @@ internal static class GumpPresentation
     /// </summary>
     private static Rectangle Room(Gump g, bool second) =>
         !second && TouchInput.Enabled && IsFullHeight(g)
-            ? Client.Game?.ClientBounds ?? new Rectangle(0, 0, 640, 480)
+          ? AdaptiveLayout.Active ? DisplayBounds(false) : Client.Game?.ClientBounds ?? new Rectangle(0, 0, 640, 480)
             : DisplayBounds(second);
 
     // The renderer stores the shelf to the right; players see it below the main screen.

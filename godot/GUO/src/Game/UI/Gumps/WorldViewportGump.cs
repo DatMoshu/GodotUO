@@ -233,8 +233,10 @@ namespace GUO.Game.UI.Gumps
         {
             newSize.X = (int)(newSize.X / Client.Game.DpiScale);
             newSize.Y = (int)(newSize.Y / Client.Game.DpiScale);
-            int targetWidth = 640;
-            int targetHeight = 480;
+            // PORT DEVIATION (GUO): the adaptive world must fit its actual pane;
+            // the desktop minimum otherwise hides the player beneath the companion panel.
+            int targetWidth = GUO.Platform.Android.AdaptiveLayout.Active ? 1 : 640;
+            int targetHeight = GUO.Platform.Android.AdaptiveLayout.Active ? 1 : 480;
             if (newSize.X < targetWidth)
             {
                 newSize.X = targetWidth;

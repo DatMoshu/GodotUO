@@ -1,0 +1,299 @@
+{
+  "system_image": "system-images;android-35;google_apis;x86_64",
+  "density_policy": "Simulation DPI values are deliberate test settings, not measured factory logical density. SDK profiles use their bundled defaults.",
+  "profiles": [
+    {
+      "id": "fold",
+      "name": "Pixel 9 Pro Fold",
+      "group": "Foldables",
+      "avd": "guo_fold",
+      "port": 5554,
+      "sdk_device": "pixel_9_pro_fold",
+      "size": null,
+      "density": null,
+      "fold": true,
+      "covers": [
+        "Pixel 9 Pro Fold"
+      ],
+      "source": "https://developer.android.com/studio/run/managing-avds",
+      "notes": "Native SDK hinge and cover-display events. Google APIs image; not Samsung firmware.",
+      "rotation": 0,
+      "coverage": "SDK hardware profile"
+    },
+    {
+      "id": "pixel9",
+      "name": "Pixel 9",
+      "group": "Phones",
+      "avd": "guo_pixel9",
+      "port": 5560,
+      "sdk_device": "pixel_9",
+      "size": null,
+      "density": null,
+      "fold": false,
+      "covers": [
+        "Pixel 9"
+      ],
+      "source": "https://developer.android.com/studio/run/managing-avds",
+      "notes": "",
+      "rotation": 0,
+      "coverage": "SDK hardware profile"
+    },
+    {
+      "id": "pixel9pro",
+      "name": "Pixel 9 Pro",
+      "group": "Phones",
+      "avd": "guo_pixel9pro",
+      "port": 5562,
+      "sdk_device": "pixel_9_pro",
+      "size": null,
+      "density": null,
+      "fold": false,
+      "covers": [
+        "Pixel 9 Pro"
+      ],
+      "source": "https://developer.android.com/studio/run/managing-avds",
+      "notes": "",
+      "rotation": 0,
+      "coverage": "SDK hardware profile"
+    },
+    {
+      "id": "pixel9xl",
+      "name": "Pixel 9 Pro XL",
+      "group": "Phones",
+      "avd": "guo_pixel9xl",
+      "port": 5564,
+      "sdk_device": "pixel_9_pro_xl",
+      "size": null,
+      "density": null,
+      "fold": false,
+      "covers": [
+        "Pixel 9 Pro XL"
+      ],
+      "source": "https://developer.android.com/studio/run/managing-avds",
+      "notes": "",
+      "rotation": 0,
+      "coverage": "SDK hardware profile"
+    },
+    {
+      "id": "pixel10pro",
+      "name": "Pixel 10 Pro",
+      "group": "Phones",
+      "avd": "guo_pixel10pro",
+      "port": 5566,
+      "sdk_device": "pixel_10_pro",
+      "size": null,
+      "density": null,
+      "fold": false,
+      "covers": [
+        "Pixel 10 Pro"
+      ],
+      "source": "https://developer.android.com/studio/run/managing-avds",
+      "notes": "",
+      "rotation": 0,
+      "coverage": "SDK hardware profile"
+    },
+    {
+      "id": "pixel10xl",
+      "name": "Pixel 10 Pro XL",
+      "group": "Phones",
+      "avd": "guo_pixel10xl",
+      "port": 5568,
+      "sdk_device": "pixel_10_pro_xl",
+      "size": null,
+      "density": null,
+      "fold": false,
+      "covers": [
+        "Pixel 10 Pro XL"
+      ],
+      "source": "https://developer.android.com/studio/run/managing-avds",
+      "notes": "",
+      "rotation": 0,
+      "coverage": "SDK hardware profile"
+    },
+    {
+      "id": "fold10",
+      "name": "Pixel 10 Pro Fold",
+      "group": "Foldables",
+      "avd": "guo_fold10",
+      "port": 5570,
+      "sdk_device": "pixel_10_pro_fold",
+      "size": null,
+      "density": null,
+      "fold": true,
+      "covers": [
+        "Pixel 10 Pro Fold"
+      ],
+      "source": "https://developer.android.com/studio/run/managing-avds",
+      "notes": "Native SDK hinge/cover geometry; hardware performance and firmware require a real device.",
+      "rotation": 0,
+      "coverage": "SDK hardware profile"
+    },
+    {
+      "id": "s25ultra",
+      "name": "Galaxy S25 Ultra",
+      "group": "Phones",
+      "avd": "guo_phone",
+      "port": 5556,
+      "sdk_device": "pixel_9",
+      "size": [
+        1440,
+        3120
+      ],
+      "density": 560,
+      "fold": false,
+      "covers": [
+        "Galaxy S25 Ultra"
+      ],
+      "source": "https://www.samsung.com/latin/business/smartphones/galaxy-s/galaxy-s25-ultra-titanium-black-sm-s938bzkkl15/",
+      "notes": "Native-resolution layout preset. 560 dpi is a test setting, not a claimed factory value. No One UI or S Pen emulation.",
+      "rotation": 0,
+      "coverage": "Display-size simulation"
+    },
+    {
+      "id": "oneplus13",
+      "name": "OnePlus 13",
+      "group": "Phones",
+      "avd": "guo_phone",
+      "port": 5556,
+      "sdk_device": "pixel_9",
+      "size": [
+        1440,
+        3168
+      ],
+      "density": 560,
+      "fold": false,
+      "covers": [
+        "OnePlus 13"
+      ],
+      "source": "https://www.oneplus.com/us/13/specs",
+      "notes": "Native-resolution layout preset. Test density 560 dpi; no OxygenOS or vendor hardware emulation.",
+      "rotation": 0,
+      "coverage": "Display-size simulation"
+    },
+    {
+      "id": "phone",
+      "name": "Generic phone baseline",
+      "group": "Phones",
+      "avd": "guo_phone",
+      "port": 5556,
+      "sdk_device": "pixel_9",
+      "size": [
+        1080,
+        2400
+      ],
+      "density": 420,
+      "fold": false,
+      "covers": [
+        "Generic phone baseline"
+      ],
+      "source": "https://developer.android.com/studio/run/managing-avds",
+      "notes": "",
+      "rotation": 0,
+      "coverage": "Display-size simulation"
+    },
+    {
+      "id": "tablet",
+      "name": "Pixel Tablet",
+      "group": "Tablets",
+      "avd": "guo_pixel_tablet",
+      "port": 5572,
+      "sdk_device": "pixel_tablet",
+      "size": null,
+      "density": null,
+      "fold": false,
+      "covers": [
+        "Pixel Tablet"
+      ],
+      "source": "https://developer.android.com/studio/run/managing-avds",
+      "notes": "",
+      "rotation": 1,
+      "coverage": "SDK hardware profile"
+    },
+    {
+      "id": "handheld1080",
+      "name": "AYN Odin 2 / Mini \u00b7 Retroid Pocket 5",
+      "group": "Handhelds",
+      "avd": "guo_handheld",
+      "port": 5574,
+      "sdk_device": "pixel_9",
+      "size": [
+        1080,
+        1920
+      ],
+      "density": 320,
+      "fold": false,
+      "covers": [
+        "AYN Odin 2",
+        "AYN Odin 2 Mini",
+        "Retroid Pocket 5"
+      ],
+      "source": "https://www.goretroid.com/products/retroid-pocket-5-handheld",
+      "notes": "Shared 1920\u00d71080 layout coverage at test density 320. Real controller mappings, screen inches, GPU and firmware differ; use hardware for those checks.",
+      "rotation": 1,
+      "coverage": "Display-size simulation"
+    },
+    {
+      "id": "rg406",
+      "name": "Anbernic RG 406H",
+      "group": "Handhelds",
+      "avd": "guo_handheld",
+      "port": 5574,
+      "sdk_device": "pixel_9",
+      "size": [
+        720,
+        960
+      ],
+      "density": 240,
+      "fold": false,
+      "covers": [
+        "Anbernic RG 406H"
+      ],
+      "source": "https://anbernic.com/products/rg-406h",
+      "notes": "Adds compact 4:3 coverage at test density 240; physical controller input is not synthesized.",
+      "rotation": 1,
+      "coverage": "Display-size simulation"
+    },
+    {
+      "id": "rgcube",
+      "name": "Anbernic RG Cube",
+      "group": "Handhelds",
+      "avd": "guo_handheld",
+      "port": 5574,
+      "sdk_device": "pixel_9",
+      "size": [
+        720,
+        720
+      ],
+      "density": 240,
+      "fold": false,
+      "covers": [
+        "Anbernic RG Cube"
+      ],
+      "source": "https://anbernic.com/products/rg-cube",
+      "notes": "Adds square 720\u00d7720 coverage. Android-capable RG Cube, not the Linux-only XX line.",
+      "rotation": 1,
+      "coverage": "Display-size simulation"
+    },
+    {
+      "id": "thor",
+      "name": "AYN Thor \u00b7 lower display",
+      "group": "Handhelds",
+      "avd": "guo_thor_bottom",
+      "port": 5558,
+      "sdk_device": "pixel_9",
+      "size": [
+        1080,
+        1240
+      ],
+      "density": 320,
+      "fold": false,
+      "covers": [
+        "AYN Thor \u00b7 lower display"
+      ],
+      "source": "https://www.ayntec.com/products/ayn-thor",
+      "notes": "Lower-screen geometry only, rotated to 1240\u00d71080. A physical Thor is required to validate two displays and built-in controls.",
+      "rotation": 1,
+      "coverage": "Display-size simulation"
+    }
+  ]
+}

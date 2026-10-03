@@ -106,6 +106,46 @@ build contains game data.
 
 ---
 
+## Mobile UI and device testing
+
+GUO adapts its world and companion windows to phones, tablets and foldables.
+Tabletop places the world above the hinge and the companion between touch
+controls below; book posture puts the panes on opposite sides of the hinge.
+Android handhelds can use the existing physical-controller path.
+
+<table>
+  <tr>
+    <td><img src="design/device-layouts/photos/pixel9.jpg" alt="Real photograph of a Pixel 9" width="240" /></td>
+    <td><img src="design/device-layouts/photos/fold7.jpg" alt="Real photograph of a Galaxy Z Fold7 in a shop" width="240" /></td>
+  </tr>
+  <tr><td>Phone: Pixel 9</td><td>Foldable: Galaxy Z Fold7</td></tr>
+</table>
+
+Real hardware reference photographs with their original screen contents; these
+are **not photos of GUO running on the pictured devices**. Photo credits:
+Miyako Fujimiya (CC0) and Ivebeenhacked (CC BY-SA 4.0).
+[Sources and reuse licenses](design/device-layouts/photos/CREDITS.md).
+
+Use **GUO Device Test Manager** for Android UI development:
+
+```bat
+launchers\android\device_manager.bat
+```
+
+Select a profile, **Launch / apply profile**, then **Install + run GUO**.
+Choose an APK and your UO data folder in the manager. It provides native SDK
+Pixel phone/foldable/tablet profiles, Galaxy and OnePlus display presets, and
+additional Android handheld screen shapes. Equivalent 1080p handheld layouts
+share one profile. Screenshots, recordings and diagnostics include metadata for
+reproducing the test.
+
+[Manager setup and coverage](docs/ui/device_test_manager.md) ·
+[Real-photo gallery and wireframes](design/device-layouts/index.html) ·
+[Fold and rotation behavior](docs/ui/adaptive_devices.md)
+
+Emulator coverage validates UI geometry and events. Vendor firmware, performance,
+physical controller mappings and the Thor's two displays require device testing.
+
 ## Documentation
 
 The wiki lives in the repository, under [`docs/wiki/`](docs/wiki/Home.md), so

@@ -45,7 +45,8 @@ namespace GUO.Platform.Android
     /// </remarks>
     internal sealed partial class DualScreen
     {
-        private enum PanelKind { None, Dock, Drawer, Split }
+        private enum PanelKind { None, Dock, Drawer, Split, Book }
+        private int _layoutRevision = -1;
 
         /// <summary>The login screen's width, which every login gump is laid out for.</summary>
         private const int LoginWidth = 640;
@@ -219,6 +220,17 @@ namespace GUO.Platform.Android
 
             float ratio = (float) Math.Max(w, h) / Math.Max(1, Math.Min(w, h));
 
+            if (AdaptiveLayout.Active)
+            {
+                var panel = AdaptiveLayout.Layout.Companion;
+                // With a physical pad, tent mode uses a full world and the existing drawer.
+                if (!panel.Empty)
+                {
+                    rect = new Rect2I(panel.X, panel.Y, panel.Width, panel.Height);
+                    return AdaptiveLayout.Layout.Posture == DevicePosture.Book ? PanelKind.Book : PanelKind.Split;
+                }
+            }
+
             if (ratio <= SquareRatio && DualScreenSettings.Current.SquareSplit)
             {
                 int top = h / 2;
@@ -249,8 +261,10 @@ namespace GUO.Platform.Android
         {
             PanelKind kind = WantedPanel(out Rect2I rect);
 
-            if (kind != _kind || rect != _rect)
+            if (kind != _kind || rect != _rect || _layoutRevision != AdaptiveLayout.Revision)
             {
+                _layoutRevision = AdaptiveLayout.Revision;
+                Input.Touch.TouchInput.CancelGesture();
                 if (kind != PanelKind.Drawer)
                 {
                     _drawerOpen = false;
@@ -263,6 +277,8 @@ namespace GUO.Platform.Android
                 {
                     Activate();
                 }
+
+                FillMainWithWorld();
 
                 return;
             }

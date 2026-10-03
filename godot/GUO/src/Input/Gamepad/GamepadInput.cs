@@ -76,15 +76,17 @@ namespace GUO.Input.Gamepad
         private static readonly bool[] _stick = new bool[4];
         private static readonly bool[] _held = new bool[4];
         private static float _rightX, _rightY;
+        internal const int TouchDevice = 240;
+        private static bool _touchSource;
 
 
         /// <summary>Returns true when the event was a joypad event and is handled.</summary>
         public static bool Handle(InputEvent e)
         {
-            if (!Enabled)
+            if (!Enabled && e.Device != TouchDevice)
             {
                 // Not ours to take: the client goes on as if no pad were there.
-                ReleaseAll();
+                if (!_touchSource) ReleaseAll();
 
                 return false;
             }
@@ -103,6 +105,7 @@ namespace GUO.Input.Gamepad
             switch (e)
             {
                 case InputEventJoypadButton button:
+                    _touchSource = button.Device == TouchDevice;
                     if (Trace)
                     {
                         GD.Print($"[GUO] gamepad: device {button.Device} \"{Godot.Input.GetJoyName(button.Device)}\" button {(int) button.ButtonIndex} ({button.ButtonIndex}) {(button.Pressed ? "down" : "up")}");
@@ -113,6 +116,7 @@ namespace GUO.Input.Gamepad
                     return true;
 
                 case InputEventJoypadMotion motion:
+                    _touchSource = motion.Device == TouchDevice;
                     if (Trace && Math.Abs(motion.AxisValue) > StickDeadzone)
                     {
                         GD.Print($"[GUO] gamepad: device {motion.Device} axis {(int) motion.Axis} ({motion.Axis}) {motion.AxisValue:0.00}");
@@ -129,7 +133,7 @@ namespace GUO.Input.Gamepad
         /// <summary>Once a frame: a held direction walks, a tilted right stick moves the pointer.</summary>
         public static void Update(double delta)
         {
-            if (!Enabled)
+            if (!Enabled && !_touchSource)
             {
                 ReleaseAll();
 
@@ -160,6 +164,8 @@ namespace GUO.Input.Gamepad
         /// <summary>The layout from the profile, or from the pad and the device when that is "auto".</summary>
         public static GamepadLayout Resolve(int device)
         {
+            // Printed touchscreen labels never inherit a hardware button swap.
+            if (device == TouchDevice) return GamepadLayout.Labels;
             string manual = ProfileManager.CurrentProfile?.GamepadLayout ?? "auto";
 
             if (manual == "labels")
@@ -336,7 +342,8 @@ namespace GUO.Input.Gamepad
                 case JoyButton.Y:
                     if (e.Pressed)
                     {
-                        Touch.TouchInput.Bar?.ToggleRow();
+                        if (Platform.Android.AdaptiveLayout.Active) Platform.Android.AdaptiveLayout.ToggleMacros();
+                        else Touch.TouchInput.Bar?.ToggleRow();
                     }
 
                     break;
@@ -374,8 +381,9 @@ namespace GUO.Input.Gamepad
         }
 
         /// <summary>Drop anything held when the gate closes, so nothing keeps walking.</summary>
-        private static void ReleaseAll()
+        internal static void ReleaseAll()
         {
+            _touchSource = false;
             if (_held[0] || _held[1] || _held[2] || _held[3] || _rightX != 0f || _rightY != 0f)
             {
                 Array.Clear(_dpad);
