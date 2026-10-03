@@ -8,6 +8,11 @@ It is a development dependency, not part of the port. Nothing in
 `godot/GUO/` knows it exists; the client connects to `UO_SHARD_HOST` /
 `UO_SHARD_PORT` and does not care what answers.
 
+For a separate shard with UO Offline's PlayerBots, see
+[the optional PlayerBots profile](../playerbots/README.md).
+`launchers\shard\playerbots.bat` provides setup, build, smoke, run, populate and
+play commands with its own saves and loopback port.
+
 | | |
 |---|---|
 | **Upstream** | <https://github.com/modernuo/ModernUO.git> |

@@ -44,6 +44,19 @@ class ConfigTests(unittest.TestCase):
         os.environ["UO_CLIENT_VERSION"] = ""
         self.assertEqual(load_config(self.root).client_version, "local")
 
+    def test_playerbots_configuration_keeps_separate_profile(self):
+        self.defaults.write_text(
+            'if not defined UO_PLAYERBOTS_DIR set "UO_PLAYERBOTS_DIR=%UO_ROOT%/build/playerbots"\n'
+            'if not defined UO_PLAYERBOTS_PORT set "UO_PLAYERBOTS_PORT=2640"\n', encoding="utf-8")
+        cfg = load_config(self.root)
+        self.assertEqual(cfg.playerbots_dir, self.root / "build/playerbots")
+        self.assertEqual(cfg.playerbots_port, 2640)
+        self.assertNotEqual(cfg.shard_src, cfg.playerbots_dir / "server")
+        self.local.write_text('set "UO_PLAYERBOTS_PORT=2695"\n', encoding="utf-8")
+        self.assertEqual(load_config(self.root).playerbots_port, 2695)
+        os.environ["UO_PLAYERBOTS_PORT"] = "2795"
+        self.assertEqual(load_config(self.root).playerbots_port, 2795)
+
     def test_parser_bom_comments_spaces_and_no_execution(self):
         self.defaults.write_text('REM set "BAD=comment"\r\necho should-not-run\r\nset "LABEL=two words"\r\nif not defined NEXT set "NEXT=%LABEL%/child"\r\n', encoding="utf-8-sig")
         values = parse_config_bat(self.defaults)

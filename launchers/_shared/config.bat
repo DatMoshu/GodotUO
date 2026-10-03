@@ -98,6 +98,10 @@ if not defined UO_SHARD_REF         set "UO_SHARD_REF=d4531cd94b739613155225c234
 if not defined UO_SHARD_SRC         set "UO_SHARD_SRC=%UO_ROOT%\tools\modernuo\src"
 if not defined UO_SHARD_DIST        set "UO_SHARD_DIST=%UO_SHARD_SRC%\Distribution"
 
+REM  Optional PlayerBots shard: separate checkout, saves and loopback port.
+if not defined UO_PLAYERBOTS_DIR    set "UO_PLAYERBOTS_DIR=%UO_ROOT%\build\playerbots"
+if not defined UO_PLAYERBOTS_PORT   set "UO_PLAYERBOTS_PORT=2640"
+
 REM  The dev shard's owner account. On a headless boot the shard makes sure
 REM  this account exists and has owner access, which is what lets the world be
 REM  generated and administered from the client -- ModernUO takes its commands
