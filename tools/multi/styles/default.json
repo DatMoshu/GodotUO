@@ -1,0 +1,511 @@
+{
+ "format": "guo.multi.styles/1",
+ "provenance": "Hand-authored default styles for GUO. Each style names a short set of static tile numbers chosen by hand and checked by eye in the GUO multi previews: stone, plaster, log and sandstone walls; tile and thatch roofs; wooden and stone stairs. Tile numbers are the public Ultima Online static ids; no client file is copied and nothing here comes from MultiGen or any other tool's style file. The role layout is GUO's own (docs/data_formats.md section 27). Styles mined from the user's own client go to build/multi/styles/ and are never committed.",
+ "styles": {
+  "stone_tile": {
+   "name": "Stone and tile",
+   "material": "stone",
+   "hues": [
+    0
+   ],
+   "z": {
+    "floor": 7,
+    "storey": 20,
+    "wall": 19,
+    "roof_step": 3,
+    "stair_step": 5,
+    "stair_block": 10
+   },
+   "walls": {
+    "height": 20,
+    "EW": "0x01d0",
+    "NS": "0x01d1",
+    "post": "0x01d2",
+    "corners": {
+     "SE": "0x01cf"
+    }
+   },
+   "windows": [
+    {
+     "EW": "0x01d3",
+     "NS": "0x01d4"
+    },
+    {
+     "EW": "0x29a6",
+     "NS": "0x29aa"
+    },
+    {
+     "EW": "0x00ca",
+     "NS": "0x00cb"
+    }
+   ],
+   "foundation": {
+    "height": 5,
+    "EW": "0x0063",
+    "NS": "0x0064",
+    "post": "0x0069",
+    "corners": {
+     "NW": "0x0066",
+     "SE": "0x0065"
+    }
+   },
+   "parapet": {
+    "height": 3,
+    "EW": "0x01e9",
+    "NS": "0x01ea",
+    "post": "0x01e9",
+    "corners": {
+     "NW": "0x01eb",
+     "SE": "0x01e8"
+    }
+   },
+   "gable_fill": {
+    "height": 3,
+    "EW": "0x01e9",
+    "NS": "0x01ea"
+   },
+   "doors": {
+    "metal": {
+     "type": "MetalDoor",
+     "EW": {
+      "closed": "0x0675",
+      "open": "0x0676"
+     },
+     "NS": {
+      "closed": "0x067d",
+      "open": "0x067e"
+     }
+    },
+    "wood": {
+     "type": "DarkWoodDoor",
+     "EW": {
+      "closed": "0x06e5",
+      "open": "0x06e6"
+     },
+     "NS": {
+      "closed": "0x06ed",
+      "open": "0x06ee"
+     }
+    },
+    "wood_0x6d5": {
+     "type": "DarkWoodDoor",
+     "EW": {
+      "closed": "0x06d5",
+      "open": "0x06d6"
+     },
+     "NS": {
+      "closed": "0x06dd",
+      "open": "0x06de"
+     }
+    }
+   },
+   "floors": [
+    {
+     "id": "0x0520",
+     "weight": 3
+    },
+    {
+     "id": "0x051d",
+     "weight": 1
+    },
+    {
+     "id": "0x051e",
+     "weight": 1
+    },
+    {
+     "id": "0x051f",
+     "weight": 1
+    }
+   ],
+   "roof": {
+    "gable": {
+     "N": "0x05c1",
+     "S": "0x05c0",
+     "E": "0x05b4",
+     "W": "0x05b5",
+     "ridge_x": "0x05bf",
+     "ridge_y": "0x05b3"
+    },
+    "hip": {
+     "NW": "0x05b8",
+     "NE": "0x05b7",
+     "SW": "0x05b6",
+     "SE": "0x05b9",
+     "cap": "0x05ba"
+    },
+    "flat": "0x0520"
+   },
+   "stairs": {
+    "straight": {
+     "N": "0x07a4",
+     "E": "0x07a7",
+     "S": "0x078b",
+     "W": "0x07a5"
+    },
+    "block": "0x07a3"
+   }
+  },
+  "plaster_tile": {
+   "name": "Plaster and tile",
+   "material": "plaster",
+   "hues": [
+    0
+   ],
+   "z": {
+    "floor": 7,
+    "storey": 20,
+    "wall": 19,
+    "roof_step": 3,
+    "stair_step": 5,
+    "stair_block": 10
+   },
+   "walls": {
+    "height": 20,
+    "EW": "0x0136",
+    "NS": "0x0137",
+    "post": "0x012a",
+    "corners": {
+     "SE": "0x0132"
+    }
+   },
+   "windows": [
+    {
+     "EW": "0x013a",
+     "NS": "0x013b"
+    },
+    {
+     "EW": "0x0154",
+     "NS": "0x0155"
+    },
+    {
+     "EW": "0x0156",
+     "NS": "0x0157"
+    }
+   ],
+   "foundation": {
+    "height": 5,
+    "EW": "0x0063",
+    "NS": "0x0064",
+    "post": "0x0069",
+    "corners": {
+     "NW": "0x0066",
+     "SE": "0x0065"
+    }
+   },
+   "parapet": {
+    "height": 3,
+    "EW": "0x01e9",
+    "NS": "0x01ea",
+    "post": "0x01e9",
+    "corners": {
+     "NW": "0x01eb",
+     "SE": "0x01e8"
+    }
+   },
+   "gable_fill": {
+    "height": 3,
+    "EW": "0x014a",
+    "NS": "0x014b"
+   },
+   "doors": {
+    "wood": {
+     "type": "DarkWoodDoor",
+     "EW": {
+      "closed": "0x06a5",
+      "open": "0x06a6"
+     },
+     "NS": {
+      "closed": "0x06ad",
+      "open": "0x06ae"
+     }
+    }
+   },
+   "floors": [
+    {
+     "id": "0x04a9",
+     "weight": 3
+    },
+    {
+     "id": "0x04b6",
+     "weight": 1
+    },
+    {
+     "id": "0x04ac",
+     "weight": 1
+    },
+    {
+     "id": "0x04ab",
+     "weight": 1
+    }
+   ],
+   "roof": {
+    "gable": {
+     "N": "0x05c1",
+     "S": "0x05c0",
+     "E": "0x05b4",
+     "W": "0x05b5",
+     "ridge_x": "0x05bf",
+     "ridge_y": "0x05b3"
+    },
+    "hip": {
+     "NW": "0x05b8",
+     "NE": "0x05b7",
+     "SW": "0x05b6",
+     "SE": "0x05b9",
+     "cap": "0x05ba"
+    },
+    "flat": "0x04a9"
+   },
+   "stairs": {
+    "straight": {
+     "N": "0x0739",
+     "E": "0x073c",
+     "S": "0x073b",
+     "W": "0x0723"
+    },
+    "block": "0x0738"
+   }
+  },
+  "log_thatch": {
+   "name": "Log and thatch",
+   "material": "log",
+   "hues": [
+    0
+   ],
+   "z": {
+    "floor": 7,
+    "storey": 20,
+    "wall": 19,
+    "roof_step": 3,
+    "stair_step": 5,
+    "stair_block": 10
+   },
+   "walls": {
+    "height": 20,
+    "EW": "0x0092",
+    "NS": "0x0091",
+    "post": "0x0093",
+    "corners": {
+     "NE": "0x0097",
+     "SW": "0x0096",
+     "SE": "0x0090"
+    }
+   },
+   "windows": [
+    {
+     "EW": "0x0098",
+     "NS": "0x0099"
+    },
+    {
+     "EW": "0x24f4",
+     "NS": "0x0099"
+    },
+    {
+     "EW": "0x24f5",
+     "NS": "0x0099"
+    }
+   ],
+   "foundation": {
+    "height": 5,
+    "EW": "0x0063",
+    "NS": "0x0064",
+    "post": "0x0069",
+    "corners": {
+     "NW": "0x0066",
+     "SE": "0x0065"
+    }
+   },
+   "parapet": {
+    "height": 3,
+    "EW": "0x01e9",
+    "NS": "0x01ea",
+    "post": "0x01e9",
+    "corners": {
+     "NW": "0x01eb",
+     "SE": "0x01e8"
+    }
+   },
+   "gable_fill": {
+    "height": 3,
+    "EW": "0x00a4",
+    "NS": "0x00a5"
+   },
+   "doors": {
+    "wood": {
+     "type": "DarkWoodDoor",
+     "EW": {
+      "closed": "0x06b5",
+      "open": "0x06b6"
+     },
+     "NS": {
+      "closed": "0x06bd",
+      "open": "0x06be"
+     }
+    }
+   },
+   "floors": [
+    {
+     "id": "0x040c",
+     "weight": 3
+    },
+    {
+     "id": "0x040d",
+     "weight": 1
+    },
+    {
+     "id": "0x040e",
+     "weight": 1
+    },
+    {
+     "id": "0x040b",
+     "weight": 1
+    }
+   ],
+   "roof": {
+    "gable": {
+     "N": "0x05a9",
+     "S": "0x05a7",
+     "E": "0x05a4",
+     "W": "0x05a6",
+     "ridge_x": "0x05a8",
+     "ridge_y": "0x05a5"
+    },
+    "hip": {
+     "NW": "0x05ac",
+     "NE": "0x05ab",
+     "SW": "0x05aa",
+     "SE": "0x05ad",
+     "cap": "0x05a9"
+    },
+    "flat": "0x040c"
+   },
+   "stairs": {
+    "straight": {
+     "N": "0x0739",
+     "E": "0x073c",
+     "S": "0x073b",
+     "W": "0x0723"
+    },
+    "block": "0x0738"
+   }
+  },
+  "sandstone_tile": {
+   "name": "Sandstone and tile",
+   "material": "sandstone",
+   "hues": [
+    0
+   ],
+   "z": {
+    "floor": 7,
+    "storey": 20,
+    "wall": 19,
+    "roof_step": 3,
+    "stair_step": 5,
+    "stair_block": 10
+   },
+   "walls": {
+    "height": 20,
+    "EW": "0x0160",
+    "NS": "0x015f",
+    "post": "0x016c",
+    "corners": {
+     "NW": "0x0161",
+     "SE": "0x0158"
+    }
+   },
+   "windows": [
+    {
+     "EW": "0x0163",
+     "NS": "0x0162"
+    },
+    {
+     "EW": "0x015c",
+     "NS": "0x015d"
+    }
+   ],
+   "foundation": {
+    "height": 5,
+    "EW": "0x0063",
+    "NS": "0x0064",
+    "post": "0x0069",
+    "corners": {
+     "NW": "0x0066",
+     "SE": "0x0065"
+    }
+   },
+   "parapet": {
+    "height": 3,
+    "EW": "0x01e9",
+    "NS": "0x01ea",
+    "post": "0x01e9",
+    "corners": {
+     "NW": "0x01eb",
+     "SE": "0x01e8"
+    }
+   },
+   "gable_fill": {
+    "height": 3,
+    "EW": "0x0197",
+    "NS": "0x0198"
+   },
+   "doors": {
+    "metal": {
+     "type": "MetalDoor",
+     "EW": {
+      "closed": "0x0685",
+      "open": "0x0686"
+     },
+     "NS": {
+      "closed": "0x068d",
+      "open": "0x068e"
+     }
+    }
+   },
+   "floors": [
+    {
+     "id": "0x0525",
+     "weight": 3
+    },
+    {
+     "id": "0x0528",
+     "weight": 1
+    },
+    {
+     "id": "0x052f",
+     "weight": 1
+    },
+    {
+     "id": "0x052b",
+     "weight": 1
+    }
+   ],
+   "roof": {
+    "gable": {
+     "N": "0x05c1",
+     "S": "0x05c0",
+     "E": "0x05b4",
+     "W": "0x05b5",
+     "ridge_x": "0x05bf",
+     "ridge_y": "0x05b3"
+    },
+    "hip": {
+     "NW": "0x05b8",
+     "NE": "0x05b7",
+     "SW": "0x05b6",
+     "SE": "0x05b9",
+     "cap": "0x05ba"
+    },
+    "flat": "0x0525"
+   },
+   "stairs": {
+    "straight": {
+     "N": "0x0776",
+     "E": "0x0770",
+     "S": "0x076f",
+     "W": "0x076e"
+    },
+    "block": "0x076c"
+   }
+  }
+ }
+}

@@ -41,8 +41,8 @@ internal sealed class StoreTrust
     public const string OfficialId = "guo-official";
     public const string OfficialTitle = "GUO packs";
     /// <summary>The official catalogue's public keys. A new client release is how a key is rotated.
-    /// Empty until the catalogue repository's key is made; the official catalogue then needs approval like any other.</summary>
-    public static readonly string[] OfficialKeys = Array.Empty<string>();
+    /// Fingerprint 5660 9E81 07F4 7AAD.</summary>
+    public static readonly string[] OfficialKeys = { "ed25519:cNk2QVx6wfow363yfUeQVUujNSFh6ULEWqBlSrAQxcI=" };
 
     private readonly string _path;
     private readonly object _gate = new();

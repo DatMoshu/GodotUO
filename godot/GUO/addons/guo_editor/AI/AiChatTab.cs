@@ -20,8 +20,10 @@ public partial class AiChatTab : VBoxContainer
     private AiHub _hub;
     private OptionButton _provider, _model;
     private LineEdit _ollamaUrl, _input;
-    private CheckBox _think;
-    private Button _send, _stop;
+    private CheckBox _think, _tools;
+    private Button _send, _stop, _attach, _detach;
+    private Label _attached;
+    private (string Label, byte[] Png)? _pending;
     private Label _status;
     private RichTextLabel _log;
     private ConfirmationDialog _endpointDialog;
@@ -42,6 +44,77 @@ public partial class AiChatTab : VBoxContainer
 
     /// <summary>The transcript as plain text.</summary>
     public string Transcript => _log?.GetParsedText() ?? "";
+
+    /// <summary>Whether the model may call the editor's read-only tools.</summary>
+    public bool ToolsEnabled
+    {
+        get => _tools?.ButtonPressed == true;
+        set
+        {
+            if (_tools != null)
+            {
+                _tools.ButtonPressed = value;
+            }
+        }
+    }
+
+    /// <summary>The one-line notice shown when client art was last sent, or null.</summary>
+    public string ClientArtNotice { get; private set; }
+
+    /// <summary>Why the last send was refused for client art, or null.</summary>
+    public string LastRefusal { get; private set; }
+
+    /// <summary>What is attached to the next message ("Statics 0x0E75"), or null.</summary>
+    public string PendingAttachment => _pending?.Label;
+
+    /// <summary>Attaches a picture (PNG bytes) to the next message.</summary>
+    public void Attach(string label, byte[] png)
+    {
+        _pending = (label, png);
+        if (_attached != null)
+        {
+            _attached.Text = $"[{label}]";
+            _attached.Visible = true;
+            _detach.Visible = true;
+        }
+    }
+
+    /// <summary>Attaches the asset picture selected in the UO Inspector (nearest-scaled up if tiny). False when nothing is selected.</summary>
+    public bool AttachSelection()
+    {
+        Image img = _hub.SelectionImage?.Invoke();
+        if (img == null || img.IsEmpty())
+        {
+            SetStatus("select an asset with a picture in the UO Assets tab first", true);
+            return false;
+        }
+
+        img = (Image)img.Duplicate();
+        if (img.GetFormat() != Image.Format.Rgba8)
+        {
+            img.Convert(Image.Format.Rgba8);
+        }
+
+        int longest = Math.Max(img.GetWidth(), img.GetHeight());
+        int k = Math.Clamp(128 / Math.Max(1, longest), 1, 8);
+        if (k > 1)
+        {
+            img.Resize(img.GetWidth() * k, img.GetHeight() * k, Image.Interpolation.Nearest);
+        }
+
+        Attach(_hub.SelectionLabel?.Invoke() ?? "selection", img.SavePngToBuffer());
+        return true;
+    }
+
+    public void Detach()
+    {
+        _pending = null;
+        if (_attached != null)
+        {
+            _attached.Visible = false;
+            _detach.Visible = false;
+        }
+    }
 
     /// <summary>The conversation so far.</summary>
     public IReadOnlyList<ChatMessage> History => _history;
@@ -86,6 +159,13 @@ public partial class AiChatTab : VBoxContainer
         top.AddChild(refresh);
         _think = new CheckBox { Text = "Think", TooltipText = "Ollama: let a reasoning model (qwen3 and the like) reason before it answers. Slower." };
         top.AddChild(_think);
+        _tools = new CheckBox
+        {
+            Text = "Editor tools",
+            TooltipText = "Let the model call read-only tools: search the F3 index, inspect an asset, jump the World tab. The model must support tool calls (Ollama and OpenAI-compatible).",
+        };
+        _tools.Toggled += _ => RebuildProviders();
+        top.AddChild(_tools);
         var endpoints = new Button { Text = "Add endpoint...", TooltipText = "An OpenAI-compatible server (LM Studio, vLLM, a hosted API). Its key is kept in the operating system's store." };
         endpoints.Pressed += () => _endpointDialog.PopupCentered(new Vector2I(460, 230));
         top.AddChild(endpoints);
@@ -118,6 +198,18 @@ public partial class AiChatTab : VBoxContainer
         _input = new LineEdit { PlaceholderText = "Ask something. Enter sends.", SizeFlagsHorizontal = SizeFlags.ExpandFill };
         _input.TextSubmitted += _ => Send();
         row.AddChild(_input);
+        _attach = new Button
+        {
+            Text = "Attach selection",
+            TooltipText = "Attach the picture selected in the UO Inspector to the next message, for a vision model. It is client art: it is sent only where you allowed it.",
+        };
+        _attach.Pressed += () => AttachSelection();
+        row.AddChild(_attach);
+        _attached = new Label { Visible = false };
+        row.AddChild(_attached);
+        _detach = new Button { Text = "x", Visible = false, TooltipText = "Drop the attachment" };
+        _detach.Pressed += Detach;
+        row.AddChild(_detach);
         _send = new Button { Text = "Send" };
         _send.Pressed += Send;
         row.AddChild(_send);
@@ -197,10 +289,15 @@ public partial class AiChatTab : VBoxContainer
         }
 
         _providers.Clear();
+        ServiceInfo knownOllama = _hub.Services.List().FirstOrDefault(s => s.Kind == ServiceKind.Ollama && s.Url.TrimEnd('/') == _ollama.BaseUrl);
+        _ollama.AllowClientArt = knownOllama?.AllowClientArt == true;
+        _ollama.Tools = ToolsEnabled ? _hub.Tools : null;
         _providers.Add(_ollama);
         foreach (EndpointBook.Entry e in _hub.Endpoints.Entries)
         {
-            _providers.Add(_hub.Endpoints.Provider(e));
+            OpenAiCompatProvider provider = _hub.Endpoints.Provider(e);
+            provider.Tools = ToolsEnabled ? _hub.Tools : null;
+            _providers.Add(provider);
         }
 
         foreach (AgentSession s in _hub.Sessions)
@@ -339,8 +436,36 @@ public partial class AiChatTab : VBoxContainer
             return;
         }
 
+        var userMsg = new ChatMessage("user", text);
+        string artLine = null;
+        if (_pending is { } pend)
+        {
+            if (p is not HttpChatProvider hp)
+            {
+                SetStatus("this provider cannot take attachments", true);
+                return;
+            }
+
+            if (!hp.ClientArtAllowed)
+            {
+                LastRefusal = $"{p.Name}: client art is not allowed to be sent here; turn on \"Allow client art\" for it in the Services tab";
+                SetStatus(LastRefusal, true);
+                return;
+            }
+
+            userMsg = userMsg with { Images = new[] { pend.Png } };
+            ClientArtNotice = $"Client art ({pend.Label}) is being sent to {p.Name}.";
+            artLine = $"[color=#d08040]{AiHub.Esc(ClientArtNotice)}[/color]\n";
+            Detach();
+        }
+
         _input.Text = "";
-        _history.Add(new ChatMessage("user", text));
+        _history.Add(userMsg);
+        if (artLine != null)
+        {
+            _log.AppendText(artLine);
+        }
+
         _log.AppendText($"[color=#e0b050]You:[/color] {AiHub.Esc(text)}\n[color=#8fb8e0]{AiHub.Esc(p.Name)}{(p.Model.Length > 0 ? " / " + AiHub.Esc(p.Model) : "")}:[/color] ");
         Busy = true;
         _send.Disabled = true;
@@ -472,7 +597,7 @@ public partial class AiChatTab : VBoxContainer
             }
 
             _epKey.Text = "";
-            RebuildProviders();
+            _hub.NotifyServices();
             SelectProvider("openai:" + name);
         };
         AddChild(_endpointDialog);

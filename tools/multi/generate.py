@@ -42,7 +42,34 @@ def scatter(ids: list[int], x: int, y: int) -> int:
     if len(ids) == 1:
         return ids[0]
     h = ((x * 73856093) ^ (y * 19349663)) & 0xFFFF
+    weights = getattr(ids, "weights", None)            # a style's weighted floors (styles.Weighted)
+    if weights:
+        pick = h % sum(weights)
+        for i, w in zip(ids, weights):
+            if pick < w:
+                return i
+            pick -= w
     return ids[0] if h % 2 == 0 else ids[1 + (h >> 1) % (len(ids) - 1)]
+
+
+def faces(sig: str) -> tuple[bool, bool]:
+    """(EW, NS): the faces a wall cell with neighbours `sig` needs. A piece draws its cell's south
+    edge (EW) or east edge (NS). The south edge is needed when the run goes on west, or when it
+    goes east and no N-S wall crosses the cell (a run's end at a door); where one crosses, that
+    wall's line is the building's edge and the south edge would stick out past it. Likewise the
+    east edge. So a front corner (NW) takes both (the originals' V), NE the NS face, SW the EW
+    face, and a back corner (ES) neither (the originals' post)."""
+    return ("W" in sig or ("E" in sig and not {"N", "S"} & set(sig)),
+            "N" in sig or ("S" in sig and not {"E", "W"} & set(sig)))
+
+
+class Piece(int):
+    """A wall piece, with the pieces that stand with it in its cell (`extra`): a corner the family
+    has no piece for is built from its two straight faces. A negative piece is "nothing here"."""
+    extra: tuple = ()
+
+
+NOTHING = Piece(-1)
 
 
 class Catalogue:
@@ -103,6 +130,9 @@ class Catalogue:
 
     def course(self, mat: str, total: int, sig: str) -> list[tuple[int, int]]:
         """(dz, item) low pieces stacked to at least `total` (never short: a floor sits on it)."""
+        if total > 6 and not any(h <= 6 for h in self.heights(mat, "wall")):
+            # a family with no low pieces (a tall parapet of full walls): one course of its walls
+            return [(0, self.wall(mat, total, sig))]
         h = self.low(mat, max(3, min(total, 6)))
         n = max(1, -(-total // h))
         return [(k * h, self.wall(mat, h, sig)) for k in range(n)]
@@ -118,11 +148,48 @@ class Catalogue:
         if not hs:
             raise DescriptionError(f"material '{mat}' has no {'/'.join(roles)} pieces")
         for h in hs[:2]:
+            got = lambda s: [i for r in roles for i in fam.get(r, {}).get(str(h), {}).get(s, [])]
+            if sig and not window and not self.fits(got(sig), sig):
+                joint = self.joint(fam, roles, h, sig, got)
+                if joint is not None:
+                    return joint
             for s in fallbacks(sig):
-                cands = [i for r in roles for i in fam.get(r, {}).get(str(h), {}).get(s, [])]
+                cands = self.fits(got(s), sig) if (s == sig and sig and not window) else got(s)
                 if cands:
                     return self.choose(cands)
         raise DescriptionError(f"material '{mat}' has no {roles[0]} piece near height {height} for '{sig or '-'}'")
+
+    def fits(self, cands: list[str], sig: str) -> list[str]:
+        """The candidates whose own commonest signature needs the same faces as `sig` (see
+        `joint`): the mined sets list a straight at a back corner or a run's end where the
+        originals happened to put one, and that straight draws a face past the corner."""
+        need = faces
+        def main(i):
+            seen = self.pieces.get(i, {}).get("signature") or {}
+            return max(seen, key=seen.get) if seen else None
+        return [i for i in cands if main(i) is None or need(main(i)) == need(sig)]
+
+    def joint(self, fam: dict, roles, h: int, sig: str, got) -> Piece | None:
+        """A corner, join or end the family has no fitting piece for, built from the faces it
+        needs (see `faces`): its V piece or both straights, one straight, or a post (or nothing)."""
+        ew = self.fits(got("EW"), "EW") or got("W") or got("E")
+        ns = self.fits(got("NS"), "NS") or got("N") or got("S")
+        want_ew, want_ns = faces(sig)
+        if want_ew and want_ns:
+            v = self.fits(got("NW"), "NW")
+            if v:
+                return Piece(self.choose(v))
+            if ew and ns:
+                p = Piece(self.choose(ew))
+                p.extra = (self.choose(ns),)
+                return p
+            return None
+        if want_ew:
+            return Piece(self.choose(ew)) if ew else None
+        if want_ns:
+            return Piece(self.choose(ns)) if ns else None
+        posts = self.fits(got("ES"), "ES") or [i for ids in fam.get("post", {}).get(str(h), {}).values() for i in ids]
+        return Piece(self.choose(posts)) if posts else NOTHING
 
     def floor(self, mat: str, n: int = 4) -> list[int]:
         fam = self.material(mat).get("floor", {})
@@ -213,7 +280,11 @@ class Built:
     stairs: list[dict] = field(default_factory=list)
 
     def add(self, item: int, x: int, y: int, z: int, visible: bool = True) -> None:
-        self.comps.append(Component(item, x, y, z, visible))
+        if item < 0:                                   # Catalogue.NOTHING: no piece in this cell
+            return
+        self.comps.append(Component(int(item), x, y, z, visible))
+        for e in getattr(item, "extra", ()):
+            self.comps.append(Component(int(e), x, y, z, visible))
 
 
 # --- footprints -------------------------------------------------------------------------------
@@ -384,9 +455,12 @@ def build(desc: dict, cat: Catalogue, fresh: bool = True) -> tuple[list[Componen
             for (x, y) in sorted(cells):
                 b.add(cat.wall(mat, 5, signature(cells, x, y)), x, y, z)
             solid |= cells
-        door_item = cat.door(mats["wall"])
         for (x, y), o in sorted(doors.items()):
             along_x = (x - 1, y) in walls or (x + 1, y) in walls
+            kind = o.get("door", mats.get("door", "wood"))
+            # a style catalogue knows the door by facing and kind; a mined one has one id
+            door_item = (cat.door(mats["wall"], "EW" if along_x else "NS", kind) if hasattr(cat, "door_type")
+                         else cat.door(mats["wall"]))
             b.add(door_item, x, y, z, visible=False)
             if (x, y) not in floor:
                 # a sill: the floor runs under the south and east walls only, so a door in a north
@@ -396,8 +470,8 @@ def build(desc: dict, cat: Catalogue, fresh: bool = True) -> tuple[list[Componen
                             "facing": "WestCW" if along_x else "SouthCW",
                             # Plain doors, same art and sounds as the house doors: a BaseHouseDoor
                             # refuses everyone outside a real BaseHouse ("not allowed to access this").
-                            "type": "MetalDoor" if o.get("door", mats.get("door", "wood")) == "metal"
-                            else "DarkWoodDoor"})
+                            "type": cat.door_type(mats["wall"], kind) if hasattr(cat, "door_type")
+                            else "MetalDoor" if kind == "metal" else "DarkWoodDoor"})
         holes_next = set()
         rails_next = []
         stair_arrivals: set = set()
@@ -413,7 +487,7 @@ def build(desc: dict, cat: Catalogue, fresh: bool = True) -> tuple[list[Componen
                 rails_next.append((s["rail"], near(h) - h - near(a)))
             dx, dy = SIDE_STEP[s["rise"]]
             b.stairs.append({"foot": [s["at"][0] - dx, s["at"][1] - dy], "z": z, "cells": sorted(h),
-                             "arrive": sorted(a)[0], "to": n + 1})
+                             "arrive": sorted(a)[0], "to": n + 1, "rise": 5 * STAIR_STEPS})
         b.storeys.append({"z": z, "walls": sorted(solid), "doors": sorted(doors), "windows": sorted(windows),
                           "floor": sorted(floor), "open": sorted(porch_cells) if n == 0 else [],
                           "arrivals": sorted(arrivals)})
@@ -481,9 +555,16 @@ def build(desc: dict, cat: Catalogue, fresh: bool = True) -> tuple[list[Componen
         rb = Built()
         roof_rect(rb, cat, r["roof"], mats, r["box"], top)
         taller = region(q["box"] for q in rects if q["storeys"] > r["storeys"])
+        # where this roof's parapet runs into a taller rect's wall, its last piece (on that wall's
+        # cell) carries the parapet up to the wall's face: kept, or the parapet stops a cell short
+        ring = edge(cells_of(r["box"]))
+        junction = {(x, y) for (x, y) in ring & taller
+                    if any((x + dx, y + dy) in ring - taller for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)))}
         for c in rb.comps:
             if (c.x, c.y) not in taller:
                 roof_cells.setdefault((c.x, c.y), {}).setdefault(i, []).append(c)
+            elif (c.x, c.y) in junction and cat.pieces.get(f"{c.item:#06x}", {}).get("role") in ("wall", "post"):
+                b.comps.append(c)
     for cell, by_rect in sorted(roof_cells.items()):
         b.comps.extend(max(by_rect.values(), key=lambda cs: max(c.z for c in cs)))
     yard = desc.get("yard")
@@ -624,12 +705,22 @@ def roof_rect(b: Built, cat: Catalogue, roof: dict, mats: dict, box, top: int) -
         for (x, y) in sorted(floor_of(r)):
             b.add(scatter(ids, x, y), x, y, top)
         if roof.get("parapet"):
-            ring = edge(r)
+            # parapet_gaps: edge cells left open (where an outside stair steps onto the roof),
+            # floored at the roof's height instead
+            gaps = {tuple(c) for c in roof.get("parapet_gaps", [])} & edge(r)
+            for (x, y) in sorted(gaps - floor_of(r)):
+                b.add(scatter(ids, x, y), x, y, top)
+            ring = edge(r) - gaps
             for (x, y) in sorted(ring):
                 for dz, item in cat.course(roof["parapet"], roof.get("parapet_height", 6), signature(ring, x, y)):
                     b.add(item, x, y, top + dz)
+    elif style == "hip":
+        import kit
+        mat = roof.get("material", mats["roof"])
+        for item, x, y, z in kit.hip_cells(cat, mat, box, top, roof.get("overhang", 1)):
+            b.add(item, x, y, z)
     else:
-        raise DescriptionError(f"roof style '{style}' is not supported (gable, flat)")
+        raise DescriptionError(f"roof style '{style}' is not supported (gable, hip, flat)")
 
 
 def roof_gable(b: Built, cat: Catalogue, roof: dict, mats: dict, w: int, h: int, top: int,

@@ -136,6 +136,34 @@ internal sealed class ShardLink : IDisposable
         Send(msg);
     }
 
+    /// <summary>Asks for the players and mobiles in a rectangle (the bridge's "mobiles" op, docs/data_formats.md section 10).</summary>
+    public void RequestMobiles(int req, int facet, int x0, int y0, int x1, int y1, string asCharacter = null)
+    {
+        var msg = new JsonObject { ["op"] = "mobiles", ["req"] = req, ["facet"] = facet, ["x0"] = x0, ["y0"] = y0, ["x1"] = x1, ["y1"] = y1 };
+        if (!string.IsNullOrWhiteSpace(asCharacter))
+        {
+            msg["as"] = asCharacter;
+        }
+
+        Send(msg);
+    }
+
+    /// <summary>The mobiles of a "mobiles" reply.</summary>
+    internal static System.Collections.Generic.List<LiveMobile> ToMobiles(JsonNode msg)
+    {
+        var list = new System.Collections.Generic.List<LiveMobile>();
+        if (msg["mobiles"] is JsonArray a)
+        {
+            foreach (JsonNode m in a)
+            {
+                list.Add(new LiveMobile((string)m["name"] ?? "", (int)m["facet"], (int)m["x"], (int)m["y"], (int)m["z"], (bool)m["isPlayer"],
+                    (uint)m["serial"], (int)m["body"], (int)m["hits"], (int)m["maxHits"], (int)m["notoriety"]));
+            }
+        }
+
+        return list;
+    }
+
     public void SendCommand(string asCharacter, string text) =>
         Send(new JsonObject { ["op"] = "command", ["as"] = asCharacter, ["text"] = text });
 

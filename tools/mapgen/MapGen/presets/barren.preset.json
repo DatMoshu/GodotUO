@@ -1,0 +1,33 @@
+{
+  "name": "Barren Wastes",
+  "description": "Desert/savanna continent — minimal trees, no rivers, harsh terrain. Wasteland feel.",
+  "seed": 333,
+  "passes": {
+    "Noise Height": {
+      "Octaves": 4,
+      "BaseFrequency": 0.003,
+      "VerticalScale": 40,
+      "ContinentFalloff": 0.55
+    },
+    "Moisture & Climate": {
+      "MoisturePerSeaCell": 0.4,
+      "LandDecay": 0.012,
+      "BaseTemperature": 240
+    },
+    "Biome Assign": {
+      "DesertMoistureMax": 140,
+      "ForestMoistureMin": 200,
+      "SwampMoistureMin": 230
+    },
+    "Forest Scatter": {
+      "DensityMultiplier": 0.15
+    },
+    "POI Stamps": {
+      "ControlPointsPerQuadrant": 1,
+      "DungeonsPerQuadrant": 1
+    }
+  },
+  "disable_passes": [
+    "River Carve"
+  ]
+}

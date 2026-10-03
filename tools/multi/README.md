@@ -181,3 +181,25 @@ the whole building (a 3D build of it, say).
   the floor below at the top of a stacked flight in a castle scene, while a
   lone tower climbed fine: most likely the overlap loss above (the scene's
   multis overlapped then), not the stacking itself.
+
+## Styles and generators (for the editor)
+
+`styles.py` holds the style catalogue (`guo.multi.styles/1`, data_formats section 27): pieces keyed by role, with
+z steps, material family and allowed hues. `tools/multi/styles/default.json` is a small hand-authored set (its
+provenance is in the file); `run.py styles --mine` writes the client's own mined styles to `build/multi/styles/`
+(never committed). `kit.py` has the generators over a style, `orient.py` rotate and mirror, `formats.py` the
+legacy formats, `gen_cli.py` the JSON operations and the `serve` line protocol the editor's
+`MultiGenerateClient` uses.
+
+```
+python tools\multi\run.py styles --notes
+python tools\multi\run.py house --json "{\"style\":\"stone_tile\",\"seed\":7,\"shape\":\"L\",\"storeys\":2}" --out house.json --png house.png
+python tools\multi\run.py autowall|roof|stairs --in params.json
+python tools\multi\run.py rotate --in multi.json          (components in, components out; turns 1-3)
+python tools\multi\run.py import|export --json "{\"path\":\"x.uoa\"}"
+```
+
+A typical house generates in about 10 ms. Everything is deterministic for its parameters and seed. The
+validator also checks roof closure, door standing room and stair connection. `test_gen.py` holds the synthetic
+tests (run by `test_multi.py`). Ideas only were taken from the friend's MultiGen and UO Architect (no code, no
+JSON copied); the formats are written from layout descriptions.

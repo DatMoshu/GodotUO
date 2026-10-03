@@ -13,6 +13,32 @@ python tools/asset_store/run.py verify example.zip
 python tools/asset_store/run.py index
 ```
 
+## Where to go
+
+| You are | Use |
+|---|---|
+| A player | The game client: **Options, Video, Store** (catalogues, key approval, install), and the packs a shard asks for when you press **Play** on its server entry. |
+| A shard owner | The GUO editor's **UO Store** tab, *Server content*: pick a server profile and a pack, build or deploy through the backend adapter, see what is deployed, roll back. |
+| A pack author | The GUO editor's **UO Store** tab, *Publish*: verify a ZIP (schema, hashes, content policy, dependencies), publish to a local store, prepare the catalogue pull request. |
+
+The editor tab calls the commands below and in `tools/shard_content`; the command line stays complete.
+It installs into its own folder (`build/editor_store`), never your game profile or the UO install, and never
+handles a signing key: the official catalogue is signed by its CI after review.
+
+```text
+python tools/asset_store/run.py check PACK_OR_FOLDER [--json]    inspect: manifest, hashes, dependencies, content-policy verdict
+python tools/asset_store/run.py prepare-listing PACK --url HTTPS --provenance TEXT --out DIR
+                                                                 the listing file and gh commands for DatMoshu/GodotUO-packs; no network
+python tools/shard_content/run.py status [--shard-dir DIR]       what a shard folder has deployed
+python tools/shard_content/run.py rollback [--shard-dir DIR]     ModernUO: restore the previous deployment
+python tools/shard_content/run.py deploy ... --dry-run           build and check, write nothing into the shard
+```
+
+The policy verdict is `refused`, `review` or `pass`. It checks what a program can see (file types that are not
+what their name says, names of the client's own files, a title that claims to be official Ultima Online content,
+scripts). It cannot see whether art started from the client's pixels; reviewers decide that.
+`python tools/asset_store/test_policy.py` covers it.
+
 The default catalogue is `build/store_cdn`, served on loopback port 18865.
 `UO_STORE_DIR` and `UO_STORE_URL` follow the shared configuration convention.
 An occupied/reserved port falls back to an ephemeral port and prints the

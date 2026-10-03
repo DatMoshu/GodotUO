@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The MapGen procedural UO map generator. It started as the owner's addition to a CentrED#
+    fork (MIT, see ../LICENSE.CentrEDSharp) and now lives here; provenance in
+    docs/upstream/mapgen.md. Namespaces stay CentrED.MapGen.* so the history reads across.
+    Client-derived data (stamps, coast atlas, tree statics) is never shipped: it resolves to
+    the per-user data folder (MAPGEN_DATA_DIR), see RepoRootResolver.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>GUO.MapGen</AssemblyName>
+    <RootNamespace>CentrED.MapGen</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <LangVersion>latest</LangVersion>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="SixLabors.ImageSharp" Version="3.1.11" />
+  </ItemGroup>
+
+</Project>

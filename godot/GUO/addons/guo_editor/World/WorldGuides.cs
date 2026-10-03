@@ -36,6 +36,9 @@ public partial class WorldGuides : Node2D
     /// <summary>A cell to outline as the pointer's target, or null.</summary>
     public (int X, int Y)? Hover { get; set; }
 
+    /// <summary>A rectangle of cells (x0, y0, x1, y1) to outline: the Area tool's selection.</summary>
+    public (int X0, int Y0, int X1, int Y1)? Area { get; set; }
+
     internal void Attach(WorldHost host) => _host = host;
 
     public override void _Process(double delta) => QueueRedraw();
@@ -94,6 +97,15 @@ public partial class WorldGuides : Node2D
                     Vector2 centre = (top + bottom) / 2;
                     string text = z.ToString(System.Globalization.CultureInfo.InvariantCulture);
                     DrawString(_font, centre + new Vector2(-6, 4), text, HorizontalAlignment.Left, -1, 10, new Color(1, 1, 1, 0.9f));
+                }
+
+                if (Area is { } a && x >= a.X0 && x <= a.X1 && y >= a.Y0 && y <= a.Y1)
+                {
+                    var areaColour = new Color(0.3f, 0.9f, 1f, 0.9f);
+                    if (x == a.X0) DrawLine(top, left, areaColour, 2f);
+                    if (x == a.X1) DrawLine(right, bottom, areaColour, 2f);
+                    if (y == a.Y0) DrawLine(top, right, areaColour, 2f);
+                    if (y == a.Y1) DrawLine(left, bottom, areaColour, 2f);
                 }
 
                 if (Hover is { } hv && hv.X == x && hv.Y == y)

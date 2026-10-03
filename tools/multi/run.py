@@ -7,10 +7,18 @@
     python tools/multi/run.py prove   NAME [--stage DIR] [--clip OUT.mp4] [--at X Y [Z]] [--visit X Y Z ...]
     python tools/multi/run.py show    ID [--data DIR] [--png FILE]
     python tools/multi/run.py storeys DESC.json --project DIR   raise storeys on map buildings, as a world project
-    python tools/multi/run.py world-prove PROJECT [--export DIR] [--tour JSON] [--clip OUT.mp4] [--no-roofs]
+    python tools/multi/run.py world-prove PROJECT [--export DIR] [--tour JSON] [--clip OUT.mp4] [--no-roofs] [--bright]
     python tools/multi/run.py scene-build SCENE.json [--cut Z]  a scene: every element, cut into parts
     python tools/multi/run.py scene-write NAME [--stage DIR]    each part as a multi, and the scene
     python tools/multi/run.py scene-prove NAME [--stage DIR] [--clip OUT.mp4] [--at X Y [Z]]
+
+  Generators for the editor (JSON in with --in FILE / stdin / --json, JSON out; section 27 of data_formats):
+    python tools/multi/run.py house|autowall|roof|stairs  [--in P.json] [--out R.json] [--png R.png]
+    python tools/multi/run.py rotate|mirror               components in, components out (--in)
+    python tools/multi/run.py import|export               legacy formats (txt, uoa, uoab, wsc, csv-*, centred, uox3)
+    python tools/multi/run.py styles [--mine]             list the style catalogue, or mine the client's into build/
+    python tools/multi/run.py orient-table                build the id remap table for rotate/mirror
+    python tools/multi/run.py serve                       one JSON request per line on stdin, one answer per line
 
 The catalogue (default build/multi/catalogue) is derived from client data and
 never committed. Nothing here writes into the UO install.
@@ -274,9 +282,12 @@ def cmd_world_prove(cfg, a) -> int:
     jumps = {t["name"]: t["go"] for t in tour if t.get("go")}   # true: to x y z; "xy": the shard picks z
     out = (a.out or cfg.build / "multi_proof" / f"{project.name}-{time.strftime('%Y%m%d-%H%M%S')}").resolve()
     out.mkdir(parents=True, exist_ok=True)
-    profile = {"draw_roofs": False} if a.no_roofs else None
+    profile = {"draw_roofs": False} if a.no_roofs else {}
+    if a.bright:
+        # full daylight whatever the region says: a dungeon region's dark hides the build
+        profile.update({"use_custom_light_level": True, "light_level": 0, "light_level_type": 0})
     return prove.prove_world(cfg, export, stops, out, a.clip, min_free_gb=a.min_free_gb, caption=a.caption or "",
-                             profile=profile, jumps=jumps)
+                             profile=profile or None, jumps=jumps)
 
 
 def cmd_storeys(cfg, a) -> int:
@@ -343,6 +354,84 @@ def cmd_show(cfg, a) -> int:
     return 0
 
 
+GEN_OPS = ("house", "autowall", "roof", "stairs", "rotate", "mirror", "import", "export")
+
+
+def cmd_styles(cfg, a) -> int:
+    import styles as S
+    if a.mine:
+        folder = a.catalogue or cfg.build / "multi" / "catalogue"
+        path = S.write_mined(folder, S.user_dir(cfg.build))
+        n = len(json.loads(path.read_text(encoding="utf-8"))["styles"])
+        print(f"[multi] {n} styles mined from the catalogue -> {path}")
+        return 0
+    import gen_cli
+    ctx = gen_cli.Context(cfg.build, a.styles)
+    res = gen_cli.run_op(ctx, "styles", {})
+    for st in res["styles"]:
+        print(f"{st['key']:<22} {st['name']:<26} roofs {','.join(st['roofs']) or '-':<16} stairs {','.join(st['stairs']) or '-':<22} "
+              f"{len(st['notes'])} note(s)")
+        if a.notes:
+            for n in st["notes"]:
+                print(f"    - {n}")
+    return 0
+
+
+def cmd_gen(cfg, a) -> int:
+    import gen_cli
+    ctx = gen_cli.Context(cfg.build, a.styles)
+    if a.json:
+        params = json.loads(a.json)
+    elif a.infile and str(a.infile) != "-":
+        params = json.loads(a.infile.read_text(encoding="utf-8"))
+    else:
+        text = sys.stdin.read() if not sys.stdin.isatty() else ""
+        params = json.loads(text) if text.strip() else {}
+    res = gen_cli.run_op(ctx, a.cmd, params)
+    if a.png and "components" in res:
+        import render
+        from multifile import Component
+        comps = [Component(c[0], c[1], c[2], c[3], len(c) < 5) for c in res["components"]]
+        render.render(comps, cfg.client_data, a.png, hidden=a.hidden)
+        res["png"] = str(a.png)
+    text = json.dumps(res, indent=None if a.compact else 1, separators=(",", ":") if a.compact else None)
+    if a.out:
+        a.out.parent.mkdir(parents=True, exist_ok=True)
+        a.out.write_text(text, encoding="utf-8")
+        print(f"[multi] {a.cmd}: {len(res.get('components', []))} components, {res.get('ms', 0)} ms"
+              f"{' -> ' + str(a.out)}" + (f" ERROR {res['error']}" if "error" in res else ""))
+    else:
+        print(text)
+    return 1 if "error" in res else 0
+
+
+def cmd_serve(cfg, a) -> int:
+    import gen_cli
+    return gen_cli.serve(gen_cli.Context(cfg.build, a.styles))
+
+
+def cmd_orient_table(cfg, a) -> int:
+    """The id remap table for rotate/mirror, from the mined catalogue and the install's tiledata names."""
+    import orient
+    cat = a.catalogue or cfg.build / "multi" / "catalogue"
+    fams = json.loads((cat / "families.json").read_text(encoding="utf-8"))
+    pieces = json.loads((cat / "pieces.json").read_text(encoding="utf-8"))
+    names = None
+    try:
+        from guo.uoread import TileData
+        td = TileData(cfg.client_data)
+        names = {i: (td.static(i) or {}).get("name", "") for i in range(0x10000) if td.static(i)}
+    except Exception as e:                                   # no client data: the catalogue alone
+        print(f"[multi] no tiledata names ({e})")
+    table = orient.build_table(fams, pieces, names)
+    out = a.out or cfg.build / "multi" / "orient" / "table.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(table), encoding="utf-8")
+    print(f"[multi] remap table: {len(table['wall'])} wall pieces, "
+          f"{sum(len(v) for v in table['map'].values())} oriented pieces, {len(table['door_bases'])} door sets -> {out}")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -398,6 +487,7 @@ def main() -> int:
     p.add_argument("--clip", type=Path)
     p.add_argument("--caption")
     p.add_argument("--no-roofs", action="store_true")
+    p.add_argument("--bright", action="store_true", help="the client's own light level at full day")
     p.add_argument("--min-free-gb", type=float, default=16)
     p = sub.add_parser("storeys")
     p.add_argument("desc", type=Path)
@@ -407,9 +497,30 @@ def main() -> int:
     p.add_argument("id")
     p.add_argument("--data", type=Path)
     p.add_argument("--png", type=Path)
+    for op in GEN_OPS:
+        p = sub.add_parser(op, help="a generator: JSON in (--in, --json or stdin), JSON out")
+        p.add_argument("--in", dest="infile", type=Path)
+        p.add_argument("--json")
+        p.add_argument("--out", type=Path)
+        p.add_argument("--png", type=Path, help="also render the components (needs the client data)")
+        p.add_argument("--hidden", action="store_true", help="draw hidden components in the PNG")
+        p.add_argument("--styles", type=Path, nargs="*", default=[], help="extra style files")
+        p.add_argument("--compact", action="store_true")
+    p = sub.add_parser("styles")
+    p.add_argument("--mine", action="store_true", help="write the client's mined styles into the user's build folder")
+    p.add_argument("--catalogue", type=Path)
+    p.add_argument("--styles", type=Path, nargs="*", default=[])
+    p.add_argument("--notes", action="store_true")
+    p = sub.add_parser("serve")
+    p.add_argument("--styles", type=Path, nargs="*", default=[])
+    p = sub.add_parser("orient-table")
+    p.add_argument("--catalogue", type=Path)
+    p.add_argument("--out", type=Path)
     a = ap.parse_args()
     cfg = load_config()
-    return {"mine": cmd_mine, "sheets": cmd_sheets, "build": cmd_build, "write": cmd_write, "prove": cmd_prove, "show": cmd_show,
+    if a.cmd in GEN_OPS:
+        return cmd_gen(cfg, a)
+    return {"styles": cmd_styles, "serve": cmd_serve, "orient-table": cmd_orient_table,"mine": cmd_mine, "sheets": cmd_sheets, "build": cmd_build, "write": cmd_write, "prove": cmd_prove, "show": cmd_show,
             "scene-build": cmd_scene_build, "storeys": cmd_storeys, "world-prove": cmd_world_prove, "scene-write": cmd_scene_write, "scene-prove": cmd_scene_prove}[a.cmd](cfg, a)
 
 

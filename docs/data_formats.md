@@ -43,6 +43,7 @@ Every key resolves as: **environment variable → `config.local.bat` →
 | `UO_CLIENT_VERSION` | Client version the data corresponds to (e.g. `7.0.107.76`) |
 | `UO_CACHE_DIR` | Disposable decode cache |
 | `UO_WORLD_PROJECT` | The editor's world project folder (§9); default `build\world\default` |
+| `UO_MAPGEN_DATA` | The map generator's per-user data folder (§26): mined stamps, coast atlas, tree statics, validator reports; default `%LOCALAPPDATA%\GUO\mapgen` |
 | `UO_EDITOR_LIVE_HOST` / `UO_EDITOR_LIVE_PORT` | The editor bridge the UO Shard dock connects to (§10); default `127.0.0.1:2595`, the private instance |
 | `UO_EDITOR_NAME` | The name this editor shows other editors on the bridge |
 | `UO_SHARD_HOST` / `UO_SHARD_PORT` | Shard to connect to |
@@ -284,6 +285,7 @@ line, UTF-8, `\n`-terminated. ADR-0012 has the reasoning.
 | `block` | `facet`, `bx`, `by`, `land`: 64 `[id, z]` pairs, row-major (index `y*8+x`), `statics`: `[id, x, y, z, hue]` per static (`x`, `y` 0..7 in the block), `sent_ms` (sender's clock, unix ms, optional) | Replaces the whole block in the server's own map (walking, line of sight and placement see it), pushes it to UltimaLive clients on that map, relays it to the other editors; answered with `ack` |
 | `command` | `as` (an online character's name), `text` (e.g. `[where`) | Runs the GM command as that character (`CommandSystem.Handle`); answered with `command` |
 | `object` | `action` `put` with `kind` (`spawner` or `item`) and `object` (as in `shard/objects.json`, section 13); or `action` `delete` with `kind` and `id` | Applies it to the world with the boot sync's code (ADR-0014), relays it to the other editors; answered with `object_ack` |
+| `mobiles` | `facet`, `x0`, `y0`, `x1`, `y1` (inclusive rectangle; clamped to the map and to 1024 cells a side), `req` (echoed), `as` (optional: an online character that must be a GameMaster or above) | Read-only. Players and mobiles in the rectangle, at most 500; answered with `mobiles`. Needs a prior `hello`; at most one request per 250 ms per connection (the Live map layer, ADR-0027, polls it about once a second for the visible region plus a margin) |
 | `multi` | `action` `place` with `tag`, `id` (multi id), `map`, `x`, `y`, `z` (optional: the land's average z), `doors` (as in a built multi's `multi.json`, section 16); or `action` `remove` with `tag` | Places an authored multi (`GUOAuthoredMulti`) and a real door per entry, replacing a multi with the same tag; `remove` deletes it and its doors. Answered with `multi_ack` |
 
 **Bridge to editor**
@@ -296,6 +298,7 @@ line, UTF-8, `\n`-terminated. ADR-0012 has the reasoning.
 | `command` | `ok`, `as`, `text`, or `error` |
 | `object` | as sent, plus `from`: another editor's world-object change. Last write per object wins |
 | `object_ack` | `action`, `kind`, `id`, `outcome` (`Added`, `Changed`, `Kept`, `Deleted`, `Missing`, `Skipped`), `editors`, `ms` |
+| `mobiles` | `req`, `ok`, `facet`, the clamped `x0`,`y0`,`x1`,`y1`, `count`, `truncated` (hit the 500 cap), `mobiles`: per mobile `serial`, `name`, `body`, `x`, `y`, `z`, `facet`, `isPlayer`, `hits`, `maxHits`, `notoriety` (ModernUO's 1 innocent .. 7 invulnerable, computed with no viewer); or `ok` false with `error` (`rate limited`, `say hello first`, `no map N`, `'X' is not online`, `'X' is not staff`) |
 | `multi_ack` | `action`, `tag`, `ok`; on a place `serial`, `at` `[x, y, z]`, `components`, `doors`, `replaced`; on a remove `removed`; or `error` |
 | `error` | `error` |
 
@@ -857,7 +860,7 @@ Terms:
 | `floor_z` | The ground floor's z (default 7, the originals' usual value) |
 | `storey_height` | z between storeys (default 20); `wall_height` defaults to one less |
 | `storeys[]` | Per storey, bottom up: `openings[]` (`kind` `door` or `window`, placed by `side` `N`/`E`/`S`/`W` with an `offset` along it, or by `at` `[x, y]`), `partitions[]` (inner walls: `{"x": k, "from", "to"}` or `{"y": k, ...}`), `floor_holes[]` (`[x, y]` left open, for stairwells) |
-| `roof` | `style` `gable` with `ridge` `x` or `y`: it covers x 1..W+1 and y 1..H+1 and rises 3 z a course, with gable-end fill (the wall material, 3 high) on both ends (the originals fill only the south or east end the client shows; generated multis are complete on every side); the span across the ridge must be odd (W even for a ridge along y, H even for a ridge along x). Or `style` `flat`: `material` floor tiles at the top, with an optional `parapet` material |
+| `roof` | `style` `gable` with `ridge` `x` or `y`: it covers x 1..W+1 and y 1..H+1 and rises 3 z a course, with gable-end fill (the wall material, 3 high) on both ends (the originals fill only the south or east end the client shows; generated multis are complete on every side); the span across the ridge must be odd (W even for a ridge along y, H even for a ridge along x). Or `style` `flat`: `material` floor tiles at the top, with an optional `parapet` material; `parapet_gaps` (cells) leave the parapet open and floored there, where an outside stair steps onto the roof |
 | `rects[]` | Instead of `size`: boxes `[x0, y0, x1, y1]`, or `{"box", "storeys", "roof"}`, whose union is the footprint (an L, a T, a U). Walls stand on the union's edge cells; a rect with fewer storeys is a lower wing with its own roof. Where roofs overlap the higher one wins, and nothing is roofed inside a taller rect |
 | `storeys[].stairs[]` | `{"at": [x, y], "rise": N/E/S/W, "width"}`: a straight flight to the next storey as the client builds them (0x009E): step i a stair piece at z + 5i on i stacked 10-high blocks, then a landing; the next floor is left open over it, and the cell past the landing is where a climber arrives; `rail` (a material, e.g. `wooden fence`) stands a low rail round that opening on the floor above, the arrival end left open, so the hole reads as a stairwell and not a gap |
 | `storeys[].floor` | That storey's floor material, over `materials.floor` |
@@ -972,6 +975,7 @@ round it) goes. `buildings[]`:
 | `roof` | `{"floor", "parapet", "trim"}`: the flat roof's tiles, its 5-high parapet, and optional `trim`: heights of low-wall courses laid on the parapet in turn (e.g. `[2, 3]`), in the parapet's family; a corner the family has no piece of that height for takes its 2-high corner |
 | `stairs[]` | `{"storey", "at", "rise", "width"}`: a house stair (above) from that storey to the next; the ground storey's own pieces on its cells go |
 | `setback` | `{"side", "cells", "storey"}`: from that storey (default 1) up the building steps in that many cells from one side (`N`, `E`, `S`, `W`); the strip left over is a terrace on the storey below, floored with the roof's tiles and edged with its parapet |
+| `reface` | `true`: the ground storey's walls (the map's) are replaced piece for piece by `wall`'s pieces, a window by a window, so the building is one material from the ground up (not with `wall` `ground`) |
 | `roof_z` | The roof deck's z, when lower than a whole storey up (16 or more above the top storey). The client stands on nothing above z 112 (its pathfinder caps every cell at 128, and a walker needs 16), so a walkable deck is 112 at most; the stair to it is a short flight with no landing |
 | `partitions` | `false`: upper storeys have no inner walls (the ground storey's may enclose a void, a hall two storeys tall, with no door to repeat) |
 | `floor_holes[]` | `{"storey", "box"}`: cells left open in that storey's floor, over a stair the map already has |
@@ -1118,10 +1122,15 @@ watchers. The first reply moves a request to `answered`. The JSON lines printed 
 ## 22. The AI dock's endpoints (`ai_endpoints.json`)
 
 Written by the editor's AI dock (ADR-0028) to `%APPDATA%/GUO/ai_endpoints.json` (`~/.config/guo/` elsewhere),
-never to a project or `.godot`. A JSON array of `{ "Name", "Url", "Model", "Key" }` for the OpenAI-compatible
-endpoints the user added. `Key` is `{ "store", "iv", "blob" }`, the same `Secret` that `servers.json` keeps
+never to a project or `.godot`. A JSON array of `{ "Name", "Url", "Model", "AllowClientArt", "Key" }` for the OpenAI-compatible
+endpoints the user added. `AllowClientArt` (default false) is the per-endpoint leave to send client art (asset
+pictures) to that server. `Key` is `{ "store", "iv", "blob" }`, the same `Secret` that `servers.json` keeps
 for a pre-game password: ciphertext sealed by the operating system's store (DPAPI on Windows), bound to
 `ai:URL:NAME`, or null when the endpoint has no key or the platform keeps none. The key itself is never in the file.
+
+The other services (ComfyUI, Retro Diffusion, Ollama) are in `ai_services.json` beside it: an array of
+`{ "Kind", "Name", "Url", "Model", "AllowClientArt", "Key" }` with `Kind` one of `ComfyUi`, `RetroDiffusion`,
+`Ollama`, and `Key` sealed the same way (bound to `svc:KIND:URL:NAME`). `ServiceBook` presents both files as one list.
 
 ## 23. Scene pack (`scene.json`, ADR-0027)
 
@@ -1147,3 +1156,326 @@ with a vision model is the user's own tool and key.
 | `modes[]` | `{name, file, summary, legend: [{label, colour "#rrggbb"}]}` per mode image |
 | `objects[]` | Up to 4000 statics, multi parts and placed items in view: `kind` (`static`, `multi`, `item`), `graphic` (`0x0E75`), `name`, `type` (the Types mode's word), `x, y, z, height`, and `box` `[x0, y0, x1, y1]` in pixels (the art's rectangle from its size; approximate) |
 | `layers` | One array per layer switched on: `{label, x, y, z, detail, px, py, on_view, sextant}` |
+
+## 24. The art exchange folder and asset provenance (ADR-0029)
+
+**Exchange folder** (`UO_ART_EXCHANGE`, default `build/art_exchange/`, never under `UO_CLIENT_DATA`):
+`out/` PNG + sidecar the editor hands to Pixelorama; `in/` what the Pixelorama extension saves back (the
+sidecar is written first, the PNG second); `pinta/` PNG + sidecar that Pinta edits in place (a PNG newer than
+its sidecar is an edit); `done/` and `rejected/` (with `<stem>.reason.txt`) for finished `in/` pairs;
+`workflows/` ComfyUI API-format workflow files (`UO_COMFY_WORKFLOWS`); `hues.json` the user's own hue table
+written from the loaded hues.mul: `{"format":1,"hues":[{"id","name","colors":[32 x "RRGGBB"]}]}`.
+It is generated from the user's install and is never committed or shipped.
+
+**Sidecar** `<stem>.json`, stem `<kind>_0x<ID>[_h<hue>]`:
+`{"kind":"land|static|gump","id":int,"hue":int?,"size":[w,h],"stem":str,"provenance":{...}}`.
+
+**Provenance** `{"tool","model"?,"workflow"?,"seed"?,"inputs":[str],"derived_from_client_art":bool}`.
+`inputs` entries read `client:<kind>:0x<ID>` (the install's art) or `overlay:<kind>:0x<ID>`. The overlay keeps
+one record per replaced image in `<project>/assets/provenance.json`:
+`{"format":1,"entries":{"assets/art/statics/0x0E75.png":{...provenance..., "imported":"UTC time"}}}`.
+`derived_from_client_art` is true when any input was client art, and for a PNG of unknown origin (the
+inspector's "Import PNG..." records `tool: "import-png"` as derived). Such images stay local: a pack
+containing a `*provenance.json` with a derived entry is refused by `tools/asset_store/pack.py verify`
+(content policy, `docs/store/content_policy.md`).
+
+**UO post-process** (every import path): alpha keyed at 50 % (UO has one-bit transparency); land masked to the
+44x44 diamond (larger whole multiples scaled with nearest sampling); statics trimmed of empty top rows and equal
+empty columns each side; reduced to 15-bit colour as the overlay stores it.
+
+---
+
+## 25. The Logs dock's file list (`build/editor_logs/sources.json`)
+
+The editor's Logs dock follows log files read only. The only thing it writes is this list of the files the user
+added with "Add file...", plus the line cap, in `build/editor_logs/sources.json` (never under `UO_CLIENT_DATA`,
+never committed): `{"format": 1, "cap": 5000, "files": [{"path": "<absolute path>"}]}`. `cap` is the number of
+lines each view keeps (100 to 200000). Only absolute paths are accepted. The list is the editor's own and is not
+exported anywhere. A missing or unreadable file is an empty list.
+
+The dock also reads, and never writes: the run bar's `build/editor_servers/profiles.json` (section 17's sibling,
+the selected profile's `ServerDirectory`, `ServerProject`, `Executable`, `ClientProject`), and the per-client
+console file the run bar redirects a client's output to, `build/editor_servers/<profile id>/clients/<n>/client.log`
+(plain UTF-8 text, one line per console line; the client writes its time in UTC).
+
+## 26. Map generator CLI (`guo-mapgen`, ADR-0030)
+
+`tools/mapgen/cli` builds `guo-mapgen` on the vendored generator (`tools/mapgen/MapGen`). The editor's
+Map Generator tab runs it as a process; scripts call `python tools/mapgen/run.py <command> ...`, which
+builds it on first use. **Every command prints JSON to stdout, one value per line**; the generator's
+own log goes to stderr. Exit codes: `0` ok, `1` failed (a crash, or an export that did not verify),
+`2` a usage error. Errors print `{"event":"error","message":...}`.
+
+Environment: `UO_CLIENT_DATA` (radar colours; `--client-data` overrides) and `MAPGEN_DATA_DIR`, the
+per-user data folder (`UO_MAPGEN_DATA`; the editor passes it on). Data paths inside presets that name
+mined data (`mined/...`, `Data/map-mining/...`, `client/ClassicUO/Data/...`) resolve into that folder.
+
+### `schema [--preset P]` → one object, `"schema": "guo.mapgen.schema/1"`
+
+| Field | Meaning |
+|---|---|
+| `preset` | `{id, name, description, seed}` of the preset the values come from (default `felucca-stage18`) |
+| `presets`, `default_preset` | Preset ids in `tools/mapgen/MapGen/presets` (file name without `.preset.json`) |
+| `sizes` | `[width, height]` pairs to offer: 256–2048 squares and the client's facet sizes |
+| `passes[]` | In pipeline order: `index`, `name` (also the preset key), `category`, `enabled` (with the preset applied), `default_enabled`, `heavy` (switched off by `--fast`), `file_side_effects` (always off from GUO), `tunables[]` |
+| `tunables[]` | `key` (the parameter name), `label`, `tooltip`, `type` (`int`, `double`, `bool`, `string`, `enum`, `other`), `editable` (false for `other` and read-only), `value` (with the preset), `default` (the pass's own), `min`/`max` when the pass declares a range, `options` for an enum, `tile_set` (`land`/`static`) for tile-id lists |
+| `tables[]` | The transition tables `run --brushes` can name: `id` (`guo`, `guo-core`, `dragon`), `label`, `description`, `available` (false for `dragon` until `prepare --dragon` has run). `guo` is the default and uses the user's measured weights when `prepare --measure` wrote them; `guo-core` is the committed table alone. The editor's MapGen tab offers these plus a table file of the user's own |
+| `warnings` | Preset problems (unknown pass or key) |
+
+### `run --out DIR [options]` → JSON lines, then the folder
+
+Options:
+- `--preset P` (id or path);
+- `--seed N` (default: the preset's seed, else 1234567);
+- `--size N` or `--width W --height H` (multiples of 8, 64..7168 × 64..4096; default 1024);
+- `--set "Pass Name.Key=value"` (repeatable; int/double/bool/string/enum, invariant culture);
+- `--disable "Pass Name"` and `--enable "Pass Name"` (repeatable);
+- `--fast` (heavy passes off);
+- `--step-previews` (one PNG per pass);
+- `--preview-max N` (longest side of preview PNGs, default 1024; larger maps are block-averaged);
+- `--client-data DIR`;
+- `--brushes T`, the transition table: `guo` (default: the user's resolved table when `prepare --measure`
+  wrote one, else the committed table), `guo-core` (the committed table only), `dragon` (the user's
+  Dragon import) or a file.
+
+`--out` must be new or empty, and outside `UO_CLIENT_DATA`.
+
+Lines: `{"event":"start", preset, seed, width, height, passes, enabled, out}`, then per pass
+`{"event":"pass", index, count, name, enabled, ms, preview, notes[], warnings[]}` (`preview` is the
+PNG's path relative to `--out`, or null), then `{"event":"done", hash, elapsed_ms, out, stats, warnings}`.
+
+Folder:
+
+| File | Content |
+|---|---|
+| `run.json` | `"schema": "guo.mapgen.run/1"`, `generator`, `preset`, `seed`, `width`, `height`, `fast`, `sets`, `disable`, `enable`, `brushes` (the `--brushes` choice; `export` uses it), `brush_table` (`guo`, `dragon` or empty: what loaded), `hash`, `elapsed_ms`, `statics`, `stats`, `files`, `passes[]` (`index, name, enabled, ms, warnings`), `warnings`, `radar_colours` |
+| `preset.json` | The effective preset (a normal `.preset.json`): every `--set`, toggle and `--fast` choice folded in. `export` regenerates from it |
+| `radar.png` | Client radar colours from `radarcol.mul`: the top static where there is one, else the land. Falls back to biome colours without client data |
+| `biome.png`, `height.png` | Biome classes; heights (grey above 0, blue below) |
+| `steps/NN-pass-name.png` | With `--step-previews`: the map after each enabled pass (radar once land ids exist, biome or height before) |
+| `map.bin` | Analyzer dump: int32 width, int32 height; per cell, row-major, uint16 land id, int8 z, uint8 biome; int32 count; per static uint16 x, uint16 y, int8 z, uint16 id |
+
+`hash` is SHA-256 over `"guo-mapgen-1"`, width and height (uint16), the land ids, the heights and every
+static op (kind, x, y, z, id, hue) in pipeline order. The same preset, seed, size, options and
+transition table give the same hash; a user's resolved table (`prepare --measure`) changes it.
+
+`stats` (the Felucca-likeness card) holds:
+- `available` and `land_share`;
+- `measured` and `felucca`: shares of land at z 0, forest, grass, sand, rock, jungle, and sand along
+  coasts (`shore_sand`), plus statics per 100 land tiles (measured only). The seabed (land tiles
+  0x4C–0x64 dug under the water, as Felucca's shallows are) counts as water, so the coast is the dry
+  shore. The coast is the sea's: river cells are water but do not make a coast, since Felucca draws
+  almost no rivers in land tiles and its shore share is a sea-coast share. Shore sand is the beach pool or a sand edge tile (0x1A–0x4B). The Felucca values are its whole
+  surface (map 0, 5120x4096), measured 2026-10-03 by the same rules;
+- `classes` (land shares by tile-table class; `edge` means transition tiles);
+- `score` (0–100). It is a guide, not the judge.
+
+### `export --run DIR [--facet N] [--world-project DIR --origin-x X --origin-y Y]` → JSON lines, then `DIR/export/`
+
+`export` regenerates the run from `preset.json`, `seed`, `width` and `height`. It refuses when the hash
+differs from `run.json`'s. It then writes `export/map/map{N}.mul`, `staidx{N}.mul` and `statics{N}.mul`
+(legacy MUL, facet `N`, default 0). Finally it reads every cell and static back.
+`export/export-verify.json` holds `ok`, `land_cells_checked`, `land_mismatches`, `statics_expected`,
+`statics_found`, `static_mismatches`, `hash`, `facet`, `width`, `height`, `land_tiles_written`,
+`statics_written` and `files`. The final line is
+`{"event":"done", ok, hash, export, verify, world_project, world}`. Exit 1 when `ok` is false.
+
+With `--world-project DIR`, a verified export is also written as a world project (§9) in `DIR`, which
+must be new or empty. The map lands on facet `N` with its top-left cell at (`--origin-x`, `--origin-y`),
+default (0, 0); both must be multiples of 8. Every block is a full `blocks/<facet>/<bx>_<by>.json`
+(64 land cells plus its statics), written exactly as the World tab writes one. Beside them,
+`generated.json` records where the project came from:
+
+| Field | Meaning |
+|---|---|
+| `schema` | `guo.mapgen.generated/1` |
+| `created` | UTC time, ISO 8601 |
+| `hash` | The map hash (the same as the run's) |
+| `run` | The run folder |
+| `facet`, `origin`, `size` | Where the map sits: facet, `[x, y]` of its top-left cell, `[width, height]` |
+| `blocks` | How many block files were written |
+
+`done.world` carries the same object. Opening the project in the World tab is a separate step, and so
+is deploying it to a shard.
+
+### `prepare [--measure [--client-data DIR]] [--dragon DIR [--out FILE]] [--landscaper DIR]` → one JSON line
+
+`prepare` builds the generator's per-user data in `UO_MAPGEN_DATA`, from the user's own client and
+copies. GUO ships none of it (`docs/upstream/mapgen.md`). At least one option is required.
+- `--measure`: reads the user's own Felucca (map0 of `UO_CLIENT_DATA`) and writes
+  `map-mining/guo-transition-atlas.json` (per pair and neighbour mask, the tiles used and how often: the
+  format Land Transitions' *Measured transition atlas* reads), `map-mining/guo-transition-measure.json`
+  (`"schema": "guo.mapgen.transition-measure/1"`: per pair `samples`, `slivers` and per edge shape
+  `count`, `top` (up to 8 `[id, count]`), `dz_owner`, `dz_other`; per material its interior tile
+  counts; `source` with the map file's name, size and SHA-256), and the resolved transition table
+  `transitions.guo.resolved.json` (below). An edge sample is a cell whose tile is not in an interior pool
+  and whose 8 neighbours hold interior tiles of exactly two materials; its mask is the neighbours of the
+  other material.
+- `--dragon DIR`: a Dragon folder or its `Scripts/map`. The owner's importer converts the transition
+  rules into `landbrush.dragon.json` (or `FILE`), for `run --brushes dragon` and `coverage`.
+- `--landscaper DIR`: a UO Landscaper install or mod, or its `Data`. `Data/Statics/**/*.xml` is copied to
+  `landscaper-statics/` and `Data/Transitions/**/*.xml` to `landscaper-transitions/`, with the layout
+  kept. Neither is needed: Swamp Surface reads the transitions only when its *Transition catalogue* names
+  that folder, and Biome Static Scatter the statics only when its *Catalogue* does. Their defaults are
+  GUO's transition and scatter tables (below).
+
+The line is `{"event":"done", ok, measure?, resolved?, dragon?, landscaper?}`:
+- `measure` is `{ok, atlas, summary, pairs, samples, region}`;
+- `resolved` is `{ok, output, added_variants, pairs_with_tiles}`;
+- `dragon` is `{ok, output, rules_dir, files, rules, skipped, brushes, unknown_biomes}`;
+- `landscaper` is `{ok, data_dir, statics_files, transition_files, output}`.
+
+Exit 1 when a requested part produced nothing.
+
+### `coverage` → one JSON line
+
+What each transition table present can draw, in counts only: the committed table (`guo-core`), the
+user's resolved table (`guo-resolved`) and Dragon import (`dragon`). The line is
+`{"event":"done", "schema":"guo.mapgen.coverage/1", tables[], missing[], pairs[]}`; each pair row is
+`{pair, <table>: {shapes, masks, ids, via, plain}}`: the edge shapes with a tile (of 12), the neighbour
+masks with a tile (of 255), the distinct tile ids, the bridge material and whether the pair needs no
+tile. No table's rows are printed.
+
+### Transition table (`tools/mapgen/MapGen/presets/transitions.guo.json`)
+
+GUO's own land transition table, `"format": "guo.mapgen.transitions/1"`, and the generator's default
+(Land Transitions, road edges, mountain trails). It holds what GUO authors; the per-user tile variants
+come from `prepare --measure`, which writes a resolved copy in the same format to
+`UO_MAPGEN_DATA/transitions.guo.resolved.json` with a `resolved_from` object (`measure`: the measured
+map's `source`; `added_variants`).
+
+| Field | Meaning |
+|---|---|
+| `format` | `guo.mapgen.transitions/1` |
+| `resolve` | How measured variants join: `min_pair_samples`, `min_shape_samples`, `min_share` (of the shape's samples), `max_variants` per shape, `scale` (the weight of the most used variant) |
+| `materials` | Name → `{biomes[], notes}`: the materials pairs may name, and the biomes that map to each |
+| `pairs[]` | One per owner/other pair, below |
+
+A pair:
+
+| Field | Meaning |
+|---|---|
+| `owner`, `other` | Materials. Owner cells next to other cells are repainted; the other side keeps its tile |
+| `edges` | Shape → list of land ids, each `"0xHHHH"` (weight 1) or `["0xHHHH", weight]`. A pair with edges lists all 12 shapes |
+| `z` | Shape (or `"*"`) → the most an edge cell moves toward the other side's mean height, used when Land Transitions' *Edge z offsets* is on. Positive lifts (a rock lip), negative drops (a bank) |
+| `via` | The material an owner cell facing the other becomes when the pair has no tile for it (*Bridge passes*) |
+| `plain` | `true`: the pair needs no edge tile (sand against water); not reported as a hard edge |
+| `measure` | `false`: `prepare --measure` adds nothing to this pair (default `true`) |
+| `notes` | Why the pair is drawn as it is |
+
+Edge shapes are named by where the other material lies, in tile directions (N is y−1, E is x+1):
+`N`, `E`, `S`, `W` are straight edges (the other side covers that side and its two corners);
+`NE`, `SE`, `SW`, `NW` are outer corners (two sides and the corner between); `in_NE`, `in_SE`, `in_SW`,
+`in_NW` are inner corners (only that diagonal neighbour is other). A cell's neighbour mask resolves to
+the smallest shape that contains it; a mask no shape contains is a one-tile sliver, which Land
+Transitions absorbs into the other side.
+
+Swamp Surface reads two pairs: `Grassland>Swamp` (grass against the moss band) and `Swamp>Bog` (the moss
+band against the open bog inside). `Bog` is a material with no biome, so Land Transitions never meets
+it. Each pair comes from the user's resolved table when it has it, else from the committed table. An
+edge tile may be an interior tile of its owner's own material, as on Felucca, where the moss/bog inner
+corners are moss tiles with a dark corner.
+
+### Scatter table (`tools/mapgen/MapGen/presets/scatter.guo.json`)
+
+GUO's own scatter table, `"format": "guo.mapgen.scatter/1"`: what Biome Static Scatter puts on the
+ground per biome, and which tree trunk takes which canopy (Forest Scatter, and every pass that pairs
+trunks, when there is no `tree-statics.json`). Biome Static Scatter's *Catalogue* is `guo` by default;
+it also takes a file in this format or a folder of UO Landscaper statics XML (a user's own, from
+`prepare --landscaper`). A catalogue that is not found falls back to `guo` with a note.
+
+| Field | Meaning |
+|---|---|
+| `format` | `guo.mapgen.scatter/1` |
+| `aliases` | Biome → biome whose groups and chance it borrows (`Savanna` → `Grassland`) |
+| `trees[]` | `{trunk, leaves, name}`: a trunk static and the canopy drawn on the same tile |
+| `biomes` | Biome name (as in `BiomeId`) → `{chance, notes, groups[]}` |
+
+`chance` is the percentage of cells (dense biomes) or Poisson samples (the rest) that get a group. A
+group is `{name, freq, any[] or sets[]}`:
+- `freq` is the group's weight within the biome, however many variants it has;
+- `any` lists single statics, `"0xHHHH"`, one picked per placement;
+- `sets` lists assemblies placed whole, each a list of `[id, x, y, z]` or `[id, x, y, z, hue]` (x, y
+  in −8..8, z in −64..64, relative to the origin cell).
+
+Ground-cover groups name no tree and hold no trunk or canopy: trees are Forest Scatter's.
+
+### `presets` → `{"schema": "guo.mapgen.presets/1", "presets": [...]}`
+
+## 27. Multi styles, generator operations and the legacy formats (`tools/multi`)
+
+Section 16 describes what a multi is and how a description is built. This section is what the editor's
+Generate panel and the generators share. (If another branch also takes 27, renumber at merge.)
+
+**Style catalogue** (`guo.multi.styles/1`). Files: `tools/multi/styles/*.json` (hand-authored, committed,
+provenance in the file) and the user's own `build/multi/styles/*.json` (`run.py styles --mine`, mined from the
+client's multis, never committed); later files win. `{"format": "guo.multi.styles/1", "provenance", "styles":
+{key: style}}`. A style is keyed by piece role; ids are hex strings (or a list of variants, the first preferred):
+
+| Field | Meaning |
+|---|---|
+| `name`, `material`, `hues` | Display name, material family, allowed hues (empty: unrestricted) |
+| `z` | `floor` (7), `storey` (20), `wall` (19), `roof_step` (3), `stair_step` (5), `stair_block` (10) |
+| `walls`, `foundation`, `parapet`, `trim`, `gable_fill` | A **run set**: `height`, `EW` (along x, draws its cell's south edge), `NS` (along y, east edge), `post`, `corners` `{NW, NE, SW, SE}` (the corner's place on the building; NW is the back post, SE the front corner showing both faces), `junctions` `{EW, NS}`. A missing corner falls back to the straights, a missing post to the NW corner, each noted |
+| `windows[]` | Sets `{EW, NS}`; a house picks one by seed |
+| `doors` | `kind` (`wood`, `metal`, ...) -> `{type, EW: {closed, open}, NS: {closed, open}}`: real door ids with their open pairs, and the ModernUO door type for the sidecar |
+| `floors[]` | `{id, weight}` |
+| `roof` | `gable` `{N, S, E, W, ridge_x, ridge_y}`, `hip` `{NW, NE, SW, SE, cap}`, `flat` (an id), `eaves` (optional sides) |
+| `stairs` | `straight` `{N, E, S, W}` (the piece rising that way), `turned` (optional own pieces), `ladder` (optional id), `block` (the solid under a step) |
+
+**Operations** (`run.py house|autowall|roof|stairs|rotate|mirror|import|export|styles`, JSON via `--in`,
+`--json` or stdin, result to stdout or `--out`; `run.py serve` answers one request per line, `{"op": ..., ...}`).
+Every answer has `components` (`[item, x, y, z]`, a fifth element `0` when hidden), `notes`, `ms`, or `error`.
+Same parameters and seed, same bytes.
+
+- `autowall`: `style`, `path` (points; diagonals become stepped runs), `closed`, `z`, `storeys`, `window_every`,
+  `window_offset`, `door` (`{index|at, kind, storey}` or false), `existing` (cells already walls, for joins).
+  Also returns `doors` and `windows`.
+- `roof`: `style`, `kind` (`gable|hip|flat`), `boxes` (wall boxes, or `{box, z, ridge}`), `z`, `ridge`, `parapet`,
+  `fill`. Courses 3 z apart; a gable with an odd span is widened by one, with a note.
+- `stairs`: `style`, `at`, `rise`, `kind` (`straight|turned|ladder`), `turn` (`left|right`), `width`, `steps`, `z`,
+  `open` (box or cells the flight may stand on), `above` `{box, z, floor}`. Returns `holes` (cells the floor above
+  must leave open), `arrive`, `foot`; with `above` the floor above is laid with the hole cut.
+- `house`: `style`, `seed`, `shape` (`rect|L|T|U|cross`), `width`, `depth`, `storeys` (1-3), `rooms`, `roof`
+  (`gable|hip|flat|none`), `porch`, `balcony`, `windows`, `window_every`, `foundation`, `vary_wings`, `door`, `yard`.
+  Returns the section 16 `description` it expanded, the doors, `stops`, `centre`, and `problems` from the validator.
+- `rotate` (`turns` 1-3, clockwise seen from above) and `mirror` (`axis` `x`: east becomes west, `y`):
+  `components` in and out. Wall pieces move by edge, not cell (a mirrored east face is a west face, which is the next
+  cell's east edge); a corner drawing both faces splits into its straights, and an EW and an NS straight of one run set
+  that stand in one cell at a vertex with exactly two wall ends are joined again into that corner piece. So four turns
+  or two mirrors return a generated building exactly (same id, x, y, z and flags); the NE and SW corners and the
+  junctions turn into each other, a post stays on its vertex. `keep_centre` turns or mirrors about the centre of what
+  the pieces draw, so a selection stays in place (a box that cannot turn about its middle on the grid, odd by even,
+  keeps its top corner instead, which keeps four turns exact). Ids come from
+  `guo.multi.orient/1` (`wall` `{id: {axis, ew, ns}}`, `map` `{rot90, mirror_x, mirror_y: {id: id}}`, `door_bases`, and
+  `lossy` `{id: id}` for window sets that share one art on the other axis, which come back as the first set), built from
+  the styles, and with `run.py orient-table` from the mined catalogue and tiledata names.
+- `import` / `export`: `format` is one of `txt` (UOFiddler and Ultima SDK text, `0xID x y z flags`), `uoa` (UO Architect
+  text, 4 header lines), `uoab` (UO Architect binary designs, version 1 or 2), `wsc`, `csv-punt`, `csv-swerv`,
+  `centred` (CentrED# `id,x,y,z,hue,flags`) and `uox3`. Import detects the format from the name and head and recentres.
+
+The validator (section 16) also refuses a roof with floor open to the sky, a door with nowhere to stand on a side, and
+a stair whose foot is unreachable, whose arrival is not floor above, whose hole is not cut, or that does not climb the
+gap between its storeys.
+## 28. Multi components description (`*.multi.json`, ADR-0031)
+
+The Multi Editor's own file, in `build/multi/edit/` (gitignored: it holds client-derived layouts).
+Unlike a §16 description, which a generator expands, this one lists the components themselves. It is
+diffable (one component per line) and keeps the hue, which a multi record cannot.
+
+| Field | Meaning |
+|---|---|
+| `format` | `1` |
+| `kind` | `"components"` |
+| `name` | The multi's name in a stage |
+| `source` | The client multi id it was opened from, or `null` |
+| `floor_z`, `storey_height` | `7` and `20`, the client's story heights |
+| `components` | `[item, x, y, z, shown, hue]` per component, in list order (the order breaks ties in painting): `item` and `hue` numbers, `shown` `1` or `0`, x/y from the centre |
+
+Writing it to a stage goes through the built form of §16 (`components.json`: `[item, x, y, z]` with a
+fifth element `0` when hidden, plus a `multi.json` with `valid`, `problems`, `doors`, `size`,
+`storeys`) and `tools/multi write`. The hue is not written.
+
+**Stamps.** The Multi Editor's stamps library (ADR-0031, phase 2) stores each stamp as a section 28 description, centred on
+its box, in `user://guo_multiedit_stamps/NAME.multi.json` (the user's GUO data folder; never the repo). A
+`NAME.recovery.multi.json` in `build/multi/edit/` is the same format, written when the editor closes with unsaved changes.

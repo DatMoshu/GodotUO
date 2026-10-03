@@ -1,0 +1,84 @@
+{
+  "name": "Inland Lakes + Roads",
+  "description": "Same shape as Inland Lakes (no edge ocean, deep-noise interior lakes) with Grassland-dominant interiors and the town + road network on. Climate recalibrated for the inland-lake topology: MoisturePerSeaCell=0.5 + LandDecay=0.08 so moisture rings each lake but decays meaningfully inland, instead of saturating the whole landmass. ForestMoistureMin pushed to 220 so Forest is a wet-ring biome around water; DenseForest only at >250 (immediate lakeshore). Grassland window 25..220 ≈ 76% of the moisture range — the residual that fills most of the landmass. TownSiteFinder picks dry flats; TownRoadPass paints a cobble cross inside each town; RoadGraph dirt roads terminate at gate cells, not pierce through. POI/Road/Town Stamps OFF (decoration is a future feature pass).",
+  "seed": 8675309,
+  "passes": {
+    "Noise Height": {
+      "Octaves": 7,
+      "BaseFrequency": 0.003,
+      "Lacunarity": 2.1,
+      "Gain": 0.5,
+      "VerticalScale": 96,
+      "Shape": "Radial",
+      "ShapeStrength": 0.0,
+      "ContinentFalloff": 0.0
+    },
+    "Mountain Shape": {
+      "SlopeThreshold": 4,
+      "MinRegionSize": 6,
+      "AltitudeBandsCsv": "20,30,50,60,65,70",
+      "PeakSplatterFreq": 350,
+      "PeakAltitudeVariance": 6
+    },
+    "Moisture & Climate": {
+      "WindDirectionDeg": 180,
+      "Bidirectional": true,
+      "MoisturePerSeaCell": 0.5,
+      "LandDecay": 0.08,
+      "RainShadowZ": 50,
+      "BaseTemperature": 170,
+      "LapseRate": 1.6,
+      "LatitudeFalloff": 0.25
+    },
+    "Biome Assign": {
+      "SeaLevelZ": -32,
+      "MountainZ": 32,
+      "SnowTemperature": 30,
+      "TundraTemperature": 45,
+      "DesertMoistureMax": 25,
+      "ForestMoistureMin": 220,
+      "DenseForestMoistureMin": 250,
+      "SavannaTemperature": 256,
+      "JungleTemperature": 256,
+      "SwampMoistureMin": 215,
+      "WetlandMoistureMin": 240,
+      "LowlandZWindow": 4,
+      "SwampMinDistFromWater": 2,
+      "SwampPatchNoiseScale": 0.08,
+      "SwampPatchThreshold": 0.35
+    },
+    "Coast Smooth": {
+      "BeachBand": 1
+    },
+    "Town Sites": {
+      "AutoGridX": 4,
+      "AutoGridY": 6,
+      "TownsPerQuadrant": 2,
+      "TownSize": 24,
+      "MaxAttempts": 2048,
+      "MinAltitudeAboveSea": 2,
+      "MaxRelief": 12,
+      "MinSpacing": 192,
+      "MinBuildableFraction": 0.8
+    },
+    "Town Roads": {
+      "CobbleTileId": 1001,
+      "Width": 3,
+      "FlattenInteriorZ": true
+    },
+    "Road Graph": {
+      "SlopePenalty": 6,
+      "WaterPenalty": 256,
+      "ExistingRoadBonus": 8,
+      "MaxEdgesPerPoi": 2,
+      "MaxSearchNodes": 200000,
+      "RoadEndsAtTownGate": true,
+      "ForeignFootprintPenalty": 512
+    },
+    "Road Centerline": {
+      "Width": 2,
+      "FlattenRadius": 3,
+      "PaintTransitions": true
+    }
+  }
+}

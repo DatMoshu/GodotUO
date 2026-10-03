@@ -316,6 +316,56 @@ def main() -> int:
               f"dock agent + permission dialog + chat + queue tab, children killed")
         for k in bad:
             print(f"[editor_smoke]        failed: {k}")
+    multiedit = report.get("multiedit") or {}
+    if multiedit:
+        checks = [k for k, v in multiedit.items() if v is True or v is False]
+        bad = [k for k in checks if multiedit[k] is False]
+        print(f"[editor_smoke]   {'ok  ' if multiedit.get('ok') else 'FAIL'} MultiEdit  {len(checks) - len(bad)}/{len(checks)} checks: "
+              f"opened {multiedit.get('parts_opened')} parts, {multiedit.get('palette_groups')} palette groups, bad edit flags "
+              f"[{multiedit.get('bad_findings')}], staged as multi {multiedit.get('multi_id')} read back equal, "
+              f"world selection {multiedit.get('world_selection_statics')} statics")
+    mapgen = report.get("mapgen") or {}
+    if mapgen:
+        checks = [k for k, v in mapgen.items() if v is True or v is False]
+        bad = [k for k in checks if mapgen[k] is False]
+        print(f"[editor_smoke]   {'ok  ' if mapgen.get('ok') else 'FAIL'} MapGen  {len(checks) - len(bad)}/{len(checks)} checks: "
+              f"{mapgen.get('passes')} passes, {mapgen.get('tunables')} settings ({mapgen.get('preset')}), 256x256 seed 42 "
+              f"hash {str(mapgen.get('hash'))[:12]} twice, no rivers {str(mapgen.get('hash_no_rivers'))[:12]}, export "
+              f"{mapgen.get('export_cells')} cells + {mapgen.get('export_statics')} statics read back, "
+              f"{mapgen.get('world_blocks')} world blocks, tab {mapgen.get('tab_groups')} groups / {mapgen.get('tab_controls')} controls, tables {mapgen.get('tables')}")
+        for k in bad:
+            print(f"[editor_smoke]        failed: {k}")
+    store = report.get("store") or {}
+    if store:
+        checks = [k for k, v in store.items() if v is True or v is False]
+        bad = [k for k in checks if store[k] is False]
+        print(f"[editor_smoke]   {'ok  ' if store.get('ok') else 'FAIL'} Store   {len(checks) - len(bad)}/{len(checks)} checks: local signed catalogue "
+              f"{store.get('catalogue')}, key approved, install/remove, verify (good and refused), publish, catalogue PR prepared, "
+              f"deployment {str(store.get('deployment_identity'))[:16]} to a scratch shard folder; private shard: {store.get('private_shard_dry_run', 'dry run ok')}")
+        print(f"[editor_smoke]        {store.get('browse_status')}")
+        for k in bad:
+            print(f"[editor_smoke]        failed: {k}")
+    art = report.get("art") or {}
+    if art:
+        checks = [k for k, v in art.items() if v is True or v is False]
+        bad = [k for k in checks if art[k] is False]
+        print(f"[editor_smoke]   {'ok  ' if art.get('ok') else 'FAIL'} Art     {len(checks) - len(bad)}/{len(checks)} checks: "
+              f"export, scripted save imported by the watcher, post-process, provenance, Pinta in place, "
+              f"ComfyUI + Retro Diffusion stubs ({art.get('comfy_progress_events')} progress events)")
+        print(f"[editor_smoke]        {art.get('detect')}")
+        print(f"[editor_smoke]        provenance: {art.get('provenance')}")
+        for k in bad:
+            print(f"[editor_smoke]        failed: {k}")
+    logs = report.get("logs") or {}
+    if logs:
+        checks = [k for k, v in logs.items() if v is True or v is False]
+        bad = [k for k in checks if logs[k] is False]
+        print(f"[editor_smoke]   {'ok  ' if logs.get('ok') else 'FAIL'} Logs    {len(checks) - len(bad)}/{len(checks)} checks: "
+              f"tail with a missing-then-created file, shared read, follow/pause, text and level filters, colours, find, "
+              f"secrets hidden, truncation and rotation, line cap, huge file tail, UTC beside local, remembered files, "
+              f"clean disposal; dock sources: {logs.get('views')}")
+        for k in bad:
+            print(f"[editor_smoke]        failed: {k}")
     overlay = world.get("overlay") or {}
     if overlay:
         print(f"[editor_smoke]   {'ok  ' if overlay.get('ok') else 'FAIL'} Overlay block 187,203: "

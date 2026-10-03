@@ -1,0 +1,43 @@
+{
+  "name": "Archipelago",
+  "description": "Many small-to-medium islands separated by water. Driven by a low-frequency mask noise so islands look organic instead of perfect circles. Sparse forest, rare rivers.",
+  "seed": 7,
+  "passes": {
+    "Noise Height": {
+      "Octaves": 6,
+      "BaseFrequency": 0.006,
+      "Lacunarity": 2.1,
+      "Gain": 0.55,
+      "VerticalScale": 56,
+      "Shape": "Archipelago",
+      "ShapeStrength": 0.6,
+      "ArchipelagoScale": 0.012,
+      "ContinentFalloff": 0.0
+    },
+    "Biome Assign": {
+      "SeaLevelZ": 4,
+      "SwampMoistureMin": 210,
+      "WetlandMoistureMin": 240
+    },
+    "Coast Smooth": {
+      "BeachBand": 3
+    },
+    "Land Transitions": {
+      "SandBand": 3,
+      "DirtBand": 3
+    },
+    "Forest Scatter": {
+      "DensityMultiplier": 0.45
+    },
+    "River Carve": {
+      "SourceCount": 6
+    },
+    "POI Stamps": {
+      "ControlPointsPerQuadrant": 1,
+      "DungeonsPerQuadrant": 0
+    },
+    "Map Validator": {
+      "EdgeBandWidth": 6
+    }
+  }
+}

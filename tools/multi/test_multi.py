@@ -375,6 +375,30 @@ def main() -> int:
     check(len(walkcheck.check_tour([{"centre": [0, 0], "comps": []}], leg, kinds, 0)) == 1,
           "the same stop on one flat ground height is not")
 
+    # joints a family has no piece for (a rail with only straights): built as the originals' are
+    with tempfile.TemporaryDirectory(prefix="multi-joint-") as tmp:
+        tmp = Path(tmp)
+        (tmp / "families.json").write_text(json.dumps({"rail": {"wall": {"5": {"EW": ["0x0a01"], "NS": ["0x0a02"]}},
+                                                                 "post": {"5": {"-": ["0x0a03"]}}}}), encoding="utf-8")
+        (tmp / "pieces.json").write_text("{}", encoding="utf-8")
+        cat = generate.Catalogue(tmp)
+        v = cat.wall("rail", 5, "NW")
+        check(int(v) == 0xA01 and tuple(v.extra) == (0xA02,), "a front corner (NW) with no V takes both straights")
+        check(cat.wall("rail", 5, "NE") == 0xA02 and cat.wall("rail", 5, "SW") == 0xA01,
+              "side corners take the one face they need (NE: NS, SW: EW)")
+        check(cat.wall("rail", 5, "ES") == 0xA03, "a back corner (ES) takes a post")
+        check(cat.wall("rail", 5, "E") == 0xA01 and cat.wall("rail", 5, "S") == 0xA02,
+              "a run's end beside a door keeps its face (E: EW, S: NS)")
+        check(generate.faces("NES") == (False, True) and generate.faces("ESW") == (True, False)
+              and generate.faces("NEW") == (True, True), "T-joins: NES the NS face, ESW the EW face, NEW both")
+        b = generate.Built()
+        b.add(v, 0, 0, 0)
+        b.add(generate.NOTHING, 1, 0, 0)
+        check(sorted(c.item for c in b.comps) == [0xA01, 0xA02], "both straights are placed; nothing places nothing")
+
+    import test_gen                               # styles, generators, rotate/mirror, formats
+    test_gen.run(check)
+
     print(f"test_multi: {'OK' if not FAILS else 'FAILED'} ({len(FAILS)} failing)")
     return 0 if not FAILS else 1
 

@@ -72,6 +72,18 @@ class StoreTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             verify(self.pack({"extra.txt": b"extra"}))
 
+    def test_reject_art_derived_from_client_art(self):
+        # The editor's provenance file (ADR-0029) travels with a pack; derived work is refused, original is not.
+        for derived, ok in ((True, False), (False, True)):
+            record = json.dumps({"format": 1, "entries": {"assets/art/statics/0x0E75.png": {"tool": "comfyui", "inputs": ["client:static:0x0E75"], "derived_from_client_art": derived}}}).encode()
+            self.manifest["files"]["provenance.json"] = hashlib.sha256(record).hexdigest()
+            with self.subTest(derived=derived):
+                if ok:
+                    verify(self.pack({"provenance.json": record}))
+                else:
+                    with self.assertRaises(ValueError):
+                        verify(self.pack({"provenance.json": record}))
+
     def screensaver(self, min_profile=11, loops=("loop.ogv",)):
         self.manifest.update(kind="screensaver", id="test-saver", min_profile_version=min_profile)
         extra = {}

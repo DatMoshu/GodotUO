@@ -1,0 +1,45 @@
+{
+  "name": "Island 512",
+  "description": "Single round island tuned for a 512x512 sandbox. Moisture sweep is calibrated for short sea fetches (saturates fast) and slow land decay so the interior stays inside the Grassland window instead of going to zero (Desert). Biome thresholds widen the Grassland band: Desert<25, Forest>180. Use as a fast iteration target — write to .mul via fullworld-procgen-512-roundtrip.bat island-512.",
+  "seed": 1234567,
+  "passes": {
+    "Noise Height": {
+      "Octaves": 5,
+      "BaseFrequency": 0.012,
+      "Lacunarity": 2.0,
+      "Gain": 0.5,
+      "VerticalScale": 56,
+      "ContinentFalloff": 0.5
+    },
+    "Moisture & Climate": {
+      "WindDirectionDeg": 180,
+      "Bidirectional": true,
+      "MoisturePerSeaCell": 0.5,
+      "LandDecay": 0.05,
+      "RainShadowZ": 55,
+      "BaseTemperature": 200,
+      "LapseRate": 1.5,
+      "LatitudeFalloff": 0.25
+    },
+    "Biome Assign": {
+      "SeaLevelZ": 0,
+      "MountainZ": 50,
+      "SnowTemperature": 35,
+      "DesertMoistureMax": 16,
+      "ForestMoistureMin": 180,
+      "DenseForestMoistureMin": 256,
+      "JungleTemperature": 256,
+      "SavannaTemperature": 256,
+      "SwampMoistureMin": 256,
+      "WetlandMoistureMin": 256
+    },
+    "Forest Scatter": {
+      "DensityMultiplier": 1.0,
+      "MinRadius": 4
+    },
+    "POI Stamps": {
+      "ControlPointsPerQuadrant": 1,
+      "DungeonsPerQuadrant": 0
+    }
+  }
+}

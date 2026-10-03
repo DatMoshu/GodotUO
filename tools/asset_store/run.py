@@ -147,6 +147,40 @@ class Handler(SimpleHTTPRequestHandler):
                 remaining -= len(block)
 
 
+CATALOGUE_REPO = "DatMoshu/GodotUO-packs"
+
+
+def prepare_listing(args, config, listing_for):
+    """Write packs/<id>/<version>.json and PULL_REQUEST.md under args.out and print the gh commands. Nothing leaves the computer."""
+    listing, info = listing_for(args.pack, args.url, args.provenance)
+    out = Path(args.out).resolve()
+    client = Path(config.client_data)
+    require(str(client) == "." or not client.is_dir() or client.resolve() not in (out, *out.parents),
+            "The UO client installation is read-only; choose another folder")
+    target = out / "packs" / info["id"] / (info["version"] + ".json")
+    text = json.dumps(listing, indent=2, ensure_ascii=False) + "\n"
+    require(not target.exists() or target.read_text(encoding="utf-8") == text,
+            "A different listing for this id and version is already there; a published listing never changes, so use a new version")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(text, encoding="utf-8")
+    body = (f"Adds {info['id']} {info['version']} ({info['kind']}), licence {info['licence']}.\n\n"
+            f"Provenance: {listing['provenance']}\n\nAutomatic policy verdict: {info['policy']['verdict']}.\n"
+            + "".join(f"- {f['level']}: {f['text']}\n" for f in info["policy"]["findings"]) + "\n" + info["policy"]["note"] + "\n")
+    (out / "PULL_REQUEST.md").write_text(body, encoding="utf-8")
+    branch = f"add-{info['id']}-{info['version']}"
+    print(f"Wrote {target}")
+    print(f"Wrote {out / 'PULL_REQUEST.md'}")
+    print("Nothing was sent. When the ZIP is hosted at the address(es) above, run, from a folder of your choice:")
+    for line in (f"gh repo fork {CATALOGUE_REPO} --clone --remote", "cd GodotUO-packs", f"git checkout -b {branch}",
+                 f'mkdir packs/{info["id"]}',
+                 f'cp "{target}" packs/{info["id"]}/{info["version"]}.json',
+                 f"git add packs/{info['id']}/{info['version']}.json", f'git commit -m "Add {info["id"]} {info["version"]}"',
+                 "git push -u origin HEAD", f'gh pr create --repo {CATALOGUE_REPO} --title "Add {info["id"]} {info["version"]}" --body-file "{out / "PULL_REQUEST.md"}"'):
+        print("  " + line)
+    print("The official catalogue is signed by its own CI after review; no signing key is used or needed here.")
+    return 0
+
+
 def server(root, host="127.0.0.1", port=18865):
     return ThreadingHTTPServer((host, port), functools.partial(Handler, directory=str(Path(root).resolve())))
 
@@ -174,6 +208,14 @@ def main():
     m = sub.add_parser("mirror", help="copy a signed catalogue into --store-dir, verifying every ZIP")
     m.add_argument("--from", dest="source", required=True, help="the catalogue's base URL")
     m.add_argument("--key", required=True, help="the catalogue's public key, ed25519:...")
+    q = sub.add_parser("check", help="inspect a pack ZIP: manifest, hashes, dependencies, content-policy verdict (the editor's Publish tab)")
+    q.add_argument("pack", type=Path)
+    q.add_argument("--json", action="store_true", help="print the report as JSON")
+    pl = sub.add_parser("prepare-listing", help="write the listing file for the official catalogue's pull request; no network")
+    pl.add_argument("pack", type=Path)
+    pl.add_argument("--url", action="append", required=True, help="where the ZIP is hosted (HTTPS); repeat for mirrors")
+    pl.add_argument("--provenance", required=True, help="how the content was made, at most 500 characters")
+    pl.add_argument("--out", type=Path, required=True, help="a folder to write packs/<id>/<version>.json and the pull request text into")
     c = sub.add_parser("check-index", help="verify a store folder's signed index")
     c.add_argument("--key", help="the trusted public key (ed25519:...); default: the key the index names")
     args = parser.parse_args()
@@ -209,6 +251,24 @@ def main():
             public = ed25519.decode(index["key"], 32)
             print(f"OK: {index['catalogue']['id']} sequence {index['sequence']}, {len(index['packs'])} pack(s), key {ed25519.fingerprint(public)}")
             return 0
+        if args.command == "check":
+            from asset_store.policy import inspect_folder, inspect_pack
+            try:
+                report = inspect_folder(args.pack) if Path(args.pack).is_dir() else inspect_pack(args.pack, args.store_dir)
+            except (ValueError, OSError, zipfile.BadZipFile, KeyError, TypeError) as exc:
+                report = {"ok": False, "error": str(exc)}
+            if args.json:
+                print(json.dumps(report))
+            elif report["ok"]:
+                print(f'{report["id"]} {report["version"]} ({report["kind"]}): policy {report["policy"]["verdict"]}')
+                for f in report["policy"]["findings"]:
+                    print(f'  {f["level"]}: {f["text"]}')
+            else:
+                print("Does not verify: " + report["error"])
+            return 0 if report["ok"] and report["policy"]["verdict"] != "refused" else 1
+        if args.command == "prepare-listing":
+            from asset_store.policy import listing_for
+            return prepare_listing(args, config, listing_for)
         if args.command == "verify":
             m = verify(args.pack)
             print(f'Verified {m["id"]} {m["version"]}')

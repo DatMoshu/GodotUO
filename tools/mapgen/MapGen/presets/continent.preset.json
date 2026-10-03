@@ -1,0 +1,29 @@
+{
+  "name": "Continent",
+  "description": "One large landmass with rolling hills, moderate forest, scattered towns. The default Felucca-style.",
+  "seed": 1,
+  "passes": {
+    "Noise Height": {
+      "Octaves": 5,
+      "BaseFrequency": 0.004,
+      "Lacunarity": 2.0,
+      "Gain": 0.5,
+      "VerticalScale": 64,
+      "ContinentFalloff": 0.35
+    },
+    "Biome Assign": {
+      "SeaLevelZ": 0,
+      "MountainZ": 50,
+      "SwampMoistureMin": 200,
+      "WetlandMoistureMin": 230
+    },
+    "Forest Scatter": {
+      "DensityMultiplier": 1.0,
+      "MinRadius": 4
+    },
+    "POI Stamps": {
+      "ControlPointsPerQuadrant": 3,
+      "DungeonsPerQuadrant": 1
+    }
+  }
+}

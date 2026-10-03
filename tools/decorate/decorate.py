@@ -82,7 +82,10 @@ class Library:
     names: dict = field(default_factory=dict)
 
     @classmethod
-    def from_db(cls, con, has_art=None) -> "Library":
+    def from_db(cls, con, has_art=None, facings: dict | None = None) -> "Library":
+        """`facings`: {item: set of wall sides its art's back may stand or hang against}, for art
+        that only faces some ways (load_facings). A template whose wall side one of its items
+        cannot take is dropped, so no piece is ever placed facing a wall."""
         tps = []
         for r in con.execute("SELECT id, items, w, h, against, on_wall, kinds, uses, room_types FROM template "
                              "ORDER BY id"):
@@ -99,6 +102,9 @@ class Library:
             if r[5] and not (set(kinds) <= HUNG_KINDS or min(it[3] for it in items) >= 5):
                 continue
             if not r[5] and not r[4] and set(kinds) & WALL_KINDS:
+                continue
+            if facings and r[4] and not all(it[0] not in facings or facings[it[0]] is None
+                                            or facings[it[0]] & set(r[4]) for it in items):
                 continue
             tps.append(Template(r[0], items, r[2], r[3], frozenset((it[1], it[2]) for it in items), r[4],
                                 bool(r[5]), kinds, r[7], json.loads(r[8])))
@@ -401,9 +407,41 @@ def decorate(side: dict, lib: Library, seed: int = 1, allowed=HOUSE_TYPES, densi
     return decor, report
 
 
-def check(side: dict, decor: list[dict]) -> list[str]:
+def load_facings(path) -> dict:
+    """A facings file: {"items": {"0x0a2c": ["N"], "0x0b34": null, ...}}, the wall sides each
+    item's art may have its back to (null: any, the art is symmetric). Items not listed are free."""
+    raw = json.loads(Path(path).read_text(encoding="utf-8"))
+    return {int(k, 16): (set(v) if v else None) for k, v in raw.get("items", raw).items() if not k.startswith("_")}
+
+
+def wrong_facing(side: dict, decor: list[dict], facings: dict) -> list[str]:
+    """Pieces whose art faces a wall: a standing piece beside walls on none of its back sides,
+    or a hung one on a wall its back cannot go against."""
+    out = []
+    for n, st in enumerate(side["local"]["storeys"]):
+        walls = set(map(tuple, st["walls"]))
+        floor = set(map(tuple, st["floor"])) - walls
+        for d in decor:
+            if d.get("storey") != n:
+                continue
+            backs = facings.get(int(d["item"], 16))
+            if not backs:
+                continue
+            x, y = d["at"]
+            if (x, y) in walls:            # hung: its back is the wall, the room on the other side
+                sides = {R.OPPOSITE[k] for k, dx, dy in R.DIRS if (x + dx, y + dy) in floor}
+            else:
+                sides = {k for k, dx, dy in R.DIRS if (x + dx, y + dy) in walls}
+            if sides and not sides & backs:
+                out.append(f"storey {n}: {d['item']} at {[x, y]} faces a wall (its back goes {''.join(sorted(backs))},"
+                           f" the wall is {''.join(sorted(sides))})")
+    return out
+
+
+def check(side: dict, decor: list[dict], facings: dict | None = None) -> list[str]:
     """What a decor list must never do: stand on a door, a stair, a landing, a window
-    or an arrival, or cut a storey's doors and stairs apart. [] when it is clean."""
+    or an arrival, or cut a storey's doors and stairs apart; with `facings`, face a wall.
+    [] when it is clean."""
     local = side["local"]
     problems = []
     for n, st in enumerate(local["storeys"]):
@@ -435,7 +473,7 @@ def check(side: dict, decor: list[dict]) -> list[str]:
             for t in targets[1:]:
                 if t not in seen:
                     problems.append(f"storey {n}: {list(t)} is cut off from {list(targets[0])}")
-    return problems
+    return problems + (wrong_facing(side, decor, facings) if facings else [])
 
 
 def plan_image(side: dict, decor: list[dict], n: int, png: Path, cell: int = 14) -> None:

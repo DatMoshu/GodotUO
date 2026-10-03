@@ -42,8 +42,17 @@ namespace GUO.Assets
             File.FillEntries();
         }
 
+#if TOOLS
+        // PORT DEVIATION (GUO): editor-only; multis written to a stage, by id, laid over the install's (ADR-0031).
+        public static Dictionary<uint, List<MultiInfo>> EditorOverlay;
+#endif
+
         public List<MultiInfo> GetMultis(uint idx)
         {
+#if TOOLS
+            // PORT DEVIATION (GUO): the editor's Multi Editor overlays multis it wrote to a stage (ADR-0031).
+            if (EditorOverlay != null && EditorOverlay.TryGetValue(idx, out var staged)) return new List<MultiInfo>(staged);
+#endif
             // PORT DEVIATION (GUO): return a copy, preserving caller ownership of the list.
             if (FileManager.Content != null && FileManager.Content.TryMulti((int)idx, out var packed)) return new List<MultiInfo>(packed);
             var list = new List<MultiInfo>();

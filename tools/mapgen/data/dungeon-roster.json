@@ -1,0 +1,47 @@
+{
+  "_comment": "Mob roster for procedural dungeon spawners. Tiers determine which ModernUO BaseCreature subclass spawns in each room kind. loot_packs is informational; ModernUO's BaseCreature.OnDeath drives actual drops via the class's PackXxx() calls. chest_classes_by_tier selects the BaseTreasureChest subclass for Treasure rooms. Hand-curated MVP — replace with miner output (DungeonRosterMinerPass) when implemented.",
+  "tiers": {
+    "Trash": [
+      { "name": "Skeleton",       "probability": 100, "maxCount": 2 },
+      { "name": "Zombie",         "probability":  80, "maxCount": 2 },
+      { "name": "Ratman",         "probability":  60, "maxCount": 1 },
+      { "name": "Headless",       "probability":  40, "maxCount": 1 }
+    ],
+    "Elite": [
+      { "name": "SkeletalKnight", "probability": 100, "maxCount": 1 },
+      { "name": "BoneKnight",     "probability":  80, "maxCount": 1 },
+      { "name": "Lich",           "probability":  60, "maxCount": 1 },
+      { "name": "OgreLord",       "probability":  40, "maxCount": 1 }
+    ],
+    "Boss": [
+      { "name": "LichLord",       "probability": 100, "maxCount": 1 },
+      { "name": "AncientLich",    "probability":  50, "maxCount": 1 }
+    ],
+    "Treasure": [
+      { "name": "Skeleton",       "probability": 100, "maxCount": 1 }
+    ]
+  },
+  "loot_packs": {
+    "Trash": "Average",
+    "Elite": "Rich",
+    "Boss":  "UltraRich",
+    "Treasure": "Average"
+  },
+  "chest_classes_by_tier": {
+    "Trash":    "WoodenTreasureChest",
+    "Elite":    "MetalTreasureChest",
+    "Boss":     "MetalGoldenTreasureChest",
+    "Treasure": "MetalTreasureChest"
+  },
+  "spawn_count_by_kind": {
+    "Trash":    3,
+    "Elite":    2,
+    "Boss":     1,
+    "Treasure": 1,
+    "Empty":    0
+  },
+  "delays": {
+    "minDelay": "00:05:00",
+    "maxDelay": "00:10:00"
+  }
+}

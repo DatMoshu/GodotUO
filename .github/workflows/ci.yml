@@ -148,6 +148,7 @@ jobs:
           python tools/asset_store/smoke.py
           python tools/asset_store/test_content.py
           python tools/asset_store/test_catalogue.py
+          python tools/asset_store/test_policy.py
           python tools/shard_content/test_shard_content.py
 
       # Bulk unpack/pack of art, gumps and animations (Epic H, H2), on a

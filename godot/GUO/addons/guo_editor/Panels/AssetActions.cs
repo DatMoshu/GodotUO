@@ -31,6 +31,14 @@ public static class AssetActions
                 path => current.SavePng(path))));
         }
 
+        if (current != null && kind != AssetKind.Hue)
+        {
+            ins.ArtKind = kind;
+            ins.ArtId = id;
+            ins.Actions.Add(("Edit in Pixelorama", () => ReportEdit(EditIn(data, kind, id, current, pinta: false))));
+            ins.Actions.Add(("Edit in Pinta", () => ReportEdit(EditIn(data, kind, id, current, pinta: true))));
+        }
+
         ins.Actions.Add(("Import PNG...", () => Pick(EditorFileDialog.FileModeEnum.OpenFile, null, path =>
         {
             string why = ImportFile(data, kind, id, path);
@@ -44,7 +52,9 @@ public static class AssetActions
         {
             ins.Actions.Add(("Revert", () =>
             {
+                string rel = assets.RelativePathOf(kind, id);
                 assets.Revert(kind, id);
+                new AssetProvenance(assets).Remove(rel);
                 data.ReapplyAssets(kind, id);
             }));
         }
@@ -109,14 +119,47 @@ public static class AssetActions
             return $"could not read {path}";
         }
 
-        string why = data.Assets.Import(kind, id, img);
+        // The shared post-process and the provenance record (ADR-0029). A PNG of unknown origin is
+        // assumed derived from client art: it stays local until its maker says otherwise.
+        var prov = new ArtProvenance { Tool = "import-png", Inputs = { Path.GetFileName(path) }, DerivedFromClientArt = true };
+        string why = ArtExchange.ImportImage(data, kind, id, img, prov);
         if (why == null)
         {
-            data.ReapplyAssets(kind, id);
             GD.Print($"[GUO editor] {kind} 0x{id:X4} replaced from {Path.GetFileName(path)}");
         }
 
         return why;
+    }
+
+    /// <summary>
+    /// "Edit in Pixelorama" / "Edit in Pinta": writes the PNG and its sidecar to the exchange folder and
+    /// opens the editor. Null on success, else what to tell the user. The result comes back through
+    /// <see cref="ArtExchange.Poll"/>.
+    /// </summary>
+    public static string EditIn(EditorData data, AssetKind kind, int id, Image current, bool pinta)
+    {
+        if (pinta && ExternalTools.FindPinta() == null)
+        {
+            return ExternalTools.PintaHint;
+        }
+
+        string png = ArtExchange.Export(data, kind, id, current, pinta ? "pinta" : "out");
+        return pinta ? ExternalTools.OpenPinta(png) : ExternalTools.OpenPixelorama(png);
+    }
+
+    private static void ReportEdit(string why)
+    {
+        if (why == null)
+        {
+            return;
+        }
+
+        GD.PushWarning($"[GUO editor] {why}");
+        var dlg = new AcceptDialog { DialogText = why, Title = "Edit in an outside editor" };
+        dlg.Confirmed += () => dlg.QueueFree();
+        dlg.Canceled += () => dlg.QueueFree();
+        EditorInterface.Singleton.GetBaseControl().AddChild(dlg);
+        dlg.PopupCentered();
     }
 
     private static string Stem(AssetKind kind) => kind switch

@@ -1,0 +1,59 @@
+{
+  "name": "Rooms Maze (Diablo-style dungeon w/ spawners + chests)",
+  "description": "Rogue rooms+tunnels generator: large rooms tagged Trash/Elite/Boss/Treasure/Empty, connected by L-tunnels, walled with stone (0x008E), floored with marble (0x0513), decorated with bones/web/torches/etc., and accompanied by a Data/Spawns/rooms-maze-<seed>.json spawner file loaded via ModernUO's [ImportSpawners command. Pair with paint-rooms-maze.ps1 + make-rooms-maze.bat. Default scope 512x512 produces ~14 rooms (forced ≥1 Boss + ≥1 Treasure).",
+  "seed": 4242,
+  "passes": {
+    "Rooms Carve": {
+      "MaxLeafSize": 40,
+      "MinLeafSize": 20,
+      "RoomMin": 8,
+      "RoomMax": 32,
+      "LeafMargin": 1,
+      "TunnelHalfWidth": 1,
+      "WeightTrash": 5,
+      "WeightElite": 2,
+      "WeightBoss": 1,
+      "WeightTreasure": 1,
+      "WeightEmpty": 1
+    },
+    "Rooms Stamp": {
+      "WallId": 128,
+      "FloorId": 1299,
+      "FlattenZ": true,
+      "FloorZ": 0,
+      "FloorOnCorridors": true,
+      "WallIdNS": 130,
+      "WallIdEW": 129
+    },
+    "Dungeon Decor Scatter": {
+      "DensityMultiplier": 1.0
+    },
+    "Dungeon Spawner Emit": {
+      "Map": "Felucca",
+      "NamePrefix": "RoomsMaze",
+      "Basename": "rooms-maze"
+    }
+  },
+  "disable_passes": [
+    "Hydraulic Erosion",
+    "Mountain Shape",
+    "Biome Altitude Jitter",
+    "Coast Smooth",
+    "Auto Coast",
+    "Dig Shore",
+    "Coast Terrace",
+    "Land Transitions",
+    "Cliff Edge",
+    "River Carve",
+    "POI Stamps",
+    "Road Graph",
+    "Road Centerline",
+    "Road Stamps",
+    "Forest Scatter",
+    "Biome Static Scatter",
+    "Mountain Edge Statics",
+    "Mountain Path",
+    "Cave Wall Statics",
+    "Maze Stamp"
+  ]
+}

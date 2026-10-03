@@ -1,0 +1,63 @@
+{
+  "name": "Archipelago — Grasslands",
+  "description": "Many small-to-medium organic islands scattered across deep ocean. Grasslands is the dominant biome by design: ForestMoistureMin is pushed high and DesertMoistureMax is pushed low so most island cells fall into the Grassland 'else' branch. Mountains are kept rare (high MountainZ + low VerticalScale), snow only at the polar map edges. Jungle/Savanna/DenseForest/Swamp/Wetland are intentionally disabled.",
+  "seed": 17,
+  "passes": {
+    "Noise Height": {
+      "Octaves": 6,
+      "BaseFrequency": 0.006,
+      "Lacunarity": 2.1,
+      "Gain": 0.55,
+      "VerticalScale": 50,
+      "Shape": "Archipelago",
+      "ShapeStrength": 0.6,
+      "ArchipelagoScale": 0.012,
+      "ContinentFalloff": 0.0
+    },
+    "Moisture & Climate": {
+      "WindDirectionDeg": 180,
+      "Bidirectional": true,
+      "MoisturePerSeaCell": 0.9,
+      "LandDecay": 0.006,
+      "RainShadowZ": 50,
+      "BaseTemperature": 215,
+      "LapseRate": 1.4,
+      "LatitudeFalloff": 0.35
+    },
+    "Biome Assign": {
+      "SeaLevelZ": 4,
+      "MountainZ": 60,
+      "SnowTemperature": 30,
+      "TundraTemperature": 0,
+      "DesertMoistureMax": 30,
+      "ForestMoistureMin": 220,
+      "DenseForestMoistureMin": 256,
+      "SavannaTemperature": 256,
+      "JungleTemperature": 256,
+      "SwampMoistureMin": 256,
+      "WetlandMoistureMin": 256,
+      "LowlandZWindow": 0,
+      "MountainMinLandFraction": 0.02
+    },
+    "Coast Smooth": {
+      "BeachBand": 3
+    },
+    "Land Transitions": {
+      "SandBand": 3,
+      "DirtBand": 3
+    },
+    "Forest Scatter": {
+      "DensityMultiplier": 0.35
+    },
+    "River Carve": {
+      "SourceCount": 4
+    },
+    "POI Stamps": {
+      "ControlPointsPerQuadrant": 1,
+      "DungeonsPerQuadrant": 0
+    },
+    "Map Validator": {
+      "EdgeBandWidth": 6
+    }
+  }
+}

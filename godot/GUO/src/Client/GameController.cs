@@ -797,6 +797,12 @@ namespace GUO
             // PORT DEVIATION (GUO): on a touch screen, or under --touch, the
             // touch layer stands in front and hands GodotInput the mouse
             // events a finger amounts to. Off, it is one false test.
+            // PORT DEVIATION (GUO): an explicitly opened authored gump also owns desktop input.
+            if (!GUO.Input.Touch.TouchInput.Enabled && GUO.Input.Touch.Modern.ModernAuthoredGump.HandleDesktopInput(@event))
+            {
+                GetViewport().SetInputAsHandled();
+                return;
+            }
             if (!(GUO.Input.Touch.TouchInput.Enabled && GUO.Input.Touch.TouchInput.Handle(@event)))
             {
                 GodotInput.Handle(@event);

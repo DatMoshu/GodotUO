@@ -76,6 +76,10 @@ public partial class EditorSmoke : Node
 
     /// <summary>The AI dock the plugin made, for the AI checks (ADR-0028).</summary>
     public AiDock Ai { get; set; }
+    public ArtDock Art { get; set; }
+
+    /// <summary>The UO Store tab the plugin made, for the store checks (ADR-0026 section 8).</summary>
+    public StoreView Store { get; set; }
 
     public EditorSmoke() : this(null, null, null, null, null, null)
     {
@@ -166,6 +170,21 @@ public partial class EditorSmoke : Node
                 {
                     CheckLoaded();
                     CheckServerManager();
+                    CheckGumpStudio();
+                    if (Array.IndexOf(OS.GetCmdlineUserArgs(), "--guo-gump-studio-only") >= 0)
+                    {
+                        if (!Headless && Array.IndexOf(OS.GetCmdlineUserArgs(), "--guo-gump-studio-visual") >= 0 && _failures.Count == 0)
+                        {
+                            StartGumpVisual(); _stage = 70; _frames = 0; break;
+                        }
+                        if (_reloadTest && !_afterReload && _failures.Count == 0)
+                        {
+                            RequestReload();
+                            _stage = 4;
+                        }
+                        else Finish();
+                        break;
+                    }
                     _stage = _failures.Count > 0 ? 9
                         : ArgValue(LiveFlag) != null ? 40
                         : ArgValue(WorldShotFlag) != null ? 30 : 1;
@@ -177,6 +196,24 @@ public partial class EditorSmoke : Node
                     _stage = 9;
                 }
 
+                break;
+
+            case 70:
+                if (_frames > 45)
+                {
+                    CaptureGumpVisual("wide");
+                    _gumpProofWindow.Size = new Vector2I(1280, 900);
+                    _stage = 71; _frames = 0;
+                }
+                break;
+            case 71:
+                if (_frames > 45)
+                {
+                    CaptureGumpVisual("compact");
+                    FinishGumpVisual();
+                    if (_reloadTest && !_afterReload && _failures.Count == 0) { RequestReload(); _stage = 4; }
+                    else Finish();
+                }
                 break;
 
             case 1:
@@ -226,7 +263,27 @@ public partial class EditorSmoke : Node
 
             case 60:
                 // The AI hub (ADR-0028): ACP, Ollama and queue, against stubs.
-                if (StepAi())
+                // One after the other: both are async stages that wait on the scene tree's timers.
+                if (StepAi() && StepStore() && StepLogs())
+                {
+                    _stage = 61;
+                    _frames = 0;
+                }
+
+                break;
+
+            case 61:
+                // The art pipeline (ADR-0029): exchange folder, watcher, post-process, stub services.
+                if (StepArt())
+                {
+                    _stage = 65;
+                }
+
+                break;
+
+            case 65:
+                // The Map Generator (ADR-0030): schema, determinism, a pass toggle, export.
+                if (StepMapGen())
                 {
                     // Phase 5: the asset overlay, before the World tab boots
                     // so the world's own loaders get it too.
@@ -317,7 +374,7 @@ public partial class EditorSmoke : Node
                     _world.ForcedMouse = null;
                     _world.Tool = WorldTool.Select;
                     _editReport["ok"] = !_editReport.ContainsKey("failed");
-                    _stage = 9;
+                    _stage = 66;
                 }
                 else if (_frames >= _steps[_step].Wait)
                 {
@@ -332,6 +389,15 @@ public partial class EditorSmoke : Node
 
                     _step++;
                     _frames = 0;
+                }
+
+                break;
+
+            case 66:
+                // The Multi Editor (ADR-0031), with the World up for the selection and the preview.
+                if (StepMultiEdit(delta))
+                {
+                    _stage = 9;
                 }
 
                 break;
@@ -740,6 +806,12 @@ public partial class EditorSmoke : Node
         if (_liveRole == "objects")
         {
             StepLiveObjects();
+            return;
+        }
+
+        if (_liveRole == "mobiles")
+        {
+            StepLiveMobiles();
             return;
         }
 
