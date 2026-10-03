@@ -1,10 +1,36 @@
-// xBR (level 1) edge-directed pixel-art upscaling for the pregame. GUO, BSD-2-Clause.
-// After Hyllian's xBR rule: for the corner of the source pixel the output
-// pixel sits in, compare the two diagonal "edge weights" of the 4x4
-// neighbourhood; where the edge runs across the corner, the corner's
-// triangle takes the colour of the neighbour along it. Single pass, any
-// scale, no state. Nearest sampling only (the source is pixel art).
+// Edge-directed pixel-art upscaling for the pregame: a reduced, single-pass corner
+// blend. GUO, BSD-2-Clause, with the edge rule after Hyllian's xBR (below).
+//
+// For the corner of the source pixel the output pixel sits in, compare the two
+// diagonal "edge weights" of the 4x4 neighbourhood; where the edge runs across the
+// corner, the corner's triangle takes the colour of the neighbour along it. It is
+// not Hyllian's xBR itself (no level 2/3 pattern tables, no per-scale kernels):
+// one pass, any scale, no state. Nearest sampling only (the source is pixel art).
 // Budget: 12 texture reads a pixel; a few full-screen layers on the Deck.
+//
+// The edge rule (the Y/U/V weights 48/7/6, the equality threshold 15, and the
+// wd1/wd2 edge weights) follows Hyllian's xBR shaders, as published in libretro's
+// glsl-shaders (xbr/shaders/xbr-lv2.glsl) and slang-shaders repositories.
+// Copyright (C) 2011-2016 Hyllian - sergiogdb@gmail.com, MIT licence, whose
+// notice follows (docs/upstream/XBR-HYLLIAN-MIT.md):
+//
+//   Permission is hereby granted, free of charge, to any person obtaining a copy
+//   of this software and associated documentation files (the "Software"), to deal
+//   in the Software without restriction, including without limitation the rights
+//   to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+//   copies of the Software, and to permit persons to whom the Software is
+//   furnished to do so, subject to the following conditions:
+//
+//   The above copyright notice and this permission notice shall be included in
+//   all copies or substantial portions of the Software.
+//
+//   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+//   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+//   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+//   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+//   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+//   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+//   THE SOFTWARE.
 
 const vec3 XBR_YUV = vec3(0.299, 0.587, 0.114);
 

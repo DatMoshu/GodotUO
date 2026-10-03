@@ -1,218 +1,142 @@
-# Pregame 3D — a pad-first, PSX-style 3D front end
+# Pregame 3D: a pad-first front end over the classic login painting
 
-Status: in progress (Spekks / Brett); first working build on branch `pregame-3d` (see "Implementation" below). Replaces the classic 2D pregame gumps
-(login, server select, character select, character creation) with one 3D
-diorama a controller can drive end to end. The classic gumps stay; the 3D
-front end is opt-in by a setting until it is proven.
+Author: Speeko (Spekks), PR #16. Status: working, opt-in off the Linux build
+(see "Turning it on"). It replaces the classic 2D pregame gumps (login, server
+list, character list, character creation) with one screen a controller can drive
+end to end, and drives the real login through `LoginScene`. The classic gumps stay
+and are what every desktop run and every existing probe use.
 
-## Look: PSX retro
+## What it is
 
-- Rendered into a `SubViewport` at **320x240-ish internal resolution** (keep
-  the window's aspect: 1280x800 → 400x250), shown upscaled with
-  nearest-neighbour filtering. The rest of GUO's no-filter rule applies.
-- Materials: one shared PSX spatial shader. Vertex snapping to the internal
-  resolution grid (the wobble), affine texture mapping, nearest-filtered
-  textures at 64–256 px, vertex lighting feel, 15-bit colour + ordered
-  dither in a post pass. Optional fog towards the back wall.
-- Lighting: warm, candle/torch-lit, one key light plus flicker. No shadows
-  beyond a baked/blob look.
+The classic login screen, alive. The client's own login painting (gump `0x014E` on
+7.0.64+ clients, the older login art before that) is read at runtime from the
+player's own install, xBR-style upscaled, its stone wall mirrored out to fill a wide
+screen, lit by a flickering warm light and drifting slowly. The client's own gump
+pieces (fields, arrow, Quit, Credits, the three boxes) stand over it where the
+classic gump puts them, and a 2D overlay carries the cards, the hint band and the
+on-screen keyboard. There is no 3D scene, no model and no engine-made art: every
+picture is read from the install, and nothing is packaged.
 
-## Layout: the classic login screen, alive
+Pixel art is never filtered. The painting shader samples with `filter_nearest`, the
+layers and the gump pieces set `TextureFilter = Nearest`, and the overlay scales by a
+whole number.
 
-Same composition as UO's login screen (640x480 reference):
-
-| Object | Role | Behaviour |
-|---|---|---|
-| Stone wall backdrop | set | static; torch light flickers on it |
-| Red velvet cloth, draped under the chest | set | slow subtle cloth sway (vertex shader) |
-| Chest (body + hinged lid) | the frame of every step | lid creaks open on boot; camera moves into/around it between steps |
-| Tufted red velvet chest interior | set | |
-| Stone oval plaque inside the chest | login form | carries "Account name" / "Password" fields as 3D text |
-| Login button (gold-trimmed plaque) | action | presses in, thunk |
-| Green heater shield, left | **Quit** | lifts + glows on focus, thumps when pressed |
-| Credits plaque, right | Credits | |
-| Checkbox studs on the chest front | Autologin / Save account / Music | toggle |
-| Candles / wall torch | light | flicker |
-
-Every interactive object is a **hotspot**: on pad focus it lifts slightly,
-rim-glows gold (`#e0b050`) and shows the pad glyph for A. A presses it
-(short down-up animation + sound). The pointer still works: mouse hover =
-focus, click = press.
-
-## Steps (same diorama, camera moves)
-
-1. **Login** — plaque fields + Login, Quit shield, Credits, option studs.
-   Saved accounts (AccountBook) appear as wax-sealed cards/scrolls to pick
-   with one press; picking one fills the fields.
-2. **Connecting / loading** — lid half-closes / a candle gutters; status text.
-3. **Server select** — servers as scrolls laid in the chest (name, ping
-   dot). D-pad moves, A picks.
-4. **Character select** — up to N character slots as framed portraits/
-   plinths in the chest; the selected character is shown as its UO
-   animated sprite on a billboard (faithful, and very PSX). A = play,
-   Y = delete (confirm), "New" slot = create.
-5. **Character creation** — stations in the same space: profession (cards),
-   appearance (cycle body/hair/beard with left/right, hue palettes),
-   stats/skills (dials/sliders), starting city (map table). Name via the
-   on-screen keyboard.
-
-## Input
-
-- D-pad / left stick: move focus along an explicit neighbour graph per step
-  (authored, not guessed). A: press. B: back (`LoginScene.StepBack`) or close
-  the keyboard. Start: confirm/Login. Right stick keeps the pointer.
-- Keyboard + mouse still work; hot-swap per `InputMode`.
-- **On-screen keyboard** (ours; Linux/Deck has no OS keyboard GUO can call):
-  a PSX-styled 3D/overlay grid, D-pad to move, A types, X backspace, Y shift,
-  Start done, password fields show dots.
-
-## Code shape
-
-- New, GUO-native code under `src/Pregame3D/` (no ported files beyond one
-  marked hook): `Pregame3D` (owns the SubViewport + camera rig + step state),
-  `Hotspot` (focusable 3D object: lift/glow/press, neighbours), `PadFocus`
-  (routes pad D-pad/A/B into the focus graph while the pregame is up, the way
-  `WindowMenu.Navigate` does), `OnScreenKeyboard`, one stage class per step.
-- Drives the real login through `LoginScene` (`Connect`, `SelectServer`,
-  `SelectCharacter`, `StartCharCreation`, `CreateCharacter`,
-  `DeleteCharacter`, `StepBack`, `CurrentLoginStep`, `Servers`,
-  `Characters`, `Cities`) and `AccountBook`/`ServerBook`, never by faking
-  clicks on the gumps.
-- Hook: `LoginScene.GetGumpForStep` returns no gump for the steps the 3D
-  front end owns when it is enabled — marked `PORT DEVIATION (GUO)`.
-- Assets: `assets/pregame3d/` — glb models + small PNG textures, all
-  original (authored for GUO in Blender, or from the team PSX library). No
-  EA art, no textures sampled from the client data.
-
-## Implementation (2026-10-02)
-
-### Turning it on
+## Turning it on
 
 | How | Effect |
 |---|---|
 | `--pregame-3d` / `--pregame-classic` | this run only |
 | `pregame3d.json` beside settings.json: `{"enabled": true}` | remembered |
-| default | on in an exported Linux build (the Deck build), off elsewhere, so desktop dev runs and every existing probe keep the classic gumps |
+| default | on in an exported Linux build (the Steam Deck build), off everywhere else |
 
-`--pregame3d-probe` turns it on and drives the whole login by synthetic pad
-events (see Verification).
+`--pregame3d-probe` turns it on and drives the whole login (see "Verification").
 
-### Code (`src/Pregame3D/`, all GUO-native)
+## Code (`src/Pregame3D/`, GUO-native)
 
 | File | Job |
 |---|---|
-| `PregameDiorama.cs` | the Pregame3D node: SubViewport + upscale + post pass, overlay layer, step switching on `CurrentLoginStep`, input routing, camera framing, UI-anchored objects, 3D text |
-| `DioramaScene.cs` / `DioramaLayout.cs` | loads `layout.json` + the glbs (runtime glTF fallback when not yet imported), placeholder primitive per missing node (one log line), PSX materials, lights + flicker, lid |
-| `Hotspot.cs`, `PadFocus.cs`, `Overlay.cs` | focusable 3D objects (lift, gold rim, press, ray pick), the explicit neighbour graph + repeat, UO-styled overlay rows |
-| `OnScreenKeyboard.cs` | the field card; with no device keyboard, our grid: D-pad, A type, X delete, Y shift, Start done, B cancel; physical keys type too; passwords as `*` |
-| `NativeKeyboard.cs` | the device's keyboard: Steam's (`steam://open/keyboard` / `close/keyboard`) on the Deck or under Steam, the OS one on Android; Deck and Game Mode detection |
-| `LoginStage` / `StatusStage` / `ServerStage` / `CharacterStage` / `CreationStage` | one per step; drive LoginScene's own calls only |
+| `PregameScreen.cs` | the node: layers, the painting, step switching on `CurrentLoginStep`, input routing, the modal cards, the window (`PrepareWindow`) |
+| `Painting.cs`, `PregameAssets.cs` | composes the painting from the client's gumps; loads every gump the pregame draws on a worker thread (and the figure's frames after login) |
+| `GumpProp.cs`, `Overlay.cs` | a client gump piece with its states, glow and dim; the overlay's cards, rows and text in the client's font |
+| `PadFocus.cs` | the explicit neighbour graph, held-direction repeat, the `PadCmd` set |
+| `Stage.cs` and `LoginStage` / `StatusStage` / `ServerStage` / `CharacterStage` / `CreationStage` (+ `CreationSteps`) | one per step; each drives only `LoginScene`'s own calls (`Connect`, `SelectServer`, `SelectCharacter`, `CreateCharacter`, `DeleteCharacter`, `StepBack`) |
+| `Mannequin.cs`, `WorldMapImage.cs` | the creation figure from the player's animation art; the Home map drawn from the player's map files |
+| `OnScreenKeyboard.cs`, `NativeKeyboard.cs` | our grid keyboard; the device's (Steam's, Android's) when there is one |
 | `Pregame3DSettings.cs`, `Pregame3DProbe.cs` | the switch; the probe |
 
-Shaders: `assets/pregame3d/shaders/` — `psx.gdshader` and `psx_cloth.gdshader`
-share `psx_common.gdshaderinc` (vertex snap to the internal grid, affine UVs,
-nearest sampling, vertex lighting, rim glow; the cloth adds a sway);
-`psx_post.gdshader` is the 15-bit + 4x4 Bayer pass.
+Shaders in `assets/pregame/shaders/`: `painting.gdshader` (the painting: wall mirror,
+light, drift, dim), `gump.gdshader` (the pieces: xBR-style upscale, dim, a gold glow
+for the pad's focus) and `xbr.gdshaderinc`. The xBR include is a reduced,
+single-pass corner blend, not Hyllian's xBR: it takes the edge rule (weights 48/7/6,
+threshold 15, the wd1/wd2 edge weights) from Hyllian's xBR, which is MIT licensed
+(`docs/upstream/XBR-HYLLIAN-MIT.md`).
 
-### Screen
+## Hooks in other files (each marked `PORT DEVIATION (GUO)`)
 
-Internal resolution = window / whole-number scale, about 400 lines
-(1280x800 → 640x400 x2, 1920x1080 → 640x360 x3, 2560x1440 → 640x360 x4,
-3840x2160 → 768x432 x5), re-evaluated on resize; vertex snapping follows it.
-Wide windows keep the layout's vertical FOV; narrower ones widen it until the
-step's content (chest + plaque + Login; the scrolls; the plinths) fits across.
-`ui_anchors` objects (Quit shield, Credits plaque) are placed every frame
-parallel to the camera's image plane, in their corner. 3D text is a Label3D in
-the client's font at a whole number of font pixels per internal pixel.
+- `Game/Scenes/LoginScene.cs`: no classic gump for a step the pregame owns
+  (`PregameScreen.Owns`, which also brings the screen up); the window is left alone
+  and `PregameScreen.PrepareWindow` is called instead of the 640x480.
+- `Client/GameController.cs`: keys and pointer buttons go to
+  `PregameScreen.HandleMainInput` while it is up.
+- `Input/Gamepad/GamepadInput.cs`: D-pad, left stick, A/B/X/Y, Start and the shoulders
+  go to `PregameScreen.HandlePad` while it is up (the right stick keeps the pointer).
+- `Bootstrap/Main.cs`: the three flags are accepted (read by `Pregame3DSettings`).
 
-### Hooks in other files (each marked)
+## Steps and controls
 
-- `Game/Scenes/LoginScene.cs` — `PORT DEVIATION (GUO)`: `GetGumpForStep`
-  returns null when the 3D pregame owns the step; `Load` and
-  `UpdateCharacterList` skip their direct gump adds; `Update` tolerates a null gump;
-  `Load` leaves the window alone (no 640x480, no restore, no minimum size) and
-  calls `PregameDiorama.PrepareWindow`, which goes fullscreen in an exported
-  Linux (Deck) build. Everything (internal resolution, FOV fit, overlay scale,
-  ui_anchors, 3D label pixel sizes) is laid out again on every window size
-  change; the window size wins when the root viewport lags it (gamescope).
-- `Client/GameController.cs` — `PORT DEVIATION (GUO)`: keys and pointer buttons
-  go to `PregameDiorama.HandleMainInput` while it is up.
-- `Input/Gamepad/GamepadInput.cs` — D-pad, left stick, A/B/X/Y, Start, shoulders
-  go to `PregameDiorama.HandlePad` while it is up (right stick keeps the pointer;
-  an unresolved layout's face buttons still go to GamepadInput).
-- `Bootstrap/Main.cs` — the three flags are accepted (read by Pregame3DSettings).
+| Step | A | B | X | Y | Start | Other |
+|---|---|---|---|---|---|---|
+| Login | press / type in a field | | edit account | credits | Login | LB: Servers |
+| Status | OK (message) | cancel / OK | | | | |
+| Servers (the shard's list) | choose | back | | | choose | |
+| Characters | play / new on an empty plinth | back | new | delete (confirm) | play | |
+| Creation | edit / choose | back one step | | random | next / create | LB/RB: step |
 
-### Controls
+Keyboard: arrows, Enter = A, Escape = B, Tab, Ctrl+Enter = Start; typing on a focused
+field opens the keyboard with that letter. Mouse: hover focuses, left click presses,
+right click = B.
 
-| Step | A | B | X | Y | Start |
-|---|---|---|---|---|---|
-| Login | press / type in a field | – | edit account | credits | Login |
-| Status | OK (message) | cancel / OK | | | |
-| Servers | choose | back | | | choose (LB/RB page) |
-| Characters | play / new on an empty plinth | back | new | delete (confirm) | play |
-| Creation | edit / choose | page back (out from Appearance) | | | next / create |
+### Servers (the shard list, review fix)
 
-Keyboard: arrows, Enter = A, Escape = B, Tab, Ctrl+Enter = Start; typing on a
-focused field opens the keyboard with that letter. Mouse: hover focuses, left
-click presses, right click = B.
+The login step has a **Servers** entry in its top-left corner, in the pad's focus
+graph (Quit, then up to Servers, then right to the account field) and on **LB**. It
+opens the same card the classic login screen's Servers button opens
+(`PregameCard.OpenOnMain`), over the pregame: the player's servers, favourites and
+community list, `ServerPlay.Check` (a shard that only allows its own client; one that
+needs its own client files, asked as the restart question; one that names content
+packs, asked as the install question), and the shard's data folder or content lock
+(`ShardSession`). The card is Godot controls in their own viewport, so while it is
+open the pad's commands reach them as `ui_up/down/left/right/accept` actions (A
+presses), and B answers "no" to a question or closes the card. Play on a server runs
+`ServerPlay.Play` as the classic card does; with no login gump it hands the choice to
+`LoginStage.PlayOn`, which closes the card, lists the new server's saved accounts and,
+for a saved account chosen on the card, logs in as the classic path does. A restart for
+a shard's files or packs works as on the classic screen. Typing into the card's own text
+fields (Add server, Add account) still needs a keyboard; the pregame's grid keyboard does
+not serve them yet.
 
-### Verification
+### Character creation: the Tailor's Table
 
-`--pregame3d-probe` (under `xvfb-run`, with the dev shard): types the account
-and password on the on-screen keyboard, logs in, picks the server, opens
-creation (changes gender/hues, names the character, picks a profession,
-reaches the cities) and backs out, plays the character, checks it is in the
-world and that the diorama freed itself; screenshots per step into
-`--screenshot-dir`. Exit 0 = pass.
+Five steps under tabs (`1 Trade 2 Look 3 Skills 4 Home 5 Name`; Skills only for
+Advanced). The character stands on the left, live, from the player's own animation art;
+the right stick turns it. Trade: the profession cards, Y at random. Look: body, race,
+skin, hair, beard, shirt, pants, colours from the hue data. Skills: Str/Dex/Int with a
+fixed total and the gump's skill slots. Home: a map drawn at runtime from the map files,
+a pin per city. Name: validation as the gump's, the keyboard, Enter Britannia, which
+calls `LoginScene.CreateCharacter`.
 
-### Not done yet
+## Steam Deck
 
-- No UO sprite of the character on the plinth (stand-in plinth + name).
-- Creation is functional, not pretty: overlay lists, no mannequin, hues shown as numbers.
-- Server ping only where the shard's address answers ICMP; no server-book editor.
-- Sound hook (`Hotspot.PressSound`) is unset.
+- Detection: env `SteamDeck=1`, or `/sys/class/dmi/id/board_name` / `product_name`
+  "Jupiter" or "Galileo". Game Mode: `SteamGamepadUI=1`, `XDG_CURRENT_DESKTOP=gamescope`
+  or `GAMESCOPE_WAYLAND_DISPLAY`. Under Steam: either, or `SteamAppId` /
+  `SteamClientLaunch`, or a running `steam` process.
+- Window: on the Deck a borderless 1280x800 window at 0,0 (gamescope's fullscreen is a
+  1920x1080 canvas scaled onto the panel); an exported Linux build elsewhere goes
+  fullscreen; a desktop run keeps its window. The layout follows the OS window when the
+  root viewport lags it.
+- Text fields: Steam's keyboard (`steam steam://open/keyboard`) only when a steam process
+  is already running (it never starts Steam), else our grid; Android's own; scripted runs
+  always use the grid. `GUO_NATIVE_KEYBOARD=0` forces the grid, `=dry` takes the Steam
+  path with the URLs only logged.
 
-### Steam Deck (2026-10-02)
+## Verification
 
-- Detection: env `SteamDeck=1`, or `/sys/class/dmi/id/board_name` /
-  `product_name` "Jupiter" or "Galileo". Game Mode: `SteamGamepadUI=1`,
-  `XDG_CURRENT_DESKTOP=gamescope` or `GAMESCOPE_WAYLAND_DISPLAY`. Under Steam:
-  either, or `SteamAppId` / `SteamClientLaunch`, or a running `steam` process.
-- Window: on the Deck never Fullscreen (gamescope gives a 1920x1080 canvas
-  scaled onto the panel); a borderless 1280x800 window at 0,0.
-- Text fields: Steam's keyboard under Steam (typing real keys; the field card
-  moves to the top, "press Start when done"); Android's own; our grid only
-  without either. Scripted runs (`--pregame3d-probe`, no-focus runs) always use
-  the grid; `GUO_NATIVE_KEYBOARD=0` forces it, `=dry` takes the Steam path
-  with the URLs only logged. The log says which: `pregame3d: keyboard = ...`.
-- `ui_anchors` boxes are clamped inside the viewport whatever the margins.
+`--pregame3d-probe` drives the whole login with synthetic pad events through the real
+input path, with a screenshot per step into `--screenshot-dir`. It checks that every
+visible control is inside the screen at each size, that no flat stand-in frame is
+showing, types the account and password on the keyboard, reaches the Servers entry by
+the D-pad, opens the card, picks the dev shard and plays (back on the login step with
+the server set), asks a files-needing server's restart question and answers it with B,
+logs in, goes through creation on a fresh account (or plays the existing character with
+`--account`), and checks the pregame freed itself in the world. Exit 0 = pass. It needs a
+shard (use a private one, `tools/editor_shard`). Not checked there: a device (the Deck)
+itself; the content-pack install is covered by the classic `--pregame-probe` with
+`UO_PROBE_SHARD_CONTENT`.
 
-### Character creation: the Tailor's Table (2026-10-02)
+## Not done
 
-Five steps under tabs (`1 Trade · 2 Look · 3 Skills · 4 Home · 5 Name`; a
-done step shows its choice, Skills only for Advanced). L1/R1 or Start move
-between steps, B goes back one step (out of Trade to the character list). The
-character stands large on a plinth on the left, live, drawn from the player's
-own animation art (`Mannequin.cs`: the body's stand frame plus each worn
-item's equipment frame in the client's layer order, hued on the CPU as the
-hue shader does, at a whole-number scale); the right stick turns it.
-
-- **Trade:** the profession list in the gump's order, 4x2 cards, the focused
-  one's stats and skills below; A chooses, Y picks at random.
-- **Look:** body, race, skin, hair, beard, shirt, pants; left/right cycles,
-  colours are swatches (hue → RGB from the hue data), A opens the slot's hue
-  grid (the gump's set) with a live preview, A keeps, B undoes; Y randomises.
-- **Skills (Advanced):** Str/Dex/Int with a fixed total, the gump's skill slots
-  (left/right = value, paired as the gump's sliders), A = the skill list under
-  the client's default skill groups, X clears.
-- **Home:** a map drawn at runtime from the player's map files
-  (`WorldMapImage.cs`, radar colours, land only), a pin per city at its real
-  place; the D-pad jumps pin to pin, A chooses.
-- **Name:** the name (the gump's validation) on the device keyboard or ours, a
-  summary, and Enter Britannia, which calls `LoginScene.CreateCharacter` with
-  the gump's data.
-
-The probe on a fresh account (the default) goes through every step: an
-Advanced character, a palette colour, changed stats and four skills, a city
-other than the first, then creates it and enters the world. `--account
-guoprobe` plays the existing character instead.
+- No sound hook; the card's text fields have no pad keyboard.
+- Resizing the window by the user is left as the contributor wrote it
+  (`AllowUserResizing`), and `PregameScreen.Owns` creates the screen as a side effect
+  of its name; both are noted for the author.

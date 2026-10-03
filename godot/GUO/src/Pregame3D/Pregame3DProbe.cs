@@ -5,7 +5,9 @@ using System;
 using System.Threading.Tasks;
 using Godot;
 using GUO.Game.Scenes;
+using GUO.Configuration;
 using GUO.Input.Gamepad;
+using GUO.Input.Touch.Pregame;
 
 namespace GUO.Pregame3D;
 
@@ -233,6 +235,9 @@ internal static class Pregame3DProbe
         }
         else
         {
+            // 1b. The server list, by pad: the entry beside Quit, the card, a pick and the way back.
+            await ServersChecks();
+
             // 2. The account on the keyboard: focus it (X), type, Done.
             await Press(PadCmd.X);
             Check("X opens the keyboard on the account", PregameScreen.Instance.Keyboard.IsOpen);
@@ -328,6 +333,132 @@ internal static class Pregame3DProbe
         await Frames(90);
         Check("the pregame left with the login scene", !PregameScreen.Active);
         await Shot("12_world");
+    }
+
+    /// <summary>Walks the card's pad cursor (Down, Right, Up, Left in turn) until <paramref name="match"/> holds.</summary>
+    private static async Task<bool> PadTo(GUO.Input.Touch.Pregame.PregameCard card, Func<Control, bool> match, bool sideways = false)
+    {
+        foreach (PadCmd dir in sideways ? new[] { PadCmd.Right, PadCmd.Up, PadCmd.Down, PadCmd.Left } : new[] { PadCmd.Down, PadCmd.Right, PadCmd.Up, PadCmd.Left })
+        {
+            for (int i = 0; i < 40; i++)
+            {
+                Control o = card.PadFocusOwner;
+
+                if (o != null && match(o))
+                {
+                    return true;
+                }
+
+                await Press(dir);
+
+                if (o != null && card.PadFocusOwner == o)
+                {
+                    break;
+                }
+            }
+        }
+
+        Control last = card.PadFocusOwner;
+
+        return last != null && match(last);
+    }
+
+    /// <summary>
+    /// The 3D login's Servers entry (PR #16 review): reachable by the D-pad, LB too; it opens the
+    /// classic server card, which the pad drives; a pick (Play) comes back to the login step with
+    /// the server set; a server that needs its own client files asks the classic restart question
+    /// (answered No with B); B closes the card.
+    /// </summary>
+    private static async Task ServersChecks()
+    {
+        Check("the server card is built", await Until(() => GUO.Input.Touch.Pregame.PregameCard.Instance != null, 600));
+        GUO.Input.Touch.Pregame.PregameCard card = GUO.Input.Touch.Pregame.PregameCard.Instance;
+
+        if (card == null)
+        {
+            return;
+        }
+
+        // The D-pad from the password field: Left to Quit, Up to Servers; A opens the card.
+        await Press(PadCmd.Left);
+        await Press(PadCmd.Up);
+        Check("the D-pad reaches the Servers entry", LoginStage.ProbeOnServers, Tag);
+        await Shot("01b_servers_focus");
+        await Press(PadCmd.A);
+        Check("A on Servers opens the card over the login", await Until(() => LoginStage.ProbeCardOpen, 30));
+        await Frames(30);
+        await Shot("01c_servers_card");
+        await Press(PadCmd.B);
+        Check("B closes the card", await Until(() => !LoginStage.ProbeCardOpen, 30));
+
+        // LB opens it too; a pick of the dev shard, then Play.
+        ServerEntry dev = ServerBook.DevEntry;
+        await Press(PadCmd.LeftShoulder);
+        Check("LB opens the card", await Until(() => LoginStage.ProbeCardOpen, 30));
+        await Frames(10);
+        PregameServers servers = card.Servers;
+        Control row = dev == null ? null : servers.RowFor(dev);
+        Check("the dev shard is listed", row != null);
+
+        if (row != null)
+        {
+            Check("the pad reaches the server's row", await PadTo(card, c => c == servers.RowFor(dev)));
+            await Press(PadCmd.A);
+            await Frames(10);
+            Check("A selects it", servers.Selected == dev);
+            Check("the pad reaches Play", await PadTo(card, c => servers.PlayButton != null && c == servers.PlayButton, sideways: true));
+            await Press(PadCmd.A);
+            Check("Play comes back to the login step with the server set",
+                await Until(() => !LoginStage.ProbeCardOpen, 60) && Step == LoginSteps.Main
+                && Settings.GlobalSettings.Port == dev.Port && ServerPlay.LastOutcome.Contains("log in to"),
+                ServerPlay.LastOutcome);
+        }
+        else
+        {
+            await Press(PadCmd.B);
+        }
+
+        await Frames(20);
+        await Shot("01d_servers_back");
+
+        // A server that needs its own client files: Play asks the classic question, B answers No.
+        ServerEntry files = ServerBook.Add("Probe Files", "127.0.0.1", "2598", out _);
+
+        try
+        {
+            files.NeedsCustomData = true;
+            files.DataFolder = System.Environment.GetEnvironmentVariable("UO_CLIENT_DATA") ?? "";
+            ServerBook.Save();
+            await Press(PadCmd.LeftShoulder);
+            await Until(() => LoginStage.ProbeCardOpen, 30);
+            servers.Rebuild();
+            await Frames(10);
+            Check("the pad reaches the files server's row", await PadTo(card, c => servers.RowFor(files) != null && c == servers.RowFor(files)));
+            await Press(PadCmd.A);
+            await Frames(10);
+            Check("the pad reaches Play on it", await PadTo(card, c => servers.PlayButton != null && c == servers.PlayButton, sideways: true), card.PadFocusOwner?.GetType().Name + " " + card.PadFocusOwner?.Name + " play " + (servers.PlayButton?.Disabled));
+            await Press(PadCmd.A);
+            Check("Play asks to restart with the shard's files (nothing is restarted)",
+                await Until(() => servers.ConfirmButton != null && servers.DetailText.Contains("Restart GUO with Probe Files"), 60), servers.DetailText);
+            await Frames(10);
+            await Shot("01e_servers_files_question");
+            await Press(PadCmd.B);
+            Check("B answers No", await Until(() => servers.ConfirmButton == null, 30) && LoginStage.ProbeCardOpen);
+            await Press(PadCmd.B);
+            Check("B closes the card", await Until(() => !LoginStage.ProbeCardOpen, 30));
+        }
+        finally
+        {
+            GUO.Input.Touch.Pregame.PregameCard.CloseOnMain();
+            ServerEntry left = ServerBook.Find("127.0.0.1", 2598);
+
+            if (left != null)
+            {
+                ServerBook.Remove(left);
+            }
+        }
+
+        await Frames(20);
     }
 
     private const string ProbeName = "Pebble";

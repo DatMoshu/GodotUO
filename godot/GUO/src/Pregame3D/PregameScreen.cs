@@ -140,6 +140,7 @@ internal sealed partial class PregameScreen : Node
     private int _frames;
     private bool _framesReady;
     private bool _mapStarted;
+    private bool _cardWas;
     private Label _loading;
     private readonly List<ShaderMaterial> _propMaterials = new();
     private readonly bool[] _stick = new bool[4];
@@ -254,6 +255,13 @@ internal sealed partial class PregameScreen : Node
         {
             _step = login.CurrentLoginStep;
             SwitchStage(_step.Value);
+        }
+
+        // The server card closed (its Close button, a press outside, a login): the stage's hints again.
+        if (_cardWas != GUO.Input.Touch.Pregame.PregameCard.OnMain)
+        {
+            _cardWas = GUO.Input.Touch.Pregame.PregameCard.OnMain;
+            RefreshHints();
         }
 
         Animate();
@@ -401,7 +409,8 @@ internal sealed partial class PregameScreen : Node
             return;
         }
 
-        string text = Keyboard.IsOpen ? "" : _modal != null ? (_modalConfirm ? "A  Yes     B  No" : "A  OK") : _stage?.Hints ?? "";
+        string text = GUO.Input.Touch.Pregame.PregameCard.OnMain ? "D-pad  Move     A  Press     B  Back / Close"
+            : Keyboard.IsOpen ? "" : _modal != null ? (_modalConfirm ? "A  Yes     B  No" : "A  OK") : _stage?.Hints ?? "";
         _hint.Text = text;
         _hintBand.Visible = text.Length > 0;
         bool top = _stage?.HintsAtTop == true && _modal == null;
@@ -594,6 +603,24 @@ internal sealed partial class PregameScreen : Node
                 CloseModal(false);
             }
 
+            return;
+        }
+
+        // The server card (the classic Servers/Settings card), open over the pregame: it is
+        // Godot controls in its own viewport, so the pad's commands become ui_ actions there.
+        if (GUO.Input.Touch.Pregame.PregameCard.OnMain)
+        {
+            switch (cmd)
+            {
+                case PadCmd.Up: GUO.Input.Touch.Pregame.PregameCard.PadAction("ui_up"); break;
+                case PadCmd.Down: GUO.Input.Touch.Pregame.PregameCard.PadAction("ui_down"); break;
+                case PadCmd.Left: GUO.Input.Touch.Pregame.PregameCard.PadAction("ui_left"); break;
+                case PadCmd.Right: GUO.Input.Touch.Pregame.PregameCard.PadAction("ui_right"); break;
+                case PadCmd.A: GUO.Input.Touch.Pregame.PregameCard.PadAction("ui_accept"); break;
+                case PadCmd.B: GUO.Input.Touch.Pregame.PregameCard.PadBack(); break;
+            }
+
+            RefreshHints();
             return;
         }
 

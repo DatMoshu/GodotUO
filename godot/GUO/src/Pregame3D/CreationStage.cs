@@ -158,7 +158,7 @@ internal sealed partial class CreationStage : Stage
     {
         if (_popover == null && f is IOverlayFocusable o && _scroll != null && GodotObject.IsInstanceValid(_scroll) && _body.IsAncestorOf(o.Control))
         {
-            Callable.From(() => { if (GodotObject.IsInstanceValid(_scroll) && GodotObject.IsInstanceValid(o.Control)) _scroll.EnsureControlVisible(o.Control); }).CallDeferred();
+            Callable.From(() => { if (GodotObject.IsInstanceValid(_scroll) && GodotObject.IsInstanceValid(o.Control) && _scroll.IsInsideTree() && o.Control.IsInsideTree() && _scroll.IsAncestorOf(o.Control)) _scroll.EnsureControlVisible(o.Control); }).CallDeferred();
         }
     }
 

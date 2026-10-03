@@ -137,6 +137,19 @@ internal static class ServerPlay
         }
 
         LoginGump gump = UIManager.GetGump<LoginGump>();
+
+        // The pad-first pregame has no login gump: its login step takes the account (docs/ui/pregame_3d.md).
+        if (gump == null && GUO.Pregame3D.PregameScreen.Active)
+        {
+            string outcome = GUO.Pregame3D.LoginStage.PlayOn(e, account);
+
+            if (outcome != null)
+            {
+                LastOutcome = outcome;
+                return;
+            }
+        }
+
         var boxes = gump == null ? new System.Collections.Generic.List<Game.UI.Controls.StbTextBox>() : All(gump).OfType<Game.UI.Controls.StbTextBox>().ToList();
 
         // The login gump's two fields: the account, then the password.

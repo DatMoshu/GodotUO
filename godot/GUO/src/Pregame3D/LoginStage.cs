@@ -23,6 +23,7 @@ internal sealed class LoginStage : Stage
     private readonly List<(Control control, ShaderMaterial material)> _props = new();
     private readonly List<IOverlayFocusable> _items = new();
     private GumpProp _accountField, _passwordField, _arrow, _quit, _credits;
+    private UiFocus _servers;
     private readonly GumpProp[] _boxes = new GumpProp[3];
     private Label _accountText, _passwordText;
     private PanelContainer _saved;
@@ -45,8 +46,8 @@ internal sealed class LoginStage : Stage
     public override string Hints => _creditsCard != null
         ? "B  Close"
         : D.Focus.Current == _accountField || D.Focus.Current == _passwordField
-            ? "A  Type     Start  Login     Y  Credits"
-            : "A  Press     Start  Login     Y  Credits";
+            ? "A  Type     Start  Login     LB  Servers     Y  Credits"
+            : "A  Press     Start  Login     LB  Servers     Y  Credits";
 
     public override void Enter()
     {
@@ -101,6 +102,7 @@ internal sealed class LoginStage : Stage
         Caption($"UO Version {Settings.GlobalSettings.ClientVersion}.", art.VersionAt, new Color("d0c8b8"));
         RefreshBoxes();
         ShowFields();
+        BuildServersEntry();
         BuildSaved();
         Link();
 
@@ -120,6 +122,8 @@ internal sealed class LoginStage : Stage
         _items.Clear();
         _saved?.QueueFree();
         _saved = null;
+        _servers?.Control.QueueFree();
+        _servers = null;
     }
 
     public override void Update(double delta)
@@ -216,7 +220,8 @@ internal sealed class LoginStage : Stage
         a.Down = p; a.Left = quit; a.Right = credits;
         p.Up = a; p.Down = login; p.Left = quit; p.Right = credits;
         login.Up = p; login.Down = _boxes[1]; login.Left = quit; login.Right = credits;
-        quit.Up = a; quit.Right = a; quit.Left = null; quit.Down = _boxes[0];
+        quit.Up = _servers; quit.Right = a; quit.Left = null; quit.Down = _boxes[0];
+        _servers.Up = null; _servers.Down = quit; _servers.Left = null; _servers.Right = a;
         credits.Up = _savedItems.Count > 0 ? _savedItems[0] : null; credits.Left = a; credits.Right = null; credits.Down = p;
 
         for (int i = 0; i < _boxes.Length; i++)
@@ -258,6 +263,10 @@ internal sealed class LoginStage : Stage
 
             case PadCmd.Y:
                 ShowCredits();
+                return true;
+
+            case PadCmd.LeftShoulder:
+                OpenServers();
                 return true;
 
             case PadCmd.X:
@@ -383,7 +392,84 @@ internal sealed class LoginStage : Stage
         }
     }
 
+    // --- the server list (the classic pre-game card) -------------------------------------
+
+    /// <summary>
+    /// "Servers", top left: opens the same card the classic login screen's Servers button
+    /// opens (ServerBook, ServerPlay.Check, the shard's own files and packs), over this one.
+    /// </summary>
+    private void BuildServersEntry()
+    {
+        Label l = Overlay.Text("Servers", UoTheme.Ink);
+        _servers = Overlay.FrameRow(l, l, "servers");
+        _servers.Pressed = OpenServers;
+        _items.Add(_servers);
+        D.OverlayRoot.AddChild(_servers.Control);
+        _servers.Control.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.TopLeft, Control.LayoutPresetMode.Minsize, 8);
+    }
+
+    private void OpenServers()
+    {
+        if (Login == null || Login.CurrentLoginStep != Game.Scenes.LoginSteps.Main)
+        {
+            return;
+        }
+
+        D.Keyboard.Close();
+        GUO.Input.Touch.Pregame.PregameCard.OpenOnMain();
+        D.RefreshHints();
+    }
+
+    /// <summary>For the probe: the card is up over the pregame.</summary>
+    public static bool ProbeCardOpen => GUO.Input.Touch.Pregame.PregameCard.OnMain;
+
+    public static bool ProbeOnServers => PregameScreen.Instance?.Stage is LoginStage s && s._servers != null && s.D.Focus.Current == s._servers;
+
+    /// <summary>
+    /// ServerPlay.Play at the login step, with no login gump: the card chose a server (its
+    /// address is in the settings now). The card closes, the saved accounts are those of the
+    /// new server, and a saved account chosen on the card logs in as the classic path does.
+    /// Null when this is not the pregame's login step.
+    /// </summary>
+    public static string PlayOn(ServerEntry e, SavedAccount account)
+    {
+        if (PregameScreen.Instance?.Stage is not LoginStage s)
+        {
+            return null;
+        }
+
+        GUO.Input.Touch.Pregame.PregameCard.CloseOnMain();
+        s.RefreshSaved();
+
+        if (account == null)
+        {
+            s.D.Focus.Set(string.IsNullOrEmpty(s._account) ? s._accountField : s._passwordField);
+            s.D.RefreshHints();
+
+            return $"Type your account and password to log in to {e.Name}.";
+        }
+
+        s._server = e;
+        s.PickAccount(account);
+
+        return $"Logging in to {e.Name} as {account.Name}.";
+    }
+
     // --- saved accounts ----------------------------------------------------------------
+
+    /// <summary>The saved accounts of the server now in the settings (it changed on the card).</summary>
+    private void RefreshSaved()
+    {
+        foreach (UiFocus f in _savedItems)
+        {
+            _items.Remove(f);
+        }
+
+        _saved?.QueueFree();
+        _saved = null;
+        BuildSaved();
+        Link();
+    }
 
     private readonly List<UiFocus> _savedItems = new();
 

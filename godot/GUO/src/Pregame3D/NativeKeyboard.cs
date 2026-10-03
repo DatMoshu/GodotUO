@@ -61,7 +61,7 @@ internal static class NativeKeyboard
             {
                 kind = "android";
             }
-            else if (OperatingSystem.IsLinux() && UnderSteam)
+            else if (OperatingSystem.IsLinux() && UnderSteam && SteamRunning())
             {
                 kind = "steam";
             }
@@ -112,7 +112,11 @@ internal static class NativeKeyboard
         }
     }
 
-    /// <summary>Hands a steam:// URL to the Steam client, detached, its output dropped.</summary>
+    /// <summary>
+    /// Hands a steam:// URL to the running Steam client (<c>steam steam://...</c>), its
+    /// output left alone. Never starts Steam: with no steam process nothing is run
+    /// (Kind has already fallen back to the grid keyboard).
+    /// </summary>
     private static void Steam(string url)
     {
         if (Dry)
@@ -121,34 +125,28 @@ internal static class NativeKeyboard
             return;
         }
 
-        foreach (string program in new[] { "steam", "xdg-open" })
+        if (!SteamRunning())
         {
-            try
-            {
-                var info = new ProcessStartInfo(program, url)
-                {
-                    UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    RedirectStandardInput = false,
-                    CreateNoWindow = true,
-                };
-                Process p = Process.Start(info);
+            GD.Print($"[GUO] pregame3d: no steam process, {url} not run");
+            return;
+        }
 
-                if (p != null)
-                {
-                    p.OutputDataReceived += (_, _) => { };
-                    p.ErrorDataReceived += (_, _) => { };
-                    p.BeginOutputReadLine();
-                    p.BeginErrorReadLine();
-                    GD.Print($"[GUO] pregame3d: {program} {url}");
-                    return;
-                }
-            }
-            catch (Exception ex)
+        try
+        {
+            using Process p = Process.Start(new ProcessStartInfo("steam", url)
             {
-                GD.Print($"[GUO] pregame3d: {program} {url} failed: {ex.Message}");
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            });
+
+            if (p != null)
+            {
+                GD.Print($"[GUO] pregame3d: steam {url}");
             }
+        }
+        catch (Exception ex)
+        {
+            GD.Print($"[GUO] pregame3d: steam {url} failed: {ex.Message}");
         }
     }
 
@@ -183,7 +181,25 @@ internal static class NativeKeyboard
         }
     }
 
+    private static double _steamCheckedAt = -100;
+    private static bool _steamUp;
+
+    /// <summary>A steam process is running (looked for at most every few seconds: Kind asks often).</summary>
     private static bool SteamRunning()
+    {
+        double now = System.Environment.TickCount64 / 1000.0;
+
+        if (now - _steamCheckedAt < 5)
+        {
+            return _steamUp;
+        }
+
+        _steamCheckedAt = now;
+
+        return _steamUp = ScanForSteam();
+    }
+
+    private static bool ScanForSteam()
     {
         if (!OperatingSystem.IsLinux())
         {

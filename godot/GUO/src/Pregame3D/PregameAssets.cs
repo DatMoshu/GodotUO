@@ -47,7 +47,10 @@ internal static class PregameAssets
     public static bool Ready => _boot != null && _boot.IsCompleted;
 
     /// <summary>0..1 of the boot set, for the loading line.</summary>
-    public static float Progress { get; private set; }
+    public static float Progress => _progress;
+
+    // Written by the worker thread, read by the main one every frame.
+    private static volatile float _progress;
 
     /// <summary>The figure's frames are in the atlas.</summary>
     public static bool FiguresReady => _afterLoginStarted && _afterLogin.Count == 0;
@@ -118,12 +121,17 @@ internal static class PregameAssets
                     }
                 }
 
-                Progress = ++done / (float) ids.Count;
+                _progress = ++done / (float) ids.Count;
             }
 
             reader.File?.Dispose();
             Note("pregame assets", _clock.ElapsedMilliseconds, $"{_images.Count} gumps");
         });
+
+        // A worker that throws would otherwise end silently (Ready is true for a faulted task too).
+        _ = _boot.ContinueWith(
+            t => GD.PrintErr($"[GUO] pregame3d: the asset worker failed: {t.Exception?.GetBaseException()}"),
+            TaskContinuationOptions.OnlyOnFaulted);
     }
 
     public static void Note(string what, long ms, string detail = "")

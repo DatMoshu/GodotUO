@@ -2,6 +2,9 @@
 // xBR upscaled like the painting, dimmed with it, and a gold glow for the
 // pad's focus. GUO, BSD-2-Clause. Target: canvas_item, any renderer.
 shader_type canvas_item;
+// Pixel art is never filtered: this shader declares no sampler of its own, it reads the
+// node's TEXTURE, so nearest is set on the nodes (TextureFilter = Nearest on the pregame's
+// layers and on every GumpProp). Any sampler added here must say filter_nearest.
 
 #include "res://assets/pregame/shaders/xbr.gdshaderinc"
 

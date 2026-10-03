@@ -37,10 +37,11 @@ internal sealed class StatusStage : Stage
         _text.CustomMinimumSize = new Vector2(280, 0);
         _card.AddChild(_text);
         D.OverlayRoot.AddChild(_card);
-        _card.SetAnchorsPreset(Control.LayoutPreset.CenterBottom);
+        // Anchors and offsets together, at the card's least size: with the anchors alone the
+        // offsets stay from a parent of no size, and the card sat half off the left edge.
+        _card.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.CenterBottom, Control.LayoutPresetMode.Minsize, 40);
         _card.GrowHorizontal = Control.GrowDirection.Both;
         _card.GrowVertical = Control.GrowDirection.Begin;
-        _card.OffsetBottom = -40;
 
         StepChanged(Login.CurrentLoginStep);
     }
