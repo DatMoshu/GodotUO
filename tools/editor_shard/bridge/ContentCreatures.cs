@@ -51,6 +51,13 @@ internal sealed class ContentCreatures
         return new ContentCreature(identity, definition.Content, definition.Loot);
     }
 
+    internal bool Contains(string identity) => _definitions.ContainsKey(identity);
+    internal string SpawnRecipe(string identity)
+    {
+        var definition = _definitions[identity];
+        return Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(new { identity, content = definition.Content, loot = definition.Loot }));
+    }
+
     public void Register(bool probe)
     {
         RegisterPersistenceProbe(this);
@@ -164,6 +171,27 @@ public sealed class ContentCreature : BaseCreature
     public string ContentIdentity => _identity;
     internal string LootSnapshot => _lootSnapshot;
     public ContentCreature(Serial serial) : base(serial) { }
+
+    [Constructible(AccessLevel.Developer)]
+    public ContentCreature(string encodedRecipe) : this(ReadRecipe(encodedRecipe)) { }
+    private ContentCreature(JsonElement recipe) : this(recipe.GetProperty("identity").GetString(), recipe.GetProperty("content"), recipe.GetProperty("loot").GetString()) { }
+    private static JsonElement ReadRecipe(string encoded)
+    {
+        if (encoded == null || encoded.Length > 1024 * 1024) throw new InvalidDataException("Invalid creature spawn recipe size");
+        using var doc = JsonDocument.Parse(Convert.FromBase64String(encoded));
+        var root = doc.RootElement;
+        string snapshot = root.GetProperty("loot").GetString();
+        var identities = new HashSet<string>(StringComparer.Ordinal);
+        if (!string.IsNullOrEmpty(snapshot))
+        {
+            using var lootDoc = JsonDocument.Parse(snapshot);
+            var items = lootDoc.RootElement.GetProperty("items").EnumerateArray().Select(i => i.GetProperty("identity").GetString()).ToHashSet(StringComparer.Ordinal);
+            ContentLoot.Stage(lootDoc.RootElement, items.Contains);
+            foreach (var table in lootDoc.RootElement.GetProperty("loot").EnumerateArray()) identities.Add(table.GetProperty("identity").GetString());
+        }
+        StoreCreatureDefinition.Validate(root.GetProperty("content"), identities.Contains);
+        return root.Clone();
+    }
 
     internal ContentCreature(string identity, JsonElement row, string snapshot)
         : base(row.GetProperty("ai").GetString() == "animal" ? AIType.AI_Animal : AIType.AI_Melee, FightMode.Aggressor)

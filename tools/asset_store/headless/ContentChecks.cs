@@ -177,6 +177,25 @@ internal static class ContentChecks
             StorePack.Require(rejected, "Invalid creature definition accepted");
         }
         Console.WriteLine("content: creature export, loot references and six invalid creature cases PASS");
+        var spawnClosure = client.VerifyContent("sample-content-spawner", "1.0.0");
+        var spawnLock = new StoreContentLock { Pack = "sample-content-spawner", Version = "1.0.0", IdentityHash = spawnClosure.IdentityHash };
+        spawnLock.Bindings.Add("sample-content-art:stone", new StoreContentBinding { Type = "static", Id = 3701 });
+        string spawnLockPath = Path.Combine(root, "spawner-lock.json"), spawnExport = Path.Combine(root, "spawner-export.json");
+        File.WriteAllText(spawnLockPath, JsonSerializer.Serialize(spawnLock));
+        StoreServerExport.Export(client, spawnLockPath, spawnExport);
+        using (var exported = JsonDocument.Parse(File.ReadAllBytes(spawnExport)))
+            StorePack.Require(exported.RootElement.GetProperty("spawners")[0].GetProperty("content").GetProperty("count").GetInt32() == 2, "Spawner export lost population");
+        var spawnBytes = spawnClosure.Packs["sample-content-spawner"].ReadPayload("spawner.json");
+        foreach (var bad in new (string Key, JsonNode Value)[] { ("count", 0), ("min_delay", 0), ("max_delay", 29), ("radius", 65), ("creature", "missing:creature"), ("script", "unexpected") })
+        {
+            var row = JsonNode.Parse(spawnBytes).AsObject(); row[bad.Key] = bad.Value;
+            using var invalid = JsonDocument.Parse(row.ToJsonString());
+            bool rejected = false;
+            try { StoreSpawnerDefinition.Validate(invalid.RootElement, id => id == "sample-content-creature:stone-rat"); }
+            catch (InvalidDataException) { rejected = true; }
+            StorePack.Require(rejected, "Invalid spawner definition accepted");
+        }
+        Console.WriteLine("content: spawner export, creature reference and six invalid spawner cases PASS");
         string payload = Path.Combine(root, art.Id, art.Version, "stone.png");
         File.AppendAllText(payload, "tampered");
         bool refused = false;
