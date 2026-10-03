@@ -22,6 +22,7 @@ public partial class MiniMap : Control
     private Vector2 _centre;               // radar pixels
     private Vector2[] _view = Array.Empty<Vector2>();
     private bool _dragging;
+    private bool _dirty;
 
     /// <summary>Raised with the cell clicked.</summary>
     public event Action<int, int> Jump;
@@ -55,13 +56,53 @@ public partial class MiniMap : Control
     /// <summary>Forgets the radar so the next update fetches it again (after an edit changed the map).</summary>
     public void Invalidate() => _facet = -1;
 
+    /// <summary>
+    /// The world project changed these blocks of a facet (an edit, undo, a
+    /// reopened overlay): if that is the facet on show, take its radar again at
+    /// the next update, so the edit appears at once rather than at the next jump.
+    /// </summary>
+    public void Invalidate(int facet, System.Collections.Generic.List<int> blocks)
+    {
+        if (facet == _facet && blocks != null && blocks.Count > 0)
+        {
+            _dirty = true;
+        }
+    }
+
+    /// <summary>The colour the minimap's texture holds at a cell, for the smoke check.</summary>
+    public Color PixelAt(int x, int y)
+    {
+        if (_texture == null)
+        {
+            return new Color(0, 0, 0, 0);
+        }
+
+        return _image.GetPixel(x / Stride, y / Stride);
+    }
+
     internal void Update(WorldHost host, Func<int, Image> source, Vector2I viewport, float zoom)
     {
         int facet = host.Facet;
+        if (_dirty && facet == _facet && _texture != null)
+        {
+            _dirty = false;
+            Image fresh = source?.Invoke(facet);
+            if (fresh != null && fresh.GetSize() == _texture.GetSize())
+            {
+                _image.CopyFrom(fresh);
+                _texture.Update(_image);
+            }
+            else
+            {
+                _facet = -1;
+            }
+        }
+
         if (facet != _facet || _texture == null)
         {
             _facet = facet;
-            _image = source?.Invoke(facet);
+            Image radar = source?.Invoke(facet);
+            _image = radar == null ? null : (Image)radar.Duplicate();
             _texture = _image != null ? ImageTexture.CreateFromImage(_image) : null;
         }
 

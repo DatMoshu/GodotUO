@@ -1079,7 +1079,7 @@ public partial class EditorSmoke : Node
     private readonly Dictionary<string, object> _editReport = new();
     private readonly List<(int Wait, Action Run)> _steps = new();
     private int _step;
-    private Color _radarBefore;
+    private Color _radarBefore, _minimapBefore;
 
     private void EditFail(string why)
     {
@@ -1165,6 +1165,7 @@ public partial class EditorSmoke : Node
             _world.ForcedMouse = new Vector2I((int)_world.Size.X / 2, (int)(_world.Size.Y / 2));
             _data.CurrentArt = EditorData.LandCount + Tree;
             _radarBefore = RadarAt(EditX, EditY);
+            _minimapBefore = _world.Minimap?.PixelAt(EditX, EditY) ?? default;
             _editReport["install_statics"] = ChunkStatics(false);
         }));
 
@@ -1250,6 +1251,15 @@ public partial class EditorSmoke : Node
             _editReport["radar_before"] = _radarBefore.ToHtml();
             _editReport["radar_after"] = after.ToHtml();
             Expect(after != _radarBefore, "radar_shows_overlay");
+        }));
+
+        // The minimap repaints the edit without a facet change or a jump.
+        _steps.Add((wait, () =>
+        {
+            Color mini = _world.Minimap?.PixelAt(EditX, EditY) ?? default;
+            _editReport["minimap_before"] = _minimapBefore.ToHtml();
+            _editReport["minimap_after"] = mini.ToHtml();
+            Expect(mini != _minimapBefore, "minimap_shows_edit");
         }));
 
         // Layers: statics off, then on.

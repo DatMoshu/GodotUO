@@ -129,7 +129,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         {
             maps.JumpToWorld += ShowInWorld;
             _world.RadarSource = maps.RadarFor;
-            _world.Host.OverlayChanged += (_, _) => _world.Minimap?.Invalidate();
+            _world.Host.OverlayChanged += (f, b) => _world.Minimap?.Invalidate(f, b);
 
             // While the world runs, the radar reads the world's map (with the
             // world project over it) and repaints the blocks an edit touches.
