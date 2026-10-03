@@ -76,6 +76,7 @@ public partial class EditorSmoke : Node
 
     /// <summary>The AI dock the plugin made, for the AI checks (ADR-0028).</summary>
     public AiDock Ai { get; set; }
+    public ArtDock Art { get; set; }
 
     public EditorSmoke() : this(null, null, null, null, null, null)
     {
