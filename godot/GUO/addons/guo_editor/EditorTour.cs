@@ -370,6 +370,7 @@ public partial class EditorTour : Node
                 ("runbar", "Run bar: start a server, start clients", RunBarSeg),
                 ("search", "F3: search everything", SearchSeg),
                 ("ai", "The AI dock: Chat, Agents, Queue", AiSeg),
+                ("store", "UO Store: packs for shard owners and authors", StoreSeg),
                 ("art", "Assets: Art", ArtSeg),
                 ("gumps", "Assets: Gumps", GumpSeg),
                 ("anims", "Assets: Animations", AnimSeg),
@@ -1306,6 +1307,33 @@ public partial class EditorTour : Node
             Check(Ai.Visible, $"the {tab} tab shows");
             await Shot(4);
         }
+    }
+
+    private async Task StoreSeg()
+    {
+        if (Store == null)
+        {
+            Skip("the UO Store tab was not created");
+            return;
+        }
+
+        Say("UO Store is the third main tab, next to UO World and UO Assets: the store for shard owners and pack authors. Players install packs in the game client "
+            + "(Options, Video, Store); this tab does not touch their profile or the UO install. It installs into the editor's own store folder.", top: true);
+        foreach (var (section, line) in new[]
+        {
+            (0, "Browse and install: catalogues (a new one asks you to approve its key fingerprint, as the client does), search, pack details with its signature and content-policy verdict, install and remove."),
+            (1, "Server content: pick one of the run bar's server profiles and an installed pack, set its numeric slots, build or deploy through the shard's backend adapter, and see what each profile has deployed and how to roll back."),
+            (2, "Publish: verify a pack ZIP (schema, hashes, content policy, dependencies), publish to a local store, and prepare the listing and gh commands for a catalogue pull request. No signing key is handled here; the official catalogue signs in its own CI."),
+        })
+        {
+            Say(line, top: true);
+            Store.ShowSection(section);
+            await Frames(10);
+            Check(Store.Visible, $"section {section} shows");
+            await Shot(4);
+        }
+
+        EditorInterface.Singleton.SetMainScreenEditor("2D");
     }
 
     private async Task SearchSeg()

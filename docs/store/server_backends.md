@@ -34,7 +34,8 @@ also carries an `identity_hash` that names the deployment. An adapter must:
 | Adapter | `tools/editor_shard/bridge` (`ContentPacks.cs` and friends), BSD-2-Clause, built against the dev shard's `Server.dll` |
 | Done | items, tiledata, map blocks, regions, decorations, loot, creatures; `GUOPackItem` staff command; probe mode |
 | Done for end to end | `tools/shard_content` deploy (export into `Data/GUO`, the descriptor), the bridge reading it there and logging `identity_hash`, the client installing and mounting the shard's lock, `prove` (ADR-0026 Validation) |
-| Still to do | the dev shard (`tools/modernuo`) loading an export, not only the private copy; a deploy from the GUO editor's admin window |
+| Editor | the UO Store tab, Server content: deploy, dry run, status and rollback for a server profile (2026-10, smoke-checked against a scratch folder) |
+| Still to do | the dev shard (`tools/modernuo`) loading an export, not only the private copy |
 
 ## ServUO
 
@@ -93,3 +94,10 @@ sections and a full live client proof remain. Further backends are added when a 
 Each backend is done when a fresh shard of that kind loads the same starter
 deployment and a GUO client sees the same items, decorations and creatures
 that it sees on ModernUO.
+
+## Deploying from the editor
+
+The GUO editor's UO Store tab, *Server content*, runs `tools/shard_content` for a server profile of the run bar's
+list. The profile's backend picks the adapter (ModernUO, ServUO, RunUO, POL, Sphere, UOX3); a `custom` profile has
+none. It shows the log, what each profile has deployed (`status`), and rolls back ModernUO from `Data/GUO/previous`
+(native adapters keep every replaced file in `Data/GUO/revisions`; deploy the older pack version again).
