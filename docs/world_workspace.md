@@ -6,11 +6,22 @@ checkouts do not switch to this branch automatically.
 
 ## Layout
 
-The World tab has one command row and a scrollable icon rail. A resizable
-left workspace holds the brush library above **Tools / UO Inspector** tabs;
-the map fills the right side. Drag the vertical divider to change the left
-workspace width and the horizontal divider to change the library height.
-Those sizes are remembered per checkout in editor metadata.
+The World tab has one command row and a scrollable icon rail. From left to
+right: **Tools above Inspector**, a full-height **Brush library**, and the map.
+The first column defaults to 60% Tools and 40% Inspector; drag its horizontal
+divider to change that ratio. Each column has its own width divider. Widths
+and the vertical ratio are remembered per checkout in editor metadata.
+
+The compact **Tools** tab keeps operation, target, size, density, spacing,
+strength, hue, placement Z, visible Z range, roof ghosting and terrain locking
+together. **Advanced** holds variation rules, external art editors, world
+overlays and history. It retains scrolling for longer settings. Common tools
+use paired rows and a small selected-asset preview instead of large section
+headers and a tall image preview.
+
+Available space depends on both resolution and Godot's editor display scale.
+The panels retain scrolling at large text scales or when a divider makes them
+shorter; they do not shrink the chosen font size to force everything to fit.
 
 **Brushes** toggles the library; **Precision** hides the library and keeps
 settings; **Focus** (Tab while the map has keyboard focus) hides the left
@@ -35,7 +46,7 @@ Block outlines now start disabled; enable them in **Guides** when needed.
    land and statics still use separate ID spaces. The kind selector controls
    the thumbnail grid; it does not restrict autocomplete.
 2. Choose the brush operation and target. Set round/square footprint, size,
-   density, spacing, strength and hue in **Brush**.
+   density, spacing, strength and hue in **Tools**.
    Drag a numeric label horizontally to adjust its value; hold Shift for
    finer control. Values still respect each tool's allowed range. Direct
    number entry and spinner arrows remain available.
@@ -72,12 +83,24 @@ the preview includes those neighboring cells and undo restores them too.
 
 ## Precision
 
-**Visibility & height** controls visible minimum/maximum Z, a fixed placement
+The compact **Tools** tab controls visible minimum/maximum Z, a fixed placement
 plane (or ground-relative offset for the brush), terrain locking and roof
 ghosting. Roof ghosts are editor guides drawn over the scene, limited to
 512 static roof pieces in view; they do not change the client renderer.
 
-**Under cursor** lists statics and terrain at a cell. Click a row or use
+The Inspector area has **UO Inspector** and **Nearby tiles** tabs. Nearby tiles
+shows a nearest-sampled 3×3 terrain thumbnail grid around the mouse, with a
+visible land/static stack beside it. Hover a grid tile for its coordinates,
+name, ID and elevation; the stack shows IDs, Z and static hues. This is a tile
+breakdown, not a second perspective render of the scene.
+
+The neighborhood follows the pointer over the map and stays put when you
+move into the panel. **Pin** freezes it while you navigate. Clicking a grid
+cell pins the neighborhood and shows that cell's stack. Double-click a stack
+row to sample it for the brush. Static entries respect the visible Z range;
+the terrain entry remains available as the cell's ground reference.
+
+Click a stack row or use
 Alt+wheel over the map to select a particular object. Shift-click a new cell
 to reset that selection. **Set Z / hue** moves the selected static to the
 configured Z and applies the chosen hue, with undo. **Pick** (or Alt-click
@@ -91,7 +114,7 @@ right/middle drag also pans. Wheel zooms; `[` and `]` change brush size.
 
 There are three entry points:
 
-- **World → Tool settings → Pixelorama / Pinta** edits the selected brush art.
+- **World → Advanced → Pixelorama / Pinta** edits the selected brush art.
 - **Assets → Art or Gumps → select an asset → UO Inspector → Edit in…**.
 - **Art** bottom panel → **Edit in Pixelorama / Edit in Pinta** edits the
   inspected asset. **Art tools / setup** explains installation and return paths.
@@ -132,7 +155,17 @@ The editor smoke now uses viewport coordinates for picking and checks brush
 footprints, repeatable variants, multi-block undo/redo, duplicate prevention,
 no-op filtering, terrain locks and rollback of a failed batch. It also checks
 combined autocomplete, keyboard selection, typo matching, dismissal, numeric
-label dragging, fine adjustment and limits. The existing
-art smoke checks export/import against stubs, including Pixelorama's return
+label dragging, fine adjustment and limits. Windowed checks also verify
+splitter movement, Nearby tile data and common
+control fit at 1920×1080 and 1366×768 logical sizes, adjusted for editor scale.
+Art smoke checks export/import against stubs, including Pixelorama's return
 format and Pinta's save-in-place path. It does not simulate painting inside
 the external applications or make paid image-provider calls.
+
+## UI reference
+
+Reviewed the original [CentrED manual](https://uo.wzk.cz/files/CentrED_Manual.pdf),
+especially its toolbar, Z boundaries, virtual layer and tile-list sections.
+Keeping placement and visibility controls close to the active tool follows
+that workflow. The 60/40 column, separate brush library and Nearby tiles tab
+are GUO-specific arrangements requested for this workspace.

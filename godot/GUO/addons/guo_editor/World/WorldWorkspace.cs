@@ -17,15 +17,18 @@ public partial class WorldView
     private Control _library, _settings, _quickFavorites;
     private VSplitContainer _leftWorkspace;
     private TabContainer _detailTabs;
+    private HSplitContainer _librarySplit;
+    private ScrollContainer _commonTools;
+    private double _toolHeightRatio = 0.6;
     internal VBoxContainer InspectorHost { get; private set; }
     internal ArtPanel BrushLibrary => _brushArt;
     internal SpinBox BrushSizeInput => _numbers["Size (tiles)"];
-    internal void ShowInspectorTab(bool inspector) => _detailTabs.CurrentTab = inspector ? 1 : 0;
+    internal void ShowInspectorTab(bool inspector) => _detailTabs.CurrentTab = inspector ? 0 : 1;
     // Methods deliberately: Godot serializes settable properties during assembly reload.
     internal Vector2I GetWorkspaceSplit() => new(((HSplitContainer)_leftWorkspace.GetParent()).SplitOffsets[0], _leftWorkspace.SplitOffsets[0]);
     internal void SetWorkspaceSplit(Vector2I value)
-    { ((HSplitContainer)_leftWorkspace.GetParent()).SplitOffsets = new[] { value.X }; _leftWorkspace.SplitOffsets = new[] { value.Y }; }
-    internal float LibraryHeight => _library.Size.Y;
+    { _toolHeightRatio = 0.5 + value.Y / Math.Max(1.0, _leftWorkspace.Size.Y); ((HSplitContainer)_leftWorkspace.GetParent()).SplitOffsets = new[] { value.X }; _leftWorkspace.SplitOffsets = new[] { value.Y }; }
+    internal float ToolsHeight => _settings.Size.Y;
     private ArtPanel _brushArt;
     private readonly Dictionary<WorldTool, Button> _toolButtons = new();
     private readonly WorldBrush _recipe = new();
@@ -68,9 +71,10 @@ public partial class WorldView
     private SpinBox Number(Node parent, string label, double value, double min, double max, Action<int> change)
     {
         var row = new HBoxContainer(); parent.AddChild(row);
-        var caption = new Label { Text = label, SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        var caption = new Label { Text = label switch { "Size (tiles)" => "Size", "Density (%)" => "Density %", "Spacing (tiles)" => "Spacing", "Z / ground offset" => "Z / offset", "Visible Z min" => "Z min", "Visible Z max" => "Z max", _ => label }, SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        row.SizeFlagsHorizontal = SizeFlags.ExpandFill;
         row.AddChild(caption);
-        var spin = new SpinBox { MinValue = min, MaxValue = max, Value = value, Step = 1, CustomMinimumSize = new Vector2(95, 0) };
+        var spin = new SpinBox { MinValue = min, MaxValue = max, Value = value, Step = 1, CustomMinimumSize = new Vector2(74, 0) };
         row.AddChild(spin); spin.ValueChanged += v => change((int)v); _numbers[label] = spin;
         NumericScrub.Attach(caption, spin); return spin;
     }
@@ -105,12 +109,14 @@ public partial class WorldView
             button.Pressed += () => Tool = entry.Tool; rail.AddChild(button); _toolButtons[entry.Tool] = button;
         }
 
-        var workspace = new HSplitContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill, SizeFlagsVertical = SizeFlags.ExpandFill, SplitOffsets = new[] { 520 } };
+        var workspace = new HSplitContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill, SizeFlagsVertical = SizeFlags.ExpandFill, SplitOffsets = new[] { 390 } };
         body.AddChild(workspace);
-        _leftWorkspace = new VSplitContainer { CustomMinimumSize = new Vector2(310, 0), SplitOffsets = new[] { 650 } };
+        _leftWorkspace = new VSplitContainer { CustomMinimumSize = new Vector2(350, 0) };
         workspace.AddChild(_leftWorkspace);
-        var library = new VBoxContainer { CustomMinimumSize = new Vector2(290, 180) };
-        _leftWorkspace.AddChild(library); _library = library;
+        _librarySplit = new HSplitContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill, SplitOffsets = new[] { 280 } };
+        workspace.AddChild(_librarySplit);
+        var library = new VBoxContainer { CustomMinimumSize = new Vector2(240, 180) };
+        _librarySplit.AddChild(library); _library = library;
         library.AddChild(new Label { Text = "Brush library" });
         var recipes = new HFlowContainer(); library.AddChild(recipes);
         ActionButton(recipes, "Scatter", () => QuickRecipe(false, "Paint", 7, 35, 2));
@@ -149,39 +155,48 @@ public partial class WorldView
         ActionButton(presetActions, "Save preset", SaveBrushPreset);
         ActionButton(presetActions, "Load", () => { var s = _presets.GetSelectedItems(); if (s.Length > 0) ReadPreset(_presets.GetItemText(s[0])); });
 
-        _stage.Reparent(workspace);
-        _detailTabs = new TabContainer { CustomMinimumSize = new Vector2(0, 180) };
-        _leftWorkspace.AddChild(_detailTabs); _settings = _detailTabs;
-        var scroll = new ScrollContainer { Name = "Tools", CustomMinimumSize = new Vector2(270, 0), HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled };
-        _detailTabs.AddChild(scroll);
-        InspectorHost = new VBoxContainer { Name = "UO Inspector" }; _detailTabs.AddChild(InspectorHost);
+        _stage.Reparent(_librarySplit);
+        var settingsTabs = new TabContainer { CustomMinimumSize = new Vector2(0, 160), SizeFlagsVertical = SizeFlags.ExpandFill };
+        _leftWorkspace.AddChild(settingsTabs); _settings = settingsTabs;
+        var scroll = new ScrollContainer { Name = "Tools", HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled };
+        settingsTabs.AddChild(scroll); _commonTools = scroll;
         var options = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill }; scroll.AddChild(options);
-        options.AddChild(new Label { Text = "Tool settings" });
-        _brush.Reparent(options); _brush.ClipText = true; _brush.CustomMinimumSize = new Vector2(240, 0);
-        _brushPreview = new TextureRect { CustomMinimumSize = new Vector2(0, 72), ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+        options.AddThemeConstantOverride("separation", 3);
+        var selected = new HBoxContainer(); options.AddChild(selected);
+        _brushPreview = new TextureRect { CustomMinimumSize = new Vector2(32, 32), ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
             StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered, TextureFilter = TextureFilterEnum.Nearest };
-        options.AddChild(_brushPreview);
-        var editors = new HBoxContainer(); options.AddChild(editors);
-        ActionButton(editors, "Pixelorama", () => EditBrushArt(false), "Edit this asset; use GUO > Save back to GUO to return it");
-        ActionButton(editors, "Pinta", () => EditBrushArt(true), "Edit this asset; save the exported PNG to return it");
-        var brushSettings = Section(options, "Brush", true);
+        selected.AddChild(_brushPreview);
+        _brush.Reparent(selected); _brush.ClipText = true; _brush.CustomMinimumSize = Vector2.Zero; _brush.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        var advancedScroll = new ScrollContainer { Name = "Advanced", HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled };
+        settingsTabs.AddChild(advancedScroll);
+        var advancedOptions = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill }; advancedScroll.AddChild(advancedOptions);
+        var editors = new HBoxContainer(); advancedOptions.AddChild(editors);
+        ActionButton(editors, "Pixelorama", () => EditBrushArt(false), "Project > GUO: save back to GUO returns the edit");
+        ActionButton(editors, "Pinta", () => EditBrushArt(true), "Save the exported PNG to return it");
+        _detailTabs = new TabContainer { CustomMinimumSize = new Vector2(0, 180), SizeFlagsVertical = SizeFlags.ExpandFill };
+        _leftWorkspace.AddChild(_detailTabs);
+        InspectorHost = new VBoxContainer { Name = "UO Inspector" }; _detailTabs.AddChild(InspectorHost);
+        BuildNearbyTiles();
+        var brushSettings = options;
+        var operationRow = new HBoxContainer(); brushSettings.AddChild(operationRow);
         _operation = new OptionButton();
         foreach (string op in new[] { "Paint", "Erase statics", "Hue statics", "Raise", "Lower", "Flatten", "Smooth" }) _operation.AddItem(op);
-        _operation.ItemSelected += i => _recipe.Operation = _operation.GetItemText((int)i); brushSettings.AddChild(_operation);
-        _targetPick = new OptionButton(); _targetPick.AddItem("Target: statics"); _targetPick.AddItem("Target: terrain");
+        _operation.ItemSelected += i => _recipe.Operation = _operation.GetItemText((int)i); operationRow.AddChild(_operation); _operation.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        _targetPick = new OptionButton(); _targetPick.AddItem("Statics"); _targetPick.AddItem("Terrain");
         _targetPick.ItemSelected += i => { _recipe.Land = i == 1; _brushArt.SelectKind(i == 1); _brushArt.Search(""); };
-        brushSettings.AddChild(_targetPick);
-        Number(brushSettings, "Size (tiles)", 7, 1, 31, v => _recipe.Size = v);
-        Check(brushSettings, "Square footprint", false, v => _recipe.Square = v);
-        Number(brushSettings, "Density (%)", 35, 0, 100, v => _recipe.Density = v);
-        Number(brushSettings, "Spacing (tiles)", 2, 1, 16, v => _recipe.Spacing = v);
-        Number(brushSettings, "Strength", 1, 1, 32, v => _recipe.Strength = v);
-        var hueLabel = new Label { Text = "Hue (decimal)" }; brushSettings.AddChild(hueLabel);
+        operationRow.AddChild(_targetPick); _targetPick.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        var values = new GridContainer { Columns = 2 }; brushSettings.AddChild(values);
+        Number(values, "Size (tiles)", 7, 1, 31, v => _recipe.Size = v);
+        Number(values, "Density (%)", 35, 0, 100, v => _recipe.Density = v);
+        Number(values, "Spacing (tiles)", 2, 1, 16, v => _recipe.Spacing = v);
+        Number(values, "Strength", 1, 1, 32, v => _recipe.Strength = v);
+        var hueRow = new HBoxContainer(); values.AddChild(hueRow);
+        var hueLabel = new Label { Text = "Hue", SizeFlagsHorizontal = SizeFlags.ExpandFill }; hueRow.AddChild(hueLabel);
         NumericScrub.Attach(hueLabel, _hue);
-        _hue.Reparent(brushSettings); _hue.TooltipText = "Hue (decimal); applies to Stamp and brush painting/recoloring";
+        _hue.Reparent(hueRow); _hue.CustomMinimumSize = new Vector2(74, 0); _hue.TooltipText = "Hue (decimal); applies to Stamp and brush painting/recoloring";
         _hue.ValueChanged += v => _recipe.Hue = (ushort)v;
 
-        var variation = Section(options, "Variation & rules");
+        var variation = Section(advancedOptions, "Variation & rules", true);
         Number(variation, "Seed", 1, 0, 999999, v => _recipe.Seed = v);
         _variantRows = new VBoxContainer(); variation.AddChild(_variantRows);
         variation.AddChild(new Label { Text = "Advanced weights: ID:weight" });
@@ -196,23 +211,19 @@ public partial class WorldView
         _edges = new LineEdit { PlaceholderText = "Terrain edge rules: mask=ID", TooltipText = "Optional transitions: N=1 E=2 S=4 W=8. Example 3=0x123. Connects to existing terrain using the chosen tile, variants and edge IDs as one family." };
         variation.AddChild(_edges); _edges.TextChanged += t => _recipe.Edges = t;
 
-        var precision = Section(options, "Visibility & height", true);
-        Check(precision, "Fixed placement plane", false, v => _recipe.FixedHeight = v);
-        Number(precision, "Z / ground offset", 0, -128, 127, v => _recipe.Height = v);
-        Number(precision, "Visible Z min", -128, -128, 127, v => _host.MinVisibleZ = v);
-        Number(precision, "Visible Z max", 127, -128, 127, v => _host.MaxVisibleZ = v);
-        Check(precision, "Ghost roofs", false, v => _host.GhostRoofs = v);
-        _lockTerrain = Check(precision, "Lock terrain", false, _ => { });
-        var visibility = new HBoxContainer(); precision.AddChild(visibility);
+        Number(values, "Z / ground offset", 0, -128, 127, v => _recipe.Height = v);
+        Number(values, "Visible Z min", -128, -128, 127, v => _host.MinVisibleZ = v);
+        Number(values, "Visible Z max", 127, -128, 127, v => _host.MaxVisibleZ = v);
+        var toggles = new GridContainer { Columns = 2 }; options.AddChild(toggles);
+        Check(toggles, "Square footprint", false, v => _recipe.Square = v).Text = "Square";
+        Check(toggles, "Fixed placement plane", false, v => _recipe.FixedHeight = v).Text = "Fixed Z";
+        Check(toggles, "Ghost roofs", false, v => _host.GhostRoofs = v);
+        _lockTerrain = Check(toggles, "Lock terrain", false, _ => { });
+        var visibility = new HBoxContainer(); options.AddChild(visibility);
         _layers.Reparent(visibility); _guideMenu.Reparent(visibility);
-        _stack = new ItemList { CustomMinimumSize = new Vector2(0, 105), TooltipText = "Click to select an object at this cell. Alt+wheel cycles. Shift-click the map to pin a different cell." };
-        var stackSection = Section(options, "Under cursor (Alt+wheel)", true); stackSection.AddChild(_stack);
-        _stack.ItemSelected += i => { _stackIndex = (int)i; InspectPicked(); };
-        var editStack = new HBoxContainer(); stackSection.AddChild(editStack);
-        ActionButton(editStack, "Set Z / hue", TransformStackSelection, "Move the selected static to the Z value above and apply the hue");
-        ActionButton(editStack, "Pick", PickBrushFromWorld);
-
-        var advanced = Section(options, "World & overlays");
+        ActionButton(visibility, "Pick", PickBrushFromWorld, "Alt-click the map to sample art and hue");
+        ActionButton(visibility, "Set Z / hue", TransformStackSelection, "Apply to the selected Nearby stack row");
+        var advanced = Section(advancedOptions, "World & overlays");
         // Preserve all existing commands, but stop reserving two viewport-wide rows for them.
         foreach (Node child in tools.GetChildren().ToArray())
         {
@@ -224,7 +235,7 @@ public partial class WorldView
         foreach (Node child in _legacyModes.GetChildren().ToArray()) child.Reparent(advanced);
         _legacyModes.Hide();
         _historyLabel = new Label { AutowrapMode = TextServer.AutowrapMode.WordSmart };
-        var history = Section(options, "History"); history.AddChild(_historyLabel);
+        var history = Section(advancedOptions, "History"); history.AddChild(_historyLabel);
 
         // Status belongs below the canvas. Top remains one compact command row.
         _status.Reparent(this);
@@ -241,10 +252,18 @@ public partial class WorldView
         _stage.AddChild(quick); _quickFavorites = quick;
         SyncToolButtons(); LoadBrushPresets();
         var preferences = EditorInterface.Singleton.GetEditorSettings();
-        workspace.SplitOffsets = new[] { preferences.GetProjectMetadata("guo_world", "left_width", 520).AsInt32() };
-        _leftWorkspace.SplitOffsets = new[] { preferences.GetProjectMetadata("guo_world", "library_height", 650).AsInt32() };
-        workspace.Dragged += offset => preferences.SetProjectMetadata("guo_world", "left_width", offset);
-        _leftWorkspace.Dragged += offset => preferences.SetProjectMetadata("guo_world", "library_height", offset);
+        workspace.SplitOffsets = new[] { preferences.GetProjectMetadata("guo_world", "tools_width_v2", 390).AsInt32() };
+        _librarySplit.SplitOffsets = new[] { preferences.GetProjectMetadata("guo_world", "brush_width_v2", 280).AsInt32() };
+        _toolHeightRatio = Math.Clamp(preferences.GetProjectMetadata("guo_world", "tools_ratio_v2", 0.6).AsDouble(), 0.25, 0.8);
+        _leftWorkspace.Resized += ApplyToolHeightRatio;
+        Callable.From(ApplyToolHeightRatio).CallDeferred();
+        workspace.Dragged += offset => preferences.SetProjectMetadata("guo_world", "tools_width_v2", offset);
+        _librarySplit.Dragged += offset => preferences.SetProjectMetadata("guo_world", "brush_width_v2", offset);
+        _leftWorkspace.Dragged += offset =>
+        {
+            if (_leftWorkspace.Size.Y > 0) _toolHeightRatio = Math.Clamp(0.5 + offset / _leftWorkspace.Size.Y, 0.25, 0.8);
+            preferences.SetProjectMetadata("guo_world", "tools_ratio_v2", _toolHeightRatio);
+        };
     }
 
     private void OnBrushDataLoaded() { _brushArt?.OnDataLoaded(); RebuildFavorites(); RebuildVariants(); }
@@ -321,7 +340,7 @@ public partial class WorldView
     private void ToggleWorkspaceFocus()
     {
         bool focus = _leftWorkspace.Visible;
-        _leftWorkspace.Visible = !focus;
+        _leftWorkspace.Visible = !focus; _library.Visible = !focus;
         EditorInterface.Singleton.SetDistractionFreeMode(true);
         if (focus) FocusRequested?.Invoke();
     }
@@ -385,8 +404,9 @@ public partial class WorldView
         }
         if (_workspaceClock < 0.10) return;
         _workspaceClock = 0;
+        UpdateNearbyTiles();
         _historyLabel.Text = $"Undo {_editor.UndoCount} · Redo {_editor.RedoCount}\n{_editor.LastWhat}";
-        if (_host.Picked is GameObject o && !_painting && _stackIndex < 0 && _stackCell != ((int)o.X, (int)o.Y)) RefreshStack(o.X, o.Y);
+        if (_pinNearby?.ButtonPressed != true && _host.Picked is GameObject o && !_painting && _stackIndex < 0 && _stackCell != ((int)o.X, (int)o.Y)) RefreshStack(o.X, o.Y);
         _guides.BrushCells.Clear();
         _guides.Ghosts.Clear();
         _guides.RoofGhosts.Clear();
@@ -550,14 +570,14 @@ public partial class WorldView
         {
             if (s.Z < _host.MinVisibleZ || s.Z > _host.MaxVisibleZ) continue;
             _stackEntries.Add((x, y, s.Z, s.Id, false));
-            _stack.AddItem($"{_data?.NameOf(EditorData.LandCount + s.Id)} {s.Id:X4} · Z {s.Z}");
+            _stack.AddItem($"{_data?.NameOf(EditorData.LandCount + s.Id)} · 0x{s.Id:X4}\nZ {s.Z} · hue {s.Hue}", GhostTexture(EditorData.LandCount + s.Id));
         }
         BlockData b = _modeNode?.Data?.Block(x >> 3, y >> 3);
         if (b != null)
         {
             int i = (y & 7) * 8 + (x & 7);
             _stackEntries.Add((x, y, b.LandZ[i], b.LandId[i], true));
-            _stack.AddItem($"Terrain {b.LandId[i]:X4} · Z {b.LandZ[i]}");
+            _stack.AddItem($"Land · 0x{b.LandId[i]:X4}\nZ {b.LandZ[i]}", GhostTexture(b.LandId[i]));
         }
     }
 
