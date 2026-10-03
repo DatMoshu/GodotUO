@@ -27,6 +27,8 @@ public abstract partial class GridPanel : AssetPanel
 
     /// <summary>The id last picked, or null.</summary>
     public int? Selected { get; private set; }
+    public event Action<int> Activated;
+    public int MinimumGridHeight { get; set; } = 240;
 
     /// <summary>Icon edge in pixels; 0 makes a text list.</summary>
     protected virtual int IconSize => 44;
@@ -140,9 +142,10 @@ public abstract partial class GridPanel : AssetPanel
             FixedColumnWidth = icons ? EffectiveIcon + 20 : 0,
             // Pixel art is never filtered (AGENTS.md rule 7); icons are scaled.
             TextureFilter = TextureFilterEnum.Nearest,
-            CustomMinimumSize = new Vector2(0, 240),
+            CustomMinimumSize = new Vector2(0, MinimumGridHeight),
         };
         _list.ItemSelected += item => Pick((int)(long)_list.GetItemMetadata((int)item));
+        _list.ItemActivated += item => Activated?.Invoke((int)(long)_list.GetItemMetadata((int)item));
         _list.SetDragForwarding(Callable.From<Vector2, Variant>(DragData), default, default);
         AddChild(_list);
 

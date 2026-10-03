@@ -4,6 +4,7 @@ namespace GUO.Editor;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using Godot;
@@ -55,9 +56,24 @@ public partial class GumpPanel : GridPanel
 
     protected override string Caption(int id) => $"{id:X4}";
 
-    protected override bool Matches(int id, string query) => false;
+    protected override bool Matches(int id, string query) =>
+        (UsedBy().TryGetValue(id, out var names) && names.Any(n => n.Contains(query, StringComparison.OrdinalIgnoreCase)))
+        || ArtName(id).Contains(query, StringComparison.OrdinalIgnoreCase);
 
-    protected override string Placeholder => "gump id (0x0064, 100)";
+    protected override string Placeholder => "Search name (paperdoll, status, button…), decimal or 0x ID — Enter";
+    protected override string Tooltip(int id) => $"0x{id:X4} · {ArtName(id)}\n" +
+        (UsedBy().TryGetValue(id, out var users) ? string.Join(", ", users) : "Local client gump art");
+    private static string ArtName(int id) => id switch
+    {
+        >= 5054 and <= 5062 => "stone window background frame",
+        >= 3000 and <= 3008 => "parchment window background frame",
+        >= 0x2436 and <= 0x243e => "dark stone background frame",
+        >= 210 and <= 211 => "checkbox radio toggle",
+        >= 247 and <= 249 => "okay button",
+        >= 0x7d0 and <= 0x7ee => "paperdoll equipment character",
+        0x2a6c or 0x802 => "status character stats background",
+        100 => "gold plaque sign frame", _ => ""
+    };
 
     protected override Image Icon(int id) => Data.GumpImage(id);
 
@@ -74,6 +90,14 @@ public partial class GumpPanel : GridPanel
             : "not named in src/Game/UI (may still come from the server)\n");
 
         Inspection ins = Inspection.Still("Gumps", $"0x{id:X4}", img, sb.ToString());
+        if (img != null)
+        {
+            ins.Actions.Add(("Add to gump layout", () =>
+            {
+                GuoEditorPlugin.GumpsMain?.AddArt(id);
+                EditorInterface.Singleton.SetMainScreenEditor("Gumps");
+            }));
+        }
         AssetActions.Add(ins, Data, AssetKind.Gump, id, img);
         return ins;
     }
