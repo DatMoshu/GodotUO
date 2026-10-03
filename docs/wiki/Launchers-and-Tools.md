@@ -76,6 +76,7 @@ shared logic). See [Configuration](Configuration.md).
 | `rebuild_class_cache.bat` | Regenerates the engine's class cache when a new C# node type will not appear. |
 | `clean_cache.bat` | Deletes the decode cache. |
 | `sync_upstream.bat` | Reports upstream ClassicUO commits since the pin; `--pin` records the current head as reviewed. |
+| `worktree_setup.bat` | Readies a fresh git worktree: copies your `config.local.bat` and `deny.local.txt` from the main checkout, checks the engine and upstream resolve (no directory links), runs one headless import. |
 | `fetch_godot.bat` | Re-fetches the pinned engine on its own. |
 | `build_guoasset.bat` | Builds the `guoasset` MCP server. |
 
@@ -98,6 +99,7 @@ web, the [FAQ](FAQ.md).
 | `port_errors` | `run.py [--top N] [--raw]` | Clusters build errors. |
 | `port_triage` | `run.py` | Sorts what remains of the port by tier and cause. |
 | `sync_upstream` | `run.py [--pin] [--no-fetch] [--limit] [--at-pin]` | Upstream drift report; `--at-pin` checks the reference out at the reviewed commit. |
+| `worktree_setup` | `run.py [--no-import]` | Readies a fresh git worktree without directory links; see `UO_GODOT_HOME` / `UO_UPSTREAM_DIR` in [Configuration](Configuration.md). |
 | `ab_compare`, `side_by_side`, `render_diff`, `render_dump` | see [Parity and Drift](Parity-and-Drift.md) | The parity tooling. |
 | `multi_client` | `run.py [--only] [--list]` | The four-lane run. |
 | `plugin_probe` | `run.py [--no-run]` | The plugin host check. |
