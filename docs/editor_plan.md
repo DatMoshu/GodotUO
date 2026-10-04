@@ -428,7 +428,21 @@ The **AI** dock (`addons/guo_editor/AI/`, bottom panel beside UO Shard) has thre
 F3 has "AI: new chat", "AI: show queue/agents" and "AI: start agent X". Child processes die in
 `AiDock.Shutdown`, which the plugin calls on close and before an assembly reload. The smoke's AI stage
 runs everything against a fake ACP agent, stub HTTP servers and a temporary queue (`tools/ai_hub`).
-The editor model tools are not built yet: the models see no editor state and have no tools.
+Chat models can call `search`, `inspect_asset` and `jump_world`, plus
+`world_state` (pointer or centre, picked object, project and View mode),
+`describe_cell` (land and the Nearby tiles static stack) and `walkable`
+(the same verdict and standing heights as the Walkability View). Cell reads
+use the active facet; `jump_world` opens another one. The mode's `surface`
+category includes floors, bridges and steps; the tools preserve that verdict.
+
+`stamp_static` is a changing tool: every call asks in the existing approval
+dialog, and with no approver it is refused. It stamps at the cell's land z
+through `WorldEditor` into the open world project, with normal undo; no project,
+invalid cells/ids or a project inside the install are refused. The AI smoke
+stage checks the world reads, a known Britain wall's blocked verdict, approval
+refusal, approved stamps and undo, cancellation before execution, and unchanged
+install timestamps. The checks use stubs; a real tool-calling model remains
+unverified.
 
 ## Art pipeline (2026-10, ADR-0029)
 
