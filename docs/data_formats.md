@@ -1614,7 +1614,10 @@ footprint is an adaptation, not a source roof replica.
 District outputs contain `district.json`, canonical `scene.json` and `parts/`,
 plus a §9 `world/` project. Origins align to world blocks. `hybrid-selection.json`
 records deterministic seed, accepted header/building/parcel/build identities and
-rejected attempts. `district-stage.json` joins verified world and multi layers.
+rejected attempts. `max_storeys` records the seeded house-pool limit: one by
+default, or two with contiguous authored floors when explicitly selected.
+Every candidate still passes native stair and parcel checks.
+`district-stage.json` joins verified world and multi layers.
 Gameplay reports require arrivals without jump tags and placement acknowledgments;
 negative wall targets must fail to arrive. Source gameplay extras remain retained
 without claiming conversion into server mechanics.

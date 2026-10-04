@@ -124,6 +124,9 @@ are checked. `hybrid` deterministically selects eligible PZ houses for vacant
 CDDA field parcels, tries at most eight candidates per parcel and records both
 accepted and rejected attempts. `combine --district <DIR> --building <DIR>
 --offset X Y --name <NAME> --out <DIR>` supports explicit validated placement.
+The default seeded pool contains ground-floor houses; `hybrid --max-storeys 2`
+also admits houses with contiguous authored ground and upper floors. Each
+candidate still has to pass native staircase, footprint and movement checks.
 
 ## Staging, editor and gameplay evidence
 

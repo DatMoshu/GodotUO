@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import json
 from pathlib import Path
 import random
@@ -11,17 +12,29 @@ from layout_import import run
 from layout_import.combine import combine
 
 
-def populate(cfg, district, source, catalogue, database, native_catalogue, decor_database, seed, count, name, out):
+def eligible_house(building, max_storeys=1):
+    levels=building['levels']
+    return (levels == list(range(len(levels))) and 1<=len(levels)<=max_storeys
+            and 3<=len(building['rooms'])<=12
+            and building['bounds'][2]-building['bounds'][0]<=10
+            and building['bounds'][3]-building['bounds'][1]<=10
+            and any('bedroom' in room['name'] for room in building['rooms']))
+
+
+def populate(cfg, district, source, catalogue, database, native_catalogue, decor_database, seed, count, name, out, max_storeys=1):
     district,source,out=Path(district).resolve(),Path(source).resolve(),Path(out).resolve()
     if out.is_relative_to(source) or out.is_relative_to(cfg.client_data.resolve()) or out.is_relative_to(district):
         raise ValueError("hybrid outputs must be separate from input district and source installations")
     census=json.loads(Path(catalogue).read_text(encoding='utf-8'))
     original=json.loads((district/'district.json').read_text(encoding='utf-8'))
+    selection_inputs={'census_sha256':hashlib.sha256(Path(catalogue).read_bytes()).hexdigest(),
+                      'district_sha256':hashlib.sha256((district/'district.json').read_bytes()).hexdigest(),
+                      'selection_algorithm':'python-random-shuffle-v1'}
     if original['status']!='native-valid':
         raise ValueError("hybrid needs an already validated CDDA district")
-    candidates=[b for b in census['buildings'] if b['levels']==[0] and 3<=len(b['rooms'])<=12
-                and b['bounds'][2]-b['bounds'][0]<=10 and b['bounds'][3]-b['bounds'][1]<=10
-                and any('bedroom' in r['name'] for r in b['rooms'])]
+    if max_storeys not in (1,2) or count<1:
+        raise ValueError('hybrid requires a positive count and max-storeys 1 or 2')
+    candidates=[b for b in census['buildings'] if eligible_house(b,max_storeys)]
     vacant=[p for p in original['parcels'] if p['overmap_terrain']=='field' and not p.get('native')]
     rng=random.Random(seed)
     candidates.sort(key=lambda b:(b['header'],b['building']))
@@ -33,11 +46,11 @@ def populate(cfg, district, source, catalogue, database, native_catalogue, decor
     current=district
     accepted,blocked=[],[]
     x0,y0,_,_=original['bounds']
-    for parcel in vacant[:count]:
+    for parcel_index,parcel in enumerate(vacant[:count]):
         for attempt in range(min(8,len(candidates))):
             candidate=candidates.pop()
             index=len(accepted)
-            work=out/'imports'/f'{index}_{attempt}'
+            work=out/'imports'/f'{parcel_index}_{attempt}'
             semantic_out=work/'semantic';native_out=work/'native'
             work.mkdir(parents=True,exist_ok=True)
             with (work/'import.log').open('w',encoding='utf-8') as log, contextlib.redirect_stdout(log),contextlib.redirect_stderr(log):
@@ -65,13 +78,14 @@ def populate(cfg, district, source, catalogue, database, native_catalogue, decor
             current=assembled
             break
     if not accepted:
-        (out/'hybrid-selection.json').write_text(json.dumps({'seed':seed,'accepted':[],'blocked':blocked},indent=1),encoding='utf-8')
+        (out/'hybrid-selection.json').write_text(json.dumps({'seed':seed,'max_storeys':max_storeys,
+            'inputs':selection_inputs,'accepted':[],'blocked':blocked},indent=1),encoding='utf-8')
         raise ValueError("no candidate passed native geometry, parcel placement and movement; inspect hybrid-selection.json")
     for folder in ('world','parts'):
         shutil.copytree(current/folder,out/folder,dirs_exist_ok=True)
     for file in ('scene.json','district.json','preview.png','preview_noroof.png'):
         shutil.copyfile(current/file,out/file)
-    selection={'format':1,'seed':seed,'requested':count,'accepted':accepted,'blocked':blocked,
+    selection={'format':1,'seed':seed,'max_storeys':max_storeys,'inputs':selection_inputs,'requested':count,'accepted':accepted,'blocked':blocked,
                'vacant_parcels':len(vacant),'status':'native-valid','gameplay':'not-run'}
     (out/'hybrid-selection.json').write_text(json.dumps(selection,indent=1),encoding='utf-8')
     record=json.loads((out/'district.json').read_text(encoding='utf-8'))

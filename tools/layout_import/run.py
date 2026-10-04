@@ -18,6 +18,7 @@ def main(argv=None):
         hybrid.add_argument('--'+flag,type=Path,required=True)
     hybrid.add_argument("--seed",required=True)
     hybrid.add_argument("--count",type=int,default=1)
+    hybrid.add_argument("--max-storeys",type=int,choices=[1,2],default=1,help="include authored two-storey houses in seeded selection")
     hybrid.add_argument("--name",required=True)
     combined=commands.add_parser("combine",help="place a validated building into a district vacant parcel")
     combined.add_argument("--district",type=Path,required=True)
@@ -122,7 +123,7 @@ def main(argv=None):
             from guo import load_config
             from layout_import.hybrid import populate
             print(json.dumps(populate(load_config(),args.district,args.source,args.zomboid_catalogue,args.db,
-                args.catalogue,args.decor_db,args.seed,args.count,args.name,args.out),indent=2))
+                args.catalogue,args.decor_db,args.seed,args.count,args.name,args.out,args.max_storeys),indent=2))
             return 0
         if args.command=="combine":
             from guo import load_config

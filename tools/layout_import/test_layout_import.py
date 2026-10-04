@@ -15,6 +15,20 @@ from layout_import import cdda, db, run
 
 
 class CatalogueTests(unittest.TestCase):
+    def test_seeded_house_eligibility_requires_contiguous_authored_floors(self):
+        from layout_import.hybrid import eligible_house
+        house={'levels':[0,1],'rooms':[{'name':'bedroom'},{'name':'kitchen'},{'name':'bathroom'}],
+               'bounds':[0,0,9,9]}
+        self.assertFalse(eligible_house(house))
+        self.assertTrue(eligible_house(house,2))
+        for levels in ([1],[-1,0],[0,2],[0,1,2],[]):
+            house['levels']=levels
+            self.assertFalse(eligible_house(house,2))
+        house['levels']=[0]
+        self.assertTrue(eligible_house(house,2))
+        house['bounds']=[0,0,11,9]
+        self.assertFalse(eligible_house(house,2))
+
     def test_usage_event_is_idempotent_and_room_edits_have_distinct_instances(self):
         from layout_import import catalogue,semantic
         snapshot=cdda.scan(self.con,self.source)
