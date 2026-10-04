@@ -20,6 +20,14 @@ and JSON parse errors block the profile (exit 1). Bad arguments/output failures
 exit 2. A successful census exits 0 even when individual layouts are blocked:
 read the coverage ledger before selecting work.
 
+Source folders can also be configured with `UO_LAYOUT_CDDA_DIR` (`scan`,
+`engine-bake`) and `UO_LAYOUT_ZOMBOID_DIR` (`zomboid-scan`, `zomboid-resolve`,
+`hybrid`). Both default to blank. Resolution is environment, then the
+gitignored `launchers/_shared/config.local.bat`, then shared `config.bat`;
+`--source` overrides that result for one invocation. Without either source,
+the command reports which key to set. These settings only select read-only
+inputs; keep installation paths and source data out of commits.
+
 The scanner reads every top-level typed record under `data/json`, `data/mods`
 and top-level `mods`. It preserves all types, including non-building definitions.
 It records every file hash and parse failure, JSON pointer, namespace, selector,

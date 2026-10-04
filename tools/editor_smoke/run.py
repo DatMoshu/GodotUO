@@ -45,7 +45,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from guo import load_config  # noqa: E402
-from guo.process import no_activate  # noqa: E402
+from guo.process import build_child_env, no_activate  # noqa: E402
 
 TIMEOUT_S = 600
 
@@ -56,6 +56,7 @@ def build(project: Path) -> bool:
         ["dotnet", "build", str(project / "GUO.csproj"), "-nologo", "-v", "q"],
         capture_output=True,
         text=True,
+        env=build_child_env(),
     )
     if result.returncode != 0:
         print(result.stdout[-4000:])
@@ -235,7 +236,8 @@ def main() -> int:
     rebuilt = None
     try:
         with log_path.open("w", encoding="utf-8", errors="replace") as log:
-            proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, **no_activate())
+            proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT,
+                                    env=build_child_env(), **no_activate())
             while proc.poll() is None:
                 if time.monotonic() - started > TIMEOUT_S:
                     proc.kill()

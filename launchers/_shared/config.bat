@@ -221,6 +221,10 @@ REM  The shard account guo.sh passes as --account (the password defaults to
 REM  the account name). Empty = none. Set it in config.local.bat, never here.
 if not defined UO_DECK_ACCOUNT      set "UO_DECK_ACCOUNT="
 
+REM --- Layout sources (optional, read-only; user's paths in config.local.bat) ---
+if not defined UO_LAYOUT_CDDA_DIR    set "UO_LAYOUT_CDDA_DIR="
+if not defined UO_LAYOUT_ZOMBOID_DIR set "UO_LAYOUT_ZOMBOID_DIR="
+
 REM --- Python -------------------------------------------------------------
 if not defined UO_PYTHON            set "UO_PYTHON=python"
 

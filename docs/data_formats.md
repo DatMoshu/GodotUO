@@ -49,6 +49,14 @@ Every key resolves as: **environment variable → `config.local.bat` →
 | `UO_SHARD_HOST` / `UO_SHARD_PORT` | Shard to connect to |
 | `GODOT_VERSION` / `GODOT_FLAVOR` | Pinned engine build |
 | `UO_LOG_LEVEL` | `DEBUG` \| `INFO` \| `WARN` \| `ERROR` |
+| `UO_LAYOUT_CDDA_DIR` | Read-only local CDDA source folder for layout `scan` and `engine-bake`; blank by default |
+| `UO_LAYOUT_ZOMBOID_DIR` | Read-only local Project Zomboid installation for `zomboid-scan`, `zomboid-resolve` and `hybrid`; blank by default |
+
+Layout source paths follow the same environment, `config.local.bat`, then
+`config.bat` resolution. An explicit `--source` overrides the resolved key
+for that invocation. If neither is configured, the importer reports the
+missing key and `--source` option. Keep personal source paths in the local
+configuration; source installations remain read-only and are never committed.
 
 `UO_CLIENT_VERSION` must match the data in `UO_CLIENT_DATA`. A mismatch
 produces failures during the network handshake that look like protocol bugs

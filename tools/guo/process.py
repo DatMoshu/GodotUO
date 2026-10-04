@@ -15,10 +15,28 @@ Headless runs open no window at all, and are what tools use by default.
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 
 SW_SHOWNOACTIVATE = 4
+
+
+def build_child_env() -> dict[str, str]:
+    """Copy the caller's environment for a build/editor smoke child.
+
+    On Windows, disable persistent Roslyn children so Godot's console
+    wrapper can exit after the engine. Pass as ``env=build_child_env()``;
+    the caller's environment and interactive runtime defaults are unchanged.
+    """
+    env = os.environ.copy()
+    if sys.platform == "win32":
+        # os.environ is case-insensitive on Windows; its plain dict copy is not.
+        for key in list(env):
+            if key.upper() == "USESHAREDCOMPILATION":
+                del env[key]
+        env["UseSharedCompilation"] = "false"
+    return env
 
 
 def no_activate() -> dict:
