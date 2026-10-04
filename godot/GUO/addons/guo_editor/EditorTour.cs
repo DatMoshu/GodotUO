@@ -499,8 +499,8 @@ public partial class EditorTour : Node
         count.Select(1);
         count.EmitSignal(OptionButton.SignalName.ItemSelected, 1);
         await Frames(3);
-        _overlay.Tip(count.GetGlobalRect(), "x 2: the button now reads '" + startClient.Text + "'");
-        Check(startClient.Text == "Start 2 clients", "the count dropdown changes the button to 'Start 2 clients'");
+        _overlay.Tip(count.GetGlobalRect(), "x 2: '" + startClient.Text + "' now starts two clients");
+        Check(count.GetItemId(count.Selected) == 2 && startClient.Text == "Start clients", "the count dropdown is set to two clients for 'Start clients'");
         await Shot(3);
         count.Select(0);
         count.EmitSignal(OptionButton.SignalName.ItemSelected, 0);
@@ -655,7 +655,7 @@ public partial class EditorTour : Node
         await Shot(4);
         _overlay.ClearMarks();
 
-        maps.Radar.Focus(new Vector2I(1496 / 4, 1628 / 4), 8);
+        maps.Radar.Focus(new Vector2I(1496 / 4, 1628 / 4), 16); // past the detail threshold, whatever width the panel has
         await Frames(10);
         Check(maps.Radar.ShowingDetail, $"zoomed in, the radar shows per-cell detail ({maps.Radar.DetailBlocksDrawn} blocks)");
         Say("Zoomed on Britain: past a point the 1:4 overview gives way to the detail, one pixel per cell. Click a cell: the inspector lists what is on it. Double-click, or the Jump button, goes to UO World.");
@@ -695,7 +695,15 @@ public partial class EditorTour : Node
         await Shot(5);
     }
 
-    private Vector2I Centre => new((int)_world.Size.X / 2, (int)_world.Size.Y / 2);
+    // The middle of the map viewport: the World workspace sits beside it, so the tab's own middle is not on the map.
+    private Vector2I Centre
+    {
+        get
+        {
+            Vector2 size = All<SubViewportContainer>(_world).FirstOrDefault()?.Size ?? _world.Size;
+            return new((int)size.X / 2, (int)size.Y / 2);
+        }
+    }
 
     private void Aim(Vector2I at)
     {
