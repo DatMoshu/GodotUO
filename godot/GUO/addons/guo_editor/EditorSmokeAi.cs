@@ -110,6 +110,16 @@ public partial class EditorSmoke
 
     private async Task RunAiAsync()
     {
+        // The preceding Search stage opens these dialogs. Close its test
+        // windows before the AI permission dialog and the Queue capture.
+        foreach (Window window in GodotUi.Walk(GetTree().Root).OfType<Window>())
+        {
+            if (window.GetClass() == "ProjectSettingsEditor" || window.GetClass() == "EditorSettingsDialog")
+            {
+                window.Hide();
+            }
+        }
+
         string root = EditorData.RepoRoot;
         string fake = Path.Combine(root, "tools", "ai_hub", "fake_acp_agent.py");
         string python = QueueClient.FindPython();
@@ -357,6 +367,15 @@ public partial class EditorSmoke
                 AiCheck("queue_refuses_secret", refused == 0 && whyRefused.Length > 0, whyRefused);
                 var (list, listErr) = await q.ListAsync();
                 AiCheck("queue_list", list != null && list.Count == 1 && list[0].Id == id && list[0].Status == "new" && list[0].Text == "hello\nqueue", listErr);
+                // Register scratch listeners and a scratch lease; never use the owner's bus.
+                await QueueSmokeCommand(python, root, db, "register", "claude", "--project", "scratch", "--tool", "script");
+                await QueueSmokeCommand(python, root, db, "register", "reviewer", "--project", "scratch", "--tool", "script");
+                await QueueSmokeCommand(python, root, db, "take", "--as", "claude");
+                await QueueSmokeCommand(python, root, db, "lease", "take", "scratch:preview", "--holder", "claude", "--minutes", "10", "--purpose", "Editor scratch queue preview");
+                var (bus, busErr) = await q.StatusAsync();
+                AiCheck("queue_status", bus != null && bus.Addresses.Any(a => a.Address == "claude" && !a.Stale)
+                    && bus.Addresses.Any(a => a.Address == "reviewer" && a.Stale)
+                    && bus.Leases.Any(l => l.Resource == "scratch:preview" && !l.Expired), busErr);
                 // An agent answers through the tool, as a running session would.
                 var reply = Process.Start(new ProcessStartInfo(python)
                 {
@@ -373,7 +392,31 @@ public partial class EditorSmoke
                 long second = await Ai.Queue.PostAsync("claude", "guo-smoke", "from the tab");
                 AiCheck("queue_tab_post", second > id, second.ToString());
                 await Ai.Queue.RefreshAsync();
-                AiCheck("queue_tab_list", Ai.Queue.Requests.Count == 2 && Ai.Queue.Requests[^1].Text == "from the tab");
+                AiCheck("queue_tab_list", Ai.Queue.Requests.Count == 3 && Ai.Queue.Requests[^1].Text == "from the tab"
+                    && Ai.Queue.Requests.Any(r => r.Kind == "reply"));
+                await Ai.Queue.SelectAsync(id);
+                AiCheck("queue_tab_reply_detail", Ai.Queue.DetailText.Contains("got it"));
+                AiCheck("queue_tab_addresses", Ai.Queue.ListenersText.Contains("reviewer") && Ai.Queue.ListenersText.Contains("stale")
+                    && Ai.Queue.ListenersText.Contains("active"));
+                AiCheck("queue_tab_leases", Ai.Queue.LeasesText.Contains("scratch:preview") && Ai.Queue.LeasesText.Contains("held"));
+                if (!Headless)
+                {
+                    Vector2 minimum = Ai.CustomMinimumSize;
+                    var splits = new List<(SplitContainer Split, int Offset)>();
+                    for (Node parent = Ai.GetParent(); parent != null; parent = parent.GetParent())
+                    {
+                        if (parent is SplitContainer split) splits.Add((split, split.SplitOffset));
+                    }
+                    Ai.CustomMinimumSize = new Vector2(minimum.X, 540 * EditorInterface.Singleton.GetEditorScale());
+                    await Delay(0.5);
+                    using Image shot = EditorInterface.Singleton.GetBaseControl().GetViewport().GetTexture()?.GetImage();
+                    string path = Path.Combine(_out, $"editor_queue_switchboard{Suffix}.png");
+                    shot?.SavePng(path);
+                    _aiReport["queue_editor_screenshot_path"] = path;
+                    AiCheck("queue_editor_screenshot", shot != null && !shot.IsEmpty());
+                    Ai.CustomMinimumSize = minimum;
+                    foreach (var split in splits) split.Split.SplitOffset = split.Offset;
+                }
             }
 
             // --- (d) the Sessions tab, against a fake home folder ----------------------------------------
@@ -392,6 +435,22 @@ public partial class EditorSmoke
         }
 
         _aiReport["chunks_streamed"] = _aiReport.GetValueOrDefault("acp_chunks");
+    }
+
+    private async Task QueueSmokeCommand(string python, string root, string db, params string[] args)
+    {
+        var start = new ProcessStartInfo(python)
+        {
+            UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true,
+            ArgumentList = { Path.Combine(root, "tools", "agent_queue", "run.py"), "--db", db },
+        };
+        foreach (string arg in args) start.ArgumentList.Add(arg);
+        using Process p = Process.Start(start);
+        Task<string> output = p.StandardOutput.ReadToEndAsync();
+        Task<string> error = p.StandardError.ReadToEndAsync();
+        await p.WaitForExitAsync();
+        await output;
+        AiCheck($"queue_command_{args[0]}_{args[1]}", p.ExitCode == 0, await error);
     }
 
     /// <summary>
@@ -482,6 +541,9 @@ public partial class EditorSmoke
         var q = new QueueClient(EditorData.RepoRoot, db);
         var (all, err) = await q.ListAsync(50);
         AiCheck("sessions_send_to_queue", id > 0 && all != null && all.Any(r => r.Id == id && r.To == name && r.Text.Contains("zebra")), $"{name} {id} {err}");
+        long addressed = await tab.SendSelectedAsync("use the registered listener", "reviewer");
+        var (explicitMessage, addressError) = await q.ShowAsync(addressed);
+        AiCheck("sessions_explicit_queue_address", addressed > id && explicitMessage?.To == "reviewer", $"{addressError} {tab.StatusText}");
         _aiReport["sessions_queue_name"] = name;
     }
 

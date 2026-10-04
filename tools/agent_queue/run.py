@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""The agent request queue: a chat window puts requests to running AI agent
-sessions and gets replies back.
+"""The agent queue: a switchboard-compatible bus for running agent sessions.
 
 One SQLite file per user (setting UO_AGENT_QUEUE). A watching session runs
 `tail --as NAME` under its Monitor tool; each request addressed to it comes out
@@ -20,7 +19,7 @@ Or through the launcher:  launchers\\dev\\agent_queue.bat <same arguments>
 
 Exit codes: 0 ok, 1 refused (unknown id, wrong state), 2 bad input, 3 timeout.
 Standard output carries data only (ids, JSON lines); messages go to stderr, so
-a Monitor watching `tail` wakes only for real requests.
+a Monitor watching `tail` wakes only for addressed messages.
 """
 
 from __future__ import annotations
@@ -30,9 +29,10 @@ import json
 import os
 import re
 import sqlite3
+import shutil
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 MAX_TEXT = 8000          # characters per request or reply
@@ -42,30 +42,7 @@ BROADCAST = "*"
 STATUSES = ("new", "taken", "answered", "cancelled")
 NAME_RE = re.compile(r"^[A-Za-z0-9_.-]{1,40}$")
 
-SCHEMA = """
-CREATE TABLE IF NOT EXISTS requests (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    to_agent    TEXT NOT NULL,
-    from_agent  TEXT NOT NULL,
-    text        TEXT NOT NULL,
-    attachments TEXT NOT NULL DEFAULT '[]',
-    status      TEXT NOT NULL DEFAULT 'new'
-                CHECK (status IN ('new','taken','answered','cancelled')),
-    created     TEXT NOT NULL,
-    taken_by    TEXT,
-    taken_at    TEXT
-);
-CREATE TABLE IF NOT EXISTS replies (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    request_id  INTEGER NOT NULL REFERENCES requests(id),
-    from_agent  TEXT NOT NULL,
-    text        TEXT NOT NULL,
-    attachments TEXT NOT NULL DEFAULT '[]',
-    created     TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS requests_status ON requests(status, to_agent, id);
-CREATE INDEX IF NOT EXISTS replies_request ON replies(request_id, id);
-"""
+from store import SCHEMA, KINDS, PROVENANCE, OWNER_PROVENANCE, migrate, message, seen
 
 # Never store secrets: refuse the shapes that are unmistakably credentials.
 SECRET_PATTERNS = [
@@ -132,7 +109,11 @@ def connect(path: Path) -> sqlite3.Connection:
     db.execute("PRAGMA journal_mode=WAL")
     db.execute("PRAGMA synchronous=NORMAL")
     db.execute("PRAGMA foreign_keys=ON")
-    db.executescript(SCHEMA)
+    try:
+        migrate(db)
+    except BaseException:
+        db.close()
+        raise
     if created and os.name == "posix":
         try:
             os.chmod(path, 0o600)
@@ -185,30 +166,13 @@ def read_text(arg: str) -> str:
 
 # --- rows -> JSON ---------------------------------------------------------
 
-def request_json(row: sqlite3.Row) -> dict:
-    return {
-        "id": row["id"], "to": row["to_agent"], "from": row["from_agent"],
-        "text": row["text"], "attachments": json.loads(row["attachments"]),
-        "status": row["status"], "created": row["created"],
-        "taken_by": row["taken_by"], "taken_at": row["taken_at"],
-    }
-
-
-def reply_json(row: sqlite3.Row) -> dict:
-    return {
-        "id": row["id"], "request_id": row["request_id"], "from": row["from_agent"],
-        "text": row["text"], "attachments": json.loads(row["attachments"]),
-        "created": row["created"],
-    }
-
-
 def emit(obj: dict) -> None:
     sys.stdout.write(json.dumps(obj, ensure_ascii=False, separators=(",", ":")) + "\n")
     sys.stdout.flush()
 
 
 def get_request(db: sqlite3.Connection, request_id: int) -> sqlite3.Row:
-    row = db.execute("SELECT * FROM requests WHERE id=?", (request_id,)).fetchone()
+    row = db.execute("SELECT * FROM messages WHERE id=?", (request_id,)).fetchone()
     if row is None:
         raise Refused(f"no request {request_id}")
     return row
@@ -216,53 +180,63 @@ def get_request(db: sqlite3.Connection, request_id: int) -> sqlite3.Row:
 
 # --- commands -------------------------------------------------------------
 
-def cmd_post(db, args) -> int:
+def insert_message(db, *, to, sender, text, kind="request", ref=None, provenance="agent", url=None, key=None, attachments=None):
+    if kind == "approval" and provenance not in OWNER_PROVENANCE:
+        raise Refused("an approval requires an owner provenance")
+    cur = db.execute("INSERT OR IGNORE INTO messages(to_addr,from_addr,kind,text,ref_id,provenance,source_url,source_key,created) VALUES(?,?,?,?,?,?,?,?,?)",
+                     (to, sender, kind, text, ref, provenance, url, key, now()))
+    if not cur.rowcount:
+        return None
+    if attachments:
+        db.execute("INSERT INTO message_attachments(message_id,attachments) VALUES(?,?)", (cur.lastrowid, json.dumps(attachments)))
+    return cur.lastrowid
+
+
+def cmd_post(db, args):
     to = check_name(args.to, "--to", allow_broadcast=True)
     sender = check_name(args.sender, "--from")
     text = check_text(read_text(args.text))
     attachments = check_attachments(args.attach)
-    cur = db.execute(
-        "INSERT INTO requests(to_agent, from_agent, text, attachments, status, created) VALUES (?,?,?,?, 'new', ?)",
-        (to, sender, text, json.dumps(attachments), now()))
-    print(cur.lastrowid)
-    return 0
-
-
-def claim(db: sqlite3.Connection, name: str, broadcast: bool, replay: bool) -> list[sqlite3.Row]:
-    """Take every waiting request for `name` in one write transaction. The
-    UPDATE re-checks status='new', so two watchers can never both take one."""
-    where = "(to_agent=? OR to_agent='*')" if broadcast else "to_agent=?"
     db.execute("BEGIN IMMEDIATE")
     try:
-        rows = db.execute(f"SELECT * FROM requests WHERE status='new' AND {where} ORDER BY id", (name,)).fetchall()
-        taken = []
-        stamp = now()
-        for row in rows:
-            cur = db.execute(
-                "UPDATE requests SET status='taken', taken_by=?, taken_at=? WHERE id=? AND status='new'",
-                (name, stamp, row["id"]))
-            if cur.rowcount == 1:
-                taken.append(row)
-        if replay:
-            # Requests this name took earlier and never answered: for a session
-            # that died after taking one and before showing it.
-            again = db.execute(
-                "SELECT * FROM requests WHERE status='taken' AND taken_by=? AND id NOT IN (SELECT request_id FROM replies) ORDER BY id",
-                (name,)).fetchall()
-            seen = {r["id"] for r in taken}
-            taken = [r for r in again if r["id"] not in seen] + taken
-            taken.sort(key=lambda r: r["id"])
+        mid = insert_message(db, to=to, sender=sender, text=text, kind=args.kind, ref=args.ref,
+                             provenance=args.provenance, url=args.url, key=args.key, attachments=attachments)
         db.execute("COMMIT")
     except BaseException:
         db.execute("ROLLBACK")
         raise
-    # Fresh rows so status/taken_by show the claim.
-    return [get_request(db, r["id"]) for r in taken]
+    print(mid)
+    return 0
 
 
-def unclaim(db: sqlite3.Connection, name: str, request_id: int) -> None:
-    db.execute("UPDATE requests SET status='new', taken_by=NULL, taken_at=NULL WHERE id=? AND status='taken' AND taken_by=?",
-               (request_id, name))
+def claim(db, name, broadcast, replay):
+    where = "(to_addr=? OR to_addr='*')" if broadcast else "to_addr=?"
+    db.execute("BEGIN IMMEDIATE")
+    try:
+        rows = db.execute(f"SELECT * FROM messages WHERE status='new' AND {where} ORDER BY id", (name,)).fetchall()
+        stamp = now()
+        ids = [r["id"] for r in rows]
+        for mid in ids:
+            db.execute("UPDATE messages SET status='taken',taken_by=?,taken_at=? WHERE id=? AND status='new'", (name,stamp,mid))
+        if replay:
+            ids += [r[0] for r in db.execute("SELECT id FROM messages WHERE status='taken' AND taken_by=? AND id NOT IN (SELECT ref_id FROM messages WHERE kind='reply' AND ref_id IS NOT NULL)", (name,))]
+        seen(db, name, stamp)
+        db.execute("COMMIT")
+    except BaseException:
+        db.execute("ROLLBACK")
+        raise
+    return [get_request(db, mid) for mid in sorted(set(ids))]
+
+
+def unclaim(db, name, request_id):
+    db.execute("UPDATE messages SET status='new',taken_by=NULL,taken_at=NULL WHERE id=? AND status='taken' AND taken_by=?", (request_id,name))
+
+
+def cmd_take(db, args):
+    name = check_name(args.agent, "--as")
+    for r in claim(db, name, args.include_broadcast, False):
+        emit(message(db, r))
+    return 0
 
 
 def cmd_tail(db, args) -> int:
@@ -275,7 +249,7 @@ def cmd_tail(db, args) -> int:
             replay = False
             for index, row in enumerate(rows):
                 try:
-                    emit(request_json(row))
+                    emit(message(db, row))
                 except (BrokenPipeError, OSError):
                     # The reader is gone: give back what was claimed but not shown.
                     for unseen in rows[index:]:
@@ -291,7 +265,7 @@ def cmd_tail(db, args) -> int:
         return 0
 
 
-def cmd_reply(db, args) -> int:
+def cmd_reply(db, args):
     text = check_text(read_text(args.text))
     attachments = check_attachments(args.attach)
     db.execute("BEGIN IMMEDIATE")
@@ -299,54 +273,130 @@ def cmd_reply(db, args) -> int:
         request = get_request(db, args.id)
         if request["status"] == "cancelled":
             raise Refused(f"request {args.id} was cancelled; not replying")
-        sender = check_name(args.sender or request["taken_by"] or request["to_agent"], "--from")
-        if sender == BROADCAST:
-            raise Refused("name yourself with --from; the request went to everyone", 2)
-        cur = db.execute(
-            "INSERT INTO replies(request_id, from_agent, text, attachments, created) VALUES (?,?,?,?,?)",
-            (args.id, sender, text, json.dumps(attachments), now()))
-        db.execute("UPDATE requests SET status='answered' WHERE id=?", (args.id,))
+        sender = check_name(args.sender or request["taken_by"] or request["to_addr"], "--from")
+        mid = insert_message(db, to=request["from_addr"], sender=sender, text=text, kind="reply", ref=args.id, attachments=attachments)
+        db.execute("UPDATE messages SET status='answered',answered_at=? WHERE id=?", (now(),args.id))
+        seen(db, sender, now())
         db.execute("COMMIT")
     except BaseException:
         db.execute("ROLLBACK")
         raise
-    print(cur.lastrowid)
+    print(mid)
     return 0
 
 
-def cmd_show(db, args) -> int:
-    request = request_json(get_request(db, args.id))
-    request["replies"] = [reply_json(r) for r in db.execute(
-        "SELECT * FROM replies WHERE request_id=? ORDER BY id", (args.id,))]
-    print(json.dumps(request, ensure_ascii=False, indent=2))
+def cmd_show(db, args):
+    out = message(db, get_request(db,args.id))
+    out["replies"] = [message(db,r) for r in db.execute("SELECT * FROM messages WHERE kind='reply' AND ref_id=? ORDER BY id", (args.id,))]
+    print(json.dumps(out, ensure_ascii=False, indent=2))
     return 0
 
 
-def cmd_list(db, args) -> int:
-    sql, params = "SELECT * FROM requests WHERE 1=1", []
-    if args.status:
-        sql += " AND status=?"
-        params.append(args.status)
-    if args.to:
-        sql += " AND to_agent=?"
-        params.append(args.to)
+def cmd_list(db, args):
+    sql, params = "SELECT * FROM messages WHERE 1=1", []
+    for col, val in (("status",args.status),("to_addr",args.to),("from_addr",args.sender),("kind",args.kind)):
+        if val:
+            sql += f" AND {col}=?"
+            params.append(val)
     sql += " ORDER BY id DESC LIMIT ?"
     params.append(args.limit)
-    for row in reversed(db.execute(sql, params).fetchall()):
-        if args.json:
-            emit(request_json(row))
-        else:
-            text = row["text"].replace("\n", " ")
-            print(f"{row['id']:>5}  {row['status']:<9} {row['from_agent']} -> {row['to_agent']}  {text[:70]}")
+    for row in reversed(db.execute(sql,params).fetchall()):
+        emit(message(db,row))
     return 0
 
 
-def cmd_cancel(db, args) -> int:
-    cur = db.execute("UPDATE requests SET status='cancelled' WHERE id=? AND status IN ('new','taken')", (args.id,))
+def cmd_cancel(db, args):
+    cur = db.execute("UPDATE messages SET status='cancelled' WHERE id=? AND status IN ('new','taken')", (args.id,))
     if cur.rowcount == 1:
         return 0
-    request = get_request(db, args.id)
+    request = get_request(db,args.id)
     raise Refused(f"request {args.id} is already {request['status']}")
+
+
+def cmd_replies(db, args):
+    get_request(db,args.id)
+    deadline = time.monotonic() + (args.wait or 0)
+    while True:
+        rows = db.execute("SELECT * FROM messages WHERE ref_id=? ORDER BY id", (args.id,)).fetchall()
+        if rows:
+            for r in rows:
+                emit(message(db,r))
+            return 0
+        if time.monotonic() >= deadline:
+            return 3
+        time.sleep(min(0.5,max(0,deadline-time.monotonic())))
+
+
+def stale(stamp, minutes=15):
+    return stamp is None or datetime.fromisoformat(stamp.replace("Z","+00:00")) < datetime.now(timezone.utc)-timedelta(minutes=minutes)
+
+
+def cmd_status(db,args):
+    out = {"db": str(resolve_db_path(args.db)), "addresses": [], "waiting": [], "leases": []}
+    for r in db.execute("SELECT * FROM addresses ORDER BY project,address"):
+        out["addresses"].append(dict(r,stale=stale(r["last_seen"])))
+    for r in db.execute("SELECT to_addr,COUNT(*) n,MIN(created) oldest FROM messages WHERE status='new' GROUP BY to_addr"):
+        out["waiting"].append(dict(r,stale=stale(r["oldest"])))
+    for r in db.execute("SELECT * FROM leases ORDER BY resource"):
+        out["leases"].append(dict(r,expired=stale(r["until"],0)))
+    print(json.dumps(out,ensure_ascii=False,indent=2))
+    return 0
+
+
+def cmd_register(db,args):
+    check_name(args.address,"address")
+    db.execute("BEGIN IMMEDIATE")
+    try:
+        if args.integrator:
+            other=db.execute("SELECT address FROM addresses WHERE project=? AND integrator=1 AND address<>?",(args.project,args.address)).fetchone()
+            if other:
+                raise Refused(f"{args.project} already has an integrator ({other[0]})")
+        db.execute("INSERT INTO addresses(address,project,tool,role,integrator,registered) VALUES(?,?,?,?,?,?) ON CONFLICT(address) DO UPDATE SET project=excluded.project,tool=excluded.tool,role=excluded.role,integrator=excluded.integrator",
+                   (args.address,args.project,args.tool,args.role,int(args.integrator),now()))
+        db.execute("COMMIT")
+    except BaseException:
+        db.execute("ROLLBACK")
+        raise
+    print(f"registered {args.address}")
+    return 0
+
+
+def cmd_lease(db,args):
+    if args.action == "list":
+        for r in db.execute("SELECT * FROM leases ORDER BY resource"):
+            emit(dict(r))
+        return 0
+    if not args.resource or not args.holder:
+        raise Refused("lease take/release need RESOURCE and --holder",2)
+    check_name(args.holder,"--holder")
+    if args.action == "release":
+        n=db.execute("DELETE FROM leases WHERE resource=? AND holder=?",(args.resource,args.holder)).rowcount
+        if not n:
+            raise Refused(f"not held by {args.holder}")
+        print("released")
+        return 0
+    if args.minutes <= 0:
+        raise Refused("--minutes must be positive",2)
+    if args.min_free_gb and args.resource.lower().startswith(("build:","disk:")):
+        drive=args.resource.split(":",1)[1].strip("\\/")
+        if len(drive)!=1 or not drive.isalpha():
+            raise Refused("disk lease needs a drive letter",2)
+        free=shutil.disk_usage(f"{drive}:\\").free/2**30
+        if free < args.min_free_gb:
+            raise Refused(f"free space {free:.0f} GB is below the {args.min_free_gb:g} GB floor")
+    db.execute("BEGIN IMMEDIATE")
+    try:
+        held=db.execute("SELECT * FROM leases WHERE resource=?",(args.resource,)).fetchone()
+        if held and held["holder"]!=args.holder and not stale(held["until"],0):
+            raise Refused(f"{args.resource} is held by {held['holder']} until {held['until']}")
+        until=(datetime.now(timezone.utc)+timedelta(minutes=args.minutes)).isoformat(timespec="seconds")
+        db.execute("INSERT OR REPLACE INTO leases VALUES(?,?,?,?,?)",(args.resource,args.holder,args.purpose,now(),until))
+        db.execute("COMMIT")
+    except BaseException:
+        db.execute("ROLLBACK")
+        raise
+    print(f"leased {args.resource} to {args.holder} until {until}")
+    return 0
 
 
 def cmd_watch_replies(db, args) -> int:
@@ -357,17 +407,17 @@ def cmd_watch_replies(db, args) -> int:
     since = args.since_id
     if since is None:
         # By request: everything so far. By agent: only what arrives from now on.
-        since = 0 if args.id is not None else (db.execute("SELECT COALESCE(MAX(id),0) FROM replies").fetchone()[0])
+        since = 0 if args.id is not None else (db.execute("SELECT COALESCE(MAX(id),0) FROM messages WHERE kind='reply'").fetchone()[0])
     deadline = time.monotonic() + args.timeout if args.timeout else None
     try:
         while True:
             if args.id is not None:
-                rows = db.execute("SELECT * FROM replies WHERE request_id=? AND id>? ORDER BY id", (args.id, since)).fetchall()
+                rows = db.execute("SELECT * FROM messages WHERE kind='reply' AND ref_id=? AND id>? ORDER BY id", (args.id, since)).fetchall()
             else:
-                rows = db.execute("SELECT * FROM replies WHERE from_agent=? AND id>? ORDER BY id", (args.sender, since)).fetchall()
+                rows = db.execute("SELECT * FROM messages WHERE kind='reply' AND from_addr=? AND id>? ORDER BY id", (args.sender, since)).fetchall()
             for row in rows:
                 try:
-                    emit(reply_json(row))
+                    emit(message(db,row))
                 except (BrokenPipeError, OSError):
                     return 0
                 since = row["id"]
@@ -396,14 +446,19 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--from", dest="sender", required=True, help="who is asking (the chat window's name)")
     p.add_argument("text", help="the request; - reads standard input")
     p.add_argument("--attach", action="append", metavar="PATH", help="a local file path to point at (repeatable); never copied")
+    p.add_argument("--kind", choices=KINDS, default="request")
+    p.add_argument("--ref", type=int)
+    p.add_argument("--provenance", choices=PROVENANCE, default="agent")
+    p.add_argument("--url")
+    p.add_argument("--key", help="unique source key; a duplicate does not post twice")
     p.set_defaults(fn=cmd_post)
 
-    p = sub.add_parser("tail", help="print each new request for an agent as a JSON line, marking it taken")
+    p = sub.add_parser("tail", help="print each new message for an address, marking it taken")
     p.add_argument("--as", dest="agent", required=True, help="this session's agent name")
     p.add_argument("--once", action="store_true", help="block until at least one request arrives, print, exit")
     p.add_argument("--include-broadcast", action="store_true", help="also take requests addressed to *")
     p.add_argument("--timeout", type=float, default=0, help="seconds to wait before giving up with exit 3 (0 = never)")
-    p.add_argument("--interval", type=float, default=0.5, help="poll interval in seconds")
+    p.add_argument("--interval", "--poll", type=float, default=0.5, help="poll interval in seconds")
     p.add_argument("--replay-taken", action="store_true", help="first re-print requests this name took and never answered")
     p.set_defaults(fn=cmd_tail)
 
@@ -418,9 +473,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("id", type=int)
     p.set_defaults(fn=cmd_show)
 
-    p = sub.add_parser("list", help="list requests, newest last")
+    p = sub.add_parser("list", help="list messages, newest last")
     p.add_argument("--status", choices=STATUSES)
     p.add_argument("--to")
+    p.add_argument("--from", dest="sender")
+    p.add_argument("--kind", choices=KINDS)
     p.add_argument("--limit", type=int, default=50)
     p.add_argument("--json", action="store_true", help="one JSON line per request")
     p.set_defaults(fn=cmd_list)
@@ -437,6 +494,30 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--timeout", type=float, default=0)
     p.add_argument("--interval", type=float, default=0.5)
     p.set_defaults(fn=cmd_watch_replies)
+    p = sub.add_parser("take", help="take waiting messages and exit immediately")
+    p.add_argument("--as", dest="agent", required=True)
+    p.add_argument("--include-broadcast", action="store_true")
+    p.set_defaults(fn=cmd_take)
+    p = sub.add_parser("replies", help="read replies, optionally waiting for one")
+    p.add_argument("id", type=int)
+    p.add_argument("--wait", type=float, default=0)
+    p.set_defaults(fn=cmd_replies)
+    sub.add_parser("status").set_defaults(fn=cmd_status)
+    p = sub.add_parser("register")
+    p.add_argument("address")
+    p.add_argument("--project", required=True)
+    p.add_argument("--tool", required=True, choices=("claude","codex","dot","human","script"))
+    p.add_argument("--role", default="director")
+    p.add_argument("--integrator", action="store_true")
+    p.set_defaults(fn=cmd_register)
+    p = sub.add_parser("lease")
+    p.add_argument("action", choices=("take","release","list"))
+    p.add_argument("resource", nargs="?")
+    p.add_argument("--holder")
+    p.add_argument("--purpose", default="")
+    p.add_argument("--minutes", type=int, default=60)
+    p.add_argument("--min-free-gb", type=float)
+    p.set_defaults(fn=cmd_lease)
     return parser
 
 
