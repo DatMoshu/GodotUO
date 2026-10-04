@@ -11,10 +11,14 @@ using System.Threading;
 using System.Threading.Tasks;
 
 /// <summary>One request in the agent queue, with the replies seen so far (data_formats section 21).</summary>
-public sealed record QueueRequest(long Id, string To, string From, string Text, string Status, string Created, List<QueueReply> Replies);
+public sealed record QueueRequest(long Id, string To, string From, string Text, string Status, string Created, List<QueueReply> Replies, string Kind = "request");
 
 /// <summary>One reply to a request.</summary>
 public sealed record QueueReply(long Id, string From, string Text, string Created);
+
+public sealed record QueueAddress(string Address, string Project, string Tool, string Role, bool Integrator, string LastSeen, bool Stale);
+public sealed record QueueLease(string Resource, string Holder, string Purpose, string Until, bool Expired);
+public sealed record QueueStatus(List<QueueAddress> Addresses, List<QueueLease> Leases);
 
 /// <summary>
 /// The editor's side of tools/agent_queue (ADR-0028): it runs that tool's own commands, so there is
@@ -163,6 +167,33 @@ public sealed class QueueClient
         return code == 0 ? null : e.Trim();
     }
 
+    /// <summary>Registered listeners and shared resource leases, read without taking messages.</summary>
+    public async Task<(QueueStatus Status, string Error)> StatusAsync()
+    {
+        var (code, o, e) = await RunAsync(new[] { "status" }).ConfigureAwait(false);
+        if (code != 0)
+        {
+            return (null, e.Trim());
+        }
+
+        JsonNode j = JsonNode.Parse(o);
+        var addresses = new List<QueueAddress>();
+        var leases = new List<QueueLease>();
+        foreach (JsonNode a in (JsonArray)j["addresses"])
+        {
+            addresses.Add(new QueueAddress((string)a["address"] ?? "", (string)a["project"] ?? "", (string)a["tool"] ?? "",
+                (string)a["role"] ?? "", (int)a["integrator"] != 0, (string)a["last_seen"] ?? "", (bool)a["stale"]));
+        }
+
+        foreach (JsonNode l in (JsonArray)j["leases"])
+        {
+            leases.Add(new QueueLease((string)l["resource"] ?? "", (string)l["holder"] ?? "", (string)l["purpose"] ?? "",
+                (string)l["until"] ?? "", (bool)l["expired"]));
+        }
+
+        return (new QueueStatus(addresses, leases), null);
+    }
+
     private static QueueRequest Parse(JsonNode j)
     {
         var replies = new List<QueueReply>();
@@ -170,12 +201,12 @@ public sealed class QueueClient
         {
             foreach (JsonNode r in rs)
             {
-                replies.Add(new QueueReply((long)r["id"], (string)r["from"] ?? "", (string)r["text"] ?? "", (string)r["created"] ?? ""));
+                replies.Add(new QueueReply((long)r["id"], (string)(r["from_addr"] ?? r["from"]) ?? "", (string)r["text"] ?? "", (string)r["created"] ?? ""));
             }
         }
 
-        return new QueueRequest((long)j["id"], (string)j["to"] ?? "", (string)j["from"] ?? "", (string)j["text"] ?? "",
-            (string)j["status"] ?? "", (string)j["created"] ?? "", replies);
+        return new QueueRequest((long)j["id"], (string)(j["to_addr"] ?? j["to"]) ?? "", (string)(j["from_addr"] ?? j["from"]) ?? "", (string)j["text"] ?? "",
+            (string)j["status"] ?? "", (string)j["created"] ?? "", replies, (string)j["kind"] ?? "request");
     }
 }
 #endif

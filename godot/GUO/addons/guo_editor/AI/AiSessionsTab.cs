@@ -20,9 +20,10 @@ public partial class AiSessionsTab : VBoxContainer
     private Func<AiQueueTab> _queue;
     private ItemList _list;
     private Label _status;
-    private LineEdit _message;
+    private LineEdit _message, _recipient;
     private Button _open, _send;
     private bool _built, _loaded;
+    private Task _refreshTask;
     private readonly List<SessionInfo> _sessions = new();
 
     public AiSessionsTab() : this(null, null)
@@ -82,6 +83,9 @@ public partial class AiSessionsTab : VBoxContainer
         top.AddChild(new Label { Text = "Message" });
         _message = new LineEdit { PlaceholderText = "A request for the selected session. Never put a secret here.", SizeFlagsHorizontal = SizeFlags.ExpandFill };
         top.AddChild(_message);
+        top.AddChild(new Label { Text = "Queue address" });
+        _recipient = new LineEdit { CustomMinimumSize = new Vector2(150, 0), TooltipText = "Use a registered address from the Queue tab. A transcript's session name may have no listener." };
+        top.AddChild(_recipient);
         _send = new Button { Text = "Send to queue", Disabled = true, TooltipText = "Post the message to the agent queue, addressed to this session's name" };
         _send.Pressed += () => _ = SendSelectedAsync(_message.Text);
         top.AddChild(_send);
@@ -99,6 +103,7 @@ public partial class AiSessionsTab : VBoxContainer
         {
             _open.Disabled = Selected == null;
             _send.Disabled = Selected == null;
+            _recipient.Text = Selected?.QueueName ?? "";
         };
         AddChild(_list);
 
@@ -134,11 +139,24 @@ public partial class AiSessionsTab : VBoxContainer
         _list.Select(at);
         _open.Disabled = false;
         _send.Disabled = false;
+        _recipient.Text = _sessions[at].QueueName;
         return true;
     }
 
     /// <summary>Reads the folders on a worker thread and redraws the list.</summary>
-    public async Task RefreshAsync()
+    public Task RefreshAsync()
+    {
+        // Showing the tab and an explicit Refresh can arrive together. Share the
+        // scan so a later completion cannot clear a selection made in between.
+        if (_refreshTask != null && !_refreshTask.IsCompleted)
+        {
+            return _refreshTask;
+        }
+
+        return _refreshTask = RefreshCoreAsync();
+    }
+
+    private async Task RefreshCoreAsync()
     {
         _loaded = true;
         string home = string.IsNullOrWhiteSpace(Home) ? null : Home;
@@ -185,7 +203,7 @@ public partial class AiSessionsTab : VBoxContainer
     }
 
     /// <summary>Posts to the agent queue, addressed to the selected session's name. The new request id, or 0.</summary>
-    public async Task<long> SendSelectedAsync(string text)
+    public async Task<long> SendSelectedAsync(string text, string address = null)
     {
         SessionInfo s = Selected;
         AiQueueTab q = _queue?.Invoke();
@@ -195,8 +213,9 @@ public partial class AiSessionsTab : VBoxContainer
             return 0;
         }
 
-        long id = await q.PostAsync(s.QueueName, "guo-editor", text ?? "");
-        SetStatus(id > 0 ? $"posted request {id} to {s.QueueName}" : $"not posted: {q.LastError}", id <= 0);
+        string to = (address ?? _recipient?.Text ?? s.QueueName).Trim();
+        long id = await q.PostAsync(to, "guo-editor", text ?? "");
+        SetStatus(id > 0 ? $"posted request {id} to {to}" : $"not posted: {q.LastError}", id <= 0);
         return id;
     }
 

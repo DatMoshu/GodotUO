@@ -22,6 +22,7 @@ public partial class AiQueueTab : VBoxContainer
     private LineEdit _to, _from, _text;
     private ItemList _list;
     private RichTextLabel _detail;
+    private RichTextLabel _listeners, _leases;
     private Label _status, _db;
     private double _clock = PollSeconds;
     private bool _polling, _built, _stopped;
@@ -57,6 +58,9 @@ public partial class AiQueueTab : VBoxContainer
     private string ShownDb => string.IsNullOrEmpty(_queue?.Db) ? "(the tool's default file)" : _queue.Db;
 
     public IReadOnlyList<QueueRequest> Requests => _requests;
+    public QueueStatus BusStatus { get; private set; }
+    public string ListenersText => _listeners?.GetParsedText() ?? "";
+    public string LeasesText => _leases?.GetParsedText() ?? "";
 
     /// <summary>Why the last post was refused, or null.</summary>
     public string LastError { get; private set; }
@@ -103,7 +107,7 @@ public partial class AiQueueTab : VBoxContainer
         AddChild(split);
         _list = new ItemList
         {
-            CustomMinimumSize = new Vector2(300, 100),
+            CustomMinimumSize = new Vector2(300, 50),
             SizeFlagsHorizontal = SizeFlags.ExpandFill,
             TextureFilter = TextureFilterEnum.Nearest,
         };
@@ -119,10 +123,24 @@ public partial class AiQueueTab : VBoxContainer
             ScrollFollowing = false,
             SelectionEnabled = true,
             SizeFlagsHorizontal = SizeFlags.ExpandFill,
-            CustomMinimumSize = new Vector2(300, 100),
+            CustomMinimumSize = new Vector2(300, 50),
             FocusMode = FocusModeEnum.Click,
         };
         split.AddChild(_detail);
+
+        // Keep the tab's minimum height unchanged: split the old 100 px
+        // message-pane budget between messages and bus status. Both can scroll.
+        var bus = new HSplitContainer
+        {
+            CustomMinimumSize = new Vector2(0, Math.Max(0, 50 - GetThemeConstant("separation"))),
+            SizeFlagsVertical = SizeFlags.ExpandFill,
+            SizeFlagsStretchRatio = 0.35f,
+        };
+        AddChild(bus);
+        _listeners = new RichTextLabel { BbcodeEnabled = true, SelectionEnabled = true, SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        _leases = new RichTextLabel { BbcodeEnabled = true, SelectionEnabled = true, SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        bus.AddChild(_listeners);
+        bus.AddChild(_leases);
 
         if (!_queue.Available)
         {
@@ -184,6 +202,7 @@ public partial class AiQueueTab : VBoxContainer
         try
         {
             (List<QueueRequest> list, string error) = await _queue.ListAsync();
+            (QueueStatus bus, string busError) = await _queue.StatusAsync();
             QueueRequest shown = null;
             string showError = null;
             if (list != null && _selected > 0)
@@ -212,7 +231,7 @@ public partial class AiQueueTab : VBoxContainer
                         {
                             QueueRequest r = list[i];
                             string one = r.Text.Replace('\n', ' ');
-                            _list.AddItem($"{r.Id}  {r.Status}  {r.From} > {r.To}  {(one.Length > 48 ? one[..48] + "..." : one)}");
+                            _list.AddItem($"{r.Id}  {r.Kind}  {r.Status}  {r.From} > {r.To}  {(one.Length > 48 ? one[..48] + "..." : one)}");
                             if (r.Id == _selected)
                             {
                                 select = i;
@@ -230,7 +249,9 @@ public partial class AiQueueTab : VBoxContainer
                         Detail(shown);
                     }
 
-                    SetStatus($"{list.Count} request(s)");
+                    BusStatus = bus;
+                    ShowBus(bus);
+                    SetStatus(busError ?? showError ?? $"{list.Count} message(s)", busError != null || showError != null);
                 }
                 finally
                 {
@@ -245,6 +266,7 @@ public partial class AiQueueTab : VBoxContainer
             {
                 _requests.Clear();
                 _requests.AddRange(list ?? new List<QueueRequest>());
+                BusStatus = bus;
             }
 
             LastShown = shown;
@@ -264,6 +286,38 @@ public partial class AiQueueTab : VBoxContainer
 
     /// <summary>The request the detail pane last showed, with its replies.</summary>
     public QueueRequest LastShown { get; private set; }
+
+    /// <summary>Selects a message by id, without taking or answering it.</summary>
+    public async Task SelectAsync(long id)
+    {
+        _selected = id;
+        await RefreshAsync();
+    }
+
+    private void ShowBus(QueueStatus bus)
+    {
+        if (_listeners == null || _leases == null)
+        {
+            return;
+        }
+
+        var listeners = new StringBuilder("[b]Addresses · last seen (UTC)[/b]\n");
+        foreach (QueueAddress a in bus?.Addresses ?? new List<QueueAddress>())
+        {
+            listeners.Append($"{AiHub.Esc(a.Address)}  {AiHub.Esc(a.Project)}  {AiHub.Esc(a.LastSeen.Length == 0 ? "never" : a.LastSeen)}  {(a.Stale ? "stale" : "active")}\n");
+        }
+
+        if (bus?.Addresses.Count == 0) listeners.Append("No registered addresses.\n");
+        var leases = new StringBuilder("[b]Resource leases · until (UTC)[/b]\n");
+        foreach (QueueLease l in bus?.Leases ?? new List<QueueLease>())
+        {
+            leases.Append($"{AiHub.Esc(l.Resource)}  {AiHub.Esc(l.Holder)}  {AiHub.Esc(l.Until)}  {(l.Expired ? "expired" : "held")}\n{AiHub.Esc(l.Purpose)}\n");
+        }
+
+        if (bus?.Leases.Count == 0) leases.Append("No resource leases.\n");
+        _listeners.Text = listeners.ToString();
+        _leases.Text = leases.ToString();
+    }
 
     private async Task ShowSelectedAsync()
     {
@@ -289,7 +343,7 @@ public partial class AiQueueTab : VBoxContainer
     private void Detail(QueueRequest r)
     {
         var sb = new StringBuilder();
-        sb.Append($"[b]#{r.Id}[/b]  {AiHub.Esc(r.Status)}  {AiHub.Esc(r.From)} > {AiHub.Esc(r.To)}  {AiHub.Esc(r.Created)}\n{AiHub.Esc(r.Text)}\n");
+        sb.Append($"[b]#{r.Id}[/b]  {AiHub.Esc(r.Kind)}  {AiHub.Esc(r.Status)}  {AiHub.Esc(r.From)} > {AiHub.Esc(r.To)}  {AiHub.Esc(r.Created)}\n{AiHub.Esc(r.Text)}\n");
         if (r.Replies.Count == 0)
         {
             sb.Append("\n[color=#7a7a7a]no reply yet[/color]");

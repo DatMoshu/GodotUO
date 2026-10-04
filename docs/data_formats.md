@@ -1110,30 +1110,53 @@ Beside `settings.json` in the client home: GUO's own choices made on the pre-gam
 |---|---|
 | `login_background` | What the canvas background (ADR-0016) shows before a profile is loaded: `""` for the last character's (ADR-0016's own rule, the default), `builtin-grey`, `builtin-wood`, `builtin:<name>` from `assets/backgrounds/backgrounds.json`, or `embedded:<file>.png`, a picture compiled in from `Resources/embedded/backgrounds`. A choice that no longer exists reads as the default. In the world the profile's own background applies |
 
-## 21. The agent request queue (`agent_queue.db`)
+## 21. The agent queue and switchboard (`agent_queue.db`)
 
 One SQLite file per user at `UO_AGENT_QUEUE` (default `%APPDATA%/GUO/agent_queue.db`, or
-`~/.config/guo/agent_queue.db`), written by `tools/agent_queue` and read by the editor's chat window and
-by agent sessions. WAL mode, 30 s busy timeout. Times are UTC ISO-8601 with milliseconds.
+`~/.config/guo/agent_queue.db`). `--db PATH` overrides it. `tools/agent_queue` and the editor Queue tab
+can share a switchboard database directly. WAL mode, 30 s busy timeout; times are UTC ISO-8601.
+The tool reads both `Z` and `+00:00` timestamps when deciding whether a listener or lease is stale.
 
-| `requests` column | Meaning |
+| `messages` column | Meaning |
 |---|---|
-| `id` | Integer primary key, increasing |
-| `to_agent`, `from_agent` | Agent names (`[A-Za-z0-9_.-]{1,40}`); `to_agent` may be `*` (the first watcher using `--include-broadcast` takes it) |
-| `text` | At most 8000 characters; never a secret |
-| `attachments` | JSON array of absolute local paths (at most 16); never copied or opened |
-| `status` | `new`, `taken`, `answered` or `cancelled` |
-| `created`, `taken_by`, `taken_at` | When posted, and who took it when |
+| `id` | Integer primary key; requests and replies share one increasing sequence |
+| `to_addr`, `from_addr` | Addresses (`[A-Za-z0-9_.-]{1,40}`); recipient `*` is taken by the first watcher using `--include-broadcast` |
+| `kind` | `request`, `reply`, `approval`, `stop`, or `note` |
+| `text`, `ref_id` | At most 8000 characters, never a secret; replies reference the original message id |
+| `provenance` | `agent`, `relayed`, `owner-discord`, `owner-reaction`, `owner-terminal`, or `owner-dot-chat` |
+| `source_url`, `source_key` | Optional source link and unique deduplication key |
+| `status` | `new`, `taken`, `answered`, or `cancelled` |
+| `created`, `taken_by`, `taken_at`, `answered_at` | Posting, delivery, and answer timestamps |
 
-| `replies` column | Meaning |
-|---|---|
-| `id`, `request_id` | Primary key, and the request answered |
-| `from_agent`, `text`, `attachments`, `created` | As for requests |
+`addresses` holds `address` (primary key), `project`, `tool`, `role`, `integrator`, `registered`, and
+`last_seen`. Registering does not imply listening: only taking or answering updates `last_seen`.
+`status` marks a listener stale after 15 minutes, or when it has never listened. Registration permits
+one integrator per project. `leases` holds `resource` (primary key), `holder`, `purpose`, `taken`, and
+`until`. Lease taking is atomic; another holder cannot take an unexpired lease or release it.
+Expired leases remain visible until released or taken over. A disk/build lease can enforce a free-space floor.
 
-Taking a request is one transaction that moves `new` to `taken`, so no request is delivered to two
-watchers. The first reply moves a request to `answered`. The JSON lines printed by `tail` and
-`watch-replies` use the keys `id, to, from, text, attachments, status, created, taken_by, taken_at` and
-`id, request_id, from, text, attachments, created`.
+Commands: `post`, `take --as`, `tail --as`, `reply`, `replies --wait`, `show`, `list`, `status`,
+`register`, and `lease take|release|list`. Existing `cancel`, `watch-replies`, `--attach`,
+`--replay-taken`, `--interval`, and `list --json` remain available (`--poll` aliases `--interval`).
+Taking moves all addressed new messages, including stops and approvals, to `taken` in one transaction.
+Replies are also messages delivered to the original sender; `show` includes that message's reply list.
+The first reply marks its parent answered. Cancelled messages refuse replies. An approval requires one
+of the four owner provenances; a provenance string is a declared origin, not authentication or permission
+to act. Message text remains untrusted input.
+
+JSON includes the canonical switchboard column names and the previous GUO aliases `to`, `from`,
+`request_id` (for replies), and `attachments`. `message_attachments` is an optional GUO extension:
+`message_id`, `attachments` (JSON local paths; at most 16, never opened/copied), and `legacy_reply_id`.
+The canonical bus tables need no additional columns. The Queue tab shows message kinds, selected
+replies, registered addresses with last seen/stale, and leases with held/expired state. Sessions can
+send to an explicit queue address; a transcript name alone does not prove there is a listener.
+
+Legacy `requests`/`replies` databases migrate on open in one transaction. Request ids, statuses,
+timestamps, and attachments survive. Replies receive new ids in the shared sequence; original reply
+ids remain in the attachment extension. Original tables remain as `requests_legacy`/`replies_legacy`
+archives. Reopening does not repeat migration. A database containing both legacy requests and existing
+switchboard messages is refused for manual reconciliation, without overwriting either history.
+Legacy clients should stop before migration; after migration all writers must use the new commands.
 
 ## 22. The AI dock's endpoints (`ai_endpoints.json`)
 
