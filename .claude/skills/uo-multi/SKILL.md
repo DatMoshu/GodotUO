@@ -133,4 +133,17 @@ python tools\multi\run.py scene-prove <name> --stage build\uodata\<stage> --at X
 
 ## Generators and styles
 
+For external sources, `tools/layout_import/run.py scan --source <CDDA_CHECKOUT>
+--db <PRIVATE_OUTPUT.sqlite>` creates a versioned source/dependency census;
+`dependencies` selects an explicit MOD_INFO profile and `coverage` reports every
+record's disposition. See `tools/layout_import/README.md` and data_formats section
+30. Run `python tools/layout_import/test_layout_import.py` before changing it.
+`engine-bake`/`resolve` read inspected engine exports; `zomboid-scan` and
+`zomboid-resolve` read local B42 authored rooms and edge geometry. `build`,
+`district`, `hybrid`, `district-stage` and `district-prove` use canonical native
+geometry, world and proof tools. Imported content stays in private/ignored outputs
+with attribution. Census, offline validation, readback, editor inspection and
+logged-in proof are distinct states; multi tests or sampled pilots alone do not
+approve all source definitions or variants.
+
 For a quick start or an editor panel, `run.py house|autowall|roof|stairs|rotate|mirror|import|export` (JSON in and out, deterministic by seed) build from the style catalogue (`run.py styles`; data_formats section 27). Mine the client's own styles with `run.py styles --mine` (local, never committed). Check the result with the validator problems it returns, then continue with build, write and prove.

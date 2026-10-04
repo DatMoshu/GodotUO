@@ -169,6 +169,12 @@ public partial class EditorSmoke : Node
                 if (_data.IsLoaded || _data.Error != null)
                 {
                     CheckLoaded();
+                    if (ArgValue("--guo-editor-multi-inspect") is string multiText)
+                    {
+                        InspectMulti(multiText);
+                        Finish();
+                        break;
+                    }
                     CheckServerManager();
                     CheckGumpStudio();
                     if (Array.IndexOf(OS.GetCmdlineUserArgs(), "--guo-gump-studio-only") >= 0)
@@ -472,6 +478,26 @@ public partial class EditorSmoke : Node
 
                 break;
         }
+    }
+
+    private void InspectMulti(string text)
+    {
+        _report["scope"] = "native-multi-inspection-only";
+        if (!_data.IsLoaded) return;
+        try
+        {
+            int id = text.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? Convert.ToInt32(text[2..], 16) : int.Parse(text);
+            var parts = _data.Files.Multis.GetMultis((uint)id);
+            Image image = MultiPanel.CompositeOf(_data, id);
+            if (parts.Count == 0 || image == null || image.IsEmpty()) throw new InvalidOperationException("staged multi has no composite");
+            Directory.CreateDirectory(_out);
+            image.SavePng(Path.Combine(_out, "multi_full.png"));
+            if (int.TryParse(ArgValue("--guo-editor-multi-max-z"), out int maxZ))
+                MultiPanel.CompositeBelow(_data, id, maxZ)?.SavePng(Path.Combine(_out, "multi_cut.png"));
+            _report["multi"] = new Dictionary<string, object> { ["id"] = id, ["components"] = parts.Count,
+                ["stage"] = ArgValue("--guo-editor-data-stage") ?? "", ["width"] = image.GetWidth(), ["height"] = image.GetHeight() };
+        }
+        catch (Exception ex) { _failures.Add("Multi inspection: " + ex.Message); }
     }
 
     private void CheckLoaded()

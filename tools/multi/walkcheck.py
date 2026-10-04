@@ -57,7 +57,9 @@ def surfaces(parts: list[dict], pieces: dict, ground=0, land_under: bool = True)
             flags, h = info.get("flags", []), info.get("height") or 0
             at = (c.x + cx, c.y + cy)
             covered.add(at)
-            if "surface" in flags:
+            # Pathfinder grants surface/bridge standing flags only when the
+            # item is not impassable. A low cot is still a blocker, not a step.
+            if "surface" in flags and "impassable" not in flags:
                 stand.setdefault(at, set()).add(c.z + (h // 2 if "bridge" in flags else h))
                 if h:
                     above.setdefault(at, []).append(c.z)
@@ -90,7 +92,7 @@ def path(stand: dict, covered: set, start: tuple, goal: tuple, ground=0, slack: 
 
 
 def search(stand: dict, covered: set, start: tuple, goal: tuple, ground=0,
-           slack: int | None = 4) -> tuple[int, int] | None:
+           slack: int | None = 4, trail: list | None = None) -> tuple[int, int] | None:
     """(steps, z reached) of the shortest walk to the goal's x and y, at its z within slack, or at
     any z with slack None (where the client's pathfinder stops: it aims at x and y only)."""
     def spots(at):
@@ -103,6 +105,7 @@ def search(stand: dict, covered: set, start: tuple, goal: tuple, ground=0,
         return None
     first = (start[0], start[1], sz)
     seen = {first: 0}
+    parents = {first: None} if trail is not None else None
     heap = [(0, 0, first)]
     # the scene and the land round it, and both ends of the leg wherever they are
     xs = [x for x, _ in covered] + [start[0], goal[0]]
@@ -113,6 +116,12 @@ def search(stand: dict, covered: set, start: tuple, goal: tuple, ground=0,
         if g > seen[(x, y, z)]:
             continue
         if (x, y) == goal[:2] and (slack is None or abs(z - goal[2]) <= slack):
+            if trail is not None:
+                at, reverse = (x,y,z), []
+                while at is not None:
+                    reverse.append(at)
+                    at = parents[at]
+                trail.extend(reversed(reverse))
             return g, z
         for dx in (-1, 0, 1):
             for dy in (-1, 0, 1):
@@ -130,6 +139,8 @@ def search(stand: dict, covered: set, start: tuple, goal: tuple, ground=0,
                     k = (n[0], n[1], nz)
                     if g + 1 < seen.get(k, 1 << 30):
                         seen[k] = g + 1
+                        if parents is not None:
+                            parents[k] = (x,y,z)
                         est = max(abs(n[0] - goal[0]), abs(n[1] - goal[1]))
                         heapq.heappush(heap, (g + 1 + est, g + 1, k))
     return None

@@ -115,6 +115,8 @@ public partial class MultiPanel : GridPanel
 
     /// <summary>The composite for a multi id, or null. Also the Parity panel's GUO side.</summary>
     public static Image CompositeOf(EditorData data, int id) => Composite(data, data.Files.Multis.GetMultis((uint)id));
+    public static Image CompositeBelow(EditorData data, int id, int maxZ) =>
+        Composite(data, data.Files.Multis.GetMultis((uint)id).Where(p => p.Z <= maxZ).ToList());
 
     /// <summary>
     /// The visible parts in the client's painting order. Mirrors
