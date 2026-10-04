@@ -22,6 +22,7 @@ public partial class AssetsView : VBoxContainer
     private TabContainer _tabs;
     private OptionButton _cells;
     private readonly List<AssetPanel> _panels = new();
+    private bool _panelsLoaded;
 
     /// <summary>Raised with what a panel picked.</summary>
     public event Action<Inspection> Inspect;
@@ -145,6 +146,7 @@ public partial class AssetsView : VBoxContainer
             return;
         }
 
+        _panelsLoaded = true;
         _data.AssetsApplied -= OnAssetsApplied;
         _data.AssetsApplied += OnAssetsApplied;
         foreach (AssetPanel panel in _panels)
@@ -191,6 +193,31 @@ public partial class AssetsView : VBoxContainer
     }
 
     public T Panel<T>() where T : AssetPanel => _panels.Find(p => p is T) as T;
+
+    // The UO workspace layout reparents this view, and leaving the tree drops the data listeners
+    // (_ExitTree below). _Ready does not run again, so listen again here.
+    public override void _EnterTree()
+    {
+        if (_tabs == null || _data == null)
+        {
+            return;
+        }
+
+        if (_data.IsLoaded && !_panelsLoaded)
+        {
+            OnDataLoaded();
+        }
+        else if (_data.IsLoaded)
+        {
+            _data.AssetsApplied -= OnAssetsApplied;
+            _data.AssetsApplied += OnAssetsApplied;
+        }
+        else if (_data.Error == null)
+        {
+            _data.Loaded -= OnDataLoaded;
+            _data.Loaded += OnDataLoaded;
+        }
+    }
 
     public override void _ExitTree()
     {
