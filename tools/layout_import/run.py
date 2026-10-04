@@ -1,4 +1,4 @@
-"""Explicit-path CLI for the durable source/dependency census."""
+"""CLI for the durable source/dependency census with optional configured sources."""
 from __future__ import annotations
 
 import argparse
@@ -10,6 +10,17 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from layout_import import cdda, db
 
 
+def source_path(cfg, command: str, explicit: Path | None) -> Path:
+    """An explicit source wins over the shared, optional installation setting."""
+    zomboid = command in ("zomboid-scan", "zomboid-resolve", "hybrid")
+    key = "UO_LAYOUT_ZOMBOID_DIR" if zomboid else "UO_LAYOUT_CDDA_DIR"
+    configured = cfg.layout_zomboid_dir if zomboid else cfg.layout_cdda_dir
+    source = explicit if explicit is not None else configured
+    if source is None:
+        raise ValueError(f"source is not configured: pass --source or set {key}")
+    return source
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -18,7 +29,7 @@ def main(argv=None):
     acceptance.add_argument("--repeats", type=int, choices=[1,2,3], default=2)
     hybrid=commands.add_parser("hybrid",help="populate vacant CDDA field parcels with seeded PZ house layouts")
     for flag in ("district","source","zomboid-catalogue","db","catalogue","decor-db","out"):
-        hybrid.add_argument('--'+flag,type=Path,required=True)
+        hybrid.add_argument('--'+flag,type=Path,required=flag != "source")
     hybrid.add_argument("--seed",required=True)
     hybrid.add_argument("--count",type=int,default=1)
     hybrid.add_argument("--max-storeys",type=int,choices=[1,2],default=1,help="include authored two-storey houses in seeded selection")
@@ -30,11 +41,11 @@ def main(argv=None):
     combined.add_argument("--name",required=True)
     combined.add_argument("--out",type=Path,required=True)
     pz_scan = commands.add_parser("zomboid-scan",help="index authored buildings in a local B42 map")
-    pz_scan.add_argument("--source",type=Path,required=True)
+    pz_scan.add_argument("--source",type=Path,help="overrides UO_LAYOUT_ZOMBOID_DIR")
     pz_scan.add_argument("--map",default="Muldraugh, KY")
     pz_scan.add_argument("--out",type=Path,required=True)
     pz = commands.add_parser("zomboid-resolve",help="adapt authored PZ edge geometry to shared UO layout semantics")
-    pz.add_argument("--source",type=Path,required=True)
+    pz.add_argument("--source",type=Path,help="overrides UO_LAYOUT_ZOMBOID_DIR")
     pz.add_argument("--map",default="Muldraugh, KY")
     pz.add_argument("--header",required=True)
     pz.add_argument("--building",type=int,required=True)
@@ -42,7 +53,7 @@ def main(argv=None):
     pz.add_argument("--out",type=Path,required=True)
     pz.add_argument("--db",type=Path,required=True)
     scan = commands.add_parser("scan", help="read source JSON into an immutable snapshot")
-    scan.add_argument("--source", type=Path, required=True)
+    scan.add_argument("--source", type=Path, help="overrides UO_LAYOUT_CDDA_DIR")
     scan.add_argument("--db", type=Path, required=True)
     scan.add_argument("--version-claim", help="unverified caller claim, never a clean-commit assertion")
     scan.add_argument("--mods", nargs="*", default=[], help="ordered mod IDs; core dda always included")
@@ -103,7 +114,7 @@ def main(argv=None):
     engine=commands.add_parser("engine-bake",help="run isolated headless planning/detailed export with verified snapshot inputs")
     engine.add_argument("--db",type=Path,required=True)
     engine.add_argument("--profile",required=True)
-    engine.add_argument("--source",type=Path,required=True)
+    engine.add_argument("--source",type=Path,help="overrides UO_LAYOUT_CDDA_DIR")
     engine.add_argument("--binary",type=Path,required=True)
     engine.add_argument("--seed",required=True)
     engine.add_argument("--bounds",type=int,nargs=4,required=True)
@@ -113,7 +124,10 @@ def main(argv=None):
     args = parser.parse_args(argv)
     try:
         from guo import load_config
-        retail=load_config().client_data.resolve()
+        cfg=load_config()
+        if hasattr(args, "source"):
+            args.source = source_path(cfg, args.command, args.source)
+        retail=cfg.client_data.resolve()
         for flag in ('db','out','stage','clip'):
             value=getattr(args,flag,None)
             if value and value.resolve().is_relative_to(retail):
