@@ -130,6 +130,7 @@ public abstract partial class GridPanel : AssetPanel
         };
         SearchBox.TextSubmitted += _ => Refresh();
         bar.AddChild(SearchBox);
+        SearchUiReady();
 
         bool icons = EffectiveIcon > 0;
         _list = new ItemList
@@ -165,6 +166,8 @@ public abstract partial class GridPanel : AssetPanel
         pager.AddChild(_status);
         pager.AddChild(_next);
     }
+
+    protected virtual void SearchUiReady() { }
 
     public override void OnDataLoaded()
     {

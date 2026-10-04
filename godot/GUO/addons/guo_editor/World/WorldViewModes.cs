@@ -16,6 +16,7 @@ public partial class WorldView
     {
         var row = new HBoxContainer();
         AddChild(row);
+        _legacyModes = row;
 
         _viewMenu = Menu(row, "View", "Render modes: recolour the world to show height, walkability, reachability, types, IDs, the land mesh, problems, project changes");
         _viewPopup = _viewMenu.GetPopup();
@@ -161,7 +162,7 @@ public partial class WorldView
 
     /// <summary>The widest of the toolbar's rows when every control is at its minimum, for the check that the bar fits a 1920 px screen.</summary>
     internal float ToolbarMinWidth() =>
-        GetChildren().OfType<HBoxContainer>().Select(r => r.GetCombinedMinimumSize().X).DefaultIfEmpty(0).Max();
+        GetChildren().OfType<HBoxContainer>().Take(1).Select(r => r.GetCombinedMinimumSize().X).DefaultIfEmpty(0).Max();
 
     private static sbyte StandZ(GameObject o) =>
         o is Static st ? (sbyte)Math.Min(127, st.Z + st.ItemData.Height) : o.Z;

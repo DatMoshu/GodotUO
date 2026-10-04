@@ -317,7 +317,7 @@ public partial class EditorSmoke : Node
                 {
                     CheckWorld();
                     CheckWorldAssets();
-                    _world.ForcedMouse = new Vector2I((int)_world.Size.X / 2, (int)(_world.Size.Y / 2));
+                    _world.ForcedMouse = _world.CanvasSize / 2;
                     _stage = 8;
                     _frames = 0;
                 }
@@ -1381,7 +1381,7 @@ public partial class EditorSmoke : Node
         {
             _world.OpenProject(root);
             _world.GoTo(0, EditX, EditY);
-            _world.ForcedMouse = new Vector2I((int)_world.Size.X / 2, (int)(_world.Size.Y / 2));
+            _world.ForcedMouse = _world.CanvasSize / 2;
             _data.CurrentArt = EditorData.LandCount + Tree;
             _radarBefore = RadarAt(EditX, EditY);
             _minimapBefore = _world.Minimap?.PixelAt(EditX, EditY) ?? default;
@@ -1515,6 +1515,71 @@ public partial class EditorSmoke : Node
             _editReport["block_file"] = _world.Host.Project.BlockPath(0, EditBx, EditBy);
         }));
 
+        _steps.Add((1, VerifyBrushWorkspace));
+        if (!Headless)
+        {
+            Vector2I originalSplit = default;
+            float originalCanvasWidth = 0, originalToolsHeight = 0;
+            Vector2I proofWindowSize = default;
+            Window.ModeEnum proofWindowMode = default;
+            _steps.Add((1, () => { _world.GoTo(0, 1651, 2660); _world.ShowWorkspacePreview(); }));
+            _steps.Add((20, () => _world.ForcedMouse = _world.CanvasSize / 2));
+            _steps.Add((20, () =>
+            {
+                using Image shot = EditorInterface.Singleton.GetBaseControl().GetViewport().GetTexture()?.GetImage();
+                shot?.SavePng(Path.Combine(_out, $"editor_brush_workspace{Suffix}.png"));
+            }));
+            _steps.Add((1, () => { var box = _world.BrushLibrary.SearchInput; box.GrabFocus(); box.Text = "water"; _world.BrushLibrary.Suggestions.RefreshSuggestions(); }));
+            _steps.Add((20, () =>
+            {
+                using Image shot = EditorInterface.Singleton.GetBaseControl().GetViewport().GetTexture()?.GetImage();
+                shot?.SavePng(Path.Combine(_out, $"editor_brush_autocomplete{Suffix}.png"));
+                _world.BrushLibrary.Suggestions.Hide(); _world.BrushLibrary.SearchInput.ReleaseFocus();
+                _world.ShowInspectorTab(true);
+            }));
+            _steps.Add((20, () =>
+            {
+                using Image shot = EditorInterface.Singleton.GetBaseControl().GetViewport().GetTexture()?.GetImage();
+                shot?.SavePng(Path.Combine(_out, $"editor_brush_inspector{Suffix}.png"));
+                _world.ShowInspectorTab(false); _world.Tool = WorldTool.Select;
+                originalSplit = _world.GetWorkspaceSplit();
+                originalCanvasWidth = _world.CanvasSize.X; originalToolsHeight = _world.ToolsHeight;
+                // Clear the theme-scaled minimum width before checking canvas movement.
+                _world.SetWorkspaceSplit(originalSplit + new Vector2I(600, 80));
+            }));
+            _steps.Add((20, () =>
+            {
+                Expect(_world.CanvasSize.X < originalCanvasWidth && _world.ToolsHeight > originalToolsHeight, "workspace_resize_changes_canvas_and_tools");
+                GD.Print($"[GUO workspace] resize canvas {originalCanvasWidth} -> {_world.CanvasSize.X}; tools {originalToolsHeight} -> {_world.ToolsHeight}");
+                using Image shot = EditorInterface.Singleton.GetBaseControl().GetViewport().GetTexture()?.GetImage();
+                shot?.SavePng(Path.Combine(_out, $"editor_brush_resized{Suffix}.png"));
+                _world.SetWorkspaceSplit(originalSplit);
+            }));
+            _steps.Add((1, () =>
+            {
+                _world.ShowNearbyForSmoke(1651, 2660);
+                proofWindowSize = GetWindow().Size; proofWindowMode = GetWindow().Mode;
+                GetWindow().Mode = Window.ModeEnum.Windowed;
+                GetWindow().Size = new Vector2I((int)(1920 * EditorInterface.Singleton.GetEditorScale()), (int)(1080 * EditorInterface.Singleton.GetEditorScale()));
+            }));
+            _steps.Add((30, () =>
+            {
+                Expect(_world.NearbyHasCenterTile(), "nearby_tiles_show_land_and_stack");
+                Expect(_world.CommonToolsFit(), "common_tools_fit_1080p");
+                GD.Print($"[GUO workspace] 1920x1080 logical proof: {GetWindow().Size}, editor scale {EditorInterface.Singleton.GetEditorScale()}");
+                using Image shot = EditorInterface.Singleton.GetBaseControl().GetViewport().GetTexture()?.GetImage();
+                shot?.SavePng(Path.Combine(_out, $"editor_compact_1080{Suffix}.png"));
+                GetWindow().Size = new Vector2I((int)(1366 * EditorInterface.Singleton.GetEditorScale()), (int)(768 * EditorInterface.Singleton.GetEditorScale()));
+            }));
+            _steps.Add((30, () =>
+            {
+                Expect(_world.CommonToolsFit(), "common_tools_fit_768p");
+                GD.Print($"[GUO workspace] 1366x768 logical proof: {GetWindow().Size}, editor scale {EditorInterface.Singleton.GetEditorScale()}");
+                using Image shot = EditorInterface.Singleton.GetBaseControl().GetViewport().GetTexture()?.GetImage();
+                shot?.SavePng(Path.Combine(_out, $"editor_compact_768{Suffix}.png"));
+                GetWindow().Size = proofWindowSize; GetWindow().Mode = proofWindowMode;
+            }));
+        }
         // ADR-0027: render modes and map layers.
         AddModeSteps();
     }

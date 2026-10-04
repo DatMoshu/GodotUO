@@ -432,6 +432,10 @@ The editor model tools are not built yet: the models see no editor state and hav
 
 ## Art pipeline (2026-10, ADR-0029)
 
+The World workspace now provides icon tools, a brush library, contextual
+settings, stroke undo, precision controls and direct external-art-editor
+buttons. Usage and limits: [World workspace](world_workspace.md).
+
 The inspector's art, land and gump views have **Edit in Pixelorama** and **Edit in Pinta**. Each writes a PNG
 and a sidecar to the exchange folder (`build/art_exchange/`, data_formats section 24) and opens the editor;
 the **Art** dock (bottom panel) polls the folder once a second and imports what comes back through the shared

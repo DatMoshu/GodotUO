@@ -76,6 +76,26 @@ public partial class ArtDock : EditorDock
         _tools = new Label { Text = ExternalTools.Describe(), AutowrapMode = TextServer.AutowrapMode.WordSmart };
         root.AddChild(_tools);
 
+        var outside = new HBoxContainer();
+        root.AddChild(outside);
+        foreach (bool pinta in new[] { false, true })
+        {
+            bool usePinta = pinta;
+            var edit = new Button { Text = pinta ? "Edit in Pinta" : "Edit in Pixelorama" };
+            edit.Pressed += () => EditInspected(usePinta);
+            outside.AddChild(edit);
+        }
+        var setup = new Button { Text = "Art tools / setup" };
+        setup.Pressed += ShowToolHelp;
+        outside.AddChild(setup);
+        var exchange = new Button { Text = "Open exchange folder" };
+        exchange.Pressed += () =>
+        {
+            string folder = EditorData.Setting("UO_ART_EXCHANGE", Path.Combine(EditorData.RepoRoot, "build", "art_exchange"));
+            Directory.CreateDirectory(folder); OS.ShellOpen(folder);
+        };
+        outside.AddChild(exchange);
+
         var row = new HBoxContainer();
         root.AddChild(row);
         _providerPick = new OptionButton();
@@ -156,6 +176,45 @@ public partial class ArtDock : EditorDock
         {
             _workflowPick.Disabled = false;
         }
+    }
+
+    private void EditInspected(bool pinta)
+    {
+        Inspection ins = _source();
+        if (ins?.ArtKind == null || ins.Image == null)
+        {
+            Report("Select an asset in Assets > Art or Gumps, or inspect terrain/a static in World first.");
+            return;
+        }
+        try
+        {
+            Report(AssetActions.EditIn(_data, ins.ArtKind.Value, ins.ArtId, ins.Image, pinta)
+                ?? (pinta ? "Pinta opened. Save the exported PNG; GUO imports it automatically."
+                    : "Pixelorama opened. Choose GUO > Save back to GUO; GUO imports it automatically."));
+        }
+        catch (Exception ex) { Report(ex.Message); }
+    }
+
+    private void ShowToolHelp()
+    {
+        _tools.Text = ExternalTools.Describe();
+        var dialog = new AcceptDialog
+        {
+            Title = "Art tools — setup and round trip",
+            DialogText = ExternalTools.Describe() + "\n\nPixelorama setup (from the repository):\npython tools/pixelorama/run.py fetch\n"
+                + "Or set UO_PIXELORAMA in launchers/_shared/config.local.bat to an installed executable.\n"
+                + "Pinta setup: winget install Pinta.Pinta\nOr set UO_PINTA in config.local.bat. Restart GUO after changing paths.\n\n"
+                + "1. Select an asset in Assets > Art / Gumps, or inspect a World tile.\n"
+                + "2. Click Edit in Pixelorama or Edit in Pinta. These open separate windows.\n"
+                + "3. Pixelorama: GUO > Save back to GUO. Pinta: save the exported PNG.\n"
+                + "4. The Art panel reports the import; the world project uses the replacement.\n\n"
+                + "Other image editors: use Inspector > Save PNG, edit it, then Import PNG.\n"
+                + "ComfyUI: choose a workflow and endpoint below, Queue, select a result, Import to overlay.\n"
+                + "Retro Diffusion: configure its endpoint/key in AI, then select it below. Queue may incur provider charges.\n"
+                + "Animation round trips and embedded Pixelorama tabs are not supported."
+        };
+        AddChild(dialog); dialog.Confirmed += () => dialog.QueueFree(); dialog.Canceled += () => dialog.QueueFree();
+        dialog.PopupCentered();
     }
 
     public static string WorkflowFolder

@@ -80,7 +80,7 @@ public partial class AssetsView : VBoxContainer
         bar.AddChild(_cells);
         bar.AddChild(new Label
         {
-            Text = GumpsOnly ? "UO Assets · Gumps — search by client gump name or ID; double-click to add" : "  Pick an asset; the UO Inspector (right) shows it. Search is at the top of each tab.",
+            Text = GumpsOnly ? "UO Assets · Gumps — search by client gump name or ID; double-click to add" : "  Pick an asset; the UO Inspector on the left shows it. Search is at the top of each tab.",
             SizeFlagsHorizontal = SizeFlags.ExpandFill,
             ClipText = true,
         });

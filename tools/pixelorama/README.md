@@ -32,6 +32,17 @@ python tools\pixelorama\run.py check
 Launchers: `launchers\art\` (`fetch_pixelorama.bat`, `pixelorama.bat`,
 `pixelorama_status.bat`). Both `src/` and `bin/` are gitignored.
 
+The World settings panel, asset inspector and Art dock can open the selected
+asset directly. See [World workspace](../../docs/world_workspace.md) for the
+UI round trip. Worktrees also discover a binary in the main checkout before
+falling back to PATH; `UO_PIXELORAMA` takes precedence.
+
+Extension installation patches only `GUOTools` in the `[extensions]`
+section of Pixelorama's Godot ConfigFile. Multiline dictionaries and other
+preferences are preserved. The first changed config is backed up alongside
+it as `config.guo-backup.ini`. Regression checks:
+`python -m unittest discover -s tools/pixelorama -p test_config.py`.
+
 ## The extension (`extension/`, MIT)
 
 Pixelorama loads an extension as a resource pack: `run.py` zips
