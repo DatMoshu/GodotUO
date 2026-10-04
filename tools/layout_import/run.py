@@ -13,6 +13,9 @@ from layout_import import cdda, db
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
+    acceptance = commands.add_parser("acceptance", help="repeat existing smoke/reload checks without persistent Windows compiler children")
+    acceptance.add_argument("--out", type=Path, required=True)
+    acceptance.add_argument("--repeats", type=int, choices=[1,2,3], default=2)
     hybrid=commands.add_parser("hybrid",help="populate vacant CDDA field parcels with seeded PZ house layouts")
     for flag in ("district","source","zomboid-catalogue","db","catalogue","decor-db","out"):
         hybrid.add_argument('--'+flag,type=Path,required=True)
@@ -117,6 +120,11 @@ def main(argv=None):
                 raise ValueError(f"{flag} output is inside the retail installation")
         if getattr(args,"db",None) and getattr(args,"source",None) and args.db.resolve().is_relative_to(args.source.resolve()):
             raise ValueError("catalogue must be outside the source installation")
+        if args.command == "acceptance":
+            from layout_import import acceptance
+            result = acceptance.run(load_config(),args.out,args.repeats)
+            print(json.dumps(result,indent=2))
+            return 0 if result['passed'] else 1
         if args.command=="hybrid":
             if not 1<=args.count<=128:
                 raise ValueError("hybrid count must be 1..128")

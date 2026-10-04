@@ -15,6 +15,47 @@ from layout_import import cdda, db, run
 
 
 class CatalogueTests(unittest.TestCase):
+    def test_acceptance_failure_cannot_claim_success_and_restores_editor_project(self):
+        from layout_import import acceptance
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        import os
+        cfg=SimpleNamespace(root=self.root,client_data=self.root/'retail',build=self.root/'build',
+                            godot_project=self.root/'godot',tools=self.root/'tools')
+        cfg.godot_project.mkdir()
+        project=cfg.godot_project/'project.godot';project.write_text('original')
+        evidence=cfg.build/'editor_smoke/headless';evidence.mkdir(parents=True)
+        (evidence/'report.json').write_text('{"ok":false}')
+        def failed(command,**kwargs):
+            project.write_text('editor rewrite')
+            kwargs['stdout'].write('failed child')
+            return SimpleNamespace(returncode=7)
+        with patch.object(acceptance,'os',SimpleNamespace(name='nt',environ=dict(os.environ))), \
+             patch.object(acceptance.subprocess,'run',side_effect=failed) as invoked, \
+             contextlib.redirect_stdout(io.StringIO()):
+            report=acceptance.run(cfg,self.root/'acceptance',2)
+        self.assertFalse(report['passed'])
+        self.assertEqual(len(report['steps']),1)
+        self.assertEqual(report['steps'][0]['exit'],7)
+        self.assertEqual(invoked.call_count,1)
+        self.assertEqual(project.read_text(),'original')
+        saved=json.loads((self.root/'acceptance/report.json').read_text())
+        self.assertFalse(saved['passed'])
+        self.assertEqual((self.root/'acceptance/smoke-1/editor-report.json').read_text(),'{"ok":false}')
+
+    def test_acceptance_refuses_to_overwrite_existing_evidence(self):
+        from layout_import import acceptance
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        import os
+        out=self.root/'prior';out.mkdir();(out/'report.json').write_text('retained')
+        cfg=SimpleNamespace(client_data=self.root/'retail')
+        with patch.object(acceptance,'os',SimpleNamespace(name='nt',environ=dict(os.environ))), \
+             patch.object(acceptance.subprocess,'run') as invoked:
+            with self.assertRaises(ValueError):acceptance.run(cfg,out)
+        invoked.assert_not_called()
+        self.assertEqual((out/'report.json').read_text(),'retained')
+
     def test_seeded_house_eligibility_requires_contiguous_authored_floors(self):
         from layout_import.hybrid import eligible_house
         house={'levels':[0,1],'rooms':[{'name':'bedroom'},{'name':'kitchen'},{'name':'bathroom'}],

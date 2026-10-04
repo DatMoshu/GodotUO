@@ -130,6 +130,19 @@ candidate still has to pass native staircase, footprint and movement checks.
 
 ## Staging, editor and gameplay evidence
 
+On Windows, repeat the unchanged full GUO smoke and editor reload checks with:
+
+```powershell
+python tools/layout_import/run.py acceptance --out build/layout_import/acceptance/<NEW_RUN> --repeats 2
+```
+
+Use a new output directory to preserve earlier reports. Each child process gets
+`UseSharedCompilation=false`: otherwise Godot's [Windows console wrapper](https://github.com/godotengine/godot/blob/ed1daf0bf/platform/windows/console_wrapper_windows.cpp#L150) can keep waiting
+for a persistent Roslyn compiler server after the engine has exited. The setting
+does not change the caller's environment or shared configuration. Each smoke
+exit and report is retained; abnormal exits remain failures. This command does
+not replace or replay the existing district gameplay proof.
+
 ```powershell
 python tools/layout_import/run.py district-stage --built <DISTRICT_DIR> --stage build/uodata/<NAME>
 python tools/layout_import/run.py district-prove --built <DISTRICT_DIR> --stage build/uodata/<NAME> --out build/layout_import/proof/<NAME> --clip build/layout_import/proof/<NAME>/walk.mp4
