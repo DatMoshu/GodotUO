@@ -19,7 +19,7 @@ public partial class WorldView
     private TabContainer _detailTabs;
     private HSplitContainer _librarySplit;
     private ScrollContainer _commonTools;
-    private double _toolHeightRatio = 0.6;
+    private double _toolHeightRatio = 0.65;
     internal VBoxContainer InspectorHost { get; private set; }
     internal ArtPanel BrushLibrary => _brushArt;
     internal SpinBox BrushSizeInput => _numbers["Size (tiles)"];
@@ -253,7 +253,7 @@ public partial class WorldView
         var preferences = EditorInterface.Singleton.GetEditorSettings();
         workspace.SplitOffsets = new[] { preferences.GetProjectMetadata("guo_world", "tools_width_v2", 390).AsInt32() };
         _librarySplit.SplitOffsets = new[] { preferences.GetProjectMetadata("guo_world", "brush_width_v2", 280).AsInt32() };
-        _toolHeightRatio = Math.Clamp(preferences.GetProjectMetadata("guo_world", "tools_ratio_v2", 0.6).AsDouble(), 0.25, 0.8);
+        _toolHeightRatio = Math.Clamp(preferences.GetProjectMetadata("guo_world", "tools_ratio_v3", 0.65).AsDouble(), 0.25, 0.8);
         _leftWorkspace.Resized += ApplyToolHeightRatio;
         Callable.From(ApplyToolHeightRatio).CallDeferred();
         workspace.Dragged += offset => preferences.SetProjectMetadata("guo_world", "tools_width_v2", offset);
@@ -261,7 +261,7 @@ public partial class WorldView
         _leftWorkspace.Dragged += offset =>
         {
             if (_leftWorkspace.Size.Y > 0) _toolHeightRatio = Math.Clamp(0.5 + offset / _leftWorkspace.Size.Y, 0.25, 0.8);
-            preferences.SetProjectMetadata("guo_world", "tools_ratio_v2", _toolHeightRatio);
+            preferences.SetProjectMetadata("guo_world", "tools_ratio_v3", _toolHeightRatio);
         };
     }
 
