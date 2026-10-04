@@ -21,9 +21,8 @@ public interface IChatTools
 }
 
 /// <summary>
-/// The editor's tools for models that can call functions (ADR-0028). Today all of them read:
-/// <c>search</c> (the F3 index), <c>inspect_asset</c> (the UO Inspector's text for an asset) and
-/// <c>jump_world</c> (move the World tab; navigation, not an edit). A tool that changes anything
+/// The editor's tools for models that can call functions (ADR-0028): search, asset inspection,
+/// World navigation and world-state reads, plus approved world-project edits. A tool that changes anything
 /// is registered with <c>ReadOnly = false</c> and then runs only after <see cref="Approve"/> says
 /// the user agreed in a dialog; with no approver it is refused. Tools run on the main thread (the
 /// loaders and the docks are not thread safe) and a model's call waits for it.
@@ -97,6 +96,10 @@ public sealed class AiToolHost : IChatTools
 
     public async Task<string> RunAsync(string name, JsonNode args, CancellationToken ct)
     {
+        if (ct.IsCancellationRequested)
+        {
+            return "error: the tool call was cancelled";
+        }
         lock (_calls)
         {
             _calls.Add($"{name} {args?.ToJsonString() ?? "{}"}");
@@ -121,6 +124,12 @@ public sealed class AiToolHost : IChatTools
         var done = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
         _post(() =>
         {
+            // A cancelled/timed-out call must not edit later when the main queue drains.
+            if (done.Task.IsCompleted || ct.IsCancellationRequested)
+            {
+                done.TrySetResult("error: the tool call was cancelled");
+                return;
+            }
             try
             {
                 done.TrySetResult(t.Run(args));
@@ -139,7 +148,7 @@ public sealed class AiToolHost : IChatTools
         }
     }
 
-    /// <summary>The three read-only tools, wired to the editor's index, panels and World tab.</summary>
+    /// <summary>Tools wired to the editor's index, panels and World tab; changing tools need approval.</summary>
     internal static AiToolHost For(SearchContext ctx, Func<SearchIndex> index, Action<Action> post)
     {
         var host = new AiToolHost(post);
@@ -164,10 +173,11 @@ public sealed class AiToolHost : IChatTools
             Parameters = Params(("x", "integer", "map x"), ("y", "integer", "map y"), ("facet", "integer", "map number, default 0")),
             Run = a => Jump(ctx, a),
         });
+        AiWorldTools.Register(host, ctx);
         return host;
     }
 
-    private static JsonObject Params(params (string Name, string Type, string Doc)[] props)
+    internal static JsonObject Params(params (string Name, string Type, string Doc)[] props)
     {
         var p = new JsonObject();
         foreach (var (n, t, d) in props)

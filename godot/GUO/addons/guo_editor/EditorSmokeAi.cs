@@ -596,7 +596,7 @@ public partial class EditorSmoke
         // --- tool round trip through the OpenAI-compatible stub ---------------------------------------
         Ai.ShowTab("Chat");
         Ai.Chat.ToolsEnabled = true;
-        AiCheck("tools_host", Ai.Hub.Tools != null && Ai.Hub.Tools.Tools.Count == 3, Ai.Hub.Tools?.Tools.Count.ToString());
+        AiCheck("tools_host", Ai.Hub.Tools != null && Ai.Hub.Tools.Tools.Count == 7, Ai.Hub.Tools?.Tools.Count.ToString());
         AiCheck("tools_selects_endpoint", Ai.Chat.SelectProvider("openai:StubSvc"));
         Ai.Chat.NewChat();
         int before = stub.CompatRequests;
@@ -624,6 +624,8 @@ public partial class EditorSmoke
         host.Approve = _ => Task.FromResult(true);
         string allowed = await host.RunAsync("poke", null, CancellationToken.None);
         AiCheck("tools_change_needs_approval", refused.StartsWith("refused") && allowed == "poked" && ran, $"{refused} / {allowed}");
+
+        await CheckWorldToolsAsync(temp);
 
         // --- vision attach ------------------------------------------------------------------------------
         var art = Image.CreateEmpty(16, 16, false, Image.Format.Rgba8);
@@ -666,6 +668,127 @@ public partial class EditorSmoke
         AiCheck("attach_ollama_images", b64 != null && PngMagic(b64), stub.LastChatBody?.ToJsonString()[..Math.Min(120, stub.LastChatBody.ToJsonString().Length)]);
         Ai.Chat.OllamaUrl = OllamaProvider.DefaultUrl;
         Ai.Chat.NewChat();
+    }
+
+    private async Task CheckWorldToolsAsync(string temp)
+    {
+        AiToolHost tools = Ai.Hub.Tools;
+        AiCheck("tools_world_specs", tools.Tools.Count(t => !t.ReadOnly) == 1 &&
+            tools.Tools.Single(t => t.Name == "stamp_static").ReadOnly == false &&
+            new[] { "world_state", "describe_cell", "walkable" }.All(n => tools.Tools.Any(t => t.Name == n && t.ReadOnly)));
+        var unready = AiToolHost.For(new SearchContext(), () => null, Ai.Hub.Post);
+        string notReady = await unready.RunAsync("world_state", null, CancellationToken.None);
+        AiCheck("tools_world_unready", notReady.StartsWith("error:"), notReady);
+
+        AiCheck("tools_world_boot", _world.GoTo(0, 1496, 1628), _world.Error);
+        if (!_world.IsBooted) return;
+        string priorProject = _world.Host.Project?.Root;
+        string priorMode = _world.Modes.ModeName;
+        Vector2I? priorMouse = _world.ForcedMouse;
+        bool priorVisible = _world.Visible;
+        Func<string, Task<bool>> approve = tools.Approve;
+        var install = InstallStamp();
+        string projectRoot = Path.Combine(temp, $"world_tools{Suffix}");
+        try
+        {
+            _world.OpenProject(projectRoot);
+            _world.Modes.SetMode("Height");
+            _world.Modes.Hover = null;
+            _world.ForcedMouse = null;
+            JsonNode state = JsonNode.Parse(await tools.RunAsync("world_state", null, CancellationToken.None));
+            AiCheck("tools_world_state", (int)state["facet"] == 0 && (int)state["x"] == 1496 && (int)state["y"] == 1628 &&
+                (int)state["z"] == _world.Host.Z && (string)state["view_mode"] == "Height" &&
+                (string)state["project"] == _world.Host.Project.Name && (string)state["position_source"] == "centre", state.ToJsonString());
+
+            // Fixed Britain neighborhood; choose its first tall impassable wall without a floor/bridge.
+            var wall = (from x in Enumerable.Range(1472, 49)
+                        from y in Enumerable.Range(1604, 49)
+                        let objects = _world.Modes.Data.Objects(x, y)
+                        where objects.Any(o => !o.IsItem && o.Kind == Kind.Wall &&
+                            (o.Flags & GUO.Assets.TileFlag.Impassable) != 0 && o.Height >= 20) &&
+                            !objects.Any(o => o.Surface || o.Bridge)
+                        select (X: x, Y: y)).First();
+            JsonObject wallArgs = new() { ["facet"] = 0, ["x"] = wall.X, ["y"] = wall.Y };
+            JsonNode cell = JsonNode.Parse(await tools.RunAsync("describe_cell", wallArgs, CancellationToken.None));
+            WorldStatic known = _world.Editor.StaticsAt(0, wall.X, wall.Y).First();
+            JsonArray stack = cell["statics"] as JsonArray;
+            AiCheck("tools_describe_cell", (int)cell["land"]["id"] == _world.Modes.Data.LandId(wall.X, wall.Y) &&
+                stack.Any(s => (int)s["id"] == known.Id && (int)s["z"] == known.Z && (int)s["hue"] == known.Hue &&
+                    (int)s["height"] == _data.Files.TileData.StaticData[known.Id].Height && (string)s["name"] != null && s["flags"] != null), cell.ToJsonString());
+            _aiReport["world_tool_known_static"] = new[] { wall.X, wall.Y, (int)known.Id };
+            _world.Visible = true;
+            _world.ForcedMouse = _world.CanvasSize / 2;
+            await Delay(0.3);
+            JsonNode pointer = JsonNode.Parse(await tools.RunAsync("world_state", null, CancellationToken.None));
+            var picked = _world.Host.Picked as GUO.Game.GameObjects.GameObject;
+            AiCheck("tools_world_pointer_pick", picked != null && pointer["picked"] != null &&
+                (string)pointer["position_source"] == "pointer" && (int)pointer["x"] == picked.X && (int)pointer["y"] == picked.Y &&
+                (int)pointer["picked"]["graphic"] == picked.Graphic && (int)pointer["picked"]["hue"] == picked.Hue &&
+                (int)pointer["picked"]["z"] == picked.Z && !string.IsNullOrEmpty((string)pointer["picked"]["kind"]), pointer.ToJsonString());
+            _world.ForcedMouse = null;
+            JsonNode blocked = JsonNode.Parse(await tools.RunAsync("walkable", wallArgs, CancellationToken.None));
+            AiCheck("tools_walkable_wall", (string)blocked["verdict"] == "blocked", blocked.ToJsonString());
+            JsonNode road = JsonNode.Parse(await tools.RunAsync("walkable",
+                new JsonObject { ["facet"] = 0, ["x"] = 1496, ["y"] = 1628 }, CancellationToken.None));
+            AiCheck("tools_walkable_road", (string)road["verdict"] is "walkable" or "surface", road.ToJsonString());
+
+            string invalid = await tools.RunAsync("describe_cell", new JsonObject { ["facet"] = 0, ["x"] = -1, ["y"] = 1628 }, CancellationToken.None);
+            string otherFacet = await tools.RunAsync("walkable", new JsonObject { ["facet"] = 1, ["x"] = 1496, ["y"] = 1628 }, CancellationToken.None);
+            string fraction = await tools.RunAsync("describe_cell", new JsonObject { ["facet"] = 0, ["x"] = 1496.5, ["y"] = 1628 }, CancellationToken.None);
+            AiCheck("tools_world_invalid_cells", invalid.StartsWith("error:") && otherFacet.StartsWith("error:") && fraction.StartsWith("error:"), $"{invalid} / {otherFacet} / {fraction}");
+
+            JsonObject stamp = new() { ["facet"] = 0, ["x"] = 1496, ["y"] = 1628, ["graphic"] = 0x0E75, ["hue"] = 33 };
+            int bx = 1496 >> 3, by = 1628 >> 3;
+            string before = _world.Host.Project.BlockText(0, bx, by);
+            int count = _world.Editor.StaticsAt(0, 1496, 1628).Count;
+            tools.Approve = null;
+            string refused = await tools.RunAsync("stamp_static", stamp, CancellationToken.None);
+            AiCheck("tools_stamp_refused_no_approver", refused.StartsWith("refused:") &&
+                _world.Host.Project.BlockText(0, bx, by) == before && _world.Editor.UndoCount == 0, refused);
+            int approvals = 0;
+            tools.Approve = _ => { approvals++; return Task.FromResult(true); };
+            JsonNode applied = JsonNode.Parse(await tools.RunAsync("stamp_static", stamp, CancellationToken.None));
+            AiCheck("tools_stamp_applied", (bool)applied["applied"] && approvals == 1 && _world.Editor.UndoCount == 1 &&
+                File.Exists(_world.Host.Project.BlockPath(0, bx, by)) &&
+                _world.Editor.StaticsAt(0, 1496, 1628).Count == count + 1 &&
+                _world.Editor.StaticsAt(0, 1496, 1628).Any(s => s.Id == 0x0E75 && s.Hue == 33 && s.Z == _world.Modes.Data.LandZ(1496, 1628)), applied.ToJsonString());
+            AiCheck("tools_stamp_undo", _world.Editor.Undo() && _world.Host.Project.BlockText(0, bx, by) == before &&
+                _world.Editor.StaticsAt(0, 1496, 1628).Count == count);
+            await tools.RunAsync("stamp_static", stamp, CancellationToken.None);
+            AiCheck("tools_stamp_approval_each_call", approvals == 2 && _world.Editor.UndoCount == 1);
+            AiCheck("tools_stamp_second_undo", _world.Editor.Undo() && _world.Host.Project.BlockText(0, bx, by) == before);
+
+            // An approved call cancelled before its main-thread callback must never edit later.
+            Action queued = null;
+            var delayed = AiToolHost.For(new SearchContext { World = _world, Data = _data }, () => null, action => queued = action);
+            delayed.Approve = _ => Task.FromResult(true);
+            using (var cancel = new CancellationTokenSource())
+            {
+                Task<string> pending = delayed.RunAsync("stamp_static", stamp, cancel.Token);
+                cancel.Cancel();
+                queued?.Invoke();
+                string cancelled = await pending;
+                AiCheck("tools_stamp_cancelled_not_written", queued != null && cancelled.StartsWith("error:") &&
+                    _world.Host.Project.BlockText(0, bx, by) == before && _world.Editor.UndoCount == 0, cancelled);
+            }
+            _world.Host.CloseProject();
+            string noProject = await tools.RunAsync("stamp_static", stamp, CancellationToken.None);
+            AiCheck("tools_stamp_requires_project", noProject.StartsWith("error:") && _world.Host.Project == null, noProject);
+        }
+        finally
+        {
+            tools.Approve = approve;
+            _world.Modes.SetMode(priorMode);
+            _world.ForcedMouse = priorMouse;
+            _world.Visible = priorVisible;
+            _world.Objects.Close();
+            _world.Host.CloseProject();
+            _world.Editor.Clear();
+            if (priorProject != null) _world.OpenProject(priorProject);
+            _world.Modes.Invalidate();
+            var after = InstallStamp();
+            AiCheck("tools_stamp_install_untouched", after.Count == install.Count && after.All(kv => install.TryGetValue(kv.Key, out DateTime t) && t == kv.Value));
+        }
     }
 
     private static bool PngMagic(string base64)
