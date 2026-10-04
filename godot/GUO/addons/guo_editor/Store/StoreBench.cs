@@ -46,7 +46,7 @@ internal sealed class StoreBench : IDisposable
 
     public StoreTrust Trust => _trust ??= new StoreTrust(Path.Combine(Root, ".catalogues.json"));
 
-    public string ProfilesPath => Path.Combine(EditorData.RepoRoot, "build", "editor_servers", "profiles.json");
+    public string ProfilesPath => EditorWorkspace.ServersPath;
 
     public string DeployRoot => Path.Combine(Root, "deployments");
 

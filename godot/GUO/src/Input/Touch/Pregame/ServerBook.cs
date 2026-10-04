@@ -9,6 +9,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Godot;
 using GUO.Configuration;
+using GUO.Workspace;
 
 namespace GUO.Input.Touch.Pregame;
 
@@ -39,10 +40,45 @@ internal sealed class ServerEntry
     [JsonPropertyName("favourite")] public bool Favourite { get; set; }
 
     /// <summary>
-    /// Where the player keeps this shard's own client files (picked once), for
+    /// The client profile (ADR-0032, GUO.Workspace.ClientRegistry) holding this shard's own client files, for
     /// a shard that needs them; GUO restarts with them to play there.
     /// </summary>
-    [JsonPropertyName("data_folder")] public string DataFolder { get; set; }
+    [JsonPropertyName("client_id")] public string ClientId { get; set; }
+
+    /// <summary>The earlier private folder, read once and moved into a client profile on load; never written.</summary>
+    [JsonPropertyName("data_folder")] public string LegacyDataFolder { get; set; }
+
+    /// <summary>
+    /// The folder of this shard's own client files, from its client profile: the shard's overlay when it has one,
+    /// else the UO data folder. Setting it finds or makes the profile for that folder (read in place).
+    /// </summary>
+    [JsonIgnore]
+    public string DataFolder
+    {
+        get => !string.IsNullOrEmpty(ClientId) && ClientRegistry.Current.Files(ClientId, out string custom, out string install) ? custom ?? install : null;
+        set
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                ClientId = null;
+                return;
+            }
+
+            ClientRegistry registry = ClientRegistry.Current;
+
+            if (registry.LoadError != null)
+            {
+                GD.PrintErr($"[GUO] servers: client profiles unreadable, not kept: {registry.LoadError}");
+                return;
+            }
+
+            string folder = System.IO.Path.GetFullPath(value);
+            bool overlay = GUO.Host.ShardSession.FolderKind(folder, out _) == "custom";
+            ClientProfile client = registry.FindOrAddFolder(Name, overlay ? "" : folder, overlay ? folder : "", ClientVersion, Encryption, "pregame");
+            registry.Save();
+            ClientId = client.Id;
+        }
+    }
 
     /// <summary>The player's accounts on it (AccountBook), or null; passwords only as the keystore's ciphertext.</summary>
     [JsonPropertyName("accounts")] public List<Accounts.SavedAccount> Accounts { get; set; }
@@ -77,7 +113,20 @@ internal static class ServerBook
     private static bool _wasInGame;
 
     /// <summary>For the probe: a folder to keep servers.json in instead of beside settings.json.</summary>
-    public static string PathOverride { get; set; }
+    public static string PathOverride
+    {
+        get => _pathOverride;
+        set
+        {
+            _pathOverride = value;
+
+            // A probe's book keeps its client profiles in a workspace of its own, never the person's.
+            Workspace.Workspace.RootOverride = value == null ? null : value + ".workspace";
+            ClientRegistry.Reset();
+        }
+    }
+
+    private static string _pathOverride;
 
     public static string FilePath => PathOverride ?? Path.Combine(Path.GetDirectoryName(Settings.GetSettingsFilepath()) ?? "", "servers.json");
 
@@ -120,11 +169,39 @@ internal static class ServerBook
             if (File.Exists(FilePath))
             {
                 _servers = JsonSerializer.Deserialize<File_>(File.ReadAllText(FilePath))?.Servers ?? new List<ServerEntry>();
+                MigrateFolders();
             }
         }
         catch (Exception ex)
         {
             GD.PrintErr($"[GUO] servers: {FilePath} unreadable, starting empty: {ex.Message}");
+        }
+    }
+
+    /// <summary>ADR-0032: a private data folder becomes a client profile; the original file is kept once as servers.json.migrated.</summary>
+    private static void MigrateFolders()
+    {
+        bool any = false;
+
+        foreach (ServerEntry e in _servers.Where(s => !string.IsNullOrWhiteSpace(s.LegacyDataFolder) && string.IsNullOrEmpty(s.ClientId)))
+        {
+            e.DataFolder = e.LegacyDataFolder;
+
+            if (!string.IsNullOrEmpty(e.ClientId))
+            {
+                e.LegacyDataFolder = null;
+                any = true;
+            }
+        }
+
+        if (any)
+        {
+            if (!File.Exists(FilePath + ".migrated"))
+            {
+                File.Copy(FilePath, FilePath + ".migrated");
+            }
+
+            Save();
         }
     }
 
@@ -328,7 +405,7 @@ internal static class ServerBook
         e.LastPlayed = DateTime.UtcNow;
 
         // Recent keeps five: older plain entries (not own, not favourite, no files or accounts kept) go.
-        foreach (ServerEntry old in Servers.Where(x => x.LastPlayed != null && !x.Own && !x.Favourite && x.DataFolder == null && x.Accounts == null).OrderByDescending(x => x.LastPlayed).Skip(RecentKept).ToList())
+        foreach (ServerEntry old in Servers.Where(x => x.LastPlayed != null && !x.Own && !x.Favourite && string.IsNullOrEmpty(x.ClientId) && x.LegacyDataFolder == null && x.Accounts == null).OrderByDescending(x => x.LastPlayed).Skip(RecentKept).ToList())
         {
             Servers.Remove(old);
         }

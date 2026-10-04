@@ -67,7 +67,7 @@ public sealed class StoreProvider : SearchProvider
         ServerProfiles profiles;
         try
         {
-            profiles = ServerProfiles.Load(Path.Combine(EditorData.RepoRoot, "build", "editor_servers", "profiles.json"));
+            profiles = ServerProfiles.Load(EditorWorkspace.ServersPath);
         }
         catch (Exception)
         {

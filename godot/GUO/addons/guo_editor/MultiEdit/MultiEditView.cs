@@ -40,7 +40,8 @@ public partial class MultiEditView : VBoxContainer, IMultiComponentSink
     private TabContainer _tabs;
     private ItemList _historyList, _partsList, _problemsList;
     private Label _status, _hint, _selection, _summary;
-    private LineEdit _name, _stage, _openId;
+    private LineEdit _name, _stage;
+    private AssetField _openId;
     private Label _saveLog;
     private SpinBox _zSpin, _zMin, _zMax;
     private readonly Dictionary<MultiTool, Button> _toolButtons = new();
@@ -161,10 +162,19 @@ public partial class MultiEditView : VBoxContainer, IMultiComponentSink
         var bar = new HBoxContainer();
         AddChild(bar);
         bar.AddChild(Tip(Btn("New", () => GuardUnsaved(NewMulti)), "A blank multi (the history starts again; asks first when there are unsaved changes)"));
-        _openId = new LineEdit { PlaceholderText = "client multi id", CustomMinimumSize = new Vector2(110, 0), TooltipText = "0x0064 or 100" };
-        _openId.TextSubmitted += _ => OpenTyped();
+        _openId = new AssetField(_data, AssetPickKind.Multi)
+        {
+            AlwaysCommit = true,
+            Placeholder = "client multi id",
+            SizeFlagsHorizontal = SizeFlags.Fill,
+            CustomMinimumSize = new Vector2(150 * EditorInterface.Singleton.GetEditorScale(), 0),
+            TooltipText = "A client multi: 0x0064 or 100. Enter opens it; the search button browses them all.",
+        };
+        _openId.Committed += OpenId;
         bar.AddChild(_openId);
-        bar.AddChild(Tip(Btn("Open", OpenTyped), "Open a client multi by id"));
+        Button open = Btn("Open", () => _openId.CommitTyped());
+        open.FocusMode = FocusModeEnum.None;
+        bar.AddChild(Tip(open, "Open a client multi by id"));
         BuildFormatMenus(bar);
         bar.AddChild(new VSeparator());
 
@@ -616,24 +626,13 @@ public partial class MultiEditView : VBoxContainer, IMultiComponentSink
         MarkSaved();
     }
 
-    private void OpenTyped()
+    private void OpenId(int id)
     {
-        string t = _openId.Text.Trim();
-        int id;
-        bool ok = t.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
-            ? int.TryParse(t.AsSpan(2), System.Globalization.NumberStyles.HexNumber, null, out id)
-            : int.TryParse(t, out id);
-        if (!ok)
-        {
-            _status.Text = $"'{t}' is not a client multi";
-            return;
-        }
-
         bool opened = false;
         GuardUnsaved(() => opened = OpenClientMulti(id));
         if (!opened && !UnsavedPromptOpen)
         {
-            _status.Text = $"'{t}' is not a client multi";
+            _status.Text = $"0x{id:X4} is not a client multi";
         }
     }
 
@@ -661,7 +660,7 @@ public partial class MultiEditView : VBoxContainer, IMultiComponentSink
         }
 
         OpenParts($"multi_{id:X4}", infos.Select(i => new MultiPart { Id = i.ID, X = i.X, Y = i.Y, Z = i.Z, Shown = i.IsVisible }), id);
-        _openId.Text = $"0x{id:X4}";
+        _openId.Value = id;
         return true;
     }
 

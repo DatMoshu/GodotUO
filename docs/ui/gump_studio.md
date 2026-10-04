@@ -11,9 +11,19 @@ read-only. Documents normally live in the world project's `gumps/` directory.
   shelf. Search by client gump name, common art name, decimal ID or `0x` hex ID;
   press Enter to search. Double-click artwork to insert it, or select it and
   choose **Add to layout** / **Use for selected element**.
-- **Browse gump art** and the inspector's **Choose gump art** buttons open a
-  searchable thumbnail picker. The workspace has resizable panes, wrapping
-  toolbars and scrolling properties/library panels for smaller windows.
+- **Add gump art**, at the top of the library, adds art as you type: a name
+  (`paperdoll`, `stone`, `button`), a hex id (`0x0BB8`, or just `bb8`) or a
+  decimal id (`3000`). Suggestions with thumbnails follow the typing; Enter
+  adds the highlighted one and the box stays ready for the next. Each new
+  image lands below and right of the selection, so a run of adds fans out.
+- Gump art dragged from the shelf or **UO Assets → Gumps** drops onto the
+  canvas where it is released.
+- The inspector's **Gump art**, **Pressed / checked art** and **Classic hue**
+  are asset fields (see the [Editor guide](../wiki/Editor.md#asset-fields)):
+  type to search, click the search button inside the box to browse, or drop
+  art on them. An image takes the size of its new art. The workspace has
+  resizable panes, wrapping toolbars and scrolling properties/library panels
+  for smaller windows.
 - Select layers or click the canvas. Shift-click selects multiple elements.
   Drag to move; drag the bottom-right handle to resize. Snap uses eight pixels.
   Arrows nudge one pixel; Shift-arrows nudge eight. Layers can be locked or hidden.

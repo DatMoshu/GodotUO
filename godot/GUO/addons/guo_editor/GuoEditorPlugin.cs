@@ -220,6 +220,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         searchContext.Logs = _logs;
         searchContext.MultiEdit = _multiedit;
         _search = SearchPopup.Install(searchContext);
+        AssetField.Reveal = searchContext.RevealAsset;
         _ai.UseTools(searchContext, () => _search?.Index);
         _ai.Hub.SelectionImage = () => _inspector?.Current?.Image;
         _ai.Hub.SelectionLabel = () => _inspector?.Current is Inspection i ? $"{i.Source} {i.Id}" : null;
@@ -392,6 +393,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
 
         SearchPopup.Remove(_search);
         _search = null;
+        AssetField.Reveal = null;
 
         if (_run != null)
         {

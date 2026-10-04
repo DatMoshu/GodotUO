@@ -136,7 +136,7 @@ public partial class EditorSmoke : Node
         AddChild(window);
         try
         {
-            var profile = new ServerProfile { Name="Smoke profile", ClientProject=ProjectSettings.GlobalizePath("res://") };
+            var profile = new ServerProfile { Name="Smoke profile" };
             var profiles = new ServerProfiles { Selected=profile.Id, Servers=new() { profile } };
             int saves=0;
             window.Open(profiles, profile, s=>Path.Combine(_out,s.Id,"process.json"), ()=>OS.GetExecutablePath(), ()=>saves++);
@@ -170,7 +170,9 @@ public partial class EditorSmoke : Node
                 {
                     CheckLoaded();
                     CheckServerManager();
+                    CheckClientProfiles();
                     CheckGumpStudio();
+                    CheckAssetFields();
                     if (Array.IndexOf(OS.GetCmdlineUserArgs(), "--guo-gump-studio-only") >= 0)
                     {
                         if (!Headless && Array.IndexOf(OS.GetCmdlineUserArgs(), "--guo-gump-studio-visual") >= 0 && _failures.Count == 0)
@@ -210,6 +212,14 @@ public partial class EditorSmoke : Node
                 if (_frames > 45)
                 {
                     CaptureGumpVisual("compact");
+                    OpenQuickAddSuggestions();
+                    _stage = 72; _frames = 0;
+                }
+                break;
+            case 72:
+                if (_frames > 30)
+                {
+                    CaptureQuickAddSuggestions();
                     FinishGumpVisual();
                     if (_reloadTest && !_afterReload && _failures.Count == 0) { RequestReload(); _stage = 4; }
                     else Finish();

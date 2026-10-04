@@ -22,6 +22,9 @@ public partial class GumpCanvas : Control
     public event Action BeginEdit;
     public event Action EndEdit;
     public event Action<GumpReply> Replied;
+
+    /// <summary>Gump art dragged from UO Assets was dropped here, at this point in document pixels.</summary>
+    public event Action<int, Vector2> ArtDropped;
     private Control _overlay;
     private bool _dragging, _resizing, _edited;
     private Vector2 _start;
@@ -42,8 +45,14 @@ public partial class GumpCanvas : Control
         _overlay.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
         _overlay.GuiInput += HandleInput;
         _overlay.Draw += DrawGuides;
+        _overlay.SetDragForwarding(default,
+            Callable.From<Vector2, Variant, bool>((_, data) => !Preview && DroppedGump(data) != null),
+            Callable.From<Vector2, Variant>((at, data) => { if (DroppedGump(data) is int id) ArtDropped?.Invoke(id, at); }));
         QueueRedraw();
     }
+
+    private static int? DroppedGump(Variant data) =>
+        data.VariantType == Variant.Type.Dictionary && data.AsGodotDictionary() is var d && d.ContainsKey("guo_gump") ? d["guo_gump"].AsInt32() : null;
 
     public override void _Draw()
     {

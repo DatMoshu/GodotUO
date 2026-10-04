@@ -36,6 +36,12 @@ internal static class ShardSession
         /// <summary>The shard's files; null in the one-shot file that goes back.</summary>
         [JsonPropertyName("data_folder")] public string DataFolder { get; set; }
 
+        /// <summary>The UO install the shard's client reads when <see cref="DataFolder"/> is an overlay over it (ADR-0032); null otherwise.</summary>
+        [JsonPropertyName("base_data")] public string BaseData { get; set; }
+
+        /// <summary>The client profile the files came from, for the Servers tab.</summary>
+        [JsonPropertyName("client_id")] public string ClientId { get; set; }
+
         [JsonPropertyName("client_version")] public string ClientVersion { get; set; }
         [JsonPropertyName("encryption")] public int? Encryption { get; set; }
 
@@ -162,12 +168,24 @@ internal static class ShardSession
     public static void Start(ServerEntry e, GUO.Store.StoreShardContent content = null, string contentLock = null)
     {
         Configuration.Settings s = Configuration.Settings.GlobalSettings;
+
+        // The shard's client profile names an overlay and/or an install; a lone install is the data folder.
+        string custom = null, install = null;
+
+        if (!string.IsNullOrEmpty(e.ClientId))
+        {
+            GUO.Workspace.ClientRegistry.Current.Files(e.ClientId, out custom, out install);
+        }
+
+        string folder = custom ?? install ?? (string.IsNullOrWhiteSpace(e.DataFolder) ? null : e.DataFolder);
         var d = new Data
         {
             Name = e.Name,
             Host = e.Host.Trim(),
             Port = e.Port,
-            DataFolder = string.IsNullOrWhiteSpace(e.DataFolder) ? null : e.DataFolder,
+            DataFolder = folder,
+            BaseData = custom != null ? install : null,
+            ClientId = string.IsNullOrEmpty(e.ClientId) ? null : e.ClientId,
             ClientVersion = string.IsNullOrWhiteSpace(e.ClientVersion) ? null : e.ClientVersion.Trim(),
             Encryption = e.Encryption,
             // Going from one shard's files to another's keeps the player's own.

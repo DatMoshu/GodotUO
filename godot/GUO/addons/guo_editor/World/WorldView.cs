@@ -28,8 +28,8 @@ public partial class WorldView : VBoxContainer
     private Label _cursor;
     private readonly MapLayers _mapLayers;
     private OptionButton _tool;
-    private SpinBox _hue;
-    private Label _brush;
+    private AssetField _hue;
+    private AssetField _brush;
     private OptionButton _season;
 
     /// <summary>The world's season (the game's own seasonal graphics).</summary>
@@ -255,10 +255,31 @@ public partial class WorldView : VBoxContainer
         }
 
         tools.AddChild(_tool);
-        _brush = new Label { Text = "static: pick art in UO Assets" };
+        tools.AddChild(new Label { Text = "static" });
+        _brush = new AssetField(_data, AssetPickKind.Static)
+        {
+            SizeFlagsHorizontal = SizeFlags.Fill,
+            CustomMinimumSize = new Vector2(190 * EditorInterface.Singleton.GetEditorScale(), 0),
+            Placeholder = "name or id",
+            TooltipText = "What Stamp places: type a name (torch) or an id (0x0A0F), pick in UO Assets, or drag a static here",
+        };
+        _brush.Committed += id =>
+        {
+            if (_data != null)
+            {
+                _data.CurrentArt = EditorData.LandCount + (uint)id;
+            }
+        };
         tools.AddChild(_brush);
         tools.AddChild(new Label { Text = "hue" });
-        _hue = new SpinBox { MinValue = 0, MaxValue = 0xFFFF, Step = 1, TooltipText = "Hue for Stamp and Hue (decimal)" };
+        _hue = new AssetField(_data, AssetPickKind.Hue)
+        {
+            AllowZero = true,
+            SizeFlagsHorizontal = SizeFlags.Fill,
+            CustomMinimumSize = new Vector2(150 * EditorInterface.Singleton.GetEditorScale(), 0),
+            Placeholder = "0",
+            TooltipText = "Hue for Stamp and Hue: a name or an id; 0 for none",
+        };
         tools.AddChild(_hue);
         var undo = new Button { Text = "Undo", TooltipText = "Ctrl+Z" };
         undo.Pressed += () => _editor.Undo();
@@ -499,8 +520,12 @@ public partial class WorldView : VBoxContainer
         Vector2I size = _viewport.Size;
         if (_data != null && _brush != null && _data.CurrentArt >= EditorData.LandCount)
         {
-            uint id = _data.CurrentArt - EditorData.LandCount;
-            _brush.Text = $"static 0x{id:X4} {_data.NameOf(_data.CurrentArt)}";
+            // Follow a pick made in UO Assets, but never under the user's typing.
+            int id = (int)(_data.CurrentArt - EditorData.LandCount);
+            if (_brush.Value != id && _brush.Edit?.HasFocus() != true)
+            {
+                _brush.Value = id;
+            }
         }
 
         if (_minimap != null && _minimap.Visible)

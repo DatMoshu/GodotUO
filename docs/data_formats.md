@@ -1515,3 +1515,59 @@ no reply). `tools/guo_mcp/run.py` is the stdio bridge: it sends the token, then 
 
 No shell, script, file or packet tools exist. Synthetic keys and buttons still held when the controller
 disconnects are released.
+
+## 30. Workspace, server profiles and client profiles (ADR-0032)
+
+The per-user workspace is `UO_WORKSPACE_DIR`, or `%LOCALAPPDATA%\GUO` on Windows, `$XDG_DATA_HOME/guo`
+(else `~/.local/share/guo`) elsewhere, `user://workspace` on Android and web. Every checkout and worktree of
+a person shares it. Nothing in it is a client install: installs are referenced in place.
+
+```
+<workspace>/
+  profiles/servers.json        server instances
+  profiles/clients.json        client profiles
+  servers/<server-id>/         a server instance's install, Config, Saves, logs, process.json, store/
+  clients/<client-id>/client.json     descriptor of one client (below)
+  clients/<client-id>/program/        a guo-build or external client's files, when GUO holds them
+  clients/<client-id>/overlay/        a shard's custom files over the base UO data (a guo_data.json folder)
+  runs/<server-id>/<client-id>/slot-1..4/   cache/, settings, client.log, process.json per slot
+```
+
+Ids are 32 lowercase hex characters. All paths in these files are absolute (no `~`, no environment
+variables). Every document is UTF-8 JSON of at most 1 MiB, written to a temporary file and moved into place.
+**Unknown fields are refused** by the editor and the game; a file that fails validation is not loaded and not
+overwritten. Add a field here before anything writes it.
+
+**`profiles/servers.json`** (PascalCase, as the earlier `build/editor_servers/profiles.json`):
+`{"Selected": id|null, "SelectedClient": id|null, "Servers": [ ... ]}`, at most 64 servers. A server:
+`Id`, `Backend` (a `tools/server_manager/backends.json` id or `custom`), `Name` (1-100 chars), `Host`,
+`Port` (1-65535), `Executable`, `ServerDirectory`, `ServerProject` (paths or `""`), `DefaultClient`
+(a client id or `""`), `ExpectedClientVersion` (`""` or a dotted version such as `7.0.107.76`),
+`ContentLock`, `ContentStore` (paths or `""`), `Arguments` (at most 32 strings). A server with a remote
+`Host` is connect-only. `ClientProject` and `ClientData` are no longer valid here; migration moves them.
+
+**`profiles/clients.json`** (snake_case): `{"version": 1, "clients": [ ... ]}`, at most 64 clients. A client:
+
+| Field | Meaning |
+|---|---|
+| `id` | 32 hex |
+| `name` | 1-100 chars |
+| `kind` | `guo-project`, `guo-build` or `external` |
+| `program` | `guo-project`: the Godot project folder, `""` for the project hosting the registry. `guo-build` and `external`: the executable (required) |
+| `arguments` | at most 32 strings. `external` expands `{host}`, `{port}`, `{data}` (the base data) and `{slot}` (the slot folder) |
+| `working_dir` | `""` (the program's folder) or an absolute folder |
+| `base_data` | the UO install the client reads, in place, or `""` (the person's own configured data) |
+| `overlay` | `""` (use `clients/<id>/overlay/` when it exists) or a folder holding `guo_data.json` |
+| `plugins` | at most 16 absolute plugin paths; a GUO client gets them in its slot's `settings.json`; `external` ignores them |
+
+**`clients/<id>/client.json`** (snake_case): `{"kind", "version", "encryption", "base_fingerprint", "source"}`.
+`version` is the client version string or `""`; `encryption` an integer or null; `base_fingerprint` is the
+SHA-256, lower-case hex, of the sorted `name|length` lines of the top level `.mul`, `.uop` and `.idx` files
+of `base_data`, or `""`; `source` is `manual`, `migrated` or `pregame`.
+
+**Migration.** `build/editor_servers/profiles.json` (the earlier format, with `ClientProject` and
+`ClientData` per server) is merged by id into `profiles/servers.json`; each distinct
+`(ClientProject, ClientData)` pair becomes one `guo-project` client named after its first server; the old
+file becomes `profiles.json.migrated`. The pregame's `servers.json` (beside settings.json) entries keep a
+`client_id` in place of `data_folder`; a legacy `data_folder` is read once, becomes a client with
+`source: pregame`, and the original file is kept as `servers.json.migrated`.

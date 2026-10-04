@@ -11,6 +11,7 @@ using System.Text.Json.Nodes;
 public sealed class LogProfile
 {
     public string Id = "";
+    public string ClientId = "";
     public string Name = "";
     public string ServerDirectory = "";
     public string ServerProject = "";
@@ -25,14 +26,14 @@ public sealed class LogProfile
 /// </summary>
 public static class LogSources
 {
-    public static string ServersRoot => Path.Combine(EditorData.RepoRoot, "build", "editor_servers");
+    public static string ServersRoot => EditorWorkspace.ServersPath;
 
     /// <summary>The selected profile, or null when there is no readable profiles.json.</summary>
-    public static LogProfile SelectedProfile(string serversRoot = null)
+    public static LogProfile SelectedProfile(string serversFile = null)
     {
         try
         {
-            string path = Path.Combine(serversRoot ?? ServersRoot, "profiles.json");
+            string path = serversFile ?? ServersRoot;
             if (!File.Exists(path) || new FileInfo(path).Length > 1024 * 1024)
             {
                 return null;
@@ -52,13 +53,20 @@ public static class LogSources
                 return null;
             }
 
+            string clientId = (string)root["SelectedClient"];
+            if (string.IsNullOrEmpty(clientId))
+            {
+                clientId = (string)pick["DefaultClient"] ?? "";
+            }
+
             return new LogProfile
             {
+                ClientId = clientId,
+                ClientProject = ClientProgram(clientId),
                 Id = (string)pick["Id"] ?? "",
                 Name = (string)pick["Name"] ?? "server",
                 ServerDirectory = (string)pick["ServerDirectory"] ?? "",
                 ServerProject = (string)pick["ServerProject"] ?? "",
-                ClientProject = (string)pick["ClientProject"] ?? "",
                 Executable = (string)pick["Executable"] ?? "",
             };
         }
@@ -108,8 +116,34 @@ public static class LogSources
     }
 
     /// <summary>The console file the run bar redirects client slot <paramref name="slot"/> (0 based) of a profile to.</summary>
-    public static string ClientConsole(string profileId, int slot, string serversRoot = null) =>
-        Path.Combine(serversRoot ?? ServersRoot, profileId, "clients", slot.ToString(), "client.log");
+    public static string ClientConsole(string serverId, string clientId, int slot) =>
+        GUO.Workspace.Workspace.IsId(serverId) && GUO.Workspace.Workspace.IsId(clientId) ? GUO.Workspace.Workspace.ClientConsole(serverId, clientId, slot + 1) : "";
+
+    /// <summary>The project folder of a client in clients.json (the open project when it names none), or "".</summary>
+    private static string ClientProgram(string clientId)
+    {
+        try
+        {
+            string file = GUO.Workspace.Workspace.ClientsFile;
+            if (!File.Exists(file) || new FileInfo(file).Length > 1024 * 1024)
+            {
+                return "";
+            }
+
+            JsonNode client = (JsonNode.Parse(File.ReadAllText(file))?["clients"] as JsonArray)?.FirstOrDefault(c => (string)c?["id"] == clientId);
+            if (client == null || (string)client["kind"] != "guo-project")
+            {
+                return "";
+            }
+
+            string program = (string)client["program"] ?? "";
+            return program.Length > 0 ? program : EditorWorkspace.HostProject;
+        }
+        catch (Exception ex) when (ex is IOException or System.Text.Json.JsonException or UnauthorizedAccessException or InvalidCastException)
+        {
+            return "";
+        }
+    }
 
     /// <summary>The newest log (.log or .txt) under any of the folders, or null. Archived folders are skipped.</summary>
     public static string Newest(IEnumerable<string> folders)

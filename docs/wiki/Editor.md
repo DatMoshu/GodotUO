@@ -17,6 +17,46 @@ layout import/export and live-client capture/apply. See the
 [Gump Studio guide](../ui/gump_studio.md) for commands, runtime integration
 and the limits of custom-control captures.
 
+## Server and client profiles
+
+The run bar has separate **Server** and **Client** lists. Choosing a server
+selects its default client; the Client list lets you override that choice.
+Use **Manage servers → Clients** to add a Godot project, an exported GUO
+build, or an external client executable, then choose that profile on the
+Servers page. A mismatch warning reports a different expected version or
+changed data files.
+
+Profiles share a per-user workspace across checkouts. `UO_WORKSPACE_DIR`
+overrides its location. Each server/client pair has four separate run slots
+for settings, accounts and logs. Existing editor profiles migrate with a
+`.migrated` backup; UO installs remain in place. See the
+[server manager guide](../../tools/server_manager/README.md) for setup and
+the [workspace decision](../architecture/ADR-0032-client-profiles-and-workspace.md)
+for the layout and migration rules.
+
+## Asset fields
+
+Every box that wants a UO id is an asset field, like Unity's object field:
+Gump Studio's art, pressed art and hue; the World tab's static and hue; the
+Multi Editor's multi id and hue; the Parity panel's id. The code is in
+`addons\guo_editor\Fields\`.
+
+- **Type** a name (`torch`, `stone`, `paperdoll`), a hex id (`0x0E75`, `e75`
+  or `e75h`) or a decimal id (`3701`). Suggestions follow the typing, best
+  match first, each with its picture, hex id, name and decimal id. Up and
+  Down move, Enter picks, Escape cancels. Down or Ctrl+Space in an empty box
+  lists the recent picks for that kind of field.
+- **Browse** with the search button inside the box, on its left, or with
+  Ctrl+Enter: the UO Assets grid for that kind, opened on the current value.
+- **Drop** a static, gump or hue dragged from UO Assets onto a field of that
+  kind.
+- **Click the picture** beside the value to show it in UO Assets.
+- An id the install does not have is refused, and the box says so in red.
+
+Names come from the data: tiledata for art, hues.mul for hues, the sound
+index, the cliloc table, and, for gumps, the UI classes that name them.
+Recent picks are kept per kind in the project's editor metadata.
+
 ## Shape (ADR-0010)
 
 - The add-on is C#, compiled into the same assembly as the client behind

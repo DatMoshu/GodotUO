@@ -78,6 +78,9 @@ public partial class HuePanel : GridPanel
 
     protected override Image Icon(int id) => Swatch(id, 1, 4);
 
+    /// <summary>A hue dragged out of the grid drops on any hue field.</summary>
+    protected override Godot.Collections.Dictionary DragPayload(int id) => new() { ["guo_hue"] = id };
+
     /// <summary>The 32 colours of a hue, <paramref name="cell"/> pixels each.</summary>
     private Image Swatch(int hue, int cellW, int height)
     {
