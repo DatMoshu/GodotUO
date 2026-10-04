@@ -179,3 +179,14 @@ without conversion to shard mechanics. Successful native pilots prove selected
 layouts; they do not imply that all source objects/buildings/variants are converted.
 Source attribution remains required, and this tool grants no redistribution
 rights to proprietary source layouts or UO artwork.
+
+## Licensing of sources (read before publishing anything)
+
+- Cataclysm: DDA content is CC-BY-SA 3.0. The importer reads the user's own
+  checkout at runtime (`--source`); no CDDA data is committed. Layouts derived
+  from it carry attribution and share-alike obligations, so keep them in ignored
+  `build/` and do not publish them without meeting those terms.
+- Project Zomboid content is proprietary. The importer reads the user's own
+  install at runtime only. Nothing derived from its files (maps, building
+  definitions, tile names) may be committed, published or redistributed.
+- The tests use synthetic, hand-built fixtures only.
