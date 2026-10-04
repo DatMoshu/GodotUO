@@ -111,13 +111,24 @@ public sealed class EditorData : IDisposable
             return;
         }
 
-        var files = new UOFileManager(UoDataProbe.ParseVersion(ClientVersion), ClientData);
+        string stage = EditorSmoke.ArgValue("--guo-editor-data-stage") ?? "";
+        string overrides = string.IsNullOrWhiteSpace(stage) ? "" : Path.Combine(stage, "files_override.txt");
+        if (!string.IsNullOrEmpty(overrides) && !File.Exists(overrides))
+        {
+            Error = $"Explicit editor data stage has no files_override.txt: '{stage}'";
+            _loading = Task.CompletedTask;
+            Callable.From(() => Loaded?.Invoke()).CallDeferred();
+            return;
+        }
+        var overrideMap = new UOFilesOverrideMap(overrides);
+        overrideMap.Load();
+        var files = new UOFileManager(UoDataProbe.ParseVersion(ClientVersion), ClientData, overrideMap);
         _loading = Task.Run(() =>
         {
             var sw = Stopwatch.StartNew();
             try
             {
-                files.Load(useVerdata: false, lang: lang);
+                files.Load(useVerdata: !string.IsNullOrEmpty(overrides), lang: lang);
                 _files = files;
             }
             catch (Exception ex)

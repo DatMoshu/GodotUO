@@ -1571,3 +1571,109 @@ of `base_data`, or `""`; `source` is `manual`, `migrated` or `pregame`.
 file becomes `profiles.json.migrated`. The pregame's `servers.json` (beside settings.json) entries keep a
 `client_id` in place of `data_folder`; a legacy `data_folder` is read once, becomes a client with
 `source: pregame`, and the original file is kept as `servers.json.migrated`.
+
+---
+
+## 31. Layout import source catalogue (`tools/layout_import`)
+
+SQLite `user_version=3`, generated in a caller-selected private output (normally
+`build/layout_import/catalogue.sqlite`, gitignored). Separate from the UO-derived
+decor database, so a normal decor re-mine cannot erase imported records.
+Source/dependency tables retain the census; semantic/native records are described
+below and in §32. Database records and source IDs are not native UO art.
+
+| Table | Contract |
+|---|---|
+| `source_snapshot` | SHA-256 identity over sorted file path/hash/namespace entries, license text, inspected implementation/doc hashes, parser version, scan scopes and caller's unverified version claim. `source_state=unverified`; never implies a clean Git commit. |
+| `source_file` | Snapshot-relative path, SHA-256, MOD_INFO namespace or explicit unidentified namespace, parse error. Composite primary key `(snapshot_id,path)`. |
+| `definition` | Stable SHA-256 of snapshot/path/JSON pointer; type, namespace, raw canonical JSON, selectors, content hash, authored weight JSON, observed row codepoint lengths. Arrays use `/index`; a root object uses the empty pointer. |
+| `identity` | All literal IDs, abstracts and mapgen selectors, retaining duplicates across definitions, namespaces and variants. |
+| `dependency` | Literal or opaque expression, JSON pointer within definition, kind and target kind. Implemented: copy-from, palettes, chunks/else_chunks, predecessor/fallback predecessor. |
+| `profile` | Requested MOD_INFO IDs, dependency-first load order (core `dda` first), diagnostics and `indexed`/`blocked` status. Duplicate/missing mod metadata, cycles and source parse failures block profiles. |
+| `dependency_candidate` | Every selected target definition with its mod load rank. A candidate is not a resolved override or a selected weighted variant. |
+| `dependency_result` | Per-profile `literal-candidates`, `missing`, `dynamic`, or explicit nested `no-op`; diagnostic retained. |
+| `coverage` | One disposition for every indexed definition in each profile: category, status and reason. Categories are candidate/unclassified/supporting/update/excluded, never inferred independent building counts. |
+
+Foreign keys are enabled on every connection. Migrations are transactional and
+refuse newer or unversioned databases; the original handoff census stays read-only.
+Repeating the same scan/profile leaves row counts unchanged. Changed inputs create
+new immutable snapshots; no old definitions or coverage are deleted. Canonical
+JSON uses sorted keys, UTF-8 Unicode and compact separators. A content hash permits
+identical raw definitions to be found without merging source aliases; it is **not**
+a resolved topology hash.
+
+The JSON coverage report has `format=1`, snapshot/profile IDs, load order, profile
+diagnostics, file/type counts, grouped ledger and dependency results, SQLite integrity
+and foreign-key results, limitations, and actual native/gameplay build counts.
+It does not estimate eligible-family or variant
+coverage. Record-level reasons remain queryable in SQLite. Codepoint observations
+cannot drive geometry; CDDA's display-width semantics remain engine-required.
+
+Commands and implemented boundaries: [tools/layout_import/README.md](../tools/layout_import/README.md).
+Schema 2 adds `layout_template`, `layout_instance`, `room_template`, `opening`,
+`theme_profile`, `build`, `validation` and immutable `usage_event`. Schema 3 adds
+`layout_level`, normalized `cell`, `furnishing_group`, `theme_mapping` and hashed
+`artifact` records. Instance identities include semantic room and cell content,
+so a changed resolver cannot alias an older immutable instance.
+Keep source attribution/license with derived content and imported layouts out of public
+source files. Native output uses §16 and its canonical staging/proof
+commands; a successful source census is not native validation.
+
+## 32. Semantic layouts and native layout builds (`tools/layout_import`)
+
+The intermediate JSON uses `format=1`, `kind=semantic-layout`, `name`, `width`,
+`height`, `levels`, `provenance`, `diagnostics` and `adaptations`. Coordinates are
+integer cells, origin northwest, +x east and +y south; level z is a source floor
+index, independent of UO height units. Each level has `z`, `cells` (row-major)
+and `rooms`/`openings`. A cell holds `x`, `y`, source `terrain`/`furniture` IDs,
+`role`, `indoors`, `walkable`, `furnishing_role`, `flags`, and `lineage` (source
+OMT/cell/level or source definition/pointer). Roles include floor, exterior,
+wall, window, door, stair-up, stair-down, roof, void, water and obstacle.
+Door structural reachability and its source access state are distinct.
+
+Rooms reuse the decor segmenter's geometry (§17) with explicit door boundaries
+and exterior classification. They retain cell masks, bounds, area, inferred
+semantic use, evidence, confidence and labelled open-plan zones. Openings retain
+adjacent room IDs and exterior access. CDDA labels are inferred; Zomboid retains
+authored room names/masks and multiple functional zones within open-plan regions.
+Furniture mappings are per semantic group/role, not source characters.
+
+An engine bake must provide the `cdda-submap-export` 1.0.0 manifest and row-major
+shards. RLE runs are `[paletteIndex,count]`, terrain may be `uniform_ter`, and
+missing furniture means f_null. Invalid palette indices, run lengths, dimensions,
+duplicate OMTs or missing requested levels fail rather than becoming empty cells.
+The bake manifest and shards are hashed, and source snapshot/seed/mod inputs
+are retained. Source-definition matches are candidates only: this exporter does
+not report a selected mapgen trace. No sampled bake proves exhaustive coverage.
+
+Native adapters produce the existing §16 component/sidecar format and world
+project §9; native encoding, ID reservation and readback remain the canonical
+multi and world writers' job. Profiles declare wall-cell to UO directional-wall
+conversion, scale, floor/storey heights, material families, roofs, furnishings,
+exterior land IDs, and intentional adaptations. Stair flights must reserve
+actual UO runs/landings; a single source stair cell cannot be claimed as a flight.
+Unsupported semantic mappings/levels block approval. Native builds preserve
+source-to-target lineage and distinguish geometry checks, offline movement,
+native readback, editor composites and logged-in proof.
+
+Zomboid B42 headers/packs use supported `LOTH`/`LOTP` versions 0/1 with little
+endian integers, line strings, 8×8 chunks, 32×32 chunk cells, authored room
+rectangles and building room references. Tile-definition files use `tdef` version
+1. Edge properties become a recorded 2:1 cell-grid adaptation; source art is
+never decoded or copied. Unsupported older chunk sizes, cross-cell buildings,
+missing property metadata and incomplete stair triplets block conversion. PZ
+B/M/T stairs link north/west upper exits; original upper holes are retained, and
+the native flight records any necessary landing fill. Unmapped
+detail tiles remain explicitly counted. A flat UO roof derived from the authored
+footprint is an adaptation, not a source roof replica.
+
+District outputs contain `district.json`, canonical `scene.json` and `parts/`,
+plus a §9 `world/` project. Origins align to world blocks. `hybrid-selection.json`
+records deterministic seed, accepted header/building/parcel/build identities and
+rejected attempts. `max_storeys` records the seeded house-pool limit: one by
+default, or two with contiguous authored floors when explicitly selected.
+Every candidate still passes native stair and parcel checks.
+`district-stage.json` joins verified world and multi layers.
+Gameplay reports require arrivals without jump tags and placement acknowledgments;
+negative wall targets must fail to arrive. Source gameplay extras remain retained
+without claiming conversion into server mechanics.

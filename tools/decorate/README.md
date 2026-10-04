@@ -45,6 +45,11 @@ database and previews are derived from client data and stay in
 Holds item ids, counts, tiledata names and flags, and derived layouts only:
 no art, no copied map or statics records. See `db.py` for the full schema.
 
+External authored-layout census records live separately in
+[`tools/layout_import`](../layout_import/README.md), so this database's normal
+rebuild cannot delete them. A semantic adapter has not yet been implemented;
+CDDA selectors must never be inserted here as UO item IDs.
+
 | Table | One row per |
 |---|---|
 | `building` | building: source, facet, where, storeys |
