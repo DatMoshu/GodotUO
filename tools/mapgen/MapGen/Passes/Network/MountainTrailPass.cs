@@ -40,6 +40,20 @@ public sealed class MountainTrailParams
 
     [TunableDisplay("Max search nodes per range")] [TunableRange(1024, 4_000_000)]
     public int MaxSearchNodes { get; set; } = 400_000;
+
+    [TunableDisplay("Mines per 1000 rock cells", Tooltip = "Open dirt pockets inside each range (where Britannia's ranges have mining spots and cave mouths), each joined to the trail or the range's edge by a branch path. 0 = none.")]
+    [TunableRange(0.0, 4.0)]
+    public double MinesPerThousandCells { get; set; } = 0.3;
+
+    [TunableDisplay("Mine radius (tiles)", Tooltip = "Pocket radius; branch paths are 3 tiles wide.")] [TunableRange(1, 12)]
+    public int MineRadius { get; set; } = 5;
+
+    [TunableDisplay("Mine min depth (tiles)", Tooltip = "How far inside the rock a pocket sits, at least.")]
+    [TunableRange(1, 64)]
+    public int MineMinDepth { get; set; } = 6;
+
+    [TunableDisplay("Mine spacing (tiles)")] [TunableRange(4, 256)]
+    public int MineSpacing { get; set; } = 24;
 }
 
 // Replaces the old Scatter "Mountain Path" (a sine wave across each map column that dug a
@@ -53,7 +67,9 @@ public sealed class MountainTrailParams
 //    of the ground it crosses (it sits IN the rock, no trench);
 //  - the land beside the trail outside the range gets "<biome> -> Dirt" edge tiles; the
 //    rock beside it is left to Cliff Edge, which lines trails with cliff faces;
-//  - a few small rocks are scattered on the trail.
+//  - a few small rocks are scattered on the trail;
+//  - mines: open dirt pockets deep in the range (MinesPerThousandCells, MineRadius), each with a
+//    branch path to the trail or out of the range, as Britannia's ranges have mining spots.
 public sealed class MountainTrailPass : IGenerationPass
 {
     public string Name => "Mountain Path";
@@ -143,6 +159,51 @@ public sealed class MountainTrailPass : IGenerationPass
             trails++;
         }
 
+        // Mines: open pockets deep in each range, each with a branch path to the trail or the edge.
+        int mines = 0;
+        if (p.MinesPerThousandCells > 0)
+        {
+            for (int r = 0; r < regions.Count; r++)
+            {
+                ctx.Cancellation.ThrowIfCancellationRequested();
+                var cells = regions[r];
+                if (cells.Count < p.MinRegionSize) continue;
+                int id = r + 1;
+                int want = (int)Math.Round(cells.Count * p.MinesPerThousandCells / 1000.0);
+                if (want <= 0) continue;
+                // depth: rock cells from the range's edge
+                var depth = new Dictionary<int, int>();
+                var dq = new Queue<int>();
+                foreach (int c in cells)
+                    if (N4(c).Any(nb => label[nb] != id)) { depth[c] = 1; dq.Enqueue(c); }
+                while (dq.Count > 0)
+                {
+                    int c = dq.Dequeue();
+                    foreach (int nb in N4(c))
+                        if (label[nb] == id && !depth.ContainsKey(nb)) { depth[nb] = depth[c] + 1; dq.Enqueue(nb); }
+                }
+                var picks = new List<int>();
+                foreach (int c in cells.Where(c => depth[c] >= p.MineMinDepth && !trail.Contains(G(c)))
+                                       .OrderBy(c => FieldOps.Hash(c % sw, c / sw, ir.Seed ^ 0x3171EUL)))
+                {
+                    int cx = c % sw, cy = c / sw;
+                    if (picks.Any(o => Math.Max(Math.Abs(o % sw - cx), Math.Abs(o / sw - cy)) < p.MineSpacing)) continue;
+                    picks.Add(c);
+                    if (picks.Count >= want) break;
+                }
+                foreach (int pocket in picks)
+                {
+                    var branch = BranchToOpen(pocket, id);
+                    if (branch is null) continue;
+                    var pts = branch.Select(li => ((ushort)(scope.X1 + li % sw), (ushort)(scope.Y1 + li / sw))).ToList();
+                    var prof = RoadPaint.SmoothProfile(ir, pts, p.ProfileWindow, Math.Max(1, p.MaxStep));
+                    for (int k = 0; k < pts.Count; k++)
+                        Carve(pts[k].Item1, pts[k].Item2, prof[k], k == 0 ? p.MineRadius : 1, 0);
+                    mines++;
+                }
+            }
+        }
+
         int edges = RoadPaint.PaintEdges(ir, trail, "Dirt", skipMountain: true);
 
         int rocks = 0;
@@ -161,7 +222,63 @@ public sealed class MountainTrailPass : IGenerationPass
 
         ctx.Report.StaticsAdded += rocks;
         ctx.Report.TilesTouched = trail.Count;
-        ctx.Report.Notes.Add($"mountain trails={trails} over {regions.Count(c => c.Count >= p.MinRegionSize)} ranges, trail cells={trail.Count}, edge tiles={edges}, rocks={rocks}");
+        ctx.Report.Notes.Add($"mountain trails={trails} over {regions.Count(c => c.Count >= p.MinRegionSize)} ranges, mines={mines}, trail cells={trail.Count}, edge tiles={edges}, rocks={rocks}");
+
+        // Dirt in a rough disc (radius r) round x, y at height zz; a path cell when r is its half-width.
+        void Carve(int x0, int y0, int zz, int r, int extra)
+        {
+            for (int dy = -r - extra; dy <= r + extra; dy++)
+            for (int dx = -r - extra; dx <= r + extra; dx++)
+            {
+                int x = x0 + dx, y = y0 + dy;
+                if (x < scope.X1 || y < scope.Y1 || x > scope.X2 || y > scope.Y2) continue;
+                // ragged pocket rim: a hash decides the outer ring cell by cell
+                int d2 = dx * dx + dy * dy;
+                if (r > 1 && d2 > r * r && (d2 > (r + 1) * (r + 1) || FieldOps.Hash(x, y, ir.Seed ^ 0x9A7EUL) % 2 == 0)) continue;
+                int g = ir.Index(x, y);
+                if (RoadPaint.IsWater(ir, g) || trail.Contains(g)) continue;
+                l[g] = LatticePick.Pick(RoadPaint.DirtTiles, x, y, ir.Seed);
+                z[g] = (sbyte)Math.Clamp(zz, sbyte.MinValue, sbyte.MaxValue);
+                b[g] = (byte)BiomeId.Road;
+                trail.Add(g);
+            }
+        }
+
+        // From a pocket, the cheapest way (same costs as the trail) to a trail cell or out of the
+        // range; the path runs pocket first.
+        List<int>? BranchToOpen(int start, int id)
+        {
+            int foot = z[G(start)];
+            var gScore = new Dictionary<int, int> { [start] = 0 };
+            var came = new Dictionary<int, int>();
+            var open = new PriorityQueue<int, int>();
+            open.Enqueue(start, 0);
+            int explored = 0;
+            while (open.TryDequeue(out int c, out _))
+            {
+                if (c != start && (label[c] != id || trail.Contains(G(c))))
+                {
+                    var path = new List<int> { c };
+                    while (came.TryGetValue(c, out int prev)) { c = prev; path.Add(c); }
+                    path.Reverse();
+                    return path;
+                }
+                if (++explored > p.MaxSearchNodes) return null;
+                int cz = z[G(c)];
+                foreach (int nb in N4(c))
+                {
+                    if (RoadPaint.IsWater(ir, G(nb))) continue;
+                    int nz = z[G(nb)];
+                    int cost = 10 + p.HeightCost * Math.Max(0, nz - Math.Min(foot, cz)) + p.SlopeCost * Math.Abs(nz - cz);
+                    int tentative = gScore[c] + cost;
+                    if (gScore.TryGetValue(nb, out int old) && old <= tentative) continue;
+                    gScore[nb] = tentative;
+                    came[nb] = c;
+                    open.Enqueue(nb, tentative);
+                }
+            }
+            return null;
+        }
 
         IEnumerable<int> N4(int c)
         {
