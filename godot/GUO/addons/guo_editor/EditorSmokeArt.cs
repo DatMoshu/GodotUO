@@ -379,6 +379,11 @@ public partial class EditorSmoke
             ArtCheck("native_pixelorama_animation_provenance", new AssetProvenance(assets)
                 .Get(assets.RelativePathOf(AssetKind.Animation, body))?.Tool == "pixelorama");
         }
+        else
+        {
+            // Named, so a summary of 67 checks is not mistaken for the 70 a native run has.
+            _artReport["skipped"] = "native Pixelorama animation save, 3 checks (GUO_PIXELORAMA_ANIMATION_SAVE not set)";
+        }
     }
 
     private static byte HuesHelperChannel(int v8)

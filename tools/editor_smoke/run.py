@@ -198,6 +198,8 @@ def main() -> int:
                     help="comma list of multi ids whose panel composite is also saved as multi_XXXX.png")
     ap.add_argument("--out", type=Path, help="output folder (default build/editor_smoke/<mode>)")
     ap.add_argument("--no-build", action="store_true", help="skip the first C# build")
+    ap.add_argument("--require-native", action="store_true",
+                    help="fail when a check that needs a real external program was skipped")
     args = ap.parse_args()
 
     cfg = load_config()
@@ -358,6 +360,10 @@ def main() -> int:
               f"ComfyUI + Retro Diffusion stubs ({art.get('comfy_progress_events')} progress events)")
         print(f"[editor_smoke]        {art.get('detect')}")
         print(f"[editor_smoke]        provenance: {art.get('provenance')}")
+        if art.get("skipped"):
+            print(f"[editor_smoke]        skipped: {art.get('skipped')}")
+            if args.require_native:
+                failures.append(f"--require-native: Art skipped {art.get('skipped')}")
         for k in bad:
             print(f"[editor_smoke]        failed: {k}")
     logs = report.get("logs") or {}

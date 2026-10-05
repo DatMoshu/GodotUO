@@ -8,6 +8,7 @@ the verification for every editor phase; phase 0 is what it checks today.
 python tools\editor_smoke\run.py                 headless: every check, no screenshots
 python tools\editor_smoke\run.py --windowed      an editor window, with screenshots
 python tools\editor_smoke\run.py --reload        also rebuild and hot-reload the C#
+python tools\editor_smoke\run.py --require-native  fail if a check that needs a real external program was skipped
 python tools\editor_smoke\run.py --art 0x0E75    which static to search for
 launchers\dev\editor_smoke.bat [same flags]
 ```
@@ -82,6 +83,7 @@ launchers\dev\editor_smoke.bat [same flags]
 | File | What |
 |---|---|
 | `report.json` | every check, `ok`, `failures`; with `--reload`, the first pass under `before_reload` |
+| `report.json` `art.skipped` | checks that need a real program and did not run (the native Pixelorama animation save runs only with `GUO_PIXELORAMA_ANIMATION_SAVE` set); printed as `skipped:` |
 | `<panel>.png` | what the inspector was given for that panel, as decoded (`art.png`, `anims.png` is frame 0, `parity.png` is reference / GUO / diff) |
 | `editor_<panel>.png` | the editor window with that panel showing (windowed only) |
 | `world.png`, `world_multi.png`, `world_overlay.png` | the World tab's viewport: as the install has it, with the server-path multi, with the overlay (windowed only) |
