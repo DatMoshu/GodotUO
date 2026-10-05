@@ -124,7 +124,7 @@ public partial class AnimationPanel : GridPanel
         return inspection;
     }
 
-    private OverlayAnimationClip ExchangeClip(int body, byte action, byte dir)
+    internal OverlayAnimationClip ExchangeClip(int body, byte action, byte dir)
     {
         if (Data.Assets?.LoadAnimation(body, action, dir, out _) is OverlayAnimationClip overlay) return overlay;
         bool mirror = false;

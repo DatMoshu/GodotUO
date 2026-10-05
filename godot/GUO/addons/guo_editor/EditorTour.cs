@@ -377,6 +377,7 @@ public partial class EditorTour : Node
                 ("art", "Assets: Art", ArtSeg),
                 ("gumps", "Assets: Gumps", GumpSeg),
                 ("anims", "Assets: Animations", AnimSeg),
+                ("anim_roundtrip", "Animations: Pixelorama and back", AnimRoundtripSeg),
                 ("hues", "Assets: Hues", HueSeg),
                 ("multis", "Assets: Multis", MultiSeg),
                 ("cliloc", "Assets: Cliloc", ClilocSeg),
