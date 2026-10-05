@@ -120,6 +120,11 @@ public partial class LogsPanel : VBoxContainer
         server.Note = ServerNote();
         _tabs.SetTabTitle(server.GetIndex(), server.Title);
 
+        LogView console = Ensure("serverconsole", "Server console", () => new LogTailer(() => LogSources.ServerConsole(_profile?.Id)), utc: false);
+        console.Title = "Server console: " + name;
+        console.Note = "stdout and stderr captured by the run bar; secrets hidden in this view";
+        _tabs.SetTabTitle(console.GetIndex(), console.Title);
+
         for (int slot = 0; slot < _slots; slot++)
         {
             if (_profile == null || string.IsNullOrEmpty(_profile.Id))
@@ -166,7 +171,7 @@ public partial class LogsPanel : VBoxContainer
         }
 
         return managed
-            ? "started by the run bar; its console output is not captured, so its log files are shown"
+            ? "started by the run bar; its log files are shown here, stdout and stderr in Server console"
             : "the shard's log files (the newest under its Logs folder)";
     }
 
