@@ -55,6 +55,7 @@ public sealed class QueueClient
 
     private async Task<(int Code, string Out, string Err)> RunAsync(IEnumerable<string> args, string stdin = null)
     {
+        if (!AiFeatures.Enabled) return (-1, "", AiFeatures.DisabledMessage);
         if (!Available)
         {
             return (-1, "", Why);
@@ -84,7 +85,7 @@ public sealed class QueueClient
 
         psi.Environment["PYTHONIOENCODING"] = "utf-8";
         psi.Environment["PYTHONUTF8"] = "1";
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(_life.Token);
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(_life.Token, AiFeatures.Lifetime);
         cts.CancelAfter(Timeout);
         using Process p = Process.Start(psi);
         try

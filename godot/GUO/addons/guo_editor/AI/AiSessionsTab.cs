@@ -173,6 +173,7 @@ public partial class AiSessionsTab : VBoxContainer
             return;
         }
 
+        if (!AiFeatures.Enabled || !IsInstanceValid(this) || IsQueuedForDeletion()) return;
         _sessions.Clear();
         _sessions.AddRange(found);
         _list.Clear();

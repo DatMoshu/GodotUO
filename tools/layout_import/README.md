@@ -162,6 +162,29 @@ including unchanged retail files. New component bytes need a new name/stage;
 writers append instead of overwriting an existing allocation. Idempotent staging
 preserves both world and multi override layers.
 
+`district-stage` now writes a format-2 custody manifest after canonical readback:
+built component/world/scene hashes, staged files and actual referenced override
+bytes. Proof refuses stale or legacy manifests; restage using the canonical
+writers before producing new certified evidence. Existing historical reports
+remain available unchanged, but lack the new contract and cannot be promoted
+to a new catalogue acceptance.
+
+New reports carry the exact component catalogue IDs, stage hashes, full expected
+placement set (counts, door counts and coordinates), expected stop names and
+coordinates, and declared scope. The recorder independently rereads those inputs
+and requires every component artifact of the selected build. A successful
+`--only-part` tour is stored as `scope_passed=true`, `whole_build=false`,
+`passed=false`; the evidence command exits 1 because it has not certified the
+whole build. Wrong build IDs, omitted stops/parts, teleport stops, changed bytes
+and stale stages cannot certify gameplay. These bindings establish custody,
+not cryptographic authenticity of an externally fabricated runtime report.
+
+`combine` and `hybrid` require new or empty output directories. They refuse
+reuse before reading inputs or writing output; failed outputs are retained for
+inspection. Hybrid attempts use distinct assembly directories so rejected
+attempts cannot contaminate a later candidate. Combined parts now retain their
+catalogue build IDs; regenerate older compositions for new bound proofs.
+
 Proof uses this checkout's private shard on nonshared ports with a free-memory
 check, loads world plus multis, places real doors and walks short paths through
 rooms. Reports retain actual x/y/z, screenshots, video and a negative wall target.

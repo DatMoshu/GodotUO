@@ -37,6 +37,8 @@ public partial class ArtDock : EditorDock
     private int _targetId = -1;
     private double _sinceWatch;
     private bool _ready;
+    private VBoxContainer _root, _aiControls;
+    internal bool AiControlsVisible => _aiControls != null;
 
     /// <summary>The last ComfyUI/Retro Diffusion result, for the smoke.</summary>
     public ImageResult LastResult => _lastResult;
@@ -96,6 +98,40 @@ public partial class ArtDock : EditorDock
         };
         outside.AddChild(exchange);
 
+        _root = root;
+        _status = new Label { AutowrapMode = TextServer.AutowrapMode.WordSmart };
+        root.AddChild(_status);
+        ApplyAiFeatures();
+    }
+
+    /// <summary>AI controls are created only when allowed; manual art exchange stays active.</summary>
+    internal void ApplyAiFeatures()
+    {
+        if (!_ready) return;
+        if (!AiFeatures.Enabled)
+        {
+            Shutdown();
+            if (_aiControls != null)
+            {
+                _aiControls.GetParent()?.RemoveChild(_aiControls);
+                _aiControls.QueueFree();
+                _aiControls = null;
+            }
+            _bar = null;
+            _target = null;
+            _gallery = null;
+            _lastResult = null;
+            _lastRequest = null;
+            foreach (var image in _images) image.Dispose();
+            _images.Clear();
+            _status.Text = "";
+            return;
+        }
+        if (_aiControls != null) return;
+        _aiControls = new VBoxContainer();
+        _root.AddChild(_aiControls);
+        _root.MoveChild(_aiControls, 1);
+        var root = _aiControls;
         var row = new HBoxContainer();
         root.AddChild(row);
         _providerPick = new OptionButton();
@@ -153,8 +189,6 @@ public partial class ArtDock : EditorDock
         _import = new Button { Text = "Import to overlay" };
         _import.Pressed += () => Report(ImportSelected());
         root.AddChild(_import);
-        _status = new Label { AutowrapMode = TextServer.AutowrapMode.WordSmart };
-        root.AddChild(_status);
         RefreshWorkflows();
     }
 
@@ -290,6 +324,7 @@ public partial class ArtDock : EditorDock
     public static IImageProvider MakeProvider(bool retroDiffusion, string url, out string why)
     {
         why = null;
+        if (!AiFeatures.Enabled) { why = AiFeatures.DisabledMessage; return null; }
         if (!retroDiffusion)
         {
             return new ComfyUiProvider(url);
@@ -330,6 +365,7 @@ public partial class ArtDock : EditorDock
     /// <summary>Runs a request on a worker thread and fills the gallery; the task completes with the result.</summary>
     public Task<ImageResult> RunAsync(IImageProvider provider, ImageRequest req)
     {
+        if (!AiFeatures.Enabled) return Task.FromResult(new ImageResult { Error = AiFeatures.DisabledMessage });
         _lastRequest = req;
         _providerUsed = provider;
         _progressValue = 0;

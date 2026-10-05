@@ -238,6 +238,9 @@ class Config:
     agent_queue: Path | None = None
     # Archived gate evidence (tools/evidence_archive): outside every linked worktree.
     evidence_dir: Path | None = None
+    # Editor MCP is opt-in; its token is environment-only and never part of Config.
+    editor_mcp_port: str = ""
+    editor_mcp_python: Path | None = None
     # UO_GODOT_HOME: the folder holding the pinned engine's release folder
     # (what tools/godot is in the main checkout). UO_UPSTREAM_DIR: the folder
     # holding ClassicUO (what sources/ is). Both resolved by load_config; a
@@ -523,6 +526,8 @@ def load_config(root: Path | None = None) -> Config:
         playerbots_port=int(get("UO_PLAYERBOTS_PORT", "2640")),
         agent_queue=Path(agent_queue),
         evidence_dir=Path(evidence),
+        editor_mcp_port=get("GUO_EDITOR_MCP_PORT", ""),
+        editor_mcp_python=path_or_none("GUO_EDITOR_MCP_PYTHON"),
         godot_home_setting=godot_home_setting,
         upstream_dir_setting=upstream_dir_setting,
         art_exchange=Path(native_path(get("UO_ART_EXCHANGE").replace("%UO_ROOT%", str(root)) or str(root / "build" / "art_exchange"))),

@@ -1773,3 +1773,44 @@ Every candidate still passes native stair and parcel checks.
 Gameplay reports require arrivals without jump tags and placement acknowledgments;
 negative wall targets must fail to arrive. Source gameplay extras remain retained
 without claiming conversion into server mechanics.
+
+## 33. GUO editor MCP (`tools/editor_mcp`, editor addon `Automation/`)
+
+Separate from section 29's runtime client. An opt-in editor-only (`#if TOOLS`)
+loopback listener uses `GUO_EDITOR_MCP_PORT` (1024..65535) and environment-only
+`GUO_EDITOR_MCP_TOKEN` (32..256 characters, no CR/LF). Optional
+`GUO_EDITOR_MCP_PYTHON` names the executable for the stdio bridge; otherwise
+Python is discovered on PATH. Port/Python follow the shared config resolution;
+the token is never persisted in shared config or included in `guo.Config`.
+
+Transport: TCP on 127.0.0.1, up to four clients. First line is the token, checked
+in fixed time within five seconds. Then newline-delimited UTF-8 JSON-RPC 2.0:
+`initialize`, `ping`, `tools/list`, `tools/call`; notifications have no reply.
+MCP protocol revision is `2025-06-18`. Incoming lines are capped at 64 KiB;
+tools dispatch onto the editor thread. A call has a 120-second outer deadline
+including user approval and a 30-second dispatch/result deadline. A queued
+operation cancelled before dispatch does not execute. A stage write already
+started may finish after disconnect; inspect before retrying. Shutdown cancels
+clients and releases the listener before addon/assembly teardown.
+
+The tool list comes from the same `AiToolHost` used by AI chat. F3 catalog and
+search return stable `key`, `kind`, `title` and `hint`; catalog uses
+`kind/offset/limit`, search uses `query/limit`. `editor_invoke` uses `key` plus
+optional original `query` for dynamic ID/coordinate keys and returns dispatch
+acknowledgement only. Mutation callbacks require the existing GUO approval
+dialog. `scene_set_property` registers do/undo with Godot's editor undo manager.
+Sensitive labels/properties are filtered; no image or credential-reader tool
+is introduced.
+
+`multi_open(path)` accepts an existing JSON components description inside
+this checkout's build/multi, rejects traversal, reparse points and files over
+1 MiB, protects unsaved changes and shows Multis. `multi_document(offset,limit)`
+returns the active components. `multi_validate` runs existing validation.
+`multi_write_stage` uses the existing writer/read-back and refreshes the
+Multis browser; it does not deploy to a shard. `multi_history(action)` performs
+undo/redo. Other initial tools and usage are listed in tools/editor_mcp/README.md.
+
+When configured, ACP `session/new.mcpServers` receives a stdio server named
+`guo-editor`, command Python, argument the absolute bridge.py path, and port/token
+environment entries. The entry is optional; agents without client MCP support
+are not claimed to be connected. No real inference is run by discovery or smoke.

@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using System.Threading;
 using Godot;
 using GUO.Assets;
 
@@ -729,8 +730,17 @@ public partial class MultiEditView : VBoxContainer, IMultiComponentSink
     /// Writes the document into the stage and reads it back. Refused while there are errors. On success the
     /// multi is overlaid on the loaders, so the Multis panel and the World tab can draw it.
     /// </summary>
-    public async Task<SaveResult> SaveToStageAsync()
+    public async Task<SaveResult> SaveToStageAsync(CancellationToken ct = default)
     {
+        using var life = CancellationTokenSource.CreateLinkedTokenSource(ct, _writeLifetime.Token);
+        ct = life.Token;
+        ct.ThrowIfCancellationRequested();
+        if (_data.IsSelectedInputStage(StageDir))
+        {
+            var refused = new SaveResult { Error = "This stage contains selected read-only editor input. Close/reload editor data or choose a different output stage before writing." };
+            _saveLog.Text = refused.Error;
+            return refused;
+        }
         ValidateNow();
         if (_result.HasErrors)
         {
@@ -741,11 +751,14 @@ public partial class MultiEditView : VBoxContainer, IMultiComponentSink
 
         SaveDescription();
         _saveLog.Text = "writing...";
-        _saving = MultiStore.SaveAsync(_name.Text, _doc.Parts, _data.Files.TileData.StaticData, StageDir);
+        List<MultiInfo> written = _doc.Parts.Select(p => new MultiInfo { ID = p.Id, X = p.X, Y = p.Y, Z = p.Z, IsVisible = p.Shown }).ToList();
+        _saving = MultiStore.SaveAsync(_name.Text, _doc.Parts, _data.Files.TileData.StaticData, StageDir, ct);
         SaveResult r = await _saving;
+        ct.ThrowIfCancellationRequested();
+        if (!IsInstanceValid(this) || !IsInsideTree()) return r;
         if (r.Ok && r.Id is int id)
         {
-            Overlay(id, _doc.Parts.Select(p => new MultiInfo { ID = p.Id, X = p.X, Y = p.Y, Z = p.Z, IsVisible = p.Shown }).ToList());
+            Overlay(id, written);
             _saveLog.Text = $"{r.Name} = multi 0x{id:X4}: {r.Components} components, read back equal";
             _lastWritten = id;
             AfterWrite?.Invoke(r);
@@ -759,6 +772,8 @@ public partial class MultiEditView : VBoxContainer, IMultiComponentSink
     }
 
     private int? _lastWritten;
+    private readonly CancellationTokenSource _writeLifetime = new();
+    public override void _ExitTree() => _writeLifetime.Cancel();
 
     private static void Overlay(int id, List<MultiInfo> infos)
     {
@@ -831,6 +846,7 @@ public partial class MultiEditView : VBoxContainer, IMultiComponentSink
 
     public void Shutdown()
     {
+        _writeLifetime.Cancel();
         SetProcess(false);
         if (_data != null)
         {

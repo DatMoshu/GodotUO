@@ -56,8 +56,11 @@ def district_stage(cfg, built, stage):
     (stage/"files_override.txt").write_text("# GUO district world + native multis\n"+"\n".join(f"{k}={v}" for k,v in sorted(overrides.items()))+"\n",encoding="utf-8")
     if command(cfg,"uodata_write",["verify","--stage",stage],built/"multi-verify.log"):
         return 1
-    (stage/"district-stage.json").write_text(json.dumps({"format":1,"district":str(built),
+    from layout_import.evidence import content, stage_files, override_hashes
+    (stage/"district-stage.json").write_text(json.dumps({"format":2,"district":str(built),
         "origin":record["origin"],"name":record["name"],"override_files":list(overrides),
+        "input_content":{**content(built), **content(built,("parts","world"))},
+        "stage_content":stage_files(stage),"overrides":override_hashes(stage),
         "passed":True,"writers":["tools/world","tools/multi","tools/uodata_write"]},indent=1),encoding="utf-8")
     print(json.dumps({"stage":str(stage),"world_and_multis_readback":True,"override_files":list(overrides)},indent=2))
     return 0
@@ -65,9 +68,11 @@ def district_stage(cfg, built, stage):
 
 def district_prove(cfg, built, stage, out, clip=None, only_part=None):
     from multi import prove
+    from layout_import.evidence import contract
     built,stage,out = Path(built).resolve(),Path(stage).resolve(),Path(out).resolve()
     recorded = json.loads((stage/"district-stage.json").read_text(encoding="utf-8"))
     district = json.loads((built/"district.json").read_text(encoding="utf-8"))
+    binding = contract(built, stage, only_part or "whole-district")
     if recorded["district"] != str(built) or not recorded["passed"] or district["status"] != "native-valid":
         raise ValueError("district stage provenance mismatch")
     # UltimaLive keys map copies by shard name; each changed map set gets its
@@ -110,6 +115,7 @@ def district_prove(cfg, built, stage, out, clip=None, only_part=None):
         result = prove.session(cfg,stage,out,parts,(*district["origin"],0),stops,clip,16,
             "GUO: imported layouts transformed into native UO terrain, houses and doors",
             {"district":district["name"],"scope":only_part or "whole-district",
+             "proof_contract":binding,
              "negative_target_tiles":[{"at":[px,py,pz],"item":item,"tiledata":td.static(item)}] if blocked else []},
             shard_env={"GUO_BRIDGE_SHARD":shard_name},profile={"use_custom_light_level":True,"light_level":0,"light_level_type":0},blocked=blocked)
     finally:
@@ -122,17 +128,26 @@ def district_prove(cfg, built, stage, out, clip=None, only_part=None):
 def record_evidence(con, build_id, kind, report, artifacts=()):
     report = Path(report).resolve()
     raw = json.loads(report.read_text(encoding="utf-8"))
+    scope_passed, whole_build, reason = False, False, "not gameplay evidence"
+    if kind in ("gameplay", "negative-blocker"):
+        from layout_import.evidence import validate
+        try:
+            scope_passed, reason, whole_build = validate(con, build_id, raw)
+        except (OSError, ValueError, KeyError, TypeError):
+            reason = "proof contract unavailable, malformed or stale"
     if kind == "negative-blocker":
         negatives=raw.get("negative_blockers",{})
         targets=raw.get("negative_target_tiles",[])
         passed=bool(negatives) and bool(targets) and all(s.get("arrived") is False and bool(s.get("client_says")) for s in negatives.values())
         passed &= all(t["tiledata"]["flags"]&0x40 and t["tiledata"]["height"]>=16 for t in targets)
+        passed &= scope_passed and whole_build
     elif kind == "gameplay":
-        passed = bool(raw.get("stops")) and bool(raw.get("place")) and all(s.get("arrived") and not s.get("jump") for s in raw["stops"].values()) and all(p.get("ok") for p in raw["place"].values())
+        passed = scope_passed and whole_build
         passed &= all(s.get("arrived") is False and bool(s.get("client_says")) for s in raw.get("negative_blockers",{}).values())
     else:
         passed = raw.get("ok") is True or raw.get("passed") is True
-    evidence = {"passed":passed,"report":str(report),"sha256":hashlib.sha256(report.read_bytes()).hexdigest(),"record":raw}
+    evidence = {"passed":bool(passed),"scope_passed":scope_passed,"whole_build":whole_build,
+                "binding_result":reason,"report":str(report),"sha256":hashlib.sha256(report.read_bytes()).hexdigest(),"record":raw}
     catalogue.save_validation(con,build_id,kind,evidence)
     catalogue.save_artifacts(con,build_id,kind,[report,*artifacts])
     return passed

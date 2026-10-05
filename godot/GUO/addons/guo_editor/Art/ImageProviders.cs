@@ -155,6 +155,9 @@ public sealed class ComfyUiProvider : IImageProvider, IDisposable
 
     public async Task<ImageResult> RunAsync(ImageRequest req, Action<double> progress, CancellationToken ct)
     {
+        if (!AiFeatures.Enabled) return new ImageResult { Error = AiFeatures.DisabledMessage };
+        using var aiLife = AiFeatures.Link(ct);
+        ct = aiLife.Token;
         var result = new ImageResult { Workflow = Path.GetFileName(req.WorkflowPath), Seed = req.Seed };
         try
         {
@@ -360,6 +363,9 @@ public sealed class RetroDiffusionProvider : IImageProvider, IDisposable
 
     public async Task<ImageResult> RunAsync(ImageRequest req, Action<double> progress, CancellationToken ct)
     {
+        if (!AiFeatures.Enabled) return new ImageResult { Error = AiFeatures.DisabledMessage };
+        using var aiLife = AiFeatures.Link(ct);
+        ct = aiLife.Token;
         var result = new ImageResult { Model = Style, Workflow = "inferences", Seed = req.Seed };
         string key = _key?.Invoke();
         if (string.IsNullOrEmpty(key))

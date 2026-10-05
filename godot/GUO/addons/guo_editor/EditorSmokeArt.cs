@@ -56,6 +56,12 @@ public partial class EditorSmoke
             try
             {
                 ArtSync();
+                if (!AiFeatures.Enabled)
+                {
+                    _artReport["ai_skipped"] = "AI features disabled";
+                    ArtCleanup();
+                    return true;
+                }
                 ArtStartServices();
             }
             catch (Exception ex)

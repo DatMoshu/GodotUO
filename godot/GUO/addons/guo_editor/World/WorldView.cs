@@ -112,7 +112,7 @@ public partial class WorldView : VBoxContainer
     public event Action<Inspection> Inspect;
 
     public bool IsBooted => _host.IsBooted;
-    public string Error => _host.Error;
+    public string Error => _host.Error ?? _data?.Error;
     internal WorldHost Host => _host;
     internal WorldEditor Editor => _editor;
 
@@ -178,6 +178,7 @@ public partial class WorldView : VBoxContainer
         if (_data != null)
         {
             _data.AssetsApplied += OnAssetsApplied;
+            _data.Loaded += OnEditorDataLoaded;
         }
 
         _objects = new ObjectLayer(_host);
@@ -410,8 +411,14 @@ public partial class WorldView : VBoxContainer
             _Ready();
         }
 
+        if (_data == null || !_data.IsLoaded)
+        {
+            _status.Text = _data?.Error ?? "waiting for editor data...";
+            return false;
+        }
+
         _status.Text = "starting the world...";
-        if (!_host.Boot(_canvas, _pending.facet, _pending.x, _pending.y))
+        if (!_host.Boot(_canvas, _pending.facet, _pending.x, _pending.y, _data))
         {
             _status.Text = $"could not start: {_host.Error}";
             return false;
@@ -435,9 +442,8 @@ public partial class WorldView : VBoxContainer
         }
 
         // The project's replaced art, gumps and hues (ADR-0020), on the
-        // world's own loaders. The world can start before the client data
-        // has loaded (the editor reopens on the tab it closed on), so
-        // OnAssetsApplied also catches the first application.
+        // world's own loaders, after editor data has loaded. OnAssetsApplied
+        // also catches later imports and reverts.
         if (_data?.Assets != null)
         {
             _host.ApplyAssets(_data.Assets);
@@ -445,6 +451,14 @@ public partial class WorldView : VBoxContainer
 
         UpdateStatus();
         return true;
+    }
+
+    private void OnEditorDataLoaded()
+    {
+        if (IsInstanceValid(this) && Visible)
+        {
+            EnsureBooted();
+        }
     }
 
     private void OnAssetsApplied()
@@ -1048,6 +1062,7 @@ public partial class WorldView : VBoxContainer
         if (_data != null)
         {
             _data.AssetsApplied -= OnAssetsApplied;
+            _data.Loaded -= OnEditorDataLoaded;
         }
 
         _modeNode?.Detach();

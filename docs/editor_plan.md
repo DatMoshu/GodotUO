@@ -401,6 +401,11 @@ No writable feature ships until that is true.
 
 ## Default layout (2026-10)
 
+The proposed unified AI conversation workspace and the initial shared editor
+MCP implementation are specified in [editor_ai_workspace_plan.md](editor_ai_workspace_plan.md).
+The proposal adds a main-screen AI view while retaining a compact dock; the
+current dock remains the shipped UI until those view/controller phases land.
+
 UO Assets is a main-screen tab (the whole centre: asset tabs, S/M/L cell size,
 a zoomable radar in Maps with double-click to jump), supplied by the small
 `addons/guo_editor_assets` plugin because one plugin owns one main screen. The
@@ -415,6 +420,12 @@ The tour records at 3840x2160 with display scale 1.5 on a scratch settings
 folder, so the user's editor settings are never changed.
 
 ## AI hub (2026-10, ADR-0028)
+
+AI is optional: Editor Settings > GUO > AI > Enabled (`guo/ai/enabled`).
+Disabling it immediately removes AI UI/F3 commands, stops owned agents,
+requests and editor MCP, and hides Art image generation. Manual authoring
+remains available. Every AI feature must use the shared `AiFeatures` gate
+and cancellation lifetime; see [the workspace plan](editor_ai_workspace_plan.md).
 
 The **AI** dock (`addons/guo_editor/AI/`, bottom panel beside UO Shard) has three tabs.
 

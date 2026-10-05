@@ -27,6 +27,7 @@ public partial class AiDock : EditorDock
     private readonly Queue<(AgentSession Session, JsonNode Params, TaskCompletionSource<JsonNode> Result)> _asks = new();
     private AcceptDialog _dialog;
     private TaskCompletionSource<JsonNode> _dialogResult;
+    private readonly Dictionary<ConfirmationDialog, TaskCompletionSource<bool>> _toolApprovals = new();
     private bool _ready;
 
     public AiChatTab Chat => _chat;
@@ -51,6 +52,7 @@ public partial class AiDock : EditorDock
 
     public override void _Ready()
     {
+        if (!AiFeatures.Enabled) { Hide(); SetProcess(false); return; }
         if (_ready)
         {
             return;
@@ -80,6 +82,7 @@ public partial class AiDock : EditorDock
     /// <summary>Brings a tab forward: "Chat", "Agents", "Queue", "Sessions" or "Services".</summary>
     public void ShowTab(string name)
     {
+        if (!AiFeatures.Enabled) return;
         MakeVisible();
         for (int i = 0; i < _tabs.GetTabCount(); i++)
         {
@@ -93,6 +96,7 @@ public partial class AiDock : EditorDock
     /// <summary>The F3 command "AI: start agent X": shows the Agents tab and starts it (the CLI's own login pays).</summary>
     public void StartAgent(AgentPreset preset)
     {
+        if (!AiFeatures.Enabled) return;
         ShowTab("Agents");
         _ = _agents.StartPresetAsync(preset);
     }
@@ -100,6 +104,7 @@ public partial class AiDock : EditorDock
     /// <summary>The F3 command "AI: new chat".</summary>
     public void NewChat()
     {
+        if (!AiFeatures.Enabled) return;
         ShowTab("Chat");
         _chat.NewChat();
     }
@@ -117,9 +122,11 @@ public partial class AiDock : EditorDock
     /// <summary>A yes/no dialog for an action a model wants to take that changes something.</summary>
     private Task<bool> AskApproval(string what)
     {
+        if (!AiFeatures.Enabled) return Task.FromResult(false);
         var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         _hub.Post(() =>
         {
+            if (!AiFeatures.Enabled) { tcs.TrySetResult(false); return; }
             var dlg = new ConfirmationDialog
             {
                 Title = "A model wants to change something",
@@ -129,8 +136,11 @@ public partial class AiDock : EditorDock
                 CancelButtonText = "Refuse",
                 Exclusive = true,
             };
+            _toolApprovals[dlg] = tcs;
             dlg.Confirmed += () => tcs.TrySetResult(true);
             dlg.Canceled += () => tcs.TrySetResult(false);
+            dlg.Confirmed += () => _toolApprovals.Remove(dlg);
+            dlg.Canceled += () => _toolApprovals.Remove(dlg);
             dlg.Confirmed += dlg.QueueFree;
             dlg.Canceled += dlg.QueueFree;
             EditorInterface.Singleton.GetBaseControl().AddChild(dlg);
@@ -219,6 +229,12 @@ public partial class AiDock : EditorDock
     /// <summary>Releases everything: declines open permission requests, kills agent processes, stops streams.</summary>
     public void Shutdown()
     {
+        foreach (var entry in _toolApprovals)
+        {
+            entry.Value.TrySetResult(false);
+            if (IsInstanceValid(entry.Key)) entry.Key.QueueFree();
+        }
+        _toolApprovals.Clear();
         _hub.Permission = null;
         _dialogResult?.TrySetResult(AiHub.Cancelled());
         while (_asks.Count > 0)

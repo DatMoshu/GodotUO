@@ -210,6 +210,8 @@ public sealed class OllamaProvider : HttpChatProvider
 
     public override async Task<IReadOnlyList<string>> ListModelsAsync(CancellationToken ct)
     {
+        using var aiLife = AiFeatures.Link(ct);
+        ct = aiLife.Token;
         JsonNode tags = JsonNode.Parse(await GetStringAsync(_base + "/api/tags", ct).ConfigureAwait(false));
         var names = new List<string>();
         if (tags?["models"] is JsonArray models)
@@ -229,6 +231,8 @@ public sealed class OllamaProvider : HttpChatProvider
 
     public override async Task<string> StreamAsync(IReadOnlyList<ChatMessage> history, Action<string, bool> onChunk, CancellationToken ct)
     {
+        using var aiLife = AiFeatures.Link(ct);
+        ct = aiLife.Token;
         JsonArray msgs = Messages(history);
         string stop = "stream ended";
         for (int round = 0; ; round++)
@@ -370,6 +374,8 @@ public sealed class OpenAiCompatProvider : HttpChatProvider
 
     public override async Task<IReadOnlyList<string>> ListModelsAsync(CancellationToken ct)
     {
+        using var aiLife = AiFeatures.Link(ct);
+        ct = aiLife.Token;
         JsonNode j = JsonNode.Parse(await GetStringAsync(_base + "/models", ct, Auth).ConfigureAwait(false));
         var names = new List<string>();
         if (j?["data"] is JsonArray data)
@@ -390,6 +396,8 @@ public sealed class OpenAiCompatProvider : HttpChatProvider
 
     public override async Task<string> StreamAsync(IReadOnlyList<ChatMessage> history, Action<string, bool> onChunk, CancellationToken ct)
     {
+        using var aiLife = AiFeatures.Link(ct);
+        ct = aiLife.Token;
         JsonArray msgs = Messages(history);
         string stop = "stream ended";
         for (int round = 0; ; round++)

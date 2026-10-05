@@ -12,6 +12,8 @@ def combine(cfg, district, building, offset, name, out):
     district,building,out = map(lambda p:Path(p).resolve(),(district,building,out))
     if out.is_relative_to(cfg.client_data.resolve()) or out==district or out==building or out.is_relative_to(district) or out.is_relative_to(building):
         raise ValueError("combined output must be separate from source inputs and retail data")
+    if out.exists() and (not out.is_dir() or any(out.iterdir())):
+        raise ValueError("combined output must be a new or empty directory")
     record=json.loads((district/'district.json').read_text(encoding='utf-8'))
     scene=json.loads((district/'scene.json').read_text(encoding='utf-8'))
     side=json.loads((building/'multi.json').read_text(encoding='utf-8'))
@@ -57,7 +59,8 @@ def combine(cfg, district, building, offset, name, out):
         raise ValueError("building requires a flat zero-height vacant parcel")
     part_name='imported_'+str(len(parts))+'_'+building.name
     parts.append({'name':part_name,'centre':centre,'bounds':incoming_bounds,
-                  'doors':side['doors'],'components':len(comps),'comps':comps})
+                  'doors':side['doors'],'components':len(comps),'comps':comps,
+                  'build_id':json.loads((building/'catalogue-build.json').read_text(encoding='utf-8'))['build_id']})
     tour=list(scene['tour'])
     building_tour=[{**s,'name':part_name+'_'+s['name'],'x':s['x']+centre[0],'y':s['y']+centre[1]} for s in side['stops']]
     building_tour.append({**side['stops'][0],'name':part_name+'_exit','x':side['stops'][0]['x']+centre[0],'y':side['stops'][0]['y']+centre[1]})

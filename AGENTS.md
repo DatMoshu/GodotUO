@@ -169,6 +169,11 @@ or a device, it is misclassified, not a reason to expand Compat.
    new viewport or material must preserve nearest-neighbour sampling.
 8. **Never commit game data or credentials.** The UO install is read in place
    and is proprietary.
+9. **AI is optional in the editor.** Every AI feature must use the shared
+   `AiFeatures` gate (`guo/ai/enabled` in Editor Settings), including UI,
+   discovery, agents, queues, model/service requests, image generation and
+   editor MCP. Hide AI surfaces and prevent work when disabled; link running
+   work to its cancellation lifetime. Keep manual authoring available.
 
 ---
 

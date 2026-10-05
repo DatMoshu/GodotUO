@@ -53,6 +53,7 @@ public sealed class SessionScanner
     public List<SessionInfo> Scan()
     {
         var all = new List<SessionInfo>();
+        if (!AiFeatures.Enabled) return all;
         Safe(() => ScanClaude(all));
         Safe(() => ScanCodex(all));
         Safe(() => ScanCursor(all));
@@ -63,7 +64,7 @@ public sealed class SessionScanner
     {
         try
         {
-            a();
+            if (AiFeatures.Enabled) a();
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -221,6 +222,7 @@ public sealed class SessionScanner
     /// <summary>The JSON lines in the first <see cref="HeadBytes"/> of a file; a cut last line is dropped.</summary>
     private IEnumerable<JsonNode> HeadLines(string path, bool wholeFileIsOneObject = false)
     {
+        if (!AiFeatures.Enabled) yield break;
         string text;
         bool cut;
         _opened?.Invoke(path);

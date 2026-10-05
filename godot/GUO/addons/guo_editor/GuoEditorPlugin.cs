@@ -47,6 +47,9 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
     private MultiEditView _multiedit;
     private SearchPopup _search;
     private Button _collapseBottomPanels;
+    private EditorMcpServer _editorMcp;
+    private SearchContext _searchContext;
+    private EditorSettings _settings;
 
     // Whether the World tab was on screen when an assembly reload began.
     // A bool field survives the reload (Godot serializes it), and the editor
@@ -119,6 +122,9 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
             return;
         }
 
+        AiFeatures.Apply(AiFeatures.ReadPreference());
+        _settings = EditorInterface.Singleton.GetEditorSettings();
+        _settings.SettingsChanged += OnEditorSettingsChanged;
         _data = new EditorData();
         _gumps = new GumpStudio(_data);
         GumpsMain = _gumps;
@@ -160,8 +166,11 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
 
         // The AI hub (ADR-0028): chat, agents over ACP, the request queue. It owns child
         // processes (agent CLIs), which TearDown kills.
-        _ai = new AiDock();
-        AddDock(_ai);
+        if (AiFeatures.Enabled)
+        {
+            _ai = new AiDock();
+            AddDock(_ai);
+        }
 
         // The art pipeline (ADR-0029): image services, and the watcher that imports what Pixelorama
         // and Pinta save. It owns worker tasks, which TearDown cancels.
@@ -226,9 +235,8 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         searchContext.MultiEdit = _multiedit;
         _search = SearchPopup.Install(searchContext);
         AssetField.Reveal = searchContext.RevealAsset;
-        _ai.UseTools(searchContext, () => _search?.Index);
-        _ai.Hub.SelectionImage = () => _inspector?.Current?.Image;
-        _ai.Hub.SelectionLabel = () => _inspector?.Current is Inspection i ? $"{i.Source} {i.Id}" : null;
+        _searchContext = searchContext;
+        ConnectAi();
 
         string smokeOut = EditorSmoke.OutDirFromArgs();
         string tourOut = EditorTour.OutDirFromArgs();
@@ -279,6 +287,58 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
 
         GD.Print("[GUO editor] plugin entered");
     }
+
+    // Only settings callbacks touch Godot; all AI workers observe AiFeatures' snapshot.
+    private void OnEditorSettingsChanged()
+    {
+        bool enabled = AiFeatures.ReadPreference();
+        if (enabled != AiFeatures.Enabled) ApplyAiPreference(enabled);
+    }
+
+    internal void ApplyAiPreference(bool enabled)
+    {
+        AiFeatures.Apply(enabled); // Cancel work before detaching its UI and tool targets.
+        StopAi();
+        if (enabled)
+        {
+            _ai = new AiDock();
+            AddDock(_ai);
+        }
+        _art?.ApplyAiFeatures();
+        _searchContext.Ai = _ai;
+        SearchPopup.Remove(_search);
+        _search = SearchPopup.Install(_searchContext);
+        ConnectAi();
+        if (_smoke != null) { _smoke.Ai = _ai; _smoke.Search = _search; }
+        if (_tour != null) { _tour.Ai = _ai; _tour.Search = _search; }
+    }
+
+    private void ConnectAi()
+    {
+        if (!AiFeatures.Enabled || _ai == null) return;
+        _ai.UseTools(_searchContext, () => _search?.Index);
+        EditorCapabilities.Register(_ai.Hub.Tools, _searchContext, () => _search?.Index);
+        _editorMcp = EditorMcpServer.StartConfigured(_ai.Hub.Tools);
+        EditorMcpConnection.Configure(_editorMcp != null);
+        _ai.Hub.SelectionImage = () => _inspector?.Current?.Image;
+        _ai.Hub.SelectionLabel = () => _inspector?.Current is Inspection i ? $"{i.Source} {i.Id}" : null;
+    }
+
+    private void StopAi()
+    {
+        _editorMcp?.Dispose();
+        _editorMcp = null;
+        EditorMcpConnection.Configure(false);
+        if (_ai == null) return;
+        _ai.Shutdown();
+        RemoveDock(_ai);
+        _ai.GetParent()?.RemoveChild(_ai);
+        _ai.QueueFree();
+        _ai = null;
+    }
+
+    internal bool AiRunning => _ai != null;
+    internal bool AiMcpRunning => _editorMcp != null;
 
     private async void ApplyDefaultLayoutOnFirstRun()
     {
@@ -406,6 +466,9 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
             _collapseBottomPanels = null;
         }
 
+        if (_settings != null) _settings.SettingsChanged -= OnEditorSettingsChanged;
+        AiFeatures.Apply(false);
+        _settings = null;
         // Save recovery before StoreView clears System.Text.Json's process-wide type caches.
         // Serializing after that cache release pins this assembly and prevents hot reload.
         if (_gumps != null)
@@ -440,7 +503,9 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
             MapGenMain = null;
         }
 
+        StopAi();
         SearchPopup.Remove(_search);
+        _searchContext = null;
         _search = null;
         AssetField.Reveal = null;
 

@@ -40,10 +40,14 @@ public sealed class AiToolHost : IChatTools
 
         /// <summary>Runs on the main thread.</summary>
         public Func<JsonNode, string> Run = _ => "";
+
+        /// <summary>Optional asynchronous editor operation, started on the main thread.</summary>
+        public Func<JsonNode, CancellationToken, Task<string>> RunAsync;
+
+        public int MaxResult = 3000;
     }
 
     private static readonly Regex Bb = new(@"\[/?[a-z_]+(?:=[^\]]*)?\]", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-    private const int MaxResult = 3000;
 
     private readonly List<Tool> _tools = new();
     private readonly Action<Action> _post;
@@ -96,10 +100,13 @@ public sealed class AiToolHost : IChatTools
 
     public async Task<string> RunAsync(string name, JsonNode args, CancellationToken ct)
     {
+        using var aiLife = AiFeatures.Link(ct);
+        ct = aiLife.Token;
         if (ct.IsCancellationRequested)
         {
             return "error: the tool call was cancelled";
         }
+
         lock (_calls)
         {
             _calls.Add($"{name} {args?.ToJsonString() ?? "{}"}");
@@ -114,37 +121,45 @@ public sealed class AiToolHost : IChatTools
         if (!t.ReadOnly)
         {
             Func<string, Task<bool>> ask = Approve;
-            bool yes = ask != null && await ask($"{t.Name} {args?.ToJsonString()}\n\n{t.Description}").ConfigureAwait(false);
+            bool yes = ask != null && await ask($"{t.Name} {args?.ToJsonString()}\n\n{t.Description}").WaitAsync(ct).ConfigureAwait(false);
             if (!yes)
             {
                 return "refused: the user did not approve this action";
             }
         }
 
+        using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(TimeSpan.FromSeconds(30));
+        CancellationToken operation = timeout.Token;
         var done = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
-        _post(() =>
+        int started = 0;
+        _post(async () =>
         {
-            // A cancelled/timed-out call must not edit later when the main queue drains.
-            if (done.Task.IsCompleted || ct.IsCancellationRequested)
+            Interlocked.Exchange(ref started, 1);
+            if (operation.IsCancellationRequested || done.Task.IsCompleted)
             {
-                done.TrySetResult("error: the tool call was cancelled");
+                done.TrySetResult("error: editor operation canceled before dispatch");
                 return;
             }
             try
             {
-                done.TrySetResult(t.Run(args));
+                string result = t.RunAsync != null ? await t.RunAsync(args, operation) : t.Run(args);
+                done.TrySetResult(operation.IsCancellationRequested ? "error: editor operation canceled; a started stage commit may have completed safely" : result);
             }
             catch (Exception ex)
             {
                 done.TrySetResult($"error: {ex.Message}");
             }
         });
-        using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        timeout.CancelAfter(TimeSpan.FromSeconds(30));
-        using (timeout.Token.Register(() => done.TrySetResult("error: the editor did not answer in time")))
+        using (operation.Register(() =>
+        {
+            // A started operation owns its cleanup/commit. Do not return before it
+            // finishes, or dispose its token while the writer still uses it.
+            if (Volatile.Read(ref started) == 0) done.TrySetResult("error: editor operation canceled before dispatch");
+        }))
         {
             string r = await done.Task.ConfigureAwait(false);
-            return r.Length > MaxResult ? r[..MaxResult] + "\n...(cut)" : r;
+            return r.Length > t.MaxResult ? r[..t.MaxResult] + "\n...(cut)" : r;
         }
     }
 

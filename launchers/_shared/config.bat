@@ -68,6 +68,11 @@ REM  tree. See docsrchitecture\ADR-0032-client-profiles-and-workspace.md.
 REM  if not defined UO_WORKSPACE_DIR   set "UO_WORKSPACE_DIR=C:\Path\To\GUO Workspace"
 
 REM --- Agent request queue ------------------------------------------------
+REM  Opt-in editor MCP: a free loopback port and Python executable. Empty = off.
+REM  GUO_EDITOR_MCP_TOKEN is environment-only (32..256 characters); never put it here.
+if not defined GUO_EDITOR_MCP_PORT   set "GUO_EDITOR_MCP_PORT="
+if not defined GUO_EDITOR_MCP_PYTHON set "GUO_EDITOR_MCP_PYTHON="
+
 REM  One SQLite file per user, shared by the editor chat window and the AI
 REM  agent sessions that watch it. Keep it OFF the repo tree. See
 REM  tools\agent_queue\README.md.

@@ -77,6 +77,33 @@ launchers\dev\editor_smoke.bat [same flags]
 
 ## Output
 
+### October 4 editor lifecycle controls
+
+The headless suite also exercises a same-assembly World close/reopen, refused
+competing-owner boot, delayed EditorData retirement and a queued completion
+after retirement. AI controls verify cancellation before dispatch and a started
+asynchronous operation that receives the cancellation token and finishes its
+owned cleanup before the caller returns.
+
+The canonical multi writer is a non-interruptible commit boundary: canceling
+before its subprocess starts prevents the stage write; after it starts, GUO
+waits for archive/registry/sidecar completion and readback. Cancellation then
+suppresses overlay updates and `AfterWrite`; it does not promise rollback.
+An already-started stage commit can finish on disk while AI is disabled. Manual
+writing remains available and is canceled only when its view retires.
+
+An explicit `--guo-editor-data-stage` keeps read-only Windows file-sharing
+leases on the mapping and its mapped targets until the editor data retires.
+The normal plugin teardown retires World before Assets data. Writes to the
+selected input stage, or an output folder containing an externally mapped input,
+are refused by the Multi Editor before dispatch; select
+another output stage or close/reload the consumers before replacing that input.
+Ordinary installation files and unrelated authoring output are not leased.
+The smoke checks mapping/target write refusal and release after disposal.
+This guards the explicit staged bytes, not independent static tiledata caches
+or cross-platform filesystem semantics. Native resource leak acceptance and
+live-provider certification are separate gates.
+
 `build\editor_smoke\<mode>\`, where mode is `windowed`, `headless`,
 `windowed_reload` or `headless_reload`:
 

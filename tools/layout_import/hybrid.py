@@ -25,6 +25,8 @@ def populate(cfg, district, source, catalogue, database, native_catalogue, decor
     district,source,out=Path(district).resolve(),Path(source).resolve(),Path(out).resolve()
     if out.is_relative_to(source) or out.is_relative_to(cfg.client_data.resolve()) or out.is_relative_to(district):
         raise ValueError("hybrid outputs must be separate from input district and source installations")
+    if out.exists() and (not out.is_dir() or any(out.iterdir())):
+        raise ValueError("hybrid output must be a new or empty directory")
     census=json.loads(Path(catalogue).read_text(encoding='utf-8'))
     original=json.loads((district/'district.json').read_text(encoding='utf-8'))
     selection_inputs={'census_sha256':hashlib.sha256(Path(catalogue).read_bytes()).hexdigest(),
@@ -66,7 +68,7 @@ def populate(cfg, district, source, catalogue, database, native_catalogue, decor
                 blocked.append({'header':candidate['header'],'building':candidate['building'],'log':str(work/'import.log')})
                 continue
             offset=[(parcel['omt'][0]-x0)*24,(parcel['omt'][1]-y0)*24]
-            assembled=out/'assembly'/str(index)
+            assembled=out/'assembly'/f'{parcel_index}_{attempt}'
             try:
                 result=combine(cfg,current,native_out,offset,name,assembled)
             except ValueError as exc:

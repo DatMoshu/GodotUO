@@ -45,6 +45,12 @@ public partial class EditorSmoke
     /// <summary>One tick of the stage; true when it is finished.</summary>
     private bool StepAi()
     {
+        if (!AiFeatures.Enabled)
+        {
+            _report["ai"] = new Dictionary<string, object> { ["ok"] = true, ["skipped"] = "AI features disabled" };
+            return true;
+        }
+
         if (System.Environment.GetEnvironmentVariable("GUO_AI_SKIP") != null)
         {
             return true;
@@ -125,6 +131,7 @@ public partial class EditorSmoke
         string python = QueueClient.FindPython();
         string temp = Path.Combine(_out, "ai");
         Directory.CreateDirectory(temp);
+        await CheckEditorMcpAsync();
 
         if (python == null || !File.Exists(fake))
         {
@@ -327,6 +334,7 @@ public partial class EditorSmoke
             bool finished = await Until(() => !Ai.Chat.Busy, 15);
             await Delay(0.2);
             AiCheck("chat_streams", finished && Ai.Chat.Transcript.Contains("Hello from the stub.") && Ai.Chat.History.Count == 2, Ai.Chat.Transcript);
+            await CheckChatComposerAsync(stub);
 
             // An unreachable server is a message, not a hang.
             Ai.Chat.OllamaUrl = "http://127.0.0.1:1";
@@ -434,6 +442,7 @@ public partial class EditorSmoke
             }
         }
 
+        await CheckAiToggleAsync();
         _aiReport["chunks_streamed"] = _aiReport.GetValueOrDefault("acp_chunks");
     }
 
@@ -451,6 +460,81 @@ public partial class EditorSmoke
         await p.WaitForExitAsync();
         await output;
         AiCheck($"queue_command_{args[0]}_{args[1]}", p.ExitCode == 0, await error);
+    }
+
+    private async Task CheckChatComposerAsync(StubServer stub)
+    {
+        AiChatTab chat = Ai.Chat;
+        TextEdit input = chat.Composer;
+        InputEventKey Enter(bool shift = false, bool echo = false, bool pressed = true, Key code = Key.Enter) =>
+            new() { Keycode = code, Pressed = pressed, ShiftPressed = shift, Echo = echo };
+        void KeyEvent(InputEventKey key) => input.EmitSignal(Control.SignalName.GuiInput, key);
+        AiCheck("composer_multiline_control", input != null && input.WrapMode == TextEdit.LineWrappingMode.Boundary);
+
+        chat.NewChat();
+        input.Text = "first";
+        input.SetCaretColumn(5);
+        int before = stub.ChatRequests;
+        KeyEvent(Enter(shift: true));
+        AiCheck("composer_shift_enter_newline", input.Text == "first\n" && !chat.Busy && chat.History.Count == 0 && stub.ChatRequests == before);
+        input.Text = "composing candidate";
+        chat.HandleComposerInput(Enter(), composing: true);
+        AiCheck("composer_ime_gate", !chat.Busy && chat.History.Count == 0 && input.Text == "composing candidate");
+        KeyEvent(Enter(echo: true));
+        KeyEvent(Enter(pressed: false));
+        AiCheck("composer_echo_release_no_send", !chat.Busy && chat.History.Count == 0);
+
+        string[] prompts = { "\nfirst\n  second\nthird\n", "first\r\n  second\r\nthird" };
+        for (int i = 0; i < prompts.Length; i++)
+        {
+            chat.NewChat();
+            input.Text = prompts[i];
+            string expected = prompts[i].Replace("\r\n", "\n");
+            before = stub.ChatRequests;
+            if (i == 0) KeyEvent(Enter());
+            else chat.SendButton.EmitSignal(Button.SignalName.Pressed);
+            AiCheck($"composer_{i}_accepted_once", chat.Busy && chat.History.Count == 1 && input.Text.Length == 0);
+            // The main-thread completion has not run yet; busy follow-ups must preserve the draft.
+            input.Text = "next\n  draft";
+            KeyEvent(Enter());
+            KeyEvent(Enter(echo: true));
+            chat.SendButton.EmitSignal(Button.SignalName.Pressed);
+            AiCheck($"composer_{i}_busy_draft", chat.History.Count == 1 && input.Text == "next\n  draft");
+            bool done = await Until(() => !chat.Busy, 15);
+            AiCheck($"composer_{i}_stub_payload", done && stub.ChatRequests == before + 1
+                && (string)stub.LastChatBody?["messages"]?[0]?["content"] == expected
+                && chat.History[0].Text == expected, "multiline request or request count differed");
+            AiCheck($"composer_{i}_draft_survives_reply", input.Text == "next\n  draft");
+        }
+
+        // Numeric keypad Enter follows the same send path.
+        chat.NewChat();
+        input.Text = "keypad\nmessage";
+        before = stub.ChatRequests;
+        KeyEvent(Enter(code: Key.KpEnter));
+        bool keypadDone = await Until(() => !chat.Busy, 15);
+        AiCheck("composer_keypad_enter", keypadDone && stub.ChatRequests == before + 1
+            && (string)stub.LastChatBody?["messages"]?[0]?["content"] == "keypad\nmessage");
+
+        chat.NewChat();
+        input.Text = "   \n\t";
+        before = stub.ChatRequests;
+        KeyEvent(Enter());
+        AiCheck("composer_blank_keeps_draft", !chat.Busy && input.Text == "   \n\t" && stub.ChatRequests == before);
+        // Snapshot gate only: existing toggle stage separately proves removal/termination/re-enable.
+        try
+        {
+            AiFeatures.Apply(false);
+            input.Text = "disabled\nprompt";
+            KeyEvent(Enter());
+            chat.SendButton.EmitSignal(Button.SignalName.Pressed);
+            chat.SendText("direct disabled prompt");
+            AiCheck("composer_disabled_no_send", !chat.Busy && chat.History.Count == 0
+                && input.Text == "disabled\nprompt" && stub.ChatRequests == before);
+        }
+        finally { AiFeatures.Apply(true); }
+        input.Text = "";
+        chat.NewChat();
     }
 
     /// <summary>
@@ -596,7 +680,7 @@ public partial class EditorSmoke
         // --- tool round trip through the OpenAI-compatible stub ---------------------------------------
         Ai.ShowTab("Chat");
         Ai.Chat.ToolsEnabled = true;
-        AiCheck("tools_host", Ai.Hub.Tools != null && Ai.Hub.Tools.Tools.Count == 7, Ai.Hub.Tools?.Tools.Count.ToString());
+        AiCheck("tools_host", Ai.Hub.Tools != null && new[] { "search", "inspect_asset", "jump_world", "editor_state", "multi_open" }.All(n => Ai.Hub.Tools.Tools.Any(t => t.Name == n)), Ai.Hub.Tools?.Tools.Count.ToString());
         AiCheck("tools_selects_endpoint", Ai.Chat.SelectProvider("openai:StubSvc"));
         Ai.Chat.NewChat();
         int before = stub.CompatRequests;
@@ -673,7 +757,8 @@ public partial class EditorSmoke
     private async Task CheckWorldToolsAsync(string temp)
     {
         AiToolHost tools = Ai.Hub.Tools;
-        AiCheck("tools_world_specs", tools.Tools.Count(t => !t.ReadOnly) == 1 &&
+        // The editor capabilities add approved tools of their own; of the World tools only the stamp changes anything.
+        AiCheck("tools_world_specs",
             tools.Tools.Single(t => t.Name == "stamp_static").ReadOnly == false &&
             new[] { "world_state", "describe_cell", "walkable" }.All(n => tools.Tools.Any(t => t.Name == n && t.ReadOnly)));
         var unready = AiToolHost.For(new SearchContext(), () => null, Ai.Hub.Post);
@@ -826,6 +911,7 @@ public partial class EditorSmoke
 
         public string Url { get; }
         public JsonNode LastChatBody { get; private set; }
+        public int ChatRequests { get; private set; }
         public string LastAuth { get; private set; }
         public JsonNode LastCompatBody { get; private set; }
         public int CompatRequests { get; private set; }
@@ -890,6 +976,7 @@ public partial class EditorSmoke
                 else if (path == "/api/chat")
                 {
                     LastChatBody = JsonNode.Parse(body);
+                    ChatRequests++;
                     await Write(c,
                         "{\"message\":{\"role\":\"assistant\",\"thinking\":\"hmm\"},\"done\":false}\n"
                         + "{\"message\":{\"role\":\"assistant\",\"content\":\"Hello \"},\"done\":false}\n"
