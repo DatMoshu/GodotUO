@@ -680,7 +680,7 @@ public partial class EditorSmoke
         string notReady = await unready.RunAsync("world_state", null, CancellationToken.None);
         AiCheck("tools_world_unready", notReady.StartsWith("error:"), notReady);
 
-        AiCheck("tools_world_boot", _world.GoTo(0, 1496, 1628), _world.Error);
+        AiCheck("tools_world_boot", _world.GoTo(0, 1495, 1628), _world.Error);
         if (!_world.IsBooted) return;
         string priorProject = _world.Host.Project?.Root;
         string priorMode = _world.Modes.ModeName;
@@ -695,6 +695,14 @@ public partial class EditorSmoke
             _world.Modes.SetMode("Height");
             _world.Modes.Hover = null;
             _world.ForcedMouse = null;
+            string jump = await tools.RunAsync("jump_world",
+                new JsonObject { ["facet"] = 0, ["x"] = 1496, ["y"] = 1628 }, CancellationToken.None);
+            AiCheck("tools_jump_world", jump == "the World tab now shows map0 1496,1628" &&
+                _world.Host.Facet == 0 && _world.Host.X == 1496 && _world.Host.Y == 1628, jump);
+            // Navigation shows the World tab. Hide it for this centre-position check,
+            // so a live pointer cannot replace the destination before the read runs.
+            _world.Visible = false;
+            _world.Modes.Hover = null;
             JsonNode state = JsonNode.Parse(await tools.RunAsync("world_state", null, CancellationToken.None));
             AiCheck("tools_world_state", (int)state["facet"] == 0 && (int)state["x"] == 1496 && (int)state["y"] == 1628 &&
                 (int)state["z"] == _world.Host.Z && (string)state["view_mode"] == "Height" &&
