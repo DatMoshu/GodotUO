@@ -1333,10 +1333,23 @@ Folder:
 | `biome.png`, `height.png` | Biome classes; heights (grey above 0, blue below) |
 | `steps/NN-pass-name.png` | With `--step-previews`: the map after each enabled pass (radar once land ids exist, biome or height before) |
 | `map.bin` | Analyzer dump: int32 width, int32 height; per cell, row-major, uint16 land id, int8 z, uint8 biome; int32 count; per static uint16 x, uint16 y, int8 z, uint16 id |
+| `pois.json` | `"schema": "guo.mapgen.pois/1"`, `width`, `height`, `pois[]`: `id`, `kind` (`ControlPoint`, `DungeonEntrance`, `Ruin`, `Town`, `Camp`, `Shrine`), `x`, `y`, `z`, `tag` (`fixed-site` for a Town Sites `Sites` entry), `footprint` (`[x1, y1, x2, y2]`, inclusive map cells; towns only, else null), `gates` (`[[x, y], ...]` N, S, W, E edge midpoints where roads end; towns only). What a tool placing content on the map reads (`tools/mapgen_districts`) |
 
 The Map Validator's `BiomeProfile` sets which land-biome mix the `BiomeDistribution` check expects: `felucca` (the default: grass 5–85%, forest ≤ 70%, desert ≤ 60%, mountain ≤ 40%, no biome over 92%), `desert` (desert ≥ 50%, grass ≤ 10%, forest ≤ 5%, mountain ≤ 40%), `ice` (snow ≥ 30%, grass and forest ≤ 10%, mountain ≤ 40%) or `none` (histogram only). Out-of-band shares are warnings; one biome over the cap is an error; an unknown name is an error. The other checks do not depend on the profile.
 
 Town sites and district pads: **Town Sites** `Sites` places fixed footprints `x,y,w,h[,z];...` first (z omitted = the footprint's median ground Z; entries off the scope or touching water are skipped with a warning), and `BuildableBiomesCsv` replaces the random finder's biome set (empty = Grassland, Forest, DenseForest, Savanna, Beach). **Town Roads** `FlattenTarget` (`centre`, the default, or `poi` = the site's Z), `FlattenSkirt` (blend tiles, default 3) and `PaintStreets` (off = a bare flattened pad). Both passes are opt-in; their defaults generate what they did before.
+
+Towns from imported districts (`tools/mapgen_districts`): `build` picks flat lots on dry ground from a first
+run's `map.bin` (on the 8x8 block grid, default 88x88), re-runs with them as fixed z0 `Sites`, streets off,
+exports a world project at `--origin` on facet 0 and lays one built `tools/layout_import` district (72x72,
+section 32) on each lot, 8 cells in from its edge, with a road from every gate into the district's own
+streets. The result `built/` has layout_import's district shape: `world/` (the map's blocks with the
+districts' over them), `parts/`, `scene.json` (parts and tour in map cells, prefixed `t1_`, `t2_`...; plus
+`jumps`, the stops the staff account steps to by command: each town's `road_approach`) and `district.json`
+(`kind` `uo-district`, `origin`, `size`, `theme`, `towns[]`: `town`, `district`, `source`, `lot`,
+`map_corner`, `world_corner`, `blocks`, `entry_gate`, `parts`, `tour_stops`, `streets[]` (`gate`, `cells`,
+`joined`, `statics_cleared`, `end`), `street_problems`). `stage` and `prove` run layout_import's
+district-stage and the multi prover's session on it.
 
 `hash` is SHA-256 over `"guo-mapgen-1"`, width and height (uint16), the land ids, the heights and every
 static op (kind, x, y, z, id, hue) in pipeline order. The same preset, seed, size, options and
