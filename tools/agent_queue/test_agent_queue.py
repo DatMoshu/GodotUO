@@ -77,6 +77,71 @@ class QueueTests(unittest.TestCase):
         self.assertEqual(sorted(got_a + got_b), ids)
         self.assertFalse(set(got_a) & set(got_b))
 
+    def test_two_watchers_race_for_one_request(self):
+        rid = self.post("alpha", "one owner only")
+        # Both watchers finish startup before either can claim. This exercises the
+        # same tail handler on independent connections, rather than hoping two
+        # unsynchronized CLI launches happen to overlap.
+        gated_tail = """
+import sys
+sys.path.insert(0, sys.argv[1])
+import run
+args = run.build_parser().parse_args(sys.argv[2:])
+db = run.connect(run.resolve_db_path(args.db))
+print('ready', flush=True)
+sys.stdin.readline()
+try:
+    raise SystemExit(args.fn(db, args))
+finally:
+    db.close()
+"""
+        watchers = []
+        for _ in range(2):
+            proc = subprocess.Popen([sys.executable, "-c", gated_tail, str(RUN.parent),
+                                     "--db", self.db, "tail", "--as", "alpha", "--once",
+                                     "--interval", "0.05", "--timeout", "2"],
+                                    stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                    stderr=subprocess.PIPE, text=True, encoding="utf-8")
+            self.procs.append(proc)
+            self.addCleanup(proc.stdin.close)
+            watchers.append(proc)
+        for proc in watchers:
+            self.assertEqual(proc.stdout.readline().strip(), "ready")
+        for proc in watchers:
+            proc.stdin.write("go\n")
+            proc.stdin.flush()
+        results = [proc.communicate(timeout=30) for proc in watchers]
+        deliveries = [self.lines(out) for out, _ in results]
+        self.assertEqual(sorted(proc.returncode for proc in watchers), [0, 3])
+        self.assertEqual([row["id"] for rows in deliveries for row in rows], [rid])
+        winner = next(rows[0] for rows in deliveries if rows)
+        self.assertEqual(winner["status"], "taken")
+        self.assertEqual(winner["taken_by"], "alpha")
+        # The losing watcher can inspect the claim, but cannot take it again.
+        shown = json.loads(self.run_cli("show", str(rid)))
+        self.assertEqual(shown["status"], "taken")
+        self.assertEqual(shown["taken_by"], "alpha")
+        self.assertEqual(self.run_cli("take", "--as", "alpha"), "")
+
+    def test_reply_watch_resume_after_explicit_offset(self):
+        for selector in ("request", "agent"):
+            with self.subTest(selector=selector):
+                rid = self.post("alpha")
+                args = [str(rid)] if selector == "request" else ["--from", "alpha"]
+                first = int(self.run_cli("reply", str(rid), "first", "--from", "alpha"))
+                seen = self.lines(self.run_cli("watch-replies", *args, "--since-id", str(first - 1),
+                                               "--once", "--timeout", "2"))
+                self.assertEqual([r["id"] for r in seen], [first])
+                other = self.post("beta")
+                self.run_cli("reply", str(other), "not yours", "--from", "beta")
+                later = [int(self.run_cli("reply", str(rid), text, "--from", "alpha"))
+                         for text in ("second", "third")]
+                resumed = self.lines(self.run_cli("watch-replies", *args, "--since-id", str(first),
+                                                  "--once", "--timeout", "2"))
+                self.assertEqual([r["id"] for r in seen + resumed], [first, *later])
+                self.run_cli("watch-replies", *args, "--since-id", str(later[-1]),
+                             "--once", "--timeout", "1", expect=3)
+
     def test_broadcast(self):
         rid = self.post("*", "everyone")
         self.assertEqual(self.lines(self.run_cli("tail", "--as", "alpha", "--once", "--timeout", "1", expect=3)), [])

@@ -8,6 +8,8 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Threading;
 using System.Threading.Tasks;
 using Godot;
 using GUO.Assets;
@@ -370,6 +372,7 @@ public partial class EditorTour : Node
                 ("runbar", "Run bar: start a server, start clients", RunBarSeg),
                 ("search", "F3: search everything", SearchSeg),
                 ("ai", "The AI dock: Chat, Agents, Queue", AiSeg),
+                ("ai_tools", "AI tools: reading the World", AiToolsSeg),
                 ("store", "UO Store: packs for shard owners and authors", StoreSeg),
                 ("art", "Assets: Art", ArtSeg),
                 ("gumps", "Assets: Gumps", GumpSeg),
@@ -1290,6 +1293,86 @@ public partial class EditorTour : Node
         await Frames(5);
         Check(!_shard.Live, "disconnecting closed the link");
         await Shot(2.5);
+    }
+
+    private async Task AiToolsSeg()
+    {
+        if (Ai == null)
+        {
+            Check(false, "the AI dock was not created");
+            return;
+        }
+
+        // This segment calls the editor tools directly. No provider is selected while
+        // showing Chat, so its visibility handler cannot ask a real service for models.
+        OptionButton provider = All<OptionButton>(Ai.Chat).First();
+        int selected = provider.Selected;
+        provider.Select(-1);
+        Ai.ShowTab("Chat");
+        await Frames(8);
+        RichTextLabel log = All<RichTextLabel>(Ai.Chat).First();
+        string transcript = log.Text;
+        bool bbcode = log.BbcodeEnabled;
+        try
+        {
+            log.BbcodeEnabled = false;
+            AiToolHost tools = Ai.Hub.Tools;
+            string jump = await tools.RunAsync("jump_world",
+                new JsonObject { ["facet"] = 0, ["x"] = 1496, ["y"] = 1628 }, CancellationToken.None);
+            for (int i = 0; i < 900 && !WorldUp && _world.Error == null; i++) await Frames(1);
+            Check(WorldUp && _world.Host.Facet == 0 && _world.Host.X == 1496 && _world.Host.Y == 1628,
+                "jump_world opened Britain through the tool host: " + jump);
+            if (!WorldUp) return;
+            await Frames(30);
+
+            JsonNode state = JsonNode.Parse(await tools.RunAsync("world_state", null, CancellationToken.None));
+            Check((int)state["facet"] == 0, "world_state read the active Britain facet");
+            log.Text = "DIRECT EDITOR TOOL RESULT — world_state\n"
+                + $"map{state["facet"]} cell {state["x"]},{state["y"]}, z {state["z"]} ({state["position_source"]})\n"
+                + $"View: {state["view_mode"]}   Project: {state["project"] ?? "none"}\n"
+                + "These results come from the editor tool host. No model or agent is running.";
+            Say("world_state reads the active World facet, pointer cell or camera centre, height, project and View mode. "
+                + "The AI dock shows the direct tool result; this segment sends no model prompt.", top: true);
+            MarkControl(log, "world_state result");
+            await Shot(5);
+
+            JsonObject wallArgs = new() { ["facet"] = 0, ["x"] = 1473, ["y"] = 1607 };
+            JsonNode cell = JsonNode.Parse(await tools.RunAsync("describe_cell", wallArgs, CancellationToken.None));
+            JsonArray stack = (JsonArray)cell["statics"];
+            Check(stack.Any(s => (int)s["id"] == 168), "describe_cell found Britain's known wall static 0x00A8");
+            var detail = new StringBuilder("DIRECT EDITOR TOOL RESULT — describe_cell\nmap0 cell 1473,1607\n");
+            detail.AppendLine($"Land {cell["land"]["id"]}: {cell["land"]["name"]}, z {cell["land"]["z"]}");
+            foreach (JsonNode s in stack)
+                detail.AppendLine($"Static 0x{(int)s["id"]:X4}: {s["name"]}, z {s["z"]}, height {s["height"]}, hue {s["hue"]}; {s["flags"]}");
+            log.Text = detail.ToString();
+            Say("describe_cell returns the land and the complete static stack, including tiledata flags. "
+                + "This known Britain wall is map0 1473,1607: static 0x00A8.", top: true);
+            _overlay.ClearMarks();
+            MarkControl(log, "describe_cell result");
+            await Shot(5);
+
+            JsonNode wall = JsonNode.Parse(await tools.RunAsync("walkable", wallArgs, CancellationToken.None));
+            JsonNode road = JsonNode.Parse(await tools.RunAsync("walkable",
+                new JsonObject { ["facet"] = 0, ["x"] = 1496, ["y"] = 1628 }, CancellationToken.None));
+            Check((string)wall["verdict"] == "blocked", "walkable reports the wall blocked");
+            Check((string)road["verdict"] is "walkable" or "surface", "walkable reports the Britain road open");
+            log.Text = "DIRECT EDITOR TOOL RESULTS — walkable\n"
+                + $"Wall map0 1473,1607: {wall["verdict"]}; standing z {wall["standing_z"]}\n"
+                + $"Road map0 1496,1628: {road["verdict"]}; standing z {road["standing_z"]}\n"
+                + "The same World mode data supplies both verdicts. No world edits were made.";
+            Say("walkable uses the same movement data as the World View mode. The wall is blocked; the road is open. "
+                + "The AI dock displays both actual tool results.", top: true);
+            _overlay.ClearMarks();
+            MarkControl(log, "wall and road verdicts");
+            Check(Ai.Visible && Ai.Chat.IsVisibleInTree(), "the tool results are visible in the AI dock");
+            await Shot(5);
+        }
+        finally
+        {
+            log.Text = transcript;
+            log.BbcodeEnabled = bbcode;
+            provider.Select(selected);
+        }
     }
 
     private async Task AiSeg()
