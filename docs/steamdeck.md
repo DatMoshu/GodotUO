@@ -162,6 +162,11 @@ is woken first (`kscreen-doctor --dpms on`); a sleeping Deck draws nothing.
 stops the unit, `... log` prints the log. You can equally double-click
 `guo.sh` in Dolphin or run it from Konsole; then it is an ordinary process.
 
+`run` and `smoke` also hold the Deck's sleep while they use it (a `guo-awake` user unit running
+`systemd-inhibit`); `run --awake N` sets the minutes (default 60). `python tools\steamdeck\run.py awake
+--minutes N` takes the hold by hand and `... release` ends it; `stop` ends it too. The hold always ends on
+its own, and it cannot wake a sleeping Deck, whose Wi-Fi is off. Not yet checked on a Deck.
+
 ## 6. Game mode: add it to Steam
 
 Game mode is gamescope, a different compositor with no `:0` for an ssh

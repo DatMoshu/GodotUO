@@ -64,7 +64,7 @@ REM  instances, client profiles, and the per-run settings and logs of each
 REM  server and client pair. Leave it unset for the default (%LOCALAPPDATA%\GUO
 REM  on Windows, $XDG_DATA_HOME/guo or ~/.local/share/guo on Linux). The default
 REM  is resolved in code, so no machine path is set here. Keep it OFF the repo
-REM  tree. See docsrchitecture\ADR-0032-client-profiles-and-workspace.md.
+REM  tree. See docs\architecture\ADR-0032-client-profiles-and-workspace.md.
 REM  if not defined UO_WORKSPACE_DIR   set "UO_WORKSPACE_DIR=C:\Path\To\GUO Workspace"
 
 REM --- Agent request queue ------------------------------------------------

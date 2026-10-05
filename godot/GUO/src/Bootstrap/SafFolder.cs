@@ -146,7 +146,7 @@ internal static class SafFolder
     }
 
     // The Windows client's own programs, libraries and logs: never read by
-    // GUO. Everything else in the folder is copied, as `toolsndroid push`
+    // GUO. Everything else in the folder is copied, as `tools\android push`
     // copies it, since the client reads more than the required set (.bin,
     // .rle, localized .enu/.deu/... files).
     private static readonly HashSet<string> NotData = new(StringComparer.OrdinalIgnoreCase)
