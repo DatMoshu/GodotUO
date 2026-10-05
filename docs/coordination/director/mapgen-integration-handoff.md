@@ -147,3 +147,69 @@ Acceptance for any shared adoption: cold/forced Godot build exits normally,
 two full unchanged smoke passes exit 0, full editor reload exits 0, and existing
 layout runtime evidence remains unchanged. Do not mask an abnormal exit as a
 pass or shut down unrelated compiler processes.
+
+## GUO-MAP-02: current revision runtime refresh
+
+The new whole-district replay passed on clean HEAD
+`78340f3debf978b67763498e4a9e241dc825e140`, branch
+`codex/cdda-uo-layouts`, completed 2026-10-04 at 05:30 UTC. It reused the retained
+`seeded_two_storey` district and staged archives and wrote fresh evidence to
+`build/layout_import/proof/guo-map-02-78340f3d/`. The original proof and
+publication clip above retained their exact hashes. This refresh changes only
+this handoff; it creates no commit or shared-tooling change.
+
+Acceptance: 88/88 walking stops arrived, zero room teleport tags, all three
+multis acknowledged and placed, with 23 doors including gates. Both CDDA houses,
+the streets and the Zomboid house's two floors, descent and exit passed. The
+height-20 impassable stone wall (item 465) blocked three attempts to reach
+`[6148,2312,7]`; the player remained at `[6147,2313,4]`. This checks actual wall
+collision rather than merely an unreachable foundation elevation.
+
+- `acceptance-summary.json`: passed, including content identity and teardown.
+- `report.json`: SHA-256
+  `f8669ca173cb7604ffb3a16fcb83c6ea5b48c5fb8186b2c26ba0a5b865a6d80e`.
+- `walk.mp4`: new continuous sequential runtime capture, 369.125 seconds,
+  114,123,878 bytes, H.264, 1024×768 at 8 fps, with dwell frames retained.
+  SHA-256 `3a1fbbfff04c79dbb6b8c296ab1ad34cb722b973ed8fd408d62e5c6039aa1506`.
+  The separate `walk_tight.mp4` removes idle frames and is not the continuous proof.
+- `identity-before.json`: 22 build/content identities, SHA-256
+  `cdce02ba17031091709388062843b8b9e7ef3d3f7d262c3f8a96e103b08f6fe8`.
+  All recorded files were unchanged after replay. `runtime-dependencies.json`
+  supplements this with 38 runtime DLL hashes captured during replay.
+- GUO DLL SHA-256:
+  `fba38fed1e84015444ff20de318a74e63f7354a7ab5d4ae304992a100f5ff9cd`.
+- Staged `MultiCollection.uop` SHA-256:
+  `57f50e646b3081950a442823a047edebf98aa54a6e505aaf78bb3db939239a3a`.
+- `integration-diff-identity.json` and `integration.diff`: full integration diff
+  from `a82ddb69805ba7c5b0265679b2ca3b6a3e6731c9` to the tested HEAD,
+  27 files, 3,850 insertions and 5 deletions, SHA-256
+  `28b6686ded651475000eaa61c619168969db30c6ac1977eecccdd3cf878391fe`.
+  The subsequent uncommitted handoff update is outside that tested diff.
+
+The actual preflight found 28.387 GB available, exceeding the 16 GB minimum;
+private ports 52590/52591 were free. A restricted memory query returned no usable
+measurement; the external-engine replay used escalated execution. No managed
+assembly lookup failure appeared in this client run. No engine reinstall or ACL
+change was needed. This successful run does not diagnose the owner's separate
+restricted-launch assembly popup.
+
+The current C# build passed with 18 existing warnings and zero errors;
+`build/layout_import/shutdown/map-02-build.log` retains the output. Native archive
+verification passed without changing the installation; world archive verification
+matched all 81 replaced blocks to the project and all 458,671 other blocks to the
+installation. The new directory contains both verification logs and
+`replay-command.log`. Owned client and shard processes stopped, both private ports
+were free afterward, and the owned temporary runtime cache was removed. No
+unrelated processes were shut down.
+
+The earlier 25 tests, two full smoke passes and editor reload remain the lifecycle
+fix evidence; this refresh adds the current build, archive verification and live
+district replay. It does not rerun or replace that earlier suite. The conversion
+limitations and shared-file proposal above remain unchanged. This is a local
+branch acceptance result, not GUO integration or complete source-game conversion.
+
+For another replay, choose a fresh output directory and retain the inputs:
+
+```powershell
+python tools/layout_import/run.py district-prove --built build/layout_import/districts/seeded_two_storey --stage build/uodata/seeded_two_storey --out build/layout_import/proof/<NEW_MAP02_RUN> --clip build/layout_import/proof/<NEW_MAP02_RUN>/walk.mp4
+```

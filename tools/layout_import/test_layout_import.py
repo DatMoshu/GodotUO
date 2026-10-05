@@ -210,6 +210,130 @@ class CatalogueTests(unittest.TestCase):
 
 
 class AdapterTests(unittest.TestCase):
+    @staticmethod
+    def stair_levels(size):
+        """Original neutral rooms; no source-game data or retail catalogue."""
+        centre = size // 2
+        levels = []
+        for z in (0, 1):
+            cells = []
+            for y in range(size):
+                for x in range(size):
+                    role = 'floor'
+                    if (x, y) == (centre, centre):
+                        role = 'stair-up' if z == 0 else 'stair-down'
+                    cells.append({'x': x, 'y': y, 'role': role, 'flags': [],
+                                  'walkable': True, 'indoors': True,
+                                  'lineage': ['neutral-stair', x, y, z]})
+            levels.append({'z': z, 'cells': cells,
+                           'rooms': [{'cells': [[x, y] for y in range(size) for x in range(size)]}]})
+        return levels
+
+    @staticmethod
+    def stair_catalogue():
+        from unittest.mock import Mock
+        catalogue = Mock(spec=['step', 'block'])
+        catalogue.step.return_value = 100
+        catalogue.block.return_value = 101
+        return catalogue
+
+    def assert_stair_refusal(self, levels, message):
+        import copy
+        from layout_import import native
+        before = copy.deepcopy(levels)
+        built = native.G.Built()
+        catalogue = self.stair_catalogue()
+        with self.assertRaises(native.ResolutionError) as rejected:
+            native.reserve_stairs(levels, copy.deepcopy(native.DEFAULT_THEME), built, catalogue)
+        self.assertEqual(str(rejected.exception), message)
+        self.assertEqual(levels, before)
+        self.assertEqual(built.comps, [])
+        catalogue.step.assert_not_called()
+        catalogue.block.assert_not_called()
+
+    def test_native_stair_compact_footprint_refuses_without_mutation(self):
+        self.assert_stair_refusal(
+            self.stair_levels(5),
+            'source stair at (2, 2) level 0: no bounded internal-flight adaptation fits')
+
+    def test_native_stair_missing_upper_refuses_without_mutation(self):
+        self.assert_stair_refusal(
+            self.stair_levels(9)[:1], 'level 0 stair-up has no supplied upper level')
+
+    def test_native_stair_missing_connector_refuses_without_mutation(self):
+        levels = self.stair_levels(9)
+        for cell in levels[1]['cells']:
+            if cell['role'] == 'stair-down':
+                cell['role'] = 'floor'
+        self.assert_stair_refusal(
+            levels, 'level 0 source stairs have no upper landing connector')
+
+    def test_native_stair_roomy_flight_reserves_opening_and_is_deterministic(self):
+        import copy
+        from layout_import import native
+        levels = self.stair_levels(9)
+        # Keep the authored upper connector outside the potential stair opening.
+        for cell in levels[1]['cells']:
+            if cell['role'] == 'stair-down':
+                cell['role'] = 'floor'
+            if (cell['x'], cell['y']) == (7, 7):
+                cell['role'] = 'stair-down'
+        before = copy.deepcopy(levels)
+        built = native.G.Built()
+        catalogue = self.stair_catalogue()
+        result = native.reserve_stairs(levels, copy.deepcopy(native.DEFAULT_THEME), built, catalogue)
+        reserved, flights, adaptations = result
+        self.assertEqual(len(flights), 1)
+        flight = flights[0]
+        self.assertEqual((flight['z'], flight['rise'], flight['from_level'], flight['to_level']),
+                         (7, 20, 0, 1))
+        foot, arrival = tuple(flight['foot']), tuple(flight['arrive'])
+        holes = set(map(tuple, flight['cells']))
+        self.assertEqual(len(holes), 5)
+        self.assertEqual(abs(arrival[0] - foot[0]) + abs(arrival[1] - foot[1]), 6)
+        self.assertTrue(foot[0] == arrival[0] or foot[1] == arrival[1])
+        self.assertNotIn(foot, holes)
+        self.assertNotIn(arrival, holes)
+        self.assertEqual(reserved[0], holes | {foot})
+        self.assertEqual(reserved[1], holes | {arrival})
+        lower_floor = set(map(tuple, levels[0]['rooms'][0]['cells']))
+        upper_floor = set(map(tuple, levels[1]['rooms'][0]['cells'])) - holes
+        self.assertIn(foot, lower_floor - holes)
+        self.assertIn(arrival, upper_floor)
+        self.assertTrue(native.R.shortest_path((4, 4), foot, lower_floor))
+        self.assertTrue(native.R.shortest_path(arrival, (7, 7), upper_floor))
+        self.assertEqual(len(native.R.components(lower_floor - holes)), 1)
+        self.assertEqual(len(native.R.components(upper_floor)), 1)
+        steps = [c for c in built.comps if c.item == 100]
+        blocks = [c for c in built.comps if c.item == 101]
+        self.assertEqual(sorted(c.z for c in steps), [7, 12, 17, 22])
+        self.assertEqual(len(blocks), 10)
+        self.assertEqual({(c.x, c.y) for c in built.comps}, holes)
+        dx = (arrival[0] - foot[0]) // 6
+        dy = (arrival[1] - foot[1]) // 6
+        for i in range(4):
+            self.assertIn(native.Component(100, foot[0] + (i + 1) * dx,
+                                           foot[1] + (i + 1) * dy, 7 + 5 * i), steps)
+        landing = (foot[0] + 5 * dx, foot[1] + 5 * dy)
+        self.assertEqual(sorted(c.z for c in blocks if (c.x, c.y) == landing), [7, 12, 17, 22])
+        self.assertEqual([a['kind'] for a in adaptations], ['instant-stair-to-walkable-flight'])
+        self.assertEqual(adaptations[0]['source'], ['neutral-stair', 4, 4, 0])
+        self.assertEqual(adaptations[0]['target'], flight)
+        self.assertEqual(levels, before)
+        self.assertEqual(catalogue.step.call_count, 5)
+        self.assertEqual(catalogue.block.call_count, 5)
+
+        # Reordering the same input must not select a different native flight.
+        reordered = copy.deepcopy(before)
+        for level in reordered:
+            level['cells'].reverse()
+            level['rooms'][0]['cells'].reverse()
+        again = native.G.Built()
+        repeated = native.reserve_stairs(reordered, copy.deepcopy(native.DEFAULT_THEME),
+                                         again, self.stair_catalogue())
+        self.assertEqual(repeated, result)
+        self.assertEqual(again.comps, built.comps)
+
     def test_authored_stair_triplets_link_the_right_upper_exit(self):
         from layout_import.zomboid import stair_links
         tiles={key:{'properties':{flag:''}} for key,flag in [('b','stairsBN'),('m','stairsMN'),('t','stairsTN')]}
