@@ -73,6 +73,13 @@ REM  agent sessions that watch it. Keep it OFF the repo tree. See
 REM  tools\agent_queue\README.md.
 if not defined UO_AGENT_QUEUE       set "UO_AGENT_QUEUE=%APPDATA%\GUO\agent_queue.db"
 
+REM --- Gate evidence archive ---------------------------------------------
+REM  Where tools\evidence_archive copies a worktree's ignored build\ evidence
+REM  before the worktree is removed (removal deletes ignored files). Leave it
+REM  unset for the main checkout's build\director_evidence; never point it
+REM  inside a linked worktree. See tools\evidence_archive\README.md.
+REM  if not defined UO_EVIDENCE_DIR    set "UO_EVIDENCE_DIR=C:\Path\To\Evidence"
+
 REM --- World project (the editor) -----------------------------------------
 REM  Where the editor keeps map edits: whole replaced blocks laid over the
 REM  install, never written into it. See docs\data_formats.md section 9 and

@@ -49,6 +49,7 @@ Every key resolves as: **environment variable → `config.local.bat` →
 | `UO_SHARD_HOST` / `UO_SHARD_PORT` | Shard to connect to |
 | `GODOT_VERSION` / `GODOT_FLAVOR` | Pinned engine build |
 | `UO_LOG_LEVEL` | `DEBUG` \| `INFO` \| `WARN` \| `ERROR` |
+| `UO_EVIDENCE_DIR` | Where `tools/evidence_archive` keeps gate evidence copied out of worktrees; default the main checkout's `build/director_evidence`. Never inside a linked worktree |
 | `UO_LAYOUT_CDDA_DIR` | Read-only local CDDA source folder for layout `scan` and `engine-bake`; blank by default |
 | `UO_LAYOUT_ZOMBOID_DIR` | Read-only local Project Zomboid installation for `zomboid-scan`, `zomboid-resolve` and `hybrid`; blank by default |
 

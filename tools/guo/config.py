@@ -236,6 +236,8 @@ class Config:
     store_base_url: str = ""
     # The agent request queue (tools/agent_queue): one SQLite file per user, outside the repo.
     agent_queue: Path | None = None
+    # Archived gate evidence (tools/evidence_archive): outside every linked worktree.
+    evidence_dir: Path | None = None
     # UO_GODOT_HOME: the folder holding the pinned engine's release folder
     # (what tools/godot is in the main checkout). UO_UPSTREAM_DIR: the folder
     # holding ClassicUO (what sources/ is). Both resolved by load_config; a
@@ -377,6 +379,12 @@ def load_config(root: Path | None = None) -> Config:
         config_home = os.environ.get("XDG_CONFIG_HOME") or os.path.join(os.path.expanduser("~"), ".config")
         agent_queue = str(Path(config_home) / "guo" / "agent_queue.db")
 
+    # Gate evidence archive (tools/evidence_archive): the main checkout's build folder by
+    # default, because a linked worktree's ignored build/ is deleted with the worktree.
+    evidence = native_path(os.path.expandvars(get("UO_EVIDENCE_DIR").replace("%UO_ROOT%", str(root))))
+    if not evidence or "%" in evidence:
+        evidence = str((main_checkout(root) or root) / "build" / "director_evidence")
+
     # The per-user workspace (ADR-0032): environment, then config.local.bat /
     # config.bat, then %LOCALAPPDATA%\GUO on Windows or $XDG_DATA_HOME/guo.
     workspace = native_path(os.path.expandvars(get("UO_WORKSPACE_DIR").replace("%UO_ROOT%", str(root))))
@@ -514,6 +522,7 @@ def load_config(root: Path | None = None) -> Config:
         playerbots_dir=path_or_none("UO_PLAYERBOTS_DIR"),
         playerbots_port=int(get("UO_PLAYERBOTS_PORT", "2640")),
         agent_queue=Path(agent_queue),
+        evidence_dir=Path(evidence),
         godot_home_setting=godot_home_setting,
         upstream_dir_setting=upstream_dir_setting,
         art_exchange=Path(native_path(get("UO_ART_EXCHANGE").replace("%UO_ROOT%", str(root)) or str(root / "build" / "art_exchange"))),
