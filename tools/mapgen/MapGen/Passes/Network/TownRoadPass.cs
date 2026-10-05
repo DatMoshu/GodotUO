@@ -15,8 +15,18 @@ public sealed class TownRoadParams
     public int Width { get; set; } = 3;
 
     [TunableDisplay("Flatten Z inside town",
-        Tooltip = "If on, the whole footprint is levelled to the town centre's Z (buildings need flat ground) and a 3-tile skirt around it is blended. Off keeps the natural terrain undulation.")]
+        Tooltip = "If on, the whole footprint is levelled to one Z (see Flatten target; buildings need flat ground) and a skirt around it is blended. Off keeps the natural terrain undulation.")]
     public bool FlattenInteriorZ { get; set; } = true;
+
+    [TunableDisplay("Flatten skirt (tiles)", Tooltip = "Blend band around a flattened footprint, from the plateau Z back to the natural terrain.")]
+    [TunableRange(0, 16)]
+    public int FlattenSkirt { get; set; } = 3;
+
+    [TunableDisplay("Flatten target", Tooltip = "centre: level to the footprint's centre cell Z. poi: level to the town's own Z (a Town Sites 'Sites' entry's z, or its median ground Z).")]
+    public string FlattenTarget { get; set; } = "centre";
+
+    [TunableDisplay("Paint streets", Tooltip = "Paint the cobble cross and gate stubs. Off = only flatten the footprint (a bare district pad).")]
+    public bool PaintStreets { get; set; } = true;
 }
 
 // For each Town POI with a Footprint, paint a cobble cross at the footprint midline
@@ -43,6 +53,9 @@ public sealed class TownRoadPass : IGenerationPass
         var ir = ctx.IR;
         if (ir.LandId is null || ir.Height_Z is null) return;
         if (ir.Pois.Count == 0) { ctx.Report.Notes.Add("no POIs; skipped"); return; }
+        bool targetPoi = string.Equals(p.FlattenTarget, "poi", StringComparison.OrdinalIgnoreCase);
+        if (!targetPoi && !string.Equals(p.FlattenTarget, "centre", StringComparison.OrdinalIgnoreCase))
+            ctx.Report.Warnings.Add($"unknown FlattenTarget '{p.FlattenTarget}' (centre or poi); using centre");
 
         var tiles = RoadPaint.PoolFor(p.CobbleTileId, RoadPaint.CobbleTiles);
         int painted = 0;
@@ -56,8 +69,9 @@ public sealed class TownRoadPass : IGenerationPass
             // Centre cell + axes.
             int cx = (rect.X1 + rect.X2) / 2;
             int cy = (rect.Y1 + rect.Y2) / 2;
-            sbyte targetZ = ir.Height_Z[ir.Index(cx, cy)];
-            if (p.FlattenInteriorZ) FlattenFootprint(ir, rect, targetZ);
+            sbyte targetZ = targetPoi ? poi.Z : ir.Height_Z[ir.Index(cx, cy)];
+            if (p.FlattenInteriorZ) FlattenFootprint(ir, rect, targetZ, Math.Max(0, p.FlattenSkirt));
+            if (!p.PaintStreets) { townsHandled++; continue; }
 
             var seg = new RoadSegment
             {
@@ -118,11 +132,10 @@ public sealed class TownRoadPass : IGenerationPass
         seg.Path.Add(((ushort)cx, (ushort)cy));
     }
 
-    // Level the footprint to targetZ (land cells only) and blend a 3-tile skirt so the
-    // town sits on a plateau with sloped edges instead of a cliff.
-    private static void FlattenFootprint(GenIR ir, CentrED.Network.RectU16 rect, sbyte targetZ)
+    // Level the footprint to targetZ (land cells only) and blend a skirt (3 tiles by
+    // default) so the town sits on a plateau with sloped edges instead of a cliff.
+    private static void FlattenFootprint(GenIR ir, CentrED.Network.RectU16 rect, sbyte targetZ, int skirt)
     {
-        const int skirt = 3;
         var z = ir.Height_Z!;
         for (int y = rect.Y1 - skirt; y <= rect.Y2 + skirt; y++)
         for (int x = rect.X1 - skirt; x <= rect.X2 + skirt; x++)
