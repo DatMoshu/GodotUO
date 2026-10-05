@@ -53,6 +53,14 @@ public sealed class TownSiteFinderParams
         Tooltip = "Site rejected if fewer than this fraction of footprint cells are in the buildable-biome set.")]
     [TunableRange(0.0, 1.0)]
     public double MinBuildableFraction { get; set; } = 0.92;
+
+    [TunableDisplay("Fixed sites",
+        Tooltip = "Explicit town/district footprints placed first, before any random search: 'x,y,w,h[,z];...' in map tiles. z omitted = the footprint's median ground Z. Not checked for relief or biome; skipped with a warning if they leave the scope or touch water.")]
+    public string Sites { get; set; } = "";
+
+    [TunableDisplay("Buildable biomes",
+        Tooltip = "Comma-separated BiomeId names a random site may stand on. Empty = Grassland, Forest, DenseForest, Savanna, Beach. Add Desert (or Snow, Tundra) for other worlds.")]
+    public string BuildableBiomesCsv { get; set; } = "";
 }
 
 // Find dry inland flats large enough for a small village/town. Stratifies the world
@@ -80,7 +88,7 @@ public sealed class TownSiteFinderPass : IGenerationPass
 
     // Biomes a town is allowed to sit on. Beach is included so coastal villages work;
     // Mountain/Swamp/Water/Snow are excluded — they'd produce visually nonsense towns.
-    private static readonly HashSet<BiomeId> BuildableBiomes = new()
+    private static readonly HashSet<BiomeId> DefaultBuildableBiomes = new()
     {
         BiomeId.Grassland,
         BiomeId.Forest,
@@ -94,7 +102,14 @@ public sealed class TownSiteFinderPass : IGenerationPass
         var p = (TownSiteFinderParams)parameters;
         var ir = ctx.IR;
         if (ir.Height_Z is null || ir.Biome is null) return;
-        if (p.TownsPerQuadrant <= 0) { ctx.Report.Notes.Add("TownsPerQuadrant=0; skipped"); return; }
+        var buildableBiomes = ParseBiomes(p.BuildableBiomesCsv, ctx);
+        int fixedPlaced = PlaceFixedSites(ctx, p);
+        if (p.TownsPerQuadrant <= 0)
+        {
+            ctx.Report.TilesTouched = fixedPlaced;
+            ctx.Report.Notes.Add(fixedPlaced > 0 ? $"fixed sites={fixedPlaced}; TownsPerQuadrant=0, no random towns" : "TownsPerQuadrant=0; skipped");
+            return;
+        }
 
         var quadrants = LoadQuadrants(p, ir);
         ctx.Report.Notes.Add($"quadrants={quadrants.Count}");
@@ -133,7 +148,7 @@ public sealed class TownSiteFinderPass : IGenerationPass
                     (ushort)(cx + half - 1),
                     (ushort)(cy + half - 1));
 
-                if (!IsBuildable(ir, rect, p)) continue;
+                if (!IsBuildable(ir, rect, p, buildableBiomes)) continue;
 
                 // Accept. Build gates at the midpoint of each side; the gate Z is the
                 // ground Z of that cell (used later by RoadGraph for cost calcs).
@@ -154,9 +169,9 @@ public sealed class TownSiteFinderPass : IGenerationPass
             }
         }
 
-        ctx.Report.TilesTouched = placed; // Towns placed, not tiles
-        ctx.Report.Notes.Add($"towns={placed} (considered={considered})");
-        if (placed == 0)
+        ctx.Report.TilesTouched = placed + fixedPlaced; // Towns placed, not tiles
+        ctx.Report.Notes.Add($"towns={placed} (considered={considered}), fixed sites={fixedPlaced}");
+        if (placed + fixedPlaced == 0)
             ctx.Report.Warnings.Add("no town sites accepted; relax MaxRelief, MinBuildableFraction, or TownSize");
     }
 
@@ -173,7 +188,80 @@ public sealed class TownSiteFinderPass : IGenerationPass
         return true;
     }
 
-    private static bool IsBuildable(GenIR ir, RectU16 rect, TownSiteFinderParams p)
+    private static HashSet<BiomeId> ParseBiomes(string csv, GenContext ctx)
+    {
+        if (string.IsNullOrWhiteSpace(csv)) return DefaultBuildableBiomes;
+        var set = new HashSet<BiomeId>();
+        foreach (var raw in csv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (Enum.TryParse<BiomeId>(raw, ignoreCase: true, out var b) && Enum.IsDefined(b)) set.Add(b);
+            else ctx.Report.Warnings.Add($"BuildableBiomesCsv: unknown biome '{raw}' (ignored)");
+        }
+        if (set.Count > 0) return set;
+        ctx.Report.Warnings.Add("BuildableBiomesCsv named no known biome; using the default set");
+        return DefaultBuildableBiomes;
+    }
+
+    // Fixed sites ("x,y,w,h[,z];..."): placed as given, before the random search, so the
+    // random towns keep their spacing from them. They use no RNG, so a preset without
+    // Sites generates exactly what it did before.
+    private static int PlaceFixedSites(GenContext ctx, TownSiteFinderParams p)
+    {
+        if (string.IsNullOrWhiteSpace(p.Sites)) return 0;
+        var ir = ctx.IR;
+        int nextId = ir.Pois.Count == 0 ? 1 : ir.Pois.Max(x => x.Id) + 1;
+        int placed = 0;
+        foreach (var entry in p.Sites.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var parts = entry.Split(',', StringSplitOptions.TrimEntries);
+            var nums = new int[parts.Length];
+            bool ok = parts.Length is 4 or 5;
+            for (int i = 0; ok && i < parts.Length; i++) ok = int.TryParse(parts[i], out nums[i]);
+            if (!ok || nums[2] < 1 || nums[3] < 1)
+            {
+                ctx.Report.Warnings.Add($"Sites: '{entry}' is not x,y,w,h[,z] with w,h >= 1 (skipped)");
+                continue;
+            }
+            int x1 = nums[0], y1 = nums[1], x2 = x1 + nums[2] - 1, y2 = y1 + nums[3] - 1;
+            if (x1 < ir.Scope.X1 || y1 < ir.Scope.Y1 || x2 > ir.Scope.X2 || y2 > ir.Scope.Y2)
+            {
+                ctx.Report.Warnings.Add($"Sites: '{entry}' leaves the map scope (skipped)");
+                continue;
+            }
+            var zs = new List<sbyte>(nums[2] * nums[3]);
+            bool water = false;
+            for (int y = y1; y <= y2 && !water; y++)
+            for (int x = x1; x <= x2; x++)
+            {
+                int idx = ir.Index(x, y);
+                if ((BiomeId)ir.Biome![idx] is BiomeId.DeepWater or BiomeId.ShallowWater or BiomeId.River) { water = true; break; }
+                zs.Add(ir.Height_Z![idx]);
+            }
+            if (water)
+            {
+                ctx.Report.Warnings.Add($"Sites: '{entry}' touches water (skipped)");
+                continue;
+            }
+            zs.Sort();
+            sbyte z = parts.Length == 5 ? (sbyte)Math.Clamp(nums[4], sbyte.MinValue, sbyte.MaxValue) : zs[zs.Count / 2];
+            var rect = new RectU16((ushort)x1, (ushort)y1, (ushort)x2, (ushort)y2);
+            ir.Pois.Add(new PoiStamp(
+                Id: nextId++,
+                Kind: PoiKind.Town,
+                X: (ushort)((x1 + x2) / 2),
+                Y: (ushort)((y1 + y2) / 2),
+                Z: z,
+                QuadrantId: null,
+                Tag: "fixed-site",
+                Footprint: rect,
+                Gates: ComputeGates(rect)));
+            ctx.Report.Notes.Add($"fixed site {x1},{y1} {nums[2]}x{nums[3]} z={z} (ground {zs[0]}..{zs[^1]})");
+            placed++;
+        }
+        return placed;
+    }
+
+    private static bool IsBuildable(GenIR ir, RectU16 rect, TownSiteFinderParams p, HashSet<BiomeId> buildableBiomes)
     {
         var z = ir.Height_Z!;
         var b = ir.Biome!;
@@ -194,7 +282,7 @@ public sealed class TownSiteFinderPass : IGenerationPass
             if (zv > maxZ) maxZ = zv;
             if (maxZ - minZ > p.MaxRelief) return false;
             total++;
-            if (BuildableBiomes.Contains((BiomeId)b[idx])) buildable++;
+            if (buildableBiomes.Contains((BiomeId)b[idx])) buildable++;
         }
 
         return (double)buildable / total >= p.MinBuildableFraction;
