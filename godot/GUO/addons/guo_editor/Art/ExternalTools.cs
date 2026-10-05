@@ -117,7 +117,7 @@ public static class ExternalTools
         + $"Pinta: {(FindPinta() != null ? "found" : "missing (" + PintaHint + ")")}";
 
     /// <summary>Opens the exported PNG in Pixelorama through tools/pixelorama/run.py, which installs the extension too. Null on success, else why not.</summary>
-    public static string OpenPixelorama(string png)
+    public static string OpenPixelorama(string png, bool embedded = false)
     {
         if (FindPixelorama() == null)
         {
@@ -127,6 +127,12 @@ public static class ExternalTools
         if (DryRun)
         {
             return null;
+        }
+
+        if (embedded && OperatingSystem.IsWindows() && GuoPixeloramaPlugin.Main != null && DisplayServer.GetName() != "headless")
+        {
+            EditorInterface.Singleton.SetMainScreenEditor("Pixelorama");
+            return GuoPixeloramaPlugin.Main.OpenImage(png);
         }
 
         string sidecar = Path.ChangeExtension(png, ".json");

@@ -27,8 +27,8 @@ public static class AssetActions
 
         if (current != null)
         {
-            ins.Actions.Add(("Save PNG...", () => Pick(EditorFileDialog.FileModeEnum.SaveFile, $"{Stem(kind)}_0x{id:X4}.png",
-                path => current.SavePng(path))));
+            ins.Actions.Add(("Export PNG...", () => Pick(EditorFileDialog.FileModeEnum.SaveFile, $"{Stem(kind)}_0x{id:X4}.png",
+                path => { EnsureExportDestination(path); if (current.SavePng(path) != Error.Ok) throw new IOException("Could not export PNG."); })));
         }
 
         if (current != null && kind != AssetKind.Hue)
@@ -36,10 +36,11 @@ public static class AssetActions
             ins.ArtKind = kind;
             ins.ArtId = id;
             ins.Actions.Add(("Edit in Pixelorama", () => ReportEdit(EditIn(data, kind, id, current, pinta: false))));
-            ins.Actions.Add(("Edit in Pinta", () => ReportEdit(EditIn(data, kind, id, current, pinta: true))));
+            ins.Actions.Add(("Edit in the Pixelorama tab", () => ReportEdit(EditIn(data, kind, id, current, pinta: false, embedded: true))));
+            ins.Actions.Add(("Open configured image editor (Pinta)", () => ReportEdit(EditIn(data, kind, id, current, pinta: true))));
         }
 
-        ins.Actions.Add(("Import PNG...", () => Pick(EditorFileDialog.FileModeEnum.OpenFile, null, path =>
+        ins.Actions.Add(("Replace from image...", () => Pick(EditorFileDialog.FileModeEnum.OpenFile, null, path =>
         {
             string why = ImportFile(data, kind, id, path);
             if (why != null)
@@ -136,7 +137,7 @@ public static class AssetActions
     /// opens the editor. Null on success, else what to tell the user. The result comes back through
     /// <see cref="ArtExchange.Poll"/>.
     /// </summary>
-    public static string EditIn(EditorData data, AssetKind kind, int id, Image current, bool pinta)
+    public static string EditIn(EditorData data, AssetKind kind, int id, Image current, bool pinta, bool embedded = false)
     {
         if (pinta && ExternalTools.FindPinta() == null)
         {
@@ -144,10 +145,10 @@ public static class AssetActions
         }
 
         string png = ArtExchange.Export(data, kind, id, current, pinta ? "pinta" : "out");
-        return pinta ? ExternalTools.OpenPinta(png) : ExternalTools.OpenPixelorama(png);
+        return pinta ? ExternalTools.OpenPinta(png) : ExternalTools.OpenPixelorama(png, embedded);
     }
 
-    private static void ReportEdit(string why)
+    public static void ReportEdit(string why)
     {
         if (why == null)
         {
@@ -186,12 +187,23 @@ public static class AssetActions
 
         dlg.FileSelected += path =>
         {
-            then(path);
+            try { then(path); }
+            catch (Exception ex) { ReportEdit(ex.Message); }
             dlg.QueueFree();
         };
         dlg.Canceled += () => dlg.QueueFree();
         EditorInterface.Singleton.GetBaseControl().AddChild(dlg);
         dlg.PopupFileDialog();
+    }
+
+    public static void EnsureExportDestination(string path)
+    {
+        string configured = EditorData.Setting("UO_CLIENT_DATA", "");
+        if (string.IsNullOrWhiteSpace(configured)) throw new IOException("Configure the client install before exporting; its read-only boundary must be known.");
+        string install = Path.GetFullPath(configured).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        string target = Path.GetFullPath(path);
+        if (target.Equals(install, StringComparison.OrdinalIgnoreCase) || target.StartsWith(install + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+            throw new IOException("Export into the client install is refused.");
     }
 }
 #endif

@@ -121,6 +121,11 @@ public partial class AnimationPanel : GridPanel
             }
             catch (Exception ex) { GD.PrintErr($"[GUO editor] animation export: {ex.Message}"); }
         }));
+        inspection.Actions.Add(("Import spritesheet...", () => OpenWorkingCopy(id, action, dir).ImportSpritesheet()));
+        inspection.Actions.Add(("Import image sequence...", () => OpenWorkingCopy(id, action, dir).ImportImageSequence()));
+        inspection.Actions.Add(("Export frames / spritesheet...", () => OpenWorkingCopy(id, action, dir)));
+        inspection.Actions.Add(("Preview playback", () => Raise(inspection)));
+        inspection.Actions.Add(("Import / export classic VD...", () => OpenWorkingCopy(id, action, dir)));
         return inspection;
     }
 
@@ -144,6 +149,44 @@ public partial class AnimationPanel : GridPanel
 
         return new OverlayAnimationClip { Action = action, Direction = dir, Fps = 8,
             Frames = frames.ToArray(), Centers = centers.ToArray() };
+    }
+
+    private AnimationWorkspace OpenWorkingCopy(int body, byte action, byte displayedDirection)
+    {
+        var anims = Data.Animations;
+        int profile = anims.GetAnimType((ushort)body) switch
+        {
+            AnimationGroupsType.Human or AnimationGroupsType.Equipment => 2,
+            AnimationGroupsType.Animal or AnimationGroupsType.SeaMonster => 1,
+            _ => 0,
+        };
+        if (action >= AnimationDocument.Actions(profile))
+        {
+            throw new System.IO.InvalidDataException("This action exceeds the classic VD profile capacity. UOP/fork action conversion requires an explicit mapping.");
+        }
+        byte stored = displayedDirection; bool mirror = false; anims.GetAnimDirection(ref stored, ref mirror);
+        var doc = new AnimationDocument(profile);
+        Span<SpriteInfo> sprites = anims.GetAnimationFrames((ushort)body, action, stored, out _, out _);
+        var images = new List<Image>(); var centers = new List<(short, short)>();
+        foreach (SpriteInfo sprite in sprites)
+        {
+            if (sprite.Texture == null) throw new System.IO.InvalidDataException("Missing frame pixels; refusing to silently remove a frame.");
+            Image image = ReadFrame(sprite);
+            if (image == null) throw new System.IO.InvalidDataException("Cannot read animation atlas.");
+            images.Add(image); centers.Add((checked((short)sprite.Center.X), checked((short)sprite.Center.Y)));
+        }
+        if (images.Count > 0) doc.Records[action * 5 + stored] = AnimationWorkspace.FromImages(images.ToArray(), centers.ToArray());
+        // Only this selected slot is captured. Other slots are missing, never fabricated.
+        AnimationWorkspace view = AnimationWorkspace.Open(doc, body, action, stored, this);
+        view.ApplyOverlay = clip =>
+        {
+            if (Data.Assets == null) return "No asset overlay is open.";
+            string why = Data.Assets.ImportAnimation(body, clip, new ArtProvenance { Tool = "animation-workspace",
+                Inputs = { $"client:animation:0x{body:X4}" }, DerivedFromClientArt = true });
+            if (why == null) OnAssetsChanged();
+            return why;
+        };
+        return view;
     }
 
     /// <summary>One action in one of the eight directions, as composited frames.</summary>

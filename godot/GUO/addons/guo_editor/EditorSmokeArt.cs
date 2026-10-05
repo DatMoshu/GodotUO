@@ -199,6 +199,26 @@ public partial class EditorSmoke
         ArtCheck("provenance_recorded", prov != null && prov.Tool == "pixelorama" && prov.DerivedFromClientArt && prov.Inputs.Count == 1);
         ArtCheck("derived_listed_for_the_store", new AssetProvenance(assets).Derived().Contains(rel));
 
+        // Regression: native Pixelorama Save output (when supplied) traverses the actual
+        // watcher and loaders twice. Fixtures contain original pixels and ID 70 parsed by Godot.
+        string proof = System.Environment.GetEnvironmentVariable("GUO_PIXELORAMA_SAVE_PROOF");
+        if (!string.IsNullOrEmpty(proof))
+        {
+            for (int iteration = 1; iteration <= 2; iteration++)
+            {
+                string source = Path.Combine(proof, $"save{iteration}", "static_0x0046");
+                string to = Path.Combine(inbox, "static_0x0046");
+                File.Copy(source + ".json", to + ".json", true); File.Copy(source + ".png", to + ".png", true);
+                var applied = ArtExchange.Poll(_data);
+                ArtCheck($"native_pixelorama_save{iteration}_applied", applied.Count == 1 && applied[0].Imported,
+                    applied.FirstOrDefault()?.Why ?? "");
+                Image expected = UoPostProcess.Run(Image.LoadFromFile(source + ".png"), AssetKind.Static).Image;
+                ArtCheck($"native_pixelorama_save{iteration}_loader_refreshed", ImagesEqual(_data.ArtImage(EditorData.LandCount + 70), expected));
+                ArtCheck($"native_pixelorama_save{iteration}_consumed_once", ArtExchange.Poll(_data).Count == 0);
+            }
+        }
+        CheckAnimationWorkbench();
+
         // 3. Land: a 44x44 save with colour outside the diamond; the mask removes it.
         Image landImg = FixtureLandImage();
         File.WriteAllText(Path.Combine(inbox, "land_0x0244.json"), new ArtSidecar { Kind = "land", Id = FixtureLand, Width = 44, Height = 44, Stem = "land_0x0244", Provenance = new ArtProvenance { Tool = "pixelorama" } }.ToJson().ToJsonString());
@@ -390,6 +410,48 @@ public partial class EditorSmoke
             // Named, so a summary of 67 checks is not mistaken for the 70 a native run has.
             _artReport["skipped"] = "native Pixelorama animation save, 3 checks (GUO_PIXELORAMA_ANIMATION_SAVE not set)";
         }
+    }
+
+    private void CheckAnimationWorkbench()
+    {
+        Image a = Image.CreateEmpty(3, 2, false, Image.Format.Rgba8); a.Fill(Colors.Red);
+        Image b = Image.CreateEmpty(2, 3, false, Image.Format.Rgba8); b.Fill(Colors.Blue);
+        var doc = new AnimationDocument(2);
+        doc.Records[7] = AnimationWorkspace.FromImages(new[] { a, b }, new[] { ((short)-2, (short)3), ((short)4, (short)-5) });
+        doc.Records[7].Extra = 345;
+        var view = AnimationWorkspace.Open(doc, 70, 1, 2, this);
+        string sheetPath = Path.Combine(_out, "animation_fixture.png");
+        JsonObject side = view.ExportSheet(sheetPath);
+        ArtCheck("animation_sheet_mapping", (int)side["action"] == 1 && (int)side["direction"] == 2 && (int)side["frames"][0]["center_x"] == -2 && (int)side["frames"][1]["center_y"] == -5);
+        ushort[] palette = (ushort[])doc.Records[7].Palette.Clone();
+        view.ImportMappedSheet(sheetPath, side, 7);
+        var roundtrip = ClassicVd.Read(ClassicVd.Write(view.Document)).Records[7];
+        ArtCheck("animation_sheet_centers_extra_palette", roundtrip.Frames[0].CenterX == -2 && roundtrip.Frames[1].CenterY == -5 && roundtrip.Extra == 345 && palette.SequenceEqual(roundtrip.Palette));
+        ArtCheck("animation_sheet_pixels", ImagesEqual(AnimationWorkspace.ToImage(roundtrip, roundtrip.Frames[0]), a) && ImagesEqual(AnimationWorkspace.ToImage(roundtrip, roundtrip.Frames[1]), b));
+        OverlayAnimationClip clip = view.ToClip();
+        ArtCheck("animation_workspace_overlay_clip", clip.Action == 1 && clip.Direction == 5 && clip.Frames.Length == 2
+            && clip.Centers[0] == new Vector2I(-2, 3) && clip.Centers[1] == new Vector2I(4, -5) && ImagesEqual(clip.Frames[0], a) && ImagesEqual(clip.Frames[1], b));
+        if (DisplayServer.GetName() == "headless") view.QueueFree();
+        else CaptureAnimationEvidence(view);
+        GridPanel panel = _assets.Panels.OfType<ArtPanel>().First(); panel.Search("0x0E75");
+        ItemList list = panel.GetChildren().OfType<ItemList>().Single(); int item = list.GetSelectedItems()[0];
+        panel.OpenContext(item);
+        PopupMenu menu = panel.GetChildren().OfType<PopupMenu>().Single();
+        var labels = Enumerable.Range(0, menu.ItemCount).Select(menu.GetItemText).ToArray();
+        ArtCheck("asset_context_single_actions", new[] { "Copy ID", "Properties", "Edit in Pixelorama", "Edit in the Pixelorama tab", "Open configured image editor (Pinta)", "Export PNG...", "Replace from image..." }.All(labels.Contains));
+        menu.Hide(); list.Select(item == 0 ? 1 : 0, false); panel.OpenContext(item);
+        labels = Enumerable.Range(0, menu.ItemCount).Select(menu.GetItemText).ToArray();
+        ArtCheck("asset_context_multiple_actions", list.GetSelectedItems().Length == 2 && labels.Contains("Copy IDs") && labels.Contains("Export selected PNGs...") && !labels.Contains("Replace from image..."));
+        menu.Hide();
+    }
+
+    private async void CaptureAnimationEvidence(AnimationWorkspace view)
+    {
+        for (int i = 0; i < 5; i++) await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        if (!GodotObject.IsInstanceValid(view)) return;
+        Image screenshot = view.GetViewport().GetTexture().GetImage();
+        screenshot.SavePng(Path.Combine(_out, "animation_workbench.png"));
+        view.QueueFree();
     }
 
     private static byte HuesHelperChannel(int v8)

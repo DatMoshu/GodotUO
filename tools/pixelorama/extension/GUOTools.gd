@@ -20,6 +20,8 @@ var _api: Node
 var _items: Array = []  # [menu_id, MenuItem]
 var _kind := ""  # what the open image is: land, static, gump, anim
 var _sidecar := {}
+var _bound_project: WeakRef
+var _source_png := ""
 
 
 func _enter_tree() -> void:
@@ -35,11 +37,43 @@ func _enter_tree() -> void:
 	_add("GUO: check size and transparency", _check_current)
 	_add("GUO: save back to GUO", _save_back)
 	_load_sidecar()
+	_api.signals.signal_project_saved(_on_project_saved)
+	_source_png = OS.get_environment("GUO_ART_SOURCE_PNG").replace("\\", "/").simplify_path()
+	set_process(not _source_png.is_empty() and not _sidecar.is_empty())
+
+
+func _process(_delta: float) -> void:
+	# Bind once to the imported source project, never to an arbitrary active tab.
+	var proj = _api.project.current_project
+	if proj == null:
+		return
+	var profile = proj.export_profile
+	var source: String = str(profile.directory_path).path_join(str(profile.file_name) + ".png")
+	if source.replace("\\", "/").simplify_path() == _source_png:
+		# An animation sheet stays a grid until the artist picks "import animation sheet" (import_animation_sheet).
+		_bound_project = weakref(proj)
+		# UO-origin documents get an editable-source destination without a Save As step.
+		if str(proj.save_path).is_empty() and not exchange_dir().is_empty():
+			var projects := exchange_dir().path_join("projects")
+			DirAccess.make_dir_recursive_absolute(projects)
+			var destination := projects.path_join(str(profile.file_name) + ".pxo")
+			var suffix := 1
+			while FileAccess.file_exists(destination):
+				destination = projects.path_join("%s_%d.pxo" % [profile.file_name, suffix])
+				suffix += 1
+			proj.save_path = destination
+		set_process(false)
+
+
+func _on_project_saved() -> void:
+	if _bound_project != null and _bound_project.get_ref() == _api.project.current_project:
+		_save_back(false)
 
 
 func _exit_tree() -> void:
 	if _api == null:
 		return
+	_api.signals.signal_project_saved(_on_project_saved, true)
 	for entry in _items:
 		_api.menu.remove_menu_item(PROJECT_MENU, entry[0])
 	_items.clear()
@@ -116,7 +150,10 @@ func _make_palette(palette_name: String, entries: Array, width: int) -> void:
 
 func _new_project(title: String, size: Vector2i, kind: String) -> void:
 	_kind = kind
-	var timeline_frames: Array[Frame] = []
+	# Keep Pixelorama's Array[Frame] element type without naming Frame here: a plain [] is rejected by
+	# API v9, and the typed name stops this script parsing outside Pixelorama's running scene.
+	var timeline_frames = _api.project.current_project.frames.duplicate()
+	timeline_frames.clear()
 	var proj = _api.project.new_project(timeline_frames, title, Vector2(size), Color.TRANSPARENT)
 	_api.project.current_project = proj
 
@@ -217,10 +254,14 @@ func _check_current() -> void:
 		_say("For UO %s art:\n- %s" % [kind, "\n- ".join(found)])
 
 
-func _save_back() -> void:
+func _save_back(show_success := true) -> void:
 	var dir := exchange_dir()
 	if dir.is_empty() or _sidecar.is_empty():
 		_say("Not opened from GUO. Use 'Edit in Pixelorama' on an asset in the GUO editor; it sets the folder and the asset this saves back to.")
+		return
+	# Only the document opened from GUO may overwrite its asset; any other tab is refused.
+	if _bound_project == null or _bound_project.get_ref() != _api.project.current_project:
+		_say("Not saved: this project is not the asset opened from GUO. Switch to that tab, or use 'Edit in Pixelorama' in the GUO editor again.")
 		return
 	var img: Image
 	var found := PackedStringArray()
@@ -242,6 +283,10 @@ func _save_back() -> void:
 	var inbox := dir.path_join("in")
 	DirAccess.make_dir_recursive_absolute(inbox)
 	var side := _sidecar.duplicate(true)
+	# Godot JSON parsing represents numbers as floats; the exchange schema uses integers.
+	for field in ["format", "id", "hue"]:
+		if side.has(field):
+			side[field] = int(side[field])
 	side["size"] = [img.get_width(), img.get_height()]
 	if _kind == "animation":
 		# Godot parses JSON numbers as floats; GUO's integer metadata stays integer on save.
@@ -263,6 +308,9 @@ func _save_back() -> void:
 	side["provenance"] = prov
 	# The sidecar goes first: the PNG's arrival is what GUO's watcher reacts to.
 	var jf := FileAccess.open(inbox.path_join(stem + ".json"), FileAccess.WRITE)
+	if jf == null:
+		_say("Could not write the GUO asset sidecar; the project is still saved.")
+		return
 	jf.store_string(JSON.stringify(side, "  "))
 	jf.close()
 	img.save_png(inbox.path_join(stem + ".png"))
@@ -284,9 +332,14 @@ func import_animation_sheet() -> bool:
 	var cell: Array = meta["cell_size"]
 	var columns := int(meta["columns"])
 	var frames: Array = meta["frames"]
-	var timeline_frames: Array[Frame] = []
+	# Keep Pixelorama's Array[Frame] element type without naming Frame here: a plain [] is rejected by
+	# API v9, and the typed name stops this script parsing outside Pixelorama's running scene.
+	var timeline_frames = _api.project.current_project.frames.duplicate()
+	timeline_frames.clear()
 	var proj = _api.project.new_project(timeline_frames, str(_sidecar["stem"]), Vector2(cell[0], cell[1]), Color.TRANSPARENT)
 	_api.project.current_project = proj
+	# The timeline project replaces the sheet as the document that saves back.
+	_bound_project = weakref(proj)
 	proj.fps = float(meta["fps"])
 	for i in frames.size():
 		if i > 0:

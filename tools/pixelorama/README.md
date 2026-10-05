@@ -63,6 +63,40 @@ The exchange folder is `UO_ART_EXCHANGE` (default `build/art_exchange`),
 passed to Pixelorama as `GUO_ART_EXCHANGE`; the open sidecar as
 `GUO_ART_SIDECAR`. Nothing is ever written under `UO_CLIENT_DATA`.
 
+## Pixelorama tab in the GUO editor (experimental, Windows)
+
+The `guo_editor_pixelorama` plugin adds a Pixelorama tab to the GUO editor. **Edit in Pixelorama** on an
+asset opens Pixelorama in its own window, as before; **Edit in the Pixelorama tab** opens the same
+working copy inside the tab. Opening another asset or reloading the assembly detaches the running
+session into its own window, so unsaved work is kept. One document per session; other platforms use
+the separate window only.
+
+`GUO_ART_SOURCE_PNG` binds the sidecar to the one project opened from GUO. **Save** on that project
+keeps a `.pxo` under `<exchange>/projects/` and hands the flattened PNG to GUO's exchange watcher;
+**GUO: save back to GUO** from any other tab is refused. Sidecar numbers are written back as integers.
+
+Right-click an asset grid for the same actions as the inspector, plus Copy ID and Properties.
+
+## Animation working copy
+
+**Open working copy** on an animation opens a window that imports an image sequence or a sheet, exports
+frames or a sheet with action, direction and centre metadata, previews anchored playback, and reads
+and writes classic VD types 0/1/2 (palette words and index extra are kept; fork types 3/4 are
+refused). **Apply to editor overlay** stores the clip as an editor overlay (see
+[docs/data_formats.md](../../docs/data_formats.md)), which is how an edit reaches the game. Frame
+painting goes through **Edit in Pixelorama** on the animation, and its sheet exchange.
+
+## Checks
+
+- `python -m pytest tools/pixelorama` - settings and path handling.
+- `python tools/pixelorama/run.py check` - extension parses, and ten binding and save-routing checks.
+- `python tools/pixelorama/run.py save-check` - real Pixelorama saves twice and reopens the `.pxo`.
+- `dotnet run --project tools/pixelorama/AnimationChecks.csproj` - classic VD fixtures.
+- Set `GUO_PIXELORAMA_SAVE_PROOF` to `build/pixelorama/native_save_exchange` for the editor smoke to
+  import the pairs `save-check` produced.
+
+Painting, undo and keyboard input inside the embedded tab have not had an artist pass yet.
+
 ### Extension API limits (for the fork)
 
 Noted, not patched: the API has no hook to add a *live hue preview* to the
