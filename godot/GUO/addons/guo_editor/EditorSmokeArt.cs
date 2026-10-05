@@ -318,7 +318,11 @@ public partial class EditorSmoke
                                        && (long)sent["4"]["inputs"]["seed"] == 1234
                                        && (string)sent["1"]["inputs"]["image"] == _artStub.UploadedName
                                        && (int)sent["6"]["inputs"]["width"] == 30);
-        ArtCheck("comfy_provenance_fields", r.Workflow == "stub_img2img.json" && r.Seed == 1234);
+        ArtCheck("comfy_provenance_fields", r.Model == "stub.safetensors" && r.Workflow == "stub_img2img.json" && r.Seed == 1234);
+        ArtCheck("provenance_legacy_ai", ArtProvenance.FromJson(JsonNode.Parse("{\"tool\":\"comfyui\"}")).AiGenerated
+                                         && ArtProvenance.FromJson(JsonNode.Parse("{\"tool\":\"retrodiffusion\"}")).AiGenerated);
+        ArtCheck("provenance_non_ai", !ArtProvenance.FromJson(JsonNode.Parse("{\"tool\":\"pixelorama\"}")).AiGenerated
+                                      && !ArtProvenance.FromJson(JsonNode.Parse("{\"tool\":\"comfyui\",\"ai\":false}")).AiGenerated);
 
         // Retro Diffusion: the stub only. No key means no call; with a key the header carries it.
         var noKey = new RetroDiffusionProvider(_artStub.Url, () => null);
@@ -353,8 +357,10 @@ public partial class EditorSmoke
         AssetOverlay assets = _data.Assets;
         string rel = assets.RelativePathOf(AssetKind.Static, FixtureStatic);
         ArtProvenance p = new AssetProvenance(assets).Get(rel);
+        ArtCheck("dock_gallery", Art.GalleryCount == 1 && Art.LastResult.Pngs.Count == 1);
         ArtCheck("dock_imported_result", said.StartsWith("imported"), said);
-        ArtCheck("dock_provenance", p != null && p.Tool == "comfyui" && p.Workflow == "stub_img2img.json" && p.Seed == 99
+        ArtCheck("dock_provenance", p != null && p.Tool == "comfyui" && p.AiGenerated && p.Model == "stub.safetensors"
+                                    && p.Workflow == "stub_img2img.json" && p.Seed == 99
                                     && p.Inputs.Count == 1 && p.Inputs[0] == "overlay:static:0x0E75" && p.DerivedFromClientArt,
             p?.ToJson().ToJsonString() ?? "none");
         _artReport["dock_provenance_json"] = p?.ToJson().ToJsonString();
