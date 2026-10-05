@@ -277,6 +277,8 @@ def main() -> int:
             failures.append("editor log does not show the old assembly context unloading")
         if "Failed to unload assemblies" in log:
             failures.append("editor log says the old assemblies failed to unload")
+        if "NullReferenceException" in log:
+            failures.append("editor log contains a NullReferenceException during the reload run")
 
     if code not in (0, None) and not failures:
         failures.append(f"editor exited with {code}")

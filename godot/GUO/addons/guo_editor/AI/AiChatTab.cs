@@ -33,6 +33,7 @@ public partial class AiChatTab : VBoxContainer
     private readonly List<ChatMessage> _history = new();
     private CancellationTokenSource _turn;
     private OllamaProvider _ollama;
+    private string _configuredOllamaUrl;
     private bool _built;
     private bool _wantModelsOnShow = true;
 
@@ -178,7 +179,7 @@ public partial class AiChatTab : VBoxContainer
         var urlRow = new HBoxContainer();
         AddChild(urlRow);
         urlRow.AddChild(new Label { Text = "Ollama at" });
-        _ollamaUrl = new LineEdit { Text = DefaultOllamaUrl(), SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        _ollamaUrl = new LineEdit { Text = OllamaUrl, SizeFlagsHorizontal = SizeFlags.ExpandFill };
         _ollamaUrl.TextSubmitted += _ => RebuildProviders();
         urlRow.AddChild(_ollamaUrl);
 
@@ -257,9 +258,16 @@ public partial class AiChatTab : VBoxContainer
     /// <summary>The Ollama server the tab talks to; setting it rebuilds the provider list.</summary>
     public string OllamaUrl
     {
-        get => _ollamaUrl?.Text ?? DefaultOllamaUrl();
+        get => _ollamaUrl?.Text ?? _configuredOllamaUrl ?? DefaultOllamaUrl();
         set
         {
+            // Godot restores this property before the tab's controls exist.
+            _configuredOllamaUrl = value;
+            if (_ollamaUrl == null)
+            {
+                return;
+            }
+
             _ollamaUrl.Text = value;
             RebuildProviders();
         }

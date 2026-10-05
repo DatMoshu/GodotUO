@@ -49,7 +49,8 @@ namespace GUO.Renderer.PostFx
         private double _costTimer;
         private int _scale = 1;
 
-        public static bool IsOpen => _instance != null && GodotObject.IsInstanceValid(_instance) && _instance._layer.Visible;
+        public static bool IsOpen => _instance != null && GodotObject.IsInstanceValid(_instance)
+            && _instance._layer != null && GodotObject.IsInstanceValid(_instance._layer) && _instance._layer.Visible;
 
         /// <summary>Makes sure the menu node exists (for the hotkey); cheap after the first call.</summary>
         public static void Install()
