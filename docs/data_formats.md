@@ -348,6 +348,8 @@ written.
                             tiledata of the land tiles that use it
   gumps/0xNNNN.png          gump, by gump id
   hues/0xNNNN.json          hue, by hue number (1-based, as shards write it)
+  animations/0xNNNN.json    editor animation manifest, by body id
+  animations/0xNNNN/        manifest-referenced frame PNGs
   tiledata.json             static tiledata rows (optional): {"0xNNNN": {"flags", "height", "name", "weight"}}
 ```
 
@@ -376,6 +378,21 @@ texture; export warns about it.
 | `name` | Up to 20 ASCII characters |
 | `table_start`, `table_end` | Hex strings, as `hues.mul` stores them |
 | `colors` | 32 hex strings, the 16-bit colours as stored (four rows of eight) |
+
+**`animations/0xNNNN.json`** (editor preview only; not yet exported to anim.mul/UOP):
+`{"format":1,"body":int,"clips":[{"action":int,"direction":int,"fps":number,"frames":[{"image":str,"center":[x,y]}]}]}`.
+Body ids are 0..4095, actions use the client's `MAX_ACTIONS` range, and directions are explicitly 0..7, with unique action/direction pairs;
+a missing action/direction falls back to the installed animation. Each clip has 1..256 RGBA PNG frames,
+each at most 1024x1024, with at most 16,777,216 pixels in total, and a playback rate of 1..60 fps.
+The complete UTF-8 manifest is at most 2 MiB.
+`image` is relative to `assets/animations/`, inside that body's `0xNNNN/` folder, never an absolute path or traversal.
+`center` keeps the client's signed frame centre (each coordinate -4096..4096): the unmirrored frame's top-left
+relative to its foot is `(-center.x, -height-center.y)`. Preview frames share those foot-aligned bounds
+(at most 4096x4096 and 16,777,216 pixels across all preview canvases), so frame sizes and centres do not cause playback jitter. Imports key alpha at 128
+and reduce colour to ARGB1555 without trimming or filtering; frames and centres stay paired in order.
+Importing one clip preserves the body's other action/direction clips. Provenance is keyed by the body manifest path.
+Its derived/AI flags and input identities accumulate conservatively across imports, since other clips may retain those origins.
+Reverting removes the manifest; unreferenced frame PNGs are inert. No installed animation files are written or repointed.
 
 **Export** (`tools/world export`, into an export folder, never the install):
 
@@ -1216,6 +1233,7 @@ It is generated from the user's install and is never committed or shipped.
 
 **Sidecar** `<stem>.json`, stem `<kind>_0x<ID>[_h<hue>]`:
 `{"kind":"land|static|gump","id":int,"hue":int?,"size":[w,h],"stem":str,"provenance":{...}}`.
+Animation manifests currently use the overlay format in section 11; their exchange-sheet roundtrip is a subsequent step.
 
 **Provenance** `{"tool","ai":bool,"model"?,"workflow"?,"seed"?,"inputs":[str],"derived_from_client_art":bool}`.
 `ai` identifies image-service generation; older records infer it for `comfyui` and `retrodiffusion`, otherwise false.
