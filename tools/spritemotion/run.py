@@ -78,7 +78,7 @@ def install_cef(archive=None):
     library = addon/'bin/x86_64-pc-windows-msvc/gdcef.dll'
     patch = Path(__file__).parent/'runtime/gdcef.dll'
     if not patch.is_file() or digest(patch) != EDITOR_HASH:
-        raise ValueError('The packaged editor browser library is missing or damaged. Restore tools/spritemotion/runtime from the GUO distribution.')
+        raise ValueError('The packaged editor browser library is missing or damaged. Build it as tools/spritemotion/browser-patch.md describes and put it in tools/spritemotion/runtime (it is not in the repository).')
     if marker.is_file() and marker.read_text() == CEF_VERSION and library.is_file():
         if digest(library) != EDITOR_HASH: shutil.copy2(patch, library)
         return

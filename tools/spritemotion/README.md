@@ -7,7 +7,7 @@ The host runs the same Three.js Fit Lab as the standalone browser. They share
 saved adjustments, backups and Blender jobs. Closing GUO does not stop those jobs.
 
 On first use, GUO installs the pinned Chromium runtime (approximately 1 GB download),
-verifies its checksum, applies the bundled editor-support library, and prepares an
+verifies its checksum, applies the locally built editor-support library (browser-patch.md; not in the repository), and prepares an
 isolated SpriteMotion Python environment. Downloads are cached. Subsequent opens
 reconnect to the running service or start it automatically. No Rust build is needed.
 

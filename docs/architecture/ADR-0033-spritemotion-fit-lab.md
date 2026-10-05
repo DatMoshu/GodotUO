@@ -8,7 +8,7 @@ The worker and saved fits remain usable from the standalone browser. Native Godo
 data, IDs, staging and shard testing. A render completing never automatically installs or publishes game data.
 
 Windows x64 is the first supported host. Godot CEF 1.16.2 is downloaded from its upstream GitHub release and
-verified against its SHA-256. The downloaded Chromium runtime is ignored. A small MIT-licensed editor-support library is bundled under tools/spritemotion/runtime and verified before installation; browser-patch.md records its source and build. SpriteMotion downloads use an
+verified against its SHA-256. The downloaded Chromium runtime is ignored. A small MIT-licensed editor-support library is built locally into tools/spritemotion/runtime (gitignored, because a release build embeds the builder's home path) and verified before installation; browser-patch.md records its source and build. SpriteMotion downloads use an
 immutable public commit, not a moving main branch; explicit local-checkout overrides support ongoing development.
 The installer uses GUO's Python, an isolated environment and an OS setup lock. Subprocess arguments do not pass
 through a shell. Logs and downloads live under ignored build/spritemotion. Local settings follow GUO's existing

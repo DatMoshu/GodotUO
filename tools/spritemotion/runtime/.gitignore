@@ -1,1 +1,3 @@
-!gdcef.dll
+# The patched library is built locally (browser-patch.md) and never committed:
+# a release build embeds the builder's home path.
+gdcef.dll

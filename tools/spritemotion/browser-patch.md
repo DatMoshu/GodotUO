@@ -21,4 +21,4 @@ CEF SDK version 154.0.26, set CEF_PATH to it, and run:
 Use the upstream release's other Windows runtime files. Replace only gdcef.dll.
 Record the resulting SHA-256 with the packaged release. End users must receive a
 prebuilt, checksum-verified runtime; they must never need Rust or Visual C++.
-The prebuilt Windows x64 library is packaged in runtime/gdcef.dll (6.5 MB), with its MIT license. run.py verifies its SHA-256 before installation. Chromium itself is fetched from the pinned upstream release. Rebuilds must update EDITOR_HASH after verification.
+The built Windows x64 library goes in runtime/gdcef.dll (6.5 MB, gitignored: a release build embeds the builder's home path, so it is not committed; build with `RUSTFLAGS=--remap-path-prefix=%USERPROFILE%=~` before distributing one). Its MIT license sits beside it. run.py verifies its SHA-256 before installation. Chromium itself is fetched from the pinned upstream release. Rebuilds must update EDITOR_HASH after verification.
