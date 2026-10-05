@@ -211,7 +211,8 @@ public partial class ArtDock : EditorDock
                 + "Other image editors: use Inspector > Save PNG, edit it, then Import PNG.\n"
                 + "ComfyUI: choose a workflow and endpoint below, Queue, select a result, Import to overlay.\n"
                 + "Retro Diffusion: configure its endpoint/key in AI, then select it below. Queue may incur provider charges.\n"
-                + "Animation round trips and embedded Pixelorama tabs are not supported."
+                + "For animations, use the Animations panel's Edit in Pixelorama action, then GUO: import animation sheet to timeline. "
+                + "Embedded Pixelorama tabs are not supported."
         };
         AddChild(dialog); dialog.Confirmed += () => dialog.QueueFree(); dialog.Canceled += () => dialog.QueueFree();
         dialog.PopupCentered();
