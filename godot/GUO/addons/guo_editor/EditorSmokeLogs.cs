@@ -10,6 +10,7 @@ using System.Text;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using Godot;
+using GUO.Workspace;
 
 /// <summary>
 /// The smoke stage for the Logs dock. Nothing here touches a real server, client or log: the fixture
@@ -66,6 +67,8 @@ public partial class EditorSmoke
             if (_logsTask.IsFaulted)
             {
                 LogsFail($"threw {_logsTask.Exception?.GetBaseException().GetType().Name}: {_logsTask.Exception?.GetBaseException().Message}");
+                _logsReport["exception_stack"] = _logsTask.Exception?.GetBaseException().StackTrace;
+                GD.PrintErr(_logsTask.Exception?.GetBaseException().StackTrace);
             }
 
             _report["logs"] = _logsReport;
@@ -116,6 +119,9 @@ public partial class EditorSmoke
         Logs.Panel?.Refresh();
         LogsCheck("dock_sources", Logs.Panel != null && Logs.Panel.View("server") != null && Logs.Panel.View("godot") != null && Logs.Panel.View("clientfiles") != null,
             string.Join(",", Logs.Panel?.Views.Keys ?? Enumerable.Empty<string>()));
+        LogsCheck("dock_server_console", Logs.Panel?.View("serverconsole") != null);
+
+        await CheckManagedConsoleAsync(dir);
 
         int baseline = LogTailer.Live;
         var panel = new LogsPanel { AutoDiscover = false, SettingsPath = Path.Combine(dir, "sources.json"), PollMilliseconds = 50 };
@@ -255,6 +261,109 @@ public partial class EditorSmoke
         LogsCheck("tailers_started", during > baseline, $"{during} live, baseline {baseline}");
         LogsCheck("disposed_cleanly", LogTailer.Live == baseline && tailers.All(t => !t.Running), $"{LogTailer.Live} live, baseline {baseline}");
         _logsReport["views"] = string.Join(",", Logs.Panel?.Views.Keys ?? Enumerable.Empty<string>());
+    }
+
+    private static bool ProcessGone(int pid)
+    {
+        try { using var p = Process.GetProcessById(pid); return p.HasExited; }
+        catch (ArgumentException) { return true; }
+    }
+
+    private static bool ConsoleReleased(string path)
+    {
+        try { using var file = new FileStream(path, FileMode.Open, System.IO.FileAccess.ReadWrite, FileShare.None); return true; }
+        catch (IOException) { return false; }
+    }
+
+    private async Task CheckManagedConsoleAsync(string dir)
+    {
+        string previousRoot = Workspace.RootOverride;
+        string root = Path.Combine(_out, "logs_workspace");
+        const string id = "81d9cf226a1646efb6a8ab498741afe9";
+        string home = Path.Combine(root, "servers", id);
+        string state = Path.Combine(home, "process.json");
+        string childFile = Path.Combine(home, "fixture.pid");
+        LogsPanel panel = null;
+        bool leaveForReload = false;
+        try
+        {
+            Workspace.RootOverride = root;
+            Directory.CreateDirectory(home);
+            string console = LogSources.ServerConsole(id);
+            LogsCheck("server_console_workspace_path", console == Path.Combine(home, "server.console.log") && LogSources.ServerConsole("../bad") == "");
+            if (_afterReload)
+            {
+                LogsCheck("server_console_reload_running", ManagedServerProcess.Running(state));
+                int oldChild = int.Parse(File.ReadAllText(childFile));
+                ManagedServerProcess.Stop(state);
+                LogsCheck("server_console_reload_stopped", await LogWait(() => ProcessGone(oldChild) && ConsoleReleased(console)) && !File.Exists(state));
+            }
+
+            // A script only: it prints both streams and its PID, sleeps, then exits on its own as a
+            // last-resort fixture fuse. It opens no socket and never starts a shard.
+            string payload = "spaces & %PATH% ^ ! \"quotes\" trailing\\";
+            var profile = new ServerProfile { Id = id, Name = "Console fixture", Host = "127.0.0.1", Port = 2619, ServerDirectory = home };
+            string script = Path.Combine(home, "console fixture.py");
+            File.WriteAllText(script, "import os, sys, time\nfrom pathlib import Path\n"
+                + "Path(__file__).with_name('fixture.pid').write_text(str(os.getpid()))\n"
+                + "print('fixture stdout ready', flush=True)\nprint('fixture stderr ready', file=sys.stderr, flush=True)\n"
+                + "print('password=fixture-only-value', flush=True)\nprint('argument=' + sys.argv[1], flush=True)\ntime.sleep(0.3 if len(sys.argv) > 2 else 180)\n");
+            string python = EditorData.Setting("UO_PYTHON", OperatingSystem.IsWindows() ? "python" : "python3");
+            profile.Executable = Path.IsPathFullyQualified(python) ? python : (System.Environment.GetEnvironmentVariable("PATH") ?? "")
+                .Split(Path.PathSeparator).Select(p => Path.Combine(p.Trim('"'), python + (OperatingSystem.IsWindows() && !python.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? ".exe" : "")))
+                .FirstOrDefault(File.Exists) ?? python;
+            profile.Arguments = new[] { "-u", script, payload };
+            string profiles = Path.Combine(dir, "fixture-profiles.json");
+            new ServerProfiles { Selected = id, Servers = new() { profile } }.Save(profiles);
+            panel = new LogsPanel { ServersFile = profiles, SettingsPath = Path.Combine(dir, "fixture-sources.json"), PollMilliseconds = 50 };
+            AddChild(panel);
+            await Delay(0.1);
+            LogView view = panel.View("serverconsole");
+            ManagedServerProcess.Start(profile, state);
+            LogsCheck("server_console_streams", await LogWait(() => LogHas(view, "fixture stdout ready") && LogHas(view, "fixture stderr ready")));
+            LogsCheck("server_console_redacted", await LogWait(() => LogHas(view, "password=[redacted]")) && !view.BodyText.Contains("fixture-only-value", StringComparison.Ordinal));
+            LogsCheck("server_console_arguments", await LogWait(() => LogHas(view, "argument=" + payload)), view.BodyText);
+            LogsCheck("server_console_managed", ManagedServerProcess.Running(state));
+            bool duplicateRefused = false;
+            try { ManagedServerProcess.Start(profile, state); }
+            catch (InvalidOperationException) { duplicateRefused = true; }
+            LogsCheck("server_console_duplicate_refused", duplicateRefused);
+            int child = int.Parse(File.ReadAllText(childFile));
+            ManagedServerProcess.Stop(state);
+            LogsCheck("server_console_stop_cleanup", await LogWait(() => ProcessGone(child) && ConsoleReleased(console)) && !File.Exists(state));
+            byte[] first = ReadShared(console);
+            ManagedServerProcess.Start(profile, state);
+            LogsCheck("server_console_restart", await LogWait(() => File.Exists(childFile) && File.ReadAllText(childFile) != child.ToString() && ReadShared(console).Length > first.Length));
+            int restarted = int.Parse(File.ReadAllText(childFile));
+            ManagedServerProcess.Stop(state);
+            LogsCheck("server_console_restart_cleanup", await LogWait(() => ProcessGone(restarted) && ConsoleReleased(console)) && !ManagedServerProcess.Running(state));
+            LogsCheck("server_console_append", ReadShared(console).Take(first.Length).SequenceEqual(first));
+            // A server that exits by itself must also relinquish the wrapper and output handle.
+            string[] arguments = profile.Arguments;
+            profile.Arguments = arguments.Concat(new[] { "exit" }).ToArray();
+            ManagedServerProcess.Start(profile, state);
+            LogsCheck("server_console_natural_exit", await LogWait(() => !ManagedServerProcess.Running(state) && ConsoleReleased(console)));
+            ManagedServerProcess.Stop(state);
+            LogsCheck("server_console_natural_exit_state_removed", !File.Exists(state));
+            profile.Arguments = arguments;
+            // The second assembly must find and stop this very same wrapper and child. Its state/PID
+            // are files, not static addon objects, and all tailers below are shut down before reload.
+            if (_reloadTest && !_afterReload && _failures.Count == 0)
+            {
+                string previousChild = File.ReadAllText(childFile);
+                ManagedServerProcess.Start(profile, state);
+                LogsCheck("server_console_reload_fixture_ready", await LogWait(() => File.ReadAllText(childFile) != previousChild));
+                leaveForReload = _failures.Count == 0;
+            }
+            _logsReport["server_console_path"] = console;
+            File.WriteAllText(Path.Combine(dir, "server_console_redacted.txt"), string.Join("\n", view.Lines.Select(l => l.Text)));
+        }
+        finally
+        {
+            if (!leaveForReload) ManagedServerProcess.Stop(state);
+            panel?.Shutdown(); panel?.QueueFree();
+            Workspace.RootOverride = previousRoot;
+        }
     }
 }
 #endif

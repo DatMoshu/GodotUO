@@ -119,6 +119,10 @@ public static class LogSources
     public static string ClientConsole(string serverId, string clientId, int slot) =>
         GUO.Workspace.Workspace.IsId(serverId) && GUO.Workspace.Workspace.IsId(clientId) ? GUO.Workspace.Workspace.ClientConsole(serverId, clientId, slot + 1) : "";
 
+    /// <summary>The managed server's console beside its exact process state in the user workspace.</summary>
+    public static string ServerConsole(string serverId) =>
+        GUO.Workspace.Workspace.IsId(serverId) ? Path.Combine(GUO.Workspace.Workspace.ServerHome(serverId), "server.console.log") : "";
+
     /// <summary>The project folder of a client in clients.json (the open project when it names none), or "".</summary>
     private static string ClientProgram(string clientId)
     {

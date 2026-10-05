@@ -510,5 +510,10 @@ a file over 512 KB entered at its end. Secrets in a line (the shapes `tools/agen
 pairs, bearer tokens, keys) are shown as `[redacted]`. F3 has "Logs: server", "Logs: client N", "Logs: add file".
 The smoke's Logs stage writes fixture logs under its output folder and checks all of the above, then that no
 worker task survives shutdown (and the reload run proves the same across an assembly reload).
-Not built: the server's own console output when the run bar started it (the managed process is not redirected,
-so its log files are what is shown); capturing the editor's in-process output without file logging.
+The run bar also redirects a managed server's stdout and stderr into its workspace's
+`servers/<id>/server.console.log`. A separate Server console view follows the selected profile and applies
+the same secret redaction. The OS shell owns the output file: assembly reload leaves no capture callbacks
+or handles in the addon, and the recorded process remains stoppable and restartable. The Logs smoke starts
+only a script fixture, checks both streams, redaction, argument preservation and stop/restart cleanup, and
+leaves a fixture across the reload for the second assembly to stop.
+Not built: capturing the editor's in-process output without file logging.

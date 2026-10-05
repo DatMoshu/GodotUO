@@ -179,7 +179,8 @@ public partial class RunBar : HBoxContainer
     {
         var s = Selected; if (s == null || _busy) return;
         ManagedServerProcess.Start(s, State(s));
-        _start.Disabled = true; _status.Text = "Started " + s.Name; Poll();
+        _start.Disabled = true; _status.Text = "Started " + s.Name;
+        _status.TooltipText = "Console: " + LogSources.ServerConsole(s.Id); Poll();
     }
     private void ConfirmStop()
     {

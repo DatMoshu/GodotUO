@@ -1232,10 +1232,11 @@ never committed): `{"format": 1, "cap": 5000, "files": [{"path": "<absolute path
 lines each view keeps (100 to 200000). Only absolute paths are accepted. The list is the editor's own and is not
 exported anywhere. A missing or unreadable file is an empty list.
 
-The dock also reads, and never writes: the run bar's `build/editor_servers/profiles.json` (section 17's sibling,
-the selected profile's `ServerDirectory`, `ServerProject`, `Executable`, `ClientProject`), and the per-client
-console file the run bar redirects a client's output to, `build/editor_servers/<profile id>/clients/<n>/client.log`
-(plain UTF-8 text, one line per console line; the client writes its time in UTC).
+The dock also reads, and never writes: the run bar's workspace `profiles/servers.json` (section 30), the
+selected profile's server log folders, `servers/<server id>/server.console.log`, and the per-client console
+file the run bar redirects a client's output to, `runs/<server id>/<client id>/slot-<n>/client.log`
+(plain UTF-8 text, one line per console line; the client writes its time in UTC). Client console paths are
+unchanged by server console capture; the earlier `build/editor_servers/` layout was migrated by ADR-0032.
 
 ## 26. Map generator CLI (`guo-mapgen`, ADR-0030)
 
@@ -1562,6 +1563,7 @@ a person shares it. Nothing in it is a client install: installs are referenced i
   profiles/servers.json        server instances
   profiles/clients.json        client profiles
   servers/<server-id>/         a server instance's install, Config, Saves, logs, process.json, store/
+    server.console.log        managed server stdout and stderr (append-only per start)
   clients/<client-id>/client.json     descriptor of one client (below)
   clients/<client-id>/program/        a guo-build or external client's files, when GUO holds them
   clients/<client-id>/overlay/        a shard's custom files over the base UO data (a guo_data.json folder)
@@ -1572,6 +1574,13 @@ Ids are 32 lowercase hex characters. All paths in these files are absolute (no `
 variables). Every document is UTF-8 JSON of at most 1 MiB, written to a temporary file and moved into place.
 **Unknown fields are refused** by the editor and the game; a file that fails validation is not loaded and not
 overwritten. Add a field here before anything writes it.
+
+The run bar captures a managed server's stdout and stderr beside `process.json`, in
+`servers/<server-id>/server.console.log`. The OS shell holds the output handle and waits for the server;
+the process record identifies that wrapper, so stop ends its child tree even after an editor assembly
+reload. Each start appends rather than erasing prior output. Console text uses the program's encoding
+(the Logs dock reads UTF-8); the dock's Server console source hides secrets in the view, without changing
+the raw file. Client console paths are unchanged: `runs/<server-id>/<client-id>/slot-1..4/client.log`.
 
 **`profiles/servers.json`** (PascalCase, as the earlier `build/editor_servers/profiles.json`):
 `{"Selected": id|null, "SelectedClient": id|null, "Servers": [ ... ]}`, at most 64 servers. A server:

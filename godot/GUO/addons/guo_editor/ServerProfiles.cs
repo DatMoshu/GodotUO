@@ -10,6 +10,9 @@ using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
+using System.Text;
+using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
 using GUO.Workspace;
 
 internal sealed class ServerProfile
@@ -123,20 +126,53 @@ internal sealed class ManagedServerProcess
     public int Pid { get; set; }
     public long Started { get; set; }
     public string Executable { get; set; }
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern SafeProcessHandle OpenProcess(uint access, bool inherit, int pid);
+    [DllImport("kernel32.dll", EntryPoint = "QueryFullProcessImageNameW", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern bool QueryFullProcessImageName(SafeProcessHandle process, uint flags, StringBuilder name, ref int length);
+    private static string ExecutableOf(Process process)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            if (OperatingSystem.IsLinux())
+            {
+                try
+                {
+                    string image = new FileInfo($"/proc/{process.Id}/exe").ResolveLinkTarget(false)?.FullName;
+                    if (!string.IsNullOrEmpty(image)) return Path.GetFullPath(image);
+                }
+                catch (IOException) { }
+                catch (UnauthorizedAccessException) { }
+            }
+            return Path.GetFullPath(process.MainModule?.FileName ?? throw new InvalidOperationException("Process image is unavailable"));
+        }
+        // MainModule can be null between CreateProcess returning and the loader initializing the
+        // module list (reproduced by the console fixture's rapid restarts). The kernel image query
+        // is available immediately and needs only PROCESS_QUERY_LIMITED_INFORMATION, not VM reads.
+        using var handle = OpenProcess(0x1000, false, process.Id);
+        if (handle.IsInvalid) throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+        var name = new StringBuilder(32768);
+        int length = name.Capacity;
+        if (!QueryFullProcessImageName(handle, 0, name, ref length)) throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+        return Path.GetFullPath(name.ToString());
+    }
     private static Process Owned(string state)
     {
         if (!File.Exists(state)) return null;
         var saved = JsonSerializer.Deserialize<ManagedServerProcess>(File.ReadAllBytes(state), ServerProfiles.Json);
         if (saved == null) return null;
+        Process process = null;
         try
         {
-            var process = Process.GetProcessById(saved.Pid);
+            process = Process.GetProcessById(saved.Pid);
             if (!process.HasExited && process.StartTime.ToUniversalTime().Ticks == saved.Started
-                && string.Equals(Path.GetFullPath(process.MainModule.FileName), saved.Executable, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal)) return process;
-            process.Dispose(); return null;
+                && string.Equals(ExecutableOf(process), saved.Executable, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+            { var owned = process; process = null; return owned; }
+            return null;
         }
         catch (ArgumentException) { return null; }
         catch (InvalidOperationException) { return null; }
+        finally { process?.Dispose(); }
     }
     public static bool Running(string state) { using var p = Owned(state); return p != null; }
     public static void Start(ServerProfile profile, string state)
@@ -148,7 +184,53 @@ internal sealed class ManagedServerProcess
         foreach (string arg in profile.Arguments) info.ArgumentList.Add(arg);
         // Do not accidentally apply a development probe or another server's deployment.
         foreach (string key in info.Environment.Keys.Where(k => k.StartsWith("UO_", StringComparison.Ordinal) && (k.EndsWith("_PROBE", StringComparison.Ordinal) || k == "UO_SERVER_CONTENT")).ToArray()) info.Environment.Remove(key);
-        Start(info, state);
+        Start(ConsoleStartInfo(info, LogSources.ServerConsole(profile.Id)), state);
+    }
+    /// <summary>
+    /// The OS shell owns the console file and waits for the server. No reader, callback or file handle in
+    /// the collectible addon survives a reload; the recorded shell identity still owns the whole tree.
+    /// </summary>
+    internal static ProcessStartInfo ConsoleStartInfo(ProcessStartInfo info, string console)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(console));
+        var shell = new ProcessStartInfo(OperatingSystem.IsWindows() ? "cmd.exe" : "/bin/sh")
+            { WorkingDirectory = info.WorkingDirectory, UseShellExecute = false, CreateNoWindow = true };
+        shell.Environment.Clear();
+        foreach (var pair in info.Environment) shell.Environment[pair.Key] = pair.Value;
+        string key = "GUO_CONSOLE_" + Guid.NewGuid().ToString("N");
+        shell.Environment[key + "_FILE"] = console;
+        if (OperatingSystem.IsWindows())
+        {
+            // Delayed expansion happens AFTER cmd parses operators/percent expansions. Insert the native
+            // command's CRT-quoted arguments then, so &, %, ^, ! and embedded quotes stay argument text.
+            shell.Environment[key + "_EXE"] = info.FileName;
+            shell.Environment[key + "_ARGS"] = string.Join(" ", info.ArgumentList.Select(WindowsArgument));
+            shell.Arguments = $"/d /v:on /s /c \"\"!{key}_EXE!\" !{key}_ARGS! >> \"!{key}_FILE!\" 2>&1\"";
+        }
+        else
+        {
+            shell.ArgumentList.Add("-c");
+            // A following command keeps shells from replacing themselves with the final program:
+            // process.json must continue to name the wrapper executable, not an exec'd server.
+            shell.ArgumentList.Add($"\"$@\" >> \"${key}_FILE\" 2>&1; status=$?; exit \"$status\"");
+            shell.ArgumentList.Add("guo-server-console");
+            shell.ArgumentList.Add(info.FileName);
+            foreach (string arg in info.ArgumentList) shell.ArgumentList.Add(arg);
+        }
+        return shell;
+    }
+    private static string WindowsArgument(string value)
+    {
+        var quoted = new StringBuilder("\"");
+        int slashes = 0;
+        foreach (char c in value)
+        {
+            if (c == '\\') { slashes++; continue; }
+            quoted.Append('\\', c == '"' ? slashes * 2 + 1 : slashes);
+            quoted.Append(c); slashes = 0;
+        }
+        quoted.Append('\\', slashes * 2); quoted.Append('"');
+        return quoted.ToString();
     }
     /// <summary>
     /// Starts a program and records its exact identity (PID, start time, executable) in the state file. Refused while
@@ -163,7 +245,7 @@ internal sealed class ManagedServerProcess
         using var process = Process.Start(info) ?? throw new IOException("Process did not start");
         try
         {
-            var saved = new ManagedServerProcess { Pid = process.Id, Started = process.StartTime.ToUniversalTime().Ticks, Executable = Path.GetFullPath(process.MainModule.FileName) };
+            var saved = new ManagedServerProcess { Pid = process.Id, Started = process.StartTime.ToUniversalTime().Ticks, Executable = ExecutableOf(process) };
             File.WriteAllBytes(state, JsonSerializer.SerializeToUtf8Bytes(saved, ServerProfiles.Json));
         }
         catch { if (!process.HasExited) process.Kill(true); throw; }
