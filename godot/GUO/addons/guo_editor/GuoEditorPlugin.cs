@@ -50,6 +50,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
     private EditorMcpServer _editorMcp;
     private SearchContext _searchContext;
     private EditorSettings _settings;
+    private SpriteMotionDock _spriteMotion;
 
     // Whether the World tab was on screen when an assembly reload began.
     // A bool field survives the reload (Godot serializes it), and the editor
@@ -163,6 +164,8 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         _shard = new ShardDock();
         AddDock(_shard);
         _shard.Attach(_world);
+        _spriteMotion = new SpriteMotionDock();
+        AddDock(_spriteMotion);
 
         // The AI hub (ADR-0028): chat, agents over ACP, the request queue. It owns child
         // processes (agent CLIs), which TearDown kills.
@@ -542,6 +545,13 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
             _ai = null;
         }
 
+        if (_spriteMotion != null)
+        {
+            _spriteMotion.Shutdown();
+            RemoveDock(_spriteMotion);
+            _spriteMotion.QueueFree();
+            _spriteMotion = null;
+        }
         if (_shard != null)
         {
             // Closes the bridge connection and its reader thread before a reload.

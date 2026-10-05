@@ -39,6 +39,7 @@ public partial class EditorSmoke : Node
     /// tools/world_parity compares with a logged-in client's frame.
     /// </summary>
     public const string WorldShotFlag = "--guo-editor-world-shot";
+    public const string MultiShotFlag = "--guo-editor-multi-shot";
 
     /// <summary>
     /// <c>send</c> or <c>follow</c>: the live tier check (tools/editor_live).
@@ -194,6 +195,7 @@ public partial class EditorSmoke : Node
                         break;
                     }
                     _stage = _failures.Count > 0 ? 9
+                        : ArgValue(MultiShotFlag) != null ? 85
                         : ArgValue(LiveFlag) != null ? 40
                         : ArgValue(WorldShotFlag) != null ? 30 : 1;
                     _frames = 0;
@@ -555,7 +557,8 @@ public partial class EditorSmoke : Node
             return;
         }
 
-        string query = name == "Art" ? ArgValue(ArtFlag) ?? panel.SmokeQuery : panel.SmokeQuery;
+        string query = panel is MultiPanel ? ArgValue(MultiShotFlag) ?? panel.SmokeQuery
+            : name == "Art" ? ArgValue(ArtFlag) ?? panel.SmokeQuery : panel.SmokeQuery;
         result["query"] = query;
         var sw = System.Diagnostics.Stopwatch.StartNew();
         int? selected;

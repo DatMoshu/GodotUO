@@ -33,7 +33,7 @@ class WindowsTests(unittest.TestCase):
     def test_normal_renderer_contains_exact_reviewed_exclusions(self):
         spec=importlib.util.spec_from_file_location('windows_run',Path(__file__).with_name('run.py'))
         run=importlib.util.module_from_spec(spec); spec.loader.exec_module(run)
-        expected=['addons/'+name+'/*' for name in ('guo_editor','guo_editor_assets','guo_editor_gumps','guo_editor_mapgen','guo_editor_multiedit','guo_editor_store','guo_posture')]
+        expected=['addons/'+name+'/*' for name in ('guo_editor','godot_cef','guo_editor_assets','guo_editor_gumps','guo_editor_mapgen','guo_editor_multiedit','guo_editor_store','guo_posture')]
         expected+=['src/Input/Touch/Pregame/Accounts/'+name+'.cs' for name in ('AccountBook','AndroidKeystoreStore','DevLogin','LibsecretStore','SecretStore')]
         with tempfile.TemporaryDirectory() as directory:
             p=SimpleNamespace(preset_file=Path(directory)/'preset.cfg')
