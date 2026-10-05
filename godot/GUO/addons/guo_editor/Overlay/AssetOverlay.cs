@@ -19,6 +19,7 @@ public enum AssetKind
     Static,
     Gump,
     Hue,
+    Animation,
 }
 
 /// <summary>
@@ -42,7 +43,7 @@ public enum AssetKind
 /// written under <c>UO_CLIENT_DATA</c>.
 /// </para>
 /// </remarks>
-public sealed class AssetOverlay
+public sealed partial class AssetOverlay
 {
     public const int Format = 1;
     public const int MaxStaticSize = 1024;
@@ -63,11 +64,12 @@ public sealed class AssetOverlay
         AssetKind.Land => Path.Combine("assets", "art", "land"),
         AssetKind.Static => Path.Combine("assets", "art", "statics"),
         AssetKind.Gump => "assets" + Path.DirectorySeparatorChar + "gumps",
+        AssetKind.Animation => Path.Combine("assets", "animations"),
         _ => "assets" + Path.DirectorySeparatorChar + "hues",
     };
 
     public string PathOf(AssetKind kind, int id) =>
-        Path.Combine(Root, Folder(kind), $"0x{id:X4}" + (kind == AssetKind.Hue ? ".json" : ".png"));
+        Path.Combine(Root, Folder(kind), $"0x{id:X4}" + (kind is AssetKind.Hue or AssetKind.Animation ? ".json" : ".png"));
 
     /// <summary>The same file as the world project names it ("assets/art/statics/0x0E75.png"): what the UI shows, never the machine's full path.</summary>
     public string RelativePathOf(AssetKind kind, int id) =>
@@ -85,7 +87,7 @@ public sealed class AssetOverlay
             return ids;
         }
 
-        foreach (string f in Directory.GetFiles(dir, kind == AssetKind.Hue ? "*.json" : "*.png"))
+        foreach (string f in Directory.GetFiles(dir, kind is AssetKind.Hue or AssetKind.Animation ? "*.json" : "*.png"))
         {
             string n = Path.GetFileNameWithoutExtension(f);
             if (n.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
@@ -100,7 +102,7 @@ public sealed class AssetOverlay
     }
 
     public int Count => Ids(AssetKind.Land).Count + Ids(AssetKind.Static).Count
-                        + Ids(AssetKind.Gump).Count + Ids(AssetKind.Hue).Count;
+                        + Ids(AssetKind.Gump).Count + Ids(AssetKind.Hue).Count + Ids(AssetKind.Animation).Count;
 
     // --- importing ---------------------------------------------------------
 
@@ -111,6 +113,10 @@ public sealed class AssetOverlay
     /// </summary>
     public string Import(AssetKind kind, int id, Image source)
     {
+        if (kind == AssetKind.Animation)
+        {
+            return "animations need ordered frames, centres, action and direction; use ImportAnimation";
+        }
         if (kind == AssetKind.Hue)
         {
             return "use ImportHue for hues";
@@ -237,7 +243,7 @@ public sealed class AssetOverlay
     public Image Load(AssetKind kind, int id)
     {
         string path = PathOf(kind, id);
-        if (kind == AssetKind.Hue || !File.Exists(path))
+        if (kind is AssetKind.Hue or AssetKind.Animation || !File.Exists(path))
         {
             return null;
         }

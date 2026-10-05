@@ -234,6 +234,8 @@ public partial class EditorSmoke
         ArtCheck("revert_drops_provenance", new AssetProvenance(assets).Get(assets.RelativePathOf(AssetKind.Land, FixtureLand)) == null);
         _data.ReapplyAssets();
 
+        ArtAnimationSync(assets);
+
         bool untouched = true;
         foreach (var (name, when) in AssetStamp())
         {
@@ -241,6 +243,89 @@ public partial class EditorSmoke
         }
 
         ArtCheck("install_untouched", untouched);
+    }
+
+    private void ArtAnimationSync(AssetOverlay assets)
+    {
+        const int body = 0x0190;
+        Image first = Image.CreateEmpty(4, 6, false, Image.Format.Rgba8);
+        Image second = Image.CreateEmpty(6, 4, false, Image.Format.Rgba8);
+        first.Fill(new Color(0.9f, 0.1f, 0.2f, 1));
+        first.SetPixel(0, 0, new Color(1, 1, 1, 127f / 255));
+        second.Fill(new Color(0.1f, 0.2f, 0.9f, 1));
+        var source = new OverlayAnimationClip { Action = 0, Direction = 1, Fps = 12,
+            Frames = new[] { first, second }, Centers = new[] { new Vector2I(2, -1), new Vector2I(3, 1) } };
+        string why = assets.ImportAnimation(body, source, new ArtProvenance { Tool = "smoke-original" });
+        ArtCheck("animation_imported", why == null, why ?? "");
+        if (why != null) return;
+        ArtCheck("animation_kind_listed", assets.Has(AssetKind.Animation, body) && assets.Ids(AssetKind.Animation).Contains(body));
+        OverlayAnimationClip loaded = new AssetOverlay(_artRoot).LoadAnimation(body, 0, 1, out why);
+        ArtCheck("animation_reopened", loaded != null && why == null, why ?? "");
+        if (loaded == null) return;
+        ArtCheck("animation_frames_centres_fps", loaded.Frames.Length == 2 && loaded.Frames[0].GetWidth() == 4
+            && loaded.Frames[0].GetHeight() == 6 && loaded.Frames[1].GetWidth() == 6 && loaded.Frames[1].GetHeight() == 4
+            && loaded.Centers.SequenceEqual(source.Centers) && loaded.Fps == 12);
+        ArtCheck("animation_alpha_colour", loaded.Frames[0].GetPixel(0, 0).A8 == 0
+            && loaded.Frames[0].GetPixel(1, 1).R8 == HuesHelperChannel(first.GetPixel(1, 1).R8));
+        Image[] preview = loaded.PreviewFrames();
+        ArtCheck("animation_foot_alignment", preview.All(f => f.GetSize() == new Vector2I(6, 6))
+            && preview[0].GetPixel(2, 1) == loaded.Frames[0].GetPixel(1, 1)
+            && preview[1].GetPixel(1, 1) == loaded.Frames[1].GetPixel(1, 1));
+        ArtCheck("animation_missing_direction_fallback", assets.LoadAnimation(body, 0, 2, out why) == null && why == null);
+        source.Direction = 7;
+        ArtCheck("animation_second_direction", assets.ImportAnimation(body, source) == null
+            && assets.LoadAnimation(body, 0, 7, out _) != null && assets.LoadAnimation(body, 0, 1, out _) != null);
+        source.Direction = 1;
+        ArtCheck("animation_retained_provenance", assets.ImportAnimation(body, source, new ArtProvenance { Tool = "smoke-original" }) == null
+            && new AssetProvenance(assets).Get(assets.RelativePathOf(AssetKind.Animation, body)).DerivedFromClientArt);
+        source.Direction = 8;
+        ArtCheck("animation_bad_direction_refused", assets.ImportAnimation(body, source) != null);
+        source.Direction = 1;
+        source.Centers = new[] { new Vector2I(2, -1) };
+        ArtCheck("animation_unpaired_centres_refused", assets.ImportAnimation(body, source) != null);
+        source.Centers = loaded.Centers;
+        source.Fps = double.NaN;
+        ArtCheck("animation_bad_fps_refused", assets.ImportAnimation(body, source) != null);
+        source.Fps = 12;
+        source.Centers = new[] { new Vector2I(5000, 0), new Vector2I(3, 1) };
+        ArtCheck("animation_bad_centre_refused", assets.ImportAnimation(body, source) != null);
+        source.Frames = Enumerable.Repeat(first, 5).ToArray();
+        source.Centers = new[] { Vector2I.Zero, new Vector2I(2000, 2000), Vector2I.Zero, Vector2I.Zero, Vector2I.Zero };
+        ArtCheck("animation_preview_budget_refused", assets.ImportAnimation(body, source) != null);
+
+        string path = assets.PathOf(AssetKind.Animation, body);
+        string valid = File.ReadAllText(path);
+        JsonNode corrupt = JsonNode.Parse(valid);
+        corrupt["clips"][0]["frames"][0]["image"] = "../provenance.json";
+        File.WriteAllText(path, corrupt.ToJsonString());
+        ArtCheck("animation_path_escape_refused", assets.LoadAnimation(body, 0, 1, out why) == null && why != null);
+        corrupt = JsonNode.Parse(valid);
+        corrupt["clips"].AsArray().Add(corrupt["clips"][0].DeepClone());
+        File.WriteAllText(path, corrupt.ToJsonString());
+        ArtCheck("animation_duplicate_clip_refused", assets.LoadAnimation(body, 0, 1, out why) == null && why != null);
+        File.WriteAllText(path, valid);
+
+        AnimationPanel panel = _assets.Panels.OfType<AnimationPanel>().FirstOrDefault();
+        int? picked = panel?.Search("0x0190");
+        Inspection shown = _inspector.Current;
+        ArtCheck("animation_panel_uses_overlay", picked == body && shown?.Frames.Length == 2 && shown.Fps == 12
+            && shown.Text.Contains("editor overlay"));
+        if (shown?.Frames.Length == 2)
+        {
+            Image before = _inspector.Texture.GetImage();
+            before.SavePng(Path.Combine(_out, $"animation_overlay_frame_0{Suffix}.png"));
+            _inspector._Process(1.0 / shown.Fps + 0.001);
+            Image after = _inspector.Texture.GetImage();
+            after.SavePng(Path.Combine(_out, $"animation_overlay_frame_1{Suffix}.png"));
+            ArtCheck("animation_inspector_played", !before.GetData().SequenceEqual(after.GetData()));
+        }
+
+        ArtCheck("animation_revert", assets.Revert(AssetKind.Animation, body)
+            && assets.LoadAnimation(body, 0, 1, out why) == null && why == null);
+        new AssetProvenance(assets).Remove(assets.RelativePathOf(AssetKind.Animation, body));
+        panel?.Search("0x0190");
+        ArtCheck("animation_panel_reverts_to_client", _inspector.Current?.Frames.Length > 2
+            && !_inspector.Current.Text.Contains("editor overlay"));
     }
 
     private static byte HuesHelperChannel(int v8)

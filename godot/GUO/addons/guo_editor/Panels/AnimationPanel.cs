@@ -3,6 +3,7 @@ namespace GUO.Editor;
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using Godot;
 using GUO.Assets;
@@ -70,7 +71,7 @@ public partial class AnimationPanel : GridPanel
             }
         }
 
-        return _ids;
+        return _ids.Concat(Data.Assets?.Ids(AssetKind.Animation) ?? new List<int>()).Distinct().OrderBy(id => id);
     }
 
     protected override string Caption(int id) => $"{id:X4}";
@@ -79,7 +80,7 @@ public partial class AnimationPanel : GridPanel
 
     protected override Image Icon(int id)
     {
-        Image[] frames = Frames(id, 0, 1, out _, out _);
+        Image[] frames = Frames(id, 0, 1, out _, out _, out _);
         return frames.Length > 0 ? frames[0] : null;
     }
 
@@ -87,7 +88,7 @@ public partial class AnimationPanel : GridPanel
     {
         byte action = (byte)_action.Value;
         byte dir = (byte)_dir.Value;
-        Image[] frames = Frames(id, action, dir, out ushort hue, out string how);
+        Image[] frames = Frames(id, action, dir, out ushort hue, out string how, out double fps);
 
         var anims = Data.Animations;
         var sb = new StringBuilder();
@@ -106,16 +107,23 @@ public partial class AnimationPanel : GridPanel
             Source = "Animations",
             Id = $"0x{id:X4}",
             Frames = frames,
-            Fps = 8,
+            Fps = fps,
             Text = sb.ToString(),
         };
     }
 
     /// <summary>One action in one of the eight directions, as composited frames.</summary>
-    private Image[] Frames(int body, byte action, byte dir, out ushort hue, out string how)
+    private Image[] Frames(int body, byte action, byte dir, out ushort hue, out string how, out double fps)
     {
         hue = 0;
         how = "";
+        fps = 8;
+        if (Data.Assets?.LoadAnimation(body, action, dir, out _) is OverlayAnimationClip clip)
+        {
+            how = "-> editor overlay (explicit direction)";
+            fps = clip.Fps;
+            return clip.PreviewFrames();
+        }
         var anims = Data.Animations;
         bool mirror = false;
         byte fileDir = dir;
