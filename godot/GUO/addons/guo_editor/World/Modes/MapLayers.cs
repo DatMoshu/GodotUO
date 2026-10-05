@@ -627,20 +627,46 @@ internal sealed class LiveLayer : IMapLayer
     public string Name => "Live";
     public string Summary => "players and mobiles the shard reports over the UO Shard dock's bridge (when connected)";
     public bool On { get; set; }
+    public bool Players { get; set; } = true;
+    public bool Mobiles { get; set; } = true;
+
+    private IEnumerable<LiveMobile> Of(int facet) =>
+        _m.LiveSource().Where(l => l.Facet == facet && (l.Player ? Players : Mobiles));
+
+    private static Vector2 Position(LiveMobile l, Func<float, float, float, Vector2> project) =>
+        project(l.X + 0.5f, l.Y + 0.5f, l.Z);
+
+    /// <summary>The nearest visible icon under the pointer, using the drawing's projection and a pixel-sized hit area.</summary>
+    internal string Hover(int facet, Vector2 pointer, Func<float, float, float, Vector2> project)
+    {
+        if (!On)
+        {
+            return "";
+        }
+
+        LiveMobile? picked = null;
+        float nearest = 8f * 8f;
+        foreach (LiveMobile l in Of(facet))
+        {
+            float distance = Position(l, project).DistanceSquaredTo(pointer);
+            if (distance <= nearest)
+            {
+                picked = l;
+                nearest = distance;
+            }
+        }
+
+        return picked is { } p ? $"{p.Name} ({(p.Player ? "player" : "mobile")})\nSerial 0x{p.Serial:X8}\nmap{p.Facet}: {p.X}, {p.Y}, {p.Z}" : "";
+    }
 
     public IEnumerable<LayerItem> Items(int facet) =>
-        _m.LiveSource().Where(l => l.Facet == facet).Select(l => new LayerItem("Live", l.Name, facet, l.X, l.Y, l.Z, l.Player ? "player" : "mobile"));
+        Of(facet).Select(l => new LayerItem("Live", l.Name, facet, l.X, l.Y, l.Z, $"{(l.Player ? "player" : "mobile")} 0x{l.Serial:X8}"));
 
     public void Draw(IPaint p, LayerView v)
     {
-        foreach (LiveMobile l in _m.LiveSource())
+        foreach (LiveMobile l in Of(v.Facet))
         {
-            if (l.Facet != v.Facet)
-            {
-                continue;
-            }
-
-            Vector2 at = v.Project(l.X + 0.5f, l.Y + 0.5f, l.Z);
+            Vector2 at = Position(l, v.Project);
             if (!v.Sees(at))
             {
                 continue;

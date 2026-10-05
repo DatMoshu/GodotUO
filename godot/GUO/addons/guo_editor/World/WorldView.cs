@@ -304,6 +304,9 @@ public partial class WorldView : VBoxContainer
         MenuToggle(_layers, "Multis", true, v => _host.ShowMultis = v);
         MenuToggle(_layers, "Roofs", true, v => _host.ShowRoofs = v);
         MenuToggle(_layers, "Objects", true, v => _objects.Visible = v);
+        MenuToggle(_layers, "Live", false, v => SetLayer("Live", v));
+        MenuToggle(_layers, "Live players", true, v => SetLiveKinds(v, _mapLayers.Live.Mobiles));
+        MenuToggle(_layers, "Live mobiles", true, v => SetLiveKinds(_mapLayers.Live.Players, v));
         tools.AddChild(new Label { Text = "spawns" });
         _spawnEntry = new LineEdit
         {
@@ -553,6 +556,10 @@ public partial class WorldView : VBoxContainer
         Vector2I? mouse = ForcedMouse ?? (new Rect2(Vector2.Zero, _container.Size).HasPoint(local)
             ? new Vector2I((int)local.X, (int)local.Y)
             : null);
+        CellGeometry liveGeo = _mapLayers.Live.On && mouse != null ? CellGeometry.From(_host) : null;
+        _container.TooltipText = liveGeo != null
+            ? _mapLayers.Live.Hover(liveGeo.Facet, mouse.Value, liveGeo.Project)
+            : "";
 
         try
         {

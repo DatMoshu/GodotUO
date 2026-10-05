@@ -53,7 +53,23 @@ public partial class WorldView
             lp.SetItemTooltip(index, l.Summary);
         }
 
-        lp.IdPressed += id => SetLayer(_mapLayers.All[(int)id].Name, !_mapLayers.All[(int)id].On);
+        lp.AddSeparator();
+        lp.AddCheckItem("Live players", 1000);
+        lp.AddCheckItem("Live mobiles", 1001);
+        lp.SetItemChecked(lp.GetItemIndex(1000), true);
+        lp.SetItemChecked(lp.GetItemIndex(1001), true);
+        lp.IdPressed += id =>
+        {
+            if (id == 1000 || id == 1001)
+            {
+                SetLiveKinds(id == 1000 ? !_mapLayers.Live.Players : _mapLayers.Live.Players,
+                    id == 1001 ? !_mapLayers.Live.Mobiles : _mapLayers.Live.Mobiles);
+            }
+            else
+            {
+                SetLayer(_mapLayers.All[(int)id].Name, !_mapLayers.All[(int)id].On);
+            }
+        };
         // AddCheckItem without an id numbers items by index, which is what IdPressed reports.
 
         _scenePackButton = new Button
@@ -123,6 +139,10 @@ public partial class WorldView
         }
 
         l.On = on;
+        if (l == _mapLayers.Live)
+        {
+            SetLiveMenuCheck("Live", on);
+        }
         PopupMenu lp = _layerMenu?.GetPopup();
         int i = _mapLayers.All.IndexOf(l);
         if (lp != null && i >= 0)
@@ -134,6 +154,34 @@ public partial class WorldView
     }
 
     public bool LayerOn(string name) => _mapLayers.Named(name)?.On ?? false;
+
+    /// <summary>Filters the Live layer's icons, labels and hover details by the bridge's player/mobile kind.</summary>
+    public void SetLiveKinds(bool players, bool mobiles)
+    {
+        _mapLayers.Live.Players = players;
+        _mapLayers.Live.Mobiles = mobiles;
+        SetLiveMenuCheck("Live players", players);
+        SetLiveMenuCheck("Live mobiles", mobiles);
+        PopupMenu lp = _layerMenu?.GetPopup();
+        if (lp != null)
+        {
+            lp.SetItemChecked(lp.GetItemIndex(1000), players);
+            lp.SetItemChecked(lp.GetItemIndex(1001), mobiles);
+        }
+    }
+
+    private void SetLiveMenuCheck(string label, bool on)
+    {
+        PopupMenu menu = _layers?.GetPopup();
+        for (int i = 0; menu != null && i < menu.ItemCount; i++)
+        {
+            if (menu.GetItemText(i) == label)
+            {
+                menu.SetItemChecked(i, on);
+                return;
+            }
+        }
+    }
 
     public System.Collections.Generic.IReadOnlyList<string> LayerNames => _mapLayers.All.Select(l => l.Name).ToList();
 

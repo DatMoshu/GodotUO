@@ -157,7 +157,12 @@ must not grow by the editor.
   `scene.json` in `docs/data_formats.md` section 23). Code:
   `addons/guo_editor/World/Modes/`. Walkability and the route use the client's
   own `Pathfinder` (`CalculateNewZ` / `CanWalk`). F3 has "View: <mode>" and
-  "Layer: <name>". The Live layer needs the bridge to report mobiles (not yet).
+  "Layer: <name>". Live uses the existing Shard dock's `mobiles` snapshots;
+  green player and grey mobile icons follow their reported cell and altitude.
+  Map layers has separate Live players and Live mobiles filters. Hovering an
+  icon shows its name, kind, serial and position; removed mobiles leave no icon.
+  `EditorSmokeLive.cs` checks scripted appear, move and remove replies through
+  a stub bridge, including kind filters and hover, before and after reload.
 - Performance target: the viewer must scroll as fast as the game (it is the
   game's renderer). Editing a block invalidates its `ChunkMesh` only.
 

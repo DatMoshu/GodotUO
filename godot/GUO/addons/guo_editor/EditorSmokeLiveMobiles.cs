@@ -16,6 +16,7 @@ public partial class EditorSmoke
 {
     private void StepLiveMobiles()
     {
+        if (ContinueLiveTraffic()) { return; }
         var layers = _world.Layers;
         layers.Live.On = true;
         _world.Visible = true;
@@ -43,6 +44,7 @@ public partial class EditorSmoke
         }
 
         _live["ok"] = _failures.Count == 0;
+        if (!CheckLiveTraffic()) { return; }
         Finish();
     }
 }
