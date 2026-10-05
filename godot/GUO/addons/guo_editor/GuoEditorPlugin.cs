@@ -2,6 +2,7 @@
 namespace GUO.Editor;
 
 using Godot;
+using System.Linq;
 
 /// <summary>
 /// The GUO editor addon: turns the Godot editor into the UO workbench
@@ -45,6 +46,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
     public static GumpStudio GumpsMain { get; private set; }
     private MultiEditView _multiedit;
     private SearchPopup _search;
+    private Button _collapseBottomPanels;
 
     // Whether the World tab was on screen when an assembly reload began.
     // A bool field survives the reload (Godot serializes it), and the editor
@@ -171,6 +173,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         // tasks, which TearDown cancels.
         _logs = new LogsDock();
         AddDock(_logs);
+        Callable.From(InstallBottomPanelCollapse).CallDeferred();
 
         // The Map Generator (ADR-0030): a main-screen tab (GuoMapGenPlugin owns its button). It runs
         // tools/mapgen as a process and opens what it exports in the World tab.
@@ -357,9 +360,52 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         _world.Visible = true;
     }
 
+    private void InstallBottomPanelCollapse()
+    {
+        if (_data == null || _collapseBottomPanels != null)
+        {
+            return;
+        }
+
+        Node panel = GodotUi.Walk(GodotUi.Base).FirstOrDefault(n => n.GetClass() == "EditorBottomPanel");
+        if (panel == null)
+        {
+            return;
+        }
+
+        // Use the same tab-row discovery as the F3 panel provider. Collapse through
+        // Godot's API so its selection, saved layout and split sizing stay in sync.
+        HBoxContainer tabs = GodotUi.All<HBoxContainer>(panel).FirstOrDefault(box =>
+            box.GetChildren().OfType<Button>().Count(b => b.ToggleMode && b.Text.Length > 0) >= 2);
+        if (tabs == null)
+        {
+            return;
+        }
+
+        _collapseBottomPanels = new Button
+        {
+            Name = "GuoCollapseBottomPanels",
+            Text = "Collapse",
+            TooltipText = "Collapse the bottom panels. Click any panel tab to open it again.",
+            Flat = true,
+        };
+        _collapseBottomPanels.Pressed += HideBottomPanel;
+        tabs.AddChild(_collapseBottomPanels);
+        tabs.MoveChild(_collapseBottomPanels, 0);
+    }
+
     private void TearDown()
     {
         RemoveUoLayout();
+
+        if (_collapseBottomPanels != null)
+        {
+            _collapseBottomPanels.Pressed -= HideBottomPanel;
+            _collapseBottomPanels.GetParent()?.RemoveChild(_collapseBottomPanels);
+            _collapseBottomPanels.QueueFree();
+            _collapseBottomPanels = null;
+        }
+
         // Save recovery before StoreView clears System.Text.Json's process-wide type caches.
         // Serializing after that cache release pins this assembly and prevents hot reload.
         if (_gumps != null)
