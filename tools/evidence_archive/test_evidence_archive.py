@@ -21,7 +21,7 @@ def repo(tmp_path: Path) -> tuple[Path, Path]:
     main = tmp_path / "main"
     main.mkdir()
     git(main, "init", "-q", "-b", "main")
-    git(main, "config", "user.email", "t@example.invalid")
+    git(main, "config", "user.email", "test@example.com")
     git(main, "config", "user.name", "t")
     (main / ".gitignore").write_text("build/\n")
     git(main, "add", ".")
