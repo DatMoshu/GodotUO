@@ -154,19 +154,32 @@ public partial class EditorSmoke
         GD.Print($"[GUO editor] smoke Live layer {name}: {(ok ? "PASS" : "FAIL")}");
     }
 
-    private static JsonObject FixtureMobile(uint serial, string name, int x, int y, int z, bool player, int facet = 0) => new()
+    internal static TcpListener LiveFixtureListener() => new(IPAddress.Loopback, 0);
+
+    internal static JsonObject FixtureMobile(uint serial, string name, int x, int y, int z, bool player, int facet = 0) => new()
     {
         ["serial"] = serial, ["name"] = name, ["x"] = x, ["y"] = y, ["z"] = z,
         ["isPlayer"] = player, ["facet"] = facet, ["body"] = 400,
         ["hits"] = 100, ["maxHits"] = 100, ["notoriety"] = 1,
     };
 
+    internal static JsonObject FixtureSnapshot(int req, params JsonObject[] rows)
+    {
+        var list = new JsonArray();
+        foreach (JsonObject row in rows)
+        {
+            list.Add(row);
+        }
+        return new JsonObject { ["op"] = "mobiles", ["req"] = req, ["ok"] = true,
+            ["facet"] = 0, ["count"] = rows.Length, ["mobiles"] = list };
+    }
+
     private async Task RunLiveLayerAsync()
     {
         MapLayers layers = _world.Layers;
         var source = layers.LiveSource;
         bool on = layers.Live.On, players = layers.Live.Players, mobiles = layers.Live.Mobiles;
-        var listener = new TcpListener(IPAddress.Loopback, 0);
+        var listener = LiveFixtureListener();
         var dock = new ShardDock();
         try
         {
@@ -190,13 +203,7 @@ public partial class EditorSmoke
             await writer.WriteLineAsync(new JsonObject { ["op"] = "hello", ["shard"] = "Smoke live" }.ToJsonString());
             async Task<bool> Snapshot(int req, params JsonObject[] rows)
             {
-                var list = new JsonArray();
-                foreach (JsonObject row in rows)
-                {
-                    list.Add(row);
-                }
-                await writer.WriteLineAsync(new JsonObject { ["op"] = "mobiles", ["req"] = req, ["ok"] = true,
-                    ["facet"] = 0, ["count"] = rows.Length, ["mobiles"] = list }.ToJsonString());
+                await writer.WriteLineAsync(FixtureSnapshot(req, rows).ToJsonString());
                 return await Until(() => (int?)dock.LastMobiles?["req"] == req, 5);
             }
 

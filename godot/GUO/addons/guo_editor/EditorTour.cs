@@ -167,11 +167,11 @@ public partial class EditorTour : Node
             }
         }
 
-        // Whatever home folder is left (the user name is already "user"), and any address but the loopback.
+        // Whatever home folder is left (the user name is already "user"), and every address, including fixtures' loopback.
         t = System.Text.RegularExpressions.Regex.Replace(t, @"[A-Za-z]:/Users/[^/\s)]+", "~");
         t = System.Text.RegularExpressions.Regex.Replace(t, @"(?<![A-Za-z])[A-Za-z]:/(?:ProgramData|Users)/[^/\s)'""]+", "~");
         t = System.Text.RegularExpressions.Regex.Replace(t, @"(?<![A-Za-z])[A-Za-z]:/[^\s)'""]+", "<local path>");
-        t = System.Text.RegularExpressions.Regex.Replace(t, @"(?<![\d.])(?!127\.0\.0\.1(?![\d.]))\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(?![\d])", "host");
+        t = System.Text.RegularExpressions.Regex.Replace(t, @"(?<![\d.])\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(?![\d])", "host");
         return t;
     }
 
@@ -397,6 +397,8 @@ public partial class EditorTour : Node
                 ("assetoverlay", "Asset overlay: replace art, never the install", AssetOverlaySeg),
                 ("export", "Export and verify", ExportSeg),
                 ("shard", "UO Shard dock: live", ShardSeg),
+                ("server_console", "Server console: managed output in Logs", ServerConsoleSeg),
+                ("live_layer", "Live layer: bridge snapshots in the World", LiveLayerSeg),
                 ("outro", "That is the editor", Outro),
             };
             _segTotal = plan.Count;
