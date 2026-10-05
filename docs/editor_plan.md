@@ -463,7 +463,8 @@ UO post-process into the world project's asset overlay, recording provenance. Pi
 (`tools/pixelorama/extension/`: hue palettes, UO templates, size check, Save back to GUO). Pinta is the user's own
 install (`winget install Pinta.Pinta`). The Art dock also queues ComfyUI workflows (progress over its websocket)
 and a Retro Diffusion provider (key from the AI dock's endpoint book named "Retro Diffusion"), gallery, then
-"Import to overlay". The smoke's Art stage runs all of it against stubs and checks the install is untouched.
+"Import to overlay", recording the AI flag, configured model, workflow, seed and input provenance. The smoke's Art
+stage runs all of it against stubs, checks the gallery's import and provenance roundtrip, and checks the install is untouched.
 Not built: hosting Pixelorama as an editor tab; a live hue preview inside Pixelorama; animation frames
 round-trip (templates exist, the overlay has no animation kind yet).
 

@@ -400,6 +400,7 @@ public partial class ArtDock : EditorDock
         var prov = new ArtProvenance
         {
             Tool = _providerUsed?.Id ?? "image-service",
+            AiGenerated = true,
             Model = _lastResult.Model,
             Workflow = _lastResult.Workflow,
             Seed = _lastResult.Seed >= 0 ? _lastResult.Seed : null,

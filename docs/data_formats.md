@@ -1217,7 +1217,10 @@ It is generated from the user's install and is never committed or shipped.
 **Sidecar** `<stem>.json`, stem `<kind>_0x<ID>[_h<hue>]`:
 `{"kind":"land|static|gump","id":int,"hue":int?,"size":[w,h],"stem":str,"provenance":{...}}`.
 
-**Provenance** `{"tool","model"?,"workflow"?,"seed"?,"inputs":[str],"derived_from_client_art":bool}`.
+**Provenance** `{"tool","ai":bool,"model"?,"workflow"?,"seed"?,"inputs":[str],"derived_from_client_art":bool}`.
+`ai` identifies image-service generation; older records infer it for `comfyui` and `retrodiffusion`, otherwise false.
+For ComfyUI, `model` records the distinct configured `ckpt_name` / `unet_name` loader inputs, sorted and comma separated;
+it is omitted when the workflow has no such loader. `workflow` is the API JSON filename and `seed` the queued seed.
 `inputs` entries read `client:<kind>:0x<ID>` (the install's art) or `overlay:<kind>:0x<ID>`. The overlay keeps
 one record per replaced image in `<project>/assets/provenance.json`:
 `{"format":1,"entries":{"assets/art/statics/0x0E75.png":{...provenance..., "imported":"UTC time"}}}`.

@@ -9,13 +9,14 @@ using System.Text.Json.Nodes;
 
 /// <summary>
 /// Where an imported image came from (ADR-0029, docs/data_formats.md section 11):
-/// <c>{tool, model?, workflow?, seed?, inputs, derived_from_client_art}</c>.
+/// <c>{tool, ai, model?, workflow?, seed?, inputs, derived_from_client_art}</c>.
 /// <see cref="DerivedFromClientArt"/> is true when any input was the client's own art;
 /// such an image stays local and the store's content policy refuses it.
 /// </summary>
 public sealed class ArtProvenance
 {
     public string Tool = "";
+    public bool AiGenerated;
     public string Model;
     public string Workflow;
     public long? Seed;
@@ -24,7 +25,7 @@ public sealed class ArtProvenance
 
     public JsonObject ToJson()
     {
-        var o = new JsonObject { ["tool"] = Tool };
+        var o = new JsonObject { ["tool"] = Tool, ["ai"] = AiGenerated };
         if (!string.IsNullOrEmpty(Model))
         {
             o["model"] = Model;
@@ -61,6 +62,8 @@ public sealed class ArtProvenance
             Seed = n?["seed"] is JsonNode s ? (long?)s : null,
             DerivedFromClientArt = n?["derived_from_client_art"] is JsonNode d && (bool)d,
         };
+        // Older records predate the explicit flag; these two tools generate images.
+        p.AiGenerated = n?["ai"] is JsonNode ai ? (bool)ai : p.Tool is "comfyui" or "retrodiffusion";
         if (n?["inputs"] is JsonArray a)
         {
             p.Inputs = a.Select(x => (string)x ?? "").ToList();
