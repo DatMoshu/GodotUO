@@ -310,6 +310,14 @@ line, UTF-8, `\n`-terminated. ADR-0012 has the reasoning.
 | `multi_ack` | `action`, `tag`, `ok`; on a place `serial`, `at` `[x, y, z]`, `components`, `doors`, `replaced`; on a remove `removed`; or `error` |
 | `error` | `error` |
 
+The World tab's Live layer reads these snapshots through the existing Shard
+dock connection. A successful `mobiles` reply replaces the visible snapshot:
+positions move with the next reply, and omitted serials disappear. The Map
+layers menu can hide players or mobiles independently. Icons use `x`, `y`,
+`z` and `facet`; their hover shows `name`, the kind, the hexadecimal `serial`
+and the position. These filters affect only the editor view, not the bridge
+request or any game state.
+
 **Bridge to game client** (UltimaLive, as `src/Game/UltimaLive.cs` reads it)
 
 - At login, after the login packets: `0x3F/0x02` (shard name), `0x3F/0x01`

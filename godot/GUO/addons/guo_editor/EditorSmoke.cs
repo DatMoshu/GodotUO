@@ -280,7 +280,7 @@ public partial class EditorSmoke : Node
             case 60:
                 // The AI hub (ADR-0028): ACP, Ollama and queue, against stubs.
                 // One after the other: both are async stages that wait on the scene tree's timers.
-                if (StepAi() && StepStore() && StepLogs())
+                if (StepAi() && StepStore() && StepLogs() && StepLiveLayer())
                 {
                     _stage = 61;
                     _frames = 0;
