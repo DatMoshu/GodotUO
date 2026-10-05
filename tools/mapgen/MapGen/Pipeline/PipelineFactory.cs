@@ -196,9 +196,13 @@ public static class PipelineFactory
             }
             w.WriteEndObject();
 
+            // A default-off pass that stays off but carries parameter diffs is listed here
+            // too: MapGenPreset.ApplyTo opts a pass in when "passes" names it, so without
+            // the entry a re-load would switch it on (export's hash check then refuses).
             w.WriteStartArray("disable_passes");
             foreach (var step in steps)
-                if (!step.Enabled && step.DefaultEnabled && step.Pass.Name != ImageImportPassName)
+                if (!step.Enabled && step.Pass.Name != ImageImportPassName
+                    && (step.DefaultEnabled || DiffParameters(step).Count > 0))
                     w.WriteStringValue(step.Pass.Name);
             w.WriteEndArray();
             w.WriteEndObject();

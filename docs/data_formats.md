@@ -1288,11 +1288,13 @@ Folder:
 | File | Content |
 |---|---|
 | `run.json` | `"schema": "guo.mapgen.run/1"`, `generator`, `preset`, `seed`, `width`, `height`, `fast`, `sets`, `disable`, `enable`, `brushes` (the `--brushes` choice; `export` uses it), `brush_table` (`guo`, `dragon` or empty: what loaded), `hash`, `elapsed_ms`, `statics`, `stats`, `files`, `passes[]` (`index, name, enabled, ms, warnings`), `warnings`, `radar_colours` |
-| `preset.json` | The effective preset (a normal `.preset.json`): every `--set`, toggle and `--fast` choice folded in. `export` regenerates from it |
+| `preset.json` | The effective preset (a normal `.preset.json`): every `--set`, toggle and `--fast` choice folded in. A default-off pass that stays off but has tuned parameters is listed in `disable_passes`, because listing a pass under `passes` opts it in. `export` regenerates from it; `--preset` accepts this file too (its id is `preset`) |
 | `radar.png` | Client radar colours from `radarcol.mul`: the top static where there is one, else the land. Falls back to biome colours without client data |
 | `biome.png`, `height.png` | Biome classes; heights (grey above 0, blue below) |
 | `steps/NN-pass-name.png` | With `--step-previews`: the map after each enabled pass (radar once land ids exist, biome or height before) |
 | `map.bin` | Analyzer dump: int32 width, int32 height; per cell, row-major, uint16 land id, int8 z, uint8 biome; int32 count; per static uint16 x, uint16 y, int8 z, uint16 id |
+
+The Map Validator's `BiomeProfile` sets which land-biome mix the `BiomeDistribution` check expects: `felucca` (the default: grass 5–85%, forest ≤ 70%, desert ≤ 60%, mountain ≤ 40%, no biome over 92%), `desert` (desert ≥ 50%, grass ≤ 10%, forest ≤ 5%, mountain ≤ 40%), `ice` (snow ≥ 30%, grass and forest ≤ 10%, mountain ≤ 40%) or `none` (histogram only). Out-of-band shares are warnings; one biome over the cap is an error; an unknown name is an error. The other checks do not depend on the profile.
 
 `hash` is SHA-256 over `"guo-mapgen-1"`, width and height (uint16), the land ids, the heights and every
 static op (kind, x, y, z, id, hue) in pipeline order. The same preset, seed, size, options and

@@ -249,6 +249,23 @@ public class PipelineFactoryTests
     }
 
     [Fact]
+    public void ExportPreset_KeepsDefaultOffPassWithDiffsOff()
+    {
+        // A preset tuned POI Stamps but the run left it off: the saved preset must not
+        // switch it on again when export re-loads it (the run/export hash mismatch).
+        var steps = DefaultPipeline.Build();
+        var poi = steps.Single(s => s.Pass.Name == "POI Stamps");
+        Assert.False(poi.Enabled);
+        var p = poi.Parameters;
+        var prop = p.GetType().GetProperties().First(x => x.CanWrite && x.PropertyType == typeof(int));
+        prop.SetValue(p, (int)prop.GetValue(p)! + 1);
+
+        var preset = PresetFromJson(PipelineFactory.ExportPreset(steps, "off with diffs", null, null));
+        Assert.Contains("POI Stamps", preset.DisablePasses);
+        AssertSameSteps(steps, PipelineFactory.BuildSteps(new PipelineOptions { Preset = preset }));
+    }
+
+    [Fact]
     public void ExportPreset_DefaultPipeline_ListsOnlyGatedDiffs()
     {
         var steps = DefaultPipeline.Build();

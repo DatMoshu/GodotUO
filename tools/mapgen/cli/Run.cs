@@ -30,7 +30,7 @@ public static class RunCommand
             throw new CliError($"map size {width}x{height}: each side must be 64..{MaxWidth}x{MaxHeight}");
 
         var (preset, presetPath) = Presets.Load(a.Get("preset"));
-        string presetId = Path.GetFileName(presetPath)[..^".preset.json".Length];
+        string presetId = Presets.IdOf(presetPath);
         long seed = a.Long("seed") ?? preset.Seed ?? 1234567;
         var settings = new RunSettings(presetId, seed, width, height, a.Flag("fast"),
             a.All("set").ToList(), a.All("disable").ToList(), a.All("enable").ToList(), a.Get("brushes"));
