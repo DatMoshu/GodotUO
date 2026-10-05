@@ -20,6 +20,16 @@ public static class Presets
         if (!File.Exists(path)) throw new CliError($"preset not found: {name}");
         return (MapGenPreset.Load(path), path);
     }
+
+    /// <summary>A preset's id from its file name: "x.preset.json" -> "x", and any other file
+    /// (a run's saved "preset.json", "mine.json") -> the name without ".json".</summary>
+    public static string IdOf(string path)
+    {
+        var file = Path.GetFileName(path);
+        if (file.EndsWith(".preset.json", StringComparison.OrdinalIgnoreCase) && file.Length > ".preset.json".Length)
+            return file[..^".preset.json".Length];
+        return Path.GetFileNameWithoutExtension(file);
+    }
 }
 
 /// <summary>
@@ -58,7 +68,7 @@ public static class SchemaCommand
             ["schema"] = "guo.mapgen.schema/1",
             ["preset"] = new Dictionary<string, object?>
             {
-                ["id"] = Path.GetFileName(presetPath)[..^".preset.json".Length],
+                ["id"] = Presets.IdOf(presetPath),
                 ["name"] = preset.Name,
                 ["description"] = preset.Description,
                 ["seed"] = preset.Seed,

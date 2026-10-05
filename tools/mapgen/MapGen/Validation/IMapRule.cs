@@ -24,4 +24,5 @@ public sealed class RuleContext
     public int EdgeBandWidth { get; init; } = 8;
     public int ZStepHardLimit { get; init; } = 16;
     public int ZStepWarnThreshold { get; init; } = 4;
+    public string BiomeProfile { get; init; } = "felucca";
 }

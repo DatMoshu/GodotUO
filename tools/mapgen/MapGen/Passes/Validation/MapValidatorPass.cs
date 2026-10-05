@@ -26,6 +26,9 @@ public sealed class MapValidatorParams
     [TunableDisplay("Z-step warn threshold")] [TunableRange(1, 32)]
     public int ZStepWarnThreshold { get; set; } = 4;
 
+    [TunableDisplay("Biome profile", Tooltip = "Which land-biome mix BiomeDistribution expects: felucca (default), desert, ice, or none (histogram only). Pick the planet's profile instead of turning validation off.")]
+    public string BiomeProfile { get; set; } = "felucca";
+
     [TunableDisplay("Auto-fix")]
     public bool AutoFix { get; set; } = true;
 
@@ -76,6 +79,7 @@ public sealed class MapValidatorPass : IGenerationPass
             EdgeBandWidth = p.EdgeBandWidth,
             ZStepHardLimit = p.ZStepHardLimit,
             ZStepWarnThreshold = p.ZStepWarnThreshold,
+            BiomeProfile = p.BiomeProfile,
         };
 
         var allFindings = new List<ValidationResult>();
