@@ -54,7 +54,7 @@ public sealed class OverlayAnimationClip
 
 public sealed partial class AssetOverlay
 {
-    private static string ValidateAnimation(int body, OverlayAnimationClip clip)
+    public static string ValidateAnimation(int body, OverlayAnimationClip clip)
     {
         if (body < 0 || body >= 0x1000 || clip == null || clip.Action < 0 || clip.Action >= AnimationsLoader.MAX_ACTIONS
             || clip.Direction < 0 || clip.Direction > 7)

@@ -271,6 +271,7 @@ public partial class EditorSmoke
         ArtCheck("animation_foot_alignment", preview.All(f => f.GetSize() == new Vector2I(6, 6))
             && preview[0].GetPixel(2, 1) == loaded.Frames[0].GetPixel(1, 1)
             && preview[1].GetPixel(1, 1) == loaded.Frames[1].GetPixel(1, 1));
+        ArtAnimationExchangeSync(assets, body, loaded);
         ArtCheck("animation_missing_direction_fallback", assets.LoadAnimation(body, 0, 2, out why) == null && why == null);
         source.Direction = 7;
         ArtCheck("animation_second_direction", assets.ImportAnimation(body, source) == null
@@ -326,6 +327,58 @@ public partial class EditorSmoke
         panel?.Search("0x0190");
         ArtCheck("animation_panel_reverts_to_client", _inspector.Current?.Frames.Length > 2
             && !_inspector.Current.Text.Contains("editor overlay"));
+    }
+
+    private void ArtAnimationExchangeSync(AssetOverlay assets, int body, OverlayAnimationClip clip)
+    {
+        string png = ArtExchange.ExportAnimation(_data, body, clip);
+        string json = Path.ChangeExtension(png, ".json");
+        ArtSidecar side = ArtSidecar.FromJson(JsonNode.Parse(File.ReadAllText(json)));
+        _artReport["animation_exchange_sidecar"] = side.ToJson().ToJsonString();
+        ArtCheck("animation_exchange_export", File.Exists(png) && side.Kind == "animation" && side.Animation["frames"].AsArray().Count == 2
+            && (int)side.Animation["action"] == 0 && (int)side.Animation["direction"] == 1 && (double)side.Animation["fps"] == 12);
+        ArtCheck("animation_exchange_original_provenance", !side.Provenance.DerivedFromClientArt && side.Provenance.Inputs[0].StartsWith("overlay:animation:"));
+        Image edited = Image.LoadFromFile(png);
+        JsonArray rect = side.Animation["frames"][0]["rect"].AsArray();
+        edited.SetPixel((int)rect[0] + 1, (int)rect[1] + 1, Colors.Green);
+        side.Provenance.Tool = "pixelorama";
+        string incoming = Path.Combine(ArtExchange.Sub("in"), Path.GetFileName(png));
+        File.WriteAllText(Path.ChangeExtension(incoming, ".json"), side.ToJson().ToJsonString());
+        edited.SavePng(incoming);
+        var outcomes = ArtExchange.Poll(_data);
+        ArtCheck("animation_exchange_watcher", outcomes.Any(o => o.Stem == side.Stem && o.Imported));
+        OverlayAnimationClip saved = assets.LoadAnimation(body, clip.Action, clip.Direction, out _);
+        ArtCheck("animation_exchange_centres_order_fps", saved != null && saved.Fps == clip.Fps
+            && saved.Centers.SequenceEqual(clip.Centers) && saved.Frames[1].GetData().SequenceEqual(clip.Frames[1].GetData()));
+        ArtCheck("animation_exchange_pixels", saved?.Frames[0].GetPixel(1, 1) == Colors.Green);
+        ArtProvenance p = new AssetProvenance(assets).Get(assets.RelativePathOf(AssetKind.Animation, body));
+        ArtCheck("animation_exchange_provenance", p?.Tool == "pixelorama" && !p.DerivedFromClientArt);
+        side.Animation["frames"][0]["rect"][2] = 9999;
+        string bad = Path.Combine(ArtExchange.Sub("in"), "animation_bad_rect.png");
+        File.WriteAllText(Path.ChangeExtension(bad, ".json"), side.ToJson().ToJsonString());
+        edited.SavePng(bad);
+        ArtCheck("animation_exchange_bad_rect_refused", ArtExchange.Poll(_data).Any(o => o.Stem == "animation_bad_rect" && !o.Imported));
+        side = ArtSidecar.FromJson(JsonNode.Parse(File.ReadAllText(json)));
+        edited.SetPixel(0, 5, Colors.White);
+        bad = Path.Combine(ArtExchange.Sub("in"), "animation_bad_padding.png");
+        File.WriteAllText(Path.ChangeExtension(bad, ".json"), side.ToJson().ToJsonString());
+        edited.SavePng(bad);
+        ArtCheck("animation_exchange_padding_refused", ArtExchange.Poll(_data).Any(o => o.Stem == "animation_bad_padding" && !o.Imported));
+        string native = System.Environment.GetEnvironmentVariable("GUO_PIXELORAMA_ANIMATION_SAVE");
+        if (!string.IsNullOrEmpty(native))
+        {
+            string target = Path.Combine(ArtExchange.Sub("in"), Path.GetFileName(native));
+            File.Copy(Path.ChangeExtension(native, ".json"), Path.ChangeExtension(target, ".json"), true);
+            File.Copy(native, target, true);
+            var real = ArtExchange.Poll(_data);
+            ArtCheck("native_pixelorama_animation_watcher", real.Any(o => o.Stem == Path.GetFileNameWithoutExtension(native) && o.Imported));
+            OverlayAnimationClip read = assets.LoadAnimation(body, clip.Action, clip.Direction, out _);
+            ArtCheck("native_pixelorama_animation_frames", read != null && read.Frames.Length == 2 && read.Fps == clip.Fps
+                && read.Centers.SequenceEqual(clip.Centers) && read.Frames[0].GetPixel(1, 1) == Colors.Green
+                && read.Frames[1].GetData().SequenceEqual(clip.Frames[1].GetData()));
+            ArtCheck("native_pixelorama_animation_provenance", new AssetProvenance(assets)
+                .Get(assets.RelativePathOf(AssetKind.Animation, body))?.Tool == "pixelorama");
+        }
     }
 
     private static byte HuesHelperChannel(int v8)

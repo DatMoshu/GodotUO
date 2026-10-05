@@ -31,6 +31,7 @@ func _enter_tree() -> void:
 	_add("GUO: new static (foot line)", _new_static)
 	_add("GUO: new gump", _new_gump)
 	_add("GUO: new animation frame (centre)", _new_anim)
+	_add("GUO: import animation sheet to timeline", import_animation_sheet)
 	_add("GUO: check size and transparency", _check_current)
 	_add("GUO: save back to GUO", _save_back)
 	_load_sidecar()
@@ -115,7 +116,8 @@ func _make_palette(palette_name: String, entries: Array, width: int) -> void:
 
 func _new_project(title: String, size: Vector2i, kind: String) -> void:
 	_kind = kind
-	var proj = _api.project.new_project([], title, Vector2(size), Color.TRANSPARENT)
+	var timeline_frames: Array[Frame] = []
+	var proj = _api.project.new_project(timeline_frames, title, Vector2(size), Color.TRANSPARENT)
 	_api.project.current_project = proj
 
 
@@ -174,10 +176,10 @@ func _new_anim() -> void:
 # --- checks and save back -------------------------------------------------------
 
 ## The visible drawing layers of the current frame, flattened. Layers named "guide" are left out.
-func flatten() -> Image:
+func flatten(frame_index := -1) -> Image:
 	var proj = _api.project.current_project
 	var out := Image.create(proj.size.x, proj.size.y, false, Image.FORMAT_RGBA8)
-	var frame = proj.frames[proj.current_frame]
+	var frame = proj.frames[proj.current_frame if frame_index < 0 else frame_index]
 	for i in proj.layers.size():
 		var layer = proj.layers[i]
 		if not layer.visible or layer.name.to_lower().begins_with("guide"):
@@ -202,6 +204,10 @@ func _kind_or_guess(img: Image) -> String:
 
 
 func _check_current() -> void:
+	if _kind == "animation":
+		var checked := animation_sheet()
+		_say(str(checked.get("error", "OK for the GUO animation roundtrip.")))
+		return
 	var img := flatten()
 	var kind := _kind_or_guess(img)
 	var found := UoCheck.problems(img, kind)
@@ -216,8 +222,17 @@ func _save_back() -> void:
 	if dir.is_empty() or _sidecar.is_empty():
 		_say("Not opened from GUO. Use 'Edit in Pixelorama' on an asset in the GUO editor; it sets the folder and the asset this saves back to.")
 		return
-	var img := flatten()
-	var found := UoCheck.problems(img, _kind_or_guess(img))
+	var img: Image
+	var found := PackedStringArray()
+	if _kind == "animation":
+		var assembled := animation_sheet()
+		if assembled.has("error"):
+			_say("Not saved: " + str(assembled["error"]))
+			return
+		img = assembled["image"]
+	else:
+		img = flatten()
+		found = UoCheck.problems(img, _kind_or_guess(img))
 	# Size problems stop the save; transparency notes do not (GUO's import applies the key itself).
 	for p in found:
 		if "is at most" in p or "is 44x44" in p or "fully transparent" in p:
@@ -228,6 +243,20 @@ func _save_back() -> void:
 	DirAccess.make_dir_recursive_absolute(inbox)
 	var side := _sidecar.duplicate(true)
 	side["size"] = [img.get_width(), img.get_height()]
+	if _kind == "animation":
+		# Godot parses JSON numbers as floats; GUO's integer metadata stays integer on save.
+		side["id"] = int(side["id"])
+		var meta: Dictionary = side["animation"]
+		meta["action"] = int(meta["action"])
+		meta["direction"] = int(meta["direction"])
+		meta["columns"] = int(meta["columns"])
+		meta["cell_size"] = [int(meta["cell_size"][0]), int(meta["cell_size"][1])]
+		for frame: Dictionary in meta["frames"]:
+			var rect: Array = frame["rect"]
+			frame["rect"] = [int(rect[0]), int(rect[1]), int(rect[2]), int(rect[3])]
+			var center: Array = frame["center"]
+			frame["center"] = [int(center[0]), int(center[1])]
+		meta["fps"] = _api.project.current_project.fps
 	var prov: Dictionary = side.get("provenance", {})
 	prov["tool"] = "pixelorama"
 	prov["workflow"] = "GUOTools save back"
@@ -238,3 +267,55 @@ func _save_back() -> void:
 	jf.close()
 	img.save_png(inbox.path_join(stem + ".png"))
 	_say("Saved back to GUO: %s.png" % stem)
+
+
+## Explicit menu action: the opened grid becomes real timeline frames without changing its metadata.
+func import_animation_sheet() -> bool:
+	if _kind != "animation" or not _sidecar.has("animation"):
+		_say("Open an animation sheet from GUO first.")
+		return false
+	var path := OS.get_environment("GUO_ART_SIDECAR").get_basename() + ".png"
+	var img := Image.load_from_file(path)
+	var problem := UoCheck.animation_sheet_problem(img, _sidecar)
+	if not problem.is_empty():
+		_say(problem)
+		return false
+	var meta: Dictionary = _sidecar["animation"]
+	var cell: Array = meta["cell_size"]
+	var columns := int(meta["columns"])
+	var frames: Array = meta["frames"]
+	var timeline_frames: Array[Frame] = []
+	var proj = _api.project.new_project(timeline_frames, str(_sidecar["stem"]), Vector2(cell[0], cell[1]), Color.TRANSPARENT)
+	_api.project.current_project = proj
+	proj.fps = float(meta["fps"])
+	for i in frames.size():
+		if i > 0:
+			_api.project.add_new_frame(i - 1)
+		var region := Rect2i(i % columns * int(cell[0]), i / columns * int(cell[1]), int(cell[0]), int(cell[1]))
+		_api.project.set_pixelcel_image(img.get_region(region), i, 0)
+		proj.frames[i].user_data = "guo_frame:" + str(i)
+	return true
+
+
+## Flatten every timeline frame, retaining order, foot-aligned cells, rectangles and centres.
+func animation_sheet() -> Dictionary:
+	var meta: Dictionary = _sidecar.get("animation", {})
+	var frames: Array = meta.get("frames", [])
+	var cell: Array = meta.get("cell_size", [])
+	var proj = _api.project.current_project
+	if cell.size() != 2 or frames.is_empty() or proj.frames.size() != frames.size():
+		return {"error": "keep the original animation frame count"}
+	if proj.size != Vector2i(cell[0], cell[1]) or proj.fps < 1 or proj.fps > 60:
+		return {"error": "keep the original cell size and use 1..60 FPS"}
+	var columns := int(meta["columns"])
+	if columns < 1 or columns > frames.size():
+		return {"error": "invalid animation column count"}
+	var rows := int(ceil(float(frames.size()) / columns))
+	var img := Image.create(int(cell[0]) * columns, int(cell[1]) * rows, false, Image.FORMAT_RGBA8)
+	for i in frames.size():
+		if proj.frames[i].user_data != "guo_frame:" + str(i):
+			return {"error": "keep the original animation frame order"}
+		var frame := flatten(i)
+		img.blit_rect(frame, Rect2i(Vector2i.ZERO, frame.get_size()), Vector2i(i % columns * int(cell[0]), i / columns * int(cell[1])))
+	var checked := UoCheck.animation_sheet_problem(img, _sidecar)
+	return {"image": img} if checked.is_empty() else {"error": checked}

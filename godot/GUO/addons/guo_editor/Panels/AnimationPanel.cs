@@ -102,7 +102,7 @@ public partial class AnimationPanel : GridPanel
             sb.Append($"hue    {hue} (from body conversion)\n");
         }
 
-        return new Inspection
+        var inspection = new Inspection
         {
             Source = "Animations",
             Id = $"0x{id:X4}",
@@ -110,6 +110,40 @@ public partial class AnimationPanel : GridPanel
             Fps = fps,
             Text = sb.ToString(),
         };
+        inspection.Actions.Add(("Edit in Pixelorama", () =>
+        {
+            try
+            {
+                OverlayAnimationClip clip = ExchangeClip(id, action, dir);
+                string png = ArtExchange.ExportAnimation(Data, id, clip);
+                string why = ExternalTools.OpenPixelorama(png);
+                if (why != null) GD.PrintErr($"[GUO editor] {why}");
+            }
+            catch (Exception ex) { GD.PrintErr($"[GUO editor] animation export: {ex.Message}"); }
+        }));
+        return inspection;
+    }
+
+    private OverlayAnimationClip ExchangeClip(int body, byte action, byte dir)
+    {
+        if (Data.Assets?.LoadAnimation(body, action, dir, out _) is OverlayAnimationClip overlay) return overlay;
+        bool mirror = false;
+        byte stored = dir;
+        Data.Animations.GetAnimDirection(ref stored, ref mirror);
+        var sprites = Data.Animations.GetAnimationFrames((ushort)body, action, stored, out _, out _);
+        var frames = new List<Image>();
+        var centers = new List<Vector2I>();
+        foreach (SpriteInfo sprite in sprites)
+        {
+            Image image = ReadFrame(sprite);
+            if (image == null) image = Image.CreateEmpty(1, 1, false, Image.Format.Rgba8);
+            else if (mirror) image.FlipX();
+            frames.Add(image);
+            centers.Add(new Vector2I(mirror ? image.GetWidth() - sprite.Center.X : sprite.Center.X, sprite.Center.Y));
+        }
+
+        return new OverlayAnimationClip { Action = action, Direction = dir, Fps = 8,
+            Frames = frames.ToArray(), Centers = centers.ToArray() };
     }
 
     /// <summary>One action in one of the eight directions, as composited frames.</summary>

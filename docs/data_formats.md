@@ -1233,14 +1233,23 @@ It is generated from the user's install and is never committed or shipped.
 
 **Sidecar** `<stem>.json`, stem `<kind>_0x<ID>[_h<hue>]`:
 `{"kind":"land|static|gump","id":int,"hue":int?,"size":[w,h],"stem":str,"provenance":{...}}`.
-Animation manifests currently use the overlay format in section 11; their exchange-sheet roundtrip is a subsequent step.
+For `kind:"animation"`, stem `animation_0x<ID>_a<ACTION>_d<DIR>`, the sidecar also has
+`"animation":{"action":int,"direction":int,"fps":number,"columns":int,"cell_size":[w,h],"frames":[{"rect":[x,y,w,h],"center":[x,y]}]}`.
+The PNG is a grid of common foot-aligned canvases: row-major cells, exactly `columns * cell_width` by
+`ceil(frame_count / columns) * cell_height`. Each frame's `rect` is inside its cell, locating its original untrimmed
+image; `center` is unchanged from section 11. At most 256 frames, 16384 per sheet dimension and 33,554,432 sheet pixels.
+Pixelorama's GUO import menu turns the cells into timeline frames at the recorded FPS; its save-back writes a grid PNG
+and the preserved sidecar, JSON first. Frame count, order, cell size and original frame rectangles stay fixed in this roundtrip;
+edits must stay inside each frame's rectangle (transparent padding is allowed). Centres and action/direction survive unchanged.
+The watcher crops those rectangles and imports the clip through section 11, preserving the foot and provenance.
 
 **Provenance** `{"tool","ai":bool,"model"?,"workflow"?,"seed"?,"inputs":[str],"derived_from_client_art":bool}`.
 `ai` identifies image-service generation; older records infer it for `comfyui` and `retrodiffusion`, otherwise false.
 For ComfyUI, `model` records the distinct configured `ckpt_name` / `unet_name` loader inputs, sorted and comma separated;
 it is omitted when the workflow has no such loader. `workflow` is the API JSON filename and `seed` the queued seed.
-`inputs` entries read `client:<kind>:0x<ID>` (the install's art) or `overlay:<kind>:0x<ID>`. The overlay keeps
-one record per replaced image in `<project>/assets/provenance.json`:
+`inputs` entries read `client:<kind>:0x<ID>` (the install's art) or `overlay:<kind>:0x<ID>`.
+Animation input identities append `:a<ACTION>:d<DIR>` to identify the clip.
+The overlay keeps one record per replaced image in `<project>/assets/provenance.json`:
 `{"format":1,"entries":{"assets/art/statics/0x0E75.png":{...provenance..., "imported":"UTC time"}}}`.
 `derived_from_client_art` is true when any input was client art, and for a PNG of unknown origin (the
 inspector's "Import PNG..." records `tool: "import-png"` as derived). Such images stay local: a pack
