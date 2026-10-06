@@ -93,6 +93,18 @@ class HookTests(unittest.TestCase):
         updates = self.updates(clean) + f"refs/heads/other {bad} refs/heads/other {'0' * 40}\n"
         self.assertEqual(check(self.root, updates), 1)
 
+    def test_intermediate_commit_with_program_or_machine_path_is_blocked(self):
+        # A clean tip does not excuse an earlier pushed commit: GitHub publishes them all.
+        base = git(self.root, "rev-parse", "HEAD")
+        (self.root / "leak.dll").write_bytes(b"MZ junk C:" + bytes([92]) + b"Users" + bytes([92]) + b"someone")
+        self.commit()
+        git(self.root, "rm", "--quiet", "leak.dll")
+        git(self.root, "commit", "--quiet", "-m", "remove")
+        clean_tip = git(self.root, "rev-parse", "HEAD")
+        self.assertEqual(check(self.root, f"refs/heads/test {clean_tip} refs/heads/test {base}\n"), 1)
+        # The same push without the leaking commits passes.
+        self.assertEqual(check(self.root, f"refs/heads/test {base} refs/heads/test {'0' * 40}\n"), 0)
+
 
 if __name__ == "__main__":
     unittest.main()

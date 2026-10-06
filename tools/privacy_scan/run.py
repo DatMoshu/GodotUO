@@ -44,8 +44,36 @@ BUILTIN = [
 # Never scanned: upstream's own tree, binary assets, and the scan's own lists.
 SKIP_PREFIXES = ("sources/", "tools/privacy_scan/")
 SKIP_SUFFIXES = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".icns", ".ogv", ".ogg",
-                 ".wav", ".mp3", ".mp4", ".ttf", ".otf", ".woff", ".woff2", ".zip", ".pdf",
-                 ".dll", ".exe", ".so", ".psd", ".blend", ".glb")
+                 ".wav", ".mp3", ".mp4", ".ttf", ".otf", ".woff", ".woff2", ".psd", ".blend", ".glb")
+
+# Compiled programs are never tracked (.gitignore says so): a release build embeds the
+# builder's home folder. gdcef.dll reached GitHub this way on 2026-10-05.
+BINARY_PROGRAM_SUFFIXES = (".dll", ".exe", ".so", ".dylib", ".pdb", ".lib", ".a", ".node", ".pyd")
+
+# Byte patterns for files that are not UTF-8 text: a Windows home folder as ASCII and as
+# UTF-16LE (how Windows programs store paths), and the local deny list in both encodings.
+BINARY_HOME = [re.compile(rb"[A-Za-z]:[\\/]+Users[\\/]+(?!Public\b)[A-Za-z0-9._-]+"),
+               re.compile(rb"[A-Za-z]\x00:\x00(?:[\\/]\x00)+U\x00s\x00e\x00r\x00s\x00(?:[\\/]\x00)+(?:[A-Za-z0-9._-]\x00){2,}")]
+
+
+def utf16(value: str) -> bytes:
+    return value.encode("utf-16-le")
+
+
+def scan_bytes(rel: str, data: bytes, deny: list[str]) -> list[str]:
+    """Hits inside a binary file: home folders and deny-list values, ASCII or UTF-16LE."""
+    out = []
+    for rx in BINARY_HOME:
+        m = rx.search(data)
+        if m:
+            out.append(f"{rel}: home folder in binary: {m.group(0)[:60]!r}")
+            break
+    low = data.lower()
+    for value in deny:
+        v = value.lower()
+        if v.encode("utf-8") in low or utf16(v) in low:
+            out.append(f"{rel}: local deny list in binary: {value}")
+    return out
 
 
 def read_list(path: Path) -> list[str]:
@@ -76,14 +104,21 @@ def main(argv: list[str] | None = None) -> int:
         rules.append(("local deny list", re.compile(re.escape(value), re.IGNORECASE)))
     allow = [re.compile(rx) for rx in read_list(HERE / "allow.txt")]
 
+    deny = read_list(HERE / "deny.local.txt")
     hits = []
     for rel in tracked_files(args.staged):
         if rel.startswith(SKIP_PREFIXES) or rel.lower().endswith(SKIP_SUFFIXES):
             continue
         path = ROOT / rel
+        if rel.lower().endswith(BINARY_PROGRAM_SUFFIXES):
+            hits.append(f"{rel}: compiled program tracked; build it locally or fetch it (see .gitignore)")
+            continue
         try:
             text = path.read_text(encoding="utf-8")
-        except (UnicodeDecodeError, FileNotFoundError, IsADirectoryError):
+        except (FileNotFoundError, IsADirectoryError):
+            continue
+        except UnicodeDecodeError:
+            hits.extend(scan_bytes(rel, path.read_bytes(), deny))
             continue
         for n, line in enumerate(text.splitlines(), 1):
             for name, rx in rules:
