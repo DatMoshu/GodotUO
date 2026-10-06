@@ -49,7 +49,7 @@ See `docs/data_formats.md` for the full schema and step kind reference.
 | Kind | Purpose | Input | Expectation | Notes |
 |---|---|---|---|---|
 | `launch` | Start the client, editor, or shard | args: launch flags | process alive | AI only |
-| `wait` | Pause the scenario | duration_s | elapsed time | Human: Space to advance |
+| `wait` | Pause the scenario | seconds | elapsed time | Human: Space to advance |
 | `shot` | Capture a still image | none | frame saved | Records one PNG per step |
 | `note` | Log a narrative comment | text | text in events.jsonl | No verification |
 | `ui.click` | Click a gump control | control: path | ui.exists, ui.text, etc. | Uses guo_ui MCP |
@@ -169,7 +169,7 @@ ffmpeg -f ddagrab -drawbox 0 -offset_x 0 -offset_y 0 -video_size 2560x1440 -fram
 
 **If H: is not mounted:**
 - Master stays in `build/runs/<run_id>/run.mp4` locally
-- `runs.db` row marks `video_pending = true`
+- `runs.db` row has a NULL `video_path` (video pending)
 - A `run.py sync` command moves the video to H: when Drive is next available
 
 **Retention:**
@@ -217,9 +217,9 @@ SQLite database tracking all runs across all projects.
 | project | TEXT | "guo" (for GUO runs) |
 | scenario | TEXT | Scenario ID (e.g., "client.login.basic") |
 | driver | TEXT | "ai" or "human" |
-| commit | TEXT | Git short SHA of the build |
-| started_utc | TEXT | ISO-8601 timestamp |
-| ended_utc | TEXT | ISO-8601 timestamp |
+| commit_hash | TEXT | Git short SHA of the build |
+| started | TEXT | ISO-8601 timestamp |
+| ended | TEXT | ISO-8601 timestamp |
 | ok | INTEGER | 1 if all steps passed, 0 if any failed, NULL if incomplete |
 | steps_total | INTEGER | Total steps in scenario |
 | steps_failed | INTEGER | Number of failed steps |
@@ -230,12 +230,12 @@ SQLite database tracking all runs across all projects.
 | Column | Type | Purpose |
 |---|---|---|
 | run_id | TEXT | Foreign key to `runs` |
-| step_id | TEXT | Step identifier from scenario |
-| order_n | INTEGER | Step sequence number |
+| step | TEXT | Step identifier from scenario |
+| seq | INTEGER | Step sequence number |
 | ok | INTEGER | 1 if passed, 0 if failed |
 | dur_ms | INTEGER | Duration in milliseconds |
-| frame_start | INTEGER | Frame index when step began |
-| frame_end | INTEGER | Frame index when step ended |
+| kind | TEXT | Step kind |
+| skipped | INTEGER | 1 when the step was marked for the other driver |
 
 ## Configuration
 
@@ -244,8 +244,8 @@ Environment variables (or `config.bat`):
 | Variable | Purpose | Example |
 |---|---|---|
 | `GUO_RUNS_DB` | Path to runs.db | `D:\_agentShared\dbs\runs.db` |
-| `GUO_RUNS_SHARED` | Shared run folder | `D:\_agentShared\runs\guo` |
-| `GUO_RUNS_VIDEO` | Video master location | `H:\My Drive\Video\GUO\runs` |
+| `GUO_RUNS_SHARED_DIR` | Shared run folder | `D:\_agentShared\runs\guo` |
+| `GUO_RUNS_VIDEO_DIR` | Video master location | `H:\My Drive\Video\GUO\runs` |
 | `OBS_WS_PASSWORD` | OBS WebSocket password | (leave unset for no auth) |
 | `UO_SHARD_HOST` | Dev shard hostname | `127.0.0.1` |
 | `UO_SHARD_PORT` | Dev shard port | `2606` |

@@ -147,7 +147,7 @@ internal sealed class EditorMcpServer : IDisposable
                         {
                             deadline.CancelAfter(TimeSpan.FromSeconds(120));
                             string text;
-                            try { text = await _tools.RunAsync(name, p["arguments"] ?? new JsonObject(), deadline.Token).ConfigureAwait(false); }
+                            try { text = await _tools.RunAsync(name, p["arguments"] ?? new JsonObject(), deadline.Token, PreApproved(name)).ConfigureAwait(false); }
                             catch (OperationCanceledException) { text = "error: request cancelled or editor shut down"; }
                             result = new JsonObject { ["content"] = new JsonArray(new JsonObject { ["type"] = "text", ["text"] = text }),
                                 ["isError"] = text.StartsWith("error:", StringComparison.Ordinal) || text.StartsWith("refused:", StringComparison.Ordinal) };
@@ -162,6 +162,13 @@ internal sealed class EditorMcpServer : IDisposable
         }
         catch (Exception ex) when (ex is IOException or SocketException or OperationCanceledException or ObjectDisposedException) { }
     }
+
+    /// <summary>
+    /// Tool names the process that launched this editor (tools/scenario_run) agreed to in advance, through the
+    /// environment it gave this editor. Chat never uses it; only a client holding the MCP token does.
+    /// </summary>
+    private static bool PreApproved(string name) =>
+        (Environment.GetEnvironmentVariable("GUO_EDITOR_MCP_PREAPPROVED") ?? "").Split(',', StringSplitOptions.TrimEntries).Contains(name);
 
     private static JsonObject Error(JsonNode id, int code, string message) => new()
     { ["jsonrpc"] = "2.0", ["id"] = id, ["error"] = new JsonObject { ["code"] = code, ["message"] = message } };
