@@ -101,6 +101,20 @@ shard (packet 0xBC), so A/B comparisons are unaffected; only the art changes.
 Set it back to 4 in `src/Distribution/Data/map-definitions.json` to test the
 Desolation art.
 
+
+### `patches/0004-guo-pad-dummies.patch`
+
+Adds `Projects/UOContent/Custom/GuoPadDummies.cs`: `[GuoPadDummies` spawns
+attack / use / loot / talk / context / pickpocket dummies that write
+`GUO_PAD: …` journal lines the pad wheels probe can assert. The attack dummy
+watches nearby players' `Combatant` and records a hit when engaged.
+
+### `patches/0005-guo-pad-attack-record.patch`
+
+`AttackReq` also calls `GuoAttackDummy.RecordAttack` so a war-mode attack
+packet is journalled even when the first swing has not landed yet (the probe
+asserts the binding, not a damage roll).
+
 ### Retired
 
 `0004-multi-tile-enumerator` fixed tile lookups that stopped at a multi with no

@@ -1,0 +1,429 @@
+diff --git a/Projects/UOContent/Custom/GuoPadDummies.cs b/Projects/UOContent/Custom/GuoPadDummies.cs
+new file mode 100644
+index 000000000..guopad001
+--- /dev/null
++++ b/Projects/UOContent/Custom/GuoPadDummies.cs
+@@ -0,0 +1,423 @@
++// GUO pad binding dummies: predictable journal lines a probe can assert.
++// Spawn beside New Haven (or the caller) with [GuoPadDummies.
++
++using System;
++using System.Collections.Generic;
++using Server.Collections;
++using Server.Commands;
++using Server.ContextMenus;
++using Server.Items;
++using Server.Mobiles;
++using Server.Network;
++
++namespace Server.Custom.Guo;
++
++public static class GuoPadDummies
++{
++    // New Haven inn: CharacterCreation NewHavenStartingCities[0].
++    private static readonly Point3D Haven = new(3503, 2574, 14);
++
++    public static void Configure()
++    {
++        CommandSystem.Register("GuoPadDummies", AccessLevel.GameMaster, OnCommand);
++    }
++
++    [Usage("GuoPadDummies")]
++    [Description("Spawns GUO controller binding dummies near you (or New Haven).")]
++    private static void OnCommand(CommandEventArgs e)
++    {
++        Mobile from = e.Mobile;
++        Map map = from?.Map ?? Map.Trammel;
++        Point3D at = from != null && from.Map != null ? from.Location : Haven;
++
++        ClearNear(at, map);
++        Spawn(at, map);
++        from?.SendMessage("GUO_PAD: dummies spawned");
++    }
++
++    public static void Spawn(Point3D at, Map map)
++    {
++        Place(new GuoAttackDummy(), at, map, 1, 0);
++        Place(new GuoUseDummy(), at, map, 2, 0);
++        Place(new GuoLootDummy(), at, map, 3, 0);
++        Place(new GuoTalkDummy(), at, map, 1, 1);
++        Place(new GuoContextDummy(), at, map, 2, 1);
++        Place(new GuoPickpocketDummy(), at, map, 3, 1);
++    }
++
++    private static void Place(IEntity ent, Point3D at, Map map, int dx, int dy)
++    {
++        Point3D p = new(at.X + dx, at.Y + dy, at.Z);
++
++        if (ent is Item item)
++        {
++            item.MoveToWorld(p, map);
++        }
++        else if (ent is Mobile mob)
++        {
++            mob.MoveToWorld(p, map);
++        }
++    }
++
++    private static void ClearNear(Point3D at, Map map)
++    {
++        var doomed = new List<IEntity>();
++
++        foreach (Item item in map.GetItemsInRange(at, 8))
++        {
++            if (item is GuoUseDummy or GuoLootDummy)
++            {
++                doomed.Add(item);
++            }
++        }
++
++        foreach (Mobile mob in map.GetMobilesInRange(at, 8))
++        {
++            if (mob is GuoAttackDummy or GuoTalkDummy or GuoContextDummy or GuoPickpocketDummy)
++            {
++                doomed.Add(mob);
++            }
++        }
++
++        foreach (IEntity e in doomed)
++        {
++            e.Delete();
++        }
++    }
++}
++
++public class GuoAttackDummy : BaseCreature
++{
++    [Constructible]
++    public GuoAttackDummy() : base(AIType.AI_Melee, FightMode.None)
++    {
++        Name = "GUO Attack Dummy";
++        Body = 0x190;
++        Hue = 0x83F;
++        CantWalk = true;
++        Direction = Direction.South;
++        InitStats(100, 100, 25);
++        SetDamage(1, 2);
++        SetHits(200);
++        Fame = 0;
++        Karma = -1000;
++        Timer.StartTimer(TimeSpan.FromMilliseconds(500), StartWatch);
++    }
++
++    public GuoAttackDummy(Serial serial) : base(serial)
++    {
++    }
++
++    public override bool ClickTitle => false;
++    public override bool AlwaysMurderer => true;
++    public override bool InitialInnocent => false;
++    public override bool IsEnemy(Mobile m) => m?.Player == true;
++    public override bool BardImmune => true;
++    public override bool IsInvulnerable => false;
++
++    private TimerExecutionToken _watch;
++
++    protected override void OnMapChange(Map oldMap)
++    {
++        base.OnMapChange(oldMap);
++        StartWatch();
++    }
++
++    public override void OnAfterSpawn()
++    {
++        base.OnAfterSpawn();
++        StartWatch();
++    }
++
++    private void StartWatch()
++    {
++        _watch.Cancel();
++        // AttackReq sets Combatant before the first swing. Watch for that so the
++        // binding probe does not depend on a hit roll or a delayed swing timer.
++        Timer.StartTimer(TimeSpan.FromMilliseconds(200), TimeSpan.FromMilliseconds(200), WatchCombatants, out _watch);
++    }
++
++    private void WatchCombatants()
++    {
++        if (Deleted || Map == null)
++        {
++            _watch.Cancel();
++            return;
++        }
++
++        foreach (Mobile m in Map.GetMobilesInRange(Location, 3))
++        {
++            if (m?.Player == true && m.Combatant == this)
++            {
++                Signal(m);
++                return;
++            }
++        }
++    }
++
++    public void RecordAttack(Mobile from) => Signal(from);
++
++    private void Signal(Mobile from)
++    {
++        if (from == null || from.Deleted)
++        {
++            return;
++        }
++
++        from.SendMessage("GUO_PAD: hit attack-dummy");
++        PublicOverheadMessage(MessageType.Regular, 0x3B2, false, "GUO_PAD: hit attack-dummy");
++        if (Hits > 1)
++        {
++            Hits = Math.Max(1, Hits - Math.Max(1, HitsMax / 10));
++        }
++
++        _watch.Cancel();
++    }
++
++    public override void OnDamage(int amount, Mobile from, bool willKill)
++    {
++        Signal(from);
++        base.OnDamage(amount, from, willKill);
++    }
++
++    public override void AggressiveAction(Mobile aggressor, bool criminal)
++    {
++        Signal(aggressor);
++        base.AggressiveAction(aggressor, criminal);
++    }
++
++    public override void OnDelete()
++    {
++        _watch.Cancel();
++        base.OnDelete();
++    }
++
++    public override void Serialize(IGenericWriter writer)
++    {
++        base.Serialize(writer);
++        writer.Write(0);
++    }
++
++    public override void Deserialize(IGenericReader reader)
++    {
++        base.Deserialize(reader);
++        reader.ReadInt();
++        StartWatch();
++    }
++}
++
++public class GuoUseDummy : Item
++{
++    [Constructible]
++    public GuoUseDummy() : base(0x1F14)
++    {
++        Name = "GUO Use Dummy";
++        Hue = 0x48D;
++        Movable = false;
++    }
++
++    public GuoUseDummy(Serial serial) : base(serial)
++    {
++    }
++
++    public override void OnDoubleClick(Mobile from)
++    {
++        from.SendMessage("GUO_PAD: used use-dummy");
++        PublicOverheadMessage(MessageType.Regular, 0x3B2, false, "GUO_PAD: used use-dummy");
++    }
++
++    public override void Serialize(IGenericWriter writer)
++    {
++        base.Serialize(writer);
++        writer.Write(0);
++    }
++
++    public override void Deserialize(IGenericReader reader)
++    {
++        base.Deserialize(reader);
++        reader.ReadInt();
++    }
++}
++
++public class GuoLootDummy : Container
++{
++    [Constructible]
++    public GuoLootDummy() : base(0xE75)
++    {
++        Name = "GUO Loot Dummy";
++        Hue = 0x59;
++        Movable = false;
++        DropItem(new Gold(17));
++        DropItem(new Bandage(3));
++    }
++
++    public GuoLootDummy(Serial serial) : base(serial)
++    {
++    }
++
++    public override void OnDoubleClick(Mobile from)
++    {
++        from.SendMessage("GUO_PAD: opened loot-dummy");
++        base.OnDoubleClick(from);
++    }
++
++    public override void Serialize(IGenericWriter writer)
++    {
++        base.Serialize(writer);
++        writer.Write(0);
++    }
++
++    public override void Deserialize(IGenericReader reader)
++    {
++        base.Deserialize(reader);
++        reader.ReadInt();
++    }
++}
++
++public class GuoTalkDummy : BaseCreature
++{
++    [Constructible]
++    public GuoTalkDummy() : base(AIType.AI_Animal, FightMode.None)
++    {
++        Name = "GUO Talk Dummy";
++        Title = "the listener";
++        Body = 0x190;
++        Hue = Race.Human.RandomSkinHue();
++        CantWalk = true;
++        InitStats(50, 50, 25);
++        SetHits(100);
++        AddItem(new FancyShirt());
++        AddItem(new LongPants());
++        AddItem(new Boots());
++    }
++
++    public GuoTalkDummy(Serial serial) : base(serial)
++    {
++    }
++
++    public override bool ClickTitle => false;
++    public override bool HandlesOnSpeech(Mobile from) => from != null && from.InRange(this, 4);
++
++    public override void OnSpeech(SpeechEventArgs e)
++    {
++        if (e.Mobile == null || e.Mobile == this)
++        {
++            return;
++        }
++
++        Say("GUO_PAD: talk-dummy heard you");
++        e.Mobile.SendMessage("GUO_PAD: talk-dummy heard you");
++        e.Handled = true;
++    }
++
++    public override void Serialize(IGenericWriter writer)
++    {
++        base.Serialize(writer);
++        writer.Write(0);
++    }
++
++    public override void Deserialize(IGenericReader reader)
++    {
++        base.Deserialize(reader);
++        reader.ReadInt();
++    }
++}
++
++public class GuoContextDummy : BaseCreature
++{
++    [Constructible]
++    public GuoContextDummy() : base(AIType.AI_Animal, FightMode.None)
++    {
++        Name = "GUO Context Dummy";
++        Body = 0x190;
++        Hue = 0x845;
++        CantWalk = true;
++        InitStats(50, 50, 25);
++        SetHits(100);
++        AddItem(new Robe(0x455));
++    }
++
++    public GuoContextDummy(Serial serial) : base(serial)
++    {
++    }
++
++    public override bool ClickTitle => false;
++
++    public override void AddCustomContextEntries(Mobile from, ref PooledRefList<ContextMenuEntry> list)
++    {
++        if (from.Alive && from.InRange(this, 3))
++        {
++            list.Add(new GuoPadContextEntry(this));
++        }
++
++        base.AddCustomContextEntries(from, ref list);
++    }
++
++    public override void Serialize(IGenericWriter writer)
++    {
++        base.Serialize(writer);
++        writer.Write(0);
++    }
++
++    public override void Deserialize(IGenericReader reader)
++    {
++        base.Deserialize(reader);
++        reader.ReadInt();
++    }
++
++    private class GuoPadContextEntry : ContextMenuEntry
++    {
++        private readonly GuoContextDummy _dummy;
++
++        public GuoPadContextEntry(GuoContextDummy dummy) : base(3000482, 3) // "Open" cliloc as a stand-in label
++        {
++            _dummy = dummy;
++        }
++
++        public override void OnClick(Mobile from, IEntity target)
++        {
++            from.SendMessage("GUO_PAD: context-dummy picked");
++            _dummy.PublicOverheadMessage(MessageType.Regular, 0x3B2, false, "GUO_PAD: context-dummy picked");
++        }
++    }
++}
++
++public class GuoPickpocketDummy : BaseCreature
++{
++    [Constructible]
++    public GuoPickpocketDummy() : base(AIType.AI_Animal, FightMode.None)
++    {
++        Name = "GUO Pickpocket Dummy";
++        Body = 0x190;
++        Hue = Race.Human.RandomSkinHue();
++        CantWalk = true;
++        InitStats(50, 50, 25);
++        SetHits(100);
++        AddItem(new Shirt());
++        AddItem(new ShortPants());
++        AddItem(new Shoes());
++
++        var pack = new Backpack { Movable = false };
++        AddItem(pack);
++        // Stealable: movable gold sitting in the pack.
++        pack.DropItem(new Gold(5) { Name = "GUO steal coin" });
++    }
++
++    public GuoPickpocketDummy(Serial serial) : base(serial)
++    {
++    }
++
++    public override bool ClickTitle => false;
++
++    public override void Serialize(IGenericWriter writer)
++    {
++        base.Serialize(writer);
++        writer.Write(0);
++    }
++
++    public override void Deserialize(IGenericReader reader)
++    {
++        base.Deserialize(reader);
++        reader.ReadInt();
++    }
++}

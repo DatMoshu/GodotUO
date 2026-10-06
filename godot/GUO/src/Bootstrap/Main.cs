@@ -302,6 +302,10 @@ public partial class Main : Node
                 {
                     GamepadProbeThenQuit();
                 }
+                else if (_options.PadWheelsProbe)
+                {
+                    PadWheelsProbeThenQuit();
+                }
                 else if (_options.OneScreenProbe)
                 {
                     OneScreenProbeThenQuit();
@@ -384,6 +388,10 @@ public partial class Main : Node
         }
 
         string dataDir = GuoDataDirectory();
+
+        // The pad's "Set controls" is offered once after a first login on a
+        // pad; a probe driving a pad must not meet it unless it is the probe for it.
+        GUO.Input.Gamepad.PadWizard.OfferAllowed = !_options.Scripted || _options.PadWheelsProbe;
 
         if (_options.ScratchProfile && !_options.OwnProfile)
         {
@@ -639,6 +647,7 @@ public partial class Main : Node
         || !string.IsNullOrEmpty(_options.PostFxSheet)
         || _options.DoorProbe
         || _options.GamepadProbe
+        || _options.PadWheelsProbe
         || _options.OneScreenProbe
         || _options.GlyphShots
         || _options.AssetProbe.Length > 0
@@ -756,6 +765,20 @@ public partial class Main : Node
     {
         await Preamble();
         Quit(await GlyphShots.Run(this, _options.ScreenshotDir) ? 0 : 1);
+    }
+
+    /// <summary>The menu wheel, the interact radar, the new buttons and "Set controls"; see PadWheelsProbe.</summary>
+    private async void PadWheelsProbeThenQuit()
+    {
+        await Preamble();
+        await PadWheelsProbe.Run(this, _options.ScreenshotDir);
+
+        if (_options.Stay)
+        {
+            return;
+        }
+
+        Quit(PadWheelsProbe.Passed ? 0 : 1);
     }
 
     /// <summary>Walk and confirm/cancel by injected joypad events; see GamepadProbe.</summary>
@@ -1344,6 +1367,7 @@ public partial class Main : Node
                 || !string.IsNullOrEmpty(PostFxSheet)
                 || DoorProbe
                 || GamepadProbe
+                || PadWheelsProbe
                 || OneScreenProbe
                 || GlyphShots
                 || EffectsProbe > 0
@@ -1462,6 +1486,9 @@ public partial class Main : Node
 
         /// <summary>Check the gamepad layer by injected joypad events (--gamepad-probe).</summary>
         public bool GamepadProbe { get; private set; }
+
+        /// <summary>The pad's menu wheel, radar, buttons and "Set controls" (--pad-wheels-probe).</summary>
+        public bool PadWheelsProbe { get; private set; }
 
         /// <summary>--one-screen-probe: the one-screen drawer in the world; see OneScreenProbe.</summary>
         public bool OneScreenProbe { get; private set; }
@@ -1718,6 +1745,10 @@ public partial class Main : Node
                         break;
                     case "--gamepad-probe":
                         o.GamepadProbe = true;
+                        break;
+                    case "--pad-wheels-probe":
+                        o.PadWheelsProbe = true;
+                        o.ScratchProfile = true;
                         break;
                     case "--pregame-3d":
                     case "--pregame-classic":
