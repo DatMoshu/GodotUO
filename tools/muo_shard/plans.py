@@ -406,6 +406,8 @@ def deploy(p: Profile, pin: str | None = None) -> str:
         "# the archive's SDK can trail the SDK version the pin's global.json names; build with the installed one",
         'if [ -f "$SRC/global.json" ]; then',
         "    sdk=\"$(as_user sh -c 'cd / && dotnet --version')\"",
+        '    pinned="$(sed -n -E \'s/.*"version": *"([^"]*)".*/\\1/p\' "$SRC/global.json" | head -n 1)"',
+        '    if [ "$pinned" != "$sdk" ]; then echo "muo_shard: warning: global.json names SDK $pinned, building with the installed SDK $sdk" >&2; fi',
         '    as_user sed -i -E "s/\\"version\\": *\\"[^\\"]*\\"/\\"version\\": \\"$sdk\\"/" "$SRC/global.json"',
         '    as_user git -C "$SRC" update-index --skip-worktree global.json',
         "fi",
@@ -521,4 +523,184 @@ def status(p: Profile) -> str:
     return _finish(out)
 
 
-VERBS = {"bootstrap": bootstrap, "deploy": deploy, "status": status}
+# --------------------------------------------------------------- admin, backup, restore, reset
+
+NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
+STAMP = "%Y%m%d_%H%M%S"
+
+
+def _check_name(name: str, what: str) -> str:
+    if not NAME_RE.fullmatch(name or ""):
+        raise ProfileError([f"{what}: {name!r} must match {NAME_RE.pattern}"])
+    return name
+
+
+def _include(p: Profile) -> list[str]:
+    return p.get("backup", "include", default=["Saves"])
+
+
+def admin(p: Profile) -> str:
+    """Make the owner account exist: the shard creates (or raises) it from the host env file at every start."""
+    c = Ctx(p)
+    user, pw = c.keys["admin_user"], c.keys["admin_password"]
+    out = c.header("admin")
+    out += [
+        "# the owner account is made by the shard itself at start, from the two host values",
+        '[ -d "$BASE" ] && [ -f "$ENV_FILE" ] || die "run bootstrap first"',
+        'set -a; . "$ENV_FILE"; set +a',
+        f': "${{{user}:?{user} is not set in $ENV_FILE (run.py secrets)}}"',
+        f': "${{{pw}:?{pw} is not set in $ENV_FILE (run.py secrets)}}"',
+        "",
+        "if [ -d /run/systemd/system ]; then",
+        '    systemctl restart "$UNIT"',
+        "    for _ in $(seq 1 60); do",
+        '        ss -ltn "sport = :$PORT" | grep -q LISTEN && break',
+        "        sleep 1",
+        "    done",
+        '    ss -ltn "sport = :$PORT" | grep -q LISTEN || die "the shard is not listening on tcp/$PORT; see journalctl -u $UNIT"',
+        "else",
+        '    echo "muo_shard: no systemd here (a container?). Start the shard with:"',
+        '    echo "  set -a; . $ENV_FILE; set +a; runuser -u $SVC_USER -- $DIST/muo-run.sh"',
+        "fi",
+        f"echo \"muo_shard: the owner account '${user}' exists once the shard is up (it is saved at the next autosave).\"",
+    ]
+    return _finish(out)
+
+
+def _backup_helper(p: Profile) -> str:
+    """The standalone script the timer and `plan backup` both run on the host: snapshot, then prune."""
+    c = Ctx(p)
+    keep = p.get("backup", "keep", default=14)
+    inc = " ".join(shlex.quote(d) for d in _include(p))
+    lines = [
+        "#!/usr/bin/env bash",
+        f"# muo_shard backup helper for profile {c.id} (generated). Usage: muo-backup.sh [NAME]",
+        "set -euo pipefail",
+        'die() { echo "muo_shard: $*" >&2; exit 1; }',
+        f"DIST={c.dist}",
+        f"BACKUP_ROOT={shlex.quote(c.backup_root)}",
+        f"KEEP={keep}",
+        f"INCLUDE=({inc})",
+        "",
+        f'name="${{1:-$(date -u +{STAMP})}}"',
+        '[[ "$name" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$ ]] || die "bad snapshot name: $name"',
+        'dest="$BACKUP_ROOT/$name.tar.zst"',
+        '[ ! -e "$dest" ] || die "snapshot $name already exists"',
+        'install -d -m 0750 "$BACKUP_ROOT"',
+        "",
+        "# the shard keeps running: it saves on its own schedule and publishes a save by swapping the folder,",
+        "# so copy it and keep the copy only if the folder was not swapped or written meanwhile",
+        "sig() { local d; for d in \"${INCLUDE[@]}\"; do stat -c '%i %Y' \"$DIST/$d\"; done; }",
+        "trap 'rm -f -- \"$dest.part\"' EXIT",
+        "ok=0",
+        "for _ in 1 2 3; do",
+        '    before="$(sig)"',
+        '    tar -C "$DIST" --zstd -cf "$dest.part" -- "${INCLUDE[@]}"',
+        '    if [ "$(sig)" = "$before" ]; then ok=1; break; fi',
+        "    sleep 2",
+        "done",
+        '[ "$ok" = 1 ] || die "the saves changed during every attempt; run the backup again"',
+        'mv -- "$dest.part" "$dest"',
+        "",
+        "# keep the newest $KEEP timestamped snapshots; named ones (a seed) are never pruned",
+        "stamped=\"$(ls -1 \"$BACKUP_ROOT\" | grep -E '^[0-9]{8}_[0-9]{6}\\.tar\\.zst$' || true)\"",
+        "printf '%s\\n' \"$stamped\" | sort -r | tail -n +\"$((KEEP + 1))\" | while read -r old; do",
+        '    if [ -n "$old" ]; then rm -f -- "$BACKUP_ROOT/$old"; fi',
+        "done",
+        'echo "muo_shard: snapshot $name written to $BACKUP_ROOT"',
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def _timer_units(p: Profile) -> tuple[str, str]:
+    c = Ctx(p)
+    service = "\n".join([
+        "[Unit]",
+        f"Description=Snapshot of the ModernUO shard {c.id}",
+        "",
+        "[Service]",
+        "Type=oneshot",
+        f"ExecStart={c.base}/muo-backup.sh",
+    ]) + "\n"
+    timer = "\n".join([
+        "[Unit]",
+        f"Description=Scheduled snapshot of the ModernUO shard {c.id}",
+        "",
+        "[Timer]",
+        f"OnCalendar={p.data['backup']['on_calendar']}",
+        "Persistent=true",
+        "",
+        "[Install]",
+        "WantedBy=timers.target",
+    ]) + "\n"
+    return service, timer
+
+
+def backup(p: Profile, name: str | None = None) -> str:
+    c = Ctx(p)
+    if name is not None:
+        _check_name(name, "--name")
+    out = c.header("backup")
+    out += ['[ -d "$BASE" ] || die "run bootstrap first"', "", "# the helper, also what the timer runs"]
+    out += _embed("$BASE/muo-backup.sh", _backup_helper(p), "0755")
+    if p.get("backup", "on_calendar"):
+        service, timer = _timer_units(p)
+        base = f"muo-{c.id}-backup"
+        out += ["", "# the schedule (systemd hosts only)", "if [ -d /run/systemd/system ]; then"]
+        out += _embed(f"/etc/systemd/system/{base}.service", service)
+        out += _embed(f"/etc/systemd/system/{base}.timer", timer)
+        out += ["    systemctl daemon-reload", f"    systemctl enable --now {base}.timer", "fi"]
+    out += ["", '"$BASE/muo-backup.sh"' + (f" {shlex.quote(name)}" if name else "")]
+    return _finish(out)
+
+
+def restore(p: Profile, name: str) -> str:
+    return _restore_script(p, "restore", _check_name(name, "NAME"))
+
+
+def reset(p: Profile) -> str:
+    seed = p.get("seed")
+    if not seed:
+        raise ProfileError(["reset: the profile has no 'seed' (the snapshot reset restores)"])
+    return _restore_script(p, "reset", _check_name(seed, "seed"))
+
+
+def _restore_script(p: Profile, verb: str, name: str) -> str:
+    c = Ctx(p)
+    inc = " ".join(shlex.quote(d) for d in _include(p))
+    out = c.header(verb)
+    out += [
+        f"NAME={shlex.quote(name)}",
+        f"BACKUP_ROOT={shlex.quote(c.backup_root)}",
+        f"INCLUDE=({inc})",
+        'snap="$BACKUP_ROOT/$NAME.tar.zst"',
+        "have_systemd() { [ -d /run/systemd/system ]; }",
+        '[ -d "$BASE" ] || die "run bootstrap first"',
+        '[ -f "$snap" ] || die "no snapshot $NAME in $BACKUP_ROOT"',
+        "",
+        "# the shard must be stopped while its saves are replaced",
+        "was_active=0",
+        "if have_systemd; then",
+        '    if systemctl is-active --quiet "$UNIT"; then was_active=1; systemctl stop "$UNIT"; fi',
+        'elif ss -ltn "sport = :$PORT" | grep -q LISTEN; then',
+        '    die "something is listening on tcp/$PORT; stop the shard first"',
+        "fi",
+        "",
+        "# what is there now is kept beside it as <folder>.pre-restore (one generation)",
+        'for d in "${INCLUDE[@]}"; do',
+        '    if [ -e "$DIST/$d" ]; then',
+        '        rm -rf -- "$DIST/$d.pre-restore"',
+        '        mv -- "$DIST/$d" "$DIST/$d.pre-restore"',
+        "    fi",
+        "done",
+        'tar -C "$DIST" --zstd -xf "$snap"',
+        'for d in "${INCLUDE[@]}"; do chown -R "$SVC_USER:$SVC_USER" "$DIST/$d"; done',
+        "",
+        'if [ "$was_active" = 1 ]; then systemctl start "$UNIT"; fi',
+        f'echo "muo_shard: {verb} from $NAME done."',
+    ]
+    return _finish(out)
+
+
+VERBS = {"bootstrap": bootstrap, "deploy": deploy, "status": status, "admin": admin, "backup": backup,
+         "restore": restore, "reset": reset}

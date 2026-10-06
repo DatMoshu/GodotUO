@@ -2002,7 +2002,7 @@ as nullable, so older readers keep working.
 differs between shards is a **profile**: GUO's dev shard is one, another project's shard (SWUO) another, and the
 tool grows no per-project code. A profile is committed in the repo that owns the shard
 (`tools/muo_shard/profiles/guo-dev.profile.json` here; another project keeps its own) and is passed with
-`--profile <file>`. **Status:** built in `tools/muo_shard` (M1: `validate`, `plan bootstrap|deploy|status`; the schema is `tools/muo_shard/schema/profile.schema.json`).
+`--profile <file>`. **Status:** built in `tools/muo_shard` (`validate`, `plan bootstrap|deploy|status|admin|backup|restore|reset` and `secrets`; the schema is `tools/muo_shard/schema/profile.schema.json`).
 
 **The tool never changes a host by itself.** `bootstrap`, `deploy`, `admin`, `backup`, `restore` and `reset` only
 **emit a shell script** for a person to review and run (`run.py plan <verb> --profile P > step.sh`); only the

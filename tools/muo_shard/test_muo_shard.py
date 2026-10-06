@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import json
 import os
 import re
@@ -357,3 +358,220 @@ def test_status_is_read_only():
     assert "set -euo pipefail" in s and "run this as root" not in s
     for word in ["install ", "useradd", "apt-get", "systemctl enable", "systemctl restart", "rm "]:
         assert word not in s
+
+
+# ------------------------------------------------------------ M2: admin, backup, restore, reset, secrets
+
+import hostsecrets  # noqa: E402
+
+M2_CASES = [
+    ("guo-dev.admin.sh", lambda p: plans.admin(p), GUO),
+    ("guo-dev.backup.sh", lambda p: plans.backup(p), GUO),
+    ("guo-dev.backup-named.sh", lambda p: plans.backup(p, "before-wipe"), GUO),
+    ("guo-dev.restore.sh", lambda p: plans.restore(p, "20260101_040000"), GUO),
+    ("guo-dev.reset.sh", lambda p: plans.reset(p), GUO),
+    ("demo-shard.backup.sh", lambda p: plans.backup(p), FULL),
+    ("demo-shard.reset.sh", lambda p: plans.reset(p), FULL),
+]
+
+
+@pytest.mark.parametrize("name,fn,profile", M2_CASES)
+def test_m2_plan_matches_golden(name, fn, profile):
+    got = fn(sp.load(profile))
+    golden = GOLDEN / name
+    if os.environ.get("MUO_UPDATE_GOLDEN"):
+        golden.write_bytes(got.encode("utf-8"))
+    assert golden.read_bytes().decode("utf-8").replace("\r\n", "\n") == got
+
+
+@pytest.mark.parametrize("name,fn,profile", M2_CASES)
+def test_m2_plan_is_valid_bash_and_clean(name, fn, profile, tmp_path):
+    got = fn(sp.load(profile))
+    assert "\r" not in got and not re.search(r"(?i)PASSWORD=\S", got)
+    for needle in ["C:\\", "C:/", "/Users/", "ssh ", "sudo "]:
+        assert needle not in got, needle
+    bash = shutil.which("bash")
+    if bash:
+        f = tmp_path / "s.sh"
+        f.write_bytes(got.encode("utf-8"))
+        assert subprocess.run([bash, "-n", str(f)], capture_output=True, text=True).returncode == 0
+
+
+def test_m2_cli_verbs(capsys):
+    assert run.main(["plan", "restore", "seed", "--profile", str(GUO)]) == 0
+    assert "NAME=seed" in capsys.readouterr().out
+    assert run.main(["plan", "backup", "--name", "x1", "--profile", str(GUO)]) == 0
+    assert 'muo-backup.sh" x1' in capsys.readouterr().out
+    assert run.main(["plan", "reset", "--profile", str(GUO)]) == 0
+    assert "NAME=seed" in capsys.readouterr().out
+    with pytest.raises(SystemExit):
+        run.main(["plan", "restore", "--profile", str(GUO)])             # no NAME
+    with pytest.raises(SystemExit):
+        run.main(["plan", "status", "--name", "n", "--profile", str(GUO)])
+
+
+@pytest.mark.parametrize("bad", ["../x", "a b", "-rf", "x;y", "", "a" * 70])
+def test_snapshot_names_are_checked(bad):
+    prof = sp.load(GUO)
+    with pytest.raises(sp.ProfileError):
+        plans.restore(prof, bad)
+    if bad:
+        with pytest.raises(sp.ProfileError):
+            plans.backup(prof, bad)
+
+
+def test_reset_restores_the_seed_and_needs_one(tmp_path):
+    assert "NAME=seed" in plans.reset(sp.load(GUO))
+    data = good()
+    del data["seed"]
+    with pytest.raises(sp.ProfileError) as e:
+        plans.reset(load_tmp(tmp_path, data))
+    assert "no 'seed'" in str(e.value)
+
+
+def test_restore_stops_the_shard_and_keeps_what_was_there():
+    s = plans.restore(sp.load(GUO), "seed")
+    assert s.index("systemctl stop") < s.index("tar -C") < s.rindex("systemctl start")
+    assert ".pre-restore" in s and "listening on tcp/$PORT; stop the shard first" in s
+
+
+def test_backup_timer_follows_the_profile(tmp_path):
+    assert "OnCalendar=*-*-* 04:00:00" in plans.backup(sp.load(GUO))
+    data = good()
+    del data["backup"]["on_calendar"]
+    s = plans.backup(load_tmp(tmp_path, data))
+    assert "OnCalendar" not in s and "enable --now" not in s
+    assert "KEEP=14" in s and "INCLUDE=(Saves)" in s
+
+
+def test_admin_needs_the_host_values_and_prints_no_password():
+    s = plans.admin(sp.load(GUO))
+    assert ': "${MUO_ADMIN_USER:?' in s and ': "${MUO_ADMIN_PASSWORD:?' in s
+    assert s.count("MUO_ADMIN_PASSWORD") == 2          # the check, nothing that would print it
+
+
+def test_deploy_warns_when_global_json_is_rewritten():
+    s = plans.deploy(sp.load(GUO))
+    assert "warning: global.json names SDK $pinned, building with the installed SDK $sdk" in s
+    assert s.index("pinned=") < s.index("sed -i")
+
+
+def _sandbox_helper(tmp_path: Path, keep: int):
+    """The backup helper with its host paths moved into tmp_path and a stub tar, runnable without root."""
+    prof = sp.load(GUO)
+    text = plans._backup_helper(prof).replace("/srv/muo/guo-dev/dist", (tmp_path / "dist").as_posix())
+    text = text.replace("install -d -m 0750", "mkdir -p").replace("/var/backups/muo/guo-dev", (tmp_path / "bk").as_posix()).replace("KEEP=14", f"KEEP={keep}")
+    (tmp_path / "dist" / "Saves").mkdir(parents=True)
+    (tmp_path / "bk").mkdir()
+    (tmp_path / "bin").mkdir()
+    stub = tmp_path / "bin" / "tar"
+    stub.write_bytes(b'#!/usr/bin/env bash\nwhile [ $# -gt 0 ]; do if [ "$1" = -cf ]; then echo snap > "$2"; exit 0; fi; shift; done\nexit 1\n')
+    stub.chmod(0o755)
+    helper = tmp_path / "muo-backup.sh"
+    helper.write_bytes(text.encode("utf-8"))
+    return helper, tmp_path / "bk", {**os.environ, "PATH": f"{(tmp_path / 'bin').as_posix()}{os.pathsep}{os.environ['PATH']}"}
+
+
+@pytest.mark.skipif(not shutil.which("bash"), reason="needs bash")
+def test_backup_prunes_to_keep_and_spares_named_snapshots(tmp_path):
+    helper, bk, env = _sandbox_helper(tmp_path, keep=3)
+    for stamp in ["20260101_010101", "20260102_010101", "20260103_010101", "20260104_010101", "20260105_010101"]:
+        (bk / f"{stamp}.tar.zst").write_text("old")
+    (bk / "seed.tar.zst").write_text("seed")
+    r = subprocess.run([shutil.which("bash"), helper.as_posix(), "20260106_010101"], capture_output=True, text=True, env=env)
+    assert r.returncode == 0, r.stderr
+    left = sorted(f.name for f in bk.iterdir())
+    assert left == ["20260104_010101.tar.zst", "20260105_010101.tar.zst", "20260106_010101.tar.zst", "seed.tar.zst"]
+
+
+@pytest.mark.skipif(not shutil.which("bash"), reason="needs bash")
+def test_backup_with_nothing_to_prune_and_a_name_clash(tmp_path):
+    helper, bk, env = _sandbox_helper(tmp_path, keep=14)
+    assert subprocess.run([shutil.which("bash"), helper.as_posix(), "seed"], capture_output=True, text=True, env=env).returncode == 0
+    assert [f.name for f in bk.iterdir()] == ["seed.tar.zst"]
+    again = subprocess.run([shutil.which("bash"), helper.as_posix(), "seed"], capture_output=True, text=True, env=env)
+    assert again.returncode == 1 and "already exists" in again.stderr
+    assert subprocess.run([shutil.which("bash"), helper.as_posix(), "../x"], capture_output=True, text=True, env=env).returncode == 1
+
+
+# --- secrets: a fake ssh, no real host
+
+class FakeSsh:
+    def __init__(self):
+        self.calls = []
+
+    def __call__(self, argv, input=None, text=None, **kw):
+        self.calls.append((argv, input))
+        return subprocess.CompletedProcess(argv, 0)
+
+
+def answers(*vals):
+    it = iter(vals)
+    return lambda prompt="": next(it)
+
+
+def test_secrets_send_values_on_stdin_only(tmp_path, monkeypatch):
+    fake = FakeSsh()
+    monkeypatch.setattr(subprocess, "run", fake)
+    monkeypatch.chdir(tmp_path)
+    before = set(tmp_path.iterdir())
+    rc = hostsecrets.run(sp.load(GUO), "ops@host", prompt_fn=answers("/mnt/uo", "owner1"),
+                         secret_fn=answers("pa55-w0rd", "pa55-w0rd"))
+    assert rc == 0 and len(fake.calls) == 1
+    argv, payload = fake.calls[0]
+    assert argv[:3] == ["ssh", "--", "ops@host"]
+    assert payload == "MUO_CLIENT_DATA=/mnt/uo\nMUO_ADMIN_USER=owner1\nMUO_ADMIN_PASSWORD=pa55-w0rd\n"
+    assert not any("pa55-w0rd" in a or "owner1" in a or "/mnt/uo" in a for a in argv)
+    assert "/etc/muo/guo-dev.env" in argv[-1] and "0o600" in argv[-1]
+    assert set(tmp_path.iterdir()) == before                         # no local file
+
+
+def test_secrets_mismatch_and_empty_send_nothing(monkeypatch):
+    fake = FakeSsh()
+    monkeypatch.setattr(subprocess, "run", fake)
+    prof = sp.load(GUO)
+    with pytest.raises(hostsecrets.SecretsError):
+        hostsecrets.run(prof, "h", prompt_fn=answers("", "u"), secret_fn=answers("a", "b"))
+    with pytest.raises(hostsecrets.SecretsError):
+        hostsecrets.run(prof, "h", prompt_fn=answers("", ""), secret_fn=answers(""))      # nothing to send
+    assert fake.calls == []
+
+
+def test_secrets_blank_answers_keep_the_other_keys(monkeypatch):
+    fake = FakeSsh()
+    monkeypatch.setattr(subprocess, "run", fake)
+    assert hostsecrets.run(sp.load(GUO), "h", prompt_fn=answers("", "only-user"), secret_fn=answers("")) == 0
+    assert fake.calls[0][1] == "MUO_ADMIN_USER=only-user\n"
+
+
+@pytest.mark.parametrize("host", ["-oProxyCommand=x", "", "a b", "h;rm"])
+def test_secrets_refuses_odd_hosts(host, monkeypatch):
+    fake = FakeSsh()
+    monkeypatch.setattr(subprocess, "run", fake)
+    with pytest.raises(hostsecrets.SecretsError):
+        hostsecrets.run(sp.load(GUO), host, prompt_fn=answers("", "u"), secret_fn=answers(""))
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize("value", ["it's", "a\nb", "a\rb"])
+def test_secrets_refuses_values_the_env_file_cannot_hold(value):
+    with pytest.raises(hostsecrets.SecretsError):
+        hostsecrets.check_value("K", value)
+
+
+def test_secrets_remote_merge_keeps_other_keys_and_mode(tmp_path):
+    env = tmp_path / "x.env"
+    env.write_text("MUO_REPO='/srv/r'\nMUO_ADMIN_USER='old'\n", encoding="utf-8")
+    cmd = [sys.executable, "-c", hostsecrets._MERGE, str(env)]
+    r = subprocess.run(cmd, input="MUO_ADMIN_USER=new\nMUO_ADMIN_PASSWORD=pw\n", text=True, capture_output=True)
+    assert r.returncode == 0, r.stderr
+    assert env.read_text(encoding="utf-8") == "MUO_REPO='/srv/r'\nMUO_ADMIN_USER='new'\nMUO_ADMIN_PASSWORD='pw'\n"
+    if os.name == "posix":
+        assert oct(env.stat().st_mode & 0o777) == "0o600"
+    assert "pw" not in r.stderr
+
+
+def test_secrets_refuses_a_pipe(monkeypatch, capsys):
+    monkeypatch.setattr(sys, "stdin", io.StringIO(""))
+    assert run.main(["secrets", "--host", "h", "--profile", str(GUO)]) == 2
+    assert "terminal" in capsys.readouterr().err
