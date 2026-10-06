@@ -98,7 +98,10 @@ public sealed class AiToolHost : IChatTools
         return a;
     }
 
-    public async Task<string> RunAsync(string name, JsonNode args, CancellationToken ct)
+    public Task<string> RunAsync(string name, JsonNode args, CancellationToken ct) => RunAsync(name, args, ct, false);
+
+    /// <param name="preApproved">The caller already holds the user's agreement for this tool (the editor MCP, for the names the launching runner listed); chat never sets it.</param>
+    public async Task<string> RunAsync(string name, JsonNode args, CancellationToken ct, bool preApproved)
     {
         using var aiLife = AiFeatures.Link(ct);
         ct = aiLife.Token;
@@ -121,7 +124,7 @@ public sealed class AiToolHost : IChatTools
         if (!t.ReadOnly)
         {
             Func<string, Task<bool>> ask = Approve;
-            bool yes = ask != null && await ask($"{t.Name} {args?.ToJsonString()}\n\n{t.Description}").WaitAsync(ct).ConfigureAwait(false);
+            bool yes = preApproved || ask != null && await ask($"{t.Name} {args?.ToJsonString()}\n\n{t.Description}").WaitAsync(ct).ConfigureAwait(false);
             if (!yes)
             {
                 return "refused: the user did not approve this action";

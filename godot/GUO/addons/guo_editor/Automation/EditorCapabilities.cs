@@ -25,7 +25,7 @@ internal static class EditorCapabilities
         return new JsonObject { ["type"] = "object", ["properties"] = p, ["additionalProperties"] = false };
     }
 
-    internal static void Register(AiToolHost host, SearchContext ctx, Func<SearchIndex> index)
+    internal static void Register(AiToolHost host, SearchContext ctx, Func<SearchIndex> index, Func<EditorTour> tour = null)
     {
         void Add(string name, string description, Func<JsonNode, string> run, bool read = true, params (string, string)[] fields) =>
             host.Register(new AiToolHost.Tool { Name = name, Description = description, Parameters = Schema(fields), ReadOnly = read, Run = run, MaxResult = 32000 });
@@ -209,6 +209,23 @@ internal static class EditorCapabilities
             else throw new ArgumentException("action must be undo or redo");
             return Json(new { d.CanUndo, d.CanRedo, components = d.Parts.Count });
         }, false, ("action", "string"));
+        if (tour != null)
+        {
+            host.Register(new AiToolHost.Tool
+            {
+                Name = "editor_screenshot",
+                Description = "Save one frame of the editor window as a PNG under this checkout's build/ (out_dir-style relative or absolute path, .png). Machine paths on screen are scrubbed first. Requires approval unless the launching runner listed it in GUO_EDITOR_MCP_PREAPPROVED.",
+                Parameters = Schema(("file", "string")), ReadOnly = false, MaxResult = 2000,
+                RunAsync = async (a, _) => tour() is { } t ? await t.ScreenshotAsync(Str(a, "file")) : "error: the editor tour is not available in this editor",
+            });
+            host.Register(new AiToolHost.Tool
+            {
+                Name = "tour_segment",
+                Description = "Run one segment of the editor tour (ids as in tools/editor_tour) in this editor and return its checks and frame paths. Writes only under this checkout's build/. A segment that takes over 25 s answers state=running: call again with the same id to wait. Requires approval unless the runner that launched the editor listed it in GUO_EDITOR_MCP_PREAPPROVED.",
+                Parameters = Schema(("id", "string"), ("out_dir", "string")), ReadOnly = false, MaxResult = 16000,
+                RunAsync = async (a, _) => tour() is { } t ? await t.RunSegmentAsync(Str(a, "id"), Str(a, "out_dir")) : "error: the editor tour is not available in this editor",
+            });
+        }
         host.Register(new AiToolHost.Tool
         {
             Name = "multi_write_stage", Description = "Write and read-back verify the active multi through the existing stage writer; updates the Multis browser. Never writes the client install. Requires approval.",

@@ -247,7 +247,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         // A tool started this editor (the smoke flag): its window must not
         // take the keyboard or the foreground from whoever is working, as a
         // scripted game run's does not (Bootstrap/Main.cs NoFocus).
-        if ((smokeOut != null || tourOut != null) && DisplayServer.GetName() != "headless")
+        if ((smokeOut != null || tourOut != null || System.Environment.GetEnvironmentVariable("GUO_EDITOR_SCRIPTED") == "1") && DisplayServer.GetName() != "headless")
         {
             DisplayServer.WindowSetFlag(DisplayServer.WindowFlags.NoFocus, true);
             DisplayServer.WindowSetFlag(DisplayServer.WindowFlags.AlwaysOnTop, false);
@@ -269,6 +269,16 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         if (tourOut != null)
         {
             _tour = new EditorTour(tourOut, _data, _assets, _inspector, _world, _shard, _run);
+            _tour.Search = _search;
+            _tour.Ai = _ai;
+            _tour.Store = _store;
+            AddChild(_tour);
+        }
+        else if (!string.IsNullOrWhiteSpace(EditorData.Setting("GUO_EDITOR_MCP_PORT", "")) && System.Environment.GetEnvironmentVariable("GUO_EDITOR_SCRIPTED") == "1")
+        {
+            // An editor a runner started (GUO_EDITOR_SCRIPTED=1) and drives over the editor MCP can run one tour segment at a time
+            // (tour_segment); it runs nothing by itself. An editor that merely has the MCP on never resizes or moves its window.
+            _tour = new EditorTour(null, _data, _assets, _inspector, _world, _shard, _run);
             _tour.Search = _search;
             _tour.Ai = _ai;
             _tour.Store = _store;
@@ -320,7 +330,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
     {
         if (!AiFeatures.Enabled || _ai == null) return;
         _ai.UseTools(_searchContext, () => _search?.Index);
-        EditorCapabilities.Register(_ai.Hub.Tools, _searchContext, () => _search?.Index);
+        EditorCapabilities.Register(_ai.Hub.Tools, _searchContext, () => _search?.Index, () => _tour);
         _editorMcp = EditorMcpServer.StartConfigured(_ai.Hub.Tools);
         EditorMcpConnection.Configure(_editorMcp != null);
         _ai.Hub.SelectionImage = () => _inspector?.Current?.Image;
