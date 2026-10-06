@@ -57,7 +57,7 @@ See `docs/data_formats.md` for the full schema and step kind reference.
 | `ui.key` | Send keyboard input | key: name | ui state change | Uses guo_input MCP |
 | `chat` | Send chat or console text | text | log or game response | Via guo_input text command |
 | `tour_segment` | Run an EditorTour segment | id: segment name | EditorTour checks + frames | Editor only; surface override |
-| `editor_invoke` | Call an editor MCP tool | tool, args | tool result | Editor only |
+| `editor_invoke` | Run an F3 action by key | key, query | tool result | Editor only; not pre-approved, so the editor asks (the run waits on the dialog) |
 | `scene_set` | Set an editor scene property | property, value | scene state | Editor only |
 | `renderdump` | Capture a render state dump | name: dump name | render_diff match | AI only; for parity checks |
 | `render_diff` | Compare two render dumps | a, b, max_drawn_diff | diff below threshold | AI only; uses render_diff.bat |
@@ -106,7 +106,7 @@ run.py invokes:
   godot-console --offline=false --write-movie run.avi --fixed-fps 60
 → build/runs/<run_id>/raw/frames/*.png (MJPEG) + audio.wav
 → ffmpeg -i frames.avi -i audio.wav -c:v libx264 -crf 16 -preset slow run.mp4
-→ Copy to H:\My Drive\Video\GUO\runs\<run_id>.mp4
+→ Copy to <GUO_RUNS_VIDEO_DIR>/<run_id>.mp4
 ```
 
 **Pros:**
@@ -160,22 +160,22 @@ ffmpeg -f ddagrab -drawbox 0 -offset_x 0 -offset_y 0 -video_size 2560x1440 -fram
 
 #### Video location
 
-**Master:** `H:\My Drive\Video\GUO\runs\<run_id>.mp4`
+**Master:** `<GUO_RUNS_VIDEO_DIR>/<run_id>.mp4`
 
 - One per run, regardless of driver (both AI and human runs land here)
-- Mounted via `net use H: \\server\My\ Drive` or Google Drive desktop sync
+- A synced or mounted folder, set in `GUO_RUNS_VIDEO_DIR`
 - High bitrate H.264 (CRF 16) for archival and clip extraction
 - Clips for Discord/social are cut from this master file via `run.py clip`
 
-**If H: is not mounted:**
+**If `GUO_RUNS_VIDEO_DIR` is not set or not reachable:**
 - Master stays in `build/runs/<run_id>/run.mp4` locally
 - `runs.db` row has a NULL `video_path` (video pending)
-- A `run.py sync` command moves the video to H: when Drive is next available
+- Moving it to the video folder later is manual (no `sync` command exists yet)
 
 **Retention:**
-- Keeps all master videos on H: (Google Drive, never auto-pruned)
+- Keeps all master videos in `GUO_RUNS_VIDEO_DIR` (never auto-pruned)
 - Local `build/runs/<run_id>/` folders pruned by `run.py prune` (keeps last 30 per scenario)
-- Shared `D:\_agentShared\runs\guo\<run_id>\` pruned (keeps last 200)
+- Shared `<GUO_RUNS_SHARED_DIR>/<run_id>/` pruned (keeps last 200)
 
 ## Output structure
 
@@ -186,7 +186,7 @@ build/runs/20261005_120000_client.login.basic_ai/
 ├── run.json                    # Manifest: scenario, commit, timings, pass/fail
 ├── events.jsonl                # Event log: frame-accurate timeline
 ├── summary.md                  # Human-readable recap (template: summary.md.example)
-├── run.mp4                     # High-quality video (moved to H: after completion)
+├── run.mp4                     # High-quality video (copied to the video folder after completion)
 ├── shot_*.png                  # Still images from steps marked `shot: true`
 ├── client.log                  # Game stdout (redacted)
 ├── editor.log                  # Godot stdout (redacted)
@@ -194,10 +194,10 @@ build/runs/20261005_120000_client.login.basic_ai/
     └── frames/                 # MovieWriter PNG/MJPEG frames (pruned after transcode)
 ```
 
-### Shared folder: `D:\_agentShared\runs\guo\<run_id>/`
+### Shared folder: `<GUO_RUNS_SHARED_DIR>/<run_id>/`
 
 ```
-D:\_agentShared\runs\guo\20261005_120000_client.login.basic_ai/
+<GUO_RUNS_SHARED_DIR>/20261005_120000_client.login.basic_ai/
 ├── run.json                    # Copy of manifest
 ├── events.jsonl                # Copy of events
 ├── summary.md                  # Copy of summary
@@ -206,7 +206,7 @@ D:\_agentShared\runs\guo\20261005_120000_client.login.basic_ai/
 
 Shared folder is read-only to other seats; only the runner writes.
 
-### Database: `D:\_agentShared\dbs\runs.db`
+### Database: `<GUO_RUNS_DB>`
 
 SQLite database tracking all runs across all projects.
 
@@ -223,7 +223,7 @@ SQLite database tracking all runs across all projects.
 | ok | INTEGER | 1 if all steps passed, 0 if any failed, NULL if incomplete |
 | steps_total | INTEGER | Total steps in scenario |
 | steps_failed | INTEGER | Number of failed steps |
-| video_path | TEXT | Path to master video (`H:\My Drive\Video\GUO\runs\<run_id>.mp4` or NULL if pending) |
+| video_path | TEXT | Path to master video (`<GUO_RUNS_VIDEO_DIR>/<run_id>.mp4` or NULL if pending) |
 | summary | TEXT | First 256 chars of summary markdown |
 
 **Table: `run_steps`**
@@ -243,9 +243,9 @@ Environment variables (or `config.bat`):
 
 | Variable | Purpose | Example |
 |---|---|---|
-| `GUO_RUNS_DB` | Path to runs.db | `D:\_agentShared\dbs\runs.db` |
-| `GUO_RUNS_SHARED_DIR` | Shared run folder | `D:\_agentShared\runs\guo` |
-| `GUO_RUNS_VIDEO_DIR` | Video master location | `H:\My Drive\Video\GUO\runs` |
+| `GUO_RUNS_DB` | Path to runs.db | `<set in config.local.bat>` |
+| `GUO_RUNS_SHARED_DIR` | Shared run folder | `<set in config.local.bat>` |
+| `GUO_RUNS_VIDEO_DIR` | Video master location | `<set in config.local.bat>` |
 | `OBS_WS_PASSWORD` | OBS WebSocket password | (leave unset for no auth) |
 | `UO_SHARD_HOST` | Dev shard hostname | `127.0.0.1` |
 | `UO_SHARD_PORT` | Dev shard port | `2606` |

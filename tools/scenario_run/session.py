@@ -20,7 +20,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from guo.process import build_child_env, no_activate  # noqa: E402
 
 # The tools a scenario may run in the editor without a dialog: the runner launched this editor for that.
-PREAPPROVED = "tour_segment,editor_invoke,editor_screenshot"
+# editor_invoke is not in it: an F3 action can do more than a scenario needs, so it keeps its approval dialog.
+PREAPPROVED = "tour_segment,editor_screenshot"
 
 
 def free_port() -> int:

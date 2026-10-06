@@ -274,9 +274,10 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
             _tour.Store = _store;
             AddChild(_tour);
         }
-        else if (!string.IsNullOrWhiteSpace(EditorData.Setting("GUO_EDITOR_MCP_PORT", "")))
+        else if (!string.IsNullOrWhiteSpace(EditorData.Setting("GUO_EDITOR_MCP_PORT", "")) && System.Environment.GetEnvironmentVariable("GUO_EDITOR_SCRIPTED") == "1")
         {
-            // An editor driven over the editor MCP can run one tour segment at a time (tour_segment); it runs nothing by itself.
+            // An editor a runner started (GUO_EDITOR_SCRIPTED=1) and drives over the editor MCP can run one tour segment at a time
+            // (tour_segment); it runs nothing by itself. An editor that merely has the MCP on never resizes or moves its window.
             _tour = new EditorTour(null, _data, _assets, _inspector, _world, _shard, _run);
             _tour.Search = _search;
             _tour.Ai = _ai;

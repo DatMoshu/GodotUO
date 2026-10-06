@@ -228,7 +228,7 @@ def test_mcp_silence_is_a_hang_and_kills_the_program(tmp_path):
     r, client, session, log, run_dir = make(tmp_path, [step("go", "launch"), step("t", "tour_segment", id="x"), step("after", "note", text="n")],
                                             {"tour_segment": McpTimeout("no MCP reply before the deadline")})
     out = r.run()
-    assert out["exit_kind"] == "hang" and not out["ok"] and session.stopped and len(out["steps"]) == 1
+    assert out["exit_kind"] == "hang" and not out["ok"] and session.stopped and [x["id"] for x in out["steps"]] == ["go", "t"] and out["steps"][1]["ok"] is False
     log.close()
     kinds = [json.loads(line)["kind"] for line in (run_dir / "events.jsonl").read_text().splitlines()]
     assert "hang" in kinds and kinds[-1] == "run_end"
@@ -290,3 +290,78 @@ def test_redact_rules():
     ip = ".".join(["10", "1", "2", "3"])
     assert redact("opened " + WIN + "work\\x.png at " + ip) == "opened <local path> at host"
     assert redact("/" + "home/someone/x") == "~/x"
+
+
+# --- review fixes (PR 17) ---------------------------------------------------------------------------------------
+
+def test_preapproved_excludes_editor_invoke():
+    import session
+    assert "editor_invoke" not in session.PREAPPROVED.split(",")
+
+
+def test_registry_gets_redacted_summary_and_step_detail(tmp_path):
+    db = tmp_path / "runs.db"
+    leaky = {**MANIFEST, "summary": "opened " + WIN + "work/x.png acct_gm1",
+             "steps": [{**MANIFEST["steps"][0], "detail": "failed at " + WIN + "work/y.png for acct_gm1"}]}
+    publish.register_run(db, leaky, ["acct_gm1"])
+    con = sqlite3.connect(db)
+    text = " ".join(str(v) for row in con.execute("SELECT summary FROM runs UNION ALL SELECT detail FROM run_steps") for v in row)
+    assert "work" not in text and "acct_gm1" not in text and "<local path>" in text
+
+
+def test_expect_log_and_failure_detail_keep_the_name_not_the_value(tmp_path):
+    r, _, _, log, run_dir = make(tmp_path, [step("go", "launch"), step("n", "note", text="x", expect={"result": {"note": "$secret"}})])
+    r.variables = {"secret": "hunter2"}
+    out = r.run()
+    assert not out["ok"]
+    log.close()
+    text = (run_dir / "events.jsonl").read_text()
+    assert "hunter2" not in text and "$secret" in text
+
+
+def test_tour_segment_repoll_sends_no_id(tmp_path):
+    running = {"state": "running", "id": "x"}
+    done = {"state": "done", "id": "x", "ok": True, "frames": [], "passed": [], "failures": []}
+    r, client, *_ = make(tmp_path, [step("go", "launch"), step("t", "tour_segment", id="x")], {"tour_segment": [running, running, done]})
+    assert r.run()["ok"]
+    sent = [a for t, a in client.calls if t == "tour_segment"]
+    assert sent[0]["id"] == "x" and all("id" not in a for a in sent[1:]) and len(sent) == 3
+
+
+def test_oserror_and_valueerror_abort_with_a_manifest(tmp_path):
+    for exc in (ConnectionResetError("reset"), ValueError("bad json")):
+        r, _, session, log, run_dir = make(tmp_path / type(exc).__name__, [step("go", "launch"), step("t", "tour_segment", id="x"), step("after", "note", text="n")],
+                                           {"tour_segment": exc})
+        out = r.run()
+        assert out["exit_kind"] == "error" and not out["ok"] and session.stopped
+        assert out["aborted"] and type(exc).__name__ in out["aborted"]
+        assert [x["id"] for x in out["steps"]] == ["go", "t"]
+
+
+def test_aborted_step_gets_step_end_and_a_failed_row(tmp_path):
+    r, _, _, log, run_dir = make(tmp_path, [step("go", "launch"), step("t", "tour_segment", id="x")], {"tour_segment": McpTimeout("silent")})
+    out = r.run()
+    row = out["steps"][-1]
+    assert row["id"] == "t" and row["ok"] is False and "hang" in row["detail"]
+    log.close()
+    ends = [json.loads(l) for l in (run_dir / "events.jsonl").read_text().splitlines() if json.loads(l)["kind"] == "step_end"]
+    assert [e["step"] for e in ends] == ["go", "t"] and ends[-1]["ok"] is False
+
+
+def test_run_timeout_inside_a_step_records_that_step(tmp_path):
+    clock = Clock()
+    r, *_ = make(tmp_path, [step("go", "launch"), step("w", "wait", seconds=9)], clock=clock, timeouts={"step_s": 30, "run_s": 5})
+    out = r.run()
+    assert out["exit_kind"] == "timeout" and [x["id"] for x in out["steps"]] == ["go", "w"] and out["steps"][1]["ok"] is False
+
+
+def test_redact_unc_and_own_names(tmp_path):
+    import getpass
+    from pathlib import Path as P
+    assert redact("see " + chr(92) * 2 + "srv" + chr(92) + "share" + chr(92) + "a.png now") == "see <network path> now"
+    from redact import load_deny
+    deny = load_deny(tmp_path)
+    user = getpass.getuser()
+    if len(user) >= 3:
+        assert user in deny and "<redacted>" in redact("hello " + user + " there", deny)
+    assert str(P.home()) in deny

@@ -44,7 +44,7 @@
 
 ## Video
 
-**Master:** `H:\My Drive\Video\GUO\runs\{run_id}.mp4`
+**Master:** `<GUO_RUNS_VIDEO_DIR>/{run_id}.mp4`
 **Resolution:** 2560×1440 @ 60 fps | 3840×2160 @ 60 fps | [resolution]
 **Codec:** H.264 (High Profile, CRF 16)
 **Size:** {size_mb} MB
@@ -76,7 +76,7 @@ Each event includes:
 
 ## Playback
 
-1. Open `H:\My Drive\Video\GUO\runs\{run_id}.mp4` in your video player.
+1. Open `<GUO_RUNS_VIDEO_DIR>/{run_id}.mp4` in your video player.
 2. Hover over the timeline to see frame numbers; cross-reference with events.jsonl to see what was happening at each moment.
 3. Still images (`*.png`) show key checkpoints from the run.
 
@@ -102,4 +102,4 @@ If the step timed out:
 
 **Run ID:** {run_id}
 **Machine Key:** {machine_identifier} (not a path; see `runs.db` for full details)
-**Registrar:** `D:\_agentShared\dbs\runs.db`, table `runs` / `run_steps`
+**Registrar:** `<GUO_RUNS_DB>`, table `runs` / `run_steps`

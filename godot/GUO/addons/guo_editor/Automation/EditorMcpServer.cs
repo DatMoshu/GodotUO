@@ -165,10 +165,11 @@ internal sealed class EditorMcpServer : IDisposable
 
     /// <summary>
     /// Tool names the process that launched this editor (tools/scenario_run) agreed to in advance, through the
-    /// environment it gave this editor. Chat never uses it; only a client holding the MCP token does.
+    /// environment it gave this editor (honoured only with GUO_EDITOR_SCRIPTED=1, which that runner also sets). Chat never uses it; only a client holding the MCP token does.
     /// </summary>
     private static bool PreApproved(string name) =>
-        (Environment.GetEnvironmentVariable("GUO_EDITOR_MCP_PREAPPROVED") ?? "").Split(',', StringSplitOptions.TrimEntries).Contains(name);
+        Environment.GetEnvironmentVariable("GUO_EDITOR_SCRIPTED") == "1"
+        && (Environment.GetEnvironmentVariable("GUO_EDITOR_MCP_PREAPPROVED") ?? "").Split(',', StringSplitOptions.TrimEntries).Contains(name);
 
     private static JsonObject Error(JsonNode id, int code, string message) => new()
     { ["jsonrpc"] = "2.0", ["id"] = id, ["error"] = new JsonObject { ["code"] = code, ["message"] = message } };

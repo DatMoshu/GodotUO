@@ -121,11 +121,12 @@ class Runner:
         try:
             do = substitute(step["do"], self.variables)
             expect = substitute(step.get("expect", {}), self.variables)
+            shown_expect = step.get("expect", {})       # as written: the log never holds what a $name stands for
             # The step as written (with $names, never the secrets behind them) is what the event log records.
             self.events.emit("action", sid, detail={"do": step["do"]})
             detail = getattr(self, "_do_" + kind.replace(".", "_"))(sid, do, deadline)
             self._last = detail if isinstance(detail, dict) else {}
-            self._expect(sid, expect, deadline)
+            self._expect(sid, expect, deadline, shown_expect)
             if step.get("shot"):
                 self._screenshot(sid)
             return self._finish(step, watch, True, None, detail)
@@ -133,12 +134,28 @@ class Runner:
             return self._finish(step, watch, False, ex.why, ex.detail)
         except ScenarioError as ex:
             return self._finish(step, watch, False, str(ex), {})
+        except RunAborted as ex:
+            self._abort_step(step, watch, ex.reason)
+            raise
         except McpTimeout as ex:
-            self._kill()
+            self._abort_step(step, watch, f"hang in step {sid}: {ex}")
             raise RunAborted(f"hang in step {sid}: {ex}", "hang") from ex
         except McpError as ex:
-            self._check_program()
+            try:
+                self._check_program()
+            except RunAborted as gone:
+                self._abort_step(step, watch, gone.reason)
+                raise
             return self._finish(step, watch, False, str(ex), {})
+        except (OSError, ValueError) as ex:      # a socket or a reply that is not JSON: the run ends, but is still recorded
+            reason = f"step {sid}: {type(ex).__name__}: {ex}"
+            self._abort_step(step, watch, reason)
+            raise RunAborted(reason, "error") from ex
+
+    def _abort_step(self, step: dict, watch: Stopwatch, reason: str) -> None:
+        """The step that was running when the run ended gets its step_end and its row, as failed."""
+        self._kill()
+        self.steps.append(self._finish(step, watch, False, reason, {}))
 
     def _finish(self, step: dict, watch: Stopwatch, ok: bool, why: str | None, detail: dict) -> dict:
         sid = step["id"]
@@ -155,7 +172,7 @@ class Runner:
 
     # -- expectations ------------------------------------------------------------------------------------------
 
-    def _expect(self, sid: str, expect: dict, deadline: float) -> None:
+    def _expect(self, sid: str, expect: dict, deadline: float, shown: dict | None = None) -> None:
         conditions = {k: v for k, v in expect.items() if k != "within_s"}
         if not conditions:
             return
@@ -171,9 +188,10 @@ class Runner:
                 break
             self._check_program()
             self._sleep(0.5)
-        self.events.emit("expect", sid, ok=ok, detail={"expect": conditions, "observed": observed})
+        written = {k: v for k, v in (shown if shown is not None else expect).items() if k != "within_s"}
+        self.events.emit("expect", sid, ok=ok, detail={"expect": written, "observed": observed})
         if not ok:
-            raise StepFailed("expectation not met", {"expect": conditions, "observed": observed})
+            raise StepFailed("expectation not met", {"expect": written, "observed": observed})
 
     def _evaluate(self, name: str, wanted) -> tuple[bool, object]:
         if name == "result":
@@ -289,7 +307,7 @@ class Runner:
                 raise StepFailed(f"segment {seg} did not finish within the step timeout")
             self._check_program()
             self._sleep(0.5)
-            args = {"id": seg}                    # ask again: the editor keeps the running segment
+            args = {}                             # ask again with no id: the editor keeps the running segment (an id would restart a finished one)
         frames = result.get("frames", [])
         self.events.frame = (self.events.frame or 0) + len(frames)
         run_rel = self.run_dir.resolve().relative_to(self.repo_root.resolve()).as_posix() + "/"

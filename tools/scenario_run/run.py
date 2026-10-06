@@ -19,8 +19,8 @@ Watchdogs: a step is failed after its timeout (timeouts.step_s, or do.timeout_s)
 timeouts.run_s; an MCP call with no reply for 45 s, or an editor that exits, is a hang: the editor this runner
 started (only that process tree) is killed, a `hang` event is written and the exit code is 3.
 
-Exit codes: 0 every step passed (or was skipped), 1 a step failed, 2 the run could not start (bad scenario,
-missing variable, editor did not come up), 3 hang.
+Exit codes: 0 every step passed (or was skipped), 1 a step failed or the run was cut short (run timeout, the editor
+exited), 2 the run could not start (bad scenario, missing variable), 3 hang.
 """
 
 from __future__ import annotations
@@ -46,7 +46,7 @@ from mcp_client import McpClient  # noqa: E402
 from redact import load_deny  # noqa: E402
 from session import EditorSession  # noqa: E402
 
-EXIT = {"ok": 0, "failed": 1, "timeout": 1, "hang": 3}
+EXIT = {"ok": 0, "failed": 1, "timeout": 1, "error": 1, "hang": 3}
 
 
 def machine_key() -> str:
@@ -95,7 +95,7 @@ def execute(scen: sc.Scenario, cfg, variables: dict[str, str], *, size: str, sca
         print("GUO_RUNS_SHARED_DIR is not set: nothing copied to the shared area")
     db = settings.read_setting("GUO_RUNS_DB", cfg.root)
     if db and register:
-        publish.register_run(Path(db), manifest)
+        publish.register_run(Path(db), manifest, deny)
     elif not db:
         print("GUO_RUNS_DB is not set: the run is not registered")
     return manifest, run_dir

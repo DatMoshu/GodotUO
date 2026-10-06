@@ -67,8 +67,12 @@ def copy_shared(run_dir: Path, shared_root: Path, run_id: str, deny: list[str]) 
     return target
 
 
-def register_run(db_path: Path, manifest: dict) -> None:
-    registry.register(db_path, manifest)
+def register_run(db_path: Path, manifest: dict, deny: list[str] | None = None) -> None:
+    """The registry is shared with every project, so its text is redacted like the shared copy's."""
+    clean = dict(manifest)
+    clean["summary"] = redact(manifest.get("summary") or "", deny)
+    clean["steps"] = [{**st, "detail": redact(st.get("detail") or "", deny)} for st in manifest["steps"]]
+    registry.register(db_path, clean)
 
 
 __all__ = ["git_commit", "render_summary", "write_manifest", "copy_shared", "register_run", "redact"]

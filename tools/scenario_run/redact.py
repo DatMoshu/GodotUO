@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import getpass
 import re
 from pathlib import Path
 
 _RULES = [
     (re.compile(r"(?<![A-Za-z])[A-Za-z]:[\\/]+Users[\\/]+[^\\/\s)'\"]+"), "~"),
     (re.compile(r"(?<![A-Za-z])[A-Za-z]:[\\/]+[^\s)'\"]+"), "<local path>"),
+    (re.compile(r"\\\\[^\\/\s)'\"]+[\\/]+[^\s)'\"]+"), "<network path>"),
     (re.compile(r"/(?:home|Users)/[^/\s)'\"]+"), "~"),
     (re.compile(r"(?<![\d.])\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(?![\d])"), "host"),
 ]
@@ -16,9 +18,22 @@ _RULES = [
 def load_deny(root: Path) -> list[str]:
     """The owner's own values (account names, device serials) from the gitignored privacy deny list."""
     path = root / "tools" / "privacy_scan" / "deny.local.txt"
-    if not path.is_file():
-        return []
-    return [ln.strip() for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip() and not ln.startswith("#")]
+    listed = []
+    if path.is_file():
+        listed = [ln.strip() for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip() and not ln.startswith("#")]
+    return listed + _own_names()
+
+
+def _own_names() -> list[str]:
+    """This account's user name and home folder: the redact rules stop at a space, these do not."""
+    names = []
+    try:
+        names.append(getpass.getuser())
+    except Exception:
+        pass
+    names.append(str(Path.home()))
+    names.append(Path.home().as_posix())
+    return [n for n in dict.fromkeys(names) if len(n) >= 3]
 
 
 def redact(text: str, deny: list[str] | None = None) -> str:
