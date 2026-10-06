@@ -47,8 +47,8 @@ Status: `todo` | `doing` | `done` | `blocked`
 
 | ID | Item | Reason |
 |---|---|---|
-| R1 | Radar “release RT to use” after opening a context menu | Probe still sees LastResult `menu …` on the next use-on-release step (pad-wheels14). Target-cursor B cancel is fixed. Needs a focused radar-state reset after Y-menu, not more PadGumpNav churn this pass. |
-| R2 | Trackpad-while-RT choice lock | Failed once on pad-wheels14; not investigated (Deck-specific path). |
+| R1 | Radar “release RT to use” after opening a context menu | Done — PadGumpNav yields while the radar is open so LB/RB still step; pad-wheels probe passes use-on-release after Y-menu. |
+| R2 | Trackpad-while-RT choice lock | Soft — failed once on an older run; recent pad-wheels passes. Keep an eye on Deck. |
 
 
 ## Out of scope this pass
