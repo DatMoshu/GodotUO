@@ -2016,8 +2016,11 @@ Relative paths resolve against the root of the git work tree holding the profile
 | `config_overlay` | path | a folder whose files are copied over ModernUO's `Configuration/` after the tool's template, last wins. A file may use `{{KEY}}` for a host-local value; the tool fills it on the host and never writes the result back |
 | `content` | array of paths | `tools/shard_content` folders deployed after the build, in order |
 | `listen` | object, required | `port` (1024-65535; GUO 2593, SWUO 2610) and `address` (default `0.0.0.0`) |
-| `service` | object | `user` (default `muo-<id>`; a system user with no login shell), `memory_max` (systemd `MemoryMax`, e.g. `6G`; omitted = no limit), `restart` (`on-failure`, the default, or `always`) |
-| `backup` | object | `root` (absolute POSIX folder on the host, default `/var/backups/muo/<id>`), `keep` (snapshots kept, default 14), `on_calendar` (systemd `OnCalendar` for a backup timer; omitted = no timer) |
+| `service` | object | `user` (default `muo-<id>`; a system user with no login shell), `memory_max` (systemd `MemoryMax`, e.g. `6G`; omitted = no limit), `restart` (`on-failure`, the default, or `always`), `exec_start_pre` (a command as an argument array, run as the service user before every start; a non-zero exit stops the start. `{data_dir}` is replaced by the client data path, `{dist}` by the server folder) |
+| `client_version` | string | the UO client version the shard expects (dotted, e.g. `7.0.107.76`), written to ModernUO's `clientData.clientVersion`; omitted = ModernUO detects it |
+| `data_manifest` | object | `file` (a JSON manifest of the client data files the shard needs, committed beside the profile), `verify` (`size` or `sha256`); `deploy` and every start refuse a client data folder that does not match |
+| `host_packages` | array of strings | extra apt packages `bootstrap` installs, beyond the tool's own (.NET SDK, git, zstd, libdeflate) |
+| `backup` | object | `root` (absolute POSIX folder on the host, default `/var/backups/muo/<id>`), `include` (folders under the server folder to snapshot, default `["Saves"]`), `keep` (snapshots kept, default 14), `on_calendar` (systemd `OnCalendar` for a backup timer; omitted = no timer) |
 | `seed` | string | the snapshot `reset` restores (snapshots are named `<yyyymmdd_hhmmss>` or `--name`); omitted = `reset` refuses |
 | `host_keys` | object | other names for the host-local keys, when a profile needs them: `client_data` (default `MUO_CLIENT_DATA`), `admin_user` (`MUO_ADMIN_USER`), `admin_password` (`MUO_ADMIN_PASSWORD`) |
 
@@ -2029,6 +2032,10 @@ Relative paths resolve against the root of the git work tree holding the profile
 | `patches` | patch files applied in order after checkout (GUO's: `tools/modernuo/patches/*.patch`) |
 | `assemblies` | extra content assemblies built after ModernUO, copied into its `Assemblies/` and listed in `Data/assemblies.json`: `[{"project": "<path to .csproj>", "assembly": "<name>.dll"}]`, e.g. SWUO's `server/custom/Scripts/SwuoContent.csproj` building `CustomContent.dll` |
 | `dotnet` | the .NET SDK channel, default `10.0` |
+| `build` | optional: the profile's own build instead of the tool's `dotnet publish`: `{"command": [args...], "output": "<path>"}`, run in the checkout; `output` is the published server folder it leaves (may use `{pin}`) |
+
+The systemd unit is always `muo-<id>.service` and a config overlay always overwrites the template, so every shard
+on a host is managed the same way.
 
 **Host-local values.** One file per profile on the host, `/etc/muo/<id>.env`, mode 0600, owner root, written by
 hand or by `run.py secrets`, never in a repo: `MUO_CLIENT_DATA` (the UO install the shard reads in place,
