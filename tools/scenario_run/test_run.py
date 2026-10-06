@@ -188,7 +188,7 @@ def test_expect_not_met_times_out_and_logs_observed(tmp_path):
 
 
 def test_unimplemented_kind_fails_the_step(tmp_path):
-    out = make(tmp_path, [step("c", "ui.click", control="X")])[0].run()
+    out = make(tmp_path, [step("c", "scene_set", property="x")])[0].run()
     assert not out["ok"] and "not implemented" in out["steps"][0]["detail"]
 
 

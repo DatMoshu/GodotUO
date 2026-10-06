@@ -73,6 +73,8 @@ revision `2025-06-18`; clients negotiate this through `initialize`.
 | `guo_input` | Pointer motion, mouse button press/release, named key press/release, Unicode text. Shift/Ctrl/Alt supported. |
 | `guo_wait` | Wait 1–600 process frames for UI or server updates. |
 | `guo_screenshot` | PNG of the rendered viewport as MCP image content. |
+| `guo_state` | Process frame index, scene, viewport size and the player's tile position. Cheap; for scripted runs (`tools/scenario_run`). |
+| `guo_quit` | Clean quit after two frames, so a MovieWriter recording is finalised. |
 
 All input and snapshot coordinates use **viewport pixels**. Classic bounds
 are multiplied by the same DPI scale input divides by. Inspect before acting;

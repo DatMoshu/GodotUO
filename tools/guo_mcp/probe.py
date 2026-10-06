@@ -86,13 +86,15 @@ def main():
             assert rpc("initialize", dict(protocolVersion="2025-06-18", capabilities={}, clientInfo=dict(name="probe", version="1")))["result"]["serverInfo"]["name"] == "guo"
             bridge.stdin.write('{"jsonrpc":"2.0","method":"notifications/initialized"}\n')
             bridge.stdin.flush()
-            assert len(rpc("tools/list")["result"]["tools"]) == 4
+            assert sorted(t["name"] for t in rpc("tools/list")["result"]["tools"]) == ["guo_input", "guo_quit", "guo_screenshot", "guo_state", "guo_ui", "guo_wait"]
             assert "error" in rpc("not/a/method")
             assert call("guo_wait", dict(frames=0))["isError"]
             assert call("guo_input", dict(kind="button", x=-1, y=0, button="Left", pressed=True))["isError"]
             assert call("guo_input", dict(kind="key", key="NotAKey", pressed=True))["isError"]
             assert not call("guo_wait", dict(frames=5)).get("isError")
             assert snapshot()["headless"] == (not args.headed)
+            state_now = json.loads(call("guo_state")["content"][0]["text"])
+            assert isinstance(state_now["frame"], int) and state_now["frame"] > 0 and "scene" in state_now and "player" in state_now
             if args.client:
                 deadline = time.monotonic() + 30
                 state = snapshot()
