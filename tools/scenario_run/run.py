@@ -27,9 +27,12 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import os
+import shutil
 import json
 import socket
 import sys
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -44,7 +47,8 @@ import settings  # noqa: E402
 from driver import Runner  # noqa: E402
 from mcp_client import McpClient  # noqa: E402
 from redact import load_deny  # noqa: E402
-from session import EditorSession  # noqa: E402
+import capture  # noqa: E402
+from session import ClientSession, EditorSession  # noqa: E402
 
 EXIT = {"ok": 0, "failed": 1, "timeout": 1, "error": 1, "hang": 3}
 
@@ -64,24 +68,97 @@ def parse_vars(items: list[str]) -> dict[str, str]:
     return out
 
 
-def execute(scen: sc.Scenario, cfg, variables: dict[str, str], *, size: str, scale: float, register: bool) -> tuple[dict, Path]:
+HARD_KILL_GRACE_S = 60       # past run_s plus this, a wedged runner is cut down from outside (the process watchdog)
+
+
+def shard_address(scen: sc.Scenario, root: Path) -> tuple[str, int] | None:
+    """The shard a scenario needs, or None when it needs none or the launcher config does not name one."""
+    if not scen.requires.get("shard") or scen.surface != "client":
+        return None
+    host = settings.read_setting("UO_SHARD_HOST", root)
+    port = settings.read_setting("UO_SHARD_PORT", root)
+    return (host, int(port)) if host and port.isdigit() else None
+
+
+def arm_hard_timer(scen: sc.Scenario, session, log: ev.EventLog) -> threading.Timer:
+    """Last line of defence: if the runner itself wedges, kill the program it started (only that) and exit non-zero."""
+    def cut_down() -> None:
+        try:
+            log.emit("hang", detail={"reason": "the runner did not finish within run_s plus the grace period"})
+        finally:
+            if session is not None:
+                session.stop()
+            os._exit(4)
+    timer = threading.Timer(float(scen.timeouts["run_s"]) + HARD_KILL_GRACE_S, cut_down)
+    timer.daemon = True
+    timer.start()
+    return timer
+
+
+def finalize_video(session, run_dir: Path, run_id: str, video_dir: str) -> tuple[str | None, str]:
+    """The movie the engine wrote, as the master mp4. Returns (video_path or None, a line for the summary)."""
+    if not getattr(session, "record", False):
+        return None, "No video: this run recorded stills and events only."
+    ffmpeg = capture.find_ffmpeg()
+    if ffmpeg is None:
+        return None, "The engine's movie is in raw/run.avi; ffmpeg was not found, so no master was made (video pending)."
+    mp4 = run_dir / "run.mp4"
+    ok, note = capture.transcode(ffmpeg, session.avi, mp4)
+    if not ok:
+        return None, f"No master: {note}."
+    if video_dir and Path(video_dir).is_dir():
+        target = Path(video_dir) / f"{run_id}.mp4"
+        try:
+            shutil.copy2(mp4, target)
+        except OSError as ex:
+            return None, f"Master: run.mp4 in the run folder ({note}); copying to the video folder failed ({type(ex).__name__}), so it is pending there."
+        session.avi.unlink(missing_ok=True)
+        return str(target), f"Master: {target.name} in the video folder ({note}); 60 fps, H.264 CRF 16, recorded by the engine's MovieWriter."
+    session.avi.unlink(missing_ok=True)                       # the master exists; the raw movie is several GB
+    return None, f"Master: run.mp4 in the run folder ({note}); the video folder is not configured or mounted, so it is pending there."
+
+
+def execute(scen: sc.Scenario, cfg, variables: dict[str, str], *, size: str | None, scale: float, register: bool,
+            record: bool | None = None) -> tuple[dict, Path]:
     """One run, start to finish: the folder, the driver, the manifest, the shared copy, the registry row."""
     started = datetime.now(timezone.utc)
     run_id = ev.make_run_id(scen.id, "ai", started)
     run_dir = cfg.build / "runs" / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
     log = ev.EventLog(run_dir / "events.jsonl", run_id, "ai")
-    session = EditorSession(cfg, run_dir, run_dir / "scratch", size, scale) if scen.surface == "editor" else None
+    video_dir = settings.read_setting("GUO_RUNS_VIDEO_DIR", cfg.root)
+    record = (scen.surface == "client") if record is None else record
+    if record and scen.surface != "client":
+        print("recording is the client's MovieWriter; an editor run records stills and events only", file=sys.stderr)
+        record = False
+    problems = capture.preflight(record=record, build_dir=cfg.build, video_dir=video_dir if record else "",
+                                 shard=shard_address(scen, cfg.root))
+    if problems:
+        for problem in problems:
+            log.emit("error", detail={"preflight": problem})
+        log.close()
+        raise sc.ScenarioError("pre-flight: " + "; ".join(problems))
+    if scen.surface == "editor":
+        session = EditorSession(cfg, run_dir, run_dir / "scratch", size or "3840x2160", scale)
+    elif scen.surface == "client":
+        session = ClientSession(cfg, run_dir, record, size)
+    else:
+        session = None
     runner = Runner(scen, run_dir, log, repo_root=cfg.root, session=session, variables=variables,
                     connect=lambda s: McpClient(s.port, s.token))
-    result = runner.run()
+    timer = arm_hard_timer(scen, session, log)
+    try:
+        result = runner.run()
+    finally:
+        timer.cancel()
     log.close()
+    video_path, video_note = finalize_video(session, run_dir, run_id, video_dir)
     manifest = {
         "run_id": run_id, "project": "guo", "scenario": scen.id, "title": scen.title, "surface": scen.surface,
         "driver": "ai", "commit": publish.git_commit(cfg.root) or None, "build": scen.requires.get("build", "debug"),
         "shard": scen.requires.get("shard"), "machine": machine_key(), "started": result["started"],
-        "ended": result["ended"], "ok": result["ok"], "aborted": result["aborted"], "exit_kind": result["exit_kind"],
-        "steps": result["steps"], "artifacts": sorted(set(result["artifacts"])), "video_path": None,
+        "ended": result["ended"], "ok": result["ok"], "recorded": bool(getattr(session, "record", False)), "aborted": result["aborted"], "exit_kind": result["exit_kind"],
+        "steps": result["steps"], "artifacts": sorted(set(result["artifacts"])), "video_path": video_path, "video_note": video_note,
     }
     deny = load_deny(cfg.root)
     summary = publish.render_summary(manifest, scen.title)
@@ -138,7 +215,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("scenario", nargs="*", help="a scenario id or file; or validate / list")
     ap.add_argument("--driver", choices=("ai", "human"), default="ai")
     ap.add_argument("--var", action="append", default=[], help="name=value for $name in the scenario")
-    ap.add_argument("--size", default="3840x2160", help="editor window WxH")
+    ap.add_argument("--size", default=None, help="window WxH (editor default 3840x2160; client: the project default, 1280x720, unless given)")
+    rec = ap.add_mutually_exclusive_group()
+    rec.add_argument("--record", dest="record", action="store_true", default=None,
+                     help="record the client with the engine's MovieWriter (the default for a client scenario)")
+    rec.add_argument("--no-record", dest="record", action="store_false", help="stills and events only")
     ap.add_argument("--scale", type=float, default=1.5, help="editor display scale")
     ap.add_argument("--no-register", action="store_true", help="do not add the run to the registry")
     args = ap.parse_args(argv)
@@ -162,7 +243,12 @@ def main(argv: list[str] | None = None) -> int:
     except sc.ScenarioError as ex:
         print(f"error: {ex}", file=sys.stderr)
         return 2
-    manifest, run_dir = execute(scen, cfg, variables, size=args.size, scale=args.scale, register=not args.no_register)
+    try:
+        manifest, run_dir = execute(scen, cfg, variables, size=args.size, scale=args.scale,
+                                    register=not args.no_register, record=args.record)
+    except sc.ScenarioError as ex:
+        print(f"error: {ex}", file=sys.stderr)
+        return 2
     print(f"{'PASS' if manifest['ok'] else 'FAIL'} {manifest['run_id']}  {run_dir}")
     return EXIT.get(manifest["exit_kind"], 1)
 

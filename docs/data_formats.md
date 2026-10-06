@@ -1617,6 +1617,8 @@ no reply). `tools/guo_mcp/run.py` is the stdio bridge: it sends the token, then 
 | `guo_input` | `kind` `motion\|button\|key\|text`; `x`,`y`; `button` `Left\|Right\|Middle\|WheelUp\|WheelDown`; `key` (Godot key name); `pressed`; `text` (at most 1024 characters); `shift`,`ctrl`,`alt` | text content; `isError` on bad arguments |
 | `guo_wait` | `frames` 1..600 | text content after that many process frames |
 | `guo_screenshot` | none | `image/png` content (base64); `isError` when headless |
+| `guo_state` | none | JSON text: `frame` (process frame index; with `--write-movie` it is the movie frame), `scene`, `width`, `height`, `player` (`map`,`x`,`y`,`z`, or null before the world) |
+| `guo_quit` | none | text, then the client quits after two frames (finalises a MovieWriter file); the connection closes |
 
 No shell, script, file or packet tools exist. Synthetic keys and buttons still held when the controller
 disconnects are released.

@@ -9,7 +9,9 @@ from pathlib import Path
 _RULES = [
     (re.compile(r"(?<![A-Za-z])[A-Za-z]:[\\/]+Users[\\/]+[^\\/\s)'\"]+"), "~"),
     (re.compile(r"(?<![A-Za-z])[A-Za-z]:[\\/]+[^\s)'\"]+"), "<local path>"),
-    (re.compile(r"\\\\[^\\/\s)'\"]+[\\/]+[^\s)'\"]+"), "<network path>"),
+    # A UNC path starts a token: two backslashes (four once JSON-escaped) not preceded by a word character, a
+    # backslash or a slash. A relative path in a JSON string ("tools\\scenario_run\\x") is not one.
+    (re.compile(r"(?<![\w\\/.])\\{2,4}(?!\\)[^\\/\s)'\"]+[\\/]+[^\s)'\"]+"), "<network path>"),
     (re.compile(r"/(?:home|Users)/[^/\s)'\"]+"), "~"),
     (re.compile(r"(?<![\d.])\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(?![\d])"), "host"),
 ]

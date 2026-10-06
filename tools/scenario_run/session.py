@@ -1,4 +1,4 @@
-"""Starting and stopping the program a scenario drives (this step: the GUO editor), and nothing else.
+"""Starting and stopping the program a scenario drives (the GUO editor or the GUO client), and nothing else.
 
 The runner only ever kills the process it started. The editor opens without taking focus (tools/guo/process.py),
 on a scratch settings folder so the owner's editor settings and layout are neither read nor changed, and with the
@@ -75,6 +75,8 @@ class EditorSession:
         self.token = secrets.token_hex(32)
         self.proc: subprocess.Popen | None = None
         self.log_path = run_dir / "editor.log"
+        self.preapproved = set(PREAPPROVED.split(","))
+        self.preapproved = set(PREAPPROVED.split(","))
         self._project_godot = cfg.godot_project / "project.godot"
         self._project_before = b""
 
@@ -113,3 +115,76 @@ class EditorSession:
                 self._project_godot.write_bytes(self._project_before)
         except OSError:
             pass
+
+
+class ClientSession:
+    """One GUO client started for one run, through launchers/game/play.bat (so it resolves the UO data exactly as a player's
+    launch does), with the game MCP on a fresh loopback port and a one-run token, and, when recording, the engine's
+    MovieWriter on (capture.py). The runner only ever ends the process tree it started."""
+
+    def __init__(self, cfg, run_dir: Path, record: bool, size: str | None = None):
+        self.cfg = cfg
+        self.run_dir = run_dir
+        self.record = record
+        self.size = size
+        self.port = free_port()
+        self.token = secrets.token_hex(32)
+        self.proc: subprocess.Popen | None = None
+        self.extra_args: list[str] = []
+        self.log_path = run_dir / "client.log"
+        self.avi = run_dir / "raw" / "run.avi"
+        import capture
+        self._watch = capture.StallWatch(self.avi, time.monotonic)
+
+    def stalled(self) -> bool:
+        """A recording whose movie file stopped growing: the engine is wedged (capture.STALL_S)."""
+        return self.record and self.alive() and self._watch.stalled()
+        import capture
+        self._watch = capture.StallWatch(self.avi, time.monotonic)
+
+    def stalled(self) -> bool:
+        """A recording whose movie file stopped growing: the engine is wedged (capture.STALL_S)."""
+        return self.record and self.alive() and self._watch.stalled()
+
+    def start(self) -> None:
+        import capture
+        env = build_child_env()
+        env.update({"GUO_MCP_PORT": str(self.port), "GUO_MCP_TOKEN": self.token})
+        engine = ["--resolution", self.size] if self.size else []      # a movie is the project's 1280x720 whatever this says
+        if self.record:
+            self.avi.parent.mkdir(parents=True, exist_ok=True)
+            engine.insert(0, capture.engine_args(self.avi))
+        env["GUO_ENGINE_ARGS"] = " ".join(engine)
+        args = ["--no-focus"] + (["--window-size", self.size.replace("x", ",")] if self.size else []) + ([] if self.record else ["--silent"]) + list(self.extra_args)   # a recording keeps its audio
+        cmd = [str(self.cfg.root / "launchers" / "game" / "play.bat"), *args]
+        log = self.log_path.open("w", encoding="utf-8", errors="replace")
+        try:
+            self.proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, env=env, cwd=str(self.cfg.root), **no_activate())
+        finally:
+            log.close()
+
+    def alive(self) -> bool:
+        return self.proc is not None and self.proc.poll() is None
+
+    def wait_listening(self, timeout_s: float) -> bool:
+        end = time.monotonic() + timeout_s
+        while time.monotonic() < end and self.alive():
+            with socket.socket() as s:
+                s.settimeout(0.5)
+                if s.connect_ex(("127.0.0.1", self.port)) == 0:
+                    return True
+            time.sleep(0.5)
+        return False
+
+    def wait_exit(self, timeout_s: float) -> bool:
+        if self.proc is None:
+            return True
+        try:
+            self.proc.wait(timeout=timeout_s)
+            return True
+        except subprocess.TimeoutExpired:
+            return False
+
+    def stop(self) -> None:
+        if self.proc is not None:
+            kill_tree(self.proc)

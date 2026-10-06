@@ -46,7 +46,7 @@ def render_summary(manifest: dict, title: str, description: str = "") -> str:
         for s in failed:
             lines += [f"### {s['id']}", "", f"- **Failure:** {s.get('detail') or 'see events.jsonl'}", ""]
     lines += ["## Video", "", f"{manifest.get('video_note', 'No video: this run recorded stills and events only.')}", "",
-              "## Event log", "", "`events.jsonl`, one JSON object per line; `frame` counts the stills so far.", ""]
+              "## Event log", "", "`events.jsonl`, one JSON object per line; `frame` is the engine frame on the client (the movie frame when recorded) and the stills so far on the editor.", ""]
     return "\n".join(lines)
 
 

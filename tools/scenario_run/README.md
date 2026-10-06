@@ -52,16 +52,30 @@ See `docs/data_formats.md` for the full schema and step kind reference.
 | `wait` | Pause the scenario | seconds | elapsed time | Human: Space to advance |
 | `shot` | Capture a still image | none | frame saved | Records one PNG per step |
 | `note` | Log a narrative comment | text | text in events.jsonl | No verification |
-| `ui.click` | Click a gump control | control: path | ui.exists, ui.text, etc. | Uses guo_ui MCP |
-| `ui.fill` | Type into a text field | control, text | ui.text | Uses guo_ui MCP |
-| `ui.key` | Send keyboard input | key: name | ui state change | Uses guo_input MCP |
-| `chat` | Send chat or console text | text | log or game response | Via guo_input text command |
+| `ui.click` | Click a control (client) | `control` (selector), `button`, `clicks`, `within_s` (how long to wait for the control, default 5) | ui.exists, ui.text, etc. | `guo_ui` to find it, `guo_input` to click its centre |
+| `ui.fill` | Click a field, then type into it (client) | `control`, `text`, `clear` (BackSpace presses first) | ui.* on something the typing changes | The typed text is never logged or read back (the game omits editable values) |
+| `ui.key` | Press and release a key (client) | `key` (Godot name: Enter, Escape, F1), `shift`, `ctrl`, `alt` | ui state change | `guo_input` |
+| `chat` | Say a line in game (client) | `text` (a `[command` works) | log or world state | Enter, text, Enter |
 | `tour_segment` | Run an EditorTour segment | id: segment name | EditorTour checks + frames | Editor only; surface override |
-| `editor_invoke` | Run an F3 action by key | key, query | tool result | Editor only; not pre-approved, so the editor asks (the run waits on the dialog) |
+| `editor_invoke` | Run an F3 action by key | key, query | tool result | Editor only; not pre-approved, so the step **fails at once** with a message instead of waiting on the approval dialog (nobody is at the PC in a scripted run). Use a `tour_segment`, or run it by hand |
 | `scene_set` | Set an editor scene property | property, value | scene state | Editor only |
 | `renderdump` | Capture a render state dump | name: dump name | render_diff match | AI only; for parity checks |
 | `render_diff` | Compare two render dumps | a, b, max_drawn_diff | diff below threshold | AI only; uses render_diff.bat |
 | `lane` | Run a multi_client lane | lane_id | lane summary events | Multi-client playtest |
+
+### Controls
+
+A `control` is a string (matches a control whose type, name or text equals it: `"Connect"`) or an object with any of
+`type`, `name`, `text`, `contains` (substring of the text), `system` (`classic` or `godot`) and `index` (which match,
+0 based). It is matched against the `guo_ui` snapshot, so `ui.click` finds the control by what it is, not by pixels.
+
+### Expectations
+
+An `expect` block is polled until every condition holds or `within_s` runs out (the step fails then, and the event
+log keeps what was observed). Conditions: `ui.exists` (a control), `ui.absent`, `ui.text` (`{"control", "equals" | "contains"}`,
+labels and buttons only), `ui.count` (`{"control", "equals" | "at_least"}`), `world.position` (`{"x","y","z"?,"map"?,"tolerance"}`,
+from `guo_state`), `scene` (the client's scene class, e.g. `LoginScene`), `log.contains` (the program's log), plus the
+editor's `result`, `editor.state` and `file.exists`.
 
 ## Drivers
 
@@ -75,9 +89,9 @@ The runner executes every step autonomously:
 4. Log all events with frame-accurate timing
 5. Continue to the next step or abort on fatal error
 
-**Capture path:** Native Godot MovieWriter → PNG frames + WAV audio → ffmpeg H.264 transcoding  
-**Quality:** 2560×1440 or 3840×2160 @ 60 fps, CRF 16  
-**Determinism:** Perfect; frame-perfect replay
+**Capture path:** the engine's MovieWriter (`--write-movie run.avi --fixed-fps 60`, MJPEG + PCM audio) → ffmpeg H.264 High, CRF 16, AAC  
+**Quality:** 60 fps, every frame rendered whatever the machine can do. The size is the engine window's at start, 1280×720 from `project.godot` (Godot's `--resolution` does not move it); a 1440p or 4K master needs a project-level size, which is not done yet.  
+**Scope tonight:** the client surface. An editor run records stills and events only (the editor is not a MovieWriter target); OBS and desktop capture are not implemented.
 
 ### Human Driver (`--driver human`)
 
@@ -98,6 +112,14 @@ Steps marked `ai_only: true` are skipped in human mode and logged as such.
 ## Recording: capture paths and conventions
 
 ### AI Runs: MovieWriter (deterministic)
+
+`run.py <client scenario>` records by default (`--no-record` for stills and events only). Before it launches anything the runner
+checks what the run needs (10 GB free for a recording, ffmpeg on PATH, the video folder mounted if one is configured, the shard
+answering if the scenario `requires.shard`) and stops with the reason, so a run never starts and then dies for a known cause.
+The client is started through `launchers/game/play.bat` with `GUO_ENGINE_ARGS` carrying the engine flags, audio on. At the end the
+runner asks the client to quit (`guo_quit`) so the movie is finalised, transcodes, copies the master to `GUO_RUNS_VIDEO_DIR` when
+that folder is mounted, and deletes the raw AVI. Event `frame` on the client is the engine frame, which in a recording is the movie
+frame, so an event's video time is `frame / 60`.
 
 Godot's built-in MovieWriter renders every frame without frame-skipping, ensuring perfect smoothness and repeatability.
 
@@ -273,7 +295,9 @@ Tests cover:
 
 ### A run hangs
 
-The watchdog will detect this after 20 seconds of no frame writes or 45 seconds of no MCP replies, and kill Godot.
+The watchdogs: a recording whose movie file does not grow for 20 s, an MCP call with no reply for 45 s, or a program that exits
+is a hang; the runner kills the program it started (only that), writes a `hang` event and exits 3. If the runner itself wedges,
+a timer armed at `run_s` plus 60 s kills the program and exits 4.
 
 - Check `events.jsonl` for the `kind: hang` event and which step was running
 - Confirm the shard is reachable: `ping <UO_SHARD_HOST>`

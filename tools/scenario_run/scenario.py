@@ -15,7 +15,7 @@ SURFACES = {"client", "editor", "web", "deck", "shard"}
 # Every kind the format names; the runner implements the subset in IMPLEMENTED and fails a step of any other kind.
 KINDS = {"launch", "wait", "shot", "note", "tour_segment", "editor_invoke", "ui.click", "ui.fill", "ui.key",
          "chat", "scene_set", "renderdump", "render_diff", "lane"}
-IMPLEMENTED = {"launch", "wait", "shot", "note", "tour_segment", "editor_invoke"}
+IMPLEMENTED = {"launch", "wait", "shot", "note", "tour_segment", "editor_invoke", "ui.click", "ui.fill", "ui.key", "chat"}
 DEFAULT_TIMEOUTS = {"step_s": 30, "run_s": 600}
 
 
