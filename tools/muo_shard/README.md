@@ -26,7 +26,7 @@ M1 ships `validate` and `plan bootstrap|deploy|status`. `admin`, `backup`, `rest
 ## What the scripts do
 
 - **bootstrap** (root): installs only the packages that are missing (`dotnet-sdk-<channel>`, git, zstd,
-  libdeflate-dev, python3, iproute2, and the profile's `host_packages`), creates the service user (no login shell),
+  libdeflate-dev, libargon2-1, python3, iproute2, and the profile's `host_packages`), creates the service user (no login shell),
   `/srv/muo/<id>/{src,dist,uodata}`, the backup root, and an empty `/etc/muo/<id>.env` (0600, never overwritten).
   A second run changes nothing.
 - **deploy** (root): reads `/etc/muo/<id>.env`, stops the unit, checks out the pinned commit (patches off before the
@@ -47,6 +47,9 @@ Things to know:
   `content` (GUO's) need nothing.
 - The pin is the profile's `server.source.ref` (or the submodule's gitlink). GUO's equals `UO_SHARD_REF` in
   `launchers/_shared/config.bat`; a test fails when they drift, and `plan deploy` says so on stderr.
+- Ubuntu's archive SDK can trail the version the pin's `global.json` names (26.04 had 10.0.112 against 10.0.201), so
+  deploy rewrites that one line to the installed SDK and marks the file `skip-worktree`; the next deploy restores it
+  before it moves the pin.
 - The unit's working directory is `dist/`; write repo-relative commands in `exec_start_pre` as `{src}/...`.
 - The backup timer (`backup.on_calendar`) is installed by M2, with the verbs it runs.
 - Open question for the owner, not a tool setting: the shared template has `accountHandler.enableAutoAccountCreation`

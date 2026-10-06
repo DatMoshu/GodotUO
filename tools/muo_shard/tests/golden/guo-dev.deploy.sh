@@ -307,6 +307,9 @@ chmod 0644 $BASE/patches/0003-felucca-spring.patch
 # checkout at the pin; patches off before the pin moves, on after
 if [ ! -d "$SRC/.git" ]; then as_user git clone --no-checkout "$CLONE_URL" "$SRC"; fi
 as_user git -C "$SRC" cat-file -e "$PIN^{commit}" 2>/dev/null || as_user git -C "$SRC" fetch origin
+# global.json is rewritten below for the installed SDK; put it back before anything else looks at the tree
+as_user git -C "$SRC" update-index --no-skip-worktree global.json 2>/dev/null || true
+as_user git -C "$SRC" checkout -q -- global.json 2>/dev/null || true
 head="$(as_user git -C "$SRC" rev-parse -q --verify HEAD 2>/dev/null || true)"
 if [ "$head" != "$PIN" ]; then
     if as_user git -C "$SRC" apply -R --check "$BASE/patches/0003-felucca-spring.patch" >/dev/null 2>&1; then as_user git -C "$SRC" apply -R "$BASE/patches/0003-felucca-spring.patch"; fi
@@ -328,6 +331,13 @@ if as_user git -C "$SRC" apply --check "$BASE/patches/0003-felucca-spring.patch"
     as_user git -C "$SRC" apply "$BASE/patches/0003-felucca-spring.patch"
 else
     echo "muo_shard: 0003-felucca-spring.patch already applied, skipping"
+fi
+
+# the archive's SDK can trail the SDK version the pin's global.json names; build with the installed one
+if [ -f "$SRC/global.json" ]; then
+    sdk="$(as_user sh -c 'cd / && dotnet --version')"
+    as_user sed -i -E "s/\"version\": *\"[^\"]*\"/\"version\": \"$sdk\"/" "$SRC/global.json"
+    as_user git -C "$SRC" update-index --skip-worktree global.json
 fi
 
 # build
