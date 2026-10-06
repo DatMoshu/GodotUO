@@ -365,3 +365,25 @@ def test_redact_unc_and_own_names(tmp_path):
     if len(user) >= 3:
         assert user in deny and "<redacted>" in redact("hello " + user + " there", deny)
     assert str(P.home()) in deny
+
+
+SCHEMA_DIR = Path(__file__).resolve().parents[1] / "scenarios" / "schema"
+
+
+def test_committed_scenarios_match_the_schema_and_the_runner():
+    jsonschema = pytest.importorskip("jsonschema")
+    schema = json.loads((SCHEMA_DIR / "scenario.schema.json").read_text(encoding="utf-8"))
+    jsonschema.Draft202012Validator.check_schema(schema)
+    files = sorted((SCHEMA_DIR.parent).rglob("*.scenario.json"))
+    assert files
+    for f in files:
+        data = json.loads(f.read_text(encoding="utf-8"))
+        assert sc.validate(data) == [], f.name
+        assert [e.message for e in jsonschema.Draft202012Validator(schema).iter_errors(data)] == [], f.name
+
+
+def test_schema_kinds_match_the_runner():
+    schema = json.loads((SCHEMA_DIR / "scenario.schema.json").read_text(encoding="utf-8"))
+    assert set(schema["$defs"]["do"]["properties"]["kind"]["enum"]) == sc.KINDS
+    events_schema = json.loads((SCHEMA_DIR / "event.schema.json").read_text(encoding="utf-8"))
+    assert set(events_schema["properties"]["kind"]["enum"]) >= ev.KINDS

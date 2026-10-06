@@ -1831,3 +1831,233 @@ When configured, ACP `session/new.mcpServers` receives a stdio server named
 `guo-editor`, command Python, argument the absolute bridge.py path, and port/token
 environment entries. The entry is optional; agents without client MCP support
 are not claimed to be connected. No real inference is run by discovery or smoke.
+
+---
+
+## 34. Scenario runs (`tools/scenarios`, `tools/scenario_run`)
+
+One scenario format for every area of GUO, read by one runner (`tools/scenario_run/run.py`) with two drivers:
+`ai` performs each step's `do` through an MCP of the program it started; `human` skips `do`, shows `say` on the
+in-engine overlay and waits for the same `expect`. A run writes a folder, an event log and a manifest, and adds
+one row to a registry shared by every project. JSON Schema (draft 2020-12), in `tools/scenarios/schema/`:
+`scenario.schema.json` (a scenario file), `event.schema.json` (one line of `events.jsonl`) and `run.schema.json`
+(`run.json`). The runner also checks structure itself (`scenario.py`), so a bad file fails before anything
+launches.
+
+### Scenario file (`tools/scenarios/<area>/<name>.scenario.json`)
+
+UTF-8 JSON, at most 256 KiB, committed to the public repo. **No credentials, accounts or machine paths**: a
+value that differs per person is a `$name` variable (below). The schema refuses unknown top-level and step
+fields; add a field here before anything writes it.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `id` | string, required | dotted lower-case words, at least two (`^[a-z0-9_]+(\.[a-z0-9_]+)+$`), e.g. `client.login.basic`; unique across `tools/scenarios/` |
+| `title` | string | one line for lists and the summary; defaults to `id` |
+| `surface` | string, required | `client`, `editor`, `web`, `deck` or `shard`: the program the runner starts and drives |
+| `requires` | object | `shard` (a shard target, below), `account` (a `$name`, never the account itself), `build` (`debug`, the default, or `release`) |
+| `timeouts` | object | `step_s` (default 30) and `run_s` (default 600), positive seconds |
+| `steps` | array, required | at least one step, run in order |
+
+A step:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `id` | string, required | unique within the scenario; names the still (`shots/<id>.png`) and the `run_steps` row |
+| `do` | object, required | the action: `kind` plus that kind's arguments (table below) |
+| `say` | string | the instruction a human follows, and the caption the overlay draws |
+| `expect` | object | conditions polled after `do` until all hold or `within_s` elapses (default 0: checked once). Every key except `within_s` is one condition |
+| `timeout_s` | number | this step's timeout; else the kind's default (`launch` 300, `tour_segment` 180), else `timeouts.step_s` |
+| `shot` | boolean | capture a full-resolution still after the step |
+| `on_fail` | string | `abort` (default) or `continue` |
+| `ai_only` | boolean | the human driver skips the step and logs it as skipped |
+| `surface` | string | a step that drives another program than the scenario's (e.g. one editor `tour_segment` in a client scenario) |
+
+Step kinds. A scenario never names an MCP tool; the runner maps the kind. A kind the running build does not
+implement fails its step ("not implemented"); it does not crash the run. **Since** is the sprint build step that
+adds it.
+
+| Kind | Arguments | Maps to | Since |
+|---|---|---|---|
+| `launch` | `args` (strings, optional) | starts the surface's program with its MCP on | 2 |
+| `wait` | `seconds` (default 1) | sleep; watchdogs keep running | 2 |
+| `shot` | none | a still of the program's window | 2 |
+| `note` | `text` | a `log` event | 2 |
+| `tour_segment` | `id` (an EditorTour segment) | editor MCP `tour_segment`; the segment's checks and frames become the step's | 2 |
+| `editor_invoke` | `key`, `query` (optional) | editor MCP `editor_invoke` (section 33) | 2 |
+| `ui.click` | `control` (a `guo_ui` path, e.g. `LoginGump/Connect`) | game MCP `guo_ui` + `guo_input` (section 29) | 3 |
+| `ui.fill` | `control`, `text` | game MCP | 3 |
+| `ui.key` | `key` (a Godot key name), `mods` (optional list) | game MCP `guo_input` | 3 |
+| `chat` | `text` (e.g. `[go 1434 1697`) | game MCP `guo_input` text | 3 |
+| `renderdump` | `name` | the client's `renderdump NAME` command | 4 |
+| `render_diff` | `name` | `tools/render_diff` against ClassicUO's dump of that name | 4 |
+| `scene_set` | `path`, `property`, `value` | editor MCP `scene_set_property` | later |
+| `lane` | `lane` (a `multi_client` lane) | `tools/multi_client`; its summary becomes events | 7 |
+
+Expectations. A condition the runner does not know fails the step ("unknown expectation"), so a typo cannot pass.
+
+| Condition | Value | Holds when | Since |
+|---|---|---|---|
+| `result` | object | it is a recursive subset of the last action's JSON result | 2 |
+| `editor.state` | object | it is a recursive subset of editor MCP `editor_state` | 2 |
+| `file.exists` | path | the file exists; repo-relative, and only under `build/` | 2 |
+| `ui.exists` | control path | `guo_ui` lists the control | 3 |
+| `ui.text` | `{control, equals}` | the control's text equals `equals` | 3 |
+| `world.position` | `{x, y, z?, tolerance?}` | the player is within `tolerance` tiles (default 0) | 3 |
+| `render_diff` | `{max_drawn_diff}` | the last `render_diff` found at most that many differing draws | 4 |
+
+**Variables.** `$name` or `${name}` in any string of `do` or `expect` is replaced before the step runs: from
+`--var name=value`, else from the environment variable `GUO_SCENARIO_<NAME>` (credentials live there or in
+`config.local.bat`, never in a file). A variable nobody defined stops the run before launch (exit 2); it is
+never replaced by `""`. Events and the manifest record steps **as written**, so no log holds what `$name` stood
+for.
+
+**Shard targets.** `requires.shard` names a target; the runner resolves it from configuration:
+`GUO_SHARD_<TARGET>_HOST` and `GUO_SHARD_<TARGET>_PORT` (target upper-cased, `-` and `.` as `_`), the account
+from the scenario's variables. `editor_shard` is the local editor shard; a remote shard is the `id` of its host
+profile (section 35). Nothing about a remote shard's address or account is committed.
+
+### Run folder (`build/runs/<run_id>/`, gitignored)
+
+`run_id` is `<yyyymmdd_hhmmss>_<scenario id>_<driver>`, UTC; characters outside `A-Za-z0-9._-` become `-`.
+
+```
+build/runs/<run_id>/
+  run.json             the manifest (below)
+  events.jsonl         the event log (below)
+  summary.md           for people (tools/scenario_run/summary.md.example)
+  editor.log | client.log   the program's output, redacted with the privacy deny list
+  shots/<step>.png     stills
+  segments/<step>/     frames and checks of a tour_segment step
+  run.mp4              the master video, when a capture path ran (step 3)
+```
+
+The shared copy (`GUO_RUNS_SHARED_DIR/<run_id>/`) gets `run.json`, `events.jsonl`, `summary.md`, the logs and
+the stills, each redacted first. Video masters go to `GUO_RUNS_VIDEO_DIR/<run_id>.mp4`. All three locations are
+configuration (environment, then `config.local.bat`), never a path in the repo; unset means "not copied", and
+the runner says so.
+
+### `events.jsonl`
+
+One UTF-8 JSON object per line, flushed per line so a killed run keeps everything up to the kill.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `ts` | string | UTC ISO-8601 with milliseconds and `Z` |
+| `run_id` | string | as above |
+| `step` | string or null | the step id; null for run-level events |
+| `kind` | string | `run_start`, `step_start`, `action`, `expect`, `shot`, `log`, `mark`, `warn`, `error`, `hang`, `step_end`, `run_end` |
+| `driver` | string | `ai` or `human` |
+| `ok` | bool or null | the outcome, where the kind has one |
+| `detail` | object | per kind: `step_start` `{kind, say}`; `action` `{do}` as written; `expect` `{expect, observed}`; `shot` `{file, width, height}`; `log` `{note}`; `mark` `{recorder, t_ms}` (the recorder's clock now, to align events with the video) |
+| `frame` | int or null | the frame index now: stills so far, or video frames once a capture path runs |
+| `dur_ms` | int | `step_end` and `run_end` only |
+
+### `run.json`
+
+| Field | Meaning |
+|---|---|
+| `run_id`, `project` (`guo`), `scenario`, `title`, `surface`, `driver` | identity |
+| `commit` | the checkout's `HEAD`, abbreviated or full hex, or null when unknown (never `""`) |
+| `build` | `debug` or `release` |
+| `shard` | `requires.shard`, or null |
+| `machine` | the first 8 hex of SHA-1 of the host name: stable, neither a path nor the name |
+| `started`, `ended` | UTC ISO-8601 |
+| `ok` | true when no step failed and the run was not cut short |
+| `aborted` | null, or why the run stopped early |
+| `exit_kind` | `ok`, `failed`, `timeout`, `error` or `hang`: exit codes 0, 1, 1, 1, 3. Exit 2 (could not start) writes no manifest |
+| `steps` | per step, in scenario order: `id`, `kind`, `ok` (bool or null), `skipped`, `dur_ms`, `detail` (failure text or `""`) |
+| `artifacts` | file names in the run folder, relative |
+| `video_path` | the master's location in `GUO_RUNS_VIDEO_DIR`, or null. Null with `run.mp4` in `artifacts` means the master is still only local (video folder unset or unreachable) |
+| `summary` | the text of `summary.md` |
+
+### Registry (`GUO_RUNS_DB`, SQLite)
+
+One file shared by every project (the fleet keeps it as `runs.db` in the shared agent area); its location is
+configuration. The runner creates the tables when missing (`tools/scenario_run/registry.py` holds the DDL) and
+writes a run in one transaction, replacing an earlier row with the same `run_id`. The deck opens it read-only.
+
+```sql
+CREATE TABLE runs (
+  run_id TEXT PRIMARY KEY, project TEXT NOT NULL, scenario TEXT NOT NULL, driver TEXT NOT NULL,
+  commit_hash TEXT, started TEXT NOT NULL, ended TEXT, ok INTEGER,
+  steps_total INTEGER, steps_failed INTEGER, video_path TEXT, summary TEXT);
+CREATE TABLE run_steps (
+  run_id TEXT NOT NULL REFERENCES runs(run_id), seq INTEGER NOT NULL, step TEXT NOT NULL, kind TEXT,
+  ok INTEGER, skipped INTEGER NOT NULL DEFAULT 0, dur_ms INTEGER, detail TEXT,
+  PRIMARY KEY (run_id, seq));
+CREATE INDEX runs_scenario ON runs(project, scenario, started);
+```
+
+`ok` columns are 1, 0 or NULL (not evaluated). `summary` and `run_steps.detail` are redacted before insert.
+Another project writes the same columns with its own `project`. A new column is described here first and added
+as nullable, so older readers keep working.
+
+---
+
+## 35. Shard host profiles (`*.profile.json`, `tools/muo_shard`)
+
+`tools/muo_shard/run.py` installs and runs a ModernUO shard on a Linux host under systemd. Everything that
+differs between shards is a **profile**: GUO's dev shard is one, another project's shard (SWUO) another, and the
+tool grows no per-project code. A profile is committed in the repo that owns the shard
+(`tools/muo_shard/profiles/guo-dev.profile.json` here; another project keeps its own) and is passed with
+`--profile <file>`. Its JSON Schema, `tools/muo_shard/schema/profile.schema.json`, ships with the tool.
+
+UTF-8 JSON, at most 64 KiB, snake_case. **Unknown fields are refused** (as section 30). **No credentials, no
+client data path and no person's machine path** go in a profile: those are host-local values (below).
+Relative paths resolve against the root of the git work tree holding the profile file.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `version` | `1`, required | format version |
+| `id` | string, required | `^[a-z][a-z0-9-]{1,30}$`. Names the unit `muo-<id>.service`, the host folders and the default service user |
+| `name` | string, required | the shard name players see (ModernUO `server.name`), 1-64 chars |
+| `server` | object, required | the ModernUO source and what is built with it (below) |
+| `config_overlay` | path | a folder whose files are copied over ModernUO's `Configuration/` after the tool's template, last wins. A file may use `{{KEY}}` for a host-local value; the tool fills it on the host and never writes the result back |
+| `content` | array of paths | `tools/shard_content` folders deployed after the build, in order |
+| `listen` | object, required | `port` (1024-65535; GUO 2593, SWUO 2610) and `address` (default `0.0.0.0`) |
+| `service` | object | `user` (default `muo-<id>`; a system user with no login shell), `memory_max` (systemd `MemoryMax`, e.g. `6G`; omitted = no limit), `restart` (`on-failure`, the default, or `always`) |
+| `backup` | object | `root` (absolute POSIX folder on the host, default `/var/backups/muo/<id>`), `keep` (snapshots kept, default 14), `on_calendar` (systemd `OnCalendar` for a backup timer; omitted = no timer) |
+| `seed` | string | the snapshot `reset` restores (snapshots are named `<yyyymmdd_hhmmss>` or `--name`); omitted = `reset` refuses |
+| `host_keys` | object | other names for the host-local keys, when a profile needs them: `client_data` (default `MUO_CLIENT_DATA`), `admin_user` (`MUO_ADMIN_USER`), `admin_password` (`MUO_ADMIN_PASSWORD`) |
+
+`server`:
+
+| Field | Meaning |
+|---|---|
+| `source`, required | `{"kind": "git", "url": "<https url>", "ref": "<40-hex commit>"}`, or `{"kind": "submodule", "path": "<path>"}`: the commit is the submodule's gitlink in the profile's repo, and the tool refuses a submodule with local changes |
+| `patches` | patch files applied in order after checkout (GUO's: `tools/modernuo/patches/*.patch`) |
+| `assemblies` | extra content assemblies built after ModernUO, copied into its `Assemblies/` and listed in `Data/assemblies.json`: `[{"project": "<path to .csproj>", "assembly": "<name>.dll"}]`, e.g. SWUO's `server/custom/Scripts/SwuoContent.csproj` building `CustomContent.dll` |
+| `dotnet` | the .NET SDK channel, default `10.0` |
+
+**Host-local values.** One file per profile on the host, `/etc/muo/<id>.env`, mode 0600, owner root, written by
+hand or by `run.py secrets`, never in a repo: `MUO_CLIENT_DATA` (the UO install the shard reads in place,
+uploaded separately), `MUO_ADMIN_USER` and `MUO_ADMIN_PASSWORD` (the owner account `run.py admin` creates and
+the scenario runner logs in with). The unit reads it as `EnvironmentFile`; the deploy writes the client data
+path into the shard's own `Configuration/modernuo.json` (`dataDirectories`).
+
+**Host layout.** `/srv/muo/<id>/src` (checkout) and `/srv/muo/<id>/dist` (the published server with its
+`Configuration/`, `Saves/` and `Logs/`), owned by the service user; backups under `backup.root`. Two profiles on
+one host differ in `id` and `listen.port` and share nothing else.
+
+Example, GUO's dev shard:
+
+```json
+{
+  "version": 1,
+  "id": "guo-dev",
+  "name": "GUO Dev",
+  "server": {
+    "source": {"kind": "git", "url": "https://github.com/modernuo/ModernUO.git",
+               "ref": "d4531cd94b739613155225c234900de9f47d2c88"},
+    "patches": ["tools/modernuo/patches/0001-headless-owner-account.patch",
+                "tools/modernuo/patches/0002-settable-update-range.patch",
+                "tools/modernuo/patches/0003-felucca-spring.patch"]
+  },
+  "config_overlay": "tools/modernuo/config",
+  "listen": {"port": 2593},
+  "service": {"memory_max": "4G"},
+  "backup": {"keep": 14, "on_calendar": "*-*-* 04:00:00"},
+  "seed": "seed"
+}
+```

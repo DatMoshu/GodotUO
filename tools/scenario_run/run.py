@@ -78,7 +78,7 @@ def execute(scen: sc.Scenario, cfg, variables: dict[str, str], *, size: str, sca
     log.close()
     manifest = {
         "run_id": run_id, "project": "guo", "scenario": scen.id, "title": scen.title, "surface": scen.surface,
-        "driver": "ai", "commit": publish.git_commit(cfg.root), "build": scen.requires.get("build", "debug"),
+        "driver": "ai", "commit": publish.git_commit(cfg.root) or None, "build": scen.requires.get("build", "debug"),
         "shard": scen.requires.get("shard"), "machine": machine_key(), "started": result["started"],
         "ended": result["ended"], "ok": result["ok"], "aborted": result["aborted"], "exit_kind": result["exit_kind"],
         "steps": result["steps"], "artifacts": sorted(set(result["artifacts"])), "video_path": None,
