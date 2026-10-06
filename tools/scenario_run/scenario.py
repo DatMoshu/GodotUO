@@ -70,13 +70,48 @@ def validate(data: object) -> list[str]:
             problems.append(f"{where}: do.kind must be one of {sorted(KINDS)}")
         if "expect" in step and not isinstance(step["expect"], dict):
             problems.append(f"{where}: expect must be an object")
+        problems += _unknown_fields(where, step)
         if step.get("on_fail", "abort") not in ("abort", "continue"):
             problems.append(f"{where}: on_fail must be abort or continue")
+    shape = _shape()
+    problems += [f"unknown field '{k}'" for k in data if k not in shape["top"]]
     timeouts = data.get("timeouts", {})
     for key in ("step_s", "run_s"):
         value = timeouts.get(key, 1)
         if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
             problems.append(f"timeouts.{key} must be a positive number")
+    return problems
+
+
+SCHEMA_FILE = Path(__file__).resolve().parents[1] / "scenarios" / "schema" / "scenario.schema.json"
+_SHAPE: dict | None = None
+
+
+def _shape() -> dict:
+    """The field names the JSON schema allows, read from the schema itself so the two cannot drift (stdlib only)."""
+    global _SHAPE
+    if _SHAPE is None:
+        schema = json.loads(SCHEMA_FILE.read_text(encoding="utf-8"))
+        defs = schema["$defs"]
+        do_args = {d["if"]["properties"]["kind"]["const"]: (set(d["then"]["properties"]), set(d["then"]["required"]))
+                   for d in defs["do"]["allOf"]}
+        _SHAPE = {"top": set(schema["properties"]), "step": set(defs["step"]["properties"]),
+                  "expect": set(defs["expect"]["properties"]), "do": do_args}
+    return _SHAPE
+
+
+def _unknown_fields(where: str, step: dict) -> list[str]:
+    """A misspelt step field, kind argument or expectation is refused, never silently ignored."""
+    shape = _shape()
+    problems = [f"{where}: unknown field '{k}'" for k in step if k not in shape["step"]]
+    do = step.get("do")
+    if isinstance(do, dict) and do.get("kind") in shape["do"]:
+        allowed, required = shape["do"][do["kind"]]
+        problems += [f"{where}: {do['kind']} takes no '{k}'" for k in do if k not in allowed]
+        problems += [f"{where}: {do['kind']} needs '{k}'" for k in sorted(required) if k not in do]
+    expect = step.get("expect")
+    if isinstance(expect, dict):
+        problems += [f"{where}: unknown expectation '{k}'" for k in expect if k not in shape["expect"]]
     return problems
 
 

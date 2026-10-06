@@ -15,7 +15,7 @@ editor_invoke), polls the step's `expect`, and writes everything to build/runs/<
 then copies run.json, events.jsonl, summary.md and the stills to GUO_RUNS_SHARED_DIR and adds the run to the
 registry GUO_RUNS_DB, when those are configured (settings.py). Nothing here has a default path.
 
-Watchdogs: a step is failed after its timeout (timeouts.step_s, or do.timeout_s); the run stops after
+Watchdogs: a step is failed after its timeout (the step's timeout_s, else the kind's default, else timeouts.step_s); the run stops after
 timeouts.run_s; an MCP call with no reply for 45 s, or an editor that exits, is a hang: the editor this runner
 started (only that process tree) is killed, a `hang` event is written and the exit code is 3.
 

@@ -155,12 +155,6 @@
             "properties": {
               "kind": {
                 "const": "launch"
-              },
-              "args": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
               }
             },
             "required": [
@@ -231,8 +225,7 @@
               }
             },
             "required": [
-              "kind",
-              "text"
+              "kind"
             ],
             "additionalProperties": false
           }

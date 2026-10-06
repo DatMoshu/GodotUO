@@ -1841,14 +1841,15 @@ One scenario format for every area of GUO, read by one runner (`tools/scenario_r
 in-engine overlay and waits for the same `expect`. A run writes a folder, an event log and a manifest, and adds
 one row to a registry shared by every project. JSON Schema (draft 2020-12), in `tools/scenarios/schema/`:
 `scenario.schema.json` (a scenario file), `event.schema.json` (one line of `events.jsonl`) and `run.schema.json`
-(`run.json`). The runner also checks structure itself (`scenario.py`), so a bad file fails before anything
-launches.
+(`run.json`). The runner checks every file before anything launches (`scenario.py`, standard library only): it
+reads the allowed field names, kind arguments and expectations from `scenario.schema.json` itself, so a misspelt
+field is refused by both and the two cannot drift.
 
 ### Scenario file (`tools/scenarios/<area>/<name>.scenario.json`)
 
 UTF-8 JSON, at most 256 KiB, committed to the public repo. **No credentials, accounts or machine paths**: a
-value that differs per person is a `$name` variable (below). The schema refuses unknown top-level and step
-fields; add a field here before anything writes it.
+value that differs per person is a `$name` variable (below). Unknown fields, kind arguments and expectations are
+refused; add a field here before anything writes it.
 
 | Field | Type | Meaning |
 |---|---|---|
@@ -1879,10 +1880,10 @@ adds it.
 
 | Kind | Arguments | Maps to | Since |
 |---|---|---|---|
-| `launch` | `args` (strings, optional) | starts the surface's program with its MCP on | 2 |
+| `launch` | none | starts the surface's program with its MCP on | 2 |
 | `wait` | `seconds` (default 1) | sleep; watchdogs keep running | 2 |
 | `shot` | none | a still of the program's window | 2 |
-| `note` | `text` | a `log` event | 2 |
+| `note` | `text` (optional) | a `log` event | 2 |
 | `tour_segment` | `id` (an EditorTour segment) | editor MCP `tour_segment`; the segment's checks and frames become the step's | 2 |
 | `editor_invoke` | `key`, `query` (optional) | editor MCP `editor_invoke` (section 33) | 2 |
 | `ui.click` | `control` (a `guo_ui` path, e.g. `LoginGump/Connect`) | game MCP `guo_ui` + `guo_input` (section 29) | 3 |
@@ -2001,7 +2002,14 @@ as nullable, so older readers keep working.
 differs between shards is a **profile**: GUO's dev shard is one, another project's shard (SWUO) another, and the
 tool grows no per-project code. A profile is committed in the repo that owns the shard
 (`tools/muo_shard/profiles/guo-dev.profile.json` here; another project keeps its own) and is passed with
-`--profile <file>`. Its JSON Schema, `tools/muo_shard/schema/profile.schema.json`, ships with the tool.
+`--profile <file>`. **Status:** this is the contract the tool is being built against (muo_shard M1); until it
+lands, neither `tools/muo_shard/` nor its JSON Schema (`tools/muo_shard/schema/profile.schema.json`) exists.
+
+**The tool never changes a host by itself.** `bootstrap`, `deploy`, `admin`, `backup`, `restore` and `reset` only
+**emit a shell script** for a person to review and run (`run.py plan <verb> --profile P > step.sh`); only the
+read-only `status` and `logs` connect to a host. Commands a profile supplies (`service.exec_start_pre`,
+`server.build.command`) are argument arrays run **without a shell**, never as root: `exec_start_pre` as the
+service user (systemd `ExecStartPre`), `build.command` as the service user in the checkout.
 
 UTF-8 JSON, at most 64 KiB, snake_case. **Unknown fields are refused** (as section 30). **No credentials, no
 client data path and no person's machine path** go in a profile: those are host-local values (below).
@@ -2019,7 +2027,7 @@ Relative paths resolve against the root of the git work tree holding the profile
 | `service` | object | `user` (default `muo-<id>`; a system user with no login shell), `memory_max` (systemd `MemoryMax`, e.g. `6G`; omitted = no limit), `restart` (`on-failure`, the default, or `always`), `exec_start_pre` (a command as an argument array, run as the service user before every start; a non-zero exit stops the start. `{data_dir}` is replaced by the client data path, `{dist}` by the server folder) |
 | `client_version` | string | the UO client version the shard expects (dotted, e.g. `7.0.107.76`), written to ModernUO's `clientData.clientVersion`; omitted = ModernUO detects it |
 | `data_manifest` | object | `file` (a JSON manifest of the client data files the shard needs, committed beside the profile), `verify` (`size` or `sha256`); `deploy` and every start refuse a client data folder that does not match |
-| `host_packages` | array of strings | extra apt packages `bootstrap` installs, beyond the tool's own (.NET SDK, git, zstd, libdeflate) |
+| `host_packages` | array of strings | extra apt packages `bootstrap` installs, beyond the tool's own (.NET SDK, git, zstd, libdeflate). Each a Debian package name, `^[a-z0-9][a-z0-9+.-]*$`, so no entry can reach apt as an option |
 | `backup` | object | `root` (absolute POSIX folder on the host, default `/var/backups/muo/<id>`), `include` (folders under the server folder to snapshot, default `["Saves"]`), `keep` (snapshots kept, default 14), `on_calendar` (systemd `OnCalendar` for a backup timer; omitted = no timer) |
 | `seed` | string | the snapshot `reset` restores (snapshots are named `<yyyymmdd_hhmmss>` or `--name`); omitted = `reset` refuses |
 | `host_keys` | object | other names for the host-local keys, when a profile needs them: `client_data` (default `MUO_CLIENT_DATA`), `admin_user` (`MUO_ADMIN_USER`), `admin_password` (`MUO_ADMIN_PASSWORD`) |

@@ -386,4 +386,18 @@ def test_schema_kinds_match_the_runner():
     schema = json.loads((SCHEMA_DIR / "scenario.schema.json").read_text(encoding="utf-8"))
     assert set(schema["$defs"]["do"]["properties"]["kind"]["enum"]) == sc.KINDS
     events_schema = json.loads((SCHEMA_DIR / "event.schema.json").read_text(encoding="utf-8"))
-    assert set(events_schema["properties"]["kind"]["enum"]) >= ev.KINDS
+    assert set(events_schema["properties"]["kind"]["enum"]) == ev.KINDS
+
+
+def test_runner_refuses_what_the_schema_refuses():
+    base = {"id": "editor.test.typo", "surface": "editor"}
+    assert sc.validate({**base, "steps": [{"id": "a", "do": {"kind": "note", "text": "t"}}]}) == []
+    cases = [
+        ({**base, "colour": 1, "steps": [{"id": "a", "do": {"kind": "wait"}}]}, "unknown field 'colour'"),
+        ({**base, "steps": [{"id": "a", "do": {"kind": "note", "txet": "t"}}]}, "note takes no 'txet'"),
+        ({**base, "steps": [{"id": "a", "do": {"kind": "tour_segment"}}]}, "tour_segment needs 'id'"),
+        ({**base, "steps": [{"id": "a", "do": {"kind": "wait"}, "shoot": True}]}, "unknown field 'shoot'"),
+        ({**base, "steps": [{"id": "a", "do": {"kind": "wait"}, "expect": {"ui.exsts": "X"}}]}, "unknown expectation 'ui.exsts'"),
+    ]
+    for data, wanted in cases:
+        assert any(wanted in p for p in sc.validate(data)), (wanted, sc.validate(data))

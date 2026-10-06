@@ -9,7 +9,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-KINDS = {"run_start", "step_start", "action", "expect", "shot", "log", "warn", "error", "hang", "step_end", "run_end"}
+KINDS = {"run_start", "step_start", "action", "expect", "shot", "log", "mark", "warn", "error", "hang", "step_end", "run_end"}
 
 
 def utc_now() -> str:
