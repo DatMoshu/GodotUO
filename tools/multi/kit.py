@@ -510,6 +510,9 @@ def house_description(cat, p: dict) -> tuple[dict, list[str]]:
         openings, parts = [], []
         if n == 0:
             openings.append({"kind": "door", "at": list(door_cell), "door": p.get("door", "wood")})
+        elif n == 1 and p.get("balcony") and p.get("porch", True) and (door_x, front_y) in edge(footprint(1)):
+            # the balcony over the porch is reached from the storey above the front door
+            openings.append({"kind": "door", "at": list(door_cell), "door": p.get("interior_door", p.get("door", "wood"))})
         if n_rooms > 1:
             parts, dcells, rooms = split_rooms(mb, n_rooms, walls, reserved[n], rng, inside=footprint(n))
             if len(rooms) < n_rooms:

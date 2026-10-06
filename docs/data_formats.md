@@ -1339,17 +1339,34 @@ The Map Validator's `BiomeProfile` sets which land-biome mix the `BiomeDistribut
 
 Town sites and district pads: **Town Sites** `Sites` places fixed footprints `x,y,w,h[,z];...` first (z omitted = the footprint's median ground Z; entries off the scope or touching water are skipped with a warning), and `BuildableBiomesCsv` replaces the random finder's biome set (empty = Grassland, Forest, DenseForest, Savanna, Beach). **Town Roads** `FlattenTarget` (`centre`, the default, or `poi` = the site's Z), `FlattenSkirt` (blend tiles, default 3) and `PaintStreets` (off = a bare flattened pad). Both passes are opt-in; their defaults generate what they did before.
 
-Towns from imported districts (`tools/mapgen_districts`): `build` picks flat lots on dry ground from a first
+Towns on generated maps (`tools/mapgen_districts`): `build` picks flat lots on dry ground from a first
 run's `map.bin` (on the 8x8 block grid, default 88x88), re-runs with them as fixed z0 `Sites`, streets off,
-exports a world project at `--origin` on facet 0 and lays one built `tools/layout_import` district (72x72,
-section 32) on each lot, 8 cells in from its edge, with a road from every gate into the district's own
-streets. The result `built/` has layout_import's district shape: `world/` (the map's blocks with the
-districts' over them), `parts/`, `scene.json` (parts and tour in map cells, prefixed `t1_`, `t2_`...; plus
-`jumps`, the stops the staff account steps to by command: each town's `road_approach`) and `district.json`
-(`kind` `uo-district`, `origin`, `size`, `theme`, `towns[]`: `town`, `district`, `source`, `lot`,
-`map_corner`, `world_corner`, `blocks`, `entry_gate`, `parts`, `tour_stops`, `streets[]` (`gate`, `cells`,
-`joined`, `statics_cleared`, `end`), `street_problems`). `stage` and `prove` run layout_import's
-district-stage and the multi prover's session on it.
+exports a world project at `--origin` on facet 0 and lays one 72x72 district on each lot, 8 cells in from
+its edge, with a road from every gate into the district's own streets. The districts are GUO towns (below)
+unless `--district` names built `tools/layout_import` districts (section 32). The result `built/` has the
+district shape: `world/` (the map's blocks with the districts' over them), `parts/`, `scene.json` (parts and
+tour in map cells, prefixed `t1_`, `t2_`...; plus `jumps`, the stops the staff account steps to by command:
+each town's `road_approach`) and `district.json` (`kind` `uo-district`, `origin`, `size`, `theme`,
+`towns[]`: `town`, `district`, `source`, `generator` (`guo-town` or `layout_import`), `lot`, `map_corner`,
+`world_corner`, `blocks`, `entry_gate`, `parts`, `tour_stops`, `streets[]` (`gate`, `cells`, `joined`,
+`statics_cleared`, `end`), `street_problems`). `world/SOURCE-LICENSE.txt` is written only when a district
+carries one. `stage` and `prove` run layout_import's district-stage and the multi prover's session on it.
+
+**GUO town presets** (`tools/mapgen_districts/towns.json`, `"schema": "guo.mapgen.towns/1"`): `notes`,
+`presets{name: preset}`. A preset holds `name`; relative weights `styles` (tools/multi style keys,
+section 27), `shapes` (`rect`, `L`, `T`, `U`), `storeys` (`"1"`..`"3"`), `roofs` (`gable`, `hip`, `flat`);
+chances `side_streets` (each of the two side streets is kept with it), `yard`, `balcony`, `fill` (a lot
+gets a house); ranges `lot_width`, `house_width`, `house_depth` (`[min, max]` cells).
+
+**A GUO town plan** (`plan.json` in a town's folder, `"schema": "guo.mapgen.town/1"`): `name`, `preset`,
+`seed`, `size` (`[72, 72]`), `streets[]` (`name`, `rect` `[x0, y0, x1, y1]` inclusive district cells),
+`plaza` (a rect), `lots[]` (`id`, `rect`, `house`: null for a green, else `params` (the `house`
+operation's request, section 27) and `centre` (the multi's centre in district cells); `path`, optional:
+cells paved from the house's front down to the street), `notes`. The same preset, seed and committed
+styles give the same plan; a plan builds the same files. A GUO town's folder is the district shape above
+(`district.json` adds `generator` `guo-town`, `plan` (`schema`, `preset`, `seed`), `houses`;
+`land_library` is MapGen's grass, cobblestone and dirt), plus `plan.json`; its `world/project.json` has
+`created` `1970-01-01T00:00:00+00:00` and `base` empty when built without an install.
 
 `hash` is SHA-256 over `"guo-mapgen-1"`, width and height (uint16), the land ids, the heights and every
 static op (kind, x, y, z, id, hue) in pipeline order. The same preset, seed, size, options and

@@ -1,4 +1,4 @@
-"""Lay built CDDA/Zomboid districts (tools/layout_import) on a generated map's town lots.
+"""Lay built districts (GUO towns from town.py, or tools/layout_import builds) on a generated map's town lots.
 
 The map generator writes the land as a tools/world project; each district is a tools/world project
 of its own plus a scene of native multis. Both replace whole 8x8 blocks, so a district moves to a
@@ -186,7 +186,8 @@ def compose(map_world: Path, pois: dict, origin: tuple[int, int], districts: lis
     (world_dir / "project.json").write_text(json.dumps(project, indent=1), encoding="utf-8")
     licences = {(d / "world" / "SOURCE-LICENSE.txt").read_text(encoding="utf-8") for d in districts
                 if (d / "world" / "SOURCE-LICENSE.txt").exists()}
-    (world_dir / "SOURCE-LICENSE.txt").write_text("\n\n".join(sorted(licences)), encoding="utf-8")
+    if licences:
+        (world_dir / "SOURCE-LICENSE.txt").write_text("\n\n".join(sorted(licences)), encoding="utf-8")
     (built / "parts").mkdir(parents=True)
     world = World(world_dir)
 
@@ -257,6 +258,7 @@ def compose(map_world: Path, pois: dict, origin: tuple[int, int], districts: lis
                 tour.append({"name": f"{tag}_arrive{k}", "x": way[k][0] - X, "y": way[k][1] - Y, "z": 0})
         tour += [{**s, "name": f"{tag}_{s['name']}", "x": s["x"] + mx, "y": s["y"] + my} for s in scene["tour"]]
         placed.append({"town": town["id"], "district": record["name"], "source": district.name,
+                       "generator": record.get("generator", "layout_import"),
                        "lot": town["footprint"], "map_corner": [mx, my], "world_corner": [wx, wy],
                        "blocks": blocks, "entry_gate": town["gates"][entry], "parts": len(scene["parts"]), "tour_stops": len(scene["tour"]),
                        "streets": streets})

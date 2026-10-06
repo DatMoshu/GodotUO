@@ -164,6 +164,13 @@ jobs:
       - name: UO data writer tests
         run: python tools/uodata_write/test_uodata.py
 
+      # MapGen towns: GUO's own towns from the committed house styles, planned,
+      # built and laid on a synthetic map lot. No client data.
+      - name: MapGen town tests
+        run: |
+          python tools/mapgen_districts/test_town.py
+          python tools/mapgen_districts/test_compose.py
+
       # docs/port_status.md is generated. If it differs from a fresh audit
       # (ignoring its timestamp), someone ported without re-measuring.
       - name: Port audit is current

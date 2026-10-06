@@ -3,7 +3,8 @@
 **MapGen** makes Ultima Online maps procedurally. It builds a map from noise heights through erosion,
 climate, biomes, rivers, coasts, land transitions, roads and scatter. Then it validates the result and
 writes legacy MUL map files. The owner wrote it as an addition to a CentrED# fork. It now lives here
-(ADR-0030). Provenance: `docs/upstream/mapgen.md`.
+(ADR-0030). Provenance: `docs/upstream/mapgen.md`. Status: a public baseline, shelved; towns,
+what to extend and where to start are in `docs/mapgen_status.md`.
 
 | Folder | What |
 |---|---|
