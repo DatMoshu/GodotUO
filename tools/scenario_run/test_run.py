@@ -398,6 +398,7 @@ def test_runner_refuses_what_the_schema_refuses():
         ({**base, "steps": [{"id": "a", "do": {"kind": "tour_segment"}}]}, "tour_segment needs 'id'"),
         ({**base, "steps": [{"id": "a", "do": {"kind": "wait"}, "shoot": True}]}, "unknown field 'shoot'"),
         ({**base, "steps": [{"id": "a", "do": {"kind": "wait"}, "expect": {"ui.exsts": "X"}}]}, "unknown expectation 'ui.exsts'"),
+        ({**base, "steps": [{"id": "a", "do": {"kind": "ui.click", "control": "LoginGump", "buton": "Left"}}]}, "ui.click takes no 'buton'"),
     ]
     for data, wanted in cases:
         assert any(wanted in p for p in sc.validate(data)), (wanted, sc.validate(data))

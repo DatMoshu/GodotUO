@@ -155,6 +155,12 @@
             "properties": {
               "kind": {
                 "const": "launch"
+              },
+              "args": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
               }
             },
             "required": [
@@ -297,8 +303,22 @@
                 "const": "ui.click"
               },
               "control": {
-                "type": "string",
-                "minLength": 1
+                "$ref": "#/$defs/control"
+              },
+              "button": {
+                "enum": [
+                  "Left",
+                  "Right",
+                  "Middle"
+                ]
+              },
+              "clicks": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "within_s": {
+                "type": "number",
+                "minimum": 0
               }
             },
             "required": [
@@ -322,11 +342,18 @@
                 "const": "ui.fill"
               },
               "control": {
-                "type": "string",
-                "minLength": 1
+                "$ref": "#/$defs/control"
               },
               "text": {
                 "type": "string"
+              },
+              "clear": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "within_s": {
+                "type": "number",
+                "minimum": 0
               }
             },
             "required": [
@@ -354,16 +381,14 @@
                 "type": "string",
                 "minLength": 1
               },
-              "mods": {
-                "type": "array",
-                "items": {
-                  "enum": [
-                    "shift",
-                    "ctrl",
-                    "alt",
-                    "meta"
-                  ]
-                }
+              "shift": {
+                "type": "boolean"
+              },
+              "ctrl": {
+                "type": "boolean"
+              },
+              "alt": {
+                "type": "boolean"
               }
             },
             "required": [
@@ -527,22 +552,34 @@
           "minLength": 1
         },
         "ui.exists": {
-          "type": "string",
-          "minLength": 1
+          "$ref": "#/$defs/control"
         },
         "ui.text": {
           "type": "object",
           "additionalProperties": false,
           "required": [
-            "control",
-            "equals"
+            "control"
+          ],
+          "oneOf": [
+            {
+              "required": [
+                "equals"
+              ]
+            },
+            {
+              "required": [
+                "contains"
+              ]
+            }
           ],
           "properties": {
             "control": {
-              "type": "string",
-              "minLength": 1
+              "$ref": "#/$defs/control"
             },
             "equals": {
+              "type": "string"
+            },
+            "contains": {
               "type": "string"
             }
           }
@@ -567,6 +604,10 @@
             "tolerance": {
               "type": "integer",
               "minimum": 0
+            },
+            "map": {
+              "type": "integer",
+              "minimum": 0
             }
           }
         },
@@ -582,8 +623,88 @@
               "minimum": 0
             }
           }
+        },
+        "ui.absent": {
+          "$ref": "#/$defs/control"
+        },
+        "ui.count": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "control"
+          ],
+          "oneOf": [
+            {
+              "required": [
+                "equals"
+              ]
+            },
+            {
+              "required": [
+                "at_least"
+              ]
+            }
+          ],
+          "properties": {
+            "control": {
+              "$ref": "#/$defs/control"
+            },
+            "equals": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "at_least": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "scene": {
+          "type": "string",
+          "minLength": 1
+        },
+        "log.contains": {
+          "type": "string",
+          "minLength": 1
         }
       }
+    },
+    "control": {
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "text": {
+              "type": "string"
+            },
+            "contains": {
+              "type": "string"
+            },
+            "system": {
+              "enum": [
+                "classic",
+                "godot"
+              ]
+            },
+            "index": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      ]
     }
   }
 }
