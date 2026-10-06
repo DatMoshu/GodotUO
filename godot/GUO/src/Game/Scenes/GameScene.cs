@@ -994,6 +994,14 @@ namespace GUO.Game.Scenes
             Profiler.EnterContext(Profiler.ProfilerContext.RENDER_FRAME_WORLD_PREPARE);
             FillGameObjectList();
 
+            // PORT DEVIATION (GUO): while the pad's interact radar is up, the
+            // thing it has chosen is what the world highlights, as if the
+            // mouse were over it (Input.Gamepad.PadRadar); upstream has no pad.
+            if (GUO.Input.Gamepad.PadRadar.Highlight is BaseGameObject padChoice)
+            {
+                SelectedObject.Object = padChoice;
+            }
+
             // PORT DEVIATION (GUO): upstream highlights the selected object by
             // drawing it again on top with the highlight hue. A meshed object
             // (ADR-0004) is not drawn one by one, so its hue is written into

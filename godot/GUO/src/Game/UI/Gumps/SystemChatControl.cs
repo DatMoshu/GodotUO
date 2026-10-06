@@ -468,6 +468,28 @@ namespace GUO.Game.UI.Gumps
 
         public override void Update()
         {
+            // PORT DEVIATION (GUO): Gamepad mode hides the classic 18px chat
+            // input strip; pad talk is a separate planned path. Floating
+            // journal lines above still draw.
+            bool pad = GUO.Input.InputMode.Current == GUO.Input.InputKind.Gamepad
+                || GUO.Input.Gamepad.PadScreen.IsOpen
+                || GUO.Input.Gamepad.PadWheel.IsOpen
+                || GUO.Input.Gamepad.PadRadar.IsOpen
+                || GUO.Input.Gamepad.PadWizard.IsOpen;
+            if (pad)
+            {
+                // Always hide the input strip on pad — IsActive defaults on for
+                // keyboard chat and must not keep the 18px bar visible.
+                TextBoxControl.IsVisible = false;
+                _trans.IsVisible = false;
+                _currentChatModeLabel.IsVisible = false;
+            }
+            else if (TextBoxControl != null)
+            {
+                TextBoxControl.IsVisible = _isActive;
+                _trans.IsVisible = _isActive;
+            }
+
             LinkedListNode<ChatLineTime> first = _textEntries.First;
 
             while (first != null)
