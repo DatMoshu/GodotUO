@@ -1,0 +1,153 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "guo/run-manifest@1",
+  "title": "run.json (docs/data_formats.md section 34)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "run_id",
+    "project",
+    "scenario",
+    "driver",
+    "started",
+    "ended",
+    "ok",
+    "exit_kind",
+    "steps"
+  ],
+  "properties": {
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "project": {
+      "type": "string",
+      "minLength": 1
+    },
+    "scenario": {
+      "type": "string",
+      "pattern": "^[a-z0-9_]+(\\.[a-z0-9_]+)+$"
+    },
+    "title": {
+      "type": "string"
+    },
+    "surface": {
+      "enum": [
+        "client",
+        "editor",
+        "web",
+        "deck",
+        "shard"
+      ]
+    },
+    "driver": {
+      "enum": [
+        "ai",
+        "human"
+      ]
+    },
+    "commit": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^[0-9a-f]{7,40}$"
+    },
+    "build": {
+      "enum": [
+        "debug",
+        "release"
+      ]
+    },
+    "shard": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "machine": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}$"
+    },
+    "started": {
+      "type": "string"
+    },
+    "ended": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "aborted": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "exit_kind": {
+      "enum": [
+        "ok",
+        "failed",
+        "timeout",
+        "error",
+        "hang"
+      ]
+    },
+    "steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "kind",
+          "ok",
+          "skipped"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "kind": {
+            "type": "string"
+          },
+          "ok": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "skipped": {
+            "type": "boolean"
+          },
+          "dur_ms": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "detail": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "video_path": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "summary": {
+      "type": "string"
+    }
+  }
+}

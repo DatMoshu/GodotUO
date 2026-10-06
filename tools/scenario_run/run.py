@@ -15,7 +15,7 @@ editor_invoke), polls the step's `expect`, and writes everything to build/runs/<
 then copies run.json, events.jsonl, summary.md and the stills to GUO_RUNS_SHARED_DIR and adds the run to the
 registry GUO_RUNS_DB, when those are configured (settings.py). Nothing here has a default path.
 
-Watchdogs: a step is failed after its timeout (timeouts.step_s, or do.timeout_s); the run stops after
+Watchdogs: a step is failed after its timeout (the step's timeout_s, else the kind's default, else timeouts.step_s); the run stops after
 timeouts.run_s; an MCP call with no reply for 45 s, or an editor that exits, is a hang: the editor this runner
 started (only that process tree) is killed, a `hang` event is written and the exit code is 3.
 
@@ -78,7 +78,7 @@ def execute(scen: sc.Scenario, cfg, variables: dict[str, str], *, size: str, sca
     log.close()
     manifest = {
         "run_id": run_id, "project": "guo", "scenario": scen.id, "title": scen.title, "surface": scen.surface,
-        "driver": "ai", "commit": publish.git_commit(cfg.root), "build": scen.requires.get("build", "debug"),
+        "driver": "ai", "commit": publish.git_commit(cfg.root) or None, "build": scen.requires.get("build", "debug"),
         "shard": scen.requires.get("shard"), "machine": machine_key(), "started": result["started"],
         "ended": result["ended"], "ok": result["ok"], "aborted": result["aborted"], "exit_kind": result["exit_kind"],
         "steps": result["steps"], "artifacts": sorted(set(result["artifacts"])), "video_path": None,
