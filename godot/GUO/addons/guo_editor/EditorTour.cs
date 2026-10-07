@@ -1624,6 +1624,7 @@ public partial class EditorTour : Node
         var result = new System.Text.Json.Nodes.JsonObject { ["state"] = "done", ["id"] = id };
         try
         {
+            _started = true; // a requested segment is not the whole tour: _Process must not start RunAsync
             UseOutDir(fullOut);
             await EnsureWindow();
             await EnsureOverlay();
