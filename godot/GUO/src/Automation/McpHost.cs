@@ -33,6 +33,7 @@ public partial class McpHost : Node
     private readonly HashSet<MouseButton> _buttons = new();
     private Vector2 _pointer;
     private int _releaseInput;
+    private bool _quitAfterReply;
     private sealed record Work(JsonElement Request, TaskCompletionSource<object> Reply, CancellationToken Cancel);
 
     public static void Attach(Node parent)
@@ -169,6 +170,8 @@ public partial class McpHost : Node
         Tool("guo_ui", "Inspect visible classic gumps and Godot controls; editable field values are omitted. Bounds are viewport pixels. Up to 2000 controls.", "{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}"),
         Tool("guo_input", "Send one event through GUO's real input queue. Use motion, wait, button down, wait, button up for clicks/drags. button: Left/Right/Middle/WheelUp/WheelDown. key: Godot key name, e.g. Enter or Escape. text inserts Unicode into the focused field. Event completes after two frames. No OS pointer movement.", "{\"type\":\"object\",\"properties\":{\"kind\":{\"enum\":[\"motion\",\"button\",\"key\",\"text\"]},\"x\":{\"type\":\"integer\"},\"y\":{\"type\":\"integer\"},\"button\":{\"type\":\"string\"},\"key\":{\"type\":\"string\"},\"pressed\":{\"type\":\"boolean\"},\"text\":{\"type\":\"string\",\"maxLength\":1024},\"shift\":{\"type\":\"boolean\"},\"ctrl\":{\"type\":\"boolean\"},\"alt\":{\"type\":\"boolean\"}},\"required\":[\"kind\"],\"additionalProperties\":false}"),
         Tool("guo_wait", "Wait 1..600 process frames before observing asynchronous UI/server changes.", "{\"type\":\"object\",\"properties\":{\"frames\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":600}},\"required\":[\"frames\"],\"additionalProperties\":false}"),
+        Tool("guo_state", "Cheap state for scripted runs: process frame index, scene, viewport size and, once in the world, the player's map index and tile position.", "{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}"),
+        Tool("guo_quit", "Quit the client cleanly after two frames, so a MovieWriter recording is finalised. The connection closes.", "{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}"),
         Tool("guo_screenshot", "Return the current viewport as a PNG. Requires a headed renderer; --headless cannot capture pixels.", "{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}")
     };
 
@@ -180,6 +183,7 @@ public partial class McpHost : Node
             if (!_active.Cancel.IsCancellationRequested && --_frames > 0) return;
             _active.Reply.TrySetResult(_result);
             _active = null;
+            if (_quitAfterReply) { GetTree().Quit(); return; }
         }
         if (!_queue.TryDequeue(out Work work) || work.Cancel.IsCancellationRequested) return;
         try
@@ -192,6 +196,8 @@ public partial class McpHost : Node
                 "guo_ui" => Text(JsonSerializer.Serialize(Snapshot())),
                 "guo_input" => Input(a, out frames),
                 "guo_wait" => Wait(a, out frames),
+                "guo_quit" => Quit(out frames),
+                "guo_state" => Text(JsonSerializer.Serialize(State())),
                 "guo_screenshot" => Screenshot(),
                 _ => Text("Unknown tool", true)
             };
@@ -203,6 +209,13 @@ public partial class McpHost : Node
             // Do not echo arguments: typed text may be a password.
             work.Reply.TrySetResult(Text($"Command failed ({e.GetType().Name}). Check required arguments and current UI state.", true));
         }
+    }
+
+    private object Quit(out int frames)
+    {
+        frames = 2;
+        _quitAfterReply = true;
+        return Text("Quitting.");
     }
 
     private static object Wait(JsonElement a, out int frames)
@@ -261,6 +274,20 @@ public partial class McpHost : Node
             Godot.Input.ParseInputEvent(ev);
         }
         return Text("Event dispatched; inspect UI to verify the effect.");
+    }
+
+    private object State()
+    {
+        var size = GetViewport().GetVisibleRect().Size;
+        var player = Client.Game?.UO?.World?.Player;
+        return new
+        {
+            frame = Engine.GetProcessFrames(),
+            scene = Client.Game?.Scene?.GetType().Name,
+            width = size.X,
+            height = size.Y,
+            player = player == null ? null : new { map = Client.Game.UO.World.MapIndex, x = (int)player.X, y = (int)player.Y, z = (int)player.Z }
+        };
     }
 
     private object Snapshot()

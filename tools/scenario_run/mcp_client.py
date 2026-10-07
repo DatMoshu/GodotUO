@@ -67,6 +67,11 @@ class McpClient:
         text = "\n".join(c.get("text", "<image>") for c in result.get("content", []))
         return bool(result.get("isError")), text
 
+    def call_content(self, tool: str, arguments: dict | None = None, timeout: float = 45.0) -> tuple[bool, list[dict]]:
+        """Calls a tool and returns (is_error, the raw content items), for image data."""
+        result = self.request("tools/call", {"name": tool, "arguments": arguments or {}}, timeout=timeout)
+        return bool(result.get("isError")), result.get("content", [])
+
     def call_json(self, tool: str, arguments: dict | None = None, timeout: float = 45.0) -> dict:
         is_error, text = self.call(tool, arguments, timeout)
         if is_error:

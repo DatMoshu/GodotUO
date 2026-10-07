@@ -1617,6 +1617,8 @@ no reply). `tools/guo_mcp/run.py` is the stdio bridge: it sends the token, then 
 | `guo_input` | `kind` `motion\|button\|key\|text`; `x`,`y`; `button` `Left\|Right\|Middle\|WheelUp\|WheelDown`; `key` (Godot key name); `pressed`; `text` (at most 1024 characters); `shift`,`ctrl`,`alt` | text content; `isError` on bad arguments |
 | `guo_wait` | `frames` 1..600 | text content after that many process frames |
 | `guo_screenshot` | none | `image/png` content (base64); `isError` when headless |
+| `guo_state` | none | JSON text: `frame` (process frame index; with `--write-movie` it is the movie frame), `scene`, `width`, `height`, `player` (`map`,`x`,`y`,`z`, or null before the world) |
+| `guo_quit` | none | text, then the client quits after two frames (finalises a MovieWriter file); the connection closes |
 
 No shell, script, file or packet tools exist. Synthetic keys and buttons still held when the controller
 disconnects are released.
@@ -1880,15 +1882,15 @@ adds it.
 
 | Kind | Arguments | Maps to | Since |
 |---|---|---|---|
-| `launch` | none | starts the surface's program with its MCP on | 2 |
+| `launch` | `args` (optional array of strings: extra command-line arguments) | starts the surface's program with its MCP on | 2 |
 | `wait` | `seconds` (default 1) | sleep; watchdogs keep running | 2 |
 | `shot` | none | a still of the program's window | 2 |
 | `note` | `text` (optional) | a `log` event | 2 |
 | `tour_segment` | `id` (an EditorTour segment) | editor MCP `tour_segment`; the segment's checks and frames become the step's | 2 |
 | `editor_invoke` | `key`, `query` (optional) | editor MCP `editor_invoke` (section 33) | 2 |
-| `ui.click` | `control` (a `guo_ui` path, e.g. `LoginGump/Connect`) | game MCP `guo_ui` + `guo_input` (section 29) | 3 |
-| `ui.fill` | `control`, `text` | game MCP | 3 |
-| `ui.key` | `key` (a Godot key name), `mods` (optional list) | game MCP `guo_input` | 3 |
+| `ui.click` | `control` (a control selector, below), `button` (`Left` default, `Right`, `Middle`), `clicks` (integer >= 1, default 1), `within_s` (seconds to wait for the control, default 5) | game MCP `guo_ui` + `guo_input` (section 29) | 3 |
+| `ui.fill` | `control`, `text`, `clear` (integer >= 0: BackSpace presses first, default 0), `within_s` (as `ui.click`) | game MCP | 3 |
+| `ui.key` | `key` (a Godot key name), `shift`, `ctrl`, `alt` (booleans, default false) | game MCP `guo_input` | 3 |
 | `chat` | `text` (e.g. `[go 1434 1697`) | game MCP `guo_input` text | 3 |
 | `renderdump` | `name` | the client's `renderdump NAME` command | 4 |
 | `render_diff` | `name` | `tools/render_diff` against ClassicUO's dump of that name | 4 |
@@ -1902,10 +1904,16 @@ Expectations. A condition the runner does not know fails the step ("unknown expe
 | `result` | object | it is a recursive subset of the last action's JSON result | 2 |
 | `editor.state` | object | it is a recursive subset of editor MCP `editor_state` | 2 |
 | `file.exists` | path | the file exists; repo-relative, and only under `build/` | 2 |
-| `ui.exists` | control path | `guo_ui` lists the control | 3 |
-| `ui.text` | `{control, equals}` | the control's text equals `equals` | 3 |
-| `world.position` | `{x, y, z?, tolerance?}` | the player is within `tolerance` tiles (default 0) | 3 |
+| `ui.exists` | control selector | `guo_ui` lists a matching control | 3 |
+| `ui.absent` | control selector | `guo_ui` lists no matching control | 3 |
+| `ui.text` | `{control, equals \| contains}` | the selected control's text equals `equals`, or contains `contains` | 3 |
+| `ui.count` | `{control, equals \| at_least}` | the number of matching controls equals `equals`, or is at least `at_least` | 3 |
+| `world.position` | `{x, y, z?, map?, tolerance?}` | the player is within `tolerance` tiles (default 0) of each given axis, and on `map` when given | 3 |
+| `scene` | string | the client's current scene (game MCP state `scene`) equals it | 3 |
+| `log.contains` | string | the program's log (`client.log`) contains the text | 3 |
 | `render_diff` | `{max_drawn_diff}` | the last `render_diff` found at most that many differing draws | 4 |
+
+**Control selector.** Where a table says *control selector*, the value is a non-empty string (matches a control whose type, name or text equals it) or an object with only these keys, all of which must match: `type`, `name`, `text`, `contains` (a substring of the text), `system` (`classic` or `godot`) and `index` (integer >= 0: which of several matches, in `guo_ui` order, default 0). `ui.click` and `ui.fill` accept the same selector in `control`; `ui.text` reads the text of the match at `index`.
 
 **Variables.** `$name` or `${name}` in any string of `do` or `expect` is replaced before the step runs: from
 `--var name=value`, else from the environment variable `GUO_SCENARIO_<NAME>` (credentials live there or in

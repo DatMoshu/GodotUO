@@ -188,7 +188,7 @@ def test_expect_not_met_times_out_and_logs_observed(tmp_path):
 
 
 def test_unimplemented_kind_fails_the_step(tmp_path):
-    out = make(tmp_path, [step("c", "ui.click", control="X")])[0].run()
+    out = make(tmp_path, [step("c", "scene_set", property="x")])[0].run()
     assert not out["ok"] and "not implemented" in out["steps"][0]["detail"]
 
 
@@ -398,6 +398,7 @@ def test_runner_refuses_what_the_schema_refuses():
         ({**base, "steps": [{"id": "a", "do": {"kind": "tour_segment"}}]}, "tour_segment needs 'id'"),
         ({**base, "steps": [{"id": "a", "do": {"kind": "wait"}, "shoot": True}]}, "unknown field 'shoot'"),
         ({**base, "steps": [{"id": "a", "do": {"kind": "wait"}, "expect": {"ui.exsts": "X"}}]}, "unknown expectation 'ui.exsts'"),
+        ({**base, "steps": [{"id": "a", "do": {"kind": "ui.click", "control": "LoginGump", "buton": "Left"}}]}, "ui.click takes no 'buton'"),
     ]
     for data, wanted in cases:
         assert any(wanted in p for p in sc.validate(data)), (wanted, sc.validate(data))
