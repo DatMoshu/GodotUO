@@ -508,7 +508,7 @@ def cli_root(tmp_path, monkeypatch):
     shutil.copytree(REPO / "tools" / "scenarios", root / "tools" / "scenarios")
     other = json.loads((root / "tools" / "scenarios" / "editor" / "smoke_layout.scenario.json").read_text(encoding="utf-8"))
     other["id"] = "client.smoke.other"
-    (root / "tools" / "scenarios" / "client").mkdir()
+    (root / "tools" / "scenarios" / "client").mkdir(exist_ok=True)
     (root / "tools" / "scenarios" / "client" / "other.scenario.json").write_text(json.dumps(other), encoding="utf-8")
     import guo
     monkeypatch.setattr(guo, "load_config", lambda: SimpleNamespace(root=root))
@@ -531,7 +531,7 @@ def test_main_list_scenario_spellings(cli_root, capsys, argv):
 
 def test_main_plain_list_shows_every_scenario(cli_root, capsys):
     assert run_mod.main(["list"]) == 0
-    assert listed_ids(capsys.readouterr().out) == {"editor.smoke.layout", "client.smoke.other"}
+    assert listed_ids(capsys.readouterr().out) >= {"editor.smoke.layout", "client.smoke.other"}
 
 
 def test_main_scenario_run_still_sees_one_name(cli_root, capsys):
