@@ -155,6 +155,13 @@ def execute(scen: sc.Scenario, cfg, variables: dict[str, str], *, size: str | No
         result = runner.run()
     finally:
         timer.cancel()
+    shared = settings.read_setting("GUO_RUNS_SHARED_DIR", cfg.root)
+    db = settings.read_setting("GUO_RUNS_DB", cfg.root)
+    unset = [k for k, v in (("GUO_RUNS_SHARED_DIR", shared), ("GUO_RUNS_DB", db if register else "set")) if not v]
+    if unset:
+        names = " and ".join(unset)
+        print(f"{names} not set: registration and the shared copy were skipped (see Configuration in tools/scenario_run/README.md)")
+        log.emit("warn", detail={"unset": unset, "message": "registration and the shared copy were skipped"})
     log.close()
     video_path, video_note = finalize_video(session, run_dir, run_id, video_dir)
     manifest = {
@@ -169,16 +176,10 @@ def execute(scen: sc.Scenario, cfg, variables: dict[str, str], *, size: str | No
     manifest["summary"] = summary
     (run_dir / "summary.md").write_text(summary, encoding="utf-8")
     publish.write_manifest(run_dir, manifest)
-    shared = settings.read_setting("GUO_RUNS_SHARED_DIR", cfg.root)
     if shared:
         publish.copy_shared(run_dir, Path(shared), run_id, deny)
-    else:
-        print("GUO_RUNS_SHARED_DIR is not set: nothing copied to the shared area")
-    db = settings.read_setting("GUO_RUNS_DB", cfg.root)
     if db and register:
         publish.register_run(Path(db), manifest, deny)
-    elif not db:
-        print("GUO_RUNS_DB is not set: the run is not registered")
     return manifest, run_dir
 
 

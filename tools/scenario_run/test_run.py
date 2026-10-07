@@ -649,3 +649,23 @@ def test_card_module_has_no_network_or_token_use():
     imports = [ln for ln in code.splitlines() if ln.startswith(("import ", "from "))]
     assert sorted(imports) == ["from __future__ import annotations", "from pathlib import Path", "from redact import redact", "import json"]
     assert "environ" not in code and "getenv" not in code and "read_setting" not in code
+
+
+def test_unset_registration_settings_warn_and_register_nothing(cli_root, monkeypatch, capsys, tmp_path):
+    class FakeRunner:
+        def __init__(self, scen, run_dir, log, **kw): self.log = log
+
+        def run(self):
+            return {"started": "t0", "ended": "t1", "ok": True, "aborted": False, "exit_kind": "ok", "steps": [], "artifacts": []}
+
+    monkeypatch.setattr(run_mod, "Runner", FakeRunner)
+    monkeypatch.setattr(run_mod, "EditorSession", lambda *a, **k: None)
+    cfg = SimpleNamespace(root=cli_root, build=cli_root / "build")
+    scen = sc.load(sc.find(cli_root, "editor.smoke.layout"))
+    manifest, run_dir = run_mod.execute(scen, cfg, {}, size="1x1", scale=1.0, register=True)
+    out = capsys.readouterr().out
+    assert "GUO_RUNS_SHARED_DIR and GUO_RUNS_DB not set" in out
+    warns = [json.loads(l) for l in (run_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()]
+    warns = [e for e in warns if e["kind"] == "warn"]
+    assert len(warns) == 1 and warns[0]["detail"]["unset"] == ["GUO_RUNS_SHARED_DIR", "GUO_RUNS_DB"]
+    assert not list(tmp_path.rglob("*.db")) and (run_dir / "run.json").is_file()

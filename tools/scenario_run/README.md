@@ -292,7 +292,10 @@ SQLite database tracking all runs across all projects.
 
 ## Configuration
 
-Environment variables (or `config.bat`):
+Each setting resolves in one order: environment variable, then `launchers/_shared/config.local.bat` (yours,
+gitignored; start from `config.local.bat.example`), then `launchers/_shared/config.bat`. None has a default path.
+A run with `GUO_RUNS_DB` or `GUO_RUNS_SHARED_DIR` unset prints one line naming the unset setting(s) and writes a
+`warn` event saying registration and the shared copy were skipped; the run folder under `build/runs` is kept.
 
 | Variable | Purpose | Example |
 |---|---|---|
