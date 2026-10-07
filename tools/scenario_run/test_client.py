@@ -86,12 +86,37 @@ def test_launch_ui_fill_click_chat_key(tmp_path):
     assert out["ok"], out["steps"]
     assert session.started and session.stopped and client.closed
     assert session.extra_args == ["--x"]
+    assert session.extra_settings == {}
     inputs = [a for t, a in client.calls if t == "guo_input"]
     assert inputs[0] == {"kind": "motion", "x": 200, "y": 210}                       # the TextBox centre
     assert {"kind": "text", "text": "gm1"} in inputs and {"kind": "text", "text": "[go 1 2"} in inputs
     assert [a["key"] for a in inputs if a["kind"] == "key"][:4] == ["BackSpace", "BackSpace", "BackSpace", "BackSpace"]
     assert {"kind": "key", "key": "Escape", "pressed": True, "shift": True} in inputs
     assert "gm1" not in log.path.read_text()          # the log holds the name, never the secret or the filled text
+
+
+def test_launch_settings_reach_the_session(tmp_path):
+    r, _, session, _, _ = make_client(tmp_path, [step("go", "launch", settings={"autologin": False})])
+    assert r.run()["ok"]
+    assert session.extra_settings == {"autologin": False}
+
+
+def test_client_home_holds_the_settings_and_leaves_the_usual_file_alone(tmp_path):
+    import json as _json
+    import session as sess
+    usual = tmp_path / "GUO"
+    usual.mkdir()
+    (usual / "settings.json").write_text(_json.dumps({"autologin": True, "ip": "127.0.0.1", "username": "owner"}))
+    cs = sess.ClientSession(type("Cfg", (), {"cache_dir": usual / "cache", "root": tmp_path})(), tmp_path / "run", False)
+    cs.extra_settings = {"autologin": False}
+    cache = cs._make_home()
+    home = cache.parent
+    assert cache.name == "cache" and cache.is_dir() and tmp_path / "run" not in home.parents
+    assert _json.loads((home / "settings.json").read_text()) == {"autologin": False, "ip": "127.0.0.1", "username": "owner"}
+    assert _json.loads((usual / "settings.json").read_text())["autologin"] is True
+    cs.proc = None
+    cs.stop()
+    assert not home.exists()
 
 
 def test_missing_control_fails_step(tmp_path):

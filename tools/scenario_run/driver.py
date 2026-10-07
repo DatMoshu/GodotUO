@@ -342,6 +342,7 @@ class Runner:
 
     def _launch_client(self, do: dict, deadline: float) -> dict:
         self.session.extra_args = [str(a) for a in do.get("args", [])]
+        self.session.extra_settings = dict(do.get("settings", {}))
         self.session.start()
         if not self.session.wait_listening(max(1.0, deadline - self._clock())):
             raise StepFailed("the client did not open its MCP port (is the build fresh and the UO data found?)")
