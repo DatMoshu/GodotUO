@@ -77,6 +77,17 @@ labels and buttons only), `ui.count` (`{"control", "equals" | "at_least"}`), `wo
 from `guo_state`), `scene` (the client's scene class, e.g. `LoginScene`), `log.contains` (the program's log), plus the
 editor's `result`, `editor.state` and `file.exists`.
 
+## Editor scenarios
+
+| Scenario id | File | What it covers |
+|---|---|---|
+| `editor.smoke.layout` | `tools/scenarios/editor/smoke_layout.scenario.json` | launch, layout, Art tab |
+| `editor.tabs.sweep` | `tools/scenarios/editor/tabs_sweep.scenario.json` | tour segments `layout`, `art`, `gumps`, `anims`, `store`, `maps`, `pick`, `shard`; stills on art, store, pick |
+| `editor.anim.roundtrip` | `tools/scenarios/editor/anim_roundtrip.scenario.json` | `anims`, then `anim_roundtrip` (Pixelorama and back), still at the end |
+
+**Gap:** the sweep does not visit the MapGen tab or the Multis authoring tab. EditorTour has no segment for either
+(its `multis` segment only browses Multis under Assets), and adding one is editor code, outside the scenario files.
+
 ## Drivers
 
 ### AI Driver (`--driver ai`)
