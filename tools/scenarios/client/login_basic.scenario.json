@@ -1,0 +1,116 @@
+{
+  "id": "client.login.basic",
+  "title": "Log in on the dev shard and walk to the Britain bank",
+  "surface": "client",
+  "requires": {
+    "shard": "dev",
+    "account": "$account",
+    "build": "debug"
+  },
+  "timeouts": {
+    "step_s": 60,
+    "run_s": 420
+  },
+  "steps": [
+    {
+      "id": "launch",
+      "do": {
+        "kind": "launch",
+        "args": [
+          "--scratch-profile"
+        ]
+      },
+      "say": "Start GUO.",
+      "timeout_s": 240,
+      "expect": {
+        "scene": "LoginScene",
+        "within_s": 60
+      }
+    },
+    {
+      "id": "login_screen",
+      "do": {
+        "kind": "wait",
+        "seconds": 2
+      },
+      "say": "The login screen is up.",
+      "shot": true
+    },
+    {
+      "id": "type_account",
+      "do": {
+        "kind": "ui.fill",
+        "control": {
+          "type": "StbTextBox"
+        },
+        "text": "$account"
+      },
+      "say": "Type the account name."
+    },
+    {
+      "id": "type_password",
+      "do": {
+        "kind": "ui.fill",
+        "control": {
+          "type": "PasswordStbTextBox"
+        },
+        "text": "$password"
+      },
+      "say": "Type the password."
+    },
+    {
+      "id": "log_in",
+      "do": {
+        "kind": "ui.click",
+        "control": {
+          "type": "Button",
+          "system": "classic",
+          "index": 2
+        }
+      },
+      "say": "Press Login.",
+      "expect": {
+        "scene": "GameScene",
+        "within_s": 60
+      }
+    },
+    {
+      "id": "in_world",
+      "do": {
+        "kind": "wait",
+        "seconds": 4
+      },
+      "say": "We are in the world.",
+      "shot": true,
+      "expect": {
+        "ui.exists": "WorldViewportGump"
+      }
+    },
+    {
+      "id": "go_bank",
+      "do": {
+        "kind": "chat",
+        "text": "[go 1434 1697"
+      },
+      "say": "Say a GM command to go to the Britain bank.",
+      "expect": {
+        "world.position": {
+          "x": 1434,
+          "y": 1697,
+          "map": 0,
+          "tolerance": 3
+        },
+        "within_s": 20
+      }
+    },
+    {
+      "id": "at_bank",
+      "do": {
+        "kind": "wait",
+        "seconds": 3
+      },
+      "say": "Arrived at the Britain bank.",
+      "shot": true
+    }
+  ]
+}
