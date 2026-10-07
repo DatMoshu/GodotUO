@@ -65,6 +65,22 @@ def kill_tree(proc: subprocess.Popen) -> None:
         pass
 
 
+def remove_tree(path: Path, tries: int = 10, wait_s: float = 0.5) -> bool:
+    """Remove a folder the client may still hold for a moment after its process tree is gone (its scratch/<pid>/Data
+    folders were still open at the first try); retry briefly, then give up quietly."""
+    for i in range(tries):
+        try:
+            shutil.rmtree(path)
+        except FileNotFoundError:
+            return True
+        except OSError:
+            if i + 1 < tries:
+                time.sleep(wait_s)
+            continue
+        return True
+    return not path.exists()
+
+
 class EditorSession:
     """One editor started for one run."""
 
@@ -214,5 +230,5 @@ class ClientSession:
         if self.proc is not None:
             kill_tree(self.proc)
         if self._home is not None:
-            shutil.rmtree(self._home, ignore_errors=True)
+            remove_tree(self._home)
             self._home = None

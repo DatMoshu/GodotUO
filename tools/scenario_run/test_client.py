@@ -119,6 +119,25 @@ def test_client_home_holds_the_settings_and_leaves_the_usual_file_alone(tmp_path
     assert not home.exists()
 
 
+def test_home_removal_is_retried_when_the_client_still_holds_a_folder(tmp_path, monkeypatch):
+    import shutil
+    import session as sess
+    home = tmp_path / "guo_run_home_x"
+    (home / "cache" / "scratch" / "1").mkdir(parents=True)
+    real, calls = shutil.rmtree, []
+
+    def flaky(path, *a, **k):
+        calls.append(path)
+        if len(calls) == 1:
+            raise PermissionError("held by the client")
+        return real(path, *a, **k)
+
+    monkeypatch.setattr(sess.shutil, "rmtree", flaky)
+    monkeypatch.setattr(sess.time, "sleep", lambda s: None)
+    assert sess.remove_tree(home)
+    assert len(calls) == 2 and not home.exists()
+
+
 def test_missing_control_fails_step(tmp_path):
     r, *_ = make_client(tmp_path, [step("go", "launch"), step("c", "ui.click", control="Nope", within_s=1)])
     out = r.run()
