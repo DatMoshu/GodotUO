@@ -1,0 +1,168 @@
+{
+  "id": "client.gumps.paperdoll_backpack",
+  "title": "Log in on the dev shard and open the paperdoll and the backpack",
+  "surface": "client",
+  "requires": {
+    "shard": "dev",
+    "account": "$account",
+    "build": "debug"
+  },
+  "timeouts": {
+    "step_s": 60,
+    "run_s": 480
+  },
+  "steps": [
+    {
+      "id": "launch",
+      "do": {
+        "kind": "launch",
+        "args": [
+          "--scratch-profile"
+        ]
+      },
+      "say": "Start GUO.",
+      "timeout_s": 240,
+      "expect": {
+        "scene": "LoginScene",
+        "within_s": 60
+      }
+    },
+    {
+      "id": "login_screen",
+      "do": {
+        "kind": "wait",
+        "seconds": 2
+      },
+      "say": "The login screen is up.",
+      "shot": true
+    },
+    {
+      "id": "type_account",
+      "do": {
+        "kind": "ui.fill",
+        "control": {
+          "type": "StbTextBox"
+        },
+        "text": "$account"
+      },
+      "say": "Type the account name."
+    },
+    {
+      "id": "type_password",
+      "do": {
+        "kind": "ui.fill",
+        "control": {
+          "type": "PasswordStbTextBox"
+        },
+        "text": "$password"
+      },
+      "say": "Type the password."
+    },
+    {
+      "id": "log_in",
+      "do": {
+        "kind": "ui.click",
+        "control": {
+          "type": "Button",
+          "system": "classic",
+          "index": 2
+        }
+      },
+      "say": "Press Login.",
+      "expect": {
+        "scene": "GameScene",
+        "within_s": 60
+      }
+    },
+    {
+      "id": "in_world",
+      "do": {
+        "kind": "wait",
+        "seconds": 4
+      },
+      "say": "We are in the world.",
+      "shot": true,
+      "expect": {
+        "ui.exists": "WorldViewportGump"
+      }
+    },
+    {
+      "id": "open_paperdoll",
+      "do": {
+        "kind": "ui.key",
+        "key": "P",
+        "alt": true
+      },
+      "say": "Press Alt+P, the client's own paperdoll key.",
+      "expect": {
+        "ui.exists": "PaperDollGump"
+      }
+    },
+    {
+      "id": "paperdoll_shot",
+      "do": {
+        "kind": "wait",
+        "seconds": 2
+      },
+      "say": "The paperdoll is open.",
+      "shot": true
+    },
+    {
+      "id": "open_backpack",
+      "do": {
+        "kind": "ui.key",
+        "key": "I",
+        "alt": true
+      },
+      "say": "Open the backpack.",
+      "expect": {
+        "ui.exists": "ContainerGump"
+      }
+    },
+    {
+      "id": "backpack_shot",
+      "do": {
+        "kind": "wait",
+        "seconds": 2
+      },
+      "say": "The backpack is open.",
+      "shot": true,
+      "expect": {
+        "ui.count": {
+          "control": {
+            "type": "ItemGump"
+          },
+          "at_least": 1
+        }
+      }
+    },
+    {
+      "id": "close_backpack",
+      "do": {
+        "kind": "ui.click",
+        "control": {
+          "type": "ContainerGump"
+        },
+        "button": "Right"
+      },
+      "say": "Right-click the backpack to close it, as in ClassicUO.",
+      "expect": {
+        "ui.absent": "ContainerGump"
+      }
+    },
+    {
+      "id": "close_paperdoll",
+      "do": {
+        "kind": "ui.click",
+        "control": {
+          "type": "PaperDollGump"
+        },
+        "button": "Right"
+      },
+      "say": "Right-click the paperdoll to close it.",
+      "expect": {
+        "ui.absent": "PaperDollGump"
+      }
+    }
+  ]
+}
