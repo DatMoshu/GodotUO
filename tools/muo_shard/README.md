@@ -9,16 +9,20 @@ python tools/muo_shard/run.py validate --profile tools/muo_shard/profiles/guo-de
 python tools/muo_shard/run.py plan bootstrap --profile P > bootstrap.sh
 python tools/muo_shard/run.py plan deploy    --profile P > deploy.sh   [--pin <40-hex>]
 python tools/muo_shard/run.py plan status    --profile P > status.sh
+python tools/muo_shard/run.py plan admin     --profile P > admin.sh
+python tools/muo_shard/run.py plan backup    --profile P [--name N] > backup.sh
+python tools/muo_shard/run.py plan restore NAME --profile P > restore.sh
+python tools/muo_shard/run.py plan reset     --profile P > reset.sh
+python tools/muo_shard/run.py secrets --host [user@]HOST --profile P
 ssh HOST 'sudo bash -s' < bootstrap.sh
 ```
-
-M1 ships `validate` and `plan bootstrap|deploy|status`. `admin`, `backup`, `restore`, `reset` and `secrets` are M2.
 
 | File | What it is |
 |---|---|
 | `run.py` | the command line |
 | `shardprofile.py` | loads a profile, checks it against the schema, then the rules a schema cannot state |
 | `plans.py` | one function per verb, each returning a script |
+| `hostsecrets.py` | `secrets`: prompts here, writes the host's env file over ssh stdin |
 | `schema/profile.schema.json` | the profile's JSON Schema (draft 2020-12); unknown fields are refused |
 | `profiles/guo-dev.profile.json` | GUO's dev shard |
 | `test_muo_shard.py`, `tests/` | pytest; `tests/golden/` holds the expected scripts, `tests/fixtures/` a profile that uses every field |
@@ -37,6 +41,26 @@ M1 ships `validate` and `plan bootstrap|deploy|status`. `admin`, `backup`, `rest
   `MUO_ADMIN_USER/PASSWORD` to the names `tools/modernuo/patches/0001` reads), the `data_manifest` check, runs
   the `content` folders, and installs, enables and restarts `muo-<id>.service`. `Saves/` and `Logs/` are never touched.
   The patches, template, overlay and manifest are embedded in the script, so the host needs no copy of the repo.
+- **admin** (root): checks the owner values are in the env file, restarts the shard and waits for the port. The shard
+  itself creates the owner account (or raises an existing one) from those values at every start; the account is
+  written to `Saves/` at the next autosave (every 5 minutes; ModernUO does not save when stopped). Prints no password.
+- **backup** (root): installs `/srv/muo/<id>/muo-backup.sh`, installs and enables the profile's backup timer when
+  `backup.on_calendar` is set (systemd hosts), then runs the helper once (`--name N` names the snapshot; default the UTC
+  time `yyyymmdd_hhmmss`). The helper leaves the shard running (ModernUO does not save when it is stopped, so stopping
+  it would only discard what it has not saved): it tars the `backup.include` folders (default `Saves`) to
+  `<backup.root>/<name>.tar.zst`, retrying up to three times if ModernUO swapped or wrote the folder meanwhile, then
+  prunes to `backup.keep`. Only timestamp-named snapshots are pruned, so a `--name seed` snapshot is never lost. A name
+  already taken is refused. A snapshot holds what the shard last saved (autosave runs every 5 minutes), not what is in memory.
+- **restore NAME** (root): stops the shard (refuses if a shard that systemd does not own is listening), moves each included
+  folder to `<folder>.pre-restore` (one generation, the previous one is removed), extracts the snapshot, hands it to the
+  service user and starts the shard if it was running.
+- **reset** (root): `restore` of the profile's `seed` snapshot (refused when the profile has none). Make the seed once
+  with `plan backup --name <seed>` on a shard in the state you want to return to.
+- **secrets** (local, not a plan): asks here for `MUO_CLIENT_DATA`, `MUO_ADMIN_USER` and `MUO_ADMIN_PASSWORD` (the
+  password hidden, asked twice) and runs `ssh -- HOST sudo python3 -c <merge> /etc/muo/<id>.env`, the values on ssh's stdin.
+  The command line holds no value and no local file is written. A blank answer keeps that key; other keys in the file are
+  kept; the file stays root 0600. Needs a terminal and passwordless sudo on the host (stdin is the data). A value may not
+  hold `'` or a line break.
 - **status**: read-only. `systemctl status` and whether the port is listening (exit 1 if not).
 
 Things to know:
@@ -48,10 +72,10 @@ Things to know:
 - The pin is the profile's `server.source.ref` (or the submodule's gitlink). GUO's equals `UO_SHARD_REF` in
   `launchers/_shared/config.bat`; a test fails when they drift, and `plan deploy` says so on stderr.
 - Ubuntu's archive SDK can trail the version the pin's `global.json` names (26.04 had 10.0.112 against 10.0.201), so
-  deploy rewrites that one line to the installed SDK and marks the file `skip-worktree`; the next deploy restores it
+  deploy rewrites that one line to the installed SDK (and warns on stderr, naming both versions) and marks the file `skip-worktree`; the next deploy restores it
   before it moves the pin.
 - The unit's working directory is `dist/`; write repo-relative commands in `exec_start_pre` as `{src}/...`.
-- The backup timer (`backup.on_calendar`) is installed by M2, with the verbs it runs.
+- The backup timer runs `muo-backup.sh`; the shard keeps running while it does.
 - Open question for the owner, not a tool setting: the shared template has `accountHandler.enableAutoAccountCreation`
   on. A public port wants it off; put that in the profile's overlay when decided.
 

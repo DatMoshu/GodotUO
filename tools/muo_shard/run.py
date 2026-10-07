@@ -2,7 +2,10 @@
 """Install and run a ModernUO shard on a Linux host, from a profile (docs/data_formats.md section 35).
 
     python tools/muo_shard/run.py validate --profile P
-    python tools/muo_shard/run.py plan bootstrap|deploy|status --profile P [--pin SHA]
+    python tools/muo_shard/run.py plan bootstrap|deploy|status|admin|reset --profile P [--pin SHA]
+    python tools/muo_shard/run.py plan backup --profile P [--name N]
+    python tools/muo_shard/run.py plan restore NAME --profile P
+    python tools/muo_shard/run.py secrets --host [user@]host --profile P
 
 `plan` prints a bash script to stdout and runs nothing. Review it, then run it on
 the host:
@@ -24,6 +27,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
+import hostsecrets  # noqa: E402
 import plans  # noqa: E402
 import shardprofile  # noqa: E402
 
@@ -52,8 +56,13 @@ def main(argv: list[str] | None = None) -> int:
     v.add_argument("--profile", required=True)
     pl = sub.add_parser("plan", help="print the shell script for a verb; runs nothing")
     pl.add_argument("verb", choices=sorted(plans.VERBS))
+    pl.add_argument("snapshot", nargs="?", help="restore: the snapshot to restore")
     pl.add_argument("--profile", required=True)
     pl.add_argument("--pin", help="deploy this commit instead of the profile's ref (40 hex)")
+    pl.add_argument("--name", help="backup: the snapshot's name (default: the UTC time)")
+    se = sub.add_parser("secrets", help="prompt for the host values and write /etc/muo/<id>.env over ssh stdin")
+    se.add_argument("--profile", required=True)
+    se.add_argument("--host", required=True, help="[user@]host; the login needs passwordless sudo")
     a = ap.parse_args(argv)
 
     try:
@@ -61,7 +70,23 @@ def main(argv: list[str] | None = None) -> int:
         if a.cmd == "validate":
             print(f"[muo_shard] {prof.file.name}: ok (id {prof.id}, port {prof.data['listen']['port']})")
             return 0
-        if a.verb == "deploy":
+        if a.cmd == "secrets":
+            try:
+                return hostsecrets.run(prof, a.host)
+            except hostsecrets.SecretsError as e:
+                print(f"[muo_shard] {e}", file=sys.stderr)
+                return 2
+        if a.snapshot is not None and a.verb != "restore":
+            ap.error(f"{a.verb} takes no snapshot argument")
+        if a.name is not None and a.verb != "backup":
+            ap.error("--name is for backup")
+        if a.verb == "restore":
+            if a.snapshot is None:
+                ap.error("restore needs the snapshot's NAME")
+            out(plans.restore(prof, a.snapshot))
+        elif a.verb == "backup":
+            out(plans.backup(prof, a.name))
+        elif a.verb == "deploy":
             src = prof.data["server"]["source"]
             ref = pinned_ref()
             if a.pin is None and src["kind"] == "git" and ref and src["ref"] != ref:

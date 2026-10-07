@@ -45,6 +45,8 @@ fi
 # the archive's SDK can trail the SDK version the pin's global.json names; build with the installed one
 if [ -f "$SRC/global.json" ]; then
     sdk="$(as_user sh -c 'cd / && dotnet --version')"
+    pinned="$(sed -n -E 's/.*"version": *"([^"]*)".*/\1/p' "$SRC/global.json" | head -n 1)"
+    if [ "$pinned" != "$sdk" ]; then echo "muo_shard: warning: global.json names SDK $pinned, building with the installed SDK $sdk" >&2; fi
     as_user sed -i -E "s/\"version\": *\"[^\"]*\"/\"version\": \"$sdk\"/" "$SRC/global.json"
     as_user git -C "$SRC" update-index --skip-worktree global.json
 fi
