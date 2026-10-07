@@ -7,11 +7,14 @@ editor MCP on a fresh loopback port and a one-run token that stay in this proces
 
 from __future__ import annotations
 
+import json
 import os
 import secrets
+import shutil
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -131,6 +134,8 @@ class ClientSession:
         self.token = secrets.token_hex(32)
         self.proc: subprocess.Popen | None = None
         self.extra_args: list[str] = []
+        self.extra_settings: dict = {}
+        self._home: Path | None = None
         self.log_path = run_dir / "client.log"
         self.avi = run_dir / "raw" / "run.avi"
         import capture
@@ -150,6 +155,8 @@ class ClientSession:
         import capture
         env = build_child_env()
         env.update({"GUO_MCP_PORT": str(self.port), "GUO_MCP_TOKEN": self.token})
+        if self.extra_settings:
+            env["UO_CACHE_DIR"] = str(self._make_home())
         engine = ["--resolution", self.size] if self.size else []      # a movie is the project's 1280x720 whatever this says
         if self.record:
             self.avi.parent.mkdir(parents=True, exist_ok=True)
@@ -162,6 +169,24 @@ class ClientSession:
             self.proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, env=env, cwd=str(self.cfg.root), **no_activate())
         finally:
             log.close()
+
+    def _make_home(self) -> Path:
+        """A client home for this run, made when a launch step names settings: the client keeps settings.json in the parent
+        of its cache folder, so a home of the run's own holds a copy of the usual settings.json with those values set. The
+        usual file is only read. The copy can carry the owner's saved account, so it lives in a temp folder, not the run
+        folder, and stop() removes it."""
+        self._home = Path(tempfile.mkdtemp(prefix="guo_run_home_"))
+        base: dict = {}
+        usual = Path(self.cfg.cache_dir).parent / "settings.json"
+        if usual.is_file():
+            try:
+                base = json.loads(usual.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                base = {}
+        base.update(self.extra_settings)
+        (self._home / "settings.json").write_text(json.dumps(base), encoding="utf-8")
+        (self._home / "cache").mkdir()
+        return self._home / "cache"
 
     def alive(self) -> bool:
         return self.proc is not None and self.proc.poll() is None
@@ -188,3 +213,6 @@ class ClientSession:
     def stop(self) -> None:
         if self.proc is not None:
             kill_tree(self.proc)
+        if self._home is not None:
+            shutil.rmtree(self._home, ignore_errors=True)
+            self._home = None

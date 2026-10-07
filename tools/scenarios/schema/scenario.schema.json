@@ -161,6 +161,19 @@
                 "items": {
                   "type": "string"
                 }
+              },
+              "settings": {
+                "type": "object",
+                "propertyNames": {
+                  "pattern": "^[a-z_]+$"
+                },
+                "additionalProperties": {
+                  "type": [
+                    "boolean",
+                    "number",
+                    "string"
+                  ]
+                }
               }
             },
             "required": [

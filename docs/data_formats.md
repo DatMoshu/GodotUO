@@ -1882,7 +1882,7 @@ adds it.
 
 | Kind | Arguments | Maps to | Since |
 |---|---|---|---|
-| `launch` | `args` (optional array of strings: extra command-line arguments) | starts the surface's program with its MCP on | 2 |
+| `launch` | `args` (optional array of strings: extra command-line arguments); `settings` (optional object of client settings.json keys, lower-case, with boolean, number or string values) | starts the surface's program with its MCP on; `settings` gives a `client` run a home of its own whose settings.json is a copy of the usual one with those values set (the usual file is only read; the copy is removed when the run ends), because the client ignores unknown command-line arguments and a scenario must not depend on the owner's saved settings (`autologin`) | 2; `settings` 3 |
 | `wait` | `seconds` (default 1) | sleep; watchdogs keep running | 2 |
 | `shot` | none | a still of the program's window | 2 |
 | `note` | `text` (optional) | a `log` event | 2 |

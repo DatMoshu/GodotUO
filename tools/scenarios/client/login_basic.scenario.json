@@ -1,6 +1,6 @@
 {
   "id": "client.login.basic",
-  "title": "Log in on the dev shard and walk to the Britain bank",
+  "title": "Log in on the dev shard, walk the server and character lists, go to the Britain bank and log out",
   "surface": "client",
   "requires": {
     "shard": "dev",
@@ -18,7 +18,10 @@
         "kind": "launch",
         "args": [
           "--scratch-profile"
-        ]
+        ],
+        "settings": {
+          "autologin": false
+        }
       },
       "say": "Start GUO.",
       "timeout_s": 240,
@@ -70,6 +73,78 @@
       },
       "say": "Press Login.",
       "expect": {
+        "ui.exists": "ServerSelectionGump",
+        "within_s": 60
+      }
+    },
+    {
+      "id": "server_list",
+      "do": {
+        "kind": "wait",
+        "seconds": 2
+      },
+      "say": "The server list is up.",
+      "shot": true
+    },
+    {
+      "id": "pick_server",
+      "do": {
+        "kind": "ui.click",
+        "control": {
+          "type": "ServerEntryGump",
+          "index": 0
+        }
+      },
+      "say": "Pick the first server."
+    },
+    {
+      "id": "server_next",
+      "do": {
+        "kind": "ui.click",
+        "control": {
+          "type": "Button",
+          "system": "classic",
+          "index": 1
+        }
+      },
+      "say": "Press Next.",
+      "expect": {
+        "ui.exists": "CharacterSelectionGump",
+        "within_s": 60
+      }
+    },
+    {
+      "id": "character_list",
+      "do": {
+        "kind": "wait",
+        "seconds": 2
+      },
+      "say": "The character list is up.",
+      "shot": true
+    },
+    {
+      "id": "pick_character",
+      "do": {
+        "kind": "ui.click",
+        "control": {
+          "type": "CharacterEntryGump",
+          "index": 0
+        }
+      },
+      "say": "Pick the first character."
+    },
+    {
+      "id": "character_next",
+      "do": {
+        "kind": "ui.click",
+        "control": {
+          "type": "Button",
+          "system": "classic",
+          "index": 3
+        }
+      },
+      "say": "Press Next.",
+      "expect": {
         "scene": "GameScene",
         "within_s": 60
       }
@@ -110,6 +185,58 @@
         "seconds": 3
       },
       "say": "Arrived at the Britain bank.",
+      "shot": true
+    },
+    {
+      "id": "open_paperdoll",
+      "do": {
+        "kind": "ui.key",
+        "key": "P",
+        "alt": true
+      },
+      "say": "Open the paperdoll.",
+      "expect": {
+        "ui.exists": "PaperDollGump"
+      }
+    },
+    {
+      "id": "log_out",
+      "do": {
+        "kind": "ui.click",
+        "control": {
+          "type": "Button",
+          "system": "classic",
+          "index": 3
+        }
+      },
+      "say": "Press LOG OUT.",
+      "expect": {
+        "ui.exists": "QuestionGump"
+      }
+    },
+    {
+      "id": "confirm_log_out",
+      "do": {
+        "kind": "ui.click",
+        "control": {
+          "type": "Button",
+          "system": "classic",
+          "index": 2
+        }
+      },
+      "say": "Press OK, the right-hand button.",
+      "expect": {
+        "scene": "LoginScene",
+        "within_s": 30
+      }
+    },
+    {
+      "id": "back_at_login",
+      "do": {
+        "kind": "wait",
+        "seconds": 2
+      },
+      "say": "Back at the login screen.",
       "shot": true
     }
   ]
