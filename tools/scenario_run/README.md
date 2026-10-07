@@ -33,13 +33,18 @@ explicit step owned by the integrator after Moshu has watched the run (standing 
 `prune` deletes only folders whose `run.json` names the folder's own run id, keeps any folder that holds a video
 file, never reads the video folder, and leaves every registry row in place (they are history).
 
+`--shard TARGET` runs a **client** scenario against a named shard instead of the one in `UO_SHARD_HOST` / `UO_SHARD_PORT`.
+It reads `GUO_SHARD_<TARGET>_HOST` and `GUO_SHARD_<TARGET>_PORT` (target upper-cased, `-` and `.` as `_`; environment, then
+`config.local.bat`, then `config.bat`) and the login from `GUO_SCENARIO_ACCOUNT` / `GUO_SCENARIO_PASSWORD` (or
+`--var account=` / `--var password=`). A missing one stops the run before launch (exit 2) with the setting's name; the
+values are never printed or logged. The run's manifest records the target as `shard`.
+
 Not yet (the commands exist in the plan, not in the runner):
 
 | Command | Arrives with |
 |---|---|
 | `--driver human` (exits 2 with a message) | step 5 |
 | `clip` (cut a clip from the master) | not scheduled |
-| `--shard` | the shard stories |
 
 ## Scenario files
 
@@ -112,6 +117,16 @@ editor's `result`, `editor.state` and `file.exists`.
 
 **Gap:** the sweep does not visit the MapGen tab or the Multis authoring tab. EditorTour has no segment for either
 (its `multis` segment only browses Multis under Assets), and adding one is editor code, outside the scenario files.
+
+## Shard scenarios
+
+| Scenario id | File | What it covers |
+|---|---|---|
+| `shard.console` | `tools/scenarios/shard/console.scenario.json` | log in as the shard's owner account, type an owner command (`[go`), check the position; stills at login and in the world |
+
+Run it with `--shard <target>`; the account must already have a character (a fresh owner account has none: make one
+once with `launchers\game\play.bat --play --account A --password P --shard-command "[Where"` against that shard). It is
+for a throwaway shard such as the muo_shard container (`tools/muo_shard/README.md`, Container run with the client).
 
 ## Drivers
 
@@ -316,6 +331,8 @@ A run with `GUO_RUNS_DB` or `GUO_RUNS_SHARED_DIR` unset prints one line naming t
 | `OBS_WS_PASSWORD` | OBS WebSocket password | (leave unset for no auth) |
 | `UO_SHARD_HOST` | Dev shard hostname | `127.0.0.1` |
 | `UO_SHARD_PORT` | Dev shard port | `2606` |
+| `GUO_SHARD_<TARGET>_HOST` / `_PORT` | A named shard for `--shard TARGET` | `127.0.0.1` / `2593` |
+| `GUO_SCENARIO_ACCOUNT` / `_PASSWORD` | The login `$account` / `$password` stand for | (environment only) |
 | `UO_SHARD_GM_ACCOUNTS` | CSV of GM account names | `gm1,gm2,gm3` (in env as JSON array) |
 
 ## Testing

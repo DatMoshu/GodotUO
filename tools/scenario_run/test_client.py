@@ -348,3 +348,23 @@ def test_shard_address_only_for_client_scenarios_that_need_one(tmp_path, monkeyp
     assert runmod.shard_address(need, tmp_path) == ("127.0.0.1", 2593)
     assert runmod.shard_address(scen([step("n", "note", text="x")], surface="client"), tmp_path) is None
     assert runmod.shard_address(scen([step("n", "note", text="x")], requires={"shard": "x"}), tmp_path) is None
+
+
+def test_client_session_start_passes_the_shard_address(monkeypatch, tmp_path):
+    import session as sess
+    cfg = type("Cfg", (), {"cache_dir": tmp_path / "cache", "root": tmp_path})()
+    cs = sess.ClientSession(cfg, tmp_path / "run", False)
+    cs.shard = ("192.0.2.5", 2593)
+    seen = {}
+
+    class FakeProc:
+        pass
+
+    def fake_popen(cmd, **kw):
+        seen["env"] = kw["env"]
+        return FakeProc()
+
+    monkeypatch.setattr(sess.subprocess, "Popen", fake_popen)
+    (tmp_path / "run").mkdir()
+    cs.start()
+    assert seen["env"]["UO_SHARD_HOST"] == "192.0.2.5" and seen["env"]["UO_SHARD_PORT"] == "2593"

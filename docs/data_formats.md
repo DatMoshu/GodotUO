@@ -1925,6 +1925,7 @@ for.
 `GUO_SHARD_<TARGET>_HOST` and `GUO_SHARD_<TARGET>_PORT` (target upper-cased, `-` and `.` as `_`), the account
 from the scenario's variables. `editor_shard` is the local editor shard; a remote shard is the `id` of its host
 profile (section 35). Nothing about a remote shard's address or account is committed.
+`run.py --shard TARGET` names the target from the command line, for a client scenario: it replaces `requires.shard` for that run, reads the two settings above (a missing one stops the run, naming it) and `GUO_SCENARIO_ACCOUNT` / `GUO_SCENARIO_PASSWORD`, and starts the client against that address.
 
 ### Run folder (`build/runs/<run_id>/`, gitignored)
 
