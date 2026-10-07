@@ -18,7 +18,10 @@
         "kind": "launch",
         "args": [
           "--scratch-profile"
-        ]
+        ],
+        "settings": {
+          "autologin": true
+        }
       },
       "say": "Start GUO.",
       "timeout_s": 240,
