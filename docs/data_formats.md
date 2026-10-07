@@ -2010,8 +2010,7 @@ as nullable, so older readers keep working.
 differs between shards is a **profile**: GUO's dev shard is one, another project's shard (SWUO) another, and the
 tool grows no per-project code. A profile is committed in the repo that owns the shard
 (`tools/muo_shard/profiles/guo-dev.profile.json` here; another project keeps its own) and is passed with
-`--profile <file>`. **Status:** this is the contract the tool is being built against (muo_shard M1); until it
-lands, neither `tools/muo_shard/` nor its JSON Schema (`tools/muo_shard/schema/profile.schema.json`) exists.
+`--profile <file>`. **Status:** built in `tools/muo_shard` (M1: `validate`, `plan bootstrap|deploy|status`; the schema is `tools/muo_shard/schema/profile.schema.json`).
 
 **The tool never changes a host by itself.** `bootstrap`, `deploy`, `admin`, `backup`, `restore` and `reset` only
 **emit a shell script** for a person to review and run (`run.py plan <verb> --profile P > step.sh`); only the
@@ -2030,11 +2029,11 @@ Relative paths resolve against the root of the git work tree holding the profile
 | `name` | string, required | the shard name players see (ModernUO `server.name`), 1-64 chars |
 | `server` | object, required | the ModernUO source and what is built with it (below) |
 | `config_overlay` | path | a folder whose files are copied over ModernUO's `Configuration/` after the tool's template, last wins. A file may use `{{KEY}}` for a host-local value; the tool fills it on the host and never writes the result back |
-| `content` | array of paths | `tools/shard_content` folders deployed after the build, in order |
+| `content` | array of paths | `tools/shard_content` folders deployed after the build, in order. Each holds `deploy.args`, one `shard_content deploy` argument per line; the host env file then also needs `MUO_REPO`, a checkout of the profile's repo |
 | `listen` | object, required | `port` (1024-65535; GUO 2593, SWUO 2610) and `address` (default `0.0.0.0`) |
-| `service` | object | `user` (default `muo-<id>`; a system user with no login shell), `memory_max` (systemd `MemoryMax`, e.g. `6G`; omitted = no limit), `restart` (`on-failure`, the default, or `always`), `exec_start_pre` (a command as an argument array, run as the service user before every start; a non-zero exit stops the start. `{data_dir}` is replaced by the client data path, `{dist}` by the server folder) |
+| `service` | object | `user` (default `muo-<id>`; a system user with no login shell), `memory_max` (systemd `MemoryMax`, e.g. `6G`; omitted = no limit), `restart` (`on-failure`, the default, or `always`), `exec_start_pre` (a command as an argument array, run as the service user before every start; a non-zero exit stops the start. `{data_dir}` is replaced by the client data path, `{dist}` by the server folder `/srv/muo/<id>/dist`, `{src}` by the checkout `/srv/muo/<id>/src`) |
 | `client_version` | string | the UO client version the shard expects (dotted, e.g. `7.0.107.76`), written to ModernUO's `clientData.clientVersion`; omitted = ModernUO detects it |
-| `data_manifest` | object | `file` (a JSON manifest of the client data files the shard needs, committed beside the profile), `verify` (`size` or `sha256`); `deploy` and every start refuse a client data folder that does not match |
+| `data_manifest` | object | `file` (a JSON manifest of the client data files the shard needs, committed beside the profile), `verify` (`size` or `sha256`); the file is `{"files": {"<path under the client data>": {"size": n, "sha256": "<hex>"}}}`; `deploy` and every start refuse a client data folder that does not match |
 | `host_packages` | array of strings | extra apt packages `bootstrap` installs, beyond the tool's own (.NET SDK, git, zstd, libdeflate). Each a Debian package name, `^[a-z0-9][a-z0-9+.-]*$`, so no entry can reach apt as an option |
 | `backup` | object | `root` (absolute POSIX folder on the host, default `/var/backups/muo/<id>`), `include` (folders under the server folder to snapshot, default `["Saves"]`), `keep` (snapshots kept, default 14), `on_calendar` (systemd `OnCalendar` for a backup timer; omitted = no timer) |
 | `seed` | string | the snapshot `reset` restores (snapshots are named `<yyyymmdd_hhmmss>` or `--name`); omitted = `reset` refuses |
@@ -2049,6 +2048,8 @@ Relative paths resolve against the root of the git work tree holding the profile
 | `assemblies` | extra content assemblies built after ModernUO, copied into its `Assemblies/` and listed in `Data/assemblies.json`: `[{"project": "<path to .csproj>", "assembly": "<name>.dll"}]`, e.g. SWUO's `server/custom/Scripts/SwuoContent.csproj` building `CustomContent.dll` |
 | `dotnet` | the .NET SDK channel, default `10.0` |
 | `build` | optional: the profile's own build instead of the tool's `dotnet publish`: `{"command": [args...], "output": "<path>"}`, run in the checkout; `output` is the published server folder it leaves (may use `{pin}`) |
+
+**Working directory.** The unit's working directory is `{dist}` for every Exec line (`ExecStartPre` and `ExecStart`), not the checkout, so a repo-relative script must be written `{src}/...`, for example `["python3", "{src}/tools/shard_data/run.py", "--data", "{data_dir}"]`.
 
 The systemd unit is always `muo-<id>.service` and a config overlay always overwrites the template, so every shard
 on a host is managed the same way.

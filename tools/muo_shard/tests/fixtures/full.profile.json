@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "id": "demo-shard",
+  "name": "Demo \"Shard\"",
+  "server": {
+    "source": {"kind": "git", "url": "https://example.invalid/ModernUO.git",
+               "ref": "0123456789abcdef0123456789abcdef01234567"},
+    "assemblies": [{"project": "tools/muo_shard/tests/fixtures/server/Scripts/Demo.csproj", "assembly": "CustomContent.dll"}],
+    "dotnet": "10.0"
+  },
+  "config_overlay": "tools/muo_shard/tests/fixtures/overlay",
+  "content": ["tools/muo_shard/tests/fixtures/pack"],
+  "listen": {"port": 2610, "address": "127.0.0.1"},
+  "service": {
+    "user": "demo-svc",
+    "memory_max": "6G",
+    "restart": "always",
+    "exec_start_pre": ["python3", "{src}/tools/shard_data/run.py", "--data", "{data_dir}", "--out", "{dist}/Data", "--note", "100% \"sure\" $HOME"]
+  },
+  "client_version": "7.0.107.76",
+  "data_manifest": {"file": "tools/muo_shard/tests/fixtures/data.manifest.json", "verify": "size"},
+  "host_packages": ["rsync", "libicu-dev"],
+  "backup": {"root": "/var/backups/demo", "include": ["Saves"], "keep": 3},
+  "seed": "seed",
+  "host_keys": {"client_data": "DEMO_DATA", "admin_user": "DEMO_ADMIN", "admin_password": "DEMO_ADMIN_PW"}
+}
