@@ -402,3 +402,90 @@ def test_runner_refuses_what_the_schema_refuses():
     ]
     for data, wanted in cases:
         assert any(wanted in p for p in sc.validate(data)), (wanted, sc.validate(data))
+
+
+# --- prune and list --scenario ---------------------------------------------------------------------------------
+
+import prune as prune_mod  # noqa: E402
+
+
+def make_run(root, scenario, n, project="guo", manifest=True, video=False):
+    run_id = f"20261001_0000{n:02d}_{scenario}_ai"
+    d = root / run_id
+    d.mkdir(parents=True)
+    if manifest:
+        (d / "run.json").write_text(json.dumps({"run_id": run_id, "project": project, "scenario": scenario,
+                                                "started": f"2026-10-01T00:00:{n:02d}Z"}), encoding="utf-8")
+    if video:
+        (d / "run.mp4").write_bytes(b"x")
+    return d
+
+
+def names(root):
+    return sorted(p.name for p in root.iterdir())
+
+
+def test_prune_keeps_n_newest_per_scenario(tmp_path):
+    local = tmp_path / "runs"
+    for n in range(5):
+        make_run(local, "a.one", n)
+        make_run(local, "b.two", n)
+    res = prune_mod.prune(local, None, keep_local=2, keep_shared=200)
+    kept = names(local)
+    assert len(kept) == 4
+    assert all(any(f"_0000{n:02d}_" in k for k in kept) for n in (3, 4))
+    assert len(res["local a.one"].deleted) == 3 and len(res["local b.two"].deleted) == 3
+
+
+def test_prune_dry_run_deletes_nothing(tmp_path):
+    local = tmp_path / "runs"
+    for n in range(4):
+        make_run(local, "a.one", n)
+    res = prune_mod.prune(local, None, keep_local=1, keep_shared=1, dry_run=True)
+    assert len(names(local)) == 4
+    assert len(res["local a.one"].deleted) == 3
+
+
+def test_prune_leaves_folders_without_a_matching_run_json_and_video_masters(tmp_path):
+    local = tmp_path / "runs"
+    stray = make_run(local, "a.one", 0, manifest=False)
+    (local / "scratch").mkdir()
+    liar = local / "20261001_000009_a.one_ai"
+    liar.mkdir()
+    (liar / "run.json").write_text(json.dumps({"run_id": "something_else", "scenario": "a.one"}), encoding="utf-8")
+    master = make_run(local, "a.one", 1, video=True)
+    for n in (2, 3, 4):
+        make_run(local, "a.one", n)
+    prune_mod.prune(local, None, keep_local=1, keep_shared=1)
+    left = names(local)
+    assert stray.name in left and "scratch" in left and liar.name in left and master.name in left
+    assert left == sorted([stray.name, "scratch", liar.name, master.name, "20261001_000004_a.one_ai"])
+
+
+def test_prune_shared_is_per_project_and_stays_out_of_the_registry(tmp_path):
+    local, shared, db = tmp_path / "runs", tmp_path / "shared", tmp_path / "runs.db"
+    for n in range(3):
+        make_run(shared, "a.one", n, project="guo")
+        make_run(shared, "x.other", n, project="mgs5")
+    con = registry.connect(db)
+    con.execute("INSERT INTO runs (run_id, project, scenario, driver, started) VALUES ('r1','guo','a.one','ai','t')")
+    con.commit()
+    con.close()
+    res = prune_mod.prune(local, shared, keep_local=30, keep_shared=1)
+    assert len(res["shared guo"].deleted) == 2 and len(res["shared mgs5"].deleted) == 2
+    assert len(names(shared)) == 2
+    con = sqlite3.connect(db)
+    assert con.execute("SELECT count(*) FROM runs").fetchone()[0] == 1
+    con.close()
+
+
+def test_list_scenario_filters_the_registry_by_id_prefix(tmp_path):
+    con = registry.connect(tmp_path / "runs.db")
+    for i, scen_id in enumerate(("editor.tabs.sweep", "editor.anim.roundtrip", "client.login.basic", "editor_x.y")):
+        con.execute("INSERT INTO runs (run_id, project, scenario, driver, started, ok, steps_total, steps_failed) "
+                    "VALUES (?,?,?,?,?,1,3,0)", (f"r{i}", "guo", scen_id, "ai", f"2026-10-0{i + 1}"))
+    con.commit()
+    assert [r[0] for r in registry.recent(con, "guo", "editor.")] == ["r1", "r0"]
+    assert len(registry.recent(con, "guo")) == 4
+    assert registry.recent(con, "guo", "nope") == []
+    con.close()

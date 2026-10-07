@@ -64,3 +64,11 @@ def register(path: Path, manifest: dict) -> None:
                             int(bool(s.get("skipped"))), s.get("dur_ms"), s.get("detail")))
     finally:
         db.close()
+
+
+def recent(db: sqlite3.Connection, project: str = "guo", scenario_prefix: str = "", limit: int = 10) -> list[tuple]:
+    """(run_id, ok, steps_failed, steps_total) newest first; a prefix keeps only scenarios whose id starts with it."""
+    rows = db.execute(
+        "SELECT run_id, ok, steps_failed, steps_total FROM runs WHERE project=? AND substr(scenario,1,?)=? "
+        "ORDER BY started DESC LIMIT ?", (project, len(scenario_prefix), scenario_prefix, limit))
+    return list(rows)
