@@ -489,3 +489,60 @@ def test_list_scenario_filters_the_registry_by_id_prefix(tmp_path):
     assert len(registry.recent(con, "guo")) == 4
     assert registry.recent(con, "guo", "nope") == []
     con.close()
+
+
+# --- main(argv): the command line itself -------------------------------------------------------------------------
+
+import shutil  # noqa: E402
+from types import SimpleNamespace  # noqa: E402
+
+import run as run_mod  # noqa: E402
+
+REPO = Path(__file__).resolve().parents[2]
+
+
+@pytest.fixture
+def cli_root(tmp_path, monkeypatch):
+    """A temp project root holding copies of the committed scenarios; no real shared folder or registry."""
+    root = tmp_path / "proj"
+    shutil.copytree(REPO / "tools" / "scenarios", root / "tools" / "scenarios")
+    other = json.loads((root / "tools" / "scenarios" / "editor" / "smoke_layout.scenario.json").read_text(encoding="utf-8"))
+    other["id"] = "client.smoke.other"
+    (root / "tools" / "scenarios" / "client").mkdir()
+    (root / "tools" / "scenarios" / "client" / "other.scenario.json").write_text(json.dumps(other), encoding="utf-8")
+    import guo
+    monkeypatch.setattr(guo, "load_config", lambda: SimpleNamespace(root=root))
+    for var in ("GUO_RUNS_DB", "GUO_RUNS_SHARED_DIR"):
+        monkeypatch.setenv(var, "")
+    return root
+
+
+def listed_ids(out):
+    return {line.split()[0] for line in out.splitlines() if "steps" in line}
+
+
+@pytest.mark.parametrize("argv", [["list", "--scenario", "editor"], ["list", "--scenario=editor"],
+                                  ["--scenario", "editor", "list"]])
+def test_main_list_scenario_spellings(cli_root, capsys, argv):
+    assert run_mod.main(argv) == 0
+    ids = listed_ids(capsys.readouterr().out)
+    assert ids and all(i.startswith("editor") for i in ids)
+
+
+def test_main_plain_list_shows_every_scenario(cli_root, capsys):
+    assert run_mod.main(["list"]) == 0
+    assert listed_ids(capsys.readouterr().out) == {"editor.smoke.layout", "client.smoke.other"}
+
+
+def test_main_scenario_run_still_sees_one_name(cli_root, capsys):
+    assert run_mod.main(["editor.nope", "--scenario", "x"]) == 2
+    assert "give one scenario" not in capsys.readouterr().err
+
+
+def test_main_prune_dry_run_deletes_nothing(cli_root, capsys):
+    runs = cli_root / "build" / "runs"
+    for i in range(3):
+        make_run(runs, "editor.a", i)
+    assert run_mod.main(["prune", "--keep-local", "1", "--dry-run"]) == 0
+    assert "would delete 2" in capsys.readouterr().out
+    assert len(names(runs)) == 3

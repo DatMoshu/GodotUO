@@ -241,7 +241,7 @@ def main(argv: list[str] | None = None) -> int:
                      help="record the client with the engine's MovieWriter (the default for a client scenario)")
     rec.add_argument("--no-record", dest="record", action="store_false", help="stills and events only")
     ap.add_argument("--scale", type=float, default=1.5, help="editor display scale")
-    ap.add_argument("--scenario", default="", help="list: only scenarios whose id starts with this")
+    ap.add_argument("--scenario", dest="scenario_prefix", default="", help="list: only scenarios whose id starts with this")
     ap.add_argument("--keep-local", type=int, default=30, help="prune: newest run folders kept per scenario under build/runs")
     ap.add_argument("--keep-shared", type=int, default=200, help="prune: newest run folders kept per project in the shared folder")
     ap.add_argument("--dry-run", action="store_true", help="prune: list what would go, delete nothing")
@@ -254,7 +254,7 @@ def main(argv: list[str] | None = None) -> int:
     if names and names[0] == "validate":
         return cmd_validate(cfg.root, names[1:])
     if not names or names[0] == "list":
-        return cmd_list(cfg.root, args.scenario)
+        return cmd_list(cfg.root, args.scenario_prefix)
     if names[0] == "prune":
         if args.keep_local < 0 or args.keep_shared < 0:
             ap.error("--keep-local and --keep-shared must be >= 0")
