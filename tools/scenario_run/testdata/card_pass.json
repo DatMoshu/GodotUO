@@ -1,0 +1,15 @@
+{
+  "run_id": "20261001_000000_editor.tabs.sweep_ai",
+  "title": "Editor tabs sweep",
+  "scenario": "editor.tabs.sweep",
+  "driver": "ai",
+  "status": "PASS",
+  "failed_steps": [],
+  "duration": "1m 3s",
+  "commit": "abc1234",
+  "stills": [
+    "art.png",
+    "store.png"
+  ],
+  "text": "PASS: Editor tabs sweep\nScenario: editor.tabs.sweep  Driver: ai\nDuration: 1m 3s  Commit: abc1234\nStills: 2"
+}

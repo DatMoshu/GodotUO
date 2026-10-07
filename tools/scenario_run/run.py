@@ -4,7 +4,9 @@
     python tools/scenario_run/run.py editor.tabs.sweep
     python tools/scenario_run/run.py tools/scenarios/editor/tabs.scenario.json --var account=gm1
     python tools/scenario_run/run.py validate [NAME ...]     # check scenario files, run nothing
-    python tools/scenario_run/run.py list                    # scenarios, then the registry's recent runs
+    python tools/scenario_run/run.py list [--scenario PREFIX]  # scenarios, then the registry's recent runs
+    python tools/scenario_run/run.py prune [--keep-local N] [--keep-shared M] [--dry-run]
+    python tools/scenario_run/run.py post RUN_ID    # write card.json beside the run and print it; sends nothing
 
 A scenario (docs/data_formats.md, "Scenario runs") is a list of steps. The runner performs each step's `do`
 through an MCP of the program it started (the editor's, this build: launch, wait, shot, note, tour_segment,
@@ -39,7 +41,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+import card as card_mod  # noqa: E402
 import events as ev  # noqa: E402
+import prune as prune_mod  # noqa: E402
 import publish  # noqa: E402
 import registry  # noqa: E402
 import scenario as sc  # noqa: E402
@@ -151,6 +155,13 @@ def execute(scen: sc.Scenario, cfg, variables: dict[str, str], *, size: str | No
         result = runner.run()
     finally:
         timer.cancel()
+    shared = settings.read_setting("GUO_RUNS_SHARED_DIR", cfg.root)
+    db = settings.read_setting("GUO_RUNS_DB", cfg.root)
+    unset = [k for k, v in (("GUO_RUNS_SHARED_DIR", shared), ("GUO_RUNS_DB", db if register else "set")) if not v]
+    if unset:
+        names = " and ".join(unset)
+        print(f"{names} not set: registration and the shared copy were skipped (see Configuration in tools/scenario_run/README.md)")
+        log.emit("warn", detail={"unset": unset, "message": "registration and the shared copy were skipped"})
     log.close()
     video_path, video_note = finalize_video(session, run_dir, run_id, video_dir)
     manifest = {
@@ -165,16 +176,10 @@ def execute(scen: sc.Scenario, cfg, variables: dict[str, str], *, size: str | No
     manifest["summary"] = summary
     (run_dir / "summary.md").write_text(summary, encoding="utf-8")
     publish.write_manifest(run_dir, manifest)
-    shared = settings.read_setting("GUO_RUNS_SHARED_DIR", cfg.root)
     if shared:
         publish.copy_shared(run_dir, Path(shared), run_id, deny)
-    else:
-        print("GUO_RUNS_SHARED_DIR is not set: nothing copied to the shared area")
-    db = settings.read_setting("GUO_RUNS_DB", cfg.root)
     if db and register:
         publish.register_run(Path(db), manifest, deny)
-    elif not db:
-        print("GUO_RUNS_DB is not set: the run is not registered")
     return manifest, run_dir
 
 
@@ -191,22 +196,53 @@ def cmd_validate(root: Path, names: list[str]) -> int:
     return 1 if bad else 0
 
 
-def cmd_list(root: Path) -> int:
+def cmd_list(root: Path, prefix: str = "") -> int:
     for f in sorted((root / "tools" / "scenarios").rglob("*.scenario.json")):
         try:
             s = sc.load(f)
+            if not s.id.startswith(prefix):
+                continue
             print(f"{s.id:40} {s.surface:7} {len(s.steps):3} steps  {s.title}")
         except sc.ScenarioError as ex:
-            print(f"{f.name:40} INVALID: {ex}")
+            if not prefix:
+                print(f"{f.name:40} INVALID: {ex}")
     db = settings.read_setting("GUO_RUNS_DB", root)
     if db and Path(db).is_file():
         con = registry.connect(Path(db))
         print()
         print("recent runs:")
-        for rid, ok, nfail, total in con.execute(
-                "SELECT run_id, ok, steps_failed, steps_total FROM runs WHERE project='guo' ORDER BY started DESC LIMIT 10"):
+        for rid, ok, nfail, total in registry.recent(con, "guo", prefix):
             print(f"  {rid}  {'PASS' if ok else 'FAIL'}  {total - (nfail or 0)}/{total}")
         con.close()
+    return 0
+
+
+def cmd_prune(root: Path, keep_local: int, keep_shared: int, dry_run: bool) -> int:
+    shared = settings.read_setting("GUO_RUNS_SHARED_DIR", root)
+    results = prune_mod.prune(root / "build" / "runs", Path(shared) if shared else None, keep_local, keep_shared, dry_run)
+    verb = "would delete" if dry_run else "deleted"
+    total = 0
+    for group, res in results.items():
+        total += len(res.deleted)
+        print(f"{group}: kept {len(res.kept)}, {verb} {len(res.deleted)}")
+        for p in res.deleted:
+            print(f"  {p.name}")
+    if not shared:
+        print("GUO_RUNS_SHARED_DIR is not set: the shared folder was not pruned")
+    print(f"{verb} {total} run folder(s); registry rows and video masters untouched")
+    return 0
+
+
+def cmd_post(root: Path, run_id: str) -> int:
+    """Build the Discord card for a run: card.json beside run.json, printed to stdout. No network, no token."""
+    run_dir = card_mod.find_run(root, settings.read_setting("GUO_RUNS_SHARED_DIR", root), run_id)
+    if run_dir is None:
+        print(f"error: unknown run id {run_id!r}: no run.json under build/runs or the shared runs folder", file=sys.stderr)
+        return 2
+    manifest = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+    card = card_mod.build_card(manifest, run_dir, load_deny(root))
+    card_mod.write_card(run_dir, card)
+    print(json.dumps(card, indent=2, ensure_ascii=False))
     return 0
 
 
@@ -221,6 +257,10 @@ def main(argv: list[str] | None = None) -> int:
                      help="record the client with the engine's MovieWriter (the default for a client scenario)")
     rec.add_argument("--no-record", dest="record", action="store_false", help="stills and events only")
     ap.add_argument("--scale", type=float, default=1.5, help="editor display scale")
+    ap.add_argument("--scenario", dest="scenario_prefix", default="", help="list: only scenarios whose id starts with this")
+    ap.add_argument("--keep-local", type=int, default=30, help="prune: newest run folders kept per scenario under build/runs")
+    ap.add_argument("--keep-shared", type=int, default=200, help="prune: newest run folders kept per project in the shared folder")
+    ap.add_argument("--dry-run", action="store_true", help="prune: list what would go, delete nothing")
     ap.add_argument("--no-register", action="store_true", help="do not add the run to the registry")
     args = ap.parse_args(argv)
 
@@ -230,7 +270,15 @@ def main(argv: list[str] | None = None) -> int:
     if names and names[0] == "validate":
         return cmd_validate(cfg.root, names[1:])
     if not names or names[0] == "list":
-        return cmd_list(cfg.root)
+        return cmd_list(cfg.root, args.scenario_prefix)
+    if names[0] == "prune":
+        if args.keep_local < 0 or args.keep_shared < 0:
+            ap.error("--keep-local and --keep-shared must be >= 0")
+        return cmd_prune(cfg.root, args.keep_local, args.keep_shared, args.dry_run)
+    if names[0] == "post":
+        if len(names) != 2:
+            ap.error("post needs one run id")
+        return cmd_post(cfg.root, names[1])
     if len(names) != 1:
         ap.error("give one scenario")
     if args.driver == "human":

@@ -4,22 +4,42 @@ Record deterministic gameplay scenarios at publishable quality with AI or human 
 
 ## Quick start
 
+What the runner on main does today (build steps 2 and 3):
+
 ```bash
-# Run a scenario with the AI driver (autonomous)
-python tools/scenario_run/run.py client.login.basic --driver ai
+# Run a scenario with the AI driver (autonomous; the default driver)
+python tools/scenario_run/run.py editor.tabs.sweep
 
-# Follow along with the human driver (overlay, manual verification)
-python tools/scenario_run/run.py client.login.basic --driver human
+# Check scenario files without running anything
+python tools/scenario_run/run.py validate editor.tabs.sweep
 
-# Capture one run as a Discord card
+# List scenarios, then the registry's recent runs; optionally only scenarios whose id starts with a prefix
+python tools/scenario_run/run.py list
+python tools/scenario_run/run.py list --scenario editor.
+
+# Clean up old run folders: newest 30 per scenario under build/runs, newest 200 per project in the shared folder
+python tools/scenario_run/run.py prune [--keep-local N] [--keep-shared M] [--dry-run]
+
+# Build the Discord card for a finished run: writes card.json beside its run.json and prints it
 python tools/scenario_run/run.py post <run_id>
-
-# List runs and their status
-python tools/scenario_run/run.py list --scenario client.login
-
-# Clean up old runs (keeps last 30 per scenario locally, last 200 shared)
-python tools/scenario_run/run.py prune
 ```
+
+`post` reads the run's `run.json` (the repo-local `build/runs/<run_id>/`, else the shared copy) and writes `card.json`
+next to it: title, scenario, driver, PASS/FAIL, failed step ids, duration, commit and the stills by name, plus a text
+body under 900 characters (a long failed-step list ends in "+N more"). Every text field is redacted first. An unknown
+run id exits 2. **It builds the card and nothing else:** no network, no Discord call, no token. Sending is a separate,
+explicit step owned by the integrator after Moshu has watched the run (standing rule).
+
+`prune` deletes only folders whose `run.json` names the folder's own run id, keeps any folder that holds a video
+file, never reads the video folder, and leaves every registry row in place (they are history).
+
+Not yet (the commands exist in the plan, not in the runner):
+
+| Command | Arrives with |
+|---|---|
+| `--driver human` (exits 2 with a message) | step 5 |
+| `clip` (cut a clip from the master) | not scheduled |
+| `--shard` | the shard stories |
 
 ## Scenario files
 
@@ -46,11 +66,13 @@ See `docs/data_formats.md` for the full schema and step kind reference.
 
 ## Step kinds
 
+On main today (step 2 and step 3 kinds):
+
 | Kind | Purpose | Input | Expectation | Notes |
 |---|---|---|---|---|
-| `launch` | Start the client, editor, or shard | args: launch flags | process alive | AI only |
-| `wait` | Pause the scenario | seconds | elapsed time | Human: Space to advance |
-| `shot` | Capture a still image | none | frame saved | Records one PNG per step |
+| `launch` | Start the editor | args: launch flags | process alive | AI only |
+| `wait` | Pause the scenario | seconds | elapsed time | |
+| `shot` | Capture a still image | none | frame saved | One PNG per step |
 | `note` | Log a narrative comment | text | text in events.jsonl | No verification |
 | `ui.click` | Click a control (client) | `control` (selector), `button`, `clicks`, `within_s` (how long to wait for the control, default 5) | ui.exists, ui.text, etc. | `guo_ui` to find it, `guo_input` to click its centre |
 | `ui.fill` | Click a field, then type into it (client) | `control`, `text`, `clear` (BackSpace presses first) | ui.* on something the typing changes | The typed text is never logged or read back (the game omits editable values) |
@@ -58,10 +80,13 @@ See `docs/data_formats.md` for the full schema and step kind reference.
 | `chat` | Say a line in game (client) | `text` (a `[command` works) | log or world state | Enter, text, Enter |
 | `tour_segment` | Run an EditorTour segment | id: segment name | EditorTour checks + frames | Editor only; surface override |
 | `editor_invoke` | Run an F3 action by key | key, query | tool result | Editor only; not pre-approved, so the step **fails at once** with a message instead of waiting on the approval dialog (nobody is at the PC in a scripted run). Use a `tour_segment`, or run it by hand |
-| `scene_set` | Set an editor scene property | property, value | scene state | Editor only |
-| `renderdump` | Capture a render state dump | name: dump name | render_diff match | AI only; for parity checks |
-| `render_diff` | Compare two render dumps | a, b, max_drawn_diff | diff below threshold | AI only; uses render_diff.bat |
-| `lane` | Run a multi_client lane | lane_id | lane summary events | Multi-client playtest |
+
+Not yet (a scenario that uses one fails at the step today):
+
+| Kind | Purpose | Arrives with |
+|---|---|---|
+| `scene_set`, `renderdump`, `render_diff` | Editor scene and render-parity steps | not scheduled |
+| `lane` | Run a multi_client lane | step 7 |
 
 ### Controls
 
@@ -92,7 +117,8 @@ editor's `result`, `editor.state` and `file.exists`.
 
 ### AI Driver (`--driver ai`)
 
-The runner executes every step autonomously:
+The runner executes every step autonomously. A client run records video (see Recording); an editor run records stills and
+events only.
 
 1. Send the `do` action through the appropriate MCP (game, editor, etc.)
 2. Poll the `expect` condition until true or timeout
@@ -104,7 +130,9 @@ The runner executes every step autonomously:
 **Quality:** 60 fps, every frame rendered whatever the machine can do. The size is the engine window's at start, 1280×720 from `project.godot` (Godot's `--resolution` does not move it); a 1440p or 4K master needs a project-level size, which is not done yet.  
 **Scope tonight:** the client surface. An editor run records stills and events only (the editor is not a MovieWriter target); OBS and desktop capture are not implemented.
 
-### Human Driver (`--driver human`)
+### Human Driver (`--driver human`) (not yet: step 5)
+
+Planned design; the runner refuses `--driver human` today.
 
 The runner shows each step on an in-engine overlay and waits for human verification:
 
@@ -121,6 +149,9 @@ The runner shows each step on an in-engine overlay and waits for human verificat
 Steps marked `ai_only: true` are skipped in human mode and logged as such.
 
 ## Recording: capture paths and conventions
+
+On main today: the AI driver's MovieWriter path (a client run records by default; the master is `run.mp4`, copied to the
+video folder when one is mounted). Not yet: the human driver's OBS and ddagrab paths and `run.py clip`.
 
 ### AI Runs: MovieWriter (deterministic)
 
@@ -151,7 +182,7 @@ run.py invokes:
 - Slower than real-time (Godot runs at physics tickrate, not wall-clock)
 - Requires Godot to run; cannot capture existing gameplay
 
-### Human Runs: OBS (real-time)
+### Human Runs: OBS (real-time) (not yet: step 5)
 
 OBS records the live Godot window via game capture, preserving latency and operator input.
 
@@ -207,8 +238,8 @@ ffmpeg -f ddagrab -drawbox 0 -offset_x 0 -offset_y 0 -video_size 2560x1440 -fram
 
 **Retention:**
 - Keeps all master videos in `GUO_RUNS_VIDEO_DIR` (never auto-pruned)
-- Local `build/runs/<run_id>/` folders pruned by `run.py prune` (keeps last 30 per scenario)
-- Shared `<GUO_RUNS_SHARED_DIR>/<run_id>/` pruned (keeps last 200)
+- Local `build/runs/<run_id>/` folders pruned by `run.py prune` (keeps last 30 per scenario; a folder holding a video file is kept)
+- Shared `<GUO_RUNS_SHARED_DIR>/<run_id>/` pruned (keeps last 200 per project)
 
 ## Output structure
 
@@ -272,7 +303,10 @@ SQLite database tracking all runs across all projects.
 
 ## Configuration
 
-Environment variables (or `config.bat`):
+Each setting resolves in one order: environment variable, then `launchers/_shared/config.local.bat` (yours,
+gitignored; start from `config.local.bat.example`), then `launchers/_shared/config.bat`. None has a default path.
+A run with `GUO_RUNS_DB` or `GUO_RUNS_SHARED_DIR` unset prints one line naming the unset setting(s) and writes a
+`warn` event saying registration and the shared copy were skipped; the run folder under `build/runs` is kept.
 
 | Variable | Purpose | Example |
 |---|---|---|
@@ -336,9 +370,9 @@ a timer armed at `run_s` plus 60 s kills the program and exits 4.
 - **JSON schema:** `tools/scenarios/schema/scenario.schema.json`
 - **EditorTour segments:** `godot/GUO/addons/guo_editor/EditorTour.cs`
 - **DirectorDeck Runs view:** (fablehelper project)
-- **Discord posting:** `tools/scenario_run/run.py post <run_id>`
+- **Discord card:** `run.py post <run_id>` builds `card.json`; sending it is not part of the runner
 
 ---
 
-**Status:** Build step 1 (docs) and 2 (runner + AI driver) in progress.  
-**Last updated:** 2026-10-05
+**Status:** Build steps 1 (docs) and 2 (runner + AI driver, prune, list filter) are on main.  
+**Last updated:** 2026-10-06

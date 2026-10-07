@@ -402,3 +402,270 @@ def test_runner_refuses_what_the_schema_refuses():
     ]
     for data, wanted in cases:
         assert any(wanted in p for p in sc.validate(data)), (wanted, sc.validate(data))
+
+
+# --- prune and list --scenario ---------------------------------------------------------------------------------
+
+import prune as prune_mod  # noqa: E402
+
+
+def make_run(root, scenario, n, project="guo", manifest=True, video=False):
+    run_id = f"20261001_0000{n:02d}_{scenario}_ai"
+    d = root / run_id
+    d.mkdir(parents=True)
+    if manifest:
+        (d / "run.json").write_text(json.dumps({"run_id": run_id, "project": project, "scenario": scenario,
+                                                "started": f"2026-10-01T00:00:{n:02d}Z"}), encoding="utf-8")
+    if video:
+        (d / "run.mp4").write_bytes(b"x")
+    return d
+
+
+def names(root):
+    return sorted(p.name for p in root.iterdir())
+
+
+def test_prune_keeps_n_newest_per_scenario(tmp_path):
+    local = tmp_path / "runs"
+    for n in range(5):
+        make_run(local, "a.one", n)
+        make_run(local, "b.two", n)
+    res = prune_mod.prune(local, None, keep_local=2, keep_shared=200)
+    kept = names(local)
+    assert len(kept) == 4
+    assert all(any(f"_0000{n:02d}_" in k for k in kept) for n in (3, 4))
+    assert len(res["local a.one"].deleted) == 3 and len(res["local b.two"].deleted) == 3
+
+
+def test_prune_dry_run_deletes_nothing(tmp_path):
+    local = tmp_path / "runs"
+    for n in range(4):
+        make_run(local, "a.one", n)
+    res = prune_mod.prune(local, None, keep_local=1, keep_shared=1, dry_run=True)
+    assert len(names(local)) == 4
+    assert len(res["local a.one"].deleted) == 3
+
+
+def test_prune_leaves_folders_without_a_matching_run_json_and_video_masters(tmp_path):
+    local = tmp_path / "runs"
+    stray = make_run(local, "a.one", 0, manifest=False)
+    (local / "scratch").mkdir()
+    liar = local / "20261001_000009_a.one_ai"
+    liar.mkdir()
+    (liar / "run.json").write_text(json.dumps({"run_id": "something_else", "scenario": "a.one"}), encoding="utf-8")
+    master = make_run(local, "a.one", 1, video=True)
+    for n in (2, 3, 4):
+        make_run(local, "a.one", n)
+    prune_mod.prune(local, None, keep_local=1, keep_shared=1)
+    left = names(local)
+    assert stray.name in left and "scratch" in left and liar.name in left and master.name in left
+    assert left == sorted([stray.name, "scratch", liar.name, master.name, "20261001_000004_a.one_ai"])
+
+
+def test_prune_shared_is_per_project_and_stays_out_of_the_registry(tmp_path):
+    local, shared, db = tmp_path / "runs", tmp_path / "shared", tmp_path / "runs.db"
+    for n in range(3):
+        make_run(shared, "a.one", n, project="guo")
+        make_run(shared, "x.other", n, project="mgs5")
+    con = registry.connect(db)
+    con.execute("INSERT INTO runs (run_id, project, scenario, driver, started) VALUES ('r1','guo','a.one','ai','t')")
+    con.commit()
+    con.close()
+    res = prune_mod.prune(local, shared, keep_local=30, keep_shared=1)
+    assert len(res["shared guo"].deleted) == 2 and len(res["shared mgs5"].deleted) == 2
+    assert len(names(shared)) == 2
+    con = sqlite3.connect(db)
+    assert con.execute("SELECT count(*) FROM runs").fetchone()[0] == 1
+    con.close()
+
+
+def test_list_scenario_filters_the_registry_by_id_prefix(tmp_path):
+    con = registry.connect(tmp_path / "runs.db")
+    for i, scen_id in enumerate(("editor.tabs.sweep", "editor.anim.roundtrip", "client.login.basic", "editor_x.y")):
+        con.execute("INSERT INTO runs (run_id, project, scenario, driver, started, ok, steps_total, steps_failed) "
+                    "VALUES (?,?,?,?,?,1,3,0)", (f"r{i}", "guo", scen_id, "ai", f"2026-10-0{i + 1}"))
+    con.commit()
+    assert [r[0] for r in registry.recent(con, "guo", "editor.")] == ["r1", "r0"]
+    assert len(registry.recent(con, "guo")) == 4
+    assert registry.recent(con, "guo", "nope") == []
+    con.close()
+
+
+# --- main(argv): the command line itself -------------------------------------------------------------------------
+
+import shutil  # noqa: E402
+from types import SimpleNamespace  # noqa: E402
+
+import run as run_mod  # noqa: E402
+
+REPO = Path(__file__).resolve().parents[2]
+
+
+@pytest.fixture
+def cli_root(tmp_path, monkeypatch):
+    """A temp project root holding copies of the committed scenarios; no real shared folder or registry."""
+    root = tmp_path / "proj"
+    shutil.copytree(REPO / "tools" / "scenarios", root / "tools" / "scenarios")
+    other = json.loads((root / "tools" / "scenarios" / "editor" / "smoke_layout.scenario.json").read_text(encoding="utf-8"))
+    other["id"] = "client.smoke.other"
+    (root / "tools" / "scenarios" / "client").mkdir(exist_ok=True)
+    (root / "tools" / "scenarios" / "client" / "other.scenario.json").write_text(json.dumps(other), encoding="utf-8")
+    import guo
+    monkeypatch.setattr(guo, "load_config", lambda: SimpleNamespace(root=root))
+    for var in ("GUO_RUNS_DB", "GUO_RUNS_SHARED_DIR"):
+        monkeypatch.setenv(var, "")
+    return root
+
+
+def listed_ids(out):
+    return {line.split()[0] for line in out.splitlines() if "steps" in line}
+
+
+@pytest.mark.parametrize("argv", [["list", "--scenario", "editor"], ["list", "--scenario=editor"],
+                                  ["--scenario", "editor", "list"]])
+def test_main_list_scenario_spellings(cli_root, capsys, argv):
+    assert run_mod.main(argv) == 0
+    ids = listed_ids(capsys.readouterr().out)
+    assert ids and all(i.startswith("editor") for i in ids)
+
+
+def test_main_plain_list_shows_every_scenario(cli_root, capsys):
+    assert run_mod.main(["list"]) == 0
+    assert listed_ids(capsys.readouterr().out) >= {"editor.smoke.layout", "client.smoke.other"}
+
+
+def test_main_scenario_run_still_sees_one_name(cli_root, capsys):
+    assert run_mod.main(["editor.nope", "--scenario", "x"]) == 2
+    assert "give one scenario" not in capsys.readouterr().err
+
+
+def test_main_prune_dry_run_deletes_nothing(cli_root, capsys):
+    runs = cli_root / "build" / "runs"
+    for i in range(3):
+        make_run(runs, "editor.a", i)
+    assert run_mod.main(["prune", "--keep-local", "1", "--dry-run"]) == 0
+    assert "would delete 2" in capsys.readouterr().out
+    assert len(names(runs)) == 3
+
+
+# --- post: the Discord card ------------------------------------------------------------------------------------
+
+import card as card_mod  # noqa: E402
+
+TESTDATA = Path(__file__).resolve().parent / "testdata"
+
+
+def manifest_for(run_id, scenario, steps, **extra):
+    base = {"run_id": run_id, "project": "guo", "scenario": scenario, "title": "Editor tabs sweep", "driver": "ai",
+            "commit": "abc1234", "ok": all(s["ok"] is not False for s in steps), "aborted": None, "steps": steps}
+    base.update(extra)
+    return base
+
+
+def put_run(root, manifest, stills=()):
+    d = root / manifest["run_id"]
+    d.mkdir(parents=True)
+    (d / "run.json").write_text(json.dumps(manifest), encoding="utf-8")
+    if stills:
+        (d / "shots").mkdir()
+        for name in stills:
+            (d / "shots" / name).write_bytes(b"png")
+    return d
+
+
+def golden(name, card):
+    path = TESTDATA / name
+    assert json.loads(path.read_text(encoding="utf-8")) == card
+
+
+def ok_step(sid, ms=1000):
+    return {"id": sid, "ok": True, "dur_ms": ms, "detail": ""}
+
+
+def test_card_for_a_passing_run_matches_the_golden(tmp_path):
+    m = manifest_for("20261001_000000_editor.tabs.sweep_ai", "editor.tabs.sweep", [ok_step("launch", 61000), ok_step("art", 2000)])
+    d = put_run(tmp_path, m, ["art.png", "store.png"])
+    card = card_mod.build_card(m, d, [])
+    golden("card_pass.json", card)
+    assert card["status"] == "PASS" and card["failed_steps"] == []
+
+
+def test_card_for_a_failing_run_matches_the_golden(tmp_path):
+    steps = [ok_step("launch"), {"id": "store", "ok": False, "dur_ms": 5000, "detail": "timeout"}, ok_step("pick")]
+    m = manifest_for("20261001_000100_editor.tabs.sweep_ai", "editor.tabs.sweep", steps, aborted="step store failed")
+    d = put_run(tmp_path, m)
+    card = card_mod.build_card(m, d, [])
+    golden("card_fail.json", card)
+    assert card["failed_steps"] == ["store"]
+
+
+def test_a_forty_step_failing_run_fits_the_body_limit_and_says_more(tmp_path):
+    steps = [{"id": f"segment_with_a_long_name_{i:02d}", "ok": False, "dur_ms": 1000, "detail": "x"} for i in range(40)]
+    m = manifest_for("20261001_000200_editor.big_ai", "editor.big", steps, title="T" * 200, aborted="y" * 500)
+    d = put_run(tmp_path, m, [f"shot_{i}.png" for i in range(40)])
+    card = card_mod.build_card(m, d, [])
+    assert len(card["text"]) <= card_mod.BODY_LIMIT
+    assert "more" in card["text"] and "+" in card["text"]
+    assert len(card["failed_steps"]) == 40
+
+
+def test_card_text_is_redacted(tmp_path):
+    steps = [{"id": "s1", "ok": False, "dur_ms": 1, "detail": ""}]
+    m = manifest_for("20261001_000300_editor.r_ai", "editor.r", steps, title=r"open D:\Work\notes.txt", aborted="at secretword")
+    d = put_run(tmp_path, m)
+    card = card_mod.build_card(m, d, ["secretword"])
+    blob = json.dumps(card)
+    assert "Work" not in blob and "secretword" not in blob and "D:\\" not in blob
+
+
+def test_find_run_prefers_local_then_shared_and_refuses_unknown(tmp_path):
+    local, shared = tmp_path / "root" / "build" / "runs", tmp_path / "shared"
+    m = manifest_for("20261001_000400_a_ai", "a", [ok_step("x")])
+    put_run(shared, m)
+    assert card_mod.find_run(tmp_path / "root", str(shared), m["run_id"]) == shared / m["run_id"]
+    put_run(local, m)
+    assert card_mod.find_run(tmp_path / "root", str(shared), m["run_id"]) == local / m["run_id"]
+    assert card_mod.find_run(tmp_path / "root", str(shared), "nope") is None
+    assert card_mod.find_run(tmp_path / "root", str(shared), "../x") is None
+
+
+def test_main_post_writes_card_json_and_prints_it(cli_root, capsys):
+    m = manifest_for("20261001_000500_editor.p_ai", "editor.p", [ok_step("a")])
+    d = put_run(cli_root / "build" / "runs", m)
+    assert run_mod.main(["post", m["run_id"]]) == 0
+    printed = json.loads(capsys.readouterr().out)
+    assert printed == json.loads((d / "card.json").read_text(encoding="utf-8"))
+    assert printed["status"] == "PASS"
+
+
+def test_main_post_unknown_run_id_exits_2(cli_root, capsys):
+    assert run_mod.main(["post", "20260101_000000_nothing_ai"]) == 2
+    assert "unknown run id" in capsys.readouterr().err
+
+
+def test_card_module_has_no_network_or_token_use():
+    src = (Path(__file__).resolve().parent / "card.py").read_text(encoding="utf-8")
+    code = src.split('"""', 2)[2]
+    imports = [ln for ln in code.splitlines() if ln.startswith(("import ", "from "))]
+    assert sorted(imports) == ["from __future__ import annotations", "from pathlib import Path", "from redact import redact", "import json"]
+    assert "environ" not in code and "getenv" not in code and "read_setting" not in code
+
+
+def test_unset_registration_settings_warn_and_register_nothing(cli_root, monkeypatch, capsys, tmp_path):
+    class FakeRunner:
+        def __init__(self, scen, run_dir, log, **kw): self.log = log
+
+        def run(self):
+            return {"started": "t0", "ended": "t1", "ok": True, "aborted": False, "exit_kind": "ok", "steps": [], "artifacts": []}
+
+    monkeypatch.setattr(run_mod, "Runner", FakeRunner)
+    monkeypatch.setattr(run_mod, "EditorSession", lambda *a, **k: None)
+    cfg = SimpleNamespace(root=cli_root, build=cli_root / "build")
+    scen = sc.load(sc.find(cli_root, "editor.smoke.layout"))
+    manifest, run_dir = run_mod.execute(scen, cfg, {}, size="1x1", scale=1.0, register=True)
+    out = capsys.readouterr().out
+    assert "GUO_RUNS_SHARED_DIR and GUO_RUNS_DB not set" in out
+    warns = [json.loads(l) for l in (run_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()]
+    warns = [e for e in warns if e["kind"] == "warn"]
+    assert len(warns) == 1 and warns[0]["detail"]["unset"] == ["GUO_RUNS_SHARED_DIR", "GUO_RUNS_DB"]
+    assert not list(tmp_path.rglob("*.db")) and (run_dir / "run.json").is_file()
