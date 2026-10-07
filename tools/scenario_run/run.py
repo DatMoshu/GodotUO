@@ -6,6 +6,7 @@
     python tools/scenario_run/run.py validate [NAME ...]     # check scenario files, run nothing
     python tools/scenario_run/run.py list [--scenario PREFIX]  # scenarios, then the registry's recent runs
     python tools/scenario_run/run.py prune [--keep-local N] [--keep-shared M] [--dry-run]
+    python tools/scenario_run/run.py post RUN_ID    # write card.json beside the run and print it; sends nothing
 
 A scenario (docs/data_formats.md, "Scenario runs") is a list of steps. The runner performs each step's `do`
 through an MCP of the program it started (the editor's, this build: launch, wait, shot, note, tour_segment,
@@ -40,6 +41,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+import card as card_mod  # noqa: E402
 import events as ev  # noqa: E402
 import prune as prune_mod  # noqa: E402
 import publish  # noqa: E402
@@ -230,6 +232,19 @@ def cmd_prune(root: Path, keep_local: int, keep_shared: int, dry_run: bool) -> i
     return 0
 
 
+def cmd_post(root: Path, run_id: str) -> int:
+    """Build the Discord card for a run: card.json beside run.json, printed to stdout. No network, no token."""
+    run_dir = card_mod.find_run(root, settings.read_setting("GUO_RUNS_SHARED_DIR", root), run_id)
+    if run_dir is None:
+        print(f"error: unknown run id {run_id!r}: no run.json under build/runs or the shared runs folder", file=sys.stderr)
+        return 2
+    manifest = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+    card = card_mod.build_card(manifest, run_dir, load_deny(root))
+    card_mod.write_card(run_dir, card)
+    print(json.dumps(card, indent=2, ensure_ascii=False))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("scenario", nargs="*", help="a scenario id or file; or validate / list")
@@ -259,6 +274,10 @@ def main(argv: list[str] | None = None) -> int:
         if args.keep_local < 0 or args.keep_shared < 0:
             ap.error("--keep-local and --keep-shared must be >= 0")
         return cmd_prune(cfg.root, args.keep_local, args.keep_shared, args.dry_run)
+    if names[0] == "post":
+        if len(names) != 2:
+            ap.error("post needs one run id")
+        return cmd_post(cfg.root, names[1])
     if len(names) != 1:
         ap.error("give one scenario")
     if args.driver == "human":

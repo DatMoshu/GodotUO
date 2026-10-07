@@ -546,3 +546,106 @@ def test_main_prune_dry_run_deletes_nothing(cli_root, capsys):
     assert run_mod.main(["prune", "--keep-local", "1", "--dry-run"]) == 0
     assert "would delete 2" in capsys.readouterr().out
     assert len(names(runs)) == 3
+
+
+# --- post: the Discord card ------------------------------------------------------------------------------------
+
+import card as card_mod  # noqa: E402
+
+TESTDATA = Path(__file__).resolve().parent / "testdata"
+
+
+def manifest_for(run_id, scenario, steps, **extra):
+    base = {"run_id": run_id, "project": "guo", "scenario": scenario, "title": "Editor tabs sweep", "driver": "ai",
+            "commit": "abc1234", "ok": all(s["ok"] is not False for s in steps), "aborted": None, "steps": steps}
+    base.update(extra)
+    return base
+
+
+def put_run(root, manifest, stills=()):
+    d = root / manifest["run_id"]
+    d.mkdir(parents=True)
+    (d / "run.json").write_text(json.dumps(manifest), encoding="utf-8")
+    if stills:
+        (d / "shots").mkdir()
+        for name in stills:
+            (d / "shots" / name).write_bytes(b"png")
+    return d
+
+
+def golden(name, card):
+    path = TESTDATA / name
+    assert json.loads(path.read_text(encoding="utf-8")) == card
+
+
+def ok_step(sid, ms=1000):
+    return {"id": sid, "ok": True, "dur_ms": ms, "detail": ""}
+
+
+def test_card_for_a_passing_run_matches_the_golden(tmp_path):
+    m = manifest_for("20261001_000000_editor.tabs.sweep_ai", "editor.tabs.sweep", [ok_step("launch", 61000), ok_step("art", 2000)])
+    d = put_run(tmp_path, m, ["art.png", "store.png"])
+    card = card_mod.build_card(m, d, [])
+    golden("card_pass.json", card)
+    assert card["status"] == "PASS" and card["failed_steps"] == []
+
+
+def test_card_for_a_failing_run_matches_the_golden(tmp_path):
+    steps = [ok_step("launch"), {"id": "store", "ok": False, "dur_ms": 5000, "detail": "timeout"}, ok_step("pick")]
+    m = manifest_for("20261001_000100_editor.tabs.sweep_ai", "editor.tabs.sweep", steps, aborted="step store failed")
+    d = put_run(tmp_path, m)
+    card = card_mod.build_card(m, d, [])
+    golden("card_fail.json", card)
+    assert card["failed_steps"] == ["store"]
+
+
+def test_a_forty_step_failing_run_fits_the_body_limit_and_says_more(tmp_path):
+    steps = [{"id": f"segment_with_a_long_name_{i:02d}", "ok": False, "dur_ms": 1000, "detail": "x"} for i in range(40)]
+    m = manifest_for("20261001_000200_editor.big_ai", "editor.big", steps, title="T" * 200, aborted="y" * 500)
+    d = put_run(tmp_path, m, [f"shot_{i}.png" for i in range(40)])
+    card = card_mod.build_card(m, d, [])
+    assert len(card["text"]) <= card_mod.BODY_LIMIT
+    assert "more" in card["text"] and "+" in card["text"]
+    assert len(card["failed_steps"]) == 40
+
+
+def test_card_text_is_redacted(tmp_path):
+    steps = [{"id": "s1", "ok": False, "dur_ms": 1, "detail": ""}]
+    m = manifest_for("20261001_000300_editor.r_ai", "editor.r", steps, title=r"open D:\Work\notes.txt", aborted="at secretword")
+    d = put_run(tmp_path, m)
+    card = card_mod.build_card(m, d, ["secretword"])
+    blob = json.dumps(card)
+    assert "Work" not in blob and "secretword" not in blob and "D:\\" not in blob
+
+
+def test_find_run_prefers_local_then_shared_and_refuses_unknown(tmp_path):
+    local, shared = tmp_path / "root" / "build" / "runs", tmp_path / "shared"
+    m = manifest_for("20261001_000400_a_ai", "a", [ok_step("x")])
+    put_run(shared, m)
+    assert card_mod.find_run(tmp_path / "root", str(shared), m["run_id"]) == shared / m["run_id"]
+    put_run(local, m)
+    assert card_mod.find_run(tmp_path / "root", str(shared), m["run_id"]) == local / m["run_id"]
+    assert card_mod.find_run(tmp_path / "root", str(shared), "nope") is None
+    assert card_mod.find_run(tmp_path / "root", str(shared), "../x") is None
+
+
+def test_main_post_writes_card_json_and_prints_it(cli_root, capsys):
+    m = manifest_for("20261001_000500_editor.p_ai", "editor.p", [ok_step("a")])
+    d = put_run(cli_root / "build" / "runs", m)
+    assert run_mod.main(["post", m["run_id"]]) == 0
+    printed = json.loads(capsys.readouterr().out)
+    assert printed == json.loads((d / "card.json").read_text(encoding="utf-8"))
+    assert printed["status"] == "PASS"
+
+
+def test_main_post_unknown_run_id_exits_2(cli_root, capsys):
+    assert run_mod.main(["post", "20260101_000000_nothing_ai"]) == 2
+    assert "unknown run id" in capsys.readouterr().err
+
+
+def test_card_module_has_no_network_or_token_use():
+    src = (Path(__file__).resolve().parent / "card.py").read_text(encoding="utf-8")
+    code = src.split('"""', 2)[2]
+    imports = [ln for ln in code.splitlines() if ln.startswith(("import ", "from "))]
+    assert sorted(imports) == ["from __future__ import annotations", "from pathlib import Path", "from redact import redact", "import json"]
+    assert "environ" not in code and "getenv" not in code and "read_setting" not in code

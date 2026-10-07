@@ -19,7 +19,16 @@ python tools/scenario_run/run.py list --scenario editor.
 
 # Clean up old run folders: newest 30 per scenario under build/runs, newest 200 per project in the shared folder
 python tools/scenario_run/run.py prune [--keep-local N] [--keep-shared M] [--dry-run]
+
+# Build the Discord card for a finished run: writes card.json beside its run.json and prints it
+python tools/scenario_run/run.py post <run_id>
 ```
+
+`post` reads the run's `run.json` (the repo-local `build/runs/<run_id>/`, else the shared copy) and writes `card.json`
+next to it: title, scenario, driver, PASS/FAIL, failed step ids, duration, commit and the stills by name, plus a text
+body under 900 characters (a long failed-step list ends in "+N more"). Every text field is redacted first. An unknown
+run id exits 2. **It builds the card and nothing else:** no network, no Discord call, no token. Sending is a separate,
+explicit step owned by the integrator after Moshu has watched the run (standing rule).
 
 `prune` deletes only folders whose `run.json` names the folder's own run id, keeps any folder that holds a video
 file, never reads the video folder, and leaves every registry row in place (they are history).
@@ -29,7 +38,6 @@ Not yet (the commands exist in the plan, not in the runner):
 | Command | Arrives with |
 |---|---|
 | `--driver human` (exits 2 with a message) | step 5 |
-| `post <run_id>` (Discord card) | step 6 |
 | `clip` (cut a clip from the master) | not scheduled |
 | `--shard` | the shard stories |
 
@@ -348,7 +356,7 @@ a timer armed at `run_s` plus 60 s kills the program and exits 4.
 - **JSON schema:** `tools/scenarios/schema/scenario.schema.json`
 - **EditorTour segments:** `godot/GUO/addons/guo_editor/EditorTour.cs`
 - **DirectorDeck Runs view:** (fablehelper project)
-- **Discord posting:** `run.py post <run_id>` (not yet, step 6)
+- **Discord card:** `run.py post <run_id>` builds `card.json`; sending it is not part of the runner
 
 ---
 
