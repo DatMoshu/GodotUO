@@ -20,7 +20,8 @@ copied into this repository, and none is ever committed. The path comes from
 
 **2. Derived data is disposable.**
 Anything the port computes from client data — decoded sprites, atlases, hue
-LUTs — lives under `UO_CACHE_DIR`, outside the repo. Deleting that directory
+LUTs — lives under `UO_CACHE_DIR`, outside the repo (extracted art sets, §36,
+under their own `UO_ART_EXTRACT_DIR`). Deleting that directory
 must always be safe; the runtime rebuilds it on demand.
 
 **3. Configuration has one source.**
@@ -42,6 +43,8 @@ Every key resolves as: **environment variable → `config.local.bat` →
 | `UO_CLIENT_DATA` | Folder holding the `.mul` / `.uop` / `.idx` files |
 | `UO_CLIENT_VERSION` | Client version the data corresponds to (e.g. `7.0.107.76`) |
 | `UO_CACHE_DIR` | Disposable decode cache |
+| `UO_ART_EXTRACT_DIR` | The extracted art set (§36, ADR-0034): atlas pages and indexes of the install's art. Default `art_extract` under `UO_WORKSPACE_DIR`; gitignored, never committed or bundled |
+| `UO_ART_SET` | `1` reads art from the extracted set when its fingerprint matches the install; default `0`. The `--art-set` / `--no-art-set` client arguments override it for one run |
 | `UO_WORLD_PROJECT` | The editor's world project folder (§9); default `build\world\default` |
 | `UO_MAPGEN_DATA` | The map generator's per-user data folder (§26): mined stamps, coast atlas, tree statics, validator reports; default `%LOCALAPPDATA%\GUO\mapgen` |
 | `UO_EDITOR_LIVE_HOST` / `UO_EDITOR_LIVE_PORT` | The editor bridge the UO Shard dock connects to (§10); default `127.0.0.1:2595`, the private instance |
@@ -2084,5 +2087,116 @@ Example, GUO's dev shard:
   "service": {"memory_max": "4G"},
   "backup": {"keep": 14, "on_calendar": "*-*-* 04:00:00"},
   "seed": "seed"
+}
+```
+
+---
+
+## 36. Extracted art sets (`tools/art_extract`, ADR-0034)
+
+A **set** is a local mirror of the art in the user's own UO install: atlas pages plus indexes, written by
+`tools/art_extract` and read lazily by the client. It is derived from proprietary data, so it lives only under
+`UO_ART_EXTRACT_DIR` (section 2), is gitignored, and is never committed, bundled or exported (rule 8). **Status:**
+contract only; the exporter is story AX1, the runtime source AX2, animations AX3. Nothing writes this format yet.
+
+Schemas: `tools/art_extract/schema/set.schema.json` and `tools/art_extract/schema/index.schema.json`. Both refuse
+unknown fields (`additionalProperties: false`). Add a field here before anything writes it.
+
+```
+<UO_ART_EXTRACT_DIR>/
+  set.json                       the set: version, fingerprint, per-class summary
+  land/index.json                one folder per class: land static gump texmap light  (anim: AX3)
+  land/page_0000.png             2048x2048 RGBA8 pages, numbered from 0000, no gaps
+  static/index.json
+  static/page_0000.png ...
+```
+
+**Classes and ids.** The class names are the content seam's own keys (`StoreRuntimeContent.TryImage`), so a class
+is looked up with the same `(type, id)` the loaders already ask for:
+
+| Class | Id | Pixels | Source files (whichever form the install holds) |
+|---|---|---|---|
+| `land` | land tile id, 0..0x3FFF | 44x44 | `artLegacyMUL.uop`, or `art.mul` + `artidx.mul`; `verdata.mul` when the loader uses it |
+| `static` | item id as the loader indexes it (`index - 0x4000`), 0..0x13FFF | up to the page size | same as `land` |
+| `gump` | gump id | per image | `gumpartLegacyMUL.uop`, or `gumpart.mul` + `gumpidx.mul`; `verdata.mul` |
+| `texmap` | texture id | 64x64 or 128x128 | `texmaps.mul` + `texidx.mul` |
+| `light` | light id | per image | `light.mul` + `lightidx.mul` |
+| `anim` | reserved for AX3 | — | AX3 extends this section before emitting anything |
+
+**Pixels.** Exactly what the loader returns for the same id, stored as bytes `R, G, B, A` (the loader's `uint`,
+little-endian): each 1555 colour expanded by `HuesHelper.Color16To32`, `A = 0xFF` where the source pixel is drawn
+and the whole pixel `0x00000000` where it is not. Not premultiplied. Nothing is filtered, scaled or re-hued: the
+hue shader still reads the 5-bit values it always read. Hue application, picking masks and bounds stay in the
+loaders and the renderer.
+
+**Pages.** `page_size` is 2048 and `pixel_format` is `rgba8`, PNG, no ancillary chunks (no text, time or colour
+profile chunks). A page is storage, not a draw atlas: no gutter, and nothing samples it directly (rule 7 holds for
+any later direct use: nearest-neighbour only). Packing is a shelf pack with the order fixed by (height descending,
+id ascending), so the same install gives the same layout. An asset wider or taller than the page, or a decode the
+loader refuses, is not stored; it is listed in `skipped` with a reason and falls back at run time.
+
+**`set.json`** (schema id `guo/art_set@1`):
+
+| Field | Type | Meaning |
+|---|---|---|
+| `schema` | `"guo/art_set@1"` | |
+| `version` | `1` | set format version. A runtime that does not know the version ignores the set (warns once) |
+| `generated` | string | ISO-8601 UTC |
+| `tool` | string | `art_extract <tool version>`, for diagnosis only |
+| `client_version` | string | the `UO_CLIENT_VERSION` the install had |
+| `fingerprint` | object | `files`: array of `{name, size, sha256}` for every source file any stored class was read from (`name` relative to `UO_CLIENT_DATA`, sorted by name); `sha256` is the digest of the whole file. `set_id`: sha256 of the lines `name TAB size TAB sha256 LF`, in file order |
+| `classes` | object | per stored class: `{pages, count, skipped, bytes}` (page count, stored ids, skipped ids, total PNG bytes) |
+
+**Fingerprint rule.** At mount the runtime compares each file's `name` and `size` with the install (cheap; no
+hashing) and compares every class `index.json`'s `set_id` with `set.json`'s, so pages from two different
+exports cannot mix. A difference in any of these, or a `version` it does not know, means: no part of the set is
+used, one warning names the set folder and the reason, and the original files serve everything. The full `sha256`
+check is the exporter's `verify`, not a start-up cost. A same-size edited file is therefore not caught at start-up;
+rebuild the set after patching the client.
+
+**`<class>/index.json`** (schema id `guo/art_index@1`):
+
+| Field | Type | Meaning |
+|---|---|---|
+| `schema` | `"guo/art_index@1"` | |
+| `version` | `1` | as `set.json` |
+| `class` | string | the folder's class |
+| `set_id` | string | equals `set.json` `fingerprint.set_id` |
+| `page_size` | `2048` | |
+| `pixel_format` | `"rgba8"` | |
+| `pages` | array | `{file, sha256}` per page, in order; `file` is `page_NNNN.png`, `sha256` the digest of the PNG file's bytes (damage check on load) |
+| `entries` | object | decimal id (string) -> `{page, x, y, w, h, pixels_sha256}`; `page` indexes `pages`; `pixels_sha256` is sha256 over `w` and `h` (each 4 bytes, little-endian), then the `w*h*4` RGBA bytes, row-major |
+| `skipped` | array | `{id, reason}`; a skipped or absent id falls back to the original files for that id alone |
+
+A missing id (absent from `entries`) is not an error: the runtime asks the original loader. A page that is
+missing, fails its `sha256`, or decodes to a size other than `page_size` square drops that page's ids to the same
+fallback, with one warning for the page.
+
+**Determinism and verification.** Two exports of the same install with the same tool give byte-identical files
+(AX1 proves it). `art_extract verify` re-decodes every id from the install with the loaders' own decode and
+compares `pixels_sha256` and the page rectangle; a set is accepted only at 100%. Per-id pixel hashes are the parity
+bar for a set; frame equality with the set on and off is the bar for the runtime (AX2).
+
+**Precedence at run time**, first answer wins: world-project PNGs (ADR-0020) > store packs (ADR-0019) > extracted
+set > original files. The set is built from the pure install, never from overrides or packs.
+
+**Switching on.** `UO_ART_SET=1` or `--art-set`; off by default (section 2). A set is never used because a folder
+merely exists.
+
+### Example (`land/index.json`, abridged)
+
+```json
+{
+  "schema": "guo/art_index@1",
+  "version": 1,
+  "class": "land",
+  "set_id": "<64 hex digits>",
+  "page_size": 2048,
+  "pixel_format": "rgba8",
+  "pages": [{"file": "page_0000.png", "sha256": "<64 hex digits>"}],
+  "entries": {
+    "3": {"page": 0, "x": 0, "y": 0, "w": 44, "h": 44, "pixels_sha256": "<64 hex digits>"}
+  },
+  "skipped": []
 }
 ```
