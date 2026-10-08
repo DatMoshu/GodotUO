@@ -83,3 +83,30 @@ running without the original art files, which is not yet a promise (story AX5 me
 Yes, to the pixel: `verify` proves the pages hold what the exporter decodes, and `ArtSetParityProbe` runs every id (and
 every animation block the client can reach) through the client's own loaders with the set on and off, which found no
 difference. Scenario runs of the login screen and the paperdoll with the set on produce the same frames as with it off. A walking character in Britain looks the same with the set on and off, pose for pose; because animation follows the clock, two runs never show the same instant, so that comparison is by eye and by "no more different than two runs with the set off", while the block-by-block probe is the exact one.
+
+## Can the art files go? (AX5 measurement)
+
+Measured once, on the development install, with the full set mounted (`--art-set`) and the install's art files pointed
+at nothing through the files-override map (`--files-override`, entries for the art, gump, texmap, light and animation
+files). Report only; no loader was changed. Hiding one class at a time:
+
+| Hidden | Result | Where it stops |
+|---|---|---|
+| `artLegacyMUL.uop` | client does not start | `ArtLoader.Load` leaves `_file` null and calls `_file.FillEntries()` (`src/Assets/ArtLoader.cs:62`) |
+| `gumpartLegacyMUL.uop` (and `.mul`/`gumpidx.mul`) | client does not start | `GumpsLoader.Load` opens `gumpart.mul` (`src/Assets/GumpsLoader.cs:62`, DirectoryNotFound) |
+| `texmaps.mul`, `texidx.mul` | client does not start | `FileSystemHelper.EnsureFileExists` in `TexmapsLoader.Load` (`src/Assets/TexmapsLoader.cs:26`) |
+| `light.mul`, `lightidx.mul` | client does not start | `EnsureFileExists` in `LightsLoader.Load` (`src/Assets/LightsLoader.cs:25`) |
+| `AnimationFrame1-6.uop` | **works**: login scenario passes, world draws, no errors | the loader skips a missing UOP (`File.Exists` guard, `AnimationsLoader.cs:73`); bodies then resolve through the mul index |
+| `anim*.mul`, `anim*.idx` | starts, then the world does not draw | `AnimationsLoader.GetIndices` reads `_files[fileIndex].IdxFile` (`src/Assets/AnimationsLoader.cs:335`) for every mobile each frame; the exception aborts `World.Update`, so the in-world still is one grey colour (the scenario still passes: its checks are scene and position) |
+
+Why the art loaders still need their files even though the set answers the pixels: the entry tables (`Arts.File`,
+`Gumps.File`, `Texmaps.File`) are the client's record of which ids exist and how big they are, and they are read
+without going through the content seam in `UOFileManager` (verdata patching and art.def, lines 211-224 and 407-414),
+`Land.cs:97`, `ItemView.cs:479,489`, `StaticView.cs:114`, `View.cs:116,199,232,240`, `MultiView.cs:131`,
+`ChunkMesh.cs:533`, `LightningEffectView.cs:29`, `AnimatedStaticsManager.cs:75` and `StoreRuntimeContent.cs:220`.
+
+So today only the `AnimationFrame*.uop` files can be absent. Hiding the rest needs the index tables served from the set
+(the set's `index.json` already holds the ids) or a small stand-in for `UOFile`; both touch verbatim-tier loaders, which
+is for guo-director to decide. The animation mul indexes are the cheapest of the rest (one lookup). Not measured: that the
+mobiles drawn with the UOP files hidden are pixel-identical (AX3's block parity is the proof), and the mul data files
+alone (`anim*.mul` without `.idx`).
