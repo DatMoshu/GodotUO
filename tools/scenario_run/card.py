@@ -60,18 +60,26 @@ def build_card(manifest: dict, run_dir: Path, deny: list[str] | None = None) -> 
         lines.append(f"Stopped early: {str(manifest['aborted'])[:120]}")
     if stills:
         lines.append(f"Stills: {len(stills)}")
-    if failed:
-        room = BODY_LIMIT - len("\n".join(lines)) - 1
-        lines.append(_failed_line(failed, max(room, 0)))
+    lines = [redact(ln, deny) for ln in lines]
+    joined = "\n".join(lines)
+    failed_line = _failed_line([redact(f, deny) for f in failed], BODY_LIMIT - len(joined) - 1) if failed else ""
+    # Cut the head to leave room for the failed line, so the cut never clips its "+N more" tail.
+    if failed_line:
+        head_text = joined[:max(BODY_LIMIT - len(failed_line) - 1, 0)].rstrip("\n")
+        text = head_text + "\n" + failed_line if head_text else failed_line
+    else:
+        text = joined[:BODY_LIMIT]
     card = {
         "run_id": manifest.get("run_id", ""), "title": title, "scenario": manifest.get("scenario", ""),
         "driver": manifest.get("driver", ""), "status": status, "failed_steps": failed,
         "duration": _duration(manifest), "commit": manifest.get("commit") or "unknown", "stills": stills,
-        "text": "\n".join(lines),
+        "text": text,
     }
+    text = card.pop("text")
     card = _redact_all(card, deny)
-    card["text"] = card["text"][:BODY_LIMIT]
-    assert len(card["text"]) <= BODY_LIMIT
+    card["text"] = text
+    if len(card["text"]) > BODY_LIMIT:
+        raise ValueError(f"card text is {len(card['text'])} characters, over the {BODY_LIMIT} limit")
     return card
 
 

@@ -692,6 +692,24 @@ def test_a_forty_step_failing_run_fits_the_body_limit_and_says_more(tmp_path):
     assert len(card["failed_steps"]) == 40
 
 
+def test_the_body_cut_never_clips_the_more_tail(tmp_path):
+    steps = [{"id": f"segment_with_a_long_name_{i:02d}", "ok": False, "dur_ms": 1000, "detail": "x"} for i in range(40)]
+    m = manifest_for("20261001_000210_editor.big_ai", "editor.big", steps, title="T" * 1200)
+    d = put_run(tmp_path, m)
+    card = card_mod.build_card(m, d, [])
+    assert len(card["text"]) <= card_mod.BODY_LIMIT
+    last = card["text"].splitlines()[-1]
+    assert last.startswith("Failed: ") and last.endswith(" more") and ", +" in last
+
+
+def test_an_over_long_card_raises_value_error_not_assert(tmp_path):
+    steps = [{"id": "x" * 1000, "ok": False, "dur_ms": 1, "detail": ""}]
+    m = manifest_for("20261001_000220_editor.huge_ai", "editor.huge", steps)
+    d = put_run(tmp_path, m)
+    with pytest.raises(ValueError, match="limit"):
+        card_mod.build_card(m, d, [])
+
+
 def test_card_text_is_redacted(tmp_path):
     steps = [{"id": "s1", "ok": False, "dur_ms": 1, "detail": ""}]
     m = manifest_for("20261001_000300_editor.r_ai", "editor.r", steps, title=r"open D:\Work\notes.txt", aborted="at secretword")
