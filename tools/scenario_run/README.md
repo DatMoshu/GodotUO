@@ -83,6 +83,8 @@ On main today (step 2 and step 3 kinds):
 | `ui.fill` | Click a field, then type into it (client) | `control`, `text`, `clear` (BackSpace presses first) | ui.* on something the typing changes | The typed text is never logged or read back (the game omits editable values) |
 | `ui.key` | Press and release a key (client) | `key` (Godot name: Enter, Escape, F1), `shift`, `ctrl`, `alt` | ui state change | `guo_input` |
 | `chat` | Say a line in game (client) | `text` (a `[command` works) | log or world state | Enter, text, Enter |
+| `renderdump` | Dump what the client drew (client) | `name` | `render_dump/NAME/guo.json` exists | Starts the client with `GUO_RENDER_DUMP_DIR` set to the run's `render_dump/`; says `renderdump NAME`; the event carries bytes and object count |
+| `render_diff` | Compare that dump with ClassicUO's | `name` | `render_diff: {max_drawn_diff}` | Reference is `build/render_dump/NAME/cuo.json`, or `GUO_RENDER_REF_DIR/NAME/cuo.json` (take it with `launchers\dev\side_by_side.bat`); writes `diff.md` in the run folder; fails on map, field or drawn mismatches |
 | `tour_segment` | Run an EditorTour segment | id: segment name | EditorTour checks + frames | Editor only; surface override. Human driver: skipped as `ai_only` unless the segment is passive |
 | `editor_invoke` | Run an F3 action by key | key, query | tool result | Editor only; not pre-approved, so the step **fails at once** with a message instead of waiting on the approval dialog (nobody is at the PC in a scripted run). Use a `tour_segment`, or run it by hand |
 
@@ -92,7 +94,7 @@ Not yet (a scenario that uses one fails at the step today):
 
 | Kind | Purpose | Arrives with |
 |---|---|---|
-| `scene_set`, `renderdump`, `render_diff` | Editor scene and render-parity steps | not scheduled |
+| `scene_set` | Editor scene step | not scheduled |
 | `lane` | Run a multi_client lane | step 7 |
 
 ### Controls

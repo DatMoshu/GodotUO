@@ -1900,8 +1900,8 @@ adds it.
 | `ui.fill` | `control`, `text`, `clear` (integer >= 0: BackSpace presses first, default 0), `within_s` (as `ui.click`) | game MCP | 3 |
 | `ui.key` | `key` (a Godot key name), `shift`, `ctrl`, `alt` (booleans, default false) | game MCP `guo_input` | 3 |
 | `chat` | `text` (e.g. `[go 1434 1697`) | game MCP `guo_input` text | 3 |
-| `renderdump` | `name` | the client's `renderdump NAME` command | 4 |
-| `render_diff` | `name` | `tools/render_diff` against ClassicUO's dump of that name | 4 |
+| `renderdump` | `name` (letters, digits, `_`, `-`) | a `client` run with this step in its scenario starts the client with `GUO_RENDER_DUMP_DIR=<run>/render_dump`; the step says `renderdump NAME` in game and waits for `render_dump/NAME/guo.json` within the step timeout; its `log` event carries the dump's `bytes`, `tiles` and `objects` | 4 |
+| `render_diff` | `name` | `tools/render_diff` on the run's `guo.json` and the reference `cuo.json` in `build/render_dump/NAME/` (or in `GUO_RENDER_REF_DIR/NAME/`, environment, then config.local.bat, then config.bat); writes `diff.md` into the run folder; fails on any map, field or drawn mismatch (the event carries the counts and the first mismatch lines), and on a missing dump or reference, naming the path looked for | 4 |
 | `scene_set` | `path`, `property`, `value` | editor MCP `scene_set_property` | later |
 | `lane` | `lane` (a `multi_client` lane) | `tools/multi_client`; its summary becomes events | 7 |
 
