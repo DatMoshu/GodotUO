@@ -148,7 +148,7 @@ map names the tool and, for the brush, the recipe, for example
 `Brush · Single 1×1 100%` or `Brush · Scatter 7×7 35%`. While you hover, it also
 shows how many cells the stroke will change. If a click changes nothing and
 **Keep existing statics** is on, the cell already holds a static: turn that
-option off (Tools tab, Variation & rules) to place on top of it.
+option off (Advanced tab, Variation & rules) to place on top of it.
 
 ## Stamp or PlaceItem?
 
