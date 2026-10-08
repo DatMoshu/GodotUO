@@ -127,6 +127,29 @@ status line says so.
 [screenshot 4: the brush library with a search, and the current art at the top
 of the Tools tab]
 
+## Brushes, and getting back to one item
+
+The brush library (left of the map) has four one-click recipes. Each sets the
+brush size, density and target in one go:
+
+| Recipe | What it does |
+|---|---|
+| **Single** | One item per click: a 1-tile, 100% brush with the selected static. |
+| **Scatter** | Many items over a 7-tile area at 35% density, spaced 2 tiles apart. |
+| **Terrain** | Paints land over a 5-tile area. |
+| **Sculpt** | Raises land over a 5-tile area. |
+
+A recipe stays in force until you pick another. If you used Scatter and want
+one item again, click **Single**. Choosing art in the library does not change
+the recipe, so a recipe and the art are two separate choices.
+
+The map always tells you what a click will do: the line at the top left of the
+map names the tool and, for the brush, the recipe, for example
+`Brush · Single 1×1 100%` or `Brush · Scatter 7×7 35%`. While you hover, it also
+shows how many cells the stroke will change. If a click changes nothing and
+**Keep existing statics** is on, the cell already holds a static: turn that
+option off (Tools tab, Variation & rules) to place on top of it.
+
 ## Stamp or PlaceItem?
 
 There are two kinds of thing you can put in the world, and they go to

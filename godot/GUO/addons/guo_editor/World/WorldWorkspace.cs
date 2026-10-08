@@ -119,7 +119,8 @@ public partial class WorldView
         _librarySplit.AddChild(library); _library = library;
         library.AddChild(new Label { Text = "Brush library" });
         var recipes = new HFlowContainer(); library.AddChild(recipes);
-        ActionButton(recipes, "Scatter", () => QuickRecipe(false, "Paint", 7, 35, 2));
+        ActionButton(recipes, "Single", () => QuickRecipe(false, "Paint", 1, 100, 1), "One item per click: a 1-tile, 100% brush with the selected art");
+        ActionButton(recipes, "Scatter", () => QuickRecipe(false, "Paint", 7, 35, 2), "Many items over a 7-tile area at 35% density");
         ActionButton(recipes, "Terrain", () => QuickRecipe(true, "Paint", 5, 100, 1));
         ActionButton(recipes, "Sculpt", () => QuickRecipe(true, "Raise", 5, 100, 1));
         _brushArt = new ArtPanel { MinimumGridHeight = 80, ShowNames = true, Autocomplete = true, SizeFlagsVertical = SizeFlags.ExpandFill };
@@ -269,6 +270,33 @@ public partial class WorldView
     private void OnBrushDataLoaded() { _brushArt?.OnDataLoaded(); RebuildFavorites(); RebuildVariants(); }
     internal bool TerrainLocked { get => _lockTerrain?.ButtonPressed == true; set { if (_lockTerrain != null) _lockTerrain.ButtonPressed = value; } }
     internal string BrushStatus => _status?.Text;
+    // The active tool and, for the brush, which recipe it is: "Brush · Single 1×1 100%", "Brush · Scatter 7×7 35%".
+    internal string ToolLabel
+    {
+        get
+        {
+            if (Tool != WorldTool.Brush) return Tool.ToString();
+            string kind = _recipe.Operation == "Paint"
+                ? (_recipe.Land ? "Terrain" : _recipe.Size == 1 && _recipe.Density == 100 ? "Single" : "Scatter")
+                : _recipe.Operation;
+            int n = Math.Clamp(_recipe.Size, 1, 31);
+            return $"Brush · {kind} {n}×{n} {_recipe.Density}%";
+        }
+    }
+    internal void QuickRecipeForSmoke(string name)
+    {
+        switch (name)
+        {
+            case "Single": QuickRecipe(false, "Paint", 1, 100, 1); break;
+            case "Scatter": QuickRecipe(false, "Paint", 7, 35, 2); break;
+            default: throw new ArgumentException(name);
+        }
+    }
+    internal void PlaceForSmoke(IEnumerable<(int X, int Y)> cells)
+    {
+        _stroke.Clear(); _stroke.UnionWith(cells); CommitStroke();
+    }
+    internal void SetKeepStaticsForSmoke(bool keep) { _recipe.KeepStatics = keep; if (_checks.TryGetValue("Keep existing statics", out var c)) c.ButtonPressed = keep; }
     internal void ApplyBrushForSmoke(WorldBrush brush, IEnumerable<(int X, int Y)> cells)
     {
         _recipe.Operation = brush.Operation; _recipe.Land = brush.Land; _recipe.Height = brush.Height;
@@ -441,9 +469,9 @@ public partial class WorldView
                 if (texture != null) _guides.Ghosts.Add((c.X, c.Y, Math.Clamp((_recipe.FixedHeight ? 0 : _modeNode.Data.LandZ(c.X, c.Y)) + _recipe.Height, -128, 127), texture));
             }
             _guides.PlaneZ = _recipe.FixedHeight ? _recipe.Height : null;
-            _previewLabel.Text = $"{_recipe.Operation}: {_guides.BrushCells.Count} cells · release to apply · Esc cancel";
+            _previewLabel.Text = $"{ToolLabel}: {_guides.BrushCells.Count} cells · release to apply · Esc cancel";
         }
-        else { _previewLabel.Text = "Alt: pick art · Space: pan · Q: favorites · Tab: focus"; _guides.PlaneZ = null; }
+        else { _previewLabel.Text = $"{ToolLabel} · Alt: pick art · Space: pan · Q: favorites · Tab: focus"; _guides.PlaneZ = null; }
     }
 
     private bool WorkspaceInput(InputEvent e)
