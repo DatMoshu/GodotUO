@@ -557,6 +557,15 @@ public partial class EditorSmoke : Node
             return;
         }
 
+        if (panel is ArtSetPanel)
+        {
+            // A button panel for tools/art_extract: no asset grid to search or inspect.
+            result["skipped"] = "no grid; it runs tools/art_extract";
+            result["ok"] = true;
+            result["failures"] = failures;
+            return;
+        }
+
         string query = panel is MultiPanel ? ArgValue(MultiShotFlag) ?? panel.SmokeQuery
             : name == "Art" ? ArgValue(ArtFlag) ?? panel.SmokeQuery : panel.SmokeQuery;
         result["query"] = query;

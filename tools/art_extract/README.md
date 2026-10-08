@@ -1,8 +1,9 @@
 # tools/art_extract -- the client's art as atlas pages
 
 Exports the art of your own UO install (static art, land tiles, gumps, texmaps, lights) into a local *set*: 2048 x 2048
-RGBA8 PNG pages plus an index per class, in the format of data_formats section 36 and ADR-0034. The runtime source that
-reads a set is story AX2; animations (`--what anim`) are AX3. Nothing in this tool changes how the client runs today.
+RGBA8 PNG pages plus an index per class, in the format of data_formats section 36 and ADR-0034. The client mounts a set it
+finds (AX2, animations AX3). For users: `launchers\pipeline\05_extract_art.bat`, the editor's **Art set** tab and
+`docs/art_extract.md`.
 
 ```
 python tools\art_extract\run.py export [--what art,land,gumps,texmaps,lights] [--out DIR] [--from DATA]
