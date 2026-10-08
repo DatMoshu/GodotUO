@@ -25,6 +25,9 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 - The editor saves world blocks, shard objects and hue overlays to a temporary
   file and then moves it into place, so a crash mid-save leaves the old file
   whole.
+- The data writer checks every file it is about to write (after following `..`
+  and links) lies inside its staging folder, and refuses the whole call before
+  writing anything if one does not.
 
 ### Platforms
 - **Android** (ARM64, debug): export, install, run and smoke from

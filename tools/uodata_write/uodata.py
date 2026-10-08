@@ -20,6 +20,9 @@ or a shard already uses is never overwritten by accident (ADR-0022). Every recor
 is checked before anything is written, so a refused call leaves the stage as it was.
   multis         MultiCollection.uop: a new entry per multi (UOP layout, zlib, flag 1),
                  or multi.mul / multi.idx on installs without it (the index grown if needed)
+
+Every path the stage writes is checked to resolve (after .. and links) under the stage root
+first, and write_records checks all of a call's paths before its first byte.
 """
 from __future__ import annotations
 
@@ -101,6 +104,30 @@ class Stage:
         self.meta = json.loads(self.meta_path.read_text(encoding="utf-8")) if self.meta_path.exists() else \
             {"format": 1, "install": str(self.install), "files": {}}
 
+    def inside(self, path: Path) -> Path:
+        """The path, resolved through .. and links (symlinks, junctions), if it lies under
+        the stage root; refused otherwise. Every file the stage writes goes through this."""
+        real = Path(os.path.realpath(path))
+        try:
+            real.relative_to(self.root)
+        except ValueError:
+            raise ValueError(f"{path} resolves outside the staged set ({real}); nothing is written there") from None
+        return real
+
+    def target(self, name: str) -> Path:
+        """Where path(name) writes, checked under the root, without copying anything."""
+        key = name.lower()
+        if key in self.meta["files"]:
+            return self.inside(self.root / self.meta["files"][key]["name"])
+        src = self.install_file(name)
+        if src is None:
+            raise FileNotFoundError(f"{name} is not in the install")
+        return self.inside(self.root / src.name)
+
+    def own_files(self) -> list[Path]:
+        """The stage's own bookkeeping files, written by save() and the registry."""
+        return [self.root / n for n in ("stage.json", "files_override.txt", "guo_data.json", "slots.json")]
+
     def install_file(self, name: str) -> Path | None:
         for p in self.install.iterdir():
             if p.name.lower() == name.lower():
@@ -110,12 +137,10 @@ class Stage:
     def path(self, name: str) -> Path:
         """The staged copy of an install file, copied on first use (copy on write)."""
         key = name.lower()
+        dst = self.target(name)
         if key in self.meta["files"]:
-            return self.root / self.meta["files"][key]["name"]
+            return dst
         src = self.install_file(name)
-        if src is None:
-            raise FileNotFoundError(f"{name} is not in the install")
-        dst = self.root / src.name
         shutil.copyfile(src, dst)
         self.meta["files"][key] = {"name": src.name, "source_sha1": sha1(src), "source_size": src.stat().st_size}
         self.save()
@@ -125,13 +150,15 @@ class Stage:
         """Where the current version of a file is: the staged copy if there is one, else the install."""
         key = name.lower()
         if key in self.meta["files"]:
-            return self.root / self.meta["files"][key]["name"]
+            return self.inside(self.root / self.meta["files"][key]["name"])
         p = self.install_file(name)
         if p is None:
             raise FileNotFoundError(name)
         return p
 
     def save(self) -> None:
+        for path in self.own_files()[:3]:
+            self.inside(path)
         self.meta_path.write_text(json.dumps(self.meta, indent=2) + "\n", encoding="utf-8")
         lines = ["# GUO staged data set (tools/uodata_write, ADR-0022): UOFilesOverrideMap entries"]
         lines += [f"{k}={self.root / v['name']}" for k, v in sorted(self.meta["files"].items())]
@@ -414,6 +441,7 @@ class Registry:
     """slots.json: pack -> reserved ranges per namespace -> ids used. Keeps a pack together."""
 
     def __init__(self, stage: Stage, policy: dict | None = None):
+        self.stage = stage
         self.path = stage.root / "slots.json"
         self.data = json.loads(self.path.read_text(encoding="utf-8")) if self.path.exists() else {"format": 1, "packs": {}}
         self.policy = policy if policy is not None else load_policy()
@@ -425,6 +453,7 @@ class Registry:
         return out
 
     def save(self) -> None:
+        self.stage.inside(self.path)
         self.path.write_text(json.dumps(self.data, indent=2) + "\n", encoding="utf-8")
 
     def reserved(self, namespace: str) -> set[int]:
@@ -527,9 +556,42 @@ def check_records(stage: Stage, records: list[AssetRecord], replace: bool = Fals
                 raise ValueError(f"hue {r.id} ({len(r.data)} bytes) is not one {HUE_RECORD}-byte hue inside hues.mul")
 
 
+def output_files(stage: Stage, records: list[AssetRecord]) -> list[str]:
+    """The install file names write_records writes for these records (staged copies)."""
+    def either(uop: str, *mul: str) -> list[str]:
+        return [uop] if _exists(stage, uop) else list(mul)
+
+    kinds = {r.kind for r in records}
+    names = []
+    if kinds & {"static", "land"}:
+        names += either("artLegacyMUL.uop", "art.mul", "artidx.mul")
+    if "gump" in kinds:
+        names += either("gumpartLegacyMUL.uop", "gumpart.mul", "gumpidx.mul")
+    if "anim" in kinds:
+        names += ["anim.mul", "anim.idx"]
+    if "multi" in kinds:
+        names += either("MultiCollection.uop", "multi.mul", "multi.idx")
+    if "tiledata-item" in kinds:
+        names.append("tiledata.mul")
+    if "hue" in kinds:
+        names.append("hues.mul")
+    return names
+
+
+def check_outputs(stage: Stage, records: list[AssetRecord]) -> None:
+    """Refuses, before anything is written, a call any of whose output paths (the staged
+    copies and the stage's own files) resolves outside the stage root."""
+    for name in output_files(stage, records):
+        stage.target(name)
+    for path in stage.own_files():
+        stage.inside(path)
+
+
 def write_records(stage: Stage, records: list[AssetRecord], replace: bool = False) -> list[str]:
     """Writes the records into the staged set; returns one line per write. An
-    occupied MUL + IDX slot is refused unless replace (check_records), before any write."""
+    output path outside the stage root (check_outputs) and an occupied MUL + IDX slot
+    unless replace (check_records) are refused before any write."""
+    check_outputs(stage, records)
     check_records(stage, records, replace)
     done = []
     art_items, gump_items = [], []
