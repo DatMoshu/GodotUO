@@ -141,8 +141,9 @@ class ClientSession:
     launch does), with the game MCP on a fresh loopback port and a one-run token, and, when recording, the engine's
     MovieWriter on (capture.py). The runner only ever ends the process tree it started."""
 
-    def __init__(self, cfg, run_dir: Path, record: bool, size: str | None = None):
+    def __init__(self, cfg, run_dir: Path, record: bool, size: str | None = None, interactive: bool = False):
         self.cfg = cfg
+        self.interactive = interactive     # a person plays (human driver): the window may take focus and the sound is on
         self.run_dir = run_dir
         self.record = record
         self.size = size
@@ -181,7 +182,8 @@ class ClientSession:
             self.avi.parent.mkdir(parents=True, exist_ok=True)
             engine.insert(0, capture.engine_args(self.avi))
         env["GUO_ENGINE_ARGS"] = " ".join(engine)
-        args = ["--no-focus"] + (["--window-size", self.size.replace("x", ",")] if self.size else []) + ([] if self.record else ["--silent"]) + list(self.extra_args)   # a recording keeps its audio
+        quiet = [] if self.record or self.interactive else ["--silent"]     # a recording keeps its audio; so does a person's run
+        args = (["--focus", "--sound"] if self.interactive else ["--no-focus"]) + (["--window-size", self.size.replace("x", ",")] if self.size else []) + quiet + list(self.extra_args)
         cmd = [str(self.cfg.root / "launchers" / "game" / "play.bat"), *args]
         log = self.log_path.open("w", encoding="utf-8", errors="replace")
         try:

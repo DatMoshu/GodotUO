@@ -1603,7 +1603,7 @@ An opt-in local control channel for a running desktop GUO, for AI agents. Off un
 never started in `template_release` builds, on web, or on mobile. The listener binds IPv4 loopback
 (`127.0.0.1`) only.
 
-**Transport.** Newline-delimited UTF-8 over TCP, one controller at a time, lines capped at 64 KiB. The
+**Transport.** Newline-delimited UTF-8 over TCP, lines capped at 64 KiB. Several controllers may be connected (the runner and a stand-in for a person); each connection has at most one command queued and all share the scene thread's queue. The
 first line a client sends is the token alone; it must arrive within 5 seconds and is compared in fixed
 time, and a wrong token closes the socket without a reply. After that every line is one JSON-RPC 2.0
 message of MCP revision `2025-06-18` (`initialize`, `ping`, `tools/list`, `tools/call`; notifications get
@@ -1619,8 +1619,9 @@ no reply). `tools/guo_mcp/run.py` is the stdio bridge: it sends the token, then 
 | `guo_screenshot` | none | `image/png` content (base64); `isError` when headless |
 | `guo_state` | none | JSON text: `frame` (process frame index; with `--write-movie` it is the movie frame), `scene`, `width`, `height`, `player` (`map`,`x`,`y`,`z`, or null before the world) |
 | `guo_quit` | none | text, then the client quits after two frames (finalises a MovieWriter file); the connection closes |
+| `guo_overlay` | `text` (caption, at most 300 characters), `step` (its label, e.g. `3/18`), `control` `{x,y,width,height,label?}` (an outline, viewport pixels), `clear`, `hide` (draw nothing; Space and Esc still count); none of them only reads | JSON text `{skip, abort}`: Space and Esc pressed since the last call (reading clears them). Draws the human driver's caption card and outline on a canvas layer above the game; the card's step label is a Godot `Label` named `HumanOverlayStep`, visible in `guo_ui`. Space does not count while a text field has focus |
 
-No shell, script, file or packet tools exist. Synthetic keys and buttons still held when the controller
+No shell, script, file or packet tools exist. Synthetic keys and buttons still held when the last controller
 disconnects are released.
 
 ## 30. Workspace, server profiles and client profiles (ADR-0032)
@@ -1926,6 +1927,25 @@ for.
 from the scenario's variables. `editor_shard` is the local editor shard; a remote shard is the `id` of its host
 profile (section 35). Nothing about a remote shard's address or account is committed.
 `run.py --shard TARGET` names the target from the command line, for a client scenario: it replaces `requires.shard` for that run, reads the two settings above (a missing one stops the run, naming it) and `GUO_SCENARIO_ACCOUNT` / `GUO_SCENARIO_PASSWORD`, and starts the client against that address.
+
+### The human driver (`--driver human`, client scenarios)
+
+The runner skips each step's `do` and has a person follow the step: it sends the step's `say` (else its id) and its
+number (`3/18`) to the client's overlay (`guo_overlay`, section 29), outlines the control the step names (`ui.click` and
+`ui.fill` `control`, looked up again every 2 s), and polls the step's `expect` with the AI driver's code. When every
+condition holds the run moves on by itself (at least 1 s after the caption appeared). A step with no `expect` stays for 3 s
+(a `wait`'s `seconds`, if longer) and moves on: what the person did stays done, so the next expectation sees it. **Space**
+skips the step (step row `ok` null, `skipped` true, a `log` event and the `step_end` detail say `skipped`); **Esc** aborts
+the run: the step fails and `run.json` has `ok` false and `aborted` `aborted by the person (Esc) in step <id>`. Space typed
+into a text field is a character, not a skip. A step with `ai_only` is skipped and logged the same way, before anything is shown.
+
+Three kinds stay the runner's, because there is nothing for a person to do: `launch`, `note` and `shot`; a step's
+`shot: true` is a recording and is taken as in an AI run. Events and `run.json` have the AI run's shape with `driver`
+`human` (the `action` event's detail also says `by: human`) and the run id ends `_human`. A person is slower than a script:
+every window (`timeouts.run_s`, a step's timeout) is 3 times the AI driver's. The window is focusable and the sound is on; the
+runner records no video for a human run yet (OBS capture is not built). `--clean` hides the overlay for a clean recording
+(Space and Esc still work). `--ghost-human` starts a second process that plays the person through `guo_input`, reading
+the overlay's step label from `guo_ui`: it tests the driver itself and is not a way to run a scenario.
 
 ### Run folder (`build/runs/<run_id>/`, gitignored)
 

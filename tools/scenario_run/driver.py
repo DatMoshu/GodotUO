@@ -151,17 +151,7 @@ class Runner:
         deadline = min(self._clock() + timeout, self._run_deadline)
         try:
             self._check_program()
-            do =substitute(step["do"], self.variables)
-            expect = substitute(step.get("expect", {}), self.variables)
-            shown_expect = step.get("expect", {})       # as written: the log never holds what a $name stands for
-            # The step as written (with $names, never the secrets behind them) is what the event log records.
-            self.events.emit("action", sid, detail={"do": step["do"]})
-            detail = getattr(self, "_do_" + kind.replace(".", "_"))(sid, do, deadline)
-            self._last = detail if isinstance(detail, dict) else {}
-            self._expect(sid, expect, deadline, shown_expect)
-            if step.get("shot"):
-                self._screenshot(sid)
-            return self._finish(step, watch, True, None, detail)
+            return self._step_body(step, sid, kind, watch, deadline)
         except StepFailed as ex:
             return self._finish(step, watch, False, ex.why, ex.detail)
         except ScenarioError as ex:
@@ -183,6 +173,20 @@ class Runner:
             reason = f"step {sid}: {type(ex).__name__}: {ex}"
             self._abort_step(step, watch, reason)
             raise RunAborted(reason, "error") from ex
+
+    def _step_body(self, step: dict, sid: str, kind: str, watch: Stopwatch, deadline: float) -> dict:
+        """Performs the step's `do`, polls its `expect`, takes its still; returns the step's row. The human driver overrides this."""
+        do = substitute(step["do"], self.variables)
+        expect = substitute(step.get("expect", {}), self.variables)
+        shown_expect = step.get("expect", {})       # as written: the log never holds what a $name stands for
+        # The step as written (with $names, never the secrets behind them) is what the event log records.
+        self.events.emit("action", sid, detail={"do": step["do"]})
+        detail = getattr(self, "_do_" + kind.replace(".", "_"))(sid, do, deadline)
+        self._last = detail if isinstance(detail, dict) else {}
+        self._expect(sid, expect, deadline, shown_expect)
+        if step.get("shot"):
+            self._screenshot(sid)
+        return self._finish(step, watch, True, None, detail)
 
     def _abort_step(self, step: dict, watch: Stopwatch, reason: str) -> None:
         """The step that was running when the run ended gets its step_end and its row, as failed."""
@@ -211,12 +215,7 @@ class Runner:
             return
         end = min(self._clock() + float(expect.get("within_s", 0)), deadline)
         while True:
-            observed: dict = {}
-            ok = True
-            for name, wanted in conditions.items():
-                good, seen = self._evaluate(name, wanted)
-                observed[name] = seen
-                ok = ok and good
+            ok, observed = self._conditions_hold(conditions)
             if ok or self._clock() >= end:
                 break
             self._check_program()
@@ -225,6 +224,16 @@ class Runner:
         self.events.emit("expect", sid, ok=ok, detail={"expect": written, "observed": observed})
         if not ok:
             raise StepFailed("expectation not met", {"expect": written, "observed": observed})
+
+    def _conditions_hold(self, conditions: dict) -> tuple[bool, dict]:
+        """One look at every condition: (all hold, what each was observed to be). The AI and human drivers poll with this."""
+        observed: dict = {}
+        ok = True
+        for name, wanted in conditions.items():
+            good, seen = self._evaluate(name, wanted)
+            observed[name] = seen
+            ok = ok and good
+        return ok, observed
 
     def _evaluate(self, name: str, wanted) -> tuple[bool, object]:
         if name == "result":

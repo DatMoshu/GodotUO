@@ -43,7 +43,7 @@ Not yet (the commands exist in the plan, not in the runner):
 
 | Command | Arrives with |
 |---|---|
-| `--driver human` (exits 2 with a message) | step 5 |
+| `--driver human` on an editor scenario, OBS capture of a human run | HD2 / later |
 | `clip` (cut a clip from the master) | not scheduled |
 
 ## Scenario files
@@ -145,28 +145,35 @@ events only.
 **Quality:** 60 fps, every frame rendered whatever the machine can do. The size is the engine window's at start, 1280×720 from `project.godot` (Godot's `--resolution` does not move it); a 1440p or 4K master needs a project-level size, which is not done yet.  
 **Scope tonight:** the client surface. An editor run records stills and events only (the editor is not a MovieWriter target); OBS and desktop capture are not implemented.
 
-### Human Driver (`--driver human`) (not yet: step 5)
+### Human Driver (`--driver human`, client scenarios)
 
-Planned design; the runner refuses `--driver human` today.
+```bash
+python tools/scenario_run/run.py client.login.basic --driver human --var account=... --var password=...
+python tools/scenario_run/run.py client.login.basic --driver human --clean      # no overlay drawn (Space and Esc still work)
+python tools/scenario_run/run.py client.login.basic --driver human --ghost-human  # a stand-in person plays it, window unfocused and silent (a test of the driver)
+```
 
-The runner shows each step on an in-engine overlay and waits for human verification:
+The runner starts the client (focusable, sound on), then for each step:
 
-1. Skip the `do` action (human takes control)
-2. Display the step caption and highlights on TourOverlay
-3. Poll the same `expect` condition
-4. When true, auto-advance (or Space to skip, Esc to abort)
-5. Record overlay, audio and keystrokes
+1. skips the `do`: the person does it with the real mouse and keyboard
+2. sends the step's `say` (or its id) and its number to the client's overlay (`guo_overlay`, a caption card at the bottom of the
+   game viewport) and outlines the `control` a `ui.click` or `ui.fill` step names
+3. polls the same `expect` as the AI driver, with the AI driver's own code
+4. moves on by itself when it holds; **Space** skips the step (logged `skipped`), **Esc** aborts the run (FAIL, `aborted`)
 
-**Capture path:** OBS (WebSocket) or ffmpeg desktop capture  
-**Quality:** Same as AI (2560×1440 @ 60 fps, CRF 16)  
-**Determinism:** Real-time; events include observer timestamps for syncing
+`launch`, `note` and `shot` stay the runner's, and `shot: true` stills are taken as usual. A step marked `ai_only: true` is
+skipped and logged. A step with no `expect` stays on screen 3 s (a `wait`'s seconds if longer) and moves on. Windows are 3 times the AI
+driver's. Events and `run.json` have the AI run's shape with `driver: human` (run id ends `_human`). The overlay is
+`godot/GUO/src/Automation/HumanOverlay.cs`, a client copy of the editor tour's drawing; it exists only in a run that has the game's
+automation MCP on, so nothing of it ships in a player's build.
 
-Steps marked `ai_only: true` are skipped in human mode and logged as such.
+Not yet: the editor surface (HD2, the editor's own TourOverlay), and recording a human run (OBS capture, no video from the runner).
+Full behaviour: `docs/data_formats.md`, section 34, "The human driver".
 
 ## Recording: capture paths and conventions
 
 On main today: the AI driver's MovieWriter path (a client run records by default; the master is `run.mp4`, copied to the
-video folder when one is mounted). Not yet: the human driver's OBS and ddagrab paths and `run.py clip`.
+video folder when one is mounted). Not yet: the human driver's OBS and ddagrab paths (a human run records stills and events only) and `run.py clip`.
 
 ### AI Runs: MovieWriter (deterministic)
 
@@ -391,5 +398,5 @@ a timer armed at `run_s` plus 60 s kills the program and exits 4.
 
 ---
 
-**Status:** Build steps 1 (docs) and 2 (runner + AI driver, prune, list filter) are on main.  
+**Status:** Build steps 1 (docs), 2 (runner + AI driver, prune, list filter) and 3 are on main; the human driver for client scenarios (HD1) is on its branch.  
 **Last updated:** 2026-10-06
