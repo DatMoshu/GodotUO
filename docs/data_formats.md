@@ -46,6 +46,8 @@ Every key resolves as: **environment variable → `config.local.bat` →
 | `UO_ART_EXTRACT_DIR` | The extracted art set (§36, ADR-0034): atlas pages and indexes of the install's art. Default `art_extract` under `UO_WORKSPACE_DIR`; gitignored, never committed or bundled |
 | `UO_ART_SET` | `1` reads art from the extracted set when its fingerprint matches the install; default `0`. The `--art-set` / `--no-art-set` client arguments override it for one run |
 | `UO_ART_SET_CACHE_MB` | Decoded set pages kept in memory, in MB; default 256, minimum 16 (AX2) |
+| `UO_ART_SHARD` | The shard id whose encrypted art container to read (§36, AX6); the `--art-shard ID` client argument overrides it. Empty means the plain set |
+| `UO_ART_KEY_DIR` | The folder holding the profile's shard keys, `<shard id>.key`; default `art_keys` under `UO_WORKSPACE_DIR`. Never in the repository |
 | `UO_WORLD_PROJECT` | The editor's world project folder (§9); default `build\world\default` |
 | `UO_MAPGEN_DATA` | The map generator's per-user data folder (§26): mined stamps, coast atlas, tree statics, validator reports; default `%LOCALAPPDATA%\GUO\mapgen` |
 | `UO_EDITOR_LIVE_HOST` / `UO_EDITOR_LIVE_PORT` | The editor bridge the UO Shard dock connects to (§10); default `127.0.0.1:2595`, the private instance |
@@ -2228,6 +2230,65 @@ two read methods, passing the same file, position and size/direction the loader 
 the set, or whose page is damaged, is read from the archive as before. `art_extract verify` re-decodes every block
 from the install and compares; `ArtSetParityProbe` compares every block reachable through the loader's own `GetIndices`
 (all bodies, all actions, all directions, both UOP variants) with the set on and off.
+
+### Encrypted container (`<shard id>.guoart`, AX6)
+
+For a shard owner's **custom** art. The same pieces as a plain set (`set.json`, one `index.json` and the PNG pages per
+class) are sealed one by one into a single file with AES-256-GCM, and the client opens that file when the player's
+profile holds the shard's key. The player's own extracted set (above) stays plain and unmarked, so parity checks stay
+exact. Header schema: `tools/art_extract/schema/container.schema.json` (`additionalProperties: false`).
+
+```
+magic        8 bytes   "GUOART" 01 00
+header_len   u32 LE
+header       UTF-8 JSON, sorted keys, no spaces: {cipher, key_id, schema, set_id, shard_id, version}
+chunks       name_len u16 | name (UTF-8) | nonce 12 | sealed_len u32 | sealed = ciphertext + 16 byte tag
+toc chunk    the same shape, name "\0toc", plaintext {"entries": {name: [offset, sealed_len]}}
+footer       toc offset u64 LE | "GUOEND" 01 00
+```
+
+- Chunk names are the plain set's relative paths: `set.json`, `land/index.json`, `land/page_0000.png`, `anim/index.json`.
+  A chunk's plaintext is byte-identical to the file the plain set would hold, so the page `sha256` values and every
+  mount rule of this section apply unchanged.
+- Each chunk has its own random 96-bit nonce. The **associated data** of every chunk is `header_len || header || name`,
+  so a changed header, a renamed chunk or a chunk moved under another name fails its tag. A flipped byte anywhere in a
+  chunk fails that chunk only; a damaged table of contents or footer fails the open.
+- `key_id` is the first 16 hex digits of `sha256("guo/art_key_id\0" || key)`: it lets a wrong key be named before any
+  chunk is tried and reveals nothing usable. The key is 32 random bytes and is never written into the container.
+- The exporter streams: pages are encoded in memory and sealed straight into `<file>.part`, which is renamed into place
+  when complete. **No PNG is written to disk on the way**, and an export that fails leaves no container.
+
+**Tool.** `python tools\art_extract\run.py keygen --shard ID --key-file K` writes a new key (64 hex characters, mode
+0600 where the OS has one, never overwriting). `pack-container --shard ID --key-file K [--what ...] [--out FILE]` writes
+`UO_ART_EXTRACT_DIR/containers/<ID>.guoart` (`--out` obeys the same rule as `export`). `info FILE` prints the header; it
+needs no key. A shard id is 1-48 characters of `a-z`, `0-9`, `_`, `-`, starting with a letter or digit.
+
+**Runtime.** `--art-set` (or `UO_ART_SET=1`) plus `--art-shard ID` (or `UO_ART_SHARD`) makes `ExtractedArtSource` open
+`containers/<ID>.guoart` instead of a plain set, with the key from `<UO_ART_KEY_DIR>/<ID>.key`. Pages decrypt into memory on
+first use and are dropped under the same `UO_ART_SET_CACHE_MB` cap; nothing is written to disk. Everything else (the
+fingerprint check against the install, the client's own override files winning, per-id fallback) is as for a plain set.
+A missing container, no key in the profile, a wrong key, a changed header, a cut file or a platform without AES-GCM
+makes the whole source fall back to the original files with **one warning that names the shard id and the reason, never
+the key**; a page whose tag fails drops only its own ids to the original files, with one warning for the page. The web
+export reports containers as unsupported (AES-GCM is not available there) and falls back; desktop and Android are
+covered by the tests below.
+
+**Key delivery.** The owner generates the key with `keygen` and keeps it out of version control. Players receive it with
+the shard's ADR-0019 pack install: a `<shard id>.key` file **inside the signed pack**, which the installer stores in the
+user's profile key folder (0600 where the OS has it) and removes with the pack. A key is never in the repository, the
+logs, the events or a run folder, and no command prints one; the tests grep the container, the tool's output and the
+refusal messages for it.
+
+**Threat model, in plain words.** Anything the client draws can be captured: screenshots, a GPU capture, a debugger
+reading the decrypted pages. The container raises the bar for **casual copying of a shard's custom art off the disk**
+and nothing more; a player who holds the key, or anyone who attaches a debugger to a running client, can read the
+art. It is not copy protection. Provenance of a leaked copy is a separate tool (AX7).
+
+**Tests.** `tools/art_extract/test_container.py` (round trip equals the plain set's files, tampered ciphertext / tag /
+nonce refused per chunk, wrong key names the shard, header-only change refused, chunk renamed refused, cut file and
+damaged table refused, only the container reaches the disk, no key in file or output, a failed export leaves nothing);
+`ArtSetParityProbe` with `UO_ART_PARITY_MODE=synthetic` repeats the open/refuse cases in the client's own code on a
+made-up container; with `UO_ART_SHARD` set it compares every id through the real loaders with the container on and off.
 
 ### Example (`land/index.json`, abridged)
 

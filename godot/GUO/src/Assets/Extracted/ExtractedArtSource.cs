@@ -43,6 +43,7 @@ internal sealed class ExtractedArtSource
     private const int PageSize = 2048;
 
     private readonly string _root;
+    private readonly ArtContainer _box; // set when the pieces come from an encrypted container instead of files
     private readonly Dictionary<string, ClassIndex> _classes = new();
     private readonly HashSet<(string, int)> _overridden = new();
     private readonly Dictionary<(string, int), byte[]> _pages = new();
@@ -54,11 +55,18 @@ internal sealed class ExtractedArtSource
     public int EntryCount { get; private set; }
     public int PagesLoaded { get; private set; }
 
-    private ExtractedArtSource(string root, long capBytes)
+    private ExtractedArtSource(string root, long capBytes, ArtContainer box = null)
     {
         _root = root;
         _capBytes = capBytes;
+        _box = box;
     }
+
+    // One piece of the set ("set.json", "land/index.json", "land/page_0000.png"), from files or from the container.
+    private byte[] ReadPiece(string name) => _box != null ? _box.Read(name) : File.ReadAllBytes(Path.Combine(_root, name));
+
+    private static TextReader OpenText(ArtContainer box, string root, string name) =>
+        box != null ? new StreamReader(new MemoryStream(box.Read(name))) : new StreamReader(Path.Combine(root, name));
 
     /// <summary>Is the set switched on? --no-art-set beats --art-set beats UO_ART_SET; off by default.</summary>
     internal static bool Enabled(string[] args)
@@ -85,50 +93,103 @@ internal sealed class ExtractedArtSource
         string[] args;
         try { args = OS.GetCmdlineUserArgs(); } catch { args = Array.Empty<string>(); }
         if (!Enabled(args)) return null;
+        string shard = ShardId(args);
+        if (shard != null) return MountShardContainer(shard, clientData);
         return Mount(SetFolder(), clientData);
     }
 
-    internal static ExtractedArtSource Mount(string folder, string clientData, long? capBytes = null)
+    /// <summary>The shard whose encrypted container to use: --art-shard ID beats UO_ART_SHARD; null means the plain set.</summary>
+    internal static string ShardId(string[] args)
     {
+        string id = Environment.GetEnvironmentVariable("UO_ART_SHARD");
+        for (int i = 0; i + 1 < args.Length; i++) if (args[i] == "--art-shard") id = args[i + 1];
+        return string.IsNullOrWhiteSpace(id) ? null : id.Trim();
+    }
+
+    internal static bool ValidShardId(string id)
+    {
+        if (string.IsNullOrEmpty(id) || id.Length > 48 || !(char.IsAsciiLetterLower(id[0]) || char.IsAsciiDigit(id[0]))) return false;
+        foreach (char c in id) if (!(char.IsAsciiLetterLower(c) || char.IsAsciiDigit(c) || c == '_' || c == '-')) return false;
+        return true;
+    }
+
+    internal static string KeyFolder()
+    {
+        string dir = Environment.GetEnvironmentVariable("UO_ART_KEY_DIR");
+        if (!string.IsNullOrWhiteSpace(dir) && Path.IsPathFullyQualified(dir)) return Path.GetFullPath(dir);
+        return Path.Combine(GUO.Workspace.Workspace.Root, "art_keys");
+    }
+
+    /// <summary>
+    /// Mount containers/&lt;shard&gt;.guoart if the profile holds the shard's key. A missing or wrong key, a changed
+    /// file or an unsupported platform falls back to the original files with one warning naming the shard (never the key).
+    /// </summary>
+    internal static ExtractedArtSource MountShardContainer(string shard, string clientData, string folder = null, string keyFolder = null, long? capBytes = null)
+    {
+        if (!ValidShardId(shard)) return Refuse($"shard {shard}", "that is not a shard id");
+        if (!ArtContainer.Supported || OS.HasFeature("web")) return Refuse($"shard {shard}", "encrypted art containers are not supported on this platform");
+        string path = Path.Combine(folder ?? SetFolder(), "containers", shard + ".guoart");
+        if (!File.Exists(path)) return Refuse($"shard {shard}", "there is no container for it (tools/art_extract pack-container)");
+        byte[] key = ArtContainer.LoadKey(keyFolder ?? KeyFolder(), shard);
+        if (key == null) return Refuse($"shard {shard}", "this profile holds no key for it");
+        return MountContainer(path, shard, key, clientData, capBytes);
+    }
+
+    internal static ExtractedArtSource MountContainer(string path, string shard, byte[] key, string clientData, long? capBytes = null)
+    {
+        try
+        {
+            var box = ArtContainer.Open(path, shard, key);
+            return Mount(path, clientData, capBytes, box, $"shard {shard}");
+        }
+        catch (ArtContainerException ex)
+        {
+            return Refuse($"shard {shard}", ex.Message);
+        }
+    }
+
+    internal static ExtractedArtSource Mount(string folder, string clientData, long? capBytes = null, ArtContainer box = null, string label = null)
+    {
+        label ??= folder;
         var started = System.Diagnostics.Stopwatch.StartNew();
         try
         {
-            string setPath = Path.Combine(folder, "set.json");
-            if (!File.Exists(setPath)) return Refuse(folder, "there is no set.json (run tools/art_extract export)");
-            using var set = JsonDocument.Parse(File.ReadAllBytes(setPath));
+            if (box == null && !File.Exists(Path.Combine(folder, "set.json"))) return Refuse(label, "there is no set.json (run tools/art_extract export)");
+            using var set = JsonDocument.Parse(box != null ? box.Read("set.json") : File.ReadAllBytes(Path.Combine(folder, "set.json")));
             var root = set.RootElement;
             if (root.GetProperty("schema").GetString() != "guo/art_set@1" || root.GetProperty("version").GetInt32() != 1)
-                return Refuse(folder, "the set is a format version this client does not know");
+                return Refuse(label, "the set is a format version this client does not know");
             var fingerprint = root.GetProperty("fingerprint");
             foreach (var file in fingerprint.GetProperty("files").EnumerateArray())
             {
                 string name = file.GetProperty("name").GetString();
                 var info = new FileInfo(Path.Combine(clientData, name));
-                if (!info.Exists) return Refuse(folder, $"{name} is not in the install any more");
+                if (!info.Exists) return Refuse(label, $"{name} is not in the install any more");
                 if (info.Length != file.GetProperty("size").GetInt64())
-                    return Refuse(folder, $"{name} has a different size than when the set was made");
+                    return Refuse(label, $"{name} has a different size than when the set was made");
             }
             string setId = fingerprint.GetProperty("set_id").GetString();
+            if (box != null && box.SetId != setId) return Refuse(label, "the container header does not belong to its set");
 
             long cap = capBytes ?? CapFromEnvironment();
-            var source = new ExtractedArtSource(folder, cap);
+            var source = new ExtractedArtSource(folder, cap, box);
             foreach (var cls in root.GetProperty("classes").EnumerateObject())
             {
-                string indexPath = Path.Combine(folder, cls.Name, "index.json");
+                string indexName = cls.Name + "/index.json";
                 if (cls.Name == "anim")
                 {
-                    var anim = MountAnim(indexPath, setId);
-                    if (anim == null) return Refuse(folder, "anim/index.json does not belong to this set");
+                    var anim = MountAnim(box, folder, indexName, setId);
+                    if (anim == null) return Refuse(label, "anim/index.json does not belong to this set");
                     source._classes["anim"] = anim;
                     continue;
                 }
-                using var doc = JsonDocument.Parse(File.ReadAllBytes(indexPath));
+                using var doc = JsonDocument.Parse(source.ReadPiece(indexName));
                 var idx = doc.RootElement;
                 if (idx.GetProperty("schema").GetString() != "guo/art_index@1"
                     || idx.GetProperty("set_id").GetString() != setId
                     || idx.GetProperty("page_size").GetInt32() != PageSize
                     || idx.GetProperty("pixel_format").GetString() != "rgba8")
-                    return Refuse(folder, $"{cls.Name}/index.json does not belong to this set");
+                    return Refuse(label, $"{cls.Name}/index.json does not belong to this set");
                 var pages = idx.GetProperty("pages");
                 var ci = new ClassIndex { Name = cls.Name, PageFiles = new string[pages.GetArrayLength()], PageSha = new string[pages.GetArrayLength()] };
                 ci.PageBad = new bool[ci.PageFiles.Length];
@@ -151,21 +212,21 @@ internal sealed class ExtractedArtSource
                 source._classes[cls.Name] = ci;
             }
             source.ScanOverrides(clientData);
-            GD.Print($"[GUO] art set mounted: {source.EntryCount} images in {source.ClassCount} classes from the extracted set " +
+            GD.Print($"[GUO] art set mounted: {source.EntryCount} images in {source.ClassCount} classes from the {(box != null ? "encrypted container for " + label : "extracted set")} " +
                      $"({started.ElapsedMilliseconds} ms, {source._overridden.Count} ids left to the client's own override files)");
             return source;
         }
-        catch (Exception ex) when (ex is IOException or JsonException or KeyNotFoundException or InvalidOperationException or FormatException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is ArtContainerException or IOException or JsonException or KeyNotFoundException or InvalidOperationException or FormatException or UnauthorizedAccessException)
         {
-            return Refuse(folder, ex.Message);
+            return Refuse(label, ex.Message);
         }
     }
 
     /// <summary>The header of the anim index: its pages. The blocks wait for the first animation question.</summary>
-    private static ClassIndex MountAnim(string indexPath, string setId)
+    private static ClassIndex MountAnim(ArtContainer box, string root, string indexName, string setId)
     {
         string first;
-        using (var reader = new StreamReader(indexPath)) first = reader.ReadLine();
+        using (var reader = OpenText(box, root, indexName)) first = reader.ReadLine();
         const string tail = ",\"blocks\":{";
         if (first == null || !first.EndsWith(tail, StringComparison.Ordinal)) return null;
         using var doc = JsonDocument.Parse(first.Substring(0, first.Length - tail.Length) + "}");
@@ -176,7 +237,7 @@ internal sealed class ExtractedArtSource
             || idx.GetProperty("pixel_format").GetString() != "rgba8")
             return null;
         var pages = idx.GetProperty("pages");
-        var ci = new ClassIndex { Name = "anim", PageFiles = new string[pages.GetArrayLength()], PageSha = new string[pages.GetArrayLength()], BlocksPath = indexPath };
+        var ci = new ClassIndex { Name = "anim", PageFiles = new string[pages.GetArrayLength()], PageSha = new string[pages.GetArrayLength()], BlocksPath = indexName };
         ci.PageBad = new bool[ci.PageFiles.Length];
         int p = 0;
         foreach (var page in pages.EnumerateArray())
@@ -187,9 +248,9 @@ internal sealed class ExtractedArtSource
         return ci;
     }
 
-    private static ExtractedArtSource Refuse(string folder, string why)
+    private static ExtractedArtSource Refuse(string where, string why)
     {
-        GD.PushWarning($"[GUO] art set not used ({why}); reading the original files. Set folder: {folder}");
+        GD.PushWarning($"[GUO] art set not used ({why}); reading the original files. Set: {where}");
         return null;
     }
 
@@ -221,7 +282,7 @@ internal sealed class ExtractedArtSource
         var blocks = new Dictionary<string, AnimRow[]>();
         try
         {
-            using var reader = new StreamReader(ci.BlocksPath);
+            using var reader = OpenText(_box, _root, ci.BlocksPath);
             reader.ReadLine();
             string line;
             while ((line = reader.ReadLine()) != null)
@@ -251,7 +312,7 @@ internal sealed class ExtractedArtSource
                 if (ok) blocks[key] = rows;
             }
         }
-        catch (Exception ex) when (ex is IOException or JsonException or KeyNotFoundException or InvalidOperationException or FormatException)
+        catch (Exception ex) when (ex is ArtContainerException or IOException or JsonException or KeyNotFoundException or InvalidOperationException or FormatException)
         {
             GD.PushWarning($"[GUO] art set animations not used ({ex.Message}); reading the original files");
             blocks.Clear();
@@ -344,10 +405,10 @@ internal sealed class ExtractedArtSource
 
     private byte[] Load(ClassIndex ci, int page)
     {
-        string path = Path.Combine(_root, ci.Name, ci.PageFiles[page]);
+        string path = _box != null ? $"{ci.Name}/{ci.PageFiles[page]} (container)" : Path.Combine(_root, ci.Name, ci.PageFiles[page]);
         try
         {
-            byte[] png = File.ReadAllBytes(path);
+            byte[] png = ReadPiece($"{ci.Name}/{ci.PageFiles[page]}");
             if (!string.Equals(Convert.ToHexString(SHA256.HashData(png)), ci.PageSha[page], StringComparison.OrdinalIgnoreCase))
                 return Damaged(path, "its checksum differs from the index");
             using var image = new Image();
@@ -356,7 +417,7 @@ internal sealed class ExtractedArtSource
             image.Convert(Image.Format.Rgba8);
             return image.GetData();
         }
-        catch (IOException ex) { return Damaged(path, ex.Message); }
+        catch (Exception ex) when (ex is IOException or ArtContainerException) { return Damaged(path, ex.Message); }
     }
 
     private static byte[] Damaged(string path, string why)

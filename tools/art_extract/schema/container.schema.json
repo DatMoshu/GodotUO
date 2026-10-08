@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "guo/art_container@1",
+  "title": "GUO encrypted art container header (data_formats section 36, AX6)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "version", "cipher", "shard_id", "key_id", "set_id"],
+  "properties": {
+    "schema": {"const": "guo/art_container@1"},
+    "version": {"const": 1},
+    "cipher": {"const": "aes-256-gcm"},
+    "shard_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,47}$"},
+    "key_id": {"type": "string", "pattern": "^[0-9a-f]{16}$"},
+    "set_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  }
+}

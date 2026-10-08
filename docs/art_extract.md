@@ -110,3 +110,12 @@ So today only the `AnimationFrame*.uop` files can be absent. Hiding the rest nee
 is for guo-director to decide. The animation mul indexes are the cheapest of the rest (one lookup). Not measured: that the
 mobiles drawn with the UOP files hidden are pixel-identical (AX3's block parity is the proof), and the mul data files
 alone (`anim*.mul` without `.idx`).
+
+## For shard owners: an encrypted container (AX6)
+
+This part is for a shard that ships its own custom art; a player's own extracted set above stays plain. `art_extract
+pack-container` seals a shard's art into one `<shard id>.guoart` that the client opens only if the player's profile holds
+that shard's key (delivered inside the shard's signed pack). It keeps the art from being copied off a disk by someone
+without the key. It does **not** stop anyone from capturing what the game draws, and a player with the key can read the
+art, so treat it as a lock on the door, not a vault. Without the key, or with a wrong one, the client reads the original
+files and logs one warning that names the shard. Details: `docs/data_formats.md` section 36.

@@ -99,6 +99,20 @@ read, and a miss reads the archive. Consequence: a block shared by two bodies is
 mirror only the two read methods (palette, run rows, the UOP frame table). The probe's animation pass enumerates blocks
 through the loader's own `GetIndices` to prove the keys line up. Details: data_formats section 36, Animations.
 
+## AX6: an encrypted container for a shard's custom art
+
+The art-protection addendum of the plan (option A) is built as a container format, not as a change to the set: the
+same files, sealed one by one with AES-256-GCM into `<shard id>.guoart`, opened by the same `ExtractedArtSource` through
+a piece reader that is either a folder or the container. Chunk names are the plain set's paths, and a chunk's
+plaintext is the plain file's bytes, so every mount, fingerprint and fallback rule stays as decided above and the
+parity proof carries over unchanged. The header is the associated data of every chunk, with the chunk's name.
+Details, key delivery through the signed ADR-0019 pack, and the platform note (the web export reports containers as
+unsupported): data_formats section 36.
+
+**Threat model.** It keeps a shard's custom art from being copied off a disk by someone without the shard's key. It
+does not stop capture of what is drawn, and a player holding the key can read the art. A player's own extracted set
+stays plain and unprotected, as decision 4 says.
+
 ## Validation
 
 Contract only. Each later story proves its part: AX1 byte-determinism and 100% `verify`; AX2 identical frames on/off

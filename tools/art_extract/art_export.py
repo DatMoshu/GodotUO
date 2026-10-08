@@ -13,6 +13,7 @@ from pathlib import Path
 
 import art_anim as anim
 import art_atlas as atlas
+import art_container as container
 import art_png as pngio
 import art_sources as sources
 from art_sources import CLASSES, Skip
@@ -89,38 +90,73 @@ def _generated(data: Path, names: list[str]) -> str:
 
 # --- export ------------------------------------------------------------------------------
 
-def _dump(path: Path, doc: dict) -> None:
-    path.write_text(json.dumps(doc, indent=1) + "\n", encoding="utf-8", newline="\n")
+def _json_bytes(doc: dict) -> bytes:
+    return (json.dumps(doc, indent=1) + "\n").encode("utf-8")
 
 
-def _clear(out: Path) -> None:
-    """Remove what an earlier export left (set.json first, so a half-written set is never mistaken for a set)."""
-    (out / "set.json").unlink(missing_ok=True)
-    for c in CLASSES:
-        d = out / c
-        if d.is_dir():
-            for f in list(d.glob("page_*.png")) + [d / "index.json"]:
-                f.unlink(missing_ok=True)
-            try:
-                d.rmdir()
-            except OSError:
-                pass
-
-
-def _write_page(folder: Path, n: int, rgba: bytes) -> dict:
-    png = pngio.encode_rgba(atlas.PAGE, atlas.PAGE, rgba)
-    name = f"page_{n:04d}.png"
-    (folder / name).write_bytes(png)
-    return {"file": name, "sha256": hashlib.sha256(png).hexdigest(), "bytes": len(png)}
-
-
-def _dump_compact(path: Path, doc: dict) -> None:
+def _compact_bytes(doc: dict) -> bytes:
     """One line per block: the anim index holds hundreds of thousands of frames."""
-    blocks = doc.pop("blocks")
-    head = json.dumps(doc, separators=(",", ":"))[:-1]
+    blocks = doc["blocks"]
+    rest = {k: v for k, v in doc.items() if k != "blocks"}
+    head = json.dumps(rest, separators=(",", ":"))[:-1]
     lines = ",\n".join(f"{json.dumps(k)}:{json.dumps(v, separators=(',', ':'))}" for k, v in blocks.items())
-    path.write_text(f'{head},"blocks":{{\n{lines}\n}}}}\n', encoding="utf-8", newline="\n")
-    doc["blocks"] = blocks
+    return (f'{head},"blocks":{{\n{lines}\n}}}}\n').encode("utf-8")
+
+
+class FolderSink:
+    """The plain set: every piece is a file under `out`."""
+
+    def __init__(self, out: Path):
+        self.out = Path(out)
+
+    def begin(self, fp: dict) -> None:
+        self.out.mkdir(parents=True, exist_ok=True)
+        self._clear()
+
+    def put(self, name: str, data: bytes) -> None:
+        target = self.out / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data)
+
+    def end(self) -> None:
+        pass
+
+    def abort(self) -> None:
+        pass
+
+    def _clear(self) -> None:
+        """Remove what an earlier export left (set.json first, so a half-written set is never mistaken for a set)."""
+        (self.out / "set.json").unlink(missing_ok=True)
+        for c in CLASSES:
+            d = self.out / c
+            if d.is_dir():
+                for f in list(d.glob("page_*.png")) + [d / "index.json"]:
+                    f.unlink(missing_ok=True)
+                try:
+                    d.rmdir()
+                except OSError:
+                    pass
+
+
+class ContainerSink:
+    """The encrypted container: the same pieces, sealed one by one as they are produced. Nothing plain reaches disk."""
+
+    def __init__(self, path: Path, shard_id: str, key: bytes):
+        self.path, self.shard_id, self.key = Path(path), shard_id, key
+        self.writer = None
+
+    def begin(self, fp: dict) -> None:
+        self.writer = container.ContainerWriter(self.path, self.shard_id, self.key, fp["set_id"])
+
+    def put(self, name: str, data: bytes) -> None:
+        self.writer.put(name, data)
+
+    def end(self) -> None:
+        self.writer.close()
+
+    def abort(self) -> None:
+        if self.writer is not None:
+            self.writer.abort()
 
 
 def decode_class(src, log=None) -> tuple[dict[int, tuple[int, int, bytes]], list[dict]]:
@@ -137,48 +173,64 @@ def decode_class(src, log=None) -> tuple[dict[int, tuple[int, int, bytes]], list
 
 
 def export(data: Path, out: Path, what: tuple[str, ...] = CLASSES, *, client_version: str = "0.0",
-           generated: str | None = None, log=print) -> dict:
-    """Write pages and indexes for `what` into `out`. Returns the set.json document."""
-    data, out = Path(data), Path(out)
+           generated: str | None = None, log=print, sink=None) -> dict:
+    """Write pages and indexes for `what` through `sink` (default: files in `out`). Returns the set.json document."""
+    data = Path(data)
+    sink = sink or FolderSink(out)
     srcs = sources.open_sources(data, what)
     anim_src = anim.AnimSource(data) if "anim" in what else None
     names = sorted({n for s in srcs for n in s.files} | set(anim_src.files if anim_src else []))
-    out.mkdir(parents=True, exist_ok=True)
-    _clear(out)
     log(f"fingerprinting {len(names)} source file(s)")
     fp = fingerprint(data, names)
+    sink.begin(fp)
+    try:
+        doc = _export_into(sink, srcs, anim_src, fp, data, names, client_version, generated, log)
+        sink.end()
+    except BaseException:
+        sink.abort()
+        raise
+    return doc
+
+
+def _export_into(sink, srcs, anim_src, fp, data, names, client_version, generated, log) -> dict:
     classes = {}
     for src in srcs:
         t0 = time.time()
         images, skipped = decode_class(src)
         placed, pages = atlas.pack(images)
-        folder = out / src.cls
-        folder.mkdir(parents=True, exist_ok=True)
         page_docs, total = [], 0
         for n, buf in enumerate(pages):
             png = pngio.encode_rgba(atlas.PAGE, atlas.PAGE, buf)
             name = f"page_{n:04d}.png"
-            (folder / name).write_bytes(png)
+            sink.put(f"{src.cls}/{name}", png)
             page_docs.append({"file": name, "sha256": hashlib.sha256(png).hexdigest()})
             total += len(png)
-        _dump(folder / "index.json", {
+        sink.put(f"{src.cls}/index.json", _json_bytes({
             "schema": SCHEMA_INDEX, "version": 1, "class": src.cls, "set_id": fp["set_id"],
             "page_size": atlas.PAGE, "pixel_format": "rgba8", "pages": page_docs,
             "entries": {str(i): {"page": p.page, "x": p.x, "y": p.y, "w": p.w, "h": p.h,
                                  "pixels_sha256": p.pixels_sha256} for i, p in placed.items()},
-            "skipped": skipped})
+            "skipped": skipped}))
         classes[src.cls] = {"pages": len(pages), "count": len(placed), "skipped": len(skipped), "bytes": total}
         log(f"{src.cls:7} {len(placed):6} stored, {len(skipped):4} skipped, {len(pages):3} page(s), "
             f"{total / 1e6:8.1f} MB, {time.time() - t0:6.1f} s")
     if anim_src is not None:
         t0 = time.time()
-        classes["anim"] = anim.export_anim(anim_src, out / "anim", fp["set_id"], _write_page, _dump_compact, log)
+
+        def write_page(folder, n, rgba):
+            png = pngio.encode_rgba(atlas.PAGE, atlas.PAGE, rgba)
+            name = f"page_{n:04d}.png"
+            sink.put(f"anim/{name}", png)
+            return {"file": name, "sha256": hashlib.sha256(png).hexdigest(), "bytes": len(png)}
+
+        classes["anim"] = anim.export_anim(anim_src, Path("anim"), fp["set_id"], write_page,
+                                           lambda path, doc: sink.put("anim/index.json", _compact_bytes(doc)), log)
         c = classes["anim"]
         log(f"anim    {c['count']:6} blocks, {c['skipped']:4} skipped, {c['pages']:3} page(s), "
             f"{c['bytes'] / 1e6:8.1f} MB, {time.time() - t0:6.1f} s")
     doc = {"schema": SCHEMA_SET, "version": 1, "generated": generated or _generated(data, names), "tool": TOOL,
            "client_version": client_version, "fingerprint": fp, "classes": classes}
-    _dump(out / "set.json", doc)
+    sink.put("set.json", _json_bytes(doc))
     return doc
 
 

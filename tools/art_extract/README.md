@@ -9,6 +9,9 @@ finds (AX2, animations AX3). For users: `launchers\pipeline\05_extract_art.bat`,
 python tools\art_extract\run.py export [--what art,land,gumps,texmaps,lights] [--out DIR] [--from DATA]
 python tools\art_extract\run.py verify [--set DIR] [--what ...] [--from DATA]
 python tools\art_extract\run.py where
+python tools\art_extract\run.py keygen --shard ID --key-file K
+python tools\art_extract\run.py pack-container --shard ID --key-file K [--what ...] [--out FILE]
+python tools\art_extract\run.py info FILE
 python -m pytest tools/art_extract -q
 ```
 
@@ -87,4 +90,20 @@ real loaders with the set on and off:
 
 ```
 godot-console --headless --path godot/GUO res://src/Assets/Extracted/ArtSetParityProbe.tscn -- --art-set
+```
+
+## Encrypted container (AX6)
+
+`pack-container` writes the art of a shard owner's install as one `<shard id>.guoart`: the same pieces as a set, each
+sealed with AES-256-GCM (own nonce per chunk, the header and the chunk's name as associated data), streamed from memory
+so no PNG touches the disk. `keygen` makes the 256-bit key (a hex file, owner-only where the OS allows, never
+overwritten); `info` prints a container's header without a key. The client opens it with `--art-set --art-shard ID` when
+`<UO_ART_KEY_DIR>/<ID>.key` exists, and falls back to the original files with one warning naming the shard (never the
+key) on a missing or wrong key or a changed file. Format, key delivery and the threat model (it deters casual copying
+off a disk; it cannot stop capture of what is drawn): data_formats section 36, "Encrypted container". Code:
+`art_container.py` (format), the `ContainerSink` in `art_export.py`, `src/Assets/Extracted/ArtContainer.cs` (reader).
+
+```
+python tools\art_extract\run.py keygen --shard myshard --key-file %USERPROFILE%\keys\myshard.key
+python tools\art_extract\run.py pack-container --shard myshard --key-file %USERPROFILE%\keys\myshard.key --what gumps
 ```

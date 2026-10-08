@@ -243,6 +243,12 @@ public partial class ArtSetParityProbe : Node
             $"{{\"schema\":\"guo/art_index@1\",\"set_id\":\"{setId}\",\"page_size\":2048,\"pixel_format\":\"rgba8\"," +
             $"\"pages\":[{{\"file\":\"page_0000.png\",\"sha256\":\"{sha}\"}}],\"entries\":{{\"6\":{Entry(0)},\"7\":{Entry(2)}}}}}");
 
+        var pieces = new Dictionary<string, byte[]>
+        {
+            ["set.json"] = File.ReadAllBytes(Path.Combine(setDir, "set.json")),
+            ["static/index.json"] = File.ReadAllBytes(Path.Combine(setDir, "static", "index.json")),
+            ["static/page_0000.png"] = png,
+        };
         int failed = 0;
         void Check(bool ok, string what) { GD.Print($"[artparity] {(ok ? "ok  " : "FAIL")} {what}"); if (!ok) failed++; }
 
@@ -264,9 +270,95 @@ public partial class ArtSetParityProbe : Node
         File.Delete(Path.Combine(setDir, "set.json"));
         Check(ExtractedArtSource.Mount(setDir, client) == null, "a folder with no set.json is not a set");
         Check(!ExtractedArtSource.Enabled(new[] { "--art-set", "--no-art-set" }), "--no-art-set wins over --art-set");
+        failed += SyntheticContainer(root, client, pieces, setId);
         try { Directory.Delete(root, true); } catch (IOException) { }
         GD.Print($"[artparity] synthetic: {(failed == 0 ? "PASS" : "FAIL")}");
         return failed == 0 ? 0 : 1;
+    }
+
+    // The encrypted container on the same made-up set: a test-side sealer (the client only reads), no game data.
+    private static byte[] SealContainer(string shard, byte[] key, string setId, Dictionary<string, byte[]> pieces)
+    {
+        byte[] header = System.Text.Encoding.UTF8.GetBytes(
+            $"{{\"cipher\":\"aes-256-gcm\",\"key_id\":\"{ArtContainer.KeyId(key)}\",\"schema\":\"guo/art_container@1\",\"set_id\":\"{setId}\",\"shard_id\":\"{shard}\",\"version\":1}}");
+        byte[] aadHead = new byte[4 + header.Length];
+        BitConverter.GetBytes(header.Length).CopyTo(aadHead, 0); header.CopyTo(aadHead, 4);
+        using var ms = new MemoryStream();
+        ms.Write(new byte[] { (byte)'G', (byte)'U', (byte)'O', (byte)'A', (byte)'R', (byte)'T', 1, 0 });
+        ms.Write(aadHead);
+        var entries = new Dictionary<string, long[]>();
+        long Chunk(string name, byte[] data)
+        {
+            long at = ms.Position;
+            byte[] nameBytes = System.Text.Encoding.UTF8.GetBytes(name);
+            byte[] nonce = System.Security.Cryptography.RandomNumberGenerator.GetBytes(12);
+            byte[] aad = new byte[aadHead.Length + nameBytes.Length];
+            aadHead.CopyTo(aad, 0); nameBytes.CopyTo(aad, aadHead.Length);
+            byte[] ct = new byte[data.Length], tag = new byte[16];
+            using (var gcm = new System.Security.Cryptography.AesGcm(key, 16)) gcm.Encrypt(nonce, data, ct, tag, aad);
+            ms.Write(BitConverter.GetBytes((ushort)nameBytes.Length)); ms.Write(nameBytes); ms.Write(nonce);
+            ms.Write(BitConverter.GetBytes(ct.Length + 16)); ms.Write(ct); ms.Write(tag);
+            entries[name] = new[] { at, (long)(ct.Length + 16) };
+            return at;
+        }
+        foreach (var kv in pieces) Chunk(kv.Key, kv.Value);
+        var toc = JsonSerializer.SerializeToUtf8Bytes(new Dictionary<string, object> { ["entries"] = entries });
+        long tocAt = Chunk(ArtContainer.Toc, toc);
+        ms.Write(BitConverter.GetBytes(tocAt));
+        ms.Write(new byte[] { (byte)'G', (byte)'U', (byte)'O', (byte)'E', (byte)'N', (byte)'D', 1, 0 });
+        return ms.ToArray();
+    }
+
+    private static int SyntheticContainer(string root, string client, Dictionary<string, byte[]> pieces, string setId)
+    {
+        int failed = 0;
+        void Check(bool ok, string what) { GD.Print($"[artparity] {(ok ? "ok  " : "FAIL")} {what}"); if (!ok) failed++; }
+        byte[] key = new byte[32];
+        for (int i = 0; i < key.Length; i++) key[i] = (byte)i;
+        string shard = "demo";
+        string folder = Path.Combine(root, "cset"), keys = Path.Combine(root, "keys");
+        Directory.CreateDirectory(Path.Combine(folder, "containers"));
+        Directory.CreateDirectory(keys);
+        string path = Path.Combine(folder, "containers", shard + ".guoart");
+        byte[] good = SealContainer(shard, key, setId, pieces);
+        File.WriteAllBytes(path, good);
+
+        var src = ExtractedArtSource.MountContainer(path, shard, key, client);
+        Check(src != null, "a container mounts with the shard's key");
+        Check(src != null && src.TryImage("static", 6, out var px) && px.Width == 2 && px.Data[0] == 0xFF0000FF && px.Data[1] == 0xFF00FF00,
+            "an id is answered from a sealed page, the same R,G,B,A bytes as the plain set");
+        Check(src != null && !src.TryImage("static", 7, out _), "the client's override files still win over the container");
+        Check(ExtractedArtSource.MountContainer(path, shard, new byte[32], client) == null, "a wrong key falls back to the original files");
+        Check(ExtractedArtSource.MountContainer(path, "other", key, client) == null, "a container for another shard id is refused");
+
+        Check(ExtractedArtSource.MountShardContainer(shard, client, folder, keys) == null, "no key in the profile falls back");
+        File.WriteAllText(Path.Combine(keys, shard + ".key"), Convert.ToHexString(key).ToLowerInvariant() + "\n");
+        Check(ExtractedArtSource.MountShardContainer(shard, client, folder, keys) != null, "the key file in the profile's key folder opens it");
+        Check(ExtractedArtSource.MountShardContainer("../x", client, folder, keys) == null, "a shard id that is a path is refused");
+
+        // a changed byte inside the sealed page: the container mounts (the index is fine) and the id falls back
+        byte[] bad = (byte[])good.Clone();
+        string pagePath = Path.Combine(root, "tampered.guoart");
+        int at = good.AsSpan().IndexOf(System.Text.Encoding.UTF8.GetBytes("static/page_0000.png"));
+        bad[at + 20 + 12 + 4 + 3] ^= 1;
+        File.WriteAllBytes(pagePath, bad);
+        var tampered = ExtractedArtSource.MountContainer(pagePath, shard, key, client);
+        Check(tampered != null && !tampered.TryImage("static", 6, out _), "a changed byte in a sealed page is refused and the id falls back");
+
+        // header-only change: same length and the same key id, so only the associated data catches it
+        byte[] swapped = (byte[])good.Clone();
+        int hat = swapped.AsSpan().IndexOf(System.Text.Encoding.UTF8.GetBytes("\"shard_id\":\"demo\""));
+        swapped[hat + 15] = (byte)'x';
+        File.WriteAllBytes(Path.Combine(root, "header.guoart"), swapped);
+        Check(ExtractedArtSource.MountContainer(Path.Combine(root, "header.guoart"), "demx", key, client) == null, "a header-only change is refused");
+        File.WriteAllBytes(Path.Combine(root, "cut.guoart"), good.AsSpan(0, good.Length - 9).ToArray());
+        Check(ExtractedArtSource.MountContainer(Path.Combine(root, "cut.guoart"), shard, key, client) == null, "a container cut short is refused");
+
+        Check(Directory.GetFiles(folder, "*", SearchOption.AllDirectories).Length == 1 && !Directory.Exists(Path.Combine(folder, "static")),
+            "mounting wrote nothing to disk beside the container");
+        Check(!System.Text.Encoding.Latin1.GetString(good).Contains(Convert.ToHexString(key), StringComparison.OrdinalIgnoreCase), "the key is not in the container");
+        Check(ExtractedArtSource.ShardId(new[] { "--art-shard", "demo" }) == "demo", "--art-shard selects the container");
+        return failed;
     }
 
     // One start as a player would have it: load, then touch what the login screen and a few seconds in Britain touch.

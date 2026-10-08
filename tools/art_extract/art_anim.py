@@ -335,7 +335,6 @@ def _base_key(file: int, kind: str, position: int, size: int) -> str:
 
 def export_anim(src: AnimSource, folder: Path, set_id: str, write_page, dump_index, log=print) -> dict:
     """Decode every block and write pages as they fill. write_page(folder, n, rgba) -> {file, sha256, bytes}."""
-    folder.mkdir(parents=True, exist_ok=True)
     pages: list[dict] = []
 
     def sink(n: int, rgba: bytes) -> None:
