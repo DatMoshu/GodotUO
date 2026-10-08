@@ -27,10 +27,41 @@ public sealed class ImageRequest
     public int Height;
 }
 
+/// <summary>What kind of file an artifact is, by extension (GUO audio/3D jobs).</summary>
+public enum ArtifactKind
+{
+    Image,
+    Audio,
+    Model,
+}
+
+/// <summary>One non-image file a workflow produced: audio (mp3/wav) or 3D (ply/glb/obj/fbx).</summary>
+public sealed class ArtifactFile
+{
+    public string FileName = "";
+    public byte[] Bytes = Array.Empty<byte>();
+    public ArtifactKind Kind;
+
+    /// <summary>Classifies by extension; unknown extensions come back as images only when they decode.</summary>
+    public static ArtifactKind Classify(string fileName)
+    {
+        string ext = Path.GetExtension(fileName ?? "").ToLowerInvariant();
+        return ext switch
+        {
+            ".mp3" or ".wav" or ".ogg" or ".flac" => ArtifactKind.Audio,
+            ".ply" or ".glb" or ".gltf" or ".obj" or ".fbx" or ".stl" or ".splat" or ".spz" => ArtifactKind.Model,
+            _ => ArtifactKind.Image,
+        };
+    }
+}
+
 /// <summary>What a service gave back: PNG files and how they were made (for the provenance record).</summary>
 public sealed class ImageResult
 {
     public List<byte[]> Pngs = new();
+
+    /// <summary>Every file ref in the run's outputs: images (also in <see cref="Pngs"/>), audio, 3D.</summary>
+    public List<ArtifactFile> Files = new();
     public string Model = "";
     public string Workflow = "";
     public long Seed = -1;
@@ -222,17 +253,39 @@ public sealed class ComfyUiProvider : IImageProvider, IDisposable
                 return result;
             }
 
+            // Every file ref in every output, whatever the node type: images land in
+            // Pngs (as before); audio (mp3/wav) and 3D (ply/glb/obj/fbx) land in Files.
             foreach (var (_, node) in (JsonObject)outputs)
             {
-                if (node?["images"] is not JsonArray images)
+                if (node is not JsonObject out_)
                 {
                     continue;
                 }
 
-                foreach (JsonNode img in images)
+                foreach (var (_, list) in out_)
                 {
-                    string url = $"{BaseUrl}/view?filename={Uri.EscapeDataString((string)img["filename"])}&subfolder={Uri.EscapeDataString((string)img["subfolder"] ?? "")}&type={Uri.EscapeDataString((string)img["type"] ?? "output")}";
-                    result.Pngs.Add(await _http.GetByteArrayAsync(url, ct).ConfigureAwait(false));
+                    if (list is not JsonArray items)
+                    {
+                        continue;
+                    }
+
+                    foreach (JsonNode item in items)
+                    {
+                        if (item?["filename"] is not JsonNode)
+                        {
+                            continue;
+                        }
+
+                        string name = (string)item["filename"] ?? "";
+                        string url = $"{BaseUrl}/view?filename={Uri.EscapeDataString(name)}&subfolder={Uri.EscapeDataString((string)item["subfolder"] ?? "")}&type={Uri.EscapeDataString((string)item["type"] ?? "output")}";
+                        byte[] bytes = await _http.GetByteArrayAsync(url, ct).ConfigureAwait(false);
+                        var file = new ArtifactFile { FileName = name, Bytes = bytes, Kind = ArtifactFile.Classify(name) };
+                        result.Files.Add(file);
+                        if (file.Kind == ArtifactKind.Image)
+                        {
+                            result.Pngs.Add(bytes);
+                        }
+                    }
                 }
             }
 
@@ -256,9 +309,9 @@ public sealed class ComfyUiProvider : IImageProvider, IDisposable
             {
             }
 
-            if (result.Pngs.Count == 0)
+            if (result.Files.Count == 0)
             {
-                result.Error = "the workflow finished but produced no image";
+                result.Error = "the workflow finished but produced no file";
             }
         }
         catch (OperationCanceledException)

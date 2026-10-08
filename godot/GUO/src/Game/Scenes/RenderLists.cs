@@ -375,6 +375,10 @@ namespace GUO.Game.Scenes
                 case Mobile:
                 case Item:
                 case GameEffect:
+                // PORT DEVIATION (GUO): staged splats sort and cover as statics do.
+                case Game.GameObjects.SplatObject:
+                // PORT DEVIATION (GUO): terrain overlay layers sort the same way.
+                case Game.GameObjects.LayerObject:
                     float depth = toRender.CalculateDepthZ();
 
                     if (toRender is Mobile)

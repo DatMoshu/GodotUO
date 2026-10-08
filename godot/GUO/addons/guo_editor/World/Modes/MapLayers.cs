@@ -40,7 +40,15 @@ internal interface IMapLayer
 
 /// <summary>A live player or mobile, as the shard's bridge reports it.</summary>
 internal readonly record struct LiveMobile(string Name, int Facet, int X, int Y, int Z, bool Player,
-    uint Serial = 0, int Body = 0, int Hits = 0, int MaxHits = 0, int Notoriety = 0);
+    uint Serial = 0, int Body = 0, int Hits = 0, int MaxHits = 0, int Notoriety = 0,
+    int Direction = 0, int Hue = 0,
+    System.Collections.Generic.List<LiveEquip> Equip = null);
+
+/// <summary>One worn item on a live mobile.</summary>
+internal readonly record struct LiveEquip(uint Serial, int Layer, int Id, int Hue);
+
+/// <summary>A live top-level world item, as the shard's bridge reports it.</summary>
+internal readonly record struct LiveItem(int Facet, int X, int Y, int Z, uint Serial = 0, int Id = 0, int Hue = 0, int Amount = 0);
 
 /// <summary>Sextant and plain coordinates, the way ModernUO's sextant computes them.</summary>
 internal static class Coordinates

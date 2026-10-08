@@ -1,0 +1,1593 @@
+{
+ "id": "aed1fc77-31d9-47e7-897e-c7b9fd7d0511",
+ "revision": 0,
+ "last_node_id": 103,
+ "last_link_id": 188,
+ "nodes": [
+  {
+   "id": 7,
+   "type": "CLIPTextEncode",
+   "pos": [
+    -1707.9718172276052,
+    200.997109679383
+   ],
+   "size": [
+    425.26666259765625,
+    180.60000610351562
+   ],
+   "flags": {},
+   "order": 5,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "clip",
+     "name": "clip",
+     "type": "CLIP",
+     "link": 5
+    },
+    {
+     "localized_name": "text",
+     "name": "text",
+     "type": "STRING",
+     "widget": {
+      "name": "text"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "CONDITIONING",
+     "name": "CONDITIONING",
+     "type": "CONDITIONING",
+     "slot_index": 0,
+     "links": [
+      6
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "CLIPTextEncode"
+   },
+   "widgets_values": [
+    "((drawing, cartoon, painting, sketch, blur, depth of field, dof))"
+   ],
+   "widgets_values_named": {
+    "text": "((drawing, cartoon, painting, sketch, blur, depth of field, dof))"
+   },
+   "color": "#432",
+   "bgcolor": "#653",
+   "shape": 1
+  },
+  {
+   "id": 89,
+   "type": "Reroute",
+   "pos": [
+    -550,
+    610
+   ],
+   "size": [
+    75,
+    26
+   ],
+   "flags": {},
+   "order": 9,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "",
+     "type": "*",
+     "link": 176
+    }
+   ],
+   "outputs": [
+    {
+     "name": "",
+     "type": "IMAGE",
+     "links": [
+      167
+     ]
+    }
+   ],
+   "properties": {
+    "showOutputText": false,
+    "horizontal": false
+   }
+  },
+  {
+   "id": 63,
+   "type": "SaveImage",
+   "pos": [
+    420,
+    -180
+   ],
+   "size": [
+    539.2000122070312,
+    617.2000122070312
+   ],
+   "flags": {},
+   "order": 13,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "images",
+     "name": "images",
+     "type": "IMAGE",
+     "link": 115
+    },
+    {
+     "localized_name": "filename_prefix",
+     "name": "filename_prefix",
+     "type": "STRING",
+     "widget": {
+      "name": "filename_prefix"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "images",
+     "name": "images",
+     "type": "IMAGE",
+     "links": null
+    }
+   ],
+   "title": "Normal",
+   "properties": {},
+   "widgets_values": [
+    "Normal"
+   ],
+   "widgets_values_named": {
+    "filename_prefix": "Normal"
+   },
+   "shape": 1
+  },
+  {
+   "id": 67,
+   "type": "SaveImage",
+   "pos": [
+    1200,
+    -170
+   ],
+   "size": [
+    539.2000122070312,
+    617.2000122070312
+   ],
+   "flags": {},
+   "order": 17,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "images",
+     "name": "images",
+     "type": "IMAGE",
+     "link": 119
+    },
+    {
+     "localized_name": "filename_prefix",
+     "name": "filename_prefix",
+     "type": "STRING",
+     "widget": {
+      "name": "filename_prefix"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "images",
+     "name": "images",
+     "type": "IMAGE",
+     "links": null
+    }
+   ],
+   "title": "Curvature",
+   "properties": {},
+   "widgets_values": [
+    "Curvature"
+   ],
+   "widgets_values_named": {
+    "filename_prefix": "Curvature"
+   },
+   "shape": 1
+  },
+  {
+   "id": 69,
+   "type": "SaveImage",
+   "pos": [
+    660,
+    1090
+   ],
+   "size": [
+    539.2000122070312,
+    617.2000122070312
+   ],
+   "flags": {},
+   "order": 18,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "images",
+     "name": "images",
+     "type": "IMAGE",
+     "link": 121
+    },
+    {
+     "localized_name": "filename_prefix",
+     "name": "filename_prefix",
+     "type": "STRING",
+     "widget": {
+      "name": "filename_prefix"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "images",
+     "name": "images",
+     "type": "IMAGE",
+     "links": null
+    }
+   ],
+   "title": "Depth",
+   "properties": {},
+   "widgets_values": [
+    "Height"
+   ],
+   "widgets_values_named": {
+    "filename_prefix": "Height"
+   },
+   "shape": 1
+  },
+  {
+   "id": 91,
+   "type": "Model Patch Seamless (mtb)",
+   "pos": [
+    -1699.965397873685,
+    -266.476911308935
+   ],
+   "size": [
+    430.79998779296875,
+    190
+   ],
+   "flags": {},
+   "order": 3,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "model",
+     "name": "model",
+     "type": "MODEL",
+     "link": 188
+    },
+    {
+     "localized_name": "startStep",
+     "name": "startStep",
+     "type": "INT",
+     "widget": {
+      "name": "startStep"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "stopStep",
+     "name": "stopStep",
+     "type": "INT",
+     "widget": {
+      "name": "stopStep"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "tilingX",
+     "name": "tilingX",
+     "type": "BOOLEAN",
+     "widget": {
+      "name": "tilingX"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "tilingY",
+     "name": "tilingY",
+     "type": "BOOLEAN",
+     "widget": {
+      "name": "tilingY"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "Original Model (passthrough)",
+     "name": "Original Model (passthrough)",
+     "type": "MODEL",
+     "links": null
+    },
+    {
+     "localized_name": "Patched Model",
+     "name": "Patched Model",
+     "type": "MODEL",
+     "slot_index": 1,
+     "links": [
+      169
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "Model Patch Seamless (mtb)"
+   },
+   "widgets_values": [
+    true,
+    999,
+    true,
+    true
+   ],
+   "widgets_values_named": {
+    "startStep": true,
+    "stopStep": 999,
+    "tilingX": true,
+    "tilingY": true
+   },
+   "color": "#232",
+   "bgcolor": "#353"
+  },
+  {
+   "id": 43,
+   "type": "VAELoader",
+   "pos": [
+    -1130.3726548544805,
+    528.356640672594
+   ],
+   "size": [
+    387.4666748046875,
+    86
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "vae_name",
+     "name": "vae_name",
+     "type": "COMBO",
+     "widget": {
+      "name": "vae_name"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "VAE",
+     "name": "VAE",
+     "type": "VAE",
+     "slot_index": 0,
+     "links": [
+      174
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "VAELoader"
+   },
+   "widgets_values": [
+    "vae-ft-mse-840000-ema-pruned.safetensors"
+   ],
+   "widgets_values_named": {
+    "vae_name": "vae-ft-mse-840000-ema-pruned.safetensors"
+   },
+   "shape": 1
+  },
+  {
+   "id": 97,
+   "type": "Image Tile Offset (mtb)",
+   "pos": [
+    -250,
+    -780
+   ],
+   "size": [
+    315,
+    114
+   ],
+   "flags": {},
+   "order": 12,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "image",
+     "name": "image",
+     "type": "IMAGE",
+     "link": 182
+    },
+    {
+     "localized_name": "tilesX",
+     "name": "tilesX",
+     "type": "INT",
+     "widget": {
+      "name": "tilesX"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "tilesY",
+     "name": "tilesY",
+     "type": "INT",
+     "widget": {
+      "name": "tilesY"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "IMAGE",
+     "name": "IMAGE",
+     "type": "IMAGE",
+     "slot_index": 0,
+     "links": [
+      183
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "Image Tile Offset (mtb)"
+   },
+   "widgets_values": [
+    2,
+    2
+   ],
+   "widgets_values_named": {
+    "tilesX": 2,
+    "tilesY": 2
+   },
+   "color": "#232",
+   "bgcolor": "#353"
+  },
+  {
+   "id": 96,
+   "type": "Vae Decode (mtb)",
+   "pos": [
+    -1046.7884193919565,
+    -273.866386200832
+   ],
+   "size": [
+    315,
+    162
+   ],
+   "flags": {},
+   "order": 7,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "samples",
+     "name": "samples",
+     "type": "LATENT",
+     "link": 173
+    },
+    {
+     "localized_name": "vae",
+     "name": "vae",
+     "type": "VAE",
+     "link": 174
+    },
+    {
+     "localized_name": "seamless_model",
+     "name": "seamless_model",
+     "type": "BOOLEAN",
+     "widget": {
+      "name": "seamless_model"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "use_tiling_decoder",
+     "name": "use_tiling_decoder",
+     "type": "BOOLEAN",
+     "widget": {
+      "name": "use_tiling_decoder"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "tile_size",
+     "name": "tile_size",
+     "type": "INT",
+     "widget": {
+      "name": "tile_size"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "IMAGE",
+     "name": "IMAGE",
+     "type": "IMAGE",
+     "slot_index": 0,
+     "links": [
+      175,
+      176,
+      180
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "Vae Decode (mtb)"
+   },
+   "widgets_values": [
+    true,
+    false,
+    512
+   ],
+   "widgets_values_named": {
+    "seamless_model": true,
+    "use_tiling_decoder": false,
+    "tile_size": 512
+   },
+   "color": "#232",
+   "bgcolor": "#353"
+  },
+  {
+   "id": 46,
+   "type": "SaveImage",
+   "pos": [
+    -370,
+    -170
+   ],
+   "size": [
+    539.2000122070312,
+    617.2000122070312
+   ],
+   "flags": {},
+   "order": 8,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "images",
+     "name": "images",
+     "type": "IMAGE",
+     "link": 175
+    },
+    {
+     "localized_name": "filename_prefix",
+     "name": "filename_prefix",
+     "type": "STRING",
+     "widget": {
+      "name": "filename_prefix"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "images",
+     "name": "images",
+     "type": "IMAGE",
+     "links": null
+    }
+   ],
+   "title": "Albedo",
+   "properties": {},
+   "widgets_values": [
+    "Albedo"
+   ],
+   "widgets_values_named": {
+    "filename_prefix": "Albedo"
+   },
+   "shape": 1
+  },
+  {
+   "id": 74,
+   "type": "EmptyLatentImage",
+   "pos": [
+    -1607.9718172276057,
+    430.99710967938296
+   ],
+   "size": [
+    315,
+    118
+   ],
+   "flags": {},
+   "order": 1,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "width",
+     "name": "width",
+     "type": "INT",
+     "widget": {
+      "name": "width"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "height",
+     "name": "height",
+     "type": "INT",
+     "widget": {
+      "name": "height"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "batch_size",
+     "name": "batch_size",
+     "type": "INT",
+     "widget": {
+      "name": "batch_size"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "LATENT",
+     "name": "LATENT",
+     "type": "LATENT",
+     "slot_index": 0,
+     "links": [
+      132
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "EmptyLatentImage"
+   },
+   "widgets_values": [
+    768,
+    768,
+    1
+   ],
+   "widgets_values_named": {
+    "width": 768,
+    "height": 768,
+    "batch_size": 1
+   },
+   "color": "#323",
+   "bgcolor": "#535",
+   "shape": 1
+  },
+  {
+   "id": 62,
+   "type": "Deep Bump (mtb)",
+   "pos": [
+    -170,
+    600
+   ],
+   "size": [
+    315,
+    198
+   ],
+   "flags": {},
+   "order": 11,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "image",
+     "name": "image",
+     "type": "IMAGE",
+     "link": 167
+    },
+    {
+     "localized_name": "mode",
+     "name": "mode",
+     "type": "COMBO",
+     "widget": {
+      "name": "mode"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "color_to_normals_overlap",
+     "name": "color_to_normals_overlap",
+     "type": "COMBO",
+     "widget": {
+      "name": "color_to_normals_overlap"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "normals_to_curvature_blur_radius",
+     "name": "normals_to_curvature_blur_radius",
+     "type": "COMBO",
+     "widget": {
+      "name": "normals_to_curvature_blur_radius"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "normals_to_height_seamless",
+     "name": "normals_to_height_seamless",
+     "type": "BOOLEAN",
+     "widget": {
+      "name": "normals_to_height_seamless"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "auto_download",
+     "name": "auto_download",
+     "shape": 7,
+     "type": "BOOLEAN",
+     "widget": {
+      "name": "auto_download"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "IMAGE",
+     "name": "IMAGE",
+     "type": "IMAGE",
+     "slot_index": 0,
+     "links": [
+      115,
+      118,
+      122
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "Deep Bump (mtb)"
+   },
+   "widgets_values": [
+    "Color to Normals",
+    "SMALL",
+    "SMALLEST",
+    true,
+    true
+   ],
+   "widgets_values_named": {
+    "mode": "Color to Normals",
+    "color_to_normals_overlap": "SMALL",
+    "normals_to_curvature_blur_radius": "SMALLEST",
+    "normals_to_height_seamless": true,
+    "auto_download": true
+   },
+   "color": "#232",
+   "bgcolor": "#353",
+   "shape": 1
+  },
+  {
+   "id": 66,
+   "type": "Deep Bump (mtb)",
+   "pos": [
+    730,
+    610
+   ],
+   "size": [
+    315,
+    198
+   ],
+   "flags": {},
+   "order": 14,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "image",
+     "name": "image",
+     "type": "IMAGE",
+     "link": 118
+    },
+    {
+     "localized_name": "mode",
+     "name": "mode",
+     "type": "COMBO",
+     "widget": {
+      "name": "mode"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "color_to_normals_overlap",
+     "name": "color_to_normals_overlap",
+     "type": "COMBO",
+     "widget": {
+      "name": "color_to_normals_overlap"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "normals_to_curvature_blur_radius",
+     "name": "normals_to_curvature_blur_radius",
+     "type": "COMBO",
+     "widget": {
+      "name": "normals_to_curvature_blur_radius"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "normals_to_height_seamless",
+     "name": "normals_to_height_seamless",
+     "type": "BOOLEAN",
+     "widget": {
+      "name": "normals_to_height_seamless"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "auto_download",
+     "name": "auto_download",
+     "shape": 7,
+     "type": "BOOLEAN",
+     "widget": {
+      "name": "auto_download"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "IMAGE",
+     "name": "IMAGE",
+     "type": "IMAGE",
+     "slot_index": 0,
+     "links": [
+      119
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "Deep Bump (mtb)"
+   },
+   "widgets_values": [
+    "Normals to Curvature",
+    "SMALL",
+    "SMALLEST",
+    true,
+    true
+   ],
+   "widgets_values_named": {
+    "mode": "Normals to Curvature",
+    "color_to_normals_overlap": "SMALL",
+    "normals_to_curvature_blur_radius": "SMALLEST",
+    "normals_to_height_seamless": true,
+    "auto_download": true
+   },
+   "color": "#232",
+   "bgcolor": "#353",
+   "shape": 1
+  },
+  {
+   "id": 68,
+   "type": "Deep Bump (mtb)",
+   "pos": [
+    290,
+    1090
+   ],
+   "size": [
+    315,
+    198
+   ],
+   "flags": {},
+   "order": 15,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "image",
+     "name": "image",
+     "type": "IMAGE",
+     "link": 122
+    },
+    {
+     "localized_name": "mode",
+     "name": "mode",
+     "type": "COMBO",
+     "widget": {
+      "name": "mode"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "color_to_normals_overlap",
+     "name": "color_to_normals_overlap",
+     "type": "COMBO",
+     "widget": {
+      "name": "color_to_normals_overlap"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "normals_to_curvature_blur_radius",
+     "name": "normals_to_curvature_blur_radius",
+     "type": "COMBO",
+     "widget": {
+      "name": "normals_to_curvature_blur_radius"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "normals_to_height_seamless",
+     "name": "normals_to_height_seamless",
+     "type": "BOOLEAN",
+     "widget": {
+      "name": "normals_to_height_seamless"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "auto_download",
+     "name": "auto_download",
+     "shape": 7,
+     "type": "BOOLEAN",
+     "widget": {
+      "name": "auto_download"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "IMAGE",
+     "name": "IMAGE",
+     "type": "IMAGE",
+     "slot_index": 0,
+     "links": [
+      121
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "Deep Bump (mtb)"
+   },
+   "widgets_values": [
+    "Normals to Height",
+    "SMALL",
+    "SMALLEST",
+    true,
+    true
+   ],
+   "widgets_values_named": {
+    "mode": "Normals to Height",
+    "color_to_normals_overlap": "SMALL",
+    "normals_to_curvature_blur_radius": "SMALLEST",
+    "normals_to_height_seamless": true,
+    "auto_download": true
+   },
+   "color": "#232",
+   "bgcolor": "#353",
+   "shape": 1
+  },
+  {
+   "id": 3,
+   "type": "KSampler",
+   "pos": [
+    -1050.3726548544805,
+    -1.643359327406067
+   ],
+   "size": [
+    315,
+    474
+   ],
+   "flags": {},
+   "order": 6,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "model",
+     "name": "model",
+     "type": "MODEL",
+     "link": 169
+    },
+    {
+     "localized_name": "positive",
+     "name": "positive",
+     "type": "CONDITIONING",
+     "link": 4
+    },
+    {
+     "localized_name": "negative",
+     "name": "negative",
+     "type": "CONDITIONING",
+     "link": 6
+    },
+    {
+     "localized_name": "latent_image",
+     "name": "latent_image",
+     "type": "LATENT",
+     "link": 132
+    },
+    {
+     "localized_name": "seed",
+     "name": "seed",
+     "type": "INT",
+     "widget": {
+      "name": "seed"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "steps",
+     "name": "steps",
+     "type": "INT",
+     "widget": {
+      "name": "steps"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "cfg",
+     "name": "cfg",
+     "type": "FLOAT",
+     "widget": {
+      "name": "cfg"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "sampler_name",
+     "name": "sampler_name",
+     "type": "COMBO",
+     "widget": {
+      "name": "sampler_name"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "scheduler",
+     "name": "scheduler",
+     "type": "COMBO",
+     "widget": {
+      "name": "scheduler"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "denoise",
+     "name": "denoise",
+     "type": "FLOAT",
+     "widget": {
+      "name": "denoise"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "LATENT",
+     "name": "LATENT",
+     "type": "LATENT",
+     "slot_index": 0,
+     "links": [
+      173
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "KSampler"
+   },
+   "widgets_values": [
+    1037,
+    "increment",
+    12,
+    8,
+    "dpmpp_2m",
+    "normal",
+    1
+   ],
+   "widgets_values_named": {
+    "seed": 1037,
+    "control_after_generate": "increment",
+    "steps": 12,
+    "cfg": 8,
+    "sampler_name": "dpmpp_2m",
+    "scheduler": "normal",
+    "denoise": 1
+   },
+   "color": "#222",
+   "bgcolor": "#000",
+   "shape": 1
+  },
+  {
+   "id": 98,
+   "type": "RepeatImageBatch",
+   "pos": [
+    -450,
+    -550
+   ],
+   "size": [
+    270,
+    62
+   ],
+   "flags": {},
+   "order": 10,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "image",
+     "name": "image",
+     "type": "IMAGE",
+     "link": 180
+    },
+    {
+     "localized_name": "amount",
+     "name": "amount",
+     "type": "INT",
+     "widget": {
+      "name": "amount"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "IMAGE",
+     "name": "IMAGE",
+     "type": "IMAGE",
+     "links": [
+      182
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "RepeatImageBatch"
+   },
+   "widgets_values": [
+    4
+   ],
+   "widgets_values_named": {
+    "amount": 4
+   }
+  },
+  {
+   "id": 100,
+   "type": "ImageGrid",
+   "pos": [
+    220,
+    -1020
+   ],
+   "size": [
+    270,
+    194
+   ],
+   "flags": {},
+   "order": 16,
+   "mode": 0,
+   "showAdvanced": true,
+   "inputs": [
+    {
+     "localized_name": "images",
+     "name": "images",
+     "type": "IMAGE",
+     "link": 183
+    },
+    {
+     "localized_name": "columns",
+     "name": "columns",
+     "type": "INT",
+     "widget": {
+      "name": "columns"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "cell_width",
+     "name": "cell_width",
+     "type": "INT",
+     "widget": {
+      "name": "cell_width"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "cell_height",
+     "name": "cell_height",
+     "type": "INT",
+     "widget": {
+      "name": "cell_height"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "padding",
+     "name": "padding",
+     "type": "INT",
+     "widget": {
+      "name": "padding"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "images",
+     "name": "images",
+     "type": "IMAGE",
+     "links": [
+      185
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "ImageGrid"
+   },
+   "widgets_values": [
+    2,
+    256,
+    256,
+    0
+   ],
+   "widgets_values_named": {
+    "columns": 2,
+    "cell_width": 256,
+    "cell_height": 256,
+    "padding": 0
+   }
+  },
+  {
+   "id": 4,
+   "type": "CheckpointLoaderSimple",
+   "pos": [
+    -2272.0968926266055,
+    186.997109679383
+   ],
+   "size": [
+    465.3999938964844,
+    130.9499969482422
+   ],
+   "flags": {},
+   "order": 2,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "ckpt_name",
+     "name": "ckpt_name",
+     "type": "COMBO",
+     "widget": {
+      "name": "ckpt_name"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "MODEL",
+     "name": "MODEL",
+     "type": "MODEL",
+     "slot_index": 0,
+     "links": [
+      188
+     ]
+    },
+    {
+     "localized_name": "CLIP",
+     "name": "CLIP",
+     "type": "CLIP",
+     "slot_index": 1,
+     "links": [
+      3,
+      5
+     ]
+    },
+    {
+     "localized_name": "VAE",
+     "name": "VAE",
+     "type": "VAE",
+     "slot_index": 2,
+     "links": []
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "CheckpointLoaderSimple"
+   },
+   "widgets_values": [
+    "dreamshaper_8.safetensors"
+   ],
+   "widgets_values_named": {
+    "ckpt_name": "dreamshaper_8.safetensors"
+   },
+   "shape": 1
+  },
+  {
+   "id": 93,
+   "type": "PreviewImage",
+   "pos": [
+    220,
+    -790
+   ],
+   "size": [
+    527.2333374023438,
+    555.3499755859375
+   ],
+   "flags": {},
+   "order": 19,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "images",
+     "name": "images",
+     "type": "IMAGE",
+     "link": 185
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "images",
+     "name": "images",
+     "type": "IMAGE",
+     "links": null
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "PreviewImage"
+   },
+   "widgets_values": [],
+   "widgets_values_named": {}
+  },
+  {
+   "id": 6,
+   "type": "CLIPTextEncode",
+   "pos": [
+    -1697.9718172276052,
+    -19.002890320617116
+   ],
+   "size": [
+    422.8500061035156,
+    164.31666564941406
+   ],
+   "flags": {},
+   "order": 4,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "clip",
+     "name": "clip",
+     "type": "CLIP",
+     "link": 3
+    },
+    {
+     "localized_name": "text",
+     "name": "text",
+     "type": "STRING",
+     "widget": {
+      "name": "text"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "CONDITIONING",
+     "name": "CONDITIONING",
+     "type": "CONDITIONING",
+     "slot_index": 0,
+     "links": [
+      4,
+      158
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "CLIPTextEncode"
+   },
+   "widgets_values": [
+    "cobblestone pathway"
+   ],
+   "widgets_values_named": {
+    "text": "cobblestone pathway"
+   },
+   "color": "#432",
+   "bgcolor": "#653",
+   "shape": 1
+  }
+ ],
+ "links": [
+  [
+   3,
+   4,
+   1,
+   6,
+   0,
+   "CLIP"
+  ],
+  [
+   4,
+   6,
+   0,
+   3,
+   1,
+   "CONDITIONING"
+  ],
+  [
+   5,
+   4,
+   1,
+   7,
+   0,
+   "CLIP"
+  ],
+  [
+   6,
+   7,
+   0,
+   3,
+   2,
+   "CONDITIONING"
+  ],
+  [
+   115,
+   62,
+   0,
+   63,
+   0,
+   "IMAGE"
+  ],
+  [
+   118,
+   62,
+   0,
+   66,
+   0,
+   "IMAGE"
+  ],
+  [
+   119,
+   66,
+   0,
+   67,
+   0,
+   "IMAGE"
+  ],
+  [
+   121,
+   68,
+   0,
+   69,
+   0,
+   "IMAGE"
+  ],
+  [
+   122,
+   62,
+   0,
+   68,
+   0,
+   "IMAGE"
+  ],
+  [
+   132,
+   74,
+   0,
+   3,
+   3,
+   "LATENT"
+  ],
+  [
+   158,
+   6,
+   0,
+   86,
+   0,
+   "*"
+  ],
+  [
+   167,
+   89,
+   0,
+   62,
+   0,
+   "IMAGE"
+  ],
+  [
+   169,
+   91,
+   1,
+   3,
+   0,
+   "MODEL"
+  ],
+  [
+   173,
+   3,
+   0,
+   96,
+   0,
+   "LATENT"
+  ],
+  [
+   174,
+   43,
+   0,
+   96,
+   1,
+   "VAE"
+  ],
+  [
+   175,
+   96,
+   0,
+   46,
+   0,
+   "IMAGE"
+  ],
+  [
+   176,
+   96,
+   0,
+   89,
+   0,
+   "*"
+  ],
+  [
+   180,
+   96,
+   0,
+   98,
+   0,
+   "IMAGE"
+  ],
+  [
+   182,
+   98,
+   0,
+   97,
+   0,
+   "IMAGE"
+  ],
+  [
+   183,
+   97,
+   0,
+   100,
+   0,
+   "IMAGE"
+  ],
+  [
+   185,
+   100,
+   0,
+   93,
+   0,
+   "IMAGE"
+  ],
+  [
+   188,
+   4,
+   0,
+   91,
+   0,
+   "MODEL"
+  ]
+ ],
+ "groups": [
+  {
+   "id": 1,
+   "title": "Seamless Diffusion",
+   "bounding": [
+    -2284.0968926266055,
+    -441.00289032061704,
+    1658,
+    1102
+   ],
+   "color": "#3f789e",
+   "flags": {}
+  },
+  {
+   "id": 2,
+   "title": "Seamless Check",
+   "bounding": [
+    -480,
+    -990,
+    1374,
+    763
+   ],
+   "color": "#3f789e",
+   "flags": {}
+  }
+ ],
+ "config": {},
+ "extra": {
+  "ds": {
+   "scale": 0.8140274938684064,
+   "offset": [
+    2301.6330728124876,
+    834.0282814936046
+   ]
+  }
+ },
+ "version": 0.4
+}

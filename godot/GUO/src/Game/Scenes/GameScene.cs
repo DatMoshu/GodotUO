@@ -785,6 +785,8 @@ namespace GUO.Game.Scenes
             }
 
             _world.Update();
+            // PORT DEVIATION (GUO): generated ambient music zones tick here.
+            IO.Audio.MusicZones.Update(_world);
             _animatedStaticsManager.Process();
             _world.BoatMovingManager.Update();
             _world.Player.Pathfinder.ProcessAutoWalk();
@@ -1075,6 +1077,17 @@ namespace GUO.Game.Scenes
             // https://shawnhargreaves.com/blog/depth-sorting-alpha-blended-objects.html
             batcher.SetStencil(DepthStencilState.Default);
 
+            // PORT DEVIATION (GUO): staged gaussian splats (ComfyUI multis),
+            // queued in GameScene.Splats.cs so they sort, occlude and pick
+            // with everything else. Nothing without GUO_SPLAT_STAGE.
+            QueueStagedSplats();
+
+            // PORT DEVIATION (GUO): generated terrain layers (ComfyUI
+            // underlays/overlays). Overlays join the sorted stream at their
+            // centre depth; underlays draw here, below even the land.
+            QueueTerrainLayers();
+            DrawUnderlays(batcher);
+
             RenderedObjectsCount = _renderLists.DrawRenderLists(
                 batcher,
                 _maxGroundZ,
@@ -1082,6 +1095,7 @@ namespace GUO.Game.Scenes
                 _offset.X,
                 _offset.Y
             );
+
 
 
             if (

@@ -47,7 +47,12 @@ internal sealed class StoreRuntimeContent : IDisposable
             if (!File.Exists(path)) return null;
         }
         using var store = new StoreClient("http://127.0.0.1:18865", root, GUO.Configuration.PlatformDefaults.CurrentVersion);
-        try { return Load(files, language, StoreContentLock.Read(path), store); }
+        try
+        {
+            var content = Load(files, language, StoreContentLock.Read(path), store);
+            GD.Print($"[GUO] content mounted: {path}");
+            return content;
+        }
         catch (Exception ex) when (SessionLock != null && Path.GetFullPath(path) == Path.GetFullPath(SessionLock))
         {
             // Nothing was applied: Load stages every component before it changes a loader.

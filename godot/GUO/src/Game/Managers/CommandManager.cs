@@ -29,6 +29,30 @@ namespace GUO.Game.Managers
             // PORT DEVIATION (GUO): native scripting panel; no external assistant.
             Register("scripts", s => Input.Touch.Modern.ModernScripts.Show(_world));
             Register("stopscript", s => _world.StopScripts());
+            // PORT DEVIATION (GUO): in-game splat placer (staged splats, live
+            // preview + manifest save). Upstream has no generated content.
+            Register("splat", s => UIManager.Add(new UI.Gumps.SplatPlacerGump(_world)));
+            // PORT DEVIATION (GUO): in-game image repaint (ComfyUI img2img
+            // into the override art folder, never the install).
+            Register("repaint", s => UIManager.Add(new UI.Gumps.RepaintGump(_world)));
+            // PORT DEVIATION (GUO): NPC voice casting (enrolled voices,
+            // rules, design). Upstream mobiles are silent data.
+            Register("voice", s => UIManager.Add(new UI.Gumps.VoiceGump(_world)));
+            // PORT DEVIATION (GUO): ambient music zones (generated tracks,
+            // tile rects, round-robin). Upstream music is data indices.
+            Register("musiczone", s => UIManager.Add(new UI.Gumps.MusicZoneGump(_world)));
+            // PORT DEVIATION (GUO): terrain layers (ComfyUI underlays and
+            // overlays) are read at boot; this re-reads layers.json live so
+            // the Layers dock's edits show without restarting the client.
+            Register("relayers", s =>
+            {
+                GameScene scene = Client.Game.GetScene<GameScene>();
+                if (scene != null)
+                {
+                    scene.ReloadTerrainLayers();
+                    GameActions.Print(_world, "Terrain layers reloaded.");
+                }
+            });
             Register
             (
                 "info",

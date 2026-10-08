@@ -4,6 +4,15 @@ A **private** ModernUO instance for the editor's live and export work, so
 nothing the editor does touches the shared dev shard (`launchers\shard`),
 which other agents and devices play on.
 
+> Solo setup (2026-10-07): the bridge (`GUO.EditorBridge.dll`, the `items`,
+> `speech` and `mobiles` ops) rides the shared dev shard itself instead --
+> `launchers\shard\run.bat` sets `GUO_BRIDGE_PORT=2595`, the DLL is installed
+> in the shared `Distribution`, and the private instance is stopped. One
+> shard (2593 game, 2595 bridge); scripted clients use the GM probe accounts
+> (`guoeffects`, …) so they never kick the owner's session. Revert by
+> unlisting the DLL from the shared `Data/assemblies.json` and starting the
+> private instance again.
+
 ```
 python tools\editor_shard\run.py setup   [--from DIR] [--port 2594]
 python tools\editor_shard\run.py start   [--data-first DIR] [--objects EXPORT | --clear-objects]

@@ -38,7 +38,9 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
     private AiDock _ai;
     private StoreView _store;
     private ArtDock _art;
+    private StaticStudioDock _studio;
     private LogsDock _logs;
+    private LayersDock _layers;
     private MapGenView _mapgen;
     private GumpStudio _gumps;
     private bool _gumpsWasVisible;
@@ -166,10 +168,23 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         _art.Attach(_data, () => _inspector?.Current);
         AddDock(_art);
 
+        // StaticStudio: pick a static in the world, generate new artwork for
+        // it with ComfyUI, and save it as a theme entry (image variant and/or
+        // gaussian splat). Owns worker tasks, which TearDown cancels.
+        _studio = new StaticStudioDock();
+        _studio.Attach(_data, () => _inspector?.Current, () => _world?.Host?.World);
+        AddDock(_studio);
+
         // The Logs dock: the server's and the clients' logs, tailed read only. It owns worker
         // tasks, which TearDown cancels.
         _logs = new LogsDock();
         AddDock(_logs);
+
+        // The Layers dock: the terrain underlays/overlays registry the game
+        // reads at boot. Stateless; nothing to tear down.
+        _layers = new LayersDock();
+        AddDock(_layers);
+        _layers.Attach(_world);
 
         // The Map Generator (ADR-0030): a main-screen tab (GuoMapGenPlugin owns its button). It runs
         // tools/mapgen as a process and opens what it exports in the World tab.
@@ -244,7 +259,9 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
             _smoke.Ai = _ai;
             _smoke.Store = _store;
             _smoke.Art = _art;
+            _smoke.Studio = _studio;
             _smoke.Logs = _logs;
+            _smoke.Layers = _layers;
             _smoke.MultiEdit = _multiedit;
             AddChild(_smoke);
         }
@@ -409,12 +426,27 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
             _logs = null;
         }
 
+        if (_layers != null)
+        {
+            RemoveDock(_layers);
+            _layers.QueueFree();
+            _layers = null;
+        }
+
         if (_art != null)
         {
             _art.Shutdown();
             RemoveDock(_art);
             _art.QueueFree();
             _art = null;
+        }
+
+        if (_studio != null)
+        {
+            _studio.Shutdown();
+            RemoveDock(_studio);
+            _studio.QueueFree();
+            _studio = null;
         }
 
         if (_ai != null)

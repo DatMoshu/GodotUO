@@ -103,6 +103,11 @@ public partial class Main : Node
             InputProbe.ProbeCharacter = _options.Character;
         }
 
+        if (_options.AutoLogin)
+        {
+            InputProbe.AutoLogin = true;
+        }
+
         GameController.PinnedWindowPosition = _options.WindowPosition;
         GameController.PinnedWindowSize = _options.WindowSize;
 
@@ -298,6 +303,14 @@ public partial class Main : Node
                 {
                     DoorProbeThenQuit();
                 }
+                else if (_options.LayerShot)
+                {
+                    LayerShotThenQuit();
+                }
+                else if (_options.ExtractTest)
+                {
+                    ExtractTestThenQuit();
+                }
                 else if (_options.GamepadProbe)
                 {
                     GamepadProbeThenQuit();
@@ -329,6 +342,10 @@ public partial class Main : Node
                 else if (_options.TradePartner)
                 {
                     TradePartnerThenQuit();
+                }
+                else if (!string.IsNullOrWhiteSpace(_options.WalkTo))
+                {
+                    WalkToThenQuit();
                 }
                 else if (_options.InputProbe)
                 {
@@ -637,8 +654,10 @@ public partial class Main : Node
         || _options.PortraitProbe
         || _options.PerfProbe
         || !string.IsNullOrEmpty(_options.PostFxSheet)
-        || _options.DoorProbe
-        || _options.GamepadProbe
+            || _options.DoorProbe
+            || _options.LayerShot
+            || _options.ExtractTest
+            || _options.GamepadProbe
         || _options.OneScreenProbe
         || _options.GlyphShots
         || _options.AssetProbe.Length > 0
@@ -771,6 +790,25 @@ public partial class Main : Node
         }
 
         Quit(GamepadProbe.Passed ? 0 : 1);
+    }
+
+    /// <summary>Extract a decal from two PNGs and quit; see ExtractTest.</summary>
+    private void ExtractTestThenQuit()
+    {
+        ExtractTest.Run(_options.ExtractIn, _options.ExtractOut, _options.ExtractDest,
+            _options.ExtractTolerance, _options.ExtractFeather);
+        Quit(ExtractTest.Passed ? 0 : 1);
+    }
+
+    /// <summary>Go photograph a terrain layer; see LayerShot.</summary>
+    private async void LayerShotThenQuit()
+    {
+        LayerShot.At = string.IsNullOrWhiteSpace(_options.LayerAt) ? LayerShot.At : _options.LayerAt;
+        LayerShot.SwapManifest = _options.LayerSwap;
+        LayerShot.Zoom = _options.LayerZoom;
+        await Preamble();
+        await LayerShot.Run(this, _options.ScreenshotDir);
+        Quit(LayerShot.Passed ? 0 : 1);
     }
 
     /// <summary>Shut and open the doors on screen, keeping every frame after; see DoorProbe.</summary>
@@ -996,6 +1034,30 @@ public partial class Main : Node
         InputProbe.EndureSeconds = _options.EndureSeconds;
 
         await InputProbe.Run(this, 200);
+
+        await CaptureFrame();
+
+        Quit(InputProbe.Passed ? 0 : 1);
+    }
+
+    /// <summary>--walk-to: log in, pathfind to the target, capture, quit.</summary>
+    private async void WalkToThenQuit()
+    {
+        InputProbe.WalkToTarget = _options.WalkTo;
+        InputProbe.WalkToSound = _options.WalkToSound;
+        InputProbe.WalkToMusic = _options.WalkToMusic;
+        InputProbe.WalkToMusicExpect = _options.WalkToMusicExpect;
+        InputProbe.WalkToClickSplat = _options.WalkToClickSplat;
+        InputProbe.WalkToVoice = _options.WalkToVoice;
+        InputProbe.WalkToSay = _options.WalkToSay;
+        InputProbe.WalkToHearSecs = _options.WalkToHearSecs;
+        InputProbe.WalkToVoiceFake = _options.WalkToVoiceFake;
+        InputProbe.WalkToDesignNearby = _options.WalkToDesignNearby;
+        InputProbe.WalkToThemeDir = _options.ThemeDir;
+        InputProbe.WalkToTheme = _options.WalkToTheme;
+        InputProbe.WalkToThemeZone = _options.WalkToThemeZone;
+
+        await InputProbe.RunWalkTo(this);
 
         await CaptureFrame();
 
@@ -1310,6 +1372,45 @@ public partial class Main : Node
         /// <summary>Drive the running client with synthesised input.</summary>
         public bool InputProbe { get; private set; }
 
+        /// <summary>--walk-to x,y[,z]: log in, pathfind there, screenshot, quit.</summary>
+        public string WalkTo { get; private set; } = "";
+
+        /// <summary>--play-sound id: the walk-to run plays it on arrival (live audio proof).</summary>
+        public int? WalkToSound { get; private set; }
+
+        /// <summary>--play-music id: the walk-to run plays it on arrival (live audio proof).</summary>
+        public int? WalkToMusic { get; private set; }
+
+        /// <summary>--music-expect text: the walk-to run waits for the music-zone status to contain it (zone + cycling proof).</summary>
+        public string WalkToMusicExpect { get; private set; } = "";
+
+        /// <summary>--click-splat name: the walk-to run clicks it on arrival (live picking proof).</summary>
+        public string WalkToClickSplat { get; private set; } = "";
+
+        /// <summary>--voice name: voice profile the walk-to run speaks with (live TTS proof).</summary>
+        public string WalkToVoice { get; private set; } = "";
+
+        /// <summary>--say text: line the walk-to run speaks on arrival (live TTS proof).</summary>
+        public string WalkToSay { get; private set; } = "";
+
+        /// <summary>--hear-secs n: listen for voiced mobiles this long on arrival (live mob-voice proof).</summary>
+        public int WalkToHearSecs { get; private set; }
+
+        /// <summary>--voice-fake text: deliver text as the nearest mapped mobile (mob path proof).</summary>
+        public string WalkToVoiceFake { get; private set; } = "";
+
+        /// <summary>--design-nearby: design a voice for the nearest unmapped mobile, then speak as them.</summary>
+        public bool WalkToDesignNearby { get; private set; }
+
+        /// <summary>--theme-dir dir: folder of *.theme.json files for theme runs.</summary>
+        public string ThemeDir { get; private set; } = "";
+
+        /// <summary>--theme name: theme to activate on arrival (live theme proof).</summary>
+        public string WalkToTheme { get; private set; } = "";
+
+        /// <summary>--theme-zone F,x1,y1,x2,y2: zone the walk-to theme paints.</summary>
+        public string WalkToThemeZone { get; private set; } = "";
+
         /// <summary>Let a scripted run be heard. Off by default; a person playing is never muted.</summary>
         public bool Sound { get; private set; }
 
@@ -1331,6 +1432,8 @@ public partial class Main : Node
                 || PerfProbe
                 || !string.IsNullOrEmpty(PostFxSheet)
                 || DoorProbe
+                || LayerShot
+                || ExtractTest
                 || GamepadProbe
                 || OneScreenProbe
                 || GlyphShots
@@ -1347,7 +1450,8 @@ public partial class Main : Node
                 || DualProbe
                 || PregameProbe
                 || ShardCommands.Count > 0
-                || ShotAfter > 0);
+                || ShotAfter > 0
+                || !string.IsNullOrWhiteSpace(WalkTo));
 
         /// <summary>
         /// Whether the window is kept from ever taking focus. <c>--no-focus</c>
@@ -1441,6 +1545,35 @@ public partial class Main : Node
         public bool PerfParity { get; private set; }
 
         public bool DoorProbe { get; private set; }
+
+        public bool LayerShot { get; private set; }
+
+        /// <summary>--layer-at "x y z": where --layer-shot goes; see LayerShot.</summary>
+        public string LayerAt { get; private set; } = "";
+
+        /// <summary>--layer-swap PATH: copy this layers.json over the live one mid-run, then -relayers.</summary>
+        public string LayerSwap { get; private set; } = "";
+
+        /// <summary>--extract-test: prove ExtractDecal on two PNGs; see ExtractTest.</summary>
+        public bool ExtractTest { get; private set; }
+
+        /// <summary>--extract-in/--extract-out/--extract-dest PATH: the capture, the repaint, the decal.</summary>
+        public string ExtractIn { get; private set; } = "";
+
+        /// <summary>--extract-out PATH.</summary>
+        public string ExtractOut { get; private set; } = "";
+
+        /// <summary>--extract-dest PATH.</summary>
+        public string ExtractDest { get; private set; } = "";
+
+        /// <summary>--extract-tol N, --extract-feather N: 0..255 channel units (defaults 12, 2).</summary>
+        public float ExtractTolerance { get; private set; } = 12f;
+
+        /// <summary>--extract-feather N.</summary>
+        public float ExtractFeather { get; private set; } = 2f;
+
+        /// <summary>--layer-zoom Z: pin the camera zoom for the shots.</summary>
+        public float LayerZoom { get; private set; }
 
         /// <summary>File the world objects near the player are written to after the shard commands; see ObjectsDump.</summary>
         public string ObjectsDump { get; private set; } = "";
@@ -1971,6 +2104,51 @@ public partial class Main : Node
                     case "--screenshot-name":
                         o.ScreenshotName = Next();
                         break;
+                    case "--layer-shot":
+                        o.LayerShot = true;
+                        break;
+                    case "--layer-at":
+                        o.LayerAt = Next();
+                        break;
+                    case "--layer-swap":
+                        o.LayerSwap = NextPath();
+                        break;
+                    case "--layer-zoom":
+                        if (float.TryParse(Next(), System.Globalization.NumberStyles.Float,
+                            System.Globalization.CultureInfo.InvariantCulture, out float lz))
+                        {
+                            o.LayerZoom = lz;
+                        }
+
+                        break;
+                    case "--extract-test":
+                        o.ExtractTest = true;
+                        break;
+                    case "--extract-in":
+                        o.ExtractIn = NextPath();
+                        break;
+                    case "--extract-out":
+                        o.ExtractOut = NextPath();
+                        break;
+                    case "--extract-dest":
+                        o.ExtractDest = NextPath();
+                        break;
+                    case "--extract-tol":
+                        if (float.TryParse(Next(), System.Globalization.NumberStyles.Float,
+                            System.Globalization.CultureInfo.InvariantCulture, out float et))
+                        {
+                            o.ExtractTolerance = et;
+                        }
+
+                        break;
+                    case "--extract-feather":
+                        if (float.TryParse(Next(), System.Globalization.NumberStyles.Float,
+                            System.Globalization.CultureInfo.InvariantCulture, out float ef))
+                        {
+                            o.ExtractFeather = ef;
+                        }
+
+                        break;
                     case "--host":
                         o.ShardHost = Next();
                         break;
@@ -1989,6 +2167,57 @@ public partial class Main : Node
                             o.ShardPort = p;
                         }
 
+                        break;
+                    case "--walk-to":
+                        o.WalkTo = Next();
+                        break;
+                    case "--play-sound":
+                        if (int.TryParse(Next(), out int sfx))
+                        {
+                            o.WalkToSound = sfx;
+                        }
+
+                        break;
+                    case "--play-music":
+                        if (int.TryParse(Next(), out int mus))
+                        {
+                            o.WalkToMusic = mus;
+                        }
+
+                        break;
+                    case "--music-expect":
+                        o.WalkToMusicExpect = Next();
+                        break;
+                    case "--click-splat":
+                        o.WalkToClickSplat = Next();
+                        break;
+                    case "--voice":
+                        o.WalkToVoice = Next();
+                        break;
+                    case "--say":
+                        o.WalkToSay = Next();
+                        break;
+                    case "--hear-secs":
+                        if (int.TryParse(Next(), out int hear))
+                        {
+                            o.WalkToHearSecs = hear;
+                        }
+
+                        break;
+                    case "--voice-fake":
+                        o.WalkToVoiceFake = Next();
+                        break;
+                    case "--design-nearby":
+                        o.WalkToDesignNearby = true;
+                        break;
+                    case "--theme-dir":
+                        o.ThemeDir = NextPath();
+                        break;
+                    case "--theme":
+                        o.WalkToTheme = Next();
+                        break;
+                    case "--theme-zone":
+                        o.WalkToThemeZone = Next();
                         break;
                     default:
                         GD.Print($"[GUO] ignoring unknown argument: {arg}");

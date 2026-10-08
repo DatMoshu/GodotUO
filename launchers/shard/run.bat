@@ -18,6 +18,11 @@ if not exist "%UO_SHARD_DIST%\ModernUO.exe" (
 "%UO_PYTHON%" "%UO_ROOT%\tools\modernuo\configure.py" || exit /b 1
 
 echo [shard] %UO_SHARD_NAME% on %UO_SHARD_HOST%:%UO_SHARD_PORT%  (Ctrl-C to stop)
+REM  The editor bridge rides along on the dev shard itself (single-shard
+REM  setup, ADR-0012): the UO Shard dock's Live connects to it on 2595, the
+REM  same port it has always used, so no dock settings change.
+if not defined GUO_BRIDGE_PORT set "GUO_BRIDGE_PORT=2595"
+if not defined GUO_BRIDGE_SHARD set "GUO_BRIDGE_SHARD=%UO_SHARD_NAME%"
 pushd "%UO_SHARD_DIST%"
 "%UO_SHARD_DIST%\ModernUO.exe"
 set "RC=%ERRORLEVEL%"

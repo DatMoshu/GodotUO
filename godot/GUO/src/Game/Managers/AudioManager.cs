@@ -21,7 +21,11 @@ namespace GUO.Game.Managers
         const int MasterBus = 0;
 
         private bool _canReproduceAudio = true;
-        private readonly LinkedList<UOSound> _currentSounds = new LinkedList<UOSound>();
+        // PORT DEVIATION (GUO): Sound, not UOSound: verified content-pack
+        // music (StoreMusic) plays through the base API and is tracked here.
+        // Every use below only touches base members (Name, IsPlaying, Volume,
+        // Stop), so the wider element type changes nothing for UOSound.
+        private readonly LinkedList<Sound> _currentSounds = new LinkedList<Sound>();
         private readonly UOMusic[] _currentMusic = { null, null };
         private readonly int[] _currentMusicIndices = { 0, 0 };
         public int LoginMusicIndex { get; private set; }
@@ -52,7 +56,7 @@ namespace GUO.Game.Managers
                     }
                 }
 
-                foreach (UOSound sound in _currentSounds)
+                foreach (Sound sound in _currentSounds)
                 {
                     if (sound != null && sound.IsPlaying(Time.Ticks))
                     {
@@ -248,15 +252,26 @@ namespace GUO.Game.Managers
             {
                 StopMusic();
             }
-            else if (m != null && (m != _currentMusic[0] || iswarmode))
+            else if (m is UOMusic um && (um != _currentMusic[0] || iswarmode))
             {
                 StopMusic();
 
                 int idx = iswarmode ? 1 : 0;
                 _currentMusicIndices[idx] = music;
-                _currentMusic[idx] = (UOMusic) m;
+                _currentMusic[idx] = um;
 
                 _currentMusic[idx].Play(Time.Ticks, volume);
+            }
+            else if (m != null && m is not UOMusic)
+            {
+                // PORT DEVIATION (GUO): verified content-pack music is a plain
+                // Sound, not a UOMusic, so the cast above would throw. It
+                // plays through the base API and is tracked with the sounds,
+                // which is also what NowPlaying reads.
+                if (m.Play(Time.Ticks, volume))
+                {
+                    _currentSounds.AddLast(m);
+                }
             }
         }
 
@@ -311,7 +326,7 @@ namespace GUO.Game.Managers
                 return;
             }
 
-            for (LinkedListNode<UOSound> soundNode = _currentSounds.First; soundNode != null; soundNode = soundNode.Next)
+            for (LinkedListNode<Sound> soundNode = _currentSounds.First; soundNode != null; soundNode = soundNode.Next)
             {
                 soundNode.Value.Volume = volume;
             }
@@ -337,11 +352,11 @@ namespace GUO.Game.Managers
 
         public void StopSounds()
         {
-            LinkedListNode<UOSound> first = _currentSounds.First;
+            LinkedListNode<Sound> first = _currentSounds.First;
 
             while (first != null)
             {
-                LinkedListNode<UOSound> next = first.Next;
+                LinkedListNode<Sound> next = first.Next;
 
                 first.Value.Stop();
 
@@ -382,11 +397,11 @@ namespace GUO.Game.Managers
             }
 
 
-            LinkedListNode<UOSound> first = _currentSounds.First;
+            LinkedListNode<Sound> first = _currentSounds.First;
 
             while (first != null)
             {
-                LinkedListNode<UOSound> next = first.Next;
+                LinkedListNode<Sound> next = first.Next;
 
                 if (!first.Value.IsPlaying(Time.Ticks))
                 {

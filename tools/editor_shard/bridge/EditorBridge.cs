@@ -281,6 +281,7 @@ public static class EditorBridge
         public StreamWriter Writer;
         public string Name = "?";
         public long LastMobilesMs;
+        public long LastItemsMs;
         private readonly object _lock = new();
 
         public void Send(JsonObject msg)
@@ -406,6 +407,24 @@ public static class EditorBridge
                     {
                         string refused = LiveMobiles.Authorise(msg, hello);
                         conn.Send(refused != null ? LiveMobiles.Refuse(req, refused) : LiveMobiles.Query(msg));
+                    });
+                }
+                else if (op == "items")
+                {
+                    int req = (int?)msg["req"] ?? 0;
+                    long now = Environment.TickCount64;
+                    if (now - conn.LastItemsMs < LiveItems.MinIntervalMs)
+                    {
+                        conn.Send(LiveItems.Refuse(req, "rate limited"));
+                        continue;
+                    }
+
+                    conn.LastItemsMs = now;
+                    bool hello = conn.Name != "?";
+                    Core.LoopContext.Post(() =>
+                    {
+                        string refused = LiveMobiles.Authorise(msg, hello);
+                        conn.Send(refused != null ? LiveItems.Refuse(req, refused) : LiveItems.Query(msg));
                     });
                 }
                 else if (op == "object")

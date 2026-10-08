@@ -148,6 +148,34 @@ internal sealed class ShardLink : IDisposable
         Send(msg);
     }
 
+    /// <summary>Asks for the top-level world items in a rectangle (the bridge's "items" op).</summary>
+    public void RequestItems(int req, int facet, int x0, int y0, int x1, int y1, string asCharacter = null)
+    {
+        var msg = new JsonObject { ["op"] = "items", ["req"] = req, ["facet"] = facet, ["x0"] = x0, ["y0"] = y0, ["x1"] = x1, ["y1"] = y1 };
+        if (!string.IsNullOrWhiteSpace(asCharacter))
+        {
+            msg["as"] = asCharacter;
+        }
+
+        Send(msg);
+    }
+
+    /// <summary>The items of an "items" reply.</summary>
+    internal static System.Collections.Generic.List<LiveItem> ToItems(JsonNode msg)
+    {
+        var list = new System.Collections.Generic.List<LiveItem>();
+        if (msg["items"] is JsonArray a)
+        {
+            foreach (JsonNode m in a)
+            {
+                list.Add(new LiveItem((int)m["facet"], (int)m["x"], (int)m["y"], (int)m["z"],
+                    (uint)m["serial"], (int)m["id"], (int)m["hue"], (int)m["amount"]));
+            }
+        }
+
+        return list;
+    }
+
     /// <summary>The mobiles of a "mobiles" reply.</summary>
     internal static System.Collections.Generic.List<LiveMobile> ToMobiles(JsonNode msg)
     {
@@ -156,8 +184,18 @@ internal sealed class ShardLink : IDisposable
         {
             foreach (JsonNode m in a)
             {
+                var equip = new System.Collections.Generic.List<LiveEquip>();
+                if (m["equip"] is JsonArray e)
+                {
+                    foreach (JsonNode w in e)
+                    {
+                        equip.Add(new LiveEquip((uint)w["serial"], (int)w["layer"], (int)w["id"], (int)w["hue"]));
+                    }
+                }
+
                 list.Add(new LiveMobile((string)m["name"] ?? "", (int)m["facet"], (int)m["x"], (int)m["y"], (int)m["z"], (bool)m["isPlayer"],
-                    (uint)m["serial"], (int)m["body"], (int)m["hits"], (int)m["maxHits"], (int)m["notoriety"]));
+                    (uint)m["serial"], (int)m["body"], (int)m["hits"], (int)m["maxHits"], (int)m["notoriety"],
+                    (int?)m["direction"] ?? 0, (int?)m["hue"] ?? 0, equip));
             }
         }
 

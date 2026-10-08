@@ -71,6 +71,31 @@ namespace GUO.Assets
         /// A File.Exists per tile would be a disk hit for every square of ground on the screen,
         /// which is several hundred of them, sixty times a second.
         /// </summary>
+        /// <summary>
+        /// Player-authored art overrides (the repaint gump's home): loose
+        /// .art files under GUO_ART_OVERRIDE (else %APPDATA%/GUO/overrides),
+        /// Art/Statics/&lt;id&gt;.art and Art/Land/&lt;id&gt;.art, in raw
+        /// archive bytes. Never the install: the client reads its own data
+        /// read-only and paints these over it.
+        /// </summary>
+        public static string OverrideDir()
+        {
+            string dir = Environment.GetEnvironmentVariable("GUO_ART_OVERRIDE");
+            if (!string.IsNullOrWhiteSpace(dir))
+            {
+                return dir;
+            }
+
+            return Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "GUO", "overrides");
+        }
+
+        /// <summary>Re-reads the override folders (after the repaint gump writes).</summary>
+        public void RescanOverrides()
+        {
+            LoadOurs();
+        }
+
         private void LoadOurs()
         {
             _ourStatics.Clear();
@@ -79,11 +104,20 @@ namespace GUO.Assets
             // Two folders and not one, keyed by the numbers a shard author actually types - the
             // item id a `new Item(0x2818)` uses, and the land tile id. The archive's own indexing
             // puts statics 0x4000 along from land in a single run, and nobody thinks in those.
-            Gather(Path.Combine(FileManager.BasePath, "Art", "Statics"),
+            //
+            // PORT DEVIATION (GUO): the override folder paints first, so player
+            // art wins over both the install and the data folder, which only
+            // fill numbers the overrides leave alone.
+            string over = OverrideDir();
+            Gather(Path.Combine(over, "Art", "Statics"),
                    _ourStatics, MAX_STATIC_DATA_INDEX_COUNT - MAX_LAND_DATA_INDEX_COUNT);
-
-            Gather(Path.Combine(FileManager.BasePath, "Art", "Land"),
+            Gather(Path.Combine(over, "Art", "Land"),
                    _ourLand, MAX_LAND_DATA_INDEX_COUNT);
+
+            Gather(Path.Combine(FileManager.BasePath, "Art", "Statics"),
+                   _ourStatics, MAX_STATIC_DATA_INDEX_COUNT - MAX_LAND_DATA_INDEX_COUNT, false);
+            Gather(Path.Combine(FileManager.BasePath, "Art", "Land"),
+                   _ourLand, MAX_LAND_DATA_INDEX_COUNT, false);
 
             if (_ourStatics.Count > 0 || _ourLand.Count > 0)
             {
@@ -91,7 +125,7 @@ namespace GUO.Assets
             }
         }
 
-        private static void Gather(string folder, Dictionary<int, string> into, int limit)
+        private static void Gather(string folder, Dictionary<int, string> into, int limit, bool overwrite = true)
         {
             if (!Directory.Exists(folder))
             {
@@ -101,7 +135,7 @@ namespace GUO.Assets
             foreach (string path in Directory.EnumerateFiles(folder, "*.art"))
             {
                 if (int.TryParse(Path.GetFileNameWithoutExtension(path), out int id)
-                    && id >= 0 && id < limit)
+                    && id >= 0 && id < limit && (overwrite || !into.ContainsKey(id)))
                 {
                     into[id] = path;
                 }

@@ -28,6 +28,8 @@ namespace GUO.Game.UI.Gumps
         Debug,
         NetStats,
 
-        NameOverHeadHandler
+        NameOverHeadHandler,
+
+        SplatPlacer
     }
 }

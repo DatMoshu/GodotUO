@@ -133,6 +133,9 @@ public partial class ArtDock : EditorDock
         _import = new Button { Text = "Import to overlay" };
         _import.Pressed += () => Report(ImportSelected());
         root.AddChild(_import);
+        var save = new Button { Text = "Save audio/3D artifacts" };
+        save.Pressed += () => Report(SaveArtifacts());
+        root.AddChild(save);
         _status = new Label { AutowrapMode = TextServer.AutowrapMode.WordSmart };
         root.AddChild(_status);
         RefreshWorkflows();
@@ -223,7 +226,16 @@ public partial class ArtDock : EditorDock
         string wf = _workflowPick.ItemCount > 0 && !_workflowPick.Disabled ? (string)_workflowPick.GetItemMetadata(_workflowPick.Selected) : "";
         var req = BuildRequest(_prompt.Text, wf, _useAsset.ButtonPressed ? _source() : null);
         ImageResult r = await RunAsync(provider, req);
-        Report(r.Error ?? $"{r.Pngs.Count} image(s) from {provider.Name}");
+        Report(r.Error ?? Describe(r, provider.Name));
+    }
+
+    /// <summary>One line for a finished run: images plus any audio/3D artifacts.</summary>
+    public static string Describe(ImageResult r, string providerName)
+    {
+        int artifacts = r.Files.Count(f => f.Kind != ArtifactKind.Image);
+        return artifacts > 0
+            ? $"{r.Pngs.Count} image(s) + {artifacts} artifact(s) from {providerName} (Save audio/3D artifacts)"
+            : $"{r.Pngs.Count} image(s) from {providerName}";
     }
 
     /// <summary>A provider for the picker's choice. Retro Diffusion's key comes from the AI dock's endpoint book.</summary>
@@ -356,6 +368,58 @@ public partial class ArtDock : EditorDock
         return why == null
             ? $"imported as {ArtSidecar.KindName(_targetKind.Value)} 0x{_targetId:X4} ({string.Join("; ", notes)})"
             : $"refused: {why}";
+    }
+
+    /// <summary>
+    /// Saves the last run's audio/3D artifacts beside the exchange folder, each with a
+    /// provenance sidecar (<c>artifacts/&lt;name&gt;</c> + <c>&lt;name&gt;.json</c>).
+    /// Images stay in the gallery for overlay import; this is for what has no UO slot.
+    /// Returns a status line (the reason when nothing was saved).
+    /// </summary>
+    public string SaveArtifacts()
+    {
+        if (_lastResult == null)
+        {
+            return "nothing to save: queue a workflow first";
+        }
+
+        var done = new List<string>();
+        foreach (ArtifactFile f in _lastResult.Files)
+        {
+            if (f.Kind == ArtifactKind.Image)
+            {
+                continue;
+            }
+
+            string name = Path.GetFileName(f.FileName);
+            if (string.IsNullOrEmpty(name))
+            {
+                continue;
+            }
+
+            string dir = Path.Combine(ArtExchange.Root, "artifacts");
+            Directory.CreateDirectory(dir);
+            string dest = Path.Combine(dir, name);
+            File.WriteAllBytes(dest, f.Bytes);
+            var prov = new ArtProvenance
+            {
+                Tool = _providerUsed?.Id ?? "image-service",
+                Model = _lastResult.Model,
+                Workflow = _lastResult.Workflow,
+                Kind = f.Kind == ArtifactKind.Audio ? "audio" : "model",
+                Seed = _lastResult.Seed >= 0 ? _lastResult.Seed : null,
+                DerivedFromClientArt = _lastRequest?.InputIsClientArt ?? false,
+            };
+            if (!string.IsNullOrEmpty(_lastRequest?.InputName))
+            {
+                prov.Inputs.Add(_lastRequest.InputName);
+            }
+
+            File.WriteAllText(dest + ".json", prov.ToJson().ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+            done.Add(name);
+        }
+
+        return done.Count > 0 ? $"saved {done.Count} artifact(s): {string.Join(", ", done)}" : "no audio/3D artifacts in the last run";
     }
 
     /// <summary>Cancels running work and releases the HTTP clients; called before a reload or when the dock closes.</summary>

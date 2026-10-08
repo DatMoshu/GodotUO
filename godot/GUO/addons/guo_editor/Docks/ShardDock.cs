@@ -43,6 +43,7 @@ public partial class ShardDock : EditorDock
 
     // The Live map layer's feed (ADR-0027): polled while Live is on and the World tab shows.
     private List<LiveMobile> _liveMobiles = new();
+    private List<LiveItem> _liveItems = new();
     private double _pollClock;
     private long _pollSentMs;
     private int _pollReq;
@@ -58,6 +59,12 @@ public partial class ShardDock : EditorDock
 
     /// <summary>The mobiles the Live layer is drawing, as the shard last reported them.</summary>
     internal IReadOnlyList<LiveMobile> LiveMobiles => _liveMobiles;
+
+    /// <summary>The live items the shard last reported, drawn as live objects beside the mobiles.</summary>
+    internal IReadOnlyList<LiveItem> LiveItems => _liveItems;
+
+    /// <summary>The last "items" reply, verbatim.</summary>
+    public JsonNode LastItems { get; private set; }
 
     public bool Live => _link.Connected;
 
@@ -128,7 +135,10 @@ public partial class ShardDock : EditorDock
         _pollClock = 0;
         _pollSentMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         var v = view.Value;
-        _link.RequestMobiles(++_pollReq, v.Facet, v.X0 - PollMargin, v.Y0 - PollMargin, v.X1 + PollMargin, v.Y1 + PollMargin, _as?.Text);
+        // Queries are public (no "as"): naming an offline character would
+        // refuse every poll. "as" stays on GM commands, which need it.
+        _link.RequestMobiles(++_pollReq, v.Facet, v.X0 - PollMargin, v.Y0 - PollMargin, v.X1 + PollMargin, v.Y1 + PollMargin);
+        _link.RequestItems(++_pollReq, v.Facet, v.X0 - PollMargin, v.Y0 - PollMargin, v.X1 + PollMargin, v.Y1 + PollMargin);
     }
 
     public override void _Ready()
@@ -216,9 +226,31 @@ public partial class ShardDock : EditorDock
     {
         _link.Disconnect();
         _liveMobiles = new List<LiveMobile>();
+        _liveItems = new List<LiveItem>();
+        LiveObjects.Clear(_world?.Host?.World);
         _status.Text = "live: off";
         _live?.SetPressedNoSignal(false);
         Log("disconnected");
+    }
+
+    private long _syncLogMs;
+
+    /// <summary>Pushes the latest live feeds into the World tab's scene as real objects.</summary>
+    private void SyncLive()
+    {
+        var world = _world?.Host?.World;
+        if (world == null)
+        {
+            return;
+        }
+
+        LiveObjects.Sync(world, _world.Host.Facet, _liveMobiles, _liveItems);
+        long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        if (now - _syncLogMs > 10000)
+        {
+            _syncLogMs = now;
+            Log($"live objects: {world.Mobiles.Count} mobiles, {world.Items.Count} items in the world");
+        }
     }
 
     public void RunCommand(string asCharacter, string text)
@@ -324,6 +356,23 @@ public partial class ShardDock : EditorDock
 
                     LastMobiles = msg;
                     _liveMobiles = ShardLink.ToMobiles(msg);
+                    SyncLive();
+                    break;
+                case "items":
+                    _pollAnswered = Math.Max(_pollAnswered, (int?)msg["req"] ?? 0);
+                    if (msg["ok"] is JsonNode okItems && !(bool)okItems)
+                    {
+                        if ((string)msg["error"] != "rate limited")
+                        {
+                            Log($"[color=orange]live items: {(string)msg["error"]}[/color]");
+                        }
+
+                        break;
+                    }
+
+                    LastItems = msg;
+                    _liveItems = ShardLink.ToItems(msg);
+                    SyncLive();
                     break;
                 case "command":
                     LastCommand = msg;

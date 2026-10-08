@@ -77,7 +77,12 @@ namespace GUO.Game.GameObjects
 
         public override void UpdateGraphicBySeason()
         {
-            SetGraphic(SeasonManager.GetSeasonGraphic(World.Season, OriginalGraphic));
+            // PORT DEVIATION (GUO): client-side themes repaint matching
+            // statics inside their zones through this same hook, ahead of
+            // seasons, so season changes and chunk loads re-apply them and
+            // toggling a theme off restores the season look by construction.
+            ushort? themed = ThemeManager.StaticVariant(World, X, Y, OriginalGraphic);
+            SetGraphic(themed ?? SeasonManager.GetSeasonGraphic(World.Season, OriginalGraphic));
             AllowedToDraw = CanBeDrawn(World, Graphic);
             IsVegetation = StaticFilters.IsVegetation(Graphic);
         }

@@ -132,8 +132,101 @@ public partial class BatcherProbe : Node
         await VerifyFonts();
         Stage("fonts");
 
+        await VerifySplats(host, viewport);
+        Stage("splats");
+
         GD.Print($"[batcher-probe] {(_failures == 0 ? "PASS" : "FAIL")}");
         GetTree().Quit(_failures == 0 ? 0 : 1);
+    }
+
+    /// <summary>
+    /// The staged-splat draw path (SplatPlyParser + SplatBatcher + splat_2d):
+    /// a hand-made two-gaussian PLY parses to exact values, and one red
+    /// gaussian drawn through the real batcher comes back red on the pixel.
+    /// </summary>
+    private async System.Threading.Tasks.Task VerifySplats(Node2D host, SubViewport viewport)
+    {
+        byte[] ply = SplatProofPly();
+        GUO.Assets.SplatSet set;
+        try
+        {
+            set = GUO.Assets.SplatPlyParser.Parse(ply, "proof");
+        }
+        catch (System.Exception ex)
+        {
+            CheckThat("splat proof PLY parses", false, $"{ex.GetType().Name}: {ex.Message}");
+            return;
+        }
+
+        CheckThat("splat proof count", set.Gaussians.Length == 2, $"{set.Gaussians.Length}");
+        // In-client generations ship lod0 only: a short chain draws its
+        // smallest instead of culling (full chains still cull below 32).
+        var shortChain = new GUO.Renderer.SplatLodChain { Levels = new[] { set } };
+        CheckThat("splat short chain draws", shortChain.Select(100) == 0 && shortChain.Select(10) == 0,
+            $"{shortChain.Select(100)}/{shortChain.Select(10)}");
+        // The parser normalizes into the render frame (2-unit cube, Y-up):
+        // raw (0,0,0) against (9,9,9) lands the red gaussian at (-1,+1,-1)
+        // with linear sigma e^0 * 2/9. The +1 Y proves the pipeline Y-flip.
+        CheckThat("splat proof values",
+            set.Gaussians[0].X == -1f && set.Gaussians[0].Y == 1f && set.Gaussians[0].Z == -1f
+            && System.Math.Abs(set.Gaussians[0].Scale0 - 2f / 9f) < 0.001f
+            && set.Gaussians[0].Dc0 > 1.7f && set.Gaussians[0].Opacity == 5f
+            && set.Gaussians[1].Opacity == -100f,
+            $"dc0 {set.Gaussians[0].Dc0} opacity {set.Gaussians[0].Opacity}");
+
+        var chain = new GUO.Renderer.SplatLodChain
+        {
+            Levels = new[] { set, set, set, set },
+            BoundsMin = set.BoundsMin,
+            BoundsMax = set.BoundsMax,
+        };
+        using var splats = new GUO.Renderer.SplatBatcher(host.GetCanvasItem());
+        // The red gaussian's middle pixel must come back red. At scale 22
+        // yaw 180 its normalized centre (-1,+1,-1) bakes to tile px (0,22),
+        // so the chain origin sits 3296px up to put that centre on pixel
+        // (4,4) at zoom 150. (The second gaussian has opacity ~0 at the
+        // mirrored corner, so it must not paint.)
+        splats.SetChain(chain, new Vector2(4, -3296));
+        splats.Draw(300f / System.Math.Max(0.001f, chain.BoundsMax.X - chain.BoundsMin.X));
+        CheckThat("splat LOD drawn", splats.LastLevel == 0 && splats.DrawnSplats == 2, $"level {splats.LastLevel} drawn {splats.DrawnSplats}");
+        await ToSignal(
+            RenderingServer.Singleton,
+            RenderingServerInstance.SignalName.FramePostDraw);
+        Color got = viewport.GetTexture().GetImage().GetPixel(4, 4);
+        CheckThat("splat pixel is red", got.R8 > 200 && got.G8 < 80 && got.B8 < 80, $"#{got.R8:X2}{got.G8:X2}{got.B8:X2}");
+        // Composition under a transformed parent is proven live (the staged
+        // wall renders in the world through UltimaBatcher2D.DrawSplatMesh),
+        // so no nested case is kept here.
+    }
+
+    /// <summary>
+    /// Two gaussians: a red one at the origin (opacity logit 5, scale log 0),
+    /// and an invisible one (opacity logit -100). 14 float properties, like
+    /// SplatToFile3D writes (no f_rest_*, which the parser skips by stride).
+    /// </summary>
+    private static byte[] SplatProofPly()
+    {
+        string[] props = { "x", "y", "z", "f_dc_0", "f_dc_1", "f_dc_2", "opacity", "scale_0", "scale_1", "scale_2", "rot_0", "rot_1", "rot_2", "rot_3" };
+        var head = new System.Text.StringBuilder();
+        head.Append("ply\nformat binary_little_endian 1.0\nelement vertex 2\n");
+        foreach (string p in props)
+        {
+            head.Append($"property float {p}\n");
+        }
+
+        head.Append("end_header\n");
+        byte[] header = System.Text.Encoding.ASCII.GetBytes(head.ToString());
+        float[] rows =
+        {
+            0, 0, 0, 1.7678f, -1.7678f, -1.7678f, 5, 0, 0, 0, 1, 0, 0, 0,
+            9, 9, 9, 0, 0, 0, -100, 0, 0, 0, 1, 0, 0, 0,
+        };
+        byte[] body = new byte[rows.Length * 4];
+        System.Buffer.BlockCopy(rows, 0, body, 0, body.Length);
+        byte[] ply = new byte[header.Length + body.Length];
+        System.Buffer.BlockCopy(header, 0, ply, 0, header.Length);
+        System.Buffer.BlockCopy(body, 0, ply, header.Length, body.Length);
+        return ply;
     }
 
     private async System.Threading.Tasks.Task VerifyUiTransform(UltimaBatcher2D batcher, SubViewport viewport, Texture2D ramp)

@@ -129,6 +129,8 @@ public partial class WorldView : VBoxContainer
     /// <summary>The render modes' host (ADR-0027), for the smoke check, the tour and F3.</summary>
     internal WorldModes Modes => _modeNode;
 
+
+
     /// <summary>The map layers drawn on this view and on the minimap.</summary>
     internal MapLayers Layers => _mapLayers;
 
@@ -363,6 +365,22 @@ public partial class WorldView : VBoxContainer
         {
             EnsureBooted();
         }
+    }
+
+    /// <summary>
+    /// The world view's own pixels (its SubViewport): what the camera draws,
+    /// in the camera's coordinates. Null when the view is not up. The Layers
+    /// dock's area capture reads this, never the editor window: the window
+    /// also holds UI, and its coordinates do not match the camera's.
+    /// </summary>
+    public Image CaptureView()
+    {
+        if (_viewport == null || !IsVisibleInTree())
+        {
+            return null;
+        }
+
+        return _viewport.GetTexture().GetImage();
     }
 
     /// <summary>Starts the world if it has not started. False, with <see cref="Error"/>, if it cannot.</summary>
@@ -837,6 +855,24 @@ public partial class WorldView : VBoxContainer
     }
 
     private const uint PreviewSerial = 0x4000_F001;
+
+    /// <summary>
+    /// Goes to a cell and draws one frame synchronously, then reports what the
+    /// live scene hook drew for a staged splat. The smoke check: _Process only
+    /// runs while this tab is visible, so a hidden world would never draw.
+    /// </summary>
+    internal (int Level, int Drawn) ProbeSplat(string name, int facet, int x, int y)
+    {
+        if (!EnsureBooted() || _canvas == null)
+        {
+            return (-2, 0);
+        }
+
+        GoTo(facet, x, y);
+        Vector2I size = _viewport?.Size ?? new Vector2I(800, 600);
+        _host.Draw(_canvas, size, null);
+        return _host.Scene == null ? (-2, 0) : _host.Scene.SplatDrawn(name);
+    }
 
     /// <summary>Places a multi (one the Multi Editor wrote to a stage, say) beside the view centre. False when the world is not up.</summary>
     public bool PreviewMulti(int id)
