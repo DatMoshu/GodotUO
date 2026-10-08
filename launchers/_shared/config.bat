@@ -123,17 +123,25 @@ REM  Optional PlayerBots shard: separate checkout, saves and loopback port.
 if not defined UO_PLAYERBOTS_DIR    set "UO_PLAYERBOTS_DIR=%UO_ROOT%\build\playerbots"
 if not defined UO_PLAYERBOTS_PORT   set "UO_PLAYERBOTS_PORT=2640"
 
+REM  The address the local shard listens on. Loopback: only this PC can
+REM  connect. To open it to the LAN on purpose, set UO_SHARD_BIND=0.0.0.0 (or
+REM  this PC's LAN address) in config.local.bat; see docs\wiki\Dev-Shard.md.
+if not defined UO_SHARD_BIND        set "UO_SHARD_BIND=127.0.0.1"
+
 REM  The dev shard's owner account. On a headless boot the shard makes sure
 REM  this account exists and has owner access, which is what lets the world be
 REM  generated and administered from the client -- ModernUO takes its commands
-REM  in game, not at the console. Local dev shard only; not a credential.
+REM  in game, not at the console.
+REM  Its password (UO_SHARD_OWNER_PASSWORD) and the game master accounts' one
+REM  (UO_SHARD_GM_PASSWORD) have no default: launchers\shard\run.bat generates
+REM  them on first run into %UO_WORKSPACE_DIR%\shard\secrets.bat, which
+REM  common.bat reads after this file. Never set them here.
 if not defined UO_SHARD_OWNER       set "UO_SHARD_OWNER=guoprobe"
-if not defined UO_SHARD_OWNER_PASSWORD set "UO_SHARD_OWNER_PASSWORD=guoprobe"
 
 REM  Accounts for scripted clients that run beside the owner (multi_client.bat):
 REM  the shard refuses a second character from one account, and "[go" takes
-REM  staff access. Made on a headless boot with game master access; each one's
-REM  password is its name. Comma-separated. Local dev shard only.
+REM  staff access. Made on a headless boot with game master access; they share
+REM  UO_SHARD_GM_PASSWORD. Comma-separated. Local dev shard only.
 if not defined UO_SHARD_GM_ACCOUNTS  set "UO_SHARD_GM_ACCOUNTS=guoeffects,guohighlight,guosweep"
 
 REM  How far from a player the shard bothers to send items and mobiles. UO's

@@ -42,6 +42,16 @@ if not exist "%~dp0config.bat" (
 )
 call "%~dp0config.bat"
 
+REM --- the dev shard's generated passwords --------------------------------------
+REM  tools\modernuo\configure.py writes them into the per-user workspace on the
+REM  shard's first run (tools\guo\shard_secrets.py). Guarded lines, so the
+REM  environment and config.local.bat still win. Same default workspace as
+REM  tools\guo\config.py.
+set "UO__SECRETS=%UO_WORKSPACE_DIR%"
+if not defined UO__SECRETS set "UO__SECRETS=%LOCALAPPDATA%\GUO"
+if exist "%UO__SECRETS%\shard\secrets.bat" call "%UO__SECRETS%\shard\secrets.bat"
+set "UO__SECRETS="
+
 REM --- Engine and upstream folders --------------------------------------------
 REM  UO_GODOT_HOME (the folder holding the pinned engine release, tools\godot)
 REM  and UO_UPSTREAM_DIR (the folder holding ClassicUO, sources) win when set.

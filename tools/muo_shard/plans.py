@@ -196,7 +196,9 @@ def render_template(p: Profile) -> str:
     text = MODERNUO_TEMPLATE.read_text(encoding="utf-8").replace("\r\n", "\n")
     text = text.replace("@UO_CLIENT_DATA@", "")
     text = text.replace("@UO_SHARD_NAME@", json.dumps(p.data["name"])[1:-1])
-    text = text.replace("0.0.0.0:@UO_SHARD_PORT@", f"{c.address}:{c.port}")
+    # The profile's own listen address: a hosted shard is meant to be reached,
+    # unlike the local dev shard, whose configure.py fills in UO_SHARD_BIND.
+    text = text.replace("@UO_SHARD_LISTENER@", f"{c.address}:{c.port}")
     doc = json.loads(text)
     return json.dumps(doc, indent=2) + "\n"
 

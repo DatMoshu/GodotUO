@@ -10,6 +10,12 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
   committed, not the working copy, and reads UTF-16 text as text.
 - Deploying a hosted shard stops with git's error when a ModernUO patch does
   not apply, instead of calling it already applied.
+- The local dev shard listens only on this PC unless `UO_SHARD_BIND` opens it
+  on purpose (for a phone or the LAN set `UO_SHARD_BIND=0.0.0.0` in
+  config.local.bat). Its owner and game master passwords are generated per
+  user into the workspace's `shard\secrets.bat` and never printed; an existing
+  shard switches to them at its next start. Run `launchers\shard\fetch.bat`
+  once to re-apply the changed patch.
 
 ### Platforms
 - **Android** (ARM64, debug): export, install, run and smoke from

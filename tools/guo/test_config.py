@@ -52,6 +52,27 @@ class ConfigTests(unittest.TestCase):
         os.environ["UO_WORKSPACE_DIR"] = str(self.root / "ws-env")
         self.assertEqual(load_config(self.root).workspace_dir, self.root / "ws-env")
 
+    def test_shard_passwords_come_from_the_workspace_secrets_file(self):
+        # No default anywhere: nothing configured means no password.
+        cfg = load_config(self.root)
+        self.assertEqual((cfg.shard_owner_password, cfg.shard_gm_password), ("", ""))
+        self.assertEqual(cfg.shard_bind, "127.0.0.1")
+        workspace = self.root / "ws"
+        os.environ["UO_WORKSPACE_DIR"] = str(workspace)
+        from guo import shard_secrets
+        path, added = shard_secrets.ensure(workspace)
+        self.assertEqual(added, list(shard_secrets.KEYS))
+        made = shard_secrets.read(path)
+        cfg = load_config(self.root)
+        self.assertEqual(cfg.shard_owner_password, made["UO_SHARD_OWNER_PASSWORD"])
+        self.assertEqual(cfg.shard_gm_password, made["UO_SHARD_GM_PASSWORD"])
+        # config.local.bat, then the environment, win over the file.
+        self.local.write_text('set "UO_SHARD_OWNER_PASSWORD=local"', encoding="utf-8")
+        self.assertEqual(load_config(self.root).shard_owner_password, "local")
+        os.environ["UO_SHARD_OWNER_PASSWORD"] = "environment"
+        self.assertEqual(load_config(self.root).shard_owner_password, "environment")
+        self.assertEqual(load_config(self.root).shard_gm_password, made["UO_SHARD_GM_PASSWORD"])
+
     def test_playerbots_configuration_keeps_separate_profile(self):
         self.defaults.write_text(
             'if not defined UO_PLAYERBOTS_DIR set "UO_PLAYERBOTS_DIR=%UO_ROOT%/build/playerbots"\n'

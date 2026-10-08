@@ -117,12 +117,18 @@ def cmd_start(cfg) -> int:
         print(f"[servuo] something already listens on 127.0.0.1:{PORT}")
         return 2
     first = not (SRC / "Saves" / "Accounts").exists()
+    if first:
+        owner = os.environ.get("UO_SHARD_OWNER") or cfg_value(cfg, "UO_SHARD_OWNER") or "guoprobe"
+        # The dev shard's generated owner password (tools/guo/shard_secrets.py); no default.
+        password = cfg.shard_owner_password
+        if not password:
+            print("[servuo] no owner password: run launchers/shard/run.bat once to generate it, "
+                  "or set UO_SHARD_OWNER_PASSWORD")
+            return 2
     log = (SRC / "guo_shard.log").open("w", encoding="utf-8", errors="replace")
     proc = subprocess.Popen([str(SRC / "ServUO.exe")], cwd=str(SRC), stdin=subprocess.PIPE, stdout=log,
                             stderr=subprocess.STDOUT, creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0))
     if first:
-        owner = os.environ.get("UO_SHARD_OWNER") or cfg_value(cfg, "UO_SHARD_OWNER") or "guoprobe"
-        password = os.environ.get("UO_SHARD_OWNER_PASSWORD") or cfg_value(cfg, "UO_SHARD_OWNER_PASSWORD") or owner
         proc.stdin.write(f"y\n{owner}\n{password}\n".encode())
         proc.stdin.flush()
         print(f"[servuo] first boot: creating owner account '{owner}'")

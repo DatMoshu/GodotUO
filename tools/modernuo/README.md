@@ -3,6 +3,8 @@
 The client needs a server to talk to. This is it: a local
 [ModernUO](https://github.com/modernuo/ModernUO) shard, running against the
 same UO install the client reads, listening on `127.0.0.1:2593` as **GUO Dev**.
+Loopback only: `UO_SHARD_BIND` opens it to the LAN, on purpose
+(`docs/wiki/Dev-Shard.md`, "Opening it to the LAN").
 
 It is a development dependency, not part of the port. Nothing in
 `godot/GUO/` knows it exists; the client connects to `UO_SHARD_HOST` /
@@ -33,9 +35,19 @@ launchers\shard\populate.bat  generate the world          (once, ~10 min)
 Then, in another terminal, `launchers\game\play.bat`.
 
 Auto account creation is on, so the first login with any name and password
-makes that account. The input probe (`launchers\dev\playtest.bat`) uses
-`guoprobe` / `guoprobe`, which is also `UO_SHARD_OWNER`, and `guomate` for the
-second client it starts to trade with.
+makes that account. The input probe (`launchers\dev\playtest.bat`) logs in as
+`guoprobe`, which is also `UO_SHARD_OWNER`, and uses `guomate` for the second
+client it starts to trade with.
+
+### Passwords
+
+Nothing ships a password. The first `run.bat` (`configure.py`) generates the
+owner's (`UO_SHARD_OWNER_PASSWORD`) and the game master accounts' shared one
+(`UO_SHARD_GM_PASSWORD`) into the per-user workspace,
+`<UO_WORKSPACE_DIR>\shard\secrets.bat` (`%LOCALAPPDATA%\GUO` by default;
+`tools/guo/shard_secrets.py`). It is a .bat of guarded `set` lines:
+`common.bat` calls it after `config.bat`, `tools/guo/config.py` reads it, and
+the environment or `config.local.bat` still win. Delete it for new ones.
 
 That second account is why `accountHandler.maxAccountsPerIP` is **4** in the
 template rather than ModernUO's default of 1: two clients on one machine are
@@ -77,12 +89,17 @@ The patch replaces the prompt, when headless, with the account named by
 raised to owner if it does — which it usually does, because auto account
 creation made it a player at the first login. ModernUO takes its
 administration commands in game and not at the console, so without an owner
-account the world cannot be generated at all.
+account the world cannot be generated at all. No password, no owner account.
 
 The same boot makes every account in `UO_SHARD_GM_ACCOUNTS` (comma-separated,
-password = name) with game master access, for `launchers\dev\multi_client.bat`:
+password `UO_SHARD_GM_PASSWORD`; none set, none made) with game master
+access, for `launchers\dev\multi_client.bat`:
 the shard refuses a second character from one account, so four clients at once
 need four accounts, and three of those clients type `[go`.
+
+At every headless boot the owner and game master accounts are set to the
+configured passwords (when they do not already match), so a world saved
+before the passwords were generated stops accepting the old ones.
 
 ### `patches/0002-settable-update-range.patch`
 
@@ -131,7 +148,8 @@ be deleted, not silently dropped from the set.
 
 `modernuo.template.json` is the full server configuration with three values
 left as placeholders — `@UO_CLIENT_DATA@`, `@UO_SHARD_NAME@`,
-`@UO_SHARD_PORT@` — and `expansion.json` pins the expansion to **Endless
+`@UO_SHARD_LISTENER@` (`UO_SHARD_BIND:UO_SHARD_PORT`, loopback by default)
+— and `expansion.json` pins the expansion to **Endless
 Journey** (Id 11), which is what a 7.0.x client expects.
 
 `configure.py` writes both into `src/Distribution/Configuration/` on first run,
@@ -139,8 +157,10 @@ resolving the placeholders through `tools/guo/config.py` — the same
 environment → `config.local.bat` → `config.bat` → shared-config order
 everything else here uses.
 
-It writes only files that do not exist. Edit the generated file to change a
-setting on this machine; edit the template to change it for everyone, and say
+It writes only files that do not exist, with one exception: the listener in
+an existing `modernuo.json` is set to `UO_SHARD_BIND` at every run, so a file
+from before the shard was closed by default is closed too. Edit the generated
+file to change any other setting on this machine; edit the template to change it for everyone, and say
 so in the commit.
 
 Without this, ModernUO asks for its data directory and expansion at a console

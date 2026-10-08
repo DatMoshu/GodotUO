@@ -48,9 +48,11 @@ not settings.
 | `UO_SHARD_REPO` | `https://github.com/modernuo/ModernUO.git` | Where `launchers\shard\fetch.bat` clones from. |
 | `UO_SHARD_SRC` | `%UO_ROOT%\tools\modernuo\src` | The ModernUO checkout (gitignored, about 1 GB built). |
 | `UO_SHARD_DIST` | `%UO_SHARD_SRC%\Distribution` | Its built distribution. |
-| `UO_SHARD_OWNER` | set in `config.bat` | The account the headless boot raises to owner, and the one `playtest.bat` and `populate.bat` log in as. |
-| `UO_SHARD_OWNER_PASSWORD` | set in `config.bat` | Its password. Change both on any shard someone else can reach. |
+| `UO_SHARD_BIND` | `127.0.0.1` | The address the local dev shard listens on: loopback only. `0.0.0.0` opens it to the LAN, on purpose ([Dev Shard](Dev-Shard.md#opening-it-to-the-lan)). |
+| `UO_SHARD_OWNER` | `guoprobe` | The account the headless boot raises to owner, and the one `playtest.bat` and `populate.bat` log in as. |
+| `UO_SHARD_OWNER_PASSWORD` | none: generated | Its password. The shard's first run generates it into the per-user `<workspace>\shard\secrets.bat` ([Dev Shard](Dev-Shard.md#where-the-passwords-are)); set it in `config.local.bat` to choose your own. |
 | `UO_SHARD_GM_ACCOUNTS` | `guoeffects,guohighlight,guosweep` | Comma-separated accounts the headless boot creates with game master access, one per `multi_client.bat` lane. |
+| `UO_SHARD_GM_PASSWORD` | none: generated | The game master accounts' shared password, generated with the owner's. |
 | `UO_SHARD_UPDATE_RANGE` | `72` | The shard's update range in tiles (patch `0002-settable-update-range`), so a zoomed-out client sees the whole screen. |
 
 ## Editor (the Godot editor add-on)

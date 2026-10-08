@@ -18,7 +18,7 @@ namespace GUO.Pregame3D;
 /// and password typed on the on-screen keyboard, Login, the server, the
 /// character list, a look at character creation and back, then Play into
 /// the world. Account and password: <c>--account</c>/<c>--password</c>, else
-/// guoprobe/guoprobe. Exits 0 when it reached the world, 1 otherwise.
+/// guoprobe and the dev shard's generated owner password. Exits 0 when it reached the world, 1 otherwise.
 /// </summary>
 internal static class Pregame3DProbe
 {
@@ -165,7 +165,7 @@ internal static class Pregame3DProbe
         // character, so the run goes through the whole of creation; an
         // existing one (--account guoprobe) plays its character instead.
         string account = Arg("--account", "guoprobe");
-        string password = Arg("--password", account);
+        string password = Arg("--password", GUO.Host.InputProbe.DevShardPassword(account));
         GamepadInput.KnownLayout(Device, GamepadLayout.Labels);
 
         try

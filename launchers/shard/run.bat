@@ -17,7 +17,14 @@ if not exist "%UO_SHARD_DIST%\ModernUO.exe" (
 
 "%UO_PYTHON%" "%UO_ROOT%\tools\modernuo\configure.py" || exit /b 1
 
-echo [shard] %UO_SHARD_NAME% on %UO_SHARD_HOST%:%UO_SHARD_PORT%  (Ctrl-C to stop)
+REM  configure.py may just have generated the passwords: read them again so the
+REM  shard's headless boot (patch 0001) sets the owner and GM accounts to them.
+set "UO__SECRETS=%UO_WORKSPACE_DIR%"
+if not defined UO__SECRETS set "UO__SECRETS=%LOCALAPPDATA%\GUO"
+if exist "%UO__SECRETS%\shard\secrets.bat" call "%UO__SECRETS%\shard\secrets.bat"
+set "UO__SECRETS="
+
+echo [shard] %UO_SHARD_NAME% on %UO_SHARD_BIND%:%UO_SHARD_PORT%  (Ctrl-C to stop)
 pushd "%UO_SHARD_DIST%"
 "%UO_SHARD_DIST%\ModernUO.exe"
 set "RC=%ERRORLEVEL%"

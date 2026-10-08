@@ -245,7 +245,7 @@ def start_guo(cfg, go: str, character: str, x: int, y: int, w: int, h: int) -> s
             "--postfx", "off",
             "--cache-dir", str(home / "cache"),
             "--account", account,
-            "--password", account,
+            "--password", cfg.shard_gm_password,
             "--character", account.capitalize(),
             "--window-position", f"{x},{y}",
             "--window-size", f"{w},{h}",

@@ -9,5 +9,9 @@ fi
 
 "$UO_PYTHON" "$UO_TOOLS/modernuo/configure.py" || exit 1
 
-echo "[shard] $UO_SHARD_NAME on $UO_SHARD_HOST:$UO_SHARD_PORT  (Ctrl-C to stop)"
+# configure.py may just have generated the passwords: resolve again so the
+# shard's headless boot (patch 0001) sets the owner and GM accounts to them.
+eval "$("$UO_PYTHON" "$UO_ROOT/tools/shellenv/run.py")" || exit 1
+
+echo "[shard] $UO_SHARD_NAME on $UO_SHARD_BIND:$UO_SHARD_PORT  (Ctrl-C to stop)"
 cd "$UO_SHARD_DIST" && exec ./ModernUO "$@"

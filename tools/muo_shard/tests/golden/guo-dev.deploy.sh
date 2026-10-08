@@ -32,7 +32,7 @@ if have_systemd && systemctl is-active --quiet "$UNIT"; then systemctl stop "$UN
 install -d "$(dirname $BASE/patches/0001-headless-owner-account.patch)"
 cat > $BASE/patches/0001-headless-owner-account.patch <<'MUO_EOF_0'
 diff --git a/Projects/UOContent/Misc/AccountPrompt.cs b/Projects/UOContent/Misc/AccountPrompt.cs
-index 032c55526..a707bafab 100644
+index 032c55526..61ef50e14 100644
 --- a/Projects/UOContent/Misc/AccountPrompt.cs
 +++ b/Projects/UOContent/Misc/AccountPrompt.cs
 @@ -1,3 +1,4 @@
@@ -63,7 +63,7 @@ index 032c55526..a707bafab 100644
              logger.Information("Do you want to create the owner account now? (y/n):");
  
              var answer = ConsoleInputHandler.ReadLine();
-@@ -37,4 +51,105 @@ public static void Initialize()
+@@ -37,4 +51,126 @@ public static void Initialize()
              }
          }
      }
@@ -74,9 +74,10 @@ index 032c55526..a707bafab 100644
 +        var username = Environment.GetEnvironmentVariable("UO_SHARD_OWNER");
 +        var password = Environment.GetEnvironmentVariable("UO_SHARD_OWNER_PASSWORD");
 +
++        // No default password: GUO's configure.py generates one per user.
 +        if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
 +        {
-+            logger.Warning("Headless: UO_SHARD_OWNER is not set, so there is no owner account.");
++            logger.Warning("Headless: UO_SHARD_OWNER or UO_SHARD_OWNER_PASSWORD is not set, so there is no owner account.");
 +            return;
 +        }
 +
@@ -103,6 +104,7 @@ index 032c55526..a707bafab 100644
 +                }
 +            }
 +
++            EnsurePassword(existing, password);
 +            ServerAccess.AddProtectedAccount(existing, true);
 +            return;
 +        }
@@ -120,14 +122,21 @@ index 032c55526..a707bafab 100644
 +    // The shard refuses a second character from one account, so a run that
 +    // drives several clients at once needs several accounts, and most of
 +    // what those clients do ("[go", "[globallight") takes staff access.
-+    // Comma-separated names; each one's password is its name. Local dev
-+    // shard only; not credentials.
++    // Comma-separated names; they share UO_SHARD_GM_PASSWORD, which GUO's
++    // configure.py generates per user. No password, no accounts.
 +    private static void EnsureGmAccountsFromEnvironment()
 +    {
 +        var list = Environment.GetEnvironmentVariable("UO_SHARD_GM_ACCOUNTS");
++        var password = Environment.GetEnvironmentVariable("UO_SHARD_GM_PASSWORD");
 +
 +        if (string.IsNullOrWhiteSpace(list))
 +        {
++            return;
++        }
++
++        if (string.IsNullOrWhiteSpace(password))
++        {
++            logger.Warning("Headless: UO_SHARD_GM_PASSWORD is not set, so no game master accounts.");
 +            return;
 +        }
 +
@@ -157,15 +166,27 @@ index 032c55526..a707bafab 100644
 +                    }
 +                }
 +
++                EnsurePassword(existing, password);
 +                continue;
 +            }
 +
-+            _ = new Account(username, username)
++            _ = new Account(username, password)
 +            {
 +                AccessLevel = AccessLevel.GameMaster
 +            };
 +
 +            logger.Information("Headless: game master account created: {Username}", username);
++        }
++    }
++
++    // GUO patch: the configured password is the account's password, so a
++    // shard made before the passwords were generated stops taking the old one.
++    private static void EnsurePassword(Account account, string password)
++    {
++        if (!account.CheckPassword(password))
++        {
++            account.SetPassword(password);
++            logger.Information("Headless: password of account '{Username}' set from the environment.", account.Username);
 +        }
 +    }
  }

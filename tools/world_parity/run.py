@@ -131,7 +131,7 @@ def client_shot(cfg, client_root: Path, x: int, y: int, out: Path, override: Pat
     else:
         console = client_root / "tools" / "godot" / "godot-console.cmd"
     cmd = [str(console), "--path", str(client_root / "godot" / "GUO"), "--",
-           "--play", "--account", account, "--password", account, "--character", account.capitalize(),
+           "--play", "--account", account, "--password", cfg.shard_gm_password, "--character", account.capitalize(),
            "--window-position", "40,40", "--window-size", "1024,768",
            "--shard-command", f"[go {x} {y}",
            "--screenshot-dir", str(out / "client"), "--screenshot-name", "client"]

@@ -6,7 +6,7 @@
     "@UO_CLIENT_DATA@"
   ],
   "listeners": [
-    "0.0.0.0:@UO_SHARD_PORT@"
+    "@UO_SHARD_LISTENER@"
   ],
   "settings": {
     "accountHandler.enableAutoAccountCreation": "True",

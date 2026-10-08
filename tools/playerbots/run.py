@@ -196,7 +196,8 @@ def main():
                UO_SHARD_HOST="127.0.0.1", UO_SHARD_PORT=str(cfg.playerbots_port),
                UO_SHARD_NAME="GUO PlayerBots", UO_SHARD_OWNER=cfg.shard_owner,
                UO_SHARD_OWNER_PASSWORD=cfg.shard_owner_password,
-               UO_SHARD_GM_ACCOUNTS=",".join(cfg.shard_gm_accounts))
+               UO_SHARD_GM_ACCOUNTS=",".join(cfg.shard_gm_accounts),
+               UO_SHARD_GM_PASSWORD=cfg.shard_gm_password)
     if args.command == "build":
         (folder / "built.json").unlink(missing_ok=True)
         # Compile the pinned build tool, avoiding its floating binary download.
