@@ -2,6 +2,7 @@
 namespace GUO.Editor;
 
 using System;
+using System.Collections.Generic;
 using Godot;
 using GUO.Game.GameObjects;
 
@@ -94,6 +95,17 @@ public partial class WorldView
     }
 
     internal bool NearbyHasCenterTile() => _nearbyCells[4].Icon != null && _stack.ItemCount > 0;
+    /// <summary>The visible controls of the World top command row (and the minimap) that lie outside <paramref name="visible"/>, by name.</summary>
+    internal List<string> CommandRowOutside(Rect2 visible)
+    {
+        var outside = new List<string>();
+        foreach (Node child in _commandBar.GetChildren())
+            if (child is Control c && c.Visible && c.Size.X > 0 && !visible.Encloses(c.GetGlobalRect()))
+                outside.Add(child is Button b && b.Text.Length > 0 ? b.Text : child.Name);
+        if (_minimap != null && _minimap.IsVisibleInTree() && !visible.Encloses(_minimap.GetGlobalRect())) outside.Add("Minimap");
+        return outside;
+    }
+
     internal bool CommonToolsFit() => _commonTools.GetVScrollBar().MaxValue <= _commonTools.Size.Y + 2;
 }
 #endif

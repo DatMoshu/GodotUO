@@ -1595,6 +1595,7 @@ public partial class EditorSmoke : Node
             {
                 Expect(_world.NearbyHasCenterTile(), "nearby_tiles_show_land_and_stack");
                 Expect(_world.CommonToolsFit(), "common_tools_fit_1080p");
+                CheckRunBarFits("1080");
                 GD.Print($"[GUO workspace] 1920x1080 logical proof: {GetWindow().Size}, editor scale {EditorInterface.Singleton.GetEditorScale()}");
                 using Image shot = EditorInterface.Singleton.GetBaseControl().GetViewport().GetTexture()?.GetImage();
                 shot?.SavePng(Path.Combine(_out, $"editor_compact_1080{Suffix}.png"));
@@ -1603,6 +1604,7 @@ public partial class EditorSmoke : Node
             _steps.Add((30, () =>
             {
                 Expect(_world.CommonToolsFit(), "common_tools_fit_768p");
+                CheckRunBarFits("768");
                 GD.Print($"[GUO workspace] 1366x768 logical proof: {GetWindow().Size}, editor scale {EditorInterface.Singleton.GetEditorScale()}");
                 using Image shot = EditorInterface.Singleton.GetBaseControl().GetViewport().GetTexture()?.GetImage();
                 shot?.SavePng(Path.Combine(_out, $"editor_compact_768{Suffix}.png"));
@@ -1611,6 +1613,21 @@ public partial class EditorSmoke : Node
         }
         // ADR-0027: render modes and map layers.
         AddModeSteps();
+    }
+
+    /// <summary>ED1: every run bar control and every World command row button lies inside the window, and the bar holds one server list.</summary>
+    private void CheckRunBarFits(string size)
+    {
+        var visible = new Rect2(Vector2.Zero, (Vector2)GetWindow().Size / GetWindow().ContentScaleFactor);
+        RunBar bar = null;
+        void Find(Node n) { if (n is RunBar r) bar = r; else foreach (Node c in n.GetChildren()) { if (bar != null) return; Find(c); } }
+        Find(EditorInterface.Singleton.GetBaseControl());
+        var outsideRun = bar?.Outside(visible) ?? new List<string> { "no run bar" };
+        var outsideWorld = _world.CommandRowOutside(visible);
+        GD.Print($"[GUO runbar] {size}: run bar outside [{string.Join(",", outsideRun)}], World row outside [{string.Join(",", outsideWorld)}], window {visible.Size}");
+        Expect(bar != null && bar.ServerLists == 1, $"run_bar_one_server_list_{size}");
+        Expect(outsideRun.Count == 0, $"run_bar_inside_window_{size}");
+        Expect(outsideWorld.Count == 0, $"world_command_row_inside_window_{size}");
     }
 
     private void WorldFail(string why)

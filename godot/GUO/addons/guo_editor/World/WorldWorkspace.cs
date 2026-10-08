@@ -13,7 +13,7 @@ public partial class WorldView
 {
     public event Action FocusRequested;
     private WorldTool _activeTool;
-    private HBoxContainer _legacyTools, _legacyModes;
+    private HBoxContainer _legacyTools, _legacyModes, _commandBar;
     private Control _library, _settings, _quickFavorites;
     private VSplitContainer _leftWorkspace;
     private TabContainer _detailTabs;
@@ -239,6 +239,7 @@ public partial class WorldView
         // Status belongs below the canvas. Top remains one compact command row.
         _status.Reparent(this);
         _status.CustomMinimumSize = Vector2.Zero;
+        _commandBar = bar;
         var spacer = new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill }; bar.AddChild(spacer);
         ActionButton(bar, "Undo", () => _editor.Undo(), "Ctrl+Z");
         ActionButton(bar, "Redo", () => _editor.Redo(), "Ctrl+Y");

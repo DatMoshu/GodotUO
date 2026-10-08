@@ -497,10 +497,10 @@ public partial class EditorTour : Node
     private async Task RunBarSeg()
     {
         var server = All<OptionButton>(_run).First();
-        var count = All<OptionButton>(_run).Last();
         var buttons = All<Button>(_run).Where(b => b is not OptionButton).ToList();
+        var client = All<MenuButton>(_run).First();
         Label dot = All<Label>(_run).First();
-        Button startServer = buttons.First(), startClient = buttons.Last();
+        Button startServer = buttons.First(b => b.Text == "Start");
 
         Say("The toolbar runs the same launchers a person runs: a shard (the shared dev shard or this checkout's private ModernUO), then one to four clients. "
             + "This tour only shows them: it never presses Start, which opens windows on the desktop.", top: true);
@@ -518,7 +518,7 @@ public partial class EditorTour : Node
         await Frames(5);
         _overlay.ClearMarks();
         Say("Choosing the private shard points the status dot at it: green when it answers, grey when nothing listens. "
-            + "Start server is off while the shard is up.", top: true);
+            + "Start is off while the shard is up.", top: true);
         MarkControl(dot, "status dot");
         MarkControl(startServer);
         _overlay.Tip(dot.GetGlobalRect(), dot.TooltipText);
@@ -526,19 +526,11 @@ public partial class EditorTour : Node
         await Shot(4.5);
 
         _overlay.ClearMarks();
-        Say("Start client launches launchers\\game\\play.bat logged out; pick 1 to 4 and they tile across the screen. One account per client.", top: true);
-        MarkControl(startClient, "Start client");
-        MarkControl(count, "how many");
-        _overlay.Tip(startClient.GetGlobalRect(), startClient.TooltipText);
+        Say("The Client menu starts one to four clients and chooses which client profile they use; they tile across the screen. One account per client.", top: true);
+        MarkControl(client, "Client");
+        _overlay.Tip(client.GetGlobalRect(), client.TooltipText);
+        Check(client.GetPopup().ItemCount >= 4, "the Client menu lists Start 1 to 4 clients");
         await Shot(4.5);
-        count.Select(1);
-        count.EmitSignal(OptionButton.SignalName.ItemSelected, 1);
-        await Frames(3);
-        _overlay.Tip(count.GetGlobalRect(), "x 2: '" + startClient.Text + "' now starts two clients");
-        Check(count.GetItemId(count.Selected) == 2 && startClient.Text == "Start clients", "the count dropdown is set to two clients for 'Start clients'");
-        await Shot(3);
-        count.Select(0);
-        count.EmitSignal(OptionButton.SignalName.ItemSelected, 0);
     }
 
     private async Task ArtSeg()
