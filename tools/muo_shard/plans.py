@@ -340,6 +340,21 @@ def _content_steps(p: Profile, c: Ctx) -> list[str]:
     return out
 
 
+def _apply_patch(name: str) -> list[str]:
+    """Apply one patch to $SRC. Only a reverse check that passes counts as already applied; anything else is fatal."""
+    patch = f'"$BASE/patches/{name}"'
+    return [
+        f'if as_user git -C "$SRC" apply --check {patch} >/dev/null 2>&1; then',
+        f'    as_user git -C "$SRC" apply {patch}',
+        f'elif as_user git -C "$SRC" apply -R --check {patch} >/dev/null 2>&1; then',
+        f'    echo "muo_shard: {name} already applied, skipping"',
+        "else",
+        f'    as_user git -C "$SRC" apply --check {patch} || true',
+        f'    die "{name} does not apply to the checkout at $PIN; stopping"',
+        "fi",
+    ]
+
+
 def deploy(p: Profile, pin: str | None = None) -> str:
     c = Ctx(p)
     d = p.data
@@ -393,13 +408,7 @@ def deploy(p: Profile, pin: str | None = None) -> str:
         out.append(f'    if as_user git -C "$SRC" apply -R --check "$BASE/patches/{name}" >/dev/null 2>&1; then as_user git -C "$SRC" apply -R "$BASE/patches/{name}"; fi')
     out += ['    as_user git -C "$SRC" checkout -q --detach "$PIN"', "fi"]
     for name in names:
-        out += [
-            f'if as_user git -C "$SRC" apply --check "$BASE/patches/{name}" >/dev/null 2>&1; then',
-            f'    as_user git -C "$SRC" apply "$BASE/patches/{name}"',
-            "else",
-            f'    echo "muo_shard: {name} already applied, skipping"',
-            "fi",
-        ]
+        out += _apply_patch(name)
 
     out += [
         "",

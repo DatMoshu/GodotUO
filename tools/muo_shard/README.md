@@ -34,7 +34,8 @@ ssh HOST 'sudo bash -s' < bootstrap.sh
   `/srv/muo/<id>/{src,dist,uodata}`, the backup root, and an empty `/etc/muo/<id>.env` (0600, never overwritten).
   A second run changes nothing.
 - **deploy** (root): reads `/etc/muo/<id>.env`, stops the unit, checks out the pinned commit (patches off before the
-  pin moves, on after), builds (`publish.sh release linux <arch>`, or the profile's `server.build`), copies the
+  pin moves, on after; a patch counts as already applied only when it reverses cleanly, and a patch that neither
+  applies nor reverses stops the deploy with git's error), builds (`publish.sh release linux <arch>`, or the profile's `server.build`), copies the
   result into `dist/`, builds `server.assemblies`, writes `Configuration/` (the template in
   `tools/modernuo/config/modernuo.template.json`, then the profile's `config_overlay` over it, `{{KEY}}` filled from the
   env file on the host only, then `dataDirectories` and `client_version`), writes `dist/muo-run.sh` (maps

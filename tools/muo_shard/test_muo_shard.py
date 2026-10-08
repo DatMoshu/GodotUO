@@ -575,3 +575,72 @@ def test_secrets_refuses_a_pipe(monkeypatch, capsys):
     monkeypatch.setattr(sys, "stdin", io.StringIO(""))
     assert run.main(["secrets", "--host", "h", "--profile", str(GUO)]) == 2
     assert "terminal" in capsys.readouterr().err
+
+
+# ------------------------------------------------------------ SF3: a patch that does not apply is fatal
+
+
+def _patch_run(tmp_path, original: str, patch_from: str, patch_to: str):
+    """Make a checkout holding `original`, a patch turning `patch_from` into `patch_to`, and run the deploy's patch step on it."""
+    bash, git = shutil.which("bash"), shutil.which("git")
+    if not bash or not git:
+        pytest.skip("no bash or git")
+    gitc = [git, "-c", "user.name=t", "-c", "user.email=test", "-c", "core.autocrlf=false"]
+    src = tmp_path / "src"
+    src.mkdir()
+    subprocess.run(gitc + ["init", "-q", str(src)], check=True)
+    subprocess.run([git, "-C", str(src), "config", "core.autocrlf", "false"], check=True)
+    f = src / "a.txt"
+    f.write_bytes(patch_from.encode())
+    subprocess.run(gitc + ["-C", str(src), "add", "a.txt"], check=True)
+    subprocess.run(gitc + ["-C", str(src), "commit", "-qm", "x"], check=True)
+    f.write_bytes(patch_to.encode())
+    diff = subprocess.run(gitc + ["-C", str(src), "diff"], check=True, capture_output=True).stdout
+    (tmp_path / "patches").mkdir()
+    (tmp_path / "patches" / "0001-x.patch").write_bytes(diff)
+    f.write_bytes(original.encode())
+    script = "\n".join([
+        "set -euo pipefail",
+        'die() { echo "muo_shard: $*" >&2; exit 1; }',
+        'as_user() { "$@"; }',
+        'SRC=src BASE="$(pwd)" PIN=deadbeef',
+        *plans._apply_patch("0001-x.patch"),
+        "echo reached-the-build",
+        "",
+    ])
+    (tmp_path / "s.sh").write_bytes(script.encode())
+    r = subprocess.run([bash, "s.sh"], cwd=tmp_path, capture_output=True, text=True)
+    return r, f.read_bytes().decode()
+
+
+def test_patch_that_applies_is_applied(tmp_path):
+    r, after = _patch_run(tmp_path, "one\ntwo\n", "one\ntwo\n", "one\nTWO\n")
+    assert r.returncode == 0, r.stderr
+    assert after == "one\nTWO\n" and "reached-the-build" in r.stdout
+
+
+def test_patch_already_applied_is_skipped(tmp_path):
+    r, after = _patch_run(tmp_path, "one\nTWO\n", "one\ntwo\n", "one\nTWO\n")
+    assert r.returncode == 0, r.stderr
+    assert "0001-x.patch already applied, skipping" in r.stdout
+    assert after == "one\nTWO\n" and "reached-the-build" in r.stdout
+
+
+def test_patch_that_does_not_apply_stops_the_plan(tmp_path):
+    # neither forward nor reverse applies: before SF3 this was reported "already applied" and the build went on
+    r, after = _patch_run(tmp_path, "one\nsomething else\n", "one\ntwo\n", "one\nTWO\n")
+    assert r.returncode != 0
+    assert "already applied" not in r.stdout and "reached-the-build" not in r.stdout
+    assert "0001-x.patch does not apply to the checkout at deadbeef; stopping" in r.stderr
+    assert "patch failed" in r.stderr  # git's own reason is shown
+    assert after == "one\nsomething else\n"
+
+
+def test_deploy_applies_every_patch_through_the_fatal_step():
+    s = plans.deploy(sp.load(GUO))
+    patches = good()["server"]["patches"]
+    assert patches
+    for rel in patches:
+        name = Path(rel).name
+        assert "\n".join(plans._apply_patch(name)) in s
+        assert f'die "{name} does not apply' in s

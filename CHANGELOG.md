@@ -8,6 +8,8 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 ### Safety
 - The privacy scan's `--staged` mode checks the staged content that will be
   committed, not the working copy, and reads UTF-16 text as text.
+- Deploying a hosted shard stops with git's error when a ModernUO patch does
+  not apply, instead of calling it already applied.
 
 ### Platforms
 - **Android** (ARM64, debug): export, install, run and smoke from

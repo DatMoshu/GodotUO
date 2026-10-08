@@ -319,18 +319,27 @@ if [ "$head" != "$PIN" ]; then
 fi
 if as_user git -C "$SRC" apply --check "$BASE/patches/0001-headless-owner-account.patch" >/dev/null 2>&1; then
     as_user git -C "$SRC" apply "$BASE/patches/0001-headless-owner-account.patch"
-else
+elif as_user git -C "$SRC" apply -R --check "$BASE/patches/0001-headless-owner-account.patch" >/dev/null 2>&1; then
     echo "muo_shard: 0001-headless-owner-account.patch already applied, skipping"
+else
+    as_user git -C "$SRC" apply --check "$BASE/patches/0001-headless-owner-account.patch" || true
+    die "0001-headless-owner-account.patch does not apply to the checkout at $PIN; stopping"
 fi
 if as_user git -C "$SRC" apply --check "$BASE/patches/0002-settable-update-range.patch" >/dev/null 2>&1; then
     as_user git -C "$SRC" apply "$BASE/patches/0002-settable-update-range.patch"
-else
+elif as_user git -C "$SRC" apply -R --check "$BASE/patches/0002-settable-update-range.patch" >/dev/null 2>&1; then
     echo "muo_shard: 0002-settable-update-range.patch already applied, skipping"
+else
+    as_user git -C "$SRC" apply --check "$BASE/patches/0002-settable-update-range.patch" || true
+    die "0002-settable-update-range.patch does not apply to the checkout at $PIN; stopping"
 fi
 if as_user git -C "$SRC" apply --check "$BASE/patches/0003-felucca-spring.patch" >/dev/null 2>&1; then
     as_user git -C "$SRC" apply "$BASE/patches/0003-felucca-spring.patch"
-else
+elif as_user git -C "$SRC" apply -R --check "$BASE/patches/0003-felucca-spring.patch" >/dev/null 2>&1; then
     echo "muo_shard: 0003-felucca-spring.patch already applied, skipping"
+else
+    as_user git -C "$SRC" apply --check "$BASE/patches/0003-felucca-spring.patch" || true
+    die "0003-felucca-spring.patch does not apply to the checkout at $PIN; stopping"
 fi
 
 # the archive's SDK can trail the SDK version the pin's global.json names; build with the installed one
