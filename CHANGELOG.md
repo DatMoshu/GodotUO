@@ -16,6 +16,8 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
   user into the workspace's `shard\secrets.bat` and never printed; an existing
   shard switches to them at its next start. Run `launchers\shard\fetch.bat`
   once to re-apply the changed patch.
+- The objects proof tool refuses an `--out` or `--clip` outside `build/` (or
+  overlapping the client install) before it deletes or writes anything.
 
 ### Platforms
 - **Android** (ARM64, debug): export, install, run and smoke from
