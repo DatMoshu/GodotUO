@@ -18,6 +18,10 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
   once to re-apply the changed patch.
 - The objects proof tool refuses an `--out` or `--clip` outside `build/` (or
   overlapping the client install) before it deletes or writes anything.
+- Every GUO change to ModernUO, and every ModernUO bug found, is listed in
+  `tools/modernuo/UPSTREAM.md` with an upstream-or-ours verdict and
+  upstream-ready versions waiting for the owner's review. Nothing has been
+  submitted.
 
 ### Platforms
 - **Android** (ARM64, debug): export, install, run and smoke from

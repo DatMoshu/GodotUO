@@ -73,9 +73,16 @@ reproduce it:
 
 ```
 patches/    the diffs applied on top of upstream, numbered, in order
+upstream/   upstream-ready versions of the patches, and issue text, held for review
+UPSTREAM.md every patch and issue, upstream or ours, and why
 config/     the server configuration, as templates
 configure.py  fills the templates in from config.bat
 ```
+
+[`UPSTREAM.md`](UPSTREAM.md) is the tracked list of every change GUO makes to
+ModernUO and every bug it has found there. Nothing is submitted upstream until
+the owner has reviewed the bundle. A story that changes a patch says "MUO patch"
+and updates the list in the same commit.
 
 ### `patches/0001-headless-owner-account.patch`
 
@@ -132,17 +139,11 @@ be deleted, not silently dropped from the set.
 
 ### Upstream issues to report (not patched here)
 
-- **`MultiData.LoadUOP` never reads an uncompressed entry.** For an entry
-  with the compression flag 0, it takes `data = buffer.AsSpan(0, entry.Size)`
-  without reading the stream. It then parses whatever the buffer last held
-  (the previous compressed entry) and fails at boot with
-  `ArgumentOutOfRangeException: Cannot seek to position ... beyond buffer
-  length` in `MultiData.cs`. The client's own `MultiCollection.uop` entries
-  are all zlib-compressed, so a stock install never hits it. An authored
-  multi written uncompressed did (2026-09-27). The fix upstream is a
-  `stream.Read` into `buffer` on the uncompressed path.
-  `tools/uodata_write` writes multi entries compressed, so GUO does not need
-  a patch.
+- **`MultiData.LoadUOP` never reads an uncompressed entry.** An authored
+  multi written uncompressed fails the boot; stock entries are all compressed,
+  and `tools/uodata_write` writes compressed, so GUO needs no patch. The issue
+  text is in `upstream/issue-multidata-loaduop-uncompressed.md`; see
+  [`UPSTREAM.md`](UPSTREAM.md).
 
 ### `config/`
 
