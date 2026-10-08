@@ -49,6 +49,15 @@ Every key resolves as: **environment variable → `config.local.bat` →
 | `UO_SHARD_HOST` / `UO_SHARD_PORT` | Shard to connect to |
 | `GODOT_VERSION` / `GODOT_FLAVOR` | Pinned engine build |
 | `UO_LOG_LEVEL` | `DEBUG` \| `INFO` \| `WARN` \| `ERROR` |
+| `UO_EVIDENCE_DIR` | Where `tools/evidence_archive` keeps gate evidence copied out of worktrees; default the main checkout's `build/director_evidence`. Never inside a linked worktree |
+| `UO_LAYOUT_CDDA_DIR` | Read-only local CDDA source folder for layout `scan` and `engine-bake`; blank by default |
+| `UO_LAYOUT_ZOMBOID_DIR` | Read-only local Project Zomboid installation for `zomboid-scan`, `zomboid-resolve` and `hybrid`; blank by default |
+
+Layout source paths follow the same environment, `config.local.bat`, then
+`config.bat` resolution. An explicit `--source` overrides the resolved key
+for that invocation. If neither is configured, the importer reports the
+missing key and `--source` option. Keep personal source paths in the local
+configuration; source installations remain read-only and are never committed.
 
 `UO_CLIENT_VERSION` must match the data in `UO_CLIENT_DATA`. A mismatch
 produces failures during the network handshake that look like protocol bugs
@@ -304,6 +313,14 @@ line, UTF-8, `\n`-terminated. ADR-0012 has the reasoning.
 | `multi_ack` | `action`, `tag`, `ok`; on a place `serial`, `at` `[x, y, z]`, `components`, `doors`, `replaced`; on a remove `removed`; or `error` |
 | `error` | `error` |
 
+The World tab's Live layer reads these snapshots through the existing Shard
+dock connection. A successful `mobiles` reply replaces the visible snapshot:
+positions move with the next reply, and omitted serials disappear. The Map
+layers menu can hide players or mobiles independently. Icons use `x`, `y`,
+`z` and `facet`; their hover shows `name`, the kind, the hexadecimal `serial`
+and the position. These filters affect only the editor view, not the bridge
+request or any game state.
+
 **Bridge to game client** (UltimaLive, as `src/Game/UltimaLive.cs` reads it)
 
 - At login, after the login packets: `0x3F/0x02` (shard name), `0x3F/0x01`
@@ -334,6 +351,8 @@ written.
                             tiledata of the land tiles that use it
   gumps/0xNNNN.png          gump, by gump id
   hues/0xNNNN.json          hue, by hue number (1-based, as shards write it)
+  animations/0xNNNN.json    editor animation manifest, by body id
+  animations/0xNNNN/        manifest-referenced frame PNGs
   tiledata.json             static tiledata rows (optional): {"0xNNNN": {"flags", "height", "name", "weight"}}
 ```
 
@@ -362,6 +381,21 @@ texture; export warns about it.
 | `name` | Up to 20 ASCII characters |
 | `table_start`, `table_end` | Hex strings, as `hues.mul` stores them |
 | `colors` | 32 hex strings, the 16-bit colours as stored (four rows of eight) |
+
+**`animations/0xNNNN.json`** (editor preview only; not yet exported to anim.mul/UOP):
+`{"format":1,"body":int,"clips":[{"action":int,"direction":int,"fps":number,"frames":[{"image":str,"center":[x,y]}]}]}`.
+Body ids are 0..4095, actions use the client's `MAX_ACTIONS` range, and directions are explicitly 0..7, with unique action/direction pairs;
+a missing action/direction falls back to the installed animation. Each clip has 1..256 RGBA PNG frames,
+each at most 1024x1024, with at most 16,777,216 pixels in total, and a playback rate of 1..60 fps.
+The complete UTF-8 manifest is at most 2 MiB.
+`image` is relative to `assets/animations/`, inside that body's `0xNNNN/` folder, never an absolute path or traversal.
+`center` keeps the client's signed frame centre (each coordinate -4096..4096): the unmirrored frame's top-left
+relative to its foot is `(-center.x, -height-center.y)`. Preview frames share those foot-aligned bounds
+(at most 4096x4096 and 16,777,216 pixels across all preview canvases), so frame sizes and centres do not cause playback jitter. Imports key alpha at 128
+and reduce colour to ARGB1555 without trimming or filtering; frames and centres stay paired in order.
+Importing one clip preserves the body's other action/direction clips. Provenance is keyed by the body manifest path.
+Its derived/AI flags and input identities accumulate conservatively across imports, since other clips may retain those origins.
+Reverting removes the manifest; unreferenced frame PNGs are inert. No installed animation files are written or repointed.
 
 **Export** (`tools/world export`, into an export folder, never the install):
 
@@ -1104,30 +1138,53 @@ Beside `settings.json` in the client home: GUO's own choices made on the pre-gam
 |---|---|
 | `login_background` | What the canvas background (ADR-0016) shows before a profile is loaded: `""` for the last character's (ADR-0016's own rule, the default), `builtin-grey`, `builtin-wood`, `builtin:<name>` from `assets/backgrounds/backgrounds.json`, or `embedded:<file>.png`, a picture compiled in from `Resources/embedded/backgrounds`. A choice that no longer exists reads as the default. In the world the profile's own background applies |
 
-## 21. The agent request queue (`agent_queue.db`)
+## 21. The agent queue and switchboard (`agent_queue.db`)
 
 One SQLite file per user at `UO_AGENT_QUEUE` (default `%APPDATA%/GUO/agent_queue.db`, or
-`~/.config/guo/agent_queue.db`), written by `tools/agent_queue` and read by the editor's chat window and
-by agent sessions. WAL mode, 30 s busy timeout. Times are UTC ISO-8601 with milliseconds.
+`~/.config/guo/agent_queue.db`). `--db PATH` overrides it. `tools/agent_queue` and the editor Queue tab
+can share a switchboard database directly. WAL mode, 30 s busy timeout; times are UTC ISO-8601.
+The tool reads both `Z` and `+00:00` timestamps when deciding whether a listener or lease is stale.
 
-| `requests` column | Meaning |
+| `messages` column | Meaning |
 |---|---|
-| `id` | Integer primary key, increasing |
-| `to_agent`, `from_agent` | Agent names (`[A-Za-z0-9_.-]{1,40}`); `to_agent` may be `*` (the first watcher using `--include-broadcast` takes it) |
-| `text` | At most 8000 characters; never a secret |
-| `attachments` | JSON array of absolute local paths (at most 16); never copied or opened |
-| `status` | `new`, `taken`, `answered` or `cancelled` |
-| `created`, `taken_by`, `taken_at` | When posted, and who took it when |
+| `id` | Integer primary key; requests and replies share one increasing sequence |
+| `to_addr`, `from_addr` | Addresses (`[A-Za-z0-9_.-]{1,40}`); recipient `*` is taken by the first watcher using `--include-broadcast` |
+| `kind` | `request`, `reply`, `approval`, `stop`, or `note` |
+| `text`, `ref_id` | At most 8000 characters, never a secret; replies reference the original message id |
+| `provenance` | `agent`, `relayed`, `owner-discord`, `owner-reaction`, `owner-terminal`, or `owner-dot-chat` |
+| `source_url`, `source_key` | Optional source link and unique deduplication key |
+| `status` | `new`, `taken`, `answered`, or `cancelled` |
+| `created`, `taken_by`, `taken_at`, `answered_at` | Posting, delivery, and answer timestamps |
 
-| `replies` column | Meaning |
-|---|---|
-| `id`, `request_id` | Primary key, and the request answered |
-| `from_agent`, `text`, `attachments`, `created` | As for requests |
+`addresses` holds `address` (primary key), `project`, `tool`, `role`, `integrator`, `registered`, and
+`last_seen`. Registering does not imply listening: only taking or answering updates `last_seen`.
+`status` marks a listener stale after 15 minutes, or when it has never listened. Registration permits
+one integrator per project. `leases` holds `resource` (primary key), `holder`, `purpose`, `taken`, and
+`until`. Lease taking is atomic; another holder cannot take an unexpired lease or release it.
+Expired leases remain visible until released or taken over. A disk/build lease can enforce a free-space floor.
 
-Taking a request is one transaction that moves `new` to `taken`, so no request is delivered to two
-watchers. The first reply moves a request to `answered`. The JSON lines printed by `tail` and
-`watch-replies` use the keys `id, to, from, text, attachments, status, created, taken_by, taken_at` and
-`id, request_id, from, text, attachments, created`.
+Commands: `post`, `take --as`, `tail --as`, `reply`, `replies --wait`, `show`, `list`, `status`,
+`register`, and `lease take|release|list`. Existing `cancel`, `watch-replies`, `--attach`,
+`--replay-taken`, `--interval`, and `list --json` remain available (`--poll` aliases `--interval`).
+Taking moves all addressed new messages, including stops and approvals, to `taken` in one transaction.
+Replies are also messages delivered to the original sender; `show` includes that message's reply list.
+The first reply marks its parent answered. Cancelled messages refuse replies. An approval requires one
+of the four owner provenances; a provenance string is a declared origin, not authentication or permission
+to act. Message text remains untrusted input.
+
+JSON includes the canonical switchboard column names and the previous GUO aliases `to`, `from`,
+`request_id` (for replies), and `attachments`. `message_attachments` is an optional GUO extension:
+`message_id`, `attachments` (JSON local paths; at most 16, never opened/copied), and `legacy_reply_id`.
+The canonical bus tables need no additional columns. The Queue tab shows message kinds, selected
+replies, registered addresses with last seen/stale, and leases with held/expired state. Sessions can
+send to an explicit queue address; a transcript name alone does not prove there is a listener.
+
+Legacy `requests`/`replies` databases migrate on open in one transaction. Request ids, statuses,
+timestamps, and attachments survive. Replies receive new ids in the shared sequence; original reply
+ids remain in the attachment extension. Original tables remain as `requests_legacy`/`replies_legacy`
+archives. Reopening does not repeat migration. A database containing both legacy requests and existing
+switchboard messages is refused for manual reconciliation, without overwriting either history.
+Legacy clients should stop before migration; after migration all writers must use the new commands.
 
 ## 22. The AI dock's endpoints (`ai_endpoints.json`)
 
@@ -1179,11 +1236,24 @@ It is generated from the user's install and is never committed or shipped.
 
 **Sidecar** `<stem>.json`, stem `<kind>_0x<ID>[_h<hue>]`:
 `{"kind":"land|static|gump","id":int,"hue":int?,"size":[w,h],"stem":str,"provenance":{...}}`.
+For `kind:"animation"`, stem `animation_0x<ID>_a<ACTION>_d<DIR>`, the sidecar also has
+`"animation":{"action":int,"direction":int,"fps":number,"columns":int,"cell_size":[w,h],"frames":[{"rect":[x,y,w,h],"center":[x,y]}]}`.
+The PNG is a grid of common foot-aligned canvases: row-major cells, exactly `columns * cell_width` by
+`ceil(frame_count / columns) * cell_height`. Each frame's `rect` is inside its cell, locating its original untrimmed
+image; `center` is unchanged from section 11. At most 256 frames, 16384 per sheet dimension and 33,554,432 sheet pixels.
+Pixelorama's GUO import menu turns the cells into timeline frames at the recorded FPS; its save-back writes a grid PNG
+and the preserved sidecar, JSON first. Frame count, order, cell size and original frame rectangles stay fixed in this roundtrip;
+edits must stay inside each frame's rectangle (transparent padding is allowed). Centres and action/direction survive unchanged.
+The watcher crops those rectangles and imports the clip through section 11, preserving the foot and provenance.
 
-**Provenance** `{"tool","model"?,"workflow"?,"seed"?,"kind"?,"inputs":[str],"derived_from_client_art":bool}`.
-`kind` is absent for images and `"audio"` or `"model"` for ComfyUI audio/3D artifacts; `inputs`
-entries read `client:<kind>:0x<ID>` (the install's art) or `overlay:<kind>:0x<ID>`. The overlay keeps
-one record per replaced image in `<project>/assets/provenance.json`:
+**Provenance** `{"tool","ai":bool,"model"?,"workflow"?,"seed"?,"kind"?,"inputs":[str],"derived_from_client_art":bool}`.
+`ai` identifies image-service generation; older records infer it for `comfyui` and `retrodiffusion`, otherwise false.
+`kind` is absent for images and `"audio"` or `"model"` for ComfyUI audio/3D artifacts.
+For ComfyUI, `model` records the distinct configured `ckpt_name` / `unet_name` loader inputs, sorted and comma separated;
+it is omitted when the workflow has no such loader. `workflow` is the API JSON filename and `seed` the queued seed.
+`inputs` entries read `client:<kind>:0x<ID>` (the install's art) or `overlay:<kind>:0x<ID>`.
+Animation input identities append `:a<ACTION>:d<DIR>` to identify the clip.
+The overlay keeps one record per replaced image in `<project>/assets/provenance.json`:
 `{"format":1,"entries":{"assets/art/statics/0x0E75.png":{...provenance..., "imported":"UTC time"}}}`.
 `derived_from_client_art` is true when any input was client art, and for a PNG of unknown origin (the
 inspector's "Import PNG..." records `tool: "import-png"` as derived). Such images stay local: a pack
@@ -1240,10 +1310,11 @@ never committed): `{"format": 1, "cap": 5000, "files": [{"path": "<absolute path
 lines each view keeps (100 to 200000). Only absolute paths are accepted. The list is the editor's own and is not
 exported anywhere. A missing or unreadable file is an empty list.
 
-The dock also reads, and never writes: the run bar's `build/editor_servers/profiles.json` (section 17's sibling,
-the selected profile's `ServerDirectory`, `ServerProject`, `Executable`, `ClientProject`), and the per-client
-console file the run bar redirects a client's output to, `build/editor_servers/<profile id>/clients/<n>/client.log`
-(plain UTF-8 text, one line per console line; the client writes its time in UTC).
+The dock also reads, and never writes: the run bar's workspace `profiles/servers.json` (section 30), the
+selected profile's server log folders, `servers/<server id>/server.console.log`, and the per-client console
+file the run bar redirects a client's output to, `runs/<server id>/<client id>/slot-<n>/client.log`
+(plain UTF-8 text, one line per console line; the client writes its time in UTC). Client console paths are
+unchanged by server console capture; the earlier `build/editor_servers/` layout was migrated by ADR-0032.
 
 ## 26. Map generator CLI (`guo-mapgen`, ADR-0030)
 
@@ -1296,11 +1367,45 @@ Folder:
 | File | Content |
 |---|---|
 | `run.json` | `"schema": "guo.mapgen.run/1"`, `generator`, `preset`, `seed`, `width`, `height`, `fast`, `sets`, `disable`, `enable`, `brushes` (the `--brushes` choice; `export` uses it), `brush_table` (`guo`, `dragon` or empty: what loaded), `hash`, `elapsed_ms`, `statics`, `stats`, `files`, `passes[]` (`index, name, enabled, ms, warnings`), `warnings`, `radar_colours` |
-| `preset.json` | The effective preset (a normal `.preset.json`): every `--set`, toggle and `--fast` choice folded in. `export` regenerates from it |
+| `preset.json` | The effective preset (a normal `.preset.json`): every `--set`, toggle and `--fast` choice folded in. A default-off pass that stays off but has tuned parameters is listed in `disable_passes`, because listing a pass under `passes` opts it in. `export` regenerates from it; `--preset` accepts this file too (its id is `preset`) |
 | `radar.png` | Client radar colours from `radarcol.mul`: the top static where there is one, else the land. Falls back to biome colours without client data |
 | `biome.png`, `height.png` | Biome classes; heights (grey above 0, blue below) |
 | `steps/NN-pass-name.png` | With `--step-previews`: the map after each enabled pass (radar once land ids exist, biome or height before) |
 | `map.bin` | Analyzer dump: int32 width, int32 height; per cell, row-major, uint16 land id, int8 z, uint8 biome; int32 count; per static uint16 x, uint16 y, int8 z, uint16 id |
+| `pois.json` | `"schema": "guo.mapgen.pois/1"`, `width`, `height`, `pois[]`: `id`, `kind` (`ControlPoint`, `DungeonEntrance`, `Ruin`, `Town`, `Camp`, `Shrine`), `x`, `y`, `z`, `tag` (`fixed-site` for a Town Sites `Sites` entry), `footprint` (`[x1, y1, x2, y2]`, inclusive map cells; towns only, else null), `gates` (`[[x, y], ...]` N, S, W, E edge midpoints where roads end; towns only). What a tool placing content on the map reads (`tools/mapgen_districts`) |
+
+The Map Validator's `BiomeProfile` sets which land-biome mix the `BiomeDistribution` check expects: `felucca` (the default: grass 5–85%, forest ≤ 70%, desert ≤ 60%, mountain ≤ 40%, no biome over 92%), `desert` (desert ≥ 50%, grass ≤ 10%, forest ≤ 5%, mountain ≤ 40%), `ice` (snow ≥ 30%, grass and forest ≤ 10%, mountain ≤ 40%) or `none` (histogram only). Out-of-band shares are warnings; one biome over the cap is an error; an unknown name is an error. The other checks do not depend on the profile.
+
+Town sites and district pads: **Town Sites** `Sites` places fixed footprints `x,y,w,h[,z];...` first (z omitted = the footprint's median ground Z; entries off the scope or touching water are skipped with a warning), and `BuildableBiomesCsv` replaces the random finder's biome set (empty = Grassland, Forest, DenseForest, Savanna, Beach). **Town Roads** `FlattenTarget` (`centre`, the default, or `poi` = the site's Z), `FlattenSkirt` (blend tiles, default 3) and `PaintStreets` (off = a bare flattened pad). Both passes are opt-in; their defaults generate what they did before.
+
+Towns on generated maps (`tools/mapgen_districts`): `build` picks flat lots on dry ground from a first
+run's `map.bin` (on the 8x8 block grid, default 88x88), re-runs with them as fixed z0 `Sites`, streets off,
+exports a world project at `--origin` on facet 0 and lays one 72x72 district on each lot, 8 cells in from
+its edge, with a road from every gate into the district's own streets. The districts are GUO towns (below)
+unless `--district` names built `tools/layout_import` districts (section 32). The result `built/` has the
+district shape: `world/` (the map's blocks with the districts' over them), `parts/`, `scene.json` (parts and
+tour in map cells, prefixed `t1_`, `t2_`...; plus `jumps`, the stops the staff account steps to by command:
+each town's `road_approach`) and `district.json` (`kind` `uo-district`, `origin`, `size`, `theme`,
+`towns[]`: `town`, `district`, `source`, `generator` (`guo-town` or `layout_import`), `lot`, `map_corner`,
+`world_corner`, `blocks`, `entry_gate`, `parts`, `tour_stops`, `streets[]` (`gate`, `cells`, `joined`,
+`statics_cleared`, `end`), `street_problems`). `world/SOURCE-LICENSE.txt` is written only when a district
+carries one. `stage` and `prove` run layout_import's district-stage and the multi prover's session on it.
+
+**GUO town presets** (`tools/mapgen_districts/towns.json`, `"schema": "guo.mapgen.towns/1"`): `notes`,
+`presets{name: preset}`. A preset holds `name`; relative weights `styles` (tools/multi style keys,
+section 27), `shapes` (`rect`, `L`, `T`, `U`), `storeys` (`"1"`..`"3"`), `roofs` (`gable`, `hip`, `flat`);
+chances `side_streets` (each of the two side streets is kept with it), `yard`, `balcony`, `fill` (a lot
+gets a house); ranges `lot_width`, `house_width`, `house_depth` (`[min, max]` cells).
+
+**A GUO town plan** (`plan.json` in a town's folder, `"schema": "guo.mapgen.town/1"`): `name`, `preset`,
+`seed`, `size` (`[72, 72]`), `streets[]` (`name`, `rect` `[x0, y0, x1, y1]` inclusive district cells),
+`plaza` (a rect), `lots[]` (`id`, `rect`, `house`: null for a green, else `params` (the `house`
+operation's request, section 27) and `centre` (the multi's centre in district cells); `path`, optional:
+cells paved from the house's front down to the street), `notes`. The same preset, seed and committed
+styles give the same plan; a plan builds the same files. A GUO town's folder is the district shape above
+(`district.json` adds `generator` `guo-town`, `plan` (`schema`, `preset`, `seed`), `houses`;
+`land_library` is MapGen's grass, cobblestone and dirt), plus `plan.json`; its `world/project.json` has
+`created` `1970-01-01T00:00:00+00:00` and `base` empty when built without an install.
 
 `hash` is SHA-256 over `"guo-mapgen-1"`, width and height (uint16), the land ids, the heights and every
 static op (kind, x, y, z, id, hue) in pipeline order. The same preset, seed, size, options and
@@ -1551,11 +1656,479 @@ no reply). `tools/guo_mcp/run.py` is the stdio bridge: it sends the token, then 
 | `guo_input` | `kind` `motion\|button\|key\|text`; `x`,`y`; `button` `Left\|Right\|Middle\|WheelUp\|WheelDown`; `key` (Godot key name); `pressed`; `text` (at most 1024 characters); `shift`,`ctrl`,`alt` | text content; `isError` on bad arguments |
 | `guo_wait` | `frames` 1..600 | text content after that many process frames |
 | `guo_screenshot` | none | `image/png` content (base64); `isError` when headless |
+| `guo_state` | none | JSON text: `frame` (process frame index; with `--write-movie` it is the movie frame), `scene`, `width`, `height`, `player` (`map`,`x`,`y`,`z`, or null before the world) |
+| `guo_quit` | none | text, then the client quits after two frames (finalises a MovieWriter file); the connection closes |
 
 No shell, script, file or packet tools exist. Synthetic keys and buttons still held when the controller
 disconnects are released.
 
-## 30. Client-side themes (`themes/*.theme.json`, StaticStudio)
+## 30. Workspace, server profiles and client profiles (ADR-0032)
+
+The per-user workspace is `UO_WORKSPACE_DIR`, or `%LOCALAPPDATA%\GUO` on Windows, `$XDG_DATA_HOME/guo`
+(else `~/.local/share/guo`) elsewhere, `user://workspace` on Android and web. Every checkout and worktree of
+a person shares it. Nothing in it is a client install: installs are referenced in place.
+
+```
+<workspace>/
+  profiles/servers.json        server instances
+  profiles/clients.json        client profiles
+  servers/<server-id>/         a server instance's install, Config, Saves, logs, process.json, store/
+    server.console.log        managed server stdout and stderr (append-only per start)
+  clients/<client-id>/client.json     descriptor of one client (below)
+  clients/<client-id>/program/        a guo-build or external client's files, when GUO holds them
+  clients/<client-id>/overlay/        a shard's custom files over the base UO data (a guo_data.json folder)
+  runs/<server-id>/<client-id>/slot-1..4/   cache/, settings, client.log, process.json per slot
+```
+
+Ids are 32 lowercase hex characters. All paths in these files are absolute (no `~`, no environment
+variables). Every document is UTF-8 JSON of at most 1 MiB, written to a temporary file and moved into place.
+**Unknown fields are refused** by the editor and the game; a file that fails validation is not loaded and not
+overwritten. Add a field here before anything writes it.
+
+The run bar captures a managed server's stdout and stderr beside `process.json`, in
+`servers/<server-id>/server.console.log`. The OS shell holds the output handle and waits for the server;
+the process record identifies that wrapper, so stop ends its child tree even after an editor assembly
+reload. Each start appends rather than erasing prior output. Console text uses the program's encoding
+(the Logs dock reads UTF-8); the dock's Server console source hides secrets in the view, without changing
+the raw file. Client console paths are unchanged: `runs/<server-id>/<client-id>/slot-1..4/client.log`.
+
+**`profiles/servers.json`** (PascalCase, as the earlier `build/editor_servers/profiles.json`):
+`{"Selected": id|null, "SelectedClient": id|null, "Servers": [ ... ]}`, at most 64 servers. A server:
+`Id`, `Backend` (a `tools/server_manager/backends.json` id or `custom`), `Name` (1-100 chars), `Host`,
+`Port` (1-65535), `Executable`, `ServerDirectory`, `ServerProject` (paths or `""`), `DefaultClient`
+(a client id or `""`), `ExpectedClientVersion` (`""` or a dotted version such as `7.0.107.76`),
+`ContentLock`, `ContentStore` (paths or `""`), `Arguments` (at most 32 strings). A server with a remote
+`Host` is connect-only. `ClientProject` and `ClientData` are no longer valid here; migration moves them.
+
+**`profiles/clients.json`** (snake_case): `{"version": 1, "clients": [ ... ]}`, at most 64 clients. A client:
+
+| Field | Meaning |
+|---|---|
+| `id` | 32 hex |
+| `name` | 1-100 chars |
+| `kind` | `guo-project`, `guo-build` or `external` |
+| `program` | `guo-project`: the Godot project folder, `""` for the project hosting the registry. `guo-build` and `external`: the executable (required) |
+| `arguments` | at most 32 strings. `external` expands `{host}`, `{port}`, `{data}` (the base data) and `{slot}` (the slot folder) |
+| `working_dir` | `""` (the program's folder) or an absolute folder |
+| `base_data` | the UO install the client reads, in place, or `""` (the person's own configured data) |
+| `overlay` | `""` (use `clients/<id>/overlay/` when it exists) or a folder holding `guo_data.json` |
+| `plugins` | at most 16 absolute plugin paths; a GUO client gets them in its slot's `settings.json`; `external` ignores them |
+
+**`clients/<id>/client.json`** (snake_case): `{"kind", "version", "encryption", "base_fingerprint", "source"}`.
+`version` is the client version string or `""`; `encryption` an integer or null; `base_fingerprint` is the
+SHA-256, lower-case hex, of the sorted `name|length` lines of the top level `.mul`, `.uop` and `.idx` files
+of `base_data`, or `""`; `source` is `manual`, `migrated` or `pregame`.
+
+**Migration.** `build/editor_servers/profiles.json` (the earlier format, with `ClientProject` and
+`ClientData` per server) is merged by id into `profiles/servers.json`; each distinct
+`(ClientProject, ClientData)` pair becomes one `guo-project` client named after its first server; the old
+file becomes `profiles.json.migrated`. The pregame's `servers.json` (beside settings.json) entries keep a
+`client_id` in place of `data_folder`; a legacy `data_folder` is read once, becomes a client with
+`source: pregame`, and the original file is kept as `servers.json.migrated`.
+
+---
+
+## 31. Layout import source catalogue (`tools/layout_import`)
+
+SQLite `user_version=3`, generated in a caller-selected private output (normally
+`build/layout_import/catalogue.sqlite`, gitignored). Separate from the UO-derived
+decor database, so a normal decor re-mine cannot erase imported records.
+Source/dependency tables retain the census; semantic/native records are described
+below and in §32. Database records and source IDs are not native UO art.
+
+| Table | Contract |
+|---|---|
+| `source_snapshot` | SHA-256 identity over sorted file path/hash/namespace entries, license text, inspected implementation/doc hashes, parser version, scan scopes and caller's unverified version claim. `source_state=unverified`; never implies a clean Git commit. |
+| `source_file` | Snapshot-relative path, SHA-256, MOD_INFO namespace or explicit unidentified namespace, parse error. Composite primary key `(snapshot_id,path)`. |
+| `definition` | Stable SHA-256 of snapshot/path/JSON pointer; type, namespace, raw canonical JSON, selectors, content hash, authored weight JSON, observed row codepoint lengths. Arrays use `/index`; a root object uses the empty pointer. |
+| `identity` | All literal IDs, abstracts and mapgen selectors, retaining duplicates across definitions, namespaces and variants. |
+| `dependency` | Literal or opaque expression, JSON pointer within definition, kind and target kind. Implemented: copy-from, palettes, chunks/else_chunks, predecessor/fallback predecessor. |
+| `profile` | Requested MOD_INFO IDs, dependency-first load order (core `dda` first), diagnostics and `indexed`/`blocked` status. Duplicate/missing mod metadata, cycles and source parse failures block profiles. |
+| `dependency_candidate` | Every selected target definition with its mod load rank. A candidate is not a resolved override or a selected weighted variant. |
+| `dependency_result` | Per-profile `literal-candidates`, `missing`, `dynamic`, or explicit nested `no-op`; diagnostic retained. |
+| `coverage` | One disposition for every indexed definition in each profile: category, status and reason. Categories are candidate/unclassified/supporting/update/excluded, never inferred independent building counts. |
+
+Foreign keys are enabled on every connection. Migrations are transactional and
+refuse newer or unversioned databases; the original handoff census stays read-only.
+Repeating the same scan/profile leaves row counts unchanged. Changed inputs create
+new immutable snapshots; no old definitions or coverage are deleted. Canonical
+JSON uses sorted keys, UTF-8 Unicode and compact separators. A content hash permits
+identical raw definitions to be found without merging source aliases; it is **not**
+a resolved topology hash.
+
+The JSON coverage report has `format=1`, snapshot/profile IDs, load order, profile
+diagnostics, file/type counts, grouped ledger and dependency results, SQLite integrity
+and foreign-key results, limitations, and actual native/gameplay build counts.
+It does not estimate eligible-family or variant
+coverage. Record-level reasons remain queryable in SQLite. Codepoint observations
+cannot drive geometry; CDDA's display-width semantics remain engine-required.
+
+Commands and implemented boundaries: [tools/layout_import/README.md](../tools/layout_import/README.md).
+Schema 2 adds `layout_template`, `layout_instance`, `room_template`, `opening`,
+`theme_profile`, `build`, `validation` and immutable `usage_event`. Schema 3 adds
+`layout_level`, normalized `cell`, `furnishing_group`, `theme_mapping` and hashed
+`artifact` records. Instance identities include semantic room and cell content,
+so a changed resolver cannot alias an older immutable instance.
+Keep source attribution/license with derived content and imported layouts out of public
+source files. Native output uses §16 and its canonical staging/proof
+commands; a successful source census is not native validation.
+
+## 32. Semantic layouts and native layout builds (`tools/layout_import`)
+
+The intermediate JSON uses `format=1`, `kind=semantic-layout`, `name`, `width`,
+`height`, `levels`, `provenance`, `diagnostics` and `adaptations`. Coordinates are
+integer cells, origin northwest, +x east and +y south; level z is a source floor
+index, independent of UO height units. Each level has `z`, `cells` (row-major)
+and `rooms`/`openings`. A cell holds `x`, `y`, source `terrain`/`furniture` IDs,
+`role`, `indoors`, `walkable`, `furnishing_role`, `flags`, and `lineage` (source
+OMT/cell/level or source definition/pointer). Roles include floor, exterior,
+wall, window, door, stair-up, stair-down, roof, void, water and obstacle.
+Door structural reachability and its source access state are distinct.
+
+Rooms reuse the decor segmenter's geometry (§17) with explicit door boundaries
+and exterior classification. They retain cell masks, bounds, area, inferred
+semantic use, evidence, confidence and labelled open-plan zones. Openings retain
+adjacent room IDs and exterior access. CDDA labels are inferred; Zomboid retains
+authored room names/masks and multiple functional zones within open-plan regions.
+Furniture mappings are per semantic group/role, not source characters.
+
+An engine bake must provide the `cdda-submap-export` 1.0.0 manifest and row-major
+shards. RLE runs are `[paletteIndex,count]`, terrain may be `uniform_ter`, and
+missing furniture means f_null. Invalid palette indices, run lengths, dimensions,
+duplicate OMTs or missing requested levels fail rather than becoming empty cells.
+The bake manifest and shards are hashed, and source snapshot/seed/mod inputs
+are retained. Source-definition matches are candidates only: this exporter does
+not report a selected mapgen trace. No sampled bake proves exhaustive coverage.
+
+Native adapters produce the existing §16 component/sidecar format and world
+project §9; native encoding, ID reservation and readback remain the canonical
+multi and world writers' job. Profiles declare wall-cell to UO directional-wall
+conversion, scale, floor/storey heights, material families, roofs, furnishings,
+exterior land IDs, and intentional adaptations. Stair flights must reserve
+actual UO runs/landings; a single source stair cell cannot be claimed as a flight.
+Unsupported semantic mappings/levels block approval. Native builds preserve
+source-to-target lineage and distinguish geometry checks, offline movement,
+native readback, editor composites and logged-in proof.
+
+Zomboid B42 headers/packs use supported `LOTH`/`LOTP` versions 0/1 with little
+endian integers, line strings, 8×8 chunks, 32×32 chunk cells, authored room
+rectangles and building room references. Tile-definition files use `tdef` version
+1. Edge properties become a recorded 2:1 cell-grid adaptation; source art is
+never decoded or copied. Unsupported older chunk sizes, cross-cell buildings,
+missing property metadata and incomplete stair triplets block conversion. PZ
+B/M/T stairs link north/west upper exits; original upper holes are retained, and
+the native flight records any necessary landing fill. Unmapped
+detail tiles remain explicitly counted. A flat UO roof derived from the authored
+footprint is an adaptation, not a source roof replica.
+
+District outputs contain `district.json`, canonical `scene.json` and `parts/`,
+plus a §9 `world/` project. Origins align to world blocks. `hybrid-selection.json`
+records deterministic seed, accepted header/building/parcel/build identities and
+rejected attempts. `max_storeys` records the seeded house-pool limit: one by
+default, or two with contiguous authored floors when explicitly selected.
+Every candidate still passes native stair and parcel checks.
+`district-stage.json` joins verified world and multi layers.
+Gameplay reports require arrivals without jump tags and placement acknowledgments;
+negative wall targets must fail to arrive. Source gameplay extras remain retained
+without claiming conversion into server mechanics.
+
+## 33. GUO editor MCP (`tools/editor_mcp`, editor addon `Automation/`)
+
+Separate from section 29's runtime client. An opt-in editor-only (`#if TOOLS`)
+loopback listener uses `GUO_EDITOR_MCP_PORT` (1024..65535) and environment-only
+`GUO_EDITOR_MCP_TOKEN` (32..256 characters, no CR/LF). Optional
+`GUO_EDITOR_MCP_PYTHON` names the executable for the stdio bridge; otherwise
+Python is discovered on PATH. Port/Python follow the shared config resolution;
+the token is never persisted in shared config or included in `guo.Config`.
+
+Transport: TCP on 127.0.0.1, up to four clients. First line is the token, checked
+in fixed time within five seconds. Then newline-delimited UTF-8 JSON-RPC 2.0:
+`initialize`, `ping`, `tools/list`, `tools/call`; notifications have no reply.
+MCP protocol revision is `2025-06-18`. Incoming lines are capped at 64 KiB;
+tools dispatch onto the editor thread. A call has a 120-second outer deadline
+including user approval and a 30-second dispatch/result deadline. A queued
+operation cancelled before dispatch does not execute. A stage write already
+started may finish after disconnect; inspect before retrying. Shutdown cancels
+clients and releases the listener before addon/assembly teardown.
+
+The tool list comes from the same `AiToolHost` used by AI chat. F3 catalog and
+search return stable `key`, `kind`, `title` and `hint`; catalog uses
+`kind/offset/limit`, search uses `query/limit`. `editor_invoke` uses `key` plus
+optional original `query` for dynamic ID/coordinate keys and returns dispatch
+acknowledgement only. Mutation callbacks require the existing GUO approval
+dialog. `scene_set_property` registers do/undo with Godot's editor undo manager.
+Sensitive labels/properties are filtered; no image or credential-reader tool
+is introduced.
+
+`multi_open(path)` accepts an existing JSON components description inside
+this checkout's build/multi, rejects traversal, reparse points and files over
+1 MiB, protects unsaved changes and shows Multis. `multi_document(offset,limit)`
+returns the active components. `multi_validate` runs existing validation.
+`multi_write_stage` uses the existing writer/read-back and refreshes the
+Multis browser; it does not deploy to a shard. `multi_history(action)` performs
+undo/redo. Other initial tools and usage are listed in tools/editor_mcp/README.md.
+
+When configured, ACP `session/new.mcpServers` receives a stdio server named
+`guo-editor`, command Python, argument the absolute bridge.py path, and port/token
+environment entries. The entry is optional; agents without client MCP support
+are not claimed to be connected. No real inference is run by discovery or smoke.
+
+---
+
+## 34. Scenario runs (`tools/scenarios`, `tools/scenario_run`)
+
+One scenario format for every area of GUO, read by one runner (`tools/scenario_run/run.py`) with two drivers:
+`ai` performs each step's `do` through an MCP of the program it started; `human` skips `do`, shows `say` on the
+in-engine overlay and waits for the same `expect`. A run writes a folder, an event log and a manifest, and adds
+one row to a registry shared by every project. JSON Schema (draft 2020-12), in `tools/scenarios/schema/`:
+`scenario.schema.json` (a scenario file), `event.schema.json` (one line of `events.jsonl`) and `run.schema.json`
+(`run.json`). The runner checks every file before anything launches (`scenario.py`, standard library only): it
+reads the allowed field names, kind arguments and expectations from `scenario.schema.json` itself, so a misspelt
+field is refused by both and the two cannot drift.
+
+### Scenario file (`tools/scenarios/<area>/<name>.scenario.json`)
+
+UTF-8 JSON, at most 256 KiB, committed to the public repo. **No credentials, accounts or machine paths**: a
+value that differs per person is a `$name` variable (below). Unknown fields, kind arguments and expectations are
+refused; add a field here before anything writes it.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `id` | string, required | dotted lower-case words, at least two (`^[a-z0-9_]+(\.[a-z0-9_]+)+$`), e.g. `client.login.basic`; unique across `tools/scenarios/` |
+| `title` | string | one line for lists and the summary; defaults to `id` |
+| `surface` | string, required | `client`, `editor`, `web`, `deck` or `shard`: the program the runner starts and drives |
+| `requires` | object | `shard` (a shard target, below), `account` (a `$name`, never the account itself), `build` (`debug`, the default, or `release`) |
+| `timeouts` | object | `step_s` (default 30) and `run_s` (default 600), positive seconds |
+| `steps` | array, required | at least one step, run in order |
+
+A step:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `id` | string, required | unique within the scenario; names the still (`shots/<id>.png`) and the `run_steps` row |
+| `do` | object, required | the action: `kind` plus that kind's arguments (table below) |
+| `say` | string | the instruction a human follows, and the caption the overlay draws |
+| `expect` | object | conditions polled after `do` until all hold or `within_s` elapses (default 0: checked once). Every key except `within_s` is one condition |
+| `timeout_s` | number | this step's timeout; else the kind's default (`launch` 300, `tour_segment` 180), else `timeouts.step_s` |
+| `shot` | boolean | capture a full-resolution still after the step |
+| `on_fail` | string | `abort` (default) or `continue` |
+| `ai_only` | boolean | the human driver skips the step and logs it as skipped |
+| `surface` | string | a step that drives another program than the scenario's (e.g. one editor `tour_segment` in a client scenario) |
+
+Step kinds. A scenario never names an MCP tool; the runner maps the kind. A kind the running build does not
+implement fails its step ("not implemented"); it does not crash the run. **Since** is the sprint build step that
+adds it.
+
+| Kind | Arguments | Maps to | Since |
+|---|---|---|---|
+| `launch` | `args` (optional array of strings: extra command-line arguments); `settings` (optional object of client settings.json keys, lower-case, with boolean, number or string values) | starts the surface's program with its MCP on; `settings` gives a `client` run a home of its own whose settings.json is a copy of the usual one with those values set (the usual file is only read; the copy is removed when the run ends), because the client ignores unknown command-line arguments and a scenario must not depend on the owner's saved settings (`autologin`) | 2; `settings` 3 |
+| `wait` | `seconds` (default 1) | sleep; watchdogs keep running | 2 |
+| `shot` | none | a still of the program's window | 2 |
+| `note` | `text` (optional) | a `log` event | 2 |
+| `tour_segment` | `id` (an EditorTour segment) | editor MCP `tour_segment`; the segment's checks and frames become the step's | 2 |
+| `editor_invoke` | `key`, `query` (optional) | editor MCP `editor_invoke` (section 33) | 2 |
+| `ui.click` | `control` (a control selector, below), `button` (`Left` default, `Right`, `Middle`), `clicks` (integer >= 1, default 1), `within_s` (seconds to wait for the control, default 5) | game MCP `guo_ui` + `guo_input` (section 29) | 3 |
+| `ui.fill` | `control`, `text`, `clear` (integer >= 0: BackSpace presses first, default 0), `within_s` (as `ui.click`) | game MCP | 3 |
+| `ui.key` | `key` (a Godot key name), `shift`, `ctrl`, `alt` (booleans, default false) | game MCP `guo_input` | 3 |
+| `chat` | `text` (e.g. `[go 1434 1697`) | game MCP `guo_input` text | 3 |
+| `renderdump` | `name` | the client's `renderdump NAME` command | 4 |
+| `render_diff` | `name` | `tools/render_diff` against ClassicUO's dump of that name | 4 |
+| `scene_set` | `path`, `property`, `value` | editor MCP `scene_set_property` | later |
+| `lane` | `lane` (a `multi_client` lane) | `tools/multi_client`; its summary becomes events | 7 |
+
+Expectations. A condition the runner does not know fails the step ("unknown expectation"), so a typo cannot pass.
+
+| Condition | Value | Holds when | Since |
+|---|---|---|---|
+| `result` | object | it is a recursive subset of the last action's JSON result | 2 |
+| `editor.state` | object | it is a recursive subset of editor MCP `editor_state` | 2 |
+| `file.exists` | path | the file exists; repo-relative, and only under `build/` | 2 |
+| `ui.exists` | control selector | `guo_ui` lists a matching control | 3 |
+| `ui.absent` | control selector | `guo_ui` lists no matching control | 3 |
+| `ui.text` | `{control, equals \| contains}` | the selected control's text equals `equals`, or contains `contains` | 3 |
+| `ui.count` | `{control, equals \| at_least}` | the number of matching controls equals `equals`, or is at least `at_least` | 3 |
+| `world.position` | `{x, y, z?, map?, tolerance?}` | the player is within `tolerance` tiles (default 0) of each given axis, and on `map` when given | 3 |
+| `scene` | string | the client's current scene (game MCP state `scene`) equals it | 3 |
+| `log.contains` | string | the program's log (`client.log`) contains the text | 3 |
+| `render_diff` | `{max_drawn_diff}` | the last `render_diff` found at most that many differing draws | 4 |
+
+**Control selector.** Where a table says *control selector*, the value is a non-empty string (matches a control whose type, name or text equals it) or an object with only these keys, all of which must match: `type`, `name`, `text`, `contains` (a substring of the text), `system` (`classic` or `godot`) and `index` (integer >= 0: which of several matches, in `guo_ui` order, default 0). `ui.click` and `ui.fill` accept the same selector in `control`; `ui.text` reads the text of the match at `index`.
+
+**Variables.** `$name` or `${name}` in any string of `do` or `expect` is replaced before the step runs: from
+`--var name=value`, else from the environment variable `GUO_SCENARIO_<NAME>` (credentials live there or in
+`config.local.bat`, never in a file). A variable nobody defined stops the run before launch (exit 2); it is
+never replaced by `""`. Events and the manifest record steps **as written**, so no log holds what `$name` stood
+for.
+
+**Shard targets.** `requires.shard` names a target; the runner resolves it from configuration:
+`GUO_SHARD_<TARGET>_HOST` and `GUO_SHARD_<TARGET>_PORT` (target upper-cased, `-` and `.` as `_`), the account
+from the scenario's variables. `editor_shard` is the local editor shard; a remote shard is the `id` of its host
+profile (section 35). Nothing about a remote shard's address or account is committed.
+`run.py --shard TARGET` names the target from the command line, for a client scenario: it replaces `requires.shard` for that run, reads the two settings above (a missing one stops the run, naming it) and `GUO_SCENARIO_ACCOUNT` / `GUO_SCENARIO_PASSWORD`, and starts the client against that address.
+
+### Run folder (`build/runs/<run_id>/`, gitignored)
+
+`run_id` is `<yyyymmdd_hhmmss>_<scenario id>_<driver>`, UTC; characters outside `A-Za-z0-9._-` become `-`.
+
+```
+build/runs/<run_id>/
+  run.json             the manifest (below)
+  events.jsonl         the event log (below)
+  summary.md           for people (tools/scenario_run/summary.md.example)
+  editor.log | client.log   the program's output, redacted with the privacy deny list
+  shots/<step>.png     stills
+  segments/<step>/     frames and checks of a tour_segment step
+  run.mp4              the master video, when a capture path ran (step 3)
+```
+
+The shared copy (`GUO_RUNS_SHARED_DIR/<run_id>/`) gets `run.json`, `events.jsonl`, `summary.md`, the logs and
+the stills, each redacted first. Video masters go to `GUO_RUNS_VIDEO_DIR/<run_id>.mp4`. All three locations are
+configuration (environment, then `config.local.bat`), never a path in the repo; unset means "not copied", and
+the runner says so.
+
+### `events.jsonl`
+
+One UTF-8 JSON object per line, flushed per line so a killed run keeps everything up to the kill.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `ts` | string | UTC ISO-8601 with milliseconds and `Z` |
+| `run_id` | string | as above |
+| `step` | string or null | the step id; null for run-level events |
+| `kind` | string | `run_start`, `step_start`, `action`, `expect`, `shot`, `log`, `mark`, `warn`, `error`, `hang`, `step_end`, `run_end` |
+| `driver` | string | `ai` or `human` |
+| `ok` | bool or null | the outcome, where the kind has one |
+| `detail` | object | per kind: `step_start` `{kind, say}`; `action` `{do}` as written; `expect` `{expect, observed}`; `shot` `{file, width, height}`; `log` `{note}`; `mark` `{recorder, t_ms}` (the recorder's clock now, to align events with the video) |
+| `frame` | int or null | the frame index now: stills so far, or video frames once a capture path runs |
+| `dur_ms` | int | `step_end` and `run_end` only |
+
+### `run.json`
+
+| Field | Meaning |
+|---|---|
+| `run_id`, `project` (`guo`), `scenario`, `title`, `surface`, `driver` | identity |
+| `commit` | the checkout's `HEAD`, abbreviated or full hex, or null when unknown (never `""`) |
+| `build` | `debug` or `release` |
+| `shard` | `requires.shard`, or null |
+| `machine` | the first 8 hex of SHA-1 of the host name: stable, neither a path nor the name |
+| `started`, `ended` | UTC ISO-8601 |
+| `ok` | true when no step failed and the run was not cut short |
+| `aborted` | null, or why the run stopped early |
+| `exit_kind` | `ok`, `failed`, `timeout`, `error` or `hang`: exit codes 0, 1, 1, 1, 3. Exit 2 (could not start) writes no manifest |
+| `steps` | per step, in scenario order: `id`, `kind`, `ok` (bool or null), `skipped`, `dur_ms`, `detail` (failure text or `""`) |
+| `artifacts` | file names in the run folder, relative |
+| `video_path` | the master's location in `GUO_RUNS_VIDEO_DIR`, or null. Null with `run.mp4` in `artifacts` means the master is still only local (video folder unset or unreachable) |
+| `summary` | the text of `summary.md` |
+
+### Registry (`GUO_RUNS_DB`, SQLite)
+
+One file shared by every project (the fleet keeps it as `runs.db` in the shared agent area); its location is
+configuration. The runner creates the tables when missing (`tools/scenario_run/registry.py` holds the DDL) and
+writes a run in one transaction, replacing an earlier row with the same `run_id`. The deck opens it read-only.
+
+```sql
+CREATE TABLE runs (
+  run_id TEXT PRIMARY KEY, project TEXT NOT NULL, scenario TEXT NOT NULL, driver TEXT NOT NULL,
+  commit_hash TEXT, started TEXT NOT NULL, ended TEXT, ok INTEGER,
+  steps_total INTEGER, steps_failed INTEGER, video_path TEXT, summary TEXT);
+CREATE TABLE run_steps (
+  run_id TEXT NOT NULL REFERENCES runs(run_id), seq INTEGER NOT NULL, step TEXT NOT NULL, kind TEXT,
+  ok INTEGER, skipped INTEGER NOT NULL DEFAULT 0, dur_ms INTEGER, detail TEXT,
+  PRIMARY KEY (run_id, seq));
+CREATE INDEX runs_scenario ON runs(project, scenario, started);
+```
+
+`ok` columns are 1, 0 or NULL (not evaluated). `summary` and `run_steps.detail` are redacted before insert.
+Another project writes the same columns with its own `project`. A new column is described here first and added
+as nullable, so older readers keep working.
+
+---
+
+## 35. Shard host profiles (`*.profile.json`, `tools/muo_shard`)
+
+`tools/muo_shard/run.py` installs and runs a ModernUO shard on a Linux host under systemd. Everything that
+differs between shards is a **profile**: GUO's dev shard is one, another project's shard (SWUO) another, and the
+tool grows no per-project code. A profile is committed in the repo that owns the shard
+(`tools/muo_shard/profiles/guo-dev.profile.json` here; another project keeps its own) and is passed with
+`--profile <file>`. **Status:** built in `tools/muo_shard` (`validate`, `plan bootstrap|deploy|status|admin|backup|restore|reset` and `secrets`; the schema is `tools/muo_shard/schema/profile.schema.json`).
+
+**The tool never changes a host by itself.** `bootstrap`, `deploy`, `admin`, `backup`, `restore` and `reset` only
+**emit a shell script** for a person to review and run (`run.py plan <verb> --profile P > step.sh`); only the
+read-only `status` and `logs` connect to a host. Commands a profile supplies (`service.exec_start_pre`,
+`server.build.command`) are argument arrays run **without a shell**, never as root: `exec_start_pre` as the
+service user (systemd `ExecStartPre`), `build.command` as the service user in the checkout.
+
+UTF-8 JSON, at most 64 KiB, snake_case. **Unknown fields are refused** (as section 30). **No credentials, no
+client data path and no person's machine path** go in a profile: those are host-local values (below).
+Relative paths resolve against the root of the git work tree holding the profile file.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `version` | `1`, required | format version |
+| `id` | string, required | `^[a-z][a-z0-9-]{1,30}$`. Names the unit `muo-<id>.service`, the host folders and the default service user |
+| `name` | string, required | the shard name players see (ModernUO `server.name`), 1-64 chars |
+| `server` | object, required | the ModernUO source and what is built with it (below) |
+| `config_overlay` | path | a folder whose files are copied over ModernUO's `Configuration/` after the tool's template, last wins. A file may use `{{KEY}}` for a host-local value; the tool fills it on the host and never writes the result back |
+| `content` | array of paths | `tools/shard_content` folders deployed after the build, in order. Each holds `deploy.args`, one `shard_content deploy` argument per line; the host env file then also needs `MUO_REPO`, a checkout of the profile's repo |
+| `listen` | object, required | `port` (1024-65535; GUO 2593, SWUO 2610) and `address` (default `0.0.0.0`) |
+| `service` | object | `user` (default `muo-<id>`; a system user with no login shell), `memory_max` (systemd `MemoryMax`, e.g. `6G`; omitted = no limit), `restart` (`on-failure`, the default, or `always`), `exec_start_pre` (a command as an argument array, run as the service user before every start; a non-zero exit stops the start. `{data_dir}` is replaced by the client data path, `{dist}` by the server folder `/srv/muo/<id>/dist`, `{src}` by the checkout `/srv/muo/<id>/src`) |
+| `client_version` | string | the UO client version the shard expects (dotted, e.g. `7.0.107.76`), written to ModernUO's `clientData.clientVersion`; omitted = ModernUO detects it |
+| `data_manifest` | object | `file` (a JSON manifest of the client data files the shard needs, committed beside the profile), `verify` (`size` or `sha256`); the file is `{"files": {"<path under the client data>": {"size": n, "sha256": "<hex>"}}}`; `deploy` and every start refuse a client data folder that does not match |
+| `host_packages` | array of strings | extra apt packages `bootstrap` installs, beyond the tool's own (.NET SDK, git, zstd, libdeflate). Each a Debian package name, `^[a-z0-9][a-z0-9+.-]*$`, so no entry can reach apt as an option |
+| `backup` | object | `root` (absolute POSIX folder on the host, default `/var/backups/muo/<id>`), `include` (folders under the server folder to snapshot, default `["Saves"]`), `keep` (snapshots kept, default 14), `on_calendar` (systemd `OnCalendar` for a backup timer; omitted = no timer) |
+| `seed` | string | the snapshot `reset` restores (snapshots are named `<yyyymmdd_hhmmss>` or `--name`); omitted = `reset` refuses |
+| `host_keys` | object | other names for the host-local keys, when a profile needs them: `client_data` (default `MUO_CLIENT_DATA`), `admin_user` (`MUO_ADMIN_USER`), `admin_password` (`MUO_ADMIN_PASSWORD`) |
+
+`server`:
+
+| Field | Meaning |
+|---|---|
+| `source`, required | `{"kind": "git", "url": "<https url>", "ref": "<40-hex commit>"}`, or `{"kind": "submodule", "path": "<path>"}`: the commit is the submodule's gitlink in the profile's repo, and the tool refuses a submodule with local changes |
+| `patches` | patch files applied in order after checkout (GUO's: `tools/modernuo/patches/*.patch`) |
+| `assemblies` | extra content assemblies built after ModernUO, copied into its `Assemblies/` and listed in `Data/assemblies.json`: `[{"project": "<path to .csproj>", "assembly": "<name>.dll"}]`, e.g. SWUO's `server/custom/Scripts/SwuoContent.csproj` building `CustomContent.dll` |
+| `dotnet` | the .NET SDK channel, default `10.0` |
+| `build` | optional: the profile's own build instead of the tool's `dotnet publish`: `{"command": [args...], "output": "<path>"}`, run in the checkout; `output` is the published server folder it leaves (may use `{pin}`) |
+
+**Working directory.** The unit's working directory is `{dist}` for every Exec line (`ExecStartPre` and `ExecStart`), not the checkout, so a repo-relative script must be written `{src}/...`, for example `["python3", "{src}/tools/shard_data/run.py", "--data", "{data_dir}"]`.
+
+The systemd unit is always `muo-<id>.service` and a config overlay always overwrites the template, so every shard
+on a host is managed the same way.
+
+**Host-local values.** One file per profile on the host, `/etc/muo/<id>.env`, mode 0600, owner root, written by
+hand or by `run.py secrets`, never in a repo: `MUO_CLIENT_DATA` (the UO install the shard reads in place,
+uploaded separately), `MUO_ADMIN_USER` and `MUO_ADMIN_PASSWORD` (the owner account `run.py admin` creates and
+the scenario runner logs in with). The unit reads it as `EnvironmentFile`; the deploy writes the client data
+path into the shard's own `Configuration/modernuo.json` (`dataDirectories`).
+
+**Host layout.** `/srv/muo/<id>/src` (checkout) and `/srv/muo/<id>/dist` (the published server with its
+`Configuration/`, `Saves/` and `Logs/`), owned by the service user; backups under `backup.root`. Two profiles on
+one host differ in `id` and `listen.port` and share nothing else.
+
+Example, GUO's dev shard:
+
+```json
+{
+  "version": 1,
+  "id": "guo-dev",
+  "name": "GUO Dev",
+  "server": {
+    "source": {"kind": "git", "url": "https://github.com/modernuo/ModernUO.git",
+               "ref": "d4531cd94b739613155225c234900de9f47d2c88"},
+    "patches": ["tools/modernuo/patches/0001-headless-owner-account.patch",
+                "tools/modernuo/patches/0002-settable-update-range.patch",
+                "tools/modernuo/patches/0003-felucca-spring.patch"]
+  },
+  "config_overlay": "tools/modernuo/config",
+  "listen": {"port": 2593},
+  "service": {"memory_max": "4G"},
+  "backup": {"keep": 14, "on_calendar": "*-*-* 04:00:00"},
+  "seed": "seed"
+}
+```
+
+---
+
+## 36. Client-side themes (`themes/*.theme.json`, StaticStudio)
 
 A theme repaints matching statics and land inside its zones and skins listed
 multis with splats, all client-side (no shard traffic): graphic swaps through
@@ -1588,15 +2161,16 @@ from client art), place staged splats by tile, and apply/clear zones against
 the open world. Splat generation itself stays in `tools/comfy`; the dock
 lists staged splats and writes placements into the staged manifest.
 
-## 31. Voice profiles and text-to-speech (`build/voice_profiles`, `IO/Audio/VoiceManager.cs`)
+## 37. Voice profiles and text-to-speech (`build/voice_profiles`, `IO/Audio/VoiceManager.cs`)
 
 `tools/comfy/voice.py` enrolls a voice from the player's own sample with the
-TEXT2SPEACHWORKINGFASTQWEN workflow (sample copied into ComfyUI's `input/`,
+PERFECT_VOICE_DESIGN workflow (sample copied into ComfyUI's `input/`,
 auto-transcribed by its ASR leg): `enroll` writes `<voice>.json`
 (`{format, voice, sample, transcript, workflow}`) plus `<voice>.prompt.json`
 (the converted API prompt with a `SaveAudio` tail, text rebound per line);
-`speak` queues it and fetches the WAV (`--wav` rewrites 22050 Hz mono 16-bit
-with exact sizes, the only format the client plays).
+`speak` queues the PERFECT_VOICE_CLONE workflow and fetches the WAV (`--wav`
+rewrites 22050 Hz mono 16-bit with exact sizes, the only format the client
+plays).
 
 The client speaks anything the player types after it goes out
 (`GameActions.Say` hook, fire-and-forget; `[`-commands skipped) in the

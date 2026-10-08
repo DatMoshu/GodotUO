@@ -122,3 +122,19 @@ Still to do:
 - One real round trip with a Claude session watching the queue.
 - A real agent turn through OpenCode or Codex with a ChatGPT sign-in (not run: neither is installed here).
 - A real tool-calling model (the stubs only prove the wire format) and a real vision model.
+
+## Addendum: World tools (2026-10-04)
+
+The chat tool host adds `world_state`, `describe_cell` and `walkable` as
+read-only calls over the active World facet. Land and statics use the same
+`WorldData` and `WorldEditor.StaticsAt` paths as Nearby tiles; walkability
+uses `WorldData.WalkAt`, including its `surface` category for floors, bridges
+and steps. These calls do not move the camera; use `jump_world` for another facet.
+
+`stamp_static` is registered with `ReadOnly=false`, so the existing approval
+dialog asks once per call and no approver means refusal. It writes at land z
+through `WorldEditor.Stamp` into an open world project and shares its undo.
+The tool refuses invalid cells/ids, absent projects and projects inside the
+client installation. Cancelled or timed-out queued calls cannot execute later.
+The headless AI smoke checks reads against Britain cells, refusal, approved
+stamping and undo, and untouched install timestamps; it uses no real model.

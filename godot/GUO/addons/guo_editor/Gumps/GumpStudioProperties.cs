@@ -45,20 +45,28 @@ public partial class GumpStudio
         ChoiceField("Anchor (modern)", e.Anchor, new[] { "TopLeft", "TopRight", "BottomLeft", "BottomRight", "Stretch" }, s => e.Anchor = s);
         if (e.Kind is GumpElementKind.Image or GumpElementKind.TiledImage or GumpElementKind.Panel or GumpElementKind.Button or GumpElementKind.CheckBox or GumpElementKind.Radio)
         {
-            NumberField("Gump art ID", e.Graphic, 0, 65535, v => e.Graphic = v);
-            AddButton(_properties, "Choose gump art…", () => PickGumpArt(id => ChangeProperty(() => e.Graphic = id)));
+            AssetRow("Gump art", AssetPickKind.Gump, e.Graphic, id =>
+            {
+                e.Graphic = id;
+                // An image takes its art's size, as a pick from the shelf does.
+                if (e.Kind == GumpElementKind.Image && Texture(id) is Texture2D texture)
+                {
+                    e.Width = texture.GetWidth(); e.Height = texture.GetHeight();
+                    return true;
+                }
+                return false;
+            });
         }
         if (e.Kind is GumpElementKind.Button or GumpElementKind.CheckBox or GumpElementKind.Radio)
         {
-            NumberField("Pressed / checked art", e.GraphicDown, 0, 65535, v => e.GraphicDown = v);
-            AddButton(_properties, "Choose pressed art…", () => PickGumpArt(id => ChangeProperty(() => e.GraphicDown = id)));
+            AssetRow("Pressed / checked art", AssetPickKind.Gump, e.GraphicDown, id => { e.GraphicDown = id; return false; });
         }
         if (e.Kind is GumpElementKind.Label or GumpElementKind.Html or GumpElementKind.Button or GumpElementKind.TextEntry or GumpElementKind.CheckBox or GumpElementKind.Radio)
         {
             TextField("Text", e.Text, s => e.Text = s);
             NumberField("Font size (modern)", e.FontSize, 8, 128, v => e.FontSize = v);
             StringField("Text color (hex)", e.Color, s => e.Color = s);
-            NumberField("Classic hue", e.Hue, 0, 65535, v => e.Hue = v);
+            AssetRow("Classic hue", AssetPickKind.Hue, e.Hue, id => { e.Hue = id; return false; }, allowZero: true);
         }
         if (e.Kind == GumpElementKind.Panel) StringField("Background (hex)", e.Background, s => e.Background = s);
         if (e.Kind is GumpElementKind.Button or GumpElementKind.CheckBox or GumpElementKind.Radio)
@@ -103,6 +111,24 @@ public partial class GumpStudio
         row.AddChild(new Label { Text = label, SizeFlagsHorizontal = SizeFlags.ExpandFill, ClipText = true, TooltipText = label });
         var spin = new SpinBox { MinValue = min, MaxValue = max, Value = value, CustomMinimumSize = new Vector2(112, 0) }; row.AddChild(spin);
         spin.ValueChanged += v => ChangeProperty(() => set((int)v));
+    }
+    /// <summary>
+    /// A UO id property: typed by hex, decimal or name with suggestions, or
+    /// browsed. <paramref name="set"/> returns true when it changed other fields
+    /// too (an image's size), so the inspector is rebuilt to show them.
+    /// </summary>
+    private void AssetRow(string label, AssetPickKind kind, int value, Func<int, bool> set, bool allowZero = false)
+    {
+        _properties.AddChild(new Label { Text = label });
+        var field = new AssetField(_data, kind, value) { AllowZero = allowZero, Placeholder = kind == AssetPickKind.Hue ? "0 for none, or a hue name or id" : "name, 0x id or decimal" };
+        _properties.AddChild(field);
+        field.Committed += id =>
+        {
+            bool more = false;
+            ChangeProperty(() => more = set(id));
+            // The field raised this; rebuild after it returns, never under it.
+            if (more) Callable.From(RefreshProperties).CallDeferred();
+        };
     }
     private void BoolField(string label, bool value, Action<bool> set)
     {

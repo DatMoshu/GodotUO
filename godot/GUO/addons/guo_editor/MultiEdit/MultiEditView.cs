@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using System.Threading;
 using Godot;
 using GUO.Assets;
 
@@ -40,7 +41,8 @@ public partial class MultiEditView : VBoxContainer, IMultiComponentSink
     private TabContainer _tabs;
     private ItemList _historyList, _partsList, _problemsList;
     private Label _status, _hint, _selection, _summary;
-    private LineEdit _name, _stage, _openId;
+    private LineEdit _name, _stage;
+    private AssetField _openId;
     private Label _saveLog;
     private SpinBox _zSpin, _zMin, _zMax;
     private readonly Dictionary<MultiTool, Button> _toolButtons = new();
@@ -161,10 +163,19 @@ public partial class MultiEditView : VBoxContainer, IMultiComponentSink
         var bar = new HBoxContainer();
         AddChild(bar);
         bar.AddChild(Tip(Btn("New", () => GuardUnsaved(NewMulti)), "A blank multi (the history starts again; asks first when there are unsaved changes)"));
-        _openId = new LineEdit { PlaceholderText = "client multi id", CustomMinimumSize = new Vector2(110, 0), TooltipText = "0x0064 or 100" };
-        _openId.TextSubmitted += _ => OpenTyped();
+        _openId = new AssetField(_data, AssetPickKind.Multi)
+        {
+            AlwaysCommit = true,
+            Placeholder = "client multi id",
+            SizeFlagsHorizontal = SizeFlags.Fill,
+            CustomMinimumSize = new Vector2(150 * EditorInterface.Singleton.GetEditorScale(), 0),
+            TooltipText = "A client multi: 0x0064 or 100. Enter opens it; the search button browses them all.",
+        };
+        _openId.Committed += OpenId;
         bar.AddChild(_openId);
-        bar.AddChild(Tip(Btn("Open", OpenTyped), "Open a client multi by id"));
+        Button open = Btn("Open", () => _openId.CommitTyped());
+        open.FocusMode = FocusModeEnum.None;
+        bar.AddChild(Tip(open, "Open a client multi by id"));
         BuildFormatMenus(bar);
         bar.AddChild(new VSeparator());
 
@@ -616,24 +627,13 @@ public partial class MultiEditView : VBoxContainer, IMultiComponentSink
         MarkSaved();
     }
 
-    private void OpenTyped()
+    private void OpenId(int id)
     {
-        string t = _openId.Text.Trim();
-        int id;
-        bool ok = t.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
-            ? int.TryParse(t.AsSpan(2), System.Globalization.NumberStyles.HexNumber, null, out id)
-            : int.TryParse(t, out id);
-        if (!ok)
-        {
-            _status.Text = $"'{t}' is not a client multi";
-            return;
-        }
-
         bool opened = false;
         GuardUnsaved(() => opened = OpenClientMulti(id));
         if (!opened && !UnsavedPromptOpen)
         {
-            _status.Text = $"'{t}' is not a client multi";
+            _status.Text = $"0x{id:X4} is not a client multi";
         }
     }
 
@@ -661,7 +661,7 @@ public partial class MultiEditView : VBoxContainer, IMultiComponentSink
         }
 
         OpenParts($"multi_{id:X4}", infos.Select(i => new MultiPart { Id = i.ID, X = i.X, Y = i.Y, Z = i.Z, Shown = i.IsVisible }), id);
-        _openId.Text = $"0x{id:X4}";
+        _openId.Value = id;
         return true;
     }
 
@@ -730,8 +730,17 @@ public partial class MultiEditView : VBoxContainer, IMultiComponentSink
     /// Writes the document into the stage and reads it back. Refused while there are errors. On success the
     /// multi is overlaid on the loaders, so the Multis panel and the World tab can draw it.
     /// </summary>
-    public async Task<SaveResult> SaveToStageAsync()
+    public async Task<SaveResult> SaveToStageAsync(CancellationToken ct = default)
     {
+        using var life = CancellationTokenSource.CreateLinkedTokenSource(ct, _writeLifetime.Token);
+        ct = life.Token;
+        ct.ThrowIfCancellationRequested();
+        if (_data.IsSelectedInputStage(StageDir))
+        {
+            var refused = new SaveResult { Error = "This stage contains selected read-only editor input. Close/reload editor data or choose a different output stage before writing." };
+            _saveLog.Text = refused.Error;
+            return refused;
+        }
         ValidateNow();
         if (_result.HasErrors)
         {
@@ -742,11 +751,14 @@ public partial class MultiEditView : VBoxContainer, IMultiComponentSink
 
         SaveDescription();
         _saveLog.Text = "writing...";
-        _saving = MultiStore.SaveAsync(_name.Text, _doc.Parts, _data.Files.TileData.StaticData, StageDir);
+        List<MultiInfo> written = _doc.Parts.Select(p => new MultiInfo { ID = p.Id, X = p.X, Y = p.Y, Z = p.Z, IsVisible = p.Shown }).ToList();
+        _saving = MultiStore.SaveAsync(_name.Text, _doc.Parts, _data.Files.TileData.StaticData, StageDir, ct);
         SaveResult r = await _saving;
+        ct.ThrowIfCancellationRequested();
+        if (!IsInstanceValid(this) || !IsInsideTree()) return r;
         if (r.Ok && r.Id is int id)
         {
-            Overlay(id, _doc.Parts.Select(p => new MultiInfo { ID = p.Id, X = p.X, Y = p.Y, Z = p.Z, IsVisible = p.Shown }).ToList());
+            Overlay(id, written);
             _saveLog.Text = $"{r.Name} = multi 0x{id:X4}: {r.Components} components, read back equal";
             _lastWritten = id;
             AfterWrite?.Invoke(r);
@@ -760,6 +772,8 @@ public partial class MultiEditView : VBoxContainer, IMultiComponentSink
     }
 
     private int? _lastWritten;
+    private readonly CancellationTokenSource _writeLifetime = new();
+    public override void _ExitTree() => _writeLifetime.Cancel();
 
     private static void Overlay(int id, List<MultiInfo> infos)
     {
@@ -832,6 +846,7 @@ public partial class MultiEditView : VBoxContainer, IMultiComponentSink
 
     public void Shutdown()
     {
+        _writeLifetime.Cancel();
         SetProcess(false);
         if (_data != null)
         {

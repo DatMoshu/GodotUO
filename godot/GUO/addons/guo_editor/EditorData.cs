@@ -37,6 +37,12 @@ public sealed class EditorData : IDisposable
 
     private UOFileManager _files;
     private Task _loading;
+    private readonly object _loadGate = new();
+    private volatile bool _retired;
+    // Internal deterministic lifecycle controls; never configured by production.
+    internal Action AfterLoadControl;
+    internal TimeSpan RetirementWait = TimeSpan.FromSeconds(30);
+    internal Task LoadingTask => _loading;
     private GUO.Renderer.Animations.Animations _animations;
     private GUO.Renderer.Sounds.Sound _sounds;
 
@@ -45,6 +51,19 @@ public sealed class EditorData : IDisposable
     public string ClientData { get; private set; }
     public string ClientVersion { get; private set; }
     public long LoadMilliseconds { get; private set; }
+    internal string ClientLanguage { get; private set; }
+    private string _stageRoot = "", _loadWorkingDirectory;
+    private Dictionary<string, string> _stageOverrides;
+    private readonly List<FileStream> _stageReadLeases = new();
+    internal bool UseStageVerdata => _stageRoot.Length > 0;
+    internal bool IsSelectedInputStage(string path)
+    {
+        if (_retired || _stageRoot.Length == 0) return false;
+        string output = Path.GetFullPath(path).TrimEnd('\\', '/');
+        return output.Equals(_stageRoot.TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase)
+            || _stageOverrides.Values.Any(target => Path.GetFullPath(target)
+                .StartsWith(output + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase));
+    }
 
     public UOFileManager Files => IsLoaded ? _files : null;
 
@@ -93,7 +112,7 @@ public sealed class EditorData : IDisposable
     /// </summary>
     public void LoadAsync()
     {
-        if (_loading != null)
+        if (_retired || _loading != null)
         {
             return;
         }
@@ -101,38 +120,202 @@ public sealed class EditorData : IDisposable
         ClientData = Setting("UO_CLIENT_DATA", "");
         ClientVersion = Setting("UO_CLIENT_VERSION", "7.0.107.76");
         string lang = Setting("UO_LANGUAGE", "enu");
+        ClientLanguage = lang;
 
         if (string.IsNullOrWhiteSpace(ClientData) || !Directory.Exists(ClientData))
         {
             Error = $"UO_CLIENT_DATA is not a folder: '{ClientData}'. Set it in launchers\\_shared\\config.bat.";
             GD.PrintErr($"[GUO editor] {Error}");
             _loading = Task.CompletedTask;
-            Callable.From(() => Loaded?.Invoke()).CallDeferred();
+            Callable.From(Finish).CallDeferred();
             return;
         }
 
-        var files = new UOFileManager(UoDataProbe.ParseVersion(ClientVersion), ClientData);
+        string stage = EditorSmoke.ArgValue("--guo-editor-data-stage") ?? "";
+        UOFilesOverrideMap overrideMap;
+        try
+        {
+            overrideMap = AcquireStageReadLeases(stage);
+        }
+        catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException || ex is ArgumentException || ex is NotSupportedException)
+        {
+            Error = $"Explicit editor data stage '{stage}' is invalid: {ex.Message}";
+            foreach (FileStream lease in _stageReadLeases) lease.Dispose();
+            _stageReadLeases.Clear();
+            _loading = Task.CompletedTask;
+            Callable.From(Finish).CallDeferred();
+            return;
+        }
+        var files = new UOFileManager(UoDataProbe.ParseVersion(ClientVersion), ClientData, overrideMap);
         _loading = Task.Run(() =>
         {
             var sw = Stopwatch.StartNew();
             try
             {
-                files.Load(useVerdata: false, lang: lang);
-                _files = files;
+                if (_retired)
+                {
+                    files.Dispose();
+                    return;
+                }
+                files.Load(useVerdata: !string.IsNullOrWhiteSpace(stage), lang: lang);
+                AfterLoadControl?.Invoke();
+                lock (_loadGate)
+                {
+                    if (_retired)
+                    {
+                        files.Dispose();
+                        return;
+                    }
+                    _files = files;
+                }
             }
             catch (Exception ex)
             {
-                Error = $"loading client data failed: {ex.GetType().Name}: {ex.Message}";
+                Error = string.IsNullOrWhiteSpace(stage)
+                    ? $"loading client data failed: {ex.GetType().Name}: {ex.Message}"
+                    : $"Explicit editor data stage '{stage}' failed to load: {ex.GetType().Name}: {ex.Message}";
                 files.Dispose();
             }
 
             LoadMilliseconds = sw.ElapsedMilliseconds;
-            Callable.From(Finish).CallDeferred();
+            lock (_loadGate)
+            {
+                if (!_retired) Callable.From(Finish).CallDeferred();
+            }
         });
     }
 
-    private void Finish()
+    internal UOFilesOverrideMap AcquireStageReadLeases(string stage)
     {
+        if (!string.IsNullOrWhiteSpace(stage))
+        {
+            if (!File.Exists(Path.Combine(stage, "files_override.txt")))
+                throw new IOException("files_override.txt is missing; select a stage exported by GUO.");
+            _stageReadLeases.Add(File.Open(Path.Combine(stage, "files_override.txt"), FileMode.Open, System.IO.FileAccess.Read, FileShare.Read));
+        }
+        UOFilesOverrideMap map = LoadStageOverrides(stage);
+        _stageRoot = string.IsNullOrWhiteSpace(stage) ? "" : Path.GetFullPath(stage);
+        _loadWorkingDirectory = System.Environment.CurrentDirectory;
+        _stageOverrides = new Dictionary<string, string>(map, StringComparer.Ordinal);
+        foreach (string target in _stageOverrides.Values.Distinct(StringComparer.OrdinalIgnoreCase))
+            _stageReadLeases.Add(File.Open(Path.GetFullPath(target), FileMode.Open, System.IO.FileAccess.Read, FileShare.Read));
+        UOFilesOverrideMap pinned = LoadStageOverrides(stage);
+        if (pinned.Count != _stageOverrides.Count || _stageOverrides.Any(pair =>
+                !pinned.TryGetValue(pair.Key, out string target) || target != pair.Value))
+            throw new IOException("files_override.txt changed while acquiring the stage read leases.");
+        return map;
+    }
+
+    /// <summary>Revalidates the selected mapping before the independent World loader opens it.</summary>
+    internal string PrepareWorldOverrideFile()
+    {
+        if (!IsLoaded)
+        {
+            throw new InvalidOperationException(Error ?? "Editor data is not loaded.");
+        }
+
+        try
+        {
+            if (System.Environment.CurrentDirectory != _loadWorkingDirectory)
+            {
+                throw new IOException("The editor working directory changed; reload editor data before starting World.");
+            }
+
+            UOFilesOverrideMap current = LoadStageOverrides(_stageRoot);
+            if (current.Count != _stageOverrides.Count || _stageOverrides.Any(pair =>
+                    !current.TryGetValue(pair.Key, out string target) || target != pair.Value))
+            {
+                throw new IOException("files_override.txt changed after Assets loaded; reload editor data before starting World.");
+            }
+
+            return _stageRoot.Length == 0 ? "" : Path.Combine(_stageRoot, "files_override.txt");
+        }
+        catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException || ex is ArgumentException || ex is NotSupportedException)
+        {
+            throw new IOException(_stageRoot.Length == 0
+                ? $"Editor data cannot start World: {ex.Message}"
+                : $"Explicit editor data stage '{_stageRoot}' cannot start World: {ex.Message}", ex);
+        }
+    }
+
+    private static UOFilesOverrideMap LoadStageOverrides(string stage)
+    {
+        if (string.IsNullOrWhiteSpace(stage))
+        {
+            return new UOFilesOverrideMap();
+        }
+
+        string overrides = Path.Combine(stage, "files_override.txt");
+        if (!File.Exists(overrides))
+        {
+            throw new IOException("files_override.txt is missing; select a stage exported by GUO.");
+        }
+
+        var entries = new Dictionary<string, string>(StringComparer.Ordinal);
+        int lineNumber = 0;
+        foreach (string line in File.ReadLines(overrides))
+        {
+            lineNumber++;
+            // Match the shared parser's comments, key casing and untrimmed values.
+            string comment = line.TrimStart(' ');
+            if (string.IsNullOrWhiteSpace(line) || comment.StartsWith(';') || comment.StartsWith('#'))
+            {
+                continue;
+            }
+
+            string[] pair = line.Split('=');
+            if (pair.Length != 2 || string.IsNullOrWhiteSpace(pair[0]) || string.IsNullOrWhiteSpace(pair[1]))
+            {
+                throw new IOException($"files_override.txt line {lineNumber}: expected one nonempty logical-file=existing-file mapping.");
+            }
+
+            string key = pair[0].ToLowerInvariant();
+            string[] names = key.Split(new[] { '/', '\\' });
+            if (key != key.Trim() || Path.IsPathRooted(key) || names.Any(n => n.Length == 0 || n == "." || n == ".." || n.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0))
+            {
+                throw new IOException($"files_override.txt line {lineNumber}: '{pair[0]}' must be a relative logical UO file name without traversal or surrounding whitespace.");
+            }
+
+            if (!entries.TryAdd(key, pair[1]))
+            {
+                throw new IOException($"files_override.txt line {lineNumber}: duplicate logical file '{key}'. Keep one mapping per file.");
+            }
+
+            try
+            {
+                // Preserve the shared parser's working-directory-relative path semantics.
+                // Targets may be external overlays; validation never writes or copies them.
+                string target = Path.GetFullPath(pair[1]);
+                if (!File.Exists(target))
+                {
+                    throw new IOException("The target does not exist or is not a file.");
+                }
+                using FileStream readable = File.Open(target, FileMode.Open, System.IO.FileAccess.Read, FileShare.Read);
+            }
+            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException || ex is ArgumentException || ex is NotSupportedException)
+            {
+                throw new IOException($"files_override.txt line {lineNumber}: target for '{key}' is not a readable file ('{pair[1]}'): {ex.Message}", ex);
+            }
+        }
+
+        if (entries.Count == 0)
+        {
+            throw new IOException("files_override.txt has no mappings; select a nonempty stage or omit --guo-editor-data-stage to use base data.");
+        }
+
+        var map = new UOFilesOverrideMap(overrides);
+        map.Load();
+        if (map.Count != entries.Count || entries.Any(entry => !map.TryGetValue(entry.Key, out string target) || target != entry.Value))
+        {
+            throw new IOException("files_override.txt changed or could not be parsed completely; export it again and retry.");
+        }
+
+        return map;
+    }
+
+    internal void Finish()
+    {
+        if (_retired) return;
         IsLoaded = _files != null;
         if (IsLoaded)
         {
@@ -293,6 +476,11 @@ public sealed class EditorData : IDisposable
 
     public void Dispose()
     {
+        lock (_loadGate)
+        {
+            if (_retired) return;
+            _retired = true;
+        }
         _assetsApplied?.Dispose();
         _assetsApplied = null;
         Assets = null;
@@ -301,7 +489,7 @@ public sealed class EditorData : IDisposable
         // close, or the next assembly reload finds them mapped.
         try
         {
-            _loading?.Wait(TimeSpan.FromSeconds(30));
+            _loading?.Wait(RetirementWait);
         }
         catch (AggregateException)
         {
@@ -309,8 +497,13 @@ public sealed class EditorData : IDisposable
 
         _animations = null;
         _sounds = null;
-        _files?.Dispose();
-        _files = null;
+        lock (_loadGate)
+        {
+            _files?.Dispose();
+            _files = null;
+        }
+        foreach (FileStream lease in _stageReadLeases) lease.Dispose();
+        _stageReadLeases.Clear();
         IsLoaded = false;
         Loaded = null;
     }

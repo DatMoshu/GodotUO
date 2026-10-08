@@ -1,0 +1,14 @@
+{
+  "run_id": "20261001_000100_editor.tabs.sweep_ai",
+  "title": "Editor tabs sweep",
+  "scenario": "editor.tabs.sweep",
+  "driver": "ai",
+  "status": "FAIL",
+  "failed_steps": [
+    "store"
+  ],
+  "duration": "0m 7s",
+  "commit": "abc1234",
+  "stills": [],
+  "text": "FAIL: Editor tabs sweep\nScenario: editor.tabs.sweep  Driver: ai\nDuration: 0m 7s  Commit: abc1234\nStopped early: step store failed\nFailed: store"
+}

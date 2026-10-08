@@ -52,6 +52,11 @@ internal sealed class WorldHost : IDisposable
     // game would set when shown; roofs are the profile's own DrawRoofs.
     private bool _showLand = true, _showStatics = true, _showMultis = true;
     private bool _layersTouched;
+    private int _minVisibleZ = -128, _maxVisibleZ = 127;
+    private bool _ghostRoofs;
+    public bool GhostRoofs { get => _ghostRoofs; set { _ghostRoofs = value; _layersTouched = true; } }
+    public int MinVisibleZ { get => _minVisibleZ; set { _minVisibleZ = Math.Clamp(value, -128, 127); _layersTouched = true; } }
+    public int MaxVisibleZ { get => _maxVisibleZ; set { _maxVisibleZ = Math.Clamp(value, -128, 127); _layersTouched = true; } }
 
     public bool ShowLand { get => _showLand; set { _showLand = value; _layersTouched = true; } }
     public bool ShowStatics { get => _showStatics; set { _showStatics = value; _layersTouched = true; } }
@@ -112,7 +117,7 @@ internal sealed class WorldHost : IDisposable
     /// <paramref name="canvas"/> is the node whose canvas item the batcher
     /// draws into; its render targets are made under it.
     /// </summary>
-    public bool Boot(Node2D canvas, int facet, int x, int y)
+    public bool Boot(Node2D canvas, int facet, int x, int y, EditorData data)
     {
         if (_scene != null)
         {
@@ -123,6 +128,17 @@ internal sealed class WorldHost : IDisposable
         _canvas = canvas;
         try
         {
+            // Validate before scratch settings, controller attachment or native World loading.
+            string overrideFile = data.PrepareWorldOverrideFile();
+            // Claim before changing process-wide settings or profiles. A refused
+            // controller owns only its private allocation, never global teardown.
+            _game = new GameController(embedded: true);
+            Client.AttachEmbedded(_game);
+            _game.ClaimEmbeddedOwnership();
+            // Profile defaults read ClientBounds before LoadEmbedded. Use this
+            // canvas's viewport, never the editor's OS window or desktop DPI.
+            Vector2 viewportSize = canvas.GetViewport().GetVisibleRect().Size;
+            _game.SetEmbeddedClientBounds(new Rectangle(0, 0, (int)viewportSize.X, (int)viewportSize.Y));
             // Settings and the profile are the client's own; they point at a
             // scratch folder under build/ so nothing the editor does touches
             // the player's settings.json or profiles.
@@ -147,9 +163,9 @@ internal sealed class WorldHost : IDisposable
                 System.Environment.CurrentDirectory = editorCwd;
             }
             Settings s = Settings.GlobalSettings;
-            s.UltimaOnlineDirectory = EditorData.Setting("UO_CLIENT_DATA", "");
-            s.ClientVersion = EditorData.Setting("UO_CLIENT_VERSION", "7.0.107.76");
-            s.Language = EditorData.Setting("UO_LANGUAGE", "enu").ToUpperInvariant();
+            s.UltimaOnlineDirectory = data.ClientData;
+            s.ClientVersion = data.ClientVersion;
+            s.Language = data.ClientLanguage.ToUpperInvariant();
             s.ProfilesPath = Path.Combine(scratch, "profiles");
             ProfileManager.Load("editor", "editor", "editor");
 
@@ -158,9 +174,23 @@ internal sealed class WorldHost : IDisposable
             p.UseCircleOfTransparency = false;
             p.DrawRoofs = true;
 
-            _game = new GameController(embedded: true);
-            Client.AttachEmbedded(_game);
-            _game.LoadEmbedded(canvas);
+            // Upstream loads chair definitions once per process. The editor can
+            // reopen a client in this assembly; after claiming exclusive ownership,
+            // reload the current definitions without retaining old or partial rows.
+            GUO.Game.Data.ChairTable.Table.Clear();
+            string previousOverride = s.OverrideFile;
+            bool previousVerdata = s.UseVerdata;
+            try
+            {
+                s.OverrideFile = overrideFile;
+                s.UseVerdata = data.UseStageVerdata;
+                _game.LoadEmbedded(canvas);
+            }
+            finally
+            {
+                s.OverrideFile = previousOverride;
+                s.UseVerdata = previousVerdata;
+            }
 
             World world = _game.UO.World;
             world.MapIndex = facet;
@@ -228,6 +258,8 @@ internal sealed class WorldHost : IDisposable
             return;
         }
 
+        // Keep bounds current before camera update and picking consume them.
+        _game.SetEmbeddedClientBounds(new Rectangle(0, 0, size.X, size.Y));
         GUO.Time.Ticks = (uint)Godot.Time.GetTicksMsec();
         _scene.Camera.Bounds = new Rectangle(0, 0, size.X, size.Y);
 
@@ -280,6 +312,8 @@ internal sealed class WorldHost : IDisposable
                                 continue;
                         }
 
+                        want &= o.Z >= _minVisibleZ && o.Z <= _maxVisibleZ;
+                        if (_ghostRoofs && o is Static roof && roof.ItemData.IsRoof) want = false;
                         if (o.AllowedToDraw != want)
                         {
                             o.AllowedToDraw = want;

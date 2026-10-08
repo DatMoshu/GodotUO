@@ -66,6 +66,44 @@ public sealed class SearchContext
         }
     }
 
+    /// <summary>Shows an asset field's value in the UO Assets dock, on the panel for its kind.</summary>
+    public void RevealAsset(AssetPickKind kind, int id)
+    {
+        if (Assets == null)
+        {
+            return;
+        }
+
+        string hex = SearchProvider.Hex(id);
+        switch (kind)
+        {
+            case AssetPickKind.Gump:
+                OpenAsset(Assets.Panel<GumpPanel>(), hex);
+                break;
+            case AssetPickKind.Static:
+            case AssetPickKind.Land:
+                ArtPanel art = Assets.Panel<ArtPanel>();
+                art?.SelectKind(kind == AssetPickKind.Land);
+                OpenAsset(art, hex);
+                break;
+            case AssetPickKind.Hue:
+                OpenAsset(Assets.Panel<HuePanel>(), hex);
+                break;
+            case AssetPickKind.Sound:
+            case AssetPickKind.Music:
+                SoundPanel sound = Assets.Panel<SoundPanel>();
+                sound?.SelectKind(kind == AssetPickKind.Music);
+                OpenAsset(sound, hex);
+                break;
+            case AssetPickKind.Cliloc:
+                OpenAsset(Assets.Panel<ClilocPanel>(), id.ToString());
+                break;
+            case AssetPickKind.Multi:
+                OpenAsset(Assets.Panel<MultiPanel>(), hex);
+                break;
+        }
+    }
+
     /// <summary>Brings an Assets tab forward and searches it, which selects the match and fills the UO Inspector.</summary>
     public bool OpenAsset(AssetPanel panel, string search)
     {

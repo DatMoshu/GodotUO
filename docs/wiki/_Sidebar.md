@@ -40,4 +40,5 @@
 
 **Project**
 - [Roadmap](Roadmap.md)
+- [How We Built It](How-We-Built-It.md)
 - [Community and Support](Community-and-Support.md)

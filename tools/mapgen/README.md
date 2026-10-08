@@ -3,7 +3,8 @@
 **MapGen** makes Ultima Online maps procedurally. It builds a map from noise heights through erosion,
 climate, biomes, rivers, coasts, land transitions, roads and scatter. Then it validates the result and
 writes legacy MUL map files. The owner wrote it as an addition to a CentrED# fork. It now lives here
-(ADR-0030). Provenance: `docs/upstream/mapgen.md`.
+(ADR-0030). Provenance: `docs/upstream/mapgen.md`. Status: a public baseline, shelved; towns,
+what to extend and where to start are in `docs/mapgen_status.md`.
 
 | Folder | What |
 |---|---|
@@ -95,16 +96,24 @@ These come from a 1024x1024 `felucca-stage18` run with seed 1234567. Each was ch
 images after a Gemini review; tune the generator against them:
 
 1. **Roads draw rectangles** and run in long axis-aligned stretches with right-angle turns. They
-   should wind between places.
-2. **Mountains are plateaus.** In `height.png` each range is one flat, bright block with no ridges or
+   should wind between places. **Roads hugging mountains (eased 2026-10-05):** Road Graph's
+   `MountainClearance` (6) and `MountainClearancePenalty` (40) charge steps near rock, falling off
+   with distance. At 1024/1234567 the share of road cells 1-3 tiles from rock went from 15.4% to 6.6%;
+   most of what is left squeezes through gaps between ranges.
+2. **Ranges had no way in (eased 2026-10-05).** Felucca's ranges have branching dirt paths into the
+   rock, each ending in an open pocket (mining spots, cave mouths). Mountain Path now carves
+   `MinesPerThousandCells` (0.3) pockets of `MineRadius` (5), at least `MineMinDepth` (6) inside the
+   rock and `MineSpacing` (24) apart. Each joins the trail or the range edge by a 3-wide branch.
+   Felucca still has more, longer branches, and a forest ring round its ranges that GUO lacks.
+3. **Mountains are plateaus.** In `height.png` each range is one flat, bright block with no ridges or
    valleys inside it. Change only the range shape: the owner's mountain and road heights stay.
-3. **Rivers run dead straight** along mountain feet for long stretches, on diagonals.
-4. **Land runs off the map edge** on the left, right and bottom.
-5. **Beaches (fixed 2026-10-03):** the card counted Felucca's seabed as land, so its 31% coast sand
+4. **Rivers run dead straight** along mountain feet for long stretches, on diagonals.
+5. **Land runs off the map edge** on the left, right and bottom.
+6. **Beaches (fixed 2026-10-03):** the card counted Felucca's seabed as land, so its 31% coast sand
    measured the seabed. Counted as water, Felucca's dry coast is 83% sand and the generator's 91%. The
-   Shallows pass now shapes the seabed as Felucca does and draws its waterline (see 7).
-6. **Too flat:** 66% of land is at z 0, against 63% in Felucca (counting the seabed as water).
-7. **Too much sand (fixed 2026-10-03):** sand was 2.8% of land against Felucca's 1.3%. Over half of
+   Shallows pass now shapes the seabed as Felucca does and draws its waterline (see 8).
+7. **Too flat:** 66% of land is at z 0, against 63% in Felucca (counting the seabed as water).
+8. **Too much sand (fixed 2026-10-03):** sand was 2.8% of land against Felucca's 1.3%. Over half of
    it lined the rivers: the grass-to-water bridge put a sand cell on every river bank, and Felucca
    draws almost no rivers in land tiles and no sand along them. `Land Transitions.RiverBankDirt` (on
    in felucca-stage18) makes those banks dirt, edged into the grass as roads are; the desert threshold

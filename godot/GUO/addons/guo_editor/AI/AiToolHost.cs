@@ -21,9 +21,8 @@ public interface IChatTools
 }
 
 /// <summary>
-/// The editor's tools for models that can call functions (ADR-0028). Today all of them read:
-/// <c>search</c> (the F3 index), <c>inspect_asset</c> (the UO Inspector's text for an asset) and
-/// <c>jump_world</c> (move the World tab; navigation, not an edit). A tool that changes anything
+/// The editor's tools for models that can call functions (ADR-0028): search, asset inspection,
+/// World navigation and world-state reads, plus approved world-project edits. A tool that changes anything
 /// is registered with <c>ReadOnly = false</c> and then runs only after <see cref="Approve"/> says
 /// the user agreed in a dialog; with no approver it is refused. Tools run on the main thread (the
 /// loaders and the docks are not thread safe) and a model's call waits for it.
@@ -41,10 +40,14 @@ public sealed class AiToolHost : IChatTools
 
         /// <summary>Runs on the main thread.</summary>
         public Func<JsonNode, string> Run = _ => "";
+
+        /// <summary>Optional asynchronous editor operation, started on the main thread.</summary>
+        public Func<JsonNode, CancellationToken, Task<string>> RunAsync;
+
+        public int MaxResult = 3000;
     }
 
     private static readonly Regex Bb = new(@"\[/?[a-z_]+(?:=[^\]]*)?\]", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-    private const int MaxResult = 3000;
 
     private readonly List<Tool> _tools = new();
     private readonly Action<Action> _post;
@@ -95,8 +98,18 @@ public sealed class AiToolHost : IChatTools
         return a;
     }
 
-    public async Task<string> RunAsync(string name, JsonNode args, CancellationToken ct)
+    public Task<string> RunAsync(string name, JsonNode args, CancellationToken ct) => RunAsync(name, args, ct, false);
+
+    /// <param name="preApproved">The caller already holds the user's agreement for this tool (the editor MCP, for the names the launching runner listed); chat never sets it.</param>
+    public async Task<string> RunAsync(string name, JsonNode args, CancellationToken ct, bool preApproved)
     {
+        using var aiLife = AiFeatures.Link(ct);
+        ct = aiLife.Token;
+        if (ct.IsCancellationRequested)
+        {
+            return "error: the tool call was cancelled";
+        }
+
         lock (_calls)
         {
             _calls.Add($"{name} {args?.ToJsonString() ?? "{}"}");
@@ -111,35 +124,49 @@ public sealed class AiToolHost : IChatTools
         if (!t.ReadOnly)
         {
             Func<string, Task<bool>> ask = Approve;
-            bool yes = ask != null && await ask($"{t.Name} {args?.ToJsonString()}\n\n{t.Description}").ConfigureAwait(false);
+            bool yes = preApproved || ask != null && await ask($"{t.Name} {args?.ToJsonString()}\n\n{t.Description}").WaitAsync(ct).ConfigureAwait(false);
             if (!yes)
             {
                 return "refused: the user did not approve this action";
             }
         }
 
+        using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(TimeSpan.FromSeconds(30));
+        CancellationToken operation = timeout.Token;
         var done = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
-        _post(() =>
+        int started = 0;
+        _post(async () =>
         {
+            Interlocked.Exchange(ref started, 1);
+            if (operation.IsCancellationRequested || done.Task.IsCompleted)
+            {
+                done.TrySetResult("error: editor operation canceled before dispatch");
+                return;
+            }
             try
             {
-                done.TrySetResult(t.Run(args));
+                string result = t.RunAsync != null ? await t.RunAsync(args, operation) : t.Run(args);
+                done.TrySetResult(operation.IsCancellationRequested ? "error: editor operation canceled; a started stage commit may have completed safely" : result);
             }
             catch (Exception ex)
             {
                 done.TrySetResult($"error: {ex.Message}");
             }
         });
-        using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        timeout.CancelAfter(TimeSpan.FromSeconds(30));
-        using (timeout.Token.Register(() => done.TrySetResult("error: the editor did not answer in time")))
+        using (operation.Register(() =>
+        {
+            // A started operation owns its cleanup/commit. Do not return before it
+            // finishes, or dispose its token while the writer still uses it.
+            if (Volatile.Read(ref started) == 0) done.TrySetResult("error: editor operation canceled before dispatch");
+        }))
         {
             string r = await done.Task.ConfigureAwait(false);
-            return r.Length > MaxResult ? r[..MaxResult] + "\n...(cut)" : r;
+            return r.Length > t.MaxResult ? r[..t.MaxResult] + "\n...(cut)" : r;
         }
     }
 
-    /// <summary>The three read-only tools, wired to the editor's index, panels and World tab.</summary>
+    /// <summary>Tools wired to the editor's index, panels and World tab; changing tools need approval.</summary>
     internal static AiToolHost For(SearchContext ctx, Func<SearchIndex> index, Action<Action> post)
     {
         var host = new AiToolHost(post);
@@ -164,10 +191,11 @@ public sealed class AiToolHost : IChatTools
             Parameters = Params(("x", "integer", "map x"), ("y", "integer", "map y"), ("facet", "integer", "map number, default 0")),
             Run = a => Jump(ctx, a),
         });
+        AiWorldTools.Register(host, ctx);
         return host;
     }
 
-    private static JsonObject Params(params (string Name, string Type, string Doc)[] props)
+    internal static JsonObject Params(params (string Name, string Type, string Doc)[] props)
     {
         var p = new JsonObject();
         foreach (var (n, t, d) in props)

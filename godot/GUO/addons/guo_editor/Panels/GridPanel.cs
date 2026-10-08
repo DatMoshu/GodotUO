@@ -3,6 +3,8 @@ namespace GUO.Editor;
 
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using Godot;
 
 /// <summary>
@@ -22,6 +24,8 @@ public abstract partial class GridPanel : AssetPanel
     private Button _prev, _next;
     private int _page;
     private bool _pending;
+    private PopupMenu _context;
+    private readonly List<Action> _contextActions = new();
 
     protected LineEdit SearchBox { get; private set; }
 
@@ -130,6 +134,7 @@ public abstract partial class GridPanel : AssetPanel
         };
         SearchBox.TextSubmitted += _ => Refresh();
         bar.AddChild(SearchBox);
+        SearchUiReady();
 
         bool icons = EffectiveIcon > 0;
         _list = new ItemList
@@ -143,11 +148,28 @@ public abstract partial class GridPanel : AssetPanel
             // Pixel art is never filtered (AGENTS.md rule 7); icons are scaled.
             TextureFilter = TextureFilterEnum.Nearest,
             CustomMinimumSize = new Vector2(0, MinimumGridHeight),
+            SelectMode = ItemList.SelectModeEnum.Multi,
+            AllowRmbSelect = false,
         };
         _list.ItemSelected += item => Pick((int)(long)_list.GetItemMetadata((int)item));
+        _list.MultiSelected += (item, selected) =>
+        {
+            if (selected) Pick((int)(long)_list.GetItemMetadata((int)item));
+        };
+        _list.ItemClicked += (item, at, button) =>
+        {
+            if (button == (long)MouseButton.Right) OpenContext((int)item);
+        };
         _list.ItemActivated += item => Activated?.Invoke((int)(long)_list.GetItemMetadata((int)item));
         _list.SetDragForwarding(Callable.From<Vector2, Variant>(DragData), default, default);
         AddChild(_list);
+        _context = new PopupMenu();
+        _context.IdPressed += id =>
+        {
+            try { if (id >= 0 && id < _contextActions.Count) _contextActions[(int)id](); }
+            catch (Exception ex) { AssetActions.ReportEdit(ex.Message); }
+        };
+        AddChild(_context);
 
         var pager = new HBoxContainer();
         AddChild(pager);
@@ -164,6 +186,74 @@ public abstract partial class GridPanel : AssetPanel
         pager.AddChild(_prev);
         pager.AddChild(_status);
         pager.AddChild(_next);
+    }
+
+    protected virtual void SearchUiReady() { }
+    internal void OpenContext(int item)
+    {
+        if (!_list.IsSelected(item))
+        {
+            _list.DeselectAll();
+            _list.Select(item);
+        }
+        int[] ids = _list.GetSelectedItems().Select(i => (int)(long)_list.GetItemMetadata(i)).ToArray();
+        if (ids.Length == 0) return;
+        _context.Clear();
+        _contextActions.Clear();
+        AddContext("Copy ID" + (ids.Length > 1 ? "s" : ""), () =>
+            DisplayServer.ClipboardSet(string.Join(System.Environment.NewLine, ids.Select(id => $"0x{id:X4}"))));
+        AddContext("Properties", () =>
+        {
+            if (ids.Length == 1) Pick(ids[0]);
+            else Raise(new Inspection { Source = GetType().Name, Id = $"{ids.Length} assets",
+                Text = string.Join("\n", ids.Select(id => Describe(id).Text)) });
+        });
+        if (ids.Length == 1)
+        {
+            Inspection inspection = Describe(ids[0]);
+            foreach (var action in inspection.Actions) AddContext(action.Label, action.Run);
+        }
+        else if (this is ArtPanel || this is GumpPanel)
+        {
+            // Batch export uses one destination; editing/replacement remains explicit per asset.
+            AddContext("Export selected PNGs...", () =>
+            {
+                var dlg = new EditorFileDialog { FileMode = EditorFileDialog.FileModeEnum.OpenDir,
+                    Access = EditorFileDialog.AccessEnum.Filesystem };
+                dlg.DirSelected += path =>
+                {
+                    try
+                    {
+                    AssetActions.EnsureExportDestination(path);
+                    foreach (int id in ids)
+                    {
+                        Inspection ins = Describe(id);
+                        if (ins.Image == null || !ins.ArtKind.HasValue) continue;
+                        string file = Path.Combine(path, ArtExchange.Stem(ins.ArtKind.Value, id, 0) + ".png");
+                        if (File.Exists(file))
+                        {
+                            GD.PushWarning($"[GUO editor] export skipped existing file: {file}");
+                            continue;
+                        }
+                        if (ins.Image.SavePng(file) != Error.Ok) throw new IOException($"Could not export {file}");
+                    }
+                    }
+                    catch (Exception ex) { AssetActions.ReportEdit(ex.Message); }
+                    dlg.QueueFree();
+                };
+                dlg.Canceled += () => dlg.QueueFree();
+                EditorInterface.Singleton.GetBaseControl().AddChild(dlg);
+                dlg.PopupFileDialog();
+            });
+        }
+        _context.Position = DisplayServer.MouseGetPosition();
+        _context.Popup();
+    }
+
+    private void AddContext(string label, Action run)
+    {
+        _context.AddItem(label, _contextActions.Count);
+        _contextActions.Add(run);
     }
 
     public override void OnDataLoaded()

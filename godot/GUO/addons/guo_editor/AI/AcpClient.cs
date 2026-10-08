@@ -66,9 +66,12 @@ public sealed class AcpClient : IDisposable
     public ConcurrentQueue<string> Wire { get; } = new();
 
     /// <summary>Starts the agent. False, with the reason, if it cannot be started.</summary>
+    private CancellationTokenRegistration _aiDisabled;
+
     public bool Start(string exe, IReadOnlyList<string> args, string workingDirectory, out string error)
     {
         error = null;
+        if (!AiFeatures.Enabled) { error = AiFeatures.DisabledMessage; return false; }
         var psi = new ProcessStartInfo(exe)
         {
             UseShellExecute = false,
@@ -108,6 +111,7 @@ public sealed class AcpClient : IDisposable
             return false;
         }
 
+        _aiDisabled = AiFeatures.Lifetime.Register(Dispose);
         Process p = _process;
         _ = Task.Run(() => ReadLoop(p));
         _ = Task.Run(() => ErrorLoop(p));
@@ -277,6 +281,8 @@ public sealed class AcpClient : IDisposable
     /// <summary>Sends a request and waits for its result; times out instead of hanging.</summary>
     public async Task<JsonNode> RequestAsync(string method, JsonNode parameters, TimeSpan timeout, CancellationToken ct = default)
     {
+        using var aiLife = AiFeatures.Link(ct);
+        ct = aiLife.Token;
         long id = Interlocked.Increment(ref _nextId);
         var tcs = new TaskCompletionSource<JsonNode>(TaskCreationOptions.RunContinuationsAsynchronously);
         _pending[id] = tcs;
@@ -334,13 +340,13 @@ public sealed class AcpClient : IDisposable
     public Task<JsonNode> AuthenticateAsync(string methodId, TimeSpan timeout) =>
         RequestAsync("authenticate", new JsonObject { ["methodId"] = methodId }, timeout);
 
-    /// <summary><c>session/new</c> in a folder; no MCP servers.</summary>
-    public async Task<string> NewSessionAsync(string cwd, TimeSpan timeout)
+    /// <summary><c>session/new</c> in a folder, optionally with client-provided MCP servers.</summary>
+    public async Task<string> NewSessionAsync(string cwd, TimeSpan timeout, JsonArray mcpServers = null)
     {
         JsonNode r = await RequestAsync("session/new", new JsonObject
         {
             ["cwd"] = cwd,
-            ["mcpServers"] = new JsonArray(),
+            ["mcpServers"] = mcpServers?.DeepClone() ?? new JsonArray(),
         }, timeout).ConfigureAwait(false);
         SessionId = (string)r?["sessionId"] ?? throw new InvalidDataException("session/new returned no sessionId");
         return SessionId;
@@ -379,6 +385,7 @@ public sealed class AcpClient : IDisposable
             return;
         }
 
+        _aiDisabled.Unregister();
         _life.Cancel();
         Process p = _process;
         if (p == null)

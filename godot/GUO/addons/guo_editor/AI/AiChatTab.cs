@@ -19,7 +19,8 @@ public partial class AiChatTab : VBoxContainer
 {
     private AiHub _hub;
     private OptionButton _provider, _model;
-    private LineEdit _ollamaUrl, _input;
+    private LineEdit _ollamaUrl;
+    private TextEdit _input;
     private CheckBox _think, _tools;
     private Button _send, _stop, _attach, _detach;
     private Label _attached;
@@ -33,11 +34,15 @@ public partial class AiChatTab : VBoxContainer
     private readonly List<ChatMessage> _history = new();
     private CancellationTokenSource _turn;
     private OllamaProvider _ollama;
+    private string _configuredOllamaUrl;
     private bool _built;
     private bool _wantModelsOnShow = true;
 
     /// <summary>True while an answer is streaming.</summary>
     public bool Busy { get; private set; }
+
+    internal TextEdit Composer => _input;
+    internal Button SendButton => _send;
 
     /// <summary>The last error shown in the status line, or null.</summary>
     public string LastError { get; private set; }
@@ -178,7 +183,7 @@ public partial class AiChatTab : VBoxContainer
         var urlRow = new HBoxContainer();
         AddChild(urlRow);
         urlRow.AddChild(new Label { Text = "Ollama at" });
-        _ollamaUrl = new LineEdit { Text = DefaultOllamaUrl(), SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        _ollamaUrl = new LineEdit { Text = OllamaUrl, SizeFlagsHorizontal = SizeFlags.ExpandFill };
         _ollamaUrl.TextSubmitted += _ => RebuildProviders();
         urlRow.AddChild(_ollamaUrl);
 
@@ -195,8 +200,15 @@ public partial class AiChatTab : VBoxContainer
 
         var row = new HBoxContainer();
         AddChild(row);
-        _input = new LineEdit { PlaceholderText = "Ask something. Enter sends.", SizeFlagsHorizontal = SizeFlags.ExpandFill };
-        _input.TextSubmitted += _ => Send();
+        _input = new TextEdit
+        {
+            PlaceholderText = "Ask something. Enter sends; Shift+Enter adds a line.",
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            CustomMinimumSize = new Vector2(0, 72),
+            WrapMode = TextEdit.LineWrappingMode.Boundary,
+        };
+        _input.GuiInput += input => HandleComposerInput(input, _input.HasImeText()
+            || (DisplayServer.HasFeature(DisplayServer.Feature.Ime) && DisplayServer.ImeGetText().Length > 0));
         row.AddChild(_input);
         _attach = new Button
         {
@@ -257,9 +269,18 @@ public partial class AiChatTab : VBoxContainer
     /// <summary>The Ollama server the tab talks to; setting it rebuilds the provider list.</summary>
     public string OllamaUrl
     {
-        get => _ollamaUrl?.Text ?? DefaultOllamaUrl();
+        get => _ollamaUrl?.Text ?? _configuredOllamaUrl ?? DefaultOllamaUrl();
         set
         {
+            // Godot restores this property before the tab's controls exist.
+            _configuredOllamaUrl = value;
+            if (_ollamaUrl == null)
+            {
+                return;
+            }
+
+            // Hot reload restores properties before UI fields exist; no work while AI is off.
+            if (!AiFeatures.Enabled || _ollamaUrl == null) return;
             _ollamaUrl.Text = value;
             RebuildProviders();
         }
@@ -415,12 +436,26 @@ public partial class AiChatTab : VBoxContainer
 
     private void Send() => SendText(_input.Text);
 
+    // Returning without accepting a composing Enter lets TextEdit commit its IME candidate.
+    // The smoke exercises this handler with a simulated composition flag; OS IME needs a windowed check.
+    internal void HandleComposerInput(InputEvent input, bool composing)
+    {
+        if (input is not InputEventKey key || !key.Pressed
+            || (key.Keycode != Key.Enter && key.Keycode != Key.KpEnter)
+            || key.CtrlPressed || key.AltPressed || key.MetaPressed || composing) return;
+        _input.AcceptEvent();
+        if (key.Echo) return;
+        if (key.ShiftPressed) _input.InsertTextAtCaret("\n");
+        else Send();
+    }
+
     /// <summary>Sends one user turn to the current provider and streams the answer into the transcript.</summary>
     public void SendText(string text)
     {
-        text = text?.Trim() ?? "";
+        if (!AiFeatures.Enabled || _input?.HasImeText() == true) return;
+        text = (text ?? "").Replace("\r\n", "\n").Replace('\r', '\n');
         IChatProvider p = Current;
-        if (text.Length == 0 || p == null || Busy)
+        if (string.IsNullOrWhiteSpace(text) || p == null || Busy)
         {
             return;
         }

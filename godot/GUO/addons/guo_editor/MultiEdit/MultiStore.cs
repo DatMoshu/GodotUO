@@ -10,6 +10,7 @@ using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
+using System.Threading;
 using GUO.Assets;
 using GUO.IO;
 using GUO.Utility;
@@ -190,7 +191,7 @@ internal static class MultiStore
     /// The writer only adds, so a changed multi under a used name goes under the next free <c>name-N</c>.
     /// Runs on a worker; touches no Godot object.
     /// </summary>
-    public static Task<SaveResult> SaveAsync(string name, IReadOnlyList<MultiPart> parts, StaticTiles[] tiles, string stageDir)
+    public static Task<SaveResult> SaveAsync(string name, IReadOnlyList<MultiPart> parts, StaticTiles[] tiles, string stageDir, CancellationToken ct = default)
     {
         MultiPart[] snapshot = parts.ToArray();
         return Task.Run(() =>
@@ -198,6 +199,7 @@ internal static class MultiStore
             var r = new SaveResult { Components = snapshot.Length };
             try
             {
+                ct.ThrowIfCancellationRequested();
                 stageDir = Path.GetFullPath(stageDir);
                 string client = EditorData.Setting("UO_CLIENT_DATA", "");
                 if (client.Length > 0 && IsInside(Path.GetFullPath(client), stageDir))
@@ -239,6 +241,11 @@ internal static class MultiStore
                 };
                 File.WriteAllText(Path.Combine(BuiltDir(use), "multi.json"), JsonSerializer.Serialize(side, new JsonSerializerOptions { WriteIndented = true }), new UTF8Encoding(false));
 
+                // Commit boundary: cancellation before dispatch prevents the stage
+                // write. Once the canonical writer starts, wait for its complete
+                // archive/registry/sidecar update and readback; killing it midway
+                // would leave a partial stage. The view suppresses canceled UI work.
+                ct.ThrowIfCancellationRequested();
                 (int code, string log) = RunPython(new[] { Path.Combine("tools", "multi", "run.py"), "write", use, "--stage", stageDir });
                 r.Log = log;
                 if (code != 0)

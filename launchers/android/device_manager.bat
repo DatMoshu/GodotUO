@@ -6,5 +6,5 @@ REM ============================================================================
 call "%~dp0..\_shared\common.bat" || exit /b 1
 if defined UO_ANDROID_JDK set "JAVA_HOME=%UO_ANDROID_JDK%"
 
-"%UO_PYTHON%" "%UO_ROOT%	oolsndroid\device_manager.py" %*
+"%UO_PYTHON%" "%UO_TOOLS%\android\device_manager.py" %*
 exit /b %ERRORLEVEL%

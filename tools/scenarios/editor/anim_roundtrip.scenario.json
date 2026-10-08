@@ -1,0 +1,13 @@
+{
+  "id": "editor.anim.roundtrip",
+  "title": "Animations: send a creature to Pixelorama and back",
+  "surface": "editor",
+  "requires": {"build": "debug"},
+  "timeouts": {"step_s": 180, "run_s": 900},
+  "steps": [
+    {"id": "launch", "do": {"kind": "launch"}, "say": "Open the GUO editor.", "timeout_s": 300},
+    {"id": "anims", "do": {"kind": "tour_segment", "id": "anims"}, "say": "Assets, Animations: pick a creature."},
+    {"id": "anim_roundtrip", "do": {"kind": "tour_segment", "id": "anim_roundtrip"}, "say": "Edit it in Pixelorama and bring it back."},
+    {"id": "result", "do": {"kind": "shot"}, "say": "The edited animation, back in the editor.", "shot": true}
+  ]
+}

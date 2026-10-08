@@ -34,7 +34,7 @@ public sealed class AiProvider : SearchProvider
         }
 
         _built = true;
-        if (_ctx.Ai == null)
+        if (!AiFeatures.Enabled || _ctx.Ai == null)
         {
             return;
         }

@@ -34,7 +34,7 @@ public partial class LogsPanel : VBoxContainer
     public string SettingsPath { get; set; } = LogSources.SettingsPath;
 
     /// <summary>The run bar's server folder (a test points this at its own folder).</summary>
-    public string ServersRoot { get; set; } = LogSources.ServersRoot;
+    public string ServersFile { get; set; }
 
     /// <summary>Poll interval handed to every tailer (a test shortens it).</summary>
     public int PollMilliseconds { get; set; } = 250;
@@ -110,7 +110,7 @@ public partial class LogsPanel : VBoxContainer
             return;
         }
 
-        _profile = LogSources.SelectedProfile(ServersRoot);
+        _profile = LogSources.SelectedProfile(ServersFile);
         _serverDirs = LogSources.ServerFolders(_profile, EditorData.Setting("UO_SHARD_DIST", ""));
         _clientDirs = LogSources.ClientFileFolders(_profile, ProjectSettings.GlobalizePath("res://"));
 
@@ -120,6 +120,11 @@ public partial class LogsPanel : VBoxContainer
         server.Note = ServerNote();
         _tabs.SetTabTitle(server.GetIndex(), server.Title);
 
+        LogView console = Ensure("serverconsole", "Server console", () => new LogTailer(() => LogSources.ServerConsole(_profile?.Id)), utc: false);
+        console.Title = "Server console: " + name;
+        console.Note = "stdout and stderr captured by the run bar; secrets hidden in this view";
+        _tabs.SetTabTitle(console.GetIndex(), console.Title);
+
         for (int slot = 0; slot < _slots; slot++)
         {
             if (_profile == null || string.IsNullOrEmpty(_profile.Id))
@@ -127,8 +132,13 @@ public partial class LogsPanel : VBoxContainer
                 break;
             }
 
-            string file = LogSources.ClientConsole(_profile.Id, slot, ServersRoot);
+            string file = LogSources.ClientConsole(_profile.Id, _profile.ClientId, slot);
             string key = "client" + (slot + 1);
+            if (file.Length == 0)
+            {
+                break;
+            }
+
             if (_views.ContainsKey(key) || File.Exists(file))
             {
                 LogView v = Ensure(key, "Client " + (slot + 1), () => new LogTailer(file), utc: true);
@@ -149,7 +159,7 @@ public partial class LogsPanel : VBoxContainer
             return "no server profile yet: add one in Manage servers";
         }
 
-        string state = Path.Combine(ServersRoot, _profile.Id, "process.json");
+        string state = Path.Combine(GUO.Workspace.Workspace.ServerHome(_profile.Id), "process.json");
         bool managed = false;
         try
         {
@@ -161,7 +171,7 @@ public partial class LogsPanel : VBoxContainer
         }
 
         return managed
-            ? "started by the run bar; its console output is not captured, so its log files are shown"
+            ? "started by the run bar; its log files are shown here, stdout and stderr in Server console"
             : "the shard's log files (the newest under its Logs folder)";
     }
 

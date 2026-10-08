@@ -157,7 +157,12 @@ must not grow by the editor.
   `scene.json` in `docs/data_formats.md` section 23). Code:
   `addons/guo_editor/World/Modes/`. Walkability and the route use the client's
   own `Pathfinder` (`CalculateNewZ` / `CanWalk`). F3 has "View: <mode>" and
-  "Layer: <name>". The Live layer needs the bridge to report mobiles (not yet).
+  "Layer: <name>". Live uses the existing Shard dock's `mobiles` snapshots;
+  green player and grey mobile icons follow their reported cell and altitude.
+  Map layers has separate Live players and Live mobiles filters. Hovering an
+  icon shows its name, kind, serial and position; removed mobiles leave no icon.
+  `EditorSmokeLive.cs` checks scripted appear, move and remove replies through
+  a stub bridge, including kind filters and hover, before and after reload.
 - Performance target: the viewer must scroll as fast as the game (it is the
   game's renderer). Editing a block invalidates its `ChunkMesh` only.
 
@@ -396,6 +401,11 @@ No writable feature ships until that is true.
 
 ## Default layout (2026-10)
 
+The proposed unified AI conversation workspace and the initial shared editor
+MCP implementation are specified in [editor_ai_workspace_plan.md](editor_ai_workspace_plan.md).
+The proposal adds a main-screen AI view while retaining a compact dock; the
+current dock remains the shipped UI until those view/controller phases land.
+
 UO Assets is a main-screen tab (the whole centre: asset tabs, S/M/L cell size,
 a zoomable radar in Maps with double-click to jump), supplied by the small
 `addons/guo_editor_assets` plugin because one plugin owns one main screen. The
@@ -410,6 +420,12 @@ The tour records at 3840x2160 with display scale 1.5 on a scratch settings
 folder, so the user's editor settings are never changed.
 
 ## AI hub (2026-10, ADR-0028)
+
+AI is optional: Editor Settings > GUO > AI > Enabled (`guo/ai/enabled`).
+Disabling it immediately removes AI UI/F3 commands, stops owned agents,
+requests and editor MCP, and hides Art image generation. Manual authoring
+remains available. Every AI feature must use the shared `AiFeatures` gate
+and cancellation lifetime; see [the workspace plan](editor_ai_workspace_plan.md).
 
 The **AI** dock (`addons/guo_editor/AI/`, bottom panel beside UO Shard) has three tabs.
 
@@ -428,9 +444,27 @@ The **AI** dock (`addons/guo_editor/AI/`, bottom panel beside UO Shard) has thre
 F3 has "AI: new chat", "AI: show queue/agents" and "AI: start agent X". Child processes die in
 `AiDock.Shutdown`, which the plugin calls on close and before an assembly reload. The smoke's AI stage
 runs everything against a fake ACP agent, stub HTTP servers and a temporary queue (`tools/ai_hub`).
-The editor model tools are not built yet: the models see no editor state and have no tools.
+Chat models can call `search`, `inspect_asset` and `jump_world`, plus
+`world_state` (pointer or centre, picked object, project and View mode),
+`describe_cell` (land and the Nearby tiles static stack) and `walkable`
+(the same verdict and standing heights as the Walkability View). Cell reads
+use the active facet; `jump_world` opens another one. The mode's `surface`
+category includes floors, bridges and steps; the tools preserve that verdict.
+
+`stamp_static` is a changing tool: every call asks in the existing approval
+dialog, and with no approver it is refused. It stamps at the cell's land z
+through `WorldEditor` into the open world project, with normal undo; no project,
+invalid cells/ids or a project inside the install are refused. The AI smoke
+stage checks the world reads, a known Britain wall's blocked verdict, approval
+refusal, approved stamps and undo, cancellation before execution, and unchanged
+install timestamps. The checks use stubs; a real tool-calling model remains
+unverified.
 
 ## Art pipeline (2026-10, ADR-0029)
+
+The World workspace now provides icon tools, a brush library, contextual
+settings, stroke undo, precision controls and direct external-art-editor
+buttons. Usage and limits: [World workspace](world_workspace.md).
 
 The inspector's art, land and gump views have **Edit in Pixelorama** and **Edit in Pinta**. Each writes a PNG
 and a sidecar to the exchange folder (`build/art_exchange/`, data_formats section 24) and opens the editor;
@@ -440,7 +474,8 @@ UO post-process into the world project's asset overlay, recording provenance. Pi
 (`tools/pixelorama/extension/`: hue palettes, UO templates, size check, Save back to GUO). Pinta is the user's own
 install (`winget install Pinta.Pinta`). The Art dock also queues ComfyUI workflows (progress over its websocket)
 and a Retro Diffusion provider (key from the AI dock's endpoint book named "Retro Diffusion"), gallery, then
-"Import to overlay". The smoke's Art stage runs all of it against stubs and checks the install is untouched.
+"Import to overlay", recording the AI flag, configured model, workflow, seed and input provenance. The smoke's Art
+stage runs all of it against stubs, checks the gallery's import and provenance roundtrip, and checks the install is untouched.
 Not built: hosting Pixelorama as an editor tab; a live hue preview inside Pixelorama; animation frames
 round-trip (templates exist, the overlay has no animation kind yet).
 
@@ -492,5 +527,10 @@ a file over 512 KB entered at its end. Secrets in a line (the shapes `tools/agen
 pairs, bearer tokens, keys) are shown as `[redacted]`. F3 has "Logs: server", "Logs: client N", "Logs: add file".
 The smoke's Logs stage writes fixture logs under its output folder and checks all of the above, then that no
 worker task survives shutdown (and the reload run proves the same across an assembly reload).
-Not built: the server's own console output when the run bar started it (the managed process is not redirected,
-so its log files are what is shown); capturing the editor's in-process output without file logging.
+The run bar also redirects a managed server's stdout and stderr into its workspace's
+`servers/<id>/server.console.log`. A separate Server console view follows the selected profile and applies
+the same secret redaction. The OS shell owns the output file: assembly reload leaves no capture callbacks
+or handles in the addon, and the recorded process remains stoppable and restartable. The Logs smoke starts
+only a script fixture, checks both streams, redaction, argument preservation and stop/restart cleanup, and
+leaves a fixture across the reload for the second assembly to stop.
+Not built: capturing the editor's in-process output without file logging.

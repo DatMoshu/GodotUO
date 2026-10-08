@@ -2,6 +2,7 @@
 namespace GUO.Editor;
 
 using Godot;
+using System.Linq;
 
 /// <summary>
 /// The GUO editor addon: turns the Godot editor into the UO workbench
@@ -47,6 +48,11 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
     public static GumpStudio GumpsMain { get; private set; }
     private MultiEditView _multiedit;
     private SearchPopup _search;
+    private Button _collapseBottomPanels;
+    private EditorMcpServer _editorMcp;
+    private SearchContext _searchContext;
+    private EditorSettings _settings;
+    private SpriteMotionDock _spriteMotion;
 
     // Whether the World tab was on screen when an assembly reload began.
     // A bool field survives the reload (Godot serializes it), and the editor
@@ -119,6 +125,9 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
             return;
         }
 
+        AiFeatures.Apply(AiFeatures.ReadPreference());
+        _settings = EditorInterface.Singleton.GetEditorSettings();
+        _settings.SettingsChanged += OnEditorSettingsChanged;
         _data = new EditorData();
         _gumps = new GumpStudio(_data);
         GumpsMain = _gumps;
@@ -147,6 +156,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         // The World tab: the game's renderer, read only (ADR-0015). It starts
         // the world the first time it is shown, not here.
         _world = new WorldView(_data);
+        _world.FocusRequested += HideBottomPanel;
         _gumps.PreviewWorld = () => _world.EnsureBooted() ? _world.Host.World : throw new System.InvalidOperationException(_world.Error);
         EditorInterface.Singleton.GetEditorMainScreen().AddChild(_world);
         _world.Visible = _worldWasVisible;
@@ -156,11 +166,16 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         _shard = new ShardDock();
         AddDock(_shard);
         _shard.Attach(_world);
+        _spriteMotion = new SpriteMotionDock();
+        AddDock(_spriteMotion);
 
         // The AI hub (ADR-0028): chat, agents over ACP, the request queue. It owns child
         // processes (agent CLIs), which TearDown kills.
-        _ai = new AiDock();
-        AddDock(_ai);
+        if (AiFeatures.Enabled)
+        {
+            _ai = new AiDock();
+            AddDock(_ai);
+        }
 
         // The art pipeline (ADR-0029): image services, and the watcher that imports what Pixelorama
         // and Pinta save. It owns worker tasks, which TearDown cancels.
@@ -179,6 +194,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         // tasks, which TearDown cancels.
         _logs = new LogsDock();
         AddDock(_logs);
+        Callable.From(InstallBottomPanelCollapse).CallDeferred();
 
         // The Layers dock: the terrain underlays/overlays registry the game
         // reads at boot. Stateless; nothing to tear down.
@@ -205,6 +221,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         _multiedit.Visible = _multieditWasVisible;
         _multieditWasVisible = false;
         MultiPanel.EditRequested = OpenInMultiEditor;
+        BuildUoLayout();
         _world.AreaToMulti = (name, parts) =>
         {
             ShowMultiEditor();
@@ -235,9 +252,9 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         searchContext.Logs = _logs;
         searchContext.MultiEdit = _multiedit;
         _search = SearchPopup.Install(searchContext);
-        _ai.UseTools(searchContext, () => _search?.Index);
-        _ai.Hub.SelectionImage = () => _inspector?.Current?.Image;
-        _ai.Hub.SelectionLabel = () => _inspector?.Current is Inspection i ? $"{i.Source} {i.Id}" : null;
+        AssetField.Reveal = searchContext.RevealAsset;
+        _searchContext = searchContext;
+        ConnectAi();
 
         string smokeOut = EditorSmoke.OutDirFromArgs();
         string tourOut = EditorTour.OutDirFromArgs();
@@ -245,7 +262,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         // A tool started this editor (the smoke flag): its window must not
         // take the keyboard or the foreground from whoever is working, as a
         // scripted game run's does not (Bootstrap/Main.cs NoFocus).
-        if ((smokeOut != null || tourOut != null) && DisplayServer.GetName() != "headless")
+        if ((smokeOut != null || tourOut != null || System.Environment.GetEnvironmentVariable("GUO_EDITOR_SCRIPTED") == "1") && DisplayServer.GetName() != "headless")
         {
             DisplayServer.WindowSetFlag(DisplayServer.WindowFlags.NoFocus, true);
             DisplayServer.WindowSetFlag(DisplayServer.WindowFlags.AlwaysOnTop, false);
@@ -274,6 +291,16 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
             _tour.Store = _store;
             AddChild(_tour);
         }
+        else if (!string.IsNullOrWhiteSpace(EditorData.Setting("GUO_EDITOR_MCP_PORT", "")) && System.Environment.GetEnvironmentVariable("GUO_EDITOR_SCRIPTED") == "1")
+        {
+            // An editor a runner started (GUO_EDITOR_SCRIPTED=1) and drives over the editor MCP can run one tour segment at a time
+            // (tour_segment); it runs nothing by itself. An editor that merely has the MCP on never resizes or moves its window.
+            _tour = new EditorTour(null, _data, _assets, _inspector, _world, _shard, _run);
+            _tour.Search = _search;
+            _tour.Ai = _ai;
+            _tour.Store = _store;
+            AddChild(_tour);
+        }
 
         // The headless editor is used to import and to build solutions
         // (launchers\dev\smoke.bat, build.bat); opening the install there is
@@ -290,6 +317,58 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
 
         GD.Print("[GUO editor] plugin entered");
     }
+
+    // Only settings callbacks touch Godot; all AI workers observe AiFeatures' snapshot.
+    private void OnEditorSettingsChanged()
+    {
+        bool enabled = AiFeatures.ReadPreference();
+        if (enabled != AiFeatures.Enabled) ApplyAiPreference(enabled);
+    }
+
+    internal void ApplyAiPreference(bool enabled)
+    {
+        AiFeatures.Apply(enabled); // Cancel work before detaching its UI and tool targets.
+        StopAi();
+        if (enabled)
+        {
+            _ai = new AiDock();
+            AddDock(_ai);
+        }
+        _art?.ApplyAiFeatures();
+        _searchContext.Ai = _ai;
+        SearchPopup.Remove(_search);
+        _search = SearchPopup.Install(_searchContext);
+        ConnectAi();
+        if (_smoke != null) { _smoke.Ai = _ai; _smoke.Search = _search; }
+        if (_tour != null) { _tour.Ai = _ai; _tour.Search = _search; }
+    }
+
+    private void ConnectAi()
+    {
+        if (!AiFeatures.Enabled || _ai == null) return;
+        _ai.UseTools(_searchContext, () => _search?.Index);
+        EditorCapabilities.Register(_ai.Hub.Tools, _searchContext, () => _search?.Index, () => _tour);
+        _editorMcp = EditorMcpServer.StartConfigured(_ai.Hub.Tools);
+        EditorMcpConnection.Configure(_editorMcp != null);
+        _ai.Hub.SelectionImage = () => _inspector?.Current?.Image;
+        _ai.Hub.SelectionLabel = () => _inspector?.Current is Inspection i ? $"{i.Source} {i.Id}" : null;
+    }
+
+    private void StopAi()
+    {
+        _editorMcp?.Dispose();
+        _editorMcp = null;
+        EditorMcpConnection.Configure(false);
+        if (_ai == null) return;
+        _ai.Shutdown();
+        RemoveDock(_ai);
+        _ai.GetParent()?.RemoveChild(_ai);
+        _ai.QueueFree();
+        _ai = null;
+    }
+
+    internal bool AiRunning => _ai != null;
+    internal bool AiMcpRunning => _editorMcp != null;
 
     private async void ApplyDefaultLayoutOnFirstRun()
     {
@@ -371,8 +450,55 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         _world.Visible = true;
     }
 
+    private void InstallBottomPanelCollapse()
+    {
+        if (_data == null || _collapseBottomPanels != null)
+        {
+            return;
+        }
+
+        Node panel = GodotUi.Walk(GodotUi.Base).FirstOrDefault(n => n.GetClass() == "EditorBottomPanel");
+        if (panel == null)
+        {
+            return;
+        }
+
+        // Use the same tab-row discovery as the F3 panel provider. Collapse through
+        // Godot's API so its selection, saved layout and split sizing stay in sync.
+        HBoxContainer tabs = GodotUi.All<HBoxContainer>(panel).FirstOrDefault(box =>
+            box.GetChildren().OfType<Button>().Count(b => b.ToggleMode && b.Text.Length > 0) >= 2);
+        if (tabs == null)
+        {
+            return;
+        }
+
+        _collapseBottomPanels = new Button
+        {
+            Name = "GuoCollapseBottomPanels",
+            Text = "Collapse",
+            TooltipText = "Collapse the bottom panels. Click any panel tab to open it again.",
+            Flat = true,
+        };
+        _collapseBottomPanels.Pressed += HideBottomPanel;
+        tabs.AddChild(_collapseBottomPanels);
+        tabs.MoveChild(_collapseBottomPanels, 0);
+    }
+
     private void TearDown()
     {
+        RemoveUoLayout();
+
+        if (_collapseBottomPanels != null)
+        {
+            _collapseBottomPanels.Pressed -= HideBottomPanel;
+            _collapseBottomPanels.GetParent()?.RemoveChild(_collapseBottomPanels);
+            _collapseBottomPanels.QueueFree();
+            _collapseBottomPanels = null;
+        }
+
+        if (_settings != null) _settings.SettingsChanged -= OnEditorSettingsChanged;
+        AiFeatures.Apply(false);
+        _settings = null;
         // Save recovery before StoreView clears System.Text.Json's process-wide type caches.
         // Serializing after that cache release pins this assembly and prevents hot reload.
         if (_gumps != null)
@@ -407,8 +533,11 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
             MapGenMain = null;
         }
 
+        StopAi();
         SearchPopup.Remove(_search);
+        _searchContext = null;
         _search = null;
+        AssetField.Reveal = null;
 
         if (_run != null)
         {
@@ -458,6 +587,13 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
             _ai = null;
         }
 
+        if (_spriteMotion != null)
+        {
+            _spriteMotion.Shutdown();
+            RemoveDock(_spriteMotion);
+            _spriteMotion.QueueFree();
+            _spriteMotion = null;
+        }
         if (_shard != null)
         {
             // Closes the bridge connection and its reader thread before a reload.

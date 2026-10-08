@@ -112,6 +112,7 @@ public sealed class ServiceBook
     /// <summary>The key, opened for one request; null if there is none.</summary>
     public string KeyFor(ServiceInfo s)
     {
+        if (!AiFeatures.Enabled) return "";
         if (s == null)
         {
             return null;
@@ -254,6 +255,10 @@ public sealed class ServiceBook
     /// </summary>
     public async Task<(bool Ok, string Detail)> TestAsync(ServiceInfo s, CancellationToken ct = default)
     {
+        if (!AiFeatures.Enabled) return (false, AiFeatures.DisabledMessage);
+        using var aiLife = AiFeatures.Link(ct);
+        ct = aiLife.Token;
+
         if (s == null)
         {
             return (false, "no such service");

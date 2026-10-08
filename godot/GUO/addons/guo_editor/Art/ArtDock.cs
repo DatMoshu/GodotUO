@@ -37,6 +37,8 @@ public partial class ArtDock : EditorDock
     private int _targetId = -1;
     private double _sinceWatch;
     private bool _ready;
+    private VBoxContainer _root, _aiControls;
+    internal bool AiControlsVisible => _aiControls != null;
 
     /// <summary>The last ComfyUI/Retro Diffusion result, for the smoke.</summary>
     public ImageResult LastResult => _lastResult;
@@ -76,6 +78,60 @@ public partial class ArtDock : EditorDock
         _tools = new Label { Text = ExternalTools.Describe(), AutowrapMode = TextServer.AutowrapMode.WordSmart };
         root.AddChild(_tools);
 
+        var outside = new HBoxContainer();
+        root.AddChild(outside);
+        foreach (bool pinta in new[] { false, true })
+        {
+            bool usePinta = pinta;
+            var edit = new Button { Text = pinta ? "Edit in Pinta" : "Edit in Pixelorama" };
+            edit.Pressed += () => EditInspected(usePinta);
+            outside.AddChild(edit);
+        }
+        var setup = new Button { Text = "Art tools / setup" };
+        setup.Pressed += ShowToolHelp;
+        outside.AddChild(setup);
+        var exchange = new Button { Text = "Open exchange folder" };
+        exchange.Pressed += () =>
+        {
+            string folder = EditorData.Setting("UO_ART_EXCHANGE", Path.Combine(EditorData.RepoRoot, "build", "art_exchange"));
+            Directory.CreateDirectory(folder); OS.ShellOpen(folder);
+        };
+        outside.AddChild(exchange);
+
+        _root = root;
+        _status = new Label { AutowrapMode = TextServer.AutowrapMode.WordSmart };
+        root.AddChild(_status);
+        ApplyAiFeatures();
+    }
+
+    /// <summary>AI controls are created only when allowed; manual art exchange stays active.</summary>
+    internal void ApplyAiFeatures()
+    {
+        if (!_ready) return;
+        if (!AiFeatures.Enabled)
+        {
+            Shutdown();
+            if (_aiControls != null)
+            {
+                _aiControls.GetParent()?.RemoveChild(_aiControls);
+                _aiControls.QueueFree();
+                _aiControls = null;
+            }
+            _bar = null;
+            _target = null;
+            _gallery = null;
+            _lastResult = null;
+            _lastRequest = null;
+            foreach (var image in _images) image.Dispose();
+            _images.Clear();
+            _status.Text = "";
+            return;
+        }
+        if (_aiControls != null) return;
+        _aiControls = new VBoxContainer();
+        _root.AddChild(_aiControls);
+        _root.MoveChild(_aiControls, 1);
+        var root = _aiControls;
         var row = new HBoxContainer();
         root.AddChild(row);
         _providerPick = new OptionButton();
@@ -136,8 +192,6 @@ public partial class ArtDock : EditorDock
         var save = new Button { Text = "Save audio/3D artifacts" };
         save.Pressed += () => Report(SaveArtifacts());
         root.AddChild(save);
-        _status = new Label { AutowrapMode = TextServer.AutowrapMode.WordSmart };
-        root.AddChild(_status);
         RefreshWorkflows();
     }
 
@@ -159,6 +213,46 @@ public partial class ArtDock : EditorDock
         {
             _workflowPick.Disabled = false;
         }
+    }
+
+    private void EditInspected(bool pinta)
+    {
+        Inspection ins = _source();
+        if (ins?.ArtKind == null || ins.Image == null)
+        {
+            Report("Select an asset in Assets > Art or Gumps, or inspect terrain/a static in World first.");
+            return;
+        }
+        try
+        {
+            Report(AssetActions.EditIn(_data, ins.ArtKind.Value, ins.ArtId, ins.Image, pinta)
+                ?? (pinta ? "Pinta opened. Save the exported PNG; GUO imports it automatically."
+                    : "Pixelorama opened. Choose GUO > Save back to GUO; GUO imports it automatically."));
+        }
+        catch (Exception ex) { Report(ex.Message); }
+    }
+
+    private void ShowToolHelp()
+    {
+        _tools.Text = ExternalTools.Describe();
+        var dialog = new AcceptDialog
+        {
+            Title = "Art tools — setup and round trip",
+            DialogText = ExternalTools.Describe() + "\n\nPixelorama setup (from the repository):\npython tools/pixelorama/run.py fetch\n"
+                + "Or set UO_PIXELORAMA in launchers/_shared/config.local.bat to an installed executable.\n"
+                + "Pinta setup: winget install Pinta.Pinta\nOr set UO_PINTA in config.local.bat. Restart GUO after changing paths.\n\n"
+                + "1. Select an asset in Assets > Art / Gumps, or inspect a World tile.\n"
+                + "2. Click Edit in Pixelorama or Edit in Pinta. These open separate windows.\n"
+                + "3. Pixelorama: GUO > Save back to GUO. Pinta: save the exported PNG.\n"
+                + "4. The Art panel reports the import; the world project uses the replacement.\n\n"
+                + "Other image editors: use Inspector > Save PNG, edit it, then Import PNG.\n"
+                + "ComfyUI: choose a workflow and endpoint below, Queue, select a result, Import to overlay.\n"
+                + "Retro Diffusion: configure its endpoint/key in AI, then select it below. Queue may incur provider charges.\n"
+                + "For animations, use the Animations panel's Edit in Pixelorama action, then GUO: import animation sheet to timeline. "
+                + "Embedded Pixelorama tabs are not supported."
+        };
+        AddChild(dialog); dialog.Confirmed += () => dialog.QueueFree(); dialog.Canceled += () => dialog.QueueFree();
+        dialog.PopupCentered();
     }
 
     public static string WorkflowFolder
@@ -242,6 +336,7 @@ public partial class ArtDock : EditorDock
     public static IImageProvider MakeProvider(bool retroDiffusion, string url, out string why)
     {
         why = null;
+        if (!AiFeatures.Enabled) { why = AiFeatures.DisabledMessage; return null; }
         if (!retroDiffusion)
         {
             return new ComfyUiProvider(url);
@@ -282,6 +377,7 @@ public partial class ArtDock : EditorDock
     /// <summary>Runs a request on a worker thread and fills the gallery; the task completes with the result.</summary>
     public Task<ImageResult> RunAsync(IImageProvider provider, ImageRequest req)
     {
+        if (!AiFeatures.Enabled) return Task.FromResult(new ImageResult { Error = AiFeatures.DisabledMessage });
         _lastRequest = req;
         _providerUsed = provider;
         _progressValue = 0;
@@ -353,6 +449,7 @@ public partial class ArtDock : EditorDock
         var prov = new ArtProvenance
         {
             Tool = _providerUsed?.Id ?? "image-service",
+            AiGenerated = true,
             Model = _lastResult.Model,
             Workflow = _lastResult.Workflow,
             Seed = _lastResult.Seed >= 0 ? _lastResult.Seed : null,

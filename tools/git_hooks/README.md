@@ -19,7 +19,11 @@ never committed. Failures stop the push and leave the user's index and
 working files unchanged. No network access, push or remote mutation is made
 by the checker itself.
 
-This checks pushed **tips**, not every historical commit reachable from them.
+Before the tip checks, every commit the push would publish (remote..local) is read from
+the object store and refused if it adds a compiled program (.dll, .exe, .so, ...), matches
+the CI machine-path guard outside `docs/`, or contains a deny-list value, binaries included.
+A clean tip does not excuse an earlier commit: GitHub publishes them all. The full docs lint
+and privacy scan still run on pushed **tips** only.
 It is a contributor convenience, not a security boundary against a malicious
 author changing the checks. CI and review remain necessary; use the history
 scrub workflow separately when an earlier commit contains private material.

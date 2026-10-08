@@ -1,0 +1,62 @@
+{
+ "schema": "guo.mapgen.towns/1",
+ "notes": "GUO's own town presets for MapGen (docs/data_formats.md section 26). Every house comes from tools/multi's house generator and its committed styles; no layout here is copied or derived from another game. Weights are relative. Tuned by hand against general measurements only (house sizes, lot and street spacing).",
+ "presets": {
+  "hamlet": {
+   "name": "Hamlet",
+   "styles": {"log_thatch": 6, "plaster_tile": 2, "stone_tile": 1},
+   "shapes": {"rect": 6, "L": 3, "T": 1},
+   "storeys": {"1": 5, "2": 1},
+   "roofs": {"gable": 6, "hip": 2},
+   "side_streets": 0.3,
+   "lot_width": [14, 20],
+   "house_width": [8, 12],
+   "house_depth": [7, 10],
+   "yard": 0.5,
+   "balcony": 0.0,
+   "fill": 0.7
+  },
+  "market_town": {
+   "name": "Market town",
+   "styles": {"plaster_tile": 4, "stone_tile": 4, "log_thatch": 1},
+   "shapes": {"rect": 4, "L": 3, "T": 2, "U": 1},
+   "storeys": {"1": 3, "2": 4},
+   "roofs": {"gable": 5, "hip": 3, "flat": 1},
+   "side_streets": 0.9,
+   "lot_width": [12, 17],
+   "house_width": [9, 13],
+   "house_depth": [7, 10],
+   "yard": 0.15,
+   "balcony": 0.4,
+   "fill": 0.95
+  },
+  "sandstone_village": {
+   "name": "Sandstone village",
+   "styles": {"sandstone_tile": 8, "plaster_tile": 2},
+   "shapes": {"rect": 4, "L": 2, "U": 2},
+   "storeys": {"1": 4, "2": 2},
+   "roofs": {"flat": 5, "hip": 2, "gable": 1},
+   "side_streets": 0.6,
+   "lot_width": [13, 18],
+   "house_width": [8, 13],
+   "house_depth": [7, 10],
+   "yard": 0.3,
+   "balcony": 0.2,
+   "fill": 0.85
+  },
+  "stone_borough": {
+   "name": "Stone borough",
+   "styles": {"stone_tile": 7, "plaster_tile": 2},
+   "shapes": {"rect": 3, "L": 3, "T": 3, "U": 1},
+   "storeys": {"1": 2, "2": 5, "3": 1},
+   "roofs": {"gable": 4, "hip": 4, "flat": 1},
+   "side_streets": 1.0,
+   "lot_width": [13, 18],
+   "house_width": [10, 14],
+   "house_depth": [8, 10],
+   "yard": 0.1,
+   "balcony": 0.5,
+   "fill": 1.0
+  }
+ }
+}

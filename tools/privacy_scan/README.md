@@ -17,3 +17,11 @@ python tools\privacy_scan\run.py --staged   only what is staged
 
 Where the values go instead: `launchers\_shared\config.local.bat`
 (`UO_SHARD_HOST`, `UO_ANDROID_DEVICE`, `UO_DECK_HOST`, ...).
+
+## Binaries
+
+Compiled programs (.dll, .exe, .so, .dylib, .pdb, .lib, .node, .pyd) are a hit whenever they are
+tracked at all: a release build embeds the builder's home folder, which is how `gdcef.dll` reached GitHub
+on 2026-10-05. Other files that are not UTF-8 text are scanned as bytes for a home folder and for the
+deny list, in ASCII and in UTF-16LE (how Windows programs store paths). Images, audio, fonts and models
+are still skipped.

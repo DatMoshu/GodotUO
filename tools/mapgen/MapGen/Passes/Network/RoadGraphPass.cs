@@ -23,6 +23,14 @@ public sealed class RoadGraphParams
     [TunableRange(0, 4096)]
     public int MountainPenalty { get; set; } = 400;
 
+    [TunableDisplay("Mountain clearance (tiles)", Tooltip = "Roads pay extra within this many tiles of a mountain, falling off with distance, so they keep a margin from the range's foot instead of hugging it. 0 = off.")]
+    [TunableRange(0, 32)]
+    public int MountainClearance { get; set; } = 6;
+
+    [TunableDisplay("Mountain clearance penalty", Tooltip = "Extra cost per step on a cell next to a mountain; it falls linearly to 0 at the clearance distance.")]
+    [TunableRange(0, 1024)]
+    public int MountainClearancePenalty { get; set; } = 40;
+
     // Ignored: water is decided by biome (GenIR.SeaLevelZ frame). Kept for preset compat.
     [TunableDisplay("Sea level Z (legacy, ignored)")] [TunableRange(-128, 127)]
     public int SeaLevelZ { get; set; } = 0;
@@ -91,6 +99,7 @@ public sealed class RoadGraphPass : IGenerationPass
         // foreign town". Without this, an inter-town road can cut straight through any
         // unrelated town between source and destination.
         var footprintOwner = BuildFootprintOwnerMap(ir);
+        var nearMountain = MountainDistance(ir, p.MountainClearance);
 
         int painted = 0;
         var used = new HashSet<int>();
@@ -104,7 +113,7 @@ public sealed class RoadGraphPass : IGenerationPass
             var startCell = PickEndpoint(from, to, p);
             var goalCell  = PickEndpoint(to, from, p);
 
-            var path = AStar(ir, startCell, goalCell, from.Id, to.Id, footprintOwner, used, p);
+            var path = AStar(ir, startCell, goalCell, from.Id, to.Id, footprintOwner, used, p, nearMountain);
             if (path is null) continue;
             var seg = new RoadSegment
             {
@@ -169,7 +178,8 @@ public sealed class RoadGraphPass : IGenerationPass
         int toPoiId,
         Dictionary<int, int> footprintOwner,
         HashSet<int> used,
-        RoadGraphParams p)
+        RoadGraphParams p,
+        byte[]? nearMountain = null)
     {
         // Compact A* with a binary-heap open set keyed by composite int (gScore for tie-break).
         // Encodes nodes as int = y * Width + x.
@@ -222,6 +232,8 @@ public sealed class RoadGraphPass : IGenerationPass
                 if (IsWater(ir, nIdx)) continue;
                 if (ir.Biome is not null && (BiomeId)ir.Biome[nIdx] is BiomeId.Mountain or BiomeId.HighMountain)
                     stepCost += p.MountainPenalty;
+                else if (nearMountain is not null && nearMountain[nIdx] > 0)
+                    stepCost += p.MountainClearancePenalty * (p.MountainClearance + 1 - nearMountain[nIdx]) / p.MountainClearance;
                 if (p.WaterPenalty > 0 && TouchesWater(ir, nx, ny))
                     stepCost += p.WaterPenalty / 16;
                 if (used.Contains(nIdx))
@@ -246,6 +258,35 @@ public sealed class RoadGraphPass : IGenerationPass
             }
         }
         return null;
+    }
+
+    // Distance in tiles (4-connected, 1..clearance) from each cell to the nearest Mountain or
+    // HighMountain cell; 0 on the rock itself and beyond the clearance. Null when off.
+    private static byte[]? MountainDistance(GenIR ir, int clearance)
+    {
+        if (clearance <= 0 || ir.Biome is null) return null;
+        int w = ir.Width, h = ir.Height;
+        var dist = new byte[w * h];
+        var seen = new bool[w * h];
+        var q = new Queue<int>();
+        for (int i = 0; i < w * h; i++)
+            if ((BiomeId)ir.Biome[i] is BiomeId.Mountain or BiomeId.HighMountain) { seen[i] = true; q.Enqueue(i); }
+        while (q.Count > 0)
+        {
+            int c = q.Dequeue();
+            int d = dist[c];
+            if (d >= clearance) continue;
+            int cx = c % w, cy = c / w;
+            Span<int> nbs = stackalloc int[4] { cx > 0 ? c - 1 : -1, cx < w - 1 ? c + 1 : -1, cy > 0 ? c - w : -1, cy < h - 1 ? c + w : -1 };
+            foreach (int nb in nbs)
+            {
+                if (nb < 0 || seen[nb]) continue;
+                seen[nb] = true;
+                dist[nb] = (byte)(d + 1);
+                q.Enqueue(nb);
+            }
+        }
+        return dist;
     }
 
     // Manhattan at the plain step cost. Slightly inadmissible once existing-road discounts

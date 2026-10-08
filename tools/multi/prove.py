@@ -244,7 +244,7 @@ def pick_site(cfg, at, bx0, by0, bx1, by1):
 
 def session(cfg, stage: Path, out: Path, parts: list, site, stops: list, clip: Path | None, min_free_gb: float,
             caption: str, report: dict, shard_env: dict | None = None, profile: dict | None = None,
-            jumps=(), shard_commands: list[str] = ()) -> int:
+            jumps=(), shard_commands: list[str] = (), blocked=()) -> int:
     """Start the private shard on the stage, place every (tag, id, cx, cy, doors) at the site plus
     (cx, cy), log a client in and walk `stops` (name, local x, y, z), a frame and a dump at each.
     `shard_env` goes to the shard's start, `profile` over the client's profile options."""
@@ -367,6 +367,8 @@ def session(cfg, stage: Path, out: Path, parts: list, site, stops: list, clip: P
             (watch / "walk.rec").write_text(f"{min(40 + 12 * len(stops), 900)} 8 jpg", encoding="utf-8")
             time.sleep(1.0)
         report["stops"] = {t: goto(t, lx, ly, lz) for t, lx, ly, lz in stops}
+        if blocked:
+            report["negative_blockers"] = {t: {**goto(t,lx,ly,lz),"expected":"blocked"} for t,lx,ly,lz in blocked}
         if clip:
             (watch / "walk.stop").write_text("", encoding="utf-8")
             wait_for(lambda: (watch / "walk.recorded").exists(), 300)
@@ -401,5 +403,6 @@ def session(cfg, stage: Path, out: Path, parts: list, site, stops: list, clip: P
                 report["clip_tight"] = str(tight)
     (out / "report.json").write_text(json.dumps(report, indent=1) + "\n", encoding="utf-8")
     ok = all(a.get("ok") for a in report["place"].values()) and all(s["arrived"] for s in report.get("stops", {}).values())
+    ok &= all(not s["arrived"] and s.get("client_says") for s in report.get("negative_blockers",{}).values())
     print(f"[prove] {'PASS' if ok else 'FAIL'}: {out}")
     return 0 if ok else 1

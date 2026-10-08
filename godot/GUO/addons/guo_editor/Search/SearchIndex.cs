@@ -36,6 +36,15 @@ public sealed class SearchIndex
 
     public T Provider<T>() where T : SearchProvider => _providers.OfType<T>().FirstOrDefault();
 
+    /// <summary>Resolve a stable key; a query can recreate dynamic id/coordinate results.</summary>
+    public SearchEntry Resolve(string key, string query = null)
+    {
+        SearchEntry entry = _providers.Select(p => p.Resolve(key)).FirstOrDefault(e => e != null);
+        if (entry != null || string.IsNullOrWhiteSpace(query)) return entry;
+        var q = new SearchQuery(query);
+        return _providers.SelectMany(p => p.Lookup(q)).Select(e => e.Prepare()).FirstOrDefault(e => e.Key == key);
+    }
+
     /// <summary>True once every provider has finished building its catalog.</summary>
     public bool Ready => _providers.All(p => p.Done);
 

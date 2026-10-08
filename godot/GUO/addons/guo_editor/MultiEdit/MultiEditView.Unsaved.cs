@@ -141,6 +141,8 @@ public partial class MultiEditView
     /// <summary>The answer to the prompt: Save writes the description then goes on, Discard goes on, Cancel stays.</summary>
     public void ResolveUnsaved(UnsavedChoice choice)
     {
+        // Answered in code (F3, the smoke) the prompt is still up; an exclusive dialog left open blocks the next one.
+        _unsavedDialog?.Hide();
         Action go = _pending;
         _pending = null;
         if (go == null)

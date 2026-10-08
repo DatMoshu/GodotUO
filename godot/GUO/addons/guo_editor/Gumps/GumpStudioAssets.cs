@@ -77,24 +77,5 @@ public partial class GumpStudio
         });
         SetStatus($"Assigned 0x{id:X4} to {e.Name}");
     }
-
-    private void PickGumpArt(Action<int> picked)
-    {
-        var dialog = new AcceptDialog { Title = "Choose gump art", Size = new Vector2I(820, 540), OkButtonText = "Use selected", DialogHideOnOk = false };
-        AddChild(dialog);
-        var panel = new GumpPanel { MinimumGridHeight = 260 };
-        panel.Attach(_data); dialog.AddChild(panel);
-        void Choose(int id) { dialog.Hide(); Guard(() => picked(id)); dialog.QueueFree(); }
-        panel.Activated += Choose;
-        dialog.Confirmed += () => { if (panel.Selected is int id) Choose(id); };
-        dialog.Canceled += dialog.QueueFree;
-        dialog.PopupCentered();
-        if (_data?.IsLoaded == true) panel.OnDataLoaded();
-        else if (_data != null)
-        {
-            _data.Loaded += panel.OnDataLoaded;
-            dialog.TreeExiting += () => _data.Loaded -= panel.OnDataLoaded;
-        }
-    }
 }
 #endif

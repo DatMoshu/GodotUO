@@ -20,12 +20,14 @@ public sealed class ArtSidecar
     public int Height;
     public string Stem = "";
     public ArtProvenance Provenance = new();
+    public JsonObject Animation;
 
     public static string KindName(AssetKind k) => k switch
     {
         AssetKind.Land => "land",
         AssetKind.Static => "static",
         AssetKind.Gump => "gump",
+        AssetKind.Animation => "animation",
         _ => "hue",
     };
 
@@ -36,6 +38,7 @@ public sealed class ArtSidecar
             case "land": kind = AssetKind.Land; return true;
             case "static": kind = AssetKind.Static; return true;
             case "gump": kind = AssetKind.Gump; return true;
+            case "animation": kind = AssetKind.Animation; return true;
             default: kind = AssetKind.Static; return false;
         }
     }
@@ -55,6 +58,7 @@ public sealed class ArtSidecar
         o["size"] = new JsonArray(Width, Height);
         o["stem"] = Stem;
         o["provenance"] = Provenance.ToJson();
+        if (Animation != null) o["animation"] = Animation.DeepClone();
         return o;
     }
 
@@ -67,6 +71,7 @@ public sealed class ArtSidecar
             Hue = n?["hue"] is JsonNode hue ? (int)hue : 0,
             Stem = (string)n?["stem"] ?? "",
             Provenance = ArtProvenance.FromJson(n?["provenance"]),
+            Animation = n?["animation"] as JsonObject,
         };
         if (n?["size"] is JsonArray a && a.Count == 2)
         {
@@ -105,6 +110,97 @@ public static class ArtExchange
 
     public static string Stem(AssetKind kind, int id, int hue) =>
         $"{ArtSidecar.KindName(kind)}_0x{id:X4}" + (hue > 0 ? $"_h{hue}" : "");
+
+    /// <summary>Export raw frame rectangles in common foot-aligned cells, with immutable centres.</summary>
+    public static string ExportAnimation(EditorData data, int body, OverlayAnimationClip clip)
+    {
+        string why = AssetOverlay.ValidateAnimation(body, clip);
+        if (why != null) throw new InvalidDataException(why);
+        Image[] preview = clip.PreviewFrames();
+        Vector2I cell = preview[0].GetSize();
+        int count = preview.Length;
+        int columns = Math.Clamp((int)Math.Ceiling(Math.Sqrt(count)),
+            (int)Math.Ceiling((double)count / (16384 / cell.Y)), 16384 / cell.X);
+        int rows = (count + columns - 1) / columns;
+        Image sheet = Image.CreateEmpty(cell.X * columns, cell.Y * rows, false, Image.Format.Rgba8);
+        Rect2I bounds = clip.Bounds();
+        var frames = new JsonArray();
+        for (int i = 0; i < count; i++)
+        {
+            sheet.BlitRect(preview[i], new Rect2I(Vector2I.Zero, cell), new Vector2I(i % columns * cell.X, i / columns * cell.Y));
+            int x = -clip.Centers[i].X - bounds.Position.X;
+            int y = -clip.Frames[i].GetHeight() - clip.Centers[i].Y - bounds.Position.Y;
+            frames.Add(new JsonObject { ["rect"] = new JsonArray(x, y, clip.Frames[i].GetWidth(), clip.Frames[i].GetHeight()),
+                ["center"] = new JsonArray(clip.Centers[i].X, clip.Centers[i].Y) });
+        }
+
+        bool overlay = data.Assets?.LoadAnimation(body, clip.Action, clip.Direction, out _) != null;
+        ArtProvenance known = overlay ? new AssetProvenance(data.Assets).Get(data.Assets.RelativePathOf(AssetKind.Animation, body)) : null;
+        var provenance = new ArtProvenance { Tool = "guo-export", AiGenerated = known?.AiGenerated ?? false,
+            Model = known?.Model, Workflow = known?.Workflow, Seed = known?.Seed,
+            DerivedFromClientArt = !overlay || (known?.DerivedFromClientArt ?? true),
+            Inputs = new List<string> { $"{(overlay ? "overlay" : "client")}:animation:0x{body:X4}:a{clip.Action}:d{clip.Direction}" } };
+        string stem = $"animation_0x{body:X4}_a{clip.Action:D2}_d{clip.Direction}";
+        var side = new ArtSidecar { Kind = "animation", Id = body, Stem = stem, Width = sheet.GetWidth(), Height = sheet.GetHeight(),
+            Provenance = provenance, Animation = new JsonObject { ["action"] = clip.Action, ["direction"] = clip.Direction,
+                ["fps"] = clip.Fps, ["columns"] = columns, ["cell_size"] = new JsonArray(cell.X, cell.Y), ["frames"] = frames } };
+        string png = Path.Combine(Sub("out"), stem + ".png");
+        Error error = sheet.SavePng(png);
+        if (error != Error.Ok) throw new IOException($"could not save animation sheet: {error}");
+        File.WriteAllText(Path.ChangeExtension(png, ".json"), side.ToJson().ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+        return png;
+    }
+
+    private static string ImportAnimationSheet(EditorData data, ArtSidecar side, Image sheet)
+    {
+        try
+        {
+            JsonObject meta = side.Animation;
+            if (meta?["frames"] is not JsonArray frames || frames.Count < 1 || frames.Count > 256
+                || meta["cell_size"] is not JsonArray cell || cell.Count != 2)
+                return "animation sheet needs frame metadata and cell size";
+            int w = (int)cell[0], h = (int)cell[1], columns = (int)meta["columns"];
+            if (w < 1 || w > 4096 || h < 1 || h > 4096 || columns < 1 || columns > frames.Count)
+                return "invalid animation sheet cell layout";
+            int rows = (frames.Count + columns - 1) / columns;
+            long width = (long)w * columns, height = (long)h * rows;
+            if (width > 16384 || height > 16384 || width * height > 33554432
+                || sheet.GetWidth() != width || sheet.GetHeight() != height || side.Width != width || side.Height != height)
+                return "animation sheet dimensions do not match its bounded layout";
+            var clip = new OverlayAnimationClip { Action = (int)meta["action"], Direction = (int)meta["direction"], Fps = (double)meta["fps"],
+                Frames = new Image[frames.Count], Centers = new Vector2I[frames.Count] };
+            for (int i = 0; i < frames.Count; i++)
+            {
+                if (frames[i]?["rect"] is not JsonArray rect || rect.Count != 4
+                    || frames[i]?["center"] is not JsonArray center || center.Count != 2)
+                    return "animation frame needs its original rectangle and centre";
+                var region = new Rect2I((int)rect[0], (int)rect[1], (int)rect[2], (int)rect[3]);
+                if (region.Position.X < 0 || region.Position.Y < 0 || region.Size.X < 1 || region.Size.Y < 1
+                    || region.Size.X > AssetOverlay.MaxStaticSize || region.Size.Y > AssetOverlay.MaxStaticSize
+                    || (long)region.Position.X + region.Size.X > w || (long)region.Position.Y + region.Size.Y > h)
+                    return "animation frame rectangle is outside its cell";
+                Vector2I origin = new(i % columns * w, i / columns * h);
+                for (int y = 0; y < h; y++)
+                    for (int x = 0; x < w; x++)
+                        if (!region.HasPoint(new Vector2I(x, y)) && sheet.GetPixel(origin.X + x, origin.Y + y).A8 >= 128)
+                            return "animation edits extend outside an original frame rectangle";
+                clip.Frames[i] = sheet.GetRegion(new Rect2I(origin + region.Position, region.Size));
+                clip.Centers[i] = new Vector2I((int)center[0], (int)center[1]);
+            }
+
+            for (int i = frames.Count; i < rows * columns; i++)
+                for (int y = 0; y < h; y++)
+                    for (int x = 0; x < w; x++)
+                        if (sheet.GetPixel(i % columns * w + x, i / columns * h + y).A8 >= 128)
+                            return "animation sheet has paint in an unused cell";
+
+            if (data?.Assets == null) return "no world project is open";
+            string why = data.Assets.ImportAnimation(side.Id, clip, side.Provenance);
+            if (why == null) data.ReapplyAssets(AssetKind.Animation, side.Id);
+            return why;
+        }
+        catch (Exception ex) { return $"invalid animation sheet: {ex.Message}"; }
+    }
 
     /// <summary>
     /// Writes the asset as PNG plus sidecar into <paramref name="folder"/> (<c>out</c> or <c>pinta</c>)
@@ -299,7 +395,7 @@ public static class ArtExchange
 
         if (!ArtSidecar.TryKind(side.Kind, out AssetKind kind))
         {
-            o.Why = $"unsupported kind '{side.Kind}' (land, static and gump are imported)";
+            o.Why = $"unsupported kind '{side.Kind}' (land, static, gump and animation are imported)";
             return o;
         }
 
@@ -312,7 +408,8 @@ public static class ArtExchange
                 : Fail(o, $"could not read {Path.GetFileName(png)}");
         }
 
-        string why = ImportImage(data, kind, side.Id, img, side.Provenance, o.Notes);
+        string why = kind == AssetKind.Animation ? ImportAnimationSheet(data, side, img)
+            : ImportImage(data, kind, side.Id, img, side.Provenance, o.Notes);
         if (why != null)
         {
             return Fail(o, why);

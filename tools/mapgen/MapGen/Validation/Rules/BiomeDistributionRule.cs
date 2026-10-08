@@ -11,7 +11,7 @@ namespace CentrED.MapGen.Validation.Rules;
 // preset / climate / cascade thresholds are upstream. The point is to fail loudly in
 // the run report rather than have a designer notice "wait, where's the grass" weeks
 // later. Bands are deliberately wide so legitimate exotic presets (jungle, barren)
-// don't trip them; presets that *should* be lopsided can disable the rule.
+// don't trip them; presets that *should* be lopsided pick another BiomeProfile.
 public sealed class BiomeDistributionRule : IMapRule
 {
     public string Name => "BiomeDistribution";
@@ -19,23 +19,52 @@ public sealed class BiomeDistributionRule : IMapRule
     public bool Enabled { get; set; } = true;
 
     // Per-biome bands as (min%, max%) of *land* tiles (water excluded from the denominator).
-    // Wide ranges — these are sanity bounds, not balance bounds. A preset that legitimately
-    // wants 70% Desert (barren) should disable the rule rather than tune the bands.
-    private static readonly (BiomeId biome, double minPct, double maxPct)[] Bands =
-    {
-        (BiomeId.Grassland,    5.0, 85.0),
-        (BiomeId.Forest,       0.0, 70.0),
-        (BiomeId.Desert,       0.0, 60.0),
-        (BiomeId.Mountain,     0.0, 40.0),
-    };
+    // Wide ranges — these are sanity bounds, not balance bounds. The bands depend on the
+    // world being built, so they come in named profiles chosen by the Map Validator's
+    // BiomeProfile: "felucca" (the default, a Britannia-like mix), "desert" and "ice" for
+    // planets that are meant to be lopsided, and "none" (histogram only).
+    public sealed record Profile((BiomeId biome, double minPct, double maxPct)[] Bands, double SingleBiomeMaxPct);
 
-    // Combined-group bands: useful for "no single biome dominates everything".
-    private const double SingleBiomeMaxPct = 92.0;
+    public static readonly IReadOnlyDictionary<string, Profile> Profiles =
+        new Dictionary<string, Profile>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["felucca"] = new(new[]
+            {
+                (BiomeId.Grassland,    5.0, 85.0),
+                (BiomeId.Forest,       0.0, 70.0),
+                (BiomeId.Desert,       0.0, 60.0),
+                (BiomeId.Mountain,     0.0, 40.0),
+            }, 92.0),
+            ["desert"] = new(new[]
+            {
+                (BiomeId.Desert,      50.0, 100.0),
+                (BiomeId.Grassland,    0.0, 10.0),
+                (BiomeId.Forest,       0.0, 5.0),
+                (BiomeId.Mountain,     0.0, 40.0),
+            }, 100.0),
+            ["ice"] = new(new[]
+            {
+                (BiomeId.Snow,        30.0, 100.0),
+                (BiomeId.Grassland,    0.0, 10.0),
+                (BiomeId.Forest,       0.0, 10.0),
+                (BiomeId.Mountain,     0.0, 40.0),
+            }, 100.0),
+            ["none"] = new(Array.Empty<(BiomeId, double, double)>(), 100.0),
+        };
+
+    public const string DefaultProfile = "felucca";
 
     public ValidationResult Validate(GenIR ir, RectU16 scope, RuleContext ctx)
     {
         var result = new ValidationResult(Name);
         if (ir.Biome is null) return result;
+        var profileName = string.IsNullOrWhiteSpace(ctx.BiomeProfile) ? DefaultProfile : ctx.BiomeProfile;
+        if (!Profiles.TryGetValue(profileName, out var profile))
+        {
+            result.Add(new ValidationFinding(Name, ValidationSeverity.Error,
+                $"unknown biome profile \"{profileName}\" (known: {string.Join(", ", Profiles.Keys)})"));
+            return result;
+        }
 
         var counts = new int[256];
         int landTotal = 0;
@@ -58,15 +87,15 @@ public sealed class BiomeDistributionRule : IMapRule
         }
 
         // Per-biome band checks.
-        foreach (var (biome, lo, hi) in Bands)
+        foreach (var (biome, lo, hi) in profile.Bands)
         {
             double pct = 100.0 * counts[(int)biome] / landTotal;
             if (pct < lo)
                 result.Add(new ValidationFinding(Name, ValidationSeverity.Warn,
-                    $"{biome} at {pct:F1}% of land — below expected min {lo:F0}%"));
+                    $"{biome} at {pct:F1}% of land — below the {profileName} profile's min {lo:F0}%"));
             else if (pct > hi)
                 result.Add(new ValidationFinding(Name, ValidationSeverity.Warn,
-                    $"{biome} at {pct:F1}% of land — above expected max {hi:F0}%"));
+                    $"{biome} at {pct:F1}% of land — above the {profileName} profile's max {hi:F0}%"));
         }
 
         // Single-biome dominance check (any non-water/beach biome >SingleBiomeMaxPct).
@@ -79,7 +108,7 @@ public sealed class BiomeDistributionRule : IMapRule
             double pct = 100.0 * counts[i] / landTotal;
             if (pct > dominantPct) { dominantPct = pct; dominantIdx = i; }
         }
-        if (dominantIdx >= 0 && dominantPct > SingleBiomeMaxPct)
+        if (dominantIdx >= 0 && dominantPct > profile.SingleBiomeMaxPct)
         {
             result.Add(new ValidationFinding(Name, ValidationSeverity.Error,
                 $"{(BiomeId)dominantIdx} dominates {dominantPct:F1}% of land — moisture cascade is likely broken"));
@@ -96,7 +125,7 @@ public sealed class BiomeDistributionRule : IMapRule
             present.Add($"{label}={pct:F1}%");
         }
         result.Add(new ValidationFinding(Name, ValidationSeverity.Info,
-            "land-biome distribution: " + string.Join(", ", present)));
+            $"land-biome distribution ({profileName} profile): " + string.Join(", ", present)));
 
         return result;
     }

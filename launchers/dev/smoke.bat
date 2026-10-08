@@ -1,4 +1,7 @@
 @echo off
+setlocal
+REM  Godot's console wrapper waits for descendants; Roslyn must exit with the build.
+set "UseSharedCompilation=false"
 REM ============================================================================
 REM  Fast health check: engine present, project imports, C# builds,
 REM  client data readable, and the editor add-on (headless, about 20 s).

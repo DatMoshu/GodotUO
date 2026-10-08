@@ -8,6 +8,8 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Threading;
 using System.Threading.Tasks;
 using Godot;
 using GUO.Assets;
@@ -48,7 +50,7 @@ public partial class EditorTour : Node
         public int FirstFrame, FrameCount;
     }
 
-    private readonly string _out;
+    private string _out;
     private readonly EditorData _data;
     private readonly AssetsView _assets;
     private readonly InspectorDock _inspector;
@@ -165,11 +167,11 @@ public partial class EditorTour : Node
             }
         }
 
-        // Whatever home folder is left (the user name is already "user"), and any address but the loopback.
+        // Whatever home folder is left (the user name is already "user"), and every address, including fixtures' loopback.
         t = System.Text.RegularExpressions.Regex.Replace(t, @"[A-Za-z]:/Users/[^/\s)]+", "~");
         t = System.Text.RegularExpressions.Regex.Replace(t, @"(?<![A-Za-z])[A-Za-z]:/(?:ProgramData|Users)/[^/\s)'""]+", "~");
         t = System.Text.RegularExpressions.Regex.Replace(t, @"(?<![A-Za-z])[A-Za-z]:/[^\s)'""]+", "<local path>");
-        t = System.Text.RegularExpressions.Regex.Replace(t, @"(?<![\d.])(?!127\.0\.0\.1(?![\d.]))\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(?![\d])", "host");
+        t = System.Text.RegularExpressions.Regex.Replace(t, @"(?<![\d.])\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(?![\d])", "host");
         return t;
     }
 
@@ -337,13 +339,8 @@ public partial class EditorTour : Node
         string fatal = null;
         try
         {
-            _framesDir = Path.Combine(_out, "frames");
-            Directory.CreateDirectory(_framesDir);
-            _projectRoot = Path.Combine(_out, "world_project");
-            _overlayRoot = Path.Combine(_out, "overlay_project");
-            _exportDir = Path.Combine(_out, "export");
+            UseOutDir(_out);
 
-            DisplayServer.WindowSetMode(DisplayServer.WindowMode.Windowed);
             Vector2I window = new(3840, 2160);
             string sizeText = EditorSmoke.ArgValue(SizeFlag);
             if (sizeText != null && sizeText.Split('x') is { Length: 2 } wh && int.TryParse(wh[0], out int ww) && int.TryParse(wh[1], out int wy))
@@ -351,29 +348,81 @@ public partial class EditorTour : Node
                 window = new Vector2I(ww, wy);
             }
 
-            DisplayServer.WindowSetSize(window);
-            GD.Print($"[GUO tour] window {window.X}x{window.Y}, editor scale {EditorInterface.Singleton.GetEditorScale():0.00}, screen {DisplayServer.ScreenGetSize()}");
-            _shard.EditorName = TourEditorName;
-            DisplayServer.WindowSetPosition(new Vector2I(0, 0));
-            await Frames(40);
-            EditorInterface.Singleton.SetMainScreenEditor("2D");
-            await Frames(10);
+            await PrepareWindow(window);
 
-            _overlay = new TourOverlay { Name = "GuoTourOverlay" };
-            EditorInterface.Singleton.GetBaseControl().AddChild(_overlay);
-            await Frames(5);
+            await EnsureOverlay();
 
-            var plan = new List<(string, string, Func<Task>)>
+            var plan = Plan();
+            _segTotal = plan.Count;
+            string only = EditorSmoke.ArgValue(SegmentsFlag);
+            HashSet<string> wanted = only?.Split(',').ToHashSet();
+            var chosen = plan.Where(p => wanted == null || wanted.Contains(p.Item1)).ToList();
+            _segTotal = chosen.Count;
+            foreach (var (id, title, body) in chosen)
+            {
+                await Run(id, title, body);
+            }
+        }
+        catch (Exception ex)
+        {
+            fatal = $"{ex.GetType().Name}: {ex.Message}";
+        }
+
+        Finish(fatal);
+    }
+
+    private bool _windowReady;
+
+    private async Task PrepareWindow(Vector2I window)
+    {
+        DisplayServer.WindowSetMode(DisplayServer.WindowMode.Windowed);
+        DisplayServer.WindowSetSize(window);
+        GD.Print($"[GUO tour] window {window.X}x{window.Y}, editor scale {EditorInterface.Singleton.GetEditorScale():0.00}, screen {DisplayServer.ScreenGetSize()}");
+        _shard.EditorName = TourEditorName;
+        DisplayServer.WindowSetPosition(new Vector2I(0, 0));
+        await Frames(40);
+        EditorInterface.Singleton.SetMainScreenEditor("2D");
+        await Frames(10);
+        _windowReady = true;
+    }
+
+    private void UseOutDir(string outDir)
+    {
+        _out = outDir;
+        _framesDir = Path.Combine(_out, "frames");
+        Directory.CreateDirectory(_framesDir);
+        _projectRoot = Path.Combine(_out, "world_project");
+        _overlayRoot = Path.Combine(_out, "overlay_project");
+        _exportDir = Path.Combine(_out, "export");
+    }
+
+    private async Task EnsureOverlay()
+    {
+        if (_overlay != null && IsInstanceValid(_overlay))
+        {
+            return;
+        }
+
+        _overlay = new TourOverlay { Name = "GuoTourOverlay" };
+        EditorInterface.Singleton.GetBaseControl().AddChild(_overlay);
+        await Frames(5);
+    }
+
+    private List<(string, string, Func<Task>)> Plan()
+    {
+            return new List<(string, string, Func<Task>)>
             {
                 ("intro", "The GUO editor", Intro),
                 ("layout", "The layout", Layout),
                 ("runbar", "Run bar: start a server, start clients", RunBarSeg),
                 ("search", "F3: search everything", SearchSeg),
                 ("ai", "The AI dock: Chat, Agents, Queue", AiSeg),
+                ("ai_tools", "AI tools: reading the World", AiToolsSeg),
                 ("store", "UO Store: packs for shard owners and authors", StoreSeg),
                 ("art", "Assets: Art", ArtSeg),
                 ("gumps", "Assets: Gumps", GumpSeg),
                 ("anims", "Assets: Animations", AnimSeg),
+                ("anim_roundtrip", "Animations: Pixelorama and back", AnimRoundtripSeg),
                 ("hues", "Assets: Hues", HueSeg),
                 ("multis", "Assets: Multis", MultiSeg),
                 ("cliloc", "Assets: Cliloc", ClilocSeg),
@@ -394,24 +443,10 @@ public partial class EditorTour : Node
                 ("assetoverlay", "Asset overlay: replace art, never the install", AssetOverlaySeg),
                 ("export", "Export and verify", ExportSeg),
                 ("shard", "UO Shard dock: live", ShardSeg),
+                ("server_console", "Server console: managed output in Logs", ServerConsoleSeg),
+                ("live_layer", "Live layer: bridge snapshots in the World", LiveLayerSeg),
                 ("outro", "That is the editor", Outro),
             };
-            _segTotal = plan.Count;
-            string only = EditorSmoke.ArgValue(SegmentsFlag);
-            HashSet<string> wanted = only?.Split(',').ToHashSet();
-            var chosen = plan.Where(p => wanted == null || wanted.Contains(p.Item1)).ToList();
-            _segTotal = chosen.Count;
-            foreach (var (id, title, body) in chosen)
-            {
-                await Run(id, title, body);
-            }
-        }
-        catch (Exception ex)
-        {
-            fatal = $"{ex.GetType().Name}: {ex.Message}";
-        }
-
-        Finish(fatal);
     }
 
     private async Task Intro()
@@ -499,8 +534,8 @@ public partial class EditorTour : Node
         count.Select(1);
         count.EmitSignal(OptionButton.SignalName.ItemSelected, 1);
         await Frames(3);
-        _overlay.Tip(count.GetGlobalRect(), "x 2: the button now reads '" + startClient.Text + "'");
-        Check(startClient.Text == "Start 2 clients", "the count dropdown changes the button to 'Start 2 clients'");
+        _overlay.Tip(count.GetGlobalRect(), "x 2: '" + startClient.Text + "' now starts two clients");
+        Check(count.GetItemId(count.Selected) == 2 && startClient.Text == "Start clients", "the count dropdown is set to two clients for 'Start clients'");
         await Shot(3);
         count.Select(0);
         count.EmitSignal(OptionButton.SignalName.ItemSelected, 0);
@@ -655,7 +690,7 @@ public partial class EditorTour : Node
         await Shot(4);
         _overlay.ClearMarks();
 
-        maps.Radar.Focus(new Vector2I(1496 / 4, 1628 / 4), 8);
+        maps.Radar.Focus(new Vector2I(1496 / 4, 1628 / 4), 16); // past the detail threshold, whatever width the panel has
         await Frames(10);
         Check(maps.Radar.ShowingDetail, $"zoomed in, the radar shows per-cell detail ({maps.Radar.DetailBlocksDrawn} blocks)");
         Say("Zoomed on Britain: past a point the 1:4 overview gives way to the detail, one pixel per cell. Click a cell: the inspector lists what is on it. Double-click, or the Jump button, goes to UO World.");
@@ -695,7 +730,15 @@ public partial class EditorTour : Node
         await Shot(5);
     }
 
-    private Vector2I Centre => new((int)_world.Size.X / 2, (int)_world.Size.Y / 2);
+    // The middle of the map viewport: the World workspace sits beside it, so the tab's own middle is not on the map.
+    private Vector2I Centre
+    {
+        get
+        {
+            Vector2 size = All<SubViewportContainer>(_world).FirstOrDefault()?.Size ?? _world.Size;
+            return new((int)size.X / 2, (int)size.Y / 2);
+        }
+    }
 
     private void Aim(Vector2I at)
     {
@@ -1284,6 +1327,86 @@ public partial class EditorTour : Node
         await Shot(2.5);
     }
 
+    private async Task AiToolsSeg()
+    {
+        if (Ai == null)
+        {
+            Check(false, "the AI dock was not created");
+            return;
+        }
+
+        // This segment calls the editor tools directly. No provider is selected while
+        // showing Chat, so its visibility handler cannot ask a real service for models.
+        OptionButton provider = All<OptionButton>(Ai.Chat).First();
+        int selected = provider.Selected;
+        provider.Select(-1);
+        Ai.ShowTab("Chat");
+        await Frames(8);
+        RichTextLabel log = All<RichTextLabel>(Ai.Chat).First();
+        string transcript = log.Text;
+        bool bbcode = log.BbcodeEnabled;
+        try
+        {
+            log.BbcodeEnabled = false;
+            AiToolHost tools = Ai.Hub.Tools;
+            string jump = await tools.RunAsync("jump_world",
+                new JsonObject { ["facet"] = 0, ["x"] = 1496, ["y"] = 1628 }, CancellationToken.None);
+            for (int i = 0; i < 900 && !WorldUp && _world.Error == null; i++) await Frames(1);
+            Check(WorldUp && _world.Host.Facet == 0 && _world.Host.X == 1496 && _world.Host.Y == 1628,
+                "jump_world opened Britain through the tool host: " + jump);
+            if (!WorldUp) return;
+            await Frames(30);
+
+            JsonNode state = JsonNode.Parse(await tools.RunAsync("world_state", null, CancellationToken.None));
+            Check((int)state["facet"] == 0, "world_state read the active Britain facet");
+            log.Text = "DIRECT EDITOR TOOL RESULT — world_state\n"
+                + $"map{state["facet"]} cell {state["x"]},{state["y"]}, z {state["z"]} ({state["position_source"]})\n"
+                + $"View: {state["view_mode"]}   Project: {state["project"] ?? "none"}\n"
+                + "These results come from the editor tool host. No model or agent is running.";
+            Say("world_state reads the active World facet, pointer cell or camera centre, height, project and View mode. "
+                + "The AI dock shows the direct tool result; this segment sends no model prompt.", top: true);
+            MarkControl(log, "world_state result");
+            await Shot(5);
+
+            JsonObject wallArgs = new() { ["facet"] = 0, ["x"] = 1473, ["y"] = 1607 };
+            JsonNode cell = JsonNode.Parse(await tools.RunAsync("describe_cell", wallArgs, CancellationToken.None));
+            JsonArray stack = (JsonArray)cell["statics"];
+            Check(stack.Any(s => (int)s["id"] == 168), "describe_cell found Britain's known wall static 0x00A8");
+            var detail = new StringBuilder("DIRECT EDITOR TOOL RESULT — describe_cell\nmap0 cell 1473,1607\n");
+            detail.AppendLine($"Land {cell["land"]["id"]}: {cell["land"]["name"]}, z {cell["land"]["z"]}");
+            foreach (JsonNode s in stack)
+                detail.AppendLine($"Static 0x{(int)s["id"]:X4}: {s["name"]}, z {s["z"]}, height {s["height"]}, hue {s["hue"]}; {s["flags"]}");
+            log.Text = detail.ToString();
+            Say("describe_cell returns the land and the complete static stack, including tiledata flags. "
+                + "This known Britain wall is map0 1473,1607: static 0x00A8.", top: true);
+            _overlay.ClearMarks();
+            MarkControl(log, "describe_cell result");
+            await Shot(5);
+
+            JsonNode wall = JsonNode.Parse(await tools.RunAsync("walkable", wallArgs, CancellationToken.None));
+            JsonNode road = JsonNode.Parse(await tools.RunAsync("walkable",
+                new JsonObject { ["facet"] = 0, ["x"] = 1496, ["y"] = 1628 }, CancellationToken.None));
+            Check((string)wall["verdict"] == "blocked", "walkable reports the wall blocked");
+            Check((string)road["verdict"] is "walkable" or "surface", "walkable reports the Britain road open");
+            log.Text = "DIRECT EDITOR TOOL RESULTS — walkable\n"
+                + $"Wall map0 1473,1607: {wall["verdict"]}; standing z {wall["standing_z"]}\n"
+                + $"Road map0 1496,1628: {road["verdict"]}; standing z {road["standing_z"]}\n"
+                + "The same World mode data supplies both verdicts. No world edits were made.";
+            Say("walkable uses the same movement data as the World View mode. The wall is blocked; the road is open. "
+                + "The AI dock displays both actual tool results.", top: true);
+            _overlay.ClearMarks();
+            MarkControl(log, "wall and road verdicts");
+            Check(Ai.Visible && Ai.Chat.IsVisibleInTree(), "the tool results are visible in the AI dock");
+            await Shot(5);
+        }
+        finally
+        {
+            log.Text = transcript;
+            log.BbcodeEnabled = bbcode;
+            provider.Select(selected);
+        }
+    }
+
     private async Task AiSeg()
     {
         if (Ai == null)
@@ -1391,6 +1514,141 @@ public partial class EditorTour : Node
             + "Everything edited lived in a world project and was exported to a scratch folder: the client install was not written.",
             title: "That is the editor");
         await Shot(6);
+    }
+
+    // --- one segment at a time, for a scenario run ----------------------------
+
+    private Task<System.Text.Json.Nodes.JsonObject> _demand;
+    private string _demandId;
+
+    /// <summary>
+    /// The editor MCP's <c>tour_segment</c>: starts one tour segment in a running editor (no tour flag) and
+    /// waits up to about 25 s for it. A segment that needs longer answers <c>running</c>; ask again with the
+    /// same id (or none) to wait on it. Frames and checks are the segment's own, under <paramref name="outDir"/>.
+    /// </summary>
+    internal async Task<string> RunSegmentAsync(string id, string outDir)
+    {
+        if (_demand == null || _demand.IsCompleted && !string.IsNullOrEmpty(id))
+        {
+            if (string.IsNullOrEmpty(id))
+            {
+                return "error: give the id of a tour segment";
+            }
+
+            var found = Plan().FirstOrDefault(p => p.Item1 == id);
+            if (found.Item1 == null)
+            {
+                return $"error: no tour segment {id}. Segments: {string.Join(", ", Plan().Select(p => p.Item1))}";
+            }
+
+            if (!_data.IsLoaded)
+            {
+                return "error: the client data is still loading; try again in a moment";
+            }
+
+            string dir = string.IsNullOrEmpty(outDir) ? Path.Combine("build", "tour_segment", DateTime.Now.ToString("yyyyMMdd_HHmmss")) : outDir;
+            string allowed = Path.GetFullPath(Path.Combine(EditorData.RepoRoot, "build"));
+            string full = Path.GetFullPath(Path.IsPathRooted(dir) ? dir : Path.Combine(EditorData.RepoRoot, dir));
+            if (!full.StartsWith(allowed + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+            {
+                return "error: out_dir must be a folder under this checkout's build/";
+            }
+
+            _demandId = id;
+            _demand = DemandAsync(found.Item1, found.Item2, found.Item3, full);
+        }
+        else if (!string.IsNullOrEmpty(id) && id != _demandId)
+        {
+            return $"error: segment {_demandId} is still running";
+        }
+
+        Task done = await Task.WhenAny(_demand, Task.Delay(TimeSpan.FromSeconds(25)));
+        if (done != _demand)
+        {
+            return new System.Text.Json.Nodes.JsonObject { ["state"] = "running", ["id"] = _demandId }.ToJsonString();
+        }
+
+        return (await _demand).ToJsonString();
+    }
+
+    private async Task EnsureWindow()
+    {
+        if (_windowReady)
+        {
+            return;
+        }
+
+        // The runner's window size (GUO_EDITOR_WINDOW_SIZE, WxH), as the whole tour's --guo-editor-tour-size.
+        Vector2I window = new(3840, 2160);
+        string size = System.Environment.GetEnvironmentVariable("GUO_EDITOR_WINDOW_SIZE");
+        if (size != null && size.Split('x') is { Length: 2 } wh && int.TryParse(wh[0], out int ww) && int.TryParse(wh[1], out int wy))
+        {
+            window = new Vector2I(ww, wy);
+        }
+
+        await PrepareWindow(window);
+    }
+
+    /// <summary>The editor MCP's <c>editor_screenshot</c>: one frame of the editor window as a PNG under this checkout's build/, machine paths scrubbed from what is on screen.</summary>
+    internal async Task<string> ScreenshotAsync(string file)
+    {
+        string allowed = Path.GetFullPath(Path.Combine(EditorData.RepoRoot, "build"));
+        string full = Path.GetFullPath(Path.IsPathRooted(file ?? "") ? file : Path.Combine(EditorData.RepoRoot, file ?? ""));
+        if (!full.StartsWith(allowed + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) || !full.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
+        {
+            return "error: file must be a .png under this checkout's build/";
+        }
+
+        if (!_data.IsLoaded)
+        {
+            return "error: the client data is still loading; try again in a moment";
+        }
+
+        await EnsureWindow();
+        await Frames(2);
+        ScrubUi(EditorInterface.Singleton.GetBaseControl());
+        await Frames(2);
+        Image img = EditorInterface.Singleton.GetBaseControl().GetViewport().GetTexture()?.GetImage();
+        if (img == null || img.IsEmpty())
+        {
+            return "error: could not capture the editor window";
+        }
+
+        Directory.CreateDirectory(Path.GetDirectoryName(full));
+        img.SavePng(full);
+        return new JsonObject { ["file"] = Slashes(Path.GetRelativePath(EditorData.RepoRoot, full)), ["width"] = img.GetWidth(), ["height"] = img.GetHeight() }.ToJsonString();
+    }
+
+    private async Task<System.Text.Json.Nodes.JsonObject> DemandAsync(string id, string title, Func<Task> body, string fullOut)
+    {
+        var result = new System.Text.Json.Nodes.JsonObject { ["state"] = "done", ["id"] = id };
+        try
+        {
+            _started = true; // a requested segment is not the whole tour: _Process must not start RunAsync
+            UseOutDir(fullOut);
+            await EnsureWindow();
+            await EnsureOverlay();
+            _segTotal = 1;
+            _segNo = 0;
+            int first = _frames.Count;
+            await Run(id, title, body);
+            Segment s = _segments[^1];
+            string rel = Slashes(Path.GetRelativePath(EditorData.RepoRoot, fullOut));
+            result["ok"] = s.Skipped == null && s.Failures.Count == 0;
+            result["skipped"] = s.Skipped == null ? null : Scrub(s.Skipped);
+            result["out_dir"] = rel;
+            result["passed"] = new System.Text.Json.Nodes.JsonArray(s.Passed.Select(x => (System.Text.Json.Nodes.JsonNode)Scrub(x)).ToArray());
+            result["failures"] = new System.Text.Json.Nodes.JsonArray(s.Failures.Select(x => (System.Text.Json.Nodes.JsonNode)Scrub(x)).ToArray());
+            result["frames"] = new System.Text.Json.Nodes.JsonArray(_frames.Skip(first).Select(f =>
+                (System.Text.Json.Nodes.JsonNode)new System.Text.Json.Nodes.JsonObject { ["file"] = rel + "/frames/" + f.File, ["seconds"] = f.Seconds }).ToArray());
+        }
+        catch (Exception ex)
+        {
+            result["ok"] = false;
+            result["failures"] = new System.Text.Json.Nodes.JsonArray((System.Text.Json.Nodes.JsonNode)Scrub($"{ex.GetType().Name}: {ex.Message}"));
+        }
+
+        return result;
     }
 
     // --- output -------------------------------------------------------------

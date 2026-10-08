@@ -50,7 +50,8 @@ public partial class MultiPanel : GridPanel
         if (_ids == null)
         {
             _ids = new List<int>();
-            for (int i = 0; i < MultiLoader.MAX_MULTI_DATA_INDEX_COUNT; i++)
+            // Native multi IDs use the low 14 bits; preview allocations may exceed the legacy 0x2200 count.
+            for (int i = 0; i < 0x4000; i++)
             {
                 try
                 {
@@ -115,6 +116,8 @@ public partial class MultiPanel : GridPanel
 
     /// <summary>The composite for a multi id, or null. Also the Parity panel's GUO side.</summary>
     public static Image CompositeOf(EditorData data, int id) => Composite(data, data.Files.Multis.GetMultis((uint)id));
+    public static Image CompositeBelow(EditorData data, int id, int maxZ) =>
+        Composite(data, data.Files.Multis.GetMultis((uint)id).Where(p => p.Z <= maxZ).ToList());
 
     /// <summary>
     /// The visible parts in the client's painting order. Mirrors

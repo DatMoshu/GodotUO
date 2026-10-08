@@ -49,29 +49,103 @@ namespace GUO.Renderer.PostFx
         private double _costTimer;
         private int _scale = 1;
 
-        public static bool IsOpen => _instance != null && GodotObject.IsInstanceValid(_instance) && _instance._layer.Visible;
+        private bool _ready, _disposed;
+        private PostFxStack _subscribedStack;
+
+        private bool ControlsReady => !_disposed && _ready && ReferenceEquals(_instance, this)
+            && IsInsideTree() && !IsQueuedForDeletion()
+            && _layer != null && GodotObject.IsInstanceValid(_layer) && !_layer.IsQueuedForDeletion();
+
+        private bool IsMenuOpen => ControlsReady && _layer.Visible;
+
+        public static bool IsOpen => _instance != null && GodotObject.IsInstanceValid(_instance) && _instance.IsMenuOpen;
 
         /// <summary>Makes sure the menu node exists (for the hotkey); cheap after the first call.</summary>
         public static void Install()
         {
-            if (_instance != null && GodotObject.IsInstanceValid(_instance))
+            if (_instance != null && GodotObject.IsInstanceValid(_instance) && !_instance._disposed && !_instance.IsQueuedForDeletion())
             {
                 return;
             }
 
-            if (Engine.GetMainLoop() is not SceneTree tree)
+            if (Engine.GetMainLoop() is not SceneTree)
             {
                 return;
             }
 
             _instance = new PostFxMenu { Name = "PostFxMenu" };
-            tree.Root.CallDeferred(Node.MethodName.AddChild, _instance);
+            // Queue on the menu itself, without a Node argument on Root.
+            // Shutdown can free a pending menu before this callback is delivered.
+            _instance.CallDeferred(MethodName.AttachToRoot);
+        }
+
+        private void AttachToRoot()
+        {
+            if (_disposed || !ReferenceEquals(_instance, this) || IsQueuedForDeletion() || GetParent() != null)
+            {
+                return;
+            }
+
+            if (Engine.GetMainLoop() is SceneTree tree)
+            {
+                tree.Root.AddChild(this);
+            }
+        }
+
+        /// <summary>On the main thread, after the embedded host stops processing, release the root-owned menu.</summary>
+        internal static void Shutdown()
+        {
+            PostFxMenu menu = _instance;
+            _instance = null;
+            if (menu == null || !GodotObject.IsInstanceValid(menu))
+            {
+                return;
+            }
+
+            menu.Stop();
+            // Immediate release prevents this node surviving the reload boundary.
+            // Deferred callbacks target the node, rather than retaining it as an argument.
+            menu.Free();
+        }
+
+        private void Stop()
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _disposed = true;
+            _ready = false;
+            SetProcess(false);
+            SetProcessInput(false);
+            _finger.Reset();
+            if (_subscribedStack != null)
+            {
+                _subscribedStack.PresetChanged -= OnPresetChanged;
+                _subscribedStack = null;
+            }
+
+            if (ReferenceEquals(_instance, this))
+            {
+                _instance = null;
+            }
+        }
+
+        public override void _ExitTree() => Stop();
+
+        private void OnPresetChanged()
+        {
+            if (IsMenuOpen)
+            {
+                CallDeferred(MethodName.Refresh);
+            }
         }
 
         public static void Toggle()
         {
             Install();
-            if (_instance == null)
+            if (_instance == null || !GodotObject.IsInstanceValid(_instance) || _instance._disposed || _instance.IsQueuedForDeletion())
             {
                 return;
             }
@@ -128,6 +202,13 @@ namespace GUO.Renderer.PostFx
 
         public override void _Ready()
         {
+            if (_disposed || !ReferenceEquals(_instance, this))
+            {
+                SetProcess(false);
+                SetProcessInput(false);
+                return;
+            }
+
             _layer = new CanvasLayer { Layer = 95, Visible = false };
             AddChild(_layer);
             _card = new PanelContainer
@@ -139,11 +220,18 @@ namespace GUO.Renderer.PostFx
             };
             _layer.AddChild(_card);
             Build();
-            PostFxStack.Instance.PresetChanged += () => { if (IsOpen) CallDeferred(MethodName.Refresh); };
+            _subscribedStack = PostFxStack.Instance;
+            _subscribedStack.PresetChanged += OnPresetChanged;
+            _ready = true;
         }
 
         public override void _Input(InputEvent e)
         {
+            if (!ControlsReady)
+            {
+                return;
+            }
+
             if (e is InputEventKey { Pressed: true, Echo: false } k && k.Keycode == Key.E && k.CtrlPressed && k.ShiftPressed
                 && (IsOpen || !MacroOwnsHotkey(k.AltPressed)))
             {
@@ -167,7 +255,7 @@ namespace GUO.Renderer.PostFx
 
         public override void _Process(double delta)
         {
-            if (!IsOpen)
+            if (!IsMenuOpen)
             {
                 return;
             }
@@ -200,6 +288,11 @@ namespace GUO.Renderer.PostFx
 
         private void Open()
         {
+            if (!ControlsReady)
+            {
+                return;
+            }
+
             // The theme is the art once the gumps are loaded; pick it up and the scale now.
             _artTheme = UoTheme.Ready;
             _card.Theme = UoTheme.Theme;
@@ -212,6 +305,11 @@ namespace GUO.Renderer.PostFx
         private void Close()
         {
             _finger.Reset();
+            if (!ControlsReady)
+            {
+                return;
+            }
+
             _layer.Visible = false;
             _saveName.ReleaseFocus();
         }
@@ -322,6 +420,11 @@ namespace GUO.Renderer.PostFx
 
         private void Refresh()
         {
+            if (!ControlsReady)
+            {
+                return;
+            }
+
             _syncing = true;
             try
             {

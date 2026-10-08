@@ -82,7 +82,8 @@ parsing the .bat files directly when run outside a launcher, so behaviour is
 identical from a launcher, the editor, an agent or CI.
 
 Key settings: `UO_CLIENT_DATA` (your UO install), `UO_CLIENT_VERSION`,
-`UO_CACHE_DIR`, `UO_SHARD_HOST` / `UO_SHARD_PORT`, `UO_GODOT_HOME` (the
+`UO_CACHE_DIR`, `UO_WORKSPACE_DIR` (the per-user server and client
+profiles, default `%LOCALAPPDATA%\GUO`), `UO_SHARD_HOST` / `UO_SHARD_PORT`, `UO_GODOT_HOME` (the
 engine folder, `tools\godot`) and `UO_UPSTREAM_DIR` (the folder holding
 ClassicUO, `sources`).
 
@@ -168,6 +169,11 @@ or a device, it is misclassified, not a reason to expand Compat.
    new viewport or material must preserve nearest-neighbour sampling.
 8. **Never commit game data or credentials.** The UO install is read in place
    and is proprietary.
+9. **AI is optional in the editor.** Every AI feature must use the shared
+   `AiFeatures` gate (`guo/ai/enabled` in Editor Settings), including UI,
+   discovery, agents, queues, model/service requests, image generation and
+   editor MCP. Hide AI surfaces and prevent work when disabled; link running
+   work to its cancellation lifetime. Keep manual authoring available.
 
 ---
 

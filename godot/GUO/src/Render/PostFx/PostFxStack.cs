@@ -375,10 +375,11 @@ namespace GUO.Renderer.PostFx
         /// </summary>
         public void EnsureLoaded()
         {
+            // A World tab can close and reopen without reloading this stack or its preset.
+            PostFxMenu.Install();
             if (!_loadedState)
             {
                 _loadedState = true;
-                PostFxMenu.Install();
                 if (RunOverride != null)
                 {
                     UseRunOverride();

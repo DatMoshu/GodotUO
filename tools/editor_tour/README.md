@@ -34,13 +34,35 @@ launchers\dev\editor_tour.bat [same flags]
 
 ## Segments
 
-Intro, layout, run bar, Art, Gumps, Animations, Hues, Multis, Cliloc, Sounds,
+Intro, layout, run bar, Art, Gumps, Animations, the animation round trip
+through Pixelorama, Hues, Multis, Cliloc, Sounds,
 Parity (skipped when UOWW's `uoasset` is not installed), Bulk unpack, Maps and
 Show in UO World, World pick and inspector, layers and seasons, guides, placing
 a multi (the server path), the world project overlay, edits with undo/redo,
 world objects (items, spawners), the asset overlay (replace, revert, hue),
 export and verify (and the refused export into the install), the Shard dock
-live on the private shard, outro.
+live on the private shard, server console, the Live layer, outro.
+
+Run the S8/S9 segments by themselves, with fixtures and no private shard:
+
+```
+python tools\editor_tour\run.py --no-live --segments server_console,live_layer --size 2560x1440 --scale 1 --out build/worker_a_a1/tour
+```
+
+`server_console` captures a harmless script's stdout and stderr through the
+Run bar's managed-process API and shows the real Logs view, including its
+level filter and secret redaction. `live_layer` reuses the editor smoke's
+local bridge fixture: snapshots create, move and remove markers, and the
+World's player filter hides only players. Captions label these as fixtures;
+they open no game connection and use no account. Both restore their temporary
+state and stop their owned fixture processes or connections.
+
+`anim_roundtrip` exports body 0x0190's clip as the exchange sheet that
+"Edit in Pixelorama" writes, shows the sheet, then makes the save the
+Pixelorama extension would make (one pixel per frame, inside each frame's
+rectangle) into a temporary exchange folder under the output. The watcher
+imports it into the tour's world project, the Animations panel plays the
+overlay clip, and Revert restores the client's. It never starts Pixelorama.
 
 ## Rules it keeps
 

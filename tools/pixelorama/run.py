@@ -15,10 +15,10 @@ tools/pixelorama/src, never committed. See README.md in this folder.
 from __future__ import annotations
 
 import argparse
-import configparser
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -28,7 +28,7 @@ import zipfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from guo.config import find_repo_root, load_config  # noqa: E402
+from guo.config import find_repo_root, load_config, main_checkout  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 TAG = "v1.2.3"
@@ -58,10 +58,15 @@ def find_exe() -> Path | None:
     if configured and configured.is_file():
         return configured
     names = ("Pixelorama.exe",) if sys.platform == "win32" else ("Pixelorama.x86_64", "Pixelorama")
-    for name in names:
-        for hit in sorted(bin_dir().rglob(name)) if bin_dir().is_dir() else []:
-            if hit.is_file():
-                return hit
+    main = main_checkout(find_repo_root())
+    folders = [bin_dir()]
+    if main is not None:
+        folders.append(main / "tools" / "pixelorama" / "bin")
+    for folder in folders:
+        for name in names:
+            for hit in sorted(folder.rglob(name)) if folder.is_dir() else []:
+                if hit.is_file():
+                    return hit
     found = shutil.which("Pixelorama") or shutil.which("pixelorama")
     return Path(found) if found else None
 
@@ -158,20 +163,41 @@ def build_extension(out: Path) -> Path:
     return out
 
 
+def enable_extension_text(text: str) -> str:
+    """Patch one Godot ConfigFile key without parsing/reformatting Variant values.
+
+    ConfigFile resembles INI but allows multiline dictionaries and arrays that
+    Python's configparser cannot read. Preserve every unrelated byte instead.
+    """
+    newline = "\r\n" if "\r\n" in text else "\n"
+    headers = list(re.finditer(r"^\[([^\r\n]+)\][ \t]*\r?$", text, re.MULTILINE))
+    for index, header in enumerate(headers):
+        if header.group(1) != "extensions":
+            continue
+        end = headers[index + 1].start() if index + 1 < len(headers) else len(text)
+        section = text[header.end():end]
+        pattern = rf'^(?P<lead>[ \t]*"?{re.escape(EXTENSION_NAME)}"?[ \t]*=[ \t]*)[^\r\n]*'
+        if re.search(pattern, section, re.MULTILINE):
+            section = re.sub(pattern, lambda match: match.group("lead") + "true", section, flags=re.MULTILINE)
+        else:
+            section += ("" if section.endswith("\n") else newline) + f"{EXTENSION_NAME}=true" + newline
+        return text[:header.end()] + section + text[end:]
+    return text + ("" if not text or text.endswith("\n") else newline) + f"[extensions]{newline}{EXTENSION_NAME}=true{newline}"
+
+
 def enable_in_config() -> Path:
-    """Pixelorama starts a new extension disabled; its config.ini remembers the choice."""
+    """Enable the GUO extension, preserving Pixelorama's other preferences."""
     ini = user_dir() / "config.ini"
-    text = ini.read_text(encoding="utf-8") if ini.is_file() else ""
-    cp = configparser.RawConfigParser(strict=False)
-    cp.optionxform = str  # keep case
-    cp.read_string(text)
-    if not cp.has_section("extensions"):
-        cp.add_section("extensions")
-    if cp.get("extensions", EXTENSION_NAME, fallback="") != "true":
-        cp.set("extensions", EXTENSION_NAME, "true")
+    text = ini.read_bytes().decode("utf-8") if ini.is_file() else ""
+    updated = enable_extension_text(text)
+    if updated != text:
         ini.parent.mkdir(parents=True, exist_ok=True)
-        with ini.open("w", encoding="utf-8") as f:
-            cp.write(f, space_around_delimiters=False)
+        backup = ini.with_suffix(".guo-backup.ini")
+        if ini.is_file() and not backup.exists():
+            shutil.copy2(ini, backup)
+        temporary = ini.with_suffix(".guo-tmp.ini")
+        temporary.write_bytes(updated.encode("utf-8"))
+        temporary.replace(ini)
     return ini
 
 
@@ -206,6 +232,8 @@ def cmd_open(args: argparse.Namespace) -> int:
     enable_in_config()
     env = dict(os.environ)
     env["GUO_ART_EXCHANGE"] = str(cfg.art_exchange)
+    env.pop("GUO_ART_SIDECAR", None)
+    env["GUO_ART_SOURCE_PNG"] = str(png)
     if args.sidecar:
         env["GUO_ART_SIDECAR"] = str(Path(args.sidecar).resolve())
     subprocess.Popen([str(exe), str(png)], env=env, cwd=str(exe.parent))
@@ -259,9 +287,78 @@ def cmd_check(_: argparse.Namespace) -> int:
             print(f"[pixelorama] parse {rel.removeprefix('res://src/Extensions/')}: {'ok' if ok else 'FAILED'}")
             if not ok:
                 print((r.stdout + r.stderr).strip()[-1500:])
+        if not bad:
+            # A minimal host avoids Pixelorama autoloads that require its real main scene.
+            fixture = cfg.build / "pixelorama" / "binding_check"
+            fixture_ext = fixture / "src" / "Extensions" / EXTENSION_NAME
+            fixture_ext.mkdir(parents=True, exist_ok=True)
+            (fixture / "project.godot").write_text('config_version=5\n', encoding="utf-8")
+            for name in ("GUOTools.gd", "UoCheck.gd"):
+                shutil.copyfile(HERE / "extension" / name, fixture_ext / name)
+            shutil.copyfile(HERE / "test_binding.gd", fixture_ext / "test_binding.gd")
+            r = subprocess.run([str(cfg.godot_console_exe), "--headless", "--path", str(fixture),
+                                "--script", "res://src/Extensions/GUOTools/test_binding.gd"],
+                               capture_output=True, text=True, timeout=120)
+            ok = r.returncode == 0 and "10 checks passed" in r.stdout and "SCRIPT ERROR" not in r.stdout + r.stderr
+            bad += 0 if ok else 1
+            print(f"[pixelorama] project binding regression: {'ok' if ok else 'FAILED'}")
+            if not ok:
+                print((r.stdout + r.stderr).strip()[-2500:])
         return 1 if bad else 0
     finally:
         shutil.rmtree(ext, ignore_errors=True)
+
+
+def cmd_save_check(_: argparse.Namespace) -> int:
+    cfg = load_config()
+    source = src_dir()
+    fixture = cfg.build / "pixelorama" / "native_save_check"
+    if not (source / "project.godot").is_file():
+        print("[pixelorama] save-check needs the pinned source")
+        return 1
+    fixture.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(source, fixture, dirs_exist_ok=True,
+                    ignore=shutil.ignore_patterns(".git", ".godot", ".github", "bin", "build"))
+    project = fixture / "project.godot"
+    text = project.read_text(encoding="utf-8")
+    text = text.replace('config/custom_user_dir_name="pixelorama"',
+                        'config/custom_user_dir_name="guo_pixelorama_native_save_check"')
+    project.write_text(text, encoding="utf-8")
+    ext = fixture / "src" / "Extensions" / EXTENSION_NAME
+    shutil.copytree(HERE / "extension", ext, dirs_exist_ok=True)
+    shutil.copyfile(HERE / "test_save.gd", fixture / "test_save.gd")
+    main_scene = fixture / "src" / "Main.tscn"
+    scene = main_scene.read_text(encoding="utf-8")
+    scene = re.sub(r'load_steps=(\d+)', lambda m: 'load_steps=' + str(int(m[1]) + 1), scene, count=1)
+    scene = scene.replace('[node ', '[ext_resource type="Script" path="res://test_save.gd" id="GUO_Save_Check"]\n\n[node ', 1)
+    scene += '\n[node name="NativeSaveCheck" type="Node" parent="."]\nscript = ExtResource("GUO_Save_Check")\n'
+    main_scene.write_text(scene, encoding="utf-8")
+    imported = subprocess.run([str(cfg.godot_console_exe), "--headless", "--path", str(fixture),
+                               "--import", "--quit"], capture_output=True, text=True, timeout=900)
+    if imported.returncode:
+        print((imported.stdout + imported.stderr)[-3000:])
+        return 1
+    env = dict(os.environ)
+    env["GUO_SAVE_CHECK"] = str(cfg.build / "pixelorama" / "native_save_exchange")
+    env.pop("GUO_ART_SIDECAR", None)
+    env.pop("GUO_ART_SOURCE_PNG", None)
+    try:
+        result = subprocess.run([str(cfg.godot_console_exe), "--headless", "--path", str(fixture)], env=env, capture_output=True,
+                                text=True, timeout=120)
+        log = result.stdout + result.stderr
+    except subprocess.TimeoutExpired as error:
+        def decoded(value):
+            return value.decode(errors="replace") if isinstance(value, bytes) else value or ""
+        log = decoded(error.stdout) + decoded(error.stderr)
+        (cfg.build / "pixelorama" / "native_save_check.log").write_text(log, encoding="utf-8")
+        print("[pixelorama] native Save timed out\n" + log[-5000:])
+        return 1
+    (cfg.build / "pixelorama" / "native_save_check.log").write_text(log, encoding="utf-8")
+    ok = result.returncode == 0 and "native repeated Save: passed" in log and "SCRIPT ERROR" not in log
+    print("[pixelorama] native repeated Save: " + ("ok" if ok else "FAILED"))
+    if not ok:
+        print(log[-4000:])
+    return 0 if ok else 1
 
 
 def main() -> int:
@@ -280,6 +377,7 @@ def main() -> int:
     e.add_argument("--install", action="store_true")
     e.set_defaults(fn=cmd_extension)
     sub.add_parser("check", help="parse the extension scripts against Pixelorama's source, headless").set_defaults(fn=cmd_check)
+    sub.add_parser("save-check", help="exercise actual Pixelorama project Save in an isolated source copy").set_defaults(fn=cmd_save_check)
     args = ap.parse_args()
     return args.fn(args)
 

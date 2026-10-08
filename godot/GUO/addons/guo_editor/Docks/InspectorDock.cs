@@ -19,6 +19,19 @@ public partial class InspectorDock : EditorDock
     private HSlider _frame;
     private HFlowContainer _actions;
     private RichTextLabel _fields;
+    private VBoxContainer _content;
+    private Control _previewArea, _detailArea;
+
+    internal void MountContent(Control host)
+    {
+        if (_content == null) _Ready();
+        if (_content.GetParent() != host) _content.Reparent(host, false);
+        _content.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        _content.SizeFlagsVertical = SizeFlags.ExpandFill;
+        bool embedded = host != this;
+        _previewArea.CustomMinimumSize = new Vector2(0, embedded ? 100 : 220 * EditorInterface.Singleton.GetEditorScale());
+        _detailArea.CustomMinimumSize = new Vector2(0, embedded ? 100 : 160 * EditorInterface.Singleton.GetEditorScale());
+    }
 
     private double _clock;
     private bool _playing;
@@ -48,6 +61,7 @@ public partial class InspectorDock : EditorDock
 
         float scale = EditorInterface.Singleton.GetEditorScale();
         var root = new VBoxContainer();
+        _content = root;
         root.SetAnchorsPreset(LayoutPreset.FullRect);
         AddChild(root);
 
@@ -60,6 +74,7 @@ public partial class InspectorDock : EditorDock
             SizeFlagsStretchRatio = 1.1f,
         };
         root.AddChild(top);
+        _previewArea = top;
 
         var row = new HBoxContainer();
         top.AddChild(row);
@@ -113,6 +128,7 @@ public partial class InspectorDock : EditorDock
             SizeFlagsStretchRatio = 1f,
         };
         root.AddChild(detailScroll);
+        _detailArea = detailScroll;
         var details = new VBoxContainer
         {
             SizeFlagsHorizontal = SizeFlags.ExpandFill,

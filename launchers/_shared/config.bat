@@ -58,11 +58,32 @@ REM  Where decoded textures/atlases are cached. Safe to delete at any time;
 REM  it is rebuilt on demand. Keep it OFF the repo tree.
 if not defined UO_CACHE_DIR         set "UO_CACHE_DIR=%LOCALAPPDATA%\GUO\cache"
 
+REM --- Per-user workspace (server and client profiles) ---------------------
+REM  One folder per user, shared by every checkout and worktree: server
+REM  instances, client profiles, and the per-run settings and logs of each
+REM  server and client pair. Leave it unset for the default (%LOCALAPPDATA%\GUO
+REM  on Windows, $XDG_DATA_HOME/guo or ~/.local/share/guo on Linux). The default
+REM  is resolved in code, so no machine path is set here. Keep it OFF the repo
+REM  tree. See docs\architecture\ADR-0032-client-profiles-and-workspace.md.
+REM  if not defined UO_WORKSPACE_DIR   set "UO_WORKSPACE_DIR=C:\Path\To\GUO Workspace"
+
 REM --- Agent request queue ------------------------------------------------
+REM  Opt-in editor MCP: a free loopback port and Python executable. Empty = off.
+REM  GUO_EDITOR_MCP_TOKEN is environment-only (32..256 characters); never put it here.
+if not defined GUO_EDITOR_MCP_PORT   set "GUO_EDITOR_MCP_PORT="
+if not defined GUO_EDITOR_MCP_PYTHON set "GUO_EDITOR_MCP_PYTHON="
+
 REM  One SQLite file per user, shared by the editor chat window and the AI
 REM  agent sessions that watch it. Keep it OFF the repo tree. See
 REM  tools\agent_queue\README.md.
 if not defined UO_AGENT_QUEUE       set "UO_AGENT_QUEUE=%APPDATA%\GUO\agent_queue.db"
+
+REM --- Gate evidence archive ---------------------------------------------
+REM  Where tools\evidence_archive copies a worktree's ignored build\ evidence
+REM  before the worktree is removed (removal deletes ignored files). Leave it
+REM  unset for the main checkout's build\director_evidence; never point it
+REM  inside a linked worktree. See tools\evidence_archive\README.md.
+REM  if not defined UO_EVIDENCE_DIR    set "UO_EVIDENCE_DIR=C:\Path\To\Evidence"
 
 REM --- World project (the editor) -----------------------------------------
 REM  Where the editor keeps map edits: whole replaced blocks laid over the
@@ -211,6 +232,10 @@ if not defined UO_DECK_CLIENT_DATA  set "UO_DECK_CLIENT_DATA=~/UO"
 REM  The shard account guo.sh passes as --account (the password defaults to
 REM  the account name). Empty = none. Set it in config.local.bat, never here.
 if not defined UO_DECK_ACCOUNT      set "UO_DECK_ACCOUNT="
+
+REM --- Layout sources (optional, read-only; user's paths in config.local.bat) ---
+if not defined UO_LAYOUT_CDDA_DIR    set "UO_LAYOUT_CDDA_DIR="
+if not defined UO_LAYOUT_ZOMBOID_DIR set "UO_LAYOUT_ZOMBOID_DIR="
 
 REM --- Python -------------------------------------------------------------
 if not defined UO_PYTHON            set "UO_PYTHON=python"

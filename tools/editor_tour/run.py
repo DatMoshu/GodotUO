@@ -51,7 +51,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from guo import load_config  # noqa: E402
-from guo.process import no_activate  # noqa: E402
+from guo.process import build_child_env, no_activate  # noqa: E402
 
 TIMEOUT_S = 1500
 PORT, BRIDGE = 2606, 2607   # this checkout's private shard; never the dev shard (2593)
@@ -108,14 +108,14 @@ def scratch_settings(root: Path, scale: float) -> dict:
         "interface/multi_window/enable = false\n"
         "interface/editor/display/single_window_mode = true\n",
         encoding="utf-8")
-    env = dict(os.environ)
+    env = build_child_env()
     env["APPDATA"] = str(root)
     return env
 
 
 def build(project: Path) -> bool:
     print("[editor_tour] building C#")
-    r = subprocess.run(["dotnet", "build", str(project / "GUO.csproj"), "-nologo", "-v", "q"], capture_output=True, text=True)
+    r = subprocess.run(["dotnet", "build", str(project / "GUO.csproj"), "-nologo", "-v", "q"], capture_output=True, text=True, env=build_child_env())
     if r.returncode != 0:
         print(r.stdout[-4000:], r.stderr[-2000:])
     return r.returncode == 0

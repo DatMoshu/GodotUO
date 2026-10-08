@@ -192,7 +192,7 @@ def cmd_export(cfg, project: Path, out: Path, force: bool, ul_shard: str = "GUO-
     except (ValueError, KeyError) as ex:
         print(f"[world] REFUSED: shard/objects.json is not valid: {ex}")
         return 1
-    if not blocks and not any(assets.values()) and not objects:
+    if not blocks and not any(assets.values()) and not objects and not project_tiledata(project):
         print(f"[world] {project}: nothing to export")
         return 1
 
@@ -254,8 +254,8 @@ def cmd_export(cfg, project: Path, out: Path, force: bool, ul_shard: str = "GUO-
         }
         print(f"[world] map{facet}: {len(bs)} block(s) -> {', '.join(t.name for t in targets)}")
 
-    if any(assets.values()):
-        rc = export_assets(data, assets, out, override_lines, manifest)
+    if any(assets.values()) or project_tiledata(project):
+        rc = export_assets(data, assets, out, override_lines, manifest, project=project)
         if rc:
             return rc
 
@@ -275,7 +275,7 @@ def cmd_export(cfg, project: Path, out: Path, force: bool, ul_shard: str = "GUO-
     return 0
 
 
-def export_assets(data: Path, assets: dict, out: Path, override_lines: list[str], manifest: dict) -> int:
+def export_assets(data: Path, assets: dict, out: Path, override_lines: list[str], manifest: dict, project: Path | None = None) -> int:
     patches: list[uoart.Patch] = []
     for kind in ("land", "statics", "gumps"):
         for id_, png in assets[kind]:
@@ -318,7 +318,7 @@ def export_assets(data: Path, assets: dict, out: Path, override_lines: list[str]
         files[hues.name] = {"sha1": sha1(hues), "bytes": hues.stat().st_size}
         print(f"[world] assets: {len(assets['hues'])} hue(s) -> hues.mul")
 
-    tiles = project_tiledata(out)
+    tiles = project_tiledata(project if project is not None else out.parent)
     if tiles:
         rc = export_tiledata(data, tiles, out, override_lines, files)
         if rc:
@@ -355,10 +355,10 @@ def texterr_redirected(data: Path) -> set[int]:
     return out
 
 
-def project_tiledata(out: Path) -> dict:
+def project_tiledata(project: Path) -> dict:
     """The project's static tiledata rows (assets/tiledata.json next to assets/art): {id: {flags, height,
     name, weight?}}, for pieces a project adds or re-purposes."""
-    f = out.parent / "assets" / "tiledata.json"
+    f = project / "assets" / "tiledata.json"
     if not f.is_file():
         return {}
     return {int(str(k), 16): v for k, v in json.loads(f.read_text(encoding="utf-8")).items()}
@@ -453,10 +453,42 @@ def verify_texmaps(cfg, texmaps: list, out: Path) -> int:
     return failures
 
 
+
+def verify_tiledata(data: Path, tiles: dict, out: Path) -> int:
+    """Check declared static rows and every byte outside those rows."""
+    if not tiles:
+        return 0
+    from guo.uoread import TileData
+    path = out / "tiledata.mul"
+    if not path.is_file():
+        print("[world] FAIL tiledata.mul missing")
+        return 1
+    base, actual = td_path(data).read_bytes(), path.read_bytes()
+    td, got = TileData(data), TileData(out)
+    failures = 0
+    masked = bytearray(actual)
+    for item, row in tiles.items():
+        have = got.static(item) or {}
+        wanted = {"flags": int(row.get("flags", 0), 16) if isinstance(row.get("flags"), str) else row.get("flags", 0),
+                  "height": int(row.get("height", 0)), "weight": int(row.get("weight", 255)),
+                  "name": str(row.get("name", ""))[:20].encode("latin-1", "replace").decode("latin-1")}
+        if any(have.get(k) != v for k, v in wanted.items()):
+            print(f"[world] FAIL tiledata row 0x{item:04X}")
+            failures += 1
+        group, j = divmod(item, 32)
+        at = td.static_base + group * (4 + 32 * td.static_size) + 4 + j * td.static_size
+        masked[at:at + td.static_size] = base[at:at + td.static_size]
+    if bytes(masked) != base:
+        print("[world] FAIL tiledata bytes outside declared rows changed")
+        failures += 1
+    if not failures:
+        print(f"[world] assets: {len(tiles)} tiledata rows match; other bytes unchanged")
+    return failures
+
 def verify_assets(cfg, project: Path, out: Path) -> int:
     """Decode the patch set with the loaders' layouts and compare it with the project's files."""
     assets = uoart.project_assets(project)
-    failures = 0
+    failures = verify_tiledata(cfg.client_data, project_tiledata(project), out)
     if assets["land"] or assets["statics"] or assets["gumps"]:
         verdata = out / "verdata.mul"
         if not verdata.is_file():

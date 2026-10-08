@@ -21,3 +21,11 @@ REM if not defined UO_CUSTOM_DATA     set "UO_CUSTOM_DATA=%UO_ROOT%\build\uodata
 REM  The client version of that install. Check it with:
 REM      launchers\pipeline\01_verify_client_data.bat
 REM if not defined UO_CLIENT_VERSION  set "UO_CLIENT_VERSION=7.0.107.76"
+
+REM  Scenario runs (tools/scenario_run). Left unset, a run stays under build/runs and says so in its events.
+REM  The registry file shared by every project's runs.
+REM if not defined GUO_RUNS_DB         set "GUO_RUNS_DB=<path to the shared runs.db>"
+REM  The folder that receives each run's run.json, events, summary and stills.
+REM if not defined GUO_RUNS_SHARED_DIR set "GUO_RUNS_SHARED_DIR=<path to the shared runs folder>"
+REM  The folder that receives the master video (your Drive folder).
+REM if not defined GUO_RUNS_VIDEO_DIR  set "GUO_RUNS_VIDEO_DIR=<path to the video folder>"

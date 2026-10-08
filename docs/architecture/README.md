@@ -34,10 +34,13 @@ it is taken even if its file has not landed yet.
 | 0023 | Post-processing and shader framework | work/render-postfx |
 | 0024 | Modern gumps (Godot views of client gumps for touch) | work/ui-fullheight (proposed) |
 | 0025 | The gamepad on by default; the input mode follows the last input | work/pad-default-guo2 |
-| 0026 | Federated catalogues; SpriteMotion fit lab (two ADRs share the number) | main |
+| 0026 | Federated catalogues | main |
 | 0027 | World render modes | main |
 | 0028 | Editor AI hub | main |
 | 0029 | Art pipeline: Pixelorama | main |
-| 0030 | World generation in the editor | work/multi-mapgen-editor (proposed) |
+| 0030 | World generation in the editor | main |
+| 0031 | Multi editor | main |
+| 0032 | Client profiles and workspace | main |
+| 0033 | SpriteMotion fit lab in a native editor host | main |
 
-Next free: 0031.
+Next free: 0034.

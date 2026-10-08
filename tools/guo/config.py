@@ -72,6 +72,18 @@ def godot_config_dir() -> Path:
     return Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "godot"
 
 
+def default_workspace_dir() -> str:
+    """The workspace folder when nothing configures one (ADR-0032)."""
+    try:
+        home = Path.home()
+    except RuntimeError:  # no home folder at all (a bare service account)
+        import tempfile
+        home = Path(tempfile.gettempdir())
+    if sys.platform == "win32":
+        return str(Path(os.environ.get("LOCALAPPDATA") or home / "AppData" / "Local") / "GUO")
+    return str(Path(os.environ.get("XDG_DATA_HOME") or home / ".local" / "share") / "guo")
+
+
 def find_repo_root(start: Path | None = None) -> Path:
     """Walk upward until the repo root is found.
 
@@ -217,11 +229,18 @@ class Config:
     store_signing_key: Path | None = None
     # The map generator's per-user data folder (UO_MAPGEN_DATA, ADR-0030): mined, never shipped.
     mapgen_data: Path | None = None
+    # The per-user workspace (UO_WORKSPACE_DIR, ADR-0032): server and client profiles, runs.
+    workspace_dir: Path | None = None
     store_catalogue_id: str = "local"
     store_catalogue_title: str = "Local GUO packs"
     store_base_url: str = ""
     # The agent request queue (tools/agent_queue): one SQLite file per user, outside the repo.
     agent_queue: Path | None = None
+    # Archived gate evidence (tools/evidence_archive): outside every linked worktree.
+    evidence_dir: Path | None = None
+    # Editor MCP is opt-in; its token is environment-only and never part of Config.
+    editor_mcp_port: str = ""
+    editor_mcp_python: Path | None = None
     # UO_GODOT_HOME: the folder holding the pinned engine's release folder
     # (what tools/godot is in the main checkout). UO_UPSTREAM_DIR: the folder
     # holding ClassicUO (what sources/ is). Both resolved by load_config; a
@@ -235,6 +254,9 @@ class Config:
     pinta_setting: Path | None = None
     comfy_url: str = "http://127.0.0.1:8188"
     comfy_workflows: Path | None = None
+    # Read-only local layout source installations; blank means not configured.
+    layout_cdda_dir: Path | None = None
+    layout_zomboid_dir: Path | None = None
 
     # --- derived paths (never configured directly) ---
     @property
@@ -360,6 +382,18 @@ def load_config(root: Path | None = None) -> Config:
         config_home = os.environ.get("XDG_CONFIG_HOME") or os.path.join(os.path.expanduser("~"), ".config")
         agent_queue = str(Path(config_home) / "guo" / "agent_queue.db")
 
+    # Gate evidence archive (tools/evidence_archive): the main checkout's build folder by
+    # default, because a linked worktree's ignored build/ is deleted with the worktree.
+    evidence = native_path(os.path.expandvars(get("UO_EVIDENCE_DIR").replace("%UO_ROOT%", str(root))))
+    if not evidence or "%" in evidence:
+        evidence = str((main_checkout(root) or root) / "build" / "director_evidence")
+
+    # The per-user workspace (ADR-0032): environment, then config.local.bat /
+    # config.bat, then %LOCALAPPDATA%\GUO on Windows or $XDG_DATA_HOME/guo.
+    workspace = native_path(os.path.expandvars(get("UO_WORKSPACE_DIR").replace("%UO_ROOT%", str(root))))
+    if not workspace or "%" in workspace:
+        workspace = default_workspace_dir()
+
     def path_or_none(key: str) -> Path | None:
         # A value that still holds an unexpanded %VAR% is one whose variable
         # was not set anywhere -- JAVA_HOME on a machine without one -- and
@@ -473,6 +507,7 @@ def load_config(root: Path | None = None) -> Config:
         client_version=get("UO_CLIENT_VERSION", "7.0.15.1"),
         cache_dir=Path(cache),
         mapgen_data=Path(mapgen_data),
+        workspace_dir=Path(workspace),
         world_project=Path(os.path.expandvars(world)),
         editor_live_host=get("UO_EDITOR_LIVE_HOST", "127.0.0.1"),
         editor_live_port=int(get("UO_EDITOR_LIVE_PORT", "2595") or 2595),
@@ -490,6 +525,9 @@ def load_config(root: Path | None = None) -> Config:
         playerbots_dir=path_or_none("UO_PLAYERBOTS_DIR"),
         playerbots_port=int(get("UO_PLAYERBOTS_PORT", "2640")),
         agent_queue=Path(agent_queue),
+        evidence_dir=Path(evidence),
+        editor_mcp_port=get("GUO_EDITOR_MCP_PORT", ""),
+        editor_mcp_python=path_or_none("GUO_EDITOR_MCP_PYTHON"),
         godot_home_setting=godot_home_setting,
         upstream_dir_setting=upstream_dir_setting,
         art_exchange=Path(native_path(get("UO_ART_EXCHANGE").replace("%UO_ROOT%", str(root)) or str(root / "build" / "art_exchange"))),
@@ -497,4 +535,6 @@ def load_config(root: Path | None = None) -> Config:
         pinta_setting=path_or_none("UO_PINTA"),
         comfy_url=get("UO_COMFY_URL", "http://127.0.0.1:8188"),
         comfy_workflows=Path(native_path(get("UO_COMFY_WORKFLOWS").replace("%UO_ROOT%", str(root)) or str(root / "build" / "art_exchange" / "workflows"))),
+        layout_cdda_dir=path_or_none("UO_LAYOUT_CDDA_DIR"),
+        layout_zomboid_dir=path_or_none("UO_LAYOUT_ZOMBOID_DIR"),
     )

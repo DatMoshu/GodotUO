@@ -8,6 +8,7 @@ the verification for every editor phase; phase 0 is what it checks today.
 python tools\editor_smoke\run.py                 headless: every check, no screenshots
 python tools\editor_smoke\run.py --windowed      an editor window, with screenshots
 python tools\editor_smoke\run.py --reload        also rebuild and hot-reload the C#
+python tools\editor_smoke\run.py --require-native  fail if a check that needs a real external program was skipped
 python tools\editor_smoke\run.py --art 0x0E75    which static to search for
 launchers\dev\editor_smoke.bat [same flags]
 ```
@@ -76,12 +77,40 @@ launchers\dev\editor_smoke.bat [same flags]
 
 ## Output
 
+### October 4 editor lifecycle controls
+
+The headless suite also exercises a same-assembly World close/reopen, refused
+competing-owner boot, delayed EditorData retirement and a queued completion
+after retirement. AI controls verify cancellation before dispatch and a started
+asynchronous operation that receives the cancellation token and finishes its
+owned cleanup before the caller returns.
+
+The canonical multi writer is a non-interruptible commit boundary: canceling
+before its subprocess starts prevents the stage write; after it starts, GUO
+waits for archive/registry/sidecar completion and readback. Cancellation then
+suppresses overlay updates and `AfterWrite`; it does not promise rollback.
+An already-started stage commit can finish on disk while AI is disabled. Manual
+writing remains available and is canceled only when its view retires.
+
+An explicit `--guo-editor-data-stage` keeps read-only Windows file-sharing
+leases on the mapping and its mapped targets until the editor data retires.
+The normal plugin teardown retires World before Assets data. Writes to the
+selected input stage, or an output folder containing an externally mapped input,
+are refused by the Multi Editor before dispatch; select
+another output stage or close/reload the consumers before replacing that input.
+Ordinary installation files and unrelated authoring output are not leased.
+The smoke checks mapping/target write refusal and release after disposal.
+This guards the explicit staged bytes, not independent static tiledata caches
+or cross-platform filesystem semantics. Native resource leak acceptance and
+live-provider certification are separate gates.
+
 `build\editor_smoke\<mode>\`, where mode is `windowed`, `headless`,
 `windowed_reload` or `headless_reload`:
 
 | File | What |
 |---|---|
 | `report.json` | every check, `ok`, `failures`; with `--reload`, the first pass under `before_reload` |
+| `report.json` `art.skipped` | checks that need a real program and did not run (the native Pixelorama animation save runs only with `GUO_PIXELORAMA_ANIMATION_SAVE` set); printed as `skipped:` |
 | `<panel>.png` | what the inspector was given for that panel, as decoded (`art.png`, `anims.png` is frame 0, `parity.png` is reference / GUO / diff) |
 | `editor_<panel>.png` | the editor window with that panel showing (windowed only) |
 | `world.png`, `world_multi.png`, `world_overlay.png` | the World tab's viewport: as the install has it, with the server-path multi, with the overlay (windowed only) |

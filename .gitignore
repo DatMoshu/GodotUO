@@ -177,3 +177,5 @@ tools/servuo/src/
 # (MIT, third-party); the README, run.py and the GUO extension are ours.
 tools/pixelorama/src/
 tools/pixelorama/bin/
+# Fit Lab browser runtime: installed automatically, editor only.
+godot/GUO/addons/godot_cef/

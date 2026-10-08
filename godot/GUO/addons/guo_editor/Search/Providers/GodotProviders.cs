@@ -326,6 +326,13 @@ public sealed class GodotSettingsProvider : SearchProvider
         LastOpen = null;
         string menuText = project ? "Project Settings" : "Editor Settings";
         string filter = name.Split('/')[^1].Replace('_', ' ');
+        // Both dialogs are exclusive children of the root: Godot refuses to open one over the other.
+        string other = project ? "EditorSettingsDialog" : "ProjectSettingsEditor";
+        foreach (Window open in GodotUi.Walk(GodotUi.Base.GetTree().Root).OfType<Window>().Where(w => w.Visible && w.GetClass() == other).ToList())
+        {
+            open.Hide();
+        }
+
         if (_menus.Press(menuText))
         {
             // The dialog is built when the menu item runs; give it a frame to show.

@@ -236,7 +236,9 @@ public sealed class AgentSession : IDisposable
                 Transcript?.Invoke(new Line("info", "sign-in methods the agent offers: " + string.Join(", ", names)));
             }
 
-            string session = await _client.NewSessionAsync(cwd, HandshakeTimeout).ConfigureAwait(false);
+            JsonArray servers = EditorMcpConnection.Servers();
+            string session = await _client.NewSessionAsync(cwd, HandshakeTimeout, servers).ConfigureAwait(false);
+            if (servers.Count > 0) Transcript?.Invoke(new Line("info", "GUO editor MCP offered to the agent"));
             Transcript?.Invoke(new Line("info", $"session {session} open in {cwd}"));
             Ready = true;
             return true;
@@ -257,6 +259,7 @@ public sealed class AgentSession : IDisposable
     /// <summary>Sends one prompt and waits for the turn to finish. <paramref name="onText"/> gets the answer's text as it streams.</summary>
     public async Task<string> PromptAsync(string text, Action<string> onText = null)
     {
+        AiFeatures.RequireEnabled();
         if (!Ready || Busy)
         {
             throw new InvalidOperationException(Ready ? "the agent is still answering" : "the agent is not running");

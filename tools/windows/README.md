@@ -15,6 +15,30 @@ launchers\dev\brand_icons.bat  rebuild every icon from design\brand\guo-sigil.pn
 Everything is `python tools\windows\run.py <doctor|preset|export|icon>`
 underneath.
 
+The shared preset excludes seven reviewed editor addon families and five exact
+Accounts C# source placeholders. These are resource-package exclusions, not
+MSBuild compile removals; account CLR behavior remains compiled. The normal
+launcher renders this template before each export. Icon/export success is
+separate from privacy, semantic, license and distribution approval.
+
+`audit_scanner.py` provides the reviewed PLT15 unmasked byte/PCK scanner:
+
+```
+python tools/windows/audit_scanner.py --package <IMMUTABLE_PACKAGE> --deny-file <LOCAL_DENY_FILE> --review-root <REVIEW_CHECKOUT> --out <NEW_REPORT.json>
+python tools/windows/test_windows.py
+```
+
+It requires the existing immutable PLT13/PLT05/PLT12 review anchors and `pefile`
+in the selected Python environment. Missing anchors or coverage failures are
+explicit refusals; no dependencies are installed automatically. Raw findings
+remain present even when exact metadata annotations explain them. Semantic
+bindings describe the reviewed overnight package only; a new package needs new
+independent provenance review. Exit 0 means complete raw visitation, while every
+report remains `BLOCKED_PROPOSAL_NOT_ACCEPTANCE`, with distribution uncleared.
+The output must be new and separate from package/reviewed artifacts. This tool
+does not certify acquisition rights, complete privacy detection, dynamic/native
+semantics, install/login behavior or a distributable release.
+
 ## What an export does
 
 1. generates `godot\GUO\GUO.sln` if the editor has not (the .NET export

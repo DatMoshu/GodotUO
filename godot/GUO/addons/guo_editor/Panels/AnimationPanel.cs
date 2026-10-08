@@ -3,6 +3,7 @@ namespace GUO.Editor;
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using Godot;
 using GUO.Assets;
@@ -70,7 +71,7 @@ public partial class AnimationPanel : GridPanel
             }
         }
 
-        return _ids;
+        return _ids.Concat(Data.Assets?.Ids(AssetKind.Animation) ?? new List<int>()).Distinct().OrderBy(id => id);
     }
 
     protected override string Caption(int id) => $"{id:X4}";
@@ -79,7 +80,7 @@ public partial class AnimationPanel : GridPanel
 
     protected override Image Icon(int id)
     {
-        Image[] frames = Frames(id, 0, 1, out _, out _);
+        Image[] frames = Frames(id, 0, 1, out _, out _, out _);
         return frames.Length > 0 ? frames[0] : null;
     }
 
@@ -87,7 +88,7 @@ public partial class AnimationPanel : GridPanel
     {
         byte action = (byte)_action.Value;
         byte dir = (byte)_dir.Value;
-        Image[] frames = Frames(id, action, dir, out ushort hue, out string how);
+        Image[] frames = Frames(id, action, dir, out ushort hue, out string how, out double fps);
 
         var anims = Data.Animations;
         var sb = new StringBuilder();
@@ -101,21 +102,105 @@ public partial class AnimationPanel : GridPanel
             sb.Append($"hue    {hue} (from body conversion)\n");
         }
 
-        return new Inspection
+        var inspection = new Inspection
         {
             Source = "Animations",
             Id = $"0x{id:X4}",
             Frames = frames,
-            Fps = 8,
+            Fps = fps,
             Text = sb.ToString(),
         };
+        inspection.Actions.Add(("Edit in Pixelorama", () =>
+        {
+            try
+            {
+                OverlayAnimationClip clip = ExchangeClip(id, action, dir);
+                string png = ArtExchange.ExportAnimation(Data, id, clip);
+                string why = ExternalTools.OpenPixelorama(png);
+                if (why != null) GD.PrintErr($"[GUO editor] {why}");
+            }
+            catch (Exception ex) { GD.PrintErr($"[GUO editor] animation export: {ex.Message}"); }
+        }));
+        inspection.Actions.Add(("Import spritesheet...", () => OpenWorkingCopy(id, action, dir).ImportSpritesheet()));
+        inspection.Actions.Add(("Import image sequence...", () => OpenWorkingCopy(id, action, dir).ImportImageSequence()));
+        inspection.Actions.Add(("Export frames / spritesheet...", () => OpenWorkingCopy(id, action, dir)));
+        inspection.Actions.Add(("Preview playback", () => Raise(inspection)));
+        inspection.Actions.Add(("Import / export classic VD...", () => OpenWorkingCopy(id, action, dir)));
+        return inspection;
+    }
+
+    internal OverlayAnimationClip ExchangeClip(int body, byte action, byte dir)
+    {
+        if (Data.Assets?.LoadAnimation(body, action, dir, out _) is OverlayAnimationClip overlay) return overlay;
+        bool mirror = false;
+        byte stored = dir;
+        Data.Animations.GetAnimDirection(ref stored, ref mirror);
+        var sprites = Data.Animations.GetAnimationFrames((ushort)body, action, stored, out _, out _);
+        var frames = new List<Image>();
+        var centers = new List<Vector2I>();
+        foreach (SpriteInfo sprite in sprites)
+        {
+            Image image = ReadFrame(sprite);
+            if (image == null) image = Image.CreateEmpty(1, 1, false, Image.Format.Rgba8);
+            else if (mirror) image.FlipX();
+            frames.Add(image);
+            centers.Add(new Vector2I(mirror ? image.GetWidth() - sprite.Center.X : sprite.Center.X, sprite.Center.Y));
+        }
+
+        return new OverlayAnimationClip { Action = action, Direction = dir, Fps = 8,
+            Frames = frames.ToArray(), Centers = centers.ToArray() };
+    }
+
+    private AnimationWorkspace OpenWorkingCopy(int body, byte action, byte displayedDirection)
+    {
+        var anims = Data.Animations;
+        int profile = anims.GetAnimType((ushort)body) switch
+        {
+            AnimationGroupsType.Human or AnimationGroupsType.Equipment => 2,
+            AnimationGroupsType.Animal or AnimationGroupsType.SeaMonster => 1,
+            _ => 0,
+        };
+        if (action >= AnimationDocument.Actions(profile))
+        {
+            throw new System.IO.InvalidDataException("This action exceeds the classic VD profile capacity. UOP/fork action conversion requires an explicit mapping.");
+        }
+        byte stored = displayedDirection; bool mirror = false; anims.GetAnimDirection(ref stored, ref mirror);
+        var doc = new AnimationDocument(profile);
+        Span<SpriteInfo> sprites = anims.GetAnimationFrames((ushort)body, action, stored, out _, out _);
+        var images = new List<Image>(); var centers = new List<(short, short)>();
+        foreach (SpriteInfo sprite in sprites)
+        {
+            if (sprite.Texture == null) throw new System.IO.InvalidDataException("Missing frame pixels; refusing to silently remove a frame.");
+            Image image = ReadFrame(sprite);
+            if (image == null) throw new System.IO.InvalidDataException("Cannot read animation atlas.");
+            images.Add(image); centers.Add((checked((short)sprite.Center.X), checked((short)sprite.Center.Y)));
+        }
+        if (images.Count > 0) doc.Records[action * 5 + stored] = AnimationWorkspace.FromImages(images.ToArray(), centers.ToArray());
+        // Only this selected slot is captured. Other slots are missing, never fabricated.
+        AnimationWorkspace view = AnimationWorkspace.Open(doc, body, action, stored, this);
+        view.ApplyOverlay = clip =>
+        {
+            if (Data.Assets == null) return "No asset overlay is open.";
+            string why = Data.Assets.ImportAnimation(body, clip, new ArtProvenance { Tool = "animation-workspace",
+                Inputs = { $"client:animation:0x{body:X4}" }, DerivedFromClientArt = true });
+            if (why == null) OnAssetsChanged();
+            return why;
+        };
+        return view;
     }
 
     /// <summary>One action in one of the eight directions, as composited frames.</summary>
-    private Image[] Frames(int body, byte action, byte dir, out ushort hue, out string how)
+    private Image[] Frames(int body, byte action, byte dir, out ushort hue, out string how, out double fps)
     {
         hue = 0;
         how = "";
+        fps = 8;
+        if (Data.Assets?.LoadAnimation(body, action, dir, out _) is OverlayAnimationClip clip)
+        {
+            how = "-> editor overlay (explicit direction)";
+            fps = clip.Fps;
+            return clip.PreviewFrames();
+        }
         var anims = Data.Animations;
         bool mirror = false;
         byte fileDir = dir;

@@ -29,6 +29,7 @@ public enum WorldTool
 
     // The Multi Editor's World selection (ADR-0031): two corner clicks.
     Area,
+    Brush,
 }
 
 /// <summary>
@@ -49,8 +50,8 @@ internal sealed class WorldEditor
     public const int Depth = 200;
 
     private readonly WorldHost _host;
-    private readonly LinkedList<Change> _undo = new();
-    private readonly Stack<Change> _redo = new();
+    private readonly LinkedList<List<Change>> _undo = new();
+    private readonly Stack<List<Change>> _redo = new();
 
     private sealed record Change(int Facet, int Bx, int By, string Before, string After, string What);
 
@@ -61,7 +62,7 @@ internal sealed class WorldEditor
 
     public int UndoCount => _undo.Count;
     public int RedoCount => _redo.Count;
-    public string LastWhat => _undo.Last?.Value.What;
+    public string LastWhat => _undo.Last?.Value.FirstOrDefault()?.What;
 
     /// <summary>Raised after any edit, undo or redo, with a line describing it.</summary>
     public event Action<string> Changed;
@@ -114,6 +115,10 @@ internal sealed class WorldEditor
     /// in the map, or the change left the block as it was.
     /// </summary>
     public bool Edit(int facet, int bx, int by, Action<WorldBlock> change, string what)
+        => EditBatch(facet, new Dictionary<(int, int), Action<WorldBlock>> { [(bx, by)] = change }, what);
+
+    /// <summary>A brush stroke is one undo entry, even when it crosses block boundaries.</summary>
+    internal bool EditBatch(int facet, IReadOnlyDictionary<(int X, int Y), Action<WorldBlock>> edits, string what)
     {
         WorldProject project = _host.Project;
         if (project == null)
@@ -121,24 +126,38 @@ internal sealed class WorldEditor
             return false;
         }
 
-        string before = project.BlockText(facet, bx, by);
-        WorldBlock block = before != null
-            ? WorldProject.ReadBlock(project.BlockPath(facet, bx, by))
-            : WorldProject.Capture(Maps, facet, bx, by);
-        if (block == null)
+        var changes = new List<Change>();
+        try
         {
-            return false;
-        }
+            foreach (var edit in edits)
+            {
+                int bx = edit.Key.X, by = edit.Key.Y;
+                string before = project.BlockText(facet, bx, by);
+                WorldBlock block = before != null
+                    ? WorldProject.ReadBlock(project.BlockPath(facet, bx, by))
+                    : WorldProject.Capture(Maps, facet, bx, by);
+                if (block == null) continue;
 
-        change(block);
-        project.WriteBlock(block);
-        string after = project.BlockText(facet, bx, by);
-        if (after == before)
+                // A filtered/no-op stroke must not create an overlay or consume undo history.
+                ushort[] ids = block.LandId.ToArray();
+                sbyte[] heights = block.LandZ.ToArray();
+                WorldStatic[] statics = block.Statics.ToArray();
+                edit.Value(block);
+                if (ids.SequenceEqual(block.LandId) && heights.SequenceEqual(block.LandZ) && statics.SequenceEqual(block.Statics)) continue;
+                changes.Add(new Change(facet, bx, by, before, null, what));
+                project.WriteBlock(block);
+                string after = project.BlockText(facet, bx, by);
+                changes[^1] = new Change(facet, bx, by, before, after, what);
+            }
+        }
+        catch
         {
-            return false;
+            foreach (Change c in changes) project.SetBlockText(c.Facet, c.Bx, c.By, c.Before);
+            _host.ApplyOverlay();
+            throw;
         }
-
-        _undo.AddLast(new Change(facet, bx, by, before, after, what));
+        if (changes.Count == 0) return false;
+        _undo.AddLast(changes);
         while (_undo.Count > Depth)
         {
             _undo.RemoveFirst();
@@ -147,7 +166,7 @@ internal sealed class WorldEditor
         _redo.Clear();
         _host.ApplyOverlay();
         Changed?.Invoke(what);
-        Written(facet, bx, by);
+        foreach (Change c in changes) Written(c.Facet, c.Bx, c.By);
         return true;
     }
 
@@ -158,13 +177,13 @@ internal sealed class WorldEditor
             return false;
         }
 
-        Change c = _undo.Last.Value;
+        List<Change> changes = _undo.Last.Value;
         _undo.RemoveLast();
-        _host.Project.SetBlockText(c.Facet, c.Bx, c.By, c.Before);
-        _redo.Push(c);
+        foreach (Change c in changes) _host.Project.SetBlockText(c.Facet, c.Bx, c.By, c.Before);
+        _redo.Push(changes);
         _host.ApplyOverlay();
-        Changed?.Invoke($"undo: {c.What}");
-        Written(c.Facet, c.Bx, c.By);
+        Changed?.Invoke($"undo: {changes[0].What}");
+        foreach (Change c in changes) Written(c.Facet, c.Bx, c.By);
         return true;
     }
 
@@ -175,12 +194,12 @@ internal sealed class WorldEditor
             return false;
         }
 
-        Change c = _redo.Pop();
-        _host.Project.SetBlockText(c.Facet, c.Bx, c.By, c.After);
-        _undo.AddLast(c);
+        List<Change> changes = _redo.Pop();
+        foreach (Change c in changes) _host.Project.SetBlockText(c.Facet, c.Bx, c.By, c.After);
+        _undo.AddLast(changes);
         _host.ApplyOverlay();
-        Changed?.Invoke($"redo: {c.What}");
-        Written(c.Facet, c.Bx, c.By);
+        Changed?.Invoke($"redo: {changes[0].What}");
+        foreach (Change c in changes) Written(c.Facet, c.Bx, c.By);
         return true;
     }
 

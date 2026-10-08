@@ -45,7 +45,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from guo import load_config  # noqa: E402
-from guo.process import no_activate  # noqa: E402
+from guo.process import build_child_env, no_activate  # noqa: E402
 
 TIMEOUT_S = 600
 
@@ -56,6 +56,7 @@ def build(project: Path) -> bool:
         ["dotnet", "build", str(project / "GUO.csproj"), "-nologo", "-v", "q"],
         capture_output=True,
         text=True,
+        env=build_child_env(),
     )
     if result.returncode != 0:
         print(result.stdout[-4000:])
@@ -197,6 +198,8 @@ def main() -> int:
                     help="comma list of multi ids whose panel composite is also saved as multi_XXXX.png")
     ap.add_argument("--out", type=Path, help="output folder (default build/editor_smoke/<mode>)")
     ap.add_argument("--no-build", action="store_true", help="skip the first C# build")
+    ap.add_argument("--require-native", action="store_true",
+                    help="fail when a check that needs a real external program was skipped")
     args = ap.parse_args()
 
     cfg = load_config()
@@ -235,7 +238,8 @@ def main() -> int:
     rebuilt = None
     try:
         with log_path.open("w", encoding="utf-8", errors="replace") as log:
-            proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, **no_activate())
+            proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT,
+                                    env=build_child_env(), **no_activate())
             while proc.poll() is None:
                 if time.monotonic() - started > TIMEOUT_S:
                     proc.kill()
@@ -275,6 +279,8 @@ def main() -> int:
             failures.append("editor log does not show the old assembly context unloading")
         if "Failed to unload assemblies" in log:
             failures.append("editor log says the old assemblies failed to unload")
+        if "NullReferenceException" in log:
+            failures.append("editor log contains a NullReferenceException during the reload run")
 
     if code not in (0, None) and not failures:
         failures.append(f"editor exited with {code}")
@@ -354,6 +360,10 @@ def main() -> int:
               f"ComfyUI + Retro Diffusion stubs ({art.get('comfy_progress_events')} progress events)")
         print(f"[editor_smoke]        {art.get('detect')}")
         print(f"[editor_smoke]        provenance: {art.get('provenance')}")
+        if art.get("skipped"):
+            print(f"[editor_smoke]        skipped: {art.get('skipped')}")
+            if args.require_native:
+                failures.append(f"--require-native: Art skipped {art.get('skipped')}")
         for k in bad:
             print(f"[editor_smoke]        failed: {k}")
     logs = report.get("logs") or {}

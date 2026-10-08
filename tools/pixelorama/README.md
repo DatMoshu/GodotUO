@@ -32,6 +32,17 @@ python tools\pixelorama\run.py check
 Launchers: `launchers\art\` (`fetch_pixelorama.bat`, `pixelorama.bat`,
 `pixelorama_status.bat`). Both `src/` and `bin/` are gitignored.
 
+The World settings panel, asset inspector and Art dock can open the selected
+asset directly. See [World workspace](../../docs/world_workspace.md) for the
+UI round trip. Worktrees also discover a binary in the main checkout before
+falling back to PATH; `UO_PIXELORAMA` takes precedence.
+
+Extension installation patches only `GUOTools` in the `[extensions]`
+section of Pixelorama's Godot ConfigFile. Multiline dictionaries and other
+preferences are preserved. The first changed config is backed up alongside
+it as `config.guo-backup.ini`. Regression checks:
+`python -m unittest discover -s tools/pixelorama -p test_config.py`.
+
 ## The extension (`extension/`, MIT)
 
 Pixelorama loads an extension as a resource pack: `run.py` zips
@@ -51,6 +62,40 @@ disabled). It adds a **GUO** menu (Project menu):
 The exchange folder is `UO_ART_EXCHANGE` (default `build/art_exchange`),
 passed to Pixelorama as `GUO_ART_EXCHANGE`; the open sidecar as
 `GUO_ART_SIDECAR`. Nothing is ever written under `UO_CLIENT_DATA`.
+
+## Pixelorama tab in the GUO editor (experimental, Windows)
+
+The `guo_editor_pixelorama` plugin adds a Pixelorama tab to the GUO editor. **Edit in Pixelorama** on an
+asset opens Pixelorama in its own window, as before; **Edit in the Pixelorama tab** opens the same
+working copy inside the tab. Opening another asset or reloading the assembly detaches the running
+session into its own window, so unsaved work is kept. One document per session; other platforms use
+the separate window only.
+
+`GUO_ART_SOURCE_PNG` binds the sidecar to the one project opened from GUO. **Save** on that project
+keeps a `.pxo` under `<exchange>/projects/` and hands the flattened PNG to GUO's exchange watcher;
+**GUO: save back to GUO** from any other tab is refused. Sidecar numbers are written back as integers.
+
+Right-click an asset grid for the same actions as the inspector, plus Copy ID and Properties.
+
+## Animation working copy
+
+**Open working copy** on an animation opens a window that imports an image sequence or a sheet, exports
+frames or a sheet with action, direction and centre metadata, previews anchored playback, and reads
+and writes classic VD types 0/1/2 (palette words and index extra are kept; fork types 3/4 are
+refused). **Apply to editor overlay** stores the clip as an editor overlay (see
+[docs/data_formats.md](../../docs/data_formats.md)), which is how an edit reaches the game. Frame
+painting goes through **Edit in Pixelorama** on the animation, and its sheet exchange.
+
+## Checks
+
+- `python -m pytest tools/pixelorama` - settings and path handling.
+- `python tools/pixelorama/run.py check` - extension parses, and ten binding and save-routing checks.
+- `python tools/pixelorama/run.py save-check` - real Pixelorama saves twice and reopens the `.pxo`.
+- `dotnet run --project tools/pixelorama/AnimationChecks.csproj` - classic VD fixtures.
+- Set `GUO_PIXELORAMA_SAVE_PROOF` to `build/pixelorama/native_save_exchange` for the editor smoke to
+  import the pairs `save-check` produced.
+
+Painting, undo and keyboard input inside the embedded tab have not had an artist pass yet.
 
 ### Extension API limits (for the fork)
 

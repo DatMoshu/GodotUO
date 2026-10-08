@@ -16,6 +16,7 @@ using System.Threading.Tasks;
 public sealed class AiHub
 {
     private readonly ConcurrentQueue<Action> _main = new();
+    private bool _closed;
 
     internal EndpointBook Endpoints { get; private set; }
 
@@ -36,7 +37,9 @@ public sealed class AiHub
 
     public AiHub()
     {
-        UseBooks(new EndpointBook(), null);
+        // Godot reconstructs [Tool] docks before the plugin restores the preference.
+        // Keep those temporary objects inert; the plugin creates the live hub after applying it.
+        if (AiFeatures.Enabled) UseBooks(new EndpointBook(), null);
     }
 
     /// <summary>Points the hub at other files (the smoke uses temporary ones); the user's own are the default.</summary>
@@ -63,7 +66,10 @@ public sealed class AiHub
     public Func<AgentSession, JsonNode, Task<JsonNode>> Permission { get; set; }
 
     /// <summary>Queues work for the main thread.</summary>
-    public void Post(Action a) => _main.Enqueue(a);
+    public void Post(Action a)
+    {
+        if (!_closed && AiFeatures.Enabled) _main.Enqueue(a);
+    }
 
     /// <summary>Runs queued work; called from the dock's <c>_Process</c>.</summary>
     public void Drain()
@@ -104,7 +110,9 @@ public sealed class AiHub
     /// <summary>Kills every child process. Called when the dock closes and before an assembly reload.</summary>
     public void Shutdown()
     {
+        _closed = true;
         Permission = null;
+        while (_main.TryDequeue(out _)) { }
         foreach (AgentSession s in Sessions.ToArray())
         {
             s.Dispose();

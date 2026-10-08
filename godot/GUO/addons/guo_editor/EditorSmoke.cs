@@ -39,6 +39,7 @@ public partial class EditorSmoke : Node
     /// tools/world_parity compares with a logged-in client's frame.
     /// </summary>
     public const string WorldShotFlag = "--guo-editor-world-shot";
+    public const string MultiShotFlag = "--guo-editor-multi-shot";
 
     /// <summary>
     /// <c>send</c> or <c>follow</c>: the live tier check (tools/editor_live).
@@ -136,7 +137,7 @@ public partial class EditorSmoke : Node
         AddChild(window);
         try
         {
-            var profile = new ServerProfile { Name="Smoke profile", ClientProject=ProjectSettings.GlobalizePath("res://") };
+            var profile = new ServerProfile { Name="Smoke profile" };
             var profiles = new ServerProfiles { Selected=profile.Id, Servers=new() { profile } };
             int saves=0;
             window.Open(profiles, profile, s=>Path.Combine(_out,s.Id,"process.json"), ()=>OS.GetExecutablePath(), ()=>saves++);
@@ -169,8 +170,16 @@ public partial class EditorSmoke : Node
                 if (_data.IsLoaded || _data.Error != null)
                 {
                     CheckLoaded();
+                    if (ArgValue("--guo-editor-multi-inspect") is string multiText)
+                    {
+                        InspectMulti(multiText);
+                        Finish();
+                        break;
+                    }
                     CheckServerManager();
+                    CheckClientProfiles();
                     CheckGumpStudio();
+                    CheckAssetFields();
                     if (Array.IndexOf(OS.GetCmdlineUserArgs(), "--guo-gump-studio-only") >= 0)
                     {
                         if (!Headless && Array.IndexOf(OS.GetCmdlineUserArgs(), "--guo-gump-studio-visual") >= 0 && _failures.Count == 0)
@@ -186,6 +195,7 @@ public partial class EditorSmoke : Node
                         break;
                     }
                     _stage = _failures.Count > 0 ? 9
+                        : ArgValue(MultiShotFlag) != null ? 85
                         : ArgValue(LiveFlag) != null ? 40
                         : ArgValue(WorldShotFlag) != null ? 30 : 1;
                     _frames = 0;
@@ -210,6 +220,14 @@ public partial class EditorSmoke : Node
                 if (_frames > 45)
                 {
                     CaptureGumpVisual("compact");
+                    OpenQuickAddSuggestions();
+                    _stage = 72; _frames = 0;
+                }
+                break;
+            case 72:
+                if (_frames > 30)
+                {
+                    CaptureQuickAddSuggestions();
                     FinishGumpVisual();
                     if (_reloadTest && !_afterReload && _failures.Count == 0) { RequestReload(); _stage = 4; }
                     else Finish();
@@ -264,7 +282,7 @@ public partial class EditorSmoke : Node
             case 60:
                 // The AI hub (ADR-0028): ACP, Ollama and queue, against stubs.
                 // One after the other: both are async stages that wait on the scene tree's timers.
-                if (StepAi() && StepStore() && StepLogs())
+                if (StepAi() && StepStore() && StepLogs() && StepLiveLayer())
                 {
                     _stage = 61;
                     _frames = 0;
@@ -318,7 +336,7 @@ public partial class EditorSmoke : Node
                 {
                     CheckWorld();
                     CheckWorldAssets();
-                    _world.ForcedMouse = new Vector2I((int)_world.Size.X / 2, (int)(_world.Size.Y / 2));
+                    _world.ForcedMouse = _world.CanvasSize / 2;
                     _stage = 8;
                     _frames = 0;
                 }
@@ -485,6 +503,26 @@ public partial class EditorSmoke : Node
         }
     }
 
+    private void InspectMulti(string text)
+    {
+        _report["scope"] = "native-multi-inspection-only";
+        if (!_data.IsLoaded) return;
+        try
+        {
+            int id = text.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? Convert.ToInt32(text[2..], 16) : int.Parse(text);
+            var parts = _data.Files.Multis.GetMultis((uint)id);
+            Image image = MultiPanel.CompositeOf(_data, id);
+            if (parts.Count == 0 || image == null || image.IsEmpty()) throw new InvalidOperationException("staged multi has no composite");
+            Directory.CreateDirectory(_out);
+            image.SavePng(Path.Combine(_out, "multi_full.png"));
+            if (int.TryParse(ArgValue("--guo-editor-multi-max-z"), out int maxZ))
+                MultiPanel.CompositeBelow(_data, id, maxZ)?.SavePng(Path.Combine(_out, "multi_cut.png"));
+            _report["multi"] = new Dictionary<string, object> { ["id"] = id, ["components"] = parts.Count,
+                ["stage"] = ArgValue("--guo-editor-data-stage") ?? "", ["width"] = image.GetWidth(), ["height"] = image.GetHeight() };
+        }
+        catch (Exception ex) { _failures.Add("Multi inspection: " + ex.Message); }
+    }
+
     private void CheckLoaded()
     {
         _report["client_data"] = _data.ClientData;
@@ -530,7 +568,8 @@ public partial class EditorSmoke : Node
             return;
         }
 
-        string query = name == "Art" ? ArgValue(ArtFlag) ?? panel.SmokeQuery : panel.SmokeQuery;
+        string query = panel is MultiPanel ? ArgValue(MultiShotFlag) ?? panel.SmokeQuery
+            : name == "Art" ? ArgValue(ArtFlag) ?? panel.SmokeQuery : panel.SmokeQuery;
         result["query"] = query;
         var sw = System.Diagnostics.Stopwatch.StartNew();
         int? selected;
@@ -1385,7 +1424,7 @@ public partial class EditorSmoke : Node
         {
             _world.OpenProject(root);
             _world.GoTo(0, EditX, EditY);
-            _world.ForcedMouse = new Vector2I((int)_world.Size.X / 2, (int)(_world.Size.Y / 2));
+            _world.ForcedMouse = _world.CanvasSize / 2;
             _data.CurrentArt = EditorData.LandCount + Tree;
             _radarBefore = RadarAt(EditX, EditY);
             _minimapBefore = _world.Minimap?.PixelAt(EditX, EditY) ?? default;
@@ -1519,6 +1558,71 @@ public partial class EditorSmoke : Node
             _editReport["block_file"] = _world.Host.Project.BlockPath(0, EditBx, EditBy);
         }));
 
+        _steps.Add((1, VerifyBrushWorkspace));
+        if (!Headless)
+        {
+            Vector2I originalSplit = default;
+            float originalCanvasWidth = 0, originalToolsHeight = 0;
+            Vector2I proofWindowSize = default;
+            Window.ModeEnum proofWindowMode = default;
+            _steps.Add((1, () => { _world.GoTo(0, 1651, 2660); _world.ShowWorkspacePreview(); }));
+            _steps.Add((20, () => _world.ForcedMouse = _world.CanvasSize / 2));
+            _steps.Add((20, () =>
+            {
+                using Image shot = EditorInterface.Singleton.GetBaseControl().GetViewport().GetTexture()?.GetImage();
+                shot?.SavePng(Path.Combine(_out, $"editor_brush_workspace{Suffix}.png"));
+            }));
+            _steps.Add((1, () => { var box = _world.BrushLibrary.SearchInput; box.GrabFocus(); box.Text = "water"; _world.BrushLibrary.Suggestions.RefreshSuggestions(); }));
+            _steps.Add((20, () =>
+            {
+                using Image shot = EditorInterface.Singleton.GetBaseControl().GetViewport().GetTexture()?.GetImage();
+                shot?.SavePng(Path.Combine(_out, $"editor_brush_autocomplete{Suffix}.png"));
+                _world.BrushLibrary.Suggestions.Hide(); _world.BrushLibrary.SearchInput.ReleaseFocus();
+                _world.ShowInspectorTab(true);
+            }));
+            _steps.Add((20, () =>
+            {
+                using Image shot = EditorInterface.Singleton.GetBaseControl().GetViewport().GetTexture()?.GetImage();
+                shot?.SavePng(Path.Combine(_out, $"editor_brush_inspector{Suffix}.png"));
+                _world.ShowInspectorTab(false); _world.Tool = WorldTool.Select;
+                originalSplit = _world.GetWorkspaceSplit();
+                originalCanvasWidth = _world.CanvasSize.X; originalToolsHeight = _world.ToolsHeight;
+                // Clear the theme-scaled minimum width before checking canvas movement.
+                _world.SetWorkspaceSplit(originalSplit + new Vector2I(600, 80));
+            }));
+            _steps.Add((20, () =>
+            {
+                Expect(_world.CanvasSize.X < originalCanvasWidth && _world.ToolsHeight > originalToolsHeight, "workspace_resize_changes_canvas_and_tools");
+                GD.Print($"[GUO workspace] resize canvas {originalCanvasWidth} -> {_world.CanvasSize.X}; tools {originalToolsHeight} -> {_world.ToolsHeight}");
+                using Image shot = EditorInterface.Singleton.GetBaseControl().GetViewport().GetTexture()?.GetImage();
+                shot?.SavePng(Path.Combine(_out, $"editor_brush_resized{Suffix}.png"));
+                _world.SetWorkspaceSplit(originalSplit);
+            }));
+            _steps.Add((1, () =>
+            {
+                _world.ShowNearbyForSmoke(1651, 2660);
+                proofWindowSize = GetWindow().Size; proofWindowMode = GetWindow().Mode;
+                GetWindow().Mode = Window.ModeEnum.Windowed;
+                GetWindow().Size = new Vector2I((int)(1920 * EditorInterface.Singleton.GetEditorScale()), (int)(1080 * EditorInterface.Singleton.GetEditorScale()));
+            }));
+            _steps.Add((30, () =>
+            {
+                Expect(_world.NearbyHasCenterTile(), "nearby_tiles_show_land_and_stack");
+                Expect(_world.CommonToolsFit(), "common_tools_fit_1080p");
+                GD.Print($"[GUO workspace] 1920x1080 logical proof: {GetWindow().Size}, editor scale {EditorInterface.Singleton.GetEditorScale()}");
+                using Image shot = EditorInterface.Singleton.GetBaseControl().GetViewport().GetTexture()?.GetImage();
+                shot?.SavePng(Path.Combine(_out, $"editor_compact_1080{Suffix}.png"));
+                GetWindow().Size = new Vector2I((int)(1366 * EditorInterface.Singleton.GetEditorScale()), (int)(768 * EditorInterface.Singleton.GetEditorScale()));
+            }));
+            _steps.Add((30, () =>
+            {
+                Expect(_world.CommonToolsFit(), "common_tools_fit_768p");
+                GD.Print($"[GUO workspace] 1366x768 logical proof: {GetWindow().Size}, editor scale {EditorInterface.Singleton.GetEditorScale()}");
+                using Image shot = EditorInterface.Singleton.GetBaseControl().GetViewport().GetTexture()?.GetImage();
+                shot?.SavePng(Path.Combine(_out, $"editor_compact_768{Suffix}.png"));
+                GetWindow().Size = proofWindowSize; GetWindow().Mode = proofWindowMode;
+            }));
+        }
         // ADR-0027: render modes and map layers.
         AddModeSteps();
     }

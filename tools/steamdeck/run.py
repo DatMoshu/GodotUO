@@ -317,12 +317,14 @@ class Doctor:
             return 1
         ok, detail = deck.reachable()
         self.check("Deck over ssh", ok, f"{deck.target}: {detail}" if ok else detail,
-                   "enable sshd on the Deck and install your key there (docs\\steamdeck.md)")
+                   "a timeout usually means the Deck is asleep (its Wi-Fi is off): wake it by hand; "
+                   "otherwise enable sshd on the Deck and install your key there (docs\\steamdeck.md)")
         if not ok:
             print()
             say(f"{self.missing} of the checks above failed")
             return 1
         self.check("Deck is x86_64", detail.startswith("x86_64"), detail)
+        say(f"sleep hold: {awake_left(deck)} (run and smoke hold it; 'awake' and 'release' by hand)")
 
         facts = deck.ssh(
             "test -f " + remote_path(deck.client_data + "/tiledata.mul") + " && echo DATA=yes || echo DATA=no; "
@@ -579,12 +581,50 @@ def stop(deck: Deck) -> None:
              timeout=20, check=False, quiet=True)
 
 
+# A hold on the Deck's sleep while the tools use it: a user unit running
+# systemd-inhibit, which blocks idle and sleep until it ends. A sleeping
+# Deck's Wi-Fi is off, so nothing here can wake one; the hold only keeps an
+# awake Deck from dozing off mid-run. It always ends on its own after its
+# minutes, so a forgotten hold never keeps the Deck up for good; "release"
+# (and "stop") end it early and the Deck goes back to its own sleep timer.
+AWAKE_UNIT = "guo-awake"
+
+
+def hold_awake(deck: Deck, minutes: int) -> bool:
+    ok, why = deck.reachable()
+    if not ok:
+        say(f"could not hold the Deck awake: it doesn't answer ({why.strip()[-120:]})")
+        return False
+    cmd = (f"systemctl --user stop {AWAKE_UNIT} 2>/dev/null; "
+           f"systemd-run --user --collect --quiet --unit={AWAKE_UNIT} "
+           f"systemd-inhibit --what=sleep:idle --mode=block --who=GUO "
+           f"--why='GUO tools are using the Deck' sleep {max(1, minutes) * 60} && "
+           f"sleep 1 && systemctl --user is-active {AWAKE_UNIT}")
+    out = deck.ssh(cmd, timeout=30, check=False, quiet=True)
+    ok = "active" in out.split()
+    say(f"the Deck stays awake for {minutes} min (unit {AWAKE_UNIT})" if ok
+        else f"could not hold the Deck awake: {out.strip()[-200:]}")
+    return ok
+
+
+def release_awake(deck: Deck) -> None:
+    deck.ssh(f"systemctl --user stop {AWAKE_UNIT} 2>/dev/null; true", timeout=20, check=False, quiet=True)
+
+
+def awake_left(deck: Deck) -> str:
+    """Whether a hold is on, as the inhibitor list shows it."""
+    out = deck.ssh("systemd-inhibit --list --no-pager 2>/dev/null | grep -w GUO || true",
+                   timeout=20, check=False, quiet=True)
+    return "held" if out.strip() else "not held"
+
+
 def read_log(deck: Deck) -> str:
     return deck.ssh(f"cat {remote_path(deck.install_dir + '/' + LOG_NAME)} 2>/dev/null", timeout=20,
                     check=False, quiet=True)
 
 
-def run_app(p: Paths, deck: Deck, extra: str, wait: int) -> int:
+def run_app(p: Paths, deck: Deck, extra: str, wait: int, awake: int) -> int:
+    hold_awake(deck, awake)
     if start(deck, extra) != 0:
         return 1
     if wait <= 0:
@@ -674,6 +714,7 @@ def smoke(p: Paths, deck: Deck, timeout: int, skip_export: bool, skip_push: bool
     if not skip_push and push(p, deck, shard_host, shard_port) != 0:
         return 1
 
+    hold_awake(deck, max(10, timeout // 60 + 5))
     stop(deck)
     deck.ssh(f"rm -f {remote_path(deck.install_dir + '/' + LOG_NAME)}", check=False, quiet=True)
     # The smoke run says on the log when the login gump is drawn, and stays
@@ -709,6 +750,7 @@ def smoke(p: Paths, deck: Deck, timeout: int, skip_export: bool, skip_push: bool
         time.sleep(2)  # let the gump's first frames settle before the photograph
     screenshot(p, deck, shot)
     stop(deck)
+    release_awake(deck)
 
     for line in text.splitlines():
         if "[GUO]" in line or "No UO client data" in line:
@@ -743,7 +785,11 @@ def main(argv: list[str] | None = None) -> int:
     ru = sub.add_parser("run", help="start the client in the Deck's desktop session")
     ru.add_argument("--args", default="", help="extra client flags (e.g. --sound, --login-probe-stay)")
     ru.add_argument("--wait", type=int, default=0, help="seconds to follow guo.log afterwards (0 = return at once)")
-    sub.add_parser("stop", help="kill the client on the Deck")
+    ru.add_argument("--awake", type=int, default=60, help="minutes the Deck is kept from sleeping (stop ends it sooner)")
+    sub.add_parser("stop", help="kill the client on the Deck and let it sleep again")
+    aw = sub.add_parser("awake", help="keep the Deck from sleeping for a while (it must be awake now)")
+    aw.add_argument("--minutes", type=int, default=60, help="how long; the hold always ends by itself")
+    sub.add_parser("release", help="end the hold: the Deck goes back to its own sleep timer")
     sub.add_parser("log", help="print the Deck's guo.log")
     sc = sub.add_parser("screenshot", help="photograph the Deck's screen into build\\steamdeck")
     sc.add_argument("--out", default=None, help="PNG path (default build\\steamdeck\\screenshot.png)")
@@ -773,10 +819,17 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "push":
         return push(p, deck, args.host, args.port, args.data_default)
     if args.command == "run":
-        return run_app(p, deck, args.args, args.wait)
+        return run_app(p, deck, args.args, args.wait, args.awake)
+    if args.command == "awake":
+        return 0 if hold_awake(deck, args.minutes) else 1
+    if args.command == "release":
+        release_awake(deck)
+        say("released; the Deck may sleep again")
+        return 0
     if args.command == "stop":
         stop(deck)
-        say("stopped")
+        release_awake(deck)
+        say("stopped; the Deck may sleep again")
         return 0
     if args.command == "log":
         print(read_log(deck), end="")

@@ -79,14 +79,33 @@ public static class ExternalTools
             return configured;
         }
 
-        string bin = Path.Combine(EditorData.RepoRoot, "tools", "pixelorama", "bin");
-        if (Directory.Exists(bin))
+        var roots = new List<string> { EditorData.RepoRoot };
+        string gitFile = Path.Combine(EditorData.RepoRoot, ".git");
+        if (File.Exists(gitFile))
         {
+            string line = File.ReadAllText(gitFile).Trim();
+            if (line.StartsWith("gitdir:", StringComparison.OrdinalIgnoreCase))
+            {
+                string gitDir = Path.GetFullPath(line[7..].Trim(), EditorData.RepoRoot);
+                string commonFile = Path.Combine(gitDir, "commondir");
+                if (File.Exists(commonFile)) roots.Add(Directory.GetParent(Path.GetFullPath(File.ReadAllText(commonFile).Trim(), gitDir)).FullName);
+            }
+        }
+        foreach (string root in roots)
+        {
+            string bin = Path.Combine(root, "tools", "pixelorama", "bin");
+            if (!Directory.Exists(bin)) continue;
             string name = OperatingSystem.IsWindows() ? "Pixelorama.exe" : "Pixelorama.x86_64";
             foreach (string f in Directory.GetFiles(bin, name, SearchOption.AllDirectories))
             {
                 return f;
             }
+        }
+
+        foreach (string dir in (System.Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
+        {
+            string candidate = Path.Combine(dir, OperatingSystem.IsWindows() ? "Pixelorama.exe" : "pixelorama");
+            if (File.Exists(candidate)) return candidate;
         }
 
         return null;
@@ -98,7 +117,7 @@ public static class ExternalTools
         + $"Pinta: {(FindPinta() != null ? "found" : "missing (" + PintaHint + ")")}";
 
     /// <summary>Opens the exported PNG in Pixelorama through tools/pixelorama/run.py, which installs the extension too. Null on success, else why not.</summary>
-    public static string OpenPixelorama(string png)
+    public static string OpenPixelorama(string png, bool embedded = false)
     {
         if (FindPixelorama() == null)
         {
@@ -108,6 +127,12 @@ public static class ExternalTools
         if (DryRun)
         {
             return null;
+        }
+
+        if (embedded && OperatingSystem.IsWindows() && GuoPixeloramaPlugin.Main != null && DisplayServer.GetName() != "headless")
+        {
+            EditorInterface.Singleton.SetMainScreenEditor("Pixelorama");
+            return GuoPixeloramaPlugin.Main.OpenImage(png);
         }
 
         string sidecar = Path.ChangeExtension(png, ".json");

@@ -24,6 +24,8 @@ public partial class EditorSmoke
     private readonly Dictionary<string, object> _searchReport = new();
     private readonly Stopwatch _searchClock = Stopwatch.StartNew();
     private int _searchPhase;
+    private HashSet<ulong> _settingsVisibleBefore = new();
+    private Window _settingsWindow;
 
     private void SearchFail(string why)
     {
@@ -80,14 +82,45 @@ public partial class EditorSmoke
                     return false;
                 }
 
-                CheckSettingsEntry(_searchPhase == 3 ? "project" : "editor", _searchPhase == 3 ? "Project Settings" : "Editor Settings");
-                if (_searchPhase == 3)
+                try
+                {
+                    CheckSettingsEntry(_searchPhase == 3 ? "project" : "editor", _searchPhase == 3 ? "Project Settings" : "Editor Settings");
+                }
+                finally
+                {
+                    // Native editor dialogs are reused, not ours to free. Hide only
+                    // the window this test brought from hidden to visible.
+                    if (_settingsWindow != null && IsInstanceValid(_settingsWindow))
+                    {
+                        _settingsWindow.Hide();
+                    }
+                }
+
+                _searchPhase += 2;
+                _frames = 0;
+                return false;
+
+            case 5:
+            case 6:
+                // Let Godot release native exclusive-child ownership before
+                // opening the next dialog or advancing to the ACP fixture.
+                if (_frames < 3) return false;
+                string which = _searchPhase == 5 ? "project" : "editor";
+                bool closed = _settingsWindow != null && IsInstanceValid(_settingsWindow) && !_settingsWindow.Visible;
+                _searchReport[$"settings_{which}_closed"] = closed;
+                if (!closed) SearchFail($"the test-opened {which} settings window did not close");
+                _settingsWindow = null;
+                if (_searchPhase == 5)
                 {
                     _frames = 0;
                     _searchPhase = 4;
                     RunSettingsEntry("EditorSetting:");
                     return false;
                 }
+
+                bool noExclusive = !GodotUi.All<Window>(GetTree().Root).Any(w => w.Visible && w.Exclusive);
+                _searchReport["settings_no_leftover_exclusive"] = noExclusive;
+                if (!noExclusive) SearchFail("an exclusive child window remains before the ACP permission fixture");
 
                 if (Headless)
                 {
@@ -126,6 +159,16 @@ public partial class EditorSmoke
 
     private void RunSettingsEntry(string key)
     {
+        _settingsWindow = null;
+        _settingsVisibleBefore = GodotUi.All<Window>(GetTree().Root).Where(w => w.Visible)
+            .Select(w => w.GetInstanceId()).ToHashSet();
+        // A preexisting modal belongs to another workflow. Fail without closing
+        // it or trying to open a second exclusive child on top of it.
+        if (GodotUi.All<Window>(GetTree().Root).Any(w => w.Visible && w.Exclusive))
+        {
+            SearchFail($"cannot test {key} while a preexisting exclusive window is visible");
+            return;
+        }
         GodotSettingsProvider settings = Search.Index.Providers.OfType<GodotSettingsProvider>().First();
         SearchEntry entry = settings.Entries.FirstOrDefault(e => key.EndsWith(":") ? e.Key.StartsWith(key) : e.Key == key);
         if (entry == null)
@@ -140,6 +183,11 @@ public partial class EditorSmoke
     // Enter on a settings entry opens the dialog and fills its search box.
     private void CheckSettingsEntry(string which, string dialogText)
     {
+        string dialogClass = which == "project" ? "ProjectSettingsEditor" : "EditorSettingsDialog";
+        _settingsWindow = GodotUi.All<Window>(GetTree().Root).FirstOrDefault(w => w.Visible
+            && w.GetClass() == dialogClass && !_settingsVisibleBefore.Contains(w.GetInstanceId()));
+        _searchReport[$"settings_{which}_opened"] = _settingsWindow != null;
+        if (_settingsWindow == null) SearchFail($"the test did not open its own {dialogText} window");
         GodotSettingsProvider settings = Search.Index.Providers.OfType<GodotSettingsProvider>().First();
         var open = settings.LastOpen;
         _searchReport[$"settings_{which}_dialog"] = open?.Dialog;

@@ -56,6 +56,12 @@ public partial class EditorSmoke
             try
             {
                 ArtSync();
+                if (!AiFeatures.Enabled)
+                {
+                    _artReport["ai_skipped"] = "AI features disabled";
+                    ArtCleanup();
+                    return true;
+                }
                 ArtStartServices();
             }
             catch (Exception ex)
@@ -193,6 +199,26 @@ public partial class EditorSmoke
         ArtCheck("provenance_recorded", prov != null && prov.Tool == "pixelorama" && prov.DerivedFromClientArt && prov.Inputs.Count == 1);
         ArtCheck("derived_listed_for_the_store", new AssetProvenance(assets).Derived().Contains(rel));
 
+        // Regression: native Pixelorama Save output (when supplied) traverses the actual
+        // watcher and loaders twice. Fixtures contain original pixels and ID 70 parsed by Godot.
+        string proof = System.Environment.GetEnvironmentVariable("GUO_PIXELORAMA_SAVE_PROOF");
+        if (!string.IsNullOrEmpty(proof))
+        {
+            for (int iteration = 1; iteration <= 2; iteration++)
+            {
+                string source = Path.Combine(proof, $"save{iteration}", "static_0x0046");
+                string to = Path.Combine(inbox, "static_0x0046");
+                File.Copy(source + ".json", to + ".json", true); File.Copy(source + ".png", to + ".png", true);
+                var applied = ArtExchange.Poll(_data);
+                ArtCheck($"native_pixelorama_save{iteration}_applied", applied.Count == 1 && applied[0].Imported,
+                    applied.FirstOrDefault()?.Why ?? "");
+                Image expected = UoPostProcess.Run(Image.LoadFromFile(source + ".png"), AssetKind.Static).Image;
+                ArtCheck($"native_pixelorama_save{iteration}_loader_refreshed", ImagesEqual(_data.ArtImage(EditorData.LandCount + 70), expected));
+                ArtCheck($"native_pixelorama_save{iteration}_consumed_once", ArtExchange.Poll(_data).Count == 0);
+            }
+        }
+        CheckAnimationWorkbench();
+
         // 3. Land: a 44x44 save with colour outside the diamond; the mask removes it.
         Image landImg = FixtureLandImage();
         File.WriteAllText(Path.Combine(inbox, "land_0x0244.json"), new ArtSidecar { Kind = "land", Id = FixtureLand, Width = 44, Height = 44, Stem = "land_0x0244", Provenance = new ArtProvenance { Tool = "pixelorama" } }.ToJson().ToJsonString());
@@ -234,6 +260,8 @@ public partial class EditorSmoke
         ArtCheck("revert_drops_provenance", new AssetProvenance(assets).Get(assets.RelativePathOf(AssetKind.Land, FixtureLand)) == null);
         _data.ReapplyAssets();
 
+        ArtAnimationSync(assets);
+
         bool untouched = true;
         foreach (var (name, when) in AssetStamp())
         {
@@ -241,6 +269,189 @@ public partial class EditorSmoke
         }
 
         ArtCheck("install_untouched", untouched);
+    }
+
+    private void ArtAnimationSync(AssetOverlay assets)
+    {
+        const int body = 0x0190;
+        Image first = Image.CreateEmpty(4, 6, false, Image.Format.Rgba8);
+        Image second = Image.CreateEmpty(6, 4, false, Image.Format.Rgba8);
+        first.Fill(new Color(0.9f, 0.1f, 0.2f, 1));
+        first.SetPixel(0, 0, new Color(1, 1, 1, 127f / 255));
+        second.Fill(new Color(0.1f, 0.2f, 0.9f, 1));
+        var source = new OverlayAnimationClip { Action = 0, Direction = 1, Fps = 12,
+            Frames = new[] { first, second }, Centers = new[] { new Vector2I(2, -1), new Vector2I(3, 1) } };
+        string why = assets.ImportAnimation(body, source, new ArtProvenance { Tool = "smoke-original" });
+        ArtCheck("animation_imported", why == null, why ?? "");
+        if (why != null) return;
+        ArtCheck("animation_kind_listed", assets.Has(AssetKind.Animation, body) && assets.Ids(AssetKind.Animation).Contains(body));
+        OverlayAnimationClip loaded = new AssetOverlay(_artRoot).LoadAnimation(body, 0, 1, out why);
+        ArtCheck("animation_reopened", loaded != null && why == null, why ?? "");
+        if (loaded == null) return;
+        ArtCheck("animation_frames_centres_fps", loaded.Frames.Length == 2 && loaded.Frames[0].GetWidth() == 4
+            && loaded.Frames[0].GetHeight() == 6 && loaded.Frames[1].GetWidth() == 6 && loaded.Frames[1].GetHeight() == 4
+            && loaded.Centers.SequenceEqual(source.Centers) && loaded.Fps == 12);
+        ArtCheck("animation_alpha_colour", loaded.Frames[0].GetPixel(0, 0).A8 == 0
+            && loaded.Frames[0].GetPixel(1, 1).R8 == HuesHelperChannel(first.GetPixel(1, 1).R8));
+        Image[] preview = loaded.PreviewFrames();
+        ArtCheck("animation_foot_alignment", preview.All(f => f.GetSize() == new Vector2I(6, 6))
+            && preview[0].GetPixel(2, 1) == loaded.Frames[0].GetPixel(1, 1)
+            && preview[1].GetPixel(1, 1) == loaded.Frames[1].GetPixel(1, 1));
+        ArtAnimationExchangeSync(assets, body, loaded);
+        ArtCheck("animation_missing_direction_fallback", assets.LoadAnimation(body, 0, 2, out why) == null && why == null);
+        source.Direction = 7;
+        ArtCheck("animation_second_direction", assets.ImportAnimation(body, source) == null
+            && assets.LoadAnimation(body, 0, 7, out _) != null && assets.LoadAnimation(body, 0, 1, out _) != null);
+        source.Direction = 1;
+        ArtCheck("animation_retained_provenance", assets.ImportAnimation(body, source, new ArtProvenance { Tool = "smoke-original" }) == null
+            && new AssetProvenance(assets).Get(assets.RelativePathOf(AssetKind.Animation, body)).DerivedFromClientArt);
+        source.Direction = 8;
+        ArtCheck("animation_bad_direction_refused", assets.ImportAnimation(body, source) != null);
+        source.Direction = 1;
+        source.Centers = new[] { new Vector2I(2, -1) };
+        ArtCheck("animation_unpaired_centres_refused", assets.ImportAnimation(body, source) != null);
+        source.Centers = loaded.Centers;
+        source.Fps = double.NaN;
+        ArtCheck("animation_bad_fps_refused", assets.ImportAnimation(body, source) != null);
+        source.Fps = 12;
+        source.Centers = new[] { new Vector2I(5000, 0), new Vector2I(3, 1) };
+        ArtCheck("animation_bad_centre_refused", assets.ImportAnimation(body, source) != null);
+        source.Frames = Enumerable.Repeat(first, 5).ToArray();
+        source.Centers = new[] { Vector2I.Zero, new Vector2I(2000, 2000), Vector2I.Zero, Vector2I.Zero, Vector2I.Zero };
+        ArtCheck("animation_preview_budget_refused", assets.ImportAnimation(body, source) != null);
+
+        string path = assets.PathOf(AssetKind.Animation, body);
+        string valid = File.ReadAllText(path);
+        JsonNode corrupt = JsonNode.Parse(valid);
+        corrupt["clips"][0]["frames"][0]["image"] = "../provenance.json";
+        File.WriteAllText(path, corrupt.ToJsonString());
+        ArtCheck("animation_path_escape_refused", assets.LoadAnimation(body, 0, 1, out why) == null && why != null);
+        corrupt = JsonNode.Parse(valid);
+        corrupt["clips"].AsArray().Add(corrupt["clips"][0].DeepClone());
+        File.WriteAllText(path, corrupt.ToJsonString());
+        ArtCheck("animation_duplicate_clip_refused", assets.LoadAnimation(body, 0, 1, out why) == null && why != null);
+        File.WriteAllText(path, valid);
+
+        AnimationPanel panel = _assets.Panels.OfType<AnimationPanel>().FirstOrDefault();
+        int? picked = panel?.Search("0x0190");
+        Inspection shown = _inspector.Current;
+        ArtCheck("animation_panel_uses_overlay", picked == body && shown?.Frames.Length == 2 && shown.Fps == 12
+            && shown.Text.Contains("editor overlay"));
+        if (shown?.Frames.Length == 2)
+        {
+            Image before = _inspector.Texture.GetImage();
+            before.SavePng(Path.Combine(_out, $"animation_overlay_frame_0{Suffix}.png"));
+            _inspector._Process(1.0 / shown.Fps + 0.001);
+            Image after = _inspector.Texture.GetImage();
+            after.SavePng(Path.Combine(_out, $"animation_overlay_frame_1{Suffix}.png"));
+            ArtCheck("animation_inspector_played", !before.GetData().SequenceEqual(after.GetData()));
+        }
+
+        ArtCheck("animation_revert", assets.Revert(AssetKind.Animation, body)
+            && assets.LoadAnimation(body, 0, 1, out why) == null && why == null);
+        new AssetProvenance(assets).Remove(assets.RelativePathOf(AssetKind.Animation, body));
+        panel?.Search("0x0190");
+        ArtCheck("animation_panel_reverts_to_client", _inspector.Current?.Frames.Length > 2
+            && !_inspector.Current.Text.Contains("editor overlay"));
+    }
+
+    private void ArtAnimationExchangeSync(AssetOverlay assets, int body, OverlayAnimationClip clip)
+    {
+        string png = ArtExchange.ExportAnimation(_data, body, clip);
+        string json = Path.ChangeExtension(png, ".json");
+        ArtSidecar side = ArtSidecar.FromJson(JsonNode.Parse(File.ReadAllText(json)));
+        _artReport["animation_exchange_sidecar"] = side.ToJson().ToJsonString();
+        ArtCheck("animation_exchange_export", File.Exists(png) && side.Kind == "animation" && side.Animation["frames"].AsArray().Count == 2
+            && (int)side.Animation["action"] == 0 && (int)side.Animation["direction"] == 1 && (double)side.Animation["fps"] == 12);
+        ArtCheck("animation_exchange_original_provenance", !side.Provenance.DerivedFromClientArt && side.Provenance.Inputs[0].StartsWith("overlay:animation:"));
+        Image edited = Image.LoadFromFile(png);
+        JsonArray rect = side.Animation["frames"][0]["rect"].AsArray();
+        edited.SetPixel((int)rect[0] + 1, (int)rect[1] + 1, Colors.Green);
+        side.Provenance.Tool = "pixelorama";
+        string incoming = Path.Combine(ArtExchange.Sub("in"), Path.GetFileName(png));
+        File.WriteAllText(Path.ChangeExtension(incoming, ".json"), side.ToJson().ToJsonString());
+        edited.SavePng(incoming);
+        var outcomes = ArtExchange.Poll(_data);
+        ArtCheck("animation_exchange_watcher", outcomes.Any(o => o.Stem == side.Stem && o.Imported));
+        OverlayAnimationClip saved = assets.LoadAnimation(body, clip.Action, clip.Direction, out _);
+        ArtCheck("animation_exchange_centres_order_fps", saved != null && saved.Fps == clip.Fps
+            && saved.Centers.SequenceEqual(clip.Centers) && saved.Frames[1].GetData().SequenceEqual(clip.Frames[1].GetData()));
+        ArtCheck("animation_exchange_pixels", saved?.Frames[0].GetPixel(1, 1) == Colors.Green);
+        ArtProvenance p = new AssetProvenance(assets).Get(assets.RelativePathOf(AssetKind.Animation, body));
+        ArtCheck("animation_exchange_provenance", p?.Tool == "pixelorama" && !p.DerivedFromClientArt);
+        side.Animation["frames"][0]["rect"][2] = 9999;
+        string bad = Path.Combine(ArtExchange.Sub("in"), "animation_bad_rect.png");
+        File.WriteAllText(Path.ChangeExtension(bad, ".json"), side.ToJson().ToJsonString());
+        edited.SavePng(bad);
+        ArtCheck("animation_exchange_bad_rect_refused", ArtExchange.Poll(_data).Any(o => o.Stem == "animation_bad_rect" && !o.Imported));
+        side = ArtSidecar.FromJson(JsonNode.Parse(File.ReadAllText(json)));
+        edited.SetPixel(0, 5, Colors.White);
+        bad = Path.Combine(ArtExchange.Sub("in"), "animation_bad_padding.png");
+        File.WriteAllText(Path.ChangeExtension(bad, ".json"), side.ToJson().ToJsonString());
+        edited.SavePng(bad);
+        ArtCheck("animation_exchange_padding_refused", ArtExchange.Poll(_data).Any(o => o.Stem == "animation_bad_padding" && !o.Imported));
+        string native = System.Environment.GetEnvironmentVariable("GUO_PIXELORAMA_ANIMATION_SAVE");
+        if (!string.IsNullOrEmpty(native))
+        {
+            string target = Path.Combine(ArtExchange.Sub("in"), Path.GetFileName(native));
+            File.Copy(Path.ChangeExtension(native, ".json"), Path.ChangeExtension(target, ".json"), true);
+            File.Copy(native, target, true);
+            var real = ArtExchange.Poll(_data);
+            ArtCheck("native_pixelorama_animation_watcher", real.Any(o => o.Stem == Path.GetFileNameWithoutExtension(native) && o.Imported));
+            OverlayAnimationClip read = assets.LoadAnimation(body, clip.Action, clip.Direction, out _);
+            ArtCheck("native_pixelorama_animation_frames", read != null && read.Frames.Length == 2 && read.Fps == clip.Fps
+                && read.Centers.SequenceEqual(clip.Centers) && read.Frames[0].GetPixel(1, 1) == Colors.Green
+                && read.Frames[1].GetData().SequenceEqual(clip.Frames[1].GetData()));
+            ArtCheck("native_pixelorama_animation_provenance", new AssetProvenance(assets)
+                .Get(assets.RelativePathOf(AssetKind.Animation, body))?.Tool == "pixelorama");
+        }
+        else
+        {
+            // Named, so a summary of 67 checks is not mistaken for the 70 a native run has.
+            _artReport["skipped"] = "native Pixelorama animation save, 3 checks (GUO_PIXELORAMA_ANIMATION_SAVE not set)";
+        }
+    }
+
+    private void CheckAnimationWorkbench()
+    {
+        Image a = Image.CreateEmpty(3, 2, false, Image.Format.Rgba8); a.Fill(Colors.Red);
+        Image b = Image.CreateEmpty(2, 3, false, Image.Format.Rgba8); b.Fill(Colors.Blue);
+        var doc = new AnimationDocument(2);
+        doc.Records[7] = AnimationWorkspace.FromImages(new[] { a, b }, new[] { ((short)-2, (short)3), ((short)4, (short)-5) });
+        doc.Records[7].Extra = 345;
+        var view = AnimationWorkspace.Open(doc, 70, 1, 2, this);
+        string sheetPath = Path.Combine(_out, "animation_fixture.png");
+        JsonObject side = view.ExportSheet(sheetPath);
+        ArtCheck("animation_sheet_mapping", (int)side["action"] == 1 && (int)side["direction"] == 2 && (int)side["frames"][0]["center_x"] == -2 && (int)side["frames"][1]["center_y"] == -5);
+        ushort[] palette = (ushort[])doc.Records[7].Palette.Clone();
+        view.ImportMappedSheet(sheetPath, side, 7);
+        var roundtrip = ClassicVd.Read(ClassicVd.Write(view.Document)).Records[7];
+        ArtCheck("animation_sheet_centers_extra_palette", roundtrip.Frames[0].CenterX == -2 && roundtrip.Frames[1].CenterY == -5 && roundtrip.Extra == 345 && palette.SequenceEqual(roundtrip.Palette));
+        ArtCheck("animation_sheet_pixels", ImagesEqual(AnimationWorkspace.ToImage(roundtrip, roundtrip.Frames[0]), a) && ImagesEqual(AnimationWorkspace.ToImage(roundtrip, roundtrip.Frames[1]), b));
+        OverlayAnimationClip clip = view.ToClip();
+        ArtCheck("animation_workspace_overlay_clip", clip.Action == 1 && clip.Direction == 5 && clip.Frames.Length == 2
+            && clip.Centers[0] == new Vector2I(-2, 3) && clip.Centers[1] == new Vector2I(4, -5) && ImagesEqual(clip.Frames[0], a) && ImagesEqual(clip.Frames[1], b));
+        if (DisplayServer.GetName() == "headless") view.QueueFree();
+        else CaptureAnimationEvidence(view);
+        GridPanel panel = _assets.Panels.OfType<ArtPanel>().First(); panel.Search("0x0E75");
+        ItemList list = panel.GetChildren().OfType<ItemList>().Single(); int item = list.GetSelectedItems()[0];
+        panel.OpenContext(item);
+        PopupMenu menu = panel.GetChildren().OfType<PopupMenu>().Single();
+        var labels = Enumerable.Range(0, menu.ItemCount).Select(menu.GetItemText).ToArray();
+        ArtCheck("asset_context_single_actions", new[] { "Copy ID", "Properties", "Edit in Pixelorama", "Edit in the Pixelorama tab", "Open configured image editor (Pinta)", "Export PNG...", "Replace from image..." }.All(labels.Contains));
+        menu.Hide(); list.Select(item == 0 ? 1 : 0, false); panel.OpenContext(item);
+        labels = Enumerable.Range(0, menu.ItemCount).Select(menu.GetItemText).ToArray();
+        ArtCheck("asset_context_multiple_actions", list.GetSelectedItems().Length == 2 && labels.Contains("Copy IDs") && labels.Contains("Export selected PNGs...") && !labels.Contains("Replace from image..."));
+        menu.Hide();
+    }
+
+    private async void CaptureAnimationEvidence(AnimationWorkspace view)
+    {
+        for (int i = 0; i < 5; i++) await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        if (!GodotObject.IsInstanceValid(view)) return;
+        Image screenshot = view.GetViewport().GetTexture().GetImage();
+        screenshot.SavePng(Path.Combine(_out, "animation_workbench.png"));
+        view.QueueFree();
     }
 
     private static byte HuesHelperChannel(int v8)
@@ -318,12 +529,16 @@ public partial class EditorSmoke
                                        && (long)sent["4"]["inputs"]["seed"] == 1234
                                        && (string)sent["1"]["inputs"]["image"] == _artStub.UploadedName
                                        && (int)sent["6"]["inputs"]["width"] == 30);
-        ArtCheck("comfy_provenance_fields", r.Workflow == "stub_img2img.json" && r.Seed == 1234);
+        ArtCheck("comfy_provenance_fields", r.Model == "stub.safetensors" && r.Workflow == "stub_img2img.json" && r.Seed == 1234);
         ArtCheck("comfy_returned_artifacts", r.Error == null && r.Files.Count == 3
             && r.Files.Count(f => f.Kind == ArtifactKind.Image && f.FileName == "guo_00001_.png") == 1
             && r.Files.Count(f => f.Kind == ArtifactKind.Audio && f.FileName == "sfx_test.mp3") == 1
             && r.Files.Count(f => f.Kind == ArtifactKind.Model && f.FileName == "splat_test.ply") == 1,
             string.Join(",", r.Files.Select(f => $"{f.Kind}:{f.FileName}:{f.Bytes.Length}")));
+        ArtCheck("provenance_legacy_ai", ArtProvenance.FromJson(JsonNode.Parse("{\"tool\":\"comfyui\"}")).AiGenerated
+                                         && ArtProvenance.FromJson(JsonNode.Parse("{\"tool\":\"retrodiffusion\"}")).AiGenerated);
+        ArtCheck("provenance_non_ai", !ArtProvenance.FromJson(JsonNode.Parse("{\"tool\":\"pixelorama\"}")).AiGenerated
+                                      && !ArtProvenance.FromJson(JsonNode.Parse("{\"tool\":\"comfyui\",\"ai\":false}")).AiGenerated);
 
         // Retro Diffusion: the stub only. No key means no call; with a key the header carries it.
         var noKey = new RetroDiffusionProvider(_artStub.Url, () => null);
@@ -358,8 +573,10 @@ public partial class EditorSmoke
         AssetOverlay assets = _data.Assets;
         string rel = assets.RelativePathOf(AssetKind.Static, FixtureStatic);
         ArtProvenance p = new AssetProvenance(assets).Get(rel);
+        ArtCheck("dock_gallery", Art.GalleryCount == 1 && Art.LastResult.Pngs.Count == 1);
         ArtCheck("dock_imported_result", said.StartsWith("imported"), said);
-        ArtCheck("dock_provenance", p != null && p.Tool == "comfyui" && p.Workflow == "stub_img2img.json" && p.Seed == 99
+        ArtCheck("dock_provenance", p != null && p.Tool == "comfyui" && p.AiGenerated && p.Model == "stub.safetensors"
+                                    && p.Workflow == "stub_img2img.json" && p.Seed == 99
                                     && p.Inputs.Count == 1 && p.Inputs[0] == "overlay:static:0x0E75" && p.DerivedFromClientArt,
             p?.ToJson().ToJsonString() ?? "none");
         _artReport["dock_provenance_json"] = p?.ToJson().ToJsonString();

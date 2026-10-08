@@ -30,7 +30,7 @@ public static class RunCommand
             throw new CliError($"map size {width}x{height}: each side must be 64..{MaxWidth}x{MaxHeight}");
 
         var (preset, presetPath) = Presets.Load(a.Get("preset"));
-        string presetId = Path.GetFileName(presetPath)[..^".preset.json".Length];
+        string presetId = Presets.IdOf(presetPath);
         long seed = a.Long("seed") ?? preset.Seed ?? 1234567;
         var settings = new RunSettings(presetId, seed, width, height, a.Flag("fast"),
             a.All("set").ToList(), a.All("disable").ToList(), a.All("enable").ToList(), a.Get("brushes"));
@@ -77,6 +77,19 @@ public static class RunCommand
         File.WriteAllText(Path.Combine(outDir, "preset.json"),
             PipelineFactory.ExportPreset(steps, preset.Name, preset.Description, seed));
         files["preset"] = "preset.json";
+        // Points of interest, towns with their footprint and gates: what tools placing content on the
+        // map (tools/mapgen_districts) read. Map cells, inclusive rectangles.
+        var pois = ir.Pois.Select(p => new Dictionary<string, object?>
+        {
+            ["id"] = p.Id, ["kind"] = p.Kind.ToString(), ["x"] = p.X, ["y"] = p.Y, ["z"] = p.Z, ["tag"] = p.Tag,
+            ["footprint"] = p.Footprint is { } f ? new[] { (int)f.X1, f.Y1, f.X2, f.Y2 } : null,
+            ["gates"] = p.Gates?.Select(g => new[] { (int)g.X, g.Y }).ToList(),
+        }).ToList();
+        File.WriteAllText(Path.Combine(outDir, "pois.json"), JsonSerializer.Serialize(new Dictionary<string, object?>
+        {
+            ["schema"] = "guo.mapgen.pois/1", ["width"] = width, ["height"] = height, ["pois"] = pois,
+        }, new JsonSerializerOptions { WriteIndented = true }));
+        files["pois"] = "pois.json";
 
         var stats = Likeness.Measure(ir);
         string hash = MapHash.Of(ir);

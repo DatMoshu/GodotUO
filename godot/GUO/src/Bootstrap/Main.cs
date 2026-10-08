@@ -993,6 +993,9 @@ public partial class Main : Node
         if (realRestart && PregameProbe.Passed)
         {
             string tag = string.IsNullOrWhiteSpace(_options.ScreenshotName) ? "pregame" : _options.ScreenshotName;
+            // The probe's profile goes in a workspace of its own, not the person's.
+            GUO.Workspace.Workspace.RootOverride = ProjectSettings.GlobalizePath($"user://probe_workspace_{tag}");
+            GUO.Workspace.ClientRegistry.Reset();
             ShardSession.Start(new GUO.Input.Touch.Pregame.ServerEntry
             {
                 Name = "Probe Restart", Host = "127.0.0.1", Port = 2599, ClientVersion = _options.ClientVersion,
@@ -1131,6 +1134,12 @@ public partial class Main : Node
     /// </summary>
     private void ApplyShardSession()
     {
+        // ADR-0032: no desktop folders on Android or the web; the workspace lives in user://.
+        if (OS.HasFeature("mobile") || OS.HasFeature("web"))
+        {
+            GUO.Workspace.Workspace.PlatformRoot = ProjectSettings.GlobalizePath("user://workspace");
+        }
+
         ShardSession.FilePath = System.IO.Path.Combine(GuoDataDirectory(), "shard_session.json");
         ShardSession.Data d = ShardSession.Load();
 
@@ -1190,9 +1199,12 @@ public partial class Main : Node
             return;
         }
 
+        // ADR-0032: an overlay may sit over the client profile's own install rather than the player's.
+        string install = kind == "install" ? d.DataFolder : d.BaseData != null && DataSources.Validate(d.BaseData) == null ? d.BaseData : null;
+
         _options.UseShardSession(d.Host, d.Port, d.ClientVersion,
             kind == "custom" && string.IsNullOrWhiteSpace(_options.CustomData) ? d.DataFolder : null,
-            kind == "install" && !_options.ClientDataFromFlag ? d.DataFolder : null);
+            install != null && !_options.ClientDataFromFlag ? install : null);
         GD.Print($"[GUO] shard session : \"{d.Name}\" with its files ({kind}), client {_options.ClientVersion}");
     }
 

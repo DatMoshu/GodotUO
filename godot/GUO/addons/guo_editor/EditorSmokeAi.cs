@@ -45,6 +45,12 @@ public partial class EditorSmoke
     /// <summary>One tick of the stage; true when it is finished.</summary>
     private bool StepAi()
     {
+        if (!AiFeatures.Enabled)
+        {
+            _report["ai"] = new Dictionary<string, object> { ["ok"] = true, ["skipped"] = "AI features disabled" };
+            return true;
+        }
+
         if (System.Environment.GetEnvironmentVariable("GUO_AI_SKIP") != null)
         {
             return true;
@@ -110,11 +116,22 @@ public partial class EditorSmoke
 
     private async Task RunAiAsync()
     {
+        // The preceding Search stage opens these dialogs. Close its test
+        // windows before the AI permission dialog and the Queue capture.
+        foreach (Window window in GodotUi.Walk(GetTree().Root).OfType<Window>())
+        {
+            if (window.GetClass() == "ProjectSettingsEditor" || window.GetClass() == "EditorSettingsDialog")
+            {
+                window.Hide();
+            }
+        }
+
         string root = EditorData.RepoRoot;
         string fake = Path.Combine(root, "tools", "ai_hub", "fake_acp_agent.py");
         string python = QueueClient.FindPython();
         string temp = Path.Combine(_out, "ai");
         Directory.CreateDirectory(temp);
+        await CheckEditorMcpAsync();
 
         if (python == null || !File.Exists(fake))
         {
@@ -317,6 +334,7 @@ public partial class EditorSmoke
             bool finished = await Until(() => !Ai.Chat.Busy, 15);
             await Delay(0.2);
             AiCheck("chat_streams", finished && Ai.Chat.Transcript.Contains("Hello from the stub.") && Ai.Chat.History.Count == 2, Ai.Chat.Transcript);
+            await CheckChatComposerAsync(stub);
 
             // An unreachable server is a message, not a hang.
             Ai.Chat.OllamaUrl = "http://127.0.0.1:1";
@@ -357,6 +375,15 @@ public partial class EditorSmoke
                 AiCheck("queue_refuses_secret", refused == 0 && whyRefused.Length > 0, whyRefused);
                 var (list, listErr) = await q.ListAsync();
                 AiCheck("queue_list", list != null && list.Count == 1 && list[0].Id == id && list[0].Status == "new" && list[0].Text == "hello\nqueue", listErr);
+                // Register scratch listeners and a scratch lease; never use the owner's bus.
+                await QueueSmokeCommand(python, root, db, "register", "claude", "--project", "scratch", "--tool", "script");
+                await QueueSmokeCommand(python, root, db, "register", "reviewer", "--project", "scratch", "--tool", "script");
+                await QueueSmokeCommand(python, root, db, "take", "--as", "claude");
+                await QueueSmokeCommand(python, root, db, "lease", "take", "scratch:preview", "--holder", "claude", "--minutes", "10", "--purpose", "Editor scratch queue preview");
+                var (bus, busErr) = await q.StatusAsync();
+                AiCheck("queue_status", bus != null && bus.Addresses.Any(a => a.Address == "claude" && !a.Stale)
+                    && bus.Addresses.Any(a => a.Address == "reviewer" && a.Stale)
+                    && bus.Leases.Any(l => l.Resource == "scratch:preview" && !l.Expired), busErr);
                 // An agent answers through the tool, as a running session would.
                 var reply = Process.Start(new ProcessStartInfo(python)
                 {
@@ -373,7 +400,31 @@ public partial class EditorSmoke
                 long second = await Ai.Queue.PostAsync("claude", "guo-smoke", "from the tab");
                 AiCheck("queue_tab_post", second > id, second.ToString());
                 await Ai.Queue.RefreshAsync();
-                AiCheck("queue_tab_list", Ai.Queue.Requests.Count == 2 && Ai.Queue.Requests[^1].Text == "from the tab");
+                AiCheck("queue_tab_list", Ai.Queue.Requests.Count == 3 && Ai.Queue.Requests[^1].Text == "from the tab"
+                    && Ai.Queue.Requests.Any(r => r.Kind == "reply"));
+                await Ai.Queue.SelectAsync(id);
+                AiCheck("queue_tab_reply_detail", Ai.Queue.DetailText.Contains("got it"));
+                AiCheck("queue_tab_addresses", Ai.Queue.ListenersText.Contains("reviewer") && Ai.Queue.ListenersText.Contains("stale")
+                    && Ai.Queue.ListenersText.Contains("active"));
+                AiCheck("queue_tab_leases", Ai.Queue.LeasesText.Contains("scratch:preview") && Ai.Queue.LeasesText.Contains("held"));
+                if (!Headless)
+                {
+                    Vector2 minimum = Ai.CustomMinimumSize;
+                    var splits = new List<(SplitContainer Split, int Offset)>();
+                    for (Node parent = Ai.GetParent(); parent != null; parent = parent.GetParent())
+                    {
+                        if (parent is SplitContainer split) splits.Add((split, split.SplitOffset));
+                    }
+                    Ai.CustomMinimumSize = new Vector2(minimum.X, 540 * EditorInterface.Singleton.GetEditorScale());
+                    await Delay(0.5);
+                    using Image shot = EditorInterface.Singleton.GetBaseControl().GetViewport().GetTexture()?.GetImage();
+                    string path = Path.Combine(_out, $"editor_queue_switchboard{Suffix}.png");
+                    shot?.SavePng(path);
+                    _aiReport["queue_editor_screenshot_path"] = path;
+                    AiCheck("queue_editor_screenshot", shot != null && !shot.IsEmpty());
+                    Ai.CustomMinimumSize = minimum;
+                    foreach (var split in splits) split.Split.SplitOffset = split.Offset;
+                }
             }
 
             // --- (d) the Sessions tab, against a fake home folder ----------------------------------------
@@ -391,7 +442,99 @@ public partial class EditorSmoke
             }
         }
 
+        await CheckAiToggleAsync();
         _aiReport["chunks_streamed"] = _aiReport.GetValueOrDefault("acp_chunks");
+    }
+
+    private async Task QueueSmokeCommand(string python, string root, string db, params string[] args)
+    {
+        var start = new ProcessStartInfo(python)
+        {
+            UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true,
+            ArgumentList = { Path.Combine(root, "tools", "agent_queue", "run.py"), "--db", db },
+        };
+        foreach (string arg in args) start.ArgumentList.Add(arg);
+        using Process p = Process.Start(start);
+        Task<string> output = p.StandardOutput.ReadToEndAsync();
+        Task<string> error = p.StandardError.ReadToEndAsync();
+        await p.WaitForExitAsync();
+        await output;
+        AiCheck($"queue_command_{args[0]}_{args[1]}", p.ExitCode == 0, await error);
+    }
+
+    private async Task CheckChatComposerAsync(StubServer stub)
+    {
+        AiChatTab chat = Ai.Chat;
+        TextEdit input = chat.Composer;
+        InputEventKey Enter(bool shift = false, bool echo = false, bool pressed = true, Key code = Key.Enter) =>
+            new() { Keycode = code, Pressed = pressed, ShiftPressed = shift, Echo = echo };
+        void KeyEvent(InputEventKey key) => input.EmitSignal(Control.SignalName.GuiInput, key);
+        AiCheck("composer_multiline_control", input != null && input.WrapMode == TextEdit.LineWrappingMode.Boundary);
+
+        chat.NewChat();
+        input.Text = "first";
+        input.SetCaretColumn(5);
+        int before = stub.ChatRequests;
+        KeyEvent(Enter(shift: true));
+        AiCheck("composer_shift_enter_newline", input.Text == "first\n" && !chat.Busy && chat.History.Count == 0 && stub.ChatRequests == before);
+        input.Text = "composing candidate";
+        chat.HandleComposerInput(Enter(), composing: true);
+        AiCheck("composer_ime_gate", !chat.Busy && chat.History.Count == 0 && input.Text == "composing candidate");
+        KeyEvent(Enter(echo: true));
+        KeyEvent(Enter(pressed: false));
+        AiCheck("composer_echo_release_no_send", !chat.Busy && chat.History.Count == 0);
+
+        string[] prompts = { "\nfirst\n  second\nthird\n", "first\r\n  second\r\nthird" };
+        for (int i = 0; i < prompts.Length; i++)
+        {
+            chat.NewChat();
+            input.Text = prompts[i];
+            string expected = prompts[i].Replace("\r\n", "\n");
+            before = stub.ChatRequests;
+            if (i == 0) KeyEvent(Enter());
+            else chat.SendButton.EmitSignal(Button.SignalName.Pressed);
+            AiCheck($"composer_{i}_accepted_once", chat.Busy && chat.History.Count == 1 && input.Text.Length == 0);
+            // The main-thread completion has not run yet; busy follow-ups must preserve the draft.
+            input.Text = "next\n  draft";
+            KeyEvent(Enter());
+            KeyEvent(Enter(echo: true));
+            chat.SendButton.EmitSignal(Button.SignalName.Pressed);
+            AiCheck($"composer_{i}_busy_draft", chat.History.Count == 1 && input.Text == "next\n  draft");
+            bool done = await Until(() => !chat.Busy, 15);
+            AiCheck($"composer_{i}_stub_payload", done && stub.ChatRequests == before + 1
+                && (string)stub.LastChatBody?["messages"]?[0]?["content"] == expected
+                && chat.History[0].Text == expected, "multiline request or request count differed");
+            AiCheck($"composer_{i}_draft_survives_reply", input.Text == "next\n  draft");
+        }
+
+        // Numeric keypad Enter follows the same send path.
+        chat.NewChat();
+        input.Text = "keypad\nmessage";
+        before = stub.ChatRequests;
+        KeyEvent(Enter(code: Key.KpEnter));
+        bool keypadDone = await Until(() => !chat.Busy, 15);
+        AiCheck("composer_keypad_enter", keypadDone && stub.ChatRequests == before + 1
+            && (string)stub.LastChatBody?["messages"]?[0]?["content"] == "keypad\nmessage");
+
+        chat.NewChat();
+        input.Text = "   \n\t";
+        before = stub.ChatRequests;
+        KeyEvent(Enter());
+        AiCheck("composer_blank_keeps_draft", !chat.Busy && input.Text == "   \n\t" && stub.ChatRequests == before);
+        // Snapshot gate only: existing toggle stage separately proves removal/termination/re-enable.
+        try
+        {
+            AiFeatures.Apply(false);
+            input.Text = "disabled\nprompt";
+            KeyEvent(Enter());
+            chat.SendButton.EmitSignal(Button.SignalName.Pressed);
+            chat.SendText("direct disabled prompt");
+            AiCheck("composer_disabled_no_send", !chat.Busy && chat.History.Count == 0
+                && input.Text == "disabled\nprompt" && stub.ChatRequests == before);
+        }
+        finally { AiFeatures.Apply(true); }
+        input.Text = "";
+        chat.NewChat();
     }
 
     /// <summary>
@@ -482,6 +625,9 @@ public partial class EditorSmoke
         var q = new QueueClient(EditorData.RepoRoot, db);
         var (all, err) = await q.ListAsync(50);
         AiCheck("sessions_send_to_queue", id > 0 && all != null && all.Any(r => r.Id == id && r.To == name && r.Text.Contains("zebra")), $"{name} {id} {err}");
+        long addressed = await tab.SendSelectedAsync("use the registered listener", "reviewer");
+        var (explicitMessage, addressError) = await q.ShowAsync(addressed);
+        AiCheck("sessions_explicit_queue_address", addressed > id && explicitMessage?.To == "reviewer", $"{addressError} {tab.StatusText}");
         _aiReport["sessions_queue_name"] = name;
     }
 
@@ -534,7 +680,7 @@ public partial class EditorSmoke
         // --- tool round trip through the OpenAI-compatible stub ---------------------------------------
         Ai.ShowTab("Chat");
         Ai.Chat.ToolsEnabled = true;
-        AiCheck("tools_host", Ai.Hub.Tools != null && Ai.Hub.Tools.Tools.Count == 3, Ai.Hub.Tools?.Tools.Count.ToString());
+        AiCheck("tools_host", Ai.Hub.Tools != null && new[] { "search", "inspect_asset", "jump_world", "editor_state", "multi_open" }.All(n => Ai.Hub.Tools.Tools.Any(t => t.Name == n)), Ai.Hub.Tools?.Tools.Count.ToString());
         AiCheck("tools_selects_endpoint", Ai.Chat.SelectProvider("openai:StubSvc"));
         Ai.Chat.NewChat();
         int before = stub.CompatRequests;
@@ -562,6 +708,8 @@ public partial class EditorSmoke
         host.Approve = _ => Task.FromResult(true);
         string allowed = await host.RunAsync("poke", null, CancellationToken.None);
         AiCheck("tools_change_needs_approval", refused.StartsWith("refused") && allowed == "poked" && ran, $"{refused} / {allowed}");
+
+        await CheckWorldToolsAsync(temp);
 
         // --- vision attach ------------------------------------------------------------------------------
         var art = Image.CreateEmpty(16, 16, false, Image.Format.Rgba8);
@@ -606,6 +754,136 @@ public partial class EditorSmoke
         Ai.Chat.NewChat();
     }
 
+    private async Task CheckWorldToolsAsync(string temp)
+    {
+        AiToolHost tools = Ai.Hub.Tools;
+        // The editor capabilities add approved tools of their own; of the World tools only the stamp changes anything.
+        AiCheck("tools_world_specs",
+            tools.Tools.Single(t => t.Name == "stamp_static").ReadOnly == false &&
+            new[] { "world_state", "describe_cell", "walkable" }.All(n => tools.Tools.Any(t => t.Name == n && t.ReadOnly)));
+        var unready = AiToolHost.For(new SearchContext(), () => null, Ai.Hub.Post);
+        string notReady = await unready.RunAsync("world_state", null, CancellationToken.None);
+        AiCheck("tools_world_unready", notReady.StartsWith("error:"), notReady);
+
+        AiCheck("tools_world_boot", _world.GoTo(0, 1495, 1628), _world.Error);
+        if (!_world.IsBooted) return;
+        string priorProject = _world.Host.Project?.Root;
+        string priorMode = _world.Modes.ModeName;
+        Vector2I? priorMouse = _world.ForcedMouse;
+        bool priorVisible = _world.Visible;
+        Func<string, Task<bool>> approve = tools.Approve;
+        var install = InstallStamp();
+        string projectRoot = Path.Combine(temp, $"world_tools{Suffix}");
+        try
+        {
+            _world.OpenProject(projectRoot);
+            _world.Modes.SetMode("Height");
+            _world.Modes.Hover = null;
+            _world.ForcedMouse = null;
+            string jump = await tools.RunAsync("jump_world",
+                new JsonObject { ["facet"] = 0, ["x"] = 1496, ["y"] = 1628 }, CancellationToken.None);
+            AiCheck("tools_jump_world", jump == "the World tab now shows map0 1496,1628" &&
+                _world.Host.Facet == 0 && _world.Host.X == 1496 && _world.Host.Y == 1628, jump);
+            // Navigation shows the World tab. Hide it for this centre-position check,
+            // so a live pointer cannot replace the destination before the read runs.
+            _world.Visible = false;
+            _world.Modes.Hover = null;
+            JsonNode state = JsonNode.Parse(await tools.RunAsync("world_state", null, CancellationToken.None));
+            AiCheck("tools_world_state", (int)state["facet"] == 0 && (int)state["x"] == 1496 && (int)state["y"] == 1628 &&
+                (int)state["z"] == _world.Host.Z && (string)state["view_mode"] == "Height" &&
+                (string)state["project"] == _world.Host.Project.Name && (string)state["position_source"] == "centre", state.ToJsonString());
+
+            // Fixed Britain neighborhood; choose its first tall impassable wall without a floor/bridge.
+            var wall = (from x in Enumerable.Range(1472, 49)
+                        from y in Enumerable.Range(1604, 49)
+                        let objects = _world.Modes.Data.Objects(x, y)
+                        where objects.Any(o => !o.IsItem && o.Kind == Kind.Wall &&
+                            (o.Flags & GUO.Assets.TileFlag.Impassable) != 0 && o.Height >= 20) &&
+                            !objects.Any(o => o.Surface || o.Bridge)
+                        select (X: x, Y: y)).First();
+            JsonObject wallArgs = new() { ["facet"] = 0, ["x"] = wall.X, ["y"] = wall.Y };
+            JsonNode cell = JsonNode.Parse(await tools.RunAsync("describe_cell", wallArgs, CancellationToken.None));
+            WorldStatic known = _world.Editor.StaticsAt(0, wall.X, wall.Y).First();
+            JsonArray stack = cell["statics"] as JsonArray;
+            AiCheck("tools_describe_cell", (int)cell["land"]["id"] == _world.Modes.Data.LandId(wall.X, wall.Y) &&
+                stack.Any(s => (int)s["id"] == known.Id && (int)s["z"] == known.Z && (int)s["hue"] == known.Hue &&
+                    (int)s["height"] == _data.Files.TileData.StaticData[known.Id].Height && (string)s["name"] != null && s["flags"] != null), cell.ToJsonString());
+            _aiReport["world_tool_known_static"] = new[] { wall.X, wall.Y, (int)known.Id };
+            _world.Visible = true;
+            _world.ForcedMouse = _world.CanvasSize / 2;
+            await Delay(0.3);
+            JsonNode pointer = JsonNode.Parse(await tools.RunAsync("world_state", null, CancellationToken.None));
+            var picked = _world.Host.Picked as GUO.Game.GameObjects.GameObject;
+            AiCheck("tools_world_pointer_pick", picked != null && pointer["picked"] != null &&
+                (string)pointer["position_source"] == "pointer" && (int)pointer["x"] == picked.X && (int)pointer["y"] == picked.Y &&
+                (int)pointer["picked"]["graphic"] == picked.Graphic && (int)pointer["picked"]["hue"] == picked.Hue &&
+                (int)pointer["picked"]["z"] == picked.Z && !string.IsNullOrEmpty((string)pointer["picked"]["kind"]), pointer.ToJsonString());
+            _world.ForcedMouse = null;
+            JsonNode blocked = JsonNode.Parse(await tools.RunAsync("walkable", wallArgs, CancellationToken.None));
+            AiCheck("tools_walkable_wall", (string)blocked["verdict"] == "blocked", blocked.ToJsonString());
+            JsonNode road = JsonNode.Parse(await tools.RunAsync("walkable",
+                new JsonObject { ["facet"] = 0, ["x"] = 1496, ["y"] = 1628 }, CancellationToken.None));
+            AiCheck("tools_walkable_road", (string)road["verdict"] is "walkable" or "surface", road.ToJsonString());
+
+            string invalid = await tools.RunAsync("describe_cell", new JsonObject { ["facet"] = 0, ["x"] = -1, ["y"] = 1628 }, CancellationToken.None);
+            string otherFacet = await tools.RunAsync("walkable", new JsonObject { ["facet"] = 1, ["x"] = 1496, ["y"] = 1628 }, CancellationToken.None);
+            string fraction = await tools.RunAsync("describe_cell", new JsonObject { ["facet"] = 0, ["x"] = 1496.5, ["y"] = 1628 }, CancellationToken.None);
+            AiCheck("tools_world_invalid_cells", invalid.StartsWith("error:") && otherFacet.StartsWith("error:") && fraction.StartsWith("error:"), $"{invalid} / {otherFacet} / {fraction}");
+
+            JsonObject stamp = new() { ["facet"] = 0, ["x"] = 1496, ["y"] = 1628, ["graphic"] = 0x0E75, ["hue"] = 33 };
+            int bx = 1496 >> 3, by = 1628 >> 3;
+            string before = _world.Host.Project.BlockText(0, bx, by);
+            int count = _world.Editor.StaticsAt(0, 1496, 1628).Count;
+            tools.Approve = null;
+            string refused = await tools.RunAsync("stamp_static", stamp, CancellationToken.None);
+            AiCheck("tools_stamp_refused_no_approver", refused.StartsWith("refused:") &&
+                _world.Host.Project.BlockText(0, bx, by) == before && _world.Editor.UndoCount == 0, refused);
+            int approvals = 0;
+            tools.Approve = _ => { approvals++; return Task.FromResult(true); };
+            JsonNode applied = JsonNode.Parse(await tools.RunAsync("stamp_static", stamp, CancellationToken.None));
+            AiCheck("tools_stamp_applied", (bool)applied["applied"] && approvals == 1 && _world.Editor.UndoCount == 1 &&
+                File.Exists(_world.Host.Project.BlockPath(0, bx, by)) &&
+                _world.Editor.StaticsAt(0, 1496, 1628).Count == count + 1 &&
+                _world.Editor.StaticsAt(0, 1496, 1628).Any(s => s.Id == 0x0E75 && s.Hue == 33 && s.Z == _world.Modes.Data.LandZ(1496, 1628)), applied.ToJsonString());
+            AiCheck("tools_stamp_undo", _world.Editor.Undo() && _world.Host.Project.BlockText(0, bx, by) == before &&
+                _world.Editor.StaticsAt(0, 1496, 1628).Count == count);
+            await tools.RunAsync("stamp_static", stamp, CancellationToken.None);
+            AiCheck("tools_stamp_approval_each_call", approvals == 2 && _world.Editor.UndoCount == 1);
+            AiCheck("tools_stamp_second_undo", _world.Editor.Undo() && _world.Host.Project.BlockText(0, bx, by) == before);
+
+            // An approved call cancelled before its main-thread callback must never edit later.
+            Action queued = null;
+            var delayed = AiToolHost.For(new SearchContext { World = _world, Data = _data }, () => null, action => queued = action);
+            delayed.Approve = _ => Task.FromResult(true);
+            using (var cancel = new CancellationTokenSource())
+            {
+                Task<string> pending = delayed.RunAsync("stamp_static", stamp, cancel.Token);
+                cancel.Cancel();
+                queued?.Invoke();
+                string cancelled = await pending;
+                AiCheck("tools_stamp_cancelled_not_written", queued != null && cancelled.StartsWith("error:") &&
+                    _world.Host.Project.BlockText(0, bx, by) == before && _world.Editor.UndoCount == 0, cancelled);
+            }
+            _world.Host.CloseProject();
+            string noProject = await tools.RunAsync("stamp_static", stamp, CancellationToken.None);
+            AiCheck("tools_stamp_requires_project", noProject.StartsWith("error:") && _world.Host.Project == null, noProject);
+        }
+        finally
+        {
+            tools.Approve = approve;
+            _world.Modes.SetMode(priorMode);
+            _world.ForcedMouse = priorMouse;
+            _world.Visible = priorVisible;
+            _world.Objects.Close();
+            _world.Host.CloseProject();
+            _world.Editor.Clear();
+            if (priorProject != null) _world.OpenProject(priorProject);
+            _world.Modes.Invalidate();
+            var after = InstallStamp();
+            AiCheck("tools_stamp_install_untouched", after.Count == install.Count && after.All(kv => install.TryGetValue(kv.Key, out DateTime t) && t == kv.Value));
+        }
+    }
+
     private static bool PngMagic(string base64)
     {
         try
@@ -633,6 +911,7 @@ public partial class EditorSmoke
 
         public string Url { get; }
         public JsonNode LastChatBody { get; private set; }
+        public int ChatRequests { get; private set; }
         public string LastAuth { get; private set; }
         public JsonNode LastCompatBody { get; private set; }
         public int CompatRequests { get; private set; }
@@ -697,6 +976,7 @@ public partial class EditorSmoke
                 else if (path == "/api/chat")
                 {
                     LastChatBody = JsonNode.Parse(body);
+                    ChatRequests++;
                     await Write(c,
                         "{\"message\":{\"role\":\"assistant\",\"thinking\":\"hmm\"},\"done\":false}\n"
                         + "{\"message\":{\"role\":\"assistant\",\"content\":\"Hello \"},\"done\":false}\n"

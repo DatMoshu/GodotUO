@@ -127,10 +127,48 @@ namespace GUO
         // Window, UoAssist does what it does on a non-Windows OS: nothing.
         internal GameController(bool embedded)
         {
+            _embedded = embedded;
+        }
+
+        private readonly bool _embedded;
+        private Rectangle _embeddedClientBounds = Rectangle.Empty;
+
+        /// <summary>Cache the owned viewport size in local pixels; no OS window or desktop DPI.</summary>
+        internal void SetEmbeddedClientBounds(Rectangle bounds)
+        {
+            if (!_embedded || !_embeddedOwnershipAcquired || _embeddedUnloadAttempted || !ReferenceEquals(Client.Game, this))
+            {
+                throw new InvalidOperationException("Embedded bounds require the current claimed controller");
+            }
+
+            if (bounds.Width < 0 || bounds.Height < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(bounds));
+            }
+
+            _embeddedClientBounds = new Rectangle(0, 0, bounds.Width, bounds.Height);
+        }
+
+        private bool _embeddedOwnershipAcquired, _embeddedUnloadAttempted;
+
+        /// <summary>Record a successful exclusive attachment before embedded loading can mutate shared state.</summary>
+        internal void ClaimEmbeddedOwnership()
+        {
+            if (_embeddedUnloadAttempted || !ReferenceEquals(Client.Game, this))
+            {
+                throw new InvalidOperationException("Embedded ownership requires the current attached controller");
+            }
+
+            _embeddedOwnershipAcquired = true;
         }
 
         internal void LoadEmbedded(CanvasItem host)
         {
+            if (!_embeddedOwnershipAcquired || _embeddedUnloadAttempted || !ReferenceEquals(Client.Game, this))
+            {
+                throw new InvalidOperationException("Embedded loading requires the current claimed controller");
+            }
+
             _uoSpriteBatch = new UltimaBatcher2D(host.GetCanvasItem());
             _displayScale = 1f;
             Fonts.Initialize();
@@ -156,17 +194,97 @@ namespace GUO
 
         internal void UnloadEmbedded()
         {
+            if (_embeddedUnloadAttempted)
+            {
+                return;
+            }
+
+            // This records an attempt, not successful release of every resource.
+            _embeddedUnloadAttempted = true;
+            bool ownsSharedState = _embeddedOwnershipAcquired && ReferenceEquals(Client.Game, this);
+            _embeddedOwnershipAcquired = false;
             Scene = null;
-            UO.Unload();
-            _uoSpriteBatch?.Dispose();
+            Exception unloadError = null;
+            try
+            {
+                if (ownsSharedState && ReferenceEquals(Client.Game, this))
+                {
+                    // The menu is a root sibling. Only the current claimed owner releases it.
+                    GUO.Renderer.PostFx.PostFxMenu.Shutdown();
+                    if (ReferenceEquals(Client.Game, this))
+                    {
+                        UO.Unload();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                unloadError = ex;
+                throw;
+            }
+            finally
+            {
+                try
+                {
+                    DisposeEmbeddedResources(ownsSharedState);
+                }
+                catch (Exception cleanupError) when (unloadError != null)
+                {
+                    throw new AggregateException("Embedded unload and resource cleanup both failed", unloadError, cleanupError);
+                }
+            }
+        }
+
+        private void DisposeEmbeddedResources(bool ownsSharedState)
+        {
+            List<Exception> errors = null;
+            void Release(Action release)
+            {
+                try
+                {
+                    release();
+                }
+                catch (Exception ex)
+                {
+                    (errors ??= new List<Exception>()).Add(ex);
+                }
+            }
+
+            // These resources belong to this controller. Clear references before
+            // attempting disposal so a repeated or reentrant teardown cannot reuse them.
+            var batcher = _uoSpriteBatch;
             _uoSpriteBatch = null;
-            _hueTexture?.Dispose();
+            var hues = _hueTexture;
             _hueTexture = null;
-            _lightTexture?.Dispose();
+            var lights = _lightTexture;
             _lightTexture = null;
-            TextureAtlas.DisposeAll();
-            SolidColorTextureCache.Clear();
-            _renderTargets.Dispose();
+            Release(() => batcher?.Dispose());
+            Release(() => hues?.Dispose());
+            Release(() => lights?.Dispose());
+            Release(() =>
+            {
+                if (ownsSharedState && ReferenceEquals(Client.Game, this))
+                {
+                    TextureAtlas.DisposeAll();
+                }
+            });
+            Release(() =>
+            {
+                if (ownsSharedState && ReferenceEquals(Client.Game, this))
+                {
+                    SolidColorTextureCache.Clear();
+                }
+            });
+            Release(_renderTargets.Dispose);
+
+            if (errors?.Count == 1)
+            {
+                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(errors[0]).Throw();
+            }
+            else if (errors?.Count > 1)
+            {
+                throw new AggregateException("Embedded resource cleanup failed", errors);
+            }
         }
         // END PORT DEVIATION (GUO)
 
@@ -221,6 +339,13 @@ namespace GUO
         {
             get
             {
+                // PORT DEVIATION (GUO): the embedded World has no Window.
+                // Before layout, Empty lets profile defaults use their existing minimum.
+                if (_embedded)
+                {
+                    return _embeddedClientBounds;
+                }
+
                 var window_rectangle = Window.ClientBounds;
                 return new Rectangle(
                     window_rectangle.X,

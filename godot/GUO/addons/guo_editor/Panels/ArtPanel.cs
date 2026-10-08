@@ -14,6 +14,22 @@ using GUO.Assets;
 [Tool]
 public partial class ArtPanel : GridPanel
 {
+    public bool ShowNames { get; set; }
+    public bool Autocomplete { get; set; }
+    internal LineEdit SearchInput => SearchBox;
+    internal ArtAutocomplete Suggestions { get; private set; }
+
+    protected override void SearchUiReady()
+    {
+        if (Autocomplete)
+        {
+            SearchBox.PlaceholderText = "Search land & statics…";
+            var complete = new ArtAutocomplete();
+            Suggestions = complete;
+            AddChild(complete);
+            complete.Attach(SearchBox, Data, (land, id) => { SelectKind(land); Search($"0x{id:X4}"); });
+        }
+    }
     private OptionButton _kind;
     private readonly List<int>[] _ids = new List<int>[2];
 
@@ -71,7 +87,7 @@ public partial class ArtPanel : GridPanel
     protected override Godot.Collections.Dictionary DragPayload(int id) =>
         Land ? null : new Godot.Collections.Dictionary { ["guo_static"] = id };
 
-    protected override string Caption(int id) => $"{id:X4}";
+    protected override string Caption(int id) => ShowNames ? $"{Data.NameOf(Index(id))}\n{id:X4}" : $"{id:X4}";
 
     protected override string Tooltip(int id) => $"0x{id:X4} {Data.NameOf(Index(id))}";
 
