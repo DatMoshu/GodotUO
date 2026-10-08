@@ -107,3 +107,18 @@ off a disk; it cannot stop capture of what is drawn): data_formats section 36, "
 python tools\art_extract\run.py keygen --shard myshard --key-file %USERPROFILE%\keys\myshard.key
 python tools\art_extract\run.py pack-container --shard myshard --key-file %USERPROFILE%\keys\myshard.key --what gumps
 ```
+
+## Mark and prove (AX7)
+
+`mark` writes an invisible per-shard mark, signed with the owner's ADR-0019 key, into the low 3 bits of PNG art;
+`pack-container --mark-key SIGN.key --serial N` marks every page it seals; `prove IMAGE [--sign-key-pub P]` reads it from a PNG,
+a page or a crop and reports shard id, serial and whether the signature holds. Off by default, a player's own set is never
+marked, and it proves the origin of a copied file without preventing copying: it survives a PNG re-save and a crop of about
+64 px of art, not scaling, JPEG, requantising or a screenshot. Format, measured numbers and the shader's exact-value
+hazards: data_formats section 36, "Watermark". Code: `art_mark.py`, `art_png.decode_any`; `mark_measure.py` re-measures it on
+synthetic art and can write the side-by-side still (`docs/images/art_mark_side_by_side.png`).
+
+```
+python tools\art_extract\run.py mark --shard myshard --sign-key %USERPROFILE%\keys\myshard-sign.key --serial 17 --in art_folder --out build\marked
+python tools\art_extract\run.py prove build\marked\gump_0001.png --sign-key-pub ed25519:...
+```

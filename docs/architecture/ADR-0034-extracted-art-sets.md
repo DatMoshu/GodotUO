@@ -113,6 +113,23 @@ unsupported): data_formats section 36.
 does not stop capture of what is drawn, and a player holding the key can read the art. A player's own extracted set
 stays plain and unprotected, as decision 4 says.
 
+## AX7: an invisible signed mark for a shard's custom art
+
+The second half of the art-protection addendum (option C): a mark in the art that names the shard and the copy, signed
+with the owner's ADR-0019 key, so an owner can show where a leaked file came from. It changes pixels, not the format:
+`tools/art_extract/art_mark.py` writes it into the low 3 bits of the RGBA8 channels, which the 1555 source never
+carried, and `prove` reads it back from a PNG, a page or a crop. Off by default; `pack-container --mark-key` marks every
+page of a container, `mark` marks PNG files, and a player's own set is never marked (decision 4), so parity checks stay
+exact. The mark is invisible to the hue path only with care, which the plan did not know: the shader decides some things
+from exact values (`PARTIAL_HUED` needs r == g == b; the gump and text tests are at 0.02 and 0.04; the top hue texel), so
+the mark skips pixels with a 5-bit channel of 0, 1 or 31 and gives grey pixels the same bits in all three channels. Details,
+measured robustness and the limits: data_formats section 36, "Watermark".
+
+**Threat model.** It proves the origin of a copied *file*. It does not prevent copying, it does not survive scaling, JPEG,
+5-bit requantisation or a screenshot of lit, hued art, and the pattern is a constant of the format (not a secret), so
+someone who knows the format can strip it. What cannot be forged is the signature: a payload naming a shard and serial
+verifies only against that owner's public key.
+
 ## Validation
 
 Contract only. Each later story proves its part: AX1 byte-determinism and 100% `verify`; AX2 identical frames on/off

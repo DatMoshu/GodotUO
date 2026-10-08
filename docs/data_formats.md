@@ -2282,13 +2282,67 @@ refusal messages for it.
 **Threat model, in plain words.** Anything the client draws can be captured: screenshots, a GPU capture, a debugger
 reading the decrypted pages. The container raises the bar for **casual copying of a shard's custom art off the disk**
 and nothing more; a player who holds the key, or anyone who attaches a debugger to a running client, can read the
-art. It is not copy protection. Provenance of a leaked copy is a separate tool (AX7).
+art. It is not copy protection. Provenance of a leaked copy is a separate tool (AX7, "Watermark" below).
 
 **Tests.** `tools/art_extract/test_container.py` (round trip equals the plain set's files, tampered ciphertext / tag /
 nonce refused per chunk, wrong key names the shard, header-only change refused, chunk renamed refused, cut file and
 damaged table refused, only the container reaches the disk, no key in file or output, a failed export leaves nothing);
 `ArtSetParityProbe` with `UO_ART_PARITY_MODE=synthetic` repeats the open/refuse cases in the client's own code on a
 made-up container; with `UO_ART_SHARD` set it compares every id through the real loaders with the container on and off.
+
+### Watermark (AX7, `art_mark.py`)
+
+A shard owner can mark custom art so a leaked copy can be traced. **Off by default; a player's own set is never marked.**
+`pack-container --shard ID --key-file K --mark-key SIGN.key --serial N` marks every page it seals; `mark --shard ID
+--sign-key SIGN.key --serial N --in PNG_OR_FOLDER --out PATH` marks PNG files (`--out` obeys the rule of `export`);
+`prove IMAGE [--sign-key-pub P] [--json]` reads the mark from a PNG, a page or a crop. `SIGN.key` is the owner's ADR-0019
+signing key (`tools/asset_store/run.py keygen`); `P` is its `ed25519:` public key or a file holding one. Exit codes of
+`prove`: 0 found (and valid or unchecked), 1 none found or signature invalid, 2 unreadable file.
+
+**Where it lives.** The loaders expand each 5-bit channel to 8 bits, so the low 3 bits of an RGBA8 channel carry nothing
+the game reads. The mark writes into them, on opaque pixels only. The 5-bit values and alpha never change, so the hue
+lookup (top 5 bits) is unchanged; an unhued pixel moves by at most 7/255 per channel (`docs/images/art_mark_side_by_side.png`:
+original, marked, difference x32; the black outline and transparent ground carry nothing). The shader decides three
+things from exact values, so a pixel carries the mark only if every 5-bit channel is 2..30 (`uo_hue_core.gdshaderinc`:
+the gump test `r < 0.02`, the text test `> 0.04`, the top hue texel), and a grey pixel (equal 5-bit channels) gets the same
+low bits in all three channels, because `PARTIAL_HUED` hues a pixel only when r == g == b. `SPECTRAL` draws alpha from the
+unhued red (`1 - 1.5 r`), so a spectral sprite can differ by up to 4% in alpha; that is the one visible effect. Art that
+did not come from 1555 (equal 5-bit channels, unequal 8-bit ones) is refused by `mark` unless `--force`.
+
+**Layout.** A 16 x 16 tile of cells (x, y, channel, bit) repeats over the picture; a fixed permutation sends each of its
+2304 cells to one of 1024 coded bits and a fixed whitening bit is XORed in. A reader takes a majority vote per coded bit
+over every cell it sees. A crop only shifts the tile's phase, so `prove` tries all 256 phases (on the densest 128 x 128
+window, then reads the whole picture at the best phase). The pattern is a constant of the format, not a key: `prove` must
+work from a public key alone.
+
+```
+payload (124 bytes, zero padded) then CRC-32 of those 124 bytes  =  1024 coded bits
+    version u8 = 1 | shard id length u8 | shard id | serial u32 big-endian | Ed25519 signature (64)
+signed message  =  b"guo-art-mark@1\0" + shard id + b"\0" + serial (4 bytes, big-endian)
+```
+
+**Measured** (`python tools\art_extract\mark_measure.py`, synthetic sprite-like art, about 55% opaque; 60 random crops per size):
+
+| | result |
+|---|---|
+| carriers | 84% of opaque pixels (the rest are dark, near-white or partly transparent) |
+| crop N x N | N=32 60%, N=48 77%, **N=64 98%, N=96 100%** read; a crop that held at least 659 carrier pixels was always read |
+| fully opaque art | N=16 and larger always read; N=12 not |
+| PNG re-save (own encoder, Pillow with adaptive filters, extra chunks) | survives |
+| 5-bit requantisation | **does not survive** (the 5-bit value is all that is left, by construction) |
+| JPEG q95, scaling (nearest or bilinear), a darkened copy | **do not survive** |
+| screenshot of the running client | **does not survive**: hues, lighting and scaling rewrite every pixel |
+
+So **N is about 64 px of sprite art (or about 700 opaque pixels)**; a smaller piece may or may not read.
+
+**Honesty.** Drawn pixels can always be captured. The mark proves the origin of a copied *file* (a page, an exported PNG, a
+crop of one); it does not prevent copying, anyone who knows this format can strip it, and what it proves is only that the
+file carries a payload signed by that owner's key. A forged serial fails the signature.
+
+**Tests.** `tools/art_extract/test_mark.py` (payload and signature, forged serial; 5-bit values, alpha and the 7/255 bound;
+the shader's exact-value decisions on a marked page; grey, dark and bright pixels; whole picture, crops at several offsets,
+a small opaque crop; a PNG re-saved with every row filter; the non-survivors; `mark`, `prove`, the output rule, no signing
+key in any output; a container with the mark and a plain set without one).
 
 ### Example (`land/index.json`, abridged)
 

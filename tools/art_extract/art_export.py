@@ -173,8 +173,10 @@ def decode_class(src, log=None) -> tuple[dict[int, tuple[int, int, bytes]], list
 
 
 def export(data: Path, out: Path, what: tuple[str, ...] = CLASSES, *, client_version: str = "0.0",
-           generated: str | None = None, log=print, sink=None) -> dict:
-    """Write pages and indexes for `what` through `sink` (default: files in `out`). Returns the set.json document."""
+           generated: str | None = None, log=print, sink=None, marker=None) -> dict:
+    """Write pages and indexes for `what` through `sink` (default: files in `out`). Returns the set.json document.
+
+    `marker` (art_mark.Marker, AX7) writes a shard's mark into every page; only a shard owner's container uses it."""
     data = Path(data)
     sink = sink or FolderSink(out)
     srcs = sources.open_sources(data, what)
@@ -184,7 +186,7 @@ def export(data: Path, out: Path, what: tuple[str, ...] = CLASSES, *, client_ver
     fp = fingerprint(data, names)
     sink.begin(fp)
     try:
-        doc = _export_into(sink, srcs, anim_src, fp, data, names, client_version, generated, log)
+        doc = _export_into(sink, srcs, anim_src, fp, data, names, client_version, generated, log, marker)
         sink.end()
     except BaseException:
         sink.abort()
@@ -192,15 +194,16 @@ def export(data: Path, out: Path, what: tuple[str, ...] = CLASSES, *, client_ver
     return doc
 
 
-def _export_into(sink, srcs, anim_src, fp, data, names, client_version, generated, log) -> dict:
+def _export_into(sink, srcs, anim_src, fp, data, names, client_version, generated, log, marker=None) -> dict:
     classes = {}
+    stamp = (lambda buf: marker.apply(buf, atlas.PAGE, atlas.PAGE)) if marker else (lambda buf: buf)
     for src in srcs:
         t0 = time.time()
         images, skipped = decode_class(src)
         placed, pages = atlas.pack(images)
         page_docs, total = [], 0
         for n, buf in enumerate(pages):
-            png = pngio.encode_rgba(atlas.PAGE, atlas.PAGE, buf)
+            png = pngio.encode_rgba(atlas.PAGE, atlas.PAGE, stamp(buf))
             name = f"page_{n:04d}.png"
             sink.put(f"{src.cls}/{name}", png)
             page_docs.append({"file": name, "sha256": hashlib.sha256(png).hexdigest()})
@@ -218,7 +221,7 @@ def _export_into(sink, srcs, anim_src, fp, data, names, client_version, generate
         t0 = time.time()
 
         def write_page(folder, n, rgba):
-            png = pngio.encode_rgba(atlas.PAGE, atlas.PAGE, rgba)
+            png = pngio.encode_rgba(atlas.PAGE, atlas.PAGE, stamp(rgba))
             name = f"page_{n:04d}.png"
             sink.put(f"anim/{name}", png)
             return {"file": name, "sha256": hashlib.sha256(png).hexdigest(), "bytes": len(png)}

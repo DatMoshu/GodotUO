@@ -13,6 +13,10 @@ only at 100%. The set is derived from your own install: it stays on your machine
 `pack-container` is for a shard owner's custom art: the same pieces sealed with AES-256-GCM into one `<shard>.guoart`,
 written straight from memory (no PNG reaches the disk). It keeps the art from being copied off a disk by someone without
 the shard's key; it cannot stop a screenshot. See docs/data_formats.md section 36.
+
+`mark` writes an invisible per-shard mark, signed with the owner's ADR-0019 key, into the low bits of PNG art (or into
+every page of a container, with `pack-container --mark-key`); `prove` reads it back from a PNG, a page or a crop and checks
+the signature. The mark proves where a copied file came from; it does not prevent copying.
 """
 
 from __future__ import annotations
@@ -27,6 +31,8 @@ sys.path.insert(0, str(HERE))
 
 import art_container as container  # noqa: E402
 import art_export as ex  # noqa: E402
+import art_mark as mark  # noqa: E402
+import art_png as pngio  # noqa: E402
 from art_sources import CLASSES  # noqa: E402
 
 # The names people type; the set's own class names are the content seam's keys.
@@ -108,10 +114,81 @@ def cmd_pack_container(args) -> int:
     what = parse_what(args.what)
     print(f"sealing {', '.join(what)} for shard {shard} (key id {container.key_id_of(key)}) into {out}")
     sink = ex.ContainerSink(out, shard, key)
-    doc = ex.export(data, out, what, client_version=args.client_version or cfg["client_version"], sink=sink)
+    marker = None
+    if args.mark_key:
+        marker = mark.Marker.make(shard, _serial(args.serial), Path(args.mark_key))
+        print(f"marking every page with serial {args.serial}")
+    elif args.serial is not None:
+        raise ex.ArtExtractError("--serial goes with --mark-key")
+    doc = ex.export(data, out, what, client_version=args.client_version or cfg["client_version"], sink=sink, marker=marker)
     print(f"done: {sum(c['count'] for c in doc['classes'].values())} images, {out.stat().st_size / 1e6:.1f} MB container, "
           f"{time.time() - t0:.1f} s, set_id {doc['fingerprint']['set_id'][:16]}")
     return 0
+
+
+def _serial(value) -> int:
+    if value is None:
+        raise ex.ArtExtractError("--serial is required with --mark-key (a number that names this copy)")
+    return int(value)
+
+
+def _read_png(path: Path):
+    import numpy as np
+    w, h, rgba = pngio.decode_any(path.read_bytes())
+    return np.frombuffer(rgba, dtype=np.uint8).reshape(h, w, 4).copy()
+
+
+def cmd_mark(args) -> int:
+    """Mark PNG files: one file, or every PNG under a folder (relative paths kept)."""
+    cfg = ex.settings()
+    src = Path(args.input)
+    out = ex.check_out(Path(args.out), cfg["art_dir"], cfg["root"])
+    marker = mark.Marker.make(container.check_shard_id(args.shard), _serial(args.serial), Path(args.sign_key))
+    files = [(src, Path(src.name))] if src.is_file() else [(f, f.relative_to(src)) for f in sorted(src.rglob("*.png"))]
+    if not files:
+        raise ex.ArtExtractError(f"no PNG files in {src}")
+    if src.is_file() and out.suffix.lower() != ".png":
+        out = out / src.name
+    changed = 0
+    for f, rel in files:
+        rgba = _read_png(f)
+        bad = mark.unsafe_pixels(rgba)
+        if bad and not args.force:
+            raise ex.ArtExtractError(f"{f}: {bad} pixels have equal 5-bit channels but unequal 8-bit ones (not art that came "
+                                     f"from 1555); marking would change how a partly hued sprite is drawn. --force marks anyway")
+        marked = mark.mark_rgba(rgba, marker.payload)
+        target = out if src.is_file() else out / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(pngio.encode_rgba(rgba.shape[1], rgba.shape[0], marked.tobytes()))
+        changed += int((marked != rgba).any(axis=-1).sum())
+    print(f"marked {len(files)} file(s) for shard {args.shard}, serial {args.serial}; {changed} pixels carry bits; "
+          f"written to {out}")
+    return 0
+
+
+def cmd_prove(args) -> int:
+    public = mark.read_public_key(args.sign_key_pub) if args.sign_key_pub else None
+    path = Path(args.image)
+    try:
+        rgba = _read_png(path)
+    except ValueError as err:
+        raise ex.ArtExtractError(f"{path}: {err}") from None
+    found = mark.read_rgba(rgba)
+    if args.json:
+        import json
+        doc = {"found": bool(found)}
+        if found:
+            doc.update(shard_id=found["shard_id"], serial=found["serial"], signature=mark.check_signature(found, public))
+        print(json.dumps(doc))
+    elif not found:
+        print(f"no mark found in {path.name} ({rgba.shape[1]}x{rgba.shape[0]} px)")
+    else:
+        sig = mark.check_signature(found, public)
+        print(f"mark found: shard {found['shard_id']}, serial {found['serial']}, signature {sig}"
+              + ("" if public else " (give --sign-key-pub to check it)"))
+    if not found:
+        return 1
+    return 0 if mark.check_signature(found, public) in ("valid", "unchecked") else 1
 
 
 def cmd_info(args) -> int:
@@ -152,14 +229,29 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--out", help="the container file (default UO_ART_EXTRACT_DIR/containers/<shard>.guoart)")
     c.add_argument("--from", dest="data", help="client data folder (default UO_CLIENT_DATA)")
     c.add_argument("--client-version", dest="client_version")
+    c.add_argument("--mark-key", dest="mark_key", help="also write the shard's mark into every page, signed with this ADR-0019 key file")
+    c.add_argument("--serial", help="the number that names this copy (with --mark-key)")
     c.set_defaults(fn=cmd_pack_container)
+    m = sub.add_parser("mark", help="write an invisible signed per-shard mark into PNG art")
+    m.add_argument("--shard", required=True)
+    m.add_argument("--sign-key", dest="sign_key", required=True, help="the owner's ADR-0019 signing key file")
+    m.add_argument("--serial", required=True, help="a number that names this copy")
+    m.add_argument("--in", dest="input", required=True, help="a PNG, or a folder of PNGs")
+    m.add_argument("--out", required=True, help="the marked PNG, or the folder for them (inside UO_ART_EXTRACT_DIR or build/)")
+    m.add_argument("--force", action="store_true", help="mark art even where that changes how a grey pixel hues")
+    m.set_defaults(fn=cmd_mark)
+    pr = sub.add_parser("prove", help="read the mark from a PNG, a page or a crop, and check its signature")
+    pr.add_argument("image")
+    pr.add_argument("--sign-key-pub", dest="sign_key_pub", help="the owner's public key (ed25519:... or a file holding it)")
+    pr.add_argument("--json", action="store_true")
+    pr.set_defaults(fn=cmd_prove)
     i = sub.add_parser("info", help="print a container's header (no key needed)")
     i.add_argument("file")
     i.set_defaults(fn=cmd_info)
     args = ap.parse_args(argv)
     try:
         return args.fn(args)
-    except (ex.ArtExtractError, container.ContainerError) as err:
+    except (ex.ArtExtractError, container.ContainerError, mark.MarkError) as err:
         print(f"art_extract: {err}", file=sys.stderr)
         return 2
     except FileNotFoundError as err:

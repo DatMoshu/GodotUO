@@ -119,3 +119,21 @@ that shard's key (delivered inside the shard's signed pack). It keeps the art fr
 without the key. It does **not** stop anyone from capturing what the game draws, and a player with the key can read the
 art, so treat it as a lock on the door, not a vault. Without the key, or with a wrong one, the client reads the original
 files and logs one warning that names the shard. Details: `docs/data_formats.md` section 36.
+
+## Tracing a leaked copy: the mark (AX7)
+
+Also for shard owners, and also optional. `art_extract mark` (and `pack-container --mark-key`) writes an invisible mark into
+the low bits of the art's pixels: the shard id and a serial that names the copy, signed with the owner's ADR-0019 key. If a
+file turns up somewhere it should not, `art_extract prove FILE --sign-key-pub KEY` says which shard and which copy it came
+from, and whether the signature holds. The mark does not change how the art is drawn (hued art is identical; unhued pixels
+move by at most 7 of 255, `docs/images/art_mark_side_by_side.png`). A player's own extracted set is never marked.
+
+Plainly: **drawn pixels can always be captured, and this does not prevent copying.** It proves where a copied *file* came
+from. It survives a PNG re-save and a crop of about 64 px of art or more; it does not survive scaling, JPEG, requantising the
+colours, or a screenshot of the running game. Anyone who knows the format can strip it. Numbers and format: data_formats
+section 36, "Watermark"; `python tools\art_extract\mark_measure.py` re-measures it on synthetic art.
+
+```
+python tools\art_extract\run.py mark --shard myshard --sign-key %USERPROFILE%\keys\myshard-sign.key --serial 17 --in art_folder --out %UO_ART_EXTRACT_DIR%\marked
+python tools\art_extract\run.py prove marked\gump_0001.png --sign-key-pub ed25519:...
+```
