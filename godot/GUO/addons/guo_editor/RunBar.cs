@@ -127,7 +127,10 @@ public partial class RunBar : HBoxContainer
     public override void _ExitTree() { if (GetWindow() != null && GetWindow().IsConnected(Window.SignalName.SizeChanged, Callable.From(RefitHeader))) GetWindow().SizeChanged -= RefitHeader; ShowTabNames(); _generation++; _poll?.Stop(); _connection?.Dispose(); _connection = null; _connect = null; }
     // The editor's own header cannot scroll or wrap: when the main-screen tabs and the run bar do not fit the window,
     // the tabs that are not open show their icon alone (the name is the tooltip) until they do.
-    private readonly List<(Button Button, string Text)> _tabs = new();
+    // The name is hidden, never cleared: the editor finds a main screen by its button's text
+    // (EditorInterface.SetMainScreenEditor), so a blank button cannot be opened by name.
+    private readonly List<(Button Button, bool Clip, HorizontalAlignment Icon)> _tabs = new();
+    private static readonly string[] TabFontColors = { "font_color", "font_hover_color", "font_pressed_color", "font_hover_pressed_color", "font_focus_color", "font_disabled_color" };
     private void RefitHeader() { _open = ""; FitHeader(); }
     private bool _fitting;
     private string _open = "";
@@ -149,7 +152,9 @@ public partial class RunBar : HBoxContainer
             foreach (Node n in strip.GetChildren())
                 if (n is Button b && b.Text.Length > 0 && b.Icon != null && !b.ButtonPressed)
                 {
-                    _tabs.Add((b, b.Text)); b.TooltipText = b.Text; b.Text = "";
+                    // A centred icon sizes the button to the icon alone (no icon-to-text gap for the hidden name).
+                    _tabs.Add((b, b.ClipText, b.IconAlignment)); b.TooltipText = b.Text; b.ClipText = true; b.IconAlignment = HorizontalAlignment.Center;
+                    foreach (string c in TabFontColors) b.AddThemeColorOverride(c, Colors.Transparent);
                 }
             await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame); await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
             if (IsInsideTree() && Right() > GetWindow().Size.X) _server.CustomMinimumSize = new Vector2(100, 0); // the name is trimmed, its tooltip is whole
@@ -159,7 +164,12 @@ public partial class RunBar : HBoxContainer
     private float Right() { float end = GetGlobalRect().End.X; foreach (Node c in GetChildren()) if (c is Control k && k.Visible) end = Math.Max(end, k.GetGlobalRect().End.X); return end; }
     private void ShowTabNames()
     {
-        foreach (var (b, text) in _tabs) if (GodotObject.IsInstanceValid(b)) b.Text = text;
+        foreach (var (b, clip, icon) in _tabs)
+            if (GodotObject.IsInstanceValid(b))
+            {
+                b.ClipText = clip; b.IconAlignment = icon;
+                foreach (string c in TabFontColors) b.RemoveThemeColorOverride(c);
+            }
         _tabs.Clear();
     }
     private static Button FindTab(Node n, string text)

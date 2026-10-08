@@ -1545,6 +1545,7 @@ public partial class EditorSmoke : Node
         }));
 
         _steps.Add((1, VerifyBrushWorkspace));
+        AddWorldCentreSteps("default");
         if (!Headless)
         {
             Vector2I originalSplit = default;
@@ -1591,7 +1592,8 @@ public partial class EditorSmoke : Node
                 GetWindow().Mode = Window.ModeEnum.Windowed;
                 GetWindow().Size = new Vector2I((int)(1920 * EditorInterface.Singleton.GetEditorScale()), (int)(1080 * EditorInterface.Singleton.GetEditorScale()));
             }));
-            _steps.Add((30, () =>
+            AddWorldCentreSteps("1080");
+            _steps.Add((1, () =>
             {
                 Expect(_world.NearbyHasCenterTile(), "nearby_tiles_show_land_and_stack");
                 Expect(_world.CommonToolsFit(), "common_tools_fit_1080p");
@@ -1601,7 +1603,8 @@ public partial class EditorSmoke : Node
                 shot?.SavePng(Path.Combine(_out, $"editor_compact_1080{Suffix}.png"));
                 GetWindow().Size = new Vector2I((int)(1366 * EditorInterface.Singleton.GetEditorScale()), (int)(768 * EditorInterface.Singleton.GetEditorScale()));
             }));
-            _steps.Add((30, () =>
+            AddWorldCentreSteps("768");
+            _steps.Add((1, () =>
             {
                 Expect(_world.CommonToolsFit(), "common_tools_fit_768p");
                 CheckRunBarFits("768");
@@ -1613,6 +1616,36 @@ public partial class EditorSmoke : Node
         }
         // ADR-0027: render modes and map layers.
         AddModeSteps();
+    }
+
+    /// <summary>
+    /// ED4: opening the World tab by name (as Show in UO World, search and the tour do) makes World the open main
+    /// screen and gives its view the centre. From another main screen, after the header has had time to shrink its
+    /// tabs to icons (the editor finds a main screen by its button's text, so a blanked name could not be opened).
+    /// </summary>
+    private void AddWorldCentreSteps(string size)
+    {
+        _steps.Add((30, () => EditorInterface.Singleton.SetMainScreenEditor("2D")));
+        _steps.Add((10, () => EditorInterface.Singleton.SetMainScreenEditor(GuoEditorPlugin.WorldTabName)));
+        _steps.Add((20, () => CheckWorldFillsCentre(size)));
+    }
+
+    private void CheckWorldFillsCentre(string size)
+    {
+        Control centre = EditorInterface.Singleton.GetEditorMainScreen();
+        Button worldTab = null;
+        void Find(Node n) { if (n is Button b && b.Text == GuoEditorPlugin.WorldTabName && b.ToggleMode && b.GetParent() is HBoxContainer) worldTab = b; else foreach (Node c in n.GetChildren()) { if (worldTab != null) return; Find(c); } }
+        Find(EditorInterface.Singleton.GetBaseControl());
+        string open = (worldTab?.GetParent()?.GetChildren().OfType<Button>().FirstOrDefault(b => b.ButtonPressed)?.Text) ?? "";
+        var others = centre.GetChildren().OfType<Control>().Where(c => c != _world && c.Visible).Select(c => c.Name.ToString()).ToList();
+        float share = centre.Size.Y > 0 && _world.Visible ? _world.Size.Y / centre.Size.Y : 0;
+        GD.Print($"[GUO centre] {size}: open main screen '{open}', World view {_world.Size} of centre {centre.Size} ({share:P0}), other views shown [{string.Join(",", others)}]");
+        Expect(open == GuoEditorPlugin.WorldTabName, $"world_is_open_main_screen_{size}");
+        Expect(_world.Visible && others.Count == 0, $"world_alone_in_centre_{size}");
+        Expect(share >= 0.7f, $"world_view_fills_centre_{size}");
+        if (Headless) return;
+        using Image shot = EditorInterface.Singleton.GetBaseControl().GetViewport().GetTexture()?.GetImage();
+        shot?.SavePng(Path.Combine(_out, $"editor_world_centre_{size}{Suffix}.png"));
     }
 
     /// <summary>ED1: every run bar control and every World command row button lies inside the window, and the bar holds one server list.</summary>
