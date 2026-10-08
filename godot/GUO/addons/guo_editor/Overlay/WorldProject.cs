@@ -12,6 +12,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using GUO.Assets;
 using GUO.IO;
+using GUO.Workspace;
 
 /// <summary>One map block (8x8 cells) as a world project stores it: all 64 land cells and every static.</summary>
 public sealed class WorldBlock
@@ -107,7 +108,7 @@ public sealed class WorldProject : IDisposable
                 ["fingerprint"] = p.BaseFingerprint,
             },
         };
-        File.WriteAllText(file, json.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) + "\n");
+        Workspace.WriteAtomic(file, json.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) + "\n");
         return p;
     }
 
@@ -163,7 +164,7 @@ public sealed class WorldProject : IDisposable
         }
 
         Directory.CreateDirectory(BlockDir(facet));
-        File.WriteAllText(path, text);
+        Workspace.WriteAtomic(path, text);
     }
 
     /// <summary>Every block the project replaces on a facet.</summary>
@@ -268,7 +269,7 @@ public sealed class WorldProject : IDisposable
 
         Directory.CreateDirectory(BlockDir(b.Facet));
         string path = Path.Combine(BlockDir(b.Facet), $"{b.Key}.json");
-        File.WriteAllText(path, sb.ToString());
+        Workspace.WriteAtomic(path, sb.ToString());
         return path;
     }
 

@@ -22,6 +22,9 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
   `tools/modernuo/UPSTREAM.md` with an upstream-or-ours verdict and
   upstream-ready versions waiting for the owner's review. Nothing has been
   submitted.
+- The editor saves world blocks, shard objects and hue overlays to a temporary
+  file and then moves it into place, so a crash mid-save leaves the old file
+  whole.
 
 ### Platforms
 - **Android** (ARM64, debug): export, install, run and smoke from

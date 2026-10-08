@@ -11,6 +11,7 @@ using System.Text.Json.Nodes;
 using Godot;
 using GUO.Assets;
 using GUO.IO;
+using GUO.Workspace;
 
 /// <summary>The kinds of asset a world project can replace (ADR-0020).</summary>
 public enum AssetKind
@@ -213,7 +214,7 @@ public sealed partial class AssetOverlay
         sb.Append("  ]\n}\n");
         string path = PathOf(AssetKind.Hue, hue);
         Directory.CreateDirectory(Path.GetDirectoryName(path));
-        File.WriteAllText(path, sb.ToString());
+        Workspace.WriteAtomic(path, sb.ToString());
     }
 
     public (string Name, ushort[] Colors, ushort Start, ushort End) ReadHue(int hue)

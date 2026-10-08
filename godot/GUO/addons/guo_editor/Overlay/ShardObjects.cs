@@ -8,6 +8,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.Json.Nodes;
+using GUO.Workspace;
 
 /// <summary>A spawner in the neutral model (ADR-0014): server-neutral fields plus an opaque extra bag.</summary>
 public sealed class ShardSpawner
@@ -191,7 +192,7 @@ public sealed class ShardObjects
         sb.Append(items.Count > 0 ? "\n  ]\n" : "]\n");
         sb.Append("}\n");
         Directory.CreateDirectory(System.IO.Path.GetDirectoryName(Path));
-        File.WriteAllText(Path, sb.ToString());
+        Workspace.WriteAtomic(Path, sb.ToString());
     }
 
     /// <summary>A spawner as its line in objects.json, which is also its form on the wire (data_formats 10, 13).</summary>
