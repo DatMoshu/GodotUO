@@ -65,7 +65,11 @@ falls back to the original files. The byte-level contract is `docs/data_formats.
   (deleting it is always safe) but it lives under its own setting so it can be large, kept or deleted apart from the
   decode cache, and kept out of every bundle.
 
-## Known hazard (for AX2, not decided here)
+## Known hazard (settled in AX2)
+
+**Settled:** `ExtractedArtSource` lists, at mount, the ids the client folder's `Art/Statics`, `Art/Land` and `Gumps`
+override files hold (parsed as the loaders parse them) and never answers for those, so the loader reaches its own
+file. No verbatim loader is edited. Original statement of the hazard:
 
 `ArtLoader.GetArt` asks `Content` first and only then its own shard-art files (`_ourLand`, `_ourStatics`, which
 "correct art the archive already has"). An extracted source that answers through `Content` would therefore answer

@@ -64,3 +64,16 @@ and by `/parity-check` against `guoasset` (upstream's loaders).
 A set is derived from proprietary data. It is written only under `UO_ART_EXTRACT_DIR` (or `build/`), is gitignored, and
 is never committed, bundled or put in an export preset (rule 8). The tests use a synthetic install of random pixels;
 no game data is in any fixture. To remove a set, delete the folder.
+
+## Using a set in the client (AX2)
+
+Start the client with `--art-set` (or `UO_ART_SET=1`; `--no-art-set` forces it off). It mounts the set when `set.json`'s
+fingerprint matches the install, logs one `[GUO] art set mounted` line, and answers land, static, gump, texmap and light
+images from the pages; otherwise it logs one warning naming the reason and reads the original files. A shard-author
+override file under `Art/Statics`, `Art/Land` or `Gumps` in the client folder still wins over the set. Pages are read
+lazily; `UO_ART_SET_CACHE_MB` (default 256) caps the decoded pages kept in memory. Parity probe, every id through the
+real loaders with the set on and off:
+
+```
+godot-console --headless --path godot/GUO res://src/Assets/Extracted/ArtSetParityProbe.tscn -- --art-set
+```

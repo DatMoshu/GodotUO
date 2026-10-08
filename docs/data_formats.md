@@ -45,6 +45,7 @@ Every key resolves as: **environment variable → `config.local.bat` →
 | `UO_CACHE_DIR` | Disposable decode cache |
 | `UO_ART_EXTRACT_DIR` | The extracted art set (§36, ADR-0034): atlas pages and indexes of the install's art. Default `art_extract` under `UO_WORKSPACE_DIR`; gitignored, never committed or bundled |
 | `UO_ART_SET` | `1` reads art from the extracted set when its fingerprint matches the install; default `0`. The `--art-set` / `--no-art-set` client arguments override it for one run |
+| `UO_ART_SET_CACHE_MB` | Decoded set pages kept in memory, in MB; default 256, minimum 16 (AX2) |
 | `UO_WORLD_PROJECT` | The editor's world project folder (§9); default `build\world\default` |
 | `UO_MAPGEN_DATA` | The map generator's per-user data folder (§26): mined stamps, coast atlas, tree statics, validator reports; default `%LOCALAPPDATA%\GUO\mapgen` |
 | `UO_EDITOR_LIVE_HOST` / `UO_EDITOR_LIVE_PORT` | The editor bridge the UO Shard dock connects to (§10); default `127.0.0.1:2595`, the private instance |
@@ -2097,7 +2098,7 @@ Example, GUO's dev shard:
 A **set** is a local mirror of the art in the user's own UO install: atlas pages plus indexes, written by
 `tools/art_extract` and read lazily by the client. It is derived from proprietary data, so it lives only under
 `UO_ART_EXTRACT_DIR` (section 2), is gitignored, and is never committed, bundled or exported (rule 8). **Status:**
-contract only; the exporter is story AX1, the runtime source AX2, animations AX3. Nothing writes this format yet.
+the exporter is `tools/art_extract` (AX1) and the client reads it through `ExtractedArtSource` (AX2); animations are AX3.
 
 Schemas: `tools/art_extract/schema/set.schema.json` and `tools/art_extract/schema/index.schema.json`. Both refuse
 unknown fields (`additionalProperties: false`). Add a field here before anything writes it.
@@ -2182,6 +2183,16 @@ set > original files. The set is built from the pure install, never from overrid
 
 **Switching on.** `UO_ART_SET=1` or `--art-set`; off by default (section 2). A set is never used because a folder
 merely exists.
+
+**Runtime source (AX2).** `ExtractedArtSource` (`src/Assets/Extracted`) is mounted behind the content seam: `StoreRuntimeContent.TryImage`
+asks the packs first and the set second, so the loaders' existing `Content.TryImage` calls need no edit. A page is read,
+checked against its `sha256` and decoded on first use; at most `UO_ART_SET_CACHE_MB` (default 256, minimum 16) of decoded
+pages are kept and the least recently used is dropped first. Each answer is a fresh copy of the rectangle. The loaders
+ask the seam *before* their own override files (`Art/Statics/*.art`, `Art/Land/*.art`, `Gumps/*.gump` under
+`UO_CLIENT_DATA`), so at mount the source lists the ids those files hold (found as the loaders find them) and never answers
+for them: the loader falls through to its own file, as with the set off. A damaged page or an id not in the set falls
+through to the archive. Probe: `res://src/Assets/Extracted/ArtSetParityProbe.tscn` compares every id through the real
+loaders with the set on and off (`UO_ART_PARITY_MODE=synthetic` checks the mount rules on a made-up set).
 
 ### Example (`land/index.json`, abridged)
 
