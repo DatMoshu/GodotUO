@@ -88,6 +88,17 @@ report (rule 2). The set is built from the pure install, never from overrides.
   sprint) and does not apply to a player's own extracted set, which stays plain and unmarked so parity checks stay
   exact.
 
+## AX3: animations are keyed by the loader's read
+
+Animation art does not have one id per image. Which block of `anim*.mul` or `AnimationFrame*.uop` a body, action and
+direction reach depends on Body.def, Bodyconv.def, Corpse.def, mobtypes.txt, the UOP replacement tables and the client
+version. The `anim` class is therefore keyed by the block the loader reads (file, position, size or direction), below
+all of that resolution. The loader keeps resolving bodies, so conversion is exact by construction and the set never
+carries a second copy of those rules; `Animation.cs` asks the content seam for a block before it calls the loader's
+read, and a miss reads the archive. Consequence: a block shared by two bodies is stored once, and the exporter has to
+mirror only the two read methods (palette, run rows, the UOP frame table). The probe's animation pass enumerates blocks
+through the loader's own `GetIndices` to prove the keys line up. Details: data_formats section 36, Animations.
+
 ## Validation
 
 Contract only. Each later story proves its part: AX1 byte-determinism and 100% `verify`; AX2 identical frames on/off

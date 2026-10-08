@@ -2098,7 +2098,7 @@ Example, GUO's dev shard:
 A **set** is a local mirror of the art in the user's own UO install: atlas pages plus indexes, written by
 `tools/art_extract` and read lazily by the client. It is derived from proprietary data, so it lives only under
 `UO_ART_EXTRACT_DIR` (section 2), is gitignored, and is never committed, bundled or exported (rule 8). **Status:**
-the exporter is `tools/art_extract` (AX1) and the client reads it through `ExtractedArtSource` (AX2); animations are AX3.
+the exporter is `tools/art_extract` (AX1) and the client reads it through `ExtractedArtSource` (AX2); animations are AX3 (below).
 
 Schemas: `tools/art_extract/schema/set.schema.json` and `tools/art_extract/schema/index.schema.json`. Both refuse
 unknown fields (`additionalProperties: false`). Add a field here before anything writes it.
@@ -2106,7 +2106,7 @@ unknown fields (`additionalProperties: false`). Add a field here before anything
 ```
 <UO_ART_EXTRACT_DIR>/
   set.json                       the set: version, fingerprint, per-class summary
-  land/index.json                one folder per class: land static gump texmap light  (anim: AX3)
+  land/index.json                one folder per class: land static gump texmap light anim
   land/page_0000.png             2048x2048 RGBA8 pages, numbered from 0000, no gaps
   static/index.json
   static/page_0000.png ...
@@ -2122,7 +2122,7 @@ is looked up with the same `(type, id)` the loaders already ask for:
 | `gump` | gump id | per image | `gumpartLegacyMUL.uop`, or `gumpart.mul` + `gumpidx.mul`; `verdata.mul` |
 | `texmap` | texture id | 64x64 or 128x128 | `texmaps.mul` + `texidx.mul` |
 | `light` | light id | per image | `light.mul` + `lightidx.mul` |
-| `anim` | reserved for AX3 | — | AX3 extends this section before emitting anything |
+| `anim` | a loader read, not an id (see Animations) | per frame | `anim*.mul` + `anim*.idx`, `AnimationFrame*.uop` |
 
 **Pixels.** Exactly what the loader returns for the same id, stored as bytes `R, G, B, A` (the loader's `uint`,
 little-endian): each 1555 colour expanded by `HuesHelper.Color16To32`, `A = 0xFF` where the source pixel is drawn
@@ -2193,6 +2193,41 @@ ask the seam *before* their own override files (`Art/Statics/*.art`, `Art/Land/*
 for them: the loader falls through to its own file, as with the set off. A damaged page or an id not in the set falls
 through to the archive. Probe: `res://src/Assets/Extracted/ArtSetParityProbe.tscn` compares every id through the real
 loaders with the set on and off (`UO_ART_PARITY_MODE=synthetic` checks the mount rules on a made-up set).
+
+### Animations (`anim/`, AX3)
+
+The `anim` class is keyed by what the animation loader *reads*, not by body: one **block** is the bytes the loader
+turns into a frame list in one call. Body.def, Bodyconv.def, Corpse.def, mobtypes.txt and the UOP replacement tables are
+resolved by the loader above the block, so they stay the loader's and the set never reimplements them.
+
+| Block key | The loader call it answers |
+|---|---|
+| `m<file>.<position>.<size>` | `ReadMULAnimationFrames(file, {position, size})`: one direction of an `anim*.mul` group |
+| `u<file>.<position>.<direction>` | `ReadUOPAnimationFrames(.., direction, type, file, {position, ..})` for a non-Equipment group; `position` is the entry's offset in `AnimationFrame<file>.uop`, `direction` 0..4 |
+| `u<file>.<position>.<direction>.e` | the same read for an Equipment group (the loader keeps at least 10 frames per direction there) |
+
+A block is a list of frame rows, in the order and with the `Num` the loader returns: `[page, x, y, w, h, cx, cy]` for a
+frame with pixels (`Num` is its index in the list) and `[num, cx, cy]` for one without (a missing UOP frame is
+`[0, 0, 0]`: the loader clears it, so its `Num` is 0). `cx, cy` are the frame's centre as the loader reads it. Pixels are
+as for the other classes (`R, G, B, A`; a MUL frame has no transparent palette entry, a UOP frame treats palette value 0
+as transparent), the 512-byte palette already applied. Frames of one block sit on the same page or on consecutive
+pages. Identical frames (same size and pixels, e.g. a standing frame repeated by several bodies) share one rectangle.
+
+`anim/index.json` (schema id `guo/art_anim_index@1`, schema `tools/art_extract/schema/anim_index.schema.json`):
+`schema, version, class, set_id, page_size, pixel_format, pages` as for `guo/art_index@1`, then
+`blocks` (object: block key -> `{f: [rows], sha}`; `sha` is sha256 over each frame's `w`, `h` (4 bytes each,
+little-endian) and its `w*h*4` RGBA bytes, in order) and `skipped` (`{key, reason}`: a block the tool could not decode
+falls back to the archive for that block alone). The file holds one block per line so the client can stream it; it is
+read on the first animation question, not at start-up.
+
+Packing is sequential rather than sorted: a block's frames are placed in order on shelves of the current page (a new
+page when a frame no longer fits), so the whole install never has to be in memory. The layout is still deterministic.
+
+At run time `Animation.cs` asks the content seam (`TryAnimationMul`, `TryAnimationUop`) before it calls the loader's
+two read methods, passing the same file, position and size/direction the loader would use. A block that is not in
+the set, or whose page is damaged, is read from the archive as before. `art_extract verify` re-decodes every block
+from the install and compares; `ArtSetParityProbe` compares every block reachable through the loader's own `GetIndices`
+(all bodies, all actions, all directions, both UOP variants) with the set on and off.
 
 ### Example (`land/index.json`, abridged)
 

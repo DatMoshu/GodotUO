@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "guo/art_anim_index@1",
+  "title": "GUO extracted art set: animation index (data_formats section 36, ADR-0034)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "version", "class", "set_id", "page_size", "pixel_format", "pages", "blocks", "skipped"],
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "drawn": {
+      "type": "array", "minItems": 7, "maxItems": 7,
+      "prefixItems": [
+        {"type": "integer", "minimum": 0},
+        {"type": "integer", "minimum": 0, "maximum": 2047},
+        {"type": "integer", "minimum": 0, "maximum": 2047},
+        {"type": "integer", "minimum": 1, "maximum": 2048},
+        {"type": "integer", "minimum": 1, "maximum": 2048},
+        {"type": "integer", "minimum": -32768, "maximum": 32767},
+        {"type": "integer", "minimum": -32768, "maximum": 32767}
+      ]
+    },
+    "empty": {
+      "type": "array", "minItems": 3, "maxItems": 3,
+      "prefixItems": [
+        {"type": "integer", "minimum": 0},
+        {"type": "integer", "minimum": -32768, "maximum": 32767},
+        {"type": "integer", "minimum": -32768, "maximum": 32767}
+      ]
+    }
+  },
+  "properties": {
+    "schema": {"const": "guo/art_anim_index@1"},
+    "version": {"const": 1},
+    "class": {"const": "anim"},
+    "set_id": {"$ref": "#/$defs/sha256"},
+    "page_size": {"const": 2048},
+    "pixel_format": {"const": "rgba8"},
+    "pages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["file", "sha256"],
+        "properties": {
+          "file": {"type": "string", "pattern": "^page_[0-9]{4}\\.png$"},
+          "sha256": {"$ref": "#/$defs/sha256"}
+        }
+      }
+    },
+    "blocks": {
+      "type": "object",
+      "propertyNames": {"pattern": "^(m[0-9]+\\.[0-9]+\\.[0-9]+|u[0-9]+\\.[0-9]+\\.[0-4](\\.e)?)$"},
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["f", "sha"],
+        "properties": {
+          "f": {"type": "array", "minItems": 1, "items": {"oneOf": [{"$ref": "#/$defs/drawn"}, {"$ref": "#/$defs/empty"}]}},
+          "sha": {"$ref": "#/$defs/sha256"}
+        }
+      }
+    },
+    "skipped": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["key", "reason"],
+        "properties": {
+          "key": {"type": "string", "pattern": "^(m[0-9]+\\.[0-9]+\\.[0-9]+|u[0-9]+\\.[0-9]+)$"},
+          "reason": {"type": "string", "minLength": 1, "maxLength": 200}
+        }
+      }
+    }
+  }
+}

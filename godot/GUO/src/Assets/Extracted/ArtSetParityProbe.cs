@@ -8,6 +8,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using Godot;
 using GUO.Assets;
@@ -60,8 +61,10 @@ public partial class ArtSetParityProbe : Node
             ("texmap", TexmapsLoader.MAX_LAND_TEXTURES_DATA_INDEX_COUNT, (f, i) => Texmap(f, (uint)i)),
             ("light", LightsLoader.MAX_LIGHTS_DATA_INDEX_COUNT, (f, i) => Light(f, (uint)i)),
         };
+        bool onlyAnim = Environment.GetEnvironmentVariable("UO_ART_PARITY_ONLY") == "anim";
         foreach (var c in classes)
         {
+            if (onlyAnim) break;
             var t = new Tally();
             for (int id = 0; id < c.Max; id++)
             {
@@ -80,6 +83,7 @@ public partial class ArtSetParityProbe : Node
             report[c.Name] = new { t.Compared, empty = t.Empty, answered_by_set = t.FromSet, different = t.Different, first = t.First };
             GD.Print($"[artparity] {c.Name}: compared {t.Compared}, empty {t.Empty}, answered by the set {t.FromSet}, different {t.Different}");
         }
+        bad += AnimationPass(plain, withSet, report);
         report["different_total"] = bad;
         if (!string.IsNullOrEmpty(outPath))
         {
@@ -88,6 +92,126 @@ public partial class ArtSetParityProbe : Node
         }
         GD.Print($"[artparity] {(bad == 0 ? "PASS" : "FAIL")}: {bad} different");
         return bad == 0 ? 0 : 1;
+    }
+
+    // Animations: every block the loader can reach through its own body resolution (Body.def, Bodyconv.def, mobtypes,
+    // the UOP replacement tables), read both ways. The set is keyed below that resolution, so this is the proof the
+    // keys line up with what the loader reads.
+    private static int AnimationPass(UOFileManager plain, UOFileManager withSet, Dictionary<string, object> report)
+    {
+        var loader = plain.Animations;
+        var seen = new HashSet<string>();
+        var first = new List<string>();
+        var firstMissing = new List<string>();
+        int reached = 0, fromSet = 0, missing = 0, different = 0, emptyBoth = 0;
+        const int MaxBodies = 2048;
+
+        void Compare(string key, Func<FrameCopy[]> read, Func<(bool Ok, FrameCopy[] Frames)> fromContent)
+        {
+            if (!seen.Add(key)) return;
+            reached++;
+            var a = read();
+            var (ok, b) = fromContent();
+            if (!ok)
+            {
+                if (a.Length == 0) emptyBoth++; else { missing++; if (firstMissing.Count < 15 || missing % 3000 == 0) firstMissing.Add($"{key} frames={a.Length} drawn={a.Count(x => x.Pixels != null)}"); }
+                return;
+            }
+            fromSet++;
+            if (!SameFrames(a, b))
+            {
+                different++;
+                if (first.Count < 15 || different % 150 == 0) first.Add(key + " " + WhyDifferent(a, b));
+            }
+        }
+
+        for (int body = 0; body < MaxBodies; body++)
+        {
+            ushort hue = 0;
+            var flags = AnimationFlags.None;
+            AnimationsLoader.AnimationDirection[] indices;
+            int fileIndex;
+            AnimationGroupsType type;
+            try
+            {
+                indices = loader.GetIndices(plain.Version, (ushort)body, ref hue, ref flags, out fileIndex, out type).ToArray();
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException) { continue; }
+            bool uop = (flags & AnimationFlags.UseUopAnimation) != 0;
+            for (int i = 0; i < indices.Length; i++)
+            {
+                var ff = indices[i];
+                if (ff.Position == 0 && ff.Size == 0) continue;
+                if (uop)
+                {
+                    foreach (var kind in new[] { type, AnimationGroupsType.Equipment })
+                    {
+                        bool equip = kind == AnimationGroupsType.Equipment;
+                        for (byte dir = 0; dir < AnimationsLoader.MAX_DIRECTIONS; dir++)
+                        {
+                            byte d = dir;
+                            Compare($"u{fileIndex}.{ff.Position}.{d}" + (equip ? ".e" : ""),
+                                () => Copy(loader.ReadUOPAnimationFrames((ushort)body, (byte)i, d, kind, fileIndex, ff)),
+                                () => withSet.Content.TryAnimationUop(fileIndex, ff.Position, d, equip, out var f) ? (true, Copy(f)) : (false, null));
+                        }
+                    }
+                }
+                else
+                {
+                    Compare($"m{fileIndex}.{ff.Position}.{ff.Size}",
+                        () => Copy(loader.ReadMULAnimationFrames(fileIndex, ff)),
+                        () => withSet.Content.TryAnimationMul(fileIndex, ff.Position, ff.Size, out var f) ? (true, Copy(f)) : (false, null));
+                }
+            }
+        }
+        report["anim"] = new { reached, answered_by_set = fromSet, not_in_set = missing, empty_in_both = emptyBoth, different, first, firstMissing };
+        GD.Print($"[artparity] anim: blocks reached {reached}, answered by the set {fromSet}, not in the set {missing}, empty in both {emptyBoth}, different {different}");
+        return different;
+    }
+
+    private readonly record struct FrameCopy(int Num, short Cx, short Cy, short W, short H, uint[] Pixels);
+
+    private static FrameCopy[] Copy(ReadOnlySpan<AnimationsLoader.FrameInfo> frames)
+    {
+        var r = new FrameCopy[frames.Length];
+        for (int i = 0; i < r.Length; i++)
+        {
+            var f = frames[i];
+            int n = f.Width > 0 && f.Height > 0 ? f.Width * f.Height : 0;
+            // a frame with a zero side has no pixels; the loader keeps the other side, the set does not, and nothing reads it
+            r[i] = new FrameCopy(f.Num, f.CenterX, f.CenterY, (short)(n == 0 ? 0 : f.Width), (short)(n == 0 ? 0 : f.Height), n == 0 ? null : f.Pixels.AsSpan(0, n).ToArray());
+        }
+        return r;
+    }
+
+    private static string WhyDifferent(FrameCopy[] a, FrameCopy[] b)
+    {
+        if (a.Length != b.Length) return $"count {a.Length} vs {b.Length}";
+        for (int i = 0; i < a.Length; i++)
+        {
+            if (a[i].Num != b[i].Num) return $"frame {i} num {a[i].Num} vs {b[i].Num}";
+            if (a[i].Cx != b[i].Cx || a[i].Cy != b[i].Cy) return $"frame {i} centre {a[i].Cx},{a[i].Cy} vs {b[i].Cx},{b[i].Cy}";
+            if (a[i].W != b[i].W || a[i].H != b[i].H) return $"frame {i} size {a[i].W}x{a[i].H} vs {b[i].W}x{b[i].H}";
+            if ((a[i].Pixels == null) != (b[i].Pixels == null)) return $"frame {i} pixels null mismatch";
+            if (a[i].Pixels != null && !a[i].Pixels.AsSpan().SequenceEqual(b[i].Pixels))
+            {
+                int n = 0; for (int k = 0; k < a[i].Pixels.Length; k++) if (a[i].Pixels[k] != b[i].Pixels[k]) n++;
+                return $"frame {i} pixels differ in {n} of {a[i].Pixels.Length}";
+            }
+        }
+        return "?";
+    }
+
+    private static bool SameFrames(FrameCopy[] a, FrameCopy[] b)
+    {
+        if (a.Length != b.Length) return false;
+        for (int i = 0; i < a.Length; i++)
+        {
+            if (a[i].Num != b[i].Num || a[i].Cx != b[i].Cx || a[i].Cy != b[i].Cy || a[i].W != b[i].W || a[i].H != b[i].H) return false;
+            if ((a[i].Pixels == null) != (b[i].Pixels == null)) return false;
+            if (a[i].Pixels != null && !a[i].Pixels.AsSpan().SequenceEqual(b[i].Pixels)) return false;
+        }
+        return true;
     }
 
     // The mount rules on a made-up set (no game data): the loaders' own override files win, and every refusal falls back.

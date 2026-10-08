@@ -18,11 +18,15 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent))
 
+sys.path.append(str(HERE.parent / "uopack"))
+
+import art_anim as anim  # noqa: E402
 import art_atlas as atlas  # noqa: E402
 import art_export as ex  # noqa: E402
 import art_png as pngio  # noqa: E402
 import art_sources as srcs  # noqa: E402
 from guo import uoart, uoread  # noqa: E402
+import uocodecs as codecs  # noqa: E402
 import run as cli  # noqa: E402
 
 NEAR_BLACK = uoart.NEAR_BLACK
@@ -75,6 +79,7 @@ class Truth:
 
     def __init__(self):
         self.land, self.static, self.gump, self.texmap, self.light = {}, {}, {}, {}, {}
+        self.anim: dict[str, list[tuple]] = {}      # block key -> [(num, cx, cy, w, h, rgba or None)]
 
 
 def fake_install(root: Path, rng: random.Random, uop: bool = False, extra_statics: int = 0) -> Truth:
@@ -126,7 +131,91 @@ def fake_install(root: Path, rng: random.Random, uop: bool = False, extra_static
         return bytes((v << 3,) * 3 + (255,)) if v else b"\0\0\0\0"
 
     t.light[0] = (3, 2, b"".join(lv(v) for v in (0, 5, 0x1F, 0xE0, 0, 1)))
+    add_animations(root, rng, t)
     return t
+
+# --- fake animations -----------------------------------------------------------------------
+
+def rnd_palette(rng: random.Random) -> list[int]:
+    return [0] + [rng.randrange(1, 0x8000) for _ in range(255)]
+
+
+def rnd_frame(rng: random.Random, palette: list[int], w: int, h: int) -> codecs.AnimFrame:
+    """A frame with centre inside the run limits and about half its pixels covered."""
+    index = [rng.randrange(0, 256) if rng.random() < 0.55 else -1 for _ in range(w * h)]
+    return codecs.AnimFrame(w // 2, h - 1 if h > 1 else 0, w, h, index)
+
+
+def truth_pixels(f: codecs.AnimFrame, palette: list[int], keyed: bool) -> bytes:
+    return b"".join(rgba(palette[v], keyed) if v >= 0 else b"\x00\x00\x00\x00" for v in f.index)
+
+
+def uop_group_bytes(table: list[tuple[int, codecs.AnimFrame, list[int]]]) -> bytes:
+    """table: (frame id, frame, palette). The layout ReadUOPAnimationFrames reads: 32 bytes, count, start, 16-byte rows."""
+    fc = len(table)
+    head = bytearray(32) + struct.pack("<iI", fc, 40)
+    rows, blobs, at = bytearray(), bytearray(), 40 + 16 * fc
+    for n, (frame_id, frame, palette) in enumerate(table):
+        start = 40 + 16 * n
+        rows += struct.pack("<HHQI", 1, frame_id, 0, at + len(blobs) - start)
+        blobs += struct.pack("<256H", *palette) + codecs._encode_frame(frame)
+    return bytes(head + rows + blobs)
+
+
+def add_animations(root: Path, rng: random.Random, t: Truth) -> None:
+    # anim.mul (file 0): two directions of one group, and a third index record that points at the first block again
+    pal = rnd_palette(rng)
+    blocks = {}
+    for d in range(2):
+        frames = [rnd_frame(rng, pal, rng.randrange(1, 30), rng.randrange(1, 40)) for _ in range(3)]
+        frames.append(codecs.AnimFrame(0, 0, 0, 0, []))                        # a frame with no size
+        blocks[d] = (codecs.encode_anim(codecs.AnimGroup(pal, frames)), 0)
+    write_mul(root, "anim.mul", "anim.idx", blocks, 6)
+    idx = bytearray((root / "anim.idx").read_bytes())
+    idx[12 * 4:12 * 5] = idx[0:12]                                              # record 4 repeats record 0
+    (root / "anim.idx").write_bytes(bytes(idx))
+    size_of = {d: len(blocks[d][0]) for d in blocks}
+    pos = 0
+    for d in range(2):
+        g = codecs.decode_anim(blocks[d][0])
+        t.anim[anim.mul_key(0, pos, size_of[d])] = [
+            (i, f.center_x, f.center_y, f.width, f.height, truth_pixels(f, pal, False) if f.width > 0 else None)
+            for i, f in enumerate(g.frames)]
+        pos += size_of[d]
+    # anim2.mul (file 1): one block
+    pal2 = rnd_palette(rng)
+    f2 = [rnd_frame(rng, pal2, 7, 9)]
+    write_mul(root, "anim2.mul", "anim2.idx", {2: (codecs.encode_anim(codecs.AnimGroup(pal2, f2)), 0)}, 3)
+    t.anim[anim.mul_key(1, 0, len(codecs.encode_anim(codecs.AnimGroup(pal2, f2))))] = [
+        (0, f2[0].center_x, f2[0].center_y, 7, 9, truth_pixels(f2[0], pal2, False))]
+    # AnimationFrame1.uop: ten frame ids over five directions = two frames each, id 4 missing (a gap the loader fills)
+    table, truth = [], {}
+    for fid in (1, 2, 3, 5, 6, 7, 8, 9, 10):
+        p = rnd_palette(rng)
+        f = rnd_frame(rng, p, rng.randrange(1, 20), rng.randrange(1, 25))
+        table.append((fid, f, p))
+        truth[fid] = (f.center_x, f.center_y, f.width, f.height, truth_pixels(f, p, True))
+    data = uop_group_bytes(table)
+    write_uop(root / "AnimationFrame1.uop", {"build/animationlegacyframe/000001/00.bin": data})
+    entry = [e for e in uoread.UopFile(root / "AnimationFrame1.uop").entries.values()][0]
+
+    def direction(d: int, real: int) -> list[tuple]:
+        out = [(0, 0, 0, 0, 0, None)] * real                                   # uncovered frames keep Num 0
+        for fid in range(1, 11):
+            if (fid - 1) // real != d:
+                continue
+            if fid == 4:                                                       # the gap the loader fills: Num is its index
+                out[(fid - 1) % real] = ((fid - 1) % real, 0, 0, 0, 0, None)
+            else:
+                cx, cy, w, h, px = truth[fid]
+                out[(fid - 1) % real] = (fid - 1) % real, cx, cy, w, h, px
+        return out
+
+    for d in range(5):
+        plain = direction(d, 2)
+        t.anim[anim.uop_key(0, entry.offset, d)] = plain
+        eq = direction(d, 10)
+        t.anim[anim.uop_key(0, entry.offset, d, True)] = eq
 
 
 def tree_hash(root: Path) -> dict[str, str]:
@@ -172,6 +261,105 @@ def test_export_matches_the_install_pixel_for_pixel(install, tmp_path):
             assert (e["w"], e["h"]) == wh[:2]
             assert atlas.crop(pages[e["page"]], e["x"], e["y"], e["w"], e["h"]) == wh[2], (cls, i)
             assert e["pixels_sha256"] == atlas.pixels_digest(wh[0], wh[1], wh[2])
+
+
+# --- animations ----------------------------------------------------------------------------
+
+def rows_to_frames(rows: list, pages: list[bytes]) -> list[tuple]:
+    out = []
+    for r in rows:
+        if len(r) == 3:
+            out.append((r[0], r[1], r[2], 0, 0, None))
+        else:
+            page, x, y, w, h, cx, cy = r
+            out.append((-1, cx, cy, w, h, atlas.crop(pages[page], x, y, w, h)))
+    return out
+
+
+def test_animation_blocks_match_the_install_frame_for_frame(install, tmp_path):
+    data, truth = install
+    out = tmp_path / "set"
+    doc = export_to(data, out, ("anim",))
+    index, pages = read_class(out, "anim") if False else (None, None)
+    index = json.loads((out / "anim" / "index.json").read_text(encoding="utf-8"))
+    pages = [pngio.decode_rgba((out / "anim" / p["file"]).read_bytes())[2] for p in index["pages"]]
+    assert set(index["blocks"]) == set(truth.anim)
+    assert doc["classes"]["anim"]["count"] == len(truth.anim) and index["skipped"] == []
+    for key, want in truth.anim.items():
+        got = rows_to_frames(index["blocks"][key]["f"], pages)
+        assert len(got) == len(want), key
+        for n, (g, w) in enumerate(zip(got, want)):
+            if w[5] is None:                                  # an empty frame carries its Num and centre
+                assert g == w, (key, n)
+            else:
+                assert (g[1], g[2], g[3], g[4], g[5]) == (w[1], w[2], w[3], w[4], w[5]), (key, n)
+
+
+def test_uop_equipment_reads_differ_only_where_the_loader_differs(tmp_path):
+    data = tmp_path / "data"
+    truth = fake_install(data, random.Random(21))
+    keys = set(truth.anim)
+    assert any(k.endswith(".e") for k in keys)
+    # the plain read of direction 1 has the filled gap as an empty frame with its own index
+    plain = next(v for k, v in truth.anim.items() if k.startswith("u0.") and k.endswith(".1"))
+    assert plain[1] == (1, 0, 0, 0, 0, None)
+    mul_keys = [k for k in keys if k.startswith("m")]
+    assert len(mul_keys) == 3                                 # record 4 repeats record 0: one block, not two
+
+
+def test_animation_verify_accepts_then_names_a_changed_frame(install, tmp_path):
+    data, truth = install
+    out = tmp_path / "set"
+    export_to(data, out)
+    result = ex.verify(data, out, ("anim",), log=lambda *_: None)
+    assert result["ok"], result["mismatches"]
+    assert result["classes"]["anim"]["ok"] == len(truth.anim)
+
+    path = out / "anim" / "index.json"
+    index = json.loads(path.read_text(encoding="utf-8"))
+    key = next(k for k in index["blocks"] if k.startswith("m1."))
+    index["blocks"][key]["f"][0][5] += 1                      # a centre that is not the install's
+    path.write_text(json.dumps(index), encoding="utf-8")
+    result = ex.verify(data, out, ("anim",), log=lambda *_: None)
+    assert not result["ok"] and any(m.startswith(f"anim {key}:") for m in result["mismatches"])
+
+    page = out / "anim" / "page_0000.png"
+    raw = bytearray(page.read_bytes())
+    raw[-20] ^= 0xFF
+    page.write_bytes(bytes(raw))
+    result = ex.verify(data, out, ("anim",), log=lambda *_: None)
+    assert any("anim/page_0000.png is missing or damaged" in m for m in result["mismatches"])
+
+
+def test_animation_blocks_that_cannot_be_read_are_skipped_not_fatal(tmp_path):
+    data = tmp_path / "data"
+    fake_install(data, random.Random(23))
+    mul = data / "anim.mul"
+    raw = bytearray(mul.read_bytes())
+    # first frame of the first block: cut its run list short by making the first header claim a long run
+    pos = struct.unpack_from("<I", raw, 516)[0] + 512 + 8
+    struct.pack_into("<I", raw, pos, (0x3FF << 22) | (0x3FF << 12) | 0xFFF)
+    mul.write_bytes(bytes(raw))
+    out = tmp_path / "set"
+    doc = export_to(data, out, ("anim",))
+    index = json.loads((out / "anim" / "index.json").read_text(encoding="utf-8"))
+    assert doc["classes"]["anim"]["skipped"] == 1 and index["skipped"][0]["key"].startswith("m0.0.")
+    assert ex.verify(data, out, ("anim",), log=lambda *_: None)["ok"]
+
+
+def test_sequence_packer_keeps_a_blocks_frames_together_and_shares_twins():
+    pages = []
+    packer = anim.SequencePacker(lambda n, buf: pages.append(n))
+    a = anim.Frame(0, 0, 0, 40, 30, bytes([1, 2, 3, 255]) * 1200)
+    b = anim.Frame(1, 0, 0, 40, 30, bytes([9, 9, 9, 255]) * 1200)
+    first, second, twin = packer.place(a), packer.place(b), packer.place(a)
+    assert first == (0, 0, 0) and second == (0, 40, 0) and twin == first
+    wide = anim.Frame(2, 0, 0, 2000, 10, bytes([5, 5, 5, 255]) * 20000)
+    assert packer.place(wide) == (0, 0, 30)                    # no room on the row: the next row, same page
+    tall = anim.Frame(3, 0, 0, 100, 2040, bytes([6, 6, 6, 255]) * 204000)
+    assert packer.place(tall)[0] == 1 and pages == [0]         # the page was written when the next one began
+    packer.finish()
+    assert pages == [0, 1]
 
 
 def test_colour_rules_of_the_loaders(tmp_path):
@@ -221,8 +409,9 @@ def test_documents_follow_the_schemas(install, tmp_path):
     jsonschema.validate(json.loads((out / "set.json").read_text()),
                         json.loads((schema_dir / "set.schema.json").read_text()))
     for cls in srcs.CLASSES:
+        name = "anim_index.schema.json" if cls == "anim" else "index.schema.json"
         jsonschema.validate(json.loads((out / cls / "index.json").read_text()),
-                            json.loads((schema_dir / "index.schema.json").read_text()))
+                            json.loads((schema_dir / name).read_text()))
 
 
 def test_verify_accepts_a_good_set_and_counts(install, tmp_path):

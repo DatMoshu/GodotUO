@@ -153,6 +153,25 @@ namespace GUO.Renderer.Animations
             height = ismounted ? 100 : 60;
         }
 
+        // GUO addition (ADR-0034, AX3): the extracted art set answers a block read before the archive does. It is keyed by what
+        // the loader reads (file and position, plus direction for a UOP group), which is below body conversion, so the body
+        // resolution above is the loader's own. A miss reads the archive as before.
+        private Span<AnimationsLoader.FrameInfo> ReadUopFrames(ushort id, byte action, byte dir, AnimationGroupsType type, int fileIndex, AnimationsLoader.AnimationDirection ff)
+        {
+            var content = _animationLoader.FileManager.Content;
+            if (content != null && content.TryAnimationUop(fileIndex, ff.Position, dir, type == AnimationGroupsType.Equipment, out var set))
+                return set;
+            return _animationLoader.ReadUOPAnimationFrames(id, action, dir, type, fileIndex, ff);
+        }
+
+        private Span<AnimationsLoader.FrameInfo> ReadMulFrames(int fileIndex, AnimationsLoader.AnimationDirection ff)
+        {
+            var content = _animationLoader.FileManager.Content;
+            if (content != null && content.TryAnimationMul(fileIndex, ff.Position, ff.Size, out var set))
+                return set;
+            return _animationLoader.ReadMULAnimationFrames(fileIndex, ff);
+        }
+
         private IndexAnimation GetIndexAnim(ushort id, ref ushort hue, bool isCorpse)
         {
             if (id >= ushort.MaxValue)
@@ -345,7 +364,7 @@ namespace GUO.Renderer.Animations
                         CompressionType = uopGroupObj.CompressionType
                     };
 
-                    frames = _animationLoader.ReadUOPAnimationFrames(
+                    frames = ReadUopFrames(
                         id,
                         action,
                         dir,
@@ -362,7 +381,7 @@ namespace GUO.Renderer.Animations
                         Size = groupObj.Direction[dir].Size,
                     };
 
-                    frames = _animationLoader.ReadMULAnimationFrames(index.FileIndex, ff);
+                    frames = ReadMulFrames(index.FileIndex, ff);
                 }
 
                 if (frames.IsEmpty)

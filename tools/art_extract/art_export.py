@@ -11,6 +11,7 @@ import sys
 import time
 from pathlib import Path
 
+import art_anim as anim
 import art_atlas as atlas
 import art_png as pngio
 import art_sources as sources
@@ -106,6 +107,22 @@ def _clear(out: Path) -> None:
                 pass
 
 
+def _write_page(folder: Path, n: int, rgba: bytes) -> dict:
+    png = pngio.encode_rgba(atlas.PAGE, atlas.PAGE, rgba)
+    name = f"page_{n:04d}.png"
+    (folder / name).write_bytes(png)
+    return {"file": name, "sha256": hashlib.sha256(png).hexdigest(), "bytes": len(png)}
+
+
+def _dump_compact(path: Path, doc: dict) -> None:
+    """One line per block: the anim index holds hundreds of thousands of frames."""
+    blocks = doc.pop("blocks")
+    head = json.dumps(doc, separators=(",", ":"))[:-1]
+    lines = ",\n".join(f"{json.dumps(k)}:{json.dumps(v, separators=(',', ':'))}" for k, v in blocks.items())
+    path.write_text(f'{head},"blocks":{{\n{lines}\n}}}}\n', encoding="utf-8", newline="\n")
+    doc["blocks"] = blocks
+
+
 def decode_class(src, log=None) -> tuple[dict[int, tuple[int, int, bytes]], list[dict]]:
     images, skipped = {}, []
     for i in src.ids():
@@ -124,7 +141,8 @@ def export(data: Path, out: Path, what: tuple[str, ...] = CLASSES, *, client_ver
     """Write pages and indexes for `what` into `out`. Returns the set.json document."""
     data, out = Path(data), Path(out)
     srcs = sources.open_sources(data, what)
-    names = sorted({n for s in srcs for n in s.files})
+    anim_src = anim.AnimSource(data) if "anim" in what else None
+    names = sorted({n for s in srcs for n in s.files} | set(anim_src.files if anim_src else []))
     out.mkdir(parents=True, exist_ok=True)
     _clear(out)
     log(f"fingerprinting {len(names)} source file(s)")
@@ -152,6 +170,12 @@ def export(data: Path, out: Path, what: tuple[str, ...] = CLASSES, *, client_ver
         classes[src.cls] = {"pages": len(pages), "count": len(placed), "skipped": len(skipped), "bytes": total}
         log(f"{src.cls:7} {len(placed):6} stored, {len(skipped):4} skipped, {len(pages):3} page(s), "
             f"{total / 1e6:8.1f} MB, {time.time() - t0:6.1f} s")
+    if anim_src is not None:
+        t0 = time.time()
+        classes["anim"] = anim.export_anim(anim_src, out / "anim", fp["set_id"], _write_page, _dump_compact, log)
+        c = classes["anim"]
+        log(f"anim    {c['count']:6} blocks, {c['skipped']:4} skipped, {c['pages']:3} page(s), "
+            f"{c['bytes'] / 1e6:8.1f} MB, {time.time() - t0:6.1f} s")
     doc = {"schema": SCHEMA_SET, "version": 1, "generated": generated or _generated(data, names), "tool": TOOL,
            "client_version": client_version, "fingerprint": fp, "classes": classes}
     _dump(out / "set.json", doc)
@@ -195,6 +219,13 @@ def verify(data: Path, folder: Path, what: tuple[str, ...] | None = None, log=pr
         elif p.stat().st_size != f["size"] or sha256_file(p) != f["sha256"]:
             bad(f"source file {f['name']} differs from the one the set was made from")
     classes = [c for c in CLASSES if c in set_doc.get("classes", {}) and (what is None or c in what)]
+    if "anim" in classes:
+        before = len(problems)
+        stat = counts["anim"] = {"stored": 0, "skipped": 0, "absent": 0, "ok": 0, "bad": 0}
+        anim.verify_anim(anim.AnimSource(data), folder / "anim", fp.get("set_id"), set_doc["classes"]["anim"],
+                         lambda d: _schema_errors(d, "anim_index.schema.json"), pngio.decode_rgba, sha256_file, stat, bad)
+        log(f"anim    {stat['ok']:6} of {stat['stored']} blocks match, {stat['skipped']} skipped, "
+            f"{stat['absent']} not in the install, {len(problems) - before} problem(s)")
     for src in sources.open_sources(data, tuple(classes)):
         c = src.cls
         stat = counts[c] = {"stored": 0, "skipped": 0, "absent": 0, "ok": 0, "bad": 0}

@@ -31,6 +31,16 @@ internal sealed class StoreRuntimeContent : IDisposable
     private GUO.Assets.Extracted.ExtractedArtSource _extracted;
     public bool TryImage(string type, int id, out Pixels pixels) =>
         _images.TryGetValue((type, id), out pixels) || (_extracted != null && _extracted.TryImage(type, id, out pixels));
+    public bool TryAnimationMul(int file, uint position, uint size, out AnimationsLoader.FrameInfo[] frames)
+    {
+        frames = null;
+        return _extracted != null && _extracted.TryMulFrames(file, position, size, out frames);
+    }
+    public bool TryAnimationUop(int file, uint position, int direction, bool equipment, out AnimationsLoader.FrameInfo[] frames)
+    {
+        frames = null;
+        return _extracted != null && _extracted.TryUopFrames(file, position, direction, equipment, out frames);
+    }
     public bool TryString(int id, out string value) => _strings.TryGetValue(id, out value);
     public bool TrySound(int id, out byte[] value) => _sounds.TryGetValue(id, out value);
     public bool TryMusic(int id, out byte[] value) => _music.TryGetValue(id, out value);

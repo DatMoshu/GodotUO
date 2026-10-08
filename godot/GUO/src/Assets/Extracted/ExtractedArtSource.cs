@@ -32,7 +32,13 @@ internal sealed class ExtractedArtSource
         public string[] PageSha;
         public bool[] PageBad;
         public Dictionary<int, Entry> Entries = new();
+        // anim class only: the blocks are read from index.json on first use (one block per line)
+        public string BlocksPath;
+        public Dictionary<string, AnimRow[]> Blocks;
     }
+
+    // One frame of an animation block. Page < 0 is a frame with no pixels (centre and number only).
+    internal readonly record struct AnimRow(int Num, int Page, int X, int Y, int W, int H, int Cx, int Cy);
 
     private const int PageSize = 2048;
 
@@ -109,6 +115,13 @@ internal sealed class ExtractedArtSource
             foreach (var cls in root.GetProperty("classes").EnumerateObject())
             {
                 string indexPath = Path.Combine(folder, cls.Name, "index.json");
+                if (cls.Name == "anim")
+                {
+                    var anim = MountAnim(indexPath, setId);
+                    if (anim == null) return Refuse(folder, "anim/index.json does not belong to this set");
+                    source._classes["anim"] = anim;
+                    continue;
+                }
                 using var doc = JsonDocument.Parse(File.ReadAllBytes(indexPath));
                 var idx = doc.RootElement;
                 if (idx.GetProperty("schema").GetString() != "guo/art_index@1"
@@ -148,6 +161,32 @@ internal sealed class ExtractedArtSource
         }
     }
 
+    /// <summary>The header of the anim index: its pages. The blocks wait for the first animation question.</summary>
+    private static ClassIndex MountAnim(string indexPath, string setId)
+    {
+        string first;
+        using (var reader = new StreamReader(indexPath)) first = reader.ReadLine();
+        const string tail = ",\"blocks\":{";
+        if (first == null || !first.EndsWith(tail, StringComparison.Ordinal)) return null;
+        using var doc = JsonDocument.Parse(first.Substring(0, first.Length - tail.Length) + "}");
+        var idx = doc.RootElement;
+        if (idx.GetProperty("schema").GetString() != "guo/art_anim_index@1"
+            || idx.GetProperty("set_id").GetString() != setId
+            || idx.GetProperty("page_size").GetInt32() != PageSize
+            || idx.GetProperty("pixel_format").GetString() != "rgba8")
+            return null;
+        var pages = idx.GetProperty("pages");
+        var ci = new ClassIndex { Name = "anim", PageFiles = new string[pages.GetArrayLength()], PageSha = new string[pages.GetArrayLength()], BlocksPath = indexPath };
+        ci.PageBad = new bool[ci.PageFiles.Length];
+        int p = 0;
+        foreach (var page in pages.EnumerateArray())
+        {
+            ci.PageFiles[p] = page.GetProperty("file").GetString();
+            ci.PageSha[p++] = page.GetProperty("sha256").GetString();
+        }
+        return ci;
+    }
+
     private static ExtractedArtSource Refuse(string folder, string why)
     {
         GD.PushWarning($"[GUO] art set not used ({why}); reading the original files. Set folder: {folder}");
@@ -174,6 +213,92 @@ internal sealed class ExtractedArtSource
         if (!Directory.Exists(folder)) return;
         foreach (string path in Directory.EnumerateFiles(folder, pattern))
             if (int.TryParse(Path.GetFileNameWithoutExtension(path), out int id) && id >= 0) _overridden.Add((cls, id));
+    }
+
+    private Dictionary<string, AnimRow[]> AnimBlocks(ClassIndex ci)
+    {
+        if (ci.Blocks != null) return ci.Blocks;
+        var blocks = new Dictionary<string, AnimRow[]>();
+        try
+        {
+            using var reader = new StreamReader(ci.BlocksPath);
+            reader.ReadLine();
+            string line;
+            while ((line = reader.ReadLine()) != null)
+            {
+                if (line.Length < 2 || line[0] != '"') continue; // the closing braces
+                int colon = line.IndexOf("\":", StringComparison.Ordinal);
+                if (colon < 0) continue;
+                string key = line.Substring(1, colon - 1);
+                string body = line.Substring(colon + 2).TrimEnd(',');
+                using var doc = JsonDocument.Parse(body);
+                var f = doc.RootElement.GetProperty("f");
+                var rows = new AnimRow[f.GetArrayLength()];
+                int n = 0;
+                bool ok = true;
+                foreach (var r in f.EnumerateArray())
+                {
+                    if (r.GetArrayLength() == 3)
+                        rows[n] = new AnimRow(r[0].GetInt32(), -1, 0, 0, 0, 0, r[1].GetInt32(), r[2].GetInt32());
+                    else
+                    {
+                        int page = r[0].GetInt32(), x = r[1].GetInt32(), y = r[2].GetInt32(), w = r[3].GetInt32(), h = r[4].GetInt32();
+                        if (page < 0 || page >= ci.PageFiles.Length || w <= 0 || h <= 0 || x < 0 || y < 0 || x + w > PageSize || y + h > PageSize) { ok = false; break; }
+                        rows[n] = new AnimRow(n, page, x, y, w, h, r[5].GetInt32(), r[6].GetInt32());
+                    }
+                    n++;
+                }
+                if (ok) blocks[key] = rows;
+            }
+        }
+        catch (Exception ex) when (ex is IOException or JsonException or KeyNotFoundException or InvalidOperationException or FormatException)
+        {
+            GD.PushWarning($"[GUO] art set animations not used ({ex.Message}); reading the original files");
+            blocks.Clear();
+        }
+        ci.Blocks = blocks;
+        return blocks;
+    }
+
+    /// <summary>The frames of the MUL block the loader would read at (file, position, size), or false.</summary>
+    public bool TryMulFrames(int file, uint position, uint size, out GUO.Assets.AnimationsLoader.FrameInfo[] frames) =>
+        TryBlock($"m{file}.{position}.{size}", out frames);
+
+    /// <summary>The frames of one direction of the UOP group at (file, position); Equipment groups have their own variant.</summary>
+    public bool TryUopFrames(int file, uint position, int direction, bool equipment, out GUO.Assets.AnimationsLoader.FrameInfo[] frames) =>
+        // the exporter writes the .e variant only where it differs from the plain one
+        (equipment && TryBlock($"u{file}.{position}.{direction}.e", out frames)) || TryBlock($"u{file}.{position}.{direction}", out frames);
+
+    private bool TryBlock(string key, out GUO.Assets.AnimationsLoader.FrameInfo[] frames)
+    {
+        frames = null;
+        if (!_classes.TryGetValue("anim", out var ci)) return false;
+        AnimRow[] rows;
+        lock (_gate)
+        {
+            if (!AnimBlocks(ci).TryGetValue(key, out rows)) return false;
+        }
+        var result = new GUO.Assets.AnimationsLoader.FrameInfo[rows.Length];
+        for (int i = 0; i < rows.Length; i++)
+        {
+            var r = rows[i];
+            result[i].Num = r.Num;
+            result[i].CenterX = (short)r.Cx;
+            result[i].CenterY = (short)r.Cy;
+            if (r.Page < 0) continue;
+            if (ci.PageBad[r.Page]) return false;
+            byte[] page = Page(ci, r.Page);
+            if (page == null) return false;
+            var data = new uint[r.W * r.H];
+            var source = MemoryMarshal.Cast<byte, uint>(page.AsSpan());
+            for (int row = 0; row < r.H; row++)
+                source.Slice((r.Y + row) * PageSize + r.X, r.W).CopyTo(data.AsSpan(row * r.W, r.W));
+            result[i].Width = (short)r.W;
+            result[i].Height = (short)r.H;
+            result[i].Pixels = data;
+        }
+        frames = result;
+        return true;
     }
 
     public bool TryImage(string type, int id, out GUO.Store.StoreRuntimeContent.Pixels pixels)

@@ -1,6 +1,6 @@
 r"""Extract the client's art into atlas pages the runtime can load (ADR-0034, data_formats section 36).
 
-    python tools\art_extract\run.py export [--what art,land,gumps,texmaps,lights] [--out DIR] [--from DATA]
+    python tools\art_extract\run.py export [--what art,land,gumps,texmaps,lights,anim] [--out DIR] [--from DATA]
     python tools\art_extract\run.py verify [--set DIR] [--what ...] [--from DATA]
     python tools\art_extract\run.py where
 
@@ -26,7 +26,8 @@ from art_sources import CLASSES  # noqa: E402
 
 # The names people type; the set's own class names are the content seam's keys.
 WHAT = {"art": ("land", "static"), "land": ("land",), "static": ("static",), "gumps": ("gump",), "gump": ("gump",),
-        "texmaps": ("texmap",), "texmap": ("texmap",), "lights": ("light",), "light": ("light",)}
+        "texmaps": ("texmap",), "texmap": ("texmap",), "lights": ("light",), "light": ("light",),
+        "anim": ("anim",), "animations": ("anim",)}
 
 
 def parse_what(text: str | None) -> tuple[str, ...]:
@@ -36,7 +37,7 @@ def parse_what(text: str | None) -> tuple[str, ...]:
     for word in text.split(","):
         word = word.strip().lower()
         if word not in WHAT:
-            raise ex.ArtExtractError(f"--what: {word!r} is not one of art, land, static, gumps, texmaps, lights")
+            raise ex.ArtExtractError(f"--what: {word!r} is not one of art, land, static, gumps, texmaps, lights, anim")
         out += [c for c in WHAT[word] if c not in out]
     return tuple(c for c in CLASSES if c in out)
 
@@ -83,7 +84,7 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="art_extract", description=__doc__.split("\n\n")[0])
     sub = ap.add_subparsers(dest="command", required=True)
     e = sub.add_parser("export", help="write the set")
-    e.add_argument("--what", help="comma list of art, land, static, gumps, texmaps, lights (default: all)")
+    e.add_argument("--what", help="comma list of art, land, static, gumps, texmaps, lights, anim (default: all)")
     e.add_argument("--out", help="a folder inside UO_ART_EXTRACT_DIR or the repository's build/")
     e.add_argument("--from", dest="data", help="client data folder (default UO_CLIENT_DATA)")
     e.add_argument("--client-version", dest="client_version", help="recorded in set.json (default UO_CLIENT_VERSION)")

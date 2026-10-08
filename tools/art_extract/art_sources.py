@@ -20,7 +20,7 @@ if str(TOOLS) not in sys.path:
 
 from guo import uoart, uoread  # noqa: E402
 
-CLASSES = ("land", "static", "gump", "texmap", "light")
+CLASSES = ("land", "static", "gump", "texmap", "light", "anim")
 
 # HuesHelper._table: a 5-bit channel to 8 bits.
 _EXPAND = (0x00, 0x08, 0x10, 0x18, 0x20, 0x29, 0x31, 0x39, 0x41, 0x4A, 0x52, 0x5A, 0x62, 0x6A, 0x73, 0x7B, 0x83, 0x8B,
@@ -241,14 +241,14 @@ def _keyed(w: int, h: int, px: list[int]) -> Image:
 
 
 def open_sources(data: Path, what: tuple[str, ...]) -> list:
-    """The sources for the requested classes, in CLASSES order."""
+    """The sources for the requested still-image classes, in CLASSES order (`anim` has its own, art_anim.AnimSource)."""
     data = Path(data)
     needs_art = "land" in what or "static" in what
     verdata = _verdata(data) if needs_art or "gump" in what else Verdata()
     art = uoread.Art(data) if needs_art else None
     out = []
     for c in CLASSES:
-        if c not in what:
+        if c not in what or c == "anim":
             continue
         if c == "land":
             out.append(LandSource(data, art, verdata))

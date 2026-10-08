@@ -38,7 +38,7 @@
     },
     "classes": {
       "type": "object",
-      "propertyNames": {"enum": ["land", "static", "gump", "texmap", "light"]},
+      "propertyNames": {"enum": ["land", "static", "gump", "texmap", "light", "anim"]},
       "additionalProperties": {
         "type": "object",
         "additionalProperties": false,

@@ -2,7 +2,7 @@
 
 Exports the art of your own UO install (static art, land tiles, gumps, texmaps, lights) into a local *set*: 2048 x 2048
 RGBA8 PNG pages plus an index per class, in the format of data_formats section 36 and ADR-0034. The runtime source that
-reads a set is story AX2; animations are AX3. Nothing in this tool changes how the client runs today.
+reads a set is story AX2; animations (`--what anim`) are AX3. Nothing in this tool changes how the client runs today.
 
 ```
 python tools\art_extract\run.py export [--what art,land,gumps,texmaps,lights] [--out DIR] [--from DATA]
@@ -11,7 +11,7 @@ python tools\art_extract\run.py where
 python -m pytest tools/art_extract -q
 ```
 
-`--what` takes `art` (land + static), `land`, `static`, `gumps`, `texmaps`, `lights`; the default is all of them.
+`--what` takes `art` (land + static), `land`, `static`, `gumps`, `texmaps`, `lights`, `anim`; the default is all of them.
 `--from` and the data folder default to `UO_CLIENT_DATA`. The output folder is `UO_ART_EXTRACT_DIR` (environment, then
 `config.local.bat`, then `config.bat`, else `art_extract` under `UO_WORKSPACE_DIR`). **`--out` may only be that folder,
 a folder inside it, or a folder inside the repository's `build/`**; anything else is refused. An export removes the
@@ -36,6 +36,16 @@ A non-empty `verdata.mul` patches art and gumps exactly as the client does (and 
 expanded with `HuesHelper`'s table, so a pixel is the same four bytes `R, G, B, A` the loader hands the renderer.
 An id the install does not hold is simply absent. An id it holds but this tool cannot decode (a damaged entry, an image
 wider than a page) is listed in the class's `skipped` with a reason, and the client falls back to its own loader for it.
+
+### Animations
+
+`art_anim.py` reads `anim*.mul` + `anim*.idx` and `AnimationFrame*.uop` block by block, the way `AnimationsLoader` reads
+them (palette, run-length rows, UOP frame table with its gap fill and the frame-per-direction count, with and without the
+Equipment minimum), and stores each block under the key the loader will ask for. It does **not** resolve bodies:
+Body.def, Bodyconv.def, Corpse.def and the UOP replacement tables stay in the loader, so body conversion is exact by
+construction. Frames are packed in order and flushed page by page, so the full install never sits in memory. See
+data_formats section 36 for the key and row format. The proof that these decoders agree with the client is
+`ArtSetParityProbe`'s animation pass (every block the loader can reach, set on and off), as for the other classes.
 
 ## Layout and determinism
 
