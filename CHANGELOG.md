@@ -5,6 +5,10 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 
 ## Unreleased
 
+### Safety
+- The privacy scan's `--staged` mode checks the staged content that will be
+  committed, not the working copy, and reads UTF-16 text as text.
+
 ### Platforms
 - **Android** (ARM64, debug): export, install, run and smoke from
   `launchers\android\`. Login screens are centred, the soft keyboard opens
