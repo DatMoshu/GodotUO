@@ -151,6 +151,7 @@ class ClientSession:
         self.proc: subprocess.Popen | None = None
         self.extra_args: list[str] = []
         self.extra_settings: dict = {}
+        self.shard: tuple[str, int] | None = None     # --shard: the address the client connects to (UO_SHARD_HOST / UO_SHARD_PORT)
         self._home: Path | None = None
         self.log_path = run_dir / "client.log"
         self.avi = run_dir / "raw" / "run.avi"
@@ -171,6 +172,8 @@ class ClientSession:
         import capture
         env = build_child_env()
         env.update({"GUO_MCP_PORT": str(self.port), "GUO_MCP_TOKEN": self.token})
+        if self.shard is not None:
+            env.update({"UO_SHARD_HOST": self.shard[0], "UO_SHARD_PORT": str(self.shard[1])})
         if self.extra_settings:
             env["UO_CACHE_DIR"] = str(self._make_home())
         engine = ["--resolution", self.size] if self.size else []      # a movie is the project's 1280x720 whatever this says

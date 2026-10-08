@@ -548,6 +548,89 @@ def test_main_prune_dry_run_deletes_nothing(cli_root, capsys):
     assert len(names(runs)) == 3
 
 
+# --- --shard TARGET --------------------------------------------------------------------------------------------
+
+SHARD_VARS = ("GUO_SHARD_CONTAINER_HOST", "GUO_SHARD_CONTAINER_PORT", "GUO_SCENARIO_ACCOUNT", "GUO_SCENARIO_PASSWORD")
+
+
+@pytest.fixture
+def shard_env(cli_root, monkeypatch):
+    for var in SHARD_VARS:
+        monkeypatch.delenv(var, raising=False)
+    return monkeypatch
+
+
+def test_target_key_upper_cases_and_maps_dash_and_dot():
+    assert run_mod.target_key("my-shard.eu") == "MY_SHARD_EU"
+
+
+def test_shard_target_resolves_address_from_environment(shard_env, cli_root):
+    for var, value in zip(SHARD_VARS, ("127.0.0.1", "2593", "a", "b")):
+        shard_env.setenv(var, value)
+    assert run_mod.resolve_shard_target("container", cli_root, {}) == ("127.0.0.1", 2593)
+
+
+def test_shard_target_reads_config_local_bat(shard_env, cli_root):
+    shared = cli_root / "launchers" / "_shared"
+    shared.mkdir(parents=True)
+    (shared / "config.local.bat").write_text('set "GUO_SHARD_CONTAINER_HOST=192.0.2.3"\nset "GUO_SHARD_CONTAINER_PORT=2594"\n')
+    assert run_mod.resolve_shard_target("container", cli_root, {"account": "a", "password": "b"}) == ("192.0.2.3", 2594)
+
+
+@pytest.mark.parametrize("unset", SHARD_VARS)
+def test_shard_target_missing_variable_is_named(shard_env, cli_root, unset):
+    for var, value in zip(SHARD_VARS, ("127.0.0.1", "2593", "a", "b")):
+        if var != unset:
+            shard_env.setenv(var, value)
+    with pytest.raises(sc.ScenarioError, match=unset):
+        run_mod.resolve_shard_target("container", cli_root, {})
+
+
+def test_shard_target_var_flag_stands_in_for_account_and_password(shard_env, cli_root):
+    shard_env.setenv("GUO_SHARD_CONTAINER_HOST", "h")
+    shard_env.setenv("GUO_SHARD_CONTAINER_PORT", "2593")
+    assert run_mod.resolve_shard_target("container", cli_root, {"account": "a", "password": "b"}) == ("h", 2593)
+
+
+def test_shard_target_refuses_a_bad_port(shard_env, cli_root):
+    shard_env.setenv("GUO_SHARD_CONTAINER_HOST", "h")
+    shard_env.setenv("GUO_SHARD_CONTAINER_PORT", "99999")
+    with pytest.raises(sc.ScenarioError, match="GUO_SHARD_CONTAINER_PORT"):
+        run_mod.resolve_shard_target("container", cli_root, {"account": "a", "password": "b"})
+
+
+def test_main_shard_missing_variable_exits_2_naming_it(shard_env, cli_root, capsys):
+    assert run_mod.main(["shard.console", "--shard", "container"]) == 2
+    err = capsys.readouterr().err
+    assert "GUO_SHARD_CONTAINER_HOST" in err and "GUO_SCENARIO_PASSWORD" in err
+
+
+def test_main_shard_passes_the_address_and_retargets_the_scenario(shard_env, cli_root, capsys):
+    for var, value in zip(SHARD_VARS, ("127.0.0.1", "2593", "acct", "pw")):
+        shard_env.setenv(var, value)
+    seen = {}
+
+    def fake_execute(scen, cfg, variables, **kw):
+        seen.update(shard=kw["shard"], requires=scen.requires, variables=dict(variables))
+        return {"ok": True, "run_id": "r", "exit_kind": "ok"}, cli_root
+
+    shard_env.setattr(run_mod, "execute", fake_execute)
+    assert run_mod.main(["shard.console", "--shard", "container"]) == 0
+    assert seen["shard"] == ("127.0.0.1", 2593) and seen["requires"]["shard"] == "container"
+    assert "pw" not in capsys.readouterr().out
+
+
+def test_main_shard_refuses_an_editor_scenario(shard_env, cli_root, capsys):
+    assert run_mod.main(["editor.smoke.layout", "--shard", "container"]) == 2
+    assert "client scenario" in capsys.readouterr().err
+
+
+def test_shard_console_scenario_validates_and_needs_a_shard():
+    scen = sc.load(REPO / "tools" / "scenarios" / "shard" / "console.scenario.json")
+    assert scen.id == "shard.console" and scen.surface == "client" and scen.requires.get("shard")
+    assert any(st["do"]["kind"] == "chat" for st in scen.steps)
+
+
 # --- post: the Discord card ------------------------------------------------------------------------------------
 
 import card as card_mod  # noqa: E402
