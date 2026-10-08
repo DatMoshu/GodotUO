@@ -341,8 +341,8 @@ def main(argv: list[str] | None = None) -> int:
     shard = None
     try:
         scen = sc.load(sc.find(cfg.root, names[0]))
-        if args.driver == "human" and scen.surface != "client":
-            raise sc.ScenarioError(f"the human driver follows client scenarios; '{scen.surface}' is not supported yet")
+        if args.driver == "human" and scen.surface not in human_mod.OVERLAY_TOOLS:
+            raise sc.ScenarioError(f"the human driver follows client and editor scenarios; '{scen.surface}' is not supported yet")
         variables = parse_vars(args.var)
         if args.shard_target:
             if scen.surface != "client":

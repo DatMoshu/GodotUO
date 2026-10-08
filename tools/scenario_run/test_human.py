@@ -19,7 +19,7 @@ import run as run_mod  # noqa: E402
 import scenario as sc  # noqa: E402
 from human import HumanRunner  # noqa: E402
 from test_client import LOGIN, ClientFake  # noqa: E402
-from test_run import Clock, FakeSession, scen, step  # noqa: E402
+from test_run import Clock, FakeClient, FakeSession, scen, step  # noqa: E402
 
 IDLE = {"skip": False, "abort": False}
 GUMP = {"scene": "GameScene", "width": 1280, "height": 720, "controls": [
@@ -173,9 +173,9 @@ def test_main_refuses_human_options_without_the_human_driver(cli, capsys):
     assert "belong to --driver human" in capsys.readouterr().err
 
 
-def test_main_human_driver_follows_client_scenarios_only(cli, capsys):
-    assert run_mod.main([write_scenario(cli, "editor"), "--driver", "human"]) == 2
-    assert "client scenarios" in capsys.readouterr().err
+def test_main_human_driver_follows_client_and_editor_scenarios_only(cli, capsys):
+    assert run_mod.main([write_scenario(cli, "shard"), "--driver", "human"]) == 2
+    assert "client and editor scenarios" in capsys.readouterr().err
 
 
 def test_main_human_driver_is_not_recorded_by_the_runner(cli, capsys):
@@ -257,3 +257,68 @@ def test_ghost_performs_each_action_step_once_when_the_overlay_reaches_it(tmp_pa
 def test_main_clean_and_ghost_do_not_go_together(cli, capsys):
     assert run_mod.main([write_scenario(cli, "client"), "--driver", "human", "--clean", "--ghost-human"]) == 2
     assert "do not go together" in capsys.readouterr().err
+
+
+# -- the editor surface: human_overlay, and which tour segments a person can watch ----------------------------
+
+def make_editor_human(tmp_path, steps, overlay=None, segment=None):
+    clock = Clock()
+    root = tmp_path / f"repo{len(list(tmp_path.glob('repo*')))}"
+    run_dir = root / "build" / "runs" / "r1"
+    run_dir.mkdir(parents=True)
+    log = ev.EventLog(run_dir / "events.jsonl", "r1", "human")
+    session = FakeSession()
+    client = FakeClient({"human_overlay": overlay or IDLE, "tour_segment": segment or {"state": "done", "ok": True, "frames": []},
+                         "editor_state": {"scenes": [], "assetsReady": True}})
+    runner = HumanRunner(scen(steps, surface="editor"), run_dir, log, repo_root=root, session=session,
+                         connect=lambda s: client, clock=clock, sleep=clock.sleep)
+    return runner, client, log
+
+
+def test_editor_caption_goes_to_human_overlay_with_the_step_label(tmp_path):
+    steps = [step("go", "launch"), step("look", "wait", seconds=1)]
+    steps[1]["say"] = "Look at the layout."
+    r, client, _ = make_editor_human(tmp_path, steps)
+    assert r.run()["ok"]
+    shown = [a for t, a in client.calls if t == "human_overlay" and a.get("text")]
+    assert shown and shown[0]["text"] == "Look at the layout." and shown[0]["step"] == "2/2"
+    assert not [t for t, _ in client.calls if t == "guo_overlay"]
+    assert ("human_overlay", {"clear": True}) in client.calls                # the card is removed when the run ends
+
+
+def test_editor_space_skips_and_esc_aborts(tmp_path):
+    steps = [step("go", "launch"), step("one", "wait", seconds=1), step("two", "wait", seconds=1)]
+    r, _, log = make_editor_human(tmp_path, steps, overlay={"skip": True, "abort": False})
+    out = r.run()
+    assert out["ok"] and out["steps"][1]["skipped"] is True and out["steps"][2]["skipped"] is True
+    r, _, _ = make_editor_human(tmp_path, steps, overlay={"skip": False, "abort": True})
+    out = r.run()
+    assert not out["ok"] and "Esc" in out["aborted"]
+
+
+def test_editor_tour_segments_are_ai_only_unless_the_segment_is_passive(tmp_path):
+    steps = [step("go", "launch"), step("layout", "tour_segment", id="layout"), step("store", "tour_segment", id="store"),
+             step("pick", "tour_segment", id="pick")]
+    r, client, log = make_editor_human(tmp_path, steps)
+    out = r.run()
+    assert out["ok"]
+    by_id = {s["id"]: s for s in out["steps"]}
+    assert by_id["store"]["skipped"] is True and by_id["store"]["detail"].startswith("skipped (ai_only")
+    assert by_id["layout"]["ok"] is True and by_id["pick"]["ok"] is True
+    ran = [a["id"] for t, a in client.calls if t == "tour_segment"]
+    assert ran == ["layout", "pick"]
+    assert any(e["detail"].get("note", "").startswith("skipped (ai_only") for e in kinds(log, "log"))
+
+
+def test_editor_has_no_control_outline_and_clean_hides_the_card(tmp_path):
+    steps = [step("go", "launch"), step("look", "wait", seconds=1)]
+    r, client, _ = make_editor_human(tmp_path, steps)
+    r.clean = True
+    r.run()
+    assert all(a.get("hide") is True for t, a in client.calls if t == "human_overlay" and a.get("text"))
+    assert not [a for t, a in client.calls if t == "human_overlay" and "control" in a]
+
+
+def test_the_editor_session_preapproves_human_overlay():
+    import session
+    assert "human_overlay" in session.PREAPPROVED.split(",") and "editor_invoke" not in session.PREAPPROVED.split(",")

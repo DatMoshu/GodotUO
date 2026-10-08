@@ -1822,6 +1822,13 @@ dialog. `scene_set_property` registers do/undo with Godot's editor undo manager.
 Sensitive labels/properties are filtered; no image or credential-reader tool
 is introduced.
 
+`human_overlay(text, step, hide, clear)` (registered with `tour_segment` and `editor_screenshot`, listed by the scenario runner in
+`GUO_EDITOR_MCP_PREAPPROVED`) is the human driver's caption (section 34): it draws a caption card (`text` of at most 300
+characters under a `step` label such as `3/18`) over the editor with the tour's own overlay, and answers JSON `{skip, abort}`,
+the Space and Esc pressed since the last call (reading clears them; Space typed into a text field does not count). Keys count
+only after the first call. `hide` draws nothing but keeps the keys, `clear` removes the card and stops the key watch, and no
+arguments only reads. It changes nothing but the overlay.
+
 `multi_open(path)` accepts an existing JSON components description inside
 this checkout's build/multi, rejects traversal, reparse points and files over
 1 MiB, protects unsaved changes and shows Multis. `multi_document(offset,limit)`
@@ -1928,7 +1935,7 @@ from the scenario's variables. `editor_shard` is the local editor shard; a remot
 profile (section 35). Nothing about a remote shard's address or account is committed.
 `run.py --shard TARGET` names the target from the command line, for a client scenario: it replaces `requires.shard` for that run, reads the two settings above (a missing one stops the run, naming it) and `GUO_SCENARIO_ACCOUNT` / `GUO_SCENARIO_PASSWORD`, and starts the client against that address.
 
-### The human driver (`--driver human`, client scenarios)
+### The human driver (`--driver human`, client and editor scenarios)
 
 The runner skips each step's `do` and has a person follow the step: it sends the step's `say` (else its id) and its
 number (`3/18`) to the client's overlay (`guo_overlay`, section 29), outlines the control the step names (`ui.click` and
@@ -1946,6 +1953,15 @@ every window (`timeouts.run_s`, a step's timeout) is 3 times the AI driver's. Th
 runner records no video for a human run yet (OBS capture is not built). `--clean` hides the overlay for a clean recording
 (Space and Esc still work). `--ghost-human` starts a second process that plays the person through `guo_input`, reading
 the overlay's step label from `guo_ui`: it tests the driver itself and is not a way to run a scenario.
+
+**The editor surface.** The caption goes to the editor MCP's `human_overlay` (section 33) instead of `guo_overlay`, drawn with
+the editor tour's overlay at the foot of the editor window; no control is outlined (an editor scenario has no `ui.*` kinds), and
+Space, Esc, `--clean`, the windows and `ai_only` work as above. A `tour_segment` step drives the editor by itself (it resets the
+layout, types, stamps, jumps, talks to a shard), which nobody could follow, so under the human driver it is skipped and logged
+`skipped (ai_only: the segment drives the editor itself)` unless the segment is passive: `layout`, `gumps`, `anims` and `pick` only
+show a view and check it, so the runner plays them while the person watches and the segment's own caption replaces the step's
+`say`. `editor_invoke` and `wait` steps are followed like a client step. `--ghost-human` has nothing to do on an editor scenario
+(no `ui.*`, `ui.key` or `chat` steps): the passive segments play, the rest are skipped.
 
 ### Run folder (`build/runs/<run_id>/`, gitignored)
 

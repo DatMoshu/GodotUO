@@ -43,7 +43,7 @@ Not yet (the commands exist in the plan, not in the runner):
 
 | Command | Arrives with |
 |---|---|
-| `--driver human` on an editor scenario, OBS capture of a human run | HD2 / later |
+| OBS capture of a human run | later |
 | `clip` (cut a clip from the master) | not scheduled |
 
 ## Scenario files
@@ -83,8 +83,10 @@ On main today (step 2 and step 3 kinds):
 | `ui.fill` | Click a field, then type into it (client) | `control`, `text`, `clear` (BackSpace presses first) | ui.* on something the typing changes | The typed text is never logged or read back (the game omits editable values) |
 | `ui.key` | Press and release a key (client) | `key` (Godot name: Enter, Escape, F1), `shift`, `ctrl`, `alt` | ui state change | `guo_input` |
 | `chat` | Say a line in game (client) | `text` (a `[command` works) | log or world state | Enter, text, Enter |
-| `tour_segment` | Run an EditorTour segment | id: segment name | EditorTour checks + frames | Editor only; surface override |
+| `tour_segment` | Run an EditorTour segment | id: segment name | EditorTour checks + frames | Editor only; surface override. Human driver: skipped as `ai_only` unless the segment is passive |
 | `editor_invoke` | Run an F3 action by key | key, query | tool result | Editor only; not pre-approved, so the step **fails at once** with a message instead of waiting on the approval dialog (nobody is at the PC in a scripted run). Use a `tour_segment`, or run it by hand |
+
+**Under `--driver human` (real, client and editor scenarios):** `launch`, `note` and `shot` stay the runner's; every other kind is performed by the person, so its `do` is skipped and only its `expect` is checked. `ai_only` steps, and editor `tour_segment` steps whose segment is not passive, are skipped and logged. See Human Driver below.
 
 Not yet (a scenario that uses one fails at the step today):
 
@@ -145,7 +147,7 @@ events only.
 **Quality:** 60 fps, every frame rendered whatever the machine can do. The size is the engine window's at start, 1280×720 from `project.godot` (Godot's `--resolution` does not move it); a 1440p or 4K master needs a project-level size, which is not done yet.  
 **Scope tonight:** the client surface. An editor run records stills and events only (the editor is not a MovieWriter target); OBS and desktop capture are not implemented.
 
-### Human Driver (`--driver human`, client scenarios)
+### Human Driver (`--driver human`, client and editor scenarios)
 
 ```bash
 python tools/scenario_run/run.py client.login.basic --driver human --var account=... --var password=...
@@ -167,7 +169,12 @@ driver's. Events and `run.json` have the AI run's shape with `driver: human` (ru
 `godot/GUO/src/Automation/HumanOverlay.cs`, a client copy of the editor tour's drawing; it exists only in a run that has the game's
 automation MCP on, so nothing of it ships in a player's build.
 
-Not yet: the editor surface (HD2, the editor's own TourOverlay), and recording a human run (OBS capture, no video from the runner).
+Editor scenarios work the same way with the editor's own tour overlay (`human_overlay`, no control outline). A `tour_segment` step
+is skipped as `ai_only` (the segment drives the editor itself) unless the segment is passive (`layout`, `gumps`, `anims`, `pick`
+only show a view and check it); a passive segment plays while the person watches. `--ghost-human` has nothing to do in an editor
+scenario.
+
+Not yet: recording a human run (OBS capture, no video from the runner).
 Full behaviour: `docs/data_formats.md`, section 34, "The human driver".
 
 ## Recording: capture paths and conventions
@@ -398,5 +405,5 @@ a timer armed at `run_s` plus 60 s kills the program and exits 4.
 
 ---
 
-**Status:** Build steps 1 (docs), 2 (runner + AI driver, prune, list filter) and 3 are on main; the human driver for client scenarios (HD1) is on its branch.  
+**Status:** Build steps 1 (docs), 2 (runner + AI driver, prune, list filter) and 3 are on main; the human driver (client scenarios HD1, editor surface HD2) is on its branches.  
 **Last updated:** 2026-10-06
