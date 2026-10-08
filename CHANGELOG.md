@@ -28,6 +28,9 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 - The data writer checks every file it is about to write (after following `..`
   and links) lies inside its staging folder, and refuses the whole call before
   writing anything if one does not.
+- The client's startup trace no longer prints the account name or password
+  passed on the command line; the one-line change to ported code is recorded
+  in docs/upstream/GUO_DIVERGENCES.md.
 
 ### Platforms
 - **Android** (ARM64, debug): export, install, run and smoke from

@@ -280,7 +280,7 @@ namespace GUO
                     }
                 }
 
-                Log.Trace($"ARG: {cmd}, VALUE: {value}");
+                Log.Trace($"ARG: {cmd}, VALUE: {ArgTrace.Value(cmd, value)}"); // GUO: no credentials in the trace (SF7)
 
                 switch (cmd)
                 {
