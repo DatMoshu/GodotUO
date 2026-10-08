@@ -31,6 +31,7 @@
 - [Scripted Runs and Probes](Scripted-Runs-and-Probes.md)
 - [Parity and Drift](Parity-and-Drift.md)
 - [Editor](Editor.md)
+- [World Editing](World-Editing.md)
 - [Manage Your Shard From the Editor](Manage-Your-Shard-From-The-Editor.md)
 - [Author UO Data](Author-UO-Data.md)
 - [Building Multis](Building-Multis.md)
