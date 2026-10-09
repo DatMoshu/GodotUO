@@ -94,6 +94,9 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 - Profile settings migrate automatically; profile version 10.
 
 ### Building and managing
+- World editor: the Layers menu (Land, Statics, Multis, Roofs, Objects and the
+  live layers) now looks like a button beside the others, keeps its ticks for
+  the whole editor session, and switching Roofs off takes effect at once.
 - **GodotUO Asset Store**: a local web catalogue (`launchers\store\serve.bat`)
   where a folder on disk stands in for web storage, and a Store in Options
   that installs, updates and removes packs with every file hash-checked.

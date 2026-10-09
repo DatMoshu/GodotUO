@@ -1611,6 +1611,9 @@ public partial class EditorSmoke : Node
         }
         // ADR-0027: render modes and map layers.
         AddModeSteps();
+
+        // ED7: the Layers menu's eight ticks.
+        AddWorldLayerSteps(wait);
     }
 
     private void WorldFail(string why)

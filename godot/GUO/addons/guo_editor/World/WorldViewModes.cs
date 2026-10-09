@@ -51,13 +51,14 @@ public partial class WorldView
             lp.AddCheckItem(l.Name);
             int index = lp.ItemCount - 1;
             lp.SetItemTooltip(index, l.Summary);
+            lp.SetItemChecked(index, l.On);
         }
 
         lp.AddSeparator();
         lp.AddCheckItem("Live players", 1000);
         lp.AddCheckItem("Live mobiles", 1001);
-        lp.SetItemChecked(lp.GetItemIndex(1000), true);
-        lp.SetItemChecked(lp.GetItemIndex(1001), true);
+        lp.SetItemChecked(lp.GetItemIndex(1000), _mapLayers.Live.Players);
+        lp.SetItemChecked(lp.GetItemIndex(1001), _mapLayers.Live.Mobiles);
         lp.IdPressed += id =>
         {
             if (id == 1000 || id == 1001)
@@ -178,6 +179,7 @@ public partial class WorldView
             if (menu.GetItemText(i) == label)
             {
                 menu.SetItemChecked(i, on);
+                RememberLayerTicks();
                 return;
             }
         }
