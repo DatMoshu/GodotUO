@@ -101,6 +101,9 @@ internal static class Workspace
 
     public static string ClientConsole(string serverId, string clientId, int slot) => Path.Combine(RunSlot(serverId, clientId, slot), "client.log");
 
+    /// <summary>The managed server's console beside its exact process state, or "" for an id that is not one.</summary>
+    public static string ServerConsole(string serverId) => IsId(serverId) ? Path.Combine(ServerHome(serverId), "server.console.log") : "";
+
     /// <summary>A file name that cannot climb out of the workspace.</summary>
     private static string Id(string id)
     {

@@ -40,6 +40,9 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 - The dev shard raises an existing account to owner or game master only if it
   already holds the configured password, and never accepts a published default
   password; the VPS shard profile is included (MUO patch, ours).
+- The server manager's own tests build and pass again without the Godot
+  engine; the server console path now lives in the engine-free workspace code,
+  unchanged.
 
 ### Platforms
 - **Android** (ARM64, debug): export, install, run and smoke from
