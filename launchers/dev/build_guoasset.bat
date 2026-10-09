@@ -1,4 +1,5 @@
 @echo off
+rem Builds the guoasset parity-reference MCP server into build/guoasset with the .NET SDK and prints where the dll landed.
 REM Builds the guoasset MCP server (tools\guoasset): the read-only renderer
 REM /parity-check uses as ground truth. Needs the .NET 10 SDK and the upstream
 REM checkout (launchers\dev\sync_upstream.bat).

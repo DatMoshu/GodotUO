@@ -1,13 +1,6 @@
 #!/usr/bin/env bash
-# ============================================================================
-#  Clone ModernUO at the pin (UO_SHARD_REF) and apply the GUO patches.
-#  Twin of fetch.bat: run once on a fresh machine, and again after the pin
-#  moves; it takes the patches off, checks out the new pin and puts them
-#  back. Stop the shard first, and rebuild with build.sh afterwards.
-#
-#  A full clone, not a shallow one: ModernUO versions itself with
-#  Nerdbank.GitVersioning, which walks the history.
-# ============================================================================
+# Clones ModernUO at the pinned commit (or moves to a new pin) and applies the GUO patches, printing each one.
+set -euo pipefail
 GUO_NEEDS_GODOT=0 . "$(dirname "$0")/../_shared/common.sh" || exit 1
 src="$UO_SHARD_SRC"
 patches=("$UO_ROOT"/tools/modernuo/patches/*.patch)
@@ -20,8 +13,8 @@ else
 fi
 
 git -C "$src" cat-file -e "$UO_SHARD_REF^{commit}" 2>/dev/null || git -C "$src" fetch origin || exit 1
-head="$(git -C "$src" rev-parse -q --verify HEAD 2>/dev/null)"
-want="$(git -C "$src" rev-parse -q --verify "$UO_SHARD_REF^{commit}")"
+head="$(git -C "$src" rev-parse -q --verify HEAD 2>/dev/null || true)"
+want="$(git -C "$src" rev-parse -q --verify "$UO_SHARD_REF^{commit}" || true)"
 if [ -z "$want" ]; then
     echo "[shard] The pin $UO_SHARD_REF is not in $UO_SHARD_REPO."
     exit 1

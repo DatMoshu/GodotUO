@@ -1,4 +1,6 @@
 @echo off
+rem Readies a fresh git worktree: copies your local config across, checks the engine and upstream resolve, and runs one headless import.
+rem args: --no-import
 REM ============================================================================
 REM  Make a fresh git worktree ready to build, run and smoke. No directory
 REM  links: the engine and the upstream reference resolve to the main

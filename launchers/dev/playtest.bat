@@ -1,4 +1,5 @@
 @echo off
+rem Plays a scripted session against the configured shard (log in, walk, open the backpack, speak), prints each check and exits non-zero if any fails.
 REM ============================================================================
 REM  Plays the game, on its own, and says whether it worked.
 REM

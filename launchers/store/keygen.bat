@@ -1,6 +1,7 @@
 @echo off
-rem Makes the catalogue's signing key: writes the secret key file and prints
-rem the public key and its fingerprint. Run once. It never overwrites a key.
+rem Makes the catalogue's signing key file (never overwriting one) and prints the public key and fingerprint to share.
+rem args: <path to the key file>
+rem Run once.
 rem   keygen.bat                 writes to UO_STORE_SIGNING_KEY (config.local.bat)
 rem   keygen.bat PATH\to\x.key   writes there instead
 call "%~dp0..\_shared\common.bat" || goto :fail
@@ -22,8 +23,6 @@ set "STORE_EXIT=%ERRORLEVEL%"
 popd
 echo.
 echo Send the Public key and Fingerprint lines (never the key file).
-pause
 exit /b %STORE_EXIT%
 :fail
-pause
 exit /b 1

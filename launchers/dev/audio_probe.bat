@@ -1,4 +1,5 @@
 @echo off
+rem Opens a Godot window that checks Godot can play UO's sound effects and music directly and prints PASS, FAIL or SKIP per stage.
 REM ============================================================================
 REM  Asks whether Godot can play ClassicUO's audio directly -- AudioStreamWav
 REM  from the raw PCM SoundsLoader already returns, and AudioStreamMP3 for

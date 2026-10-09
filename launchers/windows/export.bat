@@ -1,4 +1,5 @@
 @echo off
+rem Exports the Windows build headless into build/windows/GUO.exe and fails if the executable's icon is not the sigil.
 REM ============================================================================
 REM  Exports the Windows build headless into build\windows\GUO.exe, then
 REM  extracts the executable's icon and fails if it is not the sigil.

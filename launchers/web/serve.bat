@@ -1,4 +1,5 @@
 @echo off
+rem Serves build/web on UO_WEB_PORT with the cross-origin isolation headers in the foreground until Ctrl+C.
 REM ============================================================================
 REM  Serves build\web on UO_WEB_PORT with the cross-origin isolation
 REM  headers a threaded Godot web export needs. Ctrl+C stops it.

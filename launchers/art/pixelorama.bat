@@ -1,4 +1,6 @@
 @echo off
+rem Opens a PNG in Pixelorama with the GUO tools extension (UO hue palettes, size checks, Save back to GUO); Pixelorama's window opens and this waits for it.
+rem args: <file.png> [--sidecar <file.json>]
 REM ============================================================================
 REM  Open a PNG in Pixelorama with the GUO tools extension (UO hue palettes,
 REM  templates, size checks, "Save back to GUO"). See tools\pixelorama\README.md.

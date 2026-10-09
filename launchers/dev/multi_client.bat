@@ -1,4 +1,6 @@
 @echo off
+rem Runs four scripted clients against the dev shard, tiled 2x2 on screen, and writes their logs, frames and a contact sheet to build/multi_client.
+rem args: --only <lanes> | --list | --sound
 REM ============================================================================
 REM  Run four scripted clients at once, one per quarter of the screen.
 REM

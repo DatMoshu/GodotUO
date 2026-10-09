@@ -1,4 +1,5 @@
 @echo off
+rem Builds the Godot project's C# assemblies headless, without opening the editor, and prints the compiler output.
 REM Builds the Godot project's C# assemblies without opening the editor.
 REM This is the fast "does it still compile" check.
 call "%~dp0..\_shared\common.bat" || exit /b 1

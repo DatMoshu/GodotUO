@@ -1,4 +1,5 @@
 @echo off
+rem Clones ModernUO at the pinned commit (or moves to a new pin) and applies the GUO patches, printing each one.
 REM ============================================================================
 REM  Clone ModernUO at the pin (UO_SHARD_REF) and apply the GUO patches.
 REM  Run once on a fresh machine, and again after the pin moves: it takes the

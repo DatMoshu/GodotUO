@@ -1,4 +1,6 @@
 @echo off
+rem Measures how far ported files have drifted from their upstream originals and prints a report.
+rem args: --strict
 REM ============================================================================
 REM  Measure how far ported files have drifted from their upstream originals.
 REM  See tools\port_drift\README.md.

@@ -1,4 +1,6 @@
 @echo off
+rem Starts ClassicUO and GUO side by side on one monitor at the same tile on the dev shard and leaves both running for you to compare.
+rem args: --monitor <name> --place <spot> | --at <x> <y> | --list-monitors
 REM ============================================================================
 REM  ClassicUO and GUO live, side by side on one monitor, in the same place.
 REM

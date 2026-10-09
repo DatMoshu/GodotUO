@@ -1,4 +1,6 @@
 @echo off
+rem Starts GUO in the Steam Deck's Desktop-mode session over ssh; output goes to guo.log on the Deck.
+rem args: --wait <seconds> | --args "<client flags>"
 REM ============================================================================
 REM  Starts guo.sh in the Deck's Desktop-mode session over ssh; output goes
 REM  to guo.log next to it. --wait N follows the log for N seconds;

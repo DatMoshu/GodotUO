@@ -1,4 +1,5 @@
 @echo off
+rem Logs the owner into the running dev shard and types every world generator command (doors, signs, spawners, decorations), then saves; takes a few minutes.
 REM ============================================================================
 REM  Generate the dev shard's world: everything the admin gump's
 REM  "Do everything" button generates.

@@ -1,4 +1,5 @@
 @echo off
+rem Photographs the Steam Deck's screen over ssh into build/steamdeck/screenshot.png (Desktop mode only).
 REM ============================================================================
 REM  Photographs the Deck's screen (spectacle, or grim) over ssh into
 REM  build\steamdeck\screenshot.png. Desktop mode only.
