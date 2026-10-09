@@ -22,6 +22,7 @@ import shardprofile as sp  # noqa: E402
 
 REPO = HERE.parents[1]
 GUO = HERE / "profiles" / "guo-dev.profile.json"
+VPS = HERE / "profiles" / "guo-vps.profile.json"
 FULL = HERE / "tests" / "fixtures" / "full.profile.json"
 GOLDEN = HERE / "tests" / "golden"
 
@@ -124,6 +125,29 @@ def test_unknown_placeholder_is_refused(tmp_path):
         load_tmp(tmp_path, data)
 
 
+def test_repo_relative_exec_start_pre_script_is_refused(tmp_path):
+    data = good()
+    data["service"]["exec_start_pre"] = ["python3", "tools/shard_data/run.py", "--data", "{data_dir}"]   # SWUO's old form
+    with pytest.raises(sp.ProfileError) as e:
+        load_tmp(tmp_path, data)
+    msg = str(e.value)
+    assert "'tools/shard_data/run.py'" in msg and "{src}/tools/shard_data/run.py" in msg
+    for fine in (["python3", "{src}/x.py"], ["/usr/bin/true"], ["sh", "-c", "true"], ["{dist}/muo-run.sh", "--data", "{data_dir}/x"]):
+        data["service"]["exec_start_pre"] = fine
+        load_tmp(tmp_path, data)
+
+
+def test_validate_warns_when_the_owner_patch_is_missing(tmp_path, capsys, monkeypatch):
+    monkeypatch.setattr(sp, "repo_root", lambda _file: REPO)
+    assert sp.warnings(sp.load(GUO)) == []
+    data = good()
+    data["server"]["patches"] = ["tools/modernuo/patches/0002-settable-update-range.patch"]
+    f = write(tmp_path, data)
+    assert run.main(["validate", "--profile", str(f)]) == 0                    # a warning, not a refusal
+    err = capsys.readouterr().err
+    assert "warning" in err and "0001-headless-owner-account" in err
+
+
 def test_not_json_and_too_big_are_refused(tmp_path):
     with pytest.raises(sp.ProfileError, match="not UTF-8 JSON"):
         sp.load(write(tmp_path, "{nope"))
@@ -183,6 +207,9 @@ CASES = [
     ("guo-dev.bootstrap.sh", "bootstrap", GUO),
     ("guo-dev.deploy.sh", "deploy", GUO),
     ("guo-dev.status.sh", "status", GUO),
+    ("guo-vps.bootstrap.sh", "bootstrap", VPS),
+    ("guo-vps.deploy.sh", "deploy", VPS),
+    ("guo-vps.status.sh", "status", VPS),
     ("demo-shard.bootstrap.sh", "bootstrap", FULL),
     ("demo-shard.deploy.sh", "deploy", FULL),
     ("demo-shard.status.sh", "status", FULL),
@@ -370,6 +397,8 @@ M2_CASES = [
     ("guo-dev.backup-named.sh", lambda p: plans.backup(p, "before-wipe"), GUO),
     ("guo-dev.restore.sh", lambda p: plans.restore(p, "20260101_040000"), GUO),
     ("guo-dev.reset.sh", lambda p: plans.reset(p), GUO),
+    ("guo-vps.admin.sh", lambda p: plans.admin(p), VPS),
+    ("guo-vps.backup.sh", lambda p: plans.backup(p), VPS),
     ("demo-shard.backup.sh", lambda p: plans.backup(p), FULL),
     ("demo-shard.reset.sh", lambda p: plans.reset(p), FULL),
 ]
@@ -537,6 +566,15 @@ def test_secrets_mismatch_and_empty_send_nothing(monkeypatch):
     assert fake.calls == []
 
 
+@pytest.mark.parametrize("pw", ["guoprobe", "GUOPROBE", "owner1"])
+def test_secrets_refuses_the_passwords_patch_0001_refuses(pw, monkeypatch):
+    fake = FakeSsh()
+    monkeypatch.setattr(subprocess, "run", fake)
+    with pytest.raises(hostsecrets.SecretsError, match="published default"):
+        hostsecrets.run(sp.load(GUO), "h", prompt_fn=answers("", "owner1"), secret_fn=answers(pw, pw))
+    assert fake.calls == []
+
+
 def test_secrets_blank_answers_keep_the_other_keys(monkeypatch):
     fake = FakeSsh()
     monkeypatch.setattr(subprocess, "run", fake)
@@ -644,3 +682,74 @@ def test_deploy_applies_every_patch_through_the_fatal_step():
         name = Path(rel).name
         assert "\n".join(plans._apply_patch(name)) in s
         assert f'die "{name} does not apply' in s
+
+
+# ------------------------------------------------------------ V1: the public profile
+
+def test_guo_vps_validates_without_a_warning(capsys):
+    assert run.main(["validate", "--profile", str(VPS)]) == 0
+    out = capsys.readouterr()
+    assert "warn" not in (out.out + out.err).lower()
+
+
+def test_guo_vps_shares_the_dev_pin_patches_and_listen_port():
+    dev, vps = json.loads(GUO.read_text(encoding="utf-8")), json.loads(VPS.read_text(encoding="utf-8"))
+    assert vps["server"] == dev["server"]
+    assert vps["listen"] == dev["listen"] == {"port": 2593}
+    assert vps["service"]["memory_max"] == "4G"
+    assert vps["backup"]["on_calendar"]
+    assert vps["id"] != dev["id"]
+
+
+def test_guo_vps_overlay_differs_from_the_template_only_where_intended():
+    tools = REPO / "tools" / "modernuo"
+    tpl = json.loads((tools / "config" / "modernuo.template.json").read_text(encoding="utf-8"))
+    vps = json.loads((tools / "config-vps" / "modernuo.json").read_text(encoding="utf-8"))
+    tpl["settings"]["accountHandler.enableAutoAccountCreation"] = "False"
+    tpl["settings"]["serverListing.serverName"] = "GUO"
+    tpl["listeners"] = ["0.0.0.0:2593"]
+    tpl["dataDirectories"] = [""]
+    assert vps == tpl
+    assert (tools / "config-vps" / "expansion.json").read_bytes() == (tools / "config" / "expansion.json").read_bytes()
+
+
+def test_guo_vps_deploy_turns_auto_account_creation_off():
+    got = text("deploy", VPS)
+    # The template's text is written first and the overlay's modernuo.json replaces it: the last word is False.
+    last = got.rindex("accountHandler.enableAutoAccountCreation")
+    assert got[last:].splitlines()[0].endswith('"False",')
+
+
+def test_the_start_script_never_honours_the_dev_gm_account_list():
+    for profile in (GUO, VPS, FULL):
+        got = text("deploy", profile)
+        wrapper = got[got.index("muo-run.sh"):]
+        assert "unset UO_SHARD_GM_ACCOUNTS" in wrapper
+        assert wrapper.index("unset UO_SHARD_GM_ACCOUNTS") < wrapper.index("exec ./ModernUO")
+
+
+def test_login_probe_reads_the_login_servers_answer(monkeypatch, capsys):
+    import socketserver
+    import threading
+
+    import login_probe
+
+    answers = {"in": b"\xa8", "out": b"\x82\x03"}
+
+    class H(socketserver.BaseRequestHandler):
+        def handle(self):
+            got = b""
+            while len(got) < 21 + 62:
+                got += self.request.recv(256)
+            account = got[22:52].rstrip(b"\0").decode()
+            self.request.sendall(answers["in" if account == "known" else "out"])
+
+    with socketserver.TCPServer(("127.0.0.1", 0), H) as srv:
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        port = str(srv.server_address[1])
+        monkeypatch.setenv("MUO_PROBE_PASSWORD", "secret-value")
+        assert login_probe.main(["--port", port, "--account", "known"]) == 0
+        assert login_probe.main(["--port", port, "--account", "stranger"]) == 1
+        srv.shutdown()
+    assert "secret-value" not in capsys.readouterr().out
+    assert login_probe.main(["--port", "1", "--account", "x"]) == 2

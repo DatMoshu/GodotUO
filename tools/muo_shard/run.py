@@ -68,6 +68,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         prof = shardprofile.load(a.profile)
         if a.cmd == "validate":
+            for w in shardprofile.warnings(prof):
+                print(f"[muo_shard] warning: {w}", file=sys.stderr)
             print(f"[muo_shard] {prof.file.name}: ok (id {prof.id}, port {prof.data['listen']['port']})")
             return 0
         if a.cmd == "secrets":

@@ -45,6 +45,10 @@ print("muo_shard: wrote " + ", ".join(sorted(new)) + " to " + path, file=sys.std
 """
 
 
+# Passwords anyone can read in GUO's history; patch 0001 makes and raises no staff account with one.
+PUBLISHED_PASSWORDS = ("guoprobe",)
+
+
 class SecretsError(Exception):
     pass
 
@@ -81,6 +85,9 @@ def ask(prompt_fn=input, secret_fn=getpass.getpass, keys: dict[str, str] | None 
     if pw:
         if secret_fn("again: ") != pw:
             raise SecretsError("the two passwords differ; nothing was sent")
+        if pw.lower() in PUBLISHED_PASSWORDS or (user and pw.lower() == user.lower()):
+            raise SecretsError(f"{keys['admin_password']} is a published default or the account name; "
+                               "the shard would make no owner with it. Nothing was sent")
         values[keys["admin_password"]] = check_value(keys["admin_password"], pw)
     return values
 

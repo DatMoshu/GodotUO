@@ -75,10 +75,19 @@ Things to know:
 - Ubuntu's archive SDK can trail the version the pin's `global.json` names (26.04 had 10.0.112 against 10.0.201), so
   deploy rewrites that one line to the installed SDK (and warns on stderr, naming both versions) and marks the file `skip-worktree`; the next deploy restores it
   before it moves the pin.
-- The unit's working directory is `dist/`; write repo-relative commands in `exec_start_pre` as `{src}/...`.
+- The unit's working directory is `dist/`; write repo-relative commands in `exec_start_pre` as `{src}/...`. `validate`
+  refuses an argument that looks like a repo-relative script (`tools/x/run.py`, `x.sh`) and names the fix.
+- `validate` warns (and still exits 0) when `server.patches` lacks `0001-headless-owner-account`: without it a headless
+  shard has no owner, so `plan admin` has nobody to administer with.
+- The base packages include `libargon2-dev` (ModernUO's password hashing links libargon2).
 - The backup timer runs `muo-backup.sh`; the shard keeps running while it does.
-- Open question for the owner, not a tool setting: the shared template has `accountHandler.enableAutoAccountCreation`
-  on. A public port wants it off; put that in the profile's overlay when decided.
+- A public port wants auto account creation off: `profiles/guo-vps.profile.json` does that with its own overlay folder,
+  `tools/modernuo/config-vps/` (the template's `modernuo.json` with that one setting changed, the port fixed at 2593 and
+  the name `GUO`; a test fails if it drifts from the template in any other way). Same pin and patches as `guo-dev`,
+  `MemoryMax=4G`, a daily backup timer. With auto creation off the owner makes every other account in game: the
+  `shard.admin_add_account` scenario drives the Admin gump (`--no-record`: the gump's layout changes at the movie's
+  1280x720), and `login_probe.py` says whether a login is accepted without a client. The generated `muo-run.sh` always
+  unsets `UO_SHARD_GM_ACCOUNTS` (patch 0001's dev-only list of game master accounts), so no env file can turn it on. The ordered host steps live in a local `build/muo/guo-vps/COMMANDS.md`, not in git.
 
 ## Container dry run
 
@@ -89,7 +98,7 @@ into an image or a repo.
 ```
 python tools/muo_shard/run.py plan bootstrap --profile tools/muo_shard/profiles/guo-dev.profile.json > build/muo/bootstrap.sh
 python tools/muo_shard/run.py plan deploy    --profile tools/muo_shard/profiles/guo-dev.profile.json > build/muo/deploy.sh
-docker run -d --name muo-dry -v "%UO_CLIENT_DATA%:/mnt/uodata:ro" -v "%CD%\build\muo:/plans:ro" ubuntu:26.04 sleep infinity
+docker run -d --name muo-dry -v "%UO_CLIENT_DATA%:/mnt/uodata:ro" -v "%CD%\build\muo:/plans:ro" --security-opt seccomp=unconfined ubuntu:26.04 sleep infinity
 docker exec muo-dry bash /plans/bootstrap.sh
 docker exec muo-dry bash -c "printf 'MUO_CLIENT_DATA=/mnt/uodata\nMUO_ADMIN_USER=dryadmin\nMUO_ADMIN_PASSWORD=dry-run-only\n' > /etc/muo/guo-dev.env"
 docker exec muo-dry bash /plans/deploy.sh
@@ -104,7 +113,7 @@ the dry run holds a made-up password; nothing in it is kept.
 
 ### Running the client against the container
 
-`docker run` for this needs `--security-opt seccomp=unconfined` (ModernUO aborts on io_uring otherwise). The server list
+Every `docker run` here needs `--security-opt seccomp=unconfined` (ModernUO aborts on io_uring under Docker's default profile). The server list
 sends the client to the shard's own address and listening port, so publish the same port (`-p 2593:2593`) and, in the
 container's own `Configuration/modernuo.json` (not the profile), set `"serverListing.address": "127.0.0.1"`, then start the
 shard. A fresh owner account has no character: make one once with the client (`launchers\game\play.bat --play --account A

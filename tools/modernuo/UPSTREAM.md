@@ -32,7 +32,7 @@ is retired (as `0004-multi-tile-enumerator` was).
 | 0001 | Headless owner account | **split**: owner creation upstream, the rest ours | `upstream/0001-headless-owner-account.patch` |
 | 0002 | Settable update range | **upstream** | `upstream/0002-update-range-setting.patch` |
 | 0003 | Felucca in spring | **ours** | none |
-| MV1 | Owner promotion needs the owner password | **ours** (until SF2 lands it, part of 0001) | none |
+| MV1 | Owner promotion needs the owner password | **ours**, part of 0001 since SF2 | none |
 | 0004 | Multi tile enumerator | **upstreamed**, retired | reported #2682, fixed in #2685 |
 | issue | `MultiData.LoadUOP` and uncompressed entries | **upstream** (issue, no patch) | `upstream/issue-multidata-loaduop-uncompressed.md` |
 
@@ -40,15 +40,21 @@ is retired (as `0004-multi-tile-enumerator` was).
 
 GUO patch: `patches/0001-headless-owner-account.patch`. SF1 changed it (no
 default passwords, GM accounts take `UO_SHARD_GM_PASSWORD`, the configured
-passwords are re-applied at each headless boot).
+passwords are re-applied at each headless boot); SF2 added MV1's guard (below).
 
 Headless ModernUO (stdin redirected, so every scripted or service run) throws
 at the first-boot owner prompt. The GUO patch does four things when headless:
 
 1. creates the owner account from `UO_SHARD_OWNER` / `UO_SHARD_OWNER_PASSWORD`;
-2. raises an existing account of that name, and its characters, to owner;
-3. creates or raises the `UO_SHARD_GM_ACCOUNTS` game master accounts;
-4. sets those accounts' passwords to the configured ones at every boot.
+2. raises an existing account of that name, and its characters, to owner,
+   only if it already holds the owner password (MV1);
+3. creates or raises the `UO_SHARD_GM_ACCOUNTS` game master accounts, by the
+   same rule;
+4. sets the passwords of those accounts already at their level to the
+   configured ones at every boot.
+
+None of it happens with a blank password or one published in GUO's history
+(the old `guoprobe` default, an account's own name).
 
 **Verdict, split.** Part 1 is a real gap upstream: a headless server cannot
 make its first owner account at all. Parts 2 to 4 are GUO's dev-shard
@@ -105,12 +111,14 @@ the same JSON.
 
 ### MV1: owner promotion needs the owner password
 
-On `work/muo-shard-mv1` (`c55fa593`), not yet on main; SF2 brings it. It
-changes the GUO 0001 so that an existing account is raised to owner only if
-it already holds `UO_SHARD_OWNER_PASSWORD`; until it lands, the dev shard's
-0001 raises any account that has the owner's name (part 2 above). A guard on
+Part of the GUO 0001 since SF2 (from `work/muo-shard-mv1`). An existing
+account is raised to owner only if it already holds `UO_SHARD_OWNER_PASSWORD`,
+so a stranger who logs in under the owner's name first stays a player; SF2
+applies the same rule to the game master list and refuses published default
+passwords. An account already at its level still takes the configured
+password (SF1). `test_account_prompt.py` runs the patched file. A guard on
 GUO's own convenience, so **ours**; the upstream 0001 has no promotion to
-guard. SF2 updates this row when it merges.
+guard.
 
 ### 0004: multi tile enumerator (retired)
 

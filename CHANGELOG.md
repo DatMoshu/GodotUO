@@ -6,6 +6,12 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 ## Unreleased
 
 ### Safety
+- The shard's owner (and game master) account is no longer handed to whoever
+  logs in under its name first: an existing account is raised only if it
+  already holds the configured password, and a blank or old default password
+  makes no staff account at all. A hosted shard profile for a public server
+  (`guo-vps`) turns automatic account creation off. Run
+  `launchers\shard\fetch.bat` once to re-apply the changed patch.
 - The privacy scan's `--staged` mode checks the staged content that will be
   committed, not the working copy, and reads UTF-16 text as text.
 - Deploying a hosted shard stops with git's error when a ModernUO patch does
@@ -31,6 +37,9 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 - The client's startup trace no longer prints the account name or password
   passed on the command line; the one-line change to ported code is recorded
   in docs/upstream/GUO_DIVERGENCES.md.
+- The dev shard raises an existing account to owner or game master only if it
+  already holds the configured password, and never accepts a published default
+  password; the VPS shard profile is included (MUO patch, ours).
 
 ### Platforms
 - **Android** (ARM64, debug): export, install, run and smoke from

@@ -94,7 +94,12 @@ of asking.
 The patch replaces the prompt, when headless, with the account named by
 `UO_SHARD_OWNER` / `UO_SHARD_OWNER_PASSWORD`: created if it does not exist,
 raised to owner if it does — which it usually does, because auto account
-creation made it a player at the first login. ModernUO takes its
+creation made it a player at the first login. An existing account is raised
+only if it holds `UO_SHARD_OWNER_PASSWORD`; otherwise the boot logs a warning
+(without the password) and leaves it a player, so a stranger who logs in as
+the owner's name first on an open port does not get the shard. A password
+anyone can read in GUO's history (the old `guoprobe` default, or the account's
+own name) makes and raises nothing either. ModernUO takes its
 administration commands in game and not at the console, so without an owner
 account the world cannot be generated at all. No password, no owner account.
 
@@ -102,11 +107,15 @@ The same boot makes every account in `UO_SHARD_GM_ACCOUNTS` (comma-separated,
 password `UO_SHARD_GM_PASSWORD`; none set, none made) with game master
 access, for `launchers\dev\multi_client.bat`:
 the shard refuses a second character from one account, so four clients at once
-need four accounts, and three of those clients type `[go`.
+need four accounts, and three of those clients type `[go`. The same rule
+holds: an existing account below game master is raised only if it already
+holds `UO_SHARD_GM_PASSWORD`.
 
-At every headless boot the owner and game master accounts are set to the
-configured passwords (when they do not already match), so a world saved
-before the passwords were generated stops accepting the old ones.
+At every headless boot the owner and game master accounts that already have
+their access level are set to the configured passwords (when they do not
+already match), so a world saved before the passwords were generated stops
+accepting the old ones. `python tools/modernuo/test_account_prompt.py`
+compiles the patched file against stand-ins and runs these rules.
 
 ### `patches/0002-settable-update-range.patch`
 

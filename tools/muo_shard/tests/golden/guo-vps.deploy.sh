@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# muo_shard deploy for profile guo-dev. Generated: review it, then run it on the host as root.
-# It is idempotent and holds no secret; those live in /etc/muo/guo-dev.env.
+# muo_shard deploy for profile guo-vps. Generated: review it, then run it on the host as root.
+# It is idempotent and holds no secret; those live in /etc/muo/guo-vps.env.
 set -euo pipefail
 die() { echo "muo_shard: $*" >&2; exit 1; }
 [ "$(id -u)" = 0 ] || die "run this as root"
-ID=guo-dev
-SVC_USER=muo-guo-dev
-BASE=/srv/muo/guo-dev
+ID=guo-vps
+SVC_USER=muo-guo-vps
+BASE=/srv/muo/guo-vps
 SRC=$BASE/src
 DIST=$BASE/dist
-ENV_FILE=/etc/muo/guo-dev.env
-UNIT=muo-guo-dev.service
+ENV_FILE=/etc/muo/guo-vps.env
+UNIT=muo-guo-vps.service
 PORT=2593
 
 PIN=d4531cd94b739613155225c234900de9f47d2c88
@@ -531,7 +531,7 @@ cat > $DIST/Configuration/modernuo.json <<'MUO_EOF_0'
     "questSystem.enableMLQuests": "True",
     "serverListing.address": null,
     "serverListing.autoDetect": "True",
-    "serverListing.serverName": "GUO Dev",
+    "serverListing.serverName": "GUO",
     "stamina.additionalLossWhenBelow": "0.1",
     "stamina.baseOverweightLoss": "5",
     "stamina.cannotRunWhenFatigued": "False",
@@ -632,6 +632,116 @@ cat > $DIST/Configuration/expansion.json <<'MUO_EOF_0'
 }
 MUO_EOF_0
 chmod 0644 $DIST/Configuration/expansion.json
+install -d "$(dirname $DIST/Configuration/modernuo.json)"
+cat > $DIST/Configuration/modernuo.json <<'MUO_EOF_0'
+{
+  "assemblyDirectories": [
+    "./Assemblies"
+  ],
+  "dataDirectories": [
+    ""
+  ],
+  "listeners": [
+    "0.0.0.0:2593"
+  ],
+  "settings": {
+    "accountHandler.enableAutoAccountCreation": "False",
+    "accountHandler.enablePlayerPasswordCommand": "False",
+    "accountHandler.maxAccountsPerIP": "16",
+    "accountSecurity.encryptionAlgorithm": "Argon2",
+    "assistants.enableNegotiation": "False",
+    "autoArchive.archiveLocally": "True",
+    "autoArchive.archivePath": "Archives",
+    "autoArchive.backupMaxAge": "30",
+    "autoArchive.backupPath": "Backups",
+    "autoArchive.compressionLevel": "3",
+    "autoArchive.dailyRetention": "30",
+    "autoArchive.enableArchivePruning": "True",
+    "autoArchive.hourlyRetention": "24",
+    "autoArchive.monthlyRetention": "12",
+    "autoArchive.retryCount": "3",
+    "autoArchive.retryDelayMs": "500",
+    "autoArchive.verifyArchives": "True",
+    "autosave.enabled": "True",
+    "autosave.saveDelay": "00:05:00",
+    "autosave.warningDelay": "00:00:00",
+    "buffIcons.enable": "True",
+    "bulletinboards.creationTimeDelay": "00:02:00",
+    "bulletinboards.expireDuration": "06:00:00",
+    "bulletinboards.replyDelay": "00:00:30",
+    "chat.enabled": "False",
+    "clientVerification.ageLeniency": "10.00:00:00",
+    "clientVerification.enable": "True",
+    "clientVerification.gameTimeLeniency": "1.01:00:00",
+    "clientVerification.invalidClientResponse": "Kick",
+    "clientVerification.kickDelay": "00:00:20",
+    "commandsystem.prefix": "[",
+    "crashGuard.enabled": "True",
+    "crashGuard.generateReport": "True",
+    "crashGuard.restartServer": "True",
+    "crashGuard.saveBackup": "True",
+    "ethics.enable": "False",
+    "houseDecay.enable": "True",
+    "movement.delay.runFoot": "200",
+    "movement.delay.runMount": "100",
+    "movement.delay.turn": "0",
+    "movement.delay.walkFoot": "400",
+    "movement.delay.walkMount": "200",
+    "movementThrottle.definiteRateThreshold": "1.100000023841858",
+    "movementThrottle.hardQueueLimit": "10",
+    "movementThrottle.maxChainGap": "2000",
+    "movementThrottle.maxCredit": "200",
+    "movementThrottle.maxRttBonus": "150",
+    "movementThrottle.minSamplesForRate": "8",
+    "movementThrottle.movementHistorySize": "20",
+    "movementThrottle.speedHackNotificationCooldown": "300000",
+    "movementThrottle.suspiciousRateThreshold": "1.0499999523162842",
+    "murderSystem.bountiesEnabled": "False",
+    "murderSystem.bountyExpiry": "14.00:00:00",
+    "murderSystem.longTermMurderDuration": "1.16:00:00",
+    "murderSystem.recentlyReportedDelay": "00:10:00",
+    "murderSystem.shortTermMurderDuration": "08:00:00",
+    "network.initialBufferSlabs": "1",
+    "network.maxBufferSlabs": "128",
+    "network.maxOutstandingSends": "32",
+    "network.memoryCeilingPercent": "80",
+    "network.sendBufferGrowthBudget": "268435456",
+    "network.sendBufferMaxSize": "2097152",
+    "network.sendBufferSize": "262144",
+    "pages.discordWebhookUrl": null,
+    "pathfinding.enable": "True",
+    "pathfinding.maxResidentChunks": "8192",
+    "pathfinding.maxSearchNodes": "1000",
+    "pathfinding.recorder.enable": "False",
+    "pathfinding.recorder.path": null,
+    "pingServer.enabled": "True",
+    "questSystem.enableMLQuests": "True",
+    "serverListing.address": null,
+    "serverListing.autoDetect": "True",
+    "serverListing.serverName": "GUO",
+    "stamina.additionalLossWhenBelow": "0.1",
+    "stamina.baseOverweightLoss": "5",
+    "stamina.cannotRunWhenFatigued": "False",
+    "stamina.cannotWalkWhenFatigued": "False",
+    "stamina.enableMountStamina": "True",
+    "stamina.stonesOverweightAllowance": "4",
+    "stamina.stonesPerOverweightLoss": "25",
+    "stats.gainChanceMultiplier": "1",
+    "stats.statMax": "125",
+    "testCenter.enable": "False",
+    "timer.initialPoolCapacity": "1024",
+    "timer.maxPoolCapacity": "16384",
+    "uogateway.enabled": "True",
+    "vetRewards.enable": "True",
+    "vetRewards.rewardInterval": "30.00:00:00",
+    "vetRewards.skillCapRewards": "True",
+    "world.enableAutoRestart": "False",
+    "world.savePath": "Saves",
+    "world.useMultithreadedSaves": "True"
+  }
+}
+MUO_EOF_0
+chmod 0644 $DIST/Configuration/modernuo.json
 install -d "$(dirname $BASE/muo-fill.py)"
 cat > $BASE/muo-fill.py <<'MUO_EOF_0'
 import os, sys
@@ -664,7 +774,7 @@ with open(path, "w", encoding="utf-8", newline="\n") as f:
     f.write("\n")
 MUO_EOF_0
 chmod 0644 $BASE/muo-finish-config.py
-python3 "$BASE/muo-fill.py" "$DIST/Configuration" expansion.json
+python3 "$BASE/muo-fill.py" "$DIST/Configuration" expansion.json modernuo.json
 python3 "$BASE/muo-finish-config.py" "$DIST/Configuration/modernuo.json" "$MUO_CLIENT_DATA" ''
 
 # start script: the unit's one ExecStart; maps the host keys to the names the shard reads
@@ -688,17 +798,17 @@ chown -R "$SVC_USER:$SVC_USER" "$DIST"
 install -d "$(dirname $BASE/unit.new)"
 cat > $BASE/unit.new <<'MUO_EOF_0'
 [Unit]
-Description=ModernUO shard GUO Dev (muo-guo-dev.service)
+Description=ModernUO shard GUO (muo-guo-vps.service)
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-User=muo-guo-dev
-Group=muo-guo-dev
-WorkingDirectory=/srv/muo/guo-dev/dist
-EnvironmentFile=/etc/muo/guo-dev.env
-ExecStart=/srv/muo/guo-dev/dist/muo-run.sh
+User=muo-guo-vps
+Group=muo-guo-vps
+WorkingDirectory=/srv/muo/guo-vps/dist
+EnvironmentFile=/etc/muo/guo-vps.env
+ExecStart=/srv/muo/guo-vps/dist/muo-run.sh
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true
