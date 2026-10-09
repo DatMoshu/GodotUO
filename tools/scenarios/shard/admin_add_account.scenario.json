@@ -1,0 +1,168 @@
+{
+  "id": "shard.admin_add_account",
+  "title": "As the owner, open the Admin gump and add an account (the shard has auto account creation off)",
+  "surface": "client",
+  "requires": {
+    "shard": "container",
+    "account": "$account",
+    "build": "debug"
+  },
+  "timeouts": {
+    "step_s": 60,
+    "run_s": 360
+  },
+  "steps": [
+    {
+      "id": "launch",
+      "do": {
+        "kind": "launch",
+        "args": [
+          "--scratch-profile"
+        ],
+        "settings": {
+          "autologin": true
+        }
+      },
+      "say": "Start GUO.",
+      "timeout_s": 240,
+      "expect": {
+        "scene": "LoginScene",
+        "within_s": 60
+      }
+    },
+    {
+      "id": "login_screen",
+      "do": {
+        "kind": "wait",
+        "seconds": 2
+      },
+      "say": "The login screen is up.",
+      "shot": true
+    },
+    {
+      "id": "type_account",
+      "do": {
+        "kind": "ui.fill",
+        "control": {
+          "type": "StbTextBox"
+        },
+        "text": "$account"
+      },
+      "say": "Type the account name."
+    },
+    {
+      "id": "type_password",
+      "do": {
+        "kind": "ui.fill",
+        "control": {
+          "type": "PasswordStbTextBox"
+        },
+        "text": "$password"
+      },
+      "say": "Type the password."
+    },
+    {
+      "id": "log_in",
+      "do": {
+        "kind": "ui.click",
+        "control": {
+          "type": "Button",
+          "system": "classic",
+          "index": 2
+        }
+      },
+      "say": "Press Login with the owner account.",
+      "expect": {
+        "scene": "GameScene",
+        "within_s": 60
+      }
+    },
+    {
+      "id": "in_world",
+      "do": {
+        "kind": "wait",
+        "seconds": 4
+      },
+      "say": "We are in the world.",
+      "expect": {
+        "ui.exists": "WorldViewportGump"
+      }
+    },
+    {
+      "id": "open_admin",
+      "do": {
+        "kind": "chat",
+        "text": "[Admin"
+      },
+      "say": "As the owner, open the Admin gump.",
+      "shot": true,
+      "expect": {
+        "ui.count": {
+          "control": {
+            "type": "Button",
+            "system": "classic"
+          },
+          "at_least": 6
+        },
+        "within_s": 10
+      }
+    },
+    {
+      "id": "accounts_page",
+      "do": {
+        "kind": "ui.click",
+        "control": {
+          "type": "Button",
+          "system": "classic",
+          "index": 4
+        }
+      },
+      "say": "Open ACCOUNT LIST."
+    },
+    {
+      "id": "type_name",
+      "do": {
+        "kind": "ui.fill",
+        "control": {
+          "type": "StbTextBox",
+          "index": 0
+        },
+        "text": "$new_account"
+      },
+      "say": "Type the new account's name."
+    },
+    {
+      "id": "type_pass",
+      "do": {
+        "kind": "ui.fill",
+        "control": {
+          "type": "StbTextBox",
+          "index": 1
+        },
+        "text": "$new_password"
+      },
+      "say": "Type its password."
+    },
+    {
+      "id": "add",
+      "do": {
+        "kind": "ui.click",
+        "control": {
+          "type": "Button",
+          "system": "classic",
+          "index": 6
+        }
+      },
+      "say": "Press Add.",
+      "shot": true
+    },
+    {
+      "id": "settle",
+      "do": {
+        "kind": "wait",
+        "seconds": 2
+      },
+      "say": "The shard has made the account."
+    }
+  ]
+}

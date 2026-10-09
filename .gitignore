@@ -115,6 +115,11 @@ node_modules/
 *.key
 credentials.json
 secrets.json
+# The dev shard's generated passwords (tools/guo/shard_secrets.py). They live
+# in the per-user workspace, outside the repo; this catches a workspace that
+# UO_WORKSPACE_DIR points inside it.
+secrets.bat
+secrets.bat.tmp
 
 # === UO game data: proprietary, never committed ===========================
 # The client install is read in place from UO_CLIENT_DATA. Nothing below

@@ -173,10 +173,16 @@ class Config:
     shard_port: int
     shard_name: str
     shard_owner: str
+    # Empty until tools/modernuo/configure.py generates it into the workspace
+    # secrets file (tools/guo/shard_secrets.py); config.bat ships none.
     shard_owner_password: str
     # Game master accounts the shard makes on a headless boot, for scripted
-    # clients that run beside the owner. Each one's password is its name.
+    # clients that run beside the owner. They share shard_gm_password.
     shard_gm_accounts: tuple[str, ...]
+    shard_gm_password: str
+    # The address the local shard listens on (UO_SHARD_BIND): loopback unless
+    # set otherwise on purpose, e.g. 0.0.0.0 to open it to the LAN.
+    shard_bind: str
     log_level: str
     store_dir: Path
     store_url: str
@@ -394,6 +400,14 @@ def load_config(root: Path | None = None) -> Config:
     if not workspace or "%" in workspace:
         workspace = default_workspace_dir()
 
+    # The dev shard's generated passwords (tools/guo/shard_secrets.py): read
+    # after config.bat, as common.bat calls the file, so the environment and
+    # config.local.bat still win. config.bat ships no password.
+    from .shard_secrets import path_for as _secrets_path, read as _read_secrets
+
+    for key, value in _read_secrets(_secrets_path(Path(workspace))).items():
+        from_bat.setdefault(key, value)
+
     def path_or_none(key: str) -> Path | None:
         # A value that still holds an unexpanded %VAR% is one whose variable
         # was not set anywhere -- JAVA_HOME on a machine without one -- and
@@ -516,7 +530,9 @@ def load_config(root: Path | None = None) -> Config:
         shard_host=get("UO_SHARD_HOST", "127.0.0.1"),
         shard_port=shard_port,
         shard_owner=get("UO_SHARD_OWNER", "guoprobe"),
-        shard_owner_password=get("UO_SHARD_OWNER_PASSWORD", "guoprobe"),
+        shard_owner_password=get("UO_SHARD_OWNER_PASSWORD"),
+        shard_gm_password=get("UO_SHARD_GM_PASSWORD"),
+        shard_bind=get("UO_SHARD_BIND", "127.0.0.1"),
         shard_gm_accounts=tuple(
             a.strip() for a in get("UO_SHARD_GM_ACCOUNTS", "guoeffects,guohighlight,guosweep").split(",") if a.strip()
         ),

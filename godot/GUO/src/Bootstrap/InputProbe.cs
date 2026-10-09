@@ -64,14 +64,10 @@ internal static class InputProbe
     private static readonly Vector2 FirstProfession = new(200, 185);
 
     /// <summary>
-    /// The credentials the probe logs in with. A dev shard with auto account
-    /// creation on makes the account on first use, so these are not secrets
-    /// and are not read from anywhere: they identify the probe's own account
-    /// and nothing else.
+    /// The account the probe logs in with: the dev shard's owner
+    /// (UO_SHARD_OWNER), whose password the shard's first run generates.
     /// </summary>
     private const string DefaultAccount = "guoprobe";
-
-    private const string DefaultPassword = "guoprobe";
 
     private const string DefaultCharacter = "Guoprobe";
 
@@ -81,7 +77,41 @@ internal static class InputProbe
     /// </summary>
     public static string ProbeAccount { get; set; } = DefaultAccount;
 
-    public static string ProbePassword { get; set; } = DefaultPassword;
+    public static string ProbePassword { get; set; } = DevShardPassword(DefaultAccount);
+
+    /// <summary>
+    /// The dev shard's password for an account when no --password is given.
+    /// The owner and the game master accounts have generated passwords
+    /// (tools/modernuo/configure.py writes them to the per-user workspace;
+    /// the launchers export them as UO_SHARD_OWNER_PASSWORD and
+    /// UO_SHARD_GM_PASSWORD). Any other account is a player that auto account
+    /// creation makes with whatever it is given, so its name will do.
+    /// </summary>
+    public static string DevShardPassword(string account)
+    {
+        string owner = System.Environment.GetEnvironmentVariable("UO_SHARD_OWNER");
+        string password = null;
+
+        if (string.Equals(account, string.IsNullOrEmpty(owner) ? DefaultAccount : owner, System.StringComparison.OrdinalIgnoreCase))
+        {
+            password = System.Environment.GetEnvironmentVariable("UO_SHARD_OWNER_PASSWORD");
+        }
+        else
+        {
+            string gms = System.Environment.GetEnvironmentVariable("UO_SHARD_GM_ACCOUNTS") ?? "";
+
+            foreach (string gm in gms.Split(',', ';', ' '))
+            {
+                if (string.Equals(gm.Trim(), account, System.StringComparison.OrdinalIgnoreCase))
+                {
+                    password = System.Environment.GetEnvironmentVariable("UO_SHARD_GM_PASSWORD");
+                    break;
+                }
+            }
+        }
+
+        return string.IsNullOrEmpty(password) ? account : password;
+    }
 
     /// <summary>
     /// Upstream's own -username/-password/-autologin path drives the login,

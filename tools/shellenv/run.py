@@ -34,6 +34,12 @@ def exports() -> dict[str, str]:
         values = parse_config_bat(local, values)
     values = parse_config_bat(shared / "config.bat", values)
     out = {k: os.environ.get(k) or native_path(v) for k, v in values.items() if "%" not in v}
+    # The dev shard's generated passwords, as common.bat calls the secrets
+    # file after config.bat (resolved by load_config, which reads it).
+    for key, value in (("UO_SHARD_OWNER_PASSWORD", cfg.shard_owner_password),
+                       ("UO_SHARD_GM_PASSWORD", cfg.shard_gm_password)):
+        if value:
+            out[key] = value
 
     out.update({
         "UO_ROOT": str(cfg.root),

@@ -23,8 +23,8 @@ python tools\world_parity\run.py [--at X,Y] [--client-root DIR] [--season S]
    `--allow-shared`, which needs its users' agreement first). It plays GUO
    from `--client-root` (default: this
    checkout) as the **last** account in that checkout's
-   `UO_SHARD_GM_ACCOUNTS`, as `tools/multi_client` does (password = account,
-   character = capitalised account).
+   `UO_SHARD_GM_ACCOUNTS`, as `tools/multi_client` does (password
+   `UO_SHARD_GM_PASSWORD`, character = capitalised account).
    - It types `[go X Y` and photographs the frame.
    - The client's home is a scratch folder under the output, so no player's
      settings or profiles are touched.

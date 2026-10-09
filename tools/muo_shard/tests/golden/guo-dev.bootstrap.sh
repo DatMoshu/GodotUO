@@ -14,7 +14,7 @@ UNIT=muo-guo-dev.service
 PORT=2593
 
 # packages: only what is missing, so a second run touches nothing
-want='dotnet-sdk-10.0 git zstd libdeflate-dev libargon2-1 ca-certificates python3 iproute2'
+want='dotnet-sdk-10.0 git zstd libdeflate-dev libargon2-1 libargon2-dev ca-certificates python3 iproute2'
 missing=
 for pkg in $want; do dpkg -s "$pkg" >/dev/null 2>&1 || missing="$missing $pkg"; done
 if [ -n "$missing" ]; then

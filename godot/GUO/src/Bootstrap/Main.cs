@@ -94,7 +94,7 @@ public partial class Main : Node
         {
             InputProbe.ProbeAccount = _options.Account;
             InputProbe.ProbePassword = string.IsNullOrEmpty(_options.Password)
-                ? _options.Account
+                ? InputProbe.DevShardPassword(_options.Account)
                 : _options.Password;
         }
 

@@ -163,6 +163,32 @@ def load(path: str | Path, root: Path | None = None) -> Profile:
     return prof
 
 
+_SCRIPT_EXT = (".py", ".sh", ".pl", ".rb", ".js", ".ps1")
+_ABSOLUTE_PREFIXES = ("{src}/", "{dist}/", "{data_dir}", "/")
+
+
+def _repo_relative_script(arg: str) -> bool:
+    """An exec_start_pre argument that names a file relative to nowhere: it has a slash or a script suffix, and
+    does not start with a placeholder or `/`. Options (`--x`), URLs, commands and plain words pass."""
+    if not arg or arg.startswith(("-", "$")) or arg.startswith(_ABSOLUTE_PREFIXES):
+        return False
+    if any(c.isspace() for c in arg) or "://" in arg:
+        return False
+    return "/" in arg or arg.lower().endswith(_SCRIPT_EXT)
+
+
+OWNER_PATCH = "0001-headless-owner-account"
+
+
+def warnings(p: Profile) -> list[str]:
+    """Things a profile may do but probably does not mean to; `validate` prints them and still exits 0."""
+    out: list[str] = []
+    if not any(OWNER_PATCH in Path(rel).name for rel in p.data.get("server", {}).get("patches", [])):
+        out.append(f"server.patches has no {OWNER_PATCH}: a headless shard makes no owner account, "
+                   "so `plan admin` has nobody to administer with")
+    return out
+
+
 def semantic(p: Profile) -> list[str]:
     out: list[str] = []
     d = p.data
@@ -203,6 +229,9 @@ def semantic(p: Profile) -> list[str]:
             if name not in PLACEHOLDERS:
                 allowed = ", ".join("{" + n + "}" for n in sorted(PLACEHOLDERS))
                 out.append(f"service.exec_start_pre[{i}]: unknown placeholder {{{name}}} (allowed: {allowed})")
+        if _repo_relative_script(arg):
+            out.append(f"service.exec_start_pre[{i}]: {arg!r} looks like a repo-relative script path, but the unit "
+                       f"runs in {{dist}}, not the checkout; write it as '{{src}}/{arg.lstrip('./')}'")
     build = d.get("server", {}).get("build")
     if build:
         for name in re.findall(r"\{([A-Za-z_]+)\}", build["output"]):

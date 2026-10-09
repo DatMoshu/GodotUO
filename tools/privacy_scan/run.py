@@ -7,7 +7,7 @@ launchers/_shared/config.local.bat, never in a tracked file. This scan runs
 in CI and before a push:
 
     python tools/privacy_scan/run.py            scan every tracked file
-    python tools/privacy_scan/run.py --staged   scan what is staged for commit
+    python tools/privacy_scan/run.py --staged   scan what is staged for commit, as staged
 
 Patterns that are always wrong are built in. Values only you know (your
 account name, your device serials) go one per line in
@@ -87,45 +87,76 @@ def read_list(path: Path) -> list[str]:
     return out
 
 
-def tracked_files(staged: bool) -> list[str]:
+def tracked_files(root: Path, staged: bool) -> list[str]:
     cmd = ["git", "diff", "--cached", "--name-only", "--diff-filter=ACMR"] if staged \
         else ["git", "ls-files"]
-    out = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, check=True).stdout
+    out = subprocess.run(cmd, cwd=root, capture_output=True, text=True, check=True).stdout
     return [f for f in out.splitlines() if f]
 
 
-def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--staged", action="store_true", help="scan only files staged for commit")
-    args = ap.parse_args(argv)
+def read_staged(root: Path, rel: str) -> bytes | None:
+    """The bytes the next commit will hold for rel: its blob in the index, not the working file."""
+    result = subprocess.run(["git", "cat-file", "blob", f":{rel}"], cwd=root, capture_output=True)
+    return result.stdout if result.returncode == 0 else None
 
+
+def read_working(root: Path, rel: str) -> bytes | None:
+    try:
+        return (root / rel).read_bytes()
+    except (FileNotFoundError, IsADirectoryError, PermissionError):
+        return None
+
+
+def decode_text(data: bytes) -> str | None:
+    """Text of a file in UTF-8, or in UTF-16 when it starts with a byte order mark; None for anything else."""
+    if data.startswith((b"\xff\xfe", b"\xfe\xff")):
+        try:
+            return data.decode("utf-16")
+        except UnicodeDecodeError:
+            return None
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+
+
+def scan(root: Path, staged: bool, here: Path = HERE) -> list[str]:
     rules = [(name, re.compile(rx)) for name, rx in BUILTIN]
-    for value in read_list(HERE / "deny.local.txt"):
+    deny = read_list(here / "deny.local.txt")
+    for value in deny:
         rules.append(("local deny list", re.compile(re.escape(value), re.IGNORECASE)))
-    allow = [re.compile(rx) for rx in read_list(HERE / "allow.txt")]
+    allow = [re.compile(rx) for rx in read_list(here / "allow.txt")]
 
-    deny = read_list(HERE / "deny.local.txt")
+    read = read_staged if staged else read_working
     hits = []
-    for rel in tracked_files(args.staged):
+    for rel in tracked_files(root, staged):
         if rel.startswith(SKIP_PREFIXES) or rel.lower().endswith(SKIP_SUFFIXES):
             continue
-        path = ROOT / rel
         if rel.lower().endswith(BINARY_PROGRAM_SUFFIXES):
             hits.append(f"{rel}: compiled program tracked; build it locally or fetch it (see .gitignore)")
             continue
-        try:
-            text = path.read_text(encoding="utf-8")
-        except (FileNotFoundError, IsADirectoryError):
+        data = read(root, rel)
+        if data is None:
             continue
-        except UnicodeDecodeError:
-            hits.extend(scan_bytes(rel, path.read_bytes(), deny))
+        text = decode_text(data)
+        if text is None:
+            hits.extend(scan_bytes(rel, data, deny))
             continue
         for n, line in enumerate(text.splitlines(), 1):
             for name, rx in rules:
                 m = rx.search(line)
                 if m and not any(a.search(line) for a in allow):
                     hits.append(f"{rel}:{n}: {name}: {m.group(0)}")
+    return hits
 
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--staged", action="store_true",
+                    help="scan only files staged for commit, as staged (the index, not the working copy)")
+    args = ap.parse_args(argv)
+
+    hits = scan(ROOT, args.staged)
     if hits:
         print(f"[privacy_scan] {len(hits)} hit(s). Move these values to "
               "launchers/_shared/config.local.bat, or excuse a real example in "

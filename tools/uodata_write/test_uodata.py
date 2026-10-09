@@ -12,6 +12,7 @@ read-back, and that the fake install is byte for byte unchanged.
 from __future__ import annotations
 
 import hashlib
+import os
 import struct
 import sys
 import tempfile
@@ -199,6 +200,88 @@ def test_refusals(tmp: Path) -> None:
     check(digest(install) == before, "the MUL install is byte for byte unchanged")
 
 
+def link_dir(link: Path, target: Path) -> bool:
+    """A directory link (a symlink, else on Windows a junction); False if neither can be made."""
+    try:
+        os.symlink(target, link, target_is_directory=True)
+        return True
+    except (OSError, NotImplementedError):
+        pass
+    try:
+        import _winapi
+        _winapi.CreateJunction(str(target), str(link))
+        return True
+    except (ImportError, OSError):
+        return False
+
+
+def test_stage_root(tmp: Path) -> None:
+    """SF4: every path written resolves under the stage root (after .. and links), checked
+    before the first byte; one bad path in a call writes nothing at all."""
+    install = tmp / "install-sf4"
+    fake_install(install)
+    (install / "hues.mul").write_bytes(bytes(2 * U.HUE_GROUP))
+    outside = tmp / "outside"
+    outside.mkdir()
+    before = digest(install)
+
+    def stage_with(name: str, entry: str) -> U.Stage:
+        st = U.Stage(tmp / name, install)
+        st.meta["files"]["tiledata.mul"] = {"name": entry, "source_sha1": "", "source_size": 0}
+        st.save()
+        return st
+
+    def nothing_written(st: U.Stage, what: str) -> None:
+        names = sorted(p.name for p in st.root.iterdir())
+        check(list(outside.iterdir()) == [] and names == ["files_override.txt", "guo_data.json", "stage.json"]
+              and set(st.meta["files"]) == {"tiledata.mul"}, what)
+
+    tile = AssetRecord("tiledata-item", 20, b"", {"name": "escape"})
+    hue = AssetRecord("hue", 1, bytes(88))
+
+    dotdot = stage_with("stage-dotdot", "../outside/tiledata.mul")
+    refused("a staged name with .. that leaves the root is refused",
+            lambda: U.write_records(dotdot, [hue, tile]))
+    nothing_written(dotdot, "the .. refusal wrote nothing: no file outside, hues.mul not copied, no slots.json")
+    refused("copy on write to a .. name is refused", lambda: dotdot.path("tiledata.mul"))
+    nothing_written(dotdot, "the refused copy on write wrote nothing")
+
+    absolute = stage_with("stage-absolute", str(outside / "tiledata.mul"))
+    refused("an absolute staged name outside the root is refused", lambda: U.write_records(absolute, [hue, tile]))
+    nothing_written(absolute, "the absolute-path refusal wrote nothing")
+
+    inner = U.Stage(tmp / "stage-inner", install)
+    (inner.root / "sub").mkdir()
+    inner.meta["files"]["tiledata.mul"] = {"name": "sub/../tiledata.mul", "source_sha1": "", "source_size": 0}
+    check(inner.target("tiledata.mul") == inner.root / "tiledata.mul", "a .. that stays under the root is allowed")
+
+    linked = U.Stage(tmp / "stage-linked", install)
+    if link_dir(linked.root / "sub", outside):
+        linked.meta["files"]["tiledata.mul"] = {"name": "sub/tiledata.mul", "source_sha1": "", "source_size": 0}
+        linked.save()
+        refused("a staged name through a directory link that leaves the root is refused",
+                lambda: U.write_records(linked, [hue, tile]))
+        check(list(outside.iterdir()) == [] and "hues.mul" not in linked.meta["files"],
+              "the link refusal wrote nothing, through the link or beside it")
+    else:
+        print("skip a directory link could not be made here")
+
+    fstage = U.Stage(tmp / "stage-filelink", install)
+    try:
+        os.symlink(outside / "slots.json", fstage.root / "slots.json")
+        refused("a slots.json that links outside the root is refused", lambda: U.write_records(fstage, [hue]))
+        check(list(outside.iterdir()) == [] and fstage.meta["files"] == {}, "the slots.json refusal wrote nothing")
+        refused("the registry will not save through it either", lambda: U.Registry(fstage, {}).save())
+    except (OSError, NotImplementedError):
+        print("skip a file symlink could not be made here (no privilege)")
+
+    good = U.Stage(tmp / "stage-good", install)
+    U.write_records(good, [hue, tile])
+    check(U.read_back(good, tile)["name"] == "escape" and set(good.meta["files"]) == {"hues.mul", "tiledata.mul"},
+          "a call whose paths are all under the root writes as before")
+    check(digest(install) == before, "the install is byte for byte unchanged")
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="uodata-test-") as tmp:
         tmp = Path(tmp)
@@ -316,6 +399,7 @@ def main() -> int:
 
         test_multis(tmp)
         test_refusals(tmp)
+        test_stage_root(tmp)
 
     print(f"test_uodata: {'OK' if not FAILS else 'FAILED'} ({len(FAILS)} failing)")
     return 0 if not FAILS else 1

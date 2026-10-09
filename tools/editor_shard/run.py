@@ -204,6 +204,12 @@ def cmd_start(cfg, data_first: Path | None, objects: Path | None = None, clear: 
            "GUO_BRIDGE_PORT": str(state.get("bridge_port", 2595)),
            "GUO_BRIDGE_SHARD": __import__("os").environ.get("GUO_BRIDGE_SHARD") or state.get("bridge_shard", "GUO-Editor-Private"),
            "GUO_BRIDGE_MAPS": state.get("bridge_maps", ALL_FACETS)}
+    # The headless boot (patch 0001) sets the owner and GM accounts to the
+    # per-user generated passwords; there is no default to fall back on.
+    for key, value in (("UO_SHARD_OWNER_PASSWORD", cfg.shard_owner_password),
+                       ("UO_SHARD_GM_PASSWORD", cfg.shard_gm_password)):
+        if value and not env.get(key):
+            env[key] = value
     proc = subprocess.Popen([str(exe)], cwd=str(h), env=env, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
                             creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0))
     state.update({"pid": proc.pid, "data_first": str(data_first.resolve()) if data_first else None,

@@ -5,6 +5,45 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 
 ## Unreleased
 
+### Safety
+- The shard's owner (and game master) account is no longer handed to whoever
+  logs in under its name first: an existing account is raised only if it
+  already holds the configured password, and a blank or old default password
+  makes no staff account at all. A hosted shard profile for a public server
+  (`guo-vps`) turns automatic account creation off. Run
+  `launchers\shard\fetch.bat` once to re-apply the changed patch.
+- The privacy scan's `--staged` mode checks the staged content that will be
+  committed, not the working copy, and reads UTF-16 text as text.
+- Deploying a hosted shard stops with git's error when a ModernUO patch does
+  not apply, instead of calling it already applied.
+- The local dev shard listens only on this PC unless `UO_SHARD_BIND` opens it
+  on purpose (for a phone or the LAN set `UO_SHARD_BIND=0.0.0.0` in
+  config.local.bat). Its owner and game master passwords are generated per
+  user into the workspace's `shard\secrets.bat` and never printed; an existing
+  shard switches to them at its next start. Run `launchers\shard\fetch.bat`
+  once to re-apply the changed patch.
+- The objects proof tool refuses an `--out` or `--clip` outside `build/` (or
+  overlapping the client install) before it deletes or writes anything.
+- Every GUO change to ModernUO, and every ModernUO bug found, is listed in
+  `tools/modernuo/UPSTREAM.md` with an upstream-or-ours verdict and
+  upstream-ready versions waiting for the owner's review. Nothing has been
+  submitted.
+- The editor saves world blocks, shard objects and hue overlays to a temporary
+  file and then moves it into place, so a crash mid-save leaves the old file
+  whole.
+- The data writer checks every file it is about to write (after following `..`
+  and links) lies inside its staging folder, and refuses the whole call before
+  writing anything if one does not.
+- The client's startup trace no longer prints the account name or password
+  passed on the command line; the one-line change to ported code is recorded
+  in docs/upstream/GUO_DIVERGENCES.md.
+- The dev shard raises an existing account to owner or game master only if it
+  already holds the configured password, and never accepts a published default
+  password; the VPS shard profile is included (MUO patch, ours).
+- The server manager's own tests build and pass again without the Godot
+  engine; the server console path now lives in the engine-free workspace code,
+  unchanged.
+
 ### Platforms
 - **Android** (ARM64, debug): export, install, run and smoke from
   `launchers\android\`. Login screens are centred, the soft keyboard opens

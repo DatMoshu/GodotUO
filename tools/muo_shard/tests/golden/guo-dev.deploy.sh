@@ -31,8 +31,17 @@ if have_systemd && systemctl is-active --quiet "$UNIT"; then systemctl stop "$UN
 # patches (embedded)
 install -d "$(dirname $BASE/patches/0001-headless-owner-account.patch)"
 cat > $BASE/patches/0001-headless-owner-account.patch <<'MUO_EOF_0'
+MUO patch, ours: a GUO patch to ModernUO, applied by launchers\shard\fetch.bat
+and tools/muo_shard. Listed with its verdict in tools/modernuo/UPSTREAM.md; the
+upstream-ready half is upstream/0001-headless-owner-account.patch.
+
+Headless boot makes the owner account (and the game master accounts) from the
+environment. An existing account is raised only if it already holds the
+configured password (MV1), and a published default password (blank, the old
+"guoprobe", the account's own name) never makes or raises one.
+
 diff --git a/Projects/UOContent/Misc/AccountPrompt.cs b/Projects/UOContent/Misc/AccountPrompt.cs
-index 032c55526..a707bafab 100644
+index 032c55526..69b1eac2c 100644
 --- a/Projects/UOContent/Misc/AccountPrompt.cs
 +++ b/Projects/UOContent/Misc/AccountPrompt.cs
 @@ -1,3 +1,4 @@
@@ -63,7 +72,7 @@ index 032c55526..a707bafab 100644
              logger.Information("Do you want to create the owner account now? (y/n):");
  
              var answer = ConsoleInputHandler.ReadLine();
-@@ -37,4 +51,105 @@ public static void Initialize()
+@@ -37,4 +51,182 @@ public static class AccountPrompt
              }
          }
      }
@@ -74,9 +83,16 @@ index 032c55526..a707bafab 100644
 +        var username = Environment.GetEnvironmentVariable("UO_SHARD_OWNER");
 +        var password = Environment.GetEnvironmentVariable("UO_SHARD_OWNER_PASSWORD");
 +
++        // No default password: GUO's configure.py generates one per user.
 +        if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
 +        {
-+            logger.Warning("Headless: UO_SHARD_OWNER is not set, so there is no owner account.");
++            logger.Warning("Headless: UO_SHARD_OWNER or UO_SHARD_OWNER_PASSWORD is not set, so there is no owner account.");
++            return;
++        }
++
++        if (IsDefaultPassword(username, password))
++        {
++            logger.Warning("Headless: UO_SHARD_OWNER_PASSWORD is a published default, so there is no owner account.");
 +            return;
 +        }
 +
@@ -84,10 +100,28 @@ index 032c55526..a707bafab 100644
 +        // made by the first login and therefore only a player.
 +        if (Accounts.GetAccount(username) is Account existing)
 +        {
++            // With auto account creation on, anyone can log in as UO_SHARD_OWNER
++            // before the owner does. Raising that account blind would hand
++            // them the shard, so an account below owner is raised only if it
++            // holds the owner's password. One that is owner already takes the
++            // configured password. The password is never logged.
 +            if (existing.AccessLevel < AccessLevel.Owner)
 +            {
++                if (!existing.CheckPassword(password))
++                {
++                    logger.Warning(
++                        "Headless: account '{Username}' exists but does not hold UO_SHARD_OWNER_PASSWORD; it is left as it is.",
++                        username
++                    );
++                    return;
++                }
++
 +                existing.AccessLevel = AccessLevel.Owner;
 +                logger.Information("Headless: raised account '{Username}' to owner.", username);
++            }
++            else
++            {
++                EnsurePassword(existing, password);
 +            }
 +
 +            // A character's access level is copied from the account when the
@@ -120,14 +154,27 @@ index 032c55526..a707bafab 100644
 +    // The shard refuses a second character from one account, so a run that
 +    // drives several clients at once needs several accounts, and most of
 +    // what those clients do ("[go", "[globallight") takes staff access.
-+    // Comma-separated names; each one's password is its name. Local dev
-+    // shard only; not credentials.
++    // Comma-separated names; they share UO_SHARD_GM_PASSWORD, which GUO's
++    // configure.py generates per user. No password, no accounts.
 +    private static void EnsureGmAccountsFromEnvironment()
 +    {
 +        var list = Environment.GetEnvironmentVariable("UO_SHARD_GM_ACCOUNTS");
++        var password = Environment.GetEnvironmentVariable("UO_SHARD_GM_PASSWORD");
 +
 +        if (string.IsNullOrWhiteSpace(list))
 +        {
++            return;
++        }
++
++        if (string.IsNullOrWhiteSpace(password))
++        {
++            logger.Warning("Headless: UO_SHARD_GM_PASSWORD is not set, so no game master accounts.");
++            return;
++        }
++
++        if (IsDefaultPassword(null, password))
++        {
++            logger.Warning("Headless: UO_SHARD_GM_PASSWORD is a published default, so no game master accounts.");
 +            return;
 +        }
 +
@@ -140,12 +187,33 @@ index 032c55526..a707bafab 100644
 +                continue;
 +            }
 +
++            if (IsDefaultPassword(username, password))
++            {
++                logger.Warning("Headless: UO_SHARD_GM_PASSWORD is the name of '{Username}', so it is skipped.", username);
++                continue;
++            }
++
++            // The same rule as the owner: an account below game master is
++            // raised only if it already holds the game master password.
 +            if (Accounts.GetAccount(username) is Account existing)
 +            {
 +                if (existing.AccessLevel < AccessLevel.GameMaster)
 +                {
++                    if (!existing.CheckPassword(password))
++                    {
++                        logger.Warning(
++                            "Headless: account '{Username}' exists but does not hold UO_SHARD_GM_PASSWORD; it is left as it is.",
++                            username
++                        );
++                        continue;
++                    }
++
 +                    existing.AccessLevel = AccessLevel.GameMaster;
 +                    logger.Information("Headless: raised account '{Username}' to game master.", username);
++                }
++                else
++                {
++                    EnsurePassword(existing, password);
 +                }
 +
 +                for (var i = 0; i < existing.Length; i++)
@@ -160,7 +228,7 @@ index 032c55526..a707bafab 100644
 +                continue;
 +            }
 +
-+            _ = new Account(username, username)
++            _ = new Account(username, password)
 +            {
 +                AccessLevel = AccessLevel.GameMaster
 +            };
@@ -168,6 +236,24 @@ index 032c55526..a707bafab 100644
 +            logger.Information("Headless: game master account created: {Username}", username);
 +        }
 +    }
++
++    // GUO patch: the configured password is the account's password, so a
++    // shard made before the passwords were generated stops taking the old one.
++    private static void EnsurePassword(Account account, string password)
++    {
++        if (!account.CheckPassword(password))
++        {
++            account.SetPassword(password);
++            logger.Information("Headless: password of account '{Username}' set from the environment.", account.Username);
++        }
++    }
++
++    // GUO patch: passwords anyone can read in GUO's history -- the old
++    // config.bat default, and an account's own name (the old game master
++    // rule) -- never make or raise a staff account.
++    private static bool IsDefaultPassword(string username, string password) =>
++        string.Equals(password, "guoprobe", StringComparison.OrdinalIgnoreCase) ||
++        username != null && string.Equals(password, username, StringComparison.OrdinalIgnoreCase);
  }
 MUO_EOF_0
 chmod 0644 $BASE/patches/0001-headless-owner-account.patch
@@ -319,18 +405,27 @@ if [ "$head" != "$PIN" ]; then
 fi
 if as_user git -C "$SRC" apply --check "$BASE/patches/0001-headless-owner-account.patch" >/dev/null 2>&1; then
     as_user git -C "$SRC" apply "$BASE/patches/0001-headless-owner-account.patch"
-else
+elif as_user git -C "$SRC" apply -R --check "$BASE/patches/0001-headless-owner-account.patch" >/dev/null 2>&1; then
     echo "muo_shard: 0001-headless-owner-account.patch already applied, skipping"
+else
+    as_user git -C "$SRC" apply --check "$BASE/patches/0001-headless-owner-account.patch" || true
+    die "0001-headless-owner-account.patch does not apply to the checkout at $PIN; stopping"
 fi
 if as_user git -C "$SRC" apply --check "$BASE/patches/0002-settable-update-range.patch" >/dev/null 2>&1; then
     as_user git -C "$SRC" apply "$BASE/patches/0002-settable-update-range.patch"
-else
+elif as_user git -C "$SRC" apply -R --check "$BASE/patches/0002-settable-update-range.patch" >/dev/null 2>&1; then
     echo "muo_shard: 0002-settable-update-range.patch already applied, skipping"
+else
+    as_user git -C "$SRC" apply --check "$BASE/patches/0002-settable-update-range.patch" || true
+    die "0002-settable-update-range.patch does not apply to the checkout at $PIN; stopping"
 fi
 if as_user git -C "$SRC" apply --check "$BASE/patches/0003-felucca-spring.patch" >/dev/null 2>&1; then
     as_user git -C "$SRC" apply "$BASE/patches/0003-felucca-spring.patch"
-else
+elif as_user git -C "$SRC" apply -R --check "$BASE/patches/0003-felucca-spring.patch" >/dev/null 2>&1; then
     echo "muo_shard: 0003-felucca-spring.patch already applied, skipping"
+else
+    as_user git -C "$SRC" apply --check "$BASE/patches/0003-felucca-spring.patch" || true
+    die "0003-felucca-spring.patch does not apply to the checkout at $PIN; stopping"
 fi
 
 # the archive's SDK can trail the SDK version the pin's global.json names; build with the installed one
@@ -577,6 +672,8 @@ install -d "$(dirname $DIST/muo-run.sh)"
 cat > $DIST/muo-run.sh <<'MUO_EOF_0'
 #!/bin/sh
 # generated by muo_shard
+# the dev-only GM account list in the patch is never honoured by a deployed shard
+unset UO_SHARD_GM_ACCOUNTS
 if [ -n "${MUO_ADMIN_USER:-}" ]; then export UO_SHARD_OWNER="$MUO_ADMIN_USER"; fi
 if [ -n "${MUO_ADMIN_PASSWORD:-}" ]; then export UO_SHARD_OWNER_PASSWORD="$MUO_ADMIN_PASSWORD"; fi
 cd "$(dirname "$0")"

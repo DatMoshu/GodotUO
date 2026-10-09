@@ -1,0 +1,117 @@
+diff --git a/Projects/Server/Items/BaseMulti.cs b/Projects/Server/Items/BaseMulti.cs
+index 0ebcac7c5..e89e574cd 100644
+--- a/Projects/Server/Items/BaseMulti.cs
++++ b/Projects/Server/Items/BaseMulti.cs
+@@ -108,9 +108,10 @@ public override void OnMapChange()
+         PathInteriorCacheState = MultiInteriorCacheState.Unknown;
+     }
+ 
+-    public override int GetMaxUpdateRange() => 22;
++    // Four tiles past the global range, so a multi arrives before its edge is in view.
++    public override int GetMaxUpdateRange() => Core.GlobalUpdateRange + 4;
+ 
+-    public override int GetUpdateRange(Mobile m) => 22;
++    public override int GetUpdateRange(Mobile m) => Core.GlobalUpdateRange + 4;
+ 
+     public virtual bool Contains(Point2D p) => Contains(p.m_X, p.m_Y);
+ 
+diff --git a/Projects/Server/Items/Item.cs b/Projects/Server/Items/Item.cs
+index 03ff9d000..f83993b9c 100644
+--- a/Projects/Server/Items/Item.cs
++++ b/Projects/Server/Items/Item.cs
+@@ -3301,9 +3301,9 @@ private void FixHolding_Sandbox()
+         }
+     }
+ 
+-    public virtual int GetMaxUpdateRange() => 18;
++    public virtual int GetMaxUpdateRange() => Core.GlobalUpdateRange;
+ 
+-    public virtual int GetUpdateRange(Mobile m) => 18;
++    public virtual int GetUpdateRange(Mobile m) => Core.GlobalUpdateRange;
+ 
+     public virtual void SendInfoTo(NetState ns, ReadOnlySpan<byte> world = default)
+     {
+diff --git a/Projects/Server/Main.cs b/Projects/Server/Main.cs
+index 608256651..347087e45 100644
+--- a/Projects/Server/Main.cs
++++ b/Projects/Server/Main.cs
+@@ -313,8 +313,10 @@ public static string BaseDirectory
+ 
+     public static bool Headless { get; private set; }
+ 
++    // How far from a player the server sends items and mobiles. Set by network.updateRange.
+     public static int GlobalUpdateRange { get; set; } = 18;
+ 
++    // The radius swept for clients and entities around a change. Kept 6 tiles past GlobalUpdateRange.
+     public static int GlobalMaxUpdateRange { get; set; } = 24;
+ 
+     public static int ScriptItems => _itemCount;
+@@ -630,6 +632,22 @@ You should have received a copy of the GNU General Public License
+ 
+         _lateWakePercent = Math.Clamp(lateWakePercent, 0, 100);
+ 
++        // 18 suits the classic 640x480 client. A larger client window can raise it so items and
++        // mobiles do not stop short of the map it draws, at the cost of more traffic per client.
++        // The 0xC8 reply carries it in one byte.
++        var updateRange = ServerConfiguration.GetSetting("network.updateRange", 18);
++        if (updateRange is < 5 or > 200)
++        {
++            logger.Warning(
++                "network.updateRange {Value} is outside 5-200; using {Clamped}",
++                updateRange,
++                Math.Clamp(updateRange, 5, 200)
++            );
++        }
++
++        GlobalUpdateRange = Math.Clamp(updateRange, 5, 200);
++        GlobalMaxUpdateRange = GlobalUpdateRange + 6;
++
+         var assemblyPath = Path.Join(BaseDirectory, AssembliesConfiguration);
+ 
+         // Load UOContent.dll
+diff --git a/Projects/UOContent/Multis/Houses/HouseFoundation.cs b/Projects/UOContent/Multis/Houses/HouseFoundation.cs
+index 11a387934..f8fc03771 100644
+--- a/Projects/UOContent/Multis/Houses/HouseFoundation.cs
++++ b/Projects/UOContent/Multis/Houses/HouseFoundation.cs
+@@ -201,21 +201,21 @@ public int MaxLevels
+ 
+         public bool IsFixture(Item item) => Fixtures.Contains(item);
+ 
+-        public override int GetMaxUpdateRange() => 24;
++        public override int GetMaxUpdateRange() => Core.GlobalMaxUpdateRange;
+ 
+         public override int GetUpdateRange(Mobile m)
+         {
+             var w = CurrentState.Components.Width;
+             var h = CurrentState.Components.Height - 1;
+-            var v = 18 + (w > h ? w : h) / 2;
++            var v = Core.GlobalUpdateRange + (w > h ? w : h) / 2;
+ 
+-            if (v > 24)
++            if (v > Core.GlobalMaxUpdateRange)
+             {
+-                v = 24;
++                v = Core.GlobalMaxUpdateRange;
+             }
+-            else if (v < 18)
++            else if (v < Core.GlobalUpdateRange)
+             {
+-                v = 18;
++                v = Core.GlobalUpdateRange;
+             }
+ 
+             return v;
+diff --git a/Projects/UOContent/Network/Packets/IncomingPlayerPackets.cs b/Projects/UOContent/Network/Packets/IncomingPlayerPackets.cs
+index 384e468b9..5cd752aec 100644
+--- a/Projects/UOContent/Network/Packets/IncomingPlayerPackets.cs
++++ b/Projects/UOContent/Network/Packets/IncomingPlayerPackets.cs
+@@ -383,7 +383,8 @@ public static void PingReq(NetState state, SpanReader reader)
+ 
+     public static void SetUpdateRange(NetState state, SpanReader reader)
+     {
+-        state.SendChangeUpdateRange(18);
++        // The client forgets objects past the range it is told, so it is told the server's.
++        state.SendChangeUpdateRange((byte)Core.GlobalUpdateRange);
+     }
+ 
+     public static void MobileQuery(NetState state, SpanReader reader)

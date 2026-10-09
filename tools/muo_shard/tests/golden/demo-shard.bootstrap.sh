@@ -14,7 +14,7 @@ UNIT=muo-demo-shard.service
 PORT=2610
 
 # packages: only what is missing, so a second run touches nothing
-want='dotnet-sdk-10.0 git zstd libdeflate-dev libargon2-1 ca-certificates python3 iproute2 rsync libicu-dev'
+want='dotnet-sdk-10.0 git zstd libdeflate-dev libargon2-1 libargon2-dev ca-certificates python3 iproute2 rsync libicu-dev'
 missing=
 for pkg in $want; do dpkg -s "$pkg" >/dev/null 2>&1 || missing="$missing $pkg"; done
 if [ -n "$missing" ]; then

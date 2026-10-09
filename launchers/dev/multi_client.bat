@@ -9,7 +9,7 @@ REM  sweep     [go to a Britain street and photograph it
 REM
 REM  The session lane plays the owner account's last character; the other three
 REM  each have a game master account from UO_SHARD_GM_ACCOUNTS, made by the
-REM  shard on a headless boot (password = name). Sound is off unless --sound is
+REM  shard on a headless boot (UO_SHARD_GM_PASSWORD). Sound is off unless --sound is
 REM  passed. Exits 0 only when every lane did. Output lands in
 REM  build\multi_client\<stamp>\: a log and a frame per lane, a 2x2 contact
 REM  sheet and summary.md.

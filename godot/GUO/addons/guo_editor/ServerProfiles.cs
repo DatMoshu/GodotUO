@@ -184,7 +184,7 @@ internal sealed class ManagedServerProcess
         foreach (string arg in profile.Arguments) info.ArgumentList.Add(arg);
         // Do not accidentally apply a development probe or another server's deployment.
         foreach (string key in info.Environment.Keys.Where(k => k.StartsWith("UO_", StringComparison.Ordinal) && (k.EndsWith("_PROBE", StringComparison.Ordinal) || k == "UO_SERVER_CONTENT")).ToArray()) info.Environment.Remove(key);
-        Start(ConsoleStartInfo(info, LogSources.ServerConsole(profile.Id)), state);
+        Start(ConsoleStartInfo(info, Workspace.ServerConsole(profile.Id)), state);
     }
     /// <summary>
     /// The OS shell owns the console file and waits for the server. No reader, callback or file handle in
