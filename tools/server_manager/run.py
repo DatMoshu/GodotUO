@@ -1,4 +1,10 @@
-"""Create local backend starter profiles, list clients and report setup readiness.
+"""Create local backend starter profiles, list clients, report setup readiness, and start or stop a server.
+
+    run.py init | clients | doctor
+    run.py start NAME | stop NAME | status NAME     NAME: a server profile's Id or Name
+
+start, stop and status keep the run bar's record (process.py): the editor can stop a server started here, and the
+other way round. Only a profile on this machine (loopback host) is started.
 
 Server and client profiles live in the per-user workspace (ADR-0032, docs/data_formats.md section 30):
 UO_WORKSPACE_DIR, else %LOCALAPPDATA%\\GUO or $XDG_DATA_HOME/guo. An earlier build/editor_servers/profiles.json
@@ -13,7 +19,9 @@ import uuid
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from guo import load_config
+import process
 
 KINDS = ("guo-project", "guo-build", "external")
 
@@ -40,6 +48,50 @@ class Workspace:
 
     def client_file(self, client_id: str) -> Path:
         return self.root / "clients" / client_id / "client.json"
+
+    def process_file(self, server_id: str) -> Path:
+        return self.server_home(server_id) / "process.json"
+
+    def console_file(self, server_id: str) -> Path:
+        return self.server_home(server_id) / "server.console.log"
+
+
+def load_servers(ws: Workspace) -> dict:
+    return read_json(ws.servers_file, {"Selected": None, "SelectedClient": None, "Servers": []})
+
+
+def find_server(servers: dict, name: str) -> dict | None:
+    """A profile by its Id, else by its Name (case-insensitive); None when no single one matches."""
+    hits = [s for s in servers["Servers"] if s["Id"] == name] or            [s for s in servers["Servers"] if s["Name"].casefold() == name.casefold()]
+    return hits[0] if len(hits) == 1 else None
+
+
+def upsert_server(ws: Workspace, profile: dict) -> dict:
+    """Add a profile, or replace the one with the same Id; the run bar's selection is left alone."""
+    servers = load_servers(ws)
+    servers["Servers"] = [s for s in servers["Servers"] if s["Id"] != profile["Id"]] + [profile]
+    write_json(ws.servers_file, servers)
+    return profile
+
+
+def is_local(profile: dict) -> bool:
+    return profile.get("Host") in ("127.0.0.1", "::1", "localhost")
+
+
+def start_server(ws: Workspace, profile: dict, env: dict[str, str] | None = None) -> int:
+    """Start a profile's server the way the run bar does; returns the managed shell's PID."""
+    if not is_local(profile):
+        raise process.ProcessError("remote profiles are connect-only; start their server on its host")
+    return process.start(Path(profile["Executable"]), Path(profile["ServerDirectory"]), list(profile.get("Arguments", [])),
+                         ws.console_file(profile["Id"]), ws.process_file(profile["Id"]), dict(os.environ if env is None else env))
+
+
+def stop_server(ws: Workspace, profile: dict) -> bool:
+    return process.stop(ws.process_file(profile["Id"]))
+
+
+def server_running(ws: Workspace, profile: dict) -> bool:
+    return process.owned(ws.process_file(profile["Id"])) is not None
 
 
 def load_clients(ws: Workspace) -> dict:
@@ -96,10 +148,13 @@ def migrate(ws: Workspace, legacy: Path, clients: dict) -> dict:
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("command", choices=["init", "clients", "doctor"])
+    parser.add_argument("command", choices=["init", "clients", "doctor", "start", "stop", "status"])
+    parser.add_argument("name", nargs="?", help="start, stop, status: the server profile's Id or Name")
     args = parser.parse_args()
     config = load_config()
     ws = Workspace(config.workspace_dir)
+    if args.command in ("start", "stop", "status"):
+        return lifecycle(ws, args.command, args.name or "")
     backends = json.loads(Path(__file__).with_name("backends.json").read_text(encoding="utf-8"))
     clients = load_clients(ws)
     profiles = migrate(ws, ROOT / "build/editor_servers/profiles.json", clients)
@@ -152,6 +207,26 @@ def main():
     if not profiles["Servers"]:
         print("Run init to create the six starter profiles.")
     return int(args.command == "doctor" and (missing or problems > 0 or not profiles["Servers"]))
+
+
+def lifecycle(ws: Workspace, command: str, name: str) -> int:
+    profile = find_server(load_servers(ws), name)
+    if profile is None:
+        print(f"No single server profile has the Id or Name {name!r}.")
+        return 2
+    try:
+        if command == "start":
+            print(profile["Name"], "started, PID", start_server(ws, profile), "; output in", ws.console_file(profile["Id"]))
+        elif command == "stop":
+            print(profile["Name"], "stopped" if stop_server(ws, profile) else "was not running under this manager")
+        else:
+            running = server_running(ws, profile)
+            print(profile["Name"], "running" if running else "not running")
+            return 0 if running else 1
+    except process.ProcessError as ex:
+        print(profile["Name"] + ":", ex)
+        return 1
+    return 0
 
 
 def client_problem(client: dict) -> str:

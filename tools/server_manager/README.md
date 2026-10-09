@@ -9,7 +9,8 @@ The Godot editor run bar keeps named local servers and remote endpoints. Each se
 3. Select a profile and click **Setup / validate** for upstream setup instructions. Install/build the native server and scripts, configure its client data and listener, and complete first-run account creation using that server's tools.
 4. Set its executable and working directory using **Browse**. Choose its default client (add clients on the **Clients** page: kind, program, data folder, overlay) and an optional server code project; save the profile. Profiles do not rewrite native server configuration.
 5. Choose it in the run bar, start the server, then start one to four clients. Remote profiles can launch clients; manage their server on its own host.
-6. Run `python tools/server_manager/run.py doctor` to list missing installation and client files. Exit 1 means setup remains. File presence and an open port are readiness indicators, not gameplay proof.
+6. `python tools/server_manager/run.py start NAME`, `stop NAME` and `status NAME` (NAME: a profile's Id or Name) do what the run bar's Start and Stop do, from a script, with the same process record (`process.py`, Windows): either side can stop what the other started. Only loopback profiles are started.
+7. Run `python tools/server_manager/run.py doctor` to list missing installation and client files. Exit 1 means setup remains. File presence and an open port are readiness indicators, not gameplay proof.
 
 | Backend | Starter game port | GUO server content adapter |
 |---|---:|---|

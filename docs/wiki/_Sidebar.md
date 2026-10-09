@@ -26,6 +26,7 @@
 - [Screen Effects](Screen-Effects.md)
 - [Asset Store](Asset-Store.md)
 - [Dev Shard](Dev-Shard.md)
+- [Server Compatibility](Server-Compatibility.md)
 
 **Developing**
 - [Scripted Runs and Probes](Scripted-Runs-and-Probes.md)

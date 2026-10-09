@@ -56,3 +56,11 @@ configured as above.
   for one) can be `n/a` by era rather than failures; the grid records each row's era next to its pin.
 - **Toolchains.** Rows 3 and 4 need Visual Studio 2022 with the C++ workload, and Sphere X also CMake 3.29 or newer.
   SV5 and SV6 check for them in a `doctor` step before any fetch.
+
+## Running the lab
+
+`tools/server_lab` (SV1) is the harness: `launchers\dev\server_lab.bat row modernuo` fetches the row at its pin into
+the workspace, builds and configures it on 127.0.0.1 with a generated admin, starts it through the server manager,
+runs every case that has a scenario, stops it and rewrites
+[Server-Compatibility.md](wiki/Server-Compatibility.md). See `tools/server_lab/README.md`. The ModernUO row runs its
+cases 0, 1 and 9 today; the other cases arrive with SV2a and SV2b, the other rows with SV4 to SV6.
