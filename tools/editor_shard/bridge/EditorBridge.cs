@@ -16,6 +16,9 @@
 //      CommandSystem.Handle, exactly as if they had typed it.
 //   4. A "multi" message places or removes an authored multi and its doors
 //      (AuthoredMulti.cs, tools/multi).
+//   5. Admin ops (AdminChannel.cs, ADR-0035) run only for a connection whose
+//      hello carried the server's admin token, each at a stated access level,
+//      and each is written to the admin audit log.
 //
 // Live edits are held in memory. The world project (the editor's files) is the
 // source of truth; tools/world export + a restart make them permanent.
@@ -52,6 +55,7 @@ public static class EditorBridge
     private static readonly Dictionary<(int, int), (byte[] Land, byte[] Statics)> _changed = new();
     private static readonly HashSet<NetState> _ulClients = new();
     private static readonly List<EditorConnection> _editors = new();
+    private static AdminChannel _admin = new(null, AdminLevel.Administrator, new AuditLog(null));
 
     public static void Configure()
     {
@@ -65,6 +69,9 @@ public static class EditorBridge
         {
             _ulMaps = maps.Split(',').Select(int.Parse).ToArray();
         }
+
+        // The audit log sits with the server's own logs, never in Saves.
+        _admin = AdminChannel.FromEnvironment(Path.Combine(Core.BaseDirectory, "Logs", "GUO", "admin_audit.jsonl"));
 
         EventSink.Connected += OnConnected;
         EventSink.Disconnected += m =>
@@ -174,6 +181,12 @@ public static class EditorBridge
         var thread = new Thread(Listen) { IsBackground = true, Name = "GUO editor bridge" };
         thread.Start();
         Log.Information("GUO editor bridge: editors on 127.0.0.1:{0}, UltimaLive shard '{1}', maps {2}", _port, _shardName, string.Join(",", _ulMaps));
+        Log.Information(
+            _admin.Enabled
+                ? "GUO editor bridge: admin channel on (the token grants {0}; audit log {1})"
+                : "GUO editor bridge: admin channel off (no admin token; map editing only){0}{1}",
+            _admin.Enabled ? _admin.Grants.ToString() : "", _admin.Enabled ? _admin.Audit.Path : ""
+        );
     }
 
     // --- UltimaLive to game clients ----------------------------------------
@@ -281,6 +294,9 @@ public static class EditorBridge
         public StreamWriter Writer;
         public string Name = "?";
         public long LastMobilesMs;
+        // The access level the admin token granted in hello (ADR-0035); null: map editing only.
+        public AdminLevel? Admin;
+        public int AdminRefusals;
         private readonly object _lock = new();
 
         public void Send(JsonObject msg)
@@ -345,6 +361,16 @@ public static class EditorBridge
                 if (op == "hello")
                 {
                     conn.Name = (string)msg["editor"] ?? "?";
+                    // The admin token, if offered (ADR-0035). Never logged:
+                    // the audit entry masks it.
+                    conn.Admin = _admin.CheckHello((string)msg["admin_token"], out string adminRefused);
+                    if (adminRefused != null)
+                    {
+                        conn.AdminRefusals++;
+                        _admin.Audit.Record(conn.Name, "hello", null, false, msg, adminRefused);
+                        Log.Warning("GUO editor bridge: editor '{0}' was refused admin: {1}", conn.Name, adminRefused);
+                        Thread.Sleep(AdminChannel.RefusalDelayMs);
+                    }
                     // Each map's season, which the shard sends its clients: the
                     // editor draws the same seasonal art when it knows it.
                     var seasons = new JsonObject();
@@ -356,13 +382,34 @@ public static class EditorBridge
                         }
                     }
 
-                    conn.Send(new JsonObject
+                    var reply = new JsonObject
                     {
                         ["op"] = "hello", ["shard"] = _shardName,
                         ["maps"] = new JsonArray(_ulMaps.Select(m => (JsonNode)m).ToArray()),
                         ["seasons"] = seasons,
-                    });
-                    Log.Information("GUO editor bridge: editor '{0}' connected", conn.Name);
+                        ["admin"] = conn.Admin?.ToString(),
+                    };
+                    if (conn.Admin is { } level)
+                    {
+                        reply["admin_ops"] = _admin.OpsFor(level);
+                        _admin.Audit.Record(conn.Name, "hello", level, true, msg);
+                    }
+                    else if (adminRefused != null)
+                    {
+                        reply["admin_error"] = adminRefused;
+                    }
+
+                    conn.Send(reply);
+                    Log.Information("GUO editor bridge: editor '{0}' connected{1}", conn.Name, conn.Admin is { } l ? $" (admin, {l})" : "");
+                    if (conn.AdminRefusals >= AdminChannel.MaxRefusals)
+                    {
+                        Log.Warning("GUO editor bridge: editor '{0}' closed after {1} refused admin tokens", conn.Name, conn.AdminRefusals);
+                        break;
+                    }
+                }
+                else if (AdminChannel.IsAdminOp(op))
+                {
+                    Core.LoopContext.Post(() => RunAdmin(conn, msg, op));
                 }
                 else if (op == "block")
                 {
@@ -425,6 +472,7 @@ public static class EditorBridge
                 _editors.Remove(conn);
             }
 
+            client.Close();
             Log.Information("GUO editor bridge: editor '{0}' left", conn.Name);
         }
     }
@@ -737,6 +785,39 @@ public static class EditorBridge
         return new JsonObject { ["ok"] = ok, ["as"] = m.RawName, ["item"] = $"0x{itemId:X4}", ["item_id"] = itemId,
                                 ["layer"] = layer.ToString(), ["serial"] = ok ? (uint)item.Serial : 0,
                                 ["can_equip"] = canEquip, ["check_equip"] = checkEquip, ["moved_to_pack"] = moved };
+    }
+
+    // {"op":"admin_whoami"} / {"op":"admin_audit","count":50}, each with an optional "req" echoed back.
+    // Authorised against the level the hello's token granted, run, and audited
+    // (ADR-0035). AD1 onwards add their ops here and in AdminChannel.Ops.
+    private static void RunAdmin(EditorConnection from, JsonNode msg, string op)
+    {
+        JsonNode req = msg["req"] is JsonNode r ? JsonNode.Parse(r.ToJsonString()) : null;
+        string refused = _admin.Authorise(op, from.Admin);
+        if (refused != null)
+        {
+            _admin.Audit.Record(from.Name, op, from.Admin, false, msg, refused);
+            from.Send(new JsonObject { ["op"] = op, ["req"] = req, ["ok"] = false, ["error"] = refused });
+            Log.Warning("GUO editor bridge: '{0}' refused {1}: {2}", from.Name, op, refused);
+            return;
+        }
+
+        _admin.Audit.Record(from.Name, op, AdminChannel.Ops[op], true, msg);
+        var reply = new JsonObject { ["op"] = op, ["req"] = req, ["ok"] = true };
+        switch (op)
+        {
+            case "admin_whoami":
+                reply["editor"] = from.Name;
+                reply["level"] = from.Admin.ToString();
+                reply["ops"] = _admin.OpsFor(from.Admin!.Value);
+                break;
+            case "admin_audit":
+                reply["entries"] = _admin.Audit.Recent(Math.Clamp((int?)msg["count"] ?? 50, 1, AuditLog.Keep));
+                break;
+        }
+
+        from.Send(reply);
+        Log.Information("GUO editor bridge: '{0}' ran {1} at {2}", from.Name, op, AdminChannel.Ops[op]);
     }
 
     // {"op":"command","as":"Guosweep","text":"[add ..."}

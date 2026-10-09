@@ -180,6 +180,9 @@ class Config:
     # clients that run beside the owner. They share shard_gm_password.
     shard_gm_accounts: tuple[str, ...]
     shard_gm_password: str
+    # The editor bridge's admin token (ADR-0035), from the same secrets file:
+    # an editor must send it in its bridge hello before any admin op.
+    bridge_admin_token: str
     # The address the local shard listens on (UO_SHARD_BIND): loopback unless
     # set otherwise on purpose, e.g. 0.0.0.0 to open it to the LAN.
     shard_bind: str
@@ -532,6 +535,7 @@ def load_config(root: Path | None = None) -> Config:
         shard_owner=get("UO_SHARD_OWNER", "guoprobe"),
         shard_owner_password=get("UO_SHARD_OWNER_PASSWORD"),
         shard_gm_password=get("UO_SHARD_GM_PASSWORD"),
+        bridge_admin_token=get("UO_BRIDGE_ADMIN_TOKEN"),
         shard_bind=get("UO_SHARD_BIND", "127.0.0.1"),
         shard_gm_accounts=tuple(
             a.strip() for a in get("UO_SHARD_GM_ACCOUNTS", "guoeffects,guohighlight,guosweep").split(",") if a.strip()

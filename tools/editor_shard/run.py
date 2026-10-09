@@ -10,6 +10,7 @@ world export) runs on an instance of its own instead:
     python tools/editor_shard/run.py status
     python tools/editor_shard/run.py stop
     python tools/editor_shard/run.py bridge  [--bridge-port 2595]
+    python tools/editor_shard/run.py admin-check
 
 setup copies the built ModernUO Distribution (the same tools/modernuo build,
 read only; Archives, Backups, Logs left out) to build\\shard_private, with its
@@ -26,6 +27,10 @@ bridge builds tools/editor_shard/bridge (GUO.EditorBridge.dll, a ModernUO
 assembly: UltimaLive for game clients, a JSON line protocol for editors on
 127.0.0.1:<bridge-port>) against the copy's own Server.dll and lists it in the
 copy's Data/assemblies.json. It takes effect at the next start.
+
+admin-check talks to the running instance's bridge as an editor would and
+checks its admin channel (ADR-0035): no token, a wrong token and the right
+one; the audit log; and that no token or password reaches a log.
 
 stop ends only the process start recorded, and only if its executable is the
 copy's: it cannot stop the shared shard.
@@ -53,7 +58,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from guo import load_config  # noqa: E402
+from guo import load_config, shard_secrets  # noqa: E402
 
 LEAVE_OUT = {"Archives", "Backups", "Logs", "temp"}
 
@@ -175,6 +180,14 @@ def set_bridge_listed(h: Path, listed: bool) -> None:
     path.write_text(json.dumps(names, indent=2), encoding="utf-8")
 
 
+def admin_token(cfg) -> str:
+    """The bridge's admin token (ADR-0035): configured, else the workspace secrets file's, made if missing."""
+    if cfg.bridge_admin_token:
+        return cfg.bridge_admin_token
+    path, _ = shard_secrets.ensure(cfg.workspace_dir)
+    return shard_secrets.read(path).get(shard_secrets.ADMIN_TOKEN_KEY, "")
+
+
 def cmd_start(cfg, data_first: Path | None, objects: Path | None = None, clear: bool = False,
               no_bridge: bool = False) -> int:
     h = home(cfg)
@@ -210,6 +223,10 @@ def cmd_start(cfg, data_first: Path | None, objects: Path | None = None, clear: 
                        ("UO_SHARD_GM_PASSWORD", cfg.shard_gm_password)):
         if value and not env.get(key):
             env[key] = value
+    # Admin ops on the bridge need this token in the editor's hello (ADR-0035);
+    # without it the bridge offers map editing only. Never printed.
+    if not no_bridge:
+        env["GUO_BRIDGE_ADMIN_TOKEN"] = admin_token(cfg)
     proc = subprocess.Popen([str(exe)], cwd=str(h), env=env, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
                             creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0))
     state.update({"pid": proc.pid, "data_first": str(data_first.resolve()) if data_first else None,
@@ -269,6 +286,18 @@ def cmd_bridge(cfg, bridge_port: int) -> int:
     return 0
 
 
+def cmd_admin_check(cfg) -> int:
+    h = home(cfg)
+    state = read_state(h)
+    if not (state.get("pid") and pid_alive(state["pid"], h / EXE)):
+        print("[editor_shard] not running; start it first (with the bridge)")
+        return 2
+    from admin_check import run as admin_check
+
+    return admin_check(state.get("bridge_port", 2595), admin_token(cfg), h,
+                       [cfg.shard_owner_password, cfg.shard_gm_password])
+
+
 def cmd_stop(cfg) -> int:
     h = home(cfg)
     state = read_state(h)
@@ -294,7 +323,7 @@ def cmd_stop(cfg) -> int:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("command", choices=["setup", "start", "status", "stop", "bridge"])
+    ap.add_argument("command", choices=["setup", "start", "status", "stop", "bridge", "admin-check"])
     ap.add_argument("--from", dest="source", type=Path, help="built ModernUO Distribution to copy (setup)")
     ap.add_argument("--port", type=int, default=2594, help="port for the private instance (setup)")
     ap.add_argument("--data-first", type=Path, help="folder ahead of the install in dataDirectories (start)")
@@ -315,6 +344,8 @@ def main() -> int:
         return cmd_status(cfg)
     if args.command == "bridge":
         return cmd_bridge(cfg, args.bridge_port)
+    if args.command == "admin-check":
+        return cmd_admin_check(cfg)
     return cmd_stop(cfg)
 
 

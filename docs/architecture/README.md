@@ -42,5 +42,6 @@ it is taken even if its file has not landed yet.
 | 0031 | Multi editor | main |
 | 0032 | Client profiles and workspace | main |
 | 0033 | SpriteMotion fit lab in a native editor host | main |
+| 0035 | The admin channel: token, access levels, audit log | work/AD0 (proposed) |
 
-Next free: 0034.
+Next free: 0036.

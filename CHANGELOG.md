@@ -6,6 +6,11 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 ## Unreleased
 
 ### Safety
+- The editor bridge has an admin channel for the coming Admin tab: admin
+  operations run only for an editor that sends the server's admin token
+  (generated per user beside the shard passwords, never printed), each at a
+  stated access level, and each is written to an audit log on the server with
+  passwords and tokens masked. Map editing works as before, with no token.
 - The shard's owner (and game master) account is no longer handed to whoever
   logs in under its name first: an existing account is raised only if it
   already holds the configured password, and a blank or old default password

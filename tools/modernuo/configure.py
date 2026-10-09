@@ -57,7 +57,8 @@ def ensure_passwords(cfg) -> None:
     path, added = shard_secrets.ensure(cfg.workspace_dir)
     # A value from the environment or config.local.bat wins over the file;
     # only say "generated" for what the shard will actually use.
-    configured = {shard_secrets.OWNER_KEY: cfg.shard_owner_password, shard_secrets.GM_KEY: cfg.shard_gm_password}
+    configured = {shard_secrets.OWNER_KEY: cfg.shard_owner_password, shard_secrets.GM_KEY: cfg.shard_gm_password,
+                  shard_secrets.ADMIN_TOKEN_KEY: cfg.bridge_admin_token}
     used = [key for key in added if not configured[key]]
     if used:
         print(f"[shard] Generated {', '.join(used)} into {path}")

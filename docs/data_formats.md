@@ -46,6 +46,7 @@ Every key resolves as: **environment variable → `config.local.bat` →
 | `UO_MAPGEN_DATA` | The map generator's per-user data folder (§26): mined stamps, coast atlas, tree statics, validator reports; default `%LOCALAPPDATA%\GUO\mapgen` |
 | `UO_EDITOR_LIVE_HOST` / `UO_EDITOR_LIVE_PORT` | The editor bridge the UO Shard dock connects to (§10); default `127.0.0.1:2595`, the private instance |
 | `UO_EDITOR_NAME` | The name this editor shows other editors on the bridge |
+| `UO_BRIDGE_ADMIN_TOKEN` | The bridge's admin token (§10, ADR-0035): 32 letters and digits, generated into the workspace's `shard\secrets.bat` with the shard passwords; never printed or logged |
 | `UO_SHARD_HOST` / `UO_SHARD_PORT` | Shard to connect to |
 | `GODOT_VERSION` / `GODOT_FLAVOR` | Pinned engine build |
 | `UO_LOG_LEVEL` | `DEBUG` \| `INFO` \| `WARN` \| `ERROR` |
@@ -290,18 +291,20 @@ line, UTF-8, `\n`-terminated. ADR-0012 has the reasoning.
 
 | `op` | Fields | What happens |
 |---|---|---|
-| `hello` | `editor` (name) | Answered with `hello` |
+| `hello` | `editor` (name), `admin_token` (optional: the server's admin token, ADR-0035) | Answered with `hello`. Without `admin_token` the connection edits maps as before; with the right one it may also run admin ops. A wrong token pauses the connection 1 s and is audited; the third closes it |
 | `block` | `facet`, `bx`, `by`, `land`: 64 `[id, z]` pairs, row-major (index `y*8+x`), `statics`: `[id, x, y, z, hue]` per static (`x`, `y` 0..7 in the block), `sent_ms` (sender's clock, unix ms, optional) | Replaces the whole block in the server's own map (walking, line of sight and placement see it), pushes it to UltimaLive clients on that map, relays it to the other editors; answered with `ack` |
 | `command` | `as` (an online character's name), `text` (e.g. `[where`) | Runs the GM command as that character (`CommandSystem.Handle`); answered with `command` |
 | `object` | `action` `put` with `kind` (`spawner` or `item`) and `object` (as in `shard/objects.json`, section 13); or `action` `delete` with `kind` and `id` | Applies it to the world with the boot sync's code (ADR-0014), relays it to the other editors; answered with `object_ack` |
 | `mobiles` | `facet`, `x0`, `y0`, `x1`, `y1` (inclusive rectangle; clamped to the map and to 1024 cells a side), `req` (echoed), `as` (optional: an online character that must be a GameMaster or above) | Read-only. Players and mobiles in the rectangle, at most 500; answered with `mobiles`. Needs a prior `hello`; at most one request per 250 ms per connection (the Live map layer, ADR-0027, polls it about once a second for the visible region plus a margin) |
+| `admin_whoami` | `req` (optional, echoed) | Admin op (Counselor). Answered with `admin_whoami` |
+| `admin_audit` | `count` (1..200, default 50), `req` | Admin op (Administrator). The last audit entries; answered with `admin_audit` |
 | `multi` | `action` `place` with `tag`, `id` (multi id), `map`, `x`, `y`, `z` (optional: the land's average z), `doors` (as in a built multi's `multi.json`, section 16); or `action` `remove` with `tag` | Places an authored multi (`GUOAuthoredMulti`) and a real door per entry, replacing a multi with the same tag; `remove` deletes it and its doors. Answered with `multi_ack` |
 
 **Bridge to editor**
 
 | `op` | Fields |
 |---|---|
-| `hello` | `shard` (the UltimaLive shard name), `maps` (facets offered to UltimaLive clients), `seasons` (facet → ModernUO season number, which the editor adopts) |
+| `hello` | `shard` (the UltimaLive shard name), `maps` (facets offered to UltimaLive clients), `seasons` (facet → ModernUO season number, which the editor adopts), `admin` (the access level the token granted, or null), `admin_ops` (when granted: the admin ops this connection may run), `admin_error` (when a token was refused: `admin token refused` or `this server has no admin token`) |
 | `ack` | `facet`, `bx`, `by`, `clients` (UltimaLive clients pushed to), `editors` (other editors relayed to), `ms` (time on the game thread) |
 | `block` | as sent, plus `from` (the sending editor's name): another editor's block. Last write per block wins |
 | `command` | `ok`, `as`, `text`, or `error` |
@@ -309,7 +312,23 @@ line, UTF-8, `\n`-terminated. ADR-0012 has the reasoning.
 | `object_ack` | `action`, `kind`, `id`, `outcome` (`Added`, `Changed`, `Kept`, `Deleted`, `Missing`, `Skipped`), `editors`, `ms` |
 | `mobiles` | `req`, `ok`, `facet`, the clamped `x0`,`y0`,`x1`,`y1`, `count`, `truncated` (hit the 500 cap), `mobiles`: per mobile `serial`, `name`, `body`, `x`, `y`, `z`, `facet`, `isPlayer`, `hits`, `maxHits`, `notoriety` (ModernUO's 1 innocent .. 7 invulnerable, computed with no viewer); or `ok` false with `error` (`rate limited`, `say hello first`, `no map N`, `'X' is not online`, `'X' is not staff`) |
 | `multi_ack` | `action`, `tag`, `ok`; on a place `serial`, `at` `[x, y, z]`, `components`, `doors`, `replaced`; on a remove `removed`; or `error` |
+| `admin_whoami` | `req`, `ok`, `editor`, `level`, `ops` |
+| `admin_audit` | `req`, `ok`, `entries`: audit entries, oldest first |
+| any admin op, refused | `req`, `ok` false, `error`: `admin op without the admin token: send admin_token in hello`, `this server has no admin token`, or `'<op>' needs <level>; this connection holds <level>` |
 | `error` | `error` |
+
+**Admin ops** (ADR-0035). An op listed in the bridge's `AdminChannel.Ops`
+runs only on a connection whose `hello` carried the server's admin token, and
+only at or below the level the token grants (`GUO_BRIDGE_ADMIN_ACCESS` on the
+server, Administrator by default; levels are ModernUO's, Player .. Owner). A
+server started without `GUO_BRIDGE_ADMIN_TOKEN` has no admin ops. Every admin
+op, run or refused, and every admin hello is appended to
+`<shard>/Logs/GUO/admin_audit.jsonl`, one object per line: `at` (UTC ISO
+8601), `editor`, `op`, `level`, `ok`, `args` (the request without `op`),
+`error` (on a refusal). Any field whose name contains `password`, `token`,
+`secret` or `passphrase`, at any depth, is written as `***`; an op that
+carries a secret must name its field so. The map-editing ops above are not
+admin ops and are unchanged.
 
 The World tab's Live layer reads these snapshots through the existing Shard
 dock connection. A successful `mobiles` reply replaces the visible snapshot:

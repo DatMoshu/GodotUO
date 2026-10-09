@@ -41,7 +41,7 @@ class ConfigureTests(unittest.TestCase):
         data.mkdir(parents=True, exist_ok=True)
         return SimpleNamespace(shard_dist=dist, client_data=data, shard_name="GUO Dev", shard_port=port,
                                shard_bind=bind, workspace_dir=self.tmp / name / "workspace",
-                               shard_owner_password=owner_pw, shard_gm_password=gm_pw)
+                               shard_owner_password=owner_pw, shard_gm_password=gm_pw, bridge_admin_token="")
 
     def run_configure(self, cfg) -> str:
         out = io.StringIO()
@@ -62,15 +62,30 @@ class ConfigureTests(unittest.TestCase):
         out = self.run_configure(cfg)
         path = shard_secrets.path_for(cfg.workspace_dir)
         values = shard_secrets.read(path)
-        self.assertEqual(set(values), {shard_secrets.OWNER_KEY, shard_secrets.GM_KEY})
-        for value in values.values():
-            self.assertRegex(value, r"^[A-Za-z0-9]{20}$")
-            self.assertNotIn(value, out, "a password was printed")
-        self.assertNotEqual(values[shard_secrets.OWNER_KEY], values[shard_secrets.GM_KEY])
+        self.assertEqual(set(values), {shard_secrets.OWNER_KEY, shard_secrets.GM_KEY, shard_secrets.ADMIN_TOKEN_KEY})
+        for key, value in values.items():
+            length = shard_secrets.TOKEN_LENGTH if key == shard_secrets.ADMIN_TOKEN_KEY else shard_secrets.LENGTH
+            self.assertRegex(value, rf"^[A-Za-z0-9]{{{length}}}$")
+            self.assertNotIn(value, out, "a password or the admin token was printed")
+        self.assertEqual(len(set(values.values())), 3)
         # A guarded .bat, as common.bat calls it: the environment still wins.
         for line in path.read_text(encoding="utf-8").splitlines():
             if " set " in line:
-                self.assertTrue(line.startswith("if not defined UO_SHARD_"), line)
+                self.assertTrue(line.startswith(("if not defined UO_SHARD_", "if not defined UO_BRIDGE_ADMIN_TOKEN ")), line)
+
+    def test_an_earlier_secrets_file_gains_the_admin_token_and_keeps_its_passwords(self):
+        # A file written before ADR-0035 holds only the two passwords.
+        cfg = self.cfg()
+        path = shard_secrets.path_for(cfg.workspace_dir)
+        path.parent.mkdir(parents=True)
+        path.write_text('if not defined UO_SHARD_OWNER_PASSWORD set "UO_SHARD_OWNER_PASSWORD=Owner1"\n'
+                        'if not defined UO_SHARD_GM_PASSWORD set "UO_SHARD_GM_PASSWORD=Gm1"\n', encoding="utf-8")
+        out = self.run_configure(cfg)
+        values = shard_secrets.read(path)
+        self.assertEqual((values[shard_secrets.OWNER_KEY], values[shard_secrets.GM_KEY]), ("Owner1", "Gm1"))
+        self.assertRegex(values[shard_secrets.ADMIN_TOKEN_KEY], rf"^[A-Za-z0-9]{{{shard_secrets.TOKEN_LENGTH}}}$")
+        self.assertIn(shard_secrets.ADMIN_TOKEN_KEY, out)
+        self.assertNotIn(values[shard_secrets.ADMIN_TOKEN_KEY], out)
 
     def test_passwords_differ_per_fresh_run_and_stay_put_after(self):
         a, b = self.cfg("a"), self.cfg("b")
@@ -105,7 +120,10 @@ class ConfigureTests(unittest.TestCase):
     def test_an_explicit_password_is_not_reported_as_generated(self):
         cfg = self.cfg(owner_pw="fromlocal", gm_pw="fromlocal2")
         out = self.run_configure(cfg)
-        self.assertNotIn("Generated", out)
+        # Only the admin token (ADR-0035), which nothing configured, is generated.
+        self.assertIn(f"Generated {shard_secrets.ADMIN_TOKEN_KEY} into", out)
+        self.assertNotIn(shard_secrets.OWNER_KEY, out)
+        self.assertNotIn(shard_secrets.GM_KEY, out)
         self.assertNotIn("fromlocal", out)
 
 

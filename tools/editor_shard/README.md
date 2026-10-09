@@ -9,6 +9,7 @@ python tools\editor_shard\run.py setup   [--from DIR] [--port 2594]
 python tools\editor_shard\run.py start   [--data-first DIR] [--objects EXPORT | --clear-objects]
 python tools\editor_shard\run.py status
 python tools\editor_shard\run.py stop
+python tools\editor_shard\run.py admin-check
 ```
 
 - **setup** copies the built ModernUO `Distribution` (the same
@@ -40,6 +41,16 @@ python tools\editor_shard\run.py stop
   `docs\data_formats.md` section 10), and makes game clients UltimaLive
   clients of shard `GUO-Editor-Private` for map 0. Stop the instance first;
   its `Assemblies` are locked while it runs.
+- **admin channel** (ADR-0035): **start** hands the shard the user's bridge
+  admin token (`UO_BRIDGE_ADMIN_TOKEN`, generated into the workspace's
+  `shard\secrets.bat` if missing). Admin ops on the bridge need it in the
+  editor's `hello`; map editing does not. Every admin op is audited in
+  `build\shard_private\Logs\GUO\admin_audit.jsonl`, secrets masked.
+- **admin-check** talks to the running instance's bridge and checks the admin
+  channel: no token, a wrong one, the right one, the audit log, the close
+  after three refusals, and that no token or password reached a log. The same
+  channel without ModernUO:
+  `dotnet run --project tools\editor_shard\bridge\tests\AdminChannel.Tests.csproj`.
 - **stop** ends only the process `start` recorded, and only if its executable
   is the copy's. It cannot stop the shared shard.
 
