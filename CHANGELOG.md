@@ -47,6 +47,10 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
   fail, is logged and dropped instead of freezing or crashing the client;
   connecting to a dead server gives up after 5 seconds. The three edits to
   ported code are recorded in docs/upstream/GUO_DIVERGENCES.md.
+- launchers/shard/fetch.bat and fetch.sh stop with git's error when a ModernUO
+  patch neither applies nor is already applied, instead of saying 'already
+  applied' and building the old patch; moving to a new pin resets the files of
+  a patch that will not come off.
 
 ### Platforms
 - **Android** (ARM64, debug): export, install, run and smoke from
