@@ -149,6 +149,9 @@ public partial class InspectorDock : EditorDock
         details.AddChild(_fields);
     }
 
+    /// <summary>The details text (name, id, place, height), for the editor tour's marks.</summary>
+    internal Control TourFields => _fields;
+
     public void ShowInspection(Inspection inspection)
     {
         if (_preview == null)

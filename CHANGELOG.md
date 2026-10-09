@@ -94,6 +94,9 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 - Profile settings migrate automatically; profile version 10.
 
 ### Building and managing
+- World editor tour: a recorded walk through every map-editing feature of the
+  World tab, in plain words, with every on-screen mark checked against the
+  control it names; the editor's own tools to record, export and review it.
 - **GodotUO Asset Store**: a local web catalogue (`launchers\store\serve.bat`)
   where a folder on disk stands in for web storage, and a Store in Options
   that installs, updates and removes packs with every file hash-checked.

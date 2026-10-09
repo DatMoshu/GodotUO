@@ -19,6 +19,9 @@ public partial class LegendChip : Control
     /// <summary>Number of legend rows shown, for the smoke check.</summary>
     internal int Rows => _items.Count;
 
+    /// <summary>The size of the box last drawn (the control itself has no size; the tour marks the box).</summary>
+    internal Vector2 DrawnSize { get; private set; }
+
     public string Title => _title;
 
     public LegendChip()
@@ -81,6 +84,7 @@ public partial class LegendChip : Control
         }
 
         float height = row * (1 + _items.Count + hover.Length) + 12;
+        DrawnSize = new Vector2(w + 16, height);
         DrawRect(new Rect2(0, 0, w + 16, height), new Color(0.07f, 0.07f, 0.09f, 0.88f));
         DrawRect(new Rect2(0, 0, w + 16, height), new Color(0.78f, 0.62f, 0.3f), false, 1f);
         float y = 16;

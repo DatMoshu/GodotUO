@@ -218,23 +218,130 @@ public partial class EditorTour : Node
 
     private void Skip(string why) => _seg.Skipped = why;
 
-    private static double HoldFor(string text) => Math.Clamp(1.8 + (text?.Length ?? 0) / 22.0, 2.5, 7.0);
+    // Long enough to read the caption at an easy pace (about 15 characters a second), never under 3.5 s.
+    private static double HoldFor(string text) => Math.Clamp(1.5 + (text?.Length ?? 0) / 15.0, 3.5, 10.0);
 
     private void Say(string body, bool top = false, string title = null)
     {
         _overlay.AtTop = top;
-        _overlay.SetCaption($"{_segNo} / {_segTotal}", title ?? _seg.Title, body);
+        _overlay.SetCaption(_markedTour ? "" : $"{_segNo} / {_segTotal}", title ?? _seg.Title, body);
         _holdText = body;
+        _steps.Add((_seg?.Id, body, _frames.Count, Math.Round(_clock.Elapsed.TotalSeconds, 2)));
     }
+
+    /// <summary>Each caption as it was put up: the segment, the text, the index of the next frame saved and the wall clock then.</summary>
+    private readonly List<(string Segment, string Text, int NextFrame, double WallSeconds)> _steps = new();
 
     private string _holdText = "";
 
+    /// <summary>
+    /// Outlines a control, following it as the layout moves. The control must be fully on screen: visible, inside the
+    /// window and inside every panel that clips it (a scroll box, a split). A mark on a hidden or clipped control fails
+    /// the step and is not drawn; reveal it first (<see cref="Reveal"/>). Every frame saved checks the marks again.
+    /// </summary>
     private void MarkControl(Control c, string label = null)
     {
-        if (c != null && IsInstanceValid(c) && c.IsVisibleInTree())
+        if (c == null)
         {
-            _overlay.Mark(c.GetGlobalRect(), label);
+            Check(false, $"mark '{label}': no such control");
+            return;
         }
+
+        MarkRect(c, () => c.GetGlobalRect(), label ?? c.Name);
+    }
+
+    /// <summary>Outlines one tab of a tab strip (a tab is not a control of its own).</summary>
+    private void MarkTab(TabContainer tabs, int index, string label)
+    {
+        TabBar bar = tabs.GetTabBar();
+        MarkRect(bar, () => new Rect2(bar.GlobalPosition + bar.GetTabRect(index).Position, bar.GetTabRect(index).Size), label);
+    }
+
+    private void MarkRect(Control owner, Func<Rect2?> rect, string label)
+    {
+        if (Hidden(owner, rect()) is { } why)
+        {
+            Check(false, $"mark '{label}' is not on a visible control: {why}");
+            return;
+        }
+
+        _overlay.Mark(owner, rect, label);
+    }
+
+    /// <summary>Null when the rect of this control is wholly on screen; otherwise why not.</summary>
+    private static string Hidden(Control c, Rect2? rect)
+    {
+        if (c == null || !IsInstanceValid(c) || !c.IsVisibleInTree())
+        {
+            return "the control is hidden";
+        }
+
+        if (rect is not { } r || r.Size.X < 2 || r.Size.Y < 2)
+        {
+            return "the control has no size";
+        }
+
+        if (!c.GetViewportRect().Grow(1).Encloses(r))
+        {
+            return "the control is outside the window";
+        }
+
+        for (Node n = c.GetParent(); n is Control a; n = a.GetParent())
+        {
+            if ((a.ClipContents || a is ScrollContainer) && !a.GetGlobalRect().Grow(1).Encloses(r))
+            {
+                return $"the control is clipped by {a.GetType().Name} '{a.Name}' (scrolled away or below a fold)";
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Brings a control into view the way a person would: opens the tab it is on, opens the fold it is under, and
+    /// scrolls its panel to it. Returns whether anything had to change, so a segment can show that step on camera.
+    /// </summary>
+    private async Task<bool> Reveal(Control c)
+    {
+        bool changed = false;
+        var chain = new List<Control>();
+        for (Node n = c; n is Control a; n = a.GetParent())
+        {
+            chain.Add(a);
+        }
+
+        chain.Reverse();
+        for (int i = 0; i < chain.Count - 1; i++)
+        {
+            Control parent = chain[i], child = chain[i + 1];
+            if (parent is TabContainer tabs && tabs.GetTabIdxFromControl(child) is int idx and >= 0 && tabs.CurrentTab != idx)
+            {
+                tabs.CurrentTab = idx;
+                changed = true;
+            }
+
+            // A fold: a hidden box right after the toggle button that opens it (WorldView.Section).
+            if (!child.Visible && child.GetIndex() > 0 && parent.GetChild(child.GetIndex() - 1) is Button { ToggleMode: true } fold)
+            {
+                fold.ButtonPressed = true;
+                changed = true;
+            }
+        }
+
+        await Frames(3);
+        foreach (Control a in chain)
+        {
+            if (a is ScrollContainer sc && sc != c)
+            {
+                int before = sc.ScrollVertical;
+                sc.EnsureControlVisible(c);
+                await Frames(2);
+                changed |= sc.ScrollVertical != before;
+            }
+        }
+
+        await Frames(3);
+        return changed;
     }
 
     private void PointAt(Control c)
@@ -242,12 +349,114 @@ public partial class EditorTour : Node
         if (c != null && c.IsVisibleInTree())
         {
             _overlay.Pointer(c.GetGlobalRect().GetCenter());
+            _ringLands = () => IsInstanceValid(c) && c.IsVisibleInTree() ? TourOverlay.FramePx(c, c.Size / 2) : null;
         }
     }
+
+    // --- the click ring ---------------------------------------------------------
+
+    /// <summary>A drawn click ring further than this from where its click lands fails the step.</summary>
+    private const float RingTolerancePx = 3f;
+
+    /// <summary>Where the click the ring stands for lands, in frame pixels, asked again at every shot; null: nowhere on screen.</summary>
+    private Func<Vector2?> _ringLands;
+
+    private float _ringWorstPx = -1;
+    private int _ringChecks;
+
+    /// <summary>A map viewport position (the forced mouse, what the game's picking reads) in the map container's local space.</summary>
+    private Vector2? MapLocal(Vector2I px)
+    {
+        SubViewportContainer c = _world == null ? null : All<SubViewportContainer>(_world).FirstOrDefault();
+        if (c == null || !IsInstanceValid(c) || _world.CanvasSize.X <= 0 || _world.CanvasSize.Y <= 0)
+        {
+            return null;
+        }
+
+        // The container may show the viewport scaled (a stretch shrink, a fixed size): map through the ratio, not 1:1.
+        return new Vector2(px.X, px.Y) * c.Size / (Vector2)_world.CanvasSize;
+    }
+
+    /// <summary>A map viewport position in the pixels of a saved frame.</summary>
+    private Vector2? MapFramePx(Vector2I px)
+    {
+        SubViewportContainer c = All<SubViewportContainer>(_world).FirstOrDefault();
+        return MapLocal(px) is { } local ? TourOverlay.FramePx(c, local) : null;
+    }
+
+    /// <summary>
+    /// The ring against where its click landed, both in frame pixels. <paramref name="what"/> names a result check
+    /// (logged when it passes too); without it this is the quiet per-frame check that only logs a failure.
+    /// </summary>
+    private void CheckRing(Vector2? landed, string frameOrWhat, bool quiet = false)
+    {
+        if (_overlay.PointerFramePx is not { } ring)
+        {
+            Check(false, $"{frameOrWhat}: no click ring is drawn");
+            return;
+        }
+
+        if (landed is not { } at)
+        {
+            Check(false, $"{frameOrWhat}: the click point is not on screen");
+            return;
+        }
+
+        float d = ring.DistanceTo(at);
+        _ringWorstPx = Math.Max(_ringWorstPx, d);
+        _ringChecks++;
+        if (!quiet || d > RingTolerancePx)
+        {
+            Check(d <= RingTolerancePx, $"{frameOrWhat}: the click ring is {d:0.0} px from where the click landed (limit {RingTolerancePx:0} px)");
+        }
+    }
+
+    /// <summary>The frame's marks are checked again here: each still on its control, and none of them, nor the pointer, under the caption.</summary>
+    private void CheckMarks()
+    {
+        Rect2? cards = _overlay.CardsRect;
+        foreach (var (owner, rect, label) in _overlay.LiveMarks)
+        {
+            Rect2? r = IsInstanceValid(owner) ? rect() : null;
+            if (Hidden(owner, r) is { } why)
+            {
+                Check(false, $"frame {_frames.Count}: mark '{label}' {why}");
+            }
+            else if (cards is { } c && c.Intersects(r.Value))
+            {
+                Check(false, $"frame {_frames.Count}: the caption covers '{label}'");
+            }
+        }
+
+        if (_overlay.PointerAt is { } p && cards is { } card && card.Grow(12).HasPoint(p))
+        {
+            Check(false, $"frame {_frames.Count}: the caption covers the pointer");
+        }
+    }
+
+    private int _markChecks;
+
+    /// <summary>The map-editing segments (we_*): every frame's marks are checked and the caption sits over the map.</summary>
+    private bool _markedTour;
 
     private async Task Shot(double hold = -1, int settle = 4)
     {
         await Frames(settle);
+        if (_markedTour)
+        {
+            CheckMarks();
+            _markChecks++;
+            // A frame filmed before the step's first caption would still show the last step's words.
+            if (_steps.Count == 0 || _steps[^1].Segment != _seg.Id)
+            {
+                Check(false, $"frame {_frames.Count} comes before the first caption of {_seg.Title}");
+            }
+            if (_overlay.PointerAt != null && _ringLands != null)
+            {
+                CheckRing(_ringLands(), $"frame {_frames.Count}", quiet: true);
+            }
+        }
+
         ScrubUi(EditorInterface.Singleton.GetBaseControl());
         await Frames(2);
         Image img = EditorInterface.Singleton.GetBaseControl().GetViewport().GetTexture()?.GetImage();
@@ -308,6 +517,8 @@ public partial class EditorTour : Node
         _segNo++;
         _overlay.ClearMarks();
         _overlay.SetDetail(null);
+        _markedTour = id.StartsWith("we_");
+        _overlay.CaptionArea = _markedTour ? MapArea : null;
         if (id != "shard")
         {
             // The shard dock lives in the bottom panel; it covers the view only while it is the subject.
@@ -438,9 +649,28 @@ public partial class EditorTour : Node
                 ("overlay", "World project: the overlay", OverlaySeg),
                 ("edit", "World edits with undo and redo", EditSeg),
                 ("objects", "World objects: items and spawners", ObjectsSeg),
+                ("we_stamp", "Stamp: place one item", WeStamp),
+                ("we_select", "Select: what is on this spot?", WeSelect),
+                ("we_stack", "Select: several things on one spot", WeStack),
+                ("we_view", "Moving around the map", WeView),
+                ("we_edit", "Changing one item: colour, height, erase", WeEdit),
+                ("we_land", "Shaping the ground: Raise and Lower", WeLand),
+                ("we_heights", "Heights: Fixed Z, Z min and max, Ghost roofs", WeHeights),
+                ("we_brush", "The Brush: Single, Scatter, Sculpt, Terrain", WeBrush),
+                ("we_settings", "Brush settings: size, density, spacing, seed", WeSettings),
+                ("we_variations", "Brush variations: several items in one stroke", WeVariations),
+                ("we_rules", "Brush rules: where a brush may paint", WeRules),
+                ("we_presets", "Saved brushes and favourites", WePresets),
+                ("we_objects", "World objects: items and spawners", WeObjects),
+                ("we_maptools", "Measure, Route, Pin, Area", WeMapTools),
+                ("we_layers", "What the map shows: layers, guides, season", WeLayers),
+                ("we_modes", "Views: colouring the map", WeModes),
+                ("we_maplayers", "Map layers and the scene pack", WeMapLayers),
+                ("we_undo", "Undo and redo", WeUndo),
                 ("modes", "World tab: render modes (View menu)", ModesSeg),
                 ("maplayers", "World tab: map layers, measure, route, scene pack", MapLayersSeg),
                 ("assetoverlay", "Asset overlay: replace art, never the install", AssetOverlaySeg),
+                ("we_export", "Export and verify the project", WeExport),
                 ("export", "Export and verify", ExportSeg),
                 ("shard", "UO Shard dock: live", ShardSeg),
                 ("server_console", "Server console: managed output in Logs", ServerConsoleSeg),
@@ -732,13 +962,24 @@ public partial class EditorTour : Node
         }
     }
 
+    /// <summary>The map viewport in window coordinates; null while it is not shown.</summary>
+    private Rect2? MapArea()
+    {
+        SubViewportContainer c = _world == null ? null : All<SubViewportContainer>(_world).FirstOrDefault();
+        return c != null && IsInstanceValid(c) && c.IsVisibleInTree() ? c.GetGlobalRect() : null;
+    }
+
     private void Aim(Vector2I at)
     {
         _world.ForcedMouse = at;
         SubViewportContainer c = All<SubViewportContainer>(_world).FirstOrDefault();
-        if (c != null)
+        if (c != null && MapLocal(at) is { } local)
         {
-            _overlay.Pointer(c.GlobalPosition + new Vector2(at.X, at.Y));
+            // Through the container's transform, not its position plus the pixel: the ring sits on the click whatever
+            // the scale between the map's viewport and the container showing it.
+            _overlay.Pointer(c.GetGlobalTransform() * local);
+            // Checked against the mouse the map is really given at each shot, so a ring left behind by a later aim fails.
+            _ringLands = () => _world.ForcedMouse is { } f ? MapFramePx(f) : null;
         }
     }
 
@@ -1656,12 +1897,15 @@ public partial class EditorTour : Node
                 ["elapsed_s"] = Math.Round(_clock.Elapsed.TotalSeconds, 1),
                 ["window"] = new[] { DisplayServer.WindowGetSize().X, DisplayServer.WindowGetSize().Y },
                 ["live_port"] = EditorSmoke.ArgValue(LivePortFlag),
+                ["ring_checks"] = _ringChecks,
+                ["ring_vs_click_max_px"] = _ringWorstPx < 0 ? null : (double?)Math.Round(_ringWorstPx, 2),
                 ["segments"] = _segments.Select(s => new Dictionary<string, object>
                 {
                     ["id"] = s.Id, ["title"] = s.Title, ["skipped"] = s.Skipped, ["passed"] = s.Passed,
                     ["failures"] = s.Failures, ["frames"] = s.FrameCount,
                 }).ToList(),
                 ["frames"] = _frames.Select(f => new Dictionary<string, object> { ["file"] = f.File, ["seconds"] = f.Seconds, ["segment"] = f.Segment }).ToList(),
+                ["steps"] = _steps.Select(t => new Dictionary<string, object> { ["segment"] = t.Segment, ["caption"] = Scrub(t.Text), ["next_frame"] = t.NextFrame, ["wall_s"] = t.WallSeconds }).ToList(),
             };
             Directory.CreateDirectory(_out);
             File.WriteAllText(Path.Combine(_out, "tour.json"), JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true }));
