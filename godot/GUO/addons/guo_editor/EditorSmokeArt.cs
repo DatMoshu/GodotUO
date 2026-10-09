@@ -548,6 +548,17 @@ public partial class EditorSmoke
         ImageResult ok = Task.Run(() => rd.RunAsync(new ImageRequest { Prompt = "a ring", Width = 32, Height = 32 }, null, CancellationToken.None)).GetAwaiter().GetResult();
         ArtCheck("retrodiffusion_stub_image", ok.Error == null && ok.Pngs.Count == 1 && _artStub.RdToken == "stub-key" && _artStub.RdCalls == 1, ok.Error ?? "");
 
+        // An img2img workflow queued with no input must be refused with words,
+        // never queued: ComfyUI would try to open its input directory as a file.
+        string needy = Path.Combine(Path.GetDirectoryName(_artWorkflow), "stub_needs_input.json");
+        File.WriteAllText(needy, ArtStubServer.WorkflowJson.Replace("\"example.png\"", "\"{{input}}\""));
+        int queuedBefore = _artStub.QueuedCount;
+        ImageResult refused = Task.Run(() => new ComfyUiProvider(_artStub.Url).RunAsync(
+            new ImageRequest { Prompt = "x", WorkflowPath = needy }, null, CancellationToken.None)).GetAwaiter().GetResult();
+        ArtCheck("img2img_needs_input_refused", refused.Error != null && refused.Error.Contains("input image") && _artStub.QueuedCount == queuedBefore,
+            refused.Error ?? "queued anyway");
+        try { File.Delete(needy); } catch (Exception) { }
+
         if (Art != null)
         {
             // The same through the dock: input bound to the inspected asset, then "Import to overlay".
@@ -714,6 +725,7 @@ internal sealed class ArtStubServer : IDisposable
     public string Url { get; }
     public JsonNode LastPrompt { get; private set; }
     public int UploadBytes { get; private set; }
+    public int QueuedCount { get; private set; }
     public string UploadedName { get; private set; } = "";
     public int RdCalls { get; private set; }
     public string RdToken { get; private set; } = "";
@@ -782,6 +794,7 @@ internal sealed class ArtStubServer : IDisposable
             {
                 LastPrompt = JsonNode.Parse(Encoding.UTF8.GetString(await ReadAll(ctx).ConfigureAwait(false)))["prompt"];
                 _queuedAt = DateTime.UtcNow;
+                QueuedCount++;
                 _queued.Release();
                 await Json(ctx, "{\"prompt_id\":\"p1\",\"number\":1,\"node_errors\":{}}").ConfigureAwait(false);
             }

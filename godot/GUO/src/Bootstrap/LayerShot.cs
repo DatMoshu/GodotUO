@@ -24,6 +24,11 @@ internal static class LayerShot
     /// <summary>Pin the camera zoom for deterministic framing (0 leaves it alone).</summary>
     public static float Zoom { get; set; }
 
+    /// <summary>--layer-capture "x0 y0 x1 y1": resample that tile rect out of
+    /// the live viewport through the same math the editor dock uses, and save
+    /// it. Proves the capture mapping where screenshots exist.</summary>
+    public static string CaptureRect { get; set; } = "";
+
     public static async System.Threading.Tasks.Task Run(Node host, string dir)
     {
         // Started as soon as Main is ready, before the client has booted.
@@ -111,6 +116,12 @@ internal static class LayerShot
             await InputProbe.Wait(host, 180);
         }
 
+        if (!string.IsNullOrWhiteSpace(CaptureRect))
+        {
+            CaptureArea(host, dir);
+            await InputProbe.Wait(host, 30);
+        }
+
         // Let the freshly loaded chunks settle before the picture.
         await InputProbe.Wait(host, 180);
 
@@ -127,5 +138,77 @@ internal static class LayerShot
         }
 
         Passed = true;
+    }
+
+    private static void CaptureArea(Node host, string dir)
+    {
+        try
+        {
+            string[] parts = CaptureRect.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length < 4)
+            {
+                GD.Print("[GUO] layer shot: --layer-capture wants \"x0 y0 x1 y1\"");
+                return;
+            }
+
+            int x0 = int.Parse(parts[0]), y0 = int.Parse(parts[1]);
+            int x1 = int.Parse(parts[2]), y1 = int.Parse(parts[3]);
+            if (x1 < x0) (x0, x1) = (x1, x0);
+            if (y1 < y0) (y0, y1) = (y1, y0);
+            var world = Client.Game.UO.World;
+            var scene = Client.Game.GetScene<Game.Scenes.GameScene>();
+            var cam = scene?.Camera;
+            if (cam == null)
+            {
+                GD.Print("[GUO] layer shot: no camera for capture");
+                return;
+            }
+
+            int TileZ(int x, int y)
+            {
+                try
+                {
+                    return world.Map.GetTileZ(x, y);
+                }
+                catch (System.Exception)
+                {
+                    return 0;
+                }
+            }
+
+            int w = System.Math.Clamp((x1 - x0 + 1) * 64, 256, 1024);
+            int h = System.Math.Clamp((y1 - y0 + 1) * 64, 256, 1024);
+            int ztop = System.Math.Max(System.Math.Max(TileZ(x0, y0), TileZ(x1, y0)), System.Math.Max(TileZ(x0, y1), TileZ(x1, y1)));
+            using var shot = host.GetViewport().GetTexture().GetImage();
+            var off = scene.DrawOffset;
+            var view = cam.ViewTransform;
+            // Sanity anchor: the player's tile must map near the viewport
+            // center (the camera follows it). If it doesn't, the mapping
+            // (not the rect) is wrong.
+            var anchor = view * new Godot.Vector2(
+                (world.Player.X - world.Player.Y) * 22 - 22 - off.X,
+                (world.Player.X + world.Player.Y) * 22 - (world.Player.Z << 2) - 22 - off.Y);
+            GD.Print($"[GUO] layer shot: player maps to {anchor.X:0},{anchor.Y:0} vs center {shot.GetWidth() / 2},{shot.GetHeight() / 2}");
+            float minX = float.MaxValue, minY = float.MaxValue, maxX = float.MinValue, maxY = float.MinValue;
+            using var img = GUO.Renderer.TerrainLayers.CaptureRect(shot, (tx, ty) =>
+            {
+                var s = view * new Godot.Vector2((tx - ty) * 22f - 22f - off.X, (tx + ty) * 22f - (ztop << 2) - 22f - off.Y);
+                if (s.X < minX) minX = s.X;
+                if (s.Y < minY) minY = s.Y;
+                if (s.X > maxX) maxX = s.X;
+                if (s.Y > maxY) maxY = s.Y;
+                return (s.X, s.Y);
+            }, x0, y0, x1, y1, ztop, w, h);
+            dir = string.IsNullOrWhiteSpace(dir) ? "user://screenshots/layer_shot" : dir;
+            DirAccess.MakeDirRecursiveAbsolute(dir);
+            string path = dir.PathJoin($"capture_{x0}_{y0}_{x1}_{y1}.png");
+            img.SavePng(path);
+            GD.Print($"[GUO] layer shot: capture {w}x{h} over ({x0},{y0})-({x1},{y1}) z {ztop}; "
+                + $"shot {shot.GetWidth()}x{shot.GetHeight()}, samples {minX:0}-{maxX:0},{minY:0}-{maxY:0} -> {ProjectSettings.GlobalizePath(path)}");
+        }
+        catch (System.Exception ex)
+        {
+            GD.Print($"[GUO] layer shot: capture failed: {ex.GetType().Name}: {ex.Message}");
+        }
     }
 }

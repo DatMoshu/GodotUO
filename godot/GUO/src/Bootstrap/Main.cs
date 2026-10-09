@@ -806,6 +806,7 @@ public partial class Main : Node
         LayerShot.At = string.IsNullOrWhiteSpace(_options.LayerAt) ? LayerShot.At : _options.LayerAt;
         LayerShot.SwapManifest = _options.LayerSwap;
         LayerShot.Zoom = _options.LayerZoom;
+        LayerShot.CaptureRect = _options.LayerCapture;
         await Preamble();
         await LayerShot.Run(this, _options.ScreenshotDir);
         Quit(LayerShot.Passed ? 0 : 1);
@@ -1566,6 +1567,9 @@ public partial class Main : Node
         /// <summary>--layer-swap PATH: copy this layers.json over the live one mid-run, then -relayers.</summary>
         public string LayerSwap { get; private set; } = "";
 
+        /// <summary>--layer-capture "x0 y0 x1 y1": resample that rect out of the viewport, like the dock.</summary>
+        public string LayerCapture { get; private set; } = "";
+
         /// <summary>--extract-test: prove ExtractDecal on two PNGs; see ExtractTest.</summary>
         public bool ExtractTest { get; private set; }
 
@@ -2124,6 +2128,9 @@ public partial class Main : Node
                         break;
                     case "--layer-swap":
                         o.LayerSwap = NextPath();
+                        break;
+                    case "--layer-capture":
+                        o.LayerCapture = Next();
                         break;
                     case "--layer-zoom":
                         if (float.TryParse(Next(), System.Globalization.NumberStyles.Float,

@@ -54,6 +54,16 @@ namespace GUO.Game.Scenes
 
         public sbyte FoliageIndex { get; private set; }
 
+        /// <summary>
+        /// The player-centered draw offset every vert is relative to. The
+        /// batcher draws verts through the camera's <see
+        /// cref="Renderer.Camera.ViewTransform"/>, so screen pixels are
+        /// ViewTransform * (world pixels - this). Probes and the Layers
+        /// dock's area capture read it to map world pixels back to screen
+        /// pixels; Camera.WorldToScreen alone lacks the follow translation.
+        /// </summary>
+        internal Point DrawOffset => _offset;
+
         public void UpdateMaxDrawZ(bool force = false)
         {
             int playerX = _world.Player.X;

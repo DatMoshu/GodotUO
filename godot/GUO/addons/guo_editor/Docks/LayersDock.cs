@@ -118,8 +118,22 @@ public partial class LayersDock : EditorDock
         };
         mid.AddChild(_preview);
 
+        // Bottom half, split: the layer form on the left, the three work
+        // previews (extracted, generated, mask) stacked on the right.
+        var split = new HBoxContainer { SizeFlagsVertical = SizeFlags.ExpandFill };
+        root.AddChild(split);
+        var left = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill, SizeFlagsStretchRatio = 1f };
+        split.AddChild(left);
+        var right = new VBoxContainer
+        {
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            SizeFlagsStretchRatio = 1f,
+            CustomMinimumSize = new Vector2(300, 0),
+        };
+        split.AddChild(right);
+
         var form = new GridContainer { Columns = 4 };
-        root.AddChild(form);
+        left.AddChild(form);
         _id = Field(form, "Id");
         _name = Field(form, "Name");
         _kind = new OptionButton();
@@ -136,7 +150,7 @@ public partial class LayersDock : EditorDock
         _opacity.Value = 1;
 
         var imgRow = new HBoxContainer();
-        root.AddChild(imgRow);
+        left.AddChild(imgRow);
         imgRow.AddChild(new Label { Text = "Image" });
         _image = new LineEdit { SizeFlagsHorizontal = SizeFlags.ExpandFill, PlaceholderText = "overlays/name.png" };
         imgRow.AddChild(_image);
@@ -145,13 +159,13 @@ public partial class LayersDock : EditorDock
         imgRow.AddChild(browse);
 
         var promptRow = new HBoxContainer();
-        root.AddChild(promptRow);
+        left.AddChild(promptRow);
         promptRow.AddChild(new Label { Text = "Prompt" });
         _prompt = new LineEdit { SizeFlagsHorizontal = SizeFlags.ExpandFill };
         promptRow.AddChild(_prompt);
 
         var actions = new HBoxContainer();
-        root.AddChild(actions);
+        left.AddChild(actions);
         _add = new Button { Text = "Add" };
         _add.Pressed += () => Report(AddFromUi());
         actions.AddChild(_add);
@@ -165,12 +179,12 @@ public partial class LayersDock : EditorDock
         reloadWorld.Pressed += () => Report(ReloadWorldView());
         actions.AddChild(reloadWorld);
 
-        root.AddChild(new Label
+        left.AddChild(new Label
         {
             Text = "The game reads layers.json at boot: -relayers in the client, Reload world for the World tab above.",
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
         });
-        BuildAuthorUi(root);
+        BuildAuthorUi(left, right);
         _status = new Label { AutowrapMode = TextServer.AutowrapMode.WordSmart };
         root.AddChild(_status);
         Refresh();

@@ -13,7 +13,7 @@ using Godot;
 using GUO.Workspace;
 
 [Tool]
-public partial class RunBar : HBoxContainer
+public partial class RunBar : VBoxContainer
 {
     private ServerProfiles _profiles;
     private ClientRegistry _clients;
@@ -92,21 +92,27 @@ public partial class RunBar : HBoxContainer
             }
         }
         catch (Exception e) { GD.PushError("Server profiles: " + e.Message); _profiles = new(); _clients ??= new ClientRegistry(); _loadFailed = true; }
+        // Two rows so the bar fits narrow windows: profile picks and Manage
+        // servers on the first row, everything else starting at the left again.
+        var first = new HBoxContainer();
+        AddChild(first);
+        var second = new HBoxContainer();
+        AddChild(second);
         _server = new OptionButton { TooltipText = "Saved server profiles. Each names its server files and its default client." };
         _server.ItemSelected += i => ServerChosen((int)i);
-        AddChild(_server);
+        first.AddChild(_server);
         _client = new OptionButton { TooltipText = "The client to start: the server's default, or another. A client names its program and UO data." };
         _client.ItemSelected += i => ClientChosen((int)i);
-        AddChild(_client);
-        var manage = new Button { Text = "Manage servers" }; manage.Pressed += Manage; AddChild(manage);
-        _status = new Label { Text = "Checking…" }; AddChild(_status);
-        _warn = new Label { Visible = false }; _warn.AddThemeColorOverride("font_color", new Color(0.95f, 0.7f, 0.2f)); AddChild(_warn);
-        _start = new Button { Text = "Start server" }; _start.Pressed += () => Run(Start); AddChild(_start);
+        first.AddChild(_client);
+        var manage = new Button { Text = "Manage servers" }; manage.Pressed += Manage; first.AddChild(manage);
+        _status = new Label { Text = "Checking…" }; second.AddChild(_status);
+        _warn = new Label { Visible = false }; _warn.AddThemeColorOverride("font_color", new Color(0.95f, 0.7f, 0.2f)); second.AddChild(_warn);
+        _start = new Button { Text = "Start server" }; _start.Pressed += () => Run(Start); second.AddChild(_start);
         _stop = new Button { Text = "Stop server", TooltipText = "Ends only the server process this manager started. Save the world in the server first; unsaved changes are lost." };
-        _stop.Pressed += ConfirmStop; AddChild(_stop);
-        AddChild(new VSeparator());
-        var clients = new Button { Text = "Start clients" }; clients.Pressed += () => Run(StartClients); AddChild(clients);
-        _count = new OptionButton(); for (int n = 1; n <= 4; n++) _count.AddItem($"× {n}", n); AddChild(_count);
+        _stop.Pressed += ConfirmStop; second.AddChild(_stop);
+        second.AddChild(new VSeparator());
+        var clients = new Button { Text = "Start clients" }; clients.Pressed += () => Run(StartClients); second.AddChild(clients);
+        _count = new OptionButton(); for (int n = 1; n <= 4; n++) _count.AddItem($"× {n}", n); second.AddChild(_count);
         Rebuild();
         _poll = new Godot.Timer { WaitTime = 2, Autostart = true }; _poll.Timeout += Poll; AddChild(_poll); Poll();
     }

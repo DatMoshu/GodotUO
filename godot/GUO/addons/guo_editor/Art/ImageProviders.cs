@@ -25,6 +25,12 @@ public sealed class ImageRequest
     public long Seed = -1;
     public int Width;
     public int Height;
+
+    /// <summary>Guidance strength override (&lt; 0 leaves the workflow alone).</summary>
+    public float Cfg = -1f;
+
+    /// <summary>Step count override (&lt; 0 leaves the workflow alone).</summary>
+    public int Steps = -1;
 }
 
 /// <summary>What kind of file an artifact is, by extension (GUO audio/3D jobs).</summary>
@@ -167,6 +173,28 @@ public sealed class ComfyUiProvider : IImageProvider, IDisposable
                     bound.Add($"prompt on node {(string)link[0]}");
                 }
             }
+            else if (cls == "RandomNoise")
+            {
+                if (req.Seed >= 0 && inputs.ContainsKey("noise_seed") && inputs["noise_seed"] is not JsonArray)
+                {
+                    inputs["noise_seed"] = req.Seed;
+                    bound.Add($"seed on node {id}");
+                }
+            }
+            else if (cls == "CFGGuider")
+            {
+                if (req.Cfg >= 0 && inputs.ContainsKey("cfg") && inputs["cfg"] is not JsonArray)
+                {
+                    inputs["cfg"] = req.Cfg;
+                    bound.Add($"cfg on node {id}");
+                }
+            }
+            else if ((cls == "Flux2Scheduler" || cls == "BasicScheduler")
+                && req.Steps >= 0 && inputs.ContainsKey("steps") && inputs["steps"] is not JsonArray)
+            {
+                inputs["steps"] = req.Steps;
+                bound.Add($"steps on node {id}");
+            }
             else if (cls == "LoadImage" && uploadedName != null && !inputDone)
             {
                 inputs["image"] = uploadedName;
@@ -182,6 +210,28 @@ public sealed class ComfyUiProvider : IImageProvider, IDisposable
         }
 
         return bound;
+    }
+
+    /// <summary>True when the bound workflow still asks for an input image (an unbound {"{{input}}"}).</summary>
+    public static bool NeedsInput(JsonObject workflow)
+    {
+        foreach (var (_, node) in workflow)
+        {
+            if (node?["inputs"] is not JsonObject inputs)
+            {
+                continue;
+            }
+
+            foreach (var (_, value) in inputs)
+            {
+                if (value is JsonValue v && v.TryGetValue(out string s) && s.Contains("{{input}}"))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     public async Task<ImageResult> RunAsync(ImageRequest req, Action<double> progress, CancellationToken ct)
@@ -211,7 +261,18 @@ public sealed class ComfyUiProvider : IImageProvider, IDisposable
                 uploaded = await UploadAsync(req.InputName.Replace(':', '_') + ".png", req.InputPng, ct).ConfigureAwait(false);
             }
 
+            // An img2img workflow queued with no input would bind its
+            // {{input}} to "": ComfyUI's LoadImage then opens the input
+            // directory itself and dies with "Permission denied". Detect the
+            // need before Bind erases the placeholder, refuse with words.
+            bool wantsInput = NeedsInput(workflow);
             Bind(workflow, req, uploaded);
+            if (wantsInput && req.InputPng == null)
+            {
+                result.Error = "this workflow needs an input image: check 'Use the inspected asset as input' with an asset inspected, or pick a text-to-image workflow";
+                return result;
+            }
+
             // Record the configured model loaders, including workflows with multiple checkpoints.
             result.Model = string.Join(", ", workflow.Select(kv =>
                 kv.Value?["inputs"]?["ckpt_name"] ?? kv.Value?["inputs"]?["unet_name"])

@@ -290,6 +290,54 @@ namespace GUO.Renderer
         }
 
         /// <summary>
+        /// Resamples a screenshot into the decal space of a tile rect: texture
+        /// pixel (i,j) shows tile-space ((x0+0.5)+u*w, (y0-0.5)+v*h) on the
+        /// overlay's own flat plane (ztop, same height RefreshMesh lays).
+        /// toShot maps tile-space to screenshot pixels (affine in dimetric).
+        /// Pure math over a finished image: identical in the game client and
+        /// the editor, and testable without either.
+        /// </summary>
+        public static Image CaptureRect(Image shot, Func<float, float, (float X, float Y)> toShot,
+            int x0, int y0, int x1, int y1, int ztop, int w, int h)
+        {
+            int spanX = System.Math.Max(1, x1 - x0 + 1), spanY = System.Math.Max(1, y1 - y0 + 1);
+            var img = Image.CreateEmpty(w, h, false, Image.Format.Rgb8);
+            for (int j = 0; j < h; j++)
+            {
+                for (int i = 0; i < w; i++)
+                {
+                    float u = (i + 0.5f) / w, v = (j + 0.5f) / h;
+                    float tx = x0 + 0.5f + u * spanX, ty = y0 - 0.5f + v * spanY;
+                    (float sx, float sy) = toShot(tx, ty);
+                    img.SetPixel(i, j, Bilinear(shot, sx, sy));
+                }
+            }
+
+            return img;
+        }
+
+        private static Color Bilinear(Image shot, float x, float y)
+        {
+            int w = shot.GetWidth(), h = shot.GetHeight();
+            if (w <= 0 || h <= 0)
+            {
+                return new Color(0, 0, 0);
+            }
+
+            int x0 = (int)System.Math.Floor(x), y0 = (int)System.Math.Floor(y);
+            float fx = x - x0, fy = y - y0;
+            x0 = System.Math.Clamp(x0, 0, w - 1);
+            y0 = System.Math.Clamp(y0, 0, h - 1);
+            int x1 = System.Math.Min(x0 + 1, w - 1), y1 = System.Math.Min(y0 + 1, h - 1);
+            Color a = shot.GetPixel(x0, y0), b = shot.GetPixel(x1, y0);
+            Color c = shot.GetPixel(x0, y1), d = shot.GetPixel(x1, y1);
+            return new Color(
+                a.R + (b.R - a.R) * fx + (c.R - a.R) * fy + (a.R - b.R - c.R + d.R) * fx * fy,
+                a.G + (b.G - a.G) * fx + (c.G - a.G) * fy + (a.G - b.G - c.G + d.G) * fx * fy,
+                a.B + (b.B - a.B) * fx + (c.B - a.B) * fy + (a.B - b.B - c.B + d.B) * fx * fy);
+        }
+
+        /// <summary>
         /// One quad over the whole tile rect: the union of the tiles'
         /// diamonds, which in tile space is X in [x0+0.5, x1+1.5], Y in
         /// [y0-0.5, y1+0.5]. Corners take 0..1 exactly. A single image on a

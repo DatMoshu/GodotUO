@@ -24,7 +24,7 @@ public partial class WorldView : VBoxContainer
     private WorldGuides _guides;
     private WorldModes _modeNode;
     private LegendChip _chip;
-    private MenuButton _viewMenu, _layerMenu;
+    private MenuButton _viewMenu, _layerMenu, _layersAgain;
     private Label _cursor;
     private readonly MapLayers _mapLayers;
     private OptionButton _tool;
@@ -243,6 +243,19 @@ public partial class WorldView : VBoxContainer
         overlay.Pressed += () => ReloadOverlay();
         bar.AddChild(overlay);
 
+        // A second, always-visible Layers menu: the original lives in the
+        // toolbar below (and moves with workspace layouts), which left
+        // people with no clickable Layers in some arrangements. A real
+        // MenuButton, so the engine positions its popup on the right
+        // monitor; its items drive the original menu through SetToggle.
+        _layersAgain = new MenuButton
+        {
+            Text = "Layers",
+            TooltipText = "What the world draws: land, statics, multis, roofs, world objects, live",
+        };
+        _layersAgain.GetPopup().HideOnCheckableItemSelection = false;
+        bar.AddChild(_layersAgain);
+
         _status = new Label
         {
             Text = "the world starts the first time this tab is shown",
@@ -310,6 +323,7 @@ public partial class WorldView : VBoxContainer
         MenuToggle(_layers, "Live", false, v => SetLayer("Live", v));
         MenuToggle(_layers, "Live players", true, v => SetLiveKinds(v, _mapLayers.Live.Mobiles));
         MenuToggle(_layers, "Live mobiles", true, v => SetLiveKinds(_mapLayers.Live.Players, v));
+        MirrorLayersMenu();
         tools.AddChild(new Label { Text = "spawns" });
         _spawnEntry = new LineEdit
         {
@@ -734,6 +748,68 @@ public partial class WorldView : VBoxContainer
             pm.SetItemChecked(id, now);
             set(now);
         };
+    }
+
+    /// <summary>
+    /// Copies the Layers menu's items into the first-row duplicate, keeping
+    /// checks in sync both ways: presses in the copy drive the original
+    /// through SetToggle, and either popup refreshes the copy on open.
+    /// </summary>
+    private void MirrorLayersMenu()
+    {
+        if (_layersAgain == null || _layers == null)
+        {
+            return;
+        }
+
+        PopupMenu src = _layers.GetPopup();
+        PopupMenu dst = _layersAgain.GetPopup();
+        dst.Clear();
+        for (int s = 0; s < src.ItemCount; s++)
+        {
+            string text = src.GetItemText(s);
+            int id = dst.ItemCount;
+            dst.AddCheckItem(text, id);
+            dst.SetItemChecked(id, src.IsItemChecked(s));
+        }
+
+        dst.AboutToPopup += SyncLayersMirror;
+        dst.IdPressed += pressed =>
+        {
+            string text = dst.GetItemText((int)pressed);
+            bool? now = GetToggle(text);
+            if (now == null)
+            {
+                return;
+            }
+
+            if (SetToggle(text, !now.Value))
+            {
+                dst.SetItemChecked((int)pressed, !now.Value);
+            }
+        };
+        src.IdPressed += _ => SyncLayersMirror();
+    }
+
+    /// <summary>Copies the Layers menu's check states into the first-row duplicate.</summary>
+    private void SyncLayersMirror()
+    {
+        if (_layersAgain == null || _layers == null)
+        {
+            return;
+        }
+
+        PopupMenu src = _layers.GetPopup();
+        PopupMenu dst = _layersAgain.GetPopup();
+        for (int d = 0; d < dst.ItemCount; d++)
+        {
+            string text = dst.GetItemText(d);
+            bool? now = GetToggle(text);
+            if (now != null)
+            {
+                dst.SetItemChecked(d, now.Value);
+            }
+        }
     }
 
     /// <summary>The Layers and Guides menu items by name (Land, Statics, Multis, Roofs, Objects, Grid, Altitude, Blocks, ...), for F3.</summary>

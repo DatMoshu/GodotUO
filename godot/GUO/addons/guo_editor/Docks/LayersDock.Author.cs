@@ -10,22 +10,23 @@ using GUO.Renderer;
 
 /// <summary>
 /// The Layers dock's authoring side: capture the World tab's view of the
-/// rect, repaint it through ComfyUI img2img, subtract the capture to get the
-/// decal, erase strays with a mask brush, and save it as the layer's image.
-/// One quad, one image: no tiling anywhere in this path.
+/// rect, paint WHERE the decal goes (the mask), repaint through ComfyUI
+/// (Flux Klein edit), subtract the capture, keep only the masked part, and
+/// save it as the layer's image. One quad, one image: no tiling anywhere.
 /// </summary>
 public partial class LayersDock
 {
-    private OptionButton _wfPick, _viewPick;
-    private SpinBox _tol, _feather, _brush;
-    private TextureRect _workPreview;
-    private Image _capture, _generated, _decal;
+    private OptionButton _wfPick;
+    private SpinBox _tol, _feather, _brush, _cfg, _steps;
+    private CheckBox _erase;
+    private TextureRect _extractView, _genView, _maskView;
+    private Image _capture, _generated, _decalRaw, _decal, _mask;
     private bool _busy, _brushing;
 
-    private void BuildAuthorUi(VBoxContainer root)
+    private void BuildAuthorUi(VBoxContainer left, VBoxContainer right)
     {
         var wf = new HBoxContainer();
-        root.AddChild(wf);
+        left.AddChild(wf);
         wf.AddChild(new Label { Text = "Workflow" });
         _wfPick = new OptionButton { SizeFlagsHorizontal = SizeFlags.ExpandFill };
         wf.AddChild(_wfPick);
@@ -35,16 +36,25 @@ public partial class LayersDock
         RefreshAuthorWorkflows();
 
         var go = new HBoxContainer();
-        root.AddChild(go);
+        left.AddChild(go);
+        var fromArea = new Button { Text = "From area", TooltipText = "Copy the Area tool's selection into X0..Y1" };
+        fromArea.Pressed += () => Report(AdoptArea());
+        go.AddChild(fromArea);
         var capture = new Button { Text = "Capture area" };
         capture.Pressed += CaptureFromUi;
         go.AddChild(capture);
         var generate = new Button { Text = "Generate" };
         generate.Pressed += GenerateFromUi;
         go.AddChild(generate);
+        go.AddChild(new Label { Text = "Cfg", TooltipText = "Guidance: how hard the prompt pulls. Lower stays closer to the capture." });
+        _cfg = new SpinBox { MinValue = 0.5, MaxValue = 20, Step = 0.5, Value = 5 };
+        go.AddChild(_cfg);
+        go.AddChild(new Label { Text = "Steps", TooltipText = "Sampler steps: more refines further (and slower)." });
+        _steps = new SpinBox { MinValue = 1, MaxValue = 50, Step = 1, Value = 4 };
+        go.AddChild(_steps);
 
         var ex = new HBoxContainer();
-        root.AddChild(ex);
+        left.AddChild(ex);
         ex.AddChild(new Label { Text = "Tolerance" });
         _tol = new SpinBox { MinValue = 0, MaxValue = 255, Step = 1, Value = 12 };
         ex.AddChild(_tol);
@@ -52,34 +62,50 @@ public partial class LayersDock
         _feather = new SpinBox { MinValue = 0, MaxValue = 64, Step = 1, Value = 2 };
         ex.AddChild(_feather);
         var reextract = new Button { Text = "Re-extract" };
-        reextract.Pressed += () => { Reextract(); ShowWorkView(); };
+        reextract.Pressed += () => { Reextract(); ShowWorkViews(); };
         ex.AddChild(reextract);
 
         var vw = new HBoxContainer();
-        root.AddChild(vw);
-        _viewPick = new OptionButton();
-        _viewPick.AddItem("Decal");
-        _viewPick.AddItem("Capture");
-        _viewPick.AddItem("Generated");
-        _viewPick.ItemSelected += _ => ShowWorkView();
-        vw.AddChild(_viewPick);
+        left.AddChild(vw);
         vw.AddChild(new Label { Text = "Brush" });
         _brush = new SpinBox { MinValue = 2, MaxValue = 128, Step = 2, Value = 16 };
         vw.AddChild(_brush);
+        _erase = new CheckBox { Text = "Erase" };
+        vw.AddChild(_erase);
         var save = new Button { Text = "Save to layer" };
         save.Pressed += () => Report(SaveDecalToLayer());
         vw.AddChild(save);
 
-        _workPreview = new TextureRect
+        var maskRow = new HBoxContainer();
+        left.AddChild(maskRow);
+        maskRow.AddChild(new Label { Text = "Mask:" });
+        var fill = new Button { Text = "Fill" };
+        fill.Pressed += () => { FillMask(true); };
+        maskRow.AddChild(fill);
+        var clear = new Button { Text = "Clear" };
+        clear.Pressed += () => { FillMask(false); };
+        maskRow.AddChild(clear);
+        maskRow.AddChild(new Label { Text = "Paint where the decal shows, then Generate." });
+
+        _extractView = WorkPreview(right, "Extracted");
+        _genView = WorkPreview(right, "Generated");
+        _maskView = WorkPreview(right, "Mask");
+        _maskView.GuiInput += OnBrushInput;
+    }
+
+    private static TextureRect WorkPreview(VBoxContainer right, string title)
+    {
+        right.AddChild(new Label { Text = title });
+        var view = new TextureRect
         {
-            CustomMinimumSize = new Vector2(0, 180),
+            CustomMinimumSize = new Vector2(0, 96),
             SizeFlagsVertical = SizeFlags.ExpandFill,
             ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
             StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
             TextureFilter = TextureFilterEnum.Nearest,
         };
-        _workPreview.GuiInput += OnBrushInput;
-        root.AddChild(_workPreview);
+        right.AddChild(view);
+        return view;
     }
 
     private void RefreshAuthorWorkflows()
@@ -90,14 +116,24 @@ public partial class LayersDock
         }
 
         _wfPick.Clear();
+        int flux = -1, studio = -1;
         foreach (string f in ComfyUiProvider.Workflows(ArtDock.WorkflowFolder))
         {
             _wfPick.AddItem(Path.GetFileName(f));
             _wfPick.SetItemMetadata(_wfPick.ItemCount - 1, f);
-            if (string.Equals(Path.GetFileName(f), "studio_img2img.json", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(Path.GetFileName(f), "flux_klein_edit.json", StringComparison.OrdinalIgnoreCase))
             {
-                _wfPick.Selected = _wfPick.ItemCount - 1;
+                flux = _wfPick.ItemCount - 1;
             }
+            else if (string.Equals(Path.GetFileName(f), "studio_img2img.json", StringComparison.OrdinalIgnoreCase))
+            {
+                studio = _wfPick.ItemCount - 1;
+            }
+        }
+
+        if (_wfPick.ItemCount > 0)
+        {
+            _wfPick.Selected = flux >= 0 ? flux : studio >= 0 ? studio : 0;
         }
 
         if (_wfPick.ItemCount == 0)
@@ -117,6 +153,32 @@ public partial class LayersDock
         x1 = Math.Max((int)_x0.Value, (int)_x1.Value);
         y0 = Math.Min((int)_y0.Value, (int)_y1.Value);
         y1 = Math.Max((int)_y0.Value, (int)_y1.Value);
+    }
+
+    /// <summary>
+    /// Copies the World tab's Area tool selection into the form (and the
+    /// facet). Capture reads the form, so without this it would shoot
+    /// whatever stale numbers are there — usually the 0,0 default, i.e. one
+    /// tile at the map corner.
+    /// </summary>
+    public string AdoptArea()
+    {
+        if (_world == null || !_world.IsBooted)
+        {
+            return "World tab has not booted: show it once first.";
+        }
+
+        if (_world.Area is not { } a)
+        {
+            return "No Area selection: pick the Area tool in the World tab and click two corners.";
+        }
+
+        _x0.Value = a.X0;
+        _y0.Value = a.Y0;
+        _x1.Value = a.X1;
+        _y1.Value = a.Y1;
+        _facet.Value = Math.Clamp(_world.Host.Facet, 0, 255);
+        return $"Area {a.X0},{a.Y0}-{a.X1},{a.Y1} in the form; Capture area shoots that.";
     }
 
     private int CornerZ(int x, int y)
@@ -152,9 +214,15 @@ public partial class LayersDock
         }
 
         CurrentRect(out int x0, out int y0, out int x1, out int y1);
+        if (x0 == 0 && y0 == 0 && x1 == 0 && y1 == 0 && _world?.Area != null)
+        {
+            Report(AdoptArea() + " Capturing that.");
+            CurrentRect(out x0, out y0, out x1, out y1);
+        }
+
         if (x1 < x0 || y1 < y0)
         {
-            Report("Empty rect: set X0..X1 and Y0..Y1 first.");
+            Report("Empty rect: set X0..X1 and Y0..Y1 first, or pick an Area in the World tab.");
             return;
         }
 
@@ -165,7 +233,6 @@ public partial class LayersDock
 
         int w = Math.Clamp((x1 - x0 + 1) * 64, 256, 1024);
         int h = Math.Clamp((y1 - y0 + 1) * 64, 256, 1024);
-        int spanX = Math.Max(1, x1 - x0 + 1), spanY = Math.Max(1, y1 - y0 + 1);
         int ztop = Math.Max(Math.Max(CornerZ(x0, y0), CornerZ(x1, y0)), Math.Max(CornerZ(x0, y1), CornerZ(x1, y1)));
         var cam = _world.Host.Scene.Camera;
         if (cam == null)
@@ -181,43 +248,52 @@ public partial class LayersDock
             return;
         }
 
-        var img = Image.CreateEmpty(w, h, false, Image.Format.Rgb8);
-        for (int j = 0; j < h; j++)
+        var scene = _world.Host.Scene;
+        var off = scene.DrawOffset;
+        var view = cam.ViewTransform;
+        float minX = float.MaxValue, minY = float.MaxValue, maxX = float.MinValue, maxY = float.MinValue;
+        var img = TerrainLayers.CaptureRect(shot, (tx, ty) =>
         {
-            for (int i = 0; i < w; i++)
-            {
-                float u = (i + 0.5f) / w, v = (j + 0.5f) / h;
-                float tx = x0 + 0.5f + u * spanX, ty = y0 - 0.5f + v * spanY;
-                float px = (tx - ty) * 22f - 22f, py = (tx + ty) * 22f - (ztop << 2) - 22f;
-                var s = cam.WorldToScreen(new GUO.Compat.Point((int)Math.Round(px), (int)Math.Round(py)));
-                img.SetPixel(i, j, Bilinear(shot, s.X, s.Y));
-            }
-        }
+            var s = view * new Godot.Vector2((tx - ty) * 22f - 22f - off.X, (tx + ty) * 22f - (ztop << 2) - 22f - off.Y);
+            if (s.X < minX) minX = s.X;
+            if (s.Y < minY) minY = s.Y;
+            if (s.X > maxX) maxX = s.X;
+            if (s.Y > maxY) maxY = s.Y;
+            return (s.X, s.Y);
+        }, x0, y0, x1, y1, ztop, w, h);
 
         _capture?.Dispose();
         _capture = img;
         _generated?.Dispose();
         _generated = null;
+        _decalRaw?.Dispose();
+        _decalRaw = null;
         _decal?.Dispose();
         _decal = null;
-        _viewPick.Selected = 1;
-        ShowWorkView();
-        Report($"Captured {w}x{h} over ({x0},{y0})-({x1},{y1}).");
+        ResetMask(w, h);
+        ShowWorkViews();
+        Report($"Captured {w}x{h} over ({x0},{y0})-({x1},{y1}); shot {shot.GetWidth()}x{shot.GetHeight()}, samples {minX:0}-{maxX:0},{minY:0}-{maxY:0}. Paint the mask, then Generate.");
     }
 
-    private static Color Bilinear(Image shot, float x, float y)
+    /// <summary>Blank mask at capture size (white = decal shows).</summary>
+    private void ResetMask(int w, int h)
     {
-        int w = shot.GetWidth(), h = shot.GetHeight();
-        int x0 = Math.Clamp((int)Math.Floor(x), 0, w - 1), x1 = Math.Min(x0 + 1, w - 1);
-        int y0 = Math.Clamp((int)Math.Floor(y), 0, h - 1), y1 = Math.Min(y0 + 1, h - 1);
-        float fx = Math.Clamp(x - (int)Math.Floor(x), 0f, 1f), fy = Math.Clamp(y - (int)Math.Floor(y), 0f, 1f);
-        Color a = shot.GetPixel(x0, y0), b = shot.GetPixel(x1, y0);
-        Color c = shot.GetPixel(x0, y1), d = shot.GetPixel(x1, y1);
-        return new Color(
-            a.R + (b.R - a.R) * fx + (c.R - a.R) * fy + (a.R - b.R - c.R + d.R) * fx * fy,
-            a.G + (b.G - a.G) * fx + (c.G - a.G) * fy + (a.G - b.G - c.G + d.G) * fx * fy,
-            a.B + (b.B - a.B) * fx + (c.B - a.B) * fy + (a.B - b.B - c.B + d.B) * fx * fy,
-            a.A + (b.A - a.A) * fx + (c.A - a.A) * fy + (a.A - b.A - c.A + d.A) * fx * fy);
+        _mask?.Dispose();
+        _mask = Image.CreateEmpty(w, h, false, Image.Format.Rgba8);
+        _mask.Fill(new Color(0, 0, 0, 0));
+    }
+
+    private void FillMask(bool white)
+    {
+        if (_mask == null)
+        {
+            Report("Capture an area first: the mask matches the capture size.");
+            return;
+        }
+
+        _mask.Fill(white ? new Color(1, 1, 1, 1) : new Color(0, 0, 0, 0));
+        Recombine();
+        ShowWorkViews();
     }
 
     private async void GenerateFromUi()
@@ -254,6 +330,8 @@ public partial class LayersDock
                 InputName = $"layer:{(_id.Text ?? "").Trim()}",
                 Width = _capture.GetWidth(),
                 Height = _capture.GetHeight(),
+                Cfg = (float)_cfg.Value,
+                Steps = (int)_steps.Value,
             };
             ImageResult r = await provider.RunAsync(req, null, CancellationToken.None);
             if (r.Error != null)
@@ -284,9 +362,8 @@ public partial class LayersDock
             _generated?.Dispose();
             _generated = gen;
             Reextract();
-            _viewPick.Selected = 0;
-            ShowWorkView();
-            Report($"{r.Pngs.Count} image(s), seed {r.Seed}; decal extracted. Erase strays with the brush, then Save to layer.");
+            ShowWorkViews();
+            Report($"{r.Pngs.Count} image(s), seed {r.Seed}; decal extracted under the mask. Save to layer.");
         }
         finally
         {
@@ -296,30 +373,99 @@ public partial class LayersDock
 
     private void Reextract()
     {
-        _decal?.Dispose();
-        _decal = null;
+        _decalRaw?.Dispose();
+        _decalRaw = null;
         if (_capture == null || _generated == null)
         {
             return;
         }
 
-        _decal = TerrainLayers.ExtractDecal(_capture, _generated, (float)_tol.Value, (float)_feather.Value);
+        _decalRaw = TerrainLayers.ExtractDecal(_capture, _generated, (float)_tol.Value, (float)_feather.Value);
+        Recombine();
     }
 
-    private void ShowWorkView()
+    /// <summary>Final decal = raw extract masked by what the user painted.</summary>
+    private void Recombine()
     {
-        if (_workPreview == null)
+        _decal?.Dispose();
+        _decal = null;
+        if (_decalRaw == null || _decalRaw.IsEmpty() || _mask == null || _mask.IsEmpty())
         {
             return;
         }
 
-        Image img = _viewPick.Selected == 1 ? _capture : _viewPick.Selected == 2 ? _generated : _decal;
-        _workPreview.Texture = img == null || img.IsEmpty() ? null : ImageTexture.CreateFromImage(img);
+        int w = _decalRaw.GetWidth(), h = _decalRaw.GetHeight();
+        if (_mask.GetWidth() != w || _mask.GetHeight() != h)
+        {
+            return;
+        }
+
+        var fin = Image.CreateEmpty(w, h, false, Image.Format.Rgba8);
+        for (int y = 0; y < h; y++)
+        {
+            for (int x = 0; x < w; x++)
+            {
+                Color c = _decalRaw.GetPixel(x, y);
+                c.A *= _mask.GetPixel(x, y).A;
+                fin.SetPixel(x, y, c);
+            }
+        }
+
+        _decal = fin;
+    }
+
+    /// <summary>Refreshes all three work previews (extracted decal, generated image, mask).</summary>
+    private void ShowWorkViews()
+    {
+        SetPreview(_extractView, _decal);
+        SetPreview(_genView, _generated);
+        using var mask = MaskView();
+        SetPreview(_maskView, mask);
+    }
+
+    private static void SetPreview(TextureRect view, Image img)
+    {
+        if (view == null)
+        {
+            return;
+        }
+
+        view.Texture = img == null || img.IsEmpty() ? null : ImageTexture.CreateFromImage(img);
+    }
+
+    /// <summary>Refreshes just the mask preview (per brush stroke).</summary>
+    private void UpdateMaskPreview()
+    {
+        using var mask = MaskView();
+        SetPreview(_maskView, mask);
+    }
+
+    /// <summary>Dimmed capture with the painted mask in red: where the decal is allowed. Always a fresh image.</summary>
+    private Image MaskView()
+    {
+        if (_capture == null || _capture.IsEmpty() || _mask == null || _mask.IsEmpty())
+        {
+            return null;
+        }
+
+        int w = _capture.GetWidth(), h = _capture.GetHeight();
+        var img = Image.CreateEmpty(w, h, false, Image.Format.Rgb8);
+        for (int y = 0; y < h; y++)
+        {
+            for (int x = 0; x < w; x++)
+            {
+                Color c = _capture.GetPixel(x, y);
+                float m = x < _mask.GetWidth() && y < _mask.GetHeight() ? _mask.GetPixel(x, y).A : 0f;
+                img.SetPixel(x, y, new Color(c.R * 0.45f + 0.55f * m, c.G * 0.45f + 0.1f * m, c.B * 0.45f + 0.1f * m));
+            }
+        }
+
+        return img;
     }
 
     private void OnBrushInput(InputEvent e)
     {
-        if (_decal == null || _decal.IsEmpty())
+        if (_mask == null || _mask.IsEmpty())
         {
             return;
         }
@@ -329,21 +475,20 @@ public partial class LayersDock
             _brushing = mb.Pressed;
             if (_brushing)
             {
-                _viewPick.Selected = 0;
-                EraseAt(mb.Position);
+                PaintMaskAt(mb.Position);
             }
         }
         else if (e is InputEventMouseMotion mm && _brushing && mm.ButtonMask.HasFlag(MouseButtonMask.Left))
         {
-            EraseAt(mm.Position);
+            PaintMaskAt(mm.Position);
         }
     }
 
-    /// <summary>Erases the decal under the cursor (control pixels to image pixels through the aspect fit).</summary>
-    private void EraseAt(Vector2 pos)
+    /// <summary>Paints the mask under the cursor (control pixels to image pixels through the aspect fit).</summary>
+    private void PaintMaskAt(Vector2 pos)
     {
-        Vector2 size = _workPreview.Size;
-        int iw = _decal.GetWidth(), ih = _decal.GetHeight();
+        Vector2 size = _maskView.Size;
+        int iw = _mask.GetWidth(), ih = _mask.GetHeight();
         if (size.X <= 0 || size.Y <= 0 || iw <= 0 || ih <= 0)
         {
             return;
@@ -353,6 +498,7 @@ public partial class LayersDock
         Vector2 origin = (size - new Vector2(iw, ih) * scale) * 0.5f;
         float cx = (pos.X - origin.X) / scale, cy = (pos.Y - origin.Y) / scale;
         float radius = (float)_brush.Value;
+        Color paint = _erase.ButtonPressed ? new Color(0, 0, 0, 0) : new Color(1, 1, 1, 1);
         for (int y = (int)(cy - radius); y <= cy + radius; y++)
         {
             for (int x = (int)(cx - radius); x <= cx + radius; x++)
@@ -365,12 +511,13 @@ public partial class LayersDock
                 float dx = x - cx, dy = y - cy;
                 if (dx * dx + dy * dy <= radius * radius)
                 {
-                    _decal.SetPixel(x, y, new Color(0, 0, 0, 0));
+                    _mask.SetPixel(x, y, paint);
                 }
             }
         }
 
-        ShowWorkView();
+        Recombine();
+        ShowWorkViews();
     }
 
     private string ResolveId()
