@@ -43,6 +43,10 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 - The server manager's own tests build and pass again without the Godot
   engine; the server console path now lives in the engine-free workspace code,
   unchanged.
+- A server packet with an impossible length, or one that makes its handler
+  fail, is logged and dropped instead of freezing or crashing the client;
+  connecting to a dead server gives up after 5 seconds. The three edits to
+  ported code are recorded in docs/upstream/GUO_DIVERGENCES.md.
 
 ### Platforms
 - **Android** (ARM64, debug): export, install, run and smoke from
