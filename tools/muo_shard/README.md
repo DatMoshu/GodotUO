@@ -102,6 +102,19 @@ docker rm -f muo-dry
 The container has no systemd, so `deploy` ends by printing how to start the shard by hand, as above. The env file in
 the dry run holds a made-up password; nothing in it is kept.
 
+### Running the client against the container
+
+`docker run` for this needs `--security-opt seccomp=unconfined` (ModernUO aborts on io_uring otherwise). The server list
+sends the client to the shard's own address and listening port, so publish the same port (`-p 2593:2593`) and, in the
+container's own `Configuration/modernuo.json` (not the profile), set `"serverListing.address": "127.0.0.1"`, then start the
+shard. A fresh owner account has no character: make one once with the client (`launchers\game\play.bat --play --account A
+--password P --shard-command "[Where"`). Then, with `GUO_SHARD_CONTAINER_HOST=127.0.0.1`, `GUO_SHARD_CONTAINER_PORT=2593`
+and `GUO_SCENARIO_ACCOUNT` / `GUO_SCENARIO_PASSWORD` set to the env file's throwaway owner values:
+
+```
+python tools/scenario_run/run.py shard.console --shard container --no-register
+```
+
 ## Tests
 
 ```

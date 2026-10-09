@@ -30,6 +30,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import os
+import re
 import shutil
 import json
 import socket
@@ -75,10 +76,39 @@ def parse_vars(items: list[str]) -> dict[str, str]:
 HARD_KILL_GRACE_S = 60       # past run_s plus this, a wedged runner is cut down from outside (the process watchdog)
 
 
-def shard_address(scen: sc.Scenario, root: Path) -> tuple[str, int] | None:
+def target_key(target: str) -> str:
+    """A shard target as it appears in a setting name: upper-cased, `-` and `.` as `_` (section 34)."""
+    return re.sub(r"[-.]", "_", target).upper()
+
+
+def resolve_shard_target(target: str, root: Path, variables: dict[str, str]) -> tuple[str, int]:
+    """`--shard TARGET`: the address from GUO_SHARD_<TARGET>_HOST / _PORT (environment, then the launcher config files) and
+    the login from GUO_SCENARIO_ACCOUNT / GUO_SCENARIO_PASSWORD (or --var account= / password=). A missing or bad one is an
+    error that names the setting, never a default. Returns (host, port); the values themselves are never logged."""
+    key = target_key(target)
+    missing = []
+    host = settings.read_setting(f"GUO_SHARD_{key}_HOST", root)
+    port = settings.read_setting(f"GUO_SHARD_{key}_PORT", root)
+    if not host:
+        missing.append(f"GUO_SHARD_{key}_HOST")
+    if not port:
+        missing.append(f"GUO_SHARD_{key}_PORT")
+    for name in ("account", "password"):
+        if name not in variables and not os.environ.get(f"GUO_SCENARIO_{name.upper()}"):
+            missing.append(f"GUO_SCENARIO_{name.upper()}")
+    if missing:
+        raise sc.ScenarioError("--shard " + target + ": not set: " + ", ".join(missing))
+    if not port.isdigit() or not 0 < int(port) < 65536:
+        raise sc.ScenarioError(f"GUO_SHARD_{key}_PORT is not a port number")
+    return host, int(port)
+
+
+def shard_address(scen: sc.Scenario, root: Path, override: tuple[str, int] | None = None) -> tuple[str, int] | None:
     """The shard a scenario needs, or None when it needs none or the launcher config does not name one."""
     if not scen.requires.get("shard") or scen.surface != "client":
         return None
+    if override is not None:
+        return override
     host = settings.read_setting("UO_SHARD_HOST", root)
     port = settings.read_setting("UO_SHARD_PORT", root)
     return (host, int(port)) if host and port.isdigit() else None
@@ -123,7 +153,7 @@ def finalize_video(session, run_dir: Path, run_id: str, video_dir: str) -> tuple
 
 
 def execute(scen: sc.Scenario, cfg, variables: dict[str, str], *, size: str | None, scale: float, register: bool,
-            record: bool | None = None) -> tuple[dict, Path]:
+            record: bool | None = None, shard: tuple[str, int] | None = None) -> tuple[dict, Path]:
     """One run, start to finish: the folder, the driver, the manifest, the shared copy, the registry row."""
     started = datetime.now(timezone.utc)
     run_id = ev.make_run_id(scen.id, "ai", started)
@@ -136,7 +166,7 @@ def execute(scen: sc.Scenario, cfg, variables: dict[str, str], *, size: str | No
         print("recording is the client's MovieWriter; an editor run records stills and events only", file=sys.stderr)
         record = False
     problems = capture.preflight(record=record, build_dir=cfg.build, video_dir=video_dir if record else "",
-                                 shard=shard_address(scen, cfg.root))
+                                 shard=shard_address(scen, cfg.root, shard))
     if problems:
         for problem in problems:
             log.emit("error", detail={"preflight": problem})
@@ -146,6 +176,7 @@ def execute(scen: sc.Scenario, cfg, variables: dict[str, str], *, size: str | No
         session = EditorSession(cfg, run_dir, run_dir / "scratch", size or "3840x2160", scale)
     elif scen.surface == "client":
         session = ClientSession(cfg, run_dir, record, size)
+        session.shard = shard_address(scen, cfg.root, shard) if shard else None
     else:
         session = None
     runner = Runner(scen, run_dir, log, repo_root=cfg.root, session=session, variables=variables,
@@ -261,6 +292,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--keep-local", type=int, default=30, help="prune: newest run folders kept per scenario under build/runs")
     ap.add_argument("--keep-shared", type=int, default=200, help="prune: newest run folders kept per project in the shared folder")
     ap.add_argument("--dry-run", action="store_true", help="prune: list what would go, delete nothing")
+    ap.add_argument("--shard", dest="shard_target", default=None,
+                    help="run against this shard target: GUO_SHARD_<TARGET>_HOST/_PORT and GUO_SCENARIO_ACCOUNT/_PASSWORD (section 34)")
     ap.add_argument("--no-register", action="store_true", help="do not add the run to the registry")
     args = ap.parse_args(argv)
 
@@ -284,16 +317,22 @@ def main(argv: list[str] | None = None) -> int:
     if args.driver == "human":
         print("the human driver is build step 5 and is not in this runner yet", file=sys.stderr)
         return 2
+    shard = None
     try:
         scen = sc.load(sc.find(cfg.root, names[0]))
         variables = parse_vars(args.var)
+        if args.shard_target:
+            if scen.surface != "client":
+                raise sc.ScenarioError("--shard applies to a client scenario")
+            shard = resolve_shard_target(args.shard_target, cfg.root, variables)
+            scen.requires = {**scen.requires, "shard": args.shard_target}
         sc.substitute([s["do"] for s in scen.steps] + [s.get("expect", {}) for s in scen.steps], variables)  # missing variable stops before launch
     except sc.ScenarioError as ex:
         print(f"error: {ex}", file=sys.stderr)
         return 2
     try:
         manifest, run_dir = execute(scen, cfg, variables, size=args.size, scale=args.scale,
-                                    register=not args.no_register, record=args.record)
+                                    register=not args.no_register, record=args.record, shard=shard)
     except sc.ScenarioError as ex:
         print(f"error: {ex}", file=sys.stderr)
         return 2
