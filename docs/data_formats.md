@@ -1661,6 +1661,16 @@ the raw file. Client console paths are unchanged: `runs/<server-id>/<client-id>/
 `ContentLock`, `ContentStore` (paths or `""`), `Arguments` (at most 32 strings). A server with a remote
 `Host` is connect-only. `ClientProject` and `ClientData` are no longer valid here; migration moves them.
 
+**`tools/server_manager/backends.json`** (tracked, snake_case): one object per backend with `id`, `name`, `source`,
+`executable`, `port`, `adapter` and `setup`, which the editor's Manage servers window and `run.py init` read. A backend
+the server compatibility lab covers also has `lab` (SV0; the pins table in `docs/server_lab.md` says the same in prose):
+`row` (lab order, 1 = ModernUO), `repos` (one or more `{role, repo, ref, commit, date}`: `role` is `core` or
+`scripts`, `commit` a full 40-hex SHA, `date` its commit date as `YYYY-MM-DD`), `pin_source` (where else the pin is
+kept, or why it was chosen), `licence`, `toolchain`, `client` (`accepts`, `encryption`, `lab_client`), `era`
+(`setting`, `upstream_default`, `lab`), `admin` (`route`: `patch-env`, `console-prompt` or `account-file`, plus
+`detail`) and `bind` (`loopback`: whether the server can be made to listen on 127.0.0.1 alone, plus `detail`). Readers
+ignore fields they do not use; `tools/server_manager/test_run.py` checks the `lab` rows.
+
 **`profiles/clients.json`** (snake_case): `{"version": 1, "clients": [ ... ]}`, at most 64 clients. A client:
 
 | Field | Meaning |
