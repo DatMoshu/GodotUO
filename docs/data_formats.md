@@ -298,6 +298,8 @@ line, UTF-8, `\n`-terminated. ADR-0012 has the reasoning.
 | `mobiles` | `facet`, `x0`, `y0`, `x1`, `y1` (inclusive rectangle; clamped to the map and to 1024 cells a side), `req` (echoed), `as` (optional: an online character that must be a GameMaster or above) | Read-only. Players and mobiles in the rectangle, at most 500; answered with `mobiles`. Needs a prior `hello`; at most one request per 250 ms per connection (the Live map layer, ADR-0027, polls it about once a second for the visible region plus a margin) |
 | `admin_whoami` | `req` (optional, echoed) | Admin op (Counselor). Answered with `admin_whoami` |
 | `admin_audit` | `count` (1..200, default 50), `req` | Admin op (Administrator). The last audit entries; answered with `admin_audit` |
+| `admin_status` | `req` (optional, echoed) | Admin op (Counselor). Read only; answered with `admin_status` |
+| `admin_save` | `reason` (optional, audited), `req` | Admin op (Administrator). Saves the world; answered with `admin_save` once the write has finished |
 | `multi` | `action` `place` with `tag`, `id` (multi id), `map`, `x`, `y`, `z` (optional: the land's average z), `doors` (as in a built multi's `multi.json`, section 16); or `action` `remove` with `tag` | Places an authored multi (`GUOAuthoredMulti`) and a real door per entry, replacing a multi with the same tag; `remove` deletes it and its doors. Answered with `multi_ack` |
 
 **Bridge to editor**
@@ -314,6 +316,8 @@ line, UTF-8, `\n`-terminated. ADR-0012 has the reasoning.
 | `multi_ack` | `action`, `tag`, `ok`; on a place `serial`, `at` `[x, y, z]`, `components`, `doors`, `replaced`; on a remove `removed`; or `error` |
 | `admin_whoami` | `req`, `ok`, `editor`, `level`, `ops` |
 | `admin_audit` | `req`, `ok`, `entries`: audit entries, oldest first |
+| `admin_status` | `req`, `ok`, `server` (`ModernUO`), `version`, `shard`, `expansion`, `uptime_s`, `online` (player connections), `staff_online`, `items`, `mobiles`, `memory_mb` (the process's working set), `world` (`Running`, `Saving`, ...), `last_save` (ISO 8601 UTC, or null; before the first save this run, the newest file under `Saves`), `last_save_s` (seconds ago), `editors` (connected editors) |
+| `admin_save` | `req`, `ok`, `ms`, `last_save`; or `ok` false with `error` (`the world is busy (<state>); try again in a moment`, or the save's failure) |
 | any admin op, refused | `req`, `ok` false, `error`: `admin op without the admin token: send admin_token in hello`, `this server has no admin token`, or `'<op>' needs <level>; this connection holds <level>` |
 | `error` | `error` |
 

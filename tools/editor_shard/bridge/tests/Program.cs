@@ -43,7 +43,13 @@ try
     Require(on.Authorise("block", AdminLevel.Owner) == "'block' is not an admin op", "a non-admin op was authorised as one");
     var gm = new AdminChannel(token, AdminLevel.GameMaster, new AuditLog(null));
     Require(gm.CheckHello(token, out _) == AdminLevel.GameMaster, "the granted level is not the configured one");
-    Require(gm.OpsFor(AdminLevel.GameMaster).ToJsonString() == "[\"admin_whoami\"]", "OpsFor lists ops above the level");
+    Require(gm.OpsFor(AdminLevel.GameMaster).ToJsonString() == "[\"admin_whoami\",\"admin_status\"]", "OpsFor lists ops above the level");
+    // AD1: Health is read-only (a Counselor may look); a save is an Administrator's, as ModernUO's own [save.
+    Require(AdminChannel.Ops["admin_status"] == AdminLevel.Counselor && AdminChannel.Ops["admin_save"] == AdminLevel.Administrator,
+            "the Health ops' levels changed");
+    Require(on.Authorise("admin_save", AdminLevel.GameMaster) == "'admin_save' needs Administrator; this connection holds GameMaster",
+            "a GameMaster could save the world");
+    Require(on.Authorise("admin_status", null).StartsWith("admin op without the admin token"), "Health ran without the token");
     Require(on.OpsFor(AdminLevel.Administrator).Count == AdminChannel.Ops.Count, "OpsFor misses ops at the level");
     Console.WriteLine("PASS: every admin op has a level, the token's level bounds what runs, map-editing ops are not admin ops");
 

@@ -23,6 +23,9 @@ set "UO__SECRETS=%UO_WORKSPACE_DIR%"
 if not defined UO__SECRETS set "UO__SECRETS=%LOCALAPPDATA%\GUO"
 if exist "%UO__SECRETS%\shard\secrets.bat" call "%UO__SECRETS%\shard\secrets.bat"
 set "UO__SECRETS="
+REM  The editor bridge, when this shard loads it, opens its admin channel only
+REM  with this token (ADR-0035); the Admin tab sends the same one.
+if defined UO_BRIDGE_ADMIN_TOKEN set "GUO_BRIDGE_ADMIN_TOKEN=%UO_BRIDGE_ADMIN_TOKEN%"
 
 echo [shard] %UO_SHARD_NAME% on %UO_SHARD_BIND%:%UO_SHARD_PORT%  (Ctrl-C to stop)
 pushd "%UO_SHARD_DIST%"

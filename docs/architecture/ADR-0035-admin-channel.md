@@ -10,6 +10,14 @@ Proposed
 
 ## Last Verified
 
+2026-10-09 (AD1): `python tools\editor_shard\run.py admin-check` passes 19/19
+with `admin_status` and `admin_save` (both refused without the token; a save
+is audited with its reason). `python tools\editor_shard\run.py admin-tab`
+passes 9/9 headless and windowed: the run bar starts the private shard with
+the token, the Admin tab connects, reads Health, saves, restarts through the
+run bar and reconnects, and no token or password is in the editor output,
+the tab's log, the server console or the audit log.
+
 2026-10-09: `python tools\editor_shard\run.py admin-check` passes 13/13 on a
 private instance started by `tools/editor_shard` (bridge built from this
 change). A plain hello and a `mobiles` query need no token. An admin op
@@ -121,12 +129,19 @@ op is one entry in `AdminChannel.Ops`, op name to level. The token grants
 yet) would need it raised on purpose. An op that is not in `Ops` is not an
 admin op and can never run through the admin path.
 
-AD0's ops:
+The ops so far (AD0, AD1):
 
 | Op | Level | Does |
 |---|---|---|
 | `admin_whoami` | Counselor | The editor's name, its level and the ops it may run |
 | `admin_audit` | Administrator | The last audit entries (up to 200), oldest first |
+| `admin_status` | Counselor | Health: uptime, players online, items, mobiles, memory, last save, version (read only) |
+| `admin_save` | Administrator | Saves the world now; answers when the write has finished |
+
+Restart is not a bridge op: the editor's run bar stops and starts the server
+process it started itself (`tools/server_manager`), after an `admin_save`. A
+run-bar start hands a server that loads the bridge its token and bridge
+settings, so it comes back with its admin channel.
 
 ### The audit log
 

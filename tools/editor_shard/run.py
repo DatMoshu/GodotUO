@@ -11,6 +11,7 @@ world export) runs on an instance of its own instead:
     python tools/editor_shard/run.py stop
     python tools/editor_shard/run.py bridge  [--bridge-port 2595]
     python tools/editor_shard/run.py admin-check
+    python tools/editor_shard/run.py admin-tab [--windowed]
 
 setup copies the built ModernUO Distribution (the same tools/modernuo build,
 read only; Archives, Backups, Logs left out) to build\\shard_private, with its
@@ -31,6 +32,10 @@ copy's Data/assemblies.json. It takes effect at the next start.
 admin-check talks to the running instance's bridge as an editor would and
 checks its admin channel (ADR-0035): no token, a wrong token and the right
 one; the audit log; and that no token or password reaches a log.
+
+admin-tab drives the editor's Admin tab against this instance (AD1): the
+run bar starts it, the tab reads Health, saves and restarts it, the run bar
+stops it; and no token or password reaches a log (admin_tab.py).
 
 stop ends only the process start recorded, and only if its executable is the
 copy's: it cannot stop the shared shard.
@@ -321,9 +326,30 @@ def cmd_stop(cfg) -> int:
     return 0
 
 
+def cmd_admin_tab(cfg, windowed: bool) -> int:
+    h = home(cfg)
+    state = read_state(h)
+    if not state:
+        print("[editor_shard] not set up; run: python tools/editor_shard/run.py setup, then bridge")
+        return 2
+    if "GUO.EditorBridge.dll" not in json.loads((h / "Data" / "assemblies.json").read_text(encoding="utf-8")):
+        print("[editor_shard] the bridge is not installed; run: python tools/editor_shard/run.py bridge")
+        return 2
+    # The editor's run bar starts and stops it in this check; one started here would hold its ports.
+    if state.get("pid") and pid_alive(state["pid"], h / EXE):
+        cmd_stop(cfg)
+    if listening(state["port"]):
+        print(f"[editor_shard] something else listens on 127.0.0.1:{state['port']}")
+        return 2
+    from admin_tab import run as admin_tab
+
+    return admin_tab(cfg, h, admin_token(cfg), [cfg.shard_owner_password, cfg.shard_gm_password], windowed,
+                     time.strftime("%Y%m%d-%H%M", time.gmtime()))
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("command", choices=["setup", "start", "status", "stop", "bridge", "admin-check"])
+    ap.add_argument("command", choices=["setup", "start", "status", "stop", "bridge", "admin-check", "admin-tab"])
     ap.add_argument("--from", dest="source", type=Path, help="built ModernUO Distribution to copy (setup)")
     ap.add_argument("--port", type=int, default=2594, help="port for the private instance (setup)")
     ap.add_argument("--data-first", type=Path, help="folder ahead of the install in dataDirectories (start)")
@@ -334,6 +360,8 @@ def main() -> int:
     ap.add_argument("--clear-objects", action="store_true",
                     help="remove every world object GUO placed, at boot (start; needs the bridge)")
     ap.add_argument("--bridge-port", type=int, default=2595, help="editor port of the bridge (bridge)")
+    ap.add_argument("--windowed", action="store_true",
+                    help="open an editor window (no focus) and save stills of the tab (admin-tab)")
     args = ap.parse_args()
     cfg = load_config()
     if args.command == "setup":
@@ -346,6 +374,8 @@ def main() -> int:
         return cmd_bridge(cfg, args.bridge_port)
     if args.command == "admin-check":
         return cmd_admin_check(cfg)
+    if args.command == "admin-tab":
+        return cmd_admin_tab(cfg, args.windowed)
     return cmd_stop(cfg)
 
 

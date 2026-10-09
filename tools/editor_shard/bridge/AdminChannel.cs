@@ -49,7 +49,7 @@ public sealed class AdminChannel
 
     /// <summary>
     /// Every admin op and the access level it runs at. An op not listed here is
-    /// not an admin op. AD1-AD6 add theirs (status, save, accounts, ...).
+    /// not an admin op. AD2-AD6 add theirs (god view, accounts, ...).
     /// </summary>
     public static readonly IReadOnlyDictionary<string, AdminLevel> Ops = new Dictionary<string, AdminLevel>
     {
@@ -57,6 +57,10 @@ public sealed class AdminChannel
         ["admin_whoami"] = AdminLevel.Counselor,
         // The last audit entries (newest last), for the tab's log.
         ["admin_audit"] = AdminLevel.Administrator,
+        // AD1, the Admin tab's Health panel: uptime, who is online, world size, memory, last save, version.
+        ["admin_status"] = AdminLevel.Counselor,
+        // AD1, Save now (and the save before a Restart): a world save, answered when it is on disk.
+        ["admin_save"] = AdminLevel.Administrator,
     };
 
     private readonly byte[] _tokenHash;

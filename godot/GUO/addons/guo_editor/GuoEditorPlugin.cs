@@ -38,6 +38,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
     private RunBar _run;
     private AiDock _ai;
     private StoreView _store;
+    private AdminView _admin;
     private ArtDock _art;
     private LogsDock _logs;
     private MapGenView _mapgen;
@@ -59,6 +60,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
     private bool _worldWasVisible;
     private bool _assetsWasVisible;
     private bool _storeWasVisible;
+    private bool _adminWasVisible;
     private bool _mapgenWasVisible;
     private bool _multieditWasVisible;
 
@@ -69,6 +71,9 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
 
     /// <summary>The UO Store view, for <see cref="GuoStorePlugin"/> to show and hide with its tab.</summary>
     public static StoreView StoreMain { get; private set; }
+
+    /// <summary>The Admin view, for <see cref="GuoAdminPlugin"/> to show and hide with its tab.</summary>
+    public static AdminView AdminMain { get; private set; }
 
     /// <summary>The Map Generator view, for <see cref="GuoMapGenPlugin"/> to show and hide with its tab.</summary>
     public static MapGenView MapGenMain { get; private set; }
@@ -217,6 +222,14 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         _run = new RunBar();
         AddControlToContainer(CustomControlContainer.Toolbar, _run);
         _store.Run = _run;
+
+        // The Admin tab (sprint "Admin tab", ADR-0035): the run bar's server, its health, Save now and Restart.
+        // GuoAdminPlugin owns its button. It connects to the server's bridge when first shown.
+        _admin = new AdminView { Run = _run };
+        AdminMain = _admin;
+        EditorInterface.Singleton.GetEditorMainScreen().AddChild(_admin);
+        _admin.Visible = _adminWasVisible;
+        _adminWasVisible = false;
 
         MapPanel maps = _assets.Panel<MapPanel>();
         if (maps != null)
@@ -521,6 +534,17 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         _searchContext = null;
         _search = null;
         AssetField.Reveal = null;
+
+        if (_admin != null)
+        {
+            // Closes its bridge connection and reader thread before a reload.
+            _adminWasVisible = _admin.Visible;
+            _admin.Shutdown();
+            _admin.GetParent()?.RemoveChild(_admin);
+            _admin.QueueFree();
+            _admin = null;
+            AdminMain = null;
+        }
 
         if (_run != null)
         {

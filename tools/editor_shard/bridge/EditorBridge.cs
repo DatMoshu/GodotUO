@@ -73,6 +73,9 @@ public static class EditorBridge
         // The audit log sits with the server's own logs, never in Saves.
         _admin = AdminChannel.FromEnvironment(Path.Combine(Core.BaseDirectory, "Logs", "GUO", "admin_audit.jsonl"));
 
+        // Every save, ours or the autosave's, is the Health panel's "last save" (on the game thread).
+        EventSink.WorldSave += () => _lastSaveUtc = DateTime.UtcNow;
+
         EventSink.Connected += OnConnected;
         EventSink.Disconnected += m =>
         {
@@ -787,9 +790,10 @@ public static class EditorBridge
                                 ["can_equip"] = canEquip, ["check_equip"] = checkEquip, ["moved_to_pack"] = moved };
     }
 
-    // {"op":"admin_whoami"} / {"op":"admin_audit","count":50}, each with an optional "req" echoed back.
+    // {"op":"admin_whoami"} / {"op":"admin_audit","count":50} / {"op":"admin_status"} / {"op":"admin_save"},
+    // each with an optional "req" echoed back.
     // Authorised against the level the hello's token granted, run, and audited
-    // (ADR-0035). AD1 onwards add their ops here and in AdminChannel.Ops.
+    // (ADR-0035). Each later AD story adds its ops here and in AdminChannel.Ops.
     private static void RunAdmin(EditorConnection from, JsonNode msg, string op)
     {
         JsonNode req = msg["req"] is JsonNode r ? JsonNode.Parse(r.ToJsonString()) : null;
@@ -806,6 +810,14 @@ public static class EditorBridge
         var reply = new JsonObject { ["op"] = op, ["req"] = req, ["ok"] = true };
         switch (op)
         {
+            case "admin_status":
+                Status(reply);
+                break;
+            case "admin_save":
+                // Answered when the save is on disk, from SaveNow.
+                SaveNow(from, req);
+                Log.Information("GUO editor bridge: '{0}' ran {1} at {2}", from.Name, op, AdminChannel.Ops[op]);
+                return;
             case "admin_whoami":
                 reply["editor"] = from.Name;
                 reply["level"] = from.Admin.ToString();
@@ -818,6 +830,103 @@ public static class EditorBridge
 
         from.Send(reply);
         Log.Information("GUO editor bridge: '{0}' ran {1} at {2}", from.Name, op, AdminChannel.Ops[op]);
+    }
+
+    // When the world was last saved (UTC): seen through EventSink.WorldSave, or,
+    // before the first save since boot, the newest file in the save folder.
+    private static DateTime? _lastSaveUtc;
+
+    private static DateTime? LastSave()
+    {
+        if (_lastSaveUtc == null && World.SavePath is { } dir && Directory.Exists(dir))
+        {
+            DateTime newest = DateTime.MinValue;
+            foreach (string f in Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories))
+            {
+                DateTime t = File.GetLastWriteTimeUtc(f);
+                newest = t > newest ? t : newest;
+            }
+
+            _lastSaveUtc = newest == DateTime.MinValue ? null : newest;
+        }
+
+        return _lastSaveUtc;
+    }
+
+    // The Health panel's numbers (AD1; docs/data_formats.md section 10). Game thread.
+    private static void Status(JsonObject reply)
+    {
+        int online = 0, staff = 0;
+        foreach (NetState ns in NetState.Instances)
+        {
+            if (ns.Mobile is { } m)
+            {
+                online++;
+                staff += m.AccessLevel > AccessLevel.Player ? 1 : 0;
+            }
+        }
+
+        int editors;
+        lock (_editors)
+        {
+            editors = _editors.Count;
+        }
+
+        System.Diagnostics.Process p = Core.Process;
+        p?.Refresh();
+        DateTime? saved = LastSave();
+        reply["server"] = "ModernUO";
+        reply["version"] = Core.Version.ToString();
+        reply["shard"] = _shardName;
+        reply["expansion"] = Core.Expansion.ToString();
+        reply["uptime_s"] = Core.Uptime / 1000;
+        reply["online"] = online;
+        reply["staff_online"] = staff;
+        reply["items"] = World.Items.Count;
+        reply["mobiles"] = World.Mobiles.Count;
+        reply["memory_mb"] = p == null ? GC.GetTotalMemory(false) / (1024 * 1024) : p.WorkingSet64 / (1024 * 1024);
+        reply["world"] = World.WorldState.ToString();
+        reply["last_save"] = saved?.ToString("yyyy-MM-ddTHH:mm:ssZ");
+        reply["last_save_s"] = saved == null ? null : (long)(DateTime.UtcNow - saved.Value).TotalSeconds;
+        reply["editors"] = editors;
+    }
+
+    // Starts a world save (ModernUO's own World.Save, the [save command's) and
+    // answers the editor once the save is written. Game thread.
+    private static void SaveNow(EditorConnection from, JsonNode req)
+    {
+        if (World.WorldState != WorldState.Running)
+        {
+            from.Send(new JsonObject { ["op"] = "admin_save", ["req"] = req?.DeepClone(), ["ok"] = false,
+                                       ["error"] = $"the world is busy ({World.WorldState}); a save already running finishes on its own" });
+            return;
+        }
+
+        // EventSink.WorldSave fires only for a save that succeeded: a "last save"
+        // that did not move means it failed.
+        DateTime? before = LastSave();
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        World.Save();
+        var t = new Thread(() =>
+        {
+            // Set again once the snapshot is on disk; FinishWorldSave follows on the game thread.
+            World.WaitForWriteCompletion();
+            Core.LoopContext.Post(() =>
+            {
+                bool ok = _lastSaveUtc != before;
+                // req is already a child of RunAdmin's unsent reply: a node has one parent.
+                var reply = new JsonObject { ["op"] = "admin_save", ["req"] = req?.DeepClone(), ["ok"] = ok, ["ms"] = watch.ElapsedMilliseconds,
+                                             ["last_save"] = LastSave()?.ToString("yyyy-MM-ddTHH:mm:ssZ") };
+                if (!ok)
+                {
+                    reply["error"] = "the save failed; the server's log says why";
+                }
+
+                from.Send(reply);
+                Log.Information("GUO editor bridge: save for '{0}' {1} in {2} ms", from.Name, ok ? "written" : "failed", watch.ElapsedMilliseconds);
+            });
+        }) { IsBackground = true, Name = "GUO editor bridge save wait" };
+        t.Start();
     }
 
     // {"op":"command","as":"Guosweep","text":"[add ..."}

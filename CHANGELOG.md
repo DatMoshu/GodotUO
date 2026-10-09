@@ -5,6 +5,15 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 
 ## Unreleased
 
+### Editor
+- The editor has an **Admin** tab for a server you run on this computer: its
+  health (uptime, players online, items, mobiles, memory, last save) in
+  numbers and in plain words, **Save now**, and **Restart**, which saves first
+  and then has the run bar stop and start the server. It uses the server's
+  admin token from your workspace and never shows it. The shared dev shard
+  (`launchers\shard\run.bat`) now also hands the token to the editor
+  bridge when that shard loads it.
+
 ### Safety
 - The editor bridge has an admin channel for the coming Admin tab: admin
   operations run only for an editor that sends the server's admin token

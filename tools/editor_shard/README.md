@@ -10,6 +10,7 @@ python tools\editor_shard\run.py start   [--data-first DIR] [--objects EXPORT | 
 python tools\editor_shard\run.py status
 python tools\editor_shard\run.py stop
 python tools\editor_shard\run.py admin-check
+python tools\editor_shard\run.py admin-tab [--windowed]
 ```
 
 - **setup** copies the built ModernUO `Distribution` (the same
@@ -51,6 +52,14 @@ python tools\editor_shard\run.py admin-check
   after three refusals, and that no token or password reached a log. The same
   channel without ModernUO:
   `dotnet run --project tools\editor_shard\bridge\tests\AdminChannel.Tests.csproj`.
+- **admin-tab** drives the GUO editor's Admin tab against this instance, in a
+  scratch workspace (`build\admin_tab\workspace`): the run bar starts the
+  instance with the admin token, the tab connects and reads Health, Save now
+  saves, Restart saves and has the run bar stop and start the server, and the
+  tab reconnects. Then it checks that no token or password reached the editor
+  output, the tab's log, the server console or the audit log. It stops a
+  running `start` first. `--windowed` saves stills of the tab under
+  `build\admin_tab`.
 - **stop** ends only the process `start` recorded, and only if its executable
   is the copy's. It cannot stop the shared shard.
 

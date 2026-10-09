@@ -110,4 +110,25 @@ try {
     Require(made.Id==again.Id && reg.Files(made.Id,out string custom,out string install) && custom==overlay && install==data,"folder profile lookup");
     reg.Save(); ClientRegistry.Reset(); Require(ClientRegistry.Current.Find(made.Id).Meta.Source=="pregame","client.json not persisted");
     Console.WriteLine("PASS: pregame folder lookup over the shared registry");
+
+    // ADR-0035 / AD1: a server with the GUO editor bridge starts with its admin token and bridge settings, read from the
+    // workspace's secrets file; any other server gets none of them.
+    string secretsDir=Path.Combine(Workspace.Root,"shard"); Directory.CreateDirectory(secretsDir);
+    const string token="Tk7qL2vX9pR4mN8sW3yB6cD1fG5hJ0aZ";
+    File.WriteAllText(Path.Combine(secretsDir,"secrets.bat"),"@echo off\r\nif not defined UO_SHARD_OWNER_PASSWORD set \"UO_SHARD_OWNER_PASSWORD=abc\"\r\nif not defined UO_BRIDGE_ADMIN_TOKEN set \"UO_BRIDGE_ADMIN_TOKEN="+token+"\"\r\n");
+    Require(ShardSecrets.ReadFile(ShardSecrets.AdminTokenKey)==token && ShardSecrets.ReadFile("UO_SHARD_GM_PASSWORD")==null,"secrets file not read");
+    string plain=Path.Combine(home,"plain"), bridged=Path.Combine(home,"bridged");
+    Directory.CreateDirectory(Path.Combine(plain,"Data")); Directory.CreateDirectory(Path.Combine(bridged,"Data"));
+    File.WriteAllText(Path.Combine(plain,"Data","assemblies.json"),"[\"UOContent.dll\"]");
+    File.WriteAllText(Path.Combine(bridged,"Data","assemblies.json"),"[\"UOContent.dll\",\"GUO.EditorBridge.dll\"]");
+    Require(ShardSecrets.BridgeEnvironment(plain).Count==0 && ShardSecrets.BridgeEnvironment(home).Count==0 && ShardSecrets.BridgeEnvironment("").Count==0,"a server without the bridge got bridge settings");
+    if(Environment.GetEnvironmentVariable(ShardSecrets.AdminTokenKey)==null)
+    {
+        var env=ShardSecrets.BridgeEnvironment(bridged);
+        Require(env.Count==1 && env["GUO_BRIDGE_ADMIN_TOKEN"]==token,"the bridge's token was not passed");
+        File.WriteAllText(Path.Combine(bridged,"state.json"),"{\"port\":2694,\"bridge_port\":2695,\"pid\":null}");
+        env=ShardSecrets.BridgeEnvironment(bridged);
+        Require(env["GUO_BRIDGE_PORT"]=="2695" && env["GUO_BRIDGE_SHARD"]=="GUO-Editor-Private" && env["GUO_BRIDGE_MAPS"]=="0,1,2,3,4,5","editor_shard's bridge settings not passed");
+    }
+    Console.WriteLine("PASS: the editor bridge's admin token and settings reach a bridged server only (ADR-0035)");
 } finally { ManagedServerProcess.Stop(a); ManagedServerProcess.Stop(b); Directory.Delete(home,true); }

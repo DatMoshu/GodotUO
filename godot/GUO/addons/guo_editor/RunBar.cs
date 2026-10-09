@@ -64,6 +64,36 @@ public partial class RunBar : HBoxContainer
     }
 
     public void StartServerNow() { if (!_start.Disabled) Run(Start); }
+
+    /// <summary>Every saved server profile (the Admin tab's scripted check picks one by its folder).</summary>
+    internal IReadOnlyList<ServerProfile> Servers => _profiles?.Servers ?? new List<ServerProfile>();
+
+    /// <summary>Stops the picked server if this manager started it, with no dialog (scripted checks; save first).</summary>
+    internal void StopSelectedNow() { var s = Selected; if (s != null) { ManagedServerProcess.Stop(State(s)); Poll(); } }
+
+    /// <summary>The server picked in the list (the Admin tab shows and restarts it), or null.</summary>
+    internal ServerProfile SelectedServer => Selected;
+
+    /// <summary>Whether this manager started the picked server and it still runs (only then can it be restarted from here).</summary>
+    internal bool SelectedManaged => Selected is { } s && ManagedServerProcess.Running(State(s));
+
+    /// <summary>
+    /// The Admin tab's Restart, after it saved the world: stops the exact process this manager started and starts the
+    /// same profile again. Throws when the picked server is not one this manager runs.
+    /// </summary>
+    internal void RestartSelected()
+    {
+        var s = Selected ?? throw new InvalidOperationException("Select a server first");
+        if (!ManagedServerProcess.Running(State(s))) throw new InvalidOperationException($"{s.Name} was not started from the run bar");
+        _busy = true;
+        try
+        {
+            ManagedServerProcess.Stop(State(s));
+            ManagedServerProcess.Start(s, State(s));
+            _status.Text = "Restarted " + s.Name;
+        }
+        finally { _busy = false; _generation++; Poll(); }
+    }
     public void StartClientsNow() => Run(StartClients);
 
     public override void _Ready()

@@ -11,8 +11,11 @@ and checks, in order:
 3. a wrong token is refused (admin_error), and the admin op after it too;
 4. the right token is granted, `admin_whoami` names the level and the ops, and
    `admin_audit` returns entries with the token masked;
-5. a connection is closed after three refused tokens;
-6. neither the token nor a password reaches the shard log or the audit log.
+5. the Health ops (AD1): `admin_status` answers every number the tab shows,
+   `admin_save` writes the world and moves "last save", and neither runs
+   without the token;
+6. a connection is closed after three refused tokens;
+7. neither the token nor a password reaches the shard log or the audit log.
 
 Prints one line per check and exits 0 when all pass. The token is read from
 the configuration and never printed.
@@ -105,6 +108,38 @@ def run(port: int, token: str, shard_home: Path, secrets: list[str]) -> int:
           "the refused hello is audited, its token masked")
     check(any(e.get("op") == "admin_whoami" and e.get("ok") is False for e in entries),
           "the refused admin ops are audited")
+    b.close()
+
+    # AD1: the Health panel's ops.
+    b = Bridge(port)
+    b.ask({"op": "hello", "editor": "admin-check plain"})
+    st = b.ask({"op": "admin_status", "req": 6})
+    check(st is not None and st.get("ok") is False and "admin token" in st.get("error", ""),
+          "admin_status without the token is refused")
+    sv = b.ask({"op": "admin_save", "req": 7})
+    check(sv is not None and sv.get("ok") is False, "admin_save without the token is refused")
+    b.close()
+
+    b = Bridge(port, timeout=120.0)
+    b.ask({"op": "hello", "editor": "admin-check", "admin_token": token})
+    st = b.ask({"op": "admin_status", "req": 8})
+    fields = ("server", "version", "uptime_s", "online", "staff_online", "items", "mobiles", "memory_mb", "world",
+              "last_save", "last_save_s", "editors")
+    check(st is not None and st.get("ok") is True and st.get("req") == 8 and all(k in st for k in fields)
+          and st["uptime_s"] >= 0 and st["items"] > 0 and st["mobiles"] >= 0 and st["memory_mb"] > 0
+          and st["world"] == "Running" and st["editors"] >= 1,
+          f"admin_status answers the Health numbers (uptime {st and st.get('uptime_s')} s, {st and st.get('items')} items, "
+          f"{st and st.get('mobiles')} mobiles, {st and st.get('memory_mb')} MB, {st and st.get('online')} online, "
+          f"version {st and st.get('version')})")
+    sv = b.ask({"op": "admin_save", "req": 9, "reason": "admin-check"})
+    check(sv is not None and sv.get("ok") is True and sv.get("req") == 9 and sv.get("last_save"),
+          f"admin_save writes the world and answers when it is on disk ({sv and sv.get('ms')} ms)")
+    after = b.ask({"op": "admin_status", "req": 10})
+    check(after is not None and after.get("last_save") == sv.get("last_save") and (after.get("last_save_s") or 0) < 60,
+          f"the status after it shows that save as the last one ({after and after.get('last_save')})")
+    audit = b.ask({"op": "admin_audit", "count": 10, "req": 11})
+    check(any(e.get("op") == "admin_save" and e.get("ok") is True and e["args"].get("reason") == "admin-check"
+              for e in (audit or {}).get("entries") or []), "the save is in the audit log, with its reason")
     b.close()
 
     b = Bridge(port, timeout=20.0)
