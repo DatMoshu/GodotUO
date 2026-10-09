@@ -57,7 +57,7 @@ public partial class WorldView
             FixedIconSize = new Vector2I(32, 32), TextureFilter = TextureFilterEnum.Nearest,
             CustomMinimumSize = new Vector2(140, 100), TooltipText = "Visible land and static stack, highest first. Select a row to inspect; double-click to use it as the brush." };
         content.AddChild(_stack);
-        _stack.ItemSelected += i => { _stackIndex = (int)i; InspectPicked(); };
+        _stack.ItemSelected += i => { _stackIndex = (int)i; InspectPicked(); AnnounceStackChoice(); };
         _stack.ItemActivated += i => { _stackIndex = (int)i; PickBrushFromWorld(); };
         _nearby.AddChild(new Label { Text = "3×3 terrain · click a cell · double-click a tile to pick", ClipText = true });
     }

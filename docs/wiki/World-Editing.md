@@ -62,7 +62,7 @@ first if a key does nothing.
 | MoveObject | | First click picks up one of the project's objects, second click puts it down. |
 | DeleteObject | | Deletes one of the project's objects. |
 | Measure | M | First click starts, second click gives the distance in tiles. |
-| Area | G | Two clicks set the corners of a rectangle; **Area to multi** (under Advanced > World & overlays) takes its statics into the Multi Editor. |
+| Area | G | Two clicks set the corners of a rectangle; **Area to multi** (under Advanced > World & overlays) takes its items into the Multi Editor (see [From an area to a building](#from-an-area-to-a-building)). |
 
 The rail also has **Route** (the walking path between two clicks) and
 **Pin**. Hover over a rail button to see its name and key. The four
@@ -147,8 +147,15 @@ The map always tells you what a click will do: the line at the top left of the
 map names the tool and, for the brush, the recipe, for example
 `Brush · Single 1×1 100%` or `Brush · Scatter 7×7 35%`. While you hover, it also
 shows how many cells the stroke will change. If a click changes nothing and
-**Keep existing statics** is on, the cell already holds a static: turn that
-option off (Advanced tab, Variation & rules) to place on top of it.
+a rule turned the cells away, the status line names that rule and what to
+change. With **Keep existing statics** on (Advanced tab, Variation & rules), a
+cell that already holds an item is left alone; the status line then says
+*Nothing placed: that cell already has an item. Keep existing statics is on;
+untick it to place on top*.
+
+Rows in the Variation list, the saved presets, the favourites and the Nearby
+tiles stack show the name first and the number second, for example
+*tree · 0x0CCA*.
 
 ## Stamp or PlaceItem?
 
@@ -182,10 +189,43 @@ you want it.
   table to stamp something on the table.
 - To stamp or paint at an exact height, tick **Fixed Z** in the Tools tab and
   set **Z / offset**. (PlaceItem always goes on top of what you clicked.)
-- To change one static's height or hue afterwards: select it in the **Nearby
-  tiles** stack, set **Z / offset** and **Hue**, and press **Set Z / hue**.
+- To change one static's height or hue afterwards: click its row in the
+  **Nearby tiles** stack. The status line names it and the button:
+  *Chosen: crate · 0x0E3C at Z 0. Type Z / ground offset and Hue, then press
+  Set Z / hue*. Set **Z / ground offset** and **Hue**, and press **Set Z /
+  hue**. Set Z / hue changes items only; for the ground's height use the
+  Flatten brush.
 - **Z min** and **Z max** hide everything outside a height range. This helps
   when you work on an upper floor.
+
+## Seeing the map differently: the View menu
+
+**View** (Advanced > World & overlays) recolours the map to answer one
+question, without changing it. A box at the top left of the map names the
+view, says in one sentence what the colours mean, and lists each colour.
+Hover over a view in the menu to read that sentence before you choose it.
+
+| View | What the colours mean |
+|---|---|
+| Height | How high the ground is: blue is low, red and white are high. |
+| Walkability | Where a player can stand, and where they are stopped. |
+| Reachability | Click a cell: where a player can walk to from it. |
+| Types | What each cell holds: wall, floor, roof, water and so on. |
+| IDs | Each kind of item gets its own colour, so the map looks like a patchwork. That is normal, not damage. |
+| Land mesh | The ground's shape; yellow tiles are stretched over a slope. |
+| Problems | Only mistakes: holes in floors, two items in one spot at one height (they flicker), items on water. |
+| Project diff | The parts of the map this project changed; the rest is your own install. |
+
+Choose **Off** to see the plain map again.
+
+## From an area to a building
+
+With the **Area** tool, click two corners, then press **Area to multi**
+(Advanced > World & overlays). The items inside open in the **Multis** tab as
+a new building. A bar across the top of that tab says *From the World: N items
+opened here as a new building*; its **Back to World** button returns to the
+World tab, and **×** hides the bar. The World's status line says where the
+items went.
 
 ## Undo and redo
 
@@ -225,10 +265,14 @@ Read the status line under the map first; it says why. The usual answers:
 | Status line | Meaning |
 |---|---|
 | *nothing under the pointer* | The pointer was not on drawn pixels. Click on the art itself. |
-| *Erase takes a static; that is a Land* (or *Hue takes...*) | You clicked the ground. Use Alt + wheel or Nearby tiles to reach the static. |
-| *Stamp needs a static* | The current art is a land tile. Pick a static. |
-| *MoveObject: click one of the project's objects first* | Move and Delete work only on shard objects, not on map statics. |
-| *PlaceSpawner needs a name in the spawns box* | Type a creature name under Advanced > World & overlays. |
+| *Erase takes an item; that is the ground* (or *Hue takes...*) | You clicked the ground. Use Alt + wheel or Nearby tiles to reach the item. |
+| *Stamp needs an item* | The current art is a land tile. Pick an item. |
+| *Nothing placed: that cell already has an item...* | **Keep existing statics** is on. Untick it to place on top. |
+| *Nothing placed: the brush is over water...* | **Avoid water** is on. Untick it to paint there. |
+| *Nothing placed: Density and Spacing left these cells empty...* | Raise **Density**, or move the brush. |
+| *Set Z / hue: first click an item's row in Nearby tiles* | Choose the row first, then press Set Z / hue. |
+| *Move object: click one of the project's objects first* | Move and Delete work only on shard objects, not on map statics. |
+| *Place spawner needs a creature name in the spawns box* | Type a creature name under Advanced > World & overlays. |
 | *Terrain is locked* | Untick **Lock terrain** in the Tools tab. |
 | A key does nothing | Click the map once so it has focus. |
 

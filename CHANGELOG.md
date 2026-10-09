@@ -94,6 +94,12 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 - Profile settings migrate automatically; profile version 10.
 
 ### Building and managing
+- The World tab speaks plain words: each view's legend says what its colours
+  mean (the IDs patchwork is normal, not damage), a brush stroke that places
+  nothing says which rule stopped it (Keep existing statics, Avoid water,
+  Density), choosing a Nearby tiles row names the Set Z / hue button, Area to
+  multi announces the new building in the Multis tab with a Back to World
+  button, and item rows show the name before the number.
 - World tab settings stay readable on a small screen: the Tools tab keeps the
   rows its settings need, a "More below" bar marks settings under a fold, the
   inspector never covers the settings, the tool rail and the map name tools

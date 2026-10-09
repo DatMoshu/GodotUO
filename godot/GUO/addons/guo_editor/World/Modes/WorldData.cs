@@ -530,7 +530,7 @@ internal sealed class WorldData
         sb.Append($"{x},{y}  land 0x{LandId(x, y):X4} z {LandZ(x, y)}");
         foreach (ObjInfo o in Objects(x, y))
         {
-            sb.Append($"\n0x{o.Graphic:X4} {o.Name}  z {o.Z}+{o.Height}{(o.IsItem ? " (item)" : "")}");
+            sb.Append($"\n{o.Name} · 0x{o.Graphic:X4}  z {o.Z}+{o.Height}{(o.IsItem ? " (item)" : "")}");
         }
 
         return sb.ToString();

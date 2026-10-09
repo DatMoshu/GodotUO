@@ -150,11 +150,11 @@ public partial class WorldView
         _favoriteButtons = new HFlowContainer(); library.AddChild(_favoriteButtons);
         var presetSection = Section(library, "Saved presets");
         _presets = new ItemList { CustomMinimumSize = new Vector2(0, 70), TooltipText = "Double-click a saved brush recipe to load it" };
-        presetSection.AddChild(_presets); _presets.ItemActivated += i => ReadPreset(_presets.GetItemText((int)i));
+        presetSection.AddChild(_presets); _presets.ItemActivated += i => ReadPreset(PresetName((int)i));
         _presetName = new LineEdit { PlaceholderText = "Name this brush preset" }; presetSection.AddChild(_presetName);
         var presetActions = new HBoxContainer(); presetSection.AddChild(presetActions);
         ActionButton(presetActions, "Save preset", SaveBrushPreset);
-        ActionButton(presetActions, "Load", () => { var s = _presets.GetSelectedItems(); if (s.Length > 0) ReadPreset(_presets.GetItemText(s[0])); });
+        ActionButton(presetActions, "Load", () => { var s = _presets.GetSelectedItems(); if (s.Length > 0) ReadPreset(PresetName(s[0])); });
 
         _stage.Reparent(_librarySplit);
         var settingsTabs = new TabContainer { CustomMinimumSize = new Vector2(0, 160), SizeFlagsVertical = SizeFlags.ExpandFill };
@@ -269,7 +269,8 @@ public partial class WorldView
         };
     }
 
-    private void OnBrushDataLoaded() { _brushArt?.OnDataLoaded(); RebuildFavorites(); RebuildVariants(); }
+    // Presets reload too: their rows name what they paint, which needs the art names.
+    private void OnBrushDataLoaded() { _brushArt?.OnDataLoaded(); LoadBrushPresets(); RebuildVariants(); }
     internal bool TerrainLocked { get => _lockTerrain?.ButtonPressed == true; set { if (_lockTerrain != null) _lockTerrain.ButtonPressed = value; } }
     internal string BrushStatus => _status?.Text;
     // The active tool and, for the brush, which recipe it is: "Brush · Single 1×1 100%", "Brush · Scatter 7×7 35%".
@@ -344,7 +345,7 @@ public partial class WorldView
             using Image img = _data?.ArtImage(art);
             row.AddChild(new TextureRect { Texture = img == null ? null : ImageTexture.CreateFromImage(img), CustomMinimumSize = new Vector2(32, 32),
                 ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize, StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered, TextureFilter = TextureFilterEnum.Nearest });
-            row.AddChild(new Label { Text = _data?.NameOf(art) ?? v.Id.ToString("X4"), ClipText = true, SizeFlagsHorizontal = SizeFlags.ExpandFill });
+            row.AddChild(new Label { Text = NameThenId(art, v.Id), ClipText = true, SizeFlagsHorizontal = SizeFlags.ExpandFill });
             var weight = new SpinBox { Value = v.Weight, MinValue = 1, MaxValue = 10000, TooltipText = $"Relative weight ({v.Weight * 100 / total}% at these settings)" };
             row.AddChild(weight);
             weight.ValueChanged += value =>
@@ -404,7 +405,7 @@ public partial class WorldView
         foreach (Node n in _favoriteButtons.GetChildren()) { _favoriteButtons.RemoveChild(n); n.QueueFree(); }
         foreach (uint id in _favorites)
         {
-            var b = ActionButton(_favoriteButtons, "", () => { _data.CurrentArt = id; Tool = WorldTool.Brush; }, $"0x{id:X4}: {_data?.NameOf(id)}");
+            var b = ActionButton(_favoriteButtons, "", () => { _data.CurrentArt = id; Tool = WorldTool.Brush; }, NameThenId(id, (int)(id < EditorData.LandCount ? id : id - EditorData.LandCount)));
             Image img = _data?.ArtImage(id);
             if (img != null) b.Icon = ImageTexture.CreateFromImage(img);
             b.ExpandIcon = true; b.CustomMinimumSize = new Vector2(38, 38); b.TextureFilter = TextureFilterEnum.Nearest;
@@ -417,7 +418,7 @@ public partial class WorldView
         var list = new VBoxContainer(); _quickFavorites.AddChild(list);
         list.AddChild(new Label { Text = "Quick favorites · Q / Esc to close" });
         foreach (uint id in _favorites)
-            ActionButton(list, $"{_data.NameOf(id)} · {id:X4}", () => { _data.CurrentArt = id; _quickFavorites.Hide(); Tool = WorldTool.Brush; });
+            ActionButton(list, NameThenId(id, (int)(id < EditorData.LandCount ? id : id - EditorData.LandCount)), () => { _data.CurrentArt = id; _quickFavorites.Hide(); Tool = WorldTool.Brush; });
         if (_favorites.Count == 0) list.AddChild(new Label { Text = "Use + Favorite in the brush library" });
         _quickFavorites.Visible = !_quickFavorites.Visible;
     }
@@ -510,7 +511,7 @@ public partial class WorldView
                 if (_stackEntries.Count > 0)
                 {
                     _stackIndex = (_stackIndex + (alt.ButtonIndex == MouseButton.WheelUp ? 1 : _stackEntries.Count - 1) + _stackEntries.Count) % _stackEntries.Count;
-                    _stack.Select(_stackIndex); InspectPicked();
+                    _stack.Select(_stackIndex); InspectPicked(); AnnounceStackChoice();
                 }
                 return true;
             }
@@ -569,7 +570,7 @@ public partial class WorldView
             uint art = _data?.CurrentArt ?? 0;
             ushort id = (ushort)(art < EditorData.LandCount ? art : art - EditorData.LandCount);
             bool changed = _recipe.Apply(_editor, _modeNode.Data, _host.Facet, _stroke, id);
-            if (!changed) _status.Text = "No cells changed (check brush rules and target)";
+            if (!changed) _status.Text = _recipe.WhyNothing(_modeNode.Data, _stroke);
             _stackIndex = -1; _stackCell = null;
         }
         catch (Exception ex) { _status.Text = $"Brush failed: {ex.Message}"; }
@@ -600,14 +601,14 @@ public partial class WorldView
         {
             if (s.Z < _host.MinVisibleZ || s.Z > _host.MaxVisibleZ) continue;
             _stackEntries.Add((x, y, s.Z, s.Id, false));
-            _stack.AddItem($"{_data?.NameOf(EditorData.LandCount + s.Id)} · 0x{s.Id:X4}\nZ {s.Z} · hue {s.Hue}", GhostTexture(EditorData.LandCount + s.Id));
+            _stack.AddItem($"{NameThenId(EditorData.LandCount + s.Id, s.Id)}\nZ {s.Z} · hue {s.Hue}", GhostTexture(EditorData.LandCount + s.Id));
         }
         BlockData b = _modeNode?.Data?.Block(x >> 3, y >> 3);
         if (b != null)
         {
             int i = (y & 7) * 8 + (x & 7);
             _stackEntries.Add((x, y, b.LandZ[i], b.LandId[i], true));
-            _stack.AddItem($"Land · 0x{b.LandId[i]:X4}\nZ {b.LandZ[i]}", GhostTexture(b.LandId[i]));
+            _stack.AddItem($"{NameThenId(b.LandId[i], b.LandId[i])} (ground)\nZ {b.LandZ[i]}", GhostTexture(b.LandId[i]));
         }
     }
 
@@ -626,21 +627,40 @@ public partial class WorldView
         if (EffectivePicked() is not GameObject o || _data == null) return;
         _data.CurrentArt = o is Land ? o.Graphic : EditorData.LandCount + o.Graphic;
         BrushHue = o.Hue; _recipe.Land = o is Land; _targetPick.Select(_recipe.Land ? 1 : 0);
-        _status.Text = $"Picked {o.Graphic:X4} · Z {o.Z}";
+        _status.Text = $"Picked {NameThenId(_data.CurrentArt, o.Graphic)} · Z {o.Z}";
     }
 
     private void TransformStackSelection()
     {
-        if (_stackIndex < 0 || _stackIndex >= _stackEntries.Count) return;
+        if (_stackIndex < 0 || _stackIndex >= _stackEntries.Count)
+        { _status.Text = "Set Z / hue: first click an item's row in Nearby tiles"; return; }
         var s = _stackEntries[_stackIndex];
-        if (s.Land) { _status.Text = "Use the terrain Flatten brush to set ground height"; return; }
+        if (s.Land) { _status.Text = "Set Z / hue changes items, not the ground; use the Flatten brush to set ground height"; return; }
+        string name = NameThenId(EditorData.LandCount + s.Id, s.Id);
         _editor.Edit(_host.Facet, s.X >> 3, s.Y >> 3, b =>
         {
             int i = b.Statics.FindIndex(t => t.X == (s.X & 7) && t.Y == (s.Y & 7) && t.Id == s.Id && t.Z == s.Z);
             if (i < 0) return;
             var t = b.Statics[i]; t.Z = (sbyte)_recipe.Height; t.Hue = BrushHue; b.Statics[i] = t;
-        }, $"Move {s.Id:X4} to Z {_recipe.Height}, hue {BrushHue}");
+        }, $"Set Z / hue: {name} now at Z {_recipe.Height}, hue {BrushHue}");
         _stackIndex = -1; RefreshStack(s.X, s.Y);
+    }
+
+    /// <summary>ED6: a Nearby row was chosen; the status line says which button applies the change.</summary>
+    private void AnnounceStackChoice()
+    {
+        if (_stackIndex < 0 || _stackIndex >= _stackEntries.Count) return;
+        var s = _stackEntries[_stackIndex];
+        _status.Text = s.Land
+            ? $"Chosen: the ground ({NameThenId(s.Id, s.Id)}) at Z {s.Z}. Set Z / hue changes items only; use the Flatten brush for ground"
+            : $"Chosen: {NameThenId(EditorData.LandCount + s.Id, s.Id)} at Z {s.Z}. Type Z / ground offset and Hue, then press Set Z / hue";
+    }
+
+    /// <summary>ED6: an item or ground tile as its name first and its number second ("tree · 0x0CCA").</summary>
+    private string NameThenId(uint art, int id)
+    {
+        string name = _data?.NameOf(art);
+        return string.IsNullOrWhiteSpace(name) ? $"0x{id:X4}" : $"{name} · 0x{id:X4}";
     }
 
     private string PresetPath => Path.Combine(_host.Project?.Root ?? Path.Combine(EditorData.RepoRoot, "build", "world", "default"), "brushes.cfg");
@@ -654,7 +674,15 @@ public partial class WorldView
     {
         if (_presets == null) return;
         using var file = ReadPresetFile(); _presets.Clear();
-        foreach (string section in file.GetSections()) if (section.StartsWith("brush:")) _presets.AddItem(section[6..]);
+        foreach (string section in file.GetSections())
+        {
+            if (!section.StartsWith("brush:")) continue;
+            // ED6: the preset's own name first, then what it paints, name before number.
+            uint art = (uint)file.GetValue(section, "art", 0).AsInt64();
+            int id = (int)(art < EditorData.LandCount ? art : art - EditorData.LandCount);
+            int row = _presets.AddItem(art == 0 ? section[6..] : $"{section[6..]}  ({NameThenId(art, id)})");
+            _presets.SetItemMetadata(row, section[6..]);
+        }
         _favorites.Clear();
         foreach (string id in file.GetValue("favorites", "art", "").AsString().Split(',')) if (uint.TryParse(id, out uint n)) _favorites.Add(n);
         RebuildFavorites();
@@ -675,6 +703,15 @@ public partial class WorldView
         }
         catch (Exception ex) { _status.Text = ex.Message; }
     }
+    private string PresetName(int row) => _presets.GetItemMetadata(row).AsString();
+    internal void SavePresetForSmoke(string name) { _presetName.Text = name; SaveBrushPreset(); }
+    internal void SetVariantsForSmoke(string text) { _weights.Text = text; _recipe.Variants = text; RebuildVariants(); }
+    internal void SetZHueForSmoke() { _stackIndex = -1; TransformStackSelection(); }
+    internal IEnumerable<string> StackRowsForSmoke() => Enumerable.Range(0, _stack.ItemCount).Select(i => _stack.GetItemText(i));
+    internal void ChooseStackRowForSmoke(int row) { _stack.Select(row); _stack.EmitSignal(ItemList.SignalName.ItemSelected, row); }
+    internal void ShowInspectorTabForSmoke() { _pinNearby.ButtonPressed = false; _detailTabs.CurrentTab = 0; }
+    internal IEnumerable<string> PresetRowsForSmoke() => Enumerable.Range(0, _presets.ItemCount).Select(i => _presets.GetItemText(i));
+    internal IEnumerable<string> VariantRowsForSmoke() => _variantRows.GetChildren().OfType<HBoxContainer>().Select(r => r.GetChildren().OfType<Label>().First().Text);
     private void ReadPreset(string name)
     {
         using var file = ReadPresetFile(); string section = "brush:" + name;
