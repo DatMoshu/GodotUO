@@ -273,7 +273,7 @@ public partial class WorldView : VBoxContainer
         {
             if (_data != null)
             {
-                _data.CurrentArt = EditorData.LandCount + (uint)id;
+                _data.CurrentArt = _brush.Kind == AssetPickKind.Land ? (uint)id : EditorData.LandCount + (uint)id;
             }
         };
         tools.AddChild(_brush);
@@ -548,12 +548,15 @@ public partial class WorldView : VBoxContainer
         }
 
         Vector2I size = _viewport.Size;
-        if (_data != null && _brush != null && _data.CurrentArt >= EditorData.LandCount)
+        if (_data != null && _brush != null && _brush.Edit?.HasFocus() != true)
         {
-            // Follow a pick made in UO Assets, but never under the user's typing.
-            int id = (int)(_data.CurrentArt - EditorData.LandCount);
-            if (_brush.Value != id && _brush.Edit?.HasFocus() != true)
+            // Follow a pick made in UO Assets or the brush library, ground included, but never under the user's typing.
+            bool land = _data.CurrentArt < EditorData.LandCount;
+            int id = (int)(land ? _data.CurrentArt : _data.CurrentArt - EditorData.LandCount);
+            AssetPickKind kind = land ? AssetPickKind.Land : AssetPickKind.Static;
+            if (_brush.Kind != kind || _brush.Value != id)
             {
+                _brush.Kind = kind;
                 _brush.Value = id;
             }
         }

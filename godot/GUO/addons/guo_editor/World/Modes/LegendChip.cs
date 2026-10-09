@@ -24,6 +24,9 @@ public partial class LegendChip : Control
 
     public string Title => _title;
 
+    /// <summary>Text size in unscaled pixels: the editor's default UI size.</summary>
+    internal const int FontSize = 16;
+
     public LegendChip()
     {
         MouseFilter = MouseFilterEnum.Ignore;
@@ -70,12 +73,14 @@ public partial class LegendChip : Control
         }
 
         Font font = ThemeDB.FallbackFont;
-        const int size = 13, row = 18;
+        // Readable at a glance: the editor's own text size, scaled with the editor (ED5; 13 px read as tiny).
+        float scale = Engine.IsEditorHint() ? EditorInterface.Singleton.GetEditorScale() : 1f;
+        int size = Mathf.RoundToInt(FontSize * scale), row = Mathf.RoundToInt((FontSize + 6) * scale);
         string[] hover = _hover.Length == 0 ? System.Array.Empty<string>() : _hover.Split('\n');
         float w = font.GetStringSize(_title, HorizontalAlignment.Left, -1, size + 1).X;
         foreach (LegendItem i in _items)
         {
-            w = Mathf.Max(w, font.GetStringSize(i.Label, HorizontalAlignment.Left, -1, size).X + 22);
+            w = Mathf.Max(w, font.GetStringSize(i.Label, HorizontalAlignment.Left, -1, size).X + size + 6);
         }
 
         foreach (string h in hover)
@@ -85,16 +90,18 @@ public partial class LegendChip : Control
 
         float height = row * (1 + _items.Count + hover.Length) + 12;
         DrawnSize = new Vector2(w + 16, height);
+        Size = DrawnSize;
         DrawRect(new Rect2(0, 0, w + 16, height), new Color(0.07f, 0.07f, 0.09f, 0.88f));
         DrawRect(new Rect2(0, 0, w + 16, height), new Color(0.78f, 0.62f, 0.3f), false, 1f);
-        float y = 16;
+        float y = row - 2;
         DrawString(font, new Vector2(8, y), _title, HorizontalAlignment.Left, -1, size + 1, new Color(1f, 0.9f, 0.5f));
         foreach (LegendItem i in _items)
         {
             y += row;
-            DrawRect(new Rect2(8, y - 11, 12, 12), i.Colour);
-            DrawRect(new Rect2(8, y - 11, 12, 12), Colors.Black, false, 1f);
-            DrawString(font, new Vector2(26, y), i.Label, HorizontalAlignment.Left, -1, size, Colors.White);
+            float swatch = size - 2;
+            DrawRect(new Rect2(8, y - swatch + 1, swatch, swatch), i.Colour);
+            DrawRect(new Rect2(8, y - swatch + 1, swatch, swatch), Colors.Black, false, 1f);
+            DrawString(font, new Vector2(14 + swatch, y), i.Label, HorizontalAlignment.Left, -1, size, Colors.White);
         }
 
         foreach (string h in hover)

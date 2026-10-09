@@ -105,7 +105,7 @@ public partial class WorldView
         {
             Texture2D icon = EditorInterface.Singleton.GetBaseControl().GetThemeIcon(entry.Icon, "EditorIcons");
             var button = new Button { Icon = icon, Text = icon == null ? entry.Tool.ToString()[..1] : "", ToggleMode = true,
-                ButtonGroup = group, CustomMinimumSize = new Vector2(38, 34), TooltipText = entry.Tool + (entry.Shortcut.Length > 0 ? " (" + entry.Shortcut + ")" : "") };
+                ButtonGroup = group, CustomMinimumSize = new Vector2(38, 34), TooltipText = ToolName(entry.Tool) + (entry.Shortcut.Length > 0 ? " (" + entry.Shortcut + ")" : "") };
             button.Pressed += () => Tool = entry.Tool; rail.AddChild(button); _toolButtons[entry.Tool] = button;
         }
 
@@ -169,7 +169,7 @@ public partial class WorldView
         selected.AddChild(_brushPreview);
         _brush.Reparent(selected); _brush.CustomMinimumSize = Vector2.Zero; _brush.SizeFlagsHorizontal = SizeFlags.ExpandFill;
         var advancedScroll = new ScrollContainer { Name = "Advanced", HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled };
-        settingsTabs.AddChild(advancedScroll);
+        settingsTabs.AddChild(advancedScroll); _advancedTools = advancedScroll;
         var advancedOptions = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill }; advancedScroll.AddChild(advancedOptions);
         var editors = new HBoxContainer(); advancedOptions.AddChild(editors);
         ActionButton(editors, "Pixelorama", () => EditBrushArt(false), "Project > GUO: save back to GUO returns the edit");
@@ -256,6 +256,8 @@ public partial class WorldView
         workspace.SplitOffsets = new[] { preferences.GetProjectMetadata("guo_world", "tools_width_v2", 390).AsInt32() };
         _librarySplit.SplitOffsets = new[] { preferences.GetProjectMetadata("guo_world", "brush_width_v2", 280).AsInt32() };
         _toolHeightRatio = Math.Clamp(preferences.GetProjectMetadata("guo_world", "tools_ratio_v3", 0.65).AsDouble(), 0.25, 0.8);
+        AddScrollCues();
+        options.MinimumSizeChanged += ApplyToolHeightRatio;
         _leftWorkspace.Resized += ApplyToolHeightRatio;
         Callable.From(ApplyToolHeightRatio).CallDeferred();
         workspace.Dragged += offset => preferences.SetProjectMetadata("guo_world", "tools_width_v2", offset);
@@ -275,7 +277,7 @@ public partial class WorldView
     {
         get
         {
-            if (Tool != WorldTool.Brush) return Tool.ToString();
+            if (Tool != WorldTool.Brush) return ToolName(Tool);
             string kind = _recipe.Operation == "Paint"
                 ? (_recipe.Land ? "Terrain" : _recipe.Size == 1 && _recipe.Density == 100 ? "Single" : "Scatter")
                 : _recipe.Operation;

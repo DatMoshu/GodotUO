@@ -200,6 +200,11 @@ public partial class WorldView
         }
 
         _chip.Set(title, title.Length == 0 ? Array.Empty<LegendItem>() : _modeNode.Legend(), _modeNode.HoverText());
+        // Under the map's hint line, never over it.
+        if (_previewLabel != null)
+        {
+            _chip.Position = new Vector2(10, _previewLabel.Position.Y + _previewLabel.Size.Y + 6);
+        }
         if (_cursor != null)
         {
             _cursor.Text = _modeNode.Hover is { } c && _modeNode.Data != null

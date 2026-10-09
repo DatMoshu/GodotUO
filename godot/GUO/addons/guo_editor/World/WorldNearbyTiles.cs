@@ -18,9 +18,11 @@ public partial class WorldView
 
     private void ApplyToolHeightRatio()
     {
+        FitSettingsRows();
         if (_leftWorkspace?.Size.Y > 0)
-            // Split offsets are relative to the default midpoint, not absolute heights.
-            _leftWorkspace.SplitOffsets = new[] { (int)(_leftWorkspace.Size.Y * (_toolHeightRatio - 0.5)) };
+            // Split offsets are relative to the default midpoint, not absolute heights. Never below the Tools
+            // tab's rows, so the offset is where the split really is and a drag moves it at once.
+            _leftWorkspace.SplitOffsets = new[] { (int)(Math.Max(_leftWorkspace.Size.Y * _toolHeightRatio, _settings.CustomMinimumSize.Y) - _leftWorkspace.Size.Y * 0.5) };
     }
 
     private void BuildNearbyTiles()

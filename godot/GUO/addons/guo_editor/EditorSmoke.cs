@@ -1545,6 +1545,7 @@ public partial class EditorSmoke : Node
         }));
 
         _steps.Add((1, VerifyBrushWorkspace));
+        AddSettingsChecks();
         AddWorldCentreSteps("default");
         if (!Headless)
         {
@@ -1552,7 +1553,15 @@ public partial class EditorSmoke : Node
             float originalCanvasWidth = 0, originalToolsHeight = 0;
             Vector2I proofWindowSize = default;
             Window.ModeEnum proofWindowMode = default;
-            _steps.Add((1, () => { _world.GoTo(0, 1651, 2660); _world.ShowWorkspacePreview(); }));
+            // A known window size first: the editor reopens at its last size, and at 1366x768 the inspector's
+            // minimum leaves the Tools/inspector split no room for the resize check below.
+            _steps.Add((1, () =>
+            {
+                proofWindowSize = GetWindow().Size; proofWindowMode = GetWindow().Mode;
+                GetWindow().Mode = Window.ModeEnum.Windowed;
+                GetWindow().Size = new Vector2I((int)(1920 * EditorInterface.Singleton.GetEditorScale()), (int)(1080 * EditorInterface.Singleton.GetEditorScale()));
+            }));
+            _steps.Add((20, () => { _world.GoTo(0, 1651, 2660); _world.ShowWorkspacePreview(); }));
             _steps.Add((20, () => _world.ForcedMouse = _world.CanvasSize / 2));
             _steps.Add((20, () =>
             {
@@ -1588,8 +1597,6 @@ public partial class EditorSmoke : Node
             _steps.Add((1, () =>
             {
                 _world.ShowNearbyForSmoke(1651, 2660);
-                proofWindowSize = GetWindow().Size; proofWindowMode = GetWindow().Mode;
-                GetWindow().Mode = Window.ModeEnum.Windowed;
                 GetWindow().Size = new Vector2I((int)(1920 * EditorInterface.Singleton.GetEditorScale()), (int)(1080 * EditorInterface.Singleton.GetEditorScale()));
             }));
             AddWorldCentreSteps("1080");
@@ -1601,8 +1608,9 @@ public partial class EditorSmoke : Node
                 GD.Print($"[GUO workspace] 1920x1080 logical proof: {GetWindow().Size}, editor scale {EditorInterface.Singleton.GetEditorScale()}");
                 using Image shot = EditorInterface.Singleton.GetBaseControl().GetViewport().GetTexture()?.GetImage();
                 shot?.SavePng(Path.Combine(_out, $"editor_compact_1080{Suffix}.png"));
-                GetWindow().Size = new Vector2I((int)(1366 * EditorInterface.Singleton.GetEditorScale()), (int)(768 * EditorInterface.Singleton.GetEditorScale()));
             }));
+            AddSettingsLayoutSteps("1080");
+            _steps.Add((1, () => GetWindow().Size = new Vector2I((int)(1366 * EditorInterface.Singleton.GetEditorScale()), (int)(768 * EditorInterface.Singleton.GetEditorScale()))));
             AddWorldCentreSteps("768");
             _steps.Add((1, () =>
             {
@@ -1611,8 +1619,9 @@ public partial class EditorSmoke : Node
                 GD.Print($"[GUO workspace] 1366x768 logical proof: {GetWindow().Size}, editor scale {EditorInterface.Singleton.GetEditorScale()}");
                 using Image shot = EditorInterface.Singleton.GetBaseControl().GetViewport().GetTexture()?.GetImage();
                 shot?.SavePng(Path.Combine(_out, $"editor_compact_768{Suffix}.png"));
-                GetWindow().Size = proofWindowSize; GetWindow().Mode = proofWindowMode;
             }));
+            AddSettingsLayoutSteps("768");
+            _steps.Add((1, () => { GetWindow().Size = proofWindowSize; GetWindow().Mode = proofWindowMode; }));
         }
         // ADR-0027: render modes and map layers.
         AddModeSteps();

@@ -94,6 +94,11 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 - Profile settings migrate automatically; profile version 10.
 
 ### Building and managing
+- World tab settings stay readable on a small screen: the Tools tab keeps the
+  rows its settings need, a "More below" bar marks settings under a fold, the
+  inspector never covers the settings, the tool rail and the map name tools
+  in words, the view legend sits under the map's hint line in larger text,
+  and the item box shows the ground tile chosen for Terrain.
 - World editor tour: a recorded walk through every map-editing feature of the
   World tab, in plain words, with every on-screen mark checked against the
   control it names; the editor's own tools to record, export and review it.
