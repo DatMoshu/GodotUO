@@ -200,6 +200,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         {
             AfterWrite = AfterMultiWrite,
             PreviewInWorld = PreviewMultiInWorld,
+            BackToWorld = () => EditorInterface.Singleton.SetMainScreenEditor(WorldTabName),
         };
         MultiEditMain = _multiedit;
         EditorInterface.Singleton.GetEditorMainScreen().AddChild(_multiedit);
@@ -210,7 +211,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         _world.AreaToMulti = (name, parts) =>
         {
             ShowMultiEditor();
-            _multiedit?.GuardUnsaved(() => _multiedit.OpenParts(name, parts));
+            _multiedit?.GuardUnsaved(() => _multiedit.OpenFromWorld(name, parts));
         };
 
         // Start server, start clients: on the toolbar, always one click away.

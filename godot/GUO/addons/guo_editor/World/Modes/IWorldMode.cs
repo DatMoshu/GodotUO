@@ -43,6 +43,9 @@ internal interface IWorldMode
 {
     string Name { get; }
     string Summary { get; }
+
+    /// <summary>ED6: one plain sentence on what the colours mean, shown under the legend's title and on the View menu.</summary>
+    string Meaning { get; }
     IReadOnlyList<LegendItem> Legend(ModeContext ctx);
     void Draw(IPaint paint, ModeContext ctx);
 

@@ -2,6 +2,7 @@
 namespace GUO.Editor;
 
 using System;
+using System.Collections.Generic;
 using Godot;
 using GUO.Game.GameObjects;
 
@@ -17,9 +18,11 @@ public partial class WorldView
 
     private void ApplyToolHeightRatio()
     {
+        FitSettingsRows();
         if (_leftWorkspace?.Size.Y > 0)
-            // Split offsets are relative to the default midpoint, not absolute heights.
-            _leftWorkspace.SplitOffsets = new[] { (int)(_leftWorkspace.Size.Y * (_toolHeightRatio - 0.5)) };
+            // Split offsets are relative to the default midpoint, not absolute heights. Never below the Tools
+            // tab's rows, so the offset is where the split really is and a drag moves it at once.
+            _leftWorkspace.SplitOffsets = new[] { (int)(Math.Max(_leftWorkspace.Size.Y * _toolHeightRatio, _settings.CustomMinimumSize.Y) - _leftWorkspace.Size.Y * 0.5) };
     }
 
     private void BuildNearbyTiles()
@@ -54,7 +57,7 @@ public partial class WorldView
             FixedIconSize = new Vector2I(32, 32), TextureFilter = TextureFilterEnum.Nearest,
             CustomMinimumSize = new Vector2(140, 100), TooltipText = "Visible land and static stack, highest first. Select a row to inspect; double-click to use it as the brush." };
         content.AddChild(_stack);
-        _stack.ItemSelected += i => { _stackIndex = (int)i; InspectPicked(); };
+        _stack.ItemSelected += i => { _stackIndex = (int)i; InspectPicked(); AnnounceStackChoice(); };
         _stack.ItemActivated += i => { _stackIndex = (int)i; PickBrushFromWorld(); };
         _nearby.AddChild(new Label { Text = "3×3 terrain · click a cell · double-click a tile to pick", ClipText = true });
     }
@@ -94,6 +97,17 @@ public partial class WorldView
     }
 
     internal bool NearbyHasCenterTile() => _nearbyCells[4].Icon != null && _stack.ItemCount > 0;
+    /// <summary>The visible controls of the World top command row (and the minimap) that lie outside <paramref name="visible"/>, by name.</summary>
+    internal List<string> CommandRowOutside(Rect2 visible)
+    {
+        var outside = new List<string>();
+        foreach (Node child in _commandBar.GetChildren())
+            if (child is Control c && c.Visible && c.Size.X > 0 && !visible.Encloses(c.GetGlobalRect()))
+                outside.Add(child is Button b && b.Text.Length > 0 ? b.Text : child.Name);
+        if (_minimap != null && _minimap.IsVisibleInTree() && !visible.Encloses(_minimap.GetGlobalRect())) outside.Add("Minimap");
+        return outside;
+    }
+
     internal bool CommonToolsFit() => _commonTools.GetVScrollBar().MaxValue <= _commonTools.Size.Y + 2;
 }
 #endif

@@ -246,6 +246,8 @@ public partial class MultiEditView : VBoxContainer, IMultiComponentSink
         };
         sel.AddChild(_hint);
 
+        BuildFromWorldBar();
+
         // Body: palette | stories + canvas | tabs.
         var split = new HSplitContainer { SizeFlagsVertical = SizeFlags.ExpandFill };
         AddChild(split);
@@ -617,6 +619,7 @@ public partial class MultiEditView : VBoxContainer, IMultiComponentSink
 
     public void NewMulti()
     {
+        CloseFromWorld();
         _doc.Reset(Array.Empty<MultiPart>(), "new");
         _doc.Name = "new_multi";
         _doc.Source = null;
@@ -667,6 +670,7 @@ public partial class MultiEditView : VBoxContainer, IMultiComponentSink
 
     public void OpenParts(string name, IEnumerable<MultiPart> parts, int? source = null)
     {
+        CloseFromWorld();
         _doc.Reset(parts, $"open {name}");
         _doc.Name = name;
         _doc.Source = source;

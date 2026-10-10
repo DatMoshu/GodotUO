@@ -273,7 +273,7 @@ public partial class WorldView : VBoxContainer
         {
             if (_data != null)
             {
-                _data.CurrentArt = EditorData.LandCount + (uint)id;
+                _data.CurrentArt = _brush.Kind == AssetPickKind.Land ? (uint)id : EditorData.LandCount + (uint)id;
             }
         };
         tools.AddChild(_brush);
@@ -553,12 +553,15 @@ public partial class WorldView : VBoxContainer
         }
 
         Vector2I size = _viewport.Size;
-        if (_data != null && _brush != null && _data.CurrentArt >= EditorData.LandCount)
+        if (_data != null && _brush != null && _brush.Edit?.HasFocus() != true)
         {
-            // Follow a pick made in UO Assets, but never under the user's typing.
-            int id = (int)(_data.CurrentArt - EditorData.LandCount);
-            if (_brush.Value != id && _brush.Edit?.HasFocus() != true)
+            // Follow a pick made in UO Assets or the brush library, ground included, but never under the user's typing.
+            bool land = _data.CurrentArt < EditorData.LandCount;
+            int id = (int)(land ? _data.CurrentArt : _data.CurrentArt - EditorData.LandCount);
+            AssetPickKind kind = land ? AssetPickKind.Land : AssetPickKind.Static;
+            if (_brush.Kind != kind || _brush.Value != id)
             {
+                _brush.Kind = kind;
                 _brush.Value = id;
             }
         }
@@ -815,7 +818,7 @@ public partial class WorldView : VBoxContainer
                 uint art = _data?.CurrentArt ?? 0;
                 if (art < EditorData.LandCount)
                 {
-                    return _status.Text = "Stamp needs a static: pick one in UO Assets > Art (Statics)";
+                    return _status.Text = "Stamp needs an item: choose one in the brush library or UO Assets > Art (Statics)";
                 }
 
                 // On top of what was clicked: a static's top, or the land.
@@ -828,7 +831,7 @@ public partial class WorldView : VBoxContainer
             case WorldTool.Erase:
                 if (o is not Static es)
                 {
-                    return _status.Text = $"Erase takes a static; that is a {o.GetType().Name}";
+                    return _status.Text = $"Erase takes an item; that is {Plain(o)}";
                 }
 
                 done = _editor.Erase(facet, es.X, es.Y, es.Z, es.Graphic);
@@ -844,7 +847,7 @@ public partial class WorldView : VBoxContainer
             case WorldTool.Hue:
                 if (o is not Static hs)
                 {
-                    return _status.Text = $"Hue takes a static; that is a {o.GetType().Name}";
+                    return _status.Text = $"Hue takes an item; that is {Plain(o)}";
                 }
 
                 done = _editor.SetHue(facet, hs.X, hs.Y, hs.Z, hs.Graphic, BrushHue);
@@ -873,12 +876,21 @@ public partial class WorldView : VBoxContainer
         if (!done)
         {
             string why = _host.Project == null ? "no world project is open" : "nothing changed";
-            _status.Text = $"{Tool}: {why}";
+            _status.Text = $"{ToolName(Tool)}: {why}";
             return why;
         }
 
         return _editor.LastWhat;
     }
+
+    /// <summary>What a clicked object is, in words, for a refusal ("the ground", "a creature").</summary>
+    private static string Plain(GameObject o) => o switch
+    {
+        Land => "the ground",
+        Mobile => "a creature or player",
+        Item => "an object from the shard",
+        _ => "not an item",
+    };
 
     private (int X, int Y)? _areaA, _areaB;
 
@@ -902,7 +914,7 @@ public partial class WorldView : VBoxContainer
         {
             _areaB = (x, y);
             (int X0, int Y0, int X1, int Y1) a = Area.Value;
-            _status.Text = $"Area: {a.X1 - a.X0 + 1} x {a.Y1 - a.Y0 + 1} cells; 'Area to multi' takes its statics";
+            _status.Text = $"Area: {a.X1 - a.X0 + 1} x {a.Y1 - a.Y0 + 1} cells; Area to multi (Advanced > World & overlays) takes its items";
         }
 
         _guides.Area = Area ?? (_areaA is { } c ? (c.X, c.Y, c.X, c.Y) : null);
@@ -949,12 +961,12 @@ public partial class WorldView : VBoxContainer
 
         if (parts.Count == 0)
         {
-            _status.Text = "Area to multi: there are no statics in that rectangle";
+            _status.Text = "Area to multi: there are no items in that rectangle";
             return 0;
         }
 
         AreaToMulti?.Invoke(name, parts);
-        _status.Text = $"Area to multi: {parts.Count} statics into the Multi Editor";
+        _status.Text = $"Area to multi: {parts.Count} items opened in the Multis tab as a new building; its Back to World button returns here";
         return parts.Count;
     }
 
@@ -993,7 +1005,7 @@ public partial class WorldView : VBoxContainer
                 uint art = _data?.CurrentArt ?? 0;
                 if (art < EditorData.LandCount)
                 {
-                    return _status.Text = "PlaceItem needs a static: pick one in UO Assets > Art (Statics)";
+                    return _status.Text = "Place item needs an item: choose one in the brush library or UO Assets > Art (Statics)";
                 }
 
                 _objects.PlaceItem(facet, o.X, o.Y, z, (ushort)(art - EditorData.LandCount), BrushHue);
@@ -1003,7 +1015,7 @@ public partial class WorldView : VBoxContainer
             case WorldTool.PlaceSpawner:
                 if (_objects.PlaceSpawner(facet, o.X, o.Y, z, _spawnEntry?.Text) == null)
                 {
-                    return _status.Text = "PlaceSpawner needs a name in the spawns box";
+                    return _status.Text = "Place spawner needs a creature name in the spawns box";
                 }
 
                 break;
@@ -1013,11 +1025,11 @@ public partial class WorldView : VBoxContainer
                 {
                     if (picked == null)
                     {
-                        return _status.Text = "MoveObject: click one of the project's objects first";
+                        return _status.Text = "Move object: click one of the project's objects first";
                     }
 
                     _moving = picked;
-                    return _status.Text = "MoveObject: now click where it goes";
+                    return _status.Text = "Move object: now click where it goes";
                 }
 
                 _objects.Move(_moving.Value, facet, o.X, o.Y, o is Item ? o.Z : z);
@@ -1027,7 +1039,7 @@ public partial class WorldView : VBoxContainer
             case WorldTool.DeleteObject:
                 if (picked == null || !_objects.Delete(picked.Value))
                 {
-                    return _status.Text = "DeleteObject takes one of the project's objects";
+                    return _status.Text = "Delete object takes one of the project's objects";
                 }
 
                 break;

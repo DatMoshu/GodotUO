@@ -43,6 +43,30 @@ world objects (items, spawners), the asset overlay (replace, revert, hue),
 export and verify (and the refused export into the install), the Shard dock
 live on the private shard, server console, the Live layer, outro.
 
+### Map editing on a scratch project (`we_*`)
+
+Eighteen segments drive every World-tab map-editing feature with real input events (`WorldView.TourInput`), in plain
+captions over the map: `we_stamp`, `we_select`, `we_stack` (piles, Nearby tiles, Alt+wheel), `we_view` (pan, zoom,
+Brushes, Precision, Focus), `we_edit` (Hue, Set Z / hue, Erase), `we_land` (Raise, Lower, Lock terrain), `we_heights`
+(Fixed Z, Z min, Ghost roofs), `we_brush`, `we_settings`, `we_variations`, `we_rules`, `we_presets`, `we_objects`,
+`we_maptools`, `we_layers`, `we_modes`, `we_maplayers`, `we_undo`; `we_export` exports and verifies the edited project.
+They need `godot:runtime` held and edit only `<out>/edit_project`. `tour.json` carries a `steps` list (caption, frame,
+wall time).
+
+Every frame of a `we_*` segment is checked as it is taken: each mark sits on a visible, unclipped control; the caption
+covers neither a mark nor the pointer; the click ring lands within 3 px of the click; and no frame comes before the
+segment's first caption. A control on a closed tab or fold is opened to on camera before it is used.
+
+### Review pack
+
+```
+python tools\editor_tour\review_pack.py build/editor_review/<date>/run
+```
+
+Writes `timeline.md/json` (every caption with its start time in the MP4), `groups/*.mp4` (1080p clips by feature group for
+a Gemini review, see the gemini-vlm-review skill), `key_frames/` and `overview.mp4` (one captioned frame per map-editing
+step, full resolution, 3 s each; steps that name a file or a folder on screen are left out or use their first frame).
+
 Run the S8/S9 segments by themselves, with fixtures and no private shard:
 
 ```

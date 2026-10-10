@@ -97,6 +97,20 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 - World editor: the Layers menu (Land, Statics, Multis, Roofs, Objects and the
   live layers) now looks like a button beside the others, keeps its ticks for
   the whole editor session, and switching Roofs off takes effect at once.
+- The World tab speaks plain words: each view's legend says what its colours
+  mean (the IDs patchwork is normal, not damage), a brush stroke that places
+  nothing says which rule stopped it (Keep existing statics, Avoid water,
+  Density), choosing a Nearby tiles row names the Set Z / hue button, Area to
+  multi announces the new building in the Multis tab with a Back to World
+  button, and item rows show the name before the number.
+- World tab settings stay readable on a small screen: the Tools tab keeps the
+  rows its settings need, a "More below" bar marks settings under a fold, the
+  inspector never covers the settings, the tool rail and the map name tools
+  in words, the view legend sits under the map's hint line in larger text,
+  and the item box shows the ground tile chosen for Terrain.
+- World editor tour: a recorded walk through every map-editing feature of the
+  World tab, in plain words, with every on-screen mark checked against the
+  control it names; the editor's own tools to record, export and review it.
 - **GodotUO Asset Store**: a local web catalogue (`launchers\store\serve.bat`)
   where a folder on disk stands in for web storage, and a Store in Options
   that installs, updates and removes packs with every file hash-checked.
