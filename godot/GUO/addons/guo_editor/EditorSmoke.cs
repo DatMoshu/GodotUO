@@ -79,6 +79,9 @@ public partial class EditorSmoke : Node
     public AiDock Ai { get; set; }
     public ArtDock Art { get; set; }
 
+    /// <summary>The Regions dock the plugin made, for the region-audio checks.</summary>
+    public RegionsDock Zones { get; set; }
+
     /// <summary>The UO Store tab the plugin made, for the store checks (ADR-0026 section 8).</summary>
     public StoreView Store { get; set; }
 

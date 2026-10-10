@@ -36,6 +36,8 @@ public partial class RegionsDock : EditorDock
     private AudioStreamPlayer _previewPlayer;
     private System.Threading.CancellationTokenSource _audioCts = new();
     private Task<GUO.Comfy.ComfyClient.AudioResult> _audioTask;
+    private HBoxContainer _audioRow;
+    private Button _genAudioBtn;
 
     private JsonArray _regions;
     private string _path = "";
@@ -294,6 +296,7 @@ public partial class RegionsDock : EditorDock
 
         var audio = new HBoxContainer();
         root.AddChild(audio);
+        _audioRow = audio;
         audio.AddChild(new Label
         {
             Text = "Audio",
@@ -316,6 +319,7 @@ public partial class RegionsDock : EditorDock
         var genAudio = new Button { Text = "Generate" };
         genAudio.Pressed += GenerateAudioFromUi;
         audio.AddChild(genAudio);
+        _genAudioBtn = genAudio;
 
         var listen = new HBoxContainer();
         root.AddChild(listen);
@@ -345,7 +349,50 @@ public partial class RegionsDock : EditorDock
 
         LoadRegions();
         RefreshList();
+        ApplyAiFeatures();
     }
+
+    /// <summary>
+    /// AI generation controls exist only when allowed; manual region editing
+    /// stays active. Disabling cancels in-flight generation via the shared AI
+    /// lifetime (linked at queue time).
+    /// </summary>
+    internal void ApplyAiFeatures()
+    {
+        if (!_ready)
+        {
+            return;
+        }
+
+        bool on = AiFeatures.Enabled;
+        if (_audioPrompt != null)
+        {
+            _audioPrompt.Editable = on;
+        }
+
+        if (_audioSecs != null)
+        {
+            _audioSecs.Editable = on;
+        }
+
+        if (_genAudioBtn != null)
+        {
+            _genAudioBtn.Disabled = !on;
+        }
+
+        if (!on)
+        {
+            try
+            {
+                _audioCts?.Cancel();
+            }
+            catch (Exception)
+            {
+            }
+        }
+    }
+
+    internal bool AudioGenerationVisible => _genAudioBtn != null && !_genAudioBtn.Disabled;
 
     private void Report(string text)
     {
@@ -997,6 +1044,12 @@ public partial class RegionsDock : EditorDock
 
     private async void GenerateAudioFromUi()
     {
+        if (!AiFeatures.Enabled)
+        {
+            Report(AiFeatures.DisabledMessage);
+            return;
+        }
+
         JsonObject o = SelectedRegion();
         if (o == null)
         {
@@ -1026,18 +1079,66 @@ public partial class RegionsDock : EditorDock
 
         string url = GUO.Comfy.ComfyClient.ResolveUrl();
         Report($"Contacting ComfyUI at {url}...");
+        Report(await GenerateRegionAudioAsync(o, prompt, secs, url, AudioLayer));
+    }
+
+    /// <summary>
+    /// Testable region-audio core: gates on the AI opt-out before any HTTP,
+    /// links work to the shared AI lifetime, and never applies a canceled
+    /// result. Returns the status line.
+    /// </summary>
+    internal async Task<string> GenerateRegionAudioAsync(
+        JsonObject region, string prompt, float secs, string url,
+        GUO.IO.Audio.ZoneAudio.Layer layer,
+        System.Threading.CancellationToken ct = default)
+    {
+        if (!AiFeatures.Enabled)
+        {
+            return AiFeatures.DisabledMessage;
+        }
+
+        if (region == null)
+        {
+            return "select a region first";
+        }
+
+        if (secs < 1f || secs > 300f)
+        {
+            return "Secs must be 1-300.";
+        }
+
         _audioCts = new System.Threading.CancellationTokenSource();
-        var layer = AudioLayer;
+        System.Threading.CancellationTokenSource linked;
         try
         {
-            _audioTask = Task.Run(() => GUO.Comfy.ComfyClient.GenerateAudioAsync(
-                url, prompt, secs, Random.Shared.Next(1, int.MaxValue), null, _audioCts.Token));
-            GUO.Comfy.ComfyClient.AudioResult r = await _audioTask;
-            Report(OnAudioGenerated(layer, o, r));
+            linked = System.Threading.CancellationTokenSource.CreateLinkedTokenSource(
+                ct == default ? System.Threading.CancellationToken.None : ct,
+                _audioCts.Token, AiFeatures.Lifetime);
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            Report($"Generate failed: {ex.GetBaseException().Message}");
+            return AiFeatures.DisabledMessage;
+        }
+
+        using (linked)
+        {
+            try
+            {
+                linked.Token.ThrowIfCancellationRequested();
+                _audioTask = Task.Run(() => GUO.Comfy.ComfyClient.GenerateAudioAsync(
+                    url, prompt, secs, Random.Shared.Next(1, int.MaxValue), null, linked.Token));
+                GUO.Comfy.ComfyClient.AudioResult r = await _audioTask;
+                linked.Token.ThrowIfCancellationRequested();
+                return OnAudioGenerated(layer, region, r);
+            }
+            catch (OperationCanceledException)
+            {
+                return "Generate cancelled.";
+            }
+            catch (Exception ex)
+            {
+                return $"Generate failed: {ex.GetBaseException().Message}";
+            }
         }
     }
 
@@ -1046,7 +1147,7 @@ public partial class RegionsDock : EditorDock
     /// Files the track (same stem scheme as the gump) and attaches it to one
     /// audio zone per region rect, creating them. Returns the status line.
     /// </summary>
-    private string OnAudioGenerated(GUO.IO.Audio.ZoneAudio.Layer layer, JsonObject o, GUO.Comfy.ComfyClient.AudioResult r)
+    internal string OnAudioGenerated(GUO.IO.Audio.ZoneAudio.Layer layer, JsonObject o, GUO.Comfy.ComfyClient.AudioResult r)
     {
         if (r?.Audio == null || r.Audio.Length == 0)
         {
@@ -1061,11 +1162,24 @@ public partial class RegionsDock : EditorDock
             return "the region has no rects";
         }
 
+        string ext = GUO.IO.Audio.ZoneAudio.AudioExtensionFor(r.FileName);
+        if (ext == null)
+        {
+            if (string.IsNullOrWhiteSpace(r.FileName))
+            {
+                ext = ".mp3";
+            }
+            else
+            {
+                return $"unsupported audio format '{r.FileName}' (mp3/wav only)";
+            }
+        }
+
         try
         {
             string dir = GUO.IO.Audio.ZoneAudio.TracksDir();
             Directory.CreateDirectory(dir);
-            string file = $"{layer.StemFor(name)}_{Directory.EnumerateFiles(dir).Count() + 1:D2}.mp3";
+            string file = $"{layer.StemFor(name)}_{Directory.EnumerateFiles(dir).Count() + 1:D2}{ext}";
             File.WriteAllBytes(Path.Combine(dir, file), r.Audio);
             for (int i = 0; i < rects.Count; i++)
             {
@@ -1133,8 +1247,12 @@ public partial class RegionsDock : EditorDock
                 AddChild(_previewPlayer);
             }
 
-            var stream = new AudioStreamMP3();
-            stream.Data = File.ReadAllBytes(path);
+            Godot.AudioStream stream = GUO.IO.Audio.ZoneAudio.DecodeAudio(file, File.ReadAllBytes(path));
+            if (stream == null)
+            {
+                return $"unsupported format {file}";
+            }
+
             _previewPlayer.Stream = stream;
             _previewPlayer.Play();
         }

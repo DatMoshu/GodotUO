@@ -34,7 +34,9 @@ namespace GUO.Assets
     /// Reads binary_little_endian gaussian PLYs (what ComfyUI's SplatToFile3D and
     /// tools/comfy/splatlod.py write): a single `element vertex` block carrying
     /// x/y/z, f_dc_0..2, opacity, scale_0..2, rot_0..3 and optional f_rest_*.
-    /// Unknown extra properties are skipped by stride, so future encoders still load.
+    /// Extra properties of any scalar width count toward the stride (so a
+    /// `property uchar red` no longer shifts every later offset); `list`
+    /// properties and unknown scalar types are rejected instead of misread.
     /// Rotations are (w, x, y, z) with rot_0 = w, per the training convention.
     /// </summary>
     public static class SplatPlyParser
@@ -75,9 +77,17 @@ namespace GUO.Assets
                         count = int.Parse(p[2]);
                     }
                 }
-                else if (p[0] == "property" && inVertex && p.Length == 3 && p[1] == "float")
+                else if (p[0] == "property" && inVertex)
                 {
-                    props.Add((p[2], 4));
+                    if (p.Length == 3 && ScalarWidth(p[1]) is int w)
+                    {
+                        props.Add((p[2], w));
+                    }
+                    else
+                    {
+                        throw new InvalidDataException(
+                            $"{name}: unsupported vertex property '{line.Trim()}' (scalar uchar/ushort/float/double only)");
+                    }
                 }
             }
 
@@ -92,12 +102,14 @@ namespace GUO.Assets
                 want[w] = -1;
             }
 
+            var sizes = new Dictionary<string, int>();
             int stride = 0;
             for (int i = 0; i < props.Count; i++)
             {
                 if (want.ContainsKey(props[i].Name) && want[props[i].Name] < 0)
                 {
                     want[props[i].Name] = stride;
+                    sizes[props[i].Name] = props[i].Size;
                 }
 
                 stride += props[i].Size;
@@ -108,6 +120,11 @@ namespace GUO.Assets
                 if (want[w] < 0)
                 {
                     throw new InvalidDataException($"{name}: missing required property {w}");
+                }
+
+                if (sizes[w] != 4)
+                {
+                    throw new InvalidDataException($"{name}: required property {w} is not 4 bytes");
                 }
             }
 
@@ -197,6 +214,16 @@ namespace GUO.Assets
             set.BoundsMax = max;
             set.OpacityMass = mass;
         }
+
+        /// <summary>Byte width of a PLY scalar, or null when not a plain scalar.</summary>
+        internal static int? ScalarWidth(string type) => type switch
+        {
+            "char" or "uchar" or "int8" or "uint8" => 1,
+            "short" or "ushort" or "int16" or "uint16" => 2,
+            "int" or "uint" or "float" or "int32" or "uint32" or "float32" => 4,
+            "double" or "float64" => 8,
+            _ => null,
+        };
 
         private static float ClampLog(float v) => v > 3f ? 3f : v < -8f ? -8f : v;
 

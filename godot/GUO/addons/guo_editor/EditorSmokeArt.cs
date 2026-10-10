@@ -605,6 +605,137 @@ public partial class EditorSmoke
         ArtCheck("dock_artifact_provenance", (string)mp3Prov?["kind"] == "audio" && (string)plyProv?["kind"] == "model"
             && (string)mp3Prov?["tool"] == "comfyui" && (string)plyProv?["workflow"] == "stub_img2img.json",
             $"{mp3Prov?.ToJsonString()} | {plyProv?.ToJsonString()}");
+        AudioFormatCheck();
+        PlyStrideCheck();
+    }
+
+    /// <summary>
+    /// Region-audio format regression (PR #33 P2): a WAV backend result is
+    /// saved as .wav (not mislabeled .mp3), listed, decoded as WAV, and
+    /// plays on zone entry / stops on exit; OGG/FLAC results are rejected
+    /// before anything is written.
+    /// </summary>
+    private void AudioFormatCheck()
+    {
+        ArtCheck("audio_ext", GUO.IO.Audio.ZoneAudio.AudioExtensionFor("a.mp3") == ".mp3"
+            && GUO.IO.Audio.ZoneAudio.AudioExtensionFor("A.WAV") == ".wav"
+            && GUO.IO.Audio.ZoneAudio.AudioExtensionFor("a.ogg") == null
+            && GUO.IO.Audio.ZoneAudio.AudioExtensionFor("a.flac") == null
+            && GUO.IO.Audio.ZoneAudio.AudioExtensionFor("") == null);
+        ArtCheck("audio_decode", GUO.IO.Audio.ZoneAudio.DecodeAudio("a.wav", new byte[] { 1, 2 }) is AudioStreamWav
+            && GUO.IO.Audio.ZoneAudio.DecodeAudio("a.mp3", new byte[] { 1, 2 }) is AudioStreamMP3
+            && GUO.IO.Audio.ZoneAudio.DecodeAudio("a.ogg", new byte[] { 1, 2 }) == null);
+        if (Zones == null)
+        {
+            ArtCheck("audio_format", false, "no Regions dock");
+            return;
+        }
+
+        string oldMusic = System.Environment.GetEnvironmentVariable("GUO_MUSIC_DIR");
+        string musicTmp = Path.Combine(_out, "regions_audio_format");
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(musicTmp, "tracks"));
+            System.Environment.SetEnvironmentVariable("GUO_MUSIC_DIR", musicTmp);
+            var region = new JsonObject
+            {
+                ["Name"] = "Format Fixture",
+                ["Map"] = "Felucca",
+                ["Area"] = new JsonArray { new JsonObject { ["x1"] = 10, ["y1"] = 10, ["x2"] = 12, ["y2"] = 12 } },
+            };
+            var wav = new GUO.Comfy.ComfyClient.AudioResult { Audio = WavFixture(), FileName = "gen_clip.wav" };
+            string said = Zones.OnAudioGenerated(GUO.IO.Audio.ZoneAudio.Music, region, wav);
+            string wavPath = Path.Combine(musicTmp, "tracks", "formatfixture_01.wav");
+            ArtCheck("audio_wav_saved", said.StartsWith("track attached") && File.Exists(wavPath), said);
+            ArtCheck("audio_wav_listed", GUO.IO.Audio.ZoneAudio.Music.TrackFiles().Contains("formatfixture_01.wav"));
+            var ogg = new GUO.Comfy.ComfyClient.AudioResult { Audio = new byte[] { 1, 2, 3 }, FileName = "gen_clip.ogg" };
+            string refused = Zones.OnAudioGenerated(GUO.IO.Audio.ZoneAudio.Music, region, ogg);
+            ArtCheck("audio_ogg_rejected", refused.Contains("unsupported")
+                && Directory.GetFiles(Path.Combine(musicTmp, "tracks")).Length == 1, refused);
+            AudioZonePlaybackCheck(musicTmp);
+        }
+        finally
+        {
+            System.Environment.SetEnvironmentVariable("GUO_MUSIC_DIR", oldMusic);
+        }
+    }
+
+    private static byte[] WavFixture()
+    {
+        var b = new List<byte>();
+        b.AddRange(Encoding.ASCII.GetBytes("RIFF"));
+        b.AddRange(BitConverter.GetBytes(36 + 160));
+        b.AddRange(Encoding.ASCII.GetBytes("WAVEfmt "));
+        b.AddRange(BitConverter.GetBytes(16));
+        b.AddRange(BitConverter.GetBytes((short)1));
+        b.AddRange(BitConverter.GetBytes((short)1));
+        b.AddRange(BitConverter.GetBytes(22050));
+        b.AddRange(BitConverter.GetBytes(44100));
+        b.AddRange(BitConverter.GetBytes((short)2));
+        b.AddRange(BitConverter.GetBytes((short)16));
+        b.AddRange(Encoding.ASCII.GetBytes("data"));
+        b.AddRange(BitConverter.GetBytes(160));
+        for (int i = 0; i < 80; i++)
+        {
+            b.AddRange(BitConverter.GetBytes((short)(Math.Sin(i / 80.0 * Math.PI * 2) * 8000)));
+        }
+
+        return b.ToArray();
+    }
+
+    /// <summary>Zone entry starts the saved WAV, exit fades back to idle.</summary>
+    private void AudioZonePlaybackCheck(string musicTmp)
+    {
+        var world = _world?.Host?.World;
+        var player = world?.Player;
+        if (world == null || player == null || !world.InGame)
+        {
+            _artReport["audio_zone_playback"] = "skipped: no live world";
+            return;
+        }
+
+        var layer = GUO.IO.Audio.ZoneAudio.Music;
+        int facet = world.MapIndex;
+        int px = player.X, py = player.Y;
+        var zone = new GUO.IO.Audio.ZoneAudio.Zone
+        {
+            Name = "Playback Fixture",
+            Facet = facet,
+            X0 = px - 2,
+            Y0 = py - 2,
+            X1 = px + 2,
+            Y1 = py + 2,
+            Tracks = new List<string> { "formatfixture_01.wav" },
+        };
+        layer.Zones.Add(zone);
+        try
+        {
+            layer.Update(world);
+            if (layer.Status == "no audio host")
+            {
+                _artReport["audio_zone_playback"] = "skipped: no audio host";
+                return;
+            }
+
+            ArtCheck("audio_zone_entry", layer.Status.Contains("Playback Fixture"), layer.Status);
+            player.X = (ushort)Math.Max(0, px + 500);
+            player.Y = (ushort)Math.Max(0, py + 500);
+            string idle = layer.Status;
+            for (int i = 0; i < 500 && idle != "idle"; i++)
+            {
+                layer.Update(world);
+                idle = layer.Status;
+            }
+
+            ArtCheck("audio_zone_exit", idle == "idle", idle);
+        }
+        finally
+        {
+            player.X = (ushort)px;
+            player.Y = (ushort)py;
+            layer.Zones.Remove(zone);
+            layer.Save(layer.Zones);
+        }
     }
 
     // --- part three: generated splat LODs through the runtime loader --------------
@@ -654,6 +785,97 @@ public partial class EditorSmoke
         {
             RenderingServer.FreeRid(parent);
         }
+    }
+
+    /// <summary>
+    /// PLY stride regression (PR #33 P2): extra float and non-float
+    /// properties count toward the stride instead of shifting later offsets;
+    /// list properties and truncated bodies are rejected, not misread.
+    /// </summary>
+    private void PlyStrideCheck()
+    {
+        string[] wanted =
+        {
+            "x", "y", "z", "f_dc_0", "f_dc_1", "f_dc_2", "opacity",
+            "scale_0", "scale_1", "scale_2", "rot_0", "rot_1", "rot_2", "rot_3",
+        };
+        float[] vals = { 1, 2, 3, 0.1f, 0.2f, 0.3f, 0.5f, 0, 0, 0, 1, 0, 0, 0 };
+
+        var withFloat = wanted.Select(w => ("float", w)).Concat(new[] { ("float", "f_rest_0") }).ToList();
+        var p1 = GUO.Assets.SplatPlyParser.Parse(
+            BuildPly(withFloat, new[] { Floats(vals.Concat(new[] { 9f }).ToArray()) }, 1), "extra-float");
+        ArtCheck("ply_extra_float", p1.Gaussians.Length == 1
+            && Math.Abs(p1.Gaussians[0].X - 1f) < 1e-6 && Math.Abs(p1.Gaussians[0].Rot0 - 1f) < 1e-6);
+
+        var withUchar = wanted.Take(7).Select(w => ("float", w)).Concat(new[] { ("uchar", "red") })
+            .Concat(wanted.Skip(7).Select(w => ("float", w))).ToList();
+        var body = new List<byte>(Floats(vals.Take(7).ToArray()));
+        body.Add(42);
+        body.AddRange(Floats(vals.Skip(7).ToArray()));
+        var p2 = GUO.Assets.SplatPlyParser.Parse(BuildPly(withUchar, new[] { body.ToArray() }, 1), "extra-uchar");
+        ArtCheck("ply_extra_uchar_stride", p2.Gaussians.Length == 1
+            && Math.Abs(p2.Gaussians[0].X - 1f) < 1e-6 && Math.Abs(p2.Gaussians[0].Rot0 - 1f) < 1e-6
+            && Math.Abs(p2.Gaussians[0].Scale0) < 1e-6);
+
+        bool truncated = false;
+        try
+        {
+            GUO.Assets.SplatPlyParser.Parse(
+                BuildPly(wanted.Select(w => ("float", w)).ToList(), new[] { Floats(vals) }, 2), "truncated");
+        }
+        catch (InvalidDataException)
+        {
+            truncated = true;
+        }
+
+        ArtCheck("ply_truncated_rejected", truncated);
+
+        bool listed = false;
+        try
+        {
+            var withList = wanted.Select(w => ("float", w)).Concat(new[] { ("list uchar int", "foo") }).ToList();
+            GUO.Assets.SplatPlyParser.Parse(BuildPly(withList, new[] { Floats(vals) }, 1), "listed");
+        }
+        catch (InvalidDataException)
+        {
+            listed = true;
+        }
+
+        ArtCheck("ply_list_rejected", listed);
+    }
+
+    private static byte[] Floats(float[] vals)
+    {
+        var b = new List<byte>(vals.Length * 4);
+        foreach (float v in vals)
+        {
+            b.AddRange(BitConverter.GetBytes(v));
+        }
+
+        return b.ToArray();
+    }
+
+    private static byte[] BuildPly(List<(string Type, string Name)> props, byte[][] bodies, int count)
+    {
+        var sb = new StringBuilder();
+        sb.Append("ply\nformat binary_little_endian 1.0\nelement vertex ");
+        sb.Append(count);
+        sb.Append('\n');
+        foreach ((string type, string name) in props)
+        {
+            sb.Append("property ").Append(type).Append(' ').Append(name).Append('\n');
+        }
+
+        sb.Append("end_header\n");
+        var head = Encoding.ASCII.GetBytes(sb.ToString());
+        var out_ = new List<byte>(head.Length + bodies.Sum(b => b.Length));
+        out_.AddRange(head);
+        foreach (byte[] b in bodies)
+        {
+            out_.AddRange(b);
+        }
+
+        return out_.ToArray();
     }
 
     /// <summary>Repo build/comfy: up from the exchange folder to the config.bat marker.</summary>

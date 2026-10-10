@@ -628,13 +628,27 @@ namespace GUO.Game.UI.Gumps
                 return;
             }
 
+            string ext = ZoneAudio.AudioExtensionFor(result.FileName);
+            if (ext == null)
+            {
+                if (string.IsNullOrWhiteSpace(result.FileName))
+                {
+                    ext = ".mp3";
+                }
+                else
+                {
+                    Say($"Unsupported audio format '{result.FileName}' (mp3/wav only).");
+                    return;
+                }
+            }
+
             try
             {
                 string dir = ZoneAudio.TracksDir();
                 Directory.CreateDirectory(dir);
                 ZoneAudio.Zone z = Current;
                 string stem = Layer.StemFor(z?.Name);
-                string file = $"{stem}_{Directory.EnumerateFiles(dir).Count() + 1:D2}.mp3";
+                string file = $"{stem}_{Directory.EnumerateFiles(dir).Count() + 1:D2}{ext}";
                 File.WriteAllBytes(Path.Combine(dir, file), result.Audio);
                 string playlist = _playlistBox.Text?.Trim() ?? "";
                 _playlistBox.SetText(string.IsNullOrEmpty(playlist) ? file : playlist + "," + file);

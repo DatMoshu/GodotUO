@@ -390,6 +390,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
             _smoke.Studio = _studio;
             _smoke.Logs = _logs;
             _smoke.Layers = _layers;
+            _smoke.Zones = _zones;
             _smoke.MultiEdit = _multiedit;
             AddChild(_smoke);
         }
@@ -446,6 +447,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
             AddDock(_ai);
         }
         _art?.ApplyAiFeatures();
+        _zones?.ApplyAiFeatures();
         _searchContext.Ai = _ai;
         SearchPopup.Remove(_search);
         _search = SearchPopup.Install(_searchContext);
@@ -479,6 +481,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
     }
 
     internal bool AiRunning => _ai != null;
+    internal RegionsDock ZonesDock => _zones;
     internal bool AiMcpRunning => _editorMcp != null;
 
     private async void ApplyDefaultLayoutOnFirstRun()

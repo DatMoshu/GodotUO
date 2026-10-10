@@ -48,6 +48,53 @@ namespace GUO.IO.Audio
             return Path.Combine(MusicDir(), "tracks");
         }
 
+        /// <summary>
+        /// The playable extension for a backend filename (.mp3/.wav), or null
+        /// when the backend returned something this client cannot decode
+        /// (.ogg/.flac/...). Callers preserve it on save and reject the rest
+        /// before attaching a track.
+        /// </summary>
+        public static string AudioExtensionFor(string fileName)
+        {
+            if (string.IsNullOrWhiteSpace(fileName))
+            {
+                return null;
+            }
+
+            if (fileName.EndsWith(".wav", StringComparison.OrdinalIgnoreCase))
+            {
+                return ".wav";
+            }
+
+            if (fileName.EndsWith(".mp3", StringComparison.OrdinalIgnoreCase))
+            {
+                return ".mp3";
+            }
+
+            return null;
+        }
+
+        /// <summary>Decodes saved bytes by filename; null when unsupported.</summary>
+        public static Godot.AudioStream DecodeAudio(string fileName, byte[] bytes)
+        {
+            if (bytes == null || bytes.Length == 0)
+            {
+                return null;
+            }
+
+            if ((fileName ?? "").EndsWith(".wav", StringComparison.OrdinalIgnoreCase))
+            {
+                return new Godot.AudioStreamWav { Data = bytes };
+            }
+
+            if ((fileName ?? "").EndsWith(".mp3", StringComparison.OrdinalIgnoreCase))
+            {
+                return new Godot.AudioStreamMP3 { Data = bytes };
+            }
+
+            return null;
+        }
+
         internal sealed class Layer
         {
             private readonly string _manifest;
@@ -188,7 +235,11 @@ namespace GUO.IO.Audio
                 }
             }
 
-            /// <summary>Staged tracks for this layer (its filename stem).</summary>
+            /// <summary>
+            /// Every playable staged track. Both layers share the tracks
+            /// folder (zone stems name the files); the manifests own the
+            /// music/sfx separation, so this lists all supported formats.
+            /// </summary>
             public List<string> TrackFiles()
             {
                 var files = new List<string>();
@@ -200,11 +251,10 @@ namespace GUO.IO.Audio
                         return files;
                     }
 
-                    foreach (string path in Directory.EnumerateFiles(dir, _stem + "_*.*"))
+                    foreach (string path in Directory.EnumerateFiles(dir))
                     {
                         string name = Path.GetFileName(path);
-                        if (name.EndsWith(".mp3", StringComparison.OrdinalIgnoreCase)
-                            || name.EndsWith(".wav", StringComparison.OrdinalIgnoreCase))
+                        if (ZoneAudio.AudioExtensionFor(name) != null)
                         {
                             files.Add(name);
                         }
@@ -411,9 +461,13 @@ namespace GUO.IO.Audio
                             return;
                         }
 
-                        Godot.AudioStream stream = zone.Tracks[at].EndsWith(".wav", StringComparison.OrdinalIgnoreCase)
-                            ? (Godot.AudioStream)new Godot.AudioStreamWav { Data = bytes }
-                            : new Godot.AudioStreamMP3 { Data = bytes };
+                        Godot.AudioStream stream = ZoneAudio.DecodeAudio(zone.Tracks[at], bytes);
+                        if (stream == null)
+                        {
+                            Status = $"unsupported format {zone.Tracks[at]}";
+                            continue;
+                        }
+
                         _player.Stream = stream;
                         _player.VolumeDb = startDb;
                         _player.Play();

@@ -248,6 +248,7 @@ internal static class InputProbe
         // slow shard (world saves stall it), so poll for it instead of
         // deciding on one frame; --autologin may already have walked past it.
         bool creating = true;
+        bool sawList = false;
         for (int i = 0; i < 150; i++)
         {
             if (Client.Game.UO.World.InGame)
@@ -259,10 +260,20 @@ internal static class InputProbe
             if (Game.Managers.UIManager.GetGump<Game.UI.Gumps.Login.CharacterSelectionGump>() != null)
             {
                 creating = false;
+                sawList = true;
                 break;
             }
 
             await Frames(host, 2);
+        }
+
+        if (creating && !sawList && !Client.Game.UO.World.InGame)
+        {
+            // Neither the world nor the character list appeared (dead shard,
+            // rejected login): typing a name now would land nowhere, exactly
+            // the silent failure this guard replaces.
+            Check("the character list appeared", false, OpenLoginGumps());
+            return;
         }
 
         if (!creating)
@@ -297,6 +308,14 @@ internal static class InputProbe
                 await ClickGumpButton<Game.UI.Gumps.Login.CharacterSelectionGump>(host, 0, "New");
 
                 await Frames(host, 120);
+
+                if (FindControl<Game.UI.Gumps.CharCreation.CreateCharAppearanceGump>() == null)
+                {
+                    // A full account (or a missed New click) leaves no
+                    // creation UI: fail loud instead of naming the void.
+                    Check("character creation opened", false, OpenLoginGumps());
+                    return;
+                }
 
                 creating = true;
             }
@@ -3262,6 +3281,32 @@ internal static class InputProbe
     /// selects (a city), the handler is always called, since nothing visible
     /// tells whether the click took.
     /// </summary>
+    /// <summary>Which login/creation gumps are open right now, for failure lines.</summary>
+    private static string OpenLoginGumps()
+    {
+        var open = new System.Collections.Generic.List<string>();
+        void Probe<T>(string n) where T : Game.UI.Controls.Control
+        {
+            try
+            {
+                if (Game.Managers.UIManager.GetGump<T>() != null)
+                {
+                    open.Add(n);
+                }
+            }
+            catch (System.Exception)
+            {
+            }
+        }
+
+        Probe<Game.UI.Gumps.Login.LoginGump>("login");
+        Probe<Game.UI.Gumps.Login.CharacterSelectionGump>("charsel");
+        Probe<Game.UI.Gumps.CharCreation.CreateCharAppearanceGump>("appearance");
+        Probe<Game.UI.Gumps.CharCreation.CreateCharProfessionGump>("profession");
+        Probe<Game.UI.Gumps.CharCreation.CreateCharSelectionCityGump>("city");
+        return open.Count == 0 ? "none of login/charsel/appearance/profession/city" : string.Join(",", open);
+    }
+
     private static async System.Threading.Tasks.Task ClickChildButton<T>(Node host, int buttonId, string what, bool leaves)
         where T : Game.UI.Controls.Control
     {
