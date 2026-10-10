@@ -40,7 +40,9 @@ namespace GUO.Game.Managers
             Register("voice", s => UIManager.Add(new UI.Gumps.VoiceGump(_world)));
             // PORT DEVIATION (GUO): ambient music zones (generated tracks,
             // tile rects, round-robin). Upstream music is data indices.
+            Register("audiozones", s => UIManager.Add(new UI.Gumps.MusicZoneGump(_world)));
             Register("musiczone", s => UIManager.Add(new UI.Gumps.MusicZoneGump(_world)));
+            Register("sfxzone", s => UIManager.Add(new UI.Gumps.MusicZoneGump(_world, true)));
             // PORT DEVIATION (GUO): terrain layers (ComfyUI underlays and
             // overlays) are read at boot; this re-reads layers.json live so
             // the Layers dock's edits show without restarting the client.

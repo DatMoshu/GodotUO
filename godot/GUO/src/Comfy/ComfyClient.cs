@@ -24,6 +24,7 @@ namespace GUO.Comfy
     {
         public const string TemplatePath = "res://assets/comfy/guo_img2splat_api.json";
         public const string AudioTemplatePath = "res://assets/comfy/guo_audio_api.json";
+        public const string FluxTemplatePath = "res://assets/comfy/guo_flux_edit_api.json";
 
         public sealed class AudioResult
         {
@@ -103,6 +104,14 @@ namespace GUO.Comfy
             public string FileName;
             public string Subfolder = "";
             public string Type = "output";
+
+            /// <summary>
+            /// The workflow's own render of the finished splat (node 144),
+            /// for before/after previews. Optional: a missing render never
+            /// fails the run; the PLY is the payload.
+            /// </summary>
+            public byte[] PreviewPng;
+            public string PreviewFileName = "";
         }
 
         public sealed class FileRef
@@ -126,7 +135,19 @@ namespace GUO.Comfy
             public int Width;
             public int Height;
             public int TightWidth;
+
+            /// <summary>
+            /// Diffusion working copy: the art nearest-upscaled so its long
+            /// side suits SD1.5 (multiples of 8). The repaint uploads this;
+            /// the mask and the override stay at the native size.
+            /// </summary>
+            public byte[] WorkPng;
+            public int WorkWidth;
+            public int WorkHeight;
         }
+
+        /// <summary>Long side of the diffusion working copy; see ArtShot.</summary>
+        public const int WorkLongSide = 512;
 
         /// <summary>
         /// Static (or land) artwork as PNG bytes, main thread: the file
@@ -169,6 +190,23 @@ namespace GUO.Comfy
 
             using Godot.Image image = Godot.Image.CreateFromData(
                 art.Width, art.Height, false, Godot.Image.Format.Rgba8, rgba);
+
+            // Diffusion models collapse on postage-stamp inputs (a lamp is
+            // tens of pixels; the VAE eats 8x, so denoise runs in a ~5x7
+            // latent and decodes to mush). Work at an integer-upscaled copy
+            // and shrink the result back on return.
+            int longest = Math.Max(art.Width, art.Height);
+            int scale = Math.Max(1, (WorkLongSide + longest - 1) / longest);
+            int workW = Math.Max(8, ((art.Width * scale + 7) / 8) * 8);
+            int workH = Math.Max(8, ((art.Height * scale + 7) / 8) * 8);
+            byte[] workPng;
+            using (Godot.Image work = Godot.Image.CreateFromData(
+                art.Width, art.Height, false, Godot.Image.Format.Rgba8, rgba))
+            {
+                work.Resize(workW, workH, Godot.Image.Interpolation.Nearest);
+                workPng = work.SavePngToBuffer();
+            }
+
             return new ArtShot
             {
                 Png = image.SavePngToBuffer(),
@@ -176,6 +214,9 @@ namespace GUO.Comfy
                 Width = art.Width,
                 Height = art.Height,
                 TightWidth = x1 >= x0 ? x1 - x0 + 1 : 0,
+                WorkPng = workPng,
+                WorkWidth = workW,
+                WorkHeight = workH,
             };
         }
 
@@ -210,6 +251,25 @@ namespace GUO.Comfy
                 if (found != null)
                 {
                     report?.Invoke($"Downloaded {found.FileName} ({found.Ply.Length / 1024} KiB).");
+                    // The splat render lands right after the file write.
+                    // Bounded wait: the PLY is the payload, a missing
+                    // render must not fail the run.
+                    report?.Invoke("Fetching splat preview...");
+                    var pngDeadline = DateTime.UtcNow.AddMinutes(2);
+                    while (DateTime.UtcNow <= pngDeadline)
+                    {
+                        ct.ThrowIfCancellationRequested();
+                        PngResult preview = await TryFetchSplatPreviewAsync(url, promptId, ct);
+                        if (preview != null)
+                        {
+                            found.PreviewPng = preview.Png;
+                            found.PreviewFileName = preview.FileName;
+                            break;
+                        }
+
+                        await Task.Delay(TimeSpan.FromSeconds(5), ct);
+                    }
+
                     return found;
                 }
 
@@ -317,6 +377,55 @@ namespace GUO.Comfy
             return null;
         }
 
+        /// <summary>
+        /// The workflow's render of the finished splat: node 144's
+        /// PreviewGaussianSplat first, any preview image as fallback.
+        /// Null until the render lands in the prompt's history.
+        /// </summary>
+        public static async Task<PngResult> TryFetchSplatPreviewAsync(string url, string promptId, CancellationToken ct)
+        {
+            using HttpResponseMessage res =
+                await _http.GetAsync($"{url}/history/{promptId}", ct);
+            res.EnsureSuccessStatusCode();
+            using JsonDocument hist = JsonDocument.Parse(await res.Content.ReadAsStringAsync(ct));
+            if (!hist.RootElement.TryGetProperty(promptId, out JsonElement entry)
+                || !entry.TryGetProperty("outputs", out JsonElement outputs))
+            {
+                return null;
+            }
+
+            var ordered = new List<string> { "144" };
+            foreach (JsonProperty node in outputs.EnumerateObject())
+            {
+                if (!ordered.Contains(node.Name))
+                {
+                    ordered.Add(node.Name);
+                }
+            }
+
+            string[] extensions = new[] { ".png", ".jpg", ".jpeg", ".webp" };
+            foreach (string id in ordered)
+            {
+                if (!outputs.TryGetProperty(id, out JsonElement nodeOut))
+                {
+                    continue;
+                }
+
+                var refs = new List<FileRef>();
+                FindFiles(nodeOut, extensions, refs);
+                foreach (FileRef file in refs)
+                {
+                    return new PngResult
+                    {
+                        Png = await DownloadViewAsync(url, file, ct),
+                        FileName = file.FileName,
+                    };
+                }
+            }
+
+            return null;
+        }
+
         public static async Task<List<FileRef>> TryFetchFilesAsync(
             string url, string promptId, string[] extensions, CancellationToken ct)
         {
@@ -355,7 +464,8 @@ namespace GUO.Comfy
         /// </summary>
         public static async Task<PngResult> ImageToImageAsync(
             string url, byte[] png, string prompt, int seed, float denoise,
-            Action<string> report, CancellationToken ct, int timeoutMinutes = 20)
+            Action<string> report, CancellationToken ct, int timeoutMinutes = 20,
+            string sampler = "euler", string scheduler = "normal", int steps = 20, float cfg = 7f)
         {
             string name = $"guo_repaint_{DateTime.UtcNow:yyyyMMdd_HHmmss}.png";
             report?.Invoke("Uploading artwork...");
@@ -393,10 +503,10 @@ namespace GUO.Comfy
                     ["negative"] = new List<object> { "5", 0 },
                     ["latent_image"] = new List<object> { "3", 0 },
                     ["seed"] = seed,
-                    ["steps"] = 20,
-                    ["cfg"] = 7.0,
-                    ["sampler_name"] = "euler",
-                    ["scheduler"] = "normal",
+                    ["steps"] = steps,
+                    ["cfg"] = cfg,
+                    ["sampler_name"] = sampler,
+                    ["scheduler"] = scheduler,
                     ["denoise"] = denoise,
                 }),
                 ["7"] = Node("VAEDecode", new Dictionary<string, object>
@@ -411,7 +521,16 @@ namespace GUO.Comfy
                 }),
             };
             string promptId = await QueueWorkflowAsync(url, workflow, ct);
-            report?.Invoke("Repainting (a minute or two)...");
+            return await WaitForImagesAsync(url, promptId, "Repainting (a minute or two)...",
+                report, ct, timeoutMinutes);
+        }
+
+        /// <summary>Poll a queued prompt until its first image downloads.</summary>
+        private static async Task<PngResult> WaitForImagesAsync(
+            string url, string promptId, string doing,
+            Action<string> report, CancellationToken ct, int timeoutMinutes)
+        {
+            report?.Invoke(doing);
             var deadline = DateTime.UtcNow.AddMinutes(timeoutMinutes);
             while (true)
             {
@@ -431,6 +550,62 @@ namespace GUO.Comfy
 
                 await Task.Delay(TimeSpan.FromSeconds(5), ct);
             }
+        }
+
+        /// <summary>
+        /// Flux.2 Klein img2img repaint (the frozen guo_flux_edit_api
+        /// template): upload, edit with a prompt, download the first PNG.
+        /// Change amount is cfg + steps + wording (the graph has no denoise);
+        /// the sampler comes from its KSamplerSelect node.
+        /// </summary>
+        public static async Task<PngResult> ImageToImageFluxAsync(
+            string url, byte[] png, string prompt, int seed, float cfg, int steps, string sampler,
+            Action<string> report, CancellationToken ct, int timeoutMinutes = 20)
+        {
+            string name = $"guo_flux_{DateTime.UtcNow:yyyyMMdd_HHmmss}.png";
+            report?.Invoke("Uploading artwork...");
+            string stored = await UploadImageAsync(url, png, name, ct);
+            report?.Invoke("Queueing Flux repaint...");
+            string promptId = await QueueFluxEditAsync(
+                url, LoadTemplate(FluxTemplatePath), stored, prompt, seed, cfg, steps, sampler, ct);
+            return await WaitForImagesAsync(url, promptId, "Repainting with Flux (minutes)...",
+                report, ct, timeoutMinutes);
+        }
+
+        /// <summary>
+        /// Fills the frozen Flux edit template: LoadImage 76, prompt 163,
+        /// seed on RandomNoise 160, CFGGuider 157, Flux2Scheduler 172,
+        /// KSamplerSelect 156. Node ids are the converter's, stable for this
+        /// template (see also the editor's ComfyUiProvider.Bind).
+        /// </summary>
+        public static async Task<string> QueueFluxEditAsync(
+            string url, string templateJson, string imageName, string prompt, int seed,
+            float cfg, int steps, string sampler, CancellationToken ct)
+        {
+            using JsonDocument doc = JsonDocument.Parse(templateJson);
+            var nodes = new Dictionary<string, object>();
+            foreach (JsonProperty node in doc.RootElement.EnumerateObject())
+            {
+                var inputs = new Dictionary<string, object>();
+                if (node.Value.TryGetProperty("inputs", out JsonElement ins))
+                {
+                    foreach (JsonProperty input in ins.EnumerateObject())
+                    {
+                        inputs[input.Name] = ReadNodeValue(input.Value);
+                    }
+                }
+
+                nodes[node.Name] = Node(
+                    node.Value.GetProperty("class_type").GetString(), inputs);
+            }
+
+            SetInput(nodes, "76", "image", imageName);
+            SetInput(nodes, "163", "text", prompt);
+            SetInput(nodes, "160", "noise_seed", (object)(long)seed);
+            SetInput(nodes, "157", "cfg", (object)cfg);
+            SetInput(nodes, "172", "steps", (object)steps);
+            SetInput(nodes, "156", "sampler_name", sampler);
+            return await QueueWorkflowAsync(url, nodes, ct);
         }
 
         /// <summary>

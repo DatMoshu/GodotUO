@@ -100,6 +100,7 @@ public partial class WorldView
             (WorldTool.Hue, "ColorPick", "H"), (WorldTool.PlaceItem, "Node3D", ""), (WorldTool.PlaceSpawner, "MemberSignal", ""),
             (WorldTool.MoveObject, "ToolMove", ""), (WorldTool.DeleteObject, "Remove", ""),
             (WorldTool.Measure, "Ruler", "M"), (WorldTool.Route, "CurvePath", ""), (WorldTool.Pin, "Pin", ""), (WorldTool.Area, "RegionEdit", "G"),
+            (WorldTool.PickRegion, "Search", "N"),
         };
         foreach (var entry in icons)
         {
@@ -233,6 +234,13 @@ public partial class WorldView
         tools.Hide();
         foreach (Node child in _legacyModes.GetChildren().ToArray()) child.Reparent(advanced);
         _legacyModes.Hide();
+        // The View and Map layers menus stay on the top bar, beside Reload
+        // project: overlays are one click away instead of buried in Advanced.
+        // (Scene pack and the cursor readout stay in World & overlays.)
+        _viewMenu.Reparent(bar);
+        _layerMenu.Reparent(bar);
+        bar.MoveChild(_viewMenu, _layersAgain.GetIndex() + 1);
+        bar.MoveChild(_layerMenu, _layersAgain.GetIndex() + 2);
         _historyLabel = new Label { AutowrapMode = TextServer.AutowrapMode.WordSmart };
         var history = Section(advancedOptions, "History"); history.AddChild(_historyLabel);
 

@@ -66,7 +66,12 @@ namespace GUO.Game.GameObjects
         {
             // PORT DEVIATION (GUO): client-side themes, same hook as statics
             // (see Static.UpdateGraphicBySeason).
-            ushort? themed = ThemeManager.LandVariant(World, X, Y, OriginalGraphic);
+            VariantAtlas.VariantImage image =
+                VariantAtlas.Resolve(World, X, Y, VariantKind.Land, OriginalGraphic);
+            ThemedVariant = image;
+            ushort? themed = image != null
+                ? null
+                : ThemeManager.LandVariant(World, X, Y, OriginalGraphic);
             Graphic = themed ?? SeasonManager.GetLandSeasonGraphic(World.Season, OriginalGraphic);
             AllowedToDraw = Graphic > 2;
         }

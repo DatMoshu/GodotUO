@@ -332,6 +332,37 @@ namespace GUO.Game.Managers
             }
         }
 
+        /// <summary>
+        /// PORT DEVIATION (GUO): music zones fade the base music under their
+        /// own tracks instead of layering over it. 1 is full volume, 0 is
+        /// silent; computed from the profile exactly like
+        /// <see cref="UpdateCurrentMusicVolume"/>, so toggling needs no
+        /// stored state and restoring is just calling with 1.
+        /// </summary>
+        public void SetMusicDuck(float factor)
+        {
+            if (!_canReproduceAudio)
+            {
+                return;
+            }
+
+            Profile currentProfile = ProfileManager.CurrentProfile;
+            float volume = currentProfile == null || !currentProfile.EnableMusic ? 0 : currentProfile.MusicVolume / SOUND_DELTA;
+            if (volume < -1 || volume > 1f)
+            {
+                return;
+            }
+
+            factor = factor < 0f ? 0f : factor > 1f ? 1f : factor;
+            for (int i = 0; i < 2; i++)
+            {
+                if (_currentMusic[i] != null)
+                {
+                    _currentMusic[i].Volume = i == 0 && _currentMusic[1] != null ? 0 : volume * factor;
+                }
+            }
+        }
+
         public void StopMusic()
         {
             for (int i = 0; i < 2; i++)

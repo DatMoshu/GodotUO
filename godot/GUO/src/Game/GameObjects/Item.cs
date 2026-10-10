@@ -372,6 +372,15 @@ namespace GUO.Game.GameObjects
             ProcessAnimation();
         }
 
+        public override void UpdateGraphicBySeason()
+        {
+            // PORT DEVIATION (GUO): items never season-swap, but atlas (PNG)
+            // themes cover them exactly like statics (see
+            // Static.UpdateGraphicBySeason). The graphic stays put; only the
+            // texture is overridden.
+            ThemedVariant = VariantAtlas.Resolve(World, X, Y, VariantKind.Static, Graphic);
+        }
+
         public override ushort GetGraphicForAnimation()
         {
             var graphic = Graphic;

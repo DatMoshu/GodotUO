@@ -16,7 +16,7 @@ using Godot;
 /// save a theme variant, place a splat, apply a zone). Runs against the same
 /// loopback stub the Art stage uses: no outside program, no real service.
 /// What it proves: binding, the image job through the Art dock's provider,
-/// variant save (overlay PNG + theme entry + provenance), staged placement
+/// variant save (atlas PNG + theme entry + sidecar), staged placement
 /// JSON, and theme activate/clear.
 /// </summary>
 public partial class EditorSmoke
@@ -140,18 +140,22 @@ public partial class EditorSmoke
         ImageRequest req = Studio.BuildRequest("mossy ring", _studioWorkflow);
         ImageResult docked = Task.Run(() => Studio.RunImageAsync(new ComfyUiProvider(_studioStub.Url), req)).GetAwaiter().GetResult();
         StudioCheck("dock_gallery", docked.Error == null && Studio.GalleryCount == 1, docked.Error ?? "");
+        string savedVariantDir = System.Environment.GetEnvironmentVariable("GUO_VARIANT_DIR");
+        string variantDir = Path.Combine(_out, $"studio_variants{Suffix}");
+        System.Environment.SetEnvironmentVariable("GUO_VARIANT_DIR", variantDir);
         string said = Studio.SaveVariant(0, "smoke-studio");
         StudioCheck("variant_saved", said.StartsWith("saved"), said);
-        string themePath = Path.Combine(StaticStudioDock.ThemeDir(_data), "smoke-studio.theme.json");
+        string themePath = Path.Combine(variantDir, "smoke-studio.theme.json");
         StudioCheck("theme_file", File.Exists(themePath), themePath);
         JsonNode theme = File.Exists(themePath) ? JsonNode.Parse(File.ReadAllText(themePath)) : null;
         StudioCheck("theme_entry", (int?)theme?["entries"]?[0]?["match"]?[0] == FixtureStatic
-            && (int?)theme?["entries"]?[0]?["variant"] == 0xF000, theme?.ToJsonString() ?? "none");
-        string overlayPng = Path.Combine(_studioRoot, "assets", "art", "statics", "0xF000.png");
-        StudioCheck("overlay_variant_png", File.Exists(overlayPng), overlayPng);
-        ArtProvenance p = new AssetProvenance(_data.Assets).Get("assets/art/statics/0xF000.png");
-        StudioCheck("variant_provenance", p != null && p.Tool == "comfyui" && p.DerivedFromClientArt
-            && p.Inputs.Count == 1 && p.Inputs[0] == "client:static:0x0E75", p?.ToJson().ToJsonString() ?? "none");
+            && (string)theme?["entries"]?[0]?["image"] == "static_0x0E75.png", theme?.ToJsonString() ?? "none");
+        string variantPng = Path.Combine(variantDir, "smoke-studio", "static_0x0E75.png");
+        StudioCheck("atlas_variant_png", File.Exists(variantPng), variantPng);
+        JsonNode sidecar = File.Exists(variantPng + ".json") ? JsonNode.Parse(File.ReadAllText(variantPng + ".json")) : null;
+        StudioCheck("variant_provenance", (string)sidecar?["tool"] == "comfyui"
+            && (string)sidecar?["input"] == "client:static:0x0E75", sidecar?.ToJsonString() ?? "none");
+        System.Environment.SetEnvironmentVariable("GUO_VARIANT_DIR", savedVariantDir);
     }
 
     private void StudioCheckDock()

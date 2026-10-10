@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: BSD-2-Clause
 
+using System;
 using System.Collections.Generic;
 using Godot;
 using GUO.Compat;
@@ -24,6 +25,7 @@ namespace GUO.Game.Scenes
     {
         private List<SplatPlacement> _splatPlacements;
         private bool _splatsLoaded;
+        private bool _variantsApplied;
         private bool _splatDebugDone;
         private readonly Dictionary<string, SplatObject> _splatObjects = new();
 
@@ -287,11 +289,40 @@ namespace GUO.Game.Scenes
                     GD.Print($"[GUO] staged splats: {_splatPlacements.Count} placement(s) from {dir}");
                     Managers.ThemeManager.LoadSkinTheme(dir);
                 }
+
+                // Variant atlas (PNG theme variants): load every theme, then
+                // re-arm what the editor persisted. Main thread: PNG decoding
+                // makes Godot textures.
+                string vdir = Assets.VariantAtlas.ResolveDir();
+                if (!string.IsNullOrEmpty(vdir))
+                {
+                    Assets.VariantAtlas.LoadAll(vdir);
+                    foreach (var (name, zones) in Assets.VariantAtlas.LoadActive(vdir))
+                    {
+                        try
+                        {
+                            Managers.ThemeManager.Activate(
+                                Managers.Theme.Load(Assets.VariantAtlas.ThemePath(vdir, name)), zones);
+                            GD.Print($"[GUO] variant theme armed: {name}");
+                        }
+                        catch (Exception)
+                        {
+                        }
+                    }
+                }
             }
 
             if (_world?.Player == null)
             {
                 return;
+            }
+
+            // Armed variant themes repaint once the world is up; later
+            // arrivals resolve lazily on first draw (GameObject.ResolveTheme).
+            if (!_variantsApplied)
+            {
+                _variantsApplied = true;
+                Managers.ThemeManager.Reapply(_world);
             }
 
             // Themed multi skins first (hides originals, ensures objects).

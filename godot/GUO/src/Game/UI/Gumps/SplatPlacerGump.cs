@@ -25,7 +25,7 @@ namespace GUO.Game.UI.Gumps
     internal sealed class SplatPlacerGump : Gump
     {
         private const int W = 300;
-        private const int H = 560;
+        private const int H = 720;
         private const string PreviewKey = "gump:preview";
 
         private readonly Label _modelLabel;
@@ -37,6 +37,8 @@ namespace GUO.Game.UI.Gumps
         private readonly Label _yawLabel;
         private readonly Label _graphicLabel;
         private readonly StbTextBox _promptBox;
+        private readonly PreviewPic _beforePic;
+        private readonly PreviewPic _afterPic;
         private readonly Label _statusLabel;
 
         private List<string> _models = new List<string>();
@@ -48,7 +50,7 @@ namespace GUO.Game.UI.Gumps
         private ushort _targetGraphic;
         private GameObject _targetObj;
         private readonly List<PlacedEntry> _placed = new List<PlacedEntry>();
-        private Task<byte[]> _genTask;
+        private Task<ComfyClient.PlyResult> _genTask;
         private string _genStatus = "";
         private string _shownStatus = "";
         private int _genCount;
@@ -143,6 +145,16 @@ namespace GUO.Game.UI.Gumps
             Add(new Label("Graphic:", true, 0x0386) { X = 12, Y = y });
             _graphicLabel = new Label("<none>", true, 0x0021) { X = 100, Y = y };
             Add(_graphicLabel);
+
+            y += 26;
+            Add(new Label("Before:", true, 0x0386) { X = 12, Y = y });
+            Add(new Label("After:", true, 0x0386) { X = 156, Y = y });
+            y += 18;
+            _beforePic = new PreviewPic { X = 12, Y = y, Width = 132, Height = 132 };
+            Add(_beforePic);
+            _afterPic = new PreviewPic { X = 156, Y = y, Width = 132, Height = 132 };
+            Add(_afterPic);
+            y += 140;
 
             y += 26;
             Add(new Label("Prompt:", true, 0x0386) { X = 12, Y = y });
@@ -303,7 +315,7 @@ namespace GUO.Game.UI.Gumps
 
             if (_genTask != null && _genTask.IsCompleted)
             {
-                Task<byte[]> done = _genTask;
+                Task<ComfyClient.PlyResult> done = _genTask;
                 _genTask = null;
                 if (done.IsFaulted)
                 {
@@ -328,6 +340,30 @@ namespace GUO.Game.UI.Gumps
         private void Say(string s)
         {
             _statusLabel.Text = s;
+        }
+
+        /// <summary>
+        /// The Before cell follows the selection: the victim's own artwork,
+        /// pulled the same way Generate reads it. A new victim retires the
+        /// previous run's After cell.
+        /// </summary>
+        private void RefreshBeforePic()
+        {
+            _afterPic?.SetPng(null);
+            byte[] png = null;
+            if (_targetGraphic != 0 && _targetObj != null && !_targetObj.IsDestroyed)
+            {
+                try
+                {
+                    png = ComfyClient.ExtractArtShot(
+                        _targetGraphic, _targetObj is Land)?.Png;
+                }
+                catch
+                {
+                }
+            }
+
+            _beforePic?.SetPng(png);
         }
 
         private void RefreshPreview()
@@ -368,6 +404,7 @@ namespace GUO.Game.UI.Gumps
                                 _targetObj = obj;
                                 GameActions.Print(World,
                                     $"SplatPlacer tile: {_tx}, {_ty}, {_tz} graphic 0x{_targetGraphic:X4}");
+                                RefreshBeforePic();
                                 RefreshPreview();
                             }
                             UpdateLabels();
@@ -399,6 +436,7 @@ namespace GUO.Game.UI.Gumps
                                 _targetObj = obj;
                                 GameActions.Print(World,
                                     $"SplatPlacer selected: 0x{_targetGraphic:X4} at {_tx}, {_ty}, {_tz}");
+                                RefreshBeforePic();
                             }
                             UpdateLabels();
                         },
@@ -683,24 +721,29 @@ namespace GUO.Game.UI.Gumps
             _genStatus = $"Contacting ComfyUI at {url}...";
             _shownStatus = "";
             Say(_genStatus);
-            _genTask = Task.Run(async () =>
-                (await ComfyClient.ImageToSplatAsync(url, png, prompt, s => _genStatus = s, ct)).Ply, ct);
+            _beforePic?.SetPng(shot.Png);
+            _genTask = Task.Run(
+                () => ComfyClient.ImageToSplatAsync(url, png, prompt, s => _genStatus = s, ct), ct);
         }
 
         private int _artWidth;
 
-        private void OnGenerated(byte[] ply)
+        private void OnGenerated(ComfyClient.PlyResult result)
         {
-            if (IsDisposed || ply == null || ply.Length == 0)
+            if (IsDisposed || result?.Ply == null || result.Ply.Length == 0)
             {
                 Say("Empty result.");
                 return;
             }
 
+            // The After cell shows what came back even when the PLY itself
+            // will not parse; an empty render simply clears it.
+            _afterPic?.SetPng(result.PreviewPng);
+
             Assets.SplatSet set;
             try
             {
-                set = Assets.SplatPlyParser.Parse(ply, "generated");
+                set = Assets.SplatPlyParser.Parse(result.Ply, "generated");
             }
             catch (Exception ex)
             {
@@ -781,7 +824,7 @@ namespace GUO.Game.UI.Gumps
                     Yaw = _yaw,
                     LockZ = true,
                 },
-                Lods = new List<byte[]> { ply },
+                Lods = new List<byte[]> { result.Ply },
             });
             RefreshModels();
             string msg = $"{name} replaced 0x{_targetGraphic:X4} ({set.Gaussians.Length} gaussians)";

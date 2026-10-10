@@ -24,7 +24,8 @@ public partial class ArtDock : EditorDock
     private Task<ImageResult> _running;
     private volatile float _progressValue;
     private OptionButton _providerPick, _workflowPick;
-    private LineEdit _url, _prompt;
+    private LineEdit _url, _prompt, _themeName;
+    private SpinBox _seed, _cfg, _steps, _outW, _outH;
     private CheckBox _useAsset;
     private Label _tools, _status, _target;
     private ProgressBar _bar;
@@ -158,6 +159,74 @@ public partial class ArtDock : EditorDock
 
         _prompt = new LineEdit { PlaceholderText = "prompt", SizeFlagsHorizontal = SizeFlags.ExpandFill };
         root.AddChild(_prompt);
+
+        var sampling = new HBoxContainer();
+        root.AddChild(sampling);
+        sampling.AddChild(new Label { Text = "Seed" });
+        _seed = new SpinBox
+        {
+            MinValue = -1, MaxValue = 9999999999, Step = 1, Value = -1,
+            CustomMinimumSize = new Vector2(110, 0),
+            TooltipText = "Seed (-1 picks a fresh random seed every run).",
+        };
+        sampling.AddChild(_seed);
+        sampling.AddChild(new Label
+        {
+            Text = "Cfg",
+            TooltipText = "Guidance: how hard the prompt pulls. Lower stays closer to the input.",
+        });
+        _cfg = new SpinBox
+        {
+            MinValue = -1, MaxValue = 20, Step = 0.5, Value = -1,
+            CustomMinimumSize = new Vector2(64, 0),
+            TooltipText = "Guidance strength (-1 keeps the workflow's value; lower stays closer to the input).",
+        };
+        sampling.AddChild(_cfg);
+        sampling.AddChild(new Label
+        {
+            Text = "Steps",
+            TooltipText = "Sampler steps: more refines further (and slower).",
+        });
+        _steps = new SpinBox
+        {
+            MinValue = -1, MaxValue = 50, Step = 1, Value = -1,
+            CustomMinimumSize = new Vector2(64, 0),
+            TooltipText = "Sampler steps (-1 keeps the workflow's value).",
+        };
+        sampling.AddChild(_steps);
+        sampling.AddChild(new Label
+        {
+            Text = "Size",
+            TooltipText = "Output size override (0 keeps the input asset's size, or the workflow's when there is no input).",
+        });
+        _outW = new SpinBox
+        {
+            MinValue = 0, MaxValue = 2048, Step = 64, Value = 0,
+            CustomMinimumSize = new Vector2(70, 0),
+            TooltipText = "Output width override (0 keeps the input asset's size, or the workflow's when there is no input).",
+        };
+        sampling.AddChild(_outW);
+        sampling.AddChild(new Label { Text = "x" });
+        _outH = new SpinBox
+        {
+            MinValue = 0, MaxValue = 2048, Step = 64, Value = 0,
+            CustomMinimumSize = new Vector2(70, 0),
+            TooltipText = "Output height override (0 keeps the input asset's size, or the workflow's when there is no input).",
+        };
+        sampling.AddChild(_outH);
+
+        var theme = new HBoxContainer();
+        root.AddChild(theme);
+        theme.AddChild(new Label
+        {
+            Text = "Theme",
+            TooltipText = "Variant theme this gallery image is saved under (Winter, scorched...).",
+        });
+        _themeName = new LineEdit { PlaceholderText = "theme name", SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        theme.AddChild(_themeName);
+        var saveVariant = new Button { Text = "Save gallery image as theme variant" };
+        saveVariant.Pressed += SaveVariantFromUi;
+        theme.AddChild(saveVariant);
 
         var bind = new HBoxContainer();
         root.AddChild(bind);
@@ -323,6 +392,36 @@ public partial class ArtDock : EditorDock
         Report(r.Error ?? Describe(r, provider.Name));
     }
 
+    /// <summary>
+    /// Saves the selected gallery image as a variant-atlas PNG under the
+    /// theme name, mapped from the inspected asset (same store the
+    /// StaticStudio tab writes; the theme paints it per zone in game).
+    /// </summary>
+    private void SaveVariantFromUi()
+    {
+        Inspection ins = _source();
+        if (ins?.ArtKind == null)
+        {
+            Report("nothing bound: pick art in the UO Inspector");
+            return;
+        }
+
+        int[] sel = _gallery?.GetSelectedItems() ?? Array.Empty<int>();
+        int index = sel.Length > 0 ? sel[0] : 0;
+        if (index >= _images.Count)
+        {
+            Report("nothing in the gallery: generate an image first");
+            return;
+        }
+
+        string why = VariantStudio.SaveAtlasVariant((_themeName?.Text ?? "").Trim(),
+            ins.ArtKind.Value, ins.ArtId, ins.Image, _images[index],
+            _providerPick.Selected == 1 ? "retrodiffusion" : "comfyui",
+            Path.GetFileName(_lastRequest?.WorkflowPath ?? ""), _lastResult?.Seed ?? -1,
+            _lastRequest?.InputName ?? "");
+        Report(why ?? $"saved {(_themeName?.Text ?? "").Trim()}: 0x{ins.ArtId:X4} -> variant PNG");
+    }
+
     /// <summary>One line for a finished run: images plus any audio/3D artifacts.</summary>
     public static string Describe(ImageResult r, string providerName)
     {
@@ -356,7 +455,14 @@ public partial class ArtDock : EditorDock
     /// <summary>The request for a prompt, a workflow file and (optionally) the inspected asset as input.</summary>
     public ImageRequest BuildRequest(string prompt, string workflowPath, Inspection bound)
     {
-        var req = new ImageRequest { Prompt = prompt ?? "", WorkflowPath = workflowPath ?? "" };
+        var req = new ImageRequest
+        {
+            Prompt = prompt ?? "",
+            WorkflowPath = workflowPath ?? "",
+            Seed = (long)(_seed?.Value ?? -1),
+            Cfg = (float)(_cfg?.Value ?? -1),
+            Steps = (int)(_steps?.Value ?? -1),
+        };
         _targetKind = bound?.ArtKind;
         _targetId = bound?.ArtId ?? -1;
         if (bound?.Image != null && bound.ArtKind != null)
@@ -367,6 +473,13 @@ public partial class ArtDock : EditorDock
             req.InputName = $"{(IsReplaced(bound) ? "overlay" : "client")}:{ArtSidecar.KindName(bound.ArtKind.Value)}:0x{bound.ArtId:X4}";
             // The input is the client's pixels unless an original already replaced them.
             req.InputIsClientArt = !IsReplaced(bound) || (new AssetProvenance(_data.Assets).Get(_data.Assets.RelativePathOf(bound.ArtKind.Value, bound.ArtId))?.DerivedFromClientArt ?? true);
+        }
+
+        int w = (int)(_outW?.Value ?? 0), h = (int)(_outH?.Value ?? 0);
+        if (w > 0 && h > 0)
+        {
+            req.Width = w;
+            req.Height = h;
         }
 
         return req;

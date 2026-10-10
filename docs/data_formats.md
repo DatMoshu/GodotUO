@@ -1270,14 +1270,19 @@ WAV 22050 Hz mono 16-bit only) plus `splats.json` with the LOD PLY chains (`guo/
 `footprint` (a `footprints/*.multi.json` nodraw-marker draft, from
 `splatlod.py footprint`, opened directly by MultiEdit); the world view draws
 each placed splat at its tile through `SplatLayer` (the game's own tile math).
-Ambient music zones live in `music.json` beside the tracks
-(`{zones:[{name,facet,x0,y0,x1,y1,tracks:[mp3]}]}`); the scene cycles a
-zone's playlist round-robin while the player stands inside, stopping outside.
+Ambient audio zones live in `music.json` (music layer) and `sfx.json`
+(sfx layer) beside the tracks
+(`{zones:[{name,facet,x0,y0,x1,y1,tracks:[mp3]}]}`); each layer has its own
+player and fade, so neither cancels the other. The scene fades a zone's
+playlist in round-robin while the player stands inside (music replaces the
+base music, sfx beds over the base sounds), fading out on exit.
 NPC voices resolve per mobile from `voices.json` rules (serials, names or
 bodies, first match wins), else an automatic stable pick from the enrolled
 bank (serial hash, so relogs keep voices) with a per-NPC clone seed, else
 the `default` voice. The `-voice` gump targets, tests, assigns and designs;
-`-musiczone` places rects with generated track playlists the scene cycles.
+`-audiozones` (`-musiczone` still works, `-sfxzone` starts on SFX) places
+rects with generated track playlists the scene cycles, and shows the zone
+outline in the world on demand.
 Each entry's `scale` is screen px per model unit (footprint tiles × 11;
 reference default 22 covers one 44px tile for a 2-unit model), `yaw`
 defaults to 180°; the batcher projects with the reference oblique map

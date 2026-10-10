@@ -32,6 +32,9 @@ public partial class StaticStudioDock : EditorDock
     private OptionButton _workflowPick, _splatPick;
     private ItemList _gallery;
     private Button _queue, _saveVariant;
+    private CheckBox _preview;
+    private OptionButton _bgPick;
+    private SpinBox _bgThreshold;
     private readonly List<Image> _images = new();
     private ImageResult _lastResult;
     private string _lastWorkflow = "";
@@ -98,6 +101,13 @@ public partial class StaticStudioDock : EditorDock
         _queue = new Button { Text = "Generate image" };
         _queue.Pressed += () => _ = QueueFromUi();
         go.AddChild(_queue);
+        _preview = new CheckBox
+        {
+            Text = "Preview in world",
+            TooltipText = "Show the selected gallery image on the bound graphic, live in the World tab. Nothing is saved.",
+        };
+        _preview.Toggled += on => Report(SetPreview(on));
+        go.AddChild(_preview);
 
         _gallery = new ItemList
         {
@@ -108,7 +118,38 @@ public partial class StaticStudioDock : EditorDock
             MaxColumns = 0,
             TextureFilter = TextureFilterEnum.Nearest,
         };
+        _gallery.ItemSelected += _ =>
+        {
+            if (_preview?.ButtonPressed == true)
+            {
+                Report(SetPreview(true));
+            }
+        };
         root.AddChild(_gallery);
+
+        var bg = new HBoxContainer();
+        root.AddChild(bg);
+        bg.AddChild(new Label
+        {
+            Text = "Background",
+            TooltipText = "What happens to the generated image's backdrop on save and in previews.",
+        });
+        _bgPick = new OptionButton { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        _bgPick.AddItem("Keep background");
+        _bgPick.AddItem("Remove black (threshold)");
+        _bgPick.AddItem("Original mask");
+        bg.AddChild(_bgPick);
+        bg.AddChild(new Label
+        {
+            Text = "Threshold",
+            TooltipText = "Black removal: pixels this dark or darker go transparent (0-255).",
+        });
+        _bgThreshold = new SpinBox
+        {
+            MinValue = 0, MaxValue = 255, Step = 1, Value = 12,
+            CustomMinimumSize = new Vector2(64, 0),
+        };
+        bg.AddChild(_bgThreshold);
 
         var theme = new HBoxContainer();
         root.AddChild(theme);
@@ -190,6 +231,10 @@ public partial class StaticStudioDock : EditorDock
         _targetId = ins.ArtId;
         _target.Text = $"{ArtSidecar.KindName(ins.ArtKind.Value)} 0x{ins.ArtId:X4}";
         Report($"bound {_target.Text}");
+        if (_preview?.ButtonPressed == true)
+        {
+            Report(SetPreview(true));
+        }
     }
 
     /// <summary>Binds a target without the UI (the smoke check).</summary>
@@ -352,122 +397,79 @@ public partial class StaticStudioDock : EditorDock
         }
 
         theme = (theme ?? _themeName?.Text ?? "").Trim();
-        if (theme.Length == 0)
-        {
-            return "name the theme first";
-        }
-
-        int variant = NextVariantId(theme);
-        if (variant < 0)
-        {
-            return "no free variant id left in 0xF000-0xFEFF";
-        }
-        var prov = new ArtProvenance
-        {
-            Tool = "comfyui",
-            Workflow = _lastWorkflow,
-            Kind = "",
-            Seed = _lastSeed >= 0 ? _lastSeed : null,
-            DerivedFromClientArt = true,
-        };
-        prov.Inputs.Add($"client:{ArtSidecar.KindName(_targetKind.Value)}:0x{_targetId:X4}");
-
-        var notes = new List<string>();
-        string why = ArtExchange.ImportImage(_data, _targetKind.Value, variant, _images[index], prov, notes);
+        Image bound = _boundImage ?? _source()?.Image;
+        string why = VariantStudio.SaveAtlasVariant(theme, _targetKind.Value, _targetId, bound, _images[index],
+            "comfyui", _lastWorkflow, _lastSeed,
+            $"client:{ArtSidecar.KindName(_targetKind.Value)}:0x{_targetId:X4}",
+            BgSelection, (int)(_bgThreshold?.Value ?? 12));
         if (why != null)
         {
-            return $"refused: {why}";
+            return why;
         }
 
-        AppendThemeEntry(theme, (ushort)_targetId, (ushort)variant);
-        return $"saved {theme}: 0x{_targetId:X4} -> variant 0x{variant:X4} ({string.Join("; ", notes)})";
+        return $"saved {theme}: 0x{_targetId:X4} -> variant PNG";
     }
 
-    /// <summary>The next free variant id for a theme: 0xF000 up, skipping what the theme already uses.</summary>
-    public int NextVariantId(string theme)
+    // --- world preview ---------------------------------------------------------
+
+    private VariantStudio.BgMode BgSelection =>
+        (VariantStudio.BgMode)Math.Clamp(_bgPick?.Selected ?? 0, 0, 2);
+
+    private void RepaintWorld()
     {
-        var used = new HashSet<int>();
-        foreach (var e in ReadThemeEntries(theme))
+        GUO.Game.World world = _world?.Invoke();
+        if (world != null)
         {
-            used.Add(e.Variant);
+            GUO.Game.Managers.ThemeManager.Reapply(world);
         }
-
-        for (int id = 0xF000; id < 0xFF00; id++)
-        {
-            if (!used.Contains(id) && !(_data?.Assets?.Has(AssetKind.Static, id) ?? false))
-            {
-                return id;
-            }
-        }
-
-        return -1;
     }
 
-    private List<(ushort Match, ushort Variant)> ReadThemeEntries(string theme)
+    /// <summary>
+    /// Shows the selected gallery image on the bound graphic, live in the
+    /// World tab (or takes it back down). In-memory only: nothing is saved,
+    /// and unchecking restores the themed look by construction.
+    /// </summary>
+    public string SetPreview(bool on)
     {
-        var out_ = new List<(ushort, ushort)>();
-        string path = Path.Combine(ThemeDir(_data), theme + ".theme.json");
-        if (!File.Exists(path))
+        if (!on)
         {
-            return out_;
+            GUO.Assets.VariantAtlas.ClearPreview();
+            GUO.Game.Managers.ThemeManager.Touch();
+            RepaintWorld();
+            return "preview off: themed look restored";
         }
 
-        try
+        if (_targetKind != AssetKind.Land && _targetKind != AssetKind.Static)
         {
-            JsonNode root = JsonNode.Parse(File.ReadAllText(path));
-            if (root?["entries"] is JsonArray entries)
-            {
-                foreach (JsonNode e in entries)
-                {
-                    if (e?["match"] is JsonArray match && e["variant"] is JsonNode v)
-                    {
-                        foreach (JsonNode m in match)
-                        {
-                            out_.Add(((ushort)(int)m, (ushort)(int)v));
-                        }
-                    }
-                }
-            }
-        }
-        catch (Exception)
-        {
+            return "preview needs a bound land tile or static";
         }
 
-        return out_;
-    }
-
-    private void AppendThemeEntry(string theme, ushort match, ushort variant)
-    {
-        string dir = ThemeDir(_data);
-        Directory.CreateDirectory(dir);
-        string path = Path.Combine(dir, theme + ".theme.json");
-        JsonObject root;
-        JsonArray entries;
-        try
+        int[] sel = _gallery?.GetSelectedItems() ?? Array.Empty<int>();
+        int index = sel.Length > 0 ? sel[0] : 0;
+        if (index >= _images.Count)
         {
-            root = File.Exists(path) && JsonNode.Parse(File.ReadAllText(path)) is JsonObject o ? o : new JsonObject();
-            entries = root["entries"] as JsonArray ?? new JsonArray();
-        }
-        catch (Exception)
-        {
-            root = new JsonObject();
-            entries = new JsonArray();
+            return "nothing in the gallery: generate an image first";
         }
 
-        root["format"] = 1;
-        root["name"] = theme;
-        entries.Add(new JsonObject
+        Image bound = _boundImage ?? _source()?.Image;
+        if (bound == null)
         {
-            ["match"] = new JsonArray(match),
-            ["variant"] = variant,
-        });
-        root["entries"] = entries;
-        if (root["multis"] == null)
-        {
-            root["multis"] = new JsonArray();
+            return "no pixels for the bound graphic: show it in the UO Inspector";
         }
 
-        File.WriteAllText(path, root.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+        var kind = _targetKind == AssetKind.Land
+            ? GUO.Assets.VariantKind.Land : GUO.Assets.VariantKind.Static;
+        using (Image fit = VariantStudio.FitTo(_images[index], bound.GetWidth(), bound.GetHeight()))
+        {
+            VariantStudio.ExtractBackground(fit, bound, BgSelection, (int)(_bgThreshold?.Value ?? 12));
+            GUO.Assets.VariantAtlas.SetPreview(kind, _targetId, fit);
+        }
+
+        GUO.Game.Managers.ThemeManager.Touch();
+        RepaintWorld();
+        return _world?.Invoke() == null
+            ? "preview armed (no world open to show it)"
+            : $"previewing 0x{_targetId:X4} in the world (nothing saved)";
     }
 
     // --- splats ------------------------------------------------------------------
@@ -615,7 +617,15 @@ public partial class StaticStudioDock : EditorDock
             return "zone reads 'facet,x1,y1,x2,y2', e.g. 0,1424,1688,1444,1711";
         }
 
-        string path = Path.Combine(ThemeDir(_data), theme + ".theme.json");
+        // Atlas themes (variant PNGs) live in the shared variant folder;
+        // legacy numeric-variant themes stay with their world project.
+        string dir = GUO.Assets.VariantAtlas.ResolveDir();
+        string path = dir != null ? GUO.Assets.VariantAtlas.ThemePath(dir, theme) : null;
+        if (path == null || !File.Exists(path))
+        {
+            path = Path.Combine(ThemeDir(_data), theme + ".theme.json");
+        }
+
         if (!File.Exists(path))
         {
             return $"no theme file {path}: save a variant first";
@@ -633,6 +643,12 @@ public partial class StaticStudioDock : EditorDock
 
         GUO.Game.Managers.ThemeManager.Activate(themeData,
             new List<GUO.Game.Managers.ThemeZone> { new() { Facet = f, X1 = x1, Y1 = y1, X2 = x2, Y2 = y2 } });
+        if (dir != null)
+        {
+            GUO.Assets.VariantAtlas.LoadTheme(dir, themeData.Name);
+            GUO.Assets.VariantAtlas.SaveActive(dir);
+        }
+
         GUO.Game.World world = _world?.Invoke();
         if (world == null)
         {
@@ -647,6 +663,12 @@ public partial class StaticStudioDock : EditorDock
     public string ClearThemes()
     {
         GUO.Game.Managers.ThemeManager.Clear();
+        string dir = GUO.Assets.VariantAtlas.ResolveDir();
+        if (dir != null)
+        {
+            GUO.Assets.VariantAtlas.SaveActive(dir);
+        }
+
         GUO.Game.World world = _world?.Invoke();
         if (world != null)
         {
@@ -661,6 +683,10 @@ public partial class StaticStudioDock : EditorDock
     {
         _cts.Cancel();
         _cts = new CancellationTokenSource();
+        // A preview must not outlive the dock: take it down without saving.
+        GUO.Assets.VariantAtlas.ClearPreview();
+        GUO.Game.Managers.ThemeManager.Touch();
+        RepaintWorld();
     }
 }
 #endif

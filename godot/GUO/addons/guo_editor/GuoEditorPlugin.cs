@@ -40,6 +40,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
     private StoreView _store;
     private ArtDock _art;
     private StaticStudioDock _studio;
+    private RegionsDock _zones;
     private LogsDock _logs;
     private LayersDock _layers;
     private MapGenView _mapgen;
@@ -118,12 +119,101 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
 
     private bool _layoutLost;
 
+    /// <summary>
+    /// Every top-level tab this plugin owns, by node name. Used to sweep
+    /// orphans (see <see cref="SweepOrphanedDocks"/>).
+    /// </summary>
+    private static readonly string[] OwnedTabNames =
+    {
+        "UOAssets", "UOInspector", "UOShard", "SpriteMotion", "UOAI", "UOArt",
+        "UOStaticStudio", "UOLogs", "UOLayers", "UORegions", "UOStore", "UOWorld",
+        "MultiEditor", "UOGumps", "MapGenView",
+    };
+
+    /// <summary>
+    /// Frees GUO tabs left behind by an assembly reload that skipped
+    /// <see cref="OnBeforeSerialize"/> (their teardown never ran, so their
+    /// tabs stay in the panels with dead scripts). This object owns nothing
+    /// yet when it runs (the <c>_data</c> guard above passed), so any tab
+    /// carrying an owned name is an orphan. Without this each reload stacks
+    /// another full set of bottom-panel tabs beside the dead ones.
+    /// </summary>
+    private void SweepOrphanedDocks()
+    {
+        var matches = new System.Collections.Generic.List<Node>();
+        Node bottom = GodotUi.Walk(GodotUi.Base).FirstOrDefault(n => n.GetClass() == "EditorBottomPanel");
+        if (bottom != null)
+        {
+            matches.AddRange(GodotUi.Walk(bottom).Where(n => OwnedTabNames.Contains(SafeNodeName(n))));
+        }
+
+        try
+        {
+            Node main = EditorInterface.Singleton.GetEditorMainScreen();
+            if (main != null)
+            {
+                matches.AddRange(GodotUi.Walk(main).Where(n => OwnedTabNames.Contains(SafeNodeName(n))));
+            }
+        }
+        catch
+        {
+        }
+
+        int swept = 0;
+        foreach (Node m in matches)
+        {
+            bool nested = false;
+            for (Node p = m.GetParent(); p != null; p = p.GetParent())
+            {
+                if (matches.Contains(p))
+                {
+                    nested = true;
+                    break;
+                }
+            }
+
+            if (nested)
+            {
+                continue;
+            }
+
+            try
+            {
+                m.GetParent()?.RemoveChild(m);
+                m.QueueFree();
+                swept++;
+            }
+            catch
+            {
+            }
+        }
+
+        if (swept > 0)
+        {
+            GD.Print($"[GUO editor] assembly reload: swept {swept} orphaned dock tab(s)");
+        }
+    }
+
+    private static string SafeNodeName(Node n)
+    {
+        try
+        {
+            return n.Name;
+        }
+        catch
+        {
+            return "";
+        }
+    }
+
     private void Build()
     {
         if (_data != null)
         {
             return;
         }
+
+        SweepOrphanedDocks();
 
         AiFeatures.Apply(AiFeatures.ReadPreference());
         _settings = EditorInterface.Singleton.GetEditorSettings();
@@ -201,6 +291,12 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         _layers = new LayersDock();
         AddDock(_layers);
         _layers.Attach(_world);
+
+        // The Regions dock: the shard's own regions, edited in place, with a
+        // one-click bridge onto the variant-atlas themes.
+        _zones = new RegionsDock();
+        AddDock(_zones);
+        _zones.Attach(_world);
 
         // The Map Generator (ADR-0030): a main-screen tab (GuoMapGenPlugin owns its button). It runs
         // tools/mapgen as a process and opens what it exports in the World tab.
@@ -560,6 +656,14 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
             RemoveDock(_layers);
             _layers.QueueFree();
             _layers = null;
+        }
+
+        if (_zones != null)
+        {
+            _zones.Shutdown();
+            RemoveDock(_zones);
+            _zones.QueueFree();
+            _zones = null;
         }
 
         if (_art != null)

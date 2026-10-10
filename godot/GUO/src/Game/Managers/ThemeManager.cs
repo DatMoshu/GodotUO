@@ -19,11 +19,16 @@ namespace GUO.Game.Managers
             && y >= Math.Min(Y1, Y2) && y <= Math.Max(Y1, Y2);
     }
 
-    /// <summary>One themed look: the graphics it replaces and the variant art ids holding the new look.</summary>
+    /// <summary>
+    /// One themed look: the graphics it replaces and what replaces them --
+    /// either a variant art id (legacy overlay slots) or a variant-atlas PNG
+    /// (preferred: plain files under the theme's folder, no id needed).
+    /// </summary>
     internal sealed class ThemeEntry
     {
         public List<ushort> Match = new();
         public ushort Variant;
+        public string Image = "";
         public string Splat;
     }
 
@@ -61,6 +66,7 @@ namespace GUO.Game.Managers
                     }
 
                     entry.Variant = e.TryGetProperty("variant", out JsonElement v) ? (ushort)v.GetInt32() : (ushort)0;
+                    entry.Image = e.TryGetProperty("image", out JsonElement im) ? im.GetString() ?? "" : "";
                     entry.Splat = e.TryGetProperty("splat", out JsonElement s) ? s.GetString() : null;
                     theme.Entries.Add(entry);
                 }
@@ -76,6 +82,69 @@ namespace GUO.Game.Managers
 
             theme.MultiSplat = root.TryGetProperty("multi_splat", out JsonElement ms) ? ms.GetString() : "";
             return theme;
+        }
+
+        /// <summary>Write the theme back (the editor's variant saves go through here).</summary>
+        public static void Save(string path, Theme theme)
+        {
+            using var stream = new MemoryStream();
+            using (var writer = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = true }))
+            {
+                writer.WriteStartObject();
+                writer.WriteNumber("format", Format);
+                writer.WriteString("name", theme?.Name ?? "");
+                writer.WriteStartArray("entries");
+                if (theme != null)
+                {
+                    foreach (ThemeEntry e in theme.Entries)
+                    {
+                        writer.WriteStartObject();
+                        writer.WriteStartArray("match");
+                        foreach (ushort m in e.Match)
+                        {
+                            writer.WriteNumberValue(m);
+                        }
+
+                        writer.WriteEndArray();
+                        if (e.Variant != 0)
+                        {
+                            writer.WriteNumber("variant", e.Variant);
+                        }
+
+                        if (!string.IsNullOrWhiteSpace(e.Image))
+                        {
+                            writer.WriteString("image", e.Image);
+                        }
+
+                        if (!string.IsNullOrEmpty(e.Splat))
+                        {
+                            writer.WriteString("splat", e.Splat);
+                        }
+
+                        writer.WriteEndObject();
+                    }
+                }
+
+                writer.WriteEndArray();
+                writer.WriteStartArray("multis");
+                if (theme != null)
+                {
+                    foreach (ushort m in theme.Multis)
+                    {
+                        writer.WriteNumberValue(m);
+                    }
+                }
+
+                writer.WriteEndArray();
+                if (!string.IsNullOrEmpty(theme?.MultiSplat))
+                {
+                    writer.WriteString("multi_splat", theme.MultiSplat);
+                }
+
+                writer.WriteEndObject();
+            }
+
+            File.WriteAllText(path, System.Text.Encoding.UTF8.GetString(stream.ToArray()) + "\n");
         }
     }
 
@@ -99,20 +168,38 @@ namespace GUO.Game.Managers
 
         public static IReadOnlyList<ActiveTheme> Active => _active;
 
+        /// <summary>
+        /// Bumped on every activate/deactivate/clear. Objects resolve their
+        /// themed variant lazily against it (see GameObject.ResolveTheme),
+        /// so arrivals after a theme change still pick it up.
+        /// </summary>
+        public static int Revision { get; private set; }
+
         public static void Activate(Theme theme, List<ThemeZone> zones)
         {
             Deactivate(theme.Name);
             _active.Add(new ActiveTheme { Theme = theme, Zones = zones ?? new List<ThemeZone>() });
+            Revision++;
         }
 
         public static void Deactivate(string name)
         {
             _active.RemoveAll(a => a.Theme.Name == name);
+            Revision++;
         }
 
         public static void Clear()
         {
             _active.Clear();
+            Revision++;
+        }
+
+        /// <summary>
+        /// Bump the revision without changing activations (preview toggles).
+        /// </summary>
+        public static void Touch()
+        {
+            Revision++;
         }
 
         /// <summary>

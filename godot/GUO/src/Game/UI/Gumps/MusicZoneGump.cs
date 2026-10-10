@@ -16,16 +16,19 @@ using GUO.IO.Audio;
 namespace GUO.Game.UI.Gumps
 {
     /// <summary>
-    /// Ambient music zones: rectangular areas with a playlist of generated
-    /// tracks. Corner A/B capture the player tile, the playlist is filenames
-    /// under the music dir, Generate grows a new track from a prompt straight
-    /// into the draft playlist. Save writes music.json; the scene player
-    /// cycles tracks while the player stands inside. Opened with "-musiczone".
+    /// Ambient audio zones: rectangular areas with a playlist of generated
+    /// tracks, on a Music/SFX layer switch (own zones, player and manifest
+    /// each; neither cancels the other). Corner A/B capture the player tile,
+    /// the playlist is filenames under the music dir, Generate grows a new
+    /// track from a prompt straight into the draft playlist. Save writes
+    /// music.json/sfx.json; the scene players cycle tracks while the player
+    /// stands inside. Opened with "-audiozones" ("-musiczone" still works,
+    /// "-sfxzone" starts on the SFX layer).
     /// </summary>
     internal sealed class MusicZoneGump : Gump
     {
         private const int W = 340;
-        private const int H = 560;
+        private const int H = 650;
 
         private readonly Label _zoneLabel;
         private readonly Label _rectLabel;
@@ -34,7 +37,11 @@ namespace GUO.Game.UI.Gumps
         private readonly Label _filesLabel;
         private readonly StbTextBox _promptBox;
         private readonly StbTextBox _secsBox;
+        private readonly Label _hereLabel;
         private readonly Label _statusLabel;
+        private readonly ZoneOutline _outline;
+        private readonly Combobox _layerPick;
+        private bool _layerSfx;
 
         private int _zoneIdx = -1;
         private int _ax, _ay;
@@ -54,12 +61,15 @@ namespace GUO.Game.UI.Gumps
             Delete,
             Generate,
             Save,
+            ClearTracks,
+            ShowZone,
             Close
         }
 
-        public MusicZoneGump(World world)
+        public MusicZoneGump(World world, bool sfx = false)
             : base(world, 140, 100)
         {
+            _layerSfx = sfx;
             CanMove = true;
             CanCloseWithRightClick = true;
 
@@ -68,7 +78,7 @@ namespace GUO.Game.UI.Gumps
                 Width = W, Height = H, AcceptMouseInput = true, CanMove = true
             });
 
-            Add(new Label("Music Zones", true, 0x0481) { X = 12, Y = 8 });
+            Add(new Label("Audio Zones", true, 0x0481) { X = 12, Y = 8 });
 
             var close = new NiceButton(W - 30, 6, 22, 20, ButtonAction.Activate, "X")
             {
@@ -91,6 +101,12 @@ namespace GUO.Game.UI.Gumps
                 ButtonParameter = (int)Buttons.ZoneNext,
                 IsSelectable = false
             });
+
+            y += 30;
+            Add(new Label("Layer:", true, 0x0386) { X = 12, Y = y });
+            _layerPick = new Combobox(70, y - 2, 130, new[] { "Music", "SFX" }, _layerSfx ? 1 : 0);
+            _layerPick.OnOptionSelected += (s, i) => SwitchLayer(i == 1);
+            Add(_layerPick);
 
             y += 30;
             Add(new NiceButton(12, y, 130, 24, ButtonAction.Activate, "Corner A here")
@@ -118,6 +134,11 @@ namespace GUO.Game.UI.Gumps
 
             y += 30;
             Add(new Label("Playlist (files):", true, 0x0386) { X = 12, Y = y });
+            Add(new NiceButton(262, y - 2, 56, 22, ButtonAction.Activate, "Clear")
+            {
+                ButtonParameter = (int)Buttons.ClearTracks,
+                IsSelectable = false
+            });
             y += 22;
             _playlistBox = new StbTextBox(1, 500, W - 24, true, FontStyle.None, 0x0021)
             {
@@ -173,8 +194,22 @@ namespace GUO.Game.UI.Gumps
             });
 
             y += 32;
+            Add(new Label("You are here:", true, 0x0386) { X = 12, Y = y });
+            _hereLabel = new Label("(...)", true, 0x0021, 200) { X = 110, Y = y };
+            Add(_hereLabel);
+
+            y += 26;
+            Add(new NiceButton(12, y, 130, 24, ButtonAction.Activate, "Show Zone")
+            {
+                ButtonParameter = (int)Buttons.ShowZone,
+                IsSelectable = false
+            });
+
+            y += 32;
             _statusLabel = new Label(string.Empty, true, 0x0021, W - 24) { X = 12, Y = y };
             Add(_statusLabel);
+            _outline = new ZoneOutline { X = 0, Y = 0 };
+            Add(_outline);
 
             Width = W;
             Height = H;
@@ -183,15 +218,18 @@ namespace GUO.Game.UI.Gumps
             SetInScreen();
         }
 
-        private List<MusicZones.Zone> Zones => MusicZones.Zones;
+        /// <summary>Music and sfx are separate layers (own zones, player and manifest) sharing one engine.</summary>
+        private ZoneAudio.Layer Layer => _layerSfx ? ZoneAudio.Sfx : ZoneAudio.Music;
 
-        private MusicZones.Zone Current => _zoneIdx >= 0 && _zoneIdx < Zones.Count ? Zones[_zoneIdx] : null;
+        private List<ZoneAudio.Zone> Zones => Layer.Zones;
+
+        private ZoneAudio.Zone Current => _zoneIdx >= 0 && _zoneIdx < Zones.Count ? Zones[_zoneIdx] : null;
 
         private void LoadZone(int idx)
         {
             SyncBoxToZone();
             _zoneIdx = Zones.Count == 0 ? -1 : ((idx % Zones.Count) + Zones.Count) % Zones.Count;
-            MusicZones.Zone z = Current;
+            ZoneAudio.Zone z = Current;
             if (z != null)
             {
                 _ax = z.X0;
@@ -211,7 +249,7 @@ namespace GUO.Game.UI.Gumps
 
         private void SyncBoxToZone()
         {
-            MusicZones.Zone z = Current;
+            ZoneAudio.Zone z = Current;
             if (z == null)
             {
                 return;
@@ -231,7 +269,7 @@ namespace GUO.Game.UI.Gumps
 
         private void UpdateLabels()
         {
-            MusicZones.Zone z = Current;
+            ZoneAudio.Zone z = Current;
             _zoneLabel.Text = z == null ? "<new>" : (string.IsNullOrEmpty(z.Name) ? $"zone {_zoneIdx}" : z.Name);
             _rectLabel.Text = !_hasA ? "<no corners>"
                 : (z != null ? $"{z.X0},{z.Y0} - {z.X1},{z.Y1}" : $"{_ax},{_ay} - ?");
@@ -239,7 +277,7 @@ namespace GUO.Game.UI.Gumps
 
         private void RefreshFiles()
         {
-            List<string> files = MusicZones.TrackFiles();
+            List<string> files = Layer.TrackFiles();
             _filesLabel.Text = files.Count == 0 ? "no tracks yet" : string.Join(",", files);
         }
 
@@ -248,12 +286,66 @@ namespace GUO.Game.UI.Gumps
             _statusLabel.Text = s;
         }
 
+        /// <summary>Swap the music/sfx layer (own zones, player, manifest).</summary>
+        private void SwitchLayer(bool sfx)
+        {
+            if (_layerSfx == sfx)
+            {
+                return;
+            }
+
+            _layerSfx = sfx;
+            _outline.Hide();
+            LoadZone(0);
+            RefreshFiles();
+            Say(sfx ? "SFX layer (own zones and tracks)." : "Music layer (own zones and tracks).");
+        }
+
+        /// <summary>The zones the player stands in right now (any zone, even trackless).</summary>
+        private string HereZoneName()
+        {
+            PlayerMobile player = World.Player;
+            if (player == null)
+            {
+                return "(no player)";
+            }
+
+            string m = FirstInside(ZoneAudio.Music.Zones);
+            string s = FirstInside(ZoneAudio.Sfx.Zones);
+            if (m == null && s == null)
+            {
+                return "(wilderness)";
+            }
+
+            return $"music:{m ?? "-"} sfx:{s ?? "-"}";
+        }
+
+        private string FirstInside(List<ZoneAudio.Zone> zones)
+        {
+            PlayerMobile player = World.Player;
+            foreach (ZoneAudio.Zone z in zones)
+            {
+                if (z.Contains(World.MapIndex, player.X, player.Y))
+                {
+                    return string.IsNullOrEmpty(z.Name) ? "(unnamed)" : z.Name;
+                }
+            }
+
+            return null;
+        }
+
         public override void Update()
         {
             base.Update();
             if (IsDisposed)
             {
                 return;
+            }
+
+            string here = HereZoneName();
+            if (_hereLabel.Text != here)
+            {
+                _hereLabel.Text = here;
             }
 
             if (_genTask != null && _genTask.IsCompleted)
@@ -298,7 +390,7 @@ namespace GUO.Game.UI.Gumps
                         _ax = World.Player.X;
                         _ay = World.Player.Y;
                         _hasA = true;
-                        MusicZones.Zone z = Current;
+                        ZoneAudio.Zone z = Current;
                         if (z != null)
                         {
                             z.X0 = _ax;
@@ -313,7 +405,7 @@ namespace GUO.Game.UI.Gumps
                 case (int)Buttons.CornerB:
                     if (World.Player != null && _hasA)
                     {
-                        MusicZones.Zone zz = Current;
+                        ZoneAudio.Zone zz = Current;
                         if (zz != null)
                         {
                             zz.X1 = World.Player.X;
@@ -339,7 +431,7 @@ namespace GUO.Game.UI.Gumps
 
                 case (int)Buttons.Delete:
                     {
-                        MusicZones.Zone z = Current;
+                        ZoneAudio.Zone z = Current;
                         if (z == null)
                         {
                             Say("Nothing to delete.");
@@ -372,10 +464,20 @@ namespace GUO.Game.UI.Gumps
                     }
                     else
                     {
-                        Say(MusicZones.Save(Zones) ? "Zones saved." : "Save failed.");
+                        Say(Layer.Save(Zones) ? "Zones saved." : "Save failed.");
                     }
 
                     RefreshFiles();
+                    break;
+
+                case (int)Buttons.ClearTracks:
+                    _playlistBox.SetText("");
+                    SyncBoxToZone();
+                    Say("Playlist cleared (Save to persist).");
+                    break;
+
+                case (int)Buttons.ShowZone:
+                    ToggleShowZone();
                     break;
 
                 case (int)Buttons.Close:
@@ -393,6 +495,52 @@ namespace GUO.Game.UI.Gumps
         }
 
         private (int X, int Y)? _pendingB;
+
+        /// <summary>
+        /// Dotted outline of the current (or draft) zone in the world, 20s or
+        /// until pressed again. Answers "where is this zone" in game.
+        /// </summary>
+        private void ToggleShowZone()
+        {
+            if (_outline.Showing)
+            {
+                _outline.Hide();
+                Say("Zone hidden.");
+                return;
+            }
+
+            int x0, y0, x1, y1;
+            ZoneAudio.Zone z = Current;
+            if (z != null)
+            {
+                x0 = z.X0;
+                y0 = z.Y0;
+                x1 = z.X1;
+                y1 = z.Y1;
+            }
+            else if (_hasA && World.Player != null)
+            {
+                x0 = _ax;
+                y0 = _ay;
+                x1 = World.Player.X;
+                y1 = World.Player.Y;
+            }
+            else
+            {
+                Say("Select or make a zone first.");
+                return;
+            }
+
+            if (z != null && z.Facet >= 0 && z.Facet != World.MapIndex)
+            {
+                Say("That zone is on another facet.");
+                return;
+            }
+
+            int pz = World.Player?.Z ?? 0;
+            _outline.Show(World.MapIndex, x0, y0, x1, y1, pz);
+            Say($"Showing {x0},{y0} - {x1},{y1} (20s).");
+        }
 
         /// <summary>
         /// Builds a zone from the draft (name box + corner A + player or
@@ -423,7 +571,7 @@ namespace GUO.Game.UI.Gumps
                 _pendingB = null;
             }
 
-            Zones.Add(new MusicZones.Zone
+            Zones.Add(new ZoneAudio.Zone
             {
                 Name = name,
                 Facet = World.MapIndex,
@@ -482,20 +630,10 @@ namespace GUO.Game.UI.Gumps
 
             try
             {
-                string dir = MusicZones.TracksDir();
+                string dir = ZoneAudio.TracksDir();
                 Directory.CreateDirectory(dir);
-                string stem = "track";
-                MusicZones.Zone z = Current;
-                if (z != null && !string.IsNullOrWhiteSpace(z.Name))
-                {
-                    stem = string.Concat(z.Name.ToLowerInvariant().Where(
-                        c => (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')));
-                    if (string.IsNullOrEmpty(stem))
-                    {
-                        stem = "track";
-                    }
-                }
-
+                ZoneAudio.Zone z = Current;
+                string stem = Layer.StemFor(z?.Name);
                 string file = $"{stem}_{Directory.EnumerateFiles(dir).Count() + 1:D2}.mp3";
                 File.WriteAllBytes(Path.Combine(dir, file), result.Audio);
                 string playlist = _playlistBox.Text?.Trim() ?? "";

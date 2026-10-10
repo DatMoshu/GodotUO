@@ -27,11 +27,25 @@ namespace GUO.Game.UI.Gumps
     internal sealed class RepaintGump : Gump
     {
         private const int W = 320;
-        private const int H = 430;
+        private const int H = 560;
+
+        private static readonly string[] Samplers =
+        {
+            "euler", "euler_ancestral", "heun", "dpm_2", "dpmpp_2m",
+            "dpmpp_sde", "ddim", "uni_pc", "lcm",
+        };
+
+        private static readonly string[] Schedulers = { "normal", "karras", "exponential", "simple" };
 
         private readonly Label _graphicLabel;
+        private readonly Label _denoiseLabel;
         private readonly StbTextBox _promptBox;
         private readonly StbTextBox _seedBox;
+        private readonly StbTextBox _stepsBox;
+        private readonly StbTextBox _cfgBox;
+        private readonly Combobox _backendPick;
+        private readonly Combobox _samplerPick;
+        private readonly Combobox _schedulerPick;
         private readonly HSliderBar _denoiseSlider;
         private readonly Checkbox _maskBox;
         private readonly Label _statusLabel;
@@ -111,7 +125,40 @@ namespace GUO.Game.UI.Gumps
             Add(_seedBox);
 
             y += 30;
-            Add(new Label("Denoise:", true, 0x0386) { X = 12, Y = y });
+            Add(new Label("Backend:", true, 0x0386) { X = 12, Y = y });
+            _backendPick = new Combobox(100, y - 2, 150, new[] { "DreamShaper", "Flux Klein" }, 0);
+            _backendPick.OnOptionSelected += (s, i) => ApplyBackendDefaults(i == 1);
+            Add(_backendPick);
+
+            y += 30;
+            Add(new Label("Sampler:", true, 0x0386) { X = 12, Y = y });
+            _samplerPick = new Combobox(100, y - 2, 150, Samplers, 0);
+            Add(_samplerPick);
+
+            y += 30;
+            Add(new Label("Scheduler:", true, 0x0386) { X = 12, Y = y });
+            _schedulerPick = new Combobox(100, y - 2, 150, Schedulers, 0);
+            Add(_schedulerPick);
+
+            y += 30;
+            Add(new Label("Steps:", true, 0x0386) { X = 12, Y = y });
+            _stepsBox = new StbTextBox(1, 4, 60, true, FontStyle.None, 0x0021)
+            {
+                X = 70, Y = y, Width = 60, Height = 22
+            };
+            _stepsBox.SetText("20");
+            Add(_stepsBox);
+            Add(new Label("Cfg:", true, 0x0386) { X = 150, Y = y });
+            _cfgBox = new StbTextBox(1, 6, 60, true, FontStyle.None, 0x0021)
+            {
+                X = 190, Y = y, Width = 60, Height = 22
+            };
+            _cfgBox.SetText("7");
+            Add(_cfgBox);
+
+            y += 30;
+            _denoiseLabel = new Label("Denoise:", true, 0x0386) { X = 12, Y = y };
+            Add(_denoiseLabel);
             _denoiseSlider = new HSliderBar(100, y, 180, 0, 100, 65,
                 HSliderBarStyle.MetalWidgetRecessedBar, hasText: true, font: 1, color: 0x0386, unicode: true);
             Add(_denoiseSlider);
@@ -157,12 +204,32 @@ namespace GUO.Game.UI.Gumps
             _statusLabel.Text = s;
         }
 
+        /// <summary>
+        /// Flux edits in few steps with middling guidance; DreamShaper wants
+        /// more of both. Denoise and scheduler only bite on DreamShaper.
+        /// </summary>
+        private void ApplyBackendDefaults(bool flux)
+        {
+            _stepsBox?.SetText(flux ? "4" : "20");
+            _cfgBox?.SetText(flux ? "5" : "7");
+        }
+
         public override void Update()
         {
             base.Update();
             if (IsDisposed)
             {
                 return;
+            }
+
+            if (_denoiseSlider != null && _denoiseLabel != null)
+            {
+                // The slider runs 0-100; the sampler gets a 0-1 float.
+                string t = $"Denoise: {_denoiseSlider.Value / 100f:0.00}";
+                if (_denoiseLabel.Text != t)
+                {
+                    _denoiseLabel.Text = t;
+                }
             }
 
             if (_genTask != null && _genTask.IsCompleted)
@@ -290,6 +357,26 @@ namespace GUO.Game.UI.Gumps
                 return;
             }
 
+            bool flux = _backendPick.SelectedIndex == 1;
+            string sampler = _samplerPick.SelectedIndex >= 0 && _samplerPick.SelectedIndex < Samplers.Length
+                ? Samplers[_samplerPick.SelectedIndex] : "euler";
+            string scheduler = _schedulerPick.SelectedIndex >= 0 && _schedulerPick.SelectedIndex < Schedulers.Length
+                ? Schedulers[_schedulerPick.SelectedIndex] : "normal";
+            if (!int.TryParse(_stepsBox.Text?.Trim(), out int steps) || steps < 1 || steps > 100)
+            {
+                Say("Steps must be 1-100.");
+                return;
+            }
+
+            if (!float.TryParse(_cfgBox.Text?.Trim(),
+                System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out float cfg)
+                || cfg < 0f || cfg > 30f)
+            {
+                Say("Cfg must be 0-30.");
+                return;
+            }
+
             bool mask = _maskBox.IsChecked;
             ushort graphic = _targetGraphic;
             bool isLand = _targetIsLand;
@@ -301,8 +388,14 @@ namespace GUO.Game.UI.Gumps
             Say(_genStatus);
             _genTask = Task.Run(async () =>
             {
-                ComfyClient.PngResult result = await ComfyClient.ImageToImageAsync(
-                    url, shot.Png, prompt, seed, denoise, s => _genStatus = s, ct);
+                // The Flux graph has no denoise or scheduler inputs: change
+                // amount there is cfg + steps + wording.
+                ComfyClient.PngResult result = flux
+                    ? await ComfyClient.ImageToImageFluxAsync(
+                        url, shot.WorkPng, prompt, seed, cfg, steps, sampler, s => _genStatus = s, ct)
+                    : await ComfyClient.ImageToImageAsync(
+                        url, shot.WorkPng, prompt, seed, denoise, s => _genStatus = s, ct,
+                        sampler: sampler, scheduler: scheduler, steps: steps, cfg: cfg);
                 return new GenJob
                 {
                     Result = result, Shot = shot, Graphic = graphic, IsLand = isLand, Mask = mask,
@@ -334,7 +427,11 @@ namespace GUO.Game.UI.Gumps
 
             if (image.GetWidth() != job.Shot.Width || image.GetHeight() != job.Shot.Height)
             {
-                Say($"Size changed {job.Shot.Width}x{job.Shot.Height} -> {image.GetWidth()}x{image.GetHeight()}; keeping unmasked.");
+                // The diffusion working copy, coming home (DreamShaper keeps
+                // the upload size; Flux decodes at its own working size):
+                // fit to the native art size (nearest keeps the pixels
+                // crisp) so the silhouette mask below still applies.
+                image.Resize(job.Shot.Width, job.Shot.Height, Godot.Image.Interpolation.Nearest);
             }
 
             byte[] rgba = image.GetData();

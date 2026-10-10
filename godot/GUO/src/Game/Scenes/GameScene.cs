@@ -787,6 +787,7 @@ namespace GUO.Game.Scenes
             _world.Update();
             // PORT DEVIATION (GUO): generated ambient music zones tick here.
             IO.Audio.MusicZones.Update(_world);
+            IO.Audio.SfxZones.Update(_world);
             _animatedStaticsManager.Process();
             _world.BoatMovingManager.Update();
             _world.Player.Pathfinder.ProcessAutoWalk();

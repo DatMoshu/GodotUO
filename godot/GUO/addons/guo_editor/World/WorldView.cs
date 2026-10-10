@@ -106,10 +106,23 @@ public partial class WorldView : VBoxContainer
 
     private Vector2 _drag;
     private bool _dragging;
+    private Vector2 _rightPress;
+    private bool _rightDown;
     private (int facet, int x, int y) _pending = (0, 1496, 1628);
 
     /// <summary>Raised with what a click picked.</summary>
     public event Action<Inspection> Inspect;
+
+    /// <summary>What the map context menu can make from an Area selection.</summary>
+    public enum NewZoneKind
+    {
+        Music,
+        Sfx,
+        Shard,
+    }
+
+    /// <summary>Fired by the map context menu: kind, facet and inclusive rect.</summary>
+    public Action<NewZoneKind, int, int, int, int, int> NewZoneFromArea;
 
     public bool IsBooted => _host.IsBooted;
     public string Error => _host.Error ?? _data?.Error;
@@ -641,6 +654,24 @@ public partial class WorldView : VBoxContainer
             case InputEventMouseButton { ButtonIndex: MouseButton.Right or MouseButton.Middle } b:
                 _dragging = b.Pressed;
                 _drag = Vector2.Zero;
+                if (b.ButtonIndex == MouseButton.Right)
+                {
+                    if (b.Pressed)
+                    {
+                        _rightDown = true;
+                        _rightPress = b.Position;
+                    }
+                    else if (_rightDown)
+                    {
+                        _rightDown = false;
+                        // A release that barely moved is a click, not a pan.
+                        if ((b.Position - _rightPress).Length() < 8f)
+                        {
+                            ShowMapMenu();
+                        }
+                    }
+                }
+
                 break;
             case InputEventMouseMotion m when _dragging:
                 Pan(m.Relative);
@@ -726,6 +757,44 @@ public partial class WorldView : VBoxContainer
         // Stay open while ticking several items.
         m.GetPopup().HideOnCheckableItemSelection = false;
         return m;
+    }
+
+    /// <summary>
+    /// Right-click without dragging: what to make of the Area selection, if
+    /// any. Music/SFX zones land in their manifests (tracks come later);
+    /// shard regions go to the Regions dock for naming and saving.
+    /// </summary>
+    private void ShowMapMenu()
+    {
+        bool hasArea = Area != null;
+        var pm = new PopupMenu();
+        // On the editor base control, not on this view: WorldView is a
+        // layout container and would arrange a child popup at its top.
+        EditorInterface.Singleton.GetBaseControl().AddChild(pm);
+        pm.AddItem(hasArea ? "New Music zone from area" : "New Music zone (Area tool: click two corners first)", 0);
+        pm.AddItem(hasArea ? "New SFX zone from area" : "New SFX zone (Area tool: click two corners first)", 1);
+        pm.AddItem(hasArea ? "New Shard region from area" : "New Shard region (Area tool: click two corners first)", 2);
+        if (!hasArea)
+        {
+            for (int i = 0; i < 3; i++)
+            {
+                pm.SetItemDisabled(i, true);
+            }
+        }
+
+        pm.IdPressed += id =>
+        {
+            if (Area is { } a)
+            {
+                NewZoneFromArea?.Invoke((NewZoneKind)(int)id, _host.Facet,
+                    Math.Min(a.X0, a.X1), Math.Min(a.Y0, a.Y1),
+                    Math.Max(a.X0, a.X1), Math.Max(a.Y0, a.Y1));
+            }
+
+            pm.Hide();
+        };
+        pm.PopupHide += () => pm.QueueFree();
+        pm.Popup(new Rect2I((Vector2I)GetGlobalMousePosition(), new Vector2I(10, 10)));
     }
 
     private readonly System.Collections.Generic.Dictionary<string, (PopupMenu Menu, int Id, Action<bool> Set)> _toggles = new();
@@ -831,6 +900,9 @@ public partial class WorldView : VBoxContainer
         return true;
     }
 
+    /// <summary>Fired by the PickRegion tool: facet and cell that was clicked.</summary>
+    public Action<int, int, int> RegionClick;
+
     /// <summary>
     /// The current tool on what the game's picking found under the pointer.
     /// Returns a line saying what happened.
@@ -894,6 +966,10 @@ public partial class WorldView : VBoxContainer
 
             case WorldTool.Area:
                 SetAreaCorner(o.X, o.Y);
+                return _status.Text;
+
+            case WorldTool.PickRegion:
+                RegionClick?.Invoke(facet, o.X, o.Y);
                 return _status.Text;
 
             case WorldTool.Measure:
@@ -1116,7 +1192,10 @@ public partial class WorldView : VBoxContainer
 
         sb.Append("(picked by the game's own PixelPicker)\n");
         var inspection = Inspection.Still("World", $"{o.X},{o.Y}", _data?.ArtImage(index), sb.ToString());
-        if (_data?.IsLoaded == true && o is Land or Static)
+        // Items hang their pixels in the static archive under the same
+        // LandCount + graphic index, so they bind like statics. Mobiles do
+        // not: their graphic is a body id, not static art.
+        if (_data?.IsLoaded == true && o is Land or Static or Item)
         {
             _data.CurrentArt = index;
             AssetActions.Add(inspection, _data, land ? AssetKind.Land : AssetKind.Static, o.Graphic, inspection.Image);
