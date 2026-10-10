@@ -84,7 +84,7 @@ On main today (step 2 and step 3 kinds):
 | `ui.key` | Press and release a key (client) | `key` (Godot name: Enter, Escape, F1), `shift`, `ctrl`, `alt` | ui state change | `guo_input` |
 | `chat` | Say a line in game (client) | `text` (a `[command` works) | log or world state | Enter, text, Enter |
 | `renderdump` | Dump what the client drew (client) | `name` | `render_dump/NAME/guo.json` exists | Starts the client with `GUO_RENDER_DUMP_DIR` set to the run's `render_dump/`; says `renderdump NAME`; the event carries bytes and object count |
-| `render_diff` | Compare that dump with ClassicUO's | `name` | `render_diff: {max_drawn_diff}` | Reference is `build/render_dump/NAME/cuo.json`, or `GUO_RENDER_REF_DIR/NAME/cuo.json` (take it with `launchers\dev\side_by_side.bat`); writes `diff.md` in the run folder; fails on map, field or drawn mismatches |
+| `render_diff` | Compare that dump with ClassicUO's | `name` | `render_diff: {max_drawn_diff}` | Reference is `build/render_dump/NAME/cuo.json`, or `GUO_RENDER_REF_DIR/NAME/cuo.json` (take it with `launchers\dev\side_by_side.bat --cuo-only --at X Y`, which leaves ClassicUO standing there so the scenario's own `renderdump` dumps both at once; nothing is typed into ClassicUO); writes `diff.md` in the run folder; fails on map, field or drawn mismatches |
 | `tour_segment` | Run an EditorTour segment | id: segment name | EditorTour checks + frames | Editor only; surface override. Human driver: skipped as `ai_only` unless the segment is passive |
 | `editor_invoke` | Run an F3 action by key | key, query | tool result | Editor only; not pre-approved, so the step **fails at once** with a message instead of waiting on the approval dialog (nobody is at the PC in a scripted run). Use a `tour_segment`, or run it by hand |
 
@@ -131,6 +131,20 @@ editor's `result`, `editor.state` and `file.exists`.
 Run it with `--shard <target>`; the account must already have a character (a fresh owner account has none: make one
 once with `launchers\game\play.bat --play --account A --password P --shard-command "[Where"` against that shard). It is
 for a throwaway shard such as the muo_shard container (`tools/muo_shard/README.md`, Container run with the client).
+
+## World scenarios (render parity)
+
+| Scenario id | File | What it covers |
+|---|---|---|
+| `world.britain_parity` | `tools/scenarios/world/britain_parity.scenario.json` | `[go` the Britain bank, renderdump `britain_bank`, render_diff |
+| `world.dungeon_parity` | `tools/scenarios/world/dungeon_parity.scenario.json` | log straight in (`--autologin`) at 1280x720, `[go` Despise level 1 (5401,629), renderdump `despise`, render_diff, still |
+
+The ClassicUO side stands on the same tile while the scenario runs: start it first with
+`launchers\dev\side_by_side.bat --cuo-only --at 5401 629` (a scripted owner-account run places its character, then
+ClassicUO logs itself in there, 1280x720 by default), run the scenario on a GM account, then close ClassicUO. The GUO
+window must be the reference's size, or the two draw different parts of the world. Generated shard passwords are longer
+than the login gump's 16 characters, so `world.dungeon_parity` logs in with upstream's autologin switches rather than
+typing into the gump.
 
 ## Drivers
 

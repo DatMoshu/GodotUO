@@ -7,9 +7,10 @@ r"""Compare a ClassicUO render dump with a GUO one taken in the same place.
 
 The dumps come from godot\GUO\src\Bootstrap\RenderDump.cs, which is compiled
 into both clients (ClassicUO's copy through tools\render_dump\inject.targets).
-Say "renderdump NAME" in game with both standing together -- or pass --dump
-NAME to launchers\dev\side_by_side.bat -- and each writes what it drew last
-frame plus every object on the tiles around it.
+Say "renderdump NAME" in GUO with both standing together -- side_by_side.bat
+puts them there, or with --cuo-only leaves ClassicUO there for a scenario's
+renderdump step -- and each writes what it drew last frame plus every object
+on the tiles around it.
 
 What this reports, written to build\render_dump\NAME\diff.md as well:
 
