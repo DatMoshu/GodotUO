@@ -129,7 +129,7 @@ op is one entry in `AdminChannel.Ops`, op name to level. The token grants
 yet) would need it raised on purpose. An op that is not in `Ops` is not an
 admin op and can never run through the admin path.
 
-The ops so far (AD0, AD1):
+The ops so far (AD0, AD1, AD2a):
 
 | Op | Level | Does |
 |---|---|---|
@@ -137,6 +137,8 @@ The ops so far (AD0, AD1):
 | `admin_audit` | Administrator | The last audit entries (up to 200), oldest first |
 | `admin_status` | Counselor | Health: uptime, players online, items, mobiles, memory, last save, version (read only) |
 | `admin_save` | Administrator | Saves the world now; answers when the write has finished |
+| `admin_godview` | GameMaster | The god view: players, NPCs and spawners on a facet, then change-only pushes (read only) |
+| `admin_godview_find` | GameMaster | Finds players, NPCs and spawners by name or serial on every facet (read only) |
 
 Restart is not a bridge op: the editor's run bar stops and starts the server
 process it started itself (`tools/server_manager`), after an `admin_save`. A

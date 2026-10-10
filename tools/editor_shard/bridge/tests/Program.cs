@@ -43,7 +43,7 @@ try
     Require(on.Authorise("block", AdminLevel.Owner) == "'block' is not an admin op", "a non-admin op was authorised as one");
     var gm = new AdminChannel(token, AdminLevel.GameMaster, new AuditLog(null));
     Require(gm.CheckHello(token, out _) == AdminLevel.GameMaster, "the granted level is not the configured one");
-    Require(gm.OpsFor(AdminLevel.GameMaster).ToJsonString() == "[\"admin_whoami\",\"admin_status\"]", "OpsFor lists ops above the level");
+    Require(gm.OpsFor(AdminLevel.GameMaster).ToJsonString() == "[\"admin_whoami\",\"admin_status\",\"admin_godview\",\"admin_godview_find\"]", "OpsFor lists ops above the level");
     // AD1: Health is read-only (a Counselor may look); a save is an Administrator's, as ModernUO's own [save.
     Require(AdminChannel.Ops["admin_status"] == AdminLevel.Counselor && AdminChannel.Ops["admin_save"] == AdminLevel.Administrator,
             "the Health ops' levels changed");
@@ -92,6 +92,55 @@ try
     Require((int)last[^1]!["args"]["req"] == AuditLog.Keep + 24 && (int)small.Recent(2)[0]!["args"]["req"] == AuditLog.Keep + 23,
             "Recent does not return the newest entries, oldest first");
     Console.WriteLine("PASS: the in-memory audit keeps the newest entries, oldest first");
+    // ---- AD2a: the god view's levels, change-only pushes, caps and Find ------
+    Require(AdminChannel.Ops["admin_godview"] == AdminLevel.GameMaster && AdminChannel.Ops["admin_godview_find"] == AdminLevel.GameMaster,
+            "the god view's levels changed");
+    Require(on.Authorise("admin_godview", AdminLevel.Counselor) == "'admin_godview' needs GameMaster; this connection holds Counselor",
+            "a Counselor could watch the whole facet");
+    Require(on.Authorise("admin_godview", null).StartsWith("admin op without the admin token"), "the god view ran without the token");
+
+    // Entries carry a hash of their row; the diff builds JSON only for those that changed.
+    int built = 0;
+    JsonObject Build(object o)
+    {
+        built++;
+        var (serial, x) = ((uint, int))o;
+        return new JsonObject { ["serial"] = serial, ["kind"] = "npc", ["x"] = x };
+    }
+
+    static GodViewEntry E(uint serial, int x) => new(serial, HashCode.Combine(x), (serial, x));
+    var diff = new GodViewDiff();
+    var (up1, rm1) = diff.Next(new List<GodViewEntry> { E(1, 5), E(2, 6), E(3, 7) }, Build);
+    Require(up1.Count == 3 && rm1.Count == 0 && diff.Seq == 1 && diff.Held == 3 && built == 3, "the first push is not the whole list");
+    var (up2, rm2) = diff.Next(new List<GodViewEntry> { E(1, 5), E(2, 6), E(3, 7) }, Build);
+    Require(up2.Count == 0 && rm2.Count == 0 && diff.Seq == 1 && built == 3, "an unchanged facet sent (or built) rows");
+    var (up3, rm3) = diff.Next(new List<GodViewEntry> { E(1, 5), E(2, 9), E(4, 1) }, Build);
+    Require(up3.Count == 2 && (uint)up3[0]["serial"] == 2 && (int)up3[0]["x"] == 9 && (uint)up3[1]["serial"] == 4 && built == 5,
+            "a move or a newcomer was not sent, or an unchanged row was built");
+    Require(rm3.ToJsonString() == "[3]" && diff.Seq == 2 && diff.Held == 3, "a mobile that left was not removed");
+    var (up4, rm4) = diff.Next(new List<GodViewEntry> { E(1, 5), E(1, 5), E(2, 9), E(4, 1) }, Build);
+    Require(up4.Count == 0 && rm4.Count == 0, "a duplicate serial counted as a change");
+    diff.Reset();
+    Require(diff.Next(new List<GodViewEntry> { E(1, 5) }, Build).Upsert.Count == 1 && diff.Seq == 1, "Reset did not send the whole list again");
+
+    var many = new List<GodViewEntry>();
+    for (uint i = 20; i > 0; i--)
+    {
+        many.Add(E(i, (int)i));
+    }
+
+    List<GodViewEntry> capped = GodViewDiff.Cap(many, 5, out bool cut);
+    Require(cut && capped.Count == 5 && capped.Select(r => r.Serial).SequenceEqual(new uint[] { 1, 2, 3, 4, 5 }),
+            "the cap does not keep the same (lowest-serial) rows each push");
+    Require(GodViewDiff.Cap(new List<GodViewEntry> { E(1, 1) }, 5, out bool notCut).Count == 1 && !notCut, "a list under the cap was cut");
+
+    Require(GodViewDiff.Matches("ORC", 7, "an orc captain") && GodViewDiff.Matches("orc", 7, null, "OrcishMage"), "Find misses a name");
+    Require(!GodViewDiff.Matches("orc", 7, "a troll") && !GodViewDiff.Matches("  ", 7, "orc"), "Find matched what it should not");
+    Require(GodViewDiff.Matches("0x1A", 26, "x") && GodViewDiff.Matches("26", 26, "x") && !GodViewDiff.Matches("0x1A", 27, "0x1A"),
+            "Find by serial (hex or decimal) is wrong");
+    Require(GodViewDiff.ParseSerial("0xZZ") == null && GodViewDiff.ParseSerial("12a") == null && GodViewDiff.ParseSerial("4294967295") == uint.MaxValue,
+            "serial parsing is wrong");
+    Console.WriteLine("PASS: the god view needs GameMaster and the token; pushes carry only changes; caps keep the same rows; Find by name or serial");
     Console.WriteLine("ALL PASS");
 }
 finally

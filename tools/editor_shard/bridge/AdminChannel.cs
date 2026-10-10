@@ -61,6 +61,10 @@ public sealed class AdminChannel
         ["admin_status"] = AdminLevel.Counselor,
         // AD1, Save now (and the save before a Restart): a world save, answered when it is on disk.
         ["admin_save"] = AdminLevel.Administrator,
+        // AD2a, the god view: every player, NPC and spawner on a facet, pushed as they change (read-only).
+        ["admin_godview"] = AdminLevel.GameMaster,
+        // AD2a, the god view's Find: players, NPCs and spawners on every facet by name or serial (read-only).
+        ["admin_godview_find"] = AdminLevel.GameMaster,
     };
 
     private readonly byte[] _tokenHash;

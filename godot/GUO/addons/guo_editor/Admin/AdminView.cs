@@ -13,7 +13,8 @@ using GUO.Workspace;
 
 /// <summary>
 /// The Admin main-screen tab (sprint "Admin tab", AD1): the server picked in the run bar, its health in numbers
-/// and in plain words, Save now and Restart, and a log of everything the tab did. It talks to the server's
+/// and in plain words, Save now and Restart, the god view of every player, NPC and spawner (AD2a,
+/// <see cref="GodViewPanel"/>), and a log of everything the tab did, its times in UTC. It talks to the server's
 /// editor bridge on the admin channel (ADR-0035): this workspace's admin token goes in the bridge hello and
 /// nowhere else. Desktop editor only. The tab button comes from <see cref="GuoAdminPlugin"/>.
 /// </summary>
@@ -21,7 +22,7 @@ using GUO.Workspace;
 /// Restart goes through the run bar's server manager: a save on the bridge, then the manager stops the exact
 /// process it started and starts it again (with the bridge's token, <see cref="ShardSecrets.BridgeEnvironment"/>).
 /// A server the run bar did not start cannot be restarted from here; the tab says so.
-/// Later stories add the god view (AD2), commands (AD3), settings (AD4), accounts (AD5) and backups (AD6).
+/// Later stories add the god view's actions (AD2b), commands (AD3), settings (AD4), accounts (AD5) and backups (AD6).
 /// </remarks>
 [Tool]
 public partial class AdminView : VBoxContainer
@@ -42,6 +43,7 @@ public partial class AdminView : VBoxContainer
     private Button _connect, _save, _restart, _refresh;
     private readonly Dictionary<string, Label> _values = new();
     private RichTextLabel _plain, _log;
+    private GodViewPanel _godView;
     private double _statusClock, _reconnectClock;
     private DateTime _statusAt;
     private DateTime _restartStarted;
@@ -52,6 +54,12 @@ public partial class AdminView : VBoxContainer
 
     /// <summary>The run bar: the selected server's name, and Restart through its manager.</summary>
     public RunBar Run { get; set; }
+
+    /// <summary>The radar of a map file (MapPanel.RadarFor), for the god view's map.</summary>
+    public Func<int, Image> RadarSource { get; set; }
+
+    /// <summary>The god view (AD2a).</summary>
+    public GodViewPanel GodView => _godView;
 
     /// <summary>The access level the server granted this tab, or null (no admin channel).</summary>
     public string Granted { get; private set; }
@@ -154,12 +162,31 @@ public partial class AdminView : VBoxContainer
         _refresh.Pressed += () => RequestStatus();
         health.AddChild(_refresh);
 
-        // Centre: the same, in plain words.
-        var words = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
-        split.AddChild(words);
-        words.AddChild(Heading("In plain words"));
+        // Under it, the same in plain words.
+        health.AddChild(Heading("In plain words"));
         _plain = new RichTextLabel { BbcodeEnabled = true, FitContent = false, SizeFlagsVertical = SizeFlags.ExpandFill, SelectionEnabled = true };
-        words.AddChild(_plain);
+        health.AddChild(_plain);
+
+        // Centre: the god view.
+        var centre = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        split.AddChild(centre);
+        centre.AddChild(Heading("God view"));
+        _godView = new GodViewPanel
+        {
+            Send = msg =>
+            {
+                if (!_link.Connected || Granted == null)
+                {
+                    return false;
+                }
+
+                _link.Send(msg);
+                return true;
+            },
+            RadarSource = facet => RadarSource?.Invoke(facet),
+        };
+        _godView.Logged += Log;
+        centre.AddChild(_godView);
 
         // Bottom: the log of everything the tab did.
         AddChild(Heading("Log"));
@@ -248,6 +275,7 @@ public partial class AdminView : VBoxContainer
     {
         _link.Disconnect();
         Granted = null;
+        _godView.OnClosed();
         Log(why);
         UpdateView();
     }
@@ -368,6 +396,7 @@ public partial class AdminView : VBoxContainer
             Log($"stopping {Server.Name}...");
             _link.Disconnect();
             Granted = null;
+            _godView.OnClosed();
             Run.RestartSelected();
             Restarting = RestartPhase.WaitingForServer;
             _reconnectClock = 0;
@@ -445,6 +474,14 @@ public partial class AdminView : VBoxContainer
 
                     RequestStatus();
                     _link.Send(new JsonObject { ["op"] = "admin_audit", ["count"] = 10, ["req"] = ++_req });
+                    if (msg["admin_ops"] is JsonArray ops && ops.Any(o => (string)o == "admin_godview"))
+                    {
+                        _godView.OnAdminOpen();
+                    }
+                    else
+                    {
+                        Log($"the god view needs GameMaster; this tab holds {Granted}");
+                    }
                 }
                 else
                 {
@@ -492,18 +529,25 @@ public partial class AdminView : VBoxContainer
                     Log($"the server's audit log, last {entries.Count}:");
                     foreach (JsonNode e in entries)
                     {
-                        string at = ((string)e["at"] ?? "").Length >= 19 ? ((string)e["at"]).Substring(11, 8) + " UTC" : "";
+                        // The audit's times are UTC, as is the tab's clock.
+                        string at = ((string)e["at"] ?? "").Length >= 19 ? ((string)e["at"]).Substring(11, 8) + "Z" : "";
                         Log($"    {at} {(string)e["editor"]}: {(string)e["op"]} {((bool?)e["ok"] == true ? "ran" : "refused")}"
                             + ((string)e["error"] is { } err ? $" ({err})" : ""));
                     }
                 }
 
                 break;
+            case "admin_godview":
+            case "admin_godview_find":
+                _godView.Handle(msg);
+                // Pushes come every second while something moves; the rest of the tab does not change with them.
+                return;
             case "error":
                 Log($"[color=orange]bridge: {(string)msg["error"]}[/color]");
                 break;
             case "closed":
                 Granted = null;
+                _godView.OnClosed();
                 if (Restarting == RestartPhase.None)
                 {
                     Log("the server closed the connection");
@@ -650,9 +694,10 @@ public partial class AdminView : VBoxContainer
     private static bool IsLoopback(string host) =>
         host == "localhost" || System.Net.IPAddress.TryParse(host, out var a) && System.Net.IPAddress.IsLoopback(a);
 
+    // One clock in the whole tab: UTC with a Z, as the server's audit log writes it.
     private void Log(string line)
     {
-        string stamp = DateTime.Now.ToString("HH:mm:ss", CultureInfo.InvariantCulture);
+        string stamp = GodViewPanel.Clock(DateTime.UtcNow);
         GD.Print($"[GUO editor] admin: {line}");
         _logText.Append(stamp).Append(' ').Append(line).Append('\n');
         _log?.AppendText($"[{stamp}] {line}\n");

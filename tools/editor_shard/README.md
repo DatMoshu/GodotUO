@@ -49,16 +49,21 @@ python tools\editor_shard\run.py admin-tab [--windowed]
   `build\shard_private\Logs\GUO\admin_audit.jsonl`, secrets masked.
 - **admin-check** talks to the running instance's bridge and checks the admin
   channel: no token, a wrong one, the right one, the audit log, the close
-  after three refusals, and that no token or password reached a log. The same
+  after three refusals, the god view (a whole facet, then change-only pushes
+  as a spawner is put and deleted, Find by name and serial), and that no token
+  or password reached a log. The same
   channel without ModernUO:
   `dotnet run --project tools\editor_shard\bridge\tests\AdminChannel.Tests.csproj`.
 - **admin-tab** drives the GUO editor's Admin tab against this instance, in a
   scratch workspace (`build\admin_tab\workspace`): the run bar starts the
   instance with the admin token, the tab connects and reads Health, Save now
   saves, Restart saves and has the run bar stop and start the server, and the
-  tab reconnects. Then it checks that no token or password reached the editor
-  output, the tab's log, the server console or the audit log. It stops a
-  running `start` first. `--windowed` saves stills of the tab under
+  tab reconnects; the god view watches Felucca again, shows a spawner put
+  through the bridge with its horses, finds it, hides NPCs with the filter
+  and drops it on delete. Then it checks that every time in the tab's log is
+  UTC with a Z, and that no token or password reached the editor output, the
+  tab's log, the server console or the audit log. It stops a
+  running `start` first. `--windowed` saves stills of the tab and a clip under
   `build\admin_tab`.
 - **stop** ends only the process `start` recorded, and only if its executable
   is the copy's. It cannot stop the shared shard.

@@ -10,9 +10,11 @@ using Godot;
 using GUO.Workspace;
 
 /// <summary>
-/// The Admin tab's scripted run (AD1): the run bar starts the private shard named on the command line, the tab
-/// connects on the admin channel, reads Health, saves, restarts through the run bar and reads Health again; then
-/// the run bar stops the server. tools/editor_shard/run.py admin-tab starts it, in a scratch workspace.
+/// The Admin tab's scripted run (AD1, AD2a): the run bar starts the private shard named on the command line, the tab
+/// connects on the admin channel, reads Health, saves, restarts through the run bar and reads Health again. Then the
+/// god view: it watches the facet again after the restart, a spawner put through the bridge arrives in a change-only
+/// push with the creatures it spawned, Find finds it, a filter hides the NPCs, and its delete removes it and them.
+/// Last the run bar stops the server. tools/editor_shard/run.py admin-tab starts it, in a scratch workspace.
 /// </summary>
 public partial class EditorSmoke
 {
@@ -27,6 +29,12 @@ public partial class EditorSmoke
     private int _adminFrames;
     private int _adminMark, _adminShotFrames = -1;
     private string _adminShot;
+    private int _godFullBefore, _godFullAtPut, _godPushesBefore;
+    private Guid _godSpawner;
+    private uint _godSpawnerSerial;
+
+    // The god view's test spawner: three horses west of Britain on Felucca, where the live-objects smoke puts its own.
+    private const string GodSpawnerName = "GUO Horse";
 
     private void StepAdmin()
     {
@@ -91,6 +99,7 @@ public partial class EditorSmoke
                     _admin["status_first"] = Plain(v.LastStatus);
                     _admin["plain_words"] = v.PlainText;
                     _admin["restart_enabled"] = v.RestartBlocker() == null;
+                    _godFullBefore = v.GodView.FullReplies;
                     AdminShot("connected");
                     AdminNext(122);
                     // The status Save now asks for afterwards is the one after this mark.
@@ -122,11 +131,111 @@ public partial class EditorSmoke
                     _admin["status_after_restart"] = Plain(v.LastStatus);
                     _admin["managed_after_restart"] = run.SelectedManaged;
                     AdminShot("restarted");
-                    AdminNext(124);
+                    AdminNext(125);
                 }
                 else AdminTimeout("the server did not come back after Restart");
 
                 break;
+
+            case 125:
+                // The god view watched the facet again by itself once the restarted server gave the channel back.
+                if (v.GodView.FullReplies > _godFullBefore && v.GodView.Rows.Count > 0)
+                {
+                    GodViewPanel g = v.GodView;
+                    _admin["godview_resubscribed"] = true;
+                    _admin["godview_first"] = new Dictionary<string, object>
+                    {
+                        ["facet"] = g.FacetName(g.Facet), ["rows"] = g.Rows.Count, ["status"] = g.StatusText,
+                        ["players"] = g.Rows.Values.Count(r => (string)r["kind"] == "player"),
+                        ["npcs"] = g.Rows.Values.Count(r => (string)r["kind"] == "npc"),
+                        ["spawners"] = g.Rows.Values.Count(r => (string)r["kind"] == "spawner"),
+                    };
+                    _godPushesBefore = g.Pushes;
+                    _godFullAtPut = g.FullReplies;
+                    _godSpawner = Guid.NewGuid();
+                    g.Send(new JsonObject
+                    {
+                        ["op"] = "object", ["action"] = "put", ["kind"] = "spawner",
+                        ["object"] = new JsonObject
+                        {
+                            ["id"] = _godSpawner.ToString(), ["map"] = "Felucca", ["x"] = LiveSpawnerX, ["y"] = LiveSpawnerY, ["z"] = 0,
+                            ["count"] = 3, ["home_range"] = 4, ["entries"] = new JsonArray(new JsonObject { ["name"] = "Horse", ["max"] = 3 }),
+                        },
+                    });
+                    AdminShot("godview");
+                    AdminNext(126);
+                }
+                else AdminTimeout("the god view did not show the facet after the restart");
+
+                break;
+
+            case 126:
+            {
+                // The spawner and its horses arrive in a push, not in a new full list.
+                GodViewPanel g = v.GodView;
+                JsonObject spawner = g.Rows.Values.FirstOrDefault(r => (string)r["kind"] == "spawner" && (string)r["name"] == GodSpawnerName
+                    && (int)r["x"] == LiveSpawnerX && (int)r["y"] == LiveSpawnerY);
+                int horses = spawner == null ? 0 : g.Rows.Values.Count(r => (uint?)r["spawner"] == (uint)spawner["serial"]);
+                if (spawner != null && horses > 0 && g.Pushes > _godPushesBefore)
+                {
+                    _godSpawnerSerial = (uint)spawner["serial"];
+                    _admin["godview_push"] = new Dictionary<string, object>
+                    {
+                        ["pushes"] = g.Pushes - _godPushesBefore, ["full_lists"] = g.FullReplies - _godFullAtPut,
+                        ["last_push_rows"] = g.LastPushUpserts, ["rows"] = g.Rows.Count, ["horses"] = horses,
+                        ["spawner"] = spawner.ToJsonString(),
+                    };
+                    g.Select(_godSpawnerSerial);
+                    _admin["godview_details"] = g.DetailsText;
+                    g.Find(GodSpawnerName);
+                    AdminShot("spawner");
+                    AdminNext(127);
+                }
+                else AdminTimeout("the spawner put through the bridge never reached the god view with its creatures");
+
+                break;
+            }
+
+            case 127:
+            {
+                GodViewPanel g = v.GodView;
+                if (g.LastFind is { } found && (string)found["text"] == GodSpawnerName)
+                {
+                    _admin["godview_find"] = found.ToJsonString();
+                    _admin["godview_found"] = found["matches"] is JsonArray m && m.Any(x => (uint)x["serial"] == _godSpawnerSerial && (int)x["facet"] == 0);
+                    g.SetFilter("npc", false);
+                    _admin["godview_filter_status"] = g.StatusText;
+                    _admin["godview_filtered"] = !g.ShowNpcs && g.StatusText.Contains("hiding NPCs");
+                    AdminShot("filtered");
+                    AdminNext(128);
+                }
+                else AdminTimeout("Find never answered");
+
+                break;
+            }
+
+            case 128:
+            {
+                GodViewPanel g = v.GodView;
+                if (_admin.ContainsKey("godview_deleted_sent"))
+                {
+                    if (!g.Rows.ContainsKey(_godSpawnerSerial) && !g.Rows.Values.Any(r => (uint?)r["spawner"] == _godSpawnerSerial))
+                    {
+                        _admin["godview_removed"] = true;
+                        _admin["godview_rows_end"] = g.Rows.Count;
+                        AdminNext(124);
+                    }
+                    else AdminTimeout("the deleted spawner and its creatures never left the god view");
+                }
+                else
+                {
+                    g.SetFilter("npc", true);
+                    g.Send(new JsonObject { ["op"] = "object", ["action"] = "delete", ["kind"] = "spawner", ["id"] = _godSpawner.ToString() });
+                    _admin["godview_deleted_sent"] = true;
+                }
+
+                break;
+            }
 
             case 124:
                 run.StopSelectedNow();
@@ -210,6 +319,10 @@ public partial class EditorSmoke
         Check("started_by_run_bar", "the run bar started the server");
         Check("restart_enabled", "Restart is on for a server the run bar started");
         Check("managed_after_restart", "the run bar still manages the server after Restart");
+        Check("godview_resubscribed", "the god view watched the facet again after the restart");
+        Check("godview_found", "Find found the new spawner on Felucca");
+        Check("godview_filtered", "the NPCs filter hid the NPCs and the status line says so");
+        Check("godview_removed", "the deleted spawner and its creatures left the god view");
         Check("stopped", "the run bar stopped the server at the end");
         _admin["ok"] = _failures.Count == 0;
         _report["admin"] = _admin;

@@ -6,6 +6,14 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 ## Unreleased
 
 ### Editor
+- The Admin tab has a **god view**: every player, NPC and spawner on a facet,
+  drawn over the facet's radar map and kept up to date as they move, spawn and
+  die. Filters show or hide players, NPCs and spawners; **Find** searches
+  every facet by name or serial and centres the map on a result. Selecting a
+  spawner shows what it spawns and how many, and lines to its creatures. It
+  needs the GameMaster level of the admin token. Every time in the tab is now
+  UTC, written with a Z. The shard's `run.sh` (Linux, Steam Deck) hands the
+  bridge its admin token as `run.bat` does.
 - The editor has an **Admin** tab for a server you run on this computer: its
   health (uptime, players online, items, mobiles, memory, last save) in
   numbers and in plain words, **Save now**, and **Restart**, which saves first

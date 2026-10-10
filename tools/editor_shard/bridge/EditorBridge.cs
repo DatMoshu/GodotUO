@@ -19,6 +19,8 @@
 //   5. Admin ops (AdminChannel.cs, ADR-0035) run only for a connection whose
 //      hello carried the server's admin token, each at a stated access level,
 //      and each is written to the admin audit log.
+//      The Admin tab's god view (GodView.cs) is one: every player, NPC and
+//      spawner on a facet, pushed to the tab as they change.
 //
 // Live edits are held in memory. The world project (the editor's files) is the
 // source of truth; tools/world export + a restart make them permanent.
@@ -475,6 +477,8 @@ public static class EditorBridge
                 _editors.Remove(conn);
             }
 
+            // Its god view subscription ends with it (GodView is game-thread only).
+            Core.LoopContext.Post(() => GodView.Forget(conn));
             client.Close();
             Log.Information("GUO editor bridge: editor '{0}' left", conn.Name);
         }
@@ -790,7 +794,8 @@ public static class EditorBridge
                                 ["can_equip"] = canEquip, ["check_equip"] = checkEquip, ["moved_to_pack"] = moved };
     }
 
-    // {"op":"admin_whoami"} / {"op":"admin_audit","count":50} / {"op":"admin_status"} / {"op":"admin_save"},
+    // {"op":"admin_whoami"} / {"op":"admin_audit","count":50} / {"op":"admin_status"} / {"op":"admin_save"} /
+    // {"op":"admin_godview","facet":0} / {"op":"admin_godview_find","text":".."} (GodView.cs),
     // each with an optional "req" echoed back.
     // Authorised against the level the hello's token granted, run, and audited
     // (ADR-0035). Each later AD story adds its ops here and in AdminChannel.Ops.
@@ -825,6 +830,13 @@ public static class EditorBridge
                 break;
             case "admin_audit":
                 reply["entries"] = _admin.Audit.Recent(Math.Clamp((int?)msg["count"] ?? 50, 1, AuditLog.Keep));
+                break;
+            case "admin_godview":
+                // The reply holds the whole facet; pushes follow on GodView's timer while the editor watches.
+                GodView.Request(from, msg, reply, from.Send);
+                break;
+            case "admin_godview_find":
+                GodView.Find(msg, reply);
                 break;
         }
 

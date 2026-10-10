@@ -14,8 +14,12 @@ and checks, in order:
 5. the Health ops (AD1): `admin_status` answers every number the tab shows,
    `admin_save` writes the world and moves "last save", and neither runs
    without the token;
-6. a connection is closed after three refused tokens;
-7. neither the token nor a password reaches the shard log or the audit log.
+6. the god view (AD2a): `admin_godview` answers a whole facet and then pushes
+   only what changed (a spawner put through the bridge, its creatures, its
+   delete), `admin_godview_find` finds on every facet, an unknown facet is
+   refused, and neither runs without the token;
+7. a connection is closed after three refused tokens;
+8. neither the token nor a password reaches the shard log or the audit log.
 
 Prints one line per check and exits 0 when all pass. The token is read from
 the configuration and never printed.
@@ -25,6 +29,8 @@ from __future__ import annotations
 
 import json
 import socket
+import time
+import uuid
 from pathlib import Path
 
 
@@ -52,6 +58,23 @@ class Bridge:
     def ask(self, msg: dict) -> dict | None:
         self.send(msg)
         return self.reply(msg["op"])
+
+    def until(self, op: str, want, seconds: float) -> list[dict]:
+        """Messages with this op until one satisfies want (or the time is up); all of them, in order."""
+        seen: list[dict] = []
+        end = time.monotonic() + seconds
+        while time.monotonic() < end:
+            self.sock.settimeout(max(0.1, end - time.monotonic()))
+            try:
+                msg = self.reply(op)
+            except (socket.timeout, TimeoutError):
+                break
+            if msg is None:
+                break
+            seen.append(msg)
+            if want(msg):
+                break
+        return seen
 
     def close(self) -> None:
         try:
@@ -140,6 +163,70 @@ def run(port: int, token: str, shard_home: Path, secrets: list[str]) -> int:
     audit = b.ask({"op": "admin_audit", "count": 10, "req": 11})
     check(any(e.get("op") == "admin_save" and e.get("ok") is True and e["args"].get("reason") == "admin-check"
               for e in (audit or {}).get("entries") or []), "the save is in the audit log, with its reason")
+    b.close()
+
+    # AD2a: the god view.
+    b = Bridge(port)
+    b.ask({"op": "hello", "editor": "admin-check plain"})
+    gv = b.ask({"op": "admin_godview", "facet": 0, "req": 12})
+    check(gv is not None and gv.get("ok") is False and "admin token" in gv.get("error", ""),
+          "admin_godview without the token is refused")
+    b.close()
+
+    b = Bridge(port, timeout=30.0)
+    b.ask({"op": "hello", "editor": "admin-check", "admin_token": token})
+    gv = b.ask({"op": "admin_godview", "facet": 0, "req": 13})
+    rows = (gv or {}).get("upsert") or []
+    kinds = {k: [r for r in rows if r.get("kind") == k] for k in ("player", "npc", "spawner")}
+    names = [f.get("name") for f in (gv or {}).get("facets") or []]
+    whole = gv is not None and not gv["truncated"]["mobiles"] and not gv["truncated"]["spawners"]
+    check(gv is not None and gv.get("ok") is True and gv.get("req") == 13 and gv.get("full") is True and gv.get("seq") == 1
+          and "Felucca" in names and (not whole or len(rows) == gv["players"] + gv["npcs"] + gv["spawners"])
+          and all({"serial", "kind", "name", "x", "y", "z"} <= set(r) for r in rows),
+          f"admin_godview answers the whole facet: {gv and gv.get('players')} players, {gv and gv.get('npcs')} NPCs, "
+          f"{gv and gv.get('spawners')} spawners on {names[:1]} of {len(names)} facets")
+    check(all({"running", "count", "spawned", "entries"} <= set(r) for r in kinds["spawner"])
+          and all({"body", "hits", "maxHits", "notoriety"} <= set(r) for r in kinds["npc"] + kinds["player"]),
+          f"spawner rows say what they spawn and how many ({len(kinds['spawner'])}); mobile rows carry body, hits and notoriety")
+    gid = str(uuid.uuid4())
+    b.send({"op": "object", "action": "put", "kind": "spawner", "object": {
+        "id": gid, "map": "Felucca", "x": 1162, "y": 1669, "z": 0, "count": 3, "home_range": 4,
+        "entries": [{"name": "Horse", "max": 3}]}})
+
+    def spawner_in(msg: dict) -> dict | None:
+        return next((r for r in msg.get("upsert") or [] if r.get("kind") == "spawner" and r.get("name") == "GUO Horse"
+                     and r.get("x") == 1162 and r.get("y") == 1669), None)
+
+    pushes = b.until("admin_godview", lambda m: spawner_in(m) is not None, 15)
+    hit = next((m for m in pushes if spawner_in(m)), None)
+    spawner = spawner_in(hit) if hit else {}
+    horses = [r for m in pushes for r in m.get("upsert") or [] if r.get("spawner") == spawner.get("serial")]
+    check(hit is not None and hit.get("full") is False and "req" not in hit and all(m.get("full") is False for m in pushes)
+          and [m.get("seq") for m in pushes] == list(range(2, 2 + len(pushes))) and len(hit["upsert"]) < len(rows) + 4,
+          f"a spawner put through the bridge arrives in a change-only push (seq {hit and hit.get('seq')}, "
+          f"{hit and len(hit['upsert'])} rows, not {len(rows)})")
+    slowest = max([m.get("ms") or 0 for m in pushes] or [0])
+    check(gv is not None and (gv.get("ms") or 0) < 1000 and pushes and slowest < 50,
+          f"the game thread spends {gv and gv.get('ms')} ms on the whole facet and at most {slowest} ms on a push "
+          f"(thresholds 1000 and 50 ms)")
+    check(len(horses) >= 1 and spawner.get("count") == 3 and spawner.get("entries", [{}])[0].get("name") == "Horse",
+          f"with the horses it spawned ({len(horses)}, {spawner.get('spawned')}/{spawner.get('count')})")
+    found = b.ask({"op": "admin_godview_find", "text": "GUO Horse", "req": 14})
+    check(found is not None and found.get("ok") is True
+          and any(m.get("serial") == spawner.get("serial") and m.get("facet") == 0 for m in found.get("matches") or []),
+          f"admin_godview_find finds it on Felucca ({found and len(found.get('matches') or [])} matches)")
+    by_serial = b.ask({"op": "admin_godview_find", "text": hex(spawner.get("serial") or 0), "req": 15})
+    check(by_serial is not None and [m.get("serial") for m in by_serial.get("matches") or []] == [spawner.get("serial")],
+          "and by its serial, as 0x...")
+    b.send({"op": "object", "action": "delete", "kind": "spawner", "id": gid})
+    gone = b.until("admin_godview", lambda m: spawner.get("serial") in (m.get("removed") or []), 15)
+    removed = {s for m in gone for s in m.get("removed") or []}
+    check(spawner.get("serial") in removed and all(h["serial"] in removed for h in horses),
+          f"its delete arrives as removed serials, the spawner and its horses ({len(removed)})")
+    bad = b.ask({"op": "admin_godview", "facet": 99, "req": 16})
+    check(bad is not None and bad.get("ok") is False and "no facet" in bad.get("error", ""), "an unknown facet is refused")
+    stop = b.ask({"op": "admin_godview", "watch": False, "req": 17})
+    check(stop is not None and stop.get("ok") is True and stop.get("watching") is False, "watch false ends the pushes")
     b.close()
 
     b = Bridge(port, timeout=20.0)

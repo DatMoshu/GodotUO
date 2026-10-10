@@ -1,4 +1,4 @@
-"""The Admin tab, driven in a real editor against the private instance (sprint "Admin tab", AD1).
+"""The Admin tab, driven in a real editor against the private instance (sprint "Admin tab", AD1, AD2a).
 
     python tools/editor_shard/run.py admin-tab [--windowed]
 
@@ -13,11 +13,16 @@ not touched) with the addon's scripted Admin run (EditorSmokeAdmin.cs). In it:
 3. Save now writes the world, and Health shows the new last save;
 4. Restart saves, the run bar stops and starts the server, and the tab
    reconnects by itself and reads Health again (a fresh uptime);
-5. the run bar stops the server.
+5. the god view watches the facet again after the restart; a spawner put
+   through the bridge arrives in a change-only push with the horses it
+   spawned; Find finds it on Felucca; the NPCs filter hides the NPCs; its
+   delete removes it and them;
+6. the run bar stops the server.
 
-Then it checks that neither the token nor a password reached the editor's
-output, the tab's log, the server's console or the audit log. --windowed opens
-a window (it takes no focus), saves a still of the tab at steps 2-4 and, with
+Then it checks that every time in the tab's log is UTC with a Z, and that
+neither the token nor a password reached the editor's output, the tab's log,
+the server's console or the audit log. --windowed opens
+a window (it takes no focus), saves a still of the tab at steps 2-5 and, with
 ffmpeg on PATH, a clip of the run from four editor frames a second.
 Prints one line per check; exit 0 when all pass.
 """
@@ -25,6 +30,7 @@ Prints one line per check; exit 0 when all pass.
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 import time
@@ -33,6 +39,9 @@ from pathlib import Path
 from guo.process import build_child_env, no_activate
 
 TIMEOUT_S = 900
+# The story the evidence is filed under (rule: evidence_naming.md).
+STORY = "AD2a"
+STILLS = ("connected", "saved", "restarted", "godview", "spawner", "filtered")
 
 
 def run(cfg, shard_home: Path, token: str, secrets: list[str], windowed: bool, stamp: str) -> int:
@@ -58,7 +67,7 @@ def run(cfg, shard_home: Path, token: str, secrets: list[str], windowed: bool, s
     env["UO_WORKSPACE_DIR"] = str(workspace)
     env["GUO_EDITOR_SCRIPTED"] = "1"
     # A neutral editor name: the audit log and the stills show it, never the user's.
-    env["UO_EDITOR_NAME"] = "AD1 check"
+    env["UO_EDITOR_NAME"] = "Admin tab check"
     # The scratch workspace has no secrets file: the token reaches the editor as the environment setting it resolves first.
     env["UO_BRIDGE_ADMIN_TOKEN"] = token
     project_godot = project / "project.godot"
@@ -111,7 +120,31 @@ def run(cfg, shard_home: Path, token: str, secrets: list[str], windowed: bool, s
           and admin.get("managed_after_restart"),
           f"Restart: saved, stopped and started by the run bar, reconnected after {restart_s} s, "
           f"uptime {after_restart.get('uptime_s')} s, still managed")
+    first_view = admin.get("godview_first") or {}
+    check(admin.get("godview_resubscribed") and (first_view.get("rows") or 0) > 0,
+          f"the god view watched {first_view.get('facet')} again after the restart: {first_view.get('players')} players, "
+          f"{first_view.get('npcs')} NPCs, {first_view.get('spawners')} spawners")
+    push = admin.get("godview_push") or {}
+    spawner = json.loads(push["spawner"]) if push.get("spawner") else {}
+    check(push.get("full_lists") == 0 and (push.get("pushes") or 0) >= 1 and (push.get("horses") or 0) >= 1
+          and 0 < (push.get("last_push_rows") or 0) < (push.get("rows") or 0) and spawner.get("count") == 3,
+          f"a spawner put through the bridge arrived in {push.get('pushes')} change-only push(es) (last one {push.get('last_push_rows')} "
+          f"of {push.get('rows')} rows, no new full list) with {push.get('horses')} horses, "
+          f"{spawner.get('spawned')}/{spawner.get('count')} spawned")
+    details = admin.get("godview_details") or ""
+    check("Spawner" in details and "Horse" in details and "spawned" in details,
+          "selecting the spawner shows what it spawns and how many, in plain words")
+    check(admin.get("godview_found"), "Find found the spawner on Felucca (searched every facet)")
+    check(admin.get("godview_filtered"), f"the NPCs filter hid the NPCs: \"{admin.get('godview_filter_status')}\"")
+    check(admin.get("godview_removed"), "deleting the spawner removed it and its horses from the god view")
     check(admin.get("stopped"), "the run bar stopped the server at the end")
+
+    # One clock in the tab: every log line and every audit time it shows is UTC, with a Z.
+    tab_log = str(admin.get("log") or "")
+    lines = [ln for ln in tab_log.splitlines() if ln.strip()]
+    stamped = [ln for ln in lines if re.match(r"^\d\d:\d\d:\d\dZ ", ln)]
+    check(lines and len(stamped) == len(lines) and " UTC" not in tab_log,
+          f"the tab's log shows one clock, UTC with a Z ({len(stamped)}/{len(lines)} lines)")
 
     texts = [log_path.read_text(encoding="utf-8", errors="replace") if log_path.is_file() else "",
              str(admin.get("log") or "")]
@@ -123,17 +156,17 @@ def run(cfg, shard_home: Path, token: str, secrets: list[str], windowed: bool, s
                       f"({len([s for s in [token, *secrets] if s])} secrets, {len(texts)} files)")
 
     # The stills, under the evidence naming rule.
-    for name in ("connected", "saved", "restarted"):
+    for name in STILLS:
         shot = out / f"admin_{name}.png"
         if shot.is_file():
-            named = out / f"guo_AD1_admintab-{name}_still_{stamp}.png"
+            named = out / f"guo_{STORY}_admintab-{name}_still_{stamp}.png"
             shot.replace(named)
             print(f"[admin-tab] still: {named}")
 
     # The whole windowed run as one clip, from the frames the editor kept (four a second).
     frames = out / "clip_frames"
     if frames.is_dir() and any(frames.glob("f_*.png")) and shutil.which("ffmpeg"):
-        clip = out / f"guo_AD1_admintab_clip_{stamp}.mp4"
+        clip = out / f"guo_{STORY}_admintab_clip_{stamp}.mp4"
         subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-framerate", "4", "-i", str(frames / "f_%04d.png"),
                         "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2", "-c:v", "libx264", "-pix_fmt", "yuv420p", str(clip)],
                        check=False, **no_activate())
