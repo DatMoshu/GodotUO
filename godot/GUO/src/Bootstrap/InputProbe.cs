@@ -3444,7 +3444,7 @@ internal static class InputProbe
     /// -5,-5, record both on the profile -- so the profile is saved with the
     /// option on and a later play.bat run comes up full size.
     /// </remarks>
-    private static void FullSizeGameWindow()
+    internal static void FullSizeGameWindow()
     {
         Configuration.Profile profile = Configuration.ProfileManager.CurrentProfile;
         Game.UI.Gumps.WorldViewportGump viewport =

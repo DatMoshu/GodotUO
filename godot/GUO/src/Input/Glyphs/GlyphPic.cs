@@ -21,8 +21,8 @@ namespace GUO.Input.Glyphs
         {
             (PadAction.Confirm, "Click at the pointer"),
             (PadAction.Cancel, "Cancel (Escape)"),
-            (PadAction.WindowMenu, "Window menu (touch screens)"),
-            (PadAction.Y, "Macro row (touch screens)"),
+            (PadAction.WindowMenu, "Attack last (the window menu on touch screens)"),
+            (PadAction.Y, "Macro row"),
             (PadAction.Walk, "Walk (or the left stick)"),
             (PadAction.Pointer, "Move the pointer"),
             (PadAction.Back, "Side panel, open or closed (one screen)"),

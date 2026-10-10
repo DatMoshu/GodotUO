@@ -327,7 +327,8 @@ namespace GUO.Input.Touch
             GumpPresentation.FitPaperdolls();
             Covered = GumpPresentation.FullHeightOpen() || Modern.ModernGump.IsOpen
                 || (Platform.Android.AdaptiveLayout.Active && !Platform.Android.AdaptiveLayout.MacrosOpen);
-            Visible = !GUO.Game.Managers.ScreenSaver.Active && !Covered && !Renderer.CleanShots.Hidden;
+            Visible = !GUO.Game.Managers.ScreenSaver.Active && !Covered && !Renderer.CleanShots.Hidden
+                && GUO.Input.InputMode.Current != GUO.Input.InputKind.Gamepad;
 
             if (!Shown)
             {

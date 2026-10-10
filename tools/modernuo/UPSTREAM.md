@@ -34,6 +34,8 @@ is retired (as `0004-multi-tile-enumerator` was).
 | 0003 | Felucca in spring | **ours** | none |
 | MV1 | Owner promotion needs the owner password | **ours**, part of 0001 since SF2 | none |
 | 0004 | Multi tile enumerator | **upstreamed**, retired | reported #2682, fixed in #2685 |
+| 0004-pad | Controller probe dummies | **ours** | none |
+| 0005-pad | Record controller probe attacks | **ours**, depends on 0004-pad | none |
 | 0005 | System message hook | **ours** | none |
 | issue | `MultiData.LoadUOP` and uncompressed entries | **upstream** (issue, no patch) | `upstream/issue-multidata-loaduop-uncompressed.md` |
 
@@ -126,6 +128,16 @@ guard.
 Tile lookups stopped at a multi with no tile at the point. Reported as
 modernuo/ModernUO#2682, fixed upstream in #2685 (`d4531cd94`); the pin moved
 there and the patch was deleted.
+
+### Controller probe dummies and attack recording
+
+GUO patches: `patches/0004-guo-pad-dummies.patch` and
+`patches/0005-guo-pad-attack-record.patch`, contributed with the controller
+work in PR #18. **Verdict: ours.** The deterministic dummies and `GUO_PAD`
+journal lines support the local injected-input probe. The attack packet
+hook requires the dummy patch's `GuoAttackDummy.RecordAttack` method.
+Apply full filenames in order; the pad attack hook and the separate
+`0005-system-message-hook.patch` both remain in the bundle.
 
 ### 0005: system message hook
 

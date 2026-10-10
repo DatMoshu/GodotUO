@@ -191,9 +191,11 @@ def test_guo_dev_pin_is_the_shared_pin():
     assert ref and good()["server"]["source"]["ref"] == ref
 
 
-def test_guo_dev_names_every_patch():
+@pytest.mark.parametrize("profile", [GUO, VPS])
+def test_guo_profiles_name_every_patch(profile):
     on_disk = sorted(p.name for p in (REPO / "tools" / "modernuo" / "patches").glob("*.patch"))
-    assert sorted(Path(p).name for p in good()["server"]["patches"]) == on_disk
+    data = json.loads(profile.read_text(encoding="utf-8"))
+    assert sorted(Path(p).name for p in data["server"]["patches"]) == on_disk
 
 
 # ------------------------------------------------------------ plans
@@ -497,8 +499,11 @@ def _sandbox_helper(tmp_path: Path, keep: int):
     stub.write_bytes(b'#!/usr/bin/env bash\nwhile [ $# -gt 0 ]; do if [ "$1" = -cf ]; then echo snap > "$2"; exit 0; fi; shift; done\nexit 1\n')
     stub.chmod(0o755)
     helper = tmp_path / "muo-backup.sh"
+    # Compute PATH inside Bash. A Windows drive letter/semicolon PATH can be
+    # translated incorrectly by Git Bash and silently select the real tar.
+    text = text.replace("set -euo pipefail\n", 'set -euo pipefail\nexport PATH="$(cd -- "$(dirname -- "$0")/bin" && pwd):$PATH"\n', 1)
     helper.write_bytes(text.encode("utf-8"))
-    return helper, tmp_path / "bk", {**os.environ, "PATH": f"{(tmp_path / 'bin').as_posix()}{os.pathsep}{os.environ['PATH']}"}
+    return helper, tmp_path / "bk", dict(os.environ)
 
 
 @pytest.mark.skipif(not shutil.which("bash"), reason="needs bash")
