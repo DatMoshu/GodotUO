@@ -862,6 +862,23 @@ file of the same shape in `--ranges` / `UO_DATA_RANGES`):
   1 shown / 0 hidden, `uint32 0`) and `multi.idx` is grown to hold the id. The
   `multi` pack's range is 0x3F00-0x3FFF.
 
+**SpriteMotion transfer artifacts** (`uopack from-job <artifact> --out <folder> --body N [--item ID]`,
+`tools/uopack/jobimport.py`). GUO reads SpriteMotion's export by its documented contract (SpriteMotion
+`docs/transfer-artifact.md`) and vendors none of its code. Read only; every check runs before `--out` is written.
+
+| Manifest field | GUO reads it as |
+|---|---|
+| `schema`, `schema_version` | Must be `spritemotion.transfer-artifact` and `1`; anything else is refused, naming the version |
+| `pixels.canvas`, `.anchor` | Must be 256 x 256 and (128, 192) |
+| `pixels.alpha` | `binary` and `straight` as they are; `premultiplied` un-premultiplied. Alpha < 128 is transparent in `pack` |
+| `pixels.quantization` | Recorded only. Frames are written RGBA; `pack` quantizes a group over 256 colours (one quantizer) |
+| `animation.mirror_map` | Must be `{"5": 3, "6": 2, "7": 1}`; only stored directions 0-4 are written |
+| `animation.coverage` | `preview` refused unless `--allow-preview`; `current-action` and `full` taken |
+| `animation.actions[]` | Each must list directions 0-4 and fit the body's `anim.idx` slot (22, 13 or 35 actions) |
+| `frames[]` | One uopack frame each: `png` (relative, inside, sha256 checked), PNG size = crop, `center_x = 128 - left`, `center_y = 192 - bottom`, a stated `centre` must agree; `empty` gives a 0 x 0 frame |
+| `equipment.item_art`, `.tiledata`, `.layer` | With `--item`: static art + `tiledata_write` (`anim` = `--body`), or a `tiledata-item` without art |
+| `identity`, `acceptance`, `provenance`, `equipment.paperdoll` | Copied into `uopack.json` with the manifest's sha256 |
+
 ---
 
 ## 15. Client data sources and the custom-data manifest (ADR-0021)
