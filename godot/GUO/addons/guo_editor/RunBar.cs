@@ -113,7 +113,7 @@ public partial class RunBar : HBoxContainer
         }
         finally { _busy = false; _generation++; Poll(); }
     }
-    public void StartClientsNow() => Run(StartClients);
+    public void StartClientsNow() => Run(() => StartClients(_count));
 
     public override void _Ready()
     {
