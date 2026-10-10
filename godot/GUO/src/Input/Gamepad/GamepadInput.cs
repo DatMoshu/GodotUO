@@ -340,12 +340,6 @@ namespace GUO.Input.Gamepad
                 return;
             }
 
-            // Generic focus-graph over a classic server/client gump (G1).
-            if (PadGumpNav.HandleButton(e.ButtonIndex, e.Pressed))
-            {
-                return;
-            }
-
             // A full-screen window takes the D-pad: move in its list or grid, not walk.
             if (PadScreen.IsOpen && e.ButtonIndex is JoyButton.DpadUp or JoyButton.DpadDown or JoyButton.DpadLeft or JoyButton.DpadRight)
             {
@@ -398,8 +392,22 @@ namespace GUO.Input.Gamepad
             // bound to none still walks if it is the D-pad.
             if (PadBindings.CommandFor(input) is PadCommand command)
             {
+                if (e.Pressed && PadGumpNav.HandleCommand(command))
+                {
+                    // The gump can disappear on the press. Its release must not
+                    // become a world click/Escape or a newly exposed gump action.
+                    _swallow.Add(input.Id);
+                    return;
+                }
+
                 Dispatch(command, e.Pressed);
 
+                return;
+            }
+
+            if (PadGumpNav.HandleButton(printed.Value, e.Pressed))
+            {
+                if (e.Pressed) _swallow.Add(input.Id);
                 return;
             }
 
@@ -543,6 +551,15 @@ namespace GUO.Input.Gamepad
             {
                 switch (command)
                 {
+                    case PadCommand.AttackLast:
+                        if (PadScreen.HasItemActions) PadScreen.Drop();
+                        break;
+                    case PadCommand.MacroRow:
+                        if (PadScreen.HasItemActions) PadScreen.Equip();
+                        break;
+                    case PadCommand.Drawer:
+                        if (PadScreen.HasItemActions) PadScreen.Context();
+                        break;
                     case PadCommand.TargetLast: PadScreen.Page(-1); break;
                     case PadCommand.NextHostile: PadScreen.Page(1); break;
                 }
@@ -553,16 +570,6 @@ namespace GUO.Input.Gamepad
             switch (command)
             {
                 case PadCommand.AttackLast:
-                    if (PadScreen.IsOpen)
-                    {
-                        if (pressed && PadScreen.HasItemActions)
-                        {
-                            PadScreen.Drop();
-                        }
-
-                        return;
-                    }
-
                     if (PadRadar.IsOpen)
                     {
                         if (Client.Game?.UO?.World?.Player?.InWarMode == true)
@@ -632,16 +639,6 @@ namespace GUO.Input.Gamepad
                     return;
 
                 case PadCommand.MacroRow:
-                    if (PadScreen.IsOpen)
-                    {
-                        if (pressed && PadScreen.HasItemActions)
-                        {
-                            PadScreen.Equip();
-                        }
-
-                        return;
-                    }
-
                     if (PadRadar.IsOpen)
                     {
                         PadRadar.Context();
@@ -678,16 +675,6 @@ namespace GUO.Input.Gamepad
                     return;
 
                 case PadCommand.Drawer:
-                    if (PadScreen.IsOpen)
-                    {
-                        if (pressed && PadScreen.HasItemActions)
-                        {
-                            PadScreen.Context();
-                        }
-
-                        return;
-                    }
-
                     // The one-screen drawer: a no-op with a second screen, or with the panel off.
                     GUO.Platform.Android.DualScreen.ToggleDrawer();
 
@@ -747,6 +734,12 @@ namespace GUO.Input.Gamepad
 
             if (PadBindings.CommandFor(input) is PadCommand command)
             {
+                if (now && PadGumpNav.HandleCommand(command))
+                {
+                    _swallow.Add(input.Id);
+                    return;
+                }
+
                 Dispatch(command, now);
             }
         }

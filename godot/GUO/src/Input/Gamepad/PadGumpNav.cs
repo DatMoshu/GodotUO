@@ -24,7 +24,6 @@ namespace GUO.Input.Gamepad
         private static readonly List<GumpControl> _focus = new();
         private static int _index;
         private static Gump _gump;
-        private static int _sig = int.MinValue;
 
         public static bool IsActive =>
             InputMode.Current == InputKind.Gamepad
@@ -80,17 +79,6 @@ namespace GUO.Input.Gamepad
                 return false;
             }
 
-            if (_focus.Count == 0)
-            {
-                if (button == Godot.JoyButton.B)
-                {
-                    TryClose();
-                    return true;
-                }
-
-                return false;
-            }
-
             switch (button)
             {
                 case Godot.JoyButton.DpadUp:
@@ -105,21 +93,32 @@ namespace GUO.Input.Gamepad
                 case Godot.JoyButton.DpadRight:
                     Move(1, 0);
                     return true;
-                case Godot.JoyButton.A:
-                    Activate();
-                    return true;
-                case Godot.JoyButton.B:
-                    TryClose();
-                    return true;
-                case Godot.JoyButton.LeftShoulder:
-                    NudgeScroll(-1);
-                    return true;
-                case Godot.JoyButton.RightShoulder:
-                    NudgeScroll(1);
-                    return true;
                 default:
                     return false;
             }
+        }
+
+        // Commands are resolved after layout and PadBindings, including axis bindings.
+        public static bool HandleCommand(PadCommand command)
+        {
+            if (command is not (PadCommand.Use or PadCommand.Cancel or PadCommand.TargetLast or PadCommand.NextHostile)
+                || !IsActive)
+            {
+                return false;
+            }
+
+            Refresh();
+            if (_gump == null) return false;
+
+            switch (command)
+            {
+                case PadCommand.Use: Activate(); break;
+                case PadCommand.Cancel: TryClose(); break;
+                case PadCommand.TargetLast: NudgeScroll(-1); break;
+                case PadCommand.NextHostile: NudgeScroll(1); break;
+            }
+
+            return true;
         }
 
         private static Gump TopNavigable()
@@ -128,7 +127,7 @@ namespace GUO.Input.Gamepad
             {
                 Gump g = n.Value;
 
-                if (g == null || g.IsDisposed || !g.IsVisible)
+                if (g == null || g.IsDisposed || !g.IsVisible || !g.IsEnabled)
                 {
                     continue;
                 }
@@ -172,7 +171,7 @@ namespace GUO.Input.Gamepad
 
         private static IEnumerable<GumpControl> Walk(GumpControl root)
         {
-            if (root == null)
+            if (root == null || root.IsDisposed || !root.IsVisible || !root.IsEnabled)
             {
                 yield break;
             }
@@ -181,6 +180,8 @@ namespace GUO.Input.Gamepad
 
             foreach (GumpControl child in root.Children)
             {
+                if (child.Page != 0 && child.Page != root.ActivePage) continue;
+
                 foreach (GumpControl c in Walk(child))
                 {
                     yield return c;
@@ -209,25 +210,15 @@ namespace GUO.Input.Gamepad
                 _gump = null;
                 _focus.Clear();
                 _index = 0;
-                _sig = int.MinValue;
                 return;
             }
 
-            int sig = HashCode.Combine(top.LocalSerial, top.Width, top.Height, top.Children.Count);
-
-            if (ReferenceEquals(top, _gump) && sig == _sig)
-            {
-                _focus.RemoveAll(c => c == null || c.IsDisposed);
-
-                if (_focus.Count > 0)
-                {
-                    _index = Math.Clamp(_index, 0, _focus.Count - 1);
-                    return;
-                }
-            }
-
+            // Page, nested visibility/enabled state and positions can change
+            // without changing the top-level child count. Rebuild from the same
+            // rendered tree for each navigation event, preserving the focused control.
+            GumpControl previous = ReferenceEquals(top, _gump) && _index >= 0 && _index < _focus.Count
+                ? _focus[_index] : null;
             _gump = top;
-            _sig = sig;
             _focus.Clear();
 
             foreach (GumpControl c in Walk(top))
@@ -243,7 +234,8 @@ namespace GUO.Input.Gamepad
                 int cmp = a.ScreenCoordinateY.CompareTo(b.ScreenCoordinateY);
                 return cmp != 0 ? cmp : a.ScreenCoordinateX.CompareTo(b.ScreenCoordinateX);
             });
-            _index = Math.Clamp(_index, 0, Math.Max(0, _focus.Count - 1));
+            int retained = previous == null ? -1 : _focus.IndexOf(previous);
+            _index = retained >= 0 ? retained : 0;
         }
 
         private static void Move(int dx, int dy)
@@ -335,9 +327,8 @@ namespace GUO.Input.Gamepad
                 return;
             }
 
-            _gump.Dispose();
-            _gump = null;
-            _focus.Clear();
+            _gump.InvokeMouseCloseGumpWithRClick();
+            Refresh();
         }
 
         private static void NudgeScroll(int dir)
