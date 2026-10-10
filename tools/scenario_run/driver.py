@@ -8,10 +8,13 @@ nothing within the MCP deadline: that is a hang, the program is killed and the r
 from __future__ import annotations
 
 import base64
+import importlib.util
 import json
+import re
 import time
 from pathlib import Path
 
+import settings
 import uiquery
 from events import EventLog, Stopwatch, utc_now
 from mcp_client import McpError, McpTimeout
@@ -63,6 +66,7 @@ class Runner:
         self.aborted: str | None = None
         self.exit_kind = "ok"            # ok | failed | hang | timeout
         self._run_deadline = 0.0
+        self._diff: dict = {}            # the last render_diff's counts, what `expect.render_diff` compares against
         self._last: dict = {}            # the last action's JSON result, what `expect.result` compares against
 
     # -- the run -----------------------------------------------------------------------------------------------
@@ -151,17 +155,7 @@ class Runner:
         deadline = min(self._clock() + timeout, self._run_deadline)
         try:
             self._check_program()
-            do =substitute(step["do"], self.variables)
-            expect = substitute(step.get("expect", {}), self.variables)
-            shown_expect = step.get("expect", {})       # as written: the log never holds what a $name stands for
-            # The step as written (with $names, never the secrets behind them) is what the event log records.
-            self.events.emit("action", sid, detail={"do": step["do"]})
-            detail = getattr(self, "_do_" + kind.replace(".", "_"))(sid, do, deadline)
-            self._last = detail if isinstance(detail, dict) else {}
-            self._expect(sid, expect, deadline, shown_expect)
-            if step.get("shot"):
-                self._screenshot(sid)
-            return self._finish(step, watch, True, None, detail)
+            return self._step_body(step, sid, kind, watch, deadline)
         except StepFailed as ex:
             return self._finish(step, watch, False, ex.why, ex.detail)
         except ScenarioError as ex:
@@ -183,6 +177,20 @@ class Runner:
             reason = f"step {sid}: {type(ex).__name__}: {ex}"
             self._abort_step(step, watch, reason)
             raise RunAborted(reason, "error") from ex
+
+    def _step_body(self, step: dict, sid: str, kind: str, watch: Stopwatch, deadline: float) -> dict:
+        """Performs the step's `do`, polls its `expect`, takes its still; returns the step's row. The human driver overrides this."""
+        do = substitute(step["do"], self.variables)
+        expect = substitute(step.get("expect", {}), self.variables)
+        shown_expect = step.get("expect", {})       # as written: the log never holds what a $name stands for
+        # The step as written (with $names, never the secrets behind them) is what the event log records.
+        self.events.emit("action", sid, detail={"do": step["do"]})
+        detail = getattr(self, "_do_" + kind.replace(".", "_"))(sid, do, deadline)
+        self._last = detail if isinstance(detail, dict) else {}
+        self._expect(sid, expect, deadline, shown_expect)
+        if step.get("shot"):
+            self._screenshot(sid)
+        return self._finish(step, watch, True, None, detail)
 
     def _abort_step(self, step: dict, watch: Stopwatch, reason: str) -> None:
         """The step that was running when the run ended gets its step_end and its row, as failed."""
@@ -211,12 +219,7 @@ class Runner:
             return
         end = min(self._clock() + float(expect.get("within_s", 0)), deadline)
         while True:
-            observed: dict = {}
-            ok = True
-            for name, wanted in conditions.items():
-                good, seen = self._evaluate(name, wanted)
-                observed[name] = seen
-                ok = ok and good
+            ok, observed = self._conditions_hold(conditions)
             if ok or self._clock() >= end:
                 break
             self._check_program()
@@ -225,6 +228,16 @@ class Runner:
         self.events.emit("expect", sid, ok=ok, detail={"expect": written, "observed": observed})
         if not ok:
             raise StepFailed("expectation not met", {"expect": written, "observed": observed})
+
+    def _conditions_hold(self, conditions: dict) -> tuple[bool, dict]:
+        """One look at every condition: (all hold, what each was observed to be). The AI and human drivers poll with this."""
+        observed: dict = {}
+        ok = True
+        for name, wanted in conditions.items():
+            good, seen = self._evaluate(name, wanted)
+            observed[name] = seen
+            ok = ok and good
+        return ok, observed
 
     def _evaluate(self, name: str, wanted) -> tuple[bool, object]:
         if name == "result":
@@ -247,6 +260,9 @@ class Runner:
             return scene == wanted, scene
         if name == "log.contains":
             return self._expect_log(wanted)
+        if name == "render_diff":
+            seen = self._diff.get("drawn")
+            return seen is not None and seen <= int(wanted["max_drawn_diff"]), seen
         if name == "file.exists":
             path = self._under_repo_build(wanted)
             return path.exists(), path.exists()
@@ -343,6 +359,8 @@ class Runner:
     def _launch_client(self, do: dict, deadline: float) -> dict:
         self.session.extra_args = [str(a) for a in do.get("args", [])]
         self.session.extra_settings = dict(do.get("settings", {}))
+        if any(st["do"]["kind"] == "renderdump" for st in self.scenario.steps):
+            self.session.extra_env = {"GUO_RENDER_DUMP_DIR": str(self.run_dir / "render_dump")}
         self.session.start()
         if not self.session.wait_listening(max(1.0, deadline - self._clock())):
             raise StepFailed("the client did not open its MCP port (is the build fresh and the UO data found?)")
@@ -441,6 +459,68 @@ class Runner:
             raise StepFailed("; ".join(result.get("failures", [])) or f"segment {seg} failed", detail)
         return detail
 
+    # -- the render dump kinds ---------------------------------------------------------------------------------
+
+    def _dump_name(self, do: dict) -> str:
+        name = str(do.get("name", ""))
+        if not re.fullmatch(r"[A-Za-z0-9_-]+", name):
+            raise StepFailed("name must be letters, digits, _ and - (it is a folder name and the word said after renderdump)")
+        return name
+
+    def _do_renderdump(self, sid: str, do: dict, deadline: float) -> dict:
+        self._need_game("renderdump")
+        name = self._dump_name(do)
+        target = self.run_dir / "render_dump" / name / "guo.json"
+        self._do_chat(sid, {"text": f"renderdump {name}"}, deadline)
+        while True:
+            dump = self._read_dump(target)
+            if dump is not None:
+                break
+            if self._clock() >= deadline:
+                raise StepFailed(f"no dump appeared at {self._shown(target)} within the step timeout "
+                                 "(the client needs GUO_RENDER_DUMP_DIR, which the runner sets for a scenario with a renderdump step)")
+            self._check_program()
+            self._sleep(0.5)
+        objects = sum(len(t.get("objects", [])) for t in dump.get("tiles", []))
+        detail = {"dump": self._shown(target), "bytes": target.stat().st_size, "tiles": len(dump.get("tiles", [])), "objects": objects}
+        self.events.emit("log", sid, detail=detail)
+        self.artifacts.append(f"render_dump/{name}/guo.json")
+        return detail
+
+    @staticmethod
+    def _read_dump(path: Path) -> dict | None:
+        """The dump once it is whole: a file still being written does not parse yet."""
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+
+    def _shown(self, path: Path) -> str:
+        try:
+            return path.resolve().relative_to(self.repo_root.resolve()).as_posix()
+        except ValueError:
+            return str(path)
+
+    def _do_render_diff(self, sid: str, do: dict, deadline: float) -> dict:
+        name = self._dump_name(do)
+        guo_path = self.run_dir / "render_dump" / name / "guo.json"
+        ref_root = settings.read_setting("GUO_RENDER_REF_DIR", self.repo_root)
+        ref_path = (Path(ref_root) if ref_root else self.repo_root / "build" / "render_dump") / name / "cuo.json"
+        for label, path in (("this run's GUO dump", guo_path), ("the ClassicUO reference", ref_path)):
+            if not path.is_file():
+                raise StepFailed(f"{label} is missing: looked for {self._shown(path)}", {"missing": self._shown(path)})
+        tool = _render_diff_tool()
+        report = tool.compare(tool.load(ref_path), tool.load(guo_path))
+        (self.run_dir / "diff.md").write_text("\n".join(report) + "\n", encoding="utf-8")
+        self.artifacts.append("diff.md")
+        counts, first = _diff_findings(report)
+        self._diff = counts
+        detail = {"diff": "diff.md", **counts}
+        if sum(counts.values()):
+            detail["first_mismatches"] = first
+            raise StepFailed(f"{counts['map']} map, {counts['fields']} field, {counts['drawn']} drawn mismatches against {self._shown(ref_path)}", detail)
+        return detail
+
     # -- the client's ui.* kinds and chat ----------------------------------------------------------------------
 
     def _need_game(self, kind: str):
@@ -515,3 +595,33 @@ class Runner:
         self._input(kind="text", text=str(do["text"]))
         self._key("Enter")
         return {"chat_chars": len(str(do["text"]))}
+
+
+def _render_diff_tool():
+    """tools/render_diff/run.py, loaded by path: its module name `run` is also this runner's."""
+    path = Path(__file__).resolve().parents[1] / "render_diff" / "run.py"
+    spec = importlib.util.spec_from_file_location("render_diff_tool", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+_SECTION = re.compile(r"^## (Map|Fields|Drawn): (\d+)(?: only in ClassicUO, (\d+) only in GUO)?")
+
+
+def _diff_findings(report: list[str], limit: int = 5) -> tuple[dict, list[str]]:
+    """The mismatch counts of a render_diff report (map, fields, drawn; the below-the-ground section is GUO's own
+    check, not a difference between the two clients) and the first few mismatch lines."""
+    counts = {"map": 0, "fields": 0, "drawn": 0}
+    first: list[str] = []
+    section = None
+    for line in report:
+        m = _SECTION.match(line)
+        if m:
+            section = m.group(1).lower()
+            counts[section] = int(m.group(2)) + int(m.group(3) or 0)
+        elif line.startswith("## "):
+            section = None
+        elif section and line.startswith("- ") and not line.startswith("- Drawn by both") and len(first) < limit:
+            first.append(line[2:])
+    return counts, first

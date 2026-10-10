@@ -43,7 +43,7 @@ Not yet (the commands exist in the plan, not in the runner):
 
 | Command | Arrives with |
 |---|---|
-| `--driver human` (exits 2 with a message) | step 5 |
+| OBS capture of a human run | later |
 | `clip` (cut a clip from the master) | not scheduled |
 
 ## Scenario files
@@ -83,14 +83,18 @@ On main today (step 2 and step 3 kinds):
 | `ui.fill` | Click a field, then type into it (client) | `control`, `text`, `clear` (BackSpace presses first) | ui.* on something the typing changes | The typed text is never logged or read back (the game omits editable values) |
 | `ui.key` | Press and release a key (client) | `key` (Godot name: Enter, Escape, F1), `shift`, `ctrl`, `alt` | ui state change | `guo_input` |
 | `chat` | Say a line in game (client) | `text` (a `[command` works) | log or world state | Enter, text, Enter |
-| `tour_segment` | Run an EditorTour segment | id: segment name | EditorTour checks + frames | Editor only; surface override |
+| `renderdump` | Dump what the client drew (client) | `name` | `render_dump/NAME/guo.json` exists | Starts the client with `GUO_RENDER_DUMP_DIR` set to the run's `render_dump/`; says `renderdump NAME`; the event carries bytes and object count |
+| `render_diff` | Compare that dump with ClassicUO's | `name` | `render_diff: {max_drawn_diff}` | Reference is `build/render_dump/NAME/cuo.json`, or `GUO_RENDER_REF_DIR/NAME/cuo.json` (take it with `launchers\dev\side_by_side.bat`); writes `diff.md` in the run folder; fails on map, field or drawn mismatches |
+| `tour_segment` | Run an EditorTour segment | id: segment name | EditorTour checks + frames | Editor only; surface override. Human driver: skipped as `ai_only` unless the segment is passive |
 | `editor_invoke` | Run an F3 action by key | key, query | tool result | Editor only; not pre-approved, so the step **fails at once** with a message instead of waiting on the approval dialog (nobody is at the PC in a scripted run). Use a `tour_segment`, or run it by hand |
+
+**Under `--driver human` (real, client and editor scenarios):** `launch`, `note` and `shot` stay the runner's; every other kind is performed by the person, so its `do` is skipped and only its `expect` is checked. `ai_only` steps, and editor `tour_segment` steps whose segment is not passive, are skipped and logged. See Human Driver below.
 
 Not yet (a scenario that uses one fails at the step today):
 
 | Kind | Purpose | Arrives with |
 |---|---|---|
-| `scene_set`, `renderdump`, `render_diff` | Editor scene and render-parity steps | not scheduled |
+| `scene_set` | Editor scene step | not scheduled |
 | `lane` | Run a multi_client lane | step 7 |
 
 ### Controls
@@ -145,28 +149,40 @@ events only.
 **Quality:** 60 fps, every frame rendered whatever the machine can do. The size is the engine window's at start, 1280×720 from `project.godot` (Godot's `--resolution` does not move it); a 1440p or 4K master needs a project-level size, which is not done yet.  
 **Scope tonight:** the client surface. An editor run records stills and events only (the editor is not a MovieWriter target); OBS and desktop capture are not implemented.
 
-### Human Driver (`--driver human`) (not yet: step 5)
+### Human Driver (`--driver human`, client and editor scenarios)
 
-Planned design; the runner refuses `--driver human` today.
+```bash
+python tools/scenario_run/run.py client.login.basic --driver human --var account=... --var password=...
+python tools/scenario_run/run.py client.login.basic --driver human --clean      # no overlay drawn (Space and Esc still work)
+python tools/scenario_run/run.py client.login.basic --driver human --ghost-human  # a stand-in person plays it, window unfocused and silent (a test of the driver)
+```
 
-The runner shows each step on an in-engine overlay and waits for human verification:
+The runner starts the client (focusable, sound on), then for each step:
 
-1. Skip the `do` action (human takes control)
-2. Display the step caption and highlights on TourOverlay
-3. Poll the same `expect` condition
-4. When true, auto-advance (or Space to skip, Esc to abort)
-5. Record overlay, audio and keystrokes
+1. skips the `do`: the person does it with the real mouse and keyboard
+2. sends the step's `say` (or its id) and its number to the client's overlay (`guo_overlay`, a caption card at the bottom of the
+   game viewport) and outlines the `control` a `ui.click` or `ui.fill` step names
+3. polls the same `expect` as the AI driver, with the AI driver's own code
+4. moves on by itself when it holds; **Space** skips the step (logged `skipped`), **Esc** aborts the run (FAIL, `aborted`)
 
-**Capture path:** OBS (WebSocket) or ffmpeg desktop capture  
-**Quality:** Same as AI (2560×1440 @ 60 fps, CRF 16)  
-**Determinism:** Real-time; events include observer timestamps for syncing
+`launch`, `note` and `shot` stay the runner's, and `shot: true` stills are taken as usual. A step marked `ai_only: true` is
+skipped and logged. A step with no `expect` stays on screen 3 s (a `wait`'s seconds if longer) and moves on. Windows are 3 times the AI
+driver's. Events and `run.json` have the AI run's shape with `driver: human` (run id ends `_human`). The overlay is
+`godot/GUO/src/Automation/HumanOverlay.cs`, a client copy of the editor tour's drawing; it exists only in a run that has the game's
+automation MCP on, so nothing of it ships in a player's build.
 
-Steps marked `ai_only: true` are skipped in human mode and logged as such.
+Editor scenarios work the same way with the editor's own tour overlay (`human_overlay`, no control outline). A `tour_segment` step
+is skipped as `ai_only` (the segment drives the editor itself) unless the segment is passive (`layout`, `gumps`, `anims`, `pick`
+only show a view and check it); a passive segment plays while the person watches. `--ghost-human` has nothing to do in an editor
+scenario.
+
+Not yet: recording a human run (OBS capture, no video from the runner).
+Full behaviour: `docs/data_formats.md`, section 34, "The human driver".
 
 ## Recording: capture paths and conventions
 
 On main today: the AI driver's MovieWriter path (a client run records by default; the master is `run.mp4`, copied to the
-video folder when one is mounted). Not yet: the human driver's OBS and ddagrab paths and `run.py clip`.
+video folder when one is mounted). Not yet: the human driver's OBS and ddagrab paths (a human run records stills and events only) and `run.py clip`.
 
 ### AI Runs: MovieWriter (deterministic)
 
@@ -391,5 +407,5 @@ a timer armed at `run_s` plus 60 s kills the program and exits 4.
 
 ---
 
-**Status:** Build steps 1 (docs) and 2 (runner + AI driver, prune, list filter) are on main.  
+**Status:** Build steps 1 (docs), 2 (runner + AI driver, prune, list filter) and 3 are on main; the human driver (client scenarios HD1, editor surface HD2) is on its branches.  
 **Last updated:** 2026-10-06

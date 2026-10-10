@@ -1589,6 +1589,66 @@ public partial class EditorTour : Node
         await PrepareWindow(window);
     }
 
+    // --- the human driver's caption, for a scenario run --------------------------
+
+    private bool _humanSkip, _humanAbort, _humanWatching;
+
+    public override void _Input(InputEvent e)
+    {
+        // Counted only once the human driver has called human_overlay: Space and Esc are the editor's own keys otherwise.
+        if (!_humanWatching || e is not InputEventKey { Pressed: true, Echo: false } key)
+        {
+            return;
+        }
+
+        if (key.Keycode == Key.Escape)
+        {
+            _humanAbort = true;
+        }
+        else if (key.Keycode == Key.Space && EditorInterface.Singleton.GetBaseControl().GetViewport().GuiGetFocusOwner() is not (LineEdit or TextEdit))
+        {
+            _humanSkip = true;
+        }
+    }
+
+    /// <summary>
+    /// The editor MCP's <c>human_overlay</c>: the human driver's caption card (<paramref name="step"/> label, <paramref name="text"/>)
+    /// drawn with the tour's own overlay. Answers <c>{skip, abort}</c>, the Space and Esc pressed since the last call (reading clears
+    /// them); with no arguments it only reads. <paramref name="hide"/> draws nothing but keeps the keys; <paramref name="clear"/> removes the card.
+    /// </summary>
+    internal async Task<string> HumanOverlayAsync(string text, string step, bool hide, bool clear)
+    {
+        if (!_data.IsLoaded)
+        {
+            return "error: the client data is still loading; try again in a moment";
+        }
+
+        await EnsureWindow();
+        await EnsureOverlay();
+        if (clear)
+        {
+            _humanWatching = false;
+            _overlay.SetCaption("", "", "");
+            _overlay.Visible = false;
+        }
+        else
+        {
+            _humanWatching = true;
+            if (!string.IsNullOrEmpty(text))
+            {
+                _overlay.AtTop = false;
+                _overlay.ClearMarks();
+                _overlay.SetCaption(step ?? "", "", text.Length > 300 ? text[..300] : text);
+            }
+
+            _overlay.Visible = !hide;
+        }
+
+        var reply = new JsonObject { ["skip"] = _humanSkip, ["abort"] = _humanAbort };
+        _humanSkip = _humanAbort = false;
+        return reply.ToJsonString();
+    }
+
     /// <summary>The editor MCP's <c>editor_screenshot</c>: one frame of the editor window as a PNG under this checkout's build/, machine paths scrubbed from what is on screen.</summary>
     internal async Task<string> ScreenshotAsync(string file)
     {

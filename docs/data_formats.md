@@ -1603,7 +1603,7 @@ An opt-in local control channel for a running desktop GUO, for AI agents. Off un
 never started in `template_release` builds, on web, or on mobile. The listener binds IPv4 loopback
 (`127.0.0.1`) only.
 
-**Transport.** Newline-delimited UTF-8 over TCP, one controller at a time, lines capped at 64 KiB. The
+**Transport.** Newline-delimited UTF-8 over TCP, lines capped at 64 KiB. Several controllers may be connected (the runner and a stand-in for a person); each connection has at most one command queued and all share the scene thread's queue. The
 first line a client sends is the token alone; it must arrive within 5 seconds and is compared in fixed
 time, and a wrong token closes the socket without a reply. After that every line is one JSON-RPC 2.0
 message of MCP revision `2025-06-18` (`initialize`, `ping`, `tools/list`, `tools/call`; notifications get
@@ -1619,8 +1619,9 @@ no reply). `tools/guo_mcp/run.py` is the stdio bridge: it sends the token, then 
 | `guo_screenshot` | none | `image/png` content (base64); `isError` when headless |
 | `guo_state` | none | JSON text: `frame` (process frame index; with `--write-movie` it is the movie frame), `scene`, `width`, `height`, `player` (`map`,`x`,`y`,`z`, or null before the world) |
 | `guo_quit` | none | text, then the client quits after two frames (finalises a MovieWriter file); the connection closes |
+| `guo_overlay` | `text` (caption, at most 300 characters), `step` (its label, e.g. `3/18`), `control` `{x,y,width,height,label?}` (an outline, viewport pixels), `clear`, `hide` (draw nothing; Space and Esc still count); none of them only reads | JSON text `{skip, abort}`: Space and Esc pressed since the last call (reading clears them). Draws the human driver's caption card and outline on a canvas layer above the game; the card's step label is a Godot `Label` named `HumanOverlayStep`, visible in `guo_ui`. Space does not count while a text field has focus |
 
-No shell, script, file or packet tools exist. Synthetic keys and buttons still held when the controller
+No shell, script, file or packet tools exist. Synthetic keys and buttons still held when the last controller
 disconnects are released.
 
 ## 30. Workspace, server profiles and client profiles (ADR-0032)
@@ -1821,6 +1822,13 @@ dialog. `scene_set_property` registers do/undo with Godot's editor undo manager.
 Sensitive labels/properties are filtered; no image or credential-reader tool
 is introduced.
 
+`human_overlay(text, step, hide, clear)` (registered with `tour_segment` and `editor_screenshot`, listed by the scenario runner in
+`GUO_EDITOR_MCP_PREAPPROVED`) is the human driver's caption (section 34): it draws a caption card (`text` of at most 300
+characters under a `step` label such as `3/18`) over the editor with the tour's own overlay, and answers JSON `{skip, abort}`,
+the Space and Esc pressed since the last call (reading clears them; Space typed into a text field does not count). Keys count
+only after the first call. `hide` draws nothing but keeps the keys, `clear` removes the card and stops the key watch, and no
+arguments only reads. It changes nothing but the overlay.
+
 `multi_open(path)` accepts an existing JSON components description inside
 this checkout's build/multi, rejects traversal, reparse points and files over
 1 MiB, protects unsaved changes and shows Multis. `multi_document(offset,limit)`
@@ -1892,8 +1900,8 @@ adds it.
 | `ui.fill` | `control`, `text`, `clear` (integer >= 0: BackSpace presses first, default 0), `within_s` (as `ui.click`) | game MCP | 3 |
 | `ui.key` | `key` (a Godot key name), `shift`, `ctrl`, `alt` (booleans, default false) | game MCP `guo_input` | 3 |
 | `chat` | `text` (e.g. `[go 1434 1697`) | game MCP `guo_input` text | 3 |
-| `renderdump` | `name` | the client's `renderdump NAME` command | 4 |
-| `render_diff` | `name` | `tools/render_diff` against ClassicUO's dump of that name | 4 |
+| `renderdump` | `name` (letters, digits, `_`, `-`) | a `client` run with this step in its scenario starts the client with `GUO_RENDER_DUMP_DIR=<run>/render_dump`; the step says `renderdump NAME` in game and waits for `render_dump/NAME/guo.json` within the step timeout; its `log` event carries the dump's `bytes`, `tiles` and `objects` | 4 |
+| `render_diff` | `name` | `tools/render_diff` on the run's `guo.json` and the reference `cuo.json` in `build/render_dump/NAME/` (or in `GUO_RENDER_REF_DIR/NAME/`, environment, then config.local.bat, then config.bat); writes `diff.md` into the run folder; fails on any map, field or drawn mismatch (the event carries the counts and the first mismatch lines), and on a missing dump or reference, naming the path looked for | 4 |
 | `scene_set` | `path`, `property`, `value` | editor MCP `scene_set_property` | later |
 | `lane` | `lane` (a `multi_client` lane) | `tools/multi_client`; its summary becomes events | 7 |
 
@@ -1926,6 +1934,34 @@ for.
 from the scenario's variables. `editor_shard` is the local editor shard; a remote shard is the `id` of its host
 profile (section 35). Nothing about a remote shard's address or account is committed.
 `run.py --shard TARGET` names the target from the command line, for a client scenario: it replaces `requires.shard` for that run, reads the two settings above (a missing one stops the run, naming it) and `GUO_SCENARIO_ACCOUNT` / `GUO_SCENARIO_PASSWORD`, and starts the client against that address.
+
+### The human driver (`--driver human`, client and editor scenarios)
+
+The runner skips each step's `do` and has a person follow the step: it sends the step's `say` (else its id) and its
+number (`3/18`) to the client's overlay (`guo_overlay`, section 29), outlines the control the step names (`ui.click` and
+`ui.fill` `control`, looked up again every 2 s), and polls the step's `expect` with the AI driver's code. When every
+condition holds the run moves on by itself (at least 1 s after the caption appeared). A step with no `expect` stays for 3 s
+(a `wait`'s `seconds`, if longer) and moves on: what the person did stays done, so the next expectation sees it. **Space**
+skips the step (step row `ok` null, `skipped` true, a `log` event and the `step_end` detail say `skipped`); **Esc** aborts
+the run: the step fails and `run.json` has `ok` false and `aborted` `aborted by the person (Esc) in step <id>`. Space typed
+into a text field is a character, not a skip. A step with `ai_only` is skipped and logged the same way, before anything is shown.
+
+Three kinds stay the runner's, because there is nothing for a person to do: `launch`, `note` and `shot`; a step's
+`shot: true` is a recording and is taken as in an AI run. Events and `run.json` have the AI run's shape with `driver`
+`human` (the `action` event's detail also says `by: human`) and the run id ends `_human`. A person is slower than a script:
+every window (`timeouts.run_s`, a step's timeout) is 3 times the AI driver's. The window is focusable and the sound is on; the
+runner records no video for a human run yet (OBS capture is not built). `--clean` hides the overlay for a clean recording
+(Space and Esc still work). `--ghost-human` starts a second process that plays the person through `guo_input`, reading
+the overlay's step label from `guo_ui`: it tests the driver itself and is not a way to run a scenario.
+
+**The editor surface.** The caption goes to the editor MCP's `human_overlay` (section 33) instead of `guo_overlay`, drawn with
+the editor tour's overlay at the foot of the editor window; no control is outlined (an editor scenario has no `ui.*` kinds), and
+Space, Esc, `--clean`, the windows and `ai_only` work as above. A `tour_segment` step drives the editor by itself (it resets the
+layout, types, stamps, jumps, talks to a shard), which nobody could follow, so under the human driver it is skipped and logged
+`skipped (ai_only: the segment drives the editor itself)` unless the segment is passive: `layout`, `gumps`, `anims` and `pick` only
+show a view and check it, so the runner plays them while the person watches and the segment's own caption replaces the step's
+`say`. `editor_invoke` and `wait` steps are followed like a client step. `--ghost-human` has nothing to do on an editor scenario
+(no `ui.*`, `ui.key` or `chat` steps): the passive segments play, the rest are skipped.
 
 ### Run folder (`build/runs/<run_id>/`, gitignored)
 
