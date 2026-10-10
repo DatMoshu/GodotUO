@@ -134,4 +134,7 @@ try {
 
     // AD4: the Admin tab's Settings form.
     SettingsTests.Run(home);
+
+    // AD6: the Admin tab's backups.
+    BackupsTests.Run(home);
 } finally { ManagedServerProcess.Stop(a); ManagedServerProcess.Stop(b); Directory.Delete(home,true); }

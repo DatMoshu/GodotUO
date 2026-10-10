@@ -15,7 +15,7 @@ using GUO.Workspace;
 /// The Admin main-screen tab (sprint "Admin tab", AD1): the server picked in the run bar, its health in numbers
 /// and in plain words, Save now and Restart, the god view of every player, NPC and spawner (AD2a,
 /// <see cref="GodViewPanel"/>), the server's settings (AD4, <see cref="SettingsPanel"/>), its accounts (AD5,
-/// <see cref="AccountsPanel"/>), and a log of everything the tab did, its times in UTC. It talks to the server's
+/// <see cref="AccountsPanel"/>), its backups (AD6, <see cref="BackupsPanel"/>), and a log of everything the tab did, its times in UTC. It talks to the server's
 /// editor bridge on the admin channel (ADR-0035): this workspace's admin token goes in the bridge hello and
 /// nowhere else. Desktop editor only. The tab button comes from <see cref="GuoAdminPlugin"/>.
 /// </summary>
@@ -23,7 +23,7 @@ using GUO.Workspace;
 /// Restart goes through the run bar's server manager: a save on the bridge, then the manager stops the exact
 /// process it started and starts it again (with the bridge's token, <see cref="ShardSecrets.BridgeEnvironment"/>).
 /// A server the run bar did not start cannot be restarted from here; the tab says so.
-/// Later stories add commands (AD3) and backups (AD6).
+/// Later stories add commands (AD3) and the VPS profile (AD7).
 /// </remarks>
 [Tool]
 public partial class AdminView : VBoxContainer
@@ -41,12 +41,13 @@ public partial class AdminView : VBoxContainer
     private Label _title, _connection;
     private LineEdit _host;
     private SpinBox _port;
-    private Button _connect, _save, _restart, _refresh;
+    private Button _connect, _save, _restart, _refresh, _backUp, _restoreFrom;
     private readonly Dictionary<string, Label> _values = new();
     private RichTextLabel _plain, _log;
     private GodViewPanel _godView;
     private SettingsPanel _settings;
     private AccountsPanel _accounts;
+    private BackupsPanel _backups;
     private TabContainer _centre;
     private Action _whileStopped;
     private double _statusClock, _reconnectClock;
@@ -78,6 +79,18 @@ public partial class AdminView : VBoxContainer
         if (_centre != null)
         {
             _centre.CurrentTab = on ? _settings.GetIndex() : _godView.GetIndex();
+        }
+    }
+
+    /// <summary>The Backups list (AD6).</summary>
+    public BackupsPanel Backups => _backups;
+
+    /// <summary>Brings the Backups list to the front of the centre.</summary>
+    public void ShowBackups()
+    {
+        if (_centre != null)
+        {
+            _centre.CurrentTab = _backups.GetIndex();
         }
     }
 
@@ -172,7 +185,7 @@ public partial class AdminView : VBoxContainer
         health.AddChild(Heading("Health"));
         var grid = new GridContainer { Columns = 2 };
         health.AddChild(grid);
-        foreach (string label in new[] { "Uptime", "Online", "Items", "Mobiles", "Memory", "Last save", "World", "Server" })
+        foreach (string label in new[] { "Uptime", "Online", "Items", "Mobiles", "Memory", "Last save", "Last backup", "World", "Server" })
         {
             grid.AddChild(new Label { Text = label, Modulate = new Color(1, 1, 1, 0.7f) });
             var value = new Label { Text = "-" };
@@ -190,6 +203,16 @@ public partial class AdminView : VBoxContainer
         _refresh = new Button { Text = "Refresh", TooltipText = "Asks the server for its numbers now (they also refresh every few seconds)." };
         _refresh.Pressed += () => RequestStatus();
         health.AddChild(_refresh);
+        _backUp = new Button { Text = "Back up now", TooltipText = "Saves the world, then keeps a copy of the save (the Backups tab lists them)." };
+        _backUp.Pressed += () =>
+        {
+            ShowBackups();
+            _backups.BackUpNow();
+        };
+        health.AddChild(_backUp);
+        _restoreFrom = new Button { Text = "Restore...", TooltipText = "Opens the Backups tab: pick a backup there and press Restore." };
+        _restoreFrom.Pressed += ShowBackups;
+        health.AddChild(_restoreFrom);
 
         // Under it, the same in plain words.
         health.AddChild(Heading("In plain words"));
@@ -223,6 +246,9 @@ public partial class AdminView : VBoxContainer
         _accounts = new AccountsPanel { Send = send, Granted = () => Granted };
         _accounts.Logged += Log;
         centre.AddChild(_accounts);
+        _backups = new BackupsPanel { Send = send, Admin = this };
+        _backups.Logged += Log;
+        centre.AddChild(_backups);
 
         // Bottom: the log of everything the tab did.
         AddChild(Heading("Log"));
@@ -433,6 +459,7 @@ public partial class AdminView : VBoxContainer
             Restarting = RestartPhase.None;
             Log("[color=orange]the save failed, so the server was not restarted[/color]");
             _settings.OnRestartAbandoned();
+            _backups.OnRestartAbandoned();
             return;
         }
 
@@ -453,6 +480,7 @@ public partial class AdminView : VBoxContainer
             Restarting = RestartPhase.None;
             Log($"[color=orange]restart failed: {e.Message}[/color]");
             _settings.OnRestartAbandoned();
+            _backups.OnRestartAbandoned();
         }
 
         UpdateView();
@@ -473,6 +501,7 @@ public partial class AdminView : VBoxContainer
                 Restarting = RestartPhase.None;
                 Log($"[color=orange]the server did not answer within {RestartTimeoutSeconds:0} s of the restart; see the Logs dock[/color]");
                 _settings.OnRestartAbandoned();
+                _backups.OnRestartAbandoned();
                 UpdateView();
             }
             else if (_reconnectClock >= ReconnectSeconds)
@@ -539,6 +568,15 @@ public partial class AdminView : VBoxContainer
                     else
                     {
                         Log($"accounts need Administrator; this tab holds {Granted}");
+                    }
+
+                    if (msg["admin_ops"] is JsonArray backupOps && backupOps.Any(o => (string)o == "admin_backup"))
+                    {
+                        _backups.OnAdminOpen();
+                    }
+                    else
+                    {
+                        Log($"backups need Administrator; this tab holds {Granted}");
                     }
                 }
                 else
@@ -612,6 +650,9 @@ public partial class AdminView : VBoxContainer
             case "admin_account":
                 _accounts.Handle(msg);
                 break;
+            case "admin_backup":
+                _backups.Handle(msg);
+                break;
             case "error":
                 Log($"[color=orange]bridge: {(string)msg["error"]}[/color]");
                 break;
@@ -620,6 +661,7 @@ public partial class AdminView : VBoxContainer
                 _godView.OnClosed();
                 _settings.OnClosed();
                 _accounts.OnClosed();
+                _backups.OnClosed();
                 if (Restarting == RestartPhase.None)
                 {
                     Log("the server closed the connection");
@@ -648,6 +690,8 @@ public partial class AdminView : VBoxContainer
         bool admin = _link.Connected && Granted != null;
         _save.Disabled = !admin || Saving || Restarting != RestartPhase.None;
         _refresh.Disabled = !admin;
+        _backUp.Disabled = _backups.BackupBlocker() != null;
+        _restoreFrom.Disabled = !admin;
         string blocker = RestartBlocker();
         _restart.Disabled = blocker != null;
         _restart.TooltipText = blocker ?? "Saves the world, then the run bar stops this server and starts it again.";
@@ -660,6 +704,7 @@ public partial class AdminView : VBoxContainer
         _values["Mobiles"].Text = s == null ? "-" : ((long?)s["mobiles"] ?? 0).ToString("N0", CultureInfo.InvariantCulture);
         _values["Memory"].Text = s == null ? "-" : Megabytes((long?)s["memory_mb"] ?? 0);
         _values["Last save"].Text = s == null ? "-" : SaveAge(s) is { } age ? Duration(age) + " ago" : "never";
+        _values["Last backup"].Text = s == null ? "-" : BackupAge(s) is { } bage ? Duration(bage) + " ago" : "none yet";
         _values["World"].Text = s == null ? "-" : WorldState((string)s["world"]);
         _values["Server"].Text = s == null ? "-" : $"{(string)s["server"]} {(string)s["version"]}";
         _plain.Text = Describe();
@@ -685,7 +730,14 @@ public partial class AdminView : VBoxContainer
         {
             l.Text = SaveAge(LastStatus) is { } a ? Duration(a) + " ago" : "never";
         }
+
+        if (LastStatus != null && _values.TryGetValue("Last backup", out Label b))
+        {
+            b.Text = BackupAge(LastStatus) is { } a ? Duration(a) + " ago" : "none yet";
+        }
     }
+
+    private long? BackupAge(JsonNode s) => (long?)s["last_backup_s"] is long ago ? ago + (long)(DateTime.UtcNow - _statusAt).TotalSeconds : null;
 
     private long? SaveAge(JsonNode s) => (long?)s["last_save_s"] is long ago ? ago + (long)(DateTime.UtcNow - _statusAt).TotalSeconds : null;
 
@@ -722,6 +774,9 @@ public partial class AdminView : VBoxContainer
             text.Append("[color=orange]It has never been saved: Save now writes the world to disk.[/color]\n");
         }
 
+        text.Append(BackupAge(s) is { } backed
+            ? $"The last backup was taken {Duration(backed, words: true)} ago.\n"
+            : "[color=orange]There is no backup yet: Back up now keeps a copy of the world you can restore.[/color]\n");
         text.Append($"It uses {Megabytes((long?)s["memory_mb"] ?? 0)} of memory.\n");
         if ((string)s["world"] is { } w && w != "Running")
         {

@@ -1,4 +1,4 @@
-"""The Admin tab, driven in a real editor against the private instance (sprint "Admin tab", AD1, AD2a, AD2b, AD4, AD5).
+"""The Admin tab, driven in a real editor against the private instance (sprint "Admin tab", AD1, AD2a, AD2b, AD4, AD5, AD6).
 
     python tools/editor_shard/run.py admin-tab [--windowed]
 
@@ -31,10 +31,17 @@ not touched) with the addon's scripted Admin run (EditorSmokeAdmin.cs). In it:
    makes an account with a generated 16-character password, gives it the
    Counselor level and a typed password (one too short is not sent), bans it
    and lifts the ban, and reads the list again;
-8. the run bar stops the server.
+8. the Backups list (AD6): Back up now keeps a snapshot of the save and
+   Health shows the last backup; an account is made; Restore (asked first)
+   backs the world up as it is, the run bar restarts the server with the
+   snapshot put in place, and the account is gone; a before-restore backup is
+   kept; Back up now with keep 2 removes the oldest;
+9. the run bar stops the server.
 
 The shard's Configuration folder is copied aside first and put back after, so
-the check leaves the private shard's settings as they were.
+the check leaves the private shard's settings as they were. The restore leaves
+its world as it was at the run's own backup, and two snapshots in
+Backups/GUO.
 
 Then it checks that every time in the tab's log is UTC with a Z, and that
 neither the token nor a password reached the editor's output, the tab's log,
@@ -58,9 +65,10 @@ from guo.process import build_child_env, no_activate
 
 TIMEOUT_S = 900
 # The story the evidence is filed under (rule: evidence_naming.md).
-STORY = "AD5"
+STORY = "AD6"
 STILLS = ("connected", "saved", "restarted", "godview", "spawner", "filtered", "respawn", "cleared",
-          "settings-form", "settings-diff", "settings-saved", "accounts-list", "accounts-created", "accounts-banned")
+          "settings-form", "settings-diff", "settings-saved", "accounts-list", "accounts-created", "accounts-banned",
+          "backup-done", "restore-confirm", "restored", "backup-kept")
 
 
 def run(cfg, shard_home: Path, token: str, secrets: list[str], windowed: bool, stamp: str) -> int:
@@ -221,6 +229,26 @@ def run(cfg, shard_home: Path, token: str, secrets: list[str], windowed: bool, s
     check(admin.get("accounts_banned") and admin.get("accounts_unbanned") and admin.get("accounts_listed_after"),
           "the tab banned it and lifted the ban; the list read again agrees")
     check(admin.get("account_password_in_tab_log") is False, "neither account password is in the tab's log")
+    first_backup = json.loads(admin["backup_first"]) if admin.get("backup_first") else {}
+    snap = first_backup.get("snapshot") or {}
+    check(admin.get("backup_now_ok"),
+          f"Back up now saved and kept {snap.get('name')} ({snap.get('files')} files, {snap.get('bytes')} bytes; "
+          f"save {first_backup.get('save_ms')} ms, copy {first_backup.get('copy_ms')} ms), listed first")
+    health = admin.get("backup_health") or {}
+    check(admin.get("backup_health_ok"), f"Health shows the last backup: {health.get('last_backup')} ({health.get('last_backup_s')} s ago), in plain words too")
+    check(admin.get("backup_account_made"), "an account made after the backup is on the server")
+    check(admin.get("backup_confirm_shown"), "Restore asks first, in plain words")
+    check(admin.get("backup_restored") and admin.get("backup_before_kept"),
+          f"Restore put {snap.get('name')} in place with the server stopped by the run bar, and kept a before-restore backup "
+          f"({admin.get('backup_rows_after_restore')}; error: {admin.get('backup_restore_error')})")
+    check(admin.get("backup_world_restored"), "after the restore the account made after the backup is gone")
+    check(admin.get("backup_keep_ok"), f"keep 2: Back up now removed the oldest ({admin.get('backup_pruned')}) and spared the before-restore backup")
+    if windowed:
+        check(admin.get("masked_settings-form") and admin.get("masked_settings-diff") and admin.get("masked_settings-saved"),
+              "every Settings still covers the UO data folders")
+    tab_log_text = str(admin.get("log") or "")
+    home_forms = {str(shard_home), str(shard_home).replace("\\", "/"), str(shard_home).replace("\\", "\\\\")}
+    check(not any(h in tab_log_text for h in home_forms), "the tab's log names no folder of the server (the backup and save folders among them)")
     check(admin.get("stopped"), "the run bar stopped the server at the end")
 
     # One clock in the tab: every log line and every audit time it shows is UTC, with a Z.

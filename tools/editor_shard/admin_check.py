@@ -34,8 +34,12 @@ and checks, in order:
    by a login on the shard's login server; refusals in plain words (names and
    passwords the login box cannot hold, levels and accounts at or above the
    tab's own); all of it audited with passwords masked;
-10. a connection is closed after three refused tokens;
-11. neither the token nor a password reaches the shard log or the audit log.
+10. the backup op (AD6, admin_backup_check.py): `admin_backup list`, `now`
+    (a save, a snapshot with a manifest naming no folder, keep N) and
+    `restore`'s before-restore snapshot; names that are not a snapshot's
+    refused; Health names the last backup; audited, and not without the token;
+11. a connection is closed after three refused tokens;
+12. neither the token nor a password reaches the shard log or the audit log.
 
 Prints one line per check and exits 0 when all pass. The token is read from
 the configuration and never printed.
@@ -295,6 +299,11 @@ def run(port: int, token: str, shard_home: Path, secrets: list[str], cfg=None, s
         from admin_accounts_check import run as accounts_check
 
         secrets = [*secrets, *accounts_check(check, cfg, Bridge, port, token, shard_port)]
+
+    # AD6: Back up now and Restore's op.
+    from admin_backup_check import run as backup_check
+
+    backup_check(check, Bridge, port, token, shard_home)
 
     b = Bridge(port, timeout=20.0)
     closed = False

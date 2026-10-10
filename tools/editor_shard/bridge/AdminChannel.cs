@@ -79,6 +79,9 @@ public sealed class AdminChannel
         // (AccountsAdmin.cs). Administrator, as ModernUO's own admin gump; AccountRules bounds the levels further.
         ["admin_accounts"] = AdminLevel.Administrator,
         ["admin_account"] = AdminLevel.Administrator,
+        // AD6, Back up now and Restore: the snapshots listed, one taken after a save (keep N), and a restore's
+        // before-restore snapshot; the tab puts the snapshot in place itself with the server stopped (EditorBridge.Backup).
+        ["admin_backup"] = AdminLevel.Administrator,
     };
 
     private readonly byte[] _tokenHash;

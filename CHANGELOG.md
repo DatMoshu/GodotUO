@@ -6,6 +6,14 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 ## Unreleased
 
 ### Editor
+- The Admin tab has **Backups** for a server on this computer: **Back up
+  now** saves the world and keeps a copy of the save, and the oldest copies
+  go once there are more than you keep (10 unless you change it).
+  **Restore** asks first, keeps a copy of the world as it is, restarts the
+  server with the backup in place, and puts the previous save back if
+  anything goes wrong. Health shows when the last backup was taken.
+- Stills of the Admin tab's Settings no longer show the folder of your UO
+  install.
 - The Admin tab has **Accounts**: every account on your server with its
   access level, last login and characters. Make an account, give it a
   level, give it a new password (made for you, shown once and masked, or

@@ -247,6 +247,13 @@ try
     Require(!accountLines.Contains("Ad5Pass9word77") && !accountLines.Contains("Ad5Other5555") && accountLines.Contains("\"account\":\"guoad5\"")
             && accountLines.Contains("\"password\":\"***\""), "an account password reached the audit, or the account's name was masked");
     Console.WriteLine("PASS: the account ops need Administrator and the token; names and passwords fit the 16-character login boxes; levels as the admin gump; no password in the audit");
+
+    // ---- AD6: backups ------------------------------------------------------
+    Require(AdminChannel.Ops["admin_backup"] == AdminLevel.Administrator, "admin_backup is not an Administrator op");
+    Require(on.Authorise("admin_backup", AdminLevel.Seer) == "'admin_backup' needs Administrator; this connection holds Seer",
+            "a Seer could back up or restore");
+    Require(on.Authorise("admin_backup", null).StartsWith("admin op without the admin token"), "a backup ran without the token");
+    Console.WriteLine("PASS: the backup op needs Administrator and the token");
     Console.WriteLine("ALL PASS");
 }
 finally

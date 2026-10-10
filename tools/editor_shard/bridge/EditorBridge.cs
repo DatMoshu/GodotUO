@@ -46,6 +46,7 @@ using System.Threading;
 using Server;
 using Server.Logging;
 using Server.Network;
+using GUO.Workspace;
 
 namespace GUO.EditorBridge;
 
@@ -807,6 +808,7 @@ public static class EditorBridge
     // {"op":"admin_goto"|"admin_bring"|"admin_paperdoll"|"admin_follow"|"admin_spawner",..} (GodViewActions.cs),
     // {"op":"admin_settings","action":"get"|"changed",..} (the Settings form, AD4),
     // {"op":"admin_accounts"} / {"op":"admin_account","action":"create"|"access"|"password"|"ban"|"unban",..} (AccountsAdmin.cs, AD5),
+    // {"op":"admin_backup","action":"list"|"now"|"restore",..} (Backup, AD6),
     // each with an optional "req" echoed back.
     // Authorised against the level the hello's token granted, run, and audited
     // (ADR-0035). Each later AD story adds its ops here and in AdminChannel.Ops.
@@ -865,6 +867,21 @@ public static class EditorBridge
                 if (!Settings(msg, reply))
                 {
                     _admin.Audit.Record(from.Name, op, AdminChannel.Ops[op], false, msg, (string)reply["error"]);
+                }
+
+                break;
+            case "admin_backup":
+                // "list" answers now; "now" and "restore" answer once the save and the snapshot are on disk (Backup).
+                if (!Backup(from, msg, reply))
+                {
+                    _admin.Audit.Record(from.Name, op, AdminChannel.Ops[op], false, msg, (string)reply["error"]);
+                    break;
+                }
+
+                if ((string)msg["action"] != "list")
+                {
+                    Log.Information("GUO editor bridge: '{0}' ran {1} {2} at {3}", from.Name, op, (string)msg["action"], AdminChannel.Ops[op]);
+                    return;
                 }
 
                 break;
@@ -986,16 +1003,115 @@ public static class EditorBridge
         reply["last_save"] = saved?.ToString("yyyy-MM-ddTHH:mm:ssZ");
         reply["last_save_s"] = saved == null ? null : (long)(DateTime.UtcNow - saved.Value).TotalSeconds;
         reply["editors"] = editors;
+        // AD6: the newest of GUO's backups (Backup), for Health's "Last backup".
+        ShardBackups.Snapshot newest = ShardBackups.List(BackupRoot).FirstOrDefault();
+        reply["last_backup"] = newest?.AtUtc.ToString("yyyy-MM-ddTHH:mm:ssZ");
+        reply["last_backup_s"] = newest == null ? null : (long)(DateTime.UtcNow - newest.AtUtc).TotalSeconds;
+        reply["last_backup_name"] = newest?.Name;
+    }
+
+    // Where GUO's backups go: GUO under ModernUO's own backup folder (autoArchive.backupPath, Backups by default).
+    private static string BackupRoot => ShardBackups.Root(PathUtility.GetFullPath(ServerConfiguration.GetSetting("autoArchive.backupPath", "Backups")));
+
+    // Back up now and Restore (AD6; docs/data_formats.md section 10). "list": every snapshot, newest first, and the
+    // save and backup folders (the tab restores with the server stopped, so it needs them; it never logs them).
+    // "now": a world save, then a snapshot of the save folder, then the oldest beyond keep removed. "restore": the
+    // named snapshot must exist; the current world is saved and backed up first ("before-restore", so a restore can
+    // be undone), then the tab restarts the server and puts the snapshot in place while it is stopped. The snapshot
+    // is copied on the game thread, so no other save moves the folder mid-copy. False (reply ok false) when refused.
+    private static bool Backup(EditorConnection from, JsonNode msg, JsonObject reply)
+    {
+        string action = (string)msg["action"];
+        string root = BackupRoot;
+        reply["action"] = action;
+        switch (action)
+        {
+            case "list":
+                ListBackups(reply, root);
+                return true;
+            case "now":
+            case "restore":
+                break;
+            default:
+                reply["ok"] = false;
+                reply["error"] = "admin_backup needs an action: list, now or restore";
+                return false;
+        }
+
+        string target = (string)msg["name"];
+        if (action == "restore" && ShardBackups.Find(root, target) == null)
+        {
+            reply["ok"] = false;
+            reply["error"] = ShardBackups.ValidName(target) ? $"there is no backup called {target}" : "that is not a backup's name";
+            return false;
+        }
+
+        int keep = ShardBackups.Keep((int?)msg["keep"]);
+        JsonNode req = msg["req"]?.DeepClone();
+        string reason = action == "restore" ? ShardBackups.BeforeRestore : "manual";
+        SaveNow(from, req, (saved, saveMs, error) =>
+        {
+            var done = new JsonObject { ["op"] = "admin_backup", ["req"] = req?.DeepClone(), ["action"] = action, ["ok"] = saved, ["save_ms"] = saveMs };
+            if (action == "restore")
+            {
+                done["target"] = target;
+            }
+
+            if (saved)
+            {
+                var watch = System.Diagnostics.Stopwatch.StartNew();
+                try
+                {
+                    ShardBackups.Snapshot snap = ShardBackups.Take(World.SavePath, root, DateTime.UtcNow, reason, from.Name);
+                    done["snapshot"] = snap.ToJson();
+                    done["copy_ms"] = watch.ElapsedMilliseconds;
+                    done["pruned"] = new JsonArray(ShardBackups.Prune(root, keep, snap.Name, target ?? "").Select(n => (JsonNode)n).ToArray());
+                    done["keep"] = keep;
+                }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException or InvalidOperationException)
+                {
+                    done["ok"] = false;
+                    error = "the backup could not be written: " + e.Message;
+                }
+            }
+
+            if ((bool?)done["ok"] != true)
+            {
+                done["error"] = error;
+                _admin.Audit.Record(from.Name, "admin_backup", AdminChannel.Ops["admin_backup"], false, msg, error);
+            }
+
+            ListBackups(done, root);
+            from.Send(done);
+            Log.Information("GUO editor bridge: backup for '{0}' {1}{2}", from.Name, (bool?)done["ok"] == true ? "written: " : "failed",
+                (string)done["snapshot"]?["name"] ?? "");
+        });
+        return true;
+    }
+
+    private static void ListBackups(JsonObject reply, string root)
+    {
+        reply["snapshots"] = new JsonArray(ShardBackups.List(root).Select(s => (JsonNode)s.ToJson()).ToArray());
+        reply["saves_path"] = World.SavePath;
+        reply["backup_path"] = root;
+        reply["default_keep"] = ShardBackups.DefaultKeep;
     }
 
     // Starts a world save (ModernUO's own World.Save, the [save command's) and
-    // answers the editor once the save is written. Game thread.
-    private static void SaveNow(EditorConnection from, JsonNode req)
+    // answers the editor once the save is written. With then (a backup, AD6) it
+    // calls that instead of answering: ok, the save's ms, the error. Game thread.
+    private static void SaveNow(EditorConnection from, JsonNode req, Action<bool, long, string> then = null)
     {
         if (World.WorldState != WorldState.Running)
         {
-            from.Send(new JsonObject { ["op"] = "admin_save", ["req"] = req?.DeepClone(), ["ok"] = false,
-                                       ["error"] = $"the world is busy ({World.WorldState}); a save already running finishes on its own" });
+            string busy = $"the world is busy ({World.WorldState}); a save already running finishes on its own";
+            if (then != null)
+            {
+                then(false, 0, busy);
+                return;
+            }
+
+            from.Send(new JsonObject { ["op"] = "admin_save", ["req"] = req?.DeepClone(), ["ok"] = false, ["error"] = busy });
             return;
         }
 
@@ -1011,6 +1127,12 @@ public static class EditorBridge
             Core.LoopContext.Post(() =>
             {
                 bool ok = _lastSaveUtc != before;
+                if (then != null)
+                {
+                    then(ok, watch.ElapsedMilliseconds, ok ? null : "the save failed; the server's log says why");
+                    return;
+                }
+
                 // req is already a child of RunAdmin's unsent reply: a node has one parent.
                 var reply = new JsonObject { ["op"] = "admin_save", ["req"] = req?.DeepClone(), ["ok"] = ok, ["ms"] = watch.ElapsedMilliseconds,
                                              ["last_save"] = LastSave()?.ToString("yyyy-MM-ddTHH:mm:ssZ") };

@@ -18,7 +18,9 @@ using GUO.Workspace;
 /// masked, refuses values out of range, and Save and restart writes two settings and a mail password, keeping the
 /// previous files; the restarted server reports the new values and the password lands in the scratch secrets file.
 /// Then the Accounts list (AD5): every account listed, the owner out of reach, one made with a generated 16-character
-/// password, given a level and a typed password, banned and unbanned. Last the run bar stops the server. tools/editor_shard/run.py admin-tab starts it, in a scratch workspace.
+/// password, given a level and a typed password, banned and unbanned. Then the Backups list (AD6): Back up now keeps a
+/// snapshot and Health shows it, an account made afterwards is gone once that snapshot is restored (the server restarted
+/// by the run bar, a before-restore snapshot kept), and keep 2 removes the oldest. Last the run bar stops the server. tools/editor_shard/run.py admin-tab starts it, in a scratch workspace.
 /// </summary>
 public partial class EditorSmoke
 {
@@ -42,6 +44,10 @@ public partial class EditorSmoke
     private int _setMaxAccounts;
     private string _accName, _accGenerated, _accTyped;
     private int _accMark;
+    private int _godSettlePushes = -1, _godSettleFull = -1;
+    private double _godSettleClock;
+    private string _bakFirst, _bakAccount;
+    private int _bakMark, _bakKeepBefore;
 
     // The settings the form's check changes, by field id ("file:path").
     private const string SetMaxAccounts = "modernuo:settings/accountHandler.maxAccountsPerIP";
@@ -161,6 +167,22 @@ public partial class EditorSmoke
                 if (v.GodView.FullReplies > _godFullBefore && v.GodView.Rows.Count > 0)
                 {
                     GodViewPanel g = v.GodView;
+                    // Then the first change-only push after that full list, so the subscription is settled before the
+                    // spawner goes in (AD4's flake: a put sent at once could land in a second full list, not a push).
+                    if (g.FullReplies != _godSettleFull)
+                    {
+                        _godSettleFull = g.FullReplies;
+                        _godSettlePushes = g.Pushes;
+                        _godSettleClock = _elapsed;
+                        break;
+                    }
+
+                    if (g.Pushes == _godSettlePushes && _elapsed - _godSettleClock < 30)
+                    {
+                        break;
+                    }
+
+                    _admin["godview_settled_s"] = Math.Round(_elapsed - _godSettleClock, 1);
                     _admin["godview_resubscribed"] = true;
                     _admin["godview_first"] = new Dictionary<string, object>
                     {
@@ -519,14 +541,163 @@ public partial class EditorSmoke
                 {
                     JsonObject row = p.Rows.FirstOrDefault(x => (string)x["name"] == _accName);
                     _admin["accounts_listed_after"] = (string)row?["access"] == "Counselor" && (bool?)row?["banned"] == false;
-                    AdminNext(124);
+                    AdminNext(150);
                 }
                 else AdminTimeout("the Accounts list never came again");
 
                 break;
             }
 
+            // AD6, the Backups list: Back up now, Health's last backup, a restore that undoes a change, keep N.
+            case 150:
+            {
+                BackupsPanel p = v.Backups;
+                v.ShowBackups();
+                if (!_admin.ContainsKey("backups_list_sent"))
+                {
+                    _bakMark = p.Lists;
+                    _admin["backups_list_sent"] = p.RequestList();
+                    break;
+                }
+
+                if (p.Lists > _bakMark)
+                {
+                    _admin["backups_before"] = p.Rows.Count;
+                    _bakKeepBefore = p.Keep;
+                    p.SetKeep(10);
+                    _bakMark = p.Replies;
+                    _admin["backups_now_sent"] = p.BackUpNow();
+                    AdminNext(151);
+                }
+                else AdminTimeout("the Backups list never came");
+
+                break;
+            }
+
+            case 151:
+            {
+                BackupsPanel p = v.Backups;
+                if (p.Replies > _bakMark)
+                {
+                    JsonNode r = p.LastReply;
+                    _bakFirst = (string)r?["snapshot"]?["name"];
+                    _admin["backup_first"] = r?.ToJsonString();
+                    _admin["backup_now_ok"] = (bool?)r?["ok"] == true && _bakFirst != null && (int?)r["snapshot"]["files"] > 0
+                        && p.Rows.Count > 0 && (string)p.Rows[0]["name"] == _bakFirst && (string)p.Rows[0]["reason"] == "manual";
+                    _adminMark = v.StatusReplies;
+                    v.RequestStatus();
+                    AdminNext(152);
+                }
+                else AdminTimeout("Back up now never answered");
+
+                break;
+            }
+
+            case 152:
+                if (v.StatusReplies > _adminMark)
+                {
+                    _admin["backup_health"] = Plain(v.LastStatus);
+                    _admin["backup_health_ok"] = (string)v.LastStatus["last_backup_name"] == _bakFirst && (long?)v.LastStatus["last_backup_s"] < 120
+                        && v.PlainText.Contains("The last backup was taken");
+                    v.Backups.SelectBackup(_bakFirst);
+                    AdminShot("backup-done");
+                    // A change after the backup: an account the restore must take away again.
+                    _bakAccount = "ad6t" + System.Security.Cryptography.RandomNumberGenerator.GetInt32(100000, 1000000);
+                    _accMark = v.Accounts.Replies;
+                    AdminNext(153);
+                }
+                else AdminTimeout("Health never came after Back up now");
+
+                break;
+
+            case 153:
+                if (!_admin.ContainsKey("backup_account_sent"))
+                {
+                    _admin["backup_account_sent"] = v.Accounts.Create(_bakAccount, "Player", AccountsPanel.GeneratePassword(), true);
+                    break;
+                }
+
+                if (v.Accounts.Replies > _accMark)
+                {
+                    _admin["backup_account_made"] = (bool?)v.Accounts.LastReply?["ok"] == true && v.Accounts.Rows.Any(x => (string)x["name"] == _bakAccount);
+                    v.ShowBackups();
+                    v.Backups.SelectBackup(_bakFirst);
+                    _admin["backup_restore_blocker"] = v.Backups.RestoreBlocker(_bakFirst);
+                    v.Backups.ConfirmRestore(_bakFirst);
+                    _admin["backup_confirm_shown"] = v.Backups.ConfirmOpen;
+                    AdminShot("restore-confirm");
+                    AdminNext(154);
+                }
+                else AdminTimeout("the account made after the backup never came back");
+
+                break;
+
+            case 154:
+                // The confirm's Restore, pressed (the dialog's own button calls the same).
+                v.Backups.CloseConfirm();
+                _bakMark = v.Backups.RestoresFinished;
+                _admin["backup_restore_sent"] = v.Backups.Restore(_bakFirst);
+                AdminNext(155);
+                break;
+
+            case 155:
+            {
+                BackupsPanel p = v.Backups;
+                if (p.RestoresFinished > _bakMark && v.Granted != null && p.Lists > 0)
+                {
+                    _admin["backup_restored"] = p.LastRestored == _bakFirst && p.LastRestoreError == null;
+                    _admin["backup_restore_error"] = p.LastRestoreError;
+                    _admin["backup_before_kept"] = p.Rows.Any(r => (string)r["reason"] == ShardBackups.BeforeRestore) && p.Rows.Any(r => (string)r["name"] == _bakFirst);
+                    _admin["backup_rows_after_restore"] = string.Join(", ", p.Rows.Select(r => (string)r["name"]));
+                    _accMark = v.Accounts.Lists;
+                    v.Accounts.RequestList();
+                    AdminNext(156);
+                }
+                else AdminTimeout("the restore never finished (the server did not come back)");
+
+                break;
+            }
+
+            case 156:
+                if (v.Accounts.Lists > _accMark)
+                {
+                    _admin["backup_world_restored"] = v.Accounts.Rows.Count > 0 && v.Accounts.Rows.All(x => (string)x["name"] != _bakAccount);
+                    v.ShowBackups();
+                    AdminShot("restored");
+                    AdminNext(157);
+                }
+                else AdminTimeout("the Accounts list never came after the restore");
+
+                break;
+
+            case 157:
+                v.Backups.SetKeep(2);
+                _bakMark = v.Backups.Replies;
+                _admin["backup_keep_sent"] = v.Backups.BackUpNow();
+                AdminNext(158);
+                break;
+
+            case 158:
+            {
+                BackupsPanel p = v.Backups;
+                if (p.Replies > _bakMark)
+                {
+                    JsonNode r = p.LastReply;
+                    var pruned = (r?["pruned"] as JsonArray)?.Select(n => (string)n).ToList() ?? new List<string>();
+                    _admin["backup_pruned"] = string.Join(", ", pruned);
+                    _admin["backup_keep_ok"] = (bool?)r?["ok"] == true && p.Rows.Count == 2 && pruned.Contains(_bakFirst)
+                        && p.Rows.Any(x => (string)x["reason"] == ShardBackups.BeforeRestore);
+                    AdminShot("backup-kept");
+                    AdminNext(124);
+                }
+                else AdminTimeout("Back up now with keep 2 never answered");
+
+                break;
+            }
+
             case 124:
+                // The keep value as it was before the run (after the last still, which shows keep 2).
+                if (_bakKeepBefore > 0) v.Backups.SetKeep(_bakKeepBefore);
                 run.StopSelectedNow();
                 _admin["stopped"] = !run.SelectedManaged;
                 AdminFinish();
@@ -551,6 +722,12 @@ public partial class EditorSmoke
         if (Headless) return;
         // The editor restores its own main screen after the plugins load: bring the tab forward for each still.
         _adminView?.MakeVisible();
+        // A Settings still never shows a folder on this computer (the UO install): its value is covered until taken.
+        if (name.StartsWith("settings", StringComparison.Ordinal) && _adminView?.Settings is { } form)
+        {
+            _admin[$"masked_{name}"] = form.MaskFolders(true) > 0;
+        }
+
         _adminShot = name;
         _adminShotFrames = 20;
     }
@@ -566,6 +743,7 @@ public partial class EditorSmoke
 
         string file = Path.Combine(_out, $"admin_{name}.png");
         frame.SavePng(file);
+        _adminView?.Settings?.MaskFolders(false);
         _admin[$"still_{name}"] = file;
     }
 
@@ -640,6 +818,19 @@ public partial class EditorSmoke
         Check("accounts_banned", "the tab banned it");
         Check("accounts_unbanned", "the tab lifted the ban");
         Check("accounts_listed_after", "the list read again shows the account as the tab left it");
+        Check("backup_now_ok", "Back up now kept a snapshot of the save, listed first");
+        Check("backup_health_ok", "Health shows the last backup, in numbers and in plain words");
+        Check("backup_account_made", "an account made after the backup was on the server");
+        Check("backup_confirm_shown", "Restore asks first, in plain words");
+        Check("backup_restored", "Restore put the backup in place while the run bar had the server stopped");
+        Check("backup_before_kept", "a before-restore backup of the world as it was is kept, beside the restored one");
+        Check("backup_world_restored", "after the restore the account made after the backup is gone");
+        Check("backup_keep_ok", "Back up now with keep 2 removed the oldest backups and spared the before-restore one");
+        if (!Headless)
+        {
+            Check("masked_settings-form", "the Settings stills cover the UO data folders");
+        }
+
         Check("stopped", "the run bar stopped the server at the end");
         _admin["ok"] = _failures.Count == 0;
         _report["admin"] = _admin;

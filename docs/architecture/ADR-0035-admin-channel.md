@@ -10,6 +10,19 @@ Proposed
 
 ## Last Verified
 
+2026-10-10 (AD6): `python tools\editor_shard\run.py admin-check --no-client`
+passes 90/90: `admin_backup` refused without the token and below
+Administrator; Back up now keeps a snapshot whose manifest names no folder
+and Health names it; unknown actions, names that would leave the folder and
+missing snapshots are refused in plain words; a restore keeps a
+before-restore snapshot first; keep 1 removes the rest from the disk; every
+one is in the audit log. `python tools\editor_shard\run.py admin-tab
+--windowed` passes 44/44 (headless 43/43): an account made after a backup is
+gone once Restore has put that backup back with the server restarted by the
+run bar, a before-restore backup is kept, keep 2 removes the oldest, and the
+Settings stills cover the UO data folders; no folder of the server reaches
+the tab's log.
+
 2026-10-10 (AD5): `python tools\editor_shard\run.py admin-check --no-client`
 passes 68/68: `admin_accounts` and `admin_account` refused without the token;
 an account made with a 16-character generated password logs in on the
@@ -163,6 +176,7 @@ The ops so far (AD0, AD1, AD2a, AD2b, AD4):
 | `admin_settings` | Administrator | The Settings form: reads the running server's setting values (secrets as `***`), and records a settings change in the audit log before the editor writes it |
 | `admin_accounts` | Administrator | The Accounts list: every account with its level, created, last login (UTC), characters, online, banned, protected (read only) |
 | `admin_account` | Administrator | One account made, given a level (its characters too), a new password, banned or unbanned. Only levels and accounts below the connection's own, as ModernUO's admin gump; an Owner may change any |
+| `admin_backup` | Administrator | The Backups list: the GUO snapshots of the save (read), Back up now (a save, then a copy of the save folder, keeping the newest N), and a restore's first half (a save and a before-restore snapshot); the editor swaps the save folder while the server is stopped |
 
 Account passwords travel only in the `admin_account` request, which the
 audit log masks. The server never sends one back: the editor makes a
@@ -171,6 +185,21 @@ characters, the login screen's boxes (passwords 8 to 16, printable ASCII),
 so every account the tab makes can log in by typing; the workspace's
 generated staff passwords are 16 characters for the same reason. Accounts
 are not deleted from the tab (AD3's dangerous list).
+
+Backups (AD6) are for a server on this computer only. A snapshot is a copy
+of the whole save folder, taken on the game thread just after a save, in
+`<autoArchive.backupPath>/GUO/<UTC time>[_before-restore]`, beside
+ModernUO's own `Automatic` archives and never mixed with them; its
+`guo_backup.json` names its time, reason, files and size and no folder. The
+bridge never deletes a save: it saves, copies and prunes snapshots, and
+refuses any name that is not a snapshot's. The restore swaps the save
+folder with the server stopped, so the running world cannot write it back:
+the bridge first keeps a before-restore snapshot of the world as it is, the
+run bar stops the server, the editor moves the snapshot's copy into place
+(a staged `Saves.next` set aside so it is not published at boot; any
+failure puts the previous save back) and the run bar starts the server
+again. Restoring a remote server's backups is a follow-up (the VPS
+buttons).
 
 The god view's actions (AD2b) move only the admin's own staff character: an
 online character at GameMaster or above, named in `as` or, when one alone is

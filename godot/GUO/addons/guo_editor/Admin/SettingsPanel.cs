@@ -36,6 +36,7 @@ public partial class SettingsPanel : VBoxContainer
     private readonly Dictionary<string, Label> _errors = new();
     private readonly Dictionary<string, Control> _rows = new();
     private readonly List<(Control Heading, string Group)> _headings = new();
+    private readonly List<(Control Editor, Label Cover)> _masked = new();
     private bool _otherShown;
     private int _req;
     private List<SettingsChange> _pending;
@@ -313,6 +314,51 @@ public partial class SettingsPanel : VBoxContainer
                 return line;
         }
     }
+
+    /// <summary>
+    /// For a still of the form: true covers every value that names a folder on this computer (the UO data folders, or
+    /// any setting holding a path), false shows them again. Returns how many are covered. The files are not touched.
+    /// </summary>
+    public int MaskFolders(bool on)
+    {
+        foreach ((Control editor, Label cover) in _masked)
+        {
+            if (IsInstanceValid(editor))
+            {
+                editor.Visible = true;
+            }
+
+            if (IsInstanceValid(cover))
+            {
+                cover.QueueFree();
+            }
+        }
+
+        _masked.Clear();
+        if (!on || Settings == null)
+        {
+            return 0;
+        }
+
+        foreach (SettingsField f in Settings.Fields)
+        {
+            if (_editors.GetValueOrDefault(f.Id) is not { } editor || !(f.Type is "folders" or "folder" || LooksLikePath(Settings.Get(f))))
+            {
+                continue;
+            }
+
+            var cover = new Label { Text = "(a folder on this computer, hidden in stills)", Modulate = new Color(1, 1, 1, 0.6f), SizeFlagsHorizontal = SizeFlags.ExpandFill };
+            editor.Visible = false;
+            editor.GetParent().AddChild(cover);
+            editor.GetParent().MoveChild(cover, editor.GetIndex() + 1);
+            _masked.Add((editor, cover));
+        }
+
+        return _masked.Count;
+    }
+
+    private static bool LooksLikePath(string v) =>
+        !string.IsNullOrEmpty(v) && System.Text.RegularExpressions.Regex.IsMatch(v, @"(?m)^\s*([A-Za-z]:[\\/]|\\\\|/[^/\s])");
 
     private string SecretState(SettingsField f) =>
         Settings.SecretEdited(f) ? "will change" : Settings.SecretSet(f) ? Settings.SecretKept(f) ? "set (in your secrets file)" : "set" : "not set";

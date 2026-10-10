@@ -57,7 +57,12 @@ python tools\editor_shard\run.py admin-tab [--windowed]
   password, given a level and a typed password, banned and unbanned, each
   proved by a login on the shard's login server; refusals; passwords masked
   in the audit log; the account, `ad5c` and six digits, stays on the
-  instance) and that no token or password reached a log. For the actions
+  instance), the backup op (AD6, `admin_backup_check.py`: Back up now keeps
+  a snapshot with a manifest naming no folder, Health names it, unknown
+  actions and names that would leave the folder are refused, a restore
+  keeps a before-restore snapshot first, keep 1 prunes the rest from the
+  disk; one snapshot stays on the instance) and that no token or password
+  reached a log. For the actions
   it puts two test spawners west of Britain and logs a headless GUO client in
   as the third game master lane account (`UO_SHARD_GM_ACCOUNTS`, its
   character named after the account; `staff_client.py`), then checks Go
@@ -83,7 +88,12 @@ python tools\editor_shard\run.py admin-tab [--windowed]
   first) is put back as it was. Then the Accounts list (AD5) shows every
   account, keeps the owner out of reach, makes an account (`ad5t` and six
   digits, left on the instance) with a generated password, gives it a level
-  and a typed password, bans it and lifts the ban. Then it checks that every time in the tab's log is UTC with a Z, and that no
+  and a typed password, bans it and lifts the ban. Then the Backups list
+  (AD6): Back up now keeps a snapshot and Health shows it, an account made
+  afterwards (`ad6t` and six digits) is gone once Restore (asked first) has
+  put that snapshot back with the server restarted by the run bar, a
+  before-restore snapshot is kept, and keep 2 removes the oldest. Settings
+  stills cover the UO data folders. Then it checks that every time in the tab's log is UTC with a Z, and that no
   token or password reached the editor output, the tab's log, the server
   console or the audit log. It stops a running `start` first. `--windowed` saves stills of the tab and a clip under
   `build\admin_tab`.
