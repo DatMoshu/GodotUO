@@ -1,4 +1,6 @@
 @echo off
+rem Logs ClassicUO and GUO into the dev shard at the same five spots and writes one comparison sheet per spot; the ClassicUO half types into its window, so it needs --allow-foreground and a desktop left alone.
+rem args: --only guo|cuo | --place <name> | --allow-foreground
 REM ============================================================================
 REM  Stand ClassicUO and GUO in the same places and photograph both.
 REM

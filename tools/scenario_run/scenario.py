@@ -15,7 +15,8 @@ SURFACES = {"client", "editor", "web", "deck", "shard"}
 # Every kind the format names; the runner implements the subset in IMPLEMENTED and fails a step of any other kind.
 KINDS = {"launch", "wait", "shot", "note", "tour_segment", "editor_invoke", "ui.click", "ui.fill", "ui.key",
          "chat", "scene_set", "renderdump", "render_diff", "lane"}
-IMPLEMENTED = {"launch", "wait", "shot", "note", "tour_segment", "editor_invoke", "ui.click", "ui.fill", "ui.key", "chat"}
+IMPLEMENTED = {"launch", "wait", "shot", "note", "tour_segment", "editor_invoke", "ui.click", "ui.fill", "ui.key", "chat",
+               "renderdump", "render_diff"}
 DEFAULT_TIMEOUTS = {"step_s": 30, "run_s": 600}
 
 
@@ -155,7 +156,8 @@ def substitute(value, variables: dict[str, str]):
             env = os.environ.get("GUO_SCENARIO_" + name.upper())
             if env is not None:
                 return env
-            raise ScenarioError(f"scenario variable ${name} is not defined (set GUO_SCENARIO_{name.upper()} or pass --var {name}=...)")
+            hint = "" if "password" in name.lower() else f" or pass --var {name}=..."  # a password is environment only
+            raise ScenarioError(f"scenario variable ${name} is not defined (set GUO_SCENARIO_{name.upper()}{hint})")
         return _VAR.sub(repl, value)
     if isinstance(value, list):
         return [substitute(v, variables) for v in value]

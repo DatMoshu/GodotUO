@@ -11,6 +11,7 @@ internal abstract class CellMode : IWorldMode
 {
     public abstract string Name { get; }
     public abstract string Summary { get; }
+    public abstract string Meaning { get; }
     public abstract IReadOnlyList<LegendItem> Legend(ModeContext ctx);
     public abstract string Classify(ModeContext ctx, int x, int y);
 
@@ -52,6 +53,7 @@ internal sealed class HeightMode : CellMode
     private int _min, _max = 1;
 
     public override string Name => "Height";
+    public override string Meaning => "Colour shows how high the ground is: blue is low, red and white are high.";
     public override string Summary => "z heatmap of the land and walkable surfaces; contour lines every 5 z";
 
     /// <summary>The z range on view at the last draw (or the last <see cref="Measure"/>).</summary>
@@ -120,12 +122,13 @@ internal sealed class WalkMode : CellMode
         Wet = new(0.20f, 0.35f, 0.90f), Blocked = new(0.85f, 0.20f, 0.20f), Pending = new(0.5f, 0.5f, 0.5f);
 
     public override string Name => "Walkability";
+    public override string Meaning => "Colour shows where a player can stand and where they are stopped.";
     public override string Summary => "what the client's own movement rules (Pathfinder.CanWalk) let a player stand on";
 
     public override IReadOnlyList<LegendItem> Legend(ModeContext ctx) => new[]
     {
-        new LegendItem("walkable (ground)", Walkable), new LegendItem("surface (a static)", Surface),
-        new LegendItem("wet", Wet), new LegendItem("blocked", Blocked),
+        new LegendItem("walkable ground", Walkable), new LegendItem("walkable on an item (floor, bridge)", Surface),
+        new LegendItem("water", Wet), new LegendItem("blocked: a player cannot stand here", Blocked),
     };
 
     public static Color Of(Walk w) => w switch
@@ -155,12 +158,13 @@ internal sealed class ReachMode : CellMode
     public static readonly Color Reached = new(0.20f, 0.80f, 0.30f), Unreachable = new(1f, 0.55f, 0.05f);
 
     public override string Name => "Reachability";
+    public override string Meaning => "Click a cell: colour shows where a player can walk to from it.";
     public override string Summary => "click a cell: green is reachable from it by the client's walking rules, orange is walkable but cut off";
 
     public override IReadOnlyList<LegendItem> Legend(ModeContext ctx) => new[]
     {
-        new LegendItem(ctx.Origin == null ? "click a cell to fill from" : ctx.Reach is { Valid: false } ? "origin is not walkable" : "reachable", Reached),
-        new LegendItem("unreachable", Unreachable),
+        new LegendItem(ctx.Origin == null ? "click a cell to fill from" : ctx.Reach is { Valid: false } ? "origin is not walkable" : "a player can walk here from it", Reached),
+        new LegendItem("walkable, but cut off from it", Unreachable),
     };
 
     protected override Color? Fill(ModeContext ctx, int x, int y)
@@ -228,6 +232,7 @@ internal sealed class TypesMode : CellMode
     };
 
     public override string Name => "Types";
+    public override string Meaning => "Colour shows what each cell holds: wall, floor, roof, water and so on.";
     public override string Summary => "what each cell is: land, floor, wall, window, door, roof, stairs, foliage, water, prop (tiledata flags and names)";
 
     public override IReadOnlyList<LegendItem> Legend(ModeContext ctx) =>
@@ -243,6 +248,7 @@ internal sealed class TypesMode : CellMode
 internal sealed class IdsMode : CellMode
 {
     public override string Name => "IDs";
+    public override string Meaning => "Each kind of item gets its own colour, so the map looks like a patchwork. That is normal, not damage.";
     public override string Summary => "a colour per graphic (the topmost object on the cell); hover shows the graphic and name";
 
     public static Color Hash(int graphic)
@@ -253,7 +259,7 @@ internal sealed class IdsMode : CellMode
 
     public override IReadOnlyList<LegendItem> Legend(ModeContext ctx) => new[]
     {
-        new LegendItem("one colour per graphic", Hash(0x0E75)), new LegendItem("no static: the land tile, dark", Hash(3) * 0.4f),
+        new LegendItem("one colour per kind of item (the top one)", Hash(0x0E75)), new LegendItem("no item: the ground, darker", Hash(3) * 0.4f),
     };
 
     private static ObjInfo? Top(WorldData d, int x, int y)
@@ -291,11 +297,12 @@ internal sealed class LandMeshMode : CellMode
     public static readonly Color Stretched = new(1f, 0.85f, 0.1f);
 
     public override string Name => "Land mesh";
+    public override string Meaning => "Lines show the ground's shape; yellow tiles are stretched over a slope.";
     public override string Summary => "the land's wireframe at its corner heights; tiles the client stretches are yellow";
 
     public override IReadOnlyList<LegendItem> Legend(ModeContext ctx) => new[]
     {
-        new LegendItem("stretched tile", Stretched), new LegendItem("flat tile", new Color(0.8f, 0.8f, 0.85f)),
+        new LegendItem("ground stretched over a slope", Stretched), new LegendItem("flat ground", new Color(0.8f, 0.8f, 0.85f)),
     };
 
     protected override Color? Fill(ModeContext ctx, int x, int y) =>
@@ -325,11 +332,12 @@ internal sealed class ProblemsMode : CellMode
     public static readonly Color Hole = new(1f, 0.1f, 0.9f), ZFight = new(1f, 0.15f, 0.1f), OnWater = new(0.1f, 0.95f, 0.95f);
 
     public override string Name => "Problems";
+    public override string Meaning => "Only mistakes are coloured: holes in floors, items stacked in one spot, items on water.";
     public override string Summary => "holes in floors, statics at the same cell and z (z-fights), statics standing on water";
 
     public override IReadOnlyList<LegendItem> Legend(ModeContext ctx) => new[]
     {
-        new LegendItem("hole in a floor", Hole), new LegendItem("z-fight (same cell and z, same graphic or two floors)", ZFight), new LegendItem("static on water", OnWater),
+        new LegendItem("hole in a floor", Hole), new LegendItem("two items in one spot at one height (they flicker)", ZFight), new LegendItem("item standing on water", OnWater),
     };
 
     protected override Color? Fill(ModeContext ctx, int x, int y)
@@ -350,6 +358,7 @@ internal sealed class DiffMode : CellMode
     public static readonly Color Changed = new(1f, 0.6f, 0.1f);
 
     public override string Name => "Project diff";
+    public override string Meaning => "Colour marks the parts of the map this project changed; the rest is your own install.";
     public override string Summary => "the 8x8 blocks the world project replaced; everything else is the install's";
 
     public override IReadOnlyList<LegendItem> Legend(ModeContext ctx) => new[]

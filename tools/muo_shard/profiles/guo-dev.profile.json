@@ -7,7 +7,8 @@
                "ref": "d4531cd94b739613155225c234900de9f47d2c88"},
     "patches": ["tools/modernuo/patches/0001-headless-owner-account.patch",
                 "tools/modernuo/patches/0002-settable-update-range.patch",
-                "tools/modernuo/patches/0003-felucca-spring.patch"]
+                "tools/modernuo/patches/0003-felucca-spring.patch",
+                "tools/modernuo/patches/0005-system-message-hook.patch"]
   },
   "config_overlay": "tools/modernuo/config",
   "listen": {"port": 2593},

@@ -35,15 +35,23 @@ file, never reads the video folder, and leaves every registry row in place (they
 
 `--shard TARGET` runs a **client** scenario against a named shard instead of the one in `UO_SHARD_HOST` / `UO_SHARD_PORT`.
 It reads `GUO_SHARD_<TARGET>_HOST` and `GUO_SHARD_<TARGET>_PORT` (target upper-cased, `-` and `.` as `_`; environment, then
-`config.local.bat`, then `config.bat`) and the login from `GUO_SCENARIO_ACCOUNT` / `GUO_SCENARIO_PASSWORD` (or
-`--var account=` / `--var password=`). A missing one stops the run before launch (exit 2) with the setting's name; the
-values are never printed or logged. The run's manifest records the target as `shard`.
+`config.local.bat`, then `config.bat`) and the login from `GUO_SCENARIO_ACCOUNT` (or `--var account=`) and
+`GUO_SCENARIO_PASSWORD`. The password comes from the environment only: `--var password=` still works but warns and
+names the variable, since a command line shows in the process list and the shell history. A missing one stops the run before launch (exit 2) with the setting's name; the
+values are never printed or logged. The run's manifest records the target as `shard`. Every
+variable whose name contains `password` is environment only the same way: `shard.admin_add_account`'s `$new_password` comes from
+`GUO_SCENARIO_NEW_PASSWORD`, and `--var new_password=` warns.
+
+`--server NAME` runs a client scenario against a server profile of the per-user workspace (`profiles/servers.json`,
+found by `Id` or `Name`): its `Host` and `Port` are the address, the login comes from `GUO_SCENARIO_ACCOUNT` /
+`GUO_SCENARIO_PASSWORD` as for `--shard`, and the manifest records `server:<profile id>` as `shard`. The server lab
+(`tools/server_lab`) runs its cases this way.
 
 Not yet (the commands exist in the plan, not in the runner):
 
 | Command | Arrives with |
 |---|---|
-| `--driver human` (exits 2 with a message) | step 5 |
+| OBS capture of a human run | later |
 | `clip` (cut a clip from the master) | not scheduled |
 
 ## Scenario files
@@ -83,14 +91,18 @@ On main today (step 2 and step 3 kinds):
 | `ui.fill` | Click a field, then type into it (client) | `control`, `text`, `clear` (BackSpace presses first) | ui.* on something the typing changes | The typed text is never logged or read back (the game omits editable values) |
 | `ui.key` | Press and release a key (client) | `key` (Godot name: Enter, Escape, F1), `shift`, `ctrl`, `alt` | ui state change | `guo_input` |
 | `chat` | Say a line in game (client) | `text` (a `[command` works) | log or world state | Enter, text, Enter |
-| `tour_segment` | Run an EditorTour segment | id: segment name | EditorTour checks + frames | Editor only; surface override |
+| `renderdump` | Dump what the client drew (client) | `name` | `render_dump/NAME/guo.json` exists | Starts the client with `GUO_RENDER_DUMP_DIR` set to the run's `render_dump/`; says `renderdump NAME`; the event carries bytes and object count |
+| `render_diff` | Compare that dump with ClassicUO's | `name` | `render_diff: {max_drawn_diff}` | Reference is `build/render_dump/NAME/cuo.json`, or `GUO_RENDER_REF_DIR/NAME/cuo.json` (take it with `launchers\dev\side_by_side.bat --cuo-only --at X Y`, which leaves ClassicUO standing there so the scenario's own `renderdump` dumps both at once; nothing is typed into ClassicUO); writes `diff.md` in the run folder; fails on map, field or drawn mismatches |
+| `tour_segment` | Run an EditorTour segment | id: segment name | EditorTour checks + frames | Editor only; surface override. Human driver: skipped as `ai_only` unless the segment is passive |
 | `editor_invoke` | Run an F3 action by key | key, query | tool result | Editor only; not pre-approved, so the step **fails at once** with a message instead of waiting on the approval dialog (nobody is at the PC in a scripted run). Use a `tour_segment`, or run it by hand |
+
+**Under `--driver human` (real, client and editor scenarios):** `launch`, `note` and `shot` stay the runner's; every other kind is performed by the person, so its `do` is skipped and only its `expect` is checked. `ai_only` steps, and editor `tour_segment` steps whose segment is not passive, are skipped and logged. See Human Driver below.
 
 Not yet (a scenario that uses one fails at the step today):
 
 | Kind | Purpose | Arrives with |
 |---|---|---|
-| `scene_set`, `renderdump`, `render_diff` | Editor scene and render-parity steps | not scheduled |
+| `scene_set` | Editor scene step | not scheduled |
 | `lane` | Run a multi_client lane | step 7 |
 
 ### Controls
@@ -128,6 +140,20 @@ Run it with `--shard <target>`; the account must already have a character (a fre
 once with `launchers\game\play.bat --play --account A --password P --shard-command "[Where"` against that shard). It is
 for a throwaway shard such as the muo_shard container (`tools/muo_shard/README.md`, Container run with the client).
 
+## World scenarios (render parity)
+
+| Scenario id | File | What it covers |
+|---|---|---|
+| `world.britain_parity` | `tools/scenarios/world/britain_parity.scenario.json` | `[go` the Britain bank, renderdump `britain_bank`, render_diff |
+| `world.dungeon_parity` | `tools/scenarios/world/dungeon_parity.scenario.json` | log straight in (`--autologin`) at 1280x720, `[go` Despise level 1 (5401,629), renderdump `despise`, render_diff, still |
+
+The ClassicUO side stands on the same tile while the scenario runs: start it first with
+`launchers\dev\side_by_side.bat --cuo-only --at 5401 629` (a scripted owner-account run places its character, then
+ClassicUO logs itself in there, 1280x720 by default), run the scenario on a GM account, then close ClassicUO. The GUO
+window must be the reference's size, or the two draw different parts of the world. Generated shard passwords are longer
+than the login gump's 16 characters, so `world.dungeon_parity` logs in with upstream's autologin switches rather than
+typing into the gump.
+
 ## Drivers
 
 ### AI Driver (`--driver ai`)
@@ -145,28 +171,40 @@ events only.
 **Quality:** 60 fps, every frame rendered whatever the machine can do. The size is the engine window's at start, 1280×720 from `project.godot` (Godot's `--resolution` does not move it); a 1440p or 4K master needs a project-level size, which is not done yet.  
 **Scope tonight:** the client surface. An editor run records stills and events only (the editor is not a MovieWriter target); OBS and desktop capture are not implemented.
 
-### Human Driver (`--driver human`) (not yet: step 5)
+### Human Driver (`--driver human`, client and editor scenarios)
 
-Planned design; the runner refuses `--driver human` today.
+```bash
+python tools/scenario_run/run.py client.login.basic --driver human --var account=... --var password=...
+python tools/scenario_run/run.py client.login.basic --driver human --clean      # no overlay drawn (Space and Esc still work)
+python tools/scenario_run/run.py client.login.basic --driver human --ghost-human  # a stand-in person plays it, window unfocused and silent (a test of the driver)
+```
 
-The runner shows each step on an in-engine overlay and waits for human verification:
+The runner starts the client (focusable, sound on), then for each step:
 
-1. Skip the `do` action (human takes control)
-2. Display the step caption and highlights on TourOverlay
-3. Poll the same `expect` condition
-4. When true, auto-advance (or Space to skip, Esc to abort)
-5. Record overlay, audio and keystrokes
+1. skips the `do`: the person does it with the real mouse and keyboard
+2. sends the step's `say` (or its id) and its number to the client's overlay (`guo_overlay`, a caption card at the bottom of the
+   game viewport) and outlines the `control` a `ui.click` or `ui.fill` step names
+3. polls the same `expect` as the AI driver, with the AI driver's own code
+4. moves on by itself when it holds; **Space** skips the step (logged `skipped`), **Esc** aborts the run (FAIL, `aborted`)
 
-**Capture path:** OBS (WebSocket) or ffmpeg desktop capture  
-**Quality:** Same as AI (2560×1440 @ 60 fps, CRF 16)  
-**Determinism:** Real-time; events include observer timestamps for syncing
+`launch`, `note` and `shot` stay the runner's, and `shot: true` stills are taken as usual. A step marked `ai_only: true` is
+skipped and logged. A step with no `expect` stays on screen 3 s (a `wait`'s seconds if longer) and moves on. Windows are 3 times the AI
+driver's. Events and `run.json` have the AI run's shape with `driver: human` (run id ends `_human`). The overlay is
+`godot/GUO/src/Automation/HumanOverlay.cs`, a client copy of the editor tour's drawing; it exists only in a run that has the game's
+automation MCP on, so nothing of it ships in a player's build.
 
-Steps marked `ai_only: true` are skipped in human mode and logged as such.
+Editor scenarios work the same way with the editor's own tour overlay (`human_overlay`, no control outline). A `tour_segment` step
+is skipped as `ai_only` (the segment drives the editor itself) unless the segment is passive (`layout`, `gumps`, `anims`, `pick`
+only show a view and check it); a passive segment plays while the person watches. `--ghost-human` has nothing to do in an editor
+scenario.
+
+Not yet: recording a human run (OBS capture, no video from the runner).
+Full behaviour: `docs/data_formats.md`, section 34, "The human driver".
 
 ## Recording: capture paths and conventions
 
 On main today: the AI driver's MovieWriter path (a client run records by default; the master is `run.mp4`, copied to the
-video folder when one is mounted). Not yet: the human driver's OBS and ddagrab paths and `run.py clip`.
+video folder when one is mounted). Not yet: the human driver's OBS and ddagrab paths (a human run records stills and events only) and `run.py clip`.
 
 ### AI Runs: MovieWriter (deterministic)
 
@@ -391,5 +429,5 @@ a timer armed at `run_s` plus 60 s kills the program and exits 4.
 
 ---
 
-**Status:** Build steps 1 (docs) and 2 (runner + AI driver, prune, list filter) are on main.  
+**Status:** Build steps 1 (docs), 2 (runner + AI driver, prune, list filter) and 3 are on main; the human driver (client scenarios HD1, editor surface HD2) is on its branches.  
 **Last updated:** 2026-10-06

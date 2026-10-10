@@ -1,0 +1,374 @@
+# ADR-0035: The Admin Channel: a Token, Access Levels and an Audit Log on the Editor Bridge
+
+## Status
+
+Proposed
+
+## Date
+
+2026-10-09
+
+## Last Verified
+
+2026-10-10 (AD2c): `python tools\editor_shard\run.py admin-check` 122/122,
+with the hidden presence's checks (Go there, Bring here, the paperdoll and
+Follow with nobody logged in, never in the world) and the staff-level
+refusals; the bridge's rule tests pass; `python tools\editor_shard\run.py
+admin-tab --windowed` 56/56, pressing Go there, Bring here and Open
+paperdoll in the tab with nobody online.
+
+2026-10-10 (AD3): `python tools\editor_shard\run.py admin-check --no-client`
+passes 106/106 on a private instance built with MUO patch 0005:
+`admin_commands`, `admin_command` and `command` refused without the token;
+193 commands listed with level, usage and description, the dangerous ones
+marked, none above the connection's level; `[where` run with nobody online
+returns "You are at 0 0 0 in Internal."; a command typed without `[` runs the
+same; an unknown one answers "That is not a valid command."; a second line
+is refused; `[wipe`, `[restart`, `[global delete`, `[decorate` and
+`[area set` are refused without their word and with a wrong one; `[Wipe`
+with its word only asks for a target, which is cancelled; "run as" a
+character not online is refused, and `command` without `as`; the hidden
+mobile is not in the world; a password command is audited as
+`[password ***`, and neither the token nor any password is in the shard log
+or the audit log. `python tools\editor_shard\run.py admin-tab --windowed`
+passes 52/52 (headless 51/51): the Commands palette lists the 193 commands
+and searches them, shows the help line for the one typed, runs `[where` with
+nobody online and shows its output, holds `[wipe` for its typed word (a wrong
+one does not run it) and with it only asks for a target, brings back the
+history with Up, refuses "run as" a character not online, and no secret
+reaches any log.
+
+2026-10-10 (AD6): `python tools\editor_shard\run.py admin-check --no-client`
+passes 90/90: `admin_backup` refused without the token and below
+Administrator; Back up now keeps a snapshot whose manifest names no folder
+and Health names it; unknown actions, names that would leave the folder and
+missing snapshots are refused in plain words; a restore keeps a
+before-restore snapshot first; keep 1 removes the rest from the disk; every
+one is in the audit log. `python tools\editor_shard\run.py admin-tab
+--windowed` passes 44/44 (headless 43/43): an account made after a backup is
+gone once Restore has put that backup back with the server restarted by the
+run bar, a before-restore backup is kept, keep 2 removes the oldest, and the
+Settings stills cover the UO data folders; no folder of the server reaches
+the tab's log.
+
+2026-10-10 (AD5): `python tools\editor_shard\run.py admin-check --no-client`
+passes 68/68: `admin_accounts` and `admin_account` refused without the token;
+an account made with a 16-character generated password logs in on the
+shard's login server, refuses its old password after a typed reset, is
+refused while banned and logs in again after the unban; every refusal is in
+plain words and the audit log masks each password. `python
+tools\editor_shard\run.py admin-tab --windowed` passes 35/35 with the
+Accounts list; no account password reaches a log.
+
+2026-10-10 (AD4): `python tools\editor_shard\run.py admin-check --no-client`
+passes 43/43, with `admin_settings` refused without the token, `get` answering
+live values (a secret one as `***`), `changed` audited with a webhook value
+masked, and an unknown action refused. `python tools\editor_shard\run.py
+admin-tab --windowed` passes 28/28: the Settings form saves and restarts the
+private shard, which reports the new values; no test secret reaches a log.
+
+2026-10-09 (AD1): `python tools\editor_shard\run.py admin-check` passes 19/19
+with `admin_status` and `admin_save` (both refused without the token; a save
+is audited with its reason). `python tools\editor_shard\run.py admin-tab`
+passes 9/9 headless and windowed: the run bar starts the private shard with
+the token, the Admin tab connects, reads Health, saves, restarts through the
+run bar and reconnects, and no token or password is in the editor output,
+the tab's log, the server console or the audit log.
+
+2026-10-09: `python tools\editor_shard\run.py admin-check` passes 13/13 on a
+private instance started by `tools/editor_shard` (bridge built from this
+change). A plain hello and a `mobiles` query need no token. An admin op
+without the token is refused, a wrong token is refused (and audited, masked),
+the right one grants Administrator, `admin_whoami` and `admin_audit` answer,
+a connection is closed after three refused tokens, and neither the token nor
+the shard passwords appear in `shard.log` or the audit log.
+`tools/editor_shard/bridge/tests` (the channel without ModernUO) passes.
+
+## Decision Makers
+
+Project owner (Moshu, who asked for the Admin tab on 2026-10-08 and answered
+its open questions on 2026-10-09); guo-director (the Admin tab draft);
+guo-worker (AD0).
+
+## Summary
+
+The Admin tab (sprint AD1-AD7) needs the editor to do things to a running
+shard that map editing never did: save, restart, read health, manage
+accounts, change settings, run any command. Those go through the same
+loopback bridge as map editing (ADR-0012), but on an **admin channel**:
+
+1. **A per-server admin token.** Generated with the shard's passwords into the
+   per-user secrets file and handed to the shard at start. An editor sends it
+   once, in its `hello`. No token, no admin op. Map editing is unchanged.
+2. **Access levels.** Every admin op states the ModernUO access level it runs
+   at. The token grants one level (Administrator by default). A connection
+   runs only the ops at or below its level.
+3. **An audit log.** Every admin op, and every refused admin `hello`, is
+   written on the server (who, what, when, the outcome). The tab reads the
+   same entries back. A field whose name says password, token or secret is
+   masked before anything is written.
+4. **Tunnel-only remote.** The bridge listens on loopback only. A remote shard
+   (the VPS, AD7) is reached through an ssh tunnel to its loopback bridge.
+5. **Bridge first, core patch last.** Everything lives in the bridge assembly.
+   Only what the bridge cannot reach becomes a ModernUO core patch, listed in
+   `tools/modernuo/UPSTREAM.md`. AD0 needed none.
+
+## Engine Compatibility
+
+| Field | Value |
+|---|---|
+| **Engine** | Godot 4.7.2 mono (editor side, from AD1); ModernUO, net10.0 (bridge) |
+| **Domain** | Tools / editor live tier |
+| **Knowledge Risk** | LOW: plain .NET sockets, SHA-256, JSON |
+| **References Consulted** | `tools/editor_shard/bridge/EditorBridge.cs`, ModernUO `Mobile.cs` (`AccessLevel`), `tools/guo/shard_secrets.py` |
+| **Post-Cutoff APIs Used** | None |
+| **Verification Required** | The live check above, on every bridge change that adds an admin op |
+
+## ADR Dependencies
+
+| Field | Value |
+|---|---|
+| **Depends On** | ADR-0012 (the bridge and its transport); ADR-0032 (the per-user workspace that holds the secrets file); SF1/SF2 (generated passwords, owner promotion guard) |
+| **Enables** | AD1-AD7: Health, god view, commands, settings, accounts, backup, the VPS profile |
+| **Blocks** | Every admin op: none may be added except through `AdminChannel.Ops` |
+| **Ordering Note** | AD0 adds two ops only (`admin_whoami`, `admin_audit`), to prove the gate; the Admin tab's ops follow in AD1 onwards |
+
+## Context
+
+The bridge's security was "loopback + hello" (ADR-0012). That is enough for
+map editing on a private instance: anything on this PC that can reach
+127.0.0.1 could already edit the world project's files. It is too weak for
+administering a server: shutting it down, changing passwords and access
+levels, or running any command with nobody logged in. Such ops should need
+something the person at the editor holds and other local programs do not.
+
+SF1 already gives each user a secrets file outside the repository
+(`<UO_WORKSPACE_DIR>/shard/secrets.bat`), read by the launchers and by
+`tools/guo/config.py`, never printed. The token belongs in it.
+
+The `command` op ran a GM command as a named online character with no token
+at all. AD3 brought command running onto the admin channel: `command` is an
+admin op now, beside the Commands palette's own ops.
+
+## Decision
+
+### The token
+
+- `UO_BRIDGE_ADMIN_TOKEN`, 32 letters and digits, generated by
+  `tools/guo/shard_secrets.py` beside the shard passwords. A secrets file
+  written before this change gains it at the next `configure.py` or
+  `editor_shard start`, and keeps its passwords.
+- It resolves like every setting (environment, `config.local.bat`, the secrets
+  file) and is `cfg.bridge_admin_token`.
+- `tools/editor_shard start` passes it to the shard as
+  `GUO_BRIDGE_ADMIN_TOKEN`. A shard started without one offers no admin ops
+  at all ("this server has no admin token"). `--no-bridge` passes none.
+- The bridge keeps only its SHA-256 hash and compares hashes in fixed time.
+  A refused token costs the connection a 1 s pause; the third refusal closes
+  it.
+- The token is never logged, printed, put in an audit entry or sent anywhere
+  but the loopback bridge.
+
+### The hello
+
+`{"op":"hello","editor":"<name>","admin_token":"<token>"}`. The reply adds
+`admin` (the granted level, or null) and, when granted, `admin_ops` (the ops
+this connection may run); when refused, `admin_error`. A hello without
+`admin_token` is a plain map-editing hello, not a refusal, so every editor
+built before this change keeps working.
+
+### Access levels
+
+`AdminLevel` mirrors ModernUO's `AccessLevel` by value (Player .. Owner) so the
+channel code needs no server types and is tested without ModernUO. Each admin
+op is one entry in `AdminChannel.Ops`, op name to level. The token grants
+`GUO_BRIDGE_ADMIN_ACCESS`, Administrator by default. Owner-level ops (none
+yet) would need it raised on purpose. An op that is not in `Ops` is not an
+admin op and can never run through the admin path.
+
+The ops so far (AD0, AD1, AD2a, AD2b, AD2c, AD3, AD4, AD5, AD6):
+
+| Op | Level | Does |
+|---|---|---|
+| `admin_whoami` | Counselor | The editor's name, its level and the ops it may run |
+| `admin_audit` | Administrator | The last audit entries (up to 200), oldest first |
+| `admin_status` | Counselor | Health: uptime, players online, items, mobiles, memory, last save, version (read only) |
+| `admin_save` | Administrator | Saves the world now; answers when the write has finished |
+| `admin_godview` | GameMaster | The god view: players, NPCs and spawners on a facet, then change-only pushes (read only) |
+| `admin_godview_find` | GameMaster | Finds players, NPCs and spawners by name or serial on every facet (read only) |
+| `admin_goto` | GameMaster | Go there: moves the admin's own online staff character to a player, NPC, spawner or spot; with nobody logged in, the hidden presence's spot (AD2c) |
+| `admin_bring` | GameMaster | Bring here: moves a player or NPC to the admin's own staff character, or to the hidden presence's spot |
+| `admin_paperdoll` | GameMaster | Opens a player's or NPC's paperdoll in the admin's own staff character's client; for the hidden presence, answers with the paperdoll |
+| `admin_follow` | GameMaster | Follow: keeps the admin's own staff character (or the hidden presence's spot) beside a player or NPC until stopped |
+| `admin_spawner` | GameMaster | Respawn or Clear a spawner |
+| `admin_settings` | Administrator | The Settings form: reads the running server's setting values (secrets as `***`), and records a settings change in the audit log before the editor writes it |
+| `admin_accounts` | Administrator | The Accounts list: every account with its level, created, last login (UTC), characters, online, banned, protected (read only) |
+| `admin_account` | Administrator | One account made, given a level (its characters too), a new password, banned or unbanned. Only levels and accounts below the connection's own, as ModernUO's admin gump; an Owner may change any |
+| `admin_commands` | Counselor | The Commands palette: the server's commands at or below the connection's level, with level, usage, description and whether the name is on the dangerous list (read only) |
+| `admin_command` | Counselor | Runs one command line, as a hidden admin mobile at the connection's level or as an online staff character at or below it, and returns its output; a dangerous one only with its typed word |
+| `command` | Counselor | The old op (ADR-0012), moved behind the token: the same as `admin_command` with `as` required |
+| `admin_backup` | Administrator | The Backups list: the GUO snapshots of the save (read), Back up now (a save, then a copy of the save folder, keeping the newest N), and a restore's first half (a save and a before-restore snapshot); the editor swaps the save folder while the server is stopped |
+
+Account passwords travel only in the `admin_account` request, which the
+audit log masks. The server never sends one back: the editor makes a
+generated one itself and shows it once. Names and passwords hold at most 16
+characters, the login screen's boxes (passwords 8 to 16, printable ASCII),
+so every account the tab makes can log in by typing; the workspace's
+generated staff passwords are 16 characters for the same reason. Accounts
+are not deleted from the tab (AD3's dangerous list).
+
+Backups (AD6) are for a server on this computer only. A snapshot is a copy
+of the whole save folder, taken on the game thread just after a save, in
+`<autoArchive.backupPath>/GUO/<UTC time>[_before-restore]`, beside
+ModernUO's own `Automatic` archives and never mixed with them; its
+`guo_backup.json` names its time, reason, files and size and no folder. The
+bridge never deletes a save: it saves, copies and prunes snapshots, and
+refuses any name that is not a snapshot's. The restore swaps the save
+folder with the server stopped, so the running world cannot write it back:
+the bridge first keeps a before-restore snapshot of the world as it is, the
+run bar stops the server, the editor moves the snapshot's copy into place
+(a staged `Saves.next` set aside so it is not published at boot; any
+failure puts the previous save back) and the run bar starts the server
+again. Restoring a remote server's backups is a follow-up (the VPS
+buttons).
+
+Commands (AD3) run with nobody online. The bridge makes one hidden admin
+mobile in memory (`new Mobile(serial)` with a serial outside the world's,
+never added to the world, so never found, shown or saved), on the Internal
+map, at the connection's level for each command; ModernUO still checks each
+command's own level. It has no client: a target cursor or a prompt a command
+gives it is cancelled at once and the reply says so (run the command as your
+staff character to answer one in game), and a gump goes nowhere. Output is
+every system message the mobile is sent while the command runs and for
+300 ms after, read through MUO patch 0005's `Mobile.SystemMessageSent`
+(below). The dangerous list, fixed by the owner on 2026-10-09 (shutdown,
+wipe, delete accounts, global decorate, mass moves), lives in
+`AdminCommandRules.cs`, which the editor and the bridge both compile: the
+tab asks for the typed word, and the bridge refuses a dangerous command
+whose request does not carry it. Everything else runs on a click.
+
+The god view's actions (AD2b) move the admin's own staff character: an
+online character at GameMaster or above and no higher than the level the
+connection's token grants (an Administrator's tab never moves an Owner),
+named in `as` or, when one alone is online, that one. With no such character
+online, or `hidden` true, the Admin tab's hidden presence acts (AD2c). It is
+the Commands palette's hidden admin mobile, not a second one, and it never
+enters the world either: it stays on the Internal map, and only its spot is
+remembered in the bridge. Go there and Follow move the spot, Bring here
+brings a mobile to it (or to a spot in the request), and Open paperdoll
+answers with what the paperdoll shows, as there is no client to open one
+in. A command that moves the mobile (`[go`) moves the spot as well. Nothing
+in the game sees the presence; a summoned player is told a staff member
+summoned them, as before.
+
+Restart is not a bridge op: the editor's run bar stops and starts the server
+process it started itself (`tools/server_manager`), after an `admin_save`. A
+run-bar start hands a server that loads the bridge its token and bridge
+settings, so it comes back with its admin channel.
+
+### The audit log
+
+- On the server, `<shard>/Logs/GUO/admin_audit.jsonl`, one JSON object per
+  line: `at` (UTC), `editor`, `op`, `level`, `ok`, `args` (the request's
+  fields without `op`) and `error` on a refusal. It sits with ModernUO's own
+  logs, never in `Saves`, so a backup or a restore does not carry it.
+- The last 200 entries are kept in memory for `admin_audit` (the tab's log).
+- Recorded: every admin op (run or refused), every refused admin hello, and
+  every granted one.
+- Masking: any field, at any depth, whose name contains `password`, `token`,
+  `secret`, `passphrase` or `webhook` is written as `***`, and so are `from`,
+  `to` and `value` in an object whose `key` names such a setting (AD4). Ops that carry a secret (AD5's
+  password reset) must use such a field name. A test (`bridge/tests`) and the
+  live check grep the files for the real values.
+
+### Remote shards
+
+The bridge binds `127.0.0.1` only, as it always has. The VPS profile (AD7)
+reaches its bridge through an ssh tunnel (`ssh -L`), never a public port, and
+uses the VPS shard's own token from its secrets (muo_shard's env file). The
+token is sent over the tunnel, which is encrypted.
+
+### Bridge or core patch
+
+An admin op goes into the bridge assembly when ModernUO's public API reaches
+it (`World.Save`, `Accounts`, `CommandSystem`, `Core` state). Only something
+the bridge cannot reach becomes a core patch, named "MUO patch" in its commit
+and listed in `tools/modernuo/UPSTREAM.md` with an upstream-or-ours verdict
+(the MU1 rule). AD0 needed none. AD3 needed one: ModernUO's message methods
+write straight to a mobile's NetState and drop the message when there is
+none, so a command's output to a mobile with no client could not be read.
+MUO patch 0005 adds the static `Mobile.SystemMessageSent`; the bridge binds
+it by reflection and still loads, without output, on a server lacking it.
+
+## Alternatives Considered
+
+### Alternative 1: Use the owner's account password as the admin secret
+
+- **Description**: the editor logs in as the owner account over the bridge.
+- **Pros**: one secret fewer.
+- **Cons**: the password would travel and be held by every tool that admins;
+  rotating it would lock the owner out of the game client too; the bridge
+  would need ModernUO's password hashing.
+- **Rejection Reason**: a separate token can be rotated alone and leaks less.
+
+### Alternative 2: A second listener for admin ops
+
+- **Description**: an admin port beside the editor port.
+- **Pros**: map editing and admin fully separate.
+- **Cons**: two ports per shard to lease, tunnel and configure; the tab would
+  hold two connections.
+- **Rejection Reason**: one connection with a gated op set is simpler and
+  just as strict.
+
+### Alternative 3: ModernUO's own remote admin
+
+- **Description**: ModernUO's RemoteAdmin packets.
+- **Pros**: upstream code.
+- **Cons**: a game-protocol channel built for an old Windows tool; listens
+  where the game listens; no JSON, no audit.
+- **Rejection Reason**: not reachable through the loopback bridge the editor
+  already speaks.
+
+## Consequences
+
+### Positive
+
+- Admin ops need a secret only the user's workspace holds.
+- Every admin action leaves a trace on the server and in the tab.
+- Map editing, the Live layer and existing editors are untouched.
+
+### Negative
+
+- One more secret per user, in the same file as the passwords.
+- Every admin op has to be listed in `AdminChannel.Ops` and in
+  `docs/data_formats.md` section 10.
+
+### Neutral
+
+- `editor_shard admin-check` becomes the gate every later AD story re-runs.
+
+## Risks
+
+| Risk | Likelihood | Impact | Mitigation |
+|---|---|---|---|
+| A secret reaches a log through a badly named field | Medium | High | Masking by field name at any depth; the tests and the live check grep for the real values; review each new op's field names |
+| The token leaks through the process environment | Low | Medium | Same exposure as the shard passwords (SF1); local user only; rotate by deleting the secrets file |
+| Guessing the token | Very low | High | 32 of 62 symbols; fixed-time compare; 1 s pause per refusal; closed after three |
+| The bridge opened beyond loopback by mistake | Low | High | Loopback is hard-coded; remote only through an ssh tunnel (AD7) |
+
+## Validation Criteria
+
+- `dotnet run --project tools\editor_shard\bridge\tests\AdminChannel.Tests.csproj` prints ALL PASS.
+- `python tools\editor_shard\run.py admin-check` on a running private instance: every line PASS.
+- `python -m pytest tools\editor_shard tools\modernuo tools\guo`.
+
+## GDD Requirements Addressed
+
+None: a tooling decision (the Admin tab, sprint section "Admin tab").
+
+## Related
+
+- ADR-0012 (the bridge), ADR-0014 (world objects through it), ADR-0027 (the
+  Live layer's `mobiles` op), ADR-0032 (the workspace).
+- `docs/data_formats.md` section 10 (the protocol), section 2 (the key).
+- `tools/editor_shard/bridge/AdminChannel.cs`, `tools/editor_shard/admin_check.py`.

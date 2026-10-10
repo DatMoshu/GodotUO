@@ -11,6 +11,9 @@ The add-on lives in `godot\GUO\addons\guo_editor\`. It is enabled in
 docks laid out: Assets on the left, World in the centre, Inspector on the
 right, Shard in the bottom panel.
 
+New to the World tab? [World Editing](World-Editing.md) walks through
+selecting, placing and moving things on the map, step by step.
+
 **UO Gumps** is the layout authoring tab for classic gump documents and native
 Godot forms. It includes a canvas, layers, properties, undo/redo, classic
 layout import/export and live-client capture/apply. See the

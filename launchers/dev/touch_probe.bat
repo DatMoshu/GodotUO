@@ -1,4 +1,5 @@
 @echo off
+rem Runs the client with the touch layer and a synthetic finger against the shard and prints a pass or fail line per gesture.
 REM ============================================================================
 REM  Runs the client on the desktop with the touch layer on and a synthetic
 REM  finger: tap, hold-to-walk, double tap, pinch, the gump bar, long press.

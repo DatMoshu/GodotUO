@@ -134,6 +134,14 @@ shard (packet 0xBC), so A/B comparisons are unaffected; only the art changes.
 Set it back to 4 in `src/Distribution/Data/map-definitions.json` to test the
 Desolation art.
 
+### `patches/0005-system-message-hook.patch`
+
+`Mobile.SystemMessageSent`, a static hook every system message a mobile is
+sent goes through, also when it has no client (AD3). The editor bridge reads
+it to return a command's output to the Admin tab's Commands palette; without
+the patch commands still run there, without their output. UPSTREAM.md has
+the verdict (ours).
+
 ### Retired
 
 `0004-multi-tile-enumerator` fixed tile lookups that stopped at a multi with no

@@ -1,4 +1,6 @@
 @echo off
+rem Clones or updates the read-only ClassicUO reference under sources and prints the upstream commits since the last sync.
+rem args: --pin | --at-pin
 REM ============================================================================
 REM  Clones or updates the read-only ClassicUO reference under sources\.
 REM  Then reports which upstream commits landed since the port last synced, so

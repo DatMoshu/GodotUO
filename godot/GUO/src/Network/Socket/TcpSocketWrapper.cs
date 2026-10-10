@@ -7,6 +7,8 @@ namespace GUO.Network.Socket;
 
 sealed class TcpSocketWrapper : SocketWrapper
 {
+    private static readonly TimeSpan ConnectTimeout = TimeSpan.FromSeconds(5);
+
     private TcpClient _socket;
 
     public override bool IsConnected => _socket?.Client?.Connected ?? false;
@@ -24,7 +26,22 @@ sealed class TcpSocketWrapper : SocketWrapper
 
         try
         {
-            _socket.Connect(uri.Host, uri.Port);
+            // PORT DEVIATION (GUO): connect async and wait at most ConnectTimeout.
+            // Upstream's blocking Connect holds the window for the OS timeout
+            // (about 21 s on Windows) on a dead host. Callers still expect a
+            // connected socket on return (the relay login checks IsConnected
+            // right after), so the wait stays synchronous but bounded.
+            var connect = _socket.ConnectAsync(uri.Host, uri.Port);
+
+            if (!connect.Wait(ConnectTimeout))
+            {
+                Log.Error($"error while connecting: no answer from {uri.Host}:{uri.Port} in {ConnectTimeout.TotalSeconds} s");
+                _socket.Dispose();
+                _socket = null;
+                InvokeOnError(SocketError.TimedOut);
+
+                return;
+            }
 
             if (!IsConnected)
             {
@@ -34,6 +51,11 @@ sealed class TcpSocketWrapper : SocketWrapper
             }
 
             InvokeOnConnected();
+        }
+        catch (AggregateException aggEx) when (aggEx.InnerException is SocketException socketEx)
+        {
+            Log.Error($"error while connecting {socketEx}");
+            InvokeOnError(socketEx.SocketErrorCode);
         }
         catch (SocketException socketEx)
         {

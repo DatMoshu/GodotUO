@@ -20,7 +20,8 @@ copied into this repository, and none is ever committed. The path comes from
 
 **2. Derived data is disposable.**
 Anything the port computes from client data — decoded sprites, atlases, hue
-LUTs — lives under `UO_CACHE_DIR`, outside the repo. Deleting that directory
+LUTs — lives under `UO_CACHE_DIR`, outside the repo (extracted art sets, §36,
+under their own `UO_ART_EXTRACT_DIR`). Deleting that directory
 must always be safe; the runtime rebuilds it on demand.
 
 **3. Configuration has one source.**
@@ -42,10 +43,16 @@ Every key resolves as: **environment variable → `config.local.bat` →
 | `UO_CLIENT_DATA` | Folder holding the `.mul` / `.uop` / `.idx` files |
 | `UO_CLIENT_VERSION` | Client version the data corresponds to (e.g. `7.0.107.76`) |
 | `UO_CACHE_DIR` | Disposable decode cache |
+| `UO_ART_EXTRACT_DIR` | The extracted art set (§36, ADR-0034): atlas pages and indexes of the install's art. Default `art_extract` under `UO_WORKSPACE_DIR`; gitignored, never committed or bundled |
+| `UO_ART_SET` | `1` reads art from the extracted set when its fingerprint matches the install; default `0`. The `--art-set` / `--no-art-set` client arguments override it for one run |
+| `UO_ART_SET_CACHE_MB` | Decoded set pages kept in memory, in MB; default 256, minimum 16 (AX2) |
+| `UO_ART_SHARD` | The shard id whose encrypted art container to read (§36, AX6); the `--art-shard ID` client argument overrides it. Empty means the plain set |
+| `UO_ART_KEY_DIR` | The folder holding the profile's shard keys, `<shard id>.key`; default `art_keys` under `UO_WORKSPACE_DIR`. Never in the repository |
 | `UO_WORLD_PROJECT` | The editor's world project folder (§9); default `build\world\default` |
 | `UO_MAPGEN_DATA` | The map generator's per-user data folder (§26): mined stamps, coast atlas, tree statics, validator reports; default `%LOCALAPPDATA%\GUO\mapgen` |
 | `UO_EDITOR_LIVE_HOST` / `UO_EDITOR_LIVE_PORT` | The editor bridge the UO Shard dock connects to (§10); default `127.0.0.1:2595`, the private instance |
 | `UO_EDITOR_NAME` | The name this editor shows other editors on the bridge |
+| `UO_BRIDGE_ADMIN_TOKEN` | The bridge's admin token (§10, ADR-0035): 32 letters and digits, generated into the workspace's `shard\secrets.bat` with the shard passwords; never printed or logged |
 | `UO_SHARD_HOST` / `UO_SHARD_PORT` | Shard to connect to |
 | `GODOT_VERSION` / `GODOT_FLAVOR` | Pinned engine build |
 | `UO_LOG_LEVEL` | `DEBUG` \| `INFO` \| `WARN` \| `ERROR` |
@@ -290,28 +297,73 @@ line, UTF-8, `\n`-terminated. ADR-0012 has the reasoning.
 
 | `op` | Fields | What happens |
 |---|---|---|
-| `hello` | `editor` (name) | Answered with `hello` |
+| `hello` | `editor` (name), `admin_token` (optional: the server's admin token, ADR-0035) | Answered with `hello`. Without `admin_token` the connection edits maps as before; with the right one it may also run admin ops. A wrong token pauses the connection 1 s and is audited; the third closes it |
 | `block` | `facet`, `bx`, `by`, `land`: 64 `[id, z]` pairs, row-major (index `y*8+x`), `statics`: `[id, x, y, z, hue]` per static (`x`, `y` 0..7 in the block), `sent_ms` (sender's clock, unix ms, optional) | Replaces the whole block in the server's own map (walking, line of sight and placement see it), pushes it to UltimaLive clients on that map, relays it to the other editors; answered with `ack` |
-| `command` | `as` (an online character's name), `text` (e.g. `[where`) | Runs the GM command as that character (`CommandSystem.Handle`); answered with `command` |
+| `command` | `as` (an online character's name), `text` (e.g. `[where`), `confirm` (for a dangerous command), `req` | Admin op since AD3 (Counselor): needs the admin token. Runs the command as that character (`CommandSystem.Handle`), who must be online, staff (Counselor or higher) and not above the connection's level; the same checks as `admin_command`. Answered with `command` |
 | `object` | `action` `put` with `kind` (`spawner` or `item`) and `object` (as in `shard/objects.json`, section 13); or `action` `delete` with `kind` and `id` | Applies it to the world with the boot sync's code (ADR-0014), relays it to the other editors; answered with `object_ack` |
 | `mobiles` | `facet`, `x0`, `y0`, `x1`, `y1` (inclusive rectangle; clamped to the map and to 1024 cells a side), `req` (echoed), `as` (optional: an online character that must be a GameMaster or above) | Read-only. Players and mobiles in the rectangle, at most 500; answered with `mobiles`. Needs a prior `hello`; at most one request per 250 ms per connection (the Live map layer, ADR-0027, polls it about once a second for the visible region plus a margin) |
 | `items` | same rectangle, `req`, `as` as `mobiles` | Read-only. Top-level world items in the rectangle (worn, held and container contents skipped), at most 500; answered with `items`. Same guards as `mobiles`; the World tab draws them as live objects beside the mobiles |
+| `admin_whoami` | `req` (optional, echoed) | Admin op (Counselor). Answered with `admin_whoami` |
+| `admin_audit` | `count` (1..200, default 50), `req` | Admin op (Administrator). The last audit entries; answered with `admin_audit` |
+| `admin_status` | `req` (optional, echoed) | Admin op (Counselor). Read only; answered with `admin_status` |
+| `admin_save` | `reason` (optional, audited), `req` | Admin op (Administrator). Saves the world; answered with `admin_save` once the write has finished |
+| `admin_godview` | `facet` (map index), `watch` (default true), `req` | Admin op (GameMaster). The god view (AD2a): every player, NPC and spawner on the facet, answered with `admin_godview` (`full` true); with `watch` the bridge then pushes `admin_godview` (`full` false) at most once a second, only when something changed, until another facet is asked for, `watch` false (no `facet`) or the connection closes |
+| `admin_godview_find` | `text` (a name part, or a serial as `0x1A2B` or decimal), `req` | Admin op (GameMaster). Players, NPCs and spawners on every facet whose name, type or spawn entry contains the text (case ignored), or whose serial it is; at most 50 |
+| `admin_goto` | `serial` (a player, NPC, spawner or item), or `facet`, `x`, `y`, `z` (optional: the ground there); `as` or `hidden` (both optional), `req` | Admin op (GameMaster, AD2b, AD2c). Go there: moves the admin's own staff character there. `as` names an online character at GameMaster or above and no higher than the connection's level; left out, the one such character online is used, and with none online (or `hidden` true) the hidden presence acts: its spot moves there, no mobile does. `as` with `hidden` is refused |
+| `admin_bring` | `serial` (a player or NPC), `as` or `hidden`, `req`; for the hidden presence optionally `facet`, `x`, `y`, `z` | Admin op (GameMaster, AD2b, AD2c). Bring here: moves the mobile to the staff character, or to the hidden presence's spot (or the spot given); a player is told a staff member summoned them. The presence with no spot yet and none given is refused |
+| `admin_paperdoll` | `serial` (a player or NPC), `as` or `hidden`, `req` | Admin op (GameMaster, AD2b, AD2c). Opens its paperdoll in the staff character's client (the client must have been sent that mobile: be near it); for the hidden presence, which has no client, the answer carries the paperdoll |
+| `admin_follow` | `serial` (a player or NPC), `as` or `hidden`, `req`; or `stop` true | Admin op (GameMaster, AD2b, AD2c). Follow: every 500 ms the staff character (or the hidden presence's spot) is moved beside the target when more than 2 cells away or on another facet, until `stop`, the editor leaves, or the target or character leaves the world |
+| `admin_spawner` | `serial` (a spawner), `action` (`respawn` or `clear`), `req` | Admin op (GameMaster, AD2b). Respawn: removes what it spawned and spawns its full count; Clear: removes what it spawned |
+| `admin_settings` | `action` `get` with `keys` (modernuo.json `settings` names, e.g. `autosave.saveDelay`), `req`; or `action` `changed` with `changes` (per change `file`, `key`, and `from`/`to`, or `secret` true and `cleared`), `req` | Admin op (Administrator, AD4). `get` reads the values the running server holds (read only); `changed` writes nothing: it records in the audit log a change the editor is about to write into the server's files, before its restart (section 37) |
+| `admin_accounts` | `req` | Admin op (Administrator, AD5). Every account (read only), sorted by name, at most 5,000 |
+| `admin_backup` | `action` `list`, `req`; or `action` `now` with `keep` (1 to 100, default 10), `req`; or `action` `restore` with `name` (a snapshot's) and `keep`, `req` | Admin op (Administrator, AD6). `list` reads the snapshots; `now` saves the world, copies the save folder to a new snapshot under `<autoArchive.backupPath>/GUO/<name>` (default `Backups/GUO`) and removes the oldest beyond `keep`; `restore` checks the snapshot exists, then saves and keeps a `before-restore` snapshot of the world as it is. It does not swap the save: the editor does, with the server stopped (below) |
+| `admin_commands` | `req` | Admin op (Counselor, AD3). The server's commands (ModernUO's help list) at or below the connection's level, read only |
+| `admin_command` | `text` (one line, at most 512 characters; the `[` prefix is added when missing), `as` (optional: an online staff character), `confirm` (the typed word, for a dangerous command), `req` | Admin op (Counselor, AD3). Runs the command as the bridge's hidden admin mobile at the connection's level (never in the world, never saved: a target cursor or prompt it is given is cancelled, a gump goes nowhere), or as the `as` character (online, Counselor or higher, not above the connection's level). The dangerous list (`AdminCommandRules.cs`): shutdown (`shutdown`, `restart`), wipe (`wipe`, `wipeitems`, `wipenpcs`, `wipemultis`, `clearall`, `clearfacet`, `clearxy`), delete accounts, global decorate (`decorate*`, `doorgen`, `signgen`, `telgen`, the other world generators) and mass moves (a scope `global`, `facet`, `region`, `area`, `group`, `range`, `screen`, `online`, `contained` or `ipaddress` followed by `delete`, `remove`, `kill`, `set`, `increase`, `teleport` or `bringtopack`) runs only with `confirm` equal to its word: the command's name, or for a mass move the scope and the command (`global delete`), case and spacing aside. The audit log keeps a command whose name says password, token, secret or passphrase by its name only (`[password ***`) |
+| `admin_account` | `action` (`create`, `access`, `password`, `ban`, `unban`), `account`, `req`; `create` adds `password` and `access` (default `Player`), `access` adds `access` (a ModernUO level name), `password` adds `password` | Admin op (Administrator, AD5). Names: 1 to 16 characters, printable ASCII, none of `<>:"/\|?*`. Passwords: 8 to 16 printable ASCII characters, no spaces, not the account's name. Only levels and accounts below the connection's own (an Owner: any). `access` sets the account's characters too; `ban` closes the account's connections. The audit log masks `password` |
 | `multi` | `action` `place` with `tag`, `id` (multi id), `map`, `x`, `y`, `z` (optional: the land's average z), `doors` (as in a built multi's `multi.json`, section 16); or `action` `remove` with `tag` | Places an authored multi (`GUOAuthoredMulti`) and a real door per entry, replacing a multi with the same tag; `remove` deletes it and its doors. Answered with `multi_ack` |
 
 **Bridge to editor**
 
 | `op` | Fields |
 |---|---|
-| `hello` | `shard` (the UltimaLive shard name), `maps` (facets offered to UltimaLive clients), `seasons` (facet → ModernUO season number, which the editor adopts) |
+| `hello` | `shard` (the UltimaLive shard name), `maps` (facets offered to UltimaLive clients), `seasons` (facet → ModernUO season number, which the editor adopts), `admin` (the access level the token granted, or null), `admin_ops` (when granted: the admin ops this connection may run), `admin_error` (when a token was refused: `admin token refused` or `this server has no admin token`) |
 | `ack` | `facet`, `bx`, `by`, `clients` (UltimaLive clients pushed to), `editors` (other editors relayed to), `ms` (time on the game thread) |
 | `block` | as sent, plus `from` (the sending editor's name): another editor's block. Last write per block wins |
-| `command` | `ok`, `as`, `text`, or `error` |
+| `command` | as `admin_command` below, `as` always the named character (before AD3: `ok`, `as`, `text`, or `error`) |
 | `object` | as sent, plus `from`: another editor's world-object change. Last write per object wins |
 | `object_ack` | `action`, `kind`, `id`, `outcome` (`Added`, `Changed`, `Kept`, `Deleted`, `Missing`, `Skipped`), `editors`, `ms` |
 | `mobiles` | `req`, `ok`, `facet`, the clamped `x0`,`y0`,`x1`,`y1`, `count`, `truncated` (hit the 2000 cap), `mobiles`: per mobile `serial`, `name`, `body`, `x`, `y`, `z`, `facet`, `isPlayer`, `hits`, `maxHits`, `notoriety` (ModernUO's 1 innocent .. 7 invulnerable, computed with no viewer), `direction` (0..7, Running masked off), `hue`, `equip`: per worn item `serial`, `layer`, `id`, `hue` (at most 25); or `ok` false with `error` (`rate limited`, `say hello first`, `no map N`, `'X' is not online`, `'X' is not staff`) |
 | `items` | `req`, `ok`, `facet`, the clamped rectangle, `count`, `truncated` (hit the 10000 cap), `items`: per item `serial`, `id`, `hue`, `x`, `y`, `z`, `facet`, `amount`; or `ok` false with the same `error`s as `mobiles` |
 | `multi_ack` | `action`, `tag`, `ok`; on a place `serial`, `at` `[x, y, z]`, `components`, `doors`, `replaced`; on a remove `removed`; or `error` |
+| `admin_whoami` | `req`, `ok`, `editor`, `level`, `ops` |
+| `admin_audit` | `req`, `ok`, `entries`: audit entries, oldest first |
+| `admin_status` | `req`, `ok`, `server` (`ModernUO`), `version`, `shard`, `expansion`, `uptime_s`, `online` (player connections), `staff_online`, `items`, `mobiles`, `memory_mb` (the process's working set), `world` (`Running`, `Saving`, ...), `last_save` (ISO 8601 UTC, or null; before the first save this run, the newest file under `Saves`), `last_save_s` (seconds ago), `last_backup` (ISO 8601 UTC of the newest GUO snapshot, or null; AD6), `last_backup_s`, `last_backup_name`, `editors` (connected editors) |
+| `admin_save` | `req`, `ok`, `ms`, `last_save`; or `ok` false with `error` (`the world is busy (<state>); try again in a moment`, or the save's failure) |
+| `admin_godview` | The answer: `req`, `ok`, `facet`, `facets` (per facet `id`, `map`, `name`, `width`, `height`), `full` true, `watching`, `seq` 1, `players`, `npcs`, `spawners` (counts on the facet), `truncated` {`mobiles`, `spawners`} (over the caps, 25,000 mobiles and 10,000 spawners, the lowest serials are kept), `upsert` (every row), `removed` [], `ms`. A push: no `req`, `full` false, `seq` one more than the last (a gap means a lost push: ask again), the counts, `truncated`, `upsert` (new or changed rows only), `removed` (serials gone), `ms`. A mobile row: `serial`, `kind` (`player` or `npc`), `name`, `x`, `y`, `z`, `body`, `hits`, `maxHits`, `notoriety` (as in `mobiles`), `type`, and when true `online`, `staff`, `hidden`; `spawner` (its spawner's serial) when spawned. A spawner row: `serial`, `kind` `spawner`, `name`, `x`, `y`, `z`, `running`, `count`, `spawned`, `homeRange`, `nextSpawn` (ISO 8601 UTC, or null), `entries` (per entry `name`, `max`, `spawned`, the first 8), `moreEntries`. Or `ok` false with `error` (`no facet N`). `watch` false answers `ok`, `watching` false |
+| `admin_godview_find` | `req`, `ok`, `text`, `matches` (per match `serial`, `kind`, `name`, `facet`, `x`, `y`, `z`), `truncated` (more than 50) |
+| `admin_goto`, `admin_bring`, `admin_paperdoll`, `admin_follow`, `admin_spawner` | The answer (AD2b): `req`, `ok`, `as` (the staff character), `serial`, `name`, and where the moved one now is, `facet`, `x`, `y`, `z`. When the hidden presence acted (AD2c), `as` is null and `hidden` true; Go there and Follow give its spot as `facet`, `x`, `y`, `z`, and `admin_paperdoll` adds `paperdoll`: `name`, `title`, `body`, `female`, `items` (per item worn, by layer, the bank box left out: `layer`, `name`, `item_id`, `hue`, `serial`). `admin_follow` adds `following` (and `moves` when stopped); `admin_spawner` adds `action`, `before`, `spawned`, `running`. Or `ok` false with `error` in plain words (`'X' is not online: log in with your staff character first`, `'X' is Owner, above this tab's Administrator: ...`, `2 staff characters are online; pick yours (...), or the Admin tab's hidden presence`, `the Admin tab's hidden presence has no spot yet: ...`, `that is your own character`, `only a player or an NPC can be brought`, `that is not a spawner`, ...). When a Follow ends by itself the bridge pushes `admin_follow` without `req`: `ok`, `following` false, `serial`, `moves`, `reason` (`X logged out`, `X is gone (deleted)`, `X left the world`) |
+| `admin_settings` | The answer (AD4): `req`, `ok`; for `get`, `values` (each asked key: its string value, `null` when not set, `"***"` when its name looks secret), `listeners` (as `host:port`), `expansion` (the expansion it runs, e.g. `EJ`); for `changed`, `recorded` (how many). Or `ok` false with `error` `admin_settings needs an action: get or changed` |
+| `admin_accounts` | The answer (AD5): `req`, `ok`, `accounts` (per account `name`, `access`, `created` and `last_login` (ISO 8601 UTC with a Z, or null), `characters` (per character `name`, `online`), `online`, `banned`, `protected` (a ModernUO protected account)), `count`, `truncated` |
+| `admin_backup` | The answer (AD6): `req`, `ok`, `action`, `snapshots` (newest first; per snapshot `name`, `at` (ISO 8601 UTC with milliseconds and a Z), `reason` (`manual` or `before-restore`), `editor`, `files`, `bytes`), `saves_path` and `backup_path` (the server's folders, for the editor's restore; never logged), `default_keep`. `now` and `restore` answer once the save and the copy are on disk, adding `snapshot` (the one just kept), `pruned` (names removed), `keep`, `save_ms`, `copy_ms`; `restore` adds `target`. Or `ok` false with `error` (`admin_backup needs an action: list, now or restore`, `that is not a backup's name`, `there is no backup called X`, `the world is busy (Saving); ...`, `there is no world save to back up yet`) |
+| `admin_commands` | The answer (AD3): `req`, `ok`, `commands` (by name; per command `name`, `aliases`, `access` (a ModernUO level name), `usage` and `description` (plain text, HTML removed), `danger` (the dangerous list's kind for the name alone, or null)), `count`, `output_available` (false on a server without MUO patch 0005: commands run, their output is not returned) |
+| `admin_command` | The answer (AD3), about 300 ms after the command ran: `req`, `ok`, `text` (the line as run; a password command as `[name ***`), `as` (the character, or null for the hidden admin mobile), `command` (its name), `known` (the server has a command of that name), `output` (the system messages the mobile was sent while it ran and for 300 ms after, clilocs filled in, at most 200 lines; plus a line when it asked for a target or a prompt), `output_available`, `needs_target`, `needs_prompt` (it asked for one, and the hidden mobile's was cancelled). Or `ok` false with `error` in plain words (`a command is one line`, `'wipe' is on the dangerous list (wipe): type 'wipe' to confirm it` with `danger` {`kind`, `confirm`, `why`}, `'X' is not online: ...`, `'X' is a player: ...`, `'X' is Owner; this tab holds Administrator, ...`, `'X' failed on the server: ...`) |
+| `admin_account` | The answer (AD5): `req`, `ok`, `action`, `account`, `row` (the account as `admin_accounts` lists it, after the change); `access` adds `characters_changed`, `ban` adds `disconnected`. Never a password. Or `ok` false with `error` in plain words (`there is already an account 'x'`, `a password has 8 to 16 characters (the login screen's box holds 16)`, `that account is Owner; this connection (Administrator) changes only accounts below its own level`, ...) |
+| any admin op, refused | `req`, `ok` false, `error`: `admin op without the admin token: send admin_token in hello`, `this server has no admin token`, or `'<op>' needs <level>; this connection holds <level>` |
 | `error` | `error` |
+
+**Admin ops** (ADR-0035). An op listed in the bridge's `AdminChannel.Ops`
+runs only on a connection whose `hello` carried the server's admin token, and
+only at or below the level the token grants (`GUO_BRIDGE_ADMIN_ACCESS` on the
+server, Administrator by default; levels are ModernUO's, Player .. Owner). A
+server started without `GUO_BRIDGE_ADMIN_TOKEN` has no admin ops. Every admin
+op, run or refused, and every admin hello is appended to
+`<shard>/Logs/GUO/admin_audit.jsonl`, one object per line: `at` (UTC ISO
+8601), `editor`, `op`, `level`, `ok`, `args` (the request without `op`),
+`error` (on a refusal). Any field whose name contains `password`, `token`,
+`secret`, `passphrase` or `webhook`, at any depth, is written as `***`, and so
+are `from`, `to` and `value` in an object whose `key` names such a setting; an op that
+carries a secret must name its field so. The map-editing ops above are not
+admin ops and are unchanged, except `command`, which AD3 moved behind the token.
 
 The World tab's Live layer reads these snapshots through the existing Shard
 dock connection. A successful `mobiles` reply replaces the visible snapshot:
@@ -811,6 +863,23 @@ file of the same shape in `--ranges` / `UO_DATA_RANGES`):
   components as 16-byte records (`uint16 item, int16 x, y, z, uint32 flags`
   1 shown / 0 hidden, `uint32 0`) and `multi.idx` is grown to hold the id. The
   `multi` pack's range is 0x3F00-0x3FFF.
+
+**SpriteMotion transfer artifacts** (`uopack from-job <artifact> --out <folder> --body N [--item ID]`,
+`tools/uopack/jobimport.py`). GUO reads SpriteMotion's export by its documented contract (SpriteMotion
+`docs/transfer-artifact.md`) and vendors none of its code. Read only; every check runs before `--out` is written.
+
+| Manifest field | GUO reads it as |
+|---|---|
+| `schema`, `schema_version` | Must be `spritemotion.transfer-artifact` and `1`; anything else is refused, naming the version |
+| `pixels.canvas`, `.anchor` | Must be 256 x 256 and (128, 192) |
+| `pixels.alpha` | `binary` and `straight` as they are; `premultiplied` un-premultiplied. Alpha < 128 is transparent in `pack` |
+| `pixels.quantization` | Recorded only. Frames are written RGBA; `pack` quantizes a group over 256 colours (one quantizer) |
+| `animation.mirror_map` | Must be `{"5": 3, "6": 2, "7": 1}`; only stored directions 0-4 are written |
+| `animation.coverage` | `preview` refused unless `--allow-preview`; `current-action` and `full` taken |
+| `animation.actions[]` | Each must list directions 0-4 and fit the body's `anim.idx` slot (22, 13 or 35 actions) |
+| `frames[]` | One uopack frame each: `png` (relative, inside, sha256 checked), PNG size = crop, `center_x = 128 - left`, `center_y = 192 - bottom`, a stated `centre` must agree; `empty` gives a 0 x 0 frame |
+| `equipment.item_art`, `.tiledata`, `.layer` | With `--item`: static art + `tiledata_write` (`anim` = `--body`), or a `tiledata-item` without art |
+| `identity`, `acceptance`, `provenance`, `equipment.paperdoll` | Copied into `uopack.json` with the manifest's sha256 |
 
 ---
 
@@ -1647,7 +1716,7 @@ An opt-in local control channel for a running desktop GUO, for AI agents. Off un
 never started in `template_release` builds, on web, or on mobile. The listener binds IPv4 loopback
 (`127.0.0.1`) only.
 
-**Transport.** Newline-delimited UTF-8 over TCP, one controller at a time, lines capped at 64 KiB. The
+**Transport.** Newline-delimited UTF-8 over TCP, lines capped at 64 KiB. Several controllers may be connected (the runner and a stand-in for a person); each connection has at most one command queued and all share the scene thread's queue. The
 first line a client sends is the token alone; it must arrive within 5 seconds and is compared in fixed
 time, and a wrong token closes the socket without a reply. After that every line is one JSON-RPC 2.0
 message of MCP revision `2025-06-18` (`initialize`, `ping`, `tools/list`, `tools/call`; notifications get
@@ -1663,8 +1732,9 @@ no reply). `tools/guo_mcp/run.py` is the stdio bridge: it sends the token, then 
 | `guo_screenshot` | none | `image/png` content (base64); `isError` when headless |
 | `guo_state` | none | JSON text: `frame` (process frame index; with `--write-movie` it is the movie frame), `scene`, `width`, `height`, `player` (`map`,`x`,`y`,`z`, or null before the world) |
 | `guo_quit` | none | text, then the client quits after two frames (finalises a MovieWriter file); the connection closes |
+| `guo_overlay` | `text` (caption, at most 300 characters), `step` (its label, e.g. `3/18`), `control` `{x,y,width,height,label?}` (an outline, viewport pixels), `clear`, `hide` (draw nothing; Space and Esc still count); none of them only reads | JSON text `{skip, abort}`: Space and Esc pressed since the last call (reading clears them). Draws the human driver's caption card and outline on a canvas layer above the game; the card's step label is a Godot `Label` named `HumanOverlayStep`, visible in `guo_ui`. Space does not count while a text field has focus |
 
-No shell, script, file or packet tools exist. Synthetic keys and buttons still held when the controller
+No shell, script, file or packet tools exist. Synthetic keys and buttons still held when the last controller
 disconnects are released.
 
 ## 30. Workspace, server profiles and client profiles (ADR-0032)
@@ -1697,6 +1767,8 @@ reload. Each start appends rather than erasing prior output. Console text uses t
 (the Logs dock reads UTF-8); the dock's Server console source hides secrets in the view, without changing
 the raw file. Client console paths are unchanged: `runs/<server-id>/<client-id>/slot-1..4/client.log`.
 
+`servers/<server-id>/process.json` is the managed process's identity: `{"Pid": int, "Started": .NET UTC ticks of its start time, "Executable": full path}` of the OS shell that runs the server. The run bar and `tools/server_manager/run.py start|stop|status` (process.py, Windows) write and honour the same record, so either can stop what the other started; a record whose three fields no longer all match is not ours and nothing is stopped.
+
 **`profiles/servers.json`** (PascalCase, as the earlier `build/editor_servers/profiles.json`):
 `{"Selected": id|null, "SelectedClient": id|null, "Servers": [ ... ]}`, at most 64 servers. A server:
 `Id`, `Backend` (a `tools/server_manager/backends.json` id or `custom`), `Name` (1-100 chars), `Host`,
@@ -1704,6 +1776,16 @@ the raw file. Client console paths are unchanged: `runs/<server-id>/<client-id>/
 (a client id or `""`), `ExpectedClientVersion` (`""` or a dotted version such as `7.0.107.76`),
 `ContentLock`, `ContentStore` (paths or `""`), `Arguments` (at most 32 strings). A server with a remote
 `Host` is connect-only. `ClientProject` and `ClientData` are no longer valid here; migration moves them.
+
+**`tools/server_manager/backends.json`** (tracked, snake_case): one object per backend with `id`, `name`, `source`,
+`executable`, `port`, `adapter` and `setup`, which the editor's Manage servers window and `run.py init` read. A backend
+the server compatibility lab covers also has `lab` (SV0; the pins table in `docs/server_lab.md` says the same in prose):
+`row` (lab order, 1 = ModernUO), `repos` (one or more `{role, repo, ref, commit, date}`: `role` is `core` or
+`scripts`, `commit` a full 40-hex SHA, `date` its commit date as `YYYY-MM-DD`), `pin_source` (where else the pin is
+kept, or why it was chosen), `licence`, `toolchain`, `client` (`accepts`, `encryption`, `lab_client`), `era`
+(`setting`, `upstream_default`, `lab`), `admin` (`route`: `patch-env`, `console-prompt` or `account-file`, plus
+`detail`) and `bind` (`loopback`: whether the server can be made to listen on 127.0.0.1 alone, plus `detail`). Readers
+ignore fields they do not use; `tools/server_manager/test_run.py` checks the `lab` rows.
 
 **`profiles/clients.json`** (snake_case): `{"version": 1, "clients": [ ... ]}`, at most 64 clients. A client:
 
@@ -1865,6 +1947,13 @@ dialog. `scene_set_property` registers do/undo with Godot's editor undo manager.
 Sensitive labels/properties are filtered; no image or credential-reader tool
 is introduced.
 
+`human_overlay(text, step, hide, clear)` (registered with `tour_segment` and `editor_screenshot`, listed by the scenario runner in
+`GUO_EDITOR_MCP_PREAPPROVED`) is the human driver's caption (section 34): it draws a caption card (`text` of at most 300
+characters under a `step` label such as `3/18`) over the editor with the tour's own overlay, and answers JSON `{skip, abort}`,
+the Space and Esc pressed since the last call (reading clears them; Space typed into a text field does not count). Keys count
+only after the first call. `hide` draws nothing but keeps the keys, `clear` removes the card and stops the key watch, and no
+arguments only reads. It changes nothing but the overlay.
+
 `multi_open(path)` accepts an existing JSON components description inside
 this checkout's build/multi, rejects traversal, reparse points and files over
 1 MiB, protects unsaved changes and shows Multis. `multi_document(offset,limit)`
@@ -1936,8 +2025,8 @@ adds it.
 | `ui.fill` | `control`, `text`, `clear` (integer >= 0: BackSpace presses first, default 0), `within_s` (as `ui.click`) | game MCP | 3 |
 | `ui.key` | `key` (a Godot key name), `shift`, `ctrl`, `alt` (booleans, default false) | game MCP `guo_input` | 3 |
 | `chat` | `text` (e.g. `[go 1434 1697`) | game MCP `guo_input` text | 3 |
-| `renderdump` | `name` | the client's `renderdump NAME` command | 4 |
-| `render_diff` | `name` | `tools/render_diff` against ClassicUO's dump of that name | 4 |
+| `renderdump` | `name` (letters, digits, `_`, `-`) | a `client` run with this step in its scenario starts the client with `GUO_RENDER_DUMP_DIR=<run>/render_dump`; the step says `renderdump NAME` in game and waits for `render_dump/NAME/guo.json` within the step timeout; its `log` event carries the dump's `bytes`, `tiles` and `objects` | 4 |
+| `render_diff` | `name` | `tools/render_diff` on the run's `guo.json` and the reference `cuo.json` in `build/render_dump/NAME/` (or in `GUO_RENDER_REF_DIR/NAME/`, environment, then config.local.bat, then config.bat); writes `diff.md` into the run folder; fails on any map, field or drawn mismatch (the event carries the counts and the first mismatch lines), and on a missing dump or reference, naming the path looked for | 4 |
 | `scene_set` | `path`, `property`, `value` | editor MCP `scene_set_property` | later |
 | `lane` | `lane` (a `multi_client` lane) | `tools/multi_client`; its summary becomes events | 7 |
 
@@ -1961,7 +2050,9 @@ Expectations. A condition the runner does not know fails the step ("unknown expe
 
 **Variables.** `$name` or `${name}` in any string of `do` or `expect` is replaced before the step runs: from
 `--var name=value`, else from the environment variable `GUO_SCENARIO_<NAME>` (credentials live there or in
-`config.local.bat`, never in a file). A variable nobody defined stops the run before launch (exit 2); it is
+`config.local.bat`, never in a file). A variable whose name contains `password` (`$password`, `$new_password`
+in `shard.admin_add_account`) comes from `GUO_SCENARIO_<NAME>` only: `--var new_password=` warns
+and names that variable, because a command line shows in the process list and the shell history. A variable nobody defined stops the run before launch (exit 2); it is
 never replaced by `""`. Events and the manifest record steps **as written**, so no log holds what `$name` stood
 for.
 
@@ -1969,7 +2060,36 @@ for.
 `GUO_SHARD_<TARGET>_HOST` and `GUO_SHARD_<TARGET>_PORT` (target upper-cased, `-` and `.` as `_`), the account
 from the scenario's variables. `editor_shard` is the local editor shard; a remote shard is the `id` of its host
 profile (section 35). Nothing about a remote shard's address or account is committed.
-`run.py --shard TARGET` names the target from the command line, for a client scenario: it replaces `requires.shard` for that run, reads the two settings above (a missing one stops the run, naming it) and `GUO_SCENARIO_ACCOUNT` / `GUO_SCENARIO_PASSWORD`, and starts the client against that address.
+`run.py --shard TARGET` names the target from the command line, for a client scenario: it replaces `requires.shard` for that run, reads the two settings above (a missing one stops the run, naming it) and `GUO_SCENARIO_ACCOUNT` / `GUO_SCENARIO_PASSWORD` (the password from the environment only), and starts the client against that address.
+`run.py --server NAME` does the same from a server profile of the workspace (section 30), found by `Id` or `Name` (case-insensitive; exactly one must match): the profile's `Host` and `Port` are the address, the login is read as for `--shard`, and `requires.shard` becomes `server:<profile Id>`. `--shard` and `--server` are not given together.
+
+### The human driver (`--driver human`, client and editor scenarios)
+
+The runner skips each step's `do` and has a person follow the step: it sends the step's `say` (else its id) and its
+number (`3/18`) to the client's overlay (`guo_overlay`, section 29), outlines the control the step names (`ui.click` and
+`ui.fill` `control`, looked up again every 2 s), and polls the step's `expect` with the AI driver's code. When every
+condition holds the run moves on by itself (at least 1 s after the caption appeared). A step with no `expect` stays for 3 s
+(a `wait`'s `seconds`, if longer) and moves on: what the person did stays done, so the next expectation sees it. **Space**
+skips the step (step row `ok` null, `skipped` true, a `log` event and the `step_end` detail say `skipped`); **Esc** aborts
+the run: the step fails and `run.json` has `ok` false and `aborted` `aborted by the person (Esc) in step <id>`. Space typed
+into a text field is a character, not a skip. A step with `ai_only` is skipped and logged the same way, before anything is shown.
+
+Three kinds stay the runner's, because there is nothing for a person to do: `launch`, `note` and `shot`; a step's
+`shot: true` is a recording and is taken as in an AI run. Events and `run.json` have the AI run's shape with `driver`
+`human` (the `action` event's detail also says `by: human`) and the run id ends `_human`. A person is slower than a script:
+every window (`timeouts.run_s`, a step's timeout) is 3 times the AI driver's. The window is focusable and the sound is on; the
+runner records no video for a human run yet (OBS capture is not built). `--clean` hides the overlay for a clean recording
+(Space and Esc still work). `--ghost-human` starts a second process that plays the person through `guo_input`, reading
+the overlay's step label from `guo_ui`: it tests the driver itself and is not a way to run a scenario.
+
+**The editor surface.** The caption goes to the editor MCP's `human_overlay` (section 33) instead of `guo_overlay`, drawn with
+the editor tour's overlay at the foot of the editor window; no control is outlined (an editor scenario has no `ui.*` kinds), and
+Space, Esc, `--clean`, the windows and `ai_only` work as above. A `tour_segment` step drives the editor by itself (it resets the
+layout, types, stamps, jumps, talks to a shard), which nobody could follow, so under the human driver it is skipped and logged
+`skipped (ai_only: the segment drives the editor itself)` unless the segment is passive: `layout`, `gumps`, `anims` and `pick` only
+show a view and check it, so the runner plays them while the person watches and the segment's own caption replaces the step's
+`say`. `editor_invoke` and `wait` steps are followed like a client step. `--ghost-human` has nothing to do on an editor scenario
+(no `ui.*`, `ui.key` or `chat` steps): the passive segments play, the rest are skipped.
 
 ### Run folder (`build/runs/<run_id>/`, gitignored)
 
@@ -2121,7 +2241,8 @@ Example, GUO's dev shard:
                "ref": "d4531cd94b739613155225c234900de9f47d2c88"},
     "patches": ["tools/modernuo/patches/0001-headless-owner-account.patch",
                 "tools/modernuo/patches/0002-settable-update-range.patch",
-                "tools/modernuo/patches/0003-felucca-spring.patch"]
+                "tools/modernuo/patches/0003-felucca-spring.patch",
+                "tools/modernuo/patches/0005-system-message-hook.patch"]
   },
   "config_overlay": "tools/modernuo/config",
   "listen": {"port": 2593},
@@ -2133,7 +2254,355 @@ Example, GUO's dev shard:
 
 ---
 
-## 36. Client-side themes (`themes/*.theme.json`, StaticStudio)
+
+## 36. Extracted art sets (`tools/art_extract`, ADR-0034)
+
+A **set** is a local mirror of the art in the user's own UO install: atlas pages plus indexes, written by
+`tools/art_extract` and read lazily by the client. It is derived from proprietary data, so it lives only under
+`UO_ART_EXTRACT_DIR` (section 2), is gitignored, and is never committed, bundled or exported (rule 8). **Status:**
+the exporter is `tools/art_extract` (AX1) and the client reads it through `ExtractedArtSource` (AX2); animations are AX3 (below).
+
+Schemas: `tools/art_extract/schema/set.schema.json` and `tools/art_extract/schema/index.schema.json`. Both refuse
+unknown fields (`additionalProperties: false`). Add a field here before anything writes it.
+
+```
+<UO_ART_EXTRACT_DIR>/
+  set.json                       the set: version, fingerprint, per-class summary
+  land/index.json                one folder per class: land static gump texmap light anim
+  land/page_0000.png             2048x2048 RGBA8 pages, numbered from 0000, no gaps
+  static/index.json
+  static/page_0000.png ...
+```
+
+**Classes and ids.** The class names are the content seam's own keys (`StoreRuntimeContent.TryImage`), so a class
+is looked up with the same `(type, id)` the loaders already ask for:
+
+| Class | Id | Pixels | Source files (whichever form the install holds) |
+|---|---|---|---|
+| `land` | land tile id, 0..0x3FFF | 44x44 | `artLegacyMUL.uop`, or `art.mul` + `artidx.mul`; `verdata.mul` when the loader uses it |
+| `static` | item id as the loader indexes it (`index - 0x4000`), 0..0x13FFF | up to the page size | same as `land` |
+| `gump` | gump id | per image | `gumpartLegacyMUL.uop`, or `gumpart.mul` + `gumpidx.mul`; `verdata.mul` |
+| `texmap` | texture id | 64x64 or 128x128 | `texmaps.mul` + `texidx.mul` |
+| `light` | light id | per image | `light.mul` + `lightidx.mul` |
+| `anim` | a loader read, not an id (see Animations) | per frame | `anim*.mul` + `anim*.idx`, `AnimationFrame*.uop` |
+
+**Pixels.** Exactly what the loader returns for the same id, stored as bytes `R, G, B, A` (the loader's `uint`,
+little-endian): each 1555 colour expanded by `HuesHelper.Color16To32`, `A = 0xFF` where the source pixel is drawn
+and the whole pixel `0x00000000` where it is not. Not premultiplied. Nothing is filtered, scaled or re-hued: the
+hue shader still reads the 5-bit values it always read. Hue application, picking masks and bounds stay in the
+loaders and the renderer.
+
+**Pages.** `page_size` is 2048 and `pixel_format` is `rgba8`, PNG, no ancillary chunks (no text, time or colour
+profile chunks). A page is storage, not a draw atlas: no gutter, and nothing samples it directly (rule 7 holds for
+any later direct use: nearest-neighbour only). Packing is a shelf pack with the order fixed by (height descending,
+id ascending), so the same install gives the same layout. An asset wider or taller than the page, or a decode the
+loader refuses, is not stored; it is listed in `skipped` with a reason and falls back at run time.
+
+**`set.json`** (schema id `guo/art_set@1`):
+
+| Field | Type | Meaning |
+|---|---|---|
+| `schema` | `"guo/art_set@1"` | |
+| `version` | `1` | set format version. A runtime that does not know the version ignores the set (warns once) |
+| `generated` | string | ISO-8601 UTC |
+| `tool` | string | `art_extract <tool version>`, for diagnosis only |
+| `client_version` | string | the `UO_CLIENT_VERSION` the install had |
+| `fingerprint` | object | `files`: array of `{name, size, sha256}` for every source file any stored class was read from (`name` relative to `UO_CLIENT_DATA`, sorted by name); `sha256` is the digest of the whole file. `set_id`: sha256 of the lines `name TAB size TAB sha256 LF`, in file order |
+| `classes` | object | per stored class: `{pages, count, skipped, bytes}` (page count, stored ids, skipped ids, total PNG bytes) |
+
+**Fingerprint rule.** At mount the runtime compares each file's `name` and `size` with the install (cheap; no
+hashing) and compares every class `index.json`'s `set_id` with `set.json`'s, so pages from two different
+exports cannot mix. A difference in any of these, or a `version` it does not know, means: no part of the set is
+used, one warning names the set folder and the reason, and the original files serve everything. The full `sha256`
+check is the exporter's `verify`, not a start-up cost. A same-size edited file is therefore not caught at start-up;
+rebuild the set after patching the client.
+
+**`<class>/index.json`** (schema id `guo/art_index@1`):
+
+| Field | Type | Meaning |
+|---|---|---|
+| `schema` | `"guo/art_index@1"` | |
+| `version` | `1` | as `set.json` |
+| `class` | string | the folder's class |
+| `set_id` | string | equals `set.json` `fingerprint.set_id` |
+| `page_size` | `2048` | |
+| `pixel_format` | `"rgba8"` | |
+| `pages` | array | `{file, sha256}` per page, in order; `file` is `page_NNNN.png`, `sha256` the digest of the PNG file's bytes (damage check on load) |
+| `entries` | object | decimal id (string) -> `{page, x, y, w, h, pixels_sha256}`; `page` indexes `pages`; `pixels_sha256` is sha256 over `w` and `h` (each 4 bytes, little-endian), then the `w*h*4` RGBA bytes, row-major |
+| `skipped` | array | `{id, reason}`; a skipped or absent id falls back to the original files for that id alone |
+
+A missing id (absent from `entries`) is not an error: the runtime asks the original loader. A page that is
+missing, fails its `sha256`, or decodes to a size other than `page_size` square drops that page's ids to the same
+fallback, with one warning for the page.
+
+**Determinism and verification.** Two exports of the same install with the same tool give byte-identical files
+(AX1 proves it). `art_extract verify` re-decodes every id from the install with the loaders' own decode and
+compares `pixels_sha256` and the page rectangle; a set is accepted only at 100%. Per-id pixel hashes are the parity
+bar for a set; frame equality with the set on and off is the bar for the runtime (AX2).
+
+**Precedence at run time**, first answer wins: world-project PNGs (ADR-0020) > store packs (ADR-0019) > extracted
+set > original files. The set is built from the pure install, never from overrides or packs.
+
+**Switching on.** `UO_ART_SET=1` or `--art-set`; off by default (section 2). A set is never used because a folder
+merely exists.
+
+**Runtime source (AX2).** `ExtractedArtSource` (`src/Assets/Extracted`) is mounted behind the content seam: `StoreRuntimeContent.TryImage`
+asks the packs first and the set second, so the loaders' existing `Content.TryImage` calls need no edit. A page is read,
+checked against its `sha256` and decoded on first use; at most `UO_ART_SET_CACHE_MB` (default 256, minimum 16) of decoded
+pages are kept and the least recently used is dropped first. Each answer is a fresh copy of the rectangle. The loaders
+ask the seam *before* their own override files (`Art/Statics/*.art`, `Art/Land/*.art`, `Gumps/*.gump` under
+`UO_CLIENT_DATA`), so at mount the source lists the ids those files hold (found as the loaders find them) and never answers
+for them: the loader falls through to its own file, as with the set off. A damaged page or an id not in the set falls
+through to the archive. Probe: `res://src/Assets/Extracted/ArtSetParityProbe.tscn` compares every id through the real
+loaders with the set on and off (`UO_ART_PARITY_MODE=synthetic` checks the mount rules on a made-up set).
+
+### Animations (`anim/`, AX3)
+
+The `anim` class is keyed by what the animation loader *reads*, not by body: one **block** is the bytes the loader
+turns into a frame list in one call. Body.def, Bodyconv.def, Corpse.def, mobtypes.txt and the UOP replacement tables are
+resolved by the loader above the block, so they stay the loader's and the set never reimplements them.
+
+| Block key | The loader call it answers |
+|---|---|
+| `m<file>.<position>.<size>` | `ReadMULAnimationFrames(file, {position, size})`: one direction of an `anim*.mul` group |
+| `u<file>.<position>.<direction>` | `ReadUOPAnimationFrames(.., direction, type, file, {position, ..})` for a non-Equipment group; `position` is the entry's offset in `AnimationFrame<file>.uop`, `direction` 0..4 |
+| `u<file>.<position>.<direction>.e` | the same read for an Equipment group (the loader keeps at least 10 frames per direction there) |
+
+A block is a list of frame rows, in the order and with the `Num` the loader returns: `[page, x, y, w, h, cx, cy]` for a
+frame with pixels (`Num` is its index in the list) and `[num, cx, cy]` for one without (a missing UOP frame is
+`[0, 0, 0]`: the loader clears it, so its `Num` is 0). `cx, cy` are the frame's centre as the loader reads it. Pixels are
+as for the other classes (`R, G, B, A`; a MUL frame has no transparent palette entry, a UOP frame treats palette value 0
+as transparent), the 512-byte palette already applied. Frames of one block sit on the same page or on consecutive
+pages. Identical frames (same size and pixels, e.g. a standing frame repeated by several bodies) share one rectangle.
+
+`anim/index.json` (schema id `guo/art_anim_index@1`, schema `tools/art_extract/schema/anim_index.schema.json`):
+`schema, version, class, set_id, page_size, pixel_format, pages` as for `guo/art_index@1`, then
+`blocks` (object: block key -> `{f: [rows], sha}`; `sha` is sha256 over each frame's `w`, `h` (4 bytes each,
+little-endian) and its `w*h*4` RGBA bytes, in order) and `skipped` (`{key, reason}`: a block the tool could not decode
+falls back to the archive for that block alone). The file holds one block per line so the client can stream it; it is
+read on the first animation question, not at start-up.
+
+Packing is sequential rather than sorted: a block's frames are placed in order on shelves of the current page (a new
+page when a frame no longer fits), so the whole install never has to be in memory. The layout is still deterministic.
+
+At run time `Animation.cs` asks the content seam (`TryAnimationMul`, `TryAnimationUop`) before it calls the loader's
+two read methods, passing the same file, position and size/direction the loader would use. A block that is not in
+the set, or whose page is damaged, is read from the archive as before. `art_extract verify` re-decodes every block
+from the install and compares; `ArtSetParityProbe` compares every block reachable through the loader's own `GetIndices`
+(all bodies, all actions, all directions, both UOP variants) with the set on and off.
+
+### Encrypted container (`<shard id>.guoart`, AX6)
+
+For a shard owner's **custom** art. The same pieces as a plain set (`set.json`, one `index.json` and the PNG pages per
+class) are sealed one by one into a single file with AES-256-GCM, and the client opens that file when the player's
+profile holds the shard's key. The player's own extracted set (above) stays plain and unmarked, so parity checks stay
+exact. Header schema: `tools/art_extract/schema/container.schema.json` (`additionalProperties: false`).
+
+```
+magic        8 bytes   "GUOART" 01 00
+header_len   u32 LE
+header       UTF-8 JSON, sorted keys, no spaces: {cipher, key_id, schema, set_id, shard_id, version}
+chunks       name_len u16 | name (UTF-8) | nonce 12 | sealed_len u32 | sealed = ciphertext + 16 byte tag
+toc chunk    the same shape, name "\0toc", plaintext {"entries": {name: [offset, sealed_len]}}
+footer       toc offset u64 LE | "GUOEND" 01 00
+```
+
+- Chunk names are the plain set's relative paths: `set.json`, `land/index.json`, `land/page_0000.png`, `anim/index.json`.
+  A chunk's plaintext is byte-identical to the file the plain set would hold, so the page `sha256` values and every
+  mount rule of this section apply unchanged.
+- Each chunk has its own random 96-bit nonce. The **associated data** of every chunk is `header_len || header || name`,
+  so a changed header, a renamed chunk or a chunk moved under another name fails its tag. A flipped byte anywhere in a
+  chunk fails that chunk only; a damaged table of contents or footer fails the open.
+- `key_id` is the first 16 hex digits of `sha256("guo/art_key_id\0" || key)`: it lets a wrong key be named before any
+  chunk is tried and reveals nothing usable. The key is 32 random bytes and is never written into the container.
+- The exporter streams: pages are encoded in memory and sealed straight into `<file>.part`, which is renamed into place
+  when complete. **No PNG is written to disk on the way**, and an export that fails leaves no container.
+
+**Tool.** `python tools\art_extract\run.py keygen --shard ID --key-file K` writes a new key (64 hex characters, mode
+0600 where the OS has one, never overwriting). `pack-container --shard ID --key-file K [--what ...] [--out FILE]` writes
+`UO_ART_EXTRACT_DIR/containers/<ID>.guoart` (`--out` obeys the same rule as `export`). `info FILE` prints the header; it
+needs no key. A shard id is 1-48 characters of `a-z`, `0-9`, `_`, `-`, starting with a letter or digit.
+
+**Runtime.** `--art-set` (or `UO_ART_SET=1`) plus `--art-shard ID` (or `UO_ART_SHARD`) makes `ExtractedArtSource` open
+`containers/<ID>.guoart` instead of a plain set, with the key from `<UO_ART_KEY_DIR>/<ID>.key`. Pages decrypt into memory on
+first use and are dropped under the same `UO_ART_SET_CACHE_MB` cap; nothing is written to disk. Everything else (the
+fingerprint check against the install, the client's own override files winning, per-id fallback) is as for a plain set.
+A missing container, no key in the profile, a wrong key, a changed header, a cut file or a platform without AES-GCM
+makes the whole source fall back to the original files with **one warning that names the shard id and the reason, never
+the key**; a page whose tag fails drops only its own ids to the original files, with one warning for the page. The web
+export reports containers as unsupported (AES-GCM is not available there) and falls back; desktop and Android are
+covered by the tests below.
+
+**Key delivery.** The owner generates the key with `keygen` and keeps it out of version control. Players receive it with
+the shard's ADR-0019 pack install: a `<shard id>.key` file **inside the signed pack**, which the installer stores in the
+user's profile key folder (0600 where the OS has it) and removes with the pack. A key is never in the repository, the
+logs, the events or a run folder, and no command prints one; the tests grep the container, the tool's output and the
+refusal messages for it.
+
+**Threat model, in plain words.** Anything the client draws can be captured: screenshots, a GPU capture, a debugger
+reading the decrypted pages. The container raises the bar for **casual copying of a shard's custom art off the disk**
+and nothing more; a player who holds the key, or anyone who attaches a debugger to a running client, can read the
+art. It is not copy protection. Provenance of a leaked copy is a separate tool (AX7, "Watermark" below).
+
+**Tests.** `tools/art_extract/test_container.py` (round trip equals the plain set's files, tampered ciphertext / tag /
+nonce refused per chunk, wrong key names the shard, header-only change refused, chunk renamed refused, cut file and
+damaged table refused, only the container reaches the disk, no key in file or output, a failed export leaves nothing);
+`ArtSetParityProbe` with `UO_ART_PARITY_MODE=synthetic` repeats the open/refuse cases in the client's own code on a
+made-up container; with `UO_ART_SHARD` set it compares every id through the real loaders with the container on and off.
+
+### Watermark (AX7, `art_mark.py`)
+
+A shard owner can mark custom art so a leaked copy can be traced. **Off by default; a player's own set is never marked.**
+`pack-container --shard ID --key-file K --mark-key SIGN.key --serial N` marks every page it seals; `mark --shard ID
+--sign-key SIGN.key --serial N --in PNG_OR_FOLDER --out PATH` marks PNG files (`--out` obeys the rule of `export`);
+`prove IMAGE [--sign-key-pub P] [--json]` reads the mark from a PNG, a page or a crop. `SIGN.key` is the owner's ADR-0019
+signing key (`tools/asset_store/run.py keygen`); `P` is its `ed25519:` public key or a file holding one. Exit codes of
+`prove`: 0 found (and valid or unchecked), 1 none found or signature invalid, 2 unreadable file.
+
+**Where it lives.** The loaders expand each 5-bit channel to 8 bits, so the low 3 bits of an RGBA8 channel carry nothing
+the game reads. The mark writes into them, on opaque pixels only. The 5-bit values and alpha never change, so the hue
+lookup (top 5 bits) is unchanged; an unhued pixel moves by at most 7/255 per channel (`docs/images/art_mark_side_by_side.png`:
+original, marked, difference x32; the black outline and transparent ground carry nothing). The shader decides three
+things from exact values, so a pixel carries the mark only if every 5-bit channel is 2..30 (`uo_hue_core.gdshaderinc`:
+the gump test `r < 0.02`, the text test `> 0.04`, the top hue texel), and a grey pixel (equal 5-bit channels) gets the same
+low bits in all three channels, because `PARTIAL_HUED` hues a pixel only when r == g == b. `SPECTRAL` draws alpha from the
+unhued red (`1 - 1.5 r`), so a spectral sprite can differ by up to 4% in alpha; that is the one visible effect. Art that
+did not come from 1555 (equal 5-bit channels, unequal 8-bit ones) is refused by `mark` unless `--force`.
+
+**Layout.** A 16 x 16 tile of cells (x, y, channel, bit) repeats over the picture; a fixed permutation sends each of its
+2304 cells to one of 1024 coded bits and a fixed whitening bit is XORed in. A reader takes a majority vote per coded bit
+over every cell it sees. A crop only shifts the tile's phase, so `prove` tries all 256 phases (on the densest 128 x 128
+window, then reads the whole picture at the best phase). The pattern is a constant of the format, not a key: `prove` must
+work from a public key alone.
+
+```
+payload (124 bytes, zero padded) then CRC-32 of those 124 bytes  =  1024 coded bits
+    version u8 = 1 | shard id length u8 | shard id | serial u32 big-endian | Ed25519 signature (64)
+signed message  =  b"guo-art-mark@1\0" + shard id + b"\0" + serial (4 bytes, big-endian)
+```
+
+**Measured** (`python tools\art_extract\mark_measure.py`, synthetic sprite-like art, about 55% opaque; 60 random crops per size):
+
+| | result |
+|---|---|
+| carriers | 84% of opaque pixels (the rest are dark, near-white or partly transparent) |
+| crop N x N | N=32 60%, N=48 77%, **N=64 98%, N=96 100%** read; a crop that held at least 659 carrier pixels was always read |
+| fully opaque art | N=16 and larger always read; N=12 not |
+| PNG re-save (own encoder, Pillow with adaptive filters, extra chunks) | survives |
+| 5-bit requantisation | **does not survive** (the 5-bit value is all that is left, by construction) |
+| JPEG q95, scaling (nearest or bilinear), a darkened copy | **do not survive** |
+| screenshot of the running client | **does not survive**: hues, lighting and scaling rewrite every pixel |
+
+So **N is about 64 px of sprite art (or about 700 opaque pixels)**; a smaller piece may or may not read.
+
+**Honesty.** Drawn pixels can always be captured. The mark proves the origin of a copied *file* (a page, an exported PNG, a
+crop of one); it does not prevent copying, anyone who knows this format can strip it, and what it proves is only that the
+file carries a payload signed by that owner's key. A forged serial fails the signature.
+
+**Tests.** `tools/art_extract/test_mark.py` (payload and signature, forged serial; 5-bit values, alpha and the 7/255 bound;
+the shader's exact-value decisions on a marked page; grey, dark and bright pixels; whole picture, crops at several offsets,
+a small opaque crop; a PNG re-saved with every row filter; the non-survivors; `mark`, `prove`, the output rule, no signing
+key in any output; a container with the mark and a plain set without one).
+
+### Example (`land/index.json`, abridged)
+
+```json
+{
+  "schema": "guo/art_index@1",
+  "version": 1,
+  "class": "land",
+  "set_id": "<64 hex digits>",
+  "page_size": 2048,
+  "pixel_format": "rgba8",
+  "pages": [{"file": "page_0000.png", "sha256": "<64 hex digits>"}],
+  "entries": {
+    "3": {"page": 0, "x": 0, "y": 0, "w": 44, "h": 44, "pixels_sha256": "<64 hex digits>"}
+  },
+  "skipped": []
+}
+```
+---
+
+## 37. Server settings schema (`Admin/Schemas/<backend>.settings.json`, AD4)
+
+The Admin tab's Settings form is built from one schema per server backend,
+`godot/GUO/addons/guo_editor/Admin/Schemas/<backend>.settings.json` (today
+`modernuo`), read by `ServerSettings.cs`. The backend is the run-bar profile's
+`backend`, or, for `custom`, detected from the folder (`Configuration/modernuo.json`
+means ModernUO). The schema holds no values: they are read from the server's
+own files every time.
+
+| Field | Meaning |
+|---|---|
+| `backend`, `title`, `version` | the backend id, its name in the form, the schema version (1) |
+| `files` | `{"<id>": "<path under the server folder>"}`, e.g. `"modernuo": "Configuration/modernuo.json"`, `"email": "Configuration/email-settings.json"` |
+| `expansion_table` | the server's table of expansions (`Data/expansions.json`): an `expansion` field writes that entry, by `Id`, as the whole expansion file, keeping the facets set now |
+| `other` | `{"file", "path", "group"}`: an object whose every member without a field of its own is shown, by its own name, in a group collapsed at first (ModernUO's `settings`) |
+| `groups` | `[{"name", "help", "fields": [...]}]`, in the form's order |
+
+A field: `file` (a `files` id), `path` (`/` between levels, e.g.
+`settings/accountHandler.maxAccountsPerIP`; a `settings` member is one key,
+dots and all), `label` and `help` (plain words), `type`, and per type `min`,
+`max` (numbers, or times as `d.hh:mm:ss` for `timespan`), `min_length`,
+`max_length`, `optional`, `options` and `option_labels` (`enum`,
+`expansion`), `secret_key` (`secret`). The id of a field is `<file>:<path>`.
+
+Types: `bool`, `int`, `number`, `timespan`, `string`, `enum`, `email`, `url`,
+`list` (one per line), `listeners` (`host:port` per line), `folders`,
+`secret`, `expansion`. The form writes each value with the JSON kind the file
+had: ModernUO's `settings` are all strings (`"True"`, `"00:05:00"`), the
+other files hold real booleans and numbers.
+
+**Secrets.** A `secret` field (a mail password, a webhook, the CrowdSec
+password) is never shown. The value typed is written to the server's own
+file and to the workspace's secrets file
+(`<UO_WORKSPACE_DIR>/shard/secrets.bat`, a guarded
+`if not defined KEY set "KEY=value"` line, section 30) under its
+`secret_key` (`UO_SHARD_EMAIL_PASSWORD`, `UO_SHARD_DISCORD_WEBHOOK`,
+`UO_SHARD_CROWDSEC_PASSWORD`; an unlabelled setting whose name looks secret
+gets `UO_SHARD_SETTING_<KEY>`). When the secrets file holds a value the
+server's file lacks, a save writes it across. Clearing removes both.
+
+**Saving.** Only changed fields are checked and written. The files are written
+while the server is stopped (inside the run bar's restart, or on a server that
+is not running): ModernUO writes some of them from memory while it runs. The
+files replaced are copied first to
+`Configuration/GUO-previous/<yyyyMMdd-HHmmss>Z/`, secret values as `***`; the
+last 10 such folders are kept. Each file is written to `<name>.guo-tmp` and
+moved over the old one. Before the restart the change list goes to the audit
+log (`admin_settings` `changed`, section 10); after it the form asks the
+server for the values it now holds (`admin_settings` `get`).
+
+---
+
+## 38. Server compatibility lab (`tools/server_lab`)
+
+The lab runs the scenario cases of `tools/server_lab/cases.json` against each server of `backends.json` that has a
+`lab` object (section 30). Its per-user state is in the workspace; its results are in `build/server_lab/`.
+
+```
+<workspace>/server_lab/<backend>/lab.json       {"profile_id": 32 hex, "seeded": UTC ISO-8601 or absent}
+<workspace>/server_lab/<backend>/secrets.json   {"account", "password"}: the lab admin, generated; never committed
+<workspace>/servers/<profile_id>/src/            the server checkout and build (ModernUO: src/Distribution)
+build/server_lab/grid.json                       the grid (below)
+build/server_lab/card_<backend>.json             a row's card: {title, ok, passed, scripted, body}; sends nothing
+build/server_lab/<backend>/{build,seed}.log      setup and seed output
+```
+
+**`cases.json`**: `{"version": 1, "cases": [...]}`, a case being `n` (0-25), `group`, `title`, `scenario` (a scenario
+id, or null until written) and `needs_server` (false only for case 0). **`table.json`**: `{"version": 1, "backends":
+{"<id>": {lab_name, shard_name, account, character, vars}}}`; `vars` are string values a scenario may take with
+`--var`. **`triage.json`** (optional): `{"<backend>": {"<n>": {"verdict": "guo" | "server-gap" | "n/a", "why"}}}`.
+
+**`grid.json`**: `{"version": 1, "updated": UTC ISO-8601 or null, "client_version", "commit": GUO's short HEAD or
+null, "rows": {"<backend>": {name, row, era, pins: [{role, commit (9 hex), date}], cells: {"<n>": cell}}}}`. A cell:
+`result` (`PASS`, `FAIL (GUO)`, `FAIL (server gap)`, `FAIL (untriaged)`, `n/a`, `not run`), `scenario`, `run_id` and
+`run_dir` (`build/runs/<run_id>`, or null when the run could not start), `failed_steps` (step ids), `when`, and
+optionally `note` (why it did not run, at most 300 characters) and `why` (from triage). Runner exit 0 is `PASS`, 2 or
+no run id `not run`, anything else `FAIL (untriaged)`; triage then names the owner. The file holds no machine paths
+and no credentials. `docs/wiki/Server-Compatibility.md` is generated from it with `triage.json` applied.
+
+## 39. Client-side themes (`themes/*.theme.json`, StaticStudio)
 
 A theme repaints matching statics and land inside its zones and skins listed
 multis with splats, all client-side (no shard traffic): graphic swaps through
@@ -2143,12 +2612,13 @@ season shows everywhere else), and chunk loads and season changes re-apply
 active themes automatically.
 
 **Theme file** `<dir>/<name>.theme.json` (`format: 1`):
-`{"format":1,"name":str,"entries":[{"match":[graphic...],"variant":id,"splat":name?}],
-"multis":[multi-graphic...],"multi_splat":name}`. `variant` ids are free static
-slots (StaticStudio allocates from `0xF000` up); the PNGs live in the world
-project's asset overlay (`MapGen`/`uodata` free-slot scans agree the range is
-free; the overlay wins over the install so a collision degrades to a
-project-local look, never a crash).
+`{"format":1,"name":str,"entries":[{"match":[graphic...],"variant":id?,"image":file?,"splat":name?}],
+"multis":[multi-graphic...],"multi_splat":name}`. New variants are atlas PNGs
+(`VariantAtlas`: `<dir>/<name>/static_0x0E77.png`, fitted to the bound art's
+pixel size, with a JSON sidecar recording tool/workflow/seed/inputs); objects
+keep their graphic and draw the variant texture instead. Legacy `variant` ids
+(free static slots from `0xF000` up, PNGs in the world project's asset
+overlay) still resolve through the old graphic swap.
 
 **Activation** is user state, not file state: `ThemeManager.Activate(theme,
 zones)` with `zones` (`{facet,x1,y1,x2,y2}`, facet -1 is every facet), then
@@ -2166,7 +2636,7 @@ from client art), place staged splats by tile, and apply/clear zones against
 the open world. Splat generation itself stays in `tools/comfy`; the dock
 lists staged splats and writes placements into the staged manifest.
 
-## 37. Voice profiles and text-to-speech (`build/voice_profiles`, `IO/Audio/VoiceManager.cs`)
+## 40. Voice profiles and text-to-speech (`build/voice_profiles`, `IO/Audio/VoiceManager.cs`)
 
 `tools/comfy/voice.py` enrolls a voice from the player's own sample with the
 PERFECT_VOICE_DESIGN workflow (sample copied into ComfyUI's `input/`,

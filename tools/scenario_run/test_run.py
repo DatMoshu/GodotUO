@@ -625,6 +625,61 @@ def test_main_shard_refuses_an_editor_scenario(shard_env, cli_root, capsys):
     assert "client scenario" in capsys.readouterr().err
 
 
+# --- --server PROFILE ------------------------------------------------------------------------------------------
+
+def server_workspace(tmp_path, servers):
+    ws = tmp_path / "ws"
+    (ws / "profiles").mkdir(parents=True)
+    (ws / "profiles" / "servers.json").write_text(json.dumps({"Selected": None, "Servers": servers}), encoding="utf-8")
+    return ws
+
+
+def lab_profile(**over):
+    return {"Id": "a" * 32, "Backend": "modernuo", "Name": "ModernUO (server lab)", "Host": "127.0.0.1", "Port": 2610, **over}
+
+
+def test_server_profile_by_id_or_name(shard_env, tmp_path):
+    ws = server_workspace(tmp_path, [lab_profile(), lab_profile(Id="b" * 32, Name="Other", Port=2611)])
+    login = {"account": "a", "password": "b"}
+    assert run_mod.resolve_server_profile("a" * 32, ws, login) == ("127.0.0.1", 2610, "a" * 32)
+    assert run_mod.resolve_server_profile("modernuo (SERVER lab)", ws, login) == ("127.0.0.1", 2610, "a" * 32)
+    assert run_mod.resolve_server_profile("Other", ws, login)[1] == 2611
+
+
+@pytest.mark.parametrize("servers, name, match", [
+    ([], "x", "no single server profile"),
+    ([lab_profile(), lab_profile(Id="b" * 32)], "ModernUO (server lab)", "no single server profile"),
+    ([lab_profile(Port=0)], "ModernUO (server lab)", "no usable Host and Port"),
+])
+def test_server_profile_refusals(shard_env, tmp_path, servers, name, match):
+    with pytest.raises(sc.ScenarioError, match=match):
+        run_mod.resolve_server_profile(name, server_workspace(tmp_path, servers), {"account": "a", "password": "b"})
+
+
+def test_server_profile_needs_the_login(shard_env, tmp_path):
+    with pytest.raises(sc.ScenarioError, match="GUO_SCENARIO_ACCOUNT, GUO_SCENARIO_PASSWORD"):
+        run_mod.resolve_server_profile("ModernUO (server lab)", server_workspace(tmp_path, [lab_profile()]), {})
+
+
+def test_main_server_passes_the_address_and_retargets_the_scenario(shard_env, cli_root, tmp_path, capsys):
+    import guo
+    ws = server_workspace(tmp_path, [lab_profile()])
+    shard_env.setattr(guo, "load_config", lambda: SimpleNamespace(root=cli_root, workspace_dir=ws))
+    shard_env.setenv("GUO_SCENARIO_ACCOUNT", "acct")
+    shard_env.setenv("GUO_SCENARIO_PASSWORD", "pw")
+    seen = {}
+
+    def fake_execute(scen, cfg, variables, **kw):
+        seen.update(shard=kw["shard"], requires=scen.requires)
+        return {"ok": True, "run_id": "r", "exit_kind": "ok"}, cli_root
+
+    shard_env.setattr(run_mod, "execute", fake_execute)
+    assert run_mod.main(["shard.console", "--server", "ModernUO (server lab)"]) == 0
+    assert seen["shard"] == ("127.0.0.1", 2610) and seen["requires"]["shard"] == "server:" + "a" * 32
+    assert run_mod.main(["shard.console", "--server", "x", "--shard", "y"]) == 2
+    assert "not both" in capsys.readouterr().err
+
+
 def test_shard_console_scenario_validates_and_needs_a_shard():
     scen = sc.load(REPO / "tools" / "scenarios" / "shard" / "console.scenario.json")
     assert scen.id == "shard.console" and scen.surface == "client" and scen.requires.get("shard")
@@ -692,6 +747,24 @@ def test_a_forty_step_failing_run_fits_the_body_limit_and_says_more(tmp_path):
     assert len(card["failed_steps"]) == 40
 
 
+def test_the_body_cut_never_clips_the_more_tail(tmp_path):
+    steps = [{"id": f"segment_with_a_long_name_{i:02d}", "ok": False, "dur_ms": 1000, "detail": "x"} for i in range(40)]
+    m = manifest_for("20261001_000210_editor.big_ai", "editor.big", steps, title="T" * 1200)
+    d = put_run(tmp_path, m)
+    card = card_mod.build_card(m, d, [])
+    assert len(card["text"]) <= card_mod.BODY_LIMIT
+    last = card["text"].splitlines()[-1]
+    assert last.startswith("Failed: ") and last.endswith(" more") and ", +" in last
+
+
+def test_an_over_long_card_raises_value_error_not_assert(tmp_path):
+    steps = [{"id": "x" * 1000, "ok": False, "dur_ms": 1, "detail": ""}]
+    m = manifest_for("20261001_000220_editor.huge_ai", "editor.huge", steps)
+    d = put_run(tmp_path, m)
+    with pytest.raises(ValueError, match="limit"):
+        card_mod.build_card(m, d, [])
+
+
 def test_card_text_is_redacted(tmp_path):
     steps = [{"id": "s1", "ok": False, "dur_ms": 1, "detail": ""}]
     m = manifest_for("20261001_000300_editor.r_ai", "editor.r", steps, title=r"open D:\Work\notes.txt", aborted="at secretword")
@@ -752,3 +825,43 @@ def test_unset_registration_settings_warn_and_register_nothing(cli_root, monkeyp
     warns = [e for e in warns if e["kind"] == "warn"]
     assert len(warns) == 1 and warns[0]["detail"]["unset"] == ["GUO_RUNS_SHARED_DIR", "GUO_RUNS_DB"]
     assert not list(tmp_path.rglob("*.db")) and (run_dir / "run.json").is_file()
+
+
+def test_var_password_warns_and_names_the_env_var(capsys):
+    assert run_mod.parse_vars(["password=hunter2", "account=gm1"]) == {"password": "hunter2", "account": "gm1"}
+    err = capsys.readouterr().err
+    assert "--var password=" in err and "GUO_SCENARIO_PASSWORD" in err and "hunter2" not in err
+    run_mod.parse_vars(["account=gm1"])
+    assert capsys.readouterr().err == ""                              # only the password warns
+
+
+def test_missing_password_hint_names_the_env_var_only(monkeypatch):
+    for var in ("GUO_SCENARIO_PASSWORD", "GUO_SCENARIO_ACCOUNT"):
+        monkeypatch.delenv(var, raising=False)
+    with pytest.raises(sc.ScenarioError) as ex:
+        sc.substitute("$password", {})
+    assert "GUO_SCENARIO_PASSWORD" in str(ex.value) and "--var" not in str(ex.value)
+    with pytest.raises(sc.ScenarioError) as ex:
+        sc.substitute("$account", {})
+    assert "--var account=" in str(ex.value)
+
+
+def test_var_any_password_name_warns(capsys):
+    assert run_mod.parse_vars(["new_password=hunter2", "new_account=bob"]) == {"new_password": "hunter2", "new_account": "bob"}
+    err = capsys.readouterr().err
+    assert "--var new_password=" in err and "GUO_SCENARIO_NEW_PASSWORD" in err and "hunter2" not in err
+    assert "new_account" not in err                                   # only the password-named one warns
+    with pytest.raises(sc.ScenarioError) as ex:
+        sc.substitute("$new_password", {})
+    assert "GUO_SCENARIO_NEW_PASSWORD" in str(ex.value) and "--var" not in str(ex.value)
+
+
+def test_every_scenario_password_reads_its_env_var(monkeypatch):
+    """Each committed scenario that names a *password variable gets it from GUO_SCENARIO_<NAME> when --var is unset."""
+    root = Path(__file__).resolve().parents[2] / "tools" / "scenarios"
+    names = {m.group(1) for path in root.rglob("*.scenario.json")
+             for m in sc._VAR.finditer(path.read_text(encoding="utf-8")) if "password" in m.group(1).lower()}
+    assert {"password", "new_password"} <= names                     # login scenarios and shard.admin_add_account
+    for name in names:
+        monkeypatch.setenv(f"GUO_SCENARIO_{name.upper()}", f"from-env-{name}")
+        assert sc.substitute(f"${name}", {}) == f"from-env-{name}"

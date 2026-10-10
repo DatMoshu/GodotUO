@@ -34,6 +34,21 @@ public partial class RadarView : Control
     /// <summary>Raised with the image pixel under a click, whether Ctrl was held, and whether it was a double click.</summary>
     public event Action<Vector2I, bool, bool> Picked;
 
+    /// <summary>Raised with the view position of any click without a drag (inside the image or not).</summary>
+    public event Action<Vector2> Clicked;
+
+    /// <summary>
+    /// Drawn over the map each frame, after the mark: called with the view position of image pixel (0,0) and the
+    /// view pixels per image pixel. The Admin tab's god view draws its players, NPCs and spawners with it.
+    /// </summary>
+    public Action<Vector2, float> Overlay { get; set; }
+
+    /// <summary>The zoom relative to the fit (1 = the whole image); Focus keeps it when given this.</summary>
+    public float Zoom => _zoom;
+
+    /// <summary>The view position of an image position (fractions allowed).</summary>
+    public Vector2 ImageToView(Vector2 px) => Origin + px * Scale;
+
     public Texture2D Texture
     {
         get => _texture;
@@ -197,6 +212,8 @@ public partial class RadarView : Control
             DrawRect(r.Grow(1.5f), Colors.Black, false, 2f);
             DrawRect(r, new Color(1, 0, 1), false, 2f);
         }
+
+        Overlay?.Invoke(o, s);
     }
 
     /// <summary>
@@ -276,6 +293,11 @@ public partial class RadarView : Control
                 {
                     bool click = _pressed && !_dragged && b.ButtonIndex == MouseButton.Left;
                     _pressed = false;
+                    if (click)
+                    {
+                        Clicked?.Invoke(b.Position);
+                    }
+
                     if (click && _texture != null)
                     {
                         Vector2 p = (b.Position - Origin) / Scale;

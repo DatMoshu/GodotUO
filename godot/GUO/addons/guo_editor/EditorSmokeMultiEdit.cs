@@ -353,6 +353,10 @@ public partial class EditorSmoke
             int count = _world.SaveAreaAsMulti();
             MeCheck("world_selection_opens_multi", count > 0 && doc.Parts.Count == count && doc.Name == worldName, $"{count} vs {doc.Parts.Count}");
             MeCheck("world_selection_centred", doc.Parts.All(p => Math.Abs(p.X) <= 21 && Math.Abs(p.Y) <= 21));
+            // ED6: the Multi Editor says where the building came from and the way back; the World says where it went.
+            GD.Print($"[GUO words] multi bar: {view.FromWorldNotice} | world: {_world.BrushStatus}");
+            MeCheck("world_selection_announced", view.FromWorldNotice.StartsWith("From the World") && view.FromWorldNotice.Contains($"{count} items"), view.FromWorldNotice);
+            MeCheck("world_status_names_multis_tab", _world.BrushStatus.Contains("Multis tab") && _world.BrushStatus.Contains("Back to World"), _world.BrushStatus);
             _world.SetArea(0, 0, 0, 0);
         }
 
@@ -364,6 +368,7 @@ public partial class EditorSmoke
         MeCheck("seam_adds", doc.Parts.Count == 4);
         view.NewMulti();
         MeCheck("new_blank_multi", doc.Parts.Count == 0 && doc.HistoryCount == 1);
+        MeCheck("from_world_bar_closes_on_new", view.FromWorldNotice == "");
         await RunMultiEditPhase2Async(view, root, floorId);
 
         await SplatWorldCheckAsync();

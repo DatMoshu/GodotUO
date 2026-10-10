@@ -1,4 +1,5 @@
 @echo off
+rem Pre-decodes UO art into the runtime cache headless so the first visit to a place does not hitch; needs step 01's manifest.
 REM ============================================================================
 REM  PIPELINE STEP 02 - pre-warm the runtime decode cache.
 REM  Optional. The client builds this lazily on demand; running it up front

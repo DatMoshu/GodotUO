@@ -26,6 +26,9 @@ public partial class WorldView
         for (int i = 0; i < names.Length; i++)
         {
             _viewPopup.AddRadioCheckItem(names[i], i + 1);
+            // ED6: what the colours mean, before the mode is chosen.
+            IWorldMode mode = _modeNode?.ModeNamed(names[i]) ?? WorldModeList.All().FirstOrDefault(m => m.Name == names[i]);
+            _viewPopup.SetItemTooltip(_viewPopup.GetItemIndex(i + 1), mode?.Meaning ?? "");
         }
 
         _viewPopup.AddSeparator();
@@ -51,13 +54,14 @@ public partial class WorldView
             lp.AddCheckItem(l.Name);
             int index = lp.ItemCount - 1;
             lp.SetItemTooltip(index, l.Summary);
+            lp.SetItemChecked(index, l.On);
         }
 
         lp.AddSeparator();
         lp.AddCheckItem("Live players", 1000);
         lp.AddCheckItem("Live mobiles", 1001);
-        lp.SetItemChecked(lp.GetItemIndex(1000), true);
-        lp.SetItemChecked(lp.GetItemIndex(1001), true);
+        lp.SetItemChecked(lp.GetItemIndex(1000), _mapLayers.Live.Players);
+        lp.SetItemChecked(lp.GetItemIndex(1001), _mapLayers.Live.Mobiles);
         lp.IdPressed += id =>
         {
             if (id == 1000 || id == 1001)
@@ -178,6 +182,7 @@ public partial class WorldView
             if (menu.GetItemText(i) == label)
             {
                 menu.SetItemChecked(i, on);
+                RememberLayerTicks();
                 return;
             }
         }
@@ -199,7 +204,12 @@ public partial class WorldView
             title += _modeNode.Tinted ? " (tinted)" : " (solid)";
         }
 
-        _chip.Set(title, title.Length == 0 ? Array.Empty<LegendItem>() : _modeNode.Legend(), _modeNode.HoverText());
+        _chip.Set(title, title.Length == 0 ? Array.Empty<LegendItem>() : _modeNode.Legend(), _modeNode.HoverText(), _modeNode.Mode?.Meaning);
+        // Under the map's hint line, never over it.
+        if (_previewLabel != null)
+        {
+            _chip.Position = new Vector2(10, _previewLabel.Position.Y + _previewLabel.Size.Y + 6);
+        }
         if (_cursor != null)
         {
             _cursor.Text = _modeNode.Hover is { } c && _modeNode.Data != null

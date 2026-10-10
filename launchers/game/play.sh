@@ -1,21 +1,14 @@
 #!/usr/bin/env bash
-# ============================================================================
-#  THE LAUNCHER. Runs the GUO client. Twin of play.bat.
-#
-#      launchers/game/play.sh                 connect to the configured shard
-#      launchers/game/play.sh --offline       no shard; data/render smoke only
-#      launchers/game/play.sh --frames 400    run 400 frames and quit
-#
-#  Anything else is passed to the client. --frames is turned into Godot's own
-#  --quit-after, which has to come BEFORE the -- separator.
-# ============================================================================
+# Runs the GUO client in a window against the configured shard (or the first-run wizard when no UO data is set) and stays open until the game exits.
+# args: --offline | --frames <n> | <client flags>
+set -euo pipefail
 . "$(dirname "$0")/../_shared/common.sh" || exit 1
 
 # Which data the client reads (ADR-0021); exit 3 means "no valid data", which
 # is not an error: the client is started anyway and opens the wizard.
 data_env="$UO_BUILD/datasources/play_env.sh"
-"$UO_PYTHON" "$UO_TOOLS/datasources/run.py" check --sh "$data_env"
-rc=$?
+rc=0
+"$UO_PYTHON" "$UO_TOOLS/datasources/run.py" check --sh "$data_env" || rc=$?
 if [ "$rc" = "3" ]; then
     echo "[play] No valid UO data yet: the client will open the first-run wizard."
 elif [ "$rc" != "0" ]; then
@@ -42,4 +35,7 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-exec "$GODOT_CONSOLE" --path "$UO_GODOT_PROJECT" "${quit_after[@]}" -- "${args[@]}"
+# Other engine flags (a scripted run's --write-movie and --resolution) come in
+# GUO_ENGINE_ARGS, split on spaces as play.bat does.
+# shellcheck disable=SC2086
+exec "$GODOT_CONSOLE" --path "$UO_GODOT_PROJECT" ${quit_after[@]+"${quit_after[@]}"} ${GUO_ENGINE_ARGS:-} -- ${args[@]+"${args[@]}"}

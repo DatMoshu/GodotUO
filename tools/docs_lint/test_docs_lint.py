@@ -1,7 +1,7 @@
 import tempfile
 from pathlib import Path
 import unittest
-from run import anchors, check
+from run import anchors, check, missing_readmes
 
 
 class DocsTests(unittest.TestCase):
@@ -50,6 +50,18 @@ class DocsTests(unittest.TestCase):
         self.assertEqual(anchors('# Real\n---\n'), {"real"})
         issues = self.run_fixture('[a](other.md#real-1)', '# Real\n---\n')
         self.assertEqual(len(issues), 1)
+
+    def test_every_job_folder_needs_a_readme(self):
+        for name in ("documented", "bare", "__pycache__", ".cache"):
+            (self.root / "tools" / name).mkdir(parents=True)
+        (self.root / "tools" / "documented" / "README.md").write_text("# documented\n", encoding="utf-8")
+        (self.root / "tools" / "loose.py").write_text("", encoding="utf-8")
+        issues = missing_readmes(self.root)
+        self.assertEqual([i.path.name for i in issues], ["bare"])
+        self.assertIn("no README.md", issues[0].message)
+
+    def test_no_tools_folder_is_not_an_issue(self):
+        self.assertEqual(missing_readmes(self.root), [])
 
 
 if __name__ == "__main__":

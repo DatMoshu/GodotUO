@@ -1,9 +1,6 @@
 #!/usr/bin/env bash
-# ============================================================================
-#  PIPELINE STEP 00 - one-time setup on a fresh clone. Twin of 00_bootstrap.bat.
-#  Fetches the pinned engine and upstream reference, then verifies the config.
-# ============================================================================
-set -e
+# Sets up a fresh clone: fetches the pinned Godot and the upstream ClassicUO reference, then verifies the UO client data.
+set -euo pipefail
 here="$(dirname "$0")"
 echo "[00] Fetching pinned Godot (skipped if already present)..."
 "$here/../dev/fetch_godot.sh"

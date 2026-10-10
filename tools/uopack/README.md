@@ -10,6 +10,7 @@ python tools\uopack\run.py unpack --what art|land|gumps|anim|tiledata --ids 0x1B
 python tools\uopack\run.py pack <folder> [--source <data dir>] [--records <folder>] [--stage <staged set>]
 python tools\uopack\run.py roundtrip <folder> [--from <data dir>] [--no-reuse]
 python tools\uopack\run.py from-dreadcrest <candidate folder> --out <folder> [--item 0xFFF0 --body 849 --gump-male 50849 --gump-female 60849]
+python tools\uopack\run.py from-job <transfer artifact> --out <folder> --body 849 [--item 0xFFF1] [--allow-preview]
 python tools\uopack\run.py selftest
 ```
 
@@ -28,6 +29,42 @@ ranges; for `anim` they are body ids (every action and direction is unpacked).
 
 Every unpacked sidecar also has `raw_sha256` (the entry as the client stores
 it) and `pixels_sha256` (what it looks like).
+
+## From SpriteMotion: `from-job`
+
+`from-job` reads a SpriteMotion **transfer artifact** (one folder:
+`transfer.json` plus the cropped frame PNGs it lists; kind
+`spritemotion.transfer-artifact`, `schema_version` 1, SpriteMotion's
+`docs/transfer-artifact.md`) and writes a uopack folder like
+`from-outfit-lab`'s, ready for `pack`. GUO checks the artifact by that
+documented contract in `jobimport.py`; no SpriteMotion code is used or copied.
+
+- **Read only.** `--out` must be a new or empty folder outside the artifact.
+  Every check runs before anything is written.
+- **Refused, in plain words:** another schema or schema version; a file whose
+  sha256 does not match, or a path that is absolute, has `..` or leaves the
+  folder; a PNG whose size is not its crop; a stated centre that does not
+  match its crop; canvas other than 256 x 256 or anchor other than (128, 192);
+  an action missing a stored direction 0-4 or a frame; an action the body's
+  `anim.idx` slot cannot hold; a `coverage: preview` export unless
+  `--allow-preview` (for tests).
+- **What it writes.** `anim/body_NNNN/aAA_dD.json` per action and stored
+  direction, frames as **RGBA** PNGs with `center_x = 128 - left`,
+  `center_y = 192 - bottom` (either can be negative); an empty frame is
+  `0 x 0`. With `--item`: the item art as `art/static_0xNNNN` with
+  `equipment.tiledata` (and `anim` = `--body`) as `tiledata_write`, or a
+  `tiledata/item_0xNNNN.json` when there is no item art. `uopack.json` keeps the
+  artifact's identity, coverage, pixel policy, acceptance and provenance (with
+  its redistribution classes) and the manifest's sha256.
+- **Colour.** An artifact is unquantized (a real export had groups of up to
+  1,456 colours). `from-job` does not quantize: `pack` builds each group's
+  palette and quantizes one with more than 256 colours to one shared 15-bit
+  palette (median cut), the same path as any new RGBA art. Alpha below 128 is
+  transparent there; `alpha: premultiplied` colour is un-premultiplied first.
+- **Fixture.** `fixtures/spritemotion_transfer_v1/` is SpriteMotion's
+  synthetic CC0 fixture, copied byte for byte (origin commit in
+  `test_uopack.py`). An export of a real job can hold client-derived art: it is
+  as private as the job, so never commit one.
 
 ## Colour and transparency
 
@@ -69,4 +106,4 @@ art, gumps, `anim.mul` groups and both tiledata layouts. The codecs are in
 | the same with `--no-reuse` (the encoders alone) | 457/486 identical; the rest are statics whose original row padding is leftover memory; all 486 decode pixel-identical |
 | a sweep of random entries, encoders alone | gumps 223/223, land 125/125, animation groups 1,838/1,863 identical |
 | `from-dreadcrest` + `pack` (Codex's candidate, read only) | 179 records (175 animation groups, item art + tiledata, 2 paperdoll gumps); all decode equal to their PNGs; the 175 groups match Codex's own encodings pixel for pixel (0 of 457,411 pixels differ), none needed quantising |
-| `test_uopack.py` (CI, synthetic install, no client data) | 19 checks pass |
+| `test_uopack.py` (pytest, pooled and in CI; synthetic install, no client data) | 13 tests pass, from-job included |

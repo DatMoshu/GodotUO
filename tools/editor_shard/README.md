@@ -18,6 +18,8 @@ python tools\editor_shard\run.py setup   [--from DIR] [--port 2594]
 python tools\editor_shard\run.py start   [--data-first DIR] [--objects EXPORT | --clear-objects]
 python tools\editor_shard\run.py status
 python tools\editor_shard\run.py stop
+python tools\editor_shard\run.py admin-check [--no-client]
+python tools\editor_shard\run.py admin-tab [--windowed]
 ```
 
 - **setup** copies the built ModernUO `Distribution` (the same
@@ -49,6 +51,87 @@ python tools\editor_shard\run.py stop
   `docs\data_formats.md` section 10), and makes game clients UltimaLive
   clients of shard `GUO-Editor-Private` for map 0. Stop the instance first;
   its `Assemblies` are locked while it runs.
+- **admin channel** (ADR-0035): **start** hands the shard the user's bridge
+  admin token (`UO_BRIDGE_ADMIN_TOKEN`, generated into the workspace's
+  `shard\secrets.bat` if missing). Admin ops on the bridge need it in the
+  editor's `hello`; map editing does not. Every admin op is audited in
+  `build\shard_private\Logs\GUO\admin_audit.jsonl`, secrets masked.
+  The old `command` op (run a command as a named online character) is an
+  admin op since AD3 and needs the token too.
+- **commands** (AD3): the Admin tab's Commands palette lists the server's
+  commands and runs one with nobody logged in, as a hidden admin mobile the
+  bridge keeps in memory (never in the world or a save). The command's
+  output comes back only from a server built with MUO patch 0005
+  (`tools\modernuo\patches`); a copy set up from an older build runs
+  commands without it. To try the patch before the dev shard is rebuilt,
+  copy a patched build's `Server.dll` and `Assemblies` over the copy
+  before **bridge**.
+- **admin-check** talks to the running instance's bridge and checks the admin
+  channel: no token, a wrong one, the right one, the audit log, the close
+  after three refusals, the god view (a whole facet, then change-only pushes
+  as a spawner is put and deleted, Find by name and serial), the god view's
+  actions (AD2b), the Settings form's `admin_settings` (AD4: live values, a
+  secret one as `***`; a change audited with a webhook masked), the Accounts
+  ops (AD5, `admin_accounts_check.py`: an account made with a 16-character
+  password, given a level and a typed password, banned and unbanned, each
+  proved by a login on the shard's login server; refusals; passwords masked
+  in the audit log; the account, `ad5c` and six digits, stays on the
+  instance), the backup op (AD6, `admin_backup_check.py`: Back up now keeps
+  a snapshot with a manifest naming no folder, Health names it, unknown
+  actions and names that would leave the folder are refused, a restore
+  keeps a before-restore snapshot first, keep 1 prunes the rest from the
+  disk; one snapshot stays on the instance), the Commands ops (AD3,
+  `admin_commands_check.py`: the list with level, usage and description;
+  `[where` with nobody online and its output; the dangerous list refused
+  without its word and with a wrong one; `[Wipe` with its word only asking
+  for a target, cancelled; "run as" nobody online and the old `command` op
+  without the token or `as` refused; a password command audited by its
+  name only) and that no token or password reached a log. For the actions
+  it puts two test spawners west of Britain and logs a headless GUO client in
+  as the third game master lane account (`UO_SHARD_GM_ACCOUNTS`, its
+  character named after the account; `staff_client.py`). Before that client
+  logs in, with nobody online, it checks the hidden presence (AD2c): Go
+  there puts its spot in Britain, Bring here brings a horse to it, the
+  paperdoll comes back as a list, Follow moves the spot with the horse, and
+  Find never finds the presence. With the client in, it checks Go
+  there, Bring here and Open paperdoll in that client's objects dump, Follow
+  (it takes the character back after a Go there away, and ends by itself
+  when the target is deleted), Respawn and Clear, and every refusal. Its
+  spawners are deleted at the end. `--no-client` checks the spawner actions
+  and refusals only. **start** passes `UO_SHARD_GM_ACCOUNTS` so those
+  accounts get the generated password. The same
+  channel without ModernUO:
+  `dotnet run --project tools\editor_shard\bridge\tests\AdminChannel.Tests.csproj`.
+- **admin-tab** drives the GUO editor's Admin tab against this instance, in a
+  scratch workspace (`build\admin_tab\workspace`): the run bar starts the
+  instance with the admin token, the tab connects and reads Health, Save now
+  saves, Restart saves and has the run bar stop and start the server, and the
+  tab reconnects; the god view watches Felucca again, shows a spawner put
+  through the bridge with its horses, finds it, hides NPCs with the filter,
+  presses its Respawn and Clear buttons (AD2b), with nobody online presses
+  Go there, Bring here and Open paperdoll for the hidden presence (AD2c: the
+  spot is a white cross, the paperdoll is listed under Selected) and drops
+  the spawner on delete. Then
+  the Settings form (AD4) reads the shard's configuration, refuses values out
+  of range, and Save and restart writes two settings and a test mail password;
+  the restarted server reports the new values, the previous files are kept
+  without the password, and the shard's `Configuration` folder (copied aside
+  first) is put back as it was. Then the Accounts list (AD5) shows every
+  account, keeps the owner out of reach, makes an account (`ad5t` and six
+  digits, left on the instance) with a generated password, gives it a level
+  and a typed password, bans it and lifts the ban. Then the Backups list
+  (AD6): Back up now keeps a snapshot and Health shows it, an account made
+  afterwards (`ad6t` and six digits) is gone once Restore (asked first) has
+  put that snapshot back with the server restarted by the run bar, a
+  before-restore snapshot is kept, and keep 2 removes the oldest. Then the
+  Commands palette (AD3): the list and its search, the help line, `[where`
+  and its output, `[wipe` held for its typed word (a wrong one does not run
+  it) and then only asking for a target, the history, and "run as" nobody
+  online refused. Settings
+  stills cover the UO data folders. Then it checks that every time in the tab's log is UTC with a Z, and that no
+  token or password reached the editor output, the tab's log, the server
+  console or the audit log. It stops a running `start` first. `--windowed` saves stills of the tab and a clip under
+  `build\admin_tab`.
 - **stop** ends only the process `start` recorded, and only if its executable
   is the copy's. It cannot stop the shared shard.
 

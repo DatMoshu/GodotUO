@@ -89,6 +89,15 @@ namespace GUO.Network
                         break;
                     }
 
+                    // PORT DEVIATION (GUO): a dynamic length under 3 is dropped with
+                    // its header; upstream spins here on a length of 0. See PacketLengthGuard.
+                    if (PacketLengthGuard.RejectShortDynamic(stream, offset, packetlength))
+                    {
+                        Log.Warn($"Dropped packet ID: {packetID:X2} | bad dynamic len: {packetlength}");
+
+                        continue;
+                    }
+
                     if (stream.Length < packetlength)
                     {
                         Log.Warn(
@@ -143,7 +152,16 @@ namespace GUO.Network
                 var buffer = new StackDataReader(data);
                 buffer.Seek(offset);
 
-                bufferReader(world, ref buffer);
+                // PORT DEVIATION (GUO): one malformed packet is logged and dropped;
+                // upstream lets the exception end the frame's whole parse loop.
+                try
+                {
+                    bufferReader(world, ref buffer);
+                }
+                catch (Exception ex)
+                {
+                    Log.Error($"Dropped packet ID: {data[0]:X2} | len: {data.Length} | {ex}");
+                }
             }
         }
 

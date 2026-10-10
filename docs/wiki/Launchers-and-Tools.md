@@ -8,9 +8,20 @@ under `tools\`, each with a `run.py` entry point, all importing the shared
 project depends on get a folder of their own with a README (`tools\godot`,
 `tools\modernuo`).
 
-On Linux, the desktop launchers (bootstrap, verify, build, smoke, play,
-playtest, the editor and the dev shard) have `.sh` twins beside the `.bat`
-files, sourcing `launchers/_shared/common.sh`. See [Linux](Linux.md).
+Every launcher is a **pair**: `<name>.bat` and `<name>.sh`, same name,
+same behaviour. The `.sh` sources `launchers/_shared/common.sh`; one that
+cannot work off Windows says why and exits 2. See [Linux](Linux.md).
+
+Each launcher says what it does in its first line: a `rem` line straight
+after `@echo off` in the `.bat`, the same sentence as the `# ` line after the
+shebang in the `.sh`, and an optional `args:` line after it listing the flags
+it takes. DirectorDeck's Run panel shows that sentence as the button's hint.
+A launcher stays in the foreground for long-running work (a shard, a
+server) so its output can be watched and stopped, unless its line says it
+detaches (an editor or a browser); it exits non-zero on failure and never
+asks a question on stdin. `launchers\dev\launcher_lint.bat` checks all of
+it, and so do the smoke, the pre-push hook and CI;
+`launchers\dev\launcher_lint.bat --list` prints every pair with its line.
 
 ## Launchers
 
@@ -18,7 +29,8 @@ files, sourcing `launchers/_shared/common.sh`. See [Linux](Linux.md).
 
 Not launchers. `config.bat` (defaults, committed), `config.local.bat`
 (yours, gitignored, from `config.local.bat.example`) and `common.bat` (the
-shared logic). See [Configuration](Configuration.md).
+shared logic), and their Linux twins `config.sh`, `config.local.sh` and
+`common.sh`. See [Configuration](Configuration.md).
 
 ### `game\`
 
@@ -58,7 +70,7 @@ shared logic). See [Configuration](Configuration.md).
 | Launcher | Does |
 |---|---|
 | `build.bat` | `dotnet build` of the client. |
-| `smoke.bat` | The five-step health check: engine, imports, C# build, client data, offline load. Run before every commit. |
+| `smoke.bat` | The seven-step health check: engine, imports, C# build, client data, offline load, the editor add-on, the launchers. Run before every commit. |
 | `screenshot.bat` | Boots the client with `--screenshot` into `build\screenshots`; extra flags pass through (`--play --shot-after N`). |
 | `playtest.bat` | A scripted session against the shard: log in, walk, gumps, drag, speak; exit 0 only if every check passed. |
 | `endurance.bat [seconds]` | The playtest, then keeps walking (five minutes by default) and compares the last stretch with the first in frame time, object count and memory. |
@@ -79,6 +91,19 @@ shared logic). See [Configuration](Configuration.md).
 | `worktree_setup.bat` | Readies a fresh git worktree: copies your `config.local.bat` and `deny.local.txt` from the main checkout, checks the engine and upstream resolve (no directory links), runs one headless import. |
 | `fetch_godot.bat` | Re-fetches the pinned engine on its own. |
 | `build_guoasset.bat` | Builds the `guoasset` MCP server. |
+| `launcher_lint.bat` | Checks every launcher pair (description line, line endings, executable bit, no stdin); `--list` prints them all. |
+| `docs_lint.bat`, `privacy_scan.bat` | The pre-push checks on their own: Markdown links and anchors; LAN addresses, emails and machine paths. |
+| `selftest.bat` | Every Python tool self-test CI runs, read from the CI workflow; `--list`, `--only <text>`. |
+| `scenario_run.bat` | Runs a scripted scenario and records it (`tools\scenario_run`); lists the scenarios when given nothing. |
+| `gump_studio_smoke.bat`, `profile_migrations.bat`, `guo_mcp_probe.bat`, `editor_live.bat`, `world_parity.bat` | Smokes and probes for Gump Studio, the profile migration ladder, the automation MCP, the editor's live tier and the World view. |
+| `server_manager.bat` | The editor's named servers and clients: `init`, `clients`, `doctor` (the default). |
+
+### `world\`
+
+The world authoring tools, each printing its usage when run with nothing:
+`multi.bat` (new multis), `decorate.bat` (furnishing them), `mapgen.bat`
+(procedural maps), `mapgen_districts.bat` (towns on them) and `uopack.bat`
+(art, gumps and animations out to PNG and back).
 
 ### `windows\`, `android\`, `web\`
 

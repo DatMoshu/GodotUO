@@ -24,7 +24,7 @@ from guo.process import build_child_env, no_activate  # noqa: E402
 
 # The tools a scenario may run in the editor without a dialog: the runner launched this editor for that.
 # editor_invoke is not in it: an F3 action can do more than a scenario needs, so it keeps its approval dialog.
-PREAPPROVED = "tour_segment,editor_screenshot"
+PREAPPROVED = "tour_segment,editor_screenshot,human_overlay"
 
 
 def free_port() -> int:
@@ -141,8 +141,9 @@ class ClientSession:
     launch does), with the game MCP on a fresh loopback port and a one-run token, and, when recording, the engine's
     MovieWriter on (capture.py). The runner only ever ends the process tree it started."""
 
-    def __init__(self, cfg, run_dir: Path, record: bool, size: str | None = None):
+    def __init__(self, cfg, run_dir: Path, record: bool, size: str | None = None, interactive: bool = False):
         self.cfg = cfg
+        self.interactive = interactive     # a person plays (human driver): the window may take focus and the sound is on
         self.run_dir = run_dir
         self.record = record
         self.size = size
@@ -152,6 +153,7 @@ class ClientSession:
         self.extra_args: list[str] = []
         self.extra_settings: dict = {}
         self.shard: tuple[str, int] | None = None     # --shard: the address the client connects to (UO_SHARD_HOST / UO_SHARD_PORT)
+        self.extra_env: dict[str, str] = {}
         self._home: Path | None = None
         self.log_path = run_dir / "client.log"
         self.avi = run_dir / "raw" / "run.avi"
@@ -174,6 +176,7 @@ class ClientSession:
         env.update({"GUO_MCP_PORT": str(self.port), "GUO_MCP_TOKEN": self.token})
         if self.shard is not None:
             env.update({"UO_SHARD_HOST": self.shard[0], "UO_SHARD_PORT": str(self.shard[1])})
+        env.update(self.extra_env)
         if self.extra_settings:
             env["UO_CACHE_DIR"] = str(self._make_home())
         engine = ["--resolution", self.size] if self.size else []      # a movie is the project's 1280x720 whatever this says
@@ -181,7 +184,8 @@ class ClientSession:
             self.avi.parent.mkdir(parents=True, exist_ok=True)
             engine.insert(0, capture.engine_args(self.avi))
         env["GUO_ENGINE_ARGS"] = " ".join(engine)
-        args = ["--no-focus"] + (["--window-size", self.size.replace("x", ",")] if self.size else []) + ([] if self.record else ["--silent"]) + list(self.extra_args)   # a recording keeps its audio
+        quiet = [] if self.record or self.interactive else ["--silent"]     # a recording keeps its audio; so does a person's run
+        args = (["--focus", "--sound"] if self.interactive else ["--no-focus"]) + (["--window-size", self.size] if self.size else []) + quiet + list(self.extra_args)
         cmd = [str(self.cfg.root / "launchers" / "game" / "play.bat"), *args]
         log = self.log_path.open("w", encoding="utf-8", errors="replace")
         try:

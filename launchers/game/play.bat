@@ -1,4 +1,6 @@
 @echo off
+rem Runs the GUO client in a window against the configured shard (or the first-run wizard when no UO data is set) and stays open until the game exits.
+rem args: --offline | --frames <n> | <client flags>
 REM ============================================================================
 REM  THE LAUNCHER. Runs the GUO client.
 REM

@@ -53,6 +53,8 @@ from driver import Runner  # noqa: E402
 from mcp_client import McpClient  # noqa: E402
 from redact import load_deny  # noqa: E402
 import capture  # noqa: E402
+import ghost_human as ghost_mod  # noqa: E402
+import human as human_mod  # noqa: E402
 from session import ClientSession, EditorSession  # noqa: E402
 
 EXIT = {"ok": 0, "failed": 1, "timeout": 1, "error": 1, "hang": 3}
@@ -63,12 +65,21 @@ def machine_key() -> str:
     return hashlib.sha1(socket.gethostname().encode()).hexdigest()[:8]
 
 
+def env_only(name: str) -> bool:
+    """A credential (any name containing 'password', e.g. new_password): a command line shows in the process list and
+    the shell history, so it belongs in GUO_SCENARIO_<NAME>."""
+    return "password" in name.lower()
+
+
 def parse_vars(items: list[str]) -> dict[str, str]:
     out: dict[str, str] = {}
     for item in items:
         if "=" not in item:
             raise sc.ScenarioError(f"--var needs name=value, got {item}")
         k, v = item.split("=", 1)
+        if env_only(k):
+            print(f"warning: --var {k}= puts a credential on the command line; set GUO_SCENARIO_{k.upper()} in the "
+                  "environment (or config.local.bat) instead", file=sys.stderr)
         out[k] = v
     return out
 
@@ -83,7 +94,7 @@ def target_key(target: str) -> str:
 
 def resolve_shard_target(target: str, root: Path, variables: dict[str, str]) -> tuple[str, int]:
     """`--shard TARGET`: the address from GUO_SHARD_<TARGET>_HOST / _PORT (environment, then the launcher config files) and
-    the login from GUO_SCENARIO_ACCOUNT / GUO_SCENARIO_PASSWORD (or --var account= / password=). A missing or bad one is an
+    the login from GUO_SCENARIO_ACCOUNT (or --var account=) / GUO_SCENARIO_PASSWORD (environment only). A missing or bad one is an
     error that names the setting, never a default. Returns (host, port); the values themselves are never logged."""
     key = target_key(target)
     missing = []
@@ -101,6 +112,27 @@ def resolve_shard_target(target: str, root: Path, variables: dict[str, str]) -> 
     if not port.isdigit() or not 0 < int(port) < 65536:
         raise sc.ScenarioError(f"GUO_SHARD_{key}_PORT is not a port number")
     return host, int(port)
+
+
+def resolve_server_profile(name: str, workspace: Path, variables: dict[str, str]) -> tuple[str, int, str]:
+    """`--server NAME`: a server profile of the per-user workspace (docs/data_formats.md section 30), by Id or Name,
+    supplies the address; the login comes from GUO_SCENARIO_ACCOUNT / GUO_SCENARIO_PASSWORD (or --var), as for --shard.
+    Returns (host, port, profile id)."""
+    path = Path(workspace) / "profiles" / "servers.json"
+    try:
+        servers = json.loads(path.read_text(encoding="utf-8")).get("Servers", []) if path.is_file() else []
+    except (OSError, ValueError):
+        raise sc.ScenarioError("--server: the workspace's servers.json cannot be read")
+    hits = [s for s in servers if s.get("Id") == name] or [s for s in servers if str(s.get("Name", "")).casefold() == name.casefold()]
+    if len(hits) != 1:
+        raise sc.ScenarioError(f"--server {name}: no single server profile has that Id or Name (run.py of tools/server_manager lists them with doctor)")
+    missing = [f"GUO_SCENARIO_{n.upper()}" for n in ("account", "password") if n not in variables and not os.environ.get(f"GUO_SCENARIO_{n.upper()}")]
+    if missing:
+        raise sc.ScenarioError(f"--server {name}: not set: " + ", ".join(missing))
+    host, port = str(hits[0].get("Host", "")), hits[0].get("Port")
+    if not host or not isinstance(port, int) or not 0 < port < 65536:
+        raise sc.ScenarioError(f"--server {name}: the profile has no usable Host and Port")
+    return host, port, hits[0]["Id"]
 
 
 def shard_address(scen: sc.Scenario, root: Path, override: tuple[str, int] | None = None) -> tuple[str, int] | None:
@@ -153,14 +185,19 @@ def finalize_video(session, run_dir: Path, run_id: str, video_dir: str) -> tuple
 
 
 def execute(scen: sc.Scenario, cfg, variables: dict[str, str], *, size: str | None, scale: float, register: bool,
-            record: bool | None = None, shard: tuple[str, int] | None = None) -> tuple[dict, Path]:
+            record: bool | None = None, shard: tuple[str, int] | None = None, driver: str = "ai", clean: bool = False,
+            ghost: bool = False) -> tuple[dict, Path]:
     """One run, start to finish: the folder, the driver, the manifest, the shared copy, the registry row."""
     started = datetime.now(timezone.utc)
-    run_id = ev.make_run_id(scen.id, "ai", started)
+    run_id = ev.make_run_id(scen.id, driver, started)
     run_dir = cfg.build / "runs" / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
-    log = ev.EventLog(run_dir / "events.jsonl", run_id, "ai")
+    log = ev.EventLog(run_dir / "events.jsonl", run_id, driver)
     video_dir = settings.read_setting("GUO_RUNS_VIDEO_DIR", cfg.root)
+    human = driver == "human"
+    if human:                 # a person plays in real time: the MovieWriter's fixed frame rate is the AI driver's capture path
+        record = False
+        scen.timeouts["run_s"] = float(scen.timeouts["run_s"]) * human_mod.HUMAN_FACTOR
     record = (scen.surface == "client") if record is None else record
     if record and scen.surface != "client":
         print("recording is the client's MovieWriter; an editor run records stills and events only", file=sys.stderr)
@@ -175,12 +212,17 @@ def execute(scen: sc.Scenario, cfg, variables: dict[str, str], *, size: str | No
     if scen.surface == "editor":
         session = EditorSession(cfg, run_dir, run_dir / "scratch", size or "3840x2160", scale)
     elif scen.surface == "client":
-        session = ClientSession(cfg, run_dir, record, size)
+        session = ClientSession(cfg, run_dir, record, size, interactive=human and not ghost)    # a stand-in person needs no focus or sound
         session.shard = shard_address(scen, cfg.root, shard) if shard else None
     else:
         session = None
-    runner = Runner(scen, run_dir, log, repo_root=cfg.root, session=session, variables=variables,
-                    connect=lambda s: McpClient(s.port, s.token))
+    if human:
+        stand_in = ghost_mod.GhostProcess(scen.path, run_dir, variables) if ghost else None
+        runner = human_mod.HumanRunner(scen, run_dir, log, repo_root=cfg.root, session=session, variables=variables,
+                                       connect=lambda s: McpClient(s.port, s.token), clean=clean, ghost=stand_in)
+    else:
+        runner = Runner(scen, run_dir, log, repo_root=cfg.root, session=session, variables=variables,
+                        connect=lambda s: McpClient(s.port, s.token))
     timer = arm_hard_timer(scen, session, log)
     try:
         result = runner.run()
@@ -197,7 +239,7 @@ def execute(scen: sc.Scenario, cfg, variables: dict[str, str], *, size: str | No
     video_path, video_note = finalize_video(session, run_dir, run_id, video_dir)
     manifest = {
         "run_id": run_id, "project": "guo", "scenario": scen.id, "title": scen.title, "surface": scen.surface,
-        "driver": "ai", "commit": publish.git_commit(cfg.root) or None, "build": scen.requires.get("build", "debug"),
+        "driver": driver, "commit": publish.git_commit(cfg.root) or None, "build": scen.requires.get("build", "debug"),
         "shard": scen.requires.get("shard"), "machine": machine_key(), "started": result["started"],
         "ended": result["ended"], "ok": result["ok"], "recorded": bool(getattr(session, "record", False)), "aborted": result["aborted"], "exit_kind": result["exit_kind"],
         "steps": result["steps"], "artifacts": sorted(set(result["artifacts"])), "video_path": video_path, "video_note": video_note,
@@ -294,7 +336,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--dry-run", action="store_true", help="prune: list what would go, delete nothing")
     ap.add_argument("--shard", dest="shard_target", default=None,
                     help="run against this shard target: GUO_SHARD_<TARGET>_HOST/_PORT and GUO_SCENARIO_ACCOUNT/_PASSWORD (section 34)")
+    ap.add_argument("--server", dest="server_profile", default=None,
+                    help="run against this server profile (Id or Name in the workspace's servers.json) and GUO_SCENARIO_ACCOUNT/_PASSWORD")
     ap.add_argument("--no-register", action="store_true", help="do not add the run to the registry")
+    ap.add_argument("--clean", action="store_true", help="human driver: hide the overlay (Space and Esc still work), for a clean recording")
+    ap.add_argument("--ghost-human", dest="ghost", action="store_true",
+                    help="human driver: a second process plays the person through guo_input (a test of the driver itself)")
     args = ap.parse_args(argv)
 
     from guo import load_config
@@ -314,13 +361,29 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_post(cfg.root, names[1])
     if len(names) != 1:
         ap.error("give one scenario")
-    if args.driver == "human":
-        print("the human driver is build step 5 and is not in this runner yet", file=sys.stderr)
+    if args.driver == "human" and args.record:
+        print("error: a human run is not recorded by the runner yet (OBS capture is not implemented)", file=sys.stderr)
+        return 2
+    if (args.clean or args.ghost) and args.driver != "human":
+        print("error: --clean and --ghost-human belong to --driver human", file=sys.stderr)
+        return 2
+    if args.clean and args.ghost:
+        print("error: the stand-in person reads the overlay's step label, so --clean and --ghost-human do not go together", file=sys.stderr)
         return 2
     shard = None
     try:
         scen = sc.load(sc.find(cfg.root, names[0]))
+        if args.driver == "human" and scen.surface not in human_mod.OVERLAY_TOOLS:
+            raise sc.ScenarioError(f"the human driver follows client and editor scenarios; '{scen.surface}' is not supported yet")
         variables = parse_vars(args.var)
+        if args.shard_target and args.server_profile:
+            raise sc.ScenarioError("give --shard or --server, not both")
+        if args.server_profile:
+            if scen.surface != "client":
+                raise sc.ScenarioError("--server applies to a client scenario")
+            host, port, profile_id = resolve_server_profile(args.server_profile, cfg.workspace_dir, variables)
+            shard = (host, port)
+            scen.requires = {**scen.requires, "shard": "server:" + profile_id}
         if args.shard_target:
             if scen.surface != "client":
                 raise sc.ScenarioError("--shard applies to a client scenario")
@@ -332,7 +395,8 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     try:
         manifest, run_dir = execute(scen, cfg, variables, size=args.size, scale=args.scale,
-                                    register=not args.no_register, record=args.record, shard=shard)
+                                    register=not args.no_register, record=args.record, shard=shard,
+                                    driver=args.driver, clean=args.clean, ghost=args.ghost)
     except sc.ScenarioError as ex:
         print(f"error: {ex}", file=sys.stderr)
         return 2

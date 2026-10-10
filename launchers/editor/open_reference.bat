@@ -1,4 +1,5 @@
 @echo off
+rem Opens the read-only upstream ClassicUO solution in your default IDE, which detaches (start) so this returns at once.
 REM Opens the upstream ClassicUO solution READ-ONLY, as porting reference.
 REM Nothing here is built or shipped; it exists to read the original C#.
 call "%~dp0..\_shared\common.bat" || exit /b 1

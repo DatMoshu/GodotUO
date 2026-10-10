@@ -1,4 +1,5 @@
 @echo off
+rem Builds a native (MSVC) and a .NET Framework test plugin, plays a session with both loaded and prints whether each saw packets and movement.
 REM ============================================================================
 REM  Load a native and a managed test plugin into the client and check them.
 REM

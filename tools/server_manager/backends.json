@@ -6,7 +6,40 @@
     "executable": "ModernUO.exe",
     "port": 2610,
     "adapter": "implemented; validate against your selected deployment",
-    "setup": "Build with the pinned launchers/shard tools, then use tools/editor_shard setup for an isolated distribution. Configure Configuration/modernuo.json listeners and dataDirectories."
+    "setup": "Build with the pinned launchers/shard tools, then use tools/editor_shard setup for an isolated distribution. Configure Configuration/modernuo.json listeners and dataDirectories.",
+    "lab": {
+      "row": 1,
+      "repos": [
+        {
+          "role": "core",
+          "repo": "https://github.com/modernuo/ModernUO.git",
+          "ref": "main",
+          "commit": "d4531cd94b739613155225c234900de9f47d2c88",
+          "date": "2026-09-30"
+        }
+      ],
+      "pin_source": "UO_SHARD_REF in launchers/_shared/config.bat",
+      "licence": "GPL-3.0",
+      "toolchain": ".NET SDK 10.0.201 (global.json, rollForward latestMajor), net10.0; Windows, Linux, macOS",
+      "client": {
+        "accepts": "7.0.61.0 or newer (expansion.json RequiredClient)",
+        "encryption": "none",
+        "lab_client": "UO_CLIENT_VERSION"
+      },
+      "era": {
+        "setting": "Distribution/Configuration/expansion.json",
+        "upstream_default": "asked at first boot",
+        "lab": "Endless Journey (Id 11), tools/modernuo/config/expansion.json"
+      },
+      "admin": {
+        "route": "patch-env",
+        "detail": "MUO patch 0001-headless-owner-account creates or raises UO_SHARD_OWNER from UO_SHARD_OWNER_PASSWORD at every boot"
+      },
+      "bind": {
+        "loopback": true,
+        "detail": "modernuo.json listener from UO_SHARD_BIND"
+      }
+    }
   },
   {
     "id": "servuo",
@@ -15,7 +48,40 @@
     "executable": "ServUO.exe",
     "port": 2611,
     "adapter": "implemented: all seven server sections (tile light/animation fields refused); compiled and runtime-probed; live GUO gameplay pending",
-    "setup": "Use tools/servuo/run.py fetch, build and configure for the existing private backend. For another instance copy its built distribution to a separate folder; configure Config/Server.cfg and client data."
+    "setup": "Use tools/servuo/run.py fetch, build and configure for the existing private backend. For another instance copy its built distribution to a separate folder; configure Config/Server.cfg and client data.",
+    "lab": {
+      "row": 2,
+      "repos": [
+        {
+          "role": "core",
+          "repo": "https://github.com/ServUO/ServUO.git",
+          "ref": "pub57",
+          "commit": "d76bf4443cf76d081ddaf8f57c87ff33749256af",
+          "date": "2026-08-04"
+        }
+      ],
+      "pin_source": "tools/servuo/run.py and tools/server_adapters/upstreams.json",
+      "licence": "GPL-2.0",
+      "toolchain": ".NET SDK (dotnet build of SDK-style net48 projects); runs on .NET Framework 4.8, Windows only",
+      "client": {
+        "accepts": "7.0.x classic; ClientVerification reads the required version from the client.exe in the data folder (LenientKick below it)",
+        "encryption": "none",
+        "lab_client": "UO_CLIENT_VERSION"
+      },
+      "era": {
+        "setting": "Config/Expansion.cfg CurrentExpansion",
+        "upstream_default": "EJ",
+        "lab": "EJ"
+      },
+      "admin": {
+        "route": "console-prompt",
+        "detail": "first boot asks on stdin for an owner account; tools/servuo start answers it from UO_SHARD_OWNER / UO_SHARD_OWNER_PASSWORD"
+      },
+      "bind": {
+        "loopback": true,
+        "detail": "Config/Server.cfg Listen= (tools/servuo/config sets 127.0.0.1)"
+      }
+    }
   },
   {
     "id": "runuo",
@@ -42,7 +108,47 @@
     "executable": "spheresvr.exe",
     "port": 2614,
     "adapter": "implemented: item definitions; native item creation tested; other sections refused",
-    "setup": "Obtain/build Source-X and the compatible Scripts-X script pack. Configure sphere.ini server address, port and local client data paths; create an administrator account."
+    "setup": "Obtain/build Source-X and the compatible Scripts-X script pack. Configure sphere.ini server address, port and local client data paths; create an administrator account.",
+    "lab": {
+      "row": 4,
+      "repos": [
+        {
+          "role": "core",
+          "repo": "https://github.com/Sphereserver/Source-X.git",
+          "ref": "master",
+          "commit": "dd28a0ad53258adb55b548b1bd4df989065a1fe4",
+          "date": "2026-09-18"
+        },
+        {
+          "role": "scripts",
+          "repo": "https://github.com/Sphereserver/Scripts-X.git",
+          "ref": "main",
+          "commit": "27e78bc896da239d3738fe02a6d6bf8e9045c16d",
+          "date": "2026-03-27"
+        }
+      ],
+      "pin_source": "SV0; the adapter probe ran a nightly build without a recorded commit, and the repo's Nightly tag is from 2022",
+      "licence": "Apache-2.0 (Source-X and Scripts-X)",
+      "toolchain": "CMake 3.29 or newer, a C++20 compiler (Visual Studio 2022 on Windows), MariaDB client library (lib/bin in the repo on Windows)",
+      "client": {
+        "accepts": "any supported client while sphere.ini ClientVersion stays commented out",
+        "encryption": "sphere.ini UseCrypt=1, UseNoCrypt=0 by default; the lab must set UseNoCrypt=1",
+        "lab_client": "UO_CLIENT_VERSION"
+      },
+      "era": {
+        "setting": "sphere.ini FeatureT2A/LBR/AOS/SE/ML/KR/SA/TOL flags and EraLimitGear/Loot/Props",
+        "upstream_default": "T2A features only (FeatureT2A=01|02, the rest 0); era limits 9 (ToL)",
+        "lab": "upstream default; AOS-era cases such as tooltips may be n/a"
+      },
+      "admin": {
+        "route": "account-file",
+        "detail": "accounts/sphereacct.scp section [name] with PLEVEL=7 and PASSWORD, written by the lab before first boot; console alternative ACCOUNT <name> PLEVEL 7. AccApp=0 by default (2 = free auto accounts)"
+      },
+      "bind": {
+        "loopback": true,
+        "detail": "sphere.ini ServIP is the bound address (CServer.cpp binds m_ip); the experimental ping server (EF_UsePingServer, UDP 12000, 0.0.0.0) stays off"
+      }
+    }
   },
   {
     "id": "uox3",
@@ -51,6 +157,39 @@
     "executable": "uox3.exe",
     "port": 2615,
     "adapter": "implemented: item definitions; native item creation tested; other sections refused",
-    "setup": "Obtain a release or build make/VS2022/uox3.sln with C++ tools. Keep its data/scripts with the executable; configure uox.ini, client data and an administrator account."
+    "setup": "Obtain a release or build make/VS2022/uox3.sln with C++ tools. Keep its data/scripts with the executable; configure uox.ini, client data and an administrator account.",
+    "lab": {
+      "row": 3,
+      "repos": [
+        {
+          "role": "core",
+          "repo": "https://github.com/UOX3DevTeam/UOX3.git",
+          "ref": "v0.99.7a-release",
+          "commit": "a8a4aefeb0d0d5e5fbc8192af8bd5321db4971e0",
+          "date": "2025-07-30"
+        }
+      ],
+      "pin_source": "the release the adapter probe ran (tools/server_adapters/README.md); v0.99.7d (a1fee724, 2026-08-13, branch develop) is newer and moves only with an adapter re-probe",
+      "licence": "GPL-2.0-or-later",
+      "toolchain": "MSVC v143 (Visual Studio 2022, make/VS2022/uox3.sln), C++17; CMake (make/cmake) on Linux and macOS; SpiderMonkey and zlib are in the repo",
+      "client": {
+        "accepts": "about 4.0.0 to 7.0.109.0, unencrypted only (README); uox.ini [clientsupport] CLIENTSUPPORT70610=1 is the only band on by default",
+        "encryption": "none",
+        "lab_client": "UO_CLIENT_VERSION"
+      },
+      "era": {
+        "setting": "uox.ini CORESHARDERA (core, uo, t2a, uor, td, lbr, aos, se, ml, sa, hs, tol)",
+        "upstream_default": "lbr",
+        "lab": "lbr (upstream default; later-era cases may be n/a)"
+      },
+      "admin": {
+        "route": "account-file",
+        "detail": "data/accounts/accounts.adm ships admin/admin with the GM flag 0x8000; the lab rewrites it with a generated password before first boot and never runs the shipped default. INTERNALACCOUNTCREATION=1 makes player accounts on first login"
+      },
+      "bind": {
+        "loopback": false,
+        "detail": "network.cpp binds INADDR_ANY; EXTERNALIP only sets the advertised address. SV5 needs a local patch or a firewall block rule before the lab starts it"
+      }
+    }
   }
 ]

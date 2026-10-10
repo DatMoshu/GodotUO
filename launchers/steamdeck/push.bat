@@ -1,4 +1,6 @@
 @echo off
+rem Copies build/steamdeck onto the Steam Deck over ssh and writes guo.sh there; never pushes the UO client data.
+rem args: --host <shard LAN address>
 REM ============================================================================
 REM  Copies build\steamdeck onto the Deck (rsync over ssh when both ends
 REM  have it, a tar stream otherwise) into UO_DECK_INSTALL_DIR, and writes

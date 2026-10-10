@@ -77,22 +77,56 @@ internal sealed class WorldBrush
         }
     }
 
-    internal bool AcceptCell(WorldData data, int x, int y)
+    internal bool AcceptCell(WorldData data, int x, int y) => Rejection(data, x, y) == null;
+
+    /// <summary>Which rule leaves a cell alone ("water", "occupied", ...), or null when the brush takes it.</summary>
+    internal string Rejection(WorldData data, int x, int y)
     {
         BlockData b = data.Block(x >> 3, y >> 3);
-        if (b == null) return false;
+        if (b == null) return "outside";
         int i = (y & 7) * 8 + (x & 7);
-        if (AvoidWater && b.LandWet[i]) return false;
-        if (AllowedLand.Length > 0 && !ParseVariants(AllowedLand).Any(v => v.Id == b.LandId[i])) return false;
-        if (Operation == "Paint" && !Land && KeepStatics && b.Objs[i]?.Count > 0) return false;
+        if (AvoidWater && b.LandWet[i]) return "water";
+        if (AllowedLand.Length > 0 && !ParseVariants(AllowedLand).Any(v => v.Id == b.LandId[i])) return "land";
+        if (Operation == "Paint" && !Land && KeepStatics && b.Objs[i]?.Count > 0) return "occupied";
         if (MaxSlope < 127)
         {
             int z = b.LandZ[i];
-            if (Math.Abs(data.LandZ(x + 1, y) - z) > MaxSlope || Math.Abs(data.LandZ(x, y + 1) - z) > MaxSlope) return false;
+            if (Math.Abs(data.LandZ(x + 1, y) - z) > MaxSlope || Math.Abs(data.LandZ(x, y + 1) - z) > MaxSlope) return "slope";
         }
-        if (Operation != "Paint") return true;
+        if (Operation != "Paint") return null;
         int step = Math.Max(1, Spacing);
-        return (Land || (x % step == 0 && y % step == 0)) && Hash(x, y) % 100 < Math.Clamp(Density, 0, 100);
+        return (Land || (x % step == 0 && y % step == 0)) && Hash(x, y) % 100 < Math.Clamp(Density, 0, 100) ? null : "density";
+    }
+
+    /// <summary>
+    /// ED6: why a stroke changed nothing, in words, naming the setting to change. The rule that turned away the
+    /// most cells is the one named.
+    /// </summary>
+    internal string WhyNothing(WorldData data, IEnumerable<(int X, int Y)> cells)
+    {
+        var cellList = cells.Distinct().ToList();
+        var reasons = cellList.Select(c => Rejection(data, c.X, c.Y)).ToList();
+        if (cellList.Count == 0) return "Nothing changed: the brush had no cells under it";
+        if (reasons.All(r => r == null))
+            return Operation switch
+            {
+                "Paint" when !Land => "Nothing changed: the same item already stands there at that height",
+                "Erase statics" or "Hue statics" => $"Nothing changed: {Operation} found no item there (between Visible Z min and max)",
+                _ => "Nothing changed: the ground there is already like that",
+            };
+        string top = reasons.Where(r => r != null).GroupBy(r => r).OrderByDescending(g => g.Count()).First().Key;
+        bool one = cellList.Count == 1;
+        return top switch
+        {
+            "occupied" => one
+                ? "Nothing placed: that cell already has an item. Keep existing statics is on; untick it to place on top"
+                : "Nothing placed: those cells already have items. Keep existing statics is on; untick it to place on top",
+            "water" => "Nothing placed: the brush is over water and Avoid water is on; untick it to paint there",
+            "land" => "Nothing placed: that ground is not in Allowed land IDs; clear the box to paint on any ground",
+            "slope" => "Nothing placed: the ground is steeper than Maximum slope allows",
+            "density" => "Nothing placed: Density and Spacing left these cells empty; raise Density or move the brush",
+            _ => "Nothing placed: the brush is outside the map",
+        };
     }
 
     internal ushort Choose(int x, int y, ushort fallback)

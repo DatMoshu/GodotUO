@@ -6,6 +6,8 @@ r"""Bulk unpack and pack of UO art, gumps and animations, with JSON sidecars (Ep
                                       [--records <folder>]
     python tools\uopack\run.py from-dreadcrest <candidate folder> --out <folder>
                                       [--item 0xFFF0] [--body 849] [--gump-male 50849] [--gump-female 60849]
+    python tools\uopack\run.py from-job <SpriteMotion transfer artifact> --out <folder> --body 849
+                                      [--item 0xFFF1] [--allow-preview]         (jobimport.py)
     python tools\uopack\run.py selftest
 
 The UOFiddler-style loop: unpack writes one PNG per image and one sidecar .json
@@ -620,6 +622,13 @@ def main() -> int:
     o.add_argument("--out", required=True)
     o.add_argument("--ids", required=True, help='JSON {item key: {"item": id, "body": body}}')
     o.add_argument("--data", help="the install the originals are read from (default UO_CLIENT_DATA; never written)")
+    j = sub.add_parser("from-job", help="a SpriteMotion transfer artifact (read only) as a uopack folder")
+    j.add_argument("artifact", help="the artifact folder (transfer.json + frame PNGs); never written")
+    j.add_argument("--out", required=True, help="a new or empty folder")
+    j.add_argument("--body", required=True, help="the animation body id the frames are packed under")
+    j.add_argument("--item", help="item id for the artifact's item art and tiledata (anim = --body)")
+    j.add_argument("--allow-preview", action="store_true",
+                   help="import a coverage: preview export too (for tests; refused otherwise)")
     sub.add_parser("selftest", help="synthetic round trips, no client data (CI)")
     args = ap.parse_args()
     if args.cmd == "unpack":
@@ -634,6 +643,10 @@ def main() -> int:
         import outfit
 
         return outfit.from_outfit_lab(args)
+    if args.cmd == "from-job":
+        import jobimport
+
+        return jobimport.from_job(args)
     import test_uopack
 
     return test_uopack.main()

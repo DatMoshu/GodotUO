@@ -1,4 +1,6 @@
 @echo off
+rem Posts to, tails, replies on or lists the editor's agent request queue and prints the messages.
+rem args: post|tail|reply|list ...
 REM ============================================================================
 REM  The agent request queue: post, tail, reply, list. See
 REM  tools\agent_queue\README.md.

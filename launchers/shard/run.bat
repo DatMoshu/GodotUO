@@ -1,4 +1,5 @@
 @echo off
+rem Runs the local ModernUO dev shard in the foreground, printing its console until Ctrl+C.
 REM ============================================================================
 REM  Run the local dev shard.
 REM
@@ -23,6 +24,9 @@ set "UO__SECRETS=%UO_WORKSPACE_DIR%"
 if not defined UO__SECRETS set "UO__SECRETS=%LOCALAPPDATA%\GUO"
 if exist "%UO__SECRETS%\shard\secrets.bat" call "%UO__SECRETS%\shard\secrets.bat"
 set "UO__SECRETS="
+REM  The editor bridge, when this shard loads it, opens its admin channel only
+REM  with this token (ADR-0035); the Admin tab sends the same one.
+if defined UO_BRIDGE_ADMIN_TOKEN set "GUO_BRIDGE_ADMIN_TOKEN=%UO_BRIDGE_ADMIN_TOKEN%"
 
 REM  The editor bridge rides along on the dev shard itself (single-shard
 REM  setup, ADR-0012): the UO Shard dock's Live connects to it on 2595, the

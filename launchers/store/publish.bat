@@ -1,4 +1,5 @@
 @echo off
+rem Packs and publishes the local asset packs into the store folder (UO_STORE_DIR) and prints what it published.
 call "%~dp0..\_shared\common.bat" || exit /b 1
 pushd "%UO_ROOT%" || exit /b 1
 "%UO_PYTHON%" "%UO_TOOLS%\asset_store\run.py" publish %*

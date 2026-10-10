@@ -1,0 +1,189 @@
+{
+  "backend": "modernuo",
+  "title": "ModernUO",
+  "version": 1,
+  "files": {
+    "modernuo": "Configuration/modernuo.json",
+    "expansion": "Configuration/expansion.json",
+    "email": "Configuration/email-settings.json",
+    "crowdsec": "Configuration/crowdsec.json",
+    "access": "Configuration/server-access.json"
+  },
+  "expansion_table": "Data/expansions.json",
+  "other": {
+    "file": "modernuo",
+    "path": "settings",
+    "group": "Other settings",
+    "help": "Every other line of modernuo.json, by its own name. They have no plain label yet; change them only if you know what they do."
+  },
+  "groups": [
+    {
+      "name": "Server",
+      "help": "What the server is called, where it listens and which game data it reads.",
+      "fields": [
+        { "file": "modernuo", "path": "settings/serverListing.serverName", "label": "Server name", "type": "string", "min_length": 1, "max_length": 32,
+          "help": "The name players see in the server list." },
+        { "file": "modernuo", "path": "listeners", "label": "Listens on", "type": "listeners",
+          "help": "Address and port the game listens on, one per line (127.0.0.1:2593). 127.0.0.1 is this computer only; 0.0.0.0 opens it to every network this computer is on." },
+        { "file": "modernuo", "path": "dataDirectories", "label": "UO data folders", "type": "folders",
+          "help": "The Ultima Online folders the server reads its maps and art from, one per line, first one first." },
+        { "file": "modernuo", "path": "settings/serverListing.autoDetect", "label": "Find its own public address", "type": "bool",
+          "help": "On: the server asks the internet for its public address to send to players. Off on a server for this computer only." },
+        { "file": "modernuo", "path": "settings/serverListing.address", "label": "Public address", "type": "string", "optional": true,
+          "help": "The address sent to players when it is not found by itself. Leave empty to use the listener's." },
+        { "file": "modernuo", "path": "settings/pingServer.enabled", "label": "Answer ping checks", "type": "bool",
+          "help": "Lets server lists and launchers check that the server is up." }
+      ]
+    },
+    {
+      "name": "Expansion and maps",
+      "help": "Which era of the game the server plays, and which facets exist.",
+      "fields": [
+        { "file": "expansion", "path": "Id", "label": "Expansion", "type": "expansion",
+          "options": ["None", "T2A", "UOR", "UOTD", "LBR", "AOS", "SE", "ML", "SA", "HS", "TOL", "EJ"],
+          "option_labels": ["None (pre-T2A)", "The Second Age", "Renaissance", "Third Dawn", "Blackthorn's Revenge", "Age of Shadows",
+                            "Samurai Empire", "Mondain's Legacy", "Stygian Abyss", "High Seas", "Time of Legends", "Endless Journey"],
+          "help": "The era the server plays. Changing it takes that era's features and housing from the server's own table and keeps your facets. Items and skills of a later era stay in an existing world." },
+        { "file": "expansion", "path": "MapSelectionFlags/Felucca", "label": "Felucca", "type": "bool", "help": "The original Britannia, with player killing." },
+        { "file": "expansion", "path": "MapSelectionFlags/Trammel", "label": "Trammel", "type": "bool", "help": "Britannia without player killing (Renaissance and later)." },
+        { "file": "expansion", "path": "MapSelectionFlags/Ilshenar", "label": "Ilshenar", "type": "bool", "help": "The Third Dawn land." },
+        { "file": "expansion", "path": "MapSelectionFlags/Malas", "label": "Malas", "type": "bool", "help": "Age of Shadows' land, with Luna and Umbra." },
+        { "file": "expansion", "path": "MapSelectionFlags/Tokuno", "label": "Tokuno", "type": "bool", "help": "Samurai Empire's islands." },
+        { "file": "expansion", "path": "MapSelectionFlags/TerMer", "label": "Ter Mur", "type": "bool", "help": "Stygian Abyss' gargoyle land." },
+        { "file": "modernuo", "path": "settings/testCenter.enable", "label": "Test center rules", "type": "bool",
+          "help": "Lets players set their own skills and stats, as on the old test shards." }
+      ]
+    },
+    {
+      "name": "Accounts",
+      "help": "How players get an account.",
+      "fields": [
+        { "file": "modernuo", "path": "settings/accountHandler.enableAutoAccountCreation", "label": "Make an account at first login", "type": "bool",
+          "help": "On: logging in with a new name and password makes that account. Off: only accounts made by staff can log in." },
+        { "file": "modernuo", "path": "settings/accountHandler.maxAccountsPerIP", "label": "Accounts per address", "type": "int", "min": 1, "max": 1000,
+          "help": "How many accounts one internet address may have. Two clients on one computer are two accounts from one address." },
+        { "file": "modernuo", "path": "settings/accountHandler.enablePlayerPasswordCommand", "label": "Players may change their password in game", "type": "bool",
+          "help": "Gives players the [password command." },
+        { "file": "access", "path": "protectedAccounts", "label": "Protected accounts", "type": "list", "optional": true,
+          "help": "Accounts nobody can delete, ban or lower in access, one per line (the owner's)." }
+      ]
+    },
+    {
+      "name": "Saves and backups",
+      "help": "How often the world is written to disk, and how many old saves are kept.",
+      "fields": [
+        { "file": "modernuo", "path": "settings/autosave.enabled", "label": "Save by itself", "type": "bool",
+          "help": "Saves the world on a timer. Off: only [save, Save now and a clean shutdown save it." },
+        { "file": "modernuo", "path": "settings/autosave.saveDelay", "label": "Time between saves", "type": "timespan", "min": "00:01:00", "max": "1.00:00:00",
+          "help": "hh:mm:ss, at least one minute (00:05:00 is five minutes)." },
+        { "file": "modernuo", "path": "settings/autosave.warningDelay", "label": "Warn players before a save", "type": "timespan", "min": "00:00:00", "max": "00:10:00",
+          "help": "How long before a save players are told it is coming (00:00:00: no warning)." },
+        { "file": "modernuo", "path": "settings/world.savePath", "label": "Save folder", "type": "string", "min_length": 1,
+          "help": "Where the world is saved, relative to the server's folder." },
+        { "file": "modernuo", "path": "settings/autoArchive.backupPath", "label": "Backup folder", "type": "string", "min_length": 1,
+          "help": "Where old saves are moved to before each new save." },
+        { "file": "modernuo", "path": "settings/autoArchive.archiveLocally", "label": "Pack old saves into archives", "type": "bool",
+          "help": "Compresses old backups into archives in the archive folder." },
+        { "file": "modernuo", "path": "settings/autoArchive.archivePath", "label": "Archive folder", "type": "string", "min_length": 1,
+          "help": "Where the packed archives go." },
+        { "file": "modernuo", "path": "settings/autoArchive.hourlyRetention", "label": "Hourly archives kept", "type": "int", "min": 0, "max": 1000 },
+        { "file": "modernuo", "path": "settings/autoArchive.dailyRetention", "label": "Daily archives kept", "type": "int", "min": 0, "max": 1000 },
+        { "file": "modernuo", "path": "settings/autoArchive.monthlyRetention", "label": "Monthly archives kept", "type": "int", "min": 0, "max": 1000 },
+        { "file": "modernuo", "path": "settings/world.enableAutoRestart", "label": "Restart by itself every day", "type": "bool",
+          "help": "Restarts the server at a set time each day. Off for a server the editor's run bar manages." },
+        { "file": "modernuo", "path": "settings/crashGuard.enabled", "label": "Crash guard", "type": "bool",
+          "help": "When the server crashes: write a report, back up the save and, if set below, start again." },
+        { "file": "modernuo", "path": "settings/crashGuard.restartServer", "label": "Start again after a crash", "type": "bool" }
+      ]
+    },
+    {
+      "name": "Game rules",
+      "help": "Rules that change how the game plays.",
+      "fields": [
+        { "file": "modernuo", "path": "settings/stats.statMax", "label": "Stat cap (total)", "type": "int", "min": 1, "max": 1000,
+          "help": "The most strength, dexterity and intelligence a character can have together." },
+        { "file": "modernuo", "path": "settings/stats.gainChanceMultiplier", "label": "Stat gain speed", "type": "number", "min": 0, "max": 100,
+          "help": "1 is normal; 2 gains stats twice as often." },
+        { "file": "modernuo", "path": "settings/houseDecay.enable", "label": "Houses decay", "type": "bool",
+          "help": "Houses nobody visits fall down after a while." },
+        { "file": "modernuo", "path": "settings/murderSystem.bountiesEnabled", "label": "Bounties on murderers", "type": "bool" },
+        { "file": "modernuo", "path": "settings/murderSystem.shortTermMurderDuration", "label": "Short-term murder count lasts", "type": "timespan", "min": "00:00:00", "max": "365.00:00:00" },
+        { "file": "modernuo", "path": "settings/murderSystem.longTermMurderDuration", "label": "Long-term murder count lasts", "type": "timespan", "min": "00:00:00", "max": "365.00:00:00" },
+        { "file": "modernuo", "path": "settings/ethics.enable", "label": "Ethics (heroes and evil)", "type": "bool" },
+        { "file": "modernuo", "path": "settings/questSystem.enableMLQuests", "label": "Mondain's Legacy quests", "type": "bool" },
+        { "file": "modernuo", "path": "settings/vetRewards.enable", "label": "Veteran rewards", "type": "bool",
+          "help": "Rewards for how long an account has existed." },
+        { "file": "modernuo", "path": "settings/vetRewards.rewardInterval", "label": "Time per veteran reward", "type": "timespan", "min": "1.00:00:00", "max": "3650.00:00:00" },
+        { "file": "modernuo", "path": "settings/buffIcons.enable", "label": "Buff icons", "type": "bool", "help": "Shows active spells and effects as icons in the client." },
+        { "file": "modernuo", "path": "settings/chat.enabled", "label": "Chat", "type": "bool", "help": "The client's chat channels." },
+        { "file": "modernuo", "path": "settings/stamina.enableMountStamina", "label": "Mounts tire", "type": "bool" },
+        { "file": "modernuo", "path": "settings/stamina.cannotRunWhenFatigued", "label": "No running when tired", "type": "bool" },
+        { "file": "modernuo", "path": "settings/stamina.cannotWalkWhenFatigued", "label": "No walking when tired", "type": "bool" },
+        { "file": "modernuo", "path": "settings/commandsystem.prefix", "label": "Command prefix", "type": "string", "min_length": 1, "max_length": 1,
+          "help": "The character staff type before a command ([save)." }
+      ]
+    },
+    {
+      "name": "Players' programs",
+      "help": "Rules for the client and the helper programs players run with it.",
+      "fields": [
+        { "file": "modernuo", "path": "settings/clientVerification.enable", "label": "Check the client's version", "type": "bool" },
+        { "file": "modernuo", "path": "settings/clientVerification.invalidClientResponse", "label": "A client that fails the check", "type": "enum",
+          "options": ["Ignore", "Warn", "Annoy", "LenientKick", "Kick"],
+          "option_labels": ["Let it in", "Warn the player", "Warn again and again", "Kick after a while", "Kick"] },
+        { "file": "modernuo", "path": "settings/assistants.enableNegotiation", "label": "Talk to assistants (Razor, UOSteam)", "type": "bool",
+          "help": "Asks a player's assistant program to turn off the features the server forbids." }
+      ]
+    },
+    {
+      "name": "Movement",
+      "help": "How fast characters move, in milliseconds per step.",
+      "fields": [
+        { "file": "modernuo", "path": "settings/movement.delay.walkFoot", "label": "Walk on foot", "type": "int", "min": 0, "max": 5000 },
+        { "file": "modernuo", "path": "settings/movement.delay.runFoot", "label": "Run on foot", "type": "int", "min": 0, "max": 5000 },
+        { "file": "modernuo", "path": "settings/movement.delay.walkMount", "label": "Walk mounted", "type": "int", "min": 0, "max": 5000 },
+        { "file": "modernuo", "path": "settings/movement.delay.runMount", "label": "Run mounted", "type": "int", "min": 0, "max": 5000 },
+        { "file": "modernuo", "path": "settings/movement.delay.turn", "label": "Turn", "type": "int", "min": 0, "max": 5000 },
+        { "file": "modernuo", "path": "settings/pathfinding.enable", "label": "Creatures find their way", "type": "bool" }
+      ]
+    },
+    {
+      "name": "Staff pages",
+      "help": "Where players' help requests go besides the staff in game.",
+      "fields": [
+        { "file": "modernuo", "path": "settings/pages.discordWebhookUrl", "label": "Discord webhook for pages", "type": "secret", "optional": true,
+          "secret_key": "UO_SHARD_DISCORD_WEBHOOK",
+          "help": "A Discord webhook address; each help request is posted there. Kept in your secrets file, never shown." }
+      ]
+    },
+    {
+      "name": "Email",
+      "help": "Email for crash reports and staff pages (email-settings.json).",
+      "fields": [
+        { "file": "email", "path": "enabled", "label": "Send email", "type": "bool" },
+        { "file": "email", "path": "emailServer", "label": "Mail server", "type": "string", "min_length": 1, "help": "The SMTP server (smtp.example.com)." },
+        { "file": "email", "path": "emailPort", "label": "Mail server port", "type": "int", "min": 1, "max": 65535 },
+        { "file": "email", "path": "emailUsername", "label": "Mail account", "type": "string", "optional": true },
+        { "file": "email", "path": "emailPassword", "label": "Mail password", "type": "secret", "optional": true,
+          "secret_key": "UO_SHARD_EMAIL_PASSWORD",
+          "help": "Kept in your secrets file, never shown." },
+        { "file": "email", "path": "fromAddress", "label": "Sent from", "type": "email" },
+        { "file": "email", "path": "fromName", "label": "Sender's name", "type": "string", "optional": true },
+        { "file": "email", "path": "crashAddress", "label": "Crash reports go to", "type": "email" },
+        { "file": "email", "path": "speechLogPageAddress", "label": "Page logs go to", "type": "email" }
+      ]
+    },
+    {
+      "name": "CrowdSec",
+      "help": "Shares and receives bans for bad addresses through a local CrowdSec agent (crowdsec.json).",
+      "fields": [
+        { "file": "crowdsec", "path": "lapiUrl", "label": "Agent address", "type": "url", "optional": true },
+        { "file": "crowdsec", "path": "machineId", "label": "Machine name", "type": "string", "optional": true },
+        { "file": "crowdsec", "path": "password", "label": "Machine password", "type": "secret", "optional": true,
+          "secret_key": "UO_SHARD_CROWDSEC_PASSWORD",
+          "help": "Kept in your secrets file, never shown." },
+        { "file": "crowdsec", "path": "manualBanDuration", "label": "A staff ban lasts", "type": "timespan", "min": "00:01:00", "max": "3650.00:00:00" }
+      ]
+    }
+  ]
+}

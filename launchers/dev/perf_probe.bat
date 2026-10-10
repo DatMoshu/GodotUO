@@ -1,4 +1,6 @@
 @echo off
+rem Measures frame time in fixed scenes against the shard and writes build/perf/perf_<label>.md and .json, or compares two labels.
+rem args: --label <name> [--args "<client flags>"] | --compare <a> <b>
 REM ============================================================================
 REM  Frame time in fixed scenes (Epic B): the login screen, an open field,
 REM  the Britain bank, a dense forest, a dungeon, and a run through new ground

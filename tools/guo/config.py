@@ -2,7 +2,9 @@
 
 Defaults live in launchers/_shared/config.bat; a user's own values go in
 launchers/_shared/config.local.bat. Tools never define their own defaults for
-these values.
+these values. On Linux and macOS the .sh launchers' twins, config.sh and
+config.local.sh, hold the same keys and are read instead (config.local.bat
+is still read there when no config.local.sh exists).
 
 Resolution order matches the launchers exactly:
 
@@ -33,6 +35,11 @@ _SET_RE = re.compile(
     re.IGNORECASE,
 )
 _VAR_RE = re.compile(r"%([A-Za-z_][A-Za-z0-9_]*)%")
+
+# config.sh's `: "${NAME:=VALUE}"`, and the $NAME / ${NAME} / ${NAME:-DEFAULT}
+# references a value may hold.
+_SH_SET_RE = re.compile(r'^\s*:\s+"\$\{(?P<key>[A-Za-z_][A-Za-z0-9_]*):=(?P<val>.*)\}"\s*(?:#.*)?$')
+_SH_VAR_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}|\$([A-Za-z_][A-Za-z0-9_]*)")
 
 
 def platform_godot_flavor() -> str:
@@ -155,6 +162,57 @@ def parse_config_bat(path: Path, initial: dict[str, str] | None = None) -> dict[
     return values
 
 
+def parse_config_sh(path: Path, initial: dict[str, str] | None = None) -> dict[str, str]:
+    """Extract the settings from config.sh without executing it.
+
+    As narrow as parse_config_bat: only `: "${NAME:=VALUE}"` lines count, a
+    name already set (environment or earlier) keeps its value, and $NAME,
+    ${NAME} and ${NAME:-DEFAULT} expand against what is resolved so far.
+    """
+    values = {key.upper(): value for key, value in (initial or {}).items()}
+    environment = {key.upper(): value for key, value in os.environ.items()}
+    for line in path.read_text(encoding="utf-8-sig", errors="replace").splitlines():
+        match = _SH_SET_RE.match(line)
+        if not match:
+            continue
+        key = match.group("key").upper()
+        if environment.get(key) or values.get(key):
+            continue
+
+        def expand(m: re.Match[str]) -> str:
+            name = (m.group(1) or m.group(3)).upper()
+            return environment.get(name) or values.get(name) or (m.group(2) or "")
+
+        values[key] = _SH_VAR_RE.sub(expand, match.group("val"))
+    return values
+
+
+def launcher_settings(root: Path, windows: bool | None = None) -> dict[str, str]:
+    """The settings config.local + config define, read from this OS's pair.
+
+    Windows reads config.local.bat then config.bat, as common.bat calls them.
+    Elsewhere config.local.sh then config.sh, as common.sh sources them; a
+    machine that only has a config.local.bat keeps it.
+    """
+    windows = sys.platform == "win32" if windows is None else windows
+    shared = root / "launchers" / "_shared"
+    values = {"UO_ROOT": str(root)}
+    if not windows and (shared / "config.sh").is_file():
+        if (shared / "config.local.sh").is_file():
+            values = parse_config_sh(shared / "config.local.sh", values)
+        elif (shared / "config.local.bat").is_file():
+            values = parse_config_bat(shared / "config.local.bat", values)
+        return parse_config_sh(shared / "config.sh", values)
+    local = shared / "config.local.bat"
+    if local.is_file():
+        # config.bat calls it first, and its own lines are all guarded, so
+        # whatever the local file sets wins over the defaults.
+        values = parse_config_bat(local, values)
+    # Resolve in batch execution order: local settings must be available to
+    # references in guarded defaults, including values based on UO_ROOT.
+    return parse_config_bat(shared / "config.bat", values)
+
+
 @dataclass(frozen=True)
 class Config:
     """Resolved project configuration."""
@@ -180,6 +238,9 @@ class Config:
     # clients that run beside the owner. They share shard_gm_password.
     shard_gm_accounts: tuple[str, ...]
     shard_gm_password: str
+    # The editor bridge's admin token (ADR-0035), from the same secrets file:
+    # an editor must send it in its bridge hello before any admin op.
+    bridge_admin_token: str
     # The address the local shard listens on (UO_SHARD_BIND): loopback unless
     # set otherwise on purpose, e.g. 0.0.0.0 to open it to the LAN.
     shard_bind: str
@@ -347,16 +408,7 @@ class Config:
 def load_config(root: Path | None = None) -> Config:
     """Resolve configuration from the environment, falling back to config.bat."""
     root = (root or find_repo_root()).resolve()
-    shared = root / "launchers" / "_shared"
-    from_bat = {"UO_ROOT": str(root)}
-    local = shared / "config.local.bat"
-    if local.is_file():
-        # config.bat calls it first, and its own lines are all guarded, so
-        # whatever the local file sets wins over the defaults.
-        from_bat = parse_config_bat(local, from_bat)
-    # Resolve in batch execution order: local settings must be available to
-    # references in guarded defaults, including values based on UO_ROOT.
-    from_bat = parse_config_bat(shared / "config.bat", from_bat)
+    from_bat = launcher_settings(root)
     environment = {key.upper(): value for key, value in os.environ.items()}
 
     def get(key: str, default: str = "") -> str:
@@ -532,6 +584,7 @@ def load_config(root: Path | None = None) -> Config:
         shard_owner=get("UO_SHARD_OWNER", "guoprobe"),
         shard_owner_password=get("UO_SHARD_OWNER_PASSWORD"),
         shard_gm_password=get("UO_SHARD_GM_PASSWORD"),
+        bridge_admin_token=get("UO_BRIDGE_ADMIN_TOKEN"),
         shard_bind=get("UO_SHARD_BIND", "127.0.0.1"),
         shard_gm_accounts=tuple(
             a.strip() for a in get("UO_SHARD_GM_ACCOUNTS", "guoeffects,guohighlight,guosweep").split(",") if a.strip()

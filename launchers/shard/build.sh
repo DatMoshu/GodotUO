@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Publish the ModernUO dev shard for this OS. Twin of build.bat (.NET 10 SDK).
+# Builds the ModernUO dev shard with its publish script and the .NET 10 SDK and prints where the server landed.
+set -euo pipefail
 GUO_NEEDS_GODOT=0 . "$(dirname "$0")/../_shared/common.sh" || exit 1
 
 if [ ! -f "$UO_SHARD_SRC/publish.sh" ]; then
