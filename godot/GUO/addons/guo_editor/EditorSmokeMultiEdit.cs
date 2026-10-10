@@ -101,6 +101,7 @@ public partial class EditorSmoke
         DateTime timeBefore = installBefore?.LastWriteTimeUtc ?? default;
 
         view.OnDataLoaded();
+        FootprintCheck(view);
         _meReport["tabs"] = string.Join(",", view.TabNames);
         MeCheck("tab_in_tree", view.IsInsideTree());
         MeCheck("tables_read", view.Tables != null && view.Tables.Groups.Count > 0, "no house customization tables");
@@ -370,10 +371,165 @@ public partial class EditorSmoke
         MeCheck("from_world_bar_closes_on_new", view.FromWorldNotice == "");
         await RunMultiEditPhase2Async(view, root, floorId);
 
+        await SplatWorldCheckAsync();
+
         // The install's multi file is as it was.
         var installAfter = File.Exists(installUop) ? new FileInfo(installUop) : null;
         MeCheck("install_untouched", installAfter?.Length == sizeBefore && installAfter?.LastWriteTimeUtc == timeBefore);
         _meReport["history_cap"] = MultiDocument.HistoryCap;
+    }
+
+    /// <summary>
+    /// The ComfyUI footprint draft (splatlod.py footprint): opens directly in
+    /// MultiEdit as nodraw markers for MultiEdit to finish. Skips when no
+    /// staged footprints exist (fresh checkout without tools/comfy output).
+    /// </summary>
+    private void FootprintCheck(MultiEditView view)
+    {
+        string draft = FindFootprintDraft();
+        _meReport["footprint_draft"] = draft ?? "absent";
+        if (draft == null)
+        {
+            return;
+        }
+
+        bool opened = view.OpenDescription(draft);
+        var parts = view.Doc.Parts;
+        MeCheck("footprint_opens", opened && parts.Count > 0, $"{parts.Count} parts");
+        MeCheck("footprint_nodraw", parts.Count > 0 && parts.All(p => p.Id == 1),
+            string.Join(",", parts.Select(p => p.Id).Distinct().Take(4)));
+        MeCheck("footprint_bounded", parts.All(p => p.X >= 0 && p.Y >= 0 && p.X < 32 && p.Y < 32));
+        _meReport["footprint_cells"] = parts.Count;
+    }
+
+    private static string FindFootprintDraft()
+    {
+        // Prefer the footprint of a placed splat (the draft MultiEdit would
+        // finish for what is actually in the world); else any draft at all.
+        string manifest = FindSplatManifest();
+        if (manifest != null)
+        {
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(manifest));
+                foreach (var splat in doc.RootElement.GetProperty("splats").EnumerateObject())
+                {
+                    if (splat.Value.TryGetProperty("footprint", out var fp))
+                    {
+                        string draft = Path.Combine(Path.GetDirectoryName(manifest),
+                            fp.GetString().Replace('/', Path.DirectorySeparatorChar));
+                        if (File.Exists(draft))
+                        {
+                            return draft;
+                        }
+                    }
+                }
+            }
+            catch (Exception)
+            {
+            }
+        }
+
+        var dirs = new List<string>();
+        string env = System.Environment.GetEnvironmentVariable("GUO_SPLAT_STAGE");
+        if (!string.IsNullOrWhiteSpace(env))
+        {
+            dirs.Add(Path.Combine(env, "footprints"));
+        }
+
+        try
+        {
+            string repo = EditorData.RepoRoot;
+            dirs.Add(Path.Combine(repo, "build", "staged", "guo-comfy-gen", "footprints"));
+            dirs.Add(Path.Combine(repo, "build", "comfy", "footprints"));
+        }
+        catch (Exception)
+        {
+        }
+
+        foreach (string d in dirs)
+        {
+            try
+            {
+                if (Directory.Exists(d))
+                {
+                    string first = Directory.GetFiles(d, "*.multi.json").OrderBy(f => f).FirstOrDefault();
+                    if (first != null)
+                    {
+                        return first;
+                    }
+                }
+            }
+            catch (Exception)
+            {
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Staged splats drawn in the world view at their placements (through the
+    /// live scene hook, the same path the game client draws). Goes to the
+    /// first placement, lets frames draw, and checks the scene drew it.
+    /// Skips when the world is down or nothing is staged.
+    /// </summary>
+    private async Task SplatWorldCheckAsync()
+    {
+        _meReport["splat_world"] = "skipped";
+        if (_world == null || !_world.IsBooted)
+        {
+            return;
+        }
+
+        string manifest = FindSplatManifest();
+        if (manifest == null)
+        {
+            return;
+        }
+
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(manifest));
+            var first = doc.RootElement.GetProperty("splats").EnumerateObject().First();
+            var at = first.Value.GetProperty("placement");
+            int facet = at.GetProperty("facet").GetInt32();
+            int x = at.GetProperty("x").GetInt32(), y = at.GetProperty("y").GetInt32();
+            var (level, drawn) = _world.ProbeSplat(first.Name, facet, x, y);
+            MeCheck("splat_world_placed", level >= 0, $"{first.Name} level {level}");
+            _meReport["splat_world"] = $"{first.Name} level {level} drawn {drawn}";
+        }
+        catch (Exception ex)
+        {
+            MeCheck("splat_world_read", false, $"{ex.GetType().Name}: {ex.Message}");
+        }
+    }
+
+    private static string FindSplatManifest()
+    {
+        string env = System.Environment.GetEnvironmentVariable("GUO_SPLAT_STAGE");
+        if (!string.IsNullOrWhiteSpace(env))
+        {
+            string m = Path.Combine(env, "splats.json");
+            if (File.Exists(m))
+            {
+                return m;
+            }
+        }
+
+        try
+        {
+            string m = Path.Combine(EditorData.RepoRoot, "build", "staged", "guo-comfy-gen", "splats.json");
+            if (File.Exists(m))
+            {
+                return m;
+            }
+        }
+        catch (Exception)
+        {
+        }
+
+        return null;
     }
 
     private static bool PaletteDrop(MultiEditView view, ushort id)

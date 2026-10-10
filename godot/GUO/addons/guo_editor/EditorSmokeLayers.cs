@@ -108,7 +108,7 @@ public partial class EditorSmoke
             layers.Draw(canvas, ctx);
             Directory.CreateDirectory(Path.Combine(_out, "modes"));
             canvas.ToImage().SavePng(Path.Combine(_out, "modes", "layers.png"));
-            ModeExpect(Painted(canvas, RegionsLayer.ColourOf("TownRegion")), "layers_region_outline_drawn");
+            ModeExpect(Painted(canvas, MapLayers.ZoneColour("Fixture Square")), "layers_region_outline_drawn");
             ModeExpect(Painted(canvas, new Color(1f, 0.6f, 0.1f)), "layers_spawn_ring_drawn");
             ModeExpect(Painted(canvas, new Color(0.3f, 1f, 0.3f)), "layers_live_player_drawn");
             ModeExpect(Painted(canvas, new Color(0.4f, 0.8f, 1f)), "layers_route_drawn");

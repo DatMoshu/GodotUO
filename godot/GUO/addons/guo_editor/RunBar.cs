@@ -13,7 +13,7 @@ using Godot;
 using GUO.Workspace;
 
 [Tool]
-public partial class RunBar : HBoxContainer
+public partial class RunBar : VBoxContainer
 {
     private ServerProfiles _profiles;
     private ClientRegistry _clients;

@@ -42,6 +42,10 @@ namespace GUO.Game.GameObjects
             //Engine.DebugInfo.ItemsRendered++;
             Vector3 hueVec;
 
+            // PORT DEVIATION (GUO): pick up theme changes (see
+            // GameObject.ResolveTheme); themed items draw the variant PNG.
+            ResolveTheme();
+
             posX += (int)Offset.X;
             posY += (int)(Offset.Y + Offset.Z);
 
@@ -135,7 +139,7 @@ namespace GUO.Game.GameObjects
 
             if (!IsMulti && !IsCoin && Amount > 1 && ItemData.IsStackable)
             {
-                DrawStaticAnimated(batcher, graphic, posX - 5, posY - 5, hueVec, false, depth);
+                DrawStaticAnimated(batcher, graphic, posX - 5, posY - 5, hueVec, false, depth, false, ThemedVariant);
             }
 
             if (
@@ -147,7 +151,7 @@ namespace GUO.Game.GameObjects
                 hueVec.Z = 0.5f;
             }
 
-            DrawStaticAnimated(batcher, graphic, posX, posY, hueVec, false, depth);
+            DrawStaticAnimated(batcher, graphic, posX, posY, hueVec, false, depth, false, ThemedVariant);
 
             return true;
         }

@@ -12,6 +12,8 @@ using System.Text.Json.Nodes;
 /// <c>{tool, ai, model?, workflow?, seed?, inputs, derived_from_client_art}</c>.
 /// <see cref="DerivedFromClientArt"/> is true when any input was the client's own art;
 /// such an image stays local and the store's content policy refuses it.
+/// <see cref="Kind"/> is "" for images (the original records), "audio" or "model"
+/// for ComfyUI audio/3D artifacts; absent reads back as "".
 /// </summary>
 public sealed class ArtProvenance
 {
@@ -22,6 +24,9 @@ public sealed class ArtProvenance
     public long? Seed;
     public List<string> Inputs = new();
     public bool DerivedFromClientArt;
+
+    /// <summary>"", "audio" or "model". Empty for every record written before kinds existed.</summary>
+    public string Kind = "";
 
     public JsonObject ToJson()
     {
@@ -34,6 +39,11 @@ public sealed class ArtProvenance
         if (!string.IsNullOrEmpty(Workflow))
         {
             o["workflow"] = Workflow;
+        }
+
+        if (!string.IsNullOrEmpty(Kind))
+        {
+            o["kind"] = Kind;
         }
 
         if (Seed.HasValue)
@@ -59,6 +69,7 @@ public sealed class ArtProvenance
             Tool = (string)n?["tool"] ?? "",
             Model = (string)n?["model"],
             Workflow = (string)n?["workflow"],
+            Kind = (string)n?["kind"] ?? "",
             Seed = n?["seed"] is JsonNode s ? (long?)s : null,
             DerivedFromClientArt = n?["derived_from_client_art"] is JsonNode d && (bool)d,
         };

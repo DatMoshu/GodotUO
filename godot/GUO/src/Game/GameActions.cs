@@ -357,6 +357,11 @@ namespace GUO.Game
             {
                 Socket.Send_ASCIISpeechRequest(message, type, font, hue);
             }
+
+            // PORT DEVIATION (GUO): text-to-speech in the player's own voice,
+            // client-side and local (IO/Audio/VoiceManager). Fire-and-forget
+            // after the line goes out; silent unless a voice profile is set.
+            IO.Audio.VoiceManager.SpeakOwn(message);
         }
 
 

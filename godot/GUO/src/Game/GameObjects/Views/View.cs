@@ -106,28 +106,53 @@ namespace GUO.Game.GameObjects
             int y,
             Vector3 hue,
             float depth,
-            bool isWet = false
+            bool isWet = false,
+            VariantAtlas.VariantImage themed = null
         )
         {
             ref readonly var artInfo = ref Client.Game.UO.Arts.GetArt(graphic);
 
-            if (artInfo.Texture != null)
+            // PORT DEVIATION (GUO): a themed object draws its variant-atlas
+            // PNG instead of archive art; the graphic (and its picking and
+            // tiledata) stay original.
+            Godot.Texture2D texture = themed?.Texture;
+            Rectangle uv = default;
+            if (texture != null)
             {
-                ref var index = ref Client.Game.UO.FileManager.Arts.File.GetValidRefEntry(graphic + 0x4000);
-                index.Width = (short)((artInfo.UV.Width >> 1) - 22);
-                index.Height = (short)(artInfo.UV.Height - 44);
+                uv = new Rectangle(0, 0, themed.Width, themed.Height);
+            }
+            else
+            {
+                if (artInfo.Texture == null)
+                {
+                    return;
+                }
 
-                x -= index.Width;
-                y -= index.Height;
+                texture = artInfo.Texture;
+                uv = artInfo.UV;
+            }
+
+            {
+                int w = (uv.Width >> 1) - 22;
+                int h = uv.Height - 44;
+                if (themed == null)
+                {
+                    ref var index = ref Client.Game.UO.FileManager.Arts.File.GetValidRefEntry(graphic + 0x4000);
+                    index.Width = (short)w;
+                    index.Height = (short)h;
+                }
+
+                x -= w;
+                y -= h;
 
                 var pos = new Vector2(x, y);
                 var scale = Vector2.One;
                 if (isWet)
                 {
                     batcher.Draw(
-                        artInfo.Texture,
+                        texture,
                         pos,
-                        artInfo.UV,
+                        uv,
                         hue,
                         0f,
                         Vector2.Zero,
@@ -142,9 +167,9 @@ namespace GUO.Game.GameObjects
                 }
 
                 batcher.Draw(
-                    artInfo.Texture,
+                    texture,
                     pos,
-                    artInfo.UV,
+                    uv,
                     hue,
                     0f,
                     Vector2.Zero,
@@ -189,33 +214,54 @@ namespace GUO.Game.GameObjects
             int y,
             float angle,
             Vector3 hue,
-            float depth
+            float depth,
+            VariantAtlas.VariantImage themed = null
         )
         {
             ref readonly var artInfo = ref Client.Game.UO.Arts.GetArt(graphic);
 
-            if (artInfo.Texture != null)
+            // PORT DEVIATION (GUO): themed objects draw the variant-atlas PNG.
+            Godot.Texture2D texture = themed?.Texture;
+            Rectangle uv = default;
+            if (texture != null)
+            {
+                uv = new Rectangle(0, 0, themed.Width, themed.Height);
+            }
+            else
+            {
+                if (artInfo.Texture == null)
+                {
+                    return;
+                }
+
+                texture = artInfo.Texture;
+                uv = artInfo.UV;
+            }
+
+            int w = (uv.Width >> 1) - 22;
+            int h = uv.Height - 44;
+            if (themed == null)
             {
                 ref var index = ref Client.Game.UO.FileManager.Arts.File.GetValidRefEntry(graphic + 0x4000);
-                index.Width = (short)((artInfo.UV.Width >> 1) - 22);
-                index.Height = (short)(artInfo.UV.Height - 44);
-
-                batcher.Draw(
-                    artInfo.Texture,
-                    new Rectangle(
-                        x - index.Width,
-                        y - index.Height,
-                        artInfo.UV.Width,
-                        artInfo.UV.Height
-                    ),
-                    artInfo.UV,
-                    hue,
-                    angle,
-                    Vector2.Zero,
-                    SpriteEffects.None,
-                    depth + 0.5f
-                );
+                index.Width = (short)w;
+                index.Height = (short)h;
             }
+
+            batcher.Draw(
+                texture,
+                new Rectangle(
+                    x - w,
+                    y - h,
+                    uv.Width,
+                    uv.Height
+                ),
+                uv,
+                hue,
+                angle,
+                Vector2.Zero,
+                SpriteEffects.None,
+                depth + 0.5f
+            );
         }
 
         protected static void DrawStaticAnimated(
@@ -226,9 +272,38 @@ namespace GUO.Game.GameObjects
             Vector3 hue,
             bool shadow,
             float depth,
-            bool isWet = false
+            bool isWet = false,
+            VariantAtlas.VariantImage themed = null
         )
         {
+            // PORT DEVIATION (GUO): a themed object draws its variant-atlas
+            // PNG still (no animation frames for variants).
+            if (themed?.Texture != null)
+            {
+                var vuv = new Rectangle(0, 0, themed.Width, themed.Height);
+                int vw = (vuv.Width >> 1) - 22;
+                int vh = vuv.Height - 44;
+                Vector2 vpos = new Vector2(x - vw, y - vh);
+                if (shadow)
+                {
+                    batcher.DrawShadow(themed.Texture, vpos, vuv, false, depth + 0.25f);
+                }
+
+                batcher.Draw(
+                    themed.Texture,
+                    vpos,
+                    vuv,
+                    hue,
+                    0f,
+                    Vector2.Zero,
+                    Vector2.One,
+                    SpriteEffects.None,
+                    depth + 0.5f
+                );
+
+                return;
+            }
+
             ref UOFileIndex index = ref Client.Game.UO.FileManager.Arts.File.GetValidRefEntry(graphic + 0x4000);
 
             graphic = (ushort)(graphic + index.AnimOffset);

@@ -17,6 +17,10 @@ namespace GUO.Game.GameObjects
                 return false;
             }
 
+            // PORT DEVIATION (GUO): pick up theme changes (see
+            // GameObject.ResolveTheme); themed land draws the variant PNG.
+            ResolveTheme();
+
             //Engine.DebugInfo.LandsRendered++;
 
             ushort hue = Hue;
@@ -92,7 +96,8 @@ namespace GUO.Game.GameObjects
                         posY,
                         hueVec,
                         depth,
-                        ProfileManager.CurrentProfile.AnimatedWaterEffect && TileData.IsWet
+                        ProfileManager.CurrentProfile.AnimatedWaterEffect && TileData.IsWet,
+                        ThemedVariant
                     );
                 }
             }
@@ -100,7 +105,24 @@ namespace GUO.Game.GameObjects
             {
                 ref readonly var artInfo = ref Client.Game.UO.Arts.GetLand(Graphic);
 
-                if (artInfo.Texture != null)
+                // PORT DEVIATION (GUO): themed land draws the variant PNG.
+                Godot.Texture2D texture = ThemedVariant?.Texture;
+                Rectangle uv = default;
+                if (texture != null)
+                {
+                    uv = new Rectangle(0, 0, ThemedVariant.Width, ThemedVariant.Height);
+                }
+                else
+                {
+                    if (artInfo.Texture == null)
+                    {
+                        return true;
+                    }
+
+                    texture = artInfo.Texture;
+                    uv = artInfo.UV;
+                }
+
                 {
                     var pos = new Vector2(posX, posY);
                     var scale = Vector2.One;
@@ -108,9 +130,9 @@ namespace GUO.Game.GameObjects
                     if (ProfileManager.CurrentProfile.AnimatedWaterEffect && TileData.IsWet)
                     {
                         batcher.Draw(
-                            artInfo.Texture,
+                            texture,
                             pos,
-                            artInfo.UV,
+                            uv,
                             hueVec,
                             0f,
                             Vector2.Zero,
@@ -125,9 +147,9 @@ namespace GUO.Game.GameObjects
                     }
 
                     batcher.Draw(
-                        artInfo.Texture,
+                        texture,
                         pos,
-                        artInfo.UV,
+                        uv,
                         hueVec,
                         0f,
                         Vector2.Zero,

@@ -166,6 +166,54 @@ public partial class EditorSmoke
             using var imageProvider = new RetroDiffusionProvider("http://127.0.0.1:1", () => throw new Exception("key must not be read"));
             var image = await imageProvider.RunAsync(new ImageRequest(), _ => { }, CancellationToken.None);
             AiCheck("ai_toggle_blocks_generation", image.Error.Contains("disabled"));
+            // Regions audio generation uses the same gate: a disabled AI makes
+            // zero HTTP requests, and its controls hide while manual region
+            // editing stays available.
+            string oldMusic = Environment.GetEnvironmentVariable("GUO_MUSIC_DIR");
+            string musicTmp = Path.Combine(_out, "regions_audio_gate");
+            Directory.CreateDirectory(musicTmp);
+            Environment.SetEnvironmentVariable("GUO_MUSIC_DIR", musicTmp);
+            using var audioStub = new ArtStubServer(new byte[] { 1, 2, 3 });
+            var gateRegion = new JsonObject
+            {
+                ["Name"] = "Gate Fixture",
+                ["Map"] = "Felucca",
+                ["Area"] = new JsonArray { new JsonObject { ["x1"] = 1, ["y1"] = 1, ["x2"] = 2, ["y2"] = 2 } },
+            };
+            int queuedBefore = audioStub.QueuedCount;
+            string refused = "";
+            if (plugin.ZonesDock != null)
+            {
+                refused = await plugin.ZonesDock.GenerateRegionAudioAsync(
+                    gateRegion, "must not send", 60, audioStub.Url, GUO.IO.Audio.ZoneAudio.Music);
+            }
+
+            AiCheck("ai_toggle_blocks_region_audio",
+                plugin.ZonesDock != null && refused.Contains("disabled") && audioStub.QueuedCount == queuedBefore,
+                $"{refused} queued {queuedBefore}->{audioStub.QueuedCount}");
+            AiCheck("ai_toggle_hides_region_audio",
+                plugin.ZonesDock == null || !plugin.ZonesDock.AudioGenerationVisible);
+            // Switching AI off mid-flight cancels the request: nothing is saved
+            // or attached even though the prompt already queued.
+            string cancelled = "";
+            if (plugin.ZonesDock != null)
+            {
+                settings.SetSetting(AiFeatures.SettingPath, true);
+                plugin.ApplyAiPreference(true);
+                Task<string> flight = plugin.ZonesDock.GenerateRegionAudioAsync(
+                    gateRegion, "in flight", 60, audioStub.Url, GUO.IO.Audio.ZoneAudio.Music);
+                await Delay(0.2);
+                settings.SetSetting(AiFeatures.SettingPath, false);
+                plugin.ApplyAiPreference(false);
+                cancelled = await flight;
+            }
+
+            AiCheck("ai_toggle_cancels_region_audio",
+                plugin.ZonesDock != null && cancelled.Contains("cancell")
+                    && !File.Exists(Path.Combine(musicTmp, "tracks", "gatefixture_01.mp3")),
+                cancelled);
+            audioStub.Dispose();
+            Environment.SetEnvironmentVariable("GUO_MUSIC_DIR", oldMusic);
             using var chatProvider = new OllamaProvider("http://127.0.0.1:1");
             bool chatBlocked = false, toolBlocked = false;
             try { await chatProvider.ListModelsAsync(CancellationToken.None); }

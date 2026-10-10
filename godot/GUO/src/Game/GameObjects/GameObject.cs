@@ -78,6 +78,35 @@ namespace GUO.Game.GameObjects
             Y;
         public sbyte Z;
 
+        /// <summary>
+        /// PORT DEVIATION (GUO): the variant-atlas image themed onto this
+        /// object, or null. The graphic itself is never swapped for atlas
+        /// variants, so picking, tiledata and seasons keep seeing the
+        /// original. Set by <see cref="UpdateGraphicBySeason"/> (and refreshed
+        /// by <see cref="ResolveTheme"/>); draw paths prefer it over archive
+        /// art when non-null.
+        /// </summary>
+        public Assets.VariantAtlas.VariantImage ThemedVariant;
+
+        private int _themeRevision;
+
+        /// <summary>
+        /// Re-resolves the themed variant when the active themes changed
+        /// since this object last looked. Cheap (one int compare) on the
+        /// common path; views call it before drawing so arrivals after a
+        /// theme change still pick it up.
+        /// </summary>
+        protected void ResolveTheme()
+        {
+            if (_themeRevision == Managers.ThemeManager.Revision)
+            {
+                return;
+            }
+
+            _themeRevision = Managers.ThemeManager.Revision;
+            UpdateGraphicBySeason();
+        }
+
         public void AddDamage(int damage)
         {
             _averageOverTime ??= new AverageOverTime(TimeSpan.FromSeconds(15));

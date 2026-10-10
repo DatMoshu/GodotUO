@@ -358,13 +358,39 @@ namespace GUO.Game.Map
             int baseX = (land.X - land.Y) * 22 - 22;
             int baseY = (land.X + land.Y) * 22 - (land.Z << 2) - 22;
 
+            // PORT DEVIATION (GUO): themed land bakes its variant-atlas PNG.
+            Texture2D variantTexture = land.ThemedVariant?.Texture;
+            Rectangle variantUv = variantTexture != null
+                ? new Rectangle(0, 0, land.ThemedVariant.Width, land.ThemedVariant.Height)
+                : default;
+
             if (land.IsStretched)
             {
                 ref readonly var texmapInfo = ref Client.Game.UO.Texmaps.GetTexmap(
                     Client.Game.UO.FileManager.TileData.LandData[land.Graphic].TexID
                 );
 
-                if (texmapInfo.Texture != null)
+                if (variantTexture != null)
+                {
+                    int idx = land.MeshSpriteIndex;
+                    land.MeshSpriteIndex = idx;
+                    WriteStretchedLand(
+                        idx,
+                        variantTexture,
+                        variantUv,
+                        baseX,
+                        baseY + (land.Z << 2),
+                        ref land.YOffsets,
+                        ref land.NormalTop,
+                        ref land.NormalRight,
+                        ref land.NormalLeft,
+                        ref land.NormalBottom,
+                        hueVec,
+                        depth
+                    );
+                    land.InChunkMesh = true;
+                }
+                else if (texmapInfo.Texture != null)
                 {
                     int idx = land.MeshSpriteIndex;
                     land.MeshSpriteIndex = idx;
@@ -396,6 +422,13 @@ namespace GUO.Game.Map
                         land.InChunkMesh = true;
                     }
                 }
+            }
+            else if (variantTexture != null)
+            {
+                int idx = land.MeshSpriteIndex;
+                land.MeshSpriteIndex = idx;
+                Land.WriteQuadAt(idx, variantTexture, variantUv, baseX, baseY, hueVec, depth);
+                land.InChunkMesh = true;
             }
             else
             {

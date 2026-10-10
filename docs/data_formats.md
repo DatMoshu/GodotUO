@@ -302,6 +302,7 @@ line, UTF-8, `\n`-terminated. ADR-0012 has the reasoning.
 | `command` | `as` (an online character's name), `text` (e.g. `[where`), `confirm` (for a dangerous command), `req` | Admin op since AD3 (Counselor): needs the admin token. Runs the command as that character (`CommandSystem.Handle`), who must be online, staff (Counselor or higher) and not above the connection's level; the same checks as `admin_command`. Answered with `command` |
 | `object` | `action` `put` with `kind` (`spawner` or `item`) and `object` (as in `shard/objects.json`, section 13); or `action` `delete` with `kind` and `id` | Applies it to the world with the boot sync's code (ADR-0014), relays it to the other editors; answered with `object_ack` |
 | `mobiles` | `facet`, `x0`, `y0`, `x1`, `y1` (inclusive rectangle; clamped to the map and to 1024 cells a side), `req` (echoed), `as` (optional: an online character that must be a GameMaster or above) | Read-only. Players and mobiles in the rectangle, at most 500; answered with `mobiles`. Needs a prior `hello`; at most one request per 250 ms per connection (the Live map layer, ADR-0027, polls it about once a second for the visible region plus a margin) |
+| `items` | same rectangle, `req`, `as` as `mobiles` | Read-only. Top-level world items in the rectangle (worn, held and container contents skipped), at most 500; answered with `items`. Same guards as `mobiles`; the World tab draws them as live objects beside the mobiles |
 | `admin_whoami` | `req` (optional, echoed) | Admin op (Counselor). Answered with `admin_whoami` |
 | `admin_audit` | `count` (1..200, default 50), `req` | Admin op (Administrator). The last audit entries; answered with `admin_audit` |
 | `admin_status` | `req` (optional, echoed) | Admin op (Counselor). Read only; answered with `admin_status` |
@@ -331,7 +332,8 @@ line, UTF-8, `\n`-terminated. ADR-0012 has the reasoning.
 | `command` | as `admin_command` below, `as` always the named character (before AD3: `ok`, `as`, `text`, or `error`) |
 | `object` | as sent, plus `from`: another editor's world-object change. Last write per object wins |
 | `object_ack` | `action`, `kind`, `id`, `outcome` (`Added`, `Changed`, `Kept`, `Deleted`, `Missing`, `Skipped`), `editors`, `ms` |
-| `mobiles` | `req`, `ok`, `facet`, the clamped `x0`,`y0`,`x1`,`y1`, `count`, `truncated` (hit the 500 cap), `mobiles`: per mobile `serial`, `name`, `body`, `x`, `y`, `z`, `facet`, `isPlayer`, `hits`, `maxHits`, `notoriety` (ModernUO's 1 innocent .. 7 invulnerable, computed with no viewer); or `ok` false with `error` (`rate limited`, `say hello first`, `no map N`, `'X' is not online`, `'X' is not staff`) |
+| `mobiles` | `req`, `ok`, `facet`, the clamped `x0`,`y0`,`x1`,`y1`, `count`, `truncated` (hit the 2000 cap), `mobiles`: per mobile `serial`, `name`, `body`, `x`, `y`, `z`, `facet`, `isPlayer`, `hits`, `maxHits`, `notoriety` (ModernUO's 1 innocent .. 7 invulnerable, computed with no viewer), `direction` (0..7, Running masked off), `hue`, `equip`: per worn item `serial`, `layer`, `id`, `hue` (at most 25); or `ok` false with `error` (`rate limited`, `say hello first`, `no map N`, `'X' is not online`, `'X' is not staff`) |
+| `items` | `req`, `ok`, `facet`, the clamped rectangle, `count`, `truncated` (hit the 10000 cap), `items`: per item `serial`, `id`, `hue`, `x`, `y`, `z`, `facet`, `amount`; or `ok` false with the same `error`s as `mobiles` |
 | `multi_ack` | `action`, `tag`, `ok`; on a place `serial`, `at` `[x, y, z]`, `components`, `doors`, `replaced`; on a remove `removed`; or `error` |
 | `admin_whoami` | `req`, `ok`, `editor`, `level`, `ops` |
 | `admin_audit` | `req`, `ok`, `entries`: audit entries, oldest first |
@@ -1313,8 +1315,9 @@ and the preserved sidecar, JSON first. Frame count, order, cell size and origina
 edits must stay inside each frame's rectangle (transparent padding is allowed). Centres and action/direction survive unchanged.
 The watcher crops those rectangles and imports the clip through section 11, preserving the foot and provenance.
 
-**Provenance** `{"tool","ai":bool,"model"?,"workflow"?,"seed"?,"inputs":[str],"derived_from_client_art":bool}`.
+**Provenance** `{"tool","ai":bool,"model"?,"workflow"?,"seed"?,"kind"?,"inputs":[str],"derived_from_client_art":bool}`.
 `ai` identifies image-service generation; older records infer it for `comfyui` and `retrodiffusion`, otherwise false.
+`kind` is absent for images and `"audio"` or `"model"` for ComfyUI audio/3D artifacts.
 For ComfyUI, `model` records the distinct configured `ckpt_name` / `unet_name` loader inputs, sorted and comma separated;
 it is omitted when the workflow has no such loader. `workflow` is the API JSON filename and `seed` the queued seed.
 `inputs` entries read `client:<kind>:0x<ID>` (the install's art) or `overlay:<kind>:0x<ID>`.
@@ -1325,6 +1328,47 @@ The overlay keeps one record per replaced image in `<project>/assets/provenance.
 inspector's "Import PNG..." records `tool: "import-png"` as derived). Such images stay local: a pack
 containing a `*provenance.json` with a derived entry is refused by `tools/asset_store/pack.py verify`
 (content policy, `docs/store/content_policy.md`).
+
+**ComfyUI audio/3D artifacts** (images stay in the gallery for overlay import): the Art dock's
+"Save audio/3D artifacts" writes each non-image file of the last run to `artifacts/<name>` with a
+provenance sidecar `<name>.json` (`kind` `"audio"` for mp3/wav, `"model"` for ply/glb/obj/fbx).
+`tools/comfy/stage.py` turns them into a shippable `guo/store-pack@2` (sound/music components,
+WAV 22050 Hz mono 16-bit only) plus `splats.json` with the LOD PLY chains (`guo/comfy-splats@1`);
+`tools/comfy/probe.py` mounts the pack in the real client and reads every artifact back.
+`splats.json` entries carry `placement` (`{facet,x,y,z[,yaw]}`, from `--place`) and
+`footprint` (a `footprints/*.multi.json` nodraw-marker draft, from
+`splatlod.py footprint`, opened directly by MultiEdit); the world view draws
+each placed splat at its tile through `SplatLayer` (the game's own tile math).
+Ambient audio zones live in `music.json` (music layer) and `sfx.json`
+(sfx layer) beside the tracks
+(`{zones:[{name,facet,x0,y0,x1,y1,tracks:[mp3]}]}`); each layer has its own
+player and fade, so neither cancels the other. The scene fades a zone's
+playlist in round-robin while the player stands inside (music replaces the
+base music, sfx beds over the base sounds), fading out on exit.
+NPC voices resolve per mobile from `voices.json` rules (serials, names or
+bodies, first match wins), else an automatic stable pick from the enrolled
+bank (serial hash, so relogs keep voices) with a per-NPC clone seed, else
+the `default` voice. The `-voice` gump targets, tests, assigns and designs;
+`-audiozones` (`-musiczone` still works, `-sfxzone` starts on SFX) places
+rects with generated track playlists the scene cycles, and shows the zone
+outline in the world on demand.
+Each entry's `scale` is screen px per model unit (footprint tiles × 11;
+reference default 22 covers one 44px tile for a 2-unit model), `yaw`
+defaults to 180°; the batcher projects with the reference oblique map
+(`SplatBatcher`, numeric parity vs `JarJar.Render` checked per gaussian).
+In game, `-splat` opens the placer gump: pick a staged model, target a
+tile, tune scale/yaw live, Place it, Save writes the manifest back. The
+same gump grows replacements: target a static, type a prompt, Generate
+sends its artwork through the frozen MultisMaker1 template on the local
+ComfyUI and swaps the result into the world (Restore brings the original
+back). `-repaint` (the JarJarGM clone) denoises artwork instead: prompt,
+seed, denoise slider and a silhouette mask toggle, applied live as .art
+files under the override folder (GUO_ART_OVERRIDE, else
+%APPDATA%/GUO/overrides), rescanned and re-atlased without touching the
+install; Revert deletes the file. Replace All writes a graphic-to-splat skin rule (theme entries carry
+`splat`, read by `ThemeManager.StaticSplat`) into `splat-skins.theme.json`
+beside the stage, reloaded on boot; the scene hides every matching static
+and skins it per tile, restoring each when its rule lifts.
 
 **UO post-process** (every import path): alpha keyed at 50 % (UO has one-bit transparency); land masked to the
 44x44 diamond (larger whole multiples scaled with nearest sampling); statics trimmed of empty top rows and equal
@@ -2210,6 +2254,7 @@ Example, GUO's dev shard:
 
 ---
 
+
 ## 36. Extracted art sets (`tools/art_extract`, ADR-0034)
 
 A **set** is a local mirror of the art in the user's own UO install: atlas pages plus indexes, written by
@@ -2556,3 +2601,61 @@ null, "rows": {"<backend>": {name, row, era, pins: [{role, commit (9 hex), date}
 optionally `note` (why it did not run, at most 300 characters) and `why` (from triage). Runner exit 0 is `PASS`, 2 or
 no run id `not run`, anything else `FAIL (untriaged)`; triage then names the owner. The file holds no machine paths
 and no credentials. `docs/wiki/Server-Compatibility.md` is generated from it with `triage.json` applied.
+
+## 39. Client-side themes (`themes/*.theme.json`, StaticStudio)
+
+A theme repaints matching statics and land inside its zones and skins listed
+multis with splats, all client-side (no shard traffic): graphic swaps through
+the season hook plus splat placements, so toggling off restores originals by
+construction. Seasons compose underneath (a theme wins where it matches; the
+season shows everywhere else), and chunk loads and season changes re-apply
+active themes automatically.
+
+**Theme file** `<dir>/<name>.theme.json` (`format: 1`):
+`{"format":1,"name":str,"entries":[{"match":[graphic...],"variant":id?,"image":file?,"splat":name?}],
+"multis":[multi-graphic...],"multi_splat":name}`. New variants are atlas PNGs
+(`VariantAtlas`: `<dir>/<name>/static_0x0E77.png`, fitted to the bound art's
+pixel size, with a JSON sidecar recording tool/workflow/seed/inputs); objects
+keep their graphic and draw the variant texture instead. Legacy `variant` ids
+(free static slots from `0xF000` up, PNGs in the world project's asset
+overlay) still resolve through the old graphic swap.
+
+**Activation** is user state, not file state: `ThemeManager.Activate(theme,
+zones)` with `zones` (`{facet,x1,y1,x2,y2}`, facet -1 is every facet), then
+`ThemeManager.Reapply(world)` walks used chunks through
+`UpdateGraphicBySeason` (theme-aware for statics and land) and dirties the
+chunk meshes. `Deactivate`/`Clear` repaint originals the same way. Multis of
+listed ids inside active zones hide (`AllowedToDraw = false`) and gain a
+`SplatObject` skin at their position; unlisted or out-of-zone multis restore
+on the next frame.
+
+**StaticStudio** (editor dock) authors themes JarJarGM-style: bind a static
+from the UO Inspector, run a ComfyUI img2img job, save the gallery image as a
+theme variant (overlay PNG at a free id + theme entry + provenance, derived
+from client art), place staged splats by tile, and apply/clear zones against
+the open world. Splat generation itself stays in `tools/comfy`; the dock
+lists staged splats and writes placements into the staged manifest.
+
+## 40. Voice profiles and text-to-speech (`build/voice_profiles`, `IO/Audio/VoiceManager.cs`)
+
+`tools/comfy/voice.py` enrolls a voice from the player's own sample with the
+PERFECT_VOICE_DESIGN workflow (sample copied into ComfyUI's `input/`,
+auto-transcribed by its ASR leg): `enroll` writes `<voice>.json`
+(`{format, voice, sample, transcript, workflow}`) plus `<voice>.prompt.json`
+(the converted API prompt with a `SaveAudio` tail, text rebound per line);
+`speak` queues the PERFECT_VOICE_CLONE workflow and fetches the WAV (`--wav`
+rewrites 22050 Hz mono 16-bit with exact sizes, the only format the client
+plays).
+
+The client speaks anything the player types after it goes out
+(`GameActions.Say` hook, fire-and-forget; `[`-commands skipped) in the
+`GUO_VOICE` profile from `GUO_VOICES` (else `%APPDATA%/GUO/voices`).
+Mobiles speak through the same driver when they talk (`MessageManager`
+hook for Regular/Whisper/Yell/Emote with a mobile parent; the player's own
+echoes are excluded): `voices.json` beside the profiles maps
+`{serials, bodies, names}` to a voice, first match wins, and the line plays
+attenuated by the speaker's tile distance. Synthesis shells `voice.py`
+(`GUO_VOICE_TOOL` override); playback is an `AudioStreamWav` on the scene
+thread with distance attenuation (full to 2 tiles, silent past 20).
+`VoiceManager.Status` reports the pipeline state for probes;
+`--voice`/`--say`/`--voice-fake`/`--hear-secs` drive it in walk-to runs.

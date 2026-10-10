@@ -24,7 +24,7 @@ public partial class WorldView : VBoxContainer
     private WorldGuides _guides;
     private WorldModes _modeNode;
     private LegendChip _chip;
-    private MenuButton _viewMenu, _layerMenu;
+    private MenuButton _viewMenu, _layerMenu, _layersAgain;
     private Label _cursor;
     private readonly MapLayers _mapLayers;
     private OptionButton _tool;
@@ -106,10 +106,23 @@ public partial class WorldView : VBoxContainer
 
     private Vector2 _drag;
     private bool _dragging;
+    private Vector2 _rightPress;
+    private bool _rightDown;
     private (int facet, int x, int y) _pending = (0, 1496, 1628);
 
     /// <summary>Raised with what a click picked.</summary>
     public event Action<Inspection> Inspect;
+
+    /// <summary>What the map context menu can make from an Area selection.</summary>
+    public enum NewZoneKind
+    {
+        Music,
+        Sfx,
+        Shard,
+    }
+
+    /// <summary>Fired by the map context menu: kind, facet and inclusive rect.</summary>
+    public Action<NewZoneKind, int, int, int, int, int> NewZoneFromArea;
 
     public bool IsBooted => _host.IsBooted;
     public string Error => _host.Error ?? _data?.Error;
@@ -128,6 +141,8 @@ public partial class WorldView : VBoxContainer
 
     /// <summary>The render modes' host (ADR-0027), for the smoke check, the tour and F3.</summary>
     internal WorldModes Modes => _modeNode;
+
+
 
     /// <summary>The map layers drawn on this view and on the minimap.</summary>
     internal MapLayers Layers => _mapLayers;
@@ -241,6 +256,19 @@ public partial class WorldView : VBoxContainer
         overlay.Pressed += () => ReloadOverlay();
         bar.AddChild(overlay);
 
+        // A second, always-visible Layers menu: the original lives in the
+        // toolbar below (and moves with workspace layouts), which left
+        // people with no clickable Layers in some arrangements. A real
+        // MenuButton, so the engine positions its popup on the right
+        // monitor; its items drive the original menu through SetToggle.
+        _layersAgain = new MenuButton
+        {
+            Text = "Layers",
+            TooltipText = "What the world draws: land, statics, multis, roofs, world objects, live",
+        };
+        _layersAgain.GetPopup().HideOnCheckableItemSelection = false;
+        bar.AddChild(_layersAgain);
+
         _status = new Label
         {
             Text = "the world starts the first time this tab is shown",
@@ -308,6 +336,7 @@ public partial class WorldView : VBoxContainer
         MenuToggle(_layers, "Live", false, v => SetLayer("Live", v));
         MenuToggle(_layers, "Live players", true, v => SetLiveKinds(v, _mapLayers.Live.Mobiles));
         MenuToggle(_layers, "Live mobiles", true, v => SetLiveKinds(_mapLayers.Live.Players, v));
+        MirrorLayersMenu();
         tools.AddChild(new Label { Text = "spawns" });
         _spawnEntry = new LineEdit
         {
@@ -397,6 +426,22 @@ public partial class WorldView : VBoxContainer
         {
             EnsureBooted();
         }
+    }
+
+    /// <summary>
+    /// The world view's own pixels (its SubViewport): what the camera draws,
+    /// in the camera's coordinates. Null when the view is not up. The Layers
+    /// dock's area capture reads this, never the editor window: the window
+    /// also holds UI, and its coordinates do not match the camera's.
+    /// </summary>
+    public Image CaptureView()
+    {
+        if (_viewport == null || !IsVisibleInTree())
+        {
+            return null;
+        }
+
+        return _viewport.GetTexture().GetImage();
     }
 
     /// <summary>Starts the world if it has not started. False, with <see cref="Error"/>, if it cannot.</summary>
@@ -617,6 +662,24 @@ public partial class WorldView : VBoxContainer
             case InputEventMouseButton { ButtonIndex: MouseButton.Right or MouseButton.Middle } b:
                 _dragging = b.Pressed;
                 _drag = Vector2.Zero;
+                if (b.ButtonIndex == MouseButton.Right)
+                {
+                    if (b.Pressed)
+                    {
+                        _rightDown = true;
+                        _rightPress = b.Position;
+                    }
+                    else if (_rightDown)
+                    {
+                        _rightDown = false;
+                        // A release that barely moved is a click, not a pan.
+                        if ((b.Position - _rightPress).Length() < 8f)
+                        {
+                            ShowMapMenu();
+                        }
+                    }
+                }
+
                 break;
             case InputEventMouseMotion m when _dragging:
                 Pan(m.Relative);
@@ -715,6 +778,44 @@ public partial class WorldView : VBoxContainer
         return m;
     }
 
+    /// <summary>
+    /// Right-click without dragging: what to make of the Area selection, if
+    /// any. Music/SFX zones land in their manifests (tracks come later);
+    /// shard regions go to the Regions dock for naming and saving.
+    /// </summary>
+    private void ShowMapMenu()
+    {
+        bool hasArea = Area != null;
+        var pm = new PopupMenu();
+        // On the editor base control, not on this view: WorldView is a
+        // layout container and would arrange a child popup at its top.
+        EditorInterface.Singleton.GetBaseControl().AddChild(pm);
+        pm.AddItem(hasArea ? "New Music zone from area" : "New Music zone (Area tool: click two corners first)", 0);
+        pm.AddItem(hasArea ? "New SFX zone from area" : "New SFX zone (Area tool: click two corners first)", 1);
+        pm.AddItem(hasArea ? "New Shard region from area" : "New Shard region (Area tool: click two corners first)", 2);
+        if (!hasArea)
+        {
+            for (int i = 0; i < 3; i++)
+            {
+                pm.SetItemDisabled(i, true);
+            }
+        }
+
+        pm.IdPressed += id =>
+        {
+            if (Area is { } a)
+            {
+                NewZoneFromArea?.Invoke((NewZoneKind)(int)id, _host.Facet,
+                    Math.Min(a.X0, a.X1), Math.Min(a.Y0, a.Y1),
+                    Math.Max(a.X0, a.X1), Math.Max(a.Y0, a.Y1));
+            }
+
+            pm.Hide();
+        };
+        pm.PopupHide += () => pm.QueueFree();
+        pm.Popup(new Rect2I((Vector2I)GetGlobalMousePosition(), new Vector2I(10, 10)));
+    }
+
     private readonly System.Collections.Generic.Dictionary<string, (PopupMenu Menu, int Id, Action<bool> Set)> _toggles = new();
 
     private void MenuToggle(MenuButton menu, string text, bool on, Action<bool> set)
@@ -778,6 +879,68 @@ public partial class WorldView : VBoxContainer
         }
     }
 
+    /// <summary>
+    /// Copies the Layers menu's items into the first-row duplicate, keeping
+    /// checks in sync both ways: presses in the copy drive the original
+    /// through SetToggle, and either popup refreshes the copy on open.
+    /// </summary>
+    private void MirrorLayersMenu()
+    {
+        if (_layersAgain == null || _layers == null)
+        {
+            return;
+        }
+
+        PopupMenu src = _layers.GetPopup();
+        PopupMenu dst = _layersAgain.GetPopup();
+        dst.Clear();
+        for (int s = 0; s < src.ItemCount; s++)
+        {
+            string text = src.GetItemText(s);
+            int id = dst.ItemCount;
+            dst.AddCheckItem(text, id);
+            dst.SetItemChecked(id, src.IsItemChecked(s));
+        }
+
+        dst.AboutToPopup += SyncLayersMirror;
+        dst.IdPressed += pressed =>
+        {
+            string text = dst.GetItemText((int)pressed);
+            bool? now = GetToggle(text);
+            if (now == null)
+            {
+                return;
+            }
+
+            if (SetToggle(text, !now.Value))
+            {
+                dst.SetItemChecked((int)pressed, !now.Value);
+            }
+        };
+        src.IdPressed += _ => SyncLayersMirror();
+    }
+
+    /// <summary>Copies the Layers menu's check states into the first-row duplicate.</summary>
+    private void SyncLayersMirror()
+    {
+        if (_layersAgain == null || _layers == null)
+        {
+            return;
+        }
+
+        PopupMenu src = _layers.GetPopup();
+        PopupMenu dst = _layersAgain.GetPopup();
+        for (int d = 0; d < dst.ItemCount; d++)
+        {
+            string text = dst.GetItemText(d);
+            bool? now = GetToggle(text);
+            if (now != null)
+            {
+                dst.SetItemChecked(d, now.Value);
+            }
+        }
+    }
+
     /// <summary>The Layers and Guides menu items by name (Land, Statics, Multis, Roofs, Objects, Grid, Altitude, Blocks, ...), for F3.</summary>
     internal System.Collections.Generic.IReadOnlyList<string> ToggleNames => new System.Collections.Generic.List<string>(_toggles.Keys);
 
@@ -797,6 +960,9 @@ public partial class WorldView : VBoxContainer
         RememberLayerTicks();
         return true;
     }
+
+    /// <summary>Fired by the PickRegion tool: facet and cell that was clicked.</summary>
+    public Action<int, int, int> RegionClick;
 
     /// <summary>
     /// The current tool on what the game's picking found under the pointer.
@@ -861,6 +1027,10 @@ public partial class WorldView : VBoxContainer
 
             case WorldTool.Area:
                 SetAreaCorner(o.X, o.Y);
+                return _status.Text;
+
+            case WorldTool.PickRegion:
+                RegionClick?.Invoke(facet, o.X, o.Y);
                 return _status.Text;
 
             case WorldTool.Measure:
@@ -972,6 +1142,24 @@ public partial class WorldView : VBoxContainer
 
     private const uint PreviewSerial = 0x4000_F001;
 
+    /// <summary>
+    /// Goes to a cell and draws one frame synchronously, then reports what the
+    /// live scene hook drew for a staged splat. The smoke check: _Process only
+    /// runs while this tab is visible, so a hidden world would never draw.
+    /// </summary>
+    internal (int Level, int Drawn) ProbeSplat(string name, int facet, int x, int y)
+    {
+        if (!EnsureBooted() || _canvas == null)
+        {
+            return (-2, 0);
+        }
+
+        GoTo(facet, x, y);
+        Vector2I size = _viewport?.Size ?? new Vector2I(800, 600);
+        _host.Draw(_canvas, size, null);
+        return _host.Scene == null ? (-2, 0) : _host.Scene.SplatDrawn(name);
+    }
+
     /// <summary>Places a multi (one the Multi Editor wrote to a stage, say) beside the view centre. False when the world is not up.</summary>
     public bool PreviewMulti(int id)
     {
@@ -1074,7 +1262,10 @@ public partial class WorldView : VBoxContainer
 
         sb.Append("(picked by the game's own PixelPicker)\n");
         var inspection = Inspection.Still("World", $"{o.X},{o.Y}", _data?.ArtImage(index), sb.ToString());
-        if (_data?.IsLoaded == true && o is Land or Static)
+        // Items hang their pixels in the static archive under the same
+        // LandCount + graphic index, so they bind like statics. Mobiles do
+        // not: their graphic is a body id, not static art.
+        if (_data?.IsLoaded == true && o is Land or Static or Item)
         {
             _data.CurrentArt = index;
             AssetActions.Add(inspection, _data, land ? AssetKind.Land : AssetKind.Static, o.Graphic, inspection.Image);

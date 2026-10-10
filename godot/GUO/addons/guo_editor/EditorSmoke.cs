@@ -79,6 +79,9 @@ public partial class EditorSmoke : Node
     public AiDock Ai { get; set; }
     public ArtDock Art { get; set; }
 
+    /// <summary>The Regions dock the plugin made, for the region-audio checks.</summary>
+    public RegionsDock Zones { get; set; }
+
     /// <summary>The UO Store tab the plugin made, for the store checks (ADR-0026 section 8).</summary>
     public StoreView Store { get; set; }
 
@@ -301,7 +304,18 @@ public partial class EditorSmoke : Node
                 // The art pipeline (ADR-0029): exchange folder, watcher, post-process, stub services.
                 if (StepArt())
                 {
+                    _stage = 62;
+                    _frames = 0;
+                }
+
+                break;
+
+            case 62:
+                // StaticStudio: pick a static, generate, save a theme variant, place, zone.
+                if (StepStudio())
+                {
                     _stage = 65;
+                    _frames = 0;
                 }
 
                 break;
@@ -1412,6 +1426,9 @@ public partial class EditorSmoke : Node
 
     private void BuildEditScript()
     {
+        // The Layers dock needs no booted world: check it even when the
+        // world below fails, so a world failure cannot hide a dock failure.
+        AddTerrainLayerSteps();
         if (!_world.IsBooted)
         {
             return;

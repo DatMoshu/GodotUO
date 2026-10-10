@@ -2,10 +2,12 @@
 // editor's Live map layer (ADR-0027). Read-only: it changes nothing.
 //
 // Request:  {"op":"mobiles","facet":0,"x0":1400,"y0":1550,"x1":1560,"y1":1700,"req":7,"as":"<staff character, optional>"}
-// Reply:    {"op":"mobiles","req":7,"ok":true,"facet":0,"x0":..,"y0":..,"x1":..,"y1":..,
+// Reply:    {"op":"mobiles","req":7,"ok":true,"facet":0,"x0":..,"y0":..,"y1":..,
 //            "count":2,"truncated":false,
 //            "mobiles":[{"serial":1,"name":"..","body":400,"x":..,"y":..,"z":..,"facet":0,
-//                        "isPlayer":true,"hits":50,"maxHits":50,"notoriety":1}]}
+//                        "isPlayer":true,"hits":50,"maxHits":50,"notoriety":1,
+//                        "direction":4,"hue":0,
+//                        "equip":[{"serial":2,"layer":13,"id":4188,"hue":0}]}]}
 // Refusal:  {"op":"mobiles","req":7,"ok":false,"error":"..."}
 //
 // Guards: authorised like the bridge's other ops (a loopback editor connection
@@ -22,9 +24,13 @@ namespace GUO.EditorBridge;
 
 internal static class LiveMobiles
 {
-    public const int MaxResults = 500;
+    // High enough that a town view is never cut: the editor polls its
+    // visible rectangle about once a second, and a truncated reply drops
+    // objects the next poll keeps (visible flicker). Loopback can carry it.
+    public const int MaxResults = 2000;
     public const int MaxSpan = 1024;
     public const int MinIntervalMs = 250;
+    private const int MaxEquip = 25;
 
     /// <summary>Refusal text if the request is not allowed, or null. Game thread.</summary>
     public static string Authorise(JsonNode msg, bool hello)
@@ -112,6 +118,28 @@ internal static class LiveMobiles
                 noto = Notoriety.CanBeAttacked;
             }
 
+            var equip = new JsonArray();
+            foreach (Item worn in m.Items)
+            {
+                if (worn == null || worn.Deleted)
+                {
+                    continue;
+                }
+
+                if (equip.Count >= MaxEquip)
+                {
+                    break;
+                }
+
+                equip.Add(new JsonObject
+                {
+                    ["serial"] = (uint)worn.Serial,
+                    ["layer"] = (int)worn.Layer,
+                    ["id"] = worn.ItemID,
+                    ["hue"] = worn.Hue,
+                });
+            }
+
             list.Add(new JsonObject
             {
                 ["serial"] = (uint)m.Serial,
@@ -123,6 +151,9 @@ internal static class LiveMobiles
                 ["hits"] = m.Hits,
                 ["maxHits"] = m.HitsMax,
                 ["notoriety"] = noto,
+                ["direction"] = (int)m.Direction & 7,
+                ["hue"] = m.Hue,
+                ["equip"] = equip,
             });
         }
 

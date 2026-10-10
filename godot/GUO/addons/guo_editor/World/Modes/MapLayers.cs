@@ -40,7 +40,15 @@ internal interface IMapLayer
 
 /// <summary>A live player or mobile, as the shard's bridge reports it.</summary>
 internal readonly record struct LiveMobile(string Name, int Facet, int X, int Y, int Z, bool Player,
-    uint Serial = 0, int Body = 0, int Hits = 0, int MaxHits = 0, int Notoriety = 0);
+    uint Serial = 0, int Body = 0, int Hits = 0, int MaxHits = 0, int Notoriety = 0,
+    int Direction = 0, int Hue = 0,
+    System.Collections.Generic.List<LiveEquip> Equip = null);
+
+/// <summary>One worn item on a live mobile.</summary>
+internal readonly record struct LiveEquip(uint Serial, int Layer, int Id, int Hue);
+
+/// <summary>A live top-level world item, as the shard's bridge reports it.</summary>
+internal readonly record struct LiveItem(int Facet, int X, int Y, int Z, uint Serial = 0, int Id = 0, int Hue = 0, int Amount = 0);
 
 /// <summary>Sextant and plain coordinates, the way ModernUO's sextant computes them.</summary>
 internal static class Coordinates
@@ -92,6 +100,7 @@ internal sealed class MapLayers
 {
     public readonly PlacesLayer Places;
     public readonly RegionsLayer Regions;
+    public readonly ThemeZonesLayer ThemeZones;
     public readonly SpawnsLayer Spawns;
     public readonly HousesLayer Houses;
     public readonly LiveLayer Live;
@@ -115,13 +124,14 @@ internal sealed class MapLayers
         Host = host;
         Places = new PlacesLayer(this);
         Regions = new RegionsLayer(this);
+        ThemeZones = new ThemeZonesLayer();
         Spawns = new SpawnsLayer(this);
         Houses = new HousesLayer(this);
         Live = new LiveLayer(this);
         Pins = new PinsLayer(this);
         Measure = new MeasureLayer();
         Route = new RouteLayer();
-        All = new List<IMapLayer> { Places, Regions, Spawns, Houses, Live, Pins, Measure, Route };
+        All = new List<IMapLayer> { Places, Regions, ThemeZones, Spawns, Houses, Live, Pins, Measure, Route };
         _shardFolder = EditorData.Setting("UO_SHARD_DIST", "");
     }
 
@@ -194,6 +204,25 @@ internal sealed class MapLayers
         p.Line(b, d, c, w);
         p.Line(d, e, c, w);
         p.Line(e, a, c, w);
+    }
+
+    internal static void Fill(IPaint p, LayerView v, float x0, float y0, float x1, float y1, Color c)
+    {
+        float zz = v.GroundZ((int)x0, (int)y0);
+        p.Quad(v.Project(x0, y0, zz), v.Project(x1, y0, zz), v.Project(x1, y1, zz), v.Project(x0, y1, zz), c);
+    }
+
+    /// <summary>Stable per-zone outline hue from the name (FNV-1a: the same zone keeps its colour).</summary>
+    internal static Color ZoneColour(string name)
+    {
+        uint h = 2166136261u;
+        foreach (char c in name ?? "")
+        {
+            h ^= c;
+            h *= 16777619u;
+        }
+
+        return Color.FromHsv((h % 360) / 360f, 0.85f, 1f);
     }
 }
 
@@ -302,7 +331,7 @@ internal sealed class RegionsLayer : IMapLayer
     public RegionsLayer(MapLayers m) => _m = m;
 
     public string Name => "Regions";
-    public string Summary => "ModernUO Data/regions.json, the project's, installed and deployed pack regions, outlined and named (labelled with their source)";
+    public string Summary => "shard/project/pack regions: type-coloured fill, one outline colour per zone, named (pack rows show their source)";
     public bool On { get; set; }
 
     public void Reload() => _regions = null;
@@ -482,7 +511,9 @@ internal sealed class RegionsLayer : IMapLayer
                 continue;
             }
 
-            Color c = ColourOf(r.Type);
+            Color fill = ColourOf(r.Type);
+            fill.A = 0.14f;
+            Color edge = r.Name.Length > 0 ? MapLayers.ZoneColour(r.Name) : ColourOf(r.Type);
             bool labelled = false;
             foreach (var a in r.Areas)
             {
@@ -491,13 +522,72 @@ internal sealed class RegionsLayer : IMapLayer
                     continue;
                 }
 
-                MapLayers.Outline(p, v, a.X0, a.Y0, a.X1 + 1, a.Y1 + 1, c, v.Minimap ? 1f : 2f);
+                if (!v.Minimap)
+                {
+                    MapLayers.Fill(p, v, a.X0, a.Y0, a.X1 + 1, a.Y1 + 1, fill);
+                }
+
+                MapLayers.Outline(p, v, a.X0, a.Y0, a.X1 + 1, a.Y1 + 1, edge, v.Minimap ? 1f : 2f);
                 if (!labelled && r.Name.Length > 0)
                 {
                     Vector2 at = v.Project((a.X0 + a.X1) / 2f, (a.Y0 + a.Y1) / 2f, v.GroundZ((a.X0 + a.X1) / 2, (a.Y0 + a.Y1) / 2));
                     if (v.Sees(at))
                     {
-                        p.Text(at, r.Type == "PackRegion" && !v.Minimap ? $"{r.Name} [{r.Source}]" : r.Name, c, v.Minimap ? 9 : 12);
+                        p.Text(at, r.Type == "PackRegion" && !v.Minimap ? $"{r.Name} [{r.Source}]" : r.Name, edge, v.Minimap ? 9 : 12);
+                        labelled = true;
+                    }
+                }
+            }
+        }
+    }
+}
+
+internal sealed class ThemeZonesLayer : IMapLayer
+{
+    public string Name => "Theme zones";
+    public string Summary => "active variant-atlas theme zones (what a painted theme covers), magenta";
+    public bool On { get; set; }
+
+    public IEnumerable<LayerItem> Items(int facet) => Enumerable.Empty<LayerItem>();
+
+    public void Draw(IPaint p, LayerView v)
+    {
+        var edge = new Color(1f, 0.3f, 1f);
+        var fill = new Color(1f, 0.3f, 1f, 0.12f);
+        foreach (GUO.Game.Managers.ThemeManager.ActiveTheme a in GUO.Game.Managers.ThemeManager.Active)
+        {
+            if (a?.Theme == null)
+            {
+                continue;
+            }
+
+            bool labelled = false;
+            foreach (GUO.Game.Managers.ThemeZone z in a.Zones)
+            {
+                if (z.Facet >= 0 && z.Facet != v.Facet)
+                {
+                    continue;
+                }
+
+                int x0 = Math.Min(z.X1, z.X2), y0 = Math.Min(z.Y1, z.Y2);
+                int x1 = Math.Max(z.X1, z.X2), y1 = Math.Max(z.Y1, z.Y2);
+                if (!v.SeesBox(x0, y0, x1 + 1, y1 + 1))
+                {
+                    continue;
+                }
+
+                if (!v.Minimap)
+                {
+                    MapLayers.Fill(p, v, x0, y0, x1 + 1, y1 + 1, fill);
+                }
+
+                MapLayers.Outline(p, v, x0, y0, x1 + 1, y1 + 1, edge, v.Minimap ? 1f : 2f);
+                if (!labelled)
+                {
+                    Vector2 at = v.Project((x0 + x1) / 2f, (y0 + y1) / 2f, v.GroundZ((x0 + x1) / 2, (y0 + y1) / 2));
+                    if (v.Sees(at))
+                    {
+                        p.Text(at, $"theme:{a.Theme.Name}", edge, v.Minimap ? 9 : 12);
                         labelled = true;
                     }
                 }

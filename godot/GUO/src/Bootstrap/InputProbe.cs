@@ -114,6 +114,13 @@ internal static class InputProbe
     }
 
     /// <summary>
+    /// Upstream's own -username/-password/-autologin path drives the login,
+    /// so EnterTheWorld must not type or click: its keystrokes would land in
+    /// whatever screen autologin is on. --autologin sets it (layer_shot.bat).
+    /// </summary>
+    public static bool AutoLogin { get; set; }
+
+    /// <summary>
     /// The character to play, by name, or null for whichever the character
     /// list has selected -- the last one played, which is what a person's
     /// own playtest expects. --character sets it: the shard does not refuse
@@ -203,26 +210,33 @@ internal static class InputProbe
 
         await Frames(host, settleFrames);
 
-        GD.Print("[GUO] input probe: typing the account");
+        if (!AutoLogin)
+        {
+            GD.Print("[GUO] input probe: typing the account");
 
-        await Click(host, AccountField);
-        await Type(host, account);
+            await Click(host, AccountField);
+            await Type(host, account);
 
-        await Click(host, PasswordField);
-        await Type(host, password);
+            await Click(host, PasswordField);
+            await Type(host, password);
 
-        GD.Print("[GUO] input probe: clicking Login");
+            GD.Print("[GUO] input probe: clicking Login");
 
-        await Click(host, LoginButton);
+            await Click(host, LoginButton);
 
-        // The handshake, then the shard list.
-        await Frames(host, 120);
+            // The handshake, then the shard list.
+            await Frames(host, 120);
 
-        GD.Print("[GUO] input probe: selecting the shard");
+            GD.Print("[GUO] input probe: selecting the shard");
 
-        await Click(host, ShardEntry);
+            await Click(host, ShardEntry);
 
-        await Frames(host, 180);
+            await Frames(host, 180);
+        }
+        else
+        {
+            GD.Print("[GUO] input probe: autologin drives; waiting for the world");
+        }
 
         // What comes next depends on the account, not on the probe. The first
         // run makes the character and the client goes straight into creation;
@@ -230,8 +244,37 @@ internal static class InputProbe
         // character on it. Reading which gump is up is the only way to know:
         // walking the creation pages blind on a returning account pressed the
         // list's forward arrow with nothing chosen, and the probe sat at a
-        // loading screen for the rest of the run.
-        bool creating = Game.Managers.UIManager.GetGump<Game.UI.Gumps.Login.CharacterSelectionGump>() == null;
+        // loading screen for the rest of the run. The list can lag behind a
+        // slow shard (world saves stall it), so poll for it instead of
+        // deciding on one frame; --autologin may already have walked past it.
+        bool creating = true;
+        bool sawList = false;
+        for (int i = 0; i < 150; i++)
+        {
+            if (Client.Game.UO.World.InGame)
+            {
+                await Frames(host, 240);
+                return;
+            }
+
+            if (Game.Managers.UIManager.GetGump<Game.UI.Gumps.Login.CharacterSelectionGump>() != null)
+            {
+                creating = false;
+                sawList = true;
+                break;
+            }
+
+            await Frames(host, 2);
+        }
+
+        if (creating && !sawList && !Client.Game.UO.World.InGame)
+        {
+            // Neither the world nor the character list appeared (dead shard,
+            // rejected login): typing a name now would land nowhere, exactly
+            // the silent failure this guard replaces.
+            Check("the character list appeared", false, OpenLoginGumps());
+            return;
+        }
 
         if (!creating)
         {
@@ -265,6 +308,14 @@ internal static class InputProbe
                 await ClickGumpButton<Game.UI.Gumps.Login.CharacterSelectionGump>(host, 0, "New");
 
                 await Frames(host, 120);
+
+                if (FindControl<Game.UI.Gumps.CharCreation.CreateCharAppearanceGump>() == null)
+                {
+                    // A full account (or a missed New click) leaves no
+                    // creation UI: fail loud instead of naming the void.
+                    Check("character creation opened", false, OpenLoginGumps());
+                    return;
+                }
 
                 creating = true;
             }
@@ -313,6 +364,436 @@ internal static class InputProbe
     /// Zero -- the default -- skips it, so an ordinary playtest stays short.
     /// </summary>
     public static int EndureSeconds { get; set; }
+
+    /// <summary>
+    /// A map target for walk-to runs ("x,y[,z]"): log in, pathfind there with
+    /// the client's own pathfinder, and stop. Null for the ordinary session.
+    /// </summary>
+    public static string WalkToTarget { get; set; }
+
+    /// <summary>Staged sound/music ids a walk-to run plays on arrival (live audio proof).</summary>
+    public static int? WalkToSound { get; set; }
+
+    /// <summary>Staged music id a walk-to run plays on arrival (live audio proof).</summary>
+    public static int? WalkToMusic { get; set; }
+    public static string WalkToMusicExpect { get; set; } = "";
+
+    /// <summary>Staged splat a walk-to run clicks on arrival (live picking proof).</summary>
+    public static string WalkToClickSplat { get; set; }
+
+    /// <summary>Voice profile a walk-to run speaks with (live TTS proof).</summary>
+    public static string WalkToVoice { get; set; }
+
+    /// <summary>Line a walk-to run speaks on arrival (live TTS proof).</summary>
+    public static string WalkToSay { get; set; }
+
+    /// <summary>Seconds a walk-to run listens for voiced mobiles (live mob-voice proof).</summary>
+    public static int WalkToHearSecs { get; set; }
+
+    /// <summary>Line delivered as the nearest mapped mobile (mob path proof).</summary>
+    public static string WalkToVoiceFake { get; set; }
+
+    /// <summary>Design a voice for the nearest unmapped mobile first (design proof).</summary>
+    public static bool WalkToDesignNearby { get; set; }
+
+    /// <summary>Theme folder, name and zone a walk-to run applies on arrival (live theme proof).</summary>
+    public static string WalkToThemeDir { get; set; }
+
+    /// <summary>Theme folder, name and zone a walk-to run applies on arrival (live theme proof).</summary>
+    public static string WalkToTheme { get; set; }
+
+    /// <summary>Theme folder, name and zone a walk-to run applies on arrival (live theme proof).</summary>
+    public static string WalkToThemeZone { get; set; }
+
+    /// <summary>
+    /// Log in, walk to <see cref="WalkToTarget"/> and stop, for a screenshot
+    /// of a particular place (a staged splat's site, say). The walk is the
+    /// client's own pathfinder, unsteered; arrival is within 2 tiles.
+    /// </summary>
+    public static async System.Threading.Tasks.Task RunWalkTo(Node host)
+    {
+        await EnterTheWorld(host, 200);
+
+        // The profile restores its saved window position at login, which wins
+        // over the startup pin and has left scripted windows where no screen
+        // covers them. Re-assert the pin now that the world is up.
+        if (GameController.PinnedWindowPosition.HasValue)
+        {
+            Godot.DisplayServer.WindowSetPosition(GameController.PinnedWindowPosition.Value);
+        }
+
+        Game.GameObjects.PlayerMobile player = Client.Game.UO.World.Player;
+        Check(
+            "the character is in the world",
+            Client.Game.UO.World.InGame && player != null,
+            player == null ? "no player" : $"{player.Name} at {player.X},{player.Y}"
+        );
+
+        if (!Client.Game.UO.World.InGame || player == null)
+        {
+            return;
+        }
+
+        string[] parts = (WalkToTarget ?? "").Split(',');
+        if (parts.Length < 2
+            || !int.TryParse(parts[0], out int gx)
+            || !int.TryParse(parts[1], out int gy))
+        {
+            Check("walk-to target parses", false, WalkToTarget ?? "");
+            return;
+        }
+
+        int gz = parts.Length > 2 && int.TryParse(parts[2], out int z) ? z : player.Z;
+        GD.Print($"[GUO] input probe: walking to {gx},{gy},{gz} from {player.X},{player.Y},{player.Z}");
+
+        bool started = player.Pathfinder.WalkTo(gx, gy, gz, 1);
+        if (!started)
+        {
+            // No walkable path (an island spawn, say): an admin teleport
+            // through the shard's own tools moves the character instead, and
+            // the walk resumes from wherever it lands. Ten minutes, then give
+            // up honestly rather than walking nowhere.
+            GD.Print($"[GUO] input probe: no path from {player.X},{player.Y}; waiting for an admin teleport");
+            int sx = player.X, sy = player.Y;
+            bool moved = false;
+            for (int wait = 0; wait < 120 && !moved; wait++)
+            {
+                await Frames(host, 50);
+                moved = player.X != sx || player.Y != sy;
+            }
+
+            Check("an admin teleport moved the character", moved, $"still at {player.X},{player.Y}");
+            if (!moved)
+            {
+                return;
+            }
+
+            GD.Print($"[GUO] input probe: teleported to {player.X},{player.Y},{player.Z}; retrying the walk");
+            started = player.Pathfinder.WalkTo(gx, gy, gz, 1);
+        }
+
+        Check("the pathfinder found a path", started, $"from {player.X},{player.Y}");
+        if (!started)
+        {
+            return;
+        }
+
+        // Autowalk is stepped by the game scene, so this only waits: up to
+        // eight minutes for a cross-map trek, checking every ~10 frames.
+        for (int wait = 0; wait < 48 * 60 && player.Pathfinder.AutoWalking; wait++)
+        {
+            await Frames(host, 10);
+        }
+
+        player.Pathfinder.StopAutoWalk();
+        int dist = System.Math.Max(System.Math.Abs(gx - player.X), System.Math.Abs(gy - player.Y));
+        GD.Print($"[GUO] input probe: walk-to ended at {player.X},{player.Y},{player.Z} ({dist} tiles off)");
+
+        // Live audio proof: the staged clips through the real audio path.
+        // A sound effect is seconds long, so it is checked while starting;
+        // music is read back from what is playing afterwards.
+        if (WalkToSound is int sfx)
+        {
+            Client.Game.Audio.PlaySound(sfx);
+            await Frames(host, 30);
+            string playing = Client.Game.Audio.NowPlaying;
+            Check($"staged sound {sfx} plays", playing.Contains($"sound:pack-sound-{sfx}"), playing);
+        }
+
+        if (WalkToMusic is int mus)
+        {
+            Client.Game.Audio.PlayMusic(mus);
+            await Frames(host, 60);
+            string playing = Client.Game.Audio.NowPlaying;
+            Check($"staged music {mus} plays", playing.Contains("music:"), playing);
+        }
+
+        // Live music-zone proof: standing in a zone starts its round-robin;
+        // waiting for the second track proves advance-on-end (cycling).
+        if (!string.IsNullOrWhiteSpace(WalkToMusicExpect))
+        {
+            string status = "";
+            for (int i = 0; i < 120 && !status.Contains(WalkToMusicExpect); i++)
+            {
+                await Frames(host, 30);
+                status = GUO.IO.Audio.MusicZones.Status ?? "";
+            }
+
+            Check($"music zone plays '{WalkToMusicExpect}'", status.Contains(WalkToMusicExpect), status);
+        }
+
+        // Live theme proof: activate the theme over its zone and repaint.
+        // Themed statics keep the world's own pixels (chunk meshes refresh),
+        // so the screenshot afterwards is the evidence.
+        if (!string.IsNullOrWhiteSpace(WalkToTheme))
+        {
+            string path = System.IO.Path.Combine(WalkToThemeDir ?? "", WalkToTheme + ".theme.json");
+            if (!System.IO.File.Exists(path))
+            {
+                path = System.IO.Path.Combine(WalkToThemeDir ?? "", WalkToTheme + ".json");
+            }
+
+            Check($"theme {WalkToTheme} loads", System.IO.File.Exists(path), path);
+            if (System.IO.File.Exists(path))
+            {
+                var theme = Game.Managers.Theme.Load(path);
+                var zones = new System.Collections.Generic.List<Game.Managers.ThemeZone>();
+                if (!string.IsNullOrWhiteSpace(WalkToThemeZone))
+                {
+                    string[] zoneParts = WalkToThemeZone.Split(',');
+                    if (zoneParts.Length >= 5
+                        && int.TryParse(zoneParts[0], out int f) && int.TryParse(zoneParts[1], out int x1)
+                        && int.TryParse(zoneParts[2], out int y1) && int.TryParse(zoneParts[3], out int x2)
+                        && int.TryParse(zoneParts[4], out int y2))
+                    {
+                        zones.Add(new Game.Managers.ThemeZone { Facet = f, X1 = x1, Y1 = y1, X2 = x2, Y2 = y2 });
+                    }
+                }
+
+                Check($"theme {WalkToTheme} has a zone", zones.Count > 0, WalkToThemeZone ?? "");
+                Game.Managers.ThemeManager.Activate(theme, zones);
+                Game.Managers.ThemeManager.Reapply(Client.Game.UO.World);
+                await Frames(host, 60);
+                int repainted = 0;
+                foreach (var chunk in Client.Game.UO.World.Map.GetUsedChunks())
+                {
+                    for (int x = 0; x < 8; x++)
+                    {
+                        for (int y = 0; y < 8; y++)
+                        {
+                            for (Game.GameObjects.GameObject o = chunk?.GetHeadObject(x, y); o != null; o = o.TNext)
+                            {
+                                if (o is Game.GameObjects.Static && o.Graphic >= 0xF000)
+                                {
+                                    repainted++;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Check($"theme {WalkToTheme} repainted statics", repainted > 0, $"{repainted} themed");
+            }
+        }
+
+        // Live TTS proof: speak the line in the voice profile. Synthesis
+        // takes minutes (ComfyUI queue), so poll the driver status; the game
+        // stays responsive while it works.
+        if (!string.IsNullOrWhiteSpace(WalkToVoice) && !string.IsNullOrWhiteSpace(WalkToSay))
+        {
+            GUO.IO.Audio.VoiceManager.ProfileName = WalkToVoice;
+            GD.Print($"[GUO] voice: profiles in {GUO.IO.Audio.VoiceManager.ProfilesDir()}");
+            Game.GameActions.Say(WalkToSay);
+            bool spoke = false;
+            for (int i = 0; i < 120 && !spoke; i++)
+            {
+                await Frames(host, 30);
+                string st = GUO.IO.Audio.VoiceManager.Status;
+                spoke = st.StartsWith("playing") || st.StartsWith("ready") || st.StartsWith("done");
+                if (st.StartsWith("error"))
+                {
+                    break;
+                }
+            }
+
+            Check($"voice speaks '{WalkToSay}'", spoke, GUO.IO.Audio.VoiceManager.Status);
+        }
+
+        // Design proof: the nearest mobile without a mapped voice gets an
+        // LLM-designed voice (description + sample + map rule), then speaks.
+        if (WalkToDesignNearby && !string.IsNullOrWhiteSpace(WalkToVoiceFake))
+        {
+            Game.GameObjects.Mobile candidate = null;
+            int candidateDist = int.MaxValue;
+            foreach (Game.GameObjects.Mobile mob in Client.Game.UO.World.Mobiles.Values)
+            {
+                if (ReferenceEquals(mob, Client.Game.UO.World.Player))
+                {
+                    continue;
+                }
+
+                if (!string.IsNullOrWhiteSpace(GUO.IO.Audio.VoiceManager.ResolveRule(mob.Serial, mob.Name, mob.Graphic)))
+                {
+                    continue;
+                }
+
+                int d = System.Math.Max(System.Math.Abs(mob.X - Client.Game.UO.World.Player.X),
+                    System.Math.Abs(mob.Y - Client.Game.UO.World.Player.Y));
+                if (d < candidateDist)
+                {
+                    candidateDist = d;
+                    candidate = mob;
+                }
+            }
+
+            Check("an unmapped mobile is nearby", candidate != null,
+                candidate == null ? "none" : $"{candidate.Name} body {candidate.Graphic} at {candidateDist}");
+            if (candidate != null)
+            {
+                GUO.IO.Audio.VoiceManager.DesignVoice((int)candidate.Serial, candidate.Name,
+                    candidate.Graphic, candidate.GetType().Name);
+                bool designed = false;
+                for (int i = 0; i < 1200 && !designed; i++)
+                {
+                    await Frames(host, 30);
+                    string st = GUO.IO.Audio.VoiceManager.Status;
+                    designed = st.StartsWith("designed");
+                    if (st.StartsWith("error"))
+                    {
+                        break;
+                    }
+                }
+
+                Check("voice designed for the mobile", designed, GUO.IO.Audio.VoiceManager.Status);
+            }
+        }
+
+        // Deterministic mob-path proof: deliver a line as the nearest mapped
+        // mobile through the real HandleMessage path (packet delivery itself
+        // is upstream's, proven by every chat line ever displayed).
+        if (!string.IsNullOrWhiteSpace(WalkToVoiceFake))
+        {
+            Game.GameObjects.Mobile best = null;
+            int bestDist = int.MaxValue;
+            foreach (Game.GameObjects.Mobile mob in Client.Game.UO.World.Mobiles.Values)
+            {
+                if (ReferenceEquals(mob, Client.Game.UO.World.Player))
+                {
+                    continue;
+                }
+
+                string voice = GUO.IO.Audio.VoiceManager.ResolveVoice(mob.Serial, mob.Name, mob.Graphic);
+                if (string.IsNullOrWhiteSpace(voice))
+                {
+                    continue;
+                }
+
+                int d = System.Math.Max(System.Math.Abs(mob.X - Client.Game.UO.World.Player.X),
+                    System.Math.Abs(mob.Y - Client.Game.UO.World.Player.Y));
+                if (d < bestDist)
+                {
+                    bestDist = d;
+                    best = mob;
+                }
+            }
+
+            Check("a mapped mobile is nearby", best != null, best == null ? "none" : $"{best.Name} body {best.Graphic} at {bestDist}");
+            if (best != null)
+            {
+                int heard = GUO.IO.Audio.VoiceManager.MobSpeaks;
+                Client.Game.UO.World.MessageManager.HandleMessage(best, WalkToVoiceFake, best.Name,
+                    0x03B2, Game.Data.MessageType.Regular, 3, Game.Data.TextType.OBJECT, true, "ENU");
+                for (int i = 0; i < 120 && GUO.IO.Audio.VoiceManager.MobSpeaks == heard; i++)
+                {
+                    await Frames(host, 30);
+                }
+
+                heard = GUO.IO.Audio.VoiceManager.MobSpeaks - heard;
+                Check("mob line voiced", heard > 0, $"{heard} voiced");
+                for (int i = 0; i < 120; i++)
+                {
+                    await Frames(host, 30);
+                    string st = GUO.IO.Audio.VoiceManager.Status;
+                    if (st.StartsWith("playing") || st.StartsWith("ready") || st.StartsWith("done"))
+                    {
+                        break;
+                    }
+
+                    if (st.StartsWith("error"))
+                    {
+                        break;
+                    }
+                }
+
+                Check("mob voice played", GUO.IO.Audio.VoiceManager.Status.StartsWith("playing")
+                    || GUO.IO.Audio.VoiceManager.Status.StartsWith("ready")
+                    || GUO.IO.Audio.VoiceManager.Status.StartsWith("done"),
+                    GUO.IO.Audio.VoiceManager.Status);
+            }
+        }
+
+        // Live mob-voice proof: loiter among mobiles and count voiced lines.
+        // Vendors greet on approach, so a bank run usually hears something;
+        // silence is reported, not hidden.
+        if (WalkToHearSecs > 0)
+        {
+            int heard = GUO.IO.Audio.VoiceManager.MobSpeaks;
+            long until = System.Environment.TickCount64 + WalkToHearSecs * 1000L;
+            while (System.Environment.TickCount64 < until
+                && GUO.IO.Audio.VoiceManager.MobSpeaks == heard)
+            {
+                await Frames(host, 30);
+            }
+
+            heard = GUO.IO.Audio.VoiceManager.MobSpeaks - heard;
+            Check($"mobiles spoke in voice ({WalkToHearSecs}s listen)", heard > 0, $"{heard} voiced");
+        }
+
+        // Live picking proof: click the splat's projected centre. Selection
+        // must become the splat, and a double click after it must be a safe
+        // no-op (unknown types must not crash the use/attack paths).
+        if (!string.IsNullOrWhiteSpace(WalkToClickSplat))
+        {
+            var scene = Client.Game.GetScene<Game.Scenes.GameScene>();
+            Vector2 at = scene == null ? new Vector2(-1, -1) : scene.SplatClickAt(WalkToClickSplat);
+            Check($"splat {WalkToClickSplat} has a click point", at.X >= 0 && at.Y >= 0, $"{at}");
+            if (at.X >= 0 && at.Y >= 0)
+            {
+                // Closed-loop: the camera can drift under a parked mouse
+                // (peek), so re-aim at the splat's fresh projection until it
+                // selects or time runs out.
+                scene.Camera.PeekingToMouse = false;
+                GD.Print("[GUO] splat click: hands off the mouse for ~30 s; "
+                    + "the real cursor fights the synthetic one and the miss reads as a failure");
+                bool picked = false, tracked = false;
+                for (int i = 0; i < 10 && !picked; i++)
+                {
+                    at = scene.SplatClickAt(WalkToClickSplat);
+                    await ClickWorld(host, at);
+                    await Frames(host, 10);
+                    var tm = Game.SelectedObject.TranslatedMousePositionByViewport;
+                    var center = scene.SplatTileCenter(WalkToClickSplat);
+                    tracked = System.Math.Abs(tm.X - center.X) + System.Math.Abs(tm.Y - center.Y) <= 6;
+                    picked = tracked && Game.SelectedObject.Object is Game.GameObjects.SplatObject;
+                    GD.Print($"[GUO] splat click {i}: at {at}, mouse-tile {tm.X},{tm.Y} "
+                        + $"vs tile {center.X},{center.Y}, tracked={tracked}, "
+                        + $"selected {Game.SelectedObject.Object?.GetType().Name ?? "nothing"}");
+                }
+
+                Check("the mouse tracks the synthetic click", tracked,
+                    "the real cursor moved during the check; hands off and rerun");
+
+                Check($"click selects the splat", picked,
+                    Game.SelectedObject.Object?.GetType().Name ?? "nothing selected");
+                await DoubleClickWorld(host, at);
+                await Frames(host, 30);
+                Check("double click on a splat is safe",
+                    Client.Game.UO.World.InGame && Client.Game.UO.World.Player != null, "left the world");
+            }
+        }
+
+        GD.Print($"[GUO] window: mode {Godot.DisplayServer.WindowGetMode()}, "
+            + $"pos {Godot.DisplayServer.WindowGetPosition()}, size {Godot.DisplayServer.WindowGetSize()}, "
+            + $"focused {Godot.DisplayServer.WindowIsFocused()}, "
+            + $"screens {Godot.DisplayServer.GetScreenCount()}");
+        Check("arrived at the walk-to target", dist <= 2, $"{player.X},{player.Y} vs {gx},{gy}");
+
+        int passed = 0;
+        foreach ((string _, bool ok) in Checks)
+        {
+            if (ok)
+            {
+                passed++;
+            }
+            else
+            {
+                GD.PrintErr("[GUO] probe FAILED (walk-to)");
+            }
+        }
+
+        Passed = passed == Checks.Count;
+        GD.Print($"[GUO] input probe: {passed}/{Checks.Count} checks passed");
+    }
 
     /// <summary>Everything the run does once the character is walking.</summary>
     private static async System.Threading.Tasks.Task RunTheRest(Node host)
@@ -2477,6 +2958,20 @@ internal static class InputProbe
         Send(new InputEventKey { Keycode = Key.Enter, Pressed = false });
     }
 
+    /// <summary>
+    /// Say into the chat bar: opens it first. Bare keystrokes otherwise go
+    /// to the hotkeys and the closing enter only opens an empty bar, so a
+    /// lone Say never sends (layer shots went nowhere on it).
+    /// </summary>
+    public static async System.Threading.Tasks.Task SayChat(Node host, string what)
+    {
+        Send(new InputEventKey { Keycode = Key.Enter, Pressed = true });
+        await Frames(host, 2);
+        Send(new InputEventKey { Keycode = Key.Enter, Pressed = false });
+        await Frames(host, 4);
+        await Say(host, what);
+    }
+
     /// <summary>Let the client run for a number of drawn frames.</summary>
     public static async System.Threading.Tasks.Task Wait(Node host, int frames) =>
         await Frames(host, frames);
@@ -2786,6 +3281,32 @@ internal static class InputProbe
     /// selects (a city), the handler is always called, since nothing visible
     /// tells whether the click took.
     /// </summary>
+    /// <summary>Which login/creation gumps are open right now, for failure lines.</summary>
+    private static string OpenLoginGumps()
+    {
+        var open = new System.Collections.Generic.List<string>();
+        void Probe<T>(string n) where T : Game.UI.Controls.Control
+        {
+            try
+            {
+                if (Game.Managers.UIManager.GetGump<T>() != null)
+                {
+                    open.Add(n);
+                }
+            }
+            catch (System.Exception)
+            {
+            }
+        }
+
+        Probe<Game.UI.Gumps.Login.LoginGump>("login");
+        Probe<Game.UI.Gumps.Login.CharacterSelectionGump>("charsel");
+        Probe<Game.UI.Gumps.CharCreation.CreateCharAppearanceGump>("appearance");
+        Probe<Game.UI.Gumps.CharCreation.CreateCharProfessionGump>("profession");
+        Probe<Game.UI.Gumps.CharCreation.CreateCharSelectionCityGump>("city");
+        return open.Count == 0 ? "none of login/charsel/appearance/profession/city" : string.Join(",", open);
+    }
+
     private static async System.Threading.Tasks.Task ClickChildButton<T>(Node host, int buttonId, string what, bool leaves)
         where T : Game.UI.Controls.Control
     {
@@ -3491,6 +4012,73 @@ internal static class InputProbe
             });
             await Frames(host, 2);
         }
+    }
+
+    /// <summary>
+    /// A click aimed at the world (viewport coordinates). Gump clicks go
+    /// through <see cref="Click"/> untouched, but world picking reads
+    /// <c>Mouse.Position</c>, which divides the event by <c>DpiScale</c> -- so
+    /// a viewport point has to be multiplied back up or it lands short on a
+    /// scaled display (and the click misses by a growing margin).
+    /// </summary>
+    private static async System.Threading.Tasks.Task ClickWorld(Node host, Vector2 at)
+    {
+        Vector2 scaled = at * Client.Game.DpiScale;
+        // Belt and suspenders: the event for the GUI, and the game's mouse
+        // state direct (synthetic motion does not always move it -- what the
+        // picking reads stayed on the user's real cursor in the splat runs).
+        Input.Mouse.Position = new GUO.Compat.Point((int)at.X, (int)at.Y);
+        Send(new InputEventMouseMotion { Position = scaled });
+        await Frames(host, 2);
+
+        Send(new InputEventMouseButton
+        {
+            ButtonIndex = MouseButton.Left,
+            Position = scaled,
+            Pressed = true,
+        });
+
+        await Frames(host, 6);
+
+        Send(new InputEventMouseButton
+        {
+            ButtonIndex = MouseButton.Left,
+            Position = scaled,
+            Pressed = false,
+        });
+
+        await Frames(host, 2);
+    }
+
+    private static async System.Threading.Tasks.Task DoubleClickWorld(Node host, Vector2 at)
+    {
+        Vector2 scaled = at * Client.Game.DpiScale;
+        Input.Mouse.Position = new GUO.Compat.Point((int)at.X, (int)at.Y);
+        Send(new InputEventMouseMotion { Position = scaled });
+        await Frames(host, 2);
+
+        for (int i = 0; i < 2; i++)
+        {
+            Send(new InputEventMouseButton
+            {
+                ButtonIndex = MouseButton.Left,
+                Position = scaled,
+                Pressed = true,
+            });
+
+            await Frames(host, 4);
+
+            Send(new InputEventMouseButton
+            {
+                ButtonIndex = MouseButton.Left,
+                Position = scaled,
+                Pressed = false,
+            });
+
+            await Frames(host, 4);
+        }
+
+        await Frames(host, 40);
     }
 
     private static async System.Threading.Tasks.Task Click(Node host, Vector2 at)

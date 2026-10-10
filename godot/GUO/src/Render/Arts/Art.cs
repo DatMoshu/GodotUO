@@ -52,6 +52,25 @@ namespace GUO.Renderer.Arts
         public ref readonly SpriteInfo GetArt(uint idx)
             => ref Get(idx + 0x4000);
 
+        /// <summary>
+        /// Forgets one cached sprite so the next draw re-reads it from the
+        /// loader (the repaint gump's override files land between draws).
+        /// The old atlas rect leaks; testing-grade repaints don't care.
+        /// </summary>
+        public void Refresh(uint idx)
+        {
+            if (idx < _spriteInfos.Length)
+            {
+                _spriteInfos[idx] = default;
+            }
+        }
+
+        /// <summary>Forgets one static's sprite (graphic without the 0x4000 base).</summary>
+        public void RefreshStatic(ushort graphic) => Refresh(0x4000u + graphic);
+
+        /// <summary>Forgets one land tile's sprite.</summary>
+        public void RefreshLand(ushort graphic) => Refresh(graphic);
+
         private ref readonly SpriteInfo Get(uint idx)
         {
             if (idx >= _spriteInfos.Length)

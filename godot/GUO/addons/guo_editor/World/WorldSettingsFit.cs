@@ -23,6 +23,7 @@ public partial class WorldView
         WorldTool.MoveObject => "Move object",
         WorldTool.DeleteObject => "Delete object",
         WorldTool.Area => "Area (select for a multi)",
+        WorldTool.PickRegion => "Pick region",
         _ => tool.ToString(),
     };
 

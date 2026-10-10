@@ -54,6 +54,10 @@ namespace GUO.Renderer
         private const string ADD_SHADER_PATH = "res://src/Render/shaders/uo_hue_add.gdshader";
         private const string MESH_SHADER_PATH = "res://src/Render/shaders/uo_hue_mesh.gdshader";
         private const string LAND_ARRAY_SHADER_PATH = "res://src/Render/shaders/uo_hue_land_array.gdshader";
+        private const string SPLAT_SHADER_PATH =
+            "res://src/Render/shaders/splat_2d.gdshader";
+        private const string LAYER_SHADER_PATH =
+            "res://src/Render/shaders/layer_2d.gdshader";
 
         private static readonly float[] _cornerOffsetX = new float[] { 0.0f, 1.0f, 0.0f, 1.0f };
         private static readonly float[] _cornerOffsetY = new float[] { 0.0f, 0.0f, 1.0f, 1.0f };
@@ -62,6 +66,9 @@ namespace GUO.Renderer
         private static readonly int[] _quadIndices = { 0, 1, 2, 1, 3, 2 };
 
         private readonly Rid _parent;
+
+        /// <summary>Where the current batch lands (the screen host, or a render target's canvas item).</summary>
+        internal Rid CurrentCanvasItem => _target;
 
         // Where draws currently land: the screen host, or a render target's
         // canvas item while one is set.
@@ -83,6 +90,14 @@ namespace GUO.Renderer
         // state pushed through SetOnAllMaterials, and a material that appears
         // later has already missed the pushes.
         private readonly ShaderMaterial _meshMaterial;
+
+        /// <summary>The gaussian-splat shader: no texture, no hue uniforms,
+        /// so it is built with the others and never pushed to.</summary>
+        private readonly ShaderMaterial _splatMaterial;
+
+        /// <summary>The terrain-layer shader: plain textured quad times
+        /// vertex colour, like the splat one (built once, never pushed to).</summary>
+        private readonly ShaderMaterial _layerMaterial;
 
         // _currentMaterial is what SPRITES draw under, which SetBlendState
         // chooses. _nextMaterial is what the next item created will carry, and
@@ -125,6 +140,8 @@ namespace GUO.Renderer
 
             _material = new ShaderMaterial { Shader = shader };
             _meshMaterial = new ShaderMaterial { Shader = GD.Load<Shader>(MESH_SHADER_PATH) };
+            _splatMaterial = new ShaderMaterial { Shader = GD.Load<Shader>(SPLAT_SHADER_PATH) };
+            _layerMaterial = new ShaderMaterial { Shader = GD.Load<Shader>(LAYER_SHADER_PATH) };
             // Epic B (--merged-land=array): the land mesh shader on a Texture2DArray.
             _landArrayMaterial = new ShaderMaterial { Shader = GD.Load<Shader>(LAND_ARRAY_SHADER_PATH) };
             _currentMaterial = _nextMaterial = _material;
@@ -309,6 +326,8 @@ namespace GUO.Renderer
             // PORT DEVIATION (GUO): the land-array material (B4) and the id
             // mirror's canvas item (ADR-0023) are this batcher's too.
             _landArrayMaterial?.Dispose();
+            _splatMaterial?.Dispose();
+            _layerMaterial?.Dispose();
 
             if (_idItem.IsValid)
             {
@@ -642,6 +661,37 @@ void fragment() {
             Commands++;
             Count(2, default);
             RenderingServer.CanvasItemAddMesh(_current, mesh.GetRid(), Transform2D.Identity, Colors.White, default);
+        }
+
+        /// <summary>
+        /// A gaussian-splat mesh (staged ComfyUI multis) on the batcher's
+        /// current item, under the splat material: the same call shape as
+        /// DrawLandMesh, but texturless (the shader reads vertex colour, not
+        /// a texture) and in tile space (the view transform zooms it).
+        /// </summary>
+        public void DrawSplatMesh(ArrayMesh mesh)
+        {
+            EnsureStarted();
+            EnsureMaterial(_splatMaterial);
+            FlushRun();
+            Commands++;
+            Count(2, default);
+            RenderingServer.CanvasItemAddMesh(_current, mesh.GetRid(), Transform2D.Identity, Colors.White, default);
+        }
+
+        /// <summary>
+        /// A terrain-layer quad (ComfyUI underlays/overlays) on the batcher's
+        /// current item, under the layer shader: plain texture times vertex
+        /// colour, normal alpha blending. Same call shape as DrawSplatMesh.
+        /// </summary>
+        public void DrawLayerMesh(ArrayMesh mesh, Texture2D texture)
+        {
+            EnsureStarted();
+            EnsureMaterial(_layerMaterial);
+            FlushRun();
+            Commands++;
+            Count(2, default);
+            RenderingServer.CanvasItemAddMesh(_current, mesh.GetRid(), Transform2D.Identity, Colors.White, texture.GetRid());
         }
 
         /// <summary>

@@ -1,0 +1,451 @@
+{
+ "92": {
+  "class_type": "SplatToFile3D",
+  "inputs": {
+   "splat": [
+    "107",
+    0
+   ],
+   "format": "ply"
+  }
+ },
+ "100": {
+  "class_type": "TripoSplatConditioning",
+  "inputs": {
+   "clip_vision": [
+    "104",
+    0
+   ],
+   "vae": [
+    "106",
+    0
+   ],
+   "image": [
+    "103",
+    0
+   ]
+  }
+ },
+ "101": {
+  "class_type": "KSampler",
+  "inputs": {
+   "model": [
+    "111",
+    0
+   ],
+   "positive": [
+    "100",
+    0
+   ],
+   "negative": [
+    "100",
+    1
+   ],
+   "latent_image": [
+    "100",
+    2
+   ],
+   "seed": 1109078204161996,
+   "steps": 20,
+   "cfg": 3,
+   "sampler_name": "euler",
+   "scheduler": "simple",
+   "denoise": 1
+  }
+ },
+ "102": {
+  "class_type": "ComfySwitchNode",
+  "inputs": {
+   "on_true": [
+    "113",
+    0
+   ],
+   "switch": true
+  }
+ },
+ "103": {
+  "class_type": "TripoSplatPreprocessImage",
+  "inputs": {
+   "image": [
+    "234",
+    0
+   ],
+   "mask": [
+    "102",
+    0
+   ],
+   "erode_radius": 1,
+   "size": 1024
+  }
+ },
+ "104": {
+  "class_type": "CLIPVisionLoader",
+  "inputs": {
+   "clip_name": "dino_v3_vit_h.safetensors"
+  }
+ },
+ "105": {
+  "class_type": "VAELoader",
+  "inputs": {
+   "vae_name": "triposplat_vae_decoder_fp16.safetensors"
+  }
+ },
+ "106": {
+  "class_type": "VAELoader",
+  "inputs": {
+   "vae_name": "flux2-vae.safetensors"
+  }
+ },
+ "107": {
+  "class_type": "VAEDecodeTripoSplat",
+  "inputs": {
+   "samples": [
+    "101",
+    0
+   ],
+   "vae": [
+    "105",
+    0
+   ],
+   "num_gaussians": 64800,
+   "seed": 790219963981400
+  }
+ },
+ "110": {
+  "class_type": "UNETLoader",
+  "inputs": {
+   "unet_name": "triposplat_fp16.safetensors",
+   "weight_dtype": "default"
+  }
+ },
+ "111": {
+  "class_type": "ComfySwitchNode",
+  "inputs": {
+   "on_false": [
+    "110",
+    0
+   ],
+   "on_true": [
+    "112",
+    0
+   ],
+   "switch": true
+  }
+ },
+ "112": {
+  "class_type": "TripoSplatSamplingPreview",
+  "inputs": {
+   "model": [
+    "110",
+    0
+   ],
+   "vae": [
+    "105",
+    0
+   ],
+   "octree_level": 5,
+   "num_gaussians": 36000,
+   "yaw": 90,
+   "pitch": 15,
+   "point_size": 2
+  }
+ },
+ "113": {
+  "class_type": "RemoveBackground",
+  "inputs": {
+   "bg_removal_model": [
+    "114",
+    0
+   ],
+   "image": [
+    "234",
+    0
+   ]
+  }
+ },
+ "114": {
+  "class_type": "LoadBackgroundRemovalModel",
+  "inputs": {
+   "bg_removal_name": "birefnet.safetensors"
+  }
+ },
+ "115": {
+  "class_type": "InvertMask",
+  "inputs": {
+   "mask": [
+    "113",
+    0
+   ]
+  }
+ },
+ "116": {
+  "class_type": "JoinImageWithAlpha",
+  "inputs": {
+   "image": [
+    "234",
+    0
+   ],
+   "alpha": [
+    "115",
+    0
+   ]
+  }
+ },
+ "132": {
+  "class_type": "LoadImage",
+  "inputs": {
+   "image": "512bw.png",
+   "upload": "image"
+  }
+ },
+ "133": {
+  "class_type": "PreviewImage",
+  "inputs": {
+   "images": [
+    "234",
+    0
+   ]
+  }
+ },
+ "134": {
+  "class_type": "JarJarSubmit3D",
+  "inputs": {
+   "model_3d": [
+    "92",
+    0
+   ],
+   "prompt": [
+    "138",
+    0
+   ],
+   "api_url": "https://meesajarjar.com/foundry-api.php",
+   "filename": ""
+  }
+ },
+ "138": {
+  "class_type": "PrimitiveStringMultiline",
+  "inputs": {
+   "value": "an armoire, open, medieval, single object, black background"
+  }
+ },
+ "144": {
+  "class_type": "PreviewGaussianSplat",
+  "inputs": {
+   "model_3d": [
+    "92",
+    0
+   ],
+   "viewport_state": "",
+   "width": 1024,
+   "height": 1024
+  }
+ },
+ "145": {
+  "class_type": "PreviewImage",
+  "inputs": {
+   "images": [
+    "116",
+    0
+   ]
+  }
+ },
+ "221": {
+  "class_type": "KSamplerSelect",
+  "inputs": {
+   "sampler_name": "euler"
+  }
+ },
+ "222": {
+  "class_type": "UNETLoader",
+  "inputs": {
+   "unet_name": "flux-2-klein-4b-fp8.safetensors",
+   "weight_dtype": "default"
+  }
+ },
+ "223": {
+  "class_type": "CLIPLoader",
+  "inputs": {
+   "clip_name": "qwen_3_4b.safetensors",
+   "type": "flux2",
+   "device": "default"
+  }
+ },
+ "224": {
+  "class_type": "VAELoader",
+  "inputs": {
+   "vae_name": "flux2-vae.safetensors"
+  }
+ },
+ "225": {
+  "class_type": "EmptyFlux2LatentImage",
+  "inputs": {
+   "width": [
+    "230",
+    0
+   ],
+   "height": [
+    "230",
+    1
+   ],
+   "batch_size": 1
+  }
+ },
+ "226": {
+  "class_type": "Flux2Scheduler",
+  "inputs": {
+   "steps": 4,
+   "width": [
+    "230",
+    0
+   ],
+   "height": [
+    "230",
+    1
+   ]
+  }
+ },
+ "227": {
+  "class_type": "CLIPTextEncode",
+  "inputs": {
+   "clip": [
+    "223",
+    0
+   ],
+   "text": [
+    "138",
+    0
+   ]
+  }
+ },
+ "228": {
+  "class_type": "ConditioningZeroOut",
+  "inputs": {
+   "conditioning": [
+    "227",
+    0
+   ]
+  }
+ },
+ "229": {
+  "class_type": "ReferenceLatent",
+  "inputs": {
+   "conditioning": [
+    "228",
+    0
+   ],
+   "latent": [
+    "232",
+    0
+   ]
+  }
+ },
+ "230": {
+  "class_type": "GetImageSize",
+  "inputs": {
+   "image": [
+    "237",
+    0
+   ]
+  }
+ },
+ "231": {
+  "class_type": "ReferenceLatent",
+  "inputs": {
+   "conditioning": [
+    "227",
+    0
+   ],
+   "latent": [
+    "232",
+    0
+   ]
+  }
+ },
+ "232": {
+  "class_type": "VAEEncode",
+  "inputs": {
+   "pixels": [
+    "237",
+    0
+   ],
+   "vae": [
+    "224",
+    0
+   ]
+  }
+ },
+ "233": {
+  "class_type": "SamplerCustomAdvanced",
+  "inputs": {
+   "noise": [
+    "235",
+    0
+   ],
+   "guider": [
+    "236",
+    0
+   ],
+   "sampler": [
+    "221",
+    0
+   ],
+   "sigmas": [
+    "226",
+    0
+   ],
+   "latent_image": [
+    "225",
+    0
+   ]
+  }
+ },
+ "234": {
+  "class_type": "VAEDecode",
+  "inputs": {
+   "samples": [
+    "233",
+    0
+   ],
+   "vae": [
+    "224",
+    0
+   ]
+  }
+ },
+ "235": {
+  "class_type": "RandomNoise",
+  "inputs": {
+   "noise_seed": 331415740159777
+  }
+ },
+ "236": {
+  "class_type": "CFGGuider",
+  "inputs": {
+   "model": [
+    "222",
+    0
+   ],
+   "positive": [
+    "231",
+    0
+   ],
+   "negative": [
+    "229",
+    0
+   ],
+   "cfg": 1
+  }
+ },
+ "237": {
+  "class_type": "ImageScaleToTotalPixels",
+  "inputs": {
+   "image": [
+    "132",
+    0
+   ],
+   "upscale_method": "nearest-exact",
+   "megapixels": 0.25,
+   "resolution_steps": 1
+  }
+ }
+}
