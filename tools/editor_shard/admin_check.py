@@ -19,7 +19,9 @@ and checks, in order:
    delete), `admin_godview_find` finds on every facet, an unknown facet is
    refused, and neither runs without the token;
 7. the god view's actions (AD2b, admin_actions_check.py): a spawner's
-   Respawn and Clear with nobody logged in; then, with a game master lane
+   Respawn and Clear with nobody logged in; the hidden presence (AD2c) doing
+   Go there, Bring here, the paperdoll and Follow with nobody logged in, and
+   never in the world; then, with a game master lane
    character logged in by a headless client as the admin's own, Go there,
    Bring here, Open paperdoll and Follow, each seen in the god view and in
    that client; refusals in plain words; all of it audited (--no-client

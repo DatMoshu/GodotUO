@@ -3,7 +3,7 @@
 admin_commands lists the server's commands with access level, usage,
 description and the dangerous list's kind; admin_command runs one with nobody
 logged in, as the bridge's hidden admin mobile, and returns its output (MUO
-patch 0004). A dangerous command (shutdown, wipe, delete accounts, global
+patch 0005). A dangerous command (shutdown, wipe, delete accounts, global
 decorate, mass moves) is refused without its typed confirm word and with a
 wrong one; [Wipe with its word asks for a target, which the hidden mobile
 cannot give, so it is cancelled and nothing is wiped. "as" naming nobody
@@ -41,7 +41,7 @@ def run(check, bridge_cls, port: int, token: str) -> list[str]:
     check(listed.get("ok") is True and len(rows) > 50 and where.get("access") == "Counselor" and where.get("usage") == "Where"
           and "coordinates" in (where.get("description") or ""),
           f"admin_commands lists {len(rows)} commands with access level, usage and description ([Where: {where.get('access')})")
-    check(listed.get("output_available") is True, "the server has the output hook (MUO patch 0004)")
+    check(listed.get("output_available") is True, "the server has the output hook (MUO patch 0005)")
     check((rows.get("wipe") or {}).get("danger") == "wipe" and where.get("danger") is None
           and not any("<" in (r.get("description") or "") for r in rows.values()),
           "each command says whether it is on the dangerous list; descriptions are plain text")

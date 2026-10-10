@@ -42,6 +42,7 @@ public partial class EditorSmoke
     private Guid _godSpawner;
     private uint _godSpawnerSerial;
     private HashSet<uint> _godHorsesBefore = new();
+    private List<uint> _godHorses = new();
     private int _godActionMark;
     private string _setSecret;
     private int _setMaxAccounts;
@@ -262,8 +263,8 @@ public partial class EditorSmoke
             case 129:
             {
                 // AD2b: the spawner's Respawn button, through the tab. With the spawner selected Go there, Respawn and
-                // Clear are on (Bring here, the paperdoll and Follow take a mobile); with no staff character online the
-                // hint says Go there needs one, for a horse and for the spawner alike.
+                // Clear are on (Bring here, the paperdoll and Follow take a mobile). With no staff character online the
+                // hidden presence acts (AD2c) and the hint says so; for a horse, Bring here waits for its first spot.
                 GodViewPanel g = v.GodView;
                 if (!_admin.ContainsKey("godview_respawn_sent"))
                 {
@@ -272,10 +273,13 @@ public partial class EditorSmoke
                     _godHorsesBefore = g.Rows.Values.Where(r => (uint?)r["spawner"] == _godSpawnerSerial).Select(r => (uint)r["serial"]).ToHashSet();
                     _admin["godview_spawner_buttons"] = g.ActionsEnabled.ToDictionary(kv => kv.Key, kv => (object)kv.Value);
                     _admin["godview_spawner_buttons_ok"] = g.ActionsEnabled.Where(kv => kv.Value).Select(kv => kv.Key).OrderBy(k => k)
-                        .SequenceEqual(new[] { "Clear", "Go there", "Respawn" }) && g.ActionHint.Contains("No staff character is online");
+                        .SequenceEqual(new[] { "Clear", "Go there", "Respawn" }) && g.ActionHint.Contains("hidden presence acts");
                     g.Select(g.Rows.Values.Where(r => (uint?)r["spawner"] == _godSpawnerSerial).Select(r => (uint)r["serial"]).FirstOrDefault());
                     _admin["godview_npc_hint"] = g.ActionHint;
-                    _admin["godview_npc_hint_ok"] = g.ActionHint.Contains("No staff character is online") && g.StaffOnline.Count == 0;
+                    _admin["godview_npc_buttons"] = g.ActionsEnabled.ToDictionary(kv => kv.Key, kv => (object)kv.Value);
+                    _admin["godview_npc_hint_ok"] = g.ActionHint.Contains("hidden presence acts") && g.StaffOnline.Count == 0 && g.PresenceActs
+                        && g.ActionsEnabled.Where(kv => kv.Value).Select(kv => kv.Key).OrderBy(k => k)
+                            .SequenceEqual(g.PresenceAt == null ? new[] { "Follow", "Go there", "Open paperdoll" } : new[] { "Bring here", "Follow", "Go there", "Open paperdoll" });
                     g.Select(_godSpawnerSerial);
                     _godActionMark = g.ActionReplies;
                     _admin["godview_respawn_sent"] = g.Press("Respawn");
@@ -288,12 +292,86 @@ public partial class EditorSmoke
                 {
                     _admin["godview_respawn"] = g.LastAction.ToJsonString();
                     _admin["godview_respawned"] = true;
+                    // AD2c: with nobody logged in the hidden presence goes to the first horse.
+                    _godHorses = now.OrderBy(x => x).ToList();
+                    g.Select(_godHorses[0]);
                     _godActionMark = g.ActionReplies;
-                    _admin["godview_clear_sent"] = g.Press("Clear");
-                    AdminNext(130);
+                    _admin["presence_goto_sent"] = g.Press("Go there");
+                    AdminNext(165);
                 }
                 else AdminTimeout("Respawn never answered with new creatures in the god view");
 
+                break;
+            }
+
+            case 165:
+            {
+                // Go there by the hidden presence: its spot is the first horse's, and the tab draws its cross there.
+                GodViewPanel g = v.GodView;
+                if (g.ActionReplies > _godActionMark && (bool?)g.LastAction?["ok"] == true && (bool?)g.LastAction?["hidden"] == true
+                    && g.PresenceAt is { } at && g.Rows.TryGetValue(_godHorses[0], out JsonObject first))
+                {
+                    _admin["presence_goto"] = g.LastAction.ToJsonString();
+                    _admin["presence_goto_ok"] = (string)g.LastAction["as"] == null && at.Facet == g.Facet
+                        && Math.Max(Math.Abs(at.X - (int)first["x"]), Math.Abs(at.Y - (int)first["y"])) <= 2;
+                    _admin["presence_hint"] = g.ActionHint;
+                    // Then Bring here brings the second horse to that spot.
+                    g.Select(_godHorses[^1]);
+                    _admin["presence_bring_enabled"] = g.ActionsEnabled.GetValueOrDefault("Bring here");
+                    _godActionMark = g.ActionReplies;
+                    _admin["presence_bring_sent"] = g.Press("Bring here");
+                    AdminNext(166);
+                }
+                else AdminTimeout("Go there with nobody online never answered for the hidden presence");
+
+                break;
+            }
+
+            case 166:
+            {
+                GodViewPanel g = v.GodView;
+                if (g.ActionReplies > _godActionMark && g.LastAction is { } last && (string)last["op"] == "admin_bring"
+                    && (bool?)last["ok"] == true && g.PresenceAt is { } at && g.Rows.TryGetValue(_godHorses[^1], out JsonObject brought)
+                    && Math.Max(Math.Abs(at.X - (int)brought["x"]), Math.Abs(at.Y - (int)brought["y"])) <= 1)
+                {
+                    _admin["presence_bring"] = last.ToJsonString();
+                    _admin["presence_bring_ok"] = (bool?)last["hidden"] == true;
+                    AdminShot("presence");
+                    _godActionMark = g.ActionReplies;
+                    _admin["presence_paperdoll_sent"] = g.Press("Open paperdoll");
+                    AdminNext(167);
+                }
+                else AdminTimeout("Bring here never brought the horse to the hidden presence's spot in the god view");
+
+                break;
+            }
+
+            case 167:
+            {
+                // The paperdoll, with no client to open it in, is listed under Selected.
+                GodViewPanel g = v.GodView;
+                if (g.ActionReplies > _godActionMark && (string)g.LastAction?["op"] == "admin_paperdoll" && g.LastPaperdoll != null)
+                {
+                    _admin["presence_paperdoll"] = g.LastPaperdoll.ToJsonString();
+                    _admin["presence_details"] = g.DetailsText;
+                    _admin["presence_paperdoll_ok"] = (bool?)g.LastAction["ok"] == true && g.DetailsText.Contains("Paperdoll");
+                    AdminShot("presence-paperdoll");
+                    AdminNext(168);
+                }
+                else AdminTimeout("Open paperdoll never answered with the horse's paperdoll for the hidden presence");
+
+                break;
+            }
+
+            case 168:
+            {
+                // After the still: the paperdoll belongs to the horse, so selecting the spawner leaves it out.
+                GodViewPanel g = v.GodView;
+                g.Select(_godSpawnerSerial);
+                _admin["presence_paperdoll_scoped"] = !g.DetailsText.Contains("Paperdoll");
+                _godActionMark = g.ActionReplies;
+                _admin["godview_clear_sent"] = g.Press("Clear");
+                AdminNext(130);
                 break;
             }
 
@@ -907,9 +985,13 @@ public partial class EditorSmoke
         Check("godview_resubscribed", "the god view watched the facet again after the restart");
         Check("godview_found", "Find found the new spawner on Felucca");
         Check("godview_filtered", "the NPCs filter hid the NPCs and the status line says so");
-        Check("godview_spawner_buttons_ok", "with a spawner selected Go there, Respawn and Clear are on, and the hint says Go there needs a staff character");
-        Check("godview_npc_hint_ok", "with no staff character online the hint says why Go there and the rest are off");
+        Check("godview_spawner_buttons_ok", "with a spawner selected Go there, Respawn and Clear are on, and the hint says the hidden presence acts");
+        Check("godview_npc_hint_ok", "with no staff character online the hint says the hidden presence acts, and a horse's buttons are on");
         Check("godview_respawned", "Respawn, pressed in the tab, replaced the horses with new ones in the god view");
+        Check("presence_goto_ok", "with nobody online Go there put the hidden presence's spot at the horse");
+        Check("presence_bring_ok", "Bring here brought another horse to the hidden presence's spot");
+        Check("presence_paperdoll_ok", "the paperdoll, read by the hidden presence, is listed under Selected");
+        Check("presence_paperdoll_scoped", "the paperdoll is listed only under the one it was read from");
         Check("godview_cleared", "Clear, pressed in the tab, removed the horses and kept the spawner");
         Check("godview_removed", "the deleted spawner and its creatures left the god view");
         Check("settings_labels_ok", "the Settings form shows the shard's settings with plain labels");

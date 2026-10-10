@@ -333,7 +333,7 @@ public partial class ShardDock : EditorDock
                     Log((bool)msg["ok"]
                         ? $"command ran as {(string)msg["as"]}: {(string)msg["text"]}"
                         : $"[color=orange]command failed: {(string)msg["error"] ?? "not a command"}[/color]");
-                    // What the server answered, since AD3 (MUO patch 0004).
+                    // What the server answered, since AD3 (MUO patch 0005).
                     foreach (JsonNode line in msg["output"] as JsonArray ?? new JsonArray())
                     {
                         Log("    " + ((string)line ?? "").Replace("[", "[lb]"));

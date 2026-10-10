@@ -1,10 +1,12 @@
-// The god view's actions (Admin tab, AD2b): which target each action takes,
-// and when Follow has to move the admin's character. GodViewActions.cs runs
-// them on the world; this file only decides.
+// The god view's actions (Admin tab, AD2b, AD2c): which target each action
+// takes, who acts (the admin's own staff character or the Admin tab's hidden
+// presence), and when Follow has to move. GodViewActions.cs runs them on the
+// world; this file only decides.
 //
 // Plain .NET, no ModernUO types: tests/ compiles this file on its own.
 
 using System;
+using System.Collections.Generic;
 
 namespace GUO.EditorBridge;
 
@@ -48,18 +50,80 @@ public static class GodViewRules
         };
     }
 
-    /// <summary>Refusal text if the named character may be moved by the god view, or null.</summary>
-    public static string CheckCharacter(string name, bool online, AdminLevel level)
+    /// <summary>
+    /// Refusal text if the named character may be moved by the god view, or null: it must be online, staff
+    /// (<see cref="CharacterLevel"/> or higher) and no higher than <paramref name="held"/>, the level the connection's
+    /// token grants, so an Administrator's tab never moves an Owner.
+    /// </summary>
+    public static string CheckCharacter(string name, bool online, AdminLevel level, AdminLevel held)
     {
         if (!online)
         {
             return $"'{name}' is not online: log in with your staff character first";
         }
 
-        return level < CharacterLevel
-            ? $"'{name}' is {level}; the god view moves only your own staff character ({CharacterLevel} or higher)"
+        if (level < CharacterLevel)
+        {
+            return $"'{name}' is {level}; the god view moves only your own staff character ({CharacterLevel} or higher)";
+        }
+
+        return level > held
+            ? $"'{name}' is {level}, above this tab's {held}: the god view moves only a character at or below the tab's own level"
             : null;
     }
+
+    /// <summary>Who acts for a god view action: an online staff character, or the Admin tab's hidden presence.</summary>
+    public enum Actor
+    {
+        Refused,
+        Character,
+        Presence,
+    }
+
+    /// <summary>
+    /// Picks who acts when the request names no character. <paramref name="hidden"/>: the request asked for the
+    /// hidden presence. <paramref name="staff"/>: the online staff characters at or below the connection's level.
+    /// One of them: that one; none: the hidden presence, so the actions work with nobody logged in; more: refused,
+    /// naming them. <paramref name="named"/> is the request's "as" (null or empty when left out); naming one and
+    /// asking for the presence together is refused.
+    /// </summary>
+    public static Actor Pick(string named, bool hidden, IReadOnlyList<string> staff, out string error)
+    {
+        error = null;
+        if (!string.IsNullOrEmpty(named))
+        {
+            if (hidden)
+            {
+                error = "name a character in 'as' or ask for the hidden presence, not both";
+                return Actor.Refused;
+            }
+
+            return Actor.Character;
+        }
+
+        if (hidden || staff.Count == 0)
+        {
+            return Actor.Presence;
+        }
+
+        if (staff.Count == 1)
+        {
+            return Actor.Character;
+        }
+
+        error = $"{staff.Count} staff characters are online; pick yours ({string.Join(", ", staff)}), or the Admin tab's hidden presence";
+        return Actor.Refused;
+    }
+
+    /// <summary>
+    /// Refusal text if the hidden presence may not do <paramref name="op"/> now, or null. Bring here needs a spot to
+    /// bring to: the presence's own (<paramref name="placed"/>, set by Go there or Follow) or one in the request
+    /// (<paramref name="spotGiven"/>).
+    /// </summary>
+    public static string CheckPresence(string op, bool placed, bool spotGiven) =>
+        op == "admin_bring" && !placed && !spotGiven
+            ? "the Admin tab's hidden presence has no spot yet: Go there first, or give a facet, x and y to bring it to"
+            : null;
 
     /// <summary>True when Follow must move the character to its target: another facet, or further than FollowRange.</summary>
     public static bool FollowMustMove(int map, int x, int y, int targetMap, int targetX, int targetY) =>

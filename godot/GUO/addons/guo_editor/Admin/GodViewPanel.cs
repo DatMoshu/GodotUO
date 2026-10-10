@@ -16,7 +16,10 @@ using Godot;
 /// section 10). Filters hide a kind; Find looks on every facet (<c>admin_godview_find</c>). The actions (AD2b) act with
 /// the admin's own logged-in staff character, picked in "Act as": Go there, Bring here, Open paperdoll and Follow for a
 /// player or NPC, Go there, Respawn and Clear for a spawner (<c>admin_goto</c>, <c>admin_bring</c>, <c>admin_paperdoll</c>,
-/// <c>admin_follow</c>, <c>admin_spawner</c>). Follow also keeps the map centred on whoever is followed.
+/// <c>admin_follow</c>, <c>admin_spawner</c>). Follow also keeps the map centred on whoever is followed. With nobody on
+/// staff logged in, or "the Admin tab's hidden presence" picked, the server's hidden presence acts (AD2c): Go there and
+/// Follow move its spot (a white cross on the map), Bring here brings to that spot, and the paperdoll is listed in the
+/// Selected panel, as no client is there to open it.
 /// </summary>
 /// <remarks>
 /// The map is the Maps panel's radar (one image pixel per 4 cells, nearest sampled), or a dark field when the
@@ -49,6 +52,7 @@ public partial class GodViewPanel : VBoxContainer
     private Label _actionHint;
     private readonly List<string> _staffOnline = new();
     private uint? _followLookup;
+    private bool _followHidden;
     private readonly Dictionary<uint, JsonObject> _rows = new();
     private readonly Dictionary<int, ImageTexture> _radar = new();
     private JsonArray _facets;
@@ -111,8 +115,23 @@ public partial class GodViewPanel : VBoxContainer
     /// <summary>Action replies received, ok or refused.</summary>
     public int ActionReplies { get; private set; }
 
-    /// <summary>The character the actions use: a name, or null for "the one staff character online" (the bridge picks).</summary>
+    /// <summary>"Act as"'s choice for the hidden presence (AD2c): the Admin tab acts with no character of its own.</summary>
+    public const string HiddenPresence = "the Admin tab's hidden presence";
+
+    /// <summary>
+    /// The character the actions use: a name, <see cref="HiddenPresence"/>, or null for "automatic" (the bridge picks
+    /// the one staff character online, or the hidden presence when none is).
+    /// </summary>
     public string ActAs => _actAs == null || _actAs.Selected <= 0 ? null : _actAs.GetItemText(_actAs.Selected);
+
+    /// <summary>The hidden presence's spot (facet, x, y) as the last Go there or Follow left it, or null.</summary>
+    public (int Facet, int X, int Y)? PresenceAt { get; private set; }
+
+    /// <summary>The last paperdoll the hidden presence read (its "paperdoll" object), or null.</summary>
+    public JsonNode LastPaperdoll { get; private set; }
+
+    // Whose paperdoll that is: it is listed only while that one is selected.
+    private uint? _paperdollSerial;
 
     /// <summary>The online staff characters on the watched facet, the choices of "Act as".</summary>
     public IReadOnlyList<string> StaffOnline => _staffOnline;
@@ -193,17 +212,21 @@ public partial class GodViewPanel : VBoxContainer
         {
             SizeFlagsHorizontal = SizeFlags.ExpandFill, ClipText = true,
             TooltipText = "Your own staff character, logged in to this server: Go there and Follow move it, Bring here brings to it, "
-                + "the paperdoll opens in its client. Staff characters online on this facet are listed.",
+                + "the paperdoll opens in its client. Staff characters online on this facet are listed. With nobody on staff online, "
+                + "or the hidden presence picked, the server's hidden presence acts: no character moves, its spot does.",
         };
-        _actAs.AddItem("the one staff character online");
+        _actAs.AddItem(AutoText(0));
+        _actAs.AddItem(HiddenPresence);
         _actAs.ItemSelected += _ => UpdateActions();
         actAs.AddChild(_actAs);
         var acts = new HFlowContainer();
         side.AddChild(acts);
-        _goto = ActionButton(acts, "Go there", "Moves your character to it (on its facet)", () => Act("admin_goto"));
-        _bring = ActionButton(acts, "Bring here", "Brings it to your character", () => Act("admin_bring"));
-        _paperdoll = ActionButton(acts, "Open paperdoll", "Opens its paperdoll in your character's client", () => Act("admin_paperdoll"));
-        _follow = ActionButton(acts, "Follow", "Your character keeps beside it, and the map keeps it in the centre; press again to stop",
+        _goto = ActionButton(acts, "Go there", "Moves your character (or the hidden presence's spot) to it, on its facet", () => Act("admin_goto"));
+        _bring = ActionButton(acts, "Bring here", "Brings it to your character (or to the hidden presence's spot)", () => Act("admin_bring"));
+        _paperdoll = ActionButton(acts, "Open paperdoll",
+            "Opens its paperdoll in your character's client (for the hidden presence, lists it under Selected)", () => Act("admin_paperdoll"));
+        _follow = ActionButton(acts, "Follow",
+            "Your character (or the hidden presence's spot) keeps beside it, and the map keeps it in the centre; press again to stop",
             () => ToggleFollow());
         _respawn = ActionButton(acts, "Respawn", "Removes what this spawner spawned and spawns its full count again", () => Act("admin_spawner", "respawn"));
         _clear = ActionButton(acts, "Clear", "Removes what this spawner spawned; it spawns again on its own timer while it runs",
@@ -435,9 +458,15 @@ public partial class GodViewPanel : VBoxContainer
 
         if (Following is uint followed)
         {
-            if (_rows.ContainsKey(followed))
+            if (_rows.TryGetValue(followed, out JsonObject f))
             {
                 _followLookup = null;
+                if (_followHidden)
+                {
+                    // The bridge moves the presence's spot with whoever it follows: the cross goes along.
+                    PresenceAt = (Facet, (int)f["x"], (int)f["y"]);
+                }
+
                 Centre(followed);
             }
             else if (_followLookup != followed)
@@ -600,11 +629,28 @@ public partial class GodViewPanel : VBoxContainer
             }
         }
 
+        DrawPresence(origin, scale, unit);
         if (Selected is uint s && _rows.TryGetValue(s, out JsonObject picked))
         {
             var ring = new Rect2(Pos(picked) - new Vector2(7, 7) * unit, new Vector2(15, 15) * unit);
             _map.DrawRect(ring.Grow(unit), Outline, false, 2 * unit);
             _map.DrawRect(ring, SelectColour, false, 2 * unit);
+        }
+    }
+
+    // The hidden presence's spot (AD2c): a white cross, outlined, on the facet it is on.
+    private void DrawPresence(Vector2 origin, float scale, int unit)
+    {
+        if (PresenceAt is not { } at || at.Facet != Facet)
+        {
+            return;
+        }
+
+        Vector2 p = (origin + new Vector2(at.X, at.Y) / CellsPerPixel * scale).Floor();
+        foreach ((Color c, int grow) in new[] { (Outline, unit), (new Color(1, 1, 1), 0) })
+        {
+            _map.DrawRect(new Rect2(p - new Vector2(4 * unit + grow, unit / 2 + grow), new Vector2(9 * unit + 2 * grow, unit + 2 * grow)), c);
+            _map.DrawRect(new Rect2(p - new Vector2(unit / 2 + grow, 4 * unit + grow), new Vector2(unit + 2 * grow, 9 * unit + 2 * grow)), c);
         }
     }
 
@@ -646,7 +692,9 @@ public partial class GodViewPanel : VBoxContainer
             return;
         }
 
-        _details.Text = Selected is uint s && _rows.TryGetValue(s, out JsonObject row) ? Describe(row) : "Click a marker on the map, or Find one.";
+        _details.Text = Selected is uint s && _rows.TryGetValue(s, out JsonObject row)
+            ? Describe(row) + (LastPaperdoll is { } pd && _paperdollSerial == s ? DescribePaperdoll(pd) : "")
+            : "Click a marker on the map, or Find one.";
         UpdateActions();
     }
 
@@ -670,8 +718,19 @@ public partial class GodViewPanel : VBoxContainer
         return true;
     }
 
-    // The character the actions would move: the one picked, or the only staff character online.
-    private string Me => ActAs ?? (_staffOnline.Count == 1 ? _staffOnline[0] : null);
+    // The character the actions would move: the one picked, or the only staff character online; null for the presence.
+    private string Me => ActAs == HiddenPresence ? null : ActAs ?? (_staffOnline.Count == 1 ? _staffOnline[0] : null);
+
+    /// <summary>True when the actions would be done by the hidden presence: picked, or automatic with nobody on staff online.</summary>
+    public bool PresenceActs => ActAs == HiddenPresence || (ActAs == null && _staffOnline.Count == 0);
+
+    // "Act as"'s first choice, naming what automatic means now.
+    private static string AutoText(int staff) => staff switch
+    {
+        0 => "automatic (nobody on staff online: the hidden presence)",
+        1 => "automatic (the one staff character online)",
+        _ => "automatic (pick yours: several on staff online)",
+    };
 
     // Each action button is on only for the kind it acts on; a line under them says why the others are off.
     private void UpdateActions()
@@ -687,7 +746,7 @@ public partial class GodViewPanel : VBoxContainer
             && string.Equals((string)r["name"], me, StringComparison.OrdinalIgnoreCase);
         bool linked = Send != null && _seq > 0;
         _goto.Disabled = !linked || kind == null || self;
-        _bring.Disabled = !linked || !mobile || self;
+        _bring.Disabled = !linked || !mobile || self || (PresenceActs && PresenceAt == null);
         _paperdoll.Disabled = !linked || !mobile;
         _follow.Text = Following != null ? "Stop following" : "Follow";
         _follow.Disabled = !linked || (Following == null && (!mobile || self));
@@ -695,8 +754,9 @@ public partial class GodViewPanel : VBoxContainer
         _actionHint.Text = !linked ? "Actions need the admin channel."
             : kind == null ? "Select a player, NPC or spawner to act on it."
             : self ? "That is your own character."
-            : _staffOnline.Count == 0
-                ? "No staff character is online on this facet: log in with yours to use Go there, Bring here, the paperdoll and Follow."
+            : PresenceActs
+                ? "The hidden presence acts (no character): Go there and Follow move its spot, the white cross; Bring here brings to it"
+                  + (PresenceAt == null ? " once Go there has given it one" : "") + "; the paperdoll is listed under Selected."
             : "";
     }
 
@@ -717,6 +777,10 @@ public partial class GodViewPanel : VBoxContainer
         {
             msg["action"] = spawnerAction;
         }
+        else if (ActAs == HiddenPresence)
+        {
+            msg["hidden"] = true;
+        }
         else if (ActAs is { } me)
         {
             msg["as"] = me;
@@ -736,7 +800,9 @@ public partial class GodViewPanel : VBoxContainer
         return Act("admin_follow");
     }
 
-    /// <summary>Picks the character the actions use, by name (null: the one staff character online). False when it is not listed.</summary>
+    /// <summary>
+    /// Picks who the actions use, by name, or <see cref="HiddenPresence"/> (null: automatic). False when it is not listed.
+    /// </summary>
     public bool SetActAs(string name)
     {
         if (_actAs == null)
@@ -775,7 +841,8 @@ public partial class GodViewPanel : VBoxContainer
         _staffOnline.Clear();
         _staffOnline.AddRange(now);
         _actAs.Clear();
-        _actAs.AddItem(now.Count == 1 ? $"the one staff character online ({now[0]})" : "the one staff character online");
+        _actAs.AddItem(now.Count == 1 ? $"automatic (the one staff character online, {now[0]})" : AutoText(now.Count));
+        _actAs.AddItem(HiddenPresence);
         foreach (string n in now)
         {
             _actAs.AddItem(n);
@@ -809,22 +876,40 @@ public partial class GodViewPanel : VBoxContainer
         }
 
         string name = Escape((string)msg["name"]);
-        string who = Escape((string)msg["as"]);
+        bool hidden = (bool?)msg["hidden"] == true;
+        string who = hidden ? "the hidden presence" : Escape((string)msg["as"]);
         string at = msg["x"] != null ? $"{(int)msg["x"]}, {(int)msg["y"]}, z {(int)msg["z"]} on {FacetName((int?)msg["facet"] ?? -1)}" : "";
         switch (op)
         {
             case "admin_goto":
-                Logged?.Invoke($"Go there: {who} is at {name} ({at})");
+                Logged?.Invoke(msg["name"] != null ? $"Go there: {who} is at {name} ({at})" : $"Go there: {who} is at {at}");
+                if (hidden)
+                {
+                    PlacePresence(msg);
+                }
+
                 break;
             case "admin_bring":
                 Logged?.Invoke($"Bring here: {name} is with {who} ({at})");
+                break;
+            case "admin_paperdoll" when hidden:
+                LastPaperdoll = msg["paperdoll"];
+                _paperdollSerial = (uint?)msg["serial"];
+                Logged?.Invoke($"Paperdoll: {name}, read by the hidden presence ({(msg["paperdoll"]?["items"] as JsonArray)?.Count ?? 0} items, under Selected)");
+                ShowDetails();
                 break;
             case "admin_paperdoll":
                 Logged?.Invoke($"Open paperdoll: {name}'s paperdoll is open in {who}'s client");
                 break;
             case "admin_follow" when (bool?)msg["following"] == true:
                 Following = (uint)msg["serial"];
+                _followHidden = hidden;
                 Logged?.Invoke($"Follow: {who} follows {name}; the map keeps it in the centre");
+                if (hidden)
+                {
+                    PlacePresence(msg);
+                }
+
                 Centre(Following.Value);
                 break;
             case "admin_follow":
@@ -851,6 +936,23 @@ public partial class GodViewPanel : VBoxContainer
         _ => (string)msg["op"],
     };
 
+    // The hidden presence's spot from an answer (facet, x, y): the cross moves there and the map centres on it.
+    private void PlacePresence(JsonNode msg)
+    {
+        if (msg["x"] == null || msg["facet"] == null)
+        {
+            return;
+        }
+
+        PresenceAt = ((int)msg["facet"], (int)msg["x"], (int)msg["y"]);
+        if (PresenceAt.Value.Facet == Facet)
+        {
+            _map.Focus(new Vector2I(PresenceAt.Value.X / CellsPerPixel, PresenceAt.Value.Y / CellsPerPixel), _map.Zoom);
+        }
+
+        _map.QueueRedraw();
+    }
+
     // Follow keeps the followed one in the centre at the zoom the admin chose.
     private void Centre(uint serial)
     {
@@ -858,6 +960,31 @@ public partial class GodViewPanel : VBoxContainer
         {
             _map.Focus(new Vector2I((int)row["x"] / CellsPerPixel, (int)row["y"] / CellsPerPixel), _map.Zoom);
         }
+    }
+
+    /// <summary>A paperdoll the hidden presence read, in plain words, for the Selected panel.</summary>
+    internal static string DescribePaperdoll(JsonNode pd)
+    {
+        var t = new StringBuilder("\n[b]Paperdoll[/b]");
+        if (!string.IsNullOrEmpty((string)pd["title"]))
+        {
+            t.Append($" ({Escape((string)pd["title"])})");
+        }
+
+        var items = pd["items"] as JsonArray ?? new JsonArray();
+        if (items.Count == 0)
+        {
+            t.Append("\nnothing worn");
+        }
+
+        foreach (JsonNode i in items)
+        {
+            int hue = (int?)i["hue"] ?? 0;
+            t.Append($"\n{Escape((string)i["layer"])}: {Escape((string)i["name"])} 0x{(int?)i["item_id"] ?? 0:X4}");
+            t.Append(hue != 0 ? $", hue {hue}" : "");
+        }
+
+        return t.ToString();
     }
 
     /// <summary>One row in plain words, for the Selected panel.</summary>

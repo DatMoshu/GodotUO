@@ -173,20 +173,49 @@ try
 
     Require(GodViewRules.CheckTarget("admin_godview", "npc", false) == "'admin_godview' is not a god view action", "a non-action passed as one");
 
-    // Only the admin's own online staff character is moved.
-    Require(GodViewRules.CheckCharacter("Moshu", true, AdminLevel.GameMaster) == null && GodViewRules.CheckCharacter("Moshu", true, AdminLevel.Owner) == null,
-            "a staff character was refused");
-    Require(GodViewRules.CheckCharacter("Bob", true, AdminLevel.Player) == "'Bob' is Player; the god view moves only your own staff character (GameMaster or higher)",
+    // Only the admin's own online staff character is moved, and none above the tab's own level (AD2c).
+    Require(GodViewRules.CheckCharacter("Moshu", true, AdminLevel.GameMaster, AdminLevel.Administrator) == null
+            && GodViewRules.CheckCharacter("Moshu", true, AdminLevel.Administrator, AdminLevel.Administrator) == null
+            && GodViewRules.CheckCharacter("Moshu", true, AdminLevel.Owner, AdminLevel.Owner) == null,
+            "a staff character at or below the tab's level was refused");
+    Require(GodViewRules.CheckCharacter("Bob", true, AdminLevel.Player, AdminLevel.Administrator) == "'Bob' is Player; the god view moves only your own staff character (GameMaster or higher)",
             "a player character could be moved by the god view");
-    Require(GodViewRules.CheckCharacter("Bob", true, AdminLevel.Counselor) != null, "a Counselor character could be moved");
-    Require(GodViewRules.CheckCharacter("Moshu", false, AdminLevel.Owner) == "'Moshu' is not online: log in with your staff character first",
+    Require(GodViewRules.CheckCharacter("Bob", true, AdminLevel.Counselor, AdminLevel.Administrator) != null, "a Counselor character could be moved");
+    Require(GodViewRules.CheckCharacter("Moshu", false, AdminLevel.Owner, AdminLevel.Administrator) == "'Moshu' is not online: log in with your staff character first",
             "an offline character was accepted");
+    Require(GodViewRules.CheckCharacter("Boss", true, AdminLevel.Owner, AdminLevel.Administrator)
+            == "'Boss' is Owner, above this tab's Administrator: the god view moves only a character at or below the tab's own level"
+            && GodViewRules.CheckCharacter("Dev", true, AdminLevel.Developer, AdminLevel.Administrator) != null
+            && GodViewRules.CheckCharacter("Admin", true, AdminLevel.Administrator, AdminLevel.GameMaster) != null,
+            "a character above the token's level could be moved");
+
+    // Who acts (AD2c): the named one; else the one staff character online; with none, the hidden presence.
+    var none = Array.Empty<string>();
+    Require(GodViewRules.Pick("Moshu", false, none, out string pe) == GodViewRules.Actor.Character && pe == null, "a named character did not act");
+    Require(GodViewRules.Pick(null, false, new[] { "Moshu" }, out pe) == GodViewRules.Actor.Character && pe == null,
+            "the one staff character online did not act");
+    Require(GodViewRules.Pick(null, false, none, out pe) == GodViewRules.Actor.Presence && pe == null
+            && GodViewRules.Pick("", false, none, out _) == GodViewRules.Actor.Presence,
+            "with nobody online the hidden presence did not act");
+    Require(GodViewRules.Pick(null, true, new[] { "Moshu" }, out pe) == GodViewRules.Actor.Presence && pe == null,
+            "'hidden' did not pick the presence with a staff character online");
+    Require(GodViewRules.Pick(null, false, new[] { "Moshu", "Lyra" }, out pe) == GodViewRules.Actor.Refused
+            && pe == "2 staff characters are online; pick yours (Moshu, Lyra), or the Admin tab's hidden presence",
+            "two staff characters online were not asked to pick");
+    Require(GodViewRules.Pick("Moshu", true, none, out pe) == GodViewRules.Actor.Refused
+            && pe == "name a character in 'as' or ask for the hidden presence, not both", "'as' with 'hidden' was accepted");
+    Require(GodViewRules.CheckPresence("admin_bring", false, false)
+            == "the Admin tab's hidden presence has no spot yet: Go there first, or give a facet, x and y to bring it to"
+            && GodViewRules.CheckPresence("admin_bring", true, false) == null && GodViewRules.CheckPresence("admin_bring", false, true) == null
+            && GodViewRules.CheckPresence("admin_goto", false, false) == null && GodViewRules.CheckPresence("admin_paperdoll", false, false) == null
+            && GodViewRules.CheckPresence("admin_follow", false, false) == null,
+            "the presence's Bring here without a spot was not refused, or another action was");
 
     // Follow moves only when the target is on another facet or further than FollowRange.
     Require(!GodViewRules.FollowMustMove(0, 100, 100, 0, 102, 98) && !GodViewRules.FollowMustMove(0, 100, 100, 0, 100, 100), "Follow moved within range");
     Require(GodViewRules.FollowMustMove(0, 100, 100, 0, 103, 100) && GodViewRules.FollowMustMove(0, 100, 100, 0, 100, 97), "Follow stayed out of range");
     Require(GodViewRules.FollowMustMove(0, 100, 100, 1, 100, 100) && GodViewRules.FollowMustMove(-1, 0, 0, 0, 0, 0), "Follow stayed on another facet");
-    Console.WriteLine("PASS: the actions need GameMaster and the token; each takes only its kind of target; only an online staff character moves; Follow keeps within 2 tiles");
+    Console.WriteLine("PASS: the actions need GameMaster and the token; each takes only its kind of target; only an online staff character at or below the tab's level moves, else the hidden presence acts; Follow keeps within 2 tiles");
 
     // ---- AD4: the Settings form -------------------------------------------------
     Require(AdminChannel.Ops["admin_settings"] == AdminLevel.Administrator, "admin_settings is not an Administrator op");

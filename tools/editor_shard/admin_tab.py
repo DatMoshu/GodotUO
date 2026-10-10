@@ -72,8 +72,9 @@ from guo.process import build_child_env, no_activate
 
 TIMEOUT_S = 900
 # The story the evidence is filed under (rule: evidence_naming.md).
-STORY = "AD3"
-STILLS = ("connected", "saved", "restarted", "godview", "spawner", "filtered", "respawn", "cleared",
+STORY = "AD2c"
+STILLS = ("connected", "saved", "restarted", "godview", "spawner", "filtered", "respawn", "presence",
+          "presence-paperdoll", "cleared",
           "settings-form", "settings-diff", "settings-saved", "accounts-list", "accounts-created", "accounts-banned",
           "backup-done", "restore-confirm", "restored", "backup-kept", "commands-confirm", "commands-output")
 
@@ -193,11 +194,25 @@ def run(cfg, shard_home: Path, token: str, secrets: list[str], windowed: bool, s
     buttons = admin.get("godview_spawner_buttons") or {}
     check(admin.get("godview_spawner_buttons_ok"),
           f"with the spawner selected Go there, Respawn and Clear are on ({', '.join(k for k, on in buttons.items() if on)}), "
-          f"and the hint says Go there needs a staff character")
-    check(admin.get("godview_npc_hint_ok"), f"with a horse selected and no staff online the hint says why: \"{admin.get('godview_npc_hint')}\"")
+          f"and the hint says the hidden presence acts")
+    npc_buttons = admin.get("godview_npc_buttons") or {}
+    check(admin.get("godview_npc_hint_ok"),
+          f"with a horse selected and no staff online the hidden presence acts ({', '.join(k for k, on in npc_buttons.items() if on)} on): "
+          f"\"{admin.get('godview_npc_hint')}\"")
     respawn = json.loads(admin["godview_respawn"]) if admin.get("godview_respawn") else {}
     check(admin.get("godview_respawned"),
           f"Respawn, pressed in the tab, replaced the horses with new ones ({respawn.get('before')} -> {respawn.get('spawned')})")
+    goto = json.loads(admin["presence_goto"]) if admin.get("presence_goto") else {}
+    check(admin.get("presence_goto_ok"),
+          f"with nobody online, Go there, pressed in the tab, put the hidden presence's spot at a horse ({goto.get('x')}, {goto.get('y')})")
+    bring = json.loads(admin["presence_bring"]) if admin.get("presence_bring") else {}
+    check(admin.get("presence_bring_ok") and admin.get("presence_bring_enabled"),
+          f"Bring here brought another horse to that spot ({bring.get('x')}, {bring.get('y')})")
+    doll = json.loads(admin["presence_paperdoll"]) if admin.get("presence_paperdoll") else {}
+    check(admin.get("presence_paperdoll_ok"),
+          f"Open paperdoll, with no client to open it in, lists {doll.get('name')!r}'s paperdoll under Selected "
+          f"({len(doll.get('items') or [])} items)")
+    check(admin.get("presence_paperdoll_scoped"), "selecting the spawner after leaves the horse's paperdoll out of its details")
     clear = json.loads(admin["godview_clear"]) if admin.get("godview_clear") else {}
     check(admin.get("godview_cleared"), f"Clear, pressed in the tab, removed the horses and kept the spawner ({clear.get('before')} -> {clear.get('spawned')})")
     check(admin.get("godview_removed"), "deleting the spawner removed it and its horses from the god view")

@@ -1,14 +1,25 @@
-"""The god view's actions (AD2b), checked live on the private instance: admin-check's section 7.
+"""The god view's actions (AD2b, AD2c), checked live on the private instance: admin-check's section 7.
 
 Spawners first, with nobody logged in: two test spawners (three horses, one
 healer) are put through the bridge; Respawn replaces the horses with three new
 ones and Clear removes them, each seen in the god view's pushes; a spawner
 action on a creature or an unknown serial is refused, and so is every action
-without the token. A character action with no staff character online is
-refused in plain words.
+without the token.
+
+Still with nobody logged in, the Admin tab's hidden presence acts (AD2c):
+  Go there    puts its spot in Britain (the reply says hidden, as nobody);
+  Bring here  brings a horse to that spot (the god view shows it there);
+  paperdoll   answers with the healer's paperdoll: its name and what it wears;
+  Follow      moves the spot with the horse: the horse is brought away to a
+              spot named in the request, and the healer, brought "here"
+              after, arrives beside the horse; Stop counts the moves; a second
+              Follow ends by itself when the horse is deleted;
+  "as" with "hidden" is refused, and the presence is never in the world (Find
+  by its serial finds nothing).
 
 Then a headless client logs in as a game master lane account (staff_client.py)
-and, with that character as the admin's own:
+and, with that character as the admin's own (and the presence asked for by
+"hidden" leaves the character where it is):
   Go there    moves it to a spot in Britain (the god view shows it there);
   Bring here  brings a horse to it; the admin's own character and a spawner cannot be brought;
   paperdoll   opens the healer's paperdoll in that client (its objects dump lists the gump);
@@ -204,12 +215,11 @@ def _spawners_and_character(check, s: Session, cfg, shard_port: int, out: Path, 
     check(bad and bad.get("error") == "that is not a spawner" and unknown and unknown.get("error") == "nothing in the world has that serial"
           and verb and verb.get("ok") is False and "respawn or clear" in verb.get("error", ""),
           "a spawner action on a creature, an unknown serial or an unknown verb is refused in plain words")
-    nobody = s.ask({"op": "admin_goto", "serial": healer["serial"]})
-    check(nobody is not None and nobody.get("ok") is False and "no staff character is online" in nobody.get("error", ""),
-          f"with no staff character online, Go there is refused: \"{nobody and nobody.get('error')}\"")
+    _with_presence(check, s, horses_sp, healer_sp, spawner_at, spawned_by)
 
     if with_client:
-        _with_character(check, s, cfg, shard_port, out, horses_sp, healer_sp, second)
+        # The presence's checks respawned the horses: these are the ones there now.
+        _with_character(check, s, cfg, shard_port, out, horses_sp, healer_sp, {r["serial"] for r in spawned_by(spawner_at(HORSES_AT))})
 
     clear = s.ask({"op": "admin_spawner", "serial": horses_sp["serial"], "action": "clear"})
     s.until(lambda: not spawned_by(spawner_at(HORSES_AT)), 10)
@@ -220,11 +230,73 @@ def _spawners_and_character(check, s: Session, cfg, shard_port: int, out: Path, 
     audit = s.ask({"op": "admin_audit", "count": 60})
     entries = (audit or {}).get("entries") or []
     ops = {(e.get("op"), e.get("ok")) for e in entries}
-    want = {("admin_spawner", True), ("admin_spawner", False), ("admin_goto", False)}
+    want = {("admin_spawner", True), ("admin_spawner", False), ("admin_goto", True), ("admin_goto", False),
+            ("admin_bring", True), ("admin_paperdoll", True), ("admin_follow", True)}
     if with_client:
-        want |= {("admin_goto", True), ("admin_bring", True), ("admin_bring", False), ("admin_paperdoll", True),
-                 ("admin_follow", True)}
+        want |= {("admin_bring", False)}
     check(want <= ops, f"every action and refusal is in the audit log ({len(want & ops)}/{len(want)} kinds)")
+
+
+def near(row: dict | None, at, cells: int = 2) -> bool:
+    return bool(row) and max(abs(row["x"] - at[0]), abs(row["y"] - at[1])) <= cells
+
+
+def _with_presence(check, s: Session, horses_sp: dict, healer_sp: dict, spawner_at, spawned_by) -> None:
+    """The hidden presence (AD2c): every character action with nobody logged in."""
+    horse = sorted(r["serial"] for r in spawned_by(spawner_at(HORSES_AT)))[0]
+    healer = spawned_by(healer_sp)[0]["serial"]
+
+    both = s.ask({"op": "admin_goto", "as": "Guosweep", "hidden": True, "facet": 0, "x": BRITAIN[0], "y": BRITAIN[1]})
+    check(both is not None and both.get("ok") is False and "not both" in both.get("error", ""),
+          "naming a character and asking for the hidden presence together is refused")
+
+    go = s.ask({"op": "admin_goto", "facet": 0, "x": BRITAIN[0], "y": BRITAIN[1]})
+    check(go is not None and go.get("ok") is True and go.get("hidden") is True and go.get("as") is None
+          and (go.get("facet"), go.get("x"), go.get("y")) == (0, *BRITAIN),
+          f"with nobody logged in, Go there puts the hidden presence's spot at {BRITAIN} on Felucca "
+          f"(reply hidden {go and go.get('hidden')}, at {go and (go.get('x'), go.get('y'))})")
+
+    bring = s.ask({"op": "admin_bring", "serial": horse})
+    came = s.until(lambda: near(s.rows.get(horse), BRITAIN, 1), 10)
+    check(bring is not None and bring.get("ok") is True and bring.get("hidden") is True and came,
+          f"Bring here brought a horse from {HORSES_AT} to the presence's spot; the god view shows it there")
+
+    pd = s.ask({"op": "admin_paperdoll", "serial": healer})
+    doll = (pd or {}).get("paperdoll") or {}
+    items = doll.get("items") or []
+    check(pd is not None and pd.get("ok") is True and doll.get("name") and items
+          and all(i.get("layer") and i.get("item_id") for i in items),
+          f"the paperdoll, with no client to open it in, answers with the healer's: {doll.get('name')!r}, "
+          f"{len(items)} items ({', '.join(i.get('layer', '?') for i in items[:6])})")
+
+    fol = s.ask({"op": "admin_follow", "serial": horse})
+    away = s.ask({"op": "admin_bring", "serial": horse, "facet": 0, "x": START[0], "y": START[1]})
+    moved = s.until(lambda: near(s.rows.get(horse), START, 1), 10)
+    # Follow's 500 ms tick moves the spot to the horse; then "here" is beside it.
+    time.sleep(1.5)
+    after = s.ask({"op": "admin_bring", "serial": healer})
+    beside = s.until(lambda: near(s.rows.get(healer), START, 3), 10)
+    stop = s.ask({"op": "admin_follow", "stop": True})
+    check(fol is not None and fol.get("ok") is True and fol.get("following") is True and fol.get("hidden") is True
+          and away is not None and away.get("ok") is True and moved and after is not None and after.get("ok") is True and beside
+          and stop is not None and stop.get("following") is False and (stop.get("moves") or 0) >= 1,
+          f"Follow moved the presence's spot with the horse, brought away to {START}: the healer brought 'here' after "
+          f"arrived beside it; Stop ended it ({stop and stop.get('moves')} follow moves)")
+
+    fol2 = s.ask({"op": "admin_follow", "serial": horse})
+    s.ask({"op": "admin_spawner", "serial": horses_sp["serial"], "action": "clear"})
+    ended = s.wait(lambda m: m.get("op") == "admin_follow" and m.get("req") is None and m.get("following") is False, 10)
+    check(fol2 is not None and fol2.get("ok") is True and ended is not None and "gone" in (ended.get("reason") or ""),
+          f"the presence's Follow ends by itself when the horse is deleted: \"{ended and ended.get('reason')}\"")
+    # The horses come back for the character's checks: three new ones, once the old ones' removal has arrived.
+    old = {r["serial"] for r in spawned_by(spawner_at(HORSES_AT))} | {horse}
+    s.ask({"op": "admin_spawner", "serial": horses_sp["serial"], "action": "respawn"})
+    s.until(lambda: len(spawned_by(spawner_at(HORSES_AT))) == 3 and not old & {r["serial"] for r in spawned_by(spawner_at(HORSES_AT))}, 15)
+
+    found = s.ask({"op": "admin_godview_find", "text": "0x3FFFFFFE"})
+    check(found is not None and found.get("ok") is True and not found.get("matches")
+          and not any(r.get("serial") == 0x3FFFFFFE for r in s.rows.values()),
+          "the hidden presence is never in the world: Find by its serial finds nothing, the god view never shows it")
 
 
 def _with_character(check, s: Session, cfg, shard_port: int, out: Path, horses_sp: dict, healer_sp: dict, horses: set) -> None:
@@ -258,6 +330,12 @@ def _with_character(check, s: Session, cfg, shard_port: int, out: Path, horses_s
               and dump and dump.get("player", [0, 0])[:2] == list(BRITAIN),
               f"Go there moved {me_name} to {BRITAIN} on Felucca: the reply, the god view and the client agree "
               f"(client at {dump and dump.get('player')})")
+
+        # "hidden" asks for the presence even with the character online: the character stays where it is.
+        hid = s.ask({"op": "admin_goto", "hidden": True, "facet": 0, "x": START[0], "y": START[1]})
+        time.sleep(1)
+        check(hid is not None and hid.get("ok") is True and hid.get("hidden") is True and me() and (me()["x"], me()["y"]) == BRITAIN,
+              f"with {me_name} online, Go there for the hidden presence moves its spot and leaves {me_name} in Britain")
 
         horse = sorted(horses)[0]
         bring = s.ask({"op": "admin_bring", "as": me_name, "serial": horse})

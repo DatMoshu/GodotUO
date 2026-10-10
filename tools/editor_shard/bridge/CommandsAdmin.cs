@@ -18,9 +18,14 @@
 // (the reply says so), and a gump it is sent goes nowhere. With "as", the
 // command runs as that online staff character, exactly as if they had typed it.
 //
+// The same hidden mobile is the god view's hidden presence (AD2c,
+// GodViewActions.cs): it stays on the Internal map, and its spot in the world
+// (Place) is only remembered. Go there and Follow move the spot, Bring here
+// brings to it, and a command that moves the mobile ([go) moves it too.
+//
 // Output: every system message the mobile is sent while the command runs and
 // for SettleMs after (a command that answers on a timer), read from MUO patch
-// 0004's Mobile.SystemMessageSent. The bridge binds that hook by reflection,
+// 0005's Mobile.SystemMessageSent. The bridge binds that hook by reflection,
 // so it loads on an unpatched server too and says output_available false.
 
 using System;
@@ -63,7 +68,7 @@ internal static class CommandsAdmin
     private static readonly Regex Tags = new("<[^>]*>", RegexOptions.Compiled);
     private static readonly Regex Placeholder = new(@"~(\d+)_[^~]*~", RegexOptions.Compiled);
 
-    /// <summary>True when MUO patch 0004's hook is there and bound: command output reaches the tab.</summary>
+    /// <summary>True when MUO patch 0005's hook is there and bound: command output reaches the tab.</summary>
     public static bool OutputAvailable => _hooked ??= Hook();
 
     private static bool Hook()
@@ -158,8 +163,17 @@ internal static class CommandsAdmin
         reply["output_available"] = OutputAvailable;
     }
 
-    /// <summary>The hidden admin mobile, at <paramref name="level"/>. Made once; never in the world.</summary>
-    private static Mobile Hidden(AccessLevel level)
+    /// <summary>The hidden presence's spot in the world (AD2c), or null before Go there, Follow or a [go gave it one.</summary>
+    public static (Map Map, Point3D At)? Place { get; set; }
+
+    /// <summary>True for the hidden admin mobile: the Commands palette's runner and the god view's hidden presence.</summary>
+    public static bool IsHidden(Mobile m) => m != null && m == _hidden;
+
+    /// <summary>
+    /// The hidden admin mobile, at <paramref name="level"/>: Commands run as it, and it is the god view's hidden
+    /// presence (GodViewActions). Made once; never in the world.
+    /// </summary>
+    public static Mobile Hidden(AccessLevel level)
     {
         if (_hidden == null)
         {
@@ -174,6 +188,23 @@ internal static class CommandsAdmin
         // The setter's own notice ("Your access level has been changed") goes to no client and to no capture.
         _hidden.AccessLevel = level;
         return _hidden;
+    }
+
+    // A command that put the hidden mobile on a map ([go, [teleport) moved the presence there: keep the spot, then
+    // take the mobile back off the map, where nothing in the world can meet it.
+    private static void Internalize(Mobile m)
+    {
+        if (m.Map == Map.Internal)
+        {
+            return;
+        }
+
+        if (m.Map != null)
+        {
+            Place = (m.Map, m.Location);
+        }
+
+        m.Internalize();
     }
 
     /// <summary>
@@ -254,10 +285,7 @@ internal static class CommandsAdmin
                 m.Prompt = null;
             }
 
-            if (m.Map != Map.Internal)
-            {
-                m.Internalize();
-            }
+            Internalize(m);
         }
 
         reply["as"] = hidden ? null : m.RawName;
@@ -276,9 +304,9 @@ internal static class CommandsAdmin
         Timer.DelayCall(TimeSpan.FromMilliseconds(SettleMs), () =>
         {
             _captures.Remove(capture);
-            if (hidden && _hidden.Map != Map.Internal)
+            if (hidden)
             {
-                _hidden.Internalize();
+                Internalize(_hidden);
             }
 
             var lines = new JsonArray(capture.Lines.Select(l => (JsonNode)l).ToArray());

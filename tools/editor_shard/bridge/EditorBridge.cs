@@ -22,7 +22,8 @@
 //      and each is written to the admin audit log.
 //      The Admin tab's god view (GodView.cs) is one: every player, NPC and
 //      spawner on a facet, pushed to the tab as they change; its actions
-//      (GodViewActions.cs) move the admin's own staff character and work spawners.
+//      (GodViewActions.cs) move the admin's own staff character, or with nobody
+//      logged in the hidden presence's spot (AD2c), and work spawners.
 //      The Settings form reads the live values with admin_settings and records its
 //      changes there before it writes the files and restarts the server (AD4).
 //      The Accounts tab lists, makes and changes accounts (AccountsAdmin.cs, AD5).
@@ -864,8 +865,8 @@ public static class EditorBridge
             case "admin_paperdoll":
             case "admin_follow":
             case "admin_spawner":
-                // Refusals here (no staff character online, a wrong target) are answered ok false, and audited as such.
-                if (!GodViewActions.Run(from, op, msg, reply, from.Send))
+                // Refusals here (a character not online or above this level, a wrong target) are answered ok false, and audited as such.
+                if (!GodViewActions.Run(from, op, msg, reply, from.Admin!.Value, from.Send))
                 {
                     _admin.Audit.Record(from.Name, op, AdminChannel.Ops[op], false, audited, (string)reply["error"]);
                 }

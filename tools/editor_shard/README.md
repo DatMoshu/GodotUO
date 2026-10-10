@@ -80,7 +80,11 @@ python tools\editor_shard\run.py admin-tab [--windowed]
   name only) and that no token or password reached a log. For the actions
   it puts two test spawners west of Britain and logs a headless GUO client in
   as the third game master lane account (`UO_SHARD_GM_ACCOUNTS`, its
-  character named after the account; `staff_client.py`), then checks Go
+  character named after the account; `staff_client.py`). Before that client
+  logs in, with nobody online, it checks the hidden presence (AD2c): Go
+  there puts its spot in Britain, Bring here brings a horse to it, the
+  paperdoll comes back as a list, Follow moves the spot with the horse, and
+  Find never finds the presence. With the client in, it checks Go
   there, Bring here and Open paperdoll in that client's objects dump, Follow
   (it takes the character back after a Go there away, and ends by itself
   when the target is deleted), Respawn and Clear, and every refusal. Its
@@ -95,7 +99,10 @@ python tools\editor_shard\run.py admin-tab [--windowed]
   saves, Restart saves and has the run bar stop and start the server, and the
   tab reconnects; the god view watches Felucca again, shows a spawner put
   through the bridge with its horses, finds it, hides NPCs with the filter,
-  presses its Respawn and Clear buttons (AD2b) and drops it on delete. Then
+  presses its Respawn and Clear buttons (AD2b), with nobody online presses
+  Go there, Bring here and Open paperdoll for the hidden presence (AD2c: the
+  spot is a white cross, the paperdoll is listed under Selected) and drops
+  the spawner on delete. Then
   the Settings form (AD4) reads the shard's configuration, refuses values out
   of range, and Save and restart writes two settings and a test mail password;
   the restarted server reports the new values, the previous files are kept

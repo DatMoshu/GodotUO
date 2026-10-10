@@ -48,7 +48,7 @@ public partial class CommandsPanel : VBoxContainer
     /// <summary>How many lists arrived (the smoke check waits on it).</summary>
     public int Lists { get; private set; }
 
-    /// <summary>True when the server returns command output (MUO patch 0004).</summary>
+    /// <summary>True when the server returns command output (MUO patch 0005).</summary>
     public bool OutputAvailable { get; private set; }
 
     /// <summary>The last admin_command reply.</summary>
@@ -404,7 +404,7 @@ public partial class CommandsPanel : VBoxContainer
                 _rows.AddRange((msg["commands"] as JsonArray ?? new JsonArray()).OfType<JsonObject>().Select(r => (JsonObject)r.DeepClone()));
                 OutputAvailable = (bool?)msg["output_available"] == true;
                 Lists++;
-                _status.Text = $"{_rows.Count} commands" + (OutputAvailable ? "" : "; this server does not return their output (it lacks MUO patch 0004)");
+                _status.Text = $"{_rows.Count} commands" + (OutputAvailable ? "" : "; this server does not return their output (it lacks MUO patch 0005)");
                 Fill();
                 ShowHelp();
                 break;

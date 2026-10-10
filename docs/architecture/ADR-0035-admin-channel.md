@@ -10,6 +10,13 @@ Proposed
 
 ## Last Verified
 
+2026-10-10 (AD2c): `python tools\editor_shard\run.py admin-check` 122/122,
+with the hidden presence's checks (Go there, Bring here, the paperdoll and
+Follow with nobody logged in, never in the world) and the staff-level
+refusals; the bridge's rule tests pass; `python tools\editor_shard\run.py
+admin-tab --windowed` 56/56, pressing Go there, Bring here and Open
+paperdoll in the tab with nobody online.
+
 2026-10-10 (AD3): `python tools\editor_shard\run.py admin-check --no-client`
 passes 106/106 on a private instance built with MUO patch 0005:
 `admin_commands`, `admin_command` and `command` refused without the token;
@@ -179,7 +186,7 @@ op is one entry in `AdminChannel.Ops`, op name to level. The token grants
 yet) would need it raised on purpose. An op that is not in `Ops` is not an
 admin op and can never run through the admin path.
 
-The ops so far (AD0, AD1, AD2a, AD2b, AD3, AD4, AD5, AD6):
+The ops so far (AD0, AD1, AD2a, AD2b, AD2c, AD3, AD4, AD5, AD6):
 
 | Op | Level | Does |
 |---|---|---|
@@ -189,10 +196,10 @@ The ops so far (AD0, AD1, AD2a, AD2b, AD3, AD4, AD5, AD6):
 | `admin_save` | Administrator | Saves the world now; answers when the write has finished |
 | `admin_godview` | GameMaster | The god view: players, NPCs and spawners on a facet, then change-only pushes (read only) |
 | `admin_godview_find` | GameMaster | Finds players, NPCs and spawners by name or serial on every facet (read only) |
-| `admin_goto` | GameMaster | Go there: moves the admin's own online staff character to a player, NPC, spawner or spot |
-| `admin_bring` | GameMaster | Bring here: moves a player or NPC to the admin's own staff character |
-| `admin_paperdoll` | GameMaster | Opens a player's or NPC's paperdoll in the admin's own staff character's client |
-| `admin_follow` | GameMaster | Follow: keeps the admin's own staff character beside a player or NPC until stopped |
+| `admin_goto` | GameMaster | Go there: moves the admin's own online staff character to a player, NPC, spawner or spot; with nobody logged in, the hidden presence's spot (AD2c) |
+| `admin_bring` | GameMaster | Bring here: moves a player or NPC to the admin's own staff character, or to the hidden presence's spot |
+| `admin_paperdoll` | GameMaster | Opens a player's or NPC's paperdoll in the admin's own staff character's client; for the hidden presence, answers with the paperdoll |
+| `admin_follow` | GameMaster | Follow: keeps the admin's own staff character (or the hidden presence's spot) beside a player or NPC until stopped |
 | `admin_spawner` | GameMaster | Respawn or Clear a spawner |
 | `admin_settings` | Administrator | The Settings form: reads the running server's setting values (secrets as `***`), and records a settings change in the audit log before the editor writes it |
 | `admin_accounts` | Administrator | The Accounts list: every account with its level, created, last login (UTC), characters, online, banned, protected (read only) |
@@ -240,10 +247,19 @@ wipe, delete accounts, global decorate, mass moves), lives in
 tab asks for the typed word, and the bridge refuses a dangerous command
 whose request does not carry it. Everything else runs on a click.
 
-The god view's actions (AD2b) move only the admin's own staff character: an
-online character at GameMaster or above, named in `as` or, when one alone is
-online, that one. The bridge never makes a character of its own; a hidden
-server-side presence is a later story (AD2c).
+The god view's actions (AD2b) move the admin's own staff character: an
+online character at GameMaster or above and no higher than the level the
+connection's token grants (an Administrator's tab never moves an Owner),
+named in `as` or, when one alone is online, that one. With no such character
+online, or `hidden` true, the Admin tab's hidden presence acts (AD2c). It is
+the Commands palette's hidden admin mobile, not a second one, and it never
+enters the world either: it stays on the Internal map, and only its spot is
+remembered in the bridge. Go there and Follow move the spot, Bring here
+brings a mobile to it (or to a spot in the request), and Open paperdoll
+answers with what the paperdoll shows, as there is no client to open one
+in. A command that moves the mobile (`[go`) moves the spot as well. Nothing
+in the game sees the presence; a summoned player is told a staff member
+summoned them, as before.
 
 Restart is not a bridge op: the editor's run bar stops and starts the server
 process it started itself (`tools/server_manager`), after an `admin_save`. A

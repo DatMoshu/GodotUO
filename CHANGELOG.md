@@ -6,6 +6,13 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 ## Unreleased
 
 ### Editor
+- The Admin tab's god view works with nobody logged in: **Go there**,
+  **Bring here**, **Open paperdoll** and **Follow** use the server's hidden
+  presence when no staff character of yours is online (or pick it in
+  **Act as**). Nothing moves in the game but what you bring: the presence's
+  spot shows on the map as a white cross, Bring here brings to it, and the
+  paperdoll is listed in the tab. The god view no longer moves a staff
+  character above your tab's own level.
 - The Admin tab has **Commands**: every command your server has, with its
   level, usage and description. Search them, see the help for the one you
   type, bring back earlier ones with Up and Down, and read what the server
