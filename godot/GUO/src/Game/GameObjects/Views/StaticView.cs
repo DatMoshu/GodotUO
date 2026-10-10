@@ -36,6 +36,10 @@ namespace GUO.Game.GameObjects
                 return false;
             }
 
+            // PORT DEVIATION (GUO): pick up theme changes (see
+            // GameObject.ResolveTheme); themed objects draw the variant PNG.
+            ResolveTheme();
+
             ushort graphic = Graphic;
             ushort hue = Hue;
             bool partial = ItemData.IsPartialHue;
@@ -80,7 +84,8 @@ namespace GUO.Game.GameObjects
                     && ProfileManager.CurrentProfile.ShadowsStatics
                     && (isTree || ItemData.IsFoliage || StaticFilters.IsRock(graphic)),
                 depth,
-                ProfileManager.CurrentProfile.AnimatedWaterEffect && ItemData.IsWet
+                ProfileManager.CurrentProfile.AnimatedWaterEffect && ItemData.IsWet,
+                ThemedVariant
             );
 
             // PORT DEVIATION (GUO): not when the sort already added it.

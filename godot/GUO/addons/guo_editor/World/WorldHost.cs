@@ -202,6 +202,9 @@ internal sealed class WorldHost : IDisposable
 
             _scene = new GameScene(world);
             _game.SetEmbeddedScene(_scene);
+            // The map tool zooms far out (whole regions); the game client
+            // keeps its own closer range (see Camera.SetZoomRange).
+            _scene.Camera.SetZoomRange(0.5f, 10f, 0.25f);
             _scene.Camera.Zoom = 1f;
 
             GoTo(facet, x, y);

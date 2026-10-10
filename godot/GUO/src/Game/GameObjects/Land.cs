@@ -64,7 +64,15 @@ namespace GUO.Game.GameObjects
 
         public override void UpdateGraphicBySeason()
         {
-            Graphic = SeasonManager.GetLandSeasonGraphic(World.Season, OriginalGraphic);
+            // PORT DEVIATION (GUO): client-side themes, same hook as statics
+            // (see Static.UpdateGraphicBySeason).
+            VariantAtlas.VariantImage image =
+                VariantAtlas.Resolve(World, X, Y, VariantKind.Land, OriginalGraphic);
+            ThemedVariant = image;
+            ushort? themed = image != null
+                ? null
+                : ThemeManager.LandVariant(World, X, Y, OriginalGraphic);
+            Graphic = themed ?? SeasonManager.GetLandSeasonGraphic(World.Season, OriginalGraphic);
             AllowedToDraw = Graphic > 2;
         }
 

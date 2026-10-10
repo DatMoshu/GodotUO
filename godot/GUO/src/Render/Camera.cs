@@ -91,6 +91,20 @@ namespace GUO.Renderer
         public void ZoomOut() => Zoom += ZoomStep;
 
         /// <summary>
+        /// PORT DEVIATION (GUO): the editor's world view looks at whole
+        /// regions, not one screenful, so it widens the range (and the step,
+        /// or reaching far out takes a hundred wheel clicks). The game client
+        /// keeps the constructor values.
+        /// </summary>
+        public void SetZoomRange(float min, float max, float step)
+        {
+            ZoomMin = min;
+            ZoomMax = max;
+            ZoomStep = step;
+            Zoom = _zoom;
+        }
+
+        /// <summary>
         /// The camera's rectangle in window space. Replaces upstream's
         /// <c>GetViewport()</c>, which returned an XNA <c>Viewport</c>; the
         /// name also changes because <c>Godot.Viewport</c> is a Node and the

@@ -31,6 +31,9 @@ namespace GUO.IO.Audio
         ///     A player already inside the tree, or null if there is no tree to put
         ///     it in — which is every context that is not the running client.
         /// </summary>
+        /// <summary>A node to hang driver-owned children (the voice pump) from.</summary>
+        public static Node RootNode => Root();
+
         public static AudioStreamPlayer CreatePlayer()
         {
             Node root = Root();

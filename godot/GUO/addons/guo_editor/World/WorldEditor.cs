@@ -30,6 +30,9 @@ public enum WorldTool
     // The Multi Editor's World selection (ADR-0031): two corner clicks.
     Area,
     Brush,
+
+    // The Regions dock: click a shard region on the map to edit it.
+    PickRegion,
 }
 
 /// <summary>

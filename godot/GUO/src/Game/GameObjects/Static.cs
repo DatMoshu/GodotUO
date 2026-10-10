@@ -77,7 +77,19 @@ namespace GUO.Game.GameObjects
 
         public override void UpdateGraphicBySeason()
         {
-            SetGraphic(SeasonManager.GetSeasonGraphic(World.Season, OriginalGraphic));
+            // PORT DEVIATION (GUO): client-side themes repaint matching
+            // statics inside their zones through this same hook, ahead of
+            // seasons, so season changes and chunk loads re-apply them and
+            // toggling a theme off restores the season look by construction.
+            // Atlas (PNG) variants keep the original graphic and ride
+            // ThemedVariant instead; only legacy numeric variants swap it.
+            Assets.VariantAtlas.VariantImage image =
+                Assets.VariantAtlas.Resolve(World, X, Y, Assets.VariantKind.Static, OriginalGraphic);
+            ThemedVariant = image;
+            ushort? themed = image != null
+                ? null
+                : ThemeManager.StaticVariant(World, X, Y, OriginalGraphic);
+            SetGraphic(themed ?? SeasonManager.GetSeasonGraphic(World.Season, OriginalGraphic));
             AllowedToDraw = CanBeDrawn(World, Graphic);
             IsVegetation = StaticFilters.IsVegetation(Graphic);
         }

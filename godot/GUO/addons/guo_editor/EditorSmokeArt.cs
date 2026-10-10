@@ -530,6 +530,11 @@ public partial class EditorSmoke
                                        && (string)sent["1"]["inputs"]["image"] == _artStub.UploadedName
                                        && (int)sent["6"]["inputs"]["width"] == 30);
         ArtCheck("comfy_provenance_fields", r.Model == "stub.safetensors" && r.Workflow == "stub_img2img.json" && r.Seed == 1234);
+        ArtCheck("comfy_returned_artifacts", r.Error == null && r.Files.Count == 3
+            && r.Files.Count(f => f.Kind == ArtifactKind.Image && f.FileName == "guo_00001_.png") == 1
+            && r.Files.Count(f => f.Kind == ArtifactKind.Audio && f.FileName == "sfx_test.mp3") == 1
+            && r.Files.Count(f => f.Kind == ArtifactKind.Model && f.FileName == "splat_test.ply") == 1,
+            string.Join(",", r.Files.Select(f => $"{f.Kind}:{f.FileName}:{f.Bytes.Length}")));
         ArtCheck("provenance_legacy_ai", ArtProvenance.FromJson(JsonNode.Parse("{\"tool\":\"comfyui\"}")).AiGenerated
                                          && ArtProvenance.FromJson(JsonNode.Parse("{\"tool\":\"retrodiffusion\"}")).AiGenerated);
         ArtCheck("provenance_non_ai", !ArtProvenance.FromJson(JsonNode.Parse("{\"tool\":\"pixelorama\"}")).AiGenerated
@@ -542,6 +547,17 @@ public partial class EditorSmoke
         var rd = new RetroDiffusionProvider(_artStub.Url, () => "stub-key");
         ImageResult ok = Task.Run(() => rd.RunAsync(new ImageRequest { Prompt = "a ring", Width = 32, Height = 32 }, null, CancellationToken.None)).GetAwaiter().GetResult();
         ArtCheck("retrodiffusion_stub_image", ok.Error == null && ok.Pngs.Count == 1 && _artStub.RdToken == "stub-key" && _artStub.RdCalls == 1, ok.Error ?? "");
+
+        // An img2img workflow queued with no input must be refused with words,
+        // never queued: ComfyUI would try to open its input directory as a file.
+        string needy = Path.Combine(Path.GetDirectoryName(_artWorkflow), "stub_needs_input.json");
+        File.WriteAllText(needy, ArtStubServer.WorkflowJson.Replace("\"example.png\"", "\"{{input}}\""));
+        int queuedBefore = _artStub.QueuedCount;
+        ImageResult refused = Task.Run(() => new ComfyUiProvider(_artStub.Url).RunAsync(
+            new ImageRequest { Prompt = "x", WorkflowPath = needy }, null, CancellationToken.None)).GetAwaiter().GetResult();
+        ArtCheck("img2img_needs_input_refused", refused.Error != null && refused.Error.Contains("input image") && _artStub.QueuedCount == queuedBefore,
+            refused.Error ?? "queued anyway");
+        try { File.Delete(needy); } catch (Exception) { }
 
         if (Art != null)
         {
@@ -575,12 +591,335 @@ public partial class EditorSmoke
                                     && p.Inputs.Count == 1 && p.Inputs[0] == "overlay:static:0x0E75" && p.DerivedFromClientArt,
             p?.ToJson().ToJsonString() ?? "none");
         _artReport["dock_provenance_json"] = p?.ToJson().ToJsonString();
+        SplatCheck();
+
+        string saved = Art.SaveArtifacts();
+        string artDir = Path.Combine(ArtExchange.Root, "artifacts");
+        string mp3Sidecar = Path.Combine(artDir, "sfx_test.mp3.json");
+        string plySidecar = Path.Combine(artDir, "splat_test.ply.json");
+        ArtCheck("dock_saved_artifacts", saved.StartsWith("saved 2 artifact(s)")
+            && File.Exists(Path.Combine(artDir, "sfx_test.mp3"))
+            && File.Exists(Path.Combine(artDir, "splat_test.ply")), saved);
+        JsonNode mp3Prov = File.Exists(mp3Sidecar) ? JsonNode.Parse(File.ReadAllText(mp3Sidecar)) : null;
+        JsonNode plyProv = File.Exists(plySidecar) ? JsonNode.Parse(File.ReadAllText(plySidecar)) : null;
+        ArtCheck("dock_artifact_provenance", (string)mp3Prov?["kind"] == "audio" && (string)plyProv?["kind"] == "model"
+            && (string)mp3Prov?["tool"] == "comfyui" && (string)plyProv?["workflow"] == "stub_img2img.json",
+            $"{mp3Prov?.ToJsonString()} | {plyProv?.ToJsonString()}");
+        AudioFormatCheck();
+        PlyStrideCheck();
+    }
+
+    /// <summary>
+    /// Region-audio format regression (PR #33 P2): a WAV backend result is
+    /// saved as .wav (not mislabeled .mp3), listed, decoded as WAV, and
+    /// plays on zone entry / stops on exit; OGG/FLAC results are rejected
+    /// before anything is written.
+    /// </summary>
+    private void AudioFormatCheck()
+    {
+        ArtCheck("audio_ext", GUO.IO.Audio.ZoneAudio.AudioExtensionFor("a.mp3") == ".mp3"
+            && GUO.IO.Audio.ZoneAudio.AudioExtensionFor("A.WAV") == ".wav"
+            && GUO.IO.Audio.ZoneAudio.AudioExtensionFor("a.ogg") == null
+            && GUO.IO.Audio.ZoneAudio.AudioExtensionFor("a.flac") == null
+            && GUO.IO.Audio.ZoneAudio.AudioExtensionFor("") == null);
+        ArtCheck("audio_decode", GUO.IO.Audio.ZoneAudio.DecodeAudio("a.wav", new byte[] { 1, 2 }) is AudioStreamWav
+            && GUO.IO.Audio.ZoneAudio.DecodeAudio("a.mp3", new byte[] { 1, 2 }) is AudioStreamMP3
+            && GUO.IO.Audio.ZoneAudio.DecodeAudio("a.ogg", new byte[] { 1, 2 }) == null);
+        if (Zones == null)
+        {
+            ArtCheck("audio_format", false, "no Regions dock");
+            return;
+        }
+
+        string oldMusic = System.Environment.GetEnvironmentVariable("GUO_MUSIC_DIR");
+        string musicTmp = Path.Combine(_out, "regions_audio_format");
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(musicTmp, "tracks"));
+            System.Environment.SetEnvironmentVariable("GUO_MUSIC_DIR", musicTmp);
+            var region = new JsonObject
+            {
+                ["Name"] = "Format Fixture",
+                ["Map"] = "Felucca",
+                ["Area"] = new JsonArray { new JsonObject { ["x1"] = 10, ["y1"] = 10, ["x2"] = 12, ["y2"] = 12 } },
+            };
+            var wav = new GUO.Comfy.ComfyClient.AudioResult { Audio = WavFixture(), FileName = "gen_clip.wav" };
+            string said = Zones.OnAudioGenerated(GUO.IO.Audio.ZoneAudio.Music, region, wav);
+            string wavPath = Path.Combine(musicTmp, "tracks", "formatfixture_01.wav");
+            ArtCheck("audio_wav_saved", said.StartsWith("track attached") && File.Exists(wavPath), said);
+            ArtCheck("audio_wav_listed", GUO.IO.Audio.ZoneAudio.Music.TrackFiles().Contains("formatfixture_01.wav"));
+            var ogg = new GUO.Comfy.ComfyClient.AudioResult { Audio = new byte[] { 1, 2, 3 }, FileName = "gen_clip.ogg" };
+            string refused = Zones.OnAudioGenerated(GUO.IO.Audio.ZoneAudio.Music, region, ogg);
+            ArtCheck("audio_ogg_rejected", refused.Contains("unsupported")
+                && Directory.GetFiles(Path.Combine(musicTmp, "tracks")).Length == 1, refused);
+            AudioZonePlaybackCheck(musicTmp);
+        }
+        finally
+        {
+            System.Environment.SetEnvironmentVariable("GUO_MUSIC_DIR", oldMusic);
+        }
+    }
+
+    private static byte[] WavFixture()
+    {
+        var b = new List<byte>();
+        b.AddRange(Encoding.ASCII.GetBytes("RIFF"));
+        b.AddRange(BitConverter.GetBytes(36 + 160));
+        b.AddRange(Encoding.ASCII.GetBytes("WAVEfmt "));
+        b.AddRange(BitConverter.GetBytes(16));
+        b.AddRange(BitConverter.GetBytes((short)1));
+        b.AddRange(BitConverter.GetBytes((short)1));
+        b.AddRange(BitConverter.GetBytes(22050));
+        b.AddRange(BitConverter.GetBytes(44100));
+        b.AddRange(BitConverter.GetBytes((short)2));
+        b.AddRange(BitConverter.GetBytes((short)16));
+        b.AddRange(Encoding.ASCII.GetBytes("data"));
+        b.AddRange(BitConverter.GetBytes(160));
+        for (int i = 0; i < 80; i++)
+        {
+            b.AddRange(BitConverter.GetBytes((short)(Math.Sin(i / 80.0 * Math.PI * 2) * 8000)));
+        }
+
+        return b.ToArray();
+    }
+
+    /// <summary>Zone entry starts the saved WAV, exit fades back to idle.</summary>
+    private void AudioZonePlaybackCheck(string musicTmp)
+    {
+        var world = _world?.Host?.World;
+        var player = world?.Player;
+        if (world == null || player == null || !world.InGame)
+        {
+            _artReport["audio_zone_playback"] = "skipped: no live world";
+            return;
+        }
+
+        var layer = GUO.IO.Audio.ZoneAudio.Music;
+        int facet = world.MapIndex;
+        int px = player.X, py = player.Y;
+        var zone = new GUO.IO.Audio.ZoneAudio.Zone
+        {
+            Name = "Playback Fixture",
+            Facet = facet,
+            X0 = px - 2,
+            Y0 = py - 2,
+            X1 = px + 2,
+            Y1 = py + 2,
+            Tracks = new List<string> { "formatfixture_01.wav" },
+        };
+        layer.Zones.Add(zone);
+        try
+        {
+            layer.Update(world);
+            if (layer.Status == "no audio host")
+            {
+                _artReport["audio_zone_playback"] = "skipped: no audio host";
+                return;
+            }
+
+            ArtCheck("audio_zone_entry", layer.Status.Contains("Playback Fixture"), layer.Status);
+            player.X = (ushort)Math.Max(0, px + 500);
+            player.Y = (ushort)Math.Max(0, py + 500);
+            string idle = layer.Status;
+            for (int i = 0; i < 500 && idle != "idle"; i++)
+            {
+                layer.Update(world);
+                idle = layer.Status;
+            }
+
+            ArtCheck("audio_zone_exit", idle == "idle", idle);
+        }
+        finally
+        {
+            player.X = (ushort)px;
+            player.Y = (ushort)py;
+            layer.Zones.Remove(zone);
+            layer.Save(layer.Zones);
+        }
+    }
+
+    // --- part three: generated splat LODs through the runtime loader --------------
+
+    /// <summary>
+    /// The ComfyUI proofs leave LOD PLYs under build/comfy (gitignored, so
+    /// absent on a fresh checkout): when they are there, parse all four
+    /// levels, check the LOD selection and draw each end through SplatBatcher.
+    /// When they are not, this reports the skip rather than failing.
+    /// </summary>
+    private void SplatCheck()
+    {
+        string comfy = FindComfyDir();
+        string[] lods = { "armoire_lod0.ply", "armoire_lod1.ply", "armoire_lod2.ply", "armoire_lod3.ply" };
+        string[] paths = lods.Select(f => comfy == null ? null : Path.Combine(comfy, "multi_lod", f)).ToArray();
+        bool present = paths.All(p => p != null && File.Exists(p));
+        _artReport["splat_lods_present"] = present;
+        if (!present)
+        {
+            _artReport["splat"] = "skipped: no build/comfy/multi_lod (run tools/comfy first)";
+            return;
+        }
+
+        var chain = GUO.Renderer.SplatLodChain.Load(paths);
+        int[] counts = chain.Levels.Select(l => l.Gaussians.Length).ToArray();
+        ArtCheck("splat_parse_counts", counts.SequenceEqual(new[] { 64800, 16200, 4050, 1012 }), string.Join("/", counts));
+        ArtCheck("splat_bounds", chain.BoundsMax.X > chain.BoundsMin.X && chain.BoundsMax.Y > chain.BoundsMin.Y
+            && chain.Levels[0].OpacityMass > chain.Levels[3].OpacityMass,
+            $"{chain.BoundsMin} {chain.BoundsMax} mass {chain.Levels[0].OpacityMass:0}/{chain.Levels[3].OpacityMass:0}");
+        ArtCheck("splat_select", chain.Select(1000) == 0 && chain.Select(200) == 1 && chain.Select(100) == 2
+            && chain.Select(40) == 3 && chain.Select(10) == -1);
+
+        Rid parent = RenderingServer.CanvasItemCreate();
+        try
+        {
+            using var batcher = new GUO.Renderer.SplatBatcher(parent);
+            batcher.SetChain(chain, Vector2.Zero);
+            batcher.Draw(1000f / batcher.WorldSize); // radius 1000: lod0
+            bool near = batcher.LastLevel == 0 && batcher.DrawnSplats == 64800;
+            batcher.Draw(100f / batcher.WorldSize); // radius 100: lod2
+            bool mid = batcher.LastLevel == 2 && batcher.DrawnSplats == 4050;
+            batcher.Draw(0.001f); // far below the last threshold: culled
+            bool far = batcher.LastLevel == -1 && batcher.DrawnSplats == 0;
+            ArtCheck("splat_draw_lods", near && mid && far, $"near {batcher.LastLevel}/{batcher.DrawnSplats}");
+        }
+        finally
+        {
+            RenderingServer.FreeRid(parent);
+        }
+    }
+
+    /// <summary>
+    /// PLY stride regression (PR #33 P2): extra float and non-float
+    /// properties count toward the stride instead of shifting later offsets;
+    /// list properties and truncated bodies are rejected, not misread.
+    /// </summary>
+    private void PlyStrideCheck()
+    {
+        string[] wanted =
+        {
+            "x", "y", "z", "f_dc_0", "f_dc_1", "f_dc_2", "opacity",
+            "scale_0", "scale_1", "scale_2", "rot_0", "rot_1", "rot_2", "rot_3",
+        };
+        float[] vals = { 1, 2, 3, 0.1f, 0.2f, 0.3f, 0.5f, 0, 0, 0, 1, 0, 0, 0 };
+
+        var withFloat = wanted.Select(w => ("float", w)).Concat(new[] { ("float", "f_rest_0") }).ToList();
+        var p1 = GUO.Assets.SplatPlyParser.Parse(
+            BuildPly(withFloat, new[] { Floats(vals.Concat(new[] { 9f }).ToArray()) }, 1), "extra-float");
+        // Positions/scales are normalized; DC/opacity/rotation pass through.
+        ArtCheck("ply_extra_float", p1.Gaussians.Length == 1
+            && Math.Abs(p1.Gaussians[0].Dc0 - 0.1f) < 1e-6 && Math.Abs(p1.Gaussians[0].Opacity - 0.5f) < 1e-6
+            && Math.Abs(p1.Gaussians[0].Rot0 - 1f) < 1e-6);
+
+        var withUchar = wanted.Take(7).Select(w => ("float", w)).Concat(new[] { ("uchar", "red") })
+            .Concat(wanted.Skip(7).Select(w => ("float", w))).ToList();
+        var body = new List<byte>(Floats(vals.Take(7).ToArray()));
+        body.Add(42);
+        body.AddRange(Floats(vals.Skip(7).ToArray()));
+        var p2 = GUO.Assets.SplatPlyParser.Parse(BuildPly(withUchar, new[] { body.ToArray() }, 1), "extra-uchar");
+        ArtCheck("ply_extra_uchar_stride", p2.Gaussians.Length == 1
+            && Math.Abs(p2.Gaussians[0].Dc1 - 0.2f) < 1e-6 && Math.Abs(p2.Gaussians[0].Opacity - 0.5f) < 1e-6
+            && Math.Abs(p2.Gaussians[0].Rot0 - 1f) < 1e-6);
+
+        bool truncated = false;
+        try
+        {
+            GUO.Assets.SplatPlyParser.Parse(
+                BuildPly(wanted.Select(w => ("float", w)).ToList(), new[] { Floats(vals) }, 2), "truncated");
+        }
+        catch (InvalidDataException)
+        {
+            truncated = true;
+        }
+
+        ArtCheck("ply_truncated_rejected", truncated);
+
+        bool listed = false;
+        try
+        {
+            var withList = wanted.Select(w => ("float", w)).Concat(new[] { ("list uchar int", "foo") }).ToList();
+            GUO.Assets.SplatPlyParser.Parse(BuildPly(withList, new[] { Floats(vals) }, 1), "listed");
+        }
+        catch (InvalidDataException)
+        {
+            listed = true;
+        }
+
+        ArtCheck("ply_list_rejected", listed);
+    }
+
+    private static byte[] Floats(float[] vals)
+    {
+        var b = new List<byte>(vals.Length * 4);
+        foreach (float v in vals)
+        {
+            b.AddRange(BitConverter.GetBytes(v));
+        }
+
+        return b.ToArray();
+    }
+
+    private static byte[] BuildPly(List<(string Type, string Name)> props, byte[][] bodies, int count)
+    {
+        var sb = new StringBuilder();
+        sb.Append("ply\nformat binary_little_endian 1.0\nelement vertex ");
+        sb.Append(count);
+        sb.Append('\n');
+        foreach ((string type, string name) in props)
+        {
+            sb.Append("property ").Append(type).Append(' ').Append(name).Append('\n');
+        }
+
+        sb.Append("end_header\n");
+        var head = Encoding.ASCII.GetBytes(sb.ToString());
+        var out_ = new List<byte>(head.Length + bodies.Sum(b => b.Length));
+        out_.AddRange(head);
+        foreach (byte[] b in bodies)
+        {
+            out_.AddRange(b);
+        }
+
+        return out_.ToArray();
+    }
+
+    /// <summary>Repo build/comfy: up from the exchange folder to the config.bat marker.</summary>
+    private static string FindComfyDir()
+    {
+        try
+        {
+            string dir = Path.GetFullPath(ArtExchange.Root);
+            for (int i = 0; i < 8 && dir != null; i++)
+            {
+                if (File.Exists(Path.Combine(dir, "launchers", "_shared", "config.bat")))
+                {
+                    return Path.Combine(dir, "build", "comfy");
+                }
+
+                dir = Path.GetDirectoryName(dir);
+            }
+        }
+        catch (Exception)
+        {
+        }
+
+        return null;
     }
 
     private void ArtCleanup()
     {
         _artStub?.Dispose();
         _artStub = null;
+        // Same as the studio stub: not for real ComfyUI, so remove it from
+        // the shared workflows folder when the checks are done.
+        try
+        {
+            if (_artWorkflow != null && File.Exists(_artWorkflow))
+            {
+                File.Delete(_artWorkflow);
+            }
+        }
+        catch (Exception)
+        {
+        }
+
         ExternalTools.DryRun = false;
         System.Environment.SetEnvironmentVariable("UO_ART_EXCHANGE", _artSavedExchange);
         Art?.Shutdown();
@@ -597,7 +936,8 @@ internal sealed class ArtStubServer : IDisposable
   ""4"": {""class_type"": ""KSampler"", ""inputs"": {""seed"": 1, ""steps"": 4, ""positive"": [""2"", 0], ""negative"": [""3"", 0], ""latent_image"": [""6"", 0], ""model"": [""5"", 0]}},
   ""5"": {""class_type"": ""CheckpointLoaderSimple"", ""inputs"": {""ckpt_name"": ""stub.safetensors""}},
   ""6"": {""class_type"": ""EmptyLatentImage"", ""inputs"": {""width"": 512, ""height"": 512, ""batch_size"": 1}},
-  ""7"": {""class_type"": ""SaveImage"", ""inputs"": {""images"": [""4"", 0], ""filename_prefix"": ""guo""}}
+  ""7"": {""class_type"": ""VAEDecode"", ""inputs"": {""samples"": [""4"", 0], ""vae"": [""5"", 2]}},
+  ""8"": {""class_type"": ""SaveImage"", ""inputs"": {""images"": [""7"", 0], ""filename_prefix"": ""guo""}}
 }";
 
     private readonly HttpListener _http = new();
@@ -609,6 +949,7 @@ internal sealed class ArtStubServer : IDisposable
     public string Url { get; }
     public JsonNode LastPrompt { get; private set; }
     public int UploadBytes { get; private set; }
+    public int QueuedCount { get; private set; }
     public string UploadedName { get; private set; } = "";
     public int RdCalls { get; private set; }
     public string RdToken { get; private set; } = "";
@@ -677,6 +1018,7 @@ internal sealed class ArtStubServer : IDisposable
             {
                 LastPrompt = JsonNode.Parse(Encoding.UTF8.GetString(await ReadAll(ctx).ConfigureAwait(false)))["prompt"];
                 _queuedAt = DateTime.UtcNow;
+                QueuedCount++;
                 _queued.Release();
                 await Json(ctx, "{\"prompt_id\":\"p1\",\"number\":1,\"node_errors\":{}}").ConfigureAwait(false);
             }
@@ -684,13 +1026,27 @@ internal sealed class ArtStubServer : IDisposable
             {
                 bool done = DateTime.UtcNow - _queuedAt > TimeSpan.FromMilliseconds(900);
                 await Json(ctx, done
-                    ? "{\"p1\":{\"outputs\":{\"7\":{\"images\":[{\"filename\":\"guo_00001_.png\",\"subfolder\":\"\",\"type\":\"output\"}]}}}}"
+                    ? "{\"p1\":{\"outputs\":{\"7\":{\"images\":[{\"filename\":\"guo_00001_.png\",\"subfolder\":\"\",\"type\":\"output\"}]},\"8\":{\"audio\":[{\"filename\":\"sfx_test.mp3\",\"subfolder\":\"\",\"type\":\"output\"}]},\"9\":{\"models\":[{\"filename\":\"splat_test.ply\",\"subfolder\":\"\",\"type\":\"output\"}]}}}}"
                     : "{}").ConfigureAwait(false);
             }
             else if (path == "/view")
             {
-                ctx.Response.ContentType = "image/png";
-                await ctx.Response.OutputStream.WriteAsync(_png).ConfigureAwait(false);
+                string file = ctx.Request.QueryString["filename"] ?? "";
+                byte[] bytes = _png;
+                string mime = "image/png";
+                if (file.EndsWith(".mp3", StringComparison.OrdinalIgnoreCase))
+                {
+                    bytes = System.Text.Encoding.ASCII.GetBytes("ID3stub-mp3-bytes");
+                    mime = "audio/mpeg";
+                }
+                else if (file.EndsWith(".ply", StringComparison.OrdinalIgnoreCase))
+                {
+                    bytes = System.Text.Encoding.ASCII.GetBytes("ply\nformat ascii 1.0\nstub-splat");
+                    mime = "application/octet-stream";
+                }
+
+                ctx.Response.ContentType = mime;
+                await ctx.Response.OutputStream.WriteAsync(bytes).ConfigureAwait(false);
             }
             else if (path == "/v1/inferences")
             {
