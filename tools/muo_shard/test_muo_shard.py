@@ -499,8 +499,11 @@ def _sandbox_helper(tmp_path: Path, keep: int):
     stub.write_bytes(b'#!/usr/bin/env bash\nwhile [ $# -gt 0 ]; do if [ "$1" = -cf ]; then echo snap > "$2"; exit 0; fi; shift; done\nexit 1\n')
     stub.chmod(0o755)
     helper = tmp_path / "muo-backup.sh"
+    # Compute PATH inside Bash. A Windows drive letter/semicolon PATH can be
+    # translated incorrectly by Git Bash and silently select the real tar.
+    text = text.replace("set -euo pipefail\n", 'set -euo pipefail\nexport PATH="$(cd -- "$(dirname -- "$0")/bin" && pwd):$PATH"\n', 1)
     helper.write_bytes(text.encode("utf-8"))
-    return helper, tmp_path / "bk", {**os.environ, "PATH": f"{(tmp_path / 'bin').as_posix()}{os.pathsep}{os.environ['PATH']}"}
+    return helper, tmp_path / "bk", dict(os.environ)
 
 
 @pytest.mark.skipif(not shutil.which("bash"), reason="needs bash")

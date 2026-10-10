@@ -15,7 +15,8 @@ class EvidenceTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
-        self.root = Path(self.temp.name)
+        # Match the canonical paths stored by real staging, including Windows 8.3 aliases.
+        self.root = Path(self.temp.name).resolve()
         self.built, self.stage = self.root / "built", self.root / "stage"
         self.built.mkdir(); self.stage.mkdir(); (self.built / "parts").mkdir(); (self.built / "world").mkdir()
         self.write(self.built / "district.json", {"status":"native-valid", "name":"district", "origin":[8,16],
