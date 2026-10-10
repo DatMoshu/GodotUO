@@ -35,8 +35,9 @@ file, never reads the video folder, and leaves every registry row in place (they
 
 `--shard TARGET` runs a **client** scenario against a named shard instead of the one in `UO_SHARD_HOST` / `UO_SHARD_PORT`.
 It reads `GUO_SHARD_<TARGET>_HOST` and `GUO_SHARD_<TARGET>_PORT` (target upper-cased, `-` and `.` as `_`; environment, then
-`config.local.bat`, then `config.bat`) and the login from `GUO_SCENARIO_ACCOUNT` / `GUO_SCENARIO_PASSWORD` (or
-`--var account=` / `--var password=`). A missing one stops the run before launch (exit 2) with the setting's name; the
+`config.local.bat`, then `config.bat`) and the login from `GUO_SCENARIO_ACCOUNT` (or `--var account=`) and
+`GUO_SCENARIO_PASSWORD`. The password comes from the environment only: `--var password=` still works but warns and
+names the variable, since a command line shows in the process list and the shell history. A missing one stops the run before launch (exit 2) with the setting's name; the
 values are never printed or logged. The run's manifest records the target as `shard`.
 
 Not yet (the commands exist in the plan, not in the runner):

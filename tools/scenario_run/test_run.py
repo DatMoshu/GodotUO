@@ -752,3 +752,22 @@ def test_unset_registration_settings_warn_and_register_nothing(cli_root, monkeyp
     warns = [e for e in warns if e["kind"] == "warn"]
     assert len(warns) == 1 and warns[0]["detail"]["unset"] == ["GUO_RUNS_SHARED_DIR", "GUO_RUNS_DB"]
     assert not list(tmp_path.rglob("*.db")) and (run_dir / "run.json").is_file()
+
+
+def test_var_password_warns_and_names_the_env_var(capsys):
+    assert run_mod.parse_vars(["password=hunter2", "account=gm1"]) == {"password": "hunter2", "account": "gm1"}
+    err = capsys.readouterr().err
+    assert "--var password=" in err and "GUO_SCENARIO_PASSWORD" in err and "hunter2" not in err
+    run_mod.parse_vars(["account=gm1"])
+    assert capsys.readouterr().err == ""                              # only the password warns
+
+
+def test_missing_password_hint_names_the_env_var_only(monkeypatch):
+    for var in ("GUO_SCENARIO_PASSWORD", "GUO_SCENARIO_ACCOUNT"):
+        monkeypatch.delenv(var, raising=False)
+    with pytest.raises(sc.ScenarioError) as ex:
+        sc.substitute("$password", {})
+    assert "GUO_SCENARIO_PASSWORD" in str(ex.value) and "--var" not in str(ex.value)
+    with pytest.raises(sc.ScenarioError) as ex:
+        sc.substitute("$account", {})
+    assert "--var account=" in str(ex.value)
