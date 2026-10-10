@@ -307,8 +307,20 @@ internal static class ObjectsDump
             }
         }
 
+        // The gumps open (not the world viewport), by type and the serial each is for: a paperdoll a shard
+        // opened (the Admin tab's Open paperdoll) shows here as PaperDollGump with the mobile's serial.
+        var gumps = new List<Dictionary<string, object>>();
+        foreach (var g in GUO.Game.Managers.UIManager.Gumps)
+        {
+            if (g is not GUO.Game.UI.Gumps.WorldViewportGump)
+            {
+                gumps.Add(new() { ["type"] = g.GetType().Name, ["serial"] = (uint)g.LocalSerial });
+            }
+        }
+
         var report = new Dictionary<string, object>
         {
+            ["gumps"] = gumps,
             ["worn"] = worn,
             ["backpack"] = backpack,
             ["map"] = world?.MapIndex ?? -1,

@@ -43,6 +43,9 @@ public partial class RadarView : Control
     /// </summary>
     public Action<Vector2, float> Overlay { get; set; }
 
+    /// <summary>The zoom relative to the fit (1 = the whole image); Focus keeps it when given this.</summary>
+    public float Zoom => _zoom;
+
     /// <summary>The view position of an image position (fractions allowed).</summary>
     public Vector2 ImageToView(Vector2 px) => Origin + px * Scale;
 

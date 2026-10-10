@@ -539,6 +539,11 @@ public partial class AdminView : VBoxContainer
                 break;
             case "admin_godview":
             case "admin_godview_find":
+            case "admin_goto":
+            case "admin_bring":
+            case "admin_paperdoll":
+            case "admin_follow":
+            case "admin_spawner":
                 _godView.Handle(msg);
                 // Pushes come every second while something moves; the rest of the tab does not change with them.
                 return;

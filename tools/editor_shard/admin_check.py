@@ -18,8 +18,14 @@ and checks, in order:
    only what changed (a spawner put through the bridge, its creatures, its
    delete), `admin_godview_find` finds on every facet, an unknown facet is
    refused, and neither runs without the token;
-7. a connection is closed after three refused tokens;
-8. neither the token nor a password reaches the shard log or the audit log.
+7. the god view's actions (AD2b, admin_actions_check.py): a spawner's
+   Respawn and Clear with nobody logged in; then, with a game master lane
+   character logged in by a headless client as the admin's own, Go there,
+   Bring here, Open paperdoll and Follow, each seen in the god view and in
+   that client; refusals in plain words; all of it audited (--no-client
+   skips the character part);
+8. a connection is closed after three refused tokens;
+9. neither the token nor a password reaches the shard log or the audit log.
 
 Prints one line per check and exits 0 when all pass. The token is read from
 the configuration and never printed.
@@ -83,7 +89,8 @@ class Bridge:
             pass
 
 
-def run(port: int, token: str, shard_home: Path, secrets: list[str]) -> int:
+def run(port: int, token: str, shard_home: Path, secrets: list[str], cfg=None, shard_port: int = 0,
+        out: Path | None = None, with_client: bool = True) -> int:
     results: list[tuple[bool, str]] = []
 
     def check(ok: bool, what: str) -> None:
@@ -229,6 +236,12 @@ def run(port: int, token: str, shard_home: Path, secrets: list[str]) -> int:
     check(stop is not None and stop.get("ok") is True and stop.get("watching") is False, "watch false ends the pushes")
     b.close()
 
+    # AD2b: the god view's actions.
+    if cfg is not None:
+        from admin_actions_check import run as actions_check
+
+        actions_check(check, cfg, port, token, shard_port, out or shard_home, with_client)
+
     b = Bridge(port, timeout=20.0)
     closed = False
     for i in range(4):
@@ -244,6 +257,9 @@ def run(port: int, token: str, shard_home: Path, secrets: list[str]) -> int:
     texts = []
     for f in (shard_home / "shard.log", shard_home / "Logs" / "GUO" / "admin_audit.jsonl"):
         texts.append(f.read_text(encoding="utf-8", errors="replace") if f.is_file() else "")
+    # The staff client's own output too (it was handed the game master password).
+    client_log = (out or shard_home) / "staff_client.log"
+    texts.append(client_log.read_text(encoding="utf-8", errors="replace") if client_log.is_file() else "")
     check(bool(texts[1]), "the audit log file exists on the server")
     leaked = [s for s in [token, *secrets] if s and any(s in t for t in texts)]
     check(not leaked, f"no token or password in the shard log or the audit log ({len([token, *secrets])} secrets checked)")

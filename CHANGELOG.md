@@ -6,6 +6,14 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 ## Unreleased
 
 ### Editor
+- The god view **acts**: with a player, NPC or spawner selected, **Go there**
+  moves your own logged-in staff character to it, **Bring here** brings a
+  player or NPC to your character, **Open paperdoll** opens its paperdoll in
+  your client, and **Follow** keeps your character beside it (the map follows
+  it too, across facets) until you stop it. A spawner has **Respawn** and
+  **Clear**. "Act as" picks the character when more than one of yours is
+  online; a line under the buttons says why one is off. Every action is in
+  the audit log.
 - The Admin tab has a **god view**: every player, NPC and spawner on a facet,
   drawn over the facet's radar map and kept up to date as they move, spawn and
   die. Filters show or hide players, NPCs and spawners; **Find** searches

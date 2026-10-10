@@ -9,7 +9,7 @@ python tools\editor_shard\run.py setup   [--from DIR] [--port 2594]
 python tools\editor_shard\run.py start   [--data-first DIR] [--objects EXPORT | --clear-objects]
 python tools\editor_shard\run.py status
 python tools\editor_shard\run.py stop
-python tools\editor_shard\run.py admin-check
+python tools\editor_shard\run.py admin-check [--no-client]
 python tools\editor_shard\run.py admin-tab [--windowed]
 ```
 
@@ -50,8 +50,17 @@ python tools\editor_shard\run.py admin-tab [--windowed]
 - **admin-check** talks to the running instance's bridge and checks the admin
   channel: no token, a wrong one, the right one, the audit log, the close
   after three refusals, the god view (a whole facet, then change-only pushes
-  as a spawner is put and deleted, Find by name and serial), and that no token
-  or password reached a log. The same
+  as a spawner is put and deleted, Find by name and serial), the god view's
+  actions (AD2b) and that no token or password reached a log. For the actions
+  it puts two test spawners west of Britain and logs a headless GUO client in
+  as the third game master lane account (`UO_SHARD_GM_ACCOUNTS`, its
+  character named after the account; `staff_client.py`), then checks Go
+  there, Bring here and Open paperdoll in that client's objects dump, Follow
+  (it takes the character back after a Go there away, and ends by itself
+  when the target is deleted), Respawn and Clear, and every refusal. Its
+  spawners are deleted at the end. `--no-client` checks the spawner actions
+  and refusals only. **start** passes `UO_SHARD_GM_ACCOUNTS` so those
+  accounts get the generated password. The same
   channel without ModernUO:
   `dotnet run --project tools\editor_shard\bridge\tests\AdminChannel.Tests.csproj`.
 - **admin-tab** drives the GUO editor's Admin tab against this instance, in a
@@ -59,11 +68,11 @@ python tools\editor_shard\run.py admin-tab [--windowed]
   instance with the admin token, the tab connects and reads Health, Save now
   saves, Restart saves and has the run bar stop and start the server, and the
   tab reconnects; the god view watches Felucca again, shows a spawner put
-  through the bridge with its horses, finds it, hides NPCs with the filter
-  and drops it on delete. Then it checks that every time in the tab's log is
-  UTC with a Z, and that no token or password reached the editor output, the
-  tab's log, the server console or the audit log. It stops a
-  running `start` first. `--windowed` saves stills of the tab and a clip under
+  through the bridge with its horses, finds it, hides NPCs with the filter,
+  presses its Respawn and Clear buttons (AD2b) and drops it on delete. Then
+  it checks that every time in the tab's log is UTC with a Z, and that no
+  token or password reached the editor output, the tab's log, the server
+  console or the audit log. It stops a running `start` first. `--windowed` saves stills of the tab and a clip under
   `build\admin_tab`.
 - **stop** ends only the process `start` recorded, and only if its executable
   is the copy's. It cannot stop the shared shard.

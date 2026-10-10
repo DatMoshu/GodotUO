@@ -1,4 +1,4 @@
-"""The Admin tab, driven in a real editor against the private instance (sprint "Admin tab", AD1, AD2a).
+"""The Admin tab, driven in a real editor against the private instance (sprint "Admin tab", AD1, AD2a, AD2b).
 
     python tools/editor_shard/run.py admin-tab [--windowed]
 
@@ -15,8 +15,10 @@ not touched) with the addon's scripted Admin run (EditorSmokeAdmin.cs). In it:
    reconnects by itself and reads Health again (a fresh uptime);
 5. the god view watches the facet again after the restart; a spawner put
    through the bridge arrives in a change-only push with the horses it
-   spawned; Find finds it on Felucca; the NPCs filter hides the NPCs; its
-   delete removes it and them;
+   spawned; Find finds it on Felucca; the NPCs filter hides the NPCs; with
+   it selected Go there, Respawn and Clear are on (no staff character is
+   online, and the hint says so), Respawn replaces its horses and Clear removes them
+   (AD2b, pressed as buttons); its delete removes it;
 6. the run bar stops the server.
 
 Then it checks that every time in the tab's log is UTC with a Z, and that
@@ -40,8 +42,8 @@ from guo.process import build_child_env, no_activate
 
 TIMEOUT_S = 900
 # The story the evidence is filed under (rule: evidence_naming.md).
-STORY = "AD2a"
-STILLS = ("connected", "saved", "restarted", "godview", "spawner", "filtered")
+STORY = "AD2b"
+STILLS = ("connected", "saved", "restarted", "godview", "spawner", "filtered", "respawn", "cleared")
 
 
 def run(cfg, shard_home: Path, token: str, secrets: list[str], windowed: bool, stamp: str) -> int:
@@ -136,6 +138,16 @@ def run(cfg, shard_home: Path, token: str, secrets: list[str], windowed: bool, s
           "selecting the spawner shows what it spawns and how many, in plain words")
     check(admin.get("godview_found"), "Find found the spawner on Felucca (searched every facet)")
     check(admin.get("godview_filtered"), f"the NPCs filter hid the NPCs: \"{admin.get('godview_filter_status')}\"")
+    buttons = admin.get("godview_spawner_buttons") or {}
+    check(admin.get("godview_spawner_buttons_ok"),
+          f"with the spawner selected Go there, Respawn and Clear are on ({', '.join(k for k, on in buttons.items() if on)}), "
+          f"and the hint says Go there needs a staff character")
+    check(admin.get("godview_npc_hint_ok"), f"with a horse selected and no staff online the hint says why: \"{admin.get('godview_npc_hint')}\"")
+    respawn = json.loads(admin["godview_respawn"]) if admin.get("godview_respawn") else {}
+    check(admin.get("godview_respawned"),
+          f"Respawn, pressed in the tab, replaced the horses with new ones ({respawn.get('before')} -> {respawn.get('spawned')})")
+    clear = json.loads(admin["godview_clear"]) if admin.get("godview_clear") else {}
+    check(admin.get("godview_cleared"), f"Clear, pressed in the tab, removed the horses and kept the spawner ({clear.get('before')} -> {clear.get('spawned')})")
     check(admin.get("godview_removed"), "deleting the spawner removed it and its horses from the god view")
     check(admin.get("stopped"), "the run bar stopped the server at the end")
 

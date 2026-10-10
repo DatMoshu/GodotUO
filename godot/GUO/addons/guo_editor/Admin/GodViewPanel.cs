@@ -13,8 +13,10 @@ using Godot;
 /// <summary>
 /// The Admin tab's god view (sprint "Admin tab", AD2a): every player, NPC and spawner on one facet of the server,
 /// over the facet's radar, kept current by the bridge's change-only pushes (<c>admin_godview</c>, docs/data_formats.md
-/// section 10). Filters hide a kind; Find looks on every facet (<c>admin_godview_find</c>). Read-only: the actions
-/// (Follow, Go there, Bring here, paperdoll, respawn) are AD2b.
+/// section 10). Filters hide a kind; Find looks on every facet (<c>admin_godview_find</c>). The actions (AD2b) act with
+/// the admin's own logged-in staff character, picked in "Act as": Go there, Bring here, Open paperdoll and Follow for a
+/// player or NPC, Go there, Respawn and Clear for a spawner (<c>admin_goto</c>, <c>admin_bring</c>, <c>admin_paperdoll</c>,
+/// <c>admin_follow</c>, <c>admin_spawner</c>). Follow also keeps the map centred on whoever is followed.
 /// </summary>
 /// <remarks>
 /// The map is the Maps panel's radar (one image pixel per 4 cells, nearest sampled), or a dark field when the
@@ -42,6 +44,11 @@ public partial class GodViewPanel : VBoxContainer
     private RichTextLabel _details;
     private ItemList _results;
     private Label _status;
+    private OptionButton _actAs;
+    private Button _goto, _bring, _paperdoll, _follow, _respawn, _clear;
+    private Label _actionHint;
+    private readonly List<string> _staffOnline = new();
+    private uint? _followLookup;
     private readonly Dictionary<uint, JsonObject> _rows = new();
     private readonly Dictionary<int, ImageTexture> _radar = new();
     private JsonArray _facets;
@@ -94,6 +101,24 @@ public partial class GodViewPanel : VBoxContainer
     public bool ShowNpcs => _npcs?.ButtonPressed ?? true;
 
     public bool ShowSpawners => _spawners?.ButtonPressed ?? true;
+
+    /// <summary>The serial the admin's character follows (Follow is on), or null.</summary>
+    public uint? Following { get; private set; }
+
+    /// <summary>The last reply to an action (admin_goto, admin_bring, admin_paperdoll, admin_follow, admin_spawner), or null.</summary>
+    public JsonNode LastAction { get; private set; }
+
+    /// <summary>Action replies received, ok or refused.</summary>
+    public int ActionReplies { get; private set; }
+
+    /// <summary>The character the actions use: a name, or null for "the one staff character online" (the bridge picks).</summary>
+    public string ActAs => _actAs == null || _actAs.Selected <= 0 ? null : _actAs.GetItemText(_actAs.Selected);
+
+    /// <summary>The online staff characters on the watched facet, the choices of "Act as".</summary>
+    public IReadOnlyList<string> StaffOnline => _staffOnline;
+
+    /// <summary>The action hint under the buttons (why some are off).</summary>
+    public string ActionHint => _actionHint?.Text ?? "";
 
     /// <summary>The map control (the smoke check frames it).</summary>
     public RadarView Map => _map;
@@ -159,6 +184,33 @@ public partial class GodViewPanel : VBoxContainer
             Text = "Click a marker on the map, or Find one.",
         };
         side.AddChild(_details);
+
+        // The actions, with the admin's own character.
+        var actAs = new HBoxContainer();
+        side.AddChild(actAs);
+        actAs.AddChild(new Label { Text = "Act as" });
+        _actAs = new OptionButton
+        {
+            SizeFlagsHorizontal = SizeFlags.ExpandFill, ClipText = true,
+            TooltipText = "Your own staff character, logged in to this server: Go there and Follow move it, Bring here brings to it, "
+                + "the paperdoll opens in its client. Staff characters online on this facet are listed.",
+        };
+        _actAs.AddItem("the one staff character online");
+        _actAs.ItemSelected += _ => UpdateActions();
+        actAs.AddChild(_actAs);
+        var acts = new HFlowContainer();
+        side.AddChild(acts);
+        _goto = ActionButton(acts, "Go there", "Moves your character to it (on its facet)", () => Act("admin_goto"));
+        _bring = ActionButton(acts, "Bring here", "Brings it to your character", () => Act("admin_bring"));
+        _paperdoll = ActionButton(acts, "Open paperdoll", "Opens its paperdoll in your character's client", () => Act("admin_paperdoll"));
+        _follow = ActionButton(acts, "Follow", "Your character keeps beside it, and the map keeps it in the centre; press again to stop",
+            () => ToggleFollow());
+        _respawn = ActionButton(acts, "Respawn", "Removes what this spawner spawned and spawns its full count again", () => Act("admin_spawner", "respawn"));
+        _clear = ActionButton(acts, "Clear", "Removes what this spawner spawned; it spawns again on its own timer while it runs",
+            () => Act("admin_spawner", "clear"));
+        _actionHint = new Label { AutowrapMode = TextServer.AutowrapMode.WordSmart, Modulate = new Color(1, 1, 1, 0.7f) };
+        side.AddChild(_actionHint);
+
         side.AddChild(new Label { Text = "Find results" });
         _results = new ItemList { CustomMinimumSize = new Vector2(0, Px(150)), SizeFlagsVertical = SizeFlags.ExpandFill };
         _results.ItemSelected += i => ShowResult((int)i);
@@ -166,6 +218,15 @@ public partial class GodViewPanel : VBoxContainer
 
         _status = new Label { Text = "not watching: connect with the admin channel", ClipText = true };
         AddChild(_status);
+        UpdateActions();
+    }
+
+    private static Button ActionButton(Container parent, string text, string tip, Action pressed)
+    {
+        var b = new Button { Text = text, TooltipText = tip };
+        b.Pressed += pressed;
+        parent.AddChild(b);
+        return b;
     }
 
     private Button Toggle(string text, string tip)
@@ -198,6 +259,10 @@ public partial class GodViewPanel : VBoxContainer
     public void OnClosed()
     {
         _seq = 0;
+        // The bridge ends a Follow when its editor leaves.
+        Following = null;
+        _followLookup = null;
+        UpdateActions();
         if (_status != null)
         {
             _status.Text = _rows.Count > 0 ? $"not connected: showing the last state, from {Clock(_updatedAt)}" : "not watching: connect with the admin channel";
@@ -272,6 +337,12 @@ public partial class GodViewPanel : VBoxContainer
         if ((string)msg["op"] == "admin_godview_find")
         {
             OnFind(msg);
+            return;
+        }
+
+        if ((string)msg["op"] is "admin_goto" or "admin_bring" or "admin_paperdoll" or "admin_follow" or "admin_spawner")
+        {
+            OnAction(msg);
             return;
         }
 
@@ -362,6 +433,22 @@ public partial class GodViewPanel : VBoxContainer
             Selected = null;
         }
 
+        if (Following is uint followed)
+        {
+            if (_rows.ContainsKey(followed))
+            {
+                _followLookup = null;
+                Centre(followed);
+            }
+            else if (_followLookup != followed)
+            {
+                // The followed one left this facet, and the character with it: find where, and watch that facet.
+                _followLookup = followed;
+                Find("0x" + followed.ToString("X", CultureInfo.InvariantCulture));
+            }
+        }
+
+        UpdateStaff();
         ShowDetails();
         UpdateStatus();
         _map.QueueRedraw();
@@ -560,6 +647,217 @@ public partial class GodViewPanel : VBoxContainer
         }
 
         _details.Text = Selected is uint s && _rows.TryGetValue(s, out JsonObject row) ? Describe(row) : "Click a marker on the map, or Find one.";
+        UpdateActions();
+    }
+
+    /// <summary>The selected row's kind ("player", "npc", "spawner"), or null.</summary>
+    public string SelectedKind => Selected is uint s && _rows.TryGetValue(s, out JsonObject r) ? (string)r["kind"] : null;
+
+    /// <summary>Which action buttons are on, by their text (the smoke check reads them).</summary>
+    public IReadOnlyDictionary<string, bool> ActionsEnabled => new[] { _goto, _bring, _paperdoll, _follow, _respawn, _clear }
+        .Where(b => b != null).ToDictionary(b => b.Text, b => !b.Disabled);
+
+    /// <summary>Presses an action button by its text, as a click would; false when it is off or there is none.</summary>
+    public bool Press(string text)
+    {
+        Button b = new[] { _goto, _bring, _paperdoll, _follow, _respawn, _clear }.FirstOrDefault(x => x != null && x.Text == text);
+        if (b == null || b.Disabled)
+        {
+            return false;
+        }
+
+        b.EmitSignal(BaseButton.SignalName.Pressed);
+        return true;
+    }
+
+    // The character the actions would move: the one picked, or the only staff character online.
+    private string Me => ActAs ?? (_staffOnline.Count == 1 ? _staffOnline[0] : null);
+
+    // Each action button is on only for the kind it acts on; a line under them says why the others are off.
+    private void UpdateActions()
+    {
+        if (_goto == null)
+        {
+            return;
+        }
+
+        string kind = SelectedKind;
+        bool mobile = kind is "player" or "npc";
+        bool self = mobile && Me is { } me && _rows.TryGetValue(Selected!.Value, out JsonObject r) && r["staff"] != null
+            && string.Equals((string)r["name"], me, StringComparison.OrdinalIgnoreCase);
+        bool linked = Send != null && _seq > 0;
+        _goto.Disabled = !linked || kind == null || self;
+        _bring.Disabled = !linked || !mobile || self;
+        _paperdoll.Disabled = !linked || !mobile;
+        _follow.Text = Following != null ? "Stop following" : "Follow";
+        _follow.Disabled = !linked || (Following == null && (!mobile || self));
+        _respawn.Disabled = _clear.Disabled = !linked || kind != "spawner";
+        _actionHint.Text = !linked ? "Actions need the admin channel."
+            : kind == null ? "Select a player, NPC or spawner to act on it."
+            : self ? "That is your own character."
+            : _staffOnline.Count == 0
+                ? "No staff character is online on this facet: log in with yours to use Go there, Bring here, the paperdoll and Follow."
+            : "";
+    }
+
+    /// <summary>
+    /// Sends an action on the selected row (or <paramref name="serial"/>): admin_goto, admin_bring, admin_paperdoll,
+    /// admin_follow, or admin_spawner with <paramref name="spawnerAction"/>. False when there is no link or nothing selected.
+    /// </summary>
+    public bool Act(string op, string spawnerAction = null, uint? serial = null)
+    {
+        uint? target = serial ?? Selected;
+        if (Send == null || target == null)
+        {
+            return false;
+        }
+
+        var msg = new JsonObject { ["op"] = op, ["serial"] = target.Value, ["req"] = ++_req };
+        if (op == "admin_spawner")
+        {
+            msg["action"] = spawnerAction;
+        }
+        else if (ActAs is { } me)
+        {
+            msg["as"] = me;
+        }
+
+        return Send(msg);
+    }
+
+    /// <summary>Follow on the selected row, or off when it is on.</summary>
+    public bool ToggleFollow()
+    {
+        if (Following != null)
+        {
+            return Send != null && Send(new JsonObject { ["op"] = "admin_follow", ["stop"] = true, ["req"] = ++_req });
+        }
+
+        return Act("admin_follow");
+    }
+
+    /// <summary>Picks the character the actions use, by name (null: the one staff character online). False when it is not listed.</summary>
+    public bool SetActAs(string name)
+    {
+        if (_actAs == null)
+        {
+            return false;
+        }
+
+        int at = 0;
+        for (int i = 1; name != null && i < _actAs.ItemCount; i++)
+        {
+            at = string.Equals(_actAs.GetItemText(i), name, StringComparison.OrdinalIgnoreCase) ? i : at;
+        }
+
+        if (name != null && at == 0)
+        {
+            return false;
+        }
+
+        _actAs.Select(at);
+        UpdateActions();
+        return true;
+    }
+
+    // "Act as" lists the online staff characters on the facet; the one picked stays picked while it is listed.
+    private void UpdateStaff()
+    {
+        List<string> now = _rows.Values.Where(r => (string)r["kind"] == "player" && r["staff"] != null && (bool?)r["online"] == true)
+            .Select(r => (string)r["name"]).Where(n => !string.IsNullOrEmpty(n)).Distinct()
+            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase).ToList();
+        if (_actAs == null || now.SequenceEqual(_staffOnline))
+        {
+            return;
+        }
+
+        string picked = ActAs;
+        _staffOnline.Clear();
+        _staffOnline.AddRange(now);
+        _actAs.Clear();
+        _actAs.AddItem(now.Count == 1 ? $"the one staff character online ({now[0]})" : "the one staff character online");
+        foreach (string n in now)
+        {
+            _actAs.AddItem(n);
+        }
+
+        if (picked == null || !SetActAs(picked))
+        {
+            _actAs.Select(0);
+        }
+    }
+
+    // The bridge's answer to an action, or the push that ends a Follow.
+    private void OnAction(JsonNode msg)
+    {
+        string op = (string)msg["op"];
+        if (op == "admin_follow" && msg["req"] == null)
+        {
+            Following = null;
+            Logged?.Invoke($"[color=orange]Follow ended: {Escape((string)msg["reason"])}[/color]");
+            UpdateActions();
+            return;
+        }
+
+        LastAction = msg;
+        ActionReplies++;
+        if ((bool?)msg["ok"] != true)
+        {
+            Logged?.Invoke($"[color=orange]{ActionName(msg)} refused: {Escape((string)msg["error"])}[/color]");
+            UpdateActions();
+            return;
+        }
+
+        string name = Escape((string)msg["name"]);
+        string who = Escape((string)msg["as"]);
+        string at = msg["x"] != null ? $"{(int)msg["x"]}, {(int)msg["y"]}, z {(int)msg["z"]} on {FacetName((int?)msg["facet"] ?? -1)}" : "";
+        switch (op)
+        {
+            case "admin_goto":
+                Logged?.Invoke($"Go there: {who} is at {name} ({at})");
+                break;
+            case "admin_bring":
+                Logged?.Invoke($"Bring here: {name} is with {who} ({at})");
+                break;
+            case "admin_paperdoll":
+                Logged?.Invoke($"Open paperdoll: {name}'s paperdoll is open in {who}'s client");
+                break;
+            case "admin_follow" when (bool?)msg["following"] == true:
+                Following = (uint)msg["serial"];
+                Logged?.Invoke($"Follow: {who} follows {name}; the map keeps it in the centre");
+                Centre(Following.Value);
+                break;
+            case "admin_follow":
+                Following = null;
+                Logged?.Invoke("Follow stopped" + (msg["moves"] != null ? $" ({(int)msg["moves"]} moves)" : ""));
+                break;
+            case "admin_spawner":
+                Logged?.Invoke((string)msg["action"] == "respawn"
+                    ? $"Respawn: {name} removed {(int?)msg["before"] ?? 0} and spawned {(int?)msg["spawned"] ?? 0}"
+                    : $"Clear: {name} removed {(int?)msg["before"] ?? 0}" + ((bool?)msg["running"] == true ? "; it spawns again on its timer" : ""));
+                break;
+        }
+
+        UpdateActions();
+    }
+
+    private static string ActionName(JsonNode msg) => (string)msg["op"] switch
+    {
+        "admin_goto" => "Go there",
+        "admin_bring" => "Bring here",
+        "admin_paperdoll" => "Open paperdoll",
+        "admin_follow" => "Follow",
+        "admin_spawner" => (string)msg["action"] == "clear" ? "Clear" : "Respawn",
+        _ => (string)msg["op"],
+    };
+
+    // Follow keeps the followed one in the centre at the zoom the admin chose.
+    private void Centre(uint serial)
+    {
+        if (_rows.TryGetValue(serial, out JsonObject row))
+        {
+            _map.Focus(new Vector2I((int)row["x"] / CellsPerPixel, (int)row["y"] / CellsPerPixel), _map.Zoom);
+        }
     }
 
     /// <summary>One row in plain words, for the Selected panel.</summary>
@@ -672,6 +970,16 @@ public partial class GodViewPanel : VBoxContainer
         {
             _results.AddItem("nothing found");
             _results.SetItemDisabled(0, true);
+        }
+
+        if (_followLookup is uint followed)
+        {
+            int hit = matches.Select((m, i) => (m, i)).FirstOrDefault(x => (uint)x.m["serial"] == followed, (null, -1)).i;
+            // Looked up once per facet change: it stays set until the followed one shows on the facet watched.
+            if (Following == followed && hit >= 0)
+            {
+                ShowResult(hit);
+            }
         }
     }
 

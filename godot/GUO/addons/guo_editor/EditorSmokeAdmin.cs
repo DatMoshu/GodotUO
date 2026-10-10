@@ -10,10 +10,11 @@ using Godot;
 using GUO.Workspace;
 
 /// <summary>
-/// The Admin tab's scripted run (AD1, AD2a): the run bar starts the private shard named on the command line, the tab
+/// The Admin tab's scripted run (AD1, AD2a, AD2b): the run bar starts the private shard named on the command line, the tab
 /// connects on the admin channel, reads Health, saves, restarts through the run bar and reads Health again. Then the
 /// god view: it watches the facet again after the restart, a spawner put through the bridge arrives in a change-only
-/// push with the creatures it spawned, Find finds it, a filter hides the NPCs, and its delete removes it and them.
+/// push with the creatures it spawned, Find finds it, a filter hides the NPCs, its Respawn and Clear buttons (AD2b) replace and remove the horses, and its
+/// delete removes it.
 /// Last the run bar stops the server. tools/editor_shard/run.py admin-tab starts it, in a scratch workspace.
 /// </summary>
 public partial class EditorSmoke
@@ -32,6 +33,8 @@ public partial class EditorSmoke
     private int _godFullBefore, _godFullAtPut, _godPushesBefore;
     private Guid _godSpawner;
     private uint _godSpawnerSerial;
+    private HashSet<uint> _godHorsesBefore = new();
+    private int _godActionMark;
 
     // The god view's test spawner: three horses west of Britain on Felucca, where the live-objects smoke puts its own.
     private const string GodSpawnerName = "GUO Horse";
@@ -207,9 +210,63 @@ public partial class EditorSmoke
                     _admin["godview_filter_status"] = g.StatusText;
                     _admin["godview_filtered"] = !g.ShowNpcs && g.StatusText.Contains("hiding NPCs");
                     AdminShot("filtered");
-                    AdminNext(128);
+                    AdminNext(129);
                 }
                 else AdminTimeout("Find never answered");
+
+                break;
+            }
+
+            case 129:
+            {
+                // AD2b: the spawner's Respawn button, through the tab. With the spawner selected Go there, Respawn and
+                // Clear are on (Bring here, the paperdoll and Follow take a mobile); with no staff character online the
+                // hint says Go there needs one, for a horse and for the spawner alike.
+                GodViewPanel g = v.GodView;
+                if (!_admin.ContainsKey("godview_respawn_sent"))
+                {
+                    g.SetFilter("npc", true);
+                    g.Select(_godSpawnerSerial);
+                    _godHorsesBefore = g.Rows.Values.Where(r => (uint?)r["spawner"] == _godSpawnerSerial).Select(r => (uint)r["serial"]).ToHashSet();
+                    _admin["godview_spawner_buttons"] = g.ActionsEnabled.ToDictionary(kv => kv.Key, kv => (object)kv.Value);
+                    _admin["godview_spawner_buttons_ok"] = g.ActionsEnabled.Where(kv => kv.Value).Select(kv => kv.Key).OrderBy(k => k)
+                        .SequenceEqual(new[] { "Clear", "Go there", "Respawn" }) && g.ActionHint.Contains("No staff character is online");
+                    g.Select(g.Rows.Values.Where(r => (uint?)r["spawner"] == _godSpawnerSerial).Select(r => (uint)r["serial"]).FirstOrDefault());
+                    _admin["godview_npc_hint"] = g.ActionHint;
+                    _admin["godview_npc_hint_ok"] = g.ActionHint.Contains("No staff character is online") && g.StaffOnline.Count == 0;
+                    g.Select(_godSpawnerSerial);
+                    _godActionMark = g.ActionReplies;
+                    _admin["godview_respawn_sent"] = g.Press("Respawn");
+                    AdminShot("respawn");
+                    break;
+                }
+
+                HashSet<uint> now = g.Rows.Values.Where(r => (uint?)r["spawner"] == _godSpawnerSerial).Select(r => (uint)r["serial"]).ToHashSet();
+                if (g.ActionReplies > _godActionMark && (bool?)g.LastAction?["ok"] == true && now.Count > 0 && !now.Overlaps(_godHorsesBefore))
+                {
+                    _admin["godview_respawn"] = g.LastAction.ToJsonString();
+                    _admin["godview_respawned"] = true;
+                    _godActionMark = g.ActionReplies;
+                    _admin["godview_clear_sent"] = g.Press("Clear");
+                    AdminNext(130);
+                }
+                else AdminTimeout("Respawn never answered with new creatures in the god view");
+
+                break;
+            }
+
+            case 130:
+            {
+                GodViewPanel g = v.GodView;
+                bool none = !g.Rows.Values.Any(r => (uint?)r["spawner"] == _godSpawnerSerial);
+                if (g.ActionReplies > _godActionMark && (bool?)g.LastAction?["ok"] == true && none)
+                {
+                    _admin["godview_clear"] = g.LastAction.ToJsonString();
+                    _admin["godview_cleared"] = g.Rows.ContainsKey(_godSpawnerSerial);
+                    AdminShot("cleared");
+                    AdminNext(128);
+                }
+                else AdminTimeout("Clear never answered, or the creatures stayed in the god view");
 
                 break;
             }
@@ -322,6 +379,10 @@ public partial class EditorSmoke
         Check("godview_resubscribed", "the god view watched the facet again after the restart");
         Check("godview_found", "Find found the new spawner on Felucca");
         Check("godview_filtered", "the NPCs filter hid the NPCs and the status line says so");
+        Check("godview_spawner_buttons_ok", "with a spawner selected Go there, Respawn and Clear are on, and the hint says Go there needs a staff character");
+        Check("godview_npc_hint_ok", "with no staff character online the hint says why Go there and the rest are off");
+        Check("godview_respawned", "Respawn, pressed in the tab, replaced the horses with new ones in the god view");
+        Check("godview_cleared", "Clear, pressed in the tab, removed the horses and kept the spawner");
         Check("godview_removed", "the deleted spawner and its creatures left the god view");
         Check("stopped", "the run bar stopped the server at the end");
         _admin["ok"] = _failures.Count == 0;

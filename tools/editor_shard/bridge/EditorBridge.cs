@@ -20,7 +20,8 @@
 //      hello carried the server's admin token, each at a stated access level,
 //      and each is written to the admin audit log.
 //      The Admin tab's god view (GodView.cs) is one: every player, NPC and
-//      spawner on a facet, pushed to the tab as they change.
+//      spawner on a facet, pushed to the tab as they change; its actions
+//      (GodViewActions.cs) move the admin's own staff character and work spawners.
 //
 // Live edits are held in memory. The world project (the editor's files) is the
 // source of truth; tools/world export + a restart make them permanent.
@@ -478,7 +479,11 @@ public static class EditorBridge
             }
 
             // Its god view subscription ends with it (GodView is game-thread only).
-            Core.LoopContext.Post(() => GodView.Forget(conn));
+            Core.LoopContext.Post(() =>
+            {
+                GodView.Forget(conn);
+                GodViewActions.Forget(conn);
+            });
             client.Close();
             Log.Information("GUO editor bridge: editor '{0}' left", conn.Name);
         }
@@ -796,6 +801,7 @@ public static class EditorBridge
 
     // {"op":"admin_whoami"} / {"op":"admin_audit","count":50} / {"op":"admin_status"} / {"op":"admin_save"} /
     // {"op":"admin_godview","facet":0} / {"op":"admin_godview_find","text":".."} (GodView.cs),
+    // {"op":"admin_goto"|"admin_bring"|"admin_paperdoll"|"admin_follow"|"admin_spawner",..} (GodViewActions.cs),
     // each with an optional "req" echoed back.
     // Authorised against the level the hello's token granted, run, and audited
     // (ADR-0035). Each later AD story adds its ops here and in AdminChannel.Ops.
@@ -837,6 +843,18 @@ public static class EditorBridge
                 break;
             case "admin_godview_find":
                 GodView.Find(msg, reply);
+                break;
+            case "admin_goto":
+            case "admin_bring":
+            case "admin_paperdoll":
+            case "admin_follow":
+            case "admin_spawner":
+                // Refusals here (no staff character online, a wrong target) are answered ok false, and audited as such.
+                if (!GodViewActions.Run(from, op, msg, reply, from.Send))
+                {
+                    _admin.Audit.Record(from.Name, op, AdminChannel.Ops[op], false, msg, (string)reply["error"]);
+                }
+
                 break;
         }
 

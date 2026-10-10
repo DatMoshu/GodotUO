@@ -43,7 +43,7 @@ try
     Require(on.Authorise("block", AdminLevel.Owner) == "'block' is not an admin op", "a non-admin op was authorised as one");
     var gm = new AdminChannel(token, AdminLevel.GameMaster, new AuditLog(null));
     Require(gm.CheckHello(token, out _) == AdminLevel.GameMaster, "the granted level is not the configured one");
-    Require(gm.OpsFor(AdminLevel.GameMaster).ToJsonString() == "[\"admin_whoami\",\"admin_status\",\"admin_godview\",\"admin_godview_find\"]", "OpsFor lists ops above the level");
+    Require(gm.OpsFor(AdminLevel.GameMaster).ToJsonString() == "[\"admin_whoami\",\"admin_status\",\"admin_godview\",\"admin_godview_find\",\"admin_goto\",\"admin_bring\",\"admin_paperdoll\",\"admin_follow\",\"admin_spawner\"]", "OpsFor lists ops above the level");
     // AD1: Health is read-only (a Counselor may look); a save is an Administrator's, as ModernUO's own [save.
     Require(AdminChannel.Ops["admin_status"] == AdminLevel.Counselor && AdminChannel.Ops["admin_save"] == AdminLevel.Administrator,
             "the Health ops' levels changed");
@@ -141,6 +141,51 @@ try
     Require(GodViewDiff.ParseSerial("0xZZ") == null && GodViewDiff.ParseSerial("12a") == null && GodViewDiff.ParseSerial("4294967295") == uint.MaxValue,
             "serial parsing is wrong");
     Console.WriteLine("PASS: the god view needs GameMaster and the token; pushes carry only changes; caps keep the same rows; Find by name or serial");
+
+    // ---- AD2b: the god view's actions ----------------------------------------
+    foreach (string op in new[] { "admin_goto", "admin_bring", "admin_paperdoll", "admin_follow", "admin_spawner" })
+    {
+        Require(AdminChannel.Ops[op] == AdminLevel.GameMaster, $"'{op}' is not a GameMaster op");
+        Require(on.Authorise(op, null).StartsWith("admin op without the admin token"), $"'{op}' ran without the token");
+        Require(on.Authorise(op, AdminLevel.Counselor) == $"'{op}' needs GameMaster; this connection holds Counselor", $"a Counselor could run '{op}'");
+    }
+
+    // Which target each action takes.
+    Require(GodViewRules.CheckTarget("admin_goto", "spawner", false) == null && GodViewRules.CheckTarget("admin_goto", "item", false) == null
+            && GodViewRules.CheckTarget("admin_goto", "npc", false) == null, "Go there refuses a place it should go to");
+    Require(GodViewRules.CheckTarget("admin_goto", "player", true) == "that is your own character", "Go there to yourself was allowed");
+    Require(GodViewRules.CheckTarget("admin_bring", "player", false) == null && GodViewRules.CheckTarget("admin_bring", "npc", false) == null,
+            "Bring here refuses a mobile");
+    Require(GodViewRules.CheckTarget("admin_bring", "spawner", false) == "only a player or an NPC can be brought", "a spawner could be brought");
+    Require(GodViewRules.CheckTarget("admin_bring", "player", true) == "that is your own character", "you could bring yourself");
+    Require(GodViewRules.CheckTarget("admin_paperdoll", "npc", false) == null && GodViewRules.CheckTarget("admin_paperdoll", "player", true) == null,
+            "a paperdoll was refused (your own too may be opened)");
+    Require(GodViewRules.CheckTarget("admin_paperdoll", "spawner", false) == "only a player or an NPC has a paperdoll", "a spawner's paperdoll opened");
+    Require(GodViewRules.CheckTarget("admin_follow", "npc", false) == null && GodViewRules.CheckTarget("admin_follow", "player", true) != null
+            && GodViewRules.CheckTarget("admin_follow", "item", false) == "only a player or an NPC can be followed", "Follow's targets are wrong");
+    Require(GodViewRules.CheckTarget("admin_spawner", "spawner", false) == null && GodViewRules.CheckTarget("admin_spawner", "npc", false) == "that is not a spawner",
+            "spawner actions took a non-spawner");
+    foreach (string op in new[] { "admin_goto", "admin_bring", "admin_paperdoll", "admin_follow", "admin_spawner" })
+    {
+        Require(GodViewRules.CheckTarget(op, null, false) == "nothing in the world has that serial", $"'{op}' took a serial that is not there");
+    }
+
+    Require(GodViewRules.CheckTarget("admin_godview", "npc", false) == "'admin_godview' is not a god view action", "a non-action passed as one");
+
+    // Only the admin's own online staff character is moved.
+    Require(GodViewRules.CheckCharacter("Moshu", true, AdminLevel.GameMaster) == null && GodViewRules.CheckCharacter("Moshu", true, AdminLevel.Owner) == null,
+            "a staff character was refused");
+    Require(GodViewRules.CheckCharacter("Bob", true, AdminLevel.Player) == "'Bob' is Player; the god view moves only your own staff character (GameMaster or higher)",
+            "a player character could be moved by the god view");
+    Require(GodViewRules.CheckCharacter("Bob", true, AdminLevel.Counselor) != null, "a Counselor character could be moved");
+    Require(GodViewRules.CheckCharacter("Moshu", false, AdminLevel.Owner) == "'Moshu' is not online: log in with your staff character first",
+            "an offline character was accepted");
+
+    // Follow moves only when the target is on another facet or further than FollowRange.
+    Require(!GodViewRules.FollowMustMove(0, 100, 100, 0, 102, 98) && !GodViewRules.FollowMustMove(0, 100, 100, 0, 100, 100), "Follow moved within range");
+    Require(GodViewRules.FollowMustMove(0, 100, 100, 0, 103, 100) && GodViewRules.FollowMustMove(0, 100, 100, 0, 100, 97), "Follow stayed out of range");
+    Require(GodViewRules.FollowMustMove(0, 100, 100, 1, 100, 100) && GodViewRules.FollowMustMove(-1, 0, 0, 0, 0, 0), "Follow stayed on another facet");
+    Console.WriteLine("PASS: the actions need GameMaster and the token; each takes only its kind of target; only an online staff character moves; Follow keeps within 2 tiles");
     Console.WriteLine("ALL PASS");
 }
 finally

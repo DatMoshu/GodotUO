@@ -129,7 +129,7 @@ op is one entry in `AdminChannel.Ops`, op name to level. The token grants
 yet) would need it raised on purpose. An op that is not in `Ops` is not an
 admin op and can never run through the admin path.
 
-The ops so far (AD0, AD1, AD2a):
+The ops so far (AD0, AD1, AD2a, AD2b):
 
 | Op | Level | Does |
 |---|---|---|
@@ -139,6 +139,16 @@ The ops so far (AD0, AD1, AD2a):
 | `admin_save` | Administrator | Saves the world now; answers when the write has finished |
 | `admin_godview` | GameMaster | The god view: players, NPCs and spawners on a facet, then change-only pushes (read only) |
 | `admin_godview_find` | GameMaster | Finds players, NPCs and spawners by name or serial on every facet (read only) |
+| `admin_goto` | GameMaster | Go there: moves the admin's own online staff character to a player, NPC, spawner or spot |
+| `admin_bring` | GameMaster | Bring here: moves a player or NPC to the admin's own staff character |
+| `admin_paperdoll` | GameMaster | Opens a player's or NPC's paperdoll in the admin's own staff character's client |
+| `admin_follow` | GameMaster | Follow: keeps the admin's own staff character beside a player or NPC until stopped |
+| `admin_spawner` | GameMaster | Respawn or Clear a spawner |
+
+The god view's actions (AD2b) move only the admin's own staff character: an
+online character at GameMaster or above, named in `as` or, when one alone is
+online, that one. The bridge never makes a character of its own; a hidden
+server-side presence is a later story (AD2c).
 
 Restart is not a bridge op: the editor's run bar stops and starts the server
 process it started itself (`tools/server_manager`), after an `admin_save`. A

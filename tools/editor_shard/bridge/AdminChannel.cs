@@ -65,6 +65,13 @@ public sealed class AdminChannel
         ["admin_godview"] = AdminLevel.GameMaster,
         // AD2a, the god view's Find: players, NPCs and spawners on every facet by name or serial (read-only).
         ["admin_godview_find"] = AdminLevel.GameMaster,
+        // AD2b, the god view's actions with the admin's own staff character (GodViewActions.cs).
+        ["admin_goto"] = AdminLevel.GameMaster,
+        ["admin_bring"] = AdminLevel.GameMaster,
+        ["admin_paperdoll"] = AdminLevel.GameMaster,
+        ["admin_follow"] = AdminLevel.GameMaster,
+        // AD2b, a spawner's Respawn and Clear.
+        ["admin_spawner"] = AdminLevel.GameMaster,
     };
 
     private readonly byte[] _tokenHash;

@@ -10,7 +10,7 @@ world export) runs on an instance of its own instead:
     python tools/editor_shard/run.py status
     python tools/editor_shard/run.py stop
     python tools/editor_shard/run.py bridge  [--bridge-port 2595]
-    python tools/editor_shard/run.py admin-check
+    python tools/editor_shard/run.py admin-check [--no-client]
     python tools/editor_shard/run.py admin-tab [--windowed]
 
 setup copies the built ModernUO Distribution (the same tools/modernuo build,
@@ -31,7 +31,10 @@ copy's Data/assemblies.json. It takes effect at the next start.
 
 admin-check talks to the running instance's bridge as an editor would and
 checks its admin channel (ADR-0035): no token, a wrong token and the right
-one; the audit log; and that no token or password reaches a log.
+one; the audit log; the god view and its actions (a headless client logs a
+game master lane character in for Go there, Bring here, the paperdoll and
+Follow; --no-client skips that part); and that no token or password reaches
+a log.
 
 admin-tab drives the editor's Admin tab against this instance (AD1): the
 run bar starts it, the tab reads Health, saves and restarts it, the run bar
@@ -228,6 +231,11 @@ def cmd_start(cfg, data_first: Path | None, objects: Path | None = None, clear: 
                        ("UO_SHARD_GM_PASSWORD", cfg.shard_gm_password)):
         if value and not env.get(key):
             env[key] = value
+    # The game master lane accounts too: without the list the boot leaves them
+    # with whatever password the copied Saves hold (the god view's admin-check
+    # logs one in as the admin's own staff character).
+    if cfg.shard_gm_accounts and not env.get("UO_SHARD_GM_ACCOUNTS"):
+        env["UO_SHARD_GM_ACCOUNTS"] = ",".join(cfg.shard_gm_accounts)
     # Admin ops on the bridge need this token in the editor's hello (ADR-0035);
     # without it the bridge offers map editing only. Never printed.
     if not no_bridge:
@@ -291,7 +299,7 @@ def cmd_bridge(cfg, bridge_port: int) -> int:
     return 0
 
 
-def cmd_admin_check(cfg) -> int:
+def cmd_admin_check(cfg, with_client: bool = True) -> int:
     h = home(cfg)
     state = read_state(h)
     if not (state.get("pid") and pid_alive(state["pid"], h / EXE)):
@@ -299,8 +307,11 @@ def cmd_admin_check(cfg) -> int:
         return 2
     from admin_check import run as admin_check
 
+    out = cfg.build / "admin_check"
+    out.mkdir(parents=True, exist_ok=True)
     return admin_check(state.get("bridge_port", 2595), admin_token(cfg), h,
-                       [cfg.shard_owner_password, cfg.shard_gm_password])
+                       [cfg.shard_owner_password, cfg.shard_gm_password], cfg=cfg, shard_port=state["port"], out=out,
+                       with_client=with_client)
 
 
 def cmd_stop(cfg) -> int:
@@ -360,6 +371,8 @@ def main() -> int:
     ap.add_argument("--clear-objects", action="store_true",
                     help="remove every world object GUO placed, at boot (start; needs the bridge)")
     ap.add_argument("--bridge-port", type=int, default=2595, help="editor port of the bridge (bridge)")
+    ap.add_argument("--no-client", action="store_true",
+                    help="skip the god view actions that need a staff character logged in (admin-check)")
     ap.add_argument("--windowed", action="store_true",
                     help="open an editor window (no focus) and save stills of the tab (admin-tab)")
     args = ap.parse_args()
@@ -373,7 +386,7 @@ def main() -> int:
     if args.command == "bridge":
         return cmd_bridge(cfg, args.bridge_port)
     if args.command == "admin-check":
-        return cmd_admin_check(cfg)
+        return cmd_admin_check(cfg, not args.no_client)
     if args.command == "admin-tab":
         return cmd_admin_tab(cfg, args.windowed)
     return cmd_stop(cfg)
