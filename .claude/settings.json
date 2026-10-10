@@ -145,5 +145,15 @@
         ]
       }
     ]
+  },
+  "skillOverrides": {
+    "design-taste-frontend": "off",
+    "industrial-brutalist-ui": "off",
+    "make-interfaces-feel-better": "off",
+    "minimalist-ui": "off",
+    "impeccable": "off",
+    "psx-decompile": "off",
+    "narrator": "off",
+    "retro-diffusion": "off"
   }
 }

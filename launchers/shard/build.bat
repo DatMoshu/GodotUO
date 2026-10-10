@@ -1,4 +1,5 @@
 @echo off
+rem Builds the ModernUO dev shard with its publish script and the .NET 10 SDK and prints where the server landed.
 REM ============================================================================
 REM  Build ModernUO into tools\modernuo\src\Distribution.
 REM  Needs the .NET 10 SDK; ModernUO's own publish script does the work.

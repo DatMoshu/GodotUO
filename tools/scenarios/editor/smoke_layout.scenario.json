@@ -1,0 +1,12 @@
+{
+  "id": "editor.smoke.layout",
+  "title": "Open the editor, check the layout and the Art tab",
+  "surface": "editor",
+  "requires": {"build": "debug"},
+  "timeouts": {"step_s": 60, "run_s": 600},
+  "steps": [
+    {"id": "launch", "do": {"kind": "launch"}, "say": "Open the GUO editor.", "timeout_s": 300},
+    {"id": "layout", "do": {"kind": "tour_segment", "id": "layout"}, "say": "The layout: every dock and tab is where it should be."},
+    {"id": "art", "do": {"kind": "tour_segment", "id": "art"}, "say": "Assets, Art: browse a tile and see it drawn.", "shot": true}
+  ]
+}

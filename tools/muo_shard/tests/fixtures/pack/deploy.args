@@ -1,0 +1,8 @@
+--name
+Demo Shard
+--catalogue
+https://example.invalid/catalogue
+--pack
+demo
+--version
+1.0.0

@@ -106,14 +106,14 @@ def check(root, updates):
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(private_deny, destination)
             print(f"[pre-push] checking committed tip {tip[:12]}", flush=True)
-            for script in ("tools/docs_lint/run.py", "tools/privacy_scan/run.py"):
+            for script in ("tools/docs_lint/run.py", "tools/launcher_lint/run.py", "tools/privacy_scan/run.py"):
                 if not (checkout / script).is_file():
                     raise ValueError(f"Pushed commit lacks required checker: {script}")
                 result = subprocess.run([sys.executable, str(checkout / script)], cwd=checkout, env=environment)
                 if result.returncode:
                     print(f"[pre-push] blocked: {script} failed for {tip[:12]}")
                     return 1
-    print("[pre-push] docs and privacy checks passed")
+    print("[pre-push] docs, launcher and privacy checks passed")
     return 0
 
 

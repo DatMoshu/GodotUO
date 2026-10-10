@@ -3,6 +3,7 @@ namespace GUO.Editor;
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Godot;
 
 /// <summary>
@@ -26,7 +27,7 @@ public partial class TourOverlay : Control
     private Label _step, _title, _body, _detail;
     private bool _atTop;
 
-    private readonly List<(Rect2 Rect, string Label)> _marks = new();
+    private readonly List<(Func<Rect2?> Rect, Control Owner, string Label)> _marks = new();
     private (Rect2 Anchor, string Text)? _tip;
     private Vector2? _pointer;
 
@@ -112,6 +113,15 @@ public partial class TourOverlay : Control
         _stack.ResetSize();
     }
 
+    /// <summary>
+    /// Where the caption goes, in global coordinates, asked each frame: the map tour puts it over the lower edge of
+    /// the map, so it never covers the panels whose controls are being pointed at. Null: the whole window.
+    /// </summary>
+    public Func<Rect2?> CaptionArea { get; set; }
+
+    /// <summary>The caption and detail cards as drawn, for the tour's check that nothing it points at is under them.</summary>
+    public Rect2? CardsRect => _stack != null && (_captionCard.Visible || _detailCard.Visible) ? _stack.GetGlobalRect() : null;
+
     public override void _Process(double delta)
     {
         if (_stack == null)
@@ -120,22 +130,27 @@ public partial class TourOverlay : Control
         }
 
         // Placed by hand each frame: the card's height follows its text.
-        Vector2 area = GetViewportRect().Size;
-        // Sized for 3840 px wide; smaller windows get a smaller card.
-        float k = Math.Clamp(area.X / 3840f, 0.4f, 1f);
-        _body.CustomMinimumSize = new Vector2(2100 * k, 0);
-        _body.AddThemeFontSizeOverride("font_size", (int)(29 * k));
-        _title.AddThemeFontSizeOverride("font_size", (int)(40 * k));
-        _step.AddThemeFontSizeOverride("font_size", (int)(22 * k));
-        _detail.AddThemeFontSizeOverride("font_size", (int)(20 * k));
+        Rect2 area = CaptionArea?.Invoke() ?? GetViewportRect();
+        // Sized for reading on a 1080p video; a 4K window doubles it.
+        float k = Math.Clamp(GetViewportRect().Size.Y / 1080f, 0.75f, 2f);
+        float width = Math.Min(area.Size.X - 32 * k, 1100 * k);
+        _body.CustomMinimumSize = new Vector2(width - 40 * k, 0);
+        _detail.CustomMinimumSize = new Vector2(width - 40 * k, 0);
+        _body.AddThemeFontSizeOverride("font_size", (int)(21 * k));
+        _title.AddThemeFontSizeOverride("font_size", (int)(25 * k));
+        _step.AddThemeFontSizeOverride("font_size", (int)(14 * k));
+        _detail.AddThemeFontSizeOverride("font_size", (int)(17 * k));
         Vector2 size = _stack.GetCombinedMinimumSize();
         _stack.Size = size;
-        _stack.Position = new Vector2((area.X - size.X) / 2, _atTop ? 90 : area.Y - size.Y - 28);
+        _stack.Position = new Vector2(area.Position.X + (area.Size.X - size.X) / 2,
+            _atTop ? area.Position.Y + 16 * k : area.End.Y - size.Y - 16 * k);
+        QueueRedraw();
     }
 
     public void SetCaption(string step, string title, string body)
     {
         _step.Text = step;
+        _step.Visible = !string.IsNullOrEmpty(step);
         _title.Text = title;
         _body.Text = body;
         _captionCard.Visible = !string.IsNullOrEmpty(title) || !string.IsNullOrEmpty(body);
@@ -160,9 +175,44 @@ public partial class TourOverlay : Control
 
     public void Mark(Rect2 rect, string label = null)
     {
-        _marks.Add((rect, label));
+        _marks.Add((() => rect, null, label));
         QueueRedraw();
     }
+
+    /// <summary>A mark that follows its control: its rect is read again every frame, so a layout change never leaves it floating.</summary>
+    public void Mark(Control owner, Func<Rect2?> rect, string label = null)
+    {
+        _marks.Add((rect, owner, label));
+        QueueRedraw();
+    }
+
+    /// <summary>The marks that follow a control, for the tour's per-frame check.</summary>
+    public IEnumerable<(Control Owner, Func<Rect2?> Rect, string Label)> LiveMarks
+    {
+        get
+        {
+            foreach (var (rect, owner, label) in _marks)
+            {
+                if (owner != null)
+                {
+                    yield return (owner, rect, label);
+                }
+            }
+        }
+    }
+
+    /// <summary>The pointer's tip and click ring centre, in global (canvas) coordinates, as given to <see cref="Pointer"/>.</summary>
+    public Vector2? PointerAt => _pointer;
+
+    /// <summary>
+    /// The click ring's centre in the pixels of a saved frame: through this overlay's own canvas transform and the
+    /// window's stretch, so an editor display scale or a moved overlay is accounted for, not assumed away.
+    /// </summary>
+    public Vector2? PointerFramePx => _pointer is { } p ? FramePx(this, GetGlobalTransform().AffineInverse() * p) : null;
+
+    /// <summary>Where a point in <paramref name="item"/>'s local space lands in the pixels of a saved frame of its window.</summary>
+    public static Vector2 FramePx(CanvasItem item, Vector2 local) =>
+        item.GetViewport().GetFinalTransform() * (item.GetGlobalTransformWithCanvas() * local);
 
     public void Tip(Rect2 anchor, string text)
     {
@@ -176,11 +226,16 @@ public partial class TourOverlay : Control
         QueueRedraw();
     }
 
-    public void ClearMarks()
+    /// <summary>Removes the outlines and the tooltip; the pointer too unless <paramref name="keepPointer"/>.</summary>
+    public void ClearMarks(bool keepPointer = false)
     {
         _marks.Clear();
         _tip = null;
-        _pointer = null;
+        if (!keepPointer)
+        {
+            _pointer = null;
+        }
+
         QueueRedraw();
     }
 
@@ -188,8 +243,14 @@ public partial class TourOverlay : Control
     {
         var yellow = new Color(1f, 0.85f, 0.2f);
         Font font = GetThemeDefaultFont();
-        foreach (var (rect, label) in _marks)
+        var tags = new List<Rect2>();
+        foreach (var (rectNow, owner, label) in _marks)
         {
+            if (owner != null && (!IsInstanceValid(owner) || !owner.IsVisibleInTree()) || rectNow() is not { } rect)
+            {
+                continue;
+            }
+
             Rect2 r = rect.Grow(4);
             DrawRect(r.Grow(2), new Color(0, 0, 0, 0.85f), false, 2f);
             DrawRect(r, yellow, false, 3f);
@@ -201,6 +262,14 @@ public partial class TourOverlay : Control
                 {
                     tag.Position = new Vector2(r.Position.X, r.End.Y + 2);
                 }
+
+                // Never on top of another mark's tag: slide right past it.
+                for (int guard = 0; guard < 8 && tags.FirstOrDefault(t => t.Intersects(tag)) is { Size.X: > 0 } hit; guard++)
+                {
+                    tag.Position = new Vector2(hit.End.X + 6, tag.Position.Y);
+                }
+
+                tags.Add(tag);
 
                 DrawRect(tag, yellow);
                 DrawString(font, tag.Position + new Vector2(6, size.Y - 3), label, HorizontalAlignment.Left, -1, 20, new Color(0.1f, 0.07f, 0.02f));
@@ -222,8 +291,10 @@ public partial class TourOverlay : Control
             DrawMultilineString(font, at + new Vector2(8, 8 + 12), tip.Text, HorizontalAlignment.Left, 560, 20, -1, new Color(0.1f, 0.08f, 0.04f));
         }
 
-        if (_pointer is { } p)
+        if (_pointer is { } global)
         {
+            // Given in global coordinates; drawn in this control's own, so the ring is on the click wherever the overlay sits.
+            Vector2 p = GetGlobalTransform().AffineInverse() * global;
             var arrow = new[]
             {
                 p, p + new Vector2(0, 21), p + new Vector2(5, 16.5f), p + new Vector2(9, 25),

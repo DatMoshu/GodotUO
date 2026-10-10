@@ -33,8 +33,11 @@ internal sealed class ShardLink : IDisposable
     public bool Connected => _client?.Connected == true;
     public string Shard { get; private set; }
 
-    /// <summary>Connects and says hello. Throws on failure.</summary>
-    public void Connect(string host, int port, string name)
+    /// <summary>
+    /// Connects and says hello. Throws on failure. An admin token (ADR-0035) goes in that hello only, and is
+    /// never kept, shown or logged; the reply's "admin" says what it granted.
+    /// </summary>
+    public void Connect(string host, int port, string name, string adminToken = null)
     {
         Disconnect();
         Host = host;
@@ -45,7 +48,13 @@ internal sealed class ShardLink : IDisposable
         _writer = new StreamWriter(_client.GetStream(), new UTF8Encoding(false)) { NewLine = "\n" };
         _reader = new Thread(Read) { IsBackground = true, Name = "GUO editor shard link" };
         _reader.Start();
-        Send(new JsonObject { ["op"] = "hello", ["editor"] = name });
+        var hello = new JsonObject { ["op"] = "hello", ["editor"] = name };
+        if (!string.IsNullOrEmpty(adminToken))
+        {
+            hello["admin_token"] = adminToken;
+        }
+
+        Send(hello);
     }
 
     private void Read()

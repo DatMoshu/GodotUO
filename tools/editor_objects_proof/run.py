@@ -75,6 +75,36 @@ def wait_for(pred, timeout: float) -> bool:
     return False
 
 
+def proof_out(cfg, given: Path | None, default: str) -> Path:
+    """The folder this run empties and writes: under the repo's build/ folder only.
+
+    The tool removes it whole before writing, so a --out anywhere else (the repo, a
+    home folder, the client install) is refused before anything is touched."""
+    build = cfg.build.resolve()
+    out = (given or cfg.build / default).resolve()
+    if out == build or not out.is_relative_to(build):
+        print(f"[objects_proof] refusing --out {out}: it must be a folder inside {build}")
+        raise SystemExit(2)
+    client = Path(cfg.client_data).resolve() if str(cfg.client_data) else None
+    if client is not None and (out.is_relative_to(client) or client.is_relative_to(out)):
+        print(f"[objects_proof] refusing --out {out}: it overlaps the client install")
+        raise SystemExit(2)
+    return out
+
+
+def proof_clip(cfg, clip: Path) -> Path:
+    """The MP4 --clip writes: a file inside the repo's build/ folder, never the client install."""
+    build = cfg.build.resolve()
+    path = clip.resolve()
+    if not path.parent.is_relative_to(build):
+        print(f"[objects_proof] refusing --clip {path}: it must be inside {build}")
+        raise SystemExit(2)
+    if str(cfg.client_data) and path.is_relative_to(Path(cfg.client_data).resolve()):
+        print(f"[objects_proof] refusing --clip {path}: it is inside the client install")
+        raise SystemExit(2)
+    return path
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--project", type=Path, help="world project with shard/objects.json (export mode)")
@@ -91,6 +121,8 @@ def main() -> int:
 
     cfg = load_config()
     tools = cfg.tools
+    if args.clip is not None:
+        args.clip = proof_clip(cfg, args.clip)
     if args.live:
         return live(cfg, args)
     if args.commands:
@@ -105,7 +137,7 @@ def main() -> int:
     if not objects:
         print(f"[objects_proof] {project} has no world objects")
         return 2
-    out = (args.out or cfg.build / "editor_objects_proof").resolve()
+    out = proof_out(cfg, args.out, "editor_objects_proof")
     if out.exists():
         shutil.rmtree(out)
     out.mkdir(parents=True)
@@ -240,7 +272,7 @@ def servuo_mode(cfg, args) -> int:
         return 2
     project = args.project.resolve()
     objects = worldobjects.load(project)
-    out = (args.out or cfg.build / "editor_objects_proof_servuo").resolve()
+    out = proof_out(cfg, args.out, "editor_objects_proof_servuo")
     if out.exists():
         shutil.rmtree(out)
     out.mkdir(parents=True)
@@ -326,7 +358,7 @@ def commands_mode(cfg, args) -> int:
     servuo = args.servuo
     port = 2596 if servuo else PORT
     character = "Guoprobe" if servuo else None
-    out = (args.out or cfg.build / ("editor_objects_proof_commands_servuo" if servuo else "editor_objects_proof_commands")).resolve()
+    out = proof_out(cfg, args.out, "editor_objects_proof_commands_servuo" if servuo else "editor_objects_proof_commands")
     if out.exists():
         shutil.rmtree(out)
     out.mkdir(parents=True)
@@ -436,7 +468,7 @@ def clear_ultimalive_copies() -> None:
 
 def live(cfg, args) -> int:
     tools = cfg.tools
-    out = (args.out or cfg.build / "editor_objects_proof_live").resolve()
+    out = proof_out(cfg, args.out, "editor_objects_proof_live")
     if out.exists():
         shutil.rmtree(out)
     watch = out / "watch"

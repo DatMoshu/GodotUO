@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Generate the dev shard's world from the client, as the owner. Twin of populate.bat.
+# Logs the owner into the running dev shard and types every world generator command (doors, signs, spawners, decorations), then saves; takes a few minutes.
+set -euo pipefail
 . "$(dirname "$0")/../_shared/common.sh" || exit 1
 
 echo "[populate] Generating the world on $UO_SHARD_HOST:$UO_SHARD_PORT"

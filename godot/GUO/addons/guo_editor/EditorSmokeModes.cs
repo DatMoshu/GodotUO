@@ -220,6 +220,7 @@ public partial class EditorSmoke
         _steps.Add((4, () =>
         {
             ModeExpect(_world.Chip.Visible && _world.Chip.Rows == 4, "legend_chip_shows_walkability");
+            CheckLegendBelowHint();
             _world.SetViewMode("Off");
         }));
 

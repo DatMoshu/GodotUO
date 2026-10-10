@@ -1,4 +1,5 @@
 @echo off
+rem Opens a Godot window that measures what adding one sprite to a texture atlas costs at each page size and prints the timings.
 REM ============================================================================
 REM  Measures what one sprite costs to add to a texture atlas at each page
 REM  size. Godot has no partial texture upload, so the page size IS the cost

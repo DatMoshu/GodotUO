@@ -38,6 +38,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
     private RunBar _run;
     private AiDock _ai;
     private StoreView _store;
+    private AdminView _admin;
     private ArtDock _art;
     private LogsDock _logs;
     private MapGenView _mapgen;
@@ -59,6 +60,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
     private bool _worldWasVisible;
     private bool _assetsWasVisible;
     private bool _storeWasVisible;
+    private bool _adminWasVisible;
     private bool _mapgenWasVisible;
     private bool _multieditWasVisible;
 
@@ -69,6 +71,9 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
 
     /// <summary>The UO Store view, for <see cref="GuoStorePlugin"/> to show and hide with its tab.</summary>
     public static StoreView StoreMain { get; private set; }
+
+    /// <summary>The Admin view, for <see cref="GuoAdminPlugin"/> to show and hide with its tab.</summary>
+    public static AdminView AdminMain { get; private set; }
 
     /// <summary>The Map Generator view, for <see cref="GuoMapGenPlugin"/> to show and hide with its tab.</summary>
     public static MapGenView MapGenMain { get; private set; }
@@ -200,6 +205,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         {
             AfterWrite = AfterMultiWrite,
             PreviewInWorld = PreviewMultiInWorld,
+            BackToWorld = () => EditorInterface.Singleton.SetMainScreenEditor(WorldTabName),
         };
         MultiEditMain = _multiedit;
         EditorInterface.Singleton.GetEditorMainScreen().AddChild(_multiedit);
@@ -210,7 +216,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         _world.AreaToMulti = (name, parts) =>
         {
             ShowMultiEditor();
-            _multiedit?.GuardUnsaved(() => _multiedit.OpenParts(name, parts));
+            _multiedit?.GuardUnsaved(() => _multiedit.OpenFromWorld(name, parts));
         };
 
         // Start server, start clients: on the toolbar, always one click away.
@@ -218,11 +224,20 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         AddControlToContainer(CustomControlContainer.Toolbar, _run);
         _store.Run = _run;
 
+        // The Admin tab (sprint "Admin tab", ADR-0035): the run bar's server, its health, Save now and Restart.
+        // GuoAdminPlugin owns its button. It connects to the server's bridge when first shown.
+        _admin = new AdminView { Run = _run };
+        AdminMain = _admin;
+        EditorInterface.Singleton.GetEditorMainScreen().AddChild(_admin);
+        _admin.Visible = _adminWasVisible;
+        _adminWasVisible = false;
+
         MapPanel maps = _assets.Panel<MapPanel>();
         if (maps != null)
         {
             maps.JumpToWorld += ShowInWorld;
             _world.RadarSource = maps.RadarFor;
+            _admin.RadarSource = maps.RadarFor;
             _world.Host.OverlayChanged += (f, b) => _world.Minimap?.Invalidate(f, b);
 
             // While the world runs, the radar reads the world's map (with the
@@ -247,7 +262,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         // A tool started this editor (the smoke flag): its window must not
         // take the keyboard or the foreground from whoever is working, as a
         // scripted game run's does not (Bootstrap/Main.cs NoFocus).
-        if ((smokeOut != null || tourOut != null) && DisplayServer.GetName() != "headless")
+        if ((smokeOut != null || tourOut != null || System.Environment.GetEnvironmentVariable("GUO_EDITOR_SCRIPTED") == "1") && DisplayServer.GetName() != "headless")
         {
             DisplayServer.WindowSetFlag(DisplayServer.WindowFlags.NoFocus, true);
             DisplayServer.WindowSetFlag(DisplayServer.WindowFlags.AlwaysOnTop, false);
@@ -269,6 +284,16 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         if (tourOut != null)
         {
             _tour = new EditorTour(tourOut, _data, _assets, _inspector, _world, _shard, _run);
+            _tour.Search = _search;
+            _tour.Ai = _ai;
+            _tour.Store = _store;
+            AddChild(_tour);
+        }
+        else if (!string.IsNullOrWhiteSpace(EditorData.Setting("GUO_EDITOR_MCP_PORT", "")) && System.Environment.GetEnvironmentVariable("GUO_EDITOR_SCRIPTED") == "1")
+        {
+            // An editor a runner started (GUO_EDITOR_SCRIPTED=1) and drives over the editor MCP can run one tour segment at a time
+            // (tour_segment); it runs nothing by itself. An editor that merely has the MCP on never resizes or moves its window.
+            _tour = new EditorTour(null, _data, _assets, _inspector, _world, _shard, _run);
             _tour.Search = _search;
             _tour.Ai = _ai;
             _tour.Store = _store;
@@ -320,7 +345,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
     {
         if (!AiFeatures.Enabled || _ai == null) return;
         _ai.UseTools(_searchContext, () => _search?.Index);
-        EditorCapabilities.Register(_ai.Hub.Tools, _searchContext, () => _search?.Index);
+        EditorCapabilities.Register(_ai.Hub.Tools, _searchContext, () => _search?.Index, () => _tour);
         _editorMcp = EditorMcpServer.StartConfigured(_ai.Hub.Tools);
         EditorMcpConnection.Configure(_editorMcp != null);
         _ai.Hub.SelectionImage = () => _inspector?.Current?.Image;
@@ -511,6 +536,17 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         _searchContext = null;
         _search = null;
         AssetField.Reveal = null;
+
+        if (_admin != null)
+        {
+            // Closes its bridge connection and reader thread before a reload.
+            _adminWasVisible = _admin.Visible;
+            _admin.Shutdown();
+            _admin.GetParent()?.RemoveChild(_admin);
+            _admin.QueueFree();
+            _admin = null;
+            AdminMain = null;
+        }
 
         if (_run != null)
         {

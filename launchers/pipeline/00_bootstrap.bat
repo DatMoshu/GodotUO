@@ -1,4 +1,5 @@
 @echo off
+rem Sets up a fresh clone: fetches the pinned Godot and the upstream ClassicUO reference, then verifies the UO client data.
 REM ============================================================================
 REM  PIPELINE STEP 00 - one-time setup on a fresh clone.
 REM  Fetches the pinned engine and upstream reference, then verifies the config.

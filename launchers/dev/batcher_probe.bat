@@ -1,4 +1,5 @@
 @echo off
+rem Builds the C#, then draws through the real UltimaBatcher2D in a Godot window and prints whether the C# and shader hue packing agree.
 REM ============================================================================
 REM  Draws through the real UltimaBatcher2D and checks the pixels that come
 REM  back. Proves the two halves of ADR-0002 hue packing agree: the C# side in

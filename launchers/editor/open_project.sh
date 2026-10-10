@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Build the C#, then open the project in the pinned Godot editor. Twin of open_project.bat.
+# Builds the C#, then opens the GUO project in the pinned Godot editor, which detaches (start) so this returns at once.
+# args: -- <Godot flags>
+set -euo pipefail
 . "$(dirname "$0")/../_shared/common.sh" || exit 1
 echo "[editor] Building C# for $UO_GODOT_PROJECT"
 "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" --build-solutions --quit \

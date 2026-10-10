@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "guo/run-event@1",
+  "title": "One line of events.jsonl (docs/data_formats.md section 34)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "ts",
+    "run_id",
+    "step",
+    "kind",
+    "driver",
+    "ok",
+    "detail",
+    "frame"
+  ],
+  "properties": {
+    "ts": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d\\d-\\d\\dT\\d\\d:\\d\\d:\\d\\d(\\.\\d+)?Z$"
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "step": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "kind": {
+      "enum": [
+        "run_start",
+        "step_start",
+        "action",
+        "expect",
+        "shot",
+        "log",
+        "mark",
+        "warn",
+        "error",
+        "hang",
+        "step_end",
+        "run_end"
+      ]
+    },
+    "driver": {
+      "enum": [
+        "ai",
+        "human"
+      ]
+    },
+    "ok": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "detail": {
+      "type": "object"
+    },
+    "frame": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "dur_ms": {
+      "type": "integer",
+      "minimum": 0
+    }
+  }
+}

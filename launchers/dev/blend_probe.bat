@@ -1,4 +1,5 @@
 @echo off
+rem Opens a Godot window that checks a canvas item can read what was drawn under it (the effect blend modes) and prints the answer.
 REM ============================================================================
 REM  Asks whether a RenderingServer canvas item can read what was drawn under
 REM  it, via canvas_item_set_copy_to_backbuffer and hint_screen_texture. That

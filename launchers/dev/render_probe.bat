@@ -1,4 +1,5 @@
 @echo off
+rem Opens a Godot window that measures how many bits of the hue vector survive a canvas item's per-quad modulate and prints the result.
 REM ============================================================================
 REM  Verifies the engine behaviour ADR-0002 depends on: that a canvas item's
 REM  per-quad modulate can carry ClassicUO's hue vector to the shader, and how

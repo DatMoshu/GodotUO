@@ -273,7 +273,7 @@ public partial class WorldView : VBoxContainer
         {
             if (_data != null)
             {
-                _data.CurrentArt = EditorData.LandCount + (uint)id;
+                _data.CurrentArt = _brush.Kind == AssetPickKind.Land ? (uint)id : EditorData.LandCount + (uint)id;
             }
         };
         tools.AddChild(_brush);
@@ -385,6 +385,7 @@ public partial class WorldView : VBoxContainer
         _stage.AddChild(_chip);
 
         BuildWorkspace(bar, tools);
+        RestoreLayerTicks();
 
         VisibilityChanged += OnVisibilityChanged;
     }
@@ -423,6 +424,10 @@ public partial class WorldView : VBoxContainer
             _status.Text = $"could not start: {_host.Error}";
             return false;
         }
+
+        // Roofs is the profile's DrawRoofs, and Boot loads the profile with
+        // roofs on: put the tick back.
+        _host.ShowRoofs = GetToggle("Roofs") ?? true;
 
         // The world project (ADR-0011): whole replaced blocks over the
         // install, from UO_WORLD_PROJECT.
@@ -548,12 +553,15 @@ public partial class WorldView : VBoxContainer
         }
 
         Vector2I size = _viewport.Size;
-        if (_data != null && _brush != null && _data.CurrentArt >= EditorData.LandCount)
+        if (_data != null && _brush != null && _brush.Edit?.HasFocus() != true)
         {
-            // Follow a pick made in UO Assets, but never under the user's typing.
-            int id = (int)(_data.CurrentArt - EditorData.LandCount);
-            if (_brush.Value != id && _brush.Edit?.HasFocus() != true)
+            // Follow a pick made in UO Assets or the brush library, ground included, but never under the user's typing.
+            bool land = _data.CurrentArt < EditorData.LandCount;
+            int id = (int)(land ? _data.CurrentArt : _data.CurrentArt - EditorData.LandCount);
+            AssetPickKind kind = land ? AssetPickKind.Land : AssetPickKind.Static;
+            if (_brush.Kind != kind || _brush.Value != id)
             {
+                _brush.Kind = kind;
                 _brush.Value = id;
             }
         }
@@ -689,7 +697,18 @@ public partial class WorldView : VBoxContainer
 
     private static MenuButton Menu(HBoxContainer bar, string text, string tip)
     {
-        var m = new MenuButton { Text = text, TooltipText = tip, Flat = false };
+        // The editor theme draws a MenuButton flat, as a label; the Button
+        // variation and OptionButton's arrow make it read as the dropdown
+        // button it is, beside Pick and Set Z / hue.
+        var m = new MenuButton
+        {
+            Text = text,
+            TooltipText = tip,
+            Flat = false,
+            ThemeTypeVariation = "Button",
+            Icon = EditorInterface.Singleton.GetEditorTheme()?.GetIcon("GuiOptionArrow", "EditorIcons"),
+            IconAlignment = HorizontalAlignment.Right,
+        };
         bar.AddChild(m);
         // Stay open while ticking several items.
         m.GetPopup().HideOnCheckableItemSelection = false;
@@ -715,7 +734,48 @@ public partial class WorldView : VBoxContainer
             bool now = !pm.IsItemChecked(id);
             pm.SetItemChecked(id, now);
             set(now);
+            RememberLayerTicks();
         };
+    }
+
+    // The Layers ticks for this editor session, kept on the editor rather than on
+    // this object: an assembly reload or a plugin re-enable builds a new
+    // World tab, and the ticks come back with it. Never written to disk.
+    private const string LayerTicksMeta = "guo_world_layer_ticks";
+
+    private void RememberLayerTicks()
+    {
+        PopupMenu pm = _layers?.GetPopup();
+        if (pm == null)
+        {
+            return;
+        }
+
+        var ticks = new Godot.Collections.Dictionary<string, bool>();
+        for (int i = 0; i < pm.ItemCount; i++)
+        {
+            ticks[pm.GetItemText(i)] = pm.IsItemChecked(i);
+        }
+
+        EditorInterface.Singleton.SetMeta(LayerTicksMeta, ticks);
+    }
+
+    /// <summary>The session's Layers ticks by label; empty until one is changed.</summary>
+    internal static System.Collections.Generic.IReadOnlyDictionary<string, bool> SessionLayerTicks =>
+        EditorInterface.Singleton.HasMeta(LayerTicksMeta)
+            ? new System.Collections.Generic.Dictionary<string, bool>(EditorInterface.Singleton.GetMeta(LayerTicksMeta).AsGodotDictionary<string, bool>())
+            : new System.Collections.Generic.Dictionary<string, bool>();
+
+    private void RestoreLayerTicks()
+    {
+        PopupMenu pm = _layers.GetPopup();
+        foreach (var (label, on) in SessionLayerTicks)
+        {
+            if (_toggles.TryGetValue(label, out var t) && t.Menu == pm && t.Menu.IsItemChecked(t.Id) != on)
+            {
+                SetToggle(label, on);
+            }
+        }
     }
 
     /// <summary>The Layers and Guides menu items by name (Land, Statics, Multis, Roofs, Objects, Grid, Altitude, Blocks, ...), for F3.</summary>
@@ -734,6 +794,7 @@ public partial class WorldView : VBoxContainer
 
         t.Menu.SetItemChecked(t.Id, on);
         t.Set(on);
+        RememberLayerTicks();
         return true;
     }
 
@@ -757,7 +818,7 @@ public partial class WorldView : VBoxContainer
                 uint art = _data?.CurrentArt ?? 0;
                 if (art < EditorData.LandCount)
                 {
-                    return _status.Text = "Stamp needs a static: pick one in UO Assets > Art (Statics)";
+                    return _status.Text = "Stamp needs an item: choose one in the brush library or UO Assets > Art (Statics)";
                 }
 
                 // On top of what was clicked: a static's top, or the land.
@@ -770,7 +831,7 @@ public partial class WorldView : VBoxContainer
             case WorldTool.Erase:
                 if (o is not Static es)
                 {
-                    return _status.Text = $"Erase takes a static; that is a {o.GetType().Name}";
+                    return _status.Text = $"Erase takes an item; that is {Plain(o)}";
                 }
 
                 done = _editor.Erase(facet, es.X, es.Y, es.Z, es.Graphic);
@@ -786,7 +847,7 @@ public partial class WorldView : VBoxContainer
             case WorldTool.Hue:
                 if (o is not Static hs)
                 {
-                    return _status.Text = $"Hue takes a static; that is a {o.GetType().Name}";
+                    return _status.Text = $"Hue takes an item; that is {Plain(o)}";
                 }
 
                 done = _editor.SetHue(facet, hs.X, hs.Y, hs.Z, hs.Graphic, BrushHue);
@@ -815,12 +876,21 @@ public partial class WorldView : VBoxContainer
         if (!done)
         {
             string why = _host.Project == null ? "no world project is open" : "nothing changed";
-            _status.Text = $"{Tool}: {why}";
+            _status.Text = $"{ToolName(Tool)}: {why}";
             return why;
         }
 
         return _editor.LastWhat;
     }
+
+    /// <summary>What a clicked object is, in words, for a refusal ("the ground", "a creature").</summary>
+    private static string Plain(GameObject o) => o switch
+    {
+        Land => "the ground",
+        Mobile => "a creature or player",
+        Item => "an object from the shard",
+        _ => "not an item",
+    };
 
     private (int X, int Y)? _areaA, _areaB;
 
@@ -844,7 +914,7 @@ public partial class WorldView : VBoxContainer
         {
             _areaB = (x, y);
             (int X0, int Y0, int X1, int Y1) a = Area.Value;
-            _status.Text = $"Area: {a.X1 - a.X0 + 1} x {a.Y1 - a.Y0 + 1} cells; 'Area to multi' takes its statics";
+            _status.Text = $"Area: {a.X1 - a.X0 + 1} x {a.Y1 - a.Y0 + 1} cells; Area to multi (Advanced > World & overlays) takes its items";
         }
 
         _guides.Area = Area ?? (_areaA is { } c ? (c.X, c.Y, c.X, c.Y) : null);
@@ -891,12 +961,12 @@ public partial class WorldView : VBoxContainer
 
         if (parts.Count == 0)
         {
-            _status.Text = "Area to multi: there are no statics in that rectangle";
+            _status.Text = "Area to multi: there are no items in that rectangle";
             return 0;
         }
 
         AreaToMulti?.Invoke(name, parts);
-        _status.Text = $"Area to multi: {parts.Count} statics into the Multi Editor";
+        _status.Text = $"Area to multi: {parts.Count} items opened in the Multis tab as a new building; its Back to World button returns here";
         return parts.Count;
     }
 
@@ -935,7 +1005,7 @@ public partial class WorldView : VBoxContainer
                 uint art = _data?.CurrentArt ?? 0;
                 if (art < EditorData.LandCount)
                 {
-                    return _status.Text = "PlaceItem needs a static: pick one in UO Assets > Art (Statics)";
+                    return _status.Text = "Place item needs an item: choose one in the brush library or UO Assets > Art (Statics)";
                 }
 
                 _objects.PlaceItem(facet, o.X, o.Y, z, (ushort)(art - EditorData.LandCount), BrushHue);
@@ -945,7 +1015,7 @@ public partial class WorldView : VBoxContainer
             case WorldTool.PlaceSpawner:
                 if (_objects.PlaceSpawner(facet, o.X, o.Y, z, _spawnEntry?.Text) == null)
                 {
-                    return _status.Text = "PlaceSpawner needs a name in the spawns box";
+                    return _status.Text = "Place spawner needs a creature name in the spawns box";
                 }
 
                 break;
@@ -955,11 +1025,11 @@ public partial class WorldView : VBoxContainer
                 {
                     if (picked == null)
                     {
-                        return _status.Text = "MoveObject: click one of the project's objects first";
+                        return _status.Text = "Move object: click one of the project's objects first";
                     }
 
                     _moving = picked;
-                    return _status.Text = "MoveObject: now click where it goes";
+                    return _status.Text = "Move object: now click where it goes";
                 }
 
                 _objects.Move(_moving.Value, facet, o.X, o.Y, o is Item ? o.Z : z);
@@ -969,7 +1039,7 @@ public partial class WorldView : VBoxContainer
             case WorldTool.DeleteObject:
                 if (picked == null || !_objects.Delete(picked.Value))
                 {
-                    return _status.Text = "DeleteObject takes one of the project's objects";
+                    return _status.Text = "Delete object takes one of the project's objects";
                 }
 
                 break;

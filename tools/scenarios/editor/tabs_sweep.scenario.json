@@ -1,0 +1,18 @@
+{
+  "id": "editor.tabs.sweep",
+  "title": "Sweep the editor tabs: layout, assets, store, maps, world, shard",
+  "surface": "editor",
+  "requires": {"build": "debug"},
+  "timeouts": {"step_s": 180, "run_s": 1800},
+  "steps": [
+    {"id": "launch", "do": {"kind": "launch"}, "say": "Open the GUO editor.", "timeout_s": 300},
+    {"id": "layout", "do": {"kind": "tour_segment", "id": "layout"}, "say": "The layout: every dock and tab is where it should be."},
+    {"id": "art", "do": {"kind": "tour_segment", "id": "art"}, "say": "Assets, Art: browse a tile and see it drawn.", "shot": true},
+    {"id": "gumps", "do": {"kind": "tour_segment", "id": "gumps"}, "say": "Assets, Gumps: the client's interface art."},
+    {"id": "anims", "do": {"kind": "tour_segment", "id": "anims"}, "say": "Assets, Animations: a creature and its frames."},
+    {"id": "store", "do": {"kind": "tour_segment", "id": "store"}, "say": "The UO Store: packs for shard owners and authors.", "shot": true},
+    {"id": "maps", "do": {"kind": "tour_segment", "id": "maps"}, "say": "Assets, Maps, then jump into the UO World tab."},
+    {"id": "pick", "do": {"kind": "tour_segment", "id": "pick"}, "say": "World tab: pick a tile and inspect it.", "shot": true},
+    {"id": "shard", "do": {"kind": "tour_segment", "id": "shard"}, "say": "The UO Shard dock."}
+  ]
+}

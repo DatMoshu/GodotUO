@@ -12,7 +12,7 @@ its editor bridge 2595, and the shared dev shard 2593, which is never touched.
 |---|---|
 | **Upstream** | <https://github.com/ServUO/ServUO.git>, branch `pub57` |
 | **Pinned at** | `d76bf4443cf76d081ddaf8f57c87ff33749256af` ("Fix packet leak", 2026-08-04), fetched 2026-09-27, shallow |
-| **Licence** | GPL-3.0. **Not vendored, not redistributed, not patched.** Nothing here is copied from it or derived from its code. |
+| **Licence** | GPL-2.0 (the repo's LICENSE). **Not vendored, not redistributed, not patched.** Nothing here is copied from it or derived from its code. |
 | **Runtime** | .NET Framework 4.8 (built into Windows 10/11). It builds with the .NET SDK (`dotnet build`, SDK-style `net48` projects). |
 | **Checkout** | `tools/servuo/src/`, **gitignored**, about 74 MB (130 MB built). |
 

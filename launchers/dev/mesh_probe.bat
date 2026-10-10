@@ -1,4 +1,5 @@
 @echo off
+rem Opens a Godot window that checks a canvas mesh can carry a per-vertex value (ARRAY_CUSTOM0) for land lighting and prints the answer.
 REM ============================================================================
 REM  Asks whether a canvas item can carry a per-vertex value beyond position,
 REM  UV and colour -- ARRAY_CUSTOM0 on a mesh drawn with canvas_item_add_mesh.

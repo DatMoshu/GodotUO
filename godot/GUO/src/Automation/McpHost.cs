@@ -33,6 +33,9 @@ public partial class McpHost : Node
     private readonly HashSet<MouseButton> _buttons = new();
     private Vector2 _pointer;
     private int _releaseInput;
+    private bool _quitAfterReply;
+    private int _controllers;
+    private HumanOverlay _overlay;
     private sealed record Work(JsonElement Request, TaskCompletionSource<object> Reply, CancellationToken Cancel);
 
     public static void Attach(Node parent)
@@ -79,20 +82,31 @@ public partial class McpHost : Node
         }
     }
 
-    // One controller at a time. Each connection has at most one queued command.
+    // Several controllers may be connected (the scenario runner and a stand-in for a person, tools/scenario_run);
+    // each connection has at most one queued command and all of them share the scene thread's queue. Input a
+    // controller left held is released when the last one disconnects.
     private async Task Serve()
     {
         try
         {
             while (!_stop.IsCancellationRequested)
             {
-                using TcpClient client = await _listener.AcceptTcpClientAsync(_stop.Token);
-                try { await Session(client); }
-                catch (Exception e) when (e is IOException or OperationCanceledException or JsonException or SocketException) { }
-                finally { Interlocked.Exchange(ref _releaseInput, 1); }
+                TcpClient client = await _listener.AcceptTcpClientAsync(_stop.Token);
+                Interlocked.Increment(ref _controllers);
+                _ = Task.Run(() => Controller(client));
             }
         }
         catch (Exception e) when (e is OperationCanceledException or SocketException or ObjectDisposedException) { }
+    }
+
+    private async Task Controller(TcpClient client)
+    {
+        using (client)
+        {
+            try { await Session(client); }
+            catch (Exception e) when (e is IOException or OperationCanceledException or JsonException or SocketException or ObjectDisposedException) { }
+            finally { if (Interlocked.Decrement(ref _controllers) == 0) Interlocked.Exchange(ref _releaseInput, 1); }
+        }
     }
 
     private static async Task<string> ReadLine(Stream stream, CancellationToken cancel)
@@ -169,7 +183,10 @@ public partial class McpHost : Node
         Tool("guo_ui", "Inspect visible classic gumps and Godot controls; editable field values are omitted. Bounds are viewport pixels. Up to 2000 controls.", "{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}"),
         Tool("guo_input", "Send one event through GUO's real input queue. Use motion, wait, button down, wait, button up for clicks/drags. button: Left/Right/Middle/WheelUp/WheelDown. key: Godot key name, e.g. Enter or Escape. text inserts Unicode into the focused field. Event completes after two frames. No OS pointer movement.", "{\"type\":\"object\",\"properties\":{\"kind\":{\"enum\":[\"motion\",\"button\",\"key\",\"text\"]},\"x\":{\"type\":\"integer\"},\"y\":{\"type\":\"integer\"},\"button\":{\"type\":\"string\"},\"key\":{\"type\":\"string\"},\"pressed\":{\"type\":\"boolean\"},\"text\":{\"type\":\"string\",\"maxLength\":1024},\"shift\":{\"type\":\"boolean\"},\"ctrl\":{\"type\":\"boolean\"},\"alt\":{\"type\":\"boolean\"}},\"required\":[\"kind\"],\"additionalProperties\":false}"),
         Tool("guo_wait", "Wait 1..600 process frames before observing asynchronous UI/server changes.", "{\"type\":\"object\",\"properties\":{\"frames\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":600}},\"required\":[\"frames\"],\"additionalProperties\":false}"),
-        Tool("guo_screenshot", "Return the current viewport as a PNG. Requires a headed renderer; --headless cannot capture pixels.", "{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}")
+        Tool("guo_state", "Cheap state for scripted runs: process frame index, scene, viewport size and, once in the world, the player's map index and tile position.", "{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}"),
+        Tool("guo_quit", "Quit the client cleanly after two frames, so a MovieWriter recording is finalised. The connection closes.", "{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}"),
+        Tool("guo_screenshot", "Return the current viewport as a PNG. Requires a headed renderer; --headless cannot capture pixels.", "{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}"),
+        Tool("guo_overlay", "Human-driver overlay: text (caption) with step (its label), control {x,y,width,height,label} (an outline in viewport pixels), clear, hide (draw nothing). Returns {skip, abort}: Space and Esc pressed since the last call. No arguments only reads them.", "{\"type\":\"object\",\"properties\":{\"text\":{\"type\":\"string\",\"maxLength\":300},\"step\":{\"type\":\"string\",\"maxLength\":20},\"control\":{\"type\":\"object\",\"properties\":{\"x\":{\"type\":\"number\"},\"y\":{\"type\":\"number\"},\"width\":{\"type\":\"number\"},\"height\":{\"type\":\"number\"},\"label\":{\"type\":\"string\",\"maxLength\":40}},\"required\":[\"x\",\"y\",\"width\",\"height\"],\"additionalProperties\":false},\"clear\":{\"type\":\"boolean\"},\"hide\":{\"type\":\"boolean\"}},\"additionalProperties\":false}")
     };
 
     public override void _Process(double delta)
@@ -180,6 +197,7 @@ public partial class McpHost : Node
             if (!_active.Cancel.IsCancellationRequested && --_frames > 0) return;
             _active.Reply.TrySetResult(_result);
             _active = null;
+            if (_quitAfterReply) { GetTree().Quit(); return; }
         }
         if (!_queue.TryDequeue(out Work work) || work.Cancel.IsCancellationRequested) return;
         try
@@ -192,7 +210,10 @@ public partial class McpHost : Node
                 "guo_ui" => Text(JsonSerializer.Serialize(Snapshot())),
                 "guo_input" => Input(a, out frames),
                 "guo_wait" => Wait(a, out frames),
+                "guo_quit" => Quit(out frames),
+                "guo_state" => Text(JsonSerializer.Serialize(State())),
                 "guo_screenshot" => Screenshot(),
+                "guo_overlay" => Overlay(a),
                 _ => Text("Unknown tool", true)
             };
             if (frames > 0) { _active = work; _frames = frames; _result = result; }
@@ -203,6 +224,41 @@ public partial class McpHost : Node
             // Do not echo arguments: typed text may be a password.
             work.Reply.TrySetResult(Text($"Command failed ({e.GetType().Name}). Check required arguments and current UI state.", true));
         }
+    }
+
+    private object Overlay(JsonElement a)
+    {
+        if (_overlay == null)
+        {
+            var layer = new CanvasLayer { Layer = 100, Name = "GuoOverlayLayer" };
+            _overlay = new HumanOverlay();
+            layer.AddChild(_overlay);
+            AddChild(layer);
+        }
+        if (a.TryGetProperty("hide", out var hide)) _overlay.SetHidden(hide.GetBoolean());
+        if (a.TryGetProperty("clear", out var clear) && clear.GetBoolean()) _overlay.Clear();
+        else
+        {
+            if (a.TryGetProperty("text", out var text))
+            {
+                string step = a.TryGetProperty("step", out var label) ? label.GetString() : "";
+                _overlay.SetCaption(step, text.GetString());
+            }
+            if (a.TryGetProperty("control", out var c))
+            {
+                var rect = new Rect2(c.GetProperty("x").GetSingle(), c.GetProperty("y").GetSingle(), c.GetProperty("width").GetSingle(), c.GetProperty("height").GetSingle());
+                _overlay.SetOutline(rect, c.TryGetProperty("label", out var tag) ? tag.GetString() : "");
+            }
+        }
+        var keys = _overlay.TakeKeys();
+        return Text(JsonSerializer.Serialize(new { skip = keys.Skip, abort = keys.Abort }));
+    }
+
+    private object Quit(out int frames)
+    {
+        frames = 2;
+        _quitAfterReply = true;
+        return Text("Quitting.");
     }
 
     private static object Wait(JsonElement a, out int frames)
@@ -261,6 +317,20 @@ public partial class McpHost : Node
             Godot.Input.ParseInputEvent(ev);
         }
         return Text("Event dispatched; inspect UI to verify the effect.");
+    }
+
+    private object State()
+    {
+        var size = GetViewport().GetVisibleRect().Size;
+        var player = Client.Game?.UO?.World?.Player;
+        return new
+        {
+            frame = Engine.GetProcessFrames(),
+            scene = Client.Game?.Scene?.GetType().Name,
+            width = size.X,
+            height = size.Y,
+            player = player == null ? null : new { map = Client.Game.UO.World.MapIndex, x = (int)player.X, y = (int)player.Y, z = (int)player.Z }
+        };
     }
 
     private object Snapshot()

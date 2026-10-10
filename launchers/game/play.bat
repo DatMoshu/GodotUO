@@ -1,4 +1,6 @@
 @echo off
+rem Runs the GUO client in a window against the configured shard (or the first-run wizard when no UO data is set) and stays open until the game exits.
+rem args: --offline | --frames <n> | <client flags>
 REM ============================================================================
 REM  THE LAUNCHER. Runs the GUO client.
 REM
@@ -8,7 +10,8 @@ REM      launchers\game\play.bat --frames 400    run 400 frames and quit
 REM
 REM  Anything else is passed to the client. Engine flags are not: --frames is
 REM  here because Godot's --quit-after has to come BEFORE the -- separator,
-REM  and everything after it is the client's.
+REM  and everything after it is the client's. Other engine flags (a scripted run's
+REM  --write-movie and --resolution) come in the GUO_ENGINE_ARGS variable.
 REM ============================================================================
 call "%~dp0..\_shared\common.bat" || exit /b 1
 
@@ -53,5 +56,5 @@ shift
 goto parse
 
 :run
-"%GODOT_CONSOLE%" --path "%UO_GODOT_PROJECT%" %GUO_QUIT_AFTER% --%GUO_ARGS%
+"%GODOT_CONSOLE%" --path "%UO_GODOT_PROJECT%" %GUO_QUIT_AFTER% %GUO_ENGINE_ARGS% --%GUO_ARGS%
 exit /b %ERRORLEVEL%

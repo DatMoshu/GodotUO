@@ -1,0 +1,12 @@
+{
+  "id": "client.smoke.login_screen",
+  "title": "Start the client and reach the login screen",
+  "surface": "client",
+  "requires": {"build": "debug"},
+  "timeouts": {"step_s": 60, "run_s": 420},
+  "steps": [
+    {"id": "launch", "do": {"kind": "launch"}, "say": "Start GUO.", "timeout_s": 240,
+     "expect": {"scene": "LoginScene", "within_s": 60}},
+    {"id": "settle", "do": {"kind": "wait", "seconds": 3}, "say": "The login screen is up.", "shot": true}
+  ]
+}

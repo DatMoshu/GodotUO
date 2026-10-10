@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Play a session against the configured shard and check it (needs a shard). Twin of playtest.bat.
+# Plays a scripted session against the configured shard (log in, walk, open the backpack, speak), prints each check and exits non-zero if any fails.
+set -euo pipefail
 . "$(dirname "$0")/../_shared/common.sh" || exit 1
 mkdir -p "$UO_BUILD/screenshots"
 echo "[playtest] Driving a session against $UO_SHARD_HOST:$UO_SHARD_PORT"

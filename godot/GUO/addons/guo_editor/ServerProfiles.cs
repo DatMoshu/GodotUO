@@ -184,7 +184,10 @@ internal sealed class ManagedServerProcess
         foreach (string arg in profile.Arguments) info.ArgumentList.Add(arg);
         // Do not accidentally apply a development probe or another server's deployment.
         foreach (string key in info.Environment.Keys.Where(k => k.StartsWith("UO_", StringComparison.Ordinal) && (k.EndsWith("_PROBE", StringComparison.Ordinal) || k == "UO_SERVER_CONTENT")).ToArray()) info.Environment.Remove(key);
-        Start(ConsoleStartInfo(info, LogSources.ServerConsole(profile.Id)), state);
+        // A ModernUO with the GUO editor bridge gets its admin token and bridge settings (ADR-0035), as tools/editor_shard
+        // starts it; without them a run-bar start or the Admin tab's Restart would bring it back with no admin channel.
+        foreach (var (k, v) in ShardSecrets.BridgeEnvironment(profile.ServerDirectory)) if (string.IsNullOrEmpty(info.Environment.TryGetValue(k, out string set) ? set : null)) info.Environment[k] = v;
+        Start(ConsoleStartInfo(info, Workspace.ServerConsole(profile.Id)), state);
     }
     /// <summary>
     /// The OS shell owns the console file and waits for the server. No reader, callback or file handle in

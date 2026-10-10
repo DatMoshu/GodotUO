@@ -1,4 +1,6 @@
 @echo off
+rem Runs the client with its loopback automation MCP on GUO_MCP_PORT (token in GUO_MCP_TOKEN) and stays in the foreground until the client exits.
+rem args: --headless
 setlocal
 REM Opt-in agent-controlled GUO. Set the same port/token in the MCP client.
 call "%~dp0..\_shared\common.bat" || exit /b 1

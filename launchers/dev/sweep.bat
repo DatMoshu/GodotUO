@@ -1,4 +1,5 @@
 @echo off
+rem Photographs five fixed places on the dev shard into build/screenshots/sweep, one client run per spot, and fails if any spot fails.
 REM ============================================================================
 REM  Photograph the same handful of places every time, so a renderer change
 REM  can be looked at rather than argued about.
@@ -19,6 +20,7 @@ call "%~dp0..\_shared\common.bat" || exit /b 1
 
 set "SWEEP=%UO_BUILD%\screenshots\sweep"
 if not exist "%SWEEP%" mkdir "%SWEEP%"
+set "SWEEP_FAIL=0"
 
 call :shot minoc-town       2500 560
 call :shot yew-forest        633 858
@@ -27,7 +29,7 @@ call :shot despise-mouth    5401 629
 call :shot britain-street   1602 1591
 
 echo [sweep] Output: %SWEEP%
-exit /b 0
+exit /b %SWEEP_FAIL%
 
 :shot
 echo [sweep] %~1 at %~2 %~3
@@ -35,5 +37,8 @@ echo [sweep] %~1 at %~2 %~3
     --screenshot-dir "%SWEEP%" ^
     --screenshot-name "%~1" ^
     --shard-command "[go %~2 %~3"
-if errorlevel 1 echo [sweep] %~1 FAILED
+if errorlevel 1 (
+    echo [sweep] %~1 FAILED
+    set "SWEEP_FAIL=1"
+)
 exit /b 0

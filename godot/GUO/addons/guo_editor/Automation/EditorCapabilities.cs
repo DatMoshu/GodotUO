@@ -17,6 +17,7 @@ internal static class EditorCapabilities
 
     private static string Json(object value) => JsonSerializer.Serialize(value);
     private static string Str(JsonNode a, string key, string fallback = "") => (string)a?[key] ?? fallback;
+    private static bool Bool(JsonNode a, string key) => (bool?)a?[key] ?? false;
     private static int Num(JsonNode a, string key, int fallback, int min, int max) => Math.Clamp((int?)a?[key] ?? fallback, min, max);
     private static JsonObject Schema(params (string Name, string Type)[] fields)
     {
@@ -25,7 +26,7 @@ internal static class EditorCapabilities
         return new JsonObject { ["type"] = "object", ["properties"] = p, ["additionalProperties"] = false };
     }
 
-    internal static void Register(AiToolHost host, SearchContext ctx, Func<SearchIndex> index)
+    internal static void Register(AiToolHost host, SearchContext ctx, Func<SearchIndex> index, Func<EditorTour> tour = null)
     {
         void Add(string name, string description, Func<JsonNode, string> run, bool read = true, params (string, string)[] fields) =>
             host.Register(new AiToolHost.Tool { Name = name, Description = description, Parameters = Schema(fields), ReadOnly = read, Run = run, MaxResult = 32000 });
@@ -209,6 +210,30 @@ internal static class EditorCapabilities
             else throw new ArgumentException("action must be undo or redo");
             return Json(new { d.CanUndo, d.CanRedo, components = d.Parts.Count });
         }, false, ("action", "string"));
+        if (tour != null)
+        {
+            host.Register(new AiToolHost.Tool
+            {
+                Name = "editor_screenshot",
+                Description = "Save one frame of the editor window as a PNG under this checkout's build/ (out_dir-style relative or absolute path, .png). Machine paths on screen are scrubbed first. Requires approval unless the launching runner listed it in GUO_EDITOR_MCP_PREAPPROVED.",
+                Parameters = Schema(("file", "string")), ReadOnly = false, MaxResult = 2000,
+                RunAsync = async (a, _) => tour() is { } t ? await t.ScreenshotAsync(Str(a, "file")) : "error: the editor tour is not available in this editor",
+            });
+            host.Register(new AiToolHost.Tool
+            {
+                Name = "human_overlay",
+                Description = "The scenario runner's human driver: draw a caption card (text, at most 300 characters, with a step label such as 3/18) over the editor with the tour's overlay, and answer {skip, abort}: the Space and Esc pressed since the last call (reading clears them). hide draws nothing but keeps the keys; clear removes the card; no arguments only reads. Changes nothing but the overlay. Requires approval unless the launching runner listed it in GUO_EDITOR_MCP_PREAPPROVED.",
+                Parameters = Schema(("text", "string"), ("step", "string"), ("hide", "boolean"), ("clear", "boolean")), ReadOnly = false, MaxResult = 500,
+                RunAsync = async (a, _) => tour() is { } t ? await t.HumanOverlayAsync(Str(a, "text"), Str(a, "step"), Bool(a, "hide"), Bool(a, "clear")) : "error: the editor tour is not available in this editor",
+            });
+            host.Register(new AiToolHost.Tool
+            {
+                Name = "tour_segment",
+                Description = "Run one segment of the editor tour (ids as in tools/editor_tour) in this editor and return its checks and frame paths. Writes only under this checkout's build/. A segment that takes over 25 s answers state=running: call again with the same id to wait. Requires approval unless the runner that launched the editor listed it in GUO_EDITOR_MCP_PREAPPROVED.",
+                Parameters = Schema(("id", "string"), ("out_dir", "string")), ReadOnly = false, MaxResult = 16000,
+                RunAsync = async (a, _) => tour() is { } t ? await t.RunSegmentAsync(Str(a, "id"), Str(a, "out_dir")) : "error: the editor tour is not available in this editor",
+            });
+        }
         host.Register(new AiToolHost.Tool
         {
             Name = "multi_write_stage", Description = "Write and read-back verify the active multi through the existing stage writer; updates the Multis browser. Never writes the client install. Requires approval.",

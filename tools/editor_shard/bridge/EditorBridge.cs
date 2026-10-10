@@ -13,9 +13,22 @@
 //      0x3F/0x00 statics, the order the client asks for), and is relayed to the
 //      other editors: last write per block wins, and each relay names its author.
 //   3. A "command" message runs a GM command as a named online character, via
-//      CommandSystem.Handle, exactly as if they had typed it.
+//      CommandSystem.Handle, exactly as if they had typed it. Since AD3 it is an
+//      admin op (below): it needs the admin token like the rest.
 //   4. A "multi" message places or removes an authored multi and its doors
 //      (AuthoredMulti.cs, tools/multi).
+//   5. Admin ops (AdminChannel.cs, ADR-0035) run only for a connection whose
+//      hello carried the server's admin token, each at a stated access level,
+//      and each is written to the admin audit log.
+//      The Admin tab's god view (GodView.cs) is one: every player, NPC and
+//      spawner on a facet, pushed to the tab as they change; its actions
+//      (GodViewActions.cs) move the admin's own staff character, or with nobody
+//      logged in the hidden presence's spot (AD2c), and work spawners.
+//      The Settings form reads the live values with admin_settings and records its
+//      changes there before it writes the files and restarts the server (AD4).
+//      The Accounts tab lists, makes and changes accounts (AccountsAdmin.cs, AD5).
+//      The Commands palette lists the server's commands and runs one, returning
+//      its output, with no character online (CommandsAdmin.cs, AD3).
 //
 // Live edits are held in memory. The world project (the editor's files) is the
 // source of truth; tools/world export + a restart make them permanent.
@@ -37,6 +50,7 @@ using System.Threading;
 using Server;
 using Server.Logging;
 using Server.Network;
+using GUO.Workspace;
 
 namespace GUO.EditorBridge;
 
@@ -52,6 +66,7 @@ public static class EditorBridge
     private static readonly Dictionary<(int, int), (byte[] Land, byte[] Statics)> _changed = new();
     private static readonly HashSet<NetState> _ulClients = new();
     private static readonly List<EditorConnection> _editors = new();
+    private static AdminChannel _admin = new(null, AdminLevel.Administrator, new AuditLog(null));
 
     public static void Configure()
     {
@@ -65,6 +80,12 @@ public static class EditorBridge
         {
             _ulMaps = maps.Split(',').Select(int.Parse).ToArray();
         }
+
+        // The audit log sits with the server's own logs, never in Saves.
+        _admin = AdminChannel.FromEnvironment(Path.Combine(Core.BaseDirectory, "Logs", "GUO", "admin_audit.jsonl"));
+
+        // Every save, ours or the autosave's, is the Health panel's "last save" (on the game thread).
+        EventSink.WorldSave += () => _lastSaveUtc = DateTime.UtcNow;
 
         EventSink.Connected += OnConnected;
         EventSink.Disconnected += m =>
@@ -174,6 +195,12 @@ public static class EditorBridge
         var thread = new Thread(Listen) { IsBackground = true, Name = "GUO editor bridge" };
         thread.Start();
         Log.Information("GUO editor bridge: editors on 127.0.0.1:{0}, UltimaLive shard '{1}', maps {2}", _port, _shardName, string.Join(",", _ulMaps));
+        Log.Information(
+            _admin.Enabled
+                ? "GUO editor bridge: admin channel on (the token grants {0}; audit log {1})"
+                : "GUO editor bridge: admin channel off (no admin token; map editing only){0}{1}",
+            _admin.Enabled ? _admin.Grants.ToString() : "", _admin.Enabled ? _admin.Audit.Path : ""
+        );
     }
 
     // --- UltimaLive to game clients ----------------------------------------
@@ -281,6 +308,9 @@ public static class EditorBridge
         public StreamWriter Writer;
         public string Name = "?";
         public long LastMobilesMs;
+        // The access level the admin token granted in hello (ADR-0035); null: map editing only.
+        public AdminLevel? Admin;
+        public int AdminRefusals;
         private readonly object _lock = new();
 
         public void Send(JsonObject msg)
@@ -345,6 +375,16 @@ public static class EditorBridge
                 if (op == "hello")
                 {
                     conn.Name = (string)msg["editor"] ?? "?";
+                    // The admin token, if offered (ADR-0035). Never logged:
+                    // the audit entry masks it.
+                    conn.Admin = _admin.CheckHello((string)msg["admin_token"], out string adminRefused);
+                    if (adminRefused != null)
+                    {
+                        conn.AdminRefusals++;
+                        _admin.Audit.Record(conn.Name, "hello", null, false, msg, adminRefused);
+                        Log.Warning("GUO editor bridge: editor '{0}' was refused admin: {1}", conn.Name, adminRefused);
+                        Thread.Sleep(AdminChannel.RefusalDelayMs);
+                    }
                     // Each map's season, which the shard sends its clients: the
                     // editor draws the same seasonal art when it knows it.
                     var seasons = new JsonObject();
@@ -356,23 +396,40 @@ public static class EditorBridge
                         }
                     }
 
-                    conn.Send(new JsonObject
+                    var reply = new JsonObject
                     {
                         ["op"] = "hello", ["shard"] = _shardName,
                         ["maps"] = new JsonArray(_ulMaps.Select(m => (JsonNode)m).ToArray()),
                         ["seasons"] = seasons,
-                    });
-                    Log.Information("GUO editor bridge: editor '{0}' connected", conn.Name);
+                        ["admin"] = conn.Admin?.ToString(),
+                    };
+                    if (conn.Admin is { } level)
+                    {
+                        reply["admin_ops"] = _admin.OpsFor(level);
+                        _admin.Audit.Record(conn.Name, "hello", level, true, msg);
+                    }
+                    else if (adminRefused != null)
+                    {
+                        reply["admin_error"] = adminRefused;
+                    }
+
+                    conn.Send(reply);
+                    Log.Information("GUO editor bridge: editor '{0}' connected{1}", conn.Name, conn.Admin is { } l ? $" (admin, {l})" : "");
+                    if (conn.AdminRefusals >= AdminChannel.MaxRefusals)
+                    {
+                        Log.Warning("GUO editor bridge: editor '{0}' closed after {1} refused admin tokens", conn.Name, conn.AdminRefusals);
+                        break;
+                    }
+                }
+                else if (AdminChannel.IsAdminOp(op))
+                {
+                    Core.LoopContext.Post(() => RunAdmin(conn, msg, op));
                 }
                 else if (op == "block")
                 {
                     long received = Environment.TickCount64;
                     // The game thread owns the TileMatrix and the NetStates.
                     Core.LoopContext.Post(() => ApplyBlock(conn, msg, received));
-                }
-                else if (op == "command")
-                {
-                    Core.LoopContext.Post(() => RunCommand(conn, msg));
                 }
                 else if (op == "equip")
                 {
@@ -425,6 +482,13 @@ public static class EditorBridge
                 _editors.Remove(conn);
             }
 
+            // Its god view subscription ends with it (GodView is game-thread only).
+            Core.LoopContext.Post(() =>
+            {
+                GodView.Forget(conn);
+                GodViewActions.Forget(conn);
+            });
+            client.Close();
             Log.Information("GUO editor bridge: editor '{0}' left", conn.Name);
         }
     }
@@ -739,21 +803,373 @@ public static class EditorBridge
                                 ["can_equip"] = canEquip, ["check_equip"] = checkEquip, ["moved_to_pack"] = moved };
     }
 
-    // {"op":"command","as":"Guosweep","text":"[add ..."}
-    private static void RunCommand(EditorConnection from, JsonNode msg)
+    // {"op":"admin_whoami"} / {"op":"admin_audit","count":50} / {"op":"admin_status"} / {"op":"admin_save"} /
+    // {"op":"admin_godview","facet":0} / {"op":"admin_godview_find","text":".."} (GodView.cs),
+    // {"op":"admin_goto"|"admin_bring"|"admin_paperdoll"|"admin_follow"|"admin_spawner",..} (GodViewActions.cs),
+    // {"op":"admin_settings","action":"get"|"changed",..} (the Settings form, AD4),
+    // {"op":"admin_accounts"} / {"op":"admin_account","action":"create"|"access"|"password"|"ban"|"unban",..} (AccountsAdmin.cs, AD5),
+    // {"op":"admin_backup","action":"list"|"now"|"restore",..} (Backup, AD6),
+    // {"op":"admin_commands"} / {"op":"admin_command","text":"[where",..} / {"op":"command","as":..,"text":..} (CommandsAdmin.cs, AD3),
+    // each with an optional "req" echoed back.
+    // Authorised against the level the hello's token granted, run, and audited
+    // (ADR-0035). Each later AD story adds its ops here and in AdminChannel.Ops.
+    private static void RunAdmin(EditorConnection from, JsonNode msg, string op)
     {
-        string who = (string)msg["as"];
-        string text = (string)msg["text"];
-        Mobile m = NetState.Instances.Select(ns => ns.Mobile)
-            .FirstOrDefault(x => x != null && string.Equals(x.RawName, who, StringComparison.OrdinalIgnoreCase));
-        if (m == null)
+        JsonNode req = msg["req"] is JsonNode r ? JsonNode.Parse(r.ToJsonString()) : null;
+        // A command line can carry a password ([password new new): the audit keeps its name only.
+        JsonNode audited = msg;
+        if (op is "admin_command" or "command" && msg is JsonObject o && o["text"] is JsonValue tv && tv.TryGetValue(out string line))
         {
-            from.Send(new JsonObject { ["op"] = "command", ["ok"] = false, ["error"] = $"'{who}' is not online" });
+            audited = o.DeepClone();
+            audited["text"] = AdminCommandRules.ForLog(line);
+        }
+
+        string refused = _admin.Authorise(op, from.Admin);
+        if (refused != null)
+        {
+            _admin.Audit.Record(from.Name, op, from.Admin, false, audited, refused);
+            from.Send(new JsonObject { ["op"] = op, ["req"] = req, ["ok"] = false, ["error"] = refused });
+            Log.Warning("GUO editor bridge: '{0}' refused {1}: {2}", from.Name, op, refused);
             return;
         }
 
-        bool handled = CommandSystem.Handle(m, text);
-        from.Send(new JsonObject { ["op"] = "command", ["ok"] = handled, ["as"] = m.RawName, ["text"] = text });
-        Log.Information("GUO editor bridge: '{0}' ran \"{1}\" as {2}: {3}", from.Name, text, m.RawName, handled ? "handled" : "not a command");
+        _admin.Audit.Record(from.Name, op, AdminChannel.Ops[op], true, audited);
+        var reply = new JsonObject { ["op"] = op, ["req"] = req, ["ok"] = true };
+        switch (op)
+        {
+            case "admin_status":
+                Status(reply);
+                break;
+            case "admin_save":
+                // Answered when the save is on disk, from SaveNow.
+                SaveNow(from, req);
+                Log.Information("GUO editor bridge: '{0}' ran {1} at {2}", from.Name, op, AdminChannel.Ops[op]);
+                return;
+            case "admin_whoami":
+                reply["editor"] = from.Name;
+                reply["level"] = from.Admin.ToString();
+                reply["ops"] = _admin.OpsFor(from.Admin!.Value);
+                break;
+            case "admin_audit":
+                reply["entries"] = _admin.Audit.Recent(Math.Clamp((int?)msg["count"] ?? 50, 1, AuditLog.Keep));
+                break;
+            case "admin_godview":
+                // The reply holds the whole facet; pushes follow on GodView's timer while the editor watches.
+                GodView.Request(from, msg, reply, from.Send);
+                break;
+            case "admin_godview_find":
+                GodView.Find(msg, reply);
+                break;
+            case "admin_goto":
+            case "admin_bring":
+            case "admin_paperdoll":
+            case "admin_follow":
+            case "admin_spawner":
+                // Refusals here (a character not online or above this level, a wrong target) are answered ok false, and audited as such.
+                if (!GodViewActions.Run(from, op, msg, reply, from.Admin!.Value, from.Send))
+                {
+                    _admin.Audit.Record(from.Name, op, AdminChannel.Ops[op], false, audited, (string)reply["error"]);
+                }
+
+                break;
+            case "admin_settings":
+                if (!Settings(msg, reply))
+                {
+                    _admin.Audit.Record(from.Name, op, AdminChannel.Ops[op], false, audited, (string)reply["error"]);
+                }
+
+                break;
+            case "admin_backup":
+                // "list" answers now; "now" and "restore" answer once the save and the snapshot are on disk (Backup).
+                if (!Backup(from, msg, reply))
+                {
+                    _admin.Audit.Record(from.Name, op, AdminChannel.Ops[op], false, audited, (string)reply["error"]);
+                    break;
+                }
+
+                if ((string)msg["action"] != "list")
+                {
+                    Log.Information("GUO editor bridge: '{0}' ran {1} {2} at {3}", from.Name, op, (string)msg["action"], AdminChannel.Ops[op]);
+                    return;
+                }
+
+                break;
+            case "admin_accounts":
+                AccountsAdmin.List(reply);
+                break;
+            case "admin_account":
+                // The request's password is masked in both audit entries by its field name; the log line never holds it.
+                if (!AccountsAdmin.Act(msg, reply, from.Admin!.Value, out string done))
+                {
+                    _admin.Audit.Record(from.Name, op, AdminChannel.Ops[op], false, audited, (string)reply["error"]);
+                    Log.Information("GUO editor bridge: '{0}' was refused {1} {2}: {3}", from.Name, op, (string)msg["action"], (string)reply["error"]);
+                }
+                else
+                {
+                    Log.Information("GUO editor bridge: '{0}' {1}", from.Name, done);
+                }
+
+                break;
+            case "admin_commands":
+                CommandsAdmin.List(reply, from.Admin!.Value);
+                break;
+            case "admin_command":
+            case "command":
+                // Answered after CommandsAdmin.SettleMs, with the output; a refusal (a dangerous command without its
+                // confirm, a character not online or above this level) is answered now and audited as refused.
+                if (!CommandsAdmin.Run(msg, reply, from.Admin!.Value, op == "command", from.Send, out string ran))
+                {
+                    _admin.Audit.Record(from.Name, op, AdminChannel.Ops[op], false, audited, (string)reply["error"]);
+                    Log.Information("GUO editor bridge: '{0}' was refused {1}: {2}", from.Name, op, (string)reply["error"]);
+                    break;
+                }
+
+                Log.Information("GUO editor bridge: '{0}' {1}", from.Name, ran);
+                return;
+        }
+
+        from.Send(reply);
+        Log.Information("GUO editor bridge: '{0}' ran {1} at {2}", from.Name, op, AdminChannel.Ops[op]);
+    }
+
+    // The Settings form (AD4; docs/data_formats.md section 10). "get": the values the running server holds for the
+    // named modernuo.json settings, its listeners and its expansion; a setting whose name looks secret is answered
+    // as set or not, never its value. "changed": the form's diff before it restarts the server, so the audit (which
+    // RunAdmin has already written, masked) records who changed what; the form writes the files with the server
+    // stopped, because ModernUO writes some of them from memory while it runs. Game thread.
+    private static bool Settings(JsonNode msg, JsonObject reply)
+    {
+        switch ((string)msg["action"])
+        {
+            case "get":
+            {
+                var values = new JsonObject();
+                foreach (JsonNode k in msg["keys"] as JsonArray ?? new JsonArray())
+                {
+                    string key = (string)k;
+                    if (string.IsNullOrEmpty(key) || values.ContainsKey(key))
+                    {
+                        continue;
+                    }
+
+                    string v = ServerConfiguration.GetSetting(key, (string)null);
+                    values[key] = AuditLog.IsSecretName(key) ? v == null ? null : "***" : v;
+                }
+
+                reply["values"] = values;
+                reply["listeners"] = new JsonArray(ServerConfiguration.Listeners.Select(l => (JsonNode)l.ToString()).ToArray());
+                reply["expansion"] = Core.Expansion.ToString();
+                return true;
+            }
+            case "changed":
+                reply["recorded"] = (msg["changes"] as JsonArray)?.Count ?? 0;
+                return true;
+            default:
+                reply["ok"] = false;
+                reply["error"] = "admin_settings needs an action: get or changed";
+                return false;
+        }
+    }
+
+    // When the world was last saved (UTC): seen through EventSink.WorldSave, or,
+    // before the first save since boot, the newest file in the save folder.
+    private static DateTime? _lastSaveUtc;
+
+    private static DateTime? LastSave()
+    {
+        if (_lastSaveUtc == null && World.SavePath is { } dir && Directory.Exists(dir))
+        {
+            DateTime newest = DateTime.MinValue;
+            foreach (string f in Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories))
+            {
+                DateTime t = File.GetLastWriteTimeUtc(f);
+                newest = t > newest ? t : newest;
+            }
+
+            _lastSaveUtc = newest == DateTime.MinValue ? null : newest;
+        }
+
+        return _lastSaveUtc;
+    }
+
+    // The Health panel's numbers (AD1; docs/data_formats.md section 10). Game thread.
+    private static void Status(JsonObject reply)
+    {
+        int online = 0, staff = 0;
+        foreach (NetState ns in NetState.Instances)
+        {
+            if (ns.Mobile is { } m)
+            {
+                online++;
+                staff += m.AccessLevel > AccessLevel.Player ? 1 : 0;
+            }
+        }
+
+        int editors;
+        lock (_editors)
+        {
+            editors = _editors.Count;
+        }
+
+        System.Diagnostics.Process p = Core.Process;
+        p?.Refresh();
+        DateTime? saved = LastSave();
+        reply["server"] = "ModernUO";
+        reply["version"] = Core.Version.ToString();
+        reply["shard"] = _shardName;
+        reply["expansion"] = Core.Expansion.ToString();
+        reply["uptime_s"] = Core.Uptime / 1000;
+        reply["online"] = online;
+        reply["staff_online"] = staff;
+        reply["items"] = World.Items.Count;
+        reply["mobiles"] = World.Mobiles.Count;
+        reply["memory_mb"] = p == null ? GC.GetTotalMemory(false) / (1024 * 1024) : p.WorkingSet64 / (1024 * 1024);
+        reply["world"] = World.WorldState.ToString();
+        reply["last_save"] = saved?.ToString("yyyy-MM-ddTHH:mm:ssZ");
+        reply["last_save_s"] = saved == null ? null : (long)(DateTime.UtcNow - saved.Value).TotalSeconds;
+        reply["editors"] = editors;
+        // AD6: the newest of GUO's backups (Backup), for Health's "Last backup".
+        ShardBackups.Snapshot newest = ShardBackups.List(BackupRoot).FirstOrDefault();
+        reply["last_backup"] = newest?.AtUtc.ToString("yyyy-MM-ddTHH:mm:ssZ");
+        reply["last_backup_s"] = newest == null ? null : (long)(DateTime.UtcNow - newest.AtUtc).TotalSeconds;
+        reply["last_backup_name"] = newest?.Name;
+    }
+
+    // Where GUO's backups go: GUO under ModernUO's own backup folder (autoArchive.backupPath, Backups by default).
+    private static string BackupRoot => ShardBackups.Root(PathUtility.GetFullPath(ServerConfiguration.GetSetting("autoArchive.backupPath", "Backups")));
+
+    // Back up now and Restore (AD6; docs/data_formats.md section 10). "list": every snapshot, newest first, and the
+    // save and backup folders (the tab restores with the server stopped, so it needs them; it never logs them).
+    // "now": a world save, then a snapshot of the save folder, then the oldest beyond keep removed. "restore": the
+    // named snapshot must exist; the current world is saved and backed up first ("before-restore", so a restore can
+    // be undone), then the tab restarts the server and puts the snapshot in place while it is stopped. The snapshot
+    // is copied on the game thread, so no other save moves the folder mid-copy. False (reply ok false) when refused.
+    private static bool Backup(EditorConnection from, JsonNode msg, JsonObject reply)
+    {
+        string action = (string)msg["action"];
+        string root = BackupRoot;
+        reply["action"] = action;
+        switch (action)
+        {
+            case "list":
+                ListBackups(reply, root);
+                return true;
+            case "now":
+            case "restore":
+                break;
+            default:
+                reply["ok"] = false;
+                reply["error"] = "admin_backup needs an action: list, now or restore";
+                return false;
+        }
+
+        string target = (string)msg["name"];
+        if (action == "restore" && ShardBackups.Find(root, target) == null)
+        {
+            reply["ok"] = false;
+            reply["error"] = ShardBackups.ValidName(target) ? $"there is no backup called {target}" : "that is not a backup's name";
+            return false;
+        }
+
+        int keep = ShardBackups.Keep((int?)msg["keep"]);
+        JsonNode req = msg["req"]?.DeepClone();
+        string reason = action == "restore" ? ShardBackups.BeforeRestore : "manual";
+        SaveNow(from, req, (saved, saveMs, error) =>
+        {
+            var done = new JsonObject { ["op"] = "admin_backup", ["req"] = req?.DeepClone(), ["action"] = action, ["ok"] = saved, ["save_ms"] = saveMs };
+            if (action == "restore")
+            {
+                done["target"] = target;
+            }
+
+            if (saved)
+            {
+                var watch = System.Diagnostics.Stopwatch.StartNew();
+                try
+                {
+                    ShardBackups.Snapshot snap = ShardBackups.Take(World.SavePath, root, DateTime.UtcNow, reason, from.Name);
+                    done["snapshot"] = snap.ToJson();
+                    done["copy_ms"] = watch.ElapsedMilliseconds;
+                    done["pruned"] = new JsonArray(ShardBackups.Prune(root, keep, snap.Name, target ?? "").Select(n => (JsonNode)n).ToArray());
+                    done["keep"] = keep;
+                }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException or InvalidOperationException)
+                {
+                    done["ok"] = false;
+                    error = "the backup could not be written: " + e.Message;
+                }
+            }
+
+            if ((bool?)done["ok"] != true)
+            {
+                done["error"] = error;
+                _admin.Audit.Record(from.Name, "admin_backup", AdminChannel.Ops["admin_backup"], false, msg, error);
+            }
+
+            ListBackups(done, root);
+            from.Send(done);
+            Log.Information("GUO editor bridge: backup for '{0}' {1}{2}", from.Name, (bool?)done["ok"] == true ? "written: " : "failed",
+                (string)done["snapshot"]?["name"] ?? "");
+        });
+        return true;
+    }
+
+    private static void ListBackups(JsonObject reply, string root)
+    {
+        reply["snapshots"] = new JsonArray(ShardBackups.List(root).Select(s => (JsonNode)s.ToJson()).ToArray());
+        reply["saves_path"] = World.SavePath;
+        reply["backup_path"] = root;
+        reply["default_keep"] = ShardBackups.DefaultKeep;
+    }
+
+    // Starts a world save (ModernUO's own World.Save, the [save command's) and
+    // answers the editor once the save is written. With then (a backup, AD6) it
+    // calls that instead of answering: ok, the save's ms, the error. Game thread.
+    private static void SaveNow(EditorConnection from, JsonNode req, Action<bool, long, string> then = null)
+    {
+        if (World.WorldState != WorldState.Running)
+        {
+            string busy = $"the world is busy ({World.WorldState}); a save already running finishes on its own";
+            if (then != null)
+            {
+                then(false, 0, busy);
+                return;
+            }
+
+            from.Send(new JsonObject { ["op"] = "admin_save", ["req"] = req?.DeepClone(), ["ok"] = false, ["error"] = busy });
+            return;
+        }
+
+        // EventSink.WorldSave fires only for a save that succeeded: a "last save"
+        // that did not move means it failed.
+        DateTime? before = LastSave();
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        World.Save();
+        var t = new Thread(() =>
+        {
+            // Set again once the snapshot is on disk; FinishWorldSave follows on the game thread.
+            World.WaitForWriteCompletion();
+            Core.LoopContext.Post(() =>
+            {
+                bool ok = _lastSaveUtc != before;
+                if (then != null)
+                {
+                    then(ok, watch.ElapsedMilliseconds, ok ? null : "the save failed; the server's log says why");
+                    return;
+                }
+
+                // req is already a child of RunAdmin's unsent reply: a node has one parent.
+                var reply = new JsonObject { ["op"] = "admin_save", ["req"] = req?.DeepClone(), ["ok"] = ok, ["ms"] = watch.ElapsedMilliseconds,
+                                             ["last_save"] = LastSave()?.ToString("yyyy-MM-ddTHH:mm:ssZ") };
+                if (!ok)
+                {
+                    reply["error"] = "the save failed; the server's log says why";
+                }
+
+                from.Send(reply);
+                Log.Information("GUO editor bridge: save for '{0}' {1} in {2} ms", from.Name, ok ? "written" : "failed", watch.ElapsedMilliseconds);
+            });
+        }) { IsBackground = true, Name = "GUO editor bridge save wait" };
+        t.Start();
     }
 }

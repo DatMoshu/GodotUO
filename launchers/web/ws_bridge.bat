@@ -1,4 +1,6 @@
 @echo off
+rem Runs the WebSocket-to-TCP bridge between the browser client and the shard in the foreground until Ctrl+C, or tests a login through it.
+rem args: test [--fake]
 REM ============================================================================
 REM  The WebSocket bridge for the web client: ws://127.0.0.1:UO_WS_BRIDGE_PORT
 REM  relays to the shard at UO_SHARD_HOST:UO_SHARD_PORT. Ctrl+C stops it.

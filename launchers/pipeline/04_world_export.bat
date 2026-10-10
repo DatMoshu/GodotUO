@@ -1,4 +1,6 @@
 @echo off
+rem Exports the editor's world project into patched map and statics files under <project>/export, then reads them back to check them.
+rem args: --project <dir>
 REM ============================================================================
 REM  PIPELINE STEP 04 - export the world project.
 REM  Turns the editor's map edits (UO_WORLD_PROJECT) into patched copies of

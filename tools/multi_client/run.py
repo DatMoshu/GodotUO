@@ -23,8 +23,9 @@ character, exactly as playtest.bat does, so it stands wherever that character
 was left -- somewhere with people, vendors and things to attack. The other
 three each have their own account: the shard refuses a second character from
 one account, and "[go" takes staff access, so the shard makes the accounts in
-UO_SHARD_GM_ACCOUNTS on a headless boot with game master access (password =
-name). Each lane's character is made on first use.
+UO_SHARD_GM_ACCOUNTS on a headless boot with game master access (their
+password UO_SHARD_GM_PASSWORD, generated per user). Each lane's character
+is made on first use.
 
 Sound is off in every scripted run; pass --sound through to hear one.
 
@@ -171,7 +172,7 @@ def login_for(cfg: Config, lane: Lane) -> tuple[str, str, str | None]:
         sys.exit(f"[multi_client] lane {lane.name} needs UO_SHARD_GM_ACCOUNTS[{lane.account}]; "
                  f"only {len(cfg.shard_gm_accounts)} configured")
     account = cfg.shard_gm_accounts[lane.account]
-    return account, account, account.capitalize()
+    return account, cfg.shard_gm_password, account.capitalize()
 
 
 def start(cfg: Config, lane: Lane, at: tuple[int, int, int, int], out: Path) -> tuple[subprocess.Popen, Path]:

@@ -3,14 +3,14 @@
 
     eval "$(python3 tools/shellenv/run.py)"
 
-launchers/_shared/common.sh runs this; it is the shell twin of common.bat
-calling config.bat. Every setting config.local.bat and config.bat define is
-exported, resolved in the usual order (environment, config.local.bat,
-config.bat) by tools/guo/config.py, so the .bat files stay the one place
-settings are written on every OS. A value that still holds an unexpanded
-%VAR% -- a Windows-only default such as %LOCALAPPDATA% -- is left out, and
-the derived paths the launchers need (the engine, the project, the cache)
-come from Config, which knows this OS.
+launchers/_shared/common.sh runs this after sourcing config.sh, the shell twin
+of common.bat calling config.bat. Every setting config.local.sh and config.sh
+define (config.local.bat and config.bat on a checkout without config.sh) is
+exported, resolved in the usual order (environment, local, shared) by
+tools/guo/config.py. A value that still holds an unexpanded %VAR% -- a
+Windows-only default such as %LOCALAPPDATA% -- is left out, and the derived
+paths the launchers need (the engine, the project, the cache) come from
+Config, which knows this OS.
 """
 from __future__ import annotations
 
@@ -22,18 +22,21 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from guo import load_config  # noqa: E402
-from guo.config import native_path, parse_config_bat  # noqa: E402
+from guo.config import launcher_settings, native_path  # noqa: E402
 
 
 def exports() -> dict[str, str]:
     cfg = load_config()
-    shared = cfg.root / "launchers" / "_shared"
-    values = {"UO_ROOT": str(cfg.root)}
-    local = shared / "config.local.bat"
-    if local.is_file():
-        values = parse_config_bat(local, values)
-    values = parse_config_bat(shared / "config.bat", values)
+    values = launcher_settings(cfg.root)
     out = {k: os.environ.get(k) or native_path(v) for k, v in values.items() if "%" not in v}
+    # The dev shard's generated passwords, as common.bat calls the secrets
+    # file after config.bat (resolved by load_config, which reads it).
+    # The editor bridge's admin token comes from the same file (ADR-0035).
+    for key, value in (("UO_SHARD_OWNER_PASSWORD", cfg.shard_owner_password),
+                       ("UO_SHARD_GM_PASSWORD", cfg.shard_gm_password),
+                       ("UO_BRIDGE_ADMIN_TOKEN", cfg.bridge_admin_token)):
+        if value:
+            out[key] = value
 
     out.update({
         "UO_ROOT": str(cfg.root),

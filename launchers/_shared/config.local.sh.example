@@ -1,0 +1,26 @@
+# shellcheck shell=bash
+# ============================================================================
+#  GUO - your machine's settings (Linux/macOS twin of config.local.bat.example)
+#
+#  Copy this file to config.local.sh (same folder) and edit that copy.
+#  config.local.sh is gitignored: it is yours and is never committed.
+#
+#  Keep the `: "${NAME:=VALUE}"` form on every line, so an environment variable
+#  still overrides what you put here. Any setting in config.sh can be set here;
+#  these are the ones every machine needs. Paths use forward slashes.
+# ============================================================================
+
+# Your Ultima Online Classic install (the folder holding the .uop / .mul files).
+: "${UO_CLIENT_DATA:=$HOME/Games/Ultima Online Classic}"
+# A custom data folder with a guo_data.json manifest, read before the install
+# -- for example a staged set from tools/uodata_write (ADR-0022):
+# : "${UO_CUSTOM_DATA:=$UO_ROOT/build/uodata/moshu}"
+
+# The client version of that install. Check it with:
+#     launchers/pipeline/01_verify_client_data.sh
+# : "${UO_CLIENT_VERSION:=7.0.107.76}"
+
+# Scenario runs (tools/scenario_run). Left unset, a run stays under build/runs.
+# : "${GUO_RUNS_DB:=<path to the shared runs.db>}"
+# : "${GUO_RUNS_SHARED_DIR:=<path to the shared runs folder>}"
+# : "${GUO_RUNS_VIDEO_DIR:=<path to the video folder>}"

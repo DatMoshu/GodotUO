@@ -100,6 +100,7 @@ public partial class AssetsView : VBoxContainer
             Add("Cliloc", new ClilocPanel());
             Add("Sounds", new SoundPanel());
             Add("Bulk", new BulkPanel());
+            Add("Art set", new ArtSetPanel());
             Add("Parity", new ParityPanel());
         }
         ApplyCellSize();

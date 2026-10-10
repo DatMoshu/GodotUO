@@ -31,8 +31,8 @@ writes to stdout; plain `godot` returns immediately and prints nothing.
 ## Repository layout
 
 ```
-launchers/        .bat entry points, grouped by job. Start here.
-  _shared/        config.local.bat (yours, gitignored) + config.bat + common.bat
+launchers/        .bat/.sh pairs, grouped by job; each says what it does on its first line. Start here.
+  _shared/        config.local.bat (yours, gitignored) + config.bat + common.bat, and their .sh twins
   game/play.bat   THE launcher
   editor/         open the Godot project or the upstream reference
   pipeline/       numbered data steps, run in order
@@ -42,6 +42,7 @@ launchers/        .bat entry points, grouped by job. Start here.
   windows/        doctor, export -- the .exe, with the sigil as its icon
   web/            doctor, export, serve, smoke -- on a community C# web build (ADR-0008)
   steamdeck/      doctor, export, push, run, screenshot, smoke over ssh (ADR-0018)
+  world/          authoring tools: multi, decorate, mapgen, mapgen_districts, uopack
 godot/GUO/        the Godot project
   src/Compat/     XNA compatibility shim — read its README first
   src/{IO,Assets,Render,Network,Game,Input,Configuration,Utility}/
@@ -51,6 +52,7 @@ tools/            one folder per job + one per third-party program
   guoasset/       parity reference renderer (MCP), on upstream's loaders
   guo_mcp/        opt-in loopback MCP to drive a running client (data_formats section 29)
   modernuo/       the dev shard: patches, config templates (src/ gitignored)
+  server_lab/     the server compatibility lab: cases x backends grid, wiki page
   android/        the Android export tool + preset template
   windows/        the Windows export tool + preset template + icon check
   web/            the web export tool + preset template
@@ -107,12 +109,16 @@ python tools\port_bulk\run.py --area X    port a mechanical-tier area
 dotnet build godot\GUO\GUO.csproj         fast build loop (~1s, use this)
 launchers\dev\build.bat                    build C# only
 launchers\dev\smoke.bat                    full health check — run before commit
+launchers\dev\launcher_lint.bat --list    every launcher pair with its description
+launchers\dev\selftest.bat                the Python tool self-tests CI runs
+launchers\dev\pytest_all.bat               every Python test folder, one pooled pytest run
 launchers\dev\screenshot.bat               capture a frame
 launchers\dev\playtest.bat                 play a session and check it (needs a shard)
 launchers\dev\endurance.bat                play on for a while and watch for drift
 launchers\dev\plugin_probe.bat             load test plugins and check what they see (needs a shard)
 launchers\dev\multi_client.bat             four scripted clients at once, tiled 2x2 (needs a shard)
 launchers\dev\side_by_side.bat             ClassicUO and GUO live on one monitor, same spot (needs a shard)
+launchers\dev\server_lab.bat row modernuo  run the server lab's cases against a server (tools/server_lab)
 launchers\dev\render_diff.bat NAME         compare the two clients' "renderdump NAME" dumps
 launchers\dev\sync_upstream.bat            check upstream drift
 launchers\dev\worktree_setup.bat           ready a fresh git worktree (no links)
@@ -219,8 +225,11 @@ front matter says which files it covers. Read the matching rules before
 editing those files.
 
 **Checks that bind every agent.** Run `launchers\dev\smoke.bat` before a
-commit. `launchers\dev\install_git_hooks.bat` installs the pre-push docs lint
-and privacy scan; CI runs the same guards on every push. Claude Code's hooks
+commit. `launchers\dev\install_git_hooks.bat` installs the pre-push docs lint,
+launcher lint and privacy scan; CI runs the same guards on every push. A new
+launcher is a `.bat`/`.sh` pair whose first line says what it does
+(`tools/launcher_lint/README.md`); a new setting goes in both `config.bat` and
+`config.sh`. Claude Code's hooks
 in `.claude/hooks/` are extra and only run there.
 
 **MCP.** `guoasset` (see `tools/guoasset/README.md`) renders UO art from the

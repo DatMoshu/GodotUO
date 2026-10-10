@@ -166,6 +166,13 @@ public partial class EditorSmoke : Node
 
         switch (_stage)
         {
+            case 0 when ArgValue(AdminFlag) != null:
+                // The Admin tab's scripted run (EditorSmokeAdmin.cs) needs no client data.
+                _stage = 120;
+                break;
+            case >= 120 and < 170:
+                StepAdmin();
+                break;
             case 0:
                 if (_data.IsLoaded || _data.Error != null)
                 {
@@ -552,6 +559,15 @@ public partial class EditorSmoke : Node
         {
             // guoasset is optional (tools/guoasset/README.md): no UOWW, no parity.
             result["skipped"] = why;
+            result["ok"] = true;
+            result["failures"] = failures;
+            return;
+        }
+
+        if (panel is ArtSetPanel)
+        {
+            // A button panel for tools/art_extract: no asset grid to search or inspect.
+            result["skipped"] = "no grid; it runs tools/art_extract";
             result["ok"] = true;
             result["failures"] = failures;
             return;
@@ -1545,13 +1561,24 @@ public partial class EditorSmoke : Node
         }));
 
         _steps.Add((1, VerifyBrushWorkspace));
+        AddSettingsChecks();
+        AddWordsChecks();
+        AddWorldCentreSteps("default");
         if (!Headless)
         {
             Vector2I originalSplit = default;
             float originalCanvasWidth = 0, originalToolsHeight = 0;
             Vector2I proofWindowSize = default;
             Window.ModeEnum proofWindowMode = default;
-            _steps.Add((1, () => { _world.GoTo(0, 1651, 2660); _world.ShowWorkspacePreview(); }));
+            // A known window size first: the editor reopens at its last size, and at 1366x768 the inspector's
+            // minimum leaves the Tools/inspector split no room for the resize check below.
+            _steps.Add((1, () =>
+            {
+                proofWindowSize = GetWindow().Size; proofWindowMode = GetWindow().Mode;
+                GetWindow().Mode = Window.ModeEnum.Windowed;
+                GetWindow().Size = new Vector2I((int)(1920 * EditorInterface.Singleton.GetEditorScale()), (int)(1080 * EditorInterface.Singleton.GetEditorScale()));
+            }));
+            _steps.Add((20, () => { _world.GoTo(0, 1651, 2660); _world.ShowWorkspacePreview(); }));
             _steps.Add((20, () => _world.ForcedMouse = _world.CanvasSize / 2));
             _steps.Add((20, () =>
             {
@@ -1587,30 +1614,82 @@ public partial class EditorSmoke : Node
             _steps.Add((1, () =>
             {
                 _world.ShowNearbyForSmoke(1651, 2660);
-                proofWindowSize = GetWindow().Size; proofWindowMode = GetWindow().Mode;
-                GetWindow().Mode = Window.ModeEnum.Windowed;
                 GetWindow().Size = new Vector2I((int)(1920 * EditorInterface.Singleton.GetEditorScale()), (int)(1080 * EditorInterface.Singleton.GetEditorScale()));
             }));
-            _steps.Add((30, () =>
+            AddWorldCentreSteps("1080");
+            _steps.Add((1, () =>
             {
                 Expect(_world.NearbyHasCenterTile(), "nearby_tiles_show_land_and_stack");
                 Expect(_world.CommonToolsFit(), "common_tools_fit_1080p");
+                CheckRunBarFits("1080");
                 GD.Print($"[GUO workspace] 1920x1080 logical proof: {GetWindow().Size}, editor scale {EditorInterface.Singleton.GetEditorScale()}");
                 using Image shot = EditorInterface.Singleton.GetBaseControl().GetViewport().GetTexture()?.GetImage();
                 shot?.SavePng(Path.Combine(_out, $"editor_compact_1080{Suffix}.png"));
-                GetWindow().Size = new Vector2I((int)(1366 * EditorInterface.Singleton.GetEditorScale()), (int)(768 * EditorInterface.Singleton.GetEditorScale()));
             }));
-            _steps.Add((30, () =>
+            AddSettingsLayoutSteps("1080");
+            _steps.Add((1, () => GetWindow().Size = new Vector2I((int)(1366 * EditorInterface.Singleton.GetEditorScale()), (int)(768 * EditorInterface.Singleton.GetEditorScale()))));
+            AddWorldCentreSteps("768");
+            _steps.Add((1, () =>
             {
                 Expect(_world.CommonToolsFit(), "common_tools_fit_768p");
+                CheckRunBarFits("768");
                 GD.Print($"[GUO workspace] 1366x768 logical proof: {GetWindow().Size}, editor scale {EditorInterface.Singleton.GetEditorScale()}");
                 using Image shot = EditorInterface.Singleton.GetBaseControl().GetViewport().GetTexture()?.GetImage();
                 shot?.SavePng(Path.Combine(_out, $"editor_compact_768{Suffix}.png"));
-                GetWindow().Size = proofWindowSize; GetWindow().Mode = proofWindowMode;
             }));
+            AddSettingsLayoutSteps("768");
+            _steps.Add((1, () => { GetWindow().Size = proofWindowSize; GetWindow().Mode = proofWindowMode; }));
         }
         // ADR-0027: render modes and map layers.
         AddModeSteps();
+
+        // ED7: the Layers menu's eight ticks.
+        AddWorldLayerSteps(wait);
+    }
+
+    /// <summary>
+    /// ED4: opening the World tab by name (as Show in UO World, search and the tour do) makes World the open main
+    /// screen and gives its view the centre. From another main screen, after the header has had time to shrink its
+    /// tabs to icons (the editor finds a main screen by its button's text, so a blanked name could not be opened).
+    /// </summary>
+    private void AddWorldCentreSteps(string size)
+    {
+        _steps.Add((30, () => EditorInterface.Singleton.SetMainScreenEditor("2D")));
+        _steps.Add((10, () => EditorInterface.Singleton.SetMainScreenEditor(GuoEditorPlugin.WorldTabName)));
+        _steps.Add((20, () => CheckWorldFillsCentre(size)));
+    }
+
+    private void CheckWorldFillsCentre(string size)
+    {
+        Control centre = EditorInterface.Singleton.GetEditorMainScreen();
+        Button worldTab = null;
+        void Find(Node n) { if (n is Button b && b.Text == GuoEditorPlugin.WorldTabName && b.ToggleMode && b.GetParent() is HBoxContainer) worldTab = b; else foreach (Node c in n.GetChildren()) { if (worldTab != null) return; Find(c); } }
+        Find(EditorInterface.Singleton.GetBaseControl());
+        string open = (worldTab?.GetParent()?.GetChildren().OfType<Button>().FirstOrDefault(b => b.ButtonPressed)?.Text) ?? "";
+        var others = centre.GetChildren().OfType<Control>().Where(c => c != _world && c.Visible).Select(c => c.Name.ToString()).ToList();
+        float share = centre.Size.Y > 0 && _world.Visible ? _world.Size.Y / centre.Size.Y : 0;
+        GD.Print($"[GUO centre] {size}: open main screen '{open}', World view {_world.Size} of centre {centre.Size} ({share:P0}), other views shown [{string.Join(",", others)}]");
+        Expect(open == GuoEditorPlugin.WorldTabName, $"world_is_open_main_screen_{size}");
+        Expect(_world.Visible && others.Count == 0, $"world_alone_in_centre_{size}");
+        Expect(share >= 0.7f, $"world_view_fills_centre_{size}");
+        if (Headless) return;
+        using Image shot = EditorInterface.Singleton.GetBaseControl().GetViewport().GetTexture()?.GetImage();
+        shot?.SavePng(Path.Combine(_out, $"editor_world_centre_{size}{Suffix}.png"));
+    }
+
+    /// <summary>ED1: every run bar control and every World command row button lies inside the window, and the bar holds one server list.</summary>
+    private void CheckRunBarFits(string size)
+    {
+        var visible = new Rect2(Vector2.Zero, (Vector2)GetWindow().Size / GetWindow().ContentScaleFactor);
+        RunBar bar = null;
+        void Find(Node n) { if (n is RunBar r) bar = r; else foreach (Node c in n.GetChildren()) { if (bar != null) return; Find(c); } }
+        Find(EditorInterface.Singleton.GetBaseControl());
+        var outsideRun = bar?.Outside(visible) ?? new List<string> { "no run bar" };
+        var outsideWorld = _world.CommandRowOutside(visible);
+        GD.Print($"[GUO runbar] {size}: run bar outside [{string.Join(",", outsideRun)}], World row outside [{string.Join(",", outsideWorld)}], window {visible.Size}");
+        Expect(bar != null && bar.ServerLists == 1, $"run_bar_one_server_list_{size}");
+        Expect(outsideRun.Count == 0, $"run_bar_inside_window_{size}");
+        Expect(outsideWorld.Count == 0, $"world_command_row_inside_window_{size}");
     }
 
     private void WorldFail(string why)

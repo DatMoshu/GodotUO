@@ -101,6 +101,9 @@ internal static class Workspace
 
     public static string ClientConsole(string serverId, string clientId, int slot) => Path.Combine(RunSlot(serverId, clientId, slot), "client.log");
 
+    /// <summary>The managed server's console beside its exact process state, or "" for an id that is not one.</summary>
+    public static string ServerConsole(string serverId) => IsId(serverId) ? Path.Combine(ServerHome(serverId), "server.console.log") : "";
+
     /// <summary>A file name that cannot climb out of the workspace.</summary>
     private static string Id(string id)
     {
@@ -133,14 +136,28 @@ internal static class Workspace
     public static string NewId() => Guid.NewGuid().ToString("N");
 
     /// <summary>Writes a file by temporary file and move, so a reader never sees half of it.</summary>
-    public static void WriteAtomic(string path, byte[] bytes)
+    public static void WriteAtomic(string path, byte[] bytes) => WriteAtomic(path, stream => stream.Write(bytes));
+
+    /// <summary>Text as UTF-8 without a byte order mark, the same bytes as <see cref="File.WriteAllText(string, string)"/>.</summary>
+    public static void WriteAtomic(string path, string text) => WriteAtomic(path, new System.Text.UTF8Encoding(false).GetBytes(text));
+
+    /// <summary>
+    /// The temporary file sits in the target's folder, so the move is a rename on one volume. If
+    /// <paramref name="write"/> throws, or the move fails, the old file is left whole and the temporary is removed.
+    /// </summary>
+    public static void WriteAtomic(string path, Action<Stream> write)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(path));
+        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path)));
         string temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
 
         try
         {
-            File.WriteAllBytes(temporary, bytes);
+            using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write))
+            {
+                write(stream);
+                stream.Flush(true);
+            }
+
             File.Move(temporary, path, true);
         }
         finally

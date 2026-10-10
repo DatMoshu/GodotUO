@@ -1,4 +1,5 @@
 @echo off
+rem Forces a full rebuild of godot/GUO/GUO.csproj and prints every C# error grouped by the missing symbol.
 REM ============================================================================
 REM  Every C# error in the whole client, grouped by the symbol that is
 REM  missing rather than by call site.

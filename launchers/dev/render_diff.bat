@@ -1,4 +1,6 @@
 @echo off
+rem Compares the ClassicUO and GUO render dumps named NAME and writes build/render_dump/NAME/diff.md.
+rem args: <name> | --list
 REM ============================================================================
 REM  Compare a ClassicUO render dump with a GUO one taken in the same place.
 REM

@@ -11,8 +11,15 @@ resolves the same values in the same order:
 4. an optional **central shared config** named by `UO_COMMON_CONFIG`, for a
    machine hosting several projects.
 
-`tools\guo\config.py` parses the same `.bat` files when a tool runs outside a
-launcher, so the editor, an agent and CI see the same paths. No launcher,
+On Linux and macOS the `.sh` launchers read the twins, `config.sh` and
+`config.local.sh` (from `config.local.sh.example`): the same keys in
+`: "${NAME:=VALUE}"` lines, resolved in the same order, with forward-slash
+paths. `tools\launcher_lint` fails a `config.sh` whose keys differ from
+`config.bat`'s, so a new setting goes in both.
+
+`tools\guo\config.py` parses the same files when a tool runs outside a
+launcher (the `.bat` pair on Windows, the `.sh` pair elsewhere), so the
+editor, an agent and CI see the same paths. No launcher,
 tool or runtime hardcodes a path. CI rejects a commit that puts a machine
 path anywhere but `config.local.bat`.
 
@@ -48,9 +55,11 @@ not settings.
 | `UO_SHARD_REPO` | `https://github.com/modernuo/ModernUO.git` | Where `launchers\shard\fetch.bat` clones from. |
 | `UO_SHARD_SRC` | `%UO_ROOT%\tools\modernuo\src` | The ModernUO checkout (gitignored, about 1 GB built). |
 | `UO_SHARD_DIST` | `%UO_SHARD_SRC%\Distribution` | Its built distribution. |
-| `UO_SHARD_OWNER` | set in `config.bat` | The account the headless boot raises to owner, and the one `playtest.bat` and `populate.bat` log in as. |
-| `UO_SHARD_OWNER_PASSWORD` | set in `config.bat` | Its password. Change both on any shard someone else can reach. |
+| `UO_SHARD_BIND` | `127.0.0.1` | The address the local dev shard listens on: loopback only. `0.0.0.0` opens it to the LAN, on purpose ([Dev Shard](Dev-Shard.md#opening-it-to-the-lan)). |
+| `UO_SHARD_OWNER` | `guoprobe` | The account the headless boot raises to owner, and the one `playtest.bat` and `populate.bat` log in as. |
+| `UO_SHARD_OWNER_PASSWORD` | none: generated | Its password. The shard's first run generates it into the per-user `<workspace>\shard\secrets.bat` ([Dev Shard](Dev-Shard.md#where-the-passwords-are)); set it in `config.local.bat` to choose your own. |
 | `UO_SHARD_GM_ACCOUNTS` | `guoeffects,guohighlight,guosweep` | Comma-separated accounts the headless boot creates with game master access, one per `multi_client.bat` lane. |
+| `UO_SHARD_GM_PASSWORD` | none: generated | The game master accounts' shared password, generated with the owner's. |
 | `UO_SHARD_UPDATE_RANGE` | `72` | The shard's update range in tiles (patch `0002-settable-update-range`), so a zoomed-out client sees the whole screen. |
 
 ## Editor (the Godot editor add-on)

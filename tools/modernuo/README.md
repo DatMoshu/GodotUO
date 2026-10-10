@@ -3,6 +3,8 @@
 The client needs a server to talk to. This is it: a local
 [ModernUO](https://github.com/modernuo/ModernUO) shard, running against the
 same UO install the client reads, listening on `127.0.0.1:2593` as **GUO Dev**.
+Loopback only: `UO_SHARD_BIND` opens it to the LAN, on purpose
+(`docs/wiki/Dev-Shard.md`, "Opening it to the LAN").
 
 It is a development dependency, not part of the port. Nothing in
 `godot/GUO/` knows it exists; the client connects to `UO_SHARD_HOST` /
@@ -33,9 +35,19 @@ launchers\shard\populate.bat  generate the world          (once, ~10 min)
 Then, in another terminal, `launchers\game\play.bat`.
 
 Auto account creation is on, so the first login with any name and password
-makes that account. The input probe (`launchers\dev\playtest.bat`) uses
-`guoprobe` / `guoprobe`, which is also `UO_SHARD_OWNER`, and `guomate` for the
-second client it starts to trade with.
+makes that account. The input probe (`launchers\dev\playtest.bat`) logs in as
+`guoprobe`, which is also `UO_SHARD_OWNER`, and uses `guomate` for the second
+client it starts to trade with.
+
+### Passwords
+
+Nothing ships a password. The first `run.bat` (`configure.py`) generates the
+owner's (`UO_SHARD_OWNER_PASSWORD`) and the game master accounts' shared one
+(`UO_SHARD_GM_PASSWORD`) into the per-user workspace,
+`<UO_WORKSPACE_DIR>\shard\secrets.bat` (`%LOCALAPPDATA%\GUO` by default;
+`tools/guo/shard_secrets.py`). It is a .bat of guarded `set` lines:
+`common.bat` calls it after `config.bat`, `tools/guo/config.py` reads it, and
+the environment or `config.local.bat` still win. Delete it for new ones.
 
 That second account is why `accountHandler.maxAccountsPerIP` is **4** in the
 template rather than ModernUO's default of 1: two clients on one machine are
@@ -61,9 +73,16 @@ reproduce it:
 
 ```
 patches/    the diffs applied on top of upstream, numbered, in order
+upstream/   upstream-ready versions of the patches, and issue text, held for review
+UPSTREAM.md every patch and issue, upstream or ours, and why
 config/     the server configuration, as templates
 configure.py  fills the templates in from config.bat
 ```
+
+[`UPSTREAM.md`](UPSTREAM.md) is the tracked list of every change GUO makes to
+ModernUO and every bug it has found there. Nothing is submitted upstream until
+the owner has reviewed the bundle. A story that changes a patch says "MUO patch"
+and updates the list in the same commit.
 
 ### `patches/0001-headless-owner-account.patch`
 
@@ -75,14 +94,28 @@ of asking.
 The patch replaces the prompt, when headless, with the account named by
 `UO_SHARD_OWNER` / `UO_SHARD_OWNER_PASSWORD`: created if it does not exist,
 raised to owner if it does — which it usually does, because auto account
-creation made it a player at the first login. ModernUO takes its
+creation made it a player at the first login. An existing account is raised
+only if it holds `UO_SHARD_OWNER_PASSWORD`; otherwise the boot logs a warning
+(without the password) and leaves it a player, so a stranger who logs in as
+the owner's name first on an open port does not get the shard. A password
+anyone can read in GUO's history (the old `guoprobe` default, or the account's
+own name) makes and raises nothing either. ModernUO takes its
 administration commands in game and not at the console, so without an owner
-account the world cannot be generated at all.
+account the world cannot be generated at all. No password, no owner account.
 
 The same boot makes every account in `UO_SHARD_GM_ACCOUNTS` (comma-separated,
-password = name) with game master access, for `launchers\dev\multi_client.bat`:
+password `UO_SHARD_GM_PASSWORD`; none set, none made) with game master
+access, for `launchers\dev\multi_client.bat`:
 the shard refuses a second character from one account, so four clients at once
-need four accounts, and three of those clients type `[go`.
+need four accounts, and three of those clients type `[go`. The same rule
+holds: an existing account below game master is raised only if it already
+holds `UO_SHARD_GM_PASSWORD`.
+
+At every headless boot the owner and game master accounts that already have
+their access level are set to the configured passwords (when they do not
+already match), so a world saved before the passwords were generated stops
+accepting the old ones. `python tools/modernuo/test_account_prompt.py`
+compiles the patched file against stand-ins and runs these rules.
 
 ### `patches/0002-settable-update-range.patch`
 
@@ -111,9 +144,22 @@ watches nearby players' `Combatant` and records a hit when engaged.
 
 ### `patches/0005-guo-pad-attack-record.patch`
 
+Requires `0004-guo-pad-dummies.patch` (the `GuoAttackDummy` type). The
+patch runner sorts full filenames: both `0004` patches and both `0005`
+patches are applied; matching numeric prefixes do not replace one another.
+The pad patches and editor-channel/system-message patches touch separate
+code paths and are retained together.
+
 `AttackReq` also calls `GuoAttackDummy.RecordAttack` so a war-mode attack
 packet is journalled even when the first swing has not landed yet (the probe
 asserts the binding, not a damage roll).
+### `patches/0005-system-message-hook.patch`
+
+`Mobile.SystemMessageSent`, a static hook every system message a mobile is
+sent goes through, also when it has no client (AD3). The editor bridge reads
+it to return a command's output to the Admin tab's Commands palette; without
+the patch commands still run there, without their output. UPSTREAM.md has
+the verdict (ours).
 
 ### Retired
 
@@ -129,23 +175,18 @@ be deleted, not silently dropped from the set.
 
 ### Upstream issues to report (not patched here)
 
-- **`MultiData.LoadUOP` never reads an uncompressed entry.** For an entry
-  with the compression flag 0, it takes `data = buffer.AsSpan(0, entry.Size)`
-  without reading the stream. It then parses whatever the buffer last held
-  (the previous compressed entry) and fails at boot with
-  `ArgumentOutOfRangeException: Cannot seek to position ... beyond buffer
-  length` in `MultiData.cs`. The client's own `MultiCollection.uop` entries
-  are all zlib-compressed, so a stock install never hits it. An authored
-  multi written uncompressed did (2026-09-27). The fix upstream is a
-  `stream.Read` into `buffer` on the uncompressed path.
-  `tools/uodata_write` writes multi entries compressed, so GUO does not need
-  a patch.
+- **`MultiData.LoadUOP` never reads an uncompressed entry.** An authored
+  multi written uncompressed fails the boot; stock entries are all compressed,
+  and `tools/uodata_write` writes compressed, so GUO needs no patch. The issue
+  text is in `upstream/issue-multidata-loaduop-uncompressed.md`; see
+  [`UPSTREAM.md`](UPSTREAM.md).
 
 ### `config/`
 
 `modernuo.template.json` is the full server configuration with three values
 left as placeholders — `@UO_CLIENT_DATA@`, `@UO_SHARD_NAME@`,
-`@UO_SHARD_PORT@` — and `expansion.json` pins the expansion to **Endless
+`@UO_SHARD_LISTENER@` (`UO_SHARD_BIND:UO_SHARD_PORT`, loopback by default)
+— and `expansion.json` pins the expansion to **Endless
 Journey** (Id 11), which is what a 7.0.x client expects.
 
 `configure.py` writes both into `src/Distribution/Configuration/` on first run,
@@ -153,8 +194,10 @@ resolving the placeholders through `tools/guo/config.py` — the same
 environment → `config.local.bat` → `config.bat` → shared-config order
 everything else here uses.
 
-It writes only files that do not exist. Edit the generated file to change a
-setting on this machine; edit the template to change it for everyone, and say
+It writes only files that do not exist, with one exception: the listener in
+an existing `modernuo.json` is set to `UO_SHARD_BIND` at every run, so a file
+from before the shard was closed by default is closed too. Edit the generated
+file to change any other setting on this machine; edit the template to change it for everyone, and say
 so in the commit.
 
 Without this, ModernUO asks for its data directory and expansion at a console

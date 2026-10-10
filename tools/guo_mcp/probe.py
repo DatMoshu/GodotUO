@@ -86,13 +86,30 @@ def main():
             assert rpc("initialize", dict(protocolVersion="2025-06-18", capabilities={}, clientInfo=dict(name="probe", version="1")))["result"]["serverInfo"]["name"] == "guo"
             bridge.stdin.write('{"jsonrpc":"2.0","method":"notifications/initialized"}\n')
             bridge.stdin.flush()
-            assert len(rpc("tools/list")["result"]["tools"]) == 4
+            assert sorted(t["name"] for t in rpc("tools/list")["result"]["tools"]) == ["guo_input", "guo_overlay", "guo_quit", "guo_screenshot", "guo_state", "guo_ui", "guo_wait"]
             assert "error" in rpc("not/a/method")
             assert call("guo_wait", dict(frames=0))["isError"]
             assert call("guo_input", dict(kind="button", x=-1, y=0, button="Left", pressed=True))["isError"]
             assert call("guo_input", dict(kind="key", key="NotAKey", pressed=True))["isError"]
             assert not call("guo_wait", dict(frames=5)).get("isError")
+            # The human-driver overlay: a caption and an outline are accepted, and Space and Esc read back as nothing pressed.
+            overlay = lambda **kw: json.loads(call("guo_overlay", kw)["content"][0]["text"])
+            assert overlay(text="Probe", step="1/1", control=dict(x=10, y=10, width=40, height=20, label="probe")) == dict(skip=False, abort=False)
+            assert overlay(clear=True) == dict(skip=False, abort=False)
+            # A second controller is served while the bridge stays connected.
+            with socket.create_connection(("127.0.0.1", port), timeout=5) as second:
+                lines = second.makefile("rw", encoding="utf-8", newline="\n")
+                lines.write(env["GUO_MCP_TOKEN"] + "\n")
+                for number, (method, params) in enumerate([("initialize", dict(protocolVersion="2025-06-18", capabilities={}, clientInfo=dict(name="probe2", version="1"))),
+                                                           ("tools/call", dict(name="guo_state", arguments={}))], 1):
+                    lines.write(json.dumps(dict(jsonrpc="2.0", id=number, method=method, params=params)) + "\n")
+                    lines.flush()
+                    reply = json.loads(lines.readline())
+                    assert reply["id"] == number and "result" in reply, reply
+                assert not reply["result"].get("isError")
             assert snapshot()["headless"] == (not args.headed)
+            state_now = json.loads(call("guo_state")["content"][0]["text"])
+            assert isinstance(state_now["frame"], int) and state_now["frame"] > 0 and "scene" in state_now and "player" in state_now
             if args.client:
                 deadline = time.monotonic() + 30
                 state = snapshot()

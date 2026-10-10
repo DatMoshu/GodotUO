@@ -1,0 +1,118 @@
+{
+  "id": "shard.console",
+  "title": "Log in as the shard's owner account and run an owner chat command",
+  "surface": "client",
+  "requires": {
+    "shard": "container",
+    "account": "$account",
+    "build": "debug"
+  },
+  "timeouts": {
+    "step_s": 60,
+    "run_s": 360
+  },
+  "steps": [
+    {
+      "id": "launch",
+      "do": {
+        "kind": "launch",
+        "args": [
+          "--scratch-profile"
+        ],
+        "settings": {
+          "autologin": true
+        }
+      },
+      "say": "Start GUO.",
+      "timeout_s": 240,
+      "expect": {
+        "scene": "LoginScene",
+        "within_s": 60
+      }
+    },
+    {
+      "id": "login_screen",
+      "do": {
+        "kind": "wait",
+        "seconds": 2
+      },
+      "say": "The login screen is up.",
+      "shot": true
+    },
+    {
+      "id": "type_account",
+      "do": {
+        "kind": "ui.fill",
+        "control": {
+          "type": "StbTextBox"
+        },
+        "text": "$account"
+      },
+      "say": "Type the account name."
+    },
+    {
+      "id": "type_password",
+      "do": {
+        "kind": "ui.fill",
+        "control": {
+          "type": "PasswordStbTextBox"
+        },
+        "text": "$password"
+      },
+      "say": "Type the password."
+    },
+    {
+      "id": "log_in",
+      "do": {
+        "kind": "ui.click",
+        "control": {
+          "type": "Button",
+          "system": "classic",
+          "index": 2
+        }
+      },
+      "say": "Press Login with the owner account.",
+      "expect": {
+        "scene": "GameScene",
+        "within_s": 60
+      }
+    },
+    {
+      "id": "in_world",
+      "do": {
+        "kind": "wait",
+        "seconds": 4
+      },
+      "say": "We are in the world.",
+      "shot": true,
+      "expect": {
+        "ui.exists": "WorldViewportGump"
+      }
+    },
+    {
+      "id": "owner_go",
+      "do": {
+        "kind": "chat",
+        "text": "[go 1434 1697"
+      },
+      "say": "As the owner, type an owner command: [go to the Britain bank.",
+      "expect": {
+        "world.position": {
+          "x": 1434,
+          "y": 1697,
+          "tolerance": 3
+        },
+        "within_s": 20
+      }
+    },
+    {
+      "id": "console_shot",
+      "do": {
+        "kind": "wait",
+        "seconds": 3
+      },
+      "say": "The owner command moved the character.",
+      "shot": true
+    }
+  ]
+}

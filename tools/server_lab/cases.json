@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "cases": [
+    {"n": 0, "group": "Client", "title": "Start the client and reach the login screen", "scenario": "client.smoke.login_screen", "needs_server": false},
+    {"n": 1, "group": "Login and characters", "title": "Log in, server list, character list (and log out)", "scenario": "client.login.basic", "needs_server": true},
+    {"n": 2, "group": "Login and characters", "title": "Create a character on a new account", "scenario": null, "needs_server": true},
+    {"n": 3, "group": "Login and characters", "title": "Delete a character", "scenario": null, "needs_server": true},
+    {"n": 4, "group": "Login and characters", "title": "Log out and back in", "scenario": null, "needs_server": true},
+    {"n": 5, "group": "World", "title": "Walk, run and pathfind", "scenario": null, "needs_server": true},
+    {"n": 6, "group": "World", "title": "Map switch (moongate or staff teleport)", "scenario": null, "needs_server": true},
+    {"n": 7, "group": "World", "title": "Light, weather, day and night", "scenario": null, "needs_server": true},
+    {"n": 8, "group": "World", "title": "Speech, journal, emotes", "scenario": null, "needs_server": true},
+    {"n": 9, "group": "Items", "title": "Paperdoll and backpack", "scenario": "client.gumps.paperdoll_backpack", "needs_server": true},
+    {"n": 10, "group": "Items", "title": "Drag and drop (ground, container, equip)", "scenario": null, "needs_server": true},
+    {"n": 11, "group": "Items", "title": "Containers, stacking and splitting", "scenario": null, "needs_server": true},
+    {"n": 12, "group": "Items", "title": "Item property tooltips", "scenario": null, "needs_server": true},
+    {"n": 13, "group": "Items", "title": "Vendor buy and sell", "scenario": null, "needs_server": true},
+    {"n": 14, "group": "Items", "title": "Bank box", "scenario": null, "needs_server": true},
+    {"n": 15, "group": "Combat and skills", "title": "War mode and melee against a spawned creature", "scenario": null, "needs_server": true},
+    {"n": 16, "group": "Combat and skills", "title": "Cast a spell (target cursor, mana)", "scenario": null, "needs_server": true},
+    {"n": 17, "group": "Combat and skills", "title": "Use a skill (hiding, healing)", "scenario": null, "needs_server": true},
+    {"n": 18, "group": "Combat and skills", "title": "Death, ghost and resurrection", "scenario": null, "needs_server": true},
+    {"n": 19, "group": "Social", "title": "Party invite and accept", "scenario": null, "needs_server": true},
+    {"n": 20, "group": "Social", "title": "Chat or guild message", "scenario": null, "needs_server": true},
+    {"n": 21, "group": "Housing and multis", "title": "House placement (preview, place, open the door)", "scenario": null, "needs_server": true},
+    {"n": 22, "group": "Housing and multis", "title": "A boat or multi on the map (drawn, walked on)", "scenario": null, "needs_server": true},
+    {"n": 23, "group": "Client systems", "title": "Macros and hotkeys against the server", "scenario": null, "needs_server": true},
+    {"n": 24, "group": "Client systems", "title": "Plugins loaded (plugin_probe)", "scenario": null, "needs_server": true},
+    {"n": 25, "group": "Client systems", "title": "The staff commands the lab uses (add item, add creature, teleport, set skill)", "scenario": null, "needs_server": true}
+  ]
+}

@@ -1,0 +1,105 @@
+# Run: {scenario_id}
+
+**Status:** ✅ PASS | ❌ FAIL
+**Driver:** AI | Human
+**Scenario:** {scenario_title}
+**Started:** {started_utc}
+**Duration:** {total_minutes}m {total_seconds}s
+
+---
+
+## Overview
+
+{scenario description from scenario file}
+
+**Commits:** {git commit (short)}
+**Build:** debug | release
+**Shard:** editor_shard | production | [profile name]
+
+---
+
+## Results
+
+| Step | Status | Duration | Notes |
+|---|---|---|---|
+| {step_id} | ✅ | {dur_s}s | {step description from `say` field} |
+| {step_id} | ❌ | {dur_s}s | Expected {expectation}, got {observed}. Timed out after {timeout_s}s. |
+
+**Steps Passed:** {n}/{total}
+**Steps Failed:** {n}
+**Overall Duration:** {hh:mm:ss}
+
+---
+
+## Failed Steps (if any)
+
+### {step_id}: {step description}
+
+- **Expected:** {expectation condition}
+- **Observed:** {actual value}
+- **Failure:** [timeout | assertion failed | exception]
+- **Frame:** {frame number in video}
+
+---
+
+## Video
+
+**Master:** `<GUO_RUNS_VIDEO_DIR>/{run_id}.mp4`
+**Resolution:** 2560×1440 @ 60 fps | 3840×2160 @ 60 fps | [resolution]
+**Codec:** H.264 (High Profile, CRF 16)
+**Size:** {size_mb} MB
+**Duration:** {duration_hh:mm:ss}
+
+Stills from `shot: true` steps are in this folder as PNG files.
+
+---
+
+## Event Log
+
+**File:** `events.jsonl` (one JSON object per line)
+
+Key event types recorded:
+- `run_start`, `run_end`: manifest and overall status
+- `step_start`, `step_end`: per-step timing
+- `action`: input action sent (`do` field result)
+- `expect`: expectation evaluation (condition + observed value)
+- `shot`: screenshot captured
+- `log`, `warn`, `error`: game or editor logs
+- `hang`: process hang detected (watchdog timeout)
+
+Each event includes:
+- `ts`: UTC ISO-8601 timestamp
+- `frame`: frame index (maps to video time)
+- `dur_ms`: elapsed time for step/run end events
+
+---
+
+## Playback
+
+1. Open `<GUO_RUNS_VIDEO_DIR>/{run_id}.mp4` in your video player.
+2. Hover over the timeline to see frame numbers; cross-reference with events.jsonl to see what was happening at each moment.
+3. Still images (`*.png`) show key checkpoints from the run.
+
+---
+
+## Debugging
+
+If the run failed:
+
+1. Check `events.jsonl` for the failing step's `expect` block — see what was asserted vs. observed.
+2. Jump to that frame in the video (events include `frame` index).
+3. Review the step's `do` action in the scenario file to understand the intent.
+4. Check client and editor logs (`client.log` and `editor.log` if available in shared run folder).
+
+If the step timed out:
+- Check watchdog events in `events.jsonl`.
+- Confirm the shard was reachable and the build fresh.
+- Check game logs for crashes or hangs.
+
+---
+
+## Metadata
+
+**Run ID:** {run_id}
+**Machine Key:** {machine_identifier} (not a path; see `runs.db` for full details)
+**Registrar:** `<GUO_RUNS_DB>`, table `runs` / `run_steps`

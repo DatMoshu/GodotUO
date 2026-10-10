@@ -9,6 +9,12 @@ shard.
 python tools\editor_objects_proof\run.py --project DIR [--out DIR] [--headless]
 ```
 
+Every mode empties `--out` before writing, so `--out` must be a folder
+inside the repo's `build\` folder (not `build\` itself) and must not overlap
+the client install; anything else is refused before the tool touches a file
+or the shard. `--clip` must likewise name a file inside `build\`.
+`python tools\editor_objects_proof\test_run.py` checks both guards.
+
 1. `tools\world export` and `verify` turn the project's `shard\objects.json`
    into ModernUO files plus the manifest (`docs\data_formats.md` §13).
 2. `tools\editor_shard`: stop, install the bridge, then

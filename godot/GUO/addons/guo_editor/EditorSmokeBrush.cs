@@ -71,7 +71,35 @@ public partial class EditorSmoke
         Expect(firstEdge && brush.PlanCells(data, new[] { (x + 1, y) }, 0x00A8).Contains((x, y)), "brush_edges_reconnect_existing_stroke");
         if (firstEdge) editor.Undo();
         Expect(project.BlockText(0, a.Item1, a.Item2) == beforeA && project.BlockText(0, b.Item1, b.Item2) == beforeB, "brush_test_restores_project");
+        VerifyScatterThenSingle(editor, data, x, y);
         VerifyWorkspaceInteractions();
+    }
+
+    // ED2: Scatter is not sticky. After Scatter, one click on Single places exactly one static on one cell,
+    // and the visible label names the active tool and recipe.
+    private void VerifyScatterThenSingle(WorldEditor editor, WorldData data, int x, int y)
+    {
+        uint before = _data.CurrentArt;
+        const ushort tree = 0x0E3D;
+        if (!_data.HasArt(EditorData.LandCount + tree)) return;
+        _world.QuickRecipeForSmoke("Scatter");
+        Expect(_world.Tool == WorldTool.Brush && _world.ToolLabel == "Brush · Scatter 7×7 35%", "scatter_label_names_recipe");
+        _world.QuickRecipeForSmoke("Single");
+        _data.CurrentArt = EditorData.LandCount + tree;
+        Expect(_world.Tool == WorldTool.Brush && _world.ToolLabel == "Brush · Single 1×1 100%", "single_label_names_recipe");
+        _world.SetKeepStaticsForSmoke(false);
+        int cx = x + 3, cy = y + 3, undo = editor.UndoCount;
+        int near(int dx, int dy) => editor.StaticsAt(0, cx + dx, cy + dy).Count(s => s.Id == tree);
+        int[] was = { near(0, 0), near(1, 0), near(-1, 0), near(0, 1), near(0, -1), near(1, 1), near(-1, -1) };
+        _world.PlaceForSmoke(new[] { (cx, cy) });
+        data.Invalidate();
+        Expect(editor.UndoCount == undo + 1 && near(0, 0) == was[0] + 1, "single_places_one_static");
+        Expect(near(1, 0) == was[1] && near(-1, 0) == was[2] && near(0, 1) == was[3] && near(0, -1) == was[4]
+            && near(1, 1) == was[5] && near(-1, -1) == was[6], "single_touches_only_one_cell");
+        if (editor.UndoCount == undo + 1) editor.Undo();
+        data.Invalidate();
+        _world.SetKeepStaticsForSmoke(true);
+        _data.CurrentArt = before;
     }
 
     private void VerifyWorkspaceInteractions()

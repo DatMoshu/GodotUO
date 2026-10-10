@@ -94,7 +94,7 @@ public partial class Main : Node
         {
             InputProbe.ProbeAccount = _options.Account;
             InputProbe.ProbePassword = string.IsNullOrEmpty(_options.Password)
-                ? _options.Account
+                ? InputProbe.DevShardPassword(_options.Account)
                 : _options.Password;
         }
 
@@ -1960,7 +1960,9 @@ public partial class Main : Node
                         break;
                     case "--window-size":
                         {
-                            string[] wh = Next().Split(',');
+                            // W,H or WxH: through play.bat cmd splits an argument at
+                            // a comma, so scripted runs pass the x form.
+                            string[] wh = Next().Split(',', 'x', 'X');
 
                             if (wh.Length == 2 && int.TryParse(wh[0], out int ww) && int.TryParse(wh[1], out int wh2))
                             {

@@ -1,4 +1,5 @@
 @echo off
+rem Exports, installs and starts GUO on the attached device, waits for the login gump, pulls a screenshot and the log into build/android and fails if the gump never appears.
 REM ============================================================================
 REM  The Android smoke: export a build with --login-probe-stay baked in,
 REM  install it, launch it, wait for logcat to say the login gump rendered,

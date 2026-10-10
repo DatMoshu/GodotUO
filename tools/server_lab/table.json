@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "backends": {
+    "modernuo": {
+      "lab_name": "ModernUO (server lab)",
+      "shard_name": "GUO Lab ModernUO",
+      "account": "guolab",
+      "character": "Guolab",
+      "vars": {
+        "staff_prefix": "[",
+        "staff_go": "[go",
+        "staff_where": "[where",
+        "staff_save": "[save",
+        "staff_add": "[add",
+        "staff_tele": "[tele",
+        "bank_x": "1434",
+        "bank_y": "1697",
+        "bank_map": "0",
+        "start_city": "Britain"
+      }
+    }
+  }
+}

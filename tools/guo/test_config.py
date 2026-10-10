@@ -8,7 +8,7 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from guo.config import find_repo_root, load_config, parse_config_bat
+from guo.config import find_repo_root, launcher_settings, load_config, parse_config_bat, parse_config_sh
 from guo import datasources
 from guo.formats import required_files
 
@@ -51,6 +51,27 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(load_config(self.root).workspace_dir, self.root / "ws-local")
         os.environ["UO_WORKSPACE_DIR"] = str(self.root / "ws-env")
         self.assertEqual(load_config(self.root).workspace_dir, self.root / "ws-env")
+
+    def test_shard_passwords_come_from_the_workspace_secrets_file(self):
+        # No default anywhere: nothing configured means no password.
+        cfg = load_config(self.root)
+        self.assertEqual((cfg.shard_owner_password, cfg.shard_gm_password), ("", ""))
+        self.assertEqual(cfg.shard_bind, "127.0.0.1")
+        workspace = self.root / "ws"
+        os.environ["UO_WORKSPACE_DIR"] = str(workspace)
+        from guo import shard_secrets
+        path, added = shard_secrets.ensure(workspace)
+        self.assertEqual(added, list(shard_secrets.KEYS))
+        made = shard_secrets.read(path)
+        cfg = load_config(self.root)
+        self.assertEqual(cfg.shard_owner_password, made["UO_SHARD_OWNER_PASSWORD"])
+        self.assertEqual(cfg.shard_gm_password, made["UO_SHARD_GM_PASSWORD"])
+        # config.local.bat, then the environment, win over the file.
+        self.local.write_text('set "UO_SHARD_OWNER_PASSWORD=local"', encoding="utf-8")
+        self.assertEqual(load_config(self.root).shard_owner_password, "local")
+        os.environ["UO_SHARD_OWNER_PASSWORD"] = "environment"
+        self.assertEqual(load_config(self.root).shard_owner_password, "environment")
+        self.assertEqual(load_config(self.root).shard_gm_password, made["UO_SHARD_GM_PASSWORD"])
 
     def test_playerbots_configuration_keeps_separate_profile(self):
         self.defaults.write_text(
@@ -105,6 +126,51 @@ class ConfigTests(unittest.TestCase):
     def test_guard_checks_named_variable(self):
         self.defaults.write_text('set "PRESENT=yes"\nif not defined PRESENT set "ABSENT=no"', encoding="utf-8")
         self.assertNotIn("ABSENT", parse_config_bat(self.defaults))
+
+    def test_shell_parser_guards_references_and_no_execution(self):
+        sh = self.shared / "config.sh"
+        sh.write_text('echo should-not-run\nNAME=plain\n# : "${BAD:=comment}"\n'
+                      ': "${LABEL:=two words}"\n: "${LABEL:=second}"\n'
+                      ': "${NEXT:=$LABEL/child}"\n: "${BRACED:=${LABEL}/x}"\n'
+                      ': "${FALLBACK:=${NOT_SET:-dflt}}"\n: "${EMPTY:=}"  # trailing comment\n', encoding="utf-8")
+        values = parse_config_sh(sh)
+        self.assertNotIn("BAD", values)
+        self.assertNotIn("NAME", values)
+        self.assertEqual(values["LABEL"], "two words")
+        self.assertEqual(values["NEXT"], "two words/child")
+        self.assertEqual(values["BRACED"], "two words/x")
+        self.assertEqual(values["FALLBACK"], "dflt")
+        self.assertEqual(values["EMPTY"], "")
+        os.environ["LABEL"] = "environment"
+        self.assertEqual(parse_config_sh(sh)["NEXT"], "environment/child")
+
+    def test_launcher_settings_reads_this_os_pair(self):
+        (self.shared / "config.sh").write_text(': "${UO_CLIENT_VERSION:=sh-default}"\n', encoding="utf-8")
+        self.assertEqual(launcher_settings(self.root, windows=True)["UO_CLIENT_VERSION"], "default")
+        self.assertEqual(launcher_settings(self.root, windows=False)["UO_CLIENT_VERSION"], "sh-default")
+        # A machine with only a config.local.bat keeps it on Linux.
+        self.local.write_text('set "UO_CLIENT_VERSION=bat-local"', encoding="utf-8")
+        self.assertEqual(launcher_settings(self.root, windows=False)["UO_CLIENT_VERSION"], "bat-local")
+        (self.shared / "config.local.sh").write_text(': "${UO_CLIENT_VERSION:=sh-local}"\n', encoding="utf-8")
+        self.assertEqual(launcher_settings(self.root, windows=False)["UO_CLIENT_VERSION"], "sh-local")
+        self.assertEqual(launcher_settings(self.root, windows=True)["UO_CLIENT_VERSION"], "bat-local")
+        os.environ["UO_CLIENT_VERSION"] = "environment"
+        with patch("guo.config.sys.platform", "linux"):
+            self.assertEqual(load_config(self.root).client_version, "environment")
+
+    def test_repository_config_sh_agrees_with_config_bat(self):
+        root = Path(__file__).resolve().parents[2]
+        if not (root / "launchers" / "_shared" / "config.sh").is_file():
+            self.skipTest("no config.sh")
+        bat = launcher_settings(root, windows=True)
+        sh = launcher_settings(root, windows=False)
+        # Values that name no OS folder must be the same on both sides.
+        for key in ("GODOT_VERSION", "UO_CLIENT_VERSION", "UO_SHARD_HOST", "UO_SHARD_PORT", "UO_SHARD_REF",
+                    "UO_SHARD_REPO", "UO_SHARD_OWNER", "UO_SHARD_GM_ACCOUNTS", "UO_SHARD_UPDATE_RANGE",
+                    "UO_WEB_PORT", "UO_WS_BRIDGE_PORT", "UO_STORE_URL", "UO_STORE_DIR", "UO_ANDROID_PACKAGE",
+                    "UO_ANDROID_CLIENT_DATA", "UO_DECK_INSTALL_DIR", "UO_COMFY_URL", "UO_LOG_LEVEL"):
+            self.assertEqual(sh.get(key), bat.get(key), key)
+        self.assertEqual(Path(sh["UO_WORLD_PROJECT"]), Path(bat["UO_WORLD_PROJECT"].replace("\\", "/")))
 
     def test_root_and_derived_paths(self):
         self.defaults.write_text('set "UO_WORLD_PROJECT=%UO_ROOT%/build/world/example"', encoding="utf-8")

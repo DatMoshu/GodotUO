@@ -1,4 +1,5 @@
 @echo off
+rem Walks every upstream ClassicUO file, classifies how far it is ported and rewrites docs/port_status.md.
 REM ============================================================================
 REM  PIPELINE STEP 03 - port progress audit.
 REM  Walks every ClassicUO source file under sources\ and reports which are

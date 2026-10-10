@@ -70,6 +70,9 @@ internal sealed class WorldHost : IDisposable
             if (ProfileManager.CurrentProfile != null)
             {
                 ProfileManager.CurrentProfile.DrawRoofs = value;
+                // The game reads DrawRoofs when the player moves; the editor's
+                // view may not move, so read it now.
+                _scene?.UpdateMaxDrawZ(true);
             }
         }
     }

@@ -1,4 +1,6 @@
 @echo off
+rem Logs a GM into the dev shard, taps each touch-bar macro against spawned fixtures and prints a pass or fail line per macro.
+rem args: --account <name> --password <pass>
 REM ============================================================================
 REM  Taps each of the touch bar's six macros (Next Target, Attack Last, Last
 REM  Target, Last Object, Bandage Self, War/Peace) against fixtures it spawns

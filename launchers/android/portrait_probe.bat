@@ -1,4 +1,6 @@
 @echo off
+rem Exports and runs the portrait probe on the attached device, photographs each portrait and landscape hold and writes the measurements to build/android/portrait.
+rem args: --args "<client flags>"
 REM ============================================================================
 REM  C9, the portrait spike: export a build with --portrait-probe baked in,
 REM  install it, launch it. At the login gump and again in the world it turns
