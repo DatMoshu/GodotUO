@@ -69,4 +69,4 @@ art, gumps, `anim.mul` groups and both tiledata layouts. The codecs are in
 | the same with `--no-reuse` (the encoders alone) | 457/486 identical; the rest are statics whose original row padding is leftover memory; all 486 decode pixel-identical |
 | a sweep of random entries, encoders alone | gumps 223/223, land 125/125, animation groups 1,838/1,863 identical |
 | `from-dreadcrest` + `pack` (Codex's candidate, read only) | 179 records (175 animation groups, item art + tiledata, 2 paperdoll gumps); all decode equal to their PNGs; the 175 groups match Codex's own encodings pixel for pixel (0 of 457,411 pixels differ), none needed quantising |
-| `test_uopack.py` (CI, synthetic install, no client data) | 19 checks pass |
+| `test_uopack.py` (pytest, pooled and in CI; synthetic install, no client data) | 12 tests pass |

@@ -111,6 +111,7 @@ launchers\dev\build.bat                    build C# only
 launchers\dev\smoke.bat                    full health check — run before commit
 launchers\dev\launcher_lint.bat --list    every launcher pair with its description
 launchers\dev\selftest.bat                the Python tool self-tests CI runs
+launchers\dev\pytest_all.bat               every Python test folder, one pooled pytest run
 launchers\dev\screenshot.bat               capture a frame
 launchers\dev\playtest.bat                 play a session and check it (needs a shard)
 launchers\dev\endurance.bat                play on for a while and watch for drift

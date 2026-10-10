@@ -164,14 +164,16 @@ jobs:
       # synthetic install: codecs, unpack -> pack byte identity, edits, new art.
       - name: uopack tests
         run: |
-          python -m pip install --quiet pillow
+          python -m pip install --quiet pillow pytest
           python tools/uopack/test_uopack.py
 
       # Authoring UO data files (ADR-0022): the staged set, the free scanners,
       # the range policy, the append-only writers and the read-back, on tiny
       # synthetic files made at test time. No client data.
       - name: UO data writer tests
-        run: python tools/uodata_write/test_uodata.py
+        run: |
+          python -m pip install --quiet pytest
+          python tools/uodata_write/test_uodata.py
 
       # Scenario runner (docs/data_formats.md section 34): parsing, the driver,
       # watchdogs and the registry with a fake MCP, and the JSON Schemas against
