@@ -24,6 +24,7 @@
 //      (GodViewActions.cs) move the admin's own staff character and work spawners.
 //      The Settings form reads the live values with admin_settings and records its
 //      changes there before it writes the files and restarts the server (AD4).
+//      The Accounts tab lists, makes and changes accounts (AccountsAdmin.cs, AD5).
 //
 // Live edits are held in memory. The world project (the editor's files) is the
 // source of truth; tools/world export + a restart make them permanent.
@@ -805,6 +806,7 @@ public static class EditorBridge
     // {"op":"admin_godview","facet":0} / {"op":"admin_godview_find","text":".."} (GodView.cs),
     // {"op":"admin_goto"|"admin_bring"|"admin_paperdoll"|"admin_follow"|"admin_spawner",..} (GodViewActions.cs),
     // {"op":"admin_settings","action":"get"|"changed",..} (the Settings form, AD4),
+    // {"op":"admin_accounts"} / {"op":"admin_account","action":"create"|"access"|"password"|"ban"|"unban",..} (AccountsAdmin.cs, AD5),
     // each with an optional "req" echoed back.
     // Authorised against the level the hello's token granted, run, and audited
     // (ADR-0035). Each later AD story adds its ops here and in AdminChannel.Ops.
@@ -863,6 +865,22 @@ public static class EditorBridge
                 if (!Settings(msg, reply))
                 {
                     _admin.Audit.Record(from.Name, op, AdminChannel.Ops[op], false, msg, (string)reply["error"]);
+                }
+
+                break;
+            case "admin_accounts":
+                AccountsAdmin.List(reply);
+                break;
+            case "admin_account":
+                // The request's password is masked in both audit entries by its field name; the log line never holds it.
+                if (!AccountsAdmin.Act(msg, reply, from.Admin!.Value, out string done))
+                {
+                    _admin.Audit.Record(from.Name, op, AdminChannel.Ops[op], false, msg, (string)reply["error"]);
+                    Log.Information("GUO editor bridge: '{0}' was refused {1} {2}: {3}", from.Name, op, (string)msg["action"], (string)reply["error"]);
+                }
+                else
+                {
+                    Log.Information("GUO editor bridge: '{0}' {1}", from.Name, done);
                 }
 
                 break;

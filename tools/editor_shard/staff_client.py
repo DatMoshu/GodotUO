@@ -56,8 +56,8 @@ class StaffClient:
             f.unlink()
         cmd = [str(cfg.godot_console_exe), "--headless", "--path", str(cfg.godot_project), "--", "--play",
                "--account", self.account, "--password", cfg.shard_gm_password, "--character", self.character,
-               # The login gump's password box holds 16 characters (as upstream) and the
-               # generated passwords are longer, so a typed login is cut short: hand it over.
+               # A headless client types nothing: the credentials go straight to the login.
+               # (Generated passwords fit the login gump's 16-character box since AD5.)
                "--autologin",
                "--objects-watch", str(watch),
                "--shard-command", "[self set map felucca", "--shard-command", f"[go {START[0]} {START[1]}"]

@@ -10,6 +10,15 @@ Proposed
 
 ## Last Verified
 
+2026-10-10 (AD5): `python tools\editor_shard\run.py admin-check --no-client`
+passes 68/68: `admin_accounts` and `admin_account` refused without the token;
+an account made with a 16-character generated password logs in on the
+shard's login server, refuses its old password after a typed reset, is
+refused while banned and logs in again after the unban; every refusal is in
+plain words and the audit log masks each password. `python
+tools\editor_shard\run.py admin-tab --windowed` passes 35/35 with the
+Accounts list; no account password reaches a log.
+
 2026-10-10 (AD4): `python tools\editor_shard\run.py admin-check --no-client`
 passes 43/43, with `admin_settings` refused without the token, `get` answering
 live values (a secret one as `***`), `changed` audited with a webhook value
@@ -152,6 +161,16 @@ The ops so far (AD0, AD1, AD2a, AD2b, AD4):
 | `admin_follow` | GameMaster | Follow: keeps the admin's own staff character beside a player or NPC until stopped |
 | `admin_spawner` | GameMaster | Respawn or Clear a spawner |
 | `admin_settings` | Administrator | The Settings form: reads the running server's setting values (secrets as `***`), and records a settings change in the audit log before the editor writes it |
+| `admin_accounts` | Administrator | The Accounts list: every account with its level, created, last login (UTC), characters, online, banned, protected (read only) |
+| `admin_account` | Administrator | One account made, given a level (its characters too), a new password, banned or unbanned. Only levels and accounts below the connection's own, as ModernUO's admin gump; an Owner may change any |
+
+Account passwords travel only in the `admin_account` request, which the
+audit log masks. The server never sends one back: the editor makes a
+generated one itself and shows it once. Names and passwords hold at most 16
+characters, the login screen's boxes (passwords 8 to 16, printable ASCII),
+so every account the tab makes can log in by typing; the workspace's
+generated staff passwords are 16 characters for the same reason. Accounts
+are not deleted from the tab (AD3's dangerous list).
 
 The god view's actions (AD2b) move only the admin's own staff character: an
 online character at GameMaster or above, named in `as` or, when one alone is

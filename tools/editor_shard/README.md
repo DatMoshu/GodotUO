@@ -52,8 +52,12 @@ python tools\editor_shard\run.py admin-tab [--windowed]
   after three refusals, the god view (a whole facet, then change-only pushes
   as a spawner is put and deleted, Find by name and serial), the god view's
   actions (AD2b), the Settings form's `admin_settings` (AD4: live values, a
-  secret one as `***`; a change audited with a webhook masked) and that no
-  token or password reached a log. For the actions
+  secret one as `***`; a change audited with a webhook masked), the Accounts
+  ops (AD5, `admin_accounts_check.py`: an account made with a 16-character
+  password, given a level and a typed password, banned and unbanned, each
+  proved by a login on the shard's login server; refusals; passwords masked
+  in the audit log; the account, `ad5c` and six digits, stays on the
+  instance) and that no token or password reached a log. For the actions
   it puts two test spawners west of Britain and logs a headless GUO client in
   as the third game master lane account (`UO_SHARD_GM_ACCOUNTS`, its
   character named after the account; `staff_client.py`), then checks Go
@@ -76,7 +80,10 @@ python tools\editor_shard\run.py admin-tab [--windowed]
   of range, and Save and restart writes two settings and a test mail password;
   the restarted server reports the new values, the previous files are kept
   without the password, and the shard's `Configuration` folder (copied aside
-  first) is put back as it was. Then it checks that every time in the tab's log is UTC with a Z, and that no
+  first) is put back as it was. Then the Accounts list (AD5) shows every
+  account, keeps the owner out of reach, makes an account (`ad5t` and six
+  digits, left on the instance) with a generated password, gives it a level
+  and a typed password, bans it and lifts the ban. Then it checks that every time in the tab's log is UTC with a Z, and that no
   token or password reached the editor output, the tab's log, the server
   console or the audit log. It stops a running `start` first. `--windowed` saves stills of the tab and a clip under
   `build\admin_tab`.

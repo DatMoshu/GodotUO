@@ -14,5 +14,6 @@
     <Compile Include="../AdminChannel.cs" Link="AdminChannel.cs" />
     <Compile Include="../GodViewDiff.cs" Link="GodViewDiff.cs" />
     <Compile Include="../GodViewRules.cs" Link="GodViewRules.cs" />
+    <Compile Include="../AccountRules.cs" Link="AccountRules.cs" />
   </ItemGroup>
 </Project>

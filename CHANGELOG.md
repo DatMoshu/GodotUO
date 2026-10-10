@@ -6,6 +6,15 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 ## Unreleased
 
 ### Editor
+- The Admin tab has **Accounts**: every account on your server with its
+  access level, last login and characters. Make an account, give it a
+  level, give it a new password (made for you, shown once and masked, or
+  typed twice), ban it or lift the ban. Passwords fit the login screen's
+  16-character box and are never written to a log. Every change is in the
+  audit log.
+- Your server's generated staff passwords have 16 characters now, so they
+  fit the login screen; a longer one made before is replaced the next time
+  the server starts.
 - The Admin tab has **Settings**: a form over your server's configuration,
   with plain labels, checks on every value, a list of what you changed, and
   **Save and restart**, which keeps the previous files. Passwords and webhooks

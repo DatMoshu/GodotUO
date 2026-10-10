@@ -87,6 +87,24 @@ class ConfigureTests(unittest.TestCase):
         self.assertIn(shard_secrets.ADMIN_TOKEN_KEY, out)
         self.assertNotIn(values[shard_secrets.ADMIN_TOKEN_KEY], out)
 
+    def test_a_staff_password_too_long_for_the_login_box_is_replaced(self):
+        # AD5: passwords made before it had 20 characters, but the login gump's box holds 16, so a typed login failed.
+        cfg = self.cfg()
+        path = shard_secrets.path_for(cfg.workspace_dir)
+        path.parent.mkdir(parents=True)
+        old_owner, old_gm, token = "A" * 20, "Gm1short", "T" * shard_secrets.TOKEN_LENGTH
+        path.write_text(f'if not defined UO_SHARD_OWNER_PASSWORD set "UO_SHARD_OWNER_PASSWORD={old_owner}"\n'
+                        f'if not defined UO_SHARD_GM_PASSWORD set "UO_SHARD_GM_PASSWORD={old_gm}"\n'
+                        f'if not defined UO_BRIDGE_ADMIN_TOKEN set "UO_BRIDGE_ADMIN_TOKEN={token}"\n', encoding="utf-8")
+        out = self.run_configure(cfg)
+        values = shard_secrets.read(path)
+        self.assertEqual(shard_secrets.LENGTH, 16)
+        self.assertRegex(values[shard_secrets.OWNER_KEY], r"^[A-Za-z0-9]{16}$")
+        self.assertNotIn(values[shard_secrets.OWNER_KEY], out)
+        # A password that fits is kept, and so is the token: nobody types it.
+        self.assertEqual((values[shard_secrets.GM_KEY], values[shard_secrets.ADMIN_TOKEN_KEY]), (old_gm, token))
+        self.assertIn(shard_secrets.OWNER_KEY, out)
+
     def test_a_settings_secret_in_the_file_survives_a_rewrite(self):
         # The Admin tab's Settings form (AD4) keeps a mail password here; adding a missing key must not drop it.
         cfg = self.cfg()

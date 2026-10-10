@@ -170,7 +170,7 @@ public partial class EditorSmoke : Node
                 // The Admin tab's scripted run (EditorSmokeAdmin.cs) needs no client data.
                 _stage = 120;
                 break;
-            case >= 120 and < 140:
+            case >= 120 and < 150:
                 StepAdmin();
                 break;
             case 0:

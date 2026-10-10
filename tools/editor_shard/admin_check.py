@@ -28,8 +28,14 @@ and checks, in order:
    live values, a secret one only as "***", with its listeners and expansion;
    `changed` is recorded in the audit log with a secret's value masked; an
    unknown action is refused, and none of it runs without the token;
-9. a connection is closed after three refused tokens;
-10. neither the token nor a password reaches the shard log or the audit log.
+9. the Accounts ops (AD5, admin_accounts_check.py): `admin_accounts` lists
+   every account; `admin_account` makes one with a 16-character password,
+   sets its level, gives it a typed password, bans and unbans it, each proved
+   by a login on the shard's login server; refusals in plain words (names and
+   passwords the login box cannot hold, levels and accounts at or above the
+   tab's own); all of it audited with passwords masked;
+10. a connection is closed after three refused tokens;
+11. neither the token nor a password reaches the shard log or the audit log.
 
 Prints one line per check and exits 0 when all pass. The token is read from
 the configuration and never printed.
@@ -283,6 +289,12 @@ def run(port: int, token: str, shard_home: Path, secrets: list[str], cfg=None, s
         from admin_actions_check import run as actions_check
 
         actions_check(check, cfg, port, token, shard_port, out or shard_home, with_client)
+
+    # AD5: the Accounts ops; the passwords it used join the leak grep below.
+    if cfg is not None:
+        from admin_accounts_check import run as accounts_check
+
+        secrets = [*secrets, *accounts_check(check, cfg, Bridge, port, token, shard_port)]
 
     b = Bridge(port, timeout=20.0)
     closed = False

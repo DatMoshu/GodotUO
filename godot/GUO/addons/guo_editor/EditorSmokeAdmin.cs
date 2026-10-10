@@ -10,14 +10,15 @@ using Godot;
 using GUO.Workspace;
 
 /// <summary>
-/// The Admin tab's scripted run (AD1, AD2a, AD2b): the run bar starts the private shard named on the command line, the tab
+/// The Admin tab's scripted run (AD1, AD2a, AD2b, AD4, AD5): the run bar starts the private shard named on the command line, the tab
 /// connects on the admin channel, reads Health, saves, restarts through the run bar and reads Health again. Then the
 /// god view: it watches the facet again after the restart, a spawner put through the bridge arrives in a change-only
 /// push with the creatures it spawned, Find finds it, a filter hides the NPCs, its Respawn and Clear buttons (AD2b) replace and remove the horses, and its
 /// delete removes it. Then the Settings form (AD4): it reads the shard's configuration with plain labels and its secrets
 /// masked, refuses values out of range, and Save and restart writes two settings and a mail password, keeping the
 /// previous files; the restarted server reports the new values and the password lands in the scratch secrets file.
-/// Last the run bar stops the server. tools/editor_shard/run.py admin-tab starts it, in a scratch workspace.
+/// Then the Accounts list (AD5): every account listed, the owner out of reach, one made with a generated 16-character
+/// password, given a level and a typed password, banned and unbanned. Last the run bar stops the server. tools/editor_shard/run.py admin-tab starts it, in a scratch workspace.
 /// </summary>
 public partial class EditorSmoke
 {
@@ -39,12 +40,17 @@ public partial class EditorSmoke
     private int _godActionMark;
     private string _setSecret;
     private int _setMaxAccounts;
+    private string _accName, _accGenerated, _accTyped;
+    private int _accMark;
 
     // The settings the form's check changes, by field id ("file:path").
     private const string SetMaxAccounts = "modernuo:settings/accountHandler.maxAccountsPerIP";
     private const string SetSaveDelay = "modernuo:settings/autosave.saveDelay";
     private const string SetMailPassword = "email:emailPassword";
     private const string SetSecretVariable = "GUO_SMOKE_SETTINGS_SECRET";
+
+    // The Accounts list's check (AD5): a typed password from admin_tab.py, so it can look for it in the server's logs too.
+    private const string AccTypedVariable = "GUO_SMOKE_ACCOUNT_SECRET";
 
     // The god view's test spawner: three horses west of Britain on Felucca, where the live-objects smoke puts its own.
     private const string GodSpawnerName = "GUO Horse";
@@ -394,9 +400,128 @@ public partial class EditorSmoke
                         && p.Settings.Get(p.Settings.Field(SetSaveDelay)) == "00:07:00" && p.Settings.SecretKept(p.Settings.Field(SetMailPassword));
                     _admin["settings_status_saved"] = p.StatusText;
                     AdminShot("settings-saved");
-                    AdminNext(124);
+                    AdminNext(134);
                 }
                 else AdminTimeout("Save and restart never came back with the server's values");
+
+                break;
+            }
+
+            // AD5, the Accounts list: made, given a level and a typed password, banned and unbanned, all in the tab.
+            case 134:
+            {
+                AccountsPanel p = v.Accounts;
+                v.ShowAccounts();
+                if (p.Lists > 0 && v.Granted != null)
+                {
+                    string owner = EditorData.Setting("UO_SHARD_OWNER", "");
+                    _admin["accounts_listed"] = p.Total;
+                    _admin["accounts_rows_ok"] = p.Rows.Count > 0 && p.Rows.All(r => r["access"] != null && r["characters"] is JsonArray && r.ContainsKey("last_login"))
+                        && p.StatusText.Contains($"of {p.Total} account");
+                    p.SelectAccount(owner);
+                    _admin["accounts_owner_blocked"] = owner.Length > 0 && p.Selected != null && p.Blocker()?.Contains("below its own level") == true;
+                    _admin["accounts_owner_hint"] = p.HintText;
+                    _accName = "ad5t" + System.Security.Cryptography.RandomNumberGenerator.GetInt32(100000, 1000000);
+                    _accGenerated = AccountsPanel.GeneratePassword();
+                    _accTyped = System.Environment.GetEnvironmentVariable(AccTypedVariable);
+                    _admin["accounts_generated_fits"] = _accGenerated.Length == AccountsPanel.MaxLength && AccountsPanel.PasswordProblem(_accGenerated) == null
+                        && AccountsPanel.PasswordProblem(AccountsPanel.GeneratePassword(17)) != null;
+                    _admin["accounts_name"] = _accName;
+                    AdminShot("accounts-list");
+                    AdminNext(141);
+                }
+                else AdminTimeout("the Accounts list never came");
+
+                break;
+            }
+
+            case 135:
+            case 136:
+            case 137:
+            case 138:
+            {
+                AccountsPanel p = v.Accounts;
+                if (p.Replies == _accMark)
+                {
+                    AdminTimeout($"the server never answered the Accounts list's change (stage {_stage})");
+                    break;
+                }
+
+                JsonNode r = p.LastReply;
+                JsonObject row = p.Rows.FirstOrDefault(x => (string)x["name"] == _accName);
+                bool ok = (bool?)r?["ok"] == true;
+                _accMark = p.Replies;
+                switch (_stage)
+                {
+                    case 135:
+                        _admin["accounts_created"] = ok && (string)row?["access"] == "Player" && p.Selected == _accName && p.StatusText.Contains("made account");
+                        p.SetAccess(_accName, "Counselor");
+                        break;
+                    case 136:
+                        _admin["accounts_access_set"] = ok && (string)row?["access"] == "Counselor";
+                        _admin["accounts_typed_refused_short"] = !p.ResetPassword(_accName, "short", false);
+                        if (string.IsNullOrEmpty(_accTyped) || !p.ResetPassword(_accName, _accTyped, false))
+                        {
+                            AdminFail($"no typed password to give the account ({AccTypedVariable}), or the tab would not send it");
+                            return;
+                        }
+
+                        break;
+                    case 137:
+                        _admin["accounts_password_set"] = ok && p.StatusText.Contains("new password");
+                        AdminShot("accounts-created");
+                        AdminNext(142);
+                        return;
+                    case 138:
+                        _admin["accounts_banned"] = ok && (bool?)row?["banned"] == true && p.DetailsText.Contains("banned");
+                        AdminShot("accounts-banned");
+                        AdminNext(143);
+                        return;
+                }
+
+                AdminNext(_stage + 1);
+                break;
+            }
+
+            // The change after each still, sent once the still is taken.
+            case 141:
+                _accMark = v.Accounts.Replies;
+                v.Accounts.Create(_accName, "Player", _accGenerated, true);
+                AdminNext(135);
+                break;
+            case 142:
+            case 143:
+                v.Accounts.Ban(_accName, _stage == 142);
+                AdminNext(_stage == 142 ? 138 : 139);
+                break;
+
+            case 139:
+            {
+                AccountsPanel p = v.Accounts;
+                if (p.Replies == _accMark)
+                {
+                    AdminTimeout("the server never lifted the ban");
+                    break;
+                }
+
+                JsonObject row = p.Rows.FirstOrDefault(x => (string)x["name"] == _accName);
+                _admin["accounts_unbanned"] = (bool?)p.LastReply?["ok"] == true && (bool?)row?["banned"] == false;
+                _accMark = p.Lists;
+                p.RequestList();
+                AdminNext(140);
+                break;
+            }
+
+            case 140:
+            {
+                AccountsPanel p = v.Accounts;
+                if (p.Lists > _accMark)
+                {
+                    JsonObject row = p.Rows.FirstOrDefault(x => (string)x["name"] == _accName);
+                    _admin["accounts_listed_after"] = (string)row?["access"] == "Counselor" && (bool?)row?["banned"] == false;
+                    AdminNext(124);
+                }
+                else AdminTimeout("the Accounts list never came again");
 
                 break;
             }
@@ -478,6 +603,8 @@ public partial class EditorSmoke
             if ((bool)_admin["token_in_tab_log"]) _failures.Add("Admin tab: the admin token is in the tab's log");
             _admin["settings_secret_in_tab_log"] = !string.IsNullOrEmpty(_setSecret) && v.LogText.Contains(_setSecret);
             if ((bool)_admin["settings_secret_in_tab_log"]) _failures.Add("Admin tab: the test mail password is in the tab's log");
+            _admin["account_password_in_tab_log"] = new[] { _accGenerated, _accTyped }.Any(s => !string.IsNullOrEmpty(s) && v.LogText.Contains(s));
+            if ((bool)_admin["account_password_in_tab_log"]) _failures.Add("Admin tab: an account's password is in the tab's log");
         }
 
         Check("offline_plain_words", "the tab, not connected, says so in plain words");
@@ -503,6 +630,16 @@ public partial class EditorSmoke
         Check("settings_secret_in_server_file", "the mail password reached the server's own file");
         Check("settings_secret_in_secrets_file", "the mail password is kept in the workspace's secrets file");
         Check("settings_form_reloaded", "the form reads the saved files back with nothing left to save");
+        Check("accounts_rows_ok", "the Accounts list shows every account with its level, last login and characters");
+        Check("accounts_owner_blocked", "the shard's owner is out of the tab's reach, and the hint says why");
+        Check("accounts_generated_fits", "a generated password has 16 characters, the login box's size");
+        Check("accounts_created", "the tab made an account with a generated password");
+        Check("accounts_access_set", "the tab gave it a level");
+        Check("accounts_typed_refused_short", "the tab will not send a password too short");
+        Check("accounts_password_set", "the tab gave it a typed password");
+        Check("accounts_banned", "the tab banned it");
+        Check("accounts_unbanned", "the tab lifted the ban");
+        Check("accounts_listed_after", "the list read again shows the account as the tab left it");
         Check("stopped", "the run bar stopped the server at the end");
         _admin["ok"] = _failures.Count == 0;
         _report["admin"] = _admin;

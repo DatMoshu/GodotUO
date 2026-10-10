@@ -36,9 +36,13 @@ ADMIN_TOKEN_KEY = "UO_BRIDGE_ADMIN_TOKEN"
 KEYS = (OWNER_KEY, GM_KEY, ADMIN_TOKEN_KEY)
 
 # Letters and digits only: a password the login gump, a .bat line, a shell
-# export and a JSON string all carry without quoting. ModernUO takes up to 30.
+# export and a JSON string all carry without quoting. ModernUO takes up to 30,
+# but the login gump's password box holds 16 (LoginGump.cs, as upstream): a
+# longer one is cut short when it is typed, and that login fails (AD5).
 _ALPHABET = string.ascii_letters + string.digits
-LENGTH = 20
+LENGTH = 16
+# The owner and game master passwords: people type them into the login gump.
+PASSWORD_KEYS = (OWNER_KEY, GM_KEY)
 # The admin token is typed by nobody, so it can be longer: 32 of 62 symbols.
 TOKEN_LENGTH = 32
 
@@ -86,14 +90,19 @@ def _other_lines(path: Path) -> list[str]:
 
 
 def ensure(workspace: Path) -> tuple[Path, list[str]]:
-    """Make sure the file holds a password for every key; return it and the keys it added.
+    """Make sure the file holds a password for every key; return it and the keys it added or replaced.
 
     Existing values are kept, so every worktree and every run of one user
-    shares the same passwords until the file is deleted.
+    shares the same passwords until the file is deleted. The one exception is
+    an owner or game master password longer than the login gump's box (one
+    generated before AD5 has 20 characters): it is replaced by a new one that
+    fits. The shard sets its staff accounts to the new password at its next
+    start (patch 0001), so nothing else has to change.
     """
     path = path_for(workspace)
     values = read(path)
-    added = [key for key in KEYS if not values.get(key)]
+    added = [key for key in KEYS if not values.get(key)
+             or key in PASSWORD_KEYS and len(values[key]) > LENGTH]
     if not added:
         return path, []
     for key in added:

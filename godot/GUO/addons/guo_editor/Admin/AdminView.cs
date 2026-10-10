@@ -14,7 +14,8 @@ using GUO.Workspace;
 /// <summary>
 /// The Admin main-screen tab (sprint "Admin tab", AD1): the server picked in the run bar, its health in numbers
 /// and in plain words, Save now and Restart, the god view of every player, NPC and spawner (AD2a,
-/// <see cref="GodViewPanel"/>), and a log of everything the tab did, its times in UTC. It talks to the server's
+/// <see cref="GodViewPanel"/>), the server's settings (AD4, <see cref="SettingsPanel"/>), its accounts (AD5,
+/// <see cref="AccountsPanel"/>), and a log of everything the tab did, its times in UTC. It talks to the server's
 /// editor bridge on the admin channel (ADR-0035): this workspace's admin token goes in the bridge hello and
 /// nowhere else. Desktop editor only. The tab button comes from <see cref="GuoAdminPlugin"/>.
 /// </summary>
@@ -22,7 +23,7 @@ using GUO.Workspace;
 /// Restart goes through the run bar's server manager: a save on the bridge, then the manager stops the exact
 /// process it started and starts it again (with the bridge's token, <see cref="ShardSecrets.BridgeEnvironment"/>).
 /// A server the run bar did not start cannot be restarted from here; the tab says so.
-/// Later stories add the god view's actions (AD2b), commands (AD3), settings (AD4), accounts (AD5) and backups (AD6).
+/// Later stories add commands (AD3) and backups (AD6).
 /// </remarks>
 [Tool]
 public partial class AdminView : VBoxContainer
@@ -45,6 +46,7 @@ public partial class AdminView : VBoxContainer
     private RichTextLabel _plain, _log;
     private GodViewPanel _godView;
     private SettingsPanel _settings;
+    private AccountsPanel _accounts;
     private TabContainer _centre;
     private Action _whileStopped;
     private double _statusClock, _reconnectClock;
@@ -67,12 +69,24 @@ public partial class AdminView : VBoxContainer
     /// <summary>The Settings form (AD4).</summary>
     public SettingsPanel Settings => _settings;
 
+    /// <summary>The Accounts list (AD5).</summary>
+    public AccountsPanel Accounts => _accounts;
+
     /// <summary>Brings the Settings form (true) or the god view (false) to the front of the centre.</summary>
     public void ShowSettings(bool on)
     {
         if (_centre != null)
         {
             _centre.CurrentTab = on ? _settings.GetIndex() : _godView.GetIndex();
+        }
+    }
+
+    /// <summary>Brings the Accounts list to the front of the centre.</summary>
+    public void ShowAccounts()
+    {
+        if (_centre != null)
+        {
+            _centre.CurrentTab = _accounts.GetIndex();
         }
     }
 
@@ -182,7 +196,7 @@ public partial class AdminView : VBoxContainer
         _plain = new RichTextLabel { BbcodeEnabled = true, FitContent = false, SizeFlagsVertical = SizeFlags.ExpandFill, SelectionEnabled = true };
         health.AddChild(_plain);
 
-        // Centre: the god view and the server's settings, one tab each.
+        // Centre: the god view, the server's settings and its accounts, one tab each.
         var centre = _centre = new TabContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
         split.AddChild(centre);
         Func<JsonObject, bool> send = msg =>
@@ -206,6 +220,9 @@ public partial class AdminView : VBoxContainer
         _settings = new SettingsPanel { Admin = this, Send = send };
         _settings.Logged += Log;
         centre.AddChild(_settings);
+        _accounts = new AccountsPanel { Send = send, Granted = () => Granted };
+        _accounts.Logged += Log;
+        centre.AddChild(_accounts);
 
         // Bottom: the log of everything the tab did.
         AddChild(Heading("Log"));
@@ -295,6 +312,7 @@ public partial class AdminView : VBoxContainer
         _link.Disconnect();
         Granted = null;
         _godView.OnClosed();
+        _accounts.OnClosed();
         Log(why);
         UpdateView();
     }
@@ -424,6 +442,7 @@ public partial class AdminView : VBoxContainer
             _link.Disconnect();
             Granted = null;
             _godView.OnClosed();
+            _accounts.OnClosed();
             Run.RestartSelected(whileStopped);
             Restarting = RestartPhase.WaitingForServer;
             _reconnectClock = 0;
@@ -513,6 +532,14 @@ public partial class AdminView : VBoxContainer
                     }
 
                     _settings.OnAdminOpen();
+                    if (msg["admin_ops"] is JsonArray granted && granted.Any(o => (string)o == "admin_accounts"))
+                    {
+                        _accounts.OnAdminOpen();
+                    }
+                    else
+                    {
+                        Log($"accounts need Administrator; this tab holds {Granted}");
+                    }
                 }
                 else
                 {
@@ -581,6 +608,10 @@ public partial class AdminView : VBoxContainer
             case "admin_settings":
                 _settings.Handle(msg);
                 break;
+            case "admin_accounts":
+            case "admin_account":
+                _accounts.Handle(msg);
+                break;
             case "error":
                 Log($"[color=orange]bridge: {(string)msg["error"]}[/color]");
                 break;
@@ -588,6 +619,7 @@ public partial class AdminView : VBoxContainer
                 Granted = null;
                 _godView.OnClosed();
                 _settings.OnClosed();
+                _accounts.OnClosed();
                 if (Restarting == RestartPhase.None)
                 {
                     Log("the server closed the connection");

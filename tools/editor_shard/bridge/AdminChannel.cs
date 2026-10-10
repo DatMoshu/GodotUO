@@ -75,6 +75,10 @@ public sealed class AdminChannel
         // AD4, the Settings form: the values the running server holds ("get"), and a record of what the form is
         // about to write before it restarts the server ("changed"). The form writes the files itself, server stopped.
         ["admin_settings"] = AdminLevel.Administrator,
+        // AD5, the Accounts tab: every account listed, and one made, given a level or a password, banned or unbanned
+        // (AccountsAdmin.cs). Administrator, as ModernUO's own admin gump; AccountRules bounds the levels further.
+        ["admin_accounts"] = AdminLevel.Administrator,
+        ["admin_account"] = AdminLevel.Administrator,
     };
 
     private readonly byte[] _tokenHash;

@@ -1,4 +1,4 @@
-"""The Admin tab, driven in a real editor against the private instance (sprint "Admin tab", AD1, AD2a, AD2b, AD4).
+"""The Admin tab, driven in a real editor against the private instance (sprint "Admin tab", AD1, AD2a, AD2b, AD4, AD5).
 
     python tools/editor_shard/run.py admin-tab [--windowed]
 
@@ -26,7 +26,12 @@ not touched) with the addon's scripted Admin run (EditorSmokeAdmin.cs). In it:
    restarted server reports the new values, the password is in the scratch
    workspace's secrets file and the server's own file, and not in the
    previous copies;
-7. the run bar stops the server.
+7. the Accounts list (AD5) shows every account with its level, last login
+   and characters, keeps the shard's owner out of reach (the hint says why),
+   makes an account with a generated 16-character password, gives it the
+   Counselor level and a typed password (one too short is not sent), bans it
+   and lifts the ban, and reads the list again;
+8. the run bar stops the server.
 
 The shard's Configuration folder is copied aside first and put back after, so
 the check leaves the private shard's settings as they were.
@@ -53,9 +58,9 @@ from guo.process import build_child_env, no_activate
 
 TIMEOUT_S = 900
 # The story the evidence is filed under (rule: evidence_naming.md).
-STORY = "AD4"
+STORY = "AD5"
 STILLS = ("connected", "saved", "restarted", "godview", "spawner", "filtered", "respawn", "cleared",
-          "settings-form", "settings-diff", "settings-saved")
+          "settings-form", "settings-diff", "settings-saved", "accounts-list", "accounts-created", "accounts-banned")
 
 
 def run(cfg, shard_home: Path, token: str, secrets: list[str], windowed: bool, stamp: str) -> int:
@@ -89,6 +94,9 @@ def run(cfg, shard_home: Path, token: str, secrets: list[str], windowed: bool, s
     mail_secret = "Ad4" + "".join(secret_source.choice("ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789") for _ in range(17))
     env["GUO_SMOKE_SETTINGS_SECRET"] = mail_secret
     env.pop("UO_SHARD_EMAIL_PASSWORD", None)
+    # The Accounts list's typed password (AD5), for the same leak grep; the generated one never leaves the editor.
+    account_secret = "".join(secret_source.choice("ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789") for _ in range(14))
+    env["GUO_SMOKE_ACCOUNT_SECRET"] = account_secret
     # The form writes the shard's own files: keep them to put back after.
     config_dir = shard_home / "Configuration"
     config_kept = out / "configuration_before"
@@ -203,6 +211,16 @@ def run(cfg, shard_home: Path, token: str, secrets: list[str], windowed: bool, s
     restored = not (config_dir / "GUO-previous").exists() and not any(
         mail_secret in f.read_text(encoding="utf-8", errors="replace") for f in config_dir.glob("*.json"))
     check(restored, "the shard's own Configuration is back as it was")
+    check(admin.get("accounts_rows_ok"), f"the Accounts list shows all {admin.get('accounts_listed')} accounts with level, last login and characters")
+    check(admin.get("accounts_owner_blocked"), f"the shard's owner is out of the tab's reach: \"{admin.get('accounts_owner_hint')}\"")
+    check(admin.get("accounts_generated_fits"), "a generated password has 16 characters, the login box's size; 17 is not sent")
+    check(admin.get("accounts_created") and admin.get("accounts_access_set"),
+          f"the tab made '{admin.get('accounts_name')}' with a generated password and made it a Counselor")
+    check(admin.get("accounts_typed_refused_short") and admin.get("accounts_password_set"),
+          "the tab gave it a typed password, and would not send one too short")
+    check(admin.get("accounts_banned") and admin.get("accounts_unbanned") and admin.get("accounts_listed_after"),
+          "the tab banned it and lifted the ban; the list read again agrees")
+    check(admin.get("account_password_in_tab_log") is False, "neither account password is in the tab's log")
     check(admin.get("stopped"), "the run bar stopped the server at the end")
 
     # One clock in the tab: every log line and every audit time it shows is UTC, with a Z.
@@ -218,9 +236,9 @@ def run(cfg, shard_home: Path, token: str, secrets: list[str], windowed: bool, s
     audit = shard_home / "Logs" / "GUO" / "admin_audit.jsonl"
     texts.append(audit.read_text(encoding="utf-8", errors="replace") if audit.is_file() else "")
     texts.append(json.dumps(report))
-    all_secrets = [token, *secrets, mail_secret]
+    all_secrets = [token, *secrets, mail_secret, account_secret]
     leaked = [s for s in all_secrets if s and any(s in t for t in texts)]
-    check(not leaked, f"no token or password (the test mail password among them) in the editor output, the tab's log, "
+    check(not leaked, f"no token or password (the test mail and account passwords among them) in the editor output, the tab's log, "
                       f"the server console, the audit log or the report ({len([s for s in all_secrets if s])} secrets, {len(texts)} files)")
 
     # The stills, under the evidence naming rule.

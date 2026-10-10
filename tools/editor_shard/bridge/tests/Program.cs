@@ -204,6 +204,49 @@ try
             && settingsLine.Contains("\"key\":\"settings/pages.discordWebhookUrl\""), "a secret setting's value reached the audit, or a plain one was masked");
     Require(AuditLog.IsSecretName("pages.discordWebhookUrl") && !AuditLog.IsSecretName("emailPort"), "a webhook is not a secret name");
     Console.WriteLine("PASS: the Settings op needs Administrator and the token; a secret setting's value never reaches the audit");
+
+    // ---- AD5: accounts -----------------------------------------------------
+    Require(AdminChannel.Ops["admin_accounts"] == AdminLevel.Administrator && AdminChannel.Ops["admin_account"] == AdminLevel.Administrator,
+            "the account ops are not Administrator (ModernUO's admin gump)");
+    Require(on.Authorise("admin_account", AdminLevel.GameMaster) == "'admin_account' needs Administrator; this connection holds GameMaster",
+            "a GameMaster could change accounts");
+    Require(on.Authorise("admin_accounts", null).StartsWith("admin op without the admin token"), "accounts listed without the token");
+    // Names and passwords fit the login gump's 16-character boxes; names follow ModernUO's IsValidUsername.
+    Require(AccountRules.CheckName("guoad5") == null && AccountRules.CheckName(new string('a', 16)) == null, "a good name was refused");
+    foreach (string bad in new[] { "", new string('a', 17), " lead", "trail ", "dot.", "a<b", "a:b", "a/b", "tab\tname", "caf\u00e9" })
+    {
+        Require(AccountRules.CheckName(bad) != null, $"a bad name was taken: '{bad}'");
+    }
+
+    Require(AccountRules.CheckPassword("guoad5", "Abcdefgh12345678") == null && AccountRules.CheckPassword("guoad5", "x9!y8@z7") == null,
+            "a good password was refused");
+    Require(AccountRules.CheckPassword("guoad5", "Abcdefgh123456789")!.Contains("16"), "a 17-character password was taken (the login box holds 16)");
+    foreach (string bad in new[] { null, "", "short7!", "has space1", "GUOAD5", "guoprobe", "p\u00e4sswort1" })
+    {
+        Require(AccountRules.CheckPassword("guoad5", bad) != null, $"a bad password was taken ({bad?.Length} chars)");
+    }
+
+    // Levels as ModernUO's admin gump: below the connection's own, any for an Owner; nothing at or above it is changed.
+    Require(AccountRules.CheckLevel(AdminLevel.Administrator, AdminLevel.Seer) == null, "an Administrator could not make a Seer");
+    Require(AccountRules.CheckLevel(AdminLevel.Administrator, AdminLevel.Administrator) != null, "an Administrator could make another Administrator");
+    Require(AccountRules.CheckLevel(AdminLevel.Administrator, AdminLevel.Owner) != null, "an Administrator could make an Owner");
+    Require(AccountRules.CheckLevel(AdminLevel.Owner, AdminLevel.Owner) == null, "an Owner could not make an Owner");
+    Require(AccountRules.CheckTarget(AdminLevel.Administrator, AdminLevel.GameMaster) == null, "an Administrator could not change a GameMaster");
+    Require(AccountRules.CheckTarget(AdminLevel.Administrator, AdminLevel.Administrator) != null
+            && AccountRules.CheckTarget(AdminLevel.Administrator, AdminLevel.Owner)!.Contains("Owner"), "an Administrator could change an account at or above its level");
+    Require(AccountRules.CheckTarget(AdminLevel.Owner, AdminLevel.Owner) == null, "an Owner could not change an Owner account");
+    Require(AccountRules.ParseLevel("gamemaster") == AdminLevel.GameMaster && AccountRules.ParseLevel("3") == null
+            && AccountRules.ParseLevel("King") == null && AccountRules.ParseLevel(null) == null, "access level names are not parsed as ModernUO's");
+    // The password reaches neither audit, in a create or a reset.
+    var accountAudit = new AuditLog(Path.Combine(home, "accounts_audit.jsonl"));
+    accountAudit.Record("Admin tab", "admin_account", AdminLevel.Administrator, true,
+        JsonNode.Parse("{\"op\":\"admin_account\",\"action\":\"create\",\"account\":\"guoad5\",\"password\":\"Ad5Pass9word77\",\"access\":\"Player\"}"));
+    accountAudit.Record("Admin tab", "admin_account", AdminLevel.Administrator, false,
+        JsonNode.Parse("{\"op\":\"admin_account\",\"action\":\"password\",\"account\":\"guoad5\",\"password\":\"Ad5Other5555\"}"), "refused");
+    string accountLines = File.ReadAllText(Path.Combine(home, "accounts_audit.jsonl")) + accountAudit.Recent(5).ToJsonString();
+    Require(!accountLines.Contains("Ad5Pass9word77") && !accountLines.Contains("Ad5Other5555") && accountLines.Contains("\"account\":\"guoad5\"")
+            && accountLines.Contains("\"password\":\"***\""), "an account password reached the audit, or the account's name was masked");
+    Console.WriteLine("PASS: the account ops need Administrator and the token; names and passwords fit the 16-character login boxes; levels as the admin gump; no password in the audit");
     Console.WriteLine("ALL PASS");
 }
 finally
