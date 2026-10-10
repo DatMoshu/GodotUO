@@ -331,6 +331,10 @@ namespace GUO.Input
             }
 
             Current = kind;
+            if (kind != InputKind.Gamepad)
+            {
+                PadScreen.Close();
+            }
             GD.Print($"[GUO] input mode: {kind}" + (kind == InputKind.Gamepad ? $" (\"{PadName}\", {PadFamily})" : ""));
             Changed?.Invoke(kind);
         }

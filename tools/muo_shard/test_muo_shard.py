@@ -191,9 +191,11 @@ def test_guo_dev_pin_is_the_shared_pin():
     assert ref and good()["server"]["source"]["ref"] == ref
 
 
-def test_guo_dev_names_every_patch():
+@pytest.mark.parametrize("profile", [GUO, VPS])
+def test_guo_profiles_name_every_patch(profile):
     on_disk = sorted(p.name for p in (REPO / "tools" / "modernuo" / "patches").glob("*.patch"))
-    assert sorted(Path(p).name for p in good()["server"]["patches"]) == on_disk
+    data = json.loads(profile.read_text(encoding="utf-8"))
+    assert sorted(Path(p).name for p in data["server"]["patches"]) == on_disk
 
 
 # ------------------------------------------------------------ plans

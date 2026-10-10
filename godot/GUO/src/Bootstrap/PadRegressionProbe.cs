@@ -119,6 +119,7 @@ internal static class PadRegressionProbe
             }
             FocusTransitions();
             Axes();
+            ReviewRegressions();
         }
         catch (Exception e) { Check($"unexpected exception {e}", false); }
         finally
@@ -130,6 +131,92 @@ internal static class PadRegressionProbe
         }
         GD.Print($"[GUO] pad regression: {(_failed == 0 ? "PASS" : "FAIL")} ({_checks - _failed}/{_checks})");
         return _failed == 0;
+    }
+
+    private static void ReviewRegressions()
+    {
+        PadBindings.ResetToDefaults();
+        InputMode.StandIn(PadFamily.Xbox, "regression");
+        var first = Show(); first.Add(new Click());
+        Check("new dialog is drawn before any navigation", PadGumpNav.Draws(first));
+        var second = Show(); second.Add(new Click());
+        Check("new top dialog replaces prior draw focus immediately", PadGumpNav.Draws(second) && !PadGumpNav.Draws(first));
+        second.Dispose();
+        Check("closing top dialog restores draw focus immediately", PadGumpNav.Draws(first));
+        first.Dispose();
+
+        foreach (InputEvent next in new InputEvent[] {
+            new InputEventKey { Keycode = Key.Space, Pressed = true },
+            new InputEventScreenTouch { Index = 0, Pressed = true } })
+        {
+            InputMode.StandIn(PadFamily.Xbox, "regression");
+            typeof(PadScreen).GetProperty("IsOpen").SetValue(null, true);
+            typeof(PadScreen).GetProperty("Current").SetValue(null, WheelWindow.Journal);
+            InputMode.Note(next);
+            Check($"{next.GetType().Name} closes pad modal", !PadScreen.IsOpen);
+            InputMode.StandIn(PadFamily.Xbox, "regression");
+            Check("returning to pad does not reopen stale modal", !PadScreen.IsOpen);
+        }
+        PadScreen.Close();
+
+        var world = Client.Game.UO.World;
+        typeof(PadRadar).GetProperty("IsOpen").SetValue(null, true);
+        typeof(PadRadar).GetField("_acted", PrivateStatic).SetValue(null, false);
+        typeof(PadRadar).GetField("_chosen", PrivateStatic).SetValue(null, GUO.Game.GameObjects.Item.Create(world, 0x40000001));
+        PadRadar.AttackLast();
+        bool acted = (bool) typeof(PadRadar).GetField("_acted", PrivateStatic).GetValue(null);
+        // A failing negative control must not send a real use/network action.
+        if (acted) PadRadar.End(); else PadRadar.Close();
+        Check("attack last consumes radar release without using selected item", acted && !PadRadar.IsOpen && PadRadar.LastAction == "attack last");
+
+        var profile = GUO.Configuration.ProfileManager.CurrentProfile;
+        bool touch = GUO.Input.Touch.TouchInput.Enabled;
+        var images = (Dictionary<ushort, Image>) typeof(GUO.Input.Touch.UoTheme).GetField("_images", PrivateStatic).GetValue(null);
+        var savedImages = new Dictionary<ushort, Image>(images);
+        var savedChat = UIManager.SystemChat;
+        using var frame = Image.CreateEmpty(1, 1, false, Image.Format.Rgba8);
+        try
+        {
+            // Headless rendering has no atlas readback; supply only the readiness
+            // fixture, leaving the production gump-selection decision unchanged.
+            for (ushort i = 0; i < 9; i++) images[(ushort)(GUO.Input.Touch.UoTheme.StoneFrame + i)] = frame;
+            typeof(GUO.Configuration.ProfileManager).GetProperty("CurrentProfile").SetValue(null, new GUO.Configuration.Profile());
+            GUO.Input.Touch.TouchInput.Enabled = true;
+            InputMode.Note(new InputEventScreenTouch { Pressed = true });
+            Check("touch options use modern UI", GUO.Input.Touch.Modern.ModernGumps.Chosen(typeof(OptionsGump)));
+            InputMode.StandIn(PadFamily.Xbox, "regression");
+            Check("controller on touch device keeps navigable classic options", !GUO.Input.Touch.Modern.ModernGumps.Chosen(typeof(OptionsGump)));
+
+            // Never loaded: disposing this scene would run game logout/profile saves.
+            var scene = new GUO.Game.Scenes.GameScene(world);
+            var viewport = new WorldViewportGump(world, scene);
+            var chat = UIManager.SystemChat;
+            var prefix = (ClassicControl) typeof(SystemChatControl).GetField("_currentChatModeLabel", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(chat);
+            foreach (ChatMode mode in new[] { ChatMode.Party, ChatMode.Guild })
+            {
+                InputMode.Note(new InputEventKey { Keycode = Key.Space, Pressed = true });
+                chat.IsActive = true;
+                chat.Mode = ChatMode.Default;
+                chat.Mode = mode;
+                chat.Update();
+                Check($"{mode} prefix starts visible", prefix.IsVisible);
+                InputMode.StandIn(PadFamily.Xbox, "regression");
+                chat.Update();
+                Check($"{mode} prefix hides for pad", !prefix.IsVisible);
+                InputMode.Note(new InputEventKey { Keycode = Key.Space, Pressed = true });
+                chat.Update();
+                Check($"{mode} prefix returns after keyboard input", prefix.IsVisible);
+            }
+            viewport.Dispose();
+        }
+        finally
+        {
+            images.Clear();
+            foreach (var entry in savedImages) images.Add(entry.Key, entry.Value);
+            UIManager.SystemChat = savedChat;
+            GUO.Input.Touch.TouchInput.Enabled = touch;
+            typeof(GUO.Configuration.ProfileManager).GetProperty("CurrentProfile").SetValue(null, profile);
+        }
     }
 
     private static void FocusTransitions()

@@ -49,7 +49,7 @@ namespace GUO.Input.Gamepad
 
         /// <summary>Let CleanShots still paint the gump we are navigating.</summary>
         public static bool Draws(Gump g) =>
-            g != null && !g.IsDisposed && IsActive && ReferenceEquals(g, _gump);
+            g != null && !g.IsDisposed && IsActive && ReferenceEquals(g, TopNavigable());
 
         public static bool HandleButton(Godot.JoyButton button, bool pressed)
         {

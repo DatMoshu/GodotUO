@@ -8,6 +8,7 @@ using GUO.Configuration;
 using GUO.Game;
 using GUO.Game.Data;
 using GUO.Game.GameObjects;
+using GUO.Game.Managers;
 using GUO.Input.Touch;
 using GUO.Pregame3D;
 
@@ -277,6 +278,16 @@ namespace GUO.Input.Gamepad
             }
 
             GD.Print($"[GUO] pad radar: {LastAction} ({NameOf(e)})");
+        }
+
+        /// <summary>Attack the last target without also using the radar choice on release.</summary>
+        public static void AttackLast()
+        {
+            World world = World;
+            if (world == null) return;
+            _acted = true;
+            LastAction = "attack last";
+            PadWheel.RunMacro(world, MacroType.AttackLast);
         }
 
         /// <summary>X: look (single-click: the name over its head).</summary>

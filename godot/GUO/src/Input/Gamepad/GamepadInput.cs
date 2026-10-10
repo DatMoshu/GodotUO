@@ -574,7 +574,7 @@ namespace GUO.Input.Gamepad
                     {
                         if (Client.Game?.UO?.World?.Player?.InWarMode == true)
                         {
-                            if (pressed) PadWheel.RunMacro(Client.Game.UO.World, Game.Managers.MacroType.AttackLast);
+                            if (pressed) PadRadar.AttackLast();
                         }
                         else
                         {
