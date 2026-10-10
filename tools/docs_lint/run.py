@@ -115,6 +115,16 @@ def check(root, paths):
     return issues
 
 
+def missing_readmes(root):
+    """Every tools/<job>/ folder carries a README.md: what it is, how to run it, its tests."""
+    tools = Path(root) / "tools"
+    if not tools.is_dir():
+        return []
+    return [Issue(folder, 0, "job folder has no README.md")
+            for folder in sorted(tools.iterdir())
+            if folder.is_dir() and not folder.name.startswith((".", "_")) and not (folder / "README.md").is_file()]
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[2])
@@ -131,9 +141,14 @@ def main():
         elif args.paths:
             print(f"docs_lint: missing input {name}")
             return 1
+    if not args.paths:
+        paths.update(root.glob("tools/*/README.md"))
     issues = check(root, sorted(paths))
+    if not args.paths:
+        issues += missing_readmes(root)
     for issue in issues:
-        print(f"{issue.path.relative_to(root)}:{issue.line}: {issue.message}")
+        line = f":{issue.line}" if issue.line else ""
+        print(f"{issue.path.relative_to(root)}{line}: {issue.message}")
     print(f"docs_lint: {len(paths)} documents, {len(issues)} issues")
     return int(bool(issues))
 

@@ -2,8 +2,12 @@
 
 Run `python tools/docs_lint/run.py`. Exit 0 means all local destinations and
 Markdown heading anchors resolve; exit 1 lists issues as `file:line`.
-The default scope is README, CONTRIBUTING, SECURITY and `docs/**/*.md`.
-Pass explicit files/folders to narrow it, or `--root` for a fixture checkout.
+The default scope is README, CONTRIBUTING, SECURITY, `docs/**/*.md` and
+every `tools/<job>/README.md`. The default run also requires one README.md in
+each `tools/<job>/` folder (what it is, how to run it, its tests); a folder
+without one is reported as `tools/<job>: job folder has no README.md`.
+Pass explicit files/folders to narrow it (the README rule then does not run),
+or `--root` for a fixture checkout.
 
 Standard library only; no network requests. It handles inline links/images,
 explicit reference links, HTML href/src and id/name anchors, encoded paths,
