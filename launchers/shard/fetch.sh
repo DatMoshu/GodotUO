@@ -57,7 +57,7 @@ for p in "${patches[@]}"; do
     else
         # Neither applies nor comes off: the checkout holds something else (an older
         # copy of this patch, local edits). Show git's reason and stop; never build on it.
-        git -C "$src" apply --check "$p"
+        git -C "$src" apply --check "$p" || true   # show git's reason; set -e must not stop us before the FATAL line
         echo "[shard] FATAL: $(basename "$p") does not apply to the checkout at ${want:0:9}, and is not already applied; stopping"
         exit 1
     fi
