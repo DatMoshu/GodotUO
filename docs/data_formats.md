@@ -20,7 +20,8 @@ copied into this repository, and none is ever committed. The path comes from
 
 **2. Derived data is disposable.**
 Anything the port computes from client data — decoded sprites, atlases, hue
-LUTs — lives under `UO_CACHE_DIR`, outside the repo. Deleting that directory
+LUTs — lives under `UO_CACHE_DIR`, outside the repo (extracted art sets, §36,
+under their own `UO_ART_EXTRACT_DIR`). Deleting that directory
 must always be safe; the runtime rebuilds it on demand.
 
 **3. Configuration has one source.**
@@ -42,6 +43,11 @@ Every key resolves as: **environment variable → `config.local.bat` →
 | `UO_CLIENT_DATA` | Folder holding the `.mul` / `.uop` / `.idx` files |
 | `UO_CLIENT_VERSION` | Client version the data corresponds to (e.g. `7.0.107.76`) |
 | `UO_CACHE_DIR` | Disposable decode cache |
+| `UO_ART_EXTRACT_DIR` | The extracted art set (§36, ADR-0034): atlas pages and indexes of the install's art. Default `art_extract` under `UO_WORKSPACE_DIR`; gitignored, never committed or bundled |
+| `UO_ART_SET` | `1` reads art from the extracted set when its fingerprint matches the install; default `0`. The `--art-set` / `--no-art-set` client arguments override it for one run |
+| `UO_ART_SET_CACHE_MB` | Decoded set pages kept in memory, in MB; default 256, minimum 16 (AX2) |
+| `UO_ART_SHARD` | The shard id whose encrypted art container to read (§36, AX6); the `--art-shard ID` client argument overrides it. Empty means the plain set |
+| `UO_ART_KEY_DIR` | The folder holding the profile's shard keys, `<shard id>.key`; default `art_keys` under `UO_WORKSPACE_DIR`. Never in the repository |
 | `UO_WORLD_PROJECT` | The editor's world project folder (§9); default `build\world\default` |
 | `UO_MAPGEN_DATA` | The map generator's per-user data folder (§26): mined stamps, coast atlas, tree statics, validator reports; default `%LOCALAPPDATA%\GUO\mapgen` |
 | `UO_EDITOR_LIVE_HOST` / `UO_EDITOR_LIVE_PORT` | The editor bridge the UO Shard dock connects to (§10); default `127.0.0.1:2595`, the private instance |
@@ -2120,5 +2126,274 @@ Example, GUO's dev shard:
   "service": {"memory_max": "4G"},
   "backup": {"keep": 14, "on_calendar": "*-*-* 04:00:00"},
   "seed": "seed"
+}
+```
+
+---
+
+## 36. Extracted art sets (`tools/art_extract`, ADR-0034)
+
+A **set** is a local mirror of the art in the user's own UO install: atlas pages plus indexes, written by
+`tools/art_extract` and read lazily by the client. It is derived from proprietary data, so it lives only under
+`UO_ART_EXTRACT_DIR` (section 2), is gitignored, and is never committed, bundled or exported (rule 8). **Status:**
+the exporter is `tools/art_extract` (AX1) and the client reads it through `ExtractedArtSource` (AX2); animations are AX3 (below).
+
+Schemas: `tools/art_extract/schema/set.schema.json` and `tools/art_extract/schema/index.schema.json`. Both refuse
+unknown fields (`additionalProperties: false`). Add a field here before anything writes it.
+
+```
+<UO_ART_EXTRACT_DIR>/
+  set.json                       the set: version, fingerprint, per-class summary
+  land/index.json                one folder per class: land static gump texmap light anim
+  land/page_0000.png             2048x2048 RGBA8 pages, numbered from 0000, no gaps
+  static/index.json
+  static/page_0000.png ...
+```
+
+**Classes and ids.** The class names are the content seam's own keys (`StoreRuntimeContent.TryImage`), so a class
+is looked up with the same `(type, id)` the loaders already ask for:
+
+| Class | Id | Pixels | Source files (whichever form the install holds) |
+|---|---|---|---|
+| `land` | land tile id, 0..0x3FFF | 44x44 | `artLegacyMUL.uop`, or `art.mul` + `artidx.mul`; `verdata.mul` when the loader uses it |
+| `static` | item id as the loader indexes it (`index - 0x4000`), 0..0x13FFF | up to the page size | same as `land` |
+| `gump` | gump id | per image | `gumpartLegacyMUL.uop`, or `gumpart.mul` + `gumpidx.mul`; `verdata.mul` |
+| `texmap` | texture id | 64x64 or 128x128 | `texmaps.mul` + `texidx.mul` |
+| `light` | light id | per image | `light.mul` + `lightidx.mul` |
+| `anim` | a loader read, not an id (see Animations) | per frame | `anim*.mul` + `anim*.idx`, `AnimationFrame*.uop` |
+
+**Pixels.** Exactly what the loader returns for the same id, stored as bytes `R, G, B, A` (the loader's `uint`,
+little-endian): each 1555 colour expanded by `HuesHelper.Color16To32`, `A = 0xFF` where the source pixel is drawn
+and the whole pixel `0x00000000` where it is not. Not premultiplied. Nothing is filtered, scaled or re-hued: the
+hue shader still reads the 5-bit values it always read. Hue application, picking masks and bounds stay in the
+loaders and the renderer.
+
+**Pages.** `page_size` is 2048 and `pixel_format` is `rgba8`, PNG, no ancillary chunks (no text, time or colour
+profile chunks). A page is storage, not a draw atlas: no gutter, and nothing samples it directly (rule 7 holds for
+any later direct use: nearest-neighbour only). Packing is a shelf pack with the order fixed by (height descending,
+id ascending), so the same install gives the same layout. An asset wider or taller than the page, or a decode the
+loader refuses, is not stored; it is listed in `skipped` with a reason and falls back at run time.
+
+**`set.json`** (schema id `guo/art_set@1`):
+
+| Field | Type | Meaning |
+|---|---|---|
+| `schema` | `"guo/art_set@1"` | |
+| `version` | `1` | set format version. A runtime that does not know the version ignores the set (warns once) |
+| `generated` | string | ISO-8601 UTC |
+| `tool` | string | `art_extract <tool version>`, for diagnosis only |
+| `client_version` | string | the `UO_CLIENT_VERSION` the install had |
+| `fingerprint` | object | `files`: array of `{name, size, sha256}` for every source file any stored class was read from (`name` relative to `UO_CLIENT_DATA`, sorted by name); `sha256` is the digest of the whole file. `set_id`: sha256 of the lines `name TAB size TAB sha256 LF`, in file order |
+| `classes` | object | per stored class: `{pages, count, skipped, bytes}` (page count, stored ids, skipped ids, total PNG bytes) |
+
+**Fingerprint rule.** At mount the runtime compares each file's `name` and `size` with the install (cheap; no
+hashing) and compares every class `index.json`'s `set_id` with `set.json`'s, so pages from two different
+exports cannot mix. A difference in any of these, or a `version` it does not know, means: no part of the set is
+used, one warning names the set folder and the reason, and the original files serve everything. The full `sha256`
+check is the exporter's `verify`, not a start-up cost. A same-size edited file is therefore not caught at start-up;
+rebuild the set after patching the client.
+
+**`<class>/index.json`** (schema id `guo/art_index@1`):
+
+| Field | Type | Meaning |
+|---|---|---|
+| `schema` | `"guo/art_index@1"` | |
+| `version` | `1` | as `set.json` |
+| `class` | string | the folder's class |
+| `set_id` | string | equals `set.json` `fingerprint.set_id` |
+| `page_size` | `2048` | |
+| `pixel_format` | `"rgba8"` | |
+| `pages` | array | `{file, sha256}` per page, in order; `file` is `page_NNNN.png`, `sha256` the digest of the PNG file's bytes (damage check on load) |
+| `entries` | object | decimal id (string) -> `{page, x, y, w, h, pixels_sha256}`; `page` indexes `pages`; `pixels_sha256` is sha256 over `w` and `h` (each 4 bytes, little-endian), then the `w*h*4` RGBA bytes, row-major |
+| `skipped` | array | `{id, reason}`; a skipped or absent id falls back to the original files for that id alone |
+
+A missing id (absent from `entries`) is not an error: the runtime asks the original loader. A page that is
+missing, fails its `sha256`, or decodes to a size other than `page_size` square drops that page's ids to the same
+fallback, with one warning for the page.
+
+**Determinism and verification.** Two exports of the same install with the same tool give byte-identical files
+(AX1 proves it). `art_extract verify` re-decodes every id from the install with the loaders' own decode and
+compares `pixels_sha256` and the page rectangle; a set is accepted only at 100%. Per-id pixel hashes are the parity
+bar for a set; frame equality with the set on and off is the bar for the runtime (AX2).
+
+**Precedence at run time**, first answer wins: world-project PNGs (ADR-0020) > store packs (ADR-0019) > extracted
+set > original files. The set is built from the pure install, never from overrides or packs.
+
+**Switching on.** `UO_ART_SET=1` or `--art-set`; off by default (section 2). A set is never used because a folder
+merely exists.
+
+**Runtime source (AX2).** `ExtractedArtSource` (`src/Assets/Extracted`) is mounted behind the content seam: `StoreRuntimeContent.TryImage`
+asks the packs first and the set second, so the loaders' existing `Content.TryImage` calls need no edit. A page is read,
+checked against its `sha256` and decoded on first use; at most `UO_ART_SET_CACHE_MB` (default 256, minimum 16) of decoded
+pages are kept and the least recently used is dropped first. Each answer is a fresh copy of the rectangle. The loaders
+ask the seam *before* their own override files (`Art/Statics/*.art`, `Art/Land/*.art`, `Gumps/*.gump` under
+`UO_CLIENT_DATA`), so at mount the source lists the ids those files hold (found as the loaders find them) and never answers
+for them: the loader falls through to its own file, as with the set off. A damaged page or an id not in the set falls
+through to the archive. Probe: `res://src/Assets/Extracted/ArtSetParityProbe.tscn` compares every id through the real
+loaders with the set on and off (`UO_ART_PARITY_MODE=synthetic` checks the mount rules on a made-up set).
+
+### Animations (`anim/`, AX3)
+
+The `anim` class is keyed by what the animation loader *reads*, not by body: one **block** is the bytes the loader
+turns into a frame list in one call. Body.def, Bodyconv.def, Corpse.def, mobtypes.txt and the UOP replacement tables are
+resolved by the loader above the block, so they stay the loader's and the set never reimplements them.
+
+| Block key | The loader call it answers |
+|---|---|
+| `m<file>.<position>.<size>` | `ReadMULAnimationFrames(file, {position, size})`: one direction of an `anim*.mul` group |
+| `u<file>.<position>.<direction>` | `ReadUOPAnimationFrames(.., direction, type, file, {position, ..})` for a non-Equipment group; `position` is the entry's offset in `AnimationFrame<file>.uop`, `direction` 0..4 |
+| `u<file>.<position>.<direction>.e` | the same read for an Equipment group (the loader keeps at least 10 frames per direction there) |
+
+A block is a list of frame rows, in the order and with the `Num` the loader returns: `[page, x, y, w, h, cx, cy]` for a
+frame with pixels (`Num` is its index in the list) and `[num, cx, cy]` for one without (a missing UOP frame is
+`[0, 0, 0]`: the loader clears it, so its `Num` is 0). `cx, cy` are the frame's centre as the loader reads it. Pixels are
+as for the other classes (`R, G, B, A`; a MUL frame has no transparent palette entry, a UOP frame treats palette value 0
+as transparent), the 512-byte palette already applied. Frames of one block sit on the same page or on consecutive
+pages. Identical frames (same size and pixels, e.g. a standing frame repeated by several bodies) share one rectangle.
+
+`anim/index.json` (schema id `guo/art_anim_index@1`, schema `tools/art_extract/schema/anim_index.schema.json`):
+`schema, version, class, set_id, page_size, pixel_format, pages` as for `guo/art_index@1`, then
+`blocks` (object: block key -> `{f: [rows], sha}`; `sha` is sha256 over each frame's `w`, `h` (4 bytes each,
+little-endian) and its `w*h*4` RGBA bytes, in order) and `skipped` (`{key, reason}`: a block the tool could not decode
+falls back to the archive for that block alone). The file holds one block per line so the client can stream it; it is
+read on the first animation question, not at start-up.
+
+Packing is sequential rather than sorted: a block's frames are placed in order on shelves of the current page (a new
+page when a frame no longer fits), so the whole install never has to be in memory. The layout is still deterministic.
+
+At run time `Animation.cs` asks the content seam (`TryAnimationMul`, `TryAnimationUop`) before it calls the loader's
+two read methods, passing the same file, position and size/direction the loader would use. A block that is not in
+the set, or whose page is damaged, is read from the archive as before. `art_extract verify` re-decodes every block
+from the install and compares; `ArtSetParityProbe` compares every block reachable through the loader's own `GetIndices`
+(all bodies, all actions, all directions, both UOP variants) with the set on and off.
+
+### Encrypted container (`<shard id>.guoart`, AX6)
+
+For a shard owner's **custom** art. The same pieces as a plain set (`set.json`, one `index.json` and the PNG pages per
+class) are sealed one by one into a single file with AES-256-GCM, and the client opens that file when the player's
+profile holds the shard's key. The player's own extracted set (above) stays plain and unmarked, so parity checks stay
+exact. Header schema: `tools/art_extract/schema/container.schema.json` (`additionalProperties: false`).
+
+```
+magic        8 bytes   "GUOART" 01 00
+header_len   u32 LE
+header       UTF-8 JSON, sorted keys, no spaces: {cipher, key_id, schema, set_id, shard_id, version}
+chunks       name_len u16 | name (UTF-8) | nonce 12 | sealed_len u32 | sealed = ciphertext + 16 byte tag
+toc chunk    the same shape, name "\0toc", plaintext {"entries": {name: [offset, sealed_len]}}
+footer       toc offset u64 LE | "GUOEND" 01 00
+```
+
+- Chunk names are the plain set's relative paths: `set.json`, `land/index.json`, `land/page_0000.png`, `anim/index.json`.
+  A chunk's plaintext is byte-identical to the file the plain set would hold, so the page `sha256` values and every
+  mount rule of this section apply unchanged.
+- Each chunk has its own random 96-bit nonce. The **associated data** of every chunk is `header_len || header || name`,
+  so a changed header, a renamed chunk or a chunk moved under another name fails its tag. A flipped byte anywhere in a
+  chunk fails that chunk only; a damaged table of contents or footer fails the open.
+- `key_id` is the first 16 hex digits of `sha256("guo/art_key_id\0" || key)`: it lets a wrong key be named before any
+  chunk is tried and reveals nothing usable. The key is 32 random bytes and is never written into the container.
+- The exporter streams: pages are encoded in memory and sealed straight into `<file>.part`, which is renamed into place
+  when complete. **No PNG is written to disk on the way**, and an export that fails leaves no container.
+
+**Tool.** `python tools\art_extract\run.py keygen --shard ID --key-file K` writes a new key (64 hex characters, mode
+0600 where the OS has one, never overwriting). `pack-container --shard ID --key-file K [--what ...] [--out FILE]` writes
+`UO_ART_EXTRACT_DIR/containers/<ID>.guoart` (`--out` obeys the same rule as `export`). `info FILE` prints the header; it
+needs no key. A shard id is 1-48 characters of `a-z`, `0-9`, `_`, `-`, starting with a letter or digit.
+
+**Runtime.** `--art-set` (or `UO_ART_SET=1`) plus `--art-shard ID` (or `UO_ART_SHARD`) makes `ExtractedArtSource` open
+`containers/<ID>.guoart` instead of a plain set, with the key from `<UO_ART_KEY_DIR>/<ID>.key`. Pages decrypt into memory on
+first use and are dropped under the same `UO_ART_SET_CACHE_MB` cap; nothing is written to disk. Everything else (the
+fingerprint check against the install, the client's own override files winning, per-id fallback) is as for a plain set.
+A missing container, no key in the profile, a wrong key, a changed header, a cut file or a platform without AES-GCM
+makes the whole source fall back to the original files with **one warning that names the shard id and the reason, never
+the key**; a page whose tag fails drops only its own ids to the original files, with one warning for the page. The web
+export reports containers as unsupported (AES-GCM is not available there) and falls back; desktop and Android are
+covered by the tests below.
+
+**Key delivery.** The owner generates the key with `keygen` and keeps it out of version control. Players receive it with
+the shard's ADR-0019 pack install: a `<shard id>.key` file **inside the signed pack**, which the installer stores in the
+user's profile key folder (0600 where the OS has it) and removes with the pack. A key is never in the repository, the
+logs, the events or a run folder, and no command prints one; the tests grep the container, the tool's output and the
+refusal messages for it.
+
+**Threat model, in plain words.** Anything the client draws can be captured: screenshots, a GPU capture, a debugger
+reading the decrypted pages. The container raises the bar for **casual copying of a shard's custom art off the disk**
+and nothing more; a player who holds the key, or anyone who attaches a debugger to a running client, can read the
+art. It is not copy protection. Provenance of a leaked copy is a separate tool (AX7, "Watermark" below).
+
+**Tests.** `tools/art_extract/test_container.py` (round trip equals the plain set's files, tampered ciphertext / tag /
+nonce refused per chunk, wrong key names the shard, header-only change refused, chunk renamed refused, cut file and
+damaged table refused, only the container reaches the disk, no key in file or output, a failed export leaves nothing);
+`ArtSetParityProbe` with `UO_ART_PARITY_MODE=synthetic` repeats the open/refuse cases in the client's own code on a
+made-up container; with `UO_ART_SHARD` set it compares every id through the real loaders with the container on and off.
+
+### Watermark (AX7, `art_mark.py`)
+
+A shard owner can mark custom art so a leaked copy can be traced. **Off by default; a player's own set is never marked.**
+`pack-container --shard ID --key-file K --mark-key SIGN.key --serial N` marks every page it seals; `mark --shard ID
+--sign-key SIGN.key --serial N --in PNG_OR_FOLDER --out PATH` marks PNG files (`--out` obeys the rule of `export`);
+`prove IMAGE [--sign-key-pub P] [--json]` reads the mark from a PNG, a page or a crop. `SIGN.key` is the owner's ADR-0019
+signing key (`tools/asset_store/run.py keygen`); `P` is its `ed25519:` public key or a file holding one. Exit codes of
+`prove`: 0 found (and valid or unchecked), 1 none found or signature invalid, 2 unreadable file.
+
+**Where it lives.** The loaders expand each 5-bit channel to 8 bits, so the low 3 bits of an RGBA8 channel carry nothing
+the game reads. The mark writes into them, on opaque pixels only. The 5-bit values and alpha never change, so the hue
+lookup (top 5 bits) is unchanged; an unhued pixel moves by at most 7/255 per channel (`docs/images/art_mark_side_by_side.png`:
+original, marked, difference x32; the black outline and transparent ground carry nothing). The shader decides three
+things from exact values, so a pixel carries the mark only if every 5-bit channel is 2..30 (`uo_hue_core.gdshaderinc`:
+the gump test `r < 0.02`, the text test `> 0.04`, the top hue texel), and a grey pixel (equal 5-bit channels) gets the same
+low bits in all three channels, because `PARTIAL_HUED` hues a pixel only when r == g == b. `SPECTRAL` draws alpha from the
+unhued red (`1 - 1.5 r`), so a spectral sprite can differ by up to 4% in alpha; that is the one visible effect. Art that
+did not come from 1555 (equal 5-bit channels, unequal 8-bit ones) is refused by `mark` unless `--force`.
+
+**Layout.** A 16 x 16 tile of cells (x, y, channel, bit) repeats over the picture; a fixed permutation sends each of its
+2304 cells to one of 1024 coded bits and a fixed whitening bit is XORed in. A reader takes a majority vote per coded bit
+over every cell it sees. A crop only shifts the tile's phase, so `prove` tries all 256 phases (on the densest 128 x 128
+window, then reads the whole picture at the best phase). The pattern is a constant of the format, not a key: `prove` must
+work from a public key alone.
+
+```
+payload (124 bytes, zero padded) then CRC-32 of those 124 bytes  =  1024 coded bits
+    version u8 = 1 | shard id length u8 | shard id | serial u32 big-endian | Ed25519 signature (64)
+signed message  =  b"guo-art-mark@1\0" + shard id + b"\0" + serial (4 bytes, big-endian)
+```
+
+**Measured** (`python tools\art_extract\mark_measure.py`, synthetic sprite-like art, about 55% opaque; 60 random crops per size):
+
+| | result |
+|---|---|
+| carriers | 84% of opaque pixels (the rest are dark, near-white or partly transparent) |
+| crop N x N | N=32 60%, N=48 77%, **N=64 98%, N=96 100%** read; a crop that held at least 659 carrier pixels was always read |
+| fully opaque art | N=16 and larger always read; N=12 not |
+| PNG re-save (own encoder, Pillow with adaptive filters, extra chunks) | survives |
+| 5-bit requantisation | **does not survive** (the 5-bit value is all that is left, by construction) |
+| JPEG q95, scaling (nearest or bilinear), a darkened copy | **do not survive** |
+| screenshot of the running client | **does not survive**: hues, lighting and scaling rewrite every pixel |
+
+So **N is about 64 px of sprite art (or about 700 opaque pixels)**; a smaller piece may or may not read.
+
+**Honesty.** Drawn pixels can always be captured. The mark proves the origin of a copied *file* (a page, an exported PNG, a
+crop of one); it does not prevent copying, anyone who knows this format can strip it, and what it proves is only that the
+file carries a payload signed by that owner's key. A forged serial fails the signature.
+
+**Tests.** `tools/art_extract/test_mark.py` (payload and signature, forged serial; 5-bit values, alpha and the 7/255 bound;
+the shader's exact-value decisions on a marked page; grey, dark and bright pixels; whole picture, crops at several offsets,
+a small opaque crop; a PNG re-saved with every row filter; the non-survivors; `mark`, `prove`, the output rule, no signing
+key in any output; a container with the mark and a plain set without one).
+
+### Example (`land/index.json`, abridged)
+
+```json
+{
+  "schema": "guo/art_index@1",
+  "version": 1,
+  "class": "land",
+  "set_id": "<64 hex digits>",
+  "page_size": 2048,
+  "pixel_format": "rgba8",
+  "pages": [{"file": "page_0000.png", "sha256": "<64 hex digits>"}],
+  "entries": {
+    "3": {"page": 0, "x": 0, "y": 0, "w": 44, "h": 44, "pixels_sha256": "<64 hex digits>"}
+  },
+  "skipped": []
 }
 ```

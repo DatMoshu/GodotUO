@@ -42,5 +42,6 @@ it is taken even if its file has not landed yet.
 | 0031 | Multi editor | main |
 | 0032 | Client profiles and workspace | main |
 | 0033 | SpriteMotion fit lab in a native editor host | main |
+| 0034 | Extracted art sets (atlas pages of the user's own install) | work/art-ax0 |
 
-Next free: 0034.
+Next free: 0035.

@@ -27,7 +27,20 @@ internal sealed class StoreRuntimeContent : IDisposable
     private readonly StoreMapOverlay _maps = new();
     public void ApplyMap(MapLoader maps, int map) => _maps.Apply(maps, map);
     public void Dispose() => _maps.Dispose();
-    public bool TryImage(string type, int id, out Pixels pixels) => _images.TryGetValue((type, id), out pixels);
+    // GUO addition (ADR-0034): the extracted art set answers after every pack, and is read a page at a time.
+    private GUO.Assets.Extracted.ExtractedArtSource _extracted;
+    public bool TryImage(string type, int id, out Pixels pixels) =>
+        _images.TryGetValue((type, id), out pixels) || (_extracted != null && _extracted.TryImage(type, id, out pixels));
+    public bool TryAnimationMul(int file, uint position, uint size, out AnimationsLoader.FrameInfo[] frames)
+    {
+        frames = null;
+        return _extracted != null && _extracted.TryMulFrames(file, position, size, out frames);
+    }
+    public bool TryAnimationUop(int file, uint position, int direction, bool equipment, out AnimationsLoader.FrameInfo[] frames)
+    {
+        frames = null;
+        return _extracted != null && _extracted.TryUopFrames(file, position, direction, equipment, out frames);
+    }
     public bool TryString(int id, out string value) => _strings.TryGetValue(id, out value);
     public bool TrySound(int id, out byte[] value) => _sounds.TryGetValue(id, out value);
     public bool TryMusic(int id, out byte[] value) => _music.TryGetValue(id, out value);
@@ -36,6 +49,16 @@ internal sealed class StoreRuntimeContent : IDisposable
     public bool TryAnimationType(int id, out AnimationGroupsType type) => _animationTypes.TryGetValue(id, out type);
 
     public static StoreRuntimeContent LoadConfigured(UOFileManager files, string language)
+    {
+        var content = LoadPacks(files, language);
+        var extracted = GUO.Assets.Extracted.ExtractedArtSource.MountConfigured(files.BasePath);
+        if (extracted == null) return content;
+        content ??= new StoreRuntimeContent();
+        content._extracted = extracted;
+        return content;
+    }
+
+    private static StoreRuntimeContent LoadPacks(UOFileManager files, string language)
     {
         string path = Environment.GetEnvironmentVariable("UO_CONTENT_LOCK");
         if (string.IsNullOrWhiteSpace(path)) path = SessionLock;
