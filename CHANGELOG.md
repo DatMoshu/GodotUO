@@ -6,6 +6,17 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 ## Unreleased
 
 ### Editor
+- The Admin tab has **Commands**: every command your server has, with its
+  level, usage and description. Search them, see the help for the one you
+  type, bring back earlier ones with Up and Down, and read what the server
+  answered right in the tab. No character needs to be logged in; name your
+  staff character in **Run as** for a command that asks for a target in
+  game. Shutting the server down, wiping, deleting accounts, decorating the
+  whole world and changing many things at once ask you to type the
+  command's word first. Every command is in the audit log, and one carrying
+  a password is logged by its name only.
+- The Shard dock's command box needs your server's admin token now (it
+  sends it for you), and shows what the server answered.
 - The Admin tab has **Backups** for a server on this computer: **Back up
   now** saves the world and keeps a copy of the save, and the oldest copies
   go once there are more than you keep (10 unless you change it).

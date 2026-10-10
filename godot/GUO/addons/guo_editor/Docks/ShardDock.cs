@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Text.Json.Nodes;
 using Godot;
+using GUO.Workspace;
 
 /// <summary>
 /// The UO Shard dock (docs/editor_plan.md §3, §4.5): the live tier. Connects
@@ -197,7 +198,9 @@ public partial class ShardDock : EditorDock
         name ??= _name.Text;
         try
         {
-            _link.Connect(host, port, name);
+            // The command box's "command" op is an admin op since AD3 (ADR-0035): this workspace's token goes in the hello.
+            EditorWorkspace.Ensure();
+            _link.Connect(host, port, name, ShardSecrets.BridgeAdminToken());
             _status.Text = $"live: on, {host}:{port} as {name}";
             _live.SetPressedNoSignal(true);
             Log($"connected to {host}:{port} as {name}");
@@ -330,6 +333,12 @@ public partial class ShardDock : EditorDock
                     Log((bool)msg["ok"]
                         ? $"command ran as {(string)msg["as"]}: {(string)msg["text"]}"
                         : $"[color=orange]command failed: {(string)msg["error"] ?? "not a command"}[/color]");
+                    // What the server answered, since AD3 (MUO patch 0004).
+                    foreach (JsonNode line in msg["output"] as JsonArray ?? new JsonArray())
+                    {
+                        Log("    " + ((string)line ?? "").Replace("[", "[lb]"));
+                    }
+
                     break;
                 case "error":
                     Log($"[color=orange]shard: {(string)msg["error"]}[/color]");

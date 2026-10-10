@@ -24,6 +24,7 @@
     <Compile Include="../../../godot/GUO/src/Store/StoreMapDefinition.cs" Link="StoreMapDefinition.cs" />
     <!-- AD6: the Admin tab's snapshots, shared with the editor (which restores them). -->
     <Compile Include="../../../godot/GUO/src/Workspace/ShardBackups.cs" Link="ShardBackups.cs" />
+    <Compile Include="../../../godot/GUO/src/Workspace/AdminCommandRules.cs" Link="AdminCommandRules.cs" />
     <Compile Include="../../../godot/GUO/src/Store/StoreTileDefinition.cs" Link="StoreTileDefinition.cs" />
     <Compile Include="../../../godot/GUO/src/Store/StoreRegionDefinition.cs" Link="StoreRegionDefinition.cs" />
     <Compile Include="../../../godot/GUO/src/Store/StoreLootDefinition.cs" Link="StoreLootDefinition.cs" />

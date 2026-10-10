@@ -2,6 +2,7 @@
 // levels, and that no password or token reaches the audit log.
 using System.Text.Json.Nodes;
 using GUO.EditorBridge;
+using GUO.Workspace;
 
 void Require(bool ok, string what) { if (!ok) throw new Exception(what); }
 
@@ -30,7 +31,7 @@ try
 
     // ---- access levels ---------------------------------------------------
     Require(AdminChannel.IsAdminOp("admin_whoami") && AdminChannel.IsAdminOp("admin_audit"), "admin ops not listed");
-    foreach (string mapOp in new[] { "hello", "block", "object", "multi", "mobiles", "command", "equip", null })
+    foreach (string mapOp in new[] { "hello", "block", "object", "multi", "mobiles", "equip", null })
     {
         Require(!AdminChannel.IsAdminOp(mapOp), $"'{mapOp}' became an admin op (map editing must stay as it was)");
     }
@@ -43,7 +44,7 @@ try
     Require(on.Authorise("block", AdminLevel.Owner) == "'block' is not an admin op", "a non-admin op was authorised as one");
     var gm = new AdminChannel(token, AdminLevel.GameMaster, new AuditLog(null));
     Require(gm.CheckHello(token, out _) == AdminLevel.GameMaster, "the granted level is not the configured one");
-    Require(gm.OpsFor(AdminLevel.GameMaster).ToJsonString() == "[\"admin_whoami\",\"admin_status\",\"admin_godview\",\"admin_godview_find\",\"admin_goto\",\"admin_bring\",\"admin_paperdoll\",\"admin_follow\",\"admin_spawner\"]", "OpsFor lists ops above the level");
+    Require(gm.OpsFor(AdminLevel.GameMaster).ToJsonString() == "[\"admin_whoami\",\"admin_status\",\"admin_godview\",\"admin_godview_find\",\"admin_goto\",\"admin_bring\",\"admin_paperdoll\",\"admin_follow\",\"admin_spawner\",\"admin_commands\",\"admin_command\",\"command\"]", "OpsFor lists ops above the level");
     // AD1: Health is read-only (a Counselor may look); a save is an Administrator's, as ModernUO's own [save.
     Require(AdminChannel.Ops["admin_status"] == AdminLevel.Counselor && AdminChannel.Ops["admin_save"] == AdminLevel.Administrator,
             "the Health ops' levels changed");
@@ -254,6 +255,57 @@ try
             "a Seer could back up or restore");
     Require(on.Authorise("admin_backup", null).StartsWith("admin op without the admin token"), "a backup ran without the token");
     Console.WriteLine("PASS: the backup op needs Administrator and the token");
+    // ---- commands (AD3) ----------------------------------------------------
+    foreach (string op in new[] { "admin_commands", "admin_command", "command" })
+    {
+        Require(AdminChannel.Ops[op] == AdminLevel.Counselor, $"{op} is not a Counselor op");
+        Require(on.Authorise(op, null).StartsWith("admin op without the admin token"), $"{op} ran without the token");
+        Require(on.Authorise(op, AdminLevel.Player) != null, $"{op} ran for a Player connection");
+        Require(on.Authorise(op, AdminLevel.Counselor) == null, $"a Counselor could not run {op}");
+    }
+
+    Require(AdminCommandRules.Normalise(" where ") == "[where" && AdminCommandRules.Normalise("[where") == "[where", "Normalise");
+    Require(AdminCommandRules.Name("[ Wipe items") == "Wipe", "Name");
+    Require(AdminCommandRules.Check("") != null && AdminCommandRules.Check("[") != null, "an empty command was taken");
+    Require(AdminCommandRules.Check("[where\n[wipe") =="a command is one line", "a second line was taken");
+    Require(AdminCommandRules.Check("[" + new string('a', AdminCommandRules.MaxLength)) != null, "an over-long command was taken");
+    Require(AdminCommandRules.Check("[where") == null, "[where was refused");
+    foreach (string safe in new[] { "[where", "[go britain", "[add Bandage", "[set hits 50", "[props", "[delete", "[single set hue 5",
+                                     "[self delete", "[serial delete", "[global interface", "[area interface", "[decorat", "[save" })
+    {
+        Require(AdminCommandRules.Classify(safe) == null, $"'{safe}' is on the dangerous list");
+    }
+
+    (string Line, string Kind, string Confirm)[] dangerous =
+    {
+        ("[restart", "shutdown", "restart"), ("[Shutdown", "shutdown", "shutdown"), ("[wipe", "wipe", "wipe"),
+        ("[WipeItems", "wipe", "wipeitems"), ("[clearfacet", "wipe", "clearfacet"), ("[deleteaccount bob", "delete accounts", "deleteaccount"),
+        ("[decorate", "global decorate", "decorate"), ("[DecorateMag", "global decorate", "decoratemag"), ("[telgen", "global decorate", "telgen"),
+        ("[global delete where Item", "mass moves", "global delete"), ("[Area Set hue 5", "mass moves", "area set"),
+        ("[online tele", "mass moves", "online tele"), ("[region kill", "mass moves", "region kill"), ("[facet remove", "mass moves", "facet remove"),
+    };
+    foreach (var (line, kind, confirm) in dangerous)
+    {
+        AdminCommandRules.Danger d = AdminCommandRules.Classify(line);
+        Require(d != null && d.Kind == kind && d.Confirm == confirm, $"'{line}' classified as {d?.Kind}/{d?.Confirm}, want {kind}/{confirm}");
+        Require(!string.IsNullOrEmpty(d.Why), $"'{line}' has no reason");
+        Require(AdminCommandRules.Confirms(d, confirm.ToUpperInvariant()) && AdminCommandRules.Confirms(d, "  " + confirm.Replace(" ", "   ") + " "),
+            $"'{confirm}' did not confirm '{line}'");
+        Require(!AdminCommandRules.Confirms(d, null) && !AdminCommandRules.Confirms(d, "") && !AdminCommandRules.Confirms(d, "yes") &&
+                !AdminCommandRules.Confirms(d, confirm + "x"), $"a wrong word confirmed '{line}'");
+    }
+
+    Require(AdminCommandRules.CheckCharacter("Moshu", false, 4, 4)?.Contains("not online") == true, "an offline character ran commands");
+    Require(AdminCommandRules.CheckCharacter("Pat", true, 0, 4)?.Contains("is a player") == true, "a player character ran commands");
+    Require(AdminCommandRules.CheckCharacter("Own", true, 6, 4)?.Contains("is Owner; this tab holds Administrator") == true, "a character above the tab's level ran");
+    Require(AdminCommandRules.CheckCharacter("Gm", true, 2, 4) == null && AdminCommandRules.CheckCharacter("Ad", true, 4, 4) == null, "a staff character at or below the level was refused");
+    Require(AdminCommandRules.ForLog("password Hunter2 Hunter2") == "[password ***" && AdminCommandRules.ForLog("[SetPassword x y") == "[SetPassword ***",
+        "a password command kept its arguments");
+    Require(AdminCommandRules.ForLog("go britain") == "[go britain", "ForLog changed a plain command");
+    var cmdEntry = audit.Record("tester", "admin_command", AdminLevel.Counselor, true,
+        JsonNode.Parse($"{{\"op\":\"admin_command\",\"text\":\"{AdminCommandRules.ForLog("[password Hunter2 Hunter2")}\"}}"));
+    Require(!cmdEntry.ToJsonString().Contains("Hunter2") && !File.ReadAllText(auditPath).Contains("Hunter2"), "a command's password reached the audit");
+    Console.WriteLine("PASS: the command ops need Counselor and the token; the dangerous list (shutdown, wipe, delete accounts, global decorate, mass moves) wants its typed word; run as only an online staff character at or below the level; no password in the audit");
     Console.WriteLine("ALL PASS");
 }
 finally

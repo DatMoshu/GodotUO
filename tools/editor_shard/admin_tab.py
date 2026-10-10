@@ -1,4 +1,4 @@
-"""The Admin tab, driven in a real editor against the private instance (sprint "Admin tab", AD1, AD2a, AD2b, AD4, AD5, AD6).
+"""The Admin tab, driven in a real editor against the private instance (sprint "Admin tab", AD1, AD2a, AD2b, AD3, AD4, AD5, AD6).
 
     python tools/editor_shard/run.py admin-tab [--windowed]
 
@@ -36,7 +36,14 @@ not touched) with the addon's scripted Admin run (EditorSmokeAdmin.cs). In it:
    backs the world up as it is, the run bar restarts the server with the
    snapshot put in place, and the account is gone; a before-restore backup is
    kept; Back up now with keep 2 removes the oldest;
-9. the run bar stops the server.
+9. the Commands palette (AD3) lists the server's commands with their level
+   and description, its search narrows the list, the help line shows the
+   typed command's usage; [where runs with nobody online and its output is
+   shown; [wipe opens the confirm box and sends nothing until its word is
+   typed (a wrong word does not run it), and with it only asks for a target,
+   which is cancelled; Up brings back the commands run; "run as" a character
+   who is not online is refused;
+10. the run bar stops the server.
 
 The shard's Configuration folder is copied aside first and put back after, so
 the check leaves the private shard's settings as they were. The restore leaves
@@ -65,10 +72,10 @@ from guo.process import build_child_env, no_activate
 
 TIMEOUT_S = 900
 # The story the evidence is filed under (rule: evidence_naming.md).
-STORY = "AD6"
+STORY = "AD3"
 STILLS = ("connected", "saved", "restarted", "godview", "spawner", "filtered", "respawn", "cleared",
           "settings-form", "settings-diff", "settings-saved", "accounts-list", "accounts-created", "accounts-banned",
-          "backup-done", "restore-confirm", "restored", "backup-kept")
+          "backup-done", "restore-confirm", "restored", "backup-kept", "commands-confirm", "commands-output")
 
 
 def run(cfg, shard_home: Path, token: str, secrets: list[str], windowed: bool, stamp: str) -> int:
@@ -243,6 +250,19 @@ def run(cfg, shard_home: Path, token: str, secrets: list[str], windowed: bool, s
           f"({admin.get('backup_rows_after_restore')}; error: {admin.get('backup_restore_error')})")
     check(admin.get("backup_world_restored"), "after the restore the account made after the backup is gone")
     check(admin.get("backup_keep_ok"), f"keep 2: Back up now removed the oldest ({admin.get('backup_pruned')}) and spared the before-restore backup")
+    check(admin.get("commands_rows_ok"), f"the Commands palette lists {admin.get('commands_listed')} server commands with level and description, "
+                                         f"the dangerous ones marked; output returned: {admin.get('commands_output_available')}")
+    check(admin.get("commands_search_ok"), f"searching 'wipe' narrows the list to: {admin.get('commands_search')}")
+    check(admin.get("commands_help_ok") and admin.get("commands_help_danger_ok"),
+          f"the help line: \"{admin.get('commands_help')}\"; for [wipe: \"{admin.get('commands_help_danger')}\"")
+    where = json.loads(admin["commands_where"]) if admin.get("commands_where") else {}
+    check(admin.get("commands_where_ok"), f"[where ran with nobody online, as the tab's own admin presence: {where.get('output')}")
+    check(admin.get("commands_confirm_shown") and admin.get("commands_wrong_word_refused") and admin.get("commands_nothing_sent"),
+          "[wipe opened the confirm box; nothing reached the server before its word, and a wrong word does not run it")
+    wipe = json.loads(admin["commands_wipe"]) if admin.get("commands_wipe") else {}
+    check(admin.get("commands_wipe_ok"), f"[wipe with its word ran and only asked for a target, cancelled: {wipe.get('output')}")
+    check(admin.get("commands_history_ok"), f"Up brings back the commands run: {admin.get('commands_history')}")
+    check(admin.get("commands_run_as_refused"), f"run as a character not online is refused: \"{admin.get('commands_run_as_error')}\"")
     if windowed:
         check(admin.get("masked_settings-form") and admin.get("masked_settings-diff") and admin.get("masked_settings-saved"),
               "every Settings still covers the UO data folders")

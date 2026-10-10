@@ -10,7 +10,7 @@ using Godot;
 using GUO.Workspace;
 
 /// <summary>
-/// The Admin tab's scripted run (AD1, AD2a, AD2b, AD4, AD5): the run bar starts the private shard named on the command line, the tab
+/// The Admin tab's scripted run (AD1, AD2a, AD2b, AD3, AD4, AD5, AD6): the run bar starts the private shard named on the command line, the tab
 /// connects on the admin channel, reads Health, saves, restarts through the run bar and reads Health again. Then the
 /// god view: it watches the facet again after the restart, a spawner put through the bridge arrives in a change-only
 /// push with the creatures it spawned, Find finds it, a filter hides the NPCs, its Respawn and Clear buttons (AD2b) replace and remove the horses, and its
@@ -20,7 +20,10 @@ using GUO.Workspace;
 /// Then the Accounts list (AD5): every account listed, the owner out of reach, one made with a generated 16-character
 /// password, given a level and a typed password, banned and unbanned. Then the Backups list (AD6): Back up now keeps a
 /// snapshot and Health shows it, an account made afterwards is gone once that snapshot is restored (the server restarted
-/// by the run bar, a before-restore snapshot kept), and keep 2 removes the oldest. Last the run bar stops the server. tools/editor_shard/run.py admin-tab starts it, in a scratch workspace.
+/// by the run bar, a before-restore snapshot kept), and keep 2 removes the oldest. Then the Commands palette (AD3): the
+/// server's commands listed and searched, the help line for the one typed, [where run with nobody online and its output
+/// shown, [wipe held for its typed word and run with it (it only asks for a target, cancelled), the history, and "run as"
+/// a character who is not online refused. Last the run bar stops the server. tools/editor_shard/run.py admin-tab starts it, in a scratch workspace.
 /// </summary>
 public partial class EditorSmoke
 {
@@ -48,6 +51,7 @@ public partial class EditorSmoke
     private double _godSettleClock;
     private string _bakFirst, _bakAccount;
     private int _bakMark, _bakKeepBefore;
+    private int _cmdMark;
 
     // The settings the form's check changes, by field id ("file:path").
     private const string SetMaxAccounts = "modernuo:settings/accountHandler.maxAccountsPerIP";
@@ -688,9 +692,119 @@ public partial class EditorSmoke
                     _admin["backup_keep_ok"] = (bool?)r?["ok"] == true && p.Rows.Count == 2 && pruned.Contains(_bakFirst)
                         && p.Rows.Any(x => (string)x["reason"] == ShardBackups.BeforeRestore);
                     AdminShot("backup-kept");
-                    AdminNext(124);
+                    AdminNext(160);
                 }
                 else AdminTimeout("Back up now with keep 2 never answered");
+
+                break;
+            }
+
+            case 160:
+            {
+                // The palette listed the commands when the admin channel opened (again after each restart).
+                CommandsPanel c = v.Commands;
+                if (c.Lists > 0 && c.Rows.Count > 0)
+                {
+                    v.ShowCommands();
+                    _admin["commands_listed"] = c.Rows.Count;
+                    _admin["commands_output_available"] = c.OutputAvailable;
+                    _admin["commands_rows_ok"] = c.Rows.Count > 50 && c.OutputAvailable
+                        && c.Rows.Any(r => (string)r["name"] == "Where" && (string)r["access"] == "Counselor" && ((string)r["description"] ?? "").Length > 0)
+                        && c.Rows.Any(r => (string)r["name"] == "Wipe" && (string)r["danger"] == "wipe");
+                    c.Search("wipe");
+                    var shown = c.Shown.ToList();
+                    _admin["commands_search"] = string.Join(", ", shown);
+                    _admin["commands_search_ok"] = shown.Contains("Wipe") && shown.Count < c.Rows.Count;
+                    c.Search("");
+                    c.Type("[where");
+                    _admin["commands_help"] = c.HelpText;
+                    _admin["commands_help_ok"] = c.HelpText.Contains("Where") && c.HelpText.Contains("Counselor") && c.HelpText.Contains("coordinates");
+                    c.Type("[wipe");
+                    _admin["commands_help_danger"] = c.HelpText;
+                    _admin["commands_help_danger_ok"] = c.HelpText.Contains("type 'wipe'");
+                    c.Type("");
+                    _cmdMark = c.Replies;
+                    _admin["commands_where_sent"] = c.Run("[where");
+                    AdminNext(161);
+                }
+                else AdminTimeout("the Commands palette never listed the server's commands");
+
+                break;
+            }
+
+            case 161:
+            {
+                CommandsPanel c = v.Commands;
+                if (c.Replies > _cmdMark)
+                {
+                    JsonNode r = c.LastReply;
+                    _admin["commands_where"] = r?.ToJsonString();
+                    _admin["commands_where_ok"] = (bool?)r?["ok"] == true && (string)r?["as"] == null
+                        && (r?["output"] as JsonArray)?.Any(l => ((string)l ?? "").StartsWith("You are at ")) == true
+                        && c.OutputText.Contains("You are at ");
+                    // A dangerous command opens the confirm box and sends nothing until its word is typed.
+                    _cmdMark = c.Replies;
+                    bool sent = c.Run("[wipe");
+                    _admin["commands_confirm_shown"] = !sent && c.Pending is { Kind: "wipe", Confirm: "wipe" };
+                    _admin["commands_wrong_word_refused"] = !c.Run("[wipe", "yes");
+                    AdminShot("commands-confirm");
+                    AdminNext(162);
+                }
+                else AdminTimeout("[where never answered");
+
+                break;
+            }
+
+            case 162:
+            {
+                CommandsPanel c = v.Commands;
+                _admin["commands_nothing_sent"] = c.Replies == _cmdMark;
+                c.CancelConfirm();
+                // The word typed: it runs; [Wipe asks for a target, which the hidden admin presence cannot give.
+                _admin["commands_wipe_sent"] = c.Run("[wipe", "wipe");
+                AdminNext(163);
+                break;
+            }
+
+            case 163:
+            {
+                CommandsPanel c = v.Commands;
+                if (c.Replies > _cmdMark)
+                {
+                    JsonNode r = c.LastReply;
+                    _admin["commands_wipe"] = r?.ToJsonString();
+                    _admin["commands_wipe_ok"] = (bool?)r?["ok"] == true && (bool?)r?["needs_target"] == true;
+                    // Up twice brings back [wipe then [where (the help line follows the line); Down twice empties it.
+                    c.Walk(-1);
+                    bool newest = c.HelpText.Contains("type 'wipe'");
+                    c.Walk(-1);
+                    _admin["commands_history"] = string.Join(" | ", c.History);
+                    _admin["commands_history_ok"] = c.History.SequenceEqual(new[] { "[where", "[wipe" }) && newest && c.HelpText.Contains("coordinates");
+                    c.Walk(1);
+                    c.Walk(1);
+                    _cmdMark = c.Replies;
+                    c.RunAs("NoSuchStaffCharacter");
+                    c.Run("[where");
+                    AdminNext(164);
+                }
+                else AdminTimeout("[wipe with its word never answered");
+
+                break;
+            }
+
+            case 164:
+            {
+                CommandsPanel c = v.Commands;
+                if (c.Replies > _cmdMark)
+                {
+                    JsonNode r = c.LastReply;
+                    _admin["commands_run_as_refused"] = (bool?)r?["ok"] == false && ((string)r?["error"] ?? "").Contains("not online");
+                    _admin["commands_run_as_error"] = (string)r?["error"];
+                    c.RunAs("");
+                    AdminShot("commands-output");
+                    AdminNext(124);
+                }
+                else AdminTimeout("run as a character not online never answered");
 
                 break;
             }
@@ -826,6 +940,17 @@ public partial class EditorSmoke
         Check("backup_before_kept", "a before-restore backup of the world as it was is kept, beside the restored one");
         Check("backup_world_restored", "after the restore the account made after the backup is gone");
         Check("backup_keep_ok", "Back up now with keep 2 removed the oldest backups and spared the before-restore one");
+        Check("commands_rows_ok", "the Commands palette lists the server's commands with level, description and the dangerous ones");
+        Check("commands_search_ok", "the palette's search narrows the list");
+        Check("commands_help_ok", "the help line shows the typed command's usage, level and description");
+        Check("commands_help_danger_ok", "the help line says a dangerous command asks for its word");
+        Check("commands_where_ok", "[where ran with nobody online and its output is in the palette");
+        Check("commands_confirm_shown", "[wipe opened the confirm box and was not sent");
+        Check("commands_wrong_word_refused", "a wrong word does not run a dangerous command");
+        Check("commands_nothing_sent", "nothing reached the server before the word was typed");
+        Check("commands_wipe_ok", "[wipe with its word ran and only asked for a target, cancelled");
+        Check("commands_history_ok", "Up brings back the commands run, newest first");
+        Check("commands_run_as_refused", "run as a character who is not online is refused");
         if (!Headless)
         {
             Check("masked_settings-form", "the Settings stills cover the UO data folders");

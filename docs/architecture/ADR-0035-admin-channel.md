@@ -10,6 +10,27 @@ Proposed
 
 ## Last Verified
 
+2026-10-10 (AD3): `python tools\editor_shard\run.py admin-check --no-client`
+passes 106/106 on a private instance built with MUO patch 0005:
+`admin_commands`, `admin_command` and `command` refused without the token;
+193 commands listed with level, usage and description, the dangerous ones
+marked, none above the connection's level; `[where` run with nobody online
+returns "You are at 0 0 0 in Internal."; a command typed without `[` runs the
+same; an unknown one answers "That is not a valid command."; a second line
+is refused; `[wipe`, `[restart`, `[global delete`, `[decorate` and
+`[area set` are refused without their word and with a wrong one; `[Wipe`
+with its word only asks for a target, which is cancelled; "run as" a
+character not online is refused, and `command` without `as`; the hidden
+mobile is not in the world; a password command is audited as
+`[password ***`, and neither the token nor any password is in the shard log
+or the audit log. `python tools\editor_shard\run.py admin-tab --windowed`
+passes 52/52 (headless 51/51): the Commands palette lists the 193 commands
+and searches them, shows the help line for the one typed, runs `[where` with
+nobody online and shows its output, holds `[wipe` for its typed word (a wrong
+one does not run it) and with it only asks for a target, brings back the
+history with Up, refuses "run as" a character not online, and no secret
+reaches any log.
+
 2026-10-10 (AD6): `python tools\editor_shard\run.py admin-check --no-client`
 passes 90/90: `admin_backup` refused without the token and below
 Administrator; Back up now keeps a snapshot whose manifest names no folder
@@ -118,9 +139,9 @@ SF1 already gives each user a secrets file outside the repository
 (`<UO_WORKSPACE_DIR>/shard/secrets.bat`), read by the launchers and by
 `tools/guo/config.py`, never printed. The token belongs in it.
 
-The existing `command` op runs a GM command as a named online character. It
-stays as it is for now: it needs a staff character online and acts with that
-character's own level. AD3 brings command running onto the admin channel.
+The `command` op ran a GM command as a named online character with no token
+at all. AD3 brought command running onto the admin channel: `command` is an
+admin op now, beside the Commands palette's own ops.
 
 ## Decision
 
@@ -158,7 +179,7 @@ op is one entry in `AdminChannel.Ops`, op name to level. The token grants
 yet) would need it raised on purpose. An op that is not in `Ops` is not an
 admin op and can never run through the admin path.
 
-The ops so far (AD0, AD1, AD2a, AD2b, AD4):
+The ops so far (AD0, AD1, AD2a, AD2b, AD3, AD4, AD5, AD6):
 
 | Op | Level | Does |
 |---|---|---|
@@ -176,6 +197,9 @@ The ops so far (AD0, AD1, AD2a, AD2b, AD4):
 | `admin_settings` | Administrator | The Settings form: reads the running server's setting values (secrets as `***`), and records a settings change in the audit log before the editor writes it |
 | `admin_accounts` | Administrator | The Accounts list: every account with its level, created, last login (UTC), characters, online, banned, protected (read only) |
 | `admin_account` | Administrator | One account made, given a level (its characters too), a new password, banned or unbanned. Only levels and accounts below the connection's own, as ModernUO's admin gump; an Owner may change any |
+| `admin_commands` | Counselor | The Commands palette: the server's commands at or below the connection's level, with level, usage, description and whether the name is on the dangerous list (read only) |
+| `admin_command` | Counselor | Runs one command line, as a hidden admin mobile at the connection's level or as an online staff character at or below it, and returns its output; a dangerous one only with its typed word |
+| `command` | Counselor | The old op (ADR-0012), moved behind the token: the same as `admin_command` with `as` required |
 | `admin_backup` | Administrator | The Backups list: the GUO snapshots of the save (read), Back up now (a save, then a copy of the save folder, keeping the newest N), and a restore's first half (a save and a before-restore snapshot); the editor swaps the save folder while the server is stopped |
 
 Account passwords travel only in the `admin_account` request, which the
@@ -200,6 +224,21 @@ run bar stops the server, the editor moves the snapshot's copy into place
 failure puts the previous save back) and the run bar starts the server
 again. Restoring a remote server's backups is a follow-up (the VPS
 buttons).
+
+Commands (AD3) run with nobody online. The bridge makes one hidden admin
+mobile in memory (`new Mobile(serial)` with a serial outside the world's,
+never added to the world, so never found, shown or saved), on the Internal
+map, at the connection's level for each command; ModernUO still checks each
+command's own level. It has no client: a target cursor or a prompt a command
+gives it is cancelled at once and the reply says so (run the command as your
+staff character to answer one in game), and a gump goes nowhere. Output is
+every system message the mobile is sent while the command runs and for
+300 ms after, read through MUO patch 0005's `Mobile.SystemMessageSent`
+(below). The dangerous list, fixed by the owner on 2026-10-09 (shutdown,
+wipe, delete accounts, global decorate, mass moves), lives in
+`AdminCommandRules.cs`, which the editor and the bridge both compile: the
+tab asks for the typed word, and the bridge refuses a dangerous command
+whose request does not carry it. Everything else runs on a click.
 
 The god view's actions (AD2b) move only the admin's own staff character: an
 online character at GameMaster or above, named in `as` or, when one alone is
@@ -239,7 +278,11 @@ An admin op goes into the bridge assembly when ModernUO's public API reaches
 it (`World.Save`, `Accounts`, `CommandSystem`, `Core` state). Only something
 the bridge cannot reach becomes a core patch, named "MUO patch" in its commit
 and listed in `tools/modernuo/UPSTREAM.md` with an upstream-or-ours verdict
-(the MU1 rule). AD0 needed none.
+(the MU1 rule). AD0 needed none. AD3 needed one: ModernUO's message methods
+write straight to a mobile's NetState and drop the message when there is
+none, so a command's output to a mobile with no client could not be read.
+MUO patch 0005 adds the static `Mobile.SystemMessageSent`; the bridge binds
+it by reflection and still loads, without output, on a server lacking it.
 
 ## Alternatives Considered
 

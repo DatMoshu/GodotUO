@@ -49,7 +49,8 @@ public sealed class AdminChannel
 
     /// <summary>
     /// Every admin op and the access level it runs at. An op not listed here is
-    /// not an admin op. AD2-AD6 add theirs (god view, accounts, ...).
+    /// not an admin op. AD2-AD6 add theirs (god view, accounts, ...); AD3 moved the
+    /// old "command" op here.
     /// </summary>
     public static readonly IReadOnlyDictionary<string, AdminLevel> Ops = new Dictionary<string, AdminLevel>
     {
@@ -82,6 +83,13 @@ public sealed class AdminChannel
         // AD6, Back up now and Restore: the snapshots listed, one taken after a save (keep N), and a restore's
         // before-restore snapshot; the tab puts the snapshot in place itself with the server stopped (EditorBridge.Backup).
         ["admin_backup"] = AdminLevel.Administrator,
+        // AD3, the Commands palette: the server's commands listed, and one run with its output returned, as a hidden
+        // admin mobile at the connection's level or as an online staff character (CommandsAdmin.cs). Counselor, the
+        // lowest staff level; each command still needs its own level, and the dangerous list a typed confirm.
+        ["admin_commands"] = AdminLevel.Counselor,
+        ["admin_command"] = AdminLevel.Counselor,
+        // ADR-0012's old "command" op (run as a named online character), behind the admin token since AD3.
+        ["command"] = AdminLevel.Counselor,
     };
 
     private readonly byte[] _tokenHash;

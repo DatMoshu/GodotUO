@@ -13,7 +13,8 @@
 //      0x3F/0x00 statics, the order the client asks for), and is relayed to the
 //      other editors: last write per block wins, and each relay names its author.
 //   3. A "command" message runs a GM command as a named online character, via
-//      CommandSystem.Handle, exactly as if they had typed it.
+//      CommandSystem.Handle, exactly as if they had typed it. Since AD3 it is an
+//      admin op (below): it needs the admin token like the rest.
 //   4. A "multi" message places or removes an authored multi and its doors
 //      (AuthoredMulti.cs, tools/multi).
 //   5. Admin ops (AdminChannel.cs, ADR-0035) run only for a connection whose
@@ -25,6 +26,8 @@
 //      The Settings form reads the live values with admin_settings and records its
 //      changes there before it writes the files and restarts the server (AD4).
 //      The Accounts tab lists, makes and changes accounts (AccountsAdmin.cs, AD5).
+//      The Commands palette lists the server's commands and runs one, returning
+//      its output, with no character online (CommandsAdmin.cs, AD3).
 //
 // Live edits are held in memory. The world project (the editor's files) is the
 // source of truth; tools/world export + a restart make them permanent.
@@ -427,10 +430,6 @@ public static class EditorBridge
                     // The game thread owns the TileMatrix and the NetStates.
                     Core.LoopContext.Post(() => ApplyBlock(conn, msg, received));
                 }
-                else if (op == "command")
-                {
-                    Core.LoopContext.Post(() => RunCommand(conn, msg));
-                }
                 else if (op == "equip")
                 {
                     Core.LoopContext.Post(() => Equip(conn, msg));
@@ -809,22 +808,31 @@ public static class EditorBridge
     // {"op":"admin_settings","action":"get"|"changed",..} (the Settings form, AD4),
     // {"op":"admin_accounts"} / {"op":"admin_account","action":"create"|"access"|"password"|"ban"|"unban",..} (AccountsAdmin.cs, AD5),
     // {"op":"admin_backup","action":"list"|"now"|"restore",..} (Backup, AD6),
+    // {"op":"admin_commands"} / {"op":"admin_command","text":"[where",..} / {"op":"command","as":..,"text":..} (CommandsAdmin.cs, AD3),
     // each with an optional "req" echoed back.
     // Authorised against the level the hello's token granted, run, and audited
     // (ADR-0035). Each later AD story adds its ops here and in AdminChannel.Ops.
     private static void RunAdmin(EditorConnection from, JsonNode msg, string op)
     {
         JsonNode req = msg["req"] is JsonNode r ? JsonNode.Parse(r.ToJsonString()) : null;
+        // A command line can carry a password ([password new new): the audit keeps its name only.
+        JsonNode audited = msg;
+        if (op is "admin_command" or "command" && msg is JsonObject o && o["text"] is JsonValue tv && tv.TryGetValue(out string line))
+        {
+            audited = o.DeepClone();
+            audited["text"] = AdminCommandRules.ForLog(line);
+        }
+
         string refused = _admin.Authorise(op, from.Admin);
         if (refused != null)
         {
-            _admin.Audit.Record(from.Name, op, from.Admin, false, msg, refused);
+            _admin.Audit.Record(from.Name, op, from.Admin, false, audited, refused);
             from.Send(new JsonObject { ["op"] = op, ["req"] = req, ["ok"] = false, ["error"] = refused });
             Log.Warning("GUO editor bridge: '{0}' refused {1}: {2}", from.Name, op, refused);
             return;
         }
 
-        _admin.Audit.Record(from.Name, op, AdminChannel.Ops[op], true, msg);
+        _admin.Audit.Record(from.Name, op, AdminChannel.Ops[op], true, audited);
         var reply = new JsonObject { ["op"] = op, ["req"] = req, ["ok"] = true };
         switch (op)
         {
@@ -859,14 +867,14 @@ public static class EditorBridge
                 // Refusals here (no staff character online, a wrong target) are answered ok false, and audited as such.
                 if (!GodViewActions.Run(from, op, msg, reply, from.Send))
                 {
-                    _admin.Audit.Record(from.Name, op, AdminChannel.Ops[op], false, msg, (string)reply["error"]);
+                    _admin.Audit.Record(from.Name, op, AdminChannel.Ops[op], false, audited, (string)reply["error"]);
                 }
 
                 break;
             case "admin_settings":
                 if (!Settings(msg, reply))
                 {
-                    _admin.Audit.Record(from.Name, op, AdminChannel.Ops[op], false, msg, (string)reply["error"]);
+                    _admin.Audit.Record(from.Name, op, AdminChannel.Ops[op], false, audited, (string)reply["error"]);
                 }
 
                 break;
@@ -874,7 +882,7 @@ public static class EditorBridge
                 // "list" answers now; "now" and "restore" answer once the save and the snapshot are on disk (Backup).
                 if (!Backup(from, msg, reply))
                 {
-                    _admin.Audit.Record(from.Name, op, AdminChannel.Ops[op], false, msg, (string)reply["error"]);
+                    _admin.Audit.Record(from.Name, op, AdminChannel.Ops[op], false, audited, (string)reply["error"]);
                     break;
                 }
 
@@ -892,7 +900,7 @@ public static class EditorBridge
                 // The request's password is masked in both audit entries by its field name; the log line never holds it.
                 if (!AccountsAdmin.Act(msg, reply, from.Admin!.Value, out string done))
                 {
-                    _admin.Audit.Record(from.Name, op, AdminChannel.Ops[op], false, msg, (string)reply["error"]);
+                    _admin.Audit.Record(from.Name, op, AdminChannel.Ops[op], false, audited, (string)reply["error"]);
                     Log.Information("GUO editor bridge: '{0}' was refused {1} {2}: {3}", from.Name, op, (string)msg["action"], (string)reply["error"]);
                 }
                 else
@@ -901,6 +909,22 @@ public static class EditorBridge
                 }
 
                 break;
+            case "admin_commands":
+                CommandsAdmin.List(reply, from.Admin!.Value);
+                break;
+            case "admin_command":
+            case "command":
+                // Answered after CommandsAdmin.SettleMs, with the output; a refusal (a dangerous command without its
+                // confirm, a character not online or above this level) is answered now and audited as refused.
+                if (!CommandsAdmin.Run(msg, reply, from.Admin!.Value, op == "command", from.Send, out string ran))
+                {
+                    _admin.Audit.Record(from.Name, op, AdminChannel.Ops[op], false, audited, (string)reply["error"]);
+                    Log.Information("GUO editor bridge: '{0}' was refused {1}: {2}", from.Name, op, (string)reply["error"]);
+                    break;
+                }
+
+                Log.Information("GUO editor bridge: '{0}' {1}", from.Name, ran);
+                return;
         }
 
         from.Send(reply);
@@ -1146,23 +1170,5 @@ public static class EditorBridge
             });
         }) { IsBackground = true, Name = "GUO editor bridge save wait" };
         t.Start();
-    }
-
-    // {"op":"command","as":"Guosweep","text":"[add ..."}
-    private static void RunCommand(EditorConnection from, JsonNode msg)
-    {
-        string who = (string)msg["as"];
-        string text = (string)msg["text"];
-        Mobile m = NetState.Instances.Select(ns => ns.Mobile)
-            .FirstOrDefault(x => x != null && string.Equals(x.RawName, who, StringComparison.OrdinalIgnoreCase));
-        if (m == null)
-        {
-            from.Send(new JsonObject { ["op"] = "command", ["ok"] = false, ["error"] = $"'{who}' is not online" });
-            return;
-        }
-
-        bool handled = CommandSystem.Handle(m, text);
-        from.Send(new JsonObject { ["op"] = "command", ["ok"] = handled, ["as"] = m.RawName, ["text"] = text });
-        Log.Information("GUO editor bridge: '{0}' ran \"{1}\" as {2}: {3}", from.Name, text, m.RawName, handled ? "handled" : "not a command");
     }
 }

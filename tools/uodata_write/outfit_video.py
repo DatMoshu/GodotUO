@@ -33,7 +33,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from guo import load_config  # noqa: E402
+from guo import load_config, shard_secrets  # noqa: E402
 from guo.process import no_activate  # noqa: E402
 
 PORT, BRIDGE = 2594, 2595
@@ -66,10 +66,19 @@ def wait_for(pred, timeout: float) -> bool:
     return False
 
 
+def admin_token() -> str:
+    """The bridge's admin token (ADR-0035): the "command" op needs it since AD3. Never printed."""
+    cfg = load_config()
+    if cfg.bridge_admin_token:
+        return cfg.bridge_admin_token
+    path, _ = shard_secrets.ensure(cfg.workspace_dir)
+    return shard_secrets.read(path).get(shard_secrets.ADMIN_TOKEN_KEY, "")
+
+
 def bridge(op: dict) -> dict:
     with socket.create_connection(("127.0.0.1", BRIDGE), timeout=10) as s:
         f = s.makefile("rw", encoding="utf-8", newline="\n")
-        f.write(json.dumps({"op": "hello", "editor": "outfit-video"}) + "\n")
+        f.write(json.dumps({"op": "hello", "editor": "outfit-video", "admin_token": admin_token()}) + "\n")
         f.write(json.dumps({**op, "as": CHARACTER}) + "\n")
         f.flush()
         s.settimeout(30)

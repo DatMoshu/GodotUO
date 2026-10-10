@@ -38,8 +38,15 @@ and checks, in order:
     (a save, a snapshot with a manifest naming no folder, keep N) and
     `restore`'s before-restore snapshot; names that are not a snapshot's
     refused; Health names the last backup; audited, and not without the token;
-11. a connection is closed after three refused tokens;
-12. neither the token nor a password reaches the shard log or the audit log.
+11. the Commands ops (AD3, admin_commands_check.py): `admin_commands` lists
+    the server's commands with level, usage, description and danger;
+    `admin_command` runs [where with nobody online and returns its output;
+    the dangerous list refuses without its typed word and with a wrong one;
+    [Wipe with its word only asks for a target, cancelled; "as" naming nobody
+    online and the old `command` op without the token or "as" are refused;
+    a password command is audited by its name only;
+12. a connection is closed after three refused tokens;
+13. neither the token nor a password reaches the shard log or the audit log.
 
 Prints one line per check and exits 0 when all pass. The token is read from
 the configuration and never printed.
@@ -304,6 +311,11 @@ def run(port: int, token: str, shard_home: Path, secrets: list[str], cfg=None, s
     from admin_backup_check import run as backup_check
 
     backup_check(check, Bridge, port, token, shard_home)
+
+    # AD3: the Commands palette's ops; the password it typed joins the leak grep below.
+    from admin_commands_check import run as commands_check
+
+    secrets = [*secrets, *commands_check(check, Bridge, port, token)]
 
     b = Bridge(port, timeout=20.0)
     closed = False

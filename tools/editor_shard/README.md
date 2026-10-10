@@ -47,6 +47,16 @@ python tools\editor_shard\run.py admin-tab [--windowed]
   `shard\secrets.bat` if missing). Admin ops on the bridge need it in the
   editor's `hello`; map editing does not. Every admin op is audited in
   `build\shard_private\Logs\GUO\admin_audit.jsonl`, secrets masked.
+  The old `command` op (run a command as a named online character) is an
+  admin op since AD3 and needs the token too.
+- **commands** (AD3): the Admin tab's Commands palette lists the server's
+  commands and runs one with nobody logged in, as a hidden admin mobile the
+  bridge keeps in memory (never in the world or a save). The command's
+  output comes back only from a server built with MUO patch 0005
+  (`tools\modernuo\patches`); a copy set up from an older build runs
+  commands without it. To try the patch before the dev shard is rebuilt,
+  copy a patched build's `Server.dll` and `Assemblies` over the copy
+  before **bridge**.
 - **admin-check** talks to the running instance's bridge and checks the admin
   channel: no token, a wrong one, the right one, the audit log, the close
   after three refusals, the god view (a whole facet, then change-only pushes
@@ -61,8 +71,13 @@ python tools\editor_shard\run.py admin-tab [--windowed]
   a snapshot with a manifest naming no folder, Health names it, unknown
   actions and names that would leave the folder are refused, a restore
   keeps a before-restore snapshot first, keep 1 prunes the rest from the
-  disk; one snapshot stays on the instance) and that no token or password
-  reached a log. For the actions
+  disk; one snapshot stays on the instance), the Commands ops (AD3,
+  `admin_commands_check.py`: the list with level, usage and description;
+  `[where` with nobody online and its output; the dangerous list refused
+  without its word and with a wrong one; `[Wipe` with its word only asking
+  for a target, cancelled; "run as" nobody online and the old `command` op
+  without the token or `as` refused; a password command audited by its
+  name only) and that no token or password reached a log. For the actions
   it puts two test spawners west of Britain and logs a headless GUO client in
   as the third game master lane account (`UO_SHARD_GM_ACCOUNTS`, its
   character named after the account; `staff_client.py`), then checks Go
@@ -92,7 +107,11 @@ python tools\editor_shard\run.py admin-tab [--windowed]
   (AD6): Back up now keeps a snapshot and Health shows it, an account made
   afterwards (`ad6t` and six digits) is gone once Restore (asked first) has
   put that snapshot back with the server restarted by the run bar, a
-  before-restore snapshot is kept, and keep 2 removes the oldest. Settings
+  before-restore snapshot is kept, and keep 2 removes the oldest. Then the
+  Commands palette (AD3): the list and its search, the help line, `[where`
+  and its output, `[wipe` held for its typed word (a wrong one does not run
+  it) and then only asking for a target, the history, and "run as" nobody
+  online refused. Settings
   stills cover the UO data folders. Then it checks that every time in the tab's log is UTC with a Z, and that no
   token or password reached the editor output, the tab's log, the server
   console or the audit log. It stops a running `start` first. `--windowed` saves stills of the tab and a clip under

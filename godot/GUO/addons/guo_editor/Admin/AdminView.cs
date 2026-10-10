@@ -15,7 +15,8 @@ using GUO.Workspace;
 /// The Admin main-screen tab (sprint "Admin tab", AD1): the server picked in the run bar, its health in numbers
 /// and in plain words, Save now and Restart, the god view of every player, NPC and spawner (AD2a,
 /// <see cref="GodViewPanel"/>), the server's settings (AD4, <see cref="SettingsPanel"/>), its accounts (AD5,
-/// <see cref="AccountsPanel"/>), its backups (AD6, <see cref="BackupsPanel"/>), and a log of everything the tab did, its times in UTC. It talks to the server's
+/// <see cref="AccountsPanel"/>), its backups (AD6, <see cref="BackupsPanel"/>), a palette of the server's commands (AD3,
+/// <see cref="CommandsPanel"/>), and a log of everything the tab did, its times in UTC. It talks to the server's
 /// editor bridge on the admin channel (ADR-0035): this workspace's admin token goes in the bridge hello and
 /// nowhere else. Desktop editor only. The tab button comes from <see cref="GuoAdminPlugin"/>.
 /// </summary>
@@ -23,7 +24,7 @@ using GUO.Workspace;
 /// Restart goes through the run bar's server manager: a save on the bridge, then the manager stops the exact
 /// process it started and starts it again (with the bridge's token, <see cref="ShardSecrets.BridgeEnvironment"/>).
 /// A server the run bar did not start cannot be restarted from here; the tab says so.
-/// Later stories add commands (AD3) and the VPS profile (AD7).
+/// A later story adds the VPS profile (AD7).
 /// </remarks>
 [Tool]
 public partial class AdminView : VBoxContainer
@@ -48,6 +49,7 @@ public partial class AdminView : VBoxContainer
     private SettingsPanel _settings;
     private AccountsPanel _accounts;
     private BackupsPanel _backups;
+    private CommandsPanel _commands;
     private TabContainer _centre;
     private Action _whileStopped;
     private double _statusClock, _reconnectClock;
@@ -84,6 +86,18 @@ public partial class AdminView : VBoxContainer
 
     /// <summary>The Backups list (AD6).</summary>
     public BackupsPanel Backups => _backups;
+
+    /// <summary>The Commands palette (AD3).</summary>
+    public CommandsPanel Commands => _commands;
+
+    /// <summary>Brings the Commands palette to the front of the centre.</summary>
+    public void ShowCommands()
+    {
+        if (_commands != null)
+        {
+            _centre.CurrentTab = _commands.GetIndex();
+        }
+    }
 
     /// <summary>Brings the Backups list to the front of the centre.</summary>
     public void ShowBackups()
@@ -249,6 +263,9 @@ public partial class AdminView : VBoxContainer
         _backups = new BackupsPanel { Send = send, Admin = this };
         _backups.Logged += Log;
         centre.AddChild(_backups);
+        _commands = new CommandsPanel { Send = send };
+        _commands.Logged += Log;
+        centre.AddChild(_commands);
 
         // Bottom: the log of everything the tab did.
         AddChild(Heading("Log"));
@@ -339,6 +356,7 @@ public partial class AdminView : VBoxContainer
         Granted = null;
         _godView.OnClosed();
         _accounts.OnClosed();
+        _commands.OnClosed();
         Log(why);
         UpdateView();
     }
@@ -470,6 +488,7 @@ public partial class AdminView : VBoxContainer
             Granted = null;
             _godView.OnClosed();
             _accounts.OnClosed();
+            _commands.OnClosed();
             Run.RestartSelected(whileStopped);
             Restarting = RestartPhase.WaitingForServer;
             _reconnectClock = 0;
@@ -578,6 +597,15 @@ public partial class AdminView : VBoxContainer
                     {
                         Log($"backups need Administrator; this tab holds {Granted}");
                     }
+
+                    if (msg["admin_ops"] is JsonArray commandOps && commandOps.Any(o => (string)o == "admin_commands"))
+                    {
+                        _commands.OnAdminOpen();
+                    }
+                    else
+                    {
+                        Log($"commands need Counselor and a server with them (AD3); this tab holds {Granted}");
+                    }
                 }
                 else
                 {
@@ -653,6 +681,10 @@ public partial class AdminView : VBoxContainer
             case "admin_backup":
                 _backups.Handle(msg);
                 break;
+            case "admin_commands":
+            case "admin_command":
+                _commands.Handle(msg);
+                break;
             case "error":
                 Log($"[color=orange]bridge: {(string)msg["error"]}[/color]");
                 break;
@@ -662,6 +694,7 @@ public partial class AdminView : VBoxContainer
                 _settings.OnClosed();
                 _accounts.OnClosed();
                 _backups.OnClosed();
+                _commands.OnClosed();
                 if (Restarting == RestartPhase.None)
                 {
                     Log("the server closed the connection");
