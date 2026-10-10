@@ -1,0 +1,14 @@
+diff --git a/Projects/UOContent/Network/Packets/IncomingPlayerPackets.cs b/Projects/UOContent/Network/Packets/IncomingPlayerPackets.cs
+--- a/Projects/UOContent/Network/Packets/IncomingPlayerPackets.cs
++++ b/Projects/UOContent/Network/Packets/IncomingPlayerPackets.cs
+@@ -78,6 +78,11 @@ namespace Server.Network
+         if (m != null)
+         {
+             from.Attack(m);
++            if (m is Server.Custom.Guo.GuoAttackDummy dummy)
++            {
++                dummy.RecordAttack(from);
++            }
+         }
+     }
+ 

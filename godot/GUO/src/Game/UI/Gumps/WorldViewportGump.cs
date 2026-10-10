@@ -1,5 +1,6 @@
 ﻿// SPDX-License-Identifier: BSD-2-Clause
 
+using System;
 using GUO.Configuration;
 using GUO.Game.Managers;
 using GUO.Game.Scenes;
@@ -211,12 +212,39 @@ namespace GUO.Game.UI.Gumps
             _borderControl.Height = Height;
             _button.X = Width - (_button.Width >> 1);
             _button.Y = Height - (_button.Height >> 1);
-            _scene.Camera.Bounds.Width = _systemChatControl.Width = Width - BORDER_WIDTH * 2;
+            _scene.Camera.Bounds.Width = Width - BORDER_WIDTH * 2;
             _scene.Camera.Bounds.Height = _systemChatControl.Height = Height - BORDER_WIDTH * 2;
+            // PORT DEVIATION (GUO): a pad screen widens the world past the
+            // window's left edge; the chat keeps to the part that is seen.
+            int chatLeft = Math.Clamp(_chatLeft, 0, Math.Max(0, _scene.Camera.Bounds.Width - 1));
+            _systemChatControl.X = BORDER_WIDTH + chatLeft;
+            _systemChatControl.Width = _chatWidth > 0
+                ? Math.Min(_chatWidth, _scene.Camera.Bounds.Width - chatLeft)
+                : _scene.Camera.Bounds.Width - chatLeft;
             _systemChatControl.Resize();
             WantUpdateSize = true;
 
             UpdateGameWindowPos();
+        }
+
+        private int _chatLeft, _chatWidth;
+
+        /// <summary>
+        /// PORT DEVIATION (GUO): where the system chat sits inside the world
+        /// view, in its pixels. A pad screen draws the world wider than the
+        /// window and starting off its left edge; this keeps the chat on the
+        /// visible part. Zero width is the whole view, as upstream.
+        /// </summary>
+        public void SetChatArea(int left, int width)
+        {
+            if (_chatLeft == left && _chatWidth == width)
+            {
+                return;
+            }
+
+            _chatLeft = left;
+            _chatWidth = width;
+            Resize();
         }
 
         public void SetGameWindowPosition(Point pos)
@@ -264,6 +292,16 @@ namespace GUO.Game.UI.Gumps
             }
 
             return newSize;
+        }
+
+        /// <summary>
+        /// The tiled border and the resize grip. Hidden while a pad screen
+        /// cuts the world to the left half, so that chrome cannot flash there.
+        /// </summary>
+        public void SetFrameVisible(bool visible)
+        {
+            _borderControl.IsVisible = visible;
+            _button.IsVisible = visible;
         }
 
         public override bool Contains(int x, int y)

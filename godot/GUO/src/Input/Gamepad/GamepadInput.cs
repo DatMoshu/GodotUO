@@ -24,19 +24,25 @@ namespace GUO.Input.Gamepad
     /// <summary>
     /// Gamepad events, in front of the touch layer and GodotInput the way the
     /// touch layer is in front of GodotInput. Every joypad event is consumed
-    /// here and turned into what the client already understands:
+    /// here and turned into what the client already understands. What each
+    /// input does is the action map (<see cref="PadBindings"/>, rebindable by
+    /// "Set controls", <see cref="PadWizard"/>); the defaults:
     /// <list type="bullet">
-    /// <item>D-pad or left stick: walk, as GameScene walks on the arrow keys;</item>
-    /// <item>printed A: a left click at the pointer (confirm);</item>
-    /// <item>printed B: Escape (cancel: a target cursor, a text field);</item>
-    /// <item>printed Y: the touch bar's macro row, open or closed;</item>
-    /// <item>printed X: the window menu (size, lock, screen) for the topmost
-    /// window, or closed again; mobile only, as the menu is. While it is up, A
-    /// presses the card's control under the pointer and B closes it; the
-    /// D-pad selects the card's controls instead of walking, and then A
-    /// presses the selected one (on either screen);</item>
-    /// <item>right stick: moves the pointer.</item>
+    /// <item>D-pad or left stick: walk, as GameScene walks on the arrow keys
+    /// (fixed, unless a direction is bound to a job);</item>
+    /// <item>right stick: moves the pointer (fixed);</item>
+    /// <item>A: a left click at the pointer (confirm); B: Escape (cancel);</item>
+    /// <item>X: attack last; on mobile layouts, the window menu for the
+    /// topmost window instead (size, lock, screen), as before;</item>
+    /// <item>Y: the macro row; LB: target last; RB: next hostile;</item>
+    /// <item>L3: always run; R3: war mode; LB held and R3: cycle the debug UI
+    /// scale (below 1 as well as above); Start: options; Back: the drawer.
+    /// The D-pad is not part of that chord and still walks;</item>
+    /// <item>LT held: the menu wheel (<see cref="PadWheel"/>); RT held: the
+    /// interact radar (<see cref="PadRadar"/>).</item>
     /// </list>
+    /// While the window menu is up, the D-pad selects the card's controls
+    /// instead of walking, A presses the selected one and B closes it.
     /// </summary>
     /// <remarks>
     /// The face buttons act by their printed label, so the layout is resolved
@@ -75,9 +81,22 @@ namespace GUO.Input.Gamepad
         private static readonly bool[] _dpad = new bool[4];   // up, down, left, right
         private static readonly bool[] _stick = new bool[4];
         private static readonly bool[] _held = new bool[4];
-        private static float _rightX, _rightY;
+        private static float _rightX, _rightY, _leftX, _leftY;
         internal const int TouchDevice = 240;
         private static bool _touchSource;
+
+        // Each half of each axis, on past PadBindings.AxisOn and off under AxisOff.
+        private static readonly HashSet<string> _axisOn = new();
+
+        // Inputs still down when "Set controls" closed: their release is not an action.
+        private static readonly HashSet<string> _swallow = new();
+        private static bool _wizardHooked;
+
+        // Whether A's press went to the client as a click (so its release does), and B's as Escape.
+        private static bool _clickDown, _escapeDown;
+
+        // LB held: R3 cycles the debug UI scale instead of doing R3's job. Lone R3 does not.
+        private static bool _lbHeld;
 
 
         /// <summary>Returns true when the event was a joypad event and is handled.</summary>
@@ -99,6 +118,17 @@ namespace GUO.Input.Gamepad
             // the pointer. Off or not up, one false test.
             if (GUO.Pregame3D.PregameScreen.HandlePad(e))
             {
+                return true;
+            }
+
+            // "Set controls" (and its offer) takes every pad event while it is up.
+            HookWizard();
+
+            if (PadWizard.IsOpen && e is InputEventJoypadButton or InputEventJoypadMotion)
+            {
+                ReleaseAll();
+                PadWizard.Handle(e);
+
                 return true;
             }
 
@@ -130,7 +160,11 @@ namespace GUO.Input.Gamepad
             return false;
         }
 
-        /// <summary>Once a frame: a held direction walks, a tilted right stick moves the pointer.</summary>
+        /// <summary>
+        /// Once a frame: a held direction walks, a tilted right stick moves the
+        /// pointer; the menu wheel and the radar follow the sticks while they
+        /// are up, and "Set controls" counts its hold.
+        /// </summary>
         public static void Update(double delta)
         {
             if (!Enabled && !_touchSource)
@@ -140,7 +174,40 @@ namespace GUO.Input.Gamepad
                 return;
             }
 
+            PadWizard.Update(delta);
+            PadWizard.MaybeOffer();
+
+            if (PadWizard.IsOpen)
+            {
+                return;
+            }
+
+            // A full-screen window takes the sticks: no walking, no pointer.
+            if (PadScreen.IsOpen)
+            {
+                PadScreen.Tick();
+                PadScreen.Steer(_leftX, _leftY, (float) delta);
+
+                return;
+            }
+
+            // The wheel takes both sticks: no walking, no pointer, while it is up.
+            if (PadWheel.IsOpen)
+            {
+                PadWheel.Steer(_leftX, _leftY, _rightX, _rightY);
+
+                return;
+            }
+
             Walk();
+
+            // The radar takes the right stick; the left one still walks.
+            if (PadRadar.IsOpen)
+            {
+                PadRadar.Update(_rightX, _rightY);
+
+                return;
+            }
 
             if (Math.Abs(_rightX) < 0.2f && Math.Abs(_rightY) < 0.2f)
             {
@@ -243,12 +310,55 @@ namespace GUO.Input.Gamepad
             }
         }
 
+        /// <summary>
+        /// A button by its printed label: the face buttons through the pad's
+        /// layout (null while it is unknown), every other button as it is.
+        /// </summary>
+        internal static JoyButton? PrintedButton(JoyButton b, int device) =>
+            b is JoyButton.A or JoyButton.B or JoyButton.X or JoyButton.Y ? Printed(b, Resolve(device)) : b;
+
+        /// <summary>As <see cref="PrintedButton"/>, but an unknown pad's face buttons as they come ("Set controls" binds what it is given).</summary>
+        internal static JoyButton PrintedOrRaw(JoyButton b, int device) => PrintedButton(b, device) ?? b;
+
         // ==========================
         // === Dispatch =============
         // ==========================
 
         private static void OnButton(InputEventJoypadButton e)
         {
+            if (e.ButtonIndex == JoyButton.LeftShoulder)
+            {
+                _lbHeld = e.Pressed;
+            }
+
+            // LB + R3 (click). Physical buttons, not the rebinding: lone R3 still
+            // does its job (war mode, by default). Does not touch the D-pad.
+            if (e.Pressed && e.ButtonIndex == JoyButton.RightStick && _lbHeld)
+            {
+                PadOverlay.CycleDebugScale();
+
+                return;
+            }
+
+            // Generic focus-graph over a classic server/client gump (G1).
+            if (PadGumpNav.HandleButton(e.ButtonIndex, e.Pressed))
+            {
+                return;
+            }
+
+            // A full-screen window takes the D-pad: move in its list or grid, not walk.
+            if (PadScreen.IsOpen && e.ButtonIndex is JoyButton.DpadUp or JoyButton.DpadDown or JoyButton.DpadLeft or JoyButton.DpadRight)
+            {
+                if (e.Pressed)
+                {
+                    int dx = e.ButtonIndex == JoyButton.DpadLeft ? -1 : e.ButtonIndex == JoyButton.DpadRight ? 1 : 0;
+                    int dy = e.ButtonIndex == JoyButton.DpadUp ? -1 : e.ButtonIndex == JoyButton.DpadDown ? 1 : 0;
+                    PadScreen.Move(dx, dy);
+                }
+
+                return;
+            }
+
             // An open window menu takes the D-pad: select its controls, not walk.
             if (Touch.WindowMenu.IsOpen && e.ButtonIndex is JoyButton.DpadUp or JoyButton.DpadDown or JoyButton.DpadLeft or JoyButton.DpadRight)
             {
@@ -266,29 +376,7 @@ namespace GUO.Input.Gamepad
                 return;
             }
 
-            switch (e.ButtonIndex)
-            {
-                case JoyButton.DpadUp: _dpad[0] = e.Pressed; UpdateArrows(); return;
-                case JoyButton.DpadDown: _dpad[1] = e.Pressed; UpdateArrows(); return;
-                case JoyButton.DpadLeft: _dpad[2] = e.Pressed; UpdateArrows(); return;
-                case JoyButton.DpadRight: _dpad[3] = e.Pressed; UpdateArrows(); return;
-                case JoyButton.A or JoyButton.B or JoyButton.X or JoyButton.Y: break;
-
-                // Back (Select, View): the one-screen drawer, open or closed.
-                // A no-op with a second screen, or with the panel off.
-                case JoyButton.Back:
-                    if (e.Pressed)
-                    {
-                        GUO.Platform.Android.DualScreen.ToggleDrawer();
-                    }
-
-                    return;
-
-                default: return;
-            }
-
-            GamepadLayout layout = Resolve(e.Device);
-            JoyButton? printed = Printed(e.ButtonIndex, layout);
+            JoyButton? printed = PrintedButton(e.ButtonIndex, e.Device);
 
             if (printed == null)
             {
@@ -297,56 +385,313 @@ namespace GUO.Input.Gamepad
                 return;
             }
 
-            switch (printed.Value)
-            {
-                case JoyButton.A:
-                    InputMode.PointerUsed();
+            var input = PadInput.Button(printed.Value);
 
-                    if (!Touch.WindowMenu.Accept(e.Pressed))
+            if (!e.Pressed && _swallow.Remove(input.Id))
+            {
+                return;
+            }
+
+            _swallow.Remove(input.Id);
+
+            // Every job is read from the action map (PadBindings); an input
+            // bound to none still walks if it is the D-pad.
+            if (PadBindings.CommandFor(input) is PadCommand command)
+            {
+                Dispatch(command, e.Pressed);
+
+                return;
+            }
+
+            switch (e.ButtonIndex)
+            {
+                case JoyButton.DpadUp: _dpad[0] = e.Pressed; UpdateArrows(); return;
+                case JoyButton.DpadDown: _dpad[1] = e.Pressed; UpdateArrows(); return;
+                case JoyButton.DpadLeft: _dpad[2] = e.Pressed; UpdateArrows(); return;
+                case JoyButton.DpadRight: _dpad[3] = e.Pressed; UpdateArrows(); return;
+            }
+        }
+
+        /// <summary>One job, pressed or let go, from whichever input it is bound to.</summary>
+        private static void Dispatch(PadCommand command, bool pressed)
+        {
+            var world = Client.Game?.UO?.World;
+            bool inWorld = world != null && world.InGame && world.Player != null && Client.Game.Scene is Game.Scenes.GameScene;
+
+            switch (command)
+            {
+                case PadCommand.Use:
+                    if (PadScreen.IsOpen)
                     {
-                        Click(e.Pressed);
+                        if (pressed)
+                        {
+                            PadScreen.Activate();
+                        }
+
+                        return;
                     }
 
-                    break;
+                    if (PadRadar.IsOpen)
+                    {
+                        if (pressed)
+                        {
+                            PadRadar.Use();
+                        }
 
-                case JoyButton.B:
+                        return;
+                    }
+
+                    if (!pressed && !_clickDown)
+                    {
+                        return;
+                    }
+
+                    InputMode.PointerUsed();
+
+                    if (!Touch.WindowMenu.Accept(pressed))
+                    {
+                        _clickDown = pressed;
+                        Click(pressed);
+                    }
+
+                    return;
+
+                case PadCommand.Cancel:
+                    if (pressed && PadScreen.IsOpen)
+                    {
+                        PadScreen.Close();
+
+                        return;
+                    }
+
+                    if (pressed && PadRadar.IsOpen)
+                    {
+                        PadRadar.Cancel();
+
+                        return;
+                    }
+
+                    if (pressed && PadWheel.IsOpen)
+                    {
+                        PadWheel.Close();
+
+                        return;
+                    }
+
                     if (Touch.WindowMenu.IsOpen)
                     {
-                        if (e.Pressed)
+                        if (pressed)
                         {
                             Touch.WindowMenu.Close();
                         }
 
-                        break;
+                        return;
                     }
 
-                    PressKey(Godot.Key.Escape, e.Pressed);
-
-                    break;
-
-                case JoyButton.X:
-                    if (e.Pressed)
+                    if (!pressed && !_escapeDown)
                     {
-                        if (Touch.WindowMenu.IsOpen)
+                        return;
+                    }
+
+                    _escapeDown = pressed;
+                    PressKey(Godot.Key.Escape, pressed);
+
+                    return;
+
+                case PadCommand.MenuWheel:
+                    if (pressed && PadScreen.IsOpen)
+                    {
+                        PadScreen.Close();
+                    }
+
+                    if (pressed && !PadRadar.IsOpen && inWorld)
+                    {
+                        PadWheel.Begin();
+                    }
+                    else if (!pressed)
+                    {
+                        PadWheel.End();
+                    }
+
+                    return;
+
+                case PadCommand.InteractRadar:
+                    if (pressed && PadScreen.IsOpen)
+                    {
+                        PadScreen.Close();
+                    }
+
+                    if (pressed && !PadWheel.IsOpen && inWorld)
+                    {
+                        PadRadar.Begin();
+                    }
+                    else if (!pressed)
+                    {
+                        PadRadar.End();
+                    }
+
+                    return;
+            }
+
+            // The rest act once, on the press.
+            if (!pressed)
+            {
+                return;
+            }
+
+            if (PadScreen.IsOpen)
+            {
+                switch (command)
+                {
+                    case PadCommand.TargetLast: PadScreen.Page(-1); break;
+                    case PadCommand.NextHostile: PadScreen.Page(1); break;
+                }
+
+                return;
+            }
+
+            switch (command)
+            {
+                case PadCommand.AttackLast:
+                    if (PadScreen.IsOpen)
+                    {
+                        if (pressed && PadScreen.HasItemActions)
                         {
-                            Touch.WindowMenu.Close();
+                            PadScreen.Drop();
+                        }
+
+                        return;
+                    }
+
+                    if (PadRadar.IsOpen)
+                    {
+                        if (Client.Game?.UO?.World?.Player?.InWarMode == true)
+                        {
+                            if (pressed) PadWheel.RunMacro(Client.Game.UO.World, Game.Managers.MacroType.AttackLast);
                         }
                         else
                         {
-                            Touch.GumpPresentation.OpenMenuForTop();
+                            PadRadar.Look();
+                        }
+                    }
+                    else if (Touch.WindowMenu.IsOpen)
+                    {
+                        Touch.WindowMenu.Close();
+                    }
+                    else if (Touch.GumpPresentation.Active)
+                    {
+                        // Mobile layouts keep this button's older job: the window
+                        // menu for the topmost window (ADR-0025).
+                        Touch.GumpPresentation.OpenMenuForTop();
+                    }
+                    else if (inWorld)
+                    {
+                        PadWheel.RunMacro(world, Game.Managers.MacroType.AttackLast);
+                    }
+
+                    return;
+
+                case PadCommand.TargetLast:
+                    if (PadRadar.IsOpen)
+                    {
+                        PadRadar.Step(-1);
+                    }
+                    else if (inWorld)
+                    {
+                        PadWheel.RunMacro(world, Game.Managers.MacroType.LastTarget);
+                    }
+
+                    return;
+
+                case PadCommand.NextHostile:
+                    if (PadRadar.IsOpen)
+                    {
+                        PadRadar.Step(1);
+                    }
+                    else if (inWorld)
+                    {
+                        PadWheel.RunMacro(world, Game.Managers.MacroType.SelectNext, Game.Managers.MacroSubType.Hostile);
+                    }
+
+                    return;
+
+                case PadCommand.WarMode:
+                    if (inWorld)
+                    {
+                        PadWheel.RunMacro(world, Game.Managers.MacroType.WarPeace);
+                    }
+
+                    return;
+
+                case PadCommand.AlwaysRun:
+                    if (inWorld)
+                    {
+                        PadWheel.RunMacro(world, Game.Managers.MacroType.AlwaysRun);
+                    }
+
+                    return;
+
+                case PadCommand.MacroRow:
+                    if (PadScreen.IsOpen)
+                    {
+                        if (pressed && PadScreen.HasItemActions)
+                        {
+                            PadScreen.Equip();
+                        }
+
+                        return;
+                    }
+
+                    if (PadRadar.IsOpen)
+                    {
+                        PadRadar.Context();
+                    }
+                    else if (Touch.TouchInput.Bar is { } bar && bar.HandleShown)
+                    {
+                        bar.ToggleRow();
+                    }
+                    else if (inWorld)
+                    {
+                        // No macro row on this layout (a Deck): the button used to
+                        // call ToggleRow on a bar whose handle is hidden, which
+                        // returns without opening anything.
+                        PadScreen.Open(WheelWindow.Macros);
+                    }
+
+                    return;
+
+                case PadCommand.Options:
+                    if (inWorld)
+                    {
+                        // Adaptive Android keeps the macros drawer on this button;
+                        // elsewhere the pad's Options opens the client settings.
+                        if (Platform.Android.AdaptiveLayout.Active)
+                        {
+                            Platform.Android.AdaptiveLayout.ToggleMacros();
+                        }
+                        else
+                        {
+                            Game.GameActions.OpenSettings(world);
                         }
                     }
 
-                    break;
+                    return;
 
-                case JoyButton.Y:
-                    if (e.Pressed)
+                case PadCommand.Drawer:
+                    if (PadScreen.IsOpen)
                     {
-                        if (Platform.Android.AdaptiveLayout.Active) Platform.Android.AdaptiveLayout.ToggleMacros();
-                        else Touch.TouchInput.Bar?.ToggleRow();
+                        if (pressed && PadScreen.HasItemActions)
+                        {
+                            PadScreen.Context();
+                        }
+
+                        return;
                     }
 
-                    break;
+                    // The one-screen drawer: a no-op with a second screen, or with the panel off.
+                    GUO.Platform.Android.DualScreen.ToggleDrawer();
+
+                    return;
             }
         }
 
@@ -354,42 +699,96 @@ namespace GUO.Input.Gamepad
         {
             switch (e.Axis)
             {
-                case JoyAxis.LeftX:
-                    _stick[2] = e.AxisValue < -StickDeadzone;
-                    _stick[3] = e.AxisValue > StickDeadzone;
-                    UpdateArrows();
-
-                    break;
-
-                case JoyAxis.LeftY:
-                    _stick[0] = e.AxisValue < -StickDeadzone;
-                    _stick[1] = e.AxisValue > StickDeadzone;
-                    UpdateArrows();
-
-                    break;
-
-                case JoyAxis.RightX:
-                    _rightX = e.AxisValue;
-
-                    break;
-
-                case JoyAxis.RightY:
-                    _rightY = e.AxisValue;
-
-                    break;
+                case JoyAxis.LeftX: _leftX = e.AxisValue; break;
+                case JoyAxis.LeftY: _leftY = e.AxisValue; break;
+                case JoyAxis.RightX: _rightX = e.AxisValue; break;
+                case JoyAxis.RightY: _rightY = e.AxisValue; break;
             }
+
+            // Each half of the axis is an input of its own: a trigger, or a
+            // stick pushed one way. A half bound to a job acts on and off.
+            Half(PadInput.Axis(e.Axis, 1), e.AxisValue);
+            Half(PadInput.Axis(e.Axis, -1), -e.AxisValue);
+
+            // The left stick walks, on whatever half is bound to no job.
+            if (e.Axis is JoyAxis.LeftX or JoyAxis.LeftY)
+            {
+                int neg = e.Axis == JoyAxis.LeftX ? 2 : 0;
+                _stick[neg] = e.AxisValue < -StickDeadzone && PadBindings.CommandFor(PadInput.Axis(e.Axis, -1)) == null;
+                _stick[neg + 1] = e.AxisValue > StickDeadzone && PadBindings.CommandFor(PadInput.Axis(e.Axis, 1)) == null;
+                UpdateArrows();
+            }
+        }
+
+        private static void Half(PadInput input, float value)
+        {
+            bool was = _axisOn.Contains(input.Id);
+            bool now = was ? value > PadBindings.AxisOff : value >= PadBindings.AxisOn;
+
+            if (now == was)
+            {
+                return;
+            }
+
+            if (now)
+            {
+                _axisOn.Add(input.Id);
+                _swallow.Remove(input.Id);
+            }
+            else
+            {
+                _axisOn.Remove(input.Id);
+
+                if (_swallow.Remove(input.Id))
+                {
+                    return;
+                }
+            }
+
+            if (PadBindings.CommandFor(input) is PadCommand command)
+            {
+                Dispatch(command, now);
+            }
+        }
+
+        private static void HookWizard()
+        {
+            if (_wizardHooked)
+            {
+                return;
+            }
+
+            _wizardHooked = true;
+            PadWizard.Closed += held =>
+            {
+                _swallow.UnionWith(held);
+                _axisOn.Clear();
+                _leftX = _leftY = _rightX = _rightY = 0f;
+            };
         }
 
         /// <summary>Drop anything held when the gate closes, so nothing keeps walking.</summary>
         internal static void ReleaseAll()
         {
             _touchSource = false;
-            if (_held[0] || _held[1] || _held[2] || _held[3] || _rightX != 0f || _rightY != 0f)
+            _lbHeld = false;
+
+            if (_held[0] || _held[1] || _held[2] || _held[3] || _rightX != 0f || _rightY != 0f || _leftX != 0f || _leftY != 0f)
             {
                 Array.Clear(_dpad);
                 Array.Clear(_stick);
                 UpdateArrows();
-                _rightX = _rightY = 0f;
+                _rightX = _rightY = _leftX = _leftY = 0f;
+            }
+
+            if (PadWheel.IsOpen)
+            {
+                PadWheel.Close();
+            }
+
+            if (PadRadar.IsOpen)
+            {
+                PadRadar.Close();
             }
         }
 
@@ -506,7 +905,10 @@ namespace GUO.Input.Gamepad
             Array.Clear(_dpad);
             Array.Clear(_stick);
             UpdateArrows();
-            _rightX = _rightY = 0;
+            _rightX = _rightY = _leftX = _leftY = 0;
+            _axisOn.Clear();
+            PadWheel.Close();
+            PadRadar.Close();
 
             Describe((int) device, connected ? "connected" : "disconnected");
         }

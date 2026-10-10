@@ -109,7 +109,8 @@ internal static class GamepadProbe
             Check("a key switches it back to KeyboardMouse at once", GUO.Input.InputMode.Current == GUO.Input.InputKind.KeyboardMouse && changes == 2,
                 $"{GUO.Input.InputMode.Current}, {changes} change(s)");
 
-            await Button(host, JoyButton.Start);
+            // Guide: a button bound to no job (Start opens the options now), so it only switches the mode.
+            await Button(host, JoyButton.Guide);
             Vector2 mouse = new Vector2(GUO.Input.Mouse.Position.X, GUO.Input.Mouse.Position.Y);
             Godot.Input.ParseInputEvent(new InputEventMouseMotion { Position = mouse, Relative = new Vector2(1, 0) });
             await InputProbe.Wait(host, 2);
@@ -119,7 +120,7 @@ internal static class GamepadProbe
             Check("a mouse moved a few pixels switches it back; a 1 px jitter does not",
                 stillPad && GUO.Input.InputMode.Current == GUO.Input.InputKind.KeyboardMouse, $"after 1 px: pad {stillPad}; after 12 px: {GUO.Input.InputMode.Current}");
 
-            await Button(host, JoyButton.Start);
+            await Button(host, JoyButton.Guide);
             bool shownAtFirst = !GUO.Input.InputMode.PointerHidden;
             await InputProbe.Wait(host, 300);
             bool hiddenIdle = GUO.Input.InputMode.PointerHidden;

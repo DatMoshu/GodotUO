@@ -92,18 +92,32 @@ namespace GUO.Input
         /// </summary>
         public static JoyButton? ButtonFor(PadAction action)
         {
+            // Read from the action map, so a rebound job shows its new button.
             switch (action)
             {
-                case PadAction.Confirm: return Face(JoyButton.A);
-                case PadAction.Cancel: return Face(JoyButton.B);
-                case PadAction.WindowMenu: return Face(JoyButton.X);
-                case PadAction.Y: return Face(JoyButton.Y);
-                case PadAction.LB: return JoyButton.LeftShoulder;
-                case PadAction.RB: return JoyButton.RightShoulder;
-                case PadAction.Start: return JoyButton.Start;
-                case PadAction.Back: return JoyButton.Back;
+                case PadAction.Confirm: return Bound(PadCommand.Use);
+                case PadAction.Cancel: return Bound(PadCommand.Cancel);
+                case PadAction.WindowMenu: return Bound(PadCommand.AttackLast);
+                case PadAction.Y: return Bound(PadCommand.MacroRow);
+                case PadAction.LB: return Bound(PadCommand.TargetLast);
+                case PadAction.RB: return Bound(PadCommand.NextHostile);
+                case PadAction.Start: return Bound(PadCommand.Options);
+                case PadAction.Back: return Bound(PadCommand.Drawer);
                 default: return null;
             }
+        }
+
+        /// <summary>The printed button bound to a job; null for an axis, nothing, or a face button of an unknown pad.</summary>
+        private static JoyButton? Bound(PadCommand command)
+        {
+            if (PadBindings.For(command) is not PadInput { IsAxis: false } input)
+            {
+                return null;
+            }
+
+            var b = (JoyButton) input.Index;
+
+            return b is JoyButton.A or JoyButton.B or JoyButton.X or JoyButton.Y ? Face(b) : b;
         }
 
         private static JoyButton? Face(JoyButton printed) => PadLayout == GamepadLayout.Unknown ? null : printed;
@@ -161,6 +175,18 @@ namespace GUO.Input
                     // Godot's mouse from a touch: the touch already counted.
                     break;
 
+                case InputEventMouseMotion when MouseKeepsPad:
+                    // A Steam Deck's trackpad is a mouse beside the pad: it moves
+                    // the shared pointer and shows it, and the mode stays Gamepad.
+                    PointerUsed();
+
+                    break;
+
+                case InputEventMouseButton { Pressed: true } when MouseKeepsPad:
+                    PointerUsed();
+
+                    break;
+
                 case InputEventMouseMotion motion:
                     if (Current == InputKind.KeyboardMouse)
                     {
@@ -183,6 +209,29 @@ namespace GUO.Input
                     break;
             }
         }
+
+        /// <summary>For probes: act as if a pad were connected on a Steam Deck (null: look).</summary>
+        public static bool? PadBesideMouse { get; set; }
+
+        private static bool? _steam;
+
+        /// <summary>
+        /// Whether the mouse is a second pointer beside the pad rather than a
+        /// switch away from it: in Gamepad mode, with a pad connected, on a
+        /// Steam Deck or under Steam (Steam Input sends the right trackpad as
+        /// mouse motion and its click as the left button), never on a desktop
+        /// just because Steam is running. Then only a real
+        /// key switches to KeyboardMouse. Elsewhere a moved mouse still
+        /// switches (ADR-0025).
+        /// </summary>
+        public static bool MouseKeepsPad =>
+            Current == InputKind.Gamepad
+            && (PadBesideMouse ?? ((_steam ??= SteamInput()) && Godot.Input.GetConnectedJoypads().Count > 0));
+
+        /// <summary>A Steam Deck, Game Mode, or a game Steam launched: where Steam Input may make a trackpad the mouse.</summary>
+        private static bool SteamInput() =>
+            GUO.Pregame3D.NativeKeyboard.IsSteamDeck || GUO.Pregame3D.NativeKeyboard.IsGameMode
+            || !string.IsNullOrEmpty(OS.GetEnvironment("SteamAppId")) || !string.IsNullOrEmpty(OS.GetEnvironment("SteamClientLaunch"));
 
         private static void UsePad(int device)
         {
