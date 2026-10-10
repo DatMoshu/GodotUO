@@ -1,4 +1,5 @@
 @echo off
+rem Pipeline step 05 (optional): extracts your install's art into a local, gitignored art set and verifies every image against the pages.
 REM ============================================================================
 REM  PIPELINE STEP 05 - extract your install's art into a local art set.
 REM  Optional. Writes atlas pages (land, static art, gumps, texmaps, lights,

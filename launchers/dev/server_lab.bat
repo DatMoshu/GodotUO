@@ -1,4 +1,5 @@
 @echo off
+rem The server compatibility lab: runs GUO's scripted cases against another UO server (ModernUO, ServUO, ...) and rewrites the wiki row; doctor checks the setup.
 REM ============================================================================
 REM  The server compatibility lab: GUO's scripted cases against other UO servers.
 REM
