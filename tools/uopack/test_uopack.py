@@ -389,6 +389,10 @@ def main() -> int:
         test_uop(tmp, rng)
         test_roundtrip(tmp, rng)
         test_new_animation(tmp)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    tmp = Path(tempfile.mkdtemp(prefix="uopack_job_test_"))
+    try:
         case_from_job(tmp)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
