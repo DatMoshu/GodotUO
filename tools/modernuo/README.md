@@ -145,8 +145,8 @@ watches nearby players' `Combatant` and records a hit when engaged.
 ### `patches/0005-guo-pad-attack-record.patch`
 
 Requires `0004-guo-pad-dummies.patch` (the `GuoAttackDummy` type). The
-patch runner sorts full filenames: both `0004` patches and both `0005`
-patches are applied; matching numeric prefixes do not replace one another.
+patch runners use full filenames: both `0005` patches are applied;
+matching numeric prefixes do not replace one another.
 The pad patches and editor-channel/system-message patches touch separate
 code paths and are retained together.
 
