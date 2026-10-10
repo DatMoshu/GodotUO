@@ -271,13 +271,17 @@ public sealed class RoadGraphPass : IGenerationPass
         var q = new Queue<int>();
         for (int i = 0; i < w * h; i++)
             if ((BiomeId)ir.Biome[i] is BiomeId.Mountain or BiomeId.HighMountain) { seen[i] = true; q.Enqueue(i); }
+        // One buffer for the whole walk: stackalloc memory lives until the method returns, so a
+        // stackalloc inside this loop would pile up 16 bytes per dequeued cell and overflow the
+        // thread stack on a large map.
+        Span<int> nbs = stackalloc int[4];
         while (q.Count > 0)
         {
             int c = q.Dequeue();
             int d = dist[c];
             if (d >= clearance) continue;
             int cx = c % w, cy = c / w;
-            Span<int> nbs = stackalloc int[4] { cx > 0 ? c - 1 : -1, cx < w - 1 ? c + 1 : -1, cy > 0 ? c - w : -1, cy < h - 1 ? c + w : -1 };
+            nbs[0] = cx > 0 ? c - 1 : -1; nbs[1] = cx < w - 1 ? c + 1 : -1; nbs[2] = cy > 0 ? c - w : -1; nbs[3] = cy < h - 1 ? c + w : -1;
             foreach (int nb in nbs)
             {
                 if (nb < 0 || seen[nb]) continue;
