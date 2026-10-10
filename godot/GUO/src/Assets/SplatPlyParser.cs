@@ -37,6 +37,7 @@ namespace GUO.Assets
     /// Extra properties of any scalar width count toward the stride (so a
     /// `property uchar red` no longer shifts every later offset); `list`
     /// properties and unknown scalar types are rejected instead of misread.
+    /// Required gaussian properties must be float/float32, not just four bytes wide.
     /// Rotations are (w, x, y, z) with rot_0 = w, per the training convention.
     /// </summary>
     public static class SplatPlyParser
@@ -58,7 +59,7 @@ namespace GUO.Assets
                 throw new InvalidDataException($"{name}: only binary_little_endian PLY supported");
             }
 
-            var props = new List<(string Name, int Size)>();
+            var props = new List<(string Name, string Type, int Size)>();
             int count = 0;
             bool inVertex = false;
             foreach (string line in lines)
@@ -81,7 +82,7 @@ namespace GUO.Assets
                 {
                     if (p.Length == 3 && ScalarWidth(p[1]) is int w)
                     {
-                        props.Add((p[2], w));
+                        props.Add((p[2], p[1], w));
                     }
                     else
                     {
@@ -102,14 +103,14 @@ namespace GUO.Assets
                 want[w] = -1;
             }
 
-            var sizes = new Dictionary<string, int>();
+            var types = new Dictionary<string, string>();
             int stride = 0;
             for (int i = 0; i < props.Count; i++)
             {
                 if (want.ContainsKey(props[i].Name) && want[props[i].Name] < 0)
                 {
                     want[props[i].Name] = stride;
-                    sizes[props[i].Name] = props[i].Size;
+                    types[props[i].Name] = props[i].Type;
                 }
 
                 stride += props[i].Size;
@@ -122,9 +123,9 @@ namespace GUO.Assets
                     throw new InvalidDataException($"{name}: missing required property {w}");
                 }
 
-                if (sizes[w] != 4)
+                if (types[w] is not ("float" or "float32"))
                 {
-                    throw new InvalidDataException($"{name}: required property {w} is not 4 bytes");
+                    throw new InvalidDataException($"{name}: required property {w} must be float/float32, got {types[w]}");
                 }
             }
 

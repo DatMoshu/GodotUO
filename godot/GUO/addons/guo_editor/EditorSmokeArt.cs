@@ -622,9 +622,22 @@ public partial class EditorSmoke
             && GUO.IO.Audio.ZoneAudio.AudioExtensionFor("a.ogg") == null
             && GUO.IO.Audio.ZoneAudio.AudioExtensionFor("a.flac") == null
             && GUO.IO.Audio.ZoneAudio.AudioExtensionFor("") == null);
-        ArtCheck("audio_decode", GUO.IO.Audio.ZoneAudio.DecodeAudio("a.wav", new byte[] { 1, 2 }) is AudioStreamWav
+        ArtCheck("audio_decode", GUO.IO.Audio.ZoneAudio.DecodeAudio("a.wav", WavFixture()) is AudioStreamWav
             && GUO.IO.Audio.ZoneAudio.DecodeAudio("a.mp3", new byte[] { 1, 2 }) is AudioStreamMP3
             && GUO.IO.Audio.ZoneAudio.DecodeAudio("a.ogg", new byte[] { 1, 2 }) == null);
+        foreach (int channels in new[] { 1, 2 })
+        {
+            const int rate = 24000;
+            byte[] bytes = WavFixture(channels, rate);
+            using var decoded = GUO.IO.Audio.ZoneAudio.DecodeAudio("fixture.WAV", bytes) as AudioStreamWav;
+            ArtCheck($"audio_wav_{channels}ch_metadata", decoded != null
+                && decoded.MixRate == rate && decoded.Stereo == (channels == 2)
+                && decoded.Format == AudioStreamWav.FormatEnum.Format16Bits);
+            ArtCheck($"audio_wav_{channels}ch_duration", decoded != null
+                && Math.Abs(decoded.GetLength() - 80.0 / rate) < 1e-6);
+            ArtCheck($"audio_wav_{channels}ch_samples", decoded != null
+                && decoded.Data.SequenceEqual(bytes.Skip(44)));
+        }
         if (Zones == null)
         {
             ArtCheck("audio_format", false, "no Regions dock");
@@ -660,24 +673,28 @@ public partial class EditorSmoke
         }
     }
 
-    private static byte[] WavFixture()
+    private static byte[] WavFixture(int channels = 1, int rate = 22050)
     {
+        int dataLength = 80 * channels * 2;
         var b = new List<byte>();
         b.AddRange(Encoding.ASCII.GetBytes("RIFF"));
-        b.AddRange(BitConverter.GetBytes(36 + 160));
+        b.AddRange(BitConverter.GetBytes(36 + dataLength));
         b.AddRange(Encoding.ASCII.GetBytes("WAVEfmt "));
         b.AddRange(BitConverter.GetBytes(16));
         b.AddRange(BitConverter.GetBytes((short)1));
-        b.AddRange(BitConverter.GetBytes((short)1));
-        b.AddRange(BitConverter.GetBytes(22050));
-        b.AddRange(BitConverter.GetBytes(44100));
-        b.AddRange(BitConverter.GetBytes((short)2));
+        b.AddRange(BitConverter.GetBytes((short)channels));
+        b.AddRange(BitConverter.GetBytes(rate));
+        b.AddRange(BitConverter.GetBytes(rate * channels * 2));
+        b.AddRange(BitConverter.GetBytes((short)(channels * 2)));
         b.AddRange(BitConverter.GetBytes((short)16));
         b.AddRange(Encoding.ASCII.GetBytes("data"));
-        b.AddRange(BitConverter.GetBytes(160));
+        b.AddRange(BitConverter.GetBytes(dataLength));
         for (int i = 0; i < 80; i++)
         {
-            b.AddRange(BitConverter.GetBytes((short)(Math.Sin(i / 80.0 * Math.PI * 2) * 8000)));
+            for (int channel = 0; channel < channels; channel++)
+            {
+                b.AddRange(BitConverter.GetBytes((short)(Math.Sin(i / 80.0 * Math.PI * 2) * (8000 - channel * 2000))));
+            }
         }
 
         return b.ToArray();
@@ -818,6 +835,35 @@ public partial class EditorSmoke
         ArtCheck("ply_extra_uchar_stride", p2.Gaussians.Length == 1
             && Math.Abs(p2.Gaussians[0].Dc1 - 0.2f) < 1e-6 && Math.Abs(p2.Gaussians[0].Opacity - 0.5f) < 1e-6
             && Math.Abs(p2.Gaussians[0].Rot0 - 1f) < 1e-6);
+
+        var float32 = GUO.Assets.SplatPlyParser.Parse(
+            BuildPly(wanted.Select(w => ("float32", w)).ToList(), new[] { Floats(vals) }, 1), "float32");
+        ArtCheck("ply_float32_alias", Math.Abs(float32.Gaussians[0].Opacity - 0.5f) < 1e-6);
+        foreach (string type in new[] { "int", "uint", "int32", "uint32" })
+        {
+            bool rejected = false;
+            var properties = wanted.Select(w => (w == "opacity" ? type : "float", w)).ToList();
+            byte[] integerBody = Floats(vals);
+            BitConverter.GetBytes(1).CopyTo(integerBody, 6 * 4);
+            try
+            {
+                GUO.Assets.SplatPlyParser.Parse(BuildPly(properties, new[] { integerBody }, 1), type);
+            }
+            catch (InvalidDataException ex)
+            {
+                rejected = ex.Message.Contains("required property opacity must be float/float32");
+            }
+            ArtCheck($"ply_required_{type}_rejected", rejected);
+        }
+
+        var withInt = wanted.Take(7).Select(w => ("float", w)).Concat(new[] { ("int", "extra") })
+            .Concat(wanted.Skip(7).Select(w => ("float", w))).ToList();
+        var intBody = new List<byte>(Floats(vals.Take(7).ToArray()));
+        intBody.AddRange(BitConverter.GetBytes(42));
+        intBody.AddRange(Floats(vals.Skip(7).ToArray()));
+        var extraInt = GUO.Assets.SplatPlyParser.Parse(BuildPly(withInt, new[] { intBody.ToArray() }, 1), "extra-int");
+        ArtCheck("ply_extra_int_stride", Math.Abs(extraInt.Gaussians[0].Opacity - 0.5f) < 1e-6
+            && Math.Abs(extraInt.Gaussians[0].Rot0 - 1f) < 1e-6);
 
         bool truncated = false;
         try

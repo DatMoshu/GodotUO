@@ -84,7 +84,7 @@ namespace GUO.IO.Audio
 
             if ((fileName ?? "").EndsWith(".wav", StringComparison.OrdinalIgnoreCase))
             {
-                return new Godot.AudioStreamWav { Data = bytes };
+                return Godot.AudioStreamWav.LoadFromBuffer(bytes);
             }
 
             if ((fileName ?? "").EndsWith(".mp3", StringComparison.OrdinalIgnoreCase))

@@ -174,13 +174,24 @@ public partial class EditorSmoke
             && (int?)manifest?["splats"]?["smoke-splat"]?["placement"]?["y"] == 100,
             manifest?.ToJsonString() ?? "none");
 
-        string applied = Studio.ApplyZone("smoke-studio", "0,0,0,0,0");
-        StudioCheck("zone_applied", applied.StartsWith("theme smoke-studio"), applied);
-        StudioCheck("theme_active", GUO.Game.Managers.ThemeManager.Active.Count == 1,
-            GUO.Game.Managers.ThemeManager.Active.Count.ToString());
-        string cleared = Studio.ClearThemes();
-        StudioCheck("themes_cleared", cleared.StartsWith("themes cleared")
-            && GUO.Game.Managers.ThemeManager.Active.Count == 0, cleared);
+        // Apply the theme saved by StudioCheckDirect, not an unrelated theme
+        // from the developer's environment or the world project's themes folder.
+        string savedVariantDir = System.Environment.GetEnvironmentVariable("GUO_VARIANT_DIR");
+        try
+        {
+            System.Environment.SetEnvironmentVariable("GUO_VARIANT_DIR", Path.Combine(_out, $"studio_variants{Suffix}"));
+            string applied = Studio.ApplyZone("smoke-studio", "0,0,0,0,0");
+            StudioCheck("zone_applied", applied.StartsWith("theme smoke-studio"), applied);
+            StudioCheck("theme_active", GUO.Game.Managers.ThemeManager.Active.Count == 1,
+                GUO.Game.Managers.ThemeManager.Active.Count.ToString());
+            string cleared = Studio.ClearThemes();
+            StudioCheck("themes_cleared", cleared.StartsWith("themes cleared")
+                && GUO.Game.Managers.ThemeManager.Active.Count == 0, cleared);
+        }
+        finally
+        {
+            System.Environment.SetEnvironmentVariable("GUO_VARIANT_DIR", savedVariantDir);
+        }
     }
 
     private void StudioCleanup()
