@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
-# ============================================================================
-#  Restores the pinned Godot build into tools/godot (it is gitignored).
-#  No-op if the pinned version is already present. Twin of fetch_godot.bat.
-# ============================================================================
+# Downloads the pinned Godot build into tools/godot (or UO_GODOT_HOME) unless it is already there, and prints each step.
 set -euo pipefail
 GUO_NEEDS_GODOT=0 . "$(dirname "$0")/../_shared/common.sh"
 
@@ -19,7 +16,7 @@ tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 echo "[fetch] Downloading $url"
 curl -fL --progress-bar -o "$tmp/$asset" "$url"
-echo "[fetch] Extracting to $UO_TOOLS/godot"
-unzip -q -o "$tmp/$asset" -d "$UO_TOOLS/godot"
+echo "[fetch] Extracting to $UO_GODOT_HOME"
+unzip -q -o "$tmp/$asset" -d "$UO_GODOT_HOME"
 chmod +x "$GODOT_EXE"
 echo "[fetch] Done."

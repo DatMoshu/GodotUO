@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Run the local dev shard (Ctrl-C to stop). Twin of run.bat.
+# Runs the local ModernUO dev shard in the foreground, printing its console until Ctrl+C.
+set -euo pipefail
 GUO_NEEDS_GODOT=0 . "$(dirname "$0")/../_shared/common.sh" || exit 1
 
 if [ ! -x "$UO_SHARD_DIST/ModernUO" ]; then

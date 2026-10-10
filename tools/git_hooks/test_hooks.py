@@ -24,7 +24,7 @@ class HookTests(unittest.TestCase):
         git(self.root, "config", "user.name", "Fixture")
         git(self.root, "config", "user.email", "test@example.com")
         git(self.root, "config", "commit.gpgsign", "false")
-        for tool in ("docs_lint", "privacy_scan"):
+        for tool in ("docs_lint", "launcher_lint", "privacy_scan"):
             shutil.copytree(ROOT / "tools" / tool, self.root / "tools" / tool,
                             ignore=shutil.ignore_patterns("deny.local.txt", "__pycache__"))
         (self.root / "README.md").write_text("# Fixture\n", encoding="utf-8")

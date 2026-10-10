@@ -1,4 +1,5 @@
 @echo off
+rem Exports the Linux x86_64 build headless into build/steamdeck and writes build/steamdeck/export.log.
 REM ============================================================================
 REM  Exports the Linux x86_64 build headless into build\steamdeck: GUO.x86_64,
 REM  GUO.pck and the .NET data folder. Log: build\steamdeck\export.log.

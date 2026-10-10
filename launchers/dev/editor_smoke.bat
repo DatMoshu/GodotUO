@@ -1,4 +1,6 @@
 @echo off
+rem Opens the Godot editor on the project, lets the GUO add-on check its docks against the real client install, and writes a report and screenshots to build/editor_smoke.
+rem args: --headless | --reload
 REM ============================================================================
 REM  Opens the Godot editor on the project and lets the GUO editor addon check
 REM  itself against the real client install: the UO docks load, an art search

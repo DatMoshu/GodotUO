@@ -1,4 +1,5 @@
 @echo off
+rem Stops the private ServUO shard started by servuo/start and prints the result.
 REM ============================================================================
 REM  The private ServUO shard (127.0.0.1:2596): stop. See tools\servuo\README.md.
 REM ============================================================================

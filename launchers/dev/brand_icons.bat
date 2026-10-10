@@ -1,4 +1,5 @@
 @echo off
+rem Rebuilds every app icon and the splash from design/brand/guo-sigil.png and lists the files it wrote.
 REM ============================================================================
 REM  Rebuilds every app icon from design\brand\guo-sigil.png: icon.png,
 REM  icon.ico, splash.png and the four Android launcher PNGs. Run it when

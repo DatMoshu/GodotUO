@@ -1,4 +1,5 @@
 @echo off
+rem Checks every required UO data file is present, detects the client version and writes build/client_manifest.json; never writes into the install.
 REM ============================================================================
 REM  PIPELINE STEP 01 - verify the UO client data the runtime will read.
 REM  Checks every required .mul/.uop/.idx is present, detects the client

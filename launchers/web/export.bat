@@ -1,4 +1,5 @@
 @echo off
+rem Exports the web build headless into build/web and writes the export log to build/web/export.log.
 REM ============================================================================
 REM  Exports the web build headless into build\web. Fails today (see
 REM  doctor); the exact refusal lands in build\web\export.log.

@@ -1,4 +1,5 @@
 @echo off
+rem Builds the private ServUO shard (127.0.0.1:2596) from its fetched source and prints the build result.
 REM ============================================================================
 REM  The private ServUO shard (127.0.0.1:2596): build. See tools\servuo\README.md.
 REM ============================================================================

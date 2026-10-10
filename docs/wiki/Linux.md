@@ -1,14 +1,21 @@
 # Linux
 
 Developing and playing on a Linux desktop, from the same clone. Every
-launcher the desktop needs has a `.sh` twin beside its `.bat`; each one
-sources `launchers/_shared/common.sh`, which resolves the
-[Configuration](Configuration.md) and locates the engine.
+launcher has a `.sh` twin beside its `.bat`, with the same name, the same
+description line and the same behaviour; each one sources
+`launchers/_shared/common.sh`, which resolves the
+[Configuration](Configuration.md) and locates the engine. A launcher that
+only works on Windows (the `windows/` exports, the ServUO shard, the
+plugin probe, side by side) still has its `.sh`, which says why and exits 2.
 
-Settings are still written in `launchers/_shared/config.local.bat`, on Linux
-too. `common.sh` does not run it: `tools/shellenv` reads it through
-`tools/guo/config.py`, in the usual order (environment, `config.local.bat`,
-`config.bat`), and exports the result. One file of settings serves every OS.
+Settings are written in `launchers/_shared/config.local.sh` (yours,
+gitignored, from `config.local.sh.example`) over the defaults in
+`config.sh`: the twins of `config.local.bat` and `config.bat`, with the same
+keys, in the same order (environment, `config.local.sh`, `config.sh`).
+`common.sh` sources them, then `tools/shellenv` adds the derived paths
+through `tools/guo/config.py`, which reads the same two files on Linux. A
+machine that only has a `config.local.bat` keeps it: it is read when there is
+no `config.local.sh`.
 
 The [Steam Deck](Steam-Deck.md) page is a different job: it exports a
 standalone build and pushes it to a Deck over ssh.
@@ -38,10 +45,10 @@ export DOTNET_ROOT=~/.dotnet PATH=~/.dotnet:$PATH
 ## From a fresh clone
 
 ```sh
-cp launchers/_shared/config.local.bat.example launchers/_shared/config.local.bat
-# set UO_CLIENT_DATA (and UO_CLIENT_VERSION) in it, with forward slashes
+cp launchers/_shared/config.local.sh.example launchers/_shared/config.local.sh
+# set UO_CLIENT_DATA (and UO_CLIENT_VERSION) in it
 launchers/pipeline/00_bootstrap.sh       # engine, upstream reference, data check
-launchers/dev/smoke.sh                   # the six-step health check
+launchers/dev/smoke.sh                   # the seven-step health check
 launchers/game/play.sh                   # run it
 ```
 

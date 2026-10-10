@@ -1,4 +1,6 @@
 @echo off
+rem Exports, installs and logs in a build on the attached dual-screen device, photographs both displays into build/android and fails if the second screen never comes up.
+rem args: --args "<client flags>"
 REM ============================================================================
 REM  The second-screen probe: export a build with --dual-probe baked in,
 REM  install it, launch it, log in, wait for logcat to say the second screen

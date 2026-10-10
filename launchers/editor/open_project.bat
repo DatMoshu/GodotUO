@@ -1,4 +1,6 @@
 @echo off
+rem Builds the C#, then opens the GUO project in the pinned Godot editor, which detaches (start) so this returns at once.
+rem args: -- <Godot flags>
 REM Opens the GUO Godot project in the pinned editor, with the UO docks
 REM (addons\guo_editor: UO Assets on the left, UO Inspector on the right).
 REM

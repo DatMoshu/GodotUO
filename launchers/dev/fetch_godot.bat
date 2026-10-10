@@ -1,4 +1,5 @@
 @echo off
+rem Downloads the pinned Godot build into tools/godot (or UO_GODOT_HOME) unless it is already there, and prints each step.
 REM ============================================================================
 REM  Restores the pinned Godot build into tools\godot (it is gitignored), or
 REM  into UO_GODOT_HOME when that is set.

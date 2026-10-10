@@ -1,4 +1,5 @@
 @echo off
+rem Runs the local ModernUO dev shard in the foreground, printing its console until Ctrl+C.
 REM ============================================================================
 REM  Run the local dev shard.
 REM

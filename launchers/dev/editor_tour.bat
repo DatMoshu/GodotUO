@@ -1,4 +1,6 @@
 @echo off
+rem Records a captioned tour of every GUO editor feature as an MP4 under build/editor_tour; an editor window opens without taking focus.
+rem args: --no-live
 REM ============================================================================
 REM  A scripted tour of every GUO editor feature, recorded as an MP4.
 REM  Opens the editor window (without taking focus), walks the features with a

@@ -1,4 +1,5 @@
 @echo off
+rem Lists what a Windows export needs (templates, the sigil icon and splash, project settings) and what this machine has.
 REM ============================================================================
 REM  Says what a Godot 4.7 .NET Windows export needs and what this machine
 REM  has: templates, the sigil icon and splash, the project settings that

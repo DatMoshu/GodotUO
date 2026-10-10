@@ -1,4 +1,6 @@
 @echo off
+rem Lists what an Android export needs on this machine (JDK 17, SDK, templates, keystore, a device) and prints the fix for each missing piece.
+rem args: --publish
 REM ============================================================================
 REM  Says what a Godot 4.7 .NET Android export needs on this machine and what
 REM  is missing: JDK 17, the Android SDK, the mono export templates, the debug

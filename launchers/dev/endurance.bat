@@ -1,4 +1,6 @@
 @echo off
+rem Plays a long session against the shard (five minutes unless given seconds) and fails if frame time, object count or memory drift between its first and last stretch.
+rem args: <seconds>
 REM ============================================================================
 REM  Plays a long session and checks the client is the same at the end of it.
 REM

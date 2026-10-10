@@ -11,8 +11,15 @@ resolves the same values in the same order:
 4. an optional **central shared config** named by `UO_COMMON_CONFIG`, for a
    machine hosting several projects.
 
-`tools\guo\config.py` parses the same `.bat` files when a tool runs outside a
-launcher, so the editor, an agent and CI see the same paths. No launcher,
+On Linux and macOS the `.sh` launchers read the twins, `config.sh` and
+`config.local.sh` (from `config.local.sh.example`): the same keys in
+`: "${NAME:=VALUE}"` lines, resolved in the same order, with forward-slash
+paths. `tools\launcher_lint` fails a `config.sh` whose keys differ from
+`config.bat`'s, so a new setting goes in both.
+
+`tools\guo\config.py` parses the same files when a tool runs outside a
+launcher (the `.bat` pair on Windows, the `.sh` pair elsewhere), so the
+editor, an agent and CI see the same paths. No launcher,
 tool or runtime hardcodes a path. CI rejects a commit that puts a machine
 path anywhere but `config.local.bat`.
 

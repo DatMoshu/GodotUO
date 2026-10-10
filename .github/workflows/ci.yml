@@ -47,6 +47,11 @@ jobs:
           python3 tools/docs_lint/test_docs_lint.py
           python3 tools/docs_lint/run.py
 
+      - name: Launchers are .bat/.sh pairs with a description
+        run: |
+          python3 tools/launcher_lint/test_launcher_lint.py
+          python3 tools/launcher_lint/run.py
+
       - name: Server adapter generation and deployment guards
         run: python3 tools/server_adapters/tests/test_adapters.py
 
@@ -63,6 +68,10 @@ jobs:
         run: |
           if git ls-files --error-unmatch launchers/_shared/config.local.bat 2>/dev/null; then
             echo "::error::config.local.bat is per-machine and must stay untracked"
+            exit 1
+          fi
+          if git ls-files --error-unmatch launchers/_shared/config.local.sh 2>/dev/null; then
+            echo "::error::config.local.sh is per-machine and must stay untracked"
             exit 1
           fi
 

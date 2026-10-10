@@ -1,4 +1,5 @@
 @echo off
+rem Starts the installed client on the attached device and streams its logcat here until Ctrl+C; the app keeps running afterwards.
 REM ============================================================================
 REM  Starts the installed client on the device and streams its logcat,
 REM  filtered to the engine, the .NET runtime and crashes. Ctrl+C stops the
