@@ -2006,7 +2006,9 @@ Expectations. A condition the runner does not know fails the step ("unknown expe
 
 **Variables.** `$name` or `${name}` in any string of `do` or `expect` is replaced before the step runs: from
 `--var name=value`, else from the environment variable `GUO_SCENARIO_<NAME>` (credentials live there or in
-`config.local.bat`, never in a file). A variable nobody defined stops the run before launch (exit 2); it is
+`config.local.bat`, never in a file). A variable whose name contains `password` (`$password`, `$new_password`
+in `shard.admin_add_account`) comes from `GUO_SCENARIO_<NAME>` only: `--var new_password=` warns
+and names that variable, because a command line shows in the process list and the shell history. A variable nobody defined stops the run before launch (exit 2); it is
 never replaced by `""`. Events and the manifest record steps **as written**, so no log holds what `$name` stood
 for.
 
@@ -2014,7 +2016,7 @@ for.
 `GUO_SHARD_<TARGET>_HOST` and `GUO_SHARD_<TARGET>_PORT` (target upper-cased, `-` and `.` as `_`), the account
 from the scenario's variables. `editor_shard` is the local editor shard; a remote shard is the `id` of its host
 profile (section 35). Nothing about a remote shard's address or account is committed.
-`run.py --shard TARGET` names the target from the command line, for a client scenario: it replaces `requires.shard` for that run, reads the two settings above (a missing one stops the run, naming it) and `GUO_SCENARIO_ACCOUNT` / `GUO_SCENARIO_PASSWORD`, and starts the client against that address.
+`run.py --shard TARGET` names the target from the command line, for a client scenario: it replaces `requires.shard` for that run, reads the two settings above (a missing one stops the run, naming it) and `GUO_SCENARIO_ACCOUNT` / `GUO_SCENARIO_PASSWORD` (the password from the environment only), and starts the client against that address.
 `run.py --server NAME` does the same from a server profile of the workspace (section 30), found by `Id` or `Name` (case-insensitive; exactly one must match): the profile's `Host` and `Port` are the address, the login is read as for `--shard`, and `requires.shard` becomes `server:<profile Id>`. `--shard` and `--server` are not given together.
 
 ### The human driver (`--driver human`, client and editor scenarios)

@@ -65,12 +65,21 @@ def machine_key() -> str:
     return hashlib.sha1(socket.gethostname().encode()).hexdigest()[:8]
 
 
+def env_only(name: str) -> bool:
+    """A credential (any name containing 'password', e.g. new_password): a command line shows in the process list and
+    the shell history, so it belongs in GUO_SCENARIO_<NAME>."""
+    return "password" in name.lower()
+
+
 def parse_vars(items: list[str]) -> dict[str, str]:
     out: dict[str, str] = {}
     for item in items:
         if "=" not in item:
             raise sc.ScenarioError(f"--var needs name=value, got {item}")
         k, v = item.split("=", 1)
+        if env_only(k):
+            print(f"warning: --var {k}= puts a credential on the command line; set GUO_SCENARIO_{k.upper()} in the "
+                  "environment (or config.local.bat) instead", file=sys.stderr)
         out[k] = v
     return out
 
@@ -85,7 +94,7 @@ def target_key(target: str) -> str:
 
 def resolve_shard_target(target: str, root: Path, variables: dict[str, str]) -> tuple[str, int]:
     """`--shard TARGET`: the address from GUO_SHARD_<TARGET>_HOST / _PORT (environment, then the launcher config files) and
-    the login from GUO_SCENARIO_ACCOUNT / GUO_SCENARIO_PASSWORD (or --var account= / password=). A missing or bad one is an
+    the login from GUO_SCENARIO_ACCOUNT (or --var account=) / GUO_SCENARIO_PASSWORD (environment only). A missing or bad one is an
     error that names the setting, never a default. Returns (host, port); the values themselves are never logged."""
     key = target_key(target)
     missing = []

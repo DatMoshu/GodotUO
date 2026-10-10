@@ -825,3 +825,43 @@ def test_unset_registration_settings_warn_and_register_nothing(cli_root, monkeyp
     warns = [e for e in warns if e["kind"] == "warn"]
     assert len(warns) == 1 and warns[0]["detail"]["unset"] == ["GUO_RUNS_SHARED_DIR", "GUO_RUNS_DB"]
     assert not list(tmp_path.rglob("*.db")) and (run_dir / "run.json").is_file()
+
+
+def test_var_password_warns_and_names_the_env_var(capsys):
+    assert run_mod.parse_vars(["password=hunter2", "account=gm1"]) == {"password": "hunter2", "account": "gm1"}
+    err = capsys.readouterr().err
+    assert "--var password=" in err and "GUO_SCENARIO_PASSWORD" in err and "hunter2" not in err
+    run_mod.parse_vars(["account=gm1"])
+    assert capsys.readouterr().err == ""                              # only the password warns
+
+
+def test_missing_password_hint_names_the_env_var_only(monkeypatch):
+    for var in ("GUO_SCENARIO_PASSWORD", "GUO_SCENARIO_ACCOUNT"):
+        monkeypatch.delenv(var, raising=False)
+    with pytest.raises(sc.ScenarioError) as ex:
+        sc.substitute("$password", {})
+    assert "GUO_SCENARIO_PASSWORD" in str(ex.value) and "--var" not in str(ex.value)
+    with pytest.raises(sc.ScenarioError) as ex:
+        sc.substitute("$account", {})
+    assert "--var account=" in str(ex.value)
+
+
+def test_var_any_password_name_warns(capsys):
+    assert run_mod.parse_vars(["new_password=hunter2", "new_account=bob"]) == {"new_password": "hunter2", "new_account": "bob"}
+    err = capsys.readouterr().err
+    assert "--var new_password=" in err and "GUO_SCENARIO_NEW_PASSWORD" in err and "hunter2" not in err
+    assert "new_account" not in err                                   # only the password-named one warns
+    with pytest.raises(sc.ScenarioError) as ex:
+        sc.substitute("$new_password", {})
+    assert "GUO_SCENARIO_NEW_PASSWORD" in str(ex.value) and "--var" not in str(ex.value)
+
+
+def test_every_scenario_password_reads_its_env_var(monkeypatch):
+    """Each committed scenario that names a *password variable gets it from GUO_SCENARIO_<NAME> when --var is unset."""
+    root = Path(__file__).resolve().parents[2] / "tools" / "scenarios"
+    names = {m.group(1) for path in root.rglob("*.scenario.json")
+             for m in sc._VAR.finditer(path.read_text(encoding="utf-8")) if "password" in m.group(1).lower()}
+    assert {"password", "new_password"} <= names                     # login scenarios and shard.admin_add_account
+    for name in names:
+        monkeypatch.setenv(f"GUO_SCENARIO_{name.upper()}", f"from-env-{name}")
+        assert sc.substitute(f"${name}", {}) == f"from-env-{name}"
