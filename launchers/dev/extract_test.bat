@@ -1,4 +1,5 @@
 @echo off
+rem Proves ExtractDecal headless: two PNGs in, decal out, stats printed.
 REM ============================================================================
 REM  Proves ExtractDecal without a shard or a window: loads two PNGs,
 REM  subtracts the capture from the repaint, saves the decal, prints stats.

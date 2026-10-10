@@ -360,14 +360,16 @@ namespace GUO.IO.Audio
                     dt = 0f;
                 }
 
-                // A new zone (or none) takes over: swap the track, then ramp.
+                // A new zone takes over: swap the track, then ramp. Leaving a
+                // zone keeps the ramp value so it fades out instead of
+                // cutting (the exit branch below stops at silence).
                 if (_currentZone != inside?.Name)
                 {
                     _currentZone = inside?.Name;
                     _trackIndex = 0;
-                    _audible = 0f;
                     if (inside != null)
                     {
+                        _audible = 0f;
                         PlayTrack(inside, -60f);
                         Status = $"fading in {inside.Name}/{inside.Tracks[_trackIndex]}";
                     }
@@ -391,7 +393,7 @@ namespace GUO.IO.Audio
 
                 if (inside == null)
                 {
-                    if (_audible <= 0f && _currentZone != null)
+                    if (_audible <= 0f)
                     {
                         Stop();
                         Status = "idle";

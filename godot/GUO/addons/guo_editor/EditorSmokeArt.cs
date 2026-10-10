@@ -804,8 +804,10 @@ public partial class EditorSmoke
         var withFloat = wanted.Select(w => ("float", w)).Concat(new[] { ("float", "f_rest_0") }).ToList();
         var p1 = GUO.Assets.SplatPlyParser.Parse(
             BuildPly(withFloat, new[] { Floats(vals.Concat(new[] { 9f }).ToArray()) }, 1), "extra-float");
+        // Positions/scales are normalized; DC/opacity/rotation pass through.
         ArtCheck("ply_extra_float", p1.Gaussians.Length == 1
-            && Math.Abs(p1.Gaussians[0].X - 1f) < 1e-6 && Math.Abs(p1.Gaussians[0].Rot0 - 1f) < 1e-6);
+            && Math.Abs(p1.Gaussians[0].Dc0 - 0.1f) < 1e-6 && Math.Abs(p1.Gaussians[0].Opacity - 0.5f) < 1e-6
+            && Math.Abs(p1.Gaussians[0].Rot0 - 1f) < 1e-6);
 
         var withUchar = wanted.Take(7).Select(w => ("float", w)).Concat(new[] { ("uchar", "red") })
             .Concat(wanted.Skip(7).Select(w => ("float", w))).ToList();
@@ -814,8 +816,8 @@ public partial class EditorSmoke
         body.AddRange(Floats(vals.Skip(7).ToArray()));
         var p2 = GUO.Assets.SplatPlyParser.Parse(BuildPly(withUchar, new[] { body.ToArray() }, 1), "extra-uchar");
         ArtCheck("ply_extra_uchar_stride", p2.Gaussians.Length == 1
-            && Math.Abs(p2.Gaussians[0].X - 1f) < 1e-6 && Math.Abs(p2.Gaussians[0].Rot0 - 1f) < 1e-6
-            && Math.Abs(p2.Gaussians[0].Scale0) < 1e-6);
+            && Math.Abs(p2.Gaussians[0].Dc1 - 0.2f) < 1e-6 && Math.Abs(p2.Gaussians[0].Opacity - 0.5f) < 1e-6
+            && Math.Abs(p2.Gaussians[0].Rot0 - 1f) < 1e-6);
 
         bool truncated = false;
         try

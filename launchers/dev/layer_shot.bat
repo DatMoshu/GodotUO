@@ -1,4 +1,5 @@
 @echo off
+rem Photographs a terrain layer: probe login, shard [go, two frames saved, quits.
 REM ============================================================================
 REM  Photographs a terrain layer: logs in on a probe account, says the shard
 REM  [go, lets the scene settle, saves two frames, quits. For iterating on
