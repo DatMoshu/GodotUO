@@ -86,7 +86,7 @@ Things to know:
   the name `GUO`; a test fails if it drifts from the template in any other way). Same pin and patches as `guo-dev`,
   `MemoryMax=4G`, a daily backup timer. With auto creation off the owner makes every other account in game: the
   `shard.admin_add_account` scenario drives the Admin gump (`--no-record`: the gump's layout changes at the movie's
-  1280x720), and `login_probe.py` says whether a login is accepted without a client. The generated `muo-run.sh` always
+  1280x720; the new account's password comes from `GUO_SCENARIO_NEW_PASSWORD`, never `--var`), and `login_probe.py` says whether a login is accepted without a client. The generated `muo-run.sh` always
   unsets `UO_SHARD_GM_ACCOUNTS` (patch 0001's dev-only list of game master accounts), so no env file can turn it on. The ordered host steps live in a local `build/muo/guo-vps/COMMANDS.md`, not in git.
 
 ## Container dry run

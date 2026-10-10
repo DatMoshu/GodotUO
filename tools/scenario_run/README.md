@@ -38,7 +38,9 @@ It reads `GUO_SHARD_<TARGET>_HOST` and `GUO_SHARD_<TARGET>_PORT` (target upper-c
 `config.local.bat`, then `config.bat`) and the login from `GUO_SCENARIO_ACCOUNT` (or `--var account=`) and
 `GUO_SCENARIO_PASSWORD`. The password comes from the environment only: `--var password=` still works but warns and
 names the variable, since a command line shows in the process list and the shell history. A missing one stops the run before launch (exit 2) with the setting's name; the
-values are never printed or logged. The run's manifest records the target as `shard`.
+values are never printed or logged. The run's manifest records the target as `shard`. Every
+variable whose name contains `password` is environment only the same way: `shard.admin_add_account`'s `$new_password` comes from
+`GUO_SCENARIO_NEW_PASSWORD`, and `--var new_password=` warns.
 
 Not yet (the commands exist in the plan, not in the runner):
 

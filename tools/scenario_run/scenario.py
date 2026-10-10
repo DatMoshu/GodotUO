@@ -155,7 +155,7 @@ def substitute(value, variables: dict[str, str]):
             env = os.environ.get("GUO_SCENARIO_" + name.upper())
             if env is not None:
                 return env
-            hint = "" if name == "password" else f" or pass --var {name}=..."  # a password is environment only
+            hint = "" if "password" in name.lower() else f" or pass --var {name}=..."  # a password is environment only
             raise ScenarioError(f"scenario variable ${name} is not defined (set GUO_SCENARIO_{name.upper()}{hint})")
         return _VAR.sub(repl, value)
     if isinstance(value, list):

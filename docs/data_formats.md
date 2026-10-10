@@ -1917,7 +1917,8 @@ Expectations. A condition the runner does not know fails the step ("unknown expe
 
 **Variables.** `$name` or `${name}` in any string of `do` or `expect` is replaced before the step runs: from
 `--var name=value`, else from the environment variable `GUO_SCENARIO_<NAME>` (credentials live there or in
-`config.local.bat`, never in a file). `$password` comes from `GUO_SCENARIO_PASSWORD` only: `--var password=` warns
+`config.local.bat`, never in a file). A variable whose name contains `password` (`$password`, `$new_password`
+in `shard.admin_add_account`) comes from `GUO_SCENARIO_<NAME>` only: `--var new_password=` warns
 and names that variable, because a command line shows in the process list and the shell history. A variable nobody defined stops the run before launch (exit 2); it is
 never replaced by `""`. Events and the manifest record steps **as written**, so no log holds what `$name` stood
 for.
