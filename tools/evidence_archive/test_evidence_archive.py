@@ -74,8 +74,3 @@ def test_size_limit(repo):
     evidence = main / "build" / "director_evidence"
     assert run.main(["--dir", str(evidence), "archive", str(wt), "a1", "--max-mb", "1"]) == 1
     assert not (evidence / "a1").exists()
-
-
-def test_ci01_planted_failure():
-    # CI-01 gate: planted to prove the pooled step turns CI red; reverted in the next commit.
-    assert 1 == 2, "CI-01 planted failure"

@@ -82,7 +82,6 @@ internal static class AtomicWriteTests
             Require(Directory.GetFiles(Path.GetDirectoryName(objects.Path)).Length == 1, "a failed save left a temporary file");
         }
 
-        Require(false, "CI-01 planted failure");
         Console.WriteLine("PASS: atomic project writes (interrupted write and failed save leave the old file whole, no temporaries, same bytes)");
     }
 
