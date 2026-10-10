@@ -30,6 +30,8 @@ namespace GUO.Game.UI.Gumps
 
         NameOverHeadHandler,
 
+        // PORT DEVIATION (GUO): in-game authoring gumps have no upstream
+        // counterpart; the enum grows with them (SplatPlacer here).
         SplatPlacer
     }
 }
