@@ -1,4 +1,4 @@
-"""The Admin tab, driven in a real editor against the private instance (sprint "Admin tab", AD1, AD2a, AD2b).
+"""The Admin tab, driven in a real editor against the private instance (sprint "Admin tab", AD1, AD2a, AD2b, AD4).
 
     python tools/editor_shard/run.py admin-tab [--windowed]
 
@@ -19,7 +19,17 @@ not touched) with the addon's scripted Admin run (EditorSmokeAdmin.cs). In it:
    it selected Go there, Respawn and Clear are on (no staff character is
    online, and the hint says so), Respawn replaces its horses and Clear removes them
    (AD2b, pressed as buttons); its delete removes it;
-6. the run bar stops the server.
+6. the Settings form (AD4) reads the shard's configuration with plain labels
+   and its secrets masked, marks values out of range and will not save them,
+   then Save and restart writes one account fewer per address, saves every
+   7 minutes and a test mail password, keeping the previous files; the
+   restarted server reports the new values, the password is in the scratch
+   workspace's secrets file and the server's own file, and not in the
+   previous copies;
+7. the run bar stops the server.
+
+The shard's Configuration folder is copied aside first and put back after, so
+the check leaves the private shard's settings as they were.
 
 Then it checks that every time in the tab's log is UTC with a Z, and that
 neither the token nor a password reached the editor's output, the tab's log,
@@ -33,6 +43,7 @@ from __future__ import annotations
 
 import json
 import re
+import secrets as secret_source
 import shutil
 import subprocess
 import time
@@ -42,8 +53,9 @@ from guo.process import build_child_env, no_activate
 
 TIMEOUT_S = 900
 # The story the evidence is filed under (rule: evidence_naming.md).
-STORY = "AD2b"
-STILLS = ("connected", "saved", "restarted", "godview", "spawner", "filtered", "respawn", "cleared")
+STORY = "AD4"
+STILLS = ("connected", "saved", "restarted", "godview", "spawner", "filtered", "respawn", "cleared",
+          "settings-form", "settings-diff", "settings-saved")
 
 
 def run(cfg, shard_home: Path, token: str, secrets: list[str], windowed: bool, stamp: str) -> int:
@@ -72,6 +84,15 @@ def run(cfg, shard_home: Path, token: str, secrets: list[str], windowed: bool, s
     env["UO_EDITOR_NAME"] = "Admin tab check"
     # The scratch workspace has no secrets file: the token reaches the editor as the environment setting it resolves first.
     env["UO_BRIDGE_ADMIN_TOKEN"] = token
+    # The Settings form's test mail password (AD4): made here so the leak grep below knows what to look for. The
+    # environment must not carry a real one, which would win over the form's secrets file.
+    mail_secret = "Ad4" + "".join(secret_source.choice("ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789") for _ in range(17))
+    env["GUO_SMOKE_SETTINGS_SECRET"] = mail_secret
+    env.pop("UO_SHARD_EMAIL_PASSWORD", None)
+    # The form writes the shard's own files: keep them to put back after.
+    config_dir = shard_home / "Configuration"
+    config_kept = out / "configuration_before"
+    shutil.copytree(config_dir, config_kept)
     project_godot = project / "project.godot"
     before = project_godot.read_bytes()
     log_path = out / "editor.log"
@@ -89,6 +110,14 @@ def run(cfg, shard_home: Path, token: str, secrets: list[str], windowed: bool, s
     finally:
         if project_godot.read_bytes() != before:
             project_godot.write_bytes(before)
+        # The previous copies the form kept, for the leak grep, before the shard's own settings go back.
+        previous = config_dir / "GUO-previous"
+        previous_texts = [f.read_text(encoding="utf-8", errors="replace") for f in previous.rglob("*.json")] if previous.is_dir() else []
+        mail_in_config = any(mail_secret in f.read_text(encoding="utf-8", errors="replace")
+                             for f in config_dir.glob("*.json"))
+        shutil.rmtree(config_dir)
+        shutil.copytree(config_kept, config_dir)
+        shutil.rmtree(config_kept)
 
     report_path = out / "report.json"
     report = json.loads(report_path.read_text(encoding="utf-8")) if report_path.is_file() else {}
@@ -149,6 +178,31 @@ def run(cfg, shard_home: Path, token: str, secrets: list[str], windowed: bool, s
     clear = json.loads(admin["godview_clear"]) if admin.get("godview_clear") else {}
     check(admin.get("godview_cleared"), f"Clear, pressed in the tab, removed the horses and kept the spawner ({clear.get('before')} -> {clear.get('spawned')})")
     check(admin.get("godview_removed"), "deleting the spawner removed it and its horses from the god view")
+    check(admin.get("settings_labels_ok") and admin.get("settings_secrets_masked"),
+          f"the Settings form read {admin.get('settings_fields')} settings with plain labels and every secret masked "
+          f"(not there yet: {admin.get('settings_missing_files') or 'none'})")
+    problems = admin.get("settings_problems") or {}
+    check(admin.get("settings_invalid_refused"),
+          "the form marked 0 accounts and \"soon\" and would not save: " + "; ".join(problems.values()))
+    check(admin.get("settings_diff_ok") and admin.get("settings_save_enabled") and mail_secret not in str(admin.get("settings_diff")),
+          "the list of changes names all three, the password only as changed: "
+          + " | ".join(ln for ln in str(admin.get("settings_diff") or "").splitlines() if ln.strip()))
+    live = json.loads(admin["settings_live"]) if admin.get("settings_live") else {}
+    values = live.get("values") or {}
+    check(admin.get("settings_live_matches") and values.get("autosave.saveDelay") == "00:07:00"
+          and values.get("accountHandler.maxAccountsPerIP") == str(admin.get("settings_max_accounts_target")),
+          f"Save and restart wrote {admin.get('settings_written')}; the restarted server runs with "
+          f"{admin.get('settings_max_accounts_before')} -> {values.get('accountHandler.maxAccountsPerIP')} accounts per address, "
+          f"saves every {admin.get('settings_save_delay_before')} -> {values.get('autosave.saveDelay')}")
+    check(admin.get("settings_previous_ok") and previous_texts and not any(mail_secret in t for t in previous_texts),
+          f"the previous files are kept in {admin.get('settings_previous')} ({admin.get('settings_previous_files')}), "
+          f"without the password")
+    check(admin.get("settings_secret_in_secrets_file") and admin.get("settings_secret_in_server_file") and mail_in_config,
+          "the mail password is in the scratch workspace's secrets file and the server's email-settings.json only")
+    check(admin.get("settings_form_reloaded"), f"the form read the saved files back: \"{admin.get('settings_status_saved')}\"")
+    restored = not (config_dir / "GUO-previous").exists() and not any(
+        mail_secret in f.read_text(encoding="utf-8", errors="replace") for f in config_dir.glob("*.json"))
+    check(restored, "the shard's own Configuration is back as it was")
     check(admin.get("stopped"), "the run bar stopped the server at the end")
 
     # One clock in the tab: every log line and every audit time it shows is UTC, with a Z.
@@ -163,9 +217,11 @@ def run(cfg, shard_home: Path, token: str, secrets: list[str], windowed: bool, s
     texts += [p.read_text(encoding="utf-8", errors="replace") for p in workspace.rglob("server.console.log")]
     audit = shard_home / "Logs" / "GUO" / "admin_audit.jsonl"
     texts.append(audit.read_text(encoding="utf-8", errors="replace") if audit.is_file() else "")
-    leaked = [s for s in [token, *secrets] if s and any(s in t for t in texts)]
-    check(not leaked, f"no token or password in the editor output, the tab's log, the server console or the audit log "
-                      f"({len([s for s in [token, *secrets] if s])} secrets, {len(texts)} files)")
+    texts.append(json.dumps(report))
+    all_secrets = [token, *secrets, mail_secret]
+    leaked = [s for s in all_secrets if s and any(s in t for t in texts)]
+    check(not leaked, f"no token or password (the test mail password among them) in the editor output, the tab's log, "
+                      f"the server console, the audit log or the report ({len([s for s in all_secrets if s])} secrets, {len(texts)} files)")
 
     # The stills, under the evidence naming rule.
     for name in STILLS:

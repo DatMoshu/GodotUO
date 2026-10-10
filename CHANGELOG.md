@@ -6,6 +6,10 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 ## Unreleased
 
 ### Editor
+- The Admin tab has **Settings**: a form over your server's configuration,
+  with plain labels, checks on every value, a list of what you changed, and
+  **Save and restart**, which keeps the previous files. Passwords and webhooks
+  are never shown; they are kept in your own secrets file.
 - The god view **acts**: with a player, NPC or spawner selected, **Go there**
   moves your own logged-in staff character to it, **Bring here** brings a
   player or NPC to your character, **Open paperdoll** opens its paperdoll in

@@ -24,8 +24,12 @@ and checks, in order:
    Bring here, Open paperdoll and Follow, each seen in the god view and in
    that client; refusals in plain words; all of it audited (--no-client
    skips the character part);
-8. a connection is closed after three refused tokens;
-9. neither the token nor a password reaches the shard log or the audit log.
+8. the Settings form's op (AD4): `admin_settings get` answers the server's
+   live values, a secret one only as "***", with its listeners and expansion;
+   `changed` is recorded in the audit log with a secret's value masked; an
+   unknown action is refused, and none of it runs without the token;
+9. a connection is closed after three refused tokens;
+10. neither the token nor a password reaches the shard log or the audit log.
 
 Prints one line per check and exits 0 when all pass. The token is read from
 the configuration and never printed.
@@ -96,6 +100,9 @@ def run(port: int, token: str, shard_home: Path, secrets: list[str], cfg=None, s
     def check(ok: bool, what: str) -> None:
         results.append((bool(ok), what))
         print(f"[admin-check] {'PASS' if ok else 'FAIL'}  {what}")
+
+    # A made-up webhook for the audit's masking check (AD4): it must not reach any log.
+    fake_webhook = "https://example.invalid/hooks/" + uuid.uuid4().hex
 
     if not token:
         print("[admin-check] no admin token configured (UO_BRIDGE_ADMIN_TOKEN); run the private shard's start first")
@@ -236,6 +243,41 @@ def run(port: int, token: str, shard_home: Path, secrets: list[str], cfg=None, s
     check(stop is not None and stop.get("ok") is True and stop.get("watching") is False, "watch false ends the pushes")
     b.close()
 
+    # AD4: the Settings form's op.
+    b = Bridge(port)
+    b.ask({"op": "hello", "editor": "admin-check plain"})
+    st = b.ask({"op": "admin_settings", "action": "get", "keys": ["autosave.saveDelay"], "req": 18})
+    check(st is not None and st.get("ok") is False and "admin token" in st.get("error", ""),
+          "admin_settings without the token is refused")
+    b.close()
+
+    b = Bridge(port)
+    b.ask({"op": "hello", "editor": "admin-check", "admin_token": token})
+    keys = ["autosave.saveDelay", "accountHandler.maxAccountsPerIP", "pages.discordWebhookUrl", "admin-check.no-such-setting"]
+    st = b.ask({"op": "admin_settings", "action": "get", "keys": keys, "req": 19})
+    values = (st or {}).get("values") or {}
+    check(st is not None and st.get("ok") is True and st.get("req") == 19 and set(values) == set(keys)
+          and values.get("autosave.saveDelay") and values.get("pages.discordWebhookUrl") in (None, "***")
+          and values.get("admin-check.no-such-setting") is None and st.get("listeners") and st.get("expansion"),
+          f"admin_settings get answers the live values (saves every {values.get('autosave.saveDelay')}, "
+          f"{values.get('accountHandler.maxAccountsPerIP')} accounts per address, the webhook as "
+          f"{values.get('pages.discordWebhookUrl')!r}, listeners {st and st.get('listeners')}, expansion {st and st.get('expansion')})")
+    changes = [{"file": "Configuration/modernuo.json", "key": "settings/autosave.saveDelay", "from": "00:05:00", "to": "00:07:00"},
+               {"file": "Configuration/modernuo.json", "key": "settings/pages.discordWebhookUrl", "to": fake_webhook}]
+    ch = b.ask({"op": "admin_settings", "action": "changed", "changes": changes, "req": 20})
+    check(ch is not None and ch.get("ok") is True and ch.get("recorded") == 2, "admin_settings changed is recorded")
+    bad = b.ask({"op": "admin_settings", "action": "set", "req": 21})
+    check(bad is not None and bad.get("ok") is False and "get or changed" in bad.get("error", ""),
+          "an unknown admin_settings action is refused in plain words")
+    audit = b.ask({"op": "admin_audit", "count": 10, "req": 22})
+    entry = next((e for e in reversed((audit or {}).get("entries") or [])
+                  if e.get("op") == "admin_settings" and e.get("args", {}).get("action") == "changed"), None)
+    logged = (entry or {}).get("args", {}).get("changes") or []
+    check(entry is not None and entry.get("ok") is True and len(logged) == 2 and logged[0].get("to") == "00:07:00"
+          and logged[1].get("to") == "***" and fake_webhook not in json.dumps(audit),
+          "the change is in the audit log, the secret setting's value masked")
+    b.close()
+
     # AD2b: the god view's actions.
     if cfg is not None:
         from admin_actions_check import run as actions_check
@@ -261,8 +303,8 @@ def run(port: int, token: str, shard_home: Path, secrets: list[str], cfg=None, s
     client_log = (out or shard_home) / "staff_client.log"
     texts.append(client_log.read_text(encoding="utf-8", errors="replace") if client_log.is_file() else "")
     check(bool(texts[1]), "the audit log file exists on the server")
-    leaked = [s for s in [token, *secrets] if s and any(s in t for t in texts)]
-    check(not leaked, f"no token or password in the shard log or the audit log ({len([token, *secrets])} secrets checked)")
+    leaked = [s for s in [token, *secrets, fake_webhook] if s and any(s in t for t in texts)]
+    check(not leaked, f"no token or password in the shard log or the audit log ({len([token, *secrets, fake_webhook])} secrets checked)")
 
     failed = [w for ok, w in results if not ok]
     print(f"[admin-check] {len(results) - len(failed)}/{len(results)} passed")

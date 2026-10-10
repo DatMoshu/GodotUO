@@ -46,6 +46,47 @@ internal static class ShardSecrets
         return null;
     }
 
+    /// <summary>
+    /// Sets one key of the secrets file (the Admin tab's Settings form, AD4: a server setting that is a secret, such as
+    /// a mail password, is kept here); a null or empty value removes the key. Other lines are kept as they are, the
+    /// file is replaced through a temporary file, and on Linux and macOS it stays readable by its owner only.
+    /// </summary>
+    public static void Write(string key, string value, string path = null)
+    {
+        path ??= FilePath;
+        if (!Regex.IsMatch(key ?? "", "^[A-Za-z_][A-Za-z0-9_]*$"))
+        {
+            throw new ArgumentException("not a secrets file key", nameof(key));
+        }
+
+        if (value != null && value.IndexOfAny(new[] { '"', '%', '^', '!', '\r', '\n' }) >= 0)
+        {
+            throw new ArgumentException("a secret in the secrets file may not hold \" % ^ ! or a line break", nameof(value));
+        }
+
+        var lines = File.Exists(path) ? new List<string>(File.ReadAllLines(path)) : new List<string>
+        {
+            "@echo off",
+            "REM The local dev shard's secrets (tools\\guo\\shard_secrets.py, the Admin tab's Settings).",
+            "REM Per user, outside the repository; never commit or share this file.",
+        };
+        lines.RemoveAll(l => SetLine.Match(l) is { Success: true } m && string.Equals(m.Groups["key"].Value, key, StringComparison.OrdinalIgnoreCase));
+        if (!string.IsNullOrEmpty(value))
+        {
+            lines.Add($"if not defined {key} set \"{key}={value}\"");
+        }
+
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        string tmp = path + ".tmp";
+        File.WriteAllText(tmp, string.Join("\r\n", lines) + "\r\n");
+        if (!OperatingSystem.IsWindows())
+        {
+            File.SetUnixFileMode(tmp, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        }
+
+        File.Move(tmp, path, overwrite: true);
+    }
+
     /// <summary>A secret resolved as every setting is: environment, config files, then the secrets file. Null when unset.</summary>
     public static string Resolve(string key)
     {

@@ -87,6 +87,19 @@ class ConfigureTests(unittest.TestCase):
         self.assertIn(shard_secrets.ADMIN_TOKEN_KEY, out)
         self.assertNotIn(values[shard_secrets.ADMIN_TOKEN_KEY], out)
 
+    def test_a_settings_secret_in_the_file_survives_a_rewrite(self):
+        # The Admin tab's Settings form (AD4) keeps a mail password here; adding a missing key must not drop it.
+        cfg = self.cfg()
+        path = shard_secrets.path_for(cfg.workspace_dir)
+        path.parent.mkdir(parents=True)
+        path.write_text('if not defined UO_SHARD_OWNER_PASSWORD set "UO_SHARD_OWNER_PASSWORD=Owner1"\n'
+                        'if not defined UO_SHARD_EMAIL_PASSWORD set "UO_SHARD_EMAIL_PASSWORD=Mail9"\n', encoding="utf-8")
+        self.run_configure(cfg)
+        text = path.read_text(encoding="utf-8")
+        self.assertIn('if not defined UO_SHARD_EMAIL_PASSWORD set "UO_SHARD_EMAIL_PASSWORD=Mail9"', text)
+        self.assertEqual(text.count("UO_SHARD_EMAIL_PASSWORD="), 1)
+        self.assertEqual(shard_secrets.read(path)[shard_secrets.OWNER_KEY], "Owner1")
+
     def test_passwords_differ_per_fresh_run_and_stay_put_after(self):
         a, b = self.cfg("a"), self.cfg("b")
         self.run_configure(a)

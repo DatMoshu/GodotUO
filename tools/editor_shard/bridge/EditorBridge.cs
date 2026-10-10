@@ -22,6 +22,8 @@
 //      The Admin tab's god view (GodView.cs) is one: every player, NPC and
 //      spawner on a facet, pushed to the tab as they change; its actions
 //      (GodViewActions.cs) move the admin's own staff character and work spawners.
+//      The Settings form reads the live values with admin_settings and records its
+//      changes there before it writes the files and restarts the server (AD4).
 //
 // Live edits are held in memory. The world project (the editor's files) is the
 // source of truth; tools/world export + a restart make them permanent.
@@ -802,6 +804,7 @@ public static class EditorBridge
     // {"op":"admin_whoami"} / {"op":"admin_audit","count":50} / {"op":"admin_status"} / {"op":"admin_save"} /
     // {"op":"admin_godview","facet":0} / {"op":"admin_godview_find","text":".."} (GodView.cs),
     // {"op":"admin_goto"|"admin_bring"|"admin_paperdoll"|"admin_follow"|"admin_spawner",..} (GodViewActions.cs),
+    // {"op":"admin_settings","action":"get"|"changed",..} (the Settings form, AD4),
     // each with an optional "req" echoed back.
     // Authorised against the level the hello's token granted, run, and audited
     // (ADR-0035). Each later AD story adds its ops here and in AdminChannel.Ops.
@@ -856,10 +859,56 @@ public static class EditorBridge
                 }
 
                 break;
+            case "admin_settings":
+                if (!Settings(msg, reply))
+                {
+                    _admin.Audit.Record(from.Name, op, AdminChannel.Ops[op], false, msg, (string)reply["error"]);
+                }
+
+                break;
         }
 
         from.Send(reply);
         Log.Information("GUO editor bridge: '{0}' ran {1} at {2}", from.Name, op, AdminChannel.Ops[op]);
+    }
+
+    // The Settings form (AD4; docs/data_formats.md section 10). "get": the values the running server holds for the
+    // named modernuo.json settings, its listeners and its expansion; a setting whose name looks secret is answered
+    // as set or not, never its value. "changed": the form's diff before it restarts the server, so the audit (which
+    // RunAdmin has already written, masked) records who changed what; the form writes the files with the server
+    // stopped, because ModernUO writes some of them from memory while it runs. Game thread.
+    private static bool Settings(JsonNode msg, JsonObject reply)
+    {
+        switch ((string)msg["action"])
+        {
+            case "get":
+            {
+                var values = new JsonObject();
+                foreach (JsonNode k in msg["keys"] as JsonArray ?? new JsonArray())
+                {
+                    string key = (string)k;
+                    if (string.IsNullOrEmpty(key) || values.ContainsKey(key))
+                    {
+                        continue;
+                    }
+
+                    string v = ServerConfiguration.GetSetting(key, (string)null);
+                    values[key] = AuditLog.IsSecretName(key) ? v == null ? null : "***" : v;
+                }
+
+                reply["values"] = values;
+                reply["listeners"] = new JsonArray(ServerConfiguration.Listeners.Select(l => (JsonNode)l.ToString()).ToArray());
+                reply["expansion"] = Core.Expansion.ToString();
+                return true;
+            }
+            case "changed":
+                reply["recorded"] = (msg["changes"] as JsonArray)?.Count ?? 0;
+                return true;
+            default:
+                reply["ok"] = false;
+                reply["error"] = "admin_settings needs an action: get or changed";
+                return false;
+        }
     }
 
     // When the world was last saved (UTC): seen through EventSink.WorldSave, or,

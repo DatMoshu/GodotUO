@@ -14,7 +14,9 @@ using GUO.Workspace;
 /// connects on the admin channel, reads Health, saves, restarts through the run bar and reads Health again. Then the
 /// god view: it watches the facet again after the restart, a spawner put through the bridge arrives in a change-only
 /// push with the creatures it spawned, Find finds it, a filter hides the NPCs, its Respawn and Clear buttons (AD2b) replace and remove the horses, and its
-/// delete removes it.
+/// delete removes it. Then the Settings form (AD4): it reads the shard's configuration with plain labels and its secrets
+/// masked, refuses values out of range, and Save and restart writes two settings and a mail password, keeping the
+/// previous files; the restarted server reports the new values and the password lands in the scratch secrets file.
 /// Last the run bar stops the server. tools/editor_shard/run.py admin-tab starts it, in a scratch workspace.
 /// </summary>
 public partial class EditorSmoke
@@ -35,6 +37,14 @@ public partial class EditorSmoke
     private uint _godSpawnerSerial;
     private HashSet<uint> _godHorsesBefore = new();
     private int _godActionMark;
+    private string _setSecret;
+    private int _setMaxAccounts;
+
+    // The settings the form's check changes, by field id ("file:path").
+    private const string SetMaxAccounts = "modernuo:settings/accountHandler.maxAccountsPerIP";
+    private const string SetSaveDelay = "modernuo:settings/autosave.saveDelay";
+    private const string SetMailPassword = "email:emailPassword";
+    private const string SetSecretVariable = "GUO_SMOKE_SETTINGS_SECRET";
 
     // The god view's test spawner: three horses west of Britain on Felucca, where the live-objects smoke puts its own.
     private const string GodSpawnerName = "GUO Horse";
@@ -280,7 +290,7 @@ public partial class EditorSmoke
                     {
                         _admin["godview_removed"] = true;
                         _admin["godview_rows_end"] = g.Rows.Count;
-                        AdminNext(124);
+                        AdminNext(131);
                     }
                     else AdminTimeout("the deleted spawner and its creatures never left the god view");
                 }
@@ -290,6 +300,103 @@ public partial class EditorSmoke
                     g.Send(new JsonObject { ["op"] = "object", ["action"] = "delete", ["kind"] = "spawner", ["id"] = _godSpawner.ToString() });
                     _admin["godview_deleted_sent"] = true;
                 }
+
+                break;
+            }
+
+            case 131:
+            {
+                // AD4: the form over the shard's own files, read afresh.
+                SettingsPanel p = v.Settings;
+                v.ShowSettings(true);
+                if (!p.Reload())
+                {
+                    AdminFail("the Settings form could not read the shard: " + p.Problem);
+                    return;
+                }
+
+                SettingsField max = p.Settings.Field(SetMaxAccounts);
+                _admin["settings_fields"] = p.Settings.Fields.Count();
+                _admin["settings_missing_files"] = string.Join(", ", p.Settings.MissingFiles);
+                _admin["settings_labels_ok"] = max != null && max.Label == "Accounts per address" && p.Settings.Field(SetSaveDelay)?.Label == "Time between saves"
+                    && p.Settings.Fields.Where(f => !f.IsOther).All(f => f.Label.Length > 0 && !f.Label.Contains('.'));
+                _admin["settings_secrets_masked"] = p.SecretsMasked() && p.Settings.Fields.Count(f => f.IsSecret) >= 3;
+                _admin["settings_status_form"] = p.StatusText;
+                _setMaxAccounts = int.Parse(p.Settings.Get(max) ?? "1", System.Globalization.CultureInfo.InvariantCulture);
+                _admin["settings_max_accounts_before"] = _setMaxAccounts;
+                _admin["settings_save_delay_before"] = p.Settings.Get(p.Settings.Field(SetSaveDelay));
+
+                // Out of range and not a time: both marked, and nothing can be saved.
+                p.SetValue(SetMaxAccounts, "0");
+                p.SetValue(SetSaveDelay, "soon");
+                Dictionary<string, string> problems = p.Problems();
+                _admin["settings_problems"] = problems.ToDictionary(kv => kv.Key, kv => (object)kv.Value);
+                _admin["settings_invalid_refused"] = problems.ContainsKey(SetMaxAccounts) && problems.ContainsKey(SetSaveDelay)
+                    && p.SaveBlocker() != null && !p.Save() && p.LastWrite == null;
+                AdminShot("settings-form");
+                AdminNext(132);
+                break;
+            }
+
+            case 132:
+            {
+                // Good values: one fewer account per address (at least one), saves every 7 minutes, and a mail password.
+                SettingsPanel p = v.Settings;
+                _setSecret = System.Environment.GetEnvironmentVariable(SetSecretVariable);
+                if (string.IsNullOrEmpty(_setSecret))
+                {
+                    AdminFail($"{SetSecretVariable} is not set (tools/editor_shard/run.py admin-tab sets it, to look for it in the logs after)");
+                    return;
+                }
+
+                int target = _setMaxAccounts > 1 ? _setMaxAccounts - 1 : _setMaxAccounts + 1;
+                p.SetValue(SetMaxAccounts, target.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                p.SetValue(SetSaveDelay, "00:07:00");
+                p.SetValue(SetMailPassword, _setSecret);
+                _admin["settings_max_accounts_target"] = target;
+                _admin["settings_diff"] = p.ChangesText;
+                _admin["settings_diff_ok"] = p.Problems().Count == 0 && p.Settings.Diff().Count == 3
+                    && p.ChangesText.Contains("Accounts per address") && p.ChangesText.Contains("00:07:00")
+                    && p.ChangesText.Contains("Mail password") && p.ChangesText.Contains("kept in your secrets file")
+                    && !p.ChangesText.Contains(_setSecret);
+                _admin["settings_save_enabled"] = p.SaveBlocker() == null;
+                AdminShot("settings-diff");
+                AdminNext(133);
+                break;
+            }
+
+            case 133:
+            {
+                SettingsPanel p = v.Settings;
+                if (!_admin.ContainsKey("settings_save_called"))
+                {
+                    _admin["settings_save_called"] = p.Save();
+                    break;
+                }
+
+                if (!p.SavePending && p.LiveMatches != null && v.Restarting == AdminView.RestartPhase.None && v.Granted != null)
+                {
+                    _admin["settings_live_matches"] = p.LiveMatches == true;
+                    _admin["settings_live"] = p.LastLive?.ToJsonString();
+                    _admin["settings_written"] = p.LastWrite == null ? null : string.Join(", ", p.LastWrite.Files);
+                    _admin["settings_write_error"] = p.LastWriteError;
+                    string home = run.SelectedServer.ServerDirectory;
+                    string previous = p.LastWrite?.PreviousFolder;
+                    _admin["settings_previous"] = previous == null ? null : Path.GetRelativePath(home, previous);
+                    string[] kept = previous != null && Directory.Exists(previous) ? Directory.GetFiles(previous) : Array.Empty<string>();
+                    _admin["settings_previous_files"] = string.Join(", ", kept.Select(Path.GetFileName));
+                    _admin["settings_previous_ok"] = kept.Any(f => Path.GetFileName(f) == "modernuo.json") && kept.Any(f => Path.GetFileName(f) == "email-settings.json")
+                        && kept.All(f => !File.ReadAllText(f).Contains(_setSecret));
+                    string mail = File.ReadAllText(Path.Combine(home, "Configuration", "email-settings.json"));
+                    _admin["settings_secret_in_server_file"] = mail.Contains(_setSecret);
+                    _admin["settings_secret_in_secrets_file"] = ShardSecrets.ReadFile("UO_SHARD_EMAIL_PASSWORD") == _setSecret;
+                    _admin["settings_form_reloaded"] = p.Settings != null && p.Settings.Diff().Count == 0
+                        && p.Settings.Get(p.Settings.Field(SetSaveDelay)) == "00:07:00" && p.Settings.SecretKept(p.Settings.Field(SetMailPassword));
+                    _admin["settings_status_saved"] = p.StatusText;
+                    AdminShot("settings-saved");
+                    AdminNext(124);
+                }
+                else AdminTimeout("Save and restart never came back with the server's values");
 
                 break;
             }
@@ -369,6 +476,8 @@ public partial class EditorSmoke
             string token = ShardSecrets.BridgeAdminToken();
             _admin["token_in_tab_log"] = !string.IsNullOrEmpty(token) && v.LogText.Contains(token);
             if ((bool)_admin["token_in_tab_log"]) _failures.Add("Admin tab: the admin token is in the tab's log");
+            _admin["settings_secret_in_tab_log"] = !string.IsNullOrEmpty(_setSecret) && v.LogText.Contains(_setSecret);
+            if ((bool)_admin["settings_secret_in_tab_log"]) _failures.Add("Admin tab: the test mail password is in the tab's log");
         }
 
         Check("offline_plain_words", "the tab, not connected, says so in plain words");
@@ -384,6 +493,16 @@ public partial class EditorSmoke
         Check("godview_respawned", "Respawn, pressed in the tab, replaced the horses with new ones in the god view");
         Check("godview_cleared", "Clear, pressed in the tab, removed the horses and kept the spawner");
         Check("godview_removed", "the deleted spawner and its creatures left the god view");
+        Check("settings_labels_ok", "the Settings form shows the shard's settings with plain labels");
+        Check("settings_secrets_masked", "the Settings form masks every secret");
+        Check("settings_invalid_refused", "the Settings form marks values out of range and will not save them");
+        Check("settings_diff_ok", "the list of changes names the three changes and not the password");
+        Check("settings_save_enabled", "Save and restart is on with good changes");
+        Check("settings_live_matches", "after Save and restart the server reports the new values");
+        Check("settings_previous_ok", "the previous files are kept, without the password");
+        Check("settings_secret_in_server_file", "the mail password reached the server's own file");
+        Check("settings_secret_in_secrets_file", "the mail password is kept in the workspace's secrets file");
+        Check("settings_form_reloaded", "the form reads the saved files back with nothing left to save");
         Check("stopped", "the run bar stopped the server at the end");
         _admin["ok"] = _failures.Count == 0;
         _report["admin"] = _admin;

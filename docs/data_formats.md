@@ -307,6 +307,7 @@ line, UTF-8, `\n`-terminated. ADR-0012 has the reasoning.
 | `admin_paperdoll` | `serial` (a player or NPC), `as`, `req` | Admin op (GameMaster, AD2b). Opens its paperdoll in the staff character's client (the client must have been sent that mobile: be near it) |
 | `admin_follow` | `serial` (a player or NPC), `as`, `req`; or `stop` true | Admin op (GameMaster, AD2b). Follow: every 500 ms the staff character is moved beside the target when more than 2 cells away or on another facet, until `stop`, the editor leaves, or the target or character leaves the world |
 | `admin_spawner` | `serial` (a spawner), `action` (`respawn` or `clear`), `req` | Admin op (GameMaster, AD2b). Respawn: removes what it spawned and spawns its full count; Clear: removes what it spawned |
+| `admin_settings` | `action` `get` with `keys` (modernuo.json `settings` names, e.g. `autosave.saveDelay`), `req`; or `action` `changed` with `changes` (per change `file`, `key`, and `from`/`to`, or `secret` true and `cleared`), `req` | Admin op (Administrator, AD4). `get` reads the values the running server holds (read only); `changed` writes nothing: it records in the audit log a change the editor is about to write into the server's files, before its restart (section 36) |
 | `multi` | `action` `place` with `tag`, `id` (multi id), `map`, `x`, `y`, `z` (optional: the land's average z), `doors` (as in a built multi's `multi.json`, section 16); or `action` `remove` with `tag` | Places an authored multi (`GUOAuthoredMulti`) and a real door per entry, replacing a multi with the same tag; `remove` deletes it and its doors. Answered with `multi_ack` |
 
 **Bridge to editor**
@@ -328,6 +329,7 @@ line, UTF-8, `\n`-terminated. ADR-0012 has the reasoning.
 | `admin_godview` | The answer: `req`, `ok`, `facet`, `facets` (per facet `id`, `map`, `name`, `width`, `height`), `full` true, `watching`, `seq` 1, `players`, `npcs`, `spawners` (counts on the facet), `truncated` {`mobiles`, `spawners`} (over the caps, 25,000 mobiles and 10,000 spawners, the lowest serials are kept), `upsert` (every row), `removed` [], `ms`. A push: no `req`, `full` false, `seq` one more than the last (a gap means a lost push: ask again), the counts, `truncated`, `upsert` (new or changed rows only), `removed` (serials gone), `ms`. A mobile row: `serial`, `kind` (`player` or `npc`), `name`, `x`, `y`, `z`, `body`, `hits`, `maxHits`, `notoriety` (as in `mobiles`), `type`, and when true `online`, `staff`, `hidden`; `spawner` (its spawner's serial) when spawned. A spawner row: `serial`, `kind` `spawner`, `name`, `x`, `y`, `z`, `running`, `count`, `spawned`, `homeRange`, `nextSpawn` (ISO 8601 UTC, or null), `entries` (per entry `name`, `max`, `spawned`, the first 8), `moreEntries`. Or `ok` false with `error` (`no facet N`). `watch` false answers `ok`, `watching` false |
 | `admin_godview_find` | `req`, `ok`, `text`, `matches` (per match `serial`, `kind`, `name`, `facet`, `x`, `y`, `z`), `truncated` (more than 50) |
 | `admin_goto`, `admin_bring`, `admin_paperdoll`, `admin_follow`, `admin_spawner` | The answer (AD2b): `req`, `ok`, `as` (the staff character), `serial`, `name`, and where the moved one now is, `facet`, `x`, `y`, `z`. `admin_follow` adds `following` (and `moves` when stopped); `admin_spawner` adds `action`, `before`, `spawned`, `running`. Or `ok` false with `error` in plain words (`no staff character is online: log in with yours first`, `that is your own character`, `only a player or an NPC can be brought`, `that is not a spawner`, ...). When a Follow ends by itself the bridge pushes `admin_follow` without `req`: `ok`, `following` false, `serial`, `moves`, `reason` (`X logged out`, `X is gone (deleted)`, `X left the world`) |
+| `admin_settings` | The answer (AD4): `req`, `ok`; for `get`, `values` (each asked key: its string value, `null` when not set, `"***"` when its name looks secret), `listeners` (as `host:port`), `expansion` (the expansion it runs, e.g. `EJ`); for `changed`, `recorded` (how many). Or `ok` false with `error` `admin_settings needs an action: get or changed` |
 | any admin op, refused | `req`, `ok` false, `error`: `admin op without the admin token: send admin_token in hello`, `this server has no admin token`, or `'<op>' needs <level>; this connection holds <level>` |
 | `error` | `error` |
 
@@ -340,7 +342,8 @@ op, run or refused, and every admin hello is appended to
 `<shard>/Logs/GUO/admin_audit.jsonl`, one object per line: `at` (UTC ISO
 8601), `editor`, `op`, `level`, `ok`, `args` (the request without `op`),
 `error` (on a refusal). Any field whose name contains `password`, `token`,
-`secret` or `passphrase`, at any depth, is written as `***`; an op that
+`secret`, `passphrase` or `webhook`, at any depth, is written as `***`, and so
+are `from`, `to` and `value` in an object whose `key` names such a setting; an op that
 carries a secret must name its field so. The map-editing ops above are not
 admin ops and are unchanged.
 
@@ -2119,3 +2122,53 @@ Example, GUO's dev shard:
   "seed": "seed"
 }
 ```
+
+## 36. Server settings schema (`Admin/Schemas/<backend>.settings.json`, AD4)
+
+The Admin tab's Settings form is built from one schema per server backend,
+`godot/GUO/addons/guo_editor/Admin/Schemas/<backend>.settings.json` (today
+`modernuo`), read by `ServerSettings.cs`. The backend is the run-bar profile's
+`backend`, or, for `custom`, detected from the folder (`Configuration/modernuo.json`
+means ModernUO). The schema holds no values: they are read from the server's
+own files every time.
+
+| Field | Meaning |
+|---|---|
+| `backend`, `title`, `version` | the backend id, its name in the form, the schema version (1) |
+| `files` | `{"<id>": "<path under the server folder>"}`, e.g. `"modernuo": "Configuration/modernuo.json"`, `"email": "Configuration/email-settings.json"` |
+| `expansion_table` | the server's table of expansions (`Data/expansions.json`): an `expansion` field writes that entry, by `Id`, as the whole expansion file, keeping the facets set now |
+| `other` | `{"file", "path", "group"}`: an object whose every member without a field of its own is shown, by its own name, in a group collapsed at first (ModernUO's `settings`) |
+| `groups` | `[{"name", "help", "fields": [...]}]`, in the form's order |
+
+A field: `file` (a `files` id), `path` (`/` between levels, e.g.
+`settings/accountHandler.maxAccountsPerIP`; a `settings` member is one key,
+dots and all), `label` and `help` (plain words), `type`, and per type `min`,
+`max` (numbers, or times as `d.hh:mm:ss` for `timespan`), `min_length`,
+`max_length`, `optional`, `options` and `option_labels` (`enum`,
+`expansion`), `secret_key` (`secret`). The id of a field is `<file>:<path>`.
+
+Types: `bool`, `int`, `number`, `timespan`, `string`, `enum`, `email`, `url`,
+`list` (one per line), `listeners` (`host:port` per line), `folders`,
+`secret`, `expansion`. The form writes each value with the JSON kind the file
+had: ModernUO's `settings` are all strings (`"True"`, `"00:05:00"`), the
+other files hold real booleans and numbers.
+
+**Secrets.** A `secret` field (a mail password, a webhook, the CrowdSec
+password) is never shown. The value typed is written to the server's own
+file and to the workspace's secrets file
+(`<UO_WORKSPACE_DIR>/shard/secrets.bat`, a guarded
+`if not defined KEY set "KEY=value"` line, section 30) under its
+`secret_key` (`UO_SHARD_EMAIL_PASSWORD`, `UO_SHARD_DISCORD_WEBHOOK`,
+`UO_SHARD_CROWDSEC_PASSWORD`; an unlabelled setting whose name looks secret
+gets `UO_SHARD_SETTING_<KEY>`). When the secrets file holds a value the
+server's file lacks, a save writes it across. Clearing removes both.
+
+**Saving.** Only changed fields are checked and written. The files are written
+while the server is stopped (inside the run bar's restart, or on a server that
+is not running): ModernUO writes some of them from memory while it runs. The
+files replaced are copied first to
+`Configuration/GUO-previous/<yyyyMMdd-HHmmss>Z/`, secret values as `***`; the
+last 10 such folders are kept. Each file is written to `<name>.guo-tmp` and
+moved over the old one. Before the restart the change list goes to the audit
+log (`admin_settings` `changed`, section 10); after it the form asks the
+server for the values it now holds (`admin_settings` `get`).

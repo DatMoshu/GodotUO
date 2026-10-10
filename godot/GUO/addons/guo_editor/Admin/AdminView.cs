@@ -44,6 +44,9 @@ public partial class AdminView : VBoxContainer
     private readonly Dictionary<string, Label> _values = new();
     private RichTextLabel _plain, _log;
     private GodViewPanel _godView;
+    private SettingsPanel _settings;
+    private TabContainer _centre;
+    private Action _whileStopped;
     private double _statusClock, _reconnectClock;
     private DateTime _statusAt;
     private DateTime _restartStarted;
@@ -60,6 +63,18 @@ public partial class AdminView : VBoxContainer
 
     /// <summary>The god view (AD2a).</summary>
     public GodViewPanel GodView => _godView;
+
+    /// <summary>The Settings form (AD4).</summary>
+    public SettingsPanel Settings => _settings;
+
+    /// <summary>Brings the Settings form (true) or the god view (false) to the front of the centre.</summary>
+    public void ShowSettings(bool on)
+    {
+        if (_centre != null)
+        {
+            _centre.CurrentTab = on ? _settings.GetIndex() : _godView.GetIndex();
+        }
+    }
 
     /// <summary>The access level the server granted this tab, or null (no admin channel).</summary>
     public string Granted { get; private set; }
@@ -167,26 +182,30 @@ public partial class AdminView : VBoxContainer
         _plain = new RichTextLabel { BbcodeEnabled = true, FitContent = false, SizeFlagsVertical = SizeFlags.ExpandFill, SelectionEnabled = true };
         health.AddChild(_plain);
 
-        // Centre: the god view.
-        var centre = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        // Centre: the god view and the server's settings, one tab each.
+        var centre = _centre = new TabContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
         split.AddChild(centre);
-        centre.AddChild(Heading("God view"));
+        Func<JsonObject, bool> send = msg =>
+        {
+            if (!_link.Connected || Granted == null)
+            {
+                return false;
+            }
+
+            _link.Send(msg);
+            return true;
+        };
         _godView = new GodViewPanel
         {
-            Send = msg =>
-            {
-                if (!_link.Connected || Granted == null)
-                {
-                    return false;
-                }
-
-                _link.Send(msg);
-                return true;
-            },
+            Name = "God view",
+            Send = send,
             RadarSource = facet => RadarSource?.Invoke(facet),
         };
         _godView.Logged += Log;
         centre.AddChild(_godView);
+        _settings = new SettingsPanel { Admin = this, Send = send };
+        _settings.Logged += Log;
+        centre.AddChild(_settings);
 
         // Bottom: the log of everything the tab did.
         AddChild(Heading("Log"));
@@ -361,8 +380,12 @@ public partial class AdminView : VBoxContainer
         dialog.PopupCentered();
     }
 
-    /// <summary>Saves, then restarts the run bar's server (no dialog: the smoke check and the confirm call this).</summary>
-    public bool Restart()
+    /// <summary>
+    /// Saves, then restarts the run bar's server (no dialog: the smoke check and the confirm call this).
+    /// <paramref name="whileStopped"/> runs with the server stopped, before it starts again (the Settings form writes
+    /// its files there).
+    /// </summary>
+    public bool Restart(Action whileStopped = null)
     {
         if (RestartBlocker() is { } why)
         {
@@ -370,6 +393,7 @@ public partial class AdminView : VBoxContainer
             return false;
         }
 
+        _whileStopped = whileStopped;
         _restartStarted = DateTime.UtcNow;
         Restarting = RestartPhase.Saving;
         if (!SaveNow("restart"))
@@ -384,10 +408,13 @@ public partial class AdminView : VBoxContainer
     // The save before a restart is on disk: the run bar stops and starts the server.
     private void RestartAfterSave(bool saved)
     {
+        Action whileStopped = _whileStopped;
+        _whileStopped = null;
         if (!saved)
         {
             Restarting = RestartPhase.None;
             Log("[color=orange]the save failed, so the server was not restarted[/color]");
+            _settings.OnRestartAbandoned();
             return;
         }
 
@@ -397,7 +424,7 @@ public partial class AdminView : VBoxContainer
             _link.Disconnect();
             Granted = null;
             _godView.OnClosed();
-            Run.RestartSelected();
+            Run.RestartSelected(whileStopped);
             Restarting = RestartPhase.WaitingForServer;
             _reconnectClock = 0;
             Log($"started {Server.Name} again; waiting for it to load the world...");
@@ -406,6 +433,7 @@ public partial class AdminView : VBoxContainer
         {
             Restarting = RestartPhase.None;
             Log($"[color=orange]restart failed: {e.Message}[/color]");
+            _settings.OnRestartAbandoned();
         }
 
         UpdateView();
@@ -425,6 +453,7 @@ public partial class AdminView : VBoxContainer
             {
                 Restarting = RestartPhase.None;
                 Log($"[color=orange]the server did not answer within {RestartTimeoutSeconds:0} s of the restart; see the Logs dock[/color]");
+                _settings.OnRestartAbandoned();
                 UpdateView();
             }
             else if (_reconnectClock >= ReconnectSeconds)
@@ -482,6 +511,8 @@ public partial class AdminView : VBoxContainer
                     {
                         Log($"the god view needs GameMaster; this tab holds {Granted}");
                     }
+
+                    _settings.OnAdminOpen();
                 }
                 else
                 {
@@ -547,12 +578,16 @@ public partial class AdminView : VBoxContainer
                 _godView.Handle(msg);
                 // Pushes come every second while something moves; the rest of the tab does not change with them.
                 return;
+            case "admin_settings":
+                _settings.Handle(msg);
+                break;
             case "error":
                 Log($"[color=orange]bridge: {(string)msg["error"]}[/color]");
                 break;
             case "closed":
                 Granted = null;
                 _godView.OnClosed();
+                _settings.OnClosed();
                 if (Restarting == RestartPhase.None)
                 {
                     Log("the server closed the connection");

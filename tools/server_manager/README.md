@@ -28,5 +28,5 @@ Profiles live in the per-user workspace (`UO_WORKSPACE_DIR`, default `%LOCALAPPD
 
 Record the exact server revision, client version, configuration and results in local build artifacts. Prove login/account creation, character creation, entering the world, movement, items/gumps, save and restart. Then validate a server-only pack, client-only pack, combined pack, update/rollback, removal and reconnect. The generators reject unsupported sections before publication. See [adapter usage and limits](../server_adapters/README.md). A successful native probe does not replace a live GUO login/world/save/restart proof for each backend.
 
-Process safety, registry, migration and launch-plan checks: `dotnet run --project tools/server_manager/tests/ServerManager.Tests.csproj` and `python tools/server_manager/test_run.py`.
+Process safety, registry, migration and launch-plan checks, and the Admin tab's Settings model (AD4: the schema, checks, the diff, writing with the previous files kept and secrets in the secrets file): `dotnet run --project tools/server_manager/tests/ServerManager.Tests.csproj` and `python tools/server_manager/test_run.py`.
 Editor lifecycle check: `python tools/editor_smoke/run.py --headless --reload`.

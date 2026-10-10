@@ -10,6 +10,13 @@ Proposed
 
 ## Last Verified
 
+2026-10-10 (AD4): `python tools\editor_shard\run.py admin-check --no-client`
+passes 43/43, with `admin_settings` refused without the token, `get` answering
+live values (a secret one as `***`), `changed` audited with a webhook value
+masked, and an unknown action refused. `python tools\editor_shard\run.py
+admin-tab --windowed` passes 28/28: the Settings form saves and restarts the
+private shard, which reports the new values; no test secret reaches a log.
+
 2026-10-09 (AD1): `python tools\editor_shard\run.py admin-check` passes 19/19
 with `admin_status` and `admin_save` (both refused without the token; a save
 is audited with its reason). `python tools\editor_shard\run.py admin-tab`
@@ -129,7 +136,7 @@ op is one entry in `AdminChannel.Ops`, op name to level. The token grants
 yet) would need it raised on purpose. An op that is not in `Ops` is not an
 admin op and can never run through the admin path.
 
-The ops so far (AD0, AD1, AD2a, AD2b):
+The ops so far (AD0, AD1, AD2a, AD2b, AD4):
 
 | Op | Level | Does |
 |---|---|---|
@@ -144,6 +151,7 @@ The ops so far (AD0, AD1, AD2a, AD2b):
 | `admin_paperdoll` | GameMaster | Opens a player's or NPC's paperdoll in the admin's own staff character's client |
 | `admin_follow` | GameMaster | Follow: keeps the admin's own staff character beside a player or NPC until stopped |
 | `admin_spawner` | GameMaster | Respawn or Clear a spawner |
+| `admin_settings` | Administrator | The Settings form: reads the running server's setting values (secrets as `***`), and records a settings change in the audit log before the editor writes it |
 
 The god view's actions (AD2b) move only the admin's own staff character: an
 online character at GameMaster or above, named in `as` or, when one alone is
@@ -165,7 +173,8 @@ settings, so it comes back with its admin channel.
 - Recorded: every admin op (run or refused), every refused admin hello, and
   every granted one.
 - Masking: any field, at any depth, whose name contains `password`, `token`,
-  `secret` or `passphrase` is written as `***`. Ops that carry a secret (AD5's
+  `secret`, `passphrase` or `webhook` is written as `***`, and so are `from`,
+  `to` and `value` in an object whose `key` names such a setting (AD4). Ops that carry a secret (AD5's
   password reset) must use such a field name. A test (`bridge/tests`) and the
   live check grep the files for the real values.
 

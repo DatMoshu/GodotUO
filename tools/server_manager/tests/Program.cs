@@ -131,4 +131,7 @@ try {
         Require(env["GUO_BRIDGE_PORT"]=="2695" && env["GUO_BRIDGE_SHARD"]=="GUO-Editor-Private" && env["GUO_BRIDGE_MAPS"]=="0,1,2,3,4,5","editor_shard's bridge settings not passed");
     }
     Console.WriteLine("PASS: the editor bridge's admin token and settings reach a bridged server only (ADR-0035)");
+
+    // AD4: the Admin tab's Settings form.
+    SettingsTests.Run(home);
 } finally { ManagedServerProcess.Stop(a); ManagedServerProcess.Stop(b); Directory.Delete(home,true); }

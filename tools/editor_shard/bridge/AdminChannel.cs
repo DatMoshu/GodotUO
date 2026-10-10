@@ -72,6 +72,9 @@ public sealed class AdminChannel
         ["admin_follow"] = AdminLevel.GameMaster,
         // AD2b, a spawner's Respawn and Clear.
         ["admin_spawner"] = AdminLevel.GameMaster,
+        // AD4, the Settings form: the values the running server holds ("get"), and a record of what the form is
+        // about to write before it restarts the server ("changed"). The form writes the files itself, server stopped.
+        ["admin_settings"] = AdminLevel.Administrator,
     };
 
     private readonly byte[] _tokenHash;
@@ -183,7 +186,8 @@ public sealed class AuditLog
 {
     public const int Keep = 200;
 
-    private static readonly string[] SecretWords = { "password", "token", "secret", "passphrase" };
+    // A webhook address is a secret too (anyone holding it can post as the server).
+    private static readonly string[] SecretWords = { "password", "token", "secret", "passphrase", "webhook" };
 
     private readonly string _path;
     private readonly LinkedList<JsonObject> _recent = new();
@@ -214,10 +218,12 @@ public sealed class AuditLog
         {
             case JsonObject o:
             {
+                // An entry that names a setting by "key" (AD4's settings changes) is masked by the setting's name too.
+                bool secretKey = o["key"] is JsonValue kv && kv.TryGetValue(out string key) && IsSecretName(key);
                 var copy = new JsonObject();
                 foreach (var (k, v) in o)
                 {
-                    copy[k] = IsSecretName(k) ? "***" : Mask(v);
+                    copy[k] = IsSecretName(k) || secretKey && k is "from" or "to" or "value" ? "***" : Mask(v);
                 }
 
                 return copy;

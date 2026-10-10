@@ -186,6 +186,24 @@ try
     Require(GodViewRules.FollowMustMove(0, 100, 100, 0, 103, 100) && GodViewRules.FollowMustMove(0, 100, 100, 0, 100, 97), "Follow stayed out of range");
     Require(GodViewRules.FollowMustMove(0, 100, 100, 1, 100, 100) && GodViewRules.FollowMustMove(-1, 0, 0, 0, 0, 0), "Follow stayed on another facet");
     Console.WriteLine("PASS: the actions need GameMaster and the token; each takes only its kind of target; only an online staff character moves; Follow keeps within 2 tiles");
+
+    // ---- AD4: the Settings form -------------------------------------------------
+    Require(AdminChannel.Ops["admin_settings"] == AdminLevel.Administrator, "admin_settings is not an Administrator op");
+    Require(on.Authorise("admin_settings", AdminLevel.GameMaster) == "'admin_settings' needs Administrator; this connection holds GameMaster",
+            "a GameMaster could change the settings");
+    Require(on.Authorise("admin_settings", null).StartsWith("admin op without the admin token"), "settings ran without the token");
+    // The form's diff names each setting by "key": a secret setting's values are masked by its name, a plain one's kept.
+    const string hook = "https://example.invalid/hook/Hook3Secret";
+    var settingsAudit = new AuditLog(Path.Combine(home, "settings_audit.jsonl"));
+    settingsAudit.Record("Admin tab", "admin_settings", AdminLevel.Administrator, true, JsonNode.Parse(
+        "{\"op\":\"admin_settings\",\"action\":\"changed\",\"changes\":[{\"file\":\"Configuration/modernuo.json\",\"key\":\"settings/pages.discordWebhookUrl\",\"from\":null,\"to\":\"" + hook + "\"},"
+        + "{\"file\":\"Configuration/email-settings.json\",\"key\":\"emailPassword\",\"to\":\"Mail9Secret\"},"
+        + "{\"file\":\"Configuration/modernuo.json\",\"key\":\"settings/accountHandler.maxAccountsPerIP\",\"from\":\"16\",\"to\":\"15\"}]}"));
+    string settingsLine = File.ReadAllText(Path.Combine(home, "settings_audit.jsonl"));
+    Require(!settingsLine.Contains("Hook3Secret") && !settingsLine.Contains("Mail9Secret") && settingsLine.Contains("\"to\":\"15\"")
+            && settingsLine.Contains("\"key\":\"settings/pages.discordWebhookUrl\""), "a secret setting's value reached the audit, or a plain one was masked");
+    Require(AuditLog.IsSecretName("pages.discordWebhookUrl") && !AuditLog.IsSecretName("emailPort"), "a webhook is not a secret name");
+    Console.WriteLine("PASS: the Settings op needs Administrator and the token; a secret setting's value never reaches the audit");
     Console.WriteLine("ALL PASS");
 }
 finally

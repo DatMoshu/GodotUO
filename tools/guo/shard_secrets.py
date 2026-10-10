@@ -17,6 +17,10 @@ The same file holds the editor bridge's admin token (UO_BRIDGE_ADMIN_TOKEN,
 ADR-0035): the secret an editor sends in its bridge `hello` before any admin
 op. tools/editor_shard hands it to the private shard it starts; nothing logs
 or prints it, and it travels only to the loopback bridge.
+
+The Admin tab's Settings form (AD4) adds keys of its own for server settings
+that are secrets (UO_SHARD_EMAIL_PASSWORD, UO_SHARD_DISCORD_WEBHOOK, ...);
+ensure() keeps every line it does not own.
 """
 
 from __future__ import annotations
@@ -71,6 +75,16 @@ def read(path: Path) -> dict[str, str]:
     return values
 
 
+def _other_lines(path: Path) -> list[str]:
+    """The file's `set` lines for keys other than KEYS, as written."""
+    from .config import _SET_RE
+
+    if not Path(path).is_file():
+        return []
+    lines = Path(path).read_text(encoding="utf-8-sig", errors="replace").splitlines()
+    return [line for line in lines if (m := _SET_RE.match(line)) and m.group("key").upper() not in KEYS]
+
+
 def ensure(workspace: Path) -> tuple[Path, list[str]]:
     """Make sure the file holds a password for every key; return it and the keys it added.
 
@@ -86,6 +100,9 @@ def ensure(workspace: Path) -> tuple[Path, list[str]]:
         values[key] = generate(TOKEN_LENGTH if key == ADMIN_TOKEN_KEY else LENGTH)
     path.parent.mkdir(parents=True, exist_ok=True)
     body = HEADER + "".join(f'if not defined {key} set "{key}={values[key]}"\n' for key in KEYS)
+    # Keys this module does not own stay as they were: the Admin tab's Settings form keeps a server
+    # setting that is a secret here (a mail password, a webhook; AD4).
+    body += "".join(f"{line}\n" for line in _other_lines(path))
     tmp = path.with_name(path.name + ".tmp")
     tmp.write_text(body.replace("\n", "\r\n"), encoding="utf-8", newline="")
     try:

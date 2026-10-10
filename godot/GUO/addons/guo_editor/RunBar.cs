@@ -79,17 +79,22 @@ public partial class RunBar : HBoxContainer
 
     /// <summary>
     /// The Admin tab's Restart, after it saved the world: stops the exact process this manager started and starts the
-    /// same profile again. Throws when the picked server is not one this manager runs.
+    /// same profile again. Throws when the picked server is not one this manager runs. <paramref name="whileStopped"/>
+    /// runs between the stop and the start (the Settings form writes the server's files then, AD4); the server is
+    /// started again whatever it throws, and the exception is passed on after the start.
     /// </summary>
-    internal void RestartSelected()
+    internal void RestartSelected(Action whileStopped = null)
     {
         var s = Selected ?? throw new InvalidOperationException("Select a server first");
         if (!ManagedServerProcess.Running(State(s))) throw new InvalidOperationException($"{s.Name} was not started from the run bar");
         _busy = true;
+        Exception during = null;
         try
         {
             ManagedServerProcess.Stop(State(s));
+            try { whileStopped?.Invoke(); } catch (Exception e) { during = e; }
             ManagedServerProcess.Start(s, State(s));
+            if (during != null) throw new InvalidOperationException(during.Message, during);
             _status.Text = "Restarted " + s.Name;
         }
         finally { _busy = false; _generation++; Poll(); }
