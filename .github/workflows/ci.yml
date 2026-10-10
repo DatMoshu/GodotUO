@@ -140,56 +140,45 @@ jobs:
       # The Asset Store end to end: publish, serve, install with the C#
       # installer, verify hashes, update and uninstall (ADR-0019).
       # test_corpus.py runs the Python publisher and the C# installer over the
-      # same folder of malformed packs; they must agree (S6).
-      # test_store.py runs the web page's JavaScript under Node's built-ins.
-      # test_content.py checks v2 content packs in both languages, and
-      # test_catalogue.py the signed catalogue indexes (ADR-0026), and
-      # test_shard_content.py a shard's descriptor, deployed and installed;
-      # they use the headless C# build smoke.py makes.
+      # same folder of malformed packs; they must agree (S6). It is a script,
+      # not a pytest module. smoke.py makes the headless C# build that the
+      # pooled step's test_content.py and test_shard_content.py use, so it
+      # runs first. test_store.py runs the web page's JavaScript under Node.
       - uses: actions/setup-node@v7
         with:
           node-version: '22'
 
-      - name: Asset Store tests and smoke
+      - name: Asset Store corpus and smoke
         run: |
-          python tools/asset_store/test_store.py
           python tools/asset_store/test_corpus.py
           python tools/asset_store/smoke.py
-          python tools/asset_store/test_content.py
-          python tools/asset_store/test_catalogue.py
-          python tools/asset_store/test_policy.py
-          python tools/shard_content/test_shard_content.py
 
-      # Bulk unpack/pack of art, gumps and animations (Epic H, H2), on a
-      # synthetic install: codecs, unpack -> pack byte identity, edits, new art.
-      - name: uopack tests
+      # Every pytest module under tools/ in one pooled run (pytest.ini,
+      # conftest.py; launchers/dev/pytest_all runs the same). This covers the
+      # Asset Store, uopack, uodata_write, scenario_run, MapGen, muo_shard,
+      # modernuo, privacy_scan, editor_objects_proof, server_manager,
+      # git_hooks and evidence_archive suites, among the rest. No client data.
+      - name: Python tests, pooled
         run: |
-          python -m pip install --quiet pillow pytest
-          python tools/uopack/test_uopack.py
+          python -m pip install --quiet pytest jsonschema pillow pefile
+          python -m pytest -q
 
-      # Authoring UO data files (ADR-0022): the staged set, the free scanners,
-      # the range policy, the append-only writers and the read-back, on tiny
-      # synthetic files made at test time. No client data.
-      - name: UO data writer tests
-        run: |
-          python -m pip install --quiet pytest
-          python tools/uodata_write/test_uodata.py
+      # Every committed scenario against the JSON Schemas (section 34).
+      - name: Scenarios validate
+        run: python tools/scenario_run/run.py validate
 
-      # Scenario runner (docs/data_formats.md section 34): parsing, the driver,
-      # watchdogs and the registry with a fake MCP, and the JSON Schemas against
-      # the runner and every committed scenario. No editor, no client data.
-      - name: Scenario runner tests
+      # The engine-free C# test programs: each exits non-zero on a failure.
+      # network_tests (SF9) joins the step when its folder is on the branch.
+      - name: C# test programs
+        shell: bash
         run: |
-          python -m pip install --quiet pytest jsonschema
-          python -m pytest -q tools/scenario_run/test_run.py
-          python tools/scenario_run/run.py validate
-
-      # MapGen towns: GUO's own towns from the committed house styles, planned,
-      # built and laid on a synthetic map lot. No client data.
-      - name: MapGen town tests
-        run: |
-          python tools/mapgen_districts/test_town.py
-          python tools/mapgen_districts/test_compose.py
+          dotnet run --project tools/atomic_write_tests/AtomicWriteTests.csproj -c Release --nologo
+          dotnet run --project tools/server_manager/tests/ServerManager.Tests.csproj -c Release --nologo
+          if [ -f tools/network_tests/NetworkTests.csproj ]; then
+            dotnet run --project tools/network_tests/NetworkTests.csproj -c Release --nologo
+          else
+            echo "::notice::tools/network_tests is not on this branch yet"
+          fi
 
       # docs/port_status.md is generated. If it differs from a fresh audit
       # (ignoring its timestamp), someone ported without re-measuring.
