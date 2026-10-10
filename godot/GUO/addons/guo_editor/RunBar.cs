@@ -78,7 +78,42 @@ public partial class RunBar : HBoxContainer
     internal int ServerLists => GetChildren().Count(c => c is OptionButton);
 
     public void StartServerNow() { if (!_start.Disabled) Run(Start); }
-    public void StartClientsNow() => Run(() => StartClients(_count));
+
+    /// <summary>Every saved server profile (the Admin tab's scripted check picks one by its folder).</summary>
+    internal IReadOnlyList<ServerProfile> Servers => _profiles?.Servers ?? new List<ServerProfile>();
+
+    /// <summary>Stops the picked server if this manager started it, with no dialog (scripted checks; save first).</summary>
+    internal void StopSelectedNow() { var s = Selected; if (s != null) { ManagedServerProcess.Stop(State(s)); Poll(); } }
+
+    /// <summary>The server picked in the list (the Admin tab shows and restarts it), or null.</summary>
+    internal ServerProfile SelectedServer => Selected;
+
+    /// <summary>Whether this manager started the picked server and it still runs (only then can it be restarted from here).</summary>
+    internal bool SelectedManaged => Selected is { } s && ManagedServerProcess.Running(State(s));
+
+    /// <summary>
+    /// The Admin tab's Restart, after it saved the world: stops the exact process this manager started and starts the
+    /// same profile again. Throws when the picked server is not one this manager runs. <paramref name="whileStopped"/>
+    /// runs between the stop and the start (the Settings form writes the server's files then, AD4); the server is
+    /// started again whatever it throws, and the exception is passed on after the start.
+    /// </summary>
+    internal void RestartSelected(Action whileStopped = null)
+    {
+        var s = Selected ?? throw new InvalidOperationException("Select a server first");
+        if (!ManagedServerProcess.Running(State(s))) throw new InvalidOperationException($"{s.Name} was not started from the run bar");
+        _busy = true;
+        Exception during = null;
+        try
+        {
+            ManagedServerProcess.Stop(State(s));
+            try { whileStopped?.Invoke(); } catch (Exception e) { during = e; }
+            ManagedServerProcess.Start(s, State(s));
+            if (during != null) throw new InvalidOperationException(during.Message, during);
+            _status.Text = "Restarted " + s.Name;
+        }
+        finally { _busy = false; _generation++; Poll(); }
+    }
+    public void StartClientsNow() => Run(StartClients);
 
     public override void _Ready()
     {

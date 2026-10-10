@@ -34,6 +34,7 @@ is retired (as `0004-multi-tile-enumerator` was).
 | 0003 | Felucca in spring | **ours** | none |
 | MV1 | Owner promotion needs the owner password | **ours**, part of 0001 since SF2 | none |
 | 0004 | Multi tile enumerator | **upstreamed**, retired | reported #2682, fixed in #2685 |
+| 0005 | System message hook | **ours** | none |
 | issue | `MultiData.LoadUOP` and uncompressed entries | **upstream** (issue, no patch) | `upstream/issue-multidata-loaduop-uncompressed.md` |
 
 ### 0001: headless owner account
@@ -125,6 +126,26 @@ guard.
 Tile lookups stopped at a multi with no tile at the point. Reported as
 modernuo/ModernUO#2682, fixed upstream in #2685 (`d4531cd94`); the pin moved
 there and the patch was deleted.
+
+### 0005: system message hook
+
+GUO patch: `patches/0005-system-message-hook.patch` (AD3). A static
+`Mobile.SystemMessageSent` is invoked by `SendMessage`, `SendAsciiMessage`
+and both `SendLocalizedMessage` overloads (every interpolated overload goes
+through them) with the mobile, the cliloc number (0 for text), the text or
+the cliloc's arguments, and an affix. Those methods write straight to the
+mobile's NetState and drop the message when there is none, and none of them
+is virtual, so a server assembly cannot read what a command answered a
+mobile with no client. The editor bridge's Commands palette needs exactly
+that: it runs a command as a hidden admin mobile and returns the command's
+output to the Admin tab. The four methods lose `AggressiveInlining` (they
+now hold two calls); nothing else changes, and with no handler bound the
+cost is one null check.
+
+**Verdict: ours.** A hook for an out-of-process admin console is GUO's
+need. ModernUO's own remote admin is gone and nothing in it would call the
+hook. The bridge binds it by reflection, so it still loads on a server
+without this patch and reports `output_available` false.
 
 ### Issue: `MultiData.LoadUOP` never reads an uncompressed entry
 

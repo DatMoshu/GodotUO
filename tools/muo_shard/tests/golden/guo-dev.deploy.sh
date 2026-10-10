@@ -389,6 +389,87 @@ index fa7a39e52..245e65bb7 100644
    {
 MUO_EOF_0
 chmod 0644 $BASE/patches/0003-felucca-spring.patch
+install -d "$(dirname $BASE/patches/0005-system-message-hook.patch)"
+cat > $BASE/patches/0005-system-message-hook.patch <<'MUO_EOF_0'
+diff --git a/Projects/Server/Mobiles/Mobile.Messages.cs b/Projects/Server/Mobiles/Mobile.Messages.cs
+index 29331c5c6..920cfa242 100644
+--- a/Projects/Server/Mobiles/Mobile.Messages.cs
++++ b/Projects/Server/Mobiles/Mobile.Messages.cs
+@@ -188,39 +188,53 @@ public void NonlocalOverheadMessage(MessageType type, int hue, bool ascii, ReadO
+ 
+     // ---------- SendLocalizedMessage / SendMessage / SendAsciiMessage ----------
+ 
+-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+-    public void SendLocalizedMessage(int number, ReadOnlySpan<char> args = default, int hue = 0x3B2) =>
++    // GUO (ours): every system message a mobile is sent, also when it has no client, for a server assembly that
++    // needs to read them (GUO's editor bridge returns a command's output to its Admin tab). The cliloc number (0 for
++    // plain text), the text or the cliloc's arguments, and an affix with whether it is appended. Game thread.
++    public static Action<Mobile, int, string, string, bool> SystemMessageSent;
++
++    public void SendLocalizedMessage(int number, ReadOnlySpan<char> args = default, int hue = 0x3B2)
++    {
++        SystemMessageSent?.Invoke(this, number, args.ToString(), null, false);
+         m_NetState.SendMessageLocalized(Serial.MinusOne, -1, MessageType.Regular, hue, 3, number, "System", args);
++    }
+ 
+-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+     public void SendLocalizedMessage(
+         int number, bool append, ReadOnlySpan<char> affix, ReadOnlySpan<char> args = default, int hue = 0x3B2
+-    ) => m_NetState.SendMessageLocalizedAffix(
+-        Serial.MinusOne,
+-        -1,
+-        MessageType.Regular,
+-        hue,
+-        3,
+-        number,
+-        "System",
+-        (append ? AffixType.Append : AffixType.Prepend) | AffixType.System,
+-        affix,
+-        args
+-    );
++    )
++    {
++        SystemMessageSent?.Invoke(this, number, args.ToString(), affix.ToString(), append);
++        m_NetState.SendMessageLocalizedAffix(
++            Serial.MinusOne,
++            -1,
++            MessageType.Regular,
++            hue,
++            3,
++            number,
++            "System",
++            (append ? AffixType.Append : AffixType.Prepend) | AffixType.System,
++            affix,
++            args
++        );
++    }
+ 
+     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+     public void SendMessage(ReadOnlySpan<char> text) => SendMessage(0x3B2, text);
+ 
+-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+-    public void SendMessage(int hue, ReadOnlySpan<char> text) =>
++    public void SendMessage(int hue, ReadOnlySpan<char> text)
++    {
++        SystemMessageSent?.Invoke(this, 0, text.ToString(), null, false);
+         m_NetState.SendMessage(Serial.MinusOne, -1, MessageType.Regular, hue, 3, false, "ENU", "System", text);
++    }
+ 
+     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+     public void SendAsciiMessage(ReadOnlySpan<char> text) => SendAsciiMessage(0x3B2, text);
+ 
+-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+-    public void SendAsciiMessage(int hue, ReadOnlySpan<char> text) =>
++    public void SendAsciiMessage(int hue, ReadOnlySpan<char> text)
++    {
++        SystemMessageSent?.Invoke(this, 0, text.ToString(), null, false);
+         m_NetState.SendMessage(Serial.MinusOne, -1, MessageType.Regular, hue, 3, true, null, "System", text);
++    }
+ 
+     // ---------- Interpolated handler overloads ----------
+ 
+MUO_EOF_0
+chmod 0644 $BASE/patches/0005-system-message-hook.patch
 
 # checkout at the pin; patches off before the pin moves, on after
 if [ ! -d "$SRC/.git" ]; then as_user git clone --no-checkout "$CLONE_URL" "$SRC"; fi
@@ -398,6 +479,7 @@ as_user git -C "$SRC" update-index --no-skip-worktree global.json 2>/dev/null ||
 as_user git -C "$SRC" checkout -q -- global.json 2>/dev/null || true
 head="$(as_user git -C "$SRC" rev-parse -q --verify HEAD 2>/dev/null || true)"
 if [ "$head" != "$PIN" ]; then
+    if as_user git -C "$SRC" apply -R --check "$BASE/patches/0005-system-message-hook.patch" >/dev/null 2>&1; then as_user git -C "$SRC" apply -R "$BASE/patches/0005-system-message-hook.patch"; fi
     if as_user git -C "$SRC" apply -R --check "$BASE/patches/0003-felucca-spring.patch" >/dev/null 2>&1; then as_user git -C "$SRC" apply -R "$BASE/patches/0003-felucca-spring.patch"; fi
     if as_user git -C "$SRC" apply -R --check "$BASE/patches/0002-settable-update-range.patch" >/dev/null 2>&1; then as_user git -C "$SRC" apply -R "$BASE/patches/0002-settable-update-range.patch"; fi
     if as_user git -C "$SRC" apply -R --check "$BASE/patches/0001-headless-owner-account.patch" >/dev/null 2>&1; then as_user git -C "$SRC" apply -R "$BASE/patches/0001-headless-owner-account.patch"; fi
@@ -426,6 +508,14 @@ elif as_user git -C "$SRC" apply -R --check "$BASE/patches/0003-felucca-spring.p
 else
     as_user git -C "$SRC" apply --check "$BASE/patches/0003-felucca-spring.patch" || true
     die "0003-felucca-spring.patch does not apply to the checkout at $PIN; stopping"
+fi
+if as_user git -C "$SRC" apply --check "$BASE/patches/0005-system-message-hook.patch" >/dev/null 2>&1; then
+    as_user git -C "$SRC" apply "$BASE/patches/0005-system-message-hook.patch"
+elif as_user git -C "$SRC" apply -R --check "$BASE/patches/0005-system-message-hook.patch" >/dev/null 2>&1; then
+    echo "muo_shard: 0005-system-message-hook.patch already applied, skipping"
+else
+    as_user git -C "$SRC" apply --check "$BASE/patches/0005-system-message-hook.patch" || true
+    die "0005-system-message-hook.patch does not apply to the checkout at $PIN; stopping"
 fi
 
 # the archive's SDK can trail the SDK version the pin's global.json names; build with the installed one

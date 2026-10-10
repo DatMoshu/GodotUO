@@ -52,6 +52,7 @@ Every key resolves as: **environment variable → `config.local.bat` →
 | `UO_MAPGEN_DATA` | The map generator's per-user data folder (§26): mined stamps, coast atlas, tree statics, validator reports; default `%LOCALAPPDATA%\GUO\mapgen` |
 | `UO_EDITOR_LIVE_HOST` / `UO_EDITOR_LIVE_PORT` | The editor bridge the UO Shard dock connects to (§10); default `127.0.0.1:2595`, the private instance |
 | `UO_EDITOR_NAME` | The name this editor shows other editors on the bridge |
+| `UO_BRIDGE_ADMIN_TOKEN` | The bridge's admin token (§10, ADR-0035): 32 letters and digits, generated into the workspace's `shard\secrets.bat` with the shard passwords; never printed or logged |
 | `UO_SHARD_HOST` / `UO_SHARD_PORT` | Shard to connect to |
 | `GODOT_VERSION` / `GODOT_FLAVOR` | Pinned engine build |
 | `UO_LOG_LEVEL` | `DEBUG` \| `INFO` \| `WARN` \| `ERROR` |
@@ -296,26 +297,71 @@ line, UTF-8, `\n`-terminated. ADR-0012 has the reasoning.
 
 | `op` | Fields | What happens |
 |---|---|---|
-| `hello` | `editor` (name) | Answered with `hello` |
+| `hello` | `editor` (name), `admin_token` (optional: the server's admin token, ADR-0035) | Answered with `hello`. Without `admin_token` the connection edits maps as before; with the right one it may also run admin ops. A wrong token pauses the connection 1 s and is audited; the third closes it |
 | `block` | `facet`, `bx`, `by`, `land`: 64 `[id, z]` pairs, row-major (index `y*8+x`), `statics`: `[id, x, y, z, hue]` per static (`x`, `y` 0..7 in the block), `sent_ms` (sender's clock, unix ms, optional) | Replaces the whole block in the server's own map (walking, line of sight and placement see it), pushes it to UltimaLive clients on that map, relays it to the other editors; answered with `ack` |
-| `command` | `as` (an online character's name), `text` (e.g. `[where`) | Runs the GM command as that character (`CommandSystem.Handle`); answered with `command` |
+| `command` | `as` (an online character's name), `text` (e.g. `[where`), `confirm` (for a dangerous command), `req` | Admin op since AD3 (Counselor): needs the admin token. Runs the command as that character (`CommandSystem.Handle`), who must be online, staff (Counselor or higher) and not above the connection's level; the same checks as `admin_command`. Answered with `command` |
 | `object` | `action` `put` with `kind` (`spawner` or `item`) and `object` (as in `shard/objects.json`, section 13); or `action` `delete` with `kind` and `id` | Applies it to the world with the boot sync's code (ADR-0014), relays it to the other editors; answered with `object_ack` |
 | `mobiles` | `facet`, `x0`, `y0`, `x1`, `y1` (inclusive rectangle; clamped to the map and to 1024 cells a side), `req` (echoed), `as` (optional: an online character that must be a GameMaster or above) | Read-only. Players and mobiles in the rectangle, at most 500; answered with `mobiles`. Needs a prior `hello`; at most one request per 250 ms per connection (the Live map layer, ADR-0027, polls it about once a second for the visible region plus a margin) |
+| `admin_whoami` | `req` (optional, echoed) | Admin op (Counselor). Answered with `admin_whoami` |
+| `admin_audit` | `count` (1..200, default 50), `req` | Admin op (Administrator). The last audit entries; answered with `admin_audit` |
+| `admin_status` | `req` (optional, echoed) | Admin op (Counselor). Read only; answered with `admin_status` |
+| `admin_save` | `reason` (optional, audited), `req` | Admin op (Administrator). Saves the world; answered with `admin_save` once the write has finished |
+| `admin_godview` | `facet` (map index), `watch` (default true), `req` | Admin op (GameMaster). The god view (AD2a): every player, NPC and spawner on the facet, answered with `admin_godview` (`full` true); with `watch` the bridge then pushes `admin_godview` (`full` false) at most once a second, only when something changed, until another facet is asked for, `watch` false (no `facet`) or the connection closes |
+| `admin_godview_find` | `text` (a name part, or a serial as `0x1A2B` or decimal), `req` | Admin op (GameMaster). Players, NPCs and spawners on every facet whose name, type or spawn entry contains the text (case ignored), or whose serial it is; at most 50 |
+| `admin_goto` | `serial` (a player, NPC, spawner or item), or `facet`, `x`, `y`, `z` (optional: the ground there); `as` or `hidden` (both optional), `req` | Admin op (GameMaster, AD2b, AD2c). Go there: moves the admin's own staff character there. `as` names an online character at GameMaster or above and no higher than the connection's level; left out, the one such character online is used, and with none online (or `hidden` true) the hidden presence acts: its spot moves there, no mobile does. `as` with `hidden` is refused |
+| `admin_bring` | `serial` (a player or NPC), `as` or `hidden`, `req`; for the hidden presence optionally `facet`, `x`, `y`, `z` | Admin op (GameMaster, AD2b, AD2c). Bring here: moves the mobile to the staff character, or to the hidden presence's spot (or the spot given); a player is told a staff member summoned them. The presence with no spot yet and none given is refused |
+| `admin_paperdoll` | `serial` (a player or NPC), `as` or `hidden`, `req` | Admin op (GameMaster, AD2b, AD2c). Opens its paperdoll in the staff character's client (the client must have been sent that mobile: be near it); for the hidden presence, which has no client, the answer carries the paperdoll |
+| `admin_follow` | `serial` (a player or NPC), `as` or `hidden`, `req`; or `stop` true | Admin op (GameMaster, AD2b, AD2c). Follow: every 500 ms the staff character (or the hidden presence's spot) is moved beside the target when more than 2 cells away or on another facet, until `stop`, the editor leaves, or the target or character leaves the world |
+| `admin_spawner` | `serial` (a spawner), `action` (`respawn` or `clear`), `req` | Admin op (GameMaster, AD2b). Respawn: removes what it spawned and spawns its full count; Clear: removes what it spawned |
+| `admin_settings` | `action` `get` with `keys` (modernuo.json `settings` names, e.g. `autosave.saveDelay`), `req`; or `action` `changed` with `changes` (per change `file`, `key`, and `from`/`to`, or `secret` true and `cleared`), `req` | Admin op (Administrator, AD4). `get` reads the values the running server holds (read only); `changed` writes nothing: it records in the audit log a change the editor is about to write into the server's files, before its restart (section 37) |
+| `admin_accounts` | `req` | Admin op (Administrator, AD5). Every account (read only), sorted by name, at most 5,000 |
+| `admin_backup` | `action` `list`, `req`; or `action` `now` with `keep` (1 to 100, default 10), `req`; or `action` `restore` with `name` (a snapshot's) and `keep`, `req` | Admin op (Administrator, AD6). `list` reads the snapshots; `now` saves the world, copies the save folder to a new snapshot under `<autoArchive.backupPath>/GUO/<name>` (default `Backups/GUO`) and removes the oldest beyond `keep`; `restore` checks the snapshot exists, then saves and keeps a `before-restore` snapshot of the world as it is. It does not swap the save: the editor does, with the server stopped (below) |
+| `admin_commands` | `req` | Admin op (Counselor, AD3). The server's commands (ModernUO's help list) at or below the connection's level, read only |
+| `admin_command` | `text` (one line, at most 512 characters; the `[` prefix is added when missing), `as` (optional: an online staff character), `confirm` (the typed word, for a dangerous command), `req` | Admin op (Counselor, AD3). Runs the command as the bridge's hidden admin mobile at the connection's level (never in the world, never saved: a target cursor or prompt it is given is cancelled, a gump goes nowhere), or as the `as` character (online, Counselor or higher, not above the connection's level). The dangerous list (`AdminCommandRules.cs`): shutdown (`shutdown`, `restart`), wipe (`wipe`, `wipeitems`, `wipenpcs`, `wipemultis`, `clearall`, `clearfacet`, `clearxy`), delete accounts, global decorate (`decorate*`, `doorgen`, `signgen`, `telgen`, the other world generators) and mass moves (a scope `global`, `facet`, `region`, `area`, `group`, `range`, `screen`, `online`, `contained` or `ipaddress` followed by `delete`, `remove`, `kill`, `set`, `increase`, `teleport` or `bringtopack`) runs only with `confirm` equal to its word: the command's name, or for a mass move the scope and the command (`global delete`), case and spacing aside. The audit log keeps a command whose name says password, token, secret or passphrase by its name only (`[password ***`) |
+| `admin_account` | `action` (`create`, `access`, `password`, `ban`, `unban`), `account`, `req`; `create` adds `password` and `access` (default `Player`), `access` adds `access` (a ModernUO level name), `password` adds `password` | Admin op (Administrator, AD5). Names: 1 to 16 characters, printable ASCII, none of `<>:"/\|?*`. Passwords: 8 to 16 printable ASCII characters, no spaces, not the account's name. Only levels and accounts below the connection's own (an Owner: any). `access` sets the account's characters too; `ban` closes the account's connections. The audit log masks `password` |
 | `multi` | `action` `place` with `tag`, `id` (multi id), `map`, `x`, `y`, `z` (optional: the land's average z), `doors` (as in a built multi's `multi.json`, section 16); or `action` `remove` with `tag` | Places an authored multi (`GUOAuthoredMulti`) and a real door per entry, replacing a multi with the same tag; `remove` deletes it and its doors. Answered with `multi_ack` |
 
 **Bridge to editor**
 
 | `op` | Fields |
 |---|---|
-| `hello` | `shard` (the UltimaLive shard name), `maps` (facets offered to UltimaLive clients), `seasons` (facet → ModernUO season number, which the editor adopts) |
+| `hello` | `shard` (the UltimaLive shard name), `maps` (facets offered to UltimaLive clients), `seasons` (facet → ModernUO season number, which the editor adopts), `admin` (the access level the token granted, or null), `admin_ops` (when granted: the admin ops this connection may run), `admin_error` (when a token was refused: `admin token refused` or `this server has no admin token`) |
 | `ack` | `facet`, `bx`, `by`, `clients` (UltimaLive clients pushed to), `editors` (other editors relayed to), `ms` (time on the game thread) |
 | `block` | as sent, plus `from` (the sending editor's name): another editor's block. Last write per block wins |
-| `command` | `ok`, `as`, `text`, or `error` |
+| `command` | as `admin_command` below, `as` always the named character (before AD3: `ok`, `as`, `text`, or `error`) |
 | `object` | as sent, plus `from`: another editor's world-object change. Last write per object wins |
 | `object_ack` | `action`, `kind`, `id`, `outcome` (`Added`, `Changed`, `Kept`, `Deleted`, `Missing`, `Skipped`), `editors`, `ms` |
 | `mobiles` | `req`, `ok`, `facet`, the clamped `x0`,`y0`,`x1`,`y1`, `count`, `truncated` (hit the 500 cap), `mobiles`: per mobile `serial`, `name`, `body`, `x`, `y`, `z`, `facet`, `isPlayer`, `hits`, `maxHits`, `notoriety` (ModernUO's 1 innocent .. 7 invulnerable, computed with no viewer); or `ok` false with `error` (`rate limited`, `say hello first`, `no map N`, `'X' is not online`, `'X' is not staff`) |
 | `multi_ack` | `action`, `tag`, `ok`; on a place `serial`, `at` `[x, y, z]`, `components`, `doors`, `replaced`; on a remove `removed`; or `error` |
+| `admin_whoami` | `req`, `ok`, `editor`, `level`, `ops` |
+| `admin_audit` | `req`, `ok`, `entries`: audit entries, oldest first |
+| `admin_status` | `req`, `ok`, `server` (`ModernUO`), `version`, `shard`, `expansion`, `uptime_s`, `online` (player connections), `staff_online`, `items`, `mobiles`, `memory_mb` (the process's working set), `world` (`Running`, `Saving`, ...), `last_save` (ISO 8601 UTC, or null; before the first save this run, the newest file under `Saves`), `last_save_s` (seconds ago), `last_backup` (ISO 8601 UTC of the newest GUO snapshot, or null; AD6), `last_backup_s`, `last_backup_name`, `editors` (connected editors) |
+| `admin_save` | `req`, `ok`, `ms`, `last_save`; or `ok` false with `error` (`the world is busy (<state>); try again in a moment`, or the save's failure) |
+| `admin_godview` | The answer: `req`, `ok`, `facet`, `facets` (per facet `id`, `map`, `name`, `width`, `height`), `full` true, `watching`, `seq` 1, `players`, `npcs`, `spawners` (counts on the facet), `truncated` {`mobiles`, `spawners`} (over the caps, 25,000 mobiles and 10,000 spawners, the lowest serials are kept), `upsert` (every row), `removed` [], `ms`. A push: no `req`, `full` false, `seq` one more than the last (a gap means a lost push: ask again), the counts, `truncated`, `upsert` (new or changed rows only), `removed` (serials gone), `ms`. A mobile row: `serial`, `kind` (`player` or `npc`), `name`, `x`, `y`, `z`, `body`, `hits`, `maxHits`, `notoriety` (as in `mobiles`), `type`, and when true `online`, `staff`, `hidden`; `spawner` (its spawner's serial) when spawned. A spawner row: `serial`, `kind` `spawner`, `name`, `x`, `y`, `z`, `running`, `count`, `spawned`, `homeRange`, `nextSpawn` (ISO 8601 UTC, or null), `entries` (per entry `name`, `max`, `spawned`, the first 8), `moreEntries`. Or `ok` false with `error` (`no facet N`). `watch` false answers `ok`, `watching` false |
+| `admin_godview_find` | `req`, `ok`, `text`, `matches` (per match `serial`, `kind`, `name`, `facet`, `x`, `y`, `z`), `truncated` (more than 50) |
+| `admin_goto`, `admin_bring`, `admin_paperdoll`, `admin_follow`, `admin_spawner` | The answer (AD2b): `req`, `ok`, `as` (the staff character), `serial`, `name`, and where the moved one now is, `facet`, `x`, `y`, `z`. When the hidden presence acted (AD2c), `as` is null and `hidden` true; Go there and Follow give its spot as `facet`, `x`, `y`, `z`, and `admin_paperdoll` adds `paperdoll`: `name`, `title`, `body`, `female`, `items` (per item worn, by layer, the bank box left out: `layer`, `name`, `item_id`, `hue`, `serial`). `admin_follow` adds `following` (and `moves` when stopped); `admin_spawner` adds `action`, `before`, `spawned`, `running`. Or `ok` false with `error` in plain words (`'X' is not online: log in with your staff character first`, `'X' is Owner, above this tab's Administrator: ...`, `2 staff characters are online; pick yours (...), or the Admin tab's hidden presence`, `the Admin tab's hidden presence has no spot yet: ...`, `that is your own character`, `only a player or an NPC can be brought`, `that is not a spawner`, ...). When a Follow ends by itself the bridge pushes `admin_follow` without `req`: `ok`, `following` false, `serial`, `moves`, `reason` (`X logged out`, `X is gone (deleted)`, `X left the world`) |
+| `admin_settings` | The answer (AD4): `req`, `ok`; for `get`, `values` (each asked key: its string value, `null` when not set, `"***"` when its name looks secret), `listeners` (as `host:port`), `expansion` (the expansion it runs, e.g. `EJ`); for `changed`, `recorded` (how many). Or `ok` false with `error` `admin_settings needs an action: get or changed` |
+| `admin_accounts` | The answer (AD5): `req`, `ok`, `accounts` (per account `name`, `access`, `created` and `last_login` (ISO 8601 UTC with a Z, or null), `characters` (per character `name`, `online`), `online`, `banned`, `protected` (a ModernUO protected account)), `count`, `truncated` |
+| `admin_backup` | The answer (AD6): `req`, `ok`, `action`, `snapshots` (newest first; per snapshot `name`, `at` (ISO 8601 UTC with milliseconds and a Z), `reason` (`manual` or `before-restore`), `editor`, `files`, `bytes`), `saves_path` and `backup_path` (the server's folders, for the editor's restore; never logged), `default_keep`. `now` and `restore` answer once the save and the copy are on disk, adding `snapshot` (the one just kept), `pruned` (names removed), `keep`, `save_ms`, `copy_ms`; `restore` adds `target`. Or `ok` false with `error` (`admin_backup needs an action: list, now or restore`, `that is not a backup's name`, `there is no backup called X`, `the world is busy (Saving); ...`, `there is no world save to back up yet`) |
+| `admin_commands` | The answer (AD3): `req`, `ok`, `commands` (by name; per command `name`, `aliases`, `access` (a ModernUO level name), `usage` and `description` (plain text, HTML removed), `danger` (the dangerous list's kind for the name alone, or null)), `count`, `output_available` (false on a server without MUO patch 0005: commands run, their output is not returned) |
+| `admin_command` | The answer (AD3), about 300 ms after the command ran: `req`, `ok`, `text` (the line as run; a password command as `[name ***`), `as` (the character, or null for the hidden admin mobile), `command` (its name), `known` (the server has a command of that name), `output` (the system messages the mobile was sent while it ran and for 300 ms after, clilocs filled in, at most 200 lines; plus a line when it asked for a target or a prompt), `output_available`, `needs_target`, `needs_prompt` (it asked for one, and the hidden mobile's was cancelled). Or `ok` false with `error` in plain words (`a command is one line`, `'wipe' is on the dangerous list (wipe): type 'wipe' to confirm it` with `danger` {`kind`, `confirm`, `why`}, `'X' is not online: ...`, `'X' is a player: ...`, `'X' is Owner; this tab holds Administrator, ...`, `'X' failed on the server: ...`) |
+| `admin_account` | The answer (AD5): `req`, `ok`, `action`, `account`, `row` (the account as `admin_accounts` lists it, after the change); `access` adds `characters_changed`, `ban` adds `disconnected`. Never a password. Or `ok` false with `error` in plain words (`there is already an account 'x'`, `a password has 8 to 16 characters (the login screen's box holds 16)`, `that account is Owner; this connection (Administrator) changes only accounts below its own level`, ...) |
+| any admin op, refused | `req`, `ok` false, `error`: `admin op without the admin token: send admin_token in hello`, `this server has no admin token`, or `'<op>' needs <level>; this connection holds <level>` |
 | `error` | `error` |
+
+**Admin ops** (ADR-0035). An op listed in the bridge's `AdminChannel.Ops`
+runs only on a connection whose `hello` carried the server's admin token, and
+only at or below the level the token grants (`GUO_BRIDGE_ADMIN_ACCESS` on the
+server, Administrator by default; levels are ModernUO's, Player .. Owner). A
+server started without `GUO_BRIDGE_ADMIN_TOKEN` has no admin ops. Every admin
+op, run or refused, and every admin hello is appended to
+`<shard>/Logs/GUO/admin_audit.jsonl`, one object per line: `at` (UTC ISO
+8601), `editor`, `op`, `level`, `ok`, `args` (the request without `op`),
+`error` (on a refusal). Any field whose name contains `password`, `token`,
+`secret`, `passphrase` or `webhook`, at any depth, is written as `***`, and so
+are `from`, `to` and `value` in an object whose `key` names such a setting; an op that
+carries a secret must name its field so. The map-editing ops above are not
+admin ops and are unchanged, except `command`, which AD3 moved behind the token.
 
 The World tab's Live layer reads these snapshots through the existing Shard
 dock connection. A successful `mobiles` reply replaces the visible snapshot:
@@ -2119,7 +2165,8 @@ Example, GUO's dev shard:
                "ref": "d4531cd94b739613155225c234900de9f47d2c88"},
     "patches": ["tools/modernuo/patches/0001-headless-owner-account.patch",
                 "tools/modernuo/patches/0002-settable-update-range.patch",
-                "tools/modernuo/patches/0003-felucca-spring.patch"]
+                "tools/modernuo/patches/0003-felucca-spring.patch",
+                "tools/modernuo/patches/0005-system-message-hook.patch"]
   },
   "config_overlay": "tools/modernuo/config",
   "listen": {"port": 2593},
@@ -2397,3 +2444,54 @@ key in any output; a container with the mark and a plain set without one).
   "skipped": []
 }
 ```
+---
+
+## 37. Server settings schema (`Admin/Schemas/<backend>.settings.json`, AD4)
+
+The Admin tab's Settings form is built from one schema per server backend,
+`godot/GUO/addons/guo_editor/Admin/Schemas/<backend>.settings.json` (today
+`modernuo`), read by `ServerSettings.cs`. The backend is the run-bar profile's
+`backend`, or, for `custom`, detected from the folder (`Configuration/modernuo.json`
+means ModernUO). The schema holds no values: they are read from the server's
+own files every time.
+
+| Field | Meaning |
+|---|---|
+| `backend`, `title`, `version` | the backend id, its name in the form, the schema version (1) |
+| `files` | `{"<id>": "<path under the server folder>"}`, e.g. `"modernuo": "Configuration/modernuo.json"`, `"email": "Configuration/email-settings.json"` |
+| `expansion_table` | the server's table of expansions (`Data/expansions.json`): an `expansion` field writes that entry, by `Id`, as the whole expansion file, keeping the facets set now |
+| `other` | `{"file", "path", "group"}`: an object whose every member without a field of its own is shown, by its own name, in a group collapsed at first (ModernUO's `settings`) |
+| `groups` | `[{"name", "help", "fields": [...]}]`, in the form's order |
+
+A field: `file` (a `files` id), `path` (`/` between levels, e.g.
+`settings/accountHandler.maxAccountsPerIP`; a `settings` member is one key,
+dots and all), `label` and `help` (plain words), `type`, and per type `min`,
+`max` (numbers, or times as `d.hh:mm:ss` for `timespan`), `min_length`,
+`max_length`, `optional`, `options` and `option_labels` (`enum`,
+`expansion`), `secret_key` (`secret`). The id of a field is `<file>:<path>`.
+
+Types: `bool`, `int`, `number`, `timespan`, `string`, `enum`, `email`, `url`,
+`list` (one per line), `listeners` (`host:port` per line), `folders`,
+`secret`, `expansion`. The form writes each value with the JSON kind the file
+had: ModernUO's `settings` are all strings (`"True"`, `"00:05:00"`), the
+other files hold real booleans and numbers.
+
+**Secrets.** A `secret` field (a mail password, a webhook, the CrowdSec
+password) is never shown. The value typed is written to the server's own
+file and to the workspace's secrets file
+(`<UO_WORKSPACE_DIR>/shard/secrets.bat`, a guarded
+`if not defined KEY set "KEY=value"` line, section 30) under its
+`secret_key` (`UO_SHARD_EMAIL_PASSWORD`, `UO_SHARD_DISCORD_WEBHOOK`,
+`UO_SHARD_CROWDSEC_PASSWORD`; an unlabelled setting whose name looks secret
+gets `UO_SHARD_SETTING_<KEY>`). When the secrets file holds a value the
+server's file lacks, a save writes it across. Clearing removes both.
+
+**Saving.** Only changed fields are checked and written. The files are written
+while the server is stopped (inside the run bar's restart, or on a server that
+is not running): ModernUO writes some of them from memory while it runs. The
+files replaced are copied first to
+`Configuration/GUO-previous/<yyyyMMdd-HHmmss>Z/`, secret values as `***`; the
+last 10 such folders are kept. Each file is written to `<name>.guo-tmp` and
+moved over the old one. Before the restart the change list goes to the audit
+log (`admin_settings` `changed`, section 10); after it the form asks the
+server for the values it now holds (`admin_settings` `get`).

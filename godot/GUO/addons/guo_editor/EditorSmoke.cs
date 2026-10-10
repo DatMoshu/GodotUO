@@ -166,6 +166,13 @@ public partial class EditorSmoke : Node
 
         switch (_stage)
         {
+            case 0 when ArgValue(AdminFlag) != null:
+                // The Admin tab's scripted run (EditorSmokeAdmin.cs) needs no client data.
+                _stage = 120;
+                break;
+            case >= 120 and < 170:
+                StepAdmin();
+                break;
             case 0:
                 if (_data.IsLoaded || _data.Error != null)
                 {

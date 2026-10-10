@@ -5,7 +5,76 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 
 ## Unreleased
 
+### Editor
+- The Admin tab's god view works with nobody logged in: **Go there**,
+  **Bring here**, **Open paperdoll** and **Follow** use the server's hidden
+  presence when no staff character of yours is online (or pick it in
+  **Act as**). Nothing moves in the game but what you bring: the presence's
+  spot shows on the map as a white cross, Bring here brings to it, and the
+  paperdoll is listed in the tab. The god view no longer moves a staff
+  character above your tab's own level.
+- The Admin tab has **Commands**: every command your server has, with its
+  level, usage and description. Search them, see the help for the one you
+  type, bring back earlier ones with Up and Down, and read what the server
+  answered right in the tab. No character needs to be logged in; name your
+  staff character in **Run as** for a command that asks for a target in
+  game. Shutting the server down, wiping, deleting accounts, decorating the
+  whole world and changing many things at once ask you to type the
+  command's word first. Every command is in the audit log, and one carrying
+  a password is logged by its name only.
+- The Shard dock's command box needs your server's admin token now (it
+  sends it for you), and shows what the server answered.
+- The Admin tab has **Backups** for a server on this computer: **Back up
+  now** saves the world and keeps a copy of the save, and the oldest copies
+  go once there are more than you keep (10 unless you change it).
+  **Restore** asks first, keeps a copy of the world as it is, restarts the
+  server with the backup in place, and puts the previous save back if
+  anything goes wrong. Health shows when the last backup was taken.
+- Stills of the Admin tab's Settings no longer show the folder of your UO
+  install.
+- The Admin tab has **Accounts**: every account on your server with its
+  access level, last login and characters. Make an account, give it a
+  level, give it a new password (made for you, shown once and masked, or
+  typed twice), ban it or lift the ban. Passwords fit the login screen's
+  16-character box and are never written to a log. Every change is in the
+  audit log.
+- Your server's generated staff passwords have 16 characters now, so they
+  fit the login screen; a longer one made before is replaced the next time
+  the server starts.
+- The Admin tab has **Settings**: a form over your server's configuration,
+  with plain labels, checks on every value, a list of what you changed, and
+  **Save and restart**, which keeps the previous files. Passwords and webhooks
+  are never shown; they are kept in your own secrets file.
+- The god view **acts**: with a player, NPC or spawner selected, **Go there**
+  moves your own logged-in staff character to it, **Bring here** brings a
+  player or NPC to your character, **Open paperdoll** opens its paperdoll in
+  your client, and **Follow** keeps your character beside it (the map follows
+  it too, across facets) until you stop it. A spawner has **Respawn** and
+  **Clear**. "Act as" picks the character when more than one of yours is
+  online; a line under the buttons says why one is off. Every action is in
+  the audit log.
+- The Admin tab has a **god view**: every player, NPC and spawner on a facet,
+  drawn over the facet's radar map and kept up to date as they move, spawn and
+  die. Filters show or hide players, NPCs and spawners; **Find** searches
+  every facet by name or serial and centres the map on a result. Selecting a
+  spawner shows what it spawns and how many, and lines to its creatures. It
+  needs the GameMaster level of the admin token. Every time in the tab is now
+  UTC, written with a Z. The shard's `run.sh` (Linux, Steam Deck) hands the
+  bridge its admin token as `run.bat` does.
+- The editor has an **Admin** tab for a server you run on this computer: its
+  health (uptime, players online, items, mobiles, memory, last save) in
+  numbers and in plain words, **Save now**, and **Restart**, which saves first
+  and then has the run bar stop and start the server. It uses the server's
+  admin token from your workspace and never shows it. The shared dev shard
+  (`launchers\shard\run.bat`) now also hands the token to the editor
+  bridge when that shard loads it.
+
 ### Safety
+- The editor bridge has an admin channel for the coming Admin tab: admin
+  operations run only for an editor that sends the server's admin token
+  (generated per user beside the shard passwords, never printed), each at a
+  stated access level, and each is written to an audit log on the server with
+  passwords and tokens masked. Map editing works as before, with no token.
 - The shard's owner (and game master) account is no longer handed to whoever
   logs in under its name first: an existing account is raised only if it
   already holds the configured password, and a blank or old default password
