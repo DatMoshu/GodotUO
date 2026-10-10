@@ -107,6 +107,7 @@ python tools\port_bulk\run.py --area X    port a mechanical-tier area
 dotnet build godot\GUO\GUO.csproj         fast build loop (~1s, use this)
 launchers\dev\build.bat                    build C# only
 launchers\dev\smoke.bat                    full health check — run before commit
+launchers\dev\pytest_all.bat               every Python test folder, one pooled pytest run
 launchers\dev\screenshot.bat               capture a frame
 launchers\dev\playtest.bat                 play a session and check it (needs a shard)
 launchers\dev\endurance.bat                play on for a while and watch for drift

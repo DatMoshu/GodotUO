@@ -140,7 +140,7 @@ def fake_install(root: Path, rng: random.Random) -> dict:
 
 # --- the tests -----------------------------------------------------------------------
 
-def test_codecs(rng: random.Random) -> None:
+def case_codecs(rng: random.Random) -> None:
     print("codecs")
     ok = True
     for _ in range(40):
@@ -180,7 +180,7 @@ def test_codecs(rng: random.Random) -> None:
           "UOP name hash is deterministic")
 
 
-def test_uop(tmp: Path, rng: random.Random) -> None:
+def case_uop(tmp: Path, rng: random.Random) -> None:
     print("uop reader")
     entries = {f"build/artlegacymul/{i:08d}.tga": bytes(rng.randrange(256) for _ in range(rng.randrange(1, 300)))
                for i in (0, 5, 0x4000 + 7)}
@@ -190,7 +190,7 @@ def test_uop(tmp: Path, rng: random.Random) -> None:
     check(art._raw(1) is None, "a missing entry is None")
 
 
-def test_roundtrip(tmp: Path, rng: random.Random) -> None:
+def case_roundtrip(tmp: Path, rng: random.Random) -> None:
     print("unpack -> pack")
     data = tmp / "install"
     truth = fake_install(data, rng)
@@ -228,7 +228,7 @@ def test_roundtrip(tmp: Path, rng: random.Random) -> None:
     check(px[15 * w + 10] == 0x7C00, "the edit is in the encoded record (pure red = 0x7C00)")
 
 
-def test_new_animation(tmp: Path) -> None:
+def case_new_animation(tmp: Path) -> None:
     print("new art (RGBA animation frames)")
     from PIL import Image
 
@@ -261,14 +261,20 @@ def main() -> int:
     rng = random.Random(20260927)
     tmp = Path(tempfile.mkdtemp(prefix="uopack_test_"))
     try:
-        test_codecs(rng)
-        test_uop(tmp, rng)
-        test_roundtrip(tmp, rng)
-        test_new_animation(tmp)
+        case_codecs(rng)
+        case_uop(tmp, rng)
+        case_roundtrip(tmp, rng)
+        case_new_animation(tmp)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     print("PASS" if not FAILED else f"FAIL ({len(FAILED)})")
     return 1 if FAILED else 0
+
+
+def test_uopack() -> None:
+    """The pooled pytest run (pytest.ini) runs the whole script as one test."""
+    FAILED.clear()
+    assert main() == 0, FAILED
 
 
 if __name__ == "__main__":

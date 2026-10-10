@@ -86,7 +86,7 @@ def multi_record(multi_id: int, comps: list[tuple[int, int, int, int, int]]) -> 
     return out
 
 
-def test_multis(tmp: Path) -> None:
+def case_multis(tmp: Path) -> None:
     """Multis: MultiCollection.uop on a UOP install, multi.mul/idx (grown) on a MUL one."""
     install = tmp / "install-multi"
     fake_install(install)
@@ -141,7 +141,7 @@ def refused(what: str, fn) -> None:
         check(True, what)
 
 
-def test_refusals(tmp: Path) -> None:
+def case_refusals(tmp: Path) -> None:
     """Review M3/M4/L7: occupied MUL slots, the old tiledata layout, bad hue records;
     each refused before anything is written."""
     install = tmp / "install-mul"
@@ -215,7 +215,7 @@ def link_dir(link: Path, target: Path) -> bool:
         return False
 
 
-def test_stage_root(tmp: Path) -> None:
+def case_stage_root(tmp: Path) -> None:
     """SF4: every path written resolves under the stage root (after .. and links), checked
     before the first byte; one bad path in a call writes nothing at all."""
     install = tmp / "install-sf4"
@@ -397,12 +397,18 @@ def main() -> int:
         check((stage.root / "files_override.txt").read_text().count("=") == 5, "files_override.txt lists them")
         check(stage.check_install_unchanged() == [] and digest(install) == before, "the install is byte for byte unchanged")
 
-        test_multis(tmp)
-        test_refusals(tmp)
-        test_stage_root(tmp)
+        case_multis(tmp)
+        case_refusals(tmp)
+        case_stage_root(tmp)
 
     print(f"test_uodata: {'OK' if not FAILS else 'FAILED'} ({len(FAILS)} failing)")
     return 0 if not FAILS else 1
+
+
+def test_uodata() -> None:
+    """The pooled pytest run (pytest.ini) runs the whole script as one test."""
+    FAILS.clear()
+    assert main() == 0, FAILS
 
 
 if __name__ == "__main__":
