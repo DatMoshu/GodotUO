@@ -134,6 +134,25 @@ shard (packet 0xBC), so A/B comparisons are unaffected; only the art changes.
 Set it back to 4 in `src/Distribution/Data/map-definitions.json` to test the
 Desolation art.
 
+
+### `patches/0004-guo-pad-dummies.patch`
+
+Adds `Projects/UOContent/Custom/GuoPadDummies.cs`: `[GuoPadDummies` spawns
+attack / use / loot / talk / context / pickpocket dummies that write
+`GUO_PAD: …` journal lines the pad wheels probe can assert. The attack dummy
+watches nearby players' `Combatant` and records a hit when engaged.
+
+### `patches/0005-guo-pad-attack-record.patch`
+
+Requires `0004-guo-pad-dummies.patch` (the `GuoAttackDummy` type). The
+patch runners use full filenames: both `0005` patches are applied;
+matching numeric prefixes do not replace one another.
+The pad patches and editor-channel/system-message patches touch separate
+code paths and are retained together.
+
+`AttackReq` also calls `GuoAttackDummy.RecordAttack` so a war-mode attack
+packet is journalled even when the first swing has not landed yet (the probe
+asserts the binding, not a damage roll).
 ### `patches/0005-system-message-hook.patch`
 
 `Mobile.SystemMessageSent`, a static hook every system message a mobile is

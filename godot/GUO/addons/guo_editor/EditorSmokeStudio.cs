@@ -24,7 +24,7 @@ public partial class EditorSmoke
     private readonly Dictionary<string, object> _studioReport = new();
     private int _studioPhase;
     private ArtStubServer _studioStub;
-    private Task<ImageResult> _studioDirect;
+    private Task<ImageResult> _studioDirect, _studioDock;
     private string _studioRoot, _studioSavedSplatStage;
     private Stopwatch _studioClock = new();
     private string _studioWorkflow;
@@ -85,8 +85,9 @@ public partial class EditorSmoke
                 StudioCheckDirect();
                 _studioPhase = 2;
             }
-            else if (_studioPhase == 2)
+            else if (_studioPhase == 2 && _studioDock.IsCompleted)
             {
+                StudioCheckGallery();
                 StudioCheckDock();
                 StudioCleanup();
                 return true;
@@ -138,7 +139,14 @@ public partial class EditorSmoke
 
         // The dock path: run (fills the gallery) and save the variant to a theme.
         ImageRequest req = Studio.BuildRequest("mossy ring", _studioWorkflow);
-        ImageResult docked = Task.Run(() => Studio.RunImageAsync(new ComfyUiProvider(_studioStub.Url), req)).GetAwaiter().GetResult();
+        // Start on the editor thread and poll on later frames so the awaited
+        // gallery update retains Godot's synchronization context.
+        _studioDock = Studio.RunImageAsync(new ComfyUiProvider(_studioStub.Url), req);
+    }
+
+    private void StudioCheckGallery()
+    {
+        ImageResult docked = _studioDock.GetAwaiter().GetResult();
         StudioCheck("dock_gallery", docked.Error == null && Studio.GalleryCount == 1, docked.Error ?? "");
         string savedVariantDir = System.Environment.GetEnvironmentVariable("GUO_VARIANT_DIR");
         string variantDir = Path.Combine(_out, $"studio_variants{Suffix}");

@@ -121,6 +121,12 @@ namespace GUO.Input.Glyphs
                         JoyButton.B => "pad_b",
                         JoyButton.X => "pad_x",
                         JoyButton.Y => "pad_y",
+                        JoyButton.LeftShoulder => "pad_lb",
+                        JoyButton.RightShoulder => "pad_rb",
+                        JoyButton.LeftStick => "pad_l3",
+                        JoyButton.RightStick => "pad_r3",
+                        JoyButton.Start => "pad_start",
+                        JoyButton.Back => "pad_back",
                         _ => null,
                     };
 
@@ -144,6 +150,13 @@ namespace GUO.Input.Glyphs
                 "pad_x" => "X",
                 "pad_y" => "Y",
                 "pad_back" => "Back",
+                "pad_lb" => "LB",
+                "pad_rb" => "RB",
+                "pad_lt" => "LT",
+                "pad_rt" => "RT",
+                "pad_l3" => "L3",
+                "pad_r3" => "R3",
+                "pad_start" => "Start",
                 "ps_cross" => "Cross",
                 "ps_circle" => "Circle",
                 "ps_square" => "Square",
@@ -169,7 +182,26 @@ namespace GUO.Input.Glyphs
             control.MouseEntered += Set;
         }
 
-        private static Texture2D Load(string name)
+
+        /// <summary>Glyph file name for a bound pad input (button or trigger); null when none.</summary>
+        public static string GlyphName(GUO.Input.Gamepad.PadInput input)
+        {
+            if (input.IsAxis)
+            {
+                return (JoyAxis)input.Index switch
+                {
+                    JoyAxis.TriggerLeft => "pad_lt",
+                    JoyAxis.TriggerRight => "pad_rt",
+                    JoyAxis.LeftX or JoyAxis.LeftY => "stick_l",
+                    JoyAxis.RightX or JoyAxis.RightY => "stick_r",
+                    _ => null,
+                };
+            }
+
+            return NameFor(PadAction.Confirm, InputKind.Gamepad, InputMode.PadFamily, (JoyButton)input.Index);
+        }
+
+        internal static Texture2D Load(string name)
         {
             if (string.IsNullOrEmpty(name))
             {

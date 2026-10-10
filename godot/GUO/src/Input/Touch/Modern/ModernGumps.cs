@@ -39,7 +39,8 @@ internal static class ModernGumps
 
     /// <summary>Whether a gump of this type opens as its Modern view now.</summary>
     public static bool Chosen(Type classic) =>
-        TouchInput.Enabled && Has(classic) && !(ProfileManager.CurrentProfile?.ModernGumpsOff ?? false) && UoTheme.Ready;
+        TouchInput.Enabled && InputMode.Current != InputKind.Gamepad
+        && Has(classic) && !(ProfileManager.CurrentProfile?.ModernGumpsOff ?? false) && UoTheme.Ready;
 
     /// <summary>The next gump of this type opens Classic: a Modern view's "Classic view".</summary>
     public static void OpenClassicNext(Type classic) => _classicNext = classic;

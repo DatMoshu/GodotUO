@@ -12,6 +12,8 @@
       "tools/modernuo/patches/0001-headless-owner-account.patch",
       "tools/modernuo/patches/0002-settable-update-range.patch",
       "tools/modernuo/patches/0003-felucca-spring.patch",
+      "tools/modernuo/patches/0004-guo-pad-dummies.patch",
+      "tools/modernuo/patches/0005-guo-pad-attack-record.patch",
       "tools/modernuo/patches/0005-system-message-hook.patch"
     ]
   },
