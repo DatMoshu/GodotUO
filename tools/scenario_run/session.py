@@ -185,7 +185,7 @@ class ClientSession:
             engine.insert(0, capture.engine_args(self.avi))
         env["GUO_ENGINE_ARGS"] = " ".join(engine)
         quiet = [] if self.record or self.interactive else ["--silent"]     # a recording keeps its audio; so does a person's run
-        args = (["--focus", "--sound"] if self.interactive else ["--no-focus"]) + (["--window-size", self.size.replace("x", ",")] if self.size else []) + quiet + list(self.extra_args)
+        args = (["--focus", "--sound"] if self.interactive else ["--no-focus"]) + (["--window-size", self.size] if self.size else []) + quiet + list(self.extra_args)
         cmd = [str(self.cfg.root / "launchers" / "game" / "play.bat"), *args]
         log = self.log_path.open("w", encoding="utf-8", errors="replace")
         try:

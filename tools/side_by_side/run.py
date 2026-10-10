@@ -11,9 +11,19 @@ difference can be walked around and looked at from every side:
 
 ClassicUO takes the left half of the monitor on the owner account; GUO takes
 the right half on the first of UO_SHARD_GM_ACCOUNTS, because the shard drops
-one of two logins on one account. Both are sent to the same tile with [go and
-the shard is pinned to daylight. Driving ClassicUO means typing into its
-window, so it needs the desktop for the half minute it takes to log in.
+one of two logins on one account. The shard is pinned to daylight.
+
+Nothing types into ClassicUO's window. Its character is put on the tile
+first, by a short GUO pass that logs in as that same character, says [go and
+quits; ClassicUO then logs itself in (-autologin) and comes up already there.
+GUO, on its GM account, is sent to the tile with --shard-command.
+
+    launchers\\dev\\side_by_side.bat --cuo-only --at 5401 629
+
+starts ClassicUO alone, placed the same way, and leaves it running for a
+scenario: a GUO run on the same tile that says "renderdump NAME" makes
+ClassicUO write build/render_dump/NAME/cuo.json at the same moment, the
+reference a render_diff step compares against.
 
 ClassicUO is built, configured and driven by tools/ab_compare, whose code this
 reuses rather than copies, so the two tools cannot drift apart.
@@ -297,15 +307,66 @@ def place_window(hwnd, rect: tuple[int, int, int, int]) -> None:
     user32.SetWindowPos(hwnd, 0, x, y, w, h, 0x0004 | 0x0010)
 
 
-def drive_cuo(hwnd, go: str, login_wait: float) -> None:
+def place_scenario(place) -> dict:
+    """The scripted run that walks ClassicUO's character onto the place.
+
+    It logs in with upstream's own autologin switches, never through the
+    login gump: a generated shard password is longer than the gump's 16
+    characters, and --play's typed login cuts it short. Autologin takes the
+    account's first character, as ClassicUO does when -lastcharactername
+    matches nothing; render_diff's player rows show both stood on one tile.
+    """
+    where = {"x": place.x, "y": place.y, "tolerance": 3, **({} if place.z is None else {"z": place.z})}
+    return {
+        "id": "world.place_owner",
+        "title": f"Put the owner's character on {place.go[4:]} for ClassicUO",
+        "surface": "client",
+        "requires": {"shard": "dev", "account": "$account", "build": "debug"},
+        "timeouts": {"step_s": 60, "run_s": 300},
+        "steps": [
+            {"id": "launch", "say": "Log the owner's character in.", "timeout_s": 240,
+             "do": {"kind": "launch",
+                    "args": ["--scratch-profile", "--autologin", "--account", "$account", "--password", "$password"],
+                    "settings": {"autologin": True}},
+             "expect": {"scene": "GameScene", "within_s": 120}},
+            {"id": "settle", "say": "Wait for the world.", "do": {"kind": "wait", "seconds": 4}},
+            {"id": "light", "say": "Pin the shard to daylight.",
+             "do": {"kind": "chat", "text": f"[globallight {place.light}"}},
+            {"id": "go", "say": "Go to the place.", "do": {"kind": "chat", "text": place.go},
+             "expect": {"world.position": where, "within_s": 20}},
+            {"id": "stand", "say": "Stand there a moment; the shard keeps the spot.",
+             "do": {"kind": "wait", "seconds": 2}},
+        ],
+    }
+
+
+def place_owner(cfg, place, character: str) -> None:
+    """Put ClassicUO's character on the place before ClassicUO starts.
+
+    One scripted GUO run on the owner account (tools/scenario_run, with the
+    scenario above) says [globallight and [go, checks the position and
+    quits. The shard keeps the character where it was left, so ClassicUO
+    logs in already standing there and nothing is typed into its window.
+    The password reaches the run through its environment, never a file.
+    """
+    print(f"[sbs] placing {cfg.shard_owner}/{character} with a scripted GUO run: {place.go}")
+    out = cfg.build / "side_by_side" / "place_owner.scenario.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(place_scenario(place), indent=2), encoding="utf-8")
+    env = {**os.environ,
+           "GUO_SCENARIO_ACCOUNT": cfg.shard_owner,
+           "GUO_SCENARIO_PASSWORD": cfg.shard_owner_password}
+    runner = Path(__file__).resolve().parents[1] / "scenario_run" / "run.py"
+    proc = subprocess.run([sys.executable, str(runner), str(out), "--no-register", "--no-record"],
+                          env=env, cwd=str(cfg.root))
+    if proc.returncode != 0:
+        sys.exit(f"[sbs] the placing run failed (exit {proc.returncode}); ClassicUO was not started")
+
+
+def settle_cuo(hwnd, login_wait: float) -> None:
+    """Wait for ClassicUO to log in, then make it fill its window (ab.nudge: no focus, no keys)."""
     time.sleep(login_wait)
-    ab.focus(hwnd)
     ab.nudge(hwnd)
-    ab.focus(hwnd)
-    ab.send_keys(f"{{[}}globallight {ab.DAYLIGHT}{{ENTER}}")
-    time.sleep(1.0)
-    ab.focus(hwnd)
-    ab.send_keys(f"{{[}}{go[1:]}{{ENTER}}")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -317,7 +378,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--character", help="ClassicUO's character (default: GUO's last played)")
     parser.add_argument("--login-wait", type=float, default=20.0)
     parser.add_argument("--dump", metavar="LABEL",
-                        help="once both are in place, say \"renderdump LABEL\" so both write a render dump")
+                        help="with --cuo-only only: the NAME a scenario will say (printed back); "
+                             "otherwise say \"renderdump NAME\" in GUO's window")
+    parser.add_argument("--cuo-only", action="store_true",
+                        help="start ClassicUO alone on the place and leave it running, for a scenario's renderdump")
+    parser.add_argument("--size", nargs=2, type=int, metavar=("W", "H"), default=(1280, 720),
+                        help="ClassicUO's window and game window with --cuo-only (default 1280 720, a scenario client's)")
     parser.add_argument("--list-monitors", action="store_true")
     args = parser.parse_args(argv)
 
@@ -331,11 +397,16 @@ def main(argv: list[str] | None = None) -> int:
         place = next((p for p in ab.PLACES if p.name == args.place), None)
         if place is None:
             sys.exit(f"[sbs] no place {args.place!r}; there are: {', '.join(p.name for p in ab.PLACES)}")
-        go = place.go
     elif args.at and len(args.at) in (2, 3):
-        go = "[go " + " ".join(str(n) for n in args.at)
+        x, y, *z = args.at
+        place = ab.Place(f"at-{x}-{y}", x, y, z[0] if z else None)
     else:
         sys.exit("[sbs] say where: --place NAME or --at X Y [Z]")
+    if args.dump and not args.cuo_only:
+        # It used to be typed into ClassicUO's window; nothing types there now.
+        sys.exit("[sbs] --dump goes with --cuo-only (a scenario says the word); "
+                 "side by side, say \"renderdump NAME\" in GUO's window and both dump")
+    go = place.go
 
     cfg = load_config()
     if not cfg.upstream_exe.exists() or not cuo_has_dump(cfg):
@@ -344,6 +415,10 @@ def main(argv: list[str] | None = None) -> int:
     character = args.character or ab.last_played(cfg) or "Guoprobe"
     mon = pick_monitor(args.monitor)
     mx, my, mw, mh = mon["work"]
+
+    if args.cuo_only:
+        return cuo_only(cfg, place, character, (mx, my), tuple(args.size), args.login_wait, args.dump)
+
     half = mw // 2
     left = (mx, my, half, mh)
     right = (mx + half, my, mw - half, mh)
@@ -351,6 +426,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"[sbs] {mon['name']}: {mw}x{mh} at {mx},{my}; each client about {w}x{h}")
     print(f"[sbs] both to {go[1:]}")
 
+    place_owner(cfg, place, character)
     cuo = start_cuo(cfg, character, mx, my, w, h)
     print(f"[sbs] ClassicUO (pid {cuo.pid}) on the left, as {cfg.shard_owner}/{character}")
     guo = start_guo(cfg, go, character, mx + half, my, w, h)
@@ -361,22 +437,39 @@ def main(argv: list[str] | None = None) -> int:
     guo_hwnd = wait_window(guo.pid, "GUO", children=True)
     place_window(guo_hwnd, right)
 
-    drive_cuo(cuo_hwnd, go, args.login_wait)
+    settle_cuo(cuo_hwnd, args.login_wait)
     # Both move their own windows as they enter the world (ClassicUO applies
     # the profile's window then), so the places are set again after it.
     time.sleep(args.login_wait / 2)
     place_window(cuo_hwnd, left)
     ab.nudge(cuo_hwnd)
     place_window(guo_hwnd, right)
-    if args.dump:
-        time.sleep(3.0)
-        ab.focus(cuo_hwnd)
-        ab.send_keys(f"renderdump {args.dump}{{ENTER}}")
-        print(f"[sbs] asked both for a render dump -> {dump_dir(cfg) / args.dump}")
 
-    print("[sbs] Both in place. Say \"renderdump NAME\" in either to dump both;")
+    print("[sbs] Both in place. Say \"renderdump NAME\" in GUO's window to dump both;")
     print(r"[sbs] compare with: launchers\dev\render_diff.bat NAME")
     print("[sbs] Close either window when done.")
+    return 0
+
+
+def cuo_only(cfg, place, character: str, origin: tuple[int, int], size: tuple[int, int],
+             login_wait: float, dump: str | None) -> int:
+    """ClassicUO alone, standing on the place and listening for "renderdump"; left running.
+
+    The game window is set to the client window's size, which is how GUO
+    frames its own, so a scenario's GUO at the same size draws the same part
+    of the world. Its pid goes to build/side_by_side/cuo.pid for whoever
+    stops it.
+    """
+    w, h = size
+    place_owner(cfg, place, character)
+    cuo = start_cuo(cfg, character, origin[0], origin[1], w, h)
+    hwnd = wait_window(cuo.pid, "ClassicUO")
+    settle_cuo(hwnd, login_wait)
+    (cfg.build / "side_by_side" / "cuo.pid").write_text(str(cuo.pid), encoding="ascii")
+    name = dump or "NAME"
+    print(f"[sbs] ClassicUO (pid {cuo.pid}) is on {place.go[4:]} as {cfg.shard_owner}/{character}, {w}x{h}")
+    print(f"[sbs] a GUO run there saying \"renderdump {name}\" makes it write {dump_dir(cfg) / name / 'cuo.json'}")
+    print("[sbs] Close its window, or end that pid, when done.")
     return 0
 
 
