@@ -385,6 +385,7 @@ public partial class WorldView : VBoxContainer
         _stage.AddChild(_chip);
 
         BuildWorkspace(bar, tools);
+        RestoreLayerTicks();
 
         VisibilityChanged += OnVisibilityChanged;
     }
@@ -423,6 +424,10 @@ public partial class WorldView : VBoxContainer
             _status.Text = $"could not start: {_host.Error}";
             return false;
         }
+
+        // Roofs is the profile's DrawRoofs, and Boot loads the profile with
+        // roofs on: put the tick back.
+        _host.ShowRoofs = GetToggle("Roofs") ?? true;
 
         // The world project (ADR-0011): whole replaced blocks over the
         // install, from UO_WORLD_PROJECT.
@@ -689,7 +694,18 @@ public partial class WorldView : VBoxContainer
 
     private static MenuButton Menu(HBoxContainer bar, string text, string tip)
     {
-        var m = new MenuButton { Text = text, TooltipText = tip, Flat = false };
+        // The editor theme draws a MenuButton flat, as a label; the Button
+        // variation and OptionButton's arrow make it read as the dropdown
+        // button it is, beside Pick and Set Z / hue.
+        var m = new MenuButton
+        {
+            Text = text,
+            TooltipText = tip,
+            Flat = false,
+            ThemeTypeVariation = "Button",
+            Icon = EditorInterface.Singleton.GetEditorTheme()?.GetIcon("GuiOptionArrow", "EditorIcons"),
+            IconAlignment = HorizontalAlignment.Right,
+        };
         bar.AddChild(m);
         // Stay open while ticking several items.
         m.GetPopup().HideOnCheckableItemSelection = false;
@@ -715,7 +731,48 @@ public partial class WorldView : VBoxContainer
             bool now = !pm.IsItemChecked(id);
             pm.SetItemChecked(id, now);
             set(now);
+            RememberLayerTicks();
         };
+    }
+
+    // The Layers ticks for this editor session, kept on the editor rather than on
+    // this object: an assembly reload or a plugin re-enable builds a new
+    // World tab, and the ticks come back with it. Never written to disk.
+    private const string LayerTicksMeta = "guo_world_layer_ticks";
+
+    private void RememberLayerTicks()
+    {
+        PopupMenu pm = _layers?.GetPopup();
+        if (pm == null)
+        {
+            return;
+        }
+
+        var ticks = new Godot.Collections.Dictionary<string, bool>();
+        for (int i = 0; i < pm.ItemCount; i++)
+        {
+            ticks[pm.GetItemText(i)] = pm.IsItemChecked(i);
+        }
+
+        EditorInterface.Singleton.SetMeta(LayerTicksMeta, ticks);
+    }
+
+    /// <summary>The session's Layers ticks by label; empty until one is changed.</summary>
+    internal static System.Collections.Generic.IReadOnlyDictionary<string, bool> SessionLayerTicks =>
+        EditorInterface.Singleton.HasMeta(LayerTicksMeta)
+            ? new System.Collections.Generic.Dictionary<string, bool>(EditorInterface.Singleton.GetMeta(LayerTicksMeta).AsGodotDictionary<string, bool>())
+            : new System.Collections.Generic.Dictionary<string, bool>();
+
+    private void RestoreLayerTicks()
+    {
+        PopupMenu pm = _layers.GetPopup();
+        foreach (var (label, on) in SessionLayerTicks)
+        {
+            if (_toggles.TryGetValue(label, out var t) && t.Menu == pm && t.Menu.IsItemChecked(t.Id) != on)
+            {
+                SetToggle(label, on);
+            }
+        }
     }
 
     /// <summary>The Layers and Guides menu items by name (Land, Statics, Multis, Roofs, Objects, Grid, Altitude, Blocks, ...), for F3.</summary>
@@ -734,6 +791,7 @@ public partial class WorldView : VBoxContainer
 
         t.Menu.SetItemChecked(t.Id, on);
         t.Set(on);
+        RememberLayerTicks();
         return true;
     }
 

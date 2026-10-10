@@ -413,7 +413,12 @@ UO Inspector has the full height of the right column in front of Godot's
 Inspector (preview on top, scrolling details below); Scene and FileSystem share
 the left dock; the UO Shard dock is in the bottom panel. The World toolbar folds
 the layer and guide toggles into Layers and Guides menus, and a minimap
-(Guides > Minimap) sits in the view. The layout is applied once (a flag in the
+(Guides > Minimap) sits in the view. Layers holds Land, Statics, Multis, Roofs,
+Objects, Live, Live players and Live mobiles; all start on except Live, which
+needs a shard. Its ticks last for the editor session (kept on the editor, not
+on disk): a tab switch, a project reload or a rebuilt World tab keeps them.
+`EditorSmokeWorldLayers.cs` clicks each of the eight off and on and checks the
+World view, then checks the ticks survive. The layout is applied once (a flag in the
 editor's project metadata) or by Project > Tools > Reset GUO layout
 (`GuoEditorPlugin.ResetLayout()`); a layout the user changed is not touched.
 The tour records at 3840x2160 with display scale 1.5 on a scratch settings

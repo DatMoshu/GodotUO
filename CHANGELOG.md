@@ -43,6 +43,14 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 - The server manager's own tests build and pass again without the Godot
   engine; the server console path now lives in the engine-free workspace code,
   unchanged.
+- A server packet with an impossible length, or one that makes its handler
+  fail, is logged and dropped instead of freezing or crashing the client;
+  connecting to a dead server gives up after 5 seconds. The three edits to
+  ported code are recorded in docs/upstream/GUO_DIVERGENCES.md.
+- launchers/shard/fetch.bat and fetch.sh stop with git's error when a ModernUO
+  patch neither applies nor is already applied, instead of saying 'already
+  applied' and building the old patch; moving to a new pin resets the files of
+  a patch that will not come off.
 
 ### Platforms
 - **Android** (ARM64, debug): export, install, run and smoke from
@@ -86,6 +94,9 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 - Profile settings migrate automatically; profile version 10.
 
 ### Building and managing
+- World editor: the Layers menu (Land, Statics, Multis, Roofs, Objects and the
+  live layers) now looks like a button beside the others, keeps its ticks for
+  the whole editor session, and switching Roofs off takes effect at once.
 - **GodotUO Asset Store**: a local web catalogue (`launchers\store\serve.bat`)
   where a folder on disk stands in for web storage, and a Store in Options
   that installs, updates and removes packs with every file hash-checked.
