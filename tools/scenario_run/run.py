@@ -105,6 +105,27 @@ def resolve_shard_target(target: str, root: Path, variables: dict[str, str]) -> 
     return host, int(port)
 
 
+def resolve_server_profile(name: str, workspace: Path, variables: dict[str, str]) -> tuple[str, int, str]:
+    """`--server NAME`: a server profile of the per-user workspace (docs/data_formats.md section 30), by Id or Name,
+    supplies the address; the login comes from GUO_SCENARIO_ACCOUNT / GUO_SCENARIO_PASSWORD (or --var), as for --shard.
+    Returns (host, port, profile id)."""
+    path = Path(workspace) / "profiles" / "servers.json"
+    try:
+        servers = json.loads(path.read_text(encoding="utf-8")).get("Servers", []) if path.is_file() else []
+    except (OSError, ValueError):
+        raise sc.ScenarioError("--server: the workspace's servers.json cannot be read")
+    hits = [s for s in servers if s.get("Id") == name] or [s for s in servers if str(s.get("Name", "")).casefold() == name.casefold()]
+    if len(hits) != 1:
+        raise sc.ScenarioError(f"--server {name}: no single server profile has that Id or Name (run.py of tools/server_manager lists them with doctor)")
+    missing = [f"GUO_SCENARIO_{n.upper()}" for n in ("account", "password") if n not in variables and not os.environ.get(f"GUO_SCENARIO_{n.upper()}")]
+    if missing:
+        raise sc.ScenarioError(f"--server {name}: not set: " + ", ".join(missing))
+    host, port = str(hits[0].get("Host", "")), hits[0].get("Port")
+    if not host or not isinstance(port, int) or not 0 < port < 65536:
+        raise sc.ScenarioError(f"--server {name}: the profile has no usable Host and Port")
+    return host, port, hits[0]["Id"]
+
+
 def shard_address(scen: sc.Scenario, root: Path, override: tuple[str, int] | None = None) -> tuple[str, int] | None:
     """The shard a scenario needs, or None when it needs none or the launcher config does not name one."""
     if not scen.requires.get("shard") or scen.surface != "client":
@@ -306,6 +327,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--dry-run", action="store_true", help="prune: list what would go, delete nothing")
     ap.add_argument("--shard", dest="shard_target", default=None,
                     help="run against this shard target: GUO_SHARD_<TARGET>_HOST/_PORT and GUO_SCENARIO_ACCOUNT/_PASSWORD (section 34)")
+    ap.add_argument("--server", dest="server_profile", default=None,
+                    help="run against this server profile (Id or Name in the workspace's servers.json) and GUO_SCENARIO_ACCOUNT/_PASSWORD")
     ap.add_argument("--no-register", action="store_true", help="do not add the run to the registry")
     ap.add_argument("--clean", action="store_true", help="human driver: hide the overlay (Space and Esc still work), for a clean recording")
     ap.add_argument("--ghost-human", dest="ghost", action="store_true",
@@ -344,6 +367,14 @@ def main(argv: list[str] | None = None) -> int:
         if args.driver == "human" and scen.surface not in human_mod.OVERLAY_TOOLS:
             raise sc.ScenarioError(f"the human driver follows client and editor scenarios; '{scen.surface}' is not supported yet")
         variables = parse_vars(args.var)
+        if args.shard_target and args.server_profile:
+            raise sc.ScenarioError("give --shard or --server, not both")
+        if args.server_profile:
+            if scen.surface != "client":
+                raise sc.ScenarioError("--server applies to a client scenario")
+            host, port, profile_id = resolve_server_profile(args.server_profile, cfg.workspace_dir, variables)
+            shard = (host, port)
+            scen.requires = {**scen.requires, "shard": "server:" + profile_id}
         if args.shard_target:
             if scen.surface != "client":
                 raise sc.ScenarioError("--shard applies to a client scenario")

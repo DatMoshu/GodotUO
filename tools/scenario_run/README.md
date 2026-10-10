@@ -39,6 +39,11 @@ It reads `GUO_SHARD_<TARGET>_HOST` and `GUO_SHARD_<TARGET>_PORT` (target upper-c
 `--var account=` / `--var password=`). A missing one stops the run before launch (exit 2) with the setting's name; the
 values are never printed or logged. The run's manifest records the target as `shard`.
 
+`--server NAME` runs a client scenario against a server profile of the per-user workspace (`profiles/servers.json`,
+found by `Id` or `Name`): its `Host` and `Port` are the address, the login comes from `GUO_SCENARIO_ACCOUNT` /
+`GUO_SCENARIO_PASSWORD` as for `--shard`, and the manifest records `server:<profile id>` as `shard`. The server lab
+(`tools/server_lab`) runs its cases this way.
+
 Not yet (the commands exist in the plan, not in the runner):
 
 | Command | Arrives with |

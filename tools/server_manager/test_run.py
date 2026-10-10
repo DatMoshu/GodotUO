@@ -47,5 +47,24 @@ class WorkspaceTests(unittest.TestCase):
         self.assertEqual(run.client_problem({"kind": "guo-project", "program": "", "base_data": str(self.root / "gone"), "overlay": ""}), "UO data folder missing")
 
 
+class LabPinTests(unittest.TestCase):
+    """The server lab rows of backends.json (SV0): docs/data_formats.md section 30."""
+
+    def test_lab_rows_are_pinned_and_complete(self):
+        backends = json.loads(Path(run.__file__).with_name("backends.json").read_text(encoding="utf-8"))
+        lab = {b["id"]: b["lab"] for b in backends if "lab" in b}
+        self.assertEqual(sorted(lab), ["modernuo", "servuo", "sphere", "uox3"])
+        self.assertEqual(sorted(r["row"] for r in lab.values()), [1, 2, 3, 4])
+        for ident, row in lab.items():
+            self.assertTrue({"repos", "pin_source", "licence", "toolchain", "client", "era", "admin", "bind"} <= set(row), ident)
+            for repo in row["repos"]:
+                self.assertRegex(repo["commit"], r"^[0-9a-f]{40}$", ident)
+                self.assertRegex(repo["date"], r"^\d{4}-\d{2}-\d{2}$", ident)
+                self.assertTrue(repo["repo"].startswith("https://github.com/") and repo["ref"], ident)
+            self.assertIn(row["admin"]["route"], ("patch-env", "console-prompt", "account-file"), ident)
+            self.assertIsInstance(row["bind"]["loopback"], bool, ident)
+            self.assertTrue(row["era"]["lab"] and row["client"]["accepts"], ident)
+
+
 if __name__ == "__main__":
     unittest.main()

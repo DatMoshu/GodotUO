@@ -8,7 +8,7 @@
     python tools/servuo/run.py status
     python tools/servuo/run.py stop
 
-ServUO is GPL-3.0 and is never vendored: src/ is gitignored, and nothing here
+ServUO is GPL-2.0 and is never vendored: src/ is gitignored, and nothing here
 is copied from it. What is committed is ours: this tool, config/*.cfg (only
 the key=value lines we set, applied over ServUO's own files line by line) and
 the README. It listens on 127.0.0.1:2596 only, beside the private ModernUO

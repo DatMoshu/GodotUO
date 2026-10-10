@@ -625,6 +625,61 @@ def test_main_shard_refuses_an_editor_scenario(shard_env, cli_root, capsys):
     assert "client scenario" in capsys.readouterr().err
 
 
+# --- --server PROFILE ------------------------------------------------------------------------------------------
+
+def server_workspace(tmp_path, servers):
+    ws = tmp_path / "ws"
+    (ws / "profiles").mkdir(parents=True)
+    (ws / "profiles" / "servers.json").write_text(json.dumps({"Selected": None, "Servers": servers}), encoding="utf-8")
+    return ws
+
+
+def lab_profile(**over):
+    return {"Id": "a" * 32, "Backend": "modernuo", "Name": "ModernUO (server lab)", "Host": "127.0.0.1", "Port": 2610, **over}
+
+
+def test_server_profile_by_id_or_name(shard_env, tmp_path):
+    ws = server_workspace(tmp_path, [lab_profile(), lab_profile(Id="b" * 32, Name="Other", Port=2611)])
+    login = {"account": "a", "password": "b"}
+    assert run_mod.resolve_server_profile("a" * 32, ws, login) == ("127.0.0.1", 2610, "a" * 32)
+    assert run_mod.resolve_server_profile("modernuo (SERVER lab)", ws, login) == ("127.0.0.1", 2610, "a" * 32)
+    assert run_mod.resolve_server_profile("Other", ws, login)[1] == 2611
+
+
+@pytest.mark.parametrize("servers, name, match", [
+    ([], "x", "no single server profile"),
+    ([lab_profile(), lab_profile(Id="b" * 32)], "ModernUO (server lab)", "no single server profile"),
+    ([lab_profile(Port=0)], "ModernUO (server lab)", "no usable Host and Port"),
+])
+def test_server_profile_refusals(shard_env, tmp_path, servers, name, match):
+    with pytest.raises(sc.ScenarioError, match=match):
+        run_mod.resolve_server_profile(name, server_workspace(tmp_path, servers), {"account": "a", "password": "b"})
+
+
+def test_server_profile_needs_the_login(shard_env, tmp_path):
+    with pytest.raises(sc.ScenarioError, match="GUO_SCENARIO_ACCOUNT, GUO_SCENARIO_PASSWORD"):
+        run_mod.resolve_server_profile("ModernUO (server lab)", server_workspace(tmp_path, [lab_profile()]), {})
+
+
+def test_main_server_passes_the_address_and_retargets_the_scenario(shard_env, cli_root, tmp_path, capsys):
+    import guo
+    ws = server_workspace(tmp_path, [lab_profile()])
+    shard_env.setattr(guo, "load_config", lambda: SimpleNamespace(root=cli_root, workspace_dir=ws))
+    shard_env.setenv("GUO_SCENARIO_ACCOUNT", "acct")
+    shard_env.setenv("GUO_SCENARIO_PASSWORD", "pw")
+    seen = {}
+
+    def fake_execute(scen, cfg, variables, **kw):
+        seen.update(shard=kw["shard"], requires=scen.requires)
+        return {"ok": True, "run_id": "r", "exit_kind": "ok"}, cli_root
+
+    shard_env.setattr(run_mod, "execute", fake_execute)
+    assert run_mod.main(["shard.console", "--server", "ModernUO (server lab)"]) == 0
+    assert seen["shard"] == ("127.0.0.1", 2610) and seen["requires"]["shard"] == "server:" + "a" * 32
+    assert run_mod.main(["shard.console", "--server", "x", "--shard", "y"]) == 2
+    assert "not both" in capsys.readouterr().err
+
+
 def test_shard_console_scenario_validates_and_needs_a_shard():
     scen = sc.load(REPO / "tools" / "scenarios" / "shard" / "console.scenario.json")
     assert scen.id == "shard.console" and scen.surface == "client" and scen.requires.get("shard")

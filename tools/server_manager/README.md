@@ -9,7 +9,8 @@ The Godot editor run bar keeps named local servers and remote endpoints. Each se
 3. Select a profile and click **Setup / validate** for upstream setup instructions. Install/build the native server and scripts, configure its client data and listener, and complete first-run account creation using that server's tools.
 4. Set its executable and working directory using **Browse**. Choose its default client (add clients on the **Clients** page: kind, program, data folder, overlay) and an optional server code project; save the profile. Profiles do not rewrite native server configuration.
 5. Choose it in the run bar, start the server, then start one to four clients. Remote profiles can launch clients; manage their server on its own host.
-6. Run `python tools/server_manager/run.py doctor` to list missing installation and client files. Exit 1 means setup remains. File presence and an open port are readiness indicators, not gameplay proof.
+6. `python tools/server_manager/run.py start NAME`, `stop NAME` and `status NAME` (NAME: a profile's Id or Name) do what the run bar's Start and Stop do, from a script, with the same process record (`process.py`, Windows): either side can stop what the other started. Only loopback profiles are started.
+7. Run `python tools/server_manager/run.py doctor` to list missing installation and client files. Exit 1 means setup remains. File presence and an open port are readiness indicators, not gameplay proof.
 
 | Backend | Starter game port | GUO server content adapter |
 |---|---:|---|
@@ -20,7 +21,7 @@ The Godot editor run bar keeps named local servers and remote endpoints. Each se
 | Sphere X | 2614 | Item definitions |
 | UOX3 | 2615 | Item definitions |
 
-These are starter profiles, not bundled or prevalidated server distributions. Custom executable names/platform builds can be selected with Browse. The upstream links and setup requirements are in `backends.json`. Each native installation needs separate world saves, configuration and admin/bridge ports. The existing ModernUO editor bridge is not automatically switched by selecting another server in this run bar.
+These are starter profiles, not bundled or prevalidated server distributions. Custom executable names/platform builds can be selected with Browse. The upstream links and setup requirements are in `backends.json`. The four server lab rows (ModernUO, ServUO, UOX3, Sphere X) also carry a `lab` object with the pinned commit, licence, toolchain, accepted client, era and headless admin route; [docs/server_lab.md](../../docs/server_lab.md) has them as a table. Each native installation needs separate world saves, configuration and admin/bridge ports. The existing ModernUO editor bridge is not automatically switched by selecting another server in this run bar.
 
 Profiles live in the per-user workspace (`UO_WORKSPACE_DIR`, default `%LOCALAPPDATA%\GUO`; shared by every checkout and worktree): `profiles/servers.json`, `profiles/clients.json`, `clients/<id>/`, `servers/<id>/` (suggested home for new installs) and `runs/<server>/<client>/slot-N/` (settings, account cache and logs of each pair). The layout is in `docs/data_formats.md` section 30. An `external` client is only started, with its arguments and working folder, and tracked by PID, start time and executable; it is desktop only. UO installs are never copied or written. Never put game data or credentials into source control. Profile removal keeps server files and saves. Closing the editor leaves managed servers running; reopening can recover their process identity.
 

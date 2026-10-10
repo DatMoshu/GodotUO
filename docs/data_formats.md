@@ -1706,6 +1706,8 @@ reload. Each start appends rather than erasing prior output. Console text uses t
 (the Logs dock reads UTF-8); the dock's Server console source hides secrets in the view, without changing
 the raw file. Client console paths are unchanged: `runs/<server-id>/<client-id>/slot-1..4/client.log`.
 
+`servers/<server-id>/process.json` is the managed process's identity: `{"Pid": int, "Started": .NET UTC ticks of its start time, "Executable": full path}` of the OS shell that runs the server. The run bar and `tools/server_manager/run.py start|stop|status` (process.py, Windows) write and honour the same record, so either can stop what the other started; a record whose three fields no longer all match is not ours and nothing is stopped.
+
 **`profiles/servers.json`** (PascalCase, as the earlier `build/editor_servers/profiles.json`):
 `{"Selected": id|null, "SelectedClient": id|null, "Servers": [ ... ]}`, at most 64 servers. A server:
 `Id`, `Backend` (a `tools/server_manager/backends.json` id or `custom`), `Name` (1-100 chars), `Host`,
@@ -1713,6 +1715,16 @@ the raw file. Client console paths are unchanged: `runs/<server-id>/<client-id>/
 (a client id or `""`), `ExpectedClientVersion` (`""` or a dotted version such as `7.0.107.76`),
 `ContentLock`, `ContentStore` (paths or `""`), `Arguments` (at most 32 strings). A server with a remote
 `Host` is connect-only. `ClientProject` and `ClientData` are no longer valid here; migration moves them.
+
+**`tools/server_manager/backends.json`** (tracked, snake_case): one object per backend with `id`, `name`, `source`,
+`executable`, `port`, `adapter` and `setup`, which the editor's Manage servers window and `run.py init` read. A backend
+the server compatibility lab covers also has `lab` (SV0; the pins table in `docs/server_lab.md` says the same in prose):
+`row` (lab order, 1 = ModernUO), `repos` (one or more `{role, repo, ref, commit, date}`: `role` is `core` or
+`scripts`, `commit` a full 40-hex SHA, `date` its commit date as `YYYY-MM-DD`), `pin_source` (where else the pin is
+kept, or why it was chosen), `licence`, `toolchain`, `client` (`accepts`, `encryption`, `lab_client`), `era`
+(`setting`, `upstream_default`, `lab`), `admin` (`route`: `patch-env`, `console-prompt` or `account-file`, plus
+`detail`) and `bind` (`loopback`: whether the server can be made to listen on 127.0.0.1 alone, plus `detail`). Readers
+ignore fields they do not use; `tools/server_manager/test_run.py` checks the `lab` rows.
 
 **`profiles/clients.json`** (snake_case): `{"version": 1, "clients": [ ... ]}`, at most 64 clients. A client:
 
@@ -1986,6 +1998,7 @@ for.
 from the scenario's variables. `editor_shard` is the local editor shard; a remote shard is the `id` of its host
 profile (section 35). Nothing about a remote shard's address or account is committed.
 `run.py --shard TARGET` names the target from the command line, for a client scenario: it replaces `requires.shard` for that run, reads the two settings above (a missing one stops the run, naming it) and `GUO_SCENARIO_ACCOUNT` / `GUO_SCENARIO_PASSWORD`, and starts the client against that address.
+`run.py --server NAME` does the same from a server profile of the workspace (section 30), found by `Id` or `Name` (case-insensitive; exactly one must match): the profile's `Host` and `Port` are the address, the login is read as for `--shard`, and `requires.shard` becomes `server:<profile Id>`. `--shard` and `--server` are not given together.
 
 ### The human driver (`--driver human`, client and editor scenarios)
 
@@ -2495,3 +2508,32 @@ last 10 such folders are kept. Each file is written to `<name>.guo-tmp` and
 moved over the old one. Before the restart the change list goes to the audit
 log (`admin_settings` `changed`, section 10); after it the form asks the
 server for the values it now holds (`admin_settings` `get`).
+
+---
+
+## 38. Server compatibility lab (`tools/server_lab`)
+
+The lab runs the scenario cases of `tools/server_lab/cases.json` against each server of `backends.json` that has a
+`lab` object (section 30). Its per-user state is in the workspace; its results are in `build/server_lab/`.
+
+```
+<workspace>/server_lab/<backend>/lab.json       {"profile_id": 32 hex, "seeded": UTC ISO-8601 or absent}
+<workspace>/server_lab/<backend>/secrets.json   {"account", "password"}: the lab admin, generated; never committed
+<workspace>/servers/<profile_id>/src/            the server checkout and build (ModernUO: src/Distribution)
+build/server_lab/grid.json                       the grid (below)
+build/server_lab/card_<backend>.json             a row's card: {title, ok, passed, scripted, body}; sends nothing
+build/server_lab/<backend>/{build,seed}.log      setup and seed output
+```
+
+**`cases.json`**: `{"version": 1, "cases": [...]}`, a case being `n` (0-25), `group`, `title`, `scenario` (a scenario
+id, or null until written) and `needs_server` (false only for case 0). **`table.json`**: `{"version": 1, "backends":
+{"<id>": {lab_name, shard_name, account, character, vars}}}`; `vars` are string values a scenario may take with
+`--var`. **`triage.json`** (optional): `{"<backend>": {"<n>": {"verdict": "guo" | "server-gap" | "n/a", "why"}}}`.
+
+**`grid.json`**: `{"version": 1, "updated": UTC ISO-8601 or null, "client_version", "commit": GUO's short HEAD or
+null, "rows": {"<backend>": {name, row, era, pins: [{role, commit (9 hex), date}], cells: {"<n>": cell}}}}`. A cell:
+`result` (`PASS`, `FAIL (GUO)`, `FAIL (server gap)`, `FAIL (untriaged)`, `n/a`, `not run`), `scenario`, `run_id` and
+`run_dir` (`build/runs/<run_id>`, or null when the run could not start), `failed_steps` (step ids), `when`, and
+optionally `note` (why it did not run, at most 300 characters) and `why` (from triage). Runner exit 0 is `PASS`, 2 or
+no run id `not run`, anything else `FAIL (untriaged)`; triage then names the owner. The file holds no machine paths
+and no credentials. `docs/wiki/Server-Compatibility.md` is generated from it with `triage.json` applied.
