@@ -19,6 +19,12 @@ server/client bar stays inside the window and occupies one row at 1920, 1366
 and 1024 logical pixels wide, and saves `editor_header_*.png`. It runs no other
 editor checks and cannot be combined with `--reload`.
 
+The Roofs layer check counts nontransparent roofs queued for the current frame,
+not every loaded roof component's retained alpha. Culled components are not
+required to fade. Its report keeps both loaded/queued baseline counts and the
+remaining nontransparent components with their queue membership; hide and
+restore still must pass against the real draw queues.
+
 ## What it does
 
 1. `dotnet build` of `godot/GUO/GUO.csproj`. The addon is C# in the game

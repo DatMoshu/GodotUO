@@ -3,6 +3,8 @@ namespace GUO.Editor;
 
 using System;
 using System.Collections.Generic;
+using System.Collections;
+using System.Reflection;
 using System.Linq;
 using Godot;
 using GUO.Game.GameObjects;
@@ -35,10 +37,12 @@ public partial class EditorSmoke
     private int HouseDrawn() => _world.Host.World.HouseManager.TryGetHouse(LayersHouse, out var h) ? h.Components.Count(m => m.AllowedToDraw) : -1;
 
     // Roofs are not switched by AllowedToDraw: the game fades them out by
-    // alpha (DrawRoofs off), as it does when the player walks indoors.
+    // alpha (DrawRoofs off). Culled components retain their last alpha, so
+    // only queued roofs count as shown. Use the same read-only queue walk as RenderDump.
     private (int Roofs, int Shown) RoofsNearCentre()
     {
         int roofs = 0, shown = 0;
+        var queued = QueuedWorldObjects();
         for (int x = LayersX - 10; x <= LayersX + 10; x++)
         {
             for (int y = LayersY - 10; y <= LayersY + 10; y++)
@@ -50,13 +54,44 @@ public partial class EditorSmoke
                     if ((o is Static s && s.ItemData.IsRoof) || (o is Multi m && m.ItemData.IsRoof))
                     {
                         roofs++;
-                        shown += o.AlphaHue > 0 ? 1 : 0;
+                        shown += o.AlphaHue > 0 && queued.Contains(o) ? 1 : 0;
                     }
                 }
             }
         }
 
         return (roofs, shown);
+    }
+
+    private HashSet<GameObject> QueuedWorldObjects()
+    {
+        const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+        var queued = new HashSet<GameObject>();
+        object lists = _world.Host.Scene.GetType().GetField("_renderLists", flags)?.GetValue(_world.Host.Scene)
+            ?? throw new InvalidOperationException("The scene has no render queues for the layer check");
+        foreach (var field in lists.GetType().GetFields(flags))
+            if (field.GetValue(lists) is IList list)
+                foreach (object entry in list)
+                {
+                    var obj = entry as GameObject ?? entry?.GetType().GetField("Object", flags)?.GetValue(entry) as GameObject;
+                    if (obj != null) queued.Add(obj);
+                }
+        return queued;
+    }
+
+    private List<object> RemainingRoofs()
+    {
+        var result = new List<object>();
+        var queued = QueuedWorldObjects();
+        for (int x = LayersX - 10; x <= LayersX + 10; x++)
+            for (int y = LayersY - 10; y <= LayersY + 10; y++)
+            {
+                var chunk = _world.Host.World.Map.GetChunk(x, y, load: true);
+                for (var o = chunk?.GetHeadObject(x % 8, y % 8); o != null; o = o.TNext)
+                    if (o.AlphaHue > 0 && ((o is Static s && s.ItemData.IsRoof) || (o is Multi m && m.ItemData.IsRoof)))
+                        result.Add(new { type = o.GetType().Name, x, y, z = o.Z, graphic = o.Graphic, alpha = o.AlphaHue, queued = queued.Contains(o), allowed = o.AllowedToDraw, mesh = o.InChunkMesh, screen = o.RealScreenPosition.ToString() });
+            }
+        return result;
     }
 
     private int CentreObjects(Func<GameObject, bool> match)
@@ -161,6 +196,7 @@ public partial class EditorSmoke
             () =>
             {
                 _layersReport["roofs_shown_when_off"] = RoofsNearCentre().Shown;
+                _layersReport["remaining_roofs"] = RemainingRoofs();
                 return !_world.Host.ShowRoofs && RoofsNearCentre().Shown == 0 && StaticsDrawn() == baseline["statics"];
             },
             () =>

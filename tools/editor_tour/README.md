@@ -140,3 +140,12 @@ The video is a captioned sequence of internally captured frames, with no audio.
 This is interface coverage, not successful ComfyUI generation or gameplay
 acceptance. Model/endpoint setup, regional audio playback transitions and live
 voice output require separate proofs. All rendered client art remains local.
+
+## Header icon review
+
+`python tools/scenario_run/run.py editor.header.review --no-register` runs the
+focused server/client toolbar tour in a scratch NoFocus editor. It selects the
+private server menu entry and checks the icon's accessible name and client menu,
+but never starts a server or client. Four screenshots and MCP events stay under
+`build/runs/`. Use `tools/editor_smoke/run.py --windowed --header-only` for the
+three-width layout check.
