@@ -105,6 +105,20 @@ def test_export_prints_the_headless_godot_command(deck, capsys):
     assert "export.log" in out
 
 
+def test_export_prints_both_solution_commands_and_the_add(deck, capsys):
+    # With no GUO.sln a real export tries "dotnet new sln --format sln" and,
+    # when that fails on an SDK older than 9.0.200, the same line without
+    # --format; a dry run prints both, then the "dotnet sln add".
+    deck("export")
+    out = capsys.readouterr().out
+    new = lines(out, "$ dotnet new sln -n GUO")
+    assert len(new) == 2
+    assert new[0].endswith("--format sln")
+    assert "--format" not in new[1]
+    (add,) = lines(out, "$ dotnet sln ")
+    assert "GUO.csproj" in add
+
+
 def test_push_without_rsync_streams_a_tar_and_shows_guo_sh(deck, capsys, monkeypatch):
     monkeypatch.setattr(shutil, "which", lambda name: None)
     deck("push", "--host", "shard-lan", "--port", "2600")

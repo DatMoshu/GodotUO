@@ -474,7 +474,8 @@ def ensure_solution(p: Paths) -> None:
     new_sln = ["dotnet", "new", "sln", "-n", "GUO", "-o", p.project]
     if DRY_RUN:
         run([*new_sln, "--format", "sln"])
-        say("(and without --format on an SDK older than 9.0.200)")
+        say("and if that fails (an SDK older than 9.0.200 has no --format):")
+        run(new_sln)
         run(["dotnet", "sln", p.solution, "add", p.project / "GUO.csproj"])
         return
     if subprocess.run([*new_sln, "--format", "sln"], stdout=subprocess.DEVNULL,
