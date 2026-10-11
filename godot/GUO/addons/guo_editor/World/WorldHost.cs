@@ -73,6 +73,7 @@ internal sealed class WorldHost : IDisposable
                 // The game reads DrawRoofs when the player moves; the editor's
                 // view may not move, so read it now.
                 _scene?.UpdateMaxDrawZ(true);
+                _layersTouched = true;
             }
         }
     }
@@ -293,6 +294,7 @@ internal sealed class WorldHost : IDisposable
         }
 
         World world = World;
+        bool hideRoofs = !(ProfileManager.CurrentProfile?.DrawRoofs ?? true);
         foreach (Chunk chunk in world.Map.GetUsedChunks())
         {
             bool dirty = false;
@@ -302,6 +304,17 @@ internal sealed class WorldHost : IDisposable
                 {
                     for (GameObject o = chunk.GetHeadObject(x, y); o != null; o = o.TNext)
                     {
+                        // The Roofs tick hides roofs outright, like the other
+                        // ticks hide their layers: the game otherwise only
+                        // fades roofs the render pass visits, so ones it never
+                        // reaches (off-screen) keep full alpha.
+                        if (hideRoofs && o.AlphaHue != 0
+                            && ((o is Static hideRoof && hideRoof.ItemData.IsRoof)
+                                || (o is Multi hideMulti && hideMulti.ItemData.IsRoof)))
+                        {
+                            o.AlphaHue = 0;
+                        }
+
                         bool want;
                         switch (o)
                         {
