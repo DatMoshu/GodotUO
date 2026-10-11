@@ -13,6 +13,16 @@ python tools\editor_smoke\run.py --art 0x0E75    which static to search for
 launchers\dev\editor_smoke.bat [same flags]
 ```
 
+To check that the editor opens a given world project (one `tools\world`
+`import` wrote, say), run
+`python tools\editor_smoke\run.py --world-project DIR --look FACET,X,Y`. The
+editor starts with `UO_WORLD_PROJECT` set to DIR, so the World tab opens it
+at boot as it does for a user, and shows cell X,Y. It passes when the World
+tab opened DIR, sees as many blocks on that facet as DIR has files, and the
+chunk holding X,Y has exactly the statics of DIR's block there (that block
+must be one DIR edits). It runs headless like the rest; `--windowed` also
+saves `world_shot.png`. No other editor check runs.
+
 For a focused toolbar regression check, run
 `python tools/editor_smoke/run.py --windowed --header-only`. It checks that the
 server/client bar stays inside the window and occupies one row at 1920, 1366

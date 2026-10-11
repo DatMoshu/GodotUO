@@ -11,6 +11,7 @@ it into files a server and a client can read, and checks them:
     python tools/world/run.py pack   [--project DIR] [--out FILE.zip]
     python tools/world/run.py apply-commands [--project DIR] --host H --port P [--dry-run]
     python tools/world/run.py ultimalive [--project DIR] [--out DIR] [--clear-ultimalive]
+    python tools/world/run.py import --town DIR --at X,Y [--facet N] [--project DIR] [--replace]
 
 Or through the launcher:
 
@@ -48,6 +49,13 @@ It never writes into UO_CLIENT_DATA: an --out inside it is refused, and the
 install is only ever opened read only. It refuses a project made on a
 different install (its base fingerprint) unless --force.
 
+import lays a town built by tools/mapgen_districts (run.py town --out DIR) on
+the project's map with its corner at X,Y: the town's blocks, with each house's
+visible multi components written in as statics, and a pin at its centre. It
+creates the project if there is none, and refuses, before writing anything, a
+corner off the 8x8 block grid, a town that would leave the facet, and blocks
+the project already edits (unless --replace).
+
 verify reads the export back with an independent reader (tools/guo/uomap.py)
 and checks every replaced block equals the project's and every other block
 equals the install's.
@@ -72,6 +80,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from guo import load_config  # noqa: E402
 from guo import uoart, worldobjects  # noqa: E402
 from backends import modernuo, servuo  # noqa: E402
+import town_import  # noqa: E402
 
 BACKENDS = {modernuo.NAME: modernuo, servuo.NAME: servuo}
 from guo.uomap import IDX_SIZE, MAP_BLOCK, STATIC_SIZE, Block, facet_files, install_fingerprint, open_facet  # noqa: E402
@@ -816,9 +825,38 @@ def cmd_apply_commands(cfg, project: Path, host: str, port: int, dry_run: bool) 
     return 0
 
 
+def cmd_import(cfg, project: Path, town: Path | None, at: str | None, facet: int, replace: bool) -> int:
+    if town is None or not at:
+        print("[world] import needs --town DIR and --at X,Y")
+        return 2
+    try:
+        x, y = (int(v) for v in at.replace(" ", "").split(","))
+    except ValueError:
+        print(f"[world] --at takes two whole numbers, X,Y (got {at!r})")
+        return 2
+    if inside(project, cfg.client_data):
+        print(f"[world] refused: {project} is inside UO_CLIENT_DATA; the install is never written")
+        return 1
+    try:
+        summary = town_import.import_town(town.resolve(), project, facet, (x, y), replace,
+                                          cfg.client_data, cfg.client_version)
+    except town_import.Refused as e:
+        print(f"[world] import refused: {e}")
+        return 1
+    print(json.dumps(summary, indent=1))
+    print(f"[world] imported {summary['town']}: {summary['blocks']} blocks, {summary['statics']} statics "
+          f"({summary['houses']} houses), cells {summary['bounds'][0]},{summary['bounds'][1]} to "
+          f"{summary['bounds'][2]},{summary['bounds'][3]} on map{facet}, into {project}")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("command", choices=["blocks", "export", "verify", "pack", "apply-commands", "ultimalive"])
+    ap.add_argument("command", choices=["blocks", "export", "verify", "pack", "apply-commands", "ultimalive", "import"])
+    ap.add_argument("--town", type=Path, help="a built town's folder, or its district.json (import)")
+    ap.add_argument("--at", help="X,Y: the cell the town's north-west corner lands on, on the 8x8 grid (import)")
+    ap.add_argument("--facet", type=int, default=0, help="the map the town goes on (import; default 0)")
+    ap.add_argument("--replace", action="store_true", help="overwrite blocks the project already edits (import)")
     ap.add_argument("--host", help="shard host (apply-commands)")
     ap.add_argument("--port", type=int, help="shard port (apply-commands)")
     ap.add_argument("--dry-run", action="store_true", help="print the commands only (apply-commands)")
@@ -834,6 +872,8 @@ def main() -> int:
 
     cfg = load_config()
     project = (args.project or cfg.world_project).resolve()
+    if args.command == "import":
+        return cmd_import(cfg, project, args.town, args.at, args.facet, args.replace)
     if not (project / "project.json").exists():
         print(f"[world] not a world project: {project}")
         return 2
