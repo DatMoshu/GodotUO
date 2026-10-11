@@ -145,6 +145,36 @@ namespace GUO.Game.GameObjects
                 x -= w;
                 y -= h;
 
+                // PORT DEVIATION (GUO): Enhanced HD. The HD PNG draws into
+                // the native dest footprint at scale 1/k (native/hd), so
+                // placement, picking and tiledata stay native.
+                // Rule-7 filtering exception: rule 7 keeps pixel art on
+                // Nearest, but an HD repaint is AI detail minified k:1, not
+                // pixel art; Nearest would subsample 1 texel per kxk block
+                // into aliased noise, while Linear over mipmaps folds the
+                // block down. Native keeps Nearest; HD items alone go Linear.
+                if (themed == null && Client.Game.UO.Arts.TryGetHd(false, graphic, out Godot.Texture2D hdTex, out Rectangle hdUv, out _, out _))
+                {
+                    var hdPos = new Vector2(x, y);
+                    var hdScale = new Vector2((float)uv.Width / hdUv.Width, (float)uv.Height / hdUv.Height);
+                    batcher.SetSampler(SamplerState.LinearClamp);
+                    if (isWet)
+                    {
+                        batcher.Draw(hdTex, hdPos, hdUv, hue, 0f, Vector2.Zero, hdScale, SpriteEffects.None, depth + 0.5f);
+                        var sin = (float)Math.Sin(Time.Ticks / 1000f);
+                        var cos = (float)Math.Cos(Time.Ticks / 1000f);
+                        var wet = new Vector2(hdScale.X * (1.1f + sin * 0.1f), hdScale.Y * (1.1f + cos * 0.5f * 0.1f));
+                        batcher.Draw(hdTex, hdPos, hdUv, hue, 0f, Vector2.Zero, wet, SpriteEffects.None, depth + 0.5f);
+                    }
+                    else
+                    {
+                        batcher.Draw(hdTex, hdPos, hdUv, hue, 0f, Vector2.Zero, hdScale, SpriteEffects.None, depth + 0.5f);
+                    }
+
+                    batcher.SetSampler(null);
+                    return;
+                }
+
                 var pos = new Vector2(x, y);
                 var scale = Vector2.One;
                 if (isWet)
@@ -247,6 +277,26 @@ namespace GUO.Game.GameObjects
                 index.Height = (short)h;
             }
 
+            // PORT DEVIATION (GUO): Enhanced HD, same rule-7 exception as
+            // DrawStatic: native footprint, 1/k scale is implicit in the
+            // dest rect (native size, HD source), Linear for HD only.
+            if (themed == null && Client.Game.UO.Arts.TryGetHd(false, graphic, out Godot.Texture2D hdTex, out Rectangle hdUv, out _, out _))
+            {
+                batcher.SetSampler(SamplerState.LinearClamp);
+                batcher.Draw(
+                    hdTex,
+                    new Rectangle(x - w, y - h, uv.Width, uv.Height),
+                    hdUv,
+                    hue,
+                    angle,
+                    Vector2.Zero,
+                    SpriteEffects.None,
+                    depth + 0.5f
+                );
+                batcher.SetSampler(null);
+                return;
+            }
+
             batcher.Draw(
                 texture,
                 new Rectangle(
@@ -320,6 +370,35 @@ namespace GUO.Game.GameObjects
                 y -= index.Height;
 
                 Vector2 pos = new Vector2(x, y);
+
+                // PORT DEVIATION (GUO): Enhanced HD, same rule-7 exception
+                // as DrawStatic: native footprint + 1/k scale, Linear for
+                // HD only (shadow included); native keeps Nearest.
+                if (themed == null && Client.Game.UO.Arts.TryGetHd(false, graphic, out Godot.Texture2D hdTex, out Rectangle hdUv, out _, out _))
+                {
+                    var hdScale = new Vector2((float)artInfo.UV.Width / hdUv.Width, (float)artInfo.UV.Height / hdUv.Height);
+                    batcher.SetSampler(SamplerState.LinearClamp);
+                    if (shadow)
+                    {
+                        batcher.DrawShadow(hdTex, pos, hdUv, false, depth + 0.25f);
+                    }
+
+                    if (isWet)
+                    {
+                        batcher.Draw(hdTex, pos, hdUv, hue, 0f, Vector2.Zero, hdScale, SpriteEffects.None, depth + 0.5f);
+                        var sin = (float)Math.Sin(Time.Ticks / 1000f);
+                        var cos = (float)Math.Cos(Time.Ticks / 1000f);
+                        var wet = new Vector2(hdScale.X * (1.1f + sin * 0.1f), hdScale.Y * (1.1f + cos * 0.5f * 0.1f));
+                        batcher.Draw(hdTex, pos, hdUv, hue, 0f, Vector2.Zero, wet, SpriteEffects.None, depth + 0.5f);
+                    }
+                    else
+                    {
+                        batcher.Draw(hdTex, pos, hdUv, hue, 0f, Vector2.Zero, hdScale, SpriteEffects.None, depth + 0.5f);
+                    }
+
+                    batcher.SetSampler(null);
+                    return;
+                }
 
                 if (shadow)
                 {

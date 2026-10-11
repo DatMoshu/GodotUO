@@ -247,6 +247,17 @@ namespace GUO.Renderer
         public void WriteQuadAt(int index, Texture2D texture, Rectangle sourceRect, int posX, int posY,
             Vector3 hue, float depth, float uvInset = 0f)
         {
+            WriteQuadAtHd(index, texture, sourceRect, posX, posY, sourceRect.Width, sourceRect.Height, hue, depth, uvInset);
+        }
+
+        /// <summary>
+        /// Writes a quad whose dest footprint differs from its source rect
+        /// (Enhanced HD land: HD source, native dest). UVs come from the
+        /// source rect; positions span destW/destH.
+        /// </summary>
+        public void WriteQuadAtHd(int index, Texture2D texture, Rectangle sourceRect, int posX, int posY,
+            int destW, int destH, Vector3 hue, float depth, float uvInset = 0f)
+        {
             ref var vertex = ref Vertices[index];
 
             float sourceX = (sourceRect.X + uvInset) / (float)texture.GetWidth();
@@ -256,12 +267,12 @@ namespace GUO.Renderer
 
             vertex.Position0.X = posX;
             vertex.Position0.Y = posY;
-            vertex.Position1.X = posX + sourceRect.Width;
+            vertex.Position1.X = posX + destW;
             vertex.Position1.Y = posY;
             vertex.Position2.X = posX;
-            vertex.Position2.Y = posY + sourceRect.Height;
-            vertex.Position3.X = posX + sourceRect.Width;
-            vertex.Position3.Y = posY + sourceRect.Height;
+            vertex.Position2.Y = posY + destH;
+            vertex.Position3.X = posX + destW;
+            vertex.Position3.Y = posY + destH;
 
             vertex.TextureCoordinate0 = new Vector2(sourceX, sourceY);
             vertex.TextureCoordinate1 = new Vector2(sourceW + sourceX, sourceY);

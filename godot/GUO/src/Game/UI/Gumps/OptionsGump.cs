@@ -193,6 +193,7 @@ namespace GUO.Game.UI.Gumps
 
         // video
         private Checkbox _use_old_status_gump, _statusGumpBarMutuallyExclusive, _windowBorderless, _enableDeathScreen, _enableBlackWhiteEffect, _altLights, _enableLight, _enableShadows, _enableShadowsStatics, _auraMouse, _runMouseInSeparateThread, _useColoredLights, _darkNights, _partyAura, _hideChatGradient, _animatedWaterEffect;
+        private Checkbox _enhancedHD; // PORT DEVIATION (GUO): Enhanced HD repaint detail
         private Combobox _lightLevelType;
         private Checkbox _use_smooth_boat_movement;
         private HSliderBar _terrainShadowLevel;
@@ -2099,6 +2100,20 @@ namespace GUO.Game.UI.Gumps
                     null,
                     ResGumps.AnimatedWaterEffect,
                     _currentProfile.AnimatedWaterEffect,
+                    startX,
+                    startY
+                )
+            );
+
+            // PORT DEVIATION (GUO): Enhanced HD repaint detail (world art
+            // only; cursor/containers stay native).
+            section4.Add
+            (
+                _enhancedHD = AddCheckBox
+                (
+                    null,
+                    "Enhanced HD (repaint detail)",
+                    _currentProfile.EnhancedHD,
                     startX,
                     startY
                 )
@@ -4141,6 +4156,7 @@ namespace GUO.Game.UI.Gumps
                     _auraMouse.IsChecked = true;
                     _partyAura.IsChecked = true;
                     _animatedWaterEffect.IsChecked = false;
+                    _enhancedHD.IsChecked = videoDefaults.EnhancedHD; // PORT DEVIATION (GUO)
                     _partyAuraColorPickerBox.Hue = 0x0044;
 
                     break;
@@ -4705,6 +4721,17 @@ namespace GUO.Game.UI.Gumps
 
             _currentProfile.AuraOnMouse = _auraMouse.IsChecked;
             _currentProfile.AnimatedWaterEffect = _animatedWaterEffect.IsChecked;
+
+            // PORT DEVIATION (GUO): Enhanced HD toggle flip clears the HD
+            // cache and re-bakes the world (dirty chunks via Reapply).
+            if (_currentProfile.EnhancedHD != _enhancedHD.IsChecked)
+            {
+                _currentProfile.EnhancedHD = _enhancedHD.IsChecked;
+                Client.Game.UO.Arts.RefreshAllHD();
+                Client.Game.UO.FileManager.Arts.RescanOverrides();
+                ThemeManager.Reapply(World);
+            }
+
             _currentProfile.PartyAura = _partyAura.IsChecked;
             _currentProfile.PartyAuraHue = _partyAuraColorPickerBox.Hue;
             _currentProfile.HideChatGradient = _hideChatGradient.IsChecked;
