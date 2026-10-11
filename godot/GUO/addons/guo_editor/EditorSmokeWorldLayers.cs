@@ -161,6 +161,22 @@ public partial class EditorSmoke
             () =>
             {
                 _layersReport["roofs_shown_when_off"] = RoofsNearCentre().Shown;
+                // ROOF-01 DIAG (temporary)
+                var diag = new List<string>();
+                var sc = _world.Host.Scene;
+                var f = typeof(GUO.Game.Scenes.GameScene).GetField("_minPixel", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                var g = typeof(GUO.Game.Scenes.GameScene).GetField("_maxPixel", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                RunBar rb = null;
+                void FindBar(Node n) { if (n is RunBar r) rb = r; else foreach (Node c in n.GetChildren()) FindBar(c); }
+                FindBar(EditorInterface.Singleton.GetBaseControl());
+                diag.Add($"window={GetWindow().Size} base={EditorInterface.Singleton.GetBaseControl().Size} baseMin={EditorInterface.Singleton.GetBaseControl().GetCombinedMinimumSize()} world={_world.Size} worldMin={_world.GetCombinedMinimumSize()} runbarMin={rb?.GetCombinedMinimumSize()} runbar={rb?.Size} toolbar={rb?.GetParent<Control>()?.GetCombinedMinimumSize()}");
+                diag.Add($"minPixel={f?.GetValue(sc)} maxPixel={g?.GetValue(sc)} cam={sc.Camera.Bounds}");
+                for (int x = LayersX - 10; x <= LayersX + 10; x++)
+                for (int y = LayersY - 10; y <= LayersY + 10; y++)
+                for (var o = _world.Host.World.Map.GetChunk(x, y, load: true)?.GetHeadObject(x % 8, y % 8); o != null; o = o.TNext)
+                    if (((o is Static st && st.ItemData.IsRoof) || (o is Multi mm && mm.ItemData.IsRoof)) && o.AlphaHue > 0)
+                        diag.Add($"{o.GetType().Name} {o.X},{o.Y},{o.Z} a={o.AlphaHue} scr={o.RealScreenPosition} mesh={o.InChunkMesh}");
+                _layersReport["roofs_diag"] = diag;
                 return !_world.Host.ShowRoofs && RoofsNearCentre().Shown == 0 && StaticsDrawn() == baseline["statics"];
             },
             () =>
