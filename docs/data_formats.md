@@ -2659,3 +2659,148 @@ attenuated by the speaker's tile distance. Synthesis shells `voice.py`
 thread with distance attenuation (full to 2 tiles, silent past 20).
 `VoiceManager.Status` reports the pipeline state for probes;
 `--voice`/`--say`/`--voice-fake`/`--hear-secs` drive it in walk-to runs.
+
+---
+
+## 41. MoGe replacer gump (`-moge`, `src/Comfy/MogeClient.cs`, `src/Game/UI/Gumps/MogePlacerGump.cs`)
+
+The `-moge` client command opens the MoGe replacer: pick a world object,
+generate a 3D-gaussian splat from its own sprite artwork, place it at the
+victim's tile and hide the original. Testing tool, client-side only
+(`GUO_SPLAT_STAGE` / `splats.json` on Save); never touches the shard.
+
+`MogeClient` shells `tools/moge/moge_to_ply.py` the way `VoiceManager`
+shells `voice.py`:
+
+| Key | Meaning |
+|---|---|
+| `GUO_PYTHON` | Which python runs the tool (default `python`) |
+| `GUO_MOGE_TOOL` | Path to `moge_to_ply.py` (default `<repo>/tools/moge/moge_to_ply.py`) |
+| `GUO_MOGE_MODEL` | Model id or local `.pt`; empty defers to the tool default (`Ruicheng/moge-3-vitl`) |
+
+`--mask-background` drops transparent pixels; `--timeout` bounds the
+tool's stages while the caller holds the hard kill (`WaitForExit` + `Kill`,
+one CUDA kernel cannot be interrupted). Graphic-keyed disk cache
+`build/moge/moge_0xXXXX.ply` is checked before queueing and written after;
+model-agnostic (wipe it on a model change). Stage inputs/outputs stay under
+`build/moge/` as proof artifacts.
+
+Generate reads the victim's artwork via `ComfyClient.ExtractArtShot`,
+auto-fits the scale from the art width over the lod0 projected width,
+anchors the bbox-center to the tile and places with `VictimGraphic`;
+Restore removes the live splat and unhides the original.
+
+`--moge-shot` (`src/Bootstrap/MogeShot.cs`,
+`launchers/dev/moge_shot.bat` / `.sh`) proves it in game: login, `-moge`
+through typed chat, Select/target the nearest artwork-bearing static,
+Generate through the real bridge, then wait for the placed entry, the new
+PLY artifact and the hidden victim, screenshotting each stage.
+
+Victim-hide + interaction forwarding: `SplatObject.Victim` with
+`SplatObject.Resolve` maps a picked splat to its hidden victim for the
+single, double and target paths (`TargetManager`, `GameSceneInputHandler`),
+with a tile-scan fallback by victim graphic; already-hidden victims refuse
+a second select (stacking guard).
+
+---
+
+## 42. Repaint and MoGe Auto Queue (`RepaintGump`, `MogePlacerGump`)
+
+Both gumps have Auto Queue / Clear All on the same one-Task worker pattern
+as single Generate (Close/Clear cancels). Auto Queue scans statics within
+17 tiles of the player, skips destroyed, hidden and graphic-0, and dedupes
+to unique graphics (sorted). Repaint skips graphics that already have an
+override `.art` file (its cache-hit); MoGe places cached
+`build/moge/moge_0xXXXX.ply` graphics immediately and generates the rest
+sequentially.
+
+Each graphic places per victim tile: MoGe registers one staged name and
+live key per victim (scale auto-fit per graphic from the Auto-click
+Scale/Yaw/Disc snapshot); repaint writes each completion's override file
+immediately, prepending the tiledata name to the submitted prompt. Save-all
+persists the set (MoGe placements + hides to `splats.json`; repaint files
+are already on disk); Clear All deletes the auto-created files/splats and
+unhides the victims. The single-target flow is untouched.
+
+---
+
+## 43. Disc control (`splats.json` `disc`, `SplatStage`)
+
+The Disc stepper on `SplatPlacerGump` and `MogePlacerGump` runs 0.25x-4x
+in 0.25 steps (default 1x): it scales the rasterized ellipse radii after
+the bake clamp, so 0.25x sharpens to tight dots and 4x blooms past the
+per-splat cap. It rides `PlaceSplat` beside scale/yaw into every staged
+and live placement.
+
+Persisted in `splats.json` as the placement's `disc` (`src/Render/Splats/SplatStage.cs`);
+a missing key draws at 1x and an out-of-range value clamps on load, so old
+manifests read exactly like before. `VictimGraphic` rides beside it as
+`victim` (0 = unknown, with the one-time `gen_`/`moge_` name-parse fallback).
+
+---
+
+## 44. Voice prompt passthrough and packaged workflows (`voice.py`, `VoiceGump`)
+
+The `-voice` gump's Voice type box is the design prompt: `DesignVoice`
+carries it to `voice.py design --prompt` (one argument, quotes/newlines
+stripped, 200 chars max). Non-empty text is used verbatim as the design
+description, skipping the Ollama LLM; empty keeps the LLM description. A
+finished design auto-assigns to the mobile targeted when Design was pressed
+(a `voices.json` serial rule) and the gump refreshes (`X now speaks 'Y'`);
+the tool-reported name wins, default `npc_<serial>`.
+
+Workflows are packaged as
+`tools/comfy/workflows/PERFECT_VOICE_CLONE.json` and
+`PERFECT_VOICE_DESIGN.json`. `voice.py resolve_workflow` lets an external
+artist drop-in win (`ComfyUI/user/default/workflows/`), with the packaged
+copy as fallback.
+
+---
+
+## 45. Repaint backend JSONs (`godot/GUO/assets/comfy/guo_repaint_api.json`, `guo_inpaint_api.json`)
+
+Frozen API templates the client fills instead of building inline:
+`guo_repaint_api.json` (img2img) and `guo_inpaint_api.json` (inpaint),
+loaded via `LoadTemplate` into `QueueRepaintAsync` / `QueueInpaintAsync`.
+
+| Template | Filled nodes |
+|---|---|
+| `guo_repaint_api.json` | `1` ckpt, `2` image, `4` prompt text, `6` seed/steps/cfg/sampler/scheduler/denoise |
+| `guo_inpaint_api.json` | `1` ckpt (`checkpoint` param), `2` art, `3` mask, `7` prompt, `8` negative, `9` seed/steps/cfg + `euler`/`normal` + denoise |
+
+Node ids are the converter's, stable per template. `guo_img2splat_api.json`
+drops the `JarJarSubmit3D` external post (node 134); `ComfyClient.ArtShot`
+also carries the full tight rect (`TightX0`, `TightY0`, `TightHeight`) so
+the MoGe replacer can anchor from bbox-center to the tile.
+
+---
+
+## 46. ComfyUI one-command installer (`tools/comfy/setup_studio.py`, `tools/comfy/models.json`)
+
+`launchers/comfy/setup_studio.bat` / `.sh` runs `setup_studio.py` off
+`models.json` (`format: 1`): `comfy_dir` guesses (`UO_COMFY_DIR` wins),
+`custom_nodes` packs (`comfy_mtb`, Qwen3-TTS/ASR, with provides/required_by),
+`core_nodes` (no pack needed) and `models` (file/aliases/url/dest/source/used_by).
+`--check` only reports the green/red table (exit 1 when anything is missing;
+no clones, downloads or server contact); the default mode clones missing
+node packs, downloads missing models (huggingface_hub resume; resumed HTTPS
+for the CivitAI file), then validates every
+`tools/comfy/workflows/*.json` against the server's `/object_info`.
+Node-managed weights and the MoGe-3 reference entry are check-only/skipped;
+files already on disk are never re-fetched.
+
+---
+
+## 47. PostFX preset/shader pack (`godot/GUO/postfx/presets/*.json`, `godot/GUO/postfx/shaders/*.gdshader`, ADR-0023)
+
+`{name, description, passes[{shader, params}], bindings[{pass, param, from, scale}]}`.
+`tools/postfx/run.py sheet` logs into a private ModernUO copy, photographs
+and times every shader and preset, requires the identity pass to match
+pixel-for-pixel, and writes the contact sheet under `build/postfx_sheet/`.
+
+The pack includes the ClassicUO-JAR ports at JAR defaults (dof, fog,
+frost, heat, tilt-shift, god-rays, depth-fog and the rest) plus `damage`
+(hit/poison/paralysis/death modes, bound to `hp_missing`) and `daynight`
+(cycle/intensity/brightness/warmth/shadow). `PostFxState` adds `facing`
+(the player's facing as screen degrees) for cone uniforms such as
+`fog_of_war`.
