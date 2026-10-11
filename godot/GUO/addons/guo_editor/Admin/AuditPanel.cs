@@ -107,10 +107,12 @@ public partial class AuditPanel : VBoxContainer
         {
             _tree.SetColumnTitle(i, titles[i]);
             _tree.SetColumnClipContent(i, true);
-            _tree.SetColumnExpand(i, i is 1 or 3);
+            _tree.SetColumnExpand(i, i == 3);
         }
 
-        _tree.SetColumnCustomMinimumWidth(0, Px(170));
+        // The whole UTC time fits; Result takes the rest of the width.
+        _tree.SetColumnCustomMinimumWidth(0, Px(200));
+        _tree.SetColumnCustomMinimumWidth(1, Px(220));
         _tree.SetColumnCustomMinimumWidth(2, Px(150));
         AddChild(_tree);
         _hint = new Label { AutowrapMode = TextServer.AutowrapMode.WordSmart };
