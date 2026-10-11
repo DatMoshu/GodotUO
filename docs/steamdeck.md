@@ -124,6 +124,13 @@ launchers\steamdeck\push.bat --host <the shard's address>
 launchers\steamdeck\run.bat --wait 60
 ```
 
+Add `--dry-run` to any of these, or to `doctor`, `screenshot` and `smoke`,
+to see first exactly what it would run (the export, every ssh/scp line, the
+`systemd-run` start, `guo.sh` as it would be written) without exporting,
+connecting or writing anything. It works before the Deck is set up at all:
+an unset `UO_DECK_HOST` shows as `<UO_DECK_HOST>`. See
+[tools/steamdeck/README.md](../tools/steamdeck/README.md#dry-run).
+
 `export` renders `tools\steamdeck\export_presets.template.cfg` into the
 gitignored `godot\GUO\export_presets.cfg` and runs Godot headless; the .NET
 part is a `dotnet publish -r linux-x64 --self-contained` the exporter does
