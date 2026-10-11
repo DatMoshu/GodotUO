@@ -19,6 +19,27 @@ launchers\steamdeck\smoke.bat       export + push + run --login-probe-stay + wai
 Everything is `python tools\steamdeck\run.py <command>`; `templates`,
 `preset`, `stop`, `log` and `shortcut` have no launcher.
 
+## Dry run
+
+Every command takes `--dry-run`, and every launcher passes it through
+(`launchers\steamdeck\smoke.bat --dry-run`). It prints each command line it
+would run -- the Godot export, every `ssh`, `scp` and `rsync`, the tar
+streams, the `systemd-run` start, the screenshot, `guo.sh` as it would be
+written, smoke's whole sequence in order -- and each file it would write or
+delete, and does none of it: no export, no ssh connection, no file written.
+Commands are quoted as a POSIX shell takes them.
+
+It needs no Deck and no configuration. With `UO_DECK_HOST` unset the address
+shows as `<UO_DECK_HOST>` and the run says so; an unset key or known-hosts
+file is said plainly too (ssh's defaults apply). Missing local pieces (the
+Godot console, the export template, an earlier export) are reported where a
+real run would stop, and the dry run carries on to show the rest.
+
+```
+python tools\steamdeck\run.py smoke --dry-run --host <the shard's address>
+python -m pytest tools\steamdeck     # the tests; also in launchers\dev\pytest_all.bat
+```
+
 ## Files
 
 | | |

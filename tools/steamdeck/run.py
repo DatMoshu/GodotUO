@@ -11,6 +11,13 @@ r"""Export, push, run and smoke-test GUO on a Steam Deck.
 
     python tools\steamdeck\run.py <doctor|templates|preset|export|push|run|
                                    stop|log|screenshot|shortcut|smoke> [...]
+                                   [--dry-run]
+
+--dry-run, on every command, prints each command line it would run (the
+export, every ssh/scp/rsync, the systemd-run, the screenshot, smoke's whole
+sequence) and each file it would write, and does none of it: no export, no
+ssh connection, no file written. With no Deck configured it shows
+<UO_DECK_HOST> in place of the address and says so.
 
 The Deck is an ordinary x86_64 Linux box (SteamOS 3, Arch, glibc, KDE
 Plasma on Wayland in Desktop mode, gamescope in Game mode), so the build is
@@ -50,6 +57,7 @@ import argparse
 import io
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -74,6 +82,11 @@ LOG_NAME = "guo.log"
 # when it has not; see src/Bootstrap/LoginProbe.cs.
 LOGIN_OK = "[GUO] login probe: ok"
 LOGIN_FAIL = "[GUO] login probe: FAIL"
+
+# --dry-run: every command is printed instead of run, every file write is
+# said instead of done, and nothing reaches the Deck. Set by main().
+DRY_RUN = False
+HOST_PLACEHOLDER = "<UO_DECK_HOST>"
 
 # The environment a process started over ssh needs to reach the Deck's
 # desktop session. Plasma's Xwayland is :0 but wants the session's xauth
@@ -139,10 +152,23 @@ class Paths:
 
 
 def say(msg: str) -> None:
-    print(f"[steamdeck] {msg}", flush=True)
+    print(f"[steamdeck] {'dry run: ' if DRY_RUN else ''}{msg}", flush=True)
+
+
+def would(msg: str) -> None:
+    """A file write, a deletion or a wait that a dry run leaves out."""
+    say(f"would {msg}")
+
+
+def show(cmd: list) -> None:
+    """A command a dry run leaves out, quoted as a POSIX shell takes it."""
+    say("$ " + shlex.join(str(c) for c in cmd))
 
 
 def run(cmd: list, **kw) -> subprocess.CompletedProcess:
+    if DRY_RUN:
+        show(cmd)
+        return subprocess.CompletedProcess(cmd, 0, b"", b"")
     say("$ " + " ".join(f'"{c}"' if " " in str(c) else str(c) for c in cmd))
     return subprocess.run([str(c) for c in cmd], **kw)
 
@@ -174,10 +200,11 @@ class Deck:
 
     @property
     def target(self) -> str:
-        return f"{self.user}@{self.host}"
+        return f"{self.user}@{self.host or HOST_PLACEHOLDER}"
 
     def require(self) -> None:
-        if not self.host:
+        # A dry run without a host shows the placeholder; main() says so.
+        if not self.host and not DRY_RUN:
             sys.exit("[steamdeck] UO_DECK_HOST is not set; put the Deck's address in "
                      "launchers\\_shared\\config.local.bat (see docs\\steamdeck.md)")
 
@@ -193,9 +220,14 @@ class Deck:
             o += ["-i", str(self.key)]
         return o
 
-    def ssh(self, cmd: str, timeout: int = 600, check: bool = True, quiet: bool = False) -> str:
+    def ssh(self, cmd: str, timeout: int = 600, check: bool = True, quiet: bool = False,
+            dry_reply: str = "") -> str:
+        """Run cmd on the Deck; a dry run prints the ssh line and returns dry_reply."""
         self.require()
         argv = ["ssh", *self.opts(), self.target, cmd]
+        if DRY_RUN:
+            show(argv)
+            return dry_reply
         if not quiet:
             say(f"$ ssh {self.target} {cmd[:120]}{'...' if len(cmd) > 120 else ''}")
         p = subprocess.run(argv, capture_output=True, timeout=timeout)
@@ -207,16 +239,20 @@ class Deck:
     def reachable(self) -> tuple[bool, str]:
         try:
             out = self.ssh("uname -m; . /etc/os-release 2>/dev/null; echo ${PRETTY_NAME:-unknown}",
-                           timeout=20, quiet=True)
+                           timeout=20, quiet=True, dry_reply="x86_64 (not contacted)")
             return True, " ".join(out.split())
         except (RuntimeError, subprocess.TimeoutExpired, OSError) as e:  # noqa: BLE001
             return False, str(e)[-200:]
 
-    def stream_tar(self, dest: str, adder, timeout: int = 3600) -> None:
+    def stream_tar(self, dest: str, adder, timeout: int = 3600, what: str = "") -> None:
         """Open `tar -x` in dest on the Deck and let adder(tarfile) write into it."""
         self.require()
         d = remote_path(dest)
         argv = ["ssh", *self.opts(), self.target, f"mkdir -p {d} && tar -xf - -C {d}"]
+        if DRY_RUN:
+            show(argv)
+            would(f"stream into it: {what or 'a tar'}")
+            return
         say(f"$ ssh {self.target} tar -x -C {dest}   (streaming)")
         proc = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         assert proc.stdin is not None
@@ -230,6 +266,9 @@ class Deck:
 
     def scp_from(self, remote: str, local: Path) -> bool:
         self.require()
+        if DRY_RUN:
+            run(["scp", *self.opts(), f"{self.target}:{remote}", local])
+            return True
         local.parent.mkdir(parents=True, exist_ok=True)
         r = run(["scp", *self.opts(), f"{self.target}:{remote}", local],
                 stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
@@ -311,6 +350,22 @@ class Doctor:
               f"{'  (loopback = the Deck itself; pass --host to push, or set UO_SHARD_HOST)' if loop else ''}")
 
         # --- the Deck --------------------------------------------------------
+        facts_cmd = (
+            "test -f " + remote_path(deck.client_data + "/tiledata.mul") + " && echo DATA=yes || echo DATA=no; "
+            "for t in spectacle grim rsync; do command -v $t >/dev/null && echo HAVE=$t; done; "
+            "pgrep -x gamescope >/dev/null && echo MODE=game || echo MODE=desktop; "
+            "test -S /tmp/.X11-unix/X0 && echo X0=yes || echo X0=no; "
+            "test -x " + remote_path(deck.install_dir + "/" + EXE_NAME) + " && echo INSTALLED=yes || echo INSTALLED=no; "
+            "df -Ph " + remote_path("~") + " | awk 'NR==2{print \"FREE=\"$4}'"
+        )
+        if DRY_RUN:
+            print()
+            say(f"{self.missing} of the checks above failed here; the Deck is not contacted, "
+                "these are what doctor asks it:")
+            deck.reachable()
+            awake_left(deck)
+            deck.ssh(facts_cmd, timeout=30, quiet=True)
+            return 0
         if not deck.host or not ssh:
             print()
             say(f"{self.missing} of the checks above failed; the Deck was not contacted")
@@ -326,15 +381,7 @@ class Doctor:
         self.check("Deck is x86_64", detail.startswith("x86_64"), detail)
         say(f"sleep hold: {awake_left(deck)} (run and smoke hold it; 'awake' and 'release' by hand)")
 
-        facts = deck.ssh(
-            "test -f " + remote_path(deck.client_data + "/tiledata.mul") + " && echo DATA=yes || echo DATA=no; "
-            "for t in spectacle grim rsync; do command -v $t >/dev/null && echo HAVE=$t; done; "
-            "pgrep -x gamescope >/dev/null && echo MODE=game || echo MODE=desktop; "
-            "test -S /tmp/.X11-unix/X0 && echo X0=yes || echo X0=no; "
-            "test -x " + remote_path(deck.install_dir + "/" + EXE_NAME) + " && echo INSTALLED=yes || echo INSTALLED=no; "
-            "df -Ph " + remote_path("~") + " | awk 'NR==2{print \"FREE=\"$4}'",
-            timeout=30, quiet=True,
-        )
+        facts = deck.ssh(facts_cmd, timeout=30, quiet=True)
         have = set(re.findall(r"^HAVE=(\w+)$", facts, re.MULTILINE))
         # ADR-0021: no data on the Deck is not a failure. The client opens the
         # first-run wizard there; the tools never push the install.
@@ -371,6 +418,15 @@ class Doctor:
 
 
 def install_templates(p: Paths) -> int:
+    if DRY_RUN:
+        if p.templates_tpz.exists():
+            with zipfile.ZipFile(p.templates_tpz) as z:
+                count = f"{sum(1 for m in z.infolist() if not m.is_dir())} template files"
+        else:
+            count = "the template files"
+            say(f"no templates archive at {p.templates_tpz} yet; a real run stops here")
+        would(f"unpack {count} from {p.templates_tpz.name} into {p.templates_dir}")
+        return 0
     if not p.templates_tpz.exists():
         sys.exit(f"[steamdeck] no templates archive at {p.templates_tpz}\n"
                  f"  download Godot_v{p.cfg.godot_version}_mono_export_templates.tpz from the Godot "
@@ -400,6 +456,9 @@ def render_preset(p: Paths, export_path: Path) -> Path:
     leftover = re.findall(r"{{\w+}}", text)
     if leftover:
         sys.exit(f"[steamdeck] template placeholders without a value: {leftover}")
+    if DRY_RUN:
+        would(f"write {p.preset_file} from {TEMPLATE.name} (export path {values['EXPORT_PATH']})")
+        return p.preset_file
     p.preset_file.write_text(text, encoding="utf-8")
     say(f"rendered {p.preset_file}")
     return p.preset_file
@@ -413,6 +472,11 @@ def ensure_solution(p: Paths) -> None:
     # the export needs GUO.sln. SDKs before 9.0.200 have no --format and
     # write .sln anyway, so they get the plain call.
     new_sln = ["dotnet", "new", "sln", "-n", "GUO", "-o", p.project]
+    if DRY_RUN:
+        run([*new_sln, "--format", "sln"])
+        say("(and without --format on an SDK older than 9.0.200)")
+        run(["dotnet", "sln", p.solution, "add", p.project / "GUO.csproj"])
+        return
     if subprocess.run([*new_sln, "--format", "sln"], stdout=subprocess.DEVNULL,
                       stderr=subprocess.DEVNULL).returncode != 0:
         run(new_sln, stdout=subprocess.DEVNULL)
@@ -423,6 +487,8 @@ def ensure_solution(p: Paths) -> None:
 
 def export(p: Paths) -> int:
     console = p.godot_console()
+    if DRY_RUN:
+        return export_dry(p, console)
     if not console.exists():
         sys.exit(f"[steamdeck] Godot console not found at {console}; run doctor")
     if not p.template_bin.exists():
@@ -464,6 +530,24 @@ def export(p: Paths) -> int:
     return 0
 
 
+def export_dry(p: Paths, console: Path) -> int:
+    """export(), step by step, with nothing run, deleted or written."""
+    if not console.exists():
+        say(f"no Godot console at {console}; a real export stops here (run doctor)")
+    if not p.template_bin.exists():
+        say(f"no Linux export template at {p.template_bin}; a real export stops here (run doctor)")
+    if not p.out_dir.exists():
+        would(f"create {p.out_dir}")
+    ensure_solution(p)
+    render_preset(p, p.exe)
+    old = p.data_dir()
+    for f in ([old] if old else []) + [f for f in (p.exe, p.pck) if f.exists()]:
+        would(f"delete the earlier {f}")
+    show([console, "--headless", "--path", p.project, "--export-debug", PRESET_NAME, p.exe])
+    would(f"write its output to {p.out_dir / 'export.log'}")
+    return 0
+
+
 # ---------------------------------------------------------------------------
 # push / run / screenshot / shortcut
 # ---------------------------------------------------------------------------
@@ -498,7 +582,12 @@ def launcher_script(deck: Deck, shard_host: str, shard_port: int, data_default: 
 def push(p: Paths, deck: Deck, shard_host: str | None, shard_port: int | None, data_default: bool = False) -> int:
     deck.require()
     data = p.data_dir()
-    if not (p.exe.exists() and p.pck.exists() and data):
+    if p.exe.exists() and p.pck.exists() and data:
+        files = [p.exe, p.pck, *[f for f in data.rglob("*") if f.is_file()]]
+    elif DRY_RUN:
+        say(f"nothing exported in {p.out_dir} yet; showing the push of a fresh export")
+        files = []
+    else:
         say(f"nothing to push in {p.out_dir}; export first")
         return 1
     host = shard_host or p.cfg.shard_host
@@ -507,9 +596,12 @@ def push(p: Paths, deck: Deck, shard_host: str | None, shard_port: int | None, d
         say(f"note: guo.sh will point at {host}:{port}, which on the Deck is the Deck itself; "
             "pass --host <the shard's LAN address> to push, or set UO_SHARD_HOST in config.local.bat")
     script = launcher_script(deck, host, port, data_default).encode("utf-8")
-    files = [p.exe, p.pck, *[f for f in data.rglob("*") if f.is_file()]]
-    total = sum(f.stat().st_size for f in files)
-    say(f"pushing {len(files) + 1} files ({total // 1024 // 1024} MB) to {deck.target}:{deck.install_dir}")
+    if files:
+        total = sum(f.stat().st_size for f in files)
+        say(f"pushing {len(files) + 1} files ({total // 1024 // 1024} MB) to {deck.target}:{deck.install_dir}")
+    else:
+        say(f"pushing {p.exe.name}, {p.pck.name}, the data_* folder and {LAUNCHER} "
+            f"to {deck.target}:{deck.install_dir}")
 
     rsync = shutil.which("rsync")
     if rsync:
@@ -528,17 +620,22 @@ def push(p: Paths, deck: Deck, shard_host: str | None, shard_port: int | None, d
                 with open(f, "rb") as fh:
                     tf.addfile(info, fh)
         t0 = time.time()
-        deck.stream_tar(deck.install_dir, add)
-        say(f"streamed in {time.time() - t0:.0f}s")
+        deck.stream_tar(deck.install_dir, add, what=f"the export in {p.out_dir}")
+        if not DRY_RUN:
+            say(f"streamed in {time.time() - t0:.0f}s")
 
     # The launcher goes last, on its own, so a rsync --delete never removes
     # it and its mode is what it must be.
-    deck.stream_tar(deck.install_dir, lambda tf: add_bytes(tf, LAUNCHER, script, 0o755))
+    deck.stream_tar(deck.install_dir, lambda tf: add_bytes(tf, LAUNCHER, script, 0o755),
+                    what=f"{LAUNCHER} (mode 755), reading:")
+    if DRY_RUN:
+        for line in script.decode("utf-8").splitlines():
+            print("    " + line)
     d = remote_path(deck.install_dir)
     out = deck.ssh(f"chmod +x {d}/{EXE_NAME} {d}/{LAUNCHER} && ls -la {d} | head -20", quiet=True)
     for line in out.splitlines():
         print("  " + line)
-    say(f"installed; on the Deck: {deck.install_dir}/{LAUNCHER}")
+    say(f"{'would be ' if DRY_RUN else ''}installed; on the Deck: {deck.install_dir}/{LAUNCHER}")
     return 0
 
 
@@ -562,11 +659,12 @@ def start(deck: Deck, extra: str) -> int:
            f"systemd-run --user --collect --quiet --unit={UNIT} "
            f'-p WorkingDirectory="$D" -p StandardOutput="append:$D/{LOG_NAME}" -p StandardError="append:$D/{LOG_NAME}" '
            f'--setenv=LANG=C.UTF-8 "$D/{LAUNCHER}" {extra} && echo started')
-    out = deck.ssh(cmd, timeout=30, check=False)
+    out = deck.ssh(cmd, timeout=30, check=False, dry_reply="started")
     if "started" not in out:
         say(f"could not start the client: {out.strip()[-200:]}")
         return 1
-    say(f"started as the Deck's user unit {UNIT}; output in {deck.install_dir}/{LOG_NAME}")
+    say(f"{'would start' if DRY_RUN else 'started'} as the Deck's user unit {UNIT}; "
+        f"output in {deck.install_dir}/{LOG_NAME}")
     return 0
 
 
@@ -600,9 +698,9 @@ def hold_awake(deck: Deck, minutes: int) -> bool:
            f"systemd-inhibit --what=sleep:idle --mode=block --who=GUO "
            f"--why='GUO tools are using the Deck' sleep {max(1, minutes) * 60} && "
            f"sleep 1 && systemctl --user is-active {AWAKE_UNIT}")
-    out = deck.ssh(cmd, timeout=30, check=False, quiet=True)
+    out = deck.ssh(cmd, timeout=30, check=False, quiet=True, dry_reply="active")
     ok = "active" in out.split()
-    say(f"the Deck stays awake for {minutes} min (unit {AWAKE_UNIT})" if ok
+    say(f"the Deck {'would stay' if DRY_RUN else 'stays'} awake for {minutes} min (unit {AWAKE_UNIT})" if ok
         else f"could not hold the Deck awake: {out.strip()[-200:]}")
     return ok
 
@@ -628,6 +726,11 @@ def run_app(p: Paths, deck: Deck, extra: str, wait: int, awake: int) -> int:
     if start(deck, extra) != 0:
         return 1
     if wait <= 0:
+        return 0
+    if DRY_RUN:
+        would(f"follow {LOG_NAME} for {wait}s, every 3s with:")
+        read_log(deck)
+        alive(deck)
         return 0
     say(f"following {LOG_NAME} for {wait}s (Ctrl+C stops following; the client keeps running)")
     seen = 0
@@ -666,6 +769,9 @@ def screenshot(p: Paths, deck: Deck, local: Path) -> int:
         return 1
     if not deck.scp_from(remote, local):
         return 1
+    if DRY_RUN:
+        would(f"save the screenshot as {local}")
+        return 0
     say(f"screenshot {local} ({local.stat().st_size // 1024} KB)")
     return 0
 
@@ -686,8 +792,11 @@ def shortcut(p: Paths, deck: Deck) -> int:
         "Terminal=false\n"
         "Categories=Game;\n"
     )
-    deck.stream_tar("~/.local/share/applications", lambda tf: add_bytes(tf, "guo.desktop", desktop.encode(), 0o755))
+    deck.stream_tar("~/.local/share/applications", lambda tf: add_bytes(tf, "guo.desktop", desktop.encode(), 0o755),
+                    what="guo.desktop (mode 755)")
     deck.ssh("update-desktop-database ~/.local/share/applications 2>/dev/null; true", check=False, quiet=True)
+    if DRY_RUN:
+        return 0
     say("wrote ~/.local/share/applications/guo.desktop on the Deck (it is now in the Plasma app menu)")
     print(
         "\n  To play in Game mode, add it to Steam ONCE, from Desktop mode:\n"
@@ -725,6 +834,8 @@ def smoke(p: Paths, deck: Deck, timeout: int, skip_export: bool, skip_push: bool
         return 1
 
     say(f"waiting up to {timeout}s for '{LOGIN_OK}' in {LOG_NAME}")
+    if DRY_RUN:
+        return smoke_dry_rest(p, deck)
     deadline = time.time() + timeout
     verdict = None
     text = ""
@@ -764,6 +875,19 @@ def smoke(p: Paths, deck: Deck, timeout: int, skip_export: bool, skip_push: bool
     return 1
 
 
+def smoke_dry_rest(p: Paths, deck: Deck) -> int:
+    """What smoke does after the start, with no wait, no file and no Deck."""
+    would("poll every 3s until the login probe's line, a failure or the client's exit, with:")
+    read_log(deck)
+    alive(deck)
+    would(f"write the Deck's log to {p.out_dir / 'smoke_guo.log'}")
+    screenshot(p, deck, p.out_dir / "smoke.png")
+    stop(deck)
+    release_awake(deck)
+    say("smoke's sequence ends here; nothing was exported, sent or written")
+    return 0
+
+
 # ---------------------------------------------------------------------------
 # main
 # ---------------------------------------------------------------------------
@@ -801,11 +925,29 @@ def main(argv: list[str] | None = None) -> int:
     sm.add_argument("--host", default=None, help="shard address for guo.sh (default UO_SHARD_HOST)")
     sm.add_argument("--port", type=int, default=None, help="shard port (default UO_SHARD_PORT)")
     sm.add_argument("--sound", action="store_true", help="audible run (default passes --silent)")
+    for command in sub.choices.values():
+        command.add_argument("--dry-run", action="store_true",
+                             help="print the commands and file writes instead of doing them; "
+                                  "touches nothing and contacts no Deck")
 
     args = parser.parse_args(argv)
+    global DRY_RUN
+    DRY_RUN = args.dry_run
     cfg = load_config()
     p = Paths(cfg)
     deck = Deck(cfg)
+
+    if DRY_RUN:
+        say(f"{args.command}: nothing is exported, sent over ssh or written; "
+            "these are the commands and writes it would make")
+        if args.command not in ("templates", "preset", "export"):
+            if not deck.host:
+                say(f"UO_DECK_HOST is not set, so the Deck's address shows as {HOST_PLACEHOLDER}; "
+                    "set it in launchers\\_shared\\config.local.bat (docs\\steamdeck.md)")
+            if not deck.key:
+                say("UO_DECK_SSH_KEY is not set: no -i, ssh would offer its default keys")
+            if not deck.known_hosts:
+                say("UO_DECK_KNOWN_HOSTS is not set: ssh would use its own known_hosts")
 
     if args.command == "doctor":
         return Doctor(p, deck).run()
