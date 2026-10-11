@@ -662,9 +662,15 @@ public partial class EditorSmoke
             ArtCheck("audio_wav_saved", said.StartsWith("track attached") && File.Exists(wavPath), said);
             ArtCheck("audio_wav_listed", GUO.IO.Audio.ZoneAudio.Music.TrackFiles().Contains("formatfixture_01.wav"));
             var ogg = new GUO.Comfy.ComfyClient.AudioResult { Audio = new byte[] { 1, 2, 3 }, FileName = "gen_clip.ogg" };
+            // The reload pass reuses this fixture folder and adds another WAV. Rejection
+            // must leave all existing files untouched, regardless of the earlier pass.
+            string tracks = Path.Combine(musicTmp, "tracks");
+            var beforeOgg = Directory.GetFiles(tracks).ToDictionary(path => path, File.ReadAllBytes);
             string refused = Zones.OnAudioGenerated(GUO.IO.Audio.ZoneAudio.Music, region, ogg);
+            string[] afterOgg = Directory.GetFiles(tracks);
             ArtCheck("audio_ogg_rejected", refused.Contains("unsupported")
-                && Directory.GetFiles(Path.Combine(musicTmp, "tracks")).Length == 1, refused);
+                && afterOgg.Length == beforeOgg.Count
+                && afterOgg.All(path => beforeOgg.TryGetValue(path, out byte[] bytes) && File.ReadAllBytes(path).SequenceEqual(bytes)), refused);
             AudioZonePlaybackCheck(musicTmp);
         }
         finally

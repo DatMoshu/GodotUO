@@ -115,3 +115,37 @@ The video has no audio (the Sounds segment does play the sound in the editor).
 
 Exit codes: 0 all segments passed or were skipped with a reason, 1 a segment
 failed, 2 the editor could not run.
+
+## JarJar PR33 quick review
+
+```text
+python tools/editor_tour/review_jarjar.py
+```
+
+Opens a NoFocus editor window on scratch settings/workspace and an isolated world project, holds each screen
+for eight seconds, and drives the registered MCP tour segments. Captures Regions
+(empty setup and scratch region, Music/SFX), Static Studio/splats, Art variants,
+terrain Layers, then real in-game Music/SFX Audio Zones, Repaint, Splat Placer and
+Voice controls rendered as offline previews. Checks include visible/unclipped
+controls and nonempty client drawing commands. No generation requests, targeting,
+shard login or shared-world edits are performed. The temporary region file is
+under this run's build folder; its configuration is restored afterward.
+
+Outputs `review.html`, the original screenshots, `events.jsonl`, `summary.md`
+and, if ffmpeg is available, `editor_tour.mp4` under `build/runs/<run>/`.
+The video is a captioned sequence of internally captured frames, with no audio.
+`--package build/runs/<run>` builds the gallery/video from an existing run;
+`--no-build` skips compilation and `--no-video` skips stitching.
+
+This is interface coverage, not successful ComfyUI generation or gameplay
+acceptance. Model/endpoint setup, regional audio playback transitions and live
+voice output require separate proofs. All rendered client art remains local.
+
+## Header icon review
+
+`python tools/scenario_run/run.py editor.header.review --no-register` runs the
+focused server/client toolbar tour in a scratch NoFocus editor. It selects the
+private server menu entry and checks the icon's accessible name and client menu,
+but never starts a server or client. Four screenshots and MCP events stay under
+`build/runs/`. Use `tools/editor_smoke/run.py --windowed --header-only` for the
+three-width layout check.

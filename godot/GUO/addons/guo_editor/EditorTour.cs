@@ -623,6 +623,8 @@ public partial class EditorTour : Node
     {
             return new List<(string, string, Func<Task>)>
             {
+                ("jarjar_review", "JarJar PR33: editor UI review", JarJarReview),
+                ("jarjar_client_ui", "JarJar PR33: offline client dialog previews", JarJarClientUi),
                 ("intro", "The GUO editor", Intro),
                 ("layout", "The layout", Layout),
                 ("runbar", "Run bar: start a server, start clients", RunBarSeg),
@@ -726,11 +728,11 @@ public partial class EditorTour : Node
 
     private async Task RunBarSeg()
     {
-        var server = All<OptionButton>(_run).First();
+        var server = All<MenuButton>(_run).First(b => b.AccessibilityName == "Choose server");
         var buttons = All<Button>(_run).Where(b => b is not OptionButton).ToList();
-        var client = All<MenuButton>(_run).First();
+        var client = All<MenuButton>(_run).First(b => b.AccessibilityName == "Clients");
         Label dot = All<Label>(_run).First();
-        Button startServer = buttons.First(b => b.Text == "Start");
+        Button startServer = buttons.First(b => b.AccessibilityName == "Start server");
 
         Say("The toolbar runs the same launchers a person runs: a shard (the shared dev shard or this checkout's private ModernUO), then one to four clients. "
             + "This tour only shows them: it never presses Start, which opens windows on the desktop.", top: true);
@@ -742,8 +744,7 @@ public partial class EditorTour : Node
         _overlay.Tip(server.GetGlobalRect(), server.TooltipText);
         await Shot(4.5);
 
-        server.Select(1);
-        server.EmitSignal(OptionButton.SignalName.ItemSelected, 1);
+        server.GetPopup().EmitSignal(PopupMenu.SignalName.IdPressed, 1);
         await Secs(1.5);
         await Frames(5);
         _overlay.ClearMarks();
@@ -752,7 +753,7 @@ public partial class EditorTour : Node
         MarkControl(dot, "status dot");
         MarkControl(startServer);
         _overlay.Tip(dot.GetGlobalRect(), dot.TooltipText);
-        Check(startServer.Text.Length > 0, $"server button reads '{startServer.Text}'");
+        Check(startServer.Text.Length == 0 && startServer.Icon != null && startServer.AccessibilityName == "Start server", "server action is an icon with an accessible name");
         await Shot(4.5);
 
         _overlay.ClearMarks();
@@ -1933,7 +1934,7 @@ public partial class EditorTour : Node
             result["passed"] = new System.Text.Json.Nodes.JsonArray(s.Passed.Select(x => (System.Text.Json.Nodes.JsonNode)Scrub(x)).ToArray());
             result["failures"] = new System.Text.Json.Nodes.JsonArray(s.Failures.Select(x => (System.Text.Json.Nodes.JsonNode)Scrub(x)).ToArray());
             result["frames"] = new System.Text.Json.Nodes.JsonArray(_frames.Skip(first).Select(f =>
-                (System.Text.Json.Nodes.JsonNode)new System.Text.Json.Nodes.JsonObject { ["file"] = rel + "/frames/" + f.File, ["seconds"] = f.Seconds }).ToArray());
+                (System.Text.Json.Nodes.JsonNode)new System.Text.Json.Nodes.JsonObject { ["file"] = rel + "/frames/" + f.File, ["seconds"] = f.Seconds, ["caption"] = Scrub(_steps.LastOrDefault(t => t.Segment == s.Id && t.NextFrame <= _frames.IndexOf(f)).Text) }).ToArray());
         }
         catch (Exception ex)
         {
