@@ -200,7 +200,10 @@ def main() -> int:
     ap.add_argument("--no-build", action="store_true", help="skip the first C# build")
     ap.add_argument("--require-native", action="store_true",
                     help="fail when a check that needs a real external program was skipped")
+    ap.add_argument("--header-only", action="store_true", help="check the toolbar at three window widths without running unrelated editor checks")
     args = ap.parse_args()
+    if args.header_only and (not args.windowed or args.reload):
+        ap.error("--header-only requires --windowed and cannot be combined with --reload")
 
     cfg = load_config()
     project = cfg.godot_project
@@ -227,6 +230,8 @@ def main() -> int:
     if args.headless:
         cmd.insert(1, "--headless")
     cmd += ["--", "--guo-editor-smoke", str(out), "--guo-editor-smoke-art", args.art]
+    if args.header_only:
+        cmd.append("--guo-editor-header-only")
     if args.multi_dump:
         cmd += ["--guo-editor-multi-dump", args.multi_dump]
     if args.reload:

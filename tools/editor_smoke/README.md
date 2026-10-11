@@ -13,6 +13,12 @@ python tools\editor_smoke\run.py --art 0x0E75    which static to search for
 launchers\dev\editor_smoke.bat [same flags]
 ```
 
+For a focused toolbar regression check, run
+`python tools/editor_smoke/run.py --windowed --header-only`. It checks that the
+server/client bar stays inside the window and occupies one row at 1920, 1366
+and 1024 logical pixels wide, and saves `editor_header_*.png`. It runs no other
+editor checks and cannot be combined with `--reload`.
+
 ## What it does
 
 1. `dotnet build` of `godot/GUO/GUO.csproj`. The addon is C# in the game
