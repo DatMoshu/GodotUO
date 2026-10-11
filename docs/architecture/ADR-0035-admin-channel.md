@@ -186,12 +186,12 @@ op is one entry in `AdminChannel.Ops`, op name to level. The token grants
 yet) would need it raised on purpose. An op that is not in `Ops` is not an
 admin op and can never run through the admin path.
 
-The ops so far (AD0, AD1, AD2a, AD2b, AD2c, AD3, AD4, AD5, AD6):
+The ops so far (AD0, AD1, AD2a, AD2b, AD2c, AD3, AD4, AD5, AD6, AD8):
 
 | Op | Level | Does |
 |---|---|---|
 | `admin_whoami` | Counselor | The editor's name, its level and the ops it may run |
-| `admin_audit` | Administrator | The last audit entries (up to 200), oldest first |
+| `admin_audit` | Administrator | The last audit entries (up to 200, kept across a restart), oldest first; the Audit list (AD8) filters and exports them |
 | `admin_status` | Counselor | Health: uptime, players online, items, mobiles, memory, last save, version (read only) |
 | `admin_save` | Administrator | Saves the world now; answers when the write has finished |
 | `admin_godview` | GameMaster | The god view: players, NPCs and spawners on a facet, then change-only pushes (read only) |
@@ -272,7 +272,9 @@ settings, so it comes back with its admin channel.
   line: `at` (UTC), `editor`, `op`, `level`, `ok`, `args` (the request's
   fields without `op`) and `error` on a refusal. It sits with ModernUO's own
   logs, never in `Saves`, so a backup or a restore does not carry it.
-- The last 200 entries are kept in memory for `admin_audit` (the tab's log).
+- The last 200 entries are kept in memory for `admin_audit` (the tab's log
+  and its Audit list, AD8), read back from the file when the server starts so
+  a restart does not empty them.
 - Recorded: every admin op (run or refused), every refused admin hello, and
   every granted one.
 - Masking: any field, at any depth, whose name contains `password`, `token`,

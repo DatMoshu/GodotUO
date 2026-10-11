@@ -195,7 +195,8 @@ public sealed class AdminChannel
 
 /// <summary>
 /// The admin audit log: one JSON object per line, appended, and the last
-/// entries in memory for the tab. Values are masked before they are kept.
+/// entries in memory for the tab (read back from the file when the server
+/// starts). Values are masked before they are kept.
 /// </summary>
 public sealed class AuditLog
 {
@@ -208,7 +209,54 @@ public sealed class AuditLog
     private readonly LinkedList<JsonObject> _recent = new();
     private readonly object _lock = new();
 
-    public AuditLog(string path) => _path = path;
+    public AuditLog(string path)
+    {
+        _path = path;
+        Reload();
+    }
+
+    // AD8: a restarted server's tab still reads the entries before the restart: the newest Keep lines of the file come
+    // back into memory, as they were written (masked). A line cut short by a crash mid-append is skipped.
+    private void Reload()
+    {
+        if (_path == null || !File.Exists(_path))
+        {
+            return;
+        }
+
+        try
+        {
+            foreach (string line in File.ReadLines(_path))
+            {
+                if (line.Length == 0)
+                {
+                    continue;
+                }
+
+                try
+                {
+                    if (JsonNode.Parse(line) is JsonObject entry)
+                    {
+                        _recent.AddLast(entry);
+                        if (_recent.Count > Keep)
+                        {
+                            _recent.RemoveFirst();
+                        }
+                    }
+                }
+                catch (System.Text.Json.JsonException)
+                {
+                }
+            }
+        }
+        catch (IOException)
+        {
+            // Unreadable: the log starts empty in memory and the file is still appended to.
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
+    }
 
     public string Path => _path;
 

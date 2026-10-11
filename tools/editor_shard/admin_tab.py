@@ -1,4 +1,4 @@
-"""The Admin tab, driven in a real editor against the private instance (sprint "Admin tab", AD1, AD2a, AD2b, AD3, AD4, AD5, AD6).
+"""The Admin tab, driven in a real editor against the private instance (sprint "Admin tab", AD1, AD2a, AD2b, AD3, AD4, AD5, AD6, AD8).
 
     python tools/editor_shard/run.py admin-tab [--windowed]
 
@@ -43,7 +43,11 @@ not touched) with the addon's scripted Admin run (EditorSmokeAdmin.cs). In it:
    typed (a wrong word does not run it), and with it only asks for a target,
    which is cancelled; Up brings back the commands run; "run as" a character
    who is not online is refused;
-10. the run bar stops the server.
+10. the Audit list (AD8) reads the server's audit log again: when (UTC),
+    who, op and result, the run's commands among the rows, an account
+    password shown as ***; it filters by op, by who and by free text, and
+    Export CSV writes the rows shown to build/admin_audit;
+11. the run bar stops the server.
 
 The shard's Configuration folder is copied aside first and put back after, so
 the check leaves the private shard's settings as they were. The restore leaves
@@ -76,7 +80,8 @@ STORY = "AD2c"
 STILLS = ("connected", "saved", "restarted", "godview", "spawner", "filtered", "respawn", "presence",
           "presence-paperdoll", "cleared",
           "settings-form", "settings-diff", "settings-saved", "accounts-list", "accounts-created", "accounts-banned",
-          "backup-done", "restore-confirm", "restored", "backup-kept", "commands-confirm", "commands-output")
+          "backup-done", "restore-confirm", "restored", "backup-kept", "commands-confirm", "commands-output",
+          "audit-list")
 
 
 def run(cfg, shard_home: Path, token: str, secrets: list[str], windowed: bool, stamp: str) -> int:

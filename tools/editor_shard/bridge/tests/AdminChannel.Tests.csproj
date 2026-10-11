@@ -16,5 +16,8 @@
     <Compile Include="../GodViewRules.cs" Link="GodViewRules.cs" />
     <Compile Include="../AccountRules.cs" Link="AccountRules.cs" />
     <Compile Include="../../../../godot/GUO/src/Workspace/AdminCommandRules.cs" Link="AdminCommandRules.cs" />
+    <Compile Include="../../../../godot/GUO/src/Workspace/AdminAuditView.cs" Link="AdminAuditView.cs" />
+    <!-- AD8: a fixture audit log for the Audit list's reading, filter and CSV. -->
+    <None Include="fixtures/*.jsonl" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>
