@@ -32,6 +32,10 @@ namespace GUO.Game.Managers
             // PORT DEVIATION (GUO): in-game splat placer (staged splats, live
             // preview + manifest save). Upstream has no generated content.
             Register("splat", s => UIManager.Add(new UI.Gumps.SplatPlacerGump(_world)));
+            // PORT DEVIATION (GUO): in-game MoGe replacer (sprite artwork to
+            // gaussian splat at the victim's own tile, client-side only).
+            // Upstream has no generated content.
+            Register("moge", s => UIManager.Add(new UI.Gumps.MogePlacerGump(_world)));
             // PORT DEVIATION (GUO): in-game image repaint (ComfyUI img2img
             // into the override art folder, never the install).
             Register("repaint", s => UIManager.Add(new UI.Gumps.RepaintGump(_world)));
