@@ -31,6 +31,11 @@ from uiconv import convert_file  # noqa: E402
 
 WORKFLOW_NAME = "PERFECT_VOICE_CLONE.json"
 DESIGN_WORKFLOW_NAME = "PERFECT_VOICE_DESIGN.json"
+PACKAGED_WORKFLOWS_DIR = Path(__file__).resolve().parent / "workflows"
+EXTERNAL_WORKFLOW_DIRS = (
+    Path(r"D:\ComfyUIPortable\ComfyUI\user\default\workflows"),
+    Path(r"C:\ComfyUIY\ComfyUI\user\default\workflows"),
+)
 DESIGN_PANGRAM = "The quick brown fox jumps over the lazy dog near the Britain bank."
 TEXT_NODE = 9
 TEXT_WIDGET = 0
@@ -38,9 +43,21 @@ AUDIO_NODE = 4
 AUDIO_WIDGET = 0
 
 
+def resolve_workflow(name: str) -> Path:
+    """Resolve a voice workflow file: external artist drop-in wins,
+    packaged repo copy (tools/comfy/workflows/) is the fallback."""
+    for c in EXTERNAL_WORKFLOW_DIRS:
+        p = c / name
+        if p.is_file():
+            return p
+    p = PACKAGED_WORKFLOWS_DIR / name
+    if p.is_file():
+        return p
+    raise FileNotFoundError(f"{name} not found in ComfyUI workflows dirs or {PACKAGED_WORKFLOWS_DIR}")
+
+
 def comfy_source_dir() -> Path:
-    for c in (Path(r"D:\ComfyUIPortable\ComfyUI\user\default\workflows"),
-              Path(r"C:\ComfyUIY\ComfyUI\user\default\workflows")):
+    for c in EXTERNAL_WORKFLOW_DIRS:
         if (c / WORKFLOW_NAME).is_file():
             return c
     raise FileNotFoundError("TEXT2SPEACHWORKINGFASTQWEN.json not found in known workflow dirs")
@@ -129,7 +146,7 @@ def build_speak_prompt(sample_name: str, text: str, seed: int = -1) -> dict:
     import random
     if seed is None or seed < 0:
         seed = random.randint(1, 2 ** 31 - 1)
-    wf = convert_file(comfy_source_dir() / WORKFLOW_NAME)
+    wf = convert_file(resolve_workflow(WORKFLOW_NAME))
     clone_id = None
     for k, node in wf.items():
         if not isinstance(node, dict):
@@ -267,13 +284,21 @@ def cmd_design(args) -> int:
     free_vram(url)
     voice = args.voice or f"npc_{args.serial}"
     line = args.line or DESIGN_PANGRAM
-    # 1. The local LLM designs the voice from who the NPC is.
-    description = ollama_describe(args.name, args.body, args.type)
+    # 1. The local LLM designs the voice from who the NPC is -- unless the
+    # user typed what TYPE of voice they want (the -voice gump prompt box,
+    # passed as --prompt): that text IS the design description, used
+    # directly so "gravelly old blacksmith" stays verbatim.
+    user_prompt = (getattr(args, "prompt", None) or "").strip()
+    if user_prompt:
+        description = " ".join(user_prompt.split())[:200] or "a warm middle-aged shopkeeper voice"
+        print(f"[voice] user voice design: {description}")
+    else:
+        description = ollama_describe(args.name, args.body, args.type)
     # 2. The PERFECT design workflow speaks the pangram in that voice, one
     # pass, then a SaveAudio tail takes the sample (the old example graph
     # needed a save/load dance plus a second clone that took 10 minutes).
     from uiconv import convert_file as _convert
-    wf = _convert(comfy_source_dir() / DESIGN_WORKFLOW_NAME)
+    wf = _convert(resolve_workflow(DESIGN_WORKFLOW_NAME))
     import random
     import tempfile
     for _k, node in wf.items():
@@ -341,6 +366,7 @@ def main(argv=None) -> int:
     d.add_argument("--name", default="a traveler")
     d.add_argument("--body", type=int, default=400)
     d.add_argument("--type", default="townsperson")
+    d.add_argument("--prompt", default=None, help="user-typed voice type ('gravelly old blacksmith'): used as the design description directly, skipping the LLM")
     d.add_argument("--voice", default=None)
     d.add_argument("--line", default=None)
     d.add_argument("--timeout", type=int, default=110, help="hard budget: everything here runs under 120 s")

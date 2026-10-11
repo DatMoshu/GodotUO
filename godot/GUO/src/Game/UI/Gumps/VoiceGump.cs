@@ -14,17 +14,22 @@ namespace GUO.Game.UI.Gumps
     /// design a new one for it (slow: Qwen voice design, fire-and-forget),
     /// or make the pick the fallback for every unmapped mobile. Opened with
     /// the "-voice" client command. Spoken lines themselves already flow
-    /// through VoiceManager whenever a mapped mobile talks.
+    /// through VoiceManager whenever a mapped mobile talks. The "Voice type"
+    /// box is the design prompt ("gravelly old blacksmith"): empty keeps the
+    /// LLM description, typed text is used verbatim. A finished design
+    /// auto-assigns to the targeted mobile (voices.json serial rule) and the
+    /// gump refreshes to show it.
     /// </summary>
     internal sealed class VoiceGump : Gump
     {
         private const int W = 320;
-        private const int H = 400;
+        private const int H = 480;
 
         private readonly Label _mobLabel;
         private readonly Label _currentLabel;
         private readonly Label _voiceLabel;
         private readonly Label _statusLabel;
+        private readonly StbTextBox _promptBox;
 
         private uint _serial;
         private string _mobName = "";
@@ -32,6 +37,8 @@ namespace GUO.Game.UI.Gumps
         private readonly List<string> _voices = new();
         private int _voiceIdx = -1;
         private uint _designSerial;
+        private string _designName = "";
+        private ushort _designBody;
 
         private enum Buttons
         {
@@ -120,6 +127,17 @@ namespace GUO.Game.UI.Gumps
             });
 
             y += 32;
+            Add(new Label("Voice type:", true, 0x0386) { X = 12, Y = y });
+            y += 20;
+            Add(new Label("e.g. gravelly old blacksmith", true, 0x0386) { X = 12, Y = y });
+            y += 20;
+            _promptBox = new StbTextBox(1, 200, W - 24, true, FontStyle.None, 0x0021)
+            {
+                X = 12, Y = y, Width = W - 24, Height = 48, Multiline = true
+            };
+            Add(_promptBox);
+
+            y += 56;
             _statusLabel = new Label(string.Empty, true, 0x0021, W - 24) { X = 12, Y = y };
             Add(_statusLabel);
 
@@ -167,29 +185,73 @@ namespace GUO.Game.UI.Gumps
 
             // The design worker reports through the shared driver status;
             // pick up completion (or failure) so the gump stops showing the
-            // click-time message after the voice lands.
+            // click-time message after the voice lands. On success the new
+            // voice is auto-assigned to the mobile that was targeted when
+            // Design was pressed (no manual Assign step) and the gump
+            // refreshes to show it.
             string st = VoiceManager.Status ?? "";
             if (st.StartsWith("designed"))
             {
+                uint target = _designSerial;
+                string targetName = _designName;
+                ushort targetBody = _designBody;
+                string newVoice = ParseDesignedVoice(st) ?? $"npc_{target}";
                 _designSerial = 0;
-                RefreshVoices();
-                string resolved = _serial == 0 ? null
-                    : VoiceManager.ResolveVoice(_serial, _mobName, _mobBody);
-                int at = resolved == null ? -1 : _voices.FindIndex(v =>
-                    string.Equals(v, resolved, System.StringComparison.OrdinalIgnoreCase));
-                if (at >= 0)
+                _designName = "";
+                if (!string.IsNullOrWhiteSpace(newVoice) && target != 0)
                 {
-                    _voiceIdx = at;
-                }
+                    VoiceManager.AssignVoice(target, newVoice);
+                    _serial = target;
+                    _mobName = targetName;
+                    _mobBody = targetBody;
+                    RefreshVoices();
+                    int at = _voices.FindIndex(v =>
+                        string.Equals(v, newVoice, System.StringComparison.OrdinalIgnoreCase));
+                    if (at >= 0)
+                    {
+                        _voiceIdx = at;
+                    }
 
-                UpdateLabels();
-                Say(st + ".");
+                    UpdateLabels();
+                    Say($"{_mobName} now speaks '{newVoice}'.");
+                    GameActions.Print(World, $"Voice: {_mobName} #{_serial} -> '{newVoice}' (auto-assigned)");
+                }
+                else
+                {
+                    RefreshVoices();
+                    UpdateLabels();
+                    Say(st + ".");
+                }
             }
             else if (st.StartsWith("error"))
             {
                 _designSerial = 0;
+                _designName = "";
                 Say(st);
             }
+        }
+
+        private static string ParseDesignedVoice(string st)
+        {
+            if (string.IsNullOrEmpty(st))
+            {
+                return null;
+            }
+
+            int q0 = st.IndexOf('\'');
+            if (q0 < 0)
+            {
+                return null;
+            }
+
+            int q1 = st.IndexOf('\'', q0 + 1);
+            if (q1 <= q0 + 1)
+            {
+                return null;
+            }
+
+            string v = st.Substring(q0 + 1, q1 - q0 - 1).Trim();
+            return string.IsNullOrEmpty(v) ? null : v;
         }
 
         public override void OnButtonClick(int buttonID)
@@ -267,9 +329,14 @@ namespace GUO.Game.UI.Gumps
                     }
                     else
                     {
-                        VoiceManager.DesignVoice((int)_serial, _mobName, _mobBody, "mobile");
+                        string want = _promptBox?.Text?.Trim() ?? "";
+                        VoiceManager.DesignVoice((int)_serial, _mobName, _mobBody, "mobile", want);
                         _designSerial = _serial;
-                        Say($"Designing a voice for {_mobName} (slow)...");
+                        _designName = _mobName;
+                        _designBody = _mobBody;
+                        Say(string.IsNullOrEmpty(want)
+                            ? $"Designing a voice for {_mobName} (slow)..."
+                            : $"Designing '{want}' for {_mobName} (slow)...");
                     }
                     break;
 

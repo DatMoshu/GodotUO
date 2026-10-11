@@ -46,6 +46,7 @@ namespace GUO.IO.Audio
             public byte[] Pcm;
             public string Error = "";
             public bool Designed;
+            public string DesignedVoice = "";
         }
 
         /// <summary>Scene-thread pump: starts synthesis workers, plays finished clips.</summary>
@@ -85,7 +86,8 @@ namespace GUO.IO.Audio
                     }
                     else if (r.Error.Length == 0 && r.Designed)
                     {
-                        Status = $"designed '{r.Job.Voice}'";
+                        string voice = string.IsNullOrWhiteSpace(r.DesignedVoice) ? r.Job.Voice : r.DesignedVoice;
+                        Status = $"designed '{voice}'";
                         GD.Print($"[GUO] voice: {Status}");
                     }
                     else
@@ -186,8 +188,11 @@ namespace GUO.IO.Audio
         /// Design a voice for an NPC (local LLM description + voice-design
         /// workflow sample) and map it to the NPC's serial going forward.
         /// Fire-and-forget; Status tracks it ("designing" then "designed").
+        /// The optional prompt is the user's free-text voice type ("gravelly
+        /// old blacksmith"): passed to voice.py as --prompt and used as the
+        /// design description directly instead of the LLM fallback.
         /// </summary>
-        public static void DesignVoice(int serial, string name, int body, string typeName)
+        public static void DesignVoice(int serial, string name, int body, string typeName, string prompt = null)
         {
             EnsurePump();
             lock (_queue)
@@ -199,7 +204,10 @@ namespace GUO.IO.Audio
 
                 _queue.Enqueue(new Job
                 {
-                    Text = "",
+                    // Job.Text carries the user's free-text design prompt
+                    // (kept out of Voice so '|' in the text cannot break the
+                    // design:serial|name|body|type parse in Design()).
+                    Text = prompt ?? "",
                     Distance = 0,
                     Voice = $"design:{serial}|{name}|{body}|{typeName}",
                 });
@@ -606,9 +614,24 @@ namespace GUO.IO.Audio
                 // Design is one fast pass (PERFECT_VOICE_DESIGN): the whole
                 // job holds a hard ~2 min ceiling while speaks keep theirs.
                 // Timeouts live here AND in the tool call: whichever fires
-                // first reports, the other cleans up.
+                // first reports, the other cleans up. Job.Text is the user's
+                // free-text voice type; quotes/newlines stripped so the CLI
+                // stays one argument, passed as --prompt (voice.py uses it as
+                // the design description directly).
+                string promptArg = "";
+                string cleanPrompt = (job.Text ?? "").Replace("\"", "").Replace("\r", " ").Replace("\n", " ").Trim();
+                if (cleanPrompt.Length > 200)
+                {
+                    cleanPrompt = cleanPrompt[..200];
+                }
+
+                if (!string.IsNullOrWhiteSpace(cleanPrompt))
+                {
+                    promptArg = $" --prompt \"{cleanPrompt}\"";
+                }
+
                 var psi = new ProcessStartInfo(Python(),
-                    $"\"{tool}\" design --serial {serial} --name \"{parts[1]}\" --body {parts[2]} --type \"{parts[3]}\" --timeout 110")
+                    $"\"{tool}\" design --serial {serial} --name \"{parts[1].Replace("\"", "")}\" --body {parts[2]} --type \"{parts[3].Replace("\"", "")}\"{promptArg} --timeout 110")
                 {
                     UseShellExecute = false,
                     RedirectStandardOutput = true,
@@ -642,6 +665,23 @@ namespace GUO.IO.Audio
                 {
                     r.Error = $"error: voice design exit {proc.ExitCode}: {Short(stderr.Length > 0 ? stderr : stdout)}";
                     return r;
+                }
+
+                // The enrolled profile defaults to npc_<serial> (voice.py
+                // --voice override is never passed from here); prefer the
+                // name the tool actually reports so the gump can auto-assign
+                // the exact voice without guessing.
+                r.DesignedVoice = $"npc_{serial}";
+                string hay = stdout ?? "";
+                int di = hay.IndexOf("designed '", StringComparison.Ordinal);
+                if (di >= 0)
+                {
+                    int qs = di + "designed '".Length;
+                    int qe = hay.IndexOf('\'', qs);
+                    if (qe > qs && qe - qs < 128)
+                    {
+                        r.DesignedVoice = hay.Substring(qs, qe - qs).Trim();
+                    }
                 }
 
                 r.Designed = true;

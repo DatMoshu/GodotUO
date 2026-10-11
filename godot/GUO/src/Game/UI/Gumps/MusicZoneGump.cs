@@ -28,13 +28,12 @@ namespace GUO.Game.UI.Gumps
     internal sealed class MusicZoneGump : Gump
     {
         private const int W = 340;
-        private const int H = 650;
+        private const int H = 624;
 
         private readonly Label _zoneLabel;
         private readonly Label _rectLabel;
         private readonly StbTextBox _nameBox;
         private readonly StbTextBox _playlistBox;
-        private readonly Label _filesLabel;
         private readonly StbTextBox _promptBox;
         private readonly StbTextBox _secsBox;
         private readonly Label _hereLabel;
@@ -147,10 +146,6 @@ namespace GUO.Game.UI.Gumps
             Add(_playlistBox);
 
             y += 52;
-            _filesLabel = new Label("", true, 0x0386, W - 24) { X = 12, Y = y };
-            Add(_filesLabel);
-
-            y += 26;
             Add(new Label("Prompt:", true, 0x0386) { X = 12, Y = y });
             y += 22;
             _promptBox = new StbTextBox(1, 500, W - 24, true, FontStyle.None, 0x0021)
@@ -213,7 +208,6 @@ namespace GUO.Game.UI.Gumps
 
             Width = W;
             Height = H;
-            RefreshFiles();
             LoadZone(0);
             SetInScreen();
         }
@@ -275,12 +269,6 @@ namespace GUO.Game.UI.Gumps
                 : (z != null ? $"{z.X0},{z.Y0} - {z.X1},{z.Y1}" : $"{_ax},{_ay} - ?");
         }
 
-        private void RefreshFiles()
-        {
-            List<string> files = Layer.TrackFiles();
-            _filesLabel.Text = files.Count == 0 ? "no tracks yet" : string.Join(",", files);
-        }
-
         private void Say(string s)
         {
             _statusLabel.Text = s;
@@ -297,7 +285,6 @@ namespace GUO.Game.UI.Gumps
             _layerSfx = sfx;
             _outline.Hide();
             LoadZone(0);
-            RefreshFiles();
             Say(sfx ? "SFX layer (own zones and tracks)." : "Music layer (own zones and tracks).");
         }
 
@@ -467,7 +454,6 @@ namespace GUO.Game.UI.Gumps
                         Say(Layer.Save(Zones) ? "Zones saved." : "Save failed.");
                     }
 
-                    RefreshFiles();
                     break;
 
                 case (int)Buttons.ClearTracks:
@@ -652,7 +638,6 @@ namespace GUO.Game.UI.Gumps
                 File.WriteAllBytes(Path.Combine(dir, file), result.Audio);
                 string playlist = _playlistBox.Text?.Trim() ?? "";
                 _playlistBox.SetText(string.IsNullOrEmpty(playlist) ? file : playlist + "," + file);
-                RefreshFiles();
                 Say($"Track {file} saved and queued in the playlist.");
             }
             catch (Exception ex)
