@@ -25,6 +25,8 @@ namespace GUO.Comfy
         public const string TemplatePath = "res://assets/comfy/guo_img2splat_api.json";
         public const string AudioTemplatePath = "res://assets/comfy/guo_audio_api.json";
         public const string FluxTemplatePath = "res://assets/comfy/guo_flux_edit_api.json";
+        public const string RepaintTemplatePath = "res://assets/comfy/guo_repaint_api.json";
+        public const string InpaintTemplatePath = "res://assets/comfy/guo_inpaint_api.json";
 
         public sealed class AudioResult
         {
@@ -135,6 +137,12 @@ namespace GUO.Comfy
             public int Width;
             public int Height;
             public int TightWidth;
+            // Tight bbox origin + height: the MoGe replacer anchors the
+            // billboard from bbox-center to the tile anchor (RSP), which
+            // needs the full tight rect, not just its width.
+            public int TightX0;
+            public int TightY0;
+            public int TightHeight;
 
             /// <summary>
             /// Diffusion working copy: the art nearest-upscaled so its long
@@ -164,7 +172,7 @@ namespace GUO.Comfy
             }
 
             byte[] rgba = new byte[art.Width * art.Height * 4];
-            int x0 = art.Width, x1 = -1;
+            int x0 = art.Width, x1 = -1, y0 = art.Height, y1 = -1;
             for (int i = 0; i < art.Width * art.Height; i++)
             {
                 uint pixel = art.Pixels[i];
@@ -175,7 +183,7 @@ namespace GUO.Comfy
                 rgba[at + 3] = pixel == 0 ? (byte)0 : (byte)255;
                 if (pixel != 0)
                 {
-                    int x = i % art.Width;
+                    int x = i % art.Width, y = i / art.Width;
                     if (x < x0)
                     {
                         x0 = x;
@@ -184,6 +192,16 @@ namespace GUO.Comfy
                     if (x > x1)
                     {
                         x1 = x;
+                    }
+
+                    if (y < y0)
+                    {
+                        y0 = y;
+                    }
+
+                    if (y > y1)
+                    {
+                        y1 = y;
                     }
                 }
             }
@@ -214,6 +232,9 @@ namespace GUO.Comfy
                 Width = art.Width,
                 Height = art.Height,
                 TightWidth = x1 >= x0 ? x1 - x0 + 1 : 0,
+                TightX0 = x1 >= x0 ? x0 : 0,
+                TightY0 = y1 >= y0 ? y0 : 0,
+                TightHeight = y1 >= y0 ? y1 - y0 + 1 : 0,
                 WorkPng = workPng,
                 WorkWidth = workW,
                 WorkHeight = workH,
@@ -458,9 +479,10 @@ namespace GUO.Comfy
         }
 
         /// <summary>
-        /// Classic img2img repaint (tools/comfy/img2img.py's graph, built
-        /// inline): upload, denoise with a prompt through DreamShaper,
-        /// download the first PNG. Same poll shape as the 3D flow.
+        /// Classic img2img repaint (the frozen guo_repaint_api template,
+        /// tools/comfy/img2img.py's graph): upload, denoise with a prompt
+        /// through DreamShaper, download the first PNG. Same poll shape as
+        /// the 3D flow.
         /// </summary>
         public static async Task<PngResult> ImageToImageAsync(
             string url, byte[] png, string prompt, int seed, float denoise,
@@ -471,58 +493,50 @@ namespace GUO.Comfy
             report?.Invoke("Uploading artwork...");
             string stored = await UploadImageAsync(url, png, name, ct);
             report?.Invoke("Queueing repaint...");
-            var workflow = new Dictionary<string, object>
-            {
-                ["1"] = Node("CheckpointLoaderSimple", new Dictionary<string, object>
-                {
-                    ["ckpt_name"] = "DreamShaper_8_pruned.safetensors",
-                }),
-                ["2"] = Node("LoadImage", new Dictionary<string, object>
-                {
-                    ["image"] = stored,
-                }),
-                ["3"] = Node("VAEEncode", new Dictionary<string, object>
-                {
-                    ["pixels"] = new List<object> { "2", 0 },
-                    ["vae"] = new List<object> { "1", 2 },
-                }),
-                ["4"] = Node("CLIPTextEncode", new Dictionary<string, object>
-                {
-                    ["text"] = prompt,
-                    ["clip"] = new List<object> { "1", 1 },
-                }),
-                ["5"] = Node("CLIPTextEncode", new Dictionary<string, object>
-                {
-                    ["text"] = "blurry, watermark, text, deformed",
-                    ["clip"] = new List<object> { "1", 1 },
-                }),
-                ["6"] = Node("KSampler", new Dictionary<string, object>
-                {
-                    ["model"] = new List<object> { "1", 0 },
-                    ["positive"] = new List<object> { "4", 0 },
-                    ["negative"] = new List<object> { "5", 0 },
-                    ["latent_image"] = new List<object> { "3", 0 },
-                    ["seed"] = seed,
-                    ["steps"] = steps,
-                    ["cfg"] = cfg,
-                    ["sampler_name"] = sampler,
-                    ["scheduler"] = scheduler,
-                    ["denoise"] = denoise,
-                }),
-                ["7"] = Node("VAEDecode", new Dictionary<string, object>
-                {
-                    ["samples"] = new List<object> { "6", 0 },
-                    ["vae"] = new List<object> { "1", 2 },
-                }),
-                ["8"] = Node("SaveImage", new Dictionary<string, object>
-                {
-                    ["images"] = new List<object> { "7", 0 },
-                    ["filename_prefix"] = "GUO_repaint",
-                }),
-            };
-            string promptId = await QueueWorkflowAsync(url, workflow, ct);
+            string promptId = await QueueRepaintAsync(
+                url, LoadTemplate(RepaintTemplatePath), stored, prompt, seed, denoise,
+                sampler, scheduler, steps, cfg, ct);
             return await WaitForImagesAsync(url, promptId, "Repainting (a minute or two)...",
                 report, ct, timeoutMinutes);
+        }
+
+        /// <summary>
+        /// Fills the frozen repaint template: CheckpointLoaderSimple 1,
+        /// LoadImage 2, prompt 4, KSampler 6. Node ids are the converter's,
+        /// stable for this template (see also QueueFluxEditAsync).
+        /// </summary>
+        public static async Task<string> QueueRepaintAsync(
+            string url, string templateJson, string imageName, string prompt, int seed,
+            float denoise, string sampler, string scheduler, int steps, float cfg,
+            CancellationToken ct)
+        {
+            using JsonDocument doc = JsonDocument.Parse(templateJson);
+            var nodes = new Dictionary<string, object>();
+            foreach (JsonProperty node in doc.RootElement.EnumerateObject())
+            {
+                var inputs = new Dictionary<string, object>();
+                if (node.Value.TryGetProperty("inputs", out JsonElement ins))
+                {
+                    foreach (JsonProperty input in ins.EnumerateObject())
+                    {
+                        inputs[input.Name] = ReadNodeValue(input.Value);
+                    }
+                }
+
+                nodes[node.Name] = Node(
+                    node.Value.GetProperty("class_type").GetString(), inputs);
+            }
+
+            SetInput(nodes, "1", "ckpt_name", "DreamShaper_8_pruned.safetensors");
+            SetInput(nodes, "2", "image", imageName);
+            SetInput(nodes, "4", "text", prompt);
+            SetInput(nodes, "6", "seed", (object)seed);
+            SetInput(nodes, "6", "steps", (object)steps);
+            SetInput(nodes, "6", "cfg", (object)cfg);
+            SetInput(nodes, "6", "sampler_name", sampler);
+            SetInput(nodes, "6", "scheduler", scheduler);
+            SetInput(nodes, "6", "denoise", (object)denoise);
+            return await QueueWorkflowAsync(url, nodes, ct);
         }
 
         /// <summary>Poll a queued prompt until its first image downloads.</summary>
@@ -609,9 +623,10 @@ namespace GUO.Comfy
         }
 
         /// <summary>
-        /// Inpainting repaint (DreamShaper + SetLatentNoiseMask, model
-        /// agnostic): the mask image says what to regrow, the rest stays.
-        /// Mask convention follows the node: white regrows.
+        /// Inpainting repaint (the frozen guo_inpaint_api template,
+        /// DreamShaper + SetLatentNoiseMask, model agnostic): the mask image
+        /// says what to regrow, the rest stays. Mask convention follows the
+        /// node: white regrows.
         /// </summary>
         public static async Task<PngResult> ImageInpaintAsync(
             string url, byte[] png, byte[] maskPng, string prompt, string negative,
@@ -623,70 +638,9 @@ namespace GUO.Comfy
             report?.Invoke("Uploading mask...");
             string maskStored = await UploadImageAsync(url, maskPng, $"guo_mask_{DateTime.UtcNow:yyyyMMdd_HHmmss}.png", ct);
             report?.Invoke("Queueing inpaint...");
-            var workflow = new Dictionary<string, object>
-            {
-                ["1"] = Node("CheckpointLoaderSimple", new Dictionary<string, object>
-                {
-                    ["ckpt_name"] = checkpoint,
-                }),
-                ["2"] = Node("LoadImage", new Dictionary<string, object>
-                {
-                    ["image"] = stored,
-                }),
-                ["3"] = Node("LoadImage", new Dictionary<string, object>
-                {
-                    ["image"] = maskStored,
-                }),
-                ["4"] = Node("ImageToMask", new Dictionary<string, object>
-                {
-                    ["image"] = new List<object> { "3", 0 },
-                    ["channel"] = "red",
-                }),
-                ["5"] = Node("VAEEncode", new Dictionary<string, object>
-                {
-                    ["pixels"] = new List<object> { "2", 0 },
-                    ["vae"] = new List<object> { "1", 2 },
-                }),
-                ["6"] = Node("SetLatentNoiseMask", new Dictionary<string, object>
-                {
-                    ["samples"] = new List<object> { "5", 0 },
-                    ["mask"] = new List<object> { "4", 0 },
-                }),
-                ["7"] = Node("CLIPTextEncode", new Dictionary<string, object>
-                {
-                    ["text"] = prompt,
-                    ["clip"] = new List<object> { "1", 1 },
-                }),
-                ["8"] = Node("CLIPTextEncode", new Dictionary<string, object>
-                {
-                    ["text"] = negative,
-                    ["clip"] = new List<object> { "1", 1 },
-                }),
-                ["9"] = Node("KSampler", new Dictionary<string, object>
-                {
-                    ["model"] = new List<object> { "1", 0 },
-                    ["positive"] = new List<object> { "7", 0 },
-                    ["negative"] = new List<object> { "8", 0 },
-                    ["latent_image"] = new List<object> { "6", 0 },
-                    ["seed"] = seed,
-                    ["steps"] = steps,
-                    ["cfg"] = cfg,
-                    ["sampler_name"] = "euler",
-                    ["scheduler"] = "normal",
-                    ["denoise"] = denoise,
-                }),
-                ["10"] = Node("VAEDecode", new Dictionary<string, object>
-                {
-                    ["samples"] = new List<object> { "9", 0 },
-                    ["vae"] = new List<object> { "1", 2 },
-                }),
-                ["11"] = Node("SaveImage", new Dictionary<string, object>
-                {
-                    ["images"] = new List<object> { "10", 0 },
-                    ["filename_prefix"] = "GUO_inpaint",
-                }),
-            };
-            string promptId = await QueueWorkflowAsync(url, workflow, ct);
+            string promptId = await QueueInpaintAsync(
+                url, LoadTemplate(InpaintTemplatePath), stored, maskStored, prompt, negative,
+                checkpoint, seed, steps, cfg, denoise, ct);
             report?.Invoke("Inpainting (a minute or two)...");
             var deadline = DateTime.UtcNow.AddMinutes(timeoutMinutes);
             while (true)
@@ -707,6 +661,50 @@ namespace GUO.Comfy
 
                 await Task.Delay(TimeSpan.FromSeconds(5), ct);
             }
+        }
+
+        /// <summary>
+        /// Fills the frozen inpaint template: CheckpointLoaderSimple 1,
+        /// LoadImage 2 (art) and 3 (mask), prompts 7-8, KSampler 9. The
+        /// checkpoint stays a parameter; the sampler pair stays the
+        /// DreamShaper euler/normal literals, set here rather than baked
+        /// into the file. Node ids are the converter's, stable for this
+        /// template (see also QueueFluxEditAsync).
+        /// </summary>
+        public static async Task<string> QueueInpaintAsync(
+            string url, string templateJson, string imageName, string maskName, string prompt,
+            string negative, string checkpoint, int seed, int steps, float cfg, float denoise,
+            CancellationToken ct)
+        {
+            using JsonDocument doc = JsonDocument.Parse(templateJson);
+            var nodes = new Dictionary<string, object>();
+            foreach (JsonProperty node in doc.RootElement.EnumerateObject())
+            {
+                var inputs = new Dictionary<string, object>();
+                if (node.Value.TryGetProperty("inputs", out JsonElement ins))
+                {
+                    foreach (JsonProperty input in ins.EnumerateObject())
+                    {
+                        inputs[input.Name] = ReadNodeValue(input.Value);
+                    }
+                }
+
+                nodes[node.Name] = Node(
+                    node.Value.GetProperty("class_type").GetString(), inputs);
+            }
+
+            SetInput(nodes, "1", "ckpt_name", checkpoint);
+            SetInput(nodes, "2", "image", imageName);
+            SetInput(nodes, "3", "image", maskName);
+            SetInput(nodes, "7", "text", prompt);
+            SetInput(nodes, "8", "text", negative);
+            SetInput(nodes, "9", "seed", (object)seed);
+            SetInput(nodes, "9", "steps", (object)steps);
+            SetInput(nodes, "9", "cfg", (object)cfg);
+            SetInput(nodes, "9", "sampler_name", "euler");
+            SetInput(nodes, "9", "scheduler", "normal");
+            SetInput(nodes, "9", "denoise", (object)denoise);
+            return await QueueWorkflowAsync(url, nodes, ct);
         }
 
         private static Dictionary<string, object> Node(string classType, Dictionary<string, object> inputs)

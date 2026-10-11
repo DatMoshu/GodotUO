@@ -207,21 +207,6 @@
    ]
   }
  },
- "134": {
-  "class_type": "JarJarSubmit3D",
-  "inputs": {
-   "model_3d": [
-    "92",
-    0
-   ],
-   "prompt": [
-    "138",
-    0
-   ],
-   "api_url": "https://meesajarjar.com/foundry-api.php",
-   "filename": ""
-  }
- },
  "138": {
   "class_type": "PrimitiveStringMultiline",
   "inputs": {
