@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
 
 using System;
+using System.Collections.Generic;
 using Godot;
 using GUO.Assets;
 
@@ -107,6 +108,143 @@ namespace GUO.Renderer
             DrawnSplats = _chain.Levels[level].Gaussians.Length;
         }
 
+        /// <summary>
+        /// Shared baked meshes: identical (Chain, level, scale, yaw, zoom,
+        /// disc) placements draw ONE ArrayMesh, baked LOCAL (origin-relative)
+        /// with the placement offset riding the draw transform (like every
+        /// mesh under the view transform). Walking past a splat is then one
+        /// draw call with zero uploads; the old per-instance mesh plus the
+        /// per-frame MoveBaked rewrite are gone.
+        /// </summary>
+        private readonly struct BakeKey : IEquatable<BakeKey>
+        {
+            public readonly SplatLodChain Chain;
+            public readonly int Level;
+            public readonly int ScaleBits;
+            public readonly int YawBits;
+            public readonly int ZoomBits;
+            public readonly int DiscBits;
+
+            public BakeKey(SplatLodChain chain, int level, float scale, float yawDeg, float zoom, float disc)
+            {
+                Chain = chain;
+                Level = level;
+                ScaleBits = BitConverter.SingleToInt32Bits(scale);
+                YawBits = BitConverter.SingleToInt32Bits(yawDeg);
+                ZoomBits = BitConverter.SingleToInt32Bits(zoom);
+                DiscBits = BitConverter.SingleToInt32Bits(disc);
+            }
+
+            public bool Equals(BakeKey other) =>
+                ReferenceEquals(Chain, other.Chain) && Level == other.Level
+                && ScaleBits == other.ScaleBits && YawBits == other.YawBits
+                && ZoomBits == other.ZoomBits && DiscBits == other.DiscBits;
+
+            public override bool Equals(object obj) => obj is BakeKey o && Equals(o);
+
+            public override int GetHashCode()
+            {
+                int h = Chain != null ? System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(Chain) : 0;
+                h = (h * 397) ^ Level;
+                h = (h * 397) ^ ScaleBits;
+                h = (h * 397) ^ YawBits;
+                h = (h * 397) ^ ZoomBits;
+                h = (h * 397) ^ DiscBits;
+                return h;
+            }
+        }
+
+        private sealed class SharedBake
+        {
+            public ArrayMesh Mesh;
+            public bool IsBright;
+            public int Quads;
+            public int Built, SkipAlpha, SkipDegen, SkipData;
+        }
+
+        private static readonly Dictionary<BakeKey, SharedBake> _sharedCache = new();
+
+        /// <summary>
+        /// Entries in <see cref="_sharedCache"/> (the smoke check sizes it).
+        /// </summary>
+        public static int SharedCacheCount => _sharedCache.Count;
+
+        /// <summary>Forgets every shared bake (stage reload, tests).</summary>
+        public static void ClearSharedCache()
+        {
+            _sharedCache.Clear();
+        }
+
+        /// <summary>
+        /// The shared LOCAL bake for (chain, level, scale, yaw, zoom, disc):
+        /// same bytes <see cref="BakeLevel"/>+<see cref="UploadBaked"/> at
+        /// (0,0) produce, drawn with the placement offset on the mesh
+        /// transform. Zoom rides the key because the bake clamp does
+        /// ([0.25,96]*zoom); within a frame every placement shares one zoom
+        /// so identical (Chain, level, scale, yaw, disc) placements still
+        /// share one mesh.
+        /// </summary>
+        public static ArrayMesh GetSharedBaked(
+            SplatLodChain chain, int level, float scale, float yawDeg, float zoom,
+            float discSize, out bool isBright, out int quads)
+        {
+            isBright = false;
+            quads = 0;
+            if (chain == null || level < 0 || level >= chain.Count)
+            {
+                return null;
+            }
+
+            float disc = Finite(discSize) && discSize > 0f ? discSize : 1f;
+            float z = Finite(zoom) ? Math.Max(zoom, 0.01f) : 1f;
+            var key = new BakeKey(chain, level, scale, yawDeg, z, disc);
+            if (_sharedCache.TryGetValue(key, out SharedBake hit) && hit?.Mesh != null)
+            {
+                LastBuilt = hit.Built;
+                LastSkippedAlpha = hit.SkipAlpha;
+                LastSkippedDegenerate = hit.SkipDegen;
+                LastSkippedData = hit.SkipData;
+                isBright = hit.IsBright;
+                quads = hit.Quads;
+                return hit.Mesh;
+            }
+
+            SplatSet set = chain.Levels[level];
+            if (set == null)
+            {
+                return null;
+            }
+
+            BakeLevel(set, scale, yawDeg, z,
+                out float[] pos, out Color[] colors, out Vector2[] uvs, out int q, disc);
+            var mesh = new ArrayMesh();
+            UploadBaked(mesh, pos, colors, uvs, q, 0f, 0f);
+            // Godot's canvas cull (Item::get_rect) builds a mesh command's
+            // bounds from the mesh AABB alone and ignores the per-mesh offset
+            // transform DrawSplatMesh draws with. A LOCAL bake therefore culls
+            // as if at the origin: the origin leaves the viewport when zooming
+            // in, so on-screen splats vanished zoomed in while drawing zoomed
+            // out. Override the bounds so the engine never culls these meshes;
+            // the queue-path rect cull already gates off-screen placements.
+            mesh.CustomAabb = new Aabb(
+                new Vector3(-100000f, -100000f, -1000f),
+                new Vector3(200000f, 200000f, 2000f));
+            bool bright = IsBright(colors);
+            _sharedCache[key] = new SharedBake
+            {
+                Mesh = mesh,
+                IsBright = bright,
+                Quads = q,
+                Built = LastBuilt,
+                SkipAlpha = LastSkippedAlpha,
+                SkipDegen = LastSkippedDegenerate,
+                SkipData = LastSkippedData,
+            };
+            isBright = bright;
+            quads = q;
+            return mesh;
+        }
+
         private static ArrayMesh Build(SplatSet set) => BuildBaked(set, 0f, 0f, 22f, 180f, 1f, new ArrayMesh());
 
         /// <summary>
@@ -137,6 +275,34 @@ namespace GUO.Renderer
 
         /// <summary>Last build's accounting (the fidelity proof): kept, skipped by cause.</summary>
         public static int LastBuilt, LastSkippedAlpha, LastSkippedDegenerate, LastSkippedData;
+
+        /// <summary>
+        /// Baked brightness that counts as emissive for AddLight: mirrors the
+        /// StaticView/MultiView IsLight calls, which splats have no tiledata
+        /// for. Any vertex at or above this max channel makes the placement a
+        /// light (SplatObject.Draw, cached per bake).
+        /// </summary>
+        public const float BrightThreshold = 0.85f;
+
+        /// <summary>Whether any baked vertex reaches <see cref="BrightThreshold"/>.</summary>
+        public static bool IsBright(Color[] colors)
+        {
+            if (colors == null)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < colors.Length; i++)
+            {
+                Color c = colors[i];
+                if (c.R >= BrightThreshold || c.G >= BrightThreshold || c.B >= BrightThreshold)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
 
         private static int[] _scratchOrder = System.Array.Empty<int>();
         private static float[] _scratchKeys = System.Array.Empty<float>();
@@ -170,20 +336,52 @@ namespace GUO.Renderer
         }
 
         /// <summary>
+        /// World shift that moves a placement's projection by (dx, dy)
+        /// tile-space px at this scale/yaw (the MoGe replacer's tile-anchor
+        /// fix: sprite bbox-center vs the tile origin RSP). Depth stays put
+        /// (dmz 0) unless the yaw folds X away (then X rides depth instead).
+        /// </summary>
+        public static void AnchorShift(
+            float dx, float dy, float scale, float yawDeg,
+            out float dmx, out float dmy, out float dmz)
+        {
+            double yw = yawDeg * Math.PI / 180.0;
+            float cyw = (float)Math.Cos(yw), syw = (float)Math.Sin(yw);
+            float s = scale != 0f ? scale : 1f;
+            float jx0 = cyw + syw, jx2 = syw - cyw;
+            float jy0 = cyw - syw, jy2 = syw + cyw;
+            if (Math.Abs(jx0) > 0.1f)
+            {
+                dmz = 0f;
+                dmx = dx / s / jx0;
+                // With dmz 0: dx/s = jx0*dmx, dy/s = jy0*dmx - dmy.
+                dmy = jy0 * dmx - dy / s;
+            }
+            else
+            {
+                dmx = 0f;
+                dmz = dx / s / jx2;
+                dmy = jy2 * dmz - dy / s;
+            }
+        }
+
+        /// <summary>
         /// Bakes depth-sorted ellipse quads in tile space around
         /// (<paramref name="ox"/>, <paramref name="oy"/>) at
         /// <paramref name="scale"/> px per model unit: the expensive step
-        /// (sort, covariance, eigen) plus the full surface upload. Callers
-        /// that only moved use <see cref="MoveBaked"/> instead, which skips
-        /// the recompute and uploads positions alone.
+        /// (sort, covariance, eigen) plus the full surface upload. Live
+        /// placements instead share a LOCAL bake via
+        /// <see cref="GetSharedBaked"/> and ride the draw transform, so
+        /// camera moves cost zero uploads (MoveBaked is a no-op).
         /// The yaw lives in the J rows only (reference parity): raw
         /// positions, raw rotations; only the painter's key yaw-folds.
-        /// </summary>
+        /// <paramref name="discSize"/> multiplies the rasterized radii after
+        /// the bake clamp (the placer gump's Disc stepper).
         public static ArrayMesh BuildBaked(
-            SplatSet set, float ox, float oy, float scale, float yawDeg, float zoom, ArrayMesh mesh)
+            SplatSet set, float ox, float oy, float scale, float yawDeg, float zoom, ArrayMesh mesh, float discSize = 1f)
         {
             BakeLevel(set, scale, yawDeg, zoom,
-                out float[] pos, out Color[] colors, out Vector2[] uvs, out int quads);
+                out float[] pos, out Color[] colors, out Vector2[] uvs, out int quads, discSize);
             UploadBaked(mesh, pos, colors, uvs, quads, ox, oy);
             return mesh;
         }
@@ -191,12 +389,13 @@ namespace GUO.Renderer
         /// <summary>
         /// The expensive half of a bake: sort, covariance, eigen, colours
         /// and uvs. Positions come out LOCAL (model origin); the placement
-        /// offset is added at upload/move time, so this runs only when the
-        /// level, scale or yaw change, never on camera move.
+        /// offset lands at upload time, or on the draw transform for shared
+        /// bakes, so this runs only when the level, scale, yaw, zoom or disc
+        /// change, never on camera move.
         /// </summary>
         public static void BakeLevel(
             SplatSet set, float scale, float yawDeg, float zoom,
-            out float[] pos, out Color[] colors, out Vector2[] uvs, out int quads)
+            out float[] pos, out Color[] colors, out Vector2[] uvs, out int quads, float discSize = 1f)
         {
             // Six vertices per splat (two triangles, no index array: the canvas
             // mesh path takes none, as MeshLayer's scratch rebuild notes).
@@ -239,6 +438,10 @@ namespace GUO.Renderer
             uvs = new Vector2[n * 6];
             quads = 0;
             int skipAlpha = 0, skipDegen = 0, skipData = 0;
+            // User disc size (the placer gump's Disc stepper): multiplies the
+            // rasterized radii after the per-splat clamp, so 4x can bloom past
+            // the cap and 0.25x can tighten below the floor. Sanitized once.
+            float disc = Finite(discSize) && discSize > 0f ? discSize : 1f;
             for (int k = 0; k < n; k++)
             {
                 SplatGaussian s = g[order[k]];
@@ -271,14 +474,20 @@ namespace GUO.Renderer
                     continue;
                 }
 
-                // Like the reference: 3σ quads clamped to [1, 96] screen px.
+                // Like the reference: 3σ quads clamped to [0.25, 96] screen px.
                 // Bake space is unzoomed tile px and the view transform scales
-                // by 1/zoom, so the bake clamp is [zoom, 96 * zoom].
+                // by 1/zoom, so the bake clamp is [0.25 * zoom, 96 * zoom].
+                // The quarter-pixel floor (not 1px) lets dense pixel-billboards
+                // (MoGe: one gaussian per infer pixel, sigma 0.25px) combine
+                // instead of being re-enlarged to a full pixel, which erased
+                // the tool-side sharpening at small scales. Sparse distant
+                // splats still cannot vanish (0.25px radius is 0.5px across).
                 float z = Math.Max(zoom, 0.01f);
-                float minR = z, maxR = 96f * z;
+                float minR = 0.25f * z, maxR = 96f * z;
                 rx = rx < minR ? minR : rx > maxR ? maxR : rx;
                 ry = ry < minR ? minR : ry > maxR ? maxR : ry;
-
+                rx *= disc;
+                ry *= disc;
                 IsoPointW(scale, cyw, syw, fx, s.Y, fz, out float px, out float py);
                 // Straight (non-premultiplied) colour: the shader blends it
                 // normally, like the reference.
@@ -347,42 +556,14 @@ namespace GUO.Renderer
             mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
         }
 
-        private static float[] _moveScratch = System.Array.Empty<float>();
-        private static byte[] _moveBytes = System.Array.Empty<byte>();
-
         /// <summary>
-        /// Follows a camera move: rewrites the position buffer of the last
-        /// upload at the new offset and patches the surface's vertex region.
-        /// No recompute (sort, covariance, eigen all skipped) and colours/uvs
-        /// stay on the card: positions alone cross, a third of the bytes.
+        /// Follows a camera move: no-op since the offset draws (the placement
+        /// rides the mesh transform, so moves cost zero uploads). Kept so
+        /// older callers still compile; new code draws the shared LOCAL bake
+        /// with an offset instead of rewriting vertices.
         /// </summary>
         public static void MoveBaked(ArrayMesh mesh, float[] pos, int quads, float ox, float oy)
         {
-            int floats = quads * 6 * 3;
-            if (_moveScratch.Length < floats)
-            {
-                _moveScratch = new float[floats];
-            }
-
-            float[] moved = _moveScratch;
-            for (int i = 0, v = 0; i < quads * 6; i++, v += 3)
-            {
-                moved[v] = pos[v] + ox;
-                moved[v + 1] = pos[v + 1] + oy;
-                moved[v + 2] = pos[v + 2];
-            }
-
-            // Reused buffers: a walking frame allocates nothing here (the
-            // binding copies into its command queue before returning). The
-            // region must match the vertex buffer exactly, so resize on any
-            // size change (per mesh the count is stable across moves).
-            if (_moveBytes.Length != floats * 4)
-            {
-                _moveBytes = new byte[floats * 4];
-            }
-
-            System.Buffer.BlockCopy(moved, 0, _moveBytes, 0, _moveBytes.Length);
-            RenderingServer.MeshSurfaceUpdateVertexRegion(mesh.GetRid(), 0, 0, _moveBytes);
         }
 
         /// <summary>

@@ -2,6 +2,9 @@
 
 using Godot;
 using GUO.Compat;
+using GUO.Configuration;
+using GUO.Game.Data;
+using GUO.Game.Scenes;
 using GUO.Renderer;
 
 namespace GUO.Game.GameObjects
@@ -16,7 +19,6 @@ namespace GUO.Game.GameObjects
     internal sealed class SplatObject : GameObject
     {
         public SplatPlacement Placement;
-        public readonly ArrayMesh Mesh = new();
 
         /// <summary>Tile-space click rect from the lod0 bounds, set at queue time.</summary>
         public Rectangle PickRect;
@@ -35,11 +37,133 @@ namespace GUO.Game.GameObjects
         public int LastLevel = -2;
         public int LastDrawn;
 
-        private float _bakedX = float.NaN, _bakedY = float.NaN;
-        private float _bakedScale = float.NaN, _bakedYaw = float.NaN;
-        private int _bakedLevel = -1;
-        private float[] _basePos;
-        private int _baseQuads;
+        /// <summary>
+        /// The hidden original this splat replaces (AllowedToDraw=false).
+        /// Clicks landing on the splat's <see cref="PickRect"/> behave exactly
+        /// as if they landed on this victim (same tile/object), so doors open,
+        /// signs show and containers open through the replacement. Wired by
+        /// GameScene.Splats (HideSingle, theme/skin queues); the tile-scan
+        /// fallback below covers re-arms that have not propagated yet. Never
+        /// drawn (the victim stays AllowedToDraw=false: no visual change).
+        /// </summary>
+        public GameObject Victim;
+
+        /// <summary>
+        /// The victim when it is still alive, else a live tile-scan for the
+        /// hidden object carrying the placement's victim graphic at this
+        /// tile (null when there is none). Never returns a destroyed object.
+        /// </summary>
+        public bool TryGetInteractionTarget(out GameObject victim)
+        {
+            if (Victim != null && !Victim.IsDestroyed)
+            {
+                victim = Victim;
+                return true;
+            }
+
+            victim = FindHiddenVictim();
+            if (victim != null)
+            {
+                Victim = victim;
+                return true;
+            }
+
+            victim = null;
+            return false;
+        }
+
+        /// <summary>
+        /// This splat's click target: the hidden victim when one is alive,
+        /// else this (preserving the old no-op for graphic-less placements).
+        /// </summary>
+        public BaseGameObject ResolveInteraction()
+        {
+            if (TryGetInteractionTarget(out GameObject victim))
+            {
+                return victim;
+            }
+
+            return this;
+        }
+
+        /// <summary>
+        /// Maps a picked object to its click target (splats forward to their
+        /// hidden victim; everything else passes through). Call it wherever
+        /// <see cref="SelectedObject.Object"/> (or LastLeftDownObject) feeds
+        /// single (select/label), double (use) or target handling, so both
+        /// mouse paths (world viewport picking + cursor/target) see the
+        /// victim.
+        /// </summary>
+        public static BaseGameObject Resolve(BaseGameObject obj)
+        {
+            if (obj is SplatObject splat)
+            {
+                return splat.ResolveInteraction();
+            }
+
+            return obj;
+        }
+
+        private GameObject FindHiddenVictim()
+        {
+            try
+            {
+                if (World?.Map == null)
+                {
+                    return null;
+                }
+
+                if (!TryGetVictimGraphic(out ushort want) || want == 0)
+                {
+                    return null;
+                }
+
+                GameObject head;
+                try
+                {
+                    head = World.Map.GetTile(X, Y, false);
+                }
+                catch (System.Exception)
+                {
+                    return null;
+                }
+
+                GameObject zMatch = null;
+                GameObject anyMatch = null;
+                for (GameObject o = head; o != null; o = o.TNext)
+                {
+                    if (ReferenceEquals(o, this) || o.IsDestroyed || o.AllowedToDraw)
+                    {
+                        continue;
+                    }
+
+                    bool graphicMatch = o.Graphic == want
+                        || (o is Static st && st.OriginalGraphic == want)
+                        || (o is Land l && l.OriginalGraphic == want);
+                    if (!graphicMatch)
+                    {
+                        continue;
+                    }
+
+                    if (anyMatch == null)
+                    {
+                        anyMatch = o;
+                    }
+
+                    if (o.Z == Z)
+                    {
+                        zMatch = o;
+                        break;
+                    }
+                }
+
+                return zMatch ?? anyMatch;
+            }
+            catch (System.Exception)
+            {
+                return null;
+            }
+        }
 
         public SplatObject(World world, SplatPlacement placement) : base(world)
         {
@@ -62,6 +186,52 @@ namespace GUO.Game.GameObjects
                 return false;
             }
 
+            // Victim hue (mirrors StaticView's highlight/out-of-range/dead;
+            // splats have no partial-hue tiledata and the victim hue itself is
+            // not stored on the placement, so it rides the splat shader's
+            // uniform via DrawSplatMesh instead of baked vertex colours).
+            ushort hue = Hue;
+            if (ProfileManager.CurrentProfile.HighlightGameObjects && SelectedObject.Object == this)
+            {
+                hue = Constants.HIGHLIGHT_CURRENT_OBJECT_HUE;
+            }
+            else if (ProfileManager.CurrentProfile.NoColorObjectsOutOfRange
+                && Distance > World.ClientViewRange)
+            {
+                hue = Constants.OUT_RANGE_COLOR;
+            }
+            else if (World.Player != null && World.Player.IsDead && ProfileManager.CurrentProfile.EnableBlackWhiteEffect)
+            {
+                hue = Constants.DEAD_RANGE_COLOR;
+            }
+
+            Vector3 hueVec = ShaderHueTranslator.GetHueVector(hue, false, AlphaHue / 255f);
+
+            // Circle of transparency (mirrors StaticView, minus its
+            // tree/foliage exemption when the victim graphic is unknown:
+            // parsed victims that are trees/foliage stay visible below).
+            bool cot = false;
+            if (World.Player != null && ProfileManager.CurrentProfile.UseCircleOfTransparency)
+            {
+                cot = TransparentTest(World.Player.Z + 5);
+                if (cot && TryGetVictimGraphic(out ushort victim))
+                {
+                    bool foliage = false;
+                    try
+                    {
+                        foliage = Client.Game.UO.FileManager.TileData.StaticData[victim].IsFoliage;
+                    }
+                    catch (System.Exception)
+                    {
+                    }
+
+                    if (StaticFilters.IsTree(victim, out _) || foliage)
+                    {
+                        cot = false;
+                    }
+                }
+            }
+
             float s = Placement.Scale;
             int level = FullDetail && Placement.Chain.Count > 0
                 ? 0
@@ -71,39 +241,152 @@ namespace GUO.Game.GameObjects
                 return false;
             }
 
-            // Baked around the model origin; the placement offset rides the
-            // mesh transform (like every mesh under the view transform).
-            // Rebuilt only on level, scale or yaw change: a full 64800-splat
-            // build every camera step hitched the game on CPU + uploads.
-            // Walking past a splat now costs one draw call, no rebuild.
+            // Shared LOCAL bake; the placement offset rides the draw
+            // transform (like every mesh under the view transform). Same
+            // bytes BakeLevel+UploadBaked at (0,0) produce, so identical
+            // (Chain, level, scale, yaw, disc) placements share one mesh and
+            // camera moves cost zero uploads (no per-instance mesh, no
+            // MoveBaked rewrite: walking past a splat is one draw call).
             float yaw = Placement.Yaw;
-            float ox = RealScreenPosition.X, oy = RealScreenPosition.Y;
-            if (level != _bakedLevel || s != _bakedScale || yaw != _bakedYaw)
+            float disc = Placement.DiscSize;
+            if (!(disc > 0f))
             {
-                SplatBatcher.BakeLevel(Placement.Chain.Levels[level], s, yaw, DrawZoom,
-                    out float[] pos, out Godot.Color[] colors, out Godot.Vector2[] uvs, out int quads);
-                SplatBatcher.UploadBaked(Mesh, pos, colors, uvs, quads, ox, oy);
-                _bakedLevel = level;
-                _bakedScale = s;
-                _bakedYaw = yaw;
-                _basePos = pos;
-                _baseQuads = quads;
-                _bakedX = ox;
-                _bakedY = oy;
-            }
-            else if ((ox != _bakedX || oy != _bakedY) && _basePos != null)
-            {
-                // Camera moved: same quads, new offset. No recompute, and the
-                // card keeps colours/uvs (positions alone cross the bus).
-                SplatBatcher.MoveBaked(Mesh, _basePos, _baseQuads, ox, oy);
-                _bakedX = ox;
-                _bakedY = oy;
+                disc = 1f;
             }
 
-            batcher.DrawSplatMesh(Mesh);
+            float ox = RealScreenPosition.X, oy = RealScreenPosition.Y;
+            ArrayMesh mesh = SplatBatcher.GetSharedBaked(
+                Placement.Chain, level, s, yaw, DrawZoom, disc,
+                out bool isBright, out int _);
+            if (mesh == null)
+            {
+                return false;
+            }
+
+            // Cast shadows (mirrors StaticView: tree/foliage/rock victims only,
+            // from the victim's art, not the splat mesh: the splat replaces the
+            // victim at its tile, so its ground shadow is the victim's).
+            if (ProfileManager.CurrentProfile.ShadowsEnabled
+                && ProfileManager.CurrentProfile.ShadowsStatics
+                && TryGetVictimGraphic(out ushort shadowGraphic))
+            {
+                bool foliage = false;
+                try
+                {
+                    foliage = Client.Game.UO.FileManager.TileData.StaticData[shadowGraphic].IsFoliage;
+                }
+                catch (System.Exception)
+                {
+                }
+
+                if (StaticFilters.IsTree(shadowGraphic, out _) || foliage || StaticFilters.IsRock(shadowGraphic))
+                {
+                    DrawVictimShadow(batcher, shadowGraphic, posX, posY, depth);
+                }
+            }
+
+            batcher.DrawSplatMesh(mesh, new Vector2(ox, oy), hueVec, cot);
+
+            // Light contribution (mirrors the StaticView/MultiView AddLight
+            // calls, which splats have no IsLight tiledata for: bright baked
+            // vertices stand in for the emissive flag).
+            if (isBright)
+            {
+                Client.Game.GetScene<GameScene>().AddLight(this, this, posX + 22, posY + 22);
+            }
+
             LastLevel = level;
             LastDrawn = Placement.Chain.Levels[level].Gaussians.Length;
             return true;
+        }
+
+        public override bool TransparentTest(int z)
+        {
+            // Splats are multi-sized placements with no ItemData.Height, so
+            // they are always CoT-eligible unless well below the player.
+            return Z > z - 10;
+        }
+
+        /// <summary>
+        /// The replaced graphic: the placement's stored victim (parsed once
+        /// at placement creation), falling back to the name scan only when
+        /// it is unknown (0). Manifest names without a hex tag and preview
+        /// keys have no victim: false, and the caller skips shadow/tree work.
+        /// </summary>
+        private bool TryGetVictimGraphic(out ushort graphic)
+        {
+            graphic = Placement != null ? Placement.VictimGraphic : (ushort)0;
+            if (graphic != 0)
+            {
+                return true;
+            }
+
+            graphic = 0;
+            string name = Placement?.Name;
+            if (string.IsNullOrEmpty(name))
+            {
+                return false;
+            }
+
+            for (int i = 0; i + 5 < name.Length; i++)
+            {
+                if (name[i] != '_')
+                {
+                    continue;
+                }
+
+                int v = 0;
+                bool ok = true;
+                for (int j = 1; j <= 4; j++)
+                {
+                    char c = name[i + j];
+                    v <<= 4;
+                    if (c >= '0' && c <= '9')
+                    {
+                        v |= c - '0';
+                    }
+                    else if (c >= 'a' && c <= 'f')
+                    {
+                        v |= c - 'a' + 10;
+                    }
+                    else if (c >= 'A' && c <= 'F')
+                    {
+                        v |= c - 'A' + 10;
+                    }
+                    else
+                    {
+                        ok = false;
+                        break;
+                    }
+                }
+
+                if (ok && v != 0)
+                {
+                    graphic = (ushort)v;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static void DrawVictimShadow(UltimaBatcher2D batcher, ushort graphic, int posX, int posY, float depth)
+        {
+            try
+            {
+                ref readonly var art = ref Client.Game.UO.Arts.GetArt(graphic);
+                if (art.Texture == null)
+                {
+                    return;
+                }
+
+                int w = (art.UV.Width >> 1) - 22;
+                int h = art.UV.Height - 44;
+                batcher.DrawShadow(art.Texture, new Vector2(posX - w, posY - h), art.UV, false, depth + 0.25f);
+            }
+            catch (System.Exception)
+            {
+            }
         }
 
         public override bool CheckMouseSelection()
