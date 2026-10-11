@@ -1,0 +1,14 @@
+{
+ "name": "Underwater",
+ "description": "Underwater wobble and tint.",
+ "passes": [
+  {
+   "shader": "underwater",
+   "params": {
+    "distortion": 0.02,
+    "tint": 0.3
+   }
+  }
+ ],
+ "bindings": []
+}

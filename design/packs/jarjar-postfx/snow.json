@@ -1,0 +1,14 @@
+{
+ "name": "Snow",
+ "description": "Drifting snowflakes. Shader defaults to 0 (weather-driven); preset set to 0.5 so it shows when manually enabled.",
+ "passes": [
+  {
+   "shader": "snow",
+   "params": {
+    "intensity": 0.5,
+    "speed": 0.5
+   }
+  }
+ ],
+ "bindings": []
+}

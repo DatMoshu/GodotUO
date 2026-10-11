@@ -1,0 +1,13 @@
+{
+ "name": "Blur",
+ "description": "Soft 5x5 box blur.",
+ "passes": [
+  {
+   "shader": "blur",
+   "params": {
+    "amount": 2.0
+   }
+  }
+ ],
+ "bindings": []
+}
