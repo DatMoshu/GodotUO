@@ -865,3 +865,43 @@ def test_every_scenario_password_reads_its_env_var(monkeypatch):
     for name in names:
         monkeypatch.setenv(f"GUO_SCENARIO_{name.upper()}", f"from-env-{name}")
         assert sc.substitute(f"${name}", {}) == f"from-env-{name}"
+
+
+def test_admin_launch_does_not_require_client_art(tmp_path):
+    r, client, *_ = make(tmp_path, [step("go", "launch", wait_assets=False)], {"editor_state": {"assetsReady": False}})
+    assert r.run()["ok"]
+    assert client.calls == []
+
+
+@pytest.mark.parametrize("readonly,allowed,expected", [(True, False, True), (False, False, False), (False, True, True)])
+def test_editor_tool_checks_approval_before_dispatch(tmp_path, readonly, allowed, expected):
+    session = FakeSession()
+    session.preapproved = {"admin_save"} if allowed else set()
+    r, client, *_ = make(tmp_path, [step("go", "launch", wait_assets=False), step("admin", "editor_tool", tool="admin_save")],
+                            {"admin_save": {"accepted": True}}, session=session)
+    client.request = lambda method: {"tools": [{"name": "admin_save", "annotations": {"readOnlyHint": readonly}}]}
+    assert r.run()["ok"] is expected
+    assert bool(client.calls) is expected
+
+
+def test_editor_tool_refuses_unknown_name(tmp_path):
+    r, client, *_ = make(tmp_path, [step("go", "launch", wait_assets=False), step("admin", "editor_tool", tool="missing")])
+    client.request = lambda method: {"tools": []}
+    assert not r.run()["ok"]
+    assert client.calls == []
+
+
+def test_editor_tool_polls_readonly_completion(tmp_path):
+    r, client, *_ = make(tmp_path, [step("go", "launch", wait_assets=False), step("done", "editor_tool", tool="admin_state", until={"data":{"Saving":False}})],
+                         {"admin_state": [{"data":{"Saving":True}}, {"data":{"Saving":False}}]})
+    client.request = lambda method: {"tools": [{"name":"admin_state", "annotations":{"readOnlyHint":True}}]}
+    assert r.run()["ok"]
+    assert len(client.calls) == 2
+
+
+def test_editor_tool_never_repeats_mutation_for_polling(tmp_path):
+    session = FakeSession(); session.preapproved = {"admin_save"}
+    r, client, *_ = make(tmp_path, [step("go", "launch", wait_assets=False), step("bad", "editor_tool", tool="admin_save", until={"accepted":True})], session=session)
+    client.request = lambda method: {"tools": [{"name":"admin_save", "annotations":{"readOnlyHint":False}}]}
+    assert not r.run()["ok"]
+    assert client.calls == []

@@ -431,3 +431,30 @@ a timer armed at `run_s` plus 60 s kills the program and exits 4.
 
 **Status:** Build steps 1 (docs), 2 (runner + AI driver, prune, list filter) and 3 are on main; the human driver (client scenarios HD1, editor surface HD2) is on its branches.  
 **Last updated:** 2026-10-06
+
+## Typed editor and Admin steps
+
+An `editor_tool` step calls a named editor MCP tool with an `arguments` object:
+
+```json
+{"id":"health","do":{"kind":"editor_tool","tool":"admin_state","arguments":{"section":"health"}},"expect":{"result":{"section":"health"}}}
+```
+
+The runner checks the live tool catalog before dispatch. Read-only tools and
+UI navigation/resize/Admin-section changes run without approval dialogs. Admin
+mutations require an explicit repeatable `--allow-editor-tool NAME` flag;
+broad `editor_invoke` is excluded. Existing server-side permissions still apply.
+For asynchronous operations, use a subsequent read-only `admin_state` step with
+an optional `until` object matching the required reply counter or phase. Polling
+obeys the step deadline and refuses mutation tools, so a save/restore is never
+repeated while waiting. Acceptance alone does not prove completion.
+
+`--headless` runs editor AI scenarios with no desktop window; screenshot steps
+are rejected. Windowed scripted runs retain NoFocus and capture only inside
+GUO. Every editor run uses its own scratch editor settings and GUO workspace,
+so profiles and secrets are isolated from the owner's workspace. Provision
+private profiles there when testing a live shard.
+
+Use `"wait_assets": false` on an editor `launch` step when only interface/Admin
+state is needed. The default still waits for loaded client assets. The offline
+example is `editor.admin.offline`.

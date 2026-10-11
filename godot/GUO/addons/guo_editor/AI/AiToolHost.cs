@@ -112,7 +112,7 @@ public sealed class AiToolHost : IChatTools
 
         lock (_calls)
         {
-            _calls.Add($"{name} {args?.ToJsonString() ?? "{}"}");
+            _calls.Add($"{name} {EditorAutomationCapabilities.ArgumentsForLog(name, args)}");
         }
 
         Tool t = _tools.Find(x => x.Name == name);
@@ -124,7 +124,7 @@ public sealed class AiToolHost : IChatTools
         if (!t.ReadOnly)
         {
             Func<string, Task<bool>> ask = Approve;
-            bool yes = preApproved || ask != null && await ask($"{t.Name} {args?.ToJsonString()}\n\n{t.Description}").WaitAsync(ct).ConfigureAwait(false);
+            bool yes = preApproved || ask != null && await ask($"{t.Name} {EditorAutomationCapabilities.ArgumentsForLog(name, args)}\n\n{t.Description}").WaitAsync(ct).ConfigureAwait(false);
             if (!yes)
             {
                 return "refused: the user did not approve this action";
