@@ -478,7 +478,8 @@ class Runner:
         run_rel = self.run_dir.resolve().relative_to(self.repo_root.resolve()).as_posix() + "/"
         self.artifacts += [f["file"].removeprefix(run_rel) for f in frames]
         detail = {"segment": seg, "passed": result.get("passed", []), "failures": result.get("failures", []),
-                  "skipped": result.get("skipped"), "frames": [f["file"].removeprefix(run_rel) for f in frames]}
+                  "skipped": result.get("skipped"), "frames": [f["file"].removeprefix(run_rel) for f in frames],
+                  "frame_info": [{"file": f["file"].removeprefix(run_rel), "seconds": f.get("seconds", 8), "caption": f.get("caption", "")} for f in frames]}
         if not result.get("ok") and not (result.get("skipped") and not result.get("failures")):
             raise StepFailed("; ".join(result.get("failures", [])) or f"segment {seg} failed", detail)
         return detail

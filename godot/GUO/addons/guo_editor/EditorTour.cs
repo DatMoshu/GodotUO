@@ -623,6 +623,8 @@ public partial class EditorTour : Node
     {
             return new List<(string, string, Func<Task>)>
             {
+                ("jarjar_review", "JarJar PR33: editor UI review", JarJarReview),
+                ("jarjar_client_ui", "JarJar PR33: offline client dialog previews", JarJarClientUi),
                 ("intro", "The GUO editor", Intro),
                 ("layout", "The layout", Layout),
                 ("runbar", "Run bar: start a server, start clients", RunBarSeg),
@@ -1933,7 +1935,7 @@ public partial class EditorTour : Node
             result["passed"] = new System.Text.Json.Nodes.JsonArray(s.Passed.Select(x => (System.Text.Json.Nodes.JsonNode)Scrub(x)).ToArray());
             result["failures"] = new System.Text.Json.Nodes.JsonArray(s.Failures.Select(x => (System.Text.Json.Nodes.JsonNode)Scrub(x)).ToArray());
             result["frames"] = new System.Text.Json.Nodes.JsonArray(_frames.Skip(first).Select(f =>
-                (System.Text.Json.Nodes.JsonNode)new System.Text.Json.Nodes.JsonObject { ["file"] = rel + "/frames/" + f.File, ["seconds"] = f.Seconds }).ToArray());
+                (System.Text.Json.Nodes.JsonNode)new System.Text.Json.Nodes.JsonObject { ["file"] = rel + "/frames/" + f.File, ["seconds"] = f.Seconds, ["caption"] = Scrub(_steps.LastOrDefault(t => t.Segment == s.Id && t.NextFrame <= _frames.IndexOf(f)).Text) }).ToArray());
         }
         catch (Exception ex)
         {
