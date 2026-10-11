@@ -390,6 +390,12 @@ namespace GUO.Configuration
 
         public bool UseXBR { get; set; } = true;
 
+        // PORT DEVIATION (GUO): Enhanced HD repaint detail. When true the
+        // world draw uses the repaint gump's pre-downscale HD PNGs
+        // (overrides/HD/Art) instead of native art; off is byte-identical
+        // native. Default off.
+        public bool EnhancedHD { get; set; } = false;
+
         public bool HideChatGradient { get; set; } = false;
 
         public bool StandardSkillsGump { get; set; } = true;

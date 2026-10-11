@@ -134,6 +134,16 @@ internal sealed partial class ModernOptions : ModernGump
         Bool("Video", "Circle of transparency", p => p.UseCircleOfTransparency, (p, v) => p.UseCircleOfTransparency = v);
         Bool("Video", "Shadows", p => p.ShadowsEnabled, (p, v) => p.ShadowsEnabled = v);
         Bool("Video", "Death screen", p => p.EnableDeathScreen, (p, v) => p.EnableDeathScreen = v);
+        Bool("Video", "Enhanced HD", p => p.EnhancedHD, (p, v) =>
+        {
+            if (p.EnhancedHD != v)
+            {
+                p.EnhancedHD = v;
+                Client.Game.UO.Arts.RefreshAllHD();
+                Client.Game.UO.FileManager.Arts.RescanOverrides();
+                Game.Managers.ThemeManager.Reapply(Client.Game.UO.World);
+            }
+        });
 
         // Tooltip, Fonts and Speech: the classic pages' boxes, sliders and
         // colours (ModernHuePicker), with their ranges. Font pickers stay in

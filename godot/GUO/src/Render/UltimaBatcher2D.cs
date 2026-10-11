@@ -850,6 +850,18 @@ void fragment() {
                 {
                     continue;
                 }
+
+                // PORT DEVIATION (GUO): Enhanced HD land runs draw Linear
+                // (mipmapped minification, the rule-7 exception in
+                // View.DrawStatic); native runs keep Nearest.
+                bool wantHd = Arts.Art.IsHdTexture(run.Texture);
+                SamplerState want = wantHd ? SamplerState.LinearClamp : SamplerState.PointClamp;
+                if (_sampler != want)
+                {
+                    _sampler = want;
+                    Cut();
+                }
+
                 FlushRun();
 
                 Commands++;
@@ -861,6 +873,12 @@ void fragment() {
                     Transform2D.Identity,
                     Colors.White,
                     run.Texture.GetRid());
+            }
+
+            if (_sampler != SamplerState.PointClamp)
+            {
+                _sampler = SamplerState.PointClamp;
+                Cut();
             }
 
             return layer.VisibleSpriteCount;
@@ -912,10 +930,21 @@ void fragment() {
             FlushCover();
             ArrayMesh mesh = layer.GetSpriteMesh(index);
 
+            // PORT DEVIATION (GUO): Enhanced HD covering tile draws Linear;
+            // native keeps Nearest.
+            bool isHdCover = Arts.Art.IsHdTexture(layer.Textures[index]);
+            SamplerState wantCover = isHdCover ? SamplerState.LinearClamp : SamplerState.PointClamp;
+            bool samplerSwap = _sampler != wantCover;
+            SamplerState keepSampler = _sampler;
+            if (samplerSwap)
+            {
+                _sampler = wantCover;
+            }
+
             // The same route DrawMeshLayer takes: the offset on the item, the
             // mesh drawn untransformed. A run of covering tiles shares one item.
 
-            if (!ReferenceEquals(_itemMaterial, _meshMaterial) || _itemOffset != offset)
+            if (!ReferenceEquals(_itemMaterial, _meshMaterial) || _itemOffset != offset || samplerSwap)
             {
                 Vector2 keep = _worldOffset;
 
@@ -937,6 +966,12 @@ void fragment() {
                 Colors.White,
                 layer.Textures[index].GetRid());
             MirrorBackgroundMesh(mesh, offset, layer.Textures[index]); // PORT DEVIATION (GUO): ADR-0023
+
+            if (samplerSwap)
+            {
+                _sampler = keepSampler;
+                Cut();
+            }
 
             return 1;
         }

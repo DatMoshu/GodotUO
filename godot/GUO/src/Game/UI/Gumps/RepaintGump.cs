@@ -88,6 +88,14 @@ namespace GUO.Game.UI.Gumps
             public ushort Graphic;
             public bool IsLand;
             public bool Mask;
+            public string Prompt = "";
+            public int Seed;
+            public string Backend = "";
+            public string Sampler = "";
+            public string Scheduler = "";
+            public int Steps;
+            public float Cfg;
+            public float Denoise;
         }
 
         private enum Buttons
@@ -537,8 +545,110 @@ namespace GUO.Game.UI.Gumps
                 return new GenJob
                 {
                     Result = result, Shot = shot, Graphic = graphic, IsLand = isLand, Mask = mask,
+                    Prompt = submitPrompt, Seed = seed,
+                    Backend = flux ? "Flux Klein" : "DreamShaper",
+                    Sampler = sampler, Scheduler = scheduler, Steps = steps, Cfg = cfg, Denoise = denoise,
                 };
             }, ct);
+        }
+
+        /// <summary>
+        /// Enhanced HD save: the pre-downscale RGBA (before the native
+        /// downscale resize below) as overrides/HD/Art PNG plus its
+        /// manifest.json row. The mask is applied at HD with the
+        /// nearest-upscaled native silhouette; land enforces its diamond
+        /// (corners stay transparent even unmasked). Best effort: HD
+        /// never fails the native .art write.
+        /// </summary>
+        private static void SaveHdPreDownscale(GenJob job, Godot.Image image)
+        {
+            try
+            {
+                int hdW = image.GetWidth();
+                int hdH = image.GetHeight();
+                int natW = job.Shot.Width;
+                int natH = job.Shot.Height;
+                if (hdW <= 0 || hdH <= 0 || natW <= 0 || natH <= 0)
+                {
+                    return;
+                }
+
+                // Only HD when the generation came home larger than native;
+                // a same-size result adds nothing over the .art.
+                if (hdW < natW || hdH < natH)
+                {
+                    return;
+                }
+
+                byte[] hdRgba = image.GetData();
+                if (hdRgba == null || hdRgba.Length < hdW * hdH * 4)
+                {
+                    return;
+                }
+
+                ApplyHdMask(hdRgba, hdW, hdH, job.Shot.Rgba, natW, natH, job.IsLand, job.Mask);
+
+                byte[] png;
+                using (var hd = Godot.Image.CreateFromData(hdW, hdH, false, Godot.Image.Format.Rgba8, hdRgba))
+                {
+                    png = hd.SavePngToBuffer();
+                }
+
+                if (png == null || png.Length == 0)
+                {
+                    return;
+                }
+
+                string dir = Path.Combine(ArtLoader.HdDir(), job.IsLand ? "Land" : "Statics");
+                Directory.CreateDirectory(dir);
+                File.WriteAllBytes(Path.Combine(dir, $"{job.Graphic}.png"), png);
+
+                var row = new ArtLoader.HdManifestRow
+                {
+                    NativeW = natW,
+                    NativeH = natH,
+                    HdW = hdW,
+                    HdH = hdH,
+                    Scale = natW > 0 ? (double)hdW / natW : 1.0,
+                    Prompt = job.Prompt ?? "",
+                    Seed = job.Seed,
+                    Backend = job.Backend ?? "",
+                    Sampler = job.Sampler ?? "",
+                    Scheduler = job.Scheduler ?? "",
+                    Steps = job.Steps,
+                    Cfg = job.Cfg,
+                    Denoise = job.Denoise,
+                    Masked = job.Mask,
+                    Sha256 = ArtLoader.Sha256Hex(png),
+                    CreatedUtc = DateTime.UtcNow.ToString("o"),
+                };
+                ArtLoader.WriteHdManifestRow(job.IsLand, job.Graphic, row);
+            }
+            catch
+            {
+            }
+        }
+
+        private static void ApplyHdMask(byte[] hdRgba, int hdW, int hdH, byte[] nativeRgba, int natW, int natH, bool isLand, bool mask)
+        {
+            bool apply = mask || isLand;
+            if (!apply || hdRgba == null || nativeRgba == null)
+            {
+                return;
+            }
+
+            for (int y = 0; y < hdH; y++)
+            {
+                int ny = y * natH / hdH;
+                for (int x = 0; x < hdW; x++)
+                {
+                    int nx = x * natW / hdW;
+                    if (nativeRgba[(ny * natW + nx) * 4 + 3] == 0)
+                    {
+                        hdRgba[(y * hdW + x) * 4 + 3] = 0;
+                    }
+                }
+            }
         }
 
         private void OnRepainted(GenJob job)
@@ -562,6 +672,10 @@ namespace GUO.Game.UI.Gumps
             {
                 image.Convert(Godot.Image.Format.Rgba8);
             }
+
+            // Enhanced HD: save the pre-downscale frame before the native
+            // resize below (mask at HD, land diamond enforced).
+            SaveHdPreDownscale(job, image);
 
             if (image.GetWidth() != job.Shot.Width || image.GetHeight() != job.Shot.Height)
             {
@@ -660,6 +774,9 @@ namespace GUO.Game.UI.Gumps
                 {
                     File.Delete(path);
                 }
+
+                // Enhanced HD: the pre-downscale PNG plus its manifest row.
+                ArtLoader.DeleteHd(_targetIsLand, _targetGraphic);
 
                 Client.Game.UO.FileManager.Arts.RescanOverrides();
                 if (_targetIsLand)
@@ -904,6 +1021,9 @@ namespace GUO.Game.UI.Gumps
                 return new GenJob
                 {
                     Result = result, Shot = shot, Graphic = graphic, IsLand = false, Mask = mask,
+                    Prompt = prompt, Seed = seed,
+                    Backend = flux ? "Flux Klein" : "DreamShaper",
+                    Sampler = sampler, Scheduler = scheduler, Steps = steps, Cfg = cfg, Denoise = denoise,
                 };
             }, ct);
         }
@@ -960,6 +1080,10 @@ namespace GUO.Game.UI.Gumps
             {
                 image.Convert(Godot.Image.Format.Rgba8);
             }
+
+            // Enhanced HD: the pre-downscale frame, before the native
+            // resize below. Auto repaints are statics only.
+            SaveHdPreDownscale(result, image);
 
             if (image.GetWidth() != job.Shot.Width || image.GetHeight() != job.Shot.Height)
             {
@@ -1061,6 +1185,9 @@ namespace GUO.Game.UI.Gumps
                             File.Delete(path);
                             n++;
                         }
+
+                        // Enhanced HD: the pre-downscale PNG plus row.
+                        ArtLoader.DeleteHd(false, g);
 
                         refreshed.Add(g);
                     }
