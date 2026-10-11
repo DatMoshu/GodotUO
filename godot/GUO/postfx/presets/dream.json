@@ -1,0 +1,13 @@
+{
+ "name": "Dream",
+ "description": "Dreamy double-image haze.",
+ "passes": [
+  {
+   "shader": "dream",
+   "params": {
+    "intensity": 0.5
+   }
+  }
+ ],
+ "bindings": []
+}
