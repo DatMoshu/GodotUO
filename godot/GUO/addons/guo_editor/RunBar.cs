@@ -13,11 +13,11 @@ using Godot;
 using GUO.Workspace;
 
 [Tool]
-public partial class RunBar : VBoxContainer
+public partial class RunBar : HBoxContainer
 {
     private ServerProfiles _profiles;
     private ClientRegistry _clients;
-    private OptionButton _server;
+    private MenuButton _server;
     private MenuButton _client;
     private int _count = 1;
     private readonly List<string> _clientIds = new();
@@ -47,7 +47,7 @@ public partial class RunBar : VBoxContainer
     {
         int index = _profiles.Servers.FindIndex(s => s.Id == id);
         if (index < 0) throw new ArgumentException("No such server");
-        _server.Select(index); ServerChosen(index);
+        ServerChosen(index);
     }
 
     /// <summary>Choose a client by id in the Client list, as the person would; overrides the server's default.</summary>
@@ -70,12 +70,12 @@ public partial class RunBar : VBoxContainer
     {
         var outside = new List<string>();
         foreach (Node child in GetChildren())
-            if (child is Control c && c.Visible && !visible.Encloses(c.GetGlobalRect())) outside.Add(child is Button b ? b.Text : child.Name);
+            if (child is Control c && c.Visible && !visible.Encloses(c.GetGlobalRect())) outside.Add(child is Button b ? b.AccessibilityName : child.Name);
         return outside;
     }
 
     /// <summary>How many server dropdowns the bar holds (one).</summary>
-    internal int ServerLists => GetChildren().Count(c => c is OptionButton);
+    internal int ServerLists => GetChildren().Count(c => c == _server);
 
     public void StartServerNow() { if (!_start.Disabled) Run(Start); }
 
@@ -141,30 +141,40 @@ public partial class RunBar : VBoxContainer
             }
         }
         catch (Exception e) { GD.PushError("Server profiles: " + e.Message); _profiles = new(); _clients ??= new ClientRegistry(); _loadFailed = true; }
-        _server = new OptionButton { TooltipText = "Saved server profiles. Each names its server files and its default client.",
-            ClipText = true, FitToLongestItem = false, CustomMinimumSize = new Vector2(210, 0), TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis };
-        _server.ItemSelected += i => ServerChosen((int)i);
+        _server = IconButton<MenuButton>("PlayRemote", "Choose server", "Saved server profiles. Each names its server files and its default client.");
+        _server.GetPopup().IdPressed += i => ServerChosen((int)i);
         AddChild(_server);
-        var manage = new Button { Text = "Servers", TooltipText = "Manage servers: add, edit and remove server and client profiles" }; manage.Pressed += Manage; AddChild(manage);
+        var manage = IconButton<Button>("Tools", "Manage servers", "Manage servers: add, edit and remove server and client profiles"); manage.Pressed += Manage; AddChild(manage);
         _status = new Label { Text = "●", TooltipText = "Checking…", MouseFilter = MouseFilterEnum.Stop }; Dot(new Color(0.6f, 0.6f, 0.6f));
         AddChild(_status);
         _warn = new Label { Visible = false }; _warn.AddThemeColorOverride("font_color", new Color(0.95f, 0.7f, 0.2f)); AddChild(_warn);
-        _start = new Button { Text = "Start", TooltipText = "Start the chosen server" }; _start.Pressed += () => Run(Start); AddChild(_start);
-        _stop = new Button { Text = "Stop", TooltipText = "Ends only the server process this manager started. Save the world in the server first; unsaved changes are lost." };
+        _start = IconButton<Button>("Play", "Start server", "Start the chosen server"); _start.Pressed += () => Run(Start); AddChild(_start);
+        _stop = IconButton<Button>("Stop", "Stop server", "Ends only the server process this manager started. Save the world in the server first; unsaved changes are lost.");
         _stop.Pressed += ConfirmStop; AddChild(_stop);
-        _client = new MenuButton { Text = "Client", Flat = false, TooltipText = "Start one to four clients on the chosen server, or choose which client to start. A client names its program and UO data." };
+        _client = IconButton<MenuButton>("PlayScene", "Clients", "Start one to four clients on the chosen server, or choose which client to start. A client names its program and UO data.");
         _client.GetPopup().IdPressed += ClientMenu;
         AddChild(_client);
         Rebuild();
         GetWindow().SizeChanged += RefitHeader; Callable.From(RefitHeader).CallDeferred();
         _poll = new Godot.Timer { WaitTime = 2, Autostart = true }; _poll.Timeout += Poll; _poll.Timeout += FitHeader; AddChild(_poll); Poll();
     }
-    public override void _ExitTree() { if (GetWindow() != null && GetWindow().IsConnected(Window.SignalName.SizeChanged, Callable.From(RefitHeader))) GetWindow().SizeChanged -= RefitHeader; ShowTabNames(); _generation++; _poll?.Stop(); _connection?.Dispose(); _connection = null; _connect = null; }
+    private static T IconButton<T>(string icon, string name, string tooltip) where T : Button, new()
+    {
+        float scale = EditorInterface.Singleton.GetEditorScale();
+        return new T { Name = name.Replace(" ", ""), AccessibilityName = name, TooltipText = tooltip,
+            Icon = EditorInterface.Singleton.GetBaseControl().GetThemeIcon(icon, "EditorIcons"),
+            Flat = false, IconAlignment = HorizontalAlignment.Center,
+            CustomMinimumSize = new Vector2(32, 28) * scale };
+    }
+    public override void _ExitTree() { if (GetWindow() != null && GetWindow().IsConnected(Window.SignalName.SizeChanged, Callable.From(RefitHeader))) GetWindow().SizeChanged -= RefitHeader; ShowTabNames(); _tabOverflow?.QueueFree(); _generation++; _poll?.Stop(); _connection?.Dispose(); _connection = null; _connect = null; }
     // The editor's own header cannot scroll or wrap: when the main-screen tabs and the run bar do not fit the window,
     // the tabs that are not open show their icon alone (the name is the tooltip) until they do.
     // The name is hidden, never cleared: the editor finds a main screen by its button's text
     // (EditorInterface.SetMainScreenEditor), so a blank button cannot be opened by name.
     private readonly List<(Button Button, bool Clip, HorizontalAlignment Icon)> _tabs = new();
+    private readonly List<(Button Button, Texture2D Icon)> _hiddenTabs = new();
+    private static readonly string[] TabStyles = { "normal", "hover", "pressed", "hover_pressed", "disabled", "focus" };
+    private MenuButton _tabOverflow;
     private static readonly string[] TabFontColors = { "font_color", "font_hover_color", "font_pressed_color", "font_hover_pressed_color", "font_focus_color", "font_disabled_color" };
     private void RefitHeader() { _open = ""; FitHeader(); }
     private bool _fitting;
@@ -181,7 +191,7 @@ public partial class RunBar : VBoxContainer
         _open = now; _fitting = true;
         try
         {
-            ShowTabNames(); _server.CustomMinimumSize = new Vector2(210, 0);
+            ShowTabNames();
             await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame); await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
             if (!IsInsideTree() || Right() <= GetWindow().Size.X) return;
             foreach (Node n in strip.GetChildren())
@@ -192,13 +202,43 @@ public partial class RunBar : VBoxContainer
                     foreach (string c in TabFontColors) b.AddThemeColorOverride(c, Colors.Transparent);
                 }
             await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame); await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
-            if (IsInsideTree() && Right() > GetWindow().Size.X) _server.CustomMinimumSize = new Vector2(100, 0); // the name is trimmed, its tooltip is whole
+            if (!IsInsideTree() || Right() <= GetWindow().Size.X) return;
+            if (_tabOverflow == null)
+            {
+                _tabOverflow = IconButton<MenuButton>("TripleBar", "Editor tabs", "Open another editor tab");
+                _tabOverflow.Flat = true;
+                AddChild(_tabOverflow); MoveChild(_tabOverflow, 0);
+                _tabOverflow.GetPopup().IdPressed += id =>
+                {
+                    string name = _tabOverflow.GetPopup().GetItemText((int)id);
+                    ShowTabNames();
+                    EditorInterface.Singleton.SetMainScreenEditor(name);
+                    RefitHeader();
+                };
+            }
+            var menu = _tabOverflow.GetPopup(); menu.Clear();
+            foreach (var (button, _, _) in _tabs)
+            {
+                menu.AddIconItem(button.Icon, button.Text);
+                // Keep the button visible and its text intact: programmatic editor navigation uses it.
+                _hiddenTabs.Add((button, button.Icon)); button.Icon = null;
+                foreach (string style in TabStyles) button.AddThemeStyleboxOverride(style, new StyleBoxEmpty());
+            }
+            _tabOverflow.Show();
         }
         finally { _fitting = false; }
     }
     private float Right() { float end = GetGlobalRect().End.X; foreach (Node c in GetChildren()) if (c is Control k && k.Visible) end = Math.Max(end, k.GetGlobalRect().End.X); return end; }
     private void ShowTabNames()
     {
+        foreach (var (b, icon) in _hiddenTabs)
+            if (GodotObject.IsInstanceValid(b))
+            {
+                b.Icon = icon;
+                foreach (string style in TabStyles) b.RemoveThemeStyleboxOverride(style);
+            }
+        _hiddenTabs.Clear();
+        if (GodotObject.IsInstanceValid(_tabOverflow)) _tabOverflow.Hide();
         foreach (var (b, clip, icon) in _tabs)
             if (GodotObject.IsInstanceValid(b))
             {
@@ -218,7 +258,7 @@ public partial class RunBar : VBoxContainer
     private void ServerChosen(int index)
     {
         _profiles.Selected = _profiles.Servers[index].Id; _profiles.SelectedClient = null; // a server brings its own default client
-        Run(Save); RebuildClients(); _generation++; Poll();
+        Run(Save); Rebuild(); Poll();
     }
     private void ClientChosen(int index)
     {
@@ -234,17 +274,18 @@ public partial class RunBar : VBoxContainer
     }
     private void Rebuild()
     {
-        _server.Clear();
+        var popup = _server.GetPopup(); popup.Clear();
         // Two profiles may share a name (an earlier first-run seed or a migrated copy): label them apart, never rename them on disk.
         foreach (var s in _profiles.Servers)
         {
             int same = _profiles.Servers.Count(o => o.Name == s.Name);
-            _server.AddItem(same > 1 ? $"{s.Name} #{_profiles.Servers.Where(o => o.Name == s.Name).ToList().IndexOf(s) + 1}" : s.Name);
-            _server.SetItemTooltip(_server.ItemCount - 1, $"{s.Host}:{s.Port}");
+            popup.AddRadioCheckItem(same > 1 ? $"{s.Name} #{_profiles.Servers.Where(o => o.Name == s.Name).ToList().IndexOf(s) + 1}" : s.Name);
+            popup.SetItemTooltip(popup.ItemCount - 1, $"{s.Host}:{s.Port}");
         }
         int selected = _profiles.Servers.FindIndex(s => s.Id == _profiles.Selected);
         if (selected < 0 && _profiles.Servers.Count > 0) { selected = 0; _profiles.Selected = _profiles.Servers[0].Id; }
-        if (selected >= 0) _server.Selected = selected;
+        if (selected >= 0) popup.SetItemChecked(selected, true);
+        _server.TooltipText = Selected is { } server ? $"Choose server: {server.Name} ({server.Host}:{server.Port})" : "Choose a saved server profile";
         RebuildClients();
         _generation++;
     }

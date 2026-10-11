@@ -867,7 +867,7 @@ namespace GUO.Game.Scenes
                     _multi.IsMulti = true;
                 }
 
-                if (SelectedObject.Object is GameObject gobj)
+                if (GameObjects.SplatObject.Resolve(SelectedObject.Object) is GameObject gobj)
                 {
                     ushort x,
                         y;
@@ -936,7 +936,7 @@ namespace GUO.Game.Scenes
                 )
                 {
                     if (
-                        SelectedObject.Object is GameObject obj
+                        GameObjects.SplatObject.Resolve(SelectedObject.Object) is GameObject obj
                         && (
                             obj.X != _lastSelectedMultiPositionInHouseCustomization.X
                             || obj.Y != _lastSelectedMultiPositionInHouseCustomization.Y
@@ -951,7 +951,7 @@ namespace GUO.Game.Scenes
                 }
                 else if (Time.Ticks - _holdMouse2secOverItemTime >= 1000)
                 {
-                    if (SelectedObject.Object is Item it && GameActions.PickUp(_world, it.Serial, 0, 0))
+                    if (GameObjects.SplatObject.Resolve(SelectedObject.Object) is Item it && GameActions.PickUp(_world, it.Serial, 0, 0))
                     {
                         _isMouseLeftDown = false;
                         _holdMouse2secOverItemTime = 0;
@@ -996,6 +996,14 @@ namespace GUO.Game.Scenes
             SelectedObject.Object = null;
             Profiler.EnterContext(Profiler.ProfilerContext.RENDER_FRAME_WORLD_PREPARE);
             FillGameObjectList();
+
+            // PORT DEVIATION (GUO): while the pad's interact radar is up, the
+            // thing it has chosen is what the world highlights, as if the
+            // mouse were over it (Input.Gamepad.PadRadar); upstream has no pad.
+            if (GUO.Input.Gamepad.PadRadar.Highlight is BaseGameObject padChoice)
+            {
+                SelectedObject.Object = padChoice;
+            }
 
             // PORT DEVIATION (GUO): upstream highlights the selected object by
             // drawing it again on top with the highlight hue. A meshed object

@@ -167,6 +167,49 @@ public partial class EditorSmoke : Node
         _elapsed += delta;
         _frames++;
 
+        if (Array.IndexOf(OS.GetCmdlineUserArgs(), "--guo-editor-header-only") >= 0)
+        {
+            if (!_world.IsBooted) { _frames = 0; return; }
+            if (_frames > 135)
+            {
+                if (_frames == 136)
+                {
+                    MenuButton overflow = null;
+                    void FindOverflow(Node node)
+                    {
+                        if (node is MenuButton menu && menu.AccessibilityName == "Editor tabs") overflow = menu;
+                        else foreach (Node child in node.GetChildren()) FindOverflow(child);
+                    }
+                    FindOverflow(EditorInterface.Singleton.GetBaseControl());
+                    Expect(overflow != null && overflow.Visible, "header_overflow_available");
+                    overflow?.GetPopup().EmitSignal(PopupMenu.SignalName.IdPressed, 0L);
+                }
+                if (_frames == 157) EditorInterface.Singleton.SetMainScreenEditor(GuoEditorPlugin.WorldTabName);
+                if (_frames == 180) CheckWorldFillsCentre("header_navigation");
+                if (_frames == 181) GetWindow().Size = new Vector2I((int)(1920 * EditorInterface.Singleton.GetEditorScale()), (int)(1080 * EditorInterface.Singleton.GetEditorScale()));
+                if (_frames == 225) CheckRunBarFits("expanded");
+                if (_frames == 226) Finish();
+                return;
+            }
+            int[] widths = { 1920, 1366, 1024 };
+            int step = (_frames - 1) / 45;
+            if (step >= widths.Length) { Finish(); return; }
+            if ((_frames - 1) % 45 == 0)
+            {
+                GetWindow().Mode = Window.ModeEnum.Windowed;
+                GetWindow().Size = new Vector2I((int)(widths[step] * EditorInterface.Singleton.GetEditorScale()), (int)((step == 0 ? 1080 : 768) * EditorInterface.Singleton.GetEditorScale()));
+                EditorInterface.Singleton.SetMainScreenEditor(GuoEditorPlugin.WorldTabName);
+            }
+            if (_frames % 45 == 0)
+            {
+                CheckRunBarFits(widths[step].ToString(), checkWorld: false);
+                using Image shot = EditorInterface.Singleton.GetBaseControl().GetViewport().GetTexture()?.GetImage();
+                Directory.CreateDirectory(_out);
+                shot?.SavePng(Path.Combine(_out, $"editor_header_{widths[step]}.png"));
+            }
+            return;
+        }
+
         switch (_stage)
         {
             case 0 when ArgValue(AdminFlag) != null:
@@ -1695,7 +1738,7 @@ public partial class EditorSmoke : Node
     }
 
     /// <summary>ED1: every run bar control and every World command row button lies inside the window, and the bar holds one server list.</summary>
-    private void CheckRunBarFits(string size)
+    private void CheckRunBarFits(string size, bool checkWorld = true)
     {
         var visible = new Rect2(Vector2.Zero, (Vector2)GetWindow().Size / GetWindow().ContentScaleFactor);
         RunBar bar = null;
@@ -1705,8 +1748,9 @@ public partial class EditorSmoke : Node
         var outsideWorld = _world.CommandRowOutside(visible);
         GD.Print($"[GUO runbar] {size}: run bar outside [{string.Join(",", outsideRun)}], World row outside [{string.Join(",", outsideWorld)}], window {visible.Size}");
         Expect(bar != null && bar.ServerLists == 1, $"run_bar_one_server_list_{size}");
+        Expect(bar != null && bar.Size.Y <= 48 * EditorInterface.Singleton.GetEditorScale(), $"run_bar_single_row_height_{size}");
         Expect(outsideRun.Count == 0, $"run_bar_inside_window_{size}");
-        Expect(outsideWorld.Count == 0, $"world_command_row_inside_window_{size}");
+        if (checkWorld) Expect(outsideWorld.Count == 0, $"world_command_row_inside_window_{size}");
     }
 
     private void WorldFail(string why)

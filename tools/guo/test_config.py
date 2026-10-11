@@ -17,7 +17,8 @@ class ConfigTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="guo-config-test-")
         self.addCleanup(self.temp.cleanup)
-        self.root = Path(self.temp.name)
+        # Windows runners may supply an 8.3 TEMP alias; production resolves it.
+        self.root = Path(self.temp.name).resolve()
         self.shared = self.root / "launchers" / "_shared"
         self.shared.mkdir(parents=True)
         self.defaults = self.shared / "config.bat"

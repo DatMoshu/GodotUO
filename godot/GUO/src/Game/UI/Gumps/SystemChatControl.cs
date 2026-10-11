@@ -42,6 +42,8 @@ namespace GUO.Game.UI.Gumps
         private static int _messageHistoryIndex = -1;
 
         private readonly Label _currentChatModeLabel;
+        // PORT DEVIATION (GUO): preserve semantic prefix state while pad UI hides it.
+        private bool _hasChatModePrefix;
 
         private bool _isActive;
         private ChatMode _mode = ChatMode.Default;
@@ -403,8 +405,9 @@ namespace GUO.Game.UI.Gumps
 
         private void AppendChatModePrefix(string labelText, string text)
         {
-            if (!_currentChatModeLabel.IsVisible)
+            if (!_hasChatModePrefix)
             {
+                _hasChatModePrefix = true;
                 _currentChatModeLabel.Text = labelText;
                 _currentChatModeLabel.IsVisible = true;
                 Resize();
@@ -423,6 +426,7 @@ namespace GUO.Game.UI.Gumps
 
         private void DisposeChatModePrefix()
         {
+            _hasChatModePrefix = false;
             _currentChatModeLabel.IsVisible = false;
             RecalculateHuesAndSizes();
         }
@@ -468,6 +472,34 @@ namespace GUO.Game.UI.Gumps
 
         public override void Update()
         {
+            // PORT DEVIATION (GUO): Gamepad mode hides the classic 18px chat
+            // input strip; pad talk is a separate planned path. Floating
+            // journal lines above still draw.
+            bool pad = GUO.Input.InputMode.Current == GUO.Input.InputKind.Gamepad
+                || GUO.Input.Gamepad.PadScreen.IsOpen
+                || GUO.Input.Gamepad.PadWheel.IsOpen
+                || GUO.Input.Gamepad.PadRadar.IsOpen
+                || GUO.Input.Gamepad.PadWizard.IsOpen;
+            if (pad)
+            {
+                // Always hide the input strip on pad — IsActive defaults on for
+                // keyboard chat and must not keep the 18px bar visible.
+                TextBoxControl.IsVisible = false;
+                _trans.IsVisible = false;
+            }
+            else if (TextBoxControl != null)
+            {
+                TextBoxControl.IsVisible = _isActive;
+                _trans.IsVisible = _isActive;
+            }
+
+            bool prefixVisible = !pad && _hasChatModePrefix;
+            if (_currentChatModeLabel.IsVisible != prefixVisible)
+            {
+                _currentChatModeLabel.IsVisible = prefixVisible;
+                Resize();
+            }
+
             LinkedListNode<ChatLineTime> first = _textEntries.First;
 
             while (first != null)

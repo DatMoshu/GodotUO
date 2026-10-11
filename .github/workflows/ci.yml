@@ -160,7 +160,7 @@ jobs:
       # git_hooks and evidence_archive suites, among the rest. No client data.
       - name: Python tests, pooled
         run: |
-          python -m pip install --quiet pytest jsonschema pillow pefile
+          python -m pip install --quiet pytest jsonschema pillow pefile numpy cryptography
           python -m pytest -q
 
       # Every committed scenario against the JSON Schemas (section 34).
