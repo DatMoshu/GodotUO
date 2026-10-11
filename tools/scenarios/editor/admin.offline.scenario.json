@@ -1,0 +1,206 @@
+{
+  "id": "editor.admin.offline",
+  "title": "Inspect every Admin section without desktop input or a shard",
+  "surface": "editor",
+  "timeouts": {
+    "step_s": 30,
+    "run_s": 180
+  },
+  "steps": [
+    {
+      "id": "launch",
+      "do": {
+        "kind": "launch",
+        "wait_assets": false
+      }
+    },
+    {
+      "id": "geometry",
+      "do": {
+        "kind": "editor_tool",
+        "tool": "editor_interface"
+      },
+      "expect": {
+        "result": {
+          "window": {
+            "noFocus": true
+          }
+        }
+      }
+    },
+    {
+      "id": "offline-health",
+      "do": {
+        "kind": "editor_tool",
+        "tool": "admin_state",
+        "arguments": {
+          "section": "health"
+        }
+      },
+      "expect": {
+        "result": {
+          "data": {
+            "Connected": false,
+            "Saving": false,
+            "restarting": "None"
+          }
+        }
+      }
+    },
+    {
+      "id": "open-godview",
+      "do": {
+        "kind": "editor_tool",
+        "tool": "admin_view",
+        "arguments": {
+          "section": "godview"
+        }
+      },
+      "expect": {
+        "result": {
+          "accepted": true
+        }
+      }
+    },
+    {
+      "id": "read-godview",
+      "do": {
+        "kind": "editor_tool",
+        "tool": "admin_state",
+        "arguments": {
+          "section": "godview",
+          "limit": 5
+        }
+      },
+      "expect": {
+        "result": {
+          "section": "godview"
+        }
+      }
+    },
+    {
+      "id": "open-settings",
+      "do": {
+        "kind": "editor_tool",
+        "tool": "admin_view",
+        "arguments": {
+          "section": "settings"
+        }
+      },
+      "expect": {
+        "result": {
+          "accepted": true
+        }
+      }
+    },
+    {
+      "id": "read-settings",
+      "do": {
+        "kind": "editor_tool",
+        "tool": "admin_state",
+        "arguments": {
+          "section": "settings",
+          "limit": 5
+        }
+      },
+      "expect": {
+        "result": {
+          "section": "settings"
+        }
+      }
+    },
+    {
+      "id": "open-accounts",
+      "do": {
+        "kind": "editor_tool",
+        "tool": "admin_view",
+        "arguments": {
+          "section": "accounts"
+        }
+      },
+      "expect": {
+        "result": {
+          "accepted": true
+        }
+      }
+    },
+    {
+      "id": "read-accounts",
+      "do": {
+        "kind": "editor_tool",
+        "tool": "admin_state",
+        "arguments": {
+          "section": "accounts",
+          "limit": 5
+        }
+      },
+      "expect": {
+        "result": {
+          "section": "accounts"
+        }
+      }
+    },
+    {
+      "id": "open-backups",
+      "do": {
+        "kind": "editor_tool",
+        "tool": "admin_view",
+        "arguments": {
+          "section": "backups"
+        }
+      },
+      "expect": {
+        "result": {
+          "accepted": true
+        }
+      }
+    },
+    {
+      "id": "read-backups",
+      "do": {
+        "kind": "editor_tool",
+        "tool": "admin_state",
+        "arguments": {
+          "section": "backups",
+          "limit": 5
+        }
+      },
+      "expect": {
+        "result": {
+          "section": "backups"
+        }
+      }
+    },
+    {
+      "id": "open-commands",
+      "do": {
+        "kind": "editor_tool",
+        "tool": "admin_view",
+        "arguments": {
+          "section": "commands"
+        }
+      },
+      "expect": {
+        "result": {
+          "accepted": true
+        }
+      }
+    },
+    {
+      "id": "read-commands",
+      "do": {
+        "kind": "editor_tool",
+        "tool": "admin_state",
+        "arguments": {
+          "section": "commands",
+          "limit": 5
+        }
+      },
+      "expect": {
+        "result": {
+          "section": "commands"
+        }
+      }
+    }
+  ]
+}

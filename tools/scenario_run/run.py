@@ -186,7 +186,7 @@ def finalize_video(session, run_dir: Path, run_id: str, video_dir: str) -> tuple
 
 def execute(scen: sc.Scenario, cfg, variables: dict[str, str], *, size: str | None, scale: float, register: bool,
             record: bool | None = None, shard: tuple[str, int] | None = None, driver: str = "ai", clean: bool = False,
-            ghost: bool = False) -> tuple[dict, Path]:
+            ghost: bool = False, headless: bool = False, allow_editor_tools: tuple[str, ...] = ()) -> tuple[dict, Path]:
     """One run, start to finish: the folder, the driver, the manifest, the shared copy, the registry row."""
     started = datetime.now(timezone.utc)
     run_id = ev.make_run_id(scen.id, driver, started)
@@ -210,7 +210,8 @@ def execute(scen: sc.Scenario, cfg, variables: dict[str, str], *, size: str | No
         log.close()
         raise sc.ScenarioError("pre-flight: " + "; ".join(problems))
     if scen.surface == "editor":
-        session = EditorSession(cfg, run_dir, run_dir / "scratch", size or "3840x2160", scale)
+        session = EditorSession(cfg, run_dir, run_dir / "scratch", size or "3840x2160", scale,
+                                headless=headless, allow_tools=allow_editor_tools)
     elif scen.surface == "client":
         session = ClientSession(cfg, run_dir, record, size, interactive=human and not ghost)    # a stand-in person needs no focus or sound
         session.shard = shard_address(scen, cfg.root, shard) if shard else None
@@ -330,6 +331,8 @@ def main(argv: list[str] | None = None) -> int:
                      help="record the client with the engine's MovieWriter (the default for a client scenario)")
     rec.add_argument("--no-record", dest="record", action="store_false", help="stills and events only")
     ap.add_argument("--scale", type=float, default=1.5, help="editor display scale")
+    ap.add_argument("--headless", action="store_true", help="editor AI runs only: no desktop window; no screenshot steps")
+    ap.add_argument("--allow-editor-tool", action="append", default=[], help="explicitly authorize a typed admin_* mutation for this run (repeatable)")
     ap.add_argument("--scenario", dest="scenario_prefix", default="", help="list: only scenarios whose id starts with this")
     ap.add_argument("--keep-local", type=int, default=30, help="prune: newest run folders kept per scenario under build/runs")
     ap.add_argument("--keep-shared", type=int, default=200, help="prune: newest run folders kept per project in the shared folder")
@@ -373,6 +376,13 @@ def main(argv: list[str] | None = None) -> int:
     shard = None
     try:
         scen = sc.load(sc.find(cfg.root, names[0]))
+        if (args.headless or args.allow_editor_tool) and (scen.surface != "editor" or args.driver != "ai"):
+            raise sc.ScenarioError("--headless and --allow-editor-tool require an editor AI run")
+        if args.headless and any(s.get("shot") or s["do"]["kind"] == "shot" for s in scen.steps):
+            raise sc.ScenarioError("headless editor runs cannot capture window screenshots")
+        admin_mutations = {"admin_connect", "admin_save", "admin_restart", "admin_godview", "admin_account", "admin_settings_edit", "admin_settings_save", "admin_backup_create", "admin_backup_restore", "admin_command", "editor_server_select"}
+        if any(t not in admin_mutations for t in args.allow_editor_tool):
+            raise sc.ScenarioError("--allow-editor-tool accepts only the typed Admin tools and editor_server_select; broad editor_invoke remains excluded")
         if args.driver == "human" and scen.surface not in human_mod.OVERLAY_TOOLS:
             raise sc.ScenarioError(f"the human driver follows client and editor scenarios; '{scen.surface}' is not supported yet")
         variables = parse_vars(args.var)
@@ -396,7 +406,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         manifest, run_dir = execute(scen, cfg, variables, size=args.size, scale=args.scale,
                                     register=not args.no_register, record=args.record, shard=shard,
-                                    driver=args.driver, clean=args.clean, ghost=args.ghost)
+                                    driver=args.driver, clean=args.clean, ghost=args.ghost,
+                                    headless=args.headless, allow_editor_tools=tuple(args.allow_editor_tool))
     except sc.ScenarioError as ex:
         print(f"error: {ex}", file=sys.stderr)
         return 2

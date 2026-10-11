@@ -2019,6 +2019,7 @@ adds it.
 | `wait` | `seconds` (default 1) | sleep; watchdogs keep running | 2 |
 | `shot` | none | a still of the program's window | 2 |
 | `note` | `text` (optional) | a `log` event | 2 |
+| `editor_tool` | `tool`, optional `arguments` and `until` objects | named editor MCP call; read-only or explicitly allowlisted mutation; result expectations supported | 2 |
 | `tour_segment` | `id` (an EditorTour segment) | editor MCP `tour_segment`; the segment's checks and frames become the step's | 2 |
 | `editor_invoke` | `key`, `query` (optional) | editor MCP `editor_invoke` (section 33) | 2 |
 | `ui.click` | `control` (a control selector, below), `button` (`Left` default, `Right`, `Middle`), `clicks` (integer >= 1, default 1), `within_s` (seconds to wait for the control, default 5) | game MCP `guo_ui` + `guo_input` (section 29) | 3 |
@@ -2168,6 +2169,8 @@ Another project writes the same columns with its own `project`. A new column is 
 as nullable, so older readers keep working.
 
 ---
+
+Editor interface/Admin scenario automation: `launch.wait_assets=false` skips the asset-ready wait for editor-only checks. `--headless` runs without desktop input or screenshots. `editor_tool` checks live MCP annotations and the explicit scripted tool allowlist before dispatch. Editor sessions isolate their GUO workspace as well as editor settings. See `tools/editor_mcp/README.md` for Admin tools, completion counters and secret environment references.
 
 ## 35. Shard host profiles (`*.profile.json`, `tools/muo_shard`)
 

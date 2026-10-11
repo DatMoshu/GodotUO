@@ -86,6 +86,16 @@ public partial class EditorSmoke
         AiCheck("editor_mcp_live_state", JsonNode.Parse(state)?["assetsReady"]?.GetValue<bool>() == true);
         string search = await Ai.Hub.Tools.RunAsync("editor_search", new JsonObject { ["query"] = "backpack" }, CancellationToken.None);
         AiCheck("editor_mcp_f3_shared", JsonNode.Parse(search)?["entries"] is JsonArray { Count: > 0 });
+        var sensitiveReply = new JsonObject { ["account"] = "test", ["password"] = "never-export", ["nested"] = new JsonObject { ["token"] = "never-export" } };
+        string safeReply = EditorAutomationCapabilities.Safe(sensitiveReply).ToJsonString();
+        AiCheck("editor_mcp_admin_reply_redacted", !safeReply.Contains("never-export") && (string)sensitiveReply["password"] == "never-export");
+        string safeArgs = EditorAutomationCapabilities.ArgumentsForLog("admin_settings_edit", new JsonObject { ["id"] = "mail.password", ["value"] = "never-log" });
+        AiCheck("editor_mcp_admin_settings_args_redacted", !safeArgs.Contains("never-log"));
+        foreach (string section in new[] { "health", "godview", "settings", "accounts", "backups", "commands" })
+        {
+            string adminState = await Ai.Hub.Tools.RunAsync("admin_state", new JsonObject { ["section"] = section, ["limit"] = 1 }, CancellationToken.None);
+            AiCheck("editor_mcp_admin_" + section, (string)JsonNode.Parse(adminState)?["section"] == section);
+        }
         bool traversalRefused = false;
         try { EditorCapabilities.MultiPath("../outside.json"); }
         catch (ArgumentException) { traversalRefused = true; }

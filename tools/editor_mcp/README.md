@@ -71,3 +71,36 @@ The UI/session design and remaining domain coverage are in
 [the workspace plan](../../docs/editor_ai_workspace_plan.md). This initial
 endpoint provides useful operations and broad F3 discovery; it does not yet
 implement every Godot or GUO edit as a typed tool.
+
+## Background interface and Admin automation
+
+`editor_interface` reports window geometry, tabs, header layout and server/client
+choices. `editor_navigate`, `editor_window_resize` and `editor_server_select` use
+GUO methods without keyboard or mouse input. Resizing sets NoFocus and removes
+AlwaysOnTop; a headless editor needs no desktop window.
+
+`admin_view(section)` opens godview, settings, accounts, backups or commands.
+`admin_state(section, offset, limit)` returns paged data, reply counters and
+operation phases. `admin_connect` uses the selected server and workspace token;
+`admin_refresh` requests fresh lists or health. Dispatch acceptance is not
+completion: poll `admin_state` until the relevant counter or phase changes.
+
+Approved mutations are `admin_save`, `admin_restart`, `admin_godview`,
+`admin_account`, `admin_settings_edit`, `admin_settings_save`,
+`admin_backup_create`, `admin_backup_restore` and `admin_command`. They call the
+existing panels, retaining bridge authorization, account restrictions, settings
+validation and managed restart/restore rules. Restore also requires `confirm`
+to exactly match `name`; dangerous commands retain their confirmation word.
+Passwords and secret settings require `secret_env`, naming an editor-process
+variable beginning `GUO_ADMIN_AUTOMATION_`. Never supply a password in tool
+arguments. Replies and approval logs redact credentials.
+
+For a repeatable offline check, run:
+
+```text
+python tools/scenario_run/run.py editor.admin.offline --headless
+```
+
+This opens and reads every Admin section without a shard or loaded UO artwork.
+Live mutations need a deliberately provisioned private workspace and bridge;
+these tools do not grant an Admin role or create a server automatically.

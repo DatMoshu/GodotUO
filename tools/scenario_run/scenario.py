@@ -13,9 +13,9 @@ from pathlib import Path
 
 SURFACES = {"client", "editor", "web", "deck", "shard"}
 # Every kind the format names; the runner implements the subset in IMPLEMENTED and fails a step of any other kind.
-KINDS = {"launch", "wait", "shot", "note", "tour_segment", "editor_invoke", "ui.click", "ui.fill", "ui.key",
+KINDS = {"launch", "wait", "shot", "note", "tour_segment", "editor_invoke", "editor_tool", "ui.click", "ui.fill", "ui.key",
          "chat", "scene_set", "renderdump", "render_diff", "lane"}
-IMPLEMENTED = {"launch", "wait", "shot", "note", "tour_segment", "editor_invoke", "ui.click", "ui.fill", "ui.key", "chat",
+IMPLEMENTED = {"launch", "wait", "shot", "note", "tour_segment", "editor_invoke", "editor_tool", "ui.click", "ui.fill", "ui.key", "chat",
                "renderdump", "render_diff"}
 DEFAULT_TIMEOUTS = {"step_s": 30, "run_s": 600}
 
@@ -110,6 +110,15 @@ def _unknown_fields(where: str, step: dict) -> list[str]:
         allowed, required = shape["do"][do["kind"]]
         problems += [f"{where}: {do['kind']} takes no '{k}'" for k in do if k not in allowed]
         problems += [f"{where}: {do['kind']} needs '{k}'" for k in sorted(required) if k not in do]
+        if do["kind"] == "launch" and "wait_assets" in do and not isinstance(do["wait_assets"], bool):
+            problems.append(f"{where}: launch wait_assets must be a boolean")
+        if do["kind"] == "editor_tool":
+            if not isinstance(do.get("tool"), str) or not do.get("tool"):
+                problems.append(f"{where}: editor_tool needs a non-empty tool name")
+            if not isinstance(do.get("arguments", {}), dict):
+                problems.append(f"{where}: editor_tool arguments must be an object")
+            if "until" in do and not isinstance(do["until"], dict):
+                problems.append(f"{where}: editor_tool until must be an object")
     expect = step.get("expect")
     if isinstance(expect, dict):
         problems += [f"{where}: unknown expectation '{k}'" for k in expect if k not in shape["expect"]]
