@@ -16,7 +16,7 @@ using GUO.Workspace;
 /// and in plain words, Save now and Restart, the god view of every player, NPC and spawner (AD2a,
 /// <see cref="GodViewPanel"/>), the server's settings (AD4, <see cref="SettingsPanel"/>), its accounts (AD5,
 /// <see cref="AccountsPanel"/>), its backups (AD6, <see cref="BackupsPanel"/>), a palette of the server's commands (AD3,
-/// <see cref="CommandsPanel"/>), and a log of everything the tab did, its times in UTC. It talks to the server's
+/// <see cref="CommandsPanel"/>), the server's audit log with a filter and a CSV export (AD8, <see cref="AuditPanel"/>), and a log of everything the tab did, its times in UTC. It talks to the server's
 /// editor bridge on the admin channel (ADR-0035): this workspace's admin token goes in the bridge hello and
 /// nowhere else. Desktop editor only. The tab button comes from <see cref="GuoAdminPlugin"/>.
 /// </summary>
@@ -50,6 +50,8 @@ public partial class AdminView : VBoxContainer
     private AccountsPanel _accounts;
     private BackupsPanel _backups;
     private CommandsPanel _commands;
+    private AuditPanel _audit;
+    private bool _auditToLog;
     private TabContainer _centre;
     private Action _whileStopped;
     private double _statusClock, _reconnectClock;
@@ -89,6 +91,18 @@ public partial class AdminView : VBoxContainer
 
     /// <summary>The Commands palette (AD3).</summary>
     public CommandsPanel Commands => _commands;
+
+    /// <summary>The Audit list (AD8).</summary>
+    public AuditPanel Audit => _audit;
+
+    /// <summary>Brings the Audit list to the front of the centre.</summary>
+    public void ShowAudit()
+    {
+        if (_audit != null)
+        {
+            _centre.CurrentTab = _audit.GetIndex();
+        }
+    }
 
     /// <summary>Brings the Commands palette to the front of the centre.</summary>
     public void ShowCommands()
@@ -266,6 +280,9 @@ public partial class AdminView : VBoxContainer
         _commands = new CommandsPanel { Send = send };
         _commands.Logged += Log;
         centre.AddChild(_commands);
+        _audit = new AuditPanel { Send = send };
+        _audit.Logged += Log;
+        centre.AddChild(_audit);
 
         // Bottom: the log of everything the tab did.
         AddChild(Heading("Log"));
@@ -357,6 +374,7 @@ public partial class AdminView : VBoxContainer
         _godView.OnClosed();
         _accounts.OnClosed();
         _commands.OnClosed();
+        _audit.OnClosed();
         Log(why);
         UpdateView();
     }
@@ -489,6 +507,7 @@ public partial class AdminView : VBoxContainer
             _godView.OnClosed();
             _accounts.OnClosed();
             _commands.OnClosed();
+            _audit.OnClosed();
             Run.RestartSelected(whileStopped);
             Restarting = RestartPhase.WaitingForServer;
             _reconnectClock = 0;
@@ -569,7 +588,6 @@ public partial class AdminView : VBoxContainer
                     }
 
                     RequestStatus();
-                    _link.Send(new JsonObject { ["op"] = "admin_audit", ["count"] = 10, ["req"] = ++_req });
                     if (msg["admin_ops"] is JsonArray ops && ops.Any(o => (string)o == "admin_godview"))
                     {
                         _godView.OnAdminOpen();
@@ -605,6 +623,17 @@ public partial class AdminView : VBoxContainer
                     else
                     {
                         Log($"commands need Counselor and a server with them (AD3); this tab holds {Granted}");
+                    }
+
+                    // The Audit list asks for the log; its first reply's last entries go to this log too, as on every connect.
+                    if (msg["admin_ops"] is JsonArray auditOps && auditOps.Any(o => (string)o == "admin_audit"))
+                    {
+                        _auditToLog = true;
+                        _audit.OnAdminOpen();
+                    }
+                    else
+                    {
+                        Log($"the audit log needs Administrator; this tab holds {Granted}");
                     }
                 }
                 else
@@ -648,10 +677,13 @@ public partial class AdminView : VBoxContainer
 
                 break;
             case "admin_audit":
-                if (msg["entries"] is JsonArray entries && entries.Count > 0)
+                _audit.Handle(msg);
+                if (_auditToLog && msg["entries"] is JsonArray entries && entries.Count > 0)
                 {
-                    Log($"the server's audit log, last {entries.Count}:");
-                    foreach (JsonNode e in entries)
+                    _auditToLog = false;
+                    int skip = Math.Max(0, entries.Count - 10);
+                    Log($"the server's audit log, last {entries.Count - skip}:");
+                    foreach (JsonNode e in entries.Skip(skip))
                     {
                         // The audit's times are UTC, as is the tab's clock.
                         string at = ((string)e["at"] ?? "").Length >= 19 ? ((string)e["at"]).Substring(11, 8) + "Z" : "";
@@ -695,6 +727,7 @@ public partial class AdminView : VBoxContainer
                 _accounts.OnClosed();
                 _backups.OnClosed();
                 _commands.OnClosed();
+                _audit.OnClosed();
                 if (Restarting == RestartPhase.None)
                 {
                     Log("the server closed the connection");

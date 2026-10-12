@@ -23,7 +23,9 @@ using GUO.Workspace;
 /// by the run bar, a before-restore snapshot kept), and keep 2 removes the oldest. Then the Commands palette (AD3): the
 /// server's commands listed and searched, the help line for the one typed, [where run with nobody online and its output
 /// shown, [wipe held for its typed word and run with it (it only asks for a target, cancelled), the history, and "run as"
-/// a character who is not online refused. Last the run bar stops the server. tools/editor_shard/run.py admin-tab starts it, in a scratch workspace.
+/// a character who is not online refused. Then the Audit list (AD8): the log read again, the run's commands among its
+/// rows, an account password shown as ***, filtered by op, who and free text, and the rows shown exported to a dated CSV
+/// under build/admin_audit. Last the run bar stops the server. tools/editor_shard/run.py admin-tab starts it, in a scratch workspace.
 /// </summary>
 public partial class EditorSmoke
 {
@@ -53,6 +55,7 @@ public partial class EditorSmoke
     private string _bakFirst, _bakAccount;
     private int _bakMark, _bakKeepBefore;
     private int _cmdMark;
+    private int _audMark;
 
     // The settings the form's check changes, by field id ("file:path").
     private const string SetMaxAccounts = "modernuo:settings/accountHandler.maxAccountsPerIP";
@@ -880,9 +883,51 @@ public partial class EditorSmoke
                     _admin["commands_run_as_error"] = (string)r?["error"];
                     c.RunAs("");
                     AdminShot("commands-output");
-                    AdminNext(124);
+                    // AD8: the Audit list reads the log again, now holding the run's accounts and commands.
+                    v.ShowAudit();
+                    _audMark = v.Audit.Replies;
+                    v.Audit.RequestLog();
+                    AdminNext(169);
                 }
                 else AdminTimeout("run as a character not online never answered");
+
+                break;
+            }
+
+            case 169:
+            {
+                AuditPanel a = v.Audit;
+                if (a.Replies > _audMark)
+                {
+                    var rows = a.Rows;
+                    // Every row says when (UTC, Z), who, op and result; the run's own actions are there, refusals too.
+                    _admin["audit_rows"] = rows.Count;
+                    _admin["audit_rows_ok"] = rows.Count > 0
+                        && rows.All(r => r.When.EndsWith('Z') && r.Who.Length > 0 && r.Op.Length > 0 && r.Result.Length > 0)
+                        && rows.Any(r => r.Op == "admin_command" && r.Ok) && rows.Any(r => r.Op == "admin_command" && !r.Ok);
+                    _admin["audit_masked"] = rows.Any(r => r.Op == "admin_account" && r.Args.Contains("\"password\":\"***\""))
+                        && !rows.Any(r => new[] { _accGenerated, _accTyped }.Any(p => !string.IsNullOrEmpty(p) && r.Args.Contains(p)));
+                    a.SetFilter("admin_account", null, null);
+                    bool byOp = a.Shown.Count > 0 && a.Shown.All(r => r.Op == "admin_account");
+                    a.SetFilter("admin_account", null, _accName);
+                    bool byText = a.Shown.Count > 0 && a.Shown.All(r => r.Args.Contains(_accName ?? "?"));
+                    string who = rows[^1].Who;
+                    a.SetFilter(null, who, null);
+                    bool byWho = a.Shown.Count > 0 && a.Shown.All(r => r.Who == who);
+                    a.SetFilter(null, null, "refused");
+                    bool refused = a.Shown.Count > 0 && a.Shown.All(r => !r.Ok);
+                    _admin["audit_filter_ok"] = byOp && byText && byWho && refused;
+                    a.SetFilter("admin_account", null, null);
+                    string file = a.ExportShown();
+                    string build = Path.GetFullPath(Path.Combine(EditorData.RepoRoot, "build", "admin_audit")) + Path.DirectorySeparatorChar;
+                    _admin["audit_export"] = file == null ? null : Path.GetFileName(file);
+                    _admin["audit_export_ok"] = file != null && Path.GetFullPath(file).StartsWith(build, StringComparison.OrdinalIgnoreCase)
+                        && System.Text.RegularExpressions.Regex.IsMatch(Path.GetFileName(file), @"^guo_AD8_audit_\d{8}-\d{4}(_v\d+)?\.csv$")
+                        && File.ReadAllText(file) == AdminAuditView.Csv(a.Shown);
+                    AdminShot("audit-list");
+                    AdminNext(124);
+                }
+                else AdminTimeout("the Audit list never got the server's audit log");
 
                 break;
             }
@@ -1033,6 +1078,10 @@ public partial class EditorSmoke
         Check("commands_wipe_ok", "[wipe with its word ran and only asked for a target, cancelled");
         Check("commands_history_ok", "Up brings back the commands run, newest first");
         Check("commands_run_as_refused", "run as a character who is not online is refused");
+        Check("audit_rows_ok", "the Audit list shows the server's audit log as when (UTC), who, op and result, the run's commands among them");
+        Check("audit_masked", "the Audit list shows an account password as *** and never the password");
+        Check("audit_filter_ok", "the Audit list filters by op, by who and by free text");
+        Check("audit_export_ok", "Export CSV wrote the rows shown to build/admin_audit/guo_AD8_audit_<YYYYMMDD-HHMM>.csv");
         if (!Headless)
         {
             Check("masked_settings-form", "the Settings stills cover the UO data folders");

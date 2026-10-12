@@ -364,6 +364,15 @@ op, run or refused, and every admin hello is appended to
 are `from`, `to` and `value` in an object whose `key` names such a setting; an op that
 carries a secret must name its field so. The map-editing ops above are not
 admin ops and are unchanged, except `command`, which AD3 moved behind the token.
+`admin_audit` answers from the newest 200 entries, kept in memory and read
+back from the file when the server starts (AD8), so the Admin tab's Audit
+list shows the entries from before a restart too; a line cut short is
+skipped. The Audit list exports the rows it shows to
+`build/admin_audit/guo_AD8_audit_<YYYYMMDD-HHMM>.csv` (`_v2` on for a second
+export in the same minute): a header `when_utc,who,op,level,result,args`,
+then one RFC 4180 row per row shown, newest first; `when_utc` is `YYYY-MM-DD HH:MM:SSZ`,
+`result` is `ran` or `refused: <error>`, `args` the entry's masked `args` as
+JSON, and a cell starting `=`, `+`, `-` or `@` gets a leading `'`.
 
 The World tab's Live layer reads these snapshots through the existing Shard
 dock connection. A successful `mobiles` reply replaces the visible snapshot:
