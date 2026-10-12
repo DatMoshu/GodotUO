@@ -935,7 +935,7 @@ namespace GUO.IO.Audio
                 BitConverter.GetBytes((short)16).CopyTo(header, 34);
                 Encoding.ASCII.GetBytes("data").CopyTo(header, 36);
                 BitConverter.GetBytes(pcm.Length).CopyTo(header, 40);
-                using var fs = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None);
+                using var fs = new FileStream(path, FileMode.Create, System.IO.FileAccess.Write, FileShare.None);
                 fs.Write(header, 0, header.Length);
                 fs.Write(pcm, 0, pcm.Length);
             }
