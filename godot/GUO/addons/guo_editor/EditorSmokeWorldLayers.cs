@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Godot;
+using Point = GUO.Compat.Point;
 using GUO.Game.GameObjects;
 
 /// <summary>
@@ -57,6 +58,54 @@ public partial class EditorSmoke
         }
 
         return (roofs, shown);
+    }
+
+    // ROOF-01: the fewest roofs the Roofs check must see drawn. The 1024x600 headless editor draws 46 of the 60 roofs
+    // around the test spot (2026-10-12, main 7e703993: the World map gets ~246 px of a 1016 px tab); 30 leaves room
+    // for small layout changes, and the check can never pass on a view that draws none.
+    private const int RoofsDrawnFloor = 30;
+
+    // Roofs is judged on the roofs the scene draws, as the game hides them: it sorts only objects inside its draw
+    // range (GameSceneDrawingSorting: the camera bounds plus 44 px, in world pixels), so an off-screen roof is never
+    // faded, and never seen either (ClassicUO does the same). The range is worked out here as the scene does; a roof
+    // within 44 px of its edge is left out, so a rounding difference cannot count one the scene skipped.
+    private (int Boxed, int Drawn, int Hidden, int Skipped) RoofsDrawnNearCentre()
+    {
+        var scene = _world.Host.Scene;
+        var cam = scene.Camera;
+        int margin = (int)(44 / cam.Zoom);
+        Point min = cam.ScreenToWorld(new Point(-margin, -margin)), max = cam.ScreenToWorld(new Point(cam.Bounds.Width + margin, cam.Bounds.Height + margin));
+        Point offset = scene.DrawOffset;
+        int boxed = 0, drawn = 0, hidden = 0, skipped = 0;
+        for (int x = LayersX - 10; x <= LayersX + 10; x++)
+        {
+            for (int y = LayersY - 10; y <= LayersY + 10; y++)
+            {
+                var chunk = _world.Host.World.Map.GetChunk(x, y, load: true);
+                for (var o = chunk?.GetHeadObject(x % 8, y % 8); o != null; o = o.TNext)
+                {
+                    if (!((o is Static s && s.ItemData.IsRoof) || (o is Multi m && m.ItemData.IsRoof)))
+                    {
+                        continue;
+                    }
+
+                    boxed++;
+                    // GameObject.UpdateRealScreenPosition, from the tile.
+                    int sx = (o.X - o.Y) * 22 - offset.X - 22, sy = (o.X + o.Y) * 22 - (o.Z << 2) - offset.Y - 22;
+                    if (sx >= min.X + 44 && sx <= max.X - 44 && sy >= min.Y + 44 && sy <= max.Y - 44)
+                    {
+                        drawn++;
+                        hidden += o.AlphaHue == 0 ? 1 : 0;
+                    }
+                    else
+                    {
+                        skipped++;
+                    }
+                }
+            }
+        }
+
+        return (boxed, drawn, hidden, skipped);
     }
 
     private int CentreObjects(Func<GameObject, bool> match)
@@ -161,7 +210,12 @@ public partial class EditorSmoke
             () =>
             {
                 _layersReport["roofs_shown_when_off"] = RoofsNearCentre().Shown;
-                return !_world.Host.ShowRoofs && RoofsNearCentre().Shown == 0 && StaticsDrawn() == baseline["statics"];
+                var (boxed, drawn, hidden, skipped) = RoofsDrawnNearCentre();
+                _layersReport["roofs_off"] = new Dictionary<string, int>
+                {
+                    ["boxed"] = boxed, ["drawn"] = drawn, ["hidden"] = hidden, ["offscreen_skipped"] = skipped, ["floor"] = RoofsDrawnFloor,
+                };
+                return !_world.Host.ShowRoofs && drawn >= RoofsDrawnFloor && hidden == drawn && StaticsDrawn() == baseline["statics"];
             },
             () =>
             {
