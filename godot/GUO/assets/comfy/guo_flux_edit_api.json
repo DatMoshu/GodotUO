@@ -187,18 +187,17 @@
    ]
   }
  },
- "171": {
-  "class_type": "ImageScaleToTotalPixels",
-  "inputs": {
-   "image": [
-    "76",
-    0
-   ],
-   "upscale_method": "nearest-exact",
-   "megapixels": 0.5,
-   "resolution_steps": 1
-  }
- },
+  "171": {
+   "class_type": "ImageScaleToMaxDimension",
+   "inputs": {
+    "image": [
+     "76",
+     0
+    ],
+    "upscale_method": "nearest-exact",
+    "largest_size": 512
+   }
+  },
  "172": {
   "class_type": "Flux2Scheduler",
   "inputs": {

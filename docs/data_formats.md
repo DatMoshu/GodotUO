@@ -2803,6 +2803,11 @@ drops the `JarJarSubmit3D` external post (node 134); `ComfyClient.ArtShot`
 also carries the full tight rect (`TightX0`, `TightY0`, `TightHeight`) so
 the MoGe replacer can anchor from bbox-center to the tile.
 
+`guo_flux_edit_api.json` node 171 caps the pre-edit upscale at 512 px max
+dimension (`ImageScaleToMaxDimension`, `largest_size` 512, nearest-exact),
+replacing the 0.5-megapixel total-pixels scale: Flux edits stay cheap and
+consistently sized regardless of source aspect.
+
 ---
 
 ## 46. ComfyUI one-command installer (`tools/comfy/setup_studio.py`, `tools/comfy/models.json`)
