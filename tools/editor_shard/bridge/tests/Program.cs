@@ -335,6 +335,51 @@ try
         JsonNode.Parse($"{{\"op\":\"admin_command\",\"text\":\"{AdminCommandRules.ForLog("[password Hunter2 Hunter2")}\"}}"));
     Require(!cmdEntry.ToJsonString().Contains("Hunter2") && !File.ReadAllText(auditPath).Contains("Hunter2"), "a command's password reached the audit");
     Console.WriteLine("PASS: the command ops need Counselor and the token; the dangerous list (shutdown, wipe, delete accounts, global decorate, mass moves) wants its typed word; run as only an online staff character at or below the level; no password in the audit");
+
+    // ---- AD8: the Admin tab's Audit list on a fixture log ------------------
+    string fixture = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "fixtures", "admin_audit_fixture.jsonl"));
+    var rows = AdminAuditView.FromLines(fixture);
+    Require(rows.Count == 7, $"the fixture read as {rows.Count} rows, not 7 (one line is cut short and skipped)");
+    Require(rows[0].When == "2026-10-11 08:00:01Z" && rows[0].Who == "Admin tab (guo-editor)" && rows[0].Op == "hello"
+        && rows[0].Result == "refused: admin token refused", "a refused hello did not read as who, op, when, result");
+    Require(rows[2].Result == "ran" && rows[2].Level == "Administrator", "a save did not read as ran");
+    Require(rows[3].Args.Contains("\"password\":\"***\"") && rows[0].Args.Contains("\"admin_token\":\"***\""), "a masked secret did not stay masked");
+    Require(AdminAuditView.Distinct(rows, r => r.Op).SequenceEqual(new[] { "admin_account", "admin_audit", "admin_command", "admin_save", "admin_settings", "hello" }),
+        "the op picker's values are wrong");
+    Require(AdminAuditView.Filter(rows, "hello", null, null).Count == 2, "the op filter kept the wrong rows");
+    Require(AdminAuditView.Filter(rows, null, "guo-probe-2", null).Single().Op == "admin_audit", "the who filter kept the wrong rows");
+    Require(AdminAuditView.Filter(rows, "HELLO", "admin tab (guo-editor)", "REFUSED").Single() == rows[0], "the filters do not combine, or are not case-blind");
+    Require(AdminAuditView.Filter(rows, null, null, "guoprobe").Single() == rows[3], "the free text did not search the args");
+    Require(AdminAuditView.Filter(rows, null, null, "10-11 08:03").Single() == rows[4], "the free text did not search the time");
+    Require(AdminAuditView.Filter(rows, null, null, "  ").Count == rows.Count, "a blank free text hid rows");
+    string csv = AdminAuditView.Csv(AdminAuditView.Filter(rows, null, null, "08:0"));
+    string[] csvLines = csv.Split("\r\n");
+    Require(csvLines[0] == "when_utc,who,op,level,result,args" && csvLines.Length == rows.Count + 2 && csvLines[^1] == "", "the CSV header or row count is wrong");
+    Require(csvLines[3] == "2026-10-11 08:01:10Z,Admin tab (guo-editor),admin_save,Administrator,ran,\"{\"\"req\"\":2}\"", "a CSV row is not quoted as RFC 4180");
+    Require(csv.Contains(",'=probe,") && !csv.Contains(",=probe,"), "a formula-like cell reached the CSV unguarded");
+    Require(csv.Contains("\"\"password\"\":\"\"***\"\"") && !csv.Contains("Secret") && !csv.Contains(token), "the CSV holds a secret");
+    // The bridge's own file reads the same: a password recorded through AuditLog comes back masked.
+    var liveRows = AdminAuditView.FromLines(File.ReadAllText(auditPath));
+    Require(liveRows.Count > 0 && liveRows.All(r => !r.Args.Contains("Secret123Pass") && !r.Args.Contains("Hunter2") && !r.Args.Contains(token)),
+        "a row read back from the bridge's audit file holds a secret");
+    var fromReply = AdminAuditView.FromEntries(audit.Recent(AuditLog.Keep));
+    // A restarted server reads its file back: the same entries, newest last, without a cut line.
+    File.AppendAllText(auditPath, "{\"at\":\"2026-10-11T09:00:00.000Z\",\"editor\":\"x\",\"op\":\"admin_sa\n");
+    var restarted = new AuditLog(auditPath);
+    Require(restarted.Recent(AuditLog.Keep).ToJsonString() == audit.Recent(AuditLog.Keep).ToJsonString(), "a restarted server's audit did not read its file back");
+    var big = Path.Combine(home, "big.jsonl");
+    File.WriteAllLines(big, Enumerable.Range(0, AuditLog.Keep + 50).Select(i => $"{{\"at\":\"2026-10-11T09:00:00.000Z\",\"editor\":\"e{i}\",\"op\":\"admin_save\",\"ok\":true}}"));
+    var bigRecent = new AuditLog(big).Recent(AuditLog.Keep);
+    Require(bigRecent.Count == AuditLog.Keep && (string)bigRecent[0]!["editor"] == "e50" && (string)bigRecent[^1]!["editor"] == $"e{AuditLog.Keep + 49}",
+        "a long audit file did not come back as its newest entries");
+    Require(fromReply.Count == Math.Min(liveRows.Count, AuditLog.Keep) && fromReply[^1].Op == liveRows[^1].Op, "an admin_audit reply did not read as the file does");
+    string repo = Path.Combine(home, "repo");
+    var at = new DateTime(2026, 10, 11, 8, 7, 0, DateTimeKind.Utc);
+    string out1 = AdminAuditView.Export(repo, rows, at), out2 = AdminAuditView.Export(repo, rows, at);
+    Require(out1 == Path.Combine(repo, "build", "admin_audit", "guo_AD8_audit_20261011-0807.csv") && out2.EndsWith("guo_AD8_audit_20261011-0807_v2.csv"),
+        "the export is not build/admin_audit/guo_AD8_audit_<YYYYMMDD-HHMM>.csv, or a second one overwrote it");
+    Require(File.ReadAllText(out1) == AdminAuditView.Csv(rows), "the export did not write the rows shown");
+    Console.WriteLine("PASS: the Audit list reads the log (a cut line skipped) as when (UTC, Z), who, op, result; filters by op, who and free text; exports the rows shown as CSV under build/ with secrets still masked; a restarted server reads its newest entries back from the file");
     Console.WriteLine("ALL PASS");
 }
 finally
