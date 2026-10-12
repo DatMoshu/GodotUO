@@ -2804,3 +2804,38 @@ frost, heat, tilt-shift, god-rays, depth-fog and the rest) plus `damage`
 (cycle/intensity/brightness/warmth/shadow). `PostFxState` adds `facing`
 (the player's facing as screen degrees) for cone uniforms such as
 `fog_of_war`.
+
+---
+
+## 48. Enhanced HD repaint detail (`overrides/HD/Art`, `Profile.EnhancedHD`)
+
+The repaint gump saves the pre-downscale frame beside the native override:
+`overrides/HD/Art/Statics/<graphic>.png` or `.../Land/<graphic>.png` plus
+one row in `overrides/HD/Art/manifest.json`. The loader also gathers a
+read-only `HD/Art` tree under the client data folder; a PNG without a
+manifest row still loads. Saved only when the generation came home larger
+than native (a same-size result adds nothing over the `.art`); the mask is
+applied at HD against the nearest-upscaled native silhouette, and land
+enforces its diamond (corners stay transparent even unmasked). Best effort:
+HD never fails the native `.art` write, and repaint revert/delete removes
+the HD PNG plus its row (`DeleteHd`).
+
+**Manifest** (`manifest.json`): one JSON dict keyed
+`Statics/<graphic>` or `Land/<graphic>`, written atomically on upsert and
+delete:
+
+| Field | Meaning |
+|---|---|
+| `native_w`, `native_h` | the native footprint the HD draws into |
+| `hd_w`, `hd_h`, `scale` | the saved size (`hd_w / native_w`) |
+| `prompt`, `seed`, `backend`, `sampler`, `scheduler`, `steps`, `cfg`, `denoise`, `masked` | how it was generated (`backend` is `Flux Klein` or `DreamShaper`) |
+| `sha256` | digest of the PNG bytes |
+| `created_utc` | ISO-8601 UTC |
+
+**Runtime** (`Profile.EnhancedHD`, profile v12, default off on every
+platform): `Art.TryGetHd` serves mipmapped LRU textures from the HD PNGs
+(never the atlas, never picking/cursor/containers); off draws byte-identical
+native. HD draws into the native footprint with Linear sampling while native
+keeps Nearest. The Options checkbox (`Enhanced HD (repaint detail)`) and the
+Modern video toggle (`Enhanced HD`) flip the profile and refresh plus
+re-bake (`RefreshAllHD`). PORT DEVIATION (GUO).
