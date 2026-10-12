@@ -2669,6 +2669,16 @@ thread with distance attenuation (full to 2 tiles, silent past 20).
 `VoiceManager.Status` reports the pipeline state for probes;
 `--voice`/`--say`/`--voice-fake`/`--hear-secs` drive it in walk-to runs.
 
+Text-to-audio disk cache: repeated lines never regenerate. Slots live under
+`<profiles>/cache/<voice>/<sha256>.wav`, keyed by voice-id + clone seed +
+profile mtime (epoch seconds) + whitespace-normalized text — the same
+construction in `VoiceManager.CacheKeyFor` and `voice.py voice_cache_path`,
+so both sides share entries. The client checks before any ComfyUI call (a
+hit plays immediately) and files the exact playable bytes after the
+22050 Hz-mono gate; the tool serves a valid slot without queueing and stores
+on miss. Cap 500 MB / 1000 files, oldest-first eviction; enroll/design purge
+that voice's slots (a new sample orphans old ones via the mtime key).
+
 ---
 
 ## 41. MoGe replacer gump (`-moge`, `src/Comfy/MogeClient.cs`, `src/Game/UI/Gumps/MogePlacerGump.cs`)
