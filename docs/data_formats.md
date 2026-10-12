@@ -2721,6 +2721,17 @@ single, double and target paths (`TargetManager`, `GameSceneInputHandler`),
 with a tile-scan fallback by victim graphic; already-hidden victims refuse
 a second select (stacking guard).
 
+Live-refresh: the preview overlay (`moge:preview`) never hides the victim,
+so the original stays visible until commit; once Generate commits, the
+steppers re-place the committed live splat in place (`RefreshLive`, same key)
+instead of spawning a second overlay, persisting the tuned tile into the Save
+entry. The hide is victim-anchored (`HideSingle` records the victim's own
+tile+graphic; `QueueSingleHides` is deaf to splat moves), so tuning X/Y/Z
+never reveals the original — only Restore does. Commit re-finds the live
+victim instance at the tuned tile+graphic (`ResolveVictim`, Z-preferring
+`FindDrawableAt`), since the Select snapshot can go stale while the GPU run
+takes minutes.
+
 ---
 
 ## 42. Repaint and MoGe Auto Queue (`RepaintGump`, `MogePlacerGump`)

@@ -136,6 +136,11 @@ namespace GUO.Game.Scenes
         /// keyed by its live splat key and carries facet/tile/graphic to
         /// re-find the victim. Saved gen_/moge_ placements re-arm their hide
         /// on boot the same way (the name carries the victim graphic).
+        /// Victim-anchored, never splat-anchored: moving the SPLAT (the
+        /// placer steppers re-place it) neither moves nor lifts the hide;
+        /// the victim stays hidden at its own tile until ClearSingleHide.
+        /// Preview overlays (moge:preview) never register a hide, so the
+        /// original stays visible under them by design.
         /// </summary>
         private sealed class SingleHide
         {
@@ -172,7 +177,10 @@ namespace GUO.Game.Scenes
         /// Records a single-victim hide (the Generate path calls this right
         /// after hiding the victim): re-asserted every frame by
         /// QueueSingleHides, so seasons, reapplies and re-streams keep it
-        /// hidden until ClearSingleHide.
+        /// hidden until ClearSingleHide. Callers must pass the LIVE victim
+        /// instance (re-found by tile+graphic at commit time, never a stale
+        /// Select snapshot): the record anchors to that instance's own
+        /// tile+graphic, and later moves of the splat do not touch it.
         /// </summary>
         internal void HideSingle(GameObjects.GameObject victim, string splatKey)
         {
@@ -305,7 +313,10 @@ namespace GUO.Game.Scenes
         /// AllowedToDraw on the same instance), streamed chunks re-hide by
         /// tile/graphic lookup, and saved gen_/moge_ placements re-arm their
         /// hide on boot. Stale entries drop their dead reference; entries
-        /// whose splat is gone restore and go away.
+        /// whose splat is gone restore and go away. Deliberately deaf to
+        /// splat moves: the hide follows the VICTIM's recorded tile, not
+        /// the splat's current tile, so tuning X/Y/Z never reveals the
+        /// original (only ClearSingleHide does).
         /// </summary>
         private void QueueSingleHides()
         {

@@ -395,12 +395,123 @@ namespace GUO.Game.UI.Gumps
             // the registered chain always carries the translated copy, never
             // the centered base (a PLY cannot carry the shift: the parser
             // recenters on bbox, so it is reapplied after every parse/load).
+            // Preview-only: it never hides the victim (no HideSingle call),
+            // so the original stays visible underneath by design. Runs only
+            // while nothing is committed (_liveKey == null); once Generate
+            // commits, the steppers move the live placement instead
+            // (RefreshLive) so a Z nudge cannot strand a second overlay
+            // beside the committed splat.
             RetranslatePreview();
             GameScene scene = Scene;
             if (scene == null || !scene.PlaceSplat(PreviewKey, _lastGenName, _tx, _ty, _tz, _scale, _yaw, _disc))
             {
                 Say("Preview failed.");
+                return;
             }
+
+            Say($"Preview {_lastGenName} at {_tx}, {_ty}, {_tz} (not committed; original visible).");
+        }
+
+        /// <summary>
+        /// Post-commit tuning: re-place the COMMITTED live splat in place
+        /// (same key updates in place) instead of spawning the preview
+        /// overlay, persist the tuned tile into the Save entry, and retire
+        /// any preview so exactly one object draws. The victim hide stays
+        /// anchored to the victim's own tile+graphic (HideSingle): moving
+        /// the splat off that tile does not reveal it, only Restore does.
+        /// </summary>
+        private void RefreshLive()
+        {
+            if (IsDisposed || !_hasTile || _lastGenName == null || _genBaseSet == null || _liveKey == null)
+            {
+                return;
+            }
+
+            RetranslatePreview();
+            GameScene scene = Scene;
+            if (scene == null || !scene.PlaceSplat(_liveKey, _lastGenName, _tx, _ty, _tz, _scale, _yaw, _disc, _targetGraphic))
+            {
+                Say("Move failed.");
+                return;
+            }
+
+            scene.RemoveSplat(PreviewKey);
+            foreach (PlacedEntry e in _placed)
+            {
+                if (e != null && e.Name == _lastGenName && e.At != null)
+                {
+                    e.At.X = _tx;
+                    e.At.Y = _ty;
+                    e.At.Z = _tz;
+                    e.At.Scale = _scale;
+                    e.At.Yaw = _yaw;
+                    e.At.DiscSize = _disc;
+                }
+            }
+
+            string victimNote = "";
+            if (_targetObj != null && !_targetObj.IsDestroyed
+                && (_targetObj.X != _tx || _targetObj.Y != _ty || _targetObj.Z != _tz))
+            {
+                victimNote = $" Victim 0x{_targetGraphic:X4} stays hidden at {_targetObj.X}, {_targetObj.Y}, {_targetObj.Z}.";
+            }
+
+            Say($"Moved {_lastGenName} to {_tx}, {_ty}, {_tz} (committed; 0x{_targetGraphic:X4} stays hidden).{victimNote} Save to keep.");
+        }
+
+        /// <summary>
+        /// The victim instance to hide at commit time. The Select snapshot
+        /// (_targetObj) can go stale while the GPU run takes minutes (chunk
+        /// re-stream replaces the instance), so prefer it only while it
+        /// still names the tuned tile+graphic; otherwise re-find the live
+        /// drawable at (_tx, _ty, _tz) by graphic (season-swapped
+        /// statics/land match on their original too). Falls back to the
+        /// snapshot when it is still alive, else null (placed, not hidden).
+        /// </summary>
+        private GameObject ResolveVictim()
+        {
+            if (_targetObj != null && !_targetObj.IsDestroyed && _targetObj.AllowedToDraw
+                && _targetObj.X == _tx && _targetObj.Y == _ty && _targetObj.Z == _tz
+                && _targetObj.Graphic == _targetGraphic)
+            {
+                return _targetObj;
+            }
+
+            try
+            {
+                for (GameObject o = World.Map.GetTile(_tx, _ty, false); o != null; o = o.TNext)
+                {
+                    if (o == null || o.IsDestroyed || !o.AllowedToDraw)
+                    {
+                        continue;
+                    }
+
+                    if (o.X != _tx || o.Y != _ty || o.Z != _tz)
+                    {
+                        continue;
+                    }
+
+                    if (o.Graphic == _targetGraphic)
+                    {
+                        return o;
+                    }
+
+                    if (o is Static s && s.OriginalGraphic == _targetGraphic)
+                    {
+                        return o;
+                    }
+
+                    if (o is Land l && l.OriginalGraphic == _targetGraphic)
+                    {
+                        return o;
+                    }
+                }
+            }
+            catch
+            {
+            }
+
+            return _targetObj != null && !_targetObj.IsDestroyed ? _targetObj : null;
         }
 
         /// <summary>
@@ -662,7 +773,16 @@ namespace GUO.Game.UI.Gumps
             }
             if (preview)
             {
-                RefreshPreview();
+                // Committed placements tune live (one object on screen);
+                // only the uncommitted state tunes the preview overlay.
+                if (_liveKey != null)
+                {
+                    RefreshLive();
+                }
+                else
+                {
+                    RefreshPreview();
+                }
             }
         }
 
@@ -839,10 +959,21 @@ namespace GUO.Game.UI.Gumps
                 return;
             }
 
-            if (_targetObj != null && !_targetObj.IsDestroyed)
+            // Retire any preview overlay so only the committed splat draws.
+            scene.RemoveSplat(PreviewKey);
+
+            // Bind the hide to the live victim instance, not the possibly
+            // stale Select snapshot (the GPU run takes minutes; chunk
+            // re-streams replace the instance). The hide anchors to the
+            // victim's own tile+graphic and survives later moves of the
+            // SPLAT; only Restore reveals it.
+            GameObject victim = ResolveVictim();
+            bool hidden = victim != null && !victim.IsDestroyed;
+            if (hidden)
             {
-                _targetObj.AllowedToDraw = false;
-                scene?.HideSingle(_targetObj, _liveKey);
+                victim.AllowedToDraw = false;
+                scene?.HideSingle(victim, _liveKey);
+                _targetObj = victim;
             }
 
             _placed.Add(new PlacedEntry
@@ -864,6 +995,22 @@ namespace GUO.Game.UI.Gumps
                 Lods = new List<byte[]> { ply },
             });
             string msg = $"{name} replaced 0x{_targetGraphic:X4} ({set.Gaussians.Length} gaussians)";
+            if (hidden)
+            {
+                if (_targetObj.X != _tx || _targetObj.Y != _ty || _targetObj.Z != _tz)
+                {
+                    msg += $" at {_tx}, {_ty}, {_tz}; victim hidden at {_targetObj.X}, {_targetObj.Y}, {_targetObj.Z}";
+                }
+                else
+                {
+                    msg += $" at {_tx}, {_ty}, {_tz} (committed, original hidden)";
+                }
+            }
+            else
+            {
+                msg += $" at {_tx}, {_ty}, {_tz} (committed, victim not found: nothing hidden)";
+            }
+
             Say(msg + ". Save to keep.");
             GameActions.Print(World, "MogePlacer: " + msg);
             // Single runs populate the graphic cache too, so a later Auto
@@ -1198,7 +1345,7 @@ namespace GUO.Game.UI.Gumps
                 GameObject victimObj = v.Obj;
                 if (victimObj == null || victimObj.IsDestroyed)
                 {
-                    victimObj = FindDrawableAt(v.X, v.Y, graphic);
+                    victimObj = FindDrawableAt(v.X, v.Y, v.Z, graphic);
                 }
                 else if (!victimObj.AllowedToDraw)
                 {
@@ -1279,15 +1426,27 @@ namespace GUO.Game.UI.Gumps
             UpdateLabels();
         }
 
-        private GameObject FindDrawableAt(int x, int y, ushort graphic)
+        private GameObject FindDrawableAt(int x, int y, int z, ushort graphic)
         {
+            GameObject fallback = null;
             try
             {
                 for (GameObject o = World.Map.GetTile(x, y, false); o != null; o = o.TNext)
                 {
                     if (o is Static s && !s.IsDestroyed && s.AllowedToDraw && s.Graphic == graphic)
                     {
-                        return s;
+                        // Same-graphic statics can stack at one tile at
+                        // different Z: prefer the victim's own level so the
+                        // hide binds the right instance, not its neighbour.
+                        if (s.Z == z)
+                        {
+                            return s;
+                        }
+
+                        if (fallback == null)
+                        {
+                            fallback = s;
+                        }
                     }
                 }
             }
@@ -1295,7 +1454,7 @@ namespace GUO.Game.UI.Gumps
             {
             }
 
-            return null;
+            return fallback;
         }
 
         /// <summary>
