@@ -285,6 +285,13 @@ written whole on every change; the editor's own, never exported to a shard.
 That export, into the **shard's** data folder and never the install, is
 `tools/world` (phase 3). Extend this section before emitting a new field.
 
+`tools/world` `import` writes a town built by `tools/mapgen_districts`
+(section 26) into a project with these same files and no new field: the
+town's land blocks moved to the target corner, each house's visible multi
+components as `statics` (hue `0x0000`), and one pin named after the town. A
+project it creates takes its `created` from the town's `world/project.json`
+and its `base` from the install (the town's `base` without one).
+
 ---
 
 ## 10. Editor bridge protocol (the live tier)
@@ -373,6 +380,26 @@ export in the same minute): a header `when_utc,who,op,level,result,args`,
 then one RFC 4180 row per row shown, newest first; `when_utc` is `YYYY-MM-DD HH:MM:SSZ`,
 `result` is `ran` or `refused: <error>`, `args` the entry's masked `args` as
 JSON, and a cell starting `=`, `+`, `-` or `@` gets a leading `'`.
+
+A backup (AD6, `admin_backup`; `src/Workspace/ShardBackups.cs`) is one
+folder under `<autoArchive.backupPath>/GUO/` (default `Backups/GUO`), next to
+ModernUO's own `Automatic` and `Archives`, which GUO never prunes. The folder
+holds a copy of the server's `Saves` and one manifest, `guo_backup.json`:
+
+| Field | Meaning |
+|---|---|
+| `name` | The folder's name: the snapshot's UTC time, `YYYY-MM-DD_HHMMSSZ`, then `_before-restore` for one taken just before a restore, then `_2`, `_3`, ... when that name is already taken. Nothing else is accepted as a name |
+| `at` | When it was taken, ISO 8601 UTC with milliseconds and a Z |
+| `reason` | `manual` (Back up now) or `before-restore` |
+| `editor` | The editor name that asked for it |
+| `files`, `bytes` | What was copied from `Saves` |
+
+The copy is made under `<name>.part` and renamed when whole, so a half copy
+is never listed; a folder without a readable manifest, or with a name the
+pattern refuses, is skipped. The manifest holds no paths and is never copied
+back into `Saves` on a restore. Keep (1 to 100, default 10) prunes only
+these folders, oldest first, and never the snapshot just taken or the one
+about to be restored.
 
 The World tab's Live layer reads these snapshots through the existing Shard
 dock connection. A successful `mobiles` reply replaces the visible snapshot:

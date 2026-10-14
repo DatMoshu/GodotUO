@@ -6,6 +6,8 @@ REM  install it, launch it, wait for logcat to say the login gump rendered,
 REM  pull a screenshot and the log into build\android, then stop the app.
 REM  Non-zero if the login gump never appears or the client dies.
 REM  Needs the UO data on the device first (python tools\android\run.py push).
+REM  --avd guo_phone runs it on GUO's own emulator instead: boots it, pushes
+REM  the data, uninstalls afterwards and stops it (tools\android\avd.py).
 REM ============================================================================
 call "%~dp0..\_shared\common.bat" || exit /b 1
 

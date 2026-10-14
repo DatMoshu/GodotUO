@@ -12,6 +12,8 @@ and a capture of the editor window to build/editor_smoke/<mode>/.
     python tools/editor_smoke/run.py --headless      # no window, no screenshot
     python tools/editor_smoke/run.py --reload        # also rebuild + hot-reload
     python tools/editor_smoke/run.py --art 0x0E75
+    python tools/editor_smoke/run.py --world-project DIR --look 0,X,Y
+                                                     # open that world project, check one block
 
 Or through the launcher:
 
@@ -186,6 +188,32 @@ def ultimalive_stale_checks(out: Path) -> list[str]:
     return failures
 
 
+def check_world_project(report: dict, project: Path, facet: int, x: int, y: int) -> list[str]:
+    """--world-project: the World tab opened that project, and the chunk at x, y holds its block's statics."""
+    shot = report.get("world_shot") or {}
+    failures = []
+    opened = shot.get("project")
+    if not opened or Path(opened).resolve() != project:
+        failures.append(f"the World tab opened {opened!r}, not {project}")
+    files = list((project / "blocks" / str(facet)).glob("*.json"))
+    if shot.get("project_blocks") != len(files):
+        failures.append(f"the editor sees {shot.get('project_blocks')} blocks on map{facet}, the project has {len(files)}")
+    block_file = project / "blocks" / str(facet) / f"{x // 8}_{y // 8}.json"
+    want = []
+    if block_file.exists():
+        block = json.loads(block_file.read_text(encoding="utf-8"))
+        want = sorted(f"0x{int(st['id'], 16):04X}@{x // 8 * 8 + st['x']},{y // 8 * 8 + st['y']},{st['z']}"
+                      for st in block["statics"])
+    else:
+        failures.append(f"{block_file} is not in the project: --look a cell the project edits")
+    got = sorted(st.split(" ")[0] for st in shot.get("centre_chunk_statics", []))
+    if got != want:
+        failures.append(f"the chunk at {x},{y} holds {len(got)} statics, the project's block {len(want)}")
+    print(f"[editor_smoke]   {'ok  ' if not failures else 'FAIL'} World project {project.name}: "
+          f"{shot.get('project_blocks')} blocks open, chunk {x // 8},{y // 8} shows {len(got)} of its {len(want)} statics")
+    return failures
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--headless", action="store_true", help="no window (the default; kept for old command lines)")
@@ -201,7 +229,23 @@ def main() -> int:
     ap.add_argument("--require-native", action="store_true",
                     help="fail when a check that needs a real external program was skipped")
     ap.add_argument("--header-only", action="store_true", help="check the toolbar at three window widths without running unrelated editor checks")
+    ap.add_argument("--world-project", type=Path,
+                    help="open this world project (UO_WORLD_PROJECT) in the World tab and check it there; needs --look")
+    ap.add_argument("--look", help="FACET,X,Y: the cell the World tab shows for --world-project; its block must be one the project edits")
     args = ap.parse_args()
+    look = None
+    if args.world_project or args.look:
+        if not (args.world_project and args.look):
+            ap.error("--world-project and --look go together")
+        try:
+            look = tuple(int(v) for v in args.look.split(","))
+            assert len(look) == 3
+        except (ValueError, AssertionError):
+            ap.error("--look takes FACET,X,Y")
+        if not (args.world_project / "project.json").exists():
+            ap.error(f"{args.world_project} is not a world project (no project.json)")
+        if args.reload or args.header_only:
+            ap.error("--world-project cannot be combined with --reload or --header-only")
     if args.header_only and (not args.windowed or args.reload):
         ap.error("--header-only requires --windowed and cannot be combined with --reload")
 
@@ -210,7 +254,7 @@ def main() -> int:
     # Headless unless asked: a window takes the foreground from whoever is
     # working at this machine (docs/editor_plan.md; the owner asked for this).
     args.headless = not args.windowed
-    mode = ("headless" if args.headless else "windowed") + ("_reload" if args.reload else "")
+    mode = ("headless" if args.headless else "windowed") + ("_reload" if args.reload else "") + ("_world_project" if look else "")
     out = (args.out or cfg.build / "editor_smoke" / mode).resolve()
 
     # Old markers from an earlier run would make the addon think it is past a
@@ -236,6 +280,11 @@ def main() -> int:
         cmd += ["--guo-editor-multi-dump", args.multi_dump]
     if args.reload:
         cmd.append("--guo-editor-smoke-reload")
+    env = build_child_env()
+    if look:
+        # The World tab opens UO_WORLD_PROJECT when it boots, as it does for a user.
+        env = {**env, "UO_WORLD_PROJECT": str(args.world_project.resolve())}
+        cmd += ["--guo-editor-world-shot", f"{look[0]},{look[1]},{look[2]},640,480"]
 
     log_path = out / "editor.log"
     print(f"[editor_smoke] {mode}: {' '.join(cmd)}")
@@ -244,7 +293,7 @@ def main() -> int:
     try:
         with log_path.open("w", encoding="utf-8", errors="replace") as log:
             proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT,
-                                    env=build_child_env(), **no_activate())
+                                    env=env, **no_activate())
             while proc.poll() is None:
                 if time.monotonic() - started > TIMEOUT_S:
                     proc.kill()
@@ -273,6 +322,8 @@ def main() -> int:
 
     report = json.loads(report_path.read_text(encoding="utf-8"))
     failures = list(report.get("failures", []))
+    if look:
+        failures += check_world_project(report, args.world_project.resolve(), *look)
 
     if args.reload:
         log = log_path.read_text(encoding="utf-8", errors="replace")

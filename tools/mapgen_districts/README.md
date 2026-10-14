@@ -39,6 +39,12 @@ A town is a 72x72 district:
 `stone_borough`. `plan.json` (`guo.mapgen.town/1`) is one town fully spelled out. Both are in
 `docs/data_formats.md` §26.
 
+## One town into a world project
+
+`python tools\world\run.py import --town DIR --at X,Y` lays a town built with `town` on a world
+project's map as ordinary edits (its blocks, its houses as statics, a pin), so the editor shows it with
+no shard. See `tools/world/README.md`.
+
 ## The map build
 
 **build** runs the generator twice.
