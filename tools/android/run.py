@@ -8,7 +8,11 @@ r"""Build, install, run and smoke-test GUO on an Android device.
                                       gump, pull a screenshot and a log
 
     python tools\android\run.py <doctor|templates|keystore|settings|preset|
-                                 export|install|run|logcat|push|push-stage|smoke> [...]
+                                 export|install|run|logcat|push|push-stage|smoke|avd> [...]
+
+`smoke --avd guo_phone` runs the smoke on GUO's own emulator instead of a
+device: boots it headless (see avd.py), exports for x86_64, puts the UO data
+on it, smokes, uninstalls the app and stops the emulator it started.
 
 What Godot needs to export a .NET project for Android, and where each part
 comes from, is in ADR-0017 and README.md next to this file. In short: a
@@ -42,12 +46,15 @@ import subprocess
 import sys
 import time
 import zipfile
+from dataclasses import replace
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from guo.config import Config, godot_config_dir, godot_data_dir, load_config  # noqa: E402
 from guo.datasources import WIZARD_EXIT, resolve_config  # noqa: E402
+
+import avd as avds  # noqa: E402  (tools/android/avd.py, next to this file)
 
 HERE = Path(__file__).resolve().parent
 TEMPLATE = HERE / "export_presets.template.cfg"
@@ -889,15 +896,18 @@ def push_stage(p: Paths, stage: Path, reverse: int | None) -> int:
     return 0
 
 
-def smoke(p: Paths, timeout: int, skip_export: bool, sound: bool = False) -> int:
-    apk = p.out_dir / "GUO-smoke.apk"
+def smoke(p: Paths, timeout: int, skip_export: bool, sound: bool = False, abi: str = "arm64",
+          emulator: bool = False) -> int:
+    apk = p.out_dir / ("GUO-smoke-x86_64.apk" if abi == "x86_64" else "GUO-smoke.apk")
     if not skip_export:
         # The smoke build says on the log when the login gump is drawn, and
         # stays up so a screenshot can be taken of it.
-        if export(p, "--login-probe-stay", apk, sound) != 0:
+        if export(p, "--login-probe-stay", apk, sound, abi=abi) != 0:
             return 1
     if install(p, apk) != 0:
         say("install FAILED")
+        return 1
+    if emulator and emulator_data(p) != 0:
         return 1
 
     adb = adb_cmd(p)
@@ -943,6 +953,93 @@ def smoke(p: Paths, timeout: int, skip_export: bool, sound: bool = False) -> int
     say("FAILED: " + ("the client reported a failure or died" if verdict is False
                       else f"no '{LOGIN_OK}' within {timeout}s") + f"; log {log_file}, screenshot {shot}")
     return 1
+
+
+def emulator_data(p: Paths) -> int:
+    """Put the UO data on an emulator, readable by the app.
+
+    The data folder is the app's own, so an uninstall removes it and each run
+    after one pushes again (--sync, about a minute on a local emulator). Files
+    adb pushes there belong to the shell user, and the app reports them
+    missing; on a google_apis image `adb root` lets them be handed to the
+    app's uid (README, "The emulator"). adb root restarts adbd on this
+    emulator only.
+    """
+    adb = adb_cmd(p)
+    dst = p.cfg.android_client_data
+    listing = subprocess.run(adb + ["shell", "ls", dst], capture_output=True, text=True).stdout
+    have = "tiledata.mul" in listing.lower()
+    if not have:
+        code = push_data(p)
+        if code != 0:
+            return code
+    if run(adb + ["root"], stdout=subprocess.DEVNULL).returncode != 0:
+        say("FAILED: adb root (a google_apis image is needed to hand the data to the app)")
+        return 1
+    subprocess.run(adb + ["wait-for-device"])
+    uid = subprocess.run(adb + ["shell", "stat", "-c", "%u", f"/data/data/{p.cfg.android_package}"],
+                         capture_output=True, text=True).stdout.strip()
+    if not uid.isdigit():
+        say(f"FAILED: could not read the app's uid ({uid!r})")
+        return 1
+    # The app's folder and everything in it: the app's uid, group
+    # ext_data_rw, as Android makes it for the app itself.
+    folder = emulator_media_path(app_folder(dst, p.cfg.android_package))
+    if run(adb + ["shell", "chown", "-R", f"{uid}:{EXT_DATA_RW_GID}", folder]).returncode != 0:
+        say(f"FAILED: chown {folder}")
+        return 1
+    say(f"UO data on the emulator under {dst}, owned by the app (uid {uid})")
+    return 0
+
+
+EXT_DATA_RW_GID = 1078  # AID_EXT_DATA_RW, the group of every app's Android/data folder
+
+
+def app_folder(data_path: str, package: str) -> str:
+    """The app's own Android/data/<package> folder if the data lives under it, else the data folder."""
+    marker = f"/Android/data/{package}"
+    i = data_path.find(marker)
+    return data_path[:i + len(marker)] if i >= 0 else data_path
+
+
+def emulator_media_path(sdcard_path: str) -> str:
+    """/sdcard/Android/data/<pkg>/... as the root user sees it underneath FUSE."""
+    for prefix in ("/sdcard/", "/storage/emulated/0/"):
+        if sdcard_path.startswith(prefix):
+            return "/data/media/0/" + sdcard_path[len(prefix):]
+    return sdcard_path
+
+
+def uninstall(p: Paths) -> int:
+    return run(adb_cmd(p) + ["uninstall", p.cfg.android_package], stdout=subprocess.DEVNULL).returncode
+
+
+def smoke_on_avd(p: Paths, name: str, timeout: int, skip_export: bool, sound: bool) -> int:
+    """The smoke on one of GUO's own AVDs, addressed by its serial and nothing else.
+
+    Boots the AVD if it is down (only with enough free memory), runs the
+    smoke for x86_64, uninstalls the app, and stops the emulator if this run
+    started it. UO_ANDROID_DEVICE is overridden for the run, so a physical
+    device named in config.local.bat is never touched.
+    """
+    target = avds.find(name)
+    if not p.adb:
+        sys.exit("[android] adb not found: install Android SDK platform-tools (see doctor)")
+    proc = avds.start(p.sdk, Path(p.adb), target, p.out_dir / f"emulator_{target.name}.log")
+    p.cfg = replace(p.cfg, android_device=target.serial)
+    code = 1
+    try:
+        code = smoke(p, timeout, skip_export, sound, abi="x86_64", emulator=True)
+    finally:
+        if avds.adb_state(Path(p.adb), target.serial) == "device":
+            if uninstall(p) != 0:
+                say("uninstall FAILED")
+                code = code or 1
+            else:
+                say(f"uninstalled {p.cfg.android_package} from {target.serial}")
+        if proc is not None and not avds.stop(Path(p.adb), target, proc):
+            code = code or 1
+    return code
 
 
 def screencap(p: Paths, path: Path, surface_id: str = "") -> bool:
@@ -1139,6 +1236,11 @@ def main(argv: list[str] | None = None) -> int:
     sm.add_argument("--timeout", type=int, default=240, help="seconds to wait for the login gump")
     sm.add_argument("--no-export", action="store_true", help="reuse build\\android\\GUO-smoke.apk")
     sm.add_argument("--sound", action="store_true", help="audible build (default bakes --silent)")
+    sm.add_argument("--avd", default=None, metavar="NAME",
+                    help="run on GUO's own emulator (e.g. guo_phone): boot, x86_64 build, uninstall, stop")
+    av = sub.add_parser("avd", help="GUO's own emulators: list, create, start, stop (see avd.py)")
+    av.add_argument("action", choices=("list", "create", "start", "stop"))
+    av.add_argument("name", nargs="?", default="guo_phone")
     dp = sub.add_parser("dual_probe", help="export with --dual-probe, run, wait for the verdict, photograph both displays")
     dp.add_argument("--timeout", type=int, default=300, help="seconds to wait for the verdict")
     dp.add_argument("--no-export", action="store_true", help="reuse build\\android\\GUO-dual.apk")
@@ -1180,7 +1282,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "push-stage":
         return push_stage(p, args.stage, args.reverse)
     if args.command == "smoke":
+        if args.avd:
+            return smoke_on_avd(p, args.avd, args.timeout, args.no_export, args.sound)
         return smoke(p, args.timeout, args.no_export, args.sound)
+    if args.command == "avd":
+        return avd_command(p, args.action, args.name)
     if args.command == "dual_probe":
         return dual_probe(p, args.timeout, args.no_export, args.args, args.stay)
     if args.command == "portrait_probe":
@@ -1190,6 +1296,24 @@ def main(argv: list[str] | None = None) -> int:
             print("  " + str(d))
         return 0
     return 2
+
+
+def avd_command(p: Paths, action: str, name: str) -> int:
+    if action == "list":
+        have = set(avds.existing(p.sdk))
+        for a in avds.avds().values():
+            print(f"  {a.name:<18} {a.serial:<15} {a.sdk_device:<18} {'created' if a.name in have else 'missing'}")
+        return 0
+    target = avds.find(name)
+    if action == "create":
+        return avds.create(p.sdk, target)
+    if not p.adb:
+        sys.exit("[android] adb not found: install Android SDK platform-tools (see doctor)")
+    if action == "start":
+        # Detached on purpose: `avd stop` (or `adb -s <serial> emu kill`) ends it.
+        avds.start(p.sdk, Path(p.adb), target, p.out_dir / f"emulator_{target.name}.log")
+        return 0
+    return 0 if avds.stop(Path(p.adb), target) else 1
 
 
 if __name__ == "__main__":

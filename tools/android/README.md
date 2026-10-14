@@ -321,6 +321,22 @@ Thor on 2026-09-28:
 
 ## The emulator
 
+**The smoke on GUO's own emulator:** `launchers\android\smoke.bat --avd guo_phone`.
+`avd.py` boots the AVD headless on the port `device_profiles.json` gives it
+(guo_phone: `emulator-5556`), only with 10 GB of RAM free, and checks `emu avd
+name` before it touches anything; the run addresses that serial alone, whatever
+`UO_ANDROID_DEVICE` says, so attached handhelds are never used. It exports for
+x86_64 (`GUO-smoke-x86_64.apk`), installs, pushes the UO data if it is not there
+and hands it to the app (`adb root`, `chown -R <app uid>:ext_data_rw` on the
+app's `Android/data` folder), runs the smoke, uninstalls the app (which removes
+the data, so the next run pushes again) and stops the emulator if it started it.
+`python tools\android\run.py avd list|create|start|stop [NAME]` does the parts
+by hand; `create` makes a missing AVD from the catalog's SDK device and image.
+Run on 2026-10-12, twice, exit 0 both times: the login gump at 424,960 in the
+1080x2400 portrait window, after a fresh push of 341 files (2.4 GB) on the
+second run. The portrait frame is not yet laid out well (the gump sits low and
+right of a black one-screen dock column); that is layout work, not the smoke's.
+
 `run.py export --abi x86_64` (or `both`) builds for the Android emulator,
 which runs x86_64 images. The default is `arm64`, for the devices. Tried on
 2026-09-28 with an Android 15 phone image (1080x2400) under WHPX, run
