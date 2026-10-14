@@ -124,6 +124,7 @@ namespace GUO.Renderer
         private bool _started;
         private Vector2 _worldOffset;
         private SamplerState _sampler = SamplerState.PointClamp;
+        private bool _hdSpriteSampler;
 
         // Reused by the quad path so a rotated or mirrored sprite does not
         // allocate four arrays per draw.
@@ -455,6 +456,8 @@ namespace GUO.Renderer
             _currentMaterial = _nextMaterial = _material;
             _sampler = SamplerState.PointClamp;
 
+            _hdSpriteSampler = false;
+
             Cut();
         }
 
@@ -655,6 +658,7 @@ void fragment() {
         public void DrawLandArrayMesh(ArrayMesh mesh, Texture2DArray pages)
         {
             EnsureStarted();
+            SelectSpriteSampler(null);
             _landArrayMaterial.SetShaderParameter("land_pages", pages);
             EnsureMaterial(_landArrayMaterial);
             FlushRun();
@@ -672,6 +676,7 @@ void fragment() {
         public void DrawSplatMesh(ArrayMesh mesh)
         {
             EnsureStarted();
+            SelectSpriteSampler(null);
             EnsureMaterial(_splatMaterial);
             FlushRun();
             Commands++;
@@ -687,6 +692,7 @@ void fragment() {
         public void DrawLayerMesh(ArrayMesh mesh, Texture2D texture)
         {
             EnsureStarted();
+            SelectSpriteSampler(null);
             EnsureMaterial(_layerMaterial);
             FlushRun();
             Commands++;
@@ -701,6 +707,7 @@ void fragment() {
         public void DrawLandMesh(ArrayMesh mesh, Texture2D texture)
         {
             EnsureStarted();
+            SelectSpriteSampler(null);
             EnsureMaterial(_meshMaterial);
             FlushRun();
             Commands++;
@@ -723,6 +730,7 @@ void fragment() {
         public int DrawMeshLayer(MeshLayer layer)
         {
             EnsureStarted();
+            SelectSpriteSampler(null);
 
             if (layer == null || layer.VisibleSpriteCount == 0)
             {
@@ -741,11 +749,10 @@ void fragment() {
                     continue;
                 }
 
-                // PORT DEVIATION (GUO): Enhanced HD land runs draw Linear
-                // (mipmapped minification, the rule-7 exception in
-                // View.DrawStatic); native runs keep Nearest.
+                // PORT DEVIATION (GUO): HD land runs use the chosen HD
+                // filter; native runs keep Nearest.
                 bool wantHd = Arts.Art.IsHdTexture(run.Texture);
-                SamplerState want = wantHd ? SamplerState.LinearClamp : SamplerState.PointClamp;
+                SamplerState want = wantHd ? Arts.Art.HdSampler(run.Texture) : SamplerState.PointClamp;
                 if (_sampler != want)
                 {
                     _sampler = want;
@@ -820,10 +827,10 @@ void fragment() {
             FlushCover();
             ArrayMesh mesh = layer.GetSpriteMesh(index);
 
-            // PORT DEVIATION (GUO): Enhanced HD covering tile draws Linear;
+            // PORT DEVIATION (GUO): HD covering tiles use the chosen filter;
             // native keeps Nearest.
             bool isHdCover = Arts.Art.IsHdTexture(layer.Textures[index]);
-            SamplerState wantCover = isHdCover ? SamplerState.LinearClamp : SamplerState.PointClamp;
+            SamplerState wantCover = isHdCover ? Arts.Art.HdSampler(layer.Textures[index]) : SamplerState.PointClamp;
             bool samplerSwap = _sampler != wantCover;
             SamplerState keepSampler = _sampler;
             if (samplerSwap)
@@ -1079,9 +1086,27 @@ void fragment() {
         /// </summary>
         public void SetSampler(SamplerState sampler)
         {
+            if (TraceSamplerCalls) SamplerCalls++;
+            _hdSpriteSampler = false;
             _sampler = sampler ?? SamplerState.PointClamp;
 
             Cut();
+        }
+
+        // Diagnostic only: the existing perf dump pins the measurement window.
+        private static readonly bool TraceSamplerCalls = !string.IsNullOrWhiteSpace(System.Environment.GetEnvironmentVariable("GUO_PERF_DUMP"));
+        public static long SamplerCalls { get; private set; }
+
+        // HD-only runs keep their sampler until a native sprite or mesh arrives.
+        // This cuts only at filter changes, without changing submission order.
+        // Explicit upstream SetSampler barriers retain their original behavior.
+        private void SelectSpriteSampler(Texture2D texture)
+        {
+            bool hd = Configuration.ProfileManager.CurrentProfile?.EnhancedHD == true && Arts.Art.IsHdTexture(texture);
+            if (!hd && !_hdSpriteSampler) return;
+            SamplerState wanted = hd ? Arts.Art.HdSampler(texture) : SamplerState.PointClamp;
+            if (_sampler != wanted) SetSampler(wanted);
+            _hdSpriteSampler = hd;
         }
 
         /// <summary>Scoped UI transform; clip children inherit it. Pop with ClipEnd.</summary>
@@ -1863,6 +1888,7 @@ void fragment() {
                 return;
             }
 
+            SelectSpriteSampler(texture);
             EnsureMaterial(_currentMaterial);
 
             int textureWidth = WidthOf(texture);
@@ -1984,6 +2010,7 @@ void fragment() {
                 return;
             }
 
+            SelectSpriteSampler(texture);
             EnsureMaterial(_currentMaterial);
 
             Color modulate = Encode(color);

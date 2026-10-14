@@ -103,3 +103,37 @@ its source.
 Not yet: the tour segments recorded in a window, a scene
 pack reviewed by a vision model (results go to the owner before anything is
 shared).
+
+## Amendment: optional Enhanced HD client mode (2026-10-13)
+
+The owner authorised Enhanced HD as an L1 client option during the PR 41
+restructure. This extends this ADR beyond the editor overlays above. It keeps
+ADR-0001's presenter, world ordering, native geometry and pixel picking.
+
+- `Profile.EnhancedHD` defaults to false on every platform and existing
+  profiles. Both Options interfaces expose **Enhanced HD (installed packs)**
+  and **HD filter**. Applying the toggle dirties world chunks; native cursor,
+  inventory, thumbnails, shadows and hit tests retain archive art.
+- Only verified `hd-art` components of the active content pack supply HD
+  PNGs. There is no `overrides/HD/Art` resolver or runtime authoring. Install
+  and activate the pack in the Store, restart, then enable the option.
+  Missing graphics or a native canvas mismatch use native art. The latter
+  logs the affected graphic once. Native-only installations need no service.
+- PNG dimensions must equal `native_w * scale` by `native_h * scale`, with
+  integral dimensions at most 8192 each and the shared 64-million-pixel
+  image budget. Static and land namespaces are separate. The native canvas
+  must also match the installed client graphic. Textures preserve RGBA8
+  detail, generate mipmaps once and remain owned by the mounted pack.
+- `Profile.HdFilter` defaults to `Auto`: Point when HD scale equals camera
+  zoom, PointMipmaps otherwise. Explicit `Point`, `PointMipmaps` and `Smooth`
+  select nearest, nearest with mipmaps and linear with mipmaps respectively.
+  These choices apply only to HD textures. Native pixel art stays nearest.
+- World sprites and chunk meshes draw HD into the original native canvas;
+  stretched land keeps its native texmap. HD never changes traversal,
+  occlusion depth, tiledata or target selection.
+
+Validation: `client.hd.packs` exercises the installed synthetic-pack probe
+through client MCP; the same probe is in the full smoke. It checks default
+and persistence, verified binding, canvas limits, raw RGBA/mipmaps and all
+four filter selections. Private-shard pixel parity and Britain-bank timings
+are recorded with the PR evidence, not inferred from the build passing.

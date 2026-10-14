@@ -150,6 +150,8 @@ internal static class PerfDump
 #if !PERF_DUMP_CUO
     private static int _uploadsAtFade, _bumpsAtFade, _staticOntoAtFade;
     private static long _framesAtFade;
+    private static long _samplersAtFade;
+    private static ulong _processFramesAtFade;
 #endif
 
     private static int Fading() =>
@@ -174,6 +176,8 @@ internal static class PerfDump
             _bumpsAtFade = GUO.Renderer.LandPages.Bumps;
             _staticOntoAtFade = GUO.Renderer.Arts.Art.StaticOntoLandLayer;
             _framesAtFade = GUO.Renderer.UltimaBatcher2D.FramesBegun;
+            _samplersAtFade = GUO.Renderer.UltimaBatcher2D.SamplerCalls;
+            _processFramesAtFade = Godot.Engine.GetProcessFrames();
 #endif
             Console.WriteLine($"[perf_dump] {ClientName}: {fading} fading after {_fadeWaitMs} ms more; averaging");
             ClientRoot.Game.EnqueueAction(2000, Write);
@@ -239,6 +243,10 @@ internal static class PerfDump
             r["cover_queued"] = GUO.Game.Scenes.RenderLists.LastCover.Queued;
             r["land_bump_copies"] = GUO.Renderer.LandPages.Bumps - _bumpsAtFade;
             r["static_sprites_onto_land_layers"] = GUO.Renderer.Arts.Art.StaticOntoLandLayer - _staticOntoAtFade;
+            long samplerCalls = GUO.Renderer.UltimaBatcher2D.SamplerCalls - _samplersAtFade;
+            ulong processFrames = Godot.Engine.GetProcessFrames() - _processFramesAtFade;
+            r["sampler_calls"] = samplerCalls;
+            r["sampler_calls_per_process_frame"] = processFrames > 0 ? Math.Round((double)samplerCalls / processFrames, 3) : 0.0;
 #endif
             string dir = Path.Combine(_args[0], _args[1]);
             Directory.CreateDirectory(dir);

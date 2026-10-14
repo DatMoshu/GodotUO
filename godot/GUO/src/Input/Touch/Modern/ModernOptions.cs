@@ -140,10 +140,12 @@ internal sealed partial class ModernOptions : ModernGump
             {
                 p.EnhancedHD = v;
                 Client.Game.UO.Arts.RefreshAllHD();
-                Client.Game.UO.FileManager.Arts.RescanOverrides();
                 Game.Managers.ThemeManager.Reapply(Client.Game.UO.World);
             }
         });
+
+        Choice("Video", "HD filtering", new[] { "Auto", "Point", "Point mipmaps", "Smooth" },
+            p => (int)p.HdFilter, (p, v) => p.HdFilter = (HdFilterMode)Math.Clamp(v, 0, 3));
 
         // Tooltip, Fonts and Speech: the classic pages' boxes, sliders and
         // colours (ModernHuePicker), with their ranges. Font pickers stay in

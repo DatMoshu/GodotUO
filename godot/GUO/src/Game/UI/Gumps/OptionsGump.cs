@@ -195,6 +195,7 @@ namespace GUO.Game.UI.Gumps
         private Checkbox _use_old_status_gump, _statusGumpBarMutuallyExclusive, _windowBorderless, _enableDeathScreen, _enableBlackWhiteEffect, _altLights, _enableLight, _enableShadows, _enableShadowsStatics, _auraMouse, _runMouseInSeparateThread, _useColoredLights, _darkNights, _partyAura, _hideChatGradient, _animatedWaterEffect;
         private Checkbox _enhancedHD; // PORT DEVIATION (GUO): Enhanced HD repaint detail
         private Combobox _lightLevelType;
+        private Combobox _hdFilter; // PORT DEVIATION (GUO): optional HD pack sampling.
         private Checkbox _use_smooth_boat_movement;
         private HSliderBar _terrainShadowLevel;
 
@@ -2112,13 +2113,18 @@ namespace GUO.Game.UI.Gumps
                 _enhancedHD = AddCheckBox
                 (
                     null,
-                    "Enhanced HD (repaint detail)",
+                    "Enhanced HD (installed packs)",
                     _currentProfile.EnhancedHD,
                     startX,
                     startY
                 )
             );
 
+
+            section4.Add(AddLabel(null, "HD filtering", startX, startY));
+            section4.AddRight(_hdFilter = AddCombobox(null,
+                new[] { "Auto", "Point", "Point mipmaps", "Smooth" },
+                Math.Clamp((int)_currentProfile.HdFilter, 0, 3), startX, startY, 180));
 
             SettingsSection section5 = AddSettingsSection(box, "Shadows");
             section5.Y = section4.Bounds.Bottom + 40;
@@ -4157,6 +4163,7 @@ namespace GUO.Game.UI.Gumps
                     _partyAura.IsChecked = true;
                     _animatedWaterEffect.IsChecked = false;
                     _enhancedHD.IsChecked = videoDefaults.EnhancedHD; // PORT DEVIATION (GUO)
+                    _hdFilter.SelectedIndex = (int)videoDefaults.HdFilter;
                     _partyAuraColorPickerBox.Hue = 0x0044;
 
                     break;
@@ -4728,9 +4735,10 @@ namespace GUO.Game.UI.Gumps
             {
                 _currentProfile.EnhancedHD = _enhancedHD.IsChecked;
                 Client.Game.UO.Arts.RefreshAllHD();
-                Client.Game.UO.FileManager.Arts.RescanOverrides();
                 ThemeManager.Reapply(World);
             }
+
+            _currentProfile.HdFilter = (HdFilterMode)Math.Clamp(_hdFilter.SelectedIndex, 0, 3);
 
             _currentProfile.PartyAura = _partyAura.IsChecked;
             _currentProfile.PartyAuraHue = _partyAuraColorPickerBox.Hue;

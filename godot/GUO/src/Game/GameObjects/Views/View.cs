@@ -148,16 +148,13 @@ namespace GUO.Game.GameObjects
                 // PORT DEVIATION (GUO): Enhanced HD. The HD PNG draws into
                 // the native dest footprint at scale 1/k (native/hd), so
                 // placement, picking and tiledata stay native.
-                // Rule-7 filtering exception: rule 7 keeps pixel art on
-                // Nearest, but an HD repaint is AI detail minified k:1, not
-                // pixel art; Nearest would subsample 1 texel per kxk block
-                // into aliased noise, while Linear over mipmaps folds the
-                // block down. Native keeps Nearest; HD items alone go Linear.
+                // Only pack HD textures use the user's HD filter choice.
+                // Native art stays nearest; Auto selects Point at 1:1
+                // texel display (scale == zoom), otherwise PointMipmaps.
                 if (themed == null && Client.Game.UO.Arts.TryGetHd(false, graphic, out Godot.Texture2D hdTex, out Rectangle hdUv, out _, out _))
                 {
                     var hdPos = new Vector2(x, y);
                     var hdScale = new Vector2((float)uv.Width / hdUv.Width, (float)uv.Height / hdUv.Height);
-                    batcher.SetSampler(SamplerState.LinearClamp);
                     if (isWet)
                     {
                         batcher.Draw(hdTex, hdPos, hdUv, hue, 0f, Vector2.Zero, hdScale, SpriteEffects.None, depth + 0.5f);
@@ -171,7 +168,6 @@ namespace GUO.Game.GameObjects
                         batcher.Draw(hdTex, hdPos, hdUv, hue, 0f, Vector2.Zero, hdScale, SpriteEffects.None, depth + 0.5f);
                     }
 
-                    batcher.SetSampler(null);
                     return;
                 }
 
@@ -279,10 +275,9 @@ namespace GUO.Game.GameObjects
 
             // PORT DEVIATION (GUO): Enhanced HD, same rule-7 exception as
             // DrawStatic: native footprint, 1/k scale is implicit in the
-            // dest rect (native size, HD source), Linear for HD only.
+            // dest rect (native size, HD source), with the chosen HD filter.
             if (themed == null && Client.Game.UO.Arts.TryGetHd(false, graphic, out Godot.Texture2D hdTex, out Rectangle hdUv, out _, out _))
             {
-                batcher.SetSampler(SamplerState.LinearClamp);
                 batcher.Draw(
                     hdTex,
                     new Rectangle(x - w, y - h, uv.Width, uv.Height),
@@ -293,7 +288,6 @@ namespace GUO.Game.GameObjects
                     SpriteEffects.None,
                     depth + 0.5f
                 );
-                batcher.SetSampler(null);
                 return;
             }
 
@@ -372,15 +366,15 @@ namespace GUO.Game.GameObjects
                 Vector2 pos = new Vector2(x, y);
 
                 // PORT DEVIATION (GUO): Enhanced HD, same rule-7 exception
-                // as DrawStatic: native footprint + 1/k scale, Linear for
-                // HD only (shadow included); native keeps Nearest.
+                // as DrawStatic: native footprint + 1/k scale, chosen HD
+                // filter for pack pixels; native shadow keeps Nearest.
                 if (themed == null && Client.Game.UO.Arts.TryGetHd(false, graphic, out Godot.Texture2D hdTex, out Rectangle hdUv, out _, out _))
                 {
                     var hdScale = new Vector2((float)artInfo.UV.Width / hdUv.Width, (float)artInfo.UV.Height / hdUv.Height);
-                    batcher.SetSampler(SamplerState.LinearClamp);
                     if (shadow)
                     {
-                        batcher.DrawShadow(hdTex, pos, hdUv, false, depth + 0.25f);
+                        // The native silhouette keeps its native footprint and nearest sampling.
+                        batcher.DrawShadow(artInfo.Texture, pos, artInfo.UV, false, depth + 0.25f);
                     }
 
                     if (isWet)
@@ -396,7 +390,6 @@ namespace GUO.Game.GameObjects
                         batcher.Draw(hdTex, pos, hdUv, hue, 0f, Vector2.Zero, hdScale, SpriteEffects.None, depth + 0.5f);
                     }
 
-                    batcher.SetSampler(null);
                     return;
                 }
 

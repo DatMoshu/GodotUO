@@ -459,8 +459,7 @@ namespace GUO.Game.Map
                     int idx = land.MeshSpriteIndex;
                     land.MeshSpriteIndex = idx;
                     // PORT DEVIATION (GUO): Enhanced HD flat land bake.
-                    // Rule-7 filtering exception (see View.DrawStatic): HD
-                    // is minified detail with mipmaps, drawn Linear; the
+                    // HD uses the user's chosen filter; the
                     // mesh item filter is switched per HD run in
                     // UltimaBatcher2D.DrawMeshLayer so native keeps Nearest.
                     if (Client.Game.UO.Arts.TryGetHd(true, land.Graphic, out Texture2D hdTex, out Rectangle hdUv, out _, out _)

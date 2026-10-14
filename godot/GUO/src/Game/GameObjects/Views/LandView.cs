@@ -125,15 +125,13 @@ namespace GUO.Game.GameObjects
 
                 {
                     // PORT DEVIATION (GUO): Enhanced HD flat land. Native
-                    // dest footprint at 1/k, Linear for HD only.
-                    // Rule-7 filtering exception: as in View.DrawStatic, HD
-                    // is minified AI detail (mipmaps + Linear), not pixel
-                    // art; native keeps Nearest.
+                    // dest footprint at 1/k, chosen filter for HD only.
+                    // Native art keeps Nearest; Auto uses nearest mipmaps
+                    // unless HD scale equals the current zoom.
                     if (ThemedVariant == null && Client.Game.UO.Arts.TryGetHd(true, Graphic, out Godot.Texture2D hdTex, out Rectangle hdUv, out _, out _))
                     {
                         var pos = new Vector2(posX, posY);
                         var hdScale = new Vector2((float)uv.Width / hdUv.Width, (float)uv.Height / hdUv.Height);
-                        batcher.SetSampler(SamplerState.LinearClamp);
                         if (ProfileManager.CurrentProfile.AnimatedWaterEffect && TileData.IsWet)
                         {
                             batcher.Draw(hdTex, pos, hdUv, hueVec, 0f, Vector2.Zero, hdScale, SpriteEffects.None, depth + 0.5f);
@@ -147,7 +145,6 @@ namespace GUO.Game.GameObjects
                             batcher.Draw(hdTex, pos, hdUv, hueVec, 0f, Vector2.Zero, hdScale, SpriteEffects.None, depth + 0.5f);
                         }
 
-                        batcher.SetSampler(null);
                         return true;
                     }
 

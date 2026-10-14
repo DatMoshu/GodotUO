@@ -45,6 +45,8 @@ namespace GUO.Configuration
         public static ProfileJsonContext DefaultToUse { get; } = new ProfileJsonContext(_jsonOptions.Value);
     }
 
+    internal enum HdFilterMode { Auto, Point, PointMipmaps, Smooth }
+
     internal sealed class GlobalProfile
     {
         public int MaxJournalFiles { get; set; } = 100;
@@ -391,10 +393,11 @@ namespace GUO.Configuration
         public bool UseXBR { get; set; } = true;
 
         // PORT DEVIATION (GUO): Enhanced HD repaint detail. When true the
-        // world draw uses the repaint gump's pre-downscale HD PNGs
-        // (overrides/HD/Art) instead of native art; off is byte-identical
+        // world draw uses verified hd-art pack PNGs
+        // instead of native art; off is byte-identical
         // native. Default off.
         public bool EnhancedHD { get; set; } = false;
+        public HdFilterMode HdFilter { get; set; } = HdFilterMode.Auto;
 
         public bool HideChatGradient { get; set; } = false;
 

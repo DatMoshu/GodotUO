@@ -25,8 +25,10 @@ internal sealed class StoreRuntimeContent : IDisposable
     private readonly Dictionary<(int, int, int), AnimationsLoader.FrameInfo[]> _animations = new();
     private readonly Dictionary<int, AnimationGroupsType> _animationTypes = new();
     private readonly StoreMapOverlay _maps = new();
+    private readonly Dictionary<(bool Land, int Graphic), StoreHdAsset> _hd = new();
+    public bool TryHd(bool land, int graphic, out StoreHdAsset asset) => _hd.TryGetValue((land, graphic), out asset);
     public void ApplyMap(MapLoader maps, int map) => _maps.Apply(maps, map);
-    public void Dispose() => _maps.Dispose();
+    public void Dispose() { foreach (var asset in _hd.Values) asset.Dispose(); _hd.Clear(); _maps.Dispose(); }
     // GUO addition (ADR-0034): the extracted art set answers after every pack, and is read a page at a time.
     private GUO.Assets.Extracted.ExtractedArtSource _extracted;
     public bool TryImage(string type, int id, out Pixels pixels) =>
@@ -103,10 +105,19 @@ internal sealed class StoreRuntimeContent : IDisposable
             foreach (var component in pack.Manifest.Components ?? new())
             {
                 if (component.Target == "server" || component.Type == "script") continue; // Scripts have their own explicit approval/enable/run lifecycle.
-                StorePack.Require(component.Type is "static" or "land" or "texmap" or "gump" or "hue" or "translation" or "sound" or "music" or "multi" or "tiledata" or "light" or "animation" or "wearable" or "font" or "map", "No client consumer for " + component.Type);
+                StorePack.Require(component.Type is "static" or "land" or "texmap" or "gump" or "hue" or "translation" or "sound" or "music" or "multi" or "tiledata" or "light" or "animation" or "wearable" or "font" or "map" or "hd-art", "No client consumer for " + component.Type);
                 byte[] data = pack.ReadPayload(component.Entry);
                 payloadTotal += data.Length;
                 StorePack.Require(payloadTotal <= 256 * 1024 * 1024, "Content payload memory budget exceeded");
+                if (component.Type == "hd-art")
+                {
+                    bool land = component.Asset == "land";
+                    StorePack.Require(files == null || component.Graphic.Value + (land ? 0 : 0x4000) < files.Arts.File.Entries.Length,
+                        "HD binding exceeds client renderer capacity");
+                    var hd = StoreHdAsset.Decode(component, data, ref pixelsTotal);
+                    if (!result._hd.TryAdd((land, component.Graphic.Value), hd)) { hd.Dispose(); throw new InvalidDataException("Conflicting HD graphic binding"); }
+                    continue;
+                }
                 if (component.Type == "wearable") { wearables.Add((component, data)); continue; }
                 if (component.Type == "translation")
                 {

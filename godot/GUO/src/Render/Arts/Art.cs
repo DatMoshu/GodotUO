@@ -31,8 +31,8 @@ namespace GUO.Renderer.Arts
         private readonly HuesLoader _huesLoader;
 
         // PORT DEVIATION (GUO): Enhanced HD repaint detail. Standalone
-        // mipmapped textures from overrides/HD/Art PNGs (never the atlas,
-        // never picking/cursor/containers). LRU-capped; the toggle gates
+        // mipmapped textures from verified hd-art pack components (never the atlas,
+        // never picking/cursor/containers). Pack-memory-bounded; the toggle gates
         // the resolver so off stays byte-identical native.
         private sealed class HdEntry
         {
@@ -47,7 +47,6 @@ namespace GUO.Renderer.Arts
         private readonly System.Collections.Generic.Dictionary<(bool IsLand, ushort Graphic), HdEntry> _hdCache =
             new System.Collections.Generic.Dictionary<(bool, ushort), HdEntry>();
         private int _hdTick;
-        private const int HdCacheCap = 256;
 
         // PORT DEVIATION (GUO): which live textures are HD (for the
         // batcher's mesh runs, which share canvas items across textures).
@@ -123,6 +122,7 @@ namespace GUO.Renderer.Arts
                 try
                 {
                     _hdTextures.Remove(kv.Value.Texture);
+                    _hdScales.Remove(kv.Value.Texture);
                 }
                 catch
                 {
@@ -130,6 +130,7 @@ namespace GUO.Renderer.Arts
             }
 
             _hdCache.Clear();
+            _hdBad.Clear();
         }
 
         private void DropHd(bool isLand, ushort graphic)
@@ -140,6 +141,7 @@ namespace GUO.Renderer.Arts
                 try
                 {
                     _hdTextures.Remove(entry.Texture);
+                    _hdScales.Remove(entry.Texture);
                 }
                 catch
                 {
@@ -155,196 +157,52 @@ namespace GUO.Renderer.Arts
         /// Cursor, containers, thumbnails and picking stay native via
         /// GetArt/GetLand. Returns the HD texture plus its full-rect UV and
         /// the native footprint to draw it into. False means draw native.
-        /// Corrupt or mismatched PNGs fall through with a warning; a PNG
-        /// without a manifest row still loads.
+        /// Only verified pack payloads are accepted; a different native canvas falls back.
         /// </summary>
         internal bool TryGetHd(bool isLand, ushort graphic, out Texture2D texture, out Rectangle hdUv, out int nativeW, out int nativeH)
         {
-            texture = null;
-            hdUv = default;
-            nativeW = 0;
-            nativeH = 0;
-
-            try
-            {
-                if (Configuration.ProfileManager.CurrentProfile?.EnhancedHD != true)
-                {
-                    return false;
-                }
-            }
-            catch
-            {
-                return false;
-            }
-
+            texture = null; hdUv = default; nativeW = nativeH = 0;
+            if (Configuration.ProfileManager.CurrentProfile?.EnhancedHD != true) return false;
             var key = (isLand, graphic);
-            if (_hdCache.TryGetValue(key, out HdEntry cached))
+            if (_hdBad.Contains(key)) return false;
+            if (_hdCache.TryGetValue(key, out var cached))
             {
-                cached.Tick = ++_hdTick;
-                texture = cached.Texture;
-                hdUv = new Rectangle(0, 0, cached.HdW, cached.HdH);
-                nativeW = cached.NativeW;
-                nativeH = cached.NativeH;
-                return texture != null;
-            }
-
-            if (!_artLoader.TryGetHdPath(isLand, graphic, out string path) || string.IsNullOrEmpty(path))
-            {
-                return false;
-            }
-
-            byte[] bytes;
-            try
-            {
-                bytes = System.IO.File.ReadAllBytes(path);
-            }
-            catch (Exception e)
-            {
-                Log.Warn($"HD {path} unreadable: {e.Message}");
-                return false;
-            }
-
-            Godot.Image image = new Godot.Image();
-            try
-            {
-                if (image.LoadPngFromBuffer(bytes) != Godot.Error.Ok)
-                {
-                    Log.Warn($"HD {path} is not a PNG; using native.");
-                    image.Dispose();
-                    return false;
-                }
-
-                if (image.GetFormat() != Godot.Image.Format.Rgba8)
-                {
-                    image.Convert(Godot.Image.Format.Rgba8);
-                }
-
-                int hdW = image.GetWidth();
-                int hdH = image.GetHeight();
-                if (hdW <= 0 || hdH <= 0)
-                {
-                    Log.Warn($"HD {path} is empty; using native.");
-                    image.Dispose();
-                    return false;
-                }
-
-                // Native footprint for validation and the draw size.
-                uint idx = isLand ? graphic : 0x4000u + graphic;
-                ArtInfo native;
-                try
-                {
-                    native = _artLoader.GetArt(idx);
-                }
-                catch (Exception e)
-                {
-                    Log.Warn($"HD {path}: native unreadable ({e.Message}); using native.");
-                    image.Dispose();
-                    return false;
-                }
-
-                int natW = native.Width;
-                int natH = native.Height;
-                if (natW <= 0 || natH <= 0)
-                {
-                    image.Dispose();
-                    return false;
-                }
-
-                if (hdW < natW || hdH < natH)
-                {
-                    Log.Warn($"HD {path} is {hdW}x{hdH}, smaller than native {natW}x{natH}; using native.");
-                    image.Dispose();
-                    return false;
-                }
-
-                if (isLand && hdW != hdH)
-                {
-                    Log.Warn($"HD {path} is {hdW}x{hdH}, land must be square; using native.");
-                    image.Dispose();
-                    return false;
-                }
-
-                // Manifest row, when present, must agree with both sides;
-                // a PNG without a row still loads.
-                if (ArtLoader.TryGetHdManifestRow(isLand, graphic, out ArtLoader.HdManifestRow row) && row != null)
-                {
-                    if ((row.NativeW != natW || row.NativeH != natH)
-                        || (row.HdW != hdW || row.HdH != hdH))
-                    {
-                        Log.Warn($"HD {path} mismatches its manifest (native {row.NativeW}x{row.NativeH} vs {natW}x{natH}, hd {row.HdW}x{row.HdH} vs {hdW}x{hdH}); using native.");
-                        image.Dispose();
-                        return false;
-                    }
-                }
-
-                if (hdW > 1 && hdH > 1)
-                {
-                    image.GenerateMipmaps();
-                }
-
-                Texture2D tex = ImageTexture.CreateFromImage(image);
-                image.Dispose();
-                if (tex == null)
-                {
-                    return false;
-                }
-
-                if (_hdCache.Count >= HdCacheCap)
-                {
-                    // Evict the least recently used.
-                    (bool, ushort) oldest = default;
-                    int oldestTick = int.MaxValue;
-                    bool found = false;
-                    foreach (var kv in _hdCache)
-                    {
-                        if (kv.Value.Tick < oldestTick)
-                        {
-                            oldestTick = kv.Value.Tick;
-                            oldest = kv.Key;
-                            found = true;
-                        }
-                    }
-
-                    if (found && _hdCache.TryGetValue(oldest, out HdEntry evict))
-                    {
-                        // Forget, don't dispose: a baked mesh may still
-                        // reference the evicted texture until rebuilt.
-                        try
-                        {
-                            _hdTextures.Remove(evict.Texture);
-                        }
-                        catch
-                        {
-                        }
-
-                        _hdCache.Remove(oldest);
-                    }
-                }
-
-                var entry = new HdEntry
-                {
-                    Texture = tex,
-                    HdW = hdW,
-                    HdH = hdH,
-                    NativeW = natW,
-                    NativeH = natH,
-                    Tick = ++_hdTick,
-                };
-                _hdCache[key] = entry;
-                _hdTextures.Add(tex);
-
-                texture = tex;
-                hdUv = new Rectangle(0, 0, hdW, hdH);
-                nativeW = natW;
-                nativeH = natH;
+                texture = cached.Texture; hdUv = new Rectangle(0, 0, cached.HdW, cached.HdH);
+                nativeW = cached.NativeW; nativeH = cached.NativeH;
                 return true;
             }
-            catch (Exception e)
+            var content = Client.Game?.UO?.FileManager?.Content;
+            if (content == null || !content.TryHd(isLand, graphic, out var asset)) return false;
+            var native = _artLoader.GetArt(isLand ? graphic : 0x4000u + graphic);
+            if (native.Width != asset.NativeWidth || native.Height != asset.NativeHeight)
             {
-                Log.Warn($"HD {path} failed ({e.Message}); using native.");
-                try { image?.Dispose(); } catch { }
+                _hdBad.Add(key);
+                Log.Warn($"HD pack graphic {graphic} has a different native canvas; using native.");
                 return false;
             }
+            texture = asset.Texture();
+            _hdCache[key] = new HdEntry { Texture = texture, HdW = asset.Width, HdH = asset.Height,
+                NativeW = asset.NativeWidth, NativeH = asset.NativeHeight, Tick = ++_hdTick };
+            _hdTextures.Add(texture);
+            _hdScales[texture] = asset.Scale;
+            hdUv = new Rectangle(0, 0, asset.Width, asset.Height);
+            nativeW = asset.NativeWidth; nativeH = asset.NativeHeight;
+            return true;
+        }
+
+        private static readonly System.Collections.Generic.Dictionary<Texture2D, double> _hdScales = new();
+        private readonly System.Collections.Generic.HashSet<(bool, ushort)> _hdBad = new();
+        internal static SamplerState HdSampler(Texture2D texture)
+        {
+            if (!_hdScales.TryGetValue(texture, out double scale)) return SamplerState.PointClamp;
+            double zoom = Client.Game?.GetScene<GUO.Game.Scenes.GameScene>()?.Camera.Zoom ?? 1f;
+            return HdSampling.Select(scale, zoom, Configuration.ProfileManager.CurrentProfile?.HdFilter ?? Configuration.HdFilterMode.Auto);
+        }
+
+        internal static void ReleaseHd(Texture2D texture)
+        {
+            _hdTextures.Remove(texture);
+            _hdScales.Remove(texture);
         }
 
         private ref readonly SpriteInfo Get(uint idx)

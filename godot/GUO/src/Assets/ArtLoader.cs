@@ -32,12 +32,6 @@ namespace GUO.Assets
 
         private readonly Dictionary<int, string> _ourLand = new Dictionary<int, string>();
 
-        // PORT DEVIATION (GUO): Enhanced HD repaint detail (pre-downscale
-        // PNGs under overrides/HD/Art). Path dicts only; no decode here.
-        private readonly Dictionary<int, string> _hdStatics = new Dictionary<int, string>();
-
-        private readonly Dictionary<int, string> _hdLand = new Dictionary<int, string>();
-
         public ArtLoader(UOFileManager fileManager) : base(fileManager)
         {
         }
@@ -106,8 +100,6 @@ namespace GUO.Assets
         {
             _ourStatics.Clear();
             _ourLand.Clear();
-            _hdStatics.Clear();
-            _hdLand.Clear();
 
             // Two folders and not one, keyed by the numbers a shard author actually types - the
             // item id a `new Item(0x2818)` uses, and the land tile id. The archive's own indexing
@@ -127,234 +119,10 @@ namespace GUO.Assets
             Gather(Path.Combine(FileManager.BasePath, "Art", "Land"),
                    _ourLand, MAX_LAND_DATA_INDEX_COUNT, false);
 
-            // PORT DEVIATION (GUO): Enhanced HD PNGs (the repaint gump's
-            // pre-downscale saves). Same two-folder shape, .png only.
-            GatherHd(Path.Combine(over, "HD", "Art", "Statics"),
-                   _hdStatics, MAX_STATIC_DATA_INDEX_COUNT - MAX_LAND_DATA_INDEX_COUNT);
-            GatherHd(Path.Combine(over, "HD", "Art", "Land"),
-                   _hdLand, MAX_LAND_DATA_INDEX_COUNT);
-            GatherHd(Path.Combine(FileManager.BasePath, "HD", "Art", "Statics"),
-                   _hdStatics, MAX_STATIC_DATA_INDEX_COUNT - MAX_LAND_DATA_INDEX_COUNT, false);
-            GatherHd(Path.Combine(FileManager.BasePath, "HD", "Art", "Land"),
-                   _hdLand, MAX_LAND_DATA_INDEX_COUNT, false);
-
             if (_ourStatics.Count > 0 || _ourLand.Count > 0)
             {
                 Log.Trace($"{_ourStatics.Count} static(s) and {_ourLand.Count} land tile(s) of our own");
             }
-
-            if (_hdStatics.Count > 0 || _hdLand.Count > 0)
-            {
-                Log.Trace($"{_hdStatics.Count} static(s) and {_hdLand.Count} land tile(s) of HD");
-            }
-        }
-
-        /// <summary>
-        /// Enhanced HD path lookup (no decode in the loader). True when an
-        /// HD PNG exists for this graphic; the Art cache decodes it.
-        /// </summary>
-        public bool TryGetHdPath(bool isLand, int graphic, out string path)
-        {
-            if (isLand)
-            {
-                return _hdLand.TryGetValue(graphic, out path);
-            }
-
-            return _hdStatics.TryGetValue(graphic, out path);
-        }
-
-        /// <summary>Enhanced HD root (overrides/HD/Art).</summary>
-        public static string HdDir()
-        {
-            return Path.Combine(OverrideDir(), "HD", "Art");
-        }
-
-        /// <summary>Enhanced HD PNG path for one graphic.</summary>
-        public static string HdPathFor(bool isLand, ushort graphic)
-        {
-            return Path.Combine(HdDir(), isLand ? "Land" : "Statics", $"{graphic}.png");
-        }
-
-        /// <summary>Enhanced HD manifest (one JSON dict of rows).</summary>
-        public static string HdManifestPath()
-        {
-            return Path.Combine(HdDir(), "manifest.json");
-        }
-
-        /// <summary>
-        /// One Enhanced HD manifest row. PNG without a row still loads;
-        /// the row is provenance (what generation made this PNG).
-        /// </summary>
-        public sealed class HdManifestRow
-        {
-            [System.Text.Json.Serialization.JsonPropertyName("native_w")]
-            public int NativeW { get; set; }
-            [System.Text.Json.Serialization.JsonPropertyName("native_h")]
-            public int NativeH { get; set; }
-            [System.Text.Json.Serialization.JsonPropertyName("hd_w")]
-            public int HdW { get; set; }
-            [System.Text.Json.Serialization.JsonPropertyName("hd_h")]
-            public int HdH { get; set; }
-            [System.Text.Json.Serialization.JsonPropertyName("scale")]
-            public double Scale { get; set; }
-            [System.Text.Json.Serialization.JsonPropertyName("prompt")]
-            public string Prompt { get; set; } = "";
-            [System.Text.Json.Serialization.JsonPropertyName("seed")]
-            public int Seed { get; set; }
-            [System.Text.Json.Serialization.JsonPropertyName("backend")]
-            public string Backend { get; set; } = "";
-            [System.Text.Json.Serialization.JsonPropertyName("sampler")]
-            public string Sampler { get; set; } = "";
-            [System.Text.Json.Serialization.JsonPropertyName("scheduler")]
-            public string Scheduler { get; set; } = "";
-            [System.Text.Json.Serialization.JsonPropertyName("steps")]
-            public int Steps { get; set; }
-            [System.Text.Json.Serialization.JsonPropertyName("cfg")]
-            public double Cfg { get; set; }
-            [System.Text.Json.Serialization.JsonPropertyName("denoise")]
-            public double Denoise { get; set; }
-            [System.Text.Json.Serialization.JsonPropertyName("masked")]
-            public bool Masked { get; set; }
-            [System.Text.Json.Serialization.JsonPropertyName("sha256")]
-            public string Sha256 { get; set; } = "";
-            [System.Text.Json.Serialization.JsonPropertyName("created_utc")]
-            public string CreatedUtc { get; set; } = "";
-        }
-
-        private static string HdManifestKey(bool isLand, ushort graphic)
-        {
-            return $"{(isLand ? "Land" : "Statics")}/{graphic}";
-        }
-
-        private static Dictionary<string, HdManifestRow> ReadHdManifest()
-        {
-            try
-            {
-                string path = HdManifestPath();
-                if (!System.IO.File.Exists(path))
-                {
-                    return new Dictionary<string, HdManifestRow>();
-                }
-
-                string json = System.IO.File.ReadAllText(path);
-                var rows = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, HdManifestRow>>(json);
-                return rows ?? new Dictionary<string, HdManifestRow>();
-            }
-            catch (Exception e)
-            {
-                Log.Warn($"HD manifest unreadable: {e.Message}");
-                return new Dictionary<string, HdManifestRow>();
-            }
-        }
-
-        private static void WriteHdManifestAtomic(Dictionary<string, HdManifestRow> rows)
-        {
-            string path = HdManifestPath();
-            Directory.CreateDirectory(Path.GetDirectoryName(path));
-            string json = System.Text.Json.JsonSerializer.Serialize(rows,
-                new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
-            string tmp = path + ".tmp";
-            System.IO.File.WriteAllText(tmp, json);
-            try
-            {
-                System.IO.File.Move(tmp, path, true);
-            }
-            catch
-            {
-                try
-                {
-                    if (System.IO.File.Exists(path))
-                    {
-                        System.IO.File.Delete(path);
-                    }
-
-                    System.IO.File.Move(tmp, path);
-                }
-                catch (Exception e)
-                {
-                    Log.Warn($"HD manifest write failed: {e.Message}");
-                }
-            }
-        }
-
-        /// <summary>Upserts one Enhanced HD manifest row (atomic write).</summary>
-        public static void WriteHdManifestRow(bool isLand, ushort graphic, HdManifestRow row)
-        {
-            try
-            {
-                var rows = ReadHdManifest();
-                rows[HdManifestKey(isLand, graphic)] = row;
-                WriteHdManifestAtomic(rows);
-            }
-            catch (Exception e)
-            {
-                Log.Warn($"HD manifest row write failed: {e.Message}");
-            }
-        }
-
-        /// <summary>Deletes one Enhanced HD manifest row, if present.</summary>
-        public static void RemoveHdManifestRow(bool isLand, ushort graphic)
-        {
-            try
-            {
-                var rows = ReadHdManifest();
-                if (rows.Remove(HdManifestKey(isLand, graphic)))
-                {
-                    WriteHdManifestAtomic(rows);
-                }
-            }
-            catch (Exception e)
-            {
-                Log.Warn($"HD manifest row delete failed: {e.Message}");
-            }
-        }
-
-        /// <summary>Reads one Enhanced HD manifest row, if present.</summary>
-        public static bool TryGetHdManifestRow(bool isLand, ushort graphic, out HdManifestRow row)
-        {
-            row = null;
-            try
-            {
-                var rows = ReadHdManifest();
-                return rows.TryGetValue(HdManifestKey(isLand, graphic), out row);
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        /// <summary>SHA-256 hex of bytes (the HD manifest's integrity field).</summary>
-        public static string Sha256Hex(byte[] bytes)
-        {
-            using var sha = System.Security.Cryptography.SHA256.Create();
-            byte[] hash = sha.ComputeHash(bytes);
-            var sb = new System.Text.StringBuilder(hash.Length * 2);
-            foreach (byte b in hash)
-            {
-                sb.Append(b.ToString("x2"));
-            }
-
-            return sb.ToString();
-        }
-
-        /// <summary>Deletes one Enhanced HD PNG plus its manifest row.</summary>
-        public static void DeleteHd(bool isLand, ushort graphic)
-        {
-            try
-            {
-                string path = HdPathFor(isLand, graphic);
-                if (System.IO.File.Exists(path))
-                {
-                    System.IO.File.Delete(path);
-                }
-            }
-            catch (Exception e)
-            {
-                Log.Warn($"HD delete failed: {e.Message}");
-            }
-
-            RemoveHdManifestRow(isLand, graphic);
         }
 
         private static void Gather(string folder, Dictionary<int, string> into, int limit, bool overwrite = true)
@@ -365,23 +133,6 @@ namespace GUO.Assets
             }
 
             foreach (string path in Directory.EnumerateFiles(folder, "*.art"))
-            {
-                if (int.TryParse(Path.GetFileNameWithoutExtension(path), out int id)
-                    && id >= 0 && id < limit && (overwrite || !into.ContainsKey(id)))
-                {
-                    into[id] = path;
-                }
-            }
-        }
-
-        private static void GatherHd(string folder, Dictionary<int, string> into, int limit, bool overwrite = true)
-        {
-            if (!Directory.Exists(folder))
-            {
-                return;
-            }
-
-            foreach (string path in Directory.EnumerateFiles(folder, "*.png"))
             {
                 if (int.TryParse(Path.GetFileNameWithoutExtension(path), out int id)
                     && id >= 0 && id < limit && (overwrite || !into.ContainsKey(id)))
