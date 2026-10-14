@@ -2,7 +2,46 @@
 from pathlib import PurePosixPath
 import re
 
-CONTENT_TYPES = frozenset("static land texmap tiledata gump animation wearable hue sound music effect light translation font map region multi decoration item crafting loot vendor creature spawner encounter quest dialogue presentation authoring script".split())
+CONTENT_TYPES = frozenset("static land texmap tiledata gump animation wearable hue sound music effect light translation font map region multi decoration item crafting loot vendor creature spawner encounter quest dialogue presentation authoring script hd-art splat voice".split())
+
+PACK_FIELDS = {"scale", "native_w", "native_h", "asset", "graphic", "body", "name", "wav"}
+
+
+def validate_media(c, files, require):
+    """Manifest metadata only; no payload decode or activation during install."""
+    kind = c["type"]
+    allowed = {"hd-art": {"scale", "native_w", "native_h", "asset", "graphic"},
+               "splat": {"graphic"}, "voice": {"body", "name", "wav"}}.get(kind, set())
+    require(all(c.get(key) is None for key in PACK_FIELDS - allowed), "media field on wrong component type")
+    if kind not in {"hd-art", "splat", "voice"}:
+        return
+    require(c["target"] == "client", "media component must target client")
+    extension = PurePosixPath(c["entry"]).suffix.lower()
+    if kind in {"hd-art", "splat"}:
+        require(type(c.get("graphic")) is int and 0 <= c["graphic"] <= 65535, "invalid graphic binding")
+    if kind == "hd-art":
+        require(extension == ".png", "hd-art entry must be PNG")
+        require(c.get("asset") in {"static", "land"}, "invalid hd-art asset namespace")
+        require(type(c.get("scale")) in {int, float} and 1 <= c["scale"] <= 16, "invalid hd-art scale")
+        for key in ("native_w", "native_h"):
+            require(type(c.get(key)) is int and 1 <= c[key] <= 4096, "invalid hd-art native dimensions")
+        require(c["asset"] != "land" or c["native_w"] == c["native_h"], "hd-art land must be square")
+    elif kind == "splat":
+        require(extension == ".ply", "splat entry must be PLY")
+    else:
+        require(extension == ".json", "voice entry must be JSON")
+        body, name = c.get("body"), c.get("name")
+        require((body is not None) != (name is not None), "voice needs one NPC body or name binding")
+        if body is not None:
+            require(type(body) is int and 0 <= body <= 65535, "invalid voice body binding")
+        else:
+            require(isinstance(name, str) and name.strip() and len(name.encode("utf-16-le")) // 2 <= 100
+                    and not any(ord(ch) < 32 or ord(ch) == 127 for ch in name), "invalid voice name binding")
+        wav = c.get("wav")
+        require(isinstance(wav, list) and 0 < len(wav) <= 512, "voice needs WAV entries")
+        for path in wav:
+            require(isinstance(path, str) and path in files and PurePosixPath(path).suffix.lower() == ".wav", "undeclared voice WAV entry")
+        require(len(set(wav)) == len(wav), "duplicate voice WAV entry")
 
 
 def validate_content(m, require, identifier, version):
@@ -22,7 +61,7 @@ def validate_content(m, require, identifier, version):
     targets = set()
     for c in components:
         require(isinstance(c, dict), "invalid component")
-        require(not (set(c) - {"id", "type", "target", "entry", "references", "language", "runtime", "runtime_version", "capabilities"}), "unknown component field")
+        require(not (set(c) - ({"id", "type", "target", "entry", "references", "language", "runtime", "runtime_version", "capabilities"} | PACK_FIELDS)), "unknown component field")
         identifier(c.get("id"))
         require(c["id"] not in identities, "duplicate component id")
         identities.add(c["id"])
@@ -31,7 +70,8 @@ def validate_content(m, require, identifier, version):
         require(target == "combined" or c["target"] in (target, "shared"), "component target mismatch")
         targets.add(c["target"])
         require(isinstance(c.get("entry"), str) and c["entry"] in m["files"], "undeclared component entry")
-        require(PurePosixPath(c["entry"]).suffix.lower() in (".json", ".png", ".wav", ".ogg", ".razor"), "invalid content entry type")
+        require(PurePosixPath(c["entry"]).suffix.lower() in (".json", ".png", ".wav", ".ogg", ".razor", ".ply"), "invalid content entry type")
+        validate_media(c, m["files"], require)
         refs = c.get("references") if c.get("references") is not None else []
         require(isinstance(refs, list) and len(refs) <= 512, "invalid references")
         for ref in refs:
@@ -49,6 +89,9 @@ def validate_content(m, require, identifier, version):
                 require(isinstance(cap, str) and re.fullmatch(r"[a-z][a-z0-9]*(\.[a-z][a-z0-9]*)*", cap) and len(cap) <= 100, "invalid script capability")
             require(len(set(caps)) == len(caps), "duplicate script capability")
     require(target != "combined" or "shared" in targets or {"client", "server"} <= targets, "combined pack missing target")
+    ply = {c["entry"] for c in components if c["type"] == "splat"}
+    require(all(PurePosixPath(path).suffix.lower() != ".ply" or path in ply for path in m["files"]), "PLY payload requires splat component")
+    require(all(PurePosixPath(c["entry"]).suffix.lower() != ".ply" or c["type"] == "splat" for c in components), "PLY entry requires splat component")
     for c in components:
         for ref in c.get("references") or []:
             pack, local = ref.split(":")

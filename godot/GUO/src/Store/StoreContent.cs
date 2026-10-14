@@ -21,11 +21,53 @@ internal sealed class StoreComponent
     [JsonPropertyName("runtime")] public string Runtime { get; set; }
     [JsonPropertyName("runtime_version")] public string RuntimeVersion { get; set; }
     [JsonPropertyName("capabilities")] public List<string> Capabilities { get; set; }
+    [JsonPropertyName("scale")] public double? Scale { get; set; }
+    [JsonPropertyName("native_w")] public int? NativeWidth { get; set; }
+    [JsonPropertyName("native_h")] public int? NativeHeight { get; set; }
+    [JsonPropertyName("asset")] public string Asset { get; set; }
+    [JsonPropertyName("graphic")] public int? Graphic { get; set; }
+    [JsonPropertyName("body")] public int? Body { get; set; }
+    [JsonPropertyName("name")] public string Name { get; set; }
+    [JsonPropertyName("wav")] public List<string> Wav { get; set; }
 }
 
 internal static class StoreContent
 {
-    public static readonly HashSet<string> Types = new("static land texmap tiledata gump animation wearable hue sound music effect light translation font map region multi decoration item crafting loot vendor creature spawner encounter quest dialogue presentation authoring script".Split(' '), StringComparer.Ordinal);
+    public static readonly HashSet<string> Types = new("static land texmap tiledata gump animation wearable hue sound music effect light translation font map region multi decoration item crafting loot vendor creature spawner encounter quest dialogue presentation authoring script hd-art splat voice".Split(' '), StringComparer.Ordinal);
+
+    private static void ValidateMedia(StoreComponent c, StoreManifest m)
+    {
+        bool hd = c.Type == "hd-art", splat = c.Type == "splat", voice = c.Type == "voice";
+        StorePack.Require(hd || c.Scale == null && c.NativeWidth == null && c.NativeHeight == null && c.Asset == null,
+            "Media field on wrong component type");
+        StorePack.Require(hd || splat || c.Graphic == null, "Media field on wrong component type");
+        StorePack.Require(voice || c.Body == null && c.Name == null && c.Wav == null, "Media field on wrong component type");
+        if (!hd && !splat && !voice) return;
+        StorePack.Require(c.Target == "client", "Media component must target client");
+        string extension = Path.GetExtension(c.Entry).ToLowerInvariant();
+        if (hd || splat) StorePack.Require(c.Graphic is >= 0 and <= 65535, "Invalid graphic binding");
+        if (hd)
+        {
+            StorePack.Require(extension == ".png", "hd-art entry must be PNG");
+            StorePack.Require(c.Asset is "static" or "land", "Invalid hd-art asset namespace");
+            StorePack.Require(c.Scale is >= 1 and <= 16, "Invalid hd-art scale");
+            StorePack.Require(c.NativeWidth is >= 1 and <= 4096 && c.NativeHeight is >= 1 and <= 4096, "Invalid hd-art native dimensions");
+            StorePack.Require(c.Asset != "land" || c.NativeWidth == c.NativeHeight, "hd-art land must be square");
+        }
+        else if (splat) StorePack.Require(extension == ".ply", "Splat entry must be PLY");
+        else
+        {
+            StorePack.Require(extension == ".json", "Voice entry must be JSON");
+            StorePack.Require(c.Body.HasValue != (c.Name != null), "Voice needs one NPC body or name binding");
+            if (c.Body.HasValue) StorePack.Require(c.Body is >= 0 and <= 65535, "Invalid voice body binding");
+            else StorePack.Require(!string.IsNullOrWhiteSpace(c.Name) && c.Name.Length <= 100
+                && !c.Name.Any(ch => ch < 32 || ch == 127), "Invalid voice name binding");
+            StorePack.Require(c.Wav != null && c.Wav.Count is > 0 and <= 512, "Voice needs WAV entries");
+            foreach (string path in c.Wav)
+                StorePack.Require(path != null && m.Files.ContainsKey(path) && Path.GetExtension(path).Equals(".wav", StringComparison.OrdinalIgnoreCase), "Undeclared voice WAV entry");
+            StorePack.Require(c.Wav.Distinct(StringComparer.Ordinal).Count() == c.Wav.Count, "Duplicate voice WAV entry");
+        }
+    }
 
     public static void Validate(StoreManifest m)
     {
@@ -49,7 +91,8 @@ internal static class StoreContent
             StorePack.Require(m.Target == "combined" || c.Target == m.Target || c.Target == "shared", "Component target mismatch");
             targets.Add(c.Target);
             StorePack.Require(c.Entry != null && m.Files.ContainsKey(c.Entry), "Undeclared component entry");
-            StorePack.Require(Path.GetExtension(c.Entry).ToLowerInvariant() is ".json" or ".png" or ".wav" or ".ogg" or ".razor", "Invalid content entry type");
+            StorePack.Require(Path.GetExtension(c.Entry).ToLowerInvariant() is ".json" or ".png" or ".wav" or ".ogg" or ".razor" or ".ply", "Invalid content entry type");
+            ValidateMedia(c, m);
             StorePack.Require(c.References == null || c.References.Count <= 512, "Invalid references");
             foreach (string reference in c.References ?? new())
             {
@@ -69,6 +112,9 @@ internal static class StoreContent
             }
         }
         StorePack.Require(m.Target != "combined" || targets.Contains("shared") || targets.Contains("client") && targets.Contains("server"), "Combined pack missing target");
+        var ply = m.Components.Where(c => c.Type == "splat").Select(c => c.Entry).ToHashSet(StringComparer.Ordinal);
+        StorePack.Require(m.Files.Keys.All(path => !Path.GetExtension(path).Equals(".ply", StringComparison.OrdinalIgnoreCase) || ply.Contains(path)), "PLY payload requires splat component");
+        StorePack.Require(m.Components.All(c => !Path.GetExtension(c.Entry).Equals(".ply", StringComparison.OrdinalIgnoreCase) || c.Type == "splat"), "PLY entry requires splat component");
         foreach (var c in m.Components)
             foreach (string reference in c.References ?? new())
             {
