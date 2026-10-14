@@ -1021,7 +1021,7 @@ namespace GUO.Game.UI.Gumps
         }
 
         /// <summary>
-        /// Bulk MoGe: every static within 17 tiles, deduped to unique
+        /// Bulk MoGe: every static or multi part within 17 tiles, deduped to unique
         /// graphics. Cached graphics place immediately from
         /// build/moge/moge_0xXXXX.ply; the rest generate sequentially on the
         /// same one-Task worker pattern as single Generate (Close cancels).
@@ -1080,26 +1080,55 @@ namespace GUO.Game.UI.Gumps
 
                     for (GameObject o = head; o != null; o = o.TNext)
                     {
-                        if (o is not Static s)
+                        // House multis share static art ids: include their parts
+                        // so Auto Queue next to a house finds its walls.
+                        // Sign/doors ride along; the user can Clear.
+                        ushort g;
+                        int vx;
+                        int vy;
+                        sbyte vz;
+                        GameObject victim;
+                        if (o is Static s)
+                        {
+                            if (s.IsDestroyed || !s.AllowedToDraw || s.Graphic == 0)
+                            {
+                                continue;
+                            }
+
+                            g = s.Graphic;
+                            vx = s.X;
+                            vy = s.Y;
+                            vz = s.Z;
+                            victim = s;
+                        }
+                        else if (o is Multi m)
+                        {
+                            if (m.IsDestroyed || !m.AllowedToDraw || m.Graphic == 0)
+                            {
+                                continue;
+                            }
+
+                            g = m.Graphic;
+                            vx = m.X;
+                            vy = m.Y;
+                            vz = m.Z;
+                            victim = m;
+                        }
+                        else
                         {
                             continue;
                         }
 
-                        if (s.IsDestroyed || !s.AllowedToDraw || s.Graphic == 0)
-                        {
-                            continue;
-                        }
-
-                        if (!groups.TryGetValue(s.Graphic, out List<AutoVictim> list))
+                        if (!groups.TryGetValue(g, out List<AutoVictim> list))
                         {
                             list = new List<AutoVictim>();
-                            groups[s.Graphic] = list;
+                            groups[g] = list;
                         }
 
                         bool dup = false;
                         foreach (AutoVictim v in list)
                         {
-                            if (v.X == s.X && v.Y == s.Y && v.Z == s.Z)
+                            if (v.X == vx && v.Y == vy && v.Z == vz)
                             {
                                 dup = true;
                                 break;
@@ -1108,7 +1137,7 @@ namespace GUO.Game.UI.Gumps
 
                         if (!dup)
                         {
-                            list.Add(new AutoVictim { X = s.X, Y = s.Y, Z = s.Z, Obj = s });
+                            list.Add(new AutoVictim { X = vx, Y = vy, Z = vz, Obj = victim });
                         }
                     }
                 }
@@ -1433,19 +1462,20 @@ namespace GUO.Game.UI.Gumps
             {
                 for (GameObject o = World.Map.GetTile(x, y, false); o != null; o = o.TNext)
                 {
-                    if (o is Static s && !s.IsDestroyed && s.AllowedToDraw && s.Graphic == graphic)
+                    // Static or multi part with this graphic (same art ids).
+                    if ((o is Static || o is Multi) && !o.IsDestroyed && o.AllowedToDraw && o.Graphic == graphic)
                     {
                         // Same-graphic statics can stack at one tile at
                         // different Z: prefer the victim's own level so the
                         // hide binds the right instance, not its neighbour.
-                        if (s.Z == z)
+                        if (o.Z == z)
                         {
-                            return s;
+                            return o;
                         }
 
                         if (fallback == null)
                         {
-                            fallback = s;
+                            fallback = o;
                         }
                     }
                 }

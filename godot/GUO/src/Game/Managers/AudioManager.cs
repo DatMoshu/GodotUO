@@ -28,6 +28,15 @@ namespace GUO.Game.Managers
         private readonly LinkedList<Sound> _currentSounds = new LinkedList<Sound>();
         private readonly UOMusic[] _currentMusic = { null, null };
         private readonly int[] _currentMusicIndices = { 0, 0 };
+        // PORT DEVIATION (GUO): music zones duck the base music instead of
+        // layering over it. The duck is a sticky factor (1 = full, 0 =
+        // silent), not a one-shot volume poke: AudioManager.Update runs after
+        // the zone tick every frame and recomputes volumes from the profile,
+        // so a poke applied by ZoneAudio is wiped before it is ever heard.
+        // Every writer below (PlayMusic, Update, UpdateCurrentMusicVolume)
+        // multiplies by this factor, so entering a zone silences base music
+        // even when it restarts mid-zone and exiting restores it.
+        private float _musicDuckFactor = 1f;
         public int LoginMusicIndex { get; private set; }
         public int DeathMusicIndex { get; } = 42;
 
@@ -260,15 +269,17 @@ namespace GUO.Game.Managers
                 _currentMusicIndices[idx] = music;
                 _currentMusic[idx] = um;
 
-                _currentMusic[idx].Play(Time.Ticks, volume);
+                _currentMusic[idx].Play(Time.Ticks, volume * _musicDuckFactor);
             }
             else if (m != null && m is not UOMusic)
             {
                 // PORT DEVIATION (GUO): verified content-pack music is a plain
                 // Sound, not a UOMusic, so the cast above would throw. It
                 // plays through the base API and is tracked with the sounds,
-                // which is also what NowPlaying reads.
-                if (m.Play(Time.Ticks, volume))
+                // which is also what NowPlaying reads. It is still base
+                // music, so it starts ducked like the UOMusic path; plain
+                // SFX added by PlaySound never pass through here.
+                if (m.Play(Time.Ticks, volume * _musicDuckFactor))
                 {
                     _currentSounds.AddLast(m);
                 }
@@ -305,7 +316,19 @@ namespace GUO.Game.Managers
                         return;
                     }
 
-                    _currentMusic[i].Volume = i == 0 && _currentMusic[1] != null ? 0 : volume;
+                    _currentMusic[i].Volume = i == 0 && _currentMusic[1] != null ? 0 : volume * _musicDuckFactor;
+                }
+            }
+
+            // Content-pack base music rides in _currentSounds; keep it ducked
+            // too. Plain SFX are never StoreMusic, so they stay layered.
+            foreach (Sound s in _currentSounds)
+            {
+                if (s is Store.StoreMusic)
+                {
+                    Profile currentProfile = ProfileManager.CurrentProfile;
+                    float baseVolume = currentProfile == null || !currentProfile.EnableMusic ? 0 : currentProfile.MusicVolume / SOUND_DELTA;
+                    s.Volume = baseVolume * _musicDuckFactor;
                 }
             }
         }
@@ -328,16 +351,27 @@ namespace GUO.Game.Managers
 
             for (LinkedListNode<Sound> soundNode = _currentSounds.First; soundNode != null; soundNode = soundNode.Next)
             {
-                soundNode.Value.Volume = volume;
+                // Content-pack base music rides here as StoreMusic: it ducks
+                // with the zone fade. Plain SFX stay at full volume (layered).
+                if (soundNode.Value is Store.StoreMusic)
+                {
+                    float baseVolume = currentProfile == null || !currentProfile.EnableMusic ? 0 : currentProfile.MusicVolume / SOUND_DELTA;
+                    soundNode.Value.Volume = baseVolume * _musicDuckFactor;
+                }
+                else
+                {
+                    soundNode.Value.Volume = volume;
+                }
             }
         }
 
         /// <summary>
         /// PORT DEVIATION (GUO): music zones fade the base music under their
         /// own tracks instead of layering over it. 1 is full volume, 0 is
-        /// silent; computed from the profile exactly like
-        /// <see cref="UpdateCurrentMusicVolume"/>, so toggling needs no
-        /// stored state and restoring is just calling with 1.
+        /// silent; the factor is sticky so the per-frame Update (which runs
+        /// after the zone tick and recomputes volumes from the profile) and
+        /// any mid-zone PlayMusic restart keep the duck until the zone
+        /// restores it with 1. SFX are never touched here.
         /// </summary>
         public void SetMusicDuck(float factor)
         {
@@ -354,11 +388,19 @@ namespace GUO.Game.Managers
             }
 
             factor = factor < 0f ? 0f : factor > 1f ? 1f : factor;
+            _musicDuckFactor = factor;
             for (int i = 0; i < 2; i++)
             {
                 if (_currentMusic[i] != null)
                 {
                     _currentMusic[i].Volume = i == 0 && _currentMusic[1] != null ? 0 : volume * factor;
+                }
+            }
+            foreach (Sound s in _currentSounds)
+            {
+                if (s is Store.StoreMusic)
+                {
+                    s.Volume = volume * factor;
                 }
             }
         }
@@ -415,7 +457,7 @@ namespace GUO.Game.Managers
                     {
                         if (!currentProfile.ReproduceSoundsInBackground)
                         {
-                            _currentMusic[i].Volume = i == 0 && runninWarMusic || !currentProfile.EnableMusic ? 0 : currentProfile.MusicVolume / SOUND_DELTA;
+                            _currentMusic[i].Volume = i == 0 && runninWarMusic || !currentProfile.EnableMusic ? 0 : currentProfile.MusicVolume / SOUND_DELTA * _musicDuckFactor;
                         }
                     }
                     else if (!currentProfile.ReproduceSoundsInBackground && _currentMusic[i].Volume != 0.0f)

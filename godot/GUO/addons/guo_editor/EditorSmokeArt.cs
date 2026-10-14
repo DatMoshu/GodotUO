@@ -154,7 +154,10 @@ public partial class EditorSmoke
         string why = AssetActions.EditIn(_data, AssetKind.Static, FixtureStatic, client, pinta: false);
         string png = Path.Combine(root, "out", $"static_0x{FixtureStatic:X4}.png");
         string json = Path.ChangeExtension(png, ".json");
-        ArtCheck("pixelorama_launch_path", ExternalTools.FindPixelorama() != null ? why == null : why != null, why ?? "");
+        // Gated off (GUO_PIXELORAMA=0), the launch path reports disabled instead of starting anything.
+        bool launchOk = !ExternalTools.PixeloramaEnabled ? why == ExternalTools.PixeloramaDisabledMessage
+            : ExternalTools.FindPixelorama() != null ? why == null : why != null;
+        ArtCheck("pixelorama_launch_path", launchOk, why ?? "");
         ArtCheck("export_png_and_sidecar", File.Exists(png) && File.Exists(json));
         JsonNode side = JsonNode.Parse(File.ReadAllText(json));
         ArtCheck("sidecar_fields", (string)side["kind"] == "static" && (int)side["id"] == FixtureStatic

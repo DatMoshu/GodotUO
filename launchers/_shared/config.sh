@@ -119,6 +119,12 @@ unset _guo_shared_dir
 # --- Python ------------------------------------------------------------------
 : "${UO_PYTHON:=python3}"
 
+# --- Headless build guard ----------------------------------------------------
+# Seconds launchers/dev/build.sh waits for the headless C# build before it
+# kills the engine and reports a timeout (exit 124). Mirrors UO_BUILD_TIMEOUT
+# in config.bat; the launcher_lint requires the same keys in both files.
+: "${UO_BUILD_TIMEOUT:=180}"
+
 # --- Logging -----------------------------------------------------------------
 # DEBUG | INFO | WARN | ERROR
 : "${UO_LOG_LEVEL:=INFO}"
@@ -132,6 +138,9 @@ unset _guo_shared_dir
 : "${UO_STORE_BASE_URL:=}"
 
 # --- Art pipeline (ADR-0029) -------------------------------------------------
+# GUO_PIXELORAMA gates the Pixelorama host/integration: 0 (default) starts
+# nothing and prints no detach message; set it to 1 to re-enable Pixelorama.
+: "${GUO_PIXELORAMA:=0}"
 : "${UO_ART_EXCHANGE:=$UO_ROOT/build/art_exchange}"
 : "${UO_PIXELORAMA:=}"
 : "${UO_PINTA:=}"

@@ -62,6 +62,7 @@ namespace GUO.Game.UI.Gumps
             Save,
             ClearTracks,
             ShowZone,
+            ShowZones,
             Close
         }
 
@@ -197,6 +198,11 @@ namespace GUO.Game.UI.Gumps
             Add(new NiceButton(12, y, 130, 24, ButtonAction.Activate, "Show Zone")
             {
                 ButtonParameter = (int)Buttons.ShowZone,
+                IsSelectable = false
+            });
+            Add(new NiceButton(168, y, 130, 24, ButtonAction.Activate, "Show Zones")
+            {
+                ButtonParameter = (int)Buttons.ShowZones,
                 IsSelectable = false
             });
 
@@ -466,6 +472,10 @@ namespace GUO.Game.UI.Gumps
                     ToggleShowZone();
                     break;
 
+                case (int)Buttons.ShowZones:
+                    ToggleShowZones();
+                    break;
+
                 case (int)Buttons.Close:
                     try
                     {
@@ -488,7 +498,12 @@ namespace GUO.Game.UI.Gumps
         /// </summary>
         private void ToggleShowZone()
         {
-            if (_outline.Showing)
+            if (_outline.ShowingMany)
+            {
+                // Single replaces the multi view instead of just hiding it.
+                _outline.Hide();
+            }
+            else if (_outline.ShowingSingle)
             {
                 _outline.Hide();
                 Say("Zone hidden.");
@@ -526,6 +541,77 @@ namespace GUO.Game.UI.Gumps
             int pz = World.Player?.Z ?? 0;
             _outline.Show(World.MapIndex, x0, y0, x1, y1, pz);
             Say($"Showing {x0},{y0} - {x1},{y1} (20s).");
+        }
+
+        /// <summary>
+        /// Every audio zone (Music and SFX layers) near the player, each in
+        /// its own translucent color, 20s or until pressed again.
+        /// </summary>
+        private void ToggleShowZones()
+        {
+            if (_outline.ShowingMany)
+            {
+                _outline.Hide();
+                Say("Zones hidden.");
+                return;
+            }
+
+            _outline.Hide();
+
+            PlayerMobile player = World.Player;
+            if (player == null)
+            {
+                Say("No player.");
+                return;
+            }
+
+            const int R = 30;
+            int facet = World.MapIndex;
+            int px = player.X, py = player.Y, pz = player.Z;
+            var near = new List<ZoneOutline.ZoneEntry>();
+            CollectNearby(ZoneAudio.Music.Zones, "music", facet, px, py, pz, R, near);
+            CollectNearby(ZoneAudio.Sfx.Zones, "sfx", facet, px, py, pz, R, near);
+            if (near.Count == 0)
+            {
+                Say("No zones within 30 tiles.");
+                return;
+            }
+
+            _outline.ShowMany(facet, near);
+            Say($"Showing {near.Count} zone(s) within 30 tiles (20s).");
+        }
+
+        private static void CollectNearby(List<ZoneAudio.Zone> zones, string layer, int facet, int px, int py, int pz, int range, List<ZoneOutline.ZoneEntry> into)
+        {
+            foreach (ZoneAudio.Zone z in zones)
+            {
+                if (z == null)
+                {
+                    continue;
+                }
+
+                if (z.Facet >= 0 && z.Facet != facet)
+                {
+                    continue;
+                }
+
+                int x0 = Math.Min(z.X0, z.X1), x1 = Math.Max(z.X0, z.X1);
+                int y0 = Math.Min(z.Y0, z.Y1), y1 = Math.Max(z.Y0, z.Y1);
+                if (x1 < px - range || x0 > px + range || y1 < py - range || y0 > py + range)
+                {
+                    continue;
+                }
+
+                into.Add(new ZoneOutline.ZoneEntry
+                {
+                    X0 = x0,
+                    Y0 = y0,
+                    X1 = x1,
+                    Y1 = y1,
+                    Z = pz,
+                    Color = ZoneOutline.ColorFor($"{layer}:{z.Name}"),
+                });
+            }
         }
 
         /// <summary>

@@ -14,6 +14,17 @@ using Godot;
 public static class ExternalTools
 {
     public const string PintaHint = "Pinta is not installed. Install it with: winget install Pinta.Pinta (or set UO_PINTA to Pinta.exe)";
+    public const string PixeloramaDisabledMessage = "Pixelorama integration is disabled (set GUO_PIXELORAMA=1 to enable).";
+
+    /// <summary>Off by default (launchers/_shared/config.bat): 1/true/yes/on enables the Pixelorama host and launches.</summary>
+    public static bool PixeloramaEnabled
+    {
+        get
+        {
+            string v = (EditorData.Setting("GUO_PIXELORAMA", "0") ?? "").Trim().ToLowerInvariant();
+            return v is "1" or "true" or "yes" or "on";
+        }
+    }
 
     /// <summary>When true nothing is started (the smoke), and the would-be command is returned instead.</summary>
     public static bool DryRun;
@@ -113,12 +124,17 @@ public static class ExternalTools
 
     /// <summary>One line each, for the Art dock and the smoke log.</summary>
     public static string Describe() =>
-        $"Pixelorama: {(FindPixelorama() != null ? "found" : "missing (python tools/pixelorama/run.py fetch)")}; "
+        $"Pixelorama: {(PixeloramaEnabled ? (FindPixelorama() != null ? "found" : "missing (python tools/pixelorama/run.py fetch)") : "disabled (set GUO_PIXELORAMA=1 to enable)")}; "
         + $"Pinta: {(FindPinta() != null ? "found" : "missing (" + PintaHint + ")")}";
 
     /// <summary>Opens the exported PNG in Pixelorama through tools/pixelorama/run.py, which installs the extension too. Null on success, else why not.</summary>
     public static string OpenPixelorama(string png, bool embedded = false)
     {
+        if (!PixeloramaEnabled)
+        {
+            return PixeloramaDisabledMessage;
+        }
+
         if (FindPixelorama() == null)
         {
             return "Pixelorama is not fetched. Run: python tools/pixelorama/run.py fetch";
