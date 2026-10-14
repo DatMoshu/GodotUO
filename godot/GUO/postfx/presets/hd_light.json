@@ -1,0 +1,78 @@
+{
+  "name": "HD Light",
+  "description": "HD light Phase 1+2+3+4 day look: sun directional shadows from the height buffer (tile Z + static heights + splat bounds) with a color-temperature clock, then torch GI (coarse radiance cascades: true falloff + soft shadows + color bleed + floor/wall bounce, replacing the blob multiply), then the linear composite + ACES tonemap with screen-space normal falloff, HDR bloom, masked heat shimmer, torch shafts. Needs Options > HD light renderer on for the HDR + flicker + height foundation.",
+   "passes": [
+    {
+     "shader": "hd_sun",
+     "params": {
+      "sun_strength": 1.0,
+      "sun_soften": 1.5,
+      "sun_shadow_px": 6.0
+     }
+    },
+    {
+     "shader": "hd_gi",
+     "params": {
+      "gi_strength": 1.0,
+      "gi_range": 260.0,
+      "gi_bleed": 0.6,
+      "gi_bounce": 0.5,
+      "gi_soften": 1.5,
+      "gi_threshold": 0.32,
+      "gi_falloff": 42.0
+     }
+    },
+    {
+     "shader": "hd_tonemap",
+     "params": {
+      "exposure": 0.0,
+      "contrast": 1.0,
+      "saturation": 1.0,
+      "temperature": 0.0,
+      "tint": 0.0,
+      "lift": 0.0,
+      "gain": 1.0,
+      "hd_normal_strength": 0.65,
+      "hd_normal_depth": 2.0,
+      "hd_warmth": 0.35,
+      "hd_light_height": 0.6
+     }
+    },
+   {
+    "shader": "hd_bloom",
+    "params": {
+     "threshold": 1.0,
+     "radius": 4.5,
+     "intensity": 0.4,
+     "from_world": 0.2
+    }
+   },
+   {
+    "shader": "hd_heat",
+    "params": {
+     "amount": 0.005,
+     "speed": 2.4,
+     "threshold": 1.0,
+     "rise": 0.02
+    }
+   },
+   {
+    "shader": "hd_shafts",
+    "params": {
+     "intensity": 0.15,
+     "threshold": 0.6,
+     "length": 0.08,
+     "decay": 0.94
+    }
+   }
+  ],
+  "bindings": [
+   {
+    "pass": 2,
+    "param": "exposure",
+    "from": "light_level",
+    "offset": 0.0,
+    "scale": 0.25
+   }
+  ]
+}
