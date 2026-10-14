@@ -49,7 +49,7 @@ namespace GUO.Configuration
         /// The table version this build writes. 0 means the profile predates
         /// platform defaults (every profile saved before GUO had them).
         /// </summary>
-        public const int CurrentVersion = 12;
+        public const int CurrentVersion = 19;
 
         /// <summary>The login screen's size, which every login gump is laid out for.</summary>
         private const int LoginWidth = 640;
@@ -113,7 +113,36 @@ namespace GUO.Configuration
                 BoolEntry(nameof(Profile.SaveScaleAfterClose), p => p.SaveScaleAfterClose, (p, v) => p.SaveScaleAfterClose = v, true, since: 5),
                 // v12: Enhanced HD repaint detail stays off unless the
                 // player turns it on under Options/Video.
-                BoolEntry(nameof(Profile.EnhancedHD), p => p.EnhancedHD, (p, v) => p.EnhancedHD = v, false, since: 12)
+                BoolEntry(nameof(Profile.EnhancedHD), p => p.EnhancedHD, (p, v) => p.EnhancedHD = v, false, since: 12),
+                // v13: HD Light on: the HDR + flicker + height foundation
+                // (UseHDLight) with the realistic point-light viewport it
+                // builds on (UseRealisticLights). Classic is one click away
+                // under Options/Video (both off) and Screen effects (Classic).
+                BoolEntry(nameof(Profile.UseHDLight), p => p.UseHDLight, (p, v) => p.UseHDLight = v, true, since: 13),
+                BoolEntry(nameof(Profile.UseRealisticLights), p => p.UseRealisticLights, (p, v) => p.UseRealisticLights = v, true, since: 13),
+                // v14: SuperRes 4x upscale detail stays off unless the
+                // player turns it on under Options/Video (toggle only; no worker yet).
+                BoolEntry(nameof(Profile.SuperRes4x), p => p.SuperRes4x, (p, v) => p.SuperRes4x = v, false, since: 14),
+                // v15: Repaint includes the TileData object name at the
+                // start of the prompt unless unticked in the repaint gump.
+                BoolEntry(nameof(Profile.RepaintIncludeName), p => p.RepaintIncludeName, (p, v) => p.RepaintIncludeName = v, true, since: 15),
+                // v16: Repaint depth ControlNet stays off unless ticked.
+                BoolEntry(nameof(Profile.RepaintDepthEnabled), p => p.RepaintDepthEnabled, (p, v) => p.RepaintDepthEnabled = v, false, since: 16),
+                // v17: DLSS 5 full-frame enhance stays off unless the
+                // player turns it on under Options/Video (toggle only; no frame logic yet).
+                BoolEntry(nameof(Profile.Dlss5), p => p.Dlss5, (p, v) => p.Dlss5 = v, false, since: 17),
+                // v18: DLSS bake detail stays off unless the player turns
+                // it on under Options/Video (or the DlssGump); the frame
+                // toggle above stays pass-through either way.
+                BoolEntry(nameof(Profile.DlssBake), p => p.DlssBake, (p, v) => p.DlssBake = v, false, since: 18),
+                FloatEntry(nameof(Profile.DlssBakeIntensity), p => p.DlssBakeIntensity, (p, v) => p.DlssBakeIntensity = v, 1.0f, since: 18),
+                IntEntry(nameof(Profile.DlssBakeProfile), p => p.DlssBakeProfile, (p, v) => p.DlssBakeProfile = v, 0, since: 18),
+                FloatEntry(nameof(Profile.RepaintDepthStrength), p => p.RepaintDepthStrength, (p, v) => p.RepaintDepthStrength = v, 0.6f, since: 16),
+                FloatEntry(nameof(Profile.RepaintDepthStart), p => p.RepaintDepthStart, (p, v) => p.RepaintDepthStart = v, 0f, since: 16),
+                FloatEntry(nameof(Profile.RepaintDepthEnd), p => p.RepaintDepthEnd, (p, v) => p.RepaintDepthEnd = v, 0.8f, since: 16),
+                // v19: Repaint Auto Queue continuous toggle stays off
+                // unless ticked in the repaint gump.
+                BoolEntry(nameof(Profile.RepaintAutoQueue), p => p.RepaintAutoQueue, (p, v) => p.RepaintAutoQueue = v, false, since: 19)
             ),
 
             [ProfilePlatform.Mobile] = WithShelf
@@ -175,7 +204,33 @@ namespace GUO.Configuration
                 BoolEntry(nameof(Profile.ScreenSaver), p => p.ScreenSaver, (p, v) => p.ScreenSaver = v, true, since: 10),
 
                 // v12: Enhanced HD stays off unless the player turns it on.
-                BoolEntry(nameof(Profile.EnhancedHD), p => p.EnhancedHD, (p, v) => p.EnhancedHD = v, false, since: 12)
+                BoolEntry(nameof(Profile.EnhancedHD), p => p.EnhancedHD, (p, v) => p.EnhancedHD = v, false, since: 12),
+
+                // v13: HD Light on, as on Desktop.
+                BoolEntry(nameof(Profile.UseHDLight), p => p.UseHDLight, (p, v) => p.UseHDLight = v, true, since: 13),
+                BoolEntry(nameof(Profile.UseRealisticLights), p => p.UseRealisticLights, (p, v) => p.UseRealisticLights = v, true, since: 13),
+
+                // v14: SuperRes 4x stays off unless the player turns it on.
+                BoolEntry(nameof(Profile.SuperRes4x), p => p.SuperRes4x, (p, v) => p.SuperRes4x = v, false, since: 14),
+
+                // v15: Repaint includes the object name, as on Desktop.
+                BoolEntry(nameof(Profile.RepaintIncludeName), p => p.RepaintIncludeName, (p, v) => p.RepaintIncludeName = v, true, since: 15),
+                // v16: Repaint depth ControlNet, as on Desktop.
+                BoolEntry(nameof(Profile.RepaintDepthEnabled), p => p.RepaintDepthEnabled, (p, v) => p.RepaintDepthEnabled = v, false, since: 16),
+                FloatEntry(nameof(Profile.RepaintDepthStrength), p => p.RepaintDepthStrength, (p, v) => p.RepaintDepthStrength = v, 0.6f, since: 16),
+                FloatEntry(nameof(Profile.RepaintDepthStart), p => p.RepaintDepthStart, (p, v) => p.RepaintDepthStart = v, 0f, since: 16),
+                FloatEntry(nameof(Profile.RepaintDepthEnd), p => p.RepaintDepthEnd, (p, v) => p.RepaintDepthEnd = v, 0.8f, since: 16),
+
+                // v17: DLSS 5 full-frame enhance stays off unless the player turns it on.
+                BoolEntry(nameof(Profile.Dlss5), p => p.Dlss5, (p, v) => p.Dlss5 = v, false, since: 17),
+
+                // v18: DLSS bake detail stays off unless the player turns it on.
+                BoolEntry(nameof(Profile.DlssBake), p => p.DlssBake, (p, v) => p.DlssBake = v, false, since: 18),
+                FloatEntry(nameof(Profile.DlssBakeIntensity), p => p.DlssBakeIntensity, (p, v) => p.DlssBakeIntensity = v, 1.0f, since: 18),
+                IntEntry(nameof(Profile.DlssBakeProfile), p => p.DlssBakeProfile, (p, v) => p.DlssBakeProfile = v, 0, since: 18),
+
+                // v19: Repaint Auto Queue continuous toggle, as on Desktop.
+                BoolEntry(nameof(Profile.RepaintAutoQueue), p => p.RepaintAutoQueue, (p, v) => p.RepaintAutoQueue = v, false, since: 19)
 
                 // v11: Profile.ScreenSaverChoice, "effects" on every platform,
                 // so no entry here. The version exists so that screensaver
@@ -198,7 +253,33 @@ namespace GUO.Configuration
                 BoolEntry(nameof(Profile.CanvasBackgroundLowPower), p => p.CanvasBackgroundLowPower, (p, v) => p.CanvasBackgroundLowPower = v, true, since: 6),
 
                 // v12: Enhanced HD stays off unless the player turns it on.
-                BoolEntry(nameof(Profile.EnhancedHD), p => p.EnhancedHD, (p, v) => p.EnhancedHD = v, false, since: 12)
+                BoolEntry(nameof(Profile.EnhancedHD), p => p.EnhancedHD, (p, v) => p.EnhancedHD = v, false, since: 12),
+
+                // v13: HD Light on, as on Desktop.
+                BoolEntry(nameof(Profile.UseHDLight), p => p.UseHDLight, (p, v) => p.UseHDLight = v, true, since: 13),
+                BoolEntry(nameof(Profile.UseRealisticLights), p => p.UseRealisticLights, (p, v) => p.UseRealisticLights = v, true, since: 13),
+
+                // v14: SuperRes 4x stays off unless the player turns it on.
+                BoolEntry(nameof(Profile.SuperRes4x), p => p.SuperRes4x, (p, v) => p.SuperRes4x = v, false, since: 14),
+
+                // v15: Repaint includes the object name, as on Desktop.
+                BoolEntry(nameof(Profile.RepaintIncludeName), p => p.RepaintIncludeName, (p, v) => p.RepaintIncludeName = v, true, since: 15),
+                // v16: Repaint depth ControlNet, as on Desktop.
+                BoolEntry(nameof(Profile.RepaintDepthEnabled), p => p.RepaintDepthEnabled, (p, v) => p.RepaintDepthEnabled = v, false, since: 16),
+                FloatEntry(nameof(Profile.RepaintDepthStrength), p => p.RepaintDepthStrength, (p, v) => p.RepaintDepthStrength = v, 0.6f, since: 16),
+                FloatEntry(nameof(Profile.RepaintDepthStart), p => p.RepaintDepthStart, (p, v) => p.RepaintDepthStart = v, 0f, since: 16),
+                FloatEntry(nameof(Profile.RepaintDepthEnd), p => p.RepaintDepthEnd, (p, v) => p.RepaintDepthEnd = v, 0.8f, since: 16),
+
+                // v17: DLSS 5 full-frame enhance stays off unless the player turns it on.
+                BoolEntry(nameof(Profile.Dlss5), p => p.Dlss5, (p, v) => p.Dlss5 = v, false, since: 17),
+
+                // v18: DLSS bake detail stays off unless the player turns it on.
+                BoolEntry(nameof(Profile.DlssBake), p => p.DlssBake, (p, v) => p.DlssBake = v, false, since: 18),
+                FloatEntry(nameof(Profile.DlssBakeIntensity), p => p.DlssBakeIntensity, (p, v) => p.DlssBakeIntensity = v, 1.0f, since: 18),
+                IntEntry(nameof(Profile.DlssBakeProfile), p => p.DlssBakeProfile, (p, v) => p.DlssBakeProfile = v, 0, since: 18),
+
+                // v19: Repaint Auto Queue continuous toggle, as on Desktop.
+                BoolEntry(nameof(Profile.RepaintAutoQueue), p => p.RepaintAutoQueue, (p, v) => p.RepaintAutoQueue = v, false, since: 19)
             )
         };
 
@@ -307,6 +388,13 @@ namespace GUO.Configuration
         private static Entry IntEntry(string name, Func<Profile, int> get, Action<Profile, int> set, int value, int since = 1)
         {
             int upstream = get(Upstream);
+
+            return new Entry(name, since, p => get(p) == upstream, p => set(p, value));
+        }
+
+        private static Entry FloatEntry(string name, Func<Profile, float> get, Action<Profile, float> set, float value, int since = 1)
+        {
+            float upstream = get(Upstream);
 
             return new Entry(name, since, p => get(p) == upstream, p => set(p, value));
         }

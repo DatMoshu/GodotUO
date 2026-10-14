@@ -66,6 +66,22 @@ namespace GUO.Renderer.PostFx
         /// <summary>The scale the stack runs at now: 1, or 0.5 for a heavy look on the mobile tier.</summary>
         public float Scale { get; private set; } = 1f;
 
+        /// <summary>
+        /// PORT DEVIATION (GUO): HD light Phase 1. When true the stack viewport
+        /// renders in HDR (use_hdr_2d) so hd_bloom hotspots above 1 survive to
+        /// hd_tonemap. Set per-frame by GameScene from the profile toggle;
+        /// Classic with HD off never builds the viewport either way.
+        /// </summary>
+        public bool ForceHdr { get; set; }
+
+        /// <summary>
+        /// PORT DEVIATION (GUO): HD light Phase 3. The quarter-res height
+        /// buffer (HdHeightBuffer, top-Z per pixel), set per-frame by the
+        /// GameScene while an enabled pass declares height_tex; null
+        /// otherwise, so Classic never builds the buffer.
+        /// </summary>
+        public Texture2D HdHeightTex { get; set; }
+
         private PostFxPreset _preset = PostFxPreset.Classic();
 
         // The look the player chose, which state.json keeps: not a look shown
@@ -99,6 +115,7 @@ namespace GUO.Renderer.PostFx
         private readonly List<(PostFxPass pass, ColorRect rect, ShaderMaterial material)> _built = new();
         private ColorRect _split;
         private RenderTarget2D _builtFor;
+        private bool _builtHdr;
         private bool _dirty = true;
         private double _nextPoll;
         private object _commandsFor;
@@ -163,18 +180,46 @@ namespace GUO.Renderer.PostFx
         }
 
         /// <summary>
-        /// The texture to draw for the world this frame. <paramref name="light"/>
-        /// is offered to passes that declare <c>light_tex</c>.
+        /// The texture to draw for the world this frame. <paramref name="lightTex"/>
+        /// is offered to passes that declare <c>light_tex</c>: the classic
+        /// light target's texture, or the realistic override's texture while
+        /// realistic lights replace it (same blend and hue downstream).
         /// </summary>
-        public Texture2D Process(RenderTarget2D world, RenderTarget2D light)
+        public Texture2D Process(RenderTarget2D world, Texture2D lightTex)
         {
             Housekeeping();
             LastWorld = world;
 
             if (world == null || world.IsDisposed)
             {
+                // Keep the last good frame when the world is gone: handing
+                // back a dead viewport texture is the full-gray + 0.00ms GPU
+                // state (Hd shafts toggle, found 2026-10-13).
+                if (LastOutput != null && GodotObject.IsInstanceValid(LastOutput))
+                {
+                    return LastOutput;
+                }
+
                 LastOutput = world;
                 return world;
+            }
+
+            if (world.Width <= 0 || world.Height <= 0)
+            {
+                Texture2D wfb = SafeWorldTex(world);
+                if (wfb != null)
+                {
+                    LastOutput = wfb;
+                    return LastOutput;
+                }
+
+                if (LastOutput != null && GodotObject.IsInstanceValid(LastOutput))
+                {
+                    return LastOutput;
+                }
+
+                LastOutput = world.Texture;
+                return LastOutput;
             }
 
             bool active = Split > 0f || !_preset.IsClassic;
@@ -215,24 +260,79 @@ namespace GUO.Renderer.PostFx
             if (_split != null)
             {
                 var m = (ShaderMaterial)_split.Material;
-                m.SetShaderParameter("classic_tex", world.Texture);
+                if (SafeWorldTex(world) != null)
+                {
+                    m.SetShaderParameter("classic_tex", world.Texture);
+                }
+
                 m.SetShaderParameter("split", Split);
             }
 
-            LastOutput = _viewport.GetTexture();
+            // A rebuilt viewport has not rendered yet this frame (it was just
+            // added): its texture is still empty (transparent = gray over the
+            // background + 0.00ms GPU). Keep the last good frame this frame;
+            // the chain goes live next frame.
+            if (wasRebuilt)
+            {
+                if (fallback != null)
+                {
+                    LastOutput = fallback;
+                    return LastOutput;
+                }
+            }
+
+            Texture2D outTex = null;
+            try
+            {
+                outTex = _viewport.GetTexture();
+            }
+            catch
+            {
+                outTex = null;
+            }
+
+            if (outTex == null || !GodotObject.IsInstanceValid(outTex))
+            {
+                if (fallback != null)
+                {
+                    LastOutput = fallback;
+                    return LastOutput;
+                }
+
+                LastOutput = SafeWorldTex(world) ?? world.Texture;
+                return LastOutput;
+            }
+
+            LastOutput = outTex;
             return LastOutput;
         }
 
         private void Build(RenderTarget2D world)
         {
-            Teardown();
+            // Validate BEFORE tearing down: a failed rebuild must keep the old
+            // chain (last good frame) rather than destroy it and leave a null
+            // viewport (persistent gray). The caller keeps _dirty true by
+            // retrying next frame when we return early here.
             Node host = world.Parent;
-            if (host == null)
+            if (host == null || !GodotObject.IsInstanceValid(host))
+            {
+                return;
+            }
+
+            if (world.Width <= 0 || world.Height <= 0)
             {
                 return;
             }
 
             bool heavy = _preset.Passes.Exists(p => p.Enabled && IsHeavy(PostFxLibrary.Shader(p.Shader)));
+            Scale = !FullQuality && heavy ? 0.5f : 1f;
+            Vector2I size = Scaled(world);
+            if (size.X <= 0 || size.Y <= 0)
+            {
+                return;
+            }
+
+            Teardown();
 
             // The id buffer, only when a pass reads it; created before the stack's
             // own viewport, so it renders first. Always the world's full size.
@@ -262,6 +362,10 @@ namespace GUO.Renderer.PostFx
                 Disable3D = true,
                 CanvasItemDefaultTextureFilter = Viewport.DefaultCanvasItemTextureFilter.Nearest,
             };
+            // HD Phase 1: HDR stack so >1 hotspots survive to the tonemap.
+            // Nearest kept; LDR default keeps every existing look unchanged.
+            _viewport.Set("use_hdr_2d", ForceHdr);
+            _builtHdr = ForceHdr;
             // Sampled down nearest at half resolution: every other art pixel.
             _base = new Sprite2D
             {
@@ -313,6 +417,121 @@ namespace GUO.Renderer.PostFx
                 : new Vector2I(Math.Max(1, (int)Math.Ceiling(world.Width * Scale)), Math.Max(1, (int)Math.Ceiling(world.Height * Scale)));
 
         internal static bool IsHeavy(Shader shader) => shader != null && shader.Code.Contains("// postfx: heavy");
+
+        /// <summary>
+        /// The world texture when it is usable, else null. A freed, zero-size
+        /// or not-yet-rendered world target must never be pushed into _base or
+        /// handed back as the frame: the caller falls back to the last good
+        /// frame instead (never gray).
+        /// </summary>
+        private static Texture2D SafeWorldTex(RenderTarget2D world)
+        {
+            try
+            {
+                Texture2D t = world?.Texture;
+                if (t != null && GodotObject.IsInstanceValid(t)
+                    && t.GetWidth() > 0 && t.GetHeight() > 0)
+                {
+                    return t;
+                }
+            }
+            catch
+            {
+            }
+
+            return null;
+        }
+
+        private static Texture2D _clearLightFallback;
+
+        /// <summary>
+        /// PORT DEVIATION (GUO): HD light Phase 3. Flat zero-height field
+        /// (gray decodes to Z 0: nothing stands above the ray, so no
+        /// shadows) for the teardown/resize race where a height pass is
+        /// built but the buffer is not yet filled.
+        /// </summary>
+        private static Texture2D _grayHeightFallback;
+
+        private static Texture2D GuardHeightTex(Texture2D heightTex)
+        {
+            try
+            {
+                if (heightTex != null && GodotObject.IsInstanceValid(heightTex)
+                    && heightTex.GetWidth() > 0 && heightTex.GetHeight() > 0)
+                {
+                    return heightTex;
+                }
+            }
+            catch
+            {
+            }
+
+            if (_grayHeightFallback == null || !GodotObject.IsInstanceValid(_grayHeightFallback))
+            {
+                var img = Image.Create(1, 1, false, Image.Format.Rgba8);
+                img.Fill(new Color(0.5f, 0.5f, 0.5f, 1f));
+                _grayHeightFallback = ImageTexture.CreateFromImage(img);
+            }
+
+            return _grayHeightFallback;
+        }
+
+        private static Texture2D GuardLightTex(Texture2D lightTex)
+        {
+            try
+            {
+                if (lightTex != null && GodotObject.IsInstanceValid(lightTex)
+                    && lightTex.GetWidth() > 0 && lightTex.GetHeight() > 0)
+                {
+                    return lightTex;
+                }
+            }
+            catch
+            {
+            }
+
+            // 1x1 transparent black: the tonemap/night-vision/GI alpha guards
+            // (lt.a < 0.01) fall back to mult 1.0, additive passes see l = 0.
+            if (_clearLightFallback == null || !GodotObject.IsInstanceValid(_clearLightFallback))
+            {
+                var img = Image.Create(1, 1, false, Image.Format.Rgba8);
+                img.Fill(new Color(0f, 0f, 0f, 0f));
+                _clearLightFallback = ImageTexture.CreateFromImage(img);
+            }
+
+            return _clearLightFallback;
+        }
+
+        /// <summary>
+        /// PORT DEVIATION (GUO): HD light Phase 4. True while an enabled
+        /// hd_gi pass composites above zero, in which case hd_tonemap skips
+        /// its blob multiply (hd_skip_light). Reads the preset's saved
+        /// gi_strength so a hand-zeroed pass falls back to Phase 3 exactly.
+        /// </summary>
+        private bool GiCompositeActive()
+        {
+            foreach (PostFxPass p in _preset.Passes)
+            {
+                if (!p.Enabled || !string.Equals(p.Shader, "hd_gi", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                float s = 1f;
+                if (p.Params.TryGetValue("gi_strength", out JsonNode node) && node is JsonValue v &&
+                    v.GetValueKind() == JsonValueKind.Number)
+                {
+                    s = v.GetValue<float>();
+                }
+
+                if (s > 0.001f)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
 
         private static ColorRect FullRect(Vector2I size, Material material) => new()
         {
@@ -440,8 +659,23 @@ namespace GUO.Renderer.PostFx
         private void LoadState()
         {
             string file = PostFxLibrary.StateFile;
-            if (file == null || !File.Exists(file))
+            if (file == null)
             {
+                return;
+            }
+
+            // v13 HD defaults: a fresh home (no state.json) boots into HD
+            // Light; Classic is one click away in Screen effects. An
+            // existing state.json is only ever read, never rewritten here.
+            if (!File.Exists(file))
+            {
+                PostFxPreset hd = PostFxLibrary.Find("HD Light");
+                if (hd != null)
+                {
+                    _remembered = hd.Name;
+                    Use(hd, remember: false);
+                }
+
                 return;
             }
 

@@ -445,6 +445,14 @@ public partial class Main : Node
         GUO.Renderer.PostFx.PostFxLibrary.UserFolder = System.IO.Path.Combine(dataDir, "postfx");
         GUO.Renderer.PostFx.PostFxStack.RunOverride = string.IsNullOrWhiteSpace(_options.PostFx) ? null : _options.PostFx;
 
+        // HD light Phase 3: --hd-sun sets the sun hour for this run and
+        // forces the HD foundation with it (profile untouched).
+        if (!string.IsNullOrWhiteSpace(_options.HdSun))
+        {
+            GUO.Renderer.Lights.HdSun.ApplyBoot(_options.HdSun);
+            GD.Print($"[GUO] hd-sun         : {_options.HdSun} (HD forced for this run)");
+        }
+
         GD.Print($"[GUO] client home   : {dataDir}");
 
         var args = new List<string>
@@ -758,6 +766,12 @@ public partial class Main : Node
         await Preamble();
         await PostFxProbe.Run(this, _options.PostFxSheet, _options.PostFxTour);
         Quit(PostFxProbe.Passed ? 0 : 1);
+    }
+
+    /// <summary>Prove the HD sun with no shard and no world; see HdSunProbe.</summary>
+    private void HdSunProbeThenQuit()
+    {
+        Quit(HdSunProbe.Run(this) ? 0 : 1);
     }
 
     /// <summary>Turn to portrait and back, measure both, then quit; see PortraitProbe (C9).</summary>
@@ -1488,6 +1502,8 @@ public partial class Main : Node
                 || PortraitProbe
                 || PerfProbe
                 || !string.IsNullOrEmpty(PostFxSheet)
+                || !string.IsNullOrWhiteSpace(HdSun)
+                || HdSunProbe
                 || DoorProbe
                 || LayerShot
                 || MogeShot
@@ -1600,6 +1616,12 @@ public partial class Main : Node
 
         /// <summary>--postfx NAME|off: the look for this run only, state.json untouched (PostFxStack.RunOverride).</summary>
         public string PostFx { get; private set; }
+
+        /// <summary>--hd-sun HOUR|auto [hour]|off: the sun hour for this run only (HdSun boot statics, forces HD).</summary>
+        public string HdSun { get; private set; } = "";
+
+        /// <summary>--hd-sun-probe: prove the sun curve, shader and height buffer headless, then quit.</summary>
+        public bool HdSunProbe { get; private set; }
 
         /// <summary>--perf-parity: per scene, compare --batched-world with the plain path pixel for pixel.</summary>
         public bool PerfParity { get; private set; }
@@ -1970,6 +1992,12 @@ public partial class Main : Node
                         break;
                     case "--postfx":
                         o.PostFx = Next();
+                        break;
+                    case "--hd-sun":
+                        o.HdSun = Next();
+                        break;
+                    case "--hd-sun-probe":
+                        o.HdSunProbe = true;
                         break;
                     case "--door-probe":
                         o.DoorProbe = true;

@@ -203,6 +203,23 @@ namespace GUO.Configuration
         public int LightLevelType { get; set; } // 0 = absolute, 1 = minimum
         public bool UseColoredLights { get; set; } = true;
         public bool UseDarkNights { get; set; }
+        // PORT DEVIATION (GUO): realistic 2D lights (PointLight2D + shadows
+        // in a parallel world-sized viewport, composited as the light target).
+        // Off by default; off-state never builds the viewport (pixel-identical).
+        public bool UseRealisticLights { get; set; } = false;
+        // PORT DEVIATION (GUO): HD light renderer, Phase 1 (HDR foundation +
+        // cheap wins: linear-ish light compositing + tonemap/bloom/grade/heat/
+        // shafts in PostFx, TIME-hash torch flicker). Off by default; off-state
+        // never builds the HD viewport (pixel-identical, like realistic above).
+        // On builds the realistic viewport in HDR (UseHdr2D) with flicker and
+        // offers the hd_* PostFx passes; world shaders stay unshaded.
+        public bool UseHDLight { get; set; } = false;
+        // PORT DEVIATION (GUO): HD light renderer, Phase 3 (sun directional
+        // light + height buffer). The shard sends no clock (0x5B arrives but
+        // is ignored upstream and here), so the hour is manual with an
+        // opt-in cycle. 0..24, default noon; hot-applies next frame.
+        public float HdSunHour { get; set; } = 12f;
+        public bool HdSunAuto { get; set; } = false;
         public int CloseHealthBarType { get; set; } // 0 = none, 1 == not exists, 2 == is dead
         public bool ActivateChatAfterEnter { get; set; }
         public bool ActivateChatAdditionalButtons { get; set; } = true;

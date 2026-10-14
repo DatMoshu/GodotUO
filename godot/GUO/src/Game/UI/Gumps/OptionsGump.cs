@@ -193,7 +193,14 @@ namespace GUO.Game.UI.Gumps
 
         // video
         private Checkbox _use_old_status_gump, _statusGumpBarMutuallyExclusive, _windowBorderless, _enableDeathScreen, _enableBlackWhiteEffect, _altLights, _enableLight, _enableShadows, _enableShadowsStatics, _auraMouse, _runMouseInSeparateThread, _useColoredLights, _darkNights, _partyAura, _hideChatGradient, _animatedWaterEffect;
+        private Checkbox _realisticLights; // PORT DEVIATION (GUO): realistic point lights + shadows
+        private Checkbox _hdLight; // PORT DEVIATION (GUO): HD light renderer Phase 1 (HDR + flicker + PostFx wins)
+        private HSliderBar _hdSunTime; // PORT DEVIATION (GUO): HD light Phase 3, sun hour 0..24h (whole hours; slider shows hours)
+        private Checkbox _hdSunAuto; // PORT DEVIATION (GUO): HD light Phase 3, cycle the sun
         private Checkbox _enhancedHD; // PORT DEVIATION (GUO): Enhanced HD repaint detail
+        private Checkbox _superRes4x; // PORT DEVIATION (GUO): SuperRes 4x upscale detail
+        private Checkbox _dlss5; // PORT DEVIATION (GUO): DLSS 5 full-frame enhance (V1 toggle only)
+        private Checkbox _dlssBake; // PORT DEVIATION (GUO): DLSS bake detail (DlssGump overrides)
         private Combobox _lightLevelType;
         private Checkbox _use_smooth_boat_movement;
         private HSliderBar _terrainShadowLevel;
@@ -2036,6 +2043,78 @@ namespace GUO.Game.UI.Gumps
                     null,
                     ResGumps.UseColoredLights,
                     _currentProfile.UseColoredLights,
+                    startX,
+                    startY
+                )
+            );
+
+            // PORT DEVIATION (GUO): realistic lights. Hot-applies: GameScene
+            // builds or tears down the parallel viewport on the next frame, no
+            // restart. On by default (v13 HD defaults); off is the classic
+            // path, pixel-identical.
+            section3.Add
+            (
+                _realisticLights = AddCheckBox
+                (
+                    null,
+                    "Realistic lights (point lights + shadows)",
+                    _currentProfile.UseRealisticLights,
+                    startX,
+                    startY
+                )
+            );
+
+            // PORT DEVIATION (GUO): HD light renderer, Phase 1. Hot-applies
+            // like realistic above (HDR light viewport + flicker + hd_* PostFx
+            // preset); on by default (v13 HD defaults), off never builds the
+            // viewport, pixel-identical.
+            section3.Add
+            (
+                _hdLight = AddCheckBox
+                (
+                    null,
+                    "HD light renderer (HDR + sun + flicker + shafts)",
+                    _currentProfile.UseHDLight,
+                    startX,
+                    startY
+                )
+            );
+
+            // PORT DEVIATION (GUO): HD light renderer, Phase 3. The shard
+            // sends no clock (0x5B is ignored), so the sun hour is manual
+            // with an opt-in cycle; slider is whole hours 0..24 (HSliderBar
+            // shows the raw value, so halves would display 0..48).
+            section3.Add(AddLabel(null, "Sun time of day (HD)", startX, startY));
+
+            section3.AddRight
+            (
+                _hdSunTime = AddHSlider
+                (
+                    null,
+                    0,
+                    24,
+                    Math.Clamp((int)Math.Round(_currentProfile.HdSunHour), 0, 24),
+                    startX,
+                    startY,
+                    250
+                )
+            );
+            // PORT DEVIATION (GUO): drag live-updates the sun (cheap float);
+            // Apply still persists profile + clears the -hd_sun auto vote.
+            _hdSunTime.ValueChanged += (s, e) =>
+            {
+                float hour = Math.Clamp((float)_hdSunTime.Value, 0f, 24f);
+                _currentProfile.HdSunHour = hour;
+                GUO.Renderer.Lights.HdSun.Hour = Math.Clamp(hour, 0f, 23.99f);
+            };
+
+            section3.Add
+            (
+                _hdSunAuto = AddCheckBox
+                (
+                    null,
+                    "Cycle sun (a day in four minutes)",
+                    _currentProfile.HdSunAuto,
                     startX,
                     startY
                 )
@@ -4147,8 +4226,12 @@ namespace GUO.Game.UI.Gumps
                     _lightBar.Value = 0;
                     _enableLight.IsChecked = false;
                     _lightLevelType.SelectedIndex = 0;
-                    _useColoredLights.IsChecked = false;
+                    _useColoredLights.IsChecked = videoDefaults.UseColoredLights; // PORT DEVIATION (GUO): true, matches Profile
                     _darkNights.IsChecked = false;
+                    _realisticLights.IsChecked = true; // PORT DEVIATION (GUO): v13 HD defaults on
+                    _hdLight.IsChecked = true; // PORT DEVIATION (GUO): v13 HD defaults on (HD Light)
+                    _hdSunTime.Value = 12; // PORT DEVIATION (GUO): HD light Phase 3, noon (0..24h)
+                    _hdSunAuto.IsChecked = false; // PORT DEVIATION (GUO): HD light Phase 3, manual
                     _enableShadows.IsChecked = true;
                     _enableShadowsStatics.IsChecked = true;
                     _terrainShadowLevel.Value = 15;
@@ -4712,6 +4795,14 @@ namespace GUO.Game.UI.Gumps
 
             _currentProfile.UseColoredLights = _useColoredLights.IsChecked;
             _currentProfile.UseDarkNights = _darkNights.IsChecked;
+            _currentProfile.UseRealisticLights = _realisticLights.IsChecked; // PORT DEVIATION (GUO): hot-applies next frame
+            _currentProfile.UseHDLight = _hdLight.IsChecked; // PORT DEVIATION (GUO): HD light Phase 1, hot-applies next frame
+            // PORT DEVIATION (GUO): HD light Phase 3, sun clock. Slider is
+            // whole hours 0..24 (HSliderBar shows the raw value). Applying
+            // clears the command's auto vote so the gump visibly wins.
+            _currentProfile.HdSunHour = Math.Clamp((float)_hdSunTime.Value, 0f, 24f);
+            _currentProfile.HdSunAuto = _hdSunAuto.IsChecked;
+            GUO.Renderer.Lights.HdSun.AutoSet = null;
             _currentProfile.ShadowsEnabled = _enableShadows.IsChecked;
             _currentProfile.ShadowsStatics = _enableShadowsStatics.IsChecked;
             _currentProfile.TerrainShadowsLevel = _terrainShadowLevel.Value;

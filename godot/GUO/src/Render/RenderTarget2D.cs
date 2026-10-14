@@ -43,10 +43,11 @@ namespace GUO.Renderer
         private readonly Node2D _clearHost;
         private Color _clearColor = new Color(0, 0, 0, 0);
 
-        public RenderTarget2D(Node parent, int width, int height)
+        public RenderTarget2D(Node parent, int width, int height, bool hdr = false)
         {
             Width = width;
             Height = height;
+            UseHdr = hdr;
 
             _viewport = new SubViewport
             {
@@ -64,6 +65,10 @@ namespace GUO.Renderer
                 CanvasItemDefaultTextureFilter =
                     Viewport.DefaultCanvasItemTextureFilter.Nearest,
             };
+            // PORT DEVIATION (GUO): HD light Phase 1. HDR (use_hdr_2d) only
+            // when the HD toggle built this target; default false keeps LDR
+            // Classic pixel-identical. Nearest kept above either way.
+            _viewport.Set("use_hdr_2d", hdr);
 
             _clearHost = new Node2D();
             _host = new Node2D();
@@ -77,6 +82,9 @@ namespace GUO.Renderer
         public int Width { get; }
 
         public int Height { get; }
+
+        /// <summary>HD Phase 1: whether this target renders in HDR (use_hdr_2d).</summary>
+        public bool UseHdr { get; }
 
         public bool IsDisposed { get; private set; }
 
