@@ -1,0 +1,21 @@
+{
+ "name": "Damage",
+ "description": "Red hit flash that grows as health drops.",
+ "passes": [
+  {
+   "shader": "damage",
+   "params": {
+    "mode": 0,
+    "intensity": 0.0
+   }
+  }
+ ],
+ "bindings": [
+  {
+   "pass": 0,
+   "param": "intensity",
+   "from": "hp_missing",
+   "scale": 1.0
+  }
+ ]
+}

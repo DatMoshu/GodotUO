@@ -1,0 +1,17 @@
+{
+ "name": "God Rays",
+ "description": "Sun shafts from a screen-space light position. JAR defaults.",
+ "passes": [
+  {
+   "shader": "god_rays",
+   "params": {
+    "intensity": 0.3,
+    "light_x": 0.5,
+    "light_y": 0.15,
+    "density": 0.4,
+    "decay": 0.96
+   }
+  }
+ ],
+ "bindings": []
+}

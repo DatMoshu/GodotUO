@@ -1,0 +1,13 @@
+{
+ "name": "Chromatic Aberration",
+ "description": "Radial RGB fringing.",
+ "passes": [
+  {
+   "shader": "chromatic",
+   "params": {
+    "amount": 0.005
+   }
+  }
+ ],
+ "bindings": []
+}
