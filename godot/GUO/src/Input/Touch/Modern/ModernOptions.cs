@@ -144,6 +144,34 @@ internal sealed partial class ModernOptions : ModernGump
                 Game.Managers.ThemeManager.Reapply(Client.Game.UO.World);
             }
         });
+        Bool("Video", "SuperRes 4x", p => p.SuperRes4x, (p, v) =>
+        {
+            if (p.SuperRes4x != v)
+            {
+                p.SuperRes4x = v;
+                Client.Game.UO.Arts.RefreshAllSR();
+                Client.Game.UO.Gumps.RefreshAllSR();
+                Game.Managers.ThemeManager.Reapply(Client.Game.UO.World);
+            }
+        });
+        Bool("Video", "DLSS 5 (full-frame enhance)", p => p.Dlss5, (p, v) =>
+        {
+            if (p.Dlss5 != v)
+            {
+                p.Dlss5 = v;
+                GUO.Renderer.Dlss5.Dlss5Frame.Reset();
+            }
+        });
+        Bool("Video", "DLSS bake (static detail)", p => p.DlssBake, (p, v) =>
+        {
+            if (p.DlssBake != v)
+            {
+                p.DlssBake = v;
+                Client.Game.UO.Arts.RefreshAllDlss();
+                Client.Game.UO.FileManager.Arts.RescanOverrides();
+                Game.Managers.ThemeManager.Reapply(Client.Game.UO.World);
+            }
+        });
 
         // Tooltip, Fonts and Speech: the classic pages' boxes, sliders and
         // colours (ModernHuePicker), with their ranges. Font pickers stay in

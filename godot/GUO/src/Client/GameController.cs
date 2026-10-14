@@ -1005,6 +1005,12 @@ namespace GUO
 
             UIManager.Update();
 
+            // PORT DEVIATION (GUO): SuperRes 4x committer. Warms at most 2
+            // finished upscales per frame into the SR LRU and dirties the
+            // chunk meshes for the seamless native->SR swap (native
+            // footprint, LinearClamp via IsSrTexture).
+            try { Renderer.SuperRes.SrCommit.Poll(); } catch { }
+
             _totalElapsed += elapsedMilliseconds;
             _currentFpsTime += elapsedMilliseconds;
 

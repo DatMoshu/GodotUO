@@ -2198,6 +2198,50 @@ namespace GUO.Game.UI.Gumps
                 )
             );
 
+            // PORT DEVIATION (GUO): SuperRes 4x upscale detail, separate
+            // from Enhanced HD (toggle only; no worker yet).
+            section4.Add
+            (
+                _superRes4x = AddCheckBox
+                (
+                    null,
+                    "SuperRes 4x (upscale detail)",
+                    _currentProfile.SuperRes4x,
+                    startX,
+                    startY
+                )
+            );
+
+            // PORT DEVIATION (GUO): DLSS 5 full-frame enhance (V1 warms the
+            // temporal graph in the background, pass-through). Off is
+            // byte-identical native.
+            section4.Add
+            (
+                _dlss5 = AddCheckBox
+                (
+                    null,
+                    "DLSS 5 (full-frame enhance)",
+                    _currentProfile.Dlss5,
+                    startX,
+                    startY
+                )
+            );
+
+            // PORT DEVIATION (GUO): DLSS bake detail (the DlssGump's baked
+            // overrides/DLSS PNGs, chained last after HD and SR). Separate
+            // from the frame toggle above, which stays pass-through.
+            section4.Add
+            (
+                _dlssBake = AddCheckBox
+                (
+                    null,
+                    "DLSS bake (static detail)",
+                    _currentProfile.DlssBake,
+                    startX,
+                    startY
+                )
+            );
+
 
             SettingsSection section5 = AddSettingsSection(box, "Shadows");
             section5.Y = section4.Bounds.Bottom + 40;
@@ -4240,6 +4284,9 @@ namespace GUO.Game.UI.Gumps
                     _partyAura.IsChecked = true;
                     _animatedWaterEffect.IsChecked = false;
                     _enhancedHD.IsChecked = videoDefaults.EnhancedHD; // PORT DEVIATION (GUO)
+                    _superRes4x.IsChecked = videoDefaults.SuperRes4x; // PORT DEVIATION (GUO)
+                    _dlss5.IsChecked = videoDefaults.Dlss5; // PORT DEVIATION (GUO)
+                    _dlssBake.IsChecked = videoDefaults.DlssBake; // PORT DEVIATION (GUO)
                     _partyAuraColorPickerBox.Hue = 0x0044;
 
                     break;
@@ -4819,6 +4866,37 @@ namespace GUO.Game.UI.Gumps
             {
                 _currentProfile.EnhancedHD = _enhancedHD.IsChecked;
                 Client.Game.UO.Arts.RefreshAllHD();
+                Client.Game.UO.FileManager.Arts.RescanOverrides();
+                ThemeManager.Reapply(World);
+            }
+
+            // PORT DEVIATION (GUO): SuperRes 4x toggle flip clears the SR
+            // caches and re-bakes the world (dirty chunks via Reapply).
+            if (_currentProfile.SuperRes4x != _superRes4x.IsChecked)
+            {
+                _currentProfile.SuperRes4x = _superRes4x.IsChecked;
+                Client.Game.UO.Arts.RefreshAllSR();
+                Client.Game.UO.Gumps.RefreshAllSR();
+                ThemeManager.Reapply(World);
+            }
+
+            // PORT DEVIATION (GUO): DLSS 5 toggle flip resets frame state
+            // (V1: background temporal warm, pass-through; off is
+            // byte-identical native).
+            if (_currentProfile.Dlss5 != _dlss5.IsChecked)
+            {
+                _currentProfile.Dlss5 = _dlss5.IsChecked;
+                GUO.Renderer.Dlss5.Dlss5Frame.Reset();
+            }
+
+            // PORT DEVIATION (GUO): DLSS bake toggle flip clears the DLSS
+            // cache and re-bakes the world (dirty chunks via Reapply).
+            // Separate from the frame toggle above, which stays
+            // pass-through either way.
+            if (_currentProfile.DlssBake != _dlssBake.IsChecked)
+            {
+                _currentProfile.DlssBake = _dlssBake.IsChecked;
+                Client.Game.UO.Arts.RefreshAllDlss();
                 Client.Game.UO.FileManager.Arts.RescanOverrides();
                 ThemeManager.Reapply(World);
             }

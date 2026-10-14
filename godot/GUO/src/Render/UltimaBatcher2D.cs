@@ -853,8 +853,11 @@ void fragment() {
 
                 // PORT DEVIATION (GUO): Enhanced HD land runs draw Linear
                 // (mipmapped minification, the rule-7 exception in
-                // View.DrawStatic); native runs keep Nearest.
-                bool wantHd = Arts.Art.IsHdTexture(run.Texture);
+                // View.DrawStatic); native runs keep Nearest. SuperRes 4x
+                // runs draw Linear too (HD wins upstream; either is Linear).
+                // DLSS bakes draw Linear as well (chained last).
+                // Gump SR textures draw Linear as well (world/UI gump SR).
+                bool wantHd = Arts.Art.IsHdTexture(run.Texture) || Arts.Art.IsSrTexture(run.Texture) || Arts.Art.IsDlssTexture(run.Texture) || Gumps.Gump.IsSrTexture(run.Texture);
                 SamplerState want = wantHd ? SamplerState.LinearClamp : SamplerState.PointClamp;
                 if (_sampler != want)
                 {
@@ -931,8 +934,9 @@ void fragment() {
             ArrayMesh mesh = layer.GetSpriteMesh(index);
 
             // PORT DEVIATION (GUO): Enhanced HD covering tile draws Linear;
-            // native keeps Nearest.
-            bool isHdCover = Arts.Art.IsHdTexture(layer.Textures[index]);
+            // native keeps Nearest. SuperRes 4x covers draw Linear too
+            // (plus DLSS bakes, plus gump SR, same Linear rule).
+            bool isHdCover = Arts.Art.IsHdTexture(layer.Textures[index]) || Arts.Art.IsSrTexture(layer.Textures[index]) || Arts.Art.IsDlssTexture(layer.Textures[index]) || Gumps.Gump.IsSrTexture(layer.Textures[index]);
             SamplerState wantCover = isHdCover ? SamplerState.LinearClamp : SamplerState.PointClamp;
             bool samplerSwap = _sampler != wantCover;
             SamplerState keepSampler = _sampler;

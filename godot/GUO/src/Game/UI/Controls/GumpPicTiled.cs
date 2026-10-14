@@ -85,6 +85,43 @@ namespace GUO.Game.UI.Controls
                 (
                     (batcher) =>
                     {
+                        // PORT DEVIATION (GUO): SuperRes 4x tiled (paperdoll
+                        // slot backs 0x243A, server GumppicTiled). HD never
+                        // applies to gumps, so SR-or-native. Each native tile
+                        // maps to the full SR image minified into the native
+                        // tile footprint; edge tiles crop proportionally.
+                        // LinearClamp on the SR run; toggle-off native.
+                        if (Client.Game.UO.Gumps.TryGetSr(Graphic, out Godot.Texture2D srTex, out Rectangle srUv, out int srNatW, out int srNatH))
+                        {
+                            if (srTex != null && srNatW > 0 && srNatH > 0 && srUv.Width > 0 && srUv.Height > 0)
+                            {
+                                int tileW = srNatW;
+                                int tileH = srNatH;
+                                int dwTotal = Width;
+                                int dhTotal = Height;
+                                batcher.SetSampler(SamplerState.LinearClamp);
+                                for (int oy = 0; oy < dhTotal; oy += tileH)
+                                {
+                                    int dh = System.Math.Min(tileH, dhTotal - oy);
+                                    int sh = (int)(srUv.Height * (float)dh / tileH);
+                                    for (int ox = 0; ox < dwTotal; ox += tileW)
+                                    {
+                                        int dw = System.Math.Min(tileW, dwTotal - ox);
+                                        int sw = (int)(srUv.Width * (float)dw / tileW);
+                                        var srSub = new Rectangle(srUv.X, srUv.Y, sw, sh);
+                                        batcher.Draw(
+                                            srTex,
+                                            new Rectangle(x + ox, y + oy, dw, dh),
+                                            srSub,
+                                            hueVector,
+                                            layerDepth
+                                        );
+                                    }
+                                }
+                                batcher.SetSampler(null);
+                                return true;
+                            }
+                        }
                         batcher.DrawTiled(
                             texture,
                             new Rectangle(x, y, Width, Height),

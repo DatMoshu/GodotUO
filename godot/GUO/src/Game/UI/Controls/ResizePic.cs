@@ -276,122 +276,144 @@ namespace GUO.Game.UI.Controls
             int offsetLeft = Math.Abs(Math.Max(bounds0.Width, bounds5.Width) - bounds2.Width);
             int offsetRight = Math.Max(bounds2.Width, bounds7.Width) - bounds4.Width;
 
-            if (texture0 != null)
+            // PORT DEVIATION (GUO): SuperRes 4x 9-slice (generic server gump
+            // frames). HD never applies to gumps, so SR-or-native per piece:
+            // corners single, edges/center tiled. Miss enqueues via TryGetSr
+            // and stays native; SrCommit warms the Gump SR LRU. LinearClamp
+            // on SR runs; toggle-off native. Picking stays native.
+            DrawSingleSrOrNative(batcher, 0, texture0, bounds0, x, y, color, layerDepth);
+
+            DrawTiledSrOrNative(
+                batcher, 1, texture1, bounds1,
+                new Rectangle(
+                    x + bounds0.Width,
+                    y,
+                    Width - bounds0.Width - bounds2.Width,
+                    bounds1.Height),
+                color, layerDepth);
+
+            DrawSingleSrOrNative(batcher, 2, texture2, bounds2, x + (Width - bounds2.Width), y + offsetTop, color, layerDepth);
+
+            DrawTiledSrOrNative(
+                batcher, 3, texture3, bounds3,
+                new Rectangle(
+                    x,
+                    y + bounds0.Height,
+                    bounds3.Width,
+                    Height - bounds0.Height - bounds5.Height),
+                color, layerDepth);
+
+            DrawTiledSrOrNative(
+                batcher, 4, texture4, bounds4,
+                new Rectangle(
+                    x + (Width - bounds4.Width),
+                    y + bounds2.Height,
+                    bounds4.Width,
+                    Height - bounds2.Height - bounds7.Height),
+                color, layerDepth);
+
+            DrawSingleSrOrNative(batcher, 5, texture5, bounds5, x, y + (Height - bounds5.Height), color, layerDepth);
+
+            DrawTiledSrOrNative(
+                batcher, 6, texture6, bounds6,
+                new Rectangle(
+                    x + bounds5.Width,
+                    y + (Height - bounds6.Height - offsetBottom),
+                    Width - bounds5.Width - bounds7.Width,
+                    bounds6.Height),
+                color, layerDepth);
+
+            DrawSingleSrOrNative(batcher, 7, texture7, bounds7, x + (Width - bounds7.Width), y + (Height - bounds7.Height), color, layerDepth);
+
+            DrawTiledSrOrNative(
+                batcher, 8, texture8, bounds8,
+                new Rectangle(
+                    x + bounds0.Width,
+                    y + bounds0.Height,
+                    (Width - bounds0.Width - bounds2.Width) + (offsetLeft + offsetRight),
+                    Height - bounds2.Height - bounds7.Height),
+                color, layerDepth);
+        }
+
+        private ushort PieceGraphic(int piece)
+        {
+            int idx = piece;
+            if (idx >= 8)
             {
-                batcher.Draw(texture0, new Vector2(x, y), bounds0, color, layerDepth);
+                idx = 4;
+            }
+            else if (idx >= 4)
+            {
+                ++idx;
             }
 
-            if (texture1 != null)
+            return (ushort)(Graphic + idx);
+        }
+
+        private void DrawSingleSrOrNative(UltimaBatcher2D batcher, int piece, Texture2D nativeTex, Rectangle nativeBounds, int dx, int dy, Vector3 color, float depth)
+        {
+            if (nativeBounds.Width > 0 && nativeBounds.Height > 0 &&
+                Client.Game.UO.Gumps.TryGetSr(PieceGraphic(piece), out Godot.Texture2D srTex, out Rectangle srUv, out _, out _))
             {
-                batcher.DrawTiled(
-                    texture1,
-                    new Rectangle(
-                        x + bounds0.Width,
-                        y,
-                        Width - bounds0.Width - bounds2.Width,
-                        bounds1.Height
-                    ),
-                    bounds1,
-                    color,
-                    layerDepth
-                );
+                if (srTex != null && srUv.Width > 0 && srUv.Height > 0)
+                {
+                    batcher.SetSampler(SamplerState.LinearClamp);
+                    batcher.Draw(
+                        srTex,
+                        new Rectangle(dx, dy, nativeBounds.Width, nativeBounds.Height),
+                        srUv,
+                        color,
+                        depth);
+                    batcher.SetSampler(null);
+                    return;
+                }
             }
 
-            if (texture2 != null)
+            if (nativeTex != null)
             {
-                batcher.Draw(
-                    texture2,
-                    new Vector2(x + (Width - bounds2.Width), y + offsetTop),
-                    bounds2,
-                    color,
-                    layerDepth
-                );
+                batcher.Draw(nativeTex, new Vector2(dx, dy), nativeBounds, color, depth);
+            }
+        }
+
+        private void DrawTiledSrOrNative(UltimaBatcher2D batcher, int piece, Texture2D nativeTex, Rectangle nativeBounds, Rectangle dest, Vector3 color, float depth)
+        {
+            if (dest.Width <= 0 || dest.Height <= 0)
+            {
+                return;
             }
 
-            if (texture3 != null)
+            if (nativeBounds.Width > 0 && nativeBounds.Height > 0 &&
+                Client.Game.UO.Gumps.TryGetSr(PieceGraphic(piece), out Godot.Texture2D srTex, out Rectangle srUv, out int srNatW, out int srNatH))
             {
-                batcher.DrawTiled(
-                    texture3,
-                    new Rectangle(
-                        x,
-                        y + bounds0.Height,
-                        bounds3.Width,
-                        Height - bounds0.Height - bounds5.Height
-                    ),
-                    bounds3,
-                    color,
-                    layerDepth
-                );
+                if (srTex != null && srUv.Width > 0 && srUv.Height > 0 && srNatW > 0 && srNatH > 0)
+                {
+                    int tileW = srNatW;
+                    int tileH = srNatH;
+                    batcher.SetSampler(SamplerState.LinearClamp);
+                    for (int oy = 0; oy < dest.Height; oy += tileH)
+                    {
+                        int dh = System.Math.Min(tileH, dest.Height - oy);
+                        int sh = (int)(srUv.Height * (float)dh / tileH);
+                        for (int ox = 0; ox < dest.Width; ox += tileW)
+                        {
+                            int dw = System.Math.Min(tileW, dest.Width - ox);
+                            int sw = (int)(srUv.Width * (float)dw / tileW);
+                            batcher.Draw(
+                                srTex,
+                                new Rectangle(dest.X + ox, dest.Y + oy, dw, dh),
+                                new Rectangle(srUv.X, srUv.Y, sw, sh),
+                                color,
+                                depth);
+                        }
+                    }
+                    batcher.SetSampler(null);
+                    return;
+                }
             }
 
-            if (texture4 != null)
+            if (nativeTex != null)
             {
-                batcher.DrawTiled(
-                    texture4,
-                    new Rectangle(
-                        x + (Width - bounds4.Width),
-                        y + bounds2.Height,
-                        bounds4.Width,
-                        Height - bounds2.Height - bounds7.Height
-                    ),
-                    bounds4,
-                    color,
-                    layerDepth
-                );
-            }
-
-            if (texture5 != null)
-            {
-                batcher.Draw(
-                    texture5,
-                    new Vector2(x, y + (Height - bounds5.Height)),
-                    bounds5,
-                    color,
-                    layerDepth
-                );
-            }
-
-            if (texture6 != null)
-            {
-                batcher.DrawTiled(
-                    texture6,
-                    new Rectangle(
-                        x + bounds5.Width,
-                        y + (Height - bounds6.Height - offsetBottom),
-                        Width - bounds5.Width - bounds7.Width,
-                        bounds6.Height
-                    ),
-                    bounds6,
-                    color,
-                    layerDepth
-                );
-            }
-
-            if (texture7 != null)
-            {
-                batcher.Draw(
-                    texture7,
-                    new Vector2(x + (Width - bounds7.Width), y + (Height - bounds7.Height)),
-                    bounds7,
-                    color,
-                    layerDepth
-                );
-            }
-
-            if (texture8 != null)
-            {
-                batcher.DrawTiled(
-                    texture8,
-                    new Rectangle(
-                        x + bounds0.Width,
-                        y + bounds0.Height,
-                        (Width - bounds0.Width - bounds2.Width) + (offsetLeft + offsetRight),
-                        Height - bounds2.Height - bounds7.Height
-                    ),
-                    bounds8,
-                    color,
-                    layerDepth
-                );
+                batcher.DrawTiled(nativeTex, dest, nativeBounds, color, depth);
             }
         }
 

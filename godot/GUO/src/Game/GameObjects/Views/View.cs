@@ -153,7 +153,10 @@ namespace GUO.Game.GameObjects
                 // pixel art; Nearest would subsample 1 texel per kxk block
                 // into aliased noise, while Linear over mipmaps folds the
                 // block down. Native keeps Nearest; HD items alone go Linear.
-                if (themed == null && Client.Game.UO.Arts.TryGetHd(false, graphic, out Godot.Texture2D hdTex, out Rectangle hdUv, out _, out _))
+                // SuperRes 4x chains after HD (HD wins when both exist).
+                // DLSS bake chains last (a baked detail filter, never an
+                // upscale, so crisper sources keep their seat).
+                if (themed == null && (Client.Game.UO.Arts.TryGetHd(false, graphic, out Godot.Texture2D hdTex, out Rectangle hdUv, out _, out _) || Client.Game.UO.Arts.TryGetSr(false, graphic, out hdTex, out hdUv, out _, out _) || Client.Game.UO.Arts.TryGetDlss(false, graphic, out hdTex, out hdUv, out _, out _)))
                 {
                     var hdPos = new Vector2(x, y);
                     var hdScale = new Vector2((float)uv.Width / hdUv.Width, (float)uv.Height / hdUv.Height);
@@ -219,6 +222,37 @@ namespace GUO.Game.GameObjects
             float depth
         )
         {
+            // PORT DEVIATION (GUO): SuperRes 4x for world gumps (lightning
+            // effect). HD never applies to gumps, so SR-or-native. On a disk
+            // miss TryGetSr enqueues the main-thread pixel copy to SrQueue
+            // and returns false so this frame stays native; SrCommit warms
+            // the Gump SR LRU. Toggle-off returns false immediately so the
+            // native path below stays byte-identical. Picking stays native.
+            if (Client.Game.UO.Gumps.TryGetSr(graphic, out Godot.Texture2D srTex, out Rectangle srUv, out int srNatW, out int srNatH))
+            {
+                if (srTex != null && srUv.Width > 0 && srUv.Height > 0 && srNatW > 0 && srNatH > 0)
+                {
+                    ref readonly var nativeForScale = ref Client.Game.UO.Gumps.GetGump(graphic);
+                    int destW = nativeForScale.Texture != null ? nativeForScale.UV.Width : srNatW;
+                    int destH = nativeForScale.Texture != null ? nativeForScale.UV.Height : srNatH;
+                    var srScale = new Vector2((float)destW / srUv.Width, (float)destH / srUv.Height);
+                    batcher.SetSampler(SamplerState.LinearClamp);
+                    batcher.Draw(
+                        srTex,
+                        new Vector2(x, y),
+                        srUv,
+                        hue,
+                        0f,
+                        Vector2.Zero,
+                        srScale,
+                        SpriteEffects.None,
+                        depth + 0.5f
+                    );
+                    batcher.SetSampler(null);
+                    return;
+                }
+            }
+
             ref readonly var gumpInfo = ref Client.Game.UO.Gumps.GetGump(graphic);
 
             if (gumpInfo.Texture != null)
@@ -280,7 +314,9 @@ namespace GUO.Game.GameObjects
             // PORT DEVIATION (GUO): Enhanced HD, same rule-7 exception as
             // DrawStatic: native footprint, 1/k scale is implicit in the
             // dest rect (native size, HD source), Linear for HD only.
-            if (themed == null && Client.Game.UO.Arts.TryGetHd(false, graphic, out Godot.Texture2D hdTex, out Rectangle hdUv, out _, out _))
+            // SuperRes 4x chains after HD (HD wins when both exist).
+            // DLSS bake chains last (detail filter).
+            if (themed == null && (Client.Game.UO.Arts.TryGetHd(false, graphic, out Godot.Texture2D hdTex, out Rectangle hdUv, out _, out _) || Client.Game.UO.Arts.TryGetSr(false, graphic, out hdTex, out hdUv, out _, out _) || Client.Game.UO.Arts.TryGetDlss(false, graphic, out hdTex, out hdUv, out _, out _)))
             {
                 batcher.SetSampler(SamplerState.LinearClamp);
                 batcher.Draw(
@@ -374,13 +410,18 @@ namespace GUO.Game.GameObjects
                 // PORT DEVIATION (GUO): Enhanced HD, same rule-7 exception
                 // as DrawStatic: native footprint + 1/k scale, Linear for
                 // HD only (shadow included); native keeps Nearest.
-                if (themed == null && Client.Game.UO.Arts.TryGetHd(false, graphic, out Godot.Texture2D hdTex, out Rectangle hdUv, out _, out _))
+                // SuperRes 4x chains after HD (HD wins when both exist).
+                // DLSS bake chains last (detail filter).
+                if (themed == null && (Client.Game.UO.Arts.TryGetHd(false, graphic, out Godot.Texture2D hdTex, out Rectangle hdUv, out _, out _) || Client.Game.UO.Arts.TryGetSr(false, graphic, out hdTex, out hdUv, out _, out _) || Client.Game.UO.Arts.TryGetDlss(false, graphic, out hdTex, out hdUv, out _, out _)))
                 {
                     var hdScale = new Vector2((float)artInfo.UV.Width / hdUv.Width, (float)artInfo.UV.Height / hdUv.Height);
                     batcher.SetSampler(SamplerState.LinearClamp);
                     if (shadow)
                     {
-                        batcher.DrawShadow(hdTex, pos, hdUv, false, depth + 0.25f);
+                        // Shadow footprint stays native: DrawShadow sizes the
+                        // blob from sourceRect, so hdUv/srUv (kx native) would
+                        // blow it up k:1. SR/HD is albedo-only.
+                        batcher.DrawShadow(artInfo.Texture, pos, artInfo.UV, false, depth + 0.25f);
                     }
 
                     if (isWet)

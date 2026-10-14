@@ -128,11 +128,18 @@ namespace GUO.Game.GameObjects
                     // dest footprint at 1/k, Linear for HD only.
                     // Rule-7 filtering exception: as in View.DrawStatic, HD
                     // is minified AI detail (mipmaps + Linear), not pixel
-                    // art; native keeps Nearest.
-                    if (ThemedVariant == null && Client.Game.UO.Arts.TryGetHd(true, Graphic, out Godot.Texture2D hdTex, out Rectangle hdUv, out _, out _))
+                    // art; native keeps Nearest. SuperRes 4x chains after
+                    // HD (HD wins when both exist). DLSS bake chains last
+                    // (detail filter).
+                    if (ThemedVariant == null && (Client.Game.UO.Arts.TryGetHd(true, Graphic, out Godot.Texture2D hdTex, out Rectangle hdUv, out _, out _) || Client.Game.UO.Arts.TryGetSr(true, Graphic, out hdTex, out hdUv, out _, out _) || Client.Game.UO.Arts.TryGetDlss(true, Graphic, out hdTex, out hdUv, out _, out _)))
                     {
-                        var pos = new Vector2(posX, posY);
-                        var hdScale = new Vector2((float)uv.Width / hdUv.Width, (float)uv.Height / hdUv.Height);
+                        // HD/SR Linear seam overlap (see MeshLayer.WriteQuadAtHd):
+                        // same 1px-total dest expansion the chunk mesh bakes, so
+                        // the sorted-pass flat path abuts without gaps. Picking
+                        // stays on the native footprint (CheckMouseSelection).
+                        const float dilate = 0.5f;
+                        var pos = new Vector2(posX - dilate, posY - dilate);
+                        var hdScale = new Vector2((float)(uv.Width + 1) / hdUv.Width, (float)(uv.Height + 1) / hdUv.Height);
                         batcher.SetSampler(SamplerState.LinearClamp);
                         if (ProfileManager.CurrentProfile.AnimatedWaterEffect && TileData.IsWet)
                         {

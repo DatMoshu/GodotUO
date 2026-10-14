@@ -413,6 +413,45 @@ namespace GUO.Configuration
         // native. Default off.
         public bool EnhancedHD { get; set; } = false;
 
+        // PORT DEVIATION (GUO): SuperRes 4x upscale detail. When true the
+        // world and gump draws use pre-upscaled 4x art; off is byte-identical
+        // native. A lazy background worker fills the SR4x disk cache.
+        // Default off.
+        public bool SuperRes4x { get; set; } = false;
+
+        // PORT DEVIATION (GUO): DLSS 5 full-frame enhance. When true the V1
+        // frame hook warms the temporal graph in the background and stays
+        // visually pass-through; off is byte-identical native. Default off.
+        public bool Dlss5 { get; set; } = false;
+
+        // PORT DEVIATION (GUO): DLSS bake detail (the DlssGump's baked
+        // overrides/DLSS PNGs). Separate from the Dlss5 frame toggle, which
+        // stays pass-through; off is byte-identical native. Default off.
+        public bool DlssBake { get; set; } = false;
+
+        // PORT DEVIATION (GUO): DLSS bake enhance strength 0-1 and neural
+        // profile 0-3 (standard, natural, cinematic, neutral). The gump
+        // persists its sliders here so a session restores them.
+        public float DlssBakeIntensity { get; set; } = 1.0f;
+        public int DlssBakeProfile { get; set; } = 0;
+
+        // PORT DEVIATION (GUO): Repaint prompt includes the TileData object
+        // name ("{name}, {prompt}"). When false the raw prompt box text is
+        // sent unchanged. Default on (current behaviour).
+        public bool RepaintIncludeName { get; set; } = true;
+
+        // PORT DEVIATION (GUO): Repaint depth ControlNet keep-structure.
+        public bool RepaintDepthEnabled { get; set; } = false;
+        public float RepaintDepthStrength { get; set; } = 0.6f;
+        public float RepaintDepthStart { get; set; } = 0f;
+        public float RepaintDepthEnd { get; set; } = 0.8f;
+
+        // PORT DEVIATION (GUO): Repaint Auto Queue continuous toggle.
+        // When true the repaint gump rescans in-range graphics whenever
+        // the player moves and queues what is still missing; false runs
+        // one manual batch (or a single Generate) and stops. Default off.
+        public bool RepaintAutoQueue { get; set; } = false;
+
         public bool HideChatGradient { get; set; } = false;
 
         public bool StandardSkillsGump { get; set; } = true;

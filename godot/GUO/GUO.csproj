@@ -25,6 +25,17 @@
   </PropertyGroup>
 
   <!--
+    PORT DEVIATION (GUO): SuperRes 4x lazy upscaler (realesr-general-x4v3).
+    Microsoft.ML.OnnxRuntime (net8.0) runs the model on a background worker
+    with DirectML first + CPU fallback; when the model or ORT is unavailable
+    the worker falls back to a bicubic 4x so the disk cache + commit path
+    still proves out. Pinned to 1.18.0 (cached) for offline restore.
+  -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.18.0" />
+  </ItemGroup>
+
+  <!--
     The plugin ABI: CUO_API.PluginHeader and the delegates a plugin DLL is
     handed. Referenced from the upstream checkout by HintPath, exactly as
     upstream's ClassicUO.Client.csproj does, and never re-declared here: a
