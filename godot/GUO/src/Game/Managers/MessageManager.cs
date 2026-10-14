@@ -267,22 +267,17 @@ namespace GUO.Game.Managers
                     break;
             }
 
-            // PORT DEVIATION (GUO): mobiles speak in their assigned voices
-            // (IO/Audio/VoiceManager + voices.json), client-side and local.
+            // PORT DEVIATION (GUO): optional recorded pack speech only.
             // The player's own lines echo through GameActions.Say instead, so
             // they are never double-spoken here.
             if (parent is Mobile mob && !ReferenceEquals(mob, _world.Player)
+                && !_world.IgnoreManager.IgnoredCharsList.Contains(mob.Name)
                 && type is MessageType.Regular or MessageType.Whisper
                     or MessageType.Yell or MessageType.Emote)
             {
-                string voice = GUO.IO.Audio.VoiceManager.ResolveVoice(mob.Serial, mob.Name, mob.Graphic);
-                if (!string.IsNullOrWhiteSpace(voice))
-                {
-                    Entity player = _world.Player;
-                    int dist = player == null ? 0
-                        : System.Math.Max(System.Math.Abs(mob.X - player.X), System.Math.Abs(mob.Y - player.Y));
-                    GUO.IO.Audio.VoiceManager.SpeakMob(text, dist, voice, mob.Serial);
-                }
+                Entity listener = _world.Player;
+                int distance = listener == null ? 20 : System.Math.Max(System.Math.Abs(mob.X - listener.X), System.Math.Abs(mob.Y - listener.Y));
+                GUO.IO.Audio.PackVoice.Speak(mob.Name, mob.Graphic, text, distance);
             }
 
             MessageReceived.Raise

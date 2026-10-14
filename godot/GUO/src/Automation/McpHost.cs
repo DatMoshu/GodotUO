@@ -329,7 +329,9 @@ public partial class McpHost : Node
             scene = Client.Game?.Scene?.GetType().Name,
             width = size.X,
             height = size.Y,
-            player = player == null ? null : new { map = Client.Game.UO.World.MapIndex, x = (int)player.X, y = (int)player.Y, z = (int)player.Z }
+            player = player == null ? null : new { map = Client.Game.UO.World.MapIndex, x = (int)player.X, y = (int)player.Y, z = (int)player.Z },
+            audio = new { enabled = Configuration.ProfileManager.CurrentProfile?.ContentAudioEnabled == true,
+                music = IO.Audio.MusicZones.Status, sound = IO.Audio.SfxZones.Status, recordedClipsPlayed = IO.Audio.PackVoice.Played }
         };
     }
 

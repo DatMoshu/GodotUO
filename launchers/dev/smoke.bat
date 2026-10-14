@@ -35,6 +35,9 @@ echo [smoke] 6/7 editor add-on (headless; tools\editor_smoke)
 echo [smoke] 7/7 launchers (tools\launcher_lint)
 "%UO_PYTHON%" "%UO_TOOLS%\launcher_lint\run.py" || set "FAIL=1"
 
+echo [smoke] optional audio pack contracts (synthetic; no shard or AI service)
+"%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Store/StoreAudioProbe.tscn || set "FAIL=1"
+
 echo.
 if "%FAIL%"=="1" ( echo [smoke] FAILED & exit /b 1 )
 echo [smoke] OK
