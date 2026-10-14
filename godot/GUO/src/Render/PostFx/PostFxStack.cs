@@ -230,25 +230,170 @@ namespace GUO.Renderer.PostFx
                     Teardown();
                 }
 
-                LastOutput = world.Texture;
+                Texture2D idle = SafeWorldTex(world);
+                if (idle == null && LastOutput != null && GodotObject.IsInstanceValid(LastOutput))
+                {
+                    idle = LastOutput;
+                }
+
+                LastOutput = idle ?? world.Texture;
                 return LastOutput;
             }
 
-            // Rebuilt when the world target is replaced (a resize), so the stack
-            // is always created after the target it reads.
-            if (_dirty || _viewport == null || !ReferenceEquals(_builtFor, world) ||
-                _viewport.Size != Scaled(world))
+            // Safe fallback for this frame: the current world texture (fresh,
+            // correct size, unprocessed) or the last good output. A rebuild
+            // below (any pass toggled, Hd shafts included) QueueFrees the old
+            // viewport and adds a new one that has not rendered yet in this
+            // same frame: returning its empty texture would be one gray frame,
+            // persistent gray if the build failed. Never return it on a build
+            // frame; keep the last good frame instead.
+            Texture2D fallback = SafeWorldTex(world);
+            if (fallback == null && LastOutput != null && GodotObject.IsInstanceValid(LastOutput))
             {
-                Build(world);
+                fallback = LastOutput;
             }
 
-            _base.Texture = world.Texture;
+            // Rebuilt when the world target is replaced (a resize), so the stack
+            // is always created after the target it reads. HD flips HDR too.
+            // A freed viewport (teardown/resize race) counts as needing a build.
+            bool needBuild = _dirty || _viewport == null || !GodotObject.IsInstanceValid(_viewport) ||
+                !ReferenceEquals(_builtFor, world) ||
+                _viewport.Size != Scaled(world) || _builtHdr != ForceHdr;
+            bool wasRebuilt = false;
+            if (needBuild)
+            {
+                try
+                {
+                    Build(world);
+                    wasRebuilt = true;
+                }
+                catch (Exception e)
+                {
+                    GD.PushWarning($"[GUO] postfx: rebuild failed, keeping last good frame: {e.Message}");
+                }
+            }
+
+            // Build failed or produced nothing usable: keep last good frame, never gray.
+            if (_viewport == null || !GodotObject.IsInstanceValid(_viewport) ||
+                _base == null || !GodotObject.IsInstanceValid(_base))
+            {
+                if (fallback != null)
+                {
+                    LastOutput = fallback;
+                    return LastOutput;
+                }
+
+                LastOutput = SafeWorldTex(world) ?? world.Texture;
+                return LastOutput;
+            }
+
+            // Every enabled pass skipped (missing shader) and no A/B split:
+            // there is no chain to run. Drop the empty viewport and draw the
+            // world itself rather than a transparent viewport (gray).
+            if (_built.Count == 0 && Split <= 0f)
+            {
+                Teardown();
+                LastOutput = SafeWorldTex(world) ?? world.Texture;
+                return LastOutput;
+            }
+
+            // Never clear the base to null: a missing world input keeps the
+            // previous base texture and the fallback above keeps the frame.
+            if (SafeWorldTex(world) != null)
+            {
+                _base.Texture = world.Texture;
+            }
+
             ApplyBindings();
+            // Missing-input guard for light_tex (teardown/resize race). The
+            // fallback is 1x1 TRANSPARENT BLACK (0,0,0,0): hd_tonemap,
+            // hd_night_vision and hd_gi test lt.a < 0.01 and fall back to
+            // mult 1.0 (no darkening), while the additive passes (hd_bloom,
+            // bloom, hd_shafts) see l = 0 and add nothing and hd_heat sees
+            // mask 0 (passthrough). A white fallback would be mult 1.0 for
+            // the tonemap but full-glow for bloom/shafts (washed gray).
+            // Classic never reaches here (returns above), so the off-state
+            // is identical.
+            Texture2D safeLight = GuardLightTex(lightTex);
+            // PORT DEVIATION (GUO): HD light Phase 3. The height buffer
+            // (HdHeightBuffer, quarter res) and the sun state (HdSun) feed
+            // passes declaring height_tex / sun_* (hd_sun). Same cadence as
+            // light_tex above: fresh every frame, guarded fallback, Classic
+            // (no such pass) untouched.
+            Texture2D safeHeight = GuardHeightTex(HdHeightTex);
+            Lights.HdSun.SunSample sun = Lights.HdSun.Evaluate(Lights.HdSun.Hour);
+            var sunDir = new Vector2(sun.ShadowDir.X, sun.ShadowDir.Y);
+            var sunCol = new Color(sun.Color.R, sun.Color.G, sun.Color.B);
+            var sunFloor = new Color(sun.Floor.R, sun.Floor.G, sun.Floor.B);
+            // PORT DEVIATION (GUO): HD light Phase 5. Storm clouds dim the
+            // sun (HdWeather.SunDimFactor, no shader change: the energy the
+            // stack pushes is already dimmed). Overcast noon therefore reads
+            // overcast while the hour stays put.
+            float sunEnergy = sun.Energy * Lights.HdWeather.SunDimFactor();
+            // PORT DEVIATION (GUO): HD light Phase 5 weather uniforms. Wetness
+            // (hd_wet/gi_wet) and lightning (hd_flash) ride HdWeather statics
+            // updated by the GameScene; 0 when clear, so Phase 4 output is
+            // bit-identical. Classic (no such pass) never reads them.
+            float hdWet = Lights.HdWeather.Wetness;
+            float hdFlash = Lights.HdWeather.Flash;
+            // PORT DEVIATION (GUO): HD light Phase 4. hd_gi composites the
+            // torch light itself (cascades over light_tex + height_tex), so
+            // hd_tonemap must not multiply by the blob again. Active = an
+            // enabled hd_gi pass with gi_strength above zero; off (or
+            // strength 0) leaves hd_skip_light at 0 and the Phase 1/2/3
+            // composite is bit-identical.
+            bool giActive = GiCompositeActive();
             foreach (var b in _built)
             {
                 if (b.material.Shader != null && HasUniform(b.material.Shader, "light_tex"))
                 {
-                    b.material.SetShaderParameter("light_tex", light?.Texture);
+                    b.material.SetShaderParameter("light_tex", safeLight);
+                }
+
+                if (b.material.Shader != null && HasUniform(b.material.Shader, "height_tex"))
+                {
+                    b.material.SetShaderParameter("height_tex", safeHeight);
+                }
+
+                if (b.material.Shader != null && HasUniform(b.material.Shader, "sun_shadow_dir"))
+                {
+                    b.material.SetShaderParameter("sun_shadow_dir", sunDir);
+                    b.material.SetShaderParameter("sun_color", sunCol);
+                    b.material.SetShaderParameter("sun_energy", sunEnergy);
+                    b.material.SetShaderParameter("sun_floor", sunFloor);
+                    b.material.SetShaderParameter("sun_slope", sun.Slope);
+                    b.material.SetShaderParameter("sun_px_per_z", Lights.HdSun.PxPerZ);
+                    b.material.SetShaderParameter("sun_steps", Lights.HdSun.Steps);
+                }
+
+                // PORT DEVIATION (GUO): HD light Phase 4 governors + skip.
+                // gi_steps rides the HdGi tier governor (no recompile, same
+                // cadence as sun_steps); hd_skip_light folds the GI composite
+                // into hd_tonemap without touching its saved params.
+                if (b.material.Shader != null && HasUniform(b.material.Shader, "gi_steps"))
+                {
+                    b.material.SetShaderParameter("gi_steps", Lights.HdGi.Steps);
+                }
+
+                // PORT DEVIATION (GUO): HD light Phase 5 weather (see above).
+                if (b.material.Shader != null && HasUniform(b.material.Shader, "hd_wet"))
+                {
+                    b.material.SetShaderParameter("hd_wet", hdWet);
+                }
+
+                if (b.material.Shader != null && HasUniform(b.material.Shader, "hd_flash"))
+                {
+                    b.material.SetShaderParameter("hd_flash", hdFlash);
+                }
+
+                if (b.material.Shader != null && HasUniform(b.material.Shader, "gi_wet"))
+                {
+                    b.material.SetShaderParameter("gi_wet", hdWet);
+                }
+
+                if (b.material.Shader != null && HasUniform(b.material.Shader, "hd_skip_light"))
+                {
+                    b.material.SetShaderParameter("hd_skip_light", giActive ? 1f : 0f);
                 }
 
                 if (_idViewport != null && b.material.Shader != null && HasUniform(b.material.Shader, "id_tex"))
@@ -351,8 +496,6 @@ namespace GUO.Renderer.PostFx
                 host.AddChild(_idViewport);
                 IdFor = world;
             }
-            Scale = !FullQuality && heavy ? 0.5f : 1f;
-            Vector2I size = Scaled(world);
 
             _viewport = new SubViewport
             {
