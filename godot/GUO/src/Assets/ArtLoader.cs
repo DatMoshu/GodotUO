@@ -215,6 +215,14 @@ namespace GUO.Assets
             public double Denoise { get; set; }
             [System.Text.Json.Serialization.JsonPropertyName("masked")]
             public bool Masked { get; set; }
+            [System.Text.Json.Serialization.JsonPropertyName("depth_enabled")]
+            public bool DepthEnabled { get; set; }
+            [System.Text.Json.Serialization.JsonPropertyName("depth_strength")]
+            public double DepthStrength { get; set; }
+            [System.Text.Json.Serialization.JsonPropertyName("depth_start")]
+            public double DepthStart { get; set; }
+            [System.Text.Json.Serialization.JsonPropertyName("depth_end")]
+            public double DepthEnd { get; set; }
             [System.Text.Json.Serialization.JsonPropertyName("sha256")]
             public string Sha256 { get; set; } = "";
             [System.Text.Json.Serialization.JsonPropertyName("created_utc")]
