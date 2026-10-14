@@ -2,6 +2,7 @@
 
 using System;
 using GUO.Game;
+using GUO.Game.Data;
 
 namespace GUO.Renderer.PostFx
 {
@@ -15,6 +16,7 @@ namespace GUO.Renderer.PostFx
         public static readonly string[] Names =
         {
             "hp_ratio", "hp_missing", "stamina_ratio", "mana_ratio", "light_level", "war_mode", "weather", "time",
+            "facing",
         };
 
         /// <summary>The value, or null when there is no world or no player to read it from.</summary>
@@ -49,6 +51,14 @@ namespace GUO.Renderer.PostFx
                     return Math.Clamp(Math.Min(world.Light.Overall, world.Light.Personal) / 31f, 0f, 1f);
                 case "war_mode":
                     return player.InWarMode ? 1f : 0f;
+                case "facing":
+                    // The player's facing as screen degrees for cone uniforms
+                    // (fog_of_war cone_direction: 0 = screen up). UO directions
+                    // run North = 0 .. Up (NW) = 7 while screen up is Up, so
+                    // degrees = ((dir + 1) % 8) * 45: Up -> 0, North -> 45,
+                    // Right -> 90, East -> 135, Down -> 180, South -> 225,
+                    // Left -> 270, West -> 315.
+                    return (((int)(player.Direction & Direction.Mask) + 1) % 8) * 45f;
                 case "weather":
                     return world.Weather.CurrentWeather switch
                     {

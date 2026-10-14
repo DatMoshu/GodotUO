@@ -239,7 +239,11 @@ public partial class Main : Node
 
                 // Commands and a probe together: the commands run first
                 // (typically "[go" somewhere populated) and the probe follows.
-                if (_options.TranslationProbe)
+                if (_options.HdSunProbe)
+                {
+                    HdSunProbeThenQuit();
+                }
+                else if (_options.TranslationProbe)
                 {
                     TranslationProbeThenQuit();
                 }
@@ -307,6 +311,10 @@ public partial class Main : Node
                 {
                     LayerShotThenQuit();
                 }
+                else if (_options.MogeShot)
+                {
+                    MogeShotThenQuit();
+                }
                 else if (_options.ExtractTest)
                 {
                     ExtractTestThenQuit();
@@ -334,6 +342,10 @@ public partial class Main : Node
                 else if (_options.AssetProbe.Length > 0)
                 {
                     AssetProbeThenQuit();
+                }
+                else if (_options.SrProbe)
+                {
+                    SrProbeThenQuit();
                 }
                 else if (_options.EffectsProbe > 0)
                 {
@@ -440,6 +452,14 @@ public partial class Main : Node
         // The player's own looks and shaders (ADR-0023).
         GUO.Renderer.PostFx.PostFxLibrary.UserFolder = System.IO.Path.Combine(dataDir, "postfx");
         GUO.Renderer.PostFx.PostFxStack.RunOverride = string.IsNullOrWhiteSpace(_options.PostFx) ? null : _options.PostFx;
+
+        // HD light Phase 3: --hd-sun sets the sun hour for this run and
+        // forces the HD foundation with it (profile untouched).
+        if (!string.IsNullOrWhiteSpace(_options.HdSun))
+        {
+            GUO.Renderer.Lights.HdSun.ApplyBoot(_options.HdSun);
+            GD.Print($"[GUO] hd-sun         : {_options.HdSun} (HD forced for this run)");
+        }
 
         GD.Print($"[GUO] client home   : {dataDir}");
 
@@ -665,9 +685,12 @@ public partial class Main : Node
         || _options.ZoomProbe
         || _options.PortraitProbe
         || _options.PerfProbe
-        || !string.IsNullOrEmpty(_options.PostFxSheet)
-        || _options.DoorProbe
+                || !string.IsNullOrEmpty(_options.PostFxSheet)
+                || !string.IsNullOrWhiteSpace(_options.HdSun)
+                || _options.HdSunProbe
+                || _options.DoorProbe
         || _options.LayerShot
+        || _options.MogeShot
         || _options.ExtractTest
         || _options.GamepadProbe
         || _options.PadWheelsProbe
@@ -675,6 +698,7 @@ public partial class Main : Node
         || _options.OneScreenProbe
         || _options.GlyphShots
         || _options.AssetProbe.Length > 0
+        || _options.SrProbe
         || _options.EffectsProbe > 0
         || _options.TradePartner
         || _options.InputProbe
@@ -753,6 +777,12 @@ public partial class Main : Node
         await Preamble();
         await PostFxProbe.Run(this, _options.PostFxSheet, _options.PostFxTour);
         Quit(PostFxProbe.Passed ? 0 : 1);
+    }
+
+    /// <summary>Prove the HD sun with no shard and no world; see HdSunProbe.</summary>
+    private void HdSunProbeThenQuit()
+    {
+        Quit(HdSunProbe.Run(this) ? 0 : 1);
     }
 
     /// <summary>Turn to portrait and back, measure both, then quit; see PortraitProbe (C9).</summary>
@@ -843,6 +873,14 @@ public partial class Main : Node
         Quit(LayerShot.Passed ? 0 : 1);
     }
 
+    /// <summary>Open the -moge gump, replace a static with a MoGe splat, photograph it; see MogeShot.</summary>
+    private async void MogeShotThenQuit()
+    {
+        await Preamble();
+        await MogeShot.Run(this, _options.ScreenshotDir);
+        Quit(MogeShot.Passed ? 0 : 1);
+    }
+
     /// <summary>Shut and open the doors on screen, keeping every frame after; see DoorProbe.</summary>
     private async void DoorProbeThenQuit()
     {
@@ -856,6 +894,13 @@ public partial class Main : Node
     {
         await AssetProbe.Run(this, _options.AssetProbe, _options.AssetProbeIds);
         Quit(AssetProbe.Passed ? 0 : 1);
+    }
+
+    /// <summary>Prove the SuperRes 4x lazy worker headless, then quit; see SrProbe.</summary>
+    private async void SrProbeThenQuit()
+    {
+        await SrProbe.Run(this);
+        Quit(SrProbe.Passed ? 0 : 1);
     }
 
     private async void HighlightProbeThenQuit()
@@ -1475,14 +1520,19 @@ public partial class Main : Node
                 || PortraitProbe
                 || PerfProbe
                 || !string.IsNullOrEmpty(PostFxSheet)
+                || !string.IsNullOrWhiteSpace(HdSun)
+                || HdSunProbe
                 || DoorProbe
                 || LayerShot
+                || MogeShot
                 || ExtractTest
                 || GamepadProbe
                 || PadWheelsProbe
                 || PadRegressionProbe
                 || OneScreenProbe
                 || GlyphShots
+                || AssetProbe.Length > 0
+                || SrProbe
                 || EffectsProbe > 0
                 || EndureSeconds > 0
                 || TouchProbe
@@ -1587,12 +1637,21 @@ public partial class Main : Node
         /// <summary>--postfx NAME|off: the look for this run only, state.json untouched (PostFxStack.RunOverride).</summary>
         public string PostFx { get; private set; }
 
+        /// <summary>--hd-sun HOUR|auto [hour]|off: the sun hour for this run only (HdSun boot statics, forces HD).</summary>
+        public string HdSun { get; private set; } = "";
+
+        /// <summary>--hd-sun-probe: prove the sun curve, shader and height buffer headless, then quit.</summary>
+        public bool HdSunProbe { get; private set; }
+
         /// <summary>--perf-parity: per scene, compare --batched-world with the plain path pixel for pixel.</summary>
         public bool PerfParity { get; private set; }
 
         public bool DoorProbe { get; private set; }
 
         public bool LayerShot { get; private set; }
+
+        /// <summary>Prove the -moge gump in the running game (--moge-shot); see MogeShot.</summary>
+        public bool MogeShot { get; private set; }
 
         /// <summary>--layer-at "x y z": where --layer-shot goes; see LayerShot.</summary>
         public string LayerAt { get; private set; } = "";
@@ -1649,6 +1708,9 @@ public partial class Main : Node
 
         /// <summary>What the asset probe decodes, e.g. land:0x0244,static:0x0E75,gump:0x0064,hue:33.</summary>
         public string AssetProbeIds { get; private set; } = "";
+
+        /// <summary>--sr-probe: prove the SuperRes 4x lazy worker headless, then quit.</summary>
+        public bool SrProbe { get; private set; }
 
         /// <summary>How many effects the effects probe spawns; zero means no probe.</summary>
         public int EffectsProbe { get; private set; }
@@ -1954,6 +2016,12 @@ public partial class Main : Node
                     case "--postfx":
                         o.PostFx = Next();
                         break;
+                    case "--hd-sun":
+                        o.HdSun = Next();
+                        break;
+                    case "--hd-sun-probe":
+                        o.HdSunProbe = true;
+                        break;
                     case "--door-probe":
                         o.DoorProbe = true;
                         break;
@@ -1968,6 +2036,9 @@ public partial class Main : Node
                         break;
                     case "--asset-probe-ids":
                         o.AssetProbeIds = Next();
+                        break;
+                    case "--sr-probe":
+                        o.SrProbe = true;
                         break;
                     case "--effects-plain":
                         o.EffectsPlain = true;
@@ -2170,6 +2241,9 @@ public partial class Main : Node
                         break;
                     case "--layer-shot":
                         o.LayerShot = true;
+                        break;
+                    case "--moge-shot":
+                        o.MogeShot = true;
                         break;
                     case "--layer-at":
                         o.LayerAt = Next();

@@ -1,0 +1,17 @@
+{
+ "name": "Day Night",
+ "description": "Time-of-day tint with brightness and shadow darkening.",
+ "passes": [
+  {
+   "shader": "daynight",
+   "params": {
+    "cycle": 0.5,
+    "intensity": 0.85,
+    "brightness": 1.0,
+    "warmth": 0.0,
+    "shadow_intensity": 0.3
+   }
+  }
+ ],
+ "bindings": []
+}

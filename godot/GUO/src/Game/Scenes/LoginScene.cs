@@ -45,6 +45,10 @@ namespace GUO.Game.Scenes
         private long _reconnectTime;
         private int _reconnectTryCounter = 1;
         private bool _autoLogin;
+        // PORT DEVIATION (GUO): true after the shard rejected the password
+        // (0x82 reason 0/3, 0x53 reason 0): the saved blob is stale and must
+        // neither be kept nor retried. Reset on the next Connect.
+        private bool _badCredential;
         private readonly World _world;
 
         public LoginScene(World world) => _world = world;
@@ -89,7 +93,11 @@ namespace GUO.Game.Scenes
 
             if (CanAutologin && CurrentLoginStep != LoginSteps.Main || CUOEnviroment.SkipLoginScreen)
             {
-                if (!string.IsNullOrEmpty(Settings.GlobalSettings.Username))
+                // PORT DEVIATION (GUO): never autologin with a credential the
+                // shard already rejected: HandleErrorCode clears the saved
+                // password, and an empty one must wait for typing instead.
+                if (!string.IsNullOrEmpty(Settings.GlobalSettings.Username)
+                    && !string.IsNullOrEmpty(Settings.GlobalSettings.Password))
                 {
                     // disable if it's the 2nd attempt
                     CUOEnviroment.SkipLoginScreen = false;
@@ -169,7 +177,9 @@ namespace GUO.Game.Scenes
                 _lastLoginStep = CurrentLoginStep;
             }
 
-            if (Reconnect && (CurrentLoginStep == LoginSteps.PopUpMessage || CurrentLoginStep == LoginSteps.Main) && !NetClient.Socket.IsConnected)
+            // PORT DEVIATION (GUO): never retry a credential the shard
+            // rejected (see HandleErrorCode); it would loop BadPass forever.
+            if (Reconnect && !_badCredential && (CurrentLoginStep == LoginSteps.PopUpMessage || CurrentLoginStep == LoginSteps.Main) && !NetClient.Socket.IsConnected)
             {
                 if (_reconnectTime < Time.Ticks)
                 {
@@ -355,6 +365,10 @@ namespace GUO.Game.Scenes
 
             Account = account;
             Password = password;
+
+            // PORT DEVIATION (GUO): a fresh attempt; a previous BadPass no
+            // longer suppresses anything (see HandleErrorCode).
+            _badCredential = false;
 
             // PORT DEVIATION (GUO): a login GUO's accounts manager started keeps
             // its password in the OS keystore, never in settings.json through
@@ -599,6 +613,14 @@ namespace GUO.Game.Scenes
 
             if (e != 0)
             {
+                // PORT DEVIATION (GUO): a rejected password already left its
+                // own popup (see HandleErrorCode); a reconnect or a generic
+                // "connection lost" here would hide it and retry known-bad.
+                if (_badCredential)
+                {
+                    return;
+                }
+
                 Characters = null;
                 DisposeAllServerEntries();
 
@@ -724,11 +746,42 @@ namespace GUO.Game.Scenes
 
         public void HandleErrorCode(ref StackDataReader p)
         {
+            byte packetID = p[0];
             byte code = p.ReadUInt8();
 
-            PopupMessage = ServerErrorMessages.GetError(p[0], code, LoginDelay);
+            PopupMessage = ServerErrorMessages.GetError(packetID, code, LoginDelay);
             CurrentLoginStep = LoginSteps.PopUpMessage;
             LoginDelay = default;
+
+            // PORT DEVIATION (GUO): the shard rejected the password (0x82
+            // reason 0 "incorrect name/password" or 3 "bad password", 0x53
+            // reason 0 "incorrect password"). Connect saved it before the
+            // answer was known, so a stale blob would otherwise be re-fired
+            // on every boot and look like the shard password changed: forget
+            // it and do not retry it. The username stays, so the next gump
+            // shows the account with an empty password. Managed (keystore)
+            // logins never wrote settings.json, so there is nothing to clear
+            // for them. Other reasons (in use, blocked, IGR, character
+            // errors) keep a password that was not disproven.
+            bool rejected = (packetID == 0x82 && (code == 0 || code == 3))
+                || (packetID == 0x53 && code == 0);
+
+            if (!rejected)
+            {
+                return;
+            }
+
+            _badCredential = true;
+            _autoLogin = false;
+            Reconnect = false;
+            Password = string.Empty;
+
+            if (!string.IsNullOrEmpty(Settings.GlobalSettings.Password))
+            {
+                Log.Warn("Login rejected: clearing the saved password so a stale one is not retried.");
+                Settings.GlobalSettings.Password = string.Empty;
+                Settings.GlobalSettings.Save();
+            }
         }
 
         public void HandleLoginDelayPacket(ref StackDataReader p)

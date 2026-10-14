@@ -175,23 +175,33 @@ namespace GUO.Game.Managers
         /// </summary>
         public static int Revision { get; private set; }
 
+        /// <summary>
+        /// Bumped by every skin-rule mutation, including the in-place entry
+        /// edits (SetSplatSkin/ClearSplatSkin) that leave <see cref="Revision"/>
+        /// alone. Keys the splat lookup index below.
+        /// </summary>
+        private static int _splatSkinVersion;
+
         public static void Activate(Theme theme, List<ThemeZone> zones)
         {
             Deactivate(theme.Name);
             _active.Add(new ActiveTheme { Theme = theme, Zones = zones ?? new List<ThemeZone>() });
             Revision++;
+            _splatSkinVersion++;
         }
 
         public static void Deactivate(string name)
         {
             _active.RemoveAll(a => a.Theme.Name == name);
             Revision++;
+            _splatSkinVersion++;
         }
 
         public static void Clear()
         {
             _active.Clear();
             Revision++;
+            _splatSkinVersion++;
         }
 
         /// <summary>
@@ -200,6 +210,7 @@ namespace GUO.Game.Managers
         public static void Touch()
         {
             Revision++;
+            _splatSkinVersion++;
         }
 
         /// <summary>
@@ -237,56 +248,105 @@ namespace GUO.Game.Managers
         }
 
         /// <summary>Whether any active theme skins statics with splats (the per-frame walk skips without it).</summary>
-        public static bool HasSplatSkins
-        {
-            get
-            {
-                foreach (ActiveTheme a in _active)
-                {
-                    if (a.Theme == null)
-                    {
-                        continue;
-                    }
+        public static bool HasSplatSkins => GetSplatSkinIndex().HasStaticSkins;
 
+        /// <summary>
+        /// Graphic-first splat lookup for the per-frame skin walks: per
+        /// active theme, victim graphic to splat plus the theme's zones,
+        /// rebuilt only when activations or skin rules change. Same answers
+        /// as the naive theme x zone x entry scan (first theme in activation
+        /// order with a zone hit wins; within a theme the first entry with a
+        /// non-empty splat wins), with O(1) rejects for the common graphic
+        /// no rule covers, so most objects skip the zone scan entirely.
+        /// </summary>
+        private sealed class SplatSkinIndex
+        {
+            public int Revision;
+            public int SkinVersion;
+            public bool HasStaticSkins;
+            public readonly List<(Dictionary<ushort, string> ByGraphic, List<ThemeZone> Zones)> StaticRules = new();
+            public readonly List<(HashSet<ushort> Graphics, string Splat, List<ThemeZone> Zones)> MultiRules = new();
+        }
+
+        private static SplatSkinIndex _splatSkinIndex;
+
+        private static SplatSkinIndex GetSplatSkinIndex()
+        {
+            SplatSkinIndex idx = _splatSkinIndex;
+            if (idx != null && idx.Revision == Revision && idx.SkinVersion == _splatSkinVersion)
+            {
+                return idx;
+            }
+
+            idx = new SplatSkinIndex { Revision = Revision, SkinVersion = _splatSkinVersion };
+            foreach (ActiveTheme a in _active)
+            {
+                if (a.Theme == null)
+                {
+                    continue;
+                }
+
+                var byGraphic = new Dictionary<ushort, string>();
+                if (a.Theme.Entries != null)
+                {
                     foreach (ThemeEntry e in a.Theme.Entries)
                     {
-                        if (!string.IsNullOrEmpty(e.Splat))
+                        if (string.IsNullOrEmpty(e.Splat) || e.Match == null)
                         {
-                            return true;
+                            continue;
+                        }
+
+                        foreach (ushort g in e.Match)
+                        {
+                            if (!byGraphic.ContainsKey(g))
+                            {
+                                byGraphic[g] = e.Splat;
+                            }
                         }
                     }
                 }
 
-                return false;
+                if (byGraphic.Count > 0)
+                {
+                    idx.StaticRules.Add((byGraphic, a.Zones));
+                    idx.HasStaticSkins = true;
+                }
+
+                if (a.Theme.Multis != null && a.Theme.Multis.Count > 0 && !string.IsNullOrEmpty(a.Theme.MultiSplat))
+                {
+                    idx.MultiRules.Add((new HashSet<ushort>(a.Theme.Multis), a.Theme.MultiSplat, a.Zones));
+                }
             }
+
+            _splatSkinIndex = idx;
+            return idx;
         }
 
         /// <summary>The splat skin for a static at its position, or null.</summary>
         public static string StaticSplat(World world, int x, int y, ushort original)
         {
-            int facet = world?.MapIndex ?? -1;
-            foreach (ActiveTheme a in _active)
+            SplatSkinIndex idx = GetSplatSkinIndex();
+            if (!idx.HasStaticSkins)
             {
-                bool inside = false;
-                foreach (ThemeZone z in a.Zones)
-                {
-                    if (z.Contains(facet, x, y))
-                    {
-                        inside = true;
-                        break;
-                    }
-                }
+                return null;
+            }
 
-                if (!inside)
+            int facet = world?.MapIndex ?? -1;
+            foreach (var r in idx.StaticRules)
+            {
+                if (!r.ByGraphic.TryGetValue(original, out string splat))
                 {
                     continue;
                 }
 
-                foreach (ThemeEntry e in a.Theme.Entries)
+                if (r.Zones != null)
                 {
-                    if (e.Match.Contains(original) && !string.IsNullOrEmpty(e.Splat))
+                    foreach (ThemeZone z in r.Zones)
                     {
-                        return e.Splat;
+                        if (z.Contains(facet, x, y))
+                        {
+                            return splat;
+                        }
                     }
                 }
             }
@@ -373,6 +433,7 @@ namespace GUO.Game.Managers
                 if (e.Match.Contains(graphic))
                 {
                     e.Splat = splat;
+                    _splatSkinVersion++;
                     return;
                 }
             }
@@ -382,11 +443,13 @@ namespace GUO.Game.Managers
                 Match = new List<ushort> { graphic },
                 Splat = splat,
             });
+            _splatSkinVersion++;
         }
 
         /// <summary>Removes the skin rule for a graphic, if any.</summary>
         public static void ClearSplatSkin(ushort graphic)
         {
+            int removed = 0;
             foreach (ActiveTheme a in _active)
             {
                 if (a.Theme == null || a.Theme.Name != SkinThemeName)
@@ -394,7 +457,12 @@ namespace GUO.Game.Managers
                     continue;
                 }
 
-                a.Theme.Entries.RemoveAll(e => e.Match.Contains(graphic));
+                removed += a.Theme.Entries.RemoveAll(e => e.Match.Contains(graphic));
+            }
+
+            if (removed > 0)
+            {
+                _splatSkinVersion++;
             }
         }
 
@@ -491,19 +559,28 @@ namespace GUO.Game.Managers
         /// <summary>Whether a multi of this graphic is skinned in this zone, and by which splat.</summary>
         public static string MultiSplat(World world, int x, int y, ushort graphic)
         {
-            int facet = world?.MapIndex ?? -1;
-            foreach (ActiveTheme a in _active)
+            SplatSkinIndex idx = GetSplatSkinIndex();
+            if (idx.MultiRules.Count == 0)
             {
-                if (!a.Theme.Multis.Contains(graphic) || string.IsNullOrEmpty(a.Theme.MultiSplat))
+                return null;
+            }
+
+            int facet = world?.MapIndex ?? -1;
+            foreach (var r in idx.MultiRules)
+            {
+                if (!r.Graphics.Contains(graphic))
                 {
                     continue;
                 }
 
-                foreach (ThemeZone z in a.Zones)
+                if (r.Zones != null)
                 {
-                    if (z.Contains(facet, x, y))
+                    foreach (ThemeZone z in r.Zones)
                     {
-                        return a.Theme.MultiSplat;
+                        if (z.Contains(facet, x, y))
+                        {
+                            return r.Splat;
+                        }
                     }
                 }
             }

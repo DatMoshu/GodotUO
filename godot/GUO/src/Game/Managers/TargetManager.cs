@@ -389,7 +389,8 @@ namespace GUO.Game.Managers
 
                         return;
                     case CursorTarget.IgnorePlayerTarget:
-                        if (SelectedObject.Object is Entity pmEntity)
+                        // PORT DEVIATION (GUO): splat picks forward to their hidden victim; resolve so ignore-target acts on the victim.
+                        if (GameObjects.SplatObject.Resolve(SelectedObject.Object) is Entity pmEntity)
                         {
                             _world.IgnoreManager.AddIgnoredTarget(pmEntity);
                         }

@@ -1,0 +1,13 @@
+{
+ "name": "Night Vision",
+ "description": "Green phosphor night vision.",
+ "passes": [
+  {
+   "shader": "night_vision",
+   "params": {
+    "intensity": 1.0
+   }
+  }
+ ],
+ "bindings": []
+}

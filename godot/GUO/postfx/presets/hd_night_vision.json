@@ -1,0 +1,34 @@
+{
+  "name": "HD Night Vision",
+  "description": "HD light Phase 5 night look: moon directional shadows from the height buffer, then torch GI (replacing the blob multiply), then green phosphor sampled from the LIT buffer so torches and moonlight survive into the phosphor instead of being darkened after it. Needs Options > HD light renderer on for the HDR + flicker + height foundation.",
+   "passes": [
+    {
+     "shader": "hd_sun",
+     "params": {
+      "sun_strength": 1.0,
+      "sun_soften": 1.5,
+      "sun_shadow_px": 6.0
+     }
+    },
+    {
+     "shader": "hd_gi",
+     "params": {
+      "gi_strength": 1.0,
+      "gi_range": 260.0,
+      "gi_bleed": 0.6,
+      "gi_bounce": 0.5,
+      "gi_soften": 1.5,
+      "gi_threshold": 0.32,
+      "gi_falloff": 42.0
+     }
+    },
+    {
+     "shader": "hd_night_vision",
+     "params": {
+      "intensity": 1.0,
+      "gain": 12.0
+     }
+    }
+  ],
+  "bindings": []
+}

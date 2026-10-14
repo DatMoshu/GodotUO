@@ -17,7 +17,9 @@ transcript, workflow used. The client reads the same folder (GUO_VOICES).
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -31,16 +33,39 @@ from uiconv import convert_file  # noqa: E402
 
 WORKFLOW_NAME = "PERFECT_VOICE_CLONE.json"
 DESIGN_WORKFLOW_NAME = "PERFECT_VOICE_DESIGN.json"
+PACKAGED_WORKFLOWS_DIR = Path(__file__).resolve().parent / "workflows"
+EXTERNAL_WORKFLOW_DIRS = (
+    Path(r"D:\ComfyUIPortable\ComfyUI\user\default\workflows"),
+    Path(r"C:\ComfyUIY\ComfyUI\user\default\workflows"),
+)
 DESIGN_PANGRAM = "The quick brown fox jumps over the lazy dog near the Britain bank."
 TEXT_NODE = 9
 TEXT_WIDGET = 0
 AUDIO_NODE = 4
 AUDIO_WIDGET = 0
 
+# Text->audio disk cache: repeated lines never regenerate. Slots live under
+# <profiles>/cache/<voice>/<sha256>.wav, shared with the client's
+# VoiceManager (same key construction). Cap: 500MB / 1000 files, oldest first.
+VOICE_CACHE_MAX_BYTES = 500 * 1024 * 1024
+VOICE_CACHE_MAX_FILES = 1000
+
+
+def resolve_workflow(name: str) -> Path:
+    """Resolve a voice workflow file: external artist drop-in wins,
+    packaged repo copy (tools/comfy/workflows/) is the fallback."""
+    for c in EXTERNAL_WORKFLOW_DIRS:
+        p = c / name
+        if p.is_file():
+            return p
+    p = PACKAGED_WORKFLOWS_DIR / name
+    if p.is_file():
+        return p
+    raise FileNotFoundError(f"{name} not found in ComfyUI workflows dirs or {PACKAGED_WORKFLOWS_DIR}")
+
 
 def comfy_source_dir() -> Path:
-    for c in (Path(r"D:\ComfyUIPortable\ComfyUI\user\default\workflows"),
-              Path(r"C:\ComfyUIY\ComfyUI\user\default\workflows")):
+    for c in EXTERNAL_WORKFLOW_DIRS:
         if (c / WORKFLOW_NAME).is_file():
             return c
     raise FileNotFoundError("TEXT2SPEACHWORKINGFASTQWEN.json not found in known workflow dirs")
@@ -129,7 +154,7 @@ def build_speak_prompt(sample_name: str, text: str, seed: int = -1) -> dict:
     import random
     if seed is None or seed < 0:
         seed = random.randint(1, 2 ** 31 - 1)
-    wf = convert_file(comfy_source_dir() / WORKFLOW_NAME)
+    wf = convert_file(resolve_workflow(WORKFLOW_NAME))
     clone_id = None
     for k, node in wf.items():
         if not isinstance(node, dict):
@@ -176,6 +201,7 @@ def cmd_enroll(args) -> int:
             "note": "player's own voice sample; local use only"}
     out = profiles_dir() / f"{args.voice}.json"
     out.write_text(json.dumps(prof, indent=2), encoding="utf-8")
+    purge_voice_cache(args.voice)  # new sample: old slots must not survive
     print(f"[voice] enrolled '{args.voice}' -> {out}")
     auds = audios_in(outputs)
     if auds:
@@ -183,9 +209,120 @@ def cmd_enroll(args) -> int:
     return 0
 
 
+def normalize_speech(text: str) -> str:
+    """Collapse whitespace for cache keys (mirrors VoiceManager.NormalizeSpeech)."""
+    return " ".join((text or "").split())
+
+
+def sanitize_voice(name: str) -> str:
+    return re.sub(r"[^A-Za-z0-9._-]", "_", name or "") or "default"
+
+
+def voice_cache_path(voice: str, text: str, seed: int) -> Path:
+    """Cache slot for a line: <profiles>/cache/<voice>/<sha256>.wav.
+
+    Key = voice + seed + profile mtime (epoch seconds) + normalized text,
+    the same construction as VoiceManager.CacheKeyFor so both sides share
+    entries. A re-enrolled/edited profile changes mtime, orphaning old
+    entries (LRU evicts them). Seed -1 (random) shares one slot per line:
+    the first delivery wins after that.
+    """
+    prof = profiles_dir() / f"{voice}.json"
+    try:
+        mtime_sec = int(prof.stat().st_mtime)
+    except OSError:
+        mtime_sec = 0
+    key = f"{voice}\x00{int(seed)}\x00{mtime_sec}\x00{normalize_speech(text)}".encode("utf-8")
+    return profiles_dir() / "cache" / sanitize_voice(voice) / (hashlib.sha256(key).hexdigest() + ".wav")
+
+
+def voice_cache_valid(path: Path) -> bool:
+    """True when the slot holds the 22050Hz-mono-16bit gate bytes."""
+    import wave
+    try:
+        if not path.is_file() or path.stat().st_size <= 44:
+            return False
+        with wave.open(str(path), "rb") as w:
+            return w.getnchannels() == 1 and w.getframerate() == 22050 and w.getsampwidth() == 2
+    except Exception:
+        return False
+
+
+def enforce_voice_cache_limits() -> None:
+    """Oldest-first eviction past 500MB / 1000 files. Never fatal."""
+    try:
+        root = profiles_dir() / "cache"
+        if not root.is_dir():
+            return
+        files = sorted((p for p in root.rglob("*.wav") if p.is_file()),
+                       key=lambda p: p.stat().st_mtime)
+        total = sum(p.stat().st_size for p in files)
+        i = 0
+        while (total > VOICE_CACHE_MAX_BYTES or len(files) - i > VOICE_CACHE_MAX_FILES) and i < len(files):
+            try:
+                total -= files[i].stat().st_size
+                files[i].unlink()
+            except OSError:
+                pass
+            i += 1
+    except Exception as ex:
+        print(f"[voice] cache evict skipped ({type(ex).__name__})")
+
+
+def voice_cache_store(slot: Path, wav: Path) -> None:
+    """File the exact playable WAV bytes, then evict oldest past the cap."""
+    try:
+        slot.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(wav, slot)
+    except OSError as ex:
+        print(f"[voice] cache store skipped ({type(ex).__name__})")
+        return
+    enforce_voice_cache_limits()
+
+
+def purge_voice_cache(voice: str) -> None:
+    """Drop one voice's slots (enroll/design change the sample)."""
+    try:
+        shutil.rmtree(profiles_dir() / "cache" / sanitize_voice(voice), ignore_errors=True)
+    except Exception:
+        pass
+
+
+def wav_to_mp3(wav: Path, mp3: Path) -> None:
+    """Local render only (no ComfyUI): cached WAV back to an mp3 --out."""
+    ffmpeg = shutil.which("ffmpeg") or r"C:\ffmpeg\bin\ffmpeg.exe"
+    try:
+        subprocess.run([ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
+                        "-i", str(wav), "-codec:a", "libmp3lame", str(mp3)], check=True)
+    except Exception as ex:
+        print(f"[voice] mp3 render skipped ({type(ex).__name__})")
+
+
 def cmd_speak(args) -> int:
-    url = resolve_url(None)
     prof = json.loads((profiles_dir() / f"{args.voice}.json").read_text(encoding="utf-8"))
+    seed = int(args.seed)
+    slot = voice_cache_path(args.voice, args.text, seed)
+    out = Path(args.out)
+    dest_wav = out.with_suffix(".wav")
+    # Hit: serve the filed WAV, no ComfyUI call.
+    if voice_cache_valid(slot):
+        try:
+            import os
+            dest_wav.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(slot, dest_wav)
+            os.utime(slot, None)  # touch for LRU
+        except OSError as ex:
+            print(f"[voice] cache read failed ({type(ex).__name__}); regenerating")
+            try:
+                slot.unlink()
+            except OSError:
+                pass
+        else:
+            if dest_wav.resolve() != out.resolve() and out.suffix.lower() == ".mp3" and not out.exists():
+                wav_to_mp3(dest_wav, out)
+            print(f"[voice] cache hit '{args.voice}' -> {dest_wav}")
+            return 0
+    url = resolve_url(None)
     wf = build_speak_prompt(prof["sample"], args.text, seed=args.seed)
     _pid, outputs = queue_and_wait(url, wf, timeout_s=args.timeout)
     auds = audios_in(outputs)
@@ -199,7 +336,8 @@ def cmd_speak(args) -> int:
     out.parent.mkdir(parents=True, exist_ok=True)
     download(url, auds[0], out)
     if args.wav:
-        wav_voice(out)
+        dest = wav_voice(out)
+        voice_cache_store(slot, dest)
     return 0
 
 
@@ -267,13 +405,21 @@ def cmd_design(args) -> int:
     free_vram(url)
     voice = args.voice or f"npc_{args.serial}"
     line = args.line or DESIGN_PANGRAM
-    # 1. The local LLM designs the voice from who the NPC is.
-    description = ollama_describe(args.name, args.body, args.type)
+    # 1. The local LLM designs the voice from who the NPC is -- unless the
+    # user typed what TYPE of voice they want (the -voice gump prompt box,
+    # passed as --prompt): that text IS the design description, used
+    # directly so "gravelly old blacksmith" stays verbatim.
+    user_prompt = (getattr(args, "prompt", None) or "").strip()
+    if user_prompt:
+        description = " ".join(user_prompt.split())[:200] or "a warm middle-aged shopkeeper voice"
+        print(f"[voice] user voice design: {description}")
+    else:
+        description = ollama_describe(args.name, args.body, args.type)
     # 2. The PERFECT design workflow speaks the pangram in that voice, one
     # pass, then a SaveAudio tail takes the sample (the old example graph
     # needed a save/load dance plus a second clone that took 10 minutes).
     from uiconv import convert_file as _convert
-    wf = _convert(comfy_source_dir() / DESIGN_WORKFLOW_NAME)
+    wf = _convert(resolve_workflow(DESIGN_WORKFLOW_NAME))
     import random
     import tempfile
     for _k, node in wf.items():
@@ -304,6 +450,7 @@ def cmd_design(args) -> int:
             "workflow": WORKFLOW_NAME, "designed": description,
             "note": "LLM-designed NPC voice; sample generated by Qwen3VoiceDesign"}
     (profiles_dir() / f"{voice}.json").write_text(json.dumps(prof, indent=2), encoding="utf-8")
+    purge_voice_cache(voice)  # new sample: old slots must not survive
     wf2 = build_speak_prompt(sample_name, "Voice enrolled and ready.")
     (profiles_dir() / f"{voice}.prompt.json").write_text(json.dumps(wf2, indent=1), encoding="utf-8")
     # 4. Map the NPC to its voice so future lines skip all of this.
@@ -341,6 +488,7 @@ def main(argv=None) -> int:
     d.add_argument("--name", default="a traveler")
     d.add_argument("--body", type=int, default=400)
     d.add_argument("--type", default="townsperson")
+    d.add_argument("--prompt", default=None, help="user-typed voice type ('gravelly old blacksmith'): used as the design description directly, skipping the LLM")
     d.add_argument("--voice", default=None)
     d.add_argument("--line", default=None)
     d.add_argument("--timeout", type=int, default=110, help="hard budget: everything here runs under 120 s")

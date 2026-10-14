@@ -203,6 +203,23 @@ namespace GUO.Configuration
         public int LightLevelType { get; set; } // 0 = absolute, 1 = minimum
         public bool UseColoredLights { get; set; } = true;
         public bool UseDarkNights { get; set; }
+        // PORT DEVIATION (GUO): realistic 2D lights (PointLight2D + shadows
+        // in a parallel world-sized viewport, composited as the light target).
+        // Off by default; off-state never builds the viewport (pixel-identical).
+        public bool UseRealisticLights { get; set; } = false;
+        // PORT DEVIATION (GUO): HD light renderer, Phase 1 (HDR foundation +
+        // cheap wins: linear-ish light compositing + tonemap/bloom/grade/heat/
+        // shafts in PostFx, TIME-hash torch flicker). Off by default; off-state
+        // never builds the HD viewport (pixel-identical, like realistic above).
+        // On builds the realistic viewport in HDR (UseHdr2D) with flicker and
+        // offers the hd_* PostFx passes; world shaders stay unshaded.
+        public bool UseHDLight { get; set; } = false;
+        // PORT DEVIATION (GUO): HD light renderer, Phase 3 (sun directional
+        // light + height buffer). The shard sends no clock (0x5B arrives but
+        // is ignored upstream and here), so the hour is manual with an
+        // opt-in cycle. 0..24, default noon; hot-applies next frame.
+        public float HdSunHour { get; set; } = 12f;
+        public bool HdSunAuto { get; set; } = false;
         public int CloseHealthBarType { get; set; } // 0 = none, 1 == not exists, 2 == is dead
         public bool ActivateChatAfterEnter { get; set; }
         public bool ActivateChatAdditionalButtons { get; set; } = true;
@@ -389,6 +406,51 @@ namespace GUO.Configuration
         public bool PartyAura { get; set; }
 
         public bool UseXBR { get; set; } = true;
+
+        // PORT DEVIATION (GUO): Enhanced HD repaint detail. When true the
+        // world draw uses the repaint gump's pre-downscale HD PNGs
+        // (overrides/HD/Art) instead of native art; off is byte-identical
+        // native. Default off.
+        public bool EnhancedHD { get; set; } = false;
+
+        // PORT DEVIATION (GUO): SuperRes 4x upscale detail. When true the
+        // world and gump draws use pre-upscaled 4x art; off is byte-identical
+        // native. A lazy background worker fills the SR4x disk cache.
+        // Default off.
+        public bool SuperRes4x { get; set; } = false;
+
+        // PORT DEVIATION (GUO): DLSS 5 full-frame enhance. When true the V1
+        // frame hook warms the temporal graph in the background and stays
+        // visually pass-through; off is byte-identical native. Default off.
+        public bool Dlss5 { get; set; } = false;
+
+        // PORT DEVIATION (GUO): DLSS bake detail (the DlssGump's baked
+        // overrides/DLSS PNGs). Separate from the Dlss5 frame toggle, which
+        // stays pass-through; off is byte-identical native. Default off.
+        public bool DlssBake { get; set; } = false;
+
+        // PORT DEVIATION (GUO): DLSS bake enhance strength 0-1 and neural
+        // profile 0-3 (standard, natural, cinematic, neutral). The gump
+        // persists its sliders here so a session restores them.
+        public float DlssBakeIntensity { get; set; } = 1.0f;
+        public int DlssBakeProfile { get; set; } = 0;
+
+        // PORT DEVIATION (GUO): Repaint prompt includes the TileData object
+        // name ("{name}, {prompt}"). When false the raw prompt box text is
+        // sent unchanged. Default on (current behaviour).
+        public bool RepaintIncludeName { get; set; } = true;
+
+        // PORT DEVIATION (GUO): Repaint depth ControlNet keep-structure.
+        public bool RepaintDepthEnabled { get; set; } = false;
+        public float RepaintDepthStrength { get; set; } = 0.6f;
+        public float RepaintDepthStart { get; set; } = 0f;
+        public float RepaintDepthEnd { get; set; } = 0.8f;
+
+        // PORT DEVIATION (GUO): Repaint Auto Queue continuous toggle.
+        // When true the repaint gump rescans in-range graphics whenever
+        // the player moves and queues what is still missing; false runs
+        // one manual batch (or a single Generate) and stops. Default off.
+        public bool RepaintAutoQueue { get; set; } = false;
 
         public bool HideChatGradient { get; set; } = false;
 

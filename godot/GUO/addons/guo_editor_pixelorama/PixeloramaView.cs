@@ -51,6 +51,7 @@ public partial class PixeloramaView : VBoxContainer
     /// <summary>Open one isolated session, optionally with the existing PNG/sidecar exchange contract.</summary>
     public string OpenImage(string png)
     {
+        if (!ExternalTools.PixeloramaEnabled) return ExternalTools.PixeloramaDisabledMessage;
         if (!OperatingSystem.IsWindows()) return Report("Embedded Pixelorama currently requires Windows. Use Edit in Pixelorama for a separate window.");
         if (DisplayServer.GetName() == "headless") return Report("Embedding requires a windowed editor.");
         if (HasSession)
@@ -117,6 +118,12 @@ public partial class PixeloramaView : VBoxContainer
 
     public override void _Process(double delta)
     {
+        // Gated off (GUO_PIXELORAMA=0): never poll native windows or hold a session.
+        if (!ExternalTools.PixeloramaEnabled)
+        {
+            if (HasSession) Detach();
+            return;
+        }
         if (_prepare != null)
         {
             _waiting += delta;
@@ -217,6 +224,9 @@ public partial class PixeloramaView : VBoxContainer
     /// <summary>Preserves unsaved documents when the plugin reloads or the editor closes.</summary>
     public void Detach()
     {
+        // TearDown calls this on every reload/exit: stay silent unless a session actually existed,
+        // and never print while the integration is gated off.
+        bool hadSession = _window != IntPtr.Zero || _process != null || _prepare != null;
         ReleasePreparation();
         if (_window != IntPtr.Zero && Native.IsWindow(_window))
         {
@@ -229,7 +239,10 @@ public partial class PixeloramaView : VBoxContainer
         _window = IntPtr.Zero;
         _process?.Dispose();
         _process = null;
-        Report("Detached. Pixelorama keeps running with your unsaved documents.");
+        if (hadSession && ExternalTools.PixeloramaEnabled)
+            Report("Detached. Pixelorama keeps running with your unsaved documents.");
+        else
+            RefreshButtons();
     }
     private void ReleasePreparation()
     {
@@ -244,9 +257,14 @@ public partial class PixeloramaView : VBoxContainer
     private string Report(string text)
     {
         GD.Print("[Pixelorama host] " + text);
-        if (_open != null) { _open.TooltipText = text; _open.Disabled = HasSession || !OperatingSystem.IsWindows(); }
-        if (_detach != null) _detach.Disabled = !HasSession;
+        if (_open != null) _open.TooltipText = text;
+        RefreshButtons();
         return text;
+    }
+    private void RefreshButtons()
+    {
+        if (_open != null) _open.Disabled = HasSession || !OperatingSystem.IsWindows();
+        if (_detach != null) _detach.Disabled = !HasSession;
     }
 
     private static class Native

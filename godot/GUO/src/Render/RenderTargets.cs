@@ -27,6 +27,19 @@ namespace GUO.Renderer
         private Texture2D _background;
         private SamplerState _defaultSamplerState;
 
+        // PORT DEVIATION (GUO): the realistic-lights override (PointLight2D +
+        // shadows in a parallel world-sized viewport). Null is the classic
+        // path, pixel-identical; non-null replaces the light target's texture
+        // with the same blend and hue.
+        public Texture2D RealisticLightOverride { get; set; }
+
+        // PORT DEVIATION (GUO): HD light Phase 1. When true, world + light
+        // targets render in HDR (use_hdr_2d) and the hd_tonemap PostFx pass
+        // composites world*light in-shader (single draw, light blend skipped).
+        // False is the classic/realistic path, pixel-identical. Set per-frame
+        // by GameScene from the profile toggle; off never builds HDR targets.
+        public bool HdEnabled { get; set; }
+
         // PORT DEVIATION (GUO): true while the profile's canvas background
         // (CanvasBackground, ADR-0016) is drawing under this canvas, in
         // which case upstream's tile must not be drawn over it.
@@ -59,9 +72,9 @@ namespace GUO.Renderer
             _gameWorldSceneOnScreen = ScaleRectangle(gameWorldSceneAfterDPI, 1/dpiScale);
             _gameWorldSceneAfterDPI = gameWorldSceneAfterDPI;
 
-            EnsureSize(host, ref _uiRenderTarget, _gameWindowAfterDPI.Width, _gameWindowAfterDPI.Height);
-            EnsureSize(host, ref _lightRenderTarget, _gameWorldSceneAfterDPI.Width, _gameWorldSceneAfterDPI.Height);
-            EnsureSize(host, ref _worldRenderTarget, _gameWorldSceneAfterDPI.Width, _gameWorldSceneAfterDPI.Height);
+            EnsureSize(host, ref _uiRenderTarget, _gameWindowAfterDPI.Width, _gameWindowAfterDPI.Height, false);
+            EnsureSize(host, ref _lightRenderTarget, _gameWorldSceneAfterDPI.Width, _gameWorldSceneAfterDPI.Height, HdEnabled);
+            EnsureSize(host, ref _worldRenderTarget, _gameWorldSceneAfterDPI.Width, _gameWorldSceneAfterDPI.Height, HdEnabled);
 
             if (dpiScale == Math.Floor(dpiScale))
             {
@@ -82,12 +95,12 @@ namespace GUO.Renderer
                 (int)(gameWindowOnScreen.Height / dpiScale)
             );
 
-        private static void EnsureSize(Node host, ref RenderTarget2D renderTarget, int width, int height)
+        private static void EnsureSize(Node host, ref RenderTarget2D renderTarget, int width, int height, bool hdr = false)
         {
             if (width <= 0 || height <= 0)
                 return;
 
-            if (renderTarget == null || renderTarget.IsDisposed || renderTarget.Width != width || renderTarget.Height != height)
+            if (renderTarget == null || renderTarget.IsDisposed || renderTarget.Width != width || renderTarget.Height != height || renderTarget.UseHdr != hdr)
             {
                 renderTarget?.Dispose();
 
@@ -96,7 +109,10 @@ namespace GUO.Renderer
                 // those to copy: it is always the canvas format, there is no
                 // depth buffer on the 2D canvas, and the client asks for no
                 // multisampling. Size is the whole of what varies.
-                renderTarget = new RenderTarget2D(host, width, height);
+                // PORT DEVIATION (GUO): HD Phase 1 appends HDR (use_hdr_2d)
+                // when HdEnabled; a toggle flip recreates the targets once,
+                // off stays LDR pixel-identical.
+                renderTarget = new RenderTarget2D(host, width, height, hdr);
             }
         }
 
@@ -175,23 +191,47 @@ namespace GUO.Renderer
                 // PORT DEVIATION (GUO): the world goes through the post-processing
                 // stack (ADR-0023). With Classic, the default, this is the world
                 // target's own texture, drawn exactly as upstream draws it.
-                PostFx.PostFxStack.Instance.Process(WorldRenderTarget, LightRenderTarget),
+                // While realistic lights replace the classic target, passes
+                // reading light_tex get the override's texture (same lights),
+                // not the cleared classic target, so bloom matches the pools.
+                PostFx.PostFxStack.Instance.Process(WorldRenderTarget, RealisticLightOverride ?? (Texture2D)LightRenderTarget),
                 _gameWorldSceneOnScreen,
                 fullAlphaNoColor,
                 0f
             );
 
-            // draw lights
-            batcher.SetBlendState(_lightsBlendState?.Invoke());
+            // PORT DEVIATION (GUO): HD light Phase 1 composite. When the HD
+            // toggle is on and the active look runs hd_tonemap, that pass
+            // already composited world*light in linear + ACES in-shader, so the
+            // separate light draw is skipped (it would double-apply). Any
+            // other look (Classic, Glow, HD without tonemap) keeps the two
+            // draws above/below exactly as before. The validity guard keeps
+            // a teardown/resize race from compositing a dead override as a
+            // black box; off-state (HdEnabled false) short-circuits identical.
+            // PORT DEVIATION (GUO): HD light Phase 5. The HD Night Vision
+            // look's hd_night_vision pass already composites world*light into
+            // its phosphor (it samples the lit buffer like the tonemap), so
+            // the separate draw would double-apply the torches as orange blobs
+            // over the green pools: same skip, same rule.
+            bool hdComposite = HdEnabled
+                && RealisticLightOverride != null
+                && GodotObject.IsInstanceValid(RealisticLightOverride)
+                && PostFx.PostFxStack.Instance.Preset.Passes.Exists(p => p.Enabled && (string.Equals(p.Shader, "hd_tonemap", System.StringComparison.OrdinalIgnoreCase) || string.Equals(p.Shader, "hd_night_vision", System.StringComparison.OrdinalIgnoreCase)));
 
-            batcher.Draw(
-                LightRenderTarget,
-                _gameWorldSceneOnScreen,
-                _lightsHue?.Invoke() ?? Vector3.Up,
-                0f
-            );
+            if (!hdComposite)
+            {
+                // draw lights (or the realistic override, same blend and hue)
+                batcher.SetBlendState(_lightsBlendState?.Invoke());
 
-            batcher.SetBlendState(null);
+                batcher.Draw(
+                    RealisticLightOverride ?? (Texture2D)LightRenderTarget,
+                    _gameWorldSceneOnScreen,
+                    _lightsHue?.Invoke() ?? Vector3.Up,
+                    0f
+                );
+
+                batcher.SetBlendState(null);
+            }
 
             // Draw UI at original window size (render target is DPI-scaled but destination is not)
             batcher.Draw(

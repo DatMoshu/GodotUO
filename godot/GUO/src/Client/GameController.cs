@@ -498,6 +498,20 @@ namespace GUO
 
         public override void _ExitTree()
         {
+            // PORT DEVIATION (GUO): join the DLSS5/SR background workers
+            // before the native sessions go away. The temporal loop calls
+            // EnhanceTemporal on its own thread; freeing the native DLSS5/ORT
+            // instance (or letting the engine unload the GDExtension) while
+            // it is inside that call faults the process (0xC0000005,
+            // exit -1073741819, observed after a screenshot left the still
+            // graph loaded and the worker mid-temporal). Shutdown joins each
+            // worker first, then frees native; Dlss5Service guards the rest
+            // with a disposed flag + lock. Never throws.
+            try { Renderer.Dlss5.Dlss5Frame.Shutdown(); } catch { }
+            try { Dlss5.DlssBakeWorker.Shutdown(); } catch { }
+            try { Renderer.SuperRes.SrWorker.Shutdown(); } catch { }
+            try { Dlss5.Dlss5Service.Shared.Shutdown(); } catch { }
+
             GetViewport().SizeChanged -= OnViewportSizeChanged;
 
             UnloadContent();
@@ -1005,6 +1019,12 @@ namespace GUO
 
             UIManager.Update();
 
+            // PORT DEVIATION (GUO): SuperRes 4x committer. Warms at most 2
+            // finished upscales per frame into the SR LRU and dirties the
+            // chunk meshes for the seamless native->SR swap (native
+            // footprint, LinearClamp via IsSrTexture).
+            try { Renderer.SuperRes.SrCommit.Poll(); } catch { }
+
             _totalElapsed += elapsedMilliseconds;
             _currentFpsTime += elapsedMilliseconds;
 
@@ -1162,6 +1182,13 @@ namespace GUO
             _uoSpriteBatch.SetRenderTarget(null);
 
             _renderTargets.Draw(_uoSpriteBatch);
+
+            // PORT DEVIATION (GUO): DLSS 5 V3 frame hook (temporal full-viewport
+            // composite). Off is one bool check with no readback and no draw,
+            // so the frame is byte-identical native; on readbacks on a skip
+            // budget and draws the stitched enhance over the full window
+            // when its generation is current (Linear, guarded).
+            GUO.Renderer.Dlss5.Dlss5Frame.Process(this, _uoSpriteBatch);
 
             Profiler.ExitContext(Profiler.ProfilerContext.RENDER_FRAME);
             Profiler.EnterContext(Profiler.ProfilerContext.OUT_OF_CONTEXT);
@@ -1344,6 +1371,43 @@ namespace GUO
                 Log.Error($"could not save screenshot to '{path}': {error}");
 
                 return;
+            }
+
+            // DLSS5: opt-in side-by-side enhanced variant (env
+            // GUO_DLSS_ENHANCE=1 or --dlss-enhance-screenshots). The raw
+            // screenshot above is always saved first; this never replaces it.
+            if (GUO.Dlss5.Dlss5Service.EnhanceScreenshotsEnabled)
+            {
+                try
+                {
+                    var dlss = GUO.Dlss5.Dlss5Service.Shared;
+                    Image square = GUO.Dlss5.Dlss5Service.PrepareSquare320(image);
+                    Image enhanced = dlss.EnhanceStill(square, intensity: 1.0f, profile: 0);
+                    if (enhanced != null)
+                    {
+                        enhanced.Resize(640, 640, Image.Interpolation.Lanczos);
+                        string enhancedPath = Path.Combine(
+                            screenshotsFolder,
+                            $"{Path.GetFileNameWithoutExtension(path)}_dlss5.png");
+                        Error enhError = enhanced.SavePng(enhancedPath);
+                        if (enhError == Error.Ok)
+                        {
+                            Log.Info($"dlss5 variant saved: '{enhancedPath}' (net {dlss.LastMs:F0} ms, {dlss.Provider})");
+                        }
+                        else
+                        {
+                            Log.Error($"could not save dlss5 variant: {enhError}");
+                        }
+                    }
+                    else
+                    {
+                        Log.Error($"dlss5 enhance failed: {dlss.LastError}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Log.Error($"dlss5 screenshot enhance threw: {ex}");
+                }
             }
 
             string message = string.Format(ResGeneral.ScreenshotStoredIn0, path);

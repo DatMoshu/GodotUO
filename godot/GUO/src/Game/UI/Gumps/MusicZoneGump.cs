@@ -28,13 +28,12 @@ namespace GUO.Game.UI.Gumps
     internal sealed class MusicZoneGump : Gump
     {
         private const int W = 340;
-        private const int H = 650;
+        private const int H = 624;
 
         private readonly Label _zoneLabel;
         private readonly Label _rectLabel;
         private readonly StbTextBox _nameBox;
         private readonly StbTextBox _playlistBox;
-        private readonly Label _filesLabel;
         private readonly StbTextBox _promptBox;
         private readonly StbTextBox _secsBox;
         private readonly Label _hereLabel;
@@ -63,6 +62,7 @@ namespace GUO.Game.UI.Gumps
             Save,
             ClearTracks,
             ShowZone,
+            ShowZones,
             Close
         }
 
@@ -147,10 +147,6 @@ namespace GUO.Game.UI.Gumps
             Add(_playlistBox);
 
             y += 52;
-            _filesLabel = new Label("", true, 0x0386, W - 24) { X = 12, Y = y };
-            Add(_filesLabel);
-
-            y += 26;
             Add(new Label("Prompt:", true, 0x0386) { X = 12, Y = y });
             y += 22;
             _promptBox = new StbTextBox(1, 500, W - 24, true, FontStyle.None, 0x0021)
@@ -204,6 +200,11 @@ namespace GUO.Game.UI.Gumps
                 ButtonParameter = (int)Buttons.ShowZone,
                 IsSelectable = false
             });
+            Add(new NiceButton(168, y, 130, 24, ButtonAction.Activate, "Show Zones")
+            {
+                ButtonParameter = (int)Buttons.ShowZones,
+                IsSelectable = false
+            });
 
             y += 32;
             _statusLabel = new Label(string.Empty, true, 0x0021, W - 24) { X = 12, Y = y };
@@ -213,7 +214,6 @@ namespace GUO.Game.UI.Gumps
 
             Width = W;
             Height = H;
-            RefreshFiles();
             LoadZone(0);
             SetInScreen();
         }
@@ -275,12 +275,6 @@ namespace GUO.Game.UI.Gumps
                 : (z != null ? $"{z.X0},{z.Y0} - {z.X1},{z.Y1}" : $"{_ax},{_ay} - ?");
         }
 
-        private void RefreshFiles()
-        {
-            List<string> files = Layer.TrackFiles();
-            _filesLabel.Text = files.Count == 0 ? "no tracks yet" : string.Join(",", files);
-        }
-
         private void Say(string s)
         {
             _statusLabel.Text = s;
@@ -297,7 +291,6 @@ namespace GUO.Game.UI.Gumps
             _layerSfx = sfx;
             _outline.Hide();
             LoadZone(0);
-            RefreshFiles();
             Say(sfx ? "SFX layer (own zones and tracks)." : "Music layer (own zones and tracks).");
         }
 
@@ -467,7 +460,6 @@ namespace GUO.Game.UI.Gumps
                         Say(Layer.Save(Zones) ? "Zones saved." : "Save failed.");
                     }
 
-                    RefreshFiles();
                     break;
 
                 case (int)Buttons.ClearTracks:
@@ -478,6 +470,10 @@ namespace GUO.Game.UI.Gumps
 
                 case (int)Buttons.ShowZone:
                     ToggleShowZone();
+                    break;
+
+                case (int)Buttons.ShowZones:
+                    ToggleShowZones();
                     break;
 
                 case (int)Buttons.Close:
@@ -502,7 +498,12 @@ namespace GUO.Game.UI.Gumps
         /// </summary>
         private void ToggleShowZone()
         {
-            if (_outline.Showing)
+            if (_outline.ShowingMany)
+            {
+                // Single replaces the multi view instead of just hiding it.
+                _outline.Hide();
+            }
+            else if (_outline.ShowingSingle)
             {
                 _outline.Hide();
                 Say("Zone hidden.");
@@ -540,6 +541,77 @@ namespace GUO.Game.UI.Gumps
             int pz = World.Player?.Z ?? 0;
             _outline.Show(World.MapIndex, x0, y0, x1, y1, pz);
             Say($"Showing {x0},{y0} - {x1},{y1} (20s).");
+        }
+
+        /// <summary>
+        /// Every audio zone (Music and SFX layers) near the player, each in
+        /// its own translucent color, 20s or until pressed again.
+        /// </summary>
+        private void ToggleShowZones()
+        {
+            if (_outline.ShowingMany)
+            {
+                _outline.Hide();
+                Say("Zones hidden.");
+                return;
+            }
+
+            _outline.Hide();
+
+            PlayerMobile player = World.Player;
+            if (player == null)
+            {
+                Say("No player.");
+                return;
+            }
+
+            const int R = 30;
+            int facet = World.MapIndex;
+            int px = player.X, py = player.Y, pz = player.Z;
+            var near = new List<ZoneOutline.ZoneEntry>();
+            CollectNearby(ZoneAudio.Music.Zones, "music", facet, px, py, pz, R, near);
+            CollectNearby(ZoneAudio.Sfx.Zones, "sfx", facet, px, py, pz, R, near);
+            if (near.Count == 0)
+            {
+                Say("No zones within 30 tiles.");
+                return;
+            }
+
+            _outline.ShowMany(facet, near);
+            Say($"Showing {near.Count} zone(s) within 30 tiles (20s).");
+        }
+
+        private static void CollectNearby(List<ZoneAudio.Zone> zones, string layer, int facet, int px, int py, int pz, int range, List<ZoneOutline.ZoneEntry> into)
+        {
+            foreach (ZoneAudio.Zone z in zones)
+            {
+                if (z == null)
+                {
+                    continue;
+                }
+
+                if (z.Facet >= 0 && z.Facet != facet)
+                {
+                    continue;
+                }
+
+                int x0 = Math.Min(z.X0, z.X1), x1 = Math.Max(z.X0, z.X1);
+                int y0 = Math.Min(z.Y0, z.Y1), y1 = Math.Max(z.Y0, z.Y1);
+                if (x1 < px - range || x0 > px + range || y1 < py - range || y0 > py + range)
+                {
+                    continue;
+                }
+
+                into.Add(new ZoneOutline.ZoneEntry
+                {
+                    X0 = x0,
+                    Y0 = y0,
+                    X1 = x1,
+                    Y1 = y1,
+                    Z = pz,
+                    Color = ZoneOutline.ColorFor($"{layer}:{z.Name}"),
+                });
+            }
         }
 
         /// <summary>
@@ -652,7 +724,6 @@ namespace GUO.Game.UI.Gumps
                 File.WriteAllBytes(Path.Combine(dir, file), result.Audio);
                 string playlist = _playlistBox.Text?.Trim() ?? "";
                 _playlistBox.SetText(string.IsNullOrEmpty(playlist) ? file : playlist + "," + file);
-                RefreshFiles();
                 Say($"Track {file} saved and queued in the playlist.");
             }
             catch (Exception ex)

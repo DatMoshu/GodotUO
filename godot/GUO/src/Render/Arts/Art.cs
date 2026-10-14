@@ -30,6 +30,101 @@ namespace GUO.Renderer.Arts
         private readonly ArtLoader _artLoader;
         private readonly HuesLoader _huesLoader;
 
+        // PORT DEVIATION (GUO): Enhanced HD repaint detail. Standalone
+        // mipmapped textures from overrides/HD/Art PNGs (never the atlas,
+        // never picking/cursor/containers). LRU-capped; the toggle gates
+        // the resolver so off stays byte-identical native.
+        private sealed class HdEntry
+        {
+            public Texture2D Texture;
+            public int HdW;
+            public int HdH;
+            public int NativeW;
+            public int NativeH;
+            public int Tick;
+        }
+
+        private readonly System.Collections.Generic.Dictionary<(bool IsLand, ushort Graphic), HdEntry> _hdCache =
+            new System.Collections.Generic.Dictionary<(bool, ushort), HdEntry>();
+        private int _hdTick;
+        private const int HdCacheCap = 256;
+
+        // PORT DEVIATION (GUO): SuperRes 4x upscale detail. Standalone
+        // mipmapped textures from the overrides/SR4x disk cache (never the
+        // atlas, never picking/cursor/containers). LRU-capped at 768; the
+        // toggle gates the resolver so off stays byte-identical native.
+        // The background worker that fills the disk cache lands next; on a
+        // disk miss TryGetSr returns false so draws stay native.
+        private sealed class SrEntry
+        {
+            public Texture2D Texture;
+            public int SrW;
+            public int SrH;
+            public int NativeW;
+            public int NativeH;
+            public int Tick;
+        }
+
+        private readonly System.Collections.Generic.Dictionary<(bool IsLand, ushort Graphic), SrEntry> _srCache =
+            new System.Collections.Generic.Dictionary<(bool, ushort), SrEntry>();
+        private int _srTick;
+        private const int SrCacheCap = 768;
+
+        // PORT DEVIATION (GUO): which live textures are HD (for the
+        // batcher's mesh runs, which share canvas items across textures).
+        private static readonly System.Collections.Generic.HashSet<Texture2D> _hdTextures =
+            new System.Collections.Generic.HashSet<Texture2D>();
+
+        /// <summary>Whether a live texture is an Enhanced HD one.</summary>
+        public static bool IsHdTexture(Texture2D texture)
+        {
+            return texture != null && _hdTextures.Contains(texture);
+        }
+
+        // PORT DEVIATION (GUO): which live textures are SuperRes 4x (for
+        // the batcher's mesh runs, which share canvas items across
+        // textures).
+        private static readonly System.Collections.Generic.HashSet<Texture2D> _srTextures =
+            new System.Collections.Generic.HashSet<Texture2D>();
+
+        /// <summary>Whether a live texture is a SuperRes 4x one.</summary>
+        public static bool IsSrTexture(Texture2D texture)
+        {
+            return texture != null && _srTextures.Contains(texture);
+        }
+
+        // PORT DEVIATION (GUO): DLSS bake detail. Standalone mipmapped
+        // textures from overrides/DLSS PNGs (never the atlas, never
+        // picking/cursor/containers). LRU-capped at 256; the DlssBake
+        // toggle gates the resolver so off stays byte-identical native.
+        // A baked detail filter, so it chains last: HD wins, then SR.
+        private sealed class DlssEntry
+        {
+            public Texture2D Texture;
+            public int DlssW;
+            public int DlssH;
+            public int NativeW;
+            public int NativeH;
+            public int Tick;
+        }
+
+        private readonly System.Collections.Generic.Dictionary<(bool IsLand, ushort Graphic), DlssEntry> _dlssCache =
+            new System.Collections.Generic.Dictionary<(bool, ushort), DlssEntry>();
+        private int _dlssTick;
+        private const int DlssCacheCap = 256;
+
+        // PORT DEVIATION (GUO): which live textures are DLSS bakes (for
+        // the batcher's mesh runs, which share canvas items across
+        // textures).
+        private static readonly System.Collections.Generic.HashSet<Texture2D> _dlssTextures =
+            new System.Collections.Generic.HashSet<Texture2D>();
+
+        /// <summary>Whether a live texture is a DLSS bake one.</summary>
+        public static bool IsDlssTexture(Texture2D texture)
+        {
+            return texture != null && _dlssTextures.Contains(texture);
+        }
+
         public Art(ArtLoader artLoader, HuesLoader huesLoader)
         {
             _artLoader = artLoader;
@@ -66,10 +161,837 @@ namespace GUO.Renderer.Arts
         }
 
         /// <summary>Forgets one static's sprite (graphic without the 0x4000 base).</summary>
-        public void RefreshStatic(ushort graphic) => Refresh(0x4000u + graphic);
+        public void RefreshStatic(ushort graphic)
+        {
+            Refresh(0x4000u + graphic);
+            DropHd(false, graphic);
+            DropSr(false, graphic);
+            DropDlss(false, graphic);
+        }
 
         /// <summary>Forgets one land tile's sprite.</summary>
-        public void RefreshLand(ushort graphic) => Refresh(graphic);
+        public void RefreshLand(ushort graphic)
+        {
+            Refresh(graphic);
+            DropHd(true, graphic);
+            DropSr(true, graphic);
+            DropDlss(true, graphic);
+        }
+
+        /// <summary>
+        /// Forgets every Enhanced HD texture (toggle flips). Native atlas
+        /// entries are untouched; chunks are dirtied by the caller.
+        /// Textures are forgotten, not disposed: a baked chunk mesh may
+        /// still reference one until its rebuild (like the native atlas
+        /// rect leak above).
+        /// </summary>
+        public void RefreshAllHD()
+        {
+            foreach (var kv in _hdCache)
+            {
+                try
+                {
+                    _hdTextures.Remove(kv.Value.Texture);
+                }
+                catch
+                {
+                }
+            }
+
+            _hdCache.Clear();
+        }
+
+        /// <summary>
+        /// Forgets every SuperRes 4x texture (toggle flips). Native atlas
+        /// entries are untouched; chunks are dirtied by the caller.
+        /// Textures are forgotten, not disposed: a baked chunk mesh may
+        /// still reference one until its rebuild (like the native atlas
+        /// rect leak above). HD entries are untouched: clearing SR only.
+        /// </summary>
+        public void RefreshAllSR()
+        {
+            foreach (var kv in _srCache)
+            {
+                try
+                {
+                    _srTextures.Remove(kv.Value.Texture);
+                }
+                catch
+                {
+                }
+            }
+
+            _srCache.Clear();
+
+            // PORT DEVIATION (GUO): SuperRes 4x toggle-off drains the lazy
+            // queues so no background upscale survives the flip.
+            try { SuperRes.SrRequestQueue.Clear(); } catch { }
+        }
+
+        /// <summary>
+        /// Forgets every DLSS bake texture (toggle flips). Native atlas
+        /// entries are untouched; chunks are dirtied by the caller.
+        /// Textures are forgotten, not disposed: a baked chunk mesh may
+        /// still reference one until its rebuild (like the native atlas
+        /// rect leak above).
+        /// </summary>
+        public void RefreshAllDlss()
+        {
+            foreach (var kv in _dlssCache)
+            {
+                try
+                {
+                    _dlssTextures.Remove(kv.Value.Texture);
+                }
+                catch
+                {
+                }
+            }
+
+            _dlssCache.Clear();
+        }
+
+        internal void DropDlss(bool isLand, ushort graphic)
+        {
+            var key = (isLand, graphic);
+            if (_dlssCache.TryGetValue(key, out DlssEntry entry))
+            {
+                try
+                {
+                    _dlssTextures.Remove(entry.Texture);
+                }
+                catch
+                {
+                }
+
+                _dlssCache.Remove(key);
+            }
+        }
+
+        internal void DropSr(bool isLand, ushort graphic)
+        {
+            var key = (isLand, graphic);
+            if (_srCache.TryGetValue(key, out SrEntry entry))
+            {
+                try
+                {
+                    _srTextures.Remove(entry.Texture);
+                }
+                catch
+                {
+                }
+
+                _srCache.Remove(key);
+            }
+        }
+
+        private bool TryGetSrPath(bool isLand, ushort graphic, out string path)
+        {
+            path = null;
+            try
+            {
+                string over = System.IO.Path.Combine(
+                    ArtLoader.OverrideDir(), "SR4x", "Art",
+                    isLand ? "Land" : "Statics", graphic + ".png");
+                if (System.IO.File.Exists(over))
+                {
+                    path = over;
+                    return true;
+                }
+            }
+            catch
+            {
+            }
+
+            try
+            {
+                string basePath = _artLoader?.FileManager?.BasePath;
+                if (!string.IsNullOrEmpty(basePath))
+                {
+                    string under = System.IO.Path.Combine(
+                        basePath, "SR4x", "Art",
+                        isLand ? "Land" : "Statics", graphic + ".png");
+                    if (System.IO.File.Exists(under))
+                    {
+                        path = under;
+                        return true;
+                    }
+                }
+            }
+            catch
+            {
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// SuperRes 4x resolver for world-draw callers ONLY (Option B, same
+        /// seats as TryGetHd): View.DrawStatic*, LandView's flat path and
+        /// ChunkMesh's land bake. Cursor, containers, thumbnails and picking
+        /// stay native via GetArt/GetLand. Returns the SR texture plus its
+        /// full-rect UV and the native footprint to draw it into. False
+        /// means draw native. Corrupt or mismatched PNGs fall through with
+        /// a warning. On a disk miss returns false: the background worker
+        /// that fills the disk cache lands next.
+        /// </summary>
+        internal bool TryGetSr(bool isLand, ushort graphic, out Texture2D texture, out Rectangle srUv, out int nativeW, out int nativeH)
+        {
+            texture = null;
+            srUv = default;
+            nativeW = 0;
+            nativeH = 0;
+
+            try
+            {
+                if (Configuration.ProfileManager.CurrentProfile?.SuperRes4x != true)
+                {
+                    return false;
+                }
+            }
+            catch
+            {
+                return false;
+            }
+
+            var key = (isLand, graphic);
+            if (_srCache.TryGetValue(key, out SrEntry cached))
+            {
+                cached.Tick = ++_srTick;
+                texture = cached.Texture;
+                srUv = new Rectangle(0, 0, cached.SrW, cached.SrH);
+                nativeW = cached.NativeW;
+                nativeH = cached.NativeH;
+                return texture != null;
+            }
+
+            if (!TryGetSrPath(isLand, graphic, out string path) || string.IsNullOrEmpty(path))
+            {
+                // PORT DEVIATION (GUO): SuperRes 4x lazy worker. On a disk
+                // miss the draw stays native and one upscale is queued (the
+                // pixel copy is taken here on the main thread: the .mul/.uop
+                // readers seek a shared stream and are not thread-safe, so
+                // the worker itself never touches the loaders). The copy is
+                // the loader-direct unhued hue-0 base, never hued pixels:
+                // the cache holds one base per graphic and hue applies in
+                // shader at draw time (SrGray).
+                try
+                {
+                    uint idx = isLand ? graphic : 0x4000u + graphic;
+                    ArtInfo nativeCopy = _artLoader.GetArt(idx);
+                    if (nativeCopy.Width > 0 && nativeCopy.Height > 0 && !nativeCopy.Pixels.IsEmpty)
+                    {
+                        uint[] copy = nativeCopy.Pixels.ToArray();
+                        SuperRes.SrRequestQueue.Enqueue(
+                            isLand ? SuperRes.SrKind.Land : SuperRes.SrKind.Static,
+                            graphic, nativeCopy.Width, nativeCopy.Height, copy);
+                        SuperRes.SrWorker.EnsureStarted();
+                    }
+                }
+                catch
+                {
+                }
+
+                return false;
+            }
+
+            byte[] bytes;
+            try
+            {
+                bytes = System.IO.File.ReadAllBytes(path);
+            }
+            catch (Exception e)
+            {
+                Log.Warn($"SR4x {path} unreadable: {e.Message}");
+                return false;
+            }
+
+            Godot.Image image = new Godot.Image();
+            try
+            {
+                if (image.LoadPngFromBuffer(bytes) != Godot.Error.Ok)
+                {
+                    Log.Warn($"SR4x {path} is not a PNG; using native.");
+                    image.Dispose();
+                    return false;
+                }
+
+                if (image.GetFormat() != Godot.Image.Format.Rgba8)
+                {
+                    image.Convert(Godot.Image.Format.Rgba8);
+                }
+
+                int srW = image.GetWidth();
+                int srH = image.GetHeight();
+                if (srW <= 0 || srH <= 0)
+                {
+                    Log.Warn($"SR4x {path} is empty; using native.");
+                    image.Dispose();
+                    return false;
+                }
+
+                // Native footprint for validation and the draw size.
+                uint idx = isLand ? graphic : 0x4000u + graphic;
+                ArtInfo native;
+                try
+                {
+                    native = _artLoader.GetArt(idx);
+                }
+                catch (Exception e)
+                {
+                    Log.Warn($"SR4x {path}: native unreadable ({e.Message}); using native.");
+                    image.Dispose();
+                    return false;
+                }
+
+                int natW = native.Width;
+                int natH = native.Height;
+                if (natW <= 0 || natH <= 0)
+                {
+                    image.Dispose();
+                    return false;
+                }
+
+                if (srW < natW || srH < natH)
+                {
+                    Log.Warn($"SR4x {path} is {srW}x{srH}, smaller than native {natW}x{natH}; using native.");
+                    image.Dispose();
+                    return false;
+                }
+
+                if (isLand && srW != srH)
+                {
+                    Log.Warn($"SR4x {path} is {srW}x{srH}, land must be square; using native.");
+                    image.Dispose();
+                    return false;
+                }
+
+                // PORT DEVIATION (GUO): SuperRes 4x hue-safety (SrGray).
+                // The disk cache holds one unhued hue-0 base per graphic and
+                // every draw hues it in-shader (same seat as HD), so a PNG
+                // that carries chroma where native is exact gray would lose
+                // its hue (PARTIAL_HUED needs r==g==b: gray-white with
+                // speckles). Reject it before mipmaps: delete, requeue the
+                // hue-0 base copy for a gray-restored upscale, draw native.
+                try
+                {
+                    byte[] srData = image.GetData();
+                    uint[] natPx = native.Pixels.ToArray();
+                    if (!SuperRes.SrGray.IsSrGraySafe(srData, srW, srH, natPx, natW, natH))
+                    {
+                        Log.Warn($"SR4x {path} breaks the hue gray-base (chroma where native is gray); regenerating, using native.");
+                        image.Dispose();
+                        try { System.IO.File.Delete(path); } catch { }
+                        try
+                        {
+                            uint idx2 = isLand ? graphic : 0x4000u + graphic;
+                            ArtInfo regen = _artLoader.GetArt(idx2);
+                            if (regen.Width > 0 && regen.Height > 0 && !regen.Pixels.IsEmpty)
+                            {
+                                uint[] copy = regen.Pixels.ToArray();
+                                SuperRes.SrRequestQueue.Enqueue(
+                                    isLand ? SuperRes.SrKind.Land : SuperRes.SrKind.Static,
+                                    graphic, regen.Width, regen.Height, copy);
+                                SuperRes.SrWorker.EnsureStarted();
+                            }
+                        }
+                        catch
+                        {
+                        }
+
+                        return false;
+                    }
+                }
+                catch
+                {
+                    // Validation failure is not fatal: fall through and draw
+                    // the SR texture (old behavior) rather than break the frame.
+                }
+
+                if (srW > 1 && srH > 1)
+                {
+                    image.GenerateMipmaps();
+                }
+
+                Texture2D tex = ImageTexture.CreateFromImage(image);
+                image.Dispose();
+                if (tex == null)
+                {
+                    return false;
+                }
+
+                if (_srCache.Count >= SrCacheCap)
+                {
+                    // Evict the least recently used.
+                    (bool, ushort) oldest = default;
+                    int oldestTick = int.MaxValue;
+                    bool found = false;
+                    foreach (var kv in _srCache)
+                    {
+                        if (kv.Value.Tick < oldestTick)
+                        {
+                            oldestTick = kv.Value.Tick;
+                            oldest = kv.Key;
+                            found = true;
+                        }
+                    }
+
+                    if (found && _srCache.TryGetValue(oldest, out SrEntry evict))
+                    {
+                        // Forget, don't dispose: a baked mesh may still
+                        // reference the evicted texture until rebuilt.
+                        try
+                        {
+                            _srTextures.Remove(evict.Texture);
+                        }
+                        catch
+                        {
+                        }
+
+                        _srCache.Remove(oldest);
+                    }
+                }
+
+                var entry = new SrEntry
+                {
+                    Texture = tex,
+                    SrW = srW,
+                    SrH = srH,
+                    NativeW = natW,
+                    NativeH = natH,
+                    Tick = ++_srTick,
+                };
+                _srCache[key] = entry;
+                _srTextures.Add(tex);
+
+                texture = tex;
+                srUv = new Rectangle(0, 0, srW, srH);
+                nativeW = natW;
+                nativeH = natH;
+                return true;
+            }
+            catch (Exception e)
+            {
+                Log.Warn($"SR4x {path} failed ({e.Message}); using native.");
+                try { image?.Dispose(); } catch { }
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// DLSS bake resolver for world-draw callers ONLY (Option B, same
+        /// seats as TryGetHd/TryGetSr): View.DrawStatic*, LandView's flat
+        /// path and ChunkMesh's land bake. Cursor, containers, thumbnails
+        /// and picking stay native via GetArt/GetLand. Returns the baked
+        /// texture plus its full-rect UV and the native footprint to draw
+        /// it into. False means draw native. Corrupt or mismatched PNGs
+        /// fall through with a warning; a PNG without a manifest row still
+        /// loads. Chains last (HD wins, then SR): a baked detail filter,
+        /// never an upscale, so crisper sources keep their seat.
+        /// </summary>
+        internal bool TryGetDlss(bool isLand, ushort graphic, out Texture2D texture, out Rectangle dlssUv, out int nativeW, out int nativeH)
+        {
+            texture = null;
+            dlssUv = default;
+            nativeW = 0;
+            nativeH = 0;
+
+            try
+            {
+                if (Configuration.ProfileManager.CurrentProfile?.DlssBake != true)
+                {
+                    return false;
+                }
+            }
+            catch
+            {
+                return false;
+            }
+
+            var key = (isLand, graphic);
+            if (_dlssCache.TryGetValue(key, out DlssEntry cached))
+            {
+                cached.Tick = ++_dlssTick;
+                texture = cached.Texture;
+                dlssUv = new Rectangle(0, 0, cached.DlssW, cached.DlssH);
+                nativeW = cached.NativeW;
+                nativeH = cached.NativeH;
+                return texture != null;
+            }
+
+            if (!_artLoader.TryGetDlssPath(isLand, graphic, out string path) || string.IsNullOrEmpty(path))
+            {
+                return false;
+            }
+
+            byte[] bytes;
+            try
+            {
+                bytes = System.IO.File.ReadAllBytes(path);
+            }
+            catch (Exception e)
+            {
+                Log.Warn($"DLSS {path} unreadable: {e.Message}");
+                return false;
+            }
+
+            Godot.Image image = new Godot.Image();
+            try
+            {
+                if (image.LoadPngFromBuffer(bytes) != Godot.Error.Ok)
+                {
+                    Log.Warn($"DLSS {path} is not a PNG; using native.");
+                    image.Dispose();
+                    return false;
+                }
+
+                if (image.GetFormat() != Godot.Image.Format.Rgba8)
+                {
+                    image.Convert(Godot.Image.Format.Rgba8);
+                }
+
+                int dlssW = image.GetWidth();
+                int dlssH = image.GetHeight();
+                if (dlssW <= 0 || dlssH <= 0)
+                {
+                    Log.Warn($"DLSS {path} is empty; using native.");
+                    image.Dispose();
+                    return false;
+                }
+
+                // Native footprint for validation and the draw size.
+                uint idx = isLand ? graphic : 0x4000u + graphic;
+                ArtInfo native;
+                try
+                {
+                    native = _artLoader.GetArt(idx);
+                }
+                catch (Exception e)
+                {
+                    Log.Warn($"DLSS {path}: native unreadable ({e.Message}); using native.");
+                    image.Dispose();
+                    return false;
+                }
+
+                int natW = native.Width;
+                int natH = native.Height;
+                if (natW <= 0 || natH <= 0)
+                {
+                    image.Dispose();
+                    return false;
+                }
+
+                if (dlssW < natW || dlssH < natH)
+                {
+                    Log.Warn($"DLSS {path} is {dlssW}x{dlssH}, smaller than native {natW}x{natH}; using native.");
+                    image.Dispose();
+                    return false;
+                }
+
+                if (isLand && dlssW != dlssH)
+                {
+                    Log.Warn($"DLSS {path} is {dlssW}x{dlssH}, land must be square; using native.");
+                    image.Dispose();
+                    return false;
+                }
+
+                // Manifest row, when present, must agree with both sides;
+                // a PNG without a row still loads.
+                if (ArtLoader.TryGetDlssManifestRow(isLand, graphic, out ArtLoader.DlssManifestRow row) && row != null)
+                {
+                    if ((row.NativeW != natW || row.NativeH != natH)
+                        || (row.DlssW != dlssW || row.DlssH != dlssH))
+                    {
+                        Log.Warn($"DLSS {path} mismatches its manifest (native {row.NativeW}x{row.NativeH} vs {natW}x{natH}, dlss {row.DlssW}x{row.DlssH} vs {dlssW}x{dlssH}); using native.");
+                        image.Dispose();
+                        return false;
+                    }
+                }
+
+                if (dlssW > 1 && dlssH > 1)
+                {
+                    image.GenerateMipmaps();
+                }
+
+                Texture2D tex = ImageTexture.CreateFromImage(image);
+                image.Dispose();
+                if (tex == null)
+                {
+                    return false;
+                }
+
+                if (_dlssCache.Count >= DlssCacheCap)
+                {
+                    // Evict the least recently used.
+                    (bool, ushort) oldest = default;
+                    int oldestTick = int.MaxValue;
+                    bool found = false;
+                    foreach (var kv in _dlssCache)
+                    {
+                        if (kv.Value.Tick < oldestTick)
+                        {
+                            oldestTick = kv.Value.Tick;
+                            oldest = kv.Key;
+                            found = true;
+                        }
+                    }
+
+                    if (found && _dlssCache.TryGetValue(oldest, out DlssEntry evict))
+                    {
+                        // Forget, don't dispose: a baked mesh may still
+                        // reference the evicted texture until rebuilt.
+                        try
+                        {
+                            _dlssTextures.Remove(evict.Texture);
+                        }
+                        catch
+                        {
+                        }
+
+                        _dlssCache.Remove(oldest);
+                    }
+                }
+
+                var entry = new DlssEntry
+                {
+                    Texture = tex,
+                    DlssW = dlssW,
+                    DlssH = dlssH,
+                    NativeW = natW,
+                    NativeH = natH,
+                    Tick = ++_dlssTick,
+                };
+                _dlssCache[key] = entry;
+                _dlssTextures.Add(tex);
+
+                texture = tex;
+                dlssUv = new Rectangle(0, 0, dlssW, dlssH);
+                nativeW = natW;
+                nativeH = natH;
+                return true;
+            }
+            catch (Exception e)
+            {
+                Log.Warn($"DLSS {path} failed ({e.Message}); using native.");
+                try { image?.Dispose(); } catch { }
+                return false;
+            }
+        }
+
+        private void DropHd(bool isLand, ushort graphic)
+        {
+            var key = (isLand, graphic);
+            if (_hdCache.TryGetValue(key, out HdEntry entry))
+            {
+                try
+                {
+                    _hdTextures.Remove(entry.Texture);
+                }
+                catch
+                {
+                }
+
+                _hdCache.Remove(key);
+            }
+        }
+
+        /// <summary>
+        /// Enhanced HD resolver for world-draw callers ONLY (Option B):
+        /// View.DrawStatic*, LandView's flat path and ChunkMesh's land bake.
+        /// Cursor, containers, thumbnails and picking stay native via
+        /// GetArt/GetLand. Returns the HD texture plus its full-rect UV and
+        /// the native footprint to draw it into. False means draw native.
+        /// Corrupt or mismatched PNGs fall through with a warning; a PNG
+        /// without a manifest row still loads.
+        /// </summary>
+        internal bool TryGetHd(bool isLand, ushort graphic, out Texture2D texture, out Rectangle hdUv, out int nativeW, out int nativeH)
+        {
+            texture = null;
+            hdUv = default;
+            nativeW = 0;
+            nativeH = 0;
+
+            try
+            {
+                if (Configuration.ProfileManager.CurrentProfile?.EnhancedHD != true)
+                {
+                    return false;
+                }
+            }
+            catch
+            {
+                return false;
+            }
+
+            var key = (isLand, graphic);
+            if (_hdCache.TryGetValue(key, out HdEntry cached))
+            {
+                cached.Tick = ++_hdTick;
+                texture = cached.Texture;
+                hdUv = new Rectangle(0, 0, cached.HdW, cached.HdH);
+                nativeW = cached.NativeW;
+                nativeH = cached.NativeH;
+                return texture != null;
+            }
+
+            if (!_artLoader.TryGetHdPath(isLand, graphic, out string path) || string.IsNullOrEmpty(path))
+            {
+                return false;
+            }
+
+            byte[] bytes;
+            try
+            {
+                bytes = System.IO.File.ReadAllBytes(path);
+            }
+            catch (Exception e)
+            {
+                Log.Warn($"HD {path} unreadable: {e.Message}");
+                return false;
+            }
+
+            Godot.Image image = new Godot.Image();
+            try
+            {
+                if (image.LoadPngFromBuffer(bytes) != Godot.Error.Ok)
+                {
+                    Log.Warn($"HD {path} is not a PNG; using native.");
+                    image.Dispose();
+                    return false;
+                }
+
+                if (image.GetFormat() != Godot.Image.Format.Rgba8)
+                {
+                    image.Convert(Godot.Image.Format.Rgba8);
+                }
+
+                int hdW = image.GetWidth();
+                int hdH = image.GetHeight();
+                if (hdW <= 0 || hdH <= 0)
+                {
+                    Log.Warn($"HD {path} is empty; using native.");
+                    image.Dispose();
+                    return false;
+                }
+
+                // Native footprint for validation and the draw size.
+                uint idx = isLand ? graphic : 0x4000u + graphic;
+                ArtInfo native;
+                try
+                {
+                    native = _artLoader.GetArt(idx);
+                }
+                catch (Exception e)
+                {
+                    Log.Warn($"HD {path}: native unreadable ({e.Message}); using native.");
+                    image.Dispose();
+                    return false;
+                }
+
+                int natW = native.Width;
+                int natH = native.Height;
+                if (natW <= 0 || natH <= 0)
+                {
+                    image.Dispose();
+                    return false;
+                }
+
+                if (hdW < natW || hdH < natH)
+                {
+                    Log.Warn($"HD {path} is {hdW}x{hdH}, smaller than native {natW}x{natH}; using native.");
+                    image.Dispose();
+                    return false;
+                }
+
+                if (isLand && hdW != hdH)
+                {
+                    Log.Warn($"HD {path} is {hdW}x{hdH}, land must be square; using native.");
+                    image.Dispose();
+                    return false;
+                }
+
+                // Manifest row, when present, must agree with both sides;
+                // a PNG without a row still loads.
+                if (ArtLoader.TryGetHdManifestRow(isLand, graphic, out ArtLoader.HdManifestRow row) && row != null)
+                {
+                    if ((row.NativeW != natW || row.NativeH != natH)
+                        || (row.HdW != hdW || row.HdH != hdH))
+                    {
+                        Log.Warn($"HD {path} mismatches its manifest (native {row.NativeW}x{row.NativeH} vs {natW}x{natH}, hd {row.HdW}x{row.HdH} vs {hdW}x{hdH}); using native.");
+                        image.Dispose();
+                        return false;
+                    }
+                }
+
+                if (hdW > 1 && hdH > 1)
+                {
+                    image.GenerateMipmaps();
+                }
+
+                Texture2D tex = ImageTexture.CreateFromImage(image);
+                image.Dispose();
+                if (tex == null)
+                {
+                    return false;
+                }
+
+                if (_hdCache.Count >= HdCacheCap)
+                {
+                    // Evict the least recently used.
+                    (bool, ushort) oldest = default;
+                    int oldestTick = int.MaxValue;
+                    bool found = false;
+                    foreach (var kv in _hdCache)
+                    {
+                        if (kv.Value.Tick < oldestTick)
+                        {
+                            oldestTick = kv.Value.Tick;
+                            oldest = kv.Key;
+                            found = true;
+                        }
+                    }
+
+                    if (found && _hdCache.TryGetValue(oldest, out HdEntry evict))
+                    {
+                        // Forget, don't dispose: a baked mesh may still
+                        // reference the evicted texture until rebuilt.
+                        try
+                        {
+                            _hdTextures.Remove(evict.Texture);
+                        }
+                        catch
+                        {
+                        }
+
+                        _hdCache.Remove(oldest);
+                    }
+                }
+
+                var entry = new HdEntry
+                {
+                    Texture = tex,
+                    HdW = hdW,
+                    HdH = hdH,
+                    NativeW = natW,
+                    NativeH = natH,
+                    Tick = ++_hdTick,
+                };
+                _hdCache[key] = entry;
+                _hdTextures.Add(tex);
+
+                texture = tex;
+                hdUv = new Rectangle(0, 0, hdW, hdH);
+                nativeW = natW;
+                nativeH = natH;
+                return true;
+            }
+            catch (Exception e)
+            {
+                Log.Warn($"HD {path} failed ({e.Message}); using native.");
+                try { image?.Dispose(); } catch { }
+                return false;
+            }
+        }
 
         private ref readonly SpriteInfo Get(uint idx)
         {

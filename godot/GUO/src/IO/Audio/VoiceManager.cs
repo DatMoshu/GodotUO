@@ -4,7 +4,11 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Godot;
 
@@ -46,7 +50,24 @@ namespace GUO.IO.Audio
             public byte[] Pcm;
             public string Error = "";
             public bool Designed;
+            public string DesignedVoice = "";
+            /// <summary>True when <see cref="Pcm"/> came from the disk cache, not ComfyUI.</summary>
+            public bool Cached;
         }
+
+        /// <summary>
+        /// Text-to-audio disk cache: repeated lines never regenerate.
+        /// Layout: ProfilesDir()/cache/&lt;voice&gt;/&lt;sha256&gt;.wav, shared by
+        /// player speech (<see cref="SpeakOwn"/>) and mobile speech
+        /// (<see cref="SpeakMob"/>) since both funnel through
+        /// <see cref="Synthesize"/>. Keyed by voice-id + clone seed +
+        /// profile mtime (epoch seconds) + normalized text, the same
+        /// construction as voice.py voice_cache_path so both sides share
+        /// entries. A re-enrolled/edited profile changes mtime and orphans
+        /// old slots; <see cref="EnforceVoiceCacheLimits"/> evicts them.
+        /// </summary>
+        private const long VoiceCacheMaxBytes = 500L * 1024 * 1024;
+        private const int VoiceCacheMaxFiles = 1000;
 
         /// <summary>Scene-thread pump: starts synthesis workers, plays finished clips.</summary>
         private sealed partial class Pump : Node
@@ -85,7 +106,8 @@ namespace GUO.IO.Audio
                     }
                     else if (r.Error.Length == 0 && r.Designed)
                     {
-                        Status = $"designed '{r.Job.Voice}'";
+                        string voice = string.IsNullOrWhiteSpace(r.DesignedVoice) ? r.Job.Voice : r.DesignedVoice;
+                        Status = $"designed '{voice}'";
                         GD.Print($"[GUO] voice: {Status}");
                     }
                     else
@@ -186,8 +208,11 @@ namespace GUO.IO.Audio
         /// Design a voice for an NPC (local LLM description + voice-design
         /// workflow sample) and map it to the NPC's serial going forward.
         /// Fire-and-forget; Status tracks it ("designing" then "designed").
+        /// The optional prompt is the user's free-text voice type ("gravelly
+        /// old blacksmith"): passed to voice.py as --prompt and used as the
+        /// design description directly instead of the LLM fallback.
         /// </summary>
-        public static void DesignVoice(int serial, string name, int body, string typeName)
+        public static void DesignVoice(int serial, string name, int body, string typeName, string prompt = null)
         {
             EnsurePump();
             lock (_queue)
@@ -199,7 +224,10 @@ namespace GUO.IO.Audio
 
                 _queue.Enqueue(new Job
                 {
-                    Text = "",
+                    // Job.Text carries the user's free-text design prompt
+                    // (kept out of Voice so '|' in the text cannot break the
+                    // design:serial|name|body|type parse in Design()).
+                    Text = prompt ?? "",
                     Distance = 0,
                     Voice = $"design:{serial}|{name}|{body}|{typeName}",
                 });
@@ -606,9 +634,24 @@ namespace GUO.IO.Audio
                 // Design is one fast pass (PERFECT_VOICE_DESIGN): the whole
                 // job holds a hard ~2 min ceiling while speaks keep theirs.
                 // Timeouts live here AND in the tool call: whichever fires
-                // first reports, the other cleans up.
+                // first reports, the other cleans up. Job.Text is the user's
+                // free-text voice type; quotes/newlines stripped so the CLI
+                // stays one argument, passed as --prompt (voice.py uses it as
+                // the design description directly).
+                string promptArg = "";
+                string cleanPrompt = (job.Text ?? "").Replace("\"", "").Replace("\r", " ").Replace("\n", " ").Trim();
+                if (cleanPrompt.Length > 200)
+                {
+                    cleanPrompt = cleanPrompt[..200];
+                }
+
+                if (!string.IsNullOrWhiteSpace(cleanPrompt))
+                {
+                    promptArg = $" --prompt \"{cleanPrompt}\"";
+                }
+
                 var psi = new ProcessStartInfo(Python(),
-                    $"\"{tool}\" design --serial {serial} --name \"{parts[1]}\" --body {parts[2]} --type \"{parts[3]}\" --timeout 110")
+                    $"\"{tool}\" design --serial {serial} --name \"{parts[1].Replace("\"", "")}\" --body {parts[2]} --type \"{parts[3].Replace("\"", "")}\"{promptArg} --timeout 110")
                 {
                     UseShellExecute = false,
                     RedirectStandardOutput = true,
@@ -644,6 +687,23 @@ namespace GUO.IO.Audio
                     return r;
                 }
 
+                // The enrolled profile defaults to npc_<serial> (voice.py
+                // --voice override is never passed from here); prefer the
+                // name the tool actually reports so the gump can auto-assign
+                // the exact voice without guessing.
+                r.DesignedVoice = $"npc_{serial}";
+                string hay = stdout ?? "";
+                int di = hay.IndexOf("designed '", StringComparison.Ordinal);
+                if (di >= 0)
+                {
+                    int qs = di + "designed '".Length;
+                    int qe = hay.IndexOf('\'', qs);
+                    if (qe > qs && qe - qs < 128)
+                    {
+                        r.DesignedVoice = hay.Substring(qs, qe - qs).Trim();
+                    }
+                }
+
                 r.Designed = true;
                 return r;
             }
@@ -671,6 +731,49 @@ namespace GUO.IO.Audio
                 {
                     r.Error = $"error: no voice profile '{job.Voice}' in {ProfilesDir()}";
                     return r;
+                }
+
+                // Disk cache lookup BEFORE any ComfyUI call: a hit plays
+                // immediately with status "cached". Seed -1 (player/random)
+                // shares one slot per line: the first delivery wins after that.
+                string cachePath = null;
+                string normalized = NormalizeSpeech(job.Text);
+                if (normalized.Length > 0)
+                {
+                    cachePath = CachePathFor(job.Voice,
+                        CacheKeyFor(job.Voice, normalized, job.Seed, ProfileMtimeSec(profile)));
+                    if (File.Exists(cachePath))
+                    {
+                        try
+                        {
+                            byte[] hit = ReadMono22050(cachePath);
+                            if (hit != null && hit.Length > 0)
+                            {
+                                try
+                                {
+                                    File.SetLastWriteTimeUtc(cachePath, DateTime.UtcNow);
+                                }
+                                catch (Exception)
+                                {
+                                }
+
+                                r.Pcm = hit;
+                                r.Cached = true;
+                                return r;
+                            }
+
+                            try
+                            {
+                                File.Delete(cachePath);
+                            }
+                            catch (Exception)
+                            {
+                            }
+                        }
+                        catch (Exception)
+                        {
+                        }
+                    }
                 }
 
                 string tmp = Path.Combine(Path.GetTempPath(), $"guo_voice_{Guid.NewGuid():N}");
@@ -739,6 +842,19 @@ namespace GUO.IO.Audio
                 {
                     r.Error = "error: voice wav unreadable (want 22050 mono 16-bit)";
                 }
+                else if (cachePath != null)
+                {
+                    // Save-after on miss: file the exact playable bytes once
+                    // they have passed the 22050Hz-mono gate. Never fatal.
+                    r.Cached = false;
+                    try
+                    {
+                        SaveVoiceCache(cachePath, r.Pcm);
+                    }
+                    catch (Exception)
+                    {
+                    }
+                }
 
                 return r;
             }
@@ -746,6 +862,130 @@ namespace GUO.IO.Audio
             {
                 r.Error = $"error: {ex.GetType().Name}: {ex.Message}";
                 return r;
+            }
+        }
+
+        /// <summary>Collapse whitespace for cache keys (mirrors voice.py normalize_speech).</summary>
+        private static string NormalizeSpeech(string text)
+        {
+            string t = (text ?? "").Trim();
+            return t.Length == 0 ? "" : Regex.Replace(t, @"\s+", " ");
+        }
+
+        private static string SanitizeVoice(string voice)
+        {
+            var sb = new StringBuilder(voice ?? "");
+            foreach (char c in Path.GetInvalidFileNameChars())
+            {
+                sb.Replace(c, '_');
+            }
+
+            sb.Replace('/', '_').Replace('\\', '_');
+            string s = sb.ToString().Trim();
+            return s.Length > 0 ? s : "default";
+        }
+
+        /// <summary>Profile mtime in epoch seconds; 0 when unreadable. A rewrite invalidates old slots.</summary>
+        private static long ProfileMtimeSec(string profilePath)
+        {
+            try
+            {
+                return (long)File.GetLastWriteTimeUtc(profilePath).Subtract(DateTime.UnixEpoch).TotalSeconds;
+            }
+            catch (Exception)
+            {
+                return 0;
+            }
+        }
+
+        /// <summary>SHA-256 over voice + seed + profile-mtime + normalized text (same as voice.py).</summary>
+        private static string CacheKeyFor(string voice, string normalized, int seed, long mtimeSec)
+        {
+            string key = voice + "\x00" + seed + "\x00" + mtimeSec + "\x00" + normalized;
+            byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(key));
+            var sb = new StringBuilder(hash.Length * 2);
+            foreach (byte b in hash)
+            {
+                sb.Append(b.ToString("x2"));
+            }
+
+            return sb.ToString();
+        }
+
+        private static string CachePathFor(string voice, string hash) =>
+            Path.Combine(ProfilesDir(), "cache", SanitizeVoice(voice), hash + ".wav");
+
+        /// <summary>File the exact playable bytes (44-byte header identical to voice.py wav_voice).</summary>
+        private static void SaveVoiceCache(string path, byte[] pcm)
+        {
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(path));
+                byte[] header = new byte[44];
+                Encoding.ASCII.GetBytes("RIFF").CopyTo(header, 0);
+                BitConverter.GetBytes(36 + pcm.Length).CopyTo(header, 4);
+                Encoding.ASCII.GetBytes("WAVE").CopyTo(header, 8);
+                Encoding.ASCII.GetBytes("fmt ").CopyTo(header, 12);
+                BitConverter.GetBytes(16).CopyTo(header, 16);
+                BitConverter.GetBytes((short)1).CopyTo(header, 20);
+                BitConverter.GetBytes((short)1).CopyTo(header, 22);
+                BitConverter.GetBytes(22050).CopyTo(header, 24);
+                BitConverter.GetBytes(22050 * 2).CopyTo(header, 28);
+                BitConverter.GetBytes((short)2).CopyTo(header, 32);
+                BitConverter.GetBytes((short)16).CopyTo(header, 34);
+                Encoding.ASCII.GetBytes("data").CopyTo(header, 36);
+                BitConverter.GetBytes(pcm.Length).CopyTo(header, 40);
+                using var fs = new FileStream(path, FileMode.Create, System.IO.FileAccess.Write, FileShare.None);
+                fs.Write(header, 0, header.Length);
+                fs.Write(pcm, 0, pcm.Length);
+            }
+            catch (Exception)
+            {
+                return;
+            }
+
+            try
+            {
+                EnforceVoiceCacheLimits();
+            }
+            catch (Exception)
+            {
+            }
+        }
+
+        /// <summary>Oldest-first eviction past 500MB / 1000 files. Never fatal.</summary>
+        private static void EnforceVoiceCacheLimits()
+        {
+            try
+            {
+                string root = Path.Combine(ProfilesDir(), "cache");
+                if (!Directory.Exists(root))
+                {
+                    return;
+                }
+
+                List<FileInfo> files = Directory.EnumerateFiles(root, "*.wav", SearchOption.AllDirectories)
+                    .Select(p => new FileInfo(p))
+                    .OrderBy(f => f.LastWriteTimeUtc)
+                    .ToList();
+                long total = files.Sum(f => f.Length);
+                int i = 0;
+                while ((total > VoiceCacheMaxBytes || files.Count - i > VoiceCacheMaxFiles) && i < files.Count)
+                {
+                    total -= files[i].Length;
+                    try
+                    {
+                        files[i].Delete();
+                    }
+                    catch (Exception)
+                    {
+                    }
+
+                    i++;
+                }
+            }
+            catch (Exception)
+            {
             }
         }
 
@@ -822,7 +1062,9 @@ namespace GUO.IO.Audio
             };
             _player.VolumeDb = vol >= 1f ? 0f : 20f * MathF.Log10(Math.Max(0.001f, vol));
             _player.Play();
-            Status = $"playing '{r.Job.Voice}' ({r.Pcm.Length / 2} samples)";
+            Status = r.Cached
+                ? $"cached '{r.Job.Voice}' ({r.Pcm.Length / 2} samples)"
+                : $"playing '{r.Job.Voice}' ({r.Pcm.Length / 2} samples)";
             GD.Print($"[GUO] voice: {Status} -- \"{Short(r.Job.Text)}\"");
         }
 

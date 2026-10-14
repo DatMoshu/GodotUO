@@ -282,6 +282,16 @@ namespace GUO.Game.Map
                     texture = artInfo.Texture;
                 }
             }
+            else if (land.ThemedVariant?.Texture == null
+                && (Client.Game.UO.Arts.TryGetHd(true, land.Graphic, out Texture2D hdTex, out _, out _, out _) || Client.Game.UO.Arts.TryGetSr(true, land.Graphic, out hdTex, out _, out _, out _) || Client.Game.UO.Arts.TryGetDlss(true, land.Graphic, out hdTex, out _, out _, out _))
+                && hdTex != null)
+            {
+                // PORT DEVIATION (GUO): Enhanced HD flat land bakes the HD
+                // texture (native dest footprint in TryAddLand); themed
+                // land keeps its variant PNG. SuperRes 4x chains after HD
+                // (HD wins when both exist). DLSS bake chains last.
+                texture = hdTex;
+            }
             else
             {
                 ref readonly var artInfo = ref Client.Game.UO.Arts.GetLand(land.Graphic);
@@ -417,8 +427,26 @@ namespace GUO.Game.Map
                     {
                         int idx = land.MeshSpriteIndex;
                         land.MeshSpriteIndex = idx;
-                        Land.WriteQuadAt(idx, artInfo.Texture, artInfo.UV,
-                            baseX, baseY + (land.Z << 2), hueVec, depth);
+                        // PORT DEVIATION (GUO): Enhanced HD stretched
+                        // fallback (no texmap): HD source, native dest.
+                        // SuperRes 4x chains after HD (HD wins). DLSS bake
+                        // chains last (detail filter).
+                        if ((Client.Game.UO.Arts.TryGetHd(true, land.Graphic, out Texture2D hdTex, out Rectangle hdUv, out _, out _) || Client.Game.UO.Arts.TryGetSr(true, land.Graphic, out hdTex, out hdUv, out _, out _) || Client.Game.UO.Arts.TryGetDlss(true, land.Graphic, out hdTex, out hdUv, out _, out _))
+                            && hdTex != null)
+                        {
+                            // HD/SR Linear seam overlap (see MeshLayer.WriteQuadAtHd):
+                            // 0.5px per side over the native footprint; picking
+                            // stays native.
+                            Land.WriteQuadAtHd(idx, hdTex, hdUv,
+                                baseX, baseY + (land.Z << 2), artInfo.UV.Width, artInfo.UV.Height, hueVec, depth,
+                                0f, 0.5f);
+                        }
+                        else
+                        {
+                            Land.WriteQuadAt(idx, artInfo.Texture, artInfo.UV,
+                                baseX, baseY + (land.Z << 2), hueVec, depth);
+                        }
+
                         land.InChunkMesh = true;
                     }
                 }
@@ -437,7 +465,28 @@ namespace GUO.Game.Map
                 {
                     int idx = land.MeshSpriteIndex;
                     land.MeshSpriteIndex = idx;
-                    Land.WriteQuadAt(idx, artInfo.Texture, artInfo.UV, baseX, baseY, hueVec, depth);
+                    // PORT DEVIATION (GUO): Enhanced HD flat land bake.
+                    // Rule-7 filtering exception (see View.DrawStatic): HD
+                    // is minified detail with mipmaps, drawn Linear; the
+                    // mesh item filter is switched per HD run in
+                    // UltimaBatcher2D.DrawMeshLayer so native keeps Nearest.
+                    // SuperRes 4x chains after HD (HD wins when both exist).
+                    // DLSS bake chains last (detail filter).
+                    if ((Client.Game.UO.Arts.TryGetHd(true, land.Graphic, out Texture2D hdTex, out Rectangle hdUv, out _, out _) || Client.Game.UO.Arts.TryGetSr(true, land.Graphic, out hdTex, out hdUv, out _, out _) || Client.Game.UO.Arts.TryGetDlss(true, land.Graphic, out hdTex, out hdUv, out _, out _))
+                        && hdTex != null)
+                    {
+                        // HD/SR Linear seam overlap (see MeshLayer.WriteQuadAtHd):
+                        // 0.5px per side over the native footprint; picking
+                        // stays native.
+                        Land.WriteQuadAtHd(idx, hdTex, hdUv,
+                            baseX, baseY, artInfo.UV.Width, artInfo.UV.Height, hueVec, depth,
+                            0f, 0.5f);
+                    }
+                    else
+                    {
+                        Land.WriteQuadAt(idx, artInfo.Texture, artInfo.UV, baseX, baseY, hueVec, depth);
+                    }
+
                     land.InChunkMesh = true;
                 }
             }

@@ -247,6 +247,19 @@ namespace GUO.Renderer
         public void WriteQuadAt(int index, Texture2D texture, Rectangle sourceRect, int posX, int posY,
             Vector3 hue, float depth, float uvInset = 0f)
         {
+            WriteQuadAtHd(index, texture, sourceRect, posX, posY, sourceRect.Width, sourceRect.Height, hue, depth, uvInset);
+        }
+
+        /// <summary>
+        /// Writes a quad whose dest footprint differs from its source rect
+        /// (Enhanced HD land: HD source, native dest). UVs come from the
+        /// source rect; positions span destW/destH.
+        /// </summary>
+        /// <param name="expandPx">Per-side dest expansion for HD/SR Linear land (seam overlap).
+        /// 0 keeps the native footprint byte-identical; HD/SR callers pass 0.5 (1px total).</param>
+        public void WriteQuadAtHd(int index, Texture2D texture, Rectangle sourceRect, float posX, float posY,
+            float destW, float destH, Vector3 hue, float depth, float uvInset = 0f, float expandPx = 0f)
+        {
             ref var vertex = ref Vertices[index];
 
             float sourceX = (sourceRect.X + uvInset) / (float)texture.GetWidth();
@@ -254,14 +267,30 @@ namespace GUO.Renderer
             float sourceW = (sourceRect.Width - uvInset * 2f) / (float)texture.GetWidth();
             float sourceH = (sourceRect.Height - uvInset * 2f) / (float)texture.GetHeight();
 
+            // PORT DEVIATION (GUO): HD/SR Linear seam overlap. A land diamond
+            // minified k:1 under Linear blends its diagonal edge with the
+            // transparent corner inside the same texture, so two abutting tiles
+            // leave a half-covered gap (SR 4x widens the gradient). Expanding
+            // the dest by 1px total (0.5 per side, full UVs stretched over it)
+            // overlaps neighbours along the shared edge and closes the gap.
+            // Native (Nearest, expand 0) is untouched; picking/tiledata stay on
+            // the native footprint (RealScreenPosition + IsPointInLand).
+            if (expandPx != 0f)
+            {
+                posX -= expandPx;
+                posY -= expandPx;
+                destW += expandPx * 2f;
+                destH += expandPx * 2f;
+            }
+
             vertex.Position0.X = posX;
             vertex.Position0.Y = posY;
-            vertex.Position1.X = posX + sourceRect.Width;
+            vertex.Position1.X = posX + destW;
             vertex.Position1.Y = posY;
             vertex.Position2.X = posX;
-            vertex.Position2.Y = posY + sourceRect.Height;
-            vertex.Position3.X = posX + sourceRect.Width;
-            vertex.Position3.Y = posY + sourceRect.Height;
+            vertex.Position2.Y = posY + destH;
+            vertex.Position3.X = posX + destW;
+            vertex.Position3.Y = posY + destH;
 
             vertex.TextureCoordinate0 = new Vector2(sourceX, sourceY);
             vertex.TextureCoordinate1 = new Vector2(sourceW + sourceX, sourceY);

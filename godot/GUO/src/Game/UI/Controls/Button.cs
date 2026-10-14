@@ -174,6 +174,7 @@ namespace GUO.Game.UI.Controls
             float layerDepth = layerDepthRef;
             Texture2D texture = null;
             Rectangle bounds = Rectangle.Empty;
+            ushort chosenGraphic = _normal;
 
             if (_entered || IsClicked)
             {
@@ -182,6 +183,10 @@ namespace GUO.Game.UI.Controls
                     ref readonly var gumpInfo = ref Client.Game.UO.Gumps.GetGump(_pressed);
                     texture = gumpInfo.Texture;
                     bounds = gumpInfo.UV;
+                    if (texture != null)
+                    {
+                        chosenGraphic = _pressed;
+                    }
                 }
 
                 if (texture == null && _over > 0)
@@ -189,6 +194,10 @@ namespace GUO.Game.UI.Controls
                     ref readonly var gumpInfo = ref Client.Game.UO.Gumps.GetGump(_over);
                     texture = gumpInfo.Texture;
                     bounds = gumpInfo.UV;
+                    if (texture != null)
+                    {
+                        chosenGraphic = _over;
+                    }
                 }
             }
 
@@ -197,6 +206,7 @@ namespace GUO.Game.UI.Controls
                 ref readonly var gumpInfo = ref Client.Game.UO.Gumps.GetGump(_normal);
                 texture = gumpInfo.Texture;
                 bounds = gumpInfo.UV;
+                chosenGraphic = _normal;
             }
 
             if (texture == null)
@@ -209,6 +219,21 @@ namespace GUO.Game.UI.Controls
             renderLists.AddGumpWithAtlas(
                 batcher =>
                 {
+                    // PORT DEVIATION (GUO): SuperRes 4x buttons (paperdoll
+                    // Help/Options/LogOut, etc). HD never applies to gumps,
+                    // so SR-or-native for the chosen state. Miss enqueues via
+                    // TryGetSr and stays native; SrCommit warms the Gump SR
+                    // LRU. LinearClamp on SR; toggle-off native.
+                    if (Client.Game.UO.Gumps.TryGetSr(chosenGraphic, out Godot.Texture2D srTex, out Rectangle srUv, out _, out _))
+                    {
+                        if (srTex != null)
+                        {
+                            batcher.SetSampler(SamplerState.LinearClamp);
+                            batcher.Draw(srTex, new Rectangle(x, y, Width, Height), srUv, hue, layerDepth);
+                            batcher.SetSampler(null);
+                            return true;
+                        }
+                    }
                     batcher.Draw(texture, new Rectangle(x, y, Width, Height), bounds, hue, layerDepth);
                     return true;
                 });

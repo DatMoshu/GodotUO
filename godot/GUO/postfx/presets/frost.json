@@ -1,0 +1,13 @@
+{
+ "name": "Frost",
+ "description": "Frosted glass from ClassicUO-JAR (intensity 0.5).",
+ "passes": [
+  {
+   "shader": "frost",
+   "params": {
+    "intensity": 0.5
+   }
+  }
+ ],
+ "bindings": []
+}

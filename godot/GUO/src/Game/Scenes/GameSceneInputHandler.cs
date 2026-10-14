@@ -349,7 +349,8 @@ namespace GUO.Game.Scenes
                         || _world.CustomHouseManager.Erasing
                         || _world.CustomHouseManager.SeekTile
                     )
-                    && SelectedObject.Object is GameObject obj
+                    // PORT DEVIATION (GUO): splat picks forward to their hidden victim; resolve so multi-placement targets the victim.
+                    && SplatObject.Resolve(SelectedObject.Object) is GameObject obj
                 )
                 {
                     _world.CustomHouseManager.OnTargetWorld(obj);
@@ -359,11 +360,13 @@ namespace GUO.Game.Scenes
             }
             else
             {
-                SelectedObject.LastLeftDownObject = SelectedObject.Object;
+                // PORT DEVIATION (GUO): splat picks forward to their hidden victim; resolve so drag-start tracks the victim.
+                SelectedObject.LastLeftDownObject = SplatObject.Resolve(SelectedObject.Object);
 
                 if (ProfileManager.CurrentProfile.EnableDragSelect && DragSelectModifierActive())
                 {
-                    if (CanDragSelectOnObject(SelectedObject.Object as GameObject))
+                    // PORT DEVIATION (GUO): splat picks forward to their hidden victim; resolve so drag-select tests the victim.
+                    if (CanDragSelectOnObject(SplatObject.Resolve(SelectedObject.Object) as GameObject))
                     {
                         _selectionStart = Mouse.Position;
                         _isSelectionActive = true;
@@ -424,7 +427,8 @@ namespace GUO.Game.Scenes
                 _continueRunning = true;
             }
 
-            BaseGameObject lastObj = SelectedObject.Object;
+            // PORT DEVIATION (GUO): splat picks forward to their hidden victim; resolve once so mouse-up targeting/drop acts on the victim.
+            BaseGameObject lastObj = SplatObject.Resolve(SelectedObject.Object);
             SelectedObject.LastLeftDownObject = null;
 
             if (UIManager.IsDragging)
@@ -443,7 +447,8 @@ namespace GUO.Game.Scenes
                 ushort dropY = 0;
                 sbyte dropZ = 0;
 
-                GameObject gobj = SelectedObject.Object as GameObject;
+                // PORT DEVIATION (GUO): lastObj above is already victim-resolved, so the drop target is the victim.
+                GameObject gobj = lastObj as GameObject;
 
                 if (gobj is Entity obj)
                 {
@@ -625,14 +630,16 @@ namespace GUO.Game.Scenes
 
                     case CursorTarget.HueCommandTarget:
 
-                        if (SelectedObject.Object is Entity selectedEntity)
+                        // PORT DEVIATION (GUO): lastObj above is already victim-resolved, so hue-target acts on the victim.
+                        if (lastObj is Entity selectedEntity)
                         {
                             _world.CommandManager.OnHueTarget(selectedEntity);
                         }
 
                         break;
                     case CursorTarget.IgnorePlayerTarget:
-                        if (SelectedObject.Object is Entity pmEntity)
+                        // PORT DEVIATION (GUO): lastObj above is already victim-resolved, so ignore-target acts on the victim.
+                        if (lastObj is Entity pmEntity)
                         {
                             _world.IgnoreManager.AddIgnoredTarget(pmEntity);
                         }
@@ -761,7 +768,8 @@ namespace GUO.Game.Scenes
                 return false;
             }
 
-            BaseGameObject obj = SelectedObject.Object;
+            // PORT DEVIATION (GUO): splat picks forward to their hidden victim; resolve so double-click uses/opens the victim.
+            BaseGameObject obj = SplatObject.Resolve(SelectedObject.Object);
 
             switch (obj)
             {
@@ -866,7 +874,8 @@ namespace GUO.Game.Scenes
                     return false;
                 }
 
-                if (SelectedObject.Object is GameObject obj)
+                // PORT DEVIATION (GUO): splat picks forward to their hidden victim; resolve so pathfind walks to the victim.
+                if (SplatObject.Resolve(SelectedObject.Object) is GameObject obj)
                 {
                     if (obj is Static || obj is Multi || obj is Item)
                     {
@@ -1051,17 +1060,19 @@ namespace GUO.Game.Scenes
                 {
                     Entity obj;
 
+                    // PORT DEVIATION (GUO): splat picks forward to their hidden victim; resolve so Sallos easy-grab picks up the victim.
                     if (
                         ProfileManager.CurrentProfile.SallosEasyGrab
-                        && SelectedObject.Object is Entity ent
-                        && SelectedObject.LastLeftDownObject == null
+                        && SplatObject.Resolve(SelectedObject.Object) is Entity ent
+                        && SplatObject.Resolve(SelectedObject.LastLeftDownObject) == null
                     )
                     {
                         obj = ent;
                     }
                     else
                     {
-                        obj = SelectedObject.LastLeftDownObject as Entity;
+                        // PORT DEVIATION (GUO): splat picks forward to their hidden victim; resolve so drag-from tracks the victim.
+                        obj = SplatObject.Resolve(SelectedObject.LastLeftDownObject) as Entity;
                     }
 
                     if (obj != null)

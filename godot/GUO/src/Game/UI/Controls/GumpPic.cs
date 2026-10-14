@@ -141,6 +141,28 @@ namespace GUO.Game.UI.Controls
                 renderLists.AddGumpWithAtlas(
                     batcher =>
                     {
+                        // PORT DEVIATION (GUO): SuperRes 4x for gump pics
+                        // (paperdoll body/equipment, container chrome). HD
+                        // never applies to gumps, so SR-or-native. Miss
+                        // enqueues the main-thread copy via TryGetSr and stays
+                        // native; SrCommit warms the Gump SR LRU. Toggle-off
+                        // stays byte-identical. Picking stays native.
+                        if (Client.Game.UO.Gumps.TryGetSr(Graphic, out Godot.Texture2D srTex, out Rectangle srUv, out _, out _))
+                        {
+                            if (srTex != null)
+                            {
+                                batcher.SetSampler(SamplerState.LinearClamp);
+                                batcher.Draw(
+                                    srTex,
+                                    new Rectangle(x, y, Width, Height),
+                                    srUv,
+                                    hueVector,
+                                    layerDepth
+                                );
+                                batcher.SetSampler(null);
+                                return true;
+                            }
+                        }
                         batcher.Draw(
                             texture,
                             new Rectangle(x, y, Width, Height),
@@ -238,6 +260,32 @@ namespace GUO.Game.UI.Controls
                 renderLists.AddGumpWithAtlas(
                     batcher =>
                     {
+                        // PORT DEVIATION (GUO): SuperRes 4x sub-rect (same
+                        // SR-or-native rule as GumpPic). The SR source is the
+                        // proportional sub-rect: scale = sr/native.
+                        if (Client.Game.UO.Gumps.TryGetSr(Graphic, out Godot.Texture2D srTex, out Rectangle srUv, out int srNatW, out int srNatH))
+                        {
+                            if (srTex != null && srNatW > 0 && srNatH > 0)
+                            {
+                                float scX = (float)srUv.Width / srNatW;
+                                float scY = (float)srUv.Height / srNatH;
+                                var srSub = new Rectangle(
+                                    srUv.X + (int)(_picInPicBounds.X * scX),
+                                    srUv.Y + (int)(_picInPicBounds.Y * scY),
+                                    (int)(_picInPicBounds.Width * scX),
+                                    (int)(_picInPicBounds.Height * scY));
+                                batcher.SetSampler(SamplerState.LinearClamp);
+                                batcher.Draw(
+                                    srTex,
+                                    new Rectangle(x, y, Width, Height),
+                                    srSub,
+                                    hueVector,
+                                    layerDepth
+                                );
+                                batcher.SetSampler(null);
+                                return true;
+                            }
+                        }
                         batcher.Draw(
                             texture,
                             new Rectangle(x, y, Width, Height),

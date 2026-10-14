@@ -1,0 +1,205 @@
+{
+  "format": 1,
+  "notes": "Every model file GUO's ComfyUI workflows reference (tools/comfy/workflows/*.json, run.py/img2img.py defaults). setup_studio.py in this folder installs from this file: --check reports presence, default mode clones/downloads what is missing and validates node types against the server's /object_info. URLs were verified Oct 2026: VAST-AI/TripoSplat file list via the HuggingFace API, DreamShaper 4384@128713 via two independent registries (CivitAI API itself timed out - see notes on that entry), BiRefNet/bg-removal + SplatToFile3D + TextGenerate confirmed ComfyUI CORE (docs.comfy.org built-in-nodes), Qwen3-TTS/ASR packs confirmed via their READMEs and node maps. No entry needs manual confirmation.",
+  "comfy_dir": {
+    "env": "UO_COMFY_DIR",
+    "guesses": [
+      "D:/ComfyUIPortable/ComfyUI",
+      "C:/ComfyUI",
+      "C:/ComfyUIY",
+      "D:/ComfyUI"
+    ],
+    "notes": "The ComfyUI root: the folder holding models/ and custom_nodes/. UO_COMFY_DIR wins when set; otherwise the first guess that exists and looks like a ComfyUI install."
+  },
+  "custom_nodes": [
+    {
+      "dir": "comfy_mtb",
+      "repo": "https://github.com/melMass/comfy_mtb",
+      "provides": ["Deep Bump (mtb)", "Image Tile Offset (mtb)", "Model Patch Seamless (mtb)", "Vae Decode (mtb)"],
+      "required_by": ["guo_seamless.json"],
+      "notes": "MIT. After cloning, install its deps manually with the ComfyUI python: pip install -r custom_nodes/comfy_mtb/requirements.txt"
+    },
+    {
+      "dir": "ComfyUI-Qwen3-TTS",
+      "repo": "https://github.com/DarioFT/ComfyUI-Qwen3-TTS",
+      "provides": ["Qwen3Loader", "Qwen3VoiceClone", "Qwen3VoiceDesign"],
+      "required_by": ["PERFECT_VOICE_CLONE.json", "PERFECT_VOICE_DESIGN.json"],
+      "notes": "After cloning, install its deps manually (portable: python_embeded/python.exe -m pip install -r custom_nodes/ComfyUI-Qwen3-TTS/requirements.txt). Upstream qwen-tts pins transformers==4.57.3, which may downgrade yours. Model weights auto-download on first run (see models below); nothing to fetch by hand."
+    },
+    {
+      "dir": "ComfyUI-Qwen3-ASR",
+      "repo": "https://github.com/DarioFT/ComfyUI-Qwen3-ASR",
+      "provides": ["Qwen3ASRLoader", "Qwen3ASRTranscribe"],
+      "required_by": ["PERFECT_VOICE_CLONE.json"],
+      "notes": "Separate pack from the TTS one (the clone workflow's ASR nodes carry aux_id DarioFT/ComfyUI-Qwen3-ASR). Deps: pip install -r custom_nodes/ComfyUI-Qwen3-ASR/requirements.txt. Weights auto-download on first run."
+    }
+  ],
+  "core_nodes": {
+    "notes": "No custom pack needed for any of these: they are ComfyUI core in current builds (if /object_info lacks them, update ComfyUI instead of installing a pack). ComfyUI-3D-Pack by MrForExample was checked and is NOT required.",
+    "nodes": ["TripoSplatConditioning", "TripoSplatPreprocessImage", "TripoSplatSamplingPreview", "VAEDecodeTripoSplat", "SplatToFile3D", "SaveGLB", "PreviewGaussianSplat", "RenderSplat", "CreateCameraInfo", "LoadBackgroundRemovalModel", "RemoveBackground", "TextGenerate", "UNETLoader", "CLIPLoader", "CLIPVisionLoader", "VAELoader", "CheckpointLoaderSimple", "EmptyLatentAudio", "VAEDecodeAudio", "SaveAudioAdvanced"]
+  },
+  "models": [
+    {
+      "file": "DreamShaper_8_pruned.safetensors",
+      "aliases": ["dreamshaper_8.safetensors"],
+      "url": "https://civitai.com/api/download/models/128713?type=Model&format=SafeTensor",
+      "dest": "checkpoints",
+      "size": null,
+      "sha256": null,
+      "source": "civitai",
+      "used_by": ["run.py txt2img --ckpt default", "img2img.py --ckpt default", "guo_seamless.json (as dreamshaper_8.safetensors)"],
+      "notes": "CivitAI model 4384 (Lykon DreamShaper), version 128713 = release '8', SD 1.5. Either filename is accepted: the GUO tools default to DreamShaper_8_pruned.safetensors, guo_seamless.json says dreamshaper_8.safetensors (CivitAI's primary filename). CivitAI's own API timed out during verification; version id cross-checked via two independent registries. A registry reports the primary file SHA256 as 879DB523C30D3B9017143D56705015E15A2CB5628762C11D086FED9538ABD7FD (advisory, not fetched from CivitAI directly)."
+    },
+    {
+      "file": "flux-2-klein-4b-fp8.safetensors",
+      "url": "https://huggingface.co/black-forest-labs/FLUX.2-klein-4b-fp8/resolve/main/flux-2-klein-4b-fp8.safetensors",
+      "dest": "diffusion_models",
+      "size": null,
+      "sha256": null,
+      "source": "huggingface",
+      "used_by": ["guo_multi.json"],
+      "notes": "URL as recorded in guo_multi.json's own template metadata (ComfyUI core template)."
+    },
+    {
+      "file": "qwen_3_4b.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/text_encoders/qwen_3_4b.safetensors",
+      "dest": "text_encoders",
+      "size": null,
+      "sha256": null,
+      "source": "huggingface",
+      "used_by": ["guo_multi.json"],
+      "notes": "URL as recorded in guo_multi.json's own template metadata (ComfyUI core template)."
+    },
+    {
+      "file": "flux2-vae.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/flux2-dev/resolve/main/split_files/vae/flux2-vae.safetensors",
+      "dest": "vae",
+      "size": null,
+      "sha256": null,
+      "source": "huggingface",
+      "used_by": ["guo_multi.json"],
+      "notes": "URL as recorded in guo_multi.json's own template metadata. The same file is mirrored at https://huggingface.co/VAST-AI/TripoSplat/resolve/main/vae/flux2-vae.safetensors."
+    },
+    {
+      "file": "stable_audio_3_medium.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/stable-audio-3/resolve/main/checkpoints/stable_audio_3_medium.safetensors",
+      "dest": "checkpoints",
+      "size": null,
+      "sha256": null,
+      "source": "huggingface",
+      "used_by": ["guo_sfx.json", "guo_music.json"],
+      "notes": "URL as recorded in the audio workflows' own template metadata (ComfyUI core Stable Audio 3 template)."
+    },
+    {
+      "file": "t5gemma_b_b_ul2.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/stable-audio-3/resolve/main/text_encoders/t5gemma_b_b_ul2.safetensors",
+      "dest": "text_encoders",
+      "size": null,
+      "sha256": null,
+      "source": "huggingface",
+      "used_by": ["guo_sfx.json", "guo_music.json"],
+      "notes": "URL as recorded in the audio workflows' own template metadata."
+    },
+    {
+      "file": "qwen3.5_2b_bf16.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/Qwen3.5/resolve/main/text_encoders/qwen3.5_2b_bf16.safetensors",
+      "dest": "text_encoders",
+      "size": null,
+      "sha256": null,
+      "source": "huggingface",
+      "used_by": ["guo_sfx.json", "guo_music.json"],
+      "notes": "URL as recorded in the audio workflows' own template metadata. This is the reprompt encoder the GUO variants bake in (the minimax one crashes TextGenerate)."
+    },
+    {
+      "file": "triposplat_fp16.safetensors",
+      "url": "https://huggingface.co/VAST-AI/TripoSplat/resolve/main/diffusion_models/triposplat_fp16.safetensors",
+      "dest": "diffusion_models",
+      "size": null,
+      "sha256": null,
+      "source": "huggingface",
+      "used_by": ["guo_multi.json"],
+      "notes": "Verified: repo + path confirmed via the HuggingFace API and the official TripoSplat workflow docs (docs.comfy.org/tutorials/3d/triposplat)."
+    },
+    {
+      "file": "triposplat_vae_decoder_fp16.safetensors",
+      "url": "https://huggingface.co/VAST-AI/TripoSplat/resolve/main/vae/triposplat_vae_decoder_fp16.safetensors",
+      "dest": "vae",
+      "size": null,
+      "sha256": null,
+      "source": "huggingface",
+      "used_by": ["guo_multi.json"],
+      "notes": "Verified: repo + path confirmed via the HuggingFace API and the official TripoSplat workflow docs."
+    },
+    {
+      "file": "dino_v3_vit_h.safetensors",
+      "url": "https://huggingface.co/VAST-AI/TripoSplat/resolve/main/clip_vision/dino_v3_vit_h.safetensors",
+      "dest": "clip_vision",
+      "size": null,
+      "sha256": null,
+      "source": "huggingface",
+      "used_by": ["guo_multi.json"],
+      "notes": "Verified: repo + path confirmed via the HuggingFace API and the official TripoSplat workflow docs. CLIPVisionLoader file."
+    },
+    {
+      "file": "birefnet.safetensors",
+      "url": "https://huggingface.co/VAST-AI/TripoSplat/resolve/main/background_removal/birefnet.safetensors",
+      "dest": "background_removal",
+      "size": null,
+      "sha256": null,
+      "source": "huggingface",
+      "used_by": ["guo_multi.json"],
+      "notes": "Verified: repo + path confirmed via the HuggingFace API and the official TripoSplat workflow docs. LoadBackgroundRemovalModel is a ComfyUI core node; this is the BiRefNet checkpoint it loads."
+    },
+    {
+      "file": "vae-ft-mse-840000-ema-pruned.safetensors",
+      "url": "https://huggingface.co/stabilityai/sd-vae-ft-mse-original/resolve/main/vae-ft-mse-840000-ema-pruned.safetensors",
+      "dest": "vae",
+      "size": null,
+      "sha256": null,
+      "source": "huggingface",
+      "used_by": ["guo_seamless.json"],
+      "notes": "Verified: file confirmed in the repo via the HuggingFace API. SD 1.5 VAE for the seamless texture workflow."
+    },
+    {
+      "file": "Qwen3-TTS-12Hz-1.7B-Base",
+      "url": "https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-Base",
+      "dest": "Qwen3-TTS",
+      "size": null,
+      "sha256": null,
+      "source": "node-managed",
+      "used_by": ["PERFECT_VOICE_CLONE.json (Qwen3Loader + Qwen3VoiceClone)"],
+      "notes": "Not a single file: the DarioFT Qwen3-TTS pack downloads this repo into ComfyUI/models/Qwen3-TTS/ on first run. setup_studio.py only checks the folder exists; it never downloads this itself."
+    },
+    {
+      "file": "Qwen3-TTS-12Hz-1.7B-VoiceDesign",
+      "url": "https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign",
+      "dest": "Qwen3-TTS",
+      "size": null,
+      "sha256": null,
+      "source": "node-managed",
+      "used_by": ["PERFECT_VOICE_DESIGN.json (Qwen3Loader + Qwen3VoiceDesign)"],
+      "notes": "Same auto-download rule as the Base model above."
+    },
+    {
+      "file": "Qwen3-ASR-1.7B",
+      "url": "https://huggingface.co/Qwen/Qwen3-ASR-1.7B",
+      "dest": "Qwen3-ASR",
+      "size": null,
+      "sha256": null,
+      "source": "node-managed",
+      "used_by": ["PERFECT_VOICE_CLONE.json (Qwen3ASRLoader + Qwen3ASRTranscribe)"],
+      "notes": "The DarioFT Qwen3-ASR pack downloads this repo into ComfyUI/models/Qwen3-ASR/ on first run (repo ids confirmed in the pack's own nodes.py). Check-only here."
+    },
+    {
+      "file": "model.pt",
+      "aliases": [],
+      "url": "https://huggingface.co/Ruicheng/moge-3-vitl",
+      "dest": "(not under ComfyUI/models)",
+      "size": null,
+      "sha256": null,
+      "source": "huggingface",
+      "used_by": ["tools/moge/moge_to_ply.py --model Ruicheng/moge-3-vitl (default)"],
+      "notes": "Reference entry, not a ComfyUI file: tools/moge pulls model.pt (~1.48 GB, MIT) from this repo itself via huggingface_hub. setup_studio.py does not check or download it; it is listed here so the manifest covers every weight the art pipeline needs."
+    }
+  ]
+}

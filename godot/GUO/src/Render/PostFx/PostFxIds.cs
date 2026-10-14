@@ -23,6 +23,31 @@ namespace GUO.Renderer.PostFx
                 return -1;
             }
 
+            if (o is SplatObject splat)
+            {
+                // Flat replacements stay ground, like the floors above: a
+                // splat floor is not outlined tile by tile. Anything unknown
+                // keeps the hashed id below.
+                try
+                {
+                    var statics = Client.Game.UO.FileManager.TileData.StaticData;
+
+                    if (
+                        splat.TryGetVictimGraphic(out ushort victim)
+                        && victim != 0
+                        && victim < statics.Length
+                        && statics[victim].IsSurface
+                        && statics[victim].Height == 0
+                    )
+                    {
+                        return -1;
+                    }
+                }
+                catch (System.Exception)
+                {
+                }
+            }
+
             uint h = o is Entity e
                 ? e.Serial
                 : (uint)o.Graphic * 73856093u ^ (uint)o.X * 19349663u ^ (uint)o.Y * 83492791u ^ (uint)(o.Z + 128) * 2654435761u;

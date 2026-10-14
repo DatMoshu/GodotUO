@@ -91,8 +91,9 @@ namespace GUO.Renderer
         // later has already missed the pushes.
         private readonly ShaderMaterial _meshMaterial;
 
-        /// <summary>The gaussian-splat shader: no texture, no hue uniforms,
-        /// so it is built with the others and never pushed to.</summary>
+        /// <summary>The gaussian-splat shader: texturless (vertex colour only),
+        /// with victim-hue and circle-of-transparency uniforms. Built with the
+        /// others and pushed like them (SetOnAllMaterials).</summary>
         private readonly ShaderMaterial _splatMaterial;
 
         /// <summary>The terrain-layer shader: plain textured quad times
@@ -334,6 +335,12 @@ namespace GUO.Renderer
                 RenderingServer.FreeRid(_idItem);
                 _idItem = default;
             }
+
+            if (_splatIdItem.IsValid)
+            {
+                RenderingServer.FreeRid(_splatIdItem);
+                _splatIdItem = default;
+            }
         }
 
         public void SetBrightlight(float f)
@@ -357,6 +364,7 @@ namespace GUO.Renderer
             _material.SetShaderParameter(name, value);
             _meshMaterial.SetShaderParameter(name, value);
             _landArrayMaterial.SetShaderParameter(name, value);
+            _splatMaterial.SetShaderParameter(name, value);
 
             foreach (ShaderMaterial material in _blendMaterials.Values)
             {
@@ -443,9 +451,14 @@ namespace GUO.Renderer
             EnsureNotStarted();
 
             RenderingServer.CanvasItemSetTransform(_target, viewTransform);
+            _lastView = viewTransform;
             if (_mirroring)
             {
                 RenderingServer.CanvasItemSetTransform(_idItem, viewTransform); // PORT DEVIATION (GUO): ADR-0023
+                if (_splatIdItem.IsValid)
+                {
+                    RenderingServer.CanvasItemSetTransform(_splatIdItem, viewTransform);
+                }
             }
 
             _sizedTexture = null;
@@ -498,6 +511,8 @@ namespace GUO.Renderer
 
         private bool _mirroring;
         private Rid _idItem;
+        private Rid _idCanvas;
+        private Transform2D _lastView = Transform2D.Identity;
         private static ShaderMaterial _idMaterial;
         private readonly Color[] _idColors = new Color[4];
         private readonly Vector2[] _idPoints = new Vector2[4];
@@ -507,6 +522,7 @@ namespace GUO.Renderer
             var stack = PostFx.PostFxStack.Instance;
             Rid canvas = stack.IdCanvas;
             _mirroring = target != null && canvas.IsValid && ReferenceEquals(target, stack.IdFor);
+            _idCanvas = _mirroring ? canvas : default;
             if (!_mirroring)
             {
                 return;
@@ -537,6 +553,14 @@ void fragment() {
 
             RenderingServer.CanvasItemSetParent(_idItem, canvas);
             RenderingServer.CanvasItemClear(_idItem);
+
+            // Splat id mirror (own item: its material differs from the sprite
+            // id material). Same canvas and clear cadence as _idItem.
+            if (_splatIdItem.IsValid)
+            {
+                RenderingServer.CanvasItemSetParent(_splatIdItem, canvas);
+                RenderingServer.CanvasItemClear(_splatIdItem);
+            }
         }
 
         private static Color IdColor(int id) =>
@@ -668,16 +692,102 @@ void fragment() {
         /// current item, under the splat material: the same call shape as
         /// DrawLandMesh, but texturless (the shader reads vertex colour, not
         /// a texture) and in tile space (the view transform zooms it).
+        /// The hue follows ShaderHueTranslator.GetHueVector (x = palette row,
+        /// y = mode 0/1/2); only HUED and PARTIAL_HUED tint, like the shader.
+        /// cot is SplatObject.TransparentTest at the player, for the circle of
+        /// transparency. Both ride as uniforms: the mesh's vertex colours are
+        /// albedo and cannot also carry packed hue per draw.
+        /// The shared bake is LOCAL (origin-relative); the placement offset
+        /// rides the mesh transform so camera moves cost zero uploads.
         /// </summary>
-        public void DrawSplatMesh(ArrayMesh mesh)
+        public void DrawSplatMesh(ArrayMesh mesh, Vector3 hue = default, bool cot = false)
+        {
+            DrawSplatMesh(mesh, Vector2.Zero, hue, cot);
+        }
+
+        /// <summary>
+        /// Offset draw for a shared LOCAL splat bake: identical pixels to a
+        /// bake at (offset.X, offset.Y), with no vertex rewrite.
+        /// </summary>
+        public void DrawSplatMesh(ArrayMesh mesh, Vector2 offset, Vector3 hue = default, bool cot = false)
         {
             EnsureStarted();
+            if (mesh == null)
+            {
+                return;
+            }
+
             EnsureMaterial(_splatMaterial);
             FlushRun();
+            float mode = hue.Y == 1f || hue.Y == 2f ? hue.Y : 0f;
+            _splatMaterial.SetShaderParameter("splat_hue", mode > 0f ? hue.X : 0f);
+            _splatMaterial.SetShaderParameter("splat_hue_mode", mode);
+            _splatMaterial.SetShaderParameter("splat_cot", cot ? 1f : 0f);
             Commands++;
             Count(2, default);
-            RenderingServer.CanvasItemAddMesh(_current, mesh.GetRid(), Transform2D.Identity, Colors.White, default);
+            RenderingServer.CanvasItemAddMesh(_current, mesh.GetRid(), new Transform2D(0f, offset), Colors.White, default);
+            MirrorSplatMesh(mesh, offset); // PORT DEVIATION (GUO): ADR-0023
         }
+
+        /// <summary>
+        /// The splat's pixels in its id colour, where the splat is solid, so
+        /// outline_objects sees staged multis. The mesh's vertex colours are
+        /// albedo, not ids, so the id rides in the splat-id material's uniform
+        /// (per-draw, like the hue above). The discard approximates the soft
+        /// disc: the main shader blends by falloff * vertex alpha, while the id
+        /// buffer is binary, so fragments with interpolated alpha * falloff
+        /// below 0.5 are background. Edges therefore outline a slightly smaller
+        /// disc than the blended splat shows; interior ids are exact.
+        /// </summary>
+        private void MirrorSplatMesh(ArrayMesh mesh)
+        {
+            MirrorSplatMesh(mesh, Vector2.Zero);
+        }
+
+        private void MirrorSplatMesh(ArrayMesh mesh, Vector2 offset)
+        {
+            if (!_mirroring || CurrentObjectId == 0 || mesh == null)
+            {
+                return;
+            }
+
+            _splatIdMaterial ??= new ShaderMaterial
+            {
+                Shader = new Shader
+                {
+                    Code = @"shader_type canvas_item;
+render_mode blend_disabled;
+// ADR-0023 splat mirror: same radial falloff as splat_2d, id from the uniform.
+uniform vec3 splat_id = vec3(0.0);
+void fragment() {
+    vec2 p = UV * 2.0 - 1.0;
+    float d2 = dot(p, p);
+    float falloff = (exp(-4.0 * d2) - exp(-4.0)) / (1.0 - exp(-4.0));
+    if (COLOR.a * falloff < 0.5) { discard; }
+    COLOR = vec4(splat_id, 1.0);
+}",
+                },
+            };
+            if (!_splatIdItem.IsValid)
+            {
+                _splatIdItem = RenderingServer.CanvasItemCreate();
+                RenderingServer.CanvasItemSetMaterial(_splatIdItem, _splatIdMaterial.GetRid());
+                RenderingServer.CanvasItemSetDefaultTextureFilter(_splatIdItem, RenderingServer.CanvasItemTextureFilter.Nearest);
+                if (_idCanvas.IsValid)
+                {
+                    RenderingServer.CanvasItemSetParent(_splatIdItem, _idCanvas);
+                }
+
+                RenderingServer.CanvasItemSetTransform(_splatIdItem, _lastView);
+            }
+
+            Color c = IdColor(CurrentObjectId);
+            _splatIdMaterial.SetShaderParameter("splat_id", new Vector3(c.R, c.G, c.B));
+            RenderingServer.CanvasItemAddMesh(_splatIdItem, mesh.GetRid(), new Transform2D(0f, offset), Colors.White, default);
+        }
+
+        private Rid _splatIdItem;
+        private static ShaderMaterial _splatIdMaterial;
 
         /// <summary>
         /// A terrain-layer quad (ComfyUI underlays/overlays) on the batcher's
@@ -740,6 +850,21 @@ void fragment() {
                 {
                     continue;
                 }
+
+                // PORT DEVIATION (GUO): Enhanced HD land runs draw Linear
+                // (mipmapped minification, the rule-7 exception in
+                // View.DrawStatic); native runs keep Nearest. SuperRes 4x
+                // runs draw Linear too (HD wins upstream; either is Linear).
+                // DLSS bakes draw Linear as well (chained last).
+                // Gump SR textures draw Linear as well (world/UI gump SR).
+                bool wantHd = Arts.Art.IsHdTexture(run.Texture) || Arts.Art.IsSrTexture(run.Texture) || Arts.Art.IsDlssTexture(run.Texture) || Gumps.Gump.IsSrTexture(run.Texture);
+                SamplerState want = wantHd ? SamplerState.LinearClamp : SamplerState.PointClamp;
+                if (_sampler != want)
+                {
+                    _sampler = want;
+                    Cut();
+                }
+
                 FlushRun();
 
                 Commands++;
@@ -751,6 +876,12 @@ void fragment() {
                     Transform2D.Identity,
                     Colors.White,
                     run.Texture.GetRid());
+            }
+
+            if (_sampler != SamplerState.PointClamp)
+            {
+                _sampler = SamplerState.PointClamp;
+                Cut();
             }
 
             return layer.VisibleSpriteCount;
@@ -802,10 +933,22 @@ void fragment() {
             FlushCover();
             ArrayMesh mesh = layer.GetSpriteMesh(index);
 
+            // PORT DEVIATION (GUO): Enhanced HD covering tile draws Linear;
+            // native keeps Nearest. SuperRes 4x covers draw Linear too
+            // (plus DLSS bakes, plus gump SR, same Linear rule).
+            bool isHdCover = Arts.Art.IsHdTexture(layer.Textures[index]) || Arts.Art.IsSrTexture(layer.Textures[index]) || Arts.Art.IsDlssTexture(layer.Textures[index]) || Gumps.Gump.IsSrTexture(layer.Textures[index]);
+            SamplerState wantCover = isHdCover ? SamplerState.LinearClamp : SamplerState.PointClamp;
+            bool samplerSwap = _sampler != wantCover;
+            SamplerState keepSampler = _sampler;
+            if (samplerSwap)
+            {
+                _sampler = wantCover;
+            }
+
             // The same route DrawMeshLayer takes: the offset on the item, the
             // mesh drawn untransformed. A run of covering tiles shares one item.
 
-            if (!ReferenceEquals(_itemMaterial, _meshMaterial) || _itemOffset != offset)
+            if (!ReferenceEquals(_itemMaterial, _meshMaterial) || _itemOffset != offset || samplerSwap)
             {
                 Vector2 keep = _worldOffset;
 
@@ -827,6 +970,12 @@ void fragment() {
                 Colors.White,
                 layer.Textures[index].GetRid());
             MirrorBackgroundMesh(mesh, offset, layer.Textures[index]); // PORT DEVIATION (GUO): ADR-0023
+
+            if (samplerSwap)
+            {
+                _sampler = keepSampler;
+                Cut();
+            }
 
             return 1;
         }

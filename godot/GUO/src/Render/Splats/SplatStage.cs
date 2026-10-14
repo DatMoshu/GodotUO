@@ -29,6 +29,14 @@ namespace GUO.Renderer
         /// covers one 44px tile). Staged per splat from its footprint.
         /// </summary>
         public float Scale = 22f;
+
+        /// <summary>
+        /// User-facing gaussian disc multiplier (default 1): scales the
+        /// rasterized ellipse radii after the bake clamp, so 0.25x sharpens
+        /// to tight dots and 4x blooms past the per-splat cap. Manifest
+        /// entries without it draw exactly like before.
+        /// </summary>
+        public float DiscSize = 1f;
         public string Footprint = "";
         public int FootprintCells;
 
@@ -43,6 +51,15 @@ namespace GUO.Renderer
         /// Manifest entries without it ground exactly like before.
         /// </summary>
         public bool LockZ;
+
+        /// <summary>
+        /// The replaced graphic (0 = unknown): parsed once at placement
+        /// creation (the gump and theme walks know the victim) instead of
+        /// re-scanning the name on every draw. Manifests written before it
+        /// carry no victim key and load as 0, falling back to the one-time
+        /// name parse below, exactly like before.
+        /// </summary>
+        public ushort VictimGraphic;
     }
 
     /// <summary>
@@ -116,9 +133,14 @@ namespace GUO.Renderer
                     ["z"] = p.Z,
                     ["yaw"] = p.Yaw,
                     ["lock_z"] = true,
+                    ["disc"] = p.DiscSize,
                 },
                 ["scale"] = p.Scale,
             };
+            if (p.VictimGraphic != 0)
+            {
+                ((System.Text.Json.Nodes.JsonObject)entry["placement"])["victim"] = p.VictimGraphic;
+            }
             if (!string.IsNullOrWhiteSpace(prompt))
             {
                 entry["prompt"] = prompt;
@@ -155,7 +177,12 @@ namespace GUO.Renderer
                     ["z"] = p.Z,
                     ["yaw"] = p.Yaw,
                     ["lock_z"] = p.LockZ,
+                    ["disc"] = p.DiscSize,
                 };
+                if (p.VictimGraphic != 0)
+                {
+                    at["victim"] = p.VictimGraphic;
+                }
                 entry["placement"] = at;
                 entry["scale"] = p.Scale;
                 File.WriteAllText(manifest, root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) + "\n");
@@ -258,6 +285,28 @@ namespace GUO.Renderer
                     {
                         p.LockZ = true;
                     }
+
+                    // Tolerant: manifests written before the disc stepper
+                    // (or by stage.py / the editor dock) carry no disc key
+                    // and draw at 1x, exactly like before.
+                    if (at.TryGetProperty("disc", out JsonElement dc) && dc.TryGetSingle(out float d) && d > 0f)
+                    {
+                        p.DiscSize = Math.Max(0.25f, Math.Min(4f, d));
+                    }
+
+                    // Tolerant victim graphic: manifests written before it
+                    // carry no victim key (0 = unknown, like before); when
+                    // absent, parse the gen_/moge_ name once here instead of
+                    // re-scanning it on every draw.
+                    if (at.TryGetProperty("victim", out JsonElement vg) && vg.TryGetInt32(out int v)
+                        && v > 0 && v <= ushort.MaxValue)
+                    {
+                        p.VictimGraphic = (ushort)v;
+                    }
+                    else
+                    {
+                        TryParseVictimGraphic(splat.Name, out p.VictimGraphic);
+                    }
                 }
                 else
                 {
@@ -297,6 +346,51 @@ namespace GUO.Renderer
             }
 
             return out_;
+        }
+
+        /// <summary>
+        /// The replaced graphic from a gen_/moge_ placement name (live keys
+        /// carry a gen:/moge: prefix first): the one-time parse behind
+        /// <see cref="SplatPlacement.VictimGraphic"/>. Manifest names without
+        /// a hex tag and preview keys have no victim: false, 0.
+        /// </summary>
+        internal static bool TryParseVictimGraphic(string name, out ushort graphic)
+        {
+            graphic = 0;
+            if (string.IsNullOrEmpty(name))
+            {
+                return false;
+            }
+
+            string n = name;
+            int colon = n.IndexOf(':');
+            if (colon >= 0)
+            {
+                n = n.Substring(colon + 1);
+            }
+
+            if (!n.StartsWith("gen_", StringComparison.Ordinal)
+                && !n.StartsWith("moge_", StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            string[] parts = n.Split('_');
+            if (parts.Length < 3)
+            {
+                return false;
+            }
+
+            try
+            {
+                graphic = Convert.ToUInt16(parts[1], 16);
+                return graphic != 0;
+            }
+            catch (Exception)
+            {
+                graphic = 0;
+                return false;
+            }
         }
 
         private static int CountFootprintCells(string draft)

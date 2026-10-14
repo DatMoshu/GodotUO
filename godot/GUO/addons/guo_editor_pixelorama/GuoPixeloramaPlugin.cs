@@ -9,11 +9,13 @@ public partial class GuoPixeloramaPlugin : EditorPlugin, ISerializationListener
 {
     public static PixeloramaView Main { get; private set; }
     private bool _visible;
-    public override bool _HasMainScreen() => true;
+    public override bool _HasMainScreen() => ExternalTools.PixeloramaEnabled;
     public override string _GetPluginName() => "Pixelorama";
     public override Texture2D _GetPluginIcon() => EditorInterface.Singleton.GetEditorTheme().GetIcon("Image", "EditorIcons");
     public override void _EnterTree()
     {
+        // Off by default (GUO_PIXELORAMA=0): no view, no probe launch, no process.
+        if (!ExternalTools.PixeloramaEnabled) return;
         Build();
         // Probe launch belongs to initial entry, never to assembly deserialization.
         if (System.Array.IndexOf(OS.GetCmdlineUserArgs(), "--guo-pixelorama-probe") >= 0)
@@ -28,6 +30,7 @@ public partial class GuoPixeloramaPlugin : EditorPlugin, ISerializationListener
     public override void _ExitTree() => TearDown();
     public override void _MakeVisible(bool visible)
     {
+        if (!ExternalTools.PixeloramaEnabled) return;
         _visible = visible;
         if (Main != null) Main.Visible = visible;
         var screen = EditorInterface.Singleton.GetEditorMainScreen();
@@ -41,6 +44,7 @@ public partial class GuoPixeloramaPlugin : EditorPlugin, ISerializationListener
     public void OnAfterDeserialize() => Callable.From(Build).CallDeferred();
     private void Build()
     {
+        if (!ExternalTools.PixeloramaEnabled) return;
         if (Main != null) return;
         Main = new PixeloramaView
         {

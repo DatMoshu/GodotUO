@@ -1,0 +1,14 @@
+{
+ "name": "Film Grain",
+ "description": "Animated film grain.",
+ "passes": [
+  {
+   "shader": "film_grain",
+   "params": {
+    "intensity": 0.1,
+    "size": 1.0
+   }
+  }
+ ],
+ "bindings": []
+}

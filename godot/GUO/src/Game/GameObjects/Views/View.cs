@@ -145,6 +145,39 @@ namespace GUO.Game.GameObjects
                 x -= w;
                 y -= h;
 
+                // PORT DEVIATION (GUO): Enhanced HD. The HD PNG draws into
+                // the native dest footprint at scale 1/k (native/hd), so
+                // placement, picking and tiledata stay native.
+                // Rule-7 filtering exception: rule 7 keeps pixel art on
+                // Nearest, but an HD repaint is AI detail minified k:1, not
+                // pixel art; Nearest would subsample 1 texel per kxk block
+                // into aliased noise, while Linear over mipmaps folds the
+                // block down. Native keeps Nearest; HD items alone go Linear.
+                // SuperRes 4x chains after HD (HD wins when both exist).
+                // DLSS bake chains last (a baked detail filter, never an
+                // upscale, so crisper sources keep their seat).
+                if (themed == null && (Client.Game.UO.Arts.TryGetHd(false, graphic, out Godot.Texture2D hdTex, out Rectangle hdUv, out _, out _) || Client.Game.UO.Arts.TryGetSr(false, graphic, out hdTex, out hdUv, out _, out _) || Client.Game.UO.Arts.TryGetDlss(false, graphic, out hdTex, out hdUv, out _, out _)))
+                {
+                    var hdPos = new Vector2(x, y);
+                    var hdScale = new Vector2((float)uv.Width / hdUv.Width, (float)uv.Height / hdUv.Height);
+                    batcher.SetSampler(SamplerState.LinearClamp);
+                    if (isWet)
+                    {
+                        batcher.Draw(hdTex, hdPos, hdUv, hue, 0f, Vector2.Zero, hdScale, SpriteEffects.None, depth + 0.5f);
+                        var sin = (float)Math.Sin(Time.Ticks / 1000f);
+                        var cos = (float)Math.Cos(Time.Ticks / 1000f);
+                        var wet = new Vector2(hdScale.X * (1.1f + sin * 0.1f), hdScale.Y * (1.1f + cos * 0.5f * 0.1f));
+                        batcher.Draw(hdTex, hdPos, hdUv, hue, 0f, Vector2.Zero, wet, SpriteEffects.None, depth + 0.5f);
+                    }
+                    else
+                    {
+                        batcher.Draw(hdTex, hdPos, hdUv, hue, 0f, Vector2.Zero, hdScale, SpriteEffects.None, depth + 0.5f);
+                    }
+
+                    batcher.SetSampler(null);
+                    return;
+                }
+
                 var pos = new Vector2(x, y);
                 var scale = Vector2.One;
                 if (isWet)
@@ -189,6 +222,37 @@ namespace GUO.Game.GameObjects
             float depth
         )
         {
+            // PORT DEVIATION (GUO): SuperRes 4x for world gumps (lightning
+            // effect). HD never applies to gumps, so SR-or-native. On a disk
+            // miss TryGetSr enqueues the main-thread pixel copy to SrQueue
+            // and returns false so this frame stays native; SrCommit warms
+            // the Gump SR LRU. Toggle-off returns false immediately so the
+            // native path below stays byte-identical. Picking stays native.
+            if (Client.Game.UO.Gumps.TryGetSr(graphic, out Godot.Texture2D srTex, out Rectangle srUv, out int srNatW, out int srNatH))
+            {
+                if (srTex != null && srUv.Width > 0 && srUv.Height > 0 && srNatW > 0 && srNatH > 0)
+                {
+                    ref readonly var nativeForScale = ref Client.Game.UO.Gumps.GetGump(graphic);
+                    int destW = nativeForScale.Texture != null ? nativeForScale.UV.Width : srNatW;
+                    int destH = nativeForScale.Texture != null ? nativeForScale.UV.Height : srNatH;
+                    var srScale = new Vector2((float)destW / srUv.Width, (float)destH / srUv.Height);
+                    batcher.SetSampler(SamplerState.LinearClamp);
+                    batcher.Draw(
+                        srTex,
+                        new Vector2(x, y),
+                        srUv,
+                        hue,
+                        0f,
+                        Vector2.Zero,
+                        srScale,
+                        SpriteEffects.None,
+                        depth + 0.5f
+                    );
+                    batcher.SetSampler(null);
+                    return;
+                }
+            }
+
             ref readonly var gumpInfo = ref Client.Game.UO.Gumps.GetGump(graphic);
 
             if (gumpInfo.Texture != null)
@@ -245,6 +309,28 @@ namespace GUO.Game.GameObjects
                 ref var index = ref Client.Game.UO.FileManager.Arts.File.GetValidRefEntry(graphic + 0x4000);
                 index.Width = (short)w;
                 index.Height = (short)h;
+            }
+
+            // PORT DEVIATION (GUO): Enhanced HD, same rule-7 exception as
+            // DrawStatic: native footprint, 1/k scale is implicit in the
+            // dest rect (native size, HD source), Linear for HD only.
+            // SuperRes 4x chains after HD (HD wins when both exist).
+            // DLSS bake chains last (detail filter).
+            if (themed == null && (Client.Game.UO.Arts.TryGetHd(false, graphic, out Godot.Texture2D hdTex, out Rectangle hdUv, out _, out _) || Client.Game.UO.Arts.TryGetSr(false, graphic, out hdTex, out hdUv, out _, out _) || Client.Game.UO.Arts.TryGetDlss(false, graphic, out hdTex, out hdUv, out _, out _)))
+            {
+                batcher.SetSampler(SamplerState.LinearClamp);
+                batcher.Draw(
+                    hdTex,
+                    new Rectangle(x - w, y - h, uv.Width, uv.Height),
+                    hdUv,
+                    hue,
+                    angle,
+                    Vector2.Zero,
+                    SpriteEffects.None,
+                    depth + 0.5f
+                );
+                batcher.SetSampler(null);
+                return;
             }
 
             batcher.Draw(
@@ -320,6 +406,40 @@ namespace GUO.Game.GameObjects
                 y -= index.Height;
 
                 Vector2 pos = new Vector2(x, y);
+
+                // PORT DEVIATION (GUO): Enhanced HD, same rule-7 exception
+                // as DrawStatic: native footprint + 1/k scale, Linear for
+                // HD only (shadow included); native keeps Nearest.
+                // SuperRes 4x chains after HD (HD wins when both exist).
+                // DLSS bake chains last (detail filter).
+                if (themed == null && (Client.Game.UO.Arts.TryGetHd(false, graphic, out Godot.Texture2D hdTex, out Rectangle hdUv, out _, out _) || Client.Game.UO.Arts.TryGetSr(false, graphic, out hdTex, out hdUv, out _, out _) || Client.Game.UO.Arts.TryGetDlss(false, graphic, out hdTex, out hdUv, out _, out _)))
+                {
+                    var hdScale = new Vector2((float)artInfo.UV.Width / hdUv.Width, (float)artInfo.UV.Height / hdUv.Height);
+                    batcher.SetSampler(SamplerState.LinearClamp);
+                    if (shadow)
+                    {
+                        // Shadow footprint stays native: DrawShadow sizes the
+                        // blob from sourceRect, so hdUv/srUv (kx native) would
+                        // blow it up k:1. SR/HD is albedo-only.
+                        batcher.DrawShadow(artInfo.Texture, pos, artInfo.UV, false, depth + 0.25f);
+                    }
+
+                    if (isWet)
+                    {
+                        batcher.Draw(hdTex, pos, hdUv, hue, 0f, Vector2.Zero, hdScale, SpriteEffects.None, depth + 0.5f);
+                        var sin = (float)Math.Sin(Time.Ticks / 1000f);
+                        var cos = (float)Math.Cos(Time.Ticks / 1000f);
+                        var wet = new Vector2(hdScale.X * (1.1f + sin * 0.1f), hdScale.Y * (1.1f + cos * 0.5f * 0.1f));
+                        batcher.Draw(hdTex, pos, hdUv, hue, 0f, Vector2.Zero, wet, SpriteEffects.None, depth + 0.5f);
+                    }
+                    else
+                    {
+                        batcher.Draw(hdTex, pos, hdUv, hue, 0f, Vector2.Zero, hdScale, SpriteEffects.None, depth + 0.5f);
+                    }
+
+                    batcher.SetSampler(null);
+                    return;
+                }
 
                 if (shadow)
                 {

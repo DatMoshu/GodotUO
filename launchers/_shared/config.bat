@@ -248,6 +248,13 @@ if not defined UO_LAYOUT_ZOMBOID_DIR set "UO_LAYOUT_ZOMBOID_DIR="
 REM --- Python -------------------------------------------------------------
 if not defined UO_PYTHON            set "UO_PYTHON=python"
 
+REM --- Headless build guard ------------------------------------------------
+REM  Seconds launchers\dev\build.bat waits for the headless C# build before
+REM  it stops the engine tree and reports a timeout (exit 124). A cold
+REM  rebuild takes about a minute here; the default is three times that, so it
+REM  only fires when --quit never quits, never on a slow-but-healthy build.
+if not defined UO_BUILD_TIMEOUT     set "UO_BUILD_TIMEOUT=180"
+
 REM --- Logging ------------------------------------------------------------
 REM  DEBUG | INFO | WARN | ERROR
 if not defined UO_LOG_LEVEL         set "UO_LOG_LEVEL=INFO"
@@ -269,6 +276,10 @@ REM  sidecar out, saved results in, hues.json for the Pixelorama extension.
 REM  UO_PINTA / UO_PIXELORAMA name an exe when it is not found by itself.
 REM  UO_COMFY_URL is the ComfyUI server; UO_COMFY_WORKFLOWS a folder of its
 REM  API-format workflow .json files. Keys for paid services are NOT here.
+REM  GUO_PIXELORAMA gates the Pixelorama host/integration: 0 (default) starts
+REM  nothing and prints no detach message; set it to 1 (or export
+REM  GUO_PIXELORAMA=1) to re-enable Pixelorama.
+if not defined GUO_PIXELORAMA        set "GUO_PIXELORAMA=0"
 if not defined UO_ART_EXCHANGE      set "UO_ART_EXCHANGE=%UO_ROOT%\build\art_exchange"
 if not defined UO_PIXELORAMA        set "UO_PIXELORAMA="
 if not defined UO_PINTA             set "UO_PINTA="

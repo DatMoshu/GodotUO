@@ -124,14 +124,48 @@ namespace GUO.Game.GameObjects
                 }
 
                 {
-                    var pos = new Vector2(posX, posY);
+                    // PORT DEVIATION (GUO): Enhanced HD flat land. Native
+                    // dest footprint at 1/k, Linear for HD only.
+                    // Rule-7 filtering exception: as in View.DrawStatic, HD
+                    // is minified AI detail (mipmaps + Linear), not pixel
+                    // art; native keeps Nearest. SuperRes 4x chains after
+                    // HD (HD wins when both exist). DLSS bake chains last
+                    // (detail filter).
+                    if (ThemedVariant == null && (Client.Game.UO.Arts.TryGetHd(true, Graphic, out Godot.Texture2D hdTex, out Rectangle hdUv, out _, out _) || Client.Game.UO.Arts.TryGetSr(true, Graphic, out hdTex, out hdUv, out _, out _) || Client.Game.UO.Arts.TryGetDlss(true, Graphic, out hdTex, out hdUv, out _, out _)))
+                    {
+                        // HD/SR Linear seam overlap (see MeshLayer.WriteQuadAtHd):
+                        // same 1px-total dest expansion the chunk mesh bakes, so
+                        // the sorted-pass flat path abuts without gaps. Picking
+                        // stays on the native footprint (CheckMouseSelection).
+                        const float dilate = 0.5f;
+                        var pos = new Vector2(posX - dilate, posY - dilate);
+                        var hdScale = new Vector2((float)(uv.Width + 1) / hdUv.Width, (float)(uv.Height + 1) / hdUv.Height);
+                        batcher.SetSampler(SamplerState.LinearClamp);
+                        if (ProfileManager.CurrentProfile.AnimatedWaterEffect && TileData.IsWet)
+                        {
+                            batcher.Draw(hdTex, pos, hdUv, hueVec, 0f, Vector2.Zero, hdScale, SpriteEffects.None, depth + 0.5f);
+                            var sin = (float)Math.Sin(Time.Ticks / 1000f);
+                            var cos = (float)Math.Cos(Time.Ticks / 1000f);
+                            var wet = new Vector2(hdScale.X * (1.1f + sin * 0.1f), hdScale.Y * (1.1f + cos * 0.5f * 0.1f));
+                            batcher.Draw(hdTex, pos, hdUv, hueVec, 0f, Vector2.Zero, wet, SpriteEffects.None, depth + 0.5f);
+                        }
+                        else
+                        {
+                            batcher.Draw(hdTex, pos, hdUv, hueVec, 0f, Vector2.Zero, hdScale, SpriteEffects.None, depth + 0.5f);
+                        }
+
+                        batcher.SetSampler(null);
+                        return true;
+                    }
+
+                    var pos2 = new Vector2(posX, posY);
                     var scale = Vector2.One;
 
                     if (ProfileManager.CurrentProfile.AnimatedWaterEffect && TileData.IsWet)
                     {
                         batcher.Draw(
                             texture,
-                            pos,
+                            pos2,
                             uv,
                             hueVec,
                             0f,
@@ -148,7 +182,7 @@ namespace GUO.Game.GameObjects
 
                     batcher.Draw(
                         texture,
-                        pos,
+                        pos2,
                         uv,
                         hueVec,
                         0f,

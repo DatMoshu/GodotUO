@@ -25,6 +25,7 @@ namespace GUO.Game.Scenes
     {
         private List<SplatPlacement> _splatPlacements;
         private bool _splatsLoaded;
+        private bool _mogeAnchored;
         private bool _variantsApplied;
         private bool _splatDebugDone;
         private readonly Dictionary<string, SplatObject> _splatObjects = new();
@@ -36,15 +37,28 @@ namespace GUO.Game.Scenes
         /// <summary>
         /// Drops a staged splat into the world now (the placer gump's live
         /// preview and its committed placements): same queue path as the
-        /// manifest entries, keyed so re-placing updates in place.
+        /// manifest entries, keyed so re-placing updates in place. The gump
+        /// passes the victim graphic it replaced (theme walks set it too);
+        /// 0 parses the gen_/moge_ key once here, so draws never scan names.
         /// </summary>
-        internal bool PlaceSplat(string key, string splatName, int x, int y, int z, float scale, float yaw)
+        internal bool PlaceSplat(string key, string splatName, int x, int y, int z, float scale, float yaw, float discSize = 1f, ushort victimGraphic = 0)
         {
             if (string.IsNullOrEmpty(key) || string.IsNullOrEmpty(splatName)
                 || !Renderer.SplatStage.TryGetSplat(splatName, out Renderer.SplatLodChain chain, out _)
                 || chain == null)
             {
                 return false;
+            }
+
+            if (!(discSize > 0f))
+            {
+                discSize = 1f;
+            }
+
+            discSize = Math.Max(0.25f, Math.Min(4f, discSize));
+            if (victimGraphic == 0)
+            {
+                Renderer.SplatStage.TryParseVictimGraphic(key, out victimGraphic);
             }
 
             var p = new Renderer.SplatPlacement
@@ -57,11 +71,22 @@ namespace GUO.Game.Scenes
                 Z = z,
                 Scale = scale > 0f ? scale : 22f,
                 Yaw = yaw,
+                DiscSize = discSize,
                 LockZ = true,
+                VictimGraphic = victimGraphic,
             };
             _splatObjects[key] = new GameObjects.SplatObject(_world, p);
             return true;
         }
+
+        /// <summary>
+        /// Drops a live-placed splat object (the moge gump's restore path):
+        /// manifest entries re-queue every frame, so this only retires
+        /// live-placed keys (previews and generations). Returns nothing
+        /// when the key was never placed.
+        /// </summary>
+        internal bool RemoveSplat(string key) =>
+            !string.IsNullOrEmpty(key) && _splatObjects.Remove(key);
 
         /// <summary>
         /// Pick-rect centre of a placement in tile space, or (-1, -1). The
@@ -101,6 +126,324 @@ namespace GUO.Game.Scenes
 
         private readonly Dictionary<GameObjects.Multi, string> _themeHidden = new();
         private readonly Dictionary<GameObjects.Static, string> _skinHidden = new();
+
+        /// <summary>
+        /// Single-victim hides: one Generate hides its own victim object
+        /// (client-side, restored on Restore). The victim reference alone
+        /// does not survive season changes (UpdateGraphicBySeason recomputes
+        /// AllowedToDraw), ThemeManager.Reapply (same walk) or chunk
+        /// re-streams (a new instance appears at the tile), so each hide is
+        /// keyed by its live splat key and carries facet/tile/graphic to
+        /// re-find the victim. Saved gen_/moge_ placements re-arm their hide
+        /// on boot the same way (the name carries the victim graphic).
+        /// Victim-anchored, never splat-anchored: moving the SPLAT (the
+        /// placer steppers re-place it) neither moves nor lifts the hide;
+        /// the victim stays hidden at its own tile until ClearSingleHide.
+        /// Preview overlays (moge:preview) never register a hide, so the
+        /// original stays visible under them by design.
+        /// </summary>
+        private sealed class SingleHide
+        {
+            public int Facet;
+            public int X, Y;
+            public sbyte Z;
+            public ushort Graphic;
+            public ushort Original;
+            public string SplatKey = "";
+            public GameObjects.GameObject Victim;
+        }
+
+        private readonly Dictionary<string, SingleHide> _singleHides = new();
+
+        /// <summary>
+        /// Gates the manifest re-arm scan and the placement-name index below:
+        /// set by hide/unhide calls (and whenever the manifest list changes),
+        /// so idle frames skip the per-placement string work. The per-hide
+        /// re-assert still runs every frame (one bool store on live victims);
+        /// only dead-victim hides pay a tile walk, waiting on their chunk.
+        /// </summary>
+        private bool _singleHidesRearmNeeded = true;
+
+        private List<Renderer.SplatPlacement> _singleRearmPlacements;
+        private int _singleRearmCount = -1;
+
+        /// <summary>
+        /// Manifest placement names (rebuilt with the re-arm scan): O(1)
+        /// splat-alive check instead of the O(hides x placements) Exists walk.
+        /// </summary>
+        private readonly HashSet<string> _splatPlacementNames = new(StringComparer.Ordinal);
+
+        /// <summary>
+        /// Records a single-victim hide (the Generate path calls this right
+        /// after hiding the victim): re-asserted every frame by
+        /// QueueSingleHides, so seasons, reapplies and re-streams keep it
+        /// hidden until ClearSingleHide. Callers must pass the LIVE victim
+        /// instance (re-found by tile+graphic at commit time, never a stale
+        /// Select snapshot): the record anchors to that instance's own
+        /// tile+graphic, and later moves of the splat do not touch it.
+        /// </summary>
+        internal void HideSingle(GameObjects.GameObject victim, string splatKey)
+        {
+            if (victim == null || victim.IsDestroyed || string.IsNullOrEmpty(splatKey))
+            {
+                return;
+            }
+
+            ushort original = victim.Graphic;
+            if (victim is GameObjects.Static s)
+            {
+                original = s.OriginalGraphic;
+            }
+            else if (victim is GameObjects.Land l)
+            {
+                original = l.OriginalGraphic;
+            }
+
+            victim.AllowedToDraw = false;
+            _singleHides[splatKey] = new SingleHide
+            {
+                Facet = _world != null ? _world.MapIndex : 0,
+                X = victim.X,
+                Y = victim.Y,
+                Z = victim.Z,
+                Graphic = victim.Graphic,
+                Original = original,
+                SplatKey = splatKey,
+                Victim = victim,
+            };
+            _singleHidesRearmNeeded = true;
+            if (_splatObjects.TryGetValue(splatKey, out SplatObject so))
+            {
+                so.Victim = victim;
+            }
+        }
+
+        /// <summary>
+        /// Forgets a single-victim hide (the Restore path): unhides the
+        /// tracked victim when it is still alive. Missing keys are a no-op,
+        /// so double Restore stays harmless.
+        /// </summary>
+        internal void ClearSingleHide(string splatKey)
+        {
+            if (string.IsNullOrEmpty(splatKey) || !_singleHides.TryGetValue(splatKey, out SingleHide h))
+            {
+                return;
+            }
+
+            _singleHides.Remove(splatKey);
+            _singleHidesRearmNeeded = true;
+            if (h.Victim != null && !h.Victim.IsDestroyed)
+            {
+                h.Victim.AllowedToDraw = true;
+            }
+            if (_splatObjects.TryGetValue(splatKey, out SplatObject soClear))
+            {
+                soClear.Victim = null;
+            }
+        }
+
+        private static bool TryParseSingleGraphic(string name, out ushort graphic)
+        {
+            graphic = 0;
+            if (string.IsNullOrEmpty(name))
+            {
+                return false;
+            }
+
+            // Live keys carry a gen:/moge: prefix (gen:gen_XXXX_NN); staged
+            // manifest names are the bare gen_XXXX_NN / moge_XXXX_NN.
+            string n = name;
+            int colon = n.IndexOf(':');
+            if (colon >= 0)
+            {
+                n = n.Substring(colon + 1);
+            }
+
+            if (!n.StartsWith("gen_", StringComparison.Ordinal)
+                && !n.StartsWith("moge_", StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            string[] parts = n.Split('_');
+            if (parts.Length < 3)
+            {
+                return false;
+            }
+
+            try
+            {
+                graphic = Convert.ToUInt16(parts[1], 16);
+                return true;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
+        private bool SingleMatches(SingleHide h, GameObjects.GameObject o)
+        {
+            if (o == null || o.IsDestroyed || o.X != h.X || o.Y != h.Y || o.Z != h.Z)
+            {
+                return false;
+            }
+
+            if (o.Graphic == h.Graphic || o.Graphic == h.Original)
+            {
+                return true;
+            }
+
+            if (o is GameObjects.Static s && (s.OriginalGraphic == h.Original || s.OriginalGraphic == h.Graphic))
+            {
+                return true;
+            }
+
+            if (o is GameObjects.Land l && (l.OriginalGraphic == h.Original || l.OriginalGraphic == h.Graphic))
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Re-asserts single-victim hides every frame: live victims stay
+        /// hidden across season changes and Reapply (both recompute
+        /// AllowedToDraw on the same instance), streamed chunks re-hide by
+        /// tile/graphic lookup, and saved gen_/moge_ placements re-arm their
+        /// hide on boot. Stale entries drop their dead reference; entries
+        /// whose splat is gone restore and go away. Deliberately deaf to
+        /// splat moves: the hide follows the VICTIM's recorded tile, not
+        /// the splat's current tile, so tuning X/Y/Z never reveals the
+        /// original (only ClearSingleHide does).
+        /// </summary>
+        private void QueueSingleHides()
+        {
+            if (_world?.Map == null)
+            {
+                return;
+            }
+
+            // Saved-then-reloaded placements re-arm their victim-hide on
+            // boot: the manifest already records the placement tile, and the
+            // gen_/moge_ name carries the victim graphic. Gated on real
+            // changes (hide/unhide calls, manifest load) so idle frames pay
+            // nothing here; the name index rebuilds on the same gate and
+            // replaces the O(hides x placements) Exists walk below.
+            bool placementsChanged = !ReferenceEquals(_splatPlacements, _singleRearmPlacements)
+                || (_splatPlacements?.Count ?? -1) != _singleRearmCount;
+            if (_singleHidesRearmNeeded || placementsChanged)
+            {
+                _singleHidesRearmNeeded = false;
+                _singleRearmPlacements = _splatPlacements;
+                _singleRearmCount = _splatPlacements?.Count ?? -1;
+                _splatPlacementNames.Clear();
+                if (_splatPlacements != null)
+                {
+                    foreach (Renderer.SplatPlacement p in _splatPlacements)
+                    {
+                        if (p == null || string.IsNullOrEmpty(p.Name))
+                        {
+                            continue;
+                        }
+
+                        _splatPlacementNames.Add(p.Name);
+                        if (_singleHides.ContainsKey(p.Name))
+                        {
+                            continue;
+                        }
+
+                        if (TryParseSingleGraphic(p.Name, out ushort g))
+                        {
+                            _singleHides[p.Name] = new SingleHide
+                            {
+                                Facet = p.Facet,
+                                X = p.X,
+                                Y = p.Y,
+                                Z = (sbyte)p.Z,
+                                Graphic = g,
+                                Original = g,
+                                SplatKey = p.Name,
+                                Victim = null,
+                            };
+                        }
+                    }
+                }
+            }
+
+            if (_singleHides.Count == 0)
+            {
+                return;
+            }
+
+            int facet = _world.MapIndex;
+            var gone = new List<string>();
+            foreach (var kv in _singleHides)
+            {
+                SingleHide h = kv.Value;
+                bool splatAlive = _splatObjects.ContainsKey(h.SplatKey)
+                    || _splatPlacementNames.Contains(h.SplatKey);
+                if (!splatAlive)
+                {
+                    if (h.Victim != null && !h.Victim.IsDestroyed)
+                    {
+                        h.Victim.AllowedToDraw = true;
+                    }
+
+                    gone.Add(kv.Key);
+                    continue;
+                }
+
+                if (h.Facet != facet)
+                {
+                    continue;
+                }
+
+                if (h.Victim != null && !h.Victim.IsDestroyed)
+                {
+                    h.Victim.AllowedToDraw = false;
+                    if (_splatObjects.TryGetValue(h.SplatKey, out SplatObject soLive))
+                    {
+                        soLive.Victim = h.Victim;
+                    }
+                    continue;
+                }
+
+                // Chunk re-stream: the old instance is destroyed, so find
+                // the new one at the tile by graphic. No chunk load here
+                // (GetTile load:false): unloaded tiles simply wait.
+                h.Victim = null;
+                GameObjects.GameObject head = null;
+                try
+                {
+                    head = _world.Map.GetTile(h.X, h.Y, false);
+                }
+                catch (Exception)
+                {
+                }
+
+                for (GameObjects.GameObject o = head; o != null; o = o.TNext)
+                {
+                    if (SingleMatches(h, o))
+                    {
+                        o.AllowedToDraw = false;
+                        h.Victim = o;
+                        break;
+                    }
+                }
+
+                if (_splatObjects.TryGetValue(h.SplatKey, out SplatObject soRearm))
+                {
+                    soRearm.Victim = h.Victim != null && !h.Victim.IsDestroyed ? h.Victim : null;
+                }
+            }
+
+            foreach (string k in gone)
+            {
+                _singleHides.Remove(k);
+            }
+        }
 
         /// <summary>
         /// Themed multi skins: multis of listed ids inside active zones hide
@@ -167,8 +510,13 @@ namespace GUO.Game.Scenes
                                 {
                                     Name = key, Chain = chain, Scale = k,
                                     Facet = _world.MapIndex, X = m.X, Y = m.Y, Z = m.Z,
+                                    VictimGraphic = m.Graphic,
                                 });
                                 _splatObjects[key] = so;
+                            }
+                            if (so != null && !m.IsDestroyed)
+                            {
+                                so.Victim = m;
                             }
                         }
                     }
@@ -250,8 +598,13 @@ namespace GUO.Game.Scenes
                                     Name = key, Chain = chain, Scale = k,
                                     Facet = _world.MapIndex, X = s.X, Y = s.Y, Z = s.Z,
                                     LockZ = true,
+                                    VictimGraphic = s.Graphic,
                                 });
                                 _splatObjects[key] = so;
+                            }
+                            if (so != null && !s.IsDestroyed)
+                            {
+                                so.Victim = s;
                             }
                         }
                     }
@@ -325,10 +678,73 @@ namespace GUO.Game.Scenes
                 Managers.ThemeManager.Reapply(_world);
             }
 
+            // MoGe replacer anchor: staged moge_* PLYs store centered
+            // billboards (a PLY cannot carry the tile shift: the parser
+            // recenters on bbox), so shift each once from its graphic's tile
+            // anchor, the same math as the gump's live placement. Runs once
+            // the art archive is readable; live-placed chains are already
+            // anchored by the gump and never pass through here.
+            if (!_mogeAnchored && _splatPlacements != null)
+            {
+                _mogeAnchored = true;
+                foreach (SplatPlacement p in _splatPlacements)
+                {
+                    if (p?.Chain?.Levels == null || p.Chain.Levels.Length == 0
+                        || p.Chain.Levels[0] == null || string.IsNullOrEmpty(p.Name)
+                        || !p.Name.StartsWith("moge_", StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
+
+                    try
+                    {
+                        string[] parts = p.Name.Split('_');
+                        if (parts.Length < 3)
+                        {
+                            continue;
+                        }
+
+                        ushort graphic = Convert.ToUInt16(parts[1], 16);
+                        var shot = Comfy.ComfyClient.ExtractArtShot(graphic, false);
+                        if (shot == null || shot.TightWidth <= 0)
+                        {
+                            continue;
+                        }
+
+                        float cx = shot.TightX0 + shot.TightWidth * 0.5f;
+                        float cy = shot.TightY0 + shot.TightHeight * 0.5f;
+                        float dx = cx - (shot.Width * 0.5f - 22f);
+                        float dy = cy - (shot.Height - 44f);
+                        SplatBatcher.AnchorShift(dx, dy, p.Scale, p.Yaw,
+                            out float mx, out float my, out float mz);
+                        var level = p.Chain.Levels[0];
+                        var gs = level.Gaussians;
+                        for (int i = 0; i < gs.Length; i++)
+                        {
+                            gs[i].X += mx;
+                            gs[i].Y += my;
+                            gs[i].Z += mz;
+                        }
+
+                        var shift = new Vector3(mx, my, mz);
+                        level.BoundsMin += shift;
+                        level.BoundsMax += shift;
+                        p.Chain.BoundsMin = level.BoundsMin;
+                        p.Chain.BoundsMax = level.BoundsMax;
+                    }
+                    catch (Exception)
+                    {
+                    }
+                }
+            }
+
             // Themed multi skins first (hides originals, ensures objects).
             QueueThemeMultis();
             // Static splat skins next (the placer gump's replace-all rules).
             QueueStaticSkins();
+            // Single-victim hides last, so Generate victims stay hidden
+            // across seasons, reapplies and re-streams.
+            QueueSingleHides();
 
             int facet = _world.MapIndex;
             float zoom = Camera.Zoom;
@@ -377,39 +793,58 @@ namespace GUO.Game.Scenes
                 o.Z = gz;
                 o.PriorityZ = gz;
                 o.UpdateRealScreenPosition(_offset.X, _offset.Y);
-                int sx = o.RealScreenPosition.X, sy = o.RealScreenPosition.Y;
-                if (sx < _minPixel.X - 512 || sx > _maxPixel.X + 512
-                    || sy < _minPixel.Y - 512 || sy > _maxPixel.Y + 512)
+
+                // LOD before queue (zoom and scale only: the same level Draw
+                // picks, FullDetail override included), so culled levels skip
+                // the queue, the bake lookup and the draw entirely.
+                o.DrawZoom = zoom;
+                o.FullDetail = zoom <= Camera.ZoomMin;
+                float k = p.Scale;
+                int preLevel = o.FullDetail ? 0 : SplatBatcher.SelectLevel(p.Chain, zoom, k);
+                if (preLevel < 0)
                 {
                     continue;
                 }
 
-                // LOD by effective zoom; the click rect from the lod0 bounds
-                // projected through the oblique map (all 8 corners). At the
-                // camera floor the zoom value sits on ZoomMin exactly (the
-                // setter clamps to it), so fully zoomed in draws lod0.
-                o.DrawZoom = zoom;
-                o.FullDetail = zoom <= Camera.ZoomMin;
-                float k = p.Scale;
+                // Bounds rect from the lod0 bounds projected through the
+                // oblique map (all 8 corners), with the yaw trig hoisted out
+                // of the loop. At the camera floor the zoom value sits on
+                // ZoomMin exactly (the setter clamps to it), so fully zoomed
+                // in draws lod0.
                 float x0 = float.MaxValue, y0 = float.MaxValue;
                 float x1 = float.MinValue, y1 = float.MinValue;
                 Vector3 lo = p.Chain.BoundsMin, hi = p.Chain.BoundsMax;
+                double ywr = p.Yaw * Math.PI / 180.0;
+                float cyw = (float)Math.Cos(ywr), syw = (float)Math.Sin(ywr);
                 for (int c = 0; c < 8; c++)
                 {
                     float mx = (c & 1) == 0 ? lo.X : hi.X;
                     float my = (c & 2) == 0 ? lo.Y : hi.Y;
                     float mz = (c & 4) == 0 ? lo.Z : hi.Z;
-                    SplatBatcher.IsoPoint(k, p.Yaw, mx, my, mz, out float px, out float py);
+                    SplatBatcher.IsoPointW(k, cyw, syw, mx, my, mz, out float px, out float py);
                     if (px < x0) x0 = px;
                     if (py < y0) y0 = py;
                     if (px > x1) x1 = px;
                     if (py > y1) y1 = py;
                 }
 
+                // Tight off-screen cull on the rect itself (replaces the
+                // fixed +-512px centre check, which queued every splat within
+                // half a screen). Bounds hold gaussian centres; quads can
+                // bloom past them up to the bake clamp, hence the guard.
+                int sx = o.RealScreenPosition.X, sy = o.RealScreenPosition.Y;
+                const float cullMargin = 128f;
+                float rx0 = sx + x0, ry0 = sy + y0, rx1 = sx + x1, ry1 = sy + y1;
+                if (rx1 < _minPixel.X - cullMargin || rx0 > _maxPixel.X + cullMargin
+                    || ry1 < _minPixel.Y - cullMargin || ry0 > _maxPixel.Y + cullMargin)
+                {
+                    continue;
+                }
+
                 const float margin = 8f;
                 o.PickRect = new Rectangle(
-                    (int)(sx + x0 - margin), (int)(sy + y0 - margin),
-                    (int)(x1 - x0 + margin * 2f), (int)(y1 - y0 + margin * 2f));
+                    (int)(rx0 - margin), (int)(ry0 - margin),
+                    (int)(rx1 - rx0 + margin * 2f), (int)(ry1 - ry0 + margin * 2f));
                 PushToRenderQueue(o, false, true);
                 if (debug)
                 {

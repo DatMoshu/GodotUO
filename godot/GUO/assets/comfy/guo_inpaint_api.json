@@ -1,0 +1,126 @@
+{
+ "1": {
+  "class_type": "CheckpointLoaderSimple",
+  "inputs": {
+   "ckpt_name": "DreamShaper_8_pruned.safetensors"
+  }
+ },
+ "2": {
+  "class_type": "LoadImage",
+  "inputs": {
+   "image": "guo_inpaint.png"
+  }
+ },
+ "3": {
+  "class_type": "LoadImage",
+  "inputs": {
+   "image": "guo_mask.png"
+  }
+ },
+ "4": {
+  "class_type": "ImageToMask",
+  "inputs": {
+   "image": [
+    "3",
+    0
+   ],
+   "channel": "red"
+  }
+ },
+ "5": {
+  "class_type": "VAEEncode",
+  "inputs": {
+   "pixels": [
+    "2",
+    0
+   ],
+   "vae": [
+    "1",
+    2
+   ]
+  }
+ },
+ "6": {
+  "class_type": "SetLatentNoiseMask",
+  "inputs": {
+   "samples": [
+    "5",
+    0
+   ],
+   "mask": [
+    "4",
+    0
+   ]
+  }
+ },
+ "7": {
+  "class_type": "CLIPTextEncode",
+  "inputs": {
+   "text": "{{prompt}}",
+   "clip": [
+    "1",
+    1
+   ]
+  }
+ },
+ "8": {
+  "class_type": "CLIPTextEncode",
+  "inputs": {
+   "text": "{{negative}}",
+   "clip": [
+    "1",
+    1
+   ]
+  }
+ },
+ "9": {
+  "class_type": "KSampler",
+  "inputs": {
+   "model": [
+    "1",
+    0
+   ],
+   "positive": [
+    "7",
+    0
+   ],
+   "negative": [
+    "8",
+    0
+   ],
+   "latent_image": [
+    "6",
+    0
+   ],
+   "seed": 1,
+   "steps": 20,
+   "cfg": 7,
+   "sampler_name": "euler",
+   "scheduler": "normal",
+   "denoise": 0.65
+  }
+ },
+ "10": {
+  "class_type": "VAEDecode",
+  "inputs": {
+   "samples": [
+    "9",
+    0
+   ],
+   "vae": [
+    "1",
+    2
+   ]
+  }
+ },
+ "11": {
+  "class_type": "SaveImage",
+  "inputs": {
+   "images": [
+    "10",
+    0
+   ],
+   "filename_prefix": "GUO_inpaint"
+  }
+ }
+}

@@ -1132,23 +1132,102 @@ namespace GUO.Game.UI.Gumps
 
                         int middleWidth = Width - gumpInfo0.UV.Width - gumpInfo2.UV.Width;
 
-                        batcher.Draw(gumpInfo0.Texture, new Vector2(x, y), gumpInfo0.UV, hueVector, layerDepth);
+                        // PORT DEVIATION (GUO): SuperRes 4x shop divider line.
+                        // HD never applies to gumps, so SR-or-native. Miss
+                        // enqueues via TryGetSr and stays native; SrCommit
+                        // warms the Gump SR LRU. LinearClamp on SR.
+                        if (Client.Game.UO.Gumps.TryGetSr(_graphic, out Godot.Texture2D srTex0, out Rectangle srUv0, out _, out _))
+                        {
+                            if (srTex0 != null)
+                            {
+                                batcher.SetSampler(SamplerState.LinearClamp);
+                                batcher.Draw(srTex0, new Rectangle(x, y, gumpInfo0.UV.Width, gumpInfo0.UV.Height), srUv0, hueVector, layerDepth);
+                                batcher.SetSampler(null);
+                            }
+                            else
+                            {
+                                batcher.Draw(gumpInfo0.Texture, new Vector2(x, y), gumpInfo0.UV, hueVector, layerDepth);
+                            }
+                        }
+                        else
+                        {
+                            batcher.Draw(gumpInfo0.Texture, new Vector2(x, y), gumpInfo0.UV, hueVector, layerDepth);
+                        }
 
-                        batcher.DrawTiled(
-                            gumpInfo1.Texture,
-                            new Rectangle(x + gumpInfo0.UV.Width, y, middleWidth, gumpInfo1.UV.Height),
-                            gumpInfo1.UV,
-                            hueVector,
-                            layerDepth
-                        );
+                        if (Client.Game.UO.Gumps.TryGetSr((uint)(_graphic + 1), out Godot.Texture2D srTex1, out Rectangle srUv1, out int srNatW1, out int srNatH1))
+                        {
+                            if (srTex1 != null && srNatW1 > 0 && srNatH1 > 0)
+                            {
+                                batcher.SetSampler(SamplerState.LinearClamp);
+                                for (int oy = 0; oy < gumpInfo1.UV.Height; oy += srNatH1)
+                                {
+                                    int dh = System.Math.Min(srNatH1, gumpInfo1.UV.Height - oy);
+                                    int sh = (int)(srUv1.Height * (float)dh / srNatH1);
+                                    for (int ox = 0; ox < middleWidth; ox += srNatW1)
+                                    {
+                                        int dw = System.Math.Min(srNatW1, middleWidth - ox);
+                                        int sw = (int)(srUv1.Width * (float)dw / srNatW1);
+                                        batcher.Draw(
+                                            srTex1,
+                                            new Rectangle(x + gumpInfo0.UV.Width + ox, y + oy, dw, dh),
+                                            new Rectangle(srUv1.X, srUv1.Y, sw, sh),
+                                            hueVector,
+                                            layerDepth);
+                                    }
+                                }
+                                batcher.SetSampler(null);
+                            }
+                            else
+                            {
+                                batcher.DrawTiled(
+                                    gumpInfo1.Texture,
+                                    new Rectangle(x + gumpInfo0.UV.Width, y, middleWidth, gumpInfo1.UV.Height),
+                                    gumpInfo1.UV,
+                                    hueVector,
+                                    layerDepth
+                                );
+                            }
+                        }
+                        else
+                        {
+                            batcher.DrawTiled(
+                                gumpInfo1.Texture,
+                                new Rectangle(x + gumpInfo0.UV.Width, y, middleWidth, gumpInfo1.UV.Height),
+                                gumpInfo1.UV,
+                                hueVector,
+                                layerDepth
+                            );
+                        }
 
-                        batcher.Draw(
-                            gumpInfo2.Texture,
-                            new Vector2(x + Width - gumpInfo2.UV.Width, y),
-                            gumpInfo2.UV,
-                            hueVector,
-                            layerDepth
-                        );
+                        if (Client.Game.UO.Gumps.TryGetSr((uint)(_graphic + 2), out Godot.Texture2D srTex2, out Rectangle srUv2, out _, out _))
+                        {
+                            if (srTex2 != null)
+                            {
+                                batcher.SetSampler(SamplerState.LinearClamp);
+                                batcher.Draw(srTex2, new Rectangle(x + Width - gumpInfo2.UV.Width, y, gumpInfo2.UV.Width, gumpInfo2.UV.Height), srUv2, hueVector, layerDepth);
+                                batcher.SetSampler(null);
+                            }
+                            else
+                            {
+                                batcher.Draw(
+                                    gumpInfo2.Texture,
+                                    new Vector2(x + Width - gumpInfo2.UV.Width, y),
+                                    gumpInfo2.UV,
+                                    hueVector,
+                                    layerDepth
+                                );
+                            }
+                        }
+                        else
+                        {
+                            batcher.Draw(
+                                gumpInfo2.Texture,
+                                new Vector2(x + Width - gumpInfo2.UV.Width, y),
+                                gumpInfo2.UV,
+                                hueVector,
+                                layerDepth
+                            );
+                        }
                         return true;
                     }
                 );
@@ -1185,6 +1264,61 @@ namespace GUO.Game.UI.Gumps
 
                 renderLists.AddGumpWithAtlas(batcher =>
                 {
+                    // PORT DEVIATION (GUO): SuperRes 4x shop frame slices
+                    // (buy/sell chrome 0x0870-0x0873). HD never applies to
+                    // gumps, so SR-or-native on the sub-rect slice. Miss
+                    // enqueues via TryGetSr and stays native; SrCommit warms
+                    // the Gump SR LRU. LinearClamp on SR; toggle-off native.
+                    if (Client.Game.UO.Gumps.TryGetSr(_graphic, out Godot.Texture2D srTex, out Rectangle srUv, out int srNatW, out int srNatH))
+                    {
+                        if (srTex != null && srNatW > 0 && srNatH > 0)
+                        {
+                            float scX = (float)srUv.Width / srNatW;
+                            float scY = (float)srUv.Height / srNatH;
+                            var srSub = new Rectangle(
+                                srUv.X + (int)(_rect.X * scX),
+                                srUv.Y + (int)(_rect.Y * scY),
+                                (int)(_rect.Width * scX),
+                                (int)(_rect.Height * scY));
+                            batcher.SetSampler(SamplerState.LinearClamp);
+                            if (_tiled)
+                            {
+                                int tileW = _rect.Width;
+                                int tileH = _rect.Height;
+                                if (tileW > 0 && tileH > 0)
+                                {
+                                    for (int oy = 0; oy < Height; oy += tileH)
+                                    {
+                                        int dh = System.Math.Min(tileH, Height - oy);
+                                        int sh = (int)(srSub.Height * (float)dh / tileH);
+                                        for (int ox = 0; ox < Width; ox += tileW)
+                                        {
+                                            int dw = System.Math.Min(tileW, Width - ox);
+                                            int sw = (int)(srSub.Width * (float)dw / tileW);
+                                            batcher.Draw(
+                                                srTex,
+                                                new Rectangle(x + ox, y + oy, dw, dh),
+                                                new Rectangle(srSub.X, srSub.Y, sw, sh),
+                                                hueVector,
+                                                layerDepth);
+                                        }
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                batcher.Draw(
+                                    srTex,
+                                    new Rectangle(x, y, Width, Height),
+                                    srSub,
+                                    hueVector,
+                                    layerDepth
+                                );
+                            }
+                            batcher.SetSampler(null);
+                            return true;
+                        }
+                    }
                     if (_tiled)
                     {
                         batcher.DrawTiled(

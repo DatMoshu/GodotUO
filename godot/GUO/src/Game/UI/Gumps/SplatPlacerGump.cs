@@ -25,7 +25,7 @@ namespace GUO.Game.UI.Gumps
     internal sealed class SplatPlacerGump : Gump
     {
         private const int W = 300;
-        private const int H = 720;
+        private const int H = 750;
         private const string PreviewKey = "gump:preview";
 
         private readonly Label _modelLabel;
@@ -35,6 +35,7 @@ namespace GUO.Game.UI.Gumps
         private readonly Label _zLabel;
         private readonly Label _scaleLabel;
         private readonly Label _yawLabel;
+        private readonly Label _discLabel;
         private readonly Label _graphicLabel;
         private readonly StbTextBox _promptBox;
         private readonly PreviewPic _beforePic;
@@ -47,6 +48,7 @@ namespace GUO.Game.UI.Gumps
         private int _tx, _ty, _tz;
         private float _scale = 44f;
         private float _yaw = 180f;
+        private float _disc = 1f;
         private ushort _targetGraphic;
         private GameObject _targetObj;
         private readonly List<PlacedEntry> _placed = new List<PlacedEntry>();
@@ -80,6 +82,8 @@ namespace GUO.Game.UI.Gumps
             ScaleUp,
             YawDown,
             YawUp,
+            DiscDown,
+            DiscUp,
             Place,
             Save,
             Rescan,
@@ -215,6 +219,21 @@ namespace GUO.Game.UI.Gumps
                 IsSelectable = false
             });
 
+            y += 30;
+            Add(new Label("Disc:", true, 0x0386) { X = 12, Y = y });
+            Add(new NiceButton(70, y - 2, 26, 22, ButtonAction.Activate, "-")
+            {
+                ButtonParameter = (int)Buttons.DiscDown,
+                IsSelectable = false
+            });
+            _discLabel = new Label("1x", true, 0x0021) { X = 110, Y = y };
+            Add(_discLabel);
+            Add(new NiceButton(160, y - 2, 26, 22, ButtonAction.Activate, "+")
+            {
+                ButtonParameter = (int)Buttons.DiscUp,
+                IsSelectable = false
+            });
+
             y += 34;
             Add(new NiceButton(12, y, 130, 24, ButtonAction.Activate, "Place")
             {
@@ -300,6 +319,7 @@ namespace GUO.Game.UI.Gumps
             _zLabel.Text = _hasTile ? _tz.ToString() : "–";
             _scaleLabel.Text = _scale.ToString("0.#");
             _yawLabel.Text = _yaw.ToString("0.#");
+            _discLabel.Text = _disc.ToString("0.##") + "x";
             _graphicLabel.Text = _targetGraphic == 0
                 ? "<none>"
                 : $"0x{_targetGraphic:X4} ({_targetGraphic})";
@@ -374,7 +394,7 @@ namespace GUO.Game.UI.Gumps
             }
 
             GameScene scene = Scene;
-            if (scene == null || !scene.PlaceSplat(PreviewKey, CurrentModel, _tx, _ty, _tz, _scale, _yaw))
+            if (scene == null || !scene.PlaceSplat(PreviewKey, CurrentModel, _tx, _ty, _tz, _scale, _yaw, _disc))
             {
                 Say("Preview failed.");
             }
@@ -394,6 +414,15 @@ namespace GUO.Game.UI.Gumps
                     World.TargetManager.SetTargeting(
                         (GameObject obj) =>
                         {
+                            // Stacking guard: hidden tiles already have a
+                            // replacement, so they cannot be targeted again.
+                            if (obj != null && !obj.AllowedToDraw)
+                            {
+                                GameActions.Print(World, "SplatPlacer: already replaced (hidden).");
+                                Say("Already replaced.");
+                                obj = null;
+                            }
+
                             if (obj != null)
                             {
                                 _tx = obj.X;
@@ -424,6 +453,15 @@ namespace GUO.Game.UI.Gumps
                     World.TargetManager.SetTargeting(
                         (GameObject obj) =>
                         {
+                            // Stacking guard: hidden tiles already have a
+                            // replacement, so they cannot be selected again.
+                            if (obj != null && !obj.AllowedToDraw)
+                            {
+                                GameActions.Print(World, "SplatPlacer: already replaced (hidden).");
+                                Say("Already replaced.");
+                                obj = null;
+                            }
+
                             if (obj != null)
                             {
                                 // Select picks the replace victim: no staged
@@ -528,6 +566,16 @@ namespace GUO.Game.UI.Gumps
                     UpdateLabels();
                     break;
 
+                case (int)Buttons.DiscDown:
+                    _disc = System.Math.Max(0.25f, _disc - 0.25f);
+                    UpdateLabels();
+                    break;
+
+                case (int)Buttons.DiscUp:
+                    _disc = System.Math.Min(4f, _disc + 0.25f);
+                    UpdateLabels();
+                    break;
+
                 case (int)Buttons.Place:
                     if (!_hasTile || CurrentModel == null)
                     {
@@ -537,7 +585,7 @@ namespace GUO.Game.UI.Gumps
                     {
                         GameScene scene = Scene;
                         string key = $"placed:{CurrentModel}:{_tx},{_ty}";
-                        if (scene != null && scene.PlaceSplat(key, CurrentModel, _tx, _ty, _tz, _scale, _yaw))
+                        if (scene != null && scene.PlaceSplat(key, CurrentModel, _tx, _ty, _tz, _scale, _yaw, _disc))
                         {
                             _placed.Add(new PlacedEntry
                             {
@@ -551,6 +599,7 @@ namespace GUO.Game.UI.Gumps
                                     Z = _tz,
                                     Scale = _scale,
                                     Yaw = _yaw,
+                                    DiscSize = _disc,
                                     LockZ = true,
                                 },
                             });
@@ -598,13 +647,30 @@ namespace GUO.Game.UI.Gumps
                     break;
 
                 case (int)Buttons.Restore:
-                    if (_targetGraphic != 0)
                     {
-                        ThemeManager.ClearSplatSkin(_targetGraphic);
-                        string dir = SplatStage.ResolveDir();
-                        if (!string.IsNullOrEmpty(dir))
+                        GameScene scene = Scene;
+                        if (scene != null)
                         {
-                            ThemeManager.SaveSkinTheme(dir);
+                            // Mirror the moge Restore: retire the live
+                            // generation and the preview, then forget the
+                            // single-victim hide (which unhides when alive).
+                            if (_lastGenName != null)
+                            {
+                                scene.RemoveSplat($"gen:{_lastGenName}");
+                                scene.ClearSingleHide($"gen:{_lastGenName}");
+                            }
+
+                            scene.RemoveSplat(PreviewKey);
+                        }
+
+                        if (_targetGraphic != 0)
+                        {
+                            ThemeManager.ClearSplatSkin(_targetGraphic);
+                            string dir = SplatStage.ResolveDir();
+                            if (!string.IsNullOrEmpty(dir))
+                            {
+                                ThemeManager.SaveSkinTheme(dir);
+                            }
                         }
                     }
 
@@ -681,6 +747,14 @@ namespace GUO.Game.UI.Gumps
             if (!_hasTile || _targetGraphic == 0 || _targetObj == null || _targetObj.IsDestroyed)
             {
                 Say("Target a static object first.");
+                return;
+            }
+
+            // Double-generate guard: the victim is already hidden behind a
+            // live replacement, so refuse a second run over it.
+            if (!_targetObj.AllowedToDraw)
+            {
+                Say("Already replaced.");
                 return;
             }
 
@@ -799,7 +873,7 @@ namespace GUO.Game.UI.Gumps
             SplatStage.Register(name, chain, _scale);
             GameScene scene = Scene;
             string key = $"gen:{name}";
-            if (scene == null || !scene.PlaceSplat(key, name, _tx, _ty, _tz, _scale, _yaw))
+            if (scene == null || !scene.PlaceSplat(key, name, _tx, _ty, _tz, _scale, _yaw, _disc, _targetGraphic))
             {
                 Say("Place failed.");
                 return;
@@ -808,6 +882,7 @@ namespace GUO.Game.UI.Gumps
             if (_targetObj != null && !_targetObj.IsDestroyed)
             {
                 _targetObj.AllowedToDraw = false;
+                scene?.HideSingle(_targetObj, key);
             }
 
             _placed.Add(new PlacedEntry
@@ -822,7 +897,9 @@ namespace GUO.Game.UI.Gumps
                     Z = _tz,
                     Scale = _scale,
                     Yaw = _yaw,
+                    DiscSize = _disc,
                     LockZ = true,
+                    VictimGraphic = _targetGraphic,
                 },
                 Lods = new List<byte[]> { result.Ply },
             });

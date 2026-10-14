@@ -1,0 +1,15 @@
+{
+ "name": "SSAO",
+ "description": "Luma-edge contact darkening (no depth buffer yet; true SSAO needs the G-buffer).",
+ "passes": [
+  {
+   "shader": "ssao",
+   "params": {
+    "intensity": 0.45,
+    "radius": 0.018,
+    "bias": 0.001
+   }
+  }
+ ],
+ "bindings": []
+}

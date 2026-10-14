@@ -36,16 +36,20 @@ public partial class EditorSmoke
     private int HouseDrawn() => _world.Host.World.HouseManager.TryGetHouse(LayersHouse, out var h) ? h.Components.Count(m => m.AllowedToDraw) : -1;
 
     // Roofs are not switched by AllowedToDraw: the game fades them out by
-    // alpha (DrawRoofs off), as it does when the player walks indoors.
+    // alpha (DrawRoofs off), as it does when the player walks indoors. Only
+    // the centre chunk is counted, like the sibling layer checks: it holds
+    // the player tile, so the render pass visits it every frame and the fade
+    // reaches every roof here. Tiles further out may never be visited, and
+    // their alpha is stale by design (upstream only fades what it draws).
     private (int Roofs, int Shown) RoofsNearCentre()
     {
         int roofs = 0, shown = 0;
-        for (int x = LayersX - 10; x <= LayersX + 10; x++)
+        var chunk = _world.Host.World.Map.GetChunk(LayersX, LayersY, load: true);
+        for (int x = 0; x < 8; x++)
         {
-            for (int y = LayersY - 10; y <= LayersY + 10; y++)
+            for (int y = 0; y < 8; y++)
             {
-                var chunk = _world.Host.World.Map.GetChunk(x, y, load: true);
-                for (var o = chunk?.GetHeadObject(x % 8, y % 8); o != null; o = o.TNext)
+                for (var o = chunk?.GetHeadObject(x, y); o != null; o = o.TNext)
                 {
                     // The placed house's roof is the multi's; Britain's are statics.
                     if ((o is Static s && s.ItemData.IsRoof) || (o is Multi m && m.ItemData.IsRoof))
@@ -141,6 +145,11 @@ public partial class EditorSmoke
         _editReport["layers_menu"] = _layersReport;
         // Roofs fade out and back in over frames (the game's own alpha), so they get longer.
         int fade = Math.Max(wait, 40);
+        // The roof fade is wall-clock (11 steps of 25 per ALPHA_TIME=20ms,
+        // about 220ms) while the script counts _Process frames, and the
+        // restore fades every roof back in one by one: roofs get 3x the
+        // frames so hide and restore both finish before they are read.
+        int roofFade = Math.Max(fade, 120);
         MapLayers layers = _world.Layers;
         Func<IEnumerable<LiveMobile>> liveBefore = null;
         var baseline = new Dictionary<string, int>();
@@ -206,7 +215,7 @@ public partial class EditorSmoke
         OffOn("Land", wait, () => LandDrawn() == 0 && StaticsDrawn() == baseline["statics"], () => LandDrawn() == baseline["land"]);
         OffOn("Statics", wait, () => StaticsDrawn() == 0 && LandDrawn() == baseline["land"], () => StaticsDrawn() == baseline["statics"]);
         OffOn("Multis", wait, () => HouseDrawn() == 0 && StaticsDrawn() == baseline["statics"], () => HouseDrawn() == baseline["house"]);
-        OffOn("Roofs", fade,
+        OffOn("Roofs", roofFade,
             () =>
             {
                 _layersReport["roofs_shown_when_off"] = RoofsNearCentre().Shown;
@@ -282,7 +291,8 @@ public partial class EditorSmoke
             fresh.QueueFree();
         }));
 
-        // Put everything back: the defaults, then the fixtures away.
+        // Put everything back: the defaults, then the fixtures away. Restoring
+        // roofs fades all of them back in, so this waits the roof fade too.
         _steps.Add((1, () =>
         {
             foreach (string n in eight)
@@ -290,7 +300,7 @@ public partial class EditorSmoke
                 _world.SetMenuItem(n, n != "Live");
             }
         }));
-        _steps.Add((fade, () =>
+        _steps.Add((roofFade, () =>
         {
             LayersExpect(eight.All(n => _world.GetToggle(n) == (n != "Live")) && _world.Host.ShowRoofs && StaticsDrawn() == baseline["statics"]
                 && RoofsNearCentre().Shown == baseline["roofs_shown"] && _world.Objects.DrawnCount == baseline["objects"], "back_to_defaults");
