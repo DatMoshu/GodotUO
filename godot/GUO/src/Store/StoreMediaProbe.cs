@@ -5,7 +5,7 @@ using Godot;
 
 namespace GUO.Store;
 
-/// <summary>Real runtime refuses all three installable media types until consumers land.</summary>
+/// <summary>Real runtime refuses media whose consumers have not landed. Voice has StoreAudioProbe.</summary>
 public partial class StoreMediaProbe : Node
 {
     public override void _Ready()
@@ -18,7 +18,7 @@ public partial class StoreMediaProbe : Node
             string corpus = Path.GetFullPath(args[0]);
             temporary = Path.Combine(Path.GetDirectoryName(corpus), "media-refusal-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(temporary);
-            foreach (var (label, type) in new[] { ("hd", "hd-art"), ("splat", "splat"), ("voice", "voice") })
+            foreach (var (label, type) in new[] { ("hd", "hd-art"), ("splat", "splat") })
             {
                 string stage = Path.Combine(temporary, "stage-" + label);
                 Directory.CreateDirectory(stage);
@@ -35,7 +35,7 @@ public partial class StoreMediaProbe : Node
                 StorePack.Require(refused, type + " unexpectedly activated or failed for the wrong reason");
                 GD.Print("[media probe] " + type + ": installed inertly, runtime activation refused");
             }
-            GD.Print("[media probe] PASS: all three media consumers refused");
+            GD.Print("[media probe] PASS: two unimplemented media consumers refused");
             GetTree().Quit();
         }
         catch (Exception ex) { GD.PrintErr("[media probe] FAIL: " + ex); GetTree().Quit(1); }

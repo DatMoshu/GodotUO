@@ -67,6 +67,11 @@ revision `2025-06-18`; clients negotiate this through `initialize`.
 
 ## Tools and coordinates
 
+`guo_state.audio` reports the regional-audio opt-in, music and sound layer
+status, and the number of recorded NPC clips played. This is read-only state;
+enable **Regional audio and recorded NPC voices** in Options > Sound. It is
+off by default, and MCP inspection does not enable it.
+
 | Tool | Purpose |
 | --- | --- |
 | `guo_ui` | Scene, viewport size, visible classic gumps and native Godot controls, bounds, labels and focus. Editable values are omitted. |

@@ -34,8 +34,9 @@ quest, dialogue, presentation, authoring, script, hd-art, splat, voice.
 `hd-art`, `splat` and `voice` target `client` only. Their installers validate
 the following manifest metadata identically in Python and C#. Installation is
 inert: it neither decodes these payloads nor starts a model or service. These
-types have no consumer yet; selecting a deployment containing one must refuse
-activation and preserve the previous selection. Consumer PRs add payload
+HD and splat have no consumer yet; selecting a deployment containing either must
+refuse activation and preserve the previous selection. Recorded voice playback
+is supported by the optional audio consumer below. Consumer PRs add payload
 validation before activation, without weakening archive safety checks.
 
 | Type | Required component fields |
@@ -54,8 +55,8 @@ entries in v2 content packs, never in v1 presentation packs. Neither type may
 carry the other's metadata.
 
 Voice JSON is the playback description, with schema `guo/voice@1` and a `clips`
-object mapping authored line IDs to paths in the component's `wav` list. The
-future consumer validates this JSON and PCM WAV encoding before activation.
+object mapping exact authored speech to paths in the component's `wav` list.
+The audio consumer validates this JSON and PCM WAV encoding before activation.
 Body binding selects all NPCs with that body; name binding selects an exact NPC
 name. A component cannot combine both selectors. The pack contains recordings,
 not a voice model, synthesis endpoint or executable enrolment script. Authoring
@@ -75,9 +76,38 @@ python tools/asset_store/test_corpus.py --out build/media-corpus
 godot-console --headless --path godot/GUO res://src/Store/StoreMediaProbe.tscn -- <absolute-path-to-build/media-corpus>
 ```
 
-The probe installs the three synthetic fixtures locally, checks that each fails
+The media probe installs the HD and splat synthetic fixtures locally, checks that each fails
 with `No client consumer for <type>` before payload decoding, and removes its
 temporary store. It uses no UO assets, network service or synthesis model.
+
+### Optional regional audio and recorded voices
+
+Enable **Regional audio and recorded NPC voices** in Options > Sound (classic
+or compact view). The profile field `content_audio_enabled` defaults to false,
+including profiles saved before it existed. Music/SFX respect their normal
+enable and volume settings. Switching the option off stops the extra players;
+unloading the scene restores base music. Pack installation and activation do
+not enable this profile option.
+
+A client/shared `region` component may add `music` and `sound` playlists of
+declared `pack-id:component-id` references. The content lock binds those to
+the matching `music`/`sound` numeric IDs. WAVs must be PCM 22050 Hz mono 16-bit.
+Regions use the existing XYZ areas/facet/priority contract. Higher priority
+wins; equal priority preserves manifest order. Each layer has its own player.
+Example region fields: `"music":["my-pack:harbour-music"],
+"sound":["my-pack:harbour-waves"]` plus matching `references` metadata.
+
+Voice payload example: `{"schema":"guo/voice@1","clips":{"Greetings, traveler.":"voices/greeting.wav"}}`.
+A case-insensitive NPC name match takes precedence over body; speech matches
+exactly after trimming outer whitespace. Missing clips remain silent. Normal
+speech does not start Python, synthesis, or ComfyUI. Authoring tools are a
+separate editor/Labs migration. Existing loose-file zone manifests remain
+available behind the same option until that migration.
+
+`python tools/scenario_run/run.py client.audio.packs --no-record --no-register`
+runs the synthetic installed-pack checks through MCP. The same contract checks
+run in repository smoke; see [ADR-0036](architecture/ADR-0036-recorded-audio-packs.md).
+Synthetic checks prove parsing, matching and stream format, not audible sound.
 
 All existing archive traversal, link, size, hash, licence, and proprietary
 data exclusions remain. V2 carries authored source assets, never merged UO

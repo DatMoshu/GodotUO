@@ -23,12 +23,18 @@ namespace GUO.IO.Audio
             public string Name = "";
             public int Facet;
             public int X0, Y0, X1, Y1;
+            public int Z0 = -128, Z1 = 127;
+            public string Key;
+            public string PlaybackKey => Key ?? Name;
+            public List<byte[]> PcmTracks;
             public List<string> Tracks = new();
 
             public bool Contains(int facet, int x, int y) =>
                 (Facet < 0 || Facet == facet)
                 && x >= Math.Min(X0, X1) && x <= Math.Max(X0, X1)
                 && y >= Math.Min(Y0, Y1) && y <= Math.Max(Y0, Y1);
+
+            public bool Contains(int facet, int x, int y, int z) => Contains(facet, x, y) && z >= Z0 && z <= Z1;
         }
 
         public static string MusicDir()
@@ -130,6 +136,21 @@ namespace GUO.IO.Audio
             public string Manifest => _manifest;
             public string Stem => _stem;
             public string Status { get; private set; } = "idle";
+
+            public void Reset()
+            {
+                Stop();
+                _audible = 0f;
+                _lastTick = DateTime.UtcNow;
+                DuckBase(0f);
+                Status = "idle";
+                if (_player != null)
+                {
+                    var stream = _player.Stream;
+                    _player.Stream = null;
+                    stream?.Dispose();
+                }
+            }
 
             public List<Zone> Zones
             {
@@ -310,7 +331,14 @@ namespace GUO.IO.Audio
             /// <summary>Per-frame tick from the scene update: zone lookup, fades, advance, stop.</summary>
             public void Update(Game.World world)
             {
-                List<Zone> zones = Zones;
+                if (Configuration.ProfileManager.CurrentProfile?.ContentAudioEnabled != true)
+                {
+                    Reset();
+                    return;
+                }
+                var packed = Client.Game?.UO?.FileManager?.Content?.Audio;
+                List<Zone> zones = _duckBase ? packed?.Music : packed?.Sound;
+                if (zones == null || zones.Count == 0) zones = Zones;
 
                 Game.GameObjects.PlayerMobile player = world?.Player;
                 if (player == null || !world.InGame)
@@ -330,7 +358,7 @@ namespace GUO.IO.Audio
                 Zone inside = null;
                 foreach (Zone z in zones)
                 {
-                    if (z.Tracks.Count > 0 && z.Contains(world.MapIndex, player.X, player.Y))
+                    if (z.Tracks.Count > 0 && z.Contains(world.MapIndex, player.X, player.Y, player.Z))
                     {
                         inside = z;
                         break;
@@ -338,7 +366,7 @@ namespace GUO.IO.Audio
                 }
 
                 var profile = Configuration.ProfileManager.CurrentProfile;
-                if (profile == null || !_enabledOf(profile))
+                if (profile == null || !profile.ContentAudioEnabled || !_enabledOf(profile))
                 {
                     if (_currentZone != null || _audible > 0f)
                     {
@@ -363,9 +391,9 @@ namespace GUO.IO.Audio
                 // A new zone takes over: swap the track, then ramp. Leaving a
                 // zone keeps the ramp value so it fades out instead of
                 // cutting (the exit branch below stops at silence).
-                if (_currentZone != inside?.Name)
+                if (_currentZone != inside?.PlaybackKey)
                 {
-                    _currentZone = inside?.Name;
+                    _currentZone = inside?.PlaybackKey;
                     _trackIndex = 0;
                     if (inside != null)
                     {
@@ -416,7 +444,7 @@ namespace GUO.IO.Audio
                 // The base game can restart its music mid-zone; keep it ducked.
                 if (_audible > 0f)
                 {
-                    DuckBase(_audible);
+                    ApplyLevels(profile); // Also follows volume changes after the fade completes.
                 }
             }
 
@@ -443,6 +471,19 @@ namespace GUO.IO.Audio
                 for (int i = 0; i < zone.Tracks.Count; i++)
                 {
                     int at = (_trackIndex + i) % zone.Tracks.Count;
+                    if (zone.PcmTracks != null)
+                    {
+                        EnsurePlayer();
+                        if (_player == null) { Status = "no audio host"; return; }
+                        var previous = _player.Stream;
+                        _player.Stream = PackVoice.Stream(zone.PcmTracks[at]);
+                        previous?.Dispose();
+                        _player.VolumeDb = startDb;
+                        _player.Play();
+                        _trackIndex = at;
+                        Status = $"playing {zone.Name}/{zone.Tracks[at]}";
+                        return;
+                    }
                     string path = Path.Combine(TracksDir(), zone.Tracks[at]);
                     byte[] bytes;
                     try
