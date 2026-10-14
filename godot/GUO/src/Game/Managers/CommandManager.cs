@@ -22,6 +22,10 @@ namespace GUO.Game.Managers
 
         public void Initialize()
         {
+            // PORT DEVIATION (GUO): opt-in Labs share one registration seam; absent from normal/export builds.
+#if GUO_LABS
+            GUO.Labs.LabsRegistration.Register(_world, command: Register);
+#endif
             // PORT DEVIATION (GUO): explicit local UI authoring capture/apply, preserving live control behavior.
             Register("gumpcapture", _ => GUO.UI.Authoring.GumpCapture.SaveOpen(_world));
             Register("gumpapply", args => GUO.UI.Authoring.GumpCapture.ApplyFile(_world, args));
