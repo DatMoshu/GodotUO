@@ -39,6 +39,10 @@ namespace GUO.Game.Managers
             // PORT DEVIATION (GUO): in-game image repaint (ComfyUI img2img
             // into the override art folder, never the install).
             Register("repaint", s => UIManager.Add(new UI.Gumps.RepaintGump(_world)));
+            // PORT DEVIATION (GUO): in-game DLSS bake (neural detail filter
+            // into overrides/DLSS, never the install). Upstream has no
+            // generated content.
+            Register("dlss", s => UIManager.Add(new UI.Gumps.DlssGump(_world)));
             // PORT DEVIATION (GUO): NPC voice casting (enrolled voices,
             // rules, design). Upstream mobiles are silent data.
             Register("voice", s => UIManager.Add(new UI.Gumps.VoiceGump(_world)));

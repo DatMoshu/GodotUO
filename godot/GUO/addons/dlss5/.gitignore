@@ -1,0 +1,5 @@
+# .gitignore for the dlss5 addon: heavy runtime blobs are provisioned from
+# the source workspace (see README), not committed.
+bin/*.dll
+models/*.onnx
+models/*.bin

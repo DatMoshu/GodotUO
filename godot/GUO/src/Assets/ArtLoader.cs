@@ -38,6 +38,14 @@ namespace GUO.Assets
 
         private readonly Dictionary<int, string> _hdLand = new Dictionary<int, string>();
 
+        // PORT DEVIATION (GUO): DLSS bake detail (the DlssGump's baked
+        // PNGs under overrides/DLSS/Statics). Path dicts only; no decode
+        // here. Land dict exists for the resolver signature; the gump
+        // bakes statics only.
+        private readonly Dictionary<int, string> _dlssStatics = new Dictionary<int, string>();
+
+        private readonly Dictionary<int, string> _dlssLand = new Dictionary<int, string>();
+
         public ArtLoader(UOFileManager fileManager) : base(fileManager)
         {
         }
@@ -108,6 +116,8 @@ namespace GUO.Assets
             _ourLand.Clear();
             _hdStatics.Clear();
             _hdLand.Clear();
+            _dlssStatics.Clear();
+            _dlssLand.Clear();
 
             // Two folders and not one, keyed by the numbers a shard author actually types - the
             // item id a `new Item(0x2818)` uses, and the land tile id. The archive's own indexing
@@ -134,9 +144,21 @@ namespace GUO.Assets
             GatherHd(Path.Combine(over, "HD", "Art", "Land"),
                    _hdLand, MAX_LAND_DATA_INDEX_COUNT);
             GatherHd(Path.Combine(FileManager.BasePath, "HD", "Art", "Statics"),
-                   _hdStatics, MAX_STATIC_DATA_INDEX_COUNT - MAX_LAND_DATA_INDEX_COUNT, false);
+                    _hdStatics, MAX_STATIC_DATA_INDEX_COUNT - MAX_LAND_DATA_INDEX_COUNT, false);
             GatherHd(Path.Combine(FileManager.BasePath, "HD", "Art", "Land"),
-                   _hdLand, MAX_LAND_DATA_INDEX_COUNT, false);
+                    _hdLand, MAX_LAND_DATA_INDEX_COUNT, false);
+
+            // PORT DEVIATION (GUO): DLSS bake PNGs (the DlssGump's saves).
+            // Same two-folder shape, .png only; overrides win over the data
+            // folder, like HD above.
+            GatherHd(Path.Combine(over, "DLSS", "Statics"),
+                    _dlssStatics, MAX_STATIC_DATA_INDEX_COUNT - MAX_LAND_DATA_INDEX_COUNT);
+            GatherHd(Path.Combine(over, "DLSS", "Land"),
+                    _dlssLand, MAX_LAND_DATA_INDEX_COUNT);
+            GatherHd(Path.Combine(FileManager.BasePath, "DLSS", "Statics"),
+                    _dlssStatics, MAX_STATIC_DATA_INDEX_COUNT - MAX_LAND_DATA_INDEX_COUNT, false);
+            GatherHd(Path.Combine(FileManager.BasePath, "DLSS", "Land"),
+                    _dlssLand, MAX_LAND_DATA_INDEX_COUNT, false);
 
             if (_ourStatics.Count > 0 || _ourLand.Count > 0)
             {
@@ -146,6 +168,11 @@ namespace GUO.Assets
             if (_hdStatics.Count > 0 || _hdLand.Count > 0)
             {
                 Log.Trace($"{_hdStatics.Count} static(s) and {_hdLand.Count} land tile(s) of HD");
+            }
+
+            if (_dlssStatics.Count > 0 || _dlssLand.Count > 0)
+            {
+                Log.Trace($"{_dlssStatics.Count} static(s) and {_dlssLand.Count} land tile(s) of DLSS");
             }
         }
 
@@ -363,6 +390,188 @@ namespace GUO.Assets
             }
 
             RemoveHdManifestRow(isLand, graphic);
+        }
+
+        /// <summary>
+        /// DLSS bake path lookup (no decode in the loader). True when a
+        /// baked DLSS PNG exists for this graphic; the Art cache decodes it.
+        /// </summary>
+        public bool TryGetDlssPath(bool isLand, int graphic, out string path)
+        {
+            if (isLand)
+            {
+                return _dlssLand.TryGetValue(graphic, out path);
+            }
+
+            return _dlssStatics.TryGetValue(graphic, out path);
+        }
+
+        /// <summary>DLSS bake root (overrides/DLSS).</summary>
+        public static string DlssDir()
+        {
+            return Path.Combine(OverrideDir(), "DLSS");
+        }
+
+        /// <summary>DLSS bake PNG path for one graphic (statics home).</summary>
+        public static string DlssPathFor(bool isLand, ushort graphic)
+        {
+            return Path.Combine(DlssDir(), isLand ? "Land" : "Statics", $"{graphic}.png");
+        }
+
+        /// <summary>DLSS bake manifest (one JSON dict of rows).</summary>
+        public static string DlssManifestPath()
+        {
+            return Path.Combine(DlssDir(), "manifest.json");
+        }
+
+        /// <summary>
+        /// One DLSS bake manifest row. PNG without a row still loads;
+        /// the row is provenance (which network pass made this PNG).
+        /// </summary>
+        public sealed class DlssManifestRow
+        {
+            [System.Text.Json.Serialization.JsonPropertyName("native_w")]
+            public int NativeW { get; set; }
+            [System.Text.Json.Serialization.JsonPropertyName("native_h")]
+            public int NativeH { get; set; }
+            [System.Text.Json.Serialization.JsonPropertyName("dlss_w")]
+            public int DlssW { get; set; }
+            [System.Text.Json.Serialization.JsonPropertyName("dlss_h")]
+            public int DlssH { get; set; }
+            [System.Text.Json.Serialization.JsonPropertyName("scale")]
+            public double Scale { get; set; }
+            [System.Text.Json.Serialization.JsonPropertyName("backend")]
+            public string Backend { get; set; } = "";
+            [System.Text.Json.Serialization.JsonPropertyName("intensity")]
+            public double Intensity { get; set; }
+            [System.Text.Json.Serialization.JsonPropertyName("profile")]
+            public int Profile { get; set; }
+            [System.Text.Json.Serialization.JsonPropertyName("sha256")]
+            public string Sha256 { get; set; } = "";
+            [System.Text.Json.Serialization.JsonPropertyName("created_utc")]
+            public string CreatedUtc { get; set; } = "";
+        }
+
+        private static string DlssManifestKey(bool isLand, ushort graphic)
+        {
+            return $"{(isLand ? "Land" : "Statics")}/{graphic}";
+        }
+
+        private static Dictionary<string, DlssManifestRow> ReadDlssManifest()
+        {
+            try
+            {
+                string path = DlssManifestPath();
+                if (!System.IO.File.Exists(path))
+                {
+                    return new Dictionary<string, DlssManifestRow>();
+                }
+
+                string json = System.IO.File.ReadAllText(path);
+                var rows = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, DlssManifestRow>>(json);
+                return rows ?? new Dictionary<string, DlssManifestRow>();
+            }
+            catch (Exception e)
+            {
+                Log.Warn($"DLSS manifest unreadable: {e.Message}");
+                return new Dictionary<string, DlssManifestRow>();
+            }
+        }
+
+        private static void WriteDlssManifestAtomic(Dictionary<string, DlssManifestRow> rows)
+        {
+            string path = DlssManifestPath();
+            Directory.CreateDirectory(Path.GetDirectoryName(path));
+            string json = System.Text.Json.JsonSerializer.Serialize(rows,
+                new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+            string tmp = path + ".tmp";
+            System.IO.File.WriteAllText(tmp, json);
+            try
+            {
+                System.IO.File.Move(tmp, path, true);
+            }
+            catch
+            {
+                try
+                {
+                    if (System.IO.File.Exists(path))
+                    {
+                        System.IO.File.Delete(path);
+                    }
+
+                    System.IO.File.Move(tmp, path);
+                }
+                catch (Exception e)
+                {
+                    Log.Warn($"DLSS manifest write failed: {e.Message}");
+                }
+            }
+        }
+
+        /// <summary>Upserts one DLSS bake manifest row (atomic write).</summary>
+        public static void WriteDlssManifestRow(bool isLand, ushort graphic, DlssManifestRow row)
+        {
+            try
+            {
+                var rows = ReadDlssManifest();
+                rows[DlssManifestKey(isLand, graphic)] = row;
+                WriteDlssManifestAtomic(rows);
+            }
+            catch (Exception e)
+            {
+                Log.Warn($"DLSS manifest row write failed: {e.Message}");
+            }
+        }
+
+        /// <summary>Deletes one DLSS bake manifest row, if present.</summary>
+        public static void RemoveDlssManifestRow(bool isLand, ushort graphic)
+        {
+            try
+            {
+                var rows = ReadDlssManifest();
+                if (rows.Remove(DlssManifestKey(isLand, graphic)))
+                {
+                    WriteDlssManifestAtomic(rows);
+                }
+            }
+            catch (Exception e)
+            {
+                Log.Warn($"DLSS manifest row delete failed: {e.Message}");
+            }
+        }
+
+        /// <summary>Reads one DLSS bake manifest row, if present.</summary>
+        public static bool TryGetDlssManifestRow(bool isLand, ushort graphic, out DlssManifestRow row)
+        {
+            row = null;
+            try
+            {
+                var rows = ReadDlssManifest();
+                return rows.TryGetValue(DlssManifestKey(isLand, graphic), out row);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        /// <summary>Deletes one DLSS bake PNG plus its manifest row.</summary>
+        public static void DeleteDlss(bool isLand, ushort graphic)
+        {
+            try
+            {
+                string path = DlssPathFor(isLand, graphic);
+                if (System.IO.File.Exists(path))
+                {
+                    System.IO.File.Delete(path);
+                }
+            }
+            catch (Exception e)
+            {
+                Log.Warn($"DLSS delete failed: {e.Message}");
+            }
+
+            RemoveDlssManifestRow(isLand, graphic);
         }
 
         private static void Gather(string folder, Dictionary<int, string> into, int limit, bool overwrite = true)
