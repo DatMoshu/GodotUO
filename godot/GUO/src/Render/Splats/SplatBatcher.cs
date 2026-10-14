@@ -277,14 +277,15 @@ namespace GUO.Renderer
         public static int LastBuilt, LastSkippedAlpha, LastSkippedDegenerate, LastSkippedData;
 
         /// <summary>
-        /// Baked brightness that counts as emissive for AddLight: mirrors the
-        /// StaticView/MultiView IsLight calls, which splats have no tiledata
-        /// for. Any vertex at or above this max channel makes the placement a
-        /// light (SplatObject.Draw, cached per bake).
+        /// Baked brightness probe (diagnostics/fidelity only): whether any
+        /// baked vertex reaches this max channel. It must never gate AddLight
+        /// on its own — ordinary sunlit art trips any such threshold, so
+        /// emission is victim-IsLight-only (see SplatObject.Draw); a
+        /// tree/rock/wall replacement never emits regardless of this flag.
         /// </summary>
         public const float BrightThreshold = 0.85f;
 
-        /// <summary>Whether any baked vertex reaches <see cref="BrightThreshold"/>.</summary>
+        /// <summary>Whether any baked vertex reaches <see cref="BrightThreshold"/> (probe only, not a light gate).</summary>
         public static bool IsBright(Color[] colors)
         {
             if (colors == null)

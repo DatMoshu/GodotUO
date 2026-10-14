@@ -46,6 +46,29 @@ namespace GUO.Game.Scenes
         });
 
         private const float MAX_LAYER_DEPTH = 0x8000;
+        // PORT DEVIATION (GUO): unlit fixtures must emit nothing. Tiledata
+        // flags both states of some fixtures as LightSource (candle 0x0A28
+        // unlit + 0x0A0F lit, wall sconce 0x09FB unlit + 0x09FD lit, heating
+        // stand 0x1849 unlit + 0x184A lit), and ModernUO keeps Light=Circle...
+        // even when Burning=false (HeatingStand alone clears to Empty), so
+        // neither IsLight nor the server's LightID distinguishes lit vs unlit.
+        // Upstream ClassicUO checks IsLight only and glows unlit candles too.
+        // The graphics below are ModernUO BaseLight UnlitItemIDs: they never
+        // emit, even when flagged IsLight. Lit ones still glow via the normal
+        // Layer/LightID/LightIndex path. Day visibility is untouched: this only
+        // gates the light buffer (classic + realistic + HD share _lights via
+        // AddLight), never drawing.
+        private static readonly HashSet<ushort> _unlitFixtureGraphics = new()
+        {
+            0x142F, 0x1433, 0x1849, 0x24BC, 0x24BE, 0x24CA,
+            0x24C2, 0x24C4, 0x24C6, 0x24C8,
+            0x0A1D, 0x0A26, 0x0A27, 0x0A28, 0x0A29,
+            0x0A18, 0x0A25, 0x0B21, 0x0B23, 0x0B25, 0x0F6B,
+            0x09FB, 0x0A00, 0x0A05, 0x0A0A, 0x1853, 0x1857,
+        };
+
+        internal static bool IsUnlitFixture(ushort graphic) => _unlitFixtureGraphics.Contains(graphic);
+
         private uint _time_cleanup = Time.Ticks + 5000;
         private bool _alphaChanged;
         private long _alphaTimer;
@@ -514,16 +537,24 @@ namespace GUO.Game.Scenes
 
             GameObject tile = _world.Map.GetTile(testX, testY);
 
+            sbyte z5 = (sbyte)(obj.Z + 5);
+
             if (tile != null)
             {
-                sbyte z5 = (sbyte)(obj.Z + 5);
-
                 for (GameObject o = tile; o != null; o = o.TNext)
                 {
                     if (
                         (!(o is Static s) || s.ItemData.IsTransparent)
                             && (!(o is Multi m) || m.ItemData.IsTransparent)
                         || !o.AllowedToDraw
+                        // PORT DEVIATION (GUO): a hidden roof must not
+                        // occlude. Roofs over the player fade to AlphaHue 0
+                        // (ProcessAlpha, via _maxZ or _noDrawRoofs) yet stay
+                        // AllowedToDraw, so without this every torch under a
+                        // hidden roof reads as "under opaque roof" and is
+                        // culled: rooms stay dark at night while the street
+                        // outside lights up. Invisible occludes nothing.
+                        || o.AlphaHue == 0
                     )
                     {
                         continue;
@@ -540,14 +571,125 @@ namespace GUO.Game.Scenes
 
             if (canBeAdded)
             {
+                // PORT DEVIATION (GUO): staged splat walls/roofs occlude like
+                // statics (anchor tile, same Z window). Hidden victims stay
+                // skipped above, so without this light leaks through MoGe
+                // walls. Preview overlays never hide anything, so they never
+                // block. Other facets never draw, so they never block.
+                // Volumetric cover: one placement spans tiles past its
+                // anchor, so the light's screen point inside its queued pick
+                // rect covers those tiles too (empty rects fall back to the
+                // anchor alone).
+                foreach (SplatObject splat in _splatObjects.Values)
+                {
+                    // Same hidden rule as the static loop above: a faded
+                    // splat (AlphaHue 0) is not drawn and occludes nothing.
+                    if (splat == null || splat.IsDestroyed || !splat.AllowedToDraw || splat.AlphaHue == 0)
+                    {
+                        continue;
+                    }
+
+                    bool anchor = splat.X == testX && splat.Y == testY;
+                    bool inside = false;
+                    if (!anchor)
+                    {
+                        try
+                        {
+                            Rectangle r = splat.PickRect;
+                            if (r.Width > 0 && r.Height > 0
+                                && x >= r.X && x < r.X + r.Width
+                                && y >= r.Y && y < r.Y + r.Height)
+                            {
+                                inside = true;
+                            }
+                        }
+                        catch
+                        {
+                        }
+
+                        if (!inside)
+                        {
+                            continue;
+                        }
+                    }
+
+                    if (splat.Placement == null || splat.Placement.Facet != _world.MapIndex)
+                    {
+                        continue;
+                    }
+
+                    if (splat.Placement.Name != null && splat.Placement.Name.Contains("preview"))
+                    {
+                        continue;
+                    }
+
+                    bool transparent = false;
+
+                    try
+                    {
+                        var statics = Client.Game.UO.FileManager.TileData.StaticData;
+
+                        if (
+                            splat.TryGetVictimGraphic(out ushort blockerGraphic)
+                            && blockerGraphic != 0
+                            && blockerGraphic < statics.Length
+                        )
+                        {
+                            transparent = statics[blockerGraphic].IsTransparent;
+                        }
+                    }
+                    catch
+                    {
+                    }
+
+                    if (transparent)
+                    {
+                        continue;
+                    }
+
+                    if (splat.Z < _maxZ && splat.Z >= z5)
+                    {
+                        canBeAdded = false;
+
+                        break;
+                    }
+                }
+            }
+
+            if (canBeAdded)
+            {
                 ref LightData light = ref _lights[_lightCount];
 
                 ushort graphic = lightObject.Graphic;
 
+                // PORT DEVIATION (GUO): splats carry Graphic 0x0001; the
+                // victim's graphic decides the light shape below and the tint
+                // after it, so a splat replacing a lamp keeps its lamp light.
+                ushort lightGraphic = graphic;
+
                 if (
-                    graphic >= 0x3E02 && graphic <= 0x3E0B
-                    || graphic >= 0x3914 && graphic <= 0x3929
-                    || graphic == 0x0B1D
+                    lightObject is SplatObject splatGraphic
+                    && splatGraphic.TryGetVictimGraphic(out ushort victimGraphic)
+                    && victimGraphic != 0
+                )
+                {
+                    lightGraphic = victimGraphic;
+                }
+
+                // PORT DEVIATION (GUO): unlit fixtures emit nothing in all
+                // paths (classic + realistic + HD share _lights via this
+                // method). See _unlitFixtureGraphics: IsLight is true on some
+                // unlit graphics (0x0A28, 0x09FB, 0x1849) and the server keeps
+                // LightID non-zero when doused, so neither gate distinguishes.
+                if (IsUnlitFixture(lightGraphic))
+                {
+                    return;
+                }
+
+                if (
+                    lightGraphic >= 0x3E02 && lightGraphic <= 0x3E0B
+                    || lightGraphic >= 0x3914 && lightGraphic <= 0x3929
+                    || lightGraphic == 0x0B1D
                 )
                 {
                     light.ID = 2;
@@ -597,6 +739,41 @@ namespace GUO.Game.Scenes
                             }
                         }
                     }
+                    else if (obj is SplatObject splatObj)
+                    {
+                        // PORT DEVIATION (GUO): splats have no IsLight tiledata
+                        // of their own, so the victim's tiledata decides. The
+                        // victim's lamp light when it has one, else the
+                        // standard point light (mobiles use 1): without this
+                        // the static path below reads tile 0x0001's layer,
+                        // which is no light at all, and lamp replacements
+                        // would emit nothing.
+                        byte id = 1;
+
+                        try
+                        {
+                            var statics = Client.Game.UO.FileManager.TileData.StaticData;
+
+                            if (
+                                splatObj.TryGetVictimGraphic(out ushort splatVictim)
+                                && splatVictim != 0
+                                && splatVictim < statics.Length
+                            )
+                            {
+                                byte v = statics[splatVictim].Layer;
+
+                                if (v != 0 && v < LightsLoader.MAX_LIGHTS_DATA_INDEX_COUNT)
+                                {
+                                    id = v;
+                                }
+                            }
+                        }
+                        catch
+                        {
+                        }
+
+                        light.ID = id;
+                    }
                     else if (obj is Mobile _)
                     {
                         light.ID = 1;
@@ -619,7 +796,7 @@ namespace GUO.Game.Scenes
                         light.ID = 1;
                     }
 
-                    if (LightColors.GetHue(graphic, out ushort color, out bool ishue))
+                    if (LightColors.GetHue(lightGraphic, out ushort color, out bool ishue))
                     {
                         light.Color = color;
                         light.IsHue = ishue;

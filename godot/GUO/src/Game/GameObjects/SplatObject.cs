@@ -257,7 +257,7 @@ namespace GUO.Game.GameObjects
             float ox = RealScreenPosition.X, oy = RealScreenPosition.Y;
             ArrayMesh mesh = SplatBatcher.GetSharedBaked(
                 Placement.Chain, level, s, yaw, DrawZoom, disc,
-                out bool isBright, out int _);
+                out bool _unusedBright, out int _);
             if (mesh == null)
             {
                 return false;
@@ -288,9 +288,26 @@ namespace GUO.Game.GameObjects
             batcher.DrawSplatMesh(mesh, new Vector2(ox, oy), hueVec, cot);
 
             // Light contribution (mirrors the StaticView/MultiView AddLight
-            // calls, which splats have no IsLight tiledata for: bright baked
-            // vertices stand in for the emissive flag).
-            if (isBright)
+            // calls: a static glows only when its own tiledata IsLight, so a
+            // splat glows only when its victim's tiledata IsLight — a splat
+            // replacing a lamp keeps its lamp light even when the bake itself
+            // is dark, while a tree/rock/wall replacement never emits
+            // regardless of baked brightness. Baked brightness alone must
+            // never gate AddLight: ordinary sunlit art trips any max-channel
+            // threshold and would glow at night with no source.
+            bool victimIsLight = false;
+            try
+            {
+                if (TryGetVictimGraphic(out ushort lightVictim) && lightVictim != 0)
+                {
+                    victimIsLight = Client.Game.UO.FileManager.TileData.StaticData[lightVictim].IsLight;
+                }
+            }
+            catch (System.Exception)
+            {
+            }
+
+            if (victimIsLight)
             {
                 Client.Game.GetScene<GameScene>().AddLight(this, this, posX + 22, posY + 22);
             }
@@ -313,7 +330,7 @@ namespace GUO.Game.GameObjects
         /// it is unknown (0). Manifest names without a hex tag and preview
         /// keys have no victim: false, and the caller skips shadow/tree work.
         /// </summary>
-        private bool TryGetVictimGraphic(out ushort graphic)
+        internal bool TryGetVictimGraphic(out ushort graphic)
         {
             graphic = Placement != null ? Placement.VictimGraphic : (ushort)0;
             if (graphic != 0)
