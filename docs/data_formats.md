@@ -285,6 +285,13 @@ written whole on every change; the editor's own, never exported to a shard.
 That export, into the **shard's** data folder and never the install, is
 `tools/world` (phase 3). Extend this section before emitting a new field.
 
+`tools/world` `import` writes a town built by `tools/mapgen_districts`
+(section 26) into a project with these same files and no new field: the
+town's land blocks moved to the target corner, each house's visible multi
+components as `statics` (hue `0x0000`), and one pin named after the town. A
+project it creates takes its `created` from the town's `world/project.json`
+and its `base` from the install (the town's `base` without one).
+
 ---
 
 ## 10. Editor bridge protocol (the live tier)

@@ -8,6 +8,7 @@ client can read, and checks them. The client install is only ever read.
 python tools\world\run.py blocks  [--project DIR]
 python tools\world\run.py export  [--project DIR] [--out DIR] [--force]
 python tools\world\run.py verify  [--project DIR] [--out DIR]
+python tools\world\run.py import  --town DIR --at X,Y [--facet N] [--project DIR] [--replace]
 launchers\pipeline\04_world_export.bat [same flags]     export, then verify
 ```
 
@@ -54,6 +55,45 @@ about a second.
 ## blocks
 
 Lists what a project replaces, with each block's cell range.
+
+## import: a generated town on the map
+
+```
+python tools\mapgen_districts\run.py town --out build\world_import\hamlet_4 --preset hamlet --seed 4
+python tools\world\run.py import --town build\world_import\hamlet_4 --at 6144,2560 [--facet 0] [--project DIR] [--replace]
+```
+
+Lays a town built by `tools/mapgen_districts` (`docs/data_formats.md` §26)
+on the project's map with its north-west corner on cell `--at`, as ordinary
+edits:
+
+- the town's 72x72 cells are its 81 land blocks, moved there whole;
+- each house's visible multi components become statics in those blocks, at
+  the land's z under the house's centre plus the component's own z. Hidden
+  components (the door slots a shard fills with real doors) are left out and
+  counted, so the houses have open doorways;
+- `pins.json` gets a pin named after the town at its centre.
+
+A project that does not exist yet is created: `base` is this install's
+fingerprint (the town's, without an install) and `created` is the town's, so
+the same town at the same corner always writes the same bytes.
+
+Nothing is written unless all of it can be. It refuses, in words that say
+what to change:
+
+- a corner off the 8x8 block grid;
+- a town that would leave the facet (sizes as in `tools/guo/uomap.py`; the
+  refusal names the furthest corner that fits);
+- a facet that is not a UO map;
+- a town that did not build cleanly;
+- blocks the project already edits, unless `--replace`;
+- a project inside `UO_CLIENT_DATA`.
+
+Open it in the editor by pointing `UO_WORLD_PROJECT` at the project; the
+World tab opens it at boot, and the pin jumps to the town. The houses are
+statics, not multis: on a shard they stand but are not houses (no doors, no
+ownership). `test_town_import.py` covers the import; the editor check is
+`python tools\editor_smoke\run.py --world-project DIR --look 0,6151,2566`.
 
 ## pack: sending your edits to a shard owner
 

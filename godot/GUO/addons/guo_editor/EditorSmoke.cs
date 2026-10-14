@@ -1052,10 +1052,19 @@ public partial class EditorSmoke : Node
     private void SaveWorldShot()
     {
         var shot = (Dictionary<string, object>)_report["world_shot"];
+
+        // What the World tab opened and what the centre chunk holds are
+        // recorded first: headless has no frame, but tools/editor_smoke
+        // --world-project checks these without one.
+        RecordWorldShotChunk(shot);
         Image frame = _world.Capture();
         if (frame == null || frame.IsEmpty())
         {
-            _failures.Add("world shot: no frame (headless?)");
+            if (!Headless)
+            {
+                _failures.Add("world shot: no frame");
+            }
+
             return;
         }
 
@@ -1064,6 +1073,16 @@ public partial class EditorSmoke : Node
         frame.SavePng(path);
         shot["png"] = path;
         shot["frame_size"] = new[] { frame.GetWidth(), frame.GetHeight() };
+    }
+
+    private void RecordWorldShotChunk(Dictionary<string, object> shot)
+    {
+        if (!_world.IsBooted)
+        {
+            _failures.Add($"world shot: the World tab did not boot: {_world.Error}");
+            return;
+        }
+
         shot["z"] = _world.Host.Z;
         shot["objects"] = _world.Host.Scene.RenderedObjectsCount;
         shot["project"] = _world.Host.Project?.Root;

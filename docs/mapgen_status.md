@@ -22,6 +22,7 @@ in a town is copied or derived from another game's layouts.
 
 ```
 python tools\mapgen_districts\run.py town  --out build\mapgen_districts\look --preset hamlet --seed 4
+python tools\world\run.py import --town build\mapgen_districts\look --at 6144,2560 --project DIR
 python tools\mapgen_districts\run.py build --out build\mapgen_districts\demo --towns 3 --town-seed 1
 python tools\mapgen_districts\run.py stage --out build\mapgen_districts\demo
 python tools\mapgen_districts\run.py prove --out build\mapgen_districts\demo
