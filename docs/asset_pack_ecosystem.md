@@ -346,6 +346,26 @@ world-save migration or an automatic install hook.
 
 ## Evidence and remaining scope
 
+### Enhanced HD playback
+
+The L1 **Enhanced HD (installed packs)** option is off by default in both
+Options interfaces. Install a pack containing `hd-art` components, activate
+its verified content lock, restart the client, then enable the option. These
+components bind their own static/land graphic IDs; they do not need numeric
+lock bindings. No ComfyUI or other service is required for playback.
+
+Each PNG must have exactly `native_w * scale` by `native_h * scale` pixels,
+and the native canvas must match that graphic in the user's client install.
+Missing graphics or different native canvases fall back to native art. The
+HD filter defaults to Auto: nearest at 1:1 texel display, nearest mipmaps
+otherwise. Point, PointMipmaps and Smooth are explicit alternatives. Cursor,
+inventory, picking and shadows stay native. See
+[ADR-0027](architecture/ADR-0027-world-render-modes.md) for bounds and scope.
+
+`client.hd.packs` and the full smoke verify installation, defaults,
+persistence, native footprint, RGBA detail, mipmaps and filter choices using
+synthetic CC0 pixels. Authoring and generation are separate editor work.
+
 The Godot `StoreContentProbe.tscn` checks fifteen client consumers, including
 five-direction animation frames through the production atlas. Original starter
 pack pixels are decoded into a proof image. A private ModernUO probe verifies

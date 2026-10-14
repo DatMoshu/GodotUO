@@ -39,5 +39,11 @@ namespace GUO.Renderer
         /// <summary>Bilinear.</summary>
         public static readonly SamplerState LinearClamp =
             new SamplerState(RenderingServer.CanvasItemTextureFilter.Linear);
+
+        // GUO L1: optional HD pack sampling. Native art always uses PointClamp.
+        public static readonly SamplerState PointMipmapsClamp =
+            new SamplerState(RenderingServer.CanvasItemTextureFilter.NearestWithMipmaps);
+        public static readonly SamplerState SmoothMipmapsClamp =
+            new SamplerState(RenderingServer.CanvasItemTextureFilter.LinearWithMipmaps);
     }
 }

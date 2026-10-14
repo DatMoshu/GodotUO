@@ -85,6 +85,7 @@ public partial class Main : Node
     public override void _Ready()
     {
         Automation.McpHost.Attach(this);
+        if (Array.IndexOf(OS.GetCmdlineUserArgs(), "--hd-content-probe") >= 0) Store.StoreHdProbe.Run();
 
         // Parsed in _EnterTree; Godot calls that first, and the window flags
         // wanted deciding before anything else ran.

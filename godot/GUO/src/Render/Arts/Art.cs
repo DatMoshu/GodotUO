@@ -30,6 +30,35 @@ namespace GUO.Renderer.Arts
         private readonly ArtLoader _artLoader;
         private readonly HuesLoader _huesLoader;
 
+        // PORT DEVIATION (GUO): Enhanced HD repaint detail. Standalone
+        // mipmapped textures from verified hd-art pack components (never the atlas,
+        // never picking/cursor/containers). Pack-memory-bounded; the toggle gates
+        // the resolver so off stays byte-identical native.
+        private sealed class HdEntry
+        {
+            public Texture2D Texture;
+            public int HdW;
+            public int HdH;
+            public int NativeW;
+            public int NativeH;
+            public int Tick;
+        }
+
+        private readonly System.Collections.Generic.Dictionary<(bool IsLand, ushort Graphic), HdEntry> _hdCache =
+            new System.Collections.Generic.Dictionary<(bool, ushort), HdEntry>();
+        private int _hdTick;
+
+        // PORT DEVIATION (GUO): which live textures are HD (for the
+        // batcher's mesh runs, which share canvas items across textures).
+        private static readonly System.Collections.Generic.HashSet<Texture2D> _hdTextures =
+            new System.Collections.Generic.HashSet<Texture2D>();
+
+        /// <summary>Whether a live texture is an Enhanced HD one.</summary>
+        public static bool IsHdTexture(Texture2D texture)
+        {
+            return texture != null && _hdTextures.Contains(texture);
+        }
+
         public Art(ArtLoader artLoader, HuesLoader huesLoader)
         {
             _artLoader = artLoader;
@@ -66,10 +95,115 @@ namespace GUO.Renderer.Arts
         }
 
         /// <summary>Forgets one static's sprite (graphic without the 0x4000 base).</summary>
-        public void RefreshStatic(ushort graphic) => Refresh(0x4000u + graphic);
+        public void RefreshStatic(ushort graphic)
+        {
+            Refresh(0x4000u + graphic);
+            DropHd(false, graphic);
+        }
 
         /// <summary>Forgets one land tile's sprite.</summary>
-        public void RefreshLand(ushort graphic) => Refresh(graphic);
+        public void RefreshLand(ushort graphic)
+        {
+            Refresh(graphic);
+            DropHd(true, graphic);
+        }
+
+        /// <summary>
+        /// Forgets every Enhanced HD texture (toggle flips). Native atlas
+        /// entries are untouched; chunks are dirtied by the caller.
+        /// Textures are forgotten, not disposed: a baked chunk mesh may
+        /// still reference one until its rebuild (like the native atlas
+        /// rect leak above).
+        /// </summary>
+        public void RefreshAllHD()
+        {
+            foreach (var kv in _hdCache)
+            {
+                try
+                {
+                    _hdTextures.Remove(kv.Value.Texture);
+                    _hdScales.Remove(kv.Value.Texture);
+                }
+                catch
+                {
+                }
+            }
+
+            _hdCache.Clear();
+            _hdBad.Clear();
+        }
+
+        private void DropHd(bool isLand, ushort graphic)
+        {
+            var key = (isLand, graphic);
+            if (_hdCache.TryGetValue(key, out HdEntry entry))
+            {
+                try
+                {
+                    _hdTextures.Remove(entry.Texture);
+                    _hdScales.Remove(entry.Texture);
+                }
+                catch
+                {
+                }
+
+                _hdCache.Remove(key);
+            }
+        }
+
+        /// <summary>
+        /// Enhanced HD resolver for world-draw callers ONLY (Option B):
+        /// View.DrawStatic*, LandView's flat path and ChunkMesh's land bake.
+        /// Cursor, containers, thumbnails and picking stay native via
+        /// GetArt/GetLand. Returns the HD texture plus its full-rect UV and
+        /// the native footprint to draw it into. False means draw native.
+        /// Only verified pack payloads are accepted; a different native canvas falls back.
+        /// </summary>
+        internal bool TryGetHd(bool isLand, ushort graphic, out Texture2D texture, out Rectangle hdUv, out int nativeW, out int nativeH)
+        {
+            texture = null; hdUv = default; nativeW = nativeH = 0;
+            if (Configuration.ProfileManager.CurrentProfile?.EnhancedHD != true) return false;
+            var key = (isLand, graphic);
+            if (_hdBad.Contains(key)) return false;
+            if (_hdCache.TryGetValue(key, out var cached))
+            {
+                texture = cached.Texture; hdUv = new Rectangle(0, 0, cached.HdW, cached.HdH);
+                nativeW = cached.NativeW; nativeH = cached.NativeH;
+                return true;
+            }
+            var content = Client.Game?.UO?.FileManager?.Content;
+            if (content == null || !content.TryHd(isLand, graphic, out var asset)) return false;
+            var native = _artLoader.GetArt(isLand ? graphic : 0x4000u + graphic);
+            if (native.Width != asset.NativeWidth || native.Height != asset.NativeHeight)
+            {
+                _hdBad.Add(key);
+                Log.Warn($"HD pack graphic {graphic} has a different native canvas; using native.");
+                return false;
+            }
+            texture = asset.Texture();
+            _hdCache[key] = new HdEntry { Texture = texture, HdW = asset.Width, HdH = asset.Height,
+                NativeW = asset.NativeWidth, NativeH = asset.NativeHeight, Tick = ++_hdTick };
+            _hdTextures.Add(texture);
+            _hdScales[texture] = asset.Scale;
+            hdUv = new Rectangle(0, 0, asset.Width, asset.Height);
+            nativeW = asset.NativeWidth; nativeH = asset.NativeHeight;
+            return true;
+        }
+
+        private static readonly System.Collections.Generic.Dictionary<Texture2D, double> _hdScales = new();
+        private readonly System.Collections.Generic.HashSet<(bool, ushort)> _hdBad = new();
+        internal static SamplerState HdSampler(Texture2D texture)
+        {
+            if (!_hdScales.TryGetValue(texture, out double scale)) return SamplerState.PointClamp;
+            double zoom = Client.Game?.GetScene<GUO.Game.Scenes.GameScene>()?.Camera.Zoom ?? 1f;
+            return HdSampling.Select(scale, zoom, Configuration.ProfileManager.CurrentProfile?.HdFilter ?? Configuration.HdFilterMode.Auto);
+        }
+
+        internal static void ReleaseHd(Texture2D texture)
+        {
+            _hdTextures.Remove(texture);
+            _hdScales.Remove(texture);
+        }
 
         private ref readonly SpriteInfo Get(uint idx)
         {
