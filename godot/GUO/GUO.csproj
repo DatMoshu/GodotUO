@@ -22,7 +22,16 @@
     <!-- Upstream has many intentional unused-parameter and naming patterns.
          Keep the build readable while the port is in progress. -->
     <NoWarn>CS0169;CS0649;CA1050</NoWarn>
+    <GuoLabs Condition="'$(GuoLabs)' == ''">false</GuoLabs>
   </PropertyGroup>
+
+  <!-- Labs mirror TOOLS: explicit opt-in, Debug only, never an export. -->
+  <PropertyGroup Condition="'$(GuoLabs)' == 'true' and '$(Configuration)' == 'Debug'">
+    <DefineConstants>$(DefineConstants);GUO_LABS</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(GuoLabs)' != 'true' or '$(Configuration)' != 'Debug'">
+    <Compile Remove="src/Labs/**/*.cs" />
+  </ItemGroup>
 
   <!--
     The plugin ABI: CUO_API.PluginHeader and the delegates a plugin DLL is

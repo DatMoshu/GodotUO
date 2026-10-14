@@ -49,6 +49,41 @@ These come from `AGENTS.md` and apply to every change.
 7. **Never commit game data or credentials.** No `.mul`, `.uop`, `.idx`,
    `.def` or `.enu` files, and no captures rendered from them. CI rejects them.
 
+## Choose the feature layer first
+
+The owner approved this layout. Existing client authoring is scheduled for
+migration; it is not a precedent for adding generation to the base client.
+
+| Layer | What belongs here | Review requirements |
+|---|---|---|
+| L0 Core port | Ported ClassicUO files | Parity only; reason and marked deviation, preferably one seam. Preserve login, input, packets and native-art rendering; zero unmarked drift. |
+| L1 Client options | GUO-owned runtime features players can enable | Default off, profile field, Options entry, off-state parity proof, scenario and data_formats section; ADR for rendering/input semantics. No external process, Python or network service. |
+| L2 Packs | Art, HD art, splats, PostFX, voices, zones, themes, graphs and generated content | Typed Store components, no code, no execution on install. |
+| L3 Editor packages | Authoring, generation, AI, MCP and tours | `#if TOOLS`, plus the shared AI gate for AI; absent from exports. |
+| L4 Labs | Experimental client code not ready for L1 | `src/Labs/<feature>/`, opt-in `GuoLabs=true` Debug build, shared command/options registration, absent from exports; feature README and doctor. |
+| Tools | `tools/<job>/` | Launcher pairs and the existing config, docs and privacy rules. |
+
+1. Propose new chat commands, profile fields, Options entries, shaders and
+   ported-file edits through a Discussion or short ADR, decided by Moshu. Ask
+   whether ClassicUO would ship it; otherwise use L2–L4.
+2. One feature per PR. Aim below about 1,500 lines or 20 files unless agreed
+   beforehand; split larger work and keep the author's credit.
+3. Generate in the editor or Labs; the client consumes packs. Python processes
+   and model downloads do not belong in an L1 runtime feature.
+4. Ship a doctor launcher for external dependencies, with installation guidance.
+   Failure text must name the launcher instead of exposing raw exceptions.
+5. L1 and L4 features need a scenario under `tools/scenarios/` and a smoke line.
+6. Put packable content in the Store; keep built-in presets small and curated.
+7. Use the same review template as agents: layer, toggle, parity proof, scenario,
+   doctor and docs section. The director triages the layer before code review.
+
+Nearest-neighbour sampling remains mandatory for native art. A distinct render
+mode needs an owner-approved ADR to authorize any exception.
+
+Roadmap: shard content negotiation will tell connecting clients which packs a
+server requires. The protocol and user consent are future work; this does not
+authorize automatic downloads or activation.
+
 ## Licences
 
 - Code in this repository is **BSD 2-Clause** (see `LICENSE`). By opening a PR
