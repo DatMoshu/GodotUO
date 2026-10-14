@@ -9,7 +9,14 @@ namespace GUO.Game
     internal static class SelectedObject
     {
         public static Point TranslatedMousePositionByViewport;
-        public static BaseGameObject Object;
+        // PORT DEVIATION (GUO): resolve optional replacement picks once at
+        // assignment, keeping ported input and target handling unchanged.
+        private static BaseGameObject _object;
+        public static BaseGameObject Object
+        {
+            get => _object;
+            set => _object = SplatObject.Resolve(value);
+        }
         public static BaseGameObject LastLeftDownObject;
         public static Entity HealthbarObject;
         public static Item SelectedContainer;

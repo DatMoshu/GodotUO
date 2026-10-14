@@ -251,7 +251,11 @@ internal static class InputProbe
         bool sawList = false;
         for (int i = 0; i < 150; i++)
         {
-            if (Client.Game.UO.World.InGame)
+            // PORT DEVIATION (GUO): null-guarded boot chain. ShardCommands
+            // calls here before Client.Game exists (its own wait is the
+            // settle above); the unguarded deref NRE'd out of every
+            // --shard-command run instead of polling for the world.
+            if (Client.Game?.UO?.World?.InGame == true)
             {
                 await Frames(host, 240);
                 return;
@@ -267,7 +271,7 @@ internal static class InputProbe
             await Frames(host, 2);
         }
 
-        if (creating && !sawList && !Client.Game.UO.World.InGame)
+        if (creating && !sawList && Client.Game?.UO?.World?.InGame != true)
         {
             // Neither the world nor the character list appeared (dead shard,
             // rejected login): typing a name now would land nowhere, exactly
