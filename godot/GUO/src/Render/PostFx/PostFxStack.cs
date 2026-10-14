@@ -760,7 +760,7 @@ namespace GUO.Renderer.PostFx
 
             return u.Type switch
             {
-                Variant.Type.Int => (int)Math.Round(value.AsSingle()),
+                Variant.Type.Int => (int)Math.Clamp(Math.Round((double)value.AsSingle()), (double)u.Min, (double)u.Max),
                 Variant.Type.Bool => value.AsSingle() != 0f,
                 _ => value,
             };
