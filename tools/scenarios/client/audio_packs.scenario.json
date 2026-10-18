@@ -1,0 +1,13 @@
+{
+  "id": "client.audio.packs",
+  "title": "Verified audio packs: default off, region layers and recorded NPC clips",
+  "surface": "client",
+  "requires": {"build": "debug"},
+  "timeouts": {"step_s": 60, "run_s": 180},
+  "steps": [
+    {"id": "launch", "do": {"kind": "launch", "args": ["--audio-content-probe"], "settings": {"autologin": false, "username": "", "password": ""}},
+     "say": "Run synthetic installed-pack checks without a shard or ComfyUI.",
+     "expect": {"log.contains": "[audio packs] PASS", "within_s": 45}},
+    {"id": "summary", "do": {"kind": "note", "text": "Checks cover default-off persistence, region bounds, independent music/SFX, recorded voice binding, and malformed/undeclared payload refusal."}}
+  ]
+}

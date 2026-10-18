@@ -92,6 +92,12 @@ public partial class Main : Node
             SelectionSeamProbe.Run();
         }
 
+        // Synthetic opt-in audio proof before normal scene startup for the MCP runner.
+        if (Array.IndexOf(OS.GetCmdlineUserArgs(), "--audio-content-probe") >= 0)
+        {
+            Store.StoreAudioProbe.Run();
+        }
+
         // Parsed in _EnterTree; Godot calls that first, and the window flags
         // wanted deciding before anything else ran.
         _options ??= Options.Parse(OS.GetCmdlineUserArgs());

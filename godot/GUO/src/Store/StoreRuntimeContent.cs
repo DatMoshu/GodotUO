@@ -25,6 +25,7 @@ internal sealed class StoreRuntimeContent : IDisposable
     private readonly Dictionary<(int, int, int), AnimationsLoader.FrameInfo[]> _animations = new();
     private readonly Dictionary<int, AnimationGroupsType> _animationTypes = new();
     private readonly StoreMapOverlay _maps = new();
+    public StoreAudioContent Audio { get; } = new();
     public void ApplyMap(MapLoader maps, int map) => _maps.Apply(maps, map);
     public void Dispose() => _maps.Dispose();
     // GUO addition (ADR-0034): the extracted art set answers after every pack, and is read a page at a time.
@@ -103,10 +104,22 @@ internal sealed class StoreRuntimeContent : IDisposable
             foreach (var component in pack.Manifest.Components ?? new())
             {
                 if (component.Target == "server" || component.Type == "script") continue; // Scripts have their own explicit approval/enable/run lifecycle.
-                StorePack.Require(component.Type is "static" or "land" or "texmap" or "gump" or "hue" or "translation" or "sound" or "music" or "multi" or "tiledata" or "light" or "animation" or "wearable" or "font" or "map", "No client consumer for " + component.Type);
+                StorePack.Require(component.Type is "static" or "land" or "texmap" or "gump" or "hue" or "translation" or "sound" or "music" or "multi" or "tiledata" or "light" or "animation" or "wearable" or "font" or "map" or "region" or "voice", "No client consumer for " + component.Type);
                 byte[] data = pack.ReadPayload(component.Entry);
                 payloadTotal += data.Length;
                 StorePack.Require(payloadTotal <= 256 * 1024 * 1024, "Content payload memory budget exceeded");
+                if (component.Type == "region") { result.Audio.AddRegion(pack.Id + ":" + component.Id, component, data); continue; }
+                if (component.Type == "voice")
+                {
+                    result.Audio.AddVoice(component, data, entry =>
+                    {
+                        byte[] wave = pack.ReadPayload(entry);
+                        payloadTotal += wave.Length;
+                        StorePack.Require(payloadTotal <= 256 * 1024 * 1024, "Content payload memory budget exceeded");
+                        return DecodeWave(wave);
+                    });
+                    continue;
+                }
                 if (component.Type == "wearable") { wearables.Add((component, data)); continue; }
                 if (component.Type == "translation")
                 {
@@ -251,6 +264,7 @@ internal sealed class StoreRuntimeContent : IDisposable
             result._tiles[art] = tile;
         }
         // Commit only after all components and payloads validate.
+        result.Audio.ResolveRegions(result, contentLock);
         if (!apply) return result;
         result._maps.Compile();
         for (int map = 0; map < MapLoader.MAPS_COUNT; map++) result.ApplyMap(files.Maps, map);
@@ -290,7 +304,7 @@ internal sealed class StoreRuntimeContent : IDisposable
                 return new Pixels(pixels, (int)w, (int)h);
     }
 
-    private static byte[] DecodeWave(byte[] data)
+    internal static byte[] DecodeWave(byte[] data)
     {
         StorePack.Require(data.Length >= 44 && System.Text.Encoding.ASCII.GetString(data, 0, 4) == "RIFF" && System.Text.Encoding.ASCII.GetString(data, 8, 4) == "WAVE", "Expected RIFF WAVE");
         bool format = false; byte[] pcm = null;

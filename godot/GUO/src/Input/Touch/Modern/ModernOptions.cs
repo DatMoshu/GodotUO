@@ -114,6 +114,7 @@ internal sealed partial class ModernOptions : ModernGump
         Int("Sound", "Music volume", 0, 100, p => p.MusicVolume, (p, v) => { p.MusicVolume = v; _audioChanged = true; });
         Bool("Sound", "Footsteps", p => p.EnableFootstepsSound, (p, v) => p.EnableFootstepsSound = v);
         Bool("Sound", "Combat music", p => p.EnableCombatMusic, (p, v) => p.EnableCombatMusic = v);
+        Bool("Sound", "Regional audio and recorded NPC voices", p => p.ContentAudioEnabled, (p, v) => p.ContentAudioEnabled = v);
 
         // "Hide roofs" is the classic box: checked means DrawRoofs off, and a
         // change redraws the roofs (OptionsGump.Apply).

@@ -38,6 +38,9 @@ echo [smoke] 7/7 launchers (tools\launcher_lint)
 echo [smoke] selection seam (synthetic; no shard or install)
 "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Bootstrap/SelectionSeamProbe.tscn || set "FAIL=1"
 
+echo [smoke] optional audio pack contracts (synthetic; no shard or AI service)
+"%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Store/StoreAudioProbe.tscn || set "FAIL=1"
+
 echo.
 if "%FAIL%"=="1" ( echo [smoke] FAILED & exit /b 1 )
 echo [smoke] OK
