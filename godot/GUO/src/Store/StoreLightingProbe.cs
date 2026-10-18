@@ -51,12 +51,20 @@ public partial class StoreLightingProbe : Node
             File.WriteAllBytes(Path.Combine(installed, "hd_light.json"), doubled);
             Refuses(() => StoreLighting.Decode(new StoreVerifiedPack(installed, incompatible), manifest.Components[0]), "Double lighting composites were accepted");
             File.WriteAllBytes(Path.Combine(installed, "hd_light.json"), payload["hd_light.json"]);
+            foreach (byte[] bad in new[] { Encoding.UTF8.GetBytes("# include \"res://outside.gdshaderinc\""), new byte[] { 255 }, new byte[65537] })
+            {
+                var malformed = JsonSerializer.Deserialize<StoreManifest>(JsonSerializer.SerializeToUtf8Bytes(manifest));
+                malformed.Files["hd_sun.gdshader"] = Convert.ToHexString(SHA256.HashData(bad)).ToLowerInvariant();
+                File.WriteAllBytes(Path.Combine(installed, "hd_sun.gdshader"), bad);
+                Refuses(() => StoreLighting.Decode(new StoreVerifiedPack(installed, malformed), manifest.Components[0]), "Malformed shader was accepted");
+            }
+            File.WriteAllBytes(Path.Combine(installed, "hd_sun.gdshader"), payload["hd_sun.gdshader"]);
             var stack = PostFxStack.Instance;
             var originalLook = stack.Preset;
             stack.SetHdLighting(lighting);
             StorePack.Require(stack.ActivePreset.Name == "synthetic" && ReferenceEquals(stack.Preset, originalLook) && stack.HdHeightTex == null, "Verified look was not selected lazily or changed ordinary look");
-            stack.SetHdLighting(null);
-            StorePack.Require(ReferenceEquals(stack.Preset, originalLook) && stack.HdHeightTex == null && stack.IdCanvas == default, "Disable did not restore ordinary look/resources");
+            content.Dispose();
+            StorePack.Require(content.Lighting == null && ReferenceEquals(stack.ActivePreset, originalLook) && stack.HdHeightTex == null && stack.IdCanvas == default, "Mount removal did not restore ordinary look/resources");
             File.WriteAllText(Path.Combine(installed, "hd_sun.gdshader"), "changed");
             Refuses(() => StoreLighting.Decode(verified, manifest.Components[0]), "Changed shader was accepted");
             File.Delete(Path.Combine(installed, "hd_sun.gdshader"));

@@ -7,6 +7,7 @@ using System.Text.Json;
 using Godot;
 using GUO.Assets;
 using GUO.Utility;
+using GUO.Renderer.PostFx;
 using Environment = System.Environment;
 
 namespace GUO.Store;
@@ -30,7 +31,13 @@ internal sealed class StoreRuntimeContent : IDisposable
     private readonly Dictionary<(bool Land, int Graphic), StoreHdAsset> _hd = new();
     public bool TryHd(bool land, int graphic, out StoreHdAsset asset) => _hd.TryGetValue((land, graphic), out asset);
     public void ApplyMap(MapLoader maps, int map) => _maps.Apply(maps, map);
-    public void Dispose() { foreach (var asset in _hd.Values) asset.Dispose(); _hd.Clear(); _maps.Dispose(); }
+    public void Dispose()
+    {
+        if (Lighting != null) PostFxStack.Instance.RemoveHdLighting(Lighting);
+        Lighting = null;
+        foreach (var asset in _hd.Values) asset.Dispose();
+        _hd.Clear(); _maps.Dispose();
+    }
     // GUO addition (ADR-0034): the extracted art set answers after every pack, and is read a page at a time.
     private GUO.Assets.Extracted.ExtractedArtSource _extracted;
     public bool TryImage(string type, int id, out Pixels pixels) =>
@@ -98,6 +105,8 @@ internal sealed class StoreRuntimeContent : IDisposable
     {
         var snapshot = contentLock.Verify(store);
         var result = new StoreRuntimeContent();
+        try
+        {
         long pixelsTotal = 0;
         long payloadTotal = 0;
         var wearables = new List<(StoreComponent Component, byte[] Data)>();
@@ -292,6 +301,8 @@ internal sealed class StoreRuntimeContent : IDisposable
             for (int i = 0; i < 32; i++) files.Hues.HuesRange[(id - 1) / 8].Entries[(id - 1) % 8].ColorTable[i] = colors[i];
         foreach (var (id, tile) in result._tiles) files.TileData.StaticData[id] = tile;
         return result;
+        }
+        catch { result.Dispose(); throw; }
     }
 
     private static Pixels DecodeImage(byte[] data, string type, ref long pixelsTotal)

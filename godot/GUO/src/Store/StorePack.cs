@@ -54,6 +54,8 @@ internal static class StorePack
     public const long MaxTotal = 1024L * 1024 * 1024;
     public const int MaxManifest = 1024 * 1024;
     public const int MaxScriptBytes = 262144, MaxScriptChars = 65536;
+    internal const int MaxLightingBytes = 65536;
+    internal static readonly string[] LightingShaderNames = { "hd_sun", "hd_gi", "hd_bloom", "hd_heat", "hd_night_vision", "hd_tonemap" };
     // A screensaver is played by the client from profile version 11 on.
     public const int ScreensaverMinProfile = 11;
     // Windows reserves COM1-9 and LPT1-9, and the superscript digits too (COM\u00b9 is a device).
@@ -207,7 +209,19 @@ internal static class StorePack
             Require(m.Files.Keys.Any(p => Path.GetExtension(p).Equals(".json", StringComparison.OrdinalIgnoreCase)),
                 "A postfx pack has at least one preset (.json)");
         }
-        else if (m.Schema != "guo/store-pack@2" || !m.Components.Any(c => c.Type == "postfx" && c.Target == "client"))
+        else if (m.Schema == "guo/store-pack@2")
+        {
+            var declared = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var component in m.Components.Where(c => c.Type == "postfx"))
+                foreach (string shader in LightingShaderNames)
+                {
+                    string path = LightingPrefix(component) + shader + ".gdshader";
+                    Require(m.Files.ContainsKey(path), "Postfx requires six declared same-folder shaders");
+                    Require(declared.Add(path), "Duplicate lighting shader ownership");
+                }
+            Require(declared.SetEquals(m.Files.Keys.Where(p => Path.GetExtension(p).Equals(".gdshader", StringComparison.OrdinalIgnoreCase))), "Undeclared lighting shader");
+        }
+        else
         {
             Require(!m.Files.Keys.Any(p => Path.GetExtension(p).Equals(".gdshader", StringComparison.OrdinalIgnoreCase)),
                 "Shader files are only allowed in a postfx pack");
@@ -225,6 +239,57 @@ internal static class StorePack
         m.Files.Keys.First(p => Path.GetExtension(p).Equals(".ogv", StringComparison.OrdinalIgnoreCase));
 
     public static bool IsScript(string path) => Path.GetExtension(path).Equals(".razor", StringComparison.OrdinalIgnoreCase);
+
+    internal static string LightingPrefix(StoreComponent component)
+    {
+        int slash = component.Entry.LastIndexOf('/');
+        return slash < 0 ? "" : component.Entry[..(slash + 1)];
+    }
+
+    internal static string LightingText(byte[] bytes)
+    {
+        Require(bytes.Length is > 0 and <= MaxLightingBytes, "Lighting payload exceeds byte limit");
+        string text;
+        try { text = new UTF8Encoding(false, true).GetString(bytes); }
+        catch (DecoderFallbackException) { throw new InvalidDataException("Lighting shader is not valid UTF-8"); }
+        Require(!string.IsNullOrWhiteSpace(text) && !text.Any(c => c < 32 && c != '\t' && c != '\r' && c != '\n' || c == 127), "Invalid lighting text");
+        Require(!Regex.IsMatch(text, @"#\s*include\b|(?:res|user)://"), "Lighting shader external reference");
+        return text;
+    }
+
+    internal static void ValidateLighting(StoreManifest manifest, Func<string, byte[]> read)
+    {
+        if (manifest.Schema != "guo/store-pack@2") return;
+        foreach (var component in manifest.Components.Where(c => c.Type == "postfx"))
+        {
+            byte[] bytes = read(component.Entry);
+            Require(bytes.Length <= MaxLightingBytes, "Lighting preset exceeds byte limit");
+            try
+            {
+                using var doc = JsonDocument.Parse(bytes);
+                UniqueJson(doc.RootElement);
+                var root = doc.RootElement;
+                Require(root.ValueKind == JsonValueKind.Object && root.TryGetProperty("passes", out _), "Invalid lighting preset");
+                var passes = root.GetProperty("passes");
+                Require(passes.ValueKind == JsonValueKind.Array && passes.GetArrayLength() is > 0 and <= 8, "Invalid lighting pass count");
+                if (root.TryGetProperty("bindings", out var bindings))
+                    Require(bindings.ValueKind == JsonValueKind.Array && bindings.GetArrayLength() == 0, "Lighting bindings must be empty");
+                var seen = new HashSet<string>(StringComparer.Ordinal);
+                int composites = 0;
+                foreach (var pass in passes.EnumerateArray())
+                {
+                    string name = pass.GetProperty("shader").GetString();
+                    Require(LightingShaderNames.Contains(name) && seen.Add(name), "Unknown or duplicate lighting pass");
+                    bool enabled = !pass.TryGetProperty("enabled", out var flag) || flag.GetBoolean();
+                    if (enabled && name is "hd_tonemap" or "hd_night_vision") composites++;
+                }
+                Require(composites == 1, "Lighting requires exactly one composite");
+            }
+            catch (Exception ex) when (ex is JsonException or InvalidOperationException or KeyNotFoundException)
+            { throw new InvalidDataException("Invalid lighting preset", ex); }
+            foreach (string name in LightingShaderNames) LightingText(read(LightingPrefix(component) + name + ".gdshader"));
+        }
+    }
 
     public static string ScriptText(byte[] bytes)
     {
@@ -274,15 +339,30 @@ internal static class StorePack
         var undeclared = zip.Entries.Where(e => e.FullName != "manifest.json" && !m.Files.ContainsKey(e.FullName)).Select(e => e.FullName).ToList();
         Require(zip.Entries.Count == m.Files.Count + 1 && undeclared.Count == 0,
             "Undeclared or missing payload" + (undeclared.Count > 0 ? ": " + string.Join(", ", undeclared) : $" ({zip.Entries.Count - 1} entries, {m.Files.Count} declared)"));
+        var lightingFiles = new HashSet<string>(StringComparer.Ordinal);
+        if (m.Schema == "guo/store-pack@2")
+            foreach (var component in m.Components.Where(c => c.Type == "postfx"))
+            {
+                lightingFiles.Add(component.Entry);
+                foreach (string shader in LightingShaderNames) lightingFiles.Add(LightingPrefix(component) + shader + ".gdshader");
+            }
         foreach (var (name, expected) in m.Files)
         {
+            long limit = lightingFiles.Contains(name) ? MaxLightingBytes : IsScript(name) ? MaxScriptBytes : MaxFile;
+            Require(zip.GetEntry(name).Length <= limit, "Payload exceeds consumer byte limit");
             string target = Path.Combine(staging, name.Replace('/', Path.DirectorySeparatorChar));
             Directory.CreateDirectory(Path.GetDirectoryName(target));
             using (var source = zip.GetEntry(name).Open())
-            using (var output = new FileStream(target, FileMode.CreateNew)) CopyLimited(source, output, IsScript(name) ? MaxScriptBytes : MaxFile);
+            using (var output = new FileStream(target, FileMode.CreateNew)) CopyLimited(source, output, limit);
             Require(HashFile(target) == expected, "Payload hash mismatch: " + name);
             if (IsScript(name)) ScriptText(File.ReadAllBytes(target));
         }
+        ValidateLighting(m, name =>
+        {
+            string path = Path.Combine(staging, name.Replace('/', Path.DirectorySeparatorChar));
+            Require(new FileInfo(path).Length <= MaxLightingBytes, "Lighting payload exceeds byte limit");
+            return File.ReadAllBytes(path);
+        });
         File.WriteAllBytes(Path.Combine(staging, "manifest.json"), raw);
         return m;
     }

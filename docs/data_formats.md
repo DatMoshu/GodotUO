@@ -2750,8 +2750,14 @@ names a declared JSON PostFx preset, no numeric binding. The active deployment
 supplies at most one. The preset has no state bindings and at most eight unique
 passes from `hd_sun`, `hd_gi`, `hd_bloom`, `hd_heat`, `hd_night_vision`,
 `hd_tonemap`; exactly one enabled `hd_tonemap` or `hd_night_vision` is required. All six sibling `.gdshader`
-files must be declared. JSON and shader reads each recheck the snapshot hash
-and have a 64 KiB limit. Normal Store licence, attribution and dependency
+files must be declared at the preset's exact directory; extra shaders and shared
+shader ownership between components are refused. Both installers validate the
+payload before installation commits. Strict UTF-8 shader text cannot contain
+includes or engine resource paths; preset shader names cannot be paths. JSON and
+shader reads each recheck the snapshot hash and have a 64 KiB limit. Legacy v1
+PostFx behavior is unchanged. Mount disposal restores the ordinary look and
+releases its transient shaders; failed staging releases staged resources.
+Normal Store licence, attribution and dependency
 rules apply. The sample uses four passes to fit the mobile budget.
 See the [pack source and fixture](../design/packs/jarjar-hd-lighting/README.md).
 

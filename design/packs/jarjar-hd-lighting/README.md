@@ -25,8 +25,14 @@ temporarily uses the ordinary path and rebuilds HD after revival.
 `hd_light.json` is the existing PostFx preset format. The typed `postfx`
 component names this JSON and reads its six sibling `hd_*.gdshader` payloads
 through verified bounded reads. All six must exist and match their manifest
-hashes; there is no fallback to loose files or built-in HD shaders. The shipped
-four-pass preset fits the mobile cap: sun, GI, bloom, tonemap. Heat and night
+hashes; there is no fallback to loose files or built-in HD shaders. The
+v2 manifest must declare exactly the six fixed shader siblings for each preset;
+extra shaders and two components owning the same siblings are refused. Both
+installers and the runtime reject shader includes, engine resource paths,
+invalid UTF-8 and payloads over 64 KiB. Preset passes use fixed shader names,
+never paths. Legacy v1 PostFx packs retain their existing contract. Mount removal
+clears its transient look and shader resources; a failed staged mount is disposed.
+The shipped four-pass preset fits the mobile cap: sun, GI, bloom, tonemap. Heat and night
 vision remain pack assets for alternate authored presets. At most eight
 unique HD passes are accepted; exactly one tonemap or night-vision composite must be enabled. Installing
 the pack only verifies/extracts data; shaders compile on explicit option use.

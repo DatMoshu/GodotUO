@@ -15,6 +15,11 @@ internal sealed partial class PostFxStack
     private Texture2D _flatHeight, _clearLight;
     internal Texture2D HdHeightTex { get; set; }
 
+    internal void RemoveHdLighting(StoreLighting lighting)
+    {
+        if (lighting != null && ReferenceEquals(_lighting, lighting)) SetHdLighting(null);
+    }
+
     internal void SetHdLighting(StoreLighting lighting)
     {
         if (ReferenceEquals(_lighting, lighting)) return;

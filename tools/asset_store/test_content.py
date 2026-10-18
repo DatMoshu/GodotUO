@@ -9,7 +9,7 @@ import tempfile
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from asset_store.pack import parse_manifest
+from asset_store.pack import parse_manifest, LIGHTING_SHADERS
 
 
 def example():
@@ -49,8 +49,15 @@ class Contract(unittest.TestCase):
         bad = example(); bad["components"][0]["execute_on_install"] = True
         cases["unknown-field"] = (bad, False)
         m = example(); m["target"] = "client"; m["components"][0].update(type="postfx", target="client")
-        m["files"]["hd_sun.gdshader"] = hashlib.sha256(b"shader_type canvas_item;").hexdigest()
+        for name in LIGHTING_SHADERS:
+            m["files"][name + ".gdshader"] = hashlib.sha256(b"shader_type canvas_item;").hexdigest()
         cases["typed-postfx"] = (copy.deepcopy(m), True)
+        bad = copy.deepcopy(m); bad["files"]["arbitrary.gdshader"] = bad["files"]["hd_sun.gdshader"]
+        cases["undeclared-shader"] = (bad, False)
+        bad = copy.deepcopy(m); del bad["files"]["hd_sun.gdshader"]
+        cases["missing-required-shader"] = (bad, False)
+        bad = copy.deepcopy(m); second = copy.deepcopy(bad["components"][0]); second["id"] = "other"; bad["components"].append(second)
+        cases["duplicate-shader-owner"] = (bad, False)
         m["components"][0]["target"] = "shared"
         cases["typed-postfx-wrong-target"] = (copy.deepcopy(m), False)
         m["components"][0].update(type="presentation", target="client")

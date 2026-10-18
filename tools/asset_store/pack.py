@@ -22,6 +22,8 @@ MAX_ZIP = 512 * 1024 * 1024
 MAX_TOTAL = 1024 * 1024 * 1024
 MAX_FILE = 256 * 1024 * 1024
 MAX_MANIFEST = 1024 * 1024
+LIGHTING_SHADERS = ("hd_sun", "hd_gi", "hd_bloom", "hd_heat", "hd_night_vision", "hd_tonemap")
+MAX_LIGHTING = 65536
 # Windows reserves COM1-9 and LPT1-9, and the superscript digits too (COM\u00b9 is a device).
 _DIGITS = [str(i) for i in range(1, 10)] + ["\u00b9", "\u00b2", "\u00b3"]
 DEVICES = {"con", "prn", "aux", "nul", *(f"com{d}" for d in _DIGITS), *(f"lpt{d}" for d in _DIGITS)}
@@ -144,7 +146,17 @@ def parse_manifest(raw):
     # Screen-effect packs (ADR-0023): presets and shaders; shader code only in this kind.
     if m["kind"] == "postfx":
         require(any(Path(n).suffix.lower() == ".json" for n in files), "a postfx pack has at least one preset (.json)")
-    elif m["schema"] != "guo/store-pack@2" or not any(c["type"] == "postfx" and c["target"] == "client" for c in m["components"]):
+    elif m["schema"] == "guo/store-pack@2":
+        declared = set()
+        for c in m["components"]:
+            if c["type"] == "postfx":
+                prefix = c["entry"].rsplit("/", 1)[0] + "/" if "/" in c["entry"] else ""
+                required = {prefix + n + ".gdshader" for n in LIGHTING_SHADERS}
+                require(required <= files.keys(), "postfx requires six declared same-folder shaders")
+                require(not declared.intersection(required), "duplicate lighting shader ownership")
+                declared.update(required)
+        require({n for n in files if Path(n).suffix.lower() == ".gdshader"} == declared, "undeclared lighting shader")
+    else:
         require(not any(Path(n).suffix.lower() == ".gdshader" for n in files), "shader files are only allowed in a postfx pack")
     if m["kind"] == "screensaver":
         require(sum(Path(n).suffix.lower() == ".ogv" for n in files) == 1, "a screensaver has exactly one .ogv loop")
@@ -164,6 +176,40 @@ def script_text(raw):
     require(text.strip() and units(text) <= MAX_SCRIPT_CHARS, "script is empty or exceeds character limit")
     require(not any((ord(c) < 32 and c not in "\t\r\n") or ord(c) == 127 for c in text), "script contains control characters")
     return text
+
+
+def lighting_text(raw):
+    require(0 < len(raw) <= MAX_LIGHTING, "lighting payload exceeds byte limit")
+    text = raw.decode("utf-8", errors="strict")
+    require(text.strip() and not any(ord(c) < 32 and c not in "\t\r\n" or ord(c) == 127 for c in text), "invalid lighting text")
+    # No preprocessor includes or engine resource paths, even in disabled code.
+    require(not re.search(r"#\s*include\b|(?:res|user)://", text), "lighting shader external reference")
+    return text
+
+
+def validate_lighting(m, read):
+    if m["schema"] != "guo/store-pack@2":
+        return
+    for c in m["components"]:
+        if c["type"] != "postfx":
+            continue
+        raw = read(c["entry"])
+        require(len(raw) <= MAX_LIGHTING, "lighting preset exceeds byte limit")
+        preset = json.loads(raw.decode("utf-8"), object_pairs_hook=unique_object, parse_constant=no_constant)
+        require(isinstance(preset, dict), "invalid lighting preset")
+        passes = preset.get("passes")
+        require(isinstance(passes, list) and 0 < len(passes) <= 8, "invalid lighting pass count")
+        require("bindings" not in preset or preset["bindings"] == [], "lighting bindings must be empty")
+        seen = set(); composites = 0
+        for p in passes:
+            require(isinstance(p, dict) and p.get("shader") in LIGHTING_SHADERS and p["shader"] not in seen, "unknown or duplicate lighting pass")
+            seen.add(p["shader"])
+            require(type(p.get("enabled", True)) is bool, "invalid lighting enabled flag")
+            composites += p.get("enabled", True) and p["shader"] in ("hd_tonemap", "hd_night_vision")
+        require(composites == 1, "lighting requires exactly one composite")
+        prefix = c["entry"].rsplit("/", 1)[0] + "/" if "/" in c["entry"] else ""
+        for name in LIGHTING_SHADERS:
+            lighting_text(read(prefix + name + ".gdshader"))
 
 
 def sha256(path):
@@ -205,13 +251,21 @@ def verify(path):
         require("manifest.json" in archive.namelist(), "root manifest missing")
         manifest = parse_manifest(archive.read("manifest.json"))
         require(set(archive.namelist()) == {"manifest.json", *manifest["files"]}, "undeclared or missing ZIP payload")
+        lighting_files = set()
+        if manifest["schema"] == "guo/store-pack@2":
+            for c in manifest["components"]:
+                if c["type"] == "postfx":
+                    prefix = c["entry"].rsplit("/", 1)[0] + "/" if "/" in c["entry"] else ""
+                    lighting_files.update([c["entry"], *(prefix + n + ".gdshader" for n in LIGHTING_SHADERS)])
         for name, expected in manifest["files"].items():
+            limit = MAX_LIGHTING if name in lighting_files else MAX_FILE
+            require(archive.getinfo(name).file_size <= limit, "payload exceeds consumer byte limit")
             digest = hashlib.sha256()
             count = 0
             with archive.open(name) as stream:
                 while chunk := stream.read(1024 * 1024):
                     count += len(chunk)
-                    require(count <= MAX_FILE, "expanded entry too large")
+                    require(count <= limit, "expanded entry too large")
                     digest.update(chunk)
             require(digest.hexdigest() == expected, f"hash mismatch: {name}")
             if Path(name).suffix.lower() == ".razor":
@@ -223,4 +277,5 @@ def verify(path):
                 except ValueError:
                     raise ValueError(f"unreadable provenance file: {name}") from None
                 require(not derived_from_client_art(record), f"{name} marks an image as derived from client art; the content policy refuses it")
+        validate_lighting(manifest, lambda name: archive.read(name) if archive.getinfo(name).file_size <= MAX_LIGHTING else require(False, "lighting payload exceeds byte limit"))
     return manifest
