@@ -1,5 +1,5 @@
 # evidence-central:begin
-# Generated evidence belongs in D:/_agentShared/runs; gitignore has no size filter.
+# Generated evidence (captures, recordings) belongs in the shared agent area's runs folder, not here.
 *.mp4
 *.webm
 *.png
@@ -21,6 +21,18 @@
 !**/fixtures/**/*.png
 !**/fixtures/**/*.jpg
 !**/fixtures/**/*.gif
+# Product images tracked in this repo: brand, icons, splash, glyphs, LUTs, device layouts, docs.
+!design/brand/**/*.png
+!design/device-layouts/**/*.png
+!design/device-layouts/**/*.jpg
+!docs/images/**/*.png
+!docs/images/**/*.jpg
+!docs/images/**/*.gif
+!godot/GUO/icon.png
+!godot/GUO/splash.png
+!godot/GUO/android_icons/**/*.png
+!godot/GUO/postfx/luts/**/*.png
+!godot/GUO/src/Resources/embedded/**/*.png
 # evidence-central:end
 
 # ============================================================================
