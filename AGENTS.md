@@ -98,7 +98,10 @@ shared runs area (below). Never copy the UO install into a checkout: read it
 from `UO_CLIENT_DATA`. Remove a worktree when its story merges. Python tools
 take the folder from `Config.build`; these still join `<root>/build`
 themselves and should move onto it: art_extract, asset_store, bg_videos,
-comfy, git_hooks, guo_mcp, mapgen, scenario_run, server_lab, trailer.
+comfy, git_hooks, guo_mcp, mapgen, scenario_run, server_lab, trailer. Three
+read fixed inputs from the main checkout's `build/` and should take a path
+setting instead: windows/audit_scanner.py (`build/coordination/plt05,12,13`),
+uopack and uodata_write (`build/uo_original_expansion/dreadcrest_wearable`).
 
 **Git worktrees need no directory links.** A worktree has no `tools\godot`
 or `sources\ClassicUO` (both gitignored); left unset, `UO_GODOT_HOME` and
