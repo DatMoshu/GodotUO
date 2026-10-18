@@ -111,6 +111,13 @@ jobs:
           dotnet-version: |
             8.0.x
             10.0.x
+      # NuGet packages per job, keyed on every project file (sources/ is upstream's).
+      - name: Cache NuGet
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ github.workflow }}-${{ github.job }}-${{ strategy.job-index }}-${{ hashFiles('**/*.csproj', '**/*.props', '**/*.targets', '!sources/**') }}
+          restore-keys: nuget-${{ runner.os }}-${{ github.workflow }}-${{ github.job }}-${{ strategy.job-index }}-
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -222,6 +229,21 @@ jobs:
             8.0.x
             9.0.x
             10.0.x
+      # NuGet packages per job, keyed on every project file (sources/ is upstream's).
+      - name: Cache NuGet
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ github.workflow }}-${{ github.job }}-${{ strategy.job-index }}-${{ hashFiles('**/*.csproj', '**/*.props', '**/*.targets', '!sources/**') }}
+          restore-keys: nuget-${{ runner.os }}-${{ github.workflow }}-${{ github.job }}-${{ strategy.job-index }}-
+      # Godot's Android export runs Gradle; its downloads depend only on the engine.
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-godot-${{ steps.pin.outputs.godot }}
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'

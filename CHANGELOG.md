@@ -163,6 +163,10 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 - Profile settings migrate automatically; profile version 10.
 
 ### Building and managing
+- CI keeps NuGet packages between runs, and the Android release build also
+  keeps its Gradle downloads. The CI health report for 2026-10-18 (times per
+  workflow, every failure of the last three weeks, no flaky steps) is in
+  `docs/release/ci_2026-10-18.md`.
 - World editor: the Layers menu (Land, Statics, Multis, Roofs, Objects and the
   live layers) now looks like a button beside the others, keeps its ticks for
   the whole editor session, and switching Roofs off takes effect at once.
