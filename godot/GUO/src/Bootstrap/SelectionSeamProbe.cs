@@ -19,7 +19,9 @@ public partial class SelectionSeamProbe : Node
         public override bool CheckMouseSelection() => false;
     }
 
-    public override void _Ready()
+    public override void _Ready() => GetTree().Quit(Run() ? 0 : 1);
+
+    internal static bool Run()
     {
         SplatObject splat = null;
         try
@@ -41,9 +43,9 @@ public partial class SelectionSeamProbe : Node
             SelectedObject.Object = splat;
             Require(ReferenceEquals(SelectedObject.Object, splat), "unbound splat did not pass through");
             GD.Print("[selection seam] PASS: native/null identity, victim forwarding, drag snapshot, destroyed/unbound fallback");
-            GetTree().Quit();
+            return true;
         }
-        catch (Exception ex) { GD.PrintErr("[selection seam] FAIL: " + ex); GetTree().Quit(1); }
+        catch (Exception ex) { GD.PrintErr("[selection seam] FAIL: " + ex); return false; }
         finally
         {
             SelectedObject.Object = null;
