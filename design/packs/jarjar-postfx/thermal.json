@@ -1,0 +1,13 @@
+{
+ "name": "Thermal Vision",
+ "description": "Heat-map thermal vision.",
+ "passes": [
+  {
+   "shader": "thermal",
+   "params": {
+    "intensity": 1.0
+   }
+  }
+ ],
+ "bindings": []
+}

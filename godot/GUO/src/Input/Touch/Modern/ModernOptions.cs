@@ -94,6 +94,9 @@ internal sealed partial class ModernOptions : ModernGump
 
     private void Define()
     {
+#if GUO_LABS
+        GUO.Labs.LabsRegistration.Register(World, option: (label, open) => Action_("General", label, open));
+#endif
         Bool("General", "Highlight game objects", p => p.HighlightGameObjects, (p, v) => p.HighlightGameObjects = v);
         Bool("General", "Enable pathfinding", p => p.EnablePathfind, (p, v) => p.EnablePathfind = v);
         Bool("General", "Always run", p => p.AlwaysRun, (p, v) => p.AlwaysRun = v);
@@ -111,6 +114,7 @@ internal sealed partial class ModernOptions : ModernGump
         Int("Sound", "Music volume", 0, 100, p => p.MusicVolume, (p, v) => { p.MusicVolume = v; _audioChanged = true; });
         Bool("Sound", "Footsteps", p => p.EnableFootstepsSound, (p, v) => p.EnableFootstepsSound = v);
         Bool("Sound", "Combat music", p => p.EnableCombatMusic, (p, v) => p.EnableCombatMusic = v);
+        Bool("Sound", "Regional audio and recorded NPC voices", p => p.ContentAudioEnabled, (p, v) => p.ContentAudioEnabled = v);
 
         // "Hide roofs" is the classic box: checked means DrawRoofs off, and a
         // change redraws the roofs (OptionsGump.Apply).

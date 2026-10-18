@@ -1,0 +1,13 @@
+{
+ "name": "Pixelate",
+ "description": "Chunky mosaic blocks.",
+ "passes": [
+  {
+   "shader": "pixelate",
+   "params": {
+    "size": 4
+   }
+  }
+ ],
+ "bindings": []
+}

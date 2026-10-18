@@ -1,0 +1,13 @@
+{
+ "name": "Radial Blur",
+ "description": "Zoom blur from the screen centre.",
+ "passes": [
+  {
+   "shader": "radial_blur",
+   "params": {
+    "amount": 0.01
+   }
+  }
+ ],
+ "bindings": []
+}

@@ -1,0 +1,13 @@
+{
+ "name": "RGB Split",
+ "description": "Horizontal channel split.",
+ "passes": [
+  {
+   "shader": "rgb_split",
+   "params": {
+    "amount": 0.005
+   }
+  }
+ ],
+ "bindings": []
+}

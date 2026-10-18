@@ -83,6 +83,7 @@ namespace GUO.Game.UI.Gumps
 
         // sounds
         private Checkbox _enableSounds, _enableMusic, _footStepsSound, _combatMusic, _musicInBackground, _loginMusic;
+        private Checkbox _contentAudio; // PORT DEVIATION (GUO): L1 optional pack playback.
 
         // fonts
         private FontSelector _fontSelectorChat;
@@ -1727,6 +1728,9 @@ namespace GUO.Game.UI.Gumps
             );
 
             startY += _musicInBackground.Height + 2;
+
+            _contentAudio = AddCheckBox(rightArea, "Regional audio and recorded NPC voices",
+                _currentProfile.ContentAudioEnabled, startX, startY);
 
             Add(rightArea, PAGE);
         }
@@ -4112,6 +4116,7 @@ namespace GUO.Game.UI.Gumps
                     _soundsVolume.Value = 100;
                     _musicVolume.Value = 100;
                     _musicInBackground.IsChecked = false;
+                    _contentAudio.IsChecked = false;
                     _footStepsSound.IsChecked = true;
                     _loginMusicVolume.Value = 100;
                     _loginMusic.IsChecked = true;
@@ -4496,6 +4501,7 @@ namespace GUO.Game.UI.Gumps
             _currentProfile.EnableFootstepsSound = _footStepsSound.IsChecked;
             _currentProfile.EnableCombatMusic = _combatMusic.IsChecked;
             _currentProfile.ReproduceSoundsInBackground = _musicInBackground.IsChecked;
+            _currentProfile.ContentAudioEnabled = _contentAudio.IsChecked;
             _currentProfile.SoundVolume = _soundsVolume.Value;
             _currentProfile.MusicVolume = _musicVolume.Value;
             Settings.GlobalSettings.LoginMusicVolume = _loginMusicVolume.Value;

@@ -1,0 +1,13 @@
+{
+ "name": "Invert",
+ "description": "Negative image.",
+ "passes": [
+  {
+   "shader": "invert",
+   "params": {
+    "intensity": 1.0
+   }
+  }
+ ],
+ "bindings": []
+}

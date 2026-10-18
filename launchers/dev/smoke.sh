@@ -27,6 +27,12 @@ echo "[smoke] 6/7 editor add-on (headless; tools/editor_smoke)"
 echo "[smoke] 7/7 launchers (tools/launcher_lint)"
 "$UO_PYTHON" "$UO_TOOLS/launcher_lint/run.py" || FAIL=1
 
+echo "[smoke] selection seam (synthetic; no shard or install)"
+"$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Bootstrap/SelectionSeamProbe.tscn || FAIL=1
+
+echo "[smoke] optional audio pack contracts (synthetic; no shard or AI service)"
+"$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Store/StoreAudioProbe.tscn || FAIL=1
+
 echo "[smoke] optional HD pack contracts (synthetic)"
 "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Store/StoreHdProbe.tscn || FAIL=1
 

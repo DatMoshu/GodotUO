@@ -71,6 +71,8 @@ namespace GUO.Configuration
         public bool EnableFootstepsSound { get; set; } = true;
         public bool EnableCombatMusic { get; set; } = true;
         public bool ReproduceSoundsInBackground { get; set; }
+        // GUO L1: recorded pack zones/NPC audio is opt-in, including old profiles.
+        public bool ContentAudioEnabled { get; set; }
 
         // fonts and speech
         public byte ChatFont { get; set; } = 1;

@@ -5,7 +5,7 @@ using Godot;
 
 namespace GUO.Store;
 
-/// <summary>Unimplemented consumers refuse activation. HD is covered by StoreHdProbe.</summary>
+/// <summary>Unimplemented consumers refuse activation. Voice is covered by StoreAudioProbe, HD by StoreHdProbe.</summary>
 public partial class StoreMediaProbe : Node
 {
     public override void _Ready()
@@ -18,7 +18,7 @@ public partial class StoreMediaProbe : Node
             string corpus = Path.GetFullPath(args[0]);
             temporary = Path.Combine(Path.GetDirectoryName(corpus), "media-refusal-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(temporary);
-            foreach (var (label, type) in new[] { ("splat", "splat"), ("voice", "voice") })
+            foreach (var (label, type) in new[] { ("splat", "splat") })
             {
                 string stage = Path.Combine(temporary, "stage-" + label);
                 Directory.CreateDirectory(stage);

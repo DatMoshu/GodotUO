@@ -14,6 +14,8 @@ namespace GUO.Renderer
     public sealed class SplatPlacement
     {
         public string Name = "";
+        /// <summary>Optional original-art binding; zero keeps the existing name-tag fallback.</summary>
+        public ushort VictimGraphic;
         public SplatLodChain Chain;
         public int Facet;
         public int X, Y, Z;

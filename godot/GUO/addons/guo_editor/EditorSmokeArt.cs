@@ -725,8 +725,11 @@ public partial class EditorSmoke
             Tracks = new List<string> { "formatfixture_01.wav" },
         };
         layer.Zones.Add(zone);
+        var audioProfile = GUO.Configuration.ProfileManager.CurrentProfile;
+        bool audioEnabled = audioProfile.ContentAudioEnabled;
         try
         {
+            audioProfile.ContentAudioEnabled = true; // The fixture explicitly opts into optional audio.
             layer.Update(world);
             if (layer.Status == "no audio host")
             {
@@ -750,6 +753,8 @@ public partial class EditorSmoke
         {
             player.X = (ushort)px;
             player.Y = (ushort)py;
+            audioProfile.ContentAudioEnabled = audioEnabled;
+            layer.Reset();
             layer.Zones.Remove(zone);
             layer.Save(layer.Zones);
         }
