@@ -222,6 +222,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
 
         AiFeatures.Apply(AiFeatures.ReadPreference());
         _settings = EditorInterface.Singleton.GetEditorSettings();
+        EditorMcpAccess.InitializeSettings(_settings);
         _settings.SettingsChanged += OnEditorSettingsChanged;
         _data = new EditorData();
         _gumps = new GumpStudio(_data);
@@ -433,6 +434,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
     // Only settings callbacks touch Godot; all AI workers observe AiFeatures' snapshot.
     private void OnEditorSettingsChanged()
     {
+        EditorMcpAccess.SettingsChanged(_settings);
         bool enabled = AiFeatures.ReadPreference();
         if (enabled != AiFeatures.Enabled) ApplyAiPreference(enabled);
     }

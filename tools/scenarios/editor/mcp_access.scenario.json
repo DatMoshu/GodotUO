@@ -1,0 +1,12 @@
+{
+  "id": "editor.mcp.access",
+  "title": "MCP refuses a default-off shard mutation and permits listed navigation",
+  "surface": "editor",
+  "timeouts": { "step_s": 30, "run_s": 180 },
+  "steps": [
+    { "id": "launch", "do": { "kind": "launch", "wait_assets": false } },
+    { "id": "default-denial", "do": { "kind": "editor_tool", "tool": "admin_save", "refused_contains": "guo/mcp_access/save_backup_create" }, "expect": { "result": { "refused": true } } },
+    { "id": "allowed-navigation", "do": { "kind": "editor_tool", "tool": "admin_view", "arguments": { "section": "commands" } }, "expect": { "result": { "accepted": true } } },
+    { "id": "unchanged-shard", "do": { "kind": "editor_tool", "tool": "admin_state", "arguments": { "section": "health" } }, "expect": { "result": { "data": { "Connected": false, "Saving": false } } } }
+  ]
+}

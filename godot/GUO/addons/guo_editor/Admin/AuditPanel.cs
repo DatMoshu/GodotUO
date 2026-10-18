@@ -33,6 +33,15 @@ public partial class AuditPanel : VBoxContainer
     private List<AdminAuditRow> _rows = new(), _shown = new();
     private int _req;
     private bool _open;
+    private List<AdminAuditRow> _serverRows = new();
+
+    internal void RefreshLocal()
+    {
+        _rows = _serverRows.Concat(EditorMcpAccess.AuditRows).OrderBy(r => r.At).ToList();
+        if (_tree == null) return;
+        FillPickers();
+        ApplyFilter();
+    }
 
     /// <summary>Sends a message on the admin channel; false when there is none.</summary>
     public Func<JsonObject, bool> Send { get; set; }
@@ -117,7 +126,7 @@ public partial class AuditPanel : VBoxContainer
         AddChild(_tree);
         _hint = new Label { AutowrapMode = TextServer.AutowrapMode.WordSmart };
         AddChild(_hint);
-        FillPickers();
+        RefreshLocal();
         UpdateView();
     }
 
@@ -148,10 +157,9 @@ public partial class AuditPanel : VBoxContainer
             return;
         }
 
-        _rows = AdminAuditView.FromEntries(msg["entries"] as JsonArray);
+        _serverRows = AdminAuditView.FromEntries(msg["entries"] as JsonArray);
         Replies++;
-        FillPickers();
-        ApplyFilter();
+        RefreshLocal();
     }
 
     /// <summary>Sets the filter as if picked and typed (the scripted check): null or empty is any.</summary>

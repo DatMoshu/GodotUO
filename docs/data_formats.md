@@ -2055,6 +2055,7 @@ adds it.
 | `wait` | `seconds` (default 1) | sleep; watchdogs keep running | 2 |
 | `shot` | none | a still of the program's window | 2 |
 | `note` | `text` (optional) | a `log` event | 2 |
+| `editor_tool` | `tool`, optional `arguments` and `until` objects | named editor MCP call; read-only or explicitly allowlisted mutation; result expectations supported | 2 |
 | `tour_segment` | `id` (an EditorTour segment) | editor MCP `tour_segment`; the segment's checks and frames become the step's | 2 |
 | `editor_invoke` | `key`, `query` (optional) | editor MCP `editor_invoke` (section 33) | 2 |
 | `ui.click` | `control` (a control selector, below), `button` (`Left` default, `Right`, `Middle`), `clicks` (integer >= 1, default 1), `within_s` (seconds to wait for the control, default 5) | game MCP `guo_ui` + `guo_input` (section 29) | 3 |
@@ -2204,6 +2205,43 @@ Another project writes the same columns with its own `project`. A new column is 
 as nullable, so older readers keep working.
 
 ---
+
+Editor interface/Admin scenario automation: `launch.wait_assets=false` skips the asset-ready wait for editor-only checks. `--headless` runs without desktop input or screenshots. `editor_tool` checks live MCP annotations and the explicit scripted tool allowlist before dispatch. Editor sessions isolate their GUO workspace as well as editor settings. See `tools/editor_mcp/README.md` for Admin tools, completion counters and secret environment references.
+
+`editor_tool.refused_contains` is a non-empty expected-refusal substring: the step
+passes only for an MCP error whose text starts with `refused:` and contains it.
+It dispatches once and cannot be combined with `until`. This proves default denial
+without treating a transport error or unexpected success as a pass.
+
+### Editor MCP access preferences
+
+Editor Settings > GUO > MCP Access mirrors `<UO_WORKSPACE_DIR>/editor/mcp_access.json`.
+This per-user document has `groups` (boolean overrides by group id) and `audit`
+(AD8-compatible entries: `at`, `editor`, `op`, `level`, `ok`, `args`). A toggle change
+atomically writes both the override and a UTC `editor_mcp_access` record whose args
+are `setting` and `enabled`. The Admin Audit list merges these local records with
+server records, including filtering and CSV export, even when disconnected.
+
+| Group (`guo/mcp_access/` setting suffix) | Tools | Default |
+|---|---|---|
+| `read_state` | editor_state, editor_interface, admin_state | on |
+| `navigate_resize` | admin_view, editor_window_resize, editor_navigate, editor_server_select; godview watch/find/select/filter/Open paperdoll/Follow/Stop following | on |
+| `connect_refresh` | admin_connect, admin_refresh | on |
+| `save_backup_create` | admin_save, admin_backup_create | off |
+| `restart` | admin_restart | off |
+| `restore_settings_save` | admin_backup_restore, admin_settings_edit, admin_settings_save | off |
+| `accounts` | admin_account | off |
+| `commands` | admin_command | off |
+| `godview_actions` | admin_godview act_as/Go there/Bring here/Respawn/Clear | off |
+
+Every typed call checks this policy before approval and again at dispatch; a refusal
+names the disabled setting. Scripted mutation dispatch additionally intersects with
+`GUO_EDITOR_MCP_PREAPPROVED` (`--allow-editor-tool`); CLI flags cannot enable settings.
+Changing tools retain per-call approval and dangerous commands retain typed
+confirmation. There is no MCP permission-setting tool. All of this remains `#if TOOLS`
+and behind `AiFeatures`; exported clients have no editor types. Credentials are
+environment references only and are redacted from MCP state, transcripts and logs.
+Scenario `editor.mcp.access` proves default mutation denial and listed navigation.
 
 ## 35. Shard host profiles (`*.profile.json`, `tools/muo_shard`)
 

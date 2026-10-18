@@ -1,0 +1,50 @@
+{
+  "id": "editor.header.review",
+  "title": "Review server/client icon controls through MCP without desktop input",
+  "surface": "editor",
+  "timeouts": {
+    "step_s": 180,
+    "run_s": 420
+  },
+  "steps": [
+    {
+      "id": "launch",
+      "do": {
+        "kind": "launch",
+        "wait_assets": false
+      },
+      "say": "Open isolated review editor."
+    },
+    {
+      "id": "assets",
+      "do": {
+        "kind": "editor_tool",
+        "tool": "editor_state",
+        "until": {
+          "assetsReady": true
+        }
+      }
+    },
+    {
+      "id": "no-focus",
+      "do": {
+        "kind": "editor_tool",
+        "tool": "editor_interface"
+      },
+      "expect": {
+        "result": {
+          "window": {
+            "noFocus": true
+          }
+        }
+      }
+    },
+    {
+      "id": "runbar",
+      "do": {
+        "kind": "tour_segment",
+        "id": "runbar"
+      }
+    }
+  ]
+}

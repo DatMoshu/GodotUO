@@ -55,6 +55,11 @@ public partial class EditorSmoke
     private string _bakFirst, _bakAccount;
     private int _bakMark, _bakKeepBefore;
     private int _cmdMark;
+    private System.Threading.Tasks.Task<string> _adminMcpSave, _adminMcpRestart;
+
+    private System.Threading.Tasks.Task<string> AdminTool(string name) => Ai.Hub.Tools.RunAsync(name, new JsonObject(), System.Threading.CancellationToken.None, preApproved: true);
+    private static bool AdminToolAccepted(System.Threading.Tasks.Task<string> call) => call?.IsCompletedSuccessfully == true
+        && (bool?)JsonNode.Parse(call.Result)?["accepted"] == true;
     private int _audMark;
 
     // The settings the form's check changes, by field id ("file:path").
@@ -137,20 +142,23 @@ public partial class EditorSmoke
                     AdminNext(122);
                     // The status Save now asks for afterwards is the one after this mark.
                     _adminMark = v.StatusReplies;
-                    v.SaveNow();
+                    EditorMcpAccess.Set("save_backup_create", true); // Scratch workspace only, never the user's policy.
+                    EditorMcpAccess.Set("restart", true);
+                    _adminMcpSave = AdminTool("admin_save");
                 }
                 else AdminTimeout("the Admin tab never got the admin channel and a status");
 
                 break;
 
             case 122:
-                if (!v.Saving && v.LastSave != null && v.StatusReplies > _adminMark)
+                if (AdminToolAccepted(_adminMcpSave) && !v.Saving && v.LastSave != null && v.StatusReplies > _adminMark)
                 {
+                    _admin["mcp_save_accepted"] = true;
                     _admin["save"] = Plain(v.LastSave);
                     _admin["status_after_save"] = Plain(v.LastStatus);
                     AdminShot("saved");
                     _adminMark = v.StatusReplies;
-                    _admin["restart_called"] = v.Restart();
+                    _adminMcpRestart = AdminTool("admin_restart");
                     AdminNext(123);
                 }
                 else AdminTimeout("Save now never answered");
@@ -158,8 +166,10 @@ public partial class EditorSmoke
                 break;
 
             case 123:
-                if (v.Restarting == AdminView.RestartPhase.None && v.Granted != null && v.LastRestartSeconds > 0 && v.StatusReplies > _adminMark)
+                if (AdminToolAccepted(_adminMcpRestart) && v.Restarting == AdminView.RestartPhase.None && v.Granted != null && v.LastRestartSeconds > 0 && v.StatusReplies > _adminMark)
                 {
+                    _admin["restart_called"] = true;
+                    _admin["mcp_restart_accepted"] = true;
                     _admin["restart_s"] = v.LastRestartSeconds;
                     _admin["status_after_restart"] = Plain(v.LastStatus);
                     _admin["managed_after_restart"] = run.SelectedManaged;

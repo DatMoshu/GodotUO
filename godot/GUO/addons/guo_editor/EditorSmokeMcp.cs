@@ -16,6 +16,7 @@ public partial class EditorSmoke
 {
     private async Task CheckEditorMcpAsync()
     {
+        await CheckMcpAccessAsync();
         int editorThread = Environment.CurrentManagedThreadId;
         int mutations = 0;
         var host = new AiToolHost(Ai.Hub.Post);
@@ -86,10 +87,83 @@ public partial class EditorSmoke
         AiCheck("editor_mcp_live_state", JsonNode.Parse(state)?["assetsReady"]?.GetValue<bool>() == true);
         string search = await Ai.Hub.Tools.RunAsync("editor_search", new JsonObject { ["query"] = "backpack" }, CancellationToken.None);
         AiCheck("editor_mcp_f3_shared", JsonNode.Parse(search)?["entries"] is JsonArray { Count: > 0 });
+        var sensitiveReply = new JsonObject { ["account"] = "test", ["password"] = "never-export", ["nested"] = new JsonObject { ["token"] = "never-export" } };
+        string safeReply = EditorAutomationCapabilities.Safe(sensitiveReply).ToJsonString();
+        AiCheck("editor_mcp_admin_reply_redacted", !safeReply.Contains("never-export") && (string)sensitiveReply["password"] == "never-export");
+        string safeArgs = EditorAutomationCapabilities.ArgumentsForLog("admin_settings_edit", new JsonObject { ["id"] = "mail.password", ["value"] = "never-log" });
+        AiCheck("editor_mcp_admin_settings_args_redacted", !safeArgs.Contains("never-log"));
+        foreach (string section in new[] { "health", "godview", "settings", "accounts", "backups", "commands" })
+        {
+            string adminState = await Ai.Hub.Tools.RunAsync("admin_state", new JsonObject { ["section"] = section, ["limit"] = 1 }, CancellationToken.None);
+            AiCheck("editor_mcp_admin_" + section, (string)JsonNode.Parse(adminState)?["section"] == section);
+        }
         bool traversalRefused = false;
         try { EditorCapabilities.MultiPath("../outside.json"); }
         catch (ArgumentException) { traversalRefused = true; }
         AiCheck("editor_mcp_path_guard", traversalRefused);
+    }
+
+    private async Task CheckMcpAccessAsync()
+    {
+        string originalRoot = GUO.Workspace.Workspace.RootOverride;
+        string scripted = Environment.GetEnvironmentVariable("GUO_EDITOR_SCRIPTED");
+        string allowed = Environment.GetEnvironmentVariable("GUO_EDITOR_MCP_PREAPPROVED");
+        var settings = Godot.EditorInterface.Singleton.GetEditorSettings();
+        try
+        {
+            GUO.Workspace.Workspace.RootOverride = Path.Combine(Path.GetTempPath(), "guo-mcp-access-" + Guid.NewGuid().ToString("N"));
+            string scratchRoot = GUO.Workspace.Workspace.RootOverride;
+            EditorMcpAccess.Forget();
+            EditorMcpAccess.InitializeSettings(settings);
+            int dispatched = 0;
+            var host = new AiToolHost(Ai.Hub.Post);
+            string[] tools = { "editor_state", "admin_view", "admin_connect", "admin_save", "admin_restart", "admin_settings_edit", "admin_account", "admin_command", "admin_godview" };
+            for (int i = 0; i < tools.Length; i++)
+            {
+                string name = tools[i];
+                host.Register(new AiToolHost.Tool { Name = name, ReadOnly = i == 0, Run = _ => { dispatched++; return "ran"; } });
+                EditorMcpAccess.Group g = EditorMcpAccess.Groups[i];
+                AiCheck("mcp_access_default_" + g.Id, EditorMcpAccess.Enabled(g.Id) == (i < 3));
+                string result = await host.RunAsync(name, new JsonObject(), CancellationToken.None, true);
+                AiCheck("mcp_access_dispatch_" + g.Id, i < 3 ? result == "ran" : result.StartsWith("refused:") && result.Contains(EditorMcpAccess.Prefix + g.Id));
+            }
+            AiCheck("mcp_access_defaults_no_mutation", dispatched == 3);
+            EditorMcpAccess.Set("commands", true);
+            EditorMcpAccess.Forget(); // Re-read the file, as a new editor/reload would.
+            AiCheck("mcp_access_persisted", EditorMcpAccess.Enabled("commands"));
+            var audit = EditorMcpAccess.AuditRows;
+            AiCheck("mcp_access_audit", audit.Count == 1 && audit[0].Op == "editor_mcp_access" && audit[0].Args.Contains("guo/mcp_access/commands") && audit[0].Args.Contains("true"));
+            AiCheck("mcp_access_explicit_allow", await host.RunAsync("admin_command", new JsonObject(), CancellationToken.None, true) == "ran");
+            Environment.SetEnvironmentVariable("GUO_EDITOR_SCRIPTED", "1");
+            Environment.SetEnvironmentVariable("GUO_EDITOR_MCP_PREAPPROVED", "admin_command,admin_save");
+            AiCheck("mcp_access_cli_cannot_widen", (await host.RunAsync("admin_save", new JsonObject(), CancellationToken.None, true, true)).Contains("guo/mcp_access/save_backup_create"));
+            AiCheck("mcp_access_cli_intersection", await host.RunAsync("admin_command", new JsonObject(), CancellationToken.None, true, true) == "ran");
+            Environment.SetEnvironmentVariable("GUO_EDITOR_MCP_PREAPPROVED", "admin_save");
+            host.Approve = _ => Task.FromResult(true);
+            AiCheck("mcp_access_cli_narrows", (await host.RunAsync("admin_command", new JsonObject(), CancellationToken.None, false, true)).Contains("outside --allow-editor-tool"));
+            Environment.SetEnvironmentVariable("GUO_EDITOR_SCRIPTED", null);
+            host.Approve = _ => { EditorMcpAccess.Set("commands", false); return Task.FromResult(true); };
+            AiCheck("mcp_access_rechecked_after_approval", (await host.RunAsync("admin_command", new JsonObject(), CancellationToken.None, false)).Contains("guo/mcp_access/commands"));
+            settings.SetSetting(EditorMcpAccess.Prefix + "commands", true);
+            EditorMcpAccess.SettingsChanged(settings);
+            AiCheck("mcp_access_ui_toggle_persisted", EditorMcpAccess.Enabled("commands") && EditorMcpAccess.AuditRows.Count == 3);
+            AiCheck("mcp_access_godview_reads", EditorMcpAccess.Refusal("admin_godview", new JsonObject { ["action"] = "find" }, false, false) == null);
+            AiCheck("mcp_access_godview_mutation", EditorMcpAccess.Refusal("admin_godview", new JsonObject { ["action"] = "press", ["text"] = "Bring here" }, false, false)?.Contains("godview_actions") == true);
+            AiFeatures.Apply(false);
+            AiCheck("mcp_access_ai_off", (await host.RunAsync("admin_command", new JsonObject(), CancellationToken.None, true, true)).Contains(AiFeatures.DisabledMessage));
+            AiFeatures.Apply(true);
+            // Only the uniquely created test folder is removed.
+            Directory.Delete(scratchRoot, true);
+        }
+        finally
+        {
+            AiFeatures.Apply(true);
+            GUO.Workspace.Workspace.RootOverride = originalRoot;
+            Environment.SetEnvironmentVariable("GUO_EDITOR_SCRIPTED", scripted);
+            Environment.SetEnvironmentVariable("GUO_EDITOR_MCP_PREAPPROVED", allowed);
+            EditorMcpAccess.Forget();
+            EditorMcpAccess.InitializeSettings(settings);
+        }
     }
 }
 #endif

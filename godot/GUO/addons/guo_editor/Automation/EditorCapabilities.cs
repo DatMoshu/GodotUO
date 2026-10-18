@@ -28,6 +28,7 @@ internal static class EditorCapabilities
 
     internal static void Register(AiToolHost host, SearchContext ctx, Func<SearchIndex> index, Func<EditorTour> tour = null)
     {
+        EditorAutomationCapabilities.Register(host, ctx);
         void Add(string name, string description, Func<JsonNode, string> run, bool read = true, params (string, string)[] fields) =>
             host.Register(new AiToolHost.Tool { Name = name, Description = description, Parameters = Schema(fields), ReadOnly = read, Run = run, MaxResult = 32000 });
 

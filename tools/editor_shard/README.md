@@ -1,5 +1,11 @@
 # tools/editor_shard
 
+`GUO_ADMIN_TAB_OUT` redirects the Admin-tab check's reports and captures to a
+central evidence folder. Its operational workspace (including sealed test
+secrets) stays under `build/admin_tab_workspace/<stamp>/`, outside purgeable
+evidence. The Admin check retains the Audit list/filter/export checks and drives
+Save/Restart through the typed MCP tool host with explicit scratch permissions.
+
 A **private** ModernUO instance for the editor's live and export work, so
 nothing the editor does touches the shared dev shard (`launchers\shard`),
 which other agents and devices play on.
