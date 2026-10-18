@@ -24,6 +24,14 @@ Status: `todo` | `doing` | `done` | `blocked`
 | T1 | Target-cursor flow: radar for entities; self / last / cancel; ground reticle stub | With a target cursor up, RT+A answers an entity; B cancels; self chord works; ground spell documents remaining gap | todo |
 | G1 | Generic gump focus-graph navigation | D-pad moves focus across buttons/checkboxes/text/scroll on an arbitrary server gump; A activates; B closes; one code path, not per-gump screens | doing — PadGumpNav wired; needs live server-gump probe + focus ring polish |
 
+## Player reports (INPUT-00, 2026-10-18)
+
+| ID | Item | Acceptance | Status |
+|---|---|---|---|
+| C1 | Rebind one job without redoing the set; cancel; reset to defaults | Options opens a list; A on one row rebinds it alone; B tap keeps; B leaves unsaved; Reset to defaults + Save restores all (`--pad-regression-probe`) | done |
+| C2 | Mounting with the pad | Radar A on a horse out of reach walks up and mounts; radar lists yourself while mounted, A dismounts (`--pad-wheels-probe`) | done |
+| C3 | Target lock on monsters | War mode: radar A attacks the choice and makes it last target; X afterwards attacks the same one (`--pad-wheels-probe`) | done |
+
 ## P1 — solo essentials
 
 | ID | Item | Acceptance | Status |

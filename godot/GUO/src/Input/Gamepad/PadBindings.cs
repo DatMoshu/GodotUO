@@ -333,6 +333,30 @@ namespace GUO.Input.Gamepad
             Changed?.Invoke();
         }
 
+        /// <summary>
+        /// Make <paramref name="map"/> the whole binding set, exactly (the
+        /// "Save" of the Set controls list): a job missing from it is
+        /// unbound. Saved once.
+        /// </summary>
+        public static void Replace(IReadOnlyDictionary<PadCommand, PadInput> map, IReadOnlyList<WheelWindow> wheel)
+        {
+            EnsureLoaded();
+            _map = new Dictionary<PadCommand, PadInput>(map);
+
+            if (wheel != null && wheel.Count == 8)
+            {
+                _wheel = new WheelWindow[8];
+
+                for (int i = 0; i < 8; i++)
+                {
+                    _wheel[i] = wheel[i];
+                }
+            }
+
+            Save();
+            Changed?.Invoke();
+        }
+
         public static void ResetToDefaults()
         {
             EnsureLoaded();
