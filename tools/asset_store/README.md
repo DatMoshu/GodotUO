@@ -98,6 +98,12 @@ python tools/asset_store/run.py mirror --from URL --key ed25519:... --store-dir 
   and its signature are copied byte for byte, last. Run it on a timer;
   `docs/store/hosting.md` covers serving it.
 
+- **A catalogue of your own on Pages.** `init-catalogue FOLDER` writes its
+  repository; `push-catalogue --remote GIT_URL [--listing packs] [--pack ZIP]`
+  signs an index over the `gh-pages` branch and pushes it, fast-forward only
+  (`hosting.py`, `test_hosting.py`). `hosted_proof.py` runs the whole path
+  locally against the client's C#; `docs/store/hosting.md` has the steps.
+
 The client lists every catalogue at once, asks the player to approve a new
 catalogue's key, and refuses a tampered, rolled-back, expired or re-keyed
 index (`test_catalogue.py`).

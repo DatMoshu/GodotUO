@@ -39,6 +39,9 @@ echo "[smoke] optional HD pack contracts (synthetic)"
 echo "[smoke] PostFX engine regressions (synthetic)"
 "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Bootstrap/PostFxEngineProbe.tscn || FAIL=1
 
+echo "[smoke] hosted catalogue (a local Pages branch and loopback HTTP; no network)"
+"$UO_PYTHON" "$UO_TOOLS/asset_store/hosted_proof.py" || FAIL=1
+
 echo
 if [ "$FAIL" = "1" ]; then echo "[smoke] FAILED"; exit 1; fi
 echo "[smoke] OK"

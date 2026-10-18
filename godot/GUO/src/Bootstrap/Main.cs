@@ -99,6 +99,11 @@ public partial class Main : Node
             Store.StoreAudioProbe.Run();
         }
 
+        // A hosted catalogue approved, listed and installed from, for client.store.hosted_catalogue.
+        foreach (string arg in OS.GetCmdlineUserArgs())
+            if (arg.StartsWith(Store.StoreCatalogueProbe.Flag, StringComparison.Ordinal))
+                Store.StoreCatalogueProbe.Run(arg.Substring(Store.StoreCatalogueProbe.Flag.Length));
+
         // Parsed in _EnterTree; Godot calls that first, and the window flags
         // wanted deciding before anything else ran.
         _options ??= Options.Parse(OS.GetCmdlineUserArgs());

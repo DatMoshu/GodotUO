@@ -163,6 +163,11 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 - Profile settings migrate automatically; profile version 10.
 
 ### Building and managing
+- Host a pack catalogue of your own on GitHub Pages: `run.py init-catalogue`
+  writes its repository, and `launchers/store/push_catalogue` signs the
+  index with your key and pushes it to the Pages branch. Players add the
+  address in the Store and approve its key once. `launchers/store/hosted_proof`
+  tries the whole path on your computer first.
 - World editor: the Layers menu (Land, Statics, Multis, Roofs, Objects and the
   live layers) now looks like a button beside the others, keeps its ticks for
   the whole editor session, and switching Roofs off takes effect at once.
