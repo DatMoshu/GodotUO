@@ -29,3 +29,8 @@ REM  The folder that receives each run's run.json, events, summary and stills.
 REM if not defined GUO_RUNS_SHARED_DIR set "GUO_RUNS_SHARED_DIR=<path to the shared runs folder>"
 REM  The folder that receives the master video (your Drive folder).
 REM if not defined GUO_RUNS_VIDEO_DIR  set "GUO_RUNS_VIDEO_DIR=<path to the video folder>"
+
+REM  Generated output (screenshots, smoke runs, exports) outside the repo, one
+REM  folder per checkout: UO_CHECKOUT is this checkout's folder name, so every
+REM  worktree gets its own and removing a worktree loses nothing.
+REM if not defined UO_BUILD_DIR        set "UO_BUILD_DIR=<path to a work folder>\%UO_CHECKOUT%"

@@ -61,7 +61,12 @@ tools/godot/Godot_v*/
 tools/modernuo/src/
 
 # === Generated artifacts ==================================================
+# Scratch only: anything here must be regenerable. Point UO_BUILD_DIR outside
+# the repo (config.local.bat) so generated output never piles up in a checkout.
 build/
+tmp/
+# Linked git worktrees kept beside the main checkout.
+worktrees/
 docs/consistency-failures.md
 
 # === Godot ================================================================

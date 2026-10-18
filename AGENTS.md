@@ -86,8 +86,19 @@ identical from a launcher, the editor, an agent or CI.
 Key settings: `UO_CLIENT_DATA` (your UO install), `UO_CLIENT_VERSION`,
 `UO_CACHE_DIR`, `UO_WORKSPACE_DIR` (the per-user server and client
 profiles, default `%LOCALAPPDATA%\GUO`), `UO_SHARD_HOST` / `UO_SHARD_PORT`, `UO_GODOT_HOME` (the
-engine folder, `tools\godot`) and `UO_UPSTREAM_DIR` (the folder holding
-ClassicUO, `sources`).
+engine folder, `tools\godot`), `UO_UPSTREAM_DIR` (the folder holding
+ClassicUO, `sources`) and `UO_BUILD_DIR` (generated output, `build` by
+default).
+
+**Generated output stays out of the checkout.** Screenshots, smoke runs,
+exports and staged data sets go to `UO_BUILD_DIR`; set it in
+`config.local.bat` to a work folder outside the repo, one per checkout
+(`...\%UO_CHECKOUT%`), so a worktree never fills up. Evidence goes to the
+shared runs area (below). Never copy the UO install into a checkout: read it
+from `UO_CLIENT_DATA`. Remove a worktree when its story merges. Python tools
+take the folder from `Config.build`; these still join `<root>/build`
+themselves and should move onto it: art_extract, asset_store, bg_videos,
+comfy, git_hooks, guo_mcp, mapgen, scenario_run, server_lab, trailer.
 
 **Git worktrees need no directory links.** A worktree has no `tools\godot`
 or `sources\ClassicUO` (both gitignored); left unset, `UO_GODOT_HOME` and
