@@ -523,13 +523,18 @@ public sealed class EditorData : IDisposable
     public static string RepoRoot =>
         Path.GetFullPath(Path.Combine(ProjectSettings.GlobalizePath("res://"), "..", ".."));
 
+    /// <summary>The configured generated-output folder, shared with tools/guo/config.py.</summary>
+    public static string BuildDirectory => Setting("UO_BUILD_DIR", Path.Combine(RepoRoot, "build"));
+
     /// <summary>
     /// One setting, resolved as every launcher and tools/guo/config.py
     /// resolve it: the environment first (common.bat has set it when the
     /// editor came from a launcher), then launchers\_shared\config.bat parsed
     /// directly (when Godot was opened some other way).
     /// </summary>
-    public static string Setting(string key, string fallback)
+    public static string Setting(string key, string fallback) => Setting(key, fallback, null);
+
+    internal static string Setting(string key, string fallback, IReadOnlyDictionary<string, string> config)
     {
         string env = System.Environment.GetEnvironmentVariable(key);
         if (!string.IsNullOrEmpty(env))
@@ -537,18 +542,19 @@ public sealed class EditorData : IDisposable
             return env;
         }
 
-        _configBat ??= ParseConfigBat();
-        return _configBat.TryGetValue(key, out string v) && v.Length > 0 ? v : fallback;
+        config ??= _configBat ??= ParseConfigBat(RepoRoot);
+        return config.TryGetValue(key, out string v) && v.Length > 0 ? v : fallback;
     }
 
-    private static Dictionary<string, string> ParseConfigBat()
+    internal static Dictionary<string, string> ParseConfigBat(string root)
     {
         var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        string shared = Path.Combine(RepoRoot, "launchers", "_shared");
+        string shared = Path.Combine(root, "launchers", "_shared");
 
         // common.bat sets UO_ROOT before it calls config.bat, and config.bat
         // builds paths on it; outside a launcher it has to come from here.
-        values["UO_ROOT"] = RepoRoot;
+        values["UO_ROOT"] = root;
+        values["UO_CHECKOUT"] = Path.GetFileName(Path.TrimEndingDirectorySeparator(root));
 
         // config.bat calls config.local.bat (gitignored, the user's own
         // paths) before its defaults, and every default is "if not defined",

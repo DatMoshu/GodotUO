@@ -130,7 +130,7 @@ public partial class RunBar : HBoxContainer
                 _clients.Save();
                 _profiles.Servers.Add(new ServerProfile { Name = "Configured shard", Host = EditorData.Setting("UO_SHARD_HOST", "127.0.0.1"),
                     Port = int.TryParse(EditorData.Setting("UO_SHARD_PORT", "2593"), out int port) ? port : 2593, DefaultClient = client });
-                string home = Path.Combine(EditorData.RepoRoot, "build", "shard_private");
+                string home = Path.Combine(EditorData.BuildDirectory, "shard_private");
                 if (File.Exists(Path.Combine(home, "state.json")))
                 {
                     using var state = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(home, "state.json")));

@@ -105,6 +105,7 @@ public partial class EditorSmoke
 
     private async Task CheckMcpAccessAsync()
     {
+        CheckEditorBuildDirectory();
         string originalRoot = GUO.Workspace.Workspace.RootOverride;
         string scripted = Environment.GetEnvironmentVariable("GUO_EDITOR_SCRIPTED");
         string allowed = Environment.GetEnvironmentVariable("GUO_EDITOR_MCP_PREAPPROVED");
@@ -233,6 +234,38 @@ public partial class EditorSmoke
             Environment.SetEnvironmentVariable("GUO_EDITOR_MCP_PREAPPROVED", allowed);
             EditorMcpAccess.Forget();
             EditorMcpAccess.InitializeSettings(settings);
+        }
+    }
+    private void CheckEditorBuildDirectory()
+    {
+        string fixture = Path.Combine(Path.GetTempPath(), "guo-config-" + Guid.NewGuid().ToString("N"));
+        string[] variables = { "UO_ROOT", "UO_CHECKOUT", "UO_BUILD_DIR" };
+        var previous = variables.ToDictionary(key => key, Environment.GetEnvironmentVariable);
+        try
+        {
+            foreach (string key in variables) Environment.SetEnvironmentVariable(key, null);
+            string shared = Path.Combine(fixture, "launchers", "_shared");
+            Directory.CreateDirectory(shared);
+            string fallback = Path.Combine(fixture, "build");
+            AiCheck("editor_config_build_missing_fallback", EditorData.Setting("UO_BUILD_DIR", fallback, EditorData.ParseConfigBat(fixture)) == fallback);
+            File.WriteAllText(Path.Combine(shared, "config.bat"), "if not defined UO_BUILD_DIR set \"UO_BUILD_DIR=%UO_ROOT%/build\"\n");
+            File.WriteAllText(Path.Combine(shared, "config.local.bat"), "set \"UO_BUILD_DIR=%UO_ROOT%/external/%UO_CHECKOUT%\"\n");
+            var config = EditorData.ParseConfigBat(fixture);
+            string local = fixture + "/external/" + Path.GetFileName(fixture);
+            AiCheck("editor_config_build_direct_local_checkout", EditorData.Setting("UO_BUILD_DIR", fallback, config) == local);
+            string process = Path.Combine(fixture, "process-output");
+            Environment.SetEnvironmentVariable("UO_BUILD_DIR", process);
+            AiCheck("editor_config_build_process_precedence", EditorData.Setting("UO_BUILD_DIR", fallback, config) == process
+                && EditorData.BuildDirectory == process);
+            Environment.SetEnvironmentVariable("UO_BUILD_DIR", null);
+            File.WriteAllText(Path.Combine(shared, "config.local.bat"), "");
+            AiCheck("editor_config_build_default_root", Path.GetFullPath(EditorData.Setting("UO_BUILD_DIR", fallback, EditorData.ParseConfigBat(fixture))) == fallback);
+            AiCheck("editor_config_build_read_only", !Directory.Exists(Path.Combine(fixture, "build")) && !Directory.Exists(Path.Combine(fixture, "external")));
+        }
+        finally
+        {
+            foreach (var pair in previous) Environment.SetEnvironmentVariable(pair.Key, pair.Value);
+            Directory.Delete(fixture, true); // Only this uniquely created config fixture.
         }
     }
 }

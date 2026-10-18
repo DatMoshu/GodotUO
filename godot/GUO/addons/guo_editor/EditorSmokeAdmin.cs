@@ -107,6 +107,9 @@ public partial class EditorSmoke
                 }
 
                 run.SelectServer(s.Id);
+                _admin["private_profile_discovered"] = true;
+                _admin["private_profile_matches_build_directory"] = string.Equals(home.TrimEnd('\\', '/'),
+                    Path.GetFullPath(Path.Combine(EditorData.BuildDirectory, "shard_private")).TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase);
                 _admin["server"] = s.Name;
                 _admin["offline_plain_words"] = v.Describe().Contains("Not connected");
                 _admin["offline_restart_blocked"] = v.RestartBlocker() != null;

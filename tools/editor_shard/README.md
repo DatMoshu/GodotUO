@@ -6,6 +6,10 @@ secrets) stays under `build/admin_tab_workspace/<stamp>/`, outside purgeable
 evidence. The Admin check retains the Audit list/filter/export checks and drives
 Save/Restart through the typed MCP tool host with explicit scratch permissions.
 
+Here `build/` means `UO_BUILD_DIR` (default: the checkout's `build/`). The editor
+run bar discovers `shard_private/state.json` there too. Direct editor startup
+expands `%UO_CHECKOUT%` in local configuration as the checkout folder's name.
+
 A **private** ModernUO instance for the editor's live and export work, so
 nothing the editor does touches the shared dev shard (`launchers\shard`),
 which other agents and devices play on.
