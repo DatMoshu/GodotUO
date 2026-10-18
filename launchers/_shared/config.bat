@@ -181,7 +181,7 @@ REM  YOUR release key, for `export.bat --release` (a signed release APK).
 REM  Unset here on purpose: set the path and alias in config.local.bat, and
 REM  the password there or, better, in the environment. Keep the keystore
 REM  OUTSIDE the checkout and back it up: an app signed with a lost key can
-REM  never be updated. `python toolsndroidun.py release-keystore` makes
+REM  never be updated. `python tools\android\run.py release-keystore` makes
 REM  one; `doctor.bat --release` checks it.
 if not defined UO_ANDROID_RELEASE_KEYSTORE set "UO_ANDROID_RELEASE_KEYSTORE="
 if not defined UO_ANDROID_RELEASE_KEYSTORE_USER set "UO_ANDROID_RELEASE_KEYSTORE_USER="
