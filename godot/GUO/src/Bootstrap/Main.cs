@@ -100,9 +100,9 @@ public partial class Main : Node
         }
 
         // A hosted catalogue approved, listed and installed from, for client.store.hosted_catalogue.
-        foreach (string arg in OS.GetCmdlineUserArgs())
-            if (arg.StartsWith(Store.StoreCatalogueProbe.Flag, StringComparison.Ordinal))
-                Store.StoreCatalogueProbe.Run(arg.Substring(Store.StoreCatalogueProbe.Flag.Length));
+        int catalogueProbe = Array.IndexOf(OS.GetCmdlineUserArgs(), Store.StoreCatalogueProbe.Flag);
+        if (catalogueProbe >= 0 && catalogueProbe + 1 < OS.GetCmdlineUserArgs().Length)
+            Store.StoreCatalogueProbe.Run(OS.GetCmdlineUserArgs()[catalogueProbe + 1]);
 
         // Parsed in _EnterTree; Godot calls that first, and the window flags
         // wanted deciding before anything else ran.
@@ -2303,6 +2303,9 @@ public partial class Main : Node
                         break;
                     case "--theme-zone":
                         o.WalkToThemeZone = Next();
+                        break;
+                    case Store.StoreCatalogueProbe.Flag:
+                        Next(); // the catalogue URL; the probe already ran in _Ready
                         break;
                     default:
                         GD.Print($"[GUO] ignoring unknown argument: {arg}");

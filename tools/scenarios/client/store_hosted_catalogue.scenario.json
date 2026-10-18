@@ -6,7 +6,7 @@
   "timeouts": {"step_s": 60, "run_s": 180},
   "steps": [
     {"id": "setup", "do": {"kind": "note", "text": "Before the run: launchers/store/hosted_proof (.bat or .sh) with --serve, which pushes a signed catalogue to a local Pages branch and serves it; pass the URL it prints as --var catalogue=URL."}},
-    {"id": "launch", "do": {"kind": "launch", "args": ["--store-catalogue-probe=$catalogue"], "settings": {"autologin": false, "username": "", "password": ""}},
+    {"id": "launch", "do": {"kind": "launch", "args": ["--store-catalogue-probe", "$catalogue"], "settings": {"autologin": false, "username": "", "password": ""}},
      "say": "Meet the hosted catalogue as a new federated source, with a scratch trust list.",
      "expect": {"log.contains": "[store catalogue] PASS", "within_s": 45}},
     {"id": "summary", "do": {"kind": "note", "text": "The probe refuses to list before approval, then needs every pack signed and installs the newest one with the client's own installer."}}

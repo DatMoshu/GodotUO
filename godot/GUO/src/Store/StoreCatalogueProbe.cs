@@ -9,10 +9,10 @@ namespace GUO.Store;
 
 /// <summary>A hosted catalogue as the client meets it (STORE-01, data_formats section 12): a new catalogue asks for
 /// approval of its key, then lists signed packs from every host its index names, then installs one. It uses a
-/// scratch trust list and store, never the player's. --store-catalogue-probe=URL, from tools/asset_store/hosted_proof.py --serve.</summary>
+/// scratch trust list and store, never the player's. --store-catalogue-probe URL, from tools/asset_store/hosted_proof.py --serve.</summary>
 public static class StoreCatalogueProbe
 {
-    public const string Flag = "--store-catalogue-probe=";
+    public const string Flag = "--store-catalogue-probe";
 
     internal static bool Run(string url)
     {
