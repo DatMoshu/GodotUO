@@ -108,7 +108,8 @@ or `sources\ClassicUO` (both gitignored); left unset, `UO_GODOT_HOME` and
 `UO_UPSTREAM_DIR` resolve to the main checkout's copies, in the launchers,
 `tools/guo/config.py` and MSBuild alike. In a fresh worktree run
 `python tools\worktree_setup\run.py` (or `launchers\dev\worktree_setup.bat`)
-once: it copies your `config.local.bat` and `deny.local.txt` across, checks
+once: it copies your `config.local.bat`, `deny.local.txt` and
+`.claude/settings.local.json` across, checks
 both folders resolve and runs the headless import. Never `mklink`.
 
 ---

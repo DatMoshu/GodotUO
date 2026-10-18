@@ -163,6 +163,9 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 - Profile settings migrate automatically; profile version 10.
 
 ### Building and managing
+- Readying a fresh git worktree (`launchers\dev\worktree_setup.bat`) also
+  copies your Claude Code approvals (`.claude/settings.local.json`), so a new
+  worktree no longer asks again to approve the project's MCP servers.
 - World editor: the Layers menu (Land, Statics, Multis, Roofs, Objects and the
   live layers) now looks like a button beside the others, keeps its ticks for
   the whole editor session, and switching Roofs off takes effect at once.

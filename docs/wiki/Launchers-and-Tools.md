@@ -88,7 +88,7 @@ shared logic), and their Linux twins `config.sh`, `config.local.sh` and
 | `rebuild_class_cache.bat` | Regenerates the engine's class cache when a new C# node type will not appear. |
 | `clean_cache.bat` | Deletes the decode cache. |
 | `sync_upstream.bat` | Reports upstream ClassicUO commits since the pin; `--pin` records the current head as reviewed. |
-| `worktree_setup.bat` | Readies a fresh git worktree: copies your `config.local.bat` and `deny.local.txt` from the main checkout, checks the engine and upstream resolve (no directory links), runs one headless import. |
+| `worktree_setup.bat` | Readies a fresh git worktree: copies your `config.local.bat`, `deny.local.txt` and `.claude/settings.local.json` from the main checkout, checks the engine and upstream resolve (no directory links), runs one headless import. |
 | `fetch_godot.bat` | Re-fetches the pinned engine on its own. |
 | `build_guoasset.bat` | Builds the `guoasset` MCP server. |
 | `launcher_lint.bat` | Checks every launcher pair (description line, line endings, executable bit, no stdin); `--list` prints them all. |
