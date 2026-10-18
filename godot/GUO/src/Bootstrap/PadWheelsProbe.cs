@@ -397,11 +397,16 @@ internal static class PadWheelsProbe
         await Button(host, JoyButton.LeftShoulder);
         Check("LB steps back", PadRadar.Chosen == chosen, PadRadar.NameOf(PadRadar.Chosen));
 
-        await Button(host, JoyButton.A);
-        // A mobile out of reach is walked to first (MountAndLock checks the walk).
+        // A mobile out of reach is walked to first (MountAndLock follows the
+        // walk to the end). Stopped here at once, or the horse would be ridden
+        // and gone from the world for the checks below.
+        Down(JoyButton.A);
+        await InputProbe.Wait(host, 2);
+        PadRadar.CancelApproach();
+        Up(JoyButton.A);
+        await InputProbe.Wait(host, 2);
         Check("A uses the choice (a double click, or a walk up to it first)",
             PadRadar.LastAction == $"use 0x{chosen?.Serial ?? 0:X8}" || PadRadar.LastAction == $"approach 0x{chosen?.Serial ?? 0:X8}", PadRadar.LastAction);
-        PadRadar.CancelApproach();
         await InputProbe.Wait(host, 20);
 
         await Button(host, JoyButton.Y);
@@ -423,10 +428,12 @@ internal static class PadWheelsProbe
         await Button(host, JoyButton.RightShoulder);
         Entity first = PadRadar.Chosen;
         Axis(JoyAxis.TriggerRight, 0f);
-        await InputProbe.Wait(host, 6);
-        Check("letting RT go with a choice and no button uses it",
-            PadRadar.LastAction == $"use 0x{first?.Serial ?? 0:X8}" || PadRadar.LastAction == $"approach 0x{first?.Serial ?? 0:X8}", PadRadar.LastAction);
+        await InputProbe.Wait(host, 2);
+        string released = PadRadar.LastAction;
         PadRadar.CancelApproach();
+        await InputProbe.Wait(host, 4);
+        Check("letting RT go with a choice and no button uses it",
+            released == $"use 0x{first?.Serial ?? 0:X8}" || released == $"approach 0x{first?.Serial ?? 0:X8}", released);
 
         // Nothing chosen: letting go does nothing.
         Axis(JoyAxis.TriggerRight, 1f);
@@ -748,11 +755,17 @@ internal static class PadWheelsProbe
         Mobile dummy = world.Mobiles.Values.FirstOrDefault(m => !m.IsDestroyed && m.Name != null
             && m.Name.IndexOf("Attack Dummy", StringComparison.OrdinalIgnoreCase) >= 0 && m.Distance <= PadBindings.RadarRange);
 
+        // Without the GUO pad dummies on this shard, the horse stands in: the
+        // lock is the client's (last attack, last target), whoever is attacked.
+        dummy ??= horse.IsDestroyed ? null : horse;
+
         if (dummy == null)
         {
-            Check("the attack dummy for the lock check", false);
+            Check("a mobile for the lock check", false);
             return;
         }
+
+        ProfileManager.CurrentProfile.EnabledCriminalActionQuery = false;
 
         GameActions.ToggleWarMode(world.Player);
         await Until(host, () => world.Player.InWarMode, 60);
