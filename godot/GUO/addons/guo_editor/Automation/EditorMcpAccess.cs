@@ -129,6 +129,11 @@ internal static class EditorMcpAccess
         _syncing = true;
         try
         {
+            if (!AiFeatures.Enabled)
+            {
+                foreach (Group g in Groups) settings.Erase(Prefix + g.Id);
+                return; // Hide AI settings without reading or changing the saved policy.
+            }
             bool healthy;
             try { _ = Document; healthy = true; }
             catch (Exception ex) when (PolicyFailure(ex)) { healthy = false; GD.PushWarning(Problem); }
@@ -143,7 +148,7 @@ internal static class EditorMcpAccess
 
     internal static void SettingsChanged(EditorSettings settings)
     {
-        if (_syncing) return;
+        if (_syncing || !AiFeatures.Enabled) return;
         try
         {
             foreach (Group g in Groups)

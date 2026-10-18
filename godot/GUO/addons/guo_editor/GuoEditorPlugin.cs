@@ -434,14 +434,15 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
     // Only settings callbacks touch Godot; all AI workers observe AiFeatures' snapshot.
     private void OnEditorSettingsChanged()
     {
-        EditorMcpAccess.SettingsChanged(_settings);
         bool enabled = AiFeatures.ReadPreference();
         if (enabled != AiFeatures.Enabled) ApplyAiPreference(enabled);
+        else EditorMcpAccess.SettingsChanged(_settings);
     }
 
     internal void ApplyAiPreference(bool enabled)
     {
         AiFeatures.Apply(enabled); // Cancel work before detaching its UI and tool targets.
+        EditorMcpAccess.InitializeSettings(_settings);
         StopAi();
         if (enabled)
         {

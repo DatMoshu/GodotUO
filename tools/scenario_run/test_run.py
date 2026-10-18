@@ -389,6 +389,21 @@ def test_schema_kinds_match_the_runner():
     assert set(events_schema["properties"]["kind"]["enum"]) == ev.KINDS
 
 
+@pytest.mark.parametrize("fields,valid", [
+    ({"refused_contains": "refused:"}, True),
+    ({"until": {"ready": True}}, True),
+    ({"refused_contains": "refused:", "until": {"ready": True}}, False),
+])
+def test_editor_tool_refusal_cannot_poll_in_schema_or_runner(fields, valid):
+    jsonschema = pytest.importorskip("jsonschema")
+    schema = json.loads((SCHEMA_DIR / "scenario.schema.json").read_text(encoding="utf-8"))
+    data = {"id": "editor.test.refusal", "surface": "editor", "steps": [
+        step("call", "editor_tool", tool="editor_state", **fields),
+    ]}
+    assert (sc.validate(data) == []) == valid
+    assert jsonschema.Draft202012Validator(schema).is_valid(data) == valid
+
+
 def test_runner_refuses_what_the_schema_refuses():
     base = {"id": "editor.test.typo", "surface": "editor"}
     assert sc.validate({**base, "steps": [{"id": "a", "do": {"kind": "note", "text": "t"}}]}) == []

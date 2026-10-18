@@ -133,6 +133,19 @@ public partial class EditorSmoke
             AiCheck("mcp_access_persisted", EditorMcpAccess.Enabled("commands"));
             var audit = EditorMcpAccess.AuditRows;
             AiCheck("mcp_access_audit", audit.Count == 1 && audit[0].Op == "editor_mcp_access" && audit[0].Args.Contains("guo/mcp_access/commands") && audit[0].Args.Contains("true"));
+            var auditPanel = new AuditPanel();
+            AddChild(auditPanel);
+            AiCheck("mcp_access_audit_offline_copy", auditPanel.Rows.Count == 1
+                && auditPanel.StatusText.Contains("0 server, 1 local MCP permission changes")
+                && auditPanel.HintText.Contains("available offline") && !auditPanel.HintText.Contains("connect to the server first"));
+            auditPanel.OnAdminOpen();
+            auditPanel.Handle(new JsonObject { ["entries"] = new JsonArray { new JsonObject
+            { ["at"] = DateTime.UtcNow.ToString("O"), ["editor"] = "server user", ["op"] = "admin_save", ["ok"] = true } } });
+            AiCheck("mcp_access_audit_merged_copy", auditPanel.Rows.Count == 2
+                && auditPanel.StatusText.Contains("1 server, 1 local MCP permission changes") && !auditPanel.StatusText.Contains("server's latest"));
+            auditPanel.SetFilter("editor_mcp_access", null, null);
+            AiCheck("mcp_access_audit_filtered_count", auditPanel.Shown.Count == 1 && auditPanel.StatusText.Contains("1 of 2 entries"));
+            auditPanel.Free();
             AiCheck("mcp_access_explicit_allow", await host.RunAsync("admin_command", new JsonObject(), CancellationToken.None, true) == "ran");
             Environment.SetEnvironmentVariable("GUO_EDITOR_SCRIPTED", "1");
             Environment.SetEnvironmentVariable("GUO_EDITOR_MCP_PREAPPROVED", "admin_command,admin_save");

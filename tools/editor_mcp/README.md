@@ -127,7 +127,9 @@ Every change commits a UTC `editor_mcp_access` audit record alongside the new
 permission. The Admin Audit list combines these local records with the server's
 AD8 log; its filters and CSV include both. No connection is needed to record a
 change. The MCP cannot edit its own permissions. Refusals name the required
-setting. The AI-enabled preference remains the outer gate.
+setting. The AI-enabled preference remains the outer gate. MCP group settings
+hide while AI is off; re-enabling AI restores their saved values without changing
+the policy or audit. The AI-enabled preference stays reachable.
 
 A malformed or unreadable policy denies every MCP call. Startup keeps the addon,
 manual authoring and Audit UI available; the Audit panel and editor warning show
