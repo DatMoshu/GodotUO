@@ -24,3 +24,7 @@
 # : "${GUO_RUNS_DB:=<path to the shared runs.db>}"
 # : "${GUO_RUNS_SHARED_DIR:=<path to the shared runs folder>}"
 # : "${GUO_RUNS_VIDEO_DIR:=<path to the video folder>}"
+
+# Generated output outside the repo, one folder per checkout (UO_CHECKOUT is
+# this checkout's folder name, set by common.sh).
+# : "${UO_BUILD_DIR:=<path to a work folder>/$UO_CHECKOUT}"

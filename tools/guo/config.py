@@ -196,7 +196,7 @@ def launcher_settings(root: Path, windows: bool | None = None) -> dict[str, str]
     """
     windows = sys.platform == "win32" if windows is None else windows
     shared = root / "launchers" / "_shared"
-    values = {"UO_ROOT": str(root)}
+    values = {"UO_ROOT": str(root), "UO_CHECKOUT": root.name}
     if not windows and (shared / "config.sh").is_file():
         if (shared / "config.local.sh").is_file():
             values = parse_config_sh(shared / "config.local.sh", values)
@@ -305,6 +305,8 @@ class Config:
     agent_queue: Path | None = None
     # Archived gate evidence (tools/evidence_archive): outside every linked worktree.
     evidence_dir: Path | None = None
+    # Generated output (UO_BUILD_DIR): this checkout's build/ unless pointed outside the repo.
+    build_dir: Path | None = None
     # Editor MCP is opt-in; its token is environment-only and never part of Config.
     editor_mcp_port: str = ""
     editor_mcp_python: Path | None = None
@@ -354,7 +356,7 @@ class Config:
 
     @property
     def build(self) -> Path:
-        return self.root / "build"
+        return self.build_dir or self.root / "build"
 
     @property
     def shard_src(self) -> Path:
@@ -505,7 +507,10 @@ def load_config(root: Path | None = None) -> Config:
         ws_bridge_port = 2594
     # config.bat builds this on UO_ROOT, which common.bat sets before calling
     # it; outside a launcher it is this repo's root.
-    world = get("UO_WORLD_PROJECT") or str(root / "build" / "world" / "default")
+    build_dir = native_path(os.path.expandvars(get("UO_BUILD_DIR").replace("%UO_ROOT%", str(root))))
+    if not build_dir or "%" in build_dir:
+        build_dir = str(root / "build")
+    world = get("UO_WORLD_PROJECT") or str(Path(build_dir) / "world" / "default")
     world = native_path(world.replace("%UO_ROOT%", str(root)))
 
     def home_path_or_none(key: str) -> Path | None:
@@ -599,11 +604,12 @@ def load_config(root: Path | None = None) -> Config:
         editor_mcp_python=path_or_none("GUO_EDITOR_MCP_PYTHON"),
         godot_home_setting=godot_home_setting,
         upstream_dir_setting=upstream_dir_setting,
-        art_exchange=Path(native_path(get("UO_ART_EXCHANGE").replace("%UO_ROOT%", str(root)) or str(root / "build" / "art_exchange"))),
+        build_dir=Path(build_dir),
+        art_exchange=Path(native_path(get("UO_ART_EXCHANGE").replace("%UO_ROOT%", str(root)) or str(Path(build_dir) / "art_exchange"))),
         pixelorama_setting=path_or_none("UO_PIXELORAMA"),
         pinta_setting=path_or_none("UO_PINTA"),
         comfy_url=get("UO_COMFY_URL", "http://127.0.0.1:8188"),
-        comfy_workflows=Path(native_path(get("UO_COMFY_WORKFLOWS").replace("%UO_ROOT%", str(root)) or str(root / "build" / "art_exchange" / "workflows"))),
+        comfy_workflows=Path(native_path(get("UO_COMFY_WORKFLOWS").replace("%UO_ROOT%", str(root)) or str(Path(build_dir) / "art_exchange" / "workflows"))),
         layout_cdda_dir=path_or_none("UO_LAYOUT_CDDA_DIR"),
         layout_zomboid_dir=path_or_none("UO_LAYOUT_ZOMBOID_DIR"),
     )

@@ -20,6 +20,8 @@ REM ============================================================================
 
 REM --- Resolve repo root (this file lives at <root>\launchers\_shared) -------
 for %%I in ("%~dp0..\..") do set "UO_ROOT=%%~fI"
+REM  The checkout's folder name, for a per-checkout UO_BUILD_DIR in config.local.bat.
+for %%I in ("%UO_ROOT%") do set "UO_CHECKOUT=%%~nxI"
 
 REM --- 3. central shared config (lowest precedence, optional) ---------------
 REM  Set UO_COMMON_CONFIG to a shared config.bat when several UO projects live
@@ -78,7 +80,7 @@ set "UO_GODOT_PROJECT=%UO_ROOT%\godot\GUO"
 set "UO_SOURCES=%UO_UPSTREAM_DIR%"
 set "UO_TOOLS=%UO_ROOT%\tools"
 set "UO_DOCS=%UO_ROOT%\docs"
-set "UO_BUILD=%UO_ROOT%\build"
+set "UO_BUILD=%UO_BUILD_DIR%"
 
 REM --- Resolve the Godot executables ---------------------------------------
 set "UO_GODOT_DIR=%UO_GODOT_HOME%\%UO_GODOT_RELEASE%"

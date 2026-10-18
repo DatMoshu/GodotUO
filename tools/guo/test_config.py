@@ -240,6 +240,20 @@ class ConfigTests(unittest.TestCase):
         self.defaults.write_text('if not defined UO_CACHE_DIR set "UO_CACHE_DIR=%LOCALAPPDATA%\\GUO\\cache"', encoding="utf-8")
         self.assertEqual(load_config(self.root).cache_dir, self.root / "fixture-home" / ".local" / "share" / "GUO" / "cache")
 
+    def test_build_dir_defaults_to_checkout_build(self):
+        config = load_config(self.root)
+        self.assertEqual(config.build, self.root / "build")
+        self.assertEqual(config.art_exchange, self.root / "build" / "art_exchange")
+
+    def test_build_dir_per_checkout_from_local_config(self):
+        outside = self.root.parent / "work"
+        self.local.write_text(f'if not defined UO_BUILD_DIR set "UO_BUILD_DIR={outside}\\%UO_CHECKOUT%"', encoding="utf-8")
+        self.defaults.write_text('if not defined UO_WORLD_PROJECT set "UO_WORLD_PROJECT=%UO_BUILD_DIR%\\world\\default"', encoding="utf-8")
+        config = load_config(self.root)
+        self.assertEqual(config.build, outside / self.root.name)
+        self.assertEqual(config.upstream_build, outside / self.root.name / "cuo")
+        self.assertEqual(config.world_project, outside / self.root.name / "world" / "default")
+
     def test_store_defaults_are_checkout_relative(self):
         config = load_config(self.root)
         self.assertEqual(config.store_dir, self.root / "build/store_cdn")

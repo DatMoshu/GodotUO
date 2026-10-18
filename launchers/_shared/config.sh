@@ -44,6 +44,12 @@ unset _guo_shared_dir
 # Empty = $XDG_DATA_HOME/GUO/cache (~/.local/share/GUO/cache).
 : "${UO_CACHE_DIR:=}"
 
+# --- Generated output --------------------------------------------------------
+# Where launchers and tools write generated files. The default is this
+# checkout's build/ (gitignored). Point it outside the repo in config.local.sh,
+# one folder per checkout; config.local.sh.example shows how.
+: "${UO_BUILD_DIR:=$UO_ROOT/build}"
+
 # --- Agent request queue -----------------------------------------------------
 # GUO_EDITOR_MCP_TOKEN is environment-only; never put it here.
 : "${GUO_EDITOR_MCP_PORT:=}"
@@ -52,7 +58,7 @@ unset _guo_shared_dir
 : "${UO_AGENT_QUEUE:=}"
 
 # --- World project (the editor) ----------------------------------------------
-: "${UO_WORLD_PROJECT:=$UO_ROOT/build/world/default}"
+: "${UO_WORLD_PROJECT:=$UO_BUILD_DIR/world/default}"
 
 # --- Map generator (tools/mapgen, ADR-0030) ----------------------------------
 # Empty = next to the cache (~/.local/share/GUO/mapgen).
@@ -71,7 +77,7 @@ unset _guo_shared_dir
 : "${UO_SHARD_REF:=d4531cd94b739613155225c234900de9f47d2c88}"
 : "${UO_SHARD_SRC:=$UO_ROOT/tools/modernuo/src}"
 : "${UO_SHARD_DIST:=$UO_SHARD_SRC/Distribution}"
-: "${UO_PLAYERBOTS_DIR:=$UO_ROOT/build/playerbots}"
+: "${UO_PLAYERBOTS_DIR:=$UO_BUILD_DIR/playerbots}"
 : "${UO_PLAYERBOTS_PORT:=2640}"
 : "${UO_SHARD_BIND:=127.0.0.1}"
 # The owner and GM passwords are generated on the shard's first run into the
@@ -132,10 +138,10 @@ unset _guo_shared_dir
 : "${UO_STORE_BASE_URL:=}"
 
 # --- Art pipeline (ADR-0029) -------------------------------------------------
-: "${UO_ART_EXCHANGE:=$UO_ROOT/build/art_exchange}"
+: "${UO_ART_EXCHANGE:=$UO_BUILD_DIR/art_exchange}"
 : "${UO_PIXELORAMA:=}"
 : "${UO_PINTA:=}"
 : "${UO_COMFY_URL:=http://127.0.0.1:8188}"
-: "${UO_COMFY_WORKFLOWS:=$UO_ROOT/build/art_exchange/workflows}"
+: "${UO_COMFY_WORKFLOWS:=$UO_BUILD_DIR/art_exchange/workflows}"
 
 set +a
