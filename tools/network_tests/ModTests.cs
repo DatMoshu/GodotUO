@@ -205,6 +205,7 @@ static class ModTests
         Throws(() => Manifest("x", "{\"id\":\"0xF9\"},{\"id\":249}"), "declared twice", "duplicate declaration refused");
         Throws(() => Manifest("x", "{\"id\":\"0xF9\"}", "[]"), "shards", "an empty shards list refused");
         Throws(() => Manifest("Bad Id", "{\"id\":\"0xF9\"}"), "id must be", "a bad mod id refused");
+        Throws(() => Manifest("x", "{\"id\":\"0xBF\",\"subcommand\":\"0x4755\"}"), "reserved by GUO", "the shard offer subcommand is reserved");
         Throws(() => ModManifest.Parse(Encoding.UTF8.GetString(Encoding.UTF8.GetBytes(
             "{\"schema\":\"guo/mod@1\",\"id\":\"x\",\"version\":\"1.0.0\",\"title\":\"t\",\"author\":\"a\",\"abi\":1,\"assembly\":\"..\\\\M.dll\",\"entry\":\"M\",\"shards\":[\"*\"],\"packets\":[{\"id\":1}]}")), null),
             "assembly must be", "an assembly path outside the folder refused");
@@ -218,6 +219,7 @@ static class ModTests
             var cases = Regex.Matches(handlers.Substring(start, end - start), @"^ {16}case (0x[0-9A-Fa-f]+|\d+):", RegexOptions.Multiline)
                 .Select(x => (ushort)(x.Groups[1].Value.StartsWith("0x") ? Convert.ToInt32(x.Groups[1].Value, 16) : int.Parse(x.Groups[1].Value)))
                 .ToHashSet();
+            cases.ExceptWith(PacketModRegistry.ReservedSubcommands); // reserved ones may gain a client case
             Check(cases.Count > 10 && cases.SetEquals(PacketModRegistry.ClientSubcommands),
                 "ClientSubcommands matches ExtendedCommand: " + string.Join(",", cases.Except(PacketModRegistry.ClientSubcommands).Concat(PacketModRegistry.ClientSubcommands.Except(cases)).Select(c => $"0x{c:X}")));
         }

@@ -2765,7 +2765,8 @@ A packet declaration: `id` 0..255 as a number or `"0xF9"`; `subcommand`
 (0xBF only) 0..65535 as a number or hex string; `length` -1 (dynamic, bytes
 1-2 carry it; the default) or 1..32767; `override` true only when the client
 already handles that id or subcommand. Declaring the same id and subcommand
-twice is refused.
+twice is refused. 0xBF subcommands GUO reserves for itself are refused
+whatever the declaration: 0x4755 (the shard offer, `guo/shard-offer@1`).
 
 At start each mod's `IGuoMod.Register` calls `AddPacket` for packets it
 declared. A registration whose client-version range excludes this client is
