@@ -1,4 +1,5 @@
 """Hermetic configuration precedence and path-resolution regressions."""
+import dataclasses
 import json
 import os
 from pathlib import Path
@@ -253,6 +254,12 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config.build, outside / self.root.name)
         self.assertEqual(config.upstream_build, outside / self.root.name / "cuo")
         self.assertEqual(config.world_project, outside / self.root.name / "world" / "default")
+
+    def test_default_build_follows_a_replaced_root(self):
+        # Tools and tests re-root a loaded Config; its default build/ must move with it.
+        moved = dataclasses.replace(load_config(self.root), root=self.root / "elsewhere")
+        self.assertIsNone(moved.build_dir)
+        self.assertEqual(moved.build, self.root / "elsewhere" / "build")
 
     def test_store_defaults_are_checkout_relative(self):
         config = load_config(self.root)
