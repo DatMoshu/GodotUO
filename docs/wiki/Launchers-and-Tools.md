@@ -69,7 +69,7 @@ shared logic), and their Linux twins `config.sh`, `config.local.sh` and
 
 | Launcher | Does |
 |---|---|
-| `build.bat` | `dotnet build` of the client. |
+| `build.bat` | `dotnet build` of the client; stops after `UO_BUILD_TIMEOUT` seconds (180) and cleans up only what it started. |
 | `smoke.bat` | The seven-step health check: engine, imports, C# build, client data, offline load, the editor add-on, the launchers. Run before every commit. |
 | `screenshot.bat` | Boots the client with `--screenshot` into `build\screenshots`; extra flags pass through (`--play --shot-after N`). |
 | `playtest.bat` | A scripted session against the shard: log in, walk, gumps, drag, speak; exit 0 only if every check passed. |
@@ -105,13 +105,28 @@ The world authoring tools, each printing its usage when run with nothing:
 (procedural maps), `mapgen_districts.bat` (towns on them) and `uopack.bat`
 (art, gumps and animations out to PNG and back).
 
-### `windows\`, `android\`, `web\`
+### `windows\`, `android\`, `web\`, `steamdeck\`
 
 The export pipelines: `doctor.bat` (what the export needs and what this
 machine has), `export.bat`, and for Android `install.bat`, `run.bat`,
-`smoke.bat`, `dual_probe.bat`; for web `serve.bat` and `smoke.bat`. See
-[Windows Build](Windows-Build.md), [Android Build](Android-Build.md) and, for
-web, the [FAQ](FAQ.md).
+`smoke.bat` (`--avd guo_phone` for GUO's own emulator), `dual_probe.bat`,
+`portrait_probe.bat`, `device_manager.bat`; for web `serve.bat`,
+`smoke.bat` and `ws_bridge.bat`; for the Steam Deck `push.bat`, `run.bat`,
+`screenshot.bat` and `smoke.bat`. See [Windows Build](Windows-Build.md),
+[Android Build](Android-Build.md), [Web Client](Web-Client.md) and
+[Steam Deck](Steam-Deck.md).
+
+### `store\`
+
+The local Asset Store: `serve.bat`, `publish.bat`, `open.bat` and
+`keygen.bat`. See [Asset Store](Asset-Store.md).
+
+### Everything else
+
+This page lists the main launchers. `launchers\dev\launcher_lint.bat --list`
+prints every launcher pair with its one-line description, including
+`art\`, `servuo\` and the rest of `dev\` (`perf_probe`, `scenario_run`,
+`server_lab`, `port_drift`, `pytest_all`, `mcp` and more).
 
 ## Tools
 
@@ -133,7 +148,7 @@ web, the [FAQ](FAQ.md).
 | `brand` | `run.py [--sheet]` | Every app icon and the splash from the sigil. |
 | `windows` | `run.py doctor\|preset\|export\|icon` | The Windows export and its icon check. |
 | `android` | `run.py doctor\|templates\|keystore\|settings\|preset\|export\|install\|run\|logcat\|push\|smoke\|dual_probe\|displays` | The Android pipeline. |
-| `web` | `run.py doctor\|preset\|export\|serve\|smoke` | The web pipeline; `doctor` and `export` print the upstream refusal. |
+| `web` | `run.py doctor\|preset\|export\|serve\|smoke` | The web pipeline, on the community engine build in `tools\godot_web`. |
 | `bg_videos` | `run.py [--only] [--size] [--out]` | Renders the ten built-in background loops. |
 | `editor_smoke`, `editor_live`, `editor_shard`, `world`, `world_parity` | see [Editor](Editor.md) | The editor add-on's checks, the private shard instance, the world export and its parity check. |
 | `modernuo` | `configure.py`, `patches\`, `config\` | The dev shard's patches and configuration templates; the checkout itself is gitignored. |

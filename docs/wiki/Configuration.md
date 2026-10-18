@@ -24,8 +24,9 @@ tool or runtime hardcodes a path. CI rejects a commit that puts a machine
 path anywhere but `config.local.bat`.
 
 `common.bat` derives `UO_ROOT`, `UO_GODOT_PROJECT`, `UO_SOURCES`, `UO_TOOLS`,
-`UO_DOCS`, `UO_BUILD`, `GODOT_EXE` and `GODOT_CONSOLE` from these; they are
-not settings.
+`UO_DOCS`, `UO_BUILD` (which follows `UO_BUILD_DIR`), `UO_CHECKOUT` (this
+checkout's folder name), `GODOT_EXE` and `GODOT_CONSOLE` from these; they
+are not settings.
 
 ## Engine
 
@@ -66,7 +67,7 @@ not settings.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `UO_WORLD_PROJECT` | `%UO_ROOT%\build\world\default` | The world project folder the editor edits and `tools\world` exports. |
+| `UO_WORLD_PROJECT` | `%UO_BUILD_DIR%\world\default` | The world project folder the editor edits and `tools\world` exports. |
 | `UO_EDITOR_LIVE_HOST` | `127.0.0.1` | The bridge the editor's live tier connects to (ADR-0012). |
 | `UO_EDITOR_LIVE_PORT` | `2595` | Its port. |
 | `UO_EDITOR_NAME` | `%USERNAME%` | The name an editor announces on the bridge. |
@@ -89,8 +90,26 @@ not settings.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `UO_WEB_PORT` | `8060` | Port `launchers\web\serve.bat` serves `build\web` on. The export itself is blocked upstream, see [FAQ](FAQ.md). |
+| `UO_WEB_PORT` | `8060` | Port `launchers\web\serve.bat` serves `build\web` on. Exporting needs the community engine build, see [Web Client](Web-Client.md). |
 | `UO_WEB_BROWSER` | unset | A browser executable for the web smoke; Chrome or Edge is found otherwise. |
+
+## Generated output
+
+| Key | Default | Meaning |
+|---|---|---|
+| `UO_BUILD_DIR` | `%UO_ROOT%\build` | Where screenshots, smoke runs, exports and staged data go. Point it outside the checkout; `if not defined UO_BUILD_DIR set "UO_BUILD_DIR=<work folder>\%UO_CHECKOUT%"` in `config.local.bat` gives each checkout its own folder. |
+| `UO_BUILD_TIMEOUT` | `180` | Seconds before `launchers\dev\build.bat` stops a headless build (1 to 86400). It cleans up only the processes it started. |
+
+## Editor automation (opt-in)
+
+| Key | Default | Meaning |
+|---|---|---|
+| `GUO_EDITOR_MCP_PORT` | empty (off) | The port the editor's automation endpoint listens on. Its token, `GUO_EDITOR_MCP_TOKEN`, lives only in the environment, never in a file. See `tools/editor_mcp/README.md` and [Admin Tab](Admin-Tab.md#automation-permissions). |
+| `GUO_EDITOR_MCP_PYTHON` | empty | The Python the editor's MCP bridge runs under, when `python` is not on `PATH`. |
+
+The Steam Deck (`UO_DECK_*`), Store (`UO_STORE_*`) and art exchange keys are
+described in `config.bat` beside their defaults and on [Steam Deck](Steam-Deck.md)
+and [Asset Store](Asset-Store.md).
 
 ## Tooling
 
