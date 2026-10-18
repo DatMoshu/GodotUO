@@ -590,7 +590,7 @@ namespace GUO.IO.Audio
             try
             {
                 string[] parts = job.Voice.Split('|');
-                if (parts.Length < 4 || !int.TryParse(parts[0].Substring("design:".Length), out int serial))
+                if (parts.Length < 4 || !int.TryParse(parts[0].Substring("design:".Length), out int serial) || !int.TryParse(parts[2], out int body))
                 {
                     r.Error = $"error: bad design job '{job.Voice}'";
                     return r;
@@ -607,40 +607,23 @@ namespace GUO.IO.Audio
                 // job holds a hard ~2 min ceiling while speaks keep theirs.
                 // Timeouts live here AND in the tool call: whichever fires
                 // first reports, the other cleans up.
-                var psi = new ProcessStartInfo(Python(),
-                    $"\"{tool}\" design --serial {serial} --name \"{parts[1]}\" --body {parts[2]} --type \"{parts[3]}\" --timeout 110")
-                {
-                    UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    CreateNoWindow = true,
-                };
-                using var proc = Process.Start(psi);
-                if (proc == null)
+                var run = RunTool(new[] { tool, "design", "--serial", serial.ToString(), "--name=" + parts[1], "--body", body.ToString(), "--type=" + parts[3], "--timeout", "110" }, 3 * 60 * 1000);
+                if (run == null)
                 {
                     r.Error = "error: could not start python (GUO_PYTHON)";
                     return r;
                 }
 
-                string stdout = proc.StandardOutput.ReadToEnd();
-                string stderr = proc.StandardError.ReadToEnd();
-                if (!proc.WaitForExit(3 * 60 * 1000))
+                var (exited, exitCode, stdout, stderr) = run.Value;
+                if (!exited)
                 {
-                    try
-                    {
-                        proc.Kill();
-                    }
-                    catch (Exception)
-                    {
-                    }
-
                     r.Error = "error: voice design timed out";
                     return r;
                 }
 
-                if (proc.ExitCode != 0)
+                if (exitCode != 0)
                 {
-                    r.Error = $"error: voice design exit {proc.ExitCode}: {Short(stderr.Length > 0 ? stderr : stdout)}";
+                    r.Error = $"error: voice design exit {exitCode}: {Short(stderr.Length > 0 ? stderr : stdout)}";
                     return r;
                 }
 
@@ -652,6 +635,50 @@ namespace GUO.IO.Audio
                 r.Error = $"error: {ex.GetType().Name}: {ex.Message}";
                 return r;
             }
+        }
+
+        // Arguments go through ArgumentList, so names and speech from the
+        // server reach the tool as single arguments whatever they contain
+        // (text values use --flag=value, so a leading '-' is not an option).
+        // Both streams drain while it runs: reading them to the end first
+        // would block until exit and the timeout could never fire.
+        private static (bool Exited, int ExitCode, string Stdout, string Stderr)? RunTool(string[] args, int timeoutMs)
+        {
+            var psi = new ProcessStartInfo(Python())
+            {
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true,
+            };
+            foreach (string arg in args)
+            {
+                psi.ArgumentList.Add(arg);
+            }
+
+            using var proc = Process.Start(psi);
+            if (proc == null)
+            {
+                return null;
+            }
+
+            Task<string> stdout = proc.StandardOutput.ReadToEndAsync();
+            Task<string> stderr = proc.StandardError.ReadToEndAsync();
+            if (!proc.WaitForExit(timeoutMs))
+            {
+                try
+                {
+                    proc.Kill(entireProcessTree: true);
+                }
+                catch (Exception)
+                {
+                }
+
+                return (false, -1, "", "");
+            }
+
+            proc.WaitForExit();
+            return (true, proc.ExitCode, stdout.Result, stderr.Result);
         }
 
         private static Result Synthesize(Job job)
@@ -674,40 +701,23 @@ namespace GUO.IO.Audio
                 }
 
                 string tmp = Path.Combine(Path.GetTempPath(), $"guo_voice_{Guid.NewGuid():N}");
-                var psi = new ProcessStartInfo(Python(),
-                    $"\"{tool}\" speak --voice \"{job.Voice}\" --text \"{job.Text.Replace("\"", "")}\" --seed {job.Seed} --out \"{tmp}.mp3\" --wav")
-                {
-                    UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    CreateNoWindow = true,
-                };
-                using var proc = Process.Start(psi);
-                if (proc == null)
+                var run = RunTool(new[] { tool, "speak", "--voice=" + job.Voice, "--text=" + job.Text, "--seed", job.Seed.ToString(), "--out", tmp + ".mp3", "--wav" }, 2 * 60 * 1000);
+                if (run == null)
                 {
                     r.Error = "error: could not start python (GUO_PYTHON)";
                     return r;
                 }
 
-                string stdout = proc.StandardOutput.ReadToEnd();
-                string stderr = proc.StandardError.ReadToEnd();
-                if (!proc.WaitForExit(2 * 60 * 1000))
+                var (exited, exitCode, stdout, stderr) = run.Value;
+                if (!exited)
                 {
-                    try
-                    {
-                        proc.Kill();
-                    }
-                    catch (Exception)
-                    {
-                    }
-
                     r.Error = "error: voice synthesis timed out";
                     return r;
                 }
 
-                if (proc.ExitCode != 0)
+                if (exitCode != 0)
                 {
-                    r.Error = $"error: voice tool exit {proc.ExitCode}: {Short(stderr.Length > 0 ? stderr : stdout)}";
+                    r.Error = $"error: voice tool exit {exitCode}: {Short(stderr.Length > 0 ? stderr : stdout)}";
                     return r;
                 }
 
