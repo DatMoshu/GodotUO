@@ -29,7 +29,7 @@ upstream to any server project until Moshu has reviewed it.
 - **Sphere X** had no recorded commit: the adapter probe ran a nightly build, and the repo's `Nightly` tag dates from
   2022. The pins above are the heads of the stable branches on 2026-10-09. Scripts-X dropped its own licence
   boilerplate in that commit; its LICENSE file is Apache-2.0, as Source-X's.
-- RunUO and POL are later rows and have no `lab` entry yet.
+- RunUO and POL are later rows and have no `lab` entry yet; POL's is assessed below (NET-01, 2026-10-18).
 
 ## What each server needs
 
@@ -42,6 +42,36 @@ upstream to any server project until Moshu has reviewed it.
 
 GUO connects as client `UO_CLIENT_VERSION` (7.0.107.76 by default) without encryption, which every row accepts once
 configured as above.
+
+## Client versions
+
+The lab runs each row as `UO_CLIENT_VERSION`; `--client-version` reports another one for a run, and each result keeps
+the version it ran as (the wiki's "GUO reported as" column). On 2026-10-18 the newest classic client is 7.0.107.76:
+it is what EA's patcher installs, and the newest version ClassicUO's `ClientVersion` table knows. EA's renderer upgrade
+beta (announced 2026-10-13) ships through a new launcher and publishes no version number yet; the lab adds a run for it
+when a version is known and the data set is installed beside the main one, never over it. So "7.0.107 and the latest"
+is one run per row today.
+
+## POL (assessed for NET-01, not a row yet)
+
+A community POL shard (moving from 0.98 to 100.3) reports that GUO logs in and plays. The lab does not run POL yet;
+this is what a row needs, checked against the upstream repositories on 2026-10-18.
+
+| | |
+|---|---|
+| **Version** | 100.3 is not released: `polserver/polserver` says "active development is now 100.3" (#865); its Nightly release (2026-10-14) is the 100.3 build. The newest stable release is v100.2.0 (2026-02-16). Both ship Windows, Linux and macOS zips |
+| **Scripts** | POL runs nothing without a script package: `polserver/ModernDistro` (2026-09-13) or `ClassicDistro` (2026-03-07), compiled with POL's own `ecompile` |
+| **World** | `uoconvert` builds the realm from the client data. It reads UOP maps (`pol-core/plib/uopreader`), so it can read this install; the output goes to the lab's folder, never into the install |
+| **Licence** | GPL-2.0 core; fetched into the workspace at a pin, never vendored, like the other rows |
+| **Container** | `polserver/distro-docker-runner` is POL's own image: Ubuntu 20.04, downloads the Nightly Linux core and ModernDistro, runs `uoconvert`, listens on port 5003 only. Its last change is from 2020 and it pins a 2019 MySQL client package |
+
+**Why it is not a container row tonight.** Docker Desktop is installed on the lab machine but its engine is not
+running, and starting a machine-wide service is an owner decision, not a lab step. The runner image is also stale
+(2020, fixed port 5003, no loopback setting of its own). A native Windows row needs no new service: the Nightly
+Windows zip and a distro, `uoconvert` and `ecompile` run once at setup, `pol.cfg` and `servers.cfg` on
+127.0.0.1:2613, and the lab admin written into `accounts.txt` before the first boot, as the ServUO row writes
+`accounts.xml`. That is the proposed POL row (`tools/server_lab/pol.py`), a story of its own; the container variant
+waits for the owner's decision on running Docker.
 
 ## Consequences for the later stories
 

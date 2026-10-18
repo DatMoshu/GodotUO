@@ -163,6 +163,10 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 - Profile settings migrate automatically; profile version 10.
 
 ### Building and managing
+- The server lab has a ServUO row beside ModernUO (`server_lab.bat row
+  servuo`). Each result records which client version it ran as and which
+  evidence run it is filed under, and the compatibility page shows each
+  server's last run date. What a POL row needs is in `docs/server_lab.md`.
 - World editor: the Layers menu (Land, Statics, Multis, Roofs, Objects and the
   live layers) now looks like a button beside the others, keeps its ticks for
   the whole editor session, and switching Roofs off takes effect at once.

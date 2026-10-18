@@ -46,7 +46,8 @@ def ensure_row(grid: dict, backend: dict, era: str) -> dict:
     return row
 
 
-def cell_from_run(case: dict, exit_code: int, run_id: str | None, failed: list[str], note: str = "") -> dict:
+def cell_from_run(case: dict, exit_code: int, run_id: str | None, failed: list[str], note: str = "",
+                  client_version: str = "") -> dict:
     """One case's outcome from the scenario runner: exit 0 PASS, 2 could not start (not run), anything else a failure."""
     if exit_code == 0 and run_id:
         result = "PASS"
@@ -56,6 +57,8 @@ def cell_from_run(case: dict, exit_code: int, run_id: str | None, failed: list[s
         result = "FAIL (untriaged)"
     cell = {"result": result, "scenario": case["scenario"], "run_id": run_id,
             "run_dir": f"build/runs/{run_id}" if run_id else None, "failed_steps": failed, "when": now()}
+    if client_version:
+        cell["client_version"] = client_version
     if note:
         cell["note"] = note[:300]
     return cell
@@ -86,6 +89,17 @@ def result(row: dict | None, case: dict) -> str:
     return cell["result"] if cell else "not run"
 
 
+def last_run(row: dict | None) -> tuple[str, str, str]:
+    """(date, client versions, evidence) of a row's latest cells, for the wiki: the newest `when`, the client versions
+    its cells ran as, and the shared evidence run id the row was filed under."""
+    if not row or not row["cells"]:
+        return "never", "", ""
+    ran = [c for c in row["cells"].values() if c.get("when")]
+    when = max((c["when"] for c in ran), default="")[:10] or "never"
+    versions = sorted({c["client_version"] for c in ran if c.get("client_version")})
+    return when, ", ".join(versions), row.get("evidence", "")
+
+
 def wiki_page(grid: dict, cases: list[dict], backends: list[dict]) -> str:
     """docs/wiki/Server-Compatibility.md: which server works with GUO for what, with the pins and client on top."""
     lab = sorted((b for b in backends if "lab" in b), key=lambda b: b["lab"]["row"])
@@ -100,13 +114,15 @@ def wiki_page(grid: dict, cases: list[dict], backends: list[dict]) -> str:
         "",
         "## Servers and versions",
         "",
-        "| Server | Version tested | Era |",
-        "|---|---|---|",
+        "| Server | Version tested | Era | Last run | GUO reported as | Evidence |",
+        "|---|---|---|---|---|---|",
     ]
     for b in lab:
         row = grid["rows"].get(b["id"])
         pins = ", ".join(f"{r['role']} `{r['commit'][:9]}` ({r['date']})" for r in b["lab"]["repos"])
-        lines.append(f"| {b['name']} | {pins} | {row['era'] if row else b['lab']['era']['lab']} |")
+        when, versions, evidence = last_run(row)
+        lines.append(f"| {b['name']} | {pins} | {row['era'] if row else b['lab']['era']['lab']} | {when} | "
+                     f"{versions or '-'} | {('`' + evidence + '`') if evidence else '-'} |")
     lines += [
         "",
         "## Results",
@@ -126,9 +142,10 @@ def wiki_page(grid: dict, cases: list[dict], backends: list[dict]) -> str:
         "",
         "## How to run it",
         "",
-        "`launchers\\dev\\server_lab.bat row modernuo` sets the server up (fetch at its pinned version, build,",
-        "configure on this computer only, with a generated admin account), starts it, runs every case that has a",
-        "scenario, stops it and rewrites this page. Details: `tools/server_lab/README.md` and",
+        "`launchers\\dev\\server_lab.bat row modernuo` (or `servuo`) sets the server up (fetch at its pinned",
+        "version, build, configure on this computer only, with a generated admin account), starts it, runs every case",
+        "that has a scenario, stops it and rewrites this page. `--client-version` reports another client version and",
+        "`--evidence` names the evidence run the results are filed under. Details: `tools/server_lab/README.md` and",
         "[the pins table](../server_lab.md).",
         "",
     ]

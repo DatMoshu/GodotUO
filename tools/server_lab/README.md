@@ -9,14 +9,20 @@ python tools\server_lab\run.py doctor [BACKEND]          toolchains, disk, UO da
 python tools\server_lab\run.py setup BACKEND             fetch at the pin, patch, build, configure, admin, profile
 python tools\server_lab\run.py start | stop | status BACKEND
 python tools\server_lab\run.py seed BACKEND              give the lab account its character (once per world)
-python tools\server_lab\run.py cases BACKEND [--case 0,1,9] [--no-record]
-python tools\server_lab\run.py row BACKEND [--no-record] [--reseed]   all of it, then stop, wiki, card
+python tools\server_lab\run.py cases BACKEND [--case 0,1,9] [--no-record] [--client-version V] [--evidence ID]
+python tools\server_lab\run.py row BACKEND [--no-record] [--reseed] [--client-version V] [--evidence ID]
+                                                         all of it, then stop, wiki, card
 python tools\server_lab\run.py wiki                      rewrite the wiki page from the grid
 python tools\server_lab\run.py card BACKEND              build/server_lab/card_<backend>.json (sends nothing)
 ```
 
-`launchers\dev\server_lab.bat` runs the same. Backends today: `modernuo` (SV1). ServUO, UOX3 and Sphere X arrive
-with SV4, SV5 and SV6; their rows read "not run" until then.
+`launchers\dev\server_lab.bat` runs the same. Backends today: `modernuo` (SV1) and `servuo` (NET-01). UOX3 and
+Sphere X arrive with SV5 and SV6; their rows read "not run" until then. POL is assessed in
+[docs/server_lab.md](../../docs/server_lab.md) and has no row yet.
+
+`--client-version` makes GUO report another client version for the run (the scenario runner and the seed login get it
+as `UO_CLIENT_VERSION`); each result keeps the version it ran as. `--evidence` records on the row the shared evidence
+run id its results are filed under; the wiki shows it beside the row's last run date.
 
 ## What each step does
 
@@ -27,6 +33,12 @@ with SV4, SV5 and SV6; their rows read "not run" until then.
 | seed | One `launchers\game\play.bat --play` login as the lab admin on a scratch profile: the client's probe login makes the character, then `[save` keeps it through the lab's forced stop |
 | cases | Each case of `cases.json` that has a scenario, through `tools/scenario_run/run.py <scenario> --server <profile>`; the login goes to the runner in `GUO_SCENARIO_ACCOUNT` / `GUO_SCENARIO_PASSWORD`, never on a command line |
 | row | setup when missing, start, seed when not yet seeded, cases, stop (only a server it started), wiki, card |
+
+The ServUO row differs in four places: setup makes a shallow fetch of `tools/servuo`'s pin (no patches), builds with
+`dotnet build ServUO.sln -c Release`, and writes `tools/servuo/config` over its `Config` with the lab's port (2611)
+and shard name. ServUO asks on its console for an owner when it boots with no accounts, and the server manager gives
+it no console, so setup and start write the lab admin as Owner into `Saves/Accounts/accounts.xml` while the world has
+no accounts; ServUO hashes the password at its first save. An existing accounts file is never replaced.
 
 ## Safety
 

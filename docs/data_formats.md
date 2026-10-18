@@ -2660,7 +2660,7 @@ The lab runs the scenario cases of `tools/server_lab/cases.json` against each se
 ```
 <workspace>/server_lab/<backend>/lab.json       {"profile_id": 32 hex, "seeded": UTC ISO-8601 or absent}
 <workspace>/server_lab/<backend>/secrets.json   {"account", "password"}: the lab admin, generated; never committed
-<workspace>/servers/<profile_id>/src/            the server checkout and build (ModernUO: src/Distribution)
+<workspace>/servers/<profile_id>/src/            the server checkout and build (ModernUO: src/Distribution; ServUO: src)
 build/server_lab/grid.json                       the grid (below)
 build/server_lab/card_<backend>.json             a row's card: {title, ok, passed, scripted, body}; sends nothing
 build/server_lab/<backend>/{build,seed}.log      setup and seed output
@@ -2675,7 +2675,9 @@ id, or null until written) and `needs_server` (false only for case 0). **`table.
 null, "rows": {"<backend>": {name, row, era, pins: [{role, commit (9 hex), date}], cells: {"<n>": cell}}}}`. A cell:
 `result` (`PASS`, `FAIL (GUO)`, `FAIL (server gap)`, `FAIL (untriaged)`, `n/a`, `not run`), `scenario`, `run_id` and
 `run_dir` (`build/runs/<run_id>`, or null when the run could not start), `failed_steps` (step ids), `when`, and
-optionally `note` (why it did not run, at most 300 characters) and `why` (from triage). Runner exit 0 is `PASS`, 2 or
+optionally `note` (why it did not run, at most 300 characters), `why` (from triage) and `client_version` (the
+version GUO reported for the run: `UO_CLIENT_VERSION`, or `--client-version`). A row may carry `evidence`, the shared
+evidence run id (`<YYYYMMDD>_<seat-or-story>_<topic>`) its latest results are filed under (`--evidence`). Runner exit 0 is `PASS`, 2 or
 no run id `not run`, anything else `FAIL (untriaged)`; triage then names the owner. The file holds no machine paths
 and no credentials. `docs/wiki/Server-Compatibility.md` is generated from it with `triage.json` applied.
 
