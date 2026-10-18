@@ -30,6 +30,8 @@ before any comparison is claimed.
 - A hosted test client, once the engine side allows it (ADR-0008).
 
 **Editor and Store.**
+- Shard content negotiation: a connecting client learns which packs the server
+  requires; protocol and user consent remain future work.
 - Theme, sound and preset packs applied, not just installed.
 - A hosted Store catalogue on GitHub Pages.
 - The RunUO shard backend for the editor.
