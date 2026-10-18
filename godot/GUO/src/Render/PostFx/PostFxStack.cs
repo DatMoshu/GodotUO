@@ -100,6 +100,7 @@ namespace GUO.Renderer.PostFx
         private ColorRect _split;
         private RenderTarget2D _builtFor;
         private bool _dirty = true;
+        private ulong _builtFrame;
         private double _nextPoll;
         private object _commandsFor;
         private bool _loadedState;
@@ -173,8 +174,8 @@ namespace GUO.Renderer.PostFx
 
             if (world == null || world.IsDisposed)
             {
-                LastOutput = world;
-                return world;
+                LastOutput = null;
+                return null;
             }
 
             bool active = Split > 0f || !_preset.IsClassic;
@@ -189,12 +190,36 @@ namespace GUO.Renderer.PostFx
                 return LastOutput;
             }
 
-            // Rebuilt when the world target is replaced (a resize), so the stack
-            // is always created after the target it reads.
-            if (_dirty || _viewport == null || !ReferenceEquals(_builtFor, world) ||
+            // Rebuilds (including resize and pass toggles) replace the viewport.
+            // Its texture has not rendered yet: use the current world for the
+            // build frame, never an output whose viewport Teardown just freed.
+            Texture2D fallback = world.Texture;
+            if (_dirty || !GodotObject.IsInstanceValid(_viewport) || !ReferenceEquals(_builtFor, world) ||
                 _viewport.Size != Scaled(world))
             {
-                Build(world);
+                try
+                {
+                    Build(world);
+                }
+                catch (Exception e)
+                {
+                    Teardown();
+                    GD.PushWarning($"[GUO] postfx: rebuild failed; using the world without effects: {e.Message}");
+                }
+            }
+
+            if (!GodotObject.IsInstanceValid(_viewport) || !GodotObject.IsInstanceValid(_base))
+            {
+                LastOutput = fallback;
+                return LastOutput;
+            }
+
+            // All enabled shaders may be missing. There is no effect to run;
+            // return the world rather than exposing an empty viewport.
+            if (_built.Count == 0 && Split <= 0f)
+            {
+                LastOutput = fallback;
+                return LastOutput;
             }
 
             _base.Texture = world.Texture;
@@ -219,7 +244,7 @@ namespace GUO.Renderer.PostFx
                 m.SetShaderParameter("split", Split);
             }
 
-            LastOutput = _viewport.GetTexture();
+            LastOutput = Engine.GetProcessFrames() == _builtFrame ? fallback : _viewport.GetTexture();
             return LastOutput;
         }
 
@@ -305,6 +330,7 @@ namespace GUO.Renderer.PostFx
             host.AddChild(_viewport);
             RenderingServer.ViewportSetMeasureRenderTime(_viewport.GetViewportRid(), true);
             _builtFor = world;
+            _builtFrame = Engine.GetProcessFrames();
             _dirty = false;
         }
 
@@ -324,11 +350,11 @@ namespace GUO.Renderer.PostFx
 
         private void Teardown()
         {
-            _idViewport?.QueueFree();
+            if (GodotObject.IsInstanceValid(_idViewport)) _idViewport.QueueFree();
             _idViewport = null;
             _idHost = null;
             IdFor = null;
-            _viewport?.QueueFree();
+            if (GodotObject.IsInstanceValid(_viewport)) _viewport.QueueFree();
             _viewport = null;
             _base = null;
             _split = null;
@@ -526,7 +552,7 @@ namespace GUO.Renderer.PostFx
 
             return u.Type switch
             {
-                Variant.Type.Int => (int)Math.Round(value.AsSingle()),
+                Variant.Type.Int => (int)Math.Clamp(Math.Round((double)value.AsSingle()), (double)u.Min, (double)u.Max),
                 Variant.Type.Bool => value.AsSingle() != 0f,
                 _ => value,
             };
@@ -547,7 +573,10 @@ namespace GUO.Renderer.PostFx
                 case JsonValue v when v.GetValueKind() == JsonValueKind.True || v.GetValueKind() == JsonValueKind.False:
                     return v.GetValue<bool>();
                 case JsonValue v when v.GetValueKind() == JsonValueKind.Number:
-                    return v.GetValue<float>();
+                    // The integer slider stores a typed JsonValue<int>; it has
+                    // not been serialized/parsed yet, so GetValue<float> alone
+                    // cannot read it. Keep the numeric Variant path uniform.
+                    return v.TryGetValue<int>(out int integer) ? (float)integer : v.GetValue<float>();
                 case JsonValue v when v.GetValueKind() == JsonValueKind.String:
                     string s = v.GetValue<string>();
                     // A texture by path: res:// or a file beside the presets.
