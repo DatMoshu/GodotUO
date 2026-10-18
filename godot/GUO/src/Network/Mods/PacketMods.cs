@@ -43,6 +43,7 @@ namespace GUO.Network.Mods
         private readonly Func<byte, bool> _baseHandled;
         private readonly Action<string> _error;
         private string _shardHost;
+        private string _shardName;
         private bool[] _active = Array.Empty<bool>();
 
         public PacketModRegistry(uint clientVersion, Func<byte, bool> baseHandled, Action<string> error)
@@ -55,8 +56,11 @@ namespace GUO.Network.Mods
         public uint ClientVersion { get; }
 
         /// <summary>The host of the login server the user chose. A mod's packets apply only when
-        /// it is one of the mod's <c>shards</c> (or the mod lists "*").</summary>
+        /// it, or <see cref="ShardName"/>, is one of the mod's <c>shards</c> (or the mod lists "*").</summary>
         public Func<string> ShardHost { get; set; } = () => string.Empty;
+
+        /// <summary>The shard's name, when the client knows it; matched like the host.</summary>
+        public Func<string> ShardName { get; set; } = () => string.Empty;
 
         public List<ModManifest> Mods { get; } = new();
 
@@ -104,10 +108,12 @@ namespace GUO.Network.Mods
         private bool IsActive(ModManifest mod)
         {
             string host = ShardHost() ?? string.Empty;
-            if (!ReferenceEquals(host, _shardHost) || _active.Length != Mods.Count)
+            string shard = ShardName() ?? string.Empty;
+            if (!ReferenceEquals(host, _shardHost) || !ReferenceEquals(shard, _shardName) || _active.Length != Mods.Count)
             {
                 _shardHost = host;
-                _active = Mods.Select(m => m.AppliesTo(host)).ToArray();
+                _shardName = shard;
+                _active = Mods.Select(m => m.AppliesTo(host) || (shard.Length > 0 && m.AppliesTo(shard))).ToArray();
             }
             int i = Mods.IndexOf(mod);
             return i >= 0 && _active[i];

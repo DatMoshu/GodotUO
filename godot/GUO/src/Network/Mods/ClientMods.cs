@@ -59,7 +59,8 @@ namespace GUO.Network.Mods
 
             var registry = new PacketModRegistry((uint)version, PacketHandlers.Handler.HasHandler, Log.Error)
             {
-                ShardHost = () => Settings.GlobalSettings.IP
+                ShardHost = Shard.Host,
+                ShardName = Shard.Name
             };
             Results = ModLoader.LoadAll(folder, registry, m => new Context(m.Id, (uint)version));
 
@@ -73,6 +74,15 @@ namespace GUO.Network.Mods
 
             if (registry.Mods.Count > 0)
                 PacketModRegistry.Current = registry;
+        }
+
+        /// <summary>Which shard the client is on, for the mods' <c>shards</c> guard. Today the login
+        /// address the user chose and the server name picked from its list; NET-02's
+        /// ServerIdentity.Current (Host, ShardName) replaces both here when it lands, and only here.</summary>
+        private static class Shard
+        {
+            public static string Host() => Settings.GlobalSettings.IP;
+            public static string Name() => Settings.GlobalSettings.LastServerName;
         }
 
         private sealed class Context : IModContext

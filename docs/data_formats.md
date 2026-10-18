@@ -2758,7 +2758,7 @@ field refuses the mod.
 | `abi` | integer | the `ModAbi.Version` it was built for; must equal the client's (1) |
 | `assembly` | string | a `.dll` file name in the mod's folder, no path |
 | `entry` | string | full name of the public `IGuoMod` type |
-| `shards` | string array | 1-32 login hosts the mod applies to (compared case-insensitively with the login server address), or `"*"` |
+| `shards` | string array | 1-32 shards the mod applies to: login hosts or shard names, compared case-insensitively with the login server address and the chosen server name; or `"*"` |
 | `packets` | object array | 1-64 declarations, each `{id, subcommand?, length?, override?}` |
 
 A packet declaration: `id` 0..255 as a number or `"0xF9"`; `subcommand`

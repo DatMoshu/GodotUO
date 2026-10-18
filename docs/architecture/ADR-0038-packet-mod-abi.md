@@ -37,10 +37,12 @@ default, with the parity proof below.
    or that another mod already holds, refuses the whole mod. Unknown fields in
    `mod.json` refuse it too.
 4. **Guards.** Each registration may carry a client-version range; outside it
-   the registration is skipped. Each mod lists the login hosts it applies to
-   (`shards`, or `"*"`); on any other shard its packets are inactive and the
-   client parses as if it were not installed. A server identity or protocol
-   value from NET-02 can become a further guard in a later ABI revision.
+   the registration is skipped. Each mod lists the shards it applies to
+   (`shards`: login hosts or shard names, or `"*"`); on any other shard its
+   packets are inactive and the client parses as if it were not installed.
+   The shard is read in one adapter (`ClientMods.Shard`); NET-02's
+   `ServerIdentity.Current` (`Host`, `ShardName`) replaces its two lines
+   when it lands.
 5. **Two seams, both marked `PORT DEVIATION (GUO)`.**
    `PacketsTable.GetPacketLength` asks the registry for a mod's length, and
    `PacketHandlers.AnalyzePacket` offers a framed packet to the registry before
@@ -86,7 +88,7 @@ only from a shard they trust, as with an assistant plugin today.
 - `dotnet run --project tools/network_tests`: the parse loop with both seams,
   the sample mod loaded from its DLL, off-state framing, the shard and
   client-version guards, 0xBF subcommands, every refusal and strict
-  `mod.json` (32 checks).
+  `mod.json` (33 checks).
 - `godot/GUO/src/Network/Mods/ModsProbe.tscn` (smoke line, scenario
   `client.mods.probe`): inside the Godot process, the sample loads through
   the client's loader, a packet stream goes through the real `PacketsTable`
