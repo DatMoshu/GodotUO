@@ -305,7 +305,7 @@ class Config:
     agent_queue: Path | None = None
     # Archived gate evidence (tools/evidence_archive): outside every linked worktree.
     evidence_dir: Path | None = None
-    # Generated output (UO_BUILD_DIR): this checkout's build/ unless pointed outside the repo.
+    # Generated output (UO_BUILD_DIR) when pointed outside the checkout; None = root / "build".
     build_dir: Path | None = None
     # Editor MCP is opt-in; its token is environment-only and never part of Config.
     editor_mcp_port: str = ""
@@ -604,7 +604,9 @@ def load_config(root: Path | None = None) -> Config:
         editor_mcp_python=path_or_none("GUO_EDITOR_MCP_PYTHON"),
         godot_home_setting=godot_home_setting,
         upstream_dir_setting=upstream_dir_setting,
-        build_dir=Path(build_dir),
+        # Only an outside folder is stored: left at the checkout's build/, Config.build follows
+        # root, so dataclasses.replace(cfg, root=...) keeps every generated path under that root.
+        build_dir=None if Path(build_dir) == root / "build" else Path(build_dir),
         art_exchange=Path(native_path(get("UO_ART_EXCHANGE").replace("%UO_ROOT%", str(root)) or str(Path(build_dir) / "art_exchange"))),
         pixelorama_setting=path_or_none("UO_PIXELORAMA"),
         pinta_setting=path_or_none("UO_PINTA"),

@@ -46,8 +46,10 @@ def check(ok: bool, what: str) -> None:
 
 def paths(tmp: Path, fork: Path | None) -> web.Paths:
     # Everything the export touches lives under root: build/web and the project.
-    cfg = dataclasses.replace(web.load_config(), root=tmp, web_godot=fork)
-    return web.Paths(cfg)
+    cfg = dataclasses.replace(web.load_config(), root=tmp, build_dir=None, web_godot=fork)
+    p = web.Paths(cfg)
+    check(p.out_dir.resolve().is_relative_to(tmp.resolve()), "test outputs stay under the temp root")
+    return p
 
 
 def previous_build(p: web.Paths) -> None:
@@ -76,7 +78,7 @@ def data_server(tmp: Path) -> None:
     (root / "GUO.html").write_text("page")
     (data / "tiledata.mul").write_bytes(bytes(range(100)))
     (tmp / "secret.txt").write_text("outside")
-    cfg = dataclasses.replace(web.load_config(), root=tmp, web_port=0)
+    cfg = dataclasses.replace(web.load_config(), root=tmp, build_dir=None, web_port=0)
     server = web.make_server(web.Paths(cfg), root, data)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     host, port = server.server_address[:2]
@@ -139,7 +141,7 @@ def lan_mode(tmp: Path) -> None:
     root = tmp / "lanpage"
     root.mkdir()
     (root / "GUO.html").write_text("page")
-    cfg = dataclasses.replace(web.load_config(), root=tmp, web_port=0)
+    cfg = dataclasses.replace(web.load_config(), root=tmp, build_dir=None, web_port=0)
     server = web.make_server(web.Paths(cfg), root, None, ("127.0.0.1", ca, lan.server_context(cert, key)))
     threading.Thread(target=server.serve_forever, daemon=True).start()
     port = server.server_address[1]
