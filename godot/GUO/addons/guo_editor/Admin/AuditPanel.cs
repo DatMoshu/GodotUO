@@ -291,6 +291,11 @@ public partial class AuditPanel : VBoxContainer
                 + $"Hover a row for its level and the request's fields; passwords and tokens show as ***. "
                 + "Export CSV writes the rows shown to build/admin_audit."
                 + (LastExport != null ? $" Last export: {Path.GetFileName(LastExport)}." : "");
+        if (EditorMcpAccess.Problem.Length > 0)
+        {
+            _status.Text = "MCP access disabled: policy needs repair";
+            _hint.Text = EditorMcpAccess.Problem + "\n" + _hint.Text;
+        }
     }
 
     private void Log(string line) => Logged?.Invoke(line);

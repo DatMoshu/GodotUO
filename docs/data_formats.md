@@ -2238,8 +2238,11 @@ Every typed call checks this policy before approval and again at dispatch; a ref
 names the disabled setting. Every scripted call, including read-only dispatch, intersects with
 `GUO_EDITOR_MCP_PREAPPROVED` (`--allow-editor-tool`); CLI flags cannot enable settings.
 Changing tools retain per-call approval and dangerous commands retain typed
-confirmation. There is no MCP permission-setting tool. All of this remains `#if TOOLS`
-and behind `AiFeatures`; exported clients have no editor types. Credentials are
+confirmation. There is no MCP permission-setting tool.
+Malformed or unreadable policy denies all MCP calls, including ungrouped reads.
+The editor preserves the file and keeps manual authoring/settings/Audit available,
+with a repair warning; restore or repair the per-user file and reload the editor.
+All of this remains `#if TOOLS` and behind `AiFeatures`; exported clients have no editor types. Credentials are
 environment references only and are redacted from MCP state, transcripts and logs.
 Scenario `editor.mcp.access` proves default mutation denial and listed navigation.
 

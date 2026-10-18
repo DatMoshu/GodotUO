@@ -168,6 +168,47 @@ public partial class EditorSmoke
             AiFeatures.Apply(false);
             AiCheck("mcp_access_ai_off", (await host.RunAsync("admin_command", new JsonObject(), CancellationToken.None, true, true)).Contains(AiFeatures.DisabledMessage));
             AiFeatures.Apply(true);
+            string policy = EditorMcpAccess.FilePath;
+            host.Register(new AiToolHost.Tool { Name = "policy_read_probe", ReadOnly = true, Run = _ => { dispatched++; return "ran"; } });
+            string[] damaged = { "{\"groups\":{\"commands\":true}}", "{", "{\"groups\":{\"commands\":\"true\"},\"audit\":[]}", "{\"groups\":{\"commands\":true},\"audit\":null}", "[]", "{\"groups\":{\"commands\":true,\"commands\":false},\"audit\":[]}", "{\"groups\":{\"commands\":true},\"audit\":[{\"at\":\"x\",\"at\":\"y\"}]}" };
+            for (int i = 0; i < damaged.Length; i++)
+            {
+                File.WriteAllText(policy, damaged[i]);
+                EditorMcpAccess.Forget();
+                EditorMcpAccess.InitializeSettings(settings); // The same entry point used during addon startup.
+                EditorMcpAccess.SettingsChanged(settings);
+                GuoEditorPlugin.AdminMain.Audit.RefreshLocal();
+                AiCheck("mcp_access_bad_policy_initialization_" + i, EditorMcpAccess.Problem.Length > 0
+                    && EditorMcpAccess.Groups.All(g => !settings.GetSetting(EditorMcpAccess.Prefix + g.Id).AsBool())
+                    && GuoEditorPlugin.AdminMain.IsInsideTree() && GuoEditorPlugin.AdminMain.Audit.StatusText.Contains("policy needs repair"));
+                int beforeBad = dispatched;
+                string first = await host.RunAsync("admin_command", new JsonObject(), CancellationToken.None, true, true);
+                string second = await host.RunAsync("admin_command", new JsonObject(), CancellationToken.None, true, true);
+                string readDenied = await host.RunAsync("policy_read_probe", new JsonObject(), CancellationToken.None, true, true);
+                AiCheck("mcp_access_bad_policy_repeated_denial_" + i, first.StartsWith("refused:") && second.StartsWith("refused:")
+                    && readDenied.StartsWith("refused:") && dispatched == beforeBad && EditorMcpAccess.AuditRows.Count == 0);
+                AiCheck("mcp_access_bad_policy_preserved_" + i, File.ReadAllText(policy) == damaged[i]);
+            }
+            using (var lockedPolicy = new FileStream(policy, FileMode.Open, FileAccess.Read, FileShare.None))
+            {
+                EditorMcpAccess.Forget();
+                EditorMcpAccess.InitializeSettings(settings);
+                GuoEditorPlugin.AdminMain.Audit.RefreshLocal();
+                AiCheck("mcp_access_unreadable_initialization", EditorMcpAccess.Problem.Length > 0 && EditorMcpAccess.AuditRows.Count == 0
+                    && (await host.RunAsync("admin_command", new JsonObject(), CancellationToken.None, true, true)).StartsWith("refused:"));
+            }
+            File.Copy(policy, policy + ".corrupt"); // The fixture simulates explicit manual repair, retaining the original.
+            File.WriteAllText(policy, "{\"groups\":{},\"audit\":[]}");
+            EditorMcpAccess.Forget();
+            EditorMcpAccess.InitializeSettings(settings);
+            GuoEditorPlugin.AdminMain.Audit.RefreshLocal();
+            AiCheck("mcp_access_policy_repair_no_mutation_defaults", EditorMcpAccess.Problem.Length == 0
+                && EditorMcpAccess.Groups.All(g => EditorMcpAccess.Enabled(g.Id) == g.Default)
+                && File.ReadAllText(policy + ".corrupt") == damaged[^1]);
+            settings.SetSetting(EditorMcpAccess.Prefix + "commands", true);
+            EditorMcpAccess.SettingsChanged(settings);
+            AiCheck("mcp_access_policy_repair_explicit_grant", await host.RunAsync("admin_command", new JsonObject(), CancellationToken.None, true, true) == "ran"
+                && EditorMcpAccess.AuditRows.Count == 1);
             // Only the uniquely created test folder is removed.
             Directory.Delete(scratchRoot, true);
         }

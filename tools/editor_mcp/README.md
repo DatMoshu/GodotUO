@@ -129,6 +129,14 @@ AD8 log; its filters and CSV include both. No connection is needed to record a
 change. The MCP cannot edit its own permissions. Refusals name the required
 setting. The AI-enabled preference remains the outer gate.
 
+A malformed or unreadable policy denies every MCP call. Startup keeps the addon,
+manual authoring and Audit UI available; the Audit panel and editor warning show
+the policy problem. Settings display all groups disabled until the file is fixed.
+The editor never overwrites the damaged file. Preserve a copy, restore or repair
+`editor/mcp_access.json` in the per-user workspace, then reload the editor. A valid
+empty policy (`{"groups":{},"audit":[]}`) restores the listed defaults, with mutation
+groups off. Enable any required mutation explicitly afterward.
+
 Changing tools also need the normal approval dialog, or the launching scenario's
 explicit allowlist. `--allow-editor-tool` narrows dispatch; it cannot enable a
 disabled setting. A setting changed while an approval waits is checked again.

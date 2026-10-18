@@ -24,19 +24,38 @@ internal static class EditorMcpAccess
     private static JsonObject _document;
     private static string _file;
     private static bool _syncing;
+    internal static string Problem { get; private set; } = "";
+    private static bool PolicyFailure(Exception ex) => ex is IOException or UnauthorizedAccessException or System.Text.Json.JsonException or InvalidOperationException or ArgumentException;
     internal static string FilePath { get { EditorWorkspace.Ensure(); return Path.Combine(Workspace.Root, "editor", "mcp_access.json"); } }
     private static JsonObject Document
     {
         get
         {
-            if (_document != null && _file == FilePath) return _document;
-            _file = FilePath;
-            // A damaged policy must not silently grant the default-on groups.
-            _document = File.Exists(_file) ? JsonNode.Parse(File.ReadAllText(_file)) as JsonObject
-                ?? throw new IOException("Invalid MCP access settings") : new JsonObject { ["groups"] = new JsonObject(), ["audit"] = new JsonArray() };
-            if (_document["groups"] is not JsonObject || _document["audit"] is not JsonArray)
-                throw new IOException("Invalid MCP access settings");
-            return _document;
+            try
+            {
+                string file = FilePath;
+                if (_document != null && _file == file) return _document;
+                JsonObject next;
+                try { next = JsonNode.Parse(File.ReadAllText(file)) as JsonObject ?? throw new IOException("Invalid MCP access settings"); }
+                catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
+                { next = new JsonObject { ["groups"] = new JsonObject(), ["audit"] = new JsonArray() }; }
+                if (next["groups"] is not JsonObject groups || next["audit"] is not JsonArray audit
+                    || groups.Any(pair => pair.Value is not JsonValue value || !value.TryGetValue<bool>(out _))
+                    || audit.Any(entry => entry is not JsonObject))
+                    throw new IOException("Invalid MCP access settings");
+                _ = AdminAuditView.FromEntries(audit); // Audit must also be readable before permissions are cached.
+                // Publish only a fully validated policy. A failed read must never become a cache hit.
+                _document = next;
+                _file = file;
+                Problem = "";
+                return next;
+            }
+            catch (Exception ex) when (PolicyFailure(ex))
+            {
+                _document = null; _file = null;
+                Problem = "MCP access is disabled: the policy could not be read. Restore or repair editor/mcp_access.json in your per-user workspace, then reload the editor. The file was left unchanged; manual authoring remains available.";
+                throw;
+            }
         }
     }
     internal static bool Enabled(string id) => (bool?)Document["groups"]?[id] ?? Groups.Single(g => g.Id == id).Default;
@@ -66,6 +85,7 @@ internal static class EditorMcpAccess
         if (!AiFeatures.Enabled) return "refused: " + AiFeatures.DisabledMessage;
         try
         {
+            _ = Document; // Invalid policy denies every tool, including ungrouped read-only calls.
             string group = GroupFor(tool, args);
             if (group != null && !Enabled(group)) return $"refused: enable Editor Settings > GUO > MCP Access > {group.Replace('_', ' ')} ({Prefix}{group})";
             // Every scripted call intersects the launcher's exact names, including read-only tools.
@@ -74,8 +94,8 @@ internal static class EditorMcpAccess
                 return $"refused: {tool} is outside --allow-editor-tool (GUO_EDITOR_MCP_PREAPPROVED)";
             return null;
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Text.Json.JsonException or InvalidOperationException)
-        { return "refused: MCP access settings could not be read; repair Editor Settings > GUO > MCP Access"; }
+        catch (Exception ex) when (PolicyFailure(ex))
+        { return "refused: " + Problem; }
     }
 
     internal static void Set(string group, bool enabled)
@@ -94,18 +114,28 @@ internal static class EditorMcpAccess
         _document = next;
     }
 
-    internal static IReadOnlyList<AdminAuditRow> AuditRows => AdminAuditView.FromEntries(Document["audit"] as JsonArray);
-    internal static void Forget() { _document = null; _file = null; }
+    internal static IReadOnlyList<AdminAuditRow> AuditRows
+    {
+        get
+        {
+            try { return AdminAuditView.FromEntries(Document["audit"] as JsonArray); }
+            catch (Exception ex) when (PolicyFailure(ex)) { return Array.Empty<AdminAuditRow>(); }
+        }
+    }
+    internal static void Forget() { _document = null; _file = null; Problem = ""; }
 
     internal static void InitializeSettings(EditorSettings settings)
     {
         _syncing = true;
         try
         {
+            bool healthy;
+            try { _ = Document; healthy = true; }
+            catch (Exception ex) when (PolicyFailure(ex)) { healthy = false; GD.PushWarning(Problem); }
             foreach (Group g in Groups)
             {
-                settings.SetSetting(Prefix + g.Id, Enabled(g.Id));
-                settings.SetInitialValue(Prefix + g.Id, g.Default, false);
+                settings.SetSetting(Prefix + g.Id, healthy && Enabled(g.Id));
+                settings.SetInitialValue(Prefix + g.Id, healthy && g.Default, false);
             }
         }
         finally { _syncing = false; }
@@ -114,17 +144,18 @@ internal static class EditorMcpAccess
     internal static void SettingsChanged(EditorSettings settings)
     {
         if (_syncing) return;
-        foreach (Group g in Groups)
+        try
         {
-            bool enabled = settings.GetSetting(Prefix + g.Id).AsBool();
-            if (Enabled(g.Id) == enabled) continue;
-            try { Set(g.Id, enabled); }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            foreach (Group g in Groups)
             {
-                InitializeSettings(settings);
-                GD.PushError("MCP access could not be saved; permission unchanged. Check the per-user workspace.");
-                return;
+                bool enabled = settings.GetSetting(Prefix + g.Id).AsBool();
+                if (Enabled(g.Id) != enabled) Set(g.Id, enabled);
             }
+        }
+        catch (Exception ex) when (PolicyFailure(ex))
+        {
+            InitializeSettings(settings);
+            GD.PushWarning("MCP access could not be saved; permission unchanged. Check the per-user workspace.");
         }
         GuoEditorPlugin.AdminMain?.Audit.RefreshLocal();
     }
