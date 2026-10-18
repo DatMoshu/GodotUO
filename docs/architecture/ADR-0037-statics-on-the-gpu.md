@@ -22,7 +22,7 @@ Project owner (Moshu); `uo-render-engineer`; written by guo-worker-perf.
 ## Summary
 
 A UO frame is mostly statics: at the Britain bank zoomed out, about
-STATICS_DRAWN of the BANK_SORTED objects GUO sorts and draws each frame are
+18,329 of the 25,890 objects GUO sorts and draws each frame are
 statics, and every one of them costs the CPU a tile-walk visit, a place in
 a sort and one `canvas_item_add_texture_rect_region` call, every frame,
 although a static never moves. ClassicUO does not pay this: it keeps each
@@ -77,7 +77,27 @@ Our own numbers, the "before" of this ADR (PERF-03,
 `docs/perf/2026-10-18_britain_breakdown.md`, RTX 4090 and Ryzen 7 7800X3D,
 2560x1440):
 
-BEFORE_TABLE
+| Scene (2560x1440, zoom 2.5) | mean ms | FPS | gather ms | sort ms | statics draw ms | covering land ms | outside the client's counters ms | statics drawn | covering land drawn | draw calls | GPU ms |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| britain-bank | 39.8 | 25.2 | 7.90 | 2.56 | 5.76 | 4.96 | 15.0 | 18,329 | 6,847 | 11,929 | 0.69 |
+| dense-forest | 19.1 | 52.5 | 5.04 | 1.30 | 3.06 | 1.24 | 6.4 | 11,449 | 2,048 | 5,449 | 0.32 |
+| dungeon | 23.9 | 41.8 | 4.53 | 0.79 | 1.37 | 3.71 | 11.4 | 2,282 | 6,116 | 9,308 | 0.71 |
+| cave-roof | 4.5 | 223.7 | 2.89 | 0.06 | 0.20 | 0.01 | 0.5 | 1,036 | 6 | 92 | 0.26 |
+| open-sea | 9.6 | 104.6 | 2.83 | 0.25 | 0.82 | 0.70 | 3.7 | 2,638 | 1,070 | 3,295 | 0.84 |
+
+"Outside the client's counters" is Godot turning the canvas commands into
+GPU work; it scales with the command count (31,763 at the bank, 58% of them
+statics). At zoom 1.0 the bank runs at 229 FPS; the community's 25-35 FPS
+city matches our zoom 2.5.
+
+Two findings shape this ADR. First, statics account for about half of the
+zoomed-out frame (their gather and sort share, their own draw and their
+share of the engine's command processing: about 20 of 40 ms at the bank).
+Second, covering land, which exists only because the canvas has no depth
+buffer, is the next largest cost and the main part of a regression since
+2026-09-27 (the same commit ran the bank at 24.9 ms tonight; PERF-REG fixes
+that first, as its own PR, and the "before" of this ADR is re-measured on
+top of it).
 
 The GPU is idle (under 1 ms a frame). The frame is the CPU walking,
 sorting and submitting objects, and statics are most of the objects.
@@ -304,8 +324,10 @@ Removes part of prepare, none of the submit. Too small for the target.
 ## Performance Implications
 
 Expected, to be replaced by the measured "after": world prepare loses the
-statics' gather share and world draw loses the statics' submit share
-(both in BEFORE_TABLE). No claim is made before the probe table exists.
+statics' gather share, world draw loses the statics' submit share and all
+of covering land, and the engine processes about 60% fewer commands at
+the bank
+(both in the table under Problem Statement). No claim is made before the probe table exists.
 
 ## Migration Plan
 
