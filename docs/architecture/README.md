@@ -44,5 +44,6 @@ it is taken even if its file has not landed yet.
 | 0033 | SpriteMotion fit lab in a native editor host | main |
 | 0034 | Extracted art sets (atlas pages of the user's own install) | work/art-ax0 |
 | 0035 | The admin channel: token, access levels, audit log | work/AD0 (proposed) |
+| 0038 | Packet mods and the mod ABI | work/modding-mod02-20261018 (proposed) |
 
-Next free: 0036.
+Next free: 0039.

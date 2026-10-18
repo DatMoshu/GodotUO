@@ -39,6 +39,10 @@ echo "[smoke] optional HD pack contracts (synthetic)"
 echo "[smoke] PostFX engine regressions (synthetic)"
 "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Bootstrap/PostFxEngineProbe.tscn || FAIL=1
 
+echo "[smoke] packet mods (synthetic; builds the sample mod, ADR-0038)"
+dotnet build "$UO_ROOT/docs/modding/samples/announce/Announce.csproj" -nologo -v q || FAIL=1
+"$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Network/Mods/ModsProbe.tscn || FAIL=1
+
 echo
 if [ "$FAIL" = "1" ]; then echo "[smoke] FAILED"; exit 1; fi
 echo "[smoke] OK"

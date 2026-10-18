@@ -46,6 +46,11 @@
     <Compile Remove="src/Platform/Web/Program.cs" />
   </ItemGroup>
 
+  <!-- The mod ABI (ADR-0038): the one assembly a GUO mod compiles against. -->
+  <ItemGroup>
+    <ProjectReference Include="..\GUO.ModApi\GUO.ModApi.csproj" />
+  </ItemGroup>
+
   <Import Project="$(MSBuildThisFileDirectory)../../tools/msbuild/UpstreamDir.props" />
   <ItemGroup>
     <Reference Include="cuoapi">

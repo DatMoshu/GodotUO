@@ -8,5 +8,10 @@
   <ItemGroup>
     <Compile Include="../../godot/GUO/src/Network/CircularBuffer.cs" Link="CircularBuffer.cs" />
     <Compile Include="../../godot/GUO/src/Network/PacketLengthGuard.cs" Link="PacketLengthGuard.cs" />
+    <Compile Include="../../godot/GUO/src/Network/Mods/PacketMods.cs" Link="PacketMods.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../godot/GUO.ModApi/GUO.ModApi.csproj" />
+    <ProjectReference Include="../../docs/modding/samples/announce/Announce.csproj" />
   </ItemGroup>
 </Project>
