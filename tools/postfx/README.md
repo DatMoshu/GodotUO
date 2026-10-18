@@ -8,6 +8,12 @@ shader and preset, checks an identity pass matches the world target pixel for
 pixel, and makes a labelled contact sheet; `tour` records the looks as a
 video. Output goes to `build/postfx_sheet/<time>/`.
 
+Integer controls round and clamp to the shader's declared limits, including
+values applied from saved JSON. During a stack rebuild the current world
+texture is shown until the replacement viewport has had a frame to render.
+An empty or failed build falls back to the world; Classic keeps returning
+the original world texture.
+
 ## Run
 
 ```
@@ -18,4 +24,9 @@ python tools\postfx\run.py luts
 
 ## Tests
 
-No automated tests: the run itself is the check, and its exit code says whether it passed. Exit 0 when the probe passed.
+`launchers/dev/smoke.bat` (or `.sh`) runs `PostFxEngineProbe.tscn` headlessly
+with synthetic targets and a shader: integer rounding/clamping, slider JSON
+type and live material updates, Classic texture identity, rebuild/toggle/resize/freed-viewport fallback,
+missing shaders and disposed targets. No shard, client art or service is needed.
+This checks texture selection and lifecycle, not rendered pixels; use `sheet`
+for visual output. Both probes return 0 when their checks pass.

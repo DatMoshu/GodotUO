@@ -558,8 +558,17 @@ namespace GUO.Renderer.PostFx
                 var slider = Slider(u.Min, u.Max, u.Step, value);
                 slider.ValueChanged += v =>
                 {
-                    shown.Text = Format(v, u);
-                    PostFxStack.Instance.SetParam(passIndex, u.Name, JsonValue.Create((float)v));
+                    if (u.Type == Variant.Type.Int)
+                    {
+                        double c = Math.Clamp(Math.Round(v), (double)u.Min, (double)u.Max);
+                        shown.Text = Format(c, u);
+                        PostFxStack.Instance.SetParam(passIndex, u.Name, JsonValue.Create((int)c));
+                    }
+                    else
+                    {
+                        shown.Text = Format(v, u);
+                        PostFxStack.Instance.SetParam(passIndex, u.Name, JsonValue.Create((float)v));
+                    }
                 };
                 row.AddChild(slider);
                 return row;
