@@ -27,7 +27,57 @@ contain their own target and shared components only.
 Content types: static, land, texmap, tiledata, gump, animation, wearable,
 hue, sound, music, effect, light, translation, font, map, region, multi,
 decoration, item, crafting, loot, vendor, creature, spawner, encounter,
-quest, dialogue, presentation, authoring, script.
+quest, dialogue, presentation, authoring, script, hd-art, splat, voice.
+
+### Media component contracts (installation only)
+
+`hd-art`, `splat` and `voice` target `client` only. Their installers validate
+the following manifest metadata identically in Python and C#. Installation is
+inert: it neither decodes these payloads nor starts a model or service. These
+types have no consumer yet; selecting a deployment containing one must refuse
+activation and preserve the previous selection. Consumer PRs add payload
+validation before activation, without weakening archive safety checks.
+
+| Type | Required component fields |
+|---|---|
+| `hd-art` | `entry`: declared PNG; `asset`: `static` or `land`; `graphic`: integer 0..65535 in that namespace; `scale`: number 1..16; `native_w`, `native_h`: integers 1..4096 |
+| `splat` | `entry`: declared PLY; `graphic`: integer 0..65535 in the static-art namespace |
+| `voice` | `entry`: declared voice JSON; exactly one of `body` (integer 0..65535) or `name` (nonblank NPC name, at most 100 UTF-16 units, no control characters); `wav`: 1..512 unique declared WAV paths |
+
+HD dimensions describe the native canvas before upscaling. Land must be square;
+the future consumer checks the decoded PNG dimensions against native dimensions
+times scale and enforces its supported sizes. Fractional scale is valid metadata
+but must result in integral decoded dimensions. Scale does not grant permission
+to filter original pixel art. Graphic binding is explicit; it does not allocate
+or renumber original asset IDs. Splat PLY files may appear only as declared splat
+entries in v2 content packs, never in v1 presentation packs. Neither type may
+carry the other's metadata.
+
+Voice JSON is the playback description, with schema `guo/voice@1` and a `clips`
+object mapping authored line IDs to paths in the component's `wav` list. The
+future consumer validates this JSON and PCM WAV encoding before activation.
+Body binding selects all NPCs with that body; name binding selects an exact NPC
+name. A component cannot combine both selectors. The pack contains recordings,
+not a voice model, synthesis endpoint or executable enrolment script. Authoring
+and synthesis belong in the editor or Labs. Extra media metadata on unrelated
+component types is refused; omitted or null optional metadata has no effect.
+
+Example component (payload hashes still belong in the envelope's `files` map):
+
+```json
+{"id":"town-crier","type":"voice","target":"client","entry":"voices/crier.json","body":400,"wav":["voices/greeting.wav"]}
+```
+
+Verify the shared corpus, then the actual runtime refusal gate (after building):
+
+```text
+python tools/asset_store/test_corpus.py --out build/media-corpus
+godot-console --headless --path godot/GUO res://src/Store/StoreMediaProbe.tscn -- <absolute-path-to-build/media-corpus>
+```
+
+The probe installs the three synthetic fixtures locally, checks that each fails
+with `No client consumer for <type>` before payload decoding, and removes its
+temporary store. It uses no UO assets, network service or synthesis model.
 
 All existing archive traversal, link, size, hash, licence, and proprietary
 data exclusions remain. V2 carries authored source assets, never merged UO
