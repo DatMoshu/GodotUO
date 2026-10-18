@@ -11,6 +11,7 @@ namespace GUO.Renderer.PostFx;
 internal sealed partial class PostFxStack
 {
     private StoreLighting _lighting;
+    internal Rid? ProbeViewport => _viewport?.GetViewportRid();
     private readonly Dictionary<string, Shader> _hdShaders = new(StringComparer.Ordinal);
     private Texture2D _flatHeight, _clearLight;
     internal Texture2D HdHeightTex { get; set; }

@@ -22,6 +22,7 @@ namespace GUO.Game.Scenes
         // off-state never builds it (pixel-identical). Hot-applies: built and
         // torn down here, no restart.
         private RealisticLightViewport _realisticLights;
+        internal Rid? ProbeLightViewport => _realisticLights?.ProbeViewport;
         private RealisticLightViewport.LightOffer[] _realisticOffers;
         private RealisticLightViewport.OccluderOffer[] _realisticOccluders;
         private long _realisticLogAt;

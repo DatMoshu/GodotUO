@@ -2781,3 +2781,9 @@ shadow/ray budgets. These do not replace rendered dense-town measurements.
 `client.hd.lighting` checks synthetic contracts; `client.hd.lighting.dense`
 captures the existing fixed Britain-bank performance probe after preparing a
 private fixture. Headless timing is never GPU proof.
+`--perf-hd-acceptance` requires `--perf-probe` and explicit non-walk scenes,
+without parity. It opts into a ten-second monotonic warmup, 600-frame samples,
+device/backend identity and per-viewport nullable metrics; missing/unsupported
+values are null rather than zero. Reports include elapsed sample time/count
+and actual warmup time. After completion it keeps the client open for the
+scenario's labeled settled still outside timing. Other probes retain defaults.

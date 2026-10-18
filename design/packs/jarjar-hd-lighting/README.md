@@ -85,7 +85,11 @@ normal profile root. Prepare these labels:
   with the option off; never modify the shared world for this fixture.
 
 Warm for ten seconds, sample at least 600 frames, repeat each label three
-times. Keep probe JSON/logs plus screenshots for noon/night/storm and a paired
+times. The scenario opts into `--perf-hd-acceptance`: monotonic warmup, 600
+samples, explicit viewport/device metadata and a labeled still outside timing.
+The client stays open for that still, then the scenario closes its own process.
+Legacy probe defaults remain unchanged. Unsupported viewport metrics are null.
+Keep probe JSON/logs plus screenshots for noon/night/storm and a paired
 off/no-pack reference. Compare frame mean/p95/p99, render CPU, draw calls and
 video memory. Record measured GPU times from both the parallel light viewport
 and the PostFx stack using Godot's profiler. Report GPU/driver, rendering

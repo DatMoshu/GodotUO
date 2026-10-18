@@ -29,7 +29,7 @@ namespace GUO.Host;
 /// between runs on one machine at one window size; the draw calls and batcher
 /// counts are comparable anywhere.
 /// </remarks>
-internal static class PerfProbe
+internal static partial class PerfProbe
 {
     public static bool Passed { get; private set; }
 
@@ -124,8 +124,9 @@ internal static class PerfProbe
         }
     }
 
-    public static async System.Threading.Tasks.Task Run(Node host, string outDir, string label, float zoom = 0, bool parity = false)
+    public static async System.Threading.Tasks.Task Run(Node host, string outDir, string label, float zoom = 0, bool parity = false, bool hdAcceptance = false)
     {
+        _hdAcceptance = hdAcceptance;
         _outDir = string.IsNullOrWhiteSpace(outDir) ? ProjectSettings.GlobalizePath("user://perf") : outDir;
         _label = label;
         _parity = parity;
@@ -224,7 +225,7 @@ internal static class PerfProbe
     {
         // A pixel comparison needs a still frame; a run has none.
         Dictionary<string, object> parity = _parity && !walks ? await Parity(host, name) : null;
-        int n = Frames;
+        int n = _hdAcceptance ? 600 : Frames;
         Runner runner = walks ? new Runner() : null;
 
         // Uncapped: with vsync or a frame cap every frame below the cap reads as
@@ -251,6 +252,7 @@ internal static class PerfProbe
         }
 
         await InputProbe.Wait(host, 30);
+        var acceptance = _hdAcceptance ? await WarmAcceptance(host) : null;
         long drawsBefore = UltimaBatcher2D.FramesBegun;
 
         var ms = new List<double>(walks ? 20000 : n);
@@ -309,6 +311,7 @@ internal static class PerfProbe
             world += GUO.Utility.Profiler.GetContext(GUO.Utility.Profiler.ProfilerContext.RENDER_FRAME_WORLD).LastTime;
             cpu += RenderingServer.ViewportGetMeasuredRenderTimeCpu(viewport);
             gpu += RenderingServer.ViewportGetMeasuredRenderTimeGpu(viewport);
+            acceptance?.Sample();
         }
 
         n = ms.Count;
@@ -376,6 +379,12 @@ internal static class PerfProbe
             ["upload_frames_max_ms"] = uploadMs.Count > 0 ? System.Math.Round(uploadMs.Max(), 3) : 0.0,
             ["max_ms"] = System.Math.Round(ms.Max(), 3),
         };
+        if (acceptance != null)
+        {
+            r["acceptance"] = acceptance.Report(elapsed, n);
+            r["render_cpu_ms"] = acceptance.Root.CpuMean;
+            r["render_gpu_ms"] = acceptance.Root.GpuMean;
+        }
         if (parity != null)
         {
             foreach (var kv in parity)
@@ -497,7 +506,7 @@ internal static class PerfProbe
         md.AppendLine();
         md.AppendLine($"{System.DateTime.Now:yyyy-MM-dd HH:mm}, {OS.GetName()}, {RenderingServer.GetVideoAdapterName()}, "
                       + $"window {size.X}x{size.Y}, zoom {Client.Game?.Scene?.Camera?.Zoom:F1}, vsync and frame cap off, "
-                      + $"{Frames} frames per scene ({WalkMs / 1000:0} s for a run) after {Settle} to settle, "
+                      + (_hdAcceptance ? "600 frames per scene after at least 10 seconds monotonic warmup, " : $"{Frames} frames per scene ({WalkMs / 1000:0} s for a run) after {Settle} to settle, ")
                       + (optimized ? "optimised build" : "UNOPTIMISED build (Debug, Optimize=false)") + $", post-processing {look}.");
         md.AppendLine();
         md.AppendLine("| Scene | mean ms | p95 ms | p99 ms | FPS | alloc KB/frame | draws/frame | draw calls | batcher items | texture switches | draw commands | world prepare ms | world draw ms | render CPU ms | GPU ms |");
@@ -542,8 +551,10 @@ internal static class PerfProbe
         md.AppendLine();
         md.AppendLine("Batcher items: canvas items the batcher opened (each is a batch break). Draw commands: sprites, meshes and triangle lists added.");
         File.WriteAllText(Path.Combine(dir, stem + ".md"), md.ToString());
+        var report = new Dictionary<string, object> { ["label"] = label, ["window"] = $"{size.X}x{size.Y}", ["optimized"] = optimized, ["postfx"] = look, ["scenes"] = results };
+        if (_hdAcceptance) report["device"] = AcceptanceDevice();
         File.WriteAllText(Path.Combine(dir, stem + ".json"),
-            JsonSerializer.Serialize(new Dictionary<string, object> { ["label"] = label, ["window"] = $"{size.X}x{size.Y}", ["optimized"] = optimized, ["postfx"] = look, ["scenes"] = results },
+            JsonSerializer.Serialize(report,
                 new JsonSerializerOptions { WriteIndented = true }));
         GD.Print($"[GUO] perf probe: wrote {Path.Combine(dir, stem + ".md")}");
     }

@@ -131,6 +131,7 @@ namespace GUO.Renderer.Lights
         }
 
         public bool IsBuilt => _viewport != null && !_disposed;
+        internal Rid? ProbeViewport => IsBuilt ? _viewport.GetViewportRid() : null;
 
         public Texture2D Texture => _viewport?.GetTexture();
 

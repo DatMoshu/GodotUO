@@ -757,7 +757,12 @@ public partial class Main : Node
     /// <summary>Frame time in the five fixed scenes, then quit; see PerfProbe.</summary>
     private async void PerfProbeThenQuit()
     {
-        await PerfProbe.Run(this, _options.PerfOut, _options.PerfLabel, _options.PerfZoom, _options.PerfParity);
+        await PerfProbe.Run(this, _options.PerfOut, _options.PerfLabel, _options.PerfZoom, _options.PerfParity, _options.PerfHdAcceptance);
+        if (_options.PerfHdAcceptance && PerfProbe.Passed)
+        {
+            GD.Print("[GUO] perf acceptance: ready for settled still");
+            return; // Scenario captures outside timing, then closes its own client.
+        }
         Quit(PerfProbe.Passed ? 0 : 1);
     }
 
@@ -1585,6 +1590,7 @@ public partial class Main : Node
 
         /// <summary>Frame time in five fixed scenes rather than play (PerfProbe): --perf-probe [--perf-out DIR] [--perf-label NAME].</summary>
         public bool PerfProbe { get; private set; }
+        public bool PerfHdAcceptance { get; private set; }
 
         public string PerfOut { get; private set; } = "";
         public bool SafForget { get; private set; }
@@ -1943,6 +1949,9 @@ public partial class Main : Node
                         break;
                     case "--perf-probe":
                         o.PerfProbe = true;
+                        break;
+                    case "--perf-hd-acceptance":
+                        o.PerfHdAcceptance = true;
                         break;
                     case "--perf-out":
                         o.PerfOut = NextPath();
@@ -2306,6 +2315,8 @@ public partial class Main : Node
                 }
             }
 
+            if (o.PerfHdAcceptance && (!o.PerfProbe || o.PerfParity || GUO.Host.PerfProbe.Only.Count == 0 || GUO.Host.PerfProbe.Only.Contains("walk")))
+                throw new ArgumentException("--perf-hd-acceptance requires --perf-probe without --perf-parity or walk scene");
             return o;
         }
 

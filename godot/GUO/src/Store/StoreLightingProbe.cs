@@ -29,6 +29,27 @@ public partial class StoreLightingProbe : Node
             StorePack.Require(restored.UseHDLight && restored.HdSunAuto && restored.HdSunHour == 7.5f, "Lighting options must persist");
             for (int bits = 0; bits < 8; bits++)
                 StorePack.Require(HdLightingPolicy.Enabled((bits & 1) != 0, (bits & 2) != 0, (bits & 4) != 0) == (bits == 3), "Off/missing-pack/death must retain Classic path");
+            var window = new GUO.Host.PerfProbe.AcceptanceWindow(123);
+            StorePack.Require(!window.Ready(10122) && window.Ready(10123) && !window.Ready(double.NaN), "Warmup must use ten monotonic seconds");
+            for (int i = 0; i < 599; i++) window.Sample(10123 + i);
+            StorePack.Require(!window.Complete, "Acceptance completed before600 samples");
+            window.Sample(11000); StorePack.Require(window.Complete && window.Samples == 600, "Acceptance count wrong");
+            var metric = new GUO.Host.PerfProbe.ViewportMetric(() => null);
+            metric.Add(0, double.NaN);
+            var summary = GUO.Host.PerfProbe.AcceptanceSummary(10000, 100, 600, new() { ["root"] = metric.Report() });
+            using (var json = JsonDocument.Parse(JsonSerializer.Serialize(summary)))
+                StorePack.Require(json.RootElement.GetProperty("sample_count").GetInt32() == 600 && json.RootElement.GetProperty("viewports").GetProperty("root").GetProperty("gpu_ms").ValueKind == JsonValueKind.Null, "Unavailable GPU metric must be null");
+            var keptScenes = GUO.Host.PerfProbe.Only.ToArray();
+            try
+            {
+                GUO.Host.PerfProbe.Only.Clear();
+                bool invalid = false;
+                try { GUO.Host.Main.Options.Parse(new[] { "--perf-hd-acceptance" }); } catch (ArgumentException) { invalid = true; }
+                StorePack.Require(invalid, "Acceptance option accepted without timed fixed scene");
+                var options = GUO.Host.Main.Options.Parse(new[] { "--perf-probe", "--perf-scene", "britain-bank", "--perf-hd-acceptance" });
+                StorePack.Require(options.PerfHdAcceptance, "Acceptance option missing");
+            }
+            finally { GUO.Host.PerfProbe.Only.Clear(); GUO.Host.PerfProbe.Only.AddRange(keptScenes); }
             Directory.CreateDirectory(temporary);
             string installed = Path.Combine(temporary, "store", "lighting-test", "1.0.0");
             Directory.CreateDirectory(installed);

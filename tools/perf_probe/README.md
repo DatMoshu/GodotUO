@@ -15,6 +15,22 @@ python tools/perf_probe/run.py [--label NAME] [--port PORT] [--args "--batched-w
 python tools/perf_probe/run.py --compare A B
 ```
 
+R3's opt-in `--perf-probe --perf-hd-acceptance --perf-scene britain-bank`
+keeps the client open after reports for a settled-state scenario still. It
+requires explicit fixed scenes, refuses parity/walk, warms for at least ten
+monotonic seconds and samples 600 rendered frames per scene. Without it the
+existing 180-frame settle/360-frame sample and quit behavior is unchanged.
+Do not use MovieWriter for timing: run the dense lighting scenario with
+`--no-record`; record a separate showcase session afterward.
+
+Acceptance JSON includes actual warmup/sample elapsed milliseconds, sample
+count, GPU/vendor/driver/API/backend identity and root/light/PostFx viewport
+RIDs with CPU/GPU means and positive observation counts. Absent viewports and
+unavailable/nonpositive/nonfinite readings are `null`, with an explicit status;
+headless output is never GPU proof. GPU times may be delayed by the backend.
+The scenario's labeled still step follows completed report writing, outside
+the measured window. Compare identical frozen private-world/profile states.
+
 ## Tests
 
 No automated tests: the run itself is the check, and its exit code says whether it passed.
