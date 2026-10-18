@@ -79,7 +79,7 @@ uses it for the editor's private instance as well.
 ## What is checked
 
 On Linux Mint 22 with a 7.0.114.2 install in a Wine prefix: `smoke.sh` passes
-all six steps, the editor smoke passes all eighteen checks, the dev shard
+all seven steps, the editor smoke passes all eighteen checks, the dev shard
 builds, boots headless and is populated from the client, and the input probe
 logs in, walks the world, opens gumps and gets speech back from the shard.
 
