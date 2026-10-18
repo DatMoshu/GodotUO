@@ -1,3 +1,28 @@
+# evidence-central:begin
+# Generated evidence belongs in D:/_agentShared/runs; gitignore has no size filter.
+*.mp4
+*.webm
+*.png
+*.jpg
+*.jpeg
+*.gif
+# Explicit product asset/fixture allowlist (existing privacy ignores still apply).
+!**/assets/**/*.png
+!**/assets/**/*.jpg
+!**/assets/**/*.jpeg
+!**/assets/**/*.gif
+!**/Assets/**/*.png
+!**/Assets/**/*.jpg
+!**/Assets/**/*.jpeg
+!**/Assets/**/*.gif
+!**/art/**/*.png
+!**/textures/**/*.png
+!**/icons/**/*.png
+!**/fixtures/**/*.png
+!**/fixtures/**/*.jpg
+!**/fixtures/**/*.gif
+# evidence-central:end
+
 # ============================================================================
 #  GUO
 #
