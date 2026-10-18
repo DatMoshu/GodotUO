@@ -5,6 +5,13 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 
 ## Unreleased
 
+### Performance
+- **Perf lab**: `launchers\dev\perf_lab.bat` measures GUO's frame rate on
+  your machine at 1920x1080 and at 2560x1440 zoomed out, prints the table and
+  writes a short report you can paste in Discord (GPU, driver, CPU, OS and the
+  numbers; no paths or names). It needs the dev shard running; the wiki page
+  Performance says how to run it and read it.
+
 ### Editor
 - The Admin tab's god view works with nobody logged in: **Go there**,
   **Bring here**, **Open paperdoll** and **Follow** use the server's hidden

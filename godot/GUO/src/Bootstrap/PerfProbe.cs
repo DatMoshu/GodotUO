@@ -543,8 +543,40 @@ internal static class PerfProbe
         md.AppendLine("Batcher items: canvas items the batcher opened (each is a batch break). Draw commands: sprites, meshes and triangle lists added.");
         File.WriteAllText(Path.Combine(dir, stem + ".md"), md.ToString());
         File.WriteAllText(Path.Combine(dir, stem + ".json"),
-            JsonSerializer.Serialize(new Dictionary<string, object> { ["label"] = label, ["window"] = $"{size.X}x{size.Y}", ["optimized"] = optimized, ["postfx"] = look, ["scenes"] = results },
+            JsonSerializer.Serialize(new Dictionary<string, object>
+                {
+                    ["label"] = label, ["window"] = $"{size.X}x{size.Y}", ["zoom"] = System.Math.Round(Client.Game?.Scene?.Camera?.Zoom ?? 0, 2),
+                    ["optimized"] = optimized, ["postfx"] = look, ["system"] = SystemInfo(), ["scenes"] = results,
+                },
                 new JsonSerializerOptions { WriteIndented = true }));
         GD.Print($"[GUO] perf probe: wrote {Path.Combine(dir, stem + ".md")}");
+    }
+
+    /// <summary>
+    /// What the numbers were measured on, for a report someone else reads
+    /// (tools\perf_lab): the GPU, its driver, the CPU and the OS. No paths and
+    /// no names: nothing here identifies the person or the machine.
+    /// </summary>
+    private static Dictionary<string, object> SystemInfo()
+    {
+        string[] driver = OS.GetVideoAdapterDriverInfo();
+        var engine = Engine.GetVersionInfo();
+        return new Dictionary<string, object>
+        {
+            ["gpu"] = RenderingServer.GetVideoAdapterName(),
+            ["gpu_vendor"] = RenderingServer.GetVideoAdapterVendor(),
+            ["gpu_api"] = RenderingServer.GetVideoAdapterApiVersion(),
+            ["driver"] = driver.Length > 0 ? driver[0] : "",
+            ["driver_version"] = driver.Length > 1 ? driver[1] : "",
+            ["rendering_method"] = RenderingServer.GetCurrentRenderingMethod(),
+            ["cpu"] = OS.GetProcessorName().Trim(),
+            ["cpu_threads"] = OS.GetProcessorCount(),
+            ["ram_gib"] = System.Math.Round((double)OS.GetMemoryInfo()["physical"] / (1L << 30), 1),
+            ["os"] = OS.GetName(),
+            ["os_version"] = OS.GetVersion(),
+            ["screen"] = $"{DisplayServer.ScreenGetSize().X}x{DisplayServer.ScreenGetSize().Y}",
+            ["refresh_hz"] = System.Math.Round(DisplayServer.ScreenGetRefreshRate(), 1),
+            ["engine"] = $"{engine["major"]}.{engine["minor"]}.{engine["patch"]}.{engine["status"]}",
+        };
     }
 }

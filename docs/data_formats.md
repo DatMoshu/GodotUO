@@ -2736,3 +2736,36 @@ attenuated by the speaker's tile distance. Synthesis shells `voice.py`
 thread with distance attenuation (full to 2 tiles, silent past 20).
 `VoiceManager.Status` reports the pipeline state for probes;
 `--voice`/`--say`/`--voice-fake`/`--hear-secs` drive it in walk-to runs.
+
+## 41. Perf probe and perf lab reports (`build/perf`, `tools/perf_probe`, `tools/perf_lab`)
+
+**Probe JSON**, `perf_<label>.json`, written by the client's `--perf-probe`
+(`src/Bootstrap/PerfProbe.cs`): `{label, window "WxH", zoom, optimized,
+postfx, system, scenes[]}`. `zoom` is the camera's at the end of the run.
+Each scene object carries the probe's columns (`scene`, `what`, `at`,
+`frames`, `fps`, `mean_ms`, `p95_ms`, `p99_ms`, `draw_calls`,
+`batcher_items`, `texture_switches`, `world_prepare_ms`, `world_draw_ms`,
+`render_cpu_ms`, `render_gpu_ms` and the land, cover and allocation counts);
+readers must ignore keys they do not know, and older runs lack the newer ones.
+Since PERF-01, `system` is `{gpu, gpu_vendor, gpu_api, driver,
+driver_version, rendering_method, cpu, cpu_threads, ram_gib, os, os_version,
+screen "WxH", refresh_hz, engine}`, from Godot's `RenderingServer`, `OS`
+and `DisplayServer`: hardware and versions only, no paths or names.
+
+**Perf lab report**, `perf_lab_<YYYYMMDDTHHMMZ>.json` (UTC), the file a
+player shares; one line of compact JSON, under 2,000 characters for two
+presets:
+
+| Key | Value |
+|---|---|
+| `format` | `"guo-perf-lab/1"` |
+| `when` | UTC minute, `YYYY-MM-DDTHH:MMZ` |
+| `guo` | `git describe --always --dirty` of the checkout, or `unknown` |
+| `system` | the probe's `system`, the keys above |
+| `runs[]` | per preset: `preset`, `window_asked`, `window`, `zoom`, `optimized`, `postfx`, `columns`, `rows` |
+| `runs[].columns` | `scene, fps, mean_ms, p95_ms, p99_ms, draw_calls, batcher_items, texture_switches, world_prepare_ms, world_draw_ms, render_gpu_ms` |
+| `runs[].rows` | one array per scene in `columns` order; `null` where the probe has no value (the login scene's percentiles in old runs) |
+
+`tools/perf_lab` refuses to write a report in which any string looks like a
+path or carries the login name, computer name, home folder or a shard account
+name. A change to `columns` bumps `format`.
