@@ -1,5 +1,11 @@
 # GodotUO Asset Store
 
+R3 HD lighting: `python tools/asset_store/hd_lighting_pack.py --out <zip>`
+builds a reproducible, verified typed content pack without network access.
+Install/select it through the existing Store and explicitly enable lighting
+after restart. The [pack README](../../design/packs/jarjar-hd-lighting/README.md)
+documents the component, provenance, fallback and rendered acceptance fixture.
+
 Standard-library Python publisher/CDN plus a Godot Store window. The pack
 contract lives in [data_formats.md](../../docs/data_formats.md#12-guo-asset-store-packs-adr-0019)
 and the design in [ADR-0019](../../docs/architecture/ADR-0019-asset-store.md).

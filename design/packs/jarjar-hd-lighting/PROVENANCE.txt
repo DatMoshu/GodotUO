@@ -1,0 +1,7 @@
+HD lighting shaders by MeesaJarJar, from GUO
+commit e4a3cd356b1ee9b4b3b0d35d108c7b0cb64143a8, 2026-10-13.
+Runtime lighting and fixture/splat behavior additionally derive from
+2259b5f74840191c20b936b5c78a54f19ab37e27.
+Rebuilt by GUO contributors as an optional typed Store component, default off.
+No UO client data, models, third-party binaries or network downloads included.
+The preview is the original procedural checker from GUO's postfx pack builder.

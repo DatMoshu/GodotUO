@@ -1,0 +1,13 @@
+{
+  "id": "client.hd.lighting.dense",
+  "title": "Britain bank HD lighting: fixed camera performance fixture",
+  "surface": "client",
+  "requires": {"shard": "dev", "account": "$account", "build": "debug"},
+  "timeouts": {"step_s": 180, "run_s": 300},
+  "steps": [
+    {"id": "launch", "do": {"kind": "launch", "args": ["--autologin", "--account", "$account", "--password", "$password", "--window-size", "1280x720", "--perf-probe", "--perf-scene", "britain-bank", "--perf-zoom", "1", "--perf-out", "$perf_out", "--perf-label", "$label", "--postfx", "off"], "settings": {"autologin": true, "profilespath": "$profile_root"}},
+     "say": "Use an isolated client home and private GM shard. Preconfigure the lighting pack and profile for this A/B label using the pack README.",
+     "expect": {"log.contains": "perf probe: britain-bank: mean", "within_s": 180}},
+    {"id": "report", "do": {"kind": "note", "text": "Compare classic, option-off-with-pack, option-on-without-pack, noon, night, storm, and 100-lamp dense-town labels at the same resolution/zoom/shard snapshot. Preserve full perf JSON/logs, GPU metrics and paired screenshots. A successful scenario is a measurement capture, not an automatic performance acceptance."}}
+  ]
+}

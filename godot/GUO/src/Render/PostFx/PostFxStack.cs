@@ -29,7 +29,7 @@ namespace GUO.Renderer.PostFx
     /// <see cref="Process"/> returns the world texture it was given.
     /// </para>
     /// </remarks>
-    internal sealed class PostFxStack
+    internal sealed partial class PostFxStack
     {
         public static PostFxStack Instance { get; } = new();
 
@@ -109,6 +109,7 @@ namespace GUO.Renderer.PostFx
         public float Split { get; set; }
 
         public PostFxPreset Preset => _preset;
+        internal PostFxPreset ActivePreset => _lighting?.Preset ?? _preset;
 
         /// <summary>The last world target and the texture handed back for it (for PostFxProbe).</summary>
         internal RenderTarget2D LastWorld { get; private set; }
@@ -167,7 +168,7 @@ namespace GUO.Renderer.PostFx
         /// The texture to draw for the world this frame. <paramref name="light"/>
         /// is offered to passes that declare <c>light_tex</c>.
         /// </summary>
-        public Texture2D Process(RenderTarget2D world, RenderTarget2D light)
+        public Texture2D Process(RenderTarget2D world, Texture2D lightTex)
         {
             Housekeeping();
             LastWorld = world;
@@ -178,7 +179,7 @@ namespace GUO.Renderer.PostFx
                 return null;
             }
 
-            bool active = Split > 0f || !_preset.IsClassic;
+            bool active = Split > 0f || !ActivePreset.IsClassic;
             if (!active)
             {
                 if (_viewport != null)
@@ -228,7 +229,7 @@ namespace GUO.Renderer.PostFx
             {
                 if (b.material.Shader != null && HasUniform(b.material.Shader, "light_tex"))
                 {
-                    b.material.SetShaderParameter("light_tex", light?.Texture);
+                    b.material.SetShaderParameter("light_tex", lightTex);
                 }
 
                 if (_idViewport != null && b.material.Shader != null && HasUniform(b.material.Shader, "id_tex"))
@@ -244,6 +245,8 @@ namespace GUO.Renderer.PostFx
                 m.SetShaderParameter("split", Split);
             }
 
+            if (_lighting != null) ApplyHdBindings(lightTex);
+
             LastOutput = Engine.GetProcessFrames() == _builtFrame ? fallback : _viewport.GetTexture();
             return LastOutput;
         }
@@ -257,11 +260,11 @@ namespace GUO.Renderer.PostFx
                 return;
             }
 
-            bool heavy = _preset.Passes.Exists(p => p.Enabled && IsHeavy(PostFxLibrary.Shader(p.Shader)));
+            bool heavy = ActivePreset.Passes.Exists(p => p.Enabled && IsHeavy(ResolveShader(p.Shader)));
 
             // The id buffer, only when a pass reads it; created before the stack's
             // own viewport, so it renders first. Always the world's full size.
-            if (_preset.Passes.Exists(p => p.Enabled && HasUniform(PostFxLibrary.Shader(p.Shader), "id_tex")))
+            if (ActivePreset.Passes.Exists(p => p.Enabled && HasUniform(ResolveShader(p.Shader), "id_tex")))
             {
                 _idViewport = new SubViewport
                 {
@@ -287,6 +290,7 @@ namespace GUO.Renderer.PostFx
                 Disable3D = true,
                 CanvasItemDefaultTextureFilter = Viewport.DefaultCanvasItemTextureFilter.Nearest,
             };
+            _viewport.Set("use_hdr_2d", _lighting != null);
             // Sampled down nearest at half resolution: every other art pixel.
             _base = new Sprite2D
             {
@@ -294,14 +298,14 @@ namespace GUO.Renderer.PostFx
             };
             _viewport.AddChild(_base);
 
-            foreach (PostFxPass pass in _preset.Passes)
+            foreach (PostFxPass pass in ActivePreset.Passes)
             {
                 if (!pass.Enabled)
                 {
                     continue;
                 }
 
-                Shader shader = PostFxLibrary.Shader(pass.Shader);
+                Shader shader = ResolveShader(pass.Shader);
                 if (shader == null)
                 {
                     GD.PushWarning($"[GUO] postfx: no shader \"{pass.Shader}\"; pass skipped");
@@ -364,9 +368,9 @@ namespace GUO.Renderer.PostFx
 
         private void ApplyBindings()
         {
-            foreach (PostFxBinding b in _preset.Bindings)
+            foreach (PostFxBinding b in ActivePreset.Bindings)
             {
-                if (b.Pass < 0 || b.Pass >= _preset.Passes.Count)
+                if (b.Pass < 0 || b.Pass >= ActivePreset.Passes.Count)
                 {
                     continue;
                 }
@@ -380,7 +384,7 @@ namespace GUO.Renderer.PostFx
                 float value = b.Offset + b.Scale * v.Value;
                 foreach (var built in _built)
                 {
-                    if (ReferenceEquals(built.pass, _preset.Passes[b.Pass]))
+                    if (ReferenceEquals(built.pass, ActivePreset.Passes[b.Pass]))
                     {
                         var range = PostFxUniforms.Find(built.material.Shader, b.Param);
                         if (range != null)

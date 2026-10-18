@@ -48,8 +48,15 @@ class Contract(unittest.TestCase):
         cases["duplicate-capability"] = (bad, False)
         bad = example(); bad["components"][0]["execute_on_install"] = True
         cases["unknown-field"] = (bad, False)
+        m = example(); m["target"] = "client"; m["components"][0].update(type="postfx", target="client")
+        m["files"]["hd_sun.gdshader"] = hashlib.sha256(b"shader_type canvas_item;").hexdigest()
+        cases["typed-postfx"] = (copy.deepcopy(m), True)
+        m["components"][0]["target"] = "shared"
+        cases["typed-postfx-wrong-target"] = (copy.deepcopy(m), False)
+        m["components"][0].update(type="presentation", target="client")
+        cases["shader-without-postfx"] = (m, False)
         root = Path(__file__).resolve().parents[2]
-        with tempfile.TemporaryDirectory(dir=root / "build") as temp:
+        with tempfile.TemporaryDirectory() as temp:
             folder = Path(temp)
             for name, (manifest, accepted) in cases.items():
                 raw = json.dumps(manifest).encode()

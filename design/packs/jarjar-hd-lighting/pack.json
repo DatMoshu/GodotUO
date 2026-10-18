@@ -1,0 +1,14 @@
+{
+  "schema": "guo/store-pack@2",
+  "id": "jarjar-hd-lighting",
+  "version": "1.0.0",
+  "kind": "content",
+  "target": "client",
+  "title": "JarJar HD lighting",
+  "author": "MeesaJarJar; GUO contributors",
+  "licence": "BSD-2-Clause",
+  "min_profile_version": 12,
+  "preview": "preview.png",
+  "dependencies": {},
+  "components": [{"id": "lighting", "type": "postfx", "target": "client", "entry": "hd_light.json"}]
+}

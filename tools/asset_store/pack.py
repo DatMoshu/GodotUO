@@ -144,7 +144,7 @@ def parse_manifest(raw):
     # Screen-effect packs (ADR-0023): presets and shaders; shader code only in this kind.
     if m["kind"] == "postfx":
         require(any(Path(n).suffix.lower() == ".json" for n in files), "a postfx pack has at least one preset (.json)")
-    else:
+    elif m["schema"] != "guo/store-pack@2" or not any(c["type"] == "postfx" and c["target"] == "client" for c in m["components"]):
         require(not any(Path(n).suffix.lower() == ".gdshader" for n in files), "shader files are only allowed in a postfx pack")
     if m["kind"] == "screensaver":
         require(sum(Path(n).suffix.lower() == ".ogv" for n in files) == 1, "a screensaver has exactly one .ogv loop")

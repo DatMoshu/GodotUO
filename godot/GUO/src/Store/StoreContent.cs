@@ -33,7 +33,7 @@ internal sealed class StoreComponent
 
 internal static class StoreContent
 {
-    public static readonly HashSet<string> Types = new("static land texmap tiledata gump animation wearable hue sound music effect light translation font map region multi decoration item crafting loot vendor creature spawner encounter quest dialogue presentation authoring script hd-art splat voice".Split(' '), StringComparer.Ordinal);
+    public static readonly HashSet<string> Types = new("static land texmap tiledata gump animation wearable hue sound music effect light translation font map region multi decoration item crafting loot vendor creature spawner encounter quest dialogue presentation authoring script hd-art splat voice postfx".Split(' '), StringComparer.Ordinal);
 
     private static void ValidateMedia(StoreComponent c, StoreManifest m)
     {
@@ -93,6 +93,7 @@ internal static class StoreContent
             StorePack.Require(c.Entry != null && m.Files.ContainsKey(c.Entry), "Undeclared component entry");
             StorePack.Require(Path.GetExtension(c.Entry).ToLowerInvariant() is ".json" or ".png" or ".wav" or ".ogg" or ".razor" or ".ply", "Invalid content entry type");
             ValidateMedia(c, m);
+            if (c.Type == "postfx") StorePack.Require(c.Target == "client" && Path.GetExtension(c.Entry) == ".json", "Postfx component needs client JSON preset");
             StorePack.Require(c.References == null || c.References.Count <= 512, "Invalid references");
             foreach (string reference in c.References ?? new())
             {

@@ -137,3 +137,44 @@ through client MCP; the same probe is in the full smoke. It checks default
 and persistence, verified binding, canvas limits, raw RGBA/mipmaps and all
 four filter selections. Private-shard pixel parity and Britain-bank timings
 are recorded with the PR evidence, not inferred from the build passing.
+
+## Addendum: optional HD sun, weather and local lights (R3, 2026-10-18)
+
+Owner authorization: the 2026-10-18 follow-up list assigns rebuilding JarJar's
+`e4a3cd35` and `2259b5f7` as default-off L1 lighting with L2 pack shaders.
+This extends the Enhanced HD amendment without changing ADR-0001's presenter,
+traversal, depth or picking, and requires no Enhanced HD art pack.
+
+- `UseHDLight=false`, `HdSunHour=12`, `HdSunAuto=false` are defaults on every
+  platform and older profiles. Both Options interfaces expose lighting and
+  the local sun clock. No new chat commands, forced boot overrides, platform
+  defaults or automatic saved-look changes are introduced.
+- The effective gate requires the option, a mounted verified `postfx`
+  component and a color world frame. Off, missing-pack and monochrome death
+  frames use ordinary lighting/PostFx. Disable and scene unload release HD
+  resources. The separate `GameScene.HdLighting.cs` owns the implementation;
+  marked scene hooks retain the Classic collector's original body.
+- Unlit fixtures and victim-lit splats change only under that HD gate.
+  Pooled point lights, bounded occluders and analytical height data feed the
+  sun/GI passes. World/light targets use HDR only while active; UI stays LDR.
+  The tonemap composites lighting once, replacing the ordinary light draw.
+  Native art and source samplers stay nearest. Linear interpolation is used
+  only for analytical height data, never art.
+- Typed Store v2 `postfx` components name a client JSON preset and six sibling
+  declared HD shaders. Each verified read rechecks hashes with a 64 KiB
+  per-file limit. Installation remains inert; explicit option use compiles
+  shaders. No loose-file override, download, installation hook, service or
+  AI authoring is introduced. The pack retains JarJar's licence/provenance.
+- Weather follows the existing shard weather and thunder events. Sun time
+  is local/manual or an explicit four-minute cycle, never fabricated shard
+  time. Tier/zoom governors bound light, shadow, stamp and ray counts, but
+  visible-cell CPU scan cost still needs dense-town measurement.
+
+Validation: `client.hd.lighting`, mandatory synthetic smoke, packaging and
+cross-language validators, and a frozen-base Classic collector regression.
+`client.hd.lighting.dense` and the
+[pack fixture](../../design/packs/jarjar-hd-lighting/README.md) define rendered
+acceptance. Current execution authorization is headless only. Pixel parity,
+runtime hot-toggle visuals, dense-town frame/GPU timing and memory measurements
+remain required before acceptance; no rendered or performance claim follows
+from a passing headless probe.

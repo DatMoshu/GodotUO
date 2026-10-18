@@ -169,7 +169,7 @@ namespace GUO.Game.GameObjects
         /// it is unknown (0). Manifest names without a hex tag and preview
         /// keys have no victim: false, and the caller skips shadow/tree work.
         /// </summary>
-        private bool TryGetVictimGraphic(out ushort graphic)
+        internal bool TryGetVictimGraphic(out ushort graphic)
         {
             graphic = Placement != null ? Placement.VictimGraphic : (ushort)0;
             if (graphic != 0)
@@ -291,6 +291,14 @@ namespace GUO.Game.GameObjects
                 _bakedY = oy;
             }
 
+            // PORT DEVIATION (GUO): ADR-0027 victim lamps emit only in active HD mode.
+            var scene = Client.Game?.GetScene<GUO.Game.Scenes.GameScene>();
+            if (scene?.UseHDLight == true && TryGetVictimGraphic(out ushort victim))
+            {
+                var data = Client.Game.UO.FileManager.TileData.StaticData;
+                if (victim < data.Length && data[victim].IsLight)
+                    scene.AddLight(this, this, (int)ox + 22, (int)oy + 22);
+            }
             batcher.DrawSplatMesh(Mesh);
             LastLevel = level;
             LastDrawn = Placement.Chain.Levels[level].Gaussians.Length;

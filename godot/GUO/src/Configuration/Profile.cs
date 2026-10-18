@@ -207,6 +207,10 @@ namespace GUO.Configuration
         public int LightLevelType { get; set; } // 0 = absolute, 1 = minimum
         public bool UseColoredLights { get; set; } = true;
         public bool UseDarkNights { get; set; }
+        // PORT DEVIATION (GUO): ADR-0027 optional HD lighting; native profiles stay off.
+        public bool UseHDLight { get; set; } = false;
+        public float HdSunHour { get; set; } = 12f;
+        public bool HdSunAuto { get; set; } = false;
         public int CloseHealthBarType { get; set; } // 0 = none, 1 == not exists, 2 == is dead
         public bool ActivateChatAfterEnter { get; set; }
         public bool ActivateChatAdditionalButtons { get; set; } = true;

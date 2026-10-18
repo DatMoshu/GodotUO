@@ -489,7 +489,7 @@ internal static class PerfProbe
         bool optimized = !(System.Reflection.CustomAttributeExtensions.GetCustomAttribute<System.Diagnostics.DebuggableAttribute>(typeof(PerfProbe).Assembly)?.IsJITOptimizerDisabled ?? false);
         // The post-processing look timed with the world: a saved look adds
         // full-screen passes to every number (Ink Outline on the Thor, 2026-09-28).
-        var postFx = GUO.Renderer.PostFx.PostFxStack.Instance.Preset;
+        var postFx = GUO.Renderer.PostFx.PostFxStack.Instance.ActivePreset;
         string look = $"{postFx.Name} ({postFx.Passes.Count(p => p.Enabled)} pass(es)"
                       + (GUO.Renderer.PostFx.PostFxStack.RunOverride != null ? ", --postfx" : ", saved look") + ")";
         var md = new StringBuilder();

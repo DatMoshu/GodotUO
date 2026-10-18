@@ -207,7 +207,7 @@ internal static class StorePack
             Require(m.Files.Keys.Any(p => Path.GetExtension(p).Equals(".json", StringComparison.OrdinalIgnoreCase)),
                 "A postfx pack has at least one preset (.json)");
         }
-        else
+        else if (m.Schema != "guo/store-pack@2" || !m.Components.Any(c => c.Type == "postfx" && c.Target == "client"))
         {
             Require(!m.Files.Keys.Any(p => Path.GetExtension(p).Equals(".gdshader", StringComparison.OrdinalIgnoreCase)),
                 "Shader files are only allowed in a postfx pack");

@@ -47,6 +47,9 @@ echo [smoke] optional HD pack contracts (synthetic)
 echo [smoke] PostFX engine regressions (synthetic)
 "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Bootstrap/PostFxEngineProbe.tscn || set "FAIL=1"
 
+echo [smoke] optional HD lighting contracts (synthetic)
+"%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Store/StoreLightingProbe.tscn || set "FAIL=1"
+
 echo.
 if "%FAIL%"=="1" ( echo [smoke] FAILED & exit /b 1 )
 echo [smoke] OK

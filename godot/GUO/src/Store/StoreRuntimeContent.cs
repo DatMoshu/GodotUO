@@ -26,6 +26,7 @@ internal sealed class StoreRuntimeContent : IDisposable
     private readonly Dictionary<int, AnimationGroupsType> _animationTypes = new();
     private readonly StoreMapOverlay _maps = new();
     public StoreAudioContent Audio { get; } = new();
+    public StoreLighting Lighting { get; private set; }
     private readonly Dictionary<(bool Land, int Graphic), StoreHdAsset> _hd = new();
     public bool TryHd(bool land, int graphic, out StoreHdAsset asset) => _hd.TryGetValue((land, graphic), out asset);
     public void ApplyMap(MapLoader maps, int map) => _maps.Apply(maps, map);
@@ -106,6 +107,12 @@ internal sealed class StoreRuntimeContent : IDisposable
             foreach (var component in pack.Manifest.Components ?? new())
             {
                 if (component.Target == "server" || component.Type == "script") continue; // Scripts have their own explicit approval/enable/run lifecycle.
+                if (component.Type == "postfx")
+                {
+                    StorePack.Require(result.Lighting == null, "Conflicting HD lighting components");
+                    result.Lighting = StoreLighting.Decode(pack, component);
+                    continue;
+                }
                 StorePack.Require(component.Type is "static" or "land" or "texmap" or "gump" or "hue" or "translation" or "sound" or "music" or "multi" or "tiledata" or "light" or "animation" or "wearable" or "font" or "map" or "region" or "voice" or "hd-art", "No client consumer for " + component.Type);
                 byte[] data = pack.ReadPayload(component.Entry);
                 payloadTotal += data.Length;

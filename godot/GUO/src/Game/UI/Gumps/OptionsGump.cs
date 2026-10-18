@@ -195,6 +195,9 @@ namespace GUO.Game.UI.Gumps
         // video
         private Checkbox _use_old_status_gump, _statusGumpBarMutuallyExclusive, _windowBorderless, _enableDeathScreen, _enableBlackWhiteEffect, _altLights, _enableLight, _enableShadows, _enableShadowsStatics, _auraMouse, _runMouseInSeparateThread, _useColoredLights, _darkNights, _partyAura, _hideChatGradient, _animatedWaterEffect;
         private Checkbox _enhancedHD; // PORT DEVIATION (GUO): Enhanced HD repaint detail
+        // PORT DEVIATION (GUO): ADR-0027 optional installed-pack lighting.
+        private Checkbox _hdLight, _hdSunAuto;
+        private HSliderBar _hdSunTime;
         private Combobox _lightLevelType;
         private Combobox _hdFilter; // PORT DEVIATION (GUO): optional HD pack sampling.
         private Checkbox _use_smooth_boat_movement;
@@ -2046,6 +2049,12 @@ namespace GUO.Game.UI.Gumps
                 )
             );
 
+
+            // PORT DEVIATION (GUO): default off; Apply owns profile persistence.
+            section3.Add(_hdLight = AddCheckBox(null, "HD lighting (installed pack)", _currentProfile.UseHDLight, startX, startY));
+            section3.Add(AddLabel(null, "HD sun hour (local clock)", startX, startY));
+            section3.AddRight(_hdSunTime = AddHSlider(null, 0, 24, Math.Clamp((int)Math.Round(_currentProfile.HdSunHour), 0, 24), startX, startY, 250));
+            section3.Add(_hdSunAuto = AddCheckBox(null, "Cycle HD sun (four minute day)", _currentProfile.HdSunAuto, startX, startY));
 
             SettingsSection section4 = AddSettingsSection(box, "Misc");
             section4.Y = section3.Bounds.Bottom + 40;
@@ -4160,6 +4169,9 @@ namespace GUO.Game.UI.Gumps
                     _lightLevelType.SelectedIndex = 0;
                     _useColoredLights.IsChecked = false;
                     _darkNights.IsChecked = false;
+                    _hdLight.IsChecked = false; // PORT DEVIATION (GUO): reset preserves default off.
+                    _hdSunTime.Value = 12;
+                    _hdSunAuto.IsChecked = false;
                     _enableShadows.IsChecked = true;
                     _enableShadowsStatics.IsChecked = true;
                     _terrainShadowLevel.Value = 15;
@@ -4725,6 +4737,10 @@ namespace GUO.Game.UI.Gumps
 
             _currentProfile.UseColoredLights = _useColoredLights.IsChecked;
             _currentProfile.UseDarkNights = _darkNights.IsChecked;
+            // PORT DEVIATION (GUO): ADR-0027, hot-applied on the next world frame.
+            _currentProfile.UseHDLight = _hdLight.IsChecked;
+            _currentProfile.HdSunHour = _hdSunTime.Value;
+            _currentProfile.HdSunAuto = _hdSunAuto.IsChecked;
             _currentProfile.ShadowsEnabled = _enableShadows.IsChecked;
             _currentProfile.ShadowsStatics = _enableShadowsStatics.IsChecked;
             _currentProfile.TerrainShadowsLevel = _terrainShadowLevel.Value;

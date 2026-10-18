@@ -2,7 +2,7 @@
 from pathlib import PurePosixPath
 import re
 
-CONTENT_TYPES = frozenset("static land texmap tiledata gump animation wearable hue sound music effect light translation font map region multi decoration item crafting loot vendor creature spawner encounter quest dialogue presentation authoring script hd-art splat voice".split())
+CONTENT_TYPES = frozenset("static land texmap tiledata gump animation wearable hue sound music effect light translation font map region multi decoration item crafting loot vendor creature spawner encounter quest dialogue presentation authoring script hd-art splat voice postfx".split())
 
 PACK_FIELDS = {"scale", "native_w", "native_h", "asset", "graphic", "body", "name", "wav"}
 
@@ -72,6 +72,8 @@ def validate_content(m, require, identifier, version):
         require(isinstance(c.get("entry"), str) and c["entry"] in m["files"], "undeclared component entry")
         require(PurePosixPath(c["entry"]).suffix.lower() in (".json", ".png", ".wav", ".ogg", ".razor", ".ply"), "invalid content entry type")
         validate_media(c, m["files"], require)
+        if c["type"] == "postfx":
+            require(c["target"] == "client" and PurePosixPath(c["entry"]).suffix == ".json", "postfx component needs client JSON preset")
         refs = c.get("references") if c.get("references") is not None else []
         require(isinstance(refs, list) and len(refs) <= 512, "invalid references")
         for ref in refs:

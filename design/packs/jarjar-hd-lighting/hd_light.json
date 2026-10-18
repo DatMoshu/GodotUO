@@ -1,0 +1,10 @@
+{
+  "name": "HD lighting",
+  "description": "Optional sun, weather and local lights. Requires the HD lighting option.",
+  "passes": [
+    {"shader": "hd_sun"},
+    {"shader": "hd_gi"},
+    {"shader": "hd_bloom"},
+    {"shader": "hd_tonemap"}
+  ]
+}

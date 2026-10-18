@@ -40,6 +40,11 @@ namespace GUO.Game
 
         public WeatherType? CurrentWeather { get; private set; }
         public WeatherType Type { get; private set; }
+        // PORT DEVIATION (GUO): HD light Phase 5. The game tick of the last
+        // thunder clap (PlayThunder), for the weather-aware light: lightning
+        // flashes drive a real ambient/flash term wired to thunder timing.
+        // 0 means no thunder yet this session. Classic never reads it.
+        public uint LastThunderTicks { get; private set; }
         public byte Count { get; private set; }
         public byte ScaledCount { get; private set; }
         public byte CurrentCount { get; private set; }
@@ -63,6 +68,8 @@ namespace GUO.Game
             Wind = 0;
             _windTimer = _timer = 0;
             CurrentWeather = null;
+            // PORT DEVIATION (GUO): HD light Phase 5 (see LastThunderTicks).
+            LastThunderTicks = 0;
         }
 
         public void Generate(WeatherType type, byte count, byte temp)
@@ -203,6 +210,8 @@ namespace GUO.Game
 
         private void PlayThunder()
         {
+           // PORT DEVIATION (GUO): HD light Phase 5 stamps the tick (see LastThunderTicks).
+           LastThunderTicks = Time.Ticks;
            PlaySound(RandomHelper.RandomList(0x028, 0x206));
         }
 

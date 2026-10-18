@@ -367,6 +367,9 @@ namespace GUO.Game.Scenes
 
             Client.Game.SetWindowBorderless(false);
 
+            // PORT DEVIATION (GUO): ADR-0027 HD resources share scene lifetime.
+            ResetHdLighting();
+
             base.Unload();
         }
 
@@ -439,6 +442,9 @@ namespace GUO.Game.Scenes
 
         public void AddLight(GameObject obj, GameObject lightObject, int x, int y)
         {
+            // PORT DEVIATION (GUO): ADR-0027 optional, verified-pack HD path.
+            if (UseHDLight) { AddHdLight(obj, lightObject, x, y); return; }
+
             if (
                 _lightCount >= LightsLoader.MAX_LIGHTS_DATA_INDEX_COUNT
                 || !UseLights && !UseAltLights
@@ -987,9 +993,14 @@ namespace GUO.Game.Scenes
 
             bool can_draw_lights = false;
 
+            // PORT DEVIATION (GUO): resolve gate before any target is allocated.
+            PrepareHdLighting(renderTargets);
             can_draw_lights = PrepareLightsRendering(batcher, ref matrix, renderTargets);
 
             DrawWorld(batcher, ref matrix, renderTargets);
+
+            // PORT DEVIATION (GUO): current-frame offers, ADR-0027.
+            DrawHdLighting(renderTargets, ref matrix);
 
             return base.Draw(batcher, renderTargets);
         }
@@ -1065,7 +1076,8 @@ namespace GUO.Game.Scenes
             batcher.SetSampler(SamplerState.PointClamp);
 
             batcher.Begin(matrix);
-            batcher.SetBrightlight(ProfileManager.CurrentProfile.TerrainShadowsLevel * 0.1f);
+            // PORT DEVIATION (GUO): replace slope shading only in active HD mode.
+            batcher.SetBrightlight(UseHDLight ? 0f : ProfileManager.CurrentProfile.TerrainShadowsLevel * 0.1f);
 
             if (ProfileManager.CurrentProfile.UseCircleOfTransparency
                 && ProfileManager.CurrentProfile.CircleOfTransparencyType != 1) // gradient mode uses CPU alpha, not shader
@@ -1151,8 +1163,9 @@ namespace GUO.Game.Scenes
         {
             InitializeRenderTargets(renderTargets);
 
+            // PORT DEVIATION (GUO): active HD also needs light offers in daylight.
             if (
-                !UseLights && !UseAltLights
+                !LightsNeeded
                 || _world.Player.IsDead && ProfileManager.CurrentProfile.EnableBlackWhiteEffect
             )
             {
@@ -1162,6 +1175,9 @@ namespace GUO.Game.Scenes
 
                 return false;
             }
+
+            // PORT DEVIATION (GUO): HD consumes current-frame offers after DrawWorld.
+            if (PrepareHdLightTarget(batcher, renderTargets)) return true;
 
             batcher.SetRenderTarget(renderTargets.LightRenderTarget);
             batcher.Clear(Godot.Colors.Black);

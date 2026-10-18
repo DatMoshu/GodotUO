@@ -2736,3 +2736,36 @@ attenuated by the speaker's tile distance. Synthesis shells `voice.py`
 thread with distance attenuation (full to 2 tiles, silent past 20).
 `VoiceManager.Status` reports the pipeline state for probes;
 `--voice`/`--say`/`--voice-fake`/`--hear-secs` drive it in walk-to runs.
+
+## 41. Optional HD lighting packs (ADR-0027 R3)
+
+Profile fields: `UseHDLight` (bool, false), `HdSunHour` (float, 12; Options
+range 0..24), `HdSunAuto` (bool, false). Both Options interfaces expose these
+independently of `EnhancedHD`. Sun time is local presentation time. Auto
+advances 0.1 game-hours per real second, wrapping at 24. No migration enables
+lighting or changes the saved PostFx look.
+
+Store `guo/store-pack@2` component: `type:"postfx"`, `target:"client"`, `entry`
+names a declared JSON PostFx preset, no numeric binding. The active deployment
+supplies at most one. The preset has no state bindings and at most eight unique
+passes from `hd_sun`, `hd_gi`, `hd_bloom`, `hd_heat`, `hd_night_vision`,
+`hd_tonemap`; exactly one enabled `hd_tonemap` or `hd_night_vision` is required. All six sibling `.gdshader`
+files must be declared. JSON and shader reads each recheck the snapshot hash
+and have a 64 KiB limit. Normal Store licence, attribution and dependency
+rules apply. The sample uses four passes to fit the mobile budget.
+See the [pack source and fixture](../design/packs/jarjar-hd-lighting/README.md).
+
+Installation extracts/verifies only; mounting reads verified source; explicit
+option use compiles shaders and allocates viewports. No mounted component
+means Classic fallback with an activation hint. An installed inactive pack
+does nothing. Off restores ordinary PostFx without saving a different look.
+Native textures remain nearest. Analytical height data is encoded as
+`clamp((topZ+128)/255,0,1)` and interpolated independently of art.
+
+Weather uniforms follow shard weather/thunder: wetness rises at 0.6/s, dries
+at 0.04/s, cloud dim follows at 2/s and lightning has a two-second envelope.
+Caps: 100 lights, 256 occluders, 4096 stamps; mobile/extreme zoom reduce
+shadow/ray budgets. These do not replace rendered dense-town measurements.
+`client.hd.lighting` checks synthetic contracts; `client.hd.lighting.dense`
+captures the existing fixed Britain-bank performance probe after preparing a
+private fixture. Headless timing is never GPU proof.

@@ -1,0 +1,13 @@
+{
+  "id": "client.hd.lighting",
+  "title": "Optional HD lighting: verified pack and Classic fallback contracts",
+  "surface": "client",
+  "requires": {"build": "debug"},
+  "timeouts": {"step_s": 60, "run_s": 180},
+  "steps": [
+    {"id": "launch", "do": {"kind": "launch", "args": ["--hd-lighting-probe"], "settings": {"autologin": false, "username": "", "password": ""}},
+     "say": "Check default-off, missing-pack fallback and verified lighting payloads with a synthetic fixture.",
+     "expect": {"log.contains": "[HD lighting] PASS", "within_s": 45}},
+    {"id": "scope", "do": {"kind": "note", "text": "Headless contract checks do not prove rendered pixel parity or GPU cost. Run client.hd.lighting.dense against a private shard after the runtime/GPU slot is authorized; follow design/packs/jarjar-hd-lighting/README.md."}}
+  ]
+}
