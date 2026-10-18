@@ -710,15 +710,21 @@ internal static class PadWheelsProbe
 
         // A horse three tiles off: out of a rider's reach (one tile), inside the radar's.
         var before = new System.Collections.Generic.HashSet<uint>(world.Mobiles.Values.Select(m => m.Serial));
-        await InputProbe.Say(host, "[add Horse");
-
-        if (await Until(host, () => world.TargetManager.IsTargeting, 180))
-        {
-            world.TargetManager.Target(0, (ushort) (world.Player.X + 3), world.Player.Y, world.Player.Z);
-        }
-
         Mobile horse = null;
-        await Until(host, () => (horse = world.Mobiles.Values.FirstOrDefault(m => !before.Contains(m.Serial) && !m.IsDestroyed && m != world.Player)) != null, 240);
+        world.TargetManager.CancelTarget();
+
+        // Asked twice: a busy shard has let one "[add" go without a target cursor.
+        for (int attempt = 0; attempt < 2 && horse == null; attempt++)
+        {
+            await InputProbe.Say(host, "[add Horse");
+
+            if (await Until(host, () => world.TargetManager.IsTargeting, 180))
+            {
+                world.TargetManager.Target(0, (ushort) (world.Player.X + 3), world.Player.Y, world.Player.Z);
+            }
+
+            await Until(host, () => (horse = world.Mobiles.Values.FirstOrDefault(m => !before.Contains(m.Serial) && !m.IsDestroyed && m != world.Player)) != null, 240);
+        }
 
         if (horse == null)
         {
