@@ -31,6 +31,10 @@ namespace GUO.Network.Mods
             0x1D, 0x20, 0x21, 0x22, 0x25, 0x26, 0x2A, 0x2B, 0xBEEF
         };
 
+        /// <summary>0xBF subcommands GUO itself reserves; no mod may declare one. 0x4755 is the
+        /// shard offer (guo/shard-offer@1, STORE-02).</summary>
+        internal static readonly HashSet<ushort> ReservedSubcommands = new() { 0x4755 };
+
         private sealed class Entry
         {
             public ModManifest Mod;
@@ -285,6 +289,8 @@ namespace GUO.Network.Mods
                 if (e.TryGetProperty("length", out len))
                     Require(len.ValueKind == JsonValueKind.Number && len.TryGetInt16(out _), $"{m.Id}: length is a number");
                 Require(!m.Packets.Any(p => p.Id == packet.Id && p.Subcommand == packet.Subcommand), $"{m.Id}: packet 0x{packet.Id:X2} is declared twice");
+                Require(packet.Subcommand is not ushort reserved || packet.Id != 0xBF || !PacketModRegistry.ReservedSubcommands.Contains(reserved),
+                    $"{m.Id}: 0xBF subcommand 0x{packet.Subcommand:X4} is reserved by GUO");
                 m.Packets.Add(packet);
             }
             return m;
