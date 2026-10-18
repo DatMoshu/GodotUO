@@ -209,7 +209,7 @@ table, from the client data with `tools/guo` (`uomap`, `uoread.TileData`).
 
 - `SHADER_WATER` is a bit, not a mode value: bit 6 (0x40) of the mode byte,
   beside the mode (bits 0-5) and circle-of-transparency (bit 7), so a hued or
-  lit Wet tile keeps its own mode. `docs/data_formats.md` section 41.
+  lit Wet tile keeps its own mode. `docs/data_formats.md` section 44.
 - The fragment finds its world pixel from one mapping the batcher sets per
   frame (`water_target_to_world`), and its cell from the mask's water height,
   so no vertex data was added.

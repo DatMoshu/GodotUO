@@ -2737,7 +2737,7 @@ thread with distance attenuation (full to 2 tiles, silent past 20).
 `VoiceManager.Status` reports the pipeline state for probes;
 `--voice`/`--say`/`--voice-fake`/`--hear-secs` drive it in walk-to runs.
 
-## 41. Water render modes (`Profile.WaterStyle`, `Render/Water`, ADR-0037)
+## 44. Water render modes (`Profile.WaterStyle`, `Render/Water`, ADR-0037)
 
 `Profile.WaterStyle` is a string, default `"classic"`, saved in the profile
 JSON like every other option. `"classic"` (or empty, or an id the client does
