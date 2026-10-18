@@ -97,6 +97,45 @@ only from a shard they trust, as with an assistant plugin today.
 - Not proven: a live shard sending the packet. The sample's README shows what
   a shard sends.
 
+## Amendment: Mod packs, an exception to the L2 no-code rule
+
+Status: Proposed (MOD-03, 2026-10-18). Needs the owner's explicit decision,
+separately from the decision above: AGENTS.md says L2 packs carry typed Store
+components only, with no executable code. A `mod` component is executable
+code with the user's full rights. This amendment asks for one narrow
+exception; without it, MOD-03 does not merge and mods stay folder-only.
+
+**What is allowed.** One component type, `mod`, may carry one managed .NET
+assembly built against `GUO.ModApi`, plus that assembly's own dependencies,
+in a v2 pack. Nothing else in any pack may be a `.dll`, and no other
+component type gains code.
+
+**Why.** Shard owners with custom server packages need their players to have
+the matching client mod. Without a Store kind they hand players a DLL to drop
+into a folder, with no signature, no declared surface and no review. The
+Store route is the safer of the two, not a new risk.
+
+**Safeguards**, all required (`docs/asset_pack_ecosystem.md`, Mod
+components):
+
+- installing runs nothing; a mod loads only at start, with **Load mods** on
+  (default off) and an approval the user gave;
+- every mod component is signed by its publisher (Ed25519), and approval binds
+  the key and the content hash, so an update or a new key asks again;
+- the component declares every packet it touches; the installer and the
+  loader both refuse anything undeclared, and GUO-reserved packets are
+  refused outright;
+- the client never fetches a mod by itself: not on login, not through shard
+  content negotiation, not as an unrequested dependency;
+- refused on Android and web, which load no mods;
+- the review says plainly that a mod is code with the user's rights.
+
+**What stays forbidden.** Code in any other component type or pack kind;
+executing anything during installation; a shard pushing, installing or
+enabling a mod; native code (`.so`, native `.dll` exports, `.exe`) in a mod;
+mods in exported Android or web builds; loading a mod that was not approved
+in this installation.
+
 ## ADR Dependencies
 
 ADR-0019 (Store), ADR-0026 (shard content descriptors). Related: MOD-03
