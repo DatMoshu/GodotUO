@@ -256,6 +256,9 @@ if not defined UO_LAYOUT_ZOMBOID_DIR set "UO_LAYOUT_ZOMBOID_DIR="
 REM --- Python -------------------------------------------------------------
 if not defined UO_PYTHON            set "UO_PYTHON=python"
 
+REM --- Headless build guard: integer seconds, 1-86400; timeout exit 124 -----
+if not defined UO_BUILD_TIMEOUT     set "UO_BUILD_TIMEOUT=180"
+
 REM --- Logging ------------------------------------------------------------
 REM  DEBUG | INFO | WARN | ERROR
 if not defined UO_LOG_LEVEL         set "UO_LOG_LEVEL=INFO"
