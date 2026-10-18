@@ -163,6 +163,9 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 - Profile settings migrate automatically; profile version 10.
 
 ### Building and managing
+- A modding survey (`docs/modding/surface_2026-10-18.md`) lists what you can
+  change without forking the client (assistant plugins, scripts, packs, server
+  gumps) and what still needs a fork, such as a shard's custom packets.
 - World editor: the Layers menu (Land, Statics, Multis, Roofs, Objects and the
   live layers) now looks like a button beside the others, keeps its ticks for
   the whole editor session, and switching Roofs off takes effect at once.
